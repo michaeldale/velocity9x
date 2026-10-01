@@ -135,7 +135,6 @@ static DWORD v9x_gl_report_last;
  */
 static DWORD v9x_gl_swaps;
 static DWORD v9x_gl_present_ticks;
-static DWORD v9x_gl_draw_ticks;
 static DWORD v9x_gl_upload_ticks;
 
 static DWORD v9x_gl_ticks(void)
@@ -160,6 +159,178 @@ static DWORD v9x_gl_ticks_ms(DWORD ticks)
     }
     per_ms = frequency.LowPart / 1000ul;
     return ticks / per_ms;
+}
+
+/*
+ * Where an OpenGL frame's time goes, by TSC (2026-10-01): the vertex
+ * entry points (which include any flush a full batch triggers), every
+ * flush, and inside a flush the window re-bind and the render
+ * interface's draw; plus glBegin/glEnd and the swap. Half-Life's OpenGL
+ * renderer ran at 40% of its Direct3D one on the netbook with the HAL
+ * only a quarter of the frame; these say where the rest is.
+ *
+ * RDTSC as opcode bytes, like the HAL's (ddhal_internal.h), and only
+ * after CPUID says the CPU has a TSC, with EFLAGS.ID probed first so a
+ * CPU without CPUID is never asked. Each bucket is a lo/hi pair of
+ * low-dword deltas, every one under a batch or a frame. The wall bucket
+ * advances at every flush and swap, never seconds apart while drawing,
+ * so it does not wrap either; the report converts with it.
+ */
+static DWORD v9x_gl_rdtsc_low(void);
+#pragma aux v9x_gl_rdtsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
+static DWORD v9x_gl_cpuid_present(void);
+#pragma aux v9x_gl_cpuid_present = \
+    0x9c 0x58 0x8b 0xc8 0x35 0x00 0x00 0x20 0x00 0x50 0x9d 0x9c 0x58 \
+    0x51 0x9d 0x33 0xc1 0xc1 0xe8 0x15 0x83 0xe0 0x01 \
+    value [eax] modify exact [eax ecx];
+static DWORD v9x_gl_cpuid1_edx(void);
+#pragma aux v9x_gl_cpuid1_edx = \
+    0x53 0xb8 0x01 0x00 0x00 0x00 0x0f 0xa2 0x5b \
+    value [edx] modify exact [eax ecx edx];
+#define V9X_GL_CPUID1_EDX_TSC 0x00000010ul
+/* A non-negative double as a DWORD, through fistp as gl_prim.c does: no
+ * C runtime, so no __CHP. */
+static long v9x_gl_tsc_to_long(double value);
+#pragma aux v9x_gl_tsc_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+
+#define V9X_GL_TSC_WALL            0u
+#define V9X_GL_TSC_VERTEX          1u
+#define V9X_GL_TSC_FLUSH           2u
+#define V9X_GL_TSC_FLUSH_IN_VERTEX 3u
+#define V9X_GL_TSC_BIND            4u
+#define V9X_GL_TSC_IFACE           5u
+#define V9X_GL_TSC_BEGINEND        6u
+#define V9X_GL_TSC_SWAP            7u
+#define V9X_GL_TSC_SINK            8u
+#define V9X_GL_TSC_SINK_PREP       9u
+#define V9X_GL_TSC_BUCKETS         10u
+static DWORD v9x_gl_count_sinks;
+static DWORD v9x_gl_tsc_state;  /* 0 unknown, 1 usable, 2 absent */
+static DWORD v9x_gl_tsc[V9X_GL_TSC_BUCKETS * 2u];
+static DWORD v9x_gl_tsc_wall_last;
+static DWORD v9x_gl_tsc_wall_valid;
+static DWORD v9x_gl_in_vertex;
+static DWORD v9x_gl_count_vertices;
+static DWORD v9x_gl_count_flushes;
+static DWORD v9x_gl_count_draws;
+
+static int v9x_gl_tsc_usable(void)
+{
+    if (v9x_gl_tsc_state == 0ul) {
+        v9x_gl_tsc_state = 2ul;
+        if (v9x_gl_cpuid_present() != 0ul &&
+            (v9x_gl_cpuid1_edx() & V9X_GL_CPUID1_EDX_TSC) != 0ul) {
+            v9x_gl_tsc_state = 1ul;
+        }
+    }
+    return v9x_gl_tsc_state == 1ul;
+}
+
+static DWORD v9x_gl_tsc_begin(void)
+{
+    return v9x_gl_tsc_usable() ? v9x_gl_rdtsc_low() : 0ul;
+}
+
+static void v9x_gl_tsc_add(unsigned int bucket, DWORD delta)
+{
+    v9x_gl_tsc[bucket * 2u] += delta;
+    if (v9x_gl_tsc[bucket * 2u] < delta) {
+        ++v9x_gl_tsc[bucket * 2u + 1u];
+    }
+}
+
+static void v9x_gl_tsc_end(unsigned int bucket, DWORD started)
+{
+    if (v9x_gl_tsc_usable()) {
+        v9x_gl_tsc_add(bucket, v9x_gl_rdtsc_low() - started);
+    }
+}
+
+/* Advance the wall bucket to now. */
+static void v9x_gl_tsc_wall(void)
+{
+    DWORD now;
+
+    if (!v9x_gl_tsc_usable()) {
+        return;
+    }
+    now = v9x_gl_rdtsc_low();
+    if (v9x_gl_tsc_wall_valid) {
+        v9x_gl_tsc_add(V9X_GL_TSC_WALL, now - v9x_gl_tsc_wall_last);
+    }
+    v9x_gl_tsc_wall_last = now;
+    v9x_gl_tsc_wall_valid = 1ul;
+}
+
+/* A bucket in milliseconds of the interval whose wall cycles and
+ * GetTickCount milliseconds are given. */
+static DWORD v9x_gl_tsc_ms(unsigned int bucket, double wall,
+                           DWORD interval_ms)
+{
+    double cycles = (double)v9x_gl_tsc[bucket * 2u + 1u] * 4294967296.0 +
+                    (double)v9x_gl_tsc[bucket * 2u];
+
+    if (wall <= 0.0) {
+        return 0ul;
+    }
+    return (DWORD)v9x_gl_tsc_to_long(cycles * (double)interval_ms / wall);
+}
+
+static double v9x_gl_tsc_wall_cycles(void)
+{
+    v9x_gl_tsc_wall();
+    return (double)v9x_gl_tsc[V9X_GL_TSC_WALL * 2u + 1u] * 4294967296.0 +
+           (double)v9x_gl_tsc[V9X_GL_TSC_WALL * 2u];
+}
+
+static DWORD v9x_gl_tsc_bucket_ms(unsigned int bucket, DWORD interval_ms)
+{
+    if (!v9x_gl_tsc_usable()) {
+        return 0ul;
+    }
+    return v9x_gl_tsc_ms(bucket, v9x_gl_tsc_wall_cycles(), interval_ms);
+}
+
+static void v9x_gl_tsc_log(DWORD interval_ms, DWORD swaps)
+{
+    char text[320];
+    double wall;
+    unsigned int i;
+
+    if (!v9x_gl_tsc_usable()) {
+        return;
+    }
+    wall = v9x_gl_tsc_wall_cycles();
+    wsprintfA(text, "tsc frames=%lu wall-ms=%lu vertex-ms=%lu "
+              "flush-in-vertex-ms=%lu flush-other-ms=%lu bind-ms=%lu "
+              "iface-ms=%lu beginend-ms=%lu swap-ms=%lu vertices=%lu "
+              "flushes=%lu draws=%lu sink-ms=%lu sink-prep-ms=%lu sinks=%lu",
+              swaps,
+              v9x_gl_tsc_ms(V9X_GL_TSC_WALL, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_VERTEX, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_FLUSH_IN_VERTEX, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_FLUSH, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_BIND, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_IFACE, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_BEGINEND, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_SWAP, wall, interval_ms),
+              v9x_gl_count_vertices, v9x_gl_count_flushes,
+              v9x_gl_count_draws,
+              v9x_gl_tsc_ms(V9X_GL_TSC_SINK, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_SINK_PREP, wall, interval_ms),
+              v9x_gl_count_sinks);
+    v9x_gl_log(text);
+    for (i = 0u; i < V9X_GL_TSC_BUCKETS * 2u; ++i) {
+        v9x_gl_tsc[i] = 0ul;
+    }
+    v9x_gl_count_vertices = 0ul;
+    v9x_gl_count_flushes = 0ul;
+    v9x_gl_count_draws = 0ul;
+    v9x_gl_count_sinks = 0ul;
 }
 #define V9X_GL_FAILURES_DUMPED_MAX 6ul
 
@@ -1364,12 +1535,13 @@ static void v9x_gl_counters_tick(void)
                   "draw-ms=%lu upload-ms=%lu",
                   now - v9x_gl_report_last, v9x_gl_swaps,
                   v9x_gl_ticks_ms(v9x_gl_present_ticks),
-                  v9x_gl_ticks_ms(v9x_gl_draw_ticks),
+                  v9x_gl_tsc_bucket_ms(V9X_GL_TSC_IFACE,
+                                       now - v9x_gl_report_last),
                   v9x_gl_ticks_ms(v9x_gl_upload_ticks));
         v9x_gl_log(text);
+        v9x_gl_tsc_log(now - v9x_gl_report_last, v9x_gl_swaps);
         v9x_gl_swaps = 0ul;
         v9x_gl_present_ticks = 0ul;
-        v9x_gl_draw_ticks = 0ul;
         v9x_gl_upload_ticks = 0ul;
         v9x_gl_report_last = now;
         v9x_gl_counters_log();
@@ -1458,7 +1630,9 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     float scale_t;
     DWORD draw_start;
 
+    draw_start = v9x_gl_tsc_begin();
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
+    v9x_gl_tsc_end(V9X_GL_TSC_BIND, draw_start);
     if (drawable == 0) {
         return V9X_R3D_RESULT_NO_MEMORY;
     }
@@ -1510,9 +1684,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
             v9x_gl_tex_fragment_alpha_unused(&draw.texture);
         }
     }
-    draw_start = v9x_gl_ticks();
+    draw_start = v9x_gl_tsc_begin();
     result = iface->draw(&draw, outcome);
-    v9x_gl_draw_ticks += v9x_gl_ticks() - draw_start;
+    v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
+        ++v9x_gl_count_draws;
     if (result == V9X_R3D_RESULT_UNSUPPORTED && hardware) {
         /* Refused before anything was emitted: the same batch with the CPU
          * copy, which the software fallback draws, at its own s and t. */
@@ -1520,9 +1695,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         v9x_gl_note_refused(context, &draw);
         draw.texture = pending->texture;
         draw.vertices = pending->vertices;
-        draw_start = v9x_gl_ticks();
+        draw_start = v9x_gl_tsc_begin();
         result = iface->draw(&draw, outcome);
-        v9x_gl_draw_ticks += v9x_gl_ticks() - draw_start;
+        v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
+        ++v9x_gl_count_draws;
     }
     v9x_gl_path_note(path, pending->triangles);
     if (result == V9X_R3D_RESULT_STALE && v9x_gl_redescribe_all()) {
@@ -1539,9 +1715,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         }
         draw.texture = pending->texture;
         draw.vertices = pending->vertices;
-        draw_start = v9x_gl_ticks();
+        draw_start = v9x_gl_tsc_begin();
         result = iface->draw(&draw, outcome);
-        v9x_gl_draw_ticks += v9x_gl_ticks() - draw_start;
+        v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
+        ++v9x_gl_count_draws;
     }
     if (result == V9X_R3D_RESULT_OK && which == V9X_GL_DRAW_FRONT) {
         v9x_gl_drawable_show_front(drawable);
@@ -1555,11 +1732,13 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
     V9X_R3D_ABI_OUTCOME outcome;
     unsigned int pass;
     v9x_u32 result;
+    DWORD flush_started;
 
     if (context == 0 || context->pending.triangles == 0ul ||
         v9x_gl_device_interface() == 0) {
         return;
     }
+    flush_started = v9x_gl_tsc_begin();
     pending = &context->pending;
     EnterCriticalSection(&v9x_gl_lock);
     for (pass = 0u; pass < 2u; ++pass) {
@@ -1576,6 +1755,10 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
         }
     }
     pending->triangles = 0ul;
+    ++v9x_gl_count_flushes;
+    v9x_gl_tsc_end(v9x_gl_in_vertex ? V9X_GL_TSC_FLUSH_IN_VERTEX
+                                    : V9X_GL_TSC_FLUSH, flush_started);
+    v9x_gl_tsc_wall();
     v9x_gl_counters_tick();
     LeaveCriticalSection(&v9x_gl_lock);
 }
@@ -1585,16 +1768,39 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
  * same way into the same buffers and fits, and otherwise the held one is
  * drawn and this one held in its place. GL_NONE holds nothing.
  */
+static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
+                                  const V9X_R3D_ABI_VERTEX *vertices,
+                                  v9x_u32 triangle_count,
+                                  DWORD *prep_started);
+
 static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
                              v9x_u32 triangle_count)
 {
     V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
+
+    DWORD sink_started = v9x_gl_tsc_begin();
+    DWORD prep_started;
+    int result;
+
+    ++v9x_gl_count_sinks;
+    result = v9x_gl_draw_batch_body(context, vertices, triangle_count,
+                                    &prep_started);
+    v9x_gl_tsc_end(V9X_GL_TSC_SINK, sink_started);
+    return result;
+}
+
+static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
+                                  const V9X_R3D_ABI_VERTEX *vertices,
+                                  v9x_u32 triangle_count,
+                                  DWORD *prep_started)
+{
     V9X_GL_PENDING *pending = &context->pending;
     V9X_R3D_ABI_TEXTURE texture;
     V9X_R3D_ABI_STATE state;
     unsigned int targets;
     v9x_u32 i;
     v9x_u32 level;
+    int same;
 
     if (v9x_gl_device_interface() == 0) {
         return 0;
@@ -1603,13 +1809,16 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     if (targets == 0u || triangle_count == 0ul) {
         return 1;
     }
+    *prep_started = v9x_gl_tsc_begin();
     v9x_gl_describe_texture(context, &texture);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &state);
-    if (pending->triangles != 0ul &&
-        (pending->targets != targets ||
-         pending->triangles + triangle_count > V9X_R3D_ABI_BATCH_MAX ||
-         !v9x_gl_prim_same_draw(&pending->texture, &pending->state,
-                                &texture, &state))) {
+    same = pending->triangles == 0ul ||
+           (pending->targets == targets &&
+            pending->triangles + triangle_count <= V9X_R3D_ABI_BATCH_MAX &&
+            v9x_gl_prim_same_draw(&pending->texture, &pending->state,
+                                  &texture, &state));
+    v9x_gl_tsc_end(V9X_GL_TSC_SINK_PREP, *prep_started);
+    if (!same) {
         v9x_gl_pending_flush(context);
     }
     if (pending->triangles == 0ul) {
@@ -1646,21 +1855,33 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
 
 static void V9X_GL_API v9x_gl_begin(GLenum mode)
 {
+    DWORD started = v9x_gl_tsc_begin();
+
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_begin(&context_->state,
                                            &context_->pipeline, mode));
+    v9x_gl_tsc_end(V9X_GL_TSC_BEGINEND, started);
 }
 
 static void V9X_GL_API v9x_gl_end(void)
 {
+    DWORD started = v9x_gl_tsc_begin();
+
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_end(&context_->state,
                                          &context_->pipeline));
+    v9x_gl_tsc_end(V9X_GL_TSC_BEGINEND, started);
 }
 
 static void v9x_gl_vertex4(GLfloat x, GLfloat y, GLfloat z, GLfloat w)
 {
+    DWORD started = v9x_gl_tsc_begin();
+
+    v9x_gl_in_vertex = 1ul;
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_vertex(&context_->state,
                                             &context_->pipeline, x, y, z,
                                             w));
+    v9x_gl_in_vertex = 0ul;
+    ++v9x_gl_count_vertices;
+    v9x_gl_tsc_end(V9X_GL_TSC_VERTEX, started);
 }
 
 static void V9X_GL_API v9x_gl_vertex2f(GLfloat x, GLfloat y)
@@ -2414,8 +2635,12 @@ BOOL __stdcall DrvSwapBuffers(HDC hdc)
          * drawn is complete before the Blt reads it. */
         DWORD present_start = v9x_gl_ticks();
 
+        DWORD swap_started = v9x_gl_tsc_begin();
+
         ok = v9x_gl_drawable_present(drawable) ? TRUE : FALSE;
         v9x_gl_present_ticks += v9x_gl_ticks() - present_start;
+        v9x_gl_tsc_end(V9X_GL_TSC_SWAP, swap_started);
+        v9x_gl_tsc_wall();
         ++v9x_gl_swaps;
     }
     LeaveCriticalSection(&v9x_gl_lock);

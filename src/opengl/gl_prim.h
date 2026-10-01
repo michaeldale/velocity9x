@@ -100,6 +100,23 @@ typedef struct v9x_gl_pipeline {
      * area; set at Begin. */
     GLfloat clip_edge[4];
     int clip_ready;
+    /*
+     * The same primitive's window mapping, set at Begin rather than per
+     * vertex, which is where it was computed until 2026-10-01: the draw
+     * rectangle the window position is clamped to, the viewport as floats,
+     * and the depth range as zw = scale zd + bias. A window resize seen by
+     * a flush inside Begin/End is applied from the next primitive.
+     */
+    GLfloat window_rect[4];
+    GLfloat viewport_f[4];
+    GLdouble depth_scale;
+    GLdouble depth_bias;
+    /* The last colour packed into a vertex and the floats it came from:
+     * the colour changes per glColor, not per vertex, and packing it is
+     * four float-to-integer conversions. */
+    GLfloat argb_from[4];
+    v9x_u32 argb;
+    int argb_valid;
     /* The batch. */
     V9X_R3D_ABI_VERTEX batch[3u * V9X_R3D_ABI_BATCH_MAX];
     v9x_u32 batch_triangles;

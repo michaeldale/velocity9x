@@ -216,6 +216,71 @@ static void upload_chain(V9X_GL_STATE *s, V9X_GL_TEXTURES *t,
     }
 }
 
+/* One complete level of edge x edge on the bound texture, LINEAR-minified
+ * so that one level is all it needs. */
+static void upload_one(V9X_GL_STATE *s, V9X_GL_TEXTURES *t, GLsizei edge)
+{
+    static GLubyte grey[4 * 8 * 8];
+
+    v9x_gl_tex_image_2d(s, t, V9X_GL_TEXTURE_2D, 0, 4, edge, edge, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, grey);
+    v9x_gl_tex_parameter(s, t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_LINEAR);
+}
+
+/* The width describe reports for the bound texture; 0 when it has none. */
+static v9x_u32 described_width(V9X_GL_STATE *s, V9X_GL_TEXTURES *t)
+{
+    V9X_R3D_ABI_TEXTURE d;
+    V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+
+    v9x_gl_tex_describe(s, t, &d, levels);
+    return d.storage == V9X_R3D_ABI_TEXTURE_CPU ? levels[0].width : 0ul;
+}
+
+/*
+ * Describe finds the bound object every time it is asked, which a draw
+ * does once per polygon. Whatever makes that lookup fast must still find
+ * the right object after its slot is freed and reused by another name, and
+ * after the table grows and moves.
+ */
+static void test_lookup_after_reuse_and_growth(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    GLuint name;
+
+    fresh(&s, &t);
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_2D, 1);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 10u);
+    upload_one(&s, &t, 8);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 11u);
+    upload_one(&s, &t, 4);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 10u);
+    TCHECK(described_width(&s, &t) == 8ul);
+    TCHECK(described_width(&s, &t) == 8ul);
+    /* 10's slot freed, then taken by 12: 12 is found, 10 is not. */
+    name = 10u;
+    v9x_gl_tex_delete(&s, &t, 1, &name);
+    TCHECK(t.bound == 0u && described_width(&s, &t) == 0ul);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 12u);
+    upload_one(&s, &t, 2);
+    TCHECK(described_width(&s, &t) == 2ul);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 10u);
+    TCHECK(described_width(&s, &t) == 0ul);
+    /* Enough new objects to grow the table more than once (it grows by
+     * 32, gl_texture.c). */
+    for (name = 100u; name < 200u; ++name) {
+        v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, name);
+    }
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 11u);
+    TCHECK(described_width(&s, &t) == 4ul);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 12u);
+    TCHECK(described_width(&s, &t) == 2ul);
+    v9x_gl_textures_release(&t);
+    TCHECK(outstanding == 0l);
+}
+
 static void test_completeness_and_describe(void)
 {
     V9X_GL_STATE s;
@@ -561,6 +626,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_names_and_binding();
     test_uploads();
     test_completeness_and_describe();
+    test_lookup_after_reuse_and_growth();
     test_environment_table();
     test_hardware_copy_bookkeeping();
     test_retarget_to_1555();

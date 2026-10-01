@@ -1,0 +1,60 @@
+125 pid=FFFC93A1 paths batches/triangles untextured=785/2935 hw=159494/6061161 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+128 pid=FFFC93A1 paths batches/triangles untextured=813/3075 hw=166541/6359643 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFEC813 time interval-ms=1185506 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+42 pid=FFFEC813 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFEC813 paths batches/triangles untextured=22/44 hw=5322/192854 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC0485 time interval-ms=1689456 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+42 pid=FFFC0485 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFC0485 paths batches/triangles untextured=51/102 hw=6281/241369 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+132 pid=FFFC0485 time interval-ms=10048 swaps=151 present-ms=88 draw-ms=2001 upload-ms=91
+133 pid=FFFC0485 paths batches/triangles untextured=122/315 hw=7713/327581 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+135 pid=FFFC0485 time interval-ms=10012 swaps=257 present-ms=149 draw-ms=1835 upload-ms=61
+136 pid=FFFC0485 paths batches/triangles untextured=271/670 hw=16456/813570 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+138 pid=FFFC0485 time interval-ms=10000 swaps=148 present-ms=103 draw-ms=2783 upload-ms=160
+139 pid=FFFC0485 paths batches/triangles untextured=310/865 hw=27125/1227772 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+141 pid=FFFC0485 time interval-ms=10004 swaps=159 present-ms=94 draw-ms=3057 upload-ms=154
+142 pid=FFFC0485 paths batches/triangles untextured=361/1120 hw=38156/1633356 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+144 pid=FFFC0485 time interval-ms=10000 swaps=143 present-ms=83 draw-ms=2828 upload-ms=197
+145 pid=FFFC0485 paths batches/triangles untextured=400/1315 hw=50035/2061588 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+147 pid=FFFC0485 time interval-ms=10000 swaps=131 present-ms=76 draw-ms=3168 upload-ms=117
+148 pid=FFFC0485 paths batches/triangles untextured=419/1410 hw=62371/2510267 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+150 pid=FFFC0485 time interval-ms=10001 swaps=205 present-ms=119 draw-ms=2472 upload-ms=161
+151 pid=FFFC0485 paths batches/triangles untextured=568/1780 hw=71931/2915186 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+154 pid=FFFC0485 paths batches/triangles untextured=576/1808 hw=72274/2927859 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC4949 time interval-ms=2179674 swaps=0 present-ms=0 draw-ms=1 upload-ms=2
+42 pid=FFFC4949 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFC4949 time interval-ms=10000 swaps=294 present-ms=186 draw-ms=2154 upload-ms=110
+93 pid=FFFC4949 paths batches/triangles untextured=90/180 hw=17309/137797 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFC4949 time interval-ms=10000 swaps=139 present-ms=90 draw-ms=2383 upload-ms=73
+96 pid=FFFC4949 paths batches/triangles untextured=229/458 hw=31915/444165 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFC4949 time interval-ms=10006 swaps=98 present-ms=57 draw-ms=2395 upload-ms=63
+99 pid=FFFC4949 paths batches/triangles untextured=327/654 hw=50806/821744 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFC4949 time interval-ms=10004 swaps=283 present-ms=180 draw-ms=4183 upload-ms=84
+102 pid=FFFC4949 paths batches/triangles untextured=388/776 hw=137535/1114860 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFC4949 paths batches/triangles untextured=388/776 hw=242684/1325449 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFE15CD time interval-ms=8756812 swaps=0 present-ms=0 draw-ms=1 upload-ms=2
+42 pid=FFFE15CD paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFE15CD time interval-ms=10000 swaps=230 present-ms=152 draw-ms=2077 upload-ms=118
+93 pid=FFFE15CD paths batches/triangles untextured=88/176 hw=15449/129185 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFE15CD time interval-ms=10000 swaps=125 present-ms=108 draw-ms=2322 upload-ms=73
+96 pid=FFFE15CD paths batches/triangles untextured=213/426 hw=28671/406298 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFE15CD time interval-ms=10000 swaps=96 present-ms=71 draw-ms=2413 upload-ms=40
+99 pid=FFFE15CD paths batches/triangles untextured=309/618 hw=45133/741366 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFE15CD time interval-ms=10000 swaps=153 present-ms=89 draw-ms=2769 upload-ms=92
+102 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=84524/1008626 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+104 pid=FFFE15CD time interval-ms=10011 swaps=334 present-ms=213 draw-ms=5419 upload-ms=0
+105 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=215652/1271216 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+107 pid=FFFE15CD time interval-ms=10009 swaps=259 present-ms=154 draw-ms=4505 upload-ms=22
+108 pid=FFFE15CD paths batches/triangles untextured=398/796 hw=318123/1487589 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+110 pid=FFFE15CD time interval-ms=10012 swaps=151 present-ms=108 draw-ms=2626 upload-ms=84
+111 pid=FFFE15CD paths batches/triangles untextured=549/1098 hw=329332/1707388 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+113 pid=FFFE15CD time interval-ms=10000 swaps=101 present-ms=77 draw-ms=2459 upload-ms=25
+114 pid=FFFE15CD paths batches/triangles untextured=651/1302 hw=344387/2002693 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+116 pid=FFFE15CD time interval-ms=10003 swaps=79 present-ms=46 draw-ms=3157 upload-ms=38
+117 pid=FFFE15CD paths batches/triangles untextured=729/1458 hw=390576/2366650 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+119 pid=FFFE15CD time interval-ms=10000 swaps=181 present-ms=105 draw-ms=4375 upload-ms=64
+120 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=492882/2665684 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+122 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=166 draw-ms=5615 upload-ms=0
+123 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=642136/2964446 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+125 pid=FFFE15CD time interval-ms=10000 swaps=252 present-ms=146 draw-ms=5476 upload-ms=0
+126 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=790815/3262056 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0

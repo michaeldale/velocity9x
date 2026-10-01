@@ -41,6 +41,7 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
     v9x_gl_texobj_defaults(&textures->default_object, 0u);
     textures->objects = 0;
     textures->capacity = 0ul;
+    textures->find_hint = 0ul;
     textures->next_name = 1u;
     textures->bound = 0u;
     textures->env_mode = V9X_GL_MODULATE;
@@ -109,8 +110,14 @@ static V9X_GL_TEXOBJ *v9x_gl_texobj_find(V9X_GL_TEXTURES *textures,
     if (name == 0u) {
         return &textures->default_object;
     }
+    i = textures->find_hint;
+    if (i < textures->capacity && textures->objects[i].in_use &&
+        textures->objects[i].name == name) {
+        return &textures->objects[i];
+    }
     for (i = 0ul; i < textures->capacity; ++i) {
         if (textures->objects[i].in_use && textures->objects[i].name == name) {
+            textures->find_hint = i;
             return &textures->objects[i];
         }
     }

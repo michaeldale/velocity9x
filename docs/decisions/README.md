@@ -195,6 +195,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-01 Final Reality 1.01, full default run, on the netbook and the Gateway: both complete, no engine faults](2026-10-01-final-reality-full-runs-netbook-and-gateway.md)
 - [2026-10-01 The netbook's Final Reality fill rate is bound by presentation, not by pixels](2026-10-01-netbook-fill-rate-is-presentation-bound.md)
 - [2026-10-01 An Intel flip now completes at the first frame tick: Final Reality's 3D score from 2.19 to 2.71](2026-10-01-intel-flip-completes-at-one-tick.md)
+- [2026-10-01 Half-Life's OpenGL renderer from 10.75 to 14.75 fps: the ICD's own CPU work, measured and cut](2026-10-01-hl1-opengl-icd-cpu-costs.md)
 
 ## NVIDIA and other surveyed cards
 

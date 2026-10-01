@@ -1,0 +1,43 @@
+41 pid=FFFE15CD time interval-ms=11270986 swaps=0 present-ms=0 draw-ms=2147483648 upload-ms=2
+42 pid=FFFE15CD tsc frames=0 wall-ms=11270986 vertex-ms=1924371 flush-in-vertex-ms=0 flush-other-ms=341672349 bind-ms=511483 iface-ms=112693804 beginend-ms=2010153 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=1879415 sink-prep-ms=1767026 sinks=1
+43 pid=FFFE15CD paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+93 pid=FFFE15CD time interval-ms=10001 swaps=276 present-ms=160 draw-ms=2081 upload-ms=132
+94 pid=FFFE15CD tsc frames=276 wall-ms=10001 vertex-ms=1241 flush-in-vertex-ms=1 flush-other-ms=2546 bind-ms=258 iface-ms=2081 beginend-ms=1061 swap-ms=161 vertices=592251 flushes=19439 draws=19439 sink-ms=941 sink-prep-ms=162 sinks=65547
+95 pid=FFFE15CD paths batches/triangles untextured=97/194 hw=19343/169572 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFE15CD time interval-ms=10000 swaps=158 present-ms=113 draw-ms=2675 upload-ms=60
+98 pid=FFFE15CD tsc frames=158 wall-ms=10000 vertex-ms=2462 flush-in-vertex-ms=38 flush-other-ms=2974 bind-ms=233 iface-ms=2674 beginend-ms=1622 swap-ms=108 vertices=1343018 flushes=17446 draws=17446 sink-ms=1381 sink-prep-ms=318 sinks=130195
+99 pid=FFFE15CD paths batches/triangles untextured=255/510 hw=36631/519423 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFE15CD time interval-ms=10000 swaps=126 present-ms=73 draw-ms=2719 upload-ms=127
+102 pid=FFFE15CD tsc frames=126 wall-ms=10000 vertex-ms=2662 flush-in-vertex-ms=79 flush-other-ms=3065 bind-ms=235 iface-ms=2719 beginend-ms=1894 swap-ms=73 vertices=1410724 flushes=21038 draws=21038 sink-ms=1706 sink-prep-ms=371 sinks=153821
+103 pid=FFFE15CD paths batches/triangles untextured=381/762 hw=57543/945162 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFE15CD time interval-ms=10000 swaps=463 present-ms=299 draw-ms=5811 upload-ms=0
+106 pid=FFFE15CD tsc frames=463 wall-ms=10000 vertex-ms=1293 flush-in-vertex-ms=1 flush-other-ms=6564 bind-ms=405 iface-ms=5811 beginend-ms=816 swap-ms=299 vertices=759910 flushes=180574 draws=180574 sink-ms=572 sink-prep-ms=396 sinks=183669
+107 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=238110/1316396 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFE15CD time interval-ms=10000 swaps=471 present-ms=339 draw-ms=5944 upload-ms=0
+110 pid=FFFE15CD tsc frames=471 wall-ms=10000 vertex-ms=1307 flush-in-vertex-ms=0 flush-other-ms=6706 bind-ms=356 iface-ms=5944 beginend-ms=735 swap-ms=340 vertices=741664 flushes=185416 draws=185416 sink-ms=507 sink-prep-ms=356 sinks=185416
+111 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=423526/1687699 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+113 pid=FFFE15CD time interval-ms=10000 swaps=443 present-ms=258 draw-ms=5455 upload-ms=0
+114 pid=FFFE15CD tsc frames=443 wall-ms=10000 vertex-ms=1339 flush-in-vertex-ms=0 flush-other-ms=6374 bind-ms=559 iface-ms=5455 beginend-ms=767 swap-ms=259 vertices=697656 flushes=174414 draws=174414 sink-ms=566 sink-prep-ms=457 sinks=174414
+115 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=597940/2036970 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+117 pid=FFFE15CD time interval-ms=10000 swaps=470 present-ms=271 draw-ms=5864 upload-ms=0
+118 pid=FFFE15CD tsc frames=470 wall-ms=10000 vertex-ms=1367 flush-in-vertex-ms=0 flush-other-ms=6593 bind-ms=302 iface-ms=5864 beginend-ms=697 swap-ms=272 vertices=740840 flushes=185210 draws=185210 sink-ms=483 sink-prep-ms=365 sinks=185210
+119 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=783150/2407860 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+121 pid=FFFE15CD time interval-ms=10000 swaps=444 present-ms=299 draw-ms=5605 upload-ms=0
+122 pid=FFFE15CD tsc frames=444 wall-ms=10000 vertex-ms=1270 flush-in-vertex-ms=0 flush-other-ms=6632 bind-ms=563 iface-ms=5605 beginend-ms=748 swap-ms=299 vertices=699492 flushes=174873 draws=174873 sink-ms=511 sink-prep-ms=399 sinks=174873
+123 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=958023/2758050 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+125 pid=FFFE15CD time interval-ms=10000 swaps=308 present-ms=206 draw-ms=4125 upload-ms=59
+126 pid=FFFE15CD tsc frames=308 wall-ms=10000 vertex-ms=1492 flush-in-vertex-ms=0 flush-other-ms=4758 bind-ms=343 iface-ms=4125 beginend-ms=1081 swap-ms=207 vertices=728987 flushes=99264 draws=99264 sink-ms=883 sink-prep-ms=252 sinks=128089
+127 pid=FFFE15CD paths batches/triangles untextured=471/942 hw=1057204/3041404 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+129 pid=FFFE15CD time interval-ms=10000 swaps=156 present-ms=93 draw-ms=2474 upload-ms=66
+130 pid=FFFE15CD tsc frames=156 wall-ms=10000 vertex-ms=2505 flush-in-vertex-ms=15 flush-other-ms=2634 bind-ms=51 iface-ms=2474 beginend-ms=1511 swap-ms=93 vertices=1364956 flushes=16822 draws=16822 sink-ms=1209 sink-prep-ms=275 sinks=131345
+131 pid=FFFE15CD paths batches/triangles untextured=627/1254 hw=1073870/3392036 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+133 pid=FFFE15CD time interval-ms=10001 swaps=120 present-ms=70 draw-ms=2676 upload-ms=83
+134 pid=FFFE15CD tsc frames=120 wall-ms=10001 vertex-ms=2929 flush-in-vertex-ms=95 flush-other-ms=2888 bind-ms=126 iface-ms=2676 beginend-ms=1727 swap-ms=71 vertices=1444721 flushes=21445 draws=21445 sink-ms=1531 sink-prep-ms=316 sinks=159020
+135 pid=FFFE15CD paths batches/triangles untextured=747/1494 hw=1095195/3829028 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+137 pid=FFFE15CD time interval-ms=10004 swaps=310 present-ms=201 draw-ms=5279 upload-ms=27
+138 pid=FFFE15CD tsc frames=310 wall-ms=10004 vertex-ms=1570 flush-in-vertex-ms=5 flush-other-ms=6000 bind-ms=313 iface-ms=5279 beginend-ms=953 swap-ms=201 vertices=834947 flushes=167924 draws=167924 sink-ms=674 sink-prep-ms=330 sinks=181700
+139 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1263090/4208208 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+141 pid=FFFE15CD time interval-ms=10000 swaps=310 present-ms=180 draw-ms=5481 upload-ms=0
+142 pid=FFFE15CD tsc frames=310 wall-ms=10000 vertex-ms=1437 flush-in-vertex-ms=0 flush-other-ms=6547 bind-ms=657 iface-ms=5481 beginend-ms=950 swap-ms=180 vertices=728904 flushes=182226 draws=182226 sink-ms=588 sink-prep-ms=474 sinks=182226
+143 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1445316/4572970 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+146 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1464621/4611612 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0

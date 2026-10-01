@@ -93,6 +93,12 @@ typedef struct v9x_gl_textures {
     V9X_GL_TEXOBJ default_object;
     V9X_GL_TEXOBJ *objects;
     v9x_u32 capacity;
+    /* The slot the last lookup found, tried first by the next: a draw
+     * describes the bound texture once per polygon, and a table scan per
+     * polygon cost Half-Life about a tenth of its frame (2026-10-01). It
+     * is an index, so the table moving when it grows does not stale it,
+     * and a hit is checked against in_use and the name every time. */
+    v9x_u32 find_hint;
     GLuint next_name;
     GLuint bound;
     GLenum env_mode;

@@ -59,6 +59,7 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->mode = V9X_GL_TRIANGLES;
     pipeline->count = 0ul;
     pipeline->batch_triangles = 0ul;
+    pipeline->argb_valid = 0;
     pipeline->sink = 0;
     pipeline->sink_user = 0;
     pipeline->sink_failures = 0ul;
@@ -246,6 +247,7 @@ void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
 
 static int v9x_gl_prim_clip_edges(const V9X_GL_STATE *state,
                                   GLfloat *edge);
+static int v9x_gl_prim_draw_rect(const V9X_GL_STATE *state, GLfloat *rect);
 
 void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                        GLenum mode)
@@ -262,6 +264,13 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->mode = mode;
     pipeline->count = 0ul;
     pipeline->clip_ready = v9x_gl_prim_clip_edges(state, pipeline->clip_edge);
+    (void)v9x_gl_prim_draw_rect(state, pipeline->window_rect);
+    pipeline->viewport_f[0] = (GLfloat)state->viewport[0];
+    pipeline->viewport_f[1] = (GLfloat)state->viewport[1];
+    pipeline->viewport_f[2] = (GLfloat)state->viewport[2];
+    pipeline->viewport_f[3] = (GLfloat)state->viewport[3];
+    pipeline->depth_scale = (pipeline->depth_far - pipeline->depth_near) * 0.5;
+    pipeline->depth_bias = (pipeline->depth_near + pipeline->depth_far) * 0.5;
 }
 
 void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline)
@@ -444,19 +453,19 @@ static void v9x_gl_prim_window(const V9X_GL_STATE *state,
                                const V9X_GL_VERTEX *v, V9X_GL_WINDOW *out)
 {
     GLfloat rhw = 1.0f / v->clip[3];
-    GLfloat rect[4];
+    const GLfloat *rect = pipeline->window_rect;
     GLfloat xd = v->clip[0] * rhw;
     GLfloat yd = v->clip[1] * rhw;
     GLfloat zd = v->clip[2] * rhw;
 
-    /* 2.10.1: xw = (px/2) xd + ox, zw = ((f-n)/2) zd + (n+f)/2. */
-    out->x = (GLfloat)state->viewport[0] +
-             (xd + 1.0f) * 0.5f * (GLfloat)state->viewport[2];
-    out->y = (GLfloat)state->viewport[1] +
-             (yd + 1.0f) * 0.5f * (GLfloat)state->viewport[3];
-    out->z = (GLfloat)(((pipeline->depth_far - pipeline->depth_near) * 0.5) *
-                           zd +
-                       (pipeline->depth_near + pipeline->depth_far) * 0.5);
+    (void)state;
+    /* 2.10.1: xw = (px/2) xd + ox, zw = ((f-n)/2) zd + (n+f)/2, with the
+     * viewport and the two depth terms taken at Begin. */
+    out->x = pipeline->viewport_f[0] +
+             (xd + 1.0f) * 0.5f * pipeline->viewport_f[2];
+    out->y = pipeline->viewport_f[1] +
+             (yd + 1.0f) * 0.5f * pipeline->viewport_f[3];
+    out->z = (GLfloat)(pipeline->depth_scale * zd + pipeline->depth_bias);
     out->rhw = rhw;
 
     /*
@@ -470,7 +479,6 @@ static void v9x_gl_prim_window(const V9X_GL_STATE *state,
      * The low bounds are tested as
      * "not above", which also replaces -0.0 by the bound's +0.0.
      */
-    (void)v9x_gl_prim_draw_rect(state, rect);
     out->x = v9x_gl_prim_clamp(out->x, rect[0], rect[2]);
     out->y = v9x_gl_prim_clamp(out->y, rect[1], rect[3]);
     out->z = pipeline->depth_near <= pipeline->depth_far
@@ -488,7 +496,29 @@ static v9x_u32 v9x_gl_prim_argb(const GLfloat *color)
            v9x_gl_prim_byte(color[2]);
 }
 
+/* The packed colour, from the pipeline's last packing when the floats are
+ * the same ones; a NaN never compares equal, so it is packed each time. */
+static v9x_u32 v9x_gl_prim_argb_cached(V9X_GL_PIPELINE *pipeline,
+                                       const GLfloat *color)
+{
+    if (pipeline->argb_valid &&
+        pipeline->argb_from[0] == color[0] &&
+        pipeline->argb_from[1] == color[1] &&
+        pipeline->argb_from[2] == color[2] &&
+        pipeline->argb_from[3] == color[3]) {
+        return pipeline->argb;
+    }
+    pipeline->argb_from[0] = color[0];
+    pipeline->argb_from[1] = color[1];
+    pipeline->argb_from[2] = color[2];
+    pipeline->argb_from[3] = color[3];
+    pipeline->argb = v9x_gl_prim_argb(color);
+    pipeline->argb_valid = 1;
+    return pipeline->argb;
+}
+
 static void v9x_gl_prim_emit(const V9X_GL_STATE *state,
+                             V9X_GL_PIPELINE *pipeline,
                              V9X_R3D_ABI_VERTEX *out,
                              const V9X_GL_VERTEX *v,
                              const V9X_GL_WINDOW *w)
@@ -499,10 +529,17 @@ static void v9x_gl_prim_emit(const V9X_GL_STATE *state,
     out->sy = (GLfloat)state->drawable_height - w->y;
     out->sz = w->z;
     /* The texture divisor: 1/w, or q/w for a projective coordinate, with
-     * tu/tv the divided s/q and t/q (the rasterizer contract). */
-    out->rhw = w->rhw * q;
-    out->color = v9x_gl_prim_argb(v->color);
+     * tu/tv the divided s/q and t/q (the rasterizer contract). A q of one
+     * divides nothing, and is what every non-projective call sends. */
+    out->color = v9x_gl_prim_argb_cached(pipeline, v->color);
     out->specular = 0xff000000ul;
+    if (q == 1.0f) {
+        out->rhw = w->rhw;
+        out->tu = v->tex[0];
+        out->tv = v->tex[1];
+        return;
+    }
+    out->rhw = w->rhw * q;
     out->tu = v->tex[0] / q;
     out->tv = v->tex[1] / q;
 }
@@ -606,9 +643,12 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
             v9x_gl_prim_flush(pipeline);
         }
         out = &pipeline->batch[pipeline->batch_triangles * 3ul];
-        v9x_gl_prim_emit(state, &out[0], &polygon[0], &window[0]);
-        v9x_gl_prim_emit(state, &out[1], &polygon[i], &window[i]);
-        v9x_gl_prim_emit(state, &out[2], &polygon[i + 1u], &window[i + 1u]);
+        v9x_gl_prim_emit(state, pipeline, &out[0], &polygon[0],
+                         &window[0]);
+        v9x_gl_prim_emit(state, pipeline, &out[1], &polygon[i],
+                         &window[i]);
+        v9x_gl_prim_emit(state, pipeline, &out[2], &polygon[i + 1u],
+                         &window[i + 1u]);
         ++pipeline->batch_triangles;
     }
     /* A full batch goes as soon as it fills, not at the next triangle. */
@@ -670,7 +710,7 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
         v.window[1] = w.y;
         v.window[2] = w.z;
         v.window[3] = w.rhw;
-        v9x_gl_prim_emit(state, &v.abi, &v, &w);
+        v9x_gl_prim_emit(state, pipeline, &v.abi, &v, &w);
     }
 
     n = pipeline->count++;

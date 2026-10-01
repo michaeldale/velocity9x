@@ -1,0 +1,853 @@
+89 pid=FFFCB851 paths batches/triangles untextured=88/176 hw=569751/1533055 cpu=0/0 cpu-nonsquare=180748/478294 hw-refused=330/989
+94 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=20/43 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+101 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=21/44 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+108 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=22/45 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+115 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=23/46 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+122 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=24/47 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+129 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=25/48 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+136 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=26/49 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+143 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=27/50 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+150 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=28/51 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+157 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=29/52 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+164 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=30/53 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+171 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=31/54 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+178 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=32/55 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+185 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=33/56 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+192 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=34/57 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+199 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=35/58 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+206 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=36/59 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+213 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=37/60 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+220 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=38/61 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+227 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=39/62 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+234 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=40/63 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+241 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=41/64 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+248 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=42/65 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+255 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=43/66 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+262 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=44/67 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+270 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=45/68 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+277 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=46/69 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+284 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=47/70 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+291 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=48/71 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+298 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=49/72 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+305 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=50/73 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+312 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=51/74 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+319 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=52/75 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+326 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=53/76 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+333 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=54/77 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+340 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=55/78 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+347 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=56/79 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+354 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=57/80 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+361 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=58/81 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+368 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=59/82 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+375 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=60/83 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+382 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=61/84 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+389 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=62/85 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+396 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=63/86 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+403 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=64/87 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+410 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=65/88 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+417 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=66/89 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+424 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=67/90 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+431 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=68/91 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+438 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=69/92 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+442 pid=FFFCA7AB paths batches/triangles untextured=4/12 hw=69/92 cpu=0/0 cpu-nonsquare=4/8 hw-refused=0/0
+91 pid=FFFE075F paths batches/triangles untextured=4/12 hw=24/51 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFE075F paths batches/triangles untextured=4/12 hw=25/52 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFE075F paths batches/triangles untextured=4/12 hw=26/53 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+112 pid=FFFE075F paths batches/triangles untextured=4/12 hw=27/54 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+119 pid=FFFE075F paths batches/triangles untextured=4/12 hw=28/55 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+126 pid=FFFE075F paths batches/triangles untextured=4/12 hw=29/56 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+133 pid=FFFE075F paths batches/triangles untextured=4/12 hw=30/57 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+140 pid=FFFE075F paths batches/triangles untextured=4/12 hw=31/58 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+147 pid=FFFE075F paths batches/triangles untextured=4/12 hw=32/59 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+154 pid=FFFE075F paths batches/triangles untextured=4/12 hw=33/60 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+161 pid=FFFE075F paths batches/triangles untextured=4/12 hw=34/61 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+168 pid=FFFE075F paths batches/triangles untextured=4/12 hw=35/62 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+175 pid=FFFE075F paths batches/triangles untextured=4/12 hw=36/63 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+182 pid=FFFE075F paths batches/triangles untextured=4/12 hw=37/64 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+189 pid=FFFE075F paths batches/triangles untextured=4/12 hw=38/65 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+196 pid=FFFE075F paths batches/triangles untextured=4/12 hw=39/66 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+203 pid=FFFE075F paths batches/triangles untextured=4/12 hw=40/67 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+210 pid=FFFE075F paths batches/triangles untextured=4/12 hw=41/68 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+217 pid=FFFE075F paths batches/triangles untextured=4/12 hw=42/69 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+224 pid=FFFE075F paths batches/triangles untextured=4/12 hw=43/70 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+231 pid=FFFE075F paths batches/triangles untextured=4/12 hw=44/71 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+238 pid=FFFE075F paths batches/triangles untextured=4/12 hw=45/72 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+245 pid=FFFE075F paths batches/triangles untextured=4/12 hw=46/73 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+252 pid=FFFE075F paths batches/triangles untextured=4/12 hw=47/74 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+259 pid=FFFE075F paths batches/triangles untextured=4/12 hw=48/75 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+267 pid=FFFE075F paths batches/triangles untextured=4/12 hw=49/76 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+274 pid=FFFE075F paths batches/triangles untextured=4/12 hw=50/77 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+281 pid=FFFE075F paths batches/triangles untextured=4/12 hw=51/78 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+288 pid=FFFE075F paths batches/triangles untextured=4/12 hw=52/79 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+295 pid=FFFE075F paths batches/triangles untextured=4/12 hw=53/80 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+302 pid=FFFE075F paths batches/triangles untextured=4/12 hw=54/81 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+309 pid=FFFE075F paths batches/triangles untextured=4/12 hw=55/82 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+316 pid=FFFE075F paths batches/triangles untextured=4/12 hw=56/83 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+323 pid=FFFE075F paths batches/triangles untextured=4/12 hw=57/84 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+330 pid=FFFE075F paths batches/triangles untextured=4/12 hw=58/85 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+337 pid=FFFE075F paths batches/triangles untextured=4/12 hw=59/86 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+344 pid=FFFE075F paths batches/triangles untextured=4/12 hw=60/87 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+351 pid=FFFE075F paths batches/triangles untextured=4/12 hw=61/88 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+358 pid=FFFE075F paths batches/triangles untextured=4/12 hw=62/89 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+365 pid=FFFE075F paths batches/triangles untextured=4/12 hw=63/90 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+372 pid=FFFE075F paths batches/triangles untextured=4/12 hw=64/91 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+379 pid=FFFE075F paths batches/triangles untextured=4/12 hw=65/92 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+386 pid=FFFE075F paths batches/triangles untextured=4/12 hw=66/93 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+393 pid=FFFE075F paths batches/triangles untextured=4/12 hw=67/94 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+400 pid=FFFE075F paths batches/triangles untextured=4/12 hw=68/95 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+407 pid=FFFE075F paths batches/triangles untextured=4/12 hw=69/96 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+414 pid=FFFE075F paths batches/triangles untextured=4/12 hw=70/97 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+421 pid=FFFE075F paths batches/triangles untextured=4/12 hw=71/98 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+428 pid=FFFE075F paths batches/triangles untextured=4/12 hw=72/99 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+435 pid=FFFE075F paths batches/triangles untextured=4/12 hw=73/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+439 pid=FFFE075F paths batches/triangles untextured=4/12 hw=73/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+89 pid=FFFC893B paths batches/triangles untextured=100/224 hw=1231233/3300541 cpu=0/0 cpu-nonsquare=0/0 hw-refused=440/1319
+89 pid=FFFC90AF paths batches/triangles untextured=88/176 hw=1410309/3751708 cpu=0/0 cpu-nonsquare=0/0 hw-refused=763/2288
+91 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=21/51 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=22/52 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=23/53 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+112 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=24/54 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+119 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=25/55 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+126 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=26/56 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+133 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=27/57 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+140 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=28/58 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+147 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=29/59 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+154 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=30/60 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+161 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=31/61 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+168 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=32/62 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+175 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=33/63 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+182 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=34/64 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+189 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=35/65 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+196 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=36/66 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+203 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=37/67 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+210 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=38/68 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+217 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=39/69 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+224 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=40/70 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+231 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=41/71 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+238 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=42/72 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+245 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=43/73 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+252 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=44/74 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+259 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=45/75 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+267 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=46/76 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+274 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=47/77 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+281 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=48/78 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+288 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=49/79 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+295 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=50/80 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+302 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=51/81 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+309 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=52/82 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+316 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=53/83 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+323 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=54/84 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+330 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=55/85 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+337 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=56/86 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+344 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=57/87 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+351 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=58/88 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+358 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=59/89 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+365 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=60/90 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+372 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=61/91 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+379 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=62/92 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+386 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=63/93 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+393 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=64/94 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+400 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=65/95 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+407 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=66/96 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+414 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=67/97 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+421 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=68/98 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+428 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=69/99 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+435 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=70/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+439 pid=FFFC90AF paths batches/triangles untextured=3/12 hw=70/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+89 pid=FFFC90AF paths batches/triangles untextured=88/176 hw=129316/4691652 cpu=0/0 cpu-nonsquare=0/0 hw-refused=683/2048
+89 pid=FFFC8563 paths batches/triangles untextured=92/184 hw=7266/293592 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+129 pid=FFFC8563 paths batches/triangles untextured=415/1165 hw=51748/1955184 cpu=0/0 cpu-nonsquare=0/0 hw-refused=137/389
+273 pid=FFFC9A73 paths batches/triangles untextured=441/1917 hw=57302/683069 cpu=0/0 cpu-nonsquare=0/0 hw-refused=6153/147532
+43 pid=FFFEC48F paths batches/triangles untextured=0/0 hw=1/44 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+45 pid=FFFEC48F paths batches/triangles untextured=0/0 hw=167/4034 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFEC48F paths batches/triangles untextured=0/0 hw=331/7126 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFEC48F paths batches/triangles untextured=0/0 hw=529/11030 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFEC48F paths batches/triangles untextured=405/2811 hw=3445/21142 cpu=0/0 cpu-nonsquare=0/0 hw-refused=516/1032
+133 pid=FFFEC48F paths batches/triangles untextured=759/5369 hw=6732/59873 cpu=135/7854 cpu-nonsquare=102/4226 hw-refused=1050/2164
+239 pid=FFFEC48F paths batches/triangles untextured=836/5893 hw=9050/132981 cpu=689/27313 cpu-nonsquare=446/15345 hw-refused=1571/4014
+251 pid=FFFEC48F paths batches/triangles untextured=844/5965 hw=9050/132981 cpu=1851/41419 cpu-nonsquare=877/20074 hw-refused=2848/9034
+265 pid=FFFEC48F paths batches/triangles untextured=869/6086 hw=9050/132981 cpu=3077/55794 cpu-nonsquare=1326/24835 hw-refused=4187/14056
+268 pid=FFFEC48F paths batches/triangles untextured=899/6226 hw=9050/132981 cpu=4500/71597 cpu-nonsquare=1803/29316 hw-refused=5555/19115
+271 pid=FFFEC48F paths batches/triangles untextured=928/6357 hw=9050/132981 cpu=5902/88088 cpu-nonsquare=2273/33993 hw-refused=6905/24200
+274 pid=FFFEC48F paths batches/triangles untextured=953/6483 hw=9050/132981 cpu=7169/102470 cpu-nonsquare=2738/38548 hw-refused=8311/29845
+280 pid=FFFEC48F paths batches/triangles untextured=963/6577 hw=9050/132981 cpu=8461/116456 cpu-nonsquare=3229/43136 hw-refused=9692/36024
+287 pid=FFFEC48F paths batches/triangles untextured=972/6653 hw=9050/132981 cpu=9632/130554 cpu-nonsquare=3690/47410 hw-refused=10814/42295
+290 pid=FFFEC48F paths batches/triangles untextured=982/6733 hw=9050/132981 cpu=10699/144324 cpu-nonsquare=4128/51657 hw-refused=11929/48479
+296 pid=FFFEC48F paths batches/triangles untextured=995/6807 hw=9050/132981 cpu=11795/159520 cpu-nonsquare=4565/55683 hw-refused=12982/55274
+298 pid=FFFEC48F paths batches/triangles untextured=1013/6888 hw=9050/132981 cpu=12784/172807 cpu-nonsquare=4974/59502 hw-refused=14125/62185
+302 pid=FFFEC48F paths batches/triangles untextured=1032/6976 hw=9050/132981 cpu=13843/188938 cpu-nonsquare=5400/63384 hw-refused=15387/67263
+304 pid=FFFEC48F paths batches/triangles untextured=1049/7055 hw=9050/132981 cpu=14941/206913 cpu-nonsquare=5836/67110 hw-refused=16563/72054
+318 pid=FFFEC48F paths batches/triangles untextured=1066/7134 hw=9050/132981 cpu=16141/226264 cpu-nonsquare=6280/71057 hw-refused=17780/77055
+329 pid=FFFEC48F paths batches/triangles untextured=1083/7218 hw=9050/132981 cpu=17317/243911 cpu-nonsquare=6798/75330 hw-refused=19112/82541
+337 pid=FFFEC48F paths batches/triangles untextured=1101/7272 hw=9050/132981 cpu=18571/264389 cpu-nonsquare=7340/79631 hw-refused=20366/87829
+345 pid=FFFEC48F paths batches/triangles untextured=1116/7318 hw=9050/132981 cpu=19952/288491 cpu-nonsquare=7947/84195 hw-refused=21661/93272
+347 pid=FFFEC48F paths batches/triangles untextured=1129/7352 hw=9050/132981 cpu=21325/313777 cpu-nonsquare=8542/88687 hw-refused=22911/98733
+349 pid=FFFEC48F paths batches/triangles untextured=1143/7392 hw=9050/132981 cpu=22747/340763 cpu-nonsquare=9131/93307 hw-refused=24037/103839
+355 pid=FFFEC48F paths batches/triangles untextured=1145/7398 hw=9050/132981 cpu=24114/366090 cpu-nonsquare=9640/97122 hw-refused=25205/109051
+357 pid=FFFEC48F paths batches/triangles untextured=1147/7406 hw=9050/132981 cpu=25496/389032 cpu-nonsquare=10090/100009 hw-refused=26545/115136
+359 pid=FFFEC48F paths batches/triangles untextured=1147/7406 hw=9911/144396 cpu=25715/392624 cpu-nonsquare=10148/100413 hw-refused=26782/116173
+361 pid=FFFEC48F paths batches/triangles untextured=1147/7406 hw=10982/158574 cpu=25715/392624 cpu-nonsquare=10148/100413 hw-refused=26782/116173
+363 pid=FFFEC48F paths batches/triangles untextured=1157/7436 hw=11616/167763 cpu=25715/392624 cpu-nonsquare=10148/100413 hw-refused=26850/116731
+366 pid=FFFEC48F paths batches/triangles untextured=1157/7436 hw=11616/167763 cpu=25715/392624 cpu-nonsquare=10148/100413 hw-refused=27029/120149
+43 pid=FFFC9A73 paths batches/triangles untextured=0/0 hw=1/44 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+45 pid=FFFC9A73 paths batches/triangles untextured=0/0 hw=165/3996 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFC9A73 paths batches/triangles untextured=0/0 hw=329/7088 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFC9A73 paths batches/triangles untextured=0/0 hw=529/11032 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFC9A73 paths batches/triangles untextured=389/2717 hw=3363/20909 cpu=0/0 cpu-nonsquare=0/0 hw-refused=500/1000
+133 pid=FFFC9A73 paths batches/triangles untextured=757/5355 hw=6704/59538 cpu=130/7573 cpu-nonsquare=100/4208 hw-refused=1045/2152
+211 pid=FFFC9A73 paths batches/triangles untextured=837/5898 hw=9085/134283 cpu=460/24824 cpu-nonsquare=387/15014 hw-refused=1809/6572
+213 pid=FFFC9A73 paths batches/triangles untextured=845/5970 hw=9085/134283 cpu=540/25478 cpu-nonsquare=552/16980 hw-refused=4461/28131
+216 pid=FFFC9A73 paths batches/triangles untextured=870/6091 hw=9085/134283 cpu=634/26227 cpu-nonsquare=733/19283 hw-refused=7172/49450
+218 pid=FFFC9A73 paths batches/triangles untextured=900/6231 hw=9085/134283 cpu=735/27001 cpu-nonsquare=923/21712 hw-refused=10147/71558
+220 pid=FFFC9A73 paths batches/triangles untextured=927/6357 hw=9085/134283 cpu=827/27748 cpu-nonsquare=1105/24321 hw-refused=13031/93041
+222 pid=FFFC9A73 paths batches/triangles untextured=954/6488 hw=9085/134283 cpu=926/28554 cpu-nonsquare=1294/26900 hw-refused=15984/115679
+261 pid=FFFC9A73 paths batches/triangles untextured=964/6583 hw=9085/134283 cpu=1008/29203 cpu-nonsquare=1480/29390 hw-refused=18808/137143
+263 pid=FFFC9A73 paths batches/triangles untextured=973/6659 hw=9085/134283 cpu=1090/29805 cpu-nonsquare=1655/31924 hw-refused=21351/157345
+265 pid=FFFC9A73 paths batches/triangles untextured=983/6739 hw=9085/134283 cpu=1164/30414 cpu-nonsquare=1819/34348 hw-refused=23741/179806
+269 pid=FFFC9A73 paths batches/triangles untextured=997/6815 hw=9085/134283 cpu=1231/30928 cpu-nonsquare=1975/36697 hw-refused=26077/203098
+274 pid=FFFC9A73 paths batches/triangles untextured=1015/6896 hw=9085/134283 cpu=1306/31444 cpu-nonsquare=2128/38954 hw-refused=28394/224385
+608 pid=FFFC9A73 paths batches/triangles untextured=1031/6978 hw=9085/134283 cpu=1387/32009 cpu-nonsquare=2286/41031 hw-refused=30792/246318
+610 pid=FFFC9A73 paths batches/triangles untextured=1047/7055 hw=9085/134283 cpu=1458/32566 cpu-nonsquare=2454/43087 hw-refused=33295/270333
+613 pid=FFFC9A73 paths batches/triangles untextured=1066/7138 hw=9085/134283 cpu=1539/33236 cpu-nonsquare=2625/45152 hw-refused=35982/296126
+703 pid=FFFC9A73 paths batches/triangles untextured=1084/7224 hw=9085/134283 cpu=1636/34028 cpu-nonsquare=2803/47350 hw-refused=38588/319935
+1613 pid=FFFC9A73 paths batches/triangles untextured=1101/7271 hw=9085/134283 cpu=1776/34947 cpu-nonsquare=2987/49563 hw-refused=41188/345145
+2772 pid=FFFC9A73 paths batches/triangles untextured=1117/7321 hw=9085/134283 cpu=1954/36032 cpu-nonsquare=3195/51689 hw-refused=43716/371678
+3820 pid=FFFC9A73 paths batches/triangles untextured=1129/7353 hw=9085/134283 cpu=2129/37136 cpu-nonsquare=3429/53787 hw-refused=46228/400332
+4472 pid=FFFC9A73 paths batches/triangles untextured=1142/7389 hw=9085/134283 cpu=2252/38046 cpu-nonsquare=3663/55805 hw-refused=48976/434063
+4782 pid=FFFC9A73 paths batches/triangles untextured=1145/7399 hw=9085/134283 cpu=2357/38849 cpu-nonsquare=3892/57702 hw-refused=51594/464339
+4918 pid=FFFC9A73 paths batches/triangles untextured=1147/7407 hw=9085/134283 cpu=2470/39634 cpu-nonsquare=4101/59309 hw-refused=54426/493227
+4921 pid=FFFC9A73 paths batches/triangles untextured=1150/7422 hw=9085/134283 cpu=2553/40271 cpu-nonsquare=4256/60832 hw-refused=57181/520788
+4930 pid=FFFC9A73 paths batches/triangles untextured=1154/7434 hw=9085/134283 cpu=2645/40987 cpu-nonsquare=4459/62192 hw-refused=59940/550575
+5187 pid=FFFC9A73 paths batches/triangles untextured=1160/7452 hw=9085/134283 cpu=2724/41722 cpu-nonsquare=4669/63485 hw-refused=62610/584391
+5191 pid=FFFC9A73 paths batches/triangles untextured=1174/7494 hw=9085/134283 cpu=2837/42735 cpu-nonsquare=4933/65265 hw-refused=65423/618093
+5928 pid=FFFC9A73 paths batches/triangles untextured=1181/7517 hw=9085/134283 cpu=2962/43625 cpu-nonsquare=5186/67395 hw-refused=68261/651793
+6629 pid=FFFC9A73 paths batches/triangles untextured=1181/7517 hw=9085/134283 cpu=3104/44607 cpu-nonsquare=5408/69880 hw-refused=71153/680931
+6763 pid=FFFC9A73 paths batches/triangles untextured=1181/7517 hw=9085/134283 cpu=3214/45289 cpu-nonsquare=5570/71966 hw-refused=73793/708185
+6789 pid=FFFC9A73 paths batches/triangles untextured=1181/7517 hw=9085/134283 cpu=3343/45980 cpu-nonsquare=5762/74020 hw-refused=76393/733891
+7955 pid=FFFC9A73 paths batches/triangles untextured=1181/7517 hw=9085/134283 cpu=3532/46952 cpu-nonsquare=5943/76133 hw-refused=79050/756481
+7983 pid=FFFC9A73 paths batches/triangles untextured=1191/7548 hw=9085/134283 cpu=3714/47876 cpu-nonsquare=6160/78579 hw-refused=81956/782805
+7986 pid=FFFC9A73 paths batches/triangles untextured=1206/7590 hw=9085/134283 cpu=3908/48892 cpu-nonsquare=6425/81105 hw-refused=84877/807297
+7992 pid=FFFC9A73 paths batches/triangles untextured=1219/7635 hw=9085/134283 cpu=4077/49817 cpu-nonsquare=6664/83430 hw-refused=87629/831734
+8001 pid=FFFC9A73 paths batches/triangles untextured=1233/7723 hw=9085/134283 cpu=4262/50882 cpu-nonsquare=6926/85960 hw-refused=90552/856246
+8748 pid=FFFC9A73 paths batches/triangles untextured=1243/7791 hw=9085/134283 cpu=4457/51934 cpu-nonsquare=7161/88077 hw-refused=93495/881410
+9602 pid=FFFC9A73 paths batches/triangles untextured=1253/7856 hw=9085/134283 cpu=4634/52902 cpu-nonsquare=7352/89619 hw-refused=96185/909665
+10254 pid=FFFC9A73 paths batches/triangles untextured=1268/7946 hw=9085/134283 cpu=4788/53748 cpu-nonsquare=7538/91009 hw-refused=98923/938228
+10841 pid=FFFC9A73 paths batches/triangles untextured=1277/8005 hw=9085/134283 cpu=4889/54320 cpu-nonsquare=7677/92115 hw-refused=101294/963335
+11044 pid=FFFC9A73 paths batches/triangles untextured=1286/8068 hw=9085/134283 cpu=4957/54752 cpu-nonsquare=7776/93203 hw-refused=103396/984786
+11055 pid=FFFC9A73 paths batches/triangles untextured=1295/8129 hw=9085/134283 cpu=5015/55175 cpu-nonsquare=7839/94135 hw-refused=105362/1006713
+11073 pid=FFFC9A73 paths batches/triangles untextured=1303/8193 hw=9085/134283 cpu=5086/55655 cpu-nonsquare=7932/95397 hw-refused=107336/1028661
+11077 pid=FFFC9A73 paths batches/triangles untextured=1312/8263 hw=9085/134283 cpu=5179/56293 cpu-nonsquare=8043/96925 hw-refused=109531/1051511
+11091 pid=FFFC9A73 paths batches/triangles untextured=1327/8335 hw=9085/134283 cpu=5317/57207 cpu-nonsquare=8212/99049 hw-refused=111989/1075428
+11093 pid=FFFC9A73 paths batches/triangles untextured=1343/8417 hw=9085/134283 cpu=5456/58156 cpu-nonsquare=8385/101120 hw-refused=114647/1102760
+11103 pid=FFFC9A73 paths batches/triangles untextured=1352/8489 hw=9085/134283 cpu=5587/59058 cpu-nonsquare=8582/103177 hw-refused=117363/1127785
+11160 pid=FFFC9A73 paths batches/triangles untextured=1362/8563 hw=9085/134283 cpu=5721/59984 cpu-nonsquare=8798/105443 hw-refused=120058/1151494
+11162 pid=FFFC9A73 paths batches/triangles untextured=1371/8647 hw=9085/134283 cpu=5827/60852 cpu-nonsquare=9008/107736 hw-refused=122536/1174017
+11164 pid=FFFC9A73 paths batches/triangles untextured=1380/8737 hw=9085/134283 cpu=5913/61607 cpu-nonsquare=9196/110024 hw-refused=124950/1195627
+11166 pid=FFFC9A73 paths batches/triangles untextured=1390/8837 hw=9085/134283 cpu=6004/62365 cpu-nonsquare=9377/112320 hw-refused=127406/1216900
+11168 pid=FFFC9A73 paths batches/triangles untextured=1398/8942 hw=9085/134283 cpu=6111/63154 cpu-nonsquare=9576/114630 hw-refused=129900/1238223
+11659 pid=FFFC9A73 paths batches/triangles untextured=1411/9084 hw=9085/134283 cpu=6230/63974 cpu-nonsquare=9764/116500 hw-refused=132395/1259724
+11784 pid=FFFC9A73 paths batches/triangles untextured=1427/9201 hw=9085/134283 cpu=6314/64632 cpu-nonsquare=9972/118527 hw-refused=134899/1282655
+12217 pid=FFFC9A73 paths batches/triangles untextured=1444/9325 hw=9085/134283 cpu=6435/65626 cpu-nonsquare=10174/120404 hw-refused=137645/1307820
+13530 pid=FFFC9A73 paths batches/triangles untextured=1458/9423 hw=9085/134283 cpu=6571/66705 cpu-nonsquare=10358/122278 hw-refused=140272/1333844
+69 pid=FFFCA695 paths batches/triangles untextured=1/6 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=26/61 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+106 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=27/62 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+114 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=28/63 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+122 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=29/64 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+130 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=30/65 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+138 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=31/66 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+146 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=32/67 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+154 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=33/68 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+162 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=34/69 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+170 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=35/70 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+178 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=36/71 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+186 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=37/72 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+194 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=38/73 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+202 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=39/74 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+210 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=40/75 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+218 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=41/76 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+226 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=42/77 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+234 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=43/78 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+242 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=44/79 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+250 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=45/80 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+258 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=46/81 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+266 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=47/82 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+274 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=48/83 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+282 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=49/84 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+290 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=50/85 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+299 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=51/86 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+307 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=52/87 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+315 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=53/88 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+323 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=54/89 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+331 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=55/90 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+339 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=56/91 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+347 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=57/92 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+355 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=58/93 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+363 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=59/94 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+371 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=60/95 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+379 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=61/96 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+387 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=62/97 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+395 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=63/98 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+403 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=64/99 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+411 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=65/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+419 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=66/101 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+427 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=67/102 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+435 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=68/103 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+443 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=69/104 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+451 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=70/105 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+459 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=71/106 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+467 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=72/107 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+475 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=73/108 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+483 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=74/109 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+491 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=75/110 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+496 pid=FFFCA695 paths batches/triangles untextured=4/14 hw=75/110 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFCA621 paths batches/triangles untextured=0/0 hw=1/44 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+45 pid=FFFCA621 paths batches/triangles untextured=0/0 hw=131/3382 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFCA621 paths batches/triangles untextured=0/0 hw=283/6138 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFCA621 paths batches/triangles untextured=0/0 hw=455/9538 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+53 pid=FFFCA621 paths batches/triangles untextured=0/0 hw=631/12776 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+75 pid=FFFCA621 paths batches/triangles untextured=515/3583 hw=4908/26169 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+103 pid=FFFCA621 paths batches/triangles untextured=767/5433 hw=9300/113027 cpu=345/19512 cpu-nonsquare=269/11224 hw-refused=0/0
+212 pid=FFFCA621 paths batches/triangles untextured=828/5830 hw=10891/160058 cpu=575/30333 cpu-nonsquare=503/18604 hw-refused=1324/10733
+214 pid=FFFCA621 paths batches/triangles untextured=841/5921 hw=10891/160058 cpu=661/31016 cpu-nonsquare=670/20600 hw-refused=3998/31931
+217 pid=FFFCA621 paths batches/triangles untextured=868/6047 hw=10891/160058 cpu=763/31833 cpu-nonsquare=868/23093 hw-refused=6853/53502
+219 pid=FFFCA621 paths batches/triangles untextured=898/6187 hw=10891/160058 cpu=856/32572 cpu-nonsquare=1052/25584 hw-refused=9795/75836
+221 pid=FFFCA621 paths batches/triangles untextured=925/6313 hw=10891/160058 cpu=955/33378 cpu-nonsquare=1238/28225 hw-refused=12704/97496
+223 pid=FFFCA621 paths batches/triangles untextured=946/6429 hw=10891/160058 cpu=1053/34174 cpu-nonsquare=1427/30810 hw-refused=15649/119439
+226 pid=FFFCA621 paths batches/triangles untextured=955/6514 hw=10891/160058 cpu=1135/34814 cpu-nonsquare=1610/33262 hw-refused=18398/141140
+228 pid=FFFCA621 paths batches/triangles untextured=965/6596 hw=10891/160058 cpu=1210/35472 cpu-nonsquare=1777/35733 hw-refused=20800/161307
+230 pid=FFFCA621 paths batches/triangles untextured=975/6676 hw=10891/160058 cpu=1282/36024 cpu-nonsquare=1939/38088 hw-refused=23231/184215
+265 pid=FFFCA621 paths batches/triangles untextured=990/6751 hw=10891/160058 cpu=1355/36585 cpu-nonsquare=2107/40620 hw-refused=25508/205671
+271 pid=FFFCA621 paths batches/triangles untextured=1008/6832 hw=10891/160058 cpu=1431/37106 cpu-nonsquare=2256/42849 hw-refused=27868/226906
+449 pid=FFFCA621 paths batches/triangles untextured=1027/6915 hw=10891/160058 cpu=1507/37645 cpu-nonsquare=2414/44817 hw-refused=30399/251858
+451 pid=FFFCA621 paths batches/triangles untextured=1044/6999 hw=10891/160058 cpu=1581/38202 cpu-nonsquare=2574/46746 hw-refused=32902/275533
+453 pid=FFFCA621 paths batches/triangles untextured=1062/7080 hw=10891/160058 cpu=1668/38949 cpu-nonsquare=2755/48943 hw-refused=35483/299320
+617 pid=FFFCA621 paths batches/triangles untextured=1079/7159 hw=10891/160058 cpu=1765/39724 cpu-nonsquare=2938/51233 hw-refused=38155/323538
+1196 pid=FFFCA621 paths batches/triangles untextured=1097/7207 hw=10891/160058 cpu=1884/40574 cpu-nonsquare=3125/53478 hw-refused=40817/350766
+1892 pid=FFFCA621 paths batches/triangles untextured=1110/7245 hw=10891/160058 cpu=2014/41474 cpu-nonsquare=3357/55794 hw-refused=43666/381591
+2544 pid=FFFCA621 paths batches/triangles untextured=1124/7283 hw=10891/160058 cpu=2150/42423 cpu-nonsquare=3596/57877 hw-refused=46401/413135
+2806 pid=FFFCA621 paths batches/triangles untextured=1134/7309 hw=11414/167595 cpu=2199/42786 cpu-nonsquare=3691/58698 hw-refused=47475/425733
+2809 pid=FFFCA621 paths batches/triangles untextured=1138/7321 hw=11505/168996 cpu=2199/42786 cpu-nonsquare=3691/58698 hw-refused=47705/429702
+43 pid=FFFE01B9 paths batches/triangles untextured=0/0 hw=1/44 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+45 pid=FFFE01B9 paths batches/triangles untextured=0/0 hw=167/4034 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFE01B9 paths batches/triangles untextured=0/0 hw=331/7122 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFE01B9 paths batches/triangles untextured=0/0 hw=531/11090 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+69 pid=FFFE01B9 paths batches/triangles untextured=348/2892 hw=3561/22772 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFE01B9 paths batches/triangles untextured=717/5992 hw=7411/64123 cpu=125/7268 cpu-nonsquare=99/4146 hw-refused=0/0
+139 pid=FFFE01B9 paths batches/triangles untextured=813/6779 hw=12470/167975 cpu=555/27774 cpu-nonsquare=523/17737 hw-refused=0/0
+142 pid=FFFE01B9 paths batches/triangles untextured=925/7369 hw=25109/266231 cpu=969/31147 cpu-nonsquare=1378/29113 hw-refused=0/0
+179 pid=FFFE01B9 paths batches/triangles untextured=966/7753 hw=35181/353063 cpu=1279/33715 cpu-nonsquare=2075/39517 hw-refused=0/0
+381 pid=FFFE01B9 paths batches/triangles untextured=1032/8105 hw=44225/439172 cpu=1556/35901 cpu-nonsquare=2665/47661 hw-refused=0/0
+1401 pid=FFFE01B9 paths batches/triangles untextured=1088/8339 hw=52796/522242 cpu=1894/38546 cpu-nonsquare=3280/55148 hw-refused=0/0
+3540 pid=FFFE01B9 paths batches/triangles untextured=1120/8429 hw=60022/607168 cpu=2244/41133 cpu-nonsquare=3911/60944 hw-refused=0/0
+3870 pid=FFFE01B9 paths batches/triangles untextured=1128/8473 hw=68876/700225 cpu=2571/43621 cpu-nonsquare=4542/66426 hw-refused=0/0
+4403 pid=FFFE01B9 paths batches/triangles untextured=1154/8567 hw=77148/800892 cpu=2869/46290 cpu-nonsquare=5252/71338 hw-refused=0/0
+4757 pid=FFFE01B9 paths batches/triangles untextured=1157/8581 hw=85939/892853 cpu=3262/48902 cpu-nonsquare=5896/78728 hw-refused=0/0
+5266 pid=FFFE01B9 paths batches/triangles untextured=1183/8674 hw=96104/982756 cpu=3902/52300 cpu-nonsquare=6697/87459 hw-refused=0/0
+6046 pid=FFFE01B9 paths batches/triangles untextured=1218/8927 hw=105459/1066471 cpu=4488/55704 cpu-nonsquare=7467/94958 hw-refused=0/0
+7748 pid=FFFE01B9 paths batches/triangles untextured=1260/9228 hw=114620/1163852 cpu=4902/58180 cpu-nonsquare=8006/99630 hw-refused=0/0
+7774 pid=FFFE01B9 paths batches/triangles untextured=1303/9557 hw=123188/1253788 cpu=5273/60785 cpu-nonsquare=8455/105875 hw-refused=0/0
+7852 pid=FFFE01B9 paths batches/triangles untextured=1341/9883 hw=132486/1341311 cpu=5731/64137 cpu-nonsquare=9164/113886 hw-refused=0/0
+7919 pid=FFFE01B9 paths batches/triangles untextured=1375/10323 hw=141973/1426866 cpu=6094/67210 cpu-nonsquare=9889/123160 hw-refused=0/0
+10301 pid=FFFE01B9 paths batches/triangles untextured=1431/10795 hw=151031/1511107 cpu=6515/70598 cpu-nonsquare=10580/130430 hw-refused=0/0
+13927 pid=FFFE01B9 paths batches/triangles untextured=1463/11066 hw=157221/1571802 cpu=6962/74875 cpu-nonsquare=11023/134595 hw-refused=0/0
+17963 pid=FFFE01B9 paths batches/triangles untextured=1492/11284 hw=163865/1634494 cpu=7623/83227 cpu-nonsquare=11532/138269 hw-refused=0/0
+21890 pid=FFFE01B9 paths batches/triangles untextured=1520/11480 hw=170407/1696455 cpu=8293/90127 cpu-nonsquare=12048/141805 hw-refused=0/0
+26067 pid=FFFE01B9 paths batches/triangles untextured=1547/11666 hw=177112/1760918 cpu=8850/95953 cpu-nonsquare=12515/145211 hw-refused=0/0
+26069 pid=FFFE01B9 paths batches/triangles untextured=1559/11702 hw=177959/1772532 cpu=8850/95953 cpu-nonsquare=12515/145211 hw-refused=0/0
+26072 pid=FFFE01B9 paths batches/triangles untextured=1559/11702 hw=178467/1782353 cpu=8850/95953 cpu-nonsquare=12515/145211 hw-refused=0/0
+69 pid=FFFE1C79 paths batches/triangles untextured=1/6 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=26/61 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+106 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=27/62 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+114 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=28/63 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+122 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=29/64 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+130 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=30/65 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+138 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=31/66 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+146 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=32/67 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+154 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=33/68 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+162 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=34/69 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+170 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=35/70 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+178 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=36/71 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+186 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=37/72 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+194 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=38/73 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+202 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=39/74 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+210 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=40/75 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+218 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=41/76 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+226 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=42/77 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+234 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=43/78 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+242 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=44/79 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+250 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=45/80 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+258 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=46/81 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+266 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=47/82 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+274 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=48/83 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+282 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=49/84 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+290 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=50/85 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+299 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=51/86 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+307 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=52/87 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+315 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=53/88 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+323 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=54/89 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+331 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=55/90 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+339 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=56/91 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+347 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=57/92 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+355 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=58/93 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+363 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=59/94 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+371 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=60/95 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+379 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=61/96 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+387 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=62/97 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+395 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=63/98 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+403 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=64/99 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+411 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=65/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+419 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=66/101 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+427 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=67/102 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+435 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=68/103 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+443 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=69/104 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+451 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=70/105 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+459 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=71/106 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+467 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=72/107 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+475 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=73/108 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+483 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=74/109 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+491 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=75/110 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+496 pid=FFFE1C79 paths batches/triangles untextured=4/16 hw=75/110 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFE1C79 paths batches/triangles untextured=0/0 hw=1/44 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+45 pid=FFFE1C79 paths batches/triangles untextured=0/0 hw=167/4034 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFE1C79 paths batches/triangles untextured=0/0 hw=331/7128 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFE1C79 paths batches/triangles untextured=0/0 hw=531/11096 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+78 pid=FFFE1C79 paths batches/triangles untextured=121/930 hw=1914/21010 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+81 pid=FFFE1C79 paths batches/triangles untextured=121/930 hw=2785/35381 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+83 pid=FFFE1C79 paths batches/triangles untextured=121/930 hw=3702/50089 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+85 pid=FFFE1C79 paths batches/triangles untextured=121/930 hw=4961/72654 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+87 pid=FFFE1C79 paths batches/triangles untextured=121/930 hw=6332/97599 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=7769/130715 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+99 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=8978/150692 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=9957/165987 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+114 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=11023/172807 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+116 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=12607/178691 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+118 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=14236/184131 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+120 pid=FFFE1C79 paths batches/triangles untextured=144/976 hw=16281/190906 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+123 pid=FFFE1C79 paths batches/triangles untextured=202/1219 hw=17241/210299 cpu=21/191 cpu-nonsquare=16/92 hw-refused=0/0
+125 pid=FFFE1C79 paths batches/triangles untextured=212/1249 hw=17543/212648 cpu=99/910 cpu-nonsquare=68/401 hw-refused=0/0
+127 pid=FFFE1C79 paths batches/triangles untextured=242/1339 hw=17974/214907 cpu=189/1878 cpu-nonsquare=152/749 hw-refused=0/0
+193 pid=FFFE1C79 paths batches/triangles untextured=252/1369 hw=18831/218213 cpu=284/3115 cpu-nonsquare=358/1496 hw-refused=0/0
+1781 pid=FFFE1C79 paths batches/triangles untextured=252/1369 hw=21591/241283 cpu=407/4348 cpu-nonsquare=819/3073 hw-refused=0/0
+2890 pid=FFFE1C79 paths batches/triangles untextured=256/1381 hw=23338/252623 cpu=497/5096 cpu-nonsquare=1129/4155 hw-refused=0/0
+41 pid=FFFE1C79 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFE1C79 paths batches/triangles untextured=43/86 hw=5507/196222 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+132 pid=FFFE1C79 paths batches/triangles untextured=95/242 hw=6298/235102 cpu=0/0 cpu-nonsquare=0/0 hw-refused=33/99
+134 pid=FFFE1C79 paths batches/triangles untextured=212/593 hw=8100/326836 cpu=0/0 cpu-nonsquare=0/0 hw-refused=101/303
+136 pid=FFFE1C79 paths batches/triangles untextured=219/628 hw=17863/649789 cpu=0/0 cpu-nonsquare=0/0 hw-refused=101/303
+140 pid=FFFE1C79 paths batches/triangles untextured=252/748 hw=22818/835797 cpu=0/0 cpu-nonsquare=0/0 hw-refused=109/319
+42 pid=FFFE1C79 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+92 pid=FFFE1C79 paths batches/triangles untextured=136/272 hw=11509/110298 cpu=0/0 cpu-nonsquare=0/0 hw-refused=37/111
+96 pid=FFFE1C79 paths batches/triangles untextured=386/772 hw=19741/256557 cpu=0/0 cpu-nonsquare=0/0 hw-refused=37/111
+41 pid=FFFE183D paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFE183D paths batches/triangles untextured=129/258 hw=9270/376599 cpu=0/0 cpu-nonsquare=0/0 hw-refused=7/14
+93 pid=FFFE183D paths batches/triangles untextured=147/294 hw=11330/506681 cpu=0/0 cpu-nonsquare=0/0 hw-refused=85/190
+95 pid=FFFE183D paths batches/triangles untextured=241/488 hw=15596/703800 cpu=0/0 cpu-nonsquare=0/0 hw-refused=176/463
+97 pid=FFFE183D paths batches/triangles untextured=282/693 hw=25455/1085094 cpu=0/0 cpu-nonsquare=0/0 hw-refused=176/463
+99 pid=FFFE183D paths batches/triangles untextured=332/943 hw=35990/1475122 cpu=0/0 cpu-nonsquare=0/0 hw-refused=176/463
+101 pid=FFFE183D paths batches/triangles untextured=365/1108 hw=47002/1869396 cpu=0/0 cpu-nonsquare=0/0 hw-refused=176/463
+103 pid=FFFE183D paths batches/triangles untextured=387/1218 hw=58569/2284521 cpu=0/0 cpu-nonsquare=0/0 hw-refused=176/463
+105 pid=FFFE183D paths batches/triangles untextured=392/1228 hw=63978/2531505 cpu=0/0 cpu-nonsquare=0/0 hw-refused=219/555
+107 pid=FFFE183D paths batches/triangles untextured=481/1406 hw=66101/2665909 cpu=0/0 cpu-nonsquare=0/0 hw-refused=328/864
+109 pid=FFFE183D paths batches/triangles untextured=587/1765 hw=75056/3028803 cpu=0/0 cpu-nonsquare=0/0 hw-refused=348/924
+113 pid=FFFE183D paths batches/triangles untextured=650/1975 hw=77825/3141111 cpu=0/0 cpu-nonsquare=0/0 hw-refused=354/936
+41 pid=FFFCA0D1 time interval-ms=41490 swaps=0 present-ms=0 draw-ms=20 upload-ms=0
+42 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFCA0D1 time interval-ms=10000 swaps=305 present-ms=189 draw-ms=2157 upload-ms=71
+92 pid=FFFCA0D1 paths batches/triangles untextured=117/234 hw=10541/532825 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+94 pid=FFFCA0D1 time interval-ms=10000 swaps=181 present-ms=105 draw-ms=3072 upload-ms=182
+95 pid=FFFCA0D1 paths batches/triangles untextured=165/474 hw=23112/1016513 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFCA0D1 time interval-ms=10000 swaps=183 present-ms=106 draw-ms=3197 upload-ms=146
+98 pid=FFFCA0D1 paths batches/triangles untextured=233/814 hw=36071/1503243 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+100 pid=FFFCA0D1 time interval-ms=10000 swaps=160 present-ms=92 draw-ms=3172 upload-ms=195
+101 pid=FFFCA0D1 paths batches/triangles untextured=260/949 hw=51421/2030222 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+103 pid=FFFCA0D1 time interval-ms=10010 swaps=272 present-ms=155 draw-ms=2533 upload-ms=49
+104 pid=FFFCA0D1 paths batches/triangles untextured=418/1280 hw=62841/2552459 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+107 pid=FFFCA0D1 paths batches/triangles untextured=536/1549 hw=71507/2895531 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFCA0D1 time interval-ms=131014 swaps=0 present-ms=0 draw-ms=1 upload-ms=2
+42 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFCA0D1 time interval-ms=10010 swaps=116 present-ms=67 draw-ms=1760 upload-ms=99
+93 pid=FFFCA0D1 paths batches/triangles untextured=170/340 hw=18173/207077 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFCA0D1 time interval-ms=10001 swaps=238 present-ms=138 draw-ms=3158 upload-ms=44
+96 pid=FFFCA0D1 paths batches/triangles untextured=646/1292 hw=40210/497728 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+99 pid=FFFCA0D1 paths batches/triangles untextured=924/1848 hw=49773/655202 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+43 pid=FFFCA0D1 time interval-ms=240521 swaps=3 present-ms=1 draw-ms=0 upload-ms=1
+44 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=1/44 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+46 pid=FFFCA0D1 time interval-ms=10158 swaps=65 present-ms=42 draw-ms=11 upload-ms=0
+47 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=131/3382 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+49 pid=FFFCA0D1 time interval-ms=10115 swaps=77 present-ms=49 draw-ms=10 upload-ms=0
+50 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=285/6174 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+52 pid=FFFCA0D1 time interval-ms=10080 swaps=86 present-ms=54 draw-ms=12 upload-ms=0
+53 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=457/9570 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+57 pid=FFFCA0D1 time interval-ms=10415 swaps=86 present-ms=54 draw-ms=12 upload-ms=3
+58 pid=FFFCA0D1 paths batches/triangles untextured=0/0 hw=625/12650 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+85 pid=FFFCA0D1 time interval-ms=10125 swaps=258 present-ms=149 draw-ms=3118 upload-ms=66
+86 pid=FFFCA0D1 paths batches/triangles untextured=389/3184 hw=4117/27946 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+89 pid=FFFCA0D1 time interval-ms=10150 swaps=51 present-ms=29 draw-ms=361 upload-ms=6
+90 pid=FFFCA0D1 paths batches/triangles untextured=389/3184 hw=5023/42938 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC9EED time interval-ms=2544121 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+42 pid=FFFC9EED paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFC9EED time interval-ms=10005 swaps=300 present-ms=171 draw-ms=2183 upload-ms=69
+92 pid=FFFC9EED paths batches/triangles untextured=110/220 hw=10957/560718 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+94 pid=FFFC9EED time interval-ms=10004 swaps=193 present-ms=111 draw-ms=2956 upload-ms=155
+95 pid=FFFC9EED paths batches/triangles untextured=177/471 hw=23360/1052015 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFC9EED time interval-ms=10006 swaps=191 present-ms=111 draw-ms=3216 upload-ms=148
+98 pid=FFFC9EED paths batches/triangles untextured=240/786 hw=36253/1526511 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+100 pid=FFFC9EED time interval-ms=10000 swaps=160 present-ms=93 draw-ms=3110 upload-ms=213
+101 pid=FFFC9EED paths batches/triangles untextured=277/971 hw=51468/2055019 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+103 pid=FFFC9EED time interval-ms=10001 swaps=230 present-ms=132 draw-ms=2855 upload-ms=61
+104 pid=FFFC9EED paths batches/triangles untextured=396/1236 hw=63692/2571878 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+107 pid=FFFC9EED paths batches/triangles untextured=442/1328 hw=69111/2785457 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC9EED time interval-ms=3667157 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+42 pid=FFFC9EED paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFC9EED time interval-ms=10000 swaps=176 present-ms=102 draw-ms=3034 upload-ms=215
+92 pid=FFFC9EED paths batches/triangles untextured=40/200 hw=12565/486243 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+94 pid=FFFC9EED time interval-ms=10000 swaps=187 present-ms=108 draw-ms=3202 upload-ms=149
+95 pid=FFFC9EED paths batches/triangles untextured=107/535 hw=25533/966714 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFC9EED time interval-ms=10002 swaps=160 present-ms=93 draw-ms=3150 upload-ms=209
+98 pid=FFFC9EED paths batches/triangles untextured=143/715 hw=40772/1494441 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+100 pid=FFFC9EED time interval-ms=10000 swaps=232 present-ms=133 draw-ms=2813 upload-ms=58
+101 pid=FFFC9EED paths batches/triangles untextured=258/960 hw=52933/2009301 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+103 pid=FFFC9EED time interval-ms=10000 swaps=181 present-ms=105 draw-ms=3084 upload-ms=152
+104 pid=FFFC9EED paths batches/triangles untextured=306/1200 hw=65530/2494705 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+106 pid=FFFC9EED time interval-ms=10000 swaps=184 present-ms=107 draw-ms=3198 upload-ms=131
+107 pid=FFFC9EED paths batches/triangles untextured=372/1530 hw=78536/2981947 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFC9EED time interval-ms=10000 swaps=159 present-ms=92 draw-ms=3184 upload-ms=197
+110 pid=FFFC9EED paths batches/triangles untextured=401/1675 hw=93884/3509892 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+112 pid=FFFC9EED time interval-ms=10000 swaps=234 present-ms=134 draw-ms=2786 upload-ms=51
+113 pid=FFFC9EED paths batches/triangles untextured=516/1920 hw=106013/4027054 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+115 pid=FFFC9EED time interval-ms=10000 swaps=180 present-ms=104 draw-ms=3079 upload-ms=169
+116 pid=FFFC9EED paths batches/triangles untextured=572/2200 hw=118668/4510980 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+118 pid=FFFC9EED time interval-ms=10000 swaps=187 present-ms=108 draw-ms=3202 upload-ms=126
+119 pid=FFFC9EED paths batches/triangles untextured=634/2510 hw=131461/4989470 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+121 pid=FFFC9EED time interval-ms=10003 swaps=156 present-ms=90 draw-ms=3183 upload-ms=189
+122 pid=FFFC9EED paths batches/triangles untextured=659/2635 hw=146975/5527367 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+124 pid=FFFC9EED time interval-ms=10001 swaps=234 present-ms=134 draw-ms=2774 upload-ms=48
+125 pid=FFFC9EED paths batches/triangles untextured=781/2915 hw=159056/6044362 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+127 pid=FFFC9EED time interval-ms=10000 swaps=181 present-ms=105 draw-ms=3091 upload-ms=177
+128 pid=FFFC9EED paths batches/triangles untextured=839/3205 hw=171775/6527724 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+130 pid=FFFC9EED time interval-ms=10000 swaps=185 present-ms=107 draw-ms=3175 upload-ms=131
+131 pid=FFFC9EED paths batches/triangles untextured=892/3470 hw=184721/7012385 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+134 pid=FFFC9EED paths batches/triangles untextured=892/3470 hw=187439/7132820 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFCA61F time interval-ms=46094 swaps=0 present-ms=0 draw-ms=4 upload-ms=0
+42 pid=FFFCA61F paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFCA61F time interval-ms=10000 swaps=174 present-ms=115 draw-ms=2997 upload-ms=212
+92 pid=FFFCA61F paths batches/triangles untextured=39/195 hw=12427/481113 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+94 pid=FFFCA61F time interval-ms=10000 swaps=187 present-ms=108 draw-ms=3202 upload-ms=151
+95 pid=FFFCA61F paths batches/triangles untextured=106/530 hw=25399/961826 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFCA61F time interval-ms=10000 swaps=160 present-ms=92 draw-ms=3139 upload-ms=209
+98 pid=FFFCA61F paths batches/triangles untextured=143/715 hw=40603/1487896 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+100 pid=FFFCA61F time interval-ms=10000 swaps=230 present-ms=131 draw-ms=2790 upload-ms=59
+101 pid=FFFCA61F paths batches/triangles untextured=258/960 hw=52661/1999550 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+103 pid=FFFCA61F time interval-ms=10000 swaps=178 present-ms=103 draw-ms=3057 upload-ms=147
+104 pid=FFFCA61F paths batches/triangles untextured=306/1200 hw=65178/2483565 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+106 pid=FFFCA61F time interval-ms=10002 swaps=186 present-ms=108 draw-ms=3194 upload-ms=130
+107 pid=FFFCA61F paths batches/triangles untextured=367/1505 hw=78161/2965329 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFCA61F time interval-ms=10001 swaps=159 present-ms=92 draw-ms=3169 upload-ms=202
+110 pid=FFFCA61F paths batches/triangles untextured=401/1675 hw=93477/3493436 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+112 pid=FFFCA61F time interval-ms=10006 swaps=233 present-ms=133 draw-ms=2786 upload-ms=48
+113 pid=FFFCA61F paths batches/triangles untextured=516/1920 hw=105587/4012201 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+115 pid=FFFCA61F time interval-ms=10000 swaps=180 present-ms=104 draw-ms=3089 upload-ms=162
+116 pid=FFFCA61F paths batches/triangles untextured=568/2180 hw=118213/4495358 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+118 pid=FFFCA61F time interval-ms=10000 swaps=185 present-ms=107 draw-ms=3202 upload-ms=127
+119 pid=FFFCA61F paths batches/triangles untextured=634/2510 hw=131141/4979008 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+121 pid=FFFCA61F time interval-ms=10001 swaps=159 present-ms=92 draw-ms=3178 upload-ms=186
+122 pid=FFFCA61F paths batches/triangles untextured=659/2635 hw=146496/5508976 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+124 pid=FFFCA61F time interval-ms=10000 swaps=233 present-ms=134 draw-ms=2773 upload-ms=54
+125 pid=FFFCA61F paths batches/triangles untextured=775/2885 hw=158591/6026325 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+127 pid=FFFCA61F time interval-ms=10000 swaps=177 present-ms=102 draw-ms=3034 upload-ms=177
+128 pid=FFFCA61F paths batches/triangles untextured=833/3175 hw=171079/6502918 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+131 pid=FFFCA61F paths batches/triangles untextured=834/3180 hw=172063/6562852 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC93A1 time interval-ms=53080 swaps=0 present-ms=0 draw-ms=9 upload-ms=0
+42 pid=FFFC93A1 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+91 pid=FFFC93A1 time interval-ms=10006 swaps=176 present-ms=111 draw-ms=3013 upload-ms=212
+92 pid=FFFC93A1 paths batches/triangles untextured=40/200 hw=12501/483837 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+94 pid=FFFC93A1 time interval-ms=10001 swaps=187 present-ms=108 draw-ms=3215 upload-ms=152
+95 pid=FFFC93A1 paths batches/triangles untextured=107/535 hw=25549/967555 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFC93A1 time interval-ms=10000 swaps=160 present-ms=92 draw-ms=3164 upload-ms=209
+98 pid=FFFC93A1 paths batches/triangles untextured=143/715 hw=40865/1497773 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+100 pid=FFFC93A1 time interval-ms=10008 swaps=233 present-ms=133 draw-ms=2786 upload-ms=56
+101 pid=FFFC93A1 paths batches/triangles untextured=258/960 hw=52951/2009814 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+103 pid=FFFC93A1 time interval-ms=10000 swaps=181 present-ms=105 draw-ms=3103 upload-ms=154
+104 pid=FFFC93A1 paths batches/triangles untextured=306/1200 hw=65636/2498328 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+106 pid=FFFC93A1 time interval-ms=10000 swaps=184 present-ms=106 draw-ms=3193 upload-ms=130
+107 pid=FFFC93A1 paths batches/triangles untextured=373/1535 hw=78610/2985224 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFC93A1 time interval-ms=10002 swaps=160 present-ms=92 draw-ms=3204 upload-ms=196
+110 pid=FFFC93A1 paths batches/triangles untextured=401/1675 hw=94026/3515200 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+112 pid=FFFC93A1 time interval-ms=10000 swaps=235 present-ms=134 draw-ms=2785 upload-ms=51
+113 pid=FFFC93A1 paths batches/triangles untextured=516/1920 hw=106225/4035010 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+115 pid=FFFC93A1 time interval-ms=10000 swaps=180 present-ms=104 draw-ms=3092 upload-ms=175
+116 pid=FFFC93A1 paths batches/triangles untextured=573/2205 hw=118955/4521809 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+118 pid=FFFC93A1 time interval-ms=10000 swaps=189 present-ms=109 draw-ms=3204 upload-ms=127
+119 pid=FFFC93A1 paths batches/triangles untextured=634/2510 hw=131811/5002331 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+121 pid=FFFC93A1 time interval-ms=10000 swaps=155 present-ms=89 draw-ms=3209 upload-ms=193
+122 pid=FFFC93A1 paths batches/triangles untextured=659/2635 hw=147356/5542628 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+124 pid=FFFC93A1 time interval-ms=10005 swaps=236 present-ms=135 draw-ms=2775 upload-ms=43
+125 pid=FFFC93A1 paths batches/triangles untextured=785/2935 hw=159494/6061161 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+128 pid=FFFC93A1 paths batches/triangles untextured=813/3075 hw=166541/6359643 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFEC813 time interval-ms=1185506 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+42 pid=FFFEC813 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFEC813 paths batches/triangles untextured=22/44 hw=5322/192854 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC0485 time interval-ms=1689456 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+42 pid=FFFC0485 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFC0485 paths batches/triangles untextured=51/102 hw=6281/241369 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+132 pid=FFFC0485 time interval-ms=10048 swaps=151 present-ms=88 draw-ms=2001 upload-ms=91
+133 pid=FFFC0485 paths batches/triangles untextured=122/315 hw=7713/327581 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+135 pid=FFFC0485 time interval-ms=10012 swaps=257 present-ms=149 draw-ms=1835 upload-ms=61
+136 pid=FFFC0485 paths batches/triangles untextured=271/670 hw=16456/813570 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+138 pid=FFFC0485 time interval-ms=10000 swaps=148 present-ms=103 draw-ms=2783 upload-ms=160
+139 pid=FFFC0485 paths batches/triangles untextured=310/865 hw=27125/1227772 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+141 pid=FFFC0485 time interval-ms=10004 swaps=159 present-ms=94 draw-ms=3057 upload-ms=154
+142 pid=FFFC0485 paths batches/triangles untextured=361/1120 hw=38156/1633356 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+144 pid=FFFC0485 time interval-ms=10000 swaps=143 present-ms=83 draw-ms=2828 upload-ms=197
+145 pid=FFFC0485 paths batches/triangles untextured=400/1315 hw=50035/2061588 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+147 pid=FFFC0485 time interval-ms=10000 swaps=131 present-ms=76 draw-ms=3168 upload-ms=117
+148 pid=FFFC0485 paths batches/triangles untextured=419/1410 hw=62371/2510267 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+150 pid=FFFC0485 time interval-ms=10001 swaps=205 present-ms=119 draw-ms=2472 upload-ms=161
+151 pid=FFFC0485 paths batches/triangles untextured=568/1780 hw=71931/2915186 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+154 pid=FFFC0485 paths batches/triangles untextured=576/1808 hw=72274/2927859 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFC4949 time interval-ms=2179674 swaps=0 present-ms=0 draw-ms=1 upload-ms=2
+42 pid=FFFC4949 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFC4949 time interval-ms=10000 swaps=294 present-ms=186 draw-ms=2154 upload-ms=110
+93 pid=FFFC4949 paths batches/triangles untextured=90/180 hw=17309/137797 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFC4949 time interval-ms=10000 swaps=139 present-ms=90 draw-ms=2383 upload-ms=73
+96 pid=FFFC4949 paths batches/triangles untextured=229/458 hw=31915/444165 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFC4949 time interval-ms=10006 swaps=98 present-ms=57 draw-ms=2395 upload-ms=63
+99 pid=FFFC4949 paths batches/triangles untextured=327/654 hw=50806/821744 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFC4949 time interval-ms=10004 swaps=283 present-ms=180 draw-ms=4183 upload-ms=84
+102 pid=FFFC4949 paths batches/triangles untextured=388/776 hw=137535/1114860 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFC4949 paths batches/triangles untextured=388/776 hw=242684/1325449 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+41 pid=FFFE15CD time interval-ms=8756812 swaps=0 present-ms=0 draw-ms=1 upload-ms=2
+42 pid=FFFE15CD paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+92 pid=FFFE15CD time interval-ms=10000 swaps=230 present-ms=152 draw-ms=2077 upload-ms=118
+93 pid=FFFE15CD paths batches/triangles untextured=88/176 hw=15449/129185 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+95 pid=FFFE15CD time interval-ms=10000 swaps=125 present-ms=108 draw-ms=2322 upload-ms=73
+96 pid=FFFE15CD paths batches/triangles untextured=213/426 hw=28671/406298 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+98 pid=FFFE15CD time interval-ms=10000 swaps=96 present-ms=71 draw-ms=2413 upload-ms=40
+99 pid=FFFE15CD paths batches/triangles untextured=309/618 hw=45133/741366 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFE15CD time interval-ms=10000 swaps=153 present-ms=89 draw-ms=2769 upload-ms=92
+102 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=84524/1008626 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+104 pid=FFFE15CD time interval-ms=10011 swaps=334 present-ms=213 draw-ms=5419 upload-ms=0
+105 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=215652/1271216 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+107 pid=FFFE15CD time interval-ms=10009 swaps=259 present-ms=154 draw-ms=4505 upload-ms=22
+108 pid=FFFE15CD paths batches/triangles untextured=398/796 hw=318123/1487589 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+110 pid=FFFE15CD time interval-ms=10012 swaps=151 present-ms=108 draw-ms=2626 upload-ms=84
+111 pid=FFFE15CD paths batches/triangles untextured=549/1098 hw=329332/1707388 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+113 pid=FFFE15CD time interval-ms=10000 swaps=101 present-ms=77 draw-ms=2459 upload-ms=25
+114 pid=FFFE15CD paths batches/triangles untextured=651/1302 hw=344387/2002693 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+116 pid=FFFE15CD time interval-ms=10003 swaps=79 present-ms=46 draw-ms=3157 upload-ms=38
+117 pid=FFFE15CD paths batches/triangles untextured=729/1458 hw=390576/2366650 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+119 pid=FFFE15CD time interval-ms=10000 swaps=181 present-ms=105 draw-ms=4375 upload-ms=64
+120 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=492882/2665684 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+122 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=166 draw-ms=5615 upload-ms=0
+123 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=642136/2964446 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+125 pid=FFFE15CD time interval-ms=10000 swaps=252 present-ms=146 draw-ms=5476 upload-ms=0
+126 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=790815/3262056 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+128 pid=FFFE15CD time interval-ms=10019 swaps=249 present-ms=164 draw-ms=5622 upload-ms=0
+129 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=937230/3555135 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+131 pid=FFFE15CD time interval-ms=10002 swaps=241 present-ms=142 draw-ms=5538 upload-ms=0
+132 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1078440/3837796 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+134 pid=FFFE15CD time interval-ms=10004 swaps=239 present-ms=179 draw-ms=5581 upload-ms=0
+135 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1219010/4119175 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+137 pid=FFFE15CD time interval-ms=10000 swaps=241 present-ms=142 draw-ms=5625 upload-ms=0
+138 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1360671/4402738 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+140 pid=FFFE15CD time interval-ms=10000 swaps=247 present-ms=160 draw-ms=5373 upload-ms=0
+141 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1505908/4693459 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+143 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=151 draw-ms=5412 upload-ms=0
+144 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1655405/4992707 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+146 pid=FFFE15CD time interval-ms=10030 swaps=254 present-ms=147 draw-ms=5626 upload-ms=0
+147 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1804907/5291965 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+149 pid=FFFE15CD time interval-ms=10010 swaps=254 present-ms=147 draw-ms=5605 upload-ms=0
+150 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1954390/5591185 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+152 pid=FFFE15CD time interval-ms=10000 swaps=252 present-ms=153 draw-ms=5351 upload-ms=0
+153 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2102710/5888077 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+155 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=175 draw-ms=5564 upload-ms=0
+156 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2251115/6185140 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+158 pid=FFFE15CD time interval-ms=10010 swaps=254 present-ms=205 draw-ms=5656 upload-ms=0
+159 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2400377/6483918 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+161 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=166 draw-ms=5415 upload-ms=0
+162 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2549019/6781455 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+164 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=152 draw-ms=5404 upload-ms=0
+165 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2698158/7079986 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+167 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=153 draw-ms=5437 upload-ms=0
+168 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2847135/7378194 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+170 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=148 draw-ms=5608 upload-ms=0
+171 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=2996051/7676279 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+173 pid=FFFE15CD time interval-ms=10001 swaps=253 present-ms=177 draw-ms=5717 upload-ms=0
+174 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=3144663/7973756 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+176 pid=FFFE15CD time interval-ms=10017 swaps=252 present-ms=147 draw-ms=5462 upload-ms=0
+177 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=3292869/8270420 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+179 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=150 draw-ms=5523 upload-ms=0
+180 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=3441860/8568655 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+182 pid=FFFE15CD time interval-ms=10002 swaps=253 present-ms=146 draw-ms=5610 upload-ms=0
+183 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=3590604/8866396 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+185 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=189 draw-ms=5448 upload-ms=0
+186 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=3739847/9165136 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+188 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=148 draw-ms=5590 upload-ms=0
+189 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=3888598/9462891 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+191 pid=FFFE15CD time interval-ms=10012 swaps=254 present-ms=147 draw-ms=5390 upload-ms=0
+192 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4037835/9761619 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+194 pid=FFFE15CD time interval-ms=10002 swaps=254 present-ms=166 draw-ms=5513 upload-ms=0
+195 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4187634/10061471 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+197 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=146 draw-ms=5411 upload-ms=0
+198 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4336288/10359032 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+200 pid=FFFE15CD time interval-ms=10001 swaps=252 present-ms=157 draw-ms=5628 upload-ms=0
+201 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4484704/10656116 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+203 pid=FFFE15CD time interval-ms=10005 swaps=254 present-ms=173 draw-ms=5568 upload-ms=0
+204 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4633805/10954572 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+206 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=201 draw-ms=5547 upload-ms=0
+207 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4783197/11253610 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+209 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=174 draw-ms=5468 upload-ms=0
+210 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=4932207/11551884 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+212 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=146 draw-ms=5522 upload-ms=0
+213 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5081491/11850705 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+215 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=147 draw-ms=5391 upload-ms=0
+216 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5230759/12149495 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+218 pid=FFFE15CD time interval-ms=10000 swaps=255 present-ms=181 draw-ms=5543 upload-ms=0
+219 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5380467/12449166 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+221 pid=FFFE15CD time interval-ms=10015 swaps=255 present-ms=167 draw-ms=5592 upload-ms=0
+222 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5530188/12748863 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+224 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=148 draw-ms=5431 upload-ms=0
+225 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5679043/13046826 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+227 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=146 draw-ms=5411 upload-ms=0
+228 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5827897/13344787 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+230 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=148 draw-ms=5572 upload-ms=0
+231 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=5977510/13644267 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+233 pid=FFFE15CD time interval-ms=10006 swaps=253 present-ms=199 draw-ms=5451 upload-ms=0
+234 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=6125962/13941424 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+236 pid=FFFE15CD time interval-ms=10004 swaps=254 present-ms=147 draw-ms=5486 upload-ms=0
+237 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=6275711/14241176 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+239 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=152 draw-ms=5425 upload-ms=0
+240 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=6424475/14538957 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+242 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=152 draw-ms=5458 upload-ms=0
+243 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=6573684/14837629 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+245 pid=FFFE15CD time interval-ms=10000 swaps=255 present-ms=153 draw-ms=5497 upload-ms=0
+246 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=6723352/15137220 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+248 pid=FFFE15CD time interval-ms=10000 swaps=255 present-ms=148 draw-ms=5524 upload-ms=0
+249 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=6873217/15437205 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+251 pid=FFFE15CD time interval-ms=10010 swaps=252 present-ms=163 draw-ms=5411 upload-ms=0
+252 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7021784/15734591 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+254 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=150 draw-ms=5580 upload-ms=0
+255 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7170784/16032845 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+257 pid=FFFE15CD time interval-ms=10000 swaps=253 present-ms=147 draw-ms=5479 upload-ms=0
+258 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7319914/16331358 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+260 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=148 draw-ms=5381 upload-ms=0
+261 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7468978/16629740 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+263 pid=FFFE15CD time interval-ms=10000 swaps=252 present-ms=207 draw-ms=5579 upload-ms=0
+264 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7617329/16926694 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+266 pid=FFFE15CD time interval-ms=10002 swaps=253 present-ms=149 draw-ms=5483 upload-ms=0
+267 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7765931/17224151 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+269 pid=FFFE15CD time interval-ms=10003 swaps=254 present-ms=152 draw-ms=5522 upload-ms=0
+270 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=7915298/17523139 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+272 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=147 draw-ms=5475 upload-ms=0
+273 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8064459/17821715 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+275 pid=FFFE15CD time interval-ms=10000 swaps=254 present-ms=146 draw-ms=5374 upload-ms=0
+276 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8214189/18121429 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+278 pid=FFFE15CD time interval-ms=10013 swaps=253 present-ms=155 draw-ms=5524 upload-ms=0
+279 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8363122/18419548 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+281 pid=FFFE15CD time interval-ms=10000 swaps=252 present-ms=181 draw-ms=5428 upload-ms=0
+282 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8510751/18715058 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+284 pid=FFFE15CD time interval-ms=10004 swaps=252 present-ms=197 draw-ms=5561 upload-ms=0
+285 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8659232/19012272 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+287 pid=FFFE15CD time interval-ms=10001 swaps=253 present-ms=147 draw-ms=5607 upload-ms=0
+288 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8808241/19310543 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+290 pid=FFFE15CD time interval-ms=10002 swaps=254 present-ms=176 draw-ms=5434 upload-ms=0
+291 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=8957178/19608671 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+294 pid=FFFE15CD time interval-ms=10372 swaps=242 present-ms=143 draw-ms=5335 upload-ms=0
+295 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=9099627/19893811 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+727 pid=FFFE15CD time interval-ms=10003 swaps=214 present-ms=34 draw-ms=6215 upload-ms=0
+728 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=9225399/20145568 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+1164 pid=FFFE15CD time interval-ms=10000 swaps=217 present-ms=36 draw-ms=6120 upload-ms=0
+1165 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=9353345/20401677 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+1603 pid=FFFE15CD time interval-ms=10009 swaps=218 present-ms=37 draw-ms=6253 upload-ms=0
+1604 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=9481005/20657215 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+2040 pid=FFFE15CD time interval-ms=10001 swaps=217 present-ms=79 draw-ms=6190 upload-ms=0
+2041 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=9608553/20912528 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+2431 pid=FFFE15CD time interval-ms=10007 swaps=194 present-ms=31 draw-ms=5697 upload-ms=0
+2432 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=9724361/21144338 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3
+2485 pid=FFFE15CD time interval-ms=10073 swaps=21 present-ms=3 draw-ms=8355 upload-ms=1
+2486 pid=FFFE15CD paths batches/triangles untextured=796/1592 hw=9726724/21167464 cpu=297/5122 cpu-nonsquare=0/0 hw-refused=1/3
+2529 pid=FFFE15CD time interval-ms=10115 swaps=20 present-ms=3 draw-ms=8619 upload-ms=0
+2530 pid=FFFE15CD paths batches/triangles untextured=816/1632 hw=9727784/21188294 cpu=601/10319 cpu-nonsquare=0/0 hw-refused=1/3
+2574 pid=FFFE15CD time interval-ms=10180 swaps=21 present-ms=3 draw-ms=8444 upload-ms=0
+2575 pid=FFFE15CD paths batches/triangles untextured=837/1674 hw=9728766/21205594 cpu=866/14527 cpu-nonsquare=0/0 hw-refused=1/3
+2622 pid=FFFE15CD time interval-ms=10025 swaps=22 present-ms=3 draw-ms=7805 upload-ms=0
+2623 pid=FFFE15CD paths batches/triangles untextured=859/1718 hw=9729751/21222902 cpu=1097/18109 cpu-nonsquare=0/0 hw-refused=1/3
+2664 pid=FFFE15CD time interval-ms=10016 swaps=19 present-ms=3 draw-ms=8090 upload-ms=0
+2665 pid=FFFE15CD paths batches/triangles untextured=878/1756 hw=9731900/21265755 cpu=1535/36363 cpu-nonsquare=0/0 hw-refused=1/3
+2713 pid=FFFE15CD time interval-ms=10004 swaps=23 present-ms=25 draw-ms=6933 upload-ms=0
+2714 pid=FFFE15CD paths batches/triangles untextured=895/1790 hw=9740054/21296104 cpu=1689/39514 cpu-nonsquare=0/0 hw-refused=1/3
+2758 pid=FFFE15CD time interval-ms=10007 swaps=21 present-ms=11 draw-ms=8383 upload-ms=0
+2759 pid=FFFE15CD paths batches/triangles untextured=916/1832 hw=9741162/21317746 cpu=1997/44821 cpu-nonsquare=0/0 hw-refused=1/3
+2797 pid=FFFE15CD time interval-ms=10003 swaps=18 present-ms=3 draw-ms=7759 upload-ms=0
+2798 pid=FFFE15CD paths batches/triangles untextured=934/1868 hw=9742120/21336744 cpu=2279/49652 cpu-nonsquare=0/0 hw-refused=1/3
+2840 pid=FFFE15CD time interval-ms=10020 swaps=20 present-ms=3 draw-ms=8259 upload-ms=0
+2841 pid=FFFE15CD paths batches/triangles untextured=954/1908 hw=9750377/21367199 cpu=2518/53321 cpu-nonsquare=0/0 hw-refused=1/3
+2887 pid=FFFE15CD time interval-ms=10010 swaps=22 present-ms=4 draw-ms=8175 upload-ms=0
+2888 pid=FFFE15CD paths batches/triangles untextured=976/1952 hw=9760496/21402942 cpu=2750/57072 cpu-nonsquare=0/0 hw-refused=1/3
+2924 pid=FFFE15CD time interval-ms=10024 swaps=17 present-ms=16 draw-ms=7504 upload-ms=0
+2925 pid=FFFE15CD paths batches/triangles untextured=993/1986 hw=9769563/21457442 cpu=3161/74397 cpu-nonsquare=0/0 hw-refused=1/3
+2967 pid=FFFE15CD time interval-ms=10069 swaps=20 present-ms=3 draw-ms=8289 upload-ms=0
+2968 pid=FFFE15CD paths batches/triangles untextured=1013/2026 hw=9778963/21491681 cpu=3326/77866 cpu-nonsquare=0/0 hw-refused=1/3
+3008 pid=FFFE15CD time interval-ms=10012 swaps=19 present-ms=6 draw-ms=8411 upload-ms=0
+3009 pid=FFFE15CD paths batches/triangles untextured=1032/2064 hw=9787550/21517643 cpu=3494/80060 cpu-nonsquare=0/0 hw-refused=1/3
+3047 pid=FFFE15CD time interval-ms=10061 swaps=18 present-ms=3 draw-ms=8401 upload-ms=0
+3048 pid=FFFE15CD paths batches/triangles untextured=1050/2100 hw=9796398/21559373 cpu=3814/90308 cpu-nonsquare=0/0 hw-refused=1/3
+3086 pid=FFFE15CD time interval-ms=10004 swaps=18 present-ms=3 draw-ms=7808 upload-ms=0
+3087 pid=FFFE15CD paths batches/triangles untextured=1068/2136 hw=9805531/21608585 cpu=4184/104802 cpu-nonsquare=0/0 hw-refused=1/3
+3126 pid=FFFE15CD time interval-ms=10010 swaps=18 present-ms=3 draw-ms=7873 upload-ms=0
+3127 pid=FFFE15CD paths batches/triangles untextured=1086/2172 hw=9814639/21653550 cpu=4496/115683 cpu-nonsquare=0/0 hw-refused=1/3
+3165 pid=FFFE15CD time interval-ms=10020 swaps=18 present-ms=6 draw-ms=7457 upload-ms=0
+3166 pid=FFFE15CD paths batches/triangles untextured=1104/2208 hw=9825096/21721928 cpu=4991/133502 cpu-nonsquare=0/0 hw-refused=1/3
+3208 pid=FFFE15CD time interval-ms=10040 swaps=20 present-ms=4 draw-ms=8093 upload-ms=0
+3209 pid=FFFE15CD paths batches/triangles untextured=1124/2248 hw=9835196/21769689 cpu=5303/144916 cpu-nonsquare=0/0 hw-refused=1/3
+3247 pid=FFFE15CD time interval-ms=10060 swaps=18 present-ms=4 draw-ms=8125 upload-ms=0
+3248 pid=FFFE15CD paths batches/triangles untextured=1142/2284 hw=9845066/21823265 cpu=5626/156668 cpu-nonsquare=0/0 hw-refused=1/3
+3284 pid=FFFE15CD time interval-ms=10011 swaps=17 present-ms=4 draw-ms=7957 upload-ms=0
+3285 pid=FFFE15CD paths batches/triangles untextured=1159/2318 hw=9854662/21884591 cpu=6029/172123 cpu-nonsquare=0/0 hw-refused=1/3
+3321 pid=FFFE15CD time interval-ms=10118 swaps=17 present-ms=3 draw-ms=7891 upload-ms=0
+3322 pid=FFFE15CD paths batches/triangles untextured=1176/2352 hw=9864382/21946850 cpu=6436/188177 cpu-nonsquare=0/0 hw-refused=1/3
+3349 pid=FFFE15CD paths batches/triangles untextured=1188/2376 hw=9871409/21995076 cpu=6732/199160 cpu-nonsquare=0/0 hw-refused=1/3
+41 pid=FFFE15CD time interval-ms=9908702 swaps=0 present-ms=0 draw-ms=2147483648 upload-ms=2
+42 pid=FFFE15CD tsc frames=0 wall-ms=9908702 vertex-ms=3102752 flush-in-vertex-ms=0 flush-other-ms=453916951 bind-ms=466868 iface-ms=157827689 beginend-ms=2796576 swap-ms=0 vertices=4 flushes=1 draws=1
+43 pid=FFFE15CD paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+93 pid=FFFE15CD time interval-ms=10000 swaps=259 present-ms=162 draw-ms=2088 upload-ms=109
+94 pid=FFFE15CD tsc frames=259 wall-ms=10000 vertex-ms=1385 flush-in-vertex-ms=0 flush-other-ms=2428 bind-ms=156 iface-ms=2088 beginend-ms=1263 swap-ms=163 vertices=549036 flushes=18008 draws=18008
+95 pid=FFFE15CD paths batches/triangles untextured=95/190 hw=17914/156083 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+97 pid=FFFE15CD time interval-ms=10000 swaps=143 present-ms=83 draw-ms=2411 upload-ms=90
+98 pid=FFFE15CD tsc frames=143 wall-ms=10000 vertex-ms=2611 flush-in-vertex-ms=15 flush-other-ms=2837 bind-ms=220 iface-ms=2411 beginend-ms=1954 swap-ms=84 vertices=1200664 flushes=15079 draws=15079
+99 pid=FFFE15CD paths batches/triangles untextured=238/476 hw=32850/463986 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+101 pid=FFFE15CD time interval-ms=10007 swaps=103 present-ms=60 draw-ms=2391 upload-ms=58
+102 pid=FFFE15CD tsc frames=103 wall-ms=10007 vertex-ms=2790 flush-in-vertex-ms=73 flush-other-ms=2791 bind-ms=261 iface-ms=2391 beginend-ms=2269 swap-ms=60 vertices=1244073 flushes=19211 draws=19211
+103 pid=FFFE15CD paths batches/triangles untextured=341/682 hw=51958/847746 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+105 pid=FFFE15CD time interval-ms=10003 swaps=345 present-ms=214 draw-ms=4445 upload-ms=65
+106 pid=FFFE15CD tsc frames=345 wall-ms=10003 vertex-ms=1997 flush-in-vertex-ms=8 flush-other-ms=5228 bind-ms=452 iface-ms=4445 beginend-ms=1213 swap-ms=215 vertices=856726 flushes=122417 draws=122417
+107 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=174328/1188621 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+109 pid=FFFE15CD time interval-ms=10000 swaps=453 present-ms=349 draw-ms=5737 upload-ms=0
+110 pid=FFFE15CD tsc frames=453 wall-ms=10000 vertex-ms=1604 flush-in-vertex-ms=0 flush-other-ms=6522 bind-ms=342 iface-ms=5737 beginend-ms=655 swap-ms=350 vertices=715228 flushes=178807 draws=178807
+111 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=353135/1546688 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+113 pid=FFFE15CD time interval-ms=10000 swaps=430 present-ms=314 draw-ms=5418 upload-ms=0
+114 pid=FFFE15CD tsc frames=430 wall-ms=10000 vertex-ms=1653 flush-in-vertex-ms=0 flush-other-ms=6309 bind-ms=550 iface-ms=5418 beginend-ms=615 swap-ms=314 vertices=676972 flushes=169243 draws=169243
+115 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=522378/1885604 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+117 pid=FFFE15CD time interval-ms=10000 swaps=458 present-ms=264 draw-ms=5801 upload-ms=0
+118 pid=FFFE15CD tsc frames=458 wall-ms=10000 vertex-ms=1632 flush-in-vertex-ms=0 flush-other-ms=6445 bind-ms=292 iface-ms=5801 beginend-ms=593 swap-ms=264 vertices=721712 flushes=180428 draws=180428
+119 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=702806/2246918 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+121 pid=FFFE15CD time interval-ms=10000 swaps=432 present-ms=307 draw-ms=5248 upload-ms=0
+122 pid=FFFE15CD tsc frames=432 wall-ms=10000 vertex-ms=1779 flush-in-vertex-ms=0 flush-other-ms=6174 bind-ms=572 iface-ms=5248 beginend-ms=646 swap-ms=307 vertices=680336 flushes=170084 draws=170084
+123 pid=FFFE15CD paths batches/triangles untextured=388/776 hw=872890/2587518 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+125 pid=FFFE15CD time interval-ms=10040 swaps=303 present-ms=201 draw-ms=3997 upload-ms=67
+126 pid=FFFE15CD tsc frames=303 wall-ms=10040 vertex-ms=1829 flush-in-vertex-ms=0 flush-other-ms=4637 bind-ms=338 iface-ms=3997 beginend-ms=1128 swap-ms=201 vertices=680793 flushes=101913 draws=101913
+127 pid=FFFE15CD paths batches/triangles untextured=456/912 hw=974735/2861382 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+129 pid=FFFE15CD time interval-ms=10000 swaps=143 present-ms=83 draw-ms=2339 upload-ms=75
+130 pid=FFFE15CD tsc frames=143 wall-ms=10000 vertex-ms=2843 flush-in-vertex-ms=15 flush-other-ms=2604 bind-ms=76 iface-ms=2339 beginend-ms=1854 swap-ms=84 vertices=1183095 flushes=14622 draws=14622
+131 pid=FFFE15CD paths batches/triangles untextured=599/1198 hw=989214/3165212 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+133 pid=FFFE15CD time interval-ms=10000 swaps=106 present-ms=90 draw-ms=2308 upload-ms=40
+134 pid=FFFE15CD tsc frames=106 wall-ms=10000 vertex-ms=2902 flush-in-vertex-ms=55 flush-other-ms=2529 bind-ms=63 iface-ms=2308 beginend-ms=2272 swap-ms=91 vertices=1266043 flushes=19109 draws=19109
+135 pid=FFFE15CD paths batches/triangles untextured=705/1410 hw=1008217/3548498 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+137 pid=FFFE15CD time interval-ms=10000 swaps=221 present-ms=150 draw-ms=3743 upload-ms=71
+138 pid=FFFE15CD tsc frames=221 wall-ms=10000 vertex-ms=2268 flush-in-vertex-ms=8 flush-other-ms=4298 bind-ms=201 iface-ms=3743 beginend-ms=1587 swap-ms=151 vertices=952448 flushes=96904 draws=96904
+139 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1105050/3891763 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+141 pid=FFFE15CD time interval-ms=10000 swaps=300 present-ms=176 draw-ms=5244 upload-ms=0
+142 pid=FFFE15CD tsc frames=300 wall-ms=10000 vertex-ms=1926 flush-in-vertex-ms=0 flush-other-ms=6159 bind-ms=529 iface-ms=5244 beginend-ms=788 swap-ms=177 vertices=705316 flushes=176329 draws=176329
+143 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1281379/4244721 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+146 pid=FFFE15CD paths batches/triangles untextured=776/1552 hw=1310916/4303845 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
