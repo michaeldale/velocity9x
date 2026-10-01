@@ -116,6 +116,15 @@ typedef struct v9x_gl_pipeline {
     GLfloat viewport_f[4];
     GLdouble depth_scale;
     GLdouble depth_bias;
+    /* What the four above and clip_edge/clip_ready were taken from, so a
+     * Begin with the same inputs keeps them rather than taking them again
+     * (2026-10-01: Quake 2 begins a primitive per polygon, 1.65 us each). */
+    int begin_valid;
+    GLint begin_viewport[4];
+    GLint begin_scissor[4];
+    int begin_scissor_on;
+    v9x_u32 begin_drawable[2];
+    GLdouble begin_depth[2];
     /* The last colour packed into a vertex and the floats it came from:
      * the colour changes per glColor, not per vertex, and packing it is
      * four float-to-integer conversions. */

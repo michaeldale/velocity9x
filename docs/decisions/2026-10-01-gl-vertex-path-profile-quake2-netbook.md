@@ -150,6 +150,36 @@ take glBegin's per-primitive setup only when viewport, scissor or depth
 range changed (1.65 us). Outside the ICD: write-combining for the ring
 and texture writes, and a lightmap upload that does not drain the GPU.
 
+## The texture description and glBegin, done (`q2begin`)
+
+- **Texture description:** two parts of it were most of its cost and
+  neither needed per-polygon work. The environment colour was packed by
+  `v9x_gl_tex_byte`, an eight-step search with an integer-to-float
+  conversion per step, three channels, every describe; it is now packed
+  by the same function when `glTexEnv` sets it, into
+  `V9X_GL_TEXTURES.env_color_packed`. The 48-byte output was zeroed a
+  byte at a time; now a word at a time. The description itself is still
+  taken every polygon: a cache keyed on "nothing changed" would need every
+  path that touches a texture object, binding or environment to say so,
+  and one missed would draw a stale texture.
+- **glBegin:** its setup - clip edges, draw rectangle, viewport as floats,
+  depth terms - is a pure function of the viewport, scissor box and
+  enable, drawable size and depth range, and is kept while those are
+  unchanged. `test_begin_follows_state_changes` changes each between
+  primitives of one context; with the scissor box's comparison removed it
+  failed, so it holds the cache.
+
+The golden pipeline hash is unchanged. Quake 2 demo2, ICD alone replaced
+(hash-checked), twelve demo intervals each (`glsink.py`):
+
+| per polygon | `q2sink` | `q2begin` |
+|---|---|---|
+| timedemo, timers on | 20.3-21.0 fps | **21.3-21.9 fps** |
+| prep: texture description | 1.88 us | **0.92 us** |
+| `glBegin` | 1.65 us | **0.77 us** |
+| sink, whole | 9.27 us | 7.57 us |
+| `glBegin`/`glEnd`, of wall | 19.2% | 15.5% |
+
 ## Not established
 
 - Per clipped triangle cost, which the stages do not separate.

@@ -8,14 +8,23 @@
 
 #define V9X_GL_TEXTURE_GROW 32ul
 
+/* A word at a time and then the odd bytes: a describe per polygon zeroed
+ * its 48-byte output a byte at a time (2026-10-01). */
 static void v9x_gl_tex_zero(void *memory, v9x_u32 bytes)
 {
-    v9x_u8 *cursor = (v9x_u8 *)memory;
+    v9x_u32 *word = (v9x_u32 *)memory;
+    v9x_u8 *cursor;
 
+    for (; bytes >= 4ul; bytes -= 4ul) {
+        *word++ = 0ul;
+    }
+    cursor = (v9x_u8 *)word;
     while (bytes-- != 0ul) {
         *cursor++ = 0u;
     }
 }
+
+static v9x_u32 v9x_gl_tex_byte(GLfloat value);
 
 static void v9x_gl_texobj_defaults(V9X_GL_TEXOBJ *object, GLuint name)
 {
@@ -48,6 +57,7 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
     for (i = 0u; i < 4u; ++i) {
         textures->env_color[i] = 0.0f;
     }
+    textures->env_color_packed = 0ul;
     textures->unpack_alignment = 4;
     textures->unpack_row_length = 0;
     textures->unpack_skip_rows = 0;
@@ -344,6 +354,10 @@ void v9x_gl_tex_env(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
             textures->env_color[i] = value < 0.0f ? 0.0f
                                    : (value > 1.0f ? 1.0f : value);
         }
+        textures->env_color_packed =
+            (v9x_gl_tex_byte(textures->env_color[0]) << 16) |
+            (v9x_gl_tex_byte(textures->env_color[1]) << 8) |
+            v9x_gl_tex_byte(textures->env_color[2]);
         return;
     }
     v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
@@ -788,9 +802,7 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
      * decides it. Different modes per axis are not drawn exactly yet. */
     out->address = object->wrap_s == V9X_GL_CLAMP
         ? V9X_R3D_ABI_ADDRESS_CLAMP : V9X_R3D_ABI_ADDRESS_WRAP;
-    out->env_color = (v9x_gl_tex_byte(textures->env_color[0]) << 16) |
-                     (v9x_gl_tex_byte(textures->env_color[1]) << 8) |
-                     v9x_gl_tex_byte(textures->env_color[2]);
+    out->env_color = textures->env_color_packed;
 
     /* Table 3.18, per base format, as the interface's colour and alpha ops.
      * ALPHA textures are stored white, so colour-from-the-fragment is

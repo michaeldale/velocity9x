@@ -676,6 +676,81 @@ static void test_alpha_test_that_cannot_fail(void)
 }
 
 /*
+ * glBegin's per-primitive setup follows every input it is taken from when
+ * that input changes between primitives of one context: the scissor box
+ * and its enable, the viewport, the drawable and the depth range. From
+ * 2026-10-01 the setup is kept while they are unchanged, which this holds
+ * to recomputing them.
+ */
+static void begin_triangle(V9X_GL_STATE *s, V9X_GL_PIPELINE *p)
+{
+    sunk_triangles = 0ul;
+    v9x_gl_prim_begin(s, p, V9X_GL_TRIANGLES);
+    vertex(s, p, 0.0f, 0.0f);
+    vertex(s, p, 320.0f, 0.0f);
+    vertex(s, p, 0.0f, 200.0f);
+    v9x_gl_prim_end(s, p);
+}
+
+static int sunk_within(float left, float top, float right, float bottom)
+{
+    v9x_u32 i;
+
+    if (sunk_triangles == 0ul) {
+        return 0;
+    }
+    for (i = 0ul; i < vsunk_count(); ++i) {
+        if (sunk[i].sx < left - 0.001f || sunk[i].sx > right + 0.001f ||
+            sunk[i].sy < top - 0.001f || sunk[i].sy > bottom + 0.001f) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void test_begin_follows_state_changes(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+
+    scene(&s, &p);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_triangles == 1ul && sunk_within(0.0f, 0.0f, 320.0f, 200.0f));
+    PCHECK(near_value(sunk[1].sx, 320.0f));
+
+    /* The scissor box, enabled and then moved. */
+    v9x_gl_state_enable(&s, V9X_GL_SCISSOR_TEST_CAP, 1);
+    v9x_gl_state_scissor(&s, 100, 50, 100, 100);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_within(100.0f, 50.0f, 200.0f, 150.0f));
+    v9x_gl_state_scissor(&s, 0, 0, 50, 50);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_within(0.0f, 150.0f, 50.0f, 200.0f));
+    v9x_gl_state_enable(&s, V9X_GL_SCISSOR_TEST_CAP, 0);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_triangles == 1ul && near_value(sunk[1].sx, 320.0f));
+
+    /* The viewport: object x 320 is the viewport's right edge. */
+    v9x_gl_state_viewport(&s, 0, 0, 160, 100);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_triangles == 1ul && near_value(sunk[1].sx, 160.0f));
+    v9x_gl_state_viewport(&s, 0, 0, 320, 200);
+
+    /* The depth range: z 0 maps to its midpoint. */
+    v9x_gl_prim_depth_range(&s, &p, 0.0, 0.5);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_triangles == 1ul && near_value(sunk[0].sz, 0.25f));
+    v9x_gl_prim_depth_range(&s, &p, 0.0, 1.0);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_triangles == 1ul && near_value(sunk[0].sz, 0.5f));
+
+    /* The drawable: a smaller one cuts the same viewport. */
+    v9x_gl_state_drawable(&s, 160ul, 100ul, V9X_GL_TARGET_RGB565, 1);
+    begin_triangle(&s, &p);
+    PCHECK(sunk_triangles != 0ul && sunk_within(0.0f, 0.0f, 160.0f, 100.0f));
+}
+
+/*
  * Every emitted byte, against the pipeline as it was before the 2026-10-01
  * vertex-path work (outcode-limited clipping, the inline inside test, the
  * vertex ring), which was to change no output. A fixed pseudo-random
@@ -799,6 +874,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_same_draw();
     test_scissor_clips_geometry();
     test_pipeline_output_unchanged();
+    test_begin_follows_state_changes();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");
     }

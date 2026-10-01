@@ -100,6 +100,7 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->mode = V9X_GL_TRIANGLES;
     pipeline->count = 0ul;
     pipeline->ring_head = 0u;
+    pipeline->begin_valid = 0;
     pipeline->batch_triangles = 0ul;
     pipeline->argb_valid = 0;
     pipeline->sink = 0;
@@ -292,6 +293,54 @@ static int v9x_gl_prim_clip_edges(const V9X_GL_STATE *state,
                                   GLfloat *edge);
 static int v9x_gl_prim_draw_rect(const V9X_GL_STATE *state, GLfloat *rect);
 
+/*
+ * Whether this Begin's setup inputs are the last setup's: the viewport, the
+ * scissor box and its enable, the drawable's size and the depth range,
+ * which are everything v9x_gl_prim_clip_edges, v9x_gl_prim_draw_rect and
+ * the depth terms read. The setup is a pure function of them, so equal
+ * inputs leave the kept results exact.
+ */
+static int v9x_gl_prim_begin_unchanged(const V9X_GL_STATE *state,
+                                       const V9X_GL_PIPELINE *pipeline)
+{
+    unsigned int i;
+
+    if (!pipeline->begin_valid ||
+        pipeline->begin_scissor_on !=
+            (v9x_gl_state_cap(state, V9X_GL_SCISSOR_TEST) ? 1 : 0) ||
+        pipeline->begin_drawable[0] != state->drawable_width ||
+        pipeline->begin_drawable[1] != state->drawable_height ||
+        pipeline->begin_depth[0] != pipeline->depth_near ||
+        pipeline->begin_depth[1] != pipeline->depth_far) {
+        return 0;
+    }
+    for (i = 0u; i < 4u; ++i) {
+        if (pipeline->begin_viewport[i] != state->viewport[i] ||
+            pipeline->begin_scissor[i] != state->scissor[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void v9x_gl_prim_begin_record(const V9X_GL_STATE *state,
+                                     V9X_GL_PIPELINE *pipeline)
+{
+    unsigned int i;
+
+    pipeline->begin_scissor_on =
+        v9x_gl_state_cap(state, V9X_GL_SCISSOR_TEST) ? 1 : 0;
+    pipeline->begin_drawable[0] = state->drawable_width;
+    pipeline->begin_drawable[1] = state->drawable_height;
+    pipeline->begin_depth[0] = pipeline->depth_near;
+    pipeline->begin_depth[1] = pipeline->depth_far;
+    for (i = 0u; i < 4u; ++i) {
+        pipeline->begin_viewport[i] = state->viewport[i];
+        pipeline->begin_scissor[i] = state->scissor[i];
+    }
+    pipeline->begin_valid = 1;
+}
+
 void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                        GLenum mode)
 {
@@ -306,6 +355,9 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     state->in_begin = 1;
     pipeline->mode = mode;
     pipeline->count = 0ul;
+    if (v9x_gl_prim_begin_unchanged(state, pipeline)) {
+        return;
+    }
     pipeline->clip_ready = v9x_gl_prim_clip_edges(state, pipeline->clip_edge);
     (void)v9x_gl_prim_draw_rect(state, pipeline->window_rect);
     pipeline->viewport_f[0] = (GLfloat)state->viewport[0];
@@ -314,6 +366,7 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->viewport_f[3] = (GLfloat)state->viewport[3];
     pipeline->depth_scale = (pipeline->depth_far - pipeline->depth_near) * 0.5;
     pipeline->depth_bias = (pipeline->depth_near + pipeline->depth_far) * 0.5;
+    v9x_gl_prim_begin_record(state, pipeline);
 }
 
 void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline)

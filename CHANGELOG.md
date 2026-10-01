@@ -64,7 +64,10 @@ changes untested.
   host test: the clipper skips planes a polygon is wholly inside and keeps
   each plane's distances, the inside test is written out, and the vertex
   history is a ring instead of copies. Quake 2's `glVertex*` 2.47 to 1.86
-  us a vertex on the netbook
+  us a vertex on the netbook; and the environment colour packed when set
+  rather than per polygon, and glBegin's setup kept while viewport,
+  scissor and depth range are unchanged. Quake 2's timedemo 18.4-19.1 to
+  21.3-21.9 fps with the profiling timers on
   ([record](docs/decisions/2026-10-01-gl-vertex-path-profile-quake2-netbook.md)).
 
 ### Diagnostics

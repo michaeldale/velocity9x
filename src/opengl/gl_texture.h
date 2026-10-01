@@ -103,6 +103,9 @@ typedef struct v9x_gl_textures {
     GLuint bound;
     GLenum env_mode;
     GLfloat env_color[4];
+    /* env_color as the interface's 0x00RRGGBB, packed when it is set
+     * rather than at every describe (2026-10-01). */
+    v9x_u32 env_color_packed;
     GLint unpack_alignment;
     GLint unpack_row_length;
     GLint unpack_skip_rows;
