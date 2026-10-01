@@ -73,6 +73,30 @@ The operator watched Half-Life Direct3D and 3DMark 99 at 1024x576 on boot
   replaced by `V9X3D SYNC`, which keeps runtime Direct3D and the flip with
   the CPU waiting after every batch. `ON` and `OFF` still write it off.
 
+## Quake 2 with async (boot 87)
+
+`q2-timedemo.ps1`: `quake2.exe +set vid_ref gl +set logfile 2 +set timedemo
+1`, 640x480 fullscreen, the attract loop replaying `demo2`; `config.cfg`
+saved before and found unchanged after. Four full passes at 19.6, 19.8,
+19.8 and 19.8 fps (31.9-32.3 s), no refusal, invalid plan, ring-space
+timeout or reset. The synchronous figure is 17.2-17.3 fps on boots 54-56,
+before the ICD's per-call cost work (`43fe5b7`), so the 15% between them
+is not async's alone; no synchronous control was run on this build, at
+the operator's request.
+
+The gain is small because the HAL is not where Quake 2's time goes. Over
+the 156 s window the render interface's draws were 11.3% of wall time,
+81.9 us a call for 796 primitive dwords; the ICD's own buckets in each ten
+seconds were about 3.4 s in `glVertex*`, 1.7 s in `glBegin`/`glEnd`, 1.6 s
+in the batch sink and 1.2 s in the render interface. Writing a submission
+through the uncached aperture is now the largest HAL phase, 38.5 us a
+submission (8.4 s, 5.4% of wall).
+
+An earlier attempt the same evening is discarded: a Quake 2 launched by a
+cancelled command was still running when the second started, the ICD log
+shows two processes rendering at once, and the netbook stopped answering
+while they were being quit (boot 86 to 87, restarted by the operator).
+
 ## Not established
 
 - Intel erratum 12 (309220-0132): the CPU's ring writes now overlap GPU
