@@ -10,6 +10,12 @@ Velocity9x 0.8.0 with Intel runtime 3D and the Intel flip on by default.
 give). **Decision record for the latch claim:**
 `..\decisions\2026-09-18-intel-plane-base-latches-at-vblank-start.md`.
 
+**2026-10-01:** the intel79 mitigation, completing a flip at the second
+frame tick, is removed: one tick from `V9X_I9XX_FLIP_TICKS_TO_COMPLETE`.
+It did not fix this flicker and cost a frame on every two-buffer frame
+(`../decisions/2026-10-01-intel-flip-completes-at-one-tick.md`). Nobody
+has looked at the panel since; whether the flicker changed is unknown.
+
 ## The symptom, as measured
 
 The operator's phone video (60 fps, 663 frames, an intel7x flip build)

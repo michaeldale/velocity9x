@@ -1033,6 +1033,15 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.dp_state_records_texture);
     v9x_write_uint("DpRecordRunsNoopJoined",
                    snapshot.d3d.dp_record_runs_noop_joined);
+    v9x_write_uint("FlipWaitCyclesLo", snapshot.d3d.flip_wait_cycles[0]);
+    v9x_write_uint("FlipWaitCyclesHi", snapshot.d3d.flip_wait_cycles[1]);
+    v9x_write_uint("FlipWaitCalls", snapshot.d3d.flip_wait_calls);
+    v9x_write_uint("FlipIntervalCyclesLo",
+                   snapshot.d3d.flip_interval_cycles[0]);
+    v9x_write_uint("FlipIntervalCyclesHi",
+                   snapshot.d3d.flip_interval_cycles[1]);
+    v9x_write_uint("FlipIntervalCount", snapshot.d3d.flip_interval_count);
+    v9x_write_uint("FlipIntervalMax", snapshot.d3d.flip_interval_max);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

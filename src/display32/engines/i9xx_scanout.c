@@ -1573,8 +1573,21 @@ int v9x_scanout_hw_flip(void)
  * cannot be early. If the picture still shows construction at two, the
  * latch is not what the frame counter is counting, and the readback
  * probe is the only instrument left. Measured on intel80.
+ *
+ * ONE since 2026-10-01. The second tick was a flicker mitigation, and the
+ * flicker it was for is still open after it
+ * (docs\issues\2026-09-18-final-reality-flicker-is-the-buffer-under-
+ * construction.md; intel86 measured no draw waiting on a flip while the
+ * flicker continued, and intel90 found the pipe underrunning). It was
+ * not free: with two buffers every frame's first draw waits for the
+ * flip, and on Final Reality's Fill rate that wait was 28.5 ms of a
+ * 35.1 ms frame
+ * (docs\decisions\2026-10-01-netbook-fill-rate-is-presentation-bound.md).
+ * One tick is the frame the latch is in: the write lands in active video
+ * short of the blank-start latch, and the counter ticks at line 671 of
+ * the same frame, after the panel has stopped fetching the old buffer.
  */
-#define V9X_I9XX_FLIP_TICKS_TO_COMPLETE 2ul
+#define V9X_I9XX_FLIP_TICKS_TO_COMPLETE 1ul
 
 int v9x_scanout_hw_flip_pending(void)
 {

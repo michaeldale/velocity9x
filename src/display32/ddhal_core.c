@@ -537,6 +537,46 @@ void v9x_present_trace(DWORD kind, DWORD context, DWORD offset)
     ++v9x_hal->d3d_diagnostics.present_trace_count;
 }
 
+/* Add a cycle delta to a low/high dword pair in the diagnostics. */
+static void v9x_time_add(DWORD *pair, DWORD delta)
+{
+    pair[0] += delta;
+    if (pair[0] < delta) {
+        ++pair[1];
+    }
+}
+
+/*
+ * The frame period, as the TSC interval between accepted flips. Anything
+ * over this is a pause - a menu, a test changing over, another
+ * application - and not a frame; about 1.3 s on the netbook's 1.66 GHz
+ * TSC, and inside the low dword's range by construction.
+ */
+#define V9X_FLIP_INTERVAL_MAX_CYCLES 0x7ffffffful
+static DWORD v9x_flip_last_tsc = 0ul;
+static DWORD v9x_flip_last_tsc_valid = 0ul;
+
+static void v9x_flip_note_interval(void)
+{
+    DWORD now;
+    DWORD interval;
+
+    if (!V9X_TIME_ENABLED()) {
+        return;
+    }
+    now = v9x_rdtsc_low();
+    interval = now - v9x_flip_last_tsc;
+    if (v9x_flip_last_tsc_valid && interval <= V9X_FLIP_INTERVAL_MAX_CYCLES) {
+        v9x_time_add(v9x_hal->d3d_diagnostics.flip_interval_cycles, interval);
+        ++v9x_hal->d3d_diagnostics.flip_interval_count;
+        if (interval > v9x_hal->d3d_diagnostics.flip_interval_max) {
+            v9x_hal->d3d_diagnostics.flip_interval_max = interval;
+        }
+    }
+    v9x_flip_last_tsc = now;
+    v9x_flip_last_tsc_valid = 1ul;
+}
+
 static void v9x_flip_note_done(void)
 {
     /* Taken on the first poll after arming: the flip waited for nothing.
@@ -673,16 +713,27 @@ int v9x_flip_pending(void)
 int v9x_flip_wait_done(void)
 {
     DWORD polls;
+    DWORD started;
+    int result = V9X_FLIP_WAIT_TIMEOUT;
 
     if (v9x_flip_state == V9X_FLIP_IDLE) {
         return V9X_FLIP_WAIT_NONE;
     }
+    /* Timed only when a flip is pending: the question is what a draw pays
+     * for presentation, and the idle answer costs nothing. */
+    started = V9X_TIME_BEGIN();
     for (polls = 0ul; polls < V9X_FLIP_DRAW_WAIT_POLLS; ++polls) {
         if (v9x_flip_done()) {
-            return V9X_FLIP_WAIT_DONE;
+            result = V9X_FLIP_WAIT_DONE;
+            break;
         }
     }
-    return V9X_FLIP_WAIT_TIMEOUT;
+    if (V9X_TIME_ENABLED()) {
+        v9x_time_add(v9x_hal->d3d_diagnostics.flip_wait_cycles,
+                     v9x_rdtsc_low() - started);
+        ++v9x_hal->d3d_diagnostics.flip_wait_calls;
+    }
+    return result;
 }
 
 static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
@@ -784,6 +835,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         /* Accepted: the sequence advances here, so every draw recorded
          * after this carries the number of the flip it follows. */
         ++v9x_present_seq;
+        v9x_flip_note_interval();
         /* The coverage sample taken inside v9x_set_display_start belongs to
          * THIS flip, which only now exists. */
         v9x_scanout_note_flip_sequence(v9x_present_seq);

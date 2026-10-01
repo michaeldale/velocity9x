@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100101: V9X_D3D_DIAGNOSTICS gains the flip-wait and flip-interval
+ * timers. An append. */
 /* 2026093003: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives redundant-state
  * accounting. An append. */
 /* 2026093002: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives record-run
@@ -1607,7 +1609,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026093003ul
+#define V9X_DD_SHARED_ABI   2026100101ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3075,6 +3077,18 @@ typedef struct v9x_d3d_diagnostics {
     DWORD dp_state_records_noop;
     DWORD dp_state_records_texture;
     DWORD dp_record_runs_noop_joined;
+    /* Presentation timing (2026-10-01), Gen3 only like time_cycles. The
+     * cycles a draw spent in v9x_flip_wait_done with a flip pending, as
+     * low and high dwords, and how many such waits; and the TSC interval
+     * between consecutive accepted flips - the frame period - with its
+     * count and the largest single interval. An interval over
+     * V9X_FLIP_INTERVAL_MAX_CYCLES is a pause, not a frame, and is not
+     * counted. */
+    DWORD flip_wait_cycles[2];
+    DWORD flip_wait_calls;
+    DWORD flip_interval_cycles[2];
+    DWORD flip_interval_count;
+    DWORD flip_interval_max;
 } V9X_D3D_DIAGNOSTICS;
 
 /*
