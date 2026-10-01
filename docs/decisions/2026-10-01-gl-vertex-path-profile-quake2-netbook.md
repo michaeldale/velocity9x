@@ -118,6 +118,38 @@ twelve demo intervals (`glstages.py`):
 Both columns carry the stage timers' own cost; the unprofiled ICD before
 the change ran 19.6-19.8 fps.
 
+## The batch sink and glBegin, split (`q2sink`)
+
+Six more ICD buckets: `glBegin` alone, and in the sink the held batch
+drawn because the polygon differs or the batch is full, the hold and
+vertex copy, and the prep's texture description, interface state and
+same-draw compare. Twelve demo intervals, about 185,000 sinks and 15,351
+render-interface draws per ten seconds; timedemo 20.3-21.0 fps.
+
+| per sink (one polygon) | us | of wall |
+|---|---|---|
+| sink, whole | 9.27 | 17.1% |
+| - the held batch drawn (a flush) | **5.67** | 10.5% |
+| - prep: texture description | **1.88** | 3.5% |
+| - prep: interface state | 0.41 | 0.8% |
+| - prep: same-draw compare | 0.50 | 0.9% |
+| - hold and vertex copy | 0.42 | 0.8% |
+| `glBegin` alone | 1.65 | 3.0% |
+
+So most of the sink is not the sink: it is the render-interface draw of
+the batch the polygon cannot join, about twelve polygons a draw. In the
+HAL over the same window (`hlprof.py`), a draw is 84.1 us: 38.4 writing
+its ~850 dwords into the ring through the uncached aperture, 10.7
+decoding, 8 building, 9 in the front end; and 5,774 breadcrumb drains at
+Lock - Quake 2's lightmap uploads - cost 558 us each, 2.6% of the
+window, with 1.8% more inside the locks.
+
+What the ICD's own share points at, exact first: describe the texture
+only when the binding or its parameters changed (1.88 us a polygon);
+take glBegin's per-primitive setup only when viewport, scissor or depth
+range changed (1.65 us). Outside the ICD: write-combining for the ring
+and texture writes, and a lightmap upload that does not drain the GPU.
+
 ## Not established
 
 - Per clipped triangle cost, which the stages do not separate.

@@ -207,7 +207,16 @@ static long v9x_gl_tsc_to_long(double value);
 #define V9X_GL_TSC_SWAP            7u
 #define V9X_GL_TSC_SINK            8u
 #define V9X_GL_TSC_SINK_PREP       9u
-#define V9X_GL_TSC_BUCKETS         10u
+/* The batch sink and Begin split further (2026-10-01): glBegin alone; in
+ * the sink, the held batch drawn because this one differs or it is full,
+ * the hold and vertex copy, and the prep's three parts. */
+#define V9X_GL_TSC_BEGIN           10u
+#define V9X_GL_TSC_SINK_FLUSH      11u
+#define V9X_GL_TSC_SINK_COPY       12u
+#define V9X_GL_TSC_PREP_TEXTURE    13u
+#define V9X_GL_TSC_PREP_STATE      14u
+#define V9X_GL_TSC_PREP_SAME       15u
+#define V9X_GL_TSC_BUCKETS         16u
 static DWORD v9x_gl_count_sinks;
 static DWORD v9x_gl_tsc_state;  /* 0 unknown, 1 usable, 2 absent */
 static DWORD v9x_gl_tsc[V9X_GL_TSC_BUCKETS * 2u];
@@ -340,6 +349,15 @@ static void v9x_gl_tsc_log(DWORD interval_ms, DWORD swaps)
               v9x_gl_tsc_ms(V9X_GL_TSC_SINK, wall, interval_ms),
               v9x_gl_tsc_ms(V9X_GL_TSC_SINK_PREP, wall, interval_ms),
               v9x_gl_count_sinks);
+    v9x_gl_log(text);
+    wsprintfA(text, "sink begin-ms=%lu flush-ms=%lu copy-ms=%lu "
+              "prep-texture-ms=%lu prep-state-ms=%lu prep-same-ms=%lu",
+              v9x_gl_tsc_ms(V9X_GL_TSC_BEGIN, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_SINK_FLUSH, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_SINK_COPY, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_PREP_TEXTURE, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_PREP_STATE, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_PREP_SAME, wall, interval_ms));
     v9x_gl_log(text);
     wsprintfA(text, "prim transform-ms=%lu inside-ms=%lu window-ms=%lu "
               "assemble-ms=%lu history-ms=%lu fast=%lu clipped=%lu "
@@ -1838,6 +1856,7 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
     v9x_u32 i;
     v9x_u32 level;
     int same;
+    DWORD part_started;
 
     if (v9x_gl_device_interface() == 0) {
         return 0;
@@ -1848,16 +1867,24 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
     }
     *prep_started = v9x_gl_tsc_begin();
     v9x_gl_describe_texture(context, &texture);
+    part_started = v9x_gl_tsc_begin();
+    v9x_gl_tsc_end(V9X_GL_TSC_PREP_TEXTURE, *prep_started);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &state);
+    v9x_gl_tsc_end(V9X_GL_TSC_PREP_STATE, part_started);
+    part_started = v9x_gl_tsc_begin();
     same = pending->triangles == 0ul ||
            (pending->targets == targets &&
             pending->triangles + triangle_count <= V9X_R3D_ABI_BATCH_MAX &&
             v9x_gl_prim_same_draw(&pending->texture, &pending->state,
                                   &texture, &state));
+    v9x_gl_tsc_end(V9X_GL_TSC_PREP_SAME, part_started);
     v9x_gl_tsc_end(V9X_GL_TSC_SINK_PREP, *prep_started);
     if (!same) {
+        part_started = v9x_gl_tsc_begin();
         v9x_gl_pending_flush(context);
+        v9x_gl_tsc_end(V9X_GL_TSC_SINK_FLUSH, part_started);
     }
+    part_started = v9x_gl_tsc_begin();
     if (pending->triangles == 0ul) {
         pending->texture = texture;
         if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
@@ -1877,8 +1904,11 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
         pending->vertices[pending->triangles * 3ul + i] = vertices[i];
     }
     pending->triangles += triangle_count;
+    v9x_gl_tsc_end(V9X_GL_TSC_SINK_COPY, part_started);
     if (pending->triangles == V9X_R3D_ABI_BATCH_MAX) {
+        part_started = v9x_gl_tsc_begin();
         v9x_gl_pending_flush(context);
+        v9x_gl_tsc_end(V9X_GL_TSC_SINK_FLUSH, part_started);
     }
     return 1;
 }
@@ -1897,6 +1927,7 @@ static void V9X_GL_API v9x_gl_begin(GLenum mode)
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_begin(&context_->state,
                                            &context_->pipeline, mode));
     v9x_gl_tsc_end(V9X_GL_TSC_BEGINEND, started);
+    v9x_gl_tsc_end(V9X_GL_TSC_BEGIN, started);
 }
 
 static void V9X_GL_API v9x_gl_end(void)
