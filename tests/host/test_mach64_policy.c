@@ -255,9 +255,34 @@ static void test_texture_shape_and_sampling(void)
     request.texture_width = 24ul;
     request.texture_height = 24ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+    /* Rectangles: each edge a power of two from 8 to 256, independently
+     * (the texture-shape probe, 2026-10-01). */
     request.texture_width = 16ul;
     request.texture_height = 8ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_width = 32ul;
+    request.texture_height = 64ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_width = 256ul;
+    request.texture_height = 8ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_width = 512ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+    request.texture_width = 64ul;
+    request.texture_height = 4ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+    request.texture_height = 24ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+    /* A rectangle's chain runs to 1x1: one level per halving of the
+     * larger edge, 64x16 down to 1x1 in seven. */
+    request.texture_height = 16ul;
+    request.texture_levels = 7ul;
+    request.texture_min_filter = T_FILTER_MIPNEAREST;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_levels = 8ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_MIP);
+    request.texture_levels = 1ul;
+    request.texture_min_filter = T_FILTER_NEAREST;
 
     /* A chain: up to one level per halving, with a filter that selects a
      * level. Blending between levels is unmeasured and refuses. */

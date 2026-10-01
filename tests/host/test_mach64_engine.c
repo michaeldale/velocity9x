@@ -972,6 +972,82 @@ static void test_mip_texture_state(void)
     CHECK((values[10] & V9X_M64_MIP_MAP_DISABLE) != 0ul);
 }
 
+/*
+ * Rectangular textures (2026-10-01): the row pitch is the width, which is
+ * what DirectDraw gives a texture surface, and TEX_SIZE_PITCH carries the
+ * width, the larger edge and the height. A chain halves each edge to one
+ * texel and keeps its TEX_n_OFF by the larger edge.
+ */
+static void test_rectangular_texture_state(void)
+{
+    struct v9x_m64_texture_state state;
+    v9x_u32 offsets[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 written = 99ul;
+    v9x_u32 level;
+
+    memset(&state, 0, sizeof(state));
+    state.color.vram_bytes = 4ul * 1024ul * 1024ul;
+    state.color.target_offset = 0x00200100ul;
+    state.color.target_pitch_bytes = 128ul;
+    state.color.target_width = 64ul;
+    state.color.target_height = 28ul;
+    state.color.scissor_right = 64ul;
+    state.color.scissor_bottom = 28ul;
+    state.texture_offset = 0x00210000ul;
+
+    /* Tall: 32 wide, 64 high, rows of 64 bytes. */
+    state.texture_width = 32ul;
+    state.texture_height = 64ul;
+    state.texture_pitch_bytes = 64ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[15] == 0x00000665ul);
+    CHECK(offsets[18] == V9X_M64_TEX_0_OFF + 6ul * 4ul);
+    /* The larger edge's rows are not this texture's. */
+    state.texture_pitch_bytes = 128ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Wide 64x16, a chain to 1x1: 64x16 32x8 16x4 8x2 4x1 2x1 1x1, each
+     * level on its own TEX_n_OFF from TEX_6 down. */
+    state.texture_width = 64ul;
+    state.texture_height = 16ul;
+    state.texture_pitch_bytes = 128ul;
+    state.level_count = 7ul;
+    for (level = 0ul; level < 7ul; ++level) {
+        state.level_offsets[level] = 0x00210000ul + level * 0x1000ul;
+    }
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[15] == 0x00000466ul);
+    CHECK(written == V9X_M64_TEXTURED_STATE_DWORDS + 6ul);
+    for (level = 0ul; level < 7ul; ++level) {
+        CHECK(offsets[18ul + level] ==
+              V9X_M64_TEX_0_OFF + (6ul - level) * 4ul);
+        CHECK(values[18ul + level] == 0x00210000ul + level * 0x1000ul);
+    }
+    /* One level more than the larger edge allows. */
+    state.level_count = 8ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INVALID_ARGUMENT);
+    /* A level is sized by its own edges: the 32x8 level (512 bytes) fits
+     * in the last 512 bytes of VRAM, where a 32x32 one would not. */
+    state.level_count = 2ul;
+    state.level_offsets[1] = state.color.vram_bytes - 512ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    state.level_offsets[1] = state.color.vram_bytes - 448ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_DRAW_STATE_DWORDS,
+              &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 static void test_2d_mode_builder(void)
 {
     v9x_u32 offsets[4];
@@ -1083,5 +1159,6 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_offsets_match_diagnostic();
     test_2d_mode_builder();
     test_mip_texture_state();
+    test_rectangular_texture_state();
     return failures;
 }

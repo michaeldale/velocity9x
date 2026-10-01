@@ -923,6 +923,7 @@ v9x_status v9x_m64_build_texture_state(
     v9x_u32 levels;
     v9x_u32 level;
     v9x_u32 level_edge;
+    v9x_u32 level_height;
     v9x_u32 level_bytes;
     v9x_status status;
     if (written != 0) *written = 0ul;
@@ -961,8 +962,13 @@ v9x_status v9x_m64_build_texture_state(
         *written = 0ul;
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    expected_pitch = state->texture_width > state->texture_height
-        ? state->texture_width * 2ul : state->texture_height * 2ul;
+    /* Rows of the texture's own width. Until 2026-10-01 this was the larger
+     * edge, which only a square or wide texture distinguishes from nothing;
+     * TEX_SIZE_PITCH's low field is the width's log2 (as Mesa's mach64
+     * driver writes it), and a DirectDraw texture's rows are its width. The
+     * texture-shape probe (tools\diag\texshape_probe_win32.c) samples tall
+     * textures to tell the two apart. */
+    expected_pitch = state->texture_width * 2ul;
     if (state->texture_pitch_bytes != expected_pitch) {
         *written = 0ul;
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -992,25 +998,33 @@ v9x_status v9x_m64_build_texture_state(
     max_log2 = width_log2 > height_log2 ? width_log2 : height_log2;
 
     /*
-     * A mip chain: square, at most one level per halving, level 0 the
-     * texture above, and every other level on the base alignment inside VRAM at
-     * edge*2 bytes a row. Each TEX_n_OFF names the level whose edge is
-     * 2^n, so the chain takes every register from TEX_<max_log2>_OFF down
+     * A mip chain: at most one level per halving of the larger edge, level
+     * 0 the texture above, and every other level on the base alignment
+     * inside VRAM at its width*2 bytes a row. Each TEX_n_OFF names the
+     * level whose larger edge is 2^n, so the chain takes every register from TEX_<max_log2>_OFF down
      * to TEX_0_OFF, and a chain that stops early lends its smallest level
      * to the sizes below it.
      */
     levels = state->level_count > 1ul ? state->level_count : 1ul;
     if (levels > 1ul) {
-        if (state->texture_width != state->texture_height ||
-            levels > max_log2 + 1ul ||
+        if (levels > max_log2 + 1ul ||
             capacity < V9X_M64_TEXTURED_STATE_DWORDS + max_log2 ||
             state->level_offsets[0] != state->texture_offset) {
             *written = 0ul;
             return V9X_STATUS_INVALID_ARGUMENT;
         }
         for (level = 1ul; level < levels; ++level) {
+            /* Each edge halves to one texel on its own, so a rectangle's
+             * levels run to 1x1 with the larger edge naming the register. */
             level_edge = state->texture_width >> level;
-            level_bytes = level_edge * 2ul * level_edge;
+            level_height = state->texture_height >> level;
+            if (level_edge == 0ul) {
+                level_edge = 1ul;
+            }
+            if (level_height == 0ul) {
+                level_height = 1ul;
+            }
+            level_bytes = level_edge * 2ul * level_height;
             if ((state->level_offsets[level] &
                  (V9X_M64_TEXTURE_BASE_ALIGN - 1ul)) != 0ul) {
                 *written = 0ul;

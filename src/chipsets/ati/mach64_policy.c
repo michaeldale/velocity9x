@@ -44,12 +44,13 @@
 #define M64_TEXOP_COPY       7ul
 #define M64_BLEND_SRCALPHASAT 11ul
 
-/* Square power-of-two textures from 8 to 256 texels.  The Phase 4 scenes
- * bound only 8x8; the HAL probe's halves scene samples every size in the
- * range through the HAL (docs/probe/ati-rage-mobility-m-hal-d3d-*).  The
- * size and pitch encoding is a log2 field and the builder takes up to 1024,
- * but nothing above 256 has been drawn; raise the maximum only with a scene
- * that samples the larger texture.  Non-square textures are unmeasured. */
+/* Power-of-two edges from 8 to 256 texels, each on its own.  The Phase 4
+ * scenes bound only 8x8; the HAL probe's halves scene samples every square
+ * size in the range through the HAL (docs/probe/ati-rage-mobility-m-hal-d3d-*),
+ * and the texture-shape probe samples rectangles, single levels and chains
+ * (2026-10-01).  The size and pitch encoding is a log2 field and the builder
+ * takes up to 1024, but nothing above 256 has been drawn; raise the maximum
+ * only with a scene that samples the larger texture. */
 #define M64_TEXTURE_EDGE_MIN 8ul
 #define M64_TEXTURE_EDGE_MAX 256ul
 
@@ -118,6 +119,13 @@ static int v9x_m64_policy_fragment_alpha_read(
             v9x_m64_policy_factor_reads_alpha(request->dst_blend));
 }
 
+/* One edge of a texture the engine may sample: a power of two in range. */
+static int v9x_m64_policy_edge(v9x_u32 edge)
+{
+    return edge >= M64_TEXTURE_EDGE_MIN && edge <= M64_TEXTURE_EDGE_MAX &&
+           (edge & (edge - 1ul)) == 0ul;
+}
+
 static int v9x_m64_policy_format_has_alpha(v9x_u32 format)
 {
     return format == V9X_M64_TEXTURE_FORMAT_ARGB1555 ||
@@ -134,16 +142,18 @@ static v9x_u32 v9x_m64_policy_texture(
         !v9x_m64_policy_format_has_alpha(request->texture_format)) {
         return V9X_M64_REFUSE_TEXTURE_FORMAT;
     }
-    if (request->texture_width != request->texture_height ||
-        request->texture_width < M64_TEXTURE_EDGE_MIN ||
-        request->texture_width > M64_TEXTURE_EDGE_MAX ||
-        (request->texture_width & (request->texture_width - 1ul)) != 0ul) {
+    if (!v9x_m64_policy_edge(request->texture_width) ||
+        !v9x_m64_policy_edge(request->texture_height)) {
         return V9X_M64_REFUSE_TEXTURE_SHAPE;
     }
-    /* One level per halving at most: an 8x8 chain is 8, 4, 2, 1. */
+    /* One level per halving of the larger edge at most: an 8x8 chain is
+     * 8, 4, 2, 1, and a 64x16 one runs 64x16 to 1x1 in seven. */
     if (request->texture_levels == 0ul ||
-        request->texture_levels > v9x_m64_policy_log2(request->texture_width)
-                                  + 1ul) {
+        request->texture_levels >
+            v9x_m64_policy_log2(request->texture_width >
+                                    request->texture_height
+                                ? request->texture_width
+                                : request->texture_height) + 1ul) {
         return V9X_M64_REFUSE_TEXTURE_MIP;
     }
 

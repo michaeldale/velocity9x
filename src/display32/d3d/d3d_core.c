@@ -317,6 +317,7 @@ static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
     draw->texture.levels = 0;
     draw->texture.level_count = 0ul;
     draw->explicit_state = 0ul;
+    draw->vertex_alpha_opaque = 0ul;
     raw.z_enable = context->z_enable;
     raw.z_write = context->z_write;
     raw.z_func = context->z_func;
@@ -3479,9 +3480,10 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
      * two, 4 to 512, in ARGB1555 or ARGB4444 only - the S3D samples no
      * 565, so its formats say so and the ICD stores RGB images as 1555
      * with alpha one (v9x_d3d_virge_texture_bindable). The Mach64 takes
-     * what its policy accepts: square powers of two, 8 to 256, in all
-     * three formats, placed by the HAL (v9x_d3d_mach64_create_surface);
-     * the ICD squares anything else. The software engine reads CPU
+     * what its policy accepts: power-of-two edges, 8 to 256 each, square or
+     * not (2026-10-01), in all three formats, placed by the HAL
+     * (v9x_d3d_mach64_create_surface); the ICD squares only an edge under
+     * 8. The software engine reads CPU
      * levels. */
     out->hw_texture_size_max = 0ul;
     out->hw_texture_shape = 0ul;
@@ -3498,8 +3500,7 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_mach64) {
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
-        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
-                                V9X_R3D_ABI_HWTEX_POW2;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
     }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {

@@ -54,8 +54,8 @@ static v9x_u32 v9x_d3d_mach64_setup_counts[V9X_D3D_MACH64_MAX_TRIANGLES];
  * What the hardware can take, from the builders' own limits and the
  * measured boundary: DST_OFF_PITCH's pitch is eight-pixel units up to 1023
  * of them, so pitches are 16-byte aligned; 1024 is the widest mode the
- * Gateway's panel was driven at; and textures are the square powers of two
- * from 8 to 256 the policy accepts, bound on V9X_M64_TEXTURE_BASE_ALIGN,
+ * Gateway's panel was driven at; and textures have power-of-two edges
+ * from 8 to 256, as the policy accepts, bound on V9X_M64_TEXTURE_BASE_ALIGN,
  * each mip level packed after the one before.
  * The core clips, so the setup engine sees only on-target coordinates.
  */
@@ -295,6 +295,7 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
 {
     const V9X_DD_SURFACE_LCL *level = top;
     DWORD width = (DWORD)top->lpGbl->wWidth;
+    DWORD height = (DWORD)top->lpGbl->wHeight;
     DWORD count = 1ul;
 
     /* Counted in the shared mip-chain fields, which V9XTRACE reports: a
@@ -313,6 +314,7 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
             (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
         const V9X_DD_SURFACE_LCL *next = 0;
         DWORD edge = width >> count;
+        DWORD rows = height >> count;
         DWORD offset;
 
         while (node != 0) {
@@ -323,11 +325,18 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
             }
             node = node->next;
         }
-        if (next == 0 || next->lpGbl == 0 || edge == 0ul) {
+        if (next == 0 || next->lpGbl == 0 || (edge == 0ul && rows == 0ul)) {
             break;
         }
+        /* A rectangle's edges halve to one texel each on their own. */
+        if (edge == 0ul) {
+            edge = 1ul;
+        }
+        if (rows == 0ul) {
+            rows = 1ul;
+        }
         if ((DWORD)next->lpGbl->wWidth != edge ||
-            (DWORD)next->lpGbl->wHeight != edge ||
+            (DWORD)next->lpGbl->wHeight != rows ||
             (DWORD)next->lpGbl->lPitch != edge * 2ul) {
             ++v9x_hal->d3d_diagnostics.mip_gap_shape;
             v9x_hal->d3d_diagnostics.mip_chain_delta =
@@ -655,6 +664,9 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
  * refused at draw time exactly as before. Placements count in the generic
  * texture_placed and texture_placed_bytes.
  *
+ * Rectangles as well as squares since 2026-10-01: a row is the width, and a
+ * chain's levels halve each edge to one texel on its own.
+ *
  * A mip chain created in one call - DirectDraw's list, top first - is
  * placed in one block: level n at edge >> n, edge*2 bytes a row, each level
  * packed after the one before on the same alignment: at 4 KiB a level each,
@@ -663,7 +675,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
  * mip scenes measure (struct v9x_m64_texture_state).
  */
 static DWORD v9x_d3d_mach64_create_chain(V9X_DDHAL_CREATESURFACEDATA *data,
-                                         DWORD width)
+                                         DWORD width, DWORD height)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     v9x_u32 offsets[V9X_M64_TEXTURE_LEVELS_MAX];
@@ -679,17 +691,27 @@ static DWORD v9x_d3d_mach64_create_chain(V9X_DDHAL_CREATESURFACEDATA *data,
     for (level = 0ul; level < data->dwSCnt; ++level) {
         const V9X_DD_SURFACE_LCL *surface = list[level];
         DWORD edge = width >> level;
+        DWORD rows = height >> level;
 
-        if (surface == 0 || surface->lpGbl == 0 || edge == 0ul ||
+        if (edge == 0ul && rows == 0ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        if (edge == 0ul) {
+            edge = 1ul;
+        }
+        if (rows == 0ul) {
+            rows = 1ul;
+        }
+        if (surface == 0 || surface->lpGbl == 0 ||
             (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul ||
             (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
             (DWORD)surface->lpGbl->wWidth != edge ||
-            (DWORD)surface->lpGbl->wHeight != edge) {
+            (DWORD)surface->lpGbl->wHeight != rows) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         offsets[level] = (bytes + align - 1ul) & ~(align - 1ul);
         pitches[level] = edge * 2ul;
-        bytes = offsets[level] + pitches[level] * edge;
+        bytes = offsets[level] + pitches[level] * rows;
     }
     if (v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
                             &base) != 0ul) {
@@ -699,6 +721,14 @@ static DWORD v9x_d3d_mach64_create_chain(V9X_DDHAL_CREATESURFACEDATA *data,
     v9x_hal->d3d_diagnostics.texture_placed_bytes += bytes;
     data->ddRVal = V9X_DD_OK;
     return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/* One edge of a texture the policy accepts: a power of two in range. */
+static int v9x_d3d_mach64_texture_edge(DWORD edge)
+{
+    return (edge & (edge - 1ul)) == 0ul &&
+           edge >= v9x_d3d_mach64_limits.texture_size_min &&
+           edge <= v9x_d3d_mach64_limits.texture_size_max;
 }
 
 static DWORD v9x_d3d_mach64_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
@@ -726,14 +756,13 @@ static DWORD v9x_d3d_mach64_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     }
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
-    if (width != height || (width & (width - 1ul)) != 0ul ||
-        width < v9x_d3d_mach64_limits.texture_size_min ||
-        width > v9x_d3d_mach64_limits.texture_size_max ||
+    if (!v9x_d3d_mach64_texture_edge(width) ||
+        !v9x_d3d_mach64_texture_edge(height) ||
         !v9x_d3d_mach64_texture_format(surface, &format)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     if (data->dwSCnt > 1ul) {
-        return v9x_d3d_mach64_create_chain(data, width);
+        return v9x_d3d_mach64_create_chain(data, width, height);
     }
 
     pitch = width * 2ul;
