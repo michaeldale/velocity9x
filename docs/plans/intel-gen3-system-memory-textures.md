@@ -33,6 +33,14 @@ room - 65,536 entries for the 256 MiB GMADR, of which the VBIOS points
 1,983 at stolen memory and the other 63,553 at one scratch page
 ([GTT inventory](../decisions/2026-09-12-intel-phase2-gtt-inventory.md)).
 
+**Phase 0, first result (2026-10-02, `ss3`):** with per-reason counters,
+the batches drawn by the CPU are overwhelmingly textures over the Gen3
+path's 256 ceiling (649 a ten seconds against 4 for memory), and their
+draws are 73.7% of wall time
+([record](../decisions/2026-10-02-serious-sam-netbook-profile.md)). The
+ceiling is a memory argument, not a measurement; raising it comes before
+this pool, and will make memory the limit sooner.
+
 ## What is proposed
 
 A **texture pool**: N MiB of locked system RAM, its pages written into GTT

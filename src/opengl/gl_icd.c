@@ -216,7 +216,28 @@ static long v9x_gl_tsc_to_long(double value);
 #define V9X_GL_TSC_PREP_TEXTURE    13u
 #define V9X_GL_TSC_PREP_STATE      14u
 #define V9X_GL_TSC_PREP_SAME       15u
-#define V9X_GL_TSC_BUCKETS         16u
+/* The hardware copy (create, evict, upload) and render-interface draws
+ * whose texture went to the CPU instead (2026-10-02, Serious Sam). */
+#define V9X_GL_TSC_HWTEX           16u
+#define V9X_GL_TSC_IFACE_CPU       17u
+#define V9X_GL_TSC_BUCKETS         18u
+
+/* Why v9x_gl_hw_texture answered no, counted per call (2026-10-02) and
+ * logged as the hwno line: the batch is then drawn from its CPU copy. */
+#define V9X_GL_HWNO_NOT_CPU      0u   /* no CPU image, or no hw textures */
+#define V9X_GL_HWNO_SQUARE_SIDE  1u   /* no square copy fits the limits  */
+#define V9X_GL_HWNO_TOO_BIG      2u   /* past hw_texture_size_max        */
+#define V9X_GL_HWNO_FORMAT       3u   /* a format the engine cannot take */
+#define V9X_GL_HWNO_NO_OBJECT    4u
+#define V9X_GL_HWNO_NO_RECORD    5u   /* HeapAlloc of the record failed  */
+#define V9X_GL_HWNO_TABLE_FULL   6u   /* V9X_GL_HWTEX_MAX live records   */
+#define V9X_GL_HWNO_UNUSABLE     7u   /* an earlier upload failed        */
+#define V9X_GL_HWNO_BACKOFF      8u   /* waiting V9X_GL_HWTEX_RETRY uses */
+#define V9X_GL_HWNO_MAKE_FAILED  9u   /* no surface even after evicting  */
+#define V9X_GL_HWNO_SQUARE_ALLOC 10u
+#define V9X_GL_HWNO_UPLOAD       11u
+#define V9X_GL_HWNO_COUNT        12u
+static DWORD v9x_gl_hwno[V9X_GL_HWNO_COUNT];
 static DWORD v9x_gl_count_sinks;
 static DWORD v9x_gl_tsc_state;  /* 0 unknown, 1 usable, 2 absent */
 static DWORD v9x_gl_tsc[V9X_GL_TSC_BUCKETS * 2u];
@@ -359,6 +380,20 @@ static void v9x_gl_tsc_log(DWORD interval_ms, DWORD swaps)
               v9x_gl_tsc_ms(V9X_GL_TSC_PREP_STATE, wall, interval_ms),
               v9x_gl_tsc_ms(V9X_GL_TSC_PREP_SAME, wall, interval_ms));
     v9x_gl_log(text);
+    wsprintfA(text, "hwno hwtex-ms=%lu iface-cpu-ms=%lu not-cpu=%lu "
+              "square-side=%lu too-big=%lu format=%lu no-object=%lu "
+              "no-record=%lu table-full=%lu unusable=%lu backoff=%lu "
+              "make-failed=%lu square-alloc=%lu upload=%lu",
+              v9x_gl_tsc_ms(V9X_GL_TSC_HWTEX, wall, interval_ms),
+              v9x_gl_tsc_ms(V9X_GL_TSC_IFACE_CPU, wall, interval_ms),
+              v9x_gl_hwno[0], v9x_gl_hwno[1], v9x_gl_hwno[2],
+              v9x_gl_hwno[3], v9x_gl_hwno[4], v9x_gl_hwno[5],
+              v9x_gl_hwno[6], v9x_gl_hwno[7], v9x_gl_hwno[8],
+              v9x_gl_hwno[9], v9x_gl_hwno[10], v9x_gl_hwno[11]);
+    v9x_gl_log(text);
+    for (i = 0u; i < V9X_GL_HWNO_COUNT; ++i) {
+        v9x_gl_hwno[i] = 0ul;
+    }
     wsprintfA(text, "prim transform-ms=%lu inside-ms=%lu window-ms=%lu "
               "assemble-ms=%lu history-ms=%lu fast=%lu clipped=%lu "
               "culled=%lu",
@@ -1131,6 +1166,12 @@ typedef struct v9x_gl_hwtex {
 } V9X_GL_HWTEX;
 
 #define V9X_GL_HWTEX_MAX      2048u
+
+static int v9x_gl_hw_no(unsigned int reason)
+{
+    ++v9x_gl_hwno[reason];
+    return 0;
+}
 #define V9X_GL_HWTEX_RETRY    256ul
 #define V9X_GL_HWTEX_EVICT_MAX 64u
 
@@ -1304,7 +1345,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     *scale_t = 1.0f;
     if (texture->storage != V9X_R3D_ABI_TEXTURE_CPU ||
         description->hw_texture_size_max == 0ul) {
-        return 0;
+        return v9x_gl_hw_no(V9X_GL_HWNO_NOT_CPU);
     }
     width = texture->levels[0].width;
     height = texture->levels[0].height;
@@ -1322,7 +1363,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
                                       description->hw_texture_size_min,
                                       description->hw_texture_size_max);
         if (side == 0ul) {
-            return 0;
+            return v9x_gl_hw_no(V9X_GL_HWNO_SQUARE_SIDE);
         }
         /* A chain runs to 1x1, so the square one has log2(side) + 1. */
         if (levels > 1ul) {
@@ -1333,7 +1374,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         }
     } else if (width > description->hw_texture_size_max ||
                height > description->hw_texture_size_max) {
-        return 0;
+        return v9x_gl_hw_no(V9X_GL_HWNO_TOO_BIG);
     }
     /* The layout the engine samples: the image's own, or for an RGB image
      * on an engine without 565 (the ViRGE), 1555 with alpha one. */
@@ -1343,7 +1384,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         if (hw_format != V9X_R3D_ABI_FORMAT_RGB565 ||
             (description->texture_formats &
              (1ul << V9X_R3D_ABI_FORMAT_ARGB1555)) == 0ul) {
-            return 0;
+            return v9x_gl_hw_no(V9X_GL_HWNO_FORMAT);
         }
         hw_format = V9X_R3D_ABI_FORMAT_ARGB1555;
         to_1555 = 1;
@@ -1353,7 +1394,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
 
     object = v9x_gl_tex_object(&context->textures, name);
     if (object == 0) {
-        return 0;
+        return v9x_gl_hw_no(V9X_GL_HWNO_NO_OBJECT);
     }
     hw = (V9X_GL_HWTEX *)object->hw;
     if (hw != 0 && (hw->width != side || hw->height != (squared ? side
@@ -1369,11 +1410,11 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         hw = (V9X_GL_HWTEX *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
                                        sizeof(V9X_GL_HWTEX));
         if (hw == 0) {
-            return 0;
+            return v9x_gl_hw_no(V9X_GL_HWNO_NO_RECORD);
         }
         if (v9x_gl_hwtex_count >= V9X_GL_HWTEX_MAX) {
             HeapFree(GetProcessHeap(), 0, hw);
-            return 0;
+            return v9x_gl_hw_no(V9X_GL_HWNO_TABLE_FULL);
         }
         hw->width = side;
         hw->height = squared ? side : height;
@@ -1387,11 +1428,14 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     }
     ++v9x_gl_hwtex_clock;
     if (hw->unusable) {
-        return 0;
+        return v9x_gl_hw_no(V9X_GL_HWNO_UNUSABLE);
     }
     if (hw->surface == 0) {
-        if (v9x_gl_hwtex_clock < hw->retry_at || !v9x_gl_hwtex_make(hw)) {
-            return 0;
+        if (v9x_gl_hwtex_clock < hw->retry_at) {
+            return v9x_gl_hw_no(V9X_GL_HWNO_BACKOFF);
+        }
+        if (!v9x_gl_hwtex_make(hw)) {
+            return v9x_gl_hw_no(V9X_GL_HWNO_MAKE_FAILED);
         }
     }
     hw->last_used = v9x_gl_hwtex_clock;
@@ -1401,7 +1445,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
             squared_storage = v9x_gl_hwtex_square(texture, side, levels,
                                                   clamp, squared_levels);
             if (squared_storage == 0) {
-                return 0;
+                return v9x_gl_hw_no(V9X_GL_HWNO_SQUARE_ALLOC);
             }
             upload_levels = squared_levels;
         }
@@ -1416,7 +1460,7 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
             v9x_gl_hwtex_release(hw->surface);
             hw->surface = 0;
             hw->unusable = 1;
-            return 0;
+            return v9x_gl_hw_no(V9X_GL_HWNO_UPLOAD);
         }
         hw->revision = object->revision;
         hw->filled = 1;
@@ -1712,9 +1756,11 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         path = draw.texture.levels[0].width != draw.texture.levels[0].height
             ? V9X_GL_PATH_CPU_NONSQUARE : V9X_GL_PATH_CPU_TEXTURE;
     }
+    draw_start = v9x_gl_tsc_begin();
     hardware = v9x_gl_hw_texture(context, pending->texture_name,
                                  pending->alpha_used, &draw.texture,
                                  &scale_s, &scale_t);
+    v9x_gl_tsc_end(V9X_GL_TSC_HWTEX, draw_start);
     if (hardware) {
         path = V9X_GL_PATH_HW_TEXTURE;
         if (scale_s != 1.0f || scale_t != 1.0f) {
@@ -1742,6 +1788,9 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     draw_start = v9x_gl_tsc_begin();
     result = iface->draw(&draw, outcome);
     v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
+    if (!hardware && draw.texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+        v9x_gl_tsc_end(V9X_GL_TSC_IFACE_CPU, draw_start);
+    }
         ++v9x_gl_count_draws;
     if (result == V9X_R3D_RESULT_UNSUPPORTED && hardware) {
         /* Refused before anything was emitted: the same batch with the CPU
