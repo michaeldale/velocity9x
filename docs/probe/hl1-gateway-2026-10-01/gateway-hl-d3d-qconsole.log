@@ -1,0 +1,24 @@
+Using secondary sound buffer
+WON initialized.
+Server module initialized.
+World module initialized.
+]echo V9X_GWD3D_RUN1
+V9X_GWD3D_RUN1 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 33.147 seconds 11.856 fps
+No demos listed with startdemos
+]echo V9X_GWD3D_RUN2
+V9X_GWD3D_RUN2 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 30.078 seconds 13.066 fps
+]echo V9X_GWD3D_RUN3
+V9X_GWD3D_RUN3 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 30.647 seconds 12.824 fps
