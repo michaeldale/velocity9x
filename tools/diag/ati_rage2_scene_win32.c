@@ -2866,6 +2866,81 @@ static void atirx_prefix(char *prefix, const char *name)
     lstrcatA(prefix, "_");
 }
 
+/* ---- A read-only picture of VRAM -------------------------------------- */
+
+/*
+ * /vramdump: the whole 4 MiB aperture to C:\V9XDIAG\VRAM.BIN, and the CRTC
+ * registers beside it in ATIRX.TXT. Reads only, and taken before the
+ * engine initialisation every other mode does, so it can run while a
+ * Direct3D application is drawing and show what the engine left in the
+ * back, front and Z buffers - which the agent's screenshots, reading the
+ * GDI primary, cannot.
+ */
+#define ATIRX_VRAM_BYTES  0x00400000ul
+#define ATIRX_DUMP_CHUNK  0x00010000ul
+
+static BYTE atirx_dump_buffer[ATIRX_DUMP_CHUNK];
+
+static int atirx_run_vramdump(void)
+{
+    HANDLE file;
+    DWORD at;
+    DWORD written;
+    DWORD index;
+    const volatile BYTE *source = (const volatile BYTE *)atirx_fb;
+
+    atirx_key("SceneSet", "vramdump");
+    atirx_key_hex("CrtcOffPitch", atirx_read(0, 0x414u));
+    atirx_key_hex("CrtcVTotalDisp", atirx_read(0, 0x408u));
+    atirx_key_hex("CrtcHTotalDisp", atirx_read(0, 0x400u));
+    atirx_key_hex("GuiStat", atirx_read(0, V9X_M64_GUI_STAT));
+    /* The 3D state an application's last batch left, read back as Phase
+     * 3's /regs did. Never 0x520 (DST_BRES_LNTH), the trigger. */
+    {
+        static const DWORD state_regs[] = {
+            0x500u, 0x50cu, 0x524u, 0x528u, 0x52cu, 0x530u, 0x538u, 0x53cu,
+            0x540u, 0x548u, 0x54cu, 0x5b4u, 0x5fcu, 0x6a8u, 0x6b4u, 0x6c0u,
+            0x6c4u, 0x6c8u, 0x6d0u, 0x6d4u, 0x6d8u, 0x708u, 0x730u, 0x770u,
+            0x5c0u, 0x5c4u, 0x5c8u, 0x5ccu, 0x5d0u, 0x5d4u, 0x5d8u, 0x5dcu,
+            0x5e0u, 0x5e4u, 0x5e8u,
+            0x740u, 0x744u, 0x748u, 0x74cu, 0x750u, 0x754u, 0x758u, 0x75cu,
+            0x760u, 0x764u, 0x768u, 0x76cu,
+            0x7c0u, 0x7c4u, 0x7c8u, 0x7ccu, 0x7d0u, 0x7d4u, 0x7d8u, 0x7dcu,
+            0x7e0u, 0x7e4u, 0x7e8u, 0x7ecu, 0x7f0u, 0x7f4u, 0x7f8u
+        };
+        char name[16];
+        UINT reg;
+
+        for (reg = 0u; reg < sizeof(state_regs) / sizeof(state_regs[0]);
+             ++reg) {
+            lstrcpyA(name, "Reg");
+            atirx_hex(name + 3, state_regs[reg], 3);
+            atirx_key_hex(name, atirx_read(0, state_regs[reg]));
+        }
+    }
+    atirx_flush();
+    file = CreateFileA("C:\\V9XDIAG\\VRAM.BIN", GENERIC_WRITE, 0, 0,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        atirx_key("Result", "VRAMDUMP-OPEN");
+        return 0;
+    }
+    for (at = 0ul; at < ATIRX_VRAM_BYTES; at += ATIRX_DUMP_CHUNK) {
+        for (index = 0ul; index < ATIRX_DUMP_CHUNK; ++index) {
+            atirx_dump_buffer[index] = source[at + index];
+        }
+        if (!WriteFile(file, atirx_dump_buffer, ATIRX_DUMP_CHUNK, &written,
+                       0) || written != ATIRX_DUMP_CHUNK) {
+            CloseHandle(file);
+            atirx_key("Result", "VRAMDUMP-WRITE");
+            return 0;
+        }
+    }
+    CloseHandle(file);
+    atirx_key("Result", "VRAMDUMP-OK");
+    return 1;
+}
+
 void WINAPI V9xAtiRage2SceneEntry(void)
 {
     struct atirx_map map;
@@ -2943,6 +3018,14 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     }
     atirx_mmio = (volatile BYTE *)map.mmio_linear;
     atirx_fb = (volatile WORD *)map.fb_linear;
+    /* Before the engine is touched: /vramdump may run under an
+     * application that is using it. */
+    if (atirx_has_switch(GetCommandLineA(), "/vramdump")) {
+        int completed = atirx_run_vramdump();
+
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
 
     io.context = 0;
     io.read = atirx_read;

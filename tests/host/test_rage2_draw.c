@@ -270,8 +270,8 @@ static void test_state(void)
     CHECK(offsets[0] == V9X_M64_SCALE_3D_CNTL && values[0] == d.scale_3d_cntl);
     for (index = 0ul; index < written; ++index) {
         if (offsets[index] == V9X_M64_Z_CNTL) {
-            /* Z_EN, LESSEQUAL (test 3), write. */
-            CHECK(values[index] == 0x00000131ul);
+            /* Z_EN, LESSEQUAL (the chip's test 2), write. */
+            CHECK(values[index] == 0x00000121ul);
             saw_z = 1;
         }
         if (offsets[index] == V9X_R2_TEX_SIZE_PITCH) {
@@ -286,6 +286,31 @@ static void test_state(void)
         }
     }
     CHECK(saw_z && saw_tex);
+    /* Every Direct3D compare onto Z_TEST's own order (Phase 3's bands:
+     * never, <, <=, ==, >=, >, !=, always). */
+    {
+        static const v9x_u32 want[9] = { 0ul, 0ul, 1ul, 3ul, 2ul, 5ul, 6ul,
+                                         4ul, 7ul };
+        v9x_u32 func;
+
+        for (func = 1ul; func <= 8ul; ++func) {
+            v9x_u32 z_cntl = 0xfffffffful;
+
+            s.depth_func = func;
+            s.depth_write = 0ul;
+            CHECK(v9x_r2_build_draw_state(&s, &d, offsets, values,
+                                          V9X_R2_DRAW_STATE_DWORDS,
+                                          &written) == V9X_STATUS_OK);
+            for (index = 0ul; index < written; ++index) {
+                if (offsets[index] == V9X_M64_Z_CNTL) {
+                    z_cntl = values[index];
+                }
+            }
+            CHECK(z_cntl == (0x1ul | (want[func] << 4)));
+        }
+        s.depth_func = 4ul;
+        s.depth_write = 1ul;
+    }
     CHECK(offsets[written - 1ul] == V9X_M64_DP_FRGD_CLR &&
           values[written - 1ul] == 0x00804020ul);
     /* A Z buffer past VRAM is refused. */

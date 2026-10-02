@@ -338,6 +338,24 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
 
 /* ---- State -------------------------------------------------------------- */
 
+/*
+ * Direct3D's compare to Z_TEST. The orders differ: Direct3D numbers never,
+ * less, equal, lessequal, greater, notequal, greaterequal, always (1-8);
+ * the chip never, <, <=, ==, >=, >, !=, always (0-7), as Phase 3's band
+ * scenes measured (Z5LessEqual drew with 2, Z6Equal with 3). Mapping by
+ * func - 1 agreed only for never, less, greater, notequal and always, so
+ * V9XDDP's LESS and ALWAYS scenes passed while every LESSEQUAL draw -
+ * Final Reality's, 3DMark's - became EQUAL against a cleared buffer and
+ * drew nothing (A8U4I5 boot 142, Z_CNTL read back 0x31).
+ */
+static v9x_u32 r2_z_test(v9x_u32 func)
+{
+    static const v9x_u32 test[9] = { 0ul, 0ul, 1ul, 3ul, 2ul, 5ul, 6ul,
+                                     4ul, 7ul };
+
+    return func <= R2_CMP_ALWAYS ? test[func] : 0ul;
+}
+
 static v9x_u32 r2_off_pitch(v9x_u32 pitch_bytes, v9x_u32 offset)
 {
     return (((pitch_bytes >> 1) >> 3) << 22) | (offset >> 3);
@@ -422,7 +440,7 @@ v9x_status v9x_r2_build_draw_state(const struct v9x_r2_draw_state *state,
                                     state->depth_offset);
         offsets[at] = V9X_M64_Z_CNTL;
         values[at++] = V9X_R2_Z_EN |
-                       ((state->depth_func - 1ul) << V9X_R2_Z_TEST_SHIFT) |
+                       (r2_z_test(state->depth_func) << V9X_R2_Z_TEST_SHIFT) |
                        (state->depth_write != 0ul ? V9X_R2_Z_WRITE : 0ul);
     } else {
         offsets[at] = V9X_M64_Z_CNTL;
