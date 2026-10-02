@@ -31,6 +31,15 @@ optionally with `/block1`. It publishes `C:\V9XDIAG\ATIIC.TXT` and the 64 KiB
 shadow at C0000h as `C:\V9XDIAG\ATIIC.ROM`. See
 [2026-10-02 Rage IIC register survey](../../docs/decisions/2026-10-02-rage-iic-register-survey.md).
 
+`ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's
+Phase 2 engine scenes ([plan](../../docs/plans/ati-rage-iic-hardware-3d.md)).
+Build them with `scripts/build-ati-rage2-scene.ps1`, and run `ATIRX.EXE`
+beside `ATIRX.VXD`. The VxD only maps the identity-checked register window
+and the aperture. The EXE writes the engine through the host-tested
+builders it compiles in, logging each batch to `C:\V9XDIAG\ATIRX.TXT`
+before executing it. Unlike the other ATI tools it **writes the engine**,
+off-screen at VRAM 2 MiB inside guards.
+
 Removed on 2026-09-12, recoverable from git history: `dos_box_test_win32.c`,
 `io_trace_win32.c`, `matrox_mmio_query.asm` and their six build scripts. No
 document referenced them.

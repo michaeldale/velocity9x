@@ -39,6 +39,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\mach64_policy.c',
         # Mach64 draw state and setup packets built on the proven builders.
         'src\chipsets\ati\mach64_draw.c',
+        # Rage II (264GT2C) trapezoid register encoding: no setup engine.
+        'src\chipsets\ati\rage2_trap.c',
         'tests\host\test_pe_export.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
@@ -136,6 +138,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_mach64_engine.c',
         'tests\host\test_mach64_policy.c',
         'tests\host\test_mach64_draw.c',
+        'tests\host\test_rage2_trap.c',
         'tests\host\test_main.c'
     )
 
