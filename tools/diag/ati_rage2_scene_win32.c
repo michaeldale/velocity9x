@@ -32,6 +32,10 @@
 /* The pure builders, linked by inclusion like the host tests' fixtures. */
 #include "../../src/chipsets/ati/mach64_engine.c"
 #include "../../src/chipsets/ati/rage2_trap.c"
+#include "../../src/chipsets/ati/rage2_setup.c"
+/* The host test's reference rasteriser: the card is judged by the same
+ * function as the model. */
+#include "../../tests/host/rage2_reference.c"
 
 typedef DWORD CONFIGRET;
 typedef DWORD DEVINST;
@@ -646,6 +650,218 @@ static const struct atirx_scene atirx_scenes_3[] = {
         ATIRX_CNTL_BASE } }
 };
 
+/* ---- Phase 3: triangles through rage2_setup.c -------------------------- */
+
+#define ATIRX_P(n) ((v9x_s32)(n) * V9X_R2_SUBPIXEL)
+#define ATIRX_TRI_RANDOM 64u
+#define ATIRX_TRI_LO     ATIRX_P(ATIRX_SCISSOR_LO)
+#define ATIRX_TRI_SPAN   ((ATIRX_SCISSOR_HI + 1ul - ATIRX_SCISSOR_LO) * 16ul)
+
+/* Named triangles, all inside the scissor (pixels 8..55), in 1/16 pixel.
+ * The same shapes as the host test's, moved into the scissor. */
+static const v9x_s32 atirx_named[][6] = {
+    { ATIRX_P(10), ATIRX_P(10), ATIRX_P(40), ATIRX_P(12), ATIRX_P(20), ATIRX_P(40) },
+    { ATIRX_P(10), ATIRX_P(10), ATIRX_P(20), ATIRX_P(40), ATIRX_P(40), ATIRX_P(12) },
+    { ATIRX_P(8), ATIRX_P(8), ATIRX_P(48), ATIRX_P(8), ATIRX_P(28), ATIRX_P(40) },
+    { ATIRX_P(28), ATIRX_P(8), ATIRX_P(8), ATIRX_P(40), ATIRX_P(48), ATIRX_P(40) },
+    { ATIRX_P(16), ATIRX_P(16), ATIRX_P(16), ATIRX_P(48), ATIRX_P(48), ATIRX_P(48) },
+    { ATIRX_P(48), ATIRX_P(16), ATIRX_P(48), ATIRX_P(48), ATIRX_P(16), ATIRX_P(48) },
+    { ATIRX_P(8) + 8, ATIRX_P(8) + 8, ATIRX_P(40) + 8, ATIRX_P(20) + 8,
+      ATIRX_P(12) + 8, ATIRX_P(44) + 8 },
+    { ATIRX_P(9), ATIRX_P(9), ATIRX_P(10), ATIRX_P(54), ATIRX_P(9) + 3, ATIRX_P(30) },
+    { ATIRX_P(9), ATIRX_P(30), ATIRX_P(54), ATIRX_P(31), ATIRX_P(30), ATIRX_P(30) + 5 },
+    { ATIRX_P(8), ATIRX_P(8), ATIRX_P(56), ATIRX_P(8), ATIRX_P(8), ATIRX_P(56) },
+    { ATIRX_P(56), ATIRX_P(56), ATIRX_P(8), ATIRX_P(56), ATIRX_P(56), ATIRX_P(8) },
+    { ATIRX_P(10) + 3, ATIRX_P(9) + 11, ATIRX_P(51) + 13, ATIRX_P(19) + 2,
+      ATIRX_P(23) + 7, ATIRX_P(54) + 9 }
+};
+
+static DWORD atirx_lcg = 0x2545f491ul;
+
+static v9x_s32 atirx_random_coord(void)
+{
+    atirx_lcg = atirx_lcg * 1103515245ul + 12345ul;
+    return ATIRX_TRI_LO + (v9x_s32)((atirx_lcg >> 8) % (ATIRX_TRI_SPAN + 1ul));
+}
+
+/* Draw one triangle; compare every block pixel with the reference. */
+static int atirx_triangle(struct v9x_m64_engine *engine,
+                          const struct v9x_r2_target *target,
+                          const struct v9x_r2_vertex *v, UINT index,
+                          DWORD *total_mismatch)
+{
+    struct v9x_r2_flat_trap traps[V9X_R2_SETUP_TRAPS];
+    v9x_u32 offsets[V9X_M64_ENGINE_INIT_GT_DWORDS];
+    v9x_u32 values[V9X_M64_ENGINE_INIT_GT_DWORDS];
+    v9x_u32 written;
+    v9x_u32 count = 0ul;
+    v9x_u32 trap;
+    v9x_status status;
+    DWORD x;
+    DWORD y;
+    DWORD drawn = 0ul;
+    DWORD expected = 0ul;
+    DWORD mismatch = 0ul;
+    DWORD other = 0ul;
+    char key[48];
+    char text[16];
+    char line[200];
+    char label[16];
+
+    lstrcpyA(label, "T");
+    atirx_decimal(text, index);
+    lstrcatA(label, text);
+
+    atirx_prepare_block();
+    if (v9x_r2_setup_triangle(target, v, traps, &count) != V9X_STATUS_OK ||
+        v9x_r2_build_flat_state(target, ATIRX_COLOR, offsets, values,
+                                V9X_M64_ENGINE_INIT_GT_DWORDS,
+                                &written) != V9X_STATUS_OK) {
+        atirx_key(label, "SETUP-REFUSED");
+        return 0;
+    }
+    status = atirx_emit(engine, label, offsets, values, written);
+    for (trap = 0ul; trap < count && status == V9X_STATUS_OK; ++trap) {
+        if (v9x_r2_build_trap(target, &traps[trap], offsets, values,
+                              V9X_M64_ENGINE_INIT_GT_DWORDS,
+                              &written) != V9X_STATUS_OK) {
+            atirx_key(label, "TRAP-REFUSED");
+            return 0;
+        }
+        status = atirx_emit(engine, label, offsets, values, written);
+    }
+    if (status == V9X_STATUS_OK) {
+        status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+    }
+    if (status != V9X_STATUS_OK) {
+        atirx_key_hex("FailStatus", (DWORD)status);
+        atirx_key_hex("FailGuiStat", atirx_read(0, V9X_M64_GUI_STAT));
+        atirx_key_hex("FailFifoStat", atirx_read(0, V9X_M64_FIFO_STAT));
+        atirx_flush();
+        status = v9x_m64_reset_replay(engine, ATIRX_SPINS);
+        atirx_key_hex("ResetStatus", (DWORD)status);
+        atirx_key("Result", "TIMEOUT-STOPPED");
+        atirx_flush();
+        return 0;
+    }
+    (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+
+    line[0] = '\0';
+    for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+        for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+            WORD value = *atirx_pixel(x, y);
+            int want = v9x_r2_ref_covers(v, (v9x_s32)x, (v9x_s32)y);
+            int got = value == ATIRX_COLOR;
+
+            if (value != ATIRX_COLOR && value != ATIRX_SENTINEL) {
+                ++other;
+            }
+            if (got) {
+                ++drawn;
+            }
+            if (want) {
+                ++expected;
+            }
+            if (got != want) {
+                ++mismatch;
+                if (lstrlenA(line) < 160) {
+                    lstrcatA(line, got ? "+" : "-");
+                    atirx_decimal(text, x);
+                    lstrcatA(line, text);
+                    lstrcatA(line, ",");
+                    atirx_decimal(text, y);
+                    lstrcatA(line, text);
+                    lstrcatA(line, " ");
+                }
+            }
+        }
+    }
+    lstrcpyA(key, label);
+    lstrcatA(key, "_Traps");
+    atirx_key_dec(key, count);
+    lstrcpyA(key, label);
+    lstrcatA(key, "_Drawn");
+    atirx_key_dec(key, drawn);
+    lstrcpyA(key, label);
+    lstrcatA(key, "_Expected");
+    atirx_key_dec(key, expected);
+    lstrcpyA(key, label);
+    lstrcatA(key, "_Mismatches");
+    atirx_key_dec(key, mismatch);
+    if (other != 0ul) {
+        lstrcpyA(key, label);
+        lstrcatA(key, "_OtherValue");
+        atirx_key_dec(key, other);
+    }
+    if (line[0] != '\0') {
+        lstrcpyA(key, label);
+        lstrcatA(key, "_First");
+        atirx_key(key, line);
+    }
+    *total_mismatch += mismatch + other;
+    atirx_flush();
+    return 1;
+}
+
+static int atirx_run_triangles(struct v9x_m64_engine *engine,
+                               const struct v9x_r2_target *target)
+{
+    struct v9x_r2_vertex v[3];
+    DWORD mismatches = 0ul;
+    UINT index;
+    UINT run = 0u;
+    UINT named = sizeof(atirx_named) / sizeof(atirx_named[0]);
+    DWORD guard_before = 0ul;
+    DWORD offset;
+    volatile WORD *guard;
+
+    atirx_key("SceneSet", "triangles");
+    for (index = 0u; index < named + ATIRX_TRI_RANDOM; ++index) {
+        if (index < named) {
+            v[0].x = atirx_named[index][0];
+            v[0].y = atirx_named[index][1];
+            v[1].x = atirx_named[index][2];
+            v[1].y = atirx_named[index][3];
+            v[2].x = atirx_named[index][4];
+            v[2].y = atirx_named[index][5];
+        } else {
+            v[0].x = atirx_random_coord();
+            v[0].y = atirx_random_coord();
+            v[1].x = atirx_random_coord();
+            v[1].y = atirx_random_coord();
+            v[2].x = atirx_random_coord();
+            v[2].y = atirx_random_coord();
+        }
+        if (!atirx_triangle(engine, target, v, index, &mismatches)) {
+            break;
+        }
+        ++run;
+
+        /* The guards after every triangle, not once at the end. */
+        guard = atirx_fb + (ATIRX_BLOCK_OFFSET - ATIRX_GUARD_BYTES) / 2ul;
+        for (offset = 0ul; offset < ATIRX_GUARD_BYTES / 2ul; ++offset) {
+            if (guard[offset] != ATIRX_GUARD_WORD) {
+                ++guard_before;
+            }
+        }
+        guard = atirx_fb + (ATIRX_BLOCK_OFFSET +
+                            ATIRX_BLOCK_SIZE * ATIRX_BLOCK_PITCH) / 2ul;
+        for (offset = 0ul; offset < ATIRX_GUARD_BYTES / 2ul; ++offset) {
+            if (guard[offset] != ATIRX_GUARD_WORD) {
+                ++guard_before;
+            }
+        }
+    }
+    atirx_key_dec("TrianglesRun", run);
+    atirx_key_dec("TotalMismatches", mismatches);
+    atirx_key_dec("GuardMismatches", guard_before);
+    atirx_key("Result", run == named + ATIRX_TRI_RANDOM
+                        ? (mismatches == 0ul && guard_before == 0ul
+                           ? "TRIANGLES-MATCH" : "TRIANGLES-DIFFER")
+                        : "TRIANGLES-STOPPED");
+    return run == named + ATIRX_TRI_RANDOM;
+}
+
 static void atirx_prefix(char *prefix, const char *name)
 {
     lstrcpyA(prefix, name);
@@ -767,6 +983,16 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_top = ATIRX_SCISSOR_LO;
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
+
+    if (atirx_has_switch(GetCommandLineA(), "/tri")) {
+        int completed = atirx_run_triangles(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
 
     /* /set2 picks the second scene set; the default stays set 1. */
     scenes = atirx_scenes;

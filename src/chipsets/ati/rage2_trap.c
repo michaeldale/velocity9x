@@ -108,10 +108,11 @@ v9x_status v9x_r2_build_trap(const struct v9x_r2_target *target,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
-    /* Both edges start inside the target, and the rows the leading edge
-     * can cover stay inside it whether the length counts scanlines or
-     * steps: a step never advances Y by more than one. */
-    if (trap->x >= target->width || trap->trail_x >= target->width ||
+    /* Both edges start inside the target or on its right border: a span
+     * is [leading, trailing), so X equal to the width draws nothing past
+     * it. The length counts rows (measured), so the rows stay inside. */
+    if (trap->x > target->width || trap->trail_x > target->width ||
+        trap->trail_x > V9X_R2_X_MAX ||
         trap->y >= target->height || trap->length == 0ul ||
         trap->length > V9X_R2_TRAP_LENGTH_MAX ||
         trap->length > target->height - trap->y) {

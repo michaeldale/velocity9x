@@ -147,6 +147,10 @@ unsigned int v9x_run_mach64_engine_tests(void);
  * its bit layout, trigger order and target bounds. */
 unsigned int v9x_run_rage2_trap_tests(void);
 
+/* tests\host\test_rage2_setup.c: triangle setup through the measured edge
+ * model, pixel for pixel against an independent reference rasteriser. */
+unsigned int v9x_run_rage2_setup_tests(void);
+
 /* tests\host\test_mach64_policy.c: every accept and refuse boundary of
  * the Mach64 draw policy, and the texture light function it selects. */
 unsigned int v9x_run_mach64_policy_tests(void);
@@ -1157,6 +1161,7 @@ int main(int argc, char **argv)
     failures += v9x_run_mach64_policy_tests();
     failures += v9x_run_mach64_draw_tests();
     failures += v9x_run_rage2_trap_tests();
+    failures += v9x_run_rage2_setup_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

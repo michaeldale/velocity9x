@@ -86,6 +86,37 @@ struct v9x_r2_flat_trap {
     v9x_u32 dst_cntl;   /* only V9X_R2_TRAP_DST_CNTL_MASK bits */
 };
 
+/*
+ * Triangle setup (rage2_setup.c): a screen-space triangle into at most two
+ * trapezoids whose engine coverage is exactly centre sampling with the
+ * top-left rule. Vertices are fixed point, V9X_R2_SUBPIXEL per pixel.
+ * Coordinates must lie in [0, 2047] pixels, which keeps every product in
+ * the setup inside 31 bits and every edge term inside the 18-bit fields.
+ *
+ * The edge terms follow the walk measured on A8U4I5
+ * (docs\decisions\2026-10-02-rage-iic-trapezoid-edge-model.md): per row
+ * an edge steps while its error is >= 0, adding DEC, then adds INC. For an
+ * edge spanning dyF by dxF sixteenths that is DEC = -dyF, INC = dxF, and
+ * an ERR in [-dyF, 0) that carries the first row's rounding.
+ */
+#define V9X_R2_SUBPIXEL             16l
+#define V9X_R2_SETUP_COORD_MAX      (2047l * V9X_R2_SUBPIXEL)
+#define V9X_R2_SETUP_TRAPS          2u
+
+struct v9x_r2_vertex {
+    v9x_s32 x;
+    v9x_s32 y;
+};
+
+/* The trapezoids for one flat triangle inside `target` (its whole width
+ * and height, not only the scissor). *count is 0 for a triangle that
+ * covers no pixel centre. Only trajectory fields are filled; the colour
+ * and datapath come from v9x_r2_build_flat_state. */
+v9x_status v9x_r2_setup_triangle(const struct v9x_r2_target *target,
+                                 const struct v9x_r2_vertex *vertices,
+                                 struct v9x_r2_flat_trap *traps,
+                                 v9x_u32 *count);
+
 /* The datapath for a flat-coloured 2D-path trapezoid: 3D pipe off,
  * DP_FRGD_CLR as the source, the target and its scissor. */
 v9x_status v9x_r2_build_flat_state(const struct v9x_r2_target *target,

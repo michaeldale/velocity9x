@@ -121,7 +121,7 @@ static void test_trap_bounds(void)
 
     make_target(&target);
     make_trap(&trap);
-    trap.trail_x = 64ul;               /* outside the target */
+    trap.trail_x = 65ul;               /* past the target's border */
     CHECK(v9x_r2_build_trap(&target, &trap, offsets, values,
                             V9X_R2_TRAP_DWORDS, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
