@@ -176,6 +176,23 @@ static void test_policy(void)
                               (4ul << V9X_R2_BLEND_SRC_SHIFT) |
                               (5ul << V9X_R2_BLEND_DST_SHIFT)));
 
+    /* Fog over an alpha texture: the factor must be the interpolator's,
+     * so TEX_MAP_AEN goes; with the alpha mask or decal it cannot. */
+    textured(&r, V9X_M64_TEXTURE_FORMAT_ARGB1555);
+    r.texture_op = 7ul;
+    r.fog_enable = 1ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK((d.scale_3d_cntl & V9X_R2_TEX_MAP_AEN) == 0ul &&
+          (d.scale_3d_cntl & V9X_R2_ALPHA_FOG_FOG) != 0ul);
+    r.alpha_test_enable = 1ul;
+    r.alpha_func = 5ul;
+    r.alpha_ref = 127ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_FOG_WITH_TEXTURE);
+    textured(&r, V9X_M64_TEXTURE_FORMAT_ARGB4444);
+    r.texture_op = 3ul;
+    r.fog_enable = 1ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_FOG_WITH_TEXTURE);
+
     /* The alpha test is the 1555 mask or nothing. */
     base_request(&r);
     textured(&r, V9X_M64_TEXTURE_FORMAT_ARGB1555);

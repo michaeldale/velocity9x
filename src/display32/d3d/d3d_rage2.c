@@ -78,6 +78,38 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_rage2_limits = {
     0ul             /* depth_pitch_own */
 };
 
+/*
+ * The Rage II's FIFO is the pre-VTB 16-entry one, and v9x_m64_reserve
+ * refuses more than that at once, so a stream goes out in chunks of the
+ * eight the scene runner emitted every measured scene in. The first
+ * V9XDDP run on A8U4I5 (boot 139) handed whole state and trapezoid
+ * streams to one emit and had 3 of 566 batches reach the FIFO.
+ */
+#define V9X_D3D_RAGE2_CHUNK 8ul
+
+static v9x_status v9x_d3d_rage2_emit(struct v9x_m64_engine *core,
+                                     const v9x_u32 *offsets,
+                                     const v9x_u32 *values, v9x_u32 count)
+{
+    v9x_u32 at = 0ul;
+
+    while (at < count) {
+        v9x_u32 chunk = count - at;
+        v9x_status status;
+
+        if (chunk > V9X_D3D_RAGE2_CHUNK) {
+            chunk = V9X_D3D_RAGE2_CHUNK;
+        }
+        status = v9x_m64_emit_batch(core, offsets + at, values + at, chunk,
+                                    V9X_D3D_RAGE2_SPINS);
+        if (status != V9X_STATUS_OK) {
+            return status;
+        }
+        at += chunk;
+    }
+    return V9X_STATUS_OK;
+}
+
 static int v9x_d3d_rage2_refuse(DWORD reason)
 {
     ++v9x_hal->d3d_diagnostics.m64_refused;
@@ -514,9 +546,9 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
     }
     /* The full state every batch: no redundant-state skipping until this
      * path has run on the card. */
-    if (v9x_m64_emit_batch(core, v9x_d3d_rage2_state_offsets,
-                           v9x_d3d_rage2_state_values, state_written,
-                           V9X_D3D_RAGE2_SPINS) != V9X_STATUS_OK) {
+    if (v9x_d3d_rage2_emit(core, v9x_d3d_rage2_state_offsets,
+                           v9x_d3d_rage2_state_values,
+                           state_written) != V9X_STATUS_OK) {
         return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_EMIT);
     }
     v9x_present_note_submission();
@@ -555,9 +587,9 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
                 ++v9x_hal->d3d_diagnostics.m64_degenerate; /* no centre */
                 continue;
             }
-            if (v9x_m64_emit_batch(core, v9x_d3d_rage2_offsets,
-                                   v9x_d3d_rage2_values, written,
-                                   V9X_D3D_RAGE2_SPINS) != V9X_STATUS_OK) {
+            if (v9x_d3d_rage2_emit(core, v9x_d3d_rage2_offsets,
+                                   v9x_d3d_rage2_values,
+                                   written) != V9X_STATUS_OK) {
                 return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_EMIT);
             }
         }

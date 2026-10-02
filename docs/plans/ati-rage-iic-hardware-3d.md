@@ -81,7 +81,13 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   and the Phase 5 gate wait for it. Untextured blending and fog run
   under SCALE_3D_FCN = 3, which no scene measured; the gate's first
   scenes must cover it.
-- Next: deploy, then the D3D probe scenes, Final Reality and 3DMark 99.
+- **Phase 5 on the card**, boots 138-141
+  ([record](../decisions/2026-10-02-rage-iic-direct3d-first-runs.md)):
+  the Phase 4 scenes reproduced on a second boot; V9XDDP drives 444
+  batches through the engine with no timeout; 153 of 219 verdicts pass and
+  the other 66 are accounted for. Two defects found and fixed: emission past
+  the 16-entry FIFO, and fog read from texel alpha.
+- Next: Final Reality and 3DMark 99 against the native baseline.
 
 ## Goal
 

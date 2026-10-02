@@ -313,8 +313,19 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
                  (src << V9X_R2_BLEND_SRC_SHIFT) |
                  (dst << V9X_R2_BLEND_DST_SHIFT);
     } else if (request->fog_enable != 0ul) {
-        /* Fog is the blend unit with the fog colour as the destination;
-         * it needs As and 1-As, or it draws black (G1-G5). */
+        /*
+         * Fog is the blend unit with the fog colour as the destination;
+         * it needs As and 1-As, or it draws black (G1-G5). Its factor is
+         * the alpha interpolator's only without TEX_MAP_AEN: with it the
+         * texel's alpha is the factor, and V9XDDP's D3DFogTex drew an
+         * opaque 1555 texel unfogged at every factor (boot 140). So AEN
+         * goes, and a draw that needs it - the alpha mask, alpha decal -
+         * cannot be fogged.
+         */
+        if ((scale & (V9X_R2_TEX_AMASK_AEN | V9X_R2_TEX_LIGHT_DECAL)) != 0ul) {
+            return V9X_M64_REFUSE_FOG_WITH_TEXTURE;
+        }
+        scale &= ~V9X_R2_TEX_MAP_AEN;
         scale |= V9X_R2_ALPHA_FOG_FOG |
                  (R2_FACTOR_ALPHA << V9X_R2_BLEND_SRC_SHIFT) |
                  (R2_FACTOR_INV_ALPHA << V9X_R2_BLEND_DST_SHIFT);
