@@ -309,7 +309,23 @@ static void test_texture_state(void)
     CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
                                      values, V9X_R2_TEXTURE_STATE_DWORDS,
                                      &written) == V9X_STATUS_INVALID_ARGUMENT);
+    /* The filter, mode, blend and fog bits pass through to SCALE_3D_CNTL;
+     * anything else (bit 14, RED_DITHER_MAX) is refused. */
     texture.log2_pitch = 5ul;
+    texture.scale_3d_extra = V9X_R2_BILINEAR_TEX_EN | V9X_R2_TEX_BLEND_2X2 |
+                             V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_LIGHT_DECAL |
+                             V9X_R2_ALPHA_FOG_BLEND |
+                             (4ul << V9X_R2_BLEND_SRC_SHIFT) |
+                             (5ul << V9X_R2_BLEND_DST_SHIFT);
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) == V9X_STATUS_OK);
+    CHECK(values[0] == (0x010000a0ul | texture.scale_3d_extra));
+    texture.scale_3d_extra = 0x00004000ul;
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) == V9X_STATUS_INVALID_ARGUMENT);
+    texture.scale_3d_extra = 0ul;
     texture.format = 6ul;
     CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
                                      values, V9X_R2_TEXTURE_STATE_DWORDS,

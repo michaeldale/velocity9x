@@ -184,7 +184,7 @@ v9x_status v9x_r2_build_texture_state(const struct v9x_r2_target *target,
         (texture->format != V9X_R2_TEX_FORMAT_565 &&
          texture->format != V9X_R2_TEX_FORMAT_1555 &&
          texture->format != V9X_R2_TEX_FORMAT_4444) ||
-        (texture->scale_3d_extra & ~V9X_R2_BILINEAR_TEX_EN) != 0ul) {
+        (texture->scale_3d_extra & ~V9X_R2_TEX_EXTRA_MASK) != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     /* The map must lie inside VRAM: 2^pitch * 2^height texels of 2 bytes. */

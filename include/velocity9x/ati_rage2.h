@@ -135,6 +135,10 @@ v9x_status v9x_r2_setup_triangle(const struct v9x_r2_target *target,
 #define V9X_R2_BLUE_X_INC           0x000007d8ul
 #define V9X_R2_BLUE_Y_INC           0x000007dcul
 #define V9X_R2_BLUE_START           0x000007e0ul
+/* Alpha, which is also the fog factor (RRG p.6-14): S.8.12 like colour. */
+#define V9X_R2_ALPHA_X_INC          0x000007f0ul  /* 0_FC */
+#define V9X_R2_ALPHA_Y_INC          0x000007f4ul
+#define V9X_R2_ALPHA_START          0x000007f8ul
 
 /* SCALE_3D_CNTL SCALE_3D_FCN = 3, shading (RRG p.6-4), and DP_SRC
  * FRGD_SRC = 5, the scaler/3D pipe (RRG p.4-97). */
@@ -228,6 +232,24 @@ v9x_status v9x_r2_build_z_state(const struct v9x_r2_target *target,
 #define V9X_R2_TEX_CACHE_DIS        0x00000020ul
 #define V9X_R2_MIP_MAP_DISABLE      0x01000000ul
 #define V9X_R2_BILINEAR_TEX_EN      0x02000000ul
+/* TEX_BLEND_FCN, the minification filter, bits 27:26 (RRG p.6-6): 0
+ * nearest, 2 a 2x2 blend in the nearest map. */
+#define V9X_R2_TEX_BLEND_MASK       0x0c000000ul
+#define V9X_R2_TEX_BLEND_2X2        0x08000000ul
+/* The rest of SCALE_3D_CNTL a textured draw may set (RRG p.6-4..6-6):
+ * ALPHA_FOG_EN 12:11 (1 blend, 2 fog), COLOR_OVERRIDE 13, the blend
+ * factors 18:16 and 21:19, TEX_LIGHT_FCN 23:22 (1 modulate, 2 alpha
+ * decal), TEX_AMASK_AEN 28 and TEX_MAP_AEN 30. */
+#define V9X_R2_ALPHA_FOG_BLEND      0x00000800ul
+#define V9X_R2_ALPHA_FOG_FOG        0x00001000ul
+#define V9X_R2_COLOR_OVERRIDE       0x00002000ul
+#define V9X_R2_BLEND_SRC_SHIFT      16u
+#define V9X_R2_BLEND_DST_SHIFT      19u
+#define V9X_R2_TEX_LIGHT_MODULATE   0x00400000ul
+#define V9X_R2_TEX_LIGHT_DECAL      0x00800000ul
+#define V9X_R2_TEX_AMASK_AEN        0x10000000ul
+#define V9X_R2_TEX_MAP_AEN          0x40000000ul
+#define V9X_R2_TEX_EXTRA_MASK       0x5eff3800ul
 #define V9X_R2_TEX_FORMAT_SHIFT     28u
 #define V9X_R2_TEX_FORMAT_1555      3ul
 #define V9X_R2_TEX_FORMAT_565       4ul

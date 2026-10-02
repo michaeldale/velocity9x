@@ -2118,6 +2118,567 @@ static int atirx_run_textri(struct v9x_m64_engine *engine,
     return 1;
 }
 
+/* ---- Phase 4: bilinear, measured ---------------------------------------- */
+
+/* A 32x32 checker in each channel: red 31 on odd u, green 63 on odd v,
+ * blue 31 everywhere. A blend of two neighbours reads its weight to five
+ * bits in red and six in green. */
+#define ATIRX_CHECKER_OFFSET 0x00222000ul
+/* A second checker for the 2x2 weights: red 31 where u + v is odd, green
+ * 63 on odd u. */
+#define ATIRX_CHECKER2_OFFSET 0x00222800ul
+/* A third, pseudo-random 565 texels (the LCG below from a fixed seed), to
+ * tell the 2x2 combination orders apart. */
+#define ATIRX_NOISE_OFFSET    0x00223000ul
+
+struct atirx_bil_scene {
+    const char *name;
+    v9x_u32 extra;           /* SCALE_3D_CNTL filter bits */
+    struct v9x_r2_st st;
+};
+
+#define ATIRX_BIL (V9X_R2_BILINEAR_TEX_EN | V9X_R2_TEX_BLEND_2X2)
+
+/* Fields: start, xinc_start, y_inc, x_inc2, y_inc2, xy_inc2, each {S, T}. */
+static const struct atirx_bil_scene atirx_bil_scenes[] = {
+    /* S from 0 by 1/16 texel a pixel, T in the middle of row 0. */
+    { "B1SNearest", 0ul,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1) / 16l, 0l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "B2SBilinear", ATIRX_BIL,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1) / 16l, 0l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* Magnification filter alone. */
+    { "B3SMagOnly", V9X_R2_BILINEAR_TEX_EN,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1) / 16l, 0l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* Minification filter alone. */
+    { "B4SMinOnly", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1) / 16l, 0l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* T along the span instead, S in the middle of column 0. */
+    { "B5TBilinear", ATIRX_BIL,
+      { { ATIRX_TX(1) / 4l, 0l }, { 0l, ATIRX_TX(1) / 16l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* Both along the span: the 2x2 weights. */
+    { "B6Diagonal", ATIRX_BIL,
+      { { 0l, 0l }, { ATIRX_TX(1) / 16l, ATIRX_TX(1) / 16l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* Minifying, 2.5 texels a pixel: nearest, both filters, each alone. */
+    { "B7MinNearest", 0ul,
+      { { 0l, ATIRX_TX(1) / 4l }, { 5l * ATIRX_TX(1) / 2l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "B8MinBilinear", ATIRX_BIL,
+      { { 0l, ATIRX_TX(1) / 4l }, { 5l * ATIRX_TX(1) / 2l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "B9MinMagOnly", V9X_R2_BILINEAR_TEX_EN,
+      { { 0l, ATIRX_TX(1) / 4l }, { 5l * ATIRX_TX(1) / 2l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "B10MinMinOnly", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { 5l * ATIRX_TX(1) / 2l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } }
+};
+
+/*
+ * /texlod: where minification starts, and from which derivative. The
+ * minification filter alone (TEX_BLEND_FCN 2, no BILINEAR_TEX_EN) draws
+ * nothing under magnification (B4), so a drawn row says "minifying".
+ * /texbil2: the 2x2 combination on the u + v checker, S by 1/16 texel a
+ * pixel and T by 1/8 a row.
+ */
+static const struct atirx_bil_scene atirx_lod_scenes[] = {
+    { "L1Sx15", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { 15l * ATIRX_TX(1) / 16l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "L2Sx16", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1), 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "L3Sx17", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { 17l * ATIRX_TX(1) / 16l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "L4Sx20", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { 20l * ATIRX_TX(1) / 16l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "L5Sx24", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { 24l * ATIRX_TX(1) / 16l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "L6Sx32", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { 2l * ATIRX_TX(1), 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S along x 1/2, T down the rows 2: the Y derivative minifies. */
+    { "L7Ty32", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, 0l }, { ATIRX_TX(1) / 2l, 0l }, { 0l, 2l * ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S along x 1/2, T along x 2: T's X derivative minifies. */
+    { "L8Tx32", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, 0l }, { ATIRX_TX(1) / 2l, 2l * ATIRX_TX(1) }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S from 1/4 a pixel growing by 1/16 a pixel: the change in the
+     * middle of the span, if the decision is per pixel. */
+    { "L9Grow", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1) / 4l, 0l }, { 0l, 0l },
+        { ATIRX_TX(1) / 16l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S along x 1/2, S down the rows 2. */
+    { "L10Sy32", V9X_R2_TEX_BLEND_2X2,
+      { { 0l, ATIRX_TX(1) / 4l }, { ATIRX_TX(1) / 2l, 0l },
+        { 2l * ATIRX_TX(1), 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } }
+};
+
+static const struct atirx_bil_scene atirx_bil3_scenes[] = {
+    { "N1Weights", ATIRX_BIL,
+      { { 0l, 0l }, { ATIRX_TX(1) / 16l, 0l }, { 0l, ATIRX_TX(1) / 8l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "N2Skew", ATIRX_BIL,
+      { { ATIRX_TX(3), ATIRX_TX(5) }, { 3l * ATIRX_TX(1) / 16l,
+        ATIRX_TX(1) / 16l }, { ATIRX_TX(1) / 16l, 3l * ATIRX_TX(1) / 8l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } }
+};
+
+static const struct atirx_bil_scene atirx_bil2_scenes[] = {
+    { "W1Weights", ATIRX_BIL,
+      { { 0l, 0l }, { ATIRX_TX(1) / 16l, 0l }, { 0l, ATIRX_TX(1) / 8l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } }
+};
+
+static void atirx_write_checker(void)
+{
+    DWORD u;
+    DWORD v;
+    volatile WORD *base = atirx_fb + ATIRX_CHECKER_OFFSET / 2ul;
+    volatile WORD *base2 = atirx_fb + ATIRX_CHECKER2_OFFSET / 2ul;
+
+    for (v = 0ul; v < ATIRX_TEX_SIZE; ++v) {
+        for (u = 0ul; u < ATIRX_TEX_SIZE; ++u) {
+            base[v * ATIRX_TEX_SIZE + u] =
+                (WORD)(((u & 1ul) != 0ul ? 0xf800u : 0u) |
+                       ((v & 1ul) != 0ul ? 0x07e0u : 0u) | 0x001fu);
+            base2[v * ATIRX_TEX_SIZE + u] =
+                (WORD)((((u + v) & 1ul) != 0ul ? 0xf800u : 0u) |
+                       ((u & 1ul) != 0ul ? 0x07e0u : 0u) | 0x001fu);
+        }
+    }
+}
+
+static void atirx_write_noise(void)
+{
+    DWORD index;
+    DWORD state = 0x13579bdful;
+    volatile WORD *base = atirx_fb + ATIRX_NOISE_OFFSET / 2ul;
+
+    for (index = 0ul; index < ATIRX_TEX_SIZE * ATIRX_TEX_SIZE; ++index) {
+        state = state * 1103515245ul + 12345ul;
+        base[index] = (WORD)(state >> 16);
+    }
+}
+
+/* Rows 16..23, columns 16..47, as raw 565 hex. */
+static void atirx_dump_hex(const char *prefix)
+{
+    char key[48];
+    char text[8];
+    char line[200];
+    DWORD x;
+    DWORD y;
+
+    for (y = 16ul; y < 24ul; ++y) {
+        line[0] = '\0';
+        for (x = 16ul; x < 48ul; ++x) {
+            atirx_hex(text, *atirx_pixel(x, y), 4);
+            lstrcatA(line, text);
+            lstrcatA(line, " ");
+        }
+        lstrcpyA(key, prefix);
+        lstrcatA(key, "HEX");
+        atirx_decimal(text, y);
+        lstrcatA(key, text);
+        atirx_key(key, line);
+    }
+}
+
+/* Rows 16 and 23, columns 15..49: red.green for blue-31 pixels, '-' for
+ * anything else. */
+static void atirx_dump_rg(const char *prefix, int all_rows)
+{
+    static const DWORD rows[8] = { 16ul, 23ul, 17ul, 18ul, 19ul, 20ul,
+                                   21ul, 22ul };
+    char key[48];
+    char text[8];
+    char line[300];
+    DWORD x;
+    UINT index;
+
+    for (index = 0u; index < (all_rows ? 8u : 2u); ++index) {
+        line[0] = '\0';
+        for (x = 15ul; x < 50ul; ++x) {
+            WORD value = *atirx_pixel(x, rows[index]);
+
+            if ((value & 31u) != 31u) {
+                lstrcatA(line, "- ");
+                continue;
+            }
+            atirx_decimal(text, value >> 11);
+            lstrcatA(line, text);
+            lstrcatA(line, ".");
+            atirx_decimal(text, (value >> 5) & 63u);
+            lstrcatA(line, text);
+            lstrcatA(line, " ");
+        }
+        lstrcpyA(key, prefix);
+        lstrcatA(key, "RG");
+        atirx_decimal(text, rows[index]);
+        lstrcatA(key, text);
+        atirx_key(key, line);
+    }
+}
+
+static int atirx_run_texbil(struct v9x_m64_engine *engine,
+                            const struct v9x_r2_target *target,
+                            const struct atirx_bil_scene *scenes,
+                            UINT count, const char *set, DWORD map,
+                            int all_rows)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    struct v9x_r2_texture texture;
+    v9x_u32 offsets[32];
+    v9x_u32 values[32];
+    v9x_u32 written;
+    UINT index;
+    char prefix[48];
+
+    atirx_key("SceneSet", set);
+    texture.offset = map;
+    texture.log2_width = ATIRX_TEX_LOG2;
+    texture.log2_height = ATIRX_TEX_LOG2;
+    texture.log2_pitch = ATIRX_TEX_LOG2;
+    texture.format = V9X_R2_TEX_FORMAT_565;
+    atirx_write_checker();
+    atirx_write_noise();
+
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_bil_scene *scene = &scenes[index];
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_prepare_block();
+        texture.scale_3d_extra = scene->extra;
+        if (v9x_r2_build_texture_state(target, &texture, &scene->st,
+                                       offsets, values, 32ul, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_trap(target, &rect, offsets, values, 32ul,
+                              &written) != V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "TEXBIL-EMIT");
+            return 0;
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        if (map == ATIRX_NOISE_OFFSET) {
+            atirx_dump_hex(prefix);
+        } else {
+            atirx_dump_rg(prefix, all_rows);
+        }
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "TEXBIL-RUN");
+    return 1;
+}
+
+/* ---- Phase 4: formats, texture modes, blending, fog, scissor ------------ */
+
+/*
+ * /texmix. Three 32x32 maps whose every row is the same 32 test colours,
+ * one per column, in RGB565, ARGB1555 and ARGB4444. The rectangle steps S
+ * one texel a pixel, so its row 16 shows the operation on all 32 texels.
+ * The block's background is the 5AA5 sentinel, which is the destination
+ * the blend scenes read.
+ */
+#define ATIRX_PAL565_OFFSET  0x00224000ul
+#define ATIRX_PAL1555_OFFSET 0x00224800ul
+#define ATIRX_PAL4444_OFFSET 0x00225000ul
+
+/* Colour channels 0..255 as the S.8.12 interpolators take them. */
+#define ATIRX_C8(n) ((v9x_s32)(n) << 16)
+
+struct atirx_mix_scene {
+    const char *name;
+    v9x_u32 format;          /* V9X_R2_TEX_FORMAT_* */
+    v9x_u32 extra;           /* SCALE_3D_CNTL bits */
+    v9x_s32 color[4];        /* R, G, B, A starts, 16.16 */
+    v9x_s32 alpha_x_inc;
+    v9x_u32 fog;             /* DP_FRGD_CLR, 565 */
+    int wide;                /* the rectangle from 2 to 62, across the
+                              * scissor (8..55) */
+};
+
+#define ATIRX_SRC(f) ((v9x_u32)(f) << V9X_R2_BLEND_SRC_SHIFT)
+#define ATIRX_DST(f) ((v9x_u32)(f) << V9X_R2_BLEND_DST_SHIFT)
+#define ATIRX_WHITE  { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), \
+                       ATIRX_C8(255) }
+
+static const struct atirx_mix_scene atirx_mix_scenes[] = {
+    /* Formats under replace. */
+    { "F1Rgb565", V9X_R2_TEX_FORMAT_565, 0ul, ATIRX_WHITE, 0l, 0ul, 0 },
+    { "F2Argb1555", V9X_R2_TEX_FORMAT_1555, 0ul, ATIRX_WHITE, 0l, 0ul, 0 },
+    { "F3Argb4444", V9X_R2_TEX_FORMAT_4444, 0ul, ATIRX_WHITE, 0l, 0ul, 0 },
+    { "F4Argb1555Aen", V9X_R2_TEX_FORMAT_1555, V9X_R2_TEX_MAP_AEN,
+      ATIRX_WHITE, 0l, 0ul, 0 },
+    /* The alpha LSB as a mask: alpha 0 not drawn. */
+    { "F5Argb1555Mask", V9X_R2_TEX_FORMAT_1555,
+      V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_AMASK_AEN, ATIRX_WHITE, 0l, 0ul, 0 },
+    { "F6Argb4444Mask", V9X_R2_TEX_FORMAT_4444,
+      V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_AMASK_AEN, ATIRX_WHITE, 0l, 0ul, 0 },
+    /* Modulate by a flat interpolator colour: do the colour interpolators
+     * run under texture mapping at all? */
+    { "M1ModWhite", V9X_R2_TEX_FORMAT_565, V9X_R2_TEX_LIGHT_MODULATE,
+      ATIRX_WHITE, 0l, 0ul, 0 },
+    { "M2ModHalf", V9X_R2_TEX_FORMAT_565, V9X_R2_TEX_LIGHT_MODULATE,
+      { ATIRX_C8(128), ATIRX_C8(128), ATIRX_C8(128), ATIRX_C8(255) },
+      0l, 0ul, 0 },
+    { "M3ModMixed", V9X_R2_TEX_FORMAT_565, V9X_R2_TEX_LIGHT_MODULATE,
+      { ATIRX_C8(64), ATIRX_C8(192), ATIRX_C8(255), ATIRX_C8(255) },
+      0l, 0ul, 0 },
+    /* Alpha decal: texel by its alpha over the interpolator colour. */
+    { "M4Decal4444", V9X_R2_TEX_FORMAT_4444,
+      V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_LIGHT_DECAL,
+      { ATIRX_C8(255), 0l, 0l, ATIRX_C8(255) }, 0l, 0ul, 0 },
+    /* Blends over the 5AA5 background. */
+    { "A1TexAlpha", V9X_R2_TEX_FORMAT_4444,
+      V9X_R2_TEX_MAP_AEN | V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(4) |
+          ATIRX_DST(5), ATIRX_WHITE, 0l, 0ul, 0 },
+    { "A2OneOne", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(1) | ATIRX_DST(1), ATIRX_WHITE,
+      0l, 0ul, 0 },
+    { "A3ZeroSrc", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(0) | ATIRX_DST(2), ATIRX_WHITE,
+      0l, 0ul, 0 },
+    { "A4DstZero", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(2) | ATIRX_DST(0), ATIRX_WHITE,
+      0l, 0ul, 0 },
+    /* Interpolator alpha 64 with a texture that has none. */
+    { "A5IterAlpha", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(4) | ATIRX_DST(5),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(64) },
+      0l, 0ul, 0 },
+    { "A6InvInv", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(3) | ATIRX_DST(3), ATIRX_WHITE,
+      0l, 0ul, 0 },
+    /* An alpha ramp, 0 to 248 by 8 a pixel, for the blend weight. */
+    { "A7AlphaRamp", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_BLEND | ATIRX_SRC(4) | ATIRX_DST(5),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), 0l },
+      ATIRX_C8(8), 0ul, 0 },
+    /* Fog: DP_FRGD_CLR, the factor from the alpha interpolator. */
+    { "G1FogFlat", V9X_R2_TEX_FORMAT_565, V9X_R2_ALPHA_FOG_FOG,
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(64) },
+      0l, 0x001fu, 0 },
+    { "G2FogRamp", V9X_R2_TEX_FORMAT_565, V9X_R2_ALPHA_FOG_FOG,
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), 0l },
+      ATIRX_C8(8), 0xffffu, 0 },
+    /* G1/G2 drew black with the blend factors 0: fog with As / 1-As,
+     * the fog colour as 565 and as 8888. */
+    { "G3FogFactors565", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_FOG | ATIRX_SRC(4) | ATIRX_DST(5),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(64) },
+      0l, 0x0000f800ul, 0 },
+    { "G4FogFactors8888", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_FOG | ATIRX_SRC(4) | ATIRX_DST(5),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(64) },
+      0l, 0x00ff0000ul, 0 },
+    { "G5FogRamp565", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_FOG | ATIRX_SRC(4) | ATIRX_DST(5),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), 0l },
+      ATIRX_C8(8), 0x0000f800ul, 0 },
+    /* Fog with one/zero: is the source still the texel? */
+    { "G6FogOneZero", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_FOG | ATIRX_SRC(1) | ATIRX_DST(0),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(64) },
+      0l, 0x0000f800ul, 0 },
+    { "G7FogZeroOne", V9X_R2_TEX_FORMAT_565,
+      V9X_R2_ALPHA_FOG_FOG | ATIRX_SRC(0) | ATIRX_DST(1),
+      { ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(255), ATIRX_C8(64) },
+      0l, 0x0000f800ul, 0 },
+    /* Across the scissor. */
+    { "C1Scissor", V9X_R2_TEX_FORMAT_565, 0ul, ATIRX_WHITE, 0l, 0ul, 1 }
+};
+
+static WORD atirx_pal_565(DWORD u)
+{
+    return (WORD)((u << 11) | (((2ul * u + 1ul) & 63ul) << 5) | (31ul - u));
+}
+
+static WORD atirx_pal_1555(DWORD u)
+{
+    return (WORD)(((u & 1ul) << 15) | (u << 10) | ((31ul - u) << 5) |
+                  ((7ul * u) & 31ul));
+}
+
+static WORD atirx_pal_4444(DWORD u)
+{
+    return (WORD)(((u >> 1) << 12) | ((15ul - (u >> 1)) << 8) |
+                  ((u & 15ul) << 4) | ((5ul * u) & 15ul));
+}
+
+static void atirx_write_palettes(void)
+{
+    DWORD u;
+    DWORD v;
+
+    for (v = 0ul; v < ATIRX_TEX_SIZE; ++v) {
+        for (u = 0ul; u < ATIRX_TEX_SIZE; ++u) {
+            DWORD at = v * ATIRX_TEX_SIZE + u;
+
+            atirx_fb[ATIRX_PAL565_OFFSET / 2ul + at] = atirx_pal_565(u);
+            atirx_fb[ATIRX_PAL1555_OFFSET / 2ul + at] = atirx_pal_1555(u);
+            atirx_fb[ATIRX_PAL4444_OFFSET / 2ul + at] = atirx_pal_4444(u);
+        }
+    }
+}
+
+/* Rows 16 and 23, columns 0..63 for the wide scene and 16..47 otherwise,
+ * as raw 565 hex. */
+static void atirx_dump_mix(const char *prefix, int wide)
+{
+    static const DWORD rows[2] = { 16ul, 23ul };
+    char key[48];
+    char text[8];
+    char line[340];
+    DWORD x;
+    UINT index;
+
+    for (index = 0u; index < 2u; ++index) {
+        line[0] = '\0';
+        for (x = wide ? 0ul : 16ul; x < (wide ? 64ul : 48ul); ++x) {
+            atirx_hex(text, *atirx_pixel(x, rows[index]), 4);
+            lstrcatA(line, text);
+            lstrcatA(line, " ");
+        }
+        lstrcpyA(key, prefix);
+        lstrcatA(key, "HEX");
+        atirx_decimal(text, rows[index]);
+        lstrcatA(key, text);
+        atirx_key(key, line);
+    }
+}
+
+static int atirx_run_texmix(struct v9x_m64_engine *engine,
+                            const struct v9x_r2_target *target)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    struct v9x_r2_texture texture;
+    struct v9x_r2_flat_trap trap;
+    struct v9x_r2_st st;
+    v9x_u32 offsets[32];
+    v9x_u32 values[32];
+    v9x_u32 written;
+    UINT index;
+    UINT count = sizeof(atirx_mix_scenes) / sizeof(atirx_mix_scenes[0]);
+    UINT channel;
+    char prefix[48];
+
+    atirx_key("SceneSet", "texmix");
+    atirx_write_palettes();
+    texture.log2_width = ATIRX_TEX_LOG2;
+    texture.log2_height = ATIRX_TEX_LOG2;
+    texture.log2_pitch = ATIRX_TEX_LOG2;
+    /* S one texel a pixel from texel 0's centre, T mid-row. */
+    st.start[0] = ATIRX_TX(1) / 2l;
+    st.start[1] = ATIRX_TX(1) / 2l;
+    st.xinc_start[0] = ATIRX_TX(1);
+    st.xinc_start[1] = 0l;
+    st.y_inc[0] = 0l;
+    st.y_inc[1] = 0l;
+    st.x_inc2[0] = 0l;
+    st.x_inc2[1] = 0l;
+    st.y_inc2[0] = 0l;
+    st.y_inc2[1] = 0l;
+    st.xy_inc2[0] = 0l;
+    st.xy_inc2[1] = 0l;
+
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_mix_scene *scene = &atirx_mix_scenes[index];
+        v9x_u32 at = 0ul;
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_prepare_block();
+        texture.format = scene->format;
+        texture.offset = scene->format == V9X_R2_TEX_FORMAT_565
+            ? ATIRX_PAL565_OFFSET
+            : scene->format == V9X_R2_TEX_FORMAT_1555
+                ? ATIRX_PAL1555_OFFSET : ATIRX_PAL4444_OFFSET;
+        texture.scale_3d_extra = scene->extra;
+        trap = rect;
+        if (scene->wide) {
+            trap.x = 2ul;
+            trap.trail_x = 62ul;
+        }
+        if (v9x_r2_build_texture_state(target, &texture, &st, offsets,
+                                       values, 32ul, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "TEXMIX-STATE");
+            return 0;
+        }
+        /* The colour and alpha interpolators, flat but for alpha's X
+         * increment, after SCALE_3D_CNTL (RRG p.6-7: accumulators only
+         * with a non-zero function), then the fog colour. */
+        for (channel = 0u; channel < 3u; ++channel) {
+            offsets[at] = V9X_R2_RED_X_INC + 12ul * channel;
+            values[at++] = 0ul;
+            offsets[at] = V9X_R2_RED_Y_INC + 12ul * channel;
+            values[at++] = 0ul;
+            offsets[at] = V9X_R2_RED_START + 12ul * channel;
+            values[at++] = (v9x_u32)scene->color[channel] &
+                           V9X_R2_COLOR_MASK;
+        }
+        offsets[at] = V9X_R2_ALPHA_X_INC;
+        values[at++] = (v9x_u32)scene->alpha_x_inc & V9X_R2_COLOR_MASK;
+        offsets[at] = V9X_R2_ALPHA_Y_INC;
+        values[at++] = 0ul;
+        offsets[at] = V9X_R2_ALPHA_START;
+        values[at++] = (v9x_u32)scene->color[3] & V9X_R2_COLOR_MASK;
+        offsets[at] = V9X_M64_DP_FRGD_CLR;
+        values[at++] = scene->fog;
+        if (atirx_emit(engine, scene->name, offsets, values, at) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_trap(target, &trap, offsets, values, 32ul,
+                              &written) != V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "TEXMIX-EMIT");
+            return 0;
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        atirx_dump_mix(prefix, scene->wide);
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "TEXMIX-RUN");
+    return 1;
+}
+
 static void atirx_prefix(char *prefix, const char *name)
 {
     lstrcpyA(prefix, name);
@@ -2240,6 +2801,48 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/texmix")) {
+        int completed = atirx_run_texmix(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/texbil") ||
+        atirx_has_switch(GetCommandLineA(), "/texlod")) {
+        const char *line = GetCommandLineA();
+        int completed;
+
+        if (atirx_has_switch(line, "/texlod")) {
+            completed = atirx_run_texbil(
+                &engine, &target, atirx_lod_scenes,
+                sizeof(atirx_lod_scenes) / sizeof(atirx_lod_scenes[0]),
+                "texlod", ATIRX_CHECKER_OFFSET, 1);
+        } else if (atirx_has_switch(line, "/texbil3")) {
+            completed = atirx_run_texbil(
+                &engine, &target, atirx_bil3_scenes,
+                sizeof(atirx_bil3_scenes) / sizeof(atirx_bil3_scenes[0]),
+                "texbil3", ATIRX_NOISE_OFFSET, 1);
+        } else if (atirx_has_switch(line, "/texbil2")) {
+            completed = atirx_run_texbil(
+                &engine, &target, atirx_bil2_scenes,
+                sizeof(atirx_bil2_scenes) / sizeof(atirx_bil2_scenes[0]),
+                "texbil2", ATIRX_CHECKER2_OFFSET, 1);
+        } else {
+            completed = atirx_run_texbil(
+                &engine, &target, atirx_bil_scenes,
+                sizeof(atirx_bil_scenes) / sizeof(atirx_bil_scenes[0]),
+                "texbil", ATIRX_CHECKER_OFFSET, 0);
+        }
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/textri")) {
         int completed;
 

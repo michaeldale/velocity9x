@@ -55,7 +55,17 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   - 120 textured triangles, 20,520 pixels, every one exact against it;
   - the quadratic perspective fit measured against exact on the host,
     with an error estimate for Phase 5 to subdivide on.
-- Next: Phase 4 step 4, bilinear.
+- **Phase 4 steps 4-9 measured**, boot 136
+  ([record](../decisions/2026-10-02-rage-iic-filtering-formats-blending-fog.md)):
+  - bilinear: texel centres and 3-bit weights; the mag/min decision per
+    pixel at one texel; linear-min without linear-mag draws nothing;
+  - 1555/4444 zero-extended, with the 1-bit alpha mask;
+  - modulate and alpha decal; the six blend factors each way;
+  - fog through the blend unit with an ARGB8888 colour; the scissor.
+
+  The arithmetic is modelled to within one LSB: 493 of 512 bilinear
+  pixels and 376 of 384 blend/modulate/fog pixels are exact.
+- Next: a second boot for the Phase 4 scenes, then Phase 5.
 
 ## Goal
 
