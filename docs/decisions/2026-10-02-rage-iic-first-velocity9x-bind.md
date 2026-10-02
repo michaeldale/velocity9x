@@ -54,11 +54,31 @@ survey.
 `V9XMODES.INI` names its build `b404e0c-dirty`. The package was built by the
 gate run of the uncommitted bind change, whose content is commit `397da71`.
 
+## GDI and mode switching, same boot
+
+All runs used the package's own tools from `C:\V9XDIAG`, in this order.
+The results are the `BOOT126-V9XGDI.INI` and `BOOT126-V9XMSW-*.INI` files.
+
+| Run | Result |
+|---|---|
+| `V9XGDI /auto` at 1024x768x16 | PASS in 161 ms: black, white, red, blit and SetPixel read back as written |
+| `V9XMSW /cycle:10` (640x480 and 800x600 at 16 bpp) | PASS, 10 of 10 |
+| `V9XMSW /depth:10` (8 and 16 bpp at 1024x768) | PASS, 10 of 10 |
+| `V9XMSW /set:1024x768x8` | PASS, `ChangeResult=0` |
+| `V9XMSW /set:1024x768x16` | PASS, `ChangeResult=0` |
+
+An agent screenshot afterwards (17:38) shows the desktop intact at
+1024x768x16. Screenshots on this machine need `-TimeoutSeconds` above the
+default: a 1024x768 capture is a 2.3 MB BMP over a link measured at
+0.1-0.2 MB/s. Three default-timeout attempts failed at the transport,
+while the agent kept answering `info`.
+
+The BIOS's extra modes, including 1280x1024, were not switched to.
+
 ## Not established
 
-- Whether GDI drawing is correct beyond one screenshot. `V9XGDI` has not
-  been run.
-- Mode switching, DirectDraw, DOS boxes and a cold boot.
+- DirectDraw, DOS boxes and a cold boot.
+- Any mode outside the seven baseline rows.
 - Whether the earlier screen overwrite during `V9XSTAGE`, under ATI's
   driver, has a counterpart under this one.
 - Whether the leftover ATI property-page handlers misbehave when Display
