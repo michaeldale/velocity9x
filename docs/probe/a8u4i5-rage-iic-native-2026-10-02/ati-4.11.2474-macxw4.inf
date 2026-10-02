@@ -1,0 +1,494 @@
+;----------------------------------------------------------------------------
+; ATI Display Information file : MACXW4.INF
+; INF file for mach64 MACXW4 display driver.
+; Manufacturer:  ATI Technologies Inc.
+; 5.30_OEMS_ENU
+;----------------------------------------------------------------------------
+
+[version]
+Class=DISPLAY
+signature="$Windows 95$"
+Provider=%Mfg%
+
+[SourceDisksNames]
+1="Mach64 Windows9x driver, disk # 1",,1
+2="Mach64 Windows9x driver, disk # 2",,2
+3="Mach64 Windows9x driver, disk # 3",,3
+
+[SourceDisksFiles]
+atidpp.dll=1
+atipita.dll=1
+atictl32.dll=1
+aticwdde.dll=1
+atitask.exe=1
+atipr.exe=1
+ati64hlp.exe=1
+atiht.dll=1
+atiuinst.exe=1
+atidev.dll=1
+atidpdef.rsc=1
+atipxdef.rsc=1
+atiprdef.rsc=1
+ati95def.hlp=1
+ati95def.cnt=1
+ati98def.hlp=1
+ati98def.cnt=1
+atitadef.rsc=1
+atididef.rsc=1
+atiundef.rsc=1
+atidgdef.rsc=1
+atitbdef.rsc=1
+atidvdef.rsc=1
+atidvenu.rsc=1
+atitvdef.rsc=1
+atitvout.dll=2
+atitb.dll=2
+d11_std.txt=2
+small.m2v=2
+atidiag.dll=2
+atidgn32.exe=2
+macxw4.vxd=2
+macxdd16.dll=2
+macxdd32.dll=2
+atid3d.dll=2
+atid3dr3.dll=2
+ati3dcif.dll=2
+atitbdrv.sys=2
+atitbdet.exe=2
+atilcd.dll=2
+ativpe32.dll=2
+aticwd32.exe=2
+atidil.dll=2
+atitvo32.dll=2
+ativtvpm.dll=2
+ativpm32.dll=2
+ativpm16.dll=2
+atidplx.dll=2
+atitvt16.dll=2
+atitvt32.dll=2
+
+atixbar.inf=2
+atitunep.inf=2
+bt829.inf=2
+atitvsnd.inf=2
+
+atixbar.sys=2
+atitunep.sys=2
+atibt829.sys=2
+atitvsnd.sys=2
+
+atihal64.dll=3
+atimpp16.dll=3
+ativmppd.vxd=3
+atimppif.dll=3
+macxw4.drv=3
+atoglrp9.dll=3
+vgartd.vxd=3
+
+;----------------------------------------
+; Manufacturer 
+;----------------------------------------
+
+[Manufacturer]
+"%Mfg%"=Mfg
+
+[Player.Config]
+Pages=Driver.Page
+Description=ATI Setup
+INGDirectory=..\disk3\win9x
+
+[Player.Components]
+DIRECTX_English=DirectX 6
+;VGARTD_English=VGARTD,INTEL
+
+[DIRECTX_English.Messages]
+;3740<6.0,6.0>=!DDRAW[6.0],phasePRE_OK<EXIT>_iconERROR
+
+[DIRECTX_English]
+
+[VGARTD_English]
+CopyFiles=VGARTD_CopyFiles
+
+[VGARTD_CopyFiles]
+vgartd.vxd
+
+[License.Page]
+PageType=LicensePage
+LicenseFile=..\atiplay\LICENSE.TXT
+
+[Driver.Page]
+PageType=DriverPage
+
+[Express.Page]
+PageType=ExpressPage
+
+[Custom.Page]
+PageType=CustomPage
+
+[PrivateInstall]
+Install=Player
+
+;----------------------------------------
+; Driver sections
+;----------------------------------------
+
+[Mfg]
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_47421002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4744&SUBSYS_47441002, PCI\VEN_1002&DEV_4744
+"RAGE PRO TURBO PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_47501002, PCI\VEN_1002&DEV_4750
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_475A&SUBSYS_475A1002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4757&SUBSYS_47571002, PCI\VEN_1002&DEV_4757
+"RAGE IIC PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4756&SUBSYS_47561002, PCI\VEN_1002&DEV_4756
+"ATI-264VT4 (English)"=			MACXW4_PCI_English, PCI\VEN_1002&DEV_5656&SUBSYS_56561002, PCI\VEN_1002&DEV_5656
+"XPERT XL (English)"=			MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00881002, PCI\VEN_1002&DEV_4750
+"XPERT XL (English)"=			MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00881002, PCI\VEN_1002&DEV_4742
+"XPERT@WORK (English)"=			MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00801002, PCI\VEN_1002&DEV_4742
+"XPERT 98 (English)"=			MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00801002, PCI\VEN_1002&DEV_4750
+"XPERT 98 (English)"=			MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00841002, PCI\VEN_1002&DEV_4742
+"XPERT@PLAY 98 (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00401002, PCI\VEN_1002&DEV_4750
+"XPERT@PLAY 98 (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00401002, PCI\VEN_1002&DEV_4742
+"All-in-Wonder PRO NTSC (English)"=	MACXW4_PCI_English, PCI\VEN_1002&DEV_4749&SUBSYS_00611002, PCI\VEN_1002&DEV_4749
+"All-in-Wonder PRO NTSC (English)"=	MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00611002, PCI\VEN_1002&DEV_4742
+"All-in-Wonder PRO NTSC (English)"=	MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00631002, PCI\VEN_1002&DEV_4742
+"All-in-Wonder PRO NTSC (English)"=	MACXW4_PCI_English, PCI\VEN_1002&DEV_4749&SUBSYS_00631002, PCI\VEN_1002&DEV_4749
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00801002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00401002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00841002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00441002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00881002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4742&SUBSYS_00481002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4744&SUBSYS_00801002, PCI\VEN_1002&DEV_4744
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4744&SUBSYS_00401002, PCI\VEN_1002&DEV_4744
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4744&SUBSYS_00881002, PCI\VEN_1002&DEV_4744
+"RAGE PRO TURBO AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4744&SUBSYS_00481002, PCI\VEN_1002&DEV_4744
+"RAGE PRO TURBO PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00801002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00401002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00881002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4750&SUBSYS_00481002, PCI\VEN_1002&DEV_4750
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_475A&SUBSYS_00881002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_475A&SUBSYS_00801002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_475A&SUBSYS_00841002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4757&SUBSYS_00881002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4757&SUBSYS_00801002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (English)"=		MACXW4_AGP_English, PCI\VEN_1002&DEV_4757&SUBSYS_00841002, PCI\VEN_1002&DEV_4757
+"RAGE IIC PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4756&SUBSYS_00881002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (English)"=		MACXW4_PCI_English, PCI\VEN_1002&DEV_4756&SUBSYS_00801002, PCI\VEN_1002&DEV_4756
+"ATI-264VT4 (English)"=			MACXW4_PCI_English, PCI\VEN_1002&DEV_5656&SUBSYS_00881002, PCI\VEN_1002&DEV_5656
+
+;----------------------------------------
+; Install sections
+;----------------------------------------
+
+[MACXW4_PCI_English]
+CopyFiles=MACXW4_CopyFiles, MACXW4_CopyFiles_English, MACXW4_CopyFiles_3DFiles, INFFiles, WDMFiles, WDMSystemFiles, INFOtherFiles
+DelFiles=MACXW4_DelFiles
+DelReg=MACXW4_DelReg
+AddReg=MACXW4_AddReg, MACXW4_AddReg_English
+UpdateInis=VPM_UpdateInis
+
+[MACXW4_AGP_English]
+CopyFiles=MACXW4_CopyFiles, MACXW4_CopyFiles_English, MACXW4_CopyFiles_AGP, MACXW4_CopyFiles_3DFiles, INFFiles, WDMFiles, WDMSystemFiles, INFOtherFiles
+DelFiles=MACXW4_DelFiles
+DelReg=MACXW4_DelReg
+AddReg=MACXW4_AddReg, MACXW4_AddReg_English, MACXW4_AddReg_AGP 
+UpdateInis=VPM_UpdateInis
+
+;----------------------------------------
+; Common DelReg sections
+;----------------------------------------
+
+[MACXW4_DelReg]
+HKR,,DevLoader
+HKR,,Ver
+HKR,DEFAULT
+HKR,MODES
+HKR,CURRENT
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\DriverPages"
+HKLM,"System\CurrentControlSet\Services\Class\DISPLAY\ATI\00\TVOut"
+HKLM,"System\CurrentControlSet\Services\Class\DISPLAY\ATI\00\Modes\TVOut"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPages"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX2"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPages"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX2"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX2"
+
+;-----------------------
+; Model AddReg sections
+;-----------------------
+
+[MACXW4_AddReg]
+HKR,,Ver,,"5.30-C9W-WEB"
+HKR,,DevLoader,,"*vdd"
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,"macxw4.drv"
+HKR,DEFAULT,drv2,,"macxw4.drv"
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,"macxw4.vxd"
+HKR,DEFAULT,minivdd2,,"macxw4.vxd"
+HKR,DEFAULT,RefreshRate,,"-1"
+HKR,DEFAULT,DDC,,"1"
+HKR,"MODES\4\640,480",drv,,"vga.drv"
+HKR,"MODES\4\640,480",vdd,,"*vdd"
+HKR,"MODES\8\640,480",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\720,480",,,"60,72,75,85"
+HKR,"MODES\8\800,600",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\848,480"
+HKR,"MODES\8\1024,768",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\1152,864",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\1280,1024",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\1600,1200",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\720,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\848,480"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\16\1152,864"
+HKR,"MODES\16\1280,1024"
+HKR,"MODES\16\1600,1200"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\720,480"
+HKR,"MODES\24\800,600"
+HKR,"MODES\24\848,480"
+HKR,"MODES\24\1024,768"
+HKR,"MODES\24\1152,864"
+HKR,"MODES\24\1280,1024"
+HKR,"MODES\24\1600,1200"
+HKR,"MODES\32\640,480"
+HKR,"MODES\32\720,480"
+HKR,"MODES\32\800,600"
+HKR,"MODES\32\848,480"
+HKR,"MODES\32\1024,768"
+HKR,"MODES\32\1152,864"
+HKR,"MODES\32\1280,1024"
+HKR,"MODES\32\1600,1200"
+HKR,INFO,INIT,1,1
+HKR,INFO,ReleaseVersion,,"5.30-C9W-WEB"
+HKR,INFO,3D-eBMMode,1,0x00000001
+HKR,INFO,3D-PBFlag,1,0x00000003
+HKLM,"Software\ATI Technologies\Driver",BMDefault,,"0"
+HKLM,"Software\ATI Technologies\Driver",MPP,,"1"
+HKR,,EnumPropPages,,"atidpp.dll,EnumPropPages"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX",,,"{2454EF40-4AE4-11d1-B72C-006097268D8C}"
+HKCR,"CLSID\{C7A2F400-9A8B-11CE-95C9-0020C500A670}\InProcServer32",,,"atidplx.dll"
+HKCR,"CLSID\{C7A2F400-9A8B-11CE-95C9-0020C500A670}\InProcServer32",ThreadingModel,,"Apartment"
+HKCR,"CLSID\{EBB5845F-CA80-11CF-BD3C-008029E89281}\InProcServer32",,,"atitvo32.dll"
+HKCR,"CLSID\{EBB5845F-CA80-11CF-BD3C-008029E89281}\InProcServer32",ThreadingModel,,"Both"
+HKCR,"CLSID\{2454EF40-4AE4-11d1-B72C-006097268D8C}\InProcServer32",,,"atidev.dll"
+HKCR,"CLSID\{2454EF40-4AE4-11d1-B72C-006097268D8C}\InProcServer32",ThreadingModel,,"Apartment"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX2",,,"{C7A2F400-9A8B-11CE-95C9-0020C500A670}"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX2",,,"{C7A2F400-9A8B-11CE-95C9-0020C500A670}"
+HKLM,"Software\ATI Technologies\Desktop",HelpFile,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop",HelpID,,"3"
+HKLM,"Software\ATI Technologies\Desktop",CenterPopups,,"0"
+HKLM,"Software\ATI Technologies\Desktop",EnableIcon,,"1"
+HKLM,"Software\ATI Technologies\Desktop",Retail,,"0"
+HKLM,"Software\ATI Technologies\Desktop",ShowAdjWarning,,"1"
+HKLM,"Software\ATI Technologies\Desktop",TVOverscan,,"0"
+HKLM,"Software\ATI Technologies\Desktop",No800TVSize,,"0"
+HKLM,"Software\ATI Technologies\Desktop",DDGamma,,"0"
+HKLM,"Software\ATI Technologies\Desktop",Games@85,,"1"
+HKLM,"Software\ATI Technologies\Desktop",PanelLovesTV,,"0"
+HKLM,"Software\ATI Technologies\Driver\OptimalMPEG",,,"1"
+HKLM,"Software\ATI Technologies\Driver\MpegInstall",,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon","Side Image",,"1"
+HKLM,"Software\ATI Technologies\Desktop\Icon","Show Icons",,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",Executable,,"atitask -?"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",Icon,,"atitask.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",Executable,,"rundll32 shell32.dll,Control_RunDLL desk.cpl"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",Icon,,"deskcp16.dll"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",Executable,,"rundll32 shell32.dll,Control_RunDLL sysdm.cpl"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",Icon,,"sysdm.cpl"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 Display Driver",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 Display Driver",Icon,,"winhelp.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 Display Driver",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",Icon,,"winhelp.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",Context,,"87"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",TVOut,,"1"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",ExecutableExtend,,">subcon"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver",Icon,,"atipr.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver",Context,,"90"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver",ExecutableExtend,,">subcon"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",Icon,,"atipr.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",Context,,"106"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",ExecutableExtend,,">subcon"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",TVOut,,"1"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers",ATOGLRP9,,"atoglrp9"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Run",AtiCwd32,,"Aticwd32.exe"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Uninstall\ATI Mach64 Display Driver",UninstallString,,"atiuinst.exe -uninstall"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\RunOnce",ATITbDet,,"atitbdet.exe -tbinstall"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Run",AtiKey,,"Atitask.exe"
+HKLM,"Software\CurrentControlSet\Services\Class\vpm",,,"ativpm32.dll" 
+HKLM,"Software\ATI Technologies\Driver", PMBIOS, , "0"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\320X200",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\320X240",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\400X300",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\512X384",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\640X400",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\640X480",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\720X480",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\800X600",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\848X480",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1024X768",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1152X864",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1280X1024",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1600X1200",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\2048X1536",,,"8,16,24,32"
+
+[MACXW4_AddReg_AGP]
+HKLM,"System\CurrentControlSet\Services\VxD\VGARTD",StaticVxD,,"vgartd.vxd"
+
+[MACXW4_AddReg_English]
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Uninstall\ATI Mach64 Display Driver",DisplayName,,%English_UNINSTALL_DISPLAY_DRIVER%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",,,%English_ICON_ATI_ICON_SETTINGS%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",,,%English_ICON_DISPLAY_SETTINGS%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",,,%English_ICON_DEVICE_SETTINGS%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 Display Driver",,,%English_ICON_DISPLAY_DRIVER%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out",,,%English_ICON_TVOUT%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver",,,%English_ICON_DISPLAY_DRIVER%
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out",,,%English_ICON_TVOUT%
+
+;----------------------------------------
+; File Update References
+;----------------------------------------
+
+[DestinationDirs]
+DefaultDestDir=11               	; LDID_SYS
+WDMSystemFiles=10,system32\drivers      ; system32\drivers
+INFFiles=17				; windows\inf
+INFOtherFiles=17,OTHER			; windows\inf\other
+WDMFiles=30,ATI\INSTALL			; c:\ati\install
+VGARTD_CopyFiles=11
+
+[INFFiles]
+atixbar.inf
+atitunep.inf
+bt829.inf
+
+[INFOtherFiles]
+atitvsnd.inf
+
+[WDMFiles]
+atixbar.sys
+atitunep.sys
+atibt829.sys
+atitvsnd.sys
+
+[WDMSystemFiles]
+atixbar.sys
+atitunep.sys
+atibt829.sys
+atitvsnd.sys
+
+;----------------------------------------
+; CopyFiles sections
+;----------------------------------------
+
+[MACXW4_CopyFiles]
+macxw4.drv
+atihal64.dll
+atidpp.dll
+atipita.dll
+atictl32.dll
+aticwdde.dll
+atitask.exe
+atipr.exe
+ati64hlp.exe
+atiht.dll
+atiuinst.exe
+atidev.dll
+atitvout.dll
+atoglrp9.dll
+
+[MACXW4_CopyFiles_English]
+atidpdef.rsc
+atipxdef.rsc
+atiprdef.rsc
+ati95def.hlp
+ati95def.cnt
+ati98def.hlp
+ati98def.cnt
+atitadef.rsc
+atididef.rsc
+atiundef.rsc
+atidgdef.rsc
+atitbdef.rsc
+atidvdef.rsc
+atidvenu.rsc
+atitvdef.rsc
+
+[MACXW4_CopyFiles_3DFiles]
+atitb.dll
+d11_std.txt
+small.m2v
+atidiag.dll
+atidgn32.exe
+macxw4.vxd
+macxdd16.dll
+macxdd32.dll
+atid3d.dll
+atid3dr3.dll
+ati3dcif.dll
+atitbdrv.sys
+atitbdet.exe
+atilcd.dll
+ativpe32.dll
+aticwd32.exe
+atidil.dll
+atitvo32.dll
+ativtvpm.dll
+ativpm32.dll
+ativpm16.dll
+ativmppd.vxd
+atimppif.dll
+atidplx.dll
+atitvt16.dll
+atitvt32.dll
+atimpp16.dll
+
+[MACXW4_CopyFiles_AGP]
+vgartd.vxd
+
+;----------------------------------------
+; DeleteFiles sections
+;----------------------------------------
+
+[MACXW4_DelFiles]
+ati64hlp.stb,,,1
+ati64hl2.stb,,,1
+
+;----------------------------------------
+; System.ini Updates
+;----------------------------------------
+
+[VPM_UpdateInis]
+SYSTEM.INI,Drivers32,,"VIDC.YVU9=ATIYVU9.DLL"
+SYSTEM.INI,Drivers,,"VIDC.YVU9=IYVU9.DLL"
+SYSTEM.INI,Drivers,,"VPM=ATIVTVPM.DLL"
+
+;----------------------------------------
+; User visible strings
+;----------------------------------------
+
+[Strings]
+ClassName="Display"
+Mfg="ATI Tech. - Enhanced"
+
+; Property Page Language Dependent Strings for English
+English_ICON_ATI_ICON_SETTINGS="ATI Icon Settings"
+English_ICON_DISPLAY_SETTINGS="Display Settings"
+English_ICON_DEVICE_SETTINGS="Device Settings"
+English_ICON_DISPLAY_DRIVER="ATI Desktop"
+English_ICON_TVOUT="ATI Television Display"
+English_UNINSTALL_DISPLAY_DRIVER="ATI mach64 Display Driver"

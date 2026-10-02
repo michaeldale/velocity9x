@@ -153,6 +153,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 ## ATI
 
 - [2026-08-16 ATI Mach64 / Rage Mobility hardware audit](2026-08-16-ati-mach64-hardware-audit.md)
+- [2026-10-02 Rage IIC on ATI's own driver at 640x480: 3DMark 99 484, Final Reality 3.81, no OpenGL; the community 4.11.2611 build alike](2026-10-02-rage-iic-native-baseline-a8u4i5.md)
 
 ## Matrox
 

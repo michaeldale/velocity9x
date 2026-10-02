@@ -1,0 +1,25 @@
+os       product_name=Microsoft Windows 98  version_number=4.10.2222  sub_version=A  plus_version=IE 5 5.00.2614.3500  major=4  minor=10  build=2222  platform=1  csd=A  registered_owner=Michael Dale  directx=4.09.00.0904  ie_version=5.00.2614.3500  clean_boot=0
+cpu      count=1  type=586  vendor=GenuineIntel  family=6  model=8  stepping=6  features=fpu tsc cmov mmx sse  mhz=1002  reg_vendor=GenuineIntel  reg_identifier=x86 Family 6 Model 8 Stepping 6
+memory   total_phys=267866112  avail_phys=67698688  total_page=1879613440  avail_page=1855709184  load=41
+drive    letter=A  type=removable
+drive    letter=C  type=fixed  fs=FAT32  serial=0C62-1624  total=6468820992  free=4145905664
+display  desc=RAGE IIC AGP (English)  provider=ATI Tech. - Enhanced  width=1024  height=768  bpp=16
+net      hostname=a8u4i5  ip=10.0.1.172
+bios     date=07/06/00  name=Award  version=Award Modular BIOS v4.51PG
+device   class=Display  desc=RAGE IIC AGP (English)  provider=ATI Tech. - Enhanced  driver_date=12-10-1998  id=PCI\VEN_1002&DEV_4757&SUBSYS_47571002&REV_7A\000800
+device   class=Monitor  desc=Plug and Play Monitor  provider=Microsoft  driver_date=4-23-1999  id=MONITOR\HJW0000\PCI_VEN_1002&DEV_4757&SUBSYS_47571002&REV_7A_000800
+device   class=Net  desc=Dial-Up Adapter  provider=Microsoft  driver_date=4-23-1999  id=ROOT\NET\0000
+device   class=Net  desc=Realtek RTL8139/810x Family Fast Ethernet NIC  provider=Realtek Semiconductor Corp.  driver_date=2- 3-2022  id=PCI\VEN_10EC&DEV_8139&SUBSYS_813910EC&REV_10\BUS_00&DEV_0B&FUNC_00
+device   class=hdc  desc=Intel 82371AB/EB PCI Bus Master IDE Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_8086&DEV_7111&SUBSYS_00000000&REV_01\BUS_00&DEV_07&FUNC_01
+device   class=hdc  desc=Primary IDE controller (dual fifo)  provider=Microsoft  driver_date=4-23-1999  id=MF\CHILD0000\PCI&VEN_8086&DEV_7111&SUBSYS_00000000&REV_01&BUS_00&DEV_07&FUNC_01
+device   class=hdc  desc=Secondary IDE controller (dual fifo)  provider=Microsoft  driver_date=4-23-1999  id=MF\CHILD0001\PCI&VEN_8086&DEV_7111&SUBSYS_00000000&REV_01&BUS_00&DEV_07&FUNC_01
+device   class=fdc  desc=Standard Floppy Disk Controller  provider=(Standard floppy disk controllers)  driver_date=4-23-1999  id=ACPI\*PNP0700\0
+device   class=DiskDrive  desc=Disk drive  provider=(Standard disk drives)  driver_date=4-23-1999  id=ESDI\GENERIC_IDE__DISK_TYPE47_\MF&CHILD0000&PCI&VEN_8086&DEV_7111&SUBSYS_00000000&REV_01&BUS_00&DEV_07&FUNC_0100
+device   class=Ports  desc=Communications Port  provider=Microsoft  driver_date=4-23-1999  id=ACPI\*PNP0501\00000001
+device   class=Ports  desc=Communications Port  provider=Microsoft  driver_date=4-23-1999  id=ACPI\*PNP0501\00000002
+device   class=Ports  desc=Printer Port  provider=Microsoft  driver_date=4-23-1999  id=ACPI\*PNP0400\0
+device   class=USB  desc=Intel 82371AB/EB PCI to USB Universal Host Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_8086&DEV_7112&SUBSYS_00000000&REV_01\BUS_00&DEV_07&FUNC_02
+device   class=USB  desc=USB Root Hub  provider=Microsoft  driver_date=4-23-1999  id=USB\ROOT_HUB\PCI&VEN_8086&DEV_7112&SUBSYS_00000000&REV_01&BUS_00&DEV_07&FUNC_02
+device   class=Mouse  desc=PS/2 Compatible Mouse Port  provider=Microsoft  driver_date=4-23-1999  id=ACPI\*PNP0F13\0
+device   class=Keyboard  desc=Standard 101/102-Key or Microsoft Natural Keyboard  provider=Microsoft  driver_date=4-23-1999  id=ACPI\*PNP0303\0
+meta     devices=live  install_id=57c8658b-1360-4eb7-8662-5e3c3d5ddfcc  discovery=off

@@ -1,0 +1,633 @@
+; ATI Display Information file : ATII9XAD.INF
+; INF file for ATI2DDAD display driver 5.40.3
+; PoweredByATiRage3D
+
+[version]
+Class=DISPLAY
+signature="$Windows 95$"
+Provider=%Mfg%
+;DriverVer=11/02/1999
+;CatalogFile=atirage.cat
+
+[SourceDisksNames]
+1="Win9x: 5.40x2611x3D, disk # 1",,1
+
+[SourceDisksFiles]
+atipdnad.dll=1
+atippiad.dll=1
+atipctad.dll=1
+atipcwad.dll=1
+atiptkad.exe=1
+ati64hlp.exe=1
+atiphtad.dll=1
+atipdvad.dll=1
+atrpdnad.enu=1
+atrps1xx.enu=1
+atrpdpad.enu=1
+ati95def.hlp=1
+ati95def.cnt=1
+ati98def.hlp=1
+ati98def.cnt=1
+atrptkad.enu=1
+atr9diad.dft=1
+atr9dgad.dft=1
+atitbdef.rsc=1
+atrpdvad.enu=1
+atitvdef.rsc=1
+atimcrad.dll=1
+atittvad.dll=1
+atitmvad.dll=1
+ati9diad.dll=1
+ati9dgad.exe=1
+ati9dtxx.dll=1
+atr9dtxx.dft=1
+atii16xx.dll=1
+atii32xx.dll=1
+ati2ddad.vxd=1
+atid16ad.dll=1
+atid32ad.dll=1
+ati3drad.dll=1
+ati3dcif.dll=1
+atitbdrv.sys=1
+atitbdet.exe=1
+ati2lcad.dll=1
+ativpead.dll=1
+ati2cwad.exe=1
+atipdiad.dll=1
+atitvo32.dll=1
+ativtvpm.dll=1
+ativpm32.dll=1
+ativpm16.dll=1
+atipdpad.dll=1
+atips1xx.dll=1
+atixbar.inf=1
+atitunep.inf=1
+bt829.inf=1
+atitvsnd.inf=1
+atixbar.sys=1
+atitunep.sys=1
+atibt829.sys=1
+atitvsnd.sys=1
+atid3d.dll=1
+oemlogo.bmp=1
+oeminfo.ini=1
+atifont.com=1
+ati3dcor.dll=1
+ati2hlad.dll=1
+ativ16ad.dll=1
+ativvxad.vxd=1
+ativifad.dll=1
+ati2ddad.drv=1
+atoglrp9.dll=1
+atigart.exe=1
+atigart.dat=1
+vgartd.vxd=1
+atiicdxx.sys=1
+atiicdxx.vxd=1
+atiicdxx.dll=1
+atricdxx.dft=1
+atiuinst.bat=1
+atiiisxx.exe=1
+atiiiexx.dll=1
+atiiprxx.exe=1
+atriprxx.enu=1
+atii9xad.inf=1
+
+;----------------------------------------
+; Manufacturer 
+;----------------------------------------
+
+[Manufacturer]
+"%Mfg%"=Mfg
+
+;----------------------------------------
+; Driver sections
+;----------------------------------------
+
+[Mfg]
+"3D RAGE LT PCI (4C54)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C54&SUBSYS_4C541002, PCI\VEN_1002&DEV_4C54
+"3D RAGE LTG PCI (4C47)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C47&SUBSYS_4C471002, PCI\VEN_1002&DEV_4C47
+
+"3D RAGE II PCI (4754)"= 		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4754&SUBSYS_47541002, PCI\VEN_1002&DEV_4754
+"3D RAGE II+DVD PCI (4755)"= 		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4755&SUBSYS_47551002, PCI\VEN_1002&DEV_4755
+
+"RAGE IIC AGP (4757)"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4757&SUBSYS_47571002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (4757/0040)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4757&SUBSYS_00401002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (4757/0048)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4757&SUBSYS_00481002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (4757/0080)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4757&SUBSYS_00801002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (4757/0084)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4757&SUBSYS_00841002, PCI\VEN_1002&DEV_4757
+"RAGE IIC AGP (4757/0088)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4757&SUBSYS_00881002, PCI\VEN_1002&DEV_4757
+
+"RAGE IIC AGP (475A)"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_475A&SUBSYS_475A1002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (475A/0040)"=       	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_475A&SUBSYS_00401002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (475A/0048)"=       	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_475A&SUBSYS_00481002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (475A/0080)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_475A&SUBSYS_00801002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (475A/0084)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_475A&SUBSYS_00841002, PCI\VEN_1002&DEV_475A
+"RAGE IIC AGP (475A/0088)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_475A&SUBSYS_00881002, PCI\VEN_1002&DEV_475A
+
+"RAGE IIC PCI (4756)"=			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4756&SUBSYS_47561002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (4756/0040)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4756&SUBSYS_00401002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (4756/0048)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4756&SUBSYS_00481002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (4756/0080)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4756&SUBSYS_00801002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (4756/0084)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4756&SUBSYS_00841002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (4756/0088)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4756&SUBSYS_00881002, PCI\VEN_1002&DEV_4756
+"RAGE IIC PCI (4759)"=			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4759&SUBSYS_47591002, PCI\VEN_1002&DEV_4759
+
+"3D RAGE PRO AGP (4744)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4744&SUBSYS_47441002, PCI\VEN_1002&DEV_4744
+"3D RAGE PRO AGP (4744/0080)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4744&SUBSYS_00801002, PCI\VEN_1002&DEV_4744
+"3D RAGE PRO AGP 2X (4742)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_47421002, PCI\VEN_1002&DEV_4742
+"3D RAGE PRO AGP 2X (4742/0080)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00801002, PCI\VEN_1002&DEV_4742
+
+"3D RAGE PRO PCI (4749)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4749&SUBSYS_47491002, PCI\VEN_1002&DEV_4749
+"3D RAGE PRO PCI (4750)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_47501002, PCI\VEN_1002&DEV_4750
+"3D RAGE PRO PCI (4751)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4751&SUBSYS_47511002, PCI\VEN_1002&DEV_4751
+
+"All-in-Wonder PCI (4755)"=      	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4755&SUBSYS_00791002, PCI\VEN_1002&DEV_4755
+
+"All-in-Wonder PRO AGP 2X (4742)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_47421002, PCI\VEN_1002&DEV_4742
+"All-in-Wonder PRO AGP 2X (4742/0061)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00611002, PCI\VEN_1002&DEV_4742
+"All-in-Wonder PRO AGP 2X (4742/0062)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00621002, PCI\VEN_1002&DEV_4742
+"All-in-Wonder PRO AGP 2X (4742/0063)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00631002, PCI\VEN_1002&DEV_4742
+
+"All-in-Wonder PRO PCI (4749)"=  	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4749&SUBSYS_47491002, PCI\VEN_1002&DEV_4749
+"All-in-Wonder PRO PCI (4749/0061)"=	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4749&SUBSYS_00611002, PCI\VEN_1002&DEV_4749
+"All-in-Wonder PRO PCI (4749/0062)"=	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4749&SUBSYS_00621002, PCI\VEN_1002&DEV_4749
+"All-in-Wonder PRO PCI (4749/0063)"=	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4749&SUBSYS_00631002, PCI\VEN_1002&DEV_4749
+
+"3D RAGE PRO AGP 2X (4747)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4747&SUBSYS_47471002, PCI\VEN_1002&DEV_4747
+"3D RAGE PRO AGP 2X (4742)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_47421002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_47421002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/0040)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00401002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/0044)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00441002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/0080)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00801002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/0084)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00841002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/464A)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_464A8086, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/0082)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00821028, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/4082)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_40821028, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/4152)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_41528086, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/8082)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_80821028, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/C082)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_C0821028, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/8001)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_80011002, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP 2X (4742/8023)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_80231033, PCI\VEN_1002&DEV_4742
+"RAGE PRO TURBO AGP (4744)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4744&SUBSYS_47441002, PCI\VEN_1002&DEV_4744
+"RAGE PRO TURBO AGP (4744/406F)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4744&SUBSYS_406F1028, PCI\VEN_1002&DEV_4744
+
+"3D RAGE PRO PCI"=    			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_47501002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (4750)"= 		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_47501002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (4750/0040)"= 	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00401002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (4750/0044)"= 	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00441002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (4750/0080)"= 	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00801002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (4750/0084)"= 	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00841002, PCI\VEN_1002&DEV_4750
+"RAGE PRO TURBO PCI (4750/0088)"=	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00881002, PCI\VEN_1002&DEV_4750
+
+"XPERT XL AGP 2X (4742/0088)"=          MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00881002, PCI\VEN_1002&DEV_4742
+"XPERT XL AGP 2X (4742/0048)"=          MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00481002, PCI\VEN_1002&DEV_4742
+"XPERT XL PCI (4750/0088)"=           	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00881002, PCI\VEN_1002&DEV_4750
+"XPERT XL PCI (4750/0048)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00481002, PCI\VEN_1002&DEV_4750
+
+"XPERT LCD AGP 2X"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C42&SUBSYS_00441002, PCI\VEN_1002&DEV_4C42
+"XPERT@PLAY AGP 2X"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00401002, PCI\VEN_1002&DEV_4742
+"XPERT@WORK AGP 2X"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00801002, PCI\VEN_1002&DEV_4742
+
+"XPERT LCD PCI"=	        	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_00441002, PCI\VEN_1002&DEV_4C49
+"XPERT@PLAY PCI"=			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00401002, PCI\VEN_1002&DEV_4750
+"XPERT@WORK PCI"=			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00801002, PCI\VEN_1002&DEV_4750
+
+"XPERT98D AGP 2X (4742)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_41528086, PCI\VEN_1002&DEV_4742
+"XPERT98 AGP 2X (4742)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4742&SUBSYS_00841002, PCI\VEN_1002&DEV_4742
+"XPERT98 AGP 2X (474D/0084)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_00841002, PCI\VEN_1002&DEV_474D
+"XPERT98 AGP 2X (474D/8084)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_80841002, PCI\VEN_1002&DEV_474D
+"XPERT98 RXL 2X AGP (474D/0004)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_00041002, PCI\VEN_1002&DEV_474D  
+"XPERT98 RXL 2X AGP (474D/0008)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_00081002, PCI\VEN_1002&DEV_474D
+"XPERT98 RXL 2X AGP (474D/8004)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_80041002, PCI\VEN_1002&DEV_474D
+"XPERT98 RXL 2X AGP (474D/8008)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_80081002, PCI\VEN_1002&DEV_474D 
+
+"XPERT98 AGP"=				MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_4C4D1002, PCI\VEN_1002&DEV_4C4D
+"XPERT98 PCI"=				MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4750&SUBSYS_00801002, PCI\VEN_1002&DEV_4750
+
+"eOne AGP"=				MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_314F109F, PCI\VEN_1002&DEV_474D
+"Logan AGP"=				MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C42&SUBSYS_00041002, PCI\VEN_1002&DEV_4C42
+"Logan PCI"=				MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_00041002, PCI\VEN_1002&DEV_4C49
+"Profile PCI"=				MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_0004107B, PCI\VEN_1002&DEV_4C49
+
+"RAGE LT PRO AGP (4C44)"=    		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C44&SUBSYS_4C441002, PCI\VEN_1002&DEV_4C44
+"RAGE LT PRO AGP 2X (4C42)"=    	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C42&SUBSYS_4C421002, PCI\VEN_1002&DEV_4C42
+"RAGE LT PRO AGP 2X (4C42/0044)"=    	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C42&SUBSYS_00441002, PCI\VEN_1002&DEV_4C42
+"RAGE LT PRO AGP 2X (4C42/0040)"=    	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C42&SUBSYS_00401002, PCI\VEN_1002&DEV_4C42
+"RAGE LT PRO AGP 2X (4C42/8001)"=    	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C42&SUBSYS_80011002, PCI\VEN_1002&DEV_4C42
+"RAGE LT PRO PCI (4C51)"=        	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C51&SUBSYS_4C511002, PCI\VEN_1002&DEV_4C51
+"RAGE LT PRO PCI (4C50)"=        	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C50&SUBSYS_4C501002, PCI\VEN_1002&DEV_4C50
+"RAGE LT PRO PCI (4C49)"=    		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_4C491002, PCI\VEN_1002&DEV_4C49
+"RAGE LT PRO PCI (4C49/0044)"=        	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_00441002, PCI\VEN_1002&DEV_4C49
+"RAGE LT PRO PCI (4C49/0040)"=        	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_00401002, PCI\VEN_1002&DEV_4C49
+"RAGE LT PRO PCI (4C49/0004)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C49&SUBSYS_00041002, PCI\VEN_1002&DEV_4C49
+
+"RAGE XL AGP (474D)"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_474D1002, PCI\VEN_1002&DEV_474D
+"RAGE XL AGP (474D/806A)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_806A1033, PCI\VEN_1002&DEV_474D
+"RAGE XL AGP 2X (474D/107C)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_107C10CF, PCI\VEN_1002&DEV_474D
+"RAGE XL AGP 2X (474D/806A)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474D&SUBSYS_806A1002, PCI\VEN_1002&DEV_474D
+
+"RAGE XL PCI-66 (474F)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_474F&SUBSYS_474F1002, PCI\VEN_1002&DEV_474F
+"RAGE XL PCI? (4752)"= 			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4752&SUBSYS_47521002, PCI\VEN_1002&DEV_4752
+"RAGE XL PCI? (4752/0008)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4752&SUBSYS_00081002, PCI\VEN_1002&DEV_4752
+"RAGE XL PCI? (4752/HPTC)"= 		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4752&SUBSYS_80081002, PCI\VEN_1002&DEV_4752
+
+"RAGE XC AGP (474E)"=			MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474E&SUBSYS_474E1002, PCI\VEN_1002&DEV_474E
+"RAGE XC AGP (474E/0084)"=		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_474E&SUBSYS_00841002, PCI\VEN_1002&DEV_474E
+
+"RAGE XC PCI (4C50)"=			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C50&SUBSYS_4C501002, PCI\VEN_1002&DEV_4C50
+"RAGE XC PCI-66 (474C)"=		MACXW4_PCI_ENU, PCI\VEN_1002&DEV_474C&SUBSYS_474C1002, PCI\VEN_1002&DEV_474C
+"RAGE XC PCI? (4753)"= 			MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4753&SUBSYS_47531002, PCI\VEN_1002&DEV_4753
+
+"ATI RAGE MOBILITY AGP (4C4D/B160)"=    MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_B1600E11, PCI\VEN_1002&DEV_4C4D
+"ATI RAGE MOBILITY AGP (4C4D/B111)"=    MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_B1110E11, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-P AGP (4C4D/009E)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_009E1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-P AGP (4C4D/009F)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_009F1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-P AGP (4C4D/0085)"=	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00851028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-M1 AGP 2X (4C4D/00AA)"= 	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00AA1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-M1 AGP 2X (4C4D/00AB)"= 	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00AB1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-M1 AGP 2X (4C4D/00BB)"= 	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00BB1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-M1 AGP 2X (4C4D/00BC)"= 	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00BC1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-M1 AGP 2X (4C4D/00DC)"= 	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00DC1028, PCI\VEN_1002&DEV_4C4D
+"RAGE MOBILITY-M1 AGP 2X (4C4D/00DD)"= 	MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_00DD1028, PCI\VEN_1002&DEV_4C4D
+"MOBILITY P/M AGP 2X (4C4D)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4D&SUBSYS_4C4D1002, PCI\VEN_1002&DEV_4C4D
+"MOBILITY-L AGP 2X (4C4E)"= 		MACXW4_AGP_ENU, PCI\VEN_1002&DEV_4C4E&SUBSYS_4C4E1002, PCI\VEN_1002&DEV_4C4E
+
+"RAGE MOBILITY-L PCI (4C53)"=    	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C53&SUBSYS_4C531002, PCI\VEN_1002&DEV_4C53
+"RAGE MOBILITY P/M PCI (4C52)"=    	MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C52&SUBSYS_4C521002, PCI\VEN_1002&DEV_4C52
+"RAGE MOBILITY P/M PCI (4C52/B111)"=    MACXW4_PCI_ENU, PCI\VEN_1002&DEV_4C52&SUBSYS_B1110E11, PCI\VEN_1002&DEV_4C52
+
+;----------------------------------------
+; Install sections
+;----------------------------------------
+
+[MACXW4_PCI_ENU]
+CopyFiles=MACXW4_CopyFiles, MACXW4_DeskTop, MACXW4_CopyFiles_ENU, MACXW4_CopyFiles_3DFiles, INFFiles, WDMFiles, WDMSystemFiles, INFOtherFiles
+DelFiles=MACXW4_DelFiles
+DelReg=MACXW4_DelReg
+AddReg=MACXW4_AddReg, MACXW4_AddReg_ENU, MACXW4_Desktop_AddReg
+UpdateInis=VPM_UpdateInis
+
+UninstallFiles=MACXW4_DeskTop, MACXW4_CopyFiles_ENU
+CleanFiles=MACXW4_CopyFiles, MACXW4_CopyFiles_3DFiles, INFFiles, WDMFiles, WDMSystemFiles, INFOtherFiles
+UninstallReg=MACXW4_Uninstall_Reg, MACXW4_AddReg_ENU, MACXW4_Desktop_AddReg
+CleanReg=MACXW4_AddReg
+UninstallUpdateInis=VPM_UpdateInis
+
+[MACXW4_AGP_ENU]
+CopyFiles=MACXW4_CopyFiles, MACXW4_DeskTop, MACXW4_CopyFiles_ENU, MACXW4_CopyFiles_AGP, MACXW4_CopyFiles_3DFiles, INFFiles, WDMFiles, WDMSystemFiles, INFOtherFiles, GART
+DelFiles=MACXW4_DelFiles
+DelReg=MACXW4_DelReg
+AddReg=MACXW4_AddReg, MACXW4_AddReg_ENU, MACXW4_Desktop_AddReg, MACXW4_AddReg_AGP
+UpdateInis=VPM_UpdateInis
+
+UninstallFiles=MACXW4_DeskTop, MACXW4_CopyFiles_ENU
+CleanFiles=MACXW4_CopyFiles, MACXW4_CopyFiles_AGP, MACXW4_CopyFiles_3DFiles, INFFiles, WDMFiles, WDMSystemFiles, INFOtherFiles, GART
+UninstallReg=MACXW4_Uninstall_Reg, MACXW4_AddReg_ENU, MACXW4_Desktop_AddReg
+CleanReg=MACXW4_AddReg, MACXW4_AddReg_AGP
+UninstallUpdateInis=VPM_UpdateInis
+
+;----------------------------------------
+; Common DelReg sections
+;----------------------------------------
+
+[MACXW4_DelReg]
+HKR,,DevLoader
+HKR,,Ver
+HKR,DEFAULT
+HKR,MODES
+HKR,CURRENT
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\DriverPages"
+HKLM,"System\CurrentControlSet\Services\Class\DISPLAY\ATI\00\TVOut"
+HKLM,"System\CurrentControlSet\Services\Class\DISPLAY\ATI\00\Modes\TVOut"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPages"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX2"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPages"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX2"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Device\shellex\PropertySheetHandlers\ATIPagesX"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX2"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 Display Driver"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Mach 64 TV Out"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 Display Driver"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Mach 64 TV Out"
+
+;-----------------------
+; Model AddReg sections
+;-----------------------
+
+[MACXW4_AddReg]
+;HKR,,Ver,,"4.00"
+HKR,,Ver,,"5.40x2611x3D"
+HKR,,DevLoader,,"*vdd"
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,"ati2ddad.drv"
+HKR,DEFAULT,drv2,,"ati2ddad.drv"
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,"ati2ddad.vxd"
+HKR,DEFAULT,minivdd2,,"ati2ddad.vxd"
+HKR,DEFAULT,RefreshRate,,"-1"
+HKR,DEFAULT,DDC,,"1"
+HKR,"MODES\4\640,480",drv,,"vga.drv"
+HKR,"MODES\4\640,480",vdd,,"*vdd"
+HKR,"MODES\8\640,480",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\720,480",,,"60,72,75,85"
+HKR,"MODES\8\800,600",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\848,480",,,"60,88"
+HKR,"MODES\8\1024,768",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\1152,864",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\1280,1024",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\8\1600,1200",,,"43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+HKR,"MODES\16\640,480"
+HKR,"MODES\16\720,480"
+HKR,"MODES\16\800,600"
+HKR,"MODES\16\848,480"
+HKR,"MODES\16\1024,768"
+HKR,"MODES\16\1152,864"
+HKR,"MODES\16\1280,1024"
+HKR,"MODES\16\1600,1200"
+HKR,"MODES\24\640,480"
+HKR,"MODES\24\720,480"
+HKR,"MODES\24\800,600"
+HKR,"MODES\24\848,480"
+HKR,"MODES\24\1024,768"
+HKR,"MODES\24\1152,864"
+HKR,"MODES\24\1280,1024"
+HKR,"MODES\24\1600,1200"
+HKR,"MODES\32\640,480"
+HKR,"MODES\32\720,480"
+HKR,"MODES\32\800,600"
+HKR,"MODES\32\848,480"
+HKR,"MODES\32\1024,768"
+HKR,"MODES\32\1152,864"
+HKR,"MODES\32\1280,1024"
+HKR,"MODES\32\1600,1200"
+HKR,,ReleaseVersion,,"5.40.3"
+HKLM,"Software\ATI Technologies\Driver",BMDefault,,"0"
+HKLM,"Software\ATI Technologies\Driver",MPP,,"1"
+HKR,INFO,INIT,1,1
+HKR,INFO,3D-eBMMode,1,1
+HKR,INFO,3D-PBFlag,1,3
+
+[MACXW4_Desktop_AddReg]
+HKLM,"Software\ATI Technologies\CDS"
+HKR,,EnumPropPages,,"atipdnad.dll,EnumPropPages"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX2",,,"{7841B320-1CE0-11d3-82F2-008029E75E38}"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX3",,,"{2A0C94C0-6847-11d2-B9DE-00001B490CC3}"
+HKR,"shellex\PropertySheetHandlers\ATIPagesX4",,,"{7841B321-1CE0-11d3-82F2-008029E75E38}"
+HKCR,"CLSID\{7841B320-1CE0-11d3-82F2-008029E75E38}\InProcServer32",,,"atipdpad.dll"
+HKCR,"CLSID\{7841B320-1CE0-11d3-82F2-008029E75E38}\InProcServer32",ThreadingModel,,"Apartment"
+HKCR,"CLSID\{2A0C94C0-6847-11d2-B9DE-00001B490CC3}\InProcServer32",,,"atips1xx.dll"
+HKCR,"CLSID\{2A0C94C0-6847-11d2-B9DE-00001B490CC3}\InProcServer32",ThreadingModel,,"Apartment"
+HKCR,"CLSID\{EBB5845F-CA80-11CF-BD3C-008029E89281}\InProcServer32",,,"atitvo32.dll"
+HKCR,"CLSID\{EBB5845F-CA80-11CF-BD3C-008029E89281}\InProcServer32",ThreadingModel,,"Both"
+HKCR,"CLSID\{7841B321-1CE0-11d3-82F2-008029E75E38}\InProcServer32",,,"atipdvad.dll"
+HKCR,"CLSID\{7841B321-1CE0-11d3-82F2-008029E75E38}\InProcServer32",ThreadingModel,,"Apartment"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX2",,,"{7841B320-1CE0-11d3-82F2-008029E75E38}"
+;HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX2",,,"{7841B320-1CE0-11d3-82F2-008029E75E38}"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX3",,,"{2A0C94C0-6847-11d2-B9DE-00001B490CC3}"
+;HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX3",,,"{2A0C94C0-6847-11d2-B9DE-00001B490CC3}"
+HKLM,"Software\ATI Technologies\Desktop",HelpFile,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop",HelpID,,"3"
+HKLM,"Software\ATI Technologies\Desktop",CenterPopups,,"0"
+HKLM,"Software\ATI Technologies\Desktop",EnableIcon,,"1"
+HKLM,"Software\ATI Technologies\Desktop",Retail,,"0"
+HKLM,"Software\ATI Technologies\Desktop",ShowAdjWarning,,"1"
+HKLM,"Software\ATI Technologies\Desktop",TVOverscan,,"0"
+HKLM,"Software\ATI Technologies\Desktop",No800TVSize,,"0"
+HKLM,"Software\ATI Technologies\Desktop",DDGamma,,"0"
+HKLM,"Software\ATI Technologies\Desktop",Games@85,,"1"
+HKLM,"Software\ATI Technologies\Desktop",PanelLovesTV,,"0"
+HKLM,"Software\ATI Technologies\Desktop",RefMin,,"60"
+HKLM,"Software\ATI Technologies\Driver\OptimalMPEG",,,"1"
+HKLM,"Software\ATI Technologies\Driver\MpegInstall",,,"0"
+HKLM,"Software\ATI Technologies\Driver",Restore3,,"1"
+HKLM,"Software\ATI Technologies\Driver",DGCSS,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon","Side Image",,"1"
+HKLM,"Software\ATI Technologies\Desktop\Icon","Show Icons",,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",Executable,,"atiptkad -?"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",Icon,,"atiptkad.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",Executable,,"rundll32 shell32.dll,Control_RunDLL desk.cpl"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",Icon,,"deskcp16.dll"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Display Settings",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",Executable,,"rundll32 shell32.dll,Control_RunDLL sysdm.cpl"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",Icon,,"sysdm.cpl"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Settings\Device Settings",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Display Driver",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Display Driver",Icon,,"winhelp.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI Display Driver",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out",Icon,,"winhelp.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out",Context,,"87"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out",TVOut,,"1"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out",ExecutableExtend,,">subcon"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Display Driver",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Display Driver",Icon,,"atiiprxx.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Display Driver",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Display Driver",Context,,"90"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI Display Driver",ExecutableExtend,,">subcon"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out",Executable,,"ati%s%s.hlp"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out",Icon,,"atiiprxx.exe"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out",IconIndex,,"0"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out",Context,,"106"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out",ExecutableExtend,,">subcon"
+HKLM,"Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out",TVOut,,"1"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers",ATOGLRP9,,"atoglrp9"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Run",AtiCwd32,,"Ati2cwad.exe"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Uninstall\ATI Display Driver",UninstallString,,"rundll32 %11%\atiiiexx.dll,_InfEngUnInstallINFFile_RunDLL@16 -force_restart -flags:0x2010001 -inf:%11%\atii9xad.inf"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\RunOnce",ATITbDet,,"atitbdet.exe -tbinstall"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Run",AtiKey,,"atiptkad.exe"
+HKLM,"Software\CurrentControlSet\Services\Class\vpm",,,"ativpm32.dll" 
+HKLM,"Software\ATI Technologies\Driver", PMBIOS, , "0"
+HKLM,"Software\ATI Technologies\Driver\HAL",FCRT,,"0"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\320X200",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\320X240",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\400X300",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\512X384",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\640X400",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\640X480",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\720X480",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\800X600",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\848X480",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1024X768",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1152X864",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1280X1024",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\1600X1200",,,"8,16,24,32"
+HKLM,"Software\ATI Technologies\Driver\DDmodes\2048X1536",,,"8,16,24,32"
+
+[MACXW4_AddReg_AGP]
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Run",ATIGART,,"c:\ATI\GART\ATIGART.exe"
+;HKLM,"System\CurrentControlSet\Services\VxD\VGARTD",StaticVxD,,"vgartd.vxd"
+
+[MACXW4_AddReg_ENU]
+HKLM,%SW_MS_UINS_M64DRV%,DisplayName,,"ATI Display Driver software"
+HKLM,%SW_ATI_SET%,,,"ATI Icon Settings"
+HKLM,%SW_DSP_SET%,,,"Display Settings"
+HKLM,%SW_DEV_SET%,,,"Device Settings"
+HKLM,%SW_HLP_DRV%,,,"ATI Desktop"
+HKLM,%SW_HLP_TVOUT%,,,"ATI Television Display"
+HKLM,%SW_PRO_DRV%,,,"ATI Desktop"
+HKLM,%SW_PRO_TVOUT%,,,"ATI Television Display"
+
+[MACXW4_Uninstall_Reg]
+HKLM,"Software\ATI Technologies\Desktop"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Run",AtiKey,,"atiptkad.exe"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX2"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX2"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\ATIPagesX3"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Desktop\shellex\PropertySheetHandlers\ATIPagesX3"
+
+;----------------------------------------
+; File Update References
+;----------------------------------------
+
+[DestinationDirs]
+DefaultDestDir=11               	; LDID_SYS
+WDMSystemFiles=10,system32\drivers      ; system32\drivers
+INFFiles=17				; windows\inf
+INFOtherFiles=17,OTHER			; windows\inf\other
+WDMFiles=30,ATI\INSTALL			; c:\ati\install
+GART=30,ATI\GART
+
+[INFFiles]
+atixbar.inf
+atitunep.inf
+bt829.inf
+
+[INFOtherFiles]
+atitvsnd.inf
+
+[WDMFiles]
+atixbar.sys
+atitunep.sys
+atibt829.sys
+atitvsnd.sys
+
+[WDMSystemFiles]
+atixbar.sys
+atitunep.sys
+atibt829.sys
+atitvsnd.sys
+
+;----------------------------------------
+; CopyFiles sections
+;----------------------------------------
+
+[MACXW4_CopyFiles]
+ati2ddad.drv
+ati2hlad.dll
+atittvad.dll
+atoglrp9.dll
+
+[MACXW4_DeskTop]
+atipdnad.dll
+atippiad.dll
+atipctad.dll
+atipcwad.dll
+atiptkad.exe
+atiiprxx.exe
+ati64hlp.exe
+atiphtad.dll
+atiuinst.bat
+atipdvad.dll
+atiiisxx.exe
+atiiiexx.dll
+atiicdxx.dll
+atiicdxx.vxd
+atiicdxx.sys
+atricdxx.dft
+ati9diad.dll
+ati9dgad.exe
+ati9dtxx.dll
+atr9dtxx.dft
+atii16xx.dll
+atii32xx.dll
+atii9xad.inf
+
+[MACXW4_CopyFiles_ENU]
+atrpdnad.enu
+atrps1xx.enu
+atrpdpad.enu
+atriprxx.enu
+ati95def.hlp
+ati95def.cnt
+ati98def.hlp
+ati98def.cnt
+atrptkad.enu
+atr9diad.dft
+atr9dgad.dft
+atitbdef.rsc
+atrpdvad.enu
+atitvdef.rsc
+
+[MACXW4_CopyFiles_3DFiles]
+atitmvad.dll
+ati2ddad.vxd
+atid16ad.dll
+atid32ad.dll
+ati3drad.dll
+ati3dcif.dll
+atitbdrv.sys
+atitbdet.exe
+ati2lcad.dll
+ativpead.dll
+ati2cwad.exe
+atipdiad.dll
+atitvo32.dll
+ativtvpm.dll
+ativpm32.dll
+ativpm16.dll
+ativvxad.vxd
+ativifad.dll
+atipdpad.dll
+atips1xx.dll
+ativ16ad.dll
+atimcrad.dll
+atid3d.dll
+oemlogo.bmp
+oeminfo.ini
+atifont.com
+ati3dcor.dll
+
+[GART]
+atigart.exe
+atigart.dat
+vgartd.vxd
+
+;----------------------------------------
+; DeleteFiles sections
+;----------------------------------------
+
+[MACXW4_DelFiles]
+ati64hlp.stb,,,1
+ati64hl2.stb,,,1
+
+;----------------------------------------
+; System.ini Updates
+;----------------------------------------
+
+[VPM_UpdateInis]
+SYSTEM.INI,Drivers32,,"VIDC.YVU9=ATIYVU9.DLL"
+SYSTEM.INI,Drivers,,"VIDC.YVU9=IYVU9.DLL"
+SYSTEM.INI,Drivers,,"VPM=ATIVTVPM.DLL"
+
+;----------------------------------------
+; User visible strings
+;----------------------------------------
+
+[Strings]
+ClassName="Display"
+Mfg="ATI Tech. - Enhanced"
+
+SW_MS_UINS_M64DRV="Software\Microsoft\Windows\CurrentVersion\Uninstall\ATI Display Driver"
+SW_ATI_SET="Software\ATI Technologies\Desktop\Icon\Settings\ATI Icon Settings"
+SW_DSP_SET="Software\ATI Technologies\Desktop\Icon\Settings\Display Settings"
+SW_DEV_SET="Software\ATI Technologies\Desktop\Icon\Settings\Device Settings"
+SW_HLP_DRV="Software\ATI Technologies\Desktop\Icon\Help\ATI Display Driver"
+SW_HLP_TVOUT="Software\ATI Technologies\Desktop\Icon\Help\ATI TV Out"
+SW_PRO_DRV="Software\ATI Technologies\Desktop\Icon\Problem\ATI Display Driver"
+SW_PRO_TVOUT="Software\ATI Technologies\Desktop\Icon\Problem\ATI TV Out"

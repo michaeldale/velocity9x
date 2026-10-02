@@ -1,0 +1,19 @@
+REGEDIT4
+
+"Version"=dword:00000001
+"LauncherBPP"=dword:00000010
+"LauncherWidth"=dword:00000280
+"LauncherHeight"=dword:000001e0
+"EngineGLDriver"="Default"
+"EngineD3DDevice"="Default"
+"EngineType"=dword:00000003
+"EngineModeW"=dword:00000280
+"EngineModeH"=dword:000001e0
+"EngineModeBPP"=dword:00000010
+"EngineModeCaptured"=dword:00000001
+"A3D Support"=dword:00000000
+"EngineModeWindowed"=dword:00000000
+"CPUMHZ"=dword:00000000
+"User Token 2"=""
+"User Token 3"=""
+
