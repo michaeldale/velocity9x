@@ -1,0 +1,15 @@
+  bound: 0/32 under 0.5, 4 affine, 0 grid>bound, worst grid/bound 0.168
+cell 256: 32 tris, 224 pieces (7.00/tri), 284 traps, 319.5 dwords/tri, 0 fail
+  per tri cycles: split 79725  build 110505  (total 190230)
+  per piece: texture_error 17182  setup_triangle 602
+  per trap: setup_texture 7065  2x setup_shade 2588
+  bound: 0/102 under 0.5, 6 affine, 0 grid>bound, worst grid/bound 0.167
+cell 128: 102 tris, 312 pieces (3.06/tri), 338 traps, 119.3 dwords/tri, 0 fail
+  per tri cycles: split 39910  build 41219  (total 81130)
+  per piece: texture_error 17317  setup_triangle 558
+  per trap: setup_texture 7105  2x setup_shade 2588
+  bound: 270/381 under 0.5, 10 affine, 0 grid>bound, worst grid/bound 0.166
+cell  64: 381 tris, 420 pieces (1.10/tri), 502 traps, 47.4 dwords/tri, 0 fail
+  per tri cycles: split 11800  build 15903  (total 27703)
+  per piece: texture_error 17459  setup_triangle 586
+  per trap: setup_texture 7024  2x setup_shade 2594

@@ -1103,6 +1103,27 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_hex(name, snapshot.d3d.r2_piece_last[k]);
         }
     }
+    {
+        /* Names follow V9X_R2_COST_* and V9X_R2_WORK_*. */
+        static const char *const cost_names[8] = {
+            "R2CyclesPrepareLo", "R2CyclesPrepareHi",
+            "R2CyclesSplitLo", "R2CyclesSplitHi",
+            "R2CyclesBuildLo", "R2CyclesBuildHi",
+            "R2CyclesEmitLo", "R2CyclesEmitHi"
+        };
+        static const char *const work_names[6] = {
+            "R2Batches", "R2Pieces", "R2Writes", "R2FifoReads", "R2Pixels",
+            "R2Traps"
+        };
+        DWORD k;
+
+        for (k = 0ul; k < 8ul; ++k) {
+            v9x_write_hex(cost_names[k], snapshot.d3d.r2_cycles[k]);
+        }
+        for (k = 0ul; k < 6ul; ++k) {
+            v9x_write_uint(work_names[k], snapshot.d3d.r2_work[k]);
+        }
+    }
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

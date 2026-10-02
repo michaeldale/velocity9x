@@ -55,6 +55,7 @@ static struct v9x_r2_draw_vertex
     v9x_d3d_rage2_vertices[V9X_D3D_RAGE2_MAX_TRIANGLES * 3ul];
 static struct v9x_r2_draw_vertex
     v9x_d3d_rage2_pieces[V9X_R2_DRAW_SPLIT_MAX * 3u];
+static struct v9x_r2_texture_fit v9x_d3d_rage2_fits[V9X_R2_DRAW_SPLIT_MAX];
 
 /*
  * DST_OFF_PITCH's pitch is eight-pixel units up to 1023 of them, so
@@ -108,6 +109,40 @@ static v9x_status v9x_d3d_rage2_emit(struct v9x_m64_engine *core,
         at += chunk;
     }
     return V9X_STATUS_OK;
+}
+
+/*
+ * The cycles since `start` charged to one V9X_R2_COST_* part. Always on,
+ * unlike the Gen3-only V9X_TIME buckets: those are gated off the 486s'
+ * S3 cards, which have no TSC, and an AGP Rage IIC sits in a P2 or later.
+ * Four reads a triangle, against the thousands of cycles each part costs.
+ */
+static void v9x_d3d_rage2_charge(DWORD part, DWORD start)
+{
+    DWORD delta = v9x_rdtsc_low() - start;
+    DWORD *sum = &v9x_hal->d3d_diagnostics.r2_cycles[part * 2u];
+
+    sum[0] += delta;
+    if (sum[0] < delta) {
+        ++sum[1];
+    }
+}
+
+/* A piece's area in whole pixels, from its vertices on the quarter-pixel
+ * snap grid: the cross product in quarter pixels is exact, and twice the
+ * area in sixteenths of a pixel. */
+static DWORD v9x_d3d_rage2_area(const struct v9x_r2_draw_vertex *v)
+{
+    v9x_s32 x1 = (v[1].x - v[0].x) / 4l;
+    v9x_s32 y1 = (v[1].y - v[0].y) / 4l;
+    v9x_s32 x2 = (v[2].x - v[0].x) / 4l;
+    v9x_s32 y2 = (v[2].y - v[0].y) / 4l;
+    v9x_s32 cross = x1 * y2 - x2 * y1;
+
+    if (cross < 0l) {
+        cross = -cross;
+    }
+    return ((DWORD)cross + 16ul) / 32ul;
 }
 
 /* A float's bits, for the diagnostics block (no cast to an integer). */
@@ -498,6 +533,14 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
     DWORD index;
     DWORD corner;
     DWORD triangles = 0ul;
+    DWORD started = v9x_rdtsc_low();
+    DWORD mark;
+    DWORD built = 0ul;
+    DWORD pixels = 0ul;
+    DWORD traps = 0ul;
+    v9x_u32 writes_before;
+    v9x_u32 fifo_reads_before;
+    DWORD *work;
     int flat;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
@@ -589,22 +632,31 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
     if (core == 0 || core->quarantined) {
         return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_NOT_READY);
     }
+    v9x_d3d_rage2_charge(V9X_R2_COST_PREPARE, started);
+    writes_before = core->register_writes;
+    fifo_reads_before = core->fifo_reads;
+
     /* The full state every batch: no redundant-state skipping until this
      * path has run on the card. */
+    mark = v9x_rdtsc_low();
     if (v9x_d3d_rage2_emit(core, v9x_d3d_rage2_state_offsets,
                            v9x_d3d_rage2_state_values,
                            state_written) != V9X_STATUS_OK) {
         return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_EMIT);
     }
+    v9x_d3d_rage2_charge(V9X_R2_COST_EMIT, mark);
     v9x_present_note_submission();
 
     for (index = 0ul; index < triangle_count; ++index) {
         v9x_u32 pieces = 0ul;
         v9x_u32 piece;
 
+        mark = v9x_rdtsc_low();
         status = v9x_r2_split_triangle(&state, &decision,
                                        &v9x_d3d_rage2_vertices[index * 3ul],
-                                       v9x_d3d_rage2_pieces, &pieces);
+                                       v9x_d3d_rage2_pieces,
+                                       v9x_d3d_rage2_fits, &pieces);
+        v9x_d3d_rage2_charge(V9X_R2_COST_SPLIT, mark);
         if (status != V9X_STATUS_OK) {
             ++v9x_hal->d3d_diagnostics.m64_unrenderable;
             v9x_d3d_rage2_note_skip(0ul, status,
@@ -614,13 +666,17 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
         for (piece = 0ul; piece < pieces; ++piece) {
             v9x_u32 written = 0ul;
             v9x_u32 stage = 0ul;
+            v9x_u32 trap_count = 0ul;
 
+            mark = v9x_rdtsc_low();
             status = v9x_r2_build_piece(&state, &decision,
                                         &v9x_d3d_rage2_pieces[piece * 3ul],
+                                        &v9x_d3d_rage2_fits[piece],
                                         v9x_d3d_rage2_offsets,
                                         v9x_d3d_rage2_values,
                                         V9X_D3D_RAGE2_PIECE_DWORDS, &written,
-                                        0, 0, &stage);
+                                        0, &trap_count, &stage);
+            v9x_d3d_rage2_charge(V9X_R2_COST_BUILD, mark);
             if (status != V9X_STATUS_OK) {
                 v9x_d3d_rage2_note_skip(stage, status,
                                         &v9x_d3d_rage2_pieces[piece * 3ul]);
@@ -639,14 +695,26 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
                 ++v9x_hal->d3d_diagnostics.m64_degenerate; /* no centre */
                 continue;
             }
+            mark = v9x_rdtsc_low();
             if (v9x_d3d_rage2_emit(core, v9x_d3d_rage2_offsets,
                                    v9x_d3d_rage2_values,
                                    written) != V9X_STATUS_OK) {
                 return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_EMIT);
             }
+            v9x_d3d_rage2_charge(V9X_R2_COST_EMIT, mark);
+            ++built;
+            pixels += v9x_d3d_rage2_area(&v9x_d3d_rage2_pieces[piece * 3ul]);
+            traps += trap_count;
         }
         ++triangles;
     }
+    work = v9x_hal->d3d_diagnostics.r2_work;
+    ++work[V9X_R2_WORK_BATCHES];
+    work[V9X_R2_WORK_PIECES] += built;
+    work[V9X_R2_WORK_WRITES] += core->register_writes - writes_before;
+    work[V9X_R2_WORK_FIFO_READS] += core->fifo_reads - fifo_reads_before;
+    work[V9X_R2_WORK_PIXELS] += pixels;
+    work[V9X_R2_WORK_TRAPS] += traps;
     ++v9x_hal->d3d_diagnostics.m64_draws;
     v9x_hal->d3d_diagnostics.m64_triangles += triangles;
     if (request.textured != 0ul) {

@@ -422,7 +422,7 @@ static void test_tall_triangles(void)
             pos[k].y = v[k].y;
         }
         memset(drawn, 0, sizeof(drawn));
-        status = v9x_r2_build_piece(&s, &d, v, offsets, values,
+        status = v9x_r2_build_piece(&s, &d, v, 0, offsets, values,
                                     V9X_R2_DRAW_TRAPS_MAX *
                                         V9X_R2_DRAW_TRAP_DWORDS,
                                     &written, traps, &count, 0);
@@ -473,6 +473,7 @@ static void test_split_coverage(void)
     static v9x_u32 values[V9X_R2_DRAW_TRAPS_MAX * V9X_R2_DRAW_TRAP_DWORDS];
     struct v9x_r2_flat_trap traps[V9X_R2_DRAW_TRAPS_MAX];
     struct v9x_r2_draw_vertex pieces[V9X_R2_DRAW_SPLIT_MAX * 3u];
+    static struct v9x_r2_texture_fit fits[V9X_R2_DRAW_SPLIT_MAX];
     unsigned int index;
     unsigned int failed = 0u;
     unsigned int split = 0u;
@@ -502,7 +503,7 @@ static void test_split_coverage(void)
             pos[k].x = v[k].x;
             pos[k].y = v[k].y;
         }
-        CHECK(v9x_r2_split_triangle(&s, &d, v, pieces, &count) ==
+        CHECK(v9x_r2_split_triangle(&s, &d, v, pieces, fits, &count) ==
               V9X_STATUS_OK);
         if (count > 1ul) {
             ++split;
@@ -515,7 +516,7 @@ static void test_split_coverage(void)
             v9x_u32 written = 0ul;
             v9x_u32 traps_in = 0ul;
             v9x_status status = v9x_r2_build_piece(
-                &s, &d, pieces + piece * 3ul, offsets, values,
+                &s, &d, pieces + piece * 3ul, &fits[piece], offsets, values,
                 V9X_R2_DRAW_TRAPS_MAX * V9X_R2_DRAW_TRAP_DWORDS, &written,
                 traps, &traps_in, 0);
 

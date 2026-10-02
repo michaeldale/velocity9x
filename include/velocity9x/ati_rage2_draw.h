@@ -108,11 +108,15 @@ v9x_s32 v9x_r2_snap(v9x_s32 sixteenths);
  * (split while the texture error is above V9X_R2_DRAW_SPLIT_MILLI), each
  * set up into trapezoids of at most V9X_R2_TRAP_LENGTH_MAX rows. Returns
  * V9X_STATUS_OK with *pieces 0 for a triangle that covers no pixel centre.
+ * `fits_out` (may be null) receives each piece's texture fit where the
+ * split decision made one, `valid` clear where it did not, for
+ * v9x_r2_build_piece.
  */
 v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
                                  const struct v9x_r2_draw_decision *decision,
                                  const struct v9x_r2_draw_vertex *vertices,
                                  struct v9x_r2_draw_vertex *pieces_out,
+                                 struct v9x_r2_texture_fit *fits_out,
                                  v9x_u32 *pieces);
 
 /* The stage of v9x_r2_build_piece that failed, for its `stage` output. */
@@ -137,13 +141,16 @@ v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
  * register), which the caller skips and counts. A sliver whose colour or
  * alpha gradient is past S.8.12 is drawn flat, at its centroid's colour,
  * rather than skipped: it covers a few pixels, and Quake 2's lost 24,152
- * pieces that way on boot 146. `traps` (may be null)
+ * pieces that way on boot 146. `fit` (may be null, or not valid) is the
+ * piece's texture fit from v9x_r2_split_triangle; without one the piece
+ * is fitted here, once for all its trapezoids. `traps` (may be null)
  * receives the trapezoids, for the host test's engine model; `stage` (may
  * be null) the V9X_R2_PIECE_STAGE_* that failed.
  */
 v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                               const struct v9x_r2_draw_decision *decision,
                               const struct v9x_r2_draw_vertex *vertices,
+                              const struct v9x_r2_texture_fit *fit,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written,
                               struct v9x_r2_flat_trap *traps,

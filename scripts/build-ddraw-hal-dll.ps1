@@ -163,9 +163,11 @@ foreach ($relative in $sources) {
     $object = Join-Path $outputDir "$name.obj"
     # The Mach64's per-triangle path (its builders, map and engine) is
     # optimised; it runs per register write under Quake 2 (2026-09-29).
-    # Everything else keeps the code generation its hardware measured.
+    # So is the Rage II's, whose CPU triangle setup is most of a Quake 2
+    # frame (2026-10-03). Everything else keeps the code generation its
+    # hardware measured.
     $optimise = @()
-    if ($name -match 'mach64') {
+    if ($name -match 'mach64|rage2') {
         $optimise = @('-ox')
     }
     & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-we" "-zl" "-s" @optimise `

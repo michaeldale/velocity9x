@@ -1517,6 +1517,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100303: the Rage IIC's draw work gains pixels and trapezoids. An
+ * append. */
+/* 2026100302: V9X_D3D_DIAGNOSTICS gains the Rage IIC's draw cost by part.
+ * An append. */
 /* 2026100301: V9X_D3D_DIAGNOSTICS gains the Rage IIC's skipped pieces by
  * stage and the last one's inputs. An append. */
 /* 2026100106: V9X_D3D_DIAGNOSTICS gains the Gen3 ring plans refused as
@@ -1621,7 +1625,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100301ul
+#define V9X_DD_SHARED_ABI   2026100303ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3155,7 +3159,25 @@ typedef struct v9x_d3d_diagnostics {
      * which check refused them. */
     DWORD r2_piece_skipped[9];
     DWORD r2_piece_last[17];
+    /* Rage IIC draw cost (2026-10-03), V9X_R2_COST_*: TSC cycles (low,
+     * high) in each part of an accepted draw, and the batches, pieces,
+     * register writes, FIFO status reads, pixels and trapezoids they
+     * made. Quake 2 spent 8 s
+     * of every 10 s inside the draw with nothing to say where. */
+    DWORD r2_cycles[4 * 2];
+    DWORD r2_work[6];
 } V9X_D3D_DIAGNOSTICS;
+
+#define V9X_R2_COST_PREPARE  0u   /* policy, state, vertex conversion */
+#define V9X_R2_COST_SPLIT    1u   /* the perspective split decision   */
+#define V9X_R2_COST_BUILD    2u   /* trapezoids and their registers   */
+#define V9X_R2_COST_EMIT     3u   /* register writes and FIFO waits   */
+#define V9X_R2_WORK_BATCHES  0u
+#define V9X_R2_WORK_PIECES   1u
+#define V9X_R2_WORK_WRITES   2u
+#define V9X_R2_WORK_FIFO_READS 3u
+#define V9X_R2_WORK_PIXELS   4u   /* the pieces' area, whole pixels */
+#define V9X_R2_WORK_TRAPS    5u
 
 /*
  * Bounded HAL callback trace (Hellbender plan H1). Both sides append

@@ -728,6 +728,7 @@ struct st_stats {
     unsigned int over_half;         /* estimate above half a texel */
     unsigned int underestimates;    /* measured beyond the estimate */
     unsigned int affine_traps;      /* slivers given the plane */
+    unsigned int within_mismatches; /* _within against the grid's reading */
 };
 
 static double lcg_unit(void)
@@ -941,6 +942,20 @@ static void st_random(struct st_stats *stats, unsigned int triangles,
         if (estimate > 0.5) {
             ++stats->over_half;
         }
+        /* The bounded decision is the grid's, at a tight, the split and a
+         * loose limit: the bound may only answer where the grid agrees. */
+        for (k = 0; k < 3; ++k) {
+            static const v9x_u32 limits[3] = { 100ul, 500ul, 2000ul };
+            v9x_u32 within = 2ul;
+
+            if (v9x_r2_texture_error_within(v, c, &t, limits[k], &within,
+                                            0) !=
+                    V9X_STATUS_OK ||
+                within != (estimate * 1000.0 >
+                           (double)(v9x_s32)limits[k] ? 0ul : 1ul)) {
+                ++stats->within_mismatches;
+            }
+        }
         if (measured > estimate * 1.1 + 0.01) {
             if (stats->underestimates < 3u) {
                 printf("    under: measured %.4f estimate %.4f q %.3f %.3f"
@@ -987,6 +1002,8 @@ static void test_texture_setup(void)
     /* The estimator is what subdivision trusts: it must not under-read. */
     CHECK(affine.underestimates == 0u && mild.underestimates == 0u &&
           strong.underestimates == 0u && wide.underestimates == 0u);
+    CHECK(affine.within_mismatches == 0u && mild.within_mismatches == 0u &&
+          strong.within_mismatches == 0u && wide.within_mismatches == 0u);
 }
 
 unsigned int v9x_run_rage2_setup_tests(void)

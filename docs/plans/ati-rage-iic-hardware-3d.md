@@ -103,8 +103,14 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   renders textured, 1.16 M triangles on the engine. The render
   interface's draw entry now saves the FPU as the Direct3D entries do.
   ARGB4444 alpha test and texel-times-vertex alpha stay refused.
-- Next: Michael's look at Quake 2 on the monitor; 3DMark 99's score for
-  the record; the 2,589 remaining texture-fit skips.
+- **Setup cost** ([record](../decisions/2026-10-03-rage-iic-setup-cost.md)):
+  per-part draw counters; the CPU per piece cut from ~41 k to ~20 k P3
+  cycles (a closed-form bound on the fit's error, a forward-differenced
+  grid, one fit per piece). 640x480 is engine-bound (3.2 -> 3.6 fps);
+  320x240 CPU-bound (5.2 -> 6.8 fps).
+- Next: Michael's look at Quake 2 on the monitor; the memory and engine
+  clocks against ATI's driver; 3DMark 99's score for the record; the
+  remaining texture-fit skips.
 
 ## Goal
 

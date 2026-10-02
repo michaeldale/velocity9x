@@ -378,6 +378,34 @@ v9x_status v9x_r2_setup_texture(const struct v9x_r2_vertex *vertices,
                                 const struct v9x_r2_flat_trap *trap,
                                 struct v9x_r2_st *st, v9x_u32 *affine);
 
+/*
+ * The same in two steps, for a caller with several trapezoids or one that
+ * already has the fit: the quadratic once per triangle, about the screen
+ * origin, then each trapezoid's registers from it. The fit is ~6,000 P3
+ * cycles (A8U4I5, 2026-10-03) and Quake 2 has ~1.5 trapezoids a piece.
+ * c[] is c0 + c1 x + c2 y + c3 x^2 + c4 y^2 + c5 xy per axis, x and y in
+ * pixels, in the engine's unit; `base` is vertex 0's value, taken out of
+ * c0. v9x_r2_fit_texture fails as v9x_r2_setup_texture's fit does and
+ * sets `valid`; v9x_r2_setup_texture_fitted refuses a fit not valid.
+ */
+struct v9x_r2_texture_fit {
+    double c[2][6];
+    double base[2];
+    double scale[2];            /* the engine's unit per tu, per tv */
+    double texel;               /* one texel, 2^(26 - TEX_SIZE) */
+    v9x_u32 affine;             /* the plane, for a sliver */
+    v9x_u32 valid;
+};
+
+v9x_status v9x_r2_fit_texture(const struct v9x_r2_vertex *vertices,
+                              const struct v9x_r2_tex_coord *coords,
+                              const struct v9x_r2_texture *texture,
+                              struct v9x_r2_texture_fit *fit);
+v9x_status v9x_r2_setup_texture_fitted(const struct v9x_r2_texture_fit *fit,
+                                       const struct v9x_r2_flat_trap *trap,
+                                       struct v9x_r2_st *st,
+                                       v9x_u32 *affine);
+
 /* How far the surface v9x_r2_setup_texture emits (the quadratic, or a
  * sliver's plane) strays from exact perspective, in texels of the larger
  * dimension, read on a barycentric grid in eighths: what a caller
@@ -386,6 +414,17 @@ v9x_status v9x_r2_texture_error(const struct v9x_r2_vertex *vertices,
                                 const struct v9x_r2_tex_coord *coords,
                                 const struct v9x_r2_texture *texture,
                                 double *texels);
+
+/* Whether that error is at most `limit_milli` thousandths of a texel: the
+ * same decision as comparing v9x_r2_texture_error's reading, settled where
+ * it can be by a closed-form bound on the quadratic fit's error (which the
+ * grid's reading never exceeds) and by the grid otherwise. The fit it made
+ * goes to `fit`, if given, for v9x_r2_setup_texture_fitted. */
+v9x_status v9x_r2_texture_error_within(const struct v9x_r2_vertex *vertices,
+                                       const struct v9x_r2_tex_coord *coords,
+                                       const struct v9x_r2_texture *texture,
+                                       v9x_u32 limit_milli, v9x_u32 *within,
+                                       struct v9x_r2_texture_fit *fit);
 
 /* The datapath for a Gouraud trapezoid: SCALE_3D_CNTL shading first (the
  * accumulators may only be written with SCALE_3D_FCN non-zero, RRG p.6-7),

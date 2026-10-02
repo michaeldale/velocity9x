@@ -504,14 +504,18 @@ static void r2_midpoint(const struct v9x_r2_draw_vertex *a,
     m->tv = (a->tv * a->q + b->tv * b->q) / weight;
 }
 
+/* Whether the piece's texture error is past the split limit; the fit made
+ * to decide goes to `fit`, valid only when one was made. */
 static int r2_needs_split(const struct v9x_r2_draw_state *state,
-                          const struct v9x_r2_draw_vertex *v)
+                          const struct v9x_r2_draw_vertex *v,
+                          struct v9x_r2_texture_fit *fit)
 {
     struct v9x_r2_vertex positions[3];
     struct v9x_r2_tex_coord coords[3];
-    double texels;
+    v9x_u32 within = 0ul;
     v9x_u32 k;
 
+    fit->valid = 0ul;
     if (state->textured == 0ul ||
         (v[0].q == v[1].q && v[1].q == v[2].q)) {
         return 0;
@@ -523,17 +527,19 @@ static int r2_needs_split(const struct v9x_r2_draw_state *state,
         coords[k].tv = v[k].tv;
         coords[k].q = v[k].q;
     }
-    if (v9x_r2_texture_error(positions, coords, &state->texture, &texels) !=
+    if (v9x_r2_texture_error_within(positions, coords, &state->texture,
+                                    V9X_R2_DRAW_SPLIT_MILLI, &within, fit) !=
             V9X_STATUS_OK) {
         return 0;
     }
-    return texels * 1000.0 > (double)(v9x_s32)V9X_R2_DRAW_SPLIT_MILLI;
+    return within == 0ul;
 }
 
 v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
                                  const struct v9x_r2_draw_decision *decision,
                                  const struct v9x_r2_draw_vertex *vertices,
                                  struct v9x_r2_draw_vertex *pieces_out,
+                                 struct v9x_r2_texture_fit *fits_out,
                                  v9x_u32 *pieces)
 {
     /* A stack of (triangle, depth): at most 1 + 3 per split level open.
@@ -560,6 +566,7 @@ v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
     while (top > 0u) {
         struct v9x_r2_draw_vertex t[3];
         struct v9x_r2_draw_vertex m[3];
+        struct v9x_r2_texture_fit fit;
         unsigned int d;
 
         --top;
@@ -567,13 +574,17 @@ v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
         t[1] = stack[top][1];
         t[2] = stack[top][2];
         d = depth[top];
-        if (d >= V9X_R2_DRAW_SPLIT_DEPTH || !r2_needs_split(state, t)) {
+        fit.valid = 0ul;
+        if (d >= V9X_R2_DRAW_SPLIT_DEPTH || !r2_needs_split(state, t, &fit)) {
             if (count >= V9X_R2_DRAW_SPLIT_MAX) {
                 return V9X_STATUS_INTEGER_OVERFLOW;
             }
             pieces_out[count * 3ul] = t[0];
             pieces_out[count * 3ul + 1ul] = t[1];
             pieces_out[count * 3ul + 2ul] = t[2];
+            if (fits_out != 0) {
+                fits_out[count] = fit;
+            }
             ++count;
             continue;
         }
@@ -772,6 +783,7 @@ static void r2_flat_shade(const v9x_u32 *colors, struct v9x_r2_shade *shade)
 v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                               const struct v9x_r2_draw_decision *decision,
                               const struct v9x_r2_draw_vertex *vertices,
+                              const struct v9x_r2_texture_fit *fit,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written,
                               struct v9x_r2_flat_trap *traps,
@@ -785,6 +797,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
     struct v9x_r2_tex_coord coords[3];
     struct v9x_r2_flat_trap whole[V9X_R2_SETUP_TRAPS];
     static struct v9x_r2_flat_trap pieces[V9X_R2_DRAW_TRAPS_MAX];
+    struct v9x_r2_texture_fit own_fit;
     v9x_u32 colors[3];
     v9x_u32 alphas[3];
     v9x_u32 whole_count = 0ul;
@@ -897,8 +910,19 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
             struct v9x_r2_st st;
             v9x_u32 axis;
 
-            status = v9x_r2_setup_texture(positions, coords, &state->texture,
-                                          trap, &st, 0);
+            /* One fit for every trapezoid: the split decision's, or made
+             * here at the first. */
+            if (fit == 0 || fit->valid == 0ul) {
+                status = v9x_r2_fit_texture(positions, coords,
+                                            &state->texture, &own_fit);
+                if (status != V9X_STATUS_OK) {
+                    *stage = V9X_R2_PIECE_STAGE_TEXTURE |
+                             ((v9x_u32)status << V9X_R2_PIECE_STATUS_SHIFT);
+                    return V9X_STATUS_UNSUPPORTED;
+                }
+                fit = &own_fit;
+            }
+            status = v9x_r2_setup_texture_fitted(fit, trap, &st, 0);
             if (status != V9X_STATUS_OK) {
                 *stage = V9X_R2_PIECE_STAGE_TEXTURE |
                          ((v9x_u32)status << V9X_R2_PIECE_STATUS_SHIFT);

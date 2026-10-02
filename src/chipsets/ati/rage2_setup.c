@@ -281,6 +281,7 @@ union v9x_r2_double_bits {
 #define V9X_R2_ST_INC_LIMIT     134217727.0
 #define V9X_R2_ST_INC2_LIMIT    67108863.0
 #define V9X_R2_PROBE_STEPS      8ul
+#define V9X_R2_PROBE_STEP       0.125   /* 1 / V9X_R2_PROBE_STEPS */
 
 /* Whether `value` is finite, from its exponent: comparisons cannot be
  * trusted to find a NaN under Open Watcom (`x == x` is TRUE for one). */
@@ -319,17 +320,6 @@ static void v9x_r2_add_product(double *c, double weight,
     c[4] += weight * a[2] * b[2];
     c[5] += weight * (a[1] * b[2] + a[2] * b[1]);
 }
-
-/* The quadratic for each axis, about an origin, in the engine's unit:
- * c[0] + c[1]x + c[2]y + c[3]x^2 + c[4]y^2 + c[5]xy, x and y in pixels.
- * `base` is vertex 0's value, taken out of the constant. */
-struct v9x_r2_st_fit {
-    double c[2][6];
-    double base[2];
-    double scale[2];            /* the engine's unit per tu, per tv */
-    int affine;                 /* the plane, for a sliver */
-    double texel;               /* one texel, 2^(26 - TEX_SIZE) */
-};
 
 /*
  * One axis's coefficients from the barycentrics: the quadratic
@@ -372,7 +362,7 @@ static v9x_status v9x_r2_fit_st(const struct v9x_r2_vertex *vertices,
                                 const struct v9x_r2_tex_coord *coords,
                                 const struct v9x_r2_texture *texture,
                                 double origin_x, double origin_y,
-                                struct v9x_r2_st_fit *fit)
+                                struct v9x_r2_texture_fit *fit)
 {
     double px[3];
     double py[3];
@@ -550,38 +540,82 @@ static double v9x_r2_fit_at(const double *c, double x, double y)
            c[5] * x * y;
 }
 
+v9x_status v9x_r2_fit_texture(const struct v9x_r2_vertex *vertices,
+                              const struct v9x_r2_tex_coord *coords,
+                              const struct v9x_r2_texture *texture,
+                              struct v9x_r2_texture_fit *fit)
+{
+    v9x_status status;
+
+    if (fit == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    fit->valid = 0ul;
+    status = v9x_r2_fit_st(vertices, coords, texture, 0.0, 0.0, fit);
+    if (status == V9X_STATUS_OK) {
+        fit->valid = 1ul;
+    }
+    return status;
+}
+
 v9x_status v9x_r2_setup_texture(const struct v9x_r2_vertex *vertices,
                                 const struct v9x_r2_tex_coord *coords,
                                 const struct v9x_r2_texture *texture,
                                 const struct v9x_r2_flat_trap *trap,
                                 struct v9x_r2_st *st, v9x_u32 *affine)
 {
-    struct v9x_r2_st_fit fit;
+    struct v9x_r2_texture_fit fit;
     v9x_status status;
-    v9x_u32 axis;
-    double sign;
 
     if (trap == 0 || st == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    /* About the DST_Y_X pixel's centre. */
-    status = v9x_r2_fit_st(vertices, coords, texture,
-                           (double)(v9x_s32)trap->x + 0.5,
-                           (double)(v9x_s32)trap->y + 0.5, &fit);
+    status = v9x_r2_fit_texture(vertices, coords, texture, &fit);
     if (status != V9X_STATUS_OK) {
         return status;
     }
+    return v9x_r2_setup_texture_fitted(&fit, trap, st, affine);
+}
+
+v9x_status v9x_r2_setup_texture_fitted(const struct v9x_r2_texture_fit *fit,
+                                       const struct v9x_r2_flat_trap *trap,
+                                       struct v9x_r2_st *st,
+                                       v9x_u32 *affine)
+{
+    v9x_u32 axis;
+    double sign;
+    double ox;
+    double oy;
+
+    if (fit == 0 || fit->valid == 0ul || trap == 0 || st == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     if (affine != 0) {
-        *affine = fit.affine ? 1ul : 0ul;
+        *affine = fit->affine ? 1ul : 0ul;
     }
 
+    /* About the DST_Y_X pixel's centre. */
+    ox = (double)(v9x_s32)trap->x + 0.5;
+    oy = (double)(v9x_s32)trap->y + 0.5;
     /* DST_X_DIR clear counts dx leftward: x = -dx. */
     sign = (trap->dst_cntl & V9X_M64_DST_X_DIR) != 0ul ? 1.0 : -1.0;
     for (axis = 0ul; axis < 2ul; ++axis) {
-        const double *c = fit.c[axis];
+        const double *about_origin = fit->c[axis];
+        double c[6];
         double terms[6];
         v9x_s32 fixed[6];
         v9x_u32 term;
+
+        /* The quadratic moved to the anchor: the value and gradient there,
+         * the second derivatives unchanged. */
+        c[0] = v9x_r2_fit_at(about_origin, ox, oy);
+        c[1] = about_origin[1] + 2.0 * about_origin[3] * ox +
+               about_origin[5] * oy;
+        c[2] = about_origin[2] + 2.0 * about_origin[4] * oy +
+               about_origin[5] * ox;
+        c[3] = about_origin[3];
+        c[4] = about_origin[4];
+        c[5] = about_origin[5];
 
         /*
          * Onto the engine's forward differences (dx = sign * x):
@@ -590,7 +624,7 @@ v9x_status v9x_r2_setup_texture(const struct v9x_r2_vertex *vertices,
          * B = c_y + c_yy, E = sign c_xy. The engine floors, which is
          * Direct3D's point sample of u * width, so START has no bias.
          */
-        terms[0] = c[0] + fit.base[axis];
+        terms[0] = c[0] + fit->base[axis];
         terms[1] = sign * c[1] + c[3];
         terms[2] = c[2] + c[4];
         terms[3] = 2.0 * c[3];
@@ -627,16 +661,112 @@ v9x_status v9x_r2_setup_texture(const struct v9x_r2_vertex *vertices,
     return V9X_STATUS_OK;
 }
 
+/* The fit's error against exact perspective, in texels of the larger
+ * dimension, sampled. `fit` is about the origin (0, 0). */
+static double v9x_r2_grid_error(const struct v9x_r2_vertex *vertices,
+                                const struct v9x_r2_tex_coord *coords,
+                                const struct v9x_r2_texture_fit *fit)
+{
+    double worst = 0.0;
+    double px[3];
+    double py[3];
+    double pq[3];
+    double ps[2][3];
+    double dx;
+    double dy;
+    double dq;
+    double ds[2];
+    double second[2];
+    v9x_u32 vertex;
+    v9x_u32 axis;
+    v9x_u32 i;
+    v9x_u32 j;
+
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        px[vertex] = (double)vertices[vertex].x / (double)V9X_R2_SUBPIXEL;
+        py[vertex] = (double)vertices[vertex].y / (double)V9X_R2_SUBPIXEL;
+        pq[vertex] = coords[vertex].q;
+        ps[0][vertex] = coords[vertex].q * coords[vertex].tu;
+        ps[1][vertex] = coords[vertex].q * coords[vertex].tv;
+    }
+
+    /*
+     * A barycentric grid in eighths, edges included. The error peaks
+     * between the six exact nodes, and ten hand-placed probes read up to
+     * 15% low in the host test; the grid reads within 10%.
+     *
+     * Each row holds lambda_0 and steps lambda_1 by an eighth, along which
+     * position, q and S q are affine and the fit quadratic: they advance by
+     * forward differences, the fit's second being constant. Evaluating
+     * every point afresh was ~75 dependent x87 operations, and the grid
+     * most of the HAL's time under Quake 2 (host benchmark, 2026-10-03).
+     */
+    dx = (px[1] - px[2]) * V9X_R2_PROBE_STEP;
+    dy = (py[1] - py[2]) * V9X_R2_PROBE_STEP;
+    dq = (pq[1] - pq[2]) * V9X_R2_PROBE_STEP;
+    for (axis = 0ul; axis < 2ul; ++axis) {
+        const double *c = fit->c[axis];
+
+        ds[axis] = (ps[axis][1] - ps[axis][2]) * V9X_R2_PROBE_STEP;
+        second[axis] = 2.0 * (c[3] * dx * dx + c[4] * dy * dy +
+                              c[5] * dx * dy);
+    }
+    for (i = 0ul; i <= V9X_R2_PROBE_STEPS; ++i) {
+        double l0 = (double)(v9x_s32)i * V9X_R2_PROBE_STEP;
+        double rest = 1.0 - l0;
+        double x = l0 * px[0] + rest * px[2];
+        double y = l0 * py[0] + rest * py[2];
+        double q = l0 * pq[0] + rest * pq[2];
+        double s[2];
+        double f[2];
+        double step[2];
+
+        for (axis = 0ul; axis < 2ul; ++axis) {
+            const double *c = fit->c[axis];
+
+            s[axis] = l0 * ps[axis][0] + rest * ps[axis][2];
+            f[axis] = v9x_r2_fit_at(c, x, y) + fit->base[axis];
+            step[axis] = c[1] * dx + c[2] * dy +
+                         c[3] * (2.0 * x * dx + dx * dx) +
+                         c[4] * (2.0 * y * dy + dy * dy) +
+                         c[5] * (x * dy + y * dx + dx * dy);
+        }
+        for (j = 0ul; i + j <= V9X_R2_PROBE_STEPS; ++j) {
+            /* A vertex or midpoint is exact, unless the plane replaced
+             * the fit. */
+            if (fit->affine || (i & 3ul) != 0ul || (j & 3ul) != 0ul) {
+                double inverse_q = 1.0 / q;
+
+                for (axis = 0ul; axis < 2ul; ++axis) {
+                    double error = f[axis] -
+                                   s[axis] * inverse_q * fit->scale[axis];
+
+                    if (error < 0.0) {
+                        error = -error;
+                    }
+                    if (error > worst) {
+                        worst = error;
+                    }
+                }
+            }
+            q += dq;
+            for (axis = 0ul; axis < 2ul; ++axis) {
+                s[axis] += ds[axis];
+                f[axis] += step[axis];
+                step[axis] += second[axis];
+            }
+        }
+    }
+    return worst / fit->texel;
+}
+
 v9x_status v9x_r2_texture_error(const struct v9x_r2_vertex *vertices,
                                 const struct v9x_r2_tex_coord *coords,
                                 const struct v9x_r2_texture *texture,
                                 double *texels)
 {
-    struct v9x_r2_st_fit fit;
-    double worst = 0.0;
+    struct v9x_r2_texture_fit fit;
     v9x_status status;
-    v9x_u32 i;
-    v9x_u32 j;
 
     if (texels == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -646,50 +776,95 @@ v9x_status v9x_r2_texture_error(const struct v9x_r2_vertex *vertices,
     if (status != V9X_STATUS_OK) {
         return status;
     }
-    /* A barycentric grid in eighths, edges included. The error peaks
-     * between the six exact nodes, and ten hand-placed probes read up to
-     * 15% low in the host test; the grid reads within 10%. */
-    for (i = 0ul; i <= V9X_R2_PROBE_STEPS; ++i) {
-        for (j = 0ul; i + j <= V9X_R2_PROBE_STEPS; ++j) {
-            double l[3];
-            double x = 0.0;
-            double y = 0.0;
-            double q = 0.0;
-            double sq[2];
-            v9x_u32 vertex;
-            v9x_u32 axis;
+    *texels = v9x_r2_grid_error(vertices, coords, &fit);
+    return V9X_STATUS_OK;
+}
 
-            if (!fit.affine && (i & 3ul) == 0ul && (j & 3ul) == 0ul) {
-                continue;           /* a vertex or midpoint: exact */
-            }
-            l[0] = (double)(v9x_s32)i / (double)V9X_R2_PROBE_STEPS;
-            l[1] = (double)(v9x_s32)j / (double)V9X_R2_PROBE_STEPS;
-            l[2] = 1.0 - l[0] - l[1];
-            sq[0] = 0.0;
-            sq[1] = 0.0;
-            for (vertex = 0ul; vertex < 3ul; ++vertex) {
-                x += l[vertex] * (double)vertices[vertex].x /
-                     (double)V9X_R2_SUBPIXEL;
-                y += l[vertex] * (double)vertices[vertex].y /
-                     (double)V9X_R2_SUBPIXEL;
-                q += l[vertex] * coords[vertex].q;
-                sq[0] += l[vertex] * coords[vertex].q * coords[vertex].tu;
-                sq[1] += l[vertex] * coords[vertex].q * coords[vertex].tv;
-            }
-            for (axis = 0ul; axis < 2ul; ++axis) {
-                double error = v9x_r2_fit_at(fit.c[axis], x, y) +
-                               fit.base[axis] - sq[axis] / q * fit.scale[axis];
+/*
+ * A bound on the quadratic fit's error, in texels of the larger dimension.
+ * The fit is the quadratic interpolant of S = U / Q at its six nodes. With
+ * Q = Qm (1 + e), Qm the mid q, |e| <= E = (q_max - q_min) / (q_max +
+ * q_min), and U / Q = S - Sm for Sm the mid S, U / Q is within R E^2 of the
+ * quadratic (U / Qm)(1 - e), R being half S's range. Quadratic
+ * interpolation on a triangle has Lebesgue constant 5/3, so the fit is
+ * within (1 + 5/3) R E^2 of S. Not for the sliver's tangent plane.
+ */
+static double v9x_r2_fit_bound(const struct v9x_r2_tex_coord *coords,
+                               const struct v9x_r2_texture_fit *fit)
+{
+    double q_min = coords[0].q;
+    double q_max = coords[0].q;
+    double half_range = 0.0;
+    double spread;
+    v9x_u32 vertex;
+    v9x_u32 axis;
 
-                if (error < 0.0) {
-                    error = -error;
-                }
-                if (error > worst) {
-                    worst = error;
-                }
-            }
+    for (vertex = 1ul; vertex < 3ul; ++vertex) {
+        if (coords[vertex].q < q_min) {
+            q_min = coords[vertex].q;
+        }
+        if (coords[vertex].q > q_max) {
+            q_max = coords[vertex].q;
         }
     }
-    *texels = worst / fit.texel;
+    for (axis = 0ul; axis < 2ul; ++axis) {
+        double low = axis == 0ul ? coords[0].tu : coords[0].tv;
+        double high = low;
+        double half;
+
+        for (vertex = 1ul; vertex < 3ul; ++vertex) {
+            double value = axis == 0ul ? coords[vertex].tu
+                                       : coords[vertex].tv;
+
+            if (value < low) {
+                low = value;
+            }
+            if (value > high) {
+                high = value;
+            }
+        }
+        half = (high - low) * fit->scale[axis] / 2.0;
+        if (half > half_range) {
+            half_range = half;
+        }
+    }
+    spread = (q_max - q_min) / (q_max + q_min);
+    return 8.0 / 3.0 * half_range * spread * spread / fit->texel;
+}
+
+v9x_status v9x_r2_texture_error_within(const struct v9x_r2_vertex *vertices,
+                                       const struct v9x_r2_tex_coord *coords,
+                                       const struct v9x_r2_texture *texture,
+                                       v9x_u32 limit_milli, v9x_u32 *within,
+                                       struct v9x_r2_texture_fit *fit)
+{
+    struct v9x_r2_texture_fit own;
+    double limit;
+    v9x_status status;
+
+    if (within == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *within = 0ul;
+    if (fit == 0) {
+        fit = &own;
+    }
+    status = v9x_r2_fit_texture(vertices, coords, texture, fit);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    limit = (double)(v9x_s32)limit_milli;
+    /* The bound settles most triangles without the grid, which is 39
+     * latency-bound points: on the host benchmark of Quake 2-like floors
+     * and walls the grid was three quarters of the per-triangle cost, and
+     * the bound cleared 68-100% of triangles at 0.5 texel. */
+    if (!fit->affine && v9x_r2_fit_bound(coords, fit) * 1000.0 <= limit) {
+        *within = 1ul;
+        return V9X_STATUS_OK;
+    }
+    if (!(v9x_r2_grid_error(vertices, coords, fit) * 1000.0 > limit)) {
+        *within = 1ul;
+    }
     return V9X_STATUS_OK;
 }
 
