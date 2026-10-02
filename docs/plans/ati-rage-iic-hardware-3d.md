@@ -87,7 +87,12 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   batches through the engine with no timeout; 153 of 219 verdicts pass and
   the other 66 are accounted for. Two defects found and fixed: emission past
   the 16-entry FIFO, and fog read from texel alpha.
-- Next: Final Reality and 3DMark 99 against the native baseline.
+- Final Reality runs to completion on the engine (1.64 M triangles, no
+  refusal or timeout), but flips are declined and never presented, an
+  older defect of this chip's HAL
+  ([issue](../issues/2026-10-02-rage-iic-flips-never-presented.md)).
+- Next: a flip for the Rage IIC (CRTC_OFF_PITCH, verified on the monitor),
+  then 3DMark 99.
 
 ## Goal
 

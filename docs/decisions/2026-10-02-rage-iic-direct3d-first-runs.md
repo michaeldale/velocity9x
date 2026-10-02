@@ -73,7 +73,20 @@ in the policy: under fog TEX_MAP_AEN is dropped, and a draw that needs it
 (slivers steeper than the colour interpolators' range, or a 1/w that is not
 positive). Which scenes they came from is not recorded.
 
+## Final Reality, boot 141
+
+Standard run, Direct3D on-board, no sound, driven by agent input. It
+completed: **3.33 Reality Marks** (2D 6.72, 3D 1.28, bus 4.03;
+`phase5-b141/FR-RESULTS.png`). Recorded, not compared: no frame was
+presented. Every screenshot of the 3D tests was black, `FlipHandled=0`,
+`FlipDeclined=3667` - the flips are declined and nothing presents them
+([issue](../issues/2026-10-02-rage-iic-flips-never-presented.md)). The
+engine itself (`phase5-b141/V9XSNA7-AFTER-FR.INI`): 559,842 batches,
+1,641,004 triangles, every one textured and nearly all depth-tested,
+266,661 blended, **no refusal** and no FIFO or idle timeout or reset;
+13,056 pieces skipped as inexpressible and 41,717 as covering no pixel.
+
 ## Not yet run
 
-Final Reality and 3DMark 99 against the native baseline; `/mixed` and
-`/zprivate`; a second boot of these runs.
+3DMark 99, which waits on the flip; `/mixed` and `/zprivate`; a second
+boot of these runs.
