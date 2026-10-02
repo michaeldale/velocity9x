@@ -1,7 +1,7 @@
 /*
  * The ATI Mach64 / Rage family table.
  *
- * Two chips, one binary, dispatched at run time by PCI id - the shape
+ * Three chips, one binary, dispatched at run time by PCI id - the shape
  * s3_hw16.c proved at phase 8. Everything the two chips agree about lives
  * here; anything only one of them does belongs in that chip's own module, or
  * the per-object audit cannot tell them apart.
@@ -20,6 +20,7 @@ extern unsigned long v9x_vbe_vram_reported;
 
 extern const V9X_HW16_DEVICE v9x_mach64_vt2_device;
 extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
+extern const V9X_HW16_DEVICE v9x_rage_iic_device;
 
 /*
  * The emulated part first, so a run with no -ChipId lands on the target that
@@ -28,7 +29,8 @@ extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
  */
 static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_mach64_vt2_device,
-    &v9x_rage_mobility_device
+    &v9x_rage_mobility_device,
+    &v9x_rage_iic_device
 };
 
 /*

@@ -81,14 +81,16 @@ v9x_status v9x_ati_mach64_probe(
 
     /*
      * Exact ids, never a vendor-wide match. ATI shipped a great many Mach64
-     * variants and this family has been run on two of them; the rest reach the
-     * driver through a Have-Disk install, which is a decision a person makes.
+     * variants and this family has been run on three of them; the rest reach
+     * the driver through a Have-Disk install, which is a decision a person
+     * makes.
      */
     if (pci->vendor_id != V9X_PCI_VENDOR_ATI) {
         return V9X_STATUS_UNSUPPORTED;
     }
     if (pci->device_id != V9X_PCI_DEVICE_MACH64_VT2 &&
-        pci->device_id != V9X_PCI_DEVICE_RAGE_MOBILITY_M) {
+        pci->device_id != V9X_PCI_DEVICE_RAGE_MOBILITY_M &&
+        pci->device_id != V9X_PCI_DEVICE_RAGE_IIC) {
         return V9X_STATUS_UNSUPPORTED;
     }
 

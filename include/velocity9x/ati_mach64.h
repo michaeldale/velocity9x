@@ -23,7 +23,7 @@
 
 /*
  * Device ids are an ASCII pair, which is also what CONFIG_CHIP_ID's low word
- * returns - 'VT' and 'LM'. That makes the chip id register a free cross-check
+ * returns - 'VT', 'LM' and 'GW'. That makes the chip id register a free cross-check
  * that the driver is talking to the register window it thinks it is.
  *
  * 0x4750 (Rage Pro, 'GP') is deliberately absent. The restructure plan named
@@ -32,6 +32,9 @@
  */
 #define V9X_PCI_DEVICE_MACH64_VT2       ((v9x_u16)0x5654u)
 #define V9X_PCI_DEVICE_RAGE_MOBILITY_M  ((v9x_u16)0x4c4du)
+/* 'GW', a Rage II-class 264GT2C: the Mobility's register window and 2D
+ * engine, no triangle setup engine. Tier-0 only; see rage_iic_hw16.c. */
+#define V9X_PCI_DEVICE_RAGE_IIC         ((v9x_u16)0x4757u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

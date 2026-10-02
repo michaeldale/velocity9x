@@ -16,6 +16,7 @@
 static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x5654u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 */
     { 0x1002u, 0x4C4Du, v9x_ati_mach64_backend }, /* ati / rage-mobility-m */
+    { 0x1002u, 0x4757u, v9x_ati_mach64_backend }, /* ati / rage-iic */
     { 0x8086u, 0x27AEu, v9x_intel_gma_backend }, /* intel-gma / gma950-945gse */
     { 0x102Bu, 0x051Bu, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2164w */
     { 0x102Bu, 0x0519u, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2064w */

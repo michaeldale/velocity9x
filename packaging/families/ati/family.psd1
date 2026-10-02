@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2 and Rage Mobility-M, dispatched at run time by PCI id. Tier-0 VBE bring-up, no acceleration.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M and 3D Rage IIC, dispatched at run time by PCI id. Tier-0 VBE bring-up, no acceleration.'
 
     Chips = @(
         @{
@@ -125,6 +125,49 @@
             }
             MapSymbols = @('v9x_rage_mobility_device')
         }
+        @{
+            Id = 'rage-iic'
+            Name = 'ATI 3D Rage IIC AGP'
+            VendorId = '1002'
+            DeviceId = '4757'
+            # A8U4I5's HardwareID leads with SUBSYS_47571002 (inventory,
+            # 2026-10-02); qualified first, as for the Gateway.
+            SubsystemId = '47571002'
+            DeviceDesc = 'Velocity9x ATI 3D Rage IIC'
+            Adapter = 'ATI 3D Rage IIC AGP'
+            ClockDetector = 'ati-mach64-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # Tier-0. A Rage II-class 264GT2C with no triangle setup engine,
+            # so d3d_mach64.c cannot serve it and no ATI_MACH64 engine is
+            # claimed: d3d_select.c would route that type to it.
+            # docs\decisions\2026-10-02-rage-iic-register-survey.md.
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # MEM_CNTL measured 4 MiB on A8U4I5; 3DMark reported 4074 KB.
+            VideoMemoryBytes = 4194304
+
+            # The VESA-standard rows the other two chips carry. NOT yet
+            # checked against this BIOS (3.096): the read-only probe could
+            # not issue 4F01h. The first enable's V9XMODES.INI settles it.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('rage_iic_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_rage_iic_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -174,6 +217,7 @@
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
             @{ Name = 'mobility_hw16'; Path = 'src\chipsets\ati\mobility\mobility_hw16.c' }
+            @{ Name = 'rage_iic_hw16'; Path = 'src\chipsets\ati\rageiic\rage_iic_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -200,7 +244,8 @@
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
         DispatchSymbol = 'v9x_hw16'
-        BackendSymbols = @('v9x_mach64_vt2_device', 'v9x_rage_mobility_device')
+        BackendSymbols = @('v9x_mach64_vt2_device', 'v9x_rage_mobility_device',
+                           'v9x_rage_iic_device')
     }
 
     Inf = @{
@@ -222,7 +267,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757'
     }
 
     Vm = @{
@@ -251,6 +296,10 @@
             }
             @{
                 ChipId = 'rage-mobility-m'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rage-iic'
                 Emulator = 'none'
             }
         )

@@ -90,6 +90,7 @@ $required = @(
     "src\chipsets\ati\ati_hw16.c",
     "src\chipsets\ati\vt2\vt2_hw16.c",
     "src\chipsets\ati\mobility\mobility_hw16.c",
+    "src\chipsets\ati\rageiic\rage_iic_hw16.c",
     "src\chipsets\s3\virge\backend.c",
     "src\chipsets\s3\virge\clocks.c",
     "src\chipsets\s3\virge\memory.c",
