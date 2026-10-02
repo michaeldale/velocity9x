@@ -40,6 +40,7 @@ function Get-V9xHostSourceNames {
         # Mach64 draw state and setup packets built on the proven builders.
         'src\chipsets\ati\mach64_draw.c',
         # Rage II (264GT2C) trapezoid register encoding: no setup engine.
+        'src\chipsets\ati\mach64_crtc.c',
         'src\chipsets\ati\rage2_trap.c',
         # Rage II triangle setup into trapezoids, on the measured edge walk.
         'src\chipsets\ati\rage2_setup.c',
@@ -141,6 +142,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_mach64_engine.c',
         'tests\host\test_mach64_policy.c',
         'tests\host\test_mach64_draw.c',
+        'tests\host\test_mach64_crtc.c',
         'tests\host\test_rage2_trap.c',
         'tests\host\rage2_reference.c',
         'tests\host\test_rage2_setup.c',

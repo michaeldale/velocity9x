@@ -82,11 +82,13 @@ $sources = @(
     "src\display32\engines\eng_i9xx.c",
     # Phase 1 Mach64 status/wait/recovery wrapper; manifests still publish NONE.
     "src\display32\engines\eng_mach64.c",
+    "src\display32\engines\m64_scanout.c",
     "src\chipsets\ati\mach64_engine.c",
     "src\chipsets\ati\mach64_policy.c",
     "src\chipsets\ati\mach64_draw.c",
     # The Rage II class: CPU triangle setup, the trapezoid and state
     # builders, and the draw policy and packets, all host-tested.
+    "src\chipsets\ati\mach64_crtc.c",
     "src\chipsets\ati\rage2_trap.c",
     "src\chipsets\ati\rage2_setup.c",
     "src\chipsets\ati\rage2_draw.c",

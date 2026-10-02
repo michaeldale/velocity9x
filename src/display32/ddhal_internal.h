@@ -412,8 +412,15 @@ int v9x_vga_in_vblank(void);
 /* Non-zero when the scanout was programmed; 0 when the offset is not a whole
  * number of doublewords and the registers cannot express it. */
 int v9x_vga_set_display_start(DWORD byte_offset);
+/* The Rage IIC's CRTC scanout controls, in engines/m64_scanout.c: active
+ * only for ATI_RAGE2 stamped with V9X_DD_ENGINE_CAP_FLIP. */
+int v9x_m64_scanout_active(void);
+int v9x_m64_in_vblank(void);
+int v9x_m64_flip_window_open(void);
+int v9x_m64_set_display_start(DWORD byte_offset);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
- * controls on a boot that armed the Intel flip, the VGA ones otherwise. */
+ * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
+ * that chip, the VGA ones otherwise. */
 int v9x_in_vblank(void);
 int v9x_set_display_start(DWORD byte_offset);
 /* A new session or mode, from DriverInit: drops the PIPESTAT baseline so

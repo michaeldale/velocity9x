@@ -69,8 +69,13 @@ static void v9x_rage_iic_fill_engine(unsigned long framebuffer_linear_base,
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RAGE2;
     /* Direct3D through d3d_rage2.c: the CPU-setup engine Phase 5 built on
      * the Phase 1-4 measurements (docs\plans\ati-rage-iic-hardware-3d.md). */
+    /* Flips and the vertical blank through CRTC_OFF_PITCH and
+     * CRTC_VLINE (m64_scanout.c), measured on the monitor with ATIRX
+     * /crtc (docs\decisions\2026-10-03-rage-iic-scanout-start.md). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_VBLANK |
                    V9X_DD_ENGINE_CAP_D3D;
 }
 

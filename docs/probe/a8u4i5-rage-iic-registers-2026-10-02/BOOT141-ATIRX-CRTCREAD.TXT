@@ -1,0 +1,45 @@
+[AtiRage2Scene]
+Build=2979665-dirty
+Bar0=0xDC000000
+Bar2=0xDE000000
+MapStatus=0x0000000F
+ChipId=0x7A004757
+MmioLinear=0xD42B8000
+FbLinear=0xD42F9000
+DesktopBytes=0x00180000
+BeforeGuiStat=0x00800000
+BeforeFifoStat=0x00000000
+W init +720 FFFFFFFF
+W init +524 00000000
+W init +528 00000000
+W init +52C 00000000
+W init +58C 00000000
+W init +598 00000001
+W init +5A4 00000000
+W init +5B0 00000001
+W init +5B4 00000010
+W init +640 00000001
+W init +680 00000000
+W init +684 00000000
+W init +688 00000000
+W init +6C0 00000000
+W init +6CC 00008410
+W init +700 00000000
+W init +704 FFFFFFFF
+W init +708 00000000
+SceneSet=crtc
+CrtcHTotalDisp=0x007F00A7
+CrtcVTotalDisp=0x02FF0325
+CrtcOffPitch=0x20000000
+CrtcHDisp=1024
+CrtcVDisp=768
+CrtcVTotal=806
+CrtcVline0=210
+CrtcVline1=494
+CrtcVline2=736
+CrtcVline3=171
+CrtcVline4=413
+CrtcVline5=584
+CrtcVline6=90
+CrtcVline7=332
+Result=CRTC-READ

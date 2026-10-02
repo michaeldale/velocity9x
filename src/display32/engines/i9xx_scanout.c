@@ -1390,6 +1390,9 @@ int v9x_in_vblank(void)
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_in_vblank();
     }
+    if (v9x_m64_scanout_active()) {
+        return v9x_m64_in_vblank();
+    }
     return v9x_vga_in_vblank();
 }
 
@@ -1397,6 +1400,9 @@ int v9x_set_display_start(DWORD byte_offset)
 {
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_set_display_start(byte_offset);
+    }
+    if (v9x_m64_scanout_active()) {
+        return v9x_m64_set_display_start(byte_offset);
     }
     return v9x_vga_set_display_start(byte_offset);
 }
@@ -1501,6 +1507,11 @@ int v9x_scanout_flip_window_open(void)
     DWORD line;
     DWORD active;
 
+    /* The Rage IIC applies a start written mid-frame at once (ATIRX
+     * /crtc), so its window is the blank, short of its end. */
+    if (v9x_m64_scanout_active()) {
+        return v9x_m64_flip_window_open();
+    }
     if (!v9x_i9xx_scanout_active()) {
         return v9x_vga_in_vblank();
     }
@@ -1619,6 +1630,9 @@ int v9x_scanout_writes_in_blank(void)
      * the latch. intel66 and intel74 to intel77 wrote inside the blank,
      * after the latch, and released a frame early.
      */
+    if (v9x_m64_scanout_active()) {
+        return 1;
+    }
     if (V9X_I9XX_FLIP_WRITE_IN_BLANK == 0) {
         return 0;
     }

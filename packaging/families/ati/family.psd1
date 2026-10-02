@@ -146,7 +146,7 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'hardware-rage2'
             EngineType = 'ATI_RAGE2'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
             # MEM_CNTL measured 4 MiB on A8U4I5; 3DMark reported 4074 KB.
             VideoMemoryBytes = 4194304
 
