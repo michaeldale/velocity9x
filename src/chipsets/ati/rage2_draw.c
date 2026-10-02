@@ -756,7 +756,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written,
                               struct v9x_r2_flat_trap *traps,
-                              v9x_u32 *trap_count)
+                              v9x_u32 *trap_count, v9x_u32 *stage)
 {
     static const v9x_u32 color_base[4] = {
         V9X_R2_RED_X_INC, V9X_R2_GREEN_X_INC, V9X_R2_BLUE_X_INC,
@@ -773,6 +773,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
     v9x_u32 at = 0ul;
     v9x_u32 index;
     v9x_u32 k;
+    v9x_u32 ignored_stage;
     v9x_status status;
 
     if (written != 0) {
@@ -781,6 +782,10 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
     if (trap_count != 0) {
         *trap_count = 0ul;
     }
+    if (stage == 0) {
+        stage = &ignored_stage;
+    }
+    *stage = V9X_R2_PIECE_STAGE_NONE;
     if (state == 0 || decision == 0 || vertices == 0 || offsets == 0 ||
         values == 0 || written == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -802,6 +807,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
     status = v9x_r2_setup_triangle(&state->target, positions, whole,
                                    &whole_count);
     if (status != V9X_STATUS_OK) {
+        *stage = V9X_R2_PIECE_STAGE_SETUP;
         return status;
     }
     for (index = 0ul; index < whole_count; ++index) {
@@ -812,11 +818,13 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                                    V9X_R2_DRAW_TRAPS_MAX - piece_count,
                                    &added);
         if (status != V9X_STATUS_OK) {
+            *stage = V9X_R2_PIECE_STAGE_SPLIT;
             return status;
         }
         piece_count += added;
     }
     if (capacity < piece_count * V9X_R2_DRAW_TRAP_DWORDS) {
+        *stage = V9X_R2_PIECE_STAGE_CAPACITY;
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -828,10 +836,13 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
         v9x_u32 trap_written = 0ul;
 
         status = v9x_r2_setup_shade(positions, colors, trap, &shade);
-        if (status == V9X_STATUS_OK) {
-            status = v9x_r2_setup_shade(positions, alphas, trap, &alpha);
-        }
         if (status != V9X_STATUS_OK) {
+            *stage = V9X_R2_PIECE_STAGE_COLOR;
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        status = v9x_r2_setup_shade(positions, alphas, trap, &alpha);
+        if (status != V9X_STATUS_OK) {
+            *stage = V9X_R2_PIECE_STAGE_ALPHA;
             return V9X_STATUS_UNSUPPORTED;
         }
         for (channel = 0ul; channel < 4ul; ++channel) {
@@ -850,6 +861,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
             v9x_u32 fields[3];
 
             if (!r2_depth_fields(vertices, trap, fields)) {
+                *stage = V9X_R2_PIECE_STAGE_DEPTH;
                 return V9X_STATUS_UNSUPPORTED;
             }
             offsets[at] = V9X_R2_Z_X_INC;  values[at++] = fields[0];
@@ -863,6 +875,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
             status = v9x_r2_setup_texture(positions, coords, &state->texture,
                                           trap, &st, 0);
             if (status != V9X_STATUS_OK) {
+                *stage = V9X_R2_PIECE_STAGE_TEXTURE;
                 return V9X_STATUS_UNSUPPORTED;
             }
             for (axis = 0ul; axis < 2ul; ++axis) {
@@ -888,6 +901,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
         status = v9x_r2_build_trap(&state->target, trap, offsets + at,
                                    values + at, capacity - at, &trap_written);
         if (status != V9X_STATUS_OK) {
+            *stage = V9X_R2_PIECE_STAGE_TRAP;
             return status;
         }
         at += trap_written;

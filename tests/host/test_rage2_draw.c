@@ -425,7 +425,7 @@ static void test_tall_triangles(void)
         status = v9x_r2_build_piece(&s, &d, v, offsets, values,
                                     V9X_R2_DRAW_TRAPS_MAX *
                                         V9X_R2_DRAW_TRAP_DWORDS,
-                                    &written, traps, &count);
+                                    &written, traps, &count, 0);
         if (status == V9X_STATUS_UNSUPPORTED) {
             continue;           /* a sliver too steep for the colour */
         }
@@ -517,7 +517,7 @@ static void test_split_coverage(void)
             v9x_status status = v9x_r2_build_piece(
                 &s, &d, pieces + piece * 3ul, offsets, values,
                 V9X_R2_DRAW_TRAPS_MAX * V9X_R2_DRAW_TRAP_DWORDS, &written,
-                traps, &traps_in);
+                traps, &traps_in, 0);
 
             if (status == V9X_STATUS_UNSUPPORTED) {
                 skipped = 1;

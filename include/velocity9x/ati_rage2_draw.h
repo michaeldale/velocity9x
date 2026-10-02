@@ -115,12 +115,25 @@ v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
                                  struct v9x_r2_draw_vertex *pieces_out,
                                  v9x_u32 *pieces);
 
+/* The stage of v9x_r2_build_piece that failed, for its `stage` output. */
+#define V9X_R2_PIECE_STAGE_NONE      0ul
+#define V9X_R2_PIECE_STAGE_SETUP     1ul    /* v9x_r2_setup_triangle */
+#define V9X_R2_PIECE_STAGE_SPLIT     2ul    /* v9x_r2_split_trap */
+#define V9X_R2_PIECE_STAGE_CAPACITY  3ul
+#define V9X_R2_PIECE_STAGE_COLOR     4ul    /* colour gradient past S.8.12 */
+#define V9X_R2_PIECE_STAGE_ALPHA     5ul    /* alpha or fog likewise */
+#define V9X_R2_PIECE_STAGE_DEPTH     6ul
+#define V9X_R2_PIECE_STAGE_TEXTURE   7ul    /* v9x_r2_setup_texture */
+#define V9X_R2_PIECE_STAGE_TRAP      8ul    /* v9x_r2_build_trap */
+#define V9X_R2_PIECE_STAGES          9ul
+
 /*
  * One piece's packets: every trapezoid's interpolators then its trigger.
  * V9X_STATUS_UNSUPPORTED for a piece the interpolators cannot express (a
  * sliver steeper than 255 colour levels a pixel, a texture term past its
  * register), which the caller skips and counts. `traps` (may be null)
- * receives the trapezoids, for the host test's engine model.
+ * receives the trapezoids, for the host test's engine model; `stage` (may
+ * be null) the V9X_R2_PIECE_STAGE_* that failed.
  */
 v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                               const struct v9x_r2_draw_decision *decision,
@@ -128,7 +141,7 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written,
                               struct v9x_r2_flat_trap *traps,
-                              v9x_u32 *trap_count);
+                              v9x_u32 *trap_count, v9x_u32 *stage);
 
 /*
  * Cut a trapezoid into pieces of at most `rows_max` rows by running the

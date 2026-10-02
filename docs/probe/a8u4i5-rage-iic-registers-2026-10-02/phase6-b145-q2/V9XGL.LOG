@@ -1,0 +1,2197 @@
+1 pid=FFFDDE81 attach instance=00600000 tls=2 build-marker=1
+2 pid=FFFDDE81 DrvValidateVersion version=1
+3 pid=FFFDDE81 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFDDE81 describe result=0 engine=2 formats=00000004
+5 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+7 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+8 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+34 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+35 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+37 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+39 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+40 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+41 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+42 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+43 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+44 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+45 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+46 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+47 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+48 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+49 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+50 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+51 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+52 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+53 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+54 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+55 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+56 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+57 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+58 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+59 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+60 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+61 pid=FFFDDE81 DrvSetPixelFormat hdc=00000776 index=1
+62 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+63 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+64 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 1
+65 pid=FFFDDE81 drawable window=0000023C 400x300
+66 pid=FFFDDE81 DrvSetContext hdc=00000776 context=1 -> 1
+67 pid=FFFDDE81 stub first-call slot=219 glPushAttrib
+68 pid=FFFDDE81 state tex=0 size=00000000 tex=00000000 blend=00020100 depth=01020100 colour=FF00FF00 mask=7 scissor=0,0,400,300 fog=0
+69 pid=FFFDDE81 paths batches/triangles untextured=1/6 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+70 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+71 pid=FFFDDE81 state tex=1 size=00080008 tex=01010101 blend=00020100 depth=00020101 colour=FFFF0000 mask=7 scissor=0,0,400,300 fog=0
+72 pid=FFFDDE81 draw result=4 triangles=3 submitted=0
+73 pid=FFFDDE81   v0 sx=00000000 sy=43960000 sz=00000000 rhw=3F800000 tu=00000000 tv=00000000
+74 pid=FFFDDE81   v1 sx=37480000 sy=43960000 sz=00000000 rhw=3F800000 tu=32E66667 tv=00000000
+75 pid=FFFDDE81   v2 sx=43855555 sy=43960000 sz=3F3DA12F rhw=3EAAAAAB tu=3F800000 tv=00000000
+76 pid=FFFDDE81 state tex=0 size=00000000 tex=00000000 blend=00020100 depth=00020100 colour=FFFFFF00 mask=7 scissor=0,0,400,300 fog=0
+77 pid=FFFDDE81 state tex=2 size=00400040 tex=01010101 blend=00020100 depth=00020102 colour=FF00FFFF mask=7 scissor=0,0,400,300 fog=0
+78 pid=FFFDDE81 draw result=4 triangles=6 submitted=0
+79 pid=FFFDDE81   v0 sx=41A00002 sy=43820000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+80 pid=FFFDDE81   v1 sx=42A80000 sy=43820000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+81 pid=FFFDDE81   v2 sx=42A80000 sy=43440000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+82 pid=FFFDDE81 state tex=3 size=01000100 tex=01010101 blend=00020100 depth=00020101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+83 pid=FFFDDE81 draw result=4 triangles=2 submitted=0
+84 pid=FFFDDE81   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+85 pid=FFFDDE81   v1 sx=43C80000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+86 pid=FFFDDE81   v2 sx=43C80000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+87 pid=FFFDDE81 state tex=3 size=01000100 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+88 pid=FFFDDE81 draw result=4 triangles=2 submitted=0
+89 pid=FFFDDE81   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+90 pid=FFFDDE81   v1 sx=43C80000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+91 pid=FFFDDE81   v2 sx=43C80000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+92 pid=FFFDDE81 draw result=4 triangles=2 submitted=0
+93 pid=FFFDDE81   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+94 pid=FFFDDE81   v1 sx=43C80000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+95 pid=FFFDDE81   v2 sx=43C80000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+96 pid=FFFDDE81 state tex=4 size=00400040 tex=01010101 blend=00020100 depth=00020101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+97 pid=FFFDDE81 draw result=4 triangles=2 submitted=0
+98 pid=FFFDDE81   v0 sx=41A00002 sy=43820000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+99 pid=FFFDDE81   v1 sx=42A80000 sy=43820000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+100 pid=FFFDDE81   v2 sx=42A80000 sy=43440000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+101 pid=FFFDDE81 state tex=5 size=00400040 tex=01010200 blend=01050600 depth=00020101 colour=54FFFFFF mask=7 scissor=0,0,400,300 fog=0
+102 pid=FFFDDE81 state tex=5 size=00400040 tex=01010101 blend=01010300 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+103 pid=FFFDDE81 state tex=5 size=00400040 tex=01010200 blend=01010300 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+104 pid=FFFDDE81 state tex=6 size=00400040 tex=01010101 blend=00020100 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+105 pid=FFFDDE81 state tex=6 size=00400040 tex=01040101 blend=00020100 depth=01040101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+106 pid=FFFDDE81 state tex=6 size=00400040 tex=01040202 blend=00020100 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+107 pid=FFFDDE81 state tex=6 size=00400040 tex=01010200 blend=00020100 depth=01040101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+108 pid=FFFDDE81 state tex=7 size=00400010 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+109 pid=FFFDDE81 state tex=7 size=00400010 tex=01010101 blend=00020100 depth=00020102 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+110 pid=FFFDDE81 state tex=8 size=00010001 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+111 pid=FFFDDE81 state tex=9 size=00020002 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+112 pid=FFFDDE81 state tex=10 size=00040004 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+113 pid=FFFDDE81 state tex=11 size=00040001 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+114 pid=FFFDDE81 state tex=12 size=00010004 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+115 pid=FFFDDE81 DrvReleaseContext context=1 -> 1
+116 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+117 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+118 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+119 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+120 pid=FFFDDE81 state tex=1 size=00400040 tex=01010200 blend=00020100 depth=00020103 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+121 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+122 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=21/49 cpu-nonsquare=5/12 hw-refused=0/0
+123 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=26 r7=0 r8=0 other=0
+124 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+125 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+126 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+127 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+128 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+129 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+130 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=22/50 cpu-nonsquare=5/12 hw-refused=0/0
+131 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=27 r7=0 r8=0 other=0
+132 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+133 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+134 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+135 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+136 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+137 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+138 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=23/51 cpu-nonsquare=5/12 hw-refused=0/0
+139 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=28 r7=0 r8=0 other=0
+140 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+141 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+142 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+143 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+144 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+145 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+146 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=24/52 cpu-nonsquare=5/12 hw-refused=0/0
+147 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=29 r7=0 r8=0 other=0
+148 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+149 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+150 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+151 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+152 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+153 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+154 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=25/53 cpu-nonsquare=5/12 hw-refused=0/0
+155 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=30 r7=0 r8=0 other=0
+156 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+157 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+158 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+159 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+160 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+161 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+162 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=26/54 cpu-nonsquare=5/12 hw-refused=0/0
+163 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=31 r7=0 r8=0 other=0
+164 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+165 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+166 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+167 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+168 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+169 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+170 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=27/55 cpu-nonsquare=5/12 hw-refused=0/0
+171 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=32 r7=0 r8=0 other=0
+172 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+173 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+174 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+175 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+176 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+177 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+178 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=28/56 cpu-nonsquare=5/12 hw-refused=0/0
+179 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=33 r7=0 r8=0 other=0
+180 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+181 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+182 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+183 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+184 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+185 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+186 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=29/57 cpu-nonsquare=5/12 hw-refused=0/0
+187 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=34 r7=0 r8=0 other=0
+188 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+189 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+190 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+191 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+192 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+193 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+194 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=30/58 cpu-nonsquare=5/12 hw-refused=0/0
+195 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=35 r7=0 r8=0 other=0
+196 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+197 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+198 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+199 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+200 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+201 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+202 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=31/59 cpu-nonsquare=5/12 hw-refused=0/0
+203 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=36 r7=0 r8=0 other=0
+204 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+205 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+206 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+207 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+208 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+209 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+210 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=32/60 cpu-nonsquare=5/12 hw-refused=0/0
+211 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=37 r7=0 r8=0 other=0
+212 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+213 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+214 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+215 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+216 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+217 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+218 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=33/61 cpu-nonsquare=5/12 hw-refused=0/0
+219 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=38 r7=0 r8=0 other=0
+220 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+221 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+222 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+223 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+224 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+225 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+226 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=34/62 cpu-nonsquare=5/12 hw-refused=0/0
+227 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=39 r7=0 r8=0 other=0
+228 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+229 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+230 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+231 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+232 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+233 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+234 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=35/63 cpu-nonsquare=5/12 hw-refused=0/0
+235 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=40 r7=0 r8=0 other=0
+236 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+237 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+238 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+239 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+240 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+241 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+242 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=36/64 cpu-nonsquare=5/12 hw-refused=0/0
+243 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=41 r7=0 r8=0 other=0
+244 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+245 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+246 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+247 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+248 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+249 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+250 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=37/65 cpu-nonsquare=5/12 hw-refused=0/0
+251 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=42 r7=0 r8=0 other=0
+252 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+253 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+254 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+255 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+256 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+257 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+258 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=38/66 cpu-nonsquare=5/12 hw-refused=0/0
+259 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=43 r7=0 r8=0 other=0
+260 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+261 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+262 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+263 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+264 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+265 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+266 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=39/67 cpu-nonsquare=5/12 hw-refused=0/0
+267 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=44 r7=0 r8=0 other=0
+268 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+269 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+270 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+271 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+272 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+273 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+274 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=40/68 cpu-nonsquare=5/12 hw-refused=0/0
+275 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=45 r7=0 r8=0 other=0
+276 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+277 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+278 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+279 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+280 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+281 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+282 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=41/69 cpu-nonsquare=5/12 hw-refused=0/0
+283 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=46 r7=0 r8=0 other=0
+284 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+285 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+286 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+287 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+288 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+289 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+290 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=42/70 cpu-nonsquare=5/12 hw-refused=0/0
+291 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=47 r7=0 r8=0 other=0
+292 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+293 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+294 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+295 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+296 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+297 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+298 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=43/71 cpu-nonsquare=5/12 hw-refused=0/0
+299 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=48 r7=0 r8=0 other=0
+300 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+301 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+302 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+303 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+304 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+305 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+306 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=44/72 cpu-nonsquare=5/12 hw-refused=0/0
+307 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=49 r7=0 r8=0 other=0
+308 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+309 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+310 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+311 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+312 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+313 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+314 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=45/73 cpu-nonsquare=5/12 hw-refused=0/0
+315 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=50 r7=0 r8=0 other=0
+316 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+317 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+318 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+319 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+320 pid=FFFDDE81 drawable window=0000023C 360x280
+321 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+322 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+323 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=46/74 cpu-nonsquare=5/12 hw-refused=0/0
+324 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=51 r7=0 r8=0 other=0
+325 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+326 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+327 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+328 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+329 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+330 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+331 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=47/75 cpu-nonsquare=5/12 hw-refused=0/0
+332 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=52 r7=0 r8=0 other=0
+333 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+334 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+335 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+336 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+337 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+338 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+339 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=48/76 cpu-nonsquare=5/12 hw-refused=0/0
+340 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=53 r7=0 r8=0 other=0
+341 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+342 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+343 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+344 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+345 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+346 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+347 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=49/77 cpu-nonsquare=5/12 hw-refused=0/0
+348 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=54 r7=0 r8=0 other=0
+349 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+350 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+351 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+352 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+353 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+354 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+355 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=50/78 cpu-nonsquare=5/12 hw-refused=0/0
+356 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=55 r7=0 r8=0 other=0
+357 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+358 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+359 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+360 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+361 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+362 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+363 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=51/79 cpu-nonsquare=5/12 hw-refused=0/0
+364 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=56 r7=0 r8=0 other=0
+365 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+366 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+367 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+368 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+369 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+370 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+371 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=52/80 cpu-nonsquare=5/12 hw-refused=0/0
+372 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=57 r7=0 r8=0 other=0
+373 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+374 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+375 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+376 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+377 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+378 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+379 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=53/81 cpu-nonsquare=5/12 hw-refused=0/0
+380 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=58 r7=0 r8=0 other=0
+381 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+382 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+383 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+384 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+385 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+386 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+387 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=54/82 cpu-nonsquare=5/12 hw-refused=0/0
+388 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=59 r7=0 r8=0 other=0
+389 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+390 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+391 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+392 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+393 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+394 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+395 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=55/83 cpu-nonsquare=5/12 hw-refused=0/0
+396 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=60 r7=0 r8=0 other=0
+397 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+398 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+399 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+400 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+401 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+402 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+403 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=56/84 cpu-nonsquare=5/12 hw-refused=0/0
+404 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=61 r7=0 r8=0 other=0
+405 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+406 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+407 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+408 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+409 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+410 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+411 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=57/85 cpu-nonsquare=5/12 hw-refused=0/0
+412 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=62 r7=0 r8=0 other=0
+413 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+414 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+415 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+416 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+417 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+418 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+419 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=58/86 cpu-nonsquare=5/12 hw-refused=0/0
+420 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=63 r7=0 r8=0 other=0
+421 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+422 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+423 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+424 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+425 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+426 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+427 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=59/87 cpu-nonsquare=5/12 hw-refused=0/0
+428 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=64 r7=0 r8=0 other=0
+429 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+430 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+431 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+432 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+433 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+434 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+435 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=60/88 cpu-nonsquare=5/12 hw-refused=0/0
+436 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=65 r7=0 r8=0 other=0
+437 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+438 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+439 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+440 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+441 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+442 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+443 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=61/89 cpu-nonsquare=5/12 hw-refused=0/0
+444 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=66 r7=0 r8=0 other=0
+445 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+446 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+447 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+448 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+449 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+450 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+451 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=62/90 cpu-nonsquare=5/12 hw-refused=0/0
+452 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=67 r7=0 r8=0 other=0
+453 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+454 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+455 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+456 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+457 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+458 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+459 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=63/91 cpu-nonsquare=5/12 hw-refused=0/0
+460 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=68 r7=0 r8=0 other=0
+461 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+462 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+463 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+464 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+465 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+466 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+467 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=64/92 cpu-nonsquare=5/12 hw-refused=0/0
+468 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=69 r7=0 r8=0 other=0
+469 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+470 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+471 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+472 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+473 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+474 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+475 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=65/93 cpu-nonsquare=5/12 hw-refused=0/0
+476 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=70 r7=0 r8=0 other=0
+477 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+478 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+479 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+480 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+481 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+482 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+483 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=66/94 cpu-nonsquare=5/12 hw-refused=0/0
+484 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=71 r7=0 r8=0 other=0
+485 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+486 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+487 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+488 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+489 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+490 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+491 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=67/95 cpu-nonsquare=5/12 hw-refused=0/0
+492 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=72 r7=0 r8=0 other=0
+493 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+494 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+495 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+496 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+497 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+498 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+499 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=68/96 cpu-nonsquare=5/12 hw-refused=0/0
+500 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=73 r7=0 r8=0 other=0
+501 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+502 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+503 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+504 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+505 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+506 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+507 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=69/97 cpu-nonsquare=5/12 hw-refused=0/0
+508 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=74 r7=0 r8=0 other=0
+509 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+510 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+511 pid=FFFDDE81 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+512 pid=FFFDDE81 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+513 pid=FFFDDE81 DrvSetContext hdc=00000776 context=2 -> 1
+514 pid=FFFDDE81 DrvReleaseContext context=2 -> 1
+515 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=70/98 cpu-nonsquare=5/12 hw-refused=0/0
+516 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=75 r7=0 r8=0 other=0
+517 pid=FFFDDE81 DrvDeleteContext context=2 -> 1
+518 pid=FFFDDE81 DrvSetContext hdc=00000776 context=1 -> 1
+519 pid=FFFDDE81 DrvReleaseContext context=1 -> 1
+520 pid=FFFDDE81 paths batches/triangles untextured=4/16 hw=0/0 cpu=70/98 cpu-nonsquare=5/12 hw-refused=0/0
+521 pid=FFFDDE81 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=75 r7=0 r8=0 other=0
+522 pid=FFFDDE81 DrvDeleteContext context=1 -> 1
+523 pid=FFFDDE81 detach slots-called=1 stub-calls=1
+1 pid=FFFD35B1 attach instance=05EE0000 tls=22 build-marker=1
+2 pid=FFFD35B1 DrvValidateVersion version=1
+3 pid=FFFD35B1 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFD35B1 describe result=0 engine=2 formats=00000004
+5 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+9 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFD35B1 DrvSetPixelFormat hdc=00000772 index=1
+37 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFD35B1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+39 pid=FFFD35B1 DrvCreateLayerContext hdc=00000772 layer=0 -> 1
+40 pid=FFFD35B1 drawable window=0000029C 640x480
+41 pid=FFFD35B1 DrvSetContext hdc=00000772 context=1 -> 1
+42 pid=FFFD35B1 DrvGetProcAddress name=wglSwapIntervalEXT -> NULL
+43 pid=FFFD35B1 state tex=1027 size=02000100 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+44 pid=FFFD35B1 draw result=4 triangles=3 submitted=0
+45 pid=FFFD35B1   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+46 pid=FFFD35B1   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+47 pid=FFFD35B1   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+48 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=1/3 hw-refused=0/0
+49 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=1 r7=0 r8=0 other=0
+50 pid=FFFD35B1 draw result=4 triangles=3 submitted=0
+51 pid=FFFD35B1   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+52 pid=FFFD35B1   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+53 pid=FFFD35B1   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+54 pid=FFFD35B1 draw result=4 triangles=3 submitted=0
+55 pid=FFFD35B1   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+56 pid=FFFD35B1   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+57 pid=FFFD35B1   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+58 pid=FFFD35B1 draw result=4 triangles=3 submitted=0
+59 pid=FFFD35B1   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+60 pid=FFFD35B1   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+61 pid=FFFD35B1   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+62 pid=FFFD35B1 draw result=4 triangles=3 submitted=0
+63 pid=FFFD35B1   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+64 pid=FFFD35B1   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+65 pid=FFFD35B1   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+66 pid=FFFD35B1 draw result=4 triangles=3 submitted=0
+67 pid=FFFD35B1   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+68 pid=FFFD35B1   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+69 pid=FFFD35B1   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+70 pid=FFFD35B1 state tex=1041 size=02000200 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFD35B1 state tex=1048 size=00800080 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFD35B1 state tex=1049 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFE4E4E4 mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFD35B1 state tex=1048 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFD35B1 state tex=1046 size=01000080 tex=01040202 blend=01020200 depth=01040001 colour=FFE4E4E4 mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFD35B1 state tex=1047 size=00400080 tex=01040202 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFD35B1 state tex=1035 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFD35B1 state tex=1036 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=86FF0000 mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFD35B1 state tex=1032 size=01000100 tex=01040202 blend=01050600 depth=01040001 colour=FF7F0000 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFD35B1 state tex=1038 size=00200020 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=2077/79751 cpu-nonsquare=1952/105816 hw-refused=0/0
+81 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=4029 r7=0 r8=0 other=0
+82 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=8782/337670 cpu-nonsquare=7529/444641 hw-refused=0/0
+83 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=16311 r7=0 r8=0 other=0
+84 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=15482/595451 cpu-nonsquare=13671/791121 hw-refused=0/0
+85 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=29153 r7=0 r8=0 other=0
+86 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=22182/853195 cpu-nonsquare=19759/1137087 hw-refused=0/0
+87 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=41941 r7=0 r8=0 other=0
+88 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=28777/1106811 cpu-nonsquare=25220/1469772 hw-refused=0/0
+89 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=53997 r7=0 r8=0 other=0
+90 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=35482/1364730 cpu-nonsquare=31308/1815089 hw-refused=0/0
+91 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=66790 r7=0 r8=0 other=0
+92 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=42179/1622442 cpu-nonsquare=37479/2162247 hw-refused=0/0
+93 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=79658 r7=0 r8=0 other=0
+94 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=48887/1880430 cpu-nonsquare=43081/2500785 hw-refused=0/0
+95 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=91968 r7=0 r8=0 other=0
+96 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=55592/2138349 cpu-nonsquare=49069/2845455 hw-refused=0/0
+97 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=104661 r7=0 r8=0 other=0
+98 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=62286/2395825 cpu-nonsquare=55269/3193209 hw-refused=0/0
+99 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=117555 r7=0 r8=0 other=0
+100 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=68972/2653033 cpu-nonsquare=60913/3531480 hw-refused=0/0
+101 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=129885 r7=0 r8=0 other=0
+102 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=75382/2899550 cpu-nonsquare=66576/3859513 hw-refused=0/0
+103 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=141958 r7=0 r8=0 other=0
+104 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=82072/3156892 cpu-nonsquare=72819/4208160 hw-refused=0/0
+105 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=154891 r7=0 r8=0 other=0
+106 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=88787/3415250 cpu-nonsquare=78511/4547934 hw-refused=0/0
+107 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=167298 r7=0 r8=0 other=0
+108 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=95497/3673307 cpu-nonsquare=84331/4889629 hw-refused=0/0
+109 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=179828 r7=0 r8=0 other=0
+110 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=102187/3930649 cpu-nonsquare=90567/5238333 hw-refused=0/0
+111 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=192754 r7=0 r8=0 other=0
+112 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=108892/4188568 cpu-nonsquare=96366/5579865 hw-refused=0/0
+113 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=205258 r7=0 r8=0 other=0
+114 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=115604/4446857 cpu-nonsquare=102043/5919780 hw-refused=0/0
+115 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=217647 r7=0 r8=0 other=0
+116 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=122287/4703829 cpu-nonsquare=108282/6268590 hw-refused=0/0
+117 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=230569 r7=0 r8=0 other=0
+118 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=128998/4962076 cpu-nonsquare=114211/6611664 hw-refused=0/0
+119 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=243209 r7=0 r8=0 other=0
+120 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=135707/5220106 cpu-nonsquare=119861/6950646 hw-refused=0/0
+121 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=255568 r7=0 r8=0 other=0
+122 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=142402/5477586 cpu-nonsquare=126060/7298850 hw-refused=0/0
+123 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=268462 r7=0 r8=0 other=0
+124 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=149104/5735434 cpu-nonsquare=132047/7642917 hw-refused=0/0
+125 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=281151 r7=0 r8=0 other=0
+126 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=155817/5993688 cpu-nonsquare=137619/7981917 hw-refused=0/0
+127 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=293436 r7=0 r8=0 other=0
+128 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=162512/6251205 cpu-nonsquare=143757/8328732 hw-refused=0/0
+129 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=306269 r7=0 r8=0 other=0
+130 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=169210/6508821 cpu-nonsquare=149867/8674743 hw-refused=0/0
+131 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=319077 r7=0 r8=0 other=0
+132 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=175922/6767043 cpu-nonsquare=155443/9013110 hw-refused=0/0
+133 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=331365 r7=0 r8=0 other=0
+134 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=182621/7024723 cpu-nonsquare=161543/9359385 hw-refused=0/0
+135 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=344164 r7=0 r8=0 other=0
+136 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=189319/7282371 cpu-nonsquare=167691/9705726 hw-refused=0/0
+137 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=357010 r7=0 r8=0 other=0
+138 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=196030/7540497 cpu-nonsquare=173281/10044966 hw-refused=0/0
+139 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=369311 r7=0 r8=0 other=0
+140 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=202732/7798280 cpu-nonsquare=179322/10389633 hw-refused=0/0
+141 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=382054 r7=0 r8=0 other=0
+142 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=209422/8055622 cpu-nonsquare=185519/10737519 hw-refused=0/0
+143 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=394941 r7=0 r8=0 other=0
+144 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=216136/8313917 cpu-nonsquare=191151/11076393 hw-refused=0/0
+145 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=407287 r7=0 r8=0 other=0
+146 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=222832/8571460 cpu-nonsquare=197075/11419614 hw-refused=0/0
+147 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=419907 r7=0 r8=0 other=0
+148 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=229522/8828802 cpu-nonsquare=203292/11767593 hw-refused=0/0
+149 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=432814 r7=0 r8=0 other=0
+150 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=236231/9086921 cpu-nonsquare=208973/12107574 hw-refused=0/0
+151 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=445204 r7=0 r8=0 other=0
+152 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=242942/9345079 cpu-nonsquare=214801/12448800 hw-refused=0/0
+153 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=457743 r7=0 r8=0 other=0
+154 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=249636/9602555 cpu-nonsquare=221041/12798033 hw-refused=0/0
+155 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=470677 r7=0 r8=0 other=0
+156 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=256342/9860478 cpu-nonsquare=226850/13139107 hw-refused=0/0
+157 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=483192 r7=0 r8=0 other=0
+158 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=263047/10118397 cpu-nonsquare=232567/13479385 hw-refused=0/0
+159 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=495614 r7=0 r8=0 other=0
+160 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=269737/10375739 cpu-nonsquare=238797/13828234 hw-refused=0/0
+161 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=508534 r7=0 r8=0 other=0
+162 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=276442/10633658 cpu-nonsquare=244717/14170800 hw-refused=0/0
+163 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=521159 r7=0 r8=0 other=0
+164 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=283147/10891577 cpu-nonsquare=250373/14510286 hw-refused=0/0
+165 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=533520 r7=0 r8=0 other=0
+166 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=289843/11149247 cpu-nonsquare=256565/14858250 hw-refused=0/0
+167 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=546408 r7=0 r8=0 other=0
+168 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=296542/11406838 cpu-nonsquare=262553/15201975 hw-refused=0/0
+169 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=559095 r7=0 r8=0 other=0
+170 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=303257/11665196 cpu-nonsquare=268145/15540687 hw-refused=0/0
+171 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=571402 r7=0 r8=0 other=0
+172 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=309952/11922676 cpu-nonsquare=274311/15888110 hw-refused=0/0
+173 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=584263 r7=0 r8=0 other=0
+174 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=316652/12180457 cpu-nonsquare=280393/16233399 hw-refused=0/0
+175 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=597045 r7=0 r8=0 other=0
+176 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=323366/12438714 cpu-nonsquare=285971/16572219 hw-refused=0/0
+177 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=609337 r7=0 r8=0 other=0
+178 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=330062/12696295 cpu-nonsquare=292075/16917810 hw-refused=0/0
+179 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=622137 r7=0 r8=0 other=0
+180 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=336757/12953775 cpu-nonsquare=298214/17264744 hw-refused=0/0
+181 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=634971 r7=0 r8=0 other=0
+182 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=343472/13212133 cpu-nonsquare=303795/17602878 hw-refused=0/0
+183 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=647267 r7=0 r8=0 other=0
+184 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=350177/13470052 cpu-nonsquare=309857/17947872 hw-refused=0/0
+185 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=660034 r7=0 r8=0 other=0
+186 pid=FFFD35B1 state tex=1033 size=00800080 tex=01040202 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+187 pid=FFFD35B1 state tex=1034 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+188 pid=FFFD35B1 state tex=1025 size=00080008 tex=01010200 blend=01050600 depth=01040001 colour=FFFFFF00 mask=7 scissor=0,0,640,480 fog=0
+189 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=357076/13739345 cpu-nonsquare=315936/18288655 hw-refused=0/0
+190 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=673012 r7=0 r8=0 other=0
+191 pid=FFFD35B1 DrvReleaseContext context=1 -> 1
+192 pid=FFFD35B1 paths batches/triangles untextured=0/0 hw=0/0 cpu=357875/13775717 cpu-nonsquare=316273/18308340 hw-refused=0/0
+193 pid=FFFD35B1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=674148 r7=0 r8=0 other=0
+194 pid=FFFD35B1 DrvDeleteContext context=1 -> 1
+195 pid=FFFD35B1 detach slots-called=0 stub-calls=0
+1 pid=FFFD9AD1 attach instance=00600000 tls=2 build-marker=1
+2 pid=FFFD9AD1 DrvValidateVersion version=1
+3 pid=FFFD9AD1 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFD9AD1 describe result=0 engine=2 formats=00000004
+5 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+7 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+8 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+34 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+35 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+37 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+39 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+40 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+41 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+42 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+43 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+44 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+45 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+46 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+47 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+48 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+49 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+50 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+51 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+52 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+53 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+54 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+55 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+56 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+57 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+58 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+59 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+60 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+61 pid=FFFD9AD1 DrvSetPixelFormat hdc=0000077A index=1
+62 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+63 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+64 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 1
+65 pid=FFFD9AD1 drawable window=00000158 400x300
+66 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=1 -> 1
+67 pid=FFFD9AD1 stub first-call slot=219 glPushAttrib
+68 pid=FFFD9AD1 state tex=0 size=00000000 tex=00000000 blend=00020100 depth=01020100 colour=FF00FF00 mask=7 scissor=0,0,400,300 fog=0
+69 pid=FFFD9AD1 paths batches/triangles untextured=1/6 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+70 pid=FFFD9AD1 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+71 pid=FFFD9AD1 state tex=1 size=00080008 tex=01010101 blend=00020100 depth=00020101 colour=FFFF0000 mask=7 scissor=0,0,400,300 fog=0
+72 pid=FFFD9AD1 state tex=0 size=00000000 tex=00000000 blend=00020100 depth=00020100 colour=FFFFFF00 mask=7 scissor=0,0,400,300 fog=0
+73 pid=FFFD9AD1 state tex=2 size=00400040 tex=01010101 blend=00020100 depth=00020102 colour=FF00FFFF mask=7 scissor=0,0,400,300 fog=0
+74 pid=FFFD9AD1 state tex=3 size=01000100 tex=01010101 blend=00020100 depth=00020101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+75 pid=FFFD9AD1 state tex=3 size=01000100 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+76 pid=FFFD9AD1 state tex=4 size=00400040 tex=01010101 blend=00020100 depth=00020101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+77 pid=FFFD9AD1 state tex=5 size=00400040 tex=01010200 blend=01050600 depth=00020101 colour=54FFFFFF mask=7 scissor=0,0,400,300 fog=0
+78 pid=FFFD9AD1 refused tex=5 size=00400040 tex=02030202 blend=01050600 depth=00020101 colour=54FFFFFF mask=7 scissor=0,0,400,300 fog=0
+79 pid=FFFD9AD1 draw result=4 triangles=2 submitted=0
+80 pid=FFFD9AD1   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+81 pid=FFFD9AD1   v1 sx=43C80000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+82 pid=FFFD9AD1   v2 sx=43C80000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+83 pid=FFFD9AD1 state tex=5 size=00400040 tex=01010101 blend=01010300 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+84 pid=FFFD9AD1 refused tex=5 size=00400040 tex=02030101 blend=01010300 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+85 pid=FFFD9AD1 draw result=4 triangles=2 submitted=0
+86 pid=FFFD9AD1   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+87 pid=FFFD9AD1   v1 sx=43C80000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+88 pid=FFFD9AD1   v2 sx=43C80000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+89 pid=FFFD9AD1 state tex=5 size=00400040 tex=01010200 blend=01010300 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+90 pid=FFFD9AD1 refused tex=5 size=00400040 tex=02030201 blend=01010300 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+91 pid=FFFD9AD1 draw result=4 triangles=2 submitted=0
+92 pid=FFFD9AD1   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+93 pid=FFFD9AD1   v1 sx=43C80000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+94 pid=FFFD9AD1   v2 sx=43C80000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+95 pid=FFFD9AD1 state tex=6 size=00400040 tex=01010101 blend=00020100 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+96 pid=FFFD9AD1 state tex=6 size=00400040 tex=01040101 blend=00020100 depth=01040101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+97 pid=FFFD9AD1 state tex=6 size=00400040 tex=01040201 blend=00020100 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+98 pid=FFFD9AD1 state tex=6 size=00400040 tex=01010200 blend=00020100 depth=01040101 colour=FFFF8000 mask=7 scissor=0,0,400,300 fog=0
+99 pid=FFFD9AD1 state tex=7 size=00400010 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+100 pid=FFFD9AD1 draw result=4 triangles=2 submitted=0
+101 pid=FFFD9AD1   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+102 pid=FFFD9AD1   v1 sx=43800000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+103 pid=FFFD9AD1   v2 sx=43800000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+104 pid=FFFD9AD1 draw result=4 triangles=2 submitted=0
+105 pid=FFFD9AD1   v0 sx=00000000 sy=43960000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+106 pid=FFFD9AD1   v1 sx=42800000 sy=43960000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+107 pid=FFFD9AD1   v2 sx=42800000 sy=42300000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+108 pid=FFFD9AD1 state tex=7 size=00400010 tex=01010101 blend=00020100 depth=00020102 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+109 pid=FFFD9AD1 draw result=4 triangles=4 submitted=0
+110 pid=FFFD9AD1   v0 sx=41A00002 sy=43820000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+111 pid=FFFD9AD1   v1 sx=42A80000 sy=43820000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+112 pid=FFFD9AD1   v2 sx=42A80000 sy=43740000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=3F800000
+113 pid=FFFD9AD1 state tex=8 size=00010001 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+114 pid=FFFD9AD1 refused tex=8 size=00010001 tex=02030201 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+115 pid=FFFD9AD1 state tex=9 size=00020002 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+116 pid=FFFD9AD1 refused tex=9 size=00020002 tex=02030201 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+117 pid=FFFD9AD1 state tex=10 size=00040004 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+118 pid=FFFD9AD1 state tex=11 size=00040001 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+119 pid=FFFD9AD1 state tex=12 size=00010004 tex=01010200 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+120 pid=FFFD9AD1 DrvReleaseContext context=1 -> 1
+121 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+122 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+123 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+124 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+125 pid=FFFD9AD1 state tex=1 size=00400040 tex=01010200 blend=00020100 depth=00020103 colour=FFFFFFFF mask=7 scissor=0,0,400,300 fog=0
+126 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+127 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=16/39 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+128 pid=FFFD9AD1 counters hwtex live=0 creates=12 create-failed=0 evictions=0 uploads=15 upload-kb=212 stubs=1 failed r4=10 r7=0 r8=0 other=0
+129 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+130 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+131 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+132 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+133 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+134 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+135 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=17/40 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+136 pid=FFFD9AD1 counters hwtex live=0 creates=13 create-failed=0 evictions=0 uploads=16 upload-kb=222 stubs=1 failed r4=10 r7=0 r8=0 other=0
+137 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+138 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+139 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+140 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+141 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+142 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+143 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=18/41 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+144 pid=FFFD9AD1 counters hwtex live=0 creates=14 create-failed=0 evictions=0 uploads=17 upload-kb=232 stubs=1 failed r4=10 r7=0 r8=0 other=0
+145 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+146 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+147 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+148 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+149 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+150 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+151 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=19/42 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+152 pid=FFFD9AD1 counters hwtex live=0 creates=15 create-failed=0 evictions=0 uploads=18 upload-kb=242 stubs=1 failed r4=10 r7=0 r8=0 other=0
+153 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+154 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+155 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+156 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+157 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+158 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+159 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=20/43 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+160 pid=FFFD9AD1 counters hwtex live=0 creates=16 create-failed=0 evictions=0 uploads=19 upload-kb=252 stubs=1 failed r4=10 r7=0 r8=0 other=0
+161 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+162 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+163 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+164 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+165 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+166 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+167 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=21/44 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+168 pid=FFFD9AD1 counters hwtex live=0 creates=17 create-failed=0 evictions=0 uploads=20 upload-kb=262 stubs=1 failed r4=10 r7=0 r8=0 other=0
+169 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+170 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+171 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+172 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+173 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+174 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+175 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=22/45 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+176 pid=FFFD9AD1 counters hwtex live=0 creates=18 create-failed=0 evictions=0 uploads=21 upload-kb=272 stubs=1 failed r4=10 r7=0 r8=0 other=0
+177 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+178 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+179 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+180 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+181 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+182 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+183 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=23/46 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+184 pid=FFFD9AD1 counters hwtex live=0 creates=19 create-failed=0 evictions=0 uploads=22 upload-kb=282 stubs=1 failed r4=10 r7=0 r8=0 other=0
+185 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+186 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+187 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+188 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+189 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+190 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+191 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=24/47 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+192 pid=FFFD9AD1 counters hwtex live=0 creates=20 create-failed=0 evictions=0 uploads=23 upload-kb=292 stubs=1 failed r4=10 r7=0 r8=0 other=0
+193 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+194 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+195 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+196 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+197 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+198 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+199 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=25/48 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+200 pid=FFFD9AD1 counters hwtex live=0 creates=21 create-failed=0 evictions=0 uploads=24 upload-kb=302 stubs=1 failed r4=10 r7=0 r8=0 other=0
+201 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+202 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+203 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+204 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+205 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+206 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+207 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=26/49 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+208 pid=FFFD9AD1 counters hwtex live=0 creates=22 create-failed=0 evictions=0 uploads=25 upload-kb=312 stubs=1 failed r4=10 r7=0 r8=0 other=0
+209 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+210 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+211 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+212 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+213 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+214 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+215 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=27/50 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+216 pid=FFFD9AD1 counters hwtex live=0 creates=23 create-failed=0 evictions=0 uploads=26 upload-kb=322 stubs=1 failed r4=10 r7=0 r8=0 other=0
+217 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+218 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+219 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+220 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+221 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+222 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+223 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=28/51 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+224 pid=FFFD9AD1 counters hwtex live=0 creates=24 create-failed=0 evictions=0 uploads=27 upload-kb=332 stubs=1 failed r4=10 r7=0 r8=0 other=0
+225 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+226 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+227 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+228 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+229 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+230 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+231 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=29/52 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+232 pid=FFFD9AD1 counters hwtex live=0 creates=25 create-failed=0 evictions=0 uploads=28 upload-kb=342 stubs=1 failed r4=10 r7=0 r8=0 other=0
+233 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+234 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+235 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+236 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+237 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+238 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+239 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=30/53 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+240 pid=FFFD9AD1 counters hwtex live=0 creates=26 create-failed=0 evictions=0 uploads=29 upload-kb=352 stubs=1 failed r4=10 r7=0 r8=0 other=0
+241 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+242 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+243 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+244 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+245 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+246 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+247 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=31/54 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+248 pid=FFFD9AD1 counters hwtex live=0 creates=27 create-failed=0 evictions=0 uploads=30 upload-kb=362 stubs=1 failed r4=10 r7=0 r8=0 other=0
+249 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+250 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+251 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+252 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+253 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+254 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+255 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=32/55 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+256 pid=FFFD9AD1 counters hwtex live=0 creates=28 create-failed=0 evictions=0 uploads=31 upload-kb=372 stubs=1 failed r4=10 r7=0 r8=0 other=0
+257 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+258 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+259 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+260 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+261 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+262 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+263 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=33/56 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+264 pid=FFFD9AD1 counters hwtex live=0 creates=29 create-failed=0 evictions=0 uploads=32 upload-kb=382 stubs=1 failed r4=10 r7=0 r8=0 other=0
+265 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+266 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+267 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+268 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+269 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+270 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+271 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=34/57 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+272 pid=FFFD9AD1 counters hwtex live=0 creates=30 create-failed=0 evictions=0 uploads=33 upload-kb=392 stubs=1 failed r4=10 r7=0 r8=0 other=0
+273 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+274 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+275 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+276 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+277 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+278 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+279 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=35/58 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+280 pid=FFFD9AD1 counters hwtex live=0 creates=31 create-failed=0 evictions=0 uploads=34 upload-kb=402 stubs=1 failed r4=10 r7=0 r8=0 other=0
+281 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+282 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+283 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+284 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+285 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+286 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+287 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=36/59 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+288 pid=FFFD9AD1 counters hwtex live=0 creates=32 create-failed=0 evictions=0 uploads=35 upload-kb=412 stubs=1 failed r4=10 r7=0 r8=0 other=0
+289 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+290 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+291 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+292 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+293 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+294 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+295 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=37/60 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+296 pid=FFFD9AD1 counters hwtex live=0 creates=33 create-failed=0 evictions=0 uploads=36 upload-kb=422 stubs=1 failed r4=10 r7=0 r8=0 other=0
+297 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+298 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+299 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+300 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+301 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+302 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+303 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=38/61 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+304 pid=FFFD9AD1 counters hwtex live=0 creates=34 create-failed=0 evictions=0 uploads=37 upload-kb=432 stubs=1 failed r4=10 r7=0 r8=0 other=0
+305 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+306 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+307 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+308 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+309 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+310 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+311 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=39/62 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+312 pid=FFFD9AD1 counters hwtex live=0 creates=35 create-failed=0 evictions=0 uploads=38 upload-kb=442 stubs=1 failed r4=10 r7=0 r8=0 other=0
+313 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+314 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+315 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+316 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+317 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+318 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+319 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=40/63 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+320 pid=FFFD9AD1 counters hwtex live=0 creates=36 create-failed=0 evictions=0 uploads=39 upload-kb=452 stubs=1 failed r4=10 r7=0 r8=0 other=0
+321 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+322 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+323 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+324 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+325 pid=FFFD9AD1 drawable window=00000158 360x280
+326 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+327 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+328 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=41/64 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+329 pid=FFFD9AD1 counters hwtex live=0 creates=37 create-failed=0 evictions=0 uploads=40 upload-kb=462 stubs=1 failed r4=10 r7=0 r8=0 other=0
+330 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+331 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+332 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+333 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+334 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+335 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+336 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=42/65 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+337 pid=FFFD9AD1 counters hwtex live=0 creates=38 create-failed=0 evictions=0 uploads=41 upload-kb=472 stubs=1 failed r4=10 r7=0 r8=0 other=0
+338 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+339 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+340 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+341 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+342 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+343 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+344 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=43/66 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+345 pid=FFFD9AD1 counters hwtex live=0 creates=39 create-failed=0 evictions=0 uploads=42 upload-kb=482 stubs=1 failed r4=10 r7=0 r8=0 other=0
+346 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+347 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+348 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+349 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+350 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+351 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+352 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=44/67 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+353 pid=FFFD9AD1 counters hwtex live=0 creates=40 create-failed=0 evictions=0 uploads=43 upload-kb=492 stubs=1 failed r4=10 r7=0 r8=0 other=0
+354 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+355 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+356 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+357 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+358 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+359 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+360 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=45/68 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+361 pid=FFFD9AD1 counters hwtex live=0 creates=41 create-failed=0 evictions=0 uploads=44 upload-kb=502 stubs=1 failed r4=10 r7=0 r8=0 other=0
+362 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+363 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+364 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+365 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+366 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+367 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+368 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=46/69 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+369 pid=FFFD9AD1 counters hwtex live=0 creates=42 create-failed=0 evictions=0 uploads=45 upload-kb=512 stubs=1 failed r4=10 r7=0 r8=0 other=0
+370 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+371 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+372 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+373 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+374 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+375 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+376 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=47/70 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+377 pid=FFFD9AD1 counters hwtex live=0 creates=43 create-failed=0 evictions=0 uploads=46 upload-kb=522 stubs=1 failed r4=10 r7=0 r8=0 other=0
+378 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+379 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+380 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+381 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+382 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+383 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+384 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=48/71 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+385 pid=FFFD9AD1 counters hwtex live=0 creates=44 create-failed=0 evictions=0 uploads=47 upload-kb=532 stubs=1 failed r4=10 r7=0 r8=0 other=0
+386 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+387 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+388 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+389 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+390 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+391 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+392 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=49/72 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+393 pid=FFFD9AD1 counters hwtex live=0 creates=45 create-failed=0 evictions=0 uploads=48 upload-kb=542 stubs=1 failed r4=10 r7=0 r8=0 other=0
+394 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+395 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+396 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+397 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+398 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+399 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+400 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=50/73 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+401 pid=FFFD9AD1 counters hwtex live=0 creates=46 create-failed=0 evictions=0 uploads=49 upload-kb=552 stubs=1 failed r4=10 r7=0 r8=0 other=0
+402 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+403 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+404 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+405 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+406 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+407 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+408 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=51/74 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+409 pid=FFFD9AD1 counters hwtex live=0 creates=47 create-failed=0 evictions=0 uploads=50 upload-kb=562 stubs=1 failed r4=10 r7=0 r8=0 other=0
+410 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+411 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+412 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+413 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+414 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+415 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+416 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=52/75 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+417 pid=FFFD9AD1 counters hwtex live=0 creates=48 create-failed=0 evictions=0 uploads=51 upload-kb=572 stubs=1 failed r4=10 r7=0 r8=0 other=0
+418 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+419 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+420 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+421 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+422 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+423 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+424 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=53/76 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+425 pid=FFFD9AD1 counters hwtex live=0 creates=49 create-failed=0 evictions=0 uploads=52 upload-kb=582 stubs=1 failed r4=10 r7=0 r8=0 other=0
+426 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+427 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+428 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+429 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+430 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+431 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+432 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=54/77 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+433 pid=FFFD9AD1 counters hwtex live=0 creates=50 create-failed=0 evictions=0 uploads=53 upload-kb=592 stubs=1 failed r4=10 r7=0 r8=0 other=0
+434 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+435 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+436 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+437 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+438 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+439 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+440 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=55/78 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+441 pid=FFFD9AD1 counters hwtex live=0 creates=51 create-failed=0 evictions=0 uploads=54 upload-kb=602 stubs=1 failed r4=10 r7=0 r8=0 other=0
+442 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+443 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+444 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+445 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+446 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+447 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+448 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=56/79 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+449 pid=FFFD9AD1 counters hwtex live=0 creates=52 create-failed=0 evictions=0 uploads=55 upload-kb=612 stubs=1 failed r4=10 r7=0 r8=0 other=0
+450 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+451 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+452 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+453 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+454 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+455 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+456 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=57/80 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+457 pid=FFFD9AD1 counters hwtex live=0 creates=53 create-failed=0 evictions=0 uploads=56 upload-kb=622 stubs=1 failed r4=10 r7=0 r8=0 other=0
+458 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+459 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+460 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+461 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+462 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+463 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+464 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=58/81 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+465 pid=FFFD9AD1 counters hwtex live=0 creates=54 create-failed=0 evictions=0 uploads=57 upload-kb=632 stubs=1 failed r4=10 r7=0 r8=0 other=0
+466 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+467 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+468 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+469 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+470 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+471 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+472 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=59/82 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+473 pid=FFFD9AD1 counters hwtex live=0 creates=55 create-failed=0 evictions=0 uploads=58 upload-kb=642 stubs=1 failed r4=10 r7=0 r8=0 other=0
+474 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+475 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+476 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+477 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+478 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+479 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+480 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=60/83 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+481 pid=FFFD9AD1 counters hwtex live=0 creates=56 create-failed=0 evictions=0 uploads=59 upload-kb=652 stubs=1 failed r4=10 r7=0 r8=0 other=0
+482 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+483 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+484 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+485 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+486 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+487 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+488 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=61/84 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+489 pid=FFFD9AD1 counters hwtex live=0 creates=57 create-failed=0 evictions=0 uploads=60 upload-kb=662 stubs=1 failed r4=10 r7=0 r8=0 other=0
+490 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+491 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+492 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+493 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+494 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+495 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+496 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=62/85 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+497 pid=FFFD9AD1 counters hwtex live=0 creates=58 create-failed=0 evictions=0 uploads=61 upload-kb=672 stubs=1 failed r4=10 r7=0 r8=0 other=0
+498 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+499 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+500 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+501 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+502 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+503 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+504 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=63/86 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+505 pid=FFFD9AD1 counters hwtex live=0 creates=59 create-failed=0 evictions=0 uploads=62 upload-kb=682 stubs=1 failed r4=10 r7=0 r8=0 other=0
+506 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+507 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+508 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+509 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+510 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+511 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+512 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=64/87 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+513 pid=FFFD9AD1 counters hwtex live=0 creates=60 create-failed=0 evictions=0 uploads=63 upload-kb=692 stubs=1 failed r4=10 r7=0 r8=0 other=0
+514 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+515 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+516 pid=FFFD9AD1 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+517 pid=FFFD9AD1 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+518 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=2 -> 1
+519 pid=FFFD9AD1 DrvReleaseContext context=2 -> 1
+520 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=65/88 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+521 pid=FFFD9AD1 counters hwtex live=0 creates=61 create-failed=0 evictions=0 uploads=64 upload-kb=702 stubs=1 failed r4=10 r7=0 r8=0 other=0
+522 pid=FFFD9AD1 DrvDeleteContext context=2 -> 1
+523 pid=FFFD9AD1 DrvSetContext hdc=0000077A context=1 -> 1
+524 pid=FFFD9AD1 DrvReleaseContext context=1 -> 1
+525 pid=FFFD9AD1 paths batches/triangles untextured=4/16 hw=65/88 cpu=0/0 cpu-nonsquare=5/12 hw-refused=5/10
+526 pid=FFFD9AD1 counters hwtex live=0 creates=61 create-failed=0 evictions=0 uploads=64 upload-kb=702 stubs=1 failed r4=10 r7=0 r8=0 other=0
+527 pid=FFFD9AD1 DrvDeleteContext context=1 -> 1
+528 pid=FFFD9AD1 detach slots-called=1 stub-calls=1
+1 pid=FFFD515D attach instance=05EE0000 tls=22 build-marker=1
+2 pid=FFFD515D DrvValidateVersion version=1
+3 pid=FFFD515D DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFD515D describe result=0 engine=2 formats=00000004
+5 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+9 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFD515D DrvSetPixelFormat hdc=00000772 index=1
+37 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFD515D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+39 pid=FFFD515D DrvCreateLayerContext hdc=00000772 layer=0 -> 1
+40 pid=FFFD515D drawable window=00000174 640x480
+41 pid=FFFD515D DrvSetContext hdc=00000772 context=1 -> 1
+42 pid=FFFD515D DrvGetProcAddress name=wglSwapIntervalEXT -> NULL
+43 pid=FFFD515D state tex=1041 size=02000200 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+44 pid=FFFD515D paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+45 pid=FFFD515D counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=512 stubs=0 failed r4=0 r7=0 r8=0 other=0
+46 pid=FFFD515D state tex=1048 size=00800080 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+47 pid=FFFD515D state tex=1049 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FF808080 mask=7 scissor=0,0,640,480 fog=0
+48 pid=FFFD515D refused tex=1049 size=00800080 tex=02030201 blend=01020200 depth=01040001 colour=FF808080 mask=7 scissor=0,0,640,480 fog=0
+49 pid=FFFD515D draw result=4 triangles=63 submitted=0
+50 pid=FFFD515D   v0 sx=430786F7 sy=42EA207C sz=3F7CFFF2 rhw=3B5FA375 tu=3EE25553 tv=3C82058D
+51 pid=FFFD515D   v1 sx=4306BDF7 sy=42E28AA4 sz=3F7CFFDA rhw=3B5FA949 tu=3EF04232 tv=BC90CE3B
+52 pid=FFFD515D   v2 sx=4315D020 sy=42E9EA68 sz=3F7D019B rhw=3B5F3980 tu=3F002ADE tv=3D98E1A7
+53 pid=FFFD515D draw result=4 triangles=4 submitted=0
+54 pid=FFFD515D   v0 sx=43CCED1E sy=42C4520C sz=3F7D1FCD rhw=3B57B0BF tu=3F0FB19C tv=BE143F63
+55 pid=FFFD515D   v1 sx=43CF7033 sy=42D23360 sz=3F7D2062 rhw=3B578B7B tu=3F06FF5D tv=BD8177F6
+56 pid=FFFD515D   v2 sx=43CC6F45 sy=42D638C0 sz=3F7D1FB0 rhw=3B57B809 tu=3EF70861 tv=BD9A4BE2
+57 pid=FFFD515D state tex=1048 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+58 pid=FFFD515D refused tex=1048 size=00800080 tex=02030201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+59 pid=FFFD515D draw result=4 triangles=63 submitted=0
+60 pid=FFFD515D   v0 sx=430786F7 sy=42EA207C sz=3F7CFFF2 rhw=3B5FA375 tu=40161255 tv=403EEADB
+61 pid=FFFD515D   v1 sx=4306BDF7 sy=42E28AA4 sz=3F7CFFDA rhw=3B5FA949 tu=4015D0D2 tv=403D4B4F
+62 pid=FFFD515D   v2 sx=4315D020 sy=42E9EA68 sz=3F7D019B rhw=3B5F3980 tu=4019A998 tv=403F04B0
+63 pid=FFFD515D draw result=4 triangles=4 submitted=0
+64 pid=FFFD515D   v0 sx=43CCED1E sy=42C4520C sz=3F7D1FCD rhw=3B57B0BF tu=4061A86F tv=403772BD
+65 pid=FFFD515D   v1 sx=43CF7033 sy=42D23360 sz=3F7D2062 rhw=3B578B7B tu=4062EDF9 tv=403A8B61
+66 pid=FFFD515D   v2 sx=43CC6F45 sy=42D638C0 sz=3F7D1FB0 rhw=3B57B809 tu=40614705 tv=403B7610
+67 pid=FFFD515D state tex=1046 size=01000080 tex=01040201 blend=01020200 depth=01040001 colour=FF808080 mask=7 scissor=0,0,640,480 fog=0
+68 pid=FFFD515D draw result=4 triangles=62 submitted=0
+69 pid=FFFD515D   v0 sx=42DC0CBA sy=42D5BF88 sz=3F7DE6EE rhw=3B260155 tu=3EF8BACA tv=3A03126F
+70 pid=FFFD515D   v1 sx=429E5737 sy=42C05DA8 sz=3F7DE87B rhw=3B259E2F tu=3F4E48EA tv=3A03126F
+71 pid=FFFD515D   v2 sx=419E7230 sy=42AC5DD0 sz=3F7CF26A rhw=3B6303D9 tu=3EF8BACA tv=3F7FDF3B
+72 pid=FFFD515D draw result=4 triangles=64 submitted=0
+73 pid=FFFD515D   v0 sx=425FBAB5 sy=00000000 sz=3F7D498E rhw=3B4D45B0 tu=3FED9E85 tv=3F604CEF
+74 pid=FFFD515D   v1 sx=42F39DAF sy=42449398 sz=3F7DFE3A rhw=3B20313D tu=3FED9E85 tv=3A03126F
+75 pid=FFFD515D   v2 sx=42FF8EF6 sy=424B61F0 sz=3F7DFE14 rhw=3B203AE5 tu=3FF346DD tv=3A03126F
+76 pid=FFFD515D state tex=1047 size=00400080 tex=01040201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFD515D state tex=1035 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFD515D refused tex=1035 size=01000100 tex=02040202 blend=01050600 depth=00040001 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFD515D state tex=1036 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=7CFF0000 mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFD515D refused tex=1036 size=01000100 tex=02040202 blend=01050600 depth=00040001 colour=7CFF0000 mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFD515D state tex=1032 size=01000100 tex=01040202 blend=01050600 depth=01040001 colour=FF7F0000 mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFD515D refused tex=1032 size=01000100 tex=02040202 blend=01050600 depth=01040001 colour=FF7F0000 mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFD515D state tex=1038 size=00200020 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFD515D refused tex=1038 size=00200020 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFD515D paths batches/triangles untextured=0/0 hw=422/9866 cpu=0/0 cpu-nonsquare=1956/109329 hw-refused=1680/70980
+86 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=3636 r7=0 r8=0 other=0
+87 pid=FFFD515D paths batches/triangles untextured=0/0 hw=845/19736 cpu=0/0 cpu-nonsquare=3720/216204 hw-refused=3372/142467
+88 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=7092 r7=0 r8=0 other=0
+89 pid=FFFD515D paths batches/triangles untextured=0/0 hw=1268/29606 cpu=0/0 cpu-nonsquare=5582/324306 hw-refused=5064/213954
+90 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=10646 r7=0 r8=0 other=0
+91 pid=FFFD515D paths batches/triangles untextured=0/0 hw=1691/39476 cpu=0/0 cpu-nonsquare=7552/434574 hw-refused=6756/285441
+92 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=14308 r7=0 r8=0 other=0
+93 pid=FFFD515D paths batches/triangles untextured=0/0 hw=2110/49213 cpu=0/0 cpu-nonsquare=9366/541137 hw-refused=8436/356421
+94 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=17802 r7=0 r8=0 other=0
+95 pid=FFFD515D paths batches/triangles untextured=0/0 hw=2533/59083 cpu=0/0 cpu-nonsquare=11166/648645 hw-refused=10128/427908
+96 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=21294 r7=0 r8=0 other=0
+97 pid=FFFD515D paths batches/triangles untextured=0/0 hw=2956/68953 cpu=0/0 cpu-nonsquare=13136/759060 hw-refused=11820/499395
+98 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=24956 r7=0 r8=0 other=0
+99 pid=FFFD515D paths batches/triangles untextured=0/0 hw=3379/78823 cpu=0/0 cpu-nonsquare=14978/866889 hw-refused=13512/570882
+100 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=28490 r7=0 r8=0 other=0
+101 pid=FFFD515D paths batches/triangles untextured=0/0 hw=3802/88693 cpu=0/0 cpu-nonsquare=16762/973950 hw-refused=15204/642369
+102 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=31966 r7=0 r8=0 other=0
+103 pid=FFFD515D paths batches/triangles untextured=0/0 hw=4225/98563 cpu=0/0 cpu-nonsquare=18726/1084122 hw-refused=16896/713856
+104 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=35622 r7=0 r8=0 other=0
+105 pid=FFFD515D paths batches/triangles untextured=0/0 hw=4648/108433 cpu=0/0 cpu-nonsquare=20596/1192527 hw-refused=18588/785343
+106 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=39184 r7=0 r8=0 other=0
+107 pid=FFFD515D paths batches/triangles untextured=0/0 hw=5071/118303 cpu=0/0 cpu-nonsquare=22370/1299411 hw-refused=20280/856830
+108 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=42650 r7=0 r8=0 other=0
+109 pid=FFFD515D paths batches/triangles untextured=0/0 hw=5479/127823 cpu=0/0 cpu-nonsquare=24244/1405356 hw-refused=21912/925782
+110 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=46156 r7=0 r8=0 other=0
+111 pid=FFFD515D paths batches/triangles untextured=0/0 hw=5900/137686 cpu=0/0 cpu-nonsquare=26130/1513392 hw-refused=23592/996762
+112 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=49722 r7=0 r8=0 other=0
+113 pid=FFFD515D paths batches/triangles untextured=0/0 hw=6323/147556 cpu=0/0 cpu-nonsquare=27896/1620186 hw-refused=25284/1068249
+114 pid=FFFD515D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=53180 r7=0 r8=0 other=0
+115 pid=FFFD515D state tex=1033 size=00800080 tex=01040201 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+116 pid=FFFD515D state tex=1034 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+117 pid=FFFD515D refused tex=1034 size=00800080 tex=02030201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+118 pid=FFFD515D state tex=1025 size=00080008 tex=01010200 blend=01050600 depth=01040001 colour=FFFFFF00 mask=7 scissor=0,0,640,480 fog=0
+119 pid=FFFD515D refused tex=1025 size=00080008 tex=02030202 blend=01050600 depth=01040001 colour=FFFFFF00 mask=7 scissor=0,0,640,480 fog=0
+120 pid=FFFD515D paths batches/triangles untextured=0/0 hw=6746/157365 cpu=0/0 cpu-nonsquare=29836/1729629 hw-refused=26983/1140026
+121 pid=FFFD515D counters hwtex live=10 creates=10 create-failed=0 evictions=0 uploads=10 upload-kb=1026 stubs=0 failed r4=56819 r7=0 r8=0 other=0
+122 pid=FFFD515D DrvReleaseContext context=1 -> 1
+123 pid=FFFD515D paths batches/triangles untextured=0/0 hw=6817/158658 cpu=0/0 cpu-nonsquare=30088/1743732 hw-refused=27431/1161552
+124 pid=FFFD515D counters hwtex live=0 creates=10 create-failed=0 evictions=0 uploads=10 upload-kb=1026 stubs=0 failed r4=57519 r7=0 r8=0 other=0
+125 pid=FFFD515D DrvDeleteContext context=1 -> 1
+126 pid=FFFD515D detach slots-called=0 stub-calls=0
+1 pid=FFFD523D attach instance=05EE0000 tls=22 build-marker=1
+2 pid=FFFD523D DrvValidateVersion version=1
+3 pid=FFFD523D DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFD523D describe result=0 engine=2 formats=00000004
+5 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+9 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFD523D DrvSetPixelFormat hdc=0000077A index=1
+37 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFD523D DrvDescribePixelFormat index=1 bytes=40 -> count=1
+39 pid=FFFD523D DrvCreateLayerContext hdc=0000077A layer=0 -> 1
+40 pid=FFFD523D drawable window=000001E4 640x480
+41 pid=FFFD523D DrvSetContext hdc=0000077A context=1 -> 1
+42 pid=FFFD523D DrvGetProcAddress name=wglSwapIntervalEXT -> NULL
+43 pid=FFFD523D state tex=1027 size=02000100 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+44 pid=FFFD523D draw result=4 triangles=3 submitted=0
+45 pid=FFFD523D   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+46 pid=FFFD523D   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+47 pid=FFFD523D   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+48 pid=FFFD523D paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=1/3 hw-refused=0/0
+49 pid=FFFD523D counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 stubs=0 failed r4=1 r7=0 r8=0 other=0
+50 pid=FFFD523D draw result=4 triangles=3 submitted=0
+51 pid=FFFD523D   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+52 pid=FFFD523D   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+53 pid=FFFD523D   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+54 pid=FFFD523D draw result=4 triangles=3 submitted=0
+55 pid=FFFD523D   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+56 pid=FFFD523D   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+57 pid=FFFD523D   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+58 pid=FFFD523D draw result=4 triangles=3 submitted=0
+59 pid=FFFD523D   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+60 pid=FFFD523D   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+61 pid=FFFD523D   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+62 pid=FFFD523D draw result=4 triangles=3 submitted=0
+63 pid=FFFD523D   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+64 pid=FFFD523D   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+65 pid=FFFD523D   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+66 pid=FFFD523D draw result=4 triangles=3 submitted=0
+67 pid=FFFD523D   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+68 pid=FFFD523D   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+69 pid=FFFD523D   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+70 pid=FFFD523D state tex=1041 size=02000200 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFD523D state tex=1048 size=00800080 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFD523D state tex=1049 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FF090909 mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFD523D refused tex=1049 size=00800080 tex=02030201 blend=01020200 depth=01040001 colour=FF090909 mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFD523D state tex=1048 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFD523D refused tex=1048 size=00800080 tex=02030201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFD523D state tex=1046 size=01000080 tex=01040201 blend=01020200 depth=01040001 colour=FF090909 mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFD523D state tex=1047 size=00400080 tex=01040201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFD523D state tex=1035 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFD523D refused tex=1035 size=01000100 tex=02040202 blend=01050600 depth=00040001 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFD523D state tex=1036 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=00FF0000 mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFD523D refused tex=1036 size=01000100 tex=02040202 blend=01050600 depth=00040001 colour=00FF0000 mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFD523D state tex=1032 size=01000100 tex=01040202 blend=01050600 depth=01040001 colour=FF7F0000 mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFD523D refused tex=1032 size=01000100 tex=02040202 blend=01050600 depth=01040001 colour=FF7F0000 mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFD523D state tex=1038 size=00200020 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFD523D refused tex=1038 size=00200020 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFD523D paths batches/triangles untextured=0/0 hw=86/2026 cpu=0/0 cpu-nonsquare=580/22143 hw-refused=336/14196
+87 pid=FFFD523D counters hwtex live=7 creates=7 create-failed=0 evictions=0 uploads=7 upload-kb=962 stubs=0 failed r4=916 r7=0 r8=0 other=0
+88 pid=FFFD523D state tex=1033 size=00800080 tex=01040201 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+89 pid=FFFD523D state tex=1034 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+90 pid=FFFD523D refused tex=1034 size=00800080 tex=02030201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+91 pid=FFFD523D state tex=1025 size=00080008 tex=01010200 blend=01050600 depth=01040001 colour=FFFFFF00 mask=7 scissor=0,0,640,480 fog=0
+92 pid=FFFD523D refused tex=1025 size=00080008 tex=02030202 blend=01050600 depth=01040001 colour=FFFFFF00 mask=7 scissor=0,0,640,480 fog=0
+93 pid=FFFD523D state tex=1046 size=00800080 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+94 pid=FFFD523D refused tex=1046 size=00800080 tex=02030202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+95 pid=FFFD523D state tex=1047 size=01000100 tex=01010200 blend=01090300 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+96 pid=FFFD523D refused tex=1047 size=01000100 tex=02030201 blend=01090300 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+97 pid=FFFD523D paths batches/triangles untextured=0/0 hw=471/9518 cpu=0/0 cpu-nonsquare=1922/102585 hw-refused=2517/114077
+98 pid=FFFD523D counters hwtex live=3 creates=13 create-failed=0 evictions=0 uploads=13 upload-kb=1356 stubs=0 failed r4=4439 r7=0 r8=0 other=0
+99 pid=FFFD523D state tex=1276 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+100 pid=FFFD523D refused tex=1276 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+101 pid=FFFD523D state tex=1281 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+102 pid=FFFD523D refused tex=1281 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+103 pid=FFFD523D state tex=1282 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+104 pid=FFFD523D refused tex=1282 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+105 pid=FFFD523D state tex=1285 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+106 pid=FFFD523D refused tex=1285 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+107 pid=FFFD523D state tex=1287 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+108 pid=FFFD523D refused tex=1287 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+109 pid=FFFD523D state tex=1289 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+110 pid=FFFD523D refused tex=1289 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+111 pid=FFFD523D state tex=1292 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+112 pid=FFFD523D refused tex=1292 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+113 pid=FFFD523D state tex=1295 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+114 pid=FFFD523D refused tex=1295 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+115 pid=FFFD523D state tex=1300 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+116 pid=FFFD523D refused tex=1300 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+117 pid=FFFD523D state tex=1306 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+118 pid=FFFD523D refused tex=1306 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+119 pid=FFFD523D state tex=1312 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+120 pid=FFFD523D refused tex=1312 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+121 pid=FFFD523D state tex=1330 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+122 pid=FFFD523D refused tex=1330 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+123 pid=FFFD523D state tex=1345 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+124 pid=FFFD523D refused tex=1345 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+125 pid=FFFD523D state tex=1354 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+126 pid=FFFD523D refused tex=1354 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+127 pid=FFFD523D state tex=1355 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+128 pid=FFFD523D refused tex=1355 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+129 pid=FFFD523D state tex=1356 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+130 pid=FFFD523D refused tex=1356 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+131 pid=FFFD523D state tex=1357 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+132 pid=FFFD523D refused tex=1357 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+133 pid=FFFD523D state tex=1358 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+134 pid=FFFD523D refused tex=1358 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+135 pid=FFFD523D state tex=1359 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+136 pid=FFFD523D refused tex=1359 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+137 pid=FFFD523D state tex=1363 size=00200020 tex=01040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+138 pid=FFFD523D refused tex=1363 size=00200020 tex=02040202 blend=01050600 depth=01040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+139 pid=FFFD523D state tex=1371 size=00400040 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+140 pid=FFFD523D refused tex=1371 size=00400040 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+141 pid=FFFD523D state tex=1375 size=00400040 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+142 pid=FFFD523D refused tex=1375 size=00400040 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+143 pid=FFFD523D state tex=1377 size=00400040 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+144 pid=FFFD523D refused tex=1377 size=00400040 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+145 pid=FFFD523D state tex=1379 size=00400040 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+146 pid=FFFD523D refused tex=1379 size=00400040 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+147 pid=FFFD523D state tex=1381 size=00400040 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+148 pid=FFFD523D refused tex=1381 size=00400040 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+149 pid=FFFD523D state tex=1024 size=00100010 tex=01040202 blend=01050600 depth=00040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+150 pid=FFFD523D refused tex=1024 size=00100010 tex=02040202 blend=01050600 depth=00040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+151 pid=FFFD523D state tex=1025 size=00080008 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+152 pid=FFFD523D refused tex=1025 size=00080008 tex=02030202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+153 pid=FFFD523D state tex=1026 size=00080008 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+154 pid=FFFD523D refused tex=1026 size=00080008 tex=02030202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+155 pid=FFFD523D refused tex=1027 size=00080008 tex=02030202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+156 pid=FFFD523D state tex=1028 size=00100010 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+157 pid=FFFD523D refused tex=1028 size=00100010 tex=02030202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+158 pid=FFFD523D state tex=1029 size=01000020 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+159 pid=FFFD523D state tex=1030 size=00200020 tex=01010200 blend=01050600 depth=00040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+160 pid=FFFD523D refused tex=1030 size=00200020 tex=02030202 blend=01050600 depth=00040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+161 pid=FFFD523D state tex=1031 size=00200020 tex=01010200 blend=01050600 depth=00040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+162 pid=FFFD523D refused tex=1031 size=00200020 tex=02030202 blend=01050600 depth=00040002 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+163 pid=FFFD523D refused tex=1032 size=01000100 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+164 pid=FFFD523D refused tex=1033 size=00800080 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+165 pid=FFFD523D refused tex=1034 size=00800080 tex=02030202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+166 pid=FFFD523D refused tex=1037 size=01000100 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+167 pid=FFFD523D refused tex=1039 size=00100010 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+168 pid=FFFD523D refused tex=1040 size=00100010 tex=02040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+169 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+170 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+171 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+172 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+173 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+174 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+175 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+176 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+177 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+178 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+179 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+180 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+181 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+182 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+183 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+184 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+185 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+186 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+187 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+188 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+189 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+190 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+191 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+192 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+193 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+194 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+195 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+196 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+197 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+198 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+199 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+200 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+201 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+202 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+203 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+204 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+205 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+206 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+207 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+208 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+209 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+210 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+211 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+212 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+213 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+214 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+215 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+216 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+217 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+218 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+219 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+220 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+221 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+222 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+223 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+224 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+225 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+226 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+227 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+228 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+229 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+230 pid=FFFD523D hwtex create 00200020 levels=6 hr=8876017C
+231 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+232 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+233 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+234 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+235 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+236 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+237 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+238 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+239 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+240 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+241 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+242 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+243 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+244 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+245 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+246 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+247 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+248 pid=FFFD523D hwtex create 00200020 levels=6 hr=8876017C
+249 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+250 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+251 pid=FFFD523D hwtex create 00200020 levels=6 hr=8876017C
+252 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+253 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+254 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+255 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+256 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+257 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+258 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+259 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+260 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+261 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+262 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+263 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+264 pid=FFFD523D hwtex create 00200020 levels=6 hr=8876017C
+265 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+266 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+267 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+268 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+269 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+270 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+271 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+272 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+273 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+274 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+275 pid=FFFD523D hwtex create 00400040 levels=1 hr=8876017C
+276 pid=FFFD523D hwtex create 00400040 levels=1 hr=8876017C
+277 pid=FFFD523D hwtex create 00400040 levels=1 hr=8876017C
+278 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+279 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+280 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+281 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+282 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+283 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+284 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+285 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+286 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+287 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+288 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+289 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+290 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+291 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+292 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+293 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+294 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+295 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+296 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+297 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+298 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+299 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+300 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+301 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+302 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+303 pid=FFFD523D hwtex create 00200020 levels=6 hr=8876017C
+304 pid=FFFD523D hwtex create 00200020 levels=6 hr=8876017C
+305 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+306 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+307 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+308 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+309 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+310 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+311 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+312 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+313 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+314 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+315 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+316 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+317 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+318 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+319 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+320 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+321 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+322 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+323 pid=FFFD523D stub first-call slot=319 glPolygonOffset
+324 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+325 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+326 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+327 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+328 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+329 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+330 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+331 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+332 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+333 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+334 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+335 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+336 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+337 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+338 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+339 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+340 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+341 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+342 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+343 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+344 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+345 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+346 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+347 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+348 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+349 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+350 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+351 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+352 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+353 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+354 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+355 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+356 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+357 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+358 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+359 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+360 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+361 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+362 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+363 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+364 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+365 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+366 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+367 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+368 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+369 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+370 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+371 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+372 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+373 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+374 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+375 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+376 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+377 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+378 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+379 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+380 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+381 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+382 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+383 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+384 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+385 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+386 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+387 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+388 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+389 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+390 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+391 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+392 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+393 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+394 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+395 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+396 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+397 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+398 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+399 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+400 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+401 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+402 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+403 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+404 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+405 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+406 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+407 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+408 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+409 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+410 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+411 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+412 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+413 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+414 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+415 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+416 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+417 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+418 pid=FFFD523D hwtex create 01000100 levels=1 hr=8876017C
+419 pid=FFFD523D paths batches/triangles untextured=0/0 hw=744/14517 cpu=9/240 cpu-nonsquare=2046/103923 hw-refused=3780/134759
+420 pid=FFFD523D counters hwtex live=264 creates=595 create-failed=249 evictions=248 uploads=346 upload-kb=8028 stubs=4 failed r4=5835 r7=0 r8=0 other=0
+421 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+422 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+423 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+424 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+425 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+426 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+427 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+428 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+429 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+430 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+431 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+432 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+433 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+434 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+435 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+436 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+437 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+438 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+439 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+440 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+441 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+442 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+443 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+444 pid=FFFD523D paths batches/triangles untextured=0/0 hw=3634/81071 cpu=9/240 cpu-nonsquare=2901/116154 hw-refused=6870/201942
+445 pid=FFFD523D counters hwtex live=278 creates=666 create-failed=272 evictions=271 uploads=394 upload-kb=8720 stubs=72 failed r4=9780 r7=0 r8=0 other=0
+446 pid=FFFD523D paths batches/triangles untextured=0/0 hw=6941/169451 cpu=9/240 cpu-nonsquare=3981/129902 hw-refused=9860/277557
+447 pid=FFFD523D counters hwtex live=280 creates=672 create-failed=272 evictions=271 uploads=400 upload-kb=8770 stubs=226 failed r4=13850 r7=0 r8=0 other=0
+448 pid=FFFD523D paths batches/triangles untextured=0/0 hw=10671/269880 cpu=9/240 cpu-nonsquare=5098/143439 hw-refused=13888/370731
+449 pid=FFFD523D counters hwtex live=281 creates=679 create-failed=272 evictions=271 uploads=407 upload-kb=8822 stubs=406 failed r4=18995 r7=0 r8=0 other=0
+450 pid=FFFD523D paths batches/triangles untextured=0/0 hw=14219/356323 cpu=9/240 cpu-nonsquare=6233/155938 hw-refused=18165/472093
+451 pid=FFFD523D counters hwtex live=281 creates=682 create-failed=272 evictions=271 uploads=410 upload-kb=8828 stubs=606 failed r4=24407 r7=0 r8=0 other=0
+452 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+453 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+454 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+455 pid=FFFD523D paths batches/triangles untextured=0/0 hw=17653/441214 cpu=9/240 cpu-nonsquare=7400/170053 hw-refused=22163/568247
+456 pid=FFFD523D counters hwtex live=281 creates=689 create-failed=275 evictions=274 uploads=414 upload-kb=8884 stubs=783 failed r4=29572 r7=0 r8=0 other=0
+457 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+458 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+459 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+460 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+461 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+462 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+463 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+464 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+465 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+466 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+467 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+468 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+469 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+470 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+471 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+472 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+473 pid=FFFD523D paths batches/triangles untextured=0/0 hw=21207/527029 cpu=9/240 cpu-nonsquare=8821/185788 hw-refused=26231/660887
+474 pid=FFFD523D counters hwtex live=283 creates=709 create-failed=291 evictions=290 uploads=418 upload-kb=8980 stubs=956 failed r4=35061 r7=0 r8=0 other=0
+475 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+476 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+477 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+478 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+479 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+480 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+481 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+482 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+483 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+484 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+485 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+486 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+487 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+488 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+489 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+490 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+491 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+492 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+493 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+494 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+495 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+496 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+497 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+498 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+499 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+500 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+501 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+502 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+503 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+504 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+505 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+506 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+507 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+508 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+509 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+510 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+511 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+512 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+513 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+514 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+515 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+516 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+517 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+518 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+519 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+520 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+521 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+522 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+523 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+524 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+525 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+526 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+527 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+528 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+529 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+530 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+531 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+532 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+533 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+534 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+535 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+536 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+537 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+538 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+539 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+540 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+541 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+542 pid=FFFD523D hwtex create 00800080 levels=1 hr=8876017C
+543 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+544 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+545 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+546 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+547 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+548 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+549 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+550 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+551 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+552 pid=FFFD523D paths batches/triangles untextured=0/0 hw=24358/619715 cpu=9/240 cpu-nonsquare=9866/197986 hw-refused=29541/752255
+553 pid=FFFD523D counters hwtex live=291 creates=852 create-failed=368 evictions=367 uploads=484 upload-kb=9986 stubs=1139 failed r4=39416 r7=0 r8=0 other=0
+554 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+555 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+556 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+557 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+558 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+559 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+560 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+561 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+562 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+563 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+564 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+565 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+566 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+567 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+568 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+569 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+570 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+571 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+572 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+573 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+574 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+575 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+576 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+577 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+578 pid=FFFD523D hwtex create 01000100 levels=9 hr=8876017C
+579 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+580 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+581 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+582 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+583 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+584 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+585 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+586 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+587 pid=FFFD523D paths batches/triangles untextured=0/0 hw=27326/705332 cpu=9/240 cpu-nonsquare=10893/210204 hw-refused=33149/839691
+588 pid=FFFD523D counters hwtex live=293 creates=928 create-failed=401 evictions=400 uploads=527 upload-kb=10430 stubs=1399 failed r4=44051 r7=0 r8=0 other=0
+589 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+590 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+591 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+592 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+593 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+594 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+595 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+596 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+597 pid=FFFD523D hwtex create 00400040 levels=7 hr=8876017C
+598 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+599 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+600 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+601 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+602 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+603 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+604 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+605 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+606 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+607 pid=FFFD523D hwtex create 00800080 levels=8 hr=8876017C
+608 pid=FFFD523D paths batches/triangles untextured=0/0 hw=29874/774640 cpu=9/240 cpu-nonsquare=12195/247624 hw-refused=35865/912856
+609 pid=FFFD523D counters hwtex live=7 creates=972 create-failed=420 evictions=419 uploads=552 upload-kb=11552 stubs=1544 failed r4=48069 r7=0 r8=0 other=0
+610 pid=FFFD523D paths batches/triangles untextured=0/0 hw=30215/779385 cpu=9/240 cpu-nonsquare=12985/294808 hw-refused=37233/950262
+611 pid=FFFD523D counters hwtex live=9 creates=974 create-failed=420 evictions=419 uploads=554 upload-kb=11680 stubs=1544 failed r4=50227 r7=0 r8=0 other=0
+612 pid=FFFD523D paths batches/triangles untextured=0/0 hw=30495/780225 cpu=9/240 cpu-nonsquare=12985/294808 hw-refused=38353/961182
+613 pid=FFFD523D counters hwtex live=9 creates=974 create-failed=420 evictions=419 uploads=554 upload-kb=11680 stubs=1544 failed r4=51347 r7=0 r8=0 other=0
+614 pid=FFFD523D paths batches/triangles untextured=0/0 hw=30775/781065 cpu=9/240 cpu-nonsquare=12985/294808 hw-refused=39473/972102
+615 pid=FFFD523D counters hwtex live=9 creates=974 create-failed=420 evictions=419 uploads=554 upload-kb=11680 stubs=1544 failed r4=52467 r7=0 r8=0 other=0
+1 pid=FFFC48E7 attach instance=01CF0000 tls=11 build-marker=1
+2 pid=FFFC48E7 DrvValidateVersion version=1
+3 pid=FFFC48E7 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFC48E7 describe result=0 engine=5 formats=00000002
+5 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFC48E7 DrvSetPixelFormat hdc=00000782 index=1
+33 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFC48E7 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+37 pid=FFFC48E7 DrvCreateLayerContext hdc=00000782 layer=0 -> 1
+38 pid=FFFC48E7 drawable window=0000015C 640x480
+39 pid=FFFC48E7 DrvSetContext hdc=00000782 context=1 -> 1
+40 pid=FFFC48E7 state tex=1158 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+41 pid=FFFC48E7 time interval-ms=85901 swaps=0 present-ms=0 draw-ms=69339672 upload-ms=1
+42 pid=FFFC48E7 tsc frames=0 wall-ms=85901 vertex-ms=13632 flush-in-vertex-ms=0 flush-other-ms=1473977 bind-ms=6487 iface-ms=725535 beginend-ms=77722 swap-ms=0 vertices=18 flushes=1 draws=1 sink-ms=28460 sink-prep-ms=25707 sinks=4
+43 pid=FFFC48E7 sink begin-ms=75366 flush-ms=0 copy-ms=1449 prep-texture-ms=23927 prep-state-ms=918 prep-same-ms=709
+44 pid=FFFC48E7 hwno hwtex-ms=618608 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+45 pid=FFFC48E7 prim transform-ms=2502 inside-ms=1809 window-ms=3403 assemble-ms=3315 history-ms=678 fast=10 clipped=0 culled=0
+46 pid=FFFC48E7 paths batches/triangles untextured=0/0 hw=1/10 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0
+47 pid=FFFC48E7 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 upload-kb=10 squared=0 alpha-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+48 pid=FFFC48E7 state tex=1162 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+49 pid=FFFC48E7 state tex=1163 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+50 pid=FFFC48E7 state tex=1168 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+51 pid=FFFC48E7 state tex=1172 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+52 pid=FFFC48E7 state tex=1180 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+53 pid=FFFC48E7 state tex=1184 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+54 pid=FFFC48E7 state tex=1185 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+55 pid=FFFC48E7 state tex=1188 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+56 pid=FFFC48E7 state tex=1191 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+57 pid=FFFC48E7 state tex=1206 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+58 pid=FFFC48E7 state tex=1210 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+59 pid=FFFC48E7 state tex=1214 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+60 pid=FFFC48E7 state tex=1216 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+61 pid=FFFC48E7 state tex=1218 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+62 pid=FFFC48E7 state tex=1225 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+63 pid=FFFC48E7 state tex=1226 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+64 pid=FFFC48E7 state tex=1264 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+65 pid=FFFC48E7 state tex=1269 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+66 pid=FFFC48E7 state tex=1273 size=00200080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+67 pid=FFFC48E7 state tex=1278 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+68 pid=FFFC48E7 state tex=1281 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+69 pid=FFFC48E7 state tex=1282 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+70 pid=FFFC48E7 state tex=1025 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+71 pid=FFFC48E7 state tex=1026 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+72 pid=FFFC48E7 state tex=1027 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+73 pid=FFFC48E7 state tex=1030 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+74 pid=FFFC48E7 state tex=1376 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF94774B mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFC48E7 state tex=1380 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF463827 mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFC48E7 state tex=1382 size=00800020 tex=01040201 blend=00050600 depth=01040102 colour=FF6F562E mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFC48E7 state tex=1384 size=00800020 tex=01010200 blend=00050600 depth=01040102 colour=FF4D4231 mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFC48E7 state tex=1389 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF5F5343 mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFC48E7 state tex=1390 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FF7F6F57 mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFC48E7 state tex=1391 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FF968569 mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFC48E7 state tex=1393 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FFFFFFE8 mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFC48E7 state tex=1396 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FF9C8964 mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFC48E7 state tex=1401 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FFFFFFED mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFC48E7 state tex=1409 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF4D4137 mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFC48E7 state tex=1152 size=01000100 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFC48E7 refused tex=1152 size=01000100 tex=02040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+87 pid=FFFC48E7 draw result=4 triangles=18 submitted=0
+88 pid=FFFC48E7   v0 sx=439E0000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F70028F tv=3823D70A
+89 pid=FFFC48E7   v1 sx=43A20000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3823D70A
+90 pid=FFFC48E7   v2 sx=43A20000 sy=43740002 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3CFFAE14
+91 pid=FFFC48E7 draw result=4 triangles=18 submitted=0
+92 pid=FFFC48E7   v0 sx=439E0000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F70028F tv=3823D70A
+93 pid=FFFC48E7   v1 sx=43A20000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3823D70A
+94 pid=FFFC48E7   v2 sx=43A20000 sy=43740002 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3CFFAE14
+95 pid=FFFC48E7 draw result=4 triangles=18 submitted=0
+96 pid=FFFC48E7   v0 sx=439E0000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F70028F tv=3823D70A
+97 pid=FFFC48E7   v1 sx=43A20000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3823D70A
+98 pid=FFFC48E7   v2 sx=43A20000 sy=43740002 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3CFFAE14
+99 pid=FFFC48E7 draw result=4 triangles=18 submitted=0
+100 pid=FFFC48E7   v0 sx=439E0000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F70028F tv=3823D70A
+101 pid=FFFC48E7   v1 sx=43A20000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3823D70A
+102 pid=FFFC48E7   v2 sx=43A20000 sy=43740002 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3CFFAE14
+103 pid=FFFC48E7 draw result=4 triangles=18 submitted=0
+104 pid=FFFC48E7   v0 sx=439E0000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F70028F tv=3823D70A
+105 pid=FFFC48E7   v1 sx=43A20000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3823D70A
+106 pid=FFFC48E7   v2 sx=43A20000 sy=43740002 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3CFFAE14
+107 pid=FFFC48E7 draw result=4 triangles=18 submitted=0
+108 pid=FFFC48E7   v0 sx=439E0000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F70028F tv=3823D70A
+109 pid=FFFC48E7   v1 sx=43A20000 sy=436C0000 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3823D70A
+110 pid=FFFC48E7   v2 sx=43A20000 sy=43740002 sz=3F000000 rhw=3F800000 tu=3F77FD71 tv=3CFFAE14
+111 pid=FFFC48E7 state tex=1267 size=00400020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+112 pid=FFFC48E7 state tex=1268 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+113 pid=FFFC48E7 state tex=1266 size=00400020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+114 pid=FFFC48E7 state tex=1024 size=00800080 tex=01010101 blend=01010300 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+115 pid=FFFC48E7 state tex=1381 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF9C8D54 mask=7 scissor=0,0,640,480 fog=0
+116 pid=FFFC48E7 state tex=1342 size=00800040 tex=01010200 blend=01050600 depth=01040002 colour=AA6D6153 mask=7 scissor=0,0,640,480 fog=0
+117 pid=FFFC48E7 state tex=1153 size=00080008 tex=01040202 blend=01050600 depth=01040002 colour=FF730700 mask=7 scissor=0,0,640,480 fog=0
+118 pid=FFFC48E7 refused tex=1153 size=00080008 tex=02040202 blend=01050600 depth=01040002 colour=D4730700 mask=7 scissor=0,0,640,480 fog=0
+119 pid=FFFC48E7 time interval-ms=10000 swaps=17 present-ms=106 draw-ms=8938 upload-ms=107
+120 pid=FFFC48E7 tsc frames=17 wall-ms=10000 vertex-ms=241 flush-in-vertex-ms=25 flush-other-ms=9041 bind-ms=4 iface-ms=8938 beginend-ms=5918 swap-ms=106 vertices=154274 flushes=1372 draws=1411 sink-ms=5926 sink-prep-ms=32 sinks=18346
+121 pid=FFFC48E7 sink begin-ms=14 flush-ms=5882 copy-ms=7 prep-texture-ms=17 prep-state-ms=7 prep-same-ms=7
+122 pid=FFFC48E7 hwno hwtex-ms=112 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+123 pid=FFFC48E7 prim transform-ms=31 inside-ms=24 window-ms=44 assemble-ms=105 history-ms=11 fast=43533 clipped=23386 culled=25689
+124 pid=FFFC48E7 paths batches/triangles untextured=0/0 hw=1334/51760 cpu=0/0 cpu-nonsquare=0/0 hw-refused=39/1666
+125 pid=FFFC48E7 counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=47 upload-kb=1206 squared=0 alpha-dropped=0 stubs=0 failed r4=39 r7=0 r8=0 other=0
+126 pid=FFFC48E7 state tex=1153 size=00000000 tex=00000000 blend=01050600 depth=00040100 colour=33FF0000 mask=7 scissor=0,0,640,480 fog=0
+127 pid=FFFC48E7 time interval-ms=10051 swaps=18 present-ms=92 draw-ms=9143 upload-ms=13
+128 pid=FFFC48E7 tsc frames=18 wall-ms=10051 vertex-ms=214 flush-in-vertex-ms=9 flush-other-ms=9153 bind-ms=2 iface-ms=9143 beginend-ms=5801 swap-ms=93 vertices=145995 flushes=1347 draws=1438 sink-ms=5795 sink-prep-ms=30 sinks=16855
+129 pid=FFFC48E7 sink begin-ms=13 flush-ms=5754 copy-ms=7 prep-texture-ms=16 prep-state-ms=6 prep-same-ms=6
+130 pid=FFFC48E7 hwno hwtex-ms=15 iface-cpu-ms=0 not-cpu=1 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+131 pid=FFFC48E7 prim transform-ms=29 inside-ms=23 window-ms=43 assemble-ms=84 history-ms=10 fast=41983 clipped=19175 culled=24235
+132 pid=FFFC48E7 paths batches/triangles untextured=1/5 hw=2589/98981 cpu=0/0 cpu-nonsquare=0/0 hw-refused=130/6294
+133 pid=FFFC48E7 counters hwtex live=46 creates=46 create-failed=0 evictions=0 uploads=52 upload-kb=1366 squared=0 alpha-dropped=0 stubs=0 failed r4=130 r7=0 r8=0 other=0
+134 pid=FFFC48E7 state tex=1361 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FFA99362 mask=7 scissor=0,0,640,480 fog=0
+135 pid=FFFC48E7 time interval-ms=10008 swaps=18 present-ms=91 draw-ms=9039 upload-ms=35
+136 pid=FFFC48E7 tsc frames=18 wall-ms=10008 vertex-ms=241 flush-in-vertex-ms=12 flush-other-ms=9071 bind-ms=4 iface-ms=9039 beginend-ms=5947 swap-ms=92 vertices=165476 flushes=1396 draws=1468 sink-ms=5942 sink-prep-ms=32 sinks=17843
+137 pid=FFFC48E7 sink begin-ms=14 flush-ms=5899 copy-ms=7 prep-texture-ms=17 prep-state-ms=7 prep-same-ms=7
+138 pid=FFFC48E7 hwno hwtex-ms=37 iface-cpu-ms=0 not-cpu=10 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+139 pid=FFFC48E7 prim transform-ms=33 inside-ms=25 window-ms=45 assemble-ms=98 history-ms=11 fast=42885 clipped=27265 culled=26560
+140 pid=FFFC48E7 paths batches/triangles untextured=11/55 hw=3903/149062 cpu=0/0 cpu-nonsquare=0/0 hw-refused=202/9531
+141 pid=FFFC48E7 counters hwtex live=47 creates=47 create-failed=0 evictions=0 uploads=61 upload-kb=1707 squared=0 alpha-dropped=0 stubs=0 failed r4=202 r7=0 r8=0 other=0
+142 pid=FFFC48E7 time interval-ms=10003 swaps=17 present-ms=87 draw-ms=9073 upload-ms=25
+143 pid=FFFC48E7 tsc frames=17 wall-ms=10003 vertex-ms=239 flush-in-vertex-ms=15 flush-other-ms=9092 bind-ms=5 iface-ms=9072 beginend-ms=5998 swap-ms=88 vertices=165768 flushes=1411 draws=1468 sink-ms=5996 sink-prep-ms=33 sinks=18638
+144 pid=FFFC48E7 sink begin-ms=15 flush-ms=5951 copy-ms=7 prep-texture-ms=17 prep-state-ms=7 prep-same-ms=7
+145 pid=FFFC48E7 hwno hwtex-ms=27 iface-cpu-ms=0 not-cpu=8 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+146 pid=FFFC48E7 prim transform-ms=33 inside-ms=25 window-ms=45 assemble-ms=95 history-ms=11 fast=46054 clipped=26966 culled=25584
+147 pid=FFFC48E7 paths batches/triangles untextured=19/95 hw=5249/200923 cpu=0/0 cpu-nonsquare=0/0 hw-refused=259/12233
+148 pid=FFFC48E7 counters hwtex live=50 creates=50 create-failed=0 evictions=0 uploads=72 upload-kb=1993 squared=0 alpha-dropped=0 stubs=0 failed r4=259 r7=0 r8=0 other=0
+149 pid=FFFC48E7 time interval-ms=10023 swaps=16 present-ms=82 draw-ms=9088 upload-ms=10
+150 pid=FFFC48E7 tsc frames=16 wall-ms=10023 vertex-ms=255 flush-in-vertex-ms=7 flush-other-ms=9114 bind-ms=19 iface-ms=9088 beginend-ms=6745 swap-ms=82 vertices=185721 flushes=1504 draws=1600 sink-ms=6733 sink-prep-ms=37 sinks=20993
+151 pid=FFFC48E7 sink begin-ms=16 flush-ms=6683 copy-ms=8 prep-texture-ms=20 prep-state-ms=8 prep-same-ms=8
+152 pid=FFFC48E7 hwno hwtex-ms=12 iface-cpu-ms=0 not-cpu=9 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+153 pid=FFFC48E7 prim transform-ms=39 inside-ms=29 window-ms=53 assemble-ms=90 history-ms=13 fast=55426 clipped=24007 culled=29090
+154 pid=FFFC48E7 paths batches/triangles untextured=28/140 hw=6648/258529 cpu=0/0 cpu-nonsquare=0/0 hw-refused=355/17052
+155 pid=FFFC48E7 counters hwtex live=50 creates=50 create-failed=0 evictions=0 uploads=76 upload-kb=2121 squared=0 alpha-dropped=0 stubs=0 failed r4=355 r7=0 r8=0 other=0
+156 pid=FFFC48E7 time interval-ms=10003 swaps=15 present-ms=76 draw-ms=9039 upload-ms=64
+157 pid=FFFC48E7 tsc frames=15 wall-ms=10003 vertex-ms=313 flush-in-vertex-ms=59 flush-other-ms=9052 bind-ms=2 iface-ms=9038 beginend-ms=6232 swap-ms=77 vertices=190619 flushes=1578 draws=1755 sink-ms=6276 sink-prep-ms=34 sinks=19252
+158 pid=FFFC48E7 sink begin-ms=14 flush-ms=6229 copy-ms=8 prep-texture-ms=18 prep-state-ms=7 prep-same-ms=7
+159 pid=FFFC48E7 hwno hwtex-ms=68 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+160 pid=FFFC48E7 prim transform-ms=38 inside-ms=30 window-ms=55 assemble-ms=145 history-ms=13 fast=57159 clipped=21354 culled=27204
+161 pid=FFFC48E7 paths batches/triangles untextured=35/175 hw=8042/314344 cpu=0/0 cpu-nonsquare=0/0 hw-refused=532/27285
+162 pid=FFFC48E7 counters hwtex live=60 creates=60 create-failed=0 evictions=0 uploads=101 upload-kb=2876 squared=0 alpha-dropped=0 stubs=0 failed r4=532 r7=0 r8=0 other=0
+163 pid=FFFC48E7 time interval-ms=10000 swaps=25 present-ms=128 draw-ms=8864 upload-ms=67
+164 pid=FFFC48E7 tsc frames=25 wall-ms=10000 vertex-ms=200 flush-in-vertex-ms=27 flush-other-ms=8914 bind-ms=4 iface-ms=8864 beginend-ms=4167 swap-ms=128 vertices=124739 flushes=1089 draws=1178 sink-ms=4183 sink-prep-ms=18 sinks=10104
+165 pid=FFFC48E7 sink begin-ms=9 flush-ms=4158 copy-ms=5 prep-texture-ms=10 prep-state-ms=4 prep-same-ms=4
+166 pid=FFFC48E7 hwno hwtex-ms=69 iface-cpu-ms=0 not-cpu=4 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+167 pid=FFFC48E7 prim transform-ms=25 inside-ms=18 window-ms=26 assemble-ms=102 history-ms=8 fast=25995 clipped=29734 culled=9578
+168 pid=FFFC48E7 paths batches/triangles untextured=39/195 hw=9038/344602 cpu=0/0 cpu-nonsquare=0/0 hw-refused=621/31669
+169 pid=FFFC48E7 counters hwtex live=66 creates=66 create-failed=0 evictions=0 uploads=124 upload-kb=3511 squared=0 alpha-dropped=0 stubs=0 failed r4=621 r7=0 r8=0 other=0
+170 pid=FFFC48E7 time interval-ms=10049 swaps=22 present-ms=111 draw-ms=8874 upload-ms=113
+171 pid=FFFC48E7 tsc frames=22 wall-ms=10049 vertex-ms=260 flush-in-vertex-ms=48 flush-other-ms=8948 bind-ms=4 iface-ms=8873 beginend-ms=6196 swap-ms=112 vertices=163750 flushes=1356 draws=1475 sink-ms=6232 sink-prep-ms=27 sinks=15289
+172 pid=FFFC48E7 sink begin-ms=11 flush-ms=6194 copy-ms=7 prep-texture-ms=14 prep-state-ms=6 prep-same-ms=6
+173 pid=FFFC48E7 hwno hwtex-ms=115 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+174 pid=FFFC48E7 prim transform-ms=33 inside-ms=25 window-ms=42 assemble-ms=123 history-ms=11 fast=45986 clipped=22713 culled=18439
+175 pid=FFFC48E7 paths batches/triangles untextured=39/195 hw=10275/391559 cpu=0/0 cpu-nonsquare=0/0 hw-refused=740/37969
+176 pid=FFFC48E7 counters hwtex live=71 creates=71 create-failed=0 evictions=0 uploads=165 upload-kb=4811 squared=0 alpha-dropped=0 stubs=0 failed r4=740 r7=0 r8=0 other=0
+177 pid=FFFC48E7 time interval-ms=10026 swaps=24 present-ms=122 draw-ms=8997 upload-ms=28
+178 pid=FFFC48E7 tsc frames=24 wall-ms=10026 vertex-ms=185 flush-in-vertex-ms=34 flush-other-ms=8998 bind-ms=3 iface-ms=8996 beginend-ms=4725 swap-ms=123 vertices=105393 flushes=1115 draws=1244 sink-ms=4749 sink-prep-ms=21 sinks=11909
+179 pid=FFFC48E7 sink begin-ms=8 flush-ms=4720 copy-ms=5 prep-texture-ms=11 prep-state-ms=5 prep-same-ms=4
+180 pid=FFFC48E7 hwno hwtex-ms=30 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+181 pid=FFFC48E7 prim transform-ms=21 inside-ms=16 window-ms=29 assemble-ms=93 history-ms=7 fast=32918 clipped=14409 culled=9752
+182 pid=FFFC48E7 paths batches/triangles untextured=39/195 hw=11261/426802 cpu=0/0 cpu-nonsquare=0/0 hw-refused=869/44501
+183 pid=FFFC48E7 counters hwtex live=72 creates=72 create-failed=0 evictions=0 uploads=174 upload-kb=5152 squared=0 alpha-dropped=0 stubs=0 failed r4=869 r7=0 r8=0 other=0
+184 pid=FFFC48E7 time interval-ms=10038 swaps=23 present-ms=116 draw-ms=8920 upload-ms=47
+185 pid=FFFC48E7 tsc frames=23 wall-ms=10038 vertex-ms=263 flush-in-vertex-ms=62 flush-other-ms=8933 bind-ms=22 iface-ms=8920 beginend-ms=5162 swap-ms=117 vertices=143348 flushes=1486 draws=1676 sink-ms=5213 sink-prep-ms=26 sinks=14738
+186 pid=FFFC48E7 sink begin-ms=10 flush-ms=5176 copy-ms=7 prep-texture-ms=14 prep-state-ms=6 prep-same-ms=5
+187 pid=FFFC48E7 hwno hwtex-ms=49 iface-cpu-ms=0 not-cpu=9 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+188 pid=FFFC48E7 prim transform-ms=29 inside-ms=23 window-ms=39 assemble-ms=139 history-ms=9 fast=43842 clipped=18311 culled=13435
+189 pid=FFFC48E7 paths batches/triangles untextured=48/240 hw=12548/471265 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1059/54863
+190 pid=FFFC48E7 counters hwtex live=73 creates=73 create-failed=0 evictions=0 uploads=192 upload-kb=5706 squared=0 alpha-dropped=0 stubs=0 failed r4=1059 r7=0 r8=0 other=0
+191 pid=FFFC48E7 time interval-ms=10005 swaps=17 present-ms=89 draw-ms=8716 upload-ms=109
+192 pid=FFFC48E7 tsc frames=17 wall-ms=10005 vertex-ms=311 flush-in-vertex-ms=39 flush-other-ms=8994 bind-ms=200 iface-ms=8715 beginend-ms=5899 swap-ms=89 vertices=168563 flushes=1452 draws=1603 sink-ms=5925 sink-prep-ms=29 sinks=14767
+193 pid=FFFC48E7 sink begin-ms=12 flush-ms=5885 copy-ms=7 prep-texture-ms=16 prep-state-ms=6 prep-same-ms=5
+194 pid=FFFC48E7 hwno hwtex-ms=113 iface-cpu-ms=0 not-cpu=11 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+195 pid=FFFC48E7 prim transform-ms=35 inside-ms=54 window-ms=61 assemble-ms=119 history-ms=11 fast=44455 clipped=23419 culled=20721
+196 pid=FFFC48E7 paths batches/triangles untextured=59/295 hw=13838/514675 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1210/63161
+197 pid=FFFC48E7 counters hwtex live=86 creates=86 create-failed=0 evictions=0 uploads=231 upload-kb=6691 squared=0 alpha-dropped=0 stubs=0 failed r4=1210 r7=0 r8=0 other=0
+198 pid=FFFC48E7 refused tex=1155 size=00800080 tex=02040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+199 pid=FFFC48E7 time interval-ms=10039 swaps=21 present-ms=108 draw-ms=9049 upload-ms=13
+200 pid=FFFC48E7 tsc frames=21 wall-ms=10039 vertex-ms=227 flush-in-vertex-ms=31 flush-other-ms=9041 bind-ms=5 iface-ms=9049 beginend-ms=5538 swap-ms=108 vertices=140513 flushes=1492 draws=1632 sink-ms=5557 sink-prep-ms=26 sinks=14981
+201 pid=FFFC48E7 sink begin-ms=11 flush-ms=5520 copy-ms=6 prep-texture-ms=14 prep-state-ms=6 prep-same-ms=5
+202 pid=FFFC48E7 hwno hwtex-ms=15 iface-cpu-ms=0 not-cpu=9 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+203 pid=FFFC48E7 prim transform-ms=28 inside-ms=22 window-ms=39 assemble-ms=104 history-ms=10 fast=42854 clipped=19009 culled=17828
+204 pid=FFFC48E7 paths batches/triangles untextured=68/340 hw=15181/559089 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1350/70293
+205 pid=FFFC48E7 counters hwtex live=87 creates=87 create-failed=0 evictions=0 uploads=236 upload-kb=6851 squared=0 alpha-dropped=0 stubs=0 failed r4=1350 r7=0 r8=0 other=0
+206 pid=FFFC48E7 DrvReleaseContext context=1 -> 1
+207 pid=FFFC48E7 paths batches/triangles untextured=68/340 hw=15214/560255 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1502/79899
+208 pid=FFFC48E7 counters hwtex live=0 creates=88 create-failed=0 evictions=0 uploads=237 upload-kb=6979 squared=0 alpha-dropped=5 stubs=0 failed r4=1502 r7=0 r8=0 other=0
+209 pid=FFFC48E7 DrvDeleteContext context=1 -> 1
+210 pid=FFFC48E7 detach slots-called=0 stub-calls=0

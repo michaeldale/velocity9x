@@ -1078,6 +1078,31 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("RingPlanInvalidTail",
                   snapshot.d3d.ring_plan_invalid_tail);
     v9x_write_hex("RingOccupiedMax", snapshot.d3d.ring_occupied_max);
+    {
+        static const char *const stage_names[9] = {
+            "R2SkipSplit", "R2SkipSetup", "R2SkipTrapSplit",
+            "R2SkipCapacity", "R2SkipColor", "R2SkipAlpha", "R2SkipDepth",
+            "R2SkipTexture", "R2SkipTrap"
+        };
+        char name[24];
+        DWORD k;
+
+        for (k = 0ul; k < 9ul; ++k) {
+            v9x_write_uint(stage_names[k], snapshot.d3d.r2_piece_skipped[k]);
+        }
+        for (k = 0ul; k < 17ul; ++k) {
+            name[0] = 'R';
+            name[1] = '2';
+            name[2] = 'L';
+            name[3] = 'a';
+            name[4] = 's';
+            name[5] = 't';
+            name[6] = (char)('0' + k / 10ul);
+            name[7] = (char)('0' + k % 10ul);
+            name[8] = '\0';
+            v9x_write_hex(name, snapshot.d3d.r2_piece_last[k]);
+        }
+    }
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

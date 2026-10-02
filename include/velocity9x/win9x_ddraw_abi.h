@@ -1517,6 +1517,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100301: V9X_D3D_DIAGNOSTICS gains the Rage IIC's skipped pieces by
+ * stage and the last one's inputs. An append. */
 /* 2026100106: V9X_D3D_DIAGNOSTICS gains the Gen3 ring plans refused as
  * invalid and the ring's occupancy high-water. An append. */
 /* 2026100105: V9X_D3D_DIAGNOSTICS gains the texture-address values
@@ -1619,7 +1621,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100106ul
+#define V9X_DD_SHARED_ABI   2026100301ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3145,6 +3147,14 @@ typedef struct v9x_d3d_diagnostics {
     DWORD ring_plan_invalid_head;
     DWORD ring_plan_invalid_tail;
     DWORD ring_occupied_max;
+    /* Rage IIC pieces the per-triangle builder skipped (2026-10-03), by
+     * V9X_R2_PIECE_STAGE_* (index 0: a split_triangle failure), and the
+     * last skipped piece's inputs: stage, status, then per vertex x and y
+     * (sixteenths, x | y << 16), z, and the float bits of q, tu and tv.
+     * Quake 2 under the ICD skipped most of its pieces with nothing to say
+     * which check refused them. */
+    DWORD r2_piece_skipped[9];
+    DWORD r2_piece_last[17];
 } V9X_D3D_DIAGNOSTICS;
 
 /*

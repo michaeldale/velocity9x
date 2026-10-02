@@ -110,6 +110,40 @@ static v9x_status v9x_d3d_rage2_emit(struct v9x_m64_engine *core,
     return V9X_STATUS_OK;
 }
 
+/* A float's bits, for the diagnostics block (no cast to an integer). */
+static DWORD v9x_d3d_rage2_float_bits(double value)
+{
+    union {
+        float f;
+        DWORD bits;
+    } pun;
+
+    pun.f = (float)value;
+    return pun.bits;
+}
+
+/* Count a skipped piece by stage and keep its inputs. */
+static void v9x_d3d_rage2_note_skip(v9x_u32 stage, v9x_status status,
+                                    const struct v9x_r2_draw_vertex *v)
+{
+    DWORD *last = v9x_hal->d3d_diagnostics.r2_piece_last;
+    DWORD k;
+
+    if (stage < 9ul) {
+        ++v9x_hal->d3d_diagnostics.r2_piece_skipped[stage];
+    }
+    last[0] = stage;
+    last[1] = (DWORD)status;
+    for (k = 0ul; k < 3ul; ++k) {
+        last[2ul + k * 5ul] = ((DWORD)v[k].x & 0xfffful) |
+                              ((DWORD)v[k].y << 16);
+        last[3ul + k * 5ul] = v[k].z;
+        last[4ul + k * 5ul] = v9x_d3d_rage2_float_bits(v[k].q);
+        last[5ul + k * 5ul] = v9x_d3d_rage2_float_bits(v[k].tu);
+        last[6ul + k * 5ul] = v9x_d3d_rage2_float_bits(v[k].tv);
+    }
+}
+
 static int v9x_d3d_rage2_refuse(DWORD reason)
 {
     ++v9x_hal->d3d_diagnostics.m64_refused;
@@ -565,17 +599,24 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
                                        v9x_d3d_rage2_pieces, &pieces);
         if (status != V9X_STATUS_OK) {
             ++v9x_hal->d3d_diagnostics.m64_unrenderable;
+            v9x_d3d_rage2_note_skip(0ul, status,
+                                    &v9x_d3d_rage2_vertices[index * 3ul]);
             continue;
         }
         for (piece = 0ul; piece < pieces; ++piece) {
             v9x_u32 written = 0ul;
+            v9x_u32 stage = 0ul;
 
             status = v9x_r2_build_piece(&state, &decision,
                                         &v9x_d3d_rage2_pieces[piece * 3ul],
                                         v9x_d3d_rage2_offsets,
                                         v9x_d3d_rage2_values,
                                         V9X_D3D_RAGE2_PIECE_DWORDS, &written,
-                                        0, 0);
+                                        0, 0, &stage);
+            if (status != V9X_STATUS_OK) {
+                v9x_d3d_rage2_note_skip(stage, status,
+                                        &v9x_d3d_rage2_pieces[piece * 3ul]);
+            }
             if (status == V9X_STATUS_UNSUPPORTED) {
                 /* A sliver the interpolators cannot express, or a 1/w
                  * that is not positive. */
