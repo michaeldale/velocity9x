@@ -19,12 +19,26 @@ struct fake_io {
     v9x_u32 write_offset[64];
     v9x_u32 write_value[64];
     v9x_u32 write_count;
+    /* When non-zero, GUI_STAT is served from gui[] and only FIFO_STAT
+     * from status[], so the pre-VTB idle wait can be shown reading both. */
+    int split_gui;
+    v9x_u32 gui[16];
+    v9x_u32 gui_count;
+    v9x_u32 gui_index;
+    v9x_u32 gui_reads;
 };
 
 static v9x_u32 fake_read(void *context, v9x_u32 offset)
 {
     struct fake_io *fake = (struct fake_io *)context;
     fake->events[fake->event_count++] = 'R';
+    if (fake->split_gui && offset == V9X_M64_GUI_STAT) {
+        ++fake->gui_reads;
+        if (fake->gui_index < fake->gui_count)
+            return fake->gui[fake->gui_index++];
+        return fake->gui_count != 0ul ? fake->gui[fake->gui_count - 1ul]
+                                      : 0ul;
+    }
     if (offset == V9X_M64_BUS_CNTL) return fake->bus;
     if (offset == V9X_M64_GEN_TEST_CNTL) return fake->test;
     if (offset == V9X_M64_MEM_BUF_CNTL) return 0x12000000ul;
@@ -152,6 +166,39 @@ static void test_bounds_and_timeout(void)
     CHECK(v9x_m64_reserve(&engine, 1ul, 0ul) ==
           V9X_STATUS_INVALID_STATE);
     CHECK(engine.quarantined == V9X_TRUE);
+}
+
+/*
+ * Pre-VTB idle is an empty FIFO AND an idle engine, as atyfb's
+ * wait_for_idle has it. An empty FIFO_STAT alone said idle while the
+ * engine could still be drawing; harmless on 86Box's VT2, whose engine is
+ * never seen busy, and not on the Rage IIC, which uses this model.
+ */
+static void test_pre_vtb_idle_waits_for_engine(void)
+{
+    struct v9x_m64_engine engine;
+    struct fake_io fake;
+
+    setup(&engine, &fake, V9X_M64_FIFO_PRE_VTB);
+    fake.split_gui = 1;
+    fake.status[0] = 0ul;             /* FIFO_STAT: empty throughout */
+    fake.status_count = 1ul;
+    fake.gui[0] = V9X_M64_GUI_ACTIVE;
+    fake.gui[1] = V9X_M64_GUI_ACTIVE;
+    fake.gui[2] = 0ul;
+    fake.gui_count = 3ul;
+    CHECK(v9x_m64_wait_idle(&engine, 10ul) == V9X_STATUS_OK);
+    CHECK(fake.gui_reads == 3ul);
+    CHECK(engine.fifo_cached == V9X_M64_VT_FIFO_ENTRIES);
+
+    setup(&engine, &fake, V9X_M64_FIFO_PRE_VTB);
+    fake.split_gui = 1;
+    fake.status[0] = 0ul;
+    fake.status_count = 1ul;
+    fake.gui[0] = V9X_M64_GUI_ACTIVE;
+    fake.gui_count = 1ul;
+    CHECK(v9x_m64_wait_idle(&engine, 2ul) == V9X_STATUS_TIMEOUT);
+    CHECK(engine.idle_timeouts == 1ul);
 }
 
 static void test_barrier_and_reset_order(void)
@@ -1065,6 +1112,59 @@ static void test_2d_mode_builder(void)
     CHECK(offsets[2] == 0x5fcul && values[2] == 0ul);   /* SCALE_3D_CNTL */
 }
 
+/*
+ * The Rage II engine's known state, as atyfb's aty_init_engine writes it.
+ * Measured need: on A8U4I5 after a boot without ATI's driver SRC_CNTL read
+ * 7EA3 (pattern, rotation and block write on), and the first engine copy
+ * hung the machine (boot 132).
+ */
+static void test_engine_init_gt_builder(void)
+{
+    static const v9x_u32 expected[][2] = {
+        { 0x720ul, 0xfffffffful },  /* CONTEXT_MASK */
+        { 0x524ul, 0ul },           /* DST_BRES_ERR */
+        { 0x528ul, 0ul },           /* DST_BRES_INC */
+        { 0x52cul, 0ul },           /* DST_BRES_DEC */
+        { 0x58cul, 0ul },           /* SRC_Y_X */
+        { 0x598ul, 1ul },           /* SRC_HEIGHT1_WIDTH1 */
+        { 0x5a4ul, 0ul },           /* SRC_Y_X_START */
+        { 0x5b0ul, 1ul },           /* SRC_HEIGHT2_WIDTH2 */
+        { 0x5b4ul, 0x10ul },        /* SRC_CNTL = SRC_LINE_X_DIR */
+        { 0x640ul, 1ul },           /* HOST_CNTL = HOST_BYTE_ALIGN */
+        { 0x680ul, 0ul },           /* PAT_REG0 */
+        { 0x684ul, 0ul },           /* PAT_REG1 */
+        { 0x688ul, 0ul },           /* PAT_CNTL */
+        { 0x6c0ul, 0ul },           /* DP_BKGD_CLR */
+        { 0x6ccul, 0x8410ul },      /* DP_CHAIN_MASK, 565 */
+        { 0x700ul, 0ul },           /* CLR_CMP_CLR */
+        { 0x704ul, 0xfffffffful },  /* CLR_CMP_MASK */
+        { 0x708ul, 0ul }            /* CLR_CMP_CNTL */
+    };
+    v9x_u32 offsets[V9X_M64_ENGINE_INIT_GT_DWORDS + 1u];
+    v9x_u32 values[V9X_M64_ENGINE_INIT_GT_DWORDS + 1u];
+    v9x_u32 written = 7ul;
+    unsigned int index;
+
+    CHECK(v9x_m64_build_engine_init_gt(offsets, values,
+                                       V9X_M64_ENGINE_INIT_GT_DWORDS - 1ul,
+                                       &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    CHECK(v9x_m64_build_engine_init_gt(offsets, values,
+                                       V9X_M64_ENGINE_INIT_GT_DWORDS,
+                                       &written) == V9X_STATUS_OK);
+    CHECK(written == sizeof(expected) / sizeof(expected[0]));
+    for (index = 0u; index < written &&
+                     index < sizeof(expected) / sizeof(expected[0]);
+         ++index) {
+        CHECK(offsets[index] == expected[index][0]);
+        CHECK(values[index] == expected[index][1]);
+        /* Nothing GTPro, and nothing in block 1. */
+        CHECK(offsets[index] != V9X_M64_ALPHA_TST_CNTL);
+        CHECK(offsets[index] >= 0x400ul && offsets[index] < 0x800ul);
+    }
+}
+
 /* The Rage II reset: GT registers only. ALPHA_TST_CNTL is GTPro and must
  * not appear (xf86-video-mach64 atiregs.h tags). */
 static void test_2d_mode_gt_builder(void)
@@ -1167,6 +1267,7 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_exact_batch_has_no_inner_read();
     test_shadow_keeps_order_and_latest();
     test_bounds_and_timeout();
+    test_pre_vtb_idle_waits_for_engine();
     test_barrier_and_reset_order();
     test_fill_builder();
     test_copy_builder();
@@ -1182,6 +1283,7 @@ unsigned int v9x_run_mach64_engine_tests(void)
     test_offsets_match_diagnostic();
     test_2d_mode_builder();
     test_2d_mode_gt_builder();
+    test_engine_init_gt_builder();
     test_mip_texture_state();
     test_rectangular_texture_state();
     return failures;

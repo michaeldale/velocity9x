@@ -111,7 +111,10 @@ struct atiic_range {
  *
  * DAC_REGS (+4C0h): its byte 1 is the palette data port, and a read
  * advances the RAMDAC's read index.
- * HOST_DATA0-15 (+640h-+67Ch): the host-data FIFO ports.
+ * HOST_DATA0-15 (+600h-+63Ch, 0_80-0_8F): the host-data FIFO ports. Until
+ * 2026-10-02 this said +640h-+67Ch, which is HOST_CNTL and the pattern
+ * registers, so the first runs skipped those and read the host-data ports;
+ * the reads did no harm that the agent or the desktop showed.
  * Block 1 +180h-+1FCh: the VTB/GTB bus-master registers (BM_* from 1_60,
  * BM_GUI_TABLE 1_6E, BM_SYSTEM_TABLE 1_6F per xf86-video-mach64
  * atiregs.h) and their neighbours. No source says these reads are inert.
@@ -119,7 +122,7 @@ struct atiic_range {
 static const DWORD atiic_skip[][2] = {
     { 0x180u, 0x1fcu },
     { 0x4c0u, 0x4c0u },
-    { 0x640u, 0x67cu }
+    { 0x600u, 0x63cu }
 };
 
 static struct atiic_request atiic_request_buffer;

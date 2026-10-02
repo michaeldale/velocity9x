@@ -108,6 +108,30 @@
 #define V9X_M64_FILL_DWORDS           12ul
 #define V9X_M64_2D_MODE_DWORDS        3ul
 #define V9X_M64_2D_MODE_GT_DWORDS     2ul
+#define V9X_M64_ENGINE_INIT_GT_DWORDS 18ul
+
+/* The engine's known-state registers, written once at validate on the
+ * Rage II class (v9x_m64_build_engine_init_gt). Block 0 indices from
+ * xf86-video-mach64 atiregs.h, as window offsets (block 0 at +400h). */
+#define V9X_M64_DST_BRES_ERR          0x00000524ul  /* 0_49 */
+#define V9X_M64_DST_BRES_INC          0x00000528ul  /* 0_4A */
+#define V9X_M64_DST_BRES_DEC          0x0000052cul  /* 0_4B */
+#define V9X_M64_SRC_HEIGHT1_WIDTH1    0x00000598ul  /* 0_66 */
+#define V9X_M64_SRC_Y_X_START         0x000005a4ul  /* 0_69 */
+#define V9X_M64_SRC_HEIGHT2_WIDTH2    0x000005b0ul  /* 0_6C */
+#define V9X_M64_SRC_CNTL              0x000005b4ul  /* 0_6D */
+#define V9X_M64_HOST_CNTL             0x00000640ul  /* 0_90 */
+#define V9X_M64_PAT_REG0              0x00000680ul  /* 0_A0 */
+#define V9X_M64_PAT_REG1              0x00000684ul  /* 0_A1 */
+#define V9X_M64_PAT_CNTL              0x00000688ul  /* 0_A2 */
+#define V9X_M64_DP_BKGD_CLR           0x000006c0ul  /* 0_B0 */
+#define V9X_M64_DP_CHAIN_MASK         0x000006ccul  /* 0_B3 */
+#define V9X_M64_CLR_CMP_CLR           0x00000700ul  /* 0_C0 */
+#define V9X_M64_CLR_CMP_MASK          0x00000704ul  /* 0_C1 */
+#define V9X_M64_CONTEXT_MASK          0x00000720ul  /* 0_C8 */
+#define V9X_M64_SRC_LINE_X_DIR        0x00000010ul
+#define V9X_M64_HOST_BYTE_ALIGN       0x00000001ul
+#define V9X_M64_DP_CHAIN_16BPP_565    0x00008410ul
 #define V9X_M64_FILL_REPAIR_DWORDS    3ul
 #define V9X_M64_COPY_DWORDS           14ul
 #define V9X_M64_FLAT_TRIANGLE_DWORDS  19ul

@@ -7,6 +7,7 @@
 #include "velocity9x/ati_mach64_engine.h"
 
 #define V9X_M64_WAIT_SPINS 0x00200000ul
+#define V9X_M64_INIT_CHUNK_DWORDS 8ul
 
 static struct v9x_m64_engine v9x_m64;
 static DWORD v9x_m64_base = 0ul;
@@ -57,7 +58,17 @@ static int v9x_m64_bind_core(void)
     io.context = 0;
     io.read = v9x_m64_hal_read;
     io.write = v9x_m64_hal_write;
-    if (v9x_m64_engine_init(&v9x_m64, &io, V9X_M64_FIFO_VTB_PLUS) !=
+    /*
+     * The Rage II class takes the 16-entry FIFO_STAT model, as Linux atyfb
+     * drives the 264GT2C (atyfb.h wait_for_fifo; no M64F_FIFO_32). Its
+     * GUI_STAT[25:16] read 192 at idle on A8U4I5, and nothing establishes
+     * that as a free count: the RRG puts the 3D RAGE's encoded FIFO_CNT at
+     * "less than or equal to 32". Trusting 192 would let a batch overrun
+     * the FIFO, and FIFO_ERR locks the engine.
+     */
+    if (v9x_m64_engine_init(&v9x_m64, &io,
+                            v9x_m64_is_rage2() ? V9X_M64_FIFO_PRE_VTB
+                                               : V9X_M64_FIFO_VTB_PLUS) !=
         V9X_STATUS_OK) return 0;
     v9x_m64_base = v9x_hal->engine.control_linear_base;
     return 1;
@@ -84,6 +95,39 @@ static int v9x_m64_validate(void)
     bus = (DWORD)v9x_m64_hal_read(0, V9X_M64_BUS_CNTL);
     if ((bus & V9X_M64_BUS_EXT_REG_EN) == 0ul) {
         v9x_m64_hal_write(0, V9X_M64_BUS_CNTL, bus | V9X_M64_BUS_EXT_REG_EN);
+    }
+    /*
+     * The Rage II class gets the engine's known state once, here. On the
+     * Gateway ATI's driver had always initialised the engine before ours
+     * ran; on A8U4I5 nothing does, and the first copy, with SRC_CNTL at its
+     * power-on 7EA3, hung the machine (boot 132). Through the batch path so
+     * a reset replays it. Not applied to the Mobility, whose measured path
+     * has never needed it.
+     */
+    if (v9x_m64_is_rage2()) {
+        v9x_u32 offsets[V9X_M64_ENGINE_INIT_GT_DWORDS];
+        v9x_u32 values[V9X_M64_ENGINE_INIT_GT_DWORDS];
+        v9x_u32 written = 0ul;
+        v9x_u32 done;
+        v9x_u32 chunk;
+
+        if (v9x_m64_build_engine_init_gt(offsets, values,
+                                         V9X_M64_ENGINE_INIT_GT_DWORDS,
+                                         &written) != V9X_STATUS_OK) {
+            return 0;
+        }
+        /* Half the 16-entry FIFO at a time, each behind its own check. */
+        for (done = 0ul; done < written; done += chunk) {
+            chunk = written - done;
+            if (chunk > V9X_M64_INIT_CHUNK_DWORDS) {
+                chunk = V9X_M64_INIT_CHUNK_DWORDS;
+            }
+            if (v9x_m64_emit_batch(&v9x_m64, offsets + done, values + done,
+                                   chunk, V9X_M64_WAIT_SPINS) !=
+                V9X_STATUS_OK) {
+                return 0;
+            }
+        }
     }
     v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
     return 1;

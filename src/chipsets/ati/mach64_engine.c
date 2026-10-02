@@ -173,7 +173,12 @@ v9x_status v9x_m64_wait_idle(struct v9x_m64_engine *engine,
                 engine->quarantined = V9X_TRUE;
                 return V9X_STATUS_INVALID_STATE;
             }
-            if ((status & 0xfffful) == 0ul) {
+            /* An empty FIFO is not an idle engine: atyfb's wait_for_idle
+             * also waits for GUI_STAT.GUI_ACTIVE. Only 86Box's VT2, whose
+             * engine is never seen busy, got away without it. */
+            if ((status & 0xfffful) == 0ul &&
+                (engine->io.read(engine->io.context, V9X_M64_GUI_STAT) &
+                 V9X_M64_GUI_ACTIVE) == 0ul) {
                 engine->fifo_cached = V9X_M64_VT_FIFO_ENTRIES;
                 return V9X_STATUS_OK;
             }
@@ -282,6 +287,53 @@ v9x_status v9x_m64_build_2d_mode_gt(v9x_u32 *offsets, v9x_u32 *values,
     offsets[0] = V9X_M64_Z_CNTL;         values[0] = 0ul;
     offsets[1] = V9X_M64_SCALE_3D_CNTL;  values[1] = 0ul;
     *written = V9X_M64_2D_MODE_GT_DWORDS;
+    return V9X_STATUS_OK;
+}
+
+/*
+ * Linux atyfb aty_init_engine (drivers/video/fbdev/aty/mach64_accel.c) is
+ * the source for every value: the engine's own scratch state that no
+ * operation here sets, put where a GX-era driver expects it. The chain mask
+ * is the 565 one; the engine is only driven at 16 bpp, and the A8U4I5
+ * desktop is 565.
+ */
+v9x_status v9x_m64_build_engine_init_gt(v9x_u32 *offsets, v9x_u32 *values,
+                                        v9x_u32 capacity, v9x_u32 *written)
+{
+    static const v9x_u32 v9x_m64_init_gt[V9X_M64_ENGINE_INIT_GT_DWORDS][2] = {
+        { V9X_M64_CONTEXT_MASK,       0xfffffffful },
+        { V9X_M64_DST_BRES_ERR,       0ul },
+        { V9X_M64_DST_BRES_INC,       0ul },
+        { V9X_M64_DST_BRES_DEC,       0ul },
+        { V9X_M64_SRC_Y_X,            0ul },
+        { V9X_M64_SRC_HEIGHT1_WIDTH1, 1ul },
+        { V9X_M64_SRC_Y_X_START,      0ul },
+        { V9X_M64_SRC_HEIGHT2_WIDTH2, 1ul },
+        { V9X_M64_SRC_CNTL,           V9X_M64_SRC_LINE_X_DIR },
+        { V9X_M64_HOST_CNTL,          V9X_M64_HOST_BYTE_ALIGN },
+        { V9X_M64_PAT_REG0,           0ul },
+        { V9X_M64_PAT_REG1,           0ul },
+        { V9X_M64_PAT_CNTL,           0ul },
+        { V9X_M64_DP_BKGD_CLR,        0ul },
+        { V9X_M64_DP_CHAIN_MASK,      V9X_M64_DP_CHAIN_16BPP_565 },
+        { V9X_M64_CLR_CMP_CLR,        0ul },
+        { V9X_M64_CLR_CMP_MASK,       0xfffffffful },
+        { V9X_M64_CLR_CMP_CNTL,       0ul }
+    };
+    v9x_u32 index;
+
+    if (written != 0) {
+        *written = 0ul;
+    }
+    if (offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_ENGINE_INIT_GT_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (index = 0ul; index < V9X_M64_ENGINE_INIT_GT_DWORDS; ++index) {
+        offsets[index] = v9x_m64_init_gt[index][0];
+        values[index] = v9x_m64_init_gt[index][1];
+    }
+    *written = V9X_M64_ENGINE_INIT_GT_DWORDS;
     return V9X_STATUS_OK;
 }
 

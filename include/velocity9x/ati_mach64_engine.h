@@ -173,6 +173,14 @@ v9x_status v9x_m64_build_2d_mode(v9x_u32 *offsets, v9x_u32 *values,
  * "GTPro"), so on this chip a write to it lands on nothing known. */
 v9x_status v9x_m64_build_2d_mode_gt(v9x_u32 *offsets, v9x_u32 *values,
                                     v9x_u32 capacity, v9x_u32 *written);
+/* The 2D engine's known state on the Rage II class, written once when the
+ * engine is first validated: what atyfb's aty_init_engine writes, less
+ * the registers the fill and copy builders set on every operation. Without
+ * it the engine runs with its power-on contents; on A8U4I5 those included
+ * SRC_CNTL 7EA3 (source pattern, rotation and block write enabled), and the
+ * first screen copy hung the machine. */
+v9x_status v9x_m64_build_engine_init_gt(v9x_u32 *offsets, v9x_u32 *values,
+                                        v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);

@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-02 The Rage IIC's first engine copy hung A8U4I5 (high)](2026-10-02-rage-iic-first-engine-copy-hangs.md)
 - [2026-09-30 Gateway intermittently hard-locks with a black screen during the broad probe](2026-09-30-gateway-intermittent-black-screen-probe-lock.md)
 - [2026-09-30 Final Reality's Robots test kills the process inside DrawPrimitives on the netbook (high)](2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md)
 - [2026-08-15 Doom95 renders half-width in garbage colours](2026-08-15-doom95-low-resolution-modes.md)
