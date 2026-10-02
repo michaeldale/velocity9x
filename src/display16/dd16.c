@@ -860,6 +860,12 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
      * side is the capability authority, so a family that does not claim D3D
      * cannot have it advertised on its behalf. */
     if ((v9x_dd_shared->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+    /* The flag goes with the entry point. DriverInit sets
+     * GETDRIVERINFOSET for every family; leaving it on with GetDriverInfo
+     * nulled made SetInfo fail and DirectDraw fall back to its emulation
+     * on every chip without D3D (A8U4I5, 2026-10-02,
+     * docs\issues\2026-10-02-directdraw-hal-refused-without-d3d-capability.md). */
+    v9x_dd_info16.dwFlags &= ~V9X_DDHALINFO_GETDRIVERINFOSET;
     v9x_dd_info16.GetDriverInfo = 0;
     v9x_dd_info16.lpD3DGlobalDriverData = 0ul;
     v9x_dd_info16.lpD3DHALCallbacks = 0ul;
