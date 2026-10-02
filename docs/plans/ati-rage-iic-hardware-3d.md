@@ -97,7 +97,14 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   hardware flips through CRTC_OFF_PITCH in the blank, and Direct3D's
   compares mapped onto the chip's Z_TEST order. Final Reality and 3DMark
   99 render correctly on the monitor (Michael).
-- Next: 3DMark 99's score for the record; then Phase 6, OpenGL.
+- **Phase 6 on the card**, boots 145-148
+  ([record](../decisions/2026-10-03-rage-iic-opengl-first-runs.md)):
+  `V9XGL.DLL` draws through the same ops; `V9XGLP` passes and Quake 2
+  renders textured, 1.16 M triangles on the engine. The render
+  interface's draw entry now saves the FPU as the Direct3D entries do.
+  ARGB4444 alpha test and texel-times-vertex alpha stay refused.
+- Next: Michael's look at Quake 2 on the monitor; 3DMark 99's score for
+  the record; the 2,589 remaining texture-fit skips.
 
 ## Goal
 

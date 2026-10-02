@@ -187,15 +187,15 @@ binary serves every chip in it and picks the right one by PCI id at boot.
 |---|---|---|---|---|---|
 | PCI ID | `8086:27AE` (945GSE) exactly | `5333:8A01`, plus `8A13` (Trio3D/2X) | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `1002:5654`, `1002:4C4D`, `1002:4757` | `1234:1111`, or anything via Have-Disk |
 | Package | `build/win98se-intel-gma` | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
-| Status | Hardware Direct3D and OpenGL, verified on one physical netbook | Primary S3 target, hardware Direct3D and OpenGL | Conservative baseline, verified on 2 physical machines | `4C4D`: hardware Direct3D and OpenGL, verified on one physical laptop; `5654`: tier-0; `4757` (Rage IIC): tier-0, not yet installed on hardware | Tier-0 fallback, verified on a physical GMA 950 and an S3 Trio3D |
+| Status | Hardware Direct3D and OpenGL, verified on one physical netbook | Primary S3 target, hardware Direct3D and OpenGL | Conservative baseline, verified on 2 physical machines | `4C4D`: hardware Direct3D and OpenGL, verified on one physical laptop; `4757` (Rage IIC): hardware Direct3D and OpenGL, verified on one physical P3; `5654`: tier-0 | Tier-0 fallback, verified on a physical GMA 950 and an S3 Trio3D |
 | Display modes | 640x480 and native 1024x576 at 8 and 16 bpp, set by the video BIOS | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same, subject to BIOS and VRAM | 640x400x8, 640/800/1024 at 8 and 16 bpp; see Mach64 caveat below | baseline as ATI, plus validated modes from the BIOS |
-| Direct3D | Yes (Gen3 3D engine) | Yes (narrow S3D path) | Software rasterizer, opt-in | `4C4D`: yes (Mach64 3D engine); `5654`, `4757`: same as Trio | Software rasterizer, **on by default** at 16 bpp |
-| OpenGL (`V9XGL.DLL`) | Yes, GPU textures plus CPU fallback, at 16 bpp | Yes, S3D-expressible draws, 555 desktop | Software rasterizer at 16 bpp | `4C4D`: engine textures, no CPU fallback, 565 desktop; `5654`, `4757`: software rasterizer at 16 bpp | Software rasterizer at 16 bpp |
+| Direct3D | Yes (Gen3 3D engine) | Yes (narrow S3D path) | Software rasterizer, opt-in | `4C4D`: yes (Mach64 3D engine); `4757`: yes (Rage II trapezoid engine, CPU setup); `5654`: same as Trio | Software rasterizer, **on by default** at 16 bpp |
+| OpenGL (`V9XGL.DLL`) | Yes, GPU textures plus CPU fallback, at 16 bpp | Yes, S3D-expressible draws, 555 desktop | Software rasterizer at 16 bpp | `4C4D`, `4757`: engine textures, no CPU fallback, 565 desktop; `5654`: software rasterizer at 16 bpp | Software rasterizer at 16 bpp |
 | Direct3D mode selector | Hardware / Software / Disabled | Hardware / Software / Disabled | Software / Disabled | same as Trio | same as Trio |
 | DirectDraw surfaces / vblank | Yes | Yes | Yes | Yes | Yes |
-| Hardware primary page flip | Yes (through the ring) | Yes | Yes | No; HAL declines | No; HAL declines |
-| Hardware colour fill | DirectDraw only (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`: DirectDraw only (engine); `5654`, `4757`: **no** — CPU | **No** — CPU |
-| Hardware BitBLT | DirectDraw only, non-overlapping (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`: DirectDraw only (engine); `5654`, `4757`: **no** — CPU | **No** — CPU |
+| Hardware primary page flip | Yes (through the ring) | Yes | Yes | `4757`: yes (CRTC offset in the blank); others: no, HAL declines | No; HAL declines |
+| Hardware colour fill | DirectDraw only (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`, `4757`: DirectDraw only (engine); `5654`: **no** — CPU | **No** — CPU |
+| Hardware BitBLT | DirectDraw only, non-overlapping (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`, `4757`: DirectDraw only (engine); `5654`: **no** — CPU | **No** — CPU |
 | GDI acceleration by default | Software; the blitter is not yet used for GDI | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; no native backend yet | Software; generic BIOS path |
 | Live resolution change | Yes, as games switch 1024x576 to 640x480 | Yes | Yes | Yes | Yes |
 | Live colour-depth change | Not recorded | Yes | Yes | Yes | Yes |
