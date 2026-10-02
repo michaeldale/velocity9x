@@ -860,11 +860,10 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
      * side is the capability authority, so a family that does not claim D3D
      * cannot have it advertised on its behalf. */
     if ((v9x_dd_shared->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
-    /* The flag goes with the entry point. DriverInit sets
-     * GETDRIVERINFOSET for every family; leaving it on with GetDriverInfo
-     * nulled made SetInfo fail and DirectDraw fall back to its emulation
-     * on every chip without D3D (A8U4I5, 2026-10-02,
-     * docs\issues\2026-10-02-directdraw-hal-refused-without-d3d-capability.md). */
+    /* The flag goes with the entry point: DriverInit sets GETDRIVERINFOSET
+     * for every family, and a flag naming a nulled entry is not a
+     * description to hand DDRAW. On its own this was not what SetInfo
+     * refused; see the surface callbacks below. */
     v9x_dd_info16.dwFlags &= ~V9X_DDHALINFO_GETDRIVERINFOSET;
     v9x_dd_info16.GetDriverInfo = 0;
     v9x_dd_info16.lpD3DGlobalDriverData = 0ul;
@@ -878,13 +877,17 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
     v9x_dd_info16.ddCaps.ddsCaps =
         V9X_DDSCAPS_OFFSCREENPLAIN | V9X_DDSCAPS_FLIP |
         V9X_DDSCAPS_PRIMARYSURFACE | V9X_DDSCAPS_COMPLEX;
-    v9x_dd_surface_callbacks16.dwFlags =
-        V9X_DDHAL_SURFCB32_DESTROYSURFACE |
-        V9X_DDHAL_SURFCB32_FLIP |
-        V9X_DDHAL_SURFCB32_GETFLIPSTATUS |
-        V9X_DDHAL_SURFCB32_LOCK | V9X_DDHAL_SURFCB32_UNLOCK |
-        V9X_DDHAL_SURFCB32_ADDATTACHEDSURFACE |
-        V9X_DDHAL_SURFCB32_BLT | V9X_DDHAL_SURFCB32_GETBLTSTATUS;
+    /*
+     * The surface callbacks are NOT narrowed, and must not be. This block
+     * used to rewrite their dwFlags to the August 2026 list, which lacked
+     * SETCOLORKEY because ea25f58 (2026-09-03) added it later to the shared
+     * set, pointer and all. Dropping the flag while the pointer stood made
+     * DDHAL_SetInfo return FALSE, and every chip without D3D has run on
+     * DirectDraw's emulation since 0.7.0. Bisected on A8U4I5 by narrowing
+     * one field at a time: only the callback-flag rewrite fails
+     * (docs\issues\2026-10-02-directdraw-hal-refused-without-d3d-capability.md).
+     * None of these callbacks is Direct3D; each declines what it cannot do.
+     */
     }
 
     v9x_dd_trace_event(6u, v9x_dd_callbacks16.dwFlags);
