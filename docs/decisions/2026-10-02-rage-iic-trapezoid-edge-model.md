@@ -99,5 +99,12 @@ that uses rules 1, 2 and 5.
 - Behaviour beyond the 18-bit range, or with lengths over 8.
 - Whether a second trapezoid with bit 31 clear inherits the trailing
   edge's state.
-- Any boot but 135, so repeatability across boots.
 - Why DEC = 0 does not hang. That it does not is measured three times.
+
+## Second boot
+
+At boot 136 the same three scene sets ran first, on an engine fresh from
+power-on that the HAL had not touched; ATIRX applies the known state
+itself. Every `Row`, `Drawn`, `OtherValue`, `OutsideScissor` and
+`GuardMismatches` line matches boot 135 exactly: 60, 72 and 107 lines,
+no differences (`BOOT136-ATIRX-*.TXT`).

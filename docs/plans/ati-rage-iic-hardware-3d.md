@@ -27,11 +27,20 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   At boot 135, DirectDraw fill and copy run on the engine: 66 of 66 blits
   across 11 probe runs, all pixel-correct, no timeouts or resets. GDI,
   mode switches and the DirectDraw mode stress pass.
-- Remaining for Phase 1's gate: 1,000 alternating fills and copies, and
-  a second boot.
-- The trapezoid register notes are in
-  [ati-rage2-3d-engine.md](../specifications/ati-rage2-3d-engine.md).
-  Phase 2's first scene comes from them.
+- **Phase 1 gate met.** Boot 135: 171 probe runs, 1,026 blits, all on the
+  engine. Boot 136: 20 runs, 120 blits. All pixel-correct; FIFO
+  timeouts, idle timeouts and resets 0 on both boots.
+- **Phase 2 gate met** (`1e4789b`, `c35e825`).
+  - Harness: a mapping-only VxD and a ring-3 runner built on the
+    host-tested builders.
+  - Twenty flat trapezoids gave the rules: the length counts rows; a span
+    is `[leading, trailing)`; each edge walks X while its error is ≥ 0.
+    Exact formula and evidence in
+    [the edge model](../decisions/2026-10-02-rage-iic-trapezoid-edge-model.md).
+  - Identical on boots 135 and 136; guards intact throughout.
+- Next: Phase 3, `rage2_setup.c`. CPU triangle setup into these
+  trapezoids, host-tested against a CPU rasteriser with the measured
+  rules, then the flat-triangle scene.
 
 ## Goal
 
