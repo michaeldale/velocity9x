@@ -15,7 +15,23 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   GDI, all 19 published modes, and DirectDraw mode/palette/flip all pass.
 - DirectDraw HAL refusal on no-D3D chips found and fixed (`fc1ed35`).
   The HAL now attaches on this card with a 2.5 MiB heap.
-- Next: Phase 1 below.
+- Phase 1 first attempt (`dc67d29`) hung A8U4I5 on its first engine
+  copy (boot 132; [issue](../issues/2026-10-02-rage-iic-first-engine-copy-hangs.md)).
+  The engine was at its power-on contents, and nothing initialises it
+  before Velocity9x.
+- Phase 1 second attempt (`06f760b`):
+  - atyfb's known engine state at validate;
+  - the 16-entry `FIFO_STAT` model;
+  - an idle wait that also waits for `GUI_ACTIVE`.
+
+  At boot 135, DirectDraw fill and copy run on the engine: 66 of 66 blits
+  across 11 probe runs, all pixel-correct, no timeouts or resets. GDI,
+  mode switches and the DirectDraw mode stress pass.
+- Remaining for Phase 1's gate: 1,000 alternating fills and copies, and
+  a second boot.
+- The trapezoid register notes are in
+  [ati-rage2-3d-engine.md](../specifications/ati-rage2-3d-engine.md).
+  Phase 2's first scene comes from them.
 
 ## Goal
 

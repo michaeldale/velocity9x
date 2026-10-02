@@ -1,5 +1,8 @@
 # The Rage IIC's first engine copy hung A8U4I5
 
+Status: resolved for DirectDraw fill and copy at boot 135 by `06f760b`;
+the cause was not isolated between the hypotheses below.
+
 Priority: high. On the first build that claimed the Rage IIC's 2D engine,
 the first DirectDraw screen copy left the machine needing a hands-on
 restart.
@@ -77,6 +80,22 @@ beyond the known state:
 - the pre-VTB, 16-entry `FIFO_STAT` model for `ATI_RAGE2`;
 - a pre-VTB idle that also waits for `GUI_ACTIVE`.
 
-Untested until it runs. If it hangs again, the next step is a private
-scene that records every write before executing it, not another
-DirectDraw run.
+## Result, boot 135
+
+Build `06f760b`. All three binaries were installed by WININIT renames
+and hash-verified against the package.
+
+| Run | Result |
+|---|---|
+| `V9XDDP` (the run that hung boot 132) | `COMPLETE`. Fill, source copy and the four overlapping copies pixel-correct; video-memory surfaces created |
+| `V9XDDP` x 10 more | 10 of 10 the same (`BOOT135-ddp-repeat10.TXT`) |
+| HAL counters after all 11 (`BOOT135-V9XSNAP-END.INI`) | engine type 5, `CountBlt 66`, `CountBltEngine 66`, FIFO timeouts 0, idle timeouts 0, resets 0 |
+| `V9XGDI /auto`, `V9XMSW /cycle:10` and `/depth:10`, `V9XDDP /modestress` | PASS, PASS, PASS, 32 of 32 |
+
+The build changed three things at once, so which one cured the hang is
+**not isolated**. Hypotheses 1 and 2 each fit the evidence. Isolating
+them would mean reverting one on hardware and risking another hands-on
+restart; that was not done.
+
+Status: resolved for these workloads. Still open from the plan's Phase 1
+gate: 1,000 alternating fills and copies (66 so far), and a second boot.

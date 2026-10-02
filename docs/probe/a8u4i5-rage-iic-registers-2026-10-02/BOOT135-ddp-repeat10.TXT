@@ -1,0 +1,10 @@
+run01 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run02 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run03 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run04 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run05 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run06 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run07 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run08 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run09 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
+run10 Result=COMPLETE BltFillPixelOk=1 SrcCopyPixelOk=1 OverlapDownPixelOk=1 OverlapRightPixelOk=1 OverlapPitchDownPixelOk=1 OverlapPitchRightPixelOk=1 VideoStageHr=0x00000000 GblNoHardware=0 
