@@ -3560,6 +3560,7 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_describe(V9X_R3D_ABI_DESCRIBE *out)
 static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
                                                V9X_R3D_ABI_OUTCOME *outcome)
 {
+    V9X_FPU_AREA fpu;
     DWORD result;
     DWORD started = V9X_TIME_BEGIN();
 
@@ -3580,7 +3581,18 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
         outcome->result = V9X_R3D_RESULT_NOT_READY;
         return outcome->result;
     }
+    /*
+     * The application's FPU state saved, and the FPU reinitialised, as at
+     * every Direct3D entry: fnsave leaves it at its default precision and
+     * rounding. Without it an engine's floating-point setup ran under the
+     * caller's control word - Quake 2's 24-bit precision - and on the Rage
+     * IIC, whose triangle setup is double arithmetic, 68,270 of Quake 2's
+     * pieces failed the texture fit (A8U4I5 boot 147) that the same inputs
+     * pass on the host.
+     */
+    v9x_fpu_save(&fpu);
     result = v9x_r3d_draw_body(draw, outcome);
+    v9x_fpu_restore(&fpu);
     v9x_win16_leave();
     if (V9X_TIME_ENABLED()) {
         DWORD delta = v9x_rdtsc_low() - started;
