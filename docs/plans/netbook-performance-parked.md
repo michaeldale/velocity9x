@@ -3,7 +3,7 @@
 Date: 2026-10-02. Status: parked. Gen3 textures up to 1024 is the last
 change kept; everything below "Parked" is written up and waiting.
 
-## Landed (0.9.2, unreleased)
+## Landed (0.9.2, released 2026-10-02)
 
 | Change | Machine | Measured | Record |
 |---|---|---|---|

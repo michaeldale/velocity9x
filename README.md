@@ -18,9 +18,9 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.9.1, the Rage Mobility release** — see the
+**Current version: 0.9.2, the submission release** — see the
 [changelog](CHANGELOG.md). Download it from
-[releases/0.9.1](releases/0.9.1/README.md).
+[releases/0.9.2](releases/0.9.2/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
@@ -53,8 +53,9 @@ The `intel-gma` package drives the **GMA 950 on the 945GSE**
 (`8086:27AE`). The video BIOS sets the modes (640x480 and the panel's
 native 1024x576, at 8 and 16 bpp); the driver owns everything above that:
 
-- **Direct3D** on the Gen3 3D engine, submitted through its ring:
-  RGB565, ARGB1555 and ARGB4444 textures with mip chains laid out by the
+- **Direct3D** on the Gen3 3D engine, submitted through its ring
+  without the CPU waiting for each batch (0.9.2): RGB565, ARGB1555 and
+  ARGB4444 textures to 1024 texels with mip chains laid out by the
   HAL, modulate and decal, Gouraud and flat shading, texture wrap, the
   application's alpha test, a 16-bit Z buffer with the application's
   comparison, and colour and alpha blending.
@@ -70,12 +71,14 @@ Measured on the netbook:
 
 | Application | API | Result |
 |---|---|---|
-| 3DMark 99 | Direct3D | 717 at 640x480 and 643 at 1024x576 (0.8.1); 669 at 1024x576 in 0.9.0 |
+| 3DMark 99 | Direct3D | 1253 at 640x480 in 0.9.2 (717 in 0.8.1); 669 at 1024x576 in 0.9.0 |
+| Half-Life `mwd5` timedemo | Direct3D | 42.4 fps at 640x480 in 0.9.2, from 29.1 |
+| Quake 2 demo2 timedemo | OpenGL | 19.6-19.8 fps at 640x480 fullscreen in 0.9.2 |
 | 3D WinBench 98 quality suite | Direct3D | Runs to the end: culling, wrap, decal, mirror, add and modulate pass |
 | Half-Life | Direct3D | Runs, alpha-tested fences see-through; presents on the blitter in 0.6 ms |
 | Final Reality | Direct3D | Renders textured with depth testing and hardware flips |
 | Quake 2 demo | OpenGL | 28 fps at demo1's start (`timerefresh`, 640x480); fullscreen and `vid_restart` work |
-| Serious Sam: The First Encounter | OpenGL | Renders; 1.78 million triangles drawn by the GPU in a demo session, none refused |
+| Serious Sam: The First Encounter | OpenGL | Renders; its `auto-demo0001` at 2.7 fps in 0.9.2, video memory the limit |
 
 ![Serious Sam: The First Encounter on the Intel GMA 950 through
 Velocity9x's OpenGL driver](docs/images/serious-sam-gma950-opengl-2026-09-26.png)
@@ -91,8 +94,8 @@ New in 0.9.1. The `ati` package drives the **Rage Mobility-M**
 (`1002:4C4D`) with its Mach64 3D engine, measured on one physical machine,
 a Gateway Solo 2150 laptop (4 MB, 1024x768 panel, Pentium III):
 
-- **Direct3D**: RGB565, ARGB1555 and ARGB4444 textures from 8 to 256
-  texels, square, with mip chains, bilinear and trilinear filtering,
+- **Direct3D**: RGB565, ARGB1555 and ARGB4444 textures with each edge a
+  power of two from 8 to 256 (rectangles from 0.9.2), with mip chains, bilinear and trilinear filtering,
   modulate, decal and decal-alpha, wrap and clamp, perspective
   correction, Gouraud and flat shading, a 16-bit Z buffer with every
   comparison, the blend factors the engine measured exact, alpha test on
@@ -100,12 +103,13 @@ a Gateway Solo 2150 laptop (4 MB, 1024x768 panel, Pentium III):
   is refused before it reaches the chip.
 - **DirectDraw** fills and copies on the engine.
 - **OpenGL 1.1** through `V9XGL.DLL`, with the engine sampling the
-  textures; textures that are not square, or under 8 texels, are given a
-  square copy that samples the same texels.
+  textures; a texture with an edge under 8 texels is given a square copy
+  that samples the same texels.
 
 | Application | API | Result |
 |---|---|---|
-| 3DMark 99 Max | Direct3D | All 26 tests at 640x480x16; 643 3DMarks |
+| 3DMark 99 Max | Direct3D | All 26 tests at 640x480x16; 604 3DMarks in 0.9.2, 643 in 0.9.1 |
+| Half-Life `mwd5` timedemo | Direct3D / OpenGL | 12.0 / 7.4 fps at 640x480 in 0.9.2, sky drawn |
 | Quake 2 demo | OpenGL | Draws the world with hardware textures; about 8 fps at 640x480 fullscreen, against 22 to 24 with ATI's own driver |
 
 What is open: the engine's mip level boundaries sit a third of a level

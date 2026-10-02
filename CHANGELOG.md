@@ -4,13 +4,21 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.9.2 - unreleased
+## 0.9.2 - 2026-10-02
 
-Not yet released; the published downloads are still 0.9.1. Fixes found
-running Final Reality and Half-Life on the netbook (Intel GMA 950) and the
-Gateway (Rage Mobility-M), and the instruments that found them. Each item
+The submission release: on the netbook (Intel GMA 950) the CPU no longer
+waits for the GPU after every batch, and the OpenGL driver's per-vertex
+cost is down by a quarter. Found running Final Reality,
+Half-Life, Quake 2, Serious Sam and 3DMark 99 on the netbook and the
+Gateway (Rage Mobility-M), with the instruments that found them. Each item
 names the machine it was measured on; other families carry the shared-core
 changes untested.
+
+3DMark 99 Max at 640x480, 16-bit, triple buffering, all tests: the netbook
+1253 3DMarks (852 on 2026-09-30, 717 on 2026-09-25), the Gateway 604 (589
+and 643 in 0.9.1's runs); per-test results in the
+[record](docs/decisions/2026-10-02-3dmark99-640-both-machines.md). Recorded,
+not attributed among the changes below.
 
 ### Shared core (all engines)
 
@@ -85,10 +93,13 @@ changes untested.
   about two thirds of it waits for the GPU
   ([record](docs/decisions/2026-10-01-hal-submission-profile-on-the-netbook.md)).
 
-Still open: refused
-Direct3D batches on the Mach64 are dropped rather than drawn on the CPU;
-Half-Life OpenGL on the netbook measured 13.34 fps on the latest build
-against 14.75 earlier, unexplained.
+Still open: refused Direct3D batches on the Mach64 are dropped rather
+than drawn on the CPU; Gen3 still refuses a vertex whose Z is a rounding
+step outside [0, 1] (about 0.1% of 3DMark's batches); the Gateway
+occasionally hard-locks during Direct3D, unexplained; Serious Sam on the
+netbook is limited by video memory, and write-combining and textures in
+system memory are planned and parked
+([note](docs/plans/netbook-performance-parked.md)).
 
 ## 0.9.1 - 2026-09-29
 
