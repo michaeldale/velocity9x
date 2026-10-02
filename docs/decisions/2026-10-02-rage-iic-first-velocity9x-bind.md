@@ -98,6 +98,14 @@ code, not this chip; filed as
 [2026-10-02 DirectDraw refuses the HAL without the D3D capability](../issues/2026-10-02-directdraw-hal-refused-without-d3d-capability.md).
 `SYSTEM.INI` is restored to `Direct3D=0`, effective from the next boot.
 
+Fixed in `fc1ed35` and verified at boot 131 with `Direct3D=0`. The cause
+was a dropped `SETCOLORKEY` surface-callback flag, not the
+`GETDRIVERINFOSET` first suspected. With the fix, the HAL attaches with a
+2.5 MiB heap, video-memory surfaces and copies work, and 20 flips take
+0 ms against 505 ms under the emulation. `V9XGDI`, both `V9XMSW` cycles
+and the DirectDraw mode stress pass again on it. A8U4I5 now runs
+`V9XDISP.DRV` from `fc1ed35`; the other binaries are from `397da71`.
+
 ## Not run
 
 - DOS boxes: every agent route into one is a DOS program, which Michael

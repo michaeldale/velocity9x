@@ -1,0 +1,8 @@
+mask=1F Stage=setinfo-fail Result=COMPLETE GblNoHardware=1 GblNumHeaps=0x00000000 VideoStageHr=0x88760233 D3DHalFound=0
+mask=3F Stage=setinfo-fail Result=COMPLETE GblNoHardware=1 GblNumHeaps=0x00000000 VideoStageHr=0x88760233 D3DHalFound=0
+mask=00 Stage=setinfo-ok Result=COMPLETE GblNoHardware=0 GblNumHeaps=0x00000001 VideoStageHr=0x00000000 D3DHalFound=1
+mask=1E Stage=setinfo-fail Result=COMPLETE GblNoHardware=1 GblNumHeaps=0x00000000 VideoStageHr=0x88760233 D3DHalFound=0
+mask=1D Stage=setinfo-fail Result=COMPLETE GblNoHardware=1 GblNumHeaps=0x00000000 VideoStageHr=0x88760233 D3DHalFound=0
+mask=1B Stage=setinfo-fail Result=COMPLETE GblNoHardware=1 GblNumHeaps=0x00000000 VideoStageHr=0x88760233 D3DHalFound=0
+mask=17 Stage=setinfo-fail Result=COMPLETE GblNoHardware=1 GblNumHeaps=0x00000000 VideoStageHr=0x88760233 D3DHalFound=0
+mask=0F Stage=setinfo-ok Result=COMPLETE GblNoHardware=0 GblNumHeaps=0x00000001 VideoStageHr=0x00000000 D3DHalFound=0

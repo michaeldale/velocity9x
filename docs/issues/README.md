@@ -4,7 +4,6 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
-- [2026-10-02 DirectDraw refuses the HAL on any configuration without the D3D capability (high)](2026-10-02-directdraw-hal-refused-without-d3d-capability.md)
 - [2026-09-30 Gateway intermittently hard-locks with a black screen during the broad probe](2026-09-30-gateway-intermittent-black-screen-probe-lock.md)
 - [2026-09-30 Final Reality's Robots test kills the process inside DrawPrimitives on the netbook (high)](2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md)
 - [2026-08-15 Doom95 renders half-width in garbage colours](2026-08-15-doom95-low-resolution-modes.md)
@@ -43,6 +42,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-10-02 DirectDraw refuses the HAL without the D3D capability: a dropped SETCOLORKEY flag, fixed in fc1ed35](2026-10-02-directdraw-hal-refused-without-d3d-capability.md)
 - [2026-08-14 DirectDraw accepts `SetInfo` but reports `DDCAPS_NOHARDWARE`](2026-08-14-directdraw-hal-nohardware.md)
 - [2026-08-14 Hellbender faults in `DIBENG.DLL` leaving the intro cinematic](2026-08-14-hellbender-dibeng-gpf.md)
 - [2026-08-15 Hellbender renders in software despite accepting the Direct3D HAL](2026-08-15-hellbender-software-fallback.md)
