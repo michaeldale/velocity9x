@@ -144,6 +144,10 @@ v9x_status v9x_r2_setup_triangle(const struct v9x_r2_target *target,
  * FRGD_SRC = 5, the scaler/3D pipe (RRG p.4-97). */
 #define V9X_R2_SCALE_3D_SHADE       0x000000c0ul
 #define V9X_R2_DP_SRC_3D            0x00000500ul
+/* DP_PIX_WIDTH destination and source 16 bpp (565); DP_MIX foreground
+ * source, background destination (RRG p.4-93, p.4-94). */
+#define V9X_R2_DP_PIX_WIDTH_565     0x00040004ul
+#define V9X_R2_DP_MIX_FRGD_SRC      0x00070003ul
 
 #define V9X_R2_SHADE_STATE_DWORDS   20ul
 

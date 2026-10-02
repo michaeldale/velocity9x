@@ -140,13 +140,13 @@
             # A Rage II-class 264GT2C: the Mobility's register window and 2D
             # engine, no triangle setup engine. The 2D engine serves
             # DirectDraw fill and copy as ATI_RAGE2, a type of its own so
-            # d3d_select.c never routes it to d3d_mach64.c. No D3D until a
-            # Rage II back-end is measured
-            # (docs\plans\ati-rage-iic-hardware-3d.md).
+            # d3d_select.c never routes it to d3d_mach64.c. Direct3D is
+            # d3d_rage2.c, which sets every triangle up on the CPU from the
+            # Phase 1-4 measurements (docs\plans\ati-rage-iic-hardware-3d.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-rage2'
             EngineType = 'ATI_RAGE2'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # MEM_CNTL measured 4 MiB on A8U4I5; 3DMark reported 4074 KB.
             VideoMemoryBytes = 4194304
 

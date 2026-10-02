@@ -205,7 +205,8 @@ static void test_engine_caps_match_engine_type(void)
             MCHECK_CHIP(chip,
                         chip->engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX ||
                         chip->engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 ||
-                        chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64);
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 ||
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2);
         }
     }
 }

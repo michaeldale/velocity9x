@@ -43,6 +43,7 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rage2_trap.c',
         # Rage II triangle setup into trapezoids, on the measured edge walk.
         'src\chipsets\ati\rage2_setup.c',
+        'src\chipsets\ati\rage2_draw.c',
         'tests\host\test_pe_export.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
@@ -143,6 +144,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_rage2_trap.c',
         'tests\host\rage2_reference.c',
         'tests\host\test_rage2_setup.c',
+        'tests\host\test_rage2_draw.c',
         'tests\host\test_main.c'
     )
 

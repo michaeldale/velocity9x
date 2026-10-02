@@ -2,8 +2,6 @@
 
 /* The datapath values are the Mach64 fill's, which are measured on both
  * ATI parts: 565 destination, FRGD_MIX = source, DP_FRGD_CLR as source. */
-#define V9X_R2_DP_PIX_WIDTH_565     0x00040004ul
-#define V9X_R2_DP_MIX_FRGD_SRC      0x00070003ul
 #define V9X_R2_DP_SRC_FRGD_CLR      0x00000100ul
 
 static int v9x_r2_target_valid(const struct v9x_r2_target *target)

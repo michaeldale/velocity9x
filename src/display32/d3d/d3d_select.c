@@ -20,6 +20,8 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
      * Only types with an engine in this binary. S3_TRIO64 has no S3D core
      * and selects nothing rather than inheriting another chip's caps. The
      * Mach64 engine is present but dormant: no ATI chip stamps its type.
+     * The Rage II class has the Mach64 2D engine but no setup engine, so it
+     * has its own (d3d_rage2.c) and never reaches d3d_mach64.c.
      */
     switch (engine_type) {
     case V9X_DD_ENGINE_TYPE_S3_VIRGE_DX:
@@ -28,6 +30,8 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
         return V9X_D3D_SELECT_GEN3;
     case V9X_DD_ENGINE_TYPE_ATI_MACH64:
         return V9X_D3D_SELECT_MACH64;
+    case V9X_DD_ENGINE_TYPE_ATI_RAGE2:
+        return V9X_D3D_SELECT_RAGE2;
     default:
         return V9X_D3D_SELECT_NONE;
     }

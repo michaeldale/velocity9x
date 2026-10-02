@@ -65,7 +65,23 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
 
   The arithmetic is modelled to within one LSB: 493 of 512 bilinear
   pixels and 376 of 384 blend/modulate/fog pixels are exact.
-- Next: a second boot for the Phase 4 scenes, then Phase 5.
+- **Phase 5 code, host-tested, not yet run on the card** (2026-10-02):
+  - `rage2_draw.c`: the policy over the Mobility-M's request, the batch
+    state, and per-triangle packets;
+  - trapezoids cut at 64 rows by running the edge walk forward;
+  - perspective triangles split in four up to twice while the quadratic
+    is more than half a texel off, vertices snapped to a quarter pixel so
+    splits leave no crack;
+  - `d3d_rage2.c` behind the ops; the selector, 16-bit stamp and
+    manifest (`hardware-rage2`) now give the Rage IIC Direct3D.
+
+  The host tests check coverage against the reference rasteriser for
+  600 tall triangles and 400 perspective ones, 310 of them split.
+  A8U4I5 stopped answering after the Phase 4 runs, so the second boot
+  and the Phase 5 gate wait for it. Untextured blending and fog run
+  under SCALE_3D_FCN = 3, which no scene measured; the gate's first
+  scenes must cover it.
+- Next: deploy, then the D3D probe scenes, Final Reality and 3DMark 99.
 
 ## Goal
 

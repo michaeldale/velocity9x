@@ -151,6 +151,10 @@ unsigned int v9x_run_rage2_trap_tests(void);
  * model, pixel for pixel against an independent reference rasteriser. */
 unsigned int v9x_run_rage2_setup_tests(void);
 
+/* tests\host\test_rage2_draw.c: the Rage II Direct3D policy, state stream,
+ * and the coverage of split trapezoids and split triangles. */
+unsigned int v9x_run_rage2_draw_tests(void);
+
 /* tests\host\test_mach64_policy.c: every accept and refuse boundary of
  * the Mach64 draw policy, and the texture light function it selects. */
 unsigned int v9x_run_mach64_policy_tests(void);
@@ -1162,6 +1166,7 @@ int main(int argc, char **argv)
     failures += v9x_run_mach64_draw_tests();
     failures += v9x_run_rage2_trap_tests();
     failures += v9x_run_rage2_setup_tests();
+    failures += v9x_run_rage2_draw_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

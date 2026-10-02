@@ -85,6 +85,11 @@ $sources = @(
     "src\chipsets\ati\mach64_engine.c",
     "src\chipsets\ati\mach64_policy.c",
     "src\chipsets\ati\mach64_draw.c",
+    # The Rage II class: CPU triangle setup, the trapezoid and state
+    # builders, and the draw policy and packets, all host-tested.
+    "src\chipsets\ati\rage2_trap.c",
+    "src\chipsets\ati\rage2_setup.c",
+    "src\chipsets\ati\rage2_draw.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
@@ -105,6 +110,7 @@ $sources = @(
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",
+    "src\display32\d3d\d3d_rage2.c",
     # The 1.31 depth conversion, kept in its own translation unit so the host
     # build can compile and test it without the DDHAL around it.
     "src\display32\d3d\d3d_zfixed.c",
