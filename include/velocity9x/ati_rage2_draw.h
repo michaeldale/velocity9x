@@ -126,12 +126,18 @@ v9x_status v9x_r2_split_triangle(const struct v9x_r2_draw_state *state,
 #define V9X_R2_PIECE_STAGE_TEXTURE   7ul    /* v9x_r2_setup_texture */
 #define V9X_R2_PIECE_STAGE_TRAP      8ul    /* v9x_r2_build_trap */
 #define V9X_R2_PIECE_STAGES          9ul
+/* `stage` carries the failing call's own status in bits 15:8. */
+#define V9X_R2_PIECE_STATUS_SHIFT    8u
+#define V9X_R2_PIECE_STAGE_MASK      0xfful
 
 /*
  * One piece's packets: every trapezoid's interpolators then its trigger.
  * V9X_STATUS_UNSUPPORTED for a piece the interpolators cannot express (a
  * sliver steeper than 255 colour levels a pixel, a texture term past its
- * register), which the caller skips and counts. `traps` (may be null)
+ * register), which the caller skips and counts. A sliver whose colour or
+ * alpha gradient is past S.8.12 is drawn flat, at its centroid's colour,
+ * rather than skipped: it covers a few pixels, and Quake 2's lost 24,152
+ * pieces that way on boot 146. `traps` (may be null)
  * receives the trapezoids, for the host test's engine model; `stage` (may
  * be null) the V9X_R2_PIECE_STAGE_* that failed.
  */

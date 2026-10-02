@@ -127,10 +127,18 @@ static void v9x_d3d_rage2_note_skip(v9x_u32 stage, v9x_status status,
                                     const struct v9x_r2_draw_vertex *v)
 {
     DWORD *last = v9x_hal->d3d_diagnostics.r2_piece_last;
+    DWORD index = stage & V9X_R2_PIECE_STAGE_MASK;
     DWORD k;
 
-    if (stage < 9ul) {
-        ++v9x_hal->d3d_diagnostics.r2_piece_skipped[stage];
+    if (index < 9ul) {
+        ++v9x_hal->d3d_diagnostics.r2_piece_skipped[index];
+    }
+    /* The inputs are kept for the commonest skip, the texture fit, when
+     * there has been one; otherwise for the last of any kind. */
+    if (index != V9X_R2_PIECE_STAGE_TEXTURE &&
+        (last[0] & V9X_R2_PIECE_STAGE_MASK) ==
+            V9X_R2_PIECE_STAGE_TEXTURE) {
+        return;
     }
     last[0] = stage;
     last[1] = (DWORD)status;

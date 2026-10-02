@@ -395,7 +395,7 @@ static v9x_status v9x_r2_fit_st(const struct v9x_r2_vertex *vertices,
         if (!v9x_r2_finite(coords[vertex].q) || coords[vertex].q <= 0.0 ||
             !v9x_r2_finite(coords[vertex].tu) ||
             !v9x_r2_finite(coords[vertex].tv)) {
-            return V9X_STATUS_UNSUPPORTED;
+            return V9X_STATUS_INVALID_STATE;
         }
         if (coords[vertex].q > q_max) {
             q_max = coords[vertex].q;
@@ -603,18 +603,18 @@ v9x_status v9x_r2_setup_texture(const struct v9x_r2_vertex *vertices,
             if (!v9x_r2_finite(terms[term]) || terms[term] > limit ||
                 terms[term] < -limit ||
                 !v9x_r2_round(terms[term], &fixed[term])) {
-                return V9X_STATUS_UNSUPPORTED;
+                return V9X_STATUS_INTEGER_OVERFLOW;
             }
         }
         /* START modulo the repeat. It keeps bits 25:5: half its step
          * first makes that a rounding. */
         if (!v9x_r2_round(terms[0] / V9X_R2_ST_ONE_D - 0.5, &fixed[0])) {
-            return V9X_STATUS_UNSUPPORTED;
+            return V9X_STATUS_INVALID_ARGUMENT;
         }
         terms[0] -= (double)fixed[0] * V9X_R2_ST_ONE_D;
         terms[0] += (double)(v9x_s32)(V9X_R2_ST_AGAINST_LOSS / 2ul);
         if (!v9x_r2_round(terms[0], &fixed[0])) {
-            return V9X_STATUS_UNSUPPORTED;
+            return V9X_STATUS_INVALID_ARGUMENT;
         }
 
         st->start[axis] = fixed[0];

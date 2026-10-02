@@ -363,9 +363,11 @@ struct v9x_r2_tex_coord {
  * the plane. A sliver whose quadratic needs more curvature than the
  * S.10.16 second differences hold gets the plane through its vertices
  * instead, for both trapezoids, and *affine (if given) says so.
- * V9X_STATUS_UNSUPPORTED when a q is not positive and finite, a
- * coordinate is not finite, or a first difference exceeds S.11.16 (two
- * map widths a pixel).
+ * Fails with V9X_STATUS_INVALID_STATE when a q is not positive and
+ * finite or a coordinate is not finite; V9X_STATUS_UNSUPPORTED for a
+ * triangle of no area; V9X_STATUS_INTEGER_OVERFLOW when a difference
+ * exceeds its register (S.11.16: two map widths a pixel); and
+ * V9X_STATUS_INVALID_ARGUMENT when START cannot be reduced.
  *
  * Double arithmetic, converted without a cast: the HAL links no runtime,
  * and Open Watcom lowers a float-to-int cast to __CHP.

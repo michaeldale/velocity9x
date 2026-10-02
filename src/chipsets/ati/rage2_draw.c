@@ -750,6 +750,25 @@ static int r2_depth_fields(const struct v9x_r2_draw_vertex *v,
     return 1;
 }
 
+/* The three colours' centroid, flat: START at it plus a half for the
+ * engine's truncation, no gradient. For a sliver whose gradient is past
+ * the interpolators' range. */
+static void r2_flat_shade(const v9x_u32 *colors, struct v9x_r2_shade *shade)
+{
+    v9x_u32 channel;
+
+    for (channel = 0ul; channel < 3ul; ++channel) {
+        v9x_u32 shift = 16ul - 8ul * channel;
+        v9x_u32 sum = ((colors[0] >> shift) & 0xfful) +
+                      ((colors[1] >> shift) & 0xfful) +
+                      ((colors[2] >> shift) & 0xfful);
+
+        shade->start[channel] = (v9x_s32)(((sum / 3ul) << 16) + 0x8000ul);
+        shade->x_inc[channel] = 0l;
+        shade->y_inc[channel] = 0l;
+    }
+}
+
 v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
                               const struct v9x_r2_draw_decision *decision,
                               const struct v9x_r2_draw_vertex *vertices,
@@ -836,13 +855,19 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
         v9x_u32 trap_written = 0ul;
 
         status = v9x_r2_setup_shade(positions, colors, trap, &shade);
-        if (status != V9X_STATUS_OK) {
-            *stage = V9X_R2_PIECE_STAGE_COLOR;
+        if (status == V9X_STATUS_UNSUPPORTED) {
+            r2_flat_shade(colors, &shade);
+        } else if (status != V9X_STATUS_OK) {
+            *stage = V9X_R2_PIECE_STAGE_COLOR |
+                     ((v9x_u32)status << V9X_R2_PIECE_STATUS_SHIFT);
             return V9X_STATUS_UNSUPPORTED;
         }
         status = v9x_r2_setup_shade(positions, alphas, trap, &alpha);
-        if (status != V9X_STATUS_OK) {
-            *stage = V9X_R2_PIECE_STAGE_ALPHA;
+        if (status == V9X_STATUS_UNSUPPORTED) {
+            r2_flat_shade(alphas, &alpha);
+        } else if (status != V9X_STATUS_OK) {
+            *stage = V9X_R2_PIECE_STAGE_ALPHA |
+                     ((v9x_u32)status << V9X_R2_PIECE_STATUS_SHIFT);
             return V9X_STATUS_UNSUPPORTED;
         }
         for (channel = 0ul; channel < 4ul; ++channel) {
@@ -875,7 +900,8 @@ v9x_status v9x_r2_build_piece(const struct v9x_r2_draw_state *state,
             status = v9x_r2_setup_texture(positions, coords, &state->texture,
                                           trap, &st, 0);
             if (status != V9X_STATUS_OK) {
-                *stage = V9X_R2_PIECE_STAGE_TEXTURE;
+                *stage = V9X_R2_PIECE_STAGE_TEXTURE |
+                         ((v9x_u32)status << V9X_R2_PIECE_STATUS_SHIFT);
                 return V9X_STATUS_UNSUPPORTED;
             }
             for (axis = 0ul; axis < 2ul; ++axis) {
