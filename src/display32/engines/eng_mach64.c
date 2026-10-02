@@ -11,12 +11,24 @@
 static struct v9x_m64_engine v9x_m64;
 static DWORD v9x_m64_base = 0ul;
 
+/*
+ * Two chips share this 2D wrapper: the Rage Mobility-M (ATI_MACH64) and the
+ * Rage IIC (ATI_RAGE2). They have the same register window and 2D engine;
+ * the Rage IIC has no setup engine, and the type keeps it out of
+ * d3d_mach64.c. Which chip id CONFIG_CHIP_ID must name follows the type.
+ */
+static int v9x_m64_is_rage2(void)
+{
+    return v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2;
+}
+
 static int v9x_m64_ready(void)
 {
     return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
-        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 &&
+        (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 ||
+         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2) &&
         v9x_hal->engine.control_linear_base != 0ul &&
         v9x_hal->engine.mapped_aperture_bytes >= 0x1000ul;
 }
@@ -59,7 +71,11 @@ static int v9x_m64_validate(void)
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul)
         return 1;
     chip = (DWORD)v9x_m64_hal_read(0, V9X_M64_CONFIG_CHIP_ID);
-    if ((chip & 0xfffful) != 0x4c4dul) return 0;
+    if ((chip & 0xfffful) !=
+        (v9x_m64_is_rage2() ? V9X_M64_CHIP_RAGE_IIC
+                            : V9X_M64_CHIP_RAGE_MOBILITY_M)) {
+        return 0;
+    }
     /*
      * Block 1 on, once, after the identity is proven. Without it every
      * setup-engine write lands in a disabled block. The Phase 1-4 scenes
@@ -111,6 +127,19 @@ static int v9x_m64_wait(int wait)
         V9X_STATUS_OK;
 }
 
+/* The 3D pipe out of the way before a 2D operation, in this chip's own
+ * register set (v9x_m64_build_2d_mode_gt for the Rage II class). */
+static v9x_status v9x_m64_2d_mode(v9x_u32 *offsets, v9x_u32 *values,
+                                  v9x_u32 *written)
+{
+    if (v9x_m64_is_rage2()) {
+        return v9x_m64_build_2d_mode_gt(offsets, values,
+                                        V9X_M64_2D_MODE_DWORDS, written);
+    }
+    return v9x_m64_build_2d_mode(offsets, values, V9X_M64_2D_MODE_DWORDS,
+                                 written);
+}
+
 static int v9x_m64_can_blt(void)
 {
     return v9x_m64_wait(0);
@@ -158,9 +187,8 @@ static int v9x_m64_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     }
     /* 2D mode first: a Direct3D draw may have left Z, alpha test and the
      * 3D pixel pipe enabled (v9x_m64_build_2d_mode). */
-    if (v9x_m64_build_2d_mode(mode_offsets, mode_values,
-                              V9X_M64_2D_MODE_DWORDS,
-                              &mode_written) != V9X_STATUS_OK) {
+    if (v9x_m64_2d_mode(mode_offsets, mode_values,
+                        &mode_written) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
     status = v9x_m64_emit_batch(&v9x_m64, mode_offsets, mode_values,
@@ -236,9 +264,8 @@ static int v9x_m64_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
         return V9X_BLT_DECLINED;
     }
     /* 2D mode first, as for a fill (v9x_m64_build_2d_mode). */
-    if (v9x_m64_build_2d_mode(mode_offsets, mode_values,
-                              V9X_M64_2D_MODE_DWORDS,
-                              &mode_written) != V9X_STATUS_OK) {
+    if (v9x_m64_2d_mode(mode_offsets, mode_values,
+                        &mode_written) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
     status = v9x_m64_emit_batch(&v9x_m64, mode_offsets, mode_values,

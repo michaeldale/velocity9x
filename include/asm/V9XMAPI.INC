@@ -350,7 +350,8 @@ V9XMINI_FN_I9XX_RING_OPEN   EQU 0018h
 ; move this engine stays enumerable in one file.
 V9XMINI_FN_I9XX_RING_SUBMIT EQU 0019h
 
-; ATI Rage Mobility-M: map the MMIO register BAR (BAR2) and say where.
+; ATI Rage Mobility-M or Rage IIC: map the MMIO register BAR (BAR2) and say
+; where.
 ;
 ; In: EBX = BAR2 physical base, freshly read from PCI config by the display
 ; driver. Out: AX=1, EBX = linear address of the 4 KiB window, whose block 0
@@ -358,7 +359,7 @@ V9XMINI_FN_I9XX_RING_SUBMIT EQU 0019h
 ;
 ; Maps once and refuses a moved BAR, as the Intel capture does, so no call
 ; can leak a second permanent mapping. The window is handed over only after
-; CONFIG_CHIP_ID read through it names 4C4Dh: a caller never receives an
+; CONFIG_CHIP_ID read through it names 4C4Dh or 4757h: a caller never receives an
 ; address that is not this chip's register file. The display driver asks at
 ; Enable and at DirectDraw setup, never while an application draws. Only the
 ; ati family image implements it; every other image refuses cleanly.

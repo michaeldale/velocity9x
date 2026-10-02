@@ -119,12 +119,15 @@ V9xMtrrBase     dd V9X_MTRR_RANGE_MAX dup (0)
 V9xMtrrMask     dd V9X_MTRR_RANGE_MAX dup (0)
 
 IFDEF V9X_ATI_MOBILITY_MMIO
-; ATI Rage Mobility-M: the 4 KiB MMIO register BAR, mapped once for the
-; Direct3D engine. CONFIG_CHIP_ID is block 0 +0E0h, and the low word names
-; the part (docs\decisions\2026-08-16-ati-mach64-hardware-audit.md).
+; ATI Rage Mobility-M and Rage IIC: the 4 KiB MMIO register BAR, mapped once
+; for the engine. CONFIG_CHIP_ID is block 0 +0E0h, and the low word names
+; the part (docs\decisions\2026-08-16-ati-mach64-hardware-audit.md; the
+; Rage IIC's BAR2 and 4757 measured in
+; docs\decisions\2026-10-02-rage-iic-register-survey.md).
 V9X_ATI_MMIO_BYTES      equ 00001000h
 V9X_ATI_CONFIG_CHIP_ID  equ 000004e0h
 V9X_ATI_MOBILITY_ID     equ 00004c4dh
+V9X_ATI_RAGE_IIC_ID     equ 00004757h
 V9xAtiMmioBase   dd 0
 V9xAtiMmioLinear dd 0
 ENDIF
@@ -2461,7 +2464,10 @@ V9xMini_Api_AtiMmioMap_Check:
     mov     eax, [edx+V9X_ATI_CONFIG_CHIP_ID]
     and     eax, 0000ffffh
     cmp     eax, V9X_ATI_MOBILITY_ID
+    je      short V9xMini_Api_AtiMmioMap_Owned
+    cmp     eax, V9X_ATI_RAGE_IIC_ID
     jne     short V9xMini_Api_AtiMmioMap_Refused
+V9xMini_Api_AtiMmioMap_Owned:
     mov     [ebp.Client_EBX], edx
     mov     [ebp.Client_AX], 1
     ret

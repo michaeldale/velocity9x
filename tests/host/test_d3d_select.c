@@ -32,7 +32,16 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_MACH64 },
         { 0, V9X_DD_ENGINE_TYPE_ATI_MACH64, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
-        { 1, 5ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
+        /* The Rage II class has the Mach64 2D engine but no setup engine:
+         * it must never reach d3d_mach64.c, whatever caps it carries. */
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE2, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE2,
+          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE2, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
+          V9X_D3D_SELECT_SOFTWARE },
+        { 1, 6ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },
 
         /* The publish-time case the old default got wrong: an unstamped

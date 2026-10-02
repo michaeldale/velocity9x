@@ -11,14 +11,65 @@
  *     MEM_CNTL code 7  == 4 MiB in the four-bit CTL_MEM_SIZEB table
  *     CFG_MEM_TYPE_T   == 4            (SDRAM)
  *
- * Tier-0, both hooks NULL: the VBE sets modes and reports the framebuffer,
- * and the CPU draws. No engine is claimed, deliberately. This is a Rage II
- * part with no triangle setup engine, so the Mobility's d3d_mach64.c cannot
- * serve it, and d3d_select.c picks that back-end from the engine type alone.
- * Stamping ATI_MACH64 here to get engine fills would hand it Direct3D
- * streams written for registers this chip does not have.
+ * The VBE sets modes and reports the framebuffer; the aperture hook stays
+ * NULL. The engine hook claims the Mach64 2D engine for DirectDraw fill and
+ * copy, as ATI_RAGE2 - deliberately not ATI_MACH64. This is a Rage II part
+ * with no triangle setup engine, and d3d_select.c routes ATI_MACH64 to
+ * d3d_mach64.c, whose every triangle is a setup-engine packet. No D3D
+ * capability is claimed until a Rage II back-end exists and has been
+ * measured (docs\plans\ati-rage-iic-hardware-3d.md).
  */
 #include "velocity9x/hw16.h"
+#include "velocity9x/engine_abi.h"
+
+/* runtime.asm, ati family only. */
+extern unsigned short __far __pascal V9xPciReadAtiMmioBar(
+    unsigned long __far *base);
+extern unsigned short __far __pascal V9xMiniAtiMmioMap(
+    unsigned long bar2, unsigned long __far *linear);
+
+/* V9X_ATI_MMIO_BYTES in the mini-VDD: the 4 KiB window eng_mach64.c
+ * addresses, block 0 at +400h. */
+#define V9X_RAGE_IIC_MMIO_BYTES 0x00001000ul
+
+/*
+ * BAR2 mapped by the mini-VDD, which checks that CONFIG_CHIP_ID names a part
+ * it knows before handing the window over; eng_mach64.c then checks it names
+ * this one, 4757, for the ATI_RAGE2 type.
+ */
+static void v9x_rage_iic_fill_engine(unsigned long framebuffer_linear_base,
+                                     unsigned long *control_linear_base,
+                                     unsigned long *mapped_aperture_bytes,
+                                     unsigned long *engine_type,
+                                     unsigned long *engine_caps,
+                                     unsigned long *gtt_linear_base,
+                                     unsigned long *ring_linear_base,
+                                     unsigned long *ring_bytes)
+{
+    unsigned long bar2 = 0ul;
+    unsigned long linear = 0ul;
+
+    (void)framebuffer_linear_base;
+    *control_linear_base = 0ul;
+    *mapped_aperture_bytes = 0ul;
+    *engine_type = V9X_DD_ENGINE_TYPE_NONE;
+    *engine_caps = 0ul;
+    *gtt_linear_base = 0ul;
+    *ring_linear_base = 0ul;
+    *ring_bytes = 0ul;
+
+    if (V9xPciReadAtiMmioBar(&bar2) == 0u) {
+        return;
+    }
+    if (V9xMiniAtiMmioMap(bar2, &linear) == 0u || linear == 0ul) {
+        return;
+    }
+    *control_linear_base = linear;
+    *mapped_aperture_bytes = V9X_RAGE_IIC_MMIO_BYTES;
+    *engine_type = V9X_DD_ENGINE_TYPE_ATI_RAGE2;
+    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+}
 
 /* Not static: resolved by name in the link map by the per-object audit. */
 const V9X_HW16_DEVICE v9x_rage_iic_device = {
@@ -27,8 +78,9 @@ const V9X_HW16_DEVICE v9x_rage_iic_device = {
     "1002", "4757",
     "ati-mach64-unavailable-v1",
     "vbe-lfb",
+    "directdraw-fill-copy",
     0,
     0,
-    0,
+    v9x_rage_iic_fill_engine,
     0
 };

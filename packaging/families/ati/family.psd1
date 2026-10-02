@@ -137,14 +137,16 @@
             Adapter = 'ATI 3D Rage IIC AGP'
             ClockDetector = 'ati-mach64-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Tier-0. A Rage II-class 264GT2C with no triangle setup engine,
-            # so d3d_mach64.c cannot serve it and no ATI_MACH64 engine is
-            # claimed: d3d_select.c would route that type to it.
-            # docs\decisions\2026-10-02-rage-iic-register-survey.md.
-            Acceleration = 'none'
+            # A Rage II-class 264GT2C: the Mobility's register window and 2D
+            # engine, no triangle setup engine. The 2D engine serves
+            # DirectDraw fill and copy as ATI_RAGE2, a type of its own so
+            # d3d_select.c never routes it to d3d_mach64.c. No D3D until a
+            # Rage II back-end is measured
+            # (docs\plans\ati-rage-iic-hardware-3d.md).
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'ATI_RAGE2'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # MEM_CNTL measured 4 MiB on A8U4I5; 3DMark reported 4074 KB.
             VideoMemoryBytes = 4194304
 

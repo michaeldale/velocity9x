@@ -33,6 +33,14 @@
 /* ATI Mach64 VTB+ engine. Declared for Phase 1 plumbing; ATI manifests remain
  * NONE until the physical 2D/3D gates publish a measured capability set. */
 #define V9X_DD_ENGINE_TYPE_ATI_MACH64   4ul
+/*
+ * ATI Rage II class (264GT2C, the Rage IIC): the Mach64 register window and
+ * 2D engine, but no triangle setup engine. A type of its own because the
+ * selectors route by type, and ATI_MACH64 reaches d3d_mach64.c, whose every
+ * triangle is a setup-engine packet this chip cannot take
+ * (docs\decisions\2026-10-02-rage-iic-register-survey.md).
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_RAGE2    5ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

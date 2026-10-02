@@ -45,6 +45,10 @@
 #define V9X_M64_BUS_CNTL              0x000004a0ul
 #define V9X_M64_GEN_TEST_CNTL         0x000004d0ul
 #define V9X_M64_CONFIG_CHIP_ID        0x000004e0ul
+/* CONFIG_CHIP_ID[15:0] by part, each read through BAR2 on its machine:
+ * 'LM' on the Gateway (64004C4D), 'GW' on A8U4I5 (7A004757). */
+#define V9X_M64_CHIP_RAGE_MOBILITY_M  0x00004c4dul
+#define V9X_M64_CHIP_RAGE_IIC         0x00004757ul
 /* BAR2-relative block-1 setup registers occupy the lower 1 KiB. */
 #define V9X_M64_VERTEX_1_S            0x00000240ul
 #define V9X_M64_VERTEX_1_T            0x00000244ul
@@ -103,6 +107,7 @@
 #define V9X_M64_REGISTER_SLOTS        512ul
 #define V9X_M64_FILL_DWORDS           12ul
 #define V9X_M64_2D_MODE_DWORDS        3ul
+#define V9X_M64_2D_MODE_GT_DWORDS     2ul
 #define V9X_M64_FILL_REPAIR_DWORDS    3ul
 #define V9X_M64_COPY_DWORDS           14ul
 #define V9X_M64_FLAT_TRIANGLE_DWORDS  19ul

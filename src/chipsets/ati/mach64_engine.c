@@ -269,6 +269,22 @@ v9x_status v9x_m64_build_2d_mode(v9x_u32 *offsets, v9x_u32 *values,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_m64_build_2d_mode_gt(v9x_u32 *offsets, v9x_u32 *values,
+                                    v9x_u32 capacity, v9x_u32 *written)
+{
+    if (written != 0) {
+        *written = 0ul;
+    }
+    if (offsets == 0 || values == 0 || written == 0 ||
+        capacity < V9X_M64_2D_MODE_GT_DWORDS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    offsets[0] = V9X_M64_Z_CNTL;         values[0] = 0ul;
+    offsets[1] = V9X_M64_SCALE_3D_CNTL;  values[1] = 0ul;
+    *written = V9X_M64_2D_MODE_GT_DWORDS;
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written)

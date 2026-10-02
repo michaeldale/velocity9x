@@ -168,6 +168,11 @@ v9x_status v9x_m64_reset_replay(struct v9x_m64_engine *engine,
  * every engine fill; a 3D draw writes its full state itself. */
 v9x_status v9x_m64_build_2d_mode(v9x_u32 *offsets, v9x_u32 *values,
                                  v9x_u32 capacity, v9x_u32 *written);
+/* The same for a Rage II-class part (264GT2C): Z and SCALE_3D_CNTL only.
+ * ALPHA_TST_CNTL is a Rage Pro register (xf86-video-mach64 atiregs.h,
+ * "GTPro"), so on this chip a write to it lands on nothing known. */
+v9x_status v9x_m64_build_2d_mode_gt(v9x_u32 *offsets, v9x_u32 *values,
+                                    v9x_u32 capacity, v9x_u32 *written);
 v9x_status v9x_m64_build_fill(const struct v9x_m64_fill *fill,
                               v9x_u32 *offsets, v9x_u32 *values,
                               v9x_u32 capacity, v9x_u32 *written);
