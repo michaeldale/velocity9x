@@ -2679,6 +2679,187 @@ static int atirx_run_texmix(struct v9x_m64_engine *engine,
     return 1;
 }
 
+/* ---- The scanout start, watched on the monitor -------------------------- */
+
+/*
+ * /crtc: whether CRTC_OFF_PITCH moves the picture in the VBE modes, and
+ * when a write takes effect. The agent's screenshots read the primary's
+ * memory, not the scanout, so the answer is what someone at the monitor
+ * sees. docs\issues\2026-10-02-rage-iic-flips-never-presented.md.
+ *
+ * Read-only first: the CRTC must say 1024x768 at offset 0 with a pitch of
+ * 1024 pixels (the desktop), or nothing is written. A test picture is
+ * drawn at VRAM 0x200000, past the 1.5 MiB front buffer. Then:
+ *   A (10 s): the scanout pointed at the picture, then back;
+ *   B (10 s): each frame, the picture at line 384 and the desktop at line
+ *   600. A register applied at once shows a band of the picture across
+ *   the middle; one latched at the frame start shows only the desktop.
+ * The original value is written back on every path out.
+ */
+#define ATIRX_CRTC_H_TOTAL_DISP 0x400u
+#define ATIRX_CRTC_V_TOTAL_DISP 0x408u
+#define ATIRX_CRTC_VLINE        0x410u
+#define ATIRX_CRTC_OFF_PITCH    0x414u
+#define ATIRX_CRTC_PICTURE      0x00200000ul
+#define ATIRX_CRTC_WIDTH        1024ul
+#define ATIRX_CRTC_HEIGHT       768ul
+#define ATIRX_CRTC_BAND_TOP     384ul
+#define ATIRX_CRTC_BAND_BOTTOM  600ul
+#define ATIRX_CRTC_SPIN         20000000ul
+
+static DWORD atirx_crtc_vline(void)
+{
+    return (atirx_read(0, ATIRX_CRTC_VLINE) >> 16) & 0x7fful;
+}
+
+/* Spin until the current line is in [low, high); 0 if it never comes. */
+static int atirx_crtc_wait_line(DWORD low, DWORD high)
+{
+    DWORD spins;
+
+    for (spins = 0ul; spins < ATIRX_CRTC_SPIN; ++spins) {
+        DWORD line = atirx_crtc_vline();
+
+        if (line >= low && line < high) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void atirx_crtc_picture(void)
+{
+    DWORD x;
+    DWORD y;
+    volatile WORD *base = atirx_fb + ATIRX_CRTC_PICTURE / 2ul;
+
+    /* Top half red, bottom half blue, a white diagonal band and a green
+     * frame 16 pixels wide: unmistakable, and nothing like the desktop. */
+    for (y = 0ul; y < ATIRX_CRTC_HEIGHT; ++y) {
+        for (x = 0ul; x < ATIRX_CRTC_WIDTH; ++x) {
+            WORD value = y < ATIRX_CRTC_HEIGHT / 2ul ? 0xf800u : 0x001fu;
+
+            if (x < 16ul || y < 16ul || x >= ATIRX_CRTC_WIDTH - 16ul ||
+                y >= ATIRX_CRTC_HEIGHT - 16ul) {
+                value = 0x07e0u;
+            } else if ((x > y ? x - y : y - x) < 24ul) {
+                value = 0xffffu;
+            }
+            base[y * ATIRX_CRTC_WIDTH + x] = value;
+        }
+    }
+}
+
+static void atirx_crtc_hold(DWORD ms)
+{
+    DWORD start = GetTickCount();
+
+    while (GetTickCount() - start < ms) {
+        Sleep(50);
+    }
+}
+
+static int atirx_run_crtc(int read_only)
+{
+    DWORD h_total;
+    DWORD v_total;
+    DWORD original;
+    DWORD picture;
+    DWORD h_disp;
+    DWORD v_disp;
+    DWORD v_all;
+    DWORD lines[8];
+    DWORD index;
+    DWORD frames = 0ul;
+    DWORD misses = 0ul;
+    DWORD start;
+    DWORD readback;
+    char key[32];
+    char text[16];
+
+    atirx_key("SceneSet", "crtc");
+    h_total = atirx_read(0, ATIRX_CRTC_H_TOTAL_DISP);
+    v_total = atirx_read(0, ATIRX_CRTC_V_TOTAL_DISP);
+    original = atirx_read(0, ATIRX_CRTC_OFF_PITCH);
+    h_disp = (((h_total >> 16) & 0xfful) + 1ul) * 8ul;
+    v_disp = ((v_total >> 16) & 0x7fful) + 1ul;
+    v_all = (v_total & 0x7fful) + 1ul;
+    atirx_key_hex("CrtcHTotalDisp", h_total);
+    atirx_key_hex("CrtcVTotalDisp", v_total);
+    atirx_key_hex("CrtcOffPitch", original);
+    atirx_key_dec("CrtcHDisp", h_disp);
+    atirx_key_dec("CrtcVDisp", v_disp);
+    atirx_key_dec("CrtcVTotal", v_all);
+    for (index = 0ul; index < 8ul; ++index) {
+        lines[index] = atirx_crtc_vline();
+        Sleep(3);
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        lstrcpyA(key, "CrtcVline");
+        atirx_decimal(text, index);
+        lstrcatA(key, text);
+        atirx_key_dec(key, lines[index]);
+    }
+    atirx_flush();
+
+    /* The desktop, exactly, or nothing is written. */
+    if (h_disp != ATIRX_CRTC_WIDTH || v_disp != ATIRX_CRTC_HEIGHT ||
+        (original & 0x000ffffful) != 0ul ||
+        ((original >> 22) & 0x3fful) != ATIRX_CRTC_WIDTH / 8ul ||
+        v_all <= ATIRX_CRTC_BAND_BOTTOM) {
+        atirx_key("Result", "CRTC-NOT-DESKTOP");
+        return 0;
+    }
+    if (read_only) {
+        atirx_key("Result", "CRTC-READ");
+        return 1;
+    }
+    picture = (original & 0xfff00000ul) | (ATIRX_CRTC_PICTURE / 8ul);
+    atirx_crtc_picture();
+    atirx_key("Phase", "picture drawn; A starts in 5 s");
+    atirx_flush();
+    atirx_crtc_hold(5000ul);
+
+    /* A: the whole picture for ten seconds. */
+    atirx_write(0, ATIRX_CRTC_OFF_PITCH, picture);
+    readback = atirx_read(0, ATIRX_CRTC_OFF_PITCH);
+    atirx_key_hex("PhaseAReadback", readback);
+    atirx_key("Phase", "A: picture");
+    atirx_flush();
+    atirx_crtc_hold(10000ul);
+    atirx_write(0, ATIRX_CRTC_OFF_PITCH, original);
+    atirx_key_hex("PhaseARestored", atirx_read(0, ATIRX_CRTC_OFF_PITCH));
+    atirx_key("Phase", "A done; B starts in 5 s");
+    atirx_flush();
+    atirx_crtc_hold(5000ul);
+
+    /* B: picture at line 384, desktop at line 600, every frame. */
+    atirx_key("Phase", "B: band test");
+    atirx_flush();
+    start = GetTickCount();
+    while (GetTickCount() - start < 10000ul) {
+        if (!atirx_crtc_wait_line(ATIRX_CRTC_BAND_TOP,
+                                  ATIRX_CRTC_BAND_TOP + 8ul)) {
+            ++misses;
+            break;
+        }
+        atirx_write(0, ATIRX_CRTC_OFF_PITCH, picture);
+        if (!atirx_crtc_wait_line(ATIRX_CRTC_BAND_BOTTOM,
+                                  ATIRX_CRTC_BAND_BOTTOM + 8ul)) {
+            ++misses;
+            break;
+        }
+        atirx_write(0, ATIRX_CRTC_OFF_PITCH, original);
+        ++frames;
+    }
+    atirx_write(0, ATIRX_CRTC_OFF_PITCH, original);
+    atirx_key_dec("PhaseBFrames", frames);
+    atirx_key_dec("PhaseBMisses", misses);
+    atirx_key_hex("PhaseBRestored", atirx_read(0, ATIRX_CRTC_OFF_PITCH));
+    atirx_key("Result", misses == 0ul ? "CRTC-RUN" : "CRTC-LINE-LOST");
+    return 1;
+}
+
 static void atirx_prefix(char *prefix, const char *name)
 {
     lstrcpyA(prefix, name);
@@ -2801,6 +2982,13 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/crtc")) {
+        int completed = atirx_run_crtc(
+            atirx_has_switch(GetCommandLineA(), "/crtcread"));
+
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/texmix")) {
         int completed = atirx_run_texmix(&engine, &target);
 
