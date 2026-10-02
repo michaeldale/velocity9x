@@ -3465,6 +3465,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_mach64) {
         out->engine = V9X_R3D_ABI_ENGINE_MACH64;
         name = "Velocity9x Mach64";
+    } else if (ops == &v9x_d3d_engine_rage2) {
+        out->engine = V9X_R3D_ABI_ENGINE_RAGE2;
+        name = "Velocity9x Rage IIC";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -3474,7 +3477,10 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     if (v9x_d3d_target_format_of(&v9x_hal->info.vmiData.ddpfDisplay,
                                  &format) &&
         !(ops == &v9x_d3d_engine_virge &&
-          format != V9X_D3D_TARGET_FORMAT_XRGB1555)) {
+          format != V9X_D3D_TARGET_FORMAT_XRGB1555) &&
+        /* The Rage IIC draws 565 only (rage2_draw.c's policy). */
+        !(ops == &v9x_d3d_engine_rage2 &&
+          format != V9X_D3D_TARGET_FORMAT_RGB565)) {
         out->target_formats = 1ul << format;
     }
     out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_RGB565) |
@@ -3505,7 +3511,11 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_SQUARE |
                                 V9X_R3D_ABI_HWTEX_POW2;
-    } else if (ops == &v9x_d3d_engine_mach64) {
+    } else if (ops == &v9x_d3d_engine_mach64 ||
+               ops == &v9x_d3d_engine_rage2) {
+        /* The Rage IIC's as the Mach64's: powers of two, 8 to 256, square
+         * or not (measured, Phase 4 T10/T14), all three formats, placed by
+         * v9x_d3d_rage2_create_surface at pitch = width. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

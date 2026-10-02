@@ -358,7 +358,10 @@ static v9x_u32 v9x_d3d_rage2_log2(v9x_u32 edge)
 }
 
 /* Passive, as the contract requires. The batch's specular colour and
- * coordinates are unknown here, so draw() checks again. */
+ * coordinates are unknown here, so draw() checks again: a CLAMP texture is
+ * accepted as if its coordinates stayed in [0, 1], and draw() refuses the
+ * batch that does not (the render interface asks before every draw, and
+ * refusing every GL_CLAMP draw here would drop them all). */
 static int v9x_d3d_rage2_accepts(const V9X_R3D_DRAW *draw)
 {
     V9X_D3D_MACH64_TEXTURE texture;
@@ -371,7 +374,7 @@ static int v9x_d3d_rage2_accepts(const V9X_R3D_DRAW *draw)
     v9x_d3d_rage2_resolve_texture(draw, &texture);
     v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
     request.vertex_alpha_opaque = draw->vertex_alpha_opaque;
-    return v9x_r2_check_draw(&request, 0ul, &decision) ==
+    return v9x_r2_check_draw(&request, 1ul, &decision) ==
            V9X_M64_REFUSE_NONE;
 }
 
