@@ -39,7 +39,7 @@ was captured on the Gateway until `V9XWND` showed the score dialog.
 |---|---|---|---|
 | netbook, now | **1253** | 14752 | boot 88, async, textures to 1024 |
 | netbook, last 640x480 | 852 | 14762 | 2026-09-30 boot 60, `c52281d-dirty`, synchronous, textures to 256, 262 reason-6 refusals ([record](../probe/d3d-record-merge-2026-09-30/README.md)) |
-| netbook, earlier 640x480 | 717 | - | 2026-09-25 ([record](2026-09-25-placing-plain-textures-on-gen3.md)) |
+| netbook, earlier 640x480 | 717 | - | 2026-09-25 ([record](2026-09-25-netbook-3dmark99-with-mip-trees.md)) |
 | Gateway, now | **604** | 7075 | boot 89 |
 | Gateway, last 640x480 | 589 | 7065 | 2026-09-30 boot 66, record-merge candidate |
 | Gateway, run 8 | 643 | 6572 | 2026-09-29 boot 57 ([record](../probe/ati-rage-mobility-m-3dmark99-2026-09-29/README.md)) |
