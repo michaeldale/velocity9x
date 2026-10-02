@@ -1,0 +1,1058 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display]
+@="Display adapters"
+"Installer"="SetupX.Dll, Display_ClassInstaller"
+"Icon"="-1"
+"EnumDriverStack"="enumfile.dll,EnumDisplayDriverStack"
+"Link"="{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"DriverDate"="05-02-2003"
+"DriverDesc"="NVIDIA GeForce2 GTS/GeForce2 Pro"
+"InfPath"="NVAML.INF"
+"InfSection"="NV10"
+"ProviderName"="NVIDIA"
+"MatchingDeviceId"="PCI\\VEN_10DE&DEV_0150&SUBSYS_40161043"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\DEFAULT]
+"Mode"="16,800,600"
+"drv"="nvdisp.drv"
+"drv2"="nvdisp.drv"
+"minivdd"="nvmini.vxd"
+"minivdd2"="nvmini.vxd"
+"vdd"="*vdd"
+"RefreshRate"="-1"
+"DDC"="1"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\640,480]
+@="60,70,72,75,85,100,120,140,144,150,170,200,240"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170,200,240"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\848,480]
+@="60,70,72,75,85,100,120,140,144,170,200,240"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,170,200,240"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\800,600]
+@="60,70,72,75,85,100,120,140,144,170,200,240"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,170,200,240"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1024,768]
+@="60,70,72,75,85,100,120,140,144,150,170,200,240"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170,200,240"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1152,864]
+@="60,70,72,75,85,100,120,140,144,150,170,200"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1280,720]
+@="60,70,72,75,85,100,120,140,144,150,170"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1280,768]
+@="60,70,72,75,85,100,120,140,144,150,170"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1280,960]
+@="60,70,72,75,85,100,120,140,144,150,170"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1280,1024]
+@="60,70,72,75,85,100,120,140,144,150,170"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1360,768]
+@="60,70,72,75,85,100,120,140,144,150,170"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1600,900]
+@="60,70,72,75,85,100,120,140,144,150"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1600,1024]
+@="60,70,72,75,85,100,120"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1600,1200]
+@="60,70,72,75,85,100,120"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1920,1080]
+@="60,70,72,75,85,100"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1920,1200]
+@="60,70,72,75,85,100"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\1920,1440]
+@="60,70,72,75,85"
+"ModeRefreshRateList"="60,70,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\8\2048,1536]
+@="60,70,72,75"
+"ModeRefreshRateList"="60,70,72,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\640,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\800,600]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\848,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1024,768]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1152,864]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1280,720]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1280,768]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1280,960]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1280,1024]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1360,768]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1600,900]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1600,1024]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1600,1200]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1920,1080]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1920,1200]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\1920,1440]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\16\2048,1536]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\640,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\800,600]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\848,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1024,768]
+@="60,70,72,75,85,100,120,140,144,150,170,200"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1152,864]
+@="60,70,72,75,85,100,120,140,150,170"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1280,720]
+@="60,70,72,75,85,100,120,140,150"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1280,768]
+@="60,70,72,75,85,100,120,140,150"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1280,960]
+@="60,70,72,75,85,100,120,140,150"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1280,1024]
+@="60,70,72,75,85,100,120,140,150"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1360,768]
+@="60,70,72,75,85,100,120,140,150"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1600,900]
+@="60,70,72,75,85,100,120"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1600,1024]
+@="60,70,72,75,85,100"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1600,1200]
+@="60,70,72,75,85,100"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1920,1080]
+@="60,70,72,75,85,100"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1920,1200]
+@="60,70,72,75,85,100"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\1920,1440]
+@="60,70,75,85"
+"ModeRefreshRateList"="60,70,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\32\2048,1536]
+@="60,70,72,75"
+"ModeRefreshRateList"="60,70,72,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\shellex\PropertySheetHandlers\NVIDIA CPL Extension]
+@="{67E0E3C0-3068-11D3-8BD1-00104B6F7516}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"InfPath"="NVAML.INF"
+"InfSection"="NV5"
+"ProviderName"="NVIDIA"
+"DriverDate"=" 5- 2-2003"
+"DriverDesc"="NVIDIA RIVA TNT2 Model 64/Model 64 Pro"
+"MatchingDeviceId"="PCI\\VEN_10DE&DEV_002D"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\DEFAULT]
+"Mode"="16,800,600"
+"drv"="nvdisp.drv"
+"drv2"="nvdisp.drv"
+"minivdd"="nvmini.vxd"
+"minivdd2"="nvmini.vxd"
+"vdd"="*vdd"
+"RefreshRate"="-1"
+"DDC"="1"
+"CHIPID"=hex:00,40,15,20,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\640,480]
+@="60,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170,200,240"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\800,600]
+@="60,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,170,200,240"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1024,768]
+@="60,70,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1152,864]
+@="60,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1280,720]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1280,768]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1280,960]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1280,1024]
+@="60,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1600,900]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1600,1024]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1600,1200]
+@=""
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1920,1080]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1920,1200]
+@=""
+"ModeRefreshRateList"="60,70,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\1920,1440]
+@=""
+"ModeRefreshRateList"="60,70,72,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\8\2048,1536]
+@=""
+"ModeRefreshRateList"="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1280,720]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1280,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1280,960]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1600,900]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1600,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1920,1080]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1920,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\1920,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\16\2048,1536]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1024,768]
+@="60,70,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,144,150,170"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1152,864]
+@="60,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120,140,150"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1280,720]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1280,768]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1280,960]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1280,1024]
+@="60,75"
+"ModeRefreshRateList"="60,70,72,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1600,900]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1600,1024]
+@="60"
+"ModeRefreshRateList"="60,70,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1600,1200]
+@=""
+"ModeRefreshRateList"="60,70,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1920,1080]
+@="60"
+"ModeRefreshRateList"="60,70,72,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1920,1200]
+@=""
+"ModeRefreshRateList"="60,70"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\32\1920,1440]
+@=""
+"ModeRefreshRateList"="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\NVIDIA]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\NVIDIA\DirectDraw]
+"OverlayMode"=dword:00000001
+"OverlayColorControlEnable"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\NVIDIA\Display]
+"LastDisplaySetOnLogicalDevice0"="CRT0"
+"DesktopModeCRT0"="800,600,16"
+"RefreshRateCRT0"=dword:0000004b
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\NVIDIA\NVTweak]
+"NvCplPreviousConnectedMask"=dword:00000001
+"NvCplCurrentConnectedMask"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\NVIDIA\Direct3D]
+"D3d_23132857"=dword:bffc9ce4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002]
+"InfPath"="VELOCI~1.INF"
+"InfSection"="Velocity9x.Install.virge-dx"
+"ProviderName"="Velocity9x Project"
+"DriverDesc"="Velocity9x S3 Trio3D/2X"
+"MatchingDeviceId"="PCI\\VEN_5333&DEV_8A13"
+"V9xFamily"="vbe"
+"V9xSyncGeneration"="13"
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"DriverDate"=" 9- 2-2025"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"RefreshRate"="0"
+"PCIRebalance"="1"
+"ExtModeSwitch"="0"
+"minivdd"="v9xmini.vxd"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\640,400]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\1280,1024]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\1280,1024]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\32\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\32\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\32\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"InfPath"="VELOCI~1.INF"
+"InfSection"="Velocity9x.Install.trio64"
+"ProviderName"="Velocity9x Project"
+"DriverDate"=" 9- 2-2025"
+"DriverDesc"="Velocity9x S3 Trio32/64 86C764"
+"MatchingDeviceId"="PCI\\VEN_5333&DEV_8811"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"RefreshRate"="0"
+"PCIRebalance"="1"
+"ExtModeSwitch"="0"
+"minivdd"="v9xmini.vxd"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\8\640,400]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\8\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\8\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\8\1280,1024]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\16\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\16\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\16\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\16\1280,1024]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\32\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\32\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\MODES\32\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0003\INFO]
+"ChipType"="Trio64(86C764)"
+"Revision"="C"
+"DACType"="Internal"
+"VideoMemory"=dword:00200000
+"MMIO"=hex:00
+"Linear"=hex:01
+"HWCursor"=hex:01
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"InfPath"="VELOCI~1.INF"
+"InfSection"="Velocity9x.Install.virge-dx"
+"ProviderName"="Velocity9x Project"
+"DriverDate"=" 9- 2-2025"
+"DriverDesc"="Velocity9x S3 ViRGE/DX 86C375"
+"MatchingDeviceId"="PCI\\VEN_5333&DEV_8A01"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"RefreshRate"="0"
+"PCIRebalance"="1"
+"ExtModeSwitch"="0"
+"minivdd"="v9xmini.vxd"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\8\640,400]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\8\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\8\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\8\1280,1024]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\16\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\16\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\16\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\16\1280,1024]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\32\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\32\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0004\MODES\32\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005]
+"Ver"="6.50.6077-020"
+"DevLoader"="*vdd"
+"InfPath"="TRIDEN~1.INF"
+"InfSection"="Trident.Install"
+"ProviderName"="Trident Microsystems"
+"DriverDate"="11-16-2001"
+"DriverDesc"="Trident Blade XP /ICD"
+"MatchingDeviceId"="PCI\\VEN_1023&DEV_9910&SUBSYS_99101023"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\DEFAULT]
+"Mode"="8,640,480"
+"drv"="trid9910.drv"
+"drv2"="trid9910.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="tvdd9910.vxd"
+"RefreshRate"="-1"
+"DDC"="1"
+"ExtModeSwitch"="0"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\640,480]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\720,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\720,576]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\800,600]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\1024,768]
+@="44,60,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\1280,1024]
+@="44,60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\1400,1050]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\8\1600,1200]
+@="48,60,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\640,480]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\720,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\720,576]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\800,600]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\1024,768]
+@="44,60,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\1280,1024]
+@="44,60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\1400,1050]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\16\1600,1200]
+@="48,60,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\640,480]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\720,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\720,576]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\800,600]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\1024,768]
+@="44,60,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\1280,1024]
+@="44,60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\1400,1050]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\MODES\32\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\UTILITY]
+"TvPageEnable"="1"
+"DevPageEnable"="1"
+"MultViewEnable"="0"
+"SingleVirtualEnable"="0"
+"LCDPageEnable"="0"
+"GammaPageEnable"="1"
+"VideoPageEnable"="1"
+"DesktopDevPageEnable"="1"
+"VideoColorBypassEnable"="1"
+"UTILITY_ID"="desktop"
+"W2KESCCount"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\ADVANCE]
+"UseTshbDevSpec"="0"
+"DeviceInfo"=hex:02,00,00,00
+"HKeyMultiViewLoop"="0"
+"GammaTable"=hex:00,00,00,01,00,02,00,03,00,04,00,05,00,06,00,07,00,08,00,09,\
+  00,0a,00,0b,00,0c,00,0d,00,0e,00,0f,00,10,00,11,00,12,00,13,00,14,00,15,00,\
+  16,00,17,00,18,00,19,00,1a,00,1b,00,1c,00,1d,00,1e,00,1f,00,20,00,21,00,22,\
+  00,23,00,24,00,25,00,26,00,27,00,28,00,29,00,2a,00,2b,00,2c,00,2d,00,2e,00,\
+  2f,00,30,00,31,00,32,00,33,00,34,00,35,00,36,00,37,00,38,00,39,00,3a,00,3b,\
+  00,3c,00,3d,00,3e,00,3f,00,40,00,41,00,42,00,43,00,44,00,45,00,46,00,47,00,\
+  48,00,49,00,4a,00,4b,00,4c,00,4d,00,4e,00,4f,00,50,00,51,00,52,00,53,00,54,\
+  00,55,00,56,00,57,00,58,00,59,00,5a,00,5b,00,5c,00,5d,00,5e,00,5f,00,60,00,\
+  61,00,62,00,63,00,64,00,65,00,66,00,67,00,68,00,69,00,6a,00,6b,00,6c,00,6d,\
+  00,6e,00,6f,00,70,00,71,00,72,00,73,00,74,00,75,00,76,00,77,00,78,00,79,00,\
+  7a,00,7b,00,7c,00,7d,00,7e,00,7f,00,80,00,81,00,82,00,83,00,84,00,85,00,86,\
+  00,87,00,88,00,89,00,8a,00,8b,00,8c,00,8d,00,8e,00,8f,00,90,00,91,00,92,00,\
+  93,00,94,00,95,00,96,00,97,00,98,00,99,00,9a,00,9b,00,9c,00,9d,00,9e,00,9f,\
+  00,a0,00,a1,00,a2,00,a3,00,a4,00,a5,00,a6,00,a7,00,a8,00,a9,00,aa,00,ab,00,\
+  ac,00,ad,00,ae,00,af,00,b0,00,b1,00,b2,00,b3,00,b4,00,b5,00,b6,00,b7,00,b8,\
+  00,b9,00,ba,00,bb,00,bc,00,bd,00,be,00,bf,00,c0,00,c1,00,c2,00,c3,00,c4,00,\
+  c5,00,c6,00,c7,00,c8,00,c9,00,ca,00,cb,00,cc,00,cd,00,ce,00,cf,00,d0,00,d1,\
+  00,d2,00,d3,00,d4,00,d5,00,d6,00,d7,00,d8,00,d9,00,da,00,db,00,dc,00,dd,00,\
+  de,00,df,00,e0,00,e1,00,e2,00,e3,00,e4,00,e5,00,e6,00,e7,00,e8,00,e9,00,ea,\
+  00,eb,00,ec,00,ed,00,ee,00,ef,00,f0,00,f1,00,f2,00,f3,00,f4,00,f5,00,f6,00,\
+  f7,00,f8,00,f9,00,fa,00,fb,00,fc,00,fd,00,fe,00,ff,00,00,00,01,00,02,00,03,\
+  00,04,00,05,00,06,00,07,00,08,00,09,00,0a,00,0b,00,0c,00,0d,00,0e,00,0f,00,\
+  10,00,11,00,12,00,13,00,14,00,15,00,16,00,17,00,18,00,19,00,1a,00,1b,00,1c,\
+  00,1d,00,1e,00,1f,00,20,00,21,00,22,00,23,00,24,00,25,00,26,00,27,00,28,00,\
+  29,00,2a,00,2b,00,2c,00,2d,00,2e,00,2f,00,30,00,31,00,32,00,33,00,34,00,35,\
+  00,36,00,37,00,38,00,39,00,3a,00,3b,00,3c,00,3d,00,3e,00,3f,00,40,00,41,00,\
+  42,00,43,00,44,00,45,00,46,00,47,00,48,00,49,00,4a,00,4b,00,4c,00,4d,00,4e,\
+  00,4f,00,50,00,51,00,52,00,53,00,54,00,55,00,56,00,57,00,58,00,59,00,5a,00,\
+  5b,00,5c,00,5d,00,5e,00,5f,00,60,00,61,00,62,00,63,00,64,00,65,00,66,00,67,\
+  00,68,00,69,00,6a,00,6b,00,6c,00,6d,00,6e,00,6f,00,70,00,71,00,72,00,73,00,\
+  74,00,75,00,76,00,77,00,78,00,79,00,7a,00,7b,00,7c,00,7d,00,7e,00,7f,00,80,\
+  00,81,00,82,00,83,00,84,00,85,00,86,00,87,00,88,00,89,00,8a,00,8b,00,8c,00,\
+  8d,00,8e,00,8f,00,90,00,91,00,92,00,93,00,94,00,95,00,96,00,97,00,98,00,99,\
+  00,9a,00,9b,00,9c,00,9d,00,9e,00,9f,00,a0,00,a1,00,a2,00,a3,00,a4,00,a5,00,\
+  a6,00,a7,00,a8,00,a9,00,aa,00,ab,00,ac,00,ad,00,ae,00,af,00,b0,00,b1,00,b2,\
+  00,b3,00,b4,00,b5,00,b6,00,b7,00,b8,00,b9,00,ba,00,bb,00,bc,00,bd,00,be,00,\
+  bf,00,c0,00,c1,00,c2,00,c3,00,c4,00,c5,00,c6,00,c7,00,c8,00,c9,00,ca,00,cb,\
+  00,cc,00,cd,00,ce,00,cf,00,d0,00,d1,00,d2,00,d3,00,d4,00,d5,00,d6,00,d7,00,\
+  d8,00,d9,00,da,00,db,00,dc,00,dd,00,de,00,df,00,e0,00,e1,00,e2,00,e3,00,e4,\
+  00,e5,00,e6,00,e7,00,e8,00,e9,00,ea,00,eb,00,ec,00,ed,00,ee,00,ef,00,f0,00,\
+  f1,00,f2,00,f3,00,f4,00,f5,00,f6,00,f7,00,f8,00,f9,00,fa,00,fb,00,fc,00,fd,\
+  00,fe,00,ff,00,00,00,01,00,02,00,03,00,04,00,05,00,06,00,07,00,08,00,09,00,\
+  0a,00,0b,00,0c,00,0d,00,0e,00,0f,00,10,00,11,00,12,00,13,00,14,00,15,00,16,\
+  00,17,00,18,00,19,00,1a,00,1b,00,1c,00,1d,00,1e,00,1f,00,20,00,21,00,22,00,\
+  23,00,24,00,25,00,26,00,27,00,28,00,29,00,2a,00,2b,00,2c,00,2d,00,2e,00,2f,\
+  00,30,00,31,00,32,00,33,00,34,00,35,00,36,00,37,00,38,00,39,00,3a,00,3b,00,\
+  3c,00,3d,00,3e,00,3f,00,40,00,41,00,42,00,43,00,44,00,45,00,46,00,47,00,48,\
+  00,49,00,4a,00,4b,00,4c,00,4d,00,4e,00,4f,00,50,00,51,00,52,00,53,00,54,00,\
+  55,00,56,00,57,00,58,00,59,00,5a,00,5b,00,5c,00,5d,00,5e,00,5f,00,60,00,61,\
+  00,62,00,63,00,64,00,65,00,66,00,67,00,68,00,69,00,6a,00,6b,00,6c,00,6d,00,\
+  6e,00,6f,00,70,00,71,00,72,00,73,00,74,00,75,00,76,00,77,00,78,00,79,00,7a,\
+  00,7b,00,7c,00,7d,00,7e,00,7f,00,80,00,81,00,82,00,83,00,84,00,85,00,86,00,\
+  87,00,88,00,89,00,8a,00,8b,00,8c,00,8d,00,8e,00,8f,00,90,00,91,00,92,00,93,\
+  00,94,00,95,00,96,00,97,00,98,00,99,00,9a,00,9b,00,9c,00,9d,00,9e,00,9f,00,\
+  a0,00,a1,00,a2,00,a3,00,a4,00,a5,00,a6,00,a7,00,a8,00,a9,00,aa,00,ab,00,ac,\
+  00,ad,00,ae,00,af,00,b0,00,b1,00,b2,00,b3,00,b4,00,b5,00,b6,00,b7,00,b8,00,\
+  b9,00,ba,00,bb,00,bc,00,bd,00,be,00,bf,00,c0,00,c1,00,c2,00,c3,00,c4,00,c5,\
+  00,c6,00,c7,00,c8,00,c9,00,ca,00,cb,00,cc,00,cd,00,ce,00,cf,00,d0,00,d1,00,\
+  d2,00,d3,00,d4,00,d5,00,d6,00,d7,00,d8,00,d9,00,da,00,db,00,dc,00,dd,00,de,\
+  00,df,00,e0,00,e1,00,e2,00,e3,00,e4,00,e5,00,e6,00,e7,00,e8,00,e9,00,ea,00,\
+  eb,00,ec,00,ed,00,ee,00,ef,00,f0,00,f1,00,f2,00,f3,00,f4,00,f5,00,f6,00,f7,\
+  00,f8,00,f9,00,fa,00,fb,00,fc,00,fd,00,fe,00,ff
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\tCONFIG]
+"Win95Compatible"="1"
+"OffScreenDeviceBitmap"="1"
+"MonitorDeviceSwitching"="1"
+"MCEnable"="1"
+"NotBiosDefRef"="1"
+"PCIRetryOff"="0"
+"PanningSupport"="1"
+"ReadBootUpDevices"="0"
+"DisableAGPfeature"="0"
+"AGPCmdListOff"="0"
+"PCICmdListOff"="0"
+"AGPTexSys"="1"
+"ForceDVDAGP1X"="0"
+"ForceAGP1X"="0"
+"DrvSupportSubTitle"="0"
+"AGPFlagEffect"="0"
+"TextureFormatCnt"="20"
+"RotationFlag"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\INFO]
+"ChipType"="CyberBlade XP"
+"DACType"="Trident-Built-In"
+"VideoMemory"=dword:01000000
+"MMIO"="1"
+"LinearAccess"="1"
+"HWCursor"="1"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0005\shellex\PropertySheetHandlers\Refresh Rate Control]
+@="{dc3e5640-f745-11ce-9850-0040c721629a}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006]
+"InfPath"="ATITEC~2.INF"
+"InfSection"="MACXW4_AGP_ENU"
+"ProviderName"="ATI Tech. - Enhanced"
+"DriverDesc"="RAGE IIC AGP (4757)"
+"MatchingDeviceId"="PCI\\VEN_1002&DEV_4757&SUBSYS_47571002"
+"EnumPropPages"="atipdnad.dll,EnumPropPages"
+"Ver"="5.40x2611x3D"
+"DevLoader"="*vdd"
+"ReleaseVersion"="5.40.3"
+"DriverDate"="10- 2-2026"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\INFO]
+"ChipType"="Mach64GT"
+"Revision"=""
+"DACType"="Internal"
+"MMIO"=hex:01
+"Linear"=hex:01
+"HWCursor"=hex:01
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers\ATIPagesX2]
+@="{7841B320-1CE0-11d3-82F2-008029E75E38}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers\ATIPagesX3]
+@="{2A0C94C0-6847-11d2-B9DE-00001B490CC3}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers\ATIPagesX4]
+@="{7841B321-1CE0-11d3-82F2-008029E75E38}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\TVOut Configuration]
+"TBDetected"="Not"
+"TVOut Information"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\Multimedia Table]
+"Tuner Type"="????"
+"Decoder Type"="????"
+"Decoder Crystals Type"="????"
+"Audio Chip Type"="????"
+"OEM Id"="????"
+"ATI Product Id"="????"
+"Product Revision Id"="????"
+"MMTableByte1"="????"
+"MMTableByte6"="????"
+"MMTableByte7"="????"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\Hardware Info]
+"I2C Method"="0"
+"TVOut Support"="0"
+"VideoPort Type"="??"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\Frequency Table]
+"Reference Clock"="598"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI Multimedia Hardware]
+"I2C Expander"="0xFF"
+"Tuner ID"="0"
+"Decoder ID"="0"
+"Audio ID"="FF"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\DEFAULT]
+"Mode"="8,640,480"
+"drv"="ati2ddad.drv"
+"drv2"="ati2ddad.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="ati2ddad.vxd"
+"minivdd2"="ati2ddad.vxd"
+"RefreshRate"="-1"
+"DDC"="1"
+"CHIPID"=hex:64,00,00,00,00,00
+"CRTXSize"="1024"
+"CRTYSize"="768"
+"ErrorCode"=dword:00000000
+"ErrorMessage"=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\640,480]
+@="43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\720,480]
+@="60,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\800,600]
+@="43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\848,480]
+@="60,88"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\1024,768]
+@="43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\1152,864]
+@="43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\1280,1024]
+@="43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\1600,1200]
+@="43,45,56,60,70,72,75,85,90,100,120,140,150,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\720,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\848,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\720,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\848,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\24\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\720,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\848,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\32\1600,1200]
+@=""
+

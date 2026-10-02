@@ -21,4 +21,24 @@ afterwards, same boot. The only repeat-read deltas were `+410`
 (CRTC_VLINE_CRNT_VLINE) and, in the second run, `+418` bit 5
 (CRTC_INT_CNTL, a vblank status bit).
 
+## Install preflight, same boot
+
+The ati package at commit `397da71` (first with `1002:4757`) was
+downloaded into `C:\V9XDIAG`. The display class key was exported first
+(`display-class-before-velocity9x.reg`; the live entry is "RAGE IIC AGP
+(4757)", `ati2ddad.drv`).
+
+`V9XSTAGE.EXE` was run twice. The second run, waited on by the agent,
+exited 0: PASS, the VxD and `V9XDISP.DRV` loaded beside ATI's driver
+and unloaded cleanly. The first run's result box was dismissed unread.
+
+During the first run the screen contents were overwritten: two agent
+screenshots taken with its result box up came back as unrelated noise,
+different each time, one with a band that looks like text-mode memory.
+The mode survived. After the box closed, a desktop F5 repaint brought
+the desktop back intact (screenshots, 17:09 and 17:10 guest time). What
+wrote to video memory, whether the DRV load, its VBE queries or the
+probe VxD, was not determined. The second run was not screenshotted.
+Earlier screenshots on this driver, from the baseline runs, were clean.
+
 Interpretation: [`../../decisions/2026-10-02-rage-iic-register-survey.md`](../../decisions/2026-10-02-rage-iic-register-survey.md).
