@@ -162,8 +162,98 @@ static void test_trap_bounds(void)
     CHECK(written == 0ul);
 }
 
+static void test_shade_state(void)
+{
+    struct v9x_r2_target target;
+    struct v9x_r2_shade shade;
+    v9x_u32 offsets[V9X_R2_SHADE_STATE_DWORDS];
+    v9x_u32 values[V9X_R2_SHADE_STATE_DWORDS];
+    v9x_u32 written = 3ul;
+    v9x_u32 index;
+
+    make_target(&target);
+    memset(&shade, 0, sizeof(shade));
+    shade.start[0] = 255l << 16;          /* red 255.0 */
+    shade.x_inc[1] = -(8l << 16);         /* green -8.0 per pixel */
+    shade.y_inc[2] = 0x00008000l;         /* blue +0.5 per row */
+    CHECK(v9x_r2_build_shade_state(&target, &shade, offsets, values,
+                                   V9X_R2_SHADE_STATE_DWORDS - 1ul,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    CHECK(v9x_r2_build_shade_state(&target, &shade, offsets, values,
+                                   V9X_R2_SHADE_STATE_DWORDS, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == V9X_R2_SHADE_STATE_DWORDS);
+    /* SCALE_3D_CNTL with a shading function before any accumulator. */
+    CHECK(offsets[0] == V9X_M64_SCALE_3D_CNTL && values[0] == 0xc0ul);
+    for (index = 1ul; index < written; ++index) {
+        CHECK(offsets[index] != V9X_M64_SCALE_3D_CNTL);
+    }
+    CHECK(offsets[5] == V9X_M64_DP_SRC && values[5] == 0x00000500ul);
+    /* Values in the measured S.8.12 field, bits 24:4. */
+    CHECK(offsets[11] == V9X_R2_RED_X_INC && values[11] == 0ul);
+    CHECK(offsets[13] == V9X_R2_RED_START && values[13] == 0x00ff0000ul);
+    CHECK(offsets[14] == V9X_R2_GREEN_X_INC && values[14] == 0x01f80000ul);
+    CHECK(offsets[18] == V9X_R2_BLUE_Y_INC && values[18] == 0x00008000ul);
+    /* A start outside 0..255 wraps into the field: the accumulators are
+     * modular (measured), so a negative start is encoded, not refused. */
+    shade.start[0] = -(8l << 16);
+    CHECK(v9x_r2_build_shade_state(&target, &shade, offsets, values,
+                                   V9X_R2_SHADE_STATE_DWORDS, &written) ==
+          V9X_STATUS_OK);
+    CHECK(values[13] == 0x01f80000ul);
+}
+
+static void test_z_state(void)
+{
+    struct v9x_r2_target target;
+    struct v9x_r2_depth depth;
+    v9x_u32 offsets[V9X_R2_Z_STATE_DWORDS];
+    v9x_u32 values[V9X_R2_Z_STATE_DWORDS];
+    v9x_u32 written = 3ul;
+
+    make_target(&target);
+    memset(&depth, 0, sizeof(depth));
+    depth.offset = 0x00210000ul;
+    depth.z_cntl = V9X_R2_Z_EN | (1ul << V9X_R2_Z_TEST_SHIFT) |
+                   V9X_R2_Z_WRITE;
+    depth.start = 0x1234l << 16;
+    depth.x_inc = -(0x10l << 16);
+    depth.y_inc = 0x8000l;
+    CHECK(v9x_r2_build_z_state(&target, &depth, offsets, values,
+                               V9X_R2_Z_STATE_DWORDS - 1ul, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    CHECK(v9x_r2_build_z_state(&target, &depth, offsets, values,
+                               V9X_R2_Z_STATE_DWORDS, &written) ==
+          V9X_STATUS_OK);
+    CHECK(written == V9X_R2_Z_STATE_DWORDS);
+    /* Same pitch as the colour target, its own offset. */
+    CHECK(offsets[0] == V9X_M64_Z_OFF_PITCH &&
+          values[0] == ((8ul << 22) | (0x00210000ul >> 3)));
+    CHECK(offsets[1] == V9X_M64_Z_CNTL && values[1] == 0x111ul);
+    /* S.16.12 in bits 28:0: 16.16 shifted down four. */
+    /* -16.0 is -65536 in S.16.12: 0x20000000 - 0x10000. */
+    CHECK(offsets[2] == V9X_R2_Z_X_INC && values[2] == 0x1fff0000ul);
+    CHECK(offsets[3] == V9X_R2_Z_Y_INC && values[3] == 0x00000800ul);
+    CHECK(offsets[4] == V9X_R2_Z_START && values[4] == 0x01234000ul);
+    /* A Z surface that would run past VRAM, or an unimplemented
+     * Z_CNTL bit, is refused. */
+    depth.offset = 0x003ff000ul;
+    CHECK(v9x_r2_build_z_state(&target, &depth, offsets, values,
+                               V9X_R2_Z_STATE_DWORDS, &written) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+    depth.offset = 0x00210000ul;
+    depth.z_cntl |= 0x00000200ul;
+    CHECK(v9x_r2_build_z_state(&target, &depth, offsets, values,
+                               V9X_R2_Z_STATE_DWORDS, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_rage2_trap_tests(void)
 {
+    test_z_state();
+    test_shade_state();
     test_flat_state();
     test_trap_encoding();
     test_trap_bounds();

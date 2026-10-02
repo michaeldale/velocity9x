@@ -38,9 +38,17 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
     Exact formula and evidence in
     [the edge model](../decisions/2026-10-02-rage-iic-trapezoid-edge-model.md).
   - Identical on boots 135 and 136; guards intact throughout.
-- Next: Phase 3, `rage2_setup.c`. CPU triangle setup into these
-  trapezoids, host-tested against a CPU rasteriser with the measured
-  rules, then the flat-triangle scene.
+- **Phase 3 done**, boot 136
+  ([record](../decisions/2026-10-02-rage-iic-triangles-and-gouraud.md)).
+  Host tests against an independent rasteriser and plane:
+  - **Flat triangles:** 76 of 76 pixel-exact on the card.
+  - **Interpolator formats:** measured by read-back.
+  - **Gouraud:** 60 of 60 bit-exact against the engine model. That needed
+    one rule found on the card: X_INC follows `DST_X_DIR`.
+  - **Z16:** all eight compares, Z writes, a Z gradient, and a Z clear
+    by engine fill.
+- Next: Phase 4, textures, starting with RGB565 point-sampled affine
+  S/T.
 
 ## Goal
 

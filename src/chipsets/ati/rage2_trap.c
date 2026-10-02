@@ -95,6 +95,120 @@ v9x_status v9x_r2_build_flat_state(const struct v9x_r2_target *target,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_r2_build_shade_state(const struct v9x_r2_target *target,
+                                    const struct v9x_r2_shade *shade,
+                                    v9x_u32 *offsets, v9x_u32 *values,
+                                    v9x_u32 capacity, v9x_u32 *written)
+{
+    static const v9x_u32 channel_base[3] = {
+        V9X_R2_RED_X_INC, V9X_R2_GREEN_X_INC, V9X_R2_BLUE_X_INC
+    };
+    v9x_status status;
+    v9x_u32 channel;
+    v9x_u32 at;
+
+    if (written != 0) {
+        *written = 0ul;
+    }
+    /* No range check on the values: the accumulators are modular, with a
+     * 9-bit integer part (measured, ATIRX /shade G7-G8), so a START outside
+     * 0..255 at an anchor no pixel uses is still exact where pixels are.
+     * Masking to the field is the encoding. */
+    if (offsets == 0 || values == 0 || written == 0 || shade == 0 ||
+        capacity < V9X_R2_SHADE_STATE_DWORDS || !v9x_r2_target_valid(target)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_r2_target_fits(target);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;  values[0] = V9X_R2_SCALE_3D_SHADE;
+    offsets[1] = V9X_M64_Z_CNTL;         values[1] = 0ul;
+    offsets[2] = V9X_M64_DP_WRITE_MASK;  values[2] = 0xfffffffful;
+    offsets[3] = V9X_M64_DP_PIX_WIDTH;   values[3] = V9X_R2_DP_PIX_WIDTH_565;
+    offsets[4] = V9X_M64_DP_MIX;         values[4] = V9X_R2_DP_MIX_FRGD_SRC;
+    offsets[5] = V9X_M64_DP_SRC;         values[5] = V9X_R2_DP_SRC_3D;
+    offsets[6] = V9X_M64_CLR_CMP_CNTL;   values[6] = 0ul;
+    offsets[7] = V9X_M64_DST_OFF_PITCH;
+    values[7] = (((target->pitch_bytes >> 1) >> 3) << 22) |
+                (target->offset >> 3);
+    offsets[8] = V9X_M64_SC_LEFT_RIGHT;
+    values[8] = (target->scissor_right << 16) | target->scissor_left;
+    offsets[9] = V9X_M64_SC_TOP_BOTTOM;
+    values[9] = (target->scissor_bottom << 16) | target->scissor_top;
+    /* One spare slot keeps the layout of the flat state for the shared
+     * prefix; DP_FRGD_CLR is irrelevant with the 3D source. */
+    offsets[10] = V9X_M64_DP_FRGD_CLR;   values[10] = 0ul;
+    at = 11ul;
+    for (channel = 0ul; channel < 3ul; ++channel) {
+        offsets[at] = channel_base[channel];
+        values[at] = (v9x_u32)shade->x_inc[channel] & V9X_R2_COLOR_MASK;
+        ++at;
+        offsets[at] = channel_base[channel] + 4ul;
+        values[at] = (v9x_u32)shade->y_inc[channel] & V9X_R2_COLOR_MASK;
+        ++at;
+        offsets[at] = channel_base[channel] + 8ul;
+        values[at] = (v9x_u32)shade->start[channel] & V9X_R2_COLOR_MASK;
+        ++at;
+    }
+    *written = at;
+    return V9X_STATUS_OK;
+}
+
+/* 16.16 to the S.16.12 field: an arithmetic shift right by four, written
+ * out because C89 leaves a signed right shift implementation-defined. */
+static v9x_u32 v9x_r2_z_field(v9x_s32 value)
+{
+    v9x_u32 bits = (v9x_u32)value >> 4;
+
+    if (value < 0l) {
+        bits |= 0xf0000000ul;
+    }
+    return bits & V9X_R2_Z_MASK;
+}
+
+/* Z_CNTL bits that read back on A8U4I5: 0, 1, 2, 6:4, 8. */
+#define V9X_R2_Z_CNTL_IMPLEMENTED   0x00000177ul
+
+v9x_status v9x_r2_build_z_state(const struct v9x_r2_target *target,
+                                const struct v9x_r2_depth *depth,
+                                v9x_u32 *offsets, v9x_u32 *values,
+                                v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_r2_target z_surface;
+    v9x_status status;
+
+    if (written != 0) {
+        *written = 0ul;
+    }
+    if (offsets == 0 || values == 0 || written == 0 || depth == 0 ||
+        capacity < V9X_R2_Z_STATE_DWORDS || !v9x_r2_target_valid(target) ||
+        (depth->z_cntl & ~V9X_R2_Z_CNTL_IMPLEMENTED) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* The Z surface is the target's shape at its own offset. */
+    z_surface = *target;
+    z_surface.offset = depth->offset;
+    if (!v9x_r2_target_valid(&z_surface)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_r2_target_fits(&z_surface);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+
+    offsets[0] = V9X_M64_Z_OFF_PITCH;
+    values[0] = (((target->pitch_bytes >> 1) >> 3) << 22) |
+                (depth->offset >> 3);
+    offsets[1] = V9X_M64_Z_CNTL;   values[1] = depth->z_cntl;
+    offsets[2] = V9X_R2_Z_X_INC;   values[2] = v9x_r2_z_field(depth->x_inc);
+    offsets[3] = V9X_R2_Z_Y_INC;   values[3] = v9x_r2_z_field(depth->y_inc);
+    offsets[4] = V9X_R2_Z_START;   values[4] = v9x_r2_z_field(depth->start);
+    *written = V9X_R2_Z_STATE_DWORDS;
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_r2_build_trap(const struct v9x_r2_target *target,
                              const struct v9x_r2_flat_trap *trap,
                              v9x_u32 *offsets, v9x_u32 *values,

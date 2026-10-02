@@ -127,6 +127,133 @@ static void v9x_r2_emit(const struct v9x_r2_vertex *left_a,
                      (right.rightward ? V9X_R2_TRAIL_X_DIR : 0ul);
 }
 
+/* ---- Gouraud ------------------------------------------------------------ */
+
+/*
+ * round(num * 4096 / den) for den > 0, |num / den| < 2^19, as a
+ * bit-serial long division: the remainder stays below den < 2^31, so
+ * doubling it never overflows 32 bits. Integer only, like the rest of the
+ * setup: the HAL links no runtime, Open Watcom lowers a float-to-int cast
+ * to __CHP, and the host tests also build with MSVC
+ * (src\display32\d3d\d3d_raster.h).
+ */
+static v9x_s32 v9x_r2_ratio12(v9x_s32 num, v9x_u32 den)
+{
+    v9x_u32 a = num < 0l ? (v9x_u32)(-num) : (v9x_u32)num;
+    v9x_u32 whole = a / den;
+    v9x_u32 rest = a % den;
+    v9x_u32 frac = 0ul;
+    unsigned int bit;
+    v9x_s32 result;
+
+    /* Thirteen fraction bits: twelve kept, one to round on. */
+    for (bit = 0u; bit < 13u; ++bit) {
+        rest <<= 1;
+        frac <<= 1;
+        if (rest >= den) {
+            rest -= den;
+            frac |= 1ul;
+        }
+    }
+    result = (v9x_s32)((whole << 12) + ((frac + 1ul) >> 1));
+    return num < 0l ? -result : result;
+}
+
+v9x_u32 v9x_r2_channel_out(v9x_s32 accumulator)
+{
+    v9x_u32 integer = ((v9x_u32)accumulator >> 16) & 0x1fful;
+
+    if (integer < 256ul) {
+        return integer;
+    }
+    return integer < 384ul ? 255ul : 0ul;
+}
+
+v9x_status v9x_r2_setup_shade(const struct v9x_r2_vertex *vertices,
+                              const v9x_u32 *colors,
+                              const struct v9x_r2_flat_trap *trap,
+                              struct v9x_r2_shade *shade)
+{
+    v9x_s32 x1;
+    v9x_s32 y1;
+    v9x_s32 x2;
+    v9x_s32 y2;
+    v9x_s32 det;
+    v9x_u32 det_abs;
+    v9x_s32 anchor_dx;
+    v9x_s32 anchor_dy;
+    v9x_u32 channel;
+
+    if (vertices == 0 || colors == 0 || trap == 0 || shade == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Everything relative to vertex 0, in sixteenths of a pixel. With
+     * coordinates under 2048 pixels every product below is under 2^30
+     * and the determinant's two terms under 2^31 apart. */
+    x1 = vertices[1].x - vertices[0].x;
+    y1 = vertices[1].y - vertices[0].y;
+    x2 = vertices[2].x - vertices[0].x;
+    y2 = vertices[2].y - vertices[0].y;
+    det = x1 * y2 - x2 * y1;
+    if (det == 0l) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    det_abs = det < 0l ? (v9x_u32)(-det) : (v9x_u32)det;
+    /* The DST_Y_X pixel's centre, from vertex 0. */
+    anchor_dx = (v9x_s32)trap->x * V9X_R2_SUBPIXEL + V9X_R2_HALF -
+                vertices[0].x;
+    anchor_dy = (v9x_s32)trap->y * V9X_R2_SUBPIXEL + V9X_R2_HALF -
+                vertices[0].y;
+
+    for (channel = 0ul; channel < 3ul; ++channel) {
+        v9x_u32 shift = 16ul - 8ul * channel;   /* red, green, blue */
+        v9x_s32 c0 = (v9x_s32)((colors[0] >> shift) & 0xfful);
+        v9x_s32 d1 = (v9x_s32)((colors[1] >> shift) & 0xfful) - c0;
+        v9x_s32 d2 = (v9x_s32)((colors[2] >> shift) & 0xfful) - c0;
+        /* Per pixel: (d1*y2 - d2*y1) * 16 / det, likewise for y. Each
+         * numerator is under 255 * 2^15 * 2 * 16 < 2^28. */
+        v9x_s32 num_x = (d1 * y2 - d2 * y1) * V9X_R2_SUBPIXEL;
+        v9x_s32 num_y = (d2 * x1 - d1 * x2) * V9X_R2_SUBPIXEL;
+        v9x_s32 gx;
+        v9x_s32 gy;
+        v9x_u32 start;
+
+        if (det < 0l) {
+            num_x = -num_x;
+            num_y = -num_y;
+        }
+        /* The increments are S.8.12: below 256 levels a pixel. */
+        if ((v9x_u32)(num_x < 0l ? -num_x : num_x) / det_abs >= 256ul ||
+            (v9x_u32)(num_y < 0l ? -num_y : num_y) / det_abs >= 256ul) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        gx = v9x_r2_ratio12(num_x, det_abs);   /* levels/pixel, x4096 */
+        gy = v9x_r2_ratio12(num_y, det_abs);
+
+        /*
+         * START = c0 + gx*dx + gy*dy + 1/2, in 16.16, where dx and dy are
+         * the anchor's offset in sixteenths: gx*16 is the 16.16 gradient
+         * and the sixteenths cancel it. The colour field wraps at 2^25
+         * (512 levels), so only the low 32 bits of each product matter,
+         * and unsigned multiplication gives exactly those.
+         */
+        start = ((v9x_u32)c0 << 16) + 0x00008000ul +
+                (v9x_u32)gx * (v9x_u32)anchor_dx +
+                (v9x_u32)gy * (v9x_u32)anchor_dy;
+        shade->start[channel] = (v9x_s32)start;
+        /* X_INC is per step in DST_X_DIR's direction (RRG p.6-11), and
+         * the span runs left to right whichever way the leading edge
+         * leans. With DST_X_DIR clear the register holds the gradient
+         * negated: measured on A8U4I5, boot 136, where the unnegated
+         * form drew every left-leaning triangle's spans mirrored. */
+        shade->x_inc[channel] =
+            (trap->dst_cntl & V9X_M64_DST_X_DIR) != 0ul ? gx * 16l
+                                                        : -gx * 16l;
+        shade->y_inc[channel] = gy * 16l;
+    }
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_r2_setup_triangle(const struct v9x_r2_target *target,
                                  const struct v9x_r2_vertex *vertices,
                                  struct v9x_r2_flat_trap *traps,

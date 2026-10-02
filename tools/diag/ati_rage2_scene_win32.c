@@ -650,6 +650,8 @@ static const struct atirx_scene atirx_scenes_3[] = {
         ATIRX_CNTL_BASE } }
 };
 
+static void atirx_prefix(char *prefix, const char *name);
+
 /* ---- Phase 3: triangles through rage2_setup.c -------------------------- */
 
 #define ATIRX_P(n) ((v9x_s32)(n) * V9X_R2_SUBPIXEL)
@@ -862,6 +864,703 @@ static int atirx_run_triangles(struct v9x_m64_engine *engine,
     return run == named + ATIRX_TRI_RANDOM;
 }
 
+/* ---- Phase 3: which interpolator bits exist ----------------------------- */
+
+/*
+ * The register notes lost the interpolator bit diagrams to the PDF
+ * extraction, so the formats are measured: write a pattern, wait idle,
+ * read it back. SCALE_3D_CNTL carries a shading function throughout,
+ * because the RRG allows accumulator writes only with SCALE_3D_FCN
+ * non-zero; nothing here writes DST_BRES_LNTH or DST_HEIGHT_WIDTH, so no
+ * draw can start. SCALE_3D_CNTL returns to 0 at the end.
+ */
+#define ATIRX_SCALE_3D_SHADE 0x000000c0ul   /* SCALE_3D_FCN = 3, shading */
+
+static const DWORD atirx_regs_probe[] = {
+    0x7c0ul, 0x7c4ul, 0x7c8ul,   /* RED_X_INC, RED_Y_INC, RED_START */
+    0x7ccul, 0x7d0ul, 0x7d4ul,   /* GREEN */
+    0x7d8ul, 0x7dcul, 0x7e0ul,   /* BLUE */
+    0x7e4ul, 0x7e8ul, 0x7ecul,   /* Z */
+    0x7f0ul, 0x7f4ul, 0x7f8ul,   /* ALPHA / FOG */
+    0x740ul, 0x744ul, 0x748ul, 0x74cul, 0x750ul, 0x754ul,   /* S */
+    0x758ul, 0x75cul, 0x760ul, 0x764ul, 0x768ul, 0x76cul,   /* T */
+    0x770ul,                     /* TEX_SIZE_PITCH */
+    0x548ul, 0x54cul             /* Z_OFF_PITCH, Z_CNTL */
+};
+
+static int atirx_run_regs(struct v9x_m64_engine *engine)
+{
+    static const DWORD patterns[3] = { 0xfffffffful, 0ul, 0x55555555ul };
+    v9x_u32 offsets[2];
+    v9x_u32 values[2];
+    UINT index;
+    UINT pattern;
+    char key[32];
+    char text[12];
+
+    atirx_key("SceneSet", "regs");
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = ATIRX_SCALE_3D_SHADE;
+    if (atirx_emit(engine, "regs", offsets, values, 1ul) != V9X_STATUS_OK) {
+        return 0;
+    }
+    for (index = 0u;
+         index < sizeof(atirx_regs_probe) / sizeof(atirx_regs_probe[0]);
+         ++index) {
+        for (pattern = 0u; pattern < 3u; ++pattern) {
+            offsets[0] = atirx_regs_probe[index];
+            values[0] = patterns[pattern];
+            if (atirx_emit(engine, "regs", offsets, values, 1ul) !=
+                    V9X_STATUS_OK ||
+                v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+                atirx_key("Result", "REGS-STOPPED");
+                return 0;
+            }
+            lstrcpyA(key, "R");
+            atirx_hex(text, atirx_regs_probe[index], 3);
+            lstrcatA(key, text);
+            lstrcatA(key, pattern == 0u ? "_Ones" :
+                          pattern == 1u ? "_Zero" : "_Fives");
+            atirx_key_hex(key, atirx_read(0, atirx_regs_probe[index]));
+        }
+        /* Leave each register zero. */
+        offsets[0] = atirx_regs_probe[index];
+        values[0] = 0ul;
+        if (atirx_emit(engine, "regs", offsets, values, 1ul) !=
+            V9X_STATUS_OK) {
+            return 0;
+        }
+    }
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    offsets[1] = V9X_M64_Z_CNTL;
+    values[1] = 0ul;
+    if (atirx_emit(engine, "regs", offsets, values, 2ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "REGS-READ");
+    return 1;
+}
+
+/* ---- Phase 3: Gouraud, measured ---------------------------------------- */
+
+#define ATIRX_FX(n) ((v9x_s32)(n) * 65536l)
+#define ATIRX_SHADE_DWORDS 24u
+
+struct atirx_shade_scene {
+    const char *name;
+    struct v9x_r2_flat_trap trap;
+    struct v9x_r2_shade shade;
+};
+
+/* A rectangle: columns 16..47, rows 16..23, both edges vertical. */
+#define ATIRX_RECT { 16ul, 16ul, 8ul, 48ul, -1l, 0l, -1l, -1l, 0l, -1l, \
+    V9X_M64_DST_X_DIR | V9X_M64_DST_Y_DIR | V9X_R2_TRAIL_X_DIR |         \
+    V9X_R2_TRAP_FILL_DIR }
+/* The same with the leading edge one pixel right per row. */
+#define ATIRX_SLOPE { 16ul, 16ul, 8ul, 48ul, 0l, 8l, -8l, -1l, 0l, -1l, \
+    V9X_M64_DST_X_DIR | V9X_M64_DST_Y_DIR | V9X_R2_TRAIL_X_DIR |         \
+    V9X_R2_TRAP_FILL_DIR }
+
+static const struct atirx_shade_scene atirx_shade_scenes[] = {
+    /* Red 0 at the leading pixel, +8.0 a pixel along the span. */
+    { "G1RedX", ATIRX_RECT,
+      { { 0l, 0l, 0l }, { ATIRX_FX(8), 0l, 0l }, { 0l, 0l, 0l } } },
+    /* Green 0, +32.0 a row down the leading edge. */
+    { "G2GreenY", ATIRX_RECT,
+      { { 0l, 0l, 0l }, { 0l, 0l, 0l }, { 0l, ATIRX_FX(32), 0l } } },
+    /* Constant 255/128/64: the 8-bit to 565 conversion. */
+    { "G3Const", ATIRX_RECT,
+      { { ATIRX_FX(255), ATIRX_FX(128), ATIRX_FX(64) },
+        { 0l, 0l, 0l }, { 0l, 0l, 0l } } },
+    /* Red +0.5 a pixel: how fractions accumulate and truncate. */
+    { "G4RedHalf", ATIRX_RECT,
+      { { 0l, 0l, 0l }, { 0x8000l, 0l, 0l }, { 0l, 0l, 0l } } },
+    /* Blue 248, -8.0 a pixel: a negative increment. */
+    { "G5BlueDown", ATIRX_RECT,
+      { { 0l, 0l, ATIRX_FX(248) }, { 0l, 0l, -ATIRX_FX(8) },
+        { 0l, 0l, 0l } } },
+    /* Red +8.0 a pixel, no Y increment, on the sloped leading edge: does
+     * an edge X step add X_INC? */
+    { "G6SlopeRedX", ATIRX_SLOPE,
+      { { 0l, 0l, 0l }, { ATIRX_FX(8), 0l, 0l }, { 0l, 0l, 0l } } },
+    /* Red 200, +8.0 a pixel: past 255 by column 23. Saturate or wrap? */
+    { "G7RedOver", ATIRX_RECT,
+      { { ATIRX_FX(200), 0l, 0l }, { ATIRX_FX(8), 0l, 0l },
+        { 0l, 0l, 0l } } },
+    /* Green 64, -8.0 a pixel: below 0 by column 25. */
+    { "G8GreenUnder", ATIRX_RECT,
+      { { 0l, ATIRX_FX(64), 0l }, { 0l, -ATIRX_FX(8), 0l },
+        { 0l, 0l, 0l } } }
+};
+
+/* Rows 16..23, columns 15..49, as 565 hex words. */
+static void atirx_dump_rows(const char *prefix)
+{
+    char key[48];
+    char text[8];
+    char line[200];
+    DWORD x;
+    DWORD y;
+
+    for (y = 16ul; y < 24ul; ++y) {
+        line[0] = '\0';
+        for (x = 15ul; x < 50ul; ++x) {
+            atirx_hex(text, *atirx_pixel(x, y), 4);
+            lstrcatA(line, text);
+            lstrcatA(line, " ");
+        }
+        lstrcpyA(key, prefix);
+        lstrcatA(key, "Px");
+        atirx_decimal(text, y);
+        lstrcatA(key, text);
+        atirx_key(key, line);
+    }
+}
+
+static int atirx_run_shade(struct v9x_m64_engine *engine,
+                           const struct v9x_r2_target *target)
+{
+    v9x_u32 offsets[ATIRX_SHADE_DWORDS];
+    v9x_u32 values[ATIRX_SHADE_DWORDS];
+    v9x_u32 written;
+    v9x_status status;
+    UINT index;
+    char prefix[48];
+    UINT count = sizeof(atirx_shade_scenes) / sizeof(atirx_shade_scenes[0]);
+
+    atirx_key("SceneSet", "shade");
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_shade_scene *scene = &atirx_shade_scenes[index];
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_prepare_block();
+        if (v9x_r2_build_shade_state(target, &scene->shade, offsets, values,
+                                     ATIRX_SHADE_DWORDS, &written) !=
+            V9X_STATUS_OK) {
+            atirx_key("Result", "SHADE-BUILD");
+            return 0;
+        }
+        status = atirx_emit(engine, scene->name, offsets, values, written);
+        if (status == V9X_STATUS_OK) {
+            if (v9x_r2_build_trap(target, &scene->trap, offsets, values,
+                                  ATIRX_SHADE_DWORDS, &written) !=
+                V9X_STATUS_OK) {
+                atirx_key("Result", "TRAP-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, scene->name, offsets, values,
+                                written);
+        }
+        if (status == V9X_STATUS_OK) {
+            status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        }
+        if (status != V9X_STATUS_OK) {
+            atirx_key_hex("FailStatus", (DWORD)status);
+            atirx_key_hex("FailGuiStat", atirx_read(0, V9X_M64_GUI_STAT));
+            atirx_key_hex("FailFifoStat", atirx_read(0, V9X_M64_FIFO_STAT));
+            atirx_flush();
+            status = v9x_m64_reset_replay(engine, ATIRX_SPINS);
+            atirx_key_hex("ResetStatus", (DWORD)status);
+            atirx_key("Result", "TIMEOUT-STOPPED");
+            atirx_flush();
+            return 0;
+        }
+        (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+        atirx_dump_rows(prefix);
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+    /* Back to the 2D datapath, as the HAL's 2D mode reset expects. */
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "SHADE-RUN");
+    return 1;
+}
+
+/* ---- Phase 3: Gouraud triangles ---------------------------------------- */
+
+#define ATIRX_GOURAUD_COUNT 60u
+
+/* The engine model's 565 for pixel (x, y) of trapezoid `trap`: the masked
+ * register values summed modulo the field, then the measured channel rule
+ * and 565 truncation. */
+static WORD atirx_model_565(const struct v9x_r2_shade *shade,
+                            const struct v9x_r2_flat_trap *trap,
+                            DWORD x, DWORD y)
+{
+    v9x_u32 out[3];
+    v9x_u32 channel;
+
+    for (channel = 0ul; channel < 3ul; ++channel) {
+        v9x_u32 start = (v9x_u32)shade->start[channel] & V9X_R2_COLOR_MASK;
+        v9x_u32 xi = (v9x_u32)shade->x_inc[channel] & V9X_R2_COLOR_MASK;
+        v9x_u32 yi = (v9x_u32)shade->y_inc[channel] & V9X_R2_COLOR_MASK;
+
+        /* X_INC counts steps in DST_X_DIR's direction (measured). */
+        v9x_u32 steps = (trap->dst_cntl & V9X_M64_DST_X_DIR) != 0ul
+            ? x - trap->x : trap->x - x;
+
+        out[channel] = v9x_r2_channel_out((v9x_s32)(
+            start + steps * xi + (y - trap->y) * yi));
+    }
+    return (WORD)(((out[0] >> 3) << 11) | ((out[1] >> 2) << 5) |
+                  (out[2] >> 3));
+}
+
+static v9x_u32 atirx_random_color(void)
+{
+    atirx_lcg = atirx_lcg * 1103515245ul + 12345ul;
+    return (atirx_lcg >> 4) & 0x00fffffful;
+}
+
+static int atirx_run_gouraud(struct v9x_m64_engine *engine,
+                             const struct v9x_r2_target *target)
+{
+    struct v9x_r2_vertex v[3];
+    struct v9x_r2_flat_trap traps[V9X_R2_SETUP_TRAPS];
+    struct v9x_r2_shade shades[V9X_R2_SETUP_TRAPS];
+    v9x_u32 colors[3];
+    v9x_u32 offsets[ATIRX_SHADE_DWORDS];
+    v9x_u32 values[ATIRX_SHADE_DWORDS];
+    v9x_u32 written;
+    v9x_u32 count;
+    v9x_u32 trap;
+    v9x_status status;
+    UINT index;
+    UINT drawn_triangles = 0u;
+    UINT skipped = 0u;
+    DWORD total_mismatch = 0ul;
+    DWORD total_pixels = 0ul;
+    char label[16];
+    char text[16];
+    char key[48];
+    char line[200];
+
+    atirx_key("SceneSet", "gouraud");
+    for (index = 0u; index < ATIRX_GOURAUD_COUNT; ++index) {
+        DWORD x;
+        DWORD y;
+        DWORD mismatch = 0ul;
+        DWORD pixels = 0ul;
+        int steep = 0;
+
+        v[0].x = atirx_random_coord();
+        v[0].y = atirx_random_coord();
+        v[1].x = atirx_random_coord();
+        v[1].y = atirx_random_coord();
+        v[2].x = atirx_random_coord();
+        v[2].y = atirx_random_coord();
+        colors[0] = atirx_random_color();
+        colors[1] = atirx_random_color();
+        colors[2] = atirx_random_color();
+        if (index == 0u) {
+            /* One constant-colour triangle: no gradient at all. */
+            colors[1] = colors[0];
+            colors[2] = colors[0];
+        }
+
+        lstrcpyA(label, "G");
+        atirx_decimal(text, index);
+        lstrcatA(label, text);
+
+        if (v9x_r2_setup_triangle(target, v, traps, &count) != V9X_STATUS_OK) {
+            atirx_key(label, "SETUP-REFUSED");
+            return 0;
+        }
+        for (trap = 0ul; trap < count; ++trap) {
+            status = v9x_r2_setup_shade(v, colors, &traps[trap],
+                                        &shades[trap]);
+            if (status == V9X_STATUS_UNSUPPORTED) {
+                steep = 1;
+            } else if (status != V9X_STATUS_OK) {
+                atirx_key(label, "SHADE-REFUSED");
+                return 0;
+            }
+        }
+        if (steep || count == 0ul) {
+            ++skipped;
+            continue;
+        }
+
+        atirx_prepare_block();
+        status = V9X_STATUS_OK;
+        for (trap = 0ul; trap < count && status == V9X_STATUS_OK; ++trap) {
+            if (v9x_r2_build_shade_state(target, &shades[trap], offsets,
+                                         values, ATIRX_SHADE_DWORDS,
+                                         &written) != V9X_STATUS_OK) {
+                atirx_key(label, "STATE-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, label, offsets, values, written);
+            if (status != V9X_STATUS_OK) {
+                break;
+            }
+            if (v9x_r2_build_trap(target, &traps[trap], offsets, values,
+                                  ATIRX_SHADE_DWORDS, &written) !=
+                V9X_STATUS_OK) {
+                atirx_key(label, "TRAP-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, label, offsets, values, written);
+        }
+        if (status == V9X_STATUS_OK) {
+            status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        }
+        if (status != V9X_STATUS_OK) {
+            atirx_key_hex("FailStatus", (DWORD)status);
+            atirx_flush();
+            status = v9x_m64_reset_replay(engine, ATIRX_SPINS);
+            atirx_key_hex("ResetStatus", (DWORD)status);
+            atirx_key("Result", "TIMEOUT-STOPPED");
+            atirx_flush();
+            return 0;
+        }
+        (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+
+        line[0] = '\0';
+        for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+            for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+                WORD got = *atirx_pixel(x, y);
+                WORD want = ATIRX_SENTINEL;
+
+                if (v9x_r2_ref_covers(v, (v9x_s32)x, (v9x_s32)y)) {
+                    for (trap = 0ul; trap < count; ++trap) {
+                        if (y >= traps[trap].y &&
+                            y < traps[trap].y + traps[trap].length) {
+                            want = atirx_model_565(&shades[trap],
+                                                   &traps[trap], x, y);
+                        }
+                    }
+                    ++pixels;
+                }
+                if (got != want) {
+                    ++mismatch;
+                    if (lstrlenA(line) < 150) {
+                        atirx_decimal(text, x);
+                        lstrcatA(line, text);
+                        lstrcatA(line, ",");
+                        atirx_decimal(text, y);
+                        lstrcatA(line, text);
+                        lstrcatA(line, ":");
+                        atirx_hex(text, got, 4);
+                        lstrcatA(line, text);
+                        lstrcatA(line, "/");
+                        atirx_hex(text, want, 4);
+                        lstrcatA(line, text);
+                        lstrcatA(line, " ");
+                    }
+                }
+            }
+        }
+        lstrcpyA(key, label);
+        lstrcatA(key, "_Pixels");
+        atirx_key_dec(key, pixels);
+        lstrcpyA(key, label);
+        lstrcatA(key, "_Mismatches");
+        atirx_key_dec(key, mismatch);
+        if (line[0] != '\0') {
+            lstrcpyA(key, label);
+            lstrcatA(key, "_First");
+            atirx_key(key, line);
+        }
+        total_mismatch += mismatch;
+        total_pixels += pixels;
+        ++drawn_triangles;
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key_dec("TrianglesDrawn", drawn_triangles);
+    atirx_key_dec("TrianglesTooSteep", skipped);
+    atirx_key_dec("PixelsCompared", total_pixels);
+    atirx_key_dec("TotalMismatches", total_mismatch);
+    atirx_key("Result", total_mismatch == 0ul ? "GOURAUD-MATCH"
+                                              : "GOURAUD-DIFFER");
+    return 1;
+}
+
+/* ---- Phase 3: Z16, measured --------------------------------------------- */
+
+#define ATIRX_ZBLOCK_OFFSET  0x00210000ul
+#define ATIRX_ZBAND_LO       0x3000u
+#define ATIRX_ZBAND_MID      0x4000u
+#define ATIRX_ZBAND_HI       0x5000u
+#define ATIRX_ZCLEAR         0xffffu
+#define ATIRX_ZGUARD_WORD    0x6996u
+
+struct atirx_z_scene {
+    const char *name;
+    int banded;          /* Z block pre-filled with column bands */
+    DWORD z_cntl;
+    v9x_s32 start;       /* 16.16 depth units */
+    v9x_s32 x_inc;
+    v9x_s32 y_inc;
+};
+
+#define ATIRX_ZT(test) (V9X_R2_Z_EN | ((DWORD)(test) << V9X_R2_Z_TEST_SHIFT))
+
+/*
+ * The bands: columns 16-23 hold 3000, 24-31 4000, 32-39 5000, 40-47 4000.
+ * Every compare scene draws Z 4000 with writes off, so each test's pass
+ * set is a known union of bands, if "less" means incoming < stored.
+ */
+static const struct atirx_z_scene atirx_z_scenes[] = {
+    { "Z1WriteConst", 0, ATIRX_ZT(7) | V9X_R2_Z_WRITE,
+      0x1234l << 16, 0l, 0l },
+    { "Z2WriteGradient", 0, ATIRX_ZT(7) | V9X_R2_Z_WRITE,
+      0x1000l << 16, 0x100l << 16, 0x10l << 16 },
+    { "Z3Never", 1, ATIRX_ZT(0), 0x4000l << 16, 0l, 0l },
+    { "Z4Less", 1, ATIRX_ZT(1), 0x4000l << 16, 0l, 0l },
+    { "Z5LessEqual", 1, ATIRX_ZT(2), 0x4000l << 16, 0l, 0l },
+    { "Z6Equal", 1, ATIRX_ZT(3), 0x4000l << 16, 0l, 0l },
+    { "Z7GreaterEqual", 1, ATIRX_ZT(4), 0x4000l << 16, 0l, 0l },
+    { "Z8Greater", 1, ATIRX_ZT(5), 0x4000l << 16, 0l, 0l },
+    { "Z9NotEqual", 1, ATIRX_ZT(6), 0x4000l << 16, 0l, 0l },
+    { "Z10Always", 1, ATIRX_ZT(7), 0x4000l << 16, 0l, 0l },
+    { "Z11LessWrite", 1, ATIRX_ZT(1) | V9X_R2_Z_WRITE,
+      0x4000l << 16, 0l, 0l }
+};
+
+static volatile WORD *atirx_zpixel(DWORD x, DWORD y)
+{
+    return atirx_fb + (ATIRX_ZBLOCK_OFFSET + y * ATIRX_BLOCK_PITCH) / 2ul + x;
+}
+
+static WORD atirx_zband(DWORD x)
+{
+    if (x >= 16ul && x < 24ul) {
+        return ATIRX_ZBAND_LO;
+    }
+    if (x >= 32ul && x < 40ul) {
+        return ATIRX_ZBAND_HI;
+    }
+    return ATIRX_ZBAND_MID;
+}
+
+static void atirx_prepare_z(int banded)
+{
+    volatile WORD *guard;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+
+    guard = atirx_fb + (ATIRX_ZBLOCK_OFFSET - ATIRX_GUARD_BYTES) / 2ul;
+    for (index = 0ul; index < ATIRX_GUARD_BYTES / 2ul; ++index) {
+        guard[index] = ATIRX_ZGUARD_WORD;
+    }
+    guard = atirx_fb + (ATIRX_ZBLOCK_OFFSET +
+                        ATIRX_BLOCK_SIZE * ATIRX_BLOCK_PITCH) / 2ul;
+    for (index = 0ul; index < ATIRX_GUARD_BYTES / 2ul; ++index) {
+        guard[index] = ATIRX_ZGUARD_WORD;
+    }
+    for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+        for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+            *atirx_zpixel(x, y) = banded ? atirx_zband(x) : ATIRX_ZCLEAR;
+        }
+    }
+}
+
+/* Z guards, and Z pixels outside the drawn rectangle that changed. */
+static void atirx_report_z(const char *prefix, int banded)
+{
+    volatile WORD *guard;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD guard_bad = 0ul;
+    DWORD outside = 0ul;
+    char key[48];
+    char text[8];
+    char line[200];
+
+    guard = atirx_fb + (ATIRX_ZBLOCK_OFFSET - ATIRX_GUARD_BYTES) / 2ul;
+    for (index = 0ul; index < ATIRX_GUARD_BYTES / 2ul; ++index) {
+        if (guard[index] != ATIRX_ZGUARD_WORD) {
+            ++guard_bad;
+        }
+    }
+    guard = atirx_fb + (ATIRX_ZBLOCK_OFFSET +
+                        ATIRX_BLOCK_SIZE * ATIRX_BLOCK_PITCH) / 2ul;
+    for (index = 0ul; index < ATIRX_GUARD_BYTES / 2ul; ++index) {
+        if (guard[index] != ATIRX_ZGUARD_WORD) {
+            ++guard_bad;
+        }
+    }
+    for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+        for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+            WORD before = banded ? atirx_zband(x) : ATIRX_ZCLEAR;
+            int in_rect = x >= 16ul && x < 48ul && y >= 16ul && y < 24ul;
+
+            if (!in_rect && *atirx_zpixel(x, y) != before) {
+                ++outside;
+            }
+        }
+    }
+    for (y = 16ul; y < 24ul; y += 7ul) {
+        line[0] = '\0';
+        for (x = 15ul; x < 50ul; ++x) {
+            atirx_hex(text, *atirx_zpixel(x, y), 4);
+            lstrcatA(line, text);
+            lstrcatA(line, " ");
+        }
+        lstrcpyA(key, prefix);
+        lstrcatA(key, "Z");
+        atirx_decimal(text, y);
+        lstrcatA(key, text);
+        atirx_key(key, line);
+    }
+    lstrcpyA(key, prefix);
+    lstrcatA(key, "ZOutsideRect");
+    atirx_key_dec(key, outside);
+    lstrcpyA(key, prefix);
+    lstrcatA(key, "ZGuardMismatches");
+    atirx_key_dec(key, guard_bad);
+}
+
+static int atirx_finish_draw(struct v9x_m64_engine *engine)
+{
+    v9x_status status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+
+    if (status != V9X_STATUS_OK) {
+        atirx_key_hex("FailStatus", (DWORD)status);
+        atirx_key_hex("FailGuiStat", atirx_read(0, V9X_M64_GUI_STAT));
+        atirx_key_hex("FailFifoStat", atirx_read(0, V9X_M64_FIFO_STAT));
+        atirx_flush();
+        status = v9x_m64_reset_replay(engine, ATIRX_SPINS);
+        atirx_key_hex("ResetStatus", (DWORD)status);
+        atirx_key("Result", "TIMEOUT-STOPPED");
+        atirx_flush();
+        return 0;
+    }
+    (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+    return 1;
+}
+
+static int atirx_run_z(struct v9x_m64_engine *engine,
+                       const struct v9x_r2_target *target)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    struct v9x_r2_shade shade;
+    struct v9x_r2_depth depth;
+    struct v9x_m64_fill fill;
+    v9x_u32 offsets[ATIRX_SHADE_DWORDS];
+    v9x_u32 values[ATIRX_SHADE_DWORDS];
+    v9x_u32 written;
+    UINT index;
+    UINT count = sizeof(atirx_z_scenes) / sizeof(atirx_z_scenes[0]);
+    char prefix[48];
+    DWORD x;
+    DWORD y;
+    DWORD cleared = 0ul;
+
+    atirx_key("SceneSet", "z");
+    for (index = 0u; index < 3u; ++index) {
+        shade.start[index] = 0l;
+        shade.x_inc[index] = 0l;
+        shade.y_inc[index] = 0l;
+    }
+    shade.start[0] = 248l << 16;          /* red F800 */
+
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_z_scene *scene = &atirx_z_scenes[index];
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_prepare_block();
+        atirx_prepare_z(scene->banded);
+        depth.offset = ATIRX_ZBLOCK_OFFSET;
+        depth.z_cntl = scene->z_cntl;
+        depth.start = scene->start;
+        depth.x_inc = scene->x_inc;
+        depth.y_inc = scene->y_inc;
+
+        if (v9x_r2_build_shade_state(target, &shade, offsets, values,
+                                     ATIRX_SHADE_DWORDS, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_z_state(target, &depth, offsets, values,
+                                 ATIRX_SHADE_DWORDS, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_trap(target, &rect, offsets, values,
+                              ATIRX_SHADE_DWORDS, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "Z-EMIT");
+            return 0;
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        atirx_report_block(prefix);
+        atirx_report_z(prefix, scene->banded);
+        atirx_flush();
+    }
+
+    /* A Z clear: the 2D engine fill on the Z surface, Z off. */
+    atirx_key("Scene", "Z12Clear");
+    atirx_prepare_z(1);
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;  values[0] = 0ul;
+    offsets[1] = V9X_M64_Z_CNTL;         values[1] = 0ul;
+    if (atirx_emit(engine, "Z12Clear", offsets, values, 2ul) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    fill.vram_bytes = target->vram_bytes;
+    fill.target_offset = ATIRX_ZBLOCK_OFFSET;
+    fill.target_pitch_bytes = ATIRX_BLOCK_PITCH;
+    fill.target_width = ATIRX_BLOCK_SIZE;
+    fill.target_height = ATIRX_BLOCK_SIZE;
+    fill.left = 16ul;
+    fill.top = 16ul;
+    fill.right = 48ul;
+    fill.bottom = 24ul;
+    fill.color = 0x0000abcdul;
+    if (v9x_m64_build_fill(&fill, offsets, values, ATIRX_SHADE_DWORDS,
+                           &written) != V9X_STATUS_OK ||
+        atirx_emit(engine, "Z12Clear", offsets, values, written) !=
+        V9X_STATUS_OK) {
+        atirx_key("Result", "Z-CLEAR-EMIT");
+        return 0;
+    }
+    if (!atirx_finish_draw(engine)) {
+        return 0;
+    }
+    for (y = 16ul; y < 24ul; ++y) {
+        for (x = 16ul; x < 48ul; ++x) {
+            if (*atirx_zpixel(x, y) == 0xabcdu) {
+                ++cleared;
+            }
+        }
+    }
+    atirx_key_dec("Z12Clear_Filled", cleared);
+    atirx_report_z("Z12Clear_", 1);
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;  values[0] = 0ul;
+    offsets[1] = V9X_M64_Z_CNTL;         values[1] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 2ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "Z-RUN");
+    return 1;
+}
+
 static void atirx_prefix(char *prefix, const char *name)
 {
     lstrcpyA(prefix, name);
@@ -984,6 +1683,41 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/zbuf")) {
+        int completed = atirx_run_z(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/gouraud")) {
+        int completed = atirx_run_gouraud(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/shade")) {
+        int completed = atirx_run_shade(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/regs")) {
+        int completed = atirx_run_regs(&engine);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/tri")) {
         int completed = atirx_run_triangles(&engine, &target);
 

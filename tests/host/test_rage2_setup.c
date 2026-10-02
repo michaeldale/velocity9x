@@ -314,8 +314,188 @@ static void test_shared_edge(void)
     CHECK(missing == 0u);
 }
 
+/* The channel output rule, against the values ATIRX /shade G7 and G8 read
+ * on A8U4I5 (boot 136). */
+static void test_channel_out(void)
+{
+    CHECK(v9x_r2_channel_out(200l << 16) == 200ul);
+    CHECK(v9x_r2_channel_out(248l << 16) == 248ul);
+    CHECK(v9x_r2_channel_out(256l << 16) == 255ul);
+    CHECK(v9x_r2_channel_out(376l << 16) == 255ul);
+    CHECK(v9x_r2_channel_out(384l << 16) == 0ul);
+    CHECK(v9x_r2_channel_out(-(8l << 16)) == 0ul);
+    CHECK(v9x_r2_channel_out(-(128l << 16)) == 0ul);
+    CHECK(v9x_r2_channel_out(-(136l << 16)) == 255ul);
+    /* A fraction truncates. */
+    CHECK(v9x_r2_channel_out((7l << 16) + 0xfff0l) == 7ul);
+}
+
+/* The engine's accumulator at (x, y) for a trapezoid anchored at
+ * (trap->x, trap->y): modular sums of the register-masked values. */
+static v9x_s32 model_accumulator(const struct v9x_r2_shade *shade,
+                                 const struct v9x_r2_flat_trap *trap,
+                                 v9x_u32 channel, v9x_s32 x, v9x_s32 y)
+{
+    v9x_u32 start = (v9x_u32)shade->start[channel] & V9X_R2_COLOR_MASK;
+    v9x_u32 xi = (v9x_u32)shade->x_inc[channel] & V9X_R2_COLOR_MASK;
+    v9x_u32 yi = (v9x_u32)shade->y_inc[channel] & V9X_R2_COLOR_MASK;
+    /* X_INC counts steps in DST_X_DIR's direction (measured, boot 136). */
+    v9x_u32 dx = (trap->dst_cntl & V9X_M64_DST_X_DIR) != 0ul
+        ? (v9x_u32)(x - (v9x_s32)trap->x)
+        : (v9x_u32)((v9x_s32)trap->x - x);
+    v9x_u32 dy = (v9x_u32)(y - (v9x_s32)trap->y);
+
+    return (v9x_s32)(start + dx * xi + dy * yi);
+}
+
+static unsigned int shade_worst = 0u;
+static unsigned long shade_pixels = 0ul;
+static unsigned long shade_refused = 0ul;
+
+/* For every pixel the model draws, the engine's channel value against the
+ * ideal plane at the pixel centre, rounded to nearest. */
+static unsigned int compare_shade(const struct v9x_r2_vertex *v,
+                                  const v9x_u32 *colors)
+{
+    struct v9x_r2_target target;
+    struct v9x_r2_flat_trap traps[V9X_R2_SETUP_TRAPS];
+    struct v9x_r2_shade shade;
+    v9x_u32 count;
+    v9x_u32 index;
+    v9x_u32 channel;
+    unsigned int bad = 0u;
+    double fx[3];
+    double fy[3];
+    double det;
+    v9x_u32 k;
+
+    make_target(&target);
+    if (v9x_r2_setup_triangle(&target, v, traps, &count) != V9X_STATUS_OK) {
+        return 9999u;
+    }
+    for (k = 0ul; k < 3ul; ++k) {
+        fx[k] = (double)v[k].x / 16.0;
+        fy[k] = (double)v[k].y / 16.0;
+    }
+    det = (fx[1] - fx[0]) * (fy[2] - fy[0]) - (fx[2] - fx[0]) * (fy[1] - fy[0]);
+    for (index = 0ul; index < count; ++index) {
+        v9x_s32 lead[GRID];
+        v9x_s32 trail[GRID];
+        v9x_u32 row;
+        v9x_status status = v9x_r2_setup_shade(v, colors, &traps[index],
+                                               &shade);
+
+        if (status == V9X_STATUS_UNSUPPORTED) {
+            ++shade_refused;
+            continue;
+        }
+        if (status != V9X_STATUS_OK) {
+            return 9998u;
+        }
+        model_walk(traps[index].x, traps[index].lead_err,
+                   traps[index].lead_inc, traps[index].lead_dec,
+                   (traps[index].dst_cntl & V9X_M64_DST_X_DIR) != 0ul,
+                   traps[index].length, lead);
+        model_walk(traps[index].trail_x, traps[index].trail_err,
+                   traps[index].trail_inc, traps[index].trail_dec,
+                   (traps[index].dst_cntl & V9X_R2_TRAIL_X_DIR) != 0ul,
+                   traps[index].length, trail);
+        for (row = 0ul; row < traps[index].length; ++row) {
+            v9x_s32 y = (v9x_s32)(traps[index].y + row);
+            v9x_s32 x;
+
+            for (x = lead[row]; x < trail[row]; ++x) {
+                ++shade_pixels;
+                for (channel = 0ul; channel < 3ul; ++channel) {
+                    v9x_u32 shift = 16ul - 8ul * channel;
+                    double c0 = (double)((colors[0] >> shift) & 0xfful);
+                    double c1 = (double)((colors[1] >> shift) & 0xfful);
+                    double c2 = (double)((colors[2] >> shift) & 0xfful);
+                    double px = (double)x + 0.5 - fx[0];
+                    double py = (double)y + 0.5 - fy[0];
+                    double ideal = c0 +
+                        ((c1 - c0) * (fy[2] - fy[0]) -
+                         (c2 - c0) * (fy[1] - fy[0])) / det * px +
+                        ((c2 - c0) * (fx[1] - fx[0]) -
+                         (c1 - c0) * (fx[2] - fx[0])) / det * py;
+                    long want = (long)(ideal + 0.5 + 1000.0) - 1000l;
+                    long got = (long)v9x_r2_channel_out(model_accumulator(
+                        &shade, &traps[index], channel, x, y));
+                    long diff;
+
+                    if (want < 0l) want = 0l;
+                    if (want > 255l) want = 255l;
+                    diff = got > want ? got - want : want - got;
+                    if ((unsigned int)diff > shade_worst) {
+                        shade_worst = (unsigned int)diff;
+                    }
+                    /* The window: a pixel's true value must not reach the
+                     * wrap points, or saturation turns into a flip. */
+                    if (ideal < -127.0 || ideal > 382.0 || diff > 1l) {
+                        ++bad;
+                    }
+                }
+            }
+        }
+    }
+    return bad;
+}
+
+static void test_shade_random(void)
+{
+    unsigned int index;
+    unsigned int failed = 0u;
+    v9x_u32 colors[3];
+    struct v9x_r2_vertex v[3];
+
+    for (index = 0u; index < 2000u; ++index) {
+        unsigned int bad;
+
+        v[0] = vtx(lcg_coord(), lcg_coord());
+        v[1] = vtx(lcg_coord(), lcg_coord());
+        v[2] = vtx(lcg_coord(), lcg_coord());
+        colors[0] = (v9x_u32)lcg_coord() * 0x4f1bbcdul & 0x00fffffful;
+        colors[1] = (v9x_u32)lcg_coord() * 0x2545f49ul & 0x00fffffful;
+        colors[2] = (v9x_u32)lcg_coord() * 0x6c07865ul & 0x00fffffful;
+        bad = compare_shade(v, colors);
+        if (bad != 0u && failed < 5u) {
+            printf("  shade %u: %u channel values off by more than 1\n",
+                   index, bad);
+        }
+        if (bad != 0u) {
+            ++failed;
+        }
+    }
+    CHECK(failed == 0u);
+    /* Truncated hardware arithmetic against an exact plane: at most one
+     * level, never more. */
+    CHECK(shade_worst <= 1u);
+    /* Not vacuous: most trapezoids are shaded, many pixels compared. */
+    printf("  shade: %lu pixels compared, %lu trapezoids too steep\n",
+           shade_pixels, shade_refused);
+    CHECK(shade_pixels > 200000ul);
+    CHECK(shade_refused < 200ul);
+}
+
+/* Constant colour: every pixel the exact vertex colour, no drift. */
+static void test_shade_constant(void)
+{
+    struct v9x_r2_vertex v[3];
+    v9x_u32 colors[3] = { 0x00ff8040ul, 0x00ff8040ul, 0x00ff8040ul };
+
+    v[0] = vtx(P(4) + 5, P(6) + 1);
+    v[1] = vtx(P(50) + 3, P(9) + 12);
+    v[2] = vtx(P(20) + 9, P(55) + 4);
+    shade_worst = 0u;
+    CHECK(compare_shade(v, colors) == 0u);
+    CHECK(shade_worst == 0u);
+}
+
 unsigned int v9x_run_rage2_setup_tests(void)
 {
+    test_channel_out();
+    test_shade_constant();
+    test_shade_random();
     test_named_triangles();
     test_degenerate();
     test_bounds();
