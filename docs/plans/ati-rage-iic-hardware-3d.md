@@ -91,8 +91,13 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   refusal or timeout), but flips are declined and never presented, an
   older defect of this chip's HAL
   ([issue](../issues/2026-10-02-rage-iic-flips-never-presented.md)).
-- Next: a flip for the Rage IIC (CRTC_OFF_PITCH, verified on the monitor),
-  then 3DMark 99.
+- **Flips and the depth compare fixed, boots 142-144**
+  ([scanout](../decisions/2026-10-03-rage-iic-scanout-start.md),
+  [record](../decisions/2026-10-02-rage-iic-direct3d-first-runs.md)):
+  hardware flips through CRTC_OFF_PITCH in the blank, and Direct3D's
+  compares mapped onto the chip's Z_TEST order. Final Reality and 3DMark
+  99 render correctly on the monitor (Michael).
+- Next: 3DMark 99's score for the record; then Phase 6, OpenGL.
 
 ## Goal
 

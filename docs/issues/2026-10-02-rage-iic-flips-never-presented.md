@@ -3,7 +3,10 @@
 Found 2026-10-02 on A8U4I5 (ATI 3D Rage IIC AGP, Velocity9x `ati`
 package, desktop 1024x768x16), during the Phase 5 Direct3D gate
 ([first runs](../decisions/2026-10-02-rage-iic-direct3d-first-runs.md)).
-Status: open.
+Status: **fixed** in `1348660` (CRTC_OFF_PITCH written in the vertical
+blank, [scanout start](../decisions/2026-10-03-rage-iic-scanout-start.md));
+verified on boots 142-144 - every flip handled, none declined, Final
+Reality and 3DMark 99 presenting on the monitor.
 
 ## What happens
 

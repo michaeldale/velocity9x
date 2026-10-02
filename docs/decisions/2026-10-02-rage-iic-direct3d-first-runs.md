@@ -86,7 +86,28 @@ engine itself (`phase5-b141/V9XSNA7-AFTER-FR.INI`): 559,842 batches,
 266,661 blended, **no refusal** and no FIFO or idle timeout or reset;
 13,056 pieces skipped as inexpressible and 41,717 as covering no pixel.
 
+## Boots 142-144: flips, then the depth compare
+
+- **Boot 142** (`1348660`, the CRTC flip): every flip handled, none
+  declined, 20 flips in 331 ms (vsync-paced). Michael at the monitor:
+  Final Reality's 2D tests fine but its 3D black, 3DMark 99 missing most
+  textures - with every draw accepted. A read-only `ATIRX /vramdump`
+  mid-Robots found the front, back and Z buffers untouched (Z all 0xFFFF)
+  and `Z_CNTL=0x31`: Direct3D's LESSEQUAL mapped to the chip's EQUAL. The
+  two number their compares in different orders; `func - 1` was right
+  only for the five V9XDDP's Z scenes happen to use. `V9XDDP /bigtarget`
+  (a 500x400 triangle on 640x480) passed the same boot, ruling out size.
+- **Boot 143** (`ede7979`, an explicit compare table): the dump shows a
+  complete, correctly textured and perspective-correct Robots frame in
+  the displayed buffer (`phase5-b143/FR-ROBOTS-FRONT-FROM-VRAM.png`),
+  `Z_CNTL=0x121`. Michael: Final Reality "looking good", 3DMark 99 "also
+  looking good".
+- **Boot 144** (the machine restarted after boot 143's runs; not by the
+  agent): 163,476 batches and 507,626 triangles in its first minutes, no
+  refusal, no FIFO or idle timeout or reset, 362 flips handled and none
+  declined (`phase5-b143/V9XSNA7-AFTER-FR-3DMARK.INI`).
+
 ## Not yet run
 
-3DMark 99, which waits on the flip; `/mixed` and `/zprivate`; a second
-boot of these runs.
+3DMark 99's score (not yet read); `/mixed` and `/zprivate`; what the
+26,145 inexpressible and 77,736 empty pieces of boot 144 were.
