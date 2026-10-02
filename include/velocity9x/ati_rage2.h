@@ -207,6 +207,158 @@ v9x_status v9x_r2_build_z_state(const struct v9x_r2_target *target,
                                 v9x_u32 *offsets, v9x_u32 *values,
                                 v9x_u32 capacity, v9x_u32 *written);
 
+/*
+ * Texturing. Registers per RRG-G02700 ch.6 and xf86-video-mach64
+ * atiregs.h ("GT"/"GTB"); field widths read back on A8U4I5, boot 136:
+ * S/T_START 10.11 in bits 25:5, S/T_XINC_START and S/T_Y_INC S.11.16 in
+ * 27:0, the *_INC2 terms S.10.16 in 26:0, TEX_SIZE_PITCH three nibbles
+ * (pitch 3:0, size 7:4, height 11:8, each log2). The texel format is
+ * DP_PIX_WIDTH[31:28]; TEX_k_OFF is the 2^k map's byte offset.
+ * What they do on a draw is below, measured on the card.
+ */
+#define V9X_R2_TEX_0_OFF            0x000005c0ul
+#define V9X_R2_S_X_INC2             0x00000740ul
+#define V9X_R2_T_X_INC2             0x00000758ul
+#define V9X_R2_TEX_SIZE_PITCH       0x00000770ul
+#define V9X_R2_ST_START_MASK        0x03ffffe0ul
+#define V9X_R2_ST_INC_MASK          0x0ffffffful
+#define V9X_R2_ST_INC2_MASK         0x07fffffful
+
+#define V9X_R2_SCALE_3D_TEXTURE     0x00000080ul  /* SCALE_3D_FCN = 2 */
+#define V9X_R2_TEX_CACHE_DIS        0x00000020ul
+#define V9X_R2_MIP_MAP_DISABLE      0x01000000ul
+#define V9X_R2_BILINEAR_TEX_EN      0x02000000ul
+#define V9X_R2_TEX_FORMAT_SHIFT     28u
+#define V9X_R2_TEX_FORMAT_1555      3ul
+#define V9X_R2_TEX_FORMAT_565       4ul
+#define V9X_R2_TEX_FORMAT_4444      15ul
+#define V9X_R2_TEX_LEVEL_MAX        10ul
+#define V9X_R2_TEXTURE_STATE_DWORDS 25ul
+
+/*
+ * The S/T arithmetic, measured on A8U4I5 (boot 136, ATIRX /tex; see
+ * docs\decisions\2026-10-02-rage-iic-texture-addressing.md):
+ *
+ * - S and T are normalised: 1.0 = V9X_R2_ST_ONE spans the map's larger
+ *   dimension (TEX_SIZE), on both axes.
+ * - Each is walked by forward differences from the DST_Y_X pixel, which
+ *   to within the accumulator's resolution is the quadratic
+ *   START + XINC_START*dx + Y_INC*dy + X_INC2*dx(dx-1)/2
+ *         + Y_INC2*dy(dy-1)/2 + XY_INC2*dx*dy,
+ *   dx counting steps in DST_X_DIR's direction, dy rows.
+ * - The value accumulator has START's resolution, bits 25:5: every
+ *   increment is floored to a multiple of 32 as it is added (ATIRX
+ *   /texprec). The increments themselves take the second differences at
+ *   full precision.
+ * - A leading-edge step adds the X increment and then X_INC2 to it, and
+ *   XY_INC2 to the Y increment; a new row adds the Y increment, then
+ *   Y_INC2 to it and XY_INC2 to the X increment. A span pixel in
+ *   DST_X_DIR's direction adds the X increment and then X_INC2 to it;
+ *   against it, X_INC2 comes off first and the increment is subtracted as
+ *   its ones' complement, V9X_R2_ST_AGAINST_LOSS more.
+ *   (ATIRX /textri: 9,753 pixels of 60 triangles, every one.)
+ * - The texel is floor(): u = S >> (26 - size) wrapped at 2^pitch, v the
+ *   same from T wrapped at 2^height. There is no clamp (no TEX_CNTL).
+ */
+#define V9X_R2_ST_ONE               0x04000000l
+#define V9X_R2_ST_FRACTION_BITS     26u
+#define V9X_R2_ST_AGAINST_LOSS      32ul
+
+struct v9x_r2_texture {
+    v9x_u32 offset;          /* byte offset of the largest map */
+    v9x_u32 log2_width;
+    v9x_u32 log2_height;
+    v9x_u32 log2_pitch;      /* in texels; must equal log2_width */
+    v9x_u32 format;          /* V9X_R2_TEX_FORMAT_* */
+    v9x_u32 scale_3d_extra;  /* further SCALE_3D_CNTL bits, e.g. bilinear */
+};
+
+/* S and T register values, in the engine's unit: V9X_R2_ST_ONE spans the
+ * larger dimension. */
+struct v9x_r2_st {
+    v9x_s32 start[2];        /* S, T */
+    v9x_s32 xinc_start[2];
+    v9x_s32 y_inc[2];
+    v9x_s32 x_inc2[2];
+    v9x_s32 y_inc2[2];
+    v9x_s32 xy_inc2[2];
+};
+
+/* The datapath for a textured trapezoid: SCALE_3D_CNTL texture mapping
+ * with MIP_MAP_DISABLE first, the 3D source, the texel format, the map's
+ * size and every TEX_k_OFF up to it pointing at it, then the twelve S/T
+ * registers. */
+v9x_status v9x_r2_build_texture_state(const struct v9x_r2_target *target,
+                                      const struct v9x_r2_texture *texture,
+                                      const struct v9x_r2_st *st,
+                                      v9x_u32 *offsets, v9x_u32 *values,
+                                      v9x_u32 capacity, v9x_u32 *written);
+
+/* The engine's S/T walk, for the host test and the scene runner: begin at
+ * the DST_Y_X pixel, make each row's edge steps, copy the state for the
+ * span and step it pixel by pixel, then go to the next row. Values are
+ * modulo 2^26. */
+struct v9x_r2_st_walk {
+    v9x_u32 value[2];        /* S, T */
+    v9x_u32 x_inc[2];
+    v9x_u32 y_inc[2];
+};
+
+void v9x_r2_st_begin(const struct v9x_r2_st *st, struct v9x_r2_st_walk *w);
+void v9x_r2_st_edge_step(const struct v9x_r2_st *st,
+                         struct v9x_r2_st_walk *w);
+void v9x_r2_st_next_row(const struct v9x_r2_st *st,
+                        struct v9x_r2_st_walk *w);
+/* One span pixel: `forward` is DST_X_DIR's direction. */
+void v9x_r2_st_pixel_step(const struct v9x_r2_st *st,
+                          struct v9x_r2_st_walk *span, int forward);
+
+/* The texel index a value selects: log2_size is TEX_SIZE, log2_wrap the
+ * pitch for S or the height for T. */
+v9x_u32 v9x_r2_texel_index(v9x_u32 value, v9x_u32 log2_size,
+                           v9x_u32 log2_wrap);
+
+/* A vertex's texture coordinates as Direct3D gives them: tu and tv each
+ * normalised to its own axis (1.0 = the map's width, height), q = 1/w,
+ * any positive scale (1.0 at every vertex is affine). */
+struct v9x_r2_tex_coord {
+    double tu;
+    double tv;
+    double q;
+};
+
+/*
+ * S/T setup for one trapezoid of a triangle. The engine interpolates a
+ * quadratic, not 1/w, so perspective is approximated: the quadratic that
+ * takes the exact perspective value at the three vertices and the three
+ * edge midpoints. One quadratic per triangle, re-anchored per trapezoid,
+ * so the two trapezoids join exactly, and two triangles sharing an edge
+ * agree at three points of it and so along all of it. Affine input gives
+ * the plane. A sliver whose quadratic needs more curvature than the
+ * S.10.16 second differences hold gets the plane through its vertices
+ * instead, for both trapezoids, and *affine (if given) says so.
+ * V9X_STATUS_UNSUPPORTED when a q is not positive and finite, a
+ * coordinate is not finite, or a first difference exceeds S.11.16 (two
+ * map widths a pixel).
+ *
+ * Double arithmetic, converted without a cast: the HAL links no runtime,
+ * and Open Watcom lowers a float-to-int cast to __CHP.
+ */
+v9x_status v9x_r2_setup_texture(const struct v9x_r2_vertex *vertices,
+                                const struct v9x_r2_tex_coord *coords,
+                                const struct v9x_r2_texture *texture,
+                                const struct v9x_r2_flat_trap *trap,
+                                struct v9x_r2_st *st, v9x_u32 *affine);
+
+/* How far the surface v9x_r2_setup_texture emits (the quadratic, or a
+ * sliver's plane) strays from exact perspective, in texels of the larger
+ * dimension, read on a barycentric grid in eighths: what a caller
+ * subdivides on. The error is the fit's, before register rounding. */
+v9x_status v9x_r2_texture_error(const struct v9x_r2_vertex *vertices,
+                                const struct v9x_r2_tex_coord *coords,
+                                const struct v9x_r2_texture *texture,
+                                double *texels);
+
 /* The datapath for a Gouraud trapezoid: SCALE_3D_CNTL shading first (the
  * accumulators may only be written with SCALE_3D_FCN non-zero, RRG p.6-7),
  * source the 3D pipe, then the nine interpolator registers. */

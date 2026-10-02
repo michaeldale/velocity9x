@@ -156,6 +156,99 @@ v9x_status v9x_r2_build_shade_state(const struct v9x_r2_target *target,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_r2_build_texture_state(const struct v9x_r2_target *target,
+                                      const struct v9x_r2_texture *texture,
+                                      const struct v9x_r2_st *st,
+                                      v9x_u32 *offsets, v9x_u32 *values,
+                                      v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 level;
+    v9x_u32 at;
+    v9x_u32 axis;
+    v9x_u32 map_bytes;
+    v9x_status status;
+
+    if (written != 0) {
+        *written = 0ul;
+    }
+    if (offsets == 0 || values == 0 || written == 0 || texture == 0 ||
+        st == 0 || capacity < V9X_R2_TEXTURE_STATE_DWORDS ||
+        !v9x_r2_target_valid(target)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (texture->log2_width > V9X_R2_TEX_LEVEL_MAX ||
+        texture->log2_height > V9X_R2_TEX_LEVEL_MAX ||
+        texture->log2_pitch > V9X_R2_TEX_LEVEL_MAX ||
+        texture->log2_pitch != texture->log2_width ||
+        (texture->offset & 7ul) != 0ul ||
+        (texture->format != V9X_R2_TEX_FORMAT_565 &&
+         texture->format != V9X_R2_TEX_FORMAT_1555 &&
+         texture->format != V9X_R2_TEX_FORMAT_4444) ||
+        (texture->scale_3d_extra & ~V9X_R2_BILINEAR_TEX_EN) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* The map must lie inside VRAM: 2^pitch * 2^height texels of 2 bytes. */
+    map_bytes = (1ul << texture->log2_pitch) *
+                (1ul << texture->log2_height) * 2ul;
+    if (texture->offset > target->vram_bytes ||
+        map_bytes > target->vram_bytes - texture->offset) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    status = v9x_r2_target_fits(target);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+
+    level = texture->log2_width > texture->log2_height
+        ? texture->log2_width : texture->log2_height;
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = V9X_R2_SCALE_3D_TEXTURE | V9X_R2_TEX_CACHE_DIS |
+                V9X_R2_MIP_MAP_DISABLE | texture->scale_3d_extra;
+    offsets[1] = V9X_M64_Z_CNTL;         values[1] = 0ul;
+    offsets[2] = V9X_M64_DP_WRITE_MASK;  values[2] = 0xfffffffful;
+    offsets[3] = V9X_M64_DP_PIX_WIDTH;
+    values[3] = V9X_R2_DP_PIX_WIDTH_565 |
+                (texture->format << V9X_R2_TEX_FORMAT_SHIFT);
+    offsets[4] = V9X_M64_DP_MIX;         values[4] = V9X_R2_DP_MIX_FRGD_SRC;
+    offsets[5] = V9X_M64_DP_SRC;         values[5] = V9X_R2_DP_SRC_3D;
+    offsets[6] = V9X_M64_CLR_CMP_CNTL;   values[6] = 0ul;
+    offsets[7] = V9X_M64_DST_OFF_PITCH;
+    values[7] = (((target->pitch_bytes >> 1) >> 3) << 22) |
+                (target->offset >> 3);
+    offsets[8] = V9X_M64_SC_LEFT_RIGHT;
+    values[8] = (target->scissor_right << 16) | target->scissor_left;
+    offsets[9] = V9X_M64_SC_TOP_BOTTOM;
+    values[9] = (target->scissor_bottom << 16) | target->scissor_top;
+    offsets[10] = V9X_R2_TEX_SIZE_PITCH;
+    values[10] = texture->log2_pitch | (level << 4) |
+                 (texture->log2_height << 8);
+    offsets[11] = V9X_R2_TEX_0_OFF + level * 4ul;
+    values[11] = texture->offset;
+    at = 12ul;
+    for (axis = 0ul; axis < 2ul; ++axis) {
+        v9x_u32 base = axis == 0ul ? V9X_R2_S_X_INC2 : V9X_R2_T_X_INC2;
+
+        offsets[at] = base;
+        values[at++] = (v9x_u32)st->x_inc2[axis] & V9X_R2_ST_INC2_MASK;
+        offsets[at] = base + 4ul;
+        values[at++] = (v9x_u32)st->y_inc2[axis] & V9X_R2_ST_INC2_MASK;
+        offsets[at] = base + 8ul;
+        values[at++] = (v9x_u32)st->xy_inc2[axis] & V9X_R2_ST_INC2_MASK;
+        offsets[at] = base + 12ul;
+        values[at++] = (v9x_u32)st->xinc_start[axis] & V9X_R2_ST_INC_MASK;
+        offsets[at] = base + 16ul;
+        values[at++] = (v9x_u32)st->y_inc[axis] & V9X_R2_ST_INC_MASK;
+        offsets[at] = base + 20ul;
+        values[at++] = (v9x_u32)st->start[axis] & V9X_R2_ST_START_MASK;
+    }
+    /* One spare: DP_FRGD_CLR, irrelevant with the 3D source, keeps the
+     * count even for the 8-entry chunks. */
+    offsets[at] = V9X_M64_DP_FRGD_CLR;
+    values[at++] = 0ul;
+    *written = at;
+    return V9X_STATUS_OK;
+}
+
 /* 16.16 to the S.16.12 field: an arithmetic shift right by four, written
  * out because C89 leaves a signed right shift implementation-defined. */
 static v9x_u32 v9x_r2_z_field(v9x_s32 value)

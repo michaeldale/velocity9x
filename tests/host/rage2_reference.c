@@ -73,3 +73,83 @@ int v9x_r2_ref_covers(const struct v9x_r2_vertex *v, v9x_s32 x, v9x_s32 y)
     }
     return 1;
 }
+
+/*
+ * The engine's edge walk, measured on A8U4I5
+ * (docs\decisions\2026-10-02-rage-iic-trapezoid-edge-model.md): per row an
+ * edge steps in its direction while its error is >= 0, adding DEC, then
+ * adds INC; DEC 0 never steps. Not the reference's arithmetic, which is
+ * the edge functions above: this is the path the textured scenes walk
+ * S/T along.
+ */
+static void v9x_r2_ref_walk_edge(v9x_u32 start, v9x_s32 err, v9x_s32 inc,
+                                 v9x_s32 dec, int rightward, v9x_u32 rows,
+                                 v9x_s32 *x_out)
+{
+    v9x_s32 x = (v9x_s32)start;
+    v9x_s32 e = err;
+    v9x_u32 row;
+    unsigned int guard;
+
+    for (row = 0ul; row < rows; ++row) {
+        guard = 0u;
+        while (dec != 0l && e >= 0l && guard < 4096u) {
+            x += rightward ? 1l : -1l;
+            e += dec;
+            ++guard;
+        }
+        x_out[row] = x;
+        e += inc;
+    }
+}
+
+void v9x_r2_ref_walk(const struct v9x_r2_flat_trap *trap, v9x_s32 *lead,
+                     v9x_s32 *trail)
+{
+    v9x_r2_ref_walk_edge(trap->x, trap->lead_err, trap->lead_inc,
+                         trap->lead_dec,
+                         (trap->dst_cntl & V9X_M64_DST_X_DIR) != 0ul,
+                         trap->length, lead);
+    v9x_r2_ref_walk_edge(trap->trail_x, trap->trail_err, trap->trail_inc,
+                         trap->trail_dec,
+                         (trap->dst_cntl & V9X_R2_TRAIL_X_DIR) != 0ul,
+                         trap->length, trail);
+}
+
+#define V9X_R2_REF_ROWS 2048u
+
+int v9x_r2_ref_walk_st(const struct v9x_r2_flat_trap *trap,
+                       const struct v9x_r2_st *st, v9x_r2_ref_texel_fn fn,
+                       void *context)
+{
+    static v9x_s32 lead[V9X_R2_REF_ROWS];
+    static v9x_s32 trail[V9X_R2_REF_ROWS];
+    struct v9x_r2_st_walk walk;
+    struct v9x_r2_st_walk span;
+    int forward = (trap->dst_cntl & V9X_M64_DST_X_DIR) != 0ul;
+    v9x_s32 at = (v9x_s32)trap->x;
+    v9x_u32 row;
+
+    if (trap->length > V9X_R2_REF_ROWS) {
+        return 0;
+    }
+    v9x_r2_ref_walk(trap, lead, trail);
+    v9x_r2_st_begin(st, &walk);
+    for (row = 0ul; row < trap->length; ++row) {
+        v9x_s32 x;
+
+        /* The leading edge only ever moves in DST_X_DIR's direction. */
+        while (at != lead[row]) {
+            v9x_r2_st_edge_step(st, &walk);
+            at += forward ? 1l : -1l;
+        }
+        span = walk;
+        for (x = lead[row]; x < trail[row]; ++x) {
+            fn(context, x, (v9x_s32)(trap->y + row), span.value[0],
+               span.value[1]);
+            v9x_r2_st_pixel_step(st, &span, forward);
+        }
+        v9x_r2_st_next_row(st, &walk);
+    }
+    return 1;
+}

@@ -1561,6 +1561,563 @@ static int atirx_run_z(struct v9x_m64_engine *engine,
     return 1;
 }
 
+/* ---- Phase 4: textures, measured -------------------------------------- */
+
+#define ATIRX_TEX_OFFSET   0x00220000ul
+#define ATIRX_TEX_SIZE     32ul
+#define ATIRX_TEX_LOG2     5ul
+/* A second map, 16x16 at pitch 16, past the first and its guard. */
+#define ATIRX_TEX16_OFFSET 0x00221000ul
+/* A third, 16 wide and 32 high at pitch 16. */
+#define ATIRX_TALL_OFFSET  0x00221800ul
+
+struct atirx_tex_scene {
+    const char *name;
+    v9x_u32 offset;          /* ATIRX_TEX_OFFSET or ATIRX_TEX16_OFFSET */
+    v9x_u32 log2_width;
+    v9x_u32 log2_height;
+    v9x_u32 log2_pitch;
+    struct v9x_r2_flat_trap trap;
+    struct v9x_r2_st st;
+};
+
+/* Boot 136's first run put one texel of the 32-wide map at 2^21: S and
+ * T count texels of a 1024-wide map in 16.16, it seems. ATIRX_TX(n) is
+ * n texels of the 32-wide map in that unit. */
+#define ATIRX_TX(n) ((v9x_s32)((n) * 2097152l))
+
+#define ATIRX_MAP32 ATIRX_TEX_OFFSET, 5ul, 5ul, 5ul
+
+/* The leading edge leaning left one pixel a row from 40 (DST_X_DIR
+ * clear), trailing at 48. */
+#define ATIRX_SLOPE_LEFT { 40ul, 16ul, 8ul, 48ul, 0l, 8l, -8l, -1l, 0l, -1l,     V9X_M64_DST_Y_DIR | V9X_R2_TRAIL_X_DIR | V9X_R2_TRAP_FILL_DIR }
+
+/* Fields in order: start, xinc_start, y_inc, x_inc2, y_inc2, xy_inc2,
+ * each { S, T }. */
+static const struct atirx_tex_scene atirx_tex_scenes[] = {
+    /* S +1 texel a pixel, T +1 a row, both from 0. */
+    { "T1Unit", ATIRX_MAP32, ATIRX_RECT,
+      { { 0l, 0l }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* Both from half a texel: where is the sample point? */
+    { "T2Half", ATIRX_MAP32, ATIRX_RECT,
+      { { ATIRX_TX(1) / 2l, ATIRX_TX(1) / 2l }, { ATIRX_TX(1), 0l },
+        { 0l, ATIRX_TX(1) }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S +0.5 a pixel: each texel twice. */
+    { "T3HalfStep", ATIRX_MAP32, ATIRX_RECT,
+      { { 0l, 0l }, { ATIRX_TX(1) / 2l, 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S from 20: past 32 by column 28. Wrap? */
+    { "T4Wrap", ATIRX_MAP32, ATIRX_RECT,
+      { { ATIRX_TX(20), 0l }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The left-leaning leading edge with S +1: does S follow DST_X_DIR
+     * the way colour does? */
+    { "T5SlopeLeft", ATIRX_MAP32, ATIRX_SLOPE_LEFT,
+      { { ATIRX_TX(8), 0l }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S_XINC_START 0, S_X_INC2 1/8 texel: S quadratic along the span. */
+    { "T6Quadratic", ATIRX_MAP32, ATIRX_RECT,
+      { { 0l, 0l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { ATIRX_TX(1) / 8l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* T +1 a pixel along the span, S +1 a row: the axes swapped. */
+    { "T7Swapped", ATIRX_MAP32, ATIRX_RECT,
+      { { 0l, 0l }, { 0l, ATIRX_TX(1) }, { ATIRX_TX(1), 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* A true 16x16 map at pitch 16, same S/T: does the unit follow the
+     * map's size (u = n/2) or stay absolute (u = n mod 16)? */
+    { "T9Map16", ATIRX_TEX16_OFFSET, 4ul, 4ul, 4ul, ATIRX_RECT,
+      { { 0l, 0l }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The 32x32 map declared 32 wide, 16 high. */
+    { "T10Wide", ATIRX_TEX_OFFSET, 5ul, 4ul, 5ul, ATIRX_RECT,
+      { { 0l, 0l }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* S_Y_INC2 1/4 alone, T +1 a row: is S quadratic in y? */
+    { "T12YInc2", ATIRX_MAP32, ATIRX_RECT,
+      { { 0l, 0l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { ATIRX_TX(1) / 4l, 0l }, { 0l, 0l } } },
+    /* S_XY_INC2 1/4 alone: does it grow the row's X increment? */
+    { "T13XYInc2", ATIRX_MAP32, ATIRX_RECT,
+      { { 0l, 0l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { ATIRX_TX(1) / 4l, 0l } } },
+    /* T5 with one S_START LSB (32) more on both: if the span adds the
+     * ones' complement of X_INC, -1 a pixel, every sample is exact. */
+    { "T5bBias", ATIRX_MAP32, ATIRX_SLOPE_LEFT,
+      { { ATIRX_TX(8) + 32l, 32l }, { ATIRX_TX(1), 0l },
+        { 0l, ATIRX_TX(1) }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* A real 16x32 map at pitch 16, T from 20: what does u past 15 read? */
+    { "T14Tall16", ATIRX_TALL_OFFSET, 4ul, 5ul, 4ul, ATIRX_RECT,
+      { { 0l, ATIRX_TX(20) }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The 32x32 data declared 32x16, T from 12: does v wrap at 16? */
+    { "T15WideWrap", ATIRX_TEX_OFFSET, 5ul, 4ul, 5ul, ATIRX_RECT,
+      { { 0l, ATIRX_TX(12) }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The leading edge one pixel right a row, S_X_INC2 1/8 alone: does
+     * an edge step grow the row's X increment as a pixel step does? */
+    { "T16SlopeX2", ATIRX_MAP32, ATIRX_SLOPE,
+      { { 0l, 0l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { ATIRX_TX(1) / 8l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The same edge, S_XY_INC2 1/4 alone. */
+    { "T17SlopeXY", ATIRX_MAP32, ATIRX_SLOPE,
+      { { 0l, 0l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { ATIRX_TX(1) / 4l, 0l } } },
+    /* The left-leaning edge (spans against DST_X_DIR), S from 8 so
+     * nothing goes negative, X_INC2 1/8 alone. */
+    { "T18LeftX2", ATIRX_MAP32, ATIRX_SLOPE_LEFT,
+      { { ATIRX_TX(8), ATIRX_TX(1) / 2l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { ATIRX_TX(1) / 8l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The same, XY_INC2 -1/4 alone. */
+    { "T19LeftXY", ATIRX_MAP32, ATIRX_SLOPE_LEFT,
+      { { ATIRX_TX(8), ATIRX_TX(1) / 2l }, { 0l, 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { -ATIRX_TX(1) / 4l, 0l } } }
+};
+
+/* Texel (u, v): red u, green v, blue 31. Blue 31 can never be the
+ * sentinel 5AA5 (blue 5), so a sampled pixel is unmistakable. */
+static WORD atirx_texel(DWORD u, DWORD v)
+{
+    return (WORD)((u << 11) | (v << 5) | 31u);
+}
+
+static void atirx_write_texture(DWORD offset, DWORD width, DWORD height)
+{
+    DWORD u;
+    DWORD v;
+    volatile WORD *base = atirx_fb + offset / 2ul;
+
+    for (v = 0ul; v < height; ++v) {
+        for (u = 0ul; u < width; ++u) {
+            base[v * width + u] = atirx_texel(u, v);
+        }
+    }
+}
+
+static DWORD atirx_texture_damage(DWORD offset, DWORD width, DWORD height)
+{
+    DWORD u;
+    DWORD v;
+    DWORD bad = 0ul;
+    volatile WORD *base = atirx_fb + offset / 2ul;
+
+    for (v = 0ul; v < height; ++v) {
+        for (u = 0ul; u < width; ++u) {
+            if (base[v * width + u] != atirx_texel(u, v)) {
+                ++bad;
+            }
+        }
+    }
+    return bad;
+}
+
+/* Rows 16, 17, 20 and 23, columns 15..49, as u.v for a texel (blue 31)
+ * and '-' for anything else. */
+static void atirx_dump_uv(const char *prefix)
+{
+    static const DWORD rows[4] = { 16ul, 17ul, 20ul, 23ul };
+    char key[48];
+    char text[8];
+    char line[256];
+    DWORD x;
+    UINT index;
+
+    for (index = 0u; index < 4u; ++index) {
+        line[0] = '\0';
+        for (x = 15ul; x < 50ul; ++x) {
+            WORD value = *atirx_pixel(x, rows[index]);
+
+            if ((value & 31u) != 31u) {
+                lstrcatA(line, "- ");
+                continue;
+            }
+            atirx_decimal(text, value >> 11);
+            lstrcatA(line, text);
+            lstrcatA(line, ".");
+            atirx_decimal(text, (value >> 5) & 63u);
+            lstrcatA(line, text);
+            lstrcatA(line, " ");
+        }
+        lstrcpyA(key, prefix);
+        lstrcatA(key, "UV");
+        atirx_decimal(text, rows[index]);
+        lstrcatA(key, text);
+        atirx_key(key, line);
+    }
+}
+
+/*
+ * /texprec: the resolution each S term is applied at. START sits one
+ * 32-unit step below texel 1 and a single term is 2^j; full precision
+ * reaches texel 1 at a known column (X terms, row 16 or 23) or row (Y
+ * terms). A term whose low j bits are dropped never does. Boot 136's
+ * /textri differed by one texel on 3 of 9,753 pixels, all perspective,
+ * the card lower than the model by 100-200 units.
+ */
+#define ATIRX_PREC_TERMS 5u
+#define ATIRX_PREC_BITS  8u
+
+static struct atirx_tex_scene atirx_prec_scenes[ATIRX_PREC_TERMS *
+                                                ATIRX_PREC_BITS];
+static char atirx_prec_names[ATIRX_PREC_TERMS * ATIRX_PREC_BITS][16];
+
+static UINT atirx_build_prec_scenes(void)
+{
+    static const char *terms[ATIRX_PREC_TERMS] = {
+        "PX1_", "PY1_", "PX2_", "PY2_", "PXY_"
+    };
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    UINT term;
+    UINT bit;
+    UINT at = 0u;
+    char text[8];
+
+    for (term = 0u; term < ATIRX_PREC_TERMS; ++term) {
+        for (bit = 0u; bit < ATIRX_PREC_BITS; ++bit) {
+            struct atirx_tex_scene *scene = &atirx_prec_scenes[at];
+            v9x_s32 one = (v9x_s32)(1ul << bit);
+
+            lstrcpyA(atirx_prec_names[at], terms[term]);
+            atirx_decimal(text, bit);
+            lstrcatA(atirx_prec_names[at], text);
+            scene->name = atirx_prec_names[at];
+            scene->offset = ATIRX_TEX_OFFSET;
+            scene->log2_width = 5ul;
+            scene->log2_height = 5ul;
+            scene->log2_pitch = 5ul;
+            scene->trap = rect;
+            scene->st.start[0] = ATIRX_TX(1) - 32l;
+            scene->st.start[1] = 0l;
+            scene->st.xinc_start[0] = term == 0u ? one : 0l;
+            scene->st.xinc_start[1] = 0l;
+            scene->st.y_inc[0] = term == 1u ? one : 0l;
+            scene->st.y_inc[1] = 0l;
+            scene->st.x_inc2[0] = term == 2u ? one : 0l;
+            scene->st.x_inc2[1] = 0l;
+            scene->st.y_inc2[0] = term == 3u ? one : 0l;
+            scene->st.y_inc2[1] = 0l;
+            scene->st.xy_inc2[0] = term == 4u ? one : 0l;
+            scene->st.xy_inc2[1] = 0l;
+            ++at;
+        }
+    }
+    return at;
+}
+
+static int atirx_run_tex(struct v9x_m64_engine *engine,
+                         const struct v9x_r2_target *target,
+                         const struct atirx_tex_scene *scenes, UINT count,
+                         const char *set)
+{
+    struct v9x_r2_texture texture;
+    v9x_u32 offsets[32];
+    v9x_u32 values[32];
+    v9x_u32 written;
+    UINT index;
+    char prefix[48];
+
+    atirx_key("SceneSet", set);
+    texture.format = V9X_R2_TEX_FORMAT_565;
+    texture.scale_3d_extra = 0ul;
+    atirx_write_texture(ATIRX_TEX_OFFSET, ATIRX_TEX_SIZE, ATIRX_TEX_SIZE);
+    atirx_write_texture(ATIRX_TEX16_OFFSET, 16ul, 16ul);
+    atirx_write_texture(ATIRX_TALL_OFFSET, 16ul, 32ul);
+
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_tex_scene *scene = &scenes[index];
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_prepare_block();
+        texture.offset = scene->offset;
+        texture.log2_width = scene->log2_width;
+        texture.log2_height = scene->log2_height;
+        texture.log2_pitch = scene->log2_pitch;
+        if (v9x_r2_build_texture_state(target, &texture, &scene->st,
+                                       offsets, values, 32ul, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_trap(target, &scene->trap, offsets, values, 32ul,
+                              &written) != V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "TEX-EMIT");
+            return 0;
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        atirx_dump_uv(prefix);
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+    atirx_key_dec("TextureDamage",
+                  atirx_texture_damage(ATIRX_TEX_OFFSET, ATIRX_TEX_SIZE,
+                                       ATIRX_TEX_SIZE) +
+                  atirx_texture_damage(ATIRX_TEX16_OFFSET, 16ul, 16ul) +
+                  atirx_texture_damage(ATIRX_TALL_OFFSET, 16ul, 32ul));
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "TEX-RUN");
+    return 1;
+}
+
+/* ---- Phase 4: textured triangles ---------------------------------------- */
+
+#define ATIRX_TEXTRI_COUNT  60u
+#define ATIRX_TEXTRI_AFFINE 20u
+
+/* A non-negative double below 2^31 to the nearest integer, without the
+ * float-to-int cast this freestanding build has no runtime for. */
+static DWORD atirx_round(double value)
+{
+    union {
+        double d;
+        DWORD w[2];
+    } pun;
+
+    if (!(value >= 0.0 && value < 2147483647.0)) {
+        return 0xfffffffful;
+    }
+    pun.d = value + 6755399441055744.0;
+    return pun.w[0];
+}
+
+static double atirx_random_unit(void)
+{
+    atirx_lcg = atirx_lcg * 1103515245ul + 12345ul;
+    return (double)(LONG)((atirx_lcg >> 8) & 0xffffl) / 65536.0;
+}
+
+/* The engine model's image of one textured triangle: each trapezoid's
+ * S/T walked as the engine walks them (rage2_reference.c), the texel they
+ * select from the self-describing map. */
+static WORD atirx_tex_image[ATIRX_BLOCK_SIZE][ATIRX_BLOCK_SIZE];
+
+static void atirx_tex_pixel(void *context, v9x_s32 x, v9x_s32 y, v9x_u32 s,
+                            v9x_u32 t)
+{
+    (void)context;
+    if (x < 0l || y < 0l || x >= (v9x_s32)ATIRX_BLOCK_SIZE ||
+        y >= (v9x_s32)ATIRX_BLOCK_SIZE) {
+        return;
+    }
+    atirx_tex_image[y][x] = atirx_texel(
+        v9x_r2_texel_index(s, ATIRX_TEX_LOG2, ATIRX_TEX_LOG2),
+        v9x_r2_texel_index(t, ATIRX_TEX_LOG2, ATIRX_TEX_LOG2));
+}
+
+static int atirx_run_textri(struct v9x_m64_engine *engine,
+                            const struct v9x_r2_target *target,
+                            double q_range)
+{
+    struct v9x_r2_vertex v[3];
+    struct v9x_r2_tex_coord c[3];
+    struct v9x_r2_flat_trap traps[V9X_R2_SETUP_TRAPS];
+    struct v9x_r2_st sts[V9X_R2_SETUP_TRAPS];
+    struct v9x_r2_texture texture;
+    v9x_u32 offsets[32];
+    v9x_u32 values[32];
+    v9x_u32 written;
+    v9x_u32 count;
+    v9x_u32 trap;
+    v9x_u32 affine;
+    v9x_status status;
+    UINT index;
+    UINT drawn_triangles = 0u;
+    UINT slivers = 0u;
+    UINT refused = 0u;
+    DWORD total_mismatch = 0ul;
+    DWORD total_pixels = 0ul;
+    char label[16];
+    char text[16];
+    char key[48];
+    char line[200];
+
+    atirx_key("SceneSet", "textri");
+    texture.offset = ATIRX_TEX_OFFSET;
+    texture.log2_width = ATIRX_TEX_LOG2;
+    texture.log2_height = ATIRX_TEX_LOG2;
+    texture.log2_pitch = ATIRX_TEX_LOG2;
+    texture.format = V9X_R2_TEX_FORMAT_565;
+    texture.scale_3d_extra = 0ul;
+    atirx_write_texture(ATIRX_TEX_OFFSET, ATIRX_TEX_SIZE, ATIRX_TEX_SIZE);
+
+    for (index = 0u; index < ATIRX_TEXTRI_COUNT; ++index) {
+        DWORD x;
+        DWORD y;
+        DWORD mismatch = 0ul;
+        DWORD pixels = 0ul;
+        double m[4];
+        double offset_u = atirx_random_unit() * 128.0 - 64.0;
+        double offset_v = atirx_random_unit() * 128.0 - 64.0;
+        double qa = atirx_random_unit();
+        double qb = atirx_random_unit() * (1.0 - qa);
+        double estimate = 0.0;
+        UINT k;
+        int skip = 0;
+
+        for (k = 0u; k < 4u; ++k) {
+            m[k] = atirx_random_unit() * 4.0 - 2.0;
+        }
+        /* Planar-projective coordinates, as the host test makes them:
+         * q screen-linear in 1..1+q_range (1 for the first twenty), and
+         * tu*q, tv*q screen-linear. */
+        for (k = 0u; k < 3u; ++k) {
+            double px;
+            double py;
+
+            v[k].x = atirx_random_coord();
+            v[k].y = atirx_random_coord();
+            px = (double)v[k].x / 16.0;
+            py = (double)v[k].y / 16.0;
+            c[k].q = index < ATIRX_TEXTRI_AFFINE
+                ? 1.0 : 1.0 + q_range * (qa * px + qb * py) / 64.0;
+            c[k].tu = (offset_u + m[0] * px + m[1] * py) / (c[k].q * 32.0);
+            c[k].tv = (offset_v + m[2] * px + m[3] * py) / (c[k].q * 32.0);
+        }
+
+        lstrcpyA(label, "X");
+        atirx_decimal(text, index);
+        lstrcatA(label, text);
+
+        if (v9x_r2_setup_triangle(target, v, traps, &count) != V9X_STATUS_OK) {
+            atirx_key(label, "SETUP-REFUSED");
+            return 0;
+        }
+        for (trap = 0ul; trap < count; ++trap) {
+            status = v9x_r2_setup_texture(v, c, &texture, &traps[trap],
+                                          &sts[trap], &affine);
+            if (status == V9X_STATUS_UNSUPPORTED) {
+                skip = 1;
+            } else if (status != V9X_STATUS_OK) {
+                atirx_key(label, "TEXTURE-REFUSED");
+                return 0;
+            } else if (affine != 0ul) {
+                ++slivers;
+            }
+        }
+        if (skip || count == 0ul) {
+            ++refused;
+            continue;
+        }
+        (void)v9x_r2_texture_error(v, c, &texture, &estimate);
+
+        atirx_prepare_block();
+        status = V9X_STATUS_OK;
+        for (trap = 0ul; trap < count && status == V9X_STATUS_OK; ++trap) {
+            if (v9x_r2_build_texture_state(target, &texture, &sts[trap],
+                                           offsets, values, 32ul,
+                                           &written) != V9X_STATUS_OK) {
+                atirx_key(label, "STATE-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, label, offsets, values, written);
+            if (status != V9X_STATUS_OK) {
+                break;
+            }
+            if (v9x_r2_build_trap(target, &traps[trap], offsets, values,
+                                  32ul, &written) != V9X_STATUS_OK) {
+                atirx_key(label, "TRAP-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, label, offsets, values, written);
+        }
+        if (status == V9X_STATUS_OK) {
+            status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        }
+        if (status != V9X_STATUS_OK) {
+            atirx_key_hex("FailStatus", (DWORD)status);
+            atirx_flush();
+            status = v9x_m64_reset_replay(engine, ATIRX_SPINS);
+            atirx_key_hex("ResetStatus", (DWORD)status);
+            atirx_key("Result", "TIMEOUT-STOPPED");
+            atirx_flush();
+            return 0;
+        }
+        (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+
+        for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+            for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+                atirx_tex_image[y][x] = ATIRX_SENTINEL;
+            }
+        }
+        for (trap = 0ul; trap < count; ++trap) {
+            (void)v9x_r2_ref_walk_st(&traps[trap], &sts[trap],
+                                     atirx_tex_pixel, 0);
+        }
+        line[0] = '\0';
+        for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+            for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+                WORD got = *atirx_pixel(x, y);
+                WORD want = ATIRX_SENTINEL;
+
+                if (v9x_r2_ref_covers(v, (v9x_s32)x, (v9x_s32)y)) {
+                    want = atirx_tex_image[y][x];
+                    ++pixels;
+                }
+                if (got != want) {
+                    ++mismatch;
+                    if (lstrlenA(line) < 150) {
+                        atirx_decimal(text, x);
+                        lstrcatA(line, text);
+                        lstrcatA(line, ",");
+                        atirx_decimal(text, y);
+                        lstrcatA(line, text);
+                        lstrcatA(line, ":");
+                        atirx_hex(text, got, 4);
+                        lstrcatA(line, text);
+                        lstrcatA(line, "/");
+                        atirx_hex(text, want, 4);
+                        lstrcatA(line, text);
+                        lstrcatA(line, " ");
+                    }
+                }
+            }
+        }
+        lstrcpyA(key, label);
+        lstrcatA(key, "_Pixels");
+        atirx_key_dec(key, pixels);
+        lstrcpyA(key, label);
+        lstrcatA(key, "_Mismatches");
+        atirx_key_dec(key, mismatch);
+        /* The fit's own distance from exact perspective, millitexels. */
+        lstrcpyA(key, label);
+        lstrcatA(key, "_FitErrorMilli");
+        atirx_key_dec(key, atirx_round(estimate * 1000.0));
+        if (line[0] != '\0') {
+            lstrcpyA(key, label);
+            lstrcatA(key, "_First");
+            atirx_key(key, line);
+        }
+        total_mismatch += mismatch;
+        total_pixels += pixels;
+        ++drawn_triangles;
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key_dec("TrianglesDrawn", drawn_triangles);
+    atirx_key_dec("TrianglesRefused", refused);
+    atirx_key_dec("SliverTraps", slivers);
+    atirx_key_dec("PixelsCompared", total_pixels);
+    atirx_key_dec("TotalMismatches", total_mismatch);
+    atirx_key("Result", total_mismatch == 0ul ? "TEXTRI-MATCH"
+                                              : "TEXTRI-DIFFER");
+    return 1;
+}
+
 static void atirx_prefix(char *prefix, const char *name)
 {
     lstrcpyA(prefix, name);
@@ -1683,6 +2240,37 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/textri")) {
+        int completed;
+
+        /* /textri2: sixty other triangles, q over 1..4. */
+        if (atirx_has_switch(GetCommandLineA(), "/textri2")) {
+            atirx_lcg = 0x9e3779b9ul;
+            completed = atirx_run_textri(&engine, &target, 3.0);
+        } else {
+            completed = atirx_run_textri(&engine, &target, 1.0);
+        }
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/tex")) {
+        int completed = atirx_has_switch(GetCommandLineA(), "/texprec")
+            ? atirx_run_tex(&engine, &target, atirx_prec_scenes,
+                            atirx_build_prec_scenes(), "texprec")
+            : atirx_run_tex(&engine, &target, atirx_tex_scenes,
+                            sizeof(atirx_tex_scenes) /
+                                sizeof(atirx_tex_scenes[0]), "tex");
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/zbuf")) {
         int completed = atirx_run_z(&engine, &target);
 

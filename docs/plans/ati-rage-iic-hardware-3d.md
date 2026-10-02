@@ -47,8 +47,15 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
     one rule found on the card: X_INC follows `DST_X_DIR`.
   - **Z16:** all eight compares, Z writes, a Z gradient, and a Z clear
     by engine fill.
-- Next: Phase 4, textures, starting with RGB565 point-sampled affine
-  S/T.
+- **Phase 4 steps 1-3 done**, boot 136
+  ([record](../decisions/2026-10-02-rage-iic-texture-addressing.md)):
+  - S/T normalised to the larger dimension, floor sampling, wrap at pitch
+    and height (no clamp);
+  - the engine's S/T walk, at START's 32-unit resolution;
+  - 120 textured triangles, 20,520 pixels, every one exact against it;
+  - the quadratic perspective fit measured against exact on the host,
+    with an error estimate for Phase 5 to subdivide on.
+- Next: Phase 4 step 4, bilinear.
 
 ## Goal
 

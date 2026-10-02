@@ -250,8 +250,75 @@ static void test_z_state(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_texture_state(void)
+{
+    struct v9x_r2_target target;
+    struct v9x_r2_texture texture;
+    struct v9x_r2_st st;
+    v9x_u32 offsets[V9X_R2_TEXTURE_STATE_DWORDS];
+    v9x_u32 values[V9X_R2_TEXTURE_STATE_DWORDS];
+    v9x_u32 written = 3ul;
+    v9x_u32 index;
+
+    make_target(&target);
+    memset(&texture, 0, sizeof(texture));
+    memset(&st, 0, sizeof(st));
+    texture.offset = 0x00220000ul;
+    texture.log2_width = 5ul;
+    texture.log2_height = 5ul;
+    texture.log2_pitch = 5ul;
+    texture.format = V9X_R2_TEX_FORMAT_565;
+    st.start[0] = 0x8000l;              /* S 0.5 */
+    st.xinc_start[0] = 1l << 16;        /* S +1 a pixel */
+    st.y_inc[1] = -(1l << 16);          /* T -1 a row */
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values,
+                                     V9X_R2_TEXTURE_STATE_DWORDS - 1ul,
+                                     &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) == V9X_STATUS_OK);
+    CHECK(written == V9X_R2_TEXTURE_STATE_DWORDS);
+    /* Texture mapping, cache off, mip off, before any S/T write. */
+    CHECK(offsets[0] == V9X_M64_SCALE_3D_CNTL && values[0] == 0x010000a0ul);
+    for (index = 1ul; index < written; ++index) {
+        CHECK(offsets[index] != V9X_M64_SCALE_3D_CNTL);
+    }
+    CHECK(offsets[3] == V9X_M64_DP_PIX_WIDTH && values[3] == 0x40040004ul);
+    CHECK(offsets[10] == V9X_R2_TEX_SIZE_PITCH && values[10] == 0x555ul);
+    CHECK(offsets[11] == 0x5d4ul && values[11] == 0x00220000ul);  /* TEX_5 */
+    CHECK(offsets[12] == 0x740ul);                  /* S_X_INC2 first */
+    CHECK(offsets[15] == 0x74cul && values[15] == 0x00010000ul);
+    CHECK(offsets[17] == 0x754ul && values[17] == 0x00008000ul);
+    CHECK(offsets[22] == 0x768ul && values[22] == 0x0fff0000ul);
+    /* A map running past VRAM, a pitch other than the width (u wraps at
+     * the pitch: there is no width field), and an unknown format are
+     * refused. */
+    texture.offset = 0x003ffc00ul;
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+    texture.offset = 0x00220000ul;
+    texture.log2_pitch = 4ul;
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) == V9X_STATUS_INVALID_ARGUMENT);
+    texture.log2_pitch = 6ul;
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) == V9X_STATUS_INVALID_ARGUMENT);
+    texture.log2_pitch = 5ul;
+    texture.format = 6ul;
+    CHECK(v9x_r2_build_texture_state(&target, &texture, &st, offsets,
+                                     values, V9X_R2_TEXTURE_STATE_DWORDS,
+                                     &written) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_rage2_trap_tests(void)
 {
+    test_texture_state();
     test_z_state();
     test_shade_state();
     test_flat_state();

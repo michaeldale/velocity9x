@@ -304,6 +304,7 @@ Sources: RRG p.6-4…6-6, L8498-8708; atiregs L2756-2823.
   - Bit positions: TEX_PITCH 3:0, TEX_SIZE 7:4, TEX_HEIGHT 11:8. This is an inference from the "c b a" letter order and from `TEX_LEVEL(tsp) = (tsp & 0xf0) >> 2` (atiregs L2877-2880; mesa_mach64_ioctl L858). That macro reads TEX_SIZE from bits 7:4 and turns it into the byte offset of TEX_<size>_OFF.
 - Mip chain: for a single non-mipmapped texture, drivers write only TEX_<TEX_SIZE>_OFF (atimach64accel L195-199). Inference: hardware level k reads TEX_k_OFF, and lower levels are used only if MIP_MAP_DISABLE = 0.
 - TEX_CNTL (0_DD) is **GTPro only** (atiregs L1688). It does not exist on GT2C, so GT2C has no wrap/clamp bits, LOD bias or compositing.
+- Measured on the card (A8U4I5, [texture addressing](../decisions/2026-10-02-rage-iic-texture-addressing.md)): the TEX_SIZE/TEX_PITCH/TEX_HEIGHT nibble order above is confirmed; S/T are normalised to 2^TEX_SIZE (1.0 = 2^26); sampling is floor(); u wraps at 2^TEX_PITCH and v at 2^TEX_HEIGHT (wrap only); the S/T accumulators keep bits 25:5.
 - Palette:
   - On the 3D RAGE, "Pseudocolour-to-RGB conversion is done via a read of the RAMDAC palette" (RRG p.4-94 L5970).
   - atiregs lists TEX_PAL_WR at 0_DF tagged GTB (L1690), and TEX_PALETTE / TEX_PALETTE_INDEX as GTPro (L1668, L1691).

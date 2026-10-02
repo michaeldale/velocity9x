@@ -491,8 +491,509 @@ static void test_shade_constant(void)
     CHECK(shade_worst == 0u);
 }
 
+/* ---- Texture coordinates: rows the card drew ---------------------------- */
+
+/* One texel of a 32-wide map, in the normalised unit (V9X_R2_ST_ONE / 32). */
+#define TX1 2097152l
+
+#define CARD_RECT  0
+#define CARD_RIGHT 1
+#define CARD_LEFT  2
+
+struct card_row {
+    const char *scene;
+    struct v9x_r2_st st;
+    v9x_u32 log2_size;
+    v9x_u32 log2_pitch;
+    v9x_u32 log2_height;
+    int shape;              /* CARD_RECT, CARD_RIGHT or CARD_LEFT */
+    v9x_s32 row;
+    v9x_s32 lead_x;         /* the row's first pixel; the span ends at 47 */
+    unsigned char u[32];
+    unsigned char v[32];
+};
+
+/* Each pixel's (u, v), columns lead_x..47, as read from BOOT136-ATIRX-
+ * TEX2..6.TXT in docs\probe\a8u4i5-rage-iic-registers-2026-10-02. */
+static const struct card_row card_rows[] = {
+    { "T6Quadratic",
+      { { 0l, 0l }, { 0l, 0l }, { 0l, TX1 },
+        { TX1 / 8l, 0l }, { 0l, 0l }, { 0l, 0l } },
+      5ul, 5ul, 5ul, CARD_RECT, 16l, 16l,
+      { 0, 0, 0, 0, 0, 1, 1, 2, 3, 4, 5, 6, 8, 9, 11, 13, 15, 17, 19, 21,
+        23, 26, 28, 31, 2, 5, 8, 11, 15, 18, 22, 26 },
+      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+    { "T13XYInc2",
+      { { 0l, 0l }, { 0l, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { TX1 / 4l, 0l } },
+      5ul, 5ul, 5ul, CARD_RECT, 23l, 16l,
+      { 0, 1, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19, 21, 22, 24, 26, 28, 29,
+        31, 1, 3, 4, 6, 8, 10, 11, 13, 15, 17, 18, 20, 22 },
+      { 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7, 7, 7, 7, 7, 7, 7, 7, 7 } },
+    { "T17SlopeXY",
+      { { 0l, 0l }, { 0l, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { TX1 / 4l, 0l } },
+      5ul, 5ul, 5ul, CARD_RIGHT, 23l, 24l,
+      { 14, 15, 17, 19, 21, 22, 24, 26, 28, 29, 31, 1, 3, 4, 6, 8, 10, 11,
+        13, 15, 17, 18, 20, 22 },
+      { 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7, 7 } },
+    { "T18LeftX2",
+      { { 8l * TX1, TX1 / 2l }, { 0l, 0l }, { 0l, TX1 },
+        { TX1 / 8l, 0l }, { 0l, 0l }, { 0l, 0l } },
+      5ul, 5ul, 5ul, CARD_LEFT, 23l, 32l,
+      { 11, 10, 9, 9, 8, 8, 8, 7, 7, 8, 8, 8, 9, 9, 10, 11 },
+      { 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7 } },
+    { "T19LeftXY",
+      { { 8l * TX1, TX1 / 2l }, { 0l, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { -TX1 / 4l, 0l } },
+      5ul, 5ul, 5ul, CARD_LEFT, 20l, 35l,
+      { 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 },
+      { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4 } },
+    { "T5bBias",
+      { { 8l * TX1 + 32l, 32l }, { TX1, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } },
+      5ul, 5ul, 5ul, CARD_LEFT, 16l, 39l,
+      { 9, 8, 6, 5, 4, 3, 2, 1, 0 },
+      { 0, 0, 31, 31, 31, 31, 31, 31, 31 } },
+    { "T14Tall16",
+      { { 0l, 20l * TX1 }, { TX1, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } },
+      5ul, 4ul, 5ul, CARD_RECT, 16l, 16l,
+      { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3,
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+      { 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20,
+        20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20 } },
+    { "T9Map16",
+      { { 0l, 0l }, { TX1, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } },
+      4ul, 4ul, 4ul, CARD_RECT, 20l, 16l,
+      { 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10,
+        11, 11, 12, 12, 13, 13, 14, 14, 15, 15 },
+      { 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 2 } },
+    { "T15WideWrap",
+      { { 0l, 12l * TX1 }, { TX1, 0l }, { 0l, TX1 },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } },
+      5ul, 5ul, 4ul, CARD_RECT, 20l, 16l,
+      { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+        19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 },
+      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0 } }
+};
+
+/* The scene runner's trapezoids: the 32x8 rectangle at (16, 16), and the
+ * leading edge one pixel a row right from 16 or left from 40, trailing
+ * at 48. */
+static void card_trap(int shape, struct v9x_r2_flat_trap *trap)
+{
+    memset(trap, 0, sizeof(*trap));
+    trap->x = shape == CARD_LEFT ? 40ul : 16ul;
+    trap->y = 16ul;
+    trap->length = 8ul;
+    trap->trail_x = 48ul;
+    trap->lead_err = shape == CARD_RECT ? -1l : 0l;
+    trap->lead_inc = shape == CARD_RECT ? 0l : 8l;
+    trap->lead_dec = shape == CARD_RECT ? -1l : -8l;
+    trap->trail_err = -1l;
+    trap->trail_inc = 0l;
+    trap->trail_dec = -1l;
+    trap->dst_cntl = V9X_M64_DST_Y_DIR | V9X_R2_TRAIL_X_DIR |
+                     V9X_R2_TRAP_FILL_DIR |
+                     (shape == CARD_LEFT ? 0ul : V9X_M64_DST_X_DIR);
+}
+
+struct card_check {
+    const struct card_row *r;
+    unsigned int bad;
+    unsigned int seen;
+};
+
+static void card_texel(void *context, v9x_s32 x, v9x_s32 y, v9x_u32 s,
+                       v9x_u32 t)
+{
+    struct card_check *check = (struct card_check *)context;
+    const struct card_row *r = check->r;
+    v9x_u32 u;
+    v9x_u32 v;
+
+    if (y != r->row) {
+        return;
+    }
+    ++check->seen;
+    u = v9x_r2_texel_index(s, r->log2_size, r->log2_pitch);
+    v = v9x_r2_texel_index(t, r->log2_size, r->log2_height);
+    if (x < r->lead_x || x > 47l || u != r->u[x - r->lead_x] ||
+        v != r->v[x - r->lead_x]) {
+        ++check->bad;
+    }
+}
+
+static void test_st_model_card_rows(void)
+{
+    unsigned int index;
+
+    for (index = 0u; index < sizeof(card_rows) / sizeof(card_rows[0]);
+         ++index) {
+        const struct card_row *r = &card_rows[index];
+        struct v9x_r2_flat_trap trap;
+        struct card_check check;
+
+        card_trap(r->shape, &trap);
+        check.r = r;
+        check.bad = 0u;
+        check.seen = 0u;
+        CHECK(v9x_r2_ref_walk_st(&trap, &r->st, card_texel, &check));
+        if (check.bad != 0u || check.seen != (unsigned int)(48l - r->lead_x)) {
+            printf("FAIL %s row %ld: %u of %u pixels differ from the card\n",
+                   r->scene, (long)r->row, check.bad, check.seen);
+            ++failures;
+        }
+    }
+}
+
+struct walk_probe {
+    v9x_s32 y;
+    v9x_u32 values[64];
+    unsigned int count;
+};
+
+static void probe_texel(void *context, v9x_s32 x, v9x_s32 y, v9x_u32 s,
+                        v9x_u32 t)
+{
+    struct walk_probe *probe = (struct walk_probe *)context;
+
+    (void)x;
+    (void)t;
+    if (y == probe->y && probe->count < 64u) {
+        probe->values[probe->count++] = s;
+    }
+}
+
+/* The walk's measured rules, one at a time on the rectangle and the
+ * left-leaning edge. */
+static void test_st_walk_rules(void)
+{
+    struct v9x_r2_flat_trap trap;
+    struct v9x_r2_st st;
+    struct walk_probe probe;
+
+    /* T5bBias: against DST_X_DIR each pixel loses 32 more, so the third
+     * pixel reads texel 6 (exact would be 7). */
+    card_trap(CARD_LEFT, &trap);
+    memset(&st, 0, sizeof(st));
+    st.start[0] = 8l * TX1 + 32l;
+    st.xinc_start[0] = TX1;
+    probe.y = 16l;
+    probe.count = 0u;
+    CHECK(v9x_r2_ref_walk_st(&trap, &st, probe_texel, &probe));
+    CHECK(probe.count == 9u);
+    CHECK(v9x_r2_texel_index(probe.values[1], 5ul, 5ul) == 8ul);
+    CHECK(v9x_r2_texel_index(probe.values[2], 5ul, 5ul) == 6ul);
+
+    /* START keeps bits 25:5. */
+    card_trap(CARD_RECT, &trap);
+    memset(&st, 0, sizeof(st));
+    st.start[0] = 31l;
+    probe.count = 0u;
+    CHECK(v9x_r2_ref_walk_st(&trap, &st, probe_texel, &probe));
+    CHECK(probe.count == 32u && probe.values[0] == 0ul);
+
+    /* /texprec PX1_4: an X increment of 16 is floored to 0 as it is
+     * added, so START 32 short of texel 1 never reaches it. */
+    st.start[0] = TX1 - 32l;
+    st.xinc_start[0] = 16l;
+    probe.count = 0u;
+    CHECK(v9x_r2_ref_walk_st(&trap, &st, probe_texel, &probe));
+    CHECK(v9x_r2_texel_index(probe.values[31], 5ul, 5ul) == 0ul);
+
+    /* /texprec PX2_2: X_INC2 4 builds the increment at full precision;
+     * texel 1 first at dx 9, where the closed form says dx 5. */
+    st.xinc_start[0] = 0l;
+    st.x_inc2[0] = 4l;
+    probe.count = 0u;
+    CHECK(v9x_r2_ref_walk_st(&trap, &st, probe_texel, &probe));
+    CHECK(v9x_r2_texel_index(probe.values[8], 5ul, 5ul) == 0ul);
+    CHECK(v9x_r2_texel_index(probe.values[9], 5ul, 5ul) == 1ul);
+}
+
+struct st_stats {
+    unsigned long pixels;
+    unsigned long texel_misses;     /* the engine's texel != exact floor */
+    double max_error;               /* texels of the larger dimension */
+    unsigned int triangles;
+    unsigned int unsupported;
+    unsigned int over_half;         /* estimate above half a texel */
+    unsigned int underestimates;    /* measured beyond the estimate */
+    unsigned int affine_traps;      /* slivers given the plane */
+};
+
+static double lcg_unit(void)
+{
+    lcg_state = lcg_state * 1103515245ul + 12345ul;
+    return (double)(v9x_s32)((lcg_state >> 8) & 0xffffl) / 65536.0;
+}
+
+/* The exact perspective value at pixel (x, y)'s centre, in the engine's
+ * unit for `axis`. */
+static double exact_st(const struct v9x_r2_vertex *v,
+                       const struct v9x_r2_tex_coord *c,
+                       const struct v9x_r2_texture *t, v9x_u32 axis,
+                       v9x_s32 x, v9x_s32 y)
+{
+    double px = (double)x + 0.5;
+    double py = (double)y + 0.5;
+    double vx[3];
+    double vy[3];
+    double det;
+    double num = 0.0;
+    double den = 0.0;
+    v9x_u32 size = t->log2_width > t->log2_height ? t->log2_width
+                                                  : t->log2_height;
+    double scale = 67108864.0 /
+        (double)(1l << (size - (axis == 0ul ? t->log2_width
+                                            : t->log2_height)));
+    int k;
+
+    for (k = 0; k < 3; ++k) {
+        vx[k] = (double)v[k].x / 16.0;
+        vy[k] = (double)v[k].y / 16.0;
+    }
+    det = (vx[1] - vx[0]) * (vy[2] - vy[0]) - (vx[2] - vx[0]) * (vy[1] - vy[0]);
+    for (k = 0; k < 3; ++k) {
+        int i = (k + 1) % 3;
+        int j = (k + 2) % 3;
+        double lambda = ((vx[i] - px) * (vy[j] - py) -
+                         (vx[j] - px) * (vy[i] - py)) / det;
+        double value = (axis == 0ul ? c[k].tu : c[k].tv) * scale;
+
+        num += lambda * value * c[k].q;
+        den += lambda * c[k].q;
+    }
+    return num / den;
+}
+
+/* The engine's distance from exact, modulo the 2^26 repeat. */
+static double wrapped_error(v9x_u32 engine, double exact)
+{
+    double e = (double)(v9x_s32)engine - exact;
+
+    while (e > 33554432.0) {
+        e -= 67108864.0;
+    }
+    while (e < -33554432.0) {
+        e += 67108864.0;
+    }
+    return e < 0.0 ? -e : e;
+}
+
+struct st_pixel_check {
+    const struct v9x_r2_vertex *v;
+    const struct v9x_r2_tex_coord *c;
+    const struct v9x_r2_texture *t;
+    struct st_stats *stats;
+    v9x_u32 size;
+    double texel;
+    double worst;
+};
+
+static void st_pixel(void *context, v9x_s32 x, v9x_s32 y, v9x_u32 s,
+                     v9x_u32 t)
+{
+    struct st_pixel_check *check = (struct st_pixel_check *)context;
+    v9x_u32 axis;
+
+    ++check->stats->pixels;
+    for (axis = 0ul; axis < 2ul; ++axis) {
+        v9x_u32 wrap = axis == 0ul ? check->t->log2_width
+                                   : check->t->log2_height;
+        v9x_u32 engine = axis == 0ul ? s : t;
+        double exact = exact_st(check->v, check->c, check->t, axis, x, y);
+        double error = wrapped_error(engine, exact) / check->texel;
+        double floor_exact = exact / check->texel;
+        v9x_s32 want = (v9x_s32)floor_exact;
+
+        if (error > check->worst) {
+            check->worst = error;
+        }
+        /* floor(exact / texel), wrapped like the engine. */
+        if ((double)want > floor_exact) {
+            --want;
+        }
+        if (v9x_r2_texel_index(engine, check->size, wrap) !=
+            ((v9x_u32)want & ((1ul << wrap) - 1ul))) {
+            ++check->stats->texel_misses;
+        }
+    }
+}
+
+/* Every covered pixel of one triangle: the engine's walk of the setup's
+ * registers, against exact perspective. Returns the triangle's worst
+ * error in texels, or -1 when nothing was drawn. */
+static double st_triangle(const struct v9x_r2_vertex *v,
+                          const struct v9x_r2_tex_coord *c,
+                          const struct v9x_r2_texture *t,
+                          struct st_stats *stats)
+{
+    struct v9x_r2_target target;
+    struct v9x_r2_flat_trap traps[V9X_R2_SETUP_TRAPS];
+    struct st_pixel_check check;
+    v9x_u32 count = 0ul;
+    v9x_u32 index;
+
+    check.v = v;
+    check.c = c;
+    check.t = t;
+    check.stats = stats;
+    check.size = t->log2_width > t->log2_height ? t->log2_width
+                                                : t->log2_height;
+    check.texel = (double)(1l << (26u - check.size));
+    check.worst = -1.0;
+
+    make_target(&target);
+    if (v9x_r2_setup_triangle(&target, v, traps, &count) != V9X_STATUS_OK) {
+        return check.worst;
+    }
+    for (index = 0ul; index < count; ++index) {
+        struct v9x_r2_st st;
+        v9x_u32 affine = 9ul;
+
+        if (v9x_r2_setup_texture(v, c, t, &traps[index], &st, &affine) !=
+                V9X_STATUS_OK) {
+            ++stats->unsupported;
+            continue;
+        }
+        if (affine == 1ul) {
+            ++stats->affine_traps;
+        }
+        CHECK(v9x_r2_ref_walk_st(&traps[index], &st, st_pixel, &check));
+    }
+    if (check.worst > stats->max_error) {
+        stats->max_error = check.worst;
+    }
+    return check.worst;
+}
+
+/*
+ * Random triangles in the 64x64 grid, textured as a game would: texel
+ * coordinates of a projected plane. q = 1/w is screen-linear, from 1 to
+ * q_ratio across the grid; tu*q and tv*q are screen-linear too (a random
+ * matrix, up to 2 texels a pixel where q is 1, and a random offset). Per-
+ * vertex random q would describe an edge-on plane for every sliver. Each
+ * triangle's measured error is held to the estimator's: within 10% of it
+ * plus the registers' rounding.
+ */
+static void st_random(struct st_stats *stats, unsigned int triangles,
+                      double q_ratio, v9x_u32 log2_w, v9x_u32 log2_h)
+{
+    struct v9x_r2_texture t;
+    unsigned int index;
+    double width = (double)(1l << log2_w);
+    double height = (double)(1l << log2_h);
+
+    memset(stats, 0, sizeof(*stats));
+    memset(&t, 0, sizeof(t));
+    t.log2_width = log2_w;
+    t.log2_height = log2_h;
+    t.log2_pitch = log2_w;
+    t.format = V9X_R2_TEX_FORMAT_565;
+    for (index = 0u; index < triangles; ++index) {
+        struct v9x_r2_vertex v[3];
+        struct v9x_r2_tex_coord c[3];
+        double m[4];
+        double offset_u = lcg_unit() * width * 4.0 - width * 2.0;
+        double offset_v = lcg_unit() * height * 4.0 - height * 2.0;
+        double qa = lcg_unit();
+        double qb = lcg_unit() * (1.0 - qa);
+        int flip = (lcg_unit() < 0.5);
+        double estimate;
+        double measured;
+        int k;
+
+        for (k = 0; k < 4; ++k) {
+            m[k] = lcg_unit() * 4.0 - 2.0;
+        }
+        for (k = 0; k < 3; ++k) {
+            double x;
+            double y;
+            double f;
+
+            v[k] = vtx(lcg_coord(), lcg_coord());
+            x = (double)v[k].x / 16.0;
+            y = (double)v[k].y / 16.0;
+            /* f in [0, 1] over the grid: q's share of its range. */
+            f = (qa * x + qb * y) / (double)GRID;
+            if (flip) {
+                f = 1.0 - f;
+            }
+            c[k].q = 1.0 + f * (q_ratio - 1.0);
+            c[k].tu = (offset_u + m[0] * x + m[1] * y) / (c[k].q * width);
+            c[k].tv = (offset_v + m[2] * x + m[3] * y) / (c[k].q * height);
+        }
+        measured = st_triangle(v, c, &t, stats);
+        if (measured < 0.0 ||
+            v9x_r2_texture_error(v, c, &t, &estimate) != V9X_STATUS_OK) {
+            continue;
+        }
+        ++stats->triangles;
+        if (estimate > 0.5) {
+            ++stats->over_half;
+        }
+        if (measured > estimate * 1.1 + 0.01) {
+            if (stats->underestimates < 3u) {
+                printf("    under: measured %.4f estimate %.4f q %.3f %.3f"
+                       " %.3f v (%ld,%ld) (%ld,%ld) (%ld,%ld)\n", measured,
+                       estimate, c[0].q, c[1].q, c[2].q, (long)v[0].x,
+                       (long)v[0].y, (long)v[1].x, (long)v[1].y,
+                       (long)v[2].x, (long)v[2].y);
+            }
+            ++stats->underestimates;
+        }
+    }
+}
+
+static void st_report(const char *name, const struct st_stats *s)
+{
+    printf("  texture %s: %u tri, %lu px, %lu texel misses, max %.4f,"
+           " %u over 0.5 (est), %u under-estimated, %u refused,"
+           " %u sliver traps\n", name, s->triangles, s->pixels,
+           s->texel_misses, s->max_error, s->over_half, s->underestimates,
+           s->unsupported, s->affine_traps);
+}
+
+static void test_texture_setup(void)
+{
+    struct st_stats affine;
+    struct st_stats mild;
+    struct st_stats strong;
+    struct st_stats wide;
+
+    st_random(&affine, 1500u, 1.0, 5ul, 5ul);
+    st_random(&mild, 1500u, 2.0, 5ul, 5ul);
+    st_random(&strong, 1500u, 8.0, 5ul, 5ul);
+    st_random(&wide, 1500u, 2.0, 8ul, 6ul);
+    st_report("affine 32x32", &affine);
+    st_report("q 1..2 32x32", &mild);
+    st_report("q 1..8 32x32", &strong);
+    st_report("q 1..2 256x64", &wide);
+    CHECK(affine.pixels > 100000ul);
+    /* Affine is the plane: the error is register rounding alone. */
+    CHECK(affine.max_error < 0.002);
+    CHECK(affine.over_half == 0u);
+    CHECK(affine.unsupported == 0u && mild.unsupported == 0u &&
+          strong.unsupported == 0u && wide.unsupported == 0u);
+    /* The estimator is what subdivision trusts: it must not under-read. */
+    CHECK(affine.underestimates == 0u && mild.underestimates == 0u &&
+          strong.underestimates == 0u && wide.underestimates == 0u);
+}
+
 unsigned int v9x_run_rage2_setup_tests(void)
 {
+    test_texture_setup();
+    test_st_model_card_rows();
+    test_st_walk_rules();
     test_channel_out();
     test_shade_constant();
     test_shade_random();
