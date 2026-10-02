@@ -24,6 +24,13 @@ It publishes `C:\V9XDIAG\ATIMM.TXT` and performs no engine or PCI writes. The
 LCD index selector is the sole MMIO write and is restored around each indexed
 panel read.
 
+`ati_rage_iic_probe.asm` and `ati_rage_iic_probe_win32.c` are the Rage IIC
+(`1002:4757`) equivalent, with no MMIO write at all. Build them with
+`scripts/build-ati-rage-iic-probe.ps1`; run `ATIIC.EXE` beside `ATIIC.VXD`,
+optionally with `/block1`. It publishes `C:\V9XDIAG\ATIIC.TXT` and the 64 KiB
+shadow at C0000h as `C:\V9XDIAG\ATIIC.ROM`. See
+[2026-10-02 Rage IIC register survey](../../docs/decisions/2026-10-02-rage-iic-register-survey.md).
+
 Removed on 2026-09-12, recoverable from git history: `dos_box_test_win32.c`,
 `io_trace_win32.c`, `matrox_mmio_query.asm` and their six build scripts. No
 document referenced them.
