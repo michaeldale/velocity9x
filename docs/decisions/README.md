@@ -204,6 +204,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-01 Intel asynchronous submission's corruption was a busy ring's dword head: fixed, and on by default](2026-10-01-intel-async-corruption-was-the-dword-head.md)
 - [2026-10-01 Where an OpenGL vertex's time goes in Quake 2: clipping a quarter of the triangles costs more than transforming all of them](2026-10-01-gl-vertex-path-profile-quake2-netbook.md)
 - [2026-10-02 Serious Sam on the netbook: textures over 256 are drawn by the CPU, and that is three quarters of the frame](2026-10-02-serious-sam-netbook-profile.md)
+- [2026-10-02 3DMark 99 Max at 640x480 on both machines: netbook 1253, Gateway 604](2026-10-02-3dmark99-640-both-machines.md)
 
 ## NVIDIA and other surveyed cards
 
