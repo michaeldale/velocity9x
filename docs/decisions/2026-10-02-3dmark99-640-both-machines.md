@@ -50,7 +50,51 @@ them; the CPU score is unchanged. The Gateway is within the spread of its
 earlier runs. Whether the earlier runs used triple buffering was not
 recorded; these did.
 
+## Per test, from the Result Browser
+
+Read from the Details tab on each machine
+(`netbook-details-{1,2,3}.png`, `gateway-details-{1,2}.png`). The netbook's
+earlier column is its 2026-09-25 run (boot 8, 717 3DMarks,
+[record](2026-09-25-netbook-3dmark99-with-mip-trees.md)), the last with
+per-test figures on file; the 852 run kept only its score, and no Gateway
+run kept per-test figures.
+
+| Test | netbook now | netbook 2026-09-25 | Gateway now |
+|---|---|---|---|
+| 3DMark result | 1,253 | 717 | 604 |
+| Synthetic CPU 3D speed | 14,752 | 14,572 | 7,075 |
+| Rasterizer score (3DRasterMarks) | 653 | 347 | 302 |
+| Game 1 - Race | 25.9 FPS | 12.3 | 8.5 |
+| Game 2 - First Person | 8.3 FPS | 5.1 | 4.7 |
+| Fill rate | 72.8 MTexels/s | 38.8 | 35.0 |
+| Fill rate with multi-texturing | 73.0 MTexels/s | 39.1 | 35.3 |
+| 2 MB texture rendering | 74.1 FPS | 22.7 | 18.8 |
+| 4 MB texture rendering | 76.6 FPS | 18.8 | 11.7 |
+| 8 MB texture rendering | 17.8 FPS | 12.4 | 6.9 |
+| 16 MB texture rendering | 9.8 FPS | 7.7 | 3.9 |
+| 32 MB texture rendering | 5.1 FPS | 4.4 | 2.1 |
+| Bump mapping, emboss 3/2/1-pass | Not Supported | Not Supported | Not Supported |
+| Point sample filtering | 105.9 % | 98.7 | 113.5 |
+| Bilinear filtering | 100.0 % | 100.0 | 100.0 |
+| Trilinear filtering | 100.7 % | 100.8 | 66.7 |
+| Anisotropic filtering | Not Supported | Not Supported | Not Supported |
+| 6 pixel, individual / strips | 639.9 / 592.5 KPolygons/s | 531.7 / 469.4 | 135.8 / 140.6 |
+| 25 pixel, individual / strips | 633.8 / 557.0 | - | 135.4 / 141.4 |
+| 50 pixel, individual / strips | 626.0 / 481.0 | - | 123.3 / 140.0 |
+| 250 pixel, individual / strips | 92.3 / 70.6 | - | 71.1 / 71.3 |
+| 1000 pixel, individual / strips | 15.7 / 14.8 | 7.6 / 7.4 | 22.5 / 22.9 |
+| Refresh rate reported | 59 Hz | 28 | VSync Off |
+| Missing features | none listed | - | Sub-Pixel Accuracy |
+
+What the columns show, without attributing it: the netbook's gains are
+largest where the GPU was waited on - fill rate and the 2 and 4 MB
+texture tests roughly double to treble, Game 1 doubles - and smallest in
+the 16 and 32 MB texture tests, where texture memory, not submission, is
+the limit. Its reported refresh rate, 28 Hz on 2026-09-25, is now 59 Hz,
+the flip completing at the first tick. On the Gateway trilinear reads
+66.7 % of bilinear (the netbook ~100 %), and 3DMark lists sub-pixel
+accuracy as missing; neither has been looked into.
+
 ## Not established
 
-- Per-test figures; the Result Browser was not read.
 - The pictures; nobody watched either run.
