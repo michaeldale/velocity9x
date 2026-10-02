@@ -155,6 +155,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-16 ATI Mach64 / Rage Mobility hardware audit](2026-08-16-ati-mach64-hardware-audit.md)
 - [2026-10-02 Rage IIC on ATI's own driver at 640x480: 3DMark 99 484, Final Reality 3.81, no OpenGL; the community 4.11.2611 build alike](2026-10-02-rage-iic-native-baseline-a8u4i5.md)
 - [2026-10-02 Rage IIC: the Mobility's register window and 2D engine, but no setup engine](2026-10-02-rage-iic-register-survey.md)
+- [2026-10-02 Rage IIC: first Velocity9x bind on A8U4I5, tier-0, enable-ok at 1024x768x16](2026-10-02-rage-iic-first-velocity9x-bind.md)
 
 ## Matrox
 
