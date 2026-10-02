@@ -357,6 +357,20 @@ static int atirx_starts_with_ci(const char *text, const char *prefix)
     return 1;
 }
 
+static int atirx_has_switch(const char *command_line, const char *name)
+{
+    if (command_line == 0) {
+        return 0;
+    }
+    while (*command_line != '\0') {
+        if (atirx_starts_with_ci(command_line, name)) {
+            return 1;
+        }
+        ++command_line;
+    }
+    return 0;
+}
+
 static DWORD atirx_u32(const BYTE *data)
 {
     return (DWORD)data[0] | ((DWORD)data[1] << 8) |
@@ -542,6 +556,96 @@ static const struct atirx_scene atirx_scenes[] = {
         V9X_R2_DST_Y_MAJOR } }
 };
 
+/*
+ * Set 2, after set 1 (boot 135) showed length counts scanlines, spans run
+ * from the leading pixel to the pixel before the trailing one, and an
+ * error of 0 with DEC 0 does not step an edge. Classic self-terminating
+ * Bresenham terms only, for a Y-major edge of dx over dy rows:
+ * ERR = 2dx - dy, INC = 2dx, DEC = 2(dx - dy), so DEC <= 0 always pulls
+ * the error back and at most one X step happens per row.
+ */
+static const struct atirx_scene atirx_scenes_2[] = {
+    /* Leading edge 4 right over 8 rows, Y major. */
+    { "A1LeadHalfYMajor",
+      { 16ul, 16ul, 8ul, 40ul, 0l, 8l, -8l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE | V9X_R2_DST_Y_MAJOR } },
+    /* The same without Y_MAJOR. */
+    { "A2LeadHalfNoYMajor",
+      { 16ul, 16ul, 8ul, 40ul, 0l, 8l, -8l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* Leading edge 45 degrees: dx = dy = 8. */
+    { "A3LeadFull",
+      { 16ul, 16ul, 8ul, 40ul, 8l, 16l, 0l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE | V9X_R2_DST_Y_MAJOR } },
+    /* Trailing edge 4 right over 8 rows. */
+    { "A4TrailHalf",
+      { 16ul, 16ul, 8ul, 32ul, -1l, 0l, -1l, 0l, 8l, -8l,
+        ATIRX_CNTL_BASE | V9X_R2_DST_Y_MAJOR } },
+    /* Leading edge 4 left over 8 rows: DST_X_DIR clear. */
+    { "A5LeadHalfLeft",
+      { 24ul, 16ul, 8ul, 40ul, 0l, 8l, -8l, -1l, 0l, -1l,
+        V9X_M64_DST_Y_DIR | V9X_R2_TRAIL_X_DIR | V9X_R2_TRAP_FILL_DIR |
+        V9X_R2_DST_Y_MAJOR } },
+    /* Leading edge X major, 16 right over 8 rows: ERR = 2dy - dx,
+     * INC = 2dy, DEC = 2(dy - dx). Y_MAJOR clear. */
+    { "A6LeadXMajor",
+      { 16ul, 16ul, 8ul, 48ul, 0l, 16l, -16l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } }
+};
+
+/*
+ * Set 3 tests one model fitted to sets 1-2 (boot 135): per row the edge
+ * adds DEC to its error, and if the result is negative it steps X once and
+ * adds INC. Each scene states what that model predicts for the leading
+ * edge's X on rows 16..23 (start 16, moving right). Every scene's error
+ * returns to non-negative within a step or diverges negative at one step
+ * per row, so no scene can run an edge more than 16 pixels.
+ */
+static const struct atirx_scene atirx_scenes_3[] = {
+    /* -1-8 < 0 every row: 17..24. */
+    { "B1ErrMinus1",
+      { 16ul, 16ul, 8ul, 48ul, -1l, 8l, -8l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* INC 0: error diverges negative, still one step a row: 17..24. */
+    { "B2IncZero",
+      { 16ul, 16ul, 8ul, 48ul, 0l, 0l, -8l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* DEC 0: never negative, never steps: 16 throughout. */
+    { "B3DecZero",
+      { 16ul, 16ul, 8ul, 48ul, 0l, 8l, 0l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* DDA 2 over 8: errors 5 3 1 -1 / 5 3 1 -1: steps on rows 19 and 23,
+     * so 16 16 16 17 17 17 17 18. */
+    { "B4Dda2of8a",
+      { 16ul, 16ul, 8ul, 48ul, 7l, 8l, -2l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* The same from error 3: steps on rows 17 and 21: 16 17 17 17 17 18
+     * 18 18. */
+    { "B5Dda2of8b",
+      { 16ul, 16ul, 8ul, 48ul, 3l, 8l, -2l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* Zero after the add: 8-8 = 0 on row 16. Non-negative zero: no step
+     * then, steps on every later row: 16 17 18 .. 23. */
+    { "B6ZeroSign",
+      { 16ul, 16ul, 8ul, 48ul, 8l, 8l, -8l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* The same with DST_BRES_SIGN, which the RRG says makes a zero
+     * negative: if so, steps on every row: 17 .. 24. */
+    { "B7ZeroSignBit",
+      { 16ul, 16ul, 8ul, 48ul, 8l, 8l, -8l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE | V9X_R2_DST_BRES_SIGN } },
+    /* -16 then +8 is still negative: one step a row gives 17 .. 24; an
+     * engine that steps until non-negative gives two a row, 18 .. 32. */
+    { "B8TwoPerRow",
+      { 16ul, 16ul, 8ul, 48ul, 0l, 8l, -16l, -1l, 0l, -1l,
+        ATIRX_CNTL_BASE } },
+    /* The trailing edge on the same DDA as B4: its exclusive end 32 32 32
+     * 33 33 33 33 34, so spans end 31 31 31 32 32 32 32 33. */
+    { "B9TrailDda",
+      { 16ul, 16ul, 8ul, 32ul, -1l, 0l, -1l, 7l, 8l, -2l,
+        ATIRX_CNTL_BASE } }
+};
+
 static void atirx_prefix(char *prefix, const char *name)
 {
     lstrcpyA(prefix, name);
@@ -564,6 +668,8 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     v9x_u32 written;
     v9x_status status;
     UINT scene;
+    UINT scene_count;
+    const struct atirx_scene *scenes;
     char prefix[48];
     static const char header[] = "[AtiRage2Scene]\r\n";
 
@@ -662,9 +768,21 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
-    for (scene = 0u; scene < sizeof(atirx_scenes) / sizeof(atirx_scenes[0]);
-         ++scene) {
-        const struct atirx_scene *current = &atirx_scenes[scene];
+    /* /set2 picks the second scene set; the default stays set 1. */
+    scenes = atirx_scenes;
+    scene_count = sizeof(atirx_scenes) / sizeof(atirx_scenes[0]);
+    if (atirx_has_switch(GetCommandLineA(), "/set2")) {
+        scenes = atirx_scenes_2;
+        scene_count = sizeof(atirx_scenes_2) / sizeof(atirx_scenes_2[0]);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/set3")) {
+        scenes = atirx_scenes_3;
+        scene_count = sizeof(atirx_scenes_3) / sizeof(atirx_scenes_3[0]);
+    }
+    atirx_key("SceneSet", scenes == atirx_scenes ? "1" :
+                          scenes == atirx_scenes_2 ? "2" : "3");
+    for (scene = 0u; scene < scene_count; ++scene) {
+        const struct atirx_scene *current = &scenes[scene];
 
         atirx_prefix(prefix, current->name);
         atirx_key("Scene", current->name);
@@ -707,13 +825,12 @@ void WINAPI V9xAtiRage2SceneEntry(void)
         atirx_report_block(prefix);
         atirx_flush();
     }
-    if (scene == sizeof(atirx_scenes) / sizeof(atirx_scenes[0])) {
+    if (scene == scene_count) {
         atirx_key("Result", "SCENES-RUN");
     }
     atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
     atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
     atirx_key_dec("Resets", engine.reset_count);
     CloseHandle(atirx_out);
-    ExitProcess(scene == sizeof(atirx_scenes) / sizeof(atirx_scenes[0])
-                ? 0u : 1u);
+    ExitProcess(scene == scene_count ? 0u : 1u);
 }
