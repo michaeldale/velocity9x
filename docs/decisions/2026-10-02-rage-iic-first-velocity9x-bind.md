@@ -73,12 +73,37 @@ default: a 1024x768 capture is a 2.3 MB BMP over a link measured at
 0.1-0.2 MB/s. Three default-timeout attempts failed at the transport,
 while the agent kept answering `info`.
 
-The BIOS's extra modes, including 1280x1024, were not switched to.
+## Every published mode, and DirectDraw, boots 126-127
 
-## Not established
+`V9XMSW /set:` to each of the 12 BIOS-added modes and to the four
+baseline rows not yet exercised, each followed by `/set:1024x768x16`:
+all 32 runs PASS with `ChangeResult=0` (`BOOT126-V9XMSW-SETS.TXT`). That
+covers 1280x1024 at 8 and 16 bpp, and 640x350, 512x384, 400x300, 320x240
+and 320x200 at both depths. All 19 published modes have now passed a live
+GDI switch.
 
-- DirectDraw, DOS boxes and a cold boot.
-- Any mode outside the seven baseline rows.
+DirectDraw (`V9XDDP`):
+
+| Run | Result |
+|---|---|
+| default probe | `COMPLETE`. 640x480x16 mode set, flip chain, fills, 20 flips, overlapping blits, pixels correct. **But no HAL**: see below |
+| `/modestress` | 32 of 32 SetDisplayMode/RestoreDisplayMode round trips, 97 s |
+| `/pal8` | 640x480, 640x400, 320x240 and 320x200 at 8 bpp: primary, palette, lock and readback all succeed |
+
+The HAL is refused. `V9XDDH.INI` reads `setinfo-fail`, and DirectDraw runs
+emulation only, with no heap. A video-memory surface fails with
+`DDERR_OUTOFVIDEOMEMORY`. With `Direct3D=2` set for one boot (127) it
+attaches, with a 2.5 MiB heap and the Direct3D HAL found. This is shared
+code, not this chip; filed as
+[2026-10-02 DirectDraw refuses the HAL without the D3D capability](../issues/2026-10-02-directdraw-hal-refused-without-d3d-capability.md).
+`SYSTEM.INI` is restored to `Direct3D=0`, effective from the next boot.
+
+## Not run
+
+- DOS boxes: every agent route into one is a DOS program, which Michael
+  ruled out on 2026-09-26 because it stops Windows rebooting itself.
+- A cold boot: a remote power-off leaves the machine off until someone is
+  at it.
 - Whether the earlier screen overwrite during `V9XSTAGE`, under ATI's
   driver, has a counterpart under this one.
 - Whether the leftover ATI property-page handlers misbehave when Display
