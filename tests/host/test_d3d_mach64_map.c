@@ -233,6 +233,13 @@ static void test_vertex_alpha_opaque(void)
     CHECK(v9x_d3d_mach64_vertices_opaque(vertices, 2ul) == 1ul);
     CHECK(v9x_d3d_mach64_vertices_opaque(vertices, 0ul) == 0ul);
     CHECK(v9x_d3d_mach64_vertices_opaque(0, 3ul) == 0ul);
+    /* The least alpha; 0 for nothing to read. */
+    CHECK(v9x_d3d_mach64_vertices_alpha_min(vertices, 3ul) == 0xFEul);
+    CHECK(v9x_d3d_mach64_vertices_alpha_min(vertices, 2ul) == 0xFFul);
+    vertices[1].color = 0x01FFFFFFul;
+    CHECK(v9x_d3d_mach64_vertices_alpha_min(vertices, 3ul) == 0x01ul);
+    CHECK(v9x_d3d_mach64_vertices_alpha_min(vertices, 0ul) == 0ul);
+    CHECK(v9x_d3d_mach64_vertices_alpha_min(0, 3ul) == 0ul);
 }
 
 static void test_specular_needs_colour(void)

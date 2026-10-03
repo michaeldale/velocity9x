@@ -55,7 +55,21 @@ struct v9x_r2_draw_decision {
     v9x_u32 alpha_from_fog;     /* the alpha interpolator carries fog */
     v9x_u32 clamp_in_unit;      /* CLAMP accepted as WRAP (see below) */
     v9x_u32 mip_mapped;         /* MIP_MAP_DISABLE clear, every level set */
+    v9x_u32 alpha_mask_key;     /* non-zero: the 4444 texels' alpha LSBs
+                                 * must answer this test (below) */
+    v9x_u32 alpha_test_dropped; /* a test every alpha passes, not drawn */
 };
+
+/*
+ * An ARGB4444 alpha test is drawn as TEX_AMASK_AEN over texels whose alpha
+ * LSB holds the test's answer. alpha_mask_key names the test:
+ * V9X_R2_ALPHA_MASK_KEYED | func | ref << 8, Direct3D's numbering. The
+ * caller rewrites every level the draw reads with v9x_r2_alpha_mask_texel
+ * before the draw, and again after the texels change.
+ */
+#define V9X_R2_ALPHA_MASK_KEYED 0x00010000ul
+
+v9x_u32 v9x_r2_alpha_mask_texel(v9x_u32 texel, v9x_u32 key);
 
 /*
  * The policy. Returns V9X_M64_REFUSE_NONE and fills `decision`, or the

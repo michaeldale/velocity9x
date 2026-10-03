@@ -570,6 +570,24 @@ void v9x_d3d_color_key_set(const V9X_DD_SURFACE_LCL *surface, DWORD flags,
                            DWORD low, DWORD high);
 void v9x_d3d_color_key_touch(const V9X_DD_SURFACE_LCL *surface);
 void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface);
+/*
+ * ARGB4444 textures whose alpha LSBs the Rage IIC rewrote to answer an
+ * alpha test (v9x_r2_alpha_mask_texel), per surface. `key` is the test the
+ * texels answer, zero when they may have changed since: cleared on the same
+ * events as a colour key's dirty flag, with the same HEL-blit gap.
+ */
+typedef struct v9x_d3d_alpha_mask {
+    const V9X_DD_SURFACE_LCL *surface;
+    DWORD key;
+} V9X_D3D_ALPHA_MASK;
+
+#define V9X_D3D_ALPHA_MASK_COUNT 512ul
+
+/* The surface's entry, claimed with key zero if it had none; 0 when full. */
+V9X_D3D_ALPHA_MASK *v9x_d3d_alpha_mask_entry(
+    const V9X_DD_SURFACE_LCL *surface);
+void v9x_d3d_alpha_mask_touch(const V9X_DD_SURFACE_LCL *surface);
+void v9x_d3d_alpha_mask_forget(const V9X_DD_SURFACE_LCL *surface);
 /* And every texture record naming it, for the same reason and at the same
  * moment: a record outlives the context that created it now, so a destroyed
  * surface has to be what ends one. */

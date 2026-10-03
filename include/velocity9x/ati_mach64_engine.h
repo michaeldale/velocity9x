@@ -299,6 +299,8 @@ struct v9x_m64_draw_request {
     /* Non-zero when every vertex of the batch has alpha 255, so a factor
      * of the vertex alpha is one. Zero when unknown. */
     v9x_u32 vertex_alpha_opaque;
+    /* The least vertex alpha of the batch, 0..255; zero when unknown. */
+    v9x_u32 vertex_alpha_min;
 };
 
 /* What an accepted draw emits for the texture stage, so the draw path

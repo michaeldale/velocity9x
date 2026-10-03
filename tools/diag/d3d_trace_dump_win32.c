@@ -1139,6 +1139,20 @@ void __stdcall V9xTraceDumpEntry(void)
         v9x_write_hex("R2SurfaceLastRefused",
                       snapshot.d3d.r2_surface[V9X_R2_SURFACE_LAST_REFUSED]);
     }
+    /* The alpha test: the last refusal, packed as V9X_R2_ALPHA_* says,
+     * and the 4444 rewrites. */
+    v9x_write_hex("R2AlphaLastTest",
+                  snapshot.d3d.r2_alpha[V9X_R2_ALPHA_LAST_TEST]);
+    v9x_write_hex("R2AlphaLastBlend",
+                  snapshot.d3d.r2_alpha[V9X_R2_ALPHA_LAST_BLEND]);
+    v9x_write_hex("R2AlphaLastFilter",
+                  snapshot.d3d.r2_alpha[V9X_R2_ALPHA_LAST_FILTER]);
+    v9x_write_uint("R2AlphaRefusedUnblended",
+                   snapshot.d3d.r2_alpha[V9X_R2_ALPHA_REFUSED_UNBLENDED]);
+    v9x_write_uint("R2AlphaRewrites",
+                   snapshot.d3d.r2_alpha[V9X_R2_ALPHA_REWRITES]);
+    v9x_write_uint("R2AlphaRewriteFailed",
+                   snapshot.d3d.r2_alpha[V9X_R2_ALPHA_REWRITE_FAILED]);
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

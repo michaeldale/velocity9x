@@ -2680,6 +2680,335 @@ static int atirx_run_texmix(struct v9x_m64_engine *engine,
     return 1;
 }
 
+/*
+ * /amask: what TEX_AMASK_AEN tests when the texel is filtered. F5/F6 drew
+ * point-sampled texels, where a 4444 texel is dropped on its alpha LSB.
+ * Here the map alternates two texels by column (even u `even`, odd u
+ * `odd`) and S steps an eighth of a texel a pixel, so row 16's 32 pixels
+ * cross four texel boundaries at eight weights each. The even texel is
+ * red, the odd green, so a drawn pixel's colour gives the weight it was
+ * filtered at and its presence what the mask made of that weight.
+ */
+#define ATIRX_AMASK_OFFSET 0x00228000ul
+
+struct atirx_amask_scene {
+    const char *name;
+    v9x_u32 format;
+    v9x_u32 extra;
+    WORD even;
+    WORD odd;
+};
+
+#define ATIRX_AMASK_BIL (V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_AMASK_AEN | \
+                         V9X_R2_BILINEAR_TEX_EN)
+
+static const struct atirx_amask_scene atirx_amask_scenes[] = {
+    /* Alpha 0 against 15. */
+    { "K1Bil4444A0AF", V9X_R2_TEX_FORMAT_4444, ATIRX_AMASK_BIL,
+      0x0f00u, 0xf0f0u },
+    /* Alpha 1 against 14: LSB set on the low side. */
+    { "K2Bil4444A1AE", V9X_R2_TEX_FORMAT_4444, ATIRX_AMASK_BIL,
+      0x1f00u, 0xe0f0u },
+    /* Alpha 14 against 15: both high, LSB differs. */
+    { "K3Bil4444AEAF", V9X_R2_TEX_FORMAT_4444, ATIRX_AMASK_BIL,
+      0xef00u, 0xf0f0u },
+    /* K1 point-sampled, the F6 control. */
+    { "K4Point4444A0AF", V9X_R2_TEX_FORMAT_4444,
+      V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_AMASK_AEN, 0x0f00u, 0xf0f0u },
+    /* 1555, alpha 0 against 1. */
+    { "K5Bil1555", V9X_R2_TEX_FORMAT_1555, ATIRX_AMASK_BIL,
+      0x7c00u, 0x83e0u },
+    /* K1 without the mask: the filtered colours alone. */
+    { "K6Bil4444NoMask", V9X_R2_TEX_FORMAT_4444,
+      V9X_R2_TEX_MAP_AEN | V9X_R2_BILINEAR_TEX_EN, 0x0f00u, 0xf0f0u }
+};
+
+static int atirx_run_amask(struct v9x_m64_engine *engine,
+                           const struct v9x_r2_target *target)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    struct v9x_r2_texture texture;
+    struct v9x_r2_st st;
+    v9x_u32 offsets[32];
+    v9x_u32 values[32];
+    v9x_u32 written;
+    UINT index;
+    UINT count = sizeof(atirx_amask_scenes) / sizeof(atirx_amask_scenes[0]);
+    UINT channel;
+    DWORD u;
+    DWORD v;
+    char prefix[48];
+
+    atirx_key("SceneSet", "amask");
+    texture.offset = ATIRX_AMASK_OFFSET;
+    texture.log2_width = ATIRX_TEX_LOG2;
+    texture.log2_height = ATIRX_TEX_LOG2;
+    texture.log2_pitch = ATIRX_TEX_LOG2;
+    /* S an eighth of a texel a pixel from texel 0's centre, T mid-row. */
+    st.start[0] = ATIRX_TX(1) / 2l;
+    st.start[1] = ATIRX_TX(1) / 2l;
+    st.xinc_start[0] = ATIRX_TX(1) / 8l;
+    st.xinc_start[1] = 0l;
+    st.y_inc[0] = 0l;
+    st.y_inc[1] = 0l;
+    st.x_inc2[0] = 0l;
+    st.x_inc2[1] = 0l;
+    st.y_inc2[0] = 0l;
+    st.y_inc2[1] = 0l;
+    st.xy_inc2[0] = 0l;
+    st.xy_inc2[1] = 0l;
+
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_amask_scene *scene = &atirx_amask_scenes[index];
+        v9x_u32 at = 0ul;
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        /* The previous scene may still be reading the map. */
+        if (v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+            atirx_key("Result", "AMASK-IDLE");
+            return 0;
+        }
+        for (v = 0ul; v < ATIRX_TEX_SIZE; ++v) {
+            for (u = 0ul; u < ATIRX_TEX_SIZE; ++u) {
+                atirx_fb[ATIRX_AMASK_OFFSET / 2ul + v * ATIRX_TEX_SIZE + u] =
+                    (u & 1ul) != 0ul ? scene->odd : scene->even;
+            }
+        }
+        atirx_prepare_block();
+        texture.format = scene->format;
+        texture.scale_3d_extra = scene->extra;
+        if (v9x_r2_build_texture_state(target, &texture, &st, offsets,
+                                       values, 32ul, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "AMASK-STATE");
+            return 0;
+        }
+        /* White, opaque interpolators, as /texmix. */
+        for (channel = 0u; channel < 3u; ++channel) {
+            offsets[at] = V9X_R2_RED_X_INC + 12ul * channel;
+            values[at++] = 0ul;
+            offsets[at] = V9X_R2_RED_Y_INC + 12ul * channel;
+            values[at++] = 0ul;
+            offsets[at] = V9X_R2_RED_START + 12ul * channel;
+            values[at++] = (v9x_u32)ATIRX_C8(255) & V9X_R2_COLOR_MASK;
+        }
+        offsets[at] = V9X_R2_ALPHA_X_INC;
+        values[at++] = 0ul;
+        offsets[at] = V9X_R2_ALPHA_Y_INC;
+        values[at++] = 0ul;
+        offsets[at] = V9X_R2_ALPHA_START;
+        values[at++] = (v9x_u32)ATIRX_C8(255) & V9X_R2_COLOR_MASK;
+        if (atirx_emit(engine, scene->name, offsets, values, at) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_trap(target, &rect, offsets, values, 32ul,
+                              &written) != V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "AMASK-EMIT");
+            return 0;
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        atirx_dump_mix(prefix, 0);
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "AMASK-RUN");
+    return 1;
+}
+
+/*
+ * /hud: the state that hard-locked A8U4I5 under Half-Life (2026-10-03),
+ * drawn alone. The HAL's census of the batches that locked it: RGB565,
+ * bilinear 2x2, MODULATE, ONE/ONE, flat, mostly Z off, SCALE_3D_CNTL
+ * 0B490880 - the texture cache on. Each scene's name is written and
+ * flushed before its first register, so after a lock ATIRX.TXT names the
+ * scene that did it. Riskiest last.
+ */
+struct atirx_hud_scene {
+    const char *name;
+    v9x_u32 scale;           /* SCALE_3D_CNTL, whole */
+    UINT draws;              /* quads back to back, no idle between */
+    int fill_after;          /* the HAL's next Blt: 2D mode, a 2D fill */
+    DWORD z_cntl;            /* zero: Z off */
+};
+
+/* H1-H6 drew without a lock (2026-10-03); 1,746 of the locking batches
+ * had Z on, which those never did. */
+static const struct atirx_hud_scene atirx_hud_scenes[] = {
+    { "H1CacheOff", 0x0b4908a0ul, 1u, 0, 0ul },
+    { "H2SrcAlpha", 0x0b6c0880ul, 1u, 0, 0ul },
+    { "H3OneOne", 0x0b490880ul, 1u, 0, 0ul },
+    { "H4OneOneFill", 0x0b490880ul, 1u, 1, 0ul },
+    { "H5OneOneBurst", 0x0b490880ul, 64u, 0, 0ul },
+    { "H6OneOneBurstFill", 0x0b490880ul, 64u, 1, 0ul },
+    { "H7OneOneZ", 0x0b490880ul, 1u, 0, ATIRX_ZT(2) },
+    { "H8OneOneZWrite", 0x0b490880ul, 1u, 0, ATIRX_ZT(2) | V9X_R2_Z_WRITE },
+    { "H9OneOneZBurstFill", 0x0b490880ul, 64u, 1, ATIRX_ZT(2) },
+    { "H10OneOneZWriteBurstFill", 0x0b490880ul, 64u, 1,
+      ATIRX_ZT(2) | V9X_R2_Z_WRITE }
+};
+
+static int atirx_run_hud(struct v9x_m64_engine *engine,
+                         const struct v9x_r2_target *target)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    struct v9x_r2_texture texture;
+    struct v9x_r2_st st;
+    struct v9x_m64_fill fill;
+    struct v9x_r2_depth depth;
+    v9x_u32 offsets[40];
+    v9x_u32 values[40];
+    v9x_u32 written;
+    UINT index;
+    UINT count = sizeof(atirx_hud_scenes) / sizeof(atirx_hud_scenes[0]);
+    UINT draw;
+    UINT channel;
+    char prefix[48];
+
+    atirx_key("SceneSet", "hud");
+    atirx_write_palettes();
+    texture.offset = ATIRX_PAL565_OFFSET;
+    texture.format = V9X_R2_TEX_FORMAT_565;
+    texture.log2_width = ATIRX_TEX_LOG2;
+    texture.log2_height = ATIRX_TEX_LOG2;
+    texture.log2_pitch = ATIRX_TEX_LOG2;
+    texture.scale_3d_extra = 0ul;
+    /* Half a texel a pixel: magnified, so bilinear. */
+    st.start[0] = ATIRX_TX(1) / 2l;
+    st.start[1] = ATIRX_TX(1) / 2l;
+    st.xinc_start[0] = ATIRX_TX(1) / 2l;
+    st.xinc_start[1] = 0l;
+    st.y_inc[0] = 0l;
+    st.y_inc[1] = ATIRX_TX(1) / 2l;
+    st.x_inc2[0] = 0l;
+    st.x_inc2[1] = 0l;
+    st.y_inc2[0] = 0l;
+    st.y_inc2[1] = 0l;
+    st.xy_inc2[0] = 0l;
+    st.xy_inc2[1] = 0l;
+
+    for (index = 0u; index < count; ++index) {
+        const struct atirx_hud_scene *scene = &atirx_hud_scenes[index];
+        v9x_u32 at = 0ul;
+
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_flush();
+        atirx_prepare_block();
+        if (scene->z_cntl != 0ul) {
+            atirx_prepare_z(0);
+        }
+        if (v9x_r2_build_texture_state(target, &texture, &st, offsets,
+                                       values, 40ul, &written) !=
+                V9X_STATUS_OK ||
+            offsets[0] != V9X_M64_SCALE_3D_CNTL) {
+            atirx_key("Result", "HUD-STATE");
+            return 0;
+        }
+        values[0] = scene->scale;
+        if (atirx_emit(engine, scene->name, offsets, values, written) !=
+            V9X_STATUS_OK) {
+            atirx_key("Result", "HUD-STATE");
+            return 0;
+        }
+        /* Grey, opaque, flat interpolators. */
+        for (channel = 0u; channel < 3u; ++channel) {
+            offsets[at] = V9X_R2_RED_X_INC + 12ul * channel;
+            values[at++] = 0ul;
+            offsets[at] = V9X_R2_RED_Y_INC + 12ul * channel;
+            values[at++] = 0ul;
+            offsets[at] = V9X_R2_RED_START + 12ul * channel;
+            values[at++] = (v9x_u32)ATIRX_C8(128) & V9X_R2_COLOR_MASK;
+        }
+        offsets[at] = V9X_R2_ALPHA_X_INC;
+        values[at++] = 0ul;
+        offsets[at] = V9X_R2_ALPHA_Y_INC;
+        values[at++] = 0ul;
+        offsets[at] = V9X_R2_ALPHA_START;
+        values[at++] = (v9x_u32)ATIRX_C8(255) & V9X_R2_COLOR_MASK;
+        if (atirx_emit(engine, scene->name, offsets, values, at) !=
+            V9X_STATUS_OK) {
+            atirx_key("Result", "HUD-EMIT");
+            return 0;
+        }
+        if (scene->z_cntl != 0ul) {
+            depth.offset = ATIRX_ZBLOCK_OFFSET;
+            depth.z_cntl = scene->z_cntl;
+            depth.start = 0x4000l << 16;
+            depth.x_inc = 0l;
+            depth.y_inc = 0l;
+            if (v9x_r2_build_z_state(target, &depth, offsets, values, 40ul,
+                                     &written) != V9X_STATUS_OK ||
+                atirx_emit(engine, scene->name, offsets, values, written) !=
+                    V9X_STATUS_OK) {
+                atirx_key("Result", "HUD-Z");
+                return 0;
+            }
+        }
+        for (draw = 0u; draw < scene->draws; ++draw) {
+            if (v9x_r2_build_trap(target, &rect, offsets, values, 40ul,
+                                  &written) != V9X_STATUS_OK ||
+                atirx_emit(engine, scene->name, offsets, values, written) !=
+                    V9X_STATUS_OK) {
+                atirx_key("Result", "HUD-EMIT");
+                return 0;
+            }
+        }
+        if (scene->fill_after) {
+            /* What eng_mach64.c's fill emits, with no idle wait first. */
+            fill.vram_bytes = target->vram_bytes;
+            fill.target_offset = ATIRX_BLOCK_OFFSET;
+            fill.target_pitch_bytes = ATIRX_BLOCK_PITCH;
+            fill.target_width = ATIRX_BLOCK_SIZE;
+            fill.target_height = ATIRX_BLOCK_SIZE;
+            fill.left = 8ul;
+            fill.top = 40ul;
+            fill.right = 56ul;
+            fill.bottom = 48ul;
+            fill.color = 0x0000f81ful;
+            if (v9x_m64_build_2d_mode_gt(offsets, values,
+                                         V9X_M64_2D_MODE_DWORDS,
+                                         &written) != V9X_STATUS_OK ||
+                atirx_emit(engine, scene->name, offsets, values, written) !=
+                    V9X_STATUS_OK ||
+                v9x_m64_build_fill(&fill, offsets, values, 40ul,
+                                   &written) != V9X_STATUS_OK ||
+                atirx_emit(engine, scene->name, offsets, values, written) !=
+                    V9X_STATUS_OK) {
+                atirx_key("Result", "HUD-FILL");
+                return 0;
+            }
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        atirx_dump_mix(prefix, 0);
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "HUD-RUN");
+    return 1;
+}
+
 /* ---- The scanout start, watched on the monitor -------------------------- */
 
 /*
@@ -4172,6 +4501,22 @@ void WINAPI V9xAtiRage2SceneEntry(void)
         int completed = atirx_run_crtc(
             atirx_has_switch(GetCommandLineA(), "/crtcread"));
 
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/hud")) {
+        int completed = atirx_run_hud(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/amask")) {
+        int completed = atirx_run_amask(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
         CloseHandle(atirx_out);
         ExitProcess(completed ? 0u : 1u);
     }

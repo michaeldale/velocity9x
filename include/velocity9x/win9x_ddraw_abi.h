@@ -1520,6 +1520,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100305: the Rage IIC's last refused alpha test. An append. */
 /* 2026100304: the Rage IIC's texture placement outcomes. An append. */
 /* 2026100303: the Rage IIC's draw work gains pixels and trapezoids. An
  * append. */
@@ -1629,7 +1630,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100304ul
+#define V9X_DD_SHARED_ABI   2026100305ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3175,7 +3176,22 @@ typedef struct v9x_d3d_diagnostics {
      * mip-mapped 7,731 of 302,324 batches with 8,076 chains in a layout
      * the sampler cannot read, and nothing said whose. */
     DWORD r2_surface[8];
+    /* Rage IIC alpha tests (2026-10-03), V9X_R2_ALPHA_*: the last refused
+     * one's request, how many refusals drew without blending, and the 4444
+     * textures rewritten for the mask. Half-Life's 10,371 refusals a run
+     * had nothing to say what they asked. */
+    DWORD r2_alpha[6];
 } V9X_D3D_DIAGNOSTICS;
+
+/* func | ref << 8 | texture format << 16 | texture op << 24 */
+#define V9X_R2_ALPHA_LAST_TEST       0u
+/* blend enable | src << 8 | dst << 16 | fog << 24 */
+#define V9X_R2_ALPHA_LAST_BLEND      1u
+/* mag | min << 8 | depth write << 16 | depth enable << 24 */
+#define V9X_R2_ALPHA_LAST_FILTER     2u
+#define V9X_R2_ALPHA_REFUSED_UNBLENDED 3u
+#define V9X_R2_ALPHA_REWRITES        4u   /* surfaces rewritten          */
+#define V9X_R2_ALPHA_REWRITE_FAILED  5u   /* table full, idle, offset    */
 
 #define V9X_R2_COST_PREPARE  0u   /* policy, state, vertex conversion */
 #define V9X_R2_COST_SPLIT    1u   /* the perspective split decision   */

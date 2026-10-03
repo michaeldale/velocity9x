@@ -227,6 +227,25 @@ v9x_u32 v9x_d3d_mach64_vertices_opaque(const V9X_R3D_VERTEX *vertices,
     return 1ul;
 }
 
+v9x_u32 v9x_d3d_mach64_vertices_alpha_min(const V9X_R3D_VERTEX *vertices,
+                                          v9x_u32 vertex_count)
+{
+    v9x_u32 index;
+    v9x_u32 least = 0xfful;
+
+    if (vertices == 0 || vertex_count == 0ul) {
+        return 0ul;
+    }
+    for (index = 0ul; index < vertex_count; ++index) {
+        v9x_u32 alpha = (vertices[index].color >> 24) & 0xfful;
+
+        if (alpha < least) {
+            least = alpha;
+        }
+    }
+    return least;
+}
+
 int v9x_d3d_mach64_wrap_reference(const struct v9x_m64_setup_vertex *setup,
                                   float *s_out, float *t_out)
 {

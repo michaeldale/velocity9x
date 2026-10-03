@@ -16,6 +16,9 @@
 #define R2_SHADE_FLAT           1ul
 #define R2_SHADE_GOURAUD        2ul
 #define R2_CMP_NEVER            1ul
+#define R2_CMP_LESS             2ul
+#define R2_CMP_EQUAL            3ul
+#define R2_CMP_LESSEQUAL        4ul
 #define R2_CMP_GREATER          5ul
 #define R2_CMP_NOTEQUAL         6ul
 #define R2_CMP_GREATEREQUAL     7ul
@@ -162,6 +165,55 @@ static int r2_alpha_test_is_mask(const struct v9x_m64_draw_request *request)
     default:
         return 0;
     }
+}
+
+/* Direct3D's alpha comparison of an 8-bit alpha against the reference. */
+static int r2_alpha_passes(v9x_u32 alpha, v9x_u32 func, v9x_u32 ref)
+{
+    switch (func) {
+    case R2_CMP_LESS:         return alpha < ref;
+    case R2_CMP_EQUAL:        return alpha == ref;
+    case R2_CMP_LESSEQUAL:    return alpha <= ref;
+    case R2_CMP_GREATER:      return alpha > ref;
+    case R2_CMP_NOTEQUAL:     return alpha != ref;
+    case R2_CMP_GREATEREQUAL: return alpha >= ref;
+    case R2_CMP_ALWAYS:       return 1;
+    default:                  return 0;
+    }
+}
+
+/* Whether the comparison passes for every alpha from `least` to 255. */
+static int r2_alpha_passes_from(v9x_u32 least, v9x_u32 func, v9x_u32 ref)
+{
+    switch (func) {
+    case R2_CMP_GREATER:
+    case R2_CMP_NOTEQUAL:     return least > ref;
+    case R2_CMP_GREATEREQUAL: return least >= ref;
+    case R2_CMP_ALWAYS:       return 1;
+    default:                  return 0;
+    }
+}
+
+/*
+ * An ARGB4444 texel with its alpha LSB set to the test's answer for its
+ * alpha, which TEX_AMASK_AEN then reads: under bilinear filtering too it
+ * tests the LSB of the texel the nearest sample would take, and the
+ * colour stays filtered (ATIRX /amask K1-K4, 2026-10-03). The alpha the
+ * answer is taken from is the texel's as it stands, so a texture rewritten
+ * for one reference and tested against another is answered from alphas
+ * already moved by at most one step of the fifteen.
+ */
+v9x_u32 v9x_r2_alpha_mask_texel(v9x_u32 texel, v9x_u32 key)
+{
+    v9x_u32 alpha = ((texel >> 12) & 15ul) * 17ul;
+    v9x_u32 func = key & 0xfful;
+    v9x_u32 ref = (key >> 8) & 0xfful;
+
+    texel &= 0xeffful;
+    if (r2_alpha_passes(alpha, func, ref)) {
+        texel |= 0x1000ul;
+    }
+    return texel;
 }
 
 v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
@@ -329,14 +381,62 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
         decision->texture_format = format;
     }
 
+    /*
+     * On ARGB4444 any comparison, through texels whose alpha LSB the caller
+     * has set to the answer (v9x_r2_alpha_mask_texel, for alpha_mask_key)
+     * before the draw. Half-Life refused 10,371 such batches a run.
+     */
     if (request->alpha_test_enable != 0ul &&
         request->alpha_func != R2_CMP_ALWAYS) {
-        if (request->textured == 0ul ||
-            decision->texture_format != V9X_R2_TEX_FORMAT_1555 ||
-            !texel_alpha || !r2_alpha_test_is_mask(request)) {
+        if (request->textured == 0ul || !texel_alpha) {
+            /*
+             * No texel alpha: the tested alpha is the vertex's, or 255 for
+             * DECAL and COPY of a texture without one. A comparison every
+             * alpha from the least of them up passes is no test, and the
+             * draw goes without it; any other is refused. Half-Life tests
+             * NOTEQUAL 0 over most of its RGB565 draws.
+             */
+            v9x_u32 least = request->vertex_alpha_min;
+
+            if (request->textured != 0ul &&
+                (request->texture_op == R2_TEXOP_DECAL ||
+                 request->texture_op == R2_TEXOP_COPY)) {
+                least = R2_ALPHA_REF_MAX;
+            }
+            if (!r2_alpha_passes_from(least, request->alpha_func,
+                                      request->alpha_ref)) {
+                return V9X_M64_REFUSE_ALPHA_TEST;
+            }
+            /*
+             * Except blended textured draws without Z or mip-mapped. Drawn,
+             * the first - Half-Life's additive screen-space sprites - hard
+             * locked A8U4I5 four times at the same point of mwd5, with the
+             * texture cache on and off; a fixed rectangle of the same
+             * state did not (ATIRX /hud). The second was never drawn.
+             * docs\issues\2026-10-03-a8u4i5-hard-lock-on-additive-sprites.md
+             */
+            if (request->textured != 0ul && request->blend_enable != 0ul &&
+                (request->depth_enable == 0ul ||
+                 decision->mip_mapped != 0ul)) {
+                return V9X_M64_REFUSE_ALPHA_TEST;
+            }
+            decision->alpha_test_dropped = 1ul;
+        } else if (decision->texture_format == V9X_R2_TEX_FORMAT_4444) {
+            if (request->alpha_func < R2_CMP_NEVER ||
+                request->alpha_func > R2_CMP_ALWAYS ||
+                request->alpha_ref > R2_ALPHA_REF_MAX) {
+                return V9X_M64_REFUSE_ALPHA_TEST;
+            }
+            decision->alpha_mask_key = V9X_R2_ALPHA_MASK_KEYED |
+                                       request->alpha_func |
+                                       (request->alpha_ref << 8);
+        } else if (decision->texture_format != V9X_R2_TEX_FORMAT_1555 ||
+                   !r2_alpha_test_is_mask(request)) {
             return V9X_M64_REFUSE_ALPHA_TEST;
         }
-        scale |= V9X_R2_TEX_AMASK_AEN;
+        if (texel_alpha) {
+            scale |= V9X_R2_TEX_AMASK_AEN;
+        }
     }
     if (texel_alpha) {
         scale |= V9X_R2_TEX_MAP_AEN;

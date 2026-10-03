@@ -70,4 +70,9 @@ v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,
 v9x_u32 v9x_d3d_mach64_vertices_opaque(const V9X_R3D_VERTEX *vertices,
                                        v9x_u32 vertex_count);
 
+/* The least alpha of the vertices, or 0 when there are none: the
+ * request's vertex_alpha_min. */
+v9x_u32 v9x_d3d_mach64_vertices_alpha_min(const V9X_R3D_VERTEX *vertices,
+                                          v9x_u32 vertex_count);
+
 #endif

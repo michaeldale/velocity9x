@@ -164,6 +164,70 @@ void v9x_d3d_color_key_forget(const V9X_DD_SURFACE_LCL *surface)
         entry->dirty = 0ul;
     }
 }
+
+/* Rewritten 4444 alpha masks by surface; see ddhal_internal.h. */
+static V9X_D3D_ALPHA_MASK v9x_d3d_alpha_masks[V9X_D3D_ALPHA_MASK_COUNT];
+
+static V9X_D3D_ALPHA_MASK *v9x_d3d_alpha_mask_find(
+    const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD index;
+
+    for (index = 0ul; index < V9X_D3D_ALPHA_MASK_COUNT; ++index) {
+        if (v9x_d3d_alpha_masks[index].surface == surface) {
+            return &v9x_d3d_alpha_masks[index];
+        }
+    }
+    return 0;
+}
+
+V9X_D3D_ALPHA_MASK *v9x_d3d_alpha_mask_entry(
+    const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_ALPHA_MASK *entry;
+
+    if (surface == 0) {
+        return 0;
+    }
+    entry = v9x_d3d_alpha_mask_find(surface);
+    if (entry != 0) {
+        return entry;
+    }
+    /* A free slot is one naming no surface. */
+    entry = v9x_d3d_alpha_mask_find(0);
+    if (entry != 0) {
+        entry->surface = surface;
+        entry->key = 0ul;
+    }
+    return entry;
+}
+
+void v9x_d3d_alpha_mask_touch(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_ALPHA_MASK *entry;
+
+    if (surface == 0) {
+        return;
+    }
+    entry = v9x_d3d_alpha_mask_find(surface);
+    if (entry != 0) {
+        entry->key = 0ul;
+    }
+}
+
+void v9x_d3d_alpha_mask_forget(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_ALPHA_MASK *entry;
+
+    if (surface == 0) {
+        return;
+    }
+    entry = v9x_d3d_alpha_mask_find(surface);
+    if (entry != 0) {
+        entry->surface = 0;
+        entry->key = 0ul;
+    }
+}
 static V9X_D3DHAL_CALLBACKS2 v9x_d3d_callbacks2;
 
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
@@ -1405,6 +1469,8 @@ DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
      * Both values were resolved at creation, so neither wrapper is read. */
     v9x_d3d_color_key_touch(first->lcl);
     v9x_d3d_color_key_touch(second->lcl);
+    v9x_d3d_alpha_mask_touch(first->lcl);
+    v9x_d3d_alpha_mask_touch(second->lcl);
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.texture_swaps;
     v9x_trace_exit(V9X_TRACE_D3D_TEXTURESWAP, data->ddrval);

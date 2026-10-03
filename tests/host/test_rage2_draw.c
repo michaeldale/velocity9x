@@ -211,11 +211,97 @@ static void test_policy(void)
     r.alpha_func = 8ul;
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
     CHECK((d.scale_3d_cntl & V9X_R2_TEX_AMASK_AEN) == 0ul);
+    CHECK(d.alpha_mask_key == 0ul);
+    /* 4444: any comparison, the mask over rewritten texels, keyed. */
     textured(&r, V9X_M64_TEXTURE_FORMAT_ARGB4444);
     r.alpha_test_enable = 1ul;
     r.alpha_func = 5ul;
-    r.alpha_ref = 0ul;
+    r.alpha_ref = 64ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK((d.scale_3d_cntl & (V9X_R2_TEX_AMASK_AEN | V9X_R2_TEX_MAP_AEN)) ==
+          (V9X_R2_TEX_AMASK_AEN | V9X_R2_TEX_MAP_AEN));
+    CHECK(d.alpha_mask_key == (V9X_R2_ALPHA_MASK_KEYED | 5ul | (64ul << 8)));
+    r.alpha_func = 2ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    r.alpha_func = 9ul;
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    r.alpha_func = 5ul;
+    r.alpha_ref = 256ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    /* 565 has no texel alpha: MODULATE tests the vertex alpha, drawn
+     * without the test where the least of it passes, refused otherwise. */
+    textured(&r, V9X_M64_TEXTURE_FORMAT_RGB565);
+    r.texture_op = 4ul;
+    r.alpha_test_enable = 1ul;
+    r.alpha_func = 6ul;                         /* NOTEQUAL 0 */
+    r.alpha_ref = 0ul;
+    r.vertex_alpha_min = 0ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    r.vertex_alpha_min = 1ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK((d.scale_3d_cntl & V9X_R2_TEX_AMASK_AEN) == 0ul);
+    CHECK(d.alpha_mask_key == 0ul);
+    CHECK(d.alpha_test_dropped == 1ul);
+    /* Blended, it stays refused without Z (the A8U4I5 hard lock), and
+     * mip-mapped; with Z and one level it is drawn. */
+    r.blend_enable = 1ul;
+    r.src_blend = 2ul;
+    r.dst_blend = 2ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    r.depth_enable = 1ul;
+    r.depth_bits = 16ul;
+    r.depth_func = 4ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.alpha_test_dropped == 1ul);
+    r.texture_min_filter = 3ul;                 /* MIPNEAREST, to 1x1 */
+    r.texture_levels = 7ul;                     /* 64x32 down to 1x1 */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    textured(&r, V9X_M64_TEXTURE_FORMAT_RGB565);
+    r.texture_op = 4ul;
+    r.alpha_test_enable = 1ul;
+    r.alpha_func = 6ul;
+    r.alpha_ref = 0ul;
+    r.vertex_alpha_min = 1ul;
+    r.blend_enable = 0ul;
+    r.depth_enable = 0ul;
+    r.alpha_func = 5ul;                         /* GREATER 64 */
+    r.alpha_ref = 64ul;
+    r.vertex_alpha_min = 64ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    r.alpha_func = 7ul;                         /* GREATEREQUAL 64 */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    r.alpha_func = 2ul;                         /* LESS: needs the most */
+    r.vertex_alpha_min = 0ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+    /* DECAL and COPY take the texel's alpha, which 565 has as 255. */
+    r.texture_op = 1ul;
+    r.alpha_func = 5ul;
+    r.alpha_ref = 254ul;
+    r.vertex_alpha_min = 0ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    r.alpha_ref = 255ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_ALPHA_TEST);
+}
+
+/* The rewrite: alpha LSB = the answer for alpha * 17, colour untouched. */
+static void test_alpha_mask_texel(void)
+{
+    v9x_u32 key = V9X_R2_ALPHA_MASK_KEYED | 5ul | (64ul << 8);  /* > 64 */
+
+    CHECK(v9x_r2_alpha_mask_texel(0x0abcul, key) == 0x0abcul);  /* 0 */
+    CHECK(v9x_r2_alpha_mask_texel(0x3abcul, key) == 0x2abcul);  /* 51 */
+    CHECK(v9x_r2_alpha_mask_texel(0x4abcul, key) == 0x5abcul);  /* 68 */
+    CHECK(v9x_r2_alpha_mask_texel(0xfabcul, key) == 0xfabcul);  /* 255 */
+    CHECK(v9x_r2_alpha_mask_texel(0xeabcul, key) == 0xfabcul);
+    /* LESSEQUAL 0: only alpha 0 passes. */
+    key = V9X_R2_ALPHA_MASK_KEYED | 4ul;
+    CHECK(v9x_r2_alpha_mask_texel(0x0123ul, key) == 0x1123ul);
+    CHECK(v9x_r2_alpha_mask_texel(0x1123ul, key) == 0x0123ul);
+    /* NEVER clears every LSB; ALWAYS sets it. */
+    CHECK(v9x_r2_alpha_mask_texel(0xf000ul, V9X_R2_ALPHA_MASK_KEYED | 1ul) ==
+          0xe000ul);
+    CHECK(v9x_r2_alpha_mask_texel(0x0000ul, V9X_R2_ALPHA_MASK_KEYED | 8ul) ==
+          0x1000ul);
 }
 
 static void make_state(struct v9x_r2_draw_state *s, v9x_u32 width,
@@ -662,6 +748,7 @@ unsigned int v9x_run_rage2_draw_tests(void)
     test_policy();
     test_state();
     test_mip();
+    test_alpha_mask_texel();
     test_tall_triangles();
     test_split_coverage();
     return failures;

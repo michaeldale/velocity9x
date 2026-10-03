@@ -963,6 +963,8 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     if (data != 0) {
         v9x_d3d_color_key_forget(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
+        v9x_d3d_alpha_mask_forget(
+            (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
         v9x_d3d_textures_forget_surface(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
         /* A placed Gen3 block may still be named by a submitted batch. Keep
@@ -1194,9 +1196,11 @@ DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
         V9X_TIME_END(V9X_TIME_LOCK_HELD, v9x_lock_held_started);
         v9x_lock_held_started = 0ul;
     }
-    /* The CPU may have written texels: a keyed texture must be rewritten
-     * before its next draw. Cheap - a table walk - and only a flag. */
+    /* The CPU may have written texels: a keyed or alpha-masked texture
+     * must be rewritten before its next draw. Cheap - table walks - and
+     * only flags. */
     v9x_d3d_color_key_touch(data->lpDDSurface);
+    v9x_d3d_alpha_mask_touch(data->lpDDSurface);
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_UNLOCK, data->ddRVal);
     return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1763,6 +1767,7 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     v9x_win16_sample(V9X_WIN16_SITE_BLT);
     if (data != 0) {
         v9x_d3d_color_key_touch(data->lpDDDestSurface);
+        v9x_d3d_alpha_mask_touch(data->lpDDDestSurface);
         /* The clipped-blit tail is read and counted, never acted on: the
          * blit below still uses rDest alone, which is the behaviour this
          * measurement exists to judge (OpenGL plan Phase 0.3). */

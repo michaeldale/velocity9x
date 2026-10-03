@@ -251,8 +251,9 @@ static int v9x_d3d_rage2_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * - MODULATEALPHA: drawn only where texel or vertex alpha is 1;
  * - SUBPIXEL: vertices are snapped to a quarter pixel;
  * - specular, colour keys, dithering.
- * The alpha test is the 1555 alpha mask, which Direct3D cannot express as
- * a cap: the comparisons it serves are published and the rest refused.
+ * The alpha test is the alpha mask: on 1555 the comparisons published here,
+ * on 4444 any, through rewritten texels; Direct3D has no per-format cap, so
+ * the 1555 set is what is claimed.
  */
 static void v9x_d3d_rage2_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -409,6 +410,23 @@ static int v9x_d3d_rage2_ready(void)
  * policy mip-maps only a chain that reaches 1x1. Written apart from the
  * Mach64's because that one is bound to the Mach64's limits.
  */
+/* The mip level attached below `level`, or 0. */
+static const V9X_DD_SURFACE_LCL *v9x_d3d_rage2_next_level(
+    const V9X_DD_SURFACE_LCL *level)
+{
+    const V9X_DD_ATTACH_NODE *node =
+        (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+
+    while (node != 0) {
+        if (node->object != 0 && node->object != level &&
+            (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+            return node->object;
+        }
+        node = node->next;
+    }
+    return 0;
+}
+
 static DWORD v9x_d3d_rage2_chain(const V9X_DD_SURFACE_LCL *top,
                                  V9X_D3D_MACH64_TEXTURE *texture)
 {
@@ -419,21 +437,11 @@ static DWORD v9x_d3d_rage2_chain(const V9X_DD_SURFACE_LCL *top,
 
     ++v9x_hal->d3d_diagnostics.mip_chain_checks;
     while (count < V9X_M64_TEXTURE_LEVELS_MAX) {
-        const V9X_DD_ATTACH_NODE *node =
-            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
-        const V9X_DD_SURFACE_LCL *next = 0;
+        const V9X_DD_SURFACE_LCL *next = v9x_d3d_rage2_next_level(level);
         DWORD edge = width >> count;
         DWORD rows = height >> count;
         DWORD offset;
 
-        while (node != 0) {
-            if (node->object != 0 && node->object != level &&
-                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
-                next = node->object;
-                break;
-            }
-            node = node->next;
-        }
         if (next == 0 || next->lpGbl == 0 || (edge == 0ul && rows == 0ul)) {
             break;
         }
@@ -508,6 +516,62 @@ static void v9x_d3d_rage2_resolve_texture(const V9X_R3D_DRAW *draw,
     }
 }
 
+/*
+ * An ARGB4444 alpha test: every level the draw reads gets its alpha LSBs
+ * set to the test's answer (v9x_r2_alpha_mask_texel), once per upload and
+ * test, as the ViRGE's colour keys are rewritten. The texels are the
+ * application's own, so its alpha moves by at most one step of fifteen
+ * where the answer and the LSB disagreed; a texture also blended by its
+ * alpha blends by that. The engine is drained first: it may still be
+ * reading them. 0 when a level could not be rewritten.
+ */
+static int v9x_d3d_rage2_alpha_mask(const V9X_DD_SURFACE_LCL *top,
+                                    DWORD levels, DWORD key)
+{
+    const V9X_DD_SURFACE_LCL *level = top;
+    DWORD *counts = v9x_hal->d3d_diagnostics.r2_alpha;
+    DWORD done;
+
+    for (done = 0ul; done < levels && level != 0;
+         ++done, level = v9x_d3d_rage2_next_level(level)) {
+        V9X_D3D_ALPHA_MASK *entry = v9x_d3d_alpha_mask_entry(level);
+        volatile WORD *texel;
+        DWORD offset;
+        DWORD count;
+
+        if (entry == 0) {
+            ++counts[V9X_R2_ALPHA_REWRITE_FAILED];
+            return 0;
+        }
+        if (entry->key == key) {
+            continue;
+        }
+        offset = v9x_surface_offset(level);
+        if (offset == 0xfffffffful || level->lpGbl == 0 ||
+            level->lpGbl->lPitch !=
+                (LONG)((DWORD)level->lpGbl->wWidth * 2ul) ||
+            v9x_render_drain(1) != V9X_RENDER_DRAIN_DONE) {
+            ++counts[V9X_R2_ALPHA_REWRITE_FAILED];
+            return 0;
+        }
+        texel = (volatile WORD *)(v9x_hal->fb.linear_base + offset);
+        count = (DWORD)level->lpGbl->wWidth * (DWORD)level->lpGbl->wHeight;
+        while (count-- != 0ul) {
+            WORD value = *texel;
+            WORD masked = (WORD)v9x_r2_alpha_mask_texel(value, key);
+
+            /* Only what changes: the aperture is slow to write. */
+            if (masked != value) {
+                *texel = masked;
+            }
+            ++texel;
+        }
+        entry->key = key;
+        ++counts[V9X_R2_ALPHA_REWRITES];
+    }
+    return 1;
+}
+
 static v9x_u32 v9x_d3d_rage2_log2(v9x_u32 edge)
 {
     v9x_u32 log2 = 0ul;
@@ -536,6 +600,9 @@ static int v9x_d3d_rage2_accepts(const V9X_R3D_DRAW *draw)
     v9x_d3d_rage2_resolve_texture(draw, &texture);
     v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
     request.vertex_alpha_opaque = draw->vertex_alpha_opaque;
+    /* Only opacity is known before the vertices: the least alpha is 255
+     * or unknown. */
+    request.vertex_alpha_min = draw->vertex_alpha_opaque != 0ul ? 255ul : 0ul;
     return v9x_r2_check_draw(&request, 1ul, &decision) ==
            V9X_M64_REFUSE_NONE;
 }
@@ -643,6 +710,8 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
         &request);
     request.vertex_alpha_opaque =
         v9x_d3d_mach64_vertices_opaque(vertices, triangle_count * 3ul);
+    request.vertex_alpha_min =
+        v9x_d3d_mach64_vertices_alpha_min(vertices, triangle_count * 3ul);
     reason = v9x_r2_check_draw(&request,
         request.textured != 0ul
             ? v9x_d3d_rage2_coords_in_unit(vertices, triangle_count * 3ul)
@@ -662,6 +731,28 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
             v9x_hal->d3d_diagnostics.m64_shape_refused_last_size =
                 (request.texture_width & 0xfffful) |
                 (request.texture_height << 16);
+        }
+        if (reason == V9X_M64_REFUSE_ALPHA_TEST) {
+            DWORD *alpha = v9x_hal->d3d_diagnostics.r2_alpha;
+
+            alpha[V9X_R2_ALPHA_LAST_TEST] =
+                (request.alpha_func & 0xfful) |
+                ((request.alpha_ref & 0xfful) << 8) |
+                ((request.texture_format & 0xfful) << 16) |
+                ((request.texture_op & 0xfful) << 24);
+            alpha[V9X_R2_ALPHA_LAST_BLEND] =
+                (request.blend_enable & 0xfful) |
+                ((request.src_blend & 0xfful) << 8) |
+                ((request.dst_blend & 0xfful) << 16) |
+                ((request.fog_enable & 0xfful) << 24);
+            alpha[V9X_R2_ALPHA_LAST_FILTER] =
+                (request.texture_mag_filter & 0xfful) |
+                ((request.texture_min_filter & 0xfful) << 8) |
+                ((request.depth_write & 0xfful) << 16) |
+                ((request.depth_enable & 0xfful) << 24);
+            if (request.blend_enable == 0ul) {
+                ++alpha[V9X_R2_ALPHA_REFUSED_UNBLENDED];
+            }
         }
         return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_POLICY);
     }
@@ -723,6 +814,15 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
                 return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_VERTEX);
             }
         }
+    }
+
+    /* The policy accepted a 4444 alpha test on texels that answer it. */
+    if (decision.alpha_mask_key != 0ul &&
+        !v9x_d3d_rage2_alpha_mask(
+            (const V9X_DD_SURFACE_LCL *)draw->texture.object,
+            decision.mip_mapped != 0ul ? texture.levels : 1ul,
+            decision.alpha_mask_key)) {
+        return v9x_d3d_rage2_refuse(V9X_D3D_RAGE2_REFUSE_TEXTURE);
     }
 
     core = v9x_m64_shared_core();
