@@ -284,16 +284,90 @@ static BOOL v9x_load_inventory(void)
     return TRUE;
 }
 
+/* The marked instances a run will weigh; more is a no-op. */
+#define V9X_SYNC_MAX_MARKED 8u
+
+/*
+ * Is a device present now whose driver is this class instance? HKLM\Enum
+ * keeps the devnode of a card that has been taken out, so it cannot tell;
+ * the Configuration Manager's live tree under HKEY_DYN_DATA lists only the
+ * devices present this boot, each naming its HKLM\Enum key in HardWareKey.
+ * A8U4I5 kept the Rage IIC's marked key after the Rage XL replaced it, and
+ * the sync then refused both (2026-10-03).
+ */
+static BOOL v9x_instance_is_live(const char *instance)
+{
+    char wanted[32];
+    HKEY live_root;
+    DWORD index = 0ul;
+    BOOL found = FALSE;
+
+    wsprintfA(wanted, "Display\\%s", instance);
+    if (RegOpenKeyExA(HKEY_DYN_DATA, "Config Manager\\Enum", 0, KEY_READ,
+                      &live_root) != ERROR_SUCCESS) {
+        return FALSE;
+    }
+    while (!found) {
+        char node[32];
+        char hardware[160];
+        char enum_path[176];
+        char driver[32];
+        DWORD size = sizeof(node);
+        DWORD type;
+        DWORD hardware_size = sizeof(hardware);
+        DWORD driver_size = sizeof(driver);
+        HKEY node_key;
+        HKEY enum_key;
+
+        if (RegEnumKeyExA(live_root, index++, node, &size, 0, 0, 0, 0) !=
+            ERROR_SUCCESS) {
+            break;
+        }
+        if (RegOpenKeyExA(live_root, node, 0, KEY_READ, &node_key) !=
+            ERROR_SUCCESS) {
+            continue;
+        }
+        hardware[0] = '\0';
+        if (RegQueryValueExA(node_key, "HardWareKey", 0, &type,
+                             (BYTE *)hardware, &hardware_size) !=
+                ERROR_SUCCESS ||
+            type != REG_SZ || hardware[0] == '\0') {
+            RegCloseKey(node_key);
+            continue;
+        }
+        RegCloseKey(node_key);
+        wsprintfA(enum_path, "Enum\\%s", hardware);
+        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, enum_path, 0, KEY_READ,
+                          &enum_key) != ERROR_SUCCESS) {
+            continue;
+        }
+        driver[0] = '\0';
+        if (RegQueryValueExA(enum_key, "Driver", 0, &type, (BYTE *)driver,
+                             &driver_size) == ERROR_SUCCESS &&
+            type == REG_SZ && lstrcmpiA(driver, wanted) == 0) {
+            found = TRUE;
+        }
+        RegCloseKey(enum_key);
+    }
+    RegCloseKey(live_root);
+    return found;
+}
+
 /*
  * The one display class instance the INF marked for this family, as its
- * four-digit subkey name. FALSE - already reported - on zero or several.
+ * four-digit subkey name: the only marked one, or of several the only one
+ * a present device uses. FALSE - already reported - otherwise.
  */
 static BOOL v9x_find_marked_instance(char *instance, DWORD instance_size)
 {
     HKEY display;
     DWORD index = 0ul;
     WORD matches = 0u;
+    WORD live = 0u;
+    WORD marked;
     char name[16];
+    char found[V9X_SYNC_MAX_MARKED][16];
+    char count[16];
 
     if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, V9X_DISPLAY_CLASS_KEY, 0,
                       KEY_READ, &display) != ERROR_SUCCESS) {
@@ -319,10 +393,10 @@ static BOOL v9x_find_marked_instance(char *instance, DWORD instance_size)
         if (RegQueryValueExA(candidate, "V9xFamily", 0, &type,
                              (BYTE *)family, &family_size) == ERROR_SUCCESS &&
             type == REG_SZ && lstrcmpiA(family, v9x_family) == 0) {
-            ++matches;
-            if (matches == 1u && (DWORD)lstrlenA(name) < instance_size) {
-                lstrcpyA(instance, name);
+            if (matches < V9X_SYNC_MAX_MARKED) {
+                lstrcpyA(found[matches], name);
             }
+            ++matches;
         }
         RegCloseKey(candidate);
     }
@@ -332,10 +406,37 @@ static BOOL v9x_find_marked_instance(char *instance, DWORD instance_size)
         v9x_sync_fail("no-marked-instance");
         return FALSE;
     }
-    if (matches > 1u) {
+    if (matches > V9X_SYNC_MAX_MARKED) {
         v9x_sync_fail("multiple-marked-instances");
         return FALSE;
     }
+    if (matches == 1u) {
+        if ((DWORD)lstrlenA(found[0]) >= instance_size) {
+            v9x_sync_fail("instance-name-too-long");
+            return FALSE;
+        }
+        lstrcpyA(instance, found[0]);
+        return TRUE;
+    }
+
+    /* Several: the card replaced leaves its key behind. Only a present
+     * device's instance is written, and only when exactly one is. */
+    wsprintfA(count, "%u", (unsigned int)matches);
+    v9x_sync_write("MarkedInstances", count);
+    for (marked = 0u; marked < matches; ++marked) {
+        if (v9x_instance_is_live(found[marked])) {
+            if (live == 0u && (DWORD)lstrlenA(found[marked]) < instance_size) {
+                lstrcpyA(instance, found[marked]);
+            }
+            ++live;
+        }
+    }
+    if (live != 1u) {
+        v9x_sync_fail(live == 0u ? "no-live-marked-instance"
+                                 : "multiple-marked-instances");
+        return FALSE;
+    }
+    v9x_sync_write("Chose", "live-instance");
     return TRUE;
 }
 

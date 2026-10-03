@@ -9,9 +9,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-10-03 Rage IIC: pieces skipped because the perspective texture fit fails](2026-10-03-rage-iic-texture-fit-skips.md)
 - [2026-10-03 Mach64-class cards decline every flip, so full-screen DirectDraw flickers](2026-10-03-mach64-class-flips-declined-full-screen-flickers.md)
 - [2026-10-03 An OpenGL session on the Rage XL ran on the CPU after "out of video memory"](2026-10-03-opengl-software-interface-out-of-video-memory.md)
-- [2026-10-03 The Mach64 render interface rejects a full-screen quad whose vertex is on the bottom edge](2026-10-03-mach64-refuses-full-screen-quad-on-bottom-edge.md)
-- [2026-10-03 Several marked Velocity9x display instances stop the mode-list sync](2026-10-03-several-velocity9x-display-instances-block-mode-sync.md)
-- [2026-10-03 DxDiag shows the display driver's version as "()"](2026-10-03-dxdiag-shows-no-driver-version.md)
+- [2026-10-03 Draws with a texture past the engine's 256 limit were refused as invalid and dropped (fixed in the ICD, unverified on hardware)](2026-10-03-mach64-refuses-full-screen-quad-on-bottom-edge.md)
 - [2026-10-02 The Rage IIC's first engine copy hung A8U4I5 (high)](2026-10-02-rage-iic-first-engine-copy-hangs.md)
 - [2026-09-30 Gateway intermittently hard-locks with a black screen during the broad probe](2026-09-30-gateway-intermittent-black-screen-probe-lock.md)
 - [2026-09-30 Final Reality's Robots test kills the process inside DrawPrimitives on the netbook (high)](2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md)
@@ -51,6 +49,8 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-10-03 Several marked Velocity9x display instances stopped the mode-list sync: fixed 2026-10-04](2026-10-03-several-velocity9x-display-instances-block-mode-sync.md)
+- [2026-10-03 DxDiag showed the driver version as "()": an unreadable Win16 version resource, fixed 2026-10-04](2026-10-03-dxdiag-shows-no-driver-version.md)
 - [2026-10-02 DirectDraw refuses the HAL without the D3D capability: a dropped SETCOLORKEY flag, fixed in fc1ed35](2026-10-02-directdraw-hal-refused-without-d3d-capability.md)
 - [2026-08-14 DirectDraw accepts `SetInfo` but reports `DDCAPS_NOHARDWARE`](2026-08-14-directdraw-hal-nohardware.md)
 - [2026-08-14 Hellbender faults in `DIBENG.DLL` leaving the intro cinematic](2026-08-14-hellbender-dibeng-gpf.md)

@@ -239,9 +239,10 @@ static void test_texture_shape_and_sampling(void)
     textured(&request, 3ul);
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
 
-    /* Square powers of two from 8 to 256, the sizes the HAL probe samples. */
+    /* Square powers of two from 2 to 256, the sizes the HAL probe samples
+     * (4 and 2 since 2026-10-03). */
     textured(&request, 0ul);
-    for (edge = 8ul; edge <= 256ul; edge <<= 1) {
+    for (edge = 2ul; edge <= 256ul; edge <<= 1) {
         request.texture_width = edge;
         request.texture_height = edge;
         CHECK(check(&request) == V9X_M64_REFUSE_NONE);
@@ -249,8 +250,8 @@ static void test_texture_shape_and_sampling(void)
     request.texture_width = 512ul;
     request.texture_height = 512ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
-    request.texture_width = 4ul;
-    request.texture_height = 4ul;
+    request.texture_width = 1ul;
+    request.texture_height = 1ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
     request.texture_width = 24ul;
     request.texture_height = 24ul;
@@ -270,6 +271,8 @@ static void test_texture_shape_and_sampling(void)
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
     request.texture_width = 64ul;
     request.texture_height = 4ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.texture_height = 1ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
     request.texture_height = 24ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);

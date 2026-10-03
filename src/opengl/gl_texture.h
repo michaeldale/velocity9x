@@ -82,6 +82,13 @@ typedef struct v9x_gl_texobj {
     /* The ICD's hardware copy of the images, opaque here; released through
      * V9X_GL_TEXTURES.hw_release when the object's storage goes. */
     void *hw;
+    /* Level 0 box-filtered to fit a device's largest edge
+     * (v9x_gl_tex_fit), made for `reduced_revision` and `reduced_limit`. */
+    v9x_u16 *reduced;
+    v9x_u32 reduced_revision;
+    v9x_u32 reduced_limit;
+    v9x_u32 reduced_width;
+    v9x_u32 reduced_height;
 } V9X_GL_TEXOBJ;
 
 typedef struct v9x_gl_textures {
@@ -153,6 +160,18 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
                          V9X_GL_TEXTURES *textures,
                          V9X_R3D_ABI_TEXTURE *out,
                          V9X_R3D_ABI_LEVEL *levels);
+
+/*
+ * A described texture made to fit a device whose largest edge is
+ * `size_max` (zero: no limit). Levels past it are dropped from the top,
+ * which leaves a mipmapped chain complete; a single level past it is
+ * replaced by a box-filtered copy kept on the bound object until its next
+ * image. The Mach64 and the Rage IIC sample to 256 and have no software
+ * fallback, so a 512 texture's draw was refused as invalid and not drawn.
+ * `levels` is the array `texture` names.
+ */
+void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
+                    V9X_R3D_ABI_LEVEL *levels, v9x_u32 size_max);
 
 /* The bound object (never null: name 0 is the default texture). */
 V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures);

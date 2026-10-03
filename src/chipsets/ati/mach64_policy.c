@@ -44,14 +44,16 @@
 #define M64_TEXOP_COPY       7ul
 #define M64_BLEND_SRCALPHASAT 11ul
 
-/* Power-of-two edges from 8 to 256 texels, each on its own.  The Phase 4
+/* Power-of-two edges from 2 to 256 texels, each on its own.  The Phase 4
  * scenes bound only 8x8; the HAL probe's halves scene samples every square
- * size in the range through the HAL (docs/probe/ati-rage-mobility-m-hal-d3d-*),
+ * size in the range through the HAL (docs/probe/ati-rage-mobility-m-hal-d3d-*;
+ * 4 and 2 on the Rage XL PCI, 2026-10-03, docs/probe/a8u4i5-rage-xl-pci-*),
  * and the texture-shape probe samples rectangles, single levels and chains
- * (2026-10-01).  The size and pitch encoding is a log2 field and the builder
- * takes up to 1024, but nothing above 256 has been drawn; raise the maximum
- * only with a scene that samples the larger texture. */
-#define M64_TEXTURE_EDGE_MIN 8ul
+ * (2026-10-01).  1x1 has no halves scene and stays out.  The size and pitch
+ * encoding is a log2 field and the builder takes up to 1024, but nothing
+ * above 256 has been drawn; raise the maximum only with a scene that
+ * samples the larger texture. */
+#define M64_TEXTURE_EDGE_MIN 2ul
 #define M64_TEXTURE_EDGE_MAX 256ul
 
 /*

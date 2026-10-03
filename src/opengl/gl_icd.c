@@ -1262,8 +1262,16 @@ static int v9x_gl_redescribe_all(void)
 static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context,
                                     V9X_R3D_ABI_TEXTURE *texture)
 {
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+
     v9x_gl_tex_describe(&context->state, &context->textures, texture,
                         context->levels);
+    /* Past the interface's largest texture the draw is refused as
+     * invalid and not drawn (a 512x256 on the Rage XL, 2026-10-03). */
+    if (description != 0) {
+        v9x_gl_tex_fit(&context->textures, texture, context->levels,
+                       description->texture_size_max);
+    }
     if (!v9x_gl_prim_fragment_alpha_used(&context->state,
                                          &context->pipeline)) {
         v9x_gl_tex_fragment_alpha_unused(texture);

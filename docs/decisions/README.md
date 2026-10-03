@@ -238,3 +238,4 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-04 Four megabytes is what picks the resolution, and at 800x600 mipmapping is off](2026-09-04-four-megabytes-is-the-resolution-limit.md)
 - [2026-09-11 CR36 and the aperture base, confirmed on a physical ViRGE/DX](2026-09-11-virge-dx-registers-confirmed-on-silicon.md)
 - [2026-10-03 Rage XL PCI on Velocity9x in A8U4I5: Half-Life 18.1, Quake 2 11.6, 3DMark 99 1225](2026-10-03-rage-xl-pci-benchmarks-a8u4i5.md)
+- [2026-10-04 Rage XL follow-ups: 4x4 and 2x2 textures measured, the mode sync, the DRV version, oversized GL textures](2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md)

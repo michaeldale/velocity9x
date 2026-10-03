@@ -26,6 +26,16 @@ blend unit one or the other (A1, A5 in
   This changes the colour, so it needs a scene to show the difference.
 - Approximate with the texel alpha alone, and measure how wrong it looks.
 
+## The Mach64 too (2026-10-04)
+
+On the Rage XL, Quake 2's 6,507 refused batches a run (385,721 triangles)
+are the passive check's `TEXTURE_OP`: 6,441 a run (`M64AcceptPolicy12`).
+The ICD's retry with the CPU copy then fails `TEXTURE_FORMAT`, because
+the Mach64 has no route for CPU textures, and the batches are not drawn
+(`docs/probe/a8u4i5-rage-xl-pci-2026-10-03/q2-gl-timedemo-fixes/`). Which
+op it is was inferred from Quake 2's particle state, not read: the draw
+path's op mask is not set by the passive check.
+
 ## Next
 
 First count how many distinct vertex alphas Quake 2's particle batches

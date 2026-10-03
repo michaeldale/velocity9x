@@ -1255,6 +1255,23 @@ static void test_offsets_match_diagnostic(void)
     for (index = 0u; index < 19u; ++index) {
         CHECK(offsets[index] == proven[index]);
     }
+    /* 4 and 2 sample correctly on the Rage XL (V9XDDP's halves scenes,
+     * 2026-10-03); 1 has no scene. */
+    texture.texture_pitch_bytes = 8ul;
+    texture.texture_width = 4ul;
+    texture.texture_height = 4ul;
+    CHECK(v9x_m64_build_texture_state(&texture, offsets, values, 32ul,
+                                      &written) == V9X_STATUS_OK);
+    texture.texture_pitch_bytes = 4ul;
+    texture.texture_width = 2ul;
+    texture.texture_height = 2ul;
+    CHECK(v9x_m64_build_texture_state(&texture, offsets, values, 32ul,
+                                      &written) == V9X_STATUS_OK);
+    texture.texture_pitch_bytes = 2ul;
+    texture.texture_width = 1ul;
+    texture.texture_height = 1ul;
+    CHECK(v9x_m64_build_texture_state(&texture, offsets, values, 32ul,
+                                      &written) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
 static void test_phase3_triangle_golden(void)

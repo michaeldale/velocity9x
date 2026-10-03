@@ -55,7 +55,7 @@ static v9x_u32 v9x_d3d_mach64_setup_counts[V9X_D3D_MACH64_MAX_TRIANGLES];
  * measured boundary: DST_OFF_PITCH's pitch is eight-pixel units up to 1023
  * of them, so pitches are 16-byte aligned; 1024 is the widest mode the
  * Gateway's panel was driven at; and textures have power-of-two edges
- * from 8 to 256, as the policy accepts, bound on V9X_M64_TEXTURE_BASE_ALIGN,
+ * from 2 to 256, as the policy accepts, bound on V9X_M64_TEXTURE_BASE_ALIGN,
  * each mip level packed after the one before.
  * The core clips, so the setup engine sees only on-target coordinates.
  */
@@ -64,7 +64,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
     16368ul,        /* target_pitch_max */
     16ul,           /* target_pitch_align */
     1024ul,         /* target_dimension_max */
-    8ul,            /* texture_size_min */
+    2ul,            /* texture_size_min */
     256ul,          /* texture_size_max */
     2048.0f,        /* coordinate_limit */
     16ul,           /* depth_bits_per_pixel */
@@ -403,6 +403,7 @@ static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
     V9X_D3D_MACH64_TEXTURE texture;
     struct v9x_m64_draw_request request;
     struct v9x_m64_draw_decision decision;
+    v9x_u32 reason;
 
     if (draw == 0) {
         return 0;
@@ -410,7 +411,12 @@ static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
     v9x_d3d_mach64_resolve_texture(draw, &texture);
     v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
     request.vertex_alpha_opaque = draw->vertex_alpha_opaque;
-    return v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE;
+    reason = v9x_m64_check_draw(&request, &decision);
+    /* A count only: the answer is the same either way. */
+    if (reason != V9X_M64_REFUSE_NONE && reason < 20ul) {
+        ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
+    }
+    return reason == V9X_M64_REFUSE_NONE;
 }
 
 /*

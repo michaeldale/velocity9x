@@ -83,6 +83,10 @@ static void v9x_gl_texobj_free_levels(V9X_GL_TEXTURES *textures,
     unsigned int level;
 
     v9x_gl_texobj_free_hw(textures, object);
+    if (object->reduced != 0) {
+        textures->release(object->reduced);
+        object->reduced = 0;
+    }
 
     for (level = 0u; level < V9X_GL_TEXTURE_LEVELS; ++level) {
         if (object->levels[level].texels != 0) {
@@ -833,6 +837,150 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
         out->alpha_op = has_alpha ? V9X_R3D_ABI_ALPHAOP_MODULATE
                                   : V9X_R3D_ABI_ALPHAOP_FRAGMENT;
     }
+}
+
+/* The fields of each 16-bit layout, so a box filter can average each one
+ * on its own. 1555's alpha bit survives only where all its texels had it. */
+static const v9x_u32 v9x_gl_tex_fields_565[] = {
+    0xf800ul, 0x07e0ul, 0x001ful, 0ul
+};
+static const v9x_u32 v9x_gl_tex_fields_1555[] = {
+    0x8000ul, 0x7c00ul, 0x03e0ul, 0x001ful, 0ul
+};
+static const v9x_u32 v9x_gl_tex_fields_4444[] = {
+    0xf000ul, 0x0f00ul, 0x00f0ul, 0x000ful, 0ul
+};
+
+/* The largest box a field sum holds in 32 bits: 65536 texels of 0xf800. */
+#define V9X_GL_TEX_BOX_MAX 65536ul
+
+static v9x_u32 v9x_gl_tex_shift_of(v9x_u32 power)
+{
+    v9x_u32 shift = 0ul;
+
+    while (power > 1ul) {
+        power >>= 1;
+        ++shift;
+    }
+    return shift;
+}
+
+/* `source` (width x height) averaged over boxes of fx x fy into `out`
+ * (width / fx x height / fy); the box sizes are powers of two. */
+static void v9x_gl_tex_box(const v9x_u16 *source, v9x_u32 width,
+                           v9x_u32 fx, v9x_u32 fy, const v9x_u32 *fields,
+                           v9x_u16 *out, v9x_u32 out_width,
+                           v9x_u32 out_height)
+{
+    v9x_u32 shift = v9x_gl_tex_shift_of(fx * fy);
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (y = 0ul; y < out_height; ++y) {
+        for (x = 0ul; x < out_width; ++x) {
+            v9x_u32 texel = 0ul;
+            v9x_u32 field;
+
+            for (field = 0ul; fields[field] != 0ul; ++field) {
+                v9x_u32 sum = 0ul;
+                v9x_u32 bx;
+                v9x_u32 by;
+
+                for (by = 0ul; by < fy; ++by) {
+                    const v9x_u16 *row = source + (y * fy + by) * width +
+                                         x * fx;
+
+                    for (bx = 0ul; bx < fx; ++bx) {
+                        sum += (v9x_u32)row[bx] & fields[field];
+                    }
+                }
+                texel |= (sum >> shift) & fields[field];
+            }
+            out[y * out_width + x] = (v9x_u16)texel;
+        }
+    }
+}
+
+void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
+                    V9X_R3D_ABI_LEVEL *levels, v9x_u32 size_max)
+{
+    V9X_GL_TEXOBJ *object;
+    const v9x_u32 *fields;
+    v9x_u32 drop = 0ul;
+    v9x_u32 level;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 out_width;
+    v9x_u32 out_height;
+
+    if (texture == 0 || levels == 0 || size_max == 0ul ||
+        texture->storage != V9X_R3D_ABI_TEXTURE_CPU ||
+        texture->level_count == 0ul ||
+        (levels[0].width <= size_max && levels[0].height <= size_max)) {
+        return;
+    }
+
+    /* The chain's own smaller levels first. */
+    while (drop + 1ul < texture->level_count &&
+           (levels[drop].width > size_max || levels[drop].height > size_max)) {
+        ++drop;
+    }
+    if (drop != 0ul) {
+        for (level = 0ul; level + drop < texture->level_count; ++level) {
+            levels[level] = levels[level + drop];
+        }
+        texture->level_count -= drop;
+    }
+    if (levels[0].width <= size_max && levels[0].height <= size_max) {
+        return;
+    }
+
+    /* One level still past it: halve both edges together until it fits,
+     * from the copy on the object when that is current. */
+    object = v9x_gl_texobj_find(textures, textures->bound);
+    if (object == 0 || texture->level_count != 1ul) {
+        return;
+    }
+    switch (texture->format) {
+    case V9X_R3D_ABI_FORMAT_RGB565:   fields = v9x_gl_tex_fields_565; break;
+    case V9X_R3D_ABI_FORMAT_ARGB1555: fields = v9x_gl_tex_fields_1555; break;
+    case V9X_R3D_ABI_FORMAT_ARGB4444: fields = v9x_gl_tex_fields_4444; break;
+    default:                          return;
+    }
+    width = levels[0].width;
+    height = levels[0].height;
+    out_width = width;
+    out_height = height;
+    while (out_width > size_max || out_height > size_max) {
+        out_width = out_width > 1ul ? out_width / 2ul : 1ul;
+        out_height = out_height > 1ul ? out_height / 2ul : 1ul;
+    }
+    if ((width / out_width) * (height / out_height) > V9X_GL_TEX_BOX_MAX) {
+        return;
+    }
+    if (object->reduced == 0 || object->reduced_revision != object->revision ||
+        object->reduced_limit != size_max) {
+        if (object->reduced != 0) {
+            textures->release(object->reduced);
+        }
+        object->reduced = (v9x_u16 *)textures->alloc(out_width * out_height *
+                                                     2ul);
+        if (object->reduced == 0) {
+            return;
+        }
+        v9x_gl_tex_box((const v9x_u16 *)levels[0].pixels, width,
+                       width / out_width, height / out_height, fields,
+                       object->reduced, out_width, out_height);
+        object->reduced_revision = object->revision;
+        object->reduced_limit = size_max;
+        object->reduced_width = out_width;
+        object->reduced_height = out_height;
+    }
+    levels[0].pixels = object->reduced;
+    levels[0].width = object->reduced_width;
+    levels[0].height = object->reduced_height;
+    levels[0].pitch = object->reduced_width * 2ul;
+    levels[0].bytes = object->reduced_width * object->reduced_height * 2ul;
 }
 
 V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures)

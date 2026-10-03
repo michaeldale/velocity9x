@@ -343,6 +343,89 @@ static void test_completeness_and_describe(void)
     TCHECK(outstanding == 0l);
 }
 
+/*
+ * A texture past the device's largest edge (the Mach64's and the Rage
+ * IIC's 256, against the 512 this implementation accepts): its own smaller
+ * levels where it has them, else a box-filtered copy kept on the object.
+ */
+static void test_fit_to_size_max(void)
+{
+    static GLubyte stripes[4 * 8 * 8];
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    V9X_R3D_ABI_TEXTURE d;
+    V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+    const void *reduced;
+    long held;
+    unsigned int i;
+
+    /* A chain: the top level goes, the rest stays complete. */
+    fresh(&s, &t);
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_2D, 1);
+    upload_chain(&s, &t, 4u);
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_LINEAR_MIPMAP_NEAREST);
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    held = outstanding;
+    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    TCHECK(d.level_count == 3ul && d.levels == levels);
+    TCHECK(levels[0].width == 4ul && levels[2].width == 1ul);
+    TCHECK(d.mip == V9X_R3D_ABI_MIP_POINT && outstanding == held);
+    /* Within the limit, or no limit: untouched. */
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    v9x_gl_tex_fit(&t, &d, levels, 8ul);
+    TCHECK(d.level_count == 4ul && levels[0].width == 8ul);
+    v9x_gl_tex_fit(&t, &d, levels, 0ul);
+    TCHECK(d.level_count == 4ul);
+    v9x_gl_textures_release(&t);
+    TCHECK(outstanding == 0l);
+
+    /* One level: red in alternate columns, so each 2x2 box averages two
+     * texels of 15 and two of 0 to 7 (4444, truncated). */
+    for (i = 0u; i < 8u * 8u; ++i) {
+        stripes[i * 4u + 0u] = (i & 1u) != 0u ? 255u : 0u;
+        stripes[i * 4u + 1u] = 0u;
+        stripes[i * 4u + 2u] = 0u;
+        stripes[i * 4u + 3u] = 255u;
+    }
+    fresh(&s, &t);
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_2D, 1);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 4, 8, 8, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, stripes);
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_LINEAR);
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    TCHECK(d.level_count == 1ul && d.storage == V9X_R3D_ABI_TEXTURE_CPU);
+    TCHECK(levels[0].width == 4ul && levels[0].height == 4ul &&
+           levels[0].pitch == 8ul && levels[0].bytes == 32ul);
+    TCHECK(levels[0].pixels != 0 &&
+           ((const v9x_u16 *)levels[0].pixels)[0] == 0xf700u);
+    TCHECK(((const v9x_u16 *)levels[0].pixels)[15] == 0xf700u);
+    /* The copy is kept: a second draw allocates nothing. */
+    reduced = levels[0].pixels;
+    held = outstanding;
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    TCHECK(levels[0].pixels == reduced && outstanding == held);
+    /* A new image is a new copy. */
+    for (i = 0u; i < 8u * 8u; ++i) {
+        stripes[i * 4u + 0u] = 255u;
+    }
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 0, 0, 8, 8,
+                            V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, stripes);
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    TCHECK(((const v9x_u16 *)levels[0].pixels)[0] == 0xff00u);
+    /* Two halvings at once: 8 to 2. */
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    v9x_gl_tex_fit(&t, &d, levels, 2ul);
+    TCHECK(levels[0].width == 2ul && levels[0].bytes == 8ul &&
+           ((const v9x_u16 *)levels[0].pixels)[3] == 0xff00u);
+    v9x_gl_textures_release(&t);
+    TCHECK(outstanding == 0l);
+}
+
 static void expect_env(GLenum mode, GLenum base, v9x_u32 color_op,
                        v9x_u32 alpha_op, unsigned int line)
 {
@@ -626,6 +709,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_names_and_binding();
     test_uploads();
     test_completeness_and_describe();
+    test_fit_to_size_max();
     test_lookup_after_reuse_and_growth();
     test_environment_table();
     test_hardware_copy_bookkeeping();

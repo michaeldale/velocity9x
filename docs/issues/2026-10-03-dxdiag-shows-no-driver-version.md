@@ -21,3 +21,16 @@ reads. Not checked against the build scripts.
 
 Read V9XDISP.DRV's resources from a build. If none is there, decide
 whether to add one, stamped from `include/velocity9x/build.h`.
+
+## Fixed (2026-10-04)
+
+There was one, unreadable. In wrc's 16-bit output, values ending in the
+`.rc` text's explicit `\0` declared one byte more than was written.
+InternalName and OriginalFilename each crossed a 4-byte boundary with
+it, 8 bytes in all, and `GetFileVersionInfo` rejected the resource.
+Without the `\0`, wrc writes no terminator at all, so the build now lays
+out the 16-bit block itself and hands wrc raw data. It also fails when
+Windows cannot read the version. DxDiag on A8U4I5 now reads
+`Driver Version: 0.10.0000.0000 (English)`. `Mini VDD Date` is still
+blank, separately.
+`docs/decisions/2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md`.

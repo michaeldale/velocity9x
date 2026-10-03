@@ -29,3 +29,17 @@ centre beyond it. Not checked in the source.
 
 A host test in `test_r3d_validate.c` with this quad on a 640x480 target.
 Write the test first; if it rejects, fix the edge rule.
+
+## 2026-10-04: the suspect was wrong; fixed in the ICD, unverified on hardware
+
+Nothing validates vertex positions there. The draws carried a 512x256
+texture. `v9x_r3d_validate_levels` refuses a level past the engine's
+`texture_size_max` (256 on the Mach64 and the Rage IIC) as INVALID, and
+the ICD drops an INVALID draw, where on UNSUPPORTED it would have retried
+with the CPU copy. The ICD now fits textures to the interface's limit
+before the draw (`v9x_gl_tex_fit`, tested in `test_gl_texture.c`). That
+is either the chain's own smaller levels, or a box-filtered copy of a
+single level. Quake 2 on the Rage XL never binds a texture over 256 (0
+INVALID draws), so the fix has not been seen on hardware. Quake 1, the
+likely source, is not installed here.
+`docs/decisions/2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md`.

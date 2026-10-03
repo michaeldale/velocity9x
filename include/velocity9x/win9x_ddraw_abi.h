@@ -1520,6 +1520,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100306: the passive check's refusals by reason. An append. */
 /* 2026100305: the Rage IIC's last refused alpha test. An append. */
 /* 2026100304: the Rage IIC's texture placement outcomes. An append. */
 /* 2026100303: the Rage IIC's draw work gains pixels and trapezoids. An
@@ -1630,7 +1631,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100305ul
+#define V9X_DD_SHARED_ABI   2026100306ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3181,6 +3182,11 @@ typedef struct v9x_d3d_diagnostics {
      * textures rewritten for the mask. Half-Life's 10,371 refusals a run
      * had nothing to say what they asked. */
     DWORD r2_alpha[6];
+    /* Render-interface draws the engine's passive check refused, by
+     * V9X_M64_REFUSE_* reason (2026-10-03): the ICD's "r4" counts with no
+     * reason behind them. Quake 2 had 7,584 on the Rage XL and the draw
+     * path's own counters never moved. */
+    DWORD m64_accept_policy[20];
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

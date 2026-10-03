@@ -1153,6 +1153,15 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.r2_alpha[V9X_R2_ALPHA_REWRITES]);
     v9x_write_uint("R2AlphaRewriteFailed",
                    snapshot.d3d.r2_alpha[V9X_R2_ALPHA_REWRITE_FAILED]);
+    {
+        char key[24];
+        DWORD reason;
+
+        for (reason = 0ul; reason < 20ul; ++reason) {
+            wsprintf(key, "M64AcceptPolicy%02lu", reason);
+            v9x_write_uint(key, snapshot.d3d.m64_accept_policy[reason]);
+        }
+    }
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

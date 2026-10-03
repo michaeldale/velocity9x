@@ -1044,8 +1044,8 @@ v9x_status v9x_m64_build_texture_state(
     if ((state->texture_offset & (V9X_M64_TEXTURE_BASE_ALIGN - 1ul)) != 0ul ||
         !v9x_m64_power_of_two(state->texture_width) ||
         !v9x_m64_power_of_two(state->texture_height) ||
-        state->texture_width < 8ul || state->texture_width > 1024ul ||
-        state->texture_height < 8ul || state->texture_height > 1024ul ||
+        state->texture_width < 2ul || state->texture_width > 1024ul ||
+        state->texture_height < 2ul || state->texture_height > 1024ul ||
         state->wrap_s > 1ul || state->wrap_t > 1ul ||
         state->bilinear_min > 2ul || state->bilinear_mag > 1ul) {
         *written = 0ul;

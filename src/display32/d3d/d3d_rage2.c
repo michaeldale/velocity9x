@@ -593,6 +593,7 @@ static int v9x_d3d_rage2_accepts(const V9X_R3D_DRAW *draw)
     V9X_D3D_MACH64_TEXTURE texture;
     struct v9x_m64_draw_request request;
     struct v9x_r2_draw_decision decision;
+    v9x_u32 reason;
 
     if (draw == 0) {
         return 0;
@@ -603,8 +604,12 @@ static int v9x_d3d_rage2_accepts(const V9X_R3D_DRAW *draw)
     /* Only opacity is known before the vertices: the least alpha is 255
      * or unknown. */
     request.vertex_alpha_min = draw->vertex_alpha_opaque != 0ul ? 255ul : 0ul;
-    return v9x_r2_check_draw(&request, 1ul, &decision) ==
-           V9X_M64_REFUSE_NONE;
+    reason = v9x_r2_check_draw(&request, 1ul, &decision);
+    /* A count only: the answer is the same either way. */
+    if (reason != V9X_M64_REFUSE_NONE && reason < 20ul) {
+        ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
+    }
+    return reason == V9X_M64_REFUSE_NONE;
 }
 
 /* Every tu and tv of the batch inside [0, 1]: there CLAMP is WRAP. */

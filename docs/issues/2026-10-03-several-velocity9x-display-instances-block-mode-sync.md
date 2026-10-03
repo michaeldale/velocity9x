@@ -29,7 +29,17 @@ the new devnode left two keys with `V9xFamily=ati`. Boot 181's
 change is enough to cause it; a reinstall on the same card is not
 needed.
 
-## Next
+## Fixed (2026-10-04)
+
+With several marked keys, the sync now writes the one a device present
+this boot uses. It finds that key under `HKEY_DYN_DATA\Config
+Manager\Enum`, following `HardWareKey` to its `Driver` value, because
+HKLM\Enum keeps removed cards. If none or several are live it stays a
+no-op. On A8U4I5 the boot run chose `0007` and added 12 modes,
+`Status=ok`.
+`docs/decisions/2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md`.
+
+## Next (before the fix)
 
 - Ask the reporter how many times the driver was installed, and for the
   `HKLM\System\CurrentControlSet\Services\Class\Display` subkeys.
