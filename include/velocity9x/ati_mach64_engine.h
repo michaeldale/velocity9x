@@ -310,6 +310,9 @@ struct v9x_m64_draw_request {
 struct v9x_m64_draw_decision {
     v9x_u32 light_fcn;
     v9x_u32 texture_alpha;
+    /* Non-zero: the request's alpha test can discard nothing and is not
+     * to be sent (no texel alpha, and every vertex alpha passes). */
+    v9x_u32 alpha_test_dropped;
 };
 
 #define V9X_M64_REFUSE_NONE             0ul

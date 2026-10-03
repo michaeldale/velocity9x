@@ -16,6 +16,10 @@
 #define M64_SHADE_FLAT        1ul
 #define M64_SHADE_GOURAUD     2ul
 #define M64_CMP_FIRST         1ul
+#define M64_CMP_GREATER       5ul
+#define M64_CMP_NOTEQUAL      6ul
+#define M64_CMP_GREATEREQUAL  7ul
+#define M64_CMP_ALWAYS        8ul
 #define M64_CMP_LAST          8ul
 #define M64_ALPHA_REF_MAX     255ul
 #define M64_DEPTH_BITS        16ul
@@ -108,12 +112,56 @@ static int v9x_m64_policy_factor_reads_alpha(v9x_u32 factor)
            factor == M64_BLEND_SRCALPHASAT;
 }
 
+static int v9x_m64_policy_format_has_alpha(v9x_u32 format);
+
+/* Whether the comparison passes for every alpha from `least` to 255. */
+static int v9x_m64_policy_passes_from(v9x_u32 least, v9x_u32 func,
+                                      v9x_u32 ref)
+{
+    switch (func) {
+    case M64_CMP_GREATER:
+    case M64_CMP_NOTEQUAL:     return least > ref;
+    case M64_CMP_GREATEREQUAL: return least >= ref;
+    case M64_CMP_ALWAYS:       return 1;
+    default:                   return 0;
+    }
+}
+
+/*
+ * An alpha test that is no test: no texel alpha, so the tested alpha is
+ * the vertex's (DECAL and COPY give the texel's, 255 without alpha), and
+ * the comparison passes from the batch's least of it up. The engine's
+ * vertex-alpha test source was never measured; a test that cannot discard
+ * is simply not sent. Half-Life's HUD tests NOTEQUAL 0 over RGB565 sprites
+ * and was refused whole (15,018 batches a run on the Rage XL, 2026-10-04).
+ */
+static int v9x_m64_policy_alpha_test_droppable(
+                              const struct v9x_m64_draw_request *request)
+{
+    v9x_u32 least = request->vertex_alpha_min;
+
+    if (request->alpha_test_enable == 0ul ||
+        (request->textured != 0ul &&
+         v9x_m64_policy_format_has_alpha(request->texture_format))) {
+        return 0;
+    }
+    if (request->textured != 0ul &&
+        (request->texture_op == M64_TEXOP_DECAL ||
+         request->texture_op == M64_TEXOP_COPY)) {
+        least = M64_ALPHA_REF_MAX;
+    }
+    return request->alpha_ref <= M64_ALPHA_REF_MAX &&
+           v9x_m64_policy_passes_from(least, request->alpha_func,
+                                      request->alpha_ref);
+}
+
 /* Whether anything after the texture stage reads the fragment's alpha:
  * the alpha test, or a blend factor of the source alpha. */
 static int v9x_m64_policy_fragment_alpha_read(
                               const struct v9x_m64_draw_request *request)
 {
-    if (request->alpha_test_enable != 0ul) {
+    if (request->alpha_test_enable != 0ul &&
+        !v9x_m64_policy_alpha_test_droppable(request)) {
         return 1;
     }
     return request->blend_enable != 0ul &&
@@ -275,7 +323,9 @@ static v9x_u32 v9x_m64_policy_check(
 
     /* Items 7 and 8 compared texel alpha only.  The vertex-alpha source is
      * a separate ALPHA_TST_CNTL bit that no scene set. */
-    if (request->alpha_test_enable != 0ul &&
+    if (v9x_m64_policy_alpha_test_droppable(request)) {
+        decision->alpha_test_dropped = 1ul;
+    } else if (request->alpha_test_enable != 0ul &&
         (request->alpha_func < M64_CMP_FIRST ||
          request->alpha_func > M64_CMP_LAST ||
          request->alpha_ref > M64_ALPHA_REF_MAX ||
@@ -316,6 +366,7 @@ v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
     if (decision != 0) {
         decision->light_fcn = 0ul;
         decision->texture_alpha = 0ul;
+        decision->alpha_test_dropped = 0ul;
     }
     if (request == 0 || decision == 0) {
         return V9X_M64_REFUSE_ARGUMENT;
@@ -325,6 +376,7 @@ v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
     if (reason != V9X_M64_REFUSE_NONE) {
         decision->light_fcn = 0ul;
         decision->texture_alpha = 0ul;
+        decision->alpha_test_dropped = 0ul;
     }
     return reason;
 }

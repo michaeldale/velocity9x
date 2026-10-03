@@ -450,6 +450,7 @@ static void test_modulatealpha_equivalence(void)
 static void test_alpha_test(void)
 {
     struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
     v9x_u32 func;
 
     for (func = T_CMP_NEVER; func <= T_CMP_ALWAYS; ++func) {
@@ -472,15 +473,50 @@ static void test_alpha_test(void)
     request.alpha_func = 9ul;
     CHECK(check(&request) == V9X_M64_REFUSE_ALPHA_TEST);
 
-    /* Vertex-alpha testing was never measured. */
+    /* Without texel alpha the tested alpha is the vertex's (255 under
+     * DECAL and COPY). The engine's vertex-alpha test was never measured,
+     * so a test every alpha from the batch's least up passes is dropped,
+     * and any other refused. Half-Life's HUD tests NOTEQUAL 0 this way. */
     base(&request);
     request.alpha_test_enable = 1ul;
     request.alpha_func = T_CMP_ALWAYS;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.alpha_test_dropped == 1ul);
+    request.alpha_func = 6ul;                   /* NOTEQUAL 0 */
+    request.alpha_ref = 0ul;
     CHECK(check(&request) == V9X_M64_REFUSE_ALPHA_TEST);
-    textured(&request, 0ul);
+    request.vertex_alpha_min = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.alpha_test_dropped == 1ul);
+    textured(&request, 0ul);                    /* RGB565 */
+    request.texture_op = T_TEXOP_MODULATE;
     request.alpha_test_enable = 1ul;
-    request.alpha_func = T_CMP_ALWAYS;
+    request.alpha_func = 6ul;
+    request.alpha_ref = 0ul;
+    request.vertex_alpha_min = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.alpha_test_dropped == 1ul);
+    request.alpha_func = 7ul;                   /* GREATEREQUAL 1 */
+    request.alpha_ref = 1ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.alpha_func = 5ul;                   /* GREATER 1 */
     CHECK(check(&request) == V9X_M64_REFUSE_ALPHA_TEST);
+    request.alpha_func = 2ul;                   /* LESS: needs the most */
+    CHECK(check(&request) == V9X_M64_REFUSE_ALPHA_TEST);
+    request.texture_op = T_TEXOP_DECAL;         /* alpha 255 */
+    request.alpha_func = 5ul;
+    request.alpha_ref = 254ul;
+    request.vertex_alpha_min = 0ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.alpha_ref = 255ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_ALPHA_TEST);
+    /* With texel alpha the engine tests it, as before. */
+    textured(&request, 1ul);
+    request.alpha_test_enable = 1ul;
+    request.alpha_func = 5ul;
+    request.alpha_ref = 127ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.alpha_test_dropped == 0ul);
 }
 
 static void test_fog_and_unmeasured_knobs(void)

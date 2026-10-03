@@ -411,6 +411,8 @@ static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
     v9x_d3d_mach64_resolve_texture(draw, &texture);
     v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
     request.vertex_alpha_opaque = draw->vertex_alpha_opaque;
+    /* Only opacity is known before the vertices: 255 or unknown. */
+    request.vertex_alpha_min = draw->vertex_alpha_opaque != 0ul ? 255ul : 0ul;
     reason = v9x_m64_check_draw(&request, &decision);
     /* A count only: the answer is the same either way. */
     if (reason != V9X_M64_REFUSE_NONE && reason < 20ul) {
@@ -545,7 +547,13 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         &request);
     request.vertex_alpha_opaque =
         v9x_d3d_mach64_vertices_opaque(vertices, triangle_count * 3ul);
+    request.vertex_alpha_min =
+        v9x_d3d_mach64_vertices_alpha_min(vertices, triangle_count * 3ul);
     reason = v9x_m64_check_draw(&request, &decision);
+    if (reason == V9X_M64_REFUSE_NONE && decision.alpha_test_dropped != 0ul) {
+        /* A test that can discard nothing is not programmed. */
+        request.alpha_test_enable = 0ul;
+    }
     if (reason != V9X_M64_REFUSE_NONE) {
         v9x_hal->d3d_diagnostics.m64_policy_last = reason;
         if (reason < 20ul) {

@@ -60,6 +60,14 @@ rectangle drew every scene with guards intact and no timeout:
 - **Texture placement at the top of VRAM.**
 - **The state itself.** `/hud` drew it.
 
+## The Rage XL draws them (2026-10-04)
+
+With the same rule on the Mach64 path, A8U4I5 with the Rage XL PCI drew
+the HUD sprites through three mwd5 runs with no lock, no refusal and no
+timeout (`docs/decisions/2026-10-04-mach64-alpha-test-that-cannot-discard.md`).
+That leaves the Rage IIC's own path - CPU triangle setup into its
+trapezoids, its engine - as the place to look, not the draws themselves.
+
 ## Open
 
 The lock needs something these scenes lack: the HAL's own pieces for real
