@@ -2899,6 +2899,11 @@ static BYTE atirx_dump_buffer[ATIRX_DUMP_CHUNK];
 #define ATIRX_FILL_REPEAT    16ul
 #define ATIRX_FILL_DWORDS    6144ul
 
+/* Where /fill draws; /fillz moves them. */
+static DWORD atirx_fill_target = ATIRX_FILL_TARGET;
+static DWORD atirx_fill_z = ATIRX_FILL_Z;
+static DWORD atirx_fill_pitch = ATIRX_FILL_PITCH;
+
 static DWORD atirx_tsc_low(void);
 #pragma aux atirx_tsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
 
@@ -2911,6 +2916,7 @@ struct atirx_fill_scene {
     v9x_u32 src_blend;          /* 0: no blend */
     v9x_u32 dst_blend;
     v9x_u32 perspective;        /* q 1 at the top, 0.4 at the bottom */
+    double repeat;              /* map widths across the quad; 0: default */
 };
 
 static const struct atirx_fill_scene atirx_fill_scenes[] = {
@@ -2924,7 +2930,16 @@ static const struct atirx_fill_scene atirx_fill_scenes[] = {
     { "bilinear64-z-alpha", 1ul, 2ul, 6ul, 1ul, 5ul, 6ul, 0ul },
     /* Quake 2's lightmap pass: ZERO, SRCCOLOR over the world pass. */
     { "bilinear64-z-lightmap", 1ul, 2ul, 6ul, 1ul, 1ul, 3ul, 0ul },
-    { "point64-z",      1ul, 1ul, 6ul, 1ul, 0ul, 0ul, 0ul }
+    { "point64-z",      1ul, 1ul, 6ul, 1ul, 0ul, 0ul, 0ul },
+    /* Minification. Level 0 of a 256x256 map at 4 texels a pixel, as the
+     * HAL samples every mip-mapped texture, against the 64x64 map at 1:1
+     * that mip level 2 would be. Scenes 10-15. */
+    { "bilinear256-min4",   1ul, 2ul, 8ul, 0ul, 0ul, 0ul, 0ul, 4.0 },
+    { "bilinear64-min1",    1ul, 2ul, 6ul, 0ul, 0ul, 0ul, 0ul, 4.0 },
+    { "bilinear256-min4-z", 1ul, 2ul, 8ul, 1ul, 0ul, 0ul, 0ul, 4.0 },
+    { "bilinear64-min1-z",  1ul, 2ul, 6ul, 1ul, 0ul, 0ul, 0ul, 4.0 },
+    { "point256-min4",      1ul, 1ul, 8ul, 0ul, 0ul, 0ul, 0ul, 4.0 },
+    { "point64-min1",       1ul, 1ul, 6ul, 0ul, 0ul, 0ul, 0ul, 4.0 }
 };
 
 static v9x_u32 atirx_fill_offsets[ATIRX_FILL_DWORDS];
@@ -2955,7 +2970,8 @@ static v9x_u32 atirx_fill_build(const struct atirx_fill_scene *scene,
     v9x_u32 written = 0ul;
     v9x_u32 triangle;
     v9x_u32 k;
-    double repeat = scene->log2_texture == 8ul ? 0.75 : 3.0;
+    double repeat = scene->repeat != 0.0 ? scene->repeat
+                    : scene->log2_texture == 8ul ? 0.75 : 3.0;
 
     atirx_zero(&request, sizeof(request));
     request.target_format = 1ul;
@@ -2993,16 +3009,16 @@ static v9x_u32 atirx_fill_build(const struct atirx_fill_scene *scene,
     }
 
     atirx_zero(&state, sizeof(state));
-    state.target.offset = ATIRX_FILL_TARGET;
-    state.target.pitch_bytes = ATIRX_FILL_PITCH;
+    state.target.offset = atirx_fill_target;
+    state.target.pitch_bytes = atirx_fill_pitch;
     state.target.width = ATIRX_FILL_EDGE;
     state.target.height = ATIRX_FILL_EDGE;
     state.target.vram_bytes = fb_bytes;
     state.target.scissor_right = ATIRX_FILL_EDGE - 1ul;
     state.target.scissor_bottom = ATIRX_FILL_EDGE - 1ul;
     state.depth_enable = request.depth_enable;
-    state.depth_offset = ATIRX_FILL_Z;
-    state.depth_pitch_bytes = ATIRX_FILL_PITCH;
+    state.depth_offset = atirx_fill_z;
+    state.depth_pitch_bytes = atirx_fill_pitch;
     state.depth_func = request.depth_func;
     state.depth_write = request.depth_write;
     state.textured = request.textured;
@@ -3081,47 +3097,39 @@ static void atirx_fill_textures(void)
 static void atirx_fill_clear_z(void)
 {
     DWORD i;
-    volatile WORD *z = atirx_fb + ATIRX_FILL_Z / 2ul;
+    volatile WORD *z = atirx_fb + atirx_fill_z / 2ul;
 
     for (i = 0ul; i < ATIRX_FILL_EDGE * ATIRX_FILL_EDGE; ++i) {
-        z[i] = 0xffffu;
+        z[(i / ATIRX_FILL_EDGE) * (atirx_fill_pitch / 2ul) +
+          i % ATIRX_FILL_EDGE] = 0xffffu;
     }
 }
 
-static int atirx_run_fill(struct v9x_m64_engine *engine, DWORD fb_bytes)
+/* The scenes in `mask` (bit per scene) at the current placement, their
+ * keys prefixed by `tag`. */
+static int atirx_fill_scenes_run(struct v9x_m64_engine *engine,
+                                 DWORD fb_bytes, DWORD mask, const char *tag)
 {
-    DWORD tick0;
-    DWORD tsc0;
     DWORD scene;
     char prefix[48];
-
-    atirx_key("SceneSet", "fill");
-    atirx_fill_textures();
-
-    /* The TSC's rate over about a second of wall time. */
-    tick0 = GetTickCount();
-    while (GetTickCount() == tick0) {
-    }
-    tick0 = GetTickCount();
-    tsc0 = atirx_tsc_low();
-    while (GetTickCount() - tick0 < 1000ul) {
-    }
-    atirx_key_dec("TscPerSecond", atirx_tsc_low() - tsc0);
-    atirx_key_dec("Repeat", ATIRX_FILL_REPEAT);
-    atirx_key_dec("PixelsPerRepeat", ATIRX_FILL_EDGE * ATIRX_FILL_EDGE);
 
     for (scene = 0ul;
          scene < sizeof(atirx_fill_scenes) / sizeof(atirx_fill_scenes[0]);
          ++scene) {
         const struct atirx_fill_scene *s = &atirx_fill_scenes[scene];
-        v9x_u32 count = atirx_fill_build(s, fb_bytes);
+        v9x_u32 count;
         DWORD start;
         DWORD cycles;
         DWORD repeat;
         int ok = 1;
 
-        atirx_prefix(prefix, s->name);
-        lstrcatA(prefix, "Dwords");
+        if ((mask & (1ul << scene)) == 0ul) {
+            continue;
+        }
+        count = atirx_fill_build(s, fb_bytes);
+        lstrcpyA(prefix, tag);
+        lstrcatA(prefix, s->name);
+        lstrcatA(prefix, "_Dwords");
         atirx_key_dec(prefix, count);
         if (count == 0ul) {
             continue;
@@ -3153,10 +3161,89 @@ static int atirx_run_fill(struct v9x_m64_engine *engine, DWORD fb_bytes)
             return 0;
         }
         cycles = atirx_tsc_low() - start;
-        atirx_prefix(prefix, s->name);
-        lstrcatA(prefix, "Cycles");
+        lstrcpyA(prefix, tag);
+        lstrcatA(prefix, s->name);
+        lstrcatA(prefix, "_Cycles");
         atirx_key_dec(prefix, cycles);
         atirx_flush();
+    }
+    return 1;
+}
+
+static void atirx_fill_tsc_rate(void)
+{
+    DWORD tick0;
+    DWORD tsc0;
+
+    /* The TSC's rate over about a second of wall time. */
+    tick0 = GetTickCount();
+    while (GetTickCount() == tick0) {
+    }
+    tick0 = GetTickCount();
+    tsc0 = atirx_tsc_low();
+    while (GetTickCount() - tick0 < 1000ul) {
+    }
+    atirx_key_dec("TscPerSecond", atirx_tsc_low() - tsc0);
+    atirx_key_dec("Repeat", ATIRX_FILL_REPEAT);
+    atirx_key_dec("PixelsPerRepeat", ATIRX_FILL_EDGE * ATIRX_FILL_EDGE);
+}
+
+static int atirx_run_fill(struct v9x_m64_engine *engine, DWORD fb_bytes)
+{
+    atirx_key("SceneSet", "fill");
+    atirx_fill_textures();
+    atirx_fill_tsc_rate();
+    if (!atirx_fill_scenes_run(engine, fb_bytes, 0xfffffffful, "")) {
+        return 0;
+    }
+    atirx_key("Result", "PASS");
+    return 1;
+}
+
+/*
+ * The same with a Z buffer at several distances from the colour buffer, at
+ * Half-Life's 1280-byte pitch: flat with Z and bilinear with Z (scenes 1
+ * and 5) per placement. Z read and write took flat fill from 1.5 to 3.8
+ * engine clocks a pixel; this asks whether SDRAM page or bank conflicts
+ * between the two surfaces are that cost.
+ */
+#define ATIRX_FILLZ_TARGET   0x00300000ul   /* 256 rows of 1280: 0x50000 */
+#define ATIRX_FILLZ_BASE     0x00350000ul
+#define ATIRX_FILLZ_PITCH    1280ul
+#define ATIRX_FILLZ_SCENES   0x00000022ul
+
+static int atirx_run_fillz(struct v9x_m64_engine *engine, DWORD fb_bytes)
+{
+    static const DWORD deltas[] = {
+        0x00000ul, 0x00800ul, 0x01000ul, 0x02000ul, 0x04000ul, 0x08000ul,
+        0x10000ul, 0x20000ul
+    };
+    DWORD k;
+
+    atirx_key("SceneSet", "fillz");
+    atirx_fill_textures();
+    atirx_fill_tsc_rate();
+    /* Half-Life's pitch, Z right after the colour buffer as before. */
+    atirx_fill_target = ATIRX_FILLZ_TARGET;
+    atirx_fill_pitch = ATIRX_FILLZ_PITCH;
+    for (k = 0ul; k < sizeof(deltas) / sizeof(deltas[0]); ++k) {
+        char tag[16];
+
+        atirx_fill_z = ATIRX_FILLZ_BASE + deltas[k];
+        tag[0] = 'Z';
+        atirx_hex(tag + 1, atirx_fill_z, 6);
+        lstrcatA(tag, "_");
+        if (!atirx_fill_scenes_run(engine, fb_bytes, ATIRX_FILLZ_SCENES,
+                                   tag)) {
+            return 0;
+        }
+    }
+    /* And the 512-byte pitch of /fill, for the same scenes here. */
+    atirx_fill_pitch = ATIRX_FILL_PITCH;
+    atirx_fill_z = ATIRX_FILLZ_BASE;
+    if (!atirx_fill_scenes_run(engine, fb_bytes, ATIRX_FILLZ_SCENES,
+                               "P512_")) {
+        return 0;
     }
     atirx_key("Result", "PASS");
     return 1;
@@ -3388,6 +3475,14 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/fillz")) {
+        int completed = atirx_run_fillz(&engine, map.fb_bytes);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/fill")) {
         int completed = atirx_run_fill(&engine, map.fb_bytes);
 
