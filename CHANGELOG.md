@@ -102,7 +102,7 @@ textured pass with Z disabled that ours does not (it advertises MASKZ;
 we do not); ARGB4444 alpha test and texel-times-vertex alpha are refused
 and not drawn (10,371 of Half-Life's batches in a session, 2,807 of
 Quake 2's 32,071); a few thousand pieces a demo fail the texture fit,
-unanalysed; A8U4I5 has twice dropped off the network while idle with
+unanalysed; A8U4I5 has three times dropped off the network while idle with
 Windows still running
 ([issue](docs/issues/2026-10-03-a8u4i5-drops-off-network-when-idle.md)).
 
