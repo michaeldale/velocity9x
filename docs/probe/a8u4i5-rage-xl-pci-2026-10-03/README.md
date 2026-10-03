@@ -34,3 +34,8 @@ subsystem, and ours matches vendor and device only. Then a warm restart
 - `V9XSNA7.INI`: engine type 4 (Mach64), 528 draws / 531 triangles,
   38 refused (36 `ALPHA_FORCE`, the probe's own; one colour key; one
   texture format), and `FlipDeclined=23`.
+
+## Benchmarks (boot 181)
+
+`hl-d3d-mwd5/`, `q2-gl-timedemo/` and `3dmark99-640/`: see
+`docs/decisions/2026-10-03-rage-xl-pci-benchmarks-a8u4i5.md`.
