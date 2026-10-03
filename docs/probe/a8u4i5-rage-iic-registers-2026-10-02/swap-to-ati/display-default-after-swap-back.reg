@@ -1,0 +1,17 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="v9xmini.vxd"
+"RefreshRate"="-1"
+"ExtModeSwitch"="0"
+"CHIPID"=hex:00,00,00,00,00,00
+"DDC"="1"
+"CRTXSize"="1024"
+"CRTYSize"="768"
+"ErrorCode"=dword:00000000
+"ErrorMessage"=""
+

@@ -115,10 +115,13 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   the engine picks its level per pixel from its own increments; MIPNEAREST,
   MIPLINEAR and LINEARMIPNEAREST advertised, every level placed apart.
   Correct pictures, no measurable speed in mwd5 or Quake 2's demo.
-- Next: Michael's look at Quake 2 on the monitor; 3DMark 99's score for
-  the record; the remaining texture-fit skips; setup cost where the CPU
-  limits (320x240, point sampling); Half-Life's 10,371 alpha-tested
-  batches.
+- **ATI's driver sampled, and the texture cache**
+  ([record](../decisions/2026-10-03-rage-iic-ati-driver-sampled-texture-cache.md)):
+  we kept `TEX_CACHE_DIS` set since Phase 4; on, it never returns a stale
+  texel and Half-Life runs 4.29 -> 5.57 fps (ATI 6.63), Quake 2 3.6 -> 4.4.
+- Next: Michael's look at Quake 2 on the monitor; MASKZ and Half-Life's
+  Z-off passes; 3DMark 99's score for the record; the remaining
+  texture-fit skips; setup cost; Half-Life's 10,371 alpha-tested batches.
 
 ## Goal
 

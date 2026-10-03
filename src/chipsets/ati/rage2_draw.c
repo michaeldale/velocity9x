@@ -214,9 +214,16 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
         return V9X_M64_REFUSE_ALPHA_FORCE;
     }
 
+    /*
+     * The texture cache on. Phase 4 measured with it off and the setting
+     * stayed, at 36% of Half-Life's fill: bilinear with Z costs 17.1 engine
+     * clocks a pixel with it off, 11.0 on (ATIRX /fillcache, 2026-10-03).
+     * It is refilled at least at every trapezoid trigger - a draw after the
+     * CPU rewrote its texture, with no state between, read the new texels
+     * (/texcache) - and ATI's driver draws Half-Life with it on.
+     */
     scale = request->textured != 0ul
-        ? V9X_R2_SCALE_3D_TEXTURE | V9X_R2_TEX_CACHE_DIS |
-              V9X_R2_MIP_MAP_DISABLE
+        ? V9X_R2_SCALE_3D_TEXTURE | V9X_R2_MIP_MAP_DISABLE
         : V9X_R2_SCALE_3D_SHADE;
 
     if (request->textured != 0ul) {

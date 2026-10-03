@@ -2903,6 +2903,11 @@ static BYTE atirx_dump_buffer[ATIRX_DUMP_CHUNK];
 static DWORD atirx_fill_target = ATIRX_FILL_TARGET;
 static DWORD atirx_fill_z = ATIRX_FILL_Z;
 static DWORD atirx_fill_pitch = ATIRX_FILL_PITCH;
+/* SCALE_3D_CNTL bits /fillcache clears and sets after the HAL's builder:
+ * ATI's driver drew Half-Life with bit 5 (our TEX_CACHE_DIS) clear and
+ * bits 0-3 and 9 set (ATIRX /sample, 2026-10-03). */
+static DWORD atirx_fill_scale_clear = 0ul;
+static DWORD atirx_fill_scale_set = 0ul;
 
 static DWORD atirx_tsc_low(void);
 #pragma aux atirx_tsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
@@ -3033,6 +3038,8 @@ static v9x_u32 atirx_fill_build(const struct atirx_fill_scene *scene,
                                 &written) != V9X_STATUS_OK) {
         return 0ul;
     }
+    atirx_fill_values[0] = (atirx_fill_values[0] & ~atirx_fill_scale_clear) |
+                           atirx_fill_scale_set;
     at = written;
 
     for (k = 0ul; k < 4ul; ++k) {
@@ -3188,6 +3195,34 @@ static void atirx_fill_tsc_rate(void)
     atirx_key_dec("PixelsPerRepeat", ATIRX_FILL_EDGE * ATIRX_FILL_EDGE);
 }
 
+/* /fillcache: the textured scenes as the HAL builds them, then with bit 5
+ * clear, then with ATI's low bits as well. */
+#define ATIRX_FILLCACHE_SCENES 0x0000fffcul
+
+static int atirx_run_fillcache(struct v9x_m64_engine *engine,
+                               DWORD fb_bytes)
+{
+    atirx_key("SceneSet", "fillcache");
+    atirx_fill_textures();
+    atirx_fill_tsc_rate();
+    if (!atirx_fill_scenes_run(engine, fb_bytes, ATIRX_FILLCACHE_SCENES,
+                               "A_")) {
+        return 0;
+    }
+    atirx_fill_scale_clear = 0x00000020ul;
+    if (!atirx_fill_scenes_run(engine, fb_bytes, ATIRX_FILLCACHE_SCENES,
+                               "C_")) {
+        return 0;
+    }
+    atirx_fill_scale_set = 0x0000020ful;
+    if (!atirx_fill_scenes_run(engine, fb_bytes, ATIRX_FILLCACHE_SCENES,
+                               "D_")) {
+        return 0;
+    }
+    atirx_key("Result", "PASS");
+    return 1;
+}
+
 static int atirx_run_fill(struct v9x_m64_engine *engine, DWORD fb_bytes)
 {
     atirx_key("SceneSet", "fill");
@@ -3244,6 +3279,354 @@ static int atirx_run_fillz(struct v9x_m64_engine *engine, DWORD fb_bytes)
     if (!atirx_fill_scenes_run(engine, fb_bytes, ATIRX_FILLZ_SCENES,
                                "P512_")) {
         return 0;
+    }
+    atirx_key("Result", "PASS");
+    return 1;
+}
+
+/* ---- Texture cache coherence --------------------------------------------- */
+
+/*
+ * /texcache: whether the engine's texture cache (on with SCALE_3D_CNTL bit
+ * 5 clear) returns stale texels after the CPU rewrites a texture, and what
+ * clears it. The 32x32 map of /tex at ATIRX_TEX_OFFSET (blue 31 in every
+ * texel); between draws the CPU sets every texel's blue to 0 or back, so
+ * each drawn pixel's blue says whether it came from memory or the cache.
+ * Each scene draws ATIRX_RECT one texel a pixel, and counts the rectangle's
+ * pixels by blue: Fresh (the map as written last), Stale (as before), and
+ * Other.
+ */
+#define ATIRX_TEXCACHE_OTHER  0x00226000ul  /* a second 32x32 map */
+#define ATIRX_TEXCACHE_HOW_STATE   0u       /* the full texture state */
+#define ATIRX_TEXCACHE_HOW_TRAP    1u       /* the trapezoid alone    */
+#define ATIRX_TEXCACHE_HOW_TOGGLE  2u       /* bit 5 set, then clear  */
+#define ATIRX_TEXCACHE_HOW_TEXOFF  3u       /* TEX_5_OFF rewritten    */
+
+static void atirx_texcache_blue(DWORD offset, DWORD blue)
+{
+    DWORD i;
+    volatile WORD *base = atirx_fb + offset / 2ul;
+
+    for (i = 0ul; i < ATIRX_TEX_SIZE * ATIRX_TEX_SIZE; ++i) {
+        base[i] = (WORD)((base[i] & ~31u) | blue);
+    }
+}
+
+static int atirx_texcache_draw(struct v9x_m64_engine *engine,
+                               const struct v9x_r2_target *target,
+                               DWORD offset, UINT how, const char *name,
+                               DWORD fresh, DWORD stale)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    static const struct v9x_r2_st st = {
+        { 0l, 0l }, { ATIRX_TX(1), 0l }, { 0l, ATIRX_TX(1) },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l }
+    };
+    struct v9x_r2_texture texture;
+    v9x_u32 offsets[40];
+    v9x_u32 values[40];
+    v9x_u32 written = 0ul;
+    DWORD counts[3];
+    DWORD x;
+    DWORD y;
+    char key[48];
+
+    texture.offset = offset;
+    texture.log2_width = 5ul;
+    texture.log2_height = 5ul;
+    texture.log2_pitch = 5ul;
+    texture.format = V9X_R2_TEX_FORMAT_565;
+    texture.scale_3d_extra = 0ul;
+    atirx_prepare_block();
+    if (how == ATIRX_TEXCACHE_HOW_STATE) {
+        if (v9x_r2_build_texture_state(target, &texture, &st, offsets, values,
+                                       32ul, &written) != V9X_STATUS_OK) {
+            return 0;
+        }
+        values[0] &= ~V9X_R2_TEX_CACHE_DIS;
+    } else if (how == ATIRX_TEXCACHE_HOW_TOGGLE) {
+        offsets[0] = V9X_M64_SCALE_3D_CNTL;
+        values[0] = V9X_R2_SCALE_3D_TEXTURE | V9X_R2_TEX_CACHE_DIS |
+                    V9X_R2_MIP_MAP_DISABLE;
+        offsets[1] = V9X_M64_SCALE_3D_CNTL;
+        values[1] = V9X_R2_SCALE_3D_TEXTURE | V9X_R2_MIP_MAP_DISABLE;
+        written = 2ul;
+    } else if (how == ATIRX_TEXCACHE_HOW_TEXOFF) {
+        offsets[0] = V9X_R2_TEX_0_OFF + 5ul * 4ul;
+        values[0] = offset;
+        written = 1ul;
+    }
+    if (written != 0ul &&
+        atirx_emit(engine, name, offsets, values, written) != V9X_STATUS_OK) {
+        return 0;
+    }
+    if (v9x_r2_build_trap(target, &rect, offsets, values, 32ul, &written) !=
+            V9X_STATUS_OK ||
+        atirx_emit(engine, name, offsets, values, written) != V9X_STATUS_OK ||
+        !atirx_finish_draw(engine)) {
+        return 0;
+    }
+    counts[0] = counts[1] = counts[2] = 0ul;
+    for (y = 16ul; y < 24ul; ++y) {
+        for (x = 16ul; x < 48ul; ++x) {
+            DWORD blue = *atirx_pixel(x, y) & 31u;
+
+            counts[blue == fresh ? 0 : blue == stale ? 1 : 2]++;
+        }
+    }
+    lstrcpyA(key, name);
+    lstrcatA(key, "_Fresh");
+    atirx_key_dec(key, counts[0]);
+    lstrcpyA(key, name);
+    lstrcatA(key, "_Stale");
+    atirx_key_dec(key, counts[1]);
+    lstrcpyA(key, name);
+    lstrcatA(key, "_Other");
+    atirx_key_dec(key, counts[2]);
+    atirx_flush();
+    return 1;
+}
+
+static int atirx_run_texcache(struct v9x_m64_engine *engine,
+                              const struct v9x_r2_target *target)
+{
+    v9x_u32 offsets[1];
+    v9x_u32 values[1];
+    int ok;
+
+    atirx_key("SceneSet", "texcache");
+    atirx_write_texture(ATIRX_TEX_OFFSET, ATIRX_TEX_SIZE, ATIRX_TEX_SIZE);
+    atirx_write_texture(ATIRX_TEXCACHE_OTHER, ATIRX_TEX_SIZE, ATIRX_TEX_SIZE);
+    atirx_texcache_blue(ATIRX_TEXCACHE_OTHER, 15ul);
+
+    /* Blue 31, cache on: the cold read. */
+    ok = atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                             ATIRX_TEXCACHE_HOW_STATE, "K1Cold", 31ul, 0ul);
+    /* Each next scene after the CPU flips the map's blue. */
+    atirx_texcache_blue(ATIRX_TEX_OFFSET, 0ul);
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                                   ATIRX_TEXCACHE_HOW_STATE, "K2State",
+                                   0ul, 31ul);
+    atirx_texcache_blue(ATIRX_TEX_OFFSET, 31ul);
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                                   ATIRX_TEXCACHE_HOW_TRAP, "K3Trap",
+                                   31ul, 0ul);
+    atirx_texcache_blue(ATIRX_TEX_OFFSET, 0ul);
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                                   ATIRX_TEXCACHE_HOW_TEXOFF, "K4TexOff",
+                                   0ul, 31ul);
+    atirx_texcache_blue(ATIRX_TEX_OFFSET, 31ul);
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                                   ATIRX_TEXCACHE_HOW_TOGGLE, "K5Toggle",
+                                   31ul, 0ul);
+    /* The other map (blue 15), then back to the first after a flip. */
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEXCACHE_OTHER,
+                                   ATIRX_TEXCACHE_HOW_STATE, "K6Other",
+                                   15ul, 31ul);
+    atirx_texcache_blue(ATIRX_TEX_OFFSET, 0ul);
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                                   ATIRX_TEXCACHE_HOW_STATE, "K7Back",
+                                   0ul, 31ul);
+    /* The trapezoid alone again, now after the state's flip: does a
+     * draw of the same texture reread memory without any state? */
+    atirx_texcache_blue(ATIRX_TEX_OFFSET, 31ul);
+    ok = ok && atirx_texcache_draw(engine, target, ATIRX_TEX_OFFSET,
+                                   ATIRX_TEXCACHE_HOW_TRAP, "K8TrapAgain",
+                                   31ul, 0ul);
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", ok ? "TEXCACHE-RUN" : "TEXCACHE-FAIL");
+    return ok;
+}
+
+/* ---- Sampling a running driver ----------------------------------------- */
+
+/*
+ * /sample: what the engine is doing under whichever driver is loaded,
+ * read only, while an application draws. ATIRX_SAMPLE_COUNT samples
+ * ATIRX_SAMPLE_GAP_MS apart; each reads GUI_STAT ATIRX_SAMPLE_BURST times
+ * (GUI_ACTIVE, bit 0: the engine's utilisation) and then the 3D state
+ * registers once, keeping the commonest ATIRX_SAMPLE_KINDS values of each
+ * with their counts, and the lowest and highest non-zero value. Run before
+ * the engine initialisation every other mode does, as /vramdump is, and
+ * never reads DST_BRES_LNTH (+520), the trigger.
+ */
+#define ATIRX_SAMPLE_COUNT   6000ul
+#define ATIRX_SAMPLE_GAP_MS  5ul      /* a Sleep: the game keeps the CPU */
+#define ATIRX_SAMPLE_BURST   8ul
+#define ATIRX_SAMPLE_KINDS   12u
+
+static const struct {
+    const char *name;
+    DWORD offset;
+} atirx_sample_regs[] = {
+    { "Scale3dCntl", V9X_M64_SCALE_3D_CNTL },
+    { "ZCntl", V9X_M64_Z_CNTL },
+    { "AlphaTstCntl", V9X_M64_ALPHA_TST_CNTL },
+    { "TexSizePitch", V9X_R2_TEX_SIZE_PITCH },
+    { "DpPixWidth", V9X_M64_DP_PIX_WIDTH },
+    { "DpSrc", V9X_M64_DP_SRC },
+    { "DstOffPitch", V9X_M64_DST_OFF_PITCH },
+    { "ZOffPitch", V9X_M64_Z_OFF_PITCH },
+    { "BusCntl", V9X_M64_BUS_CNTL },
+    { "Tex8Off", V9X_R2_TEX_0_OFF + 32ul },
+    { "Tex7Off", V9X_R2_TEX_0_OFF + 28ul },
+    { "Tex6Off", V9X_R2_TEX_0_OFF + 24ul },
+    { "Tex5Off", V9X_R2_TEX_0_OFF + 20ul },
+    { "Tex0Off", V9X_R2_TEX_0_OFF }
+};
+
+#define ATIRX_SAMPLE_REGS \
+    (sizeof(atirx_sample_regs) / sizeof(atirx_sample_regs[0]))
+
+static DWORD atirx_sample_value[ATIRX_SAMPLE_REGS][ATIRX_SAMPLE_KINDS];
+static DWORD atirx_sample_count[ATIRX_SAMPLE_REGS][ATIRX_SAMPLE_KINDS];
+static DWORD atirx_sample_other[ATIRX_SAMPLE_REGS];
+static DWORD atirx_sample_low[ATIRX_SAMPLE_REGS];
+static DWORD atirx_sample_high[ATIRX_SAMPLE_REGS];
+/* SCALE_3D_CNTL and Z_CNTL read together: which draws run without Z. */
+#define ATIRX_SAMPLE_PAIRS   24u
+static DWORD atirx_pair_scale[ATIRX_SAMPLE_PAIRS];
+static DWORD atirx_pair_z[ATIRX_SAMPLE_PAIRS];
+static DWORD atirx_pair_count[ATIRX_SAMPLE_PAIRS];
+static DWORD atirx_pair_other;
+
+static void atirx_pair_note(DWORD scale, DWORD z)
+{
+    UINT kind;
+
+    for (kind = 0u; kind < ATIRX_SAMPLE_PAIRS; ++kind) {
+        if (atirx_pair_count[kind] != 0ul && atirx_pair_scale[kind] == scale &&
+            atirx_pair_z[kind] == z) {
+            ++atirx_pair_count[kind];
+            return;
+        }
+        if (atirx_pair_count[kind] == 0ul) {
+            atirx_pair_scale[kind] = scale;
+            atirx_pair_z[kind] = z;
+            atirx_pair_count[kind] = 1ul;
+            return;
+        }
+    }
+    ++atirx_pair_other;
+}
+
+static void atirx_sample_note(DWORD reg, DWORD value)
+{
+    UINT kind;
+
+    if (value != 0ul) {
+        if (atirx_sample_low[reg] == 0ul || value < atirx_sample_low[reg]) {
+            atirx_sample_low[reg] = value;
+        }
+        if (value > atirx_sample_high[reg]) {
+            atirx_sample_high[reg] = value;
+        }
+    }
+    for (kind = 0u; kind < ATIRX_SAMPLE_KINDS; ++kind) {
+        if (atirx_sample_count[reg][kind] != 0ul &&
+            atirx_sample_value[reg][kind] == value) {
+            ++atirx_sample_count[reg][kind];
+            return;
+        }
+        if (atirx_sample_count[reg][kind] == 0ul) {
+            atirx_sample_value[reg][kind] = value;
+            atirx_sample_count[reg][kind] = 1ul;
+            return;
+        }
+    }
+    ++atirx_sample_other[reg];
+}
+
+static int atirx_run_sample(void)
+{
+    DWORD tick0;
+    DWORD tsc0;
+    DWORD per_us;
+    DWORD busy = 0ul;
+    DWORD reads = 0ul;
+    DWORD sample;
+    DWORD reg;
+    char key[48];
+    char text[12];
+
+    atirx_key("SceneSet", "sample");
+    /* The TSC's rate, for the gap between samples. */
+    tick0 = GetTickCount();
+    while (GetTickCount() == tick0) {
+    }
+    tick0 = GetTickCount();
+    tsc0 = atirx_tsc_low();
+    while (GetTickCount() - tick0 < 250ul) {
+    }
+    per_us = (atirx_tsc_low() - tsc0) / 250000ul;
+    atirx_key_dec("TscPerUs", per_us);
+
+    tick0 = GetTickCount();
+    for (sample = 0ul; sample < ATIRX_SAMPLE_COUNT; ++sample) {
+        DWORD k;
+
+        for (k = 0ul; k < ATIRX_SAMPLE_BURST; ++k) {
+            if ((atirx_read(0, V9X_M64_GUI_STAT) & 1ul) != 0ul) {
+                ++busy;
+            }
+            ++reads;
+        }
+        for (reg = 0ul; reg < ATIRX_SAMPLE_REGS; ++reg) {
+            atirx_sample_note(reg, atirx_read(0, atirx_sample_regs[reg].offset));
+        }
+        atirx_pair_note(atirx_read(0, V9X_M64_SCALE_3D_CNTL),
+                        atirx_read(0, V9X_M64_Z_CNTL));
+        Sleep(ATIRX_SAMPLE_GAP_MS);
+    }
+    atirx_key_dec("Samples", ATIRX_SAMPLE_COUNT);
+    atirx_key_dec("WallMs", GetTickCount() - tick0);
+    atirx_key_dec("GuiStatReads", reads);
+    atirx_key_dec("GuiActive", busy);
+    for (reg = 0ul; reg < ATIRX_SAMPLE_REGS; ++reg) {
+        UINT kind;
+
+        for (kind = 0u; kind < ATIRX_SAMPLE_KINDS; ++kind) {
+            if (atirx_sample_count[reg][kind] == 0ul) {
+                break;
+            }
+            lstrcpyA(key, atirx_sample_regs[reg].name);
+            lstrcatA(key, "_");
+            atirx_hex(text, atirx_sample_value[reg][kind], 8);
+            lstrcatA(key, text);
+            atirx_key_dec(key, atirx_sample_count[reg][kind]);
+        }
+        lstrcpyA(key, atirx_sample_regs[reg].name);
+        lstrcatA(key, "_Other");
+        atirx_key_dec(key, atirx_sample_other[reg]);
+        lstrcpyA(key, atirx_sample_regs[reg].name);
+        lstrcatA(key, "_Low");
+        atirx_key_hex(key, atirx_sample_low[reg]);
+        lstrcpyA(key, atirx_sample_regs[reg].name);
+        lstrcatA(key, "_High");
+        atirx_key_hex(key, atirx_sample_high[reg]);
+    }
+    {
+        UINT kind;
+
+        for (kind = 0u; kind < ATIRX_SAMPLE_PAIRS; ++kind) {
+            if (atirx_pair_count[kind] == 0ul) {
+                break;
+            }
+            lstrcpyA(key, "Pair_");
+            atirx_hex(text, atirx_pair_scale[kind], 8);
+            lstrcatA(key, text);
+            lstrcatA(key, "_");
+            atirx_hex(text, atirx_pair_z[kind], 3);
+            lstrcatA(key, text);
+            atirx_key_dec(key, atirx_pair_count[kind]);
+        }
+        atirx_key_dec("Pair_Other", atirx_pair_other);
     }
     atirx_key("Result", "PASS");
     return 1;
@@ -3688,6 +4071,12 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     atirx_fb = (volatile WORD *)map.fb_linear;
     /* Before the engine is touched: /vramdump may run under an
      * application that is using it. */
+    if (atirx_has_switch(GetCommandLineA(), "/sample")) {
+        int completed = atirx_run_sample();
+
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/pll")) {
         int completed = atirx_run_pll();
 
@@ -3741,6 +4130,22 @@ void WINAPI V9xAtiRage2SceneEntry(void)
 
     if (atirx_has_switch(GetCommandLineA(), "/mip")) {
         int completed = atirx_run_mip(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/texcache")) {
+        int completed = atirx_run_texcache(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
+    if (atirx_has_switch(GetCommandLineA(), "/fillcache")) {
+        int completed = atirx_run_fillcache(&engine, map.fb_bytes);
 
         atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
         atirx_key_dec("IdleTimeouts", engine.idle_timeouts);

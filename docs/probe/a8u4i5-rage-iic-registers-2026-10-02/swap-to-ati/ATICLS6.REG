@@ -1,0 +1,23 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006]
+"InfPath"="ATITEC~2.INF"
+"InfSection"="MACXW4_AGP_ENU"
+"ProviderName"="ATI Tech. - Enhanced"
+"DriverDesc"="RAGE IIC AGP (4757)"
+"Ver"="5.40x2611x3D"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\DEFAULT]
+"drv"="ati2ddad.drv"
+"drv2"="ati2ddad.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="ati2ddad.vxd"
+"minivdd2"="ati2ddad.vxd"
+"RefreshRate"="-1"
+"DDC"="1"
+"CHIPID"=hex:64,00,00,00,00,00
+"CRTXSize"="1024"
+"CRTYSize"="768"
+"ErrorCode"=dword:00000000
+"ErrorMessage"=""
+

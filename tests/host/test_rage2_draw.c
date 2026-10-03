@@ -85,7 +85,7 @@ static void test_policy(void)
     base_request(&r);
     textured(&r, V9X_M64_TEXTURE_FORMAT_RGB565);
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
-    CHECK(d.scale_3d_cntl == (V9X_R2_SCALE_3D_TEXTURE | V9X_R2_TEX_CACHE_DIS |
+    CHECK(d.scale_3d_cntl == (V9X_R2_SCALE_3D_TEXTURE |
                               V9X_R2_MIP_MAP_DISABLE |
                               V9X_R2_TEX_LIGHT_MODULATE));
     CHECK(d.texture_format == V9X_R2_TEX_FORMAT_565);
@@ -349,6 +349,9 @@ static void test_mip(void)
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
     CHECK(d.mip_mapped == 1ul);
     CHECK((d.scale_3d_cntl & V9X_R2_MIP_MAP_DISABLE) == 0ul);
+    /* The texture cache on (ATIRX /texcache: refilled at every trapezoid;
+     * /fillcache: bilinear with Z 17.1 -> 11.0 engine clocks a pixel). */
+    CHECK((d.scale_3d_cntl & V9X_R2_TEX_CACHE_DIS) == 0ul);
     CHECK((d.scale_3d_cntl & V9X_R2_TEX_BLEND_MASK) == V9X_R2_TEX_BLEND_2X2);
     CHECK((d.scale_3d_cntl & V9X_R2_BILINEAR_TEX_EN) != 0ul);
 

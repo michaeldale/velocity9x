@@ -1,0 +1,172 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006]
+"InfPath"="VELOCI~1.INF"
+"InfSection"="V9x.Install.rage-iic"
+"ProviderName"="Velocity9x Project"
+"DriverDesc"="Velocity9x ATI 3D Rage IIC"
+"MatchingDeviceId"="PCI\\VEN_1002&DEV_4757&SUBSYS_47571002"
+"EnumPropPages"="atipdnad.dll,EnumPropPages"
+"ReleaseVersion"="5.40.3"
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"V9xFamily"="ati"
+"DriverDate"="10- 2-2026"
+"V9xSyncGeneration"="1352"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\INFO]
+"ChipType"="Mach64GT"
+"Revision"=""
+"DACType"="Internal"
+"MMIO"=hex:01
+"Linear"=hex:01
+"HWCursor"=hex:01
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers\ATIPagesX2]
+@="{7841B320-1CE0-11d3-82F2-008029E75E38}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers\ATIPagesX3]
+@="{2A0C94C0-6847-11d2-B9DE-00001B490CC3}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\shellex\PropertySheetHandlers\ATIPagesX4]
+@="{7841B321-1CE0-11d3-82F2-008029E75E38}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\TVOut Configuration]
+"TBDetected"="Not"
+"TVOut Information"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\Multimedia Table]
+"Tuner Type"="????"
+"Decoder Type"="????"
+"Decoder Crystals Type"="????"
+"Audio Chip Type"="????"
+"OEM Id"="????"
+"ATI Product Id"="????"
+"Product Revision Id"="????"
+"MMTableByte1"="????"
+"MMTableByte6"="????"
+"MMTableByte7"="????"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\Hardware Info]
+"I2C Method"="0"
+"TVOut Support"="0"
+"VideoPort Type"="??"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI WDM Configurations\Frequency Table]
+"Reference Clock"="598"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\ATI Multimedia Hardware]
+"I2C Expander"="0xFF"
+"Tuner ID"="0"
+"Decoder ID"="0"
+"Audio ID"="FF"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="v9xmini.vxd"
+"RefreshRate"="-1"
+"ExtModeSwitch"="0"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\640,400]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\320,200]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\320,240]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\400,300]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\512,384]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\640,350]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\8\1280,1024]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\320,200]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\320,240]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\400,300]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\512,384]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\640,350]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0006\MODES\16\1280,1024]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="478"
+

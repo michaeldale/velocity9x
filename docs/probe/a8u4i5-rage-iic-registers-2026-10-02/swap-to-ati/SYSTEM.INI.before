@@ -1,0 +1,105 @@
+[boot]
+oemfonts.fon=vgaoem.fon
+shell=Explorer.exe
+system.drv=system.drv
+drivers=mmsystem.dll power.drv
+user.exe=user.exe
+gdi.exe=gdi.exe
+sound.drv=mmsound.drv
+dibeng.drv=dibeng.dll
+comm.drv=comm.drv
+mouse.drv=mouse.drv
+keyboard.drv=keyboard.drv
+*DisplayFallback=0
+fonts.fon=vgasys.fon
+fixedfon.fon=vgafix.fon
+386Grabber=vgafull.3gr
+display.drv=pnpdrvr.drv
+
+[keyboard]
+keyboard.dll=
+oemansi.bin=
+subtype=
+type=4
+
+[boot.description]
+system.drv=Standard PC
+mouse.drv=Standard mouse
+keyboard.typ=Standard 101/102-Key or Microsoft Natural Keyboard
+aspect=100,96,96
+display.drv=Velocity9x ATI 3D Rage IIC
+
+[386Enh]
+ebios=*ebios
+woafont=dosapp.fon
+mouse=*vmouse, msmouse.vxd
+device=*dynapage
+device=*vcd
+device=*vpd
+device=*int13
+device=*enable
+keyboard=*vkd
+display=*vdd,*vflatd
+EMMExclude=C000-CFFF
+
+[NonWindowsApp]
+TTInitialSizes=4 5 6 7 8 9 10 11 12 13 14 15 16 18 20 22
+
+[power.drv]
+
+[drivers]
+wavemapper=*.drv
+MSACM.imaadpcm=*.acm
+MSACM.msadpcm=*.acm
+VIDC.YVU9=IYVU9.DLL
+VPM=ATIVTVPM.DLL
+
+[iccvid.drv]
+
+[mciseq.drv]
+
+[mci]
+cdaudio=mcicda.drv
+sequencer=mciseq.drv
+waveaudio=mciwave.drv
+avivideo=mciavi.drv
+videodisc=mcipionr.drv
+vcr=mcivisca.drv
+MPEGVideo=mciqtz.drv
+
+[vcache]
+
+[MSNP32]
+
+[Password Lists]
+MICHAEL DALE=C:\WINDOWS\MICHAELD.PWL
+
+
+
+[drivers32]
+msacm.lhacm=lhacm.acm
+VIDC.VDOM=vdowave.drv
+MSACM.imaadpcm=imaadp32.acm
+MSACM.msadpcm=msadp32.acm
+MSACM.msgsm610=msgsm32.acm
+msacm.msg711=msg711.acm
+MSACM.trspch=tssoft32.acm
+vidc.CVID=iccvid.dll
+VIDC.IV31=ir32_32.dll
+VIDC.IV32=ir32_32.dll
+vidc.MSVC=msvidc32.dll
+VIDC.MRLE=msrle32.dll
+msacm.msg723=msg723.acm
+vidc.M263=msh263.drv
+vidc.M261=msh261.drv
+VIDC.IV50=ir50_32.dll
+msacm.iac2=C:\WINDOWS\SYSTEM\IAC25_32.AX
+VIDC.YUY2=msyuv.dll
+VIDC.UYVY=msyuv.dll
+VIDC.YVYU=msyuv.dll
+VIDC.YVU9=ATIYVU9.DLL
+
+[Velocity9x]
+GdiAccelText=1
+Direct3D=0
+
