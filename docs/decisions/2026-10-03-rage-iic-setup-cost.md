@@ -15,8 +15,10 @@ The Rage II draw now keeps always-on TSC counters for its four parts
 and counts batches, pieces, trapezoids, pixels (each piece's exact area
 from its quarter-pixel vertices), register writes and FIFO status reads
 (`V9X_D3D_DIAGNOSTICS.r2_cycles`, `r2_work`, ABI 2026100303). Each run is
-the difference of two `V9XTRACE` snapshots. The TSC runs at about 800 MHz:
-118.5 G cycles were counted inside the draw over a 148 s run.
+the difference of two `V9XTRACE` snapshots. The TSC runs at 1.002 GHz
+(`ATIRX /fill`, against `GetTickCount`), so the 118.5 G cycles counted
+inside the draw over a 148 s run are 80 % of its wall time; the rest is
+Quake 2, the ICD's transform and present.
 
 A host benchmark (`bench_r2.c`) drives the same functions over perspective
 floor and wall triangles; built as a GUI program (a Win32 console program
@@ -87,14 +89,43 @@ Last build, per run:
   (~20 k). At 640x480 the engine is the frame; at 320x240 the CPU is half
   of it, and the CPU work moved that run 5.2 -> 6.8 fps.
 
+## The engine's rate: 640x480 runs at the chip's fill rate
+
+Clocks (`ATIRX /pll`, read only, `phase6-clocks/ATIRX-PLL-V9X.TXT`):
+PLL_REF_DIV 31, MCLK_FB_DIV 180, PLL_XCLK_CNTL post-divider code 1 (2),
+so 2 x 14.318 MHz x 180 / 31 / 2 = 83.1 MHz, the video BIOS's own 8300
+entry (clock table at ROM 0x6F0, reference 1432, divider 31). MPLL_CNTL
+reads `AD` and MEM_CNTL `10631577`, both as under ATI's driver at boot
+125. The 264GT2C has no `MFB_TIMES_4` (atyfb), hence the factor 2.
+
+Per feature (`ATIRX /fill`, `phase6-clocks/ATIRX-FILL.TXT`): a 256x256
+quad through the HAL's own builders, 16 times, timed to engine idle.
+
+| Scene | Engine clocks / pixel | Mpixels/s |
+|---|---|---|
+| flat | 1.5 | 53.6 |
+| flat, Z | 3.8 | 22.0 |
+| point, 64x64 | 5.8 | 14.2 |
+| point, Z | 7.8 | 10.6 |
+| bilinear, 64x64 | 12.4 | 6.7 |
+| bilinear, 256x256 | 15.4 | 5.4 |
+| bilinear, Z | 17.1 | 4.85 |
+| bilinear, Z, perspective | 18.0 | 4.6 |
+| bilinear, Z, SRCALPHA blend | 19.4 | 4.3 |
+| bilinear, Z, Quake 2's lightmap blend | 19.4 | 4.3 |
+
+ATI's driver measured 13.8 MTexels/s point and 7.7 bilinear (3DMark 99)
+and Final Reality 6.79 Mpixels/s (native baseline): the same engine
+rates. Quake 2 drew 562 M pixels in 118.5 s inside the draw, 4.7
+Mpixels/s, which is the table's bilinear-with-Z world pass and blended
+lightmap pass. Bilinear costs 2.1x point sampling and Z 40 % on top: at
+640x480 the frame is the silicon's, and lower clocks under Velocity9x
+are ruled out.
+
 ## Open
 
-- 640x480 draws ~3.8 Mpixels/s bilinear and ~4.8 point-sampled, with a Z
-  test on every pixel and a blended lightmap pass. ATI's driver measured
-  7.7 MTexels/s bilinear in 3DMark 99's fill test, point sampling 179.5 %
-  of it; here point sampling is 126 % of bilinear. The two are not the
-  same pixel mode, so this does not say the engine is at its ceiling under
-  Velocity9x. Not yet compared: the memory and engine clocks Velocity9x
-  leaves against those ATI's driver programs.
 - 14,617 texture-fit skips and 98,754 degenerate pieces per 640x480 run,
   not analysed.
+- Where the CPU is the limit (320x240, point sampling) setup is still
+  ~20 k cycles a piece: per-trapezoid colour and Z planes, and the split
+  decision's fit, are the next costs.

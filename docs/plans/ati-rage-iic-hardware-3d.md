@@ -108,9 +108,12 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
   cycles (a closed-form bound on the fit's error, a forward-differenced
   grid, one fit per piece). 640x480 is engine-bound (3.2 -> 3.6 fps);
   320x240 CPU-bound (5.2 -> 6.8 fps).
-- Next: Michael's look at Quake 2 on the monitor; the memory and engine
-  clocks against ATI's driver; 3DMark 99's score for the record; the
-  remaining texture-fit skips.
+- The engine at 83.1 MHz (the BIOS's clock) draws 14.2 Mpixels/s point,
+  6.7 bilinear, 4.85 bilinear with Z: ATI's driver's own rates. Quake 2 at
+  640x480 runs at that fill rate.
+- Next: Michael's look at Quake 2 on the monitor; 3DMark 99's score for
+  the record; the remaining texture-fit skips; setup cost where the CPU
+  limits (320x240, point sampling).
 
 ## Goal
 

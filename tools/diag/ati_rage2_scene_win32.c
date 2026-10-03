@@ -33,6 +33,7 @@
 #include "../../src/chipsets/ati/mach64_engine.c"
 #include "../../src/chipsets/ati/rage2_trap.c"
 #include "../../src/chipsets/ati/rage2_setup.c"
+#include "../../src/chipsets/ati/rage2_draw.c"
 /* The host test's reference rasteriser: the card is judged by the same
  * function as the model. */
 #include "../../tests/host/rage2_reference.c"
@@ -2881,6 +2882,322 @@ static void atirx_prefix(char *prefix, const char *name)
 
 static BYTE atirx_dump_buffer[ATIRX_DUMP_CHUNK];
 
+/*
+ * The engine's cost per feature: one 256x256 quad drawn through the HAL's
+ * own builders (v9x_r2_check_draw, _build_draw_state, _split_triangle,
+ * _build_piece), its register stream built once and emitted
+ * ATIRX_FILL_REPEAT times, timed by the TSC from the first write until
+ * the engine is idle. Each scene adds one feature, so the differences
+ * price them. The TSC rate is measured against GetTickCount.
+ */
+#define ATIRX_FILL_TARGET    0x00230000ul   /* 256x256 565, 128 KiB */
+#define ATIRX_FILL_Z         0x00250000ul   /* 256x256 Z, 128 KiB */
+#define ATIRX_FILL_TEX64     0x00270000ul   /* 64x64 565 */
+#define ATIRX_FILL_TEX256    0x00272000ul   /* 256x256 565, to 0x292000 */
+#define ATIRX_FILL_EDGE      256ul
+#define ATIRX_FILL_PITCH     512ul
+#define ATIRX_FILL_REPEAT    16ul
+#define ATIRX_FILL_DWORDS    6144ul
+
+static DWORD atirx_tsc_low(void);
+#pragma aux atirx_tsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
+
+struct atirx_fill_scene {
+    const char *name;
+    v9x_u32 textured;
+    v9x_u32 filter;             /* 1 nearest, 2 linear */
+    v9x_u32 log2_texture;       /* 6 or 8 */
+    v9x_u32 depth;              /* 0, or 1 for LESSEQUAL with write */
+    v9x_u32 src_blend;          /* 0: no blend */
+    v9x_u32 dst_blend;
+    v9x_u32 perspective;        /* q 1 at the top, 0.4 at the bottom */
+};
+
+static const struct atirx_fill_scene atirx_fill_scenes[] = {
+    { "flat",           0ul, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+    { "flat-z",         0ul, 0ul, 0ul, 1ul, 0ul, 0ul, 0ul },
+    { "point64",        1ul, 1ul, 6ul, 0ul, 0ul, 0ul, 0ul },
+    { "bilinear64",     1ul, 2ul, 6ul, 0ul, 0ul, 0ul, 0ul },
+    { "bilinear256",    1ul, 2ul, 8ul, 0ul, 0ul, 0ul, 0ul },
+    { "bilinear64-z",   1ul, 2ul, 6ul, 1ul, 0ul, 0ul, 0ul },
+    { "bilinear64-z-persp", 1ul, 2ul, 6ul, 1ul, 0ul, 0ul, 1ul },
+    { "bilinear64-z-alpha", 1ul, 2ul, 6ul, 1ul, 5ul, 6ul, 0ul },
+    /* Quake 2's lightmap pass: ZERO, SRCCOLOR over the world pass. */
+    { "bilinear64-z-lightmap", 1ul, 2ul, 6ul, 1ul, 1ul, 3ul, 0ul },
+    { "point64-z",      1ul, 1ul, 6ul, 1ul, 0ul, 0ul, 0ul }
+};
+
+static v9x_u32 atirx_fill_offsets[ATIRX_FILL_DWORDS];
+
+/* No runtime: memset is not linked. */
+static void atirx_zero(void *target, DWORD bytes)
+{
+    BYTE *at = (BYTE *)target;
+
+    while (bytes-- != 0ul) {
+        *at++ = 0u;
+    }
+}
+static v9x_u32 atirx_fill_values[ATIRX_FILL_DWORDS];
+
+/* One scene's whole stream: state, then both triangles' pieces. 0 when a
+ * builder refuses it. */
+static v9x_u32 atirx_fill_build(const struct atirx_fill_scene *scene,
+                                DWORD fb_bytes)
+{
+    static struct v9x_r2_draw_vertex pieces[V9X_R2_DRAW_SPLIT_MAX * 3u];
+    static struct v9x_r2_texture_fit fits[V9X_R2_DRAW_SPLIT_MAX];
+    struct v9x_m64_draw_request request;
+    struct v9x_r2_draw_decision decision;
+    struct v9x_r2_draw_state state;
+    struct v9x_r2_draw_vertex corner[4];
+    v9x_u32 at = 0ul;
+    v9x_u32 written = 0ul;
+    v9x_u32 triangle;
+    v9x_u32 k;
+    double repeat = scene->log2_texture == 8ul ? 0.75 : 3.0;
+
+    atirx_zero(&request, sizeof(request));
+    request.target_format = 1ul;
+    request.target_width = ATIRX_FILL_EDGE;
+    request.target_height = ATIRX_FILL_EDGE;
+    request.scissor_right = ATIRX_FILL_EDGE;
+    request.scissor_bottom = ATIRX_FILL_EDGE;
+    request.write_mask = 7ul;
+    request.shade_mode = 2ul;
+    if (scene->depth != 0ul) {
+        request.depth_enable = 1ul;
+        request.depth_bits = 16ul;
+        request.depth_func = 4ul;       /* LESSEQUAL */
+        request.depth_write = 1ul;
+    }
+    if (scene->textured != 0ul) {
+        request.textured = 1ul;
+        request.texture_format = V9X_M64_TEXTURE_FORMAT_RGB565;
+        request.texture_width = 1ul << scene->log2_texture;
+        request.texture_height = 1ul << scene->log2_texture;
+        request.texture_levels = 1ul;
+        request.texture_min_filter = scene->filter;
+        request.texture_mag_filter = scene->filter;
+        request.texture_address = 1ul;  /* WRAP */
+        request.texture_op = 2ul;       /* MODULATE */
+    }
+    if (scene->src_blend != 0ul) {
+        request.blend_enable = 1ul;
+        request.src_blend = scene->src_blend;
+        request.dst_blend = scene->dst_blend;
+    }
+    request.vertex_alpha_opaque = scene->src_blend == 5ul ? 0ul : 1ul;
+    if (v9x_r2_check_draw(&request, 0ul, &decision) != V9X_M64_REFUSE_NONE) {
+        return 0ul;
+    }
+
+    atirx_zero(&state, sizeof(state));
+    state.target.offset = ATIRX_FILL_TARGET;
+    state.target.pitch_bytes = ATIRX_FILL_PITCH;
+    state.target.width = ATIRX_FILL_EDGE;
+    state.target.height = ATIRX_FILL_EDGE;
+    state.target.vram_bytes = fb_bytes;
+    state.target.scissor_right = ATIRX_FILL_EDGE - 1ul;
+    state.target.scissor_bottom = ATIRX_FILL_EDGE - 1ul;
+    state.depth_enable = request.depth_enable;
+    state.depth_offset = ATIRX_FILL_Z;
+    state.depth_pitch_bytes = ATIRX_FILL_PITCH;
+    state.depth_func = request.depth_func;
+    state.depth_write = request.depth_write;
+    state.textured = request.textured;
+    state.texture.offset = scene->log2_texture == 8ul ? ATIRX_FILL_TEX256
+                                                      : ATIRX_FILL_TEX64;
+    state.texture.log2_width = scene->log2_texture;
+    state.texture.log2_height = scene->log2_texture;
+    state.texture.log2_pitch = scene->log2_texture;
+    state.texture.format = decision.texture_format;
+    if (v9x_r2_build_draw_state(&state, &decision, atirx_fill_offsets,
+                                atirx_fill_values, ATIRX_FILL_DWORDS,
+                                &written) != V9X_STATUS_OK) {
+        return 0ul;
+    }
+    at = written;
+
+    for (k = 0ul; k < 4ul; ++k) {
+        v9x_u32 right = (k == 1ul || k == 2ul) ? 1ul : 0ul;
+        v9x_u32 bottom = k >= 2ul ? 1ul : 0ul;
+
+        corner[k].x = (v9x_s32)(right * ATIRX_FILL_EDGE * 16ul);
+        corner[k].y = (v9x_s32)(bottom * ATIRX_FILL_EDGE * 16ul);
+        corner[k].z = 0x8000ul;
+        corner[k].argb = scene->src_blend == 5ul ? 0x80ffffffu
+                                                 : 0xffffffffu;
+        corner[k].fog = 255ul;
+        corner[k].q = (scene->perspective != 0ul && bottom != 0ul) ? 0.4
+                                                                   : 1.0;
+        corner[k].tu = right != 0ul ? repeat : 0.0;
+        corner[k].tv = bottom != 0ul ? repeat : 0.0;
+    }
+    for (triangle = 0ul; triangle < 2ul; ++triangle) {
+        struct v9x_r2_draw_vertex v[3];
+        v9x_u32 count = 0ul;
+        v9x_u32 piece;
+
+        v[0] = corner[0];
+        v[1] = triangle == 0ul ? corner[1] : corner[2];
+        v[2] = triangle == 0ul ? corner[2] : corner[3];
+        if (v9x_r2_split_triangle(&state, &decision, v, pieces, fits,
+                                  &count) != V9X_STATUS_OK) {
+            return 0ul;
+        }
+        for (piece = 0ul; piece < count; ++piece) {
+            written = 0ul;
+            if (v9x_r2_build_piece(&state, &decision, &pieces[piece * 3ul],
+                                   &fits[piece], atirx_fill_offsets + at,
+                                   atirx_fill_values + at,
+                                   ATIRX_FILL_DWORDS - at, &written, 0, 0,
+                                   0) != V9X_STATUS_OK) {
+                return 0ul;
+            }
+            at += written;
+        }
+    }
+    return at;
+}
+
+static void atirx_fill_textures(void)
+{
+    DWORD i;
+    DWORD seed = 0x12345678ul;
+    volatile WORD *tex64 = atirx_fb + ATIRX_FILL_TEX64 / 2ul;
+    volatile WORD *tex256 = atirx_fb + ATIRX_FILL_TEX256 / 2ul;
+
+    for (i = 0ul; i < 64ul * 64ul; ++i) {
+        seed = seed * 1103515245ul + 12345ul;
+        tex64[i] = (WORD)(seed >> 16);
+    }
+    for (i = 0ul; i < 256ul * 256ul; ++i) {
+        seed = seed * 1103515245ul + 12345ul;
+        tex256[i] = (WORD)(seed >> 16);
+    }
+}
+
+static void atirx_fill_clear_z(void)
+{
+    DWORD i;
+    volatile WORD *z = atirx_fb + ATIRX_FILL_Z / 2ul;
+
+    for (i = 0ul; i < ATIRX_FILL_EDGE * ATIRX_FILL_EDGE; ++i) {
+        z[i] = 0xffffu;
+    }
+}
+
+static int atirx_run_fill(struct v9x_m64_engine *engine, DWORD fb_bytes)
+{
+    DWORD tick0;
+    DWORD tsc0;
+    DWORD scene;
+    char prefix[48];
+
+    atirx_key("SceneSet", "fill");
+    atirx_fill_textures();
+
+    /* The TSC's rate over about a second of wall time. */
+    tick0 = GetTickCount();
+    while (GetTickCount() == tick0) {
+    }
+    tick0 = GetTickCount();
+    tsc0 = atirx_tsc_low();
+    while (GetTickCount() - tick0 < 1000ul) {
+    }
+    atirx_key_dec("TscPerSecond", atirx_tsc_low() - tsc0);
+    atirx_key_dec("Repeat", ATIRX_FILL_REPEAT);
+    atirx_key_dec("PixelsPerRepeat", ATIRX_FILL_EDGE * ATIRX_FILL_EDGE);
+
+    for (scene = 0ul;
+         scene < sizeof(atirx_fill_scenes) / sizeof(atirx_fill_scenes[0]);
+         ++scene) {
+        const struct atirx_fill_scene *s = &atirx_fill_scenes[scene];
+        v9x_u32 count = atirx_fill_build(s, fb_bytes);
+        DWORD start;
+        DWORD cycles;
+        DWORD repeat;
+        int ok = 1;
+
+        atirx_prefix(prefix, s->name);
+        lstrcatA(prefix, "Dwords");
+        atirx_key_dec(prefix, count);
+        if (count == 0ul) {
+            continue;
+        }
+        atirx_fill_clear_z();
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        start = atirx_tsc_low();
+        for (repeat = 0ul; repeat < ATIRX_FILL_REPEAT && ok; ++repeat) {
+            v9x_u32 done;
+
+            for (done = 0ul; done < count; done += ATIRX_CHUNK) {
+                v9x_u32 chunk = count - done;
+
+                if (chunk > ATIRX_CHUNK) {
+                    chunk = ATIRX_CHUNK;
+                }
+                if (v9x_m64_emit_batch(engine, atirx_fill_offsets + done,
+                                       atirx_fill_values + done, chunk,
+                                       ATIRX_SPINS) != V9X_STATUS_OK) {
+                    ok = 0;
+                    break;
+                }
+            }
+        }
+        if (!ok || !atirx_finish_draw(engine)) {
+            atirx_key("Result", "FILL-EMIT");
+            return 0;
+        }
+        cycles = atirx_tsc_low() - start;
+        atirx_prefix(prefix, s->name);
+        lstrcatA(prefix, "Cycles");
+        atirx_key_dec(prefix, cycles);
+        atirx_flush();
+    }
+    atirx_key("Result", "PASS");
+    return 1;
+}
+
+/*
+ * The clock PLL's registers, read only: CLOCK_CNTL (+490) byte 1 takes
+ * PLL_ADDR in bits 7:2 with PLL_WR_EN (bit 1) clear, byte 2 returns
+ * PLL_DATA. Byte accesses, as atyfb's aty_ld_pll_ct does, so byte 0
+ * (CLOCK_SEL and the strobe) is never written. The index the driver left
+ * is put back. For the memory and engine clocks Velocity9x runs at.
+ */
+#define ATIRX_CLOCK_CNTL      0x490u
+#define ATIRX_PLL_REGISTERS   0x20u
+
+static int atirx_run_pll(void)
+{
+    volatile BYTE *clock_cntl = atirx_mmio + ATIRX_CLOCK_CNTL;
+    BYTE saved_index = clock_cntl[1];
+    char name[8];
+    DWORD index;
+
+    atirx_key("SceneSet", "pll");
+    atirx_key_hex("ClockCntl", atirx_read(0, ATIRX_CLOCK_CNTL));
+    for (index = 0u; index < ATIRX_PLL_REGISTERS; ++index) {
+        clock_cntl[1] = (BYTE)(index << 2);
+        name[0] = 'P';
+        name[1] = 'l';
+        name[2] = 'l';
+        name[3] = "0123456789ABCDEF"[(index >> 4) & 0xfu];
+        name[4] = "0123456789ABCDEF"[index & 0xfu];
+        name[5] = '\0';
+        atirx_key_hex(name, (DWORD)clock_cntl[2]);
+    }
+    clock_cntl[1] = (BYTE)(saved_index & 0xfcu);
+    atirx_key_hex("ClockCntlAfter", atirx_read(0, ATIRX_CLOCK_CNTL));
+    atirx_key_hex("MemCntl", atirx_read(0, 0x4b0u));
+    atirx_key("Result", "PASS");
+    return 1;
+}
+
 static int atirx_run_vramdump(void)
 {
     HANDLE file;
@@ -3020,6 +3337,12 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     atirx_fb = (volatile WORD *)map.fb_linear;
     /* Before the engine is touched: /vramdump may run under an
      * application that is using it. */
+    if (atirx_has_switch(GetCommandLineA(), "/pll")) {
+        int completed = atirx_run_pll();
+
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/vramdump")) {
         int completed = atirx_run_vramdump();
 
@@ -3065,6 +3388,14 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/fill")) {
+        int completed = atirx_run_fill(&engine, map.fb_bytes);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/crtc")) {
         int completed = atirx_run_crtc(
             atirx_has_switch(GetCommandLineA(), "/crtcread"));
