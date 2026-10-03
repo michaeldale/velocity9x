@@ -18,9 +18,9 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.9.2, the submission release** — see the
-[changelog](CHANGELOG.md). Download it from
-[releases/0.9.2](releases/0.9.2/README.md).
+**Current version: 0.10.0, the Rage IIC release** — see the
+[changelog](CHANGELOG.md). Not yet published as a release; the latest
+published packages are [releases/0.9.2](releases/0.9.2/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
@@ -118,13 +118,42 @@ refuses is not drawn (Quake 2's particles among them); and Quake 2's frame
 rate ([plan](docs/plans/ati-rage-mobility-hardware-3d.md)). The other ATI
 id, `1002:5654`, remains tier-0.
 
+## ATI Rage IIC
+
+New in 0.10.0. The `ati` package drives the **3D Rage IIC AGP**
+(`1002:4757`, 4 MB), measured on one physical machine (Pentium III 1 GHz,
+440BX). The chip has no setup engine: the driver sets every triangle up on
+the CPU into the trapezoids its engine draws, perspective as a quadratic
+fitted per triangle and split where it would stray by half a texel.
+
+- **Direct3D**: RGB565, ARGB1555 and ARGB4444 textures, each edge a power
+  of two from 8 to 256; nearest and bilinear filtering and mip-mapping;
+  modulate, decal and copy; a 16-bit Z buffer with every comparison; the
+  blend factors the engine measured; fog; page flips in the vertical
+  blank.
+- **DirectDraw** fills and copies on the engine.
+- **OpenGL 1.1** through `V9XGL.DLL` on the same engine — the first OpenGL
+  this card has had: neither ATI ICD starts on it.
+
+| Application | API | Result |
+|---|---|---|
+| Half-Life `mwd5` timedemo | Direct3D | 5.57 fps at 640x480 (ATI's driver 6.63) |
+| Quake 2 demo timedemo | OpenGL | 4.4 fps at 640x480, 7.5 in a 320x240 window |
+| Final Reality, 3DMark 99 | Direct3D | Render correctly, watched on the monitor |
+
+What is open: ARGB4444 alpha test and texel-times-vertex alpha are
+refused, and a refused draw is not drawn; ATI's driver is still 16% ahead
+in Half-Life ([plan](docs/plans/ati-rage-iic-hardware-3d.md)).
+
 ## Direct3D
 
 Velocity9x publishes a Direct3D HAL through DirectDraw, so DirectX games
-see a hardware device. Four engines sit behind it:
+see a hardware device. Five engines sit behind it:
 
 - **Intel Gen3** on the GMA 950 — above.
 - **Mach64** on the Rage Mobility-M — above.
+- **Rage II** trapezoids on the Rage IIC, with the setup on the CPU —
+  above.
 - **S3D** on the ViRGE/DX and Trio3D/2X — a deliberately narrow but real
   hardware path: textured, Gouraud-shaded, perspective-correct triangles
   with mipmapping, trilinear filtering (bilinear on the Trio3D/2X), alpha

@@ -4,6 +4,100 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.10.0 - 2026-10-03
+
+The Rage IIC release: hardware Direct3D and the first OpenGL this card has
+had, on the ATI 3D Rage IIC AGP (`1002:4757`, 4 MB), a chip with no setup
+engine, so every triangle is set up on the CPU into the trapezoids its
+engine draws. Measured on one physical machine, A8U4I5 (Pentium III
+1 GHz, 440BX, Windows 98 SE); the plan and its phases are
+[here](docs/plans/ati-rage-iic-hardware-3d.md). Other families carry only
+the shared-core changes marked below, untested on their hardware.
+
+| On A8U4I5 at 640x480 | Velocity9x 0.10.0 | ATI 4.11.2474 / 2611 |
+|---|---|---|
+| Half-Life `mwd5` timedemo, Direct3D | 5.57 fps | 6.63 fps |
+| Quake 2 demo timedemo, OpenGL | 4.4 fps | does not start (`GLimp_InitGL failed`) |
+| Half-Life, OpenGL | not run | refused |
+| Final Reality, 3DMark 99 | render correctly (watched on the monitor) | 3.81 Reality Marks; 484 3DMarks |
+
+Recorded, not chased; ATI's figures are the
+[native baseline](docs/decisions/2026-10-02-rage-iic-native-baseline-a8u4i5.md),
+re-measured under ATI's driver on 2026-10-03.
+
+### ATI Rage IIC (new)
+
+- **Bound and verified at tier-0**, then the 2D engine for DirectDraw
+  fill and copy, from a known engine state
+  ([survey](docs/decisions/2026-10-02-rage-iic-register-survey.md),
+  [first boot](docs/decisions/2026-10-02-rage-iic-first-velocity9x-bind.md)).
+- **The trapezoid engine, measured to the pixel** before anything was
+  built on it: rows, spans and the edge walk, Gouraud and Z16, texture
+  coordinates, bilinear filtering, formats, blend modes and fog, each
+  scene exact on the card
+  ([edge model](docs/decisions/2026-10-02-rage-iic-trapezoid-edge-model.md),
+  [triangles](docs/decisions/2026-10-02-rage-iic-triangles-and-gouraud.md),
+  [texturing](docs/decisions/2026-10-02-rage-iic-texture-addressing.md),
+  [filtering and blending](docs/decisions/2026-10-02-rage-iic-filtering-formats-blending-fog.md)).
+- **Direct3D**: CPU triangle setup behind the shared engine ops, with
+  perspective as a quadratic fitted per triangle and split where it would
+  stray by half a texel; RGB565, ARGB1555 and ARGB4444 textures, each edge
+  a power of two from 8 to 256; nearest and bilinear filtering, mip-mapping
+  (MIPNEAREST, MIPLINEAR, LINEARMIPNEAREST); modulate, decal and copy; a
+  16-bit Z buffer with every comparison; the blend factors the engine
+  measured; fog; alpha test on 1555's alpha bit. Final Reality and 3DMark
+  99 render correctly
+  ([record](docs/decisions/2026-10-02-rage-iic-direct3d-first-runs.md)).
+- **Page flips** through `CRTC_OFF_PITCH`, written in the vertical blank;
+  before, every flip was declined and full-screen applications drew
+  unseen ([record](docs/decisions/2026-10-03-rage-iic-scanout-start.md)).
+- **OpenGL** through `V9XGL.DLL` on the same engine: Quake 2 draws
+  textured and lit ([record](docs/decisions/2026-10-03-rage-iic-opengl-first-runs.md)).
+- **Triangle setup halved**, ~41 k to ~20 k CPU cycles a piece: a closed-form
+  bound on the fit's error settles most split decisions without sampling,
+  the sampling itself by forward differences, and one fit per piece
+  ([record](docs/decisions/2026-10-03-rage-iic-setup-cost.md)).
+- **The texture cache on.** Phase 4 measured with it off and the setting
+  stayed; on, bilinear with Z costs 11.0 engine clocks a pixel instead of
+  17.1, it never returned a stale texel, and ATI's driver runs with it on.
+  Half-Life 4.29 to 5.57 fps, Quake 2 3.6 to 4.4
+  ([record](docs/decisions/2026-10-03-rage-iic-ati-driver-sampled-texture-cache.md)).
+- **Mip-mapping**: the engine picks its level per pixel from its own
+  increments; chains are placed a level to a block, which the 4 MB card
+  needs under Direct3D's texture management. Correct pictures; no
+  measurable speed in either demo
+  ([record](docs/decisions/2026-10-03-rage-iic-mip-mapping.md)).
+
+### Shared core (all engines)
+
+- **The render interface's draw saves the FPU** as the Direct3D entries
+  do. The OpenGL ICD's draws ran under the application's control word -
+  Quake 2's 24-bit precision - and on the Rage IIC 68,270 of its pieces
+  failed setup that the same inputs pass at full precision.
+- **DirectDraw is no longer emulated on chips without Direct3D.** Narrowing
+  the surface callbacks for such a family dropped `SETCOLORKEY` while its
+  pointer stood, so `SetInfo` failed and the runtime ran with no heap, on
+  every such chip since 0.7.0 (bisected on the Rage IIC at tier-0).
+
+### Diagnostics
+
+- V9XTRACE gains the Rage IIC's skipped pieces by stage, its draw cost by
+  part (prepare, split, build, emit), the pixels, trapezoids, register
+  writes and FIFO reads behind it, and its texture placement outcomes
+  (shared ABI 2026100304; DRV, HAL and V9XTRACE deploy together).
+- `ATIRX` (development tool, not packaged) gains read-only clock and
+  register sampling (`/pll`, `/sample`, which also ran under ATI's own
+  driver) and fill, mip and texture-cache scenes.
+
+Still open: ATI's driver is 16% ahead in Half-Life, and draws a large
+textured pass with Z disabled that ours does not (it advertises MASKZ;
+we do not); ARGB4444 alpha test and texel-times-vertex alpha are refused
+and not drawn (10,371 of Half-Life's batches in a session, 2,807 of
+Quake 2's 32,071); a few thousand pieces a demo fail the texture fit,
+unanalysed; A8U4I5 has twice dropped off the network while idle with
+Windows still running
+([issue](docs/issues/2026-10-03-a8u4i5-drops-off-network-when-idle.md)).
+
 ## 0.9.2 - 2026-10-02
 
 The submission release: on the netbook (Intel GMA 950) the CPU no longer
