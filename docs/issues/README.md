@@ -4,6 +4,9 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-03 A8U4I5 hard-locks when Half-Life's alpha-tested additive sprites are drawn (high)](2026-10-03-a8u4i5-hard-lock-on-additive-sprites.md)
+- [2026-10-03 Rage IIC refuses a blend by texel alpha times vertex alpha (Quake 2's particles)](2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md)
+- [2026-10-03 Rage IIC: pieces skipped because the perspective texture fit fails](2026-10-03-rage-iic-texture-fit-skips.md)
 - [2026-10-02 The Rage IIC's first engine copy hung A8U4I5 (high)](2026-10-02-rage-iic-first-engine-copy-hangs.md)
 - [2026-09-30 Gateway intermittently hard-locks with a black screen during the broad probe](2026-09-30-gateway-intermittent-black-screen-probe-lock.md)
 - [2026-09-30 Final Reality's Robots test kills the process inside DrawPrimitives on the netbook (high)](2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md)
