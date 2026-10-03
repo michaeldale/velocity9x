@@ -80,6 +80,9 @@ booting ATI's driver.
 
 1. Measure the Rage II's mip-mapping in `ATIRX` (level selection, the
    `TEX_n_OFF` chain, the LOD rule), as Phase 4 measured filtering, then
-   advertise the mip caps and build chains.
+   advertise the mip caps and build chains. Done the same day
+   ([record](2026-10-03-rage-iic-mip-mapping.md)): it works, and it did
+   not move mwd5 (4.291 fps), which disputes this record's reading that
+   mip-mapping explains part of the gap.
 2. The 10,371 alpha-tested batches Half-Life loses: a 4444 or 8888 alpha
    test the chip cannot express, which today draws nothing.

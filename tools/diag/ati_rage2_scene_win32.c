@@ -3249,6 +3249,270 @@ static int atirx_run_fillz(struct v9x_m64_engine *engine, DWORD fb_bytes)
     return 1;
 }
 
+/* ---- Mip-mapping -------------------------------------------------------- */
+
+/*
+ * /mip: what the engine does with MIP_MAP_DISABLE clear. A 64x64 565 map
+ * with every level to 1x1, each at a 64-byte boundary after the one
+ * before (as v9x_d3d_rage2_create_surface places a chain), TEX_n_OFF
+ * holding level n. Every texel names itself: red 16 + level, green u,
+ * blue v. Each scene is ATIRX_RECT (columns 16..47, rows 16..23) with
+ * S/T set by hand in base-map texels (2^20 each, 2^26 / 64), and rows 16,
+ * 17, 20 and 23 are dumped as level:u.v, or raw where TEX_BLEND_FCN may
+ * mix levels.
+ */
+#define ATIRX_MIP_OFFSET     0x00230000ul
+#define ATIRX_MIP_TOP        6ul
+#define ATIRX_MIP_TEXEL      (1l << 20)
+#define ATIRX_MT(n)          ((v9x_s32)((n) * (double)ATIRX_MIP_TEXEL))
+
+struct atirx_mip_scene {
+    const char *name;
+    v9x_u32 mip_enable;
+    v9x_u32 extra;           /* SCALE_3D_CNTL filter bits */
+    v9x_u32 raw;             /* dump raw words, not level:u.v */
+    struct v9x_r2_st st;
+    v9x_u32 left;            /* ATIRX_SLOPE_LEFT, not ATIRX_RECT */
+    v9x_u32 tall;            /* the 64x16 chain, not 64x64 */
+};
+
+#define ATIRX_MIP_ST(sx, tx, sy, ty, sx2) \
+    { { 0l, 0l }, { ATIRX_MT(sx), ATIRX_MT(tx) }, \
+      { ATIRX_MT(sy), ATIRX_MT(ty) }, { ATIRX_MT(sx2), 0l }, \
+      { 0l, 0l }, { 0l, 0l } }
+
+static const struct atirx_mip_scene atirx_mip_scenes[] = {
+    /* Control: the HAL's state, 4 texels a pixel, level 6 expected. */
+    { "M0Disabled", 0ul, 0ul, 0ul, ATIRX_MIP_ST(4.0, 0.0, 0.0, 0.0, 0.0) },
+    /* S along the span, nothing per row: the level against the ratio. */
+    { "A050", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "A100", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A125", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1.25, 0.0, 0.0, 0.0, 0.0) },
+    { "A150", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1.5, 0.0, 0.0, 0.0, 0.0) },
+    { "A175", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1.75, 0.0, 0.0, 0.0, 0.0) },
+    { "A200", 1ul, 0ul, 0ul, ATIRX_MIP_ST(2.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A250", 1ul, 0ul, 0ul, ATIRX_MIP_ST(2.5, 0.0, 0.0, 0.0, 0.0) },
+    { "A300", 1ul, 0ul, 0ul, ATIRX_MIP_ST(3.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A400", 1ul, 0ul, 0ul, ATIRX_MIP_ST(4.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A600", 1ul, 0ul, 0ul, ATIRX_MIP_ST(6.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A800", 1ul, 0ul, 0ul, ATIRX_MIP_ST(8.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A1600", 1ul, 0ul, 0ul, ATIRX_MIP_ST(16.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A3200", 1ul, 0ul, 0ul, ATIRX_MIP_ST(32.0, 0.0, 0.0, 0.0, 0.0) },
+    { "A6400", 1ul, 0ul, 0ul, ATIRX_MIP_ST(64.0, 0.0, 0.0, 0.0, 0.0) },
+    /* T along the span instead: does T count as S does? */
+    { "B200", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.0, 2.0, 0.0, 0.0, 0.0) },
+    { "B400", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.0, 4.0, 0.0, 0.0, 0.0) },
+    { "B800", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.0, 8.0, 0.0, 0.0, 0.0) },
+    /* Both along the span: the larger, the sum, or the length? */
+    { "AB22", 1ul, 0ul, 0ul, ATIRX_MIP_ST(2.0, 2.0, 0.0, 0.0, 0.0) },
+    { "AB44", 1ul, 0ul, 0ul, ATIRX_MIP_ST(4.0, 4.0, 0.0, 0.0, 0.0) },
+    /* Half a texel along the span, a large step per row: is y read? */
+    { "C400", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.5, 0.0, 4.0, 0.0, 0.0) },
+    { "C1600", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.5, 0.0, 16.0, 0.0, 0.0) },
+    { "D400", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 4.0, 0.0) },
+    { "D1600", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 16.0, 0.0) },
+    /* The increment growing along the span, 1 + k/2 at column k: is the
+     * level chosen per pixel, and where are the thresholds? */
+    { "E1", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1.0, 0.0, 0.0, 0.0, 0.5) },
+    { "E2", 1ul, 0ul, 0ul, ATIRX_MIP_ST(0.25, 0.0, 0.0, 0.0, 0.125) },
+    /* Three texels a pixel under each TEX_BLEND_FCN, raw: 0 nearest, 2
+     * the 2x2 blend measured in one map, 1 and 3 not measured. */
+    { "F0", 1ul, 0x00000000ul, 1ul, ATIRX_MIP_ST(3.0, 0.0, 0.0, 0.0, 0.0) },
+    { "F1", 1ul, 0x04000000ul, 1ul, ATIRX_MIP_ST(3.0, 0.0, 0.0, 0.0, 0.0) },
+    { "F2", 1ul, 0x08000000ul, 1ul, ATIRX_MIP_ST(3.0, 0.0, 0.0, 0.0, 0.0) },
+    { "F3", 1ul, 0x0c000000ul, 1ul, ATIRX_MIP_ST(3.0, 0.0, 0.0, 0.0, 0.0) },
+    /* The same at 1.5, between levels 6 and 5. */
+    { "G1", 1ul, 0x04000000ul, 1ul, ATIRX_MIP_ST(1.5, 0.0, 0.0, 0.0, 0.0) },
+    { "G3", 1ul, 0x0c000000ul, 1ul, ATIRX_MIP_ST(1.5, 0.0, 0.0, 0.0, 0.0) },
+    /* Negative increments: S starts at 31 base texels so the samples
+     * stay readable. Is the level from the magnitude? */
+    { "N1SxNeg", 1ul, 0ul, 0ul,
+      { { ATIRX_MT(31.0), 0l }, { ATIRX_MT(-4.0), 0l }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "N2TxNeg", 1ul, 0ul, 0ul,
+      { { 0l, ATIRX_MT(31.0) }, { 0l, ATIRX_MT(-4.0) }, { 0l, 0l },
+        { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    { "N3SyNeg", 1ul, 0ul, 0ul,
+      { { ATIRX_MT(31.0), 0l }, { ATIRX_MT(0.5), 0l },
+        { ATIRX_MT(-4.0), 0l }, { 0l, 0l }, { 0l, 0l }, { 0l, 0l } } },
+    /* The span walked leftward (DST_X_DIR clear), S +4 a step. */
+    { "L1Left", 1ul, 0ul, 0ul, ATIRX_MIP_ST(4.0, 0.0, 0.0, 0.0, 0.0), 1ul },
+    /* Past the 1x1 level: clamped, or outside the chain? */
+    { "K128", 1ul, 0ul, 0ul, ATIRX_MIP_ST(128.0, 0.0, 0.0, 0.0, 0.0) },
+    { "K1024", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1024.0, 0.0, 0.0, 0.0, 0.0) },
+    /* A 64x16 chain (64x16, 32x8, 16x4, 8x2, 4x1, 2x1, 1x1): T one base
+     * texel a row, so v names the row and wraps at the level's height. */
+    { "W100", 1ul, 0ul, 0ul, ATIRX_MIP_ST(1.0, 0.0, 0.0, 1.0, 0.0), 0ul, 1ul },
+    { "W400", 1ul, 0ul, 0ul, ATIRX_MIP_ST(4.0, 0.0, 0.0, 1.0, 0.0), 0ul, 1ul },
+    { "W800", 1ul, 0ul, 0ul, ATIRX_MIP_ST(8.0, 0.0, 0.0, 1.0, 0.0), 0ul, 1ul },
+    { "W3200", 1ul, 0ul, 0ul, ATIRX_MIP_ST(32.0, 0.0, 0.0, 1.0, 0.0), 0ul,
+      1ul },
+    /* Magnifying (half a texel a pixel) with mip-mapping on: each
+     * TEX_BLEND_FCN without and with BILINEAR_TEX_EN, raw. B4 found FCN 2
+     * without BILINEAR_TEX_EN drawing nothing as it magnified. */
+    { "H0", 1ul, 0x00000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "H1", 1ul, 0x04000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "H2", 1ul, 0x08000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "H3", 1ul, 0x0c000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "HB0", 1ul, 0x02000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "HB1", 1ul, 0x06000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "HB2", 1ul, 0x0a000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    { "HB3", 1ul, 0x0e000000ul, 1ul, ATIRX_MIP_ST(0.5, 0.0, 0.0, 0.0, 0.0) },
+    /* Minifying 3:1 with BILINEAR_TEX_EN as well: does it change FCN 1? */
+    { "FB1", 1ul, 0x06000000ul, 1ul, ATIRX_MIP_ST(3.0, 0.0, 0.0, 0.0, 0.0) }
+};
+
+#define ATIRX_MIP_TALL_OFFSET 0x00238000ul
+#define ATIRX_MIP_TALL_HEIGHT 4ul           /* log2: 64x16 */
+
+static DWORD atirx_mip_level_offset[ATIRX_MIP_TOP + 1ul];
+static DWORD atirx_mip_tall_offset[ATIRX_MIP_TOP + 1ul];
+
+/* A chain from 2^top x 2^height down to 1x1, each level's height halved
+ * with its width and never below 1. */
+static void atirx_write_mip_chain(DWORD at, DWORD log2_height,
+                                  DWORD *level_offset)
+{
+    DWORD level;
+
+    for (level = ATIRX_MIP_TOP + 1ul; level-- > 0ul;) {
+        DWORD edge = 1ul << level;
+        DWORD drop = ATIRX_MIP_TOP - level;
+        DWORD rows = drop >= log2_height ? 1ul
+                                         : 1ul << (log2_height - drop);
+        DWORD u;
+        DWORD v;
+        volatile WORD *map = atirx_fb + at / 2ul;
+
+        level_offset[level] = at;
+        for (v = 0ul; v < rows; ++v) {
+            for (u = 0ul; u < edge; ++u) {
+                map[v * edge + u] = (WORD)(((16ul + level) << 11) |
+                                           ((u & 63ul) << 5) | (v & 31ul));
+            }
+        }
+        at = (at + edge * rows * 2ul + 63ul) & ~63ul;
+    }
+}
+
+static void atirx_dump_mip_row(const char *prefix, DWORD y, int raw)
+{
+    char key[48];
+    char text[12];
+    DWORD x;
+
+    lstrcpyA(key, prefix);
+    lstrcatA(key, "R");
+    atirx_decimal(text, y);
+    lstrcatA(key, text);
+    atirx_text(key);
+    atirx_text("=");
+    for (x = 16ul; x < 48ul; ++x) {
+        WORD pixel = *atirx_pixel(x, y);
+
+        if (raw || pixel == ATIRX_SENTINEL || (pixel >> 11) < 16u) {
+            atirx_hex(text, pixel, 4);
+        } else {
+            text[0] = (char)('0' + ((pixel >> 11) - 16u));
+            text[1] = ':';
+            atirx_hex(text + 2, (pixel >> 5) & 63u, 2);
+            text[4] = '.';
+            atirx_hex(text + 5, pixel & 31u, 2);
+        }
+        atirx_text(text);
+        atirx_text(x == 47ul ? "\r\n" : " ");
+    }
+}
+
+static int atirx_run_mip(struct v9x_m64_engine *engine,
+                         const struct v9x_r2_target *target)
+{
+    static const struct v9x_r2_flat_trap rect = ATIRX_RECT;
+    static const struct v9x_r2_flat_trap slope_left = ATIRX_SLOPE_LEFT;
+    struct v9x_r2_texture texture;
+    v9x_u32 offsets[48];
+    v9x_u32 values[48];
+    v9x_u32 written;
+    DWORD level;
+    UINT index;
+    char prefix[48];
+
+    atirx_key("SceneSet", "mip");
+    atirx_write_mip_chain(ATIRX_MIP_OFFSET, ATIRX_MIP_TOP,
+                          atirx_mip_level_offset);
+    atirx_write_mip_chain(ATIRX_MIP_TALL_OFFSET, ATIRX_MIP_TALL_HEIGHT,
+                          atirx_mip_tall_offset);
+    for (level = 0ul; level <= ATIRX_MIP_TOP; ++level) {
+        char key[16];
+
+        lstrcpyA(key, "Level");
+        atirx_decimal(key + 5, level);
+        atirx_key_hex(key, atirx_mip_level_offset[level]);
+    }
+    texture.log2_width = ATIRX_MIP_TOP;
+    texture.log2_pitch = ATIRX_MIP_TOP;
+    texture.format = V9X_R2_TEX_FORMAT_565;
+
+    for (index = 0u;
+         index < sizeof(atirx_mip_scenes) / sizeof(atirx_mip_scenes[0]);
+         ++index) {
+        const struct atirx_mip_scene *scene = &atirx_mip_scenes[index];
+        const DWORD *chain = scene->tall != 0ul ? atirx_mip_tall_offset
+                                                : atirx_mip_level_offset;
+
+        texture.offset = chain[ATIRX_MIP_TOP];
+        texture.log2_height = scene->tall != 0ul ? ATIRX_MIP_TALL_HEIGHT
+                                                 : ATIRX_MIP_TOP;
+        atirx_prefix(prefix, scene->name);
+        atirx_key("Scene", scene->name);
+        atirx_prepare_block();
+        texture.scale_3d_extra = scene->extra;
+        if (v9x_r2_build_texture_state(target, &texture, &scene->st,
+                                       offsets, values, 32ul, &written) !=
+            V9X_STATUS_OK) {
+            atirx_key("Result", "MIP-STATE");
+            return 0;
+        }
+        if (scene->mip_enable != 0ul) {
+            values[0] &= ~V9X_R2_MIP_MAP_DISABLE;
+            for (level = 0ul; level < ATIRX_MIP_TOP; ++level) {
+                offsets[written] = V9X_R2_TEX_0_OFF + level * 4ul;
+                values[written++] = chain[level];
+            }
+        }
+        atirx_key_hex("Scale3dCntl", values[0]);
+        if (atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK ||
+            v9x_r2_build_trap(target,
+                              scene->left != 0ul ? &slope_left : &rect,
+                              offsets, values, 32ul, &written) !=
+                V9X_STATUS_OK ||
+            atirx_emit(engine, scene->name, offsets, values, written) !=
+                V9X_STATUS_OK) {
+            atirx_key("Result", "MIP-EMIT");
+            return 0;
+        }
+        if (!atirx_finish_draw(engine)) {
+            return 0;
+        }
+        atirx_dump_mip_row(prefix, 16ul, (int)scene->raw);
+        atirx_dump_mip_row(prefix, 17ul, (int)scene->raw);
+        atirx_dump_mip_row(prefix, 20ul, (int)scene->raw);
+        atirx_dump_mip_row(prefix, 23ul, (int)scene->raw);
+        atirx_report_block(prefix);
+        atirx_flush();
+    }
+
+    offsets[0] = V9X_M64_SCALE_3D_CNTL;
+    values[0] = 0ul;
+    if (atirx_emit(engine, "end", offsets, values, 1ul) != V9X_STATUS_OK ||
+        v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    atirx_key("Result", "MIP-RUN");
+    return 1;
+}
+
 /*
  * The clock PLL's registers, read only: CLOCK_CNTL (+490) byte 1 takes
  * PLL_ADDR in bits 7:2 with PLL_WR_EN (bit 1) clear, byte 2 returns
@@ -3475,6 +3739,14 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     target.scissor_right = ATIRX_SCISSOR_HI;
     target.scissor_bottom = ATIRX_SCISSOR_HI;
 
+    if (atirx_has_switch(GetCommandLineA(), "/mip")) {
+        int completed = atirx_run_mip(&engine, &target);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
+    }
     if (atirx_has_switch(GetCommandLineA(), "/fillz")) {
         int completed = atirx_run_fillz(&engine, map.fb_bytes);
 

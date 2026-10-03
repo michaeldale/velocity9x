@@ -244,8 +244,8 @@ static int v9x_d3d_rage2_texture_format(const V9X_DD_SURFACE_LCL *surface,
 
 /*
  * Exactly the measured boundary (rage2_draw.c). Not claimed:
- * - mip filters: only level 0 is sampled, so a mip-mapped texture draws
- *   from its largest level;
+ * - LINEARMIPLINEAR: no trilinear, drawn as MIPLINEAR; a chain that stops
+ *   short of 1x1 draws from its top level alone;
  * - CLAMP: the GT2C wraps, and a batch inside [0, 1] is all that is drawn
  *   for a clamped texture;
  * - MODULATEALPHA: drawn only where texel or vertex alpha is 1;
@@ -312,8 +312,14 @@ static void v9x_d3d_rage2_describe_caps(V9X_DD_SHARED *shared)
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
                          V9X_D3DPTEXTURECAPS_ALPHA;
+    /* The level per pixel, and within it the nearest texel (MIPNEAREST)
+     * or a 2x2 blend (MIPLINEAR), or the nearest texel of two levels
+     * blended (LINEARMIPNEAREST): ATIRX /mip, 2026-10-03. No trilinear. */
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEAR;
+                               V9X_D3DPTFILTERCAPS_LINEAR |
+                               V9X_D3DPTFILTERCAPS_MIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_DECALALPHA |
@@ -387,6 +393,77 @@ static int v9x_d3d_rage2_ready(void)
  * width, which TEX_SIZE_PITCH cannot express - comes back with an unknown
  * format, which the policy refuses.
  */
+/*
+ * How many levels of a mip chain the engine may read, their offsets into
+ * texture->level_offsets from level 1 (one below the top) on. The walk is
+ * d3d_mach64.c's: down the attachments to the next surface that is a mip
+ * level, counting a level only where it is the layout the sampler reads -
+ * both edges halved (neither below 1), two bytes a texel at its own width,
+ * on the texture alignment - which v9x_d3d_rage2_create_surface's chains
+ * meet by construction. The first level that fails ends the chain; the
+ * policy mip-maps only a chain that reaches 1x1. Written apart from the
+ * Mach64's because that one is bound to the Mach64's limits.
+ */
+static DWORD v9x_d3d_rage2_chain(const V9X_DD_SURFACE_LCL *top,
+                                 V9X_D3D_MACH64_TEXTURE *texture)
+{
+    const V9X_DD_SURFACE_LCL *level = top;
+    DWORD width = (DWORD)top->lpGbl->wWidth;
+    DWORD height = (DWORD)top->lpGbl->wHeight;
+    DWORD count = 1ul;
+
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    while (count < V9X_M64_TEXTURE_LEVELS_MAX) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+        DWORD edge = width >> count;
+        DWORD rows = height >> count;
+        DWORD offset;
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next->lpGbl == 0 || (edge == 0ul && rows == 0ul)) {
+            break;
+        }
+        if (edge == 0ul) {
+            edge = 1ul;
+        }
+        if (rows == 0ul) {
+            rows = 1ul;
+        }
+        if ((DWORD)next->lpGbl->wWidth != edge ||
+            (DWORD)next->lpGbl->wHeight != rows ||
+            (DWORD)next->lpGbl->lPitch != edge * 2ul) {
+            ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            v9x_hal->d3d_diagnostics.mip_chain_delta =
+                ((DWORD)next->lpGbl->lPitch << 16) |
+                (DWORD)next->lpGbl->wWidth;
+            break;
+        }
+        offset = v9x_surface_offset(next);
+        if (offset == 0xfffffffful ||
+            (offset & (v9x_d3d_rage2_limits.texture_align - 1ul)) != 0ul) {
+            ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
+            v9x_hal->d3d_diagnostics.mip_chain_delta = offset;
+            break;
+        }
+        texture->level_offsets[count++] = offset;
+        level = next;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = count;
+    if (count - 1ul > v9x_hal->d3d_diagnostics.mip_levels_max) {
+        v9x_hal->d3d_diagnostics.mip_levels_max = count - 1ul;
+    }
+    return count;
+}
+
 static void v9x_d3d_rage2_resolve_texture(const V9X_R3D_DRAW *draw,
                                           V9X_D3D_MACH64_TEXTURE *texture)
 {
@@ -421,6 +498,9 @@ static void v9x_d3d_rage2_resolve_texture(const V9X_R3D_DRAW *draw,
     texture->offset = offset;
     texture->pitch_bytes = (DWORD)surface->lpGbl->lPitch;
     texture->level_offsets[0] = offset;
+    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+        texture->levels = v9x_d3d_rage2_chain(surface, texture);
+    }
 }
 
 static v9x_u32 v9x_d3d_rage2_log2(v9x_u32 edge)
@@ -604,6 +684,18 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
     state.texture.log2_pitch = state.texture.log2_width;
     state.texture.format = decision.texture_format;
     state.texture.scale_3d_extra = 0ul;
+    /* The policy mip-maps only a chain to 1x1, so every level below the
+     * top has its offset: level_offsets counts down from the top. */
+    if (decision.mip_mapped != 0ul) {
+        DWORD top = state.texture.log2_width > state.texture.log2_height
+            ? state.texture.log2_width : state.texture.log2_height;
+        DWORD down;
+
+        for (down = 0ul; down <= top && down < texture.levels; ++down) {
+            state.mip_offsets[top - down] = texture.level_offsets[down];
+        }
+        ++v9x_hal->d3d_diagnostics.mip_draws;
+    }
     state.fog_color = draw->fog_color;
     status = v9x_r2_build_draw_state(&state, &decision,
                                      v9x_d3d_rage2_state_offsets,
@@ -740,27 +832,37 @@ static int v9x_d3d_rage2_texture_edge(DWORD edge)
            edge <= v9x_d3d_rage2_limits.texture_size_max;
 }
 
+/* A texture create_surface turned away, counted by V9X_R2_SURFACE_*. */
+static DWORD v9x_d3d_rage2_decline(DWORD reason, DWORD width, DWORD height)
+{
+    ++v9x_hal->d3d_diagnostics.r2_surface[reason];
+    v9x_hal->d3d_diagnostics.r2_surface[V9X_R2_SURFACE_LAST_REFUSED] =
+        (width << 16) | (height & 0xfffful);
+    return V9X_DDHAL_DRIVER_NOTHANDLED;
+}
+
 /*
  * A texture the engine can sample, placed at the pitch the sampler reads:
  * its width, 2 bytes a texel. DirectDraw's heap rounds a pitch to
  * dwTextureAlign, which TEX_SIZE_PITCH cannot follow (the Mobility-M met
- * the same, d3d_mach64.c). A mip chain is placed level after level at
- * each level's own width, so the levels stay valid surfaces; only level 0
- * is sampled. Anything else is left to DirectDraw and refused at draw.
+ * the same, d3d_mach64.c). Each level of a mip chain is placed at its own
+ * width, the layout the engine's TEX_n_OFF levels are read in (ATIRX
+ * /mip), in a block of its own. Anything else is left to DirectDraw and
+ * refused at draw.
  */
+
 static DWORD v9x_d3d_rage2_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list;
     V9X_DD_SURFACE_LCL *surface;
-    v9x_u32 offsets[V9X_M64_TEXTURE_LEVELS_MAX];
     v9x_u32 pitches[V9X_M64_TEXTURE_LEVELS_MAX];
+    v9x_u32 rows_of[V9X_M64_TEXTURE_LEVELS_MAX];
     DWORD align = v9x_d3d_rage2_limits.texture_align;
     DWORD format;
     DWORD width;
     DWORD height;
     DWORD bytes = 0ul;
     DWORD level;
-    DWORD base;
 
     if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
         data->lplpSList == 0 || data->dwSCnt > V9X_M64_TEXTURE_LEVELS_MAX) {
@@ -776,10 +878,15 @@ static DWORD v9x_d3d_rage2_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     }
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
+    ++v9x_hal->d3d_diagnostics.r2_surface[V9X_R2_SURFACE_CALLS];
+    if (data->dwSCnt == 1ul &&
+        (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+        ++v9x_hal->d3d_diagnostics.r2_surface[V9X_R2_SURFACE_MIP_ALONE];
+    }
     if (!v9x_d3d_rage2_texture_edge(width) ||
         !v9x_d3d_rage2_texture_edge(height) ||
         !v9x_d3d_rage2_texture_format(surface, &format)) {
-        return V9X_DDHAL_DRIVER_NOTHANDLED;
+        return v9x_d3d_rage2_decline(V9X_R2_SURFACE_NO_SHAPE, width, height);
     }
     for (level = 0ul; level < data->dwSCnt; ++level) {
         const V9X_DD_SURFACE_LCL *next = list[level];
@@ -787,7 +894,8 @@ static DWORD v9x_d3d_rage2_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         DWORD rows = height >> level;
 
         if (edge == 0ul && rows == 0ul) {
-            return V9X_DDHAL_DRIVER_NOTHANDLED;
+            return v9x_d3d_rage2_decline(V9X_R2_SURFACE_NO_LEVEL, width,
+                                         height);
         }
         if (edge == 0ul) {
             edge = 1ul;
@@ -801,21 +909,22 @@ static DWORD v9x_d3d_rage2_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             (next->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
             (DWORD)next->lpGbl->wWidth != edge ||
             (DWORD)next->lpGbl->wHeight != rows) {
-            return V9X_DDHAL_DRIVER_NOTHANDLED;
+            return v9x_d3d_rage2_decline(V9X_R2_SURFACE_NO_LEVEL, width,
+                                         height);
         }
-        offsets[level] = (bytes + align - 1ul) & ~(align - 1ul);
         pitches[level] = edge * 2ul;
-        bytes = offsets[level] + pitches[level] * rows;
+        rows_of[level] = rows;
+        bytes += pitches[level] * rows;
     }
-    if (data->dwSCnt == 1ul) {
-        if (v9x_d3d_place_block(data, align, pitches[0], height, offsets,
-                                &base) != 0ul) {
-            return V9X_DDHAL_DRIVER_NOTHANDLED;
-        }
-    } else if (v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
-                                   &base) != 0ul) {
-        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    /* Every level in a block of its own: TEX_n_OFF addresses each level
+     * apart, and one block for the chain found no room where DirectDraw's
+     * level-by-level placement did (v9x_d3d_place_each). */
+    if (v9x_d3d_place_each(data, align, pitches, rows_of) != 0ul) {
+        return v9x_d3d_rage2_decline(V9X_R2_SURFACE_NO_PLACE, width, height);
     }
+    ++v9x_hal->d3d_diagnostics.r2_surface[data->dwSCnt == 1ul
+                                              ? V9X_R2_SURFACE_SINGLE
+                                              : V9X_R2_SURFACE_CHAIN];
     ++v9x_hal->d3d_diagnostics.texture_placed;
     v9x_hal->d3d_diagnostics.texture_placed_bytes += bytes;
     data->ddRVal = V9X_DD_OK;

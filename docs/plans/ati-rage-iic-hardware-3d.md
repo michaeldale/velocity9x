@@ -111,9 +111,14 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
 - The engine at 83.1 MHz (the BIOS's clock) draws 14.2 Mpixels/s point,
   6.7 bilinear, 4.85 bilinear with Z: ATI's driver's own rates. Quake 2 at
   640x480 runs at that fill rate.
+- **Mip-mapping** ([record](../decisions/2026-10-03-rage-iic-mip-mapping.md)):
+  the engine picks its level per pixel from its own increments; MIPNEAREST,
+  MIPLINEAR and LINEARMIPNEAREST advertised, every level placed apart.
+  Correct pictures, no measurable speed in mwd5 or Quake 2's demo.
 - Next: Michael's look at Quake 2 on the monitor; 3DMark 99's score for
   the record; the remaining texture-fit skips; setup cost where the CPU
-  limits (320x240, point sampling).
+  limits (320x240, point sampling); Half-Life's 10,371 alpha-tested
+  batches.
 
 ## Goal
 

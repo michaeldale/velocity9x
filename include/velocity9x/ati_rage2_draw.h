@@ -54,6 +54,7 @@ struct v9x_r2_draw_decision {
     v9x_u32 texture_format;     /* V9X_R2_TEX_FORMAT_*, if textured */
     v9x_u32 alpha_from_fog;     /* the alpha interpolator carries fog */
     v9x_u32 clamp_in_unit;      /* CLAMP accepted as WRAP (see below) */
+    v9x_u32 mip_mapped;         /* MIP_MAP_DISABLE clear, every level set */
 };
 
 /*
@@ -76,6 +77,10 @@ struct v9x_r2_draw_state {
     v9x_u32 depth_write;
     v9x_u32 textured;
     struct v9x_r2_texture texture;      /* scale_3d_extra unused */
+    /* For a mip-mapped decision, level n's VRAM offset (TEX_n_OFF: the
+     * level whose larger edge is 2^n), for n up to the top level's, whose
+     * entry is texture.offset. Each level is laid out at its own width. */
+    v9x_u32 mip_offsets[V9X_R2_TEX_LEVEL_MAX + 1ul];
     v9x_u32 fog_color;                  /* 0x00RRGGBB */
 };
 

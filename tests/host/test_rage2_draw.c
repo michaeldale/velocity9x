@@ -320,6 +320,114 @@ static void test_state(void)
           V9X_STATUS_INSUFFICIENT_MEMORY);
 }
 
+/*
+ * Mip-mapping as ATIRX /mip measured it (2026-10-03): a complete chain
+ * and a mip filter clear MIP_MAP_DISABLE and set every TEX_n_OFF; the
+ * filter picks TEX_BLEND_FCN (MIPNEAREST 0, LINEARMIPNEAREST 1, MIPLINEAR
+ * and LINEARMIPLINEAR 2 - the chip has no trilinear). A chain that stops
+ * short of 1x1 samples its top level alone, as before.
+ */
+static void test_mip(void)
+{
+    struct v9x_m64_draw_request r;
+    struct v9x_r2_draw_decision d;
+    struct v9x_r2_draw_state s;
+    v9x_u32 offsets[V9X_R2_DRAW_STATE_DWORDS];
+    v9x_u32 values[V9X_R2_DRAW_STATE_DWORDS];
+    v9x_u32 written = 0ul;
+    v9x_u32 seen = 0ul;
+    v9x_u32 index;
+    v9x_u32 level;
+
+    /* 64x64: seven levels, 64 to 1. */
+    textured(&r, V9X_M64_TEXTURE_FORMAT_RGB565);
+    r.texture_width = 64ul;
+    r.texture_height = 64ul;
+    r.texture_levels = 7ul;
+    r.texture_mag_filter = 2ul;
+    r.texture_min_filter = 4ul;         /* MIPLINEAR */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 1ul);
+    CHECK((d.scale_3d_cntl & V9X_R2_MIP_MAP_DISABLE) == 0ul);
+    CHECK((d.scale_3d_cntl & V9X_R2_TEX_BLEND_MASK) == V9X_R2_TEX_BLEND_2X2);
+    CHECK((d.scale_3d_cntl & V9X_R2_BILINEAR_TEX_EN) != 0ul);
+
+    r.texture_min_filter = 3ul;         /* MIPNEAREST */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 1ul &&
+          (d.scale_3d_cntl & V9X_R2_TEX_BLEND_MASK) == 0ul);
+    r.texture_min_filter = 5ul;         /* LINEARMIPNEAREST */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 1ul &&
+          (d.scale_3d_cntl & V9X_R2_TEX_BLEND_MASK) ==
+              V9X_R2_TEX_BLEND_MIPS);
+    r.texture_min_filter = 6ul;         /* LINEARMIPLINEAR, as MIPLINEAR */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 1ul &&
+          (d.scale_3d_cntl & V9X_R2_TEX_BLEND_MASK) == V9X_R2_TEX_BLEND_2X2);
+
+    /* Nearest magnification: codes 0 and 1 magnify, 2 and 3 draw nothing
+     * where they magnify (H0-H3), so the 2x2 filters stay refused. */
+    r.texture_mag_filter = 1ul;
+    r.texture_min_filter = 5ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 1ul &&
+          (d.scale_3d_cntl & V9X_R2_BILINEAR_TEX_EN) == 0ul);
+    r.texture_min_filter = 4ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_TEXTURE_FILTER);
+    r.texture_mag_filter = 2ul;
+
+    /* A chain short of 1x1, or a single level: the top level alone. */
+    r.texture_levels = 3ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 0ul &&
+          (d.scale_3d_cntl & V9X_R2_MIP_MAP_DISABLE) != 0ul);
+    r.texture_levels = 1ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 0ul);
+
+    /* 64x16 has seven levels too (64x16 ... 2x1, 1x1). */
+    r.texture_height = 16ul;
+    r.texture_levels = 7ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.mip_mapped == 1ul);
+
+    /* The state: TEX_SIZE_PITCH for the top level, every TEX_n_OFF. */
+    r.texture_height = 64ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    make_state(&s, 640ul, 480ul);
+    s.textured = 1ul;
+    s.texture.log2_width = 6ul;
+    s.texture.log2_height = 6ul;
+    s.texture.log2_pitch = 6ul;
+    s.texture.offset = 0x00300000ul;
+    for (level = 0ul; level <= 6ul; ++level) {
+        s.mip_offsets[level] = 0x00310000ul - (level << 8);
+    }
+    s.mip_offsets[6] = s.texture.offset;
+    CHECK(v9x_r2_build_draw_state(&s, &d, offsets, values,
+                                  V9X_R2_DRAW_STATE_DWORDS, &written) ==
+          V9X_STATUS_OK);
+    for (index = 0ul; index < written; ++index) {
+        if (offsets[index] >= V9X_R2_TEX_0_OFF &&
+            offsets[index] <= V9X_R2_TEX_0_OFF + 40ul) {
+            level = (offsets[index] - V9X_R2_TEX_0_OFF) / 4ul;
+            CHECK(level <= 6ul && values[index] == s.mip_offsets[level]);
+            seen |= 1ul << level;
+        }
+    }
+    CHECK(seen == 0x7ful);
+    /* A level off the 8-byte boundary, or past VRAM, is refused. */
+    s.mip_offsets[2] |= 4ul;
+    CHECK(v9x_r2_build_draw_state(&s, &d, offsets, values,
+                                  V9X_R2_DRAW_STATE_DWORDS, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    s.mip_offsets[2] = 0x003ffff8ul;
+    CHECK(v9x_r2_build_draw_state(&s, &d, offsets, values,
+                                  V9X_R2_DRAW_STATE_DWORDS, &written) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 static v9x_u32 lcg = 4242ul;
 
 static v9x_u32 lcg_next(v9x_u32 range)
@@ -550,6 +658,7 @@ unsigned int v9x_run_rage2_draw_tests(void)
 {
     test_policy();
     test_state();
+    test_mip();
     test_tall_triangles();
     test_split_coverage();
     return failures;

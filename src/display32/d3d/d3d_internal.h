@@ -462,6 +462,10 @@ DWORD v9x_d3d_place_block(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 DWORD v9x_d3d_place_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
                           DWORD bytes, const v9x_u32 *offsets,
                           const v9x_u32 *pitches, DWORD *base_out);
+/* Each surface in a block of its own: surface n at pitch pitches[n] for
+ * rows[n] rows, for an engine that addresses every level separately. */
+DWORD v9x_d3d_place_each(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
+                         const v9x_u32 *pitches, const v9x_u32 *rows);
 int v9x_d3d_place_release(V9X_DDHAL_DESTROYSURFACEDATA *data, DWORD align);
 
 /* The ViRGE S3D engine, in d3d_virge.c. */

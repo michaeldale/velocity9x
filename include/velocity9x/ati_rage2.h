@@ -237,8 +237,14 @@ v9x_status v9x_r2_build_z_state(const struct v9x_r2_target *target,
 #define V9X_R2_MIP_MAP_DISABLE      0x01000000ul
 #define V9X_R2_BILINEAR_TEX_EN      0x02000000ul
 /* TEX_BLEND_FCN, the minification filter, bits 27:26 (RRG p.6-6): 0
- * nearest, 2 a 2x2 blend in the nearest map. */
+ * nearest, 2 a 2x2 blend in the nearest map. With MIP_MAP_DISABLE clear
+ * (ATIRX /mip, 2026-10-03): 0 the nearest texel of the level chosen, 1
+ * the nearest texel of the two levels about it blended, 2 a 2x2 blend in
+ * the level chosen, and 3 a 2x2 blend in the next finer level - no
+ * trilinear. The level is the smallest whose texels are at least a pixel:
+ * 2^n texels of the top level a pixel take n levels down. */
 #define V9X_R2_TEX_BLEND_MASK       0x0c000000ul
+#define V9X_R2_TEX_BLEND_MIPS       0x04000000ul
 #define V9X_R2_TEX_BLEND_2X2        0x08000000ul
 /* The rest of SCALE_3D_CNTL a textured draw may set (RRG p.6-4..6-6):
  * ALPHA_FOG_EN 12:11 (1 blend, 2 fog), COLOR_OVERRIDE 13, the blend

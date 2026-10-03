@@ -1124,6 +1124,21 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_uint(work_names[k], snapshot.d3d.r2_work[k]);
         }
     }
+    {
+        /* Names follow V9X_R2_SURFACE_*. */
+        static const char *const surface_names[7] = {
+            "R2SurfaceCalls", "R2SurfaceSingle", "R2SurfaceChain",
+            "R2SurfaceNoShape", "R2SurfaceNoLevel", "R2SurfaceNoPlace",
+            "R2SurfaceMipAlone"
+        };
+        DWORD k;
+
+        for (k = 0ul; k < 7ul; ++k) {
+            v9x_write_uint(surface_names[k], snapshot.d3d.r2_surface[k]);
+        }
+        v9x_write_hex("R2SurfaceLastRefused",
+                      snapshot.d3d.r2_surface[V9X_R2_SURFACE_LAST_REFUSED]);
+    }
     /* The Win16 mutex measurement (2026-09-26): what _ConfirmWin16Lock
      * answered at each callback entry. Names match V9X_WIN16_SITE_*. */
     v9x_write_hex("Win16Resolved", snapshot.d3d.win16_resolved);

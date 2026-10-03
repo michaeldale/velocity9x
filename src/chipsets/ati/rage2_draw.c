@@ -68,8 +68,28 @@ static int r2_pow2_in_range(v9x_u32 edge)
            edge <= V9X_R2_DRAW_TEXTURE_MAX;
 }
 
-/* Only level 0 is sampled (MIP_MAP_DISABLE; mip-mapping was not
- * measured), so a mip filter is its filter within the level. */
+/* log2 of a power of two. */
+static v9x_u32 r2_log2(v9x_u32 edge)
+{
+    v9x_u32 log2 = 0ul;
+
+    while (edge > 1ul) {
+        edge >>= 1;
+        ++log2;
+    }
+    return log2;
+}
+
+static int r2_mip_filter(v9x_u32 filter)
+{
+    return filter == R2_FILTER_MIPNEAREST || filter == R2_FILTER_MIPLINEAR ||
+           filter == R2_FILTER_LINEARMIPNEAREST ||
+           filter == R2_FILTER_LINEARMIPLINEAR;
+}
+
+/* The filter within a level, which the checks below are made on. With a
+ * mip-mapped decision the engine applies it in the level it chooses;
+ * otherwise only the top level is sampled (MIP_MAP_DISABLE). */
 static v9x_u32 r2_base_filter(v9x_u32 filter)
 {
     switch (filter) {
@@ -229,6 +249,26 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
         }
         if (min == R2_FILTER_LINEAR) {
             scale |= V9X_R2_TEX_BLEND_2X2;
+        }
+        /*
+         * Mip-mapped where the chain reaches 1x1: the engine picks its
+         * level per pixel from its own increments and reads any level down
+         * to the last (ATIRX /mip), so a shorter chain would sample stale
+         * TEX_n_OFF registers and is drawn from its top level alone.
+         * LINEARMIPNEAREST is TEX_BLEND_FCN 1; LINEARMIPLINEAR has no
+         * engine function and is drawn as MIPLINEAR, the nearer of the two.
+         */
+        if (r2_mip_filter(request->texture_min_filter) &&
+            request->texture_levels > 1ul &&
+            request->texture_levels ==
+                r2_log2(request->texture_width > request->texture_height
+                            ? request->texture_width
+                            : request->texture_height) + 1ul) {
+            scale &= ~V9X_R2_MIP_MAP_DISABLE;
+            if (request->texture_min_filter == R2_FILTER_LINEARMIPNEAREST) {
+                scale |= V9X_R2_TEX_BLEND_MIPS;
+            }
+            decision->mip_mapped = 1ul;
         }
         /* Wrap is all the GT2C has (T4, T14, T15). */
         if (request->texture_wrap_u != 0ul || request->texture_wrap_v != 0ul) {
@@ -417,6 +457,30 @@ v9x_status v9x_r2_build_draw_state(const struct v9x_r2_draw_state *state,
             map_bytes > target->vram_bytes - texture->offset) {
             return V9X_STATUS_INSUFFICIENT_MEMORY;
         }
+        if (decision->mip_mapped != 0ul) {
+            v9x_u32 top = texture->log2_width > texture->log2_height
+                ? texture->log2_width : texture->log2_height;
+            v9x_u32 level;
+
+            /* Each level below the top at its own size: both edges
+             * halved with the level, neither below one texel. */
+            for (level = 0ul; level < top; ++level) {
+                v9x_u32 drop = top - level;
+                v9x_u32 width = drop >= texture->log2_width
+                    ? 1ul : 1ul << (texture->log2_width - drop);
+                v9x_u32 height = drop >= texture->log2_height
+                    ? 1ul : 1ul << (texture->log2_height - drop);
+                v9x_u32 offset = state->mip_offsets[level];
+
+                if ((offset & 7ul) != 0ul) {
+                    return V9X_STATUS_INVALID_ARGUMENT;
+                }
+                if (offset > target->vram_bytes ||
+                    width * height * 2ul > target->vram_bytes - offset) {
+                    return V9X_STATUS_INSUFFICIENT_MEMORY;
+                }
+            }
+        }
         pix_width |= decision->texture_format << V9X_R2_TEX_FORMAT_SHIFT;
     }
 
@@ -456,6 +520,14 @@ v9x_status v9x_r2_build_draw_state(const struct v9x_r2_draw_state *state,
                        (texture->log2_height << 8);
         offsets[at] = V9X_R2_TEX_0_OFF + level * 4ul;
         values[at++] = texture->offset;
+        if (decision->mip_mapped != 0ul) {
+            v9x_u32 below;
+
+            for (below = 0ul; below < level; ++below) {
+                offsets[at] = V9X_R2_TEX_0_OFF + below * 4ul;
+                values[at++] = state->mip_offsets[below];
+            }
+        }
     }
     /* The fog colour is DP_FRGD_CLR read as ARGB8888 (G7). Irrelevant
      * with the 3D source otherwise. */

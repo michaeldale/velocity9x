@@ -1517,6 +1517,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100304: the Rage IIC's texture placement outcomes. An append. */
 /* 2026100303: the Rage IIC's draw work gains pixels and trapezoids. An
  * append. */
 /* 2026100302: V9X_D3D_DIAGNOSTICS gains the Rage IIC's draw cost by part.
@@ -1625,7 +1626,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100303ul
+#define V9X_DD_SHARED_ABI   2026100304ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3166,6 +3167,11 @@ typedef struct v9x_d3d_diagnostics {
      * of every 10 s inside the draw with nothing to say where. */
     DWORD r2_cycles[4 * 2];
     DWORD r2_work[6];
+    /* Rage IIC texture creation (2026-10-03), V9X_R2_SURFACE_*: what
+     * v9x_d3d_rage2_create_surface placed and declined, and why. Half-Life
+     * mip-mapped 7,731 of 302,324 batches with 8,076 chains in a layout
+     * the sampler cannot read, and nothing said whose. */
+    DWORD r2_surface[8];
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_R2_COST_PREPARE  0u   /* policy, state, vertex conversion */
@@ -3178,6 +3184,14 @@ typedef struct v9x_d3d_diagnostics {
 #define V9X_R2_WORK_FIFO_READS 3u
 #define V9X_R2_WORK_PIXELS   4u   /* the pieces' area, whole pixels */
 #define V9X_R2_WORK_TRAPS    5u
+#define V9X_R2_SURFACE_CALLS          0u  /* textures offered        */
+#define V9X_R2_SURFACE_SINGLE         1u  /* placed, one surface     */
+#define V9X_R2_SURFACE_CHAIN          2u  /* placed, a mip chain     */
+#define V9X_R2_SURFACE_NO_SHAPE       3u  /* edge or format refused  */
+#define V9X_R2_SURFACE_NO_LEVEL       4u  /* a chain level not ours  */
+#define V9X_R2_SURFACE_NO_PLACE       5u  /* the heap had no room    */
+#define V9X_R2_SURFACE_MIP_ALONE      6u  /* one surface with MIPMAP */
+#define V9X_R2_SURFACE_LAST_REFUSED   7u  /* width << 16 | height    */
 
 /*
  * Bounded HAL callback trace (Hellbender plan H1). Both sides append

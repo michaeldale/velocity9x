@@ -191,6 +191,82 @@ DWORD v9x_d3d_place_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 }
 
 /*
+ * Each surface of the list in its own block from DirectDraw's heap, aligned
+ * to `align`, surface n at a pitch of pitches[n] for rows[n] rows.
+ *
+ * For an engine that reads every mip level at its own offset (the Rage
+ * IIC's TEX_n_OFF), so a chain needs no contiguous block. Half-Life's
+ * textures under Direct3D's texture management found no room for one block
+ * in 960 of 1,274 creations on A8U4I5 (2026-10-03), while DirectDraw's heap
+ * placed the same chains level by level - at pitches rounded to the
+ * texture alignment, which the sampler cannot read below 32 texels. Every
+ * surface keeps its block in its own dwReserved1, which
+ * v9x_d3d_place_release frees surface by surface. On a failure the blocks
+ * already taken are given back and nothing is placed.
+ */
+DWORD v9x_d3d_place_each(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
+                         const v9x_u32 *pitches, const v9x_u32 *rows)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    DWORD index;
+    DWORD vram;
+
+    if (align == 0ul || (align & (align - 1ul)) != 0ul) {
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+    if (!v9x_d3d_place_vidmem_resolve()) {
+        return V9X_D3D_PLACE_EXPORT;
+    }
+    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        (v9x_hal->fb.linear_base & (align - 1ul)) != 0ul) {
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+    vram = v9x_hal->fb.vram_bytes;
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        V9X_DD_SURFACE_GBL *surface = list[index]->lpGbl;
+        DWORD pitch = pitches[index];
+        DWORD block = 0ul;
+        DWORD base = 0xfffffffful;
+        DWORD reason = V9X_D3D_PLACE_BOUNDS;
+
+        if (pitch != 0ul) {
+            block = v9x_d3d_place_vidmem_alloc(
+                data->lpDD, 0, pitch,
+                rows[index] + (align + pitch - 1ul) / pitch);
+            reason = V9X_D3D_PLACE_ALLOC;
+        }
+        if (block != 0ul && block >= v9x_hal->fb.linear_base &&
+            block - v9x_hal->fb.linear_base < vram) {
+            base = (block - v9x_hal->fb.linear_base + align - 1ul) &
+                   ~(align - 1ul);
+            reason = V9X_D3D_PLACE_BOUNDS;
+        }
+        if (base == 0xfffffffful || base > vram ||
+            pitch * rows[index] > vram - base) {
+            DWORD undo;
+
+            if (block != 0ul) {
+                v9x_d3d_place_vidmem_free(data->lpDD, 0, block);
+            }
+            for (undo = 0ul; undo < index; ++undo) {
+                V9X_DD_SURFACE_GBL *placed = list[undo]->lpGbl;
+
+                v9x_d3d_place_vidmem_free(data->lpDD, 0,
+                                          placed->dwReserved1);
+                placed->dwReserved1 = 0ul;
+                placed->fpVidMem = 0ul;
+            }
+            return reason;
+        }
+        surface->fpVidMem = v9x_hal->fb.linear_base + base;
+        surface->lPitch = (LONG)pitch;
+        surface->dwBlockSizeX = 0ul;
+        surface->dwReserved1 = block;
+    }
+    return 0ul;
+}
+
+/*
  * The first surface of a list v9x_d3d_place_block placed is going; free the
  * block. Returns 1 when it freed one.
  *
