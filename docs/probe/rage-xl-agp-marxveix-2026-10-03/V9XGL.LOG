@@ -1,0 +1,1197 @@
+1 pid=FFF90E2B attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFF90E2B DrvValidateVersion version=1
+3 pid=FFF90E2B DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFF90E2B device: no render interface
+5 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFF90E2B DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFF90E2B detach slots-called=0 stub-calls=0
+1 pid=FFFA9A27 attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFA9A27 DrvValidateVersion version=1
+3 pid=FFFA9A27 DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFA9A27 device: no render interface
+5 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFA9A27 detach slots-called=0 stub-calls=0
+1 pid=FFFA9A27 attach instance=01D50000 tls=11 build-marker=1
+2 pid=FFFA9A27 DrvValidateVersion version=1
+3 pid=FFFA9A27 DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFA9A27 device: no render interface
+5 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+36 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+37 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+38 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+39 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+40 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+41 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+42 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+43 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+44 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+45 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+46 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+47 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+48 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+49 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+50 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+51 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+52 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+53 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+54 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+55 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+56 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+57 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+58 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+59 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+60 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+61 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+62 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+63 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+64 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+65 pid=FFFA9A27 DrvValidateVersion version=1
+66 pid=FFFA9A27 DrvSetCallbackProcs count=3 procs=662A3978
+67 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+68 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+69 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+70 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+71 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+72 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+73 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+74 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+75 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+76 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+77 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+78 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+79 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+80 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+81 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+82 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+83 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+84 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+85 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+86 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+87 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+88 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+89 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+90 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+91 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+92 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+93 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+94 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+95 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+96 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+97 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+98 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+99 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+100 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+101 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+102 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+103 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+104 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+105 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+106 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+107 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+108 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+109 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+110 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+111 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+112 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+113 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+114 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+115 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+116 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+117 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+118 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+119 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+120 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+121 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+122 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+123 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+124 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+125 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+126 pid=FFFA9A27 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+127 pid=FFFA9A27 detach slots-called=0 stub-calls=0
+1 pid=FFFA911F attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFA911F DrvValidateVersion version=1
+3 pid=FFFA911F DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFA911F device: no render interface
+5 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFA911F detach slots-called=0 stub-calls=0
+1 pid=FFFA911F attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFA911F DrvValidateVersion version=1
+3 pid=FFFA911F DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFA911F device: no render interface
+5 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFA911F detach slots-called=0 stub-calls=0
+1 pid=FFFA911F attach instance=01D50000 tls=13 build-marker=1
+2 pid=FFFA911F DrvValidateVersion version=1
+3 pid=FFFA911F DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFA911F device: no render interface
+5 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+36 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+37 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+38 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+39 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+40 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+41 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+42 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+43 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+44 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+45 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+46 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+47 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+48 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+49 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+50 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+51 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+52 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+53 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+54 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+55 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+56 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+57 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+58 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+59 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+60 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+61 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+62 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+63 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+64 pid=FFFA911F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+65 pid=FFFA911F detach slots-called=0 stub-calls=0
+1 pid=FFFA763F attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFA763F DrvValidateVersion version=1
+3 pid=FFFA763F DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFA763F device: no render interface
+5 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFA763F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFA763F detach slots-called=0 stub-calls=0
+1 pid=FFF868EF attach instance=01D50000 tls=13 build-marker=1
+2 pid=FFF868EF DrvValidateVersion version=1
+3 pid=FFF868EF DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFF868EF device: no render interface
+5 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+36 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+37 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+38 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+39 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+40 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+41 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+42 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+43 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+44 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+45 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+46 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+47 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+48 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+49 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+50 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+51 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+52 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+53 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+54 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+55 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+56 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+57 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+58 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+59 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+60 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+61 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+62 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+63 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+64 pid=FFF868EF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+65 pid=FFF868EF detach slots-called=0 stub-calls=0
+1 pid=FFE23A35 attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFE23A35 DrvValidateVersion version=1
+3 pid=FFE23A35 DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFE23A35 device: no render interface
+5 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFE23A35 DrvDescribePixelFormat index=1 bytes=0 -> count=0
+1 pid=FFFDA3CF attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFDA3CF DrvValidateVersion version=1
+3 pid=FFFDA3CF DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFDA3CF device: no render interface
+5 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFDA3CF detach slots-called=0 stub-calls=0
+1 pid=FFFDA3CF attach instance=01D50000 tls=11 build-marker=1
+2 pid=FFFDA3CF DrvValidateVersion version=1
+3 pid=FFFDA3CF DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFDA3CF device: no render interface
+5 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+36 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+37 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+38 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+39 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+40 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+41 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+42 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+43 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+44 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+45 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+46 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+47 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+48 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+49 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+50 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+51 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+52 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+53 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+54 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+55 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+56 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+57 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+58 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+59 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+60 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+61 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+62 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+63 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+64 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+65 pid=FFFDA3CF DrvValidateVersion version=1
+66 pid=FFFDA3CF DrvSetCallbackProcs count=3 procs=662A3978
+67 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+68 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+69 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+70 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+71 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+72 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+73 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+74 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+75 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+76 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+77 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+78 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+79 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+80 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+81 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+82 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+83 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+84 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+85 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+86 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+87 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+88 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+89 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+90 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+91 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+92 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+93 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+94 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+95 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+96 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+97 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+98 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+99 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+100 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+101 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+102 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+103 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+104 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+105 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+106 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+107 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+108 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+109 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+110 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+111 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+112 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+113 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+114 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+115 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+116 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+117 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+118 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+119 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+120 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+121 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+122 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+123 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+124 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+125 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+126 pid=FFFDA3CF DrvDescribePixelFormat index=1 bytes=0 -> count=0
+127 pid=FFFDA3CF detach slots-called=0 stub-calls=0
+1 pid=FFFD1E8F attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFD1E8F DrvValidateVersion version=1
+3 pid=FFFD1E8F DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFD1E8F device: no render interface
+5 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+6 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+7 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+8 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+9 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+10 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+11 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+12 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+13 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+14 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+15 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+16 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+17 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+18 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+19 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+20 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+21 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+22 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+23 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+24 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+25 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+26 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+27 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+28 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+29 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+30 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+31 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+32 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+33 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+34 pid=FFFD1E8F DrvDescribePixelFormat index=1 bytes=0 -> count=0
+35 pid=FFFD1E8F detach slots-called=0 stub-calls=0
+1 pid=FFFCA99F attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFCA99F DrvValidateVersion version=1
+3 pid=FFFCA99F DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFCA99F describe result=0 engine=1 formats=00000002
+5 pid=FFFCA99F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFCA99F DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFCA99F DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFCA99F detach slots-called=0 stub-calls=0
+1 pid=FFFD3753 attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFD3753 DrvValidateVersion version=1
+3 pid=FFFD3753 DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFD3753 describe result=0 engine=1 formats=00000002
+5 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD3753 DrvSetPixelFormat hdc=00000776 index=1
+33 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFD3753 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFD3753 DrvCreateLayerContext hdc=00000776 layer=0 -> 1
+36 pid=FFFD3753 drawable window=00000528 640x480
+37 pid=FFFD3753 DrvSetContext hdc=00000776 context=1 -> 1
+38 pid=FFFD3753 DrvGetProcAddress name=glColorTableEXT -> NULL
+39 pid=FFFD3753 state tex=2 size=02000100 tex=01010200 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+40 pid=FFFD3753 time interval-ms=152311 swaps=0 present-ms=0 draw-ms=218 upload-ms=0
+41 pid=FFFD3753 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=1/3 hw-refused=0/0
+42 pid=FFFD3753 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+43 pid=FFFD3753 state tex=1 size=00800080 tex=01040202 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+44 pid=FFFD3753 surface caps=00006040 640x480 failed
+45 pid=FFFD3753   hr=8876017C
+46 pid=FFFD3753 front: surface refused
+47 pid=FFFD3753 draw result=6 triangles=4 submitted=0
+48 pid=FFFD3753   v0 sx=441A0000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3823D70A tv=3823D70A
+49 pid=FFFD3753   v1 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3823D70A
+50 pid=FFFD3753   v2 sx=44200000 sy=41C00000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3DBFEB85
+51 pid=FFFD3753 surface caps=00006040 640x480 failed
+52 pid=FFFD3753   hr=8876017C
+53 pid=FFFD3753 front: surface refused
+54 pid=FFFD3753 draw result=6 triangles=14 submitted=0
+55 pid=FFFD3753   v0 sx=441A0000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3823D70A tv=3823D70A
+56 pid=FFFD3753   v1 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3823D70A
+57 pid=FFFD3753   v2 sx=44200000 sy=41C00000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3DBFEB85
+58 pid=FFFD3753 surface caps=00006040 640x480 failed
+59 pid=FFFD3753   hr=8876017C
+60 pid=FFFD3753 front: surface refused
+61 pid=FFFD3753 draw result=6 triangles=2 submitted=0
+62 pid=FFFD3753   v0 sx=441A0000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3823D70A tv=3823D70A
+63 pid=FFFD3753   v1 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3823D70A
+64 pid=FFFD3753   v2 sx=44200000 sy=41C00000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3DBFEB85
+65 pid=FFFD3753 surface caps=00006040 640x480 failed
+66 pid=FFFD3753   hr=8876017C
+67 pid=FFFD3753 front: surface refused
+68 pid=FFFD3753 draw result=6 triangles=2 submitted=0
+69 pid=FFFD3753   v0 sx=441A0000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3823D70A tv=3823D70A
+70 pid=FFFD3753   v1 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3823D70A
+71 pid=FFFD3753   v2 sx=44200000 sy=41C00000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3DBFEB85
+72 pid=FFFD3753 surface caps=00006040 640x480 failed
+73 pid=FFFD3753   hr=8876017C
+74 pid=FFFD3753 front: surface refused
+75 pid=FFFD3753 draw result=6 triangles=2 submitted=0
+76 pid=FFFD3753   v0 sx=441A0000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3823D70A tv=3823D70A
+77 pid=FFFD3753   v1 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3823D70A
+78 pid=FFFD3753   v2 sx=44200000 sy=41C00000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3DBFEB85
+79 pid=FFFD3753 surface caps=00006040 640x480 failed
+80 pid=FFFD3753   hr=8876017C
+81 pid=FFFD3753 front: surface refused
+82 pid=FFFD3753 draw result=6 triangles=2 submitted=0
+83 pid=FFFD3753   v0 sx=441A0000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3823D70A tv=3823D70A
+84 pid=FFFD3753   v1 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3823D70A
+85 pid=FFFD3753   v2 sx=44200000 sy=41C00000 sz=3F000000 rhw=3F800000 tu=3DBFEB85 tv=3DBFEB85
+86 pid=FFFD3753 surface caps=00006040 640x480 failed
+87 pid=FFFD3753   hr=8876017C
+88 pid=FFFD3753 front: surface refused
+89 pid=FFFD3753 surface caps=00006040 640x480 failed
+90 pid=FFFD3753   hr=8876017C
+91 pid=FFFD3753 front: surface refused
+92 pid=FFFD3753 surface caps=00006040 640x480 failed
+93 pid=FFFD3753   hr=8876017C
+94 pid=FFFD3753 front: surface refused
+95 pid=FFFD3753 surface caps=00006040 640x480 failed
+96 pid=FFFD3753   hr=8876017C
+97 pid=FFFD3753 front: surface refused
+98 pid=FFFD3753 surface caps=00006040 640x480 failed
+99 pid=FFFD3753   hr=8876017C
+100 pid=FFFD3753 front: surface refused
+101 pid=FFFD3753 surface caps=00006040 640x480 failed
+102 pid=FFFD3753   hr=8876017C
+103 pid=FFFD3753 front: surface refused
+104 pid=FFFD3753 surface caps=00006040 640x480 failed
+105 pid=FFFD3753   hr=8876017C
+106 pid=FFFD3753 front: surface refused
+107 pid=FFFD3753 surface caps=00006040 640x480 failed
+108 pid=FFFD3753   hr=8876017C
+109 pid=FFFD3753 front: surface refused
+110 pid=FFFD3753 surface caps=00006040 640x480 failed
+111 pid=FFFD3753   hr=8876017C
+112 pid=FFFD3753 front: surface refused
+113 pid=FFFD3753 surface caps=00006040 640x480 failed
+114 pid=FFFD3753   hr=8876017C
+115 pid=FFFD3753 front: surface refused
+116 pid=FFFD3753 surface caps=00006040 640x480 failed
+117 pid=FFFD3753   hr=8876017C
+118 pid=FFFD3753 front: surface refused
+119 pid=FFFD3753 surface caps=00006040 640x480 failed
+120 pid=FFFD3753   hr=8876017C
+121 pid=FFFD3753 front: surface refused
+122 pid=FFFD3753 surface caps=00006040 640x480 failed
+123 pid=FFFD3753   hr=8876017C
+124 pid=FFFD3753 front: surface refused
+125 pid=FFFD3753 surface caps=00006040 640x480 failed
+126 pid=FFFD3753   hr=8876017C
+127 pid=FFFD3753 front: surface refused
+128 pid=FFFD3753 surface caps=00006040 640x480 failed
+129 pid=FFFD3753   hr=8876017C
+130 pid=FFFD3753 front: surface refused
+131 pid=FFFD3753 surface caps=00006040 640x480 failed
+132 pid=FFFD3753   hr=8876017C
+133 pid=FFFD3753 front: surface refused
+134 pid=FFFD3753 surface caps=00006040 640x480 failed
+135 pid=FFFD3753   hr=8876017C
+136 pid=FFFD3753 front: surface refused
+137 pid=FFFD3753 surface caps=00006040 640x480 failed
+138 pid=FFFD3753   hr=8876017C
+139 pid=FFFD3753 front: surface refused
+140 pid=FFFD3753 surface caps=00006040 640x480 failed
+141 pid=FFFD3753   hr=8876017C
+142 pid=FFFD3753 front: surface refused
+143 pid=FFFD3753 surface caps=00006040 640x480 failed
+144 pid=FFFD3753   hr=8876017C
+145 pid=FFFD3753 front: surface refused
+146 pid=FFFD3753 surface caps=00006040 640x480 failed
+147 pid=FFFD3753   hr=8876017C
+148 pid=FFFD3753 front: surface refused
+149 pid=FFFD3753 surface caps=00006040 640x480 failed
+150 pid=FFFD3753   hr=8876017C
+151 pid=FFFD3753 front: surface refused
+152 pid=FFFD3753 surface caps=00006040 640x480 failed
+153 pid=FFFD3753   hr=8876017C
+154 pid=FFFD3753 front: surface refused
+155 pid=FFFD3753 surface caps=00006040 640x480 failed
+156 pid=FFFD3753   hr=8876017C
+157 pid=FFFD3753 front: surface refused
+158 pid=FFFD3753 surface caps=00006040 640x480 failed
+159 pid=FFFD3753   hr=8876017C
+160 pid=FFFD3753 front: surface refused
+161 pid=FFFD3753 surface caps=00006040 640x480 failed
+162 pid=FFFD3753   hr=8876017C
+163 pid=FFFD3753 front: surface refused
+164 pid=FFFD3753 surface caps=00006040 640x480 failed
+165 pid=FFFD3753   hr=8876017C
+166 pid=FFFD3753 front: surface refused
+167 pid=FFFD3753 surface caps=00006040 640x480 failed
+168 pid=FFFD3753   hr=8876017C
+169 pid=FFFD3753 front: surface refused
+170 pid=FFFD3753 surface caps=00006040 640x480 failed
+171 pid=FFFD3753   hr=8876017C
+172 pid=FFFD3753 front: surface refused
+173 pid=FFFD3753 surface caps=00006040 640x480 failed
+174 pid=FFFD3753   hr=8876017C
+175 pid=FFFD3753 front: surface refused
+176 pid=FFFD3753 surface caps=00006040 640x480 failed
+177 pid=FFFD3753   hr=8876017C
+178 pid=FFFD3753 front: surface refused
+179 pid=FFFD3753 surface caps=00006040 640x480 failed
+180 pid=FFFD3753   hr=8876017C
+181 pid=FFFD3753 front: surface refused
+182 pid=FFFD3753 surface caps=00006040 640x480 failed
+183 pid=FFFD3753   hr=8876017C
+184 pid=FFFD3753 front: surface refused
+185 pid=FFFD3753 surface caps=00006040 640x480 failed
+186 pid=FFFD3753   hr=8876017C
+187 pid=FFFD3753 front: surface refused
+188 pid=FFFD3753 surface caps=00006040 640x480 failed
+189 pid=FFFD3753   hr=8876017C
+190 pid=FFFD3753 front: surface refused
+191 pid=FFFD3753 surface caps=00006040 640x480 failed
+192 pid=FFFD3753   hr=8876017C
+193 pid=FFFD3753 front: surface refused
+194 pid=FFFD3753 surface caps=00006040 640x480 failed
+195 pid=FFFD3753   hr=8876017C
+196 pid=FFFD3753 front: surface refused
+197 pid=FFFD3753 surface caps=00006040 640x480 failed
+198 pid=FFFD3753   hr=8876017C
+199 pid=FFFD3753 front: surface refused
+200 pid=FFFD3753 surface caps=00006040 640x480 failed
+201 pid=FFFD3753   hr=8876017C
+202 pid=FFFD3753 front: surface refused
+203 pid=FFFD3753 surface caps=00006040 640x480 failed
+204 pid=FFFD3753   hr=8876017C
+205 pid=FFFD3753 front: surface refused
+206 pid=FFFD3753 surface caps=00006040 640x480 failed
+207 pid=FFFD3753   hr=8876017C
+208 pid=FFFD3753 front: surface refused
+209 pid=FFFD3753 surface caps=00006040 640x480 failed
+210 pid=FFFD3753   hr=8876017C
+211 pid=FFFD3753 front: surface refused
+212 pid=FFFD3753 surface caps=00006040 640x480 failed
+213 pid=FFFD3753   hr=8876017C
+214 pid=FFFD3753 front: surface refused
+215 pid=FFFD3753 surface caps=00006040 640x480 failed
+216 pid=FFFD3753   hr=8876017C
+217 pid=FFFD3753 front: surface refused
+218 pid=FFFD3753 surface caps=00006040 640x480 failed
+219 pid=FFFD3753   hr=8876017C
+220 pid=FFFD3753 front: surface refused
+221 pid=FFFD3753 surface caps=00006040 640x480 failed
+222 pid=FFFD3753   hr=8876017C
+223 pid=FFFD3753 front: surface refused
+224 pid=FFFD3753 surface caps=00006040 640x480 failed
+225 pid=FFFD3753   hr=8876017C
+226 pid=FFFD3753 front: surface refused
+227 pid=FFFD3753 surface caps=00006040 640x480 failed
+228 pid=FFFD3753   hr=8876017C
+229 pid=FFFD3753 front: surface refused
+230 pid=FFFD3753 surface caps=00006040 640x480 failed
+231 pid=FFFD3753   hr=8876017C
+232 pid=FFFD3753 front: surface refused
+233 pid=FFFD3753 surface caps=00006040 640x480 failed
+234 pid=FFFD3753   hr=8876017C
+235 pid=FFFD3753 front: surface refused
+236 pid=FFFD3753 surface caps=00006040 640x480 failed
+237 pid=FFFD3753   hr=8876017C
+238 pid=FFFD3753 front: surface refused
+239 pid=FFFD3753 surface caps=00006040 640x480 failed
+240 pid=FFFD3753   hr=8876017C
+241 pid=FFFD3753 front: surface refused
+242 pid=FFFD3753 surface caps=00006040 640x480 failed
+243 pid=FFFD3753   hr=8876017C
+244 pid=FFFD3753 front: surface refused
+245 pid=FFFD3753 surface caps=00006040 640x480 failed
+246 pid=FFFD3753   hr=8876017C
+247 pid=FFFD3753 front: surface refused
+248 pid=FFFD3753 surface caps=00006040 640x480 failed
+249 pid=FFFD3753   hr=8876017C
+250 pid=FFFD3753 front: surface refused
+251 pid=FFFD3753 state tex=27 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+252 pid=FFFD3753 state tex=28 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+253 pid=FFFD3753 state tex=30 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+254 pid=FFFD3753 state tex=31 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+255 pid=FFFD3753 state tex=33 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+256 pid=FFFD3753 state tex=34 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+257 pid=FFFD3753 state tex=35 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+258 pid=FFFD3753 state tex=48 size=01000100 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+259 pid=FFFD3753 state tex=49 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+260 pid=FFFD3753 state tex=153 size=00800080 tex=01010200 blend=01010400 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+261 pid=FFFD3753 state tex=155 size=00800080 tex=01010200 blend=01010400 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+262 pid=FFFD3753 state tex=158 size=00800080 tex=01010200 blend=01010400 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+263 pid=FFFD3753 state tex=148 size=01000100 tex=01010200 blend=00050600 depth=01040102 colour=FF4D4D4D mask=7 scissor=0,0,640,480 fog=0
+264 pid=FFFD3753 state tex=95 size=01000100 tex=01010200 blend=00050600 depth=01040102 colour=FF4E4E4E mask=7 scissor=0,0,640,480 fog=0
+265 pid=FFFD3753 state tex=6 size=00400040 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+266 pid=FFFD3753 state tex=25 size=02000020 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+267 pid=FFFD3753 state tex=4 size=01000100 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+268 pid=FFFD3753 state tex=1 size=00800080 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+269 pid=FFFD3753 state tex=24 size=02000020 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+270 pid=FFFD3753 state tex=2 size=02000100 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+271 pid=FFFD3753 state tex=27 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+272 pid=FFFD3753 state tex=28 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+273 pid=FFFD3753 state tex=30 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+274 pid=FFFD3753 state tex=33 size=00800080 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+275 pid=FFFD3753 time interval-ms=10135 swaps=14 present-ms=2090 draw-ms=3980 upload-ms=0
+276 pid=FFFD3753 paths batches/triangles untextured=0/0 hw=0/0 cpu=246/14337 cpu-nonsquare=16/47 hw-refused=0/0
+277 pid=FFFD3753 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=17 stubs=0 failed r4=0 r7=0 r8=0 other=61
+278 pid=FFFD3753 state tex=35 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+279 pid=FFFD3753 state tex=150 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+280 pid=FFFD3753 state tex=153 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+281 pid=FFFD3753 state tex=155 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+282 pid=FFFD3753 state tex=158 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+283 pid=FFFD3753 state tex=159 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+284 pid=FFFD3753 state tex=160 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+285 pid=FFFD3753 state tex=137 size=00200020 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+286 pid=FFFD3753 state tex=138 size=00200020 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+287 pid=FFFD3753 state tex=162 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+288 pid=FFFD3753 state tex=112 size=02000100 tex=01010200 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+289 pid=FFFD3753 state tex=95 size=01000100 tex=01010200 blend=00050600 depth=01070102 colour=FF464646 mask=7 scissor=0,0,640,480 fog=0
+290 pid=FFFD3753 state tex=6 size=00400040 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+291 pid=FFFD3753 state tex=25 size=02000020 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+292 pid=FFFD3753 state tex=4 size=01000100 tex=01040101 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+293 pid=FFFD3753 state tex=1 size=00800080 tex=01040101 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+294 pid=FFFD3753 state tex=24 size=02000020 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+295 pid=FFFD3753 state tex=2 size=02000100 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+296 pid=FFFD3753 state tex=27 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+297 pid=FFFD3753 state tex=28 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+298 pid=FFFD3753 state tex=30 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+299 pid=FFFD3753 state tex=33 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+300 pid=FFFD3753 time interval-ms=10213 swaps=4 present-ms=591 draw-ms=9451 upload-ms=0
+301 pid=FFFD3753 paths batches/triangles untextured=0/0 hw=0/0 cpu=447/22538 cpu-nonsquare=36/300 hw-refused=0/0
+302 pid=FFFD3753 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=35 stubs=0 failed r4=0 r7=0 r8=0 other=61
+303 pid=FFFD3753 surface caps=00006040 640x480 failed
+304 pid=FFFD3753   hr=8876017C
+305 pid=FFFD3753 front: surface refused
+306 pid=FFFD3753 surface caps=00006040 640x480 failed
+307 pid=FFFD3753   hr=8876017C
+308 pid=FFFD3753 front: surface refused
+309 pid=FFFD3753 surface caps=00006040 640x480 failed
+310 pid=FFFD3753   hr=8876017C
+311 pid=FFFD3753 front: surface refused
+312 pid=FFFD3753 surface caps=00006040 640x480 failed
+313 pid=FFFD3753   hr=8876017C
+314 pid=FFFD3753 front: surface refused
+315 pid=FFFD3753 surface caps=00006040 640x480 failed
+316 pid=FFFD3753   hr=8876017C
+317 pid=FFFD3753 front: surface refused
+318 pid=FFFD3753 surface caps=00006040 640x480 failed
+319 pid=FFFD3753   hr=8876017C
+320 pid=FFFD3753 front: surface refused
+321 pid=FFFD3753 surface caps=00006040 640x480 failed
+322 pid=FFFD3753   hr=8876017C
+323 pid=FFFD3753 front: surface refused
+324 pid=FFFD3753 surface caps=00006040 640x480 failed
+325 pid=FFFD3753   hr=8876017C
+326 pid=FFFD3753 front: surface refused
+327 pid=FFFD3753 time interval-ms=10153 swaps=5 present-ms=740 draw-ms=9217 upload-ms=0
+328 pid=FFFD3753 paths batches/triangles untextured=0/0 hw=0/0 cpu=631/30398 cpu-nonsquare=67/536 hw-refused=0/0
+329 pid=FFFD3753 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=56 stubs=0 failed r4=0 r7=0 r8=0 other=69
+330 pid=FFFD3753 surface caps=00006040 640x480 failed
+331 pid=FFFD3753   hr=8876017C
+332 pid=FFFD3753 front: surface refused
+333 pid=FFFD3753 surface caps=00006040 640x480 failed
+334 pid=FFFD3753   hr=8876017C
+335 pid=FFFD3753 front: surface refused
+336 pid=FFFD3753 surface caps=00006040 640x480 failed
+337 pid=FFFD3753   hr=8876017C
+338 pid=FFFD3753 front: surface refused
+339 pid=FFFD3753 time interval-ms=10060 swaps=4 present-ms=592 draw-ms=9384 upload-ms=0
+340 pid=FFFD3753 paths batches/triangles untextured=0/0 hw=0/0 cpu=753/33678 cpu-nonsquare=108/815 hw-refused=0/0
+341 pid=FFFD3753 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=84 stubs=0 failed r4=0 r7=0 r8=0 other=72
+342 pid=FFFD3753 surface caps=00006040 640x480 failed
+343 pid=FFFD3753   hr=8876017C
+344 pid=FFFD3753 front: surface refused
+345 pid=FFFD3753 surface caps=00006040 640x480 failed
+346 pid=FFFD3753   hr=8876017C
+347 pid=FFFD3753 front: surface refused
+348 pid=FFFD3753 surface caps=00006040 640x480 failed
+349 pid=FFFD3753   hr=8876017C
+350 pid=FFFD3753 front: surface refused
+351 pid=FFFD3753 surface caps=00006040 640x480 failed
+352 pid=FFFD3753   hr=8876017C
+353 pid=FFFD3753 front: surface refused
+354 pid=FFFD3753 surface caps=00006040 640x480 failed
+355 pid=FFFD3753   hr=8876017C
+356 pid=FFFD3753 front: surface refused
+357 pid=FFFD3753 surface caps=00006040 640x480 failed
+358 pid=FFFD3753   hr=8876017C
+359 pid=FFFD3753 front: surface refused
+360 pid=FFFD3753 surface caps=00006040 640x480 failed
+361 pid=FFFD3753   hr=8876017C
+362 pid=FFFD3753 front: surface refused
+363 pid=FFFD3753 surface caps=00006040 640x480 failed
+364 pid=FFFD3753   hr=8876017C
+365 pid=FFFD3753 front: surface refused
+366 pid=FFFD3753 surface caps=00006040 640x480 failed
+367 pid=FFFD3753   hr=8876017C
+368 pid=FFFD3753 front: surface refused
+369 pid=FFFD3753 surface caps=00006040 640x480 failed
+370 pid=FFFD3753   hr=8876017C
+371 pid=FFFD3753 front: surface refused
+372 pid=FFFD3753 DrvReleaseContext context=1 -> 1
+373 pid=FFFD3753 paths batches/triangles untextured=3/9 hw=0/0 cpu=867/37315 cpu-nonsquare=290/2781 hw-refused=0/0
+374 pid=FFFD3753 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=186 stubs=0 failed r4=0 r7=0 r8=0 other=82
+375 pid=FFFD3753 DrvDeleteContext context=1 -> 1
+376 pid=FFFD3753 detach slots-called=0 stub-calls=0
+1 pid=FFFD2AE9 attach instance=02A40000 tls=9 build-marker=1
+2 pid=FFFD2AE9 DrvValidateVersion version=1
+3 pid=FFFD2AE9 DrvSetCallbackProcs count=3 procs=662A3978
+4 pid=FFFD2AE9 describe result=0 engine=4 formats=00000002
+5 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD2AE9 DrvSetPixelFormat hdc=00000776 index=1
+33 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFD2AE9 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFD2AE9 DrvCreateLayerContext hdc=00000776 layer=0 -> 1
+36 pid=FFFD2AE9 drawable window=00000670 640x480
+37 pid=FFFD2AE9 DrvSetContext hdc=00000776 context=1 -> 1
+38 pid=FFFD2AE9 DrvGetProcAddress name=glColorTableEXT -> NULL
+39 pid=FFFD2AE9 state tex=2 size=02000100 tex=01010200 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+40 pid=FFFD2AE9 draw result=1 triangles=3 submitted=0
+41 pid=FFFD2AE9   v0 sx=441FFFFF sy=43F00000 sz=3F000000 rhw=3F800000 tu=3F7FFFFF tv=3F7FFFFF
+42 pid=FFFD2AE9   v1 sx=00000000 sy=00000000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+43 pid=FFFD2AE9   v2 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+44 pid=FFFD2AE9 time interval-ms=218741 swaps=0 present-ms=0 draw-ms=894526 upload-ms=0
+45 pid=FFFD2AE9 tsc frames=0 wall-ms=218741 vertex-ms=39333 flush-in-vertex-ms=0 flush-other-ms=1847595 bind-ms=21328 iface-ms=17291 beginend-ms=909570 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=741622 sink-prep-ms=736261 sinks=1
+46 pid=FFFD2AE9 sink begin-ms=22595554 flush-ms=0 copy-ms=2888 prep-texture-ms=732430 prep-state-ms=2931 prep-same-ms=617
+47 pid=FFFD2AE9 hwno hwtex-ms=3253 iface-cpu-ms=17830 not-cpu=0 square-side=0 too-big=1 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+48 pid=FFFD2AE9 prim transform-ms=3900 inside-ms=1809 window-ms=2911 assemble-ms=27559 history-ms=765 fast=0 clipped=2 culled=0
+49 pid=FFFD2AE9 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=1/3 hw-refused=0/0
+50 pid=FFFD2AE9 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 upload-kb=0 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=1
+51 pid=FFFD2AE9 state tex=1 size=00800080 tex=01040202 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+52 pid=FFFD2AE9 draw result=1 triangles=3 submitted=0
+53 pid=FFFD2AE9   v0 sx=441FFFFF sy=43F00000 sz=3F000000 rhw=3F800000 tu=3F7FFFFF tv=3F7FFFFF
+54 pid=FFFD2AE9   v1 sx=00000000 sy=00000000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+55 pid=FFFD2AE9   v2 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+56 pid=FFFD2AE9 state tex=4 size=01000100 tex=01010200 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+57 pid=FFFD2AE9 draw result=1 triangles=3 submitted=0
+58 pid=FFFD2AE9   v0 sx=441FFFFF sy=43F00000 sz=3F000000 rhw=3F800000 tu=3F7FFFFF tv=3F7FFFFF
+59 pid=FFFD2AE9   v1 sx=00000000 sy=00000000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+60 pid=FFFD2AE9   v2 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+61 pid=FFFD2AE9 state tex=4 size=01000100 tex=01040202 blend=00050601 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+62 pid=FFFD2AE9 draw result=1 triangles=3 submitted=0
+63 pid=FFFD2AE9   v0 sx=441FFFFF sy=43F00000 sz=3F000000 rhw=3F800000 tu=3F7FFFFF tv=3F7FFFFF
+64 pid=FFFD2AE9   v1 sx=00000000 sy=00000000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+65 pid=FFFD2AE9   v2 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+66 pid=FFFD2AE9 draw result=1 triangles=3 submitted=0
+67 pid=FFFD2AE9   v0 sx=441FFFFF sy=43F00000 sz=3F000000 rhw=3F800000 tu=3F7FFFFF tv=3F7FFFFF
+68 pid=FFFD2AE9   v1 sx=00000000 sy=00000000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+69 pid=FFFD2AE9   v2 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+70 pid=FFFD2AE9 draw result=1 triangles=3 submitted=0
+71 pid=FFFD2AE9   v0 sx=441FFFFF sy=43F00000 sz=3F000000 rhw=3F800000 tu=3F7FFFFF tv=3F7FFFFF
+72 pid=FFFD2AE9   v1 sx=00000000 sy=00000000 sz=3F000000 rhw=3F800000 tu=00000000 tv=00000000
+73 pid=FFFD2AE9   v2 sx=44200000 sy=00000000 sz=3F000000 rhw=3F800000 tu=3F800000 tv=00000000
+74 pid=FFFD2AE9 state tex=27 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+75 pid=FFFD2AE9 state tex=28 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+76 pid=FFFD2AE9 state tex=30 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+77 pid=FFFD2AE9 state tex=31 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+78 pid=FFFD2AE9 state tex=33 size=00800080 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+79 pid=FFFD2AE9 state tex=34 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+80 pid=FFFD2AE9 state tex=35 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+81 pid=FFFD2AE9 state tex=48 size=01000100 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+82 pid=FFFD2AE9 state tex=49 size=00400040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+83 pid=FFFD2AE9 state tex=153 size=00800080 tex=01010200 blend=01010400 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+84 pid=FFFD2AE9 state tex=155 size=00800080 tex=01010200 blend=01010400 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+85 pid=FFFD2AE9 state tex=158 size=00800080 tex=01010200 blend=01010400 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+86 pid=FFFD2AE9 state tex=148 size=01000100 tex=01010200 blend=00050600 depth=01040102 colour=FF4D4D4D mask=7 scissor=0,0,640,480 fog=0
+87 pid=FFFD2AE9 state tex=95 size=01000100 tex=01010200 blend=00050600 depth=01040102 colour=FF4E4E4E mask=7 scissor=0,0,640,480 fog=0
+88 pid=FFFD2AE9 state tex=6 size=00400040 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+89 pid=FFFD2AE9 state tex=25 size=02000020 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+90 pid=FFFD2AE9 state tex=4 size=01000100 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+91 pid=FFFD2AE9 state tex=1 size=00800080 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+92 pid=FFFD2AE9 state tex=24 size=02000020 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+93 pid=FFFD2AE9 state tex=2 size=02000100 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+94 pid=FFFD2AE9 state tex=27 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+95 pid=FFFD2AE9 state tex=28 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+96 pid=FFFD2AE9 state tex=30 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+97 pid=FFFD2AE9 state tex=33 size=00800080 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+98 pid=FFFD2AE9 state tex=35 size=00400040 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+99 pid=FFFD2AE9 state tex=150 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+100 pid=FFFD2AE9 state tex=153 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+101 pid=FFFD2AE9 state tex=155 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+102 pid=FFFD2AE9 state tex=158 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+103 pid=FFFD2AE9 state tex=159 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+104 pid=FFFD2AE9 state tex=160 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+105 pid=FFFD2AE9 state tex=137 size=00200020 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+106 pid=FFFD2AE9 state tex=138 size=00200020 tex=01010101 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+107 pid=FFFD2AE9 state tex=162 size=00800080 tex=01010101 blend=01010400 depth=01070001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+108 pid=FFFD2AE9 state tex=112 size=02000100 tex=01010200 blend=00050600 depth=01070102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+109 pid=FFFD2AE9 state tex=95 size=01000100 tex=01010200 blend=00050600 depth=01070102 colour=FF464646 mask=7 scissor=0,0,640,480 fog=0
+110 pid=FFFD2AE9 state tex=6 size=00400040 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+111 pid=FFFD2AE9 state tex=25 size=02000020 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+112 pid=FFFD2AE9 state tex=4 size=01000100 tex=01040101 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+113 pid=FFFD2AE9 state tex=1 size=00800080 tex=01040101 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+114 pid=FFFD2AE9 state tex=24 size=02000020 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+115 pid=FFFD2AE9 state tex=2 size=02000100 tex=01010100 blend=00050601 depth=00070101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+116 pid=FFFD2AE9 state tex=27 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+117 pid=FFFD2AE9 state tex=28 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0
+118 pid=FFFD2AE9 time interval-ms=10001 swaps=120 present-ms=576 draw-ms=2449 upload-ms=258
+119 pid=FFFD2AE9 tsc frames=120 wall-ms=10001 vertex-ms=1501 flush-in-vertex-ms=59 flush-other-ms=2905 bind-ms=29 iface-ms=2449 beginend-ms=1970 swap-ms=577 vertices=567996 flushes=5953 draws=5953 sink-ms=1883 sink-prep-ms=289 sinks=93357
+120 pid=FFFD2AE9 sink begin-ms=122 flush-ms=1490 copy-ms=55 prep-texture-ms=144 prep-state-ms=66 prep-same-ms=65
+121 pid=FFFD2AE9 hwno hwtex-ms=282 iface-cpu-ms=4 not-cpu=27 square-side=0 too-big=758 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+122 pid=FFFD2AE9 prim transform-ms=213 inside-ms=177 window-ms=289 assemble-ms=559 history-ms=79 fast=193182 clipped=61684 culled=45828
+123 pid=FFFD2AE9 paths batches/triangles untextured=27/192 hw=5168/194110 cpu=0/0 cpu-nonsquare=759/21082 hw-refused=0/0
+124 pid=FFFD2AE9 counters hwtex live=59 creates=60 create-failed=0 evictions=0 uploads=63 upload-kb=2093 squared=0 alpha-dropped=335 stubs=0 failed r4=0 r7=0 r8=0 other=759
+125 pid=FFFD2AE9 time interval-ms=10000 swaps=215 present-ms=1042 draw-ms=4354 upload-ms=65
+126 pid=FFFD2AE9 tsc frames=215 wall-ms=10000 vertex-ms=3073 flush-in-vertex-ms=494 flush-other-ms=4049 bind-ms=49 iface-ms=4354 beginend-ms=2664 swap-ms=1042 vertices=1003281 flushes=9816 draws=9816 sink-ms=3001 sink-prep-ms=303 sinks=90140
+127 pid=FFFD2AE9 sink begin-ms=150 flush-ms=2574 copy-ms=76 prep-texture-ms=163 prep-state-ms=65 prep-same-ms=61
+128 pid=FFFD2AE9 hwno hwtex-ms=89 iface-cpu-ms=9 not-cpu=118 square-side=0 too-big=1656 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+129 pid=FFFD2AE9 prim transform-ms=376 inside-ms=300 window-ms=461 assemble-ms=1486 history-ms=127 fast=231361 clipped=177196 culled=83442
+130 pid=FFFD2AE9 paths batches/triangles untextured=145/1692 hw=13210/415398 cpu=0/0 cpu-nonsquare=2415/90715 hw-refused=0/0
+131 pid=FFFD2AE9 counters hwtex live=69 creates=70 create-failed=0 evictions=0 uploads=83 upload-kb=2604 squared=0 alpha-dropped=491 stubs=0 failed r4=0 r7=0 r8=0 other=2415
+132 pid=FFFD2AE9 time interval-ms=10000 swaps=277 present-ms=1340 draw-ms=4951 upload-ms=98
+133 pid=FFFD2AE9 tsc frames=277 wall-ms=10000 vertex-ms=2045 flush-in-vertex-ms=87 flush-other-ms=5072 bind-ms=43 iface-ms=4951 beginend-ms=1927 swap-ms=1340 vertices=709069 flushes=8636 draws=8636 sink-ms=1860 sink-prep-ms=222 sinks=65523
+134 pid=FFFD2AE9 sink begin-ms=135 flush-ms=1552 copy-ms=50 prep-texture-ms=121 prep-state-ms=48 prep-same-ms=44
+135 pid=FFFD2AE9 hwno hwtex-ms=119 iface-cpu-ms=5 not-cpu=46 square-side=0 too-big=770 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+136 pid=FFFD2AE9 prim transform-ms=266 inside-ms=199 window-ms=250 assemble-ms=1007 history-ms=94 fast=112492 clipped=202689 culled=39156
+137 pid=FFFD2AE9 paths batches/triangles untextured=191/2098 hw=21030/557572 cpu=0/0 cpu-nonsquare=3185/124908 hw-refused=0/0
+138 pid=FFFD2AE9 counters hwtex live=72 creates=73 create-failed=0 evictions=0 uploads=106 upload-kb=3417 squared=0 alpha-dropped=599 stubs=0 failed r4=0 r7=0 r8=0 other=3185
+139 pid=FFFD2AE9 time interval-ms=10000 swaps=263 present-ms=1272 draw-ms=4689 upload-ms=24
+140 pid=FFFD2AE9 tsc frames=263 wall-ms=10000 vertex-ms=2048 flush-in-vertex-ms=0 flush-other-ms=4871 bind-ms=86 iface-ms=4688 beginend-ms=2291 swap-ms=1273 vertices=741105 flushes=9777 draws=9777 sink-ms=2100 sink-prep-ms=322 sinks=96864
+141 pid=FFFD2AE9 sink begin-ms=162 flush-ms=1662 copy-ms=66 prep-texture-ms=171 prep-state-ms=70 prep-same-ms=66
+142 pid=FFFD2AE9 hwno hwtex-ms=47 iface-cpu-ms=7 not-cpu=49 square-side=0 too-big=1217 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+143 pid=FFFD2AE9 prim transform-ms=278 inside-ms=226 window-ms=338 assemble-ms=865 history-ms=103 fast=180571 clipped=155000 culled=80482
+144 pid=FFFD2AE9 paths batches/triangles untextured=240/2294 hw=29541/734986 cpu=0/0 cpu-nonsquare=4402/185467 hw-refused=0/0
+145 pid=FFFD2AE9 counters hwtex live=81 creates=82 create-failed=0 evictions=0 uploads=117 upload-kb=3580 squared=0 alpha-dropped=644 stubs=0 failed r4=0 r7=0 r8=0 other=4402
+146 pid=FFFD2AE9 DrvReleaseContext context=1 -> 1
+147 pid=FFFD2AE9 paths batches/triangles untextured=376/2989 hw=35423/877507 cpu=0/0 cpu-nonsquare=5113/213593 hw-refused=0/0
+148 pid=FFFD2AE9 counters hwtex live=0 creates=102 create-failed=0 evictions=0 uploads=137 upload-kb=3759 squared=0 alpha-dropped=1805 stubs=0 failed r4=0 r7=0 r8=0 other=5113
+149 pid=FFFD2AE9 DrvDeleteContext context=1 -> 1
+150 pid=FFFD2AE9 detach slots-called=0 stub-calls=0
