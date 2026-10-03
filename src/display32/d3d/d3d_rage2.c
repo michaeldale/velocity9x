@@ -283,7 +283,12 @@ static void v9x_d3d_rage2_describe_caps(V9X_DD_SHARED *shared)
 
     tri = &shared->d3d_global.hwCaps.dpcTriCaps;
     tri->dwSize = sizeof(V9X_D3DPRIMCAPS);
-    tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
+    /* MASKZ: Z_CNTL's write bit serves ZWRITEENABLE, as Half-Life's
+     * lightmap pass already used. ATI's driver advertises it, and under
+     * ATI Half-Life draws a large textured pass with Z disabled that it
+     * never drew so under us (ATIRX /sample, 2026-10-03). */
+    tri->dwMiscCaps = V9X_D3DPMISCCAPS_MASKZ |
+                      V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW;
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
                         V9X_D3DPRASTERCAPS_FOGVERTEX;

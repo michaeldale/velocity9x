@@ -96,7 +96,11 @@ Pictures checked correct in both. ATI's 6.63 is now 16% ahead, not 54%.
 
 - Half-Life draws textured, non-blended passes without Z under ATI's
   driver (1,762 samples of `0B6C028F` with `Z_CNTL` `120`), and not under
-  ours. The caps differ in MASKZ, which we can serve (`Z_CNTL` bit 8) and
-  do not advertise.
+  ours. **Not MASKZ**: advertised from the same day (we serve it with
+  `Z_CNTL` bit 8), mwd5 ran 5.500, 5.596, 5.583 fps against 5.573, and
+  `/sample` (`hl-sample-v9x-maskz`) shows only the alpha-masked state
+  `51400080` gaining a Z-off share (692 samples); the bilinear state stays
+  Z-on (`0B400080` `121`, 2,785). The other cap differences - SUBPIXEL,
+  DITHER, SORTINCREASINGZ, TRANSPARENCY, no alpha compare - are untested.
 - CPU setup is now a larger share (15-24 k cycles a piece against 23-36 k
   of emit).
