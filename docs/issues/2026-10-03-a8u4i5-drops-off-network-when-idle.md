@@ -17,7 +17,11 @@ while nothing was running on it:
    way, configs restored and logs fetched, all successful. The next
    contact, about 15 minutes later, found no ping and no agent.
 
-Several Quake 2 sessions back to back never lost it; both losses came
+3. After the texture-cache runs (Half-Life and Quake 2, all finished and
+   fetched), a commit and documentation, roughly an hour idle: no answer
+   on the agent port when the next deploy started.
+
+Several Quake 2 sessions back to back never lost it; every loss came
 after the last session, in idle time.
 
 After the second loss Michael found Windows running normally at the

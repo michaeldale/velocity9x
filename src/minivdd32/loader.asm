@@ -128,6 +128,16 @@ V9X_ATI_MMIO_BYTES      equ 00001000h
 V9X_ATI_CONFIG_CHIP_ID  equ 000004e0h
 V9X_ATI_MOBILITY_ID     equ 00004c4dh
 V9X_ATI_RAGE_IIC_ID     equ 00004757h
+; Every part whose window this hands over: the Rage IIC and the Rage II class
+; bound as its aliases, then the Mobility-M and the Rage Pro class bound as
+; its aliases (packaging\families\ati\family.psd1; mach64_engine.c's
+; v9x_m64_chip_class sorts them by engine). Only GW and LM measured.
+V9X_ATI_CHIP_COUNT      equ 29
+V9xAtiChipIds   dw V9X_ATI_RAGE_IIC_ID, 4754h, 4755h, 4756h, 4759h, 475ah
+                dw 4c54h, 4c47h
+                dw V9X_ATI_MOBILITY_ID, 4742h, 4744h, 4747h, 4749h, 4750h
+                dw 4751h, 474ch, 474dh, 474eh, 474fh, 4752h, 4753h, 4c42h
+                dw 4c44h, 4c49h, 4c50h, 4c51h, 4c4eh, 4c52h, 4c53h
 V9xAtiMmioBase   dd 0
 V9xAtiMmioLinear dd 0
 ENDIF
@@ -2463,10 +2473,14 @@ V9xMini_Api_AtiMmioMap_Check:
     mov     edx, V9xAtiMmioLinear
     mov     eax, [edx+V9X_ATI_CONFIG_CHIP_ID]
     and     eax, 0000ffffh
-    cmp     eax, V9X_ATI_MOBILITY_ID
+    xor     ecx, ecx
+V9xMini_Api_AtiMmioMap_Next:
+    cmp     ax, V9xAtiChipIds[ecx*2]
     je      short V9xMini_Api_AtiMmioMap_Owned
-    cmp     eax, V9X_ATI_RAGE_IIC_ID
-    jne     short V9xMini_Api_AtiMmioMap_Refused
+    inc     ecx
+    cmp     ecx, V9X_ATI_CHIP_COUNT
+    jb      short V9xMini_Api_AtiMmioMap_Next
+    jmp     short V9xMini_Api_AtiMmioMap_Refused
 V9xMini_Api_AtiMmioMap_Owned:
     mov     [ebp.Client_EBX], edx
     mov     [ebp.Client_AX], 1

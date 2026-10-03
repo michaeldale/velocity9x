@@ -183,9 +183,11 @@ DWORD v9x_vdd_info_result;
  * truncates silently: the ids past the limit would simply never be scanned
  * for, with nothing to say why. Raised to leave room, and check-tree.ps1
  * asserts every family's id count against this number so the manifest cannot
- * outgrow the array unnoticed.
+ * outgrow the array unnoticed. 40 since the ati family bound the Rage II and
+ * Rage Pro classes (32 ids, 2026-10-03); the scan is one INT 1Ah B102h a
+ * slot, at load.
  */
-#define V9X_PCI_ID_LIMIT 16u
+#define V9X_PCI_ID_LIMIT 40u
 WORD v9x_pci_vendor[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_device[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_count = 0u;

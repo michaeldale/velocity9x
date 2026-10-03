@@ -67,6 +67,42 @@ static void setup(struct v9x_m64_engine *engine, struct fake_io *fake,
     CHECK(v9x_m64_engine_init(engine, &io, model) == V9X_STATUS_OK);
 }
 
+/*
+ * CONFIG_CHIP_ID's low word to the engine class eng_mach64.c drives: the
+ * Rage II class (no setup engine, pre-VTB FIFO) and the Rage Pro class
+ * (setup engine, VTB+ FIFO). The revision byte above it is ignored; a
+ * VT, an unknown id, or a window reading zeros or ones is neither.
+ */
+static void test_chip_class(void)
+{
+    static const v9x_u32 rage2[] = {
+        0x7a004757ul, 0x00004754ul, 0x00004755ul, 0x00004756ul,
+        0x00004759ul, 0x0000475aul, 0x00004c54ul, 0x00004c47ul
+    };
+    static const v9x_u32 rage_pro[] = {
+        0x64004c4dul, 0x00004742ul, 0x00004744ul, 0x00004747ul,
+        0x00004749ul, 0x00004750ul, 0x00004751ul, 0x0000474cul,
+        0x0000474dul, 0x0000474eul, 0x0000474ful, 0x00004752ul,
+        0x00004753ul, 0x00004c42ul, 0x00004c44ul, 0x00004c49ul,
+        0x00004c50ul, 0x00004c51ul, 0x00004c4eul, 0x00004c52ul,
+        0x00004c53ul
+    };
+    unsigned int index;
+
+    for (index = 0u; index < sizeof(rage2) / sizeof(rage2[0]); ++index) {
+        CHECK(v9x_m64_chip_class(rage2[index]) == V9X_M64_CHIP_CLASS_RAGE2);
+    }
+    for (index = 0u; index < sizeof(rage_pro) / sizeof(rage_pro[0]);
+         ++index) {
+        CHECK(v9x_m64_chip_class(rage_pro[index]) ==
+              V9X_M64_CHIP_CLASS_RAGE_PRO);
+    }
+    CHECK(v9x_m64_chip_class(0x00005654ul) == V9X_M64_CHIP_CLASS_NONE);
+    CHECK(v9x_m64_chip_class(0x00005656ul) == V9X_M64_CHIP_CLASS_NONE);
+    CHECK(v9x_m64_chip_class(0x00000000ul) == V9X_M64_CHIP_CLASS_NONE);
+    CHECK(v9x_m64_chip_class(0xfffffffful) == V9X_M64_CHIP_CLASS_NONE);
+}
+
 static void test_fifo_decode(void)
 {
     CHECK(v9x_m64_fifo_free(V9X_M64_FIFO_VTB_PLUS, 0x00800001ul) == 128ul);
@@ -1263,6 +1299,7 @@ static void test_phase3_triangle_golden(void)
 
 unsigned int v9x_run_mach64_engine_tests(void)
 {
+    test_chip_class();
     test_fifo_decode();
     test_exact_batch_has_no_inner_read();
     test_shadow_keeps_order_and_latest();

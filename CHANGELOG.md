@@ -68,6 +68,14 @@ re-measured under ATI's driver on 2026-10-03.
   measurable speed in either demo
   ([record](docs/decisions/2026-10-03-rage-iic-mip-mapping.md)).
 
+- **The rest of the Rage II and Rage Pro lines bound**, at Michael's
+  request, from ATI's own driver list: the Rage II class (Rage II, II+, the
+  other Rage IIC ids, LT, LT-G) on the Rage IIC's path, the Rage Pro class
+  (Rage Pro, LT Pro, XL, XC, the other Mobility parts) on the Mobility-M's
+  Mach64 engine path, and the Mach64 VT3/VT4 on the VT2's tier-0 path - 29
+  ids, each "not validated" in the INF; none has run anywhere. The engine is
+  driven only once `CONFIG_CHIP_ID` names the class its path expects.
+
 ### Shared core (all engines)
 
 - **The render interface's draw saves the FPU** as the Direct3D entries

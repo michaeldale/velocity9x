@@ -19,6 +19,8 @@
 #define V9X_PCI_DEVICE_TRIO32_64  ((v9x_u16)0x8813u)
 #define V9X_PCI_DEVICE_TRIO64UV   ((v9x_u16)0x8814u)
 #define V9X_PCI_DEVICE_TRIO64V2   ((v9x_u16)0x8901u)
+/* The ViRGE/DX's alias, measured on A8U4I5 (virge_hw16.c). */
+#define V9X_PCI_DEVICE_TRIO3D2X   ((v9x_u16)0x8a13u)
 
 v9x_status v9x_s3_virge_probe(struct v9x_backend_state *state,
                               const struct v9x_pci_identity *pci);

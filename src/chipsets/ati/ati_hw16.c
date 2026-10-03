@@ -21,6 +21,35 @@ extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_mach64_vt2_device;
 extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
 extern const V9X_HW16_DEVICE v9x_rage_iic_device;
+extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
+extern const V9X_HW16_DEVICE v9x_mach64_vt4_device;
+extern const V9X_HW16_DEVICE v9x_ati_4754_device;
+extern const V9X_HW16_DEVICE v9x_ati_4755_device;
+extern const V9X_HW16_DEVICE v9x_ati_4756_device;
+extern const V9X_HW16_DEVICE v9x_ati_4759_device;
+extern const V9X_HW16_DEVICE v9x_ati_475a_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c54_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c47_device;
+extern const V9X_HW16_DEVICE v9x_ati_4742_device;
+extern const V9X_HW16_DEVICE v9x_ati_4744_device;
+extern const V9X_HW16_DEVICE v9x_ati_4747_device;
+extern const V9X_HW16_DEVICE v9x_ati_4749_device;
+extern const V9X_HW16_DEVICE v9x_ati_4750_device;
+extern const V9X_HW16_DEVICE v9x_ati_4751_device;
+extern const V9X_HW16_DEVICE v9x_ati_474c_device;
+extern const V9X_HW16_DEVICE v9x_ati_474d_device;
+extern const V9X_HW16_DEVICE v9x_ati_474e_device;
+extern const V9X_HW16_DEVICE v9x_ati_474f_device;
+extern const V9X_HW16_DEVICE v9x_ati_4752_device;
+extern const V9X_HW16_DEVICE v9x_ati_4753_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c42_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c44_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c49_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c50_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c51_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c4e_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c52_device;
+extern const V9X_HW16_DEVICE v9x_ati_4c53_device;
 
 /*
  * The emulated part first, so a run with no -ChipId lands on the target that
@@ -30,7 +59,40 @@ extern const V9X_HW16_DEVICE v9x_rage_iic_device;
 static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_mach64_vt2_device,
     &v9x_rage_mobility_device,
-    &v9x_rage_iic_device
+    &v9x_rage_iic_device,
+    /* The aliases, each declared in its chip's module: the VT2's, the
+     * Rage IIC's (the Rage II class) and the Mobility-M's (the Rage Pro
+     * class). A machine has one card, so order among them carries no
+     * meaning. */
+    &v9x_mach64_vt3_device,
+    &v9x_mach64_vt4_device,
+    &v9x_ati_4754_device,
+    &v9x_ati_4755_device,
+    &v9x_ati_4756_device,
+    &v9x_ati_4759_device,
+    &v9x_ati_475a_device,
+    &v9x_ati_4c54_device,
+    &v9x_ati_4c47_device,
+    &v9x_ati_4742_device,
+    &v9x_ati_4744_device,
+    &v9x_ati_4747_device,
+    &v9x_ati_4749_device,
+    &v9x_ati_4750_device,
+    &v9x_ati_4751_device,
+    &v9x_ati_474c_device,
+    &v9x_ati_474d_device,
+    &v9x_ati_474e_device,
+    &v9x_ati_474f_device,
+    &v9x_ati_4752_device,
+    &v9x_ati_4753_device,
+    &v9x_ati_4c42_device,
+    &v9x_ati_4c44_device,
+    &v9x_ati_4c49_device,
+    &v9x_ati_4c50_device,
+    &v9x_ati_4c51_device,
+    &v9x_ati_4c4e_device,
+    &v9x_ati_4c52_device,
+    &v9x_ati_4c53_device
 };
 
 /*

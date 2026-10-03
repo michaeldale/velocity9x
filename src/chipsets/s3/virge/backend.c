@@ -51,6 +51,9 @@ static v9x_status v9x_s3_virge_recover(struct v9x_backend_state *state)
  */
 static const v9x_u16 v9x_s3_device_ids[] = {
     V9X_PCI_DEVICE_VIRGE_DX,
+    /* Missing until the family-matrix test began probing each alias
+     * (2026-10-03); this table is host-side policy, so no machine saw it. */
+    V9X_PCI_DEVICE_TRIO3D2X,
     V9X_PCI_DEVICE_TRIO64,
     V9X_PCI_DEVICE_TRIO32,
     V9X_PCI_DEVICE_AURORA64,

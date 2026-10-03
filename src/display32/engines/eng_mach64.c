@@ -16,7 +16,9 @@ static DWORD v9x_m64_base = 0ul;
  * Two chips share this 2D wrapper: the Rage Mobility-M (ATI_MACH64) and the
  * Rage IIC (ATI_RAGE2). They have the same register window and 2D engine;
  * the Rage IIC has no setup engine, and the type keeps it out of
- * d3d_mach64.c. Which chip id CONFIG_CHIP_ID must name follows the type.
+ * d3d_mach64.c. Which chip class CONFIG_CHIP_ID must name follows the type
+ * (v9x_m64_chip_class: the Rage IIC's, or the Mobility-M's, with their
+ * aliases).
  */
 static int v9x_m64_is_rage2(void)
 {
@@ -81,10 +83,13 @@ static int v9x_m64_validate(void)
     if (!v9x_m64_bind_core()) return 0;
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul)
         return 1;
+    /* The class the engine type was stamped for: Rage II for ATI_RAGE2,
+     * Rage Pro for ATI_MACH64 (the Rage IIC and Mobility-M and the aliases
+     * bound to each). */
     chip = (DWORD)v9x_m64_hal_read(0, V9X_M64_CONFIG_CHIP_ID);
-    if ((chip & 0xfffful) !=
-        (v9x_m64_is_rage2() ? V9X_M64_CHIP_RAGE_IIC
-                            : V9X_M64_CHIP_RAGE_MOBILITY_M)) {
+    if (v9x_m64_chip_class(chip) !=
+        (v9x_m64_is_rage2() ? V9X_M64_CHIP_CLASS_RAGE2
+                            : V9X_M64_CHIP_CLASS_RAGE_PRO)) {
         return 0;
     }
     /*

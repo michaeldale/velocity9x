@@ -144,6 +144,24 @@ static void test_aliases_resolve_to_their_chip(void)
                    (unsigned int)alias->vendor_id,
                    (unsigned int)alias->device_id);
             ++matrix_failures;
+            continue;
+        }
+        /* And that backend's own probe takes it: a probe with its own id
+         * list (ati_backend.c) would otherwise refuse an alias the registry
+         * routes to it, and the card would install and then not enable. */
+        {
+            struct v9x_backend_state state;
+
+            memset(&state, 0, sizeof(state));
+            if (ops->probe == 0 || ops->probe(&state, &pci) != V9X_STATUS_OK) {
+                printf("FAIL %s:%u: %s/%s alias %04x:%04x is refused by its "
+                       "backend's probe\n",
+                       __FILE__, (unsigned int)__LINE__,
+                       alias->family_id, alias->chip_id,
+                       (unsigned int)alias->vendor_id,
+                       (unsigned int)alias->device_id);
+                ++matrix_failures;
+            }
         }
     }
 }

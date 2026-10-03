@@ -22,6 +22,41 @@ v9x_u32 v9x_m64_fifo_free(v9x_u16 fifo_model, v9x_u32 status)
     return V9X_M64_VT_FIFO_ENTRIES - v9x_m64_popcount16(status);
 }
 
+/* CONFIG_CHIP_ID[15:0] by engine class: the ASCII pairs of the PCI device
+ * ids. GW (4757) and LM (4C4D) measured; the rest are the manifest's
+ * aliases. */
+static const v9x_u16 v9x_m64_rage2_chips[] = {
+    0x4757u, 0x4754u, 0x4755u, 0x4756u, 0x4759u, 0x475au, 0x4c54u, 0x4c47u
+};
+static const v9x_u16 v9x_m64_rage_pro_chips[] = {
+    0x4c4du, 0x4742u, 0x4744u, 0x4747u, 0x4749u, 0x4750u, 0x4751u, 0x474cu,
+    0x474du, 0x474eu, 0x474fu, 0x4752u, 0x4753u, 0x4c42u, 0x4c44u, 0x4c49u,
+    0x4c50u, 0x4c51u, 0x4c4eu, 0x4c52u, 0x4c53u
+};
+
+v9x_u32 v9x_m64_chip_class(v9x_u32 config_chip_id)
+{
+    v9x_u16 chip = (v9x_u16)(config_chip_id & 0xfffful);
+    unsigned int index;
+
+    for (index = 0u;
+         index < sizeof(v9x_m64_rage2_chips) / sizeof(v9x_m64_rage2_chips[0]);
+         ++index) {
+        if (chip == v9x_m64_rage2_chips[index]) {
+            return V9X_M64_CHIP_CLASS_RAGE2;
+        }
+    }
+    for (index = 0u;
+         index < sizeof(v9x_m64_rage_pro_chips) /
+                     sizeof(v9x_m64_rage_pro_chips[0]);
+         ++index) {
+        if (chip == v9x_m64_rage_pro_chips[index]) {
+            return V9X_M64_CHIP_CLASS_RAGE_PRO;
+        }
+    }
+    return V9X_M64_CHIP_CLASS_NONE;
+}
+
 v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
                                const struct v9x_m64_io *io,
                                v9x_u16 fifo_model)

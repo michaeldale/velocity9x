@@ -28,3 +28,32 @@ const V9X_HW16_DEVICE v9x_mach64_vt2_device = {
     0,
     0
 };
+
+/*
+ * The VT2's aliases, the VT3 and VT4: the same 2D engine and video, no 3D
+ * engine, so the same tier-0 entry - VBE modes, CPU drawing, no hook. An entry
+ * per id because the PCI scan matches one per id and each names its own part
+ * in V9XHW.INI (trio_hw16.c says why at length). Bound from ATI's MACXW4 INF
+ * list; neither has run anywhere.
+ */
+#define V9X_VT2_ALIAS_TAIL \
+    "ati-mach64-unavailable-v1", \
+    "vbe-lfb", \
+    0, \
+    0, \
+    0, \
+    0
+
+const V9X_HW16_DEVICE v9x_mach64_vt3_device = {
+    0x1002u, 0x5655u,
+    "ATI Mach64 VT3 264VT3",
+    "1002", "5655",
+    V9X_VT2_ALIAS_TAIL
+};
+
+const V9X_HW16_DEVICE v9x_mach64_vt4_device = {
+    0x1002u, 0x5656u,
+    "ATI Mach64 VT4 264VT4",
+    "1002", "5656",
+    V9X_VT2_ALIAS_TAIL
+};

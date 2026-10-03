@@ -15,8 +15,37 @@
 
 static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x5654u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 */
+    { 0x1002u, 0x5655u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 alias */
+    { 0x1002u, 0x5656u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 alias */
     { 0x1002u, 0x4C4Du, v9x_ati_mach64_backend }, /* ati / rage-mobility-m */
+    { 0x1002u, 0x4742u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4744u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4747u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4749u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4750u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4751u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x474Cu, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x474Du, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x474Eu, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x474Fu, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4752u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4753u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C42u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C44u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C49u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C50u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C51u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C4Eu, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C52u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
+    { 0x1002u, 0x4C53u, v9x_ati_mach64_backend }, /* ati / rage-mobility-m alias */
     { 0x1002u, 0x4757u, v9x_ati_mach64_backend }, /* ati / rage-iic */
+    { 0x1002u, 0x4754u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
+    { 0x1002u, 0x4755u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
+    { 0x1002u, 0x4756u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
+    { 0x1002u, 0x4759u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
+    { 0x1002u, 0x475Au, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
+    { 0x1002u, 0x4C54u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
+    { 0x1002u, 0x4C47u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
     { 0x8086u, 0x27AEu, v9x_intel_gma_backend }, /* intel-gma / gma950-945gse */
     { 0x102Bu, 0x051Bu, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2164w */
     { 0x102Bu, 0x0519u, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2064w */

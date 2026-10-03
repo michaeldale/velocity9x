@@ -81,6 +81,95 @@ const V9X_HW16_DEVICE v9x_rage_mobility_device = {
 const V9X_HW16_DEVICE v9x_rage_iic_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+/* The ATI aliases: the VT2's, the Rage IIC's and the Mobility-M's.
+ * Stubs on the same terms as the Trio64's. */
+const V9X_HW16_DEVICE v9x_mach64_vt3_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_mach64_vt4_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4754_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4755_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4756_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4759_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_475a_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c54_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c47_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4742_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4744_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4747_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4749_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4750_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4751_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_474c_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_474d_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_474e_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_474f_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4752_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4753_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c42_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c44_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c49_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c50_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c51_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c4e_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c52_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_ati_4c53_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)

@@ -151,6 +151,20 @@ v9x_status v9x_m64_engine_init(struct v9x_m64_engine *engine,
                                const struct v9x_m64_io *io,
                                v9x_u16 fifo_model);
 v9x_u32 v9x_m64_fifo_free(v9x_u16 fifo_model, v9x_u32 status);
+
+/*
+ * The engine class CONFIG_CHIP_ID names, from its low word (the PCI device
+ * id's ASCII pair): the Rage II class - Rage II, II+, IIC, LT, LT-G - with
+ * no setup engine and the pre-VTB FIFO, which eng_mach64.c drives as
+ * ATI_RAGE2; or the Rage Pro class - Rage Pro, LT Pro, XL, XC, the
+ * Mobility parts - with the setup engine and the VTB+ FIFO, driven as
+ * ATI_MACH64. Measured on one part of each (GW, LM); the rest are the
+ * aliases the manifest binds, unmeasured.
+ */
+#define V9X_M64_CHIP_CLASS_NONE      0ul
+#define V9X_M64_CHIP_CLASS_RAGE2     1ul
+#define V9X_M64_CHIP_CLASS_RAGE_PRO  2ul
+v9x_u32 v9x_m64_chip_class(v9x_u32 config_chip_id);
 v9x_status v9x_m64_reserve(struct v9x_m64_engine *engine,
                            v9x_u32 entries, v9x_u32 spin_limit);
 v9x_status v9x_m64_emit_batch(struct v9x_m64_engine *engine,

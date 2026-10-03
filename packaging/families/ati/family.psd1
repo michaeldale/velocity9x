@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M and 3D Rage IIC, dispatched at run time by PCI id. Tier-0 VBE bring-up, no acceleration.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M and 3D Rage IIC, dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -82,6 +82,19 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_mach64_vt2_device')
+
+            # The VT3 and VT4: the VT2's 2D engine and video, no 3D engine,
+            # bound to this chip's tier-0 path (VBE modes, CPU drawing).
+            # Ids from ATI's MACXW4 INF list (Michael, 2026-10-03); neither
+            # part has run anywhere.
+            Aliases = @(
+                @{ DeviceId = '5655'
+                   Name = 'ATI Mach64 VT3 264VT3'
+                   DeviceDesc = 'Velocity9x ATI Mach64 VT3' }
+                @{ DeviceId = '5656'
+                   Name = 'ATI Mach64 VT4 264VT4'
+                   DeviceDesc = 'Velocity9x ATI Mach64 VT4' }
+            )
         }
         @{
             Id = 'rage-mobility-m'
@@ -124,6 +137,77 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_rage_mobility_device')
+
+            # The Rage Pro class - Rage Pro, LT Pro, XL, XC and the other
+            # Mobility parts - bound to this chip's Mach64 3D engine path:
+            # the Mobility-M is a Rage Pro core, and its setup engine,
+            # register window and VTB+ FIFO are what these parts share.
+            # Bound at Michael's request (2026-10-03) from ATI's MACXW4 INF
+            # list; none has run anywhere, so each is "not validated" in the
+            # INF. eng_mach64.c accepts their CONFIG_CHIP_ID as the Rage Pro
+            # class (v9x_m64_chip_class) before it drives the engine.
+            Aliases = @(
+                @{ DeviceId = '4742'
+                   Name = 'ATI 3D Rage Pro AGP 2X'
+                   DeviceDesc = 'Velocity9x ATI Rage Pro AGP 2X' }
+                @{ DeviceId = '4744'
+                   Name = 'ATI 3D Rage Pro AGP'
+                   DeviceDesc = 'Velocity9x ATI Rage Pro AGP' }
+                @{ DeviceId = '4747'
+                   Name = 'ATI 3D Rage Pro'
+                   DeviceDesc = 'Velocity9x ATI Rage Pro' }
+                @{ DeviceId = '4749'
+                   Name = 'ATI 3D Rage Pro PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage Pro PCI (4749)' }
+                @{ DeviceId = '4750'
+                   Name = 'ATI 3D Rage Pro PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage Pro PCI (4750)' }
+                @{ DeviceId = '4751'
+                   Name = 'ATI 3D Rage Pro PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage Pro PCI (4751)' }
+                @{ DeviceId = '474C'
+                   Name = 'ATI 3D Rage XC PCI-66'
+                   DeviceDesc = 'Velocity9x ATI Rage XC PCI-66' }
+                @{ DeviceId = '474D'
+                   Name = 'ATI 3D Rage XL AGP'
+                   DeviceDesc = 'Velocity9x ATI Rage XL AGP' }
+                @{ DeviceId = '474E'
+                   Name = 'ATI 3D Rage XC AGP'
+                   DeviceDesc = 'Velocity9x ATI Rage XC AGP' }
+                @{ DeviceId = '474F'
+                   Name = 'ATI 3D Rage XL PCI-66'
+                   DeviceDesc = 'Velocity9x ATI Rage XL PCI-66' }
+                @{ DeviceId = '4752'
+                   Name = 'ATI 3D Rage XL PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage XL PCI' }
+                @{ DeviceId = '4753'
+                   Name = 'ATI 3D Rage XC PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage XC PCI' }
+                @{ DeviceId = '4C42'
+                   Name = 'ATI 3D Rage LT Pro AGP 2X'
+                   DeviceDesc = 'Velocity9x ATI Rage LT Pro AGP 2X' }
+                @{ DeviceId = '4C44'
+                   Name = 'ATI 3D Rage LT Pro AGP'
+                   DeviceDesc = 'Velocity9x ATI Rage LT Pro AGP' }
+                @{ DeviceId = '4C49'
+                   Name = 'ATI 3D Rage LT Pro PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage LT Pro PCI (4C49)' }
+                @{ DeviceId = '4C50'
+                   Name = 'ATI 3D Rage LT Pro PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage LT Pro PCI (4C50)' }
+                @{ DeviceId = '4C51'
+                   Name = 'ATI 3D Rage LT Pro PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage LT Pro PCI (4C51)' }
+                @{ DeviceId = '4C4E'
+                   Name = 'ATI 3D Rage Mobility-L AGP'
+                   DeviceDesc = 'Velocity9x ATI Rage Mobility-L AGP' }
+                @{ DeviceId = '4C52'
+                   Name = 'ATI 3D Rage Mobility P/M PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage Mobility P/M PCI' }
+                @{ DeviceId = '4C53'
+                   Name = 'ATI 3D Rage Mobility-L PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage Mobility-L PCI' }
+            )
         }
         @{
             Id = 'rage-iic'
@@ -169,6 +253,37 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_rage_iic_device')
+
+            # The rest of the Rage II class - Rage II, II+, the other Rage IIC
+            # ids, LT and LT-G - bound to this chip's path: the Rage II 3D
+            # engine with no setup engine, set up on the CPU (d3d_rage2.c),
+            # and the pre-VTB 16-entry FIFO. Bound at Michael's request
+            # (2026-10-03) from ATI's MACXW4 INF list; none has run anywhere.
+            # The register window is BAR2 on the 264GT2C; a part without one
+            # has its engine refused by the mini-VDD's map and stays tier-0.
+            Aliases = @(
+                @{ DeviceId = '4754'
+                   Name = 'ATI 3D Rage II PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage II PCI' }
+                @{ DeviceId = '4755'
+                   Name = 'ATI 3D Rage II+ DVD PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage II+ DVD PCI' }
+                @{ DeviceId = '4756'
+                   Name = 'ATI 3D Rage IIC PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage IIC PCI (4756)' }
+                @{ DeviceId = '4759'
+                   Name = 'ATI 3D Rage IIC PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage IIC PCI (4759)' }
+                @{ DeviceId = '475A'
+                   Name = 'ATI 3D Rage IIC AGP'
+                   DeviceDesc = 'Velocity9x ATI Rage IIC AGP' }
+                @{ DeviceId = '4C54'
+                   Name = 'ATI 3D Rage LT PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage LT PCI' }
+                @{ DeviceId = '4C47'
+                   Name = 'ATI 3D Rage LT-G PCI'
+                   DeviceDesc = 'Velocity9x ATI Rage LT-G PCI' }
+            )
         }
     )
 
@@ -269,7 +384,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, and the Rage II, Rage Pro and VT3/VT4 aliases'
     }
 
     Vm = @{

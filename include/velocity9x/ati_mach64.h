@@ -26,14 +26,14 @@
  * returns - 'VT', 'LM' and 'GW'. That makes the chip id register a free cross-check
  * that the driver is talking to the register window it thinks it is.
  *
- * 0x4750 (Rage Pro, 'GP') is deliberately absent. The restructure plan named
- * it, but nobody here has one to test, and claiming an untested id is exactly
- * what the tier-0 family's Have-Disk reasoning forbids.
+ * The three chips this family has run on. The aliases bound to them - the
+ * VT3/VT4, the Rage II class and the Rage Pro class, none run anywhere - are
+ * listed in ati_backend.c's probe table and in the manifest.
  */
 #define V9X_PCI_DEVICE_MACH64_VT2       ((v9x_u16)0x5654u)
 #define V9X_PCI_DEVICE_RAGE_MOBILITY_M  ((v9x_u16)0x4c4du)
 /* 'GW', a Rage II-class 264GT2C: the Mobility's register window and 2D
- * engine, no triangle setup engine. Tier-0 only; see rage_iic_hw16.c. */
+ * engine, no triangle setup engine; see rage_iic_hw16.c. */
 #define V9X_PCI_DEVICE_RAGE_IIC         ((v9x_u16)0x4757u)
 
 v9x_status v9x_ati_mach64_probe(

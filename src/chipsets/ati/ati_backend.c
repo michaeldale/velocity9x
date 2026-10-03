@@ -65,10 +65,25 @@ static v9x_status v9x_ati_recover(struct v9x_backend_state *state)
     return V9X_STATUS_UNSUPPORTED;
 }
 
+/* Every PCI device id the manifest binds: the three chips, then the aliases
+ * of each - the VT2's, the Rage IIC's (the Rage II class) and the
+ * Mobility-M's (the Rage Pro class). */
+static const v9x_u16 v9x_ati_device_ids[] = {
+    V9X_PCI_DEVICE_MACH64_VT2, V9X_PCI_DEVICE_RAGE_MOBILITY_M,
+    V9X_PCI_DEVICE_RAGE_IIC,
+    0x5655u, 0x5656u,
+    0x4754u, 0x4755u, 0x4756u, 0x4759u, 0x475au, 0x4c54u, 0x4c47u,
+    0x4742u, 0x4744u, 0x4747u, 0x4749u, 0x4750u, 0x4751u, 0x474cu, 0x474du,
+    0x474eu, 0x474fu, 0x4752u, 0x4753u, 0x4c42u, 0x4c44u, 0x4c49u, 0x4c50u,
+    0x4c51u, 0x4c4eu, 0x4c52u, 0x4c53u
+};
+
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,
     const struct v9x_pci_identity *pci)
 {
+    unsigned int index;
+
     if (state == 0 || pci == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -80,17 +95,22 @@ v9x_status v9x_ati_mach64_probe(
     state->pci.revision = 0u;
 
     /*
-     * Exact ids, never a vendor-wide match. ATI shipped a great many Mach64
-     * variants and this family has been run on three of them; the rest reach
-     * the driver through a Have-Disk install, which is a decision a person
-     * makes.
+     * Exact ids, never a vendor-wide match: the three chips this family has
+     * run on and the aliases the manifest binds to them (the family matrix
+     * test holds this table to the manifest). Anything else reaches the
+     * driver through a Have-Disk install, which is a decision a person makes.
      */
     if (pci->vendor_id != V9X_PCI_VENDOR_ATI) {
         return V9X_STATUS_UNSUPPORTED;
     }
-    if (pci->device_id != V9X_PCI_DEVICE_MACH64_VT2 &&
-        pci->device_id != V9X_PCI_DEVICE_RAGE_MOBILITY_M &&
-        pci->device_id != V9X_PCI_DEVICE_RAGE_IIC) {
+    for (index = 0u;
+         index < sizeof(v9x_ati_device_ids) / sizeof(v9x_ati_device_ids[0]);
+         ++index) {
+        if (pci->device_id == v9x_ati_device_ids[index]) {
+            break;
+        }
+    }
+    if (index == sizeof(v9x_ati_device_ids) / sizeof(v9x_ati_device_ids[0])) {
         return V9X_STATUS_UNSUPPORTED;
     }
 
