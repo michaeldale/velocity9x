@@ -27,6 +27,13 @@ with the vertical blank. That is the Rage IIC's state before 0.10.0
 The snapshots sent were taken at boot (all counters zero), so
 `FlipDeclined` from a flickering run is not in the evidence.
 
+## Reproduced on A8U4I5 (2026-10-03)
+
+With a Rage XL PCI (`1002:4752`) fitted, V9XDDP's run left
+`FlipDeclined=23` in the snapshot. Every flip it asked for was declined
+(`docs/probe/a8u4i5-rage-xl-pci-2026-10-03/first-boot/V9XSNA7.INI`). The
+flicker itself has not yet been watched on the monitor.
+
 ## Next
 
 - Measure the Mach64-class CRTC as the Rage IIC was measured (ATIRX
