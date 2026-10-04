@@ -56,6 +56,8 @@ static const BYTE v9x_guid_d3d_extended_caps[16] = {
 
 static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
+/* Where TextureCreate looks for a free slot first. */
+static DWORD v9x_d3d_texture_next;
 
 /*
  * The list builder's staging for v9x_d3d_draw_list, which is 6 KB and is
@@ -490,19 +492,28 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
     }
 }
 
+/* A handle is an entry's address, so it is checked, not searched for: a
+ * scan of the table per draw grew with the table. */
 static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
                                                      DWORD context)
 {
-    DWORD index;
+    DWORD base = (DWORD)&v9x_d3d_textures[0];
+    DWORD offset;
+    V9X_D3D_TEXTURE *texture;
 
-    for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
-        if ((DWORD)&v9x_d3d_textures[index] == handle &&
-            v9x_d3d_textures[index].active != 0ul &&
-            v9x_d3d_textures[index].context == context) {
-            return &v9x_d3d_textures[index];
-        }
+    if (handle < base) {
+        return 0;
     }
-    return 0;
+    offset = handle - base;
+    if (offset % (DWORD)sizeof(V9X_D3D_TEXTURE) != 0ul ||
+        offset / (DWORD)sizeof(V9X_D3D_TEXTURE) >= V9X_D3D_TEXTURE_COUNT) {
+        return 0;
+    }
+    texture = &v9x_d3d_textures[offset / (DWORD)sizeof(V9X_D3D_TEXTURE)];
+    if (texture->active == 0ul || texture->context != context) {
+        return 0;
+    }
+    return texture;
 }
 
 /*
@@ -1363,6 +1374,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
 DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
 {
     DWORD index;
+    DWORD tried;
     V9X_DD_SURFACE_LCL *lcl;
 
     v9x_trace_enter(V9X_TRACE_D3D_TEXTURECREATE,
@@ -1390,18 +1402,27 @@ DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
             ++v9x_hal->d3d_diagnostics.texture_create_sysmem;
         }
     }
-    for (index = 0ul; index < V9X_D3D_TEXTURE_COUNT; ++index) {
+    /* From after the last slot taken: the table is large, and the slots
+     * before it are usually still live. */
+    for (tried = 0ul; tried < V9X_D3D_TEXTURE_COUNT; ++tried) {
+        index = (v9x_d3d_texture_next + tried) % V9X_D3D_TEXTURE_COUNT;
         if (v9x_d3d_textures[index].active == 0ul) {
             v9x_d3d_textures[index].active = 1ul;
             v9x_d3d_textures[index].context = data->dwhContext;
             v9x_d3d_textures[index].surface = data->lpDDS;
             v9x_d3d_textures[index].lcl = lcl;
+            v9x_d3d_texture_next = (index + 1ul) % V9X_D3D_TEXTURE_COUNT;
             data->dwHandle = (DWORD)&v9x_d3d_textures[index];
             data->ddrval = V9X_DD_OK;
             ++v9x_hal->d3d_diagnostics.texture_creates;
             v9x_trace_exit(V9X_TRACE_D3D_TEXTURECREATE, data->ddrval);
             return V9X_DDHAL_DRIVER_HANDLED;
         }
+    }
+    /* Full. The runtime then binds handle 0 for this texture and the
+     * application's draws go untextured, so it is counted. */
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.texture_table_full;
     }
     data->ddrval = 0x8007000eul;
     v9x_trace_exit(V9X_TRACE_D3D_TEXTURECREATE, data->ddrval);

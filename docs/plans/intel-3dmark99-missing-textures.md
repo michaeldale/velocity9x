@@ -89,6 +89,17 @@ cover record is interpreted.
 
 ## 3. A reading of the picture that fits every counter
 
+**Note 2026-10-04.** Until then the shared D3D core held only 256 texture
+handles. When the table was full, TextureCreate failed and nothing counted
+it, so the runtime drew with handle 0. On the Rage XL this was why 3DMark
+99 Game 2 drew about 20,000 draws untextured
+(`docs/decisions/2026-10-04-texture-handle-table-full.md`). The table is
+now 4,096 entries and `D3dTextureTableFull` counts refusals. The netbook
+ran on the same core. Whether this is behind `DrawsNoHandle=30140` has not
+been measured: rerun the netbook and read `D3dTextureCreates`,
+`D3dTextureDestroys` and `D3dTextureTableFull` before acting on anything
+below.
+
 The untextured fragment program (`src/chipsets/intel/i9xx_fragprog.c`) is
 `dcl T8; mov oC, T8`: interpolated diffuse and nothing else.
 `DrawsNoHandle=30140` is 17 per cent of draws submitted with

@@ -28,7 +28,11 @@
 #include "r3d/r3d.h"
 
 #define V9X_D3D_CONTEXT_COUNT 16u
-#define V9X_D3D_TEXTURE_COUNT 256u
+/* Live texture handles across every context. 256 was too few: 3DMark 99's
+ * Game 2 holds more, TextureCreate then failed, the runtime bound handle 0,
+ * and each lightmap pass multiplied the frame by black (Rage XL PCI,
+ * 2026-10-04). 4096 entries are 64 KiB. */
+#define V9X_D3D_TEXTURE_COUNT 4096u
 
 /*
  * The largest triangle count the core will accept in one RenderPrimitive

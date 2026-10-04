@@ -1,7 +1,10 @@
 # Mach64: 3DMark 99 Game 2 draws its world mostly black, with white squares for sprites
 
 Date: 2026-10-04. Machine: A8U4I5 with the ATI 3D Rage XL PCI
-(`1002:4752`), Mach64 engine path. Status: open. Evidence:
+(`1002:4752`), Mach64 engine path. Status: fixed the same day. The
+D3D core's 256-entry texture handle table filled, so lightmaps were
+drawn untextured. None of the candidates below was the cause. See
+`docs/decisions/2026-10-04-texture-handle-table-full.md`. Evidence:
 `docs/probe/a8u4i5-rage-xl-pci-2026-10-03/flip/video-game2-every-1s.png`,
 frames from Michael's recording of the monitor
 (`2026-10-04 10-56-00.mkv`, 28-44 s).
