@@ -44,8 +44,9 @@
 /*
  * SiS 6326 2D engine, MMIO through BAR1: solid fill and screen copy, built by
  * src\chipsets\sis\sis6326_engine.c and measured byte-exact on the card at 8
- * and 16 bpp (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md). No
- * Direct3D engine is behind this type yet; d3d_select.c gives it none.
+ * and 16 bpp (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md); and
+ * the 3D engine, src\display32\d3d\d3d_sis6326.c, which d3d_select.c gives
+ * this type (docs\decisions\2026-10-05-sis6326-3d-*.md).
  */
 #define V9X_DD_ENGINE_TYPE_SIS_6326     6ul
 

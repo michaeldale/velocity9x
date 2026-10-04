@@ -106,6 +106,9 @@ function Get-V9xHostSourceNames {
         # The neutral draw to the Mach64 policy request and draw state.
         'src\display32\d3d\d3d_mach64_map.c',
         'tests\host\test_d3d_mach64_map.c',
+        # The neutral draw to SiS 6326 state, texture and triangle words.
+        'src\display32\d3d\d3d_sis6326_map.c',
+        'tests\host\test_d3d_sis6326_map.c',
         'src\display32\d3d\d3d_i9xx_target.c'
     ) + $backendSourceNames + @(
         'src\display16\display_component.c',

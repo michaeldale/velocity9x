@@ -115,6 +115,11 @@ $sources = @(
     "src\display32\d3d\d3d_state.c",
     "src\display32\d3d\d3d_select.c",
     "src\display32\d3d\d3d_mach64_map.c",
+    # The SiS 6326 3D engine: register words, the neutral draw to them, and
+    # the engine that emits them.
+    "src\chipsets\sis\sis6326_3d.c",
+    "src\display32\d3d\d3d_sis6326_map.c",
+    "src\display32\d3d\d3d_sis6326.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",

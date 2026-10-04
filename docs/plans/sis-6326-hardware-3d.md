@@ -18,7 +18,13 @@ W = RHW; all five D3D formats exact; wrap/mirror/clamp and bilinear are
 Direct3D's; blend modes 0, 2, 4, 8 and 12 map DECAL, MODULATE, DECALALPHA,
 DECALMASK and MODULATEMASK; mips are per pixel with quarter-step blending;
 8A38h D4 must be pulsed (held with level field 0, it hung the engine
-until a reboot). Next: phase 4.
+until a reboot). Phase 4 under way: `d3d_sis6326.c` and its host-tested
+mapping are in. The first V9XDDP run (boot 212) matched SiS's HAL on every
+untextured check, refused every textured draw (a mapping bug, fixed), and
+hard-locked the machine at a depth fill
+([issue](../issues/2026-10-05-a8u4i5-hard-lock-under-sis-d3d-v9xddp.md)).
+V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
+above means they did not run.
 
 Target: SiS 6326 card 2 (rev 0Bh, 4 MiB SGRAM) in A8U4I5, running the `sis`
 family with the 2D engine on DirectDraw

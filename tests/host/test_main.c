@@ -111,6 +111,10 @@ unsigned int v9x_run_d3d_select_tests(void);
  * request and draw state, through to the measured register words. */
 unsigned int v9x_run_d3d_mach64_map_tests(void);
 
+/* tests\host\test_d3d_sis6326_map.c: V9X_R3D_DRAW to SiS 6326 state,
+ * texture and triangle words. */
+unsigned int v9x_run_d3d_sis6326_map_tests(void);
+
 /* tests\host\test_donewait.c: whether the idle wait keeps spinning for a
  * 3D-done bit the part may not have, same convention. */
 unsigned int v9x_run_donewait_tests(void);
@@ -1167,6 +1171,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_d3d_select_tests();
     failures += v9x_run_d3d_mach64_map_tests();
+    failures += v9x_run_d3d_sis6326_map_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
     failures += v9x_run_i9xx_cover_tests();

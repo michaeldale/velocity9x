@@ -27,12 +27,13 @@
             ClockDetector = 'sis-6326-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
             # The 2D engine through BAR1, measured byte-exact at 8 and 16 bpp
-            # (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md). No
-            # Direct3D engine yet.
+            # (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md). The
+            # Direct3D engine, d3d_sis6326.c, from the three SIS3D probe
+            # phases (docs\decisions\2026-10-05-sis6326-3d-*.md); 16 bpp.
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-sis6326'
             EngineType = 'SIS_6326'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # Both measured boards carry 4 MiB (SRC D[2:1] = 10 under SiS's
             # driver) behind a 4 MiB BAR0, the datasheet's maximum. Every
             # advertised mode lays out in it.

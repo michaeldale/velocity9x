@@ -43,12 +43,14 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE2, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* The SiS 6326 has a 2D engine and no Direct3D engine in this
-         * binary: hardware selects nothing, software still wins. */
+        /* The SiS 6326's engine is d3d_sis6326.c; an invalid descriptor
+         * selects nothing, and software still wins. */
         { 1, V9X_DD_ENGINE_TYPE_SIS_6326, V9X_DD_ENGINE_CAP_D3D,
-          V9X_D3D_SELECT_NONE },
+          V9X_D3D_SELECT_SIS6326 },
         { 1, V9X_DD_ENGINE_TYPE_SIS_6326,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
+          V9X_D3D_SELECT_SIS6326 },
+        { 0, V9X_DD_ENGINE_TYPE_SIS_6326, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_SIS_6326, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },

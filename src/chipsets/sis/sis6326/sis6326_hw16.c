@@ -12,8 +12,9 @@
  * parked; the 0B board is the bring-up target.
  *
  * The VBE sets modes and reports the framebuffer. After every mode set the
- * enable hook turns the 2D engine's register window on, and the engine hook
- * claims the engine for DirectDraw fill and copy as SIS_6326. Nothing is on
+ * enable hook turns the 2D engine's register window and the 3D accelerator
+ * on, and the engine hook claims the engine for DirectDraw fill and copy and
+ * for Direct3D as SIS_6326. Nothing is on
  * after a VBE mode set - SR05 locked, SRB 0Ch, SR27 00h - and the write probe
  * measured the engine working from exactly the state this hook sets
  * (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md).
@@ -49,12 +50,17 @@ static void v9x_sis_port_out(unsigned short port, unsigned char value);
 #define V9X_SIS_SR27            0x27u
 #define V9X_SIS_SR27_TURBO      0x80u
 #define V9X_SIS_SR27_ENGINE     0x40u
+/* SR39 D2: the 3D accelerator (7.7.60). The SIS3D probe ran every phase
+ * with it set beside a live desktop and DirectDraw. */
+#define V9X_SIS_SR39            0x39u
+#define V9X_SIS_SR39_3D         0x04u
 
 /* V9X_SIS_MMIO_BYTES in the mini-VDD. */
 #define V9X_SIS_MMIO_BYTES 0x00010000ul
 
 /* Set by the enable hook after every mode set, read by the engine hook. */
 static unsigned short v9x_sis_engine_enabled = 0u;
+static unsigned short v9x_sis_3d_enabled = 0u;
 
 static unsigned char v9x_sis_sr_read(unsigned char index)
 {
@@ -81,6 +87,7 @@ static unsigned short v9x_sis6326_enable_engine(void)
     unsigned char sr27;
 
     v9x_sis_engine_enabled = 0u;
+    v9x_sis_3d_enabled = 0u;
     v9x_sis_sr_write(V9X_SIS_SR05, V9X_SIS_SR05_KEY);
     if (v9x_sis_sr_read(V9X_SIS_SR05) != V9X_SIS_SR05_UNLOCKED) {
         return 1u;
@@ -98,6 +105,19 @@ static unsigned short v9x_sis6326_enable_engine(void)
         (v9x_sis_sr_read(V9X_SIS_SR27) &
          (V9X_SIS_SR27_TURBO | V9X_SIS_SR27_ENGINE)) == V9X_SIS_SR27_ENGINE) {
         v9x_sis_engine_enabled = 1u;
+    }
+    if (v9x_sis_engine_enabled == 0u) {
+        return 1u;
+    }
+
+    /* 3D on before any 3D register access (7.7.60). SiS's own driver sets
+     * it only while a Direct3D client holds a 16 bpp mode; here it stays on,
+     * and the HAL creates no Direct3D context off 16 bpp. */
+    v9x_sis_sr_write(V9X_SIS_SR39,
+                     (unsigned char)(v9x_sis_sr_read(V9X_SIS_SR39) |
+                                     V9X_SIS_SR39_3D));
+    if ((v9x_sis_sr_read(V9X_SIS_SR39) & V9X_SIS_SR39_3D) != 0u) {
+        v9x_sis_3d_enabled = 1u;
     }
     return 1u;
 }
@@ -141,6 +161,9 @@ static void v9x_sis6326_fill_engine(unsigned long framebuffer_linear_base,
     *engine_type = V9X_DD_ENGINE_TYPE_SIS_6326;
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY;
+    if (v9x_sis_3d_enabled != 0u) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+    }
 }
 
 /* Not static: resolved by name in the link map by the per-object audit. */
@@ -151,7 +174,7 @@ const V9X_HW16_DEVICE v9x_sis6326_device = {
     "sis-6326-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-sis6326",
     v9x_sis6326_enable_engine,
     v9x_sis6326_fill_engine
 };
