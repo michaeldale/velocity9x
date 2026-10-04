@@ -11,7 +11,13 @@
 |---|---|---|
 | `SIS6326-A-VGADRV.TXT` | `sis6326-20261004-a` | First build. Its decodes and `M_*` values are **invalid**, see below |
 | `SIS6326-B-VGADRV.TXT` | `sis6326-20261004-b` | Fixed build, no `/unlock`: `Result=LOCKED`, no MMIO read |
-| `SIS6326.ROM` | `sis6326-20261004-a` | 64 KiB from C0000h; image 48 KiB (96 blocks), checksum 0 |
+| `SIS6326-CARD1.ROM` | `sis6326-20261004-a` | Card 1, 64 KiB from C0000h; image 48 KiB (96 blocks), checksum 0 |
+| `SIS6326-C-CARD1-SIS228-B204.TXT` | `sis6326-20261004-b` | Card 1 under SiS 2.28, boot 204; the machine locked about a minute later |
+| `SIS6326-D-CARD2-VGADRV-B205.TXT` | `sis6326-20261004-b` | Card 2 under vga.drv: locked, and no Config Manager ranges (build `b` read card 1's stale key) |
+| `SIS6326-E-CARD2-SIS228-B207.TXT` | `sis6326-20261004-b` | Card 2 under SiS 2.28: registers, but no snapshot for the same reason |
+| `SIS6326-F-CARD2-SIS228-B207.TXT` | `sis6326-20261004-c` | Card 2 under SiS 2.28: full snapshot |
+| `SIS6326-CARD2.ROM` | `sis6326-20261004-c` | Card 2, image 32 KiB (64 blocks), checksum 0 |
+| `card2-sis228-desktop-b207.png` | - | Agent screenshot, boot 207, 640x480x8, taken after run F |
 
 ## What run A got wrong
 
@@ -59,3 +65,32 @@ What the screen shows is not known. The window coincides with the SiS
 display driver's first load, but this machine has also dropped off the
 network on its own before (2026-09-05), so the driver is a suspect, not a
 finding.
+
+## Boots 203-207: card 1 locks, card 2 does not
+
+Card 1 came back at boot 204 (boot 203 never reached the agent) running SiS
+2.28 at 640x480x8. Run C succeeded; about a minute later, during an agent
+screenshot, the machine stopped answering again.
+
+Michael then fitted a second 6326: revision **0Bh**, subsystem `63261569`,
+BIOS "1.28q" of 10/21/1999 (AGP and PCI strings), power-management
+capability at 40h ahead of AGP at 50h. SiS 2.28 was forced onto it through
+Have Disk (its INF names only `SUBSYS_63261039`; Windows warned the driver
+"was not written specifically for the selected hardware"). Boot 207 stayed
+up for over ten minutes with three probe runs and a screenshot, under the
+same driver, probe and board.
+
+| | Card 1 | Card 2 |
+|---|---|---|
+| Revision / subsystem | C3 / 63261039 | 0B / 63261569 |
+| BIOS | 1.06, 12-18-97, 48 KiB | 1.28q, 10/21/1999, 32 KiB |
+| SR0C | E4h (D4 = 0) | B4h (D4 = 1) |
+| Timing enables | SR23 D5, SR33 D3: 1-cycle EDO | SR33 D0: SGRAM |
+| SR28/SR29 | 7Ch/E7h = 55.9 MHz | B3h/C5h = 82.7 MHz |
+| Under SiS 2.28 | locked twice (boots 202, 204) | stable, boot 207 |
+
+Same in both under SiS 2.28: extensions unlocked, MMIO through BAR1
+(SRB = 6Ch), Turbo Queue on (SR27 = C0h, SR2C = 7Eh, SR3C D[1:0] = 0), 3D
+off (SR39 = 00h), pitch 1024 at 640x480x8, and the same last 2D operation
+(below). Interpretation is in
+`docs/decisions/2026-10-04-sis6326-first-survey.md`.

@@ -211,6 +211,10 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-02 Serious Sam on the netbook: textures over 256 are drawn by the CPU, and that is three quarters of the frame](2026-10-02-serious-sam-netbook-profile.md)
 - [2026-10-02 3DMark 99 Max at 640x480 on both machines: netbook 1253, Gateway 604](2026-10-02-3dmark99-640-both-machines.md)
 
+## SiS
+
+- [2026-10-04 SiS 6326 first survey: two cards, one locks, and four datasheet questions settled](2026-10-04-sis6326-first-survey.md)
+
 ## NVIDIA and other surveyed cards
 
 - [2026-09-11 The GD5430 reads its own memory size, and its BIOS mode table needs reading carefully](2026-09-11-cirrus-gd5430-memory-and-mode-table.md)

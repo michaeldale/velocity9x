@@ -278,11 +278,19 @@ static void sis_write_bit(HANDLE file, const char *key, DWORD value,
     sis_write(file, key, (value & mask) != 0ul ? "1" : "0");
 }
 
-static LONG sis_find_device(char *device_id, DWORD capacity)
+/*
+ * The wanted-th Enum\PCI instance of 1039:6326, counting from zero. Every
+ * card ever fitted keeps its key, under a SUBSYS/REV-specific name, so the
+ * first match need not be the card in the slot: on A8U4I5 a second 6326 was
+ * hidden behind the first card's key (2026-10-04). The caller tries each
+ * until Config Manager locates a present devnode.
+ */
+static LONG sis_find_device(char *device_id, DWORD capacity, DWORD wanted)
 {
     HKEY pci_key;
     HKEY adapter_key;
     DWORD adapter_index = 0u;
+    DWORD matched = 0u;
     char adapter[160];
     char instance[160];
     DWORD length;
@@ -302,6 +310,9 @@ static LONG sis_find_device(char *device_id, DWORD capacity)
         }
         if (status != ERROR_SUCCESS ||
             !sis_starts_with_ci(adapter, "VEN_1039&DEV_6326")) {
+            continue;
+        }
+        if (matched++ != wanted) {
             continue;
         }
         if (RegOpenKeyExA(pci_key, adapter, 0, KEY_READ, &adapter_key) !=
@@ -356,6 +367,7 @@ static CONFIGRET sis_ranges(struct sis_range *ranges, DWORD *count)
     data_fn cm_data;
     free_log_fn cm_free_log;
     DWORD type_index;
+    DWORD wanted;
 
     *count = 0u;
     module = LoadLibraryA("CFGMGR32.DLL");
@@ -374,14 +386,16 @@ static CONFIGRET sis_ranges(struct sis_range *ranges, DWORD *count)
         FreeLibrary(module);
         return CR_FAILURE;
     }
-    if (sis_find_device(device_id, sizeof(device_id)) != ERROR_SUCCESS) {
-        FreeLibrary(module);
-        return CR_NO_SUCH_DEVNODE;
-    }
-    status = cm_locate(&device, device_id, CM_LOCATE_DEVNODE_NORMAL);
-    if (status != CR_SUCCESS) {
-        FreeLibrary(module);
-        return status;
+    /* CM_LOCATE_DEVNODE_NORMAL finds only present devnodes, so the first
+     * instance it accepts is the card in the slot. */
+    status = CR_NO_SUCH_DEVNODE;
+    for (wanted = 0u; status != CR_SUCCESS; ++wanted) {
+        if (sis_find_device(device_id, sizeof(device_id), wanted) !=
+            ERROR_SUCCESS) {
+            FreeLibrary(module);
+            return CR_NO_SUCH_DEVNODE;
+        }
+        status = cm_locate(&device, device_id, CM_LOCATE_DEVNODE_NORMAL);
     }
 
     for (type_index = 0u; type_index < 2u; ++type_index) {
