@@ -18,6 +18,9 @@
 | `SIS6326-F-CARD2-SIS228-B207.TXT` | `sis6326-20261004-c` | Card 2 under SiS 2.28: full snapshot |
 | `SIS6326-CARD2.ROM` | `sis6326-20261004-c` | Card 2, image 32 KiB (64 blocks), checksum 0 |
 | `card2-sis228-desktop-b207.png` | - | Agent screenshot, boot 207, 640x480x8, taken after run F |
+| `V9XDD-CARD2-SIS228-B207.INI` | V9XDDP (s3 package build) | DirectDraw/Direct3D battery against SiS's HAL, exclusive 640x480x16 |
+| `SIS6326-G-CARD2-AFTER-D3D-B207.TXT` | `sis6326-20261004-c` | After V9XDDP exited: 3D off again |
+| `SIS6326-H-CARD2-DURING-D3D-B207.TXT` | `sis6326-20261004-c` | About 10 s into a detached V9XDDP run: 3D state live |
 
 ## What run A got wrong
 
