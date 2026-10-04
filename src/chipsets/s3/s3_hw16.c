@@ -31,6 +31,7 @@
 
 extern const V9X_HW16_DEVICE v9x_virge_device;
 extern const V9X_HW16_DEVICE v9x_trio3d2x_device;
+extern const V9X_HW16_DEVICE v9x_trio3d_device;
 extern const V9X_HW16_DEVICE v9x_trio_device;
 extern const V9X_HW16_DEVICE v9x_trio32_device;
 extern const V9X_HW16_DEVICE v9x_aurora64_device;
@@ -43,6 +44,7 @@ static const V9X_HW16_DEVICE * const v9x_s3_devices[] = {
     /* Second because it is the ViRGE's alias and shares its hooks, not the
      * Trio64's - the name misleads. See virge_hw16.c. */
     &v9x_trio3d2x_device,
+    &v9x_trio3d_device,
     &v9x_trio_device,
     &v9x_trio32_device,
     &v9x_aurora64_device,

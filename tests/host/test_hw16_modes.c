@@ -51,6 +51,9 @@ const V9X_HW16_DEVICE v9x_virge_device = {
 const V9X_HW16_DEVICE v9x_trio3d2x_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_trio3d_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_trio_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

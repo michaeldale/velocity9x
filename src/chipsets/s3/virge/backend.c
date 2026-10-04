@@ -54,6 +54,7 @@ static const v9x_u16 v9x_s3_device_ids[] = {
     /* Missing until the family-matrix test began probing each alias
      * (2026-10-03); this table is host-side policy, so no machine saw it. */
     V9X_PCI_DEVICE_TRIO3D2X,
+    V9X_PCI_DEVICE_TRIO3D,
     V9X_PCI_DEVICE_TRIO64,
     V9X_PCI_DEVICE_TRIO32,
     V9X_PCI_DEVICE_AURORA64,

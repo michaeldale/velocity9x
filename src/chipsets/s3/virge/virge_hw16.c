@@ -160,3 +160,23 @@ const V9X_HW16_DEVICE v9x_trio3d2x_device = {
     v9x_virge_enable_aperture,
     v9x_trio3d2x_fill_engine
 };
+
+/*
+ * The Trio3D (86C365), the Trio3D/2X's predecessor, on the Trio3D/2X's terms:
+ * the ViRGE's aperture hook and the Trio3D/2X's engine descriptor, so it too
+ * advertises no two-pass blend and no unlit alpha. Those two are cleared from
+ * the parts' lineage, not from a failure seen here: V9XDDP on A8U4I5
+ * (2026-10-04) drew with this descriptor and never exercised them. See
+ * docs\decisions\2026-10-04-trio3d-8904-on-the-virge-path.md.
+ */
+const V9X_HW16_DEVICE v9x_trio3d_device = {
+    0x5333u, 0x8904u,
+    "S3 Trio3D 86C365",
+    "5333", "8904",
+    "s3-virge-pll-v1",
+    "live-any-depth",
+    "directdraw-fill-blt",
+    "hardware-s3d",
+    v9x_virge_enable_aperture,
+    v9x_trio3d2x_fill_engine
+};

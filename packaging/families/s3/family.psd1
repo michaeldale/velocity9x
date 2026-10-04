@@ -142,6 +142,17 @@
                    Name = 'S3 Trio3D/2X'
                    DeviceDesc = 'Velocity9x S3 Trio3D/2X'
                    MeasuredOn = 'A8U4I5, physical Trio3D/2X, 2026-09-02 onward' }
+                # The Trio3D/2X's predecessor, bound on the same terms and with
+                # the same engine descriptor (virge_hw16.c). The name is the
+                # public PCI id list's; this tree's own survey table calls 8904
+                # a Trio3D/2X, and nothing here has settled which is right.
+                # First boot on A8U4I5, 2026-10-04: enable-ok, GDI /accel PASS,
+                # hardware Direct3D draws (docs\decisions\2026-10-04-trio3d-
+                # 8904-on-the-virge-path.md).
+                @{ DeviceId = '8904'
+                   Name = 'S3 Trio3D 86C365'
+                   DeviceDesc = 'Velocity9x S3 Trio3D 86C365'
+                   MeasuredOn = 'A8U4I5, physical Trio3D, 2026-10-04 onward' }
             )
         }
         @{
