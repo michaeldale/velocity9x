@@ -423,6 +423,10 @@ int v9x_m64_set_display_start(DWORD byte_offset);
  * that chip, the VGA ones otherwise. */
 int v9x_in_vblank(void);
 int v9x_set_display_start(DWORD byte_offset);
+/* The same, for a flip that skips the blank: the base is written to the
+ * register at once and nothing is queued to the retrace. Differs from the
+ * call above only on Intel, which otherwise flips through the ring. */
+int v9x_set_display_start_now(DWORD byte_offset);
 /* A new session or mode, from DriverInit: drops the PIPESTAT baseline so
  * the next flip opens a fresh measurement boundary, and the scanline
  * readings that describe the old timing. */

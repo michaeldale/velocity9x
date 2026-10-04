@@ -1269,7 +1269,13 @@ static int v9x_i9xx_in_vblank(void)
     return line >= active;
 }
 
-static int v9x_i9xx_set_display_start(DWORD byte_offset)
+/*
+ * use_ring is zero for an unsynced flip: the register write below, which
+ * intel65 measured applying mid-scan (lower-half tearing), is what vsync
+ * off asks for. MI_DISPLAY_FLIP would be taken at the retrace and hold the
+ * next Flip for a frame.
+ */
+static int v9x_i9xx_set_display_start(DWORD byte_offset, int use_ring)
 {
     DWORD dsl;
     DWORD vtotal;
@@ -1299,7 +1305,7 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset)
     v9x_hal->d3d_diagnostics.isr_before_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
     v9x_i9xx_scanout_flip_frame = v9x_i9xx_scanout_frame_now();
-    if (v9x_i9xx_ring_flip_active()) {
+    if (use_ring && v9x_i9xx_ring_flip_active()) {
         if (!v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
                                 v9x_i9xx_scanout_stride_reg, byte_offset)) {
             return 0;
@@ -1399,12 +1405,22 @@ int v9x_in_vblank(void)
 int v9x_set_display_start(DWORD byte_offset)
 {
     if (v9x_i9xx_scanout_active()) {
-        return v9x_i9xx_set_display_start(byte_offset);
+        return v9x_i9xx_set_display_start(byte_offset, 1);
     }
     if (v9x_m64_scanout_active()) {
         return v9x_m64_set_display_start(byte_offset);
     }
     return v9x_vga_set_display_start(byte_offset);
+}
+
+/* The Mach64 and VGA writes already go straight to the CRTC; the core's
+ * blank wait is what times them, and an unsynced flip skips it. */
+int v9x_set_display_start_now(DWORD byte_offset)
+{
+    if (v9x_i9xx_scanout_active()) {
+        return v9x_i9xx_set_display_start(byte_offset, 0);
+    }
+    return v9x_set_display_start(byte_offset);
 }
 
 /*

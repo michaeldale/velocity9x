@@ -1,7 +1,15 @@
 # Netbook: the Velocity9x tab is missing from Display Properties
 
 Date: 2026-10-04. Machine: MICHAEL-NETBOOK (945GSE), build `795ea49`
-installed by WININIT rename the same day. Status: open. Evidence:
+installed by WININIT rename the same day. Status: fixed the same day,
+by running `RUNDLL32 v9xsetp.dll,V9xRegisterPage` once on the netbook
+(Michael's go-ahead). The tab appeared at once, rendered within the
+576-line panel, and was still there after a restart
+(`velocity9x-tab-registered.png`). The registry was not read; the tab is
+the evidence. Seen on the tab, not part of this issue: its DirectDraw
+row reads "Software emulation only" because the intel-gma manifest
+still publishes `Acceleration = 'none'`, although DirectDraw blits have
+run on the Gen3 blitter since 2026-09-25. Evidence:
 `docs/probe/netbook-vsync-and-textures-2026-10-04/display-properties-no-velocity9x-tab.png`.
 
 ## Symptom

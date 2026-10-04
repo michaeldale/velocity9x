@@ -14,7 +14,8 @@ Mach64 engine path, 1024x768x16 at 60 Hz. Plan:
 - **Flips only** (decision 1, the plan's recommendation; not answered).
   WaitForVerticalBlank is unchanged.
 - **Intel keeps the ring flip** (decision 3, the plan's recommendation; not
-  answered). An unsynced flip on a scanout that queues flips itself stays
+  answered). Superseded later the same day by "B", below, once the
+  netbook showed this changes nothing. An unsynced flip on a scanout that queues flips itself stays
   tracked: Flip still refuses to queue a second one behind it, while
   GetFlipStatus and the draw waits stop holding the application. This also
   changes an application's own `DDFLIP_NOVSYNC` on Intel, which used to
@@ -96,9 +97,39 @@ so Flip will not queue the next one. GetFlipStatus and the draw waits
 are released, but a flip-bound application is not. On Intel, Always
 off therefore changes nothing a game would notice. The plan's next step
 for this outcome is decision 3 "B": the register write instead of the
-ring when vsync is off. That is not done and needs Michael's call,
-because the register path's latch has never been read from a register
-(`i9xx_scanout.c`, intel65 to intel90).
+ring when vsync is off.
+
+## Decision 3 "B": an unsynced flip writes the register
+
+Michael chose "B" the same day. An unsynced flip now goes through
+`v9x_set_display_start_now`. On Intel that is the plane-base register
+write that intel65 measured tearing in the lower half, with no
+MI_DISPLAY_FLIP. On the Mach64 and VGA scanouts it is the same write as
+before, because their blank wait is in the core and an unsynced flip
+already skips it. Nothing is queued, so `v9x_flip_arm` leaves an unsynced
+flip idle on every scanout, and the morning's "tracked but not waited
+for" state is gone. An application's own `DDFLIP_NOVSYNC` on Intel also
+takes this path, and so never queues a ring flip behind another.
+
+The HAL alone was redeployed (ABI unchanged). The setting was changed on
+the netbook's page, which works since its handler was registered
+(`docs/issues/2026-10-04-netbook-settings-page-not-registered.md`).
+Each row below is a fresh boot counter:
+
+| Setting | Flip20Ms | FlipMaxMs | FlipVSyncOverridden | FlipStillDrawing | FlipRingIssued |
+|---------|---------:|----------:|--------------------:|-----------------:|---------------:|
+| Always off, register write | 4 | 2 | 23 | 0 | 2 |
+| Game decides, after it | 331 | 21 | 23 (unchanged) | 99,288 | 27 (+25) |
+
+Under Always off, Flip never refused and no ring flip was issued for
+the probe's flips. The 2 counted come from other callers;
+FlipToGDISurface also calls the ringed write. Game decides went back to
+the ring and one frame per flip.
+
+Not watched: whether the panel tears, or shows anything wrong, with the
+register write. intel86 found the panel flickering with a buffer under
+construction on this part whatever the write timing was. Under vsync
+off, that is expected rather than a defect, but nobody has looked.
 
 ## Not established
 

@@ -465,16 +465,6 @@ static DWORD v9x_flip_pending_polls = 0ul;
  * interface rather than only in a counter.
  */
 static DWORD v9x_flip_untracked = 0ul;
-/*
- * Set while the pending flip was issued without vsync on a scanout that
- * queues flips itself (Intel: MI_DISPLAY_FLIP is applied at the retrace
- * whatever the HAL does). The flip stays tracked, so Flip still refuses to
- * queue a second one behind it, but GetFlipStatus and the draw waits stop
- * holding the application for it. Without this, an untracked flip let the
- * next one into the ring while the first was still pending, which nothing
- * has measured on this part. docs\plans\vsync-off-setting.md, decision 3.
- */
-static DWORD v9x_flip_unsynced = 0ul;
 
 /*
  * Accepted flips so far. The sequence number every present-trace record
@@ -614,13 +604,9 @@ static void v9x_flip_abandon(void)
 static void v9x_flip_arm(int novsync)
 {
     v9x_flip_pending_polls = 0ul;
-    v9x_flip_unsynced = 0ul;
+    /* Nothing is pending: an unsynced flip was written with
+     * v9x_set_display_start_now, which queues nothing, on every scanout. */
     if (novsync) {
-        if (v9x_scanout_hw_flip() && v9x_scanout_vblank_available()) {
-            v9x_flip_state = V9X_FLIP_WAIT_HW;
-            v9x_flip_unsynced = 1ul;
-            return;
-        }
         v9x_flip_state = V9X_FLIP_IDLE;
         return;
     }
@@ -733,9 +719,7 @@ int v9x_flip_wait_done(void)
     DWORD started;
     int result = V9X_FLIP_WAIT_TIMEOUT;
 
-    /* An unsynced flip is not waited for: the draw landing in the buffer
-     * still on screen is the tearing that vsync off asks for. */
-    if (v9x_flip_state == V9X_FLIP_IDLE || v9x_flip_unsynced != 0ul) {
+    if (v9x_flip_state == V9X_FLIP_IDLE) {
         return V9X_FLIP_WAIT_NONE;
     }
     /* Timed only when a flip is pending: the question is what a draw pays
@@ -872,7 +856,13 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         /* Same reasoning one step further in: an offset the display-start
          * registers cannot express is declined rather than rounded, which at
          * 24 bpp would shift every pixel of the frame. */
-        if (!v9x_set_display_start(offset)) {
+        /* Unsynced, the base is written now on every scanout: a flip the
+         * hardware queues to the retrace (Intel's MI_DISPLAY_FLIP) would
+         * hold the next Flip for a frame, and the netbook measured exactly
+         * that, 324 ms for 20 flips under Always off
+         * (docs\decisions\2026-10-04-vsync-setting.md). */
+        if (!(novsync != V9X_FALSE ? v9x_set_display_start_now(offset)
+                                   : v9x_set_display_start(offset))) {
             data->ddRVal = V9X_DD_OK;
             ++v9x_hal->d3d_diagnostics.flip_declined;
             return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1121,11 +1111,8 @@ DWORD __stdcall V9xHalGetFlipStatus(V9X_DDHAL_GETFLIPSTATUSDATA *data)
     v9x_trace_count(V9X_TRACE_GETFLIPSTATUS, data->dwFlags);
     /* Both questions - "can I flip" and "is the last flip done" - have the
      * same answer here: not until the scanout has taken the last start
-     * address. See v9x_flip_arm. An unsynced flip is answered done at once:
-     * the state machine still advances, and Flip itself still refuses to
-     * queue behind it, but the application is not held. */
-    data->ddRVal = (v9x_flip_done() || v9x_flip_unsynced != 0ul)
-                       ? V9X_DD_OK : V9X_DDERR_WASSTILLDRAWING;
+     * address. See v9x_flip_arm. */
+    data->ddRVal = v9x_flip_done() ? V9X_DD_OK : V9X_DDERR_WASSTILLDRAWING;
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -1983,7 +1970,6 @@ DWORD __stdcall DriverInit(DWORD context)
     v9x_flip_state = V9X_FLIP_IDLE;
     v9x_flip_pending_polls = 0ul;
     v9x_flip_untracked = 0ul;
-    v9x_flip_unsynced = 0ul;
     /* And the completion channel: a new session brings the status page up
      * again and proves it again (review R3). */
     v9x_d3d_i9xx_reset();

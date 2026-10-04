@@ -3,7 +3,9 @@
 Date: 2026-10-04. Status: Built the same day, phases 0-3 done and phase 4
 done on A8U4I5 only (`docs/decisions/2026-10-04-vsync-setting.md`).
 Michael chose three values (Game decides, Always on, Always off).
-Decisions 1 and 3 were not answered and the recommendations were taken.
+Decision 1 was not answered and its recommendation was taken. Decision
+3 went "A" first; it was measured to change nothing on the netbook, and
+Michael then chose "B" (measured: 324 ms to 4 ms for 20 flips).
 Requested by Michael the same day: one setting in the Velocity9x page of
 Display Properties that disables vsync on every driver, chip and
 presentation path.
