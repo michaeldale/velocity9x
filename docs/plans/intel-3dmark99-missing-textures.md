@@ -113,6 +113,40 @@ destroys churn, and whether the untextured draws are the missing
 textures, are still open. Nothing in this plan below is changed by this
 result.
 
+**Localised 2026-10-04: the untextured draws are Game 1's, and they are a
+defect on this part.** Each game was run alone with no mid-run trace. A
+trace taken during a run killed 3DMark once on the netbook. Counters are
+deltas over the run.
+
+| Run | Draws | DrawsNoHandle | Texture creates | Surface creates |
+|-----|------:|--------------:|----------------:|----------------:|
+| Netbook, Game 2 twice (one cut short), 1024x576, from boot | 59,334 | 0 | 17,817 | 35,004 |
+| Netbook, Game 1, 1024x576 | about 49,900 | 19,443 (39%) | 2,194 | 4,348 |
+| Rage XL, Game 1, 800x600 | 21,095 | 173 (0.8%) | 49 | 51 |
+
+- The Rage XL draws Game 1 correctly on the monitor, so 0.8 per cent is
+  what the application sends. The netbook's 39 per cent is the netbook's.
+- Game 2 creates and destroys textures continually on the netbook and
+  still binds a texture to every draw. So the churn alone does not lose
+  textures, and nothing in this run shows TextureCreate refusing.
+- 3DMark reports 6,812 KB total video memory on the netbook and 4,608 KB
+  used by the 1024x576 triple-buffered target. That leaves about 2.2
+  MiB, against the Rage XL's 8 MiB card at 800x600.
+- The test meant to separate memory pressure from everything else was
+  Game 1 at 640x480. It did not run. After the resolution change,
+  3DMark took exclusive mode for its display check and waited on a
+  confirmation dialog that keystrokes could not reach. The netbook was
+  warm-restarted to clear it. Memory pressure is therefore a hypothesis
+  that fits the numbers, not a finding.
+
+Next: count what an untextured batch is. Record its blend factors,
+whether alpha blending is on, and the last non-zero handle the context
+held, as the Half-Life census did. Then rerun Game 1 at 1024x576 and,
+with 3DMark's resolution set before launch, at 640x480. The census says
+whether these are passes that lost their texture, as on the Rage XL, or
+geometry the application chose to draw untextured on this device's caps.
+Evidence: `docs/probe/netbook-vsync-and-textures-2026-10-04/`.
+
 The untextured fragment program (`src/chipsets/intel/i9xx_fragprog.c`) is
 `dcl T8; mov oC, T8`: interpolated diffuse and nothing else.
 `DrawsNoHandle=30140` is 17 per cent of draws submitted with
