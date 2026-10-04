@@ -289,6 +289,11 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         char acceleration[40];
         char direct3d[32];
         char direct3d_mode[32];
+        /* Its own buffer. ColourLayout= was read into direct3d_mode, which
+         * the Direct3D sentence below still needs, so that sentence compared
+         * a layout word against mode words and could never report a
+         * disabled, unimplemented or software mode. */
+        char colour_layout[32];
 
         GetPrivateProfileStringA("Velocity9xHardware", "ModeSwitching",
                                  "reboot-selected", switching,
@@ -311,15 +316,30 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                                  sizeof(acceleration), V9X_DIAG_HW_INI);
         status->hardware_acceleration =
             lstrcmpiA(acceleration, "directdraw-fill-blt") == 0 ||
+            lstrcmpiA(acceleration, "directdraw-fill-copy") == 0 ||
+            lstrcmpiA(acceleration, "directdraw-fill") == 0 ||
             lstrcmpiA(acceleration, "directdraw-solid-fill") == 0;
 
         /* Describe what the DirectDraw HAL runs on the engine. Anything the
          * driver does not claim is reported as software so the page never
-         * overstates the hardware path. */
+         * overstates the hardware path.
+         *
+         * Every word a chip manifest can carry has a branch. The ATI words
+         * had none, so a Rage XL whose engine fills and flips read as
+         * "Software emulation only" (A8U4I5, 2026-10-04). Both ATI chips
+         * flip and wait for the blank: the Rage IIC's descriptor carries
+         * FLIP and VBLANK, and the Rage Pro class gets both from
+         * v9x_mobility_fill_engine since b3549a0. */
         status->directdraw[0] = '\0';
         if (lstrcmpiA(acceleration, "directdraw-fill-blt") == 0) {
             v9x_append(status->directdraw, sizeof(status->directdraw),
                        "Surfaces, page flip, vblank, fill, blit");
+        } else if (lstrcmpiA(acceleration, "directdraw-fill-copy") == 0) {
+            v9x_append(status->directdraw, sizeof(status->directdraw),
+                       "Surfaces, page flip, vblank, fill, copy");
+        } else if (lstrcmpiA(acceleration, "directdraw-fill") == 0) {
+            v9x_append(status->directdraw, sizeof(status->directdraw),
+                       "Surfaces, page flip, vblank, fill");
         } else if (lstrcmpiA(acceleration, "directdraw-solid-fill") == 0) {
             v9x_append(status->directdraw, sizeof(status->directdraw),
                        "Surfaces, page flip, vblank, fill");
@@ -390,19 +410,19 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         status->highcolor_request = (int)GetPrivateProfileIntA(
             V9X_SETTINGS_SECTION, "HighColor", 0, V9X_SETTINGS_INI);
         GetPrivateProfileStringA("Velocity9xHardware", "ColourLayout", "",
-                                 direct3d_mode, sizeof(direct3d_mode),
+                                 colour_layout, sizeof(colour_layout),
                                  V9X_DIAG_HW_INI);
         status->colour_layout[0] = '\0';
-        if (lstrcmpiA(direct3d_mode, "555-auto") == 0) {
+        if (lstrcmpiA(colour_layout, "555-auto") == 0) {
             v9x_append(status->colour_layout, sizeof(status->colour_layout),
                        "5:5:5 this boot, chosen for hardware Direct3D");
-        } else if (lstrcmpiA(direct3d_mode, "565-auto") == 0) {
+        } else if (lstrcmpiA(colour_layout, "565-auto") == 0) {
             v9x_append(status->colour_layout, sizeof(status->colour_layout),
                        "5:6:5 this boot");
-        } else if (lstrcmpiA(direct3d_mode, "555-ini") == 0) {
+        } else if (lstrcmpiA(colour_layout, "555-ini") == 0) {
             v9x_append(status->colour_layout, sizeof(status->colour_layout),
                        "5:5:5 this boot, set in SYSTEM.INI");
-        } else if (lstrcmpiA(direct3d_mode, "565-ini") == 0) {
+        } else if (lstrcmpiA(colour_layout, "565-ini") == 0) {
             v9x_append(status->colour_layout, sizeof(status->colour_layout),
                        "5:6:5 this boot, set in SYSTEM.INI");
         } else {
