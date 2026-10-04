@@ -41,6 +41,13 @@
  * (docs\decisions\2026-10-02-rage-iic-register-survey.md).
  */
 #define V9X_DD_ENGINE_TYPE_ATI_RAGE2    5ul
+/*
+ * SiS 6326 2D engine, MMIO through BAR1: solid fill and screen copy, built by
+ * src\chipsets\sis\sis6326_engine.c and measured byte-exact on the card at 8
+ * and 16 bpp (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md). No
+ * Direct3D engine is behind this type yet; d3d_select.c gives it none.
+ */
+#define V9X_DD_ENGINE_TYPE_SIS_6326     6ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

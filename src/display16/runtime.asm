@@ -2385,6 +2385,97 @@ V9xMiniAtiMmioMapDone:
 V9XMINIATIMMIOMAP ENDP
 ENDIF
 
+IFDEF V9X_SIS_FAMILY
+; WORD FAR PASCAL V9xPciReadSisMmioBar(DWORD FAR *base)
+; The SiS 6326's BAR1, its 64 KiB MMIO register window (datasheet 7.10.5;
+; DD000000h on A8U4I5). A read-only config access; a refusal changes no
+; stage code, because a missing engine must not fail Enable.
+PUBLIC V9XPCIREADSISMMIOBAR
+V9XPCIREADSISMMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadSisMmioBarFailed
+    mov     di, 0014h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadSisMmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadSisMmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadSisMmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadSisMmioBarFailed
+    cmp     eax, 0ffff0000h
+    ja      short V9xPciReadSisMmioBarFailed
+    test    eax, 0000ffffh
+    jnz     short V9xPciReadSisMmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadSisMmioBarDone
+V9xPciReadSisMmioBarFailed:
+    xor     ax, ax
+V9xPciReadSisMmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADSISMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniSisMmioMap(DWORD bar1, DWORD FAR *linear)
+; V9XMINI_FN_SIS_MMIO_MAP: the mini-VDD maps BAR1, checks it decodes, and
+; returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMINISISMMIOMAP
+V9XMINISISMMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniSisMmioMapFailed
+    ; PASCAL pushes left to right: bar1 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_SIS_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniSisMmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniSisMmioMapDone
+V9xMiniSisMmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniSisMmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINISISMMIOMAP ENDP
+ENDIF
+
 IFDEF V9X_INTEL_GMA_FAMILY
 ; WORD FAR PASCAL V9xPciReadIntelMmioBar(DWORD FAR *base)
 ; Fresh BAR0 config read for each Phase-1 capture. Unlike the framebuffer BAR

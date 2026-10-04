@@ -1566,6 +1566,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
     case V9X_DD_ENGINE_TYPE_ATI_MACH64:
     case V9X_DD_ENGINE_TYPE_ATI_RAGE2:
         return &v9x_engine32_mach64;
+    case V9X_DD_ENGINE_TYPE_SIS_6326:
+        return &v9x_engine32_sis6326;
     default:
         break;
     }

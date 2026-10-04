@@ -1,11 +1,10 @@
 /*
  * The SiS family table.
  *
- * One chip at tier-0, so there is nothing to dispatch on and no hook to
- * supply: the VBE 4F02h mode set programs the card, 4F01h reports where the
- * framebuffer landed, 4F00h reports its size, and the CPU draws. The family
- * names the hardware it claims so that it can grow native hooks - the 2D
- * engine first - without disturbing the generic vbe fallback.
+ * One chip, and no family-wide hook: the VBE 4F02h mode set programs the
+ * card, 4F01h reports where the framebuffer landed and 4F00h its size. The
+ * chip's own hooks (sis6326_hw16.c) turn the 2D engine on after every mode
+ * set and describe it to DirectDraw.
  */
 #include "velocity9x/hw16.h"
 

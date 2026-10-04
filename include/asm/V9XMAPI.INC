@@ -365,6 +365,20 @@ V9XMINI_FN_I9XX_RING_SUBMIT EQU 0019h
 ; ati family image implements it; every other image refuses cleanly.
 V9XMINI_FN_ATI_MMIO_MAP     EQU 001Ah
 
+; SiS 6326: map the 64 KiB MMIO register window (BAR1) and say where.
+;
+; In: EBX = BAR1 physical base, freshly read from PCI config by the display
+; driver. Out: AX=1, EBX = linear address of the window, whose 2D engine
+; block begins at +8280h. AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR, as the ATI map does. The window is
+; handed over only after the engine status dword (+82A8h) read through it is
+; not all ones - a BAR whose decode is off (SRB D[6:5] not 11) reads that
+; way. The display driver enables the decode and proves the chip's identity
+; through the SR05 unlock read-back before it asks. Only the sis family image
+; implements it; every other image refuses cleanly.
+V9XMINI_FN_SIS_MMIO_MAP     EQU 001Bh
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

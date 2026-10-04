@@ -116,6 +116,8 @@ $s3Dpms = ($Family -eq 's3') -and (-not $NoDpms)
 $intelMmio = ($Family -eq 'intel-gma')
 # The Rage Mobility-M's register BAR map for its Direct3D engine.
 $atiMmio = ($Family -eq 'ati')
+# The SiS 6326's register BAR map for its 2D engine.
+$sisMmio = ($Family -eq 'sis')
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -406,6 +408,9 @@ if ($intelMmio) {
 }
 if ($atiMmio) {
     $assemblerArguments = @("-DV9X_ATI_MOBILITY_MMIO") + $assemblerArguments
+}
+if ($sisMmio) {
+    $assemblerArguments = @("-DV9X_SIS_MMIO") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments

@@ -1,17 +1,17 @@
 # Velocity9x family manifest: SiS 6326.
 #
-# Tier-0: every hw16 hook is NULL, so the VBE 4F02h mode set programs the
-# card, 4F01h reports where the framebuffer landed, and the CPU draws.
-# EngineType and EngineCaps below say exactly that, and change only when the
-# 2D engine exists and has been measured (docs\plans\sis-6326-family.md,
-# Phase 2).
+# The VBE 4F02h mode set programs the card and 4F01h reports where the
+# framebuffer landed. After every mode set the chip's enable hook turns the
+# 2D engine's register window on, and DirectDraw fill and copy run on the
+# engine (SIS_6326); everything else is drawn by the CPU
+# (docs\plans\sis-6326-family.md, Phase 2).
 #
 # Physical-only: the local 86Box build has no 6326 device model.
 @{
     SchemaVersion = 1
     Id = 'sis'
     DisplayName = 'SiS 6326'
-    Description = 'SiS 6326 (PCI 1039:6326) at tier-0: VBE mode set, CPU drawing, no SiS register writes.'
+    Description = 'SiS 6326 (PCI 1039:6326): VBE mode set, the 2D engine for DirectDraw fill and copy, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -26,10 +26,13 @@
             Adapter = 'SiS 6326'
             ClockDetector = 'sis-6326-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            Acceleration = 'none'
+            # The 2D engine through BAR1, measured byte-exact at 8 and 16 bpp
+            # (docs\decisions\2026-10-05-sis6326-2d-engine-writes.md). No
+            # Direct3D engine yet.
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'SIS_6326'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # Both measured boards carry 4 MiB (SRC D[2:1] = 10 under SiS's
             # driver) behind a 4 MiB BAR0, the datasheet's maximum. Every
             # advertised mode lays out in it.
@@ -50,9 +53,8 @@
             Objects = @('sis6326_hw16')
 
             # No required instructions, for the reason the ati manifest gives:
-            # at tier-0 this chip owns no register sequence, and identity is
-            # carried by MapSymbols, Audit.DispatchSymbol and the INF's
-            # hardware-id set.
+            # identity is carried by MapSymbols, Audit.DispatchSymbol and the
+            # INF's hardware-id set.
             Audit = @{
                 Required = @()
                 Forbidden = @()
@@ -101,7 +103,8 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
-        RuntimeDefines = @()
+        # runtime.asm's BAR1 read and mini-VDD map for the 2D engine.
+        RuntimeDefines = @('V9X_SIS_FAMILY')
         SkeletonOutput = 'build\win16-ddi-sis'
         PackageOutput = 'build\win98se-sis'
         VmStageDirectory = 'build\vm-probe\SIS'
@@ -127,7 +130,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + flip, CPU blits only)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy)'
     }
 
     Floppy = @{

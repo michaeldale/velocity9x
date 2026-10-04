@@ -142,6 +142,16 @@ V9xAtiMmioBase   dd 0
 V9xAtiMmioLinear dd 0
 ENDIF
 
+IFDEF V9X_SIS_MMIO
+; SiS 6326: the 64 KiB MMIO register window (BAR1), mapped once for the 2D
+; engine. 82A8h is the engine's queue-status / command dword
+; (docs\specifications\sis6326-registers.md section 5.1).
+V9X_SIS_MMIO_BYTES      equ 00010000h
+V9X_SIS_2D_CMD_STATUS   equ 000082a8h
+V9xSisMmioBase   dd 0
+V9xSisMmioLinear dd 0
+ENDIF
+
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
@@ -2215,6 +2225,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingSubmit
     cmp     ax, V9XMINI_FN_ATI_MMIO_MAP
     je      V9xMini_Api_AtiMmioMap
+    cmp     ax, V9XMINI_FN_SIS_MMIO_MAP
+    je      V9xMini_Api_SisMmioMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2488,6 +2500,47 @@ V9xMini_Api_AtiMmioMap_Owned:
 V9xMini_Api_AtiMmioMap_Failed:
     mov     V9xAtiMmioBase, 0
 V9xMini_Api_AtiMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR1 physical. See V9XMINI_FN_SIS_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_SisMmioMap:
+IFDEF V9X_SIS_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_SisMmioMap_Refused
+    cmp     eax, 0ffff0000h
+    ja      short V9xMini_Api_SisMmioMap_Refused
+    test    eax, V9X_SIS_MMIO_BYTES - 1
+    jnz     short V9xMini_Api_SisMmioMap_Refused
+
+    cmp     V9xSisMmioLinear, 0
+    je      short V9xMini_Api_SisMmioMap_Map
+    cmp     eax, V9xSisMmioBase
+    jne     short V9xMini_Api_SisMmioMap_Refused
+    jmp     short V9xMini_Api_SisMmioMap_Check
+
+V9xMini_Api_SisMmioMap_Map:
+    mov     V9xSisMmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_SIS_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_SisMmioMap_Failed
+    mov     V9xSisMmioLinear, eax
+
+    ; A window whose decode is off reads all ones; withhold it.
+V9xMini_Api_SisMmioMap_Check:
+    mov     edx, V9xSisMmioLinear
+    mov     eax, [edx+V9X_SIS_2D_CMD_STATUS]
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_SisMmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_SisMmioMap_Failed:
+    mov     V9xSisMmioBase, 0
+V9xMini_Api_SisMmioMap_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0
