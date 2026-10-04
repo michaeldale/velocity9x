@@ -74,6 +74,10 @@ showed nearly white, and this build does not reproduce that.
 
 ## Follow-up worth having
 
+Done the same day: `docs/decisions/2026-10-04-gen3-vertex-fog.md`. Game 1
+went from 19,696 untextured batches a run to about 300.
+
+
 Advertise and implement vertex fog on Gen3. Game 1 would then send one
 pass instead of two: about 19,700 fewer batches a run on a machine that
 renders it at 14.8 fps. It needs the engine to apply the fog factor, and

@@ -657,15 +657,24 @@ v9x_status v9x_i9xx_build_3d_state(
  */
 v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
                                       v9x_u32 blend);
-v9x_status v9x_i9xx_build_runtime_state(
-    v9x_u32 target_offset, v9x_u32 target_pitch,
-    v9x_u32 width, v9x_u32 height,
-    const struct v9x_i9xx_texture *texture,
-    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
-    v9x_u32 depth_compare,
-    v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 cylinder, v9x_u32 alpha_test,
-    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* The block with no fog: v9x_i9xx_build_runtime_state_fog, declared with
+ * the fog encodings below, with fog zero. A macro rather than a function so
+ * the 16-bit driver, which compiles i9xx_3d.c into I9XXCODE and never builds
+ * a runtime stream, carries no forwarding body (2026-10-04: the segment
+ * stood 61 bytes over its budget with one). */
+#define v9x_i9xx_build_runtime_state(target_offset, target_pitch, width,     \
+                                     height, texture, depth_offset,          \
+                                     depth_pitch, depth_writes,              \
+                                     depth_compare, blend_src, blend_dst,    \
+                                     cylinder, alpha_test, stream, capacity, \
+                                     written)                                \
+    v9x_i9xx_build_runtime_state_fog((target_offset), (target_pitch),       \
+                                     (width), (height), (texture),          \
+                                     (depth_offset), (depth_pitch),         \
+                                     (depth_writes), (depth_compare),       \
+                                     (blend_src), (blend_dst), (cylinder),  \
+                                     (alpha_test), 0ul, (stream),           \
+                                     (capacity), (written))
 /* Is this one of the four S6 factor codes this driver emits? */
 v9x_u16 v9x_i9xx_blend_factor_known(v9x_u32 factor);
 
@@ -1538,6 +1547,72 @@ v9x_status v9x_i9xx_build_phase5_stream(
 v9x_u32 v9x_i9xx_phase5_primitive_offset(void);
 v9x_u32 v9x_i9xx_phase5_execution_crc(void);
 
+/*
+ * VERTEX FOG, as Mesa's i915 driver does fog: in the fragment program, not
+ * through the fixed-function fog unit, which its own context comment says
+ * would conflict with fog code in the program (i915_context.c, mesa-20.3.5).
+ *
+ * The vertex carries the secondary colour after the primary - S4's
+ * SPEC_FOG, Mesa's _TNL_ATTRIB_COLOR1 as BGRA bytes - and Direct3D puts the
+ * fog factor in that dword's alpha, 1.0 meaning no fog. The program reads it
+ * as T9.w and blends toward the fog colour held in constant C0:
+ *
+ *   mad R2, -T9.wwww, C0, C0       (1 - f) * fog colour
+ *   mad oC.xyz, T9.wwww, colour, R2
+ *   mov oC.w, alpha
+ *
+ * Gen3 has no LRP; Mesa lowers it to MADs the same way. One constant
+ * register per instruction is the hardware's rule, and C0 read twice in one
+ * instruction is one register (i915_reg.h, REG_TYPE_CONST). Every encoding
+ * below is Mesa's i915_reg.h / intel_reg.h, and the constants packet layout
+ * is corroborated by libdrm's intel_decode.c. DERIVED AND UNVALIDATED until
+ * a capture on the netbook says otherwise.
+ */
+#define V9X_I9XX_S4_VFMT_SPEC_FOG        ((v9x_u32)0x00000800ul)
+#define V9X_I9XX_FS_T_SPECULAR           ((v9x_u32)9ul)
+#define V9X_I9XX_FS_REG_TYPE_CONST       ((v9x_u32)2ul)
+#define V9X_I9XX_FS_A0_MAD               ((v9x_u32)0x04000000ul)
+/* src0 = .wwww, and its negation: every channel's negate bit. */
+#define V9X_I9XX_FS_A1_SWIZZLE_WWWW      ((v9x_u32)0x33330000ul)
+#define V9X_I9XX_FS_A1_NEGATE_SRC0       ((v9x_u32)0x88880000ul)
+#define V9X_I9XX_FS_A2_SRC2_TYPE_SHIFT   21u
+#define V9X_I9XX_FS_A2_SRC2_NR_SHIFT     16u
+#define V9X_I9XX_FS_A2_SRC2_SWIZZLE_XYZW ((v9x_u32)0x00000123ul)
+/* _3DSTATE_PIXEL_SHADER_CONSTANTS: length (total - 2), a register mask,
+ * then four floats per register named. C0 alone is six dwords. */
+#define V9X_I9XX_3DSTATE_PS_CONSTANTS    ((v9x_u32)0x7d060000ul)
+#define V9X_I9XX_FOG_CONSTANTS_DWORDS    ((v9x_u32)6ul)
+/* The untextured program, as a fog program selector; textured programs
+ * are named by V9X_I9XX_TEXPROG_*. */
+#define V9X_I9XX_FOGPROG_UNTEXTURED      ((v9x_u32)0xfffffffful)
+
+/* Extent and builder of a fog program; zero / INVALID for an unknown one. */
+v9x_u32 v9x_i9xx_fog_program_extent(v9x_u32 program);
+v9x_status v9x_i9xx_build_fog_program(
+    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* C0 = (r, g, b, 1) from three float bit patterns, each in [0, 1]. */
+v9x_status v9x_i9xx_build_fog_constants(
+    v9x_u32 red_bits, v9x_u32 green_bits, v9x_u32 blue_bits,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* The runtime state block with S4 declaring the secondary colour when fog
+ * is non-zero; v9x_i9xx_build_runtime_state is this with fog zero. */
+v9x_status v9x_i9xx_build_runtime_state_fog(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *texture,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
+    v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 cylinder, v9x_u32 alpha_test, v9x_u32 fog,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* A runtime run whose vertices carry the secondary colour after the
+ * primary: six dwords untextured, eight textured (uv non-null). */
+v9x_u32 v9x_i9xx_fogged_run_dwords(v9x_u32 triangles, v9x_u16 textured);
+v9x_status v9x_i9xx_build_fogged_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *speculars,
+    const v9x_u32 *uv, v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
 /* src\chipsets\intel\i9xx_3d_decode.c */
 /*
  * What a stream is allowed to touch, and what kind of stream it is.
@@ -1687,6 +1762,15 @@ struct v9x_i9xx_decode_limits {
      * kind instead. Append-only, as above.
      */
     v9x_u32 alpha_test;
+    /*
+     * Non-zero: a runtime stream with vertex fog. S4 must add SPEC_FOG, each
+     * vertex is one dword longer (the secondary colour after the primary),
+     * the program must be the fog form of the declared one, and one
+     * constants packet naming C0 alone, every component in [0, 1], must
+     * precede the program. Zero - every scene, every positional initialiser
+     * - forbids all four. Append-only, as above.
+     */
+    v9x_u32 fog;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

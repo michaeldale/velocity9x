@@ -412,8 +412,27 @@ v9x_u32 v9x_i9xx_runtime_textured_run_dwords(v9x_u32 triangles)
  * two places for them to drift, which is the defect class this project keeps
  * finding.
  */
+/*
+ * A fogged vertex is one dword longer: the secondary colour, whose alpha is
+ * the fog factor, after the primary. Six dwords untextured, eight textured.
+ * Sixteen-bit multiply for the reason the two functions above give.
+ */
+v9x_u32 v9x_i9xx_fogged_run_dwords(v9x_u32 triangles, v9x_u16 textured)
+{
+    v9x_u16 stride = (textured != V9X_FALSE)
+        ? (v9x_u16)(V9X_I9XX_TEXTURED_VERTEX_DWORDS + 1ul)
+        : (v9x_u16)(V9X_I9XX_VERTEX_DWORDS + 1ul);
+
+    if (triangles == 0ul || triangles > V9X_I9XX_RUNTIME_MAX_TRIANGLES) {
+        return 0ul;
+    }
+    return 1ul + (v9x_u32)((v9x_u16)triangles *
+                           (v9x_u16)((v9x_u16)V9X_I9XX_VERTEX_COUNT * stride));
+}
+
 static v9x_status v9x_i9xx_build_runtime_run_common(
-    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *uv,
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *speculars,
+    const v9x_u32 *uv,
     v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
@@ -430,9 +449,14 @@ static v9x_status v9x_i9xx_build_runtime_run_common(
         triangles == 0ul || width == 0ul || height == 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    run_dwords = uv != 0
-        ? v9x_i9xx_runtime_textured_run_dwords(triangles)
-        : v9x_i9xx_runtime_run_dwords(triangles);
+    if (speculars != 0) {
+        run_dwords = v9x_i9xx_fogged_run_dwords(
+            triangles, uv != 0 ? V9X_TRUE : V9X_FALSE);
+    } else {
+        run_dwords = uv != 0
+            ? v9x_i9xx_runtime_textured_run_dwords(triangles)
+            : v9x_i9xx_runtime_run_dwords(triangles);
+    }
     if (run_dwords == 0ul || capacity < run_dwords) {
         return V9X_STATUS_INSUFFICIENT_MEMORY;
     }
@@ -516,6 +540,11 @@ static v9x_status v9x_i9xx_build_runtime_run_common(
          * and a decoder or builder asserting one would be asserting what the
          * application may draw. */
         stream[at++] = colors[vertex];
+        /* The secondary colour, for a fog stream: any 32-bit value, for the
+         * colour's reason above; its alpha is the fog factor. */
+        if (speculars != 0) {
+            stream[at++] = speculars[vertex];
+        }
         /*
          * The coordinates last, after the colour, which is Mesa's fixed
          * attribute order and therefore the layout - position, point size,
@@ -548,9 +577,25 @@ v9x_status v9x_i9xx_build_runtime_run(
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
-    return v9x_i9xx_build_runtime_run_common(xyzw, colors, 0, triangles,
+    return v9x_i9xx_build_runtime_run_common(xyzw, colors, 0, 0, triangles,
                                              width, height, stream,
                                              capacity, written);
+}
+
+v9x_status v9x_i9xx_build_fogged_runtime_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *speculars,
+    const v9x_u32 *uv, v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    if (speculars == 0) {
+        /* A fog run without the fog dwords would disagree with the S4 its
+         * state block declares, the hang the comment above names. */
+        if (written != 0) { *written = 0ul; }
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_i9xx_build_runtime_run_common(xyzw, colors, speculars, uv,
+                                             triangles, width, height,
+                                             stream, capacity, written);
 }
 
 v9x_status v9x_i9xx_build_textured_runtime_run(
@@ -566,7 +611,7 @@ v9x_status v9x_i9xx_build_textured_runtime_run(
         if (written != 0) { *written = 0ul; }
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    return v9x_i9xx_build_runtime_run_common(xyzw, colors, uv, triangles,
+    return v9x_i9xx_build_runtime_run_common(xyzw, colors, 0, uv, triangles,
                                              width, height, stream,
                                              capacity, written);
 }

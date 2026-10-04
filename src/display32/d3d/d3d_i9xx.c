@@ -68,8 +68,11 @@ typedef char v9x_assert_batch_fits_runtime[
 typedef char v9x_assert_batch_fits_vertices[
     (V9X_D3D_INDEXED_BATCH * 3u <= 192u) ? 1 : -1];
 /* Sized for the largest batch: a textured, depth-bound state block, the
- * modulate program, and 64 triangles of seven-dword vertices. */
-#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)1536ul)
+ * fog constants and the fog form of the modulate program, and 64 triangles
+ * of eight-dword fogged vertices - 1,537 dwords of primitive alone, which
+ * is why this is no longer 1,536. The ring takes any submission up to its
+ * size less the guard, so 8 KiB is far inside it. */
+#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)2048ul)
 
 /*
  * What this part is measured to do, and nothing wider.
@@ -1741,8 +1744,8 @@ static int v9x_d3d_i9xx_bind_depth_surface(const V9X_R3D_DRAW *draw,
  *
  * STILL DELIBERATELY ABSENT:
  *
- *  - No fog, no lines, no specular, no colour key, no alpha test on the
- *    runtime path.
+ *  - No table fog, no lines, no specular, no colour key on the runtime
+ *    path. (Vertex fog since 2026-10-04; the alpha test since 2026-09-25.)
  *  - No anisotropy.
  *
  * The distinction this function has to get right is unchanged: a capability
@@ -1810,8 +1813,17 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps =
         V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
         V9X_D3DPMISCCAPS_CULLCCW;
+    /*
+     * FOGVERTEX from 2026-10-04: the fog factor in the specular alpha,
+     * blended toward FOGCOLOR by the fog form of each fragment program
+     * (i9xx_fragprog.c). Without it 3DMark 99's Game 1 drew its fog as a
+     * second, alpha-blended untextured pass - 39 per cent of its batches on
+     * the netbook against the Rage XL's 0.8 (docs\decisions\
+     * 2026-10-04-netbook-3dmark-untextured-draws-are-a-fog-pass.md).
+     */
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
-        V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST;
+        V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST |
+        V9X_D3DPRASTERCAPS_FOGVERTEX;
     /*
      * ALPHAGOURAUDBLEND says the device can blend with an alpha interpolated
      * from the vertices, which is what the blend path does: the fragment
@@ -1834,7 +1846,10 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_COLORFLATRGB |
         V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
-        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        /* Fog interpolated across the triangle from its vertices, and flat
+         * by the core's provoking-vertex copy, which includes specular. */
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
     /*
      * LESS alone, and that is the point of publishing it rather than leaving
      * the field zero: the runtime asks what comparisons exist, and an engine
@@ -2032,6 +2047,22 @@ static DWORD v9x_d3d_i9xx_stream[V9X_I9XX_SUBMIT_DWORDS];
 static DWORD v9x_d3d_i9xx_xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
 static DWORD v9x_d3d_i9xx_uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
 static DWORD v9x_d3d_i9xx_colors[V9X_I9XX_SUBMIT_VERTICES];
+/* The secondary colours of a fog draw; their alpha is the fog factor. */
+static DWORD v9x_d3d_i9xx_speculars[V9X_I9XX_SUBMIT_VERTICES];
+
+/* A colour byte as the bit pattern of byte / 255, a float in [0, 1]: the
+ * form a fragment-program constant takes. The union is the portable way
+ * from a float to its bits, as the vertex copy below notes. */
+static DWORD v9x_d3d_i9xx_unit_bits(DWORD byte)
+{
+    union {
+        float value;
+        DWORD bits;
+    } unit;
+
+    unit.value = (float)(byte & 0xfful) / 255.0f;
+    return unit.bits;
+}
 
 static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                             const V9X_D3DTLVERTEX *vertices,
@@ -2170,6 +2201,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD *xyzw = v9x_d3d_i9xx_xyzw;
     DWORD *uv = v9x_d3d_i9xx_uv;
     DWORD *colors = v9x_d3d_i9xx_colors;
+    DWORD *speculars = v9x_d3d_i9xx_speculars;
+    /* Vertex fog: FOGENABLE, with the factor in each specular alpha. */
+    DWORD fog = draw != 0 && draw->fog_enable != 0ul ? 1ul : 0ul;
     DWORD identity = 0ul;
     DWORD address = 0ul;
     DWORD at = 0ul;
@@ -2345,6 +2379,11 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         xyzw[(vertex * 4ul) + 2ul] = bits[2];
         xyzw[(vertex * 4ul) + 3ul] = bits[3];
         colors[vertex] = vertices[vertex].color;
+        /* The specular dword, BGRA in memory as the primary is, whose alpha
+         * Direct3D defines as the fog factor. */
+        if (fog != 0ul) {
+            speculars[vertex] = vertices[vertex].specular;
+        }
         /*
          * tu and tv, which sit past color and specular in the vertex - bits[6]
          * and bits[7]. Copied only when something will sample them, so an
@@ -2381,25 +2420,46 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     state_begin = at;
     stream[at++] = V9X_I9XX_MI_FLUSH_READ;
 
-    if (v9x_i9xx_build_runtime_state(draw->target.offset, draw->target.pitch,
-                                     draw->target.width, draw->target.height,
-                                     textured != 0 ? &map : 0,
-                                     depth_offset, depth_pitch, depth_writes,
-                                     depth_compare,
-                                     blend_src, blend_dst, cylinder,
-                                     alpha_test, stream + at,
-                                     V9X_I9XX_SUBMIT_DWORDS - at,
-                                     &produced) != V9X_STATUS_OK) {
+    if (v9x_i9xx_build_runtime_state_fog(draw->target.offset,
+                                         draw->target.pitch,
+                                         draw->target.width,
+                                         draw->target.height,
+                                         textured != 0 ? &map : 0,
+                                         depth_offset, depth_pitch,
+                                         depth_writes, depth_compare,
+                                         blend_src, blend_dst, cylinder,
+                                         alpha_test, fog, stream + at,
+                                         V9X_I9XX_SUBMIT_DWORDS - at,
+                                         &produced) != V9X_STATUS_OK) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
     }
     at += produced;
+    /* The fog colour into C0, ahead of the program that reads it. */
+    if (fog != 0ul) {
+        if (v9x_i9xx_build_fog_constants(
+                v9x_d3d_i9xx_unit_bits((draw->fog_color >> 16) & 0xfful),
+                v9x_d3d_i9xx_unit_bits((draw->fog_color >> 8) & 0xfful),
+                v9x_d3d_i9xx_unit_bits(draw->fog_color & 0xfful),
+                stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
+        }
+        at += produced;
+    }
     /*
      * The program follows the state block and must agree with it: the
      * modulate program reads a texel and the plain one does not, and a
      * textured state block with the plain program samples nothing while
      * declaring a coordinate set. The decoder checks the pairing too.
      */
-    if ((textured != 0
+    if (fog != 0ul) {
+        if (v9x_i9xx_build_fog_program(
+                textured != 0 ? program : V9X_I9XX_FOGPROG_UNTEXTURED,
+                stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
+        }
+    } else if ((textured != 0
             ? v9x_i9xx_build_texture_program(program, stream + at,
                                              V9X_I9XX_SUBMIT_DWORDS - at,
                                              &produced)
@@ -2410,7 +2470,15 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     }
     at += produced;
     state_end = at;
-    if ((textured != 0
+    if (fog != 0ul) {
+        if (v9x_i9xx_build_fogged_runtime_run(
+                xyzw, colors, speculars, textured != 0 ? uv : 0,
+                triangle_count, draw->target.width, draw->target.height,
+                stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+        }
+    } else if ((textured != 0
             ? v9x_i9xx_build_textured_runtime_run(
                   xyzw, colors, uv, triangle_count,
                   draw->target.width, draw->target.height, stream + at,
@@ -2524,6 +2592,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     limits.depth_writes = depth_writes;
     limits.depth_compare = depth_compare;
     limits.alpha_test = alpha_test;
+    limits.fog = fog;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
     limits.texture_cylinder = cylinder;
     limits.texture_mip_filter = textured != 0 ? map.mip_filter : 0ul;
@@ -2666,9 +2735,7 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
          draw->scissor_bottom != draw->target.height)) {
         return 0;
     }
-    if (draw->fog_enable != 0ul) {
-        return 0;
-    }
+    /* Fog is drawn since 2026-10-04, as vertex fog (the fog programs). */
     /* The alpha test is emitted by the draw since 2026-09-25 (S6, through
      * v9x_i9xx_alpha_test_bits); refuse only what that encoder cannot say,
      * which is what the draw would count and draw untested. */

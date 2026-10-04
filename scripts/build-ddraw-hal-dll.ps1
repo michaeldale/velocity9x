@@ -135,6 +135,9 @@ $sources = @(
     "src\chipsets\intel\i9xx_float.c"
     "src\chipsets\intel\i9xx_3d.c"
     "src\chipsets\intel\i9xx_fragprog.c"
+    # The fog programs and their constant: HAL only, kept out of the 16-bit
+    # driver's I9XXCODE segment.
+    "src\chipsets\intel\i9xx_fog.c"
     "src\chipsets\intel\i9xx_vertex.c"
     "src\chipsets\intel\i9xx_texture.c"
     "src\chipsets\intel\i9xx_scene.c"

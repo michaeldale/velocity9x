@@ -1145,6 +1145,10 @@ static WORD v9x_p6_run_scene(
         WORD reason;
         struct v9x_i9xx_decode_limits limits;
 
+        /* Every appended field zero - the scene answer - as the other
+         * decode site does; a stack value in fog or alpha_test is a
+         * refusal of a scene that is correct. */
+        v9x_i9xx_decode_limits_clear(&limits);
         limits.target_offset = layout->target_offset;
         limits.target_bytes = layout->target_bytes;
         limits.target_pitch = layout->target_pitch;

@@ -381,3 +381,29 @@ v9x_status v9x_i9xx_build_texture_program(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+/*
+ * The extent of each fog program, which i9xx_fog.c builds; here because the
+ * 16-bit decoder needs it and does not link i9xx_fog.c.
+ *
+ * Instruction counts, which are the extents: header plus three dwords each.
+ *   untextured: dcl T8, dcl T9, mad, mad, mov                     = 5
+ *   DECAL:      dcl T0, dcl S0, dcl T9, texld, mad, mad, mov      = 7
+ *   modulates:  dcl T0, dcl S0, dcl T8, dcl T9, texld, mul,
+ *               mad, mad, mov                                     = 9
+ */
+v9x_u32 v9x_i9xx_fog_program_extent(v9x_u32 program)
+{
+    if (program == V9X_I9XX_FOGPROG_UNTEXTURED) {
+        return 1ul + 5ul * 3ul;
+    }
+    if (program == V9X_I9XX_TEXPROG_DECAL) {
+        return 1ul + 7ul * 3ul;
+    }
+    if (program == V9X_I9XX_TEXPROG_MODULATE_ALPHA ||
+        program == V9X_I9XX_TEXPROG_MODULATE_TEXALPHA ||
+        program == V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) {
+        return 1ul + 9ul * 3ul;
+    }
+    return 0ul;
+}

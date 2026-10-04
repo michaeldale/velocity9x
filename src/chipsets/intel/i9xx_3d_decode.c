@@ -221,11 +221,22 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u16 saw_fill = V9X_FALSE;
     /* Breadcrumb stores seen; a licensed stream must end with exactly one. */
     v9x_u32 saw_breadcrumb = 0ul;
+    /* The fog constants packet: required before the program of a fog
+     * stream, forbidden in any other. */
+    v9x_u16 saw_fog_constants = V9X_FALSE;
+    /* A fog vertex's secondary colour sits after the primary, so it adds
+     * one dword and moves the coordinates along by one. */
+    v9x_u32 fog_dwords;
 
     if (rejected_index != 0) { *rejected_index = 0ul; }
     if (stream == 0 || limits == 0) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
+    /* Fog is an application's request; a generated scene has none. */
+    if (limits->fog != 0ul && limits->kind != V9X_I9XX_SCENE_RUNTIME) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, 0ul);
+    }
+    fog_dwords = limits->fog != 0ul ? 1ul : 0ul;
     target_offset = limits->target_offset;
     target_bytes = limits->target_bytes;
     texture_offset = limits->texture_offset;
@@ -763,7 +774,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                        V9X_I9XX_S4_LINE_WIDTH_ONE |
                        V9X_I9XX_S4_CULLMODE_NONE |
                        V9X_I9XX_S4_VFMT_XYZW |
-                       V9X_I9XX_S4_VFMT_COLOR)) {
+                       V9X_I9XX_S4_VFMT_COLOR |
+                       (fog_dwords != 0ul ? V9X_I9XX_S4_VFMT_SPEC_FOG
+                                          : 0ul))) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, index + 3ul);
             }
             /*
@@ -874,7 +887,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             {
                 v9x_u32 want;
 
-                if (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
+                if (fog_dwords != 0ul) {
+                    /* The fog form of the declared program, by length, and
+                     * only after its C0 has been loaded: a fog program
+                     * reading a constant nobody set blends toward black. */
+                    if (saw_fog_constants == V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+                    }
+                    want = v9x_i9xx_fog_program_extent(
+                               textured != V9X_FALSE
+                                   ? limits->texture_program
+                                   : V9X_I9XX_FOGPROG_UNTEXTURED) - 1ul;
+                } else if (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
                     textured != V9X_FALSE) {
                     /* The program the engine declared, by length: zero is
                      * the original modulate, the two alpha-keeping forms are
@@ -905,6 +929,32 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             }
             saw_shader = V9X_TRUE;
             index += payload + 1ul;
+
+        } else if ((command & 0xffff0000ul) ==
+                       V9X_I9XX_3DSTATE_PS_CONSTANTS) {
+            /*
+             * The fog colour: exactly C0, exactly once, in a fog stream, each
+             * component a float in [0, 1] - by bit pattern, since positive
+             * IEEE-754 magnitudes order as integers and anything above
+             * 0x3f800000 is greater than one, infinite, a NaN or negative.
+             */
+            if (fog_dwords == 0ul || saw_fog_constants != V9X_FALSE ||
+                command != (V9X_I9XX_3DSTATE_PS_CONSTANTS |
+                            (V9X_I9XX_FOG_CONSTANTS_DWORDS - 2ul))) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
+            }
+            if (dword_count - index < V9X_I9XX_FOG_CONSTANTS_DWORDS) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+            }
+            if (stream[index + 1ul] != 1ul ||
+                stream[index + 2ul] > 0x3f800000ul ||
+                stream[index + 3ul] > 0x3f800000ul ||
+                stream[index + 4ul] > 0x3f800000ul ||
+                stream[index + 5ul] > 0x3f800000ul) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index + 1ul);
+            }
+            saw_fog_constants = V9X_TRUE;
+            index += V9X_I9XX_FOG_CONSTANTS_DWORDS;
 
         } else if (command == (V9X_I9XX_3DSTATE_AA |
                                V9X_I9XX_AA_LINE_ECAAR_WIDTH_EN |
@@ -1227,8 +1277,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * have the hardware read two dwords of the NEXT vertex as this
              * one's coordinates.
              */
-            stride = (textured != V9X_FALSE) ? V9X_I9XX_TEXTURED_VERTEX_DWORDS
-                                             : V9X_I9XX_VERTEX_DWORDS;
+            stride = ((textured != V9X_FALSE)
+                          ? V9X_I9XX_TEXTURED_VERTEX_DWORDS
+                          : V9X_I9XX_VERTEX_DWORDS) + fog_dwords;
             /*
              * Vertices: three per triangle, and a depth scene draws three
              * triangles where every other kind draws one. Bounded by the
@@ -1451,15 +1502,18 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                          * on a texture and leave the interpolator walking a
                          * span nobody can predict.
                          */
-                        if (v9x_i9xx_float_finite(stream[base + 5ul]) ==
+                        /* Past the secondary colour in a fog stream. */
+                        if (v9x_i9xx_float_finite(
+                                stream[base + 5ul + fog_dwords]) ==
                                 V9X_FALSE) {
                             V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
-                                            base + 5ul);
+                                            base + 5ul + fog_dwords);
                         }
-                        if (v9x_i9xx_float_finite(stream[base + 6ul]) ==
+                        if (v9x_i9xx_float_finite(
+                                stream[base + 6ul + fog_dwords]) ==
                                 V9X_FALSE) {
                             V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
-                                            base + 6ul);
+                                            base + 6ul + fog_dwords);
                         }
                     } else {
                         if (v9x_i9xx_normalized_half(stream[base + 5ul]) ==

@@ -500,6 +500,7 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->texture_mip_filter = 0ul;
     limits->texture_max_lod = 0ul;
     limits->alpha_test = 0ul;
+    limits->fog = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -2693,6 +2694,185 @@ static void test_runtime_textured_and_depth(void)
         CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
               V9X_I9XX_P5_OK);
     }
+}
+
+/*
+ * VERTEX FOG: the fog program's dwords against the encodings in Mesa's
+ * i915_reg.h, worked by hand, and a fogged runtime stream through the
+ * decoder in both directions - accepted as the engine builds it, refused
+ * when any one of its four parts (S4, constants, program, stride) is
+ * missing or disagrees with the limits.
+ */
+static void test_runtime_fog(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    static v9x_u32 stream[2048];
+    v9x_u32 program[32];
+    v9x_u32 xyzw[64ul * 3ul * 4ul];
+    v9x_u32 uv[64ul * 3ul * 2ul];
+    v9x_u32 colors[64ul * 3ul];
+    v9x_u32 speculars[64ul * 3ul];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 vertex;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 half = 0x3f000000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+    const v9x_u32 map_offset = 0x00300000ul;
+
+    /* The untextured fog program, dword for dword. */
+    CHECK(v9x_i9xx_fog_program_extent(V9X_I9XX_FOGPROG_UNTEXTURED) == 16ul);
+    CHECK(v9x_i9xx_build_fog_program(V9X_I9XX_FOGPROG_UNTEXTURED, program,
+                                     32ul, &produced) == V9X_STATUS_OK);
+    CHECK(produced == 16ul);
+    CHECK(program[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 14ul));
+    /* dcl T8 (diffuse) and dcl T9 (specular), all four channels. */
+    CHECK(program[1] == 0x190a3c00ul);
+    CHECK(program[4] == 0x190a7c00ul);
+    /* mad R2.xyzw, -T9.wwww, C0, C0 */
+    CHECK(program[7] == 0x0400bca4ul);
+    CHECK(program[8] == 0xbbbb4001ul);
+    CHECK(program[9] == 0x23400123ul);
+    /* mad oC.xyz, T9.wwww, T8, R2 */
+    CHECK(program[10] == 0x04201ca4ul);
+    CHECK(program[11] == 0x33332801ul);
+    CHECK(program[12] == 0x23020123ul);
+    /* mov oC.w, T8 */
+    CHECK(program[13] == 0x022020a0ul);
+    CHECK(program[14] == 0x01230000ul);
+    CHECK(program[15] == 0ul);
+    /* Every textured form has its extent and builds to it. */
+    CHECK(v9x_i9xx_fog_program_extent(V9X_I9XX_TEXPROG_DECAL) == 22ul);
+    CHECK(v9x_i9xx_fog_program_extent(V9X_I9XX_TEXPROG_MODULATE_ALPHA) ==
+          28ul);
+    CHECK(v9x_i9xx_fog_program_extent(V9X_I9XX_TEXPROG_MODULATE_TEXALPHA) ==
+          28ul);
+    CHECK(v9x_i9xx_fog_program_extent(V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA) ==
+          28ul);
+    CHECK(v9x_i9xx_fog_program_extent(7ul) == 0ul);
+    CHECK(v9x_i9xx_build_fog_program(7ul, program, 32ul, &produced) !=
+          V9X_STATUS_OK);
+    /* A colour component above one is refused, as is a negative one. */
+    CHECK(v9x_i9xx_build_fog_constants(one, half, 0ul, program, 32ul,
+                                       &produced) == V9X_STATUS_OK);
+    CHECK(produced == 6ul && program[0] == 0x7d060004ul &&
+          program[1] == 1ul && program[2] == one && program[5] == one);
+    CHECK(v9x_i9xx_build_fog_constants(0x3f800001ul, 0ul, 0ul, program, 32ul,
+                                       &produced) != V9X_STATUS_OK);
+    CHECK(v9x_i9xx_build_fog_constants(0ul, 0xbf000000ul, 0ul, program, 32ul,
+                                       &produced) != V9X_STATUS_OK);
+
+    /* The largest batch: 64 textured, fogged triangles with depth. */
+    map.offset = map_offset;
+    map.width = 64ul;
+    map.height = 64ul;
+    map.pitch = 128ul;
+    map.format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    map.wrap = 0ul;
+    map.mag_linear = 0ul;
+    map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
+    for (vertex = 0ul; vertex < 64ul * 3ul; ++vertex) {
+        xyzw[vertex * 4ul + 0ul] = 0x43200000ul + (vertex & 7ul);
+        xyzw[vertex * 4ul + 1ul] = 0x42f00000ul;
+        xyzw[vertex * 4ul + 2ul] = half;
+        xyzw[vertex * 4ul + 3ul] = one;
+        colors[vertex] = 0xff808080ul;
+        speculars[vertex] = (vertex & 0xfful) << 24;
+        uv[vertex * 2ul + 0ul] = half;
+        uv[vertex * 2ul + 1ul] = half;
+    }
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map_offset;
+    limits.texture_bytes = map.height * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.texture_program = V9X_I9XX_TEXPROG_MODULATE_ALPHA;
+    limits.fog = 1ul;
+
+    CHECK(v9x_i9xx_build_runtime_state_fog(surface, pitch, width, height,
+                                           &map, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul,
+                                           0ul, 0ul, 1ul, stream + at,
+                                           2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fog_constants(half, half, half, stream + at,
+                                       2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fog_program(V9X_I9XX_TEXPROG_MODULATE_ALPHA,
+                                     stream + at, 2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_fogged_run_dwords(64ul, V9X_TRUE) == 1537ul);
+    CHECK(v9x_i9xx_build_fogged_runtime_run(xyzw, colors, speculars, uv, 64ul,
+                                            width, height, stream + at,
+                                            2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    CHECK(produced == 1537ul);
+    /* The secondary colour sits after the primary, the coordinates after it. */
+    CHECK(stream[at + 1ul + 5ul] == speculars[0]);
+    CHECK(stream[at + 1ul + 6ul] == half);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* The same stream against limits that say no fog: refused. */
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        wrong.fog = 0ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+        /* Fog in a generated scene is refused outright. */
+        wrong = limits;
+        wrong.kind = V9X_I9XX_SCENE_TEXTURED;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) !=
+              V9X_I9XX_P5_OK);
+    }
+
+    /* Untextured, and without the constants packet: refused, because the
+     * program would read a C0 nobody loaded. */
+    at = 0ul;
+    limits.texture_offset = 0ul;
+    limits.texture_bytes = 0ul;
+    limits.texture_width = 0ul;
+    limits.texture_height = 0ul;
+    limits.texture_pitch = 0ul;
+    limits.texture_program = 0ul;
+    CHECK(v9x_i9xx_build_runtime_state_fog(surface, pitch, width, height, 0,
+                                           0ul, 0ul, 0ul, 0ul, 0ul, 0ul,
+                                           0ul, 0ul, 1ul, stream + at,
+                                           2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fog_program(V9X_I9XX_FOGPROG_UNTEXTURED,
+                                     stream + at, 2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fogged_runtime_run(xyzw, colors, speculars, 0, 1ul,
+                                            width, height, stream + at,
+                                            2048ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_MISSING_PACKET);
+    /* A fog run needs its fog dwords. */
+    CHECK(v9x_i9xx_build_fogged_runtime_run(xyzw, colors, 0, 0, 1ul,
+                                            width, height, stream,
+                                            2048ul, &produced) !=
+          V9X_STATUS_OK);
 }
 
 /*
@@ -5417,6 +5597,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_blend_scene_expectations();
     test_decoder_runtime_mode();
     test_runtime_textured_and_depth();
+    test_runtime_fog();
     test_runtime_batch_bound();
     test_float_in_range();
     test_runtime_run();

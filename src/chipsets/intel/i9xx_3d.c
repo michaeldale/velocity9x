@@ -136,7 +136,7 @@ static v9x_u32 v9x_i9xx_emit_target(v9x_u32 *stream, v9x_u32 target_offset,
  * trailing length field is (S dwords - 1); five independent use sites agree.
  */
 static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2,
-                                      v9x_u32 s3, v9x_u32 s6)
+                                      v9x_u32 s3, v9x_u32 s6, v9x_u32 fog)
 {
     v9x_u32 at = 0ul;
 
@@ -170,7 +170,10 @@ static v9x_u32 v9x_i9xx_emit_pipeline(v9x_u32 *stream, v9x_u32 s2,
                    V9X_I9XX_S4_LINE_WIDTH_ONE |
                    V9X_I9XX_S4_CULLMODE_NONE |
                    V9X_I9XX_S4_VFMT_XYZW |
-                   V9X_I9XX_S4_VFMT_COLOR;
+                   V9X_I9XX_S4_VFMT_COLOR |
+                   /* A fog stream's vertex adds the secondary colour after
+                    * the primary, which carries the fog factor in alpha. */
+                   (fog != 0ul ? V9X_I9XX_S4_VFMT_SPEC_FOG : 0ul);
     stream[at++] = V9X_I9XX_S5_PHASE5;
     /*
      * S6, a PARAMETER for the same reason S2 is. Colour writes alone for an
@@ -237,7 +240,7 @@ static v9x_status v9x_i9xx_build_state_common(
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 s3, v9x_u32 alpha_test,
+    v9x_u32 s3, v9x_u32 alpha_test, v9x_u32 fog,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
 v9x_status v9x_i9xx_build_textured_state(
@@ -255,7 +258,7 @@ v9x_status v9x_i9xx_build_textured_state(
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, texture, 0,
                                        V9X_I9XX_SCENE_TEXTURED, 0ul, 0ul,
-                                       0ul, 0ul, stream, capacity, written);
+                                       0ul, 0ul, 0ul, stream, capacity, written);
 }
 
 /*
@@ -307,7 +310,7 @@ v9x_status v9x_i9xx_build_depth_state(
                                            ? V9X_I9XX_SCENE_DEPTH_WRITE
                                            : V9X_I9XX_SCENE_DEPTH_TEST,
                                        0ul, 0ul, 0ul, 0ul,
-                                       stream, capacity, written);
+                                       0ul, stream, capacity, written);
 }
 
 v9x_status v9x_i9xx_build_3d_state(
@@ -318,7 +321,7 @@ v9x_status v9x_i9xx_build_3d_state(
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0,
                                        V9X_I9XX_SCENE_PLAIN, 0ul, 0ul,
-                                       0ul, 0ul, stream, capacity, written);
+                                       0ul, 0ul, 0ul, stream, capacity, written);
 }
 
 /*
@@ -369,14 +372,16 @@ v9x_u32 v9x_i9xx_runtime_state_extent(v9x_u32 textured, v9x_u32 depthed,
     return extent;
 }
 
-v9x_status v9x_i9xx_build_runtime_state(
+/* v9x_i9xx_build_runtime_state is this with fog zero: a macro in the
+ * header, so the 16-bit driver's I9XXCODE carries no forwarding body. */
+v9x_status v9x_i9xx_build_runtime_state_fog(
     v9x_u32 target_offset, v9x_u32 target_pitch,
     v9x_u32 width, v9x_u32 height,
     const struct v9x_i9xx_texture *texture,
     v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
     v9x_u32 depth_compare,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 cylinder, v9x_u32 alpha_test,
+    v9x_u32 cylinder, v9x_u32 alpha_test, v9x_u32 fog,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     struct v9x_i9xx_depth_binding depth;
@@ -441,7 +446,7 @@ v9x_status v9x_i9xx_build_runtime_state(
         target_offset, target_pitch, width, height, texture,
         depth_offset != 0ul ? &depth : 0,
         V9X_I9XX_SCENE_RUNTIME, blend_src, blend_dst, s3, alpha_test,
-        stream, capacity, written);
+        fog, stream, capacity, written);
 }
 
 /*
@@ -475,7 +480,7 @@ v9x_status v9x_i9xx_build_alpha_state(
     }
     return v9x_i9xx_build_state_common(target_offset, target_pitch,
                                        width, height, 0, 0, kind, 0ul, 0ul,
-                                       0ul, 0ul, stream, capacity, written);
+                                       0ul, 0ul, 0ul, stream, capacity, written);
 }
 
 static v9x_status v9x_i9xx_build_state_common(
@@ -484,7 +489,7 @@ static v9x_status v9x_i9xx_build_state_common(
     const struct v9x_i9xx_texture *texture,
     const struct v9x_i9xx_depth_binding *depth, v9x_u32 kind,
     v9x_u32 blend_src, v9x_u32 blend_dst,
-    v9x_u32 s3, v9x_u32 alpha_test,
+    v9x_u32 s3, v9x_u32 alpha_test, v9x_u32 fog,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
 {
     /* Blending is the enable's presence; the codes were checked by the
@@ -641,7 +646,7 @@ static v9x_status v9x_i9xx_build_state_common(
                                      (texture != 0)
                                          ? V9X_I9XX_S2_TEXTURED_UNIT0
                                          : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT,
-                                     s3, s6);
+                                     s3, s6, fog);
     }
 
     if (at != needed) {
