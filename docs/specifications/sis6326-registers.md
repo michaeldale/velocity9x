@@ -319,9 +319,10 @@ RHW (1/w) or w. D3D supplies RHW; the first textured triangle will show which.
 | 2:0 | TDRAW | 000 point, 001 line, 010 triangle |
 
 The driver sorts the vertices by Y and states the order in this register; the
-hardware does not sort. **Not found:** how TDRAWDIR relates to the sorted
-vertices (presumably the side the middle vertex lies on). Probe with one
-triangle per orientation.
+hardware does not sort. **Measured 2026-10-05:** TDRAWDIR is 1 exactly when
+the middle vertex lies left of the long top-to-bottom edge; the engine
+samples at integer pixel coordinates and owns samples on bottom and right
+edges ([decision](../decisions/2026-10-05-sis6326-3d-first-triangle.md)).
 
 ### 6.3 Fire and status, 89FCh (DS L4847-4863) [S]
 

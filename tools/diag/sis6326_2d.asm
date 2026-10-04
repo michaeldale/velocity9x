@@ -9,8 +9,11 @@
 ;                          off and the index restored; index 00h-3Fh only.
 ;   MMIO write32/16/read - BAR1, offsets below 64 KiB, naturally aligned.
 ;   LFB write/read/fill  - BAR0, dword-aligned offsets below 4 MiB.
-;   wait                 - read an MMIO dword until (value & mask) == 0,
-;                          at most SIS2D_WAIT_LIMIT reads.
+;   wait clear / set     - read an MMIO dword until (value & mask) is 0, or
+;                          equals mask, at most SIS2D_WAIT_LIMIT reads.
+;
+; SIS3D.EXE, the 3D write probe, drives the 3D registers through this same
+; VxD: they are in the same BAR1 window.
 ;
 ; Unlike SIS6326.VXD this writes the card: the sequencer registers SIS2D.EXE
 ; names and the engine registers in BAR1. SIS2D.EXE saves and restores the
@@ -46,6 +49,7 @@ SIS2D_OP_LFB_WRITE32    equ 6
 SIS2D_OP_LFB_READ32     equ 7
 SIS2D_OP_LFB_FILL32     equ 8
 SIS2D_OP_WAIT_CLEAR     equ 9
+SIS2D_OP_WAIT_SET       equ 10
 
 ; Status bits.
 SIS2D_PCI_FOUND         equ 00000001h
@@ -196,6 +200,8 @@ BeginProc Sis2d_Execute_One
     je      Sis2d_Do_Lfb_Fill32
     cmp     eax, SIS2D_OP_WAIT_CLEAR
     je      Sis2d_Do_Wait_Clear
+    cmp     eax, SIS2D_OP_WAIT_SET
+    je      Sis2d_Do_Wait_Set
     jmp     Sis2d_Do_Refuse
 
 ; a = index 00h-3Fh.
@@ -324,6 +330,28 @@ Sis2d_Do_Wait_Next:
     jb      short Sis2d_Do_Wait_Next
     mov     edx, SIS2D_TIMEOUT
 Sis2d_Do_Wait_Clear_Done:
+    mov     [esi+16], edx
+    jmp     short Sis2d_Do_Done
+
+; a = MMIO offset, b = mask. Waits for every mask bit set - the 3D status
+; bits at 89FCh are active-high idle flags. Result as for the clear wait.
+Sis2d_Do_Wait_Set:
+    cmp     ebx, SIS2D_MMIO_BYTES - 4
+    ja      Sis2d_Do_Refuse
+    test    ebx, 3
+    jnz     Sis2d_Do_Refuse
+    mov     edi, Sis2dMmioLinear
+    xor     edx, edx
+Sis2d_Do_Wait_Set_Next:
+    inc     edx
+    mov     eax, [edi+ebx]
+    and     eax, ecx
+    cmp     eax, ecx
+    je      short Sis2d_Do_Wait_Set_Done
+    cmp     edx, SIS2D_WAIT_LIMIT
+    jb      short Sis2d_Do_Wait_Set_Next
+    mov     edx, SIS2D_TIMEOUT
+Sis2d_Do_Wait_Set_Done:
     mov     [esi+16], edx
     jmp     short Sis2d_Do_Done
 

@@ -84,6 +84,7 @@
 #define V9X_DIAG_SIS6326_TXT V9X_DIAG_PATH("SIS6326.TXT")   /* sis6326_probe_win32.c */
 #define V9X_DIAG_SIS6326_ROM V9X_DIAG_PATH("SIS6326.ROM")   /* sis6326_probe_win32.c */
 #define V9X_DIAG_SIS2D_TXT   V9X_DIAG_PATH("SIS2D.TXT")     /* sis6326_2d_win32.c */
+#define V9X_DIAG_SIS3D_TXT   V9X_DIAG_PATH("SIS3D.TXT")     /* sis6326_3d_win32.c */
 #define V9X_DIAG_GDI_INI     V9X_DIAG_PATH("V9XGDI.INI")    /* gdi_smoke_win32.c */
 #define V9X_DIAG_TEXT_INI    V9X_DIAG_PATH("V9XTEXT.INI")   /* gdi_smoke_win32.c /textdump */
 #define V9X_DIAG_IOTR_INI    V9X_DIAG_PATH("V9XIOTR.INI")   /* io_trace_win32.c */

@@ -2,7 +2,12 @@
 
 Date: 2026-10-05
 
-Status: design for approval; nothing coded.
+Status: approved 2026-10-05 as written. Phase 1 done the same day
+([first triangle](../decisions/2026-10-05-sis6326-3d-first-triangle.md)):
+TDRAWDIR is 1 when the middle vertex is left of the long edge; the engine
+samples at integer coordinates (Direct3D's centre) and owns bottom/right
+ties, which a small up-left vertex shift turns into Direct3D's top-left
+rule; 3D runs with the Turbo Queue off. Next: phase 2.
 
 Target: SiS 6326 card 2 (rev 0Bh, 4 MiB SGRAM) in A8U4I5, running the `sis`
 family with the 2D engine on DirectDraw

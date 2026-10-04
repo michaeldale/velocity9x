@@ -19,7 +19,7 @@
 - [Validating the dynamic VBE pipeline is inert on physical S3 silicon](s3-physical-pipeline-validation.md) - Shipped in 0.6.0.
 - [Direct3D rendering modes: one settings-page selector, four back ends](s3-trio64-voodoo2-hybrid-3d.md) - In progress.
 - [SiS 6326 family: survey, tier-0, then the 2D engine](sis-6326-family.md) - Phase 1 done: tier-0 enable-ok on card 2 (rev 0Bh) with GDI, 22 modes and DirectDraw; DirectDraw's low-res refusal fixed (dd16.c refresh 0, all 22 modes enumerated). Phase 2 done for DirectDraw: fills and copies on the 2D engine (SIS_6326), pixel-correct across 24 mode-set enables on hardware; GDI acceleration and throughput not measured. Physical-only on A8U4I5.
-- [SiS 6326: hardware Direct3D](sis-6326-hardware-3d.md) - Design for approval; nothing coded. Setup engine takes D3D's floats; probe phases first, 16 bpp only, Turbo Queue off.
+- [SiS 6326: hardware Direct3D](sis-6326-hardware-3d.md) - In progress: phase 1 done (direction bit, integer sampling, bottom-right ties fixed by an up-left shift, Turbo Queue off works); phase 2 next.
 - [Mode 2 on a second CPU: banded rasterization through smp.vxd](software-d3d-smp-workers.md) - Open.
 - [Mode 2 scalar fixes: make the rasterizer cheap before making it wide](software-rasterizer-scalar-fixes.md) - In progress.
 - [Tier-0 quality: write-combining, hardware cursor, synthetic vblank, DOS-box guard](tier0-quality.md) - In progress.
