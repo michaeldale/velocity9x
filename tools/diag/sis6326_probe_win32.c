@@ -13,8 +13,8 @@
  * driver has used them. Two decodes are printed side by side wherever the
  * datasheet and xf86-video-sis disagree (memory size, MCLK post-scale bit),
  * so the capture settles the disagreement instead of a guess. It writes
- * nothing to the card beyond the VGA index ports, so it cannot answer whether
- * a register is writable.
+ * nothing to the card beyond the VGA index ports, except SR5 under /unlock,
+ * so it cannot answer whether a register is writable.
  *
  * Register meanings: docs\specifications\sis6326-registers.md.
  */
@@ -54,8 +54,11 @@ typedef RESOURCEID *PRESOURCEID;
 #define SIS_VGA_INDEXES 0x40u
 #define SIS_OFFSET_MAX 512u
 #define SIS_ROM_BYTES 0x10000u
-#define SIS_RANGE_MAX 8u
+/* Eight was too few: A8U4I5 filled all eight with the VGA legacy ranges
+ * still listed (2026-10-04). */
+#define SIS_RANGE_MAX 16u
 #define SIS_FLAG_FORCE_3D 0x00000001ul
+#define SIS_FLAG_UNLOCK 0x00000002ul
 
 #define SIS_PCI_FOUND        0x00000001ul
 #define SIS_VGA_READ         0x00000002ul
@@ -66,6 +69,8 @@ typedef RESOURCEID *PRESOURCEID;
 #define SIS_3D_SKIPPED       0x00000040ul
 #define SIS_MMIO_DISABLED    0x00000080ul
 #define SIS_MMIO_BAR_INVALID 0x00000100ul
+#define SIS_EXT_LOCKED       0x00000200ul
+#define SIS_UNLOCKED_BY_PROBE 0x00000400ul
 
 /* BAR1 is a 64 KiB MMIO window and BAR0 the 4 MiB framebuffer (datasheet
  * 7.10.4-5), which is how the Config Manager ranges are told apart. */
@@ -112,7 +117,7 @@ struct sis_result {
     DWORD crtc_port;
     DWORD crtc_index_restored;
     DWORD cr80;
-    DWORD reserved;
+    DWORD sr05_found_relocked;
     DWORD config[SIS_CONFIG_DWORDS];
     BYTE sr[SIS_VGA_INDEXES];
     BYTE cr[SIS_VGA_INDEXES];
@@ -671,32 +676,53 @@ void WINAPI V9xSis6326ProbeEntry(void)
     char text[16];
     static const char header[] = "[Sis6326Probe]\r\n";
 
-    request->assigned_mmio = 0u;
     ranges_status = sis_ranges(ranges, &range_count);
+
+    device = CreateFileA("\\\\.\\SIS6326.VXD", 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        ExitProcess(2u);
+    }
+
+    /*
+     * First pass: configuration space only - no offsets, no unlock - to learn
+     * the live BAR1. The MMIO window is then the Config Manager range at that
+     * base. Size alone does not identify it: A8U4I5 listed two 64 KiB ranges,
+     * DC000000h and DD000000h, with BAR1 at DD000000h (2026-10-04), and the
+     * first build mapped the wrong one. No match, no MMIO read.
+     */
+    request->assigned_mmio = 0u;
+    request->flags = 0u;
+    request->count = 0u;
+    if (!DeviceIoControl(device, 1u, request, sizeof(*request), result,
+                         sizeof(*result), &returned, 0) ||
+        returned != sizeof(*result) || result->magic != SIS_MAGIC) {
+        CloseHandle(device);
+        ExitProcess(3u);
+    }
     for (index = 0u; index < range_count; ++index) {
         if (ranges[index].type == ResType_Mem &&
-            ranges[index].bytes == SIS_MMIO_BYTES) {
+            ranges[index].bytes == SIS_MMIO_BYTES &&
+            ranges[index].base == (result->config[5] & 0xfffffff0ul)) {
             request->assigned_mmio = ranges[index].base;
         }
     }
 
     /* The 3D block is read only when the stock driver enabled it, unless
-     * /force3d says otherwise; see sis6326_probe.asm. */
-    request->flags = sis_has_switch(GetCommandLineA(), "/force3d")
-        ? SIS_FLAG_FORCE_3D : 0u;
-    request->count = 0u;
+     * /force3d says otherwise; the extensions are unlocked only with
+     * /unlock. See sis6326_probe.asm. */
+    if (sis_has_switch(GetCommandLineA(), "/force3d")) {
+        request->flags |= SIS_FLAG_FORCE_3D;
+    }
+    if (sis_has_switch(GetCommandLineA(), "/unlock")) {
+        request->flags |= SIS_FLAG_UNLOCK;
+    }
     for (range = 0u; range < sizeof(sis_ranges_read) / sizeof(sis_ranges_read[0]);
          ++range) {
         for (offset = sis_ranges_read[range][0];
              offset <= sis_ranges_read[range][1]; offset += 4u) {
             request->offsets[request->count++] = offset;
         }
-    }
-
-    device = CreateFileA("\\\\.\\SIS6326.VXD", 0, 0, 0, CREATE_NEW,
-                         FILE_FLAG_DELETE_ON_CLOSE, 0);
-    if (device == INVALID_HANDLE_VALUE) {
-        ExitProcess(2u);
     }
     if (!DeviceIoControl(device, 1u, request, sizeof(*request), result,
                          sizeof(*result), &returned, 0) ||
@@ -721,6 +747,8 @@ void WINAPI V9xSis6326ProbeEntry(void)
     sis_write(output, "Target", "PCI-1039-6326");
     sis_write(output, "Force3D",
               (request->flags & SIS_FLAG_FORCE_3D) != 0ul ? "1" : "0");
+    sis_write(output, "Unlock",
+              (request->flags & SIS_FLAG_UNLOCK) != 0ul ? "1" : "0");
     sis_write_hex(output, "Status", result->status);
 
     display = GetDC(0);
@@ -777,7 +805,18 @@ void WINAPI V9xSis6326ProbeEntry(void)
         sis_write_indexed(output, "SR", result->sr);
         sis_write_indexed(output, "CR", result->cr);
         sis_write_byte(output, "CR80", result->cr80);
-        sis_write_decodes(output, result);
+        sis_write_byte(output, "SR05Found", result->sr05_found_relocked);
+        if ((result->status & SIS_UNLOCKED_BY_PROBE) != 0ul) {
+            sis_write_byte(output, "SR05AfterRelock",
+                           result->sr05_found_relocked >> 8);
+        }
+        /* Locked, every SR06+ read returns the lock value: nothing to
+         * decode, and the decodes would only mislead. */
+        if ((result->status & SIS_EXT_LOCKED) != 0ul) {
+            sis_write(output, "Decodes", "suppressed-extensions-locked");
+        } else {
+            sis_write_decodes(output, result);
+        }
     }
 
     sis_write_hex(output, "MmioWindow", result->mmio_window);
@@ -810,6 +849,7 @@ void WINAPI V9xSis6326ProbeEntry(void)
                                                        : "not-copied");
     sis_write(output, "Result",
               (result->status & SIS_SNAPSHOT_TAKEN) != 0ul ? "SNAPSHOT"
+              : (result->status & SIS_EXT_LOCKED) != 0ul ? "LOCKED"
               : (result->status & SIS_VGA_READ) != 0ul ? "VGA-ONLY"
               : "NOT-FOUND");
     CloseHandle(output);

@@ -11,10 +11,14 @@
 ; PCI configuration store, no data-port store. Reading an indexed VGA register
 ; needs its index written first, so the sequencer and CRTC index ports are
 ; written; each is read before the loop and restored after it, with
-; interrupts off throughout so nothing else sees the changed index. SR5, the
-; extension lock, is read and reported but never written: if the stock driver
-; left the extensions locked the SR06+ values are what a locked chip returns,
-; and the report says so.
+; interrupts off throughout so nothing else sees the changed index.
+;
+; SR5 is the extension lock. A locked chip returns the lock value (21h) for
+; every SR06+ read (measured on A8U4I5 2026-10-04 under vga.drv), so with
+; the extensions locked no SR06+ value means anything and the MMIO window is
+; not followed. Only when SIS6326.EXE passes the unlock flag does the VxD
+; write SR5 = 86h, re-read, and write SR5 = 00h to lock it again; that is the
+; one data-register write this probe can make, and it is opt-in.
 ;
 ; The 3D register block (8800h and up) is read only when SR39 D2, "Enable 3D
 ; Accelerator", is set, or when SIS6326.EXE passes the force flag. Whether a
@@ -59,6 +63,13 @@ SIS_SR39_3D_ENABLE      equ 04h
 
 SIS_CR80                equ 80h
 
+; SR5 (datasheet 7.7.2): 86h unlocks and reads back A1h; any other value
+; locks and reads back 21h.
+SIS_SR05                equ 05h
+SIS_SR05_UNLOCK_KEY     equ 86h
+SIS_SR05_UNLOCKED       equ 0a1h
+SIS_SR05_RELOCK         equ 00h
+
 ; Status bits returned to the Win32 publisher.
 SIS_PCI_FOUND           equ 00000001h
 SIS_VGA_READ            equ 00000002h
@@ -69,6 +80,8 @@ SIS_OFFSETS_REFUSED     equ 00000020h
 SIS_3D_SKIPPED          equ 00000040h
 SIS_MMIO_DISABLED       equ 00000080h
 SIS_MMIO_BAR_INVALID    equ 00000100h
+SIS_EXT_LOCKED          equ 00000200h
+SIS_UNLOCKED_BY_PROBE   equ 00000400h
 
 ; Input from SIS6326.EXE.
 SIS_IN_MMIO_BAR         equ 0
@@ -77,6 +90,7 @@ SIS_IN_COUNT            equ 8
 SIS_IN_OFFSETS          equ 12
 SIS_IN_MIN_BYTES        equ 12
 SIS_FLAG_FORCE_3D       equ 00000001h
+SIS_FLAG_UNLOCK         equ 00000002h
 
 ; Output layout, in dwords. Must match struct sis_result in
 ; sis6326_probe_win32.c.
@@ -98,7 +112,7 @@ SisResult label dword
     dd 0                        ; 08 CRTC index port used
     dd 0                        ; 09 CRTC index found and restored
     dd 0                        ; 10 CR80 (video register password)
-    dd 0                        ; 11 reserved
+    dd 0                        ; 11 SR5 as found (7:0), SR5 after relock (15:8)
 SisConfig  dd SIS_CONFIG_DWORDS dup (0)
 SisSr      db SIS_VGA_INDEXES dup (0)
 SisCr      db SIS_VGA_INDEXES dup (0)
@@ -180,6 +194,36 @@ BeginProc Sis_Read_Vga
     call    Sis_Read_Indexed
     movzx   eax, al
     mov     SisResult[28], eax
+    movzx   eax, byte ptr SisSr[SIS_SR05]
+    mov     SisResult[44], eax
+
+    ; Opt-in unlock: only when asked, and only if the chip is locked. The
+    ; second pass reads with the index Sis_Read_Indexed finds (05h) and puts
+    ; it back; the original index is restored after the relock.
+    test    SisFlags, SIS_FLAG_UNLOCK
+    jz      short Sis_Read_Vga_Crtc_Select
+    cmp     byte ptr SisSr[SIS_SR05], SIS_SR05_UNLOCKED
+    je      short Sis_Read_Vga_Crtc_Select
+    mov     al, SIS_SR05
+    out     dx, al
+    inc     dx
+    mov     al, SIS_SR05_UNLOCK_KEY
+    out     dx, al
+    dec     dx
+    call    Sis_Read_Indexed
+    mov     al, SIS_SR05
+    out     dx, al
+    inc     dx
+    mov     al, SIS_SR05_RELOCK
+    out     dx, al
+    in      al, dx
+    dec     dx
+    mov     byte ptr SisResult[45], al
+    mov     al, byte ptr SisResult[28]
+    out     dx, al
+    or      SisResult[4], SIS_UNLOCKED_BY_PROBE
+
+Sis_Read_Vga_Crtc_Select:
 
     ; Misc output D0 selects the colour (3D4h) or mono (3B4h) CRTC address.
     mov     dx, 03d4h
@@ -330,6 +374,13 @@ Sis_Capture_Config_Next:
 
     call    Sis_Read_Vga
 
+    ; Locked, SRB reads as the lock value and names no real window.
+    cmp     byte ptr SisSr[SIS_SR05], SIS_SR05_UNLOCKED
+    je      short Sis_Capture_Unlocked
+    or      SisResult[4], SIS_EXT_LOCKED
+    jmp     Sis_Capture_Rom
+
+Sis_Capture_Unlocked:
     test    byte ptr SisSr[SIS_SR39], SIS_SR39_3D_ENABLE
     jnz     short Sis_Capture_Window
     test    SisFlags, SIS_FLAG_FORCE_3D

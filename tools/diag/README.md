@@ -36,8 +36,11 @@ shadow at C0000h as `C:\V9XDIAG\ATIIC.ROM`. See
 run `SIS6326.EXE` beside `SIS6326.VXD` under SiS's own driver, optionally with
 `/force3d` to read the 3D block when SR39 D2 is clear. It publishes
 `C:\V9XDIAG\SIS6326.TXT` and the C0000h shadow as `C:\V9XDIAG\SIS6326.ROM`.
-It writes no MMIO, PCI or data register; the sequencer and CRTC index ports
-are written to read SR00-SR3F, CR00-CR3F and CR80, and restored. See
+It writes no MMIO or PCI register; the sequencer and CRTC index ports are
+written to read SR00-SR3F, CR00-CR3F and CR80, and restored. With the
+extensions locked (SR05 = 21h) every SR06+ read returns 21h, so the report
+suppresses its decodes and reads no MMIO. `/unlock` makes the one data write:
+SR05 = 86h, read, then SR05 = 00h to lock again. See
 [the register reference](../../docs/specifications/sis6326-registers.md).
 
 `ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's

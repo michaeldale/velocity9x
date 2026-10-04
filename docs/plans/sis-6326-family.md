@@ -2,7 +2,11 @@
 
 Date: 2026-10-04
 
-Status: proposed. Phase 0 tool built, not yet run; nothing in the driver.
+Status: proposed. Phase 0 started 2026-10-04 (boot 201): the card is fitted
+and is **revision C3**, not the datasheet's Ax/Bx; under vga.drv the
+extensions are locked, so only PCI and the BIOS were read
+([probe](../probe/a8u4i5-sis6326-registers-2026-10-04/README.md)). Next: the
+same probe under SiS's own driver. Nothing in the driver.
 
 The first SiS chip, and the first new vendor since Matrox. The card goes into
 A8U4I5 (10.0.1.172), in place of the Trio3D. That machine has no DOS mode, so

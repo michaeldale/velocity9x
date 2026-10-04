@@ -18,7 +18,7 @@
 - [Multi-chip restructure plan](multi-chip-restructure.md) - Shipped in 0.5.0.
 - [Validating the dynamic VBE pipeline is inert on physical S3 silicon](s3-physical-pipeline-validation.md) - Shipped in 0.6.0.
 - [Direct3D rendering modes: one settings-page selector, four back ends](s3-trio64-voodoo2-hybrid-3d.md) - In progress.
-- [SiS 6326 family: survey, tier-0, then the 2D engine](sis-6326-family.md) - Proposed; Phase 0 probe built, not run. Physical-only on A8U4I5; no 86Box model.
+- [SiS 6326 family: survey, tier-0, then the 2D engine](sis-6326-family.md) - Proposed; Phase 0 started: card is rev C3, extensions locked under vga.drv, SiS driver run next. Physical-only on A8U4I5; no 86Box model.
 - [Mode 2 on a second CPU: banded rasterization through smp.vxd](software-d3d-smp-workers.md) - Open.
 - [Mode 2 scalar fixes: make the rasterizer cheap before making it wide](software-rasterizer-scalar-fixes.md) - In progress.
 - [Tier-0 quality: write-combining, hardware cursor, synthetic vblank, DOS-box guard](tier0-quality.md) - In progress.
