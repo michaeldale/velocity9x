@@ -9,7 +9,10 @@ by running `RUNDLL32 v9xsetp.dll,V9xRegisterPage` once on the netbook
 the evidence. Seen on the tab, not part of this issue: its DirectDraw
 row reads "Software emulation only" because the intel-gma manifest
 still publishes `Acceleration = 'none'`, although DirectDraw blits have
-run on the Gen3 blitter since 2026-09-25. Evidence:
+run on the Gen3 blitter since 2026-09-25. That was fixed the same day:
+the chip now publishes `directdraw-fill-blt`, and after a DRV-only
+deploy the row reads "Surfaces, page flip, vblank, fill, blit"
+(`velocity9x-tab-directdraw-fixed.png`). Evidence:
 `docs/probe/netbook-vsync-and-textures-2026-10-04/display-properties-no-velocity9x-tab.png`.
 
 ## Symptom

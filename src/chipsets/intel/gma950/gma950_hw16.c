@@ -237,8 +237,18 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
     "8086", "27AE",
     "intel-gen3-mmio-fingerprint-v1",
     "vbe-lfb",
-    /* No 2D acceleration: the VBIOS keeps the display. */
-    0,
+    /*
+     * DirectDraw fills and copies on the Gen3 blitter through the ring
+     * (engines\eng_i9xx.c, since 2026-09-25), and page flips through the
+     * ring or the plane base. It was null - "no 2D acceleration" - for a
+     * week after the blits landed, so the settings page called DirectDraw
+     * software emulation on the netbook (2026-10-04). The S3 word, because
+     * it means the same thing there: fill and copy on the engine, flip and
+     * vblank. GDI stays the DIB engine's; this word is DirectDraw only.
+     * Like the Direct3D word below it says what the chip has: a boot with
+     * no ring falls back to CPU blits and still publishes it.
+     */
+    "directdraw-fill-blt",
     /*
      * The chip's word for the engine it carries, and it was null until
      * 2026-09-16 - one line below a capability claiming Direct3D.

@@ -14,7 +14,9 @@
             Adapter = 'Intel GMA 950 (945GSE)'
             ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
             ModeSwitching = 'vbe-lfb'
-            Acceleration = 'none'
+            # DirectDraw fill and copy on the Gen3 blitter, flips through the
+            # ring (eng_i9xx.c, 2026-09-25). Was 'none' until 2026-10-04.
+            Acceleration = 'directdraw-fill-blt'
             # The settings page's notion of "this card has an engine", which
             # is a different question from whether this boot may run it. It
             # said 'not-advertised' for the first hours of the capability
