@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-04 Half-Life refuses Direct3D and OpenGL on the 2 MiB Trio3D (parked)](2026-10-04-trio3d-half-life-refuses-d3d-and-gl.md)
 - [2026-10-03 A8U4I5 hard-locks when Half-Life's alpha-tested additive sprites are drawn (high)](2026-10-03-a8u4i5-hard-lock-on-additive-sprites.md)
 - [2026-10-03 Rage IIC refuses a blend by texel alpha times vertex alpha (Quake 2's particles)](2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md)
 - [2026-10-03 Rage IIC: pieces skipped because the perspective texture fit fails](2026-10-03-rage-iic-texture-fit-skips.md)
