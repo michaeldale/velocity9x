@@ -42,3 +42,20 @@ while locked.
 Everything behind the lock: memory size and type, clocks, the MMIO window,
 the engine registers. Those need either `/unlock` under vga.drv (BIOS state
 only) or a run under SiS's own driver (engine state as well).
+
+## SiS 2.28 install, boot 201 -> 202
+
+SiS's Windows 98 driver 2.28 (AOpen-branded `SIS6326M.DRV/VXD`, `DD326`,
+`DD326_32`, `glsis326.dll`; INF matches `SUBSYS_63261039`) was staged in
+`C:\SIS228` and installed through Device Manager, Update Driver, Have Disk,
+replacing Standard PCI Graphics Adapter (VGA) on `Display\0009`. The
+pre-install registry is in `display-class-before-sis.reg` and
+`enum-sis6326-before-sis.reg`.
+
+The agent's warm restart reached boot 202 and reconnected with
+`DesktopReady=False` at 640x480; within the following minute A8U4I5 stopped
+answering both the agent and ICMP, and it was still silent 5.5 minutes later.
+What the screen shows is not known. The window coincides with the SiS
+display driver's first load, but this machine has also dropped off the
+network on its own before (2026-09-05), so the driver is a suspect, not a
+finding.
