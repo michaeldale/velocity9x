@@ -279,8 +279,9 @@ function Test-V9xFamilyManifest {
     # (docs\issues\2026-08-26-ati-package-cannot-enable.md). The comment above
     # has always said this; now it is enforced.
     #
-    # Half two - a family that HAS the hook must not run the collection - is
-    # asserted in check-tree.ps1, which can see every family at once.
+    # Half two - a family that HAS the hook must state whether it runs the
+    # collection - is asserted in check-tree.ps1, which can see every family
+    # at once.
     if ($RepoRoot -and $Family.Build.ContainsKey('MiniVddVbeCollect') -and
         $Family.Build.MiniVddVbeCollect -eq $false -and
         -not (Test-V9xFamilyHasApertureHook -Family $Family -RepoRoot $RepoRoot)) {

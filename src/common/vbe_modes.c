@@ -135,6 +135,12 @@ static v9x_u16 v9x_effective_stride(const struct v9x_vbe_mode_summary *summary)
 v9x_u16 v9x_vbe_scan_admit(const struct v9x_vbe_scan_entry *entry,
                            v9x_u32 vram_bytes)
 {
+    return v9x_vbe_scan_admit_flags(entry, vram_bytes, 0u);
+}
+
+v9x_u16 v9x_vbe_scan_admit_flags(const struct v9x_vbe_scan_entry *entry,
+                                 v9x_u32 vram_bytes, v9x_u16 admit_flags)
+{
     const struct v9x_vbe_mode_summary *summary;
     v9x_u16 stride;
     v9x_u32 visible;
@@ -157,14 +163,19 @@ v9x_u16 v9x_vbe_scan_admit(const struct v9x_vbe_scan_entry *entry,
         summary->bits_per_pixel == 0u || summary->bytes_per_scan_line == 0u) {
         return V9X_VBE_ADMIT_UNSUPPORTED;
     }
-    if ((summary->attributes & V9X_VBE_ATTR_LINEAR) == 0u) {
+    /* The two aperture rules: how a tier-0 family finds its framebuffer. A
+     * family that finds it itself has nothing to learn from either, and the
+     * S3 BIOSes answer neither (see V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN). */
+    if ((admit_flags & V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN) == 0u &&
+        (summary->attributes & V9X_VBE_ATTR_LINEAR) == 0u) {
         return V9X_VBE_ADMIT_NON_LINEAR;
     }
     if (summary->memory_model != V9X_VBE_MODEL_PACKED_PIXEL &&
         summary->memory_model != V9X_VBE_MODEL_DIRECT_COLOR) {
         return V9X_VBE_ADMIT_MEMORY_MODEL;
     }
-    if (summary->phys_base < V9X_VBE_MIN_PHYS_BASE) {
+    if ((admit_flags & V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN) == 0u &&
+        summary->phys_base < V9X_VBE_MIN_PHYS_BASE) {
         return V9X_VBE_ADMIT_PHYS_BASE;
     }
     /*
@@ -290,14 +301,14 @@ v9x_u16 v9x_vbe_build_mode_table(
     v9x_u16 capacity, v9x_u16 *dropped)
 {
     return v9x_vbe_build_mode_table_ex(baseline, baseline_count,
-                                       scanned, scanned_count, vram_bytes, 0,
-                                       table, masks, capacity, dropped, 0);
+                                       scanned, scanned_count, vram_bytes, 0u,
+                                       0, table, masks, capacity, dropped, 0);
 }
 
 v9x_u16 v9x_vbe_build_mode_table_ex(
     const V9X_HW16_MODE *baseline, v9x_u16 baseline_count,
     const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
-    v9x_u32 vram_bytes, v9x_vbe_distrust_fn distrust,
+    v9x_u32 vram_bytes, v9x_u16 admit_flags, v9x_vbe_distrust_fn distrust,
     V9X_HW16_MODE *table, struct v9x_mode_masks *masks,
     v9x_u16 capacity, v9x_u16 *dropped, v9x_u16 *reason_counts)
 {
@@ -345,7 +356,8 @@ v9x_u16 v9x_vbe_build_mode_table_ex(
         v9x_u16 at;
         v9x_u16 reason;
 
-        reason = v9x_vbe_scan_admit(&scanned[index], vram_bytes);
+        reason = v9x_vbe_scan_admit_flags(&scanned[index], vram_bytes,
+                                          admit_flags);
         if (reason != V9X_VBE_ADMIT_OK) {
             v9x_count_reason(reason_counts, reason);
             continue;
@@ -408,7 +420,7 @@ v9x_u16 v9x_vbe_build_mode_table_ex(
 v9x_u16 v9x_vbe_publish_rows(
     const V9X_HW16_MODE *table, v9x_u16 count, v9x_u16 baseline_rows,
     const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
-    v9x_u32 vram_bytes, v9x_u16 scan_trustworthy,
+    v9x_u32 vram_bytes, v9x_u16 admit_flags, v9x_u16 scan_trustworthy,
     v9x_u8 *publication, v9x_u16 *first_published)
 {
     v9x_u16 index;
@@ -448,8 +460,9 @@ v9x_u16 v9x_vbe_publish_rows(
                 if (summary->width == table[index].width &&
                     summary->height == table[index].height &&
                     summary->bits_per_pixel == table[index].bits_per_pixel &&
-                    v9x_vbe_scan_accept(&scanned[scan], vram_bytes) ==
-                        V9X_TRUE) {
+                    v9x_vbe_scan_admit_flags(&scanned[scan], vram_bytes,
+                                             admit_flags) ==
+                        V9X_VBE_ADMIT_OK) {
                     hide = V9X_FALSE;
                     break;
                 }

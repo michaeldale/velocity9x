@@ -927,6 +927,137 @@ static void test_admit_reasons(void)
     MODECHECK(v9x_vbe_scan_accept(&entry, 0ul) == V9X_FALSE);
 }
 
+/*
+ * A record shaped like the S3 BIOSes' (2026-08-20-vbe-mode-inventory.md):
+ * attributes 001Bh - supported, colour, graphics, no linear bit - and no
+ * PhysBasePtr or linear stride, because a VBE 1.2 BIOS has neither field.
+ */
+static void make_s3_entry(struct v9x_vbe_scan_entry *entry, v9x_u16 number,
+                          v9x_u16 width, v9x_u16 height, v9x_u16 bpp,
+                          v9x_u16 stride)
+{
+    make_entry(entry, number, width, height, bpp, stride);
+    entry->summary.attributes = 0x001bu;
+    entry->summary.phys_base = 0ul;
+    entry->summary.lin_bytes_per_scan_line = 0u;
+}
+
+/* The aperture flag waives the two aperture rules and nothing else. */
+static void test_aperture_known_waives_aperture_rules(void)
+{
+    struct v9x_vbe_scan_entry entry;
+    const v9x_u16 known = V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN;
+
+    make_s3_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    MODECHECK(v9x_vbe_scan_admit(&entry, 0ul) == V9X_VBE_ADMIT_NON_LINEAR);
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, 0u) ==
+              V9X_VBE_ADMIT_NON_LINEAR);
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, known) ==
+              V9X_VBE_ADMIT_OK);
+
+    /* Linear bit set, base in real-mode memory: the second aperture rule. */
+    make_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    entry.summary.phys_base = 0x000a0000ul;
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, 0u) ==
+              V9X_VBE_ADMIT_PHYS_BASE);
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, known) ==
+              V9X_VBE_ADMIT_OK);
+
+    /* Every rule about the mode itself still holds under the flag. */
+    make_s3_entry(&entry, 0x0111u, 640u, 480u, 16u, 1280u);
+    entry.summary.attributes = 0x001au; /* not supported in hardware */
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, known) ==
+              V9X_VBE_ADMIT_UNSUPPORTED);
+    make_s3_entry(&entry, 0x0110u, 640u, 480u, 15u, 1280u);
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, known) ==
+              V9X_VBE_ADMIT_DEPTH);
+    make_s3_entry(&entry, 0x0012u, 640u, 480u, 8u, 80u);
+    entry.summary.memory_model = 3u; /* planar */
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, known) ==
+              V9X_VBE_ADMIT_MEMORY_MODEL);
+    make_s3_entry(&entry, 0x0117u, 1024u, 768u, 16u, 2048u);
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 1024ul * 1024ul, known) ==
+              V9X_VBE_ADMIT_VRAM);
+    make_s3_entry(&entry, 0x0111u, 640u, 480u, 16u, 640u);
+    MODECHECK(v9x_vbe_scan_admit_flags(&entry, 0ul, known) ==
+              V9X_VBE_ADMIT_STRIDE);
+}
+
+/*
+ * The merge the flag exists for: a BIOS listing 16-bpp modes below 640x480,
+ * on a 2 MiB card. The low-resolution numbers are placeholders - which ones a
+ * given S3 BIOS uses is what the guest inventory reports - but their shape is
+ * the 1.2 one, so without the flag none of the list is admitted at all.
+ */
+static void test_aperture_known_merges_an_s3_list(void)
+{
+    struct v9x_vbe_scan_entry scanned[6];
+    V9X_HW16_MODE table[V9X_MODE_TABLE_MAX];
+    struct v9x_mode_masks masks[V9X_MODE_TABLE_MAX];
+    v9x_u8 publication[V9X_MODE_TABLE_MAX];
+    v9x_u16 reasons[V9X_VBE_ADMIT_REASON_COUNT];
+    v9x_u16 dropped = 0xffffu;
+    v9x_u16 first = 0xffffu;
+    v9x_u16 count;
+    v9x_u16 published;
+    const v9x_u32 two_mib = 2ul * 1024ul * 1024ul;
+    const v9x_u16 known = V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN;
+
+    make_s3_entry(&scanned[0], 0x0101u, 640u, 480u, 8u, 640u);
+    make_s3_entry(&scanned[1], 0x0111u, 640u, 480u, 16u, 1280u);
+    make_s3_entry(&scanned[2], 0x0110u, 640u, 480u, 15u, 1280u);
+    make_s3_entry(&scanned[3], 0x0224u, 512u, 384u, 16u, 1024u);
+    make_s3_entry(&scanned[4], 0x0214u, 320u, 240u, 16u, 640u);
+    make_s3_entry(&scanned[5], 0x0234u, 400u, 300u, 16u, 800u);
+
+    /* Unflagged: the whole list is refused as banked, the table is the
+     * baseline, and a trusted scan that admitted nothing hides nothing. */
+    count = v9x_vbe_build_mode_table_ex(baseline_seven, BASELINE_SEVEN_COUNT,
+                                        scanned, 6u, two_mib, 0u, 0,
+                                        table, masks, V9X_MODE_TABLE_MAX,
+                                        &dropped, reasons);
+    MODECHECK(count == BASELINE_SEVEN_COUNT);
+    MODECHECK(reasons[V9X_VBE_ADMIT_NON_LINEAR] == 6u);
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 6u, two_mib, 0u, V9X_TRUE,
+                                     publication, &first);
+    MODECHECK(published == count);
+
+    /* Flagged: two merge into baseline rows, the 15-bpp one is refused on
+     * depth, and the three small 16-bpp modes are appended smallest first. */
+    count = v9x_vbe_build_mode_table_ex(baseline_seven, BASELINE_SEVEN_COUNT,
+                                        scanned, 6u, two_mib, known, 0,
+                                        table, masks, V9X_MODE_TABLE_MAX,
+                                        &dropped, reasons);
+    MODECHECK(count == BASELINE_SEVEN_COUNT + 3u);
+    MODECHECK(dropped == 0u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_OK] == 3u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_DUPLICATE] == 2u);
+    MODECHECK(reasons[V9X_VBE_ADMIT_DEPTH] == 1u);
+    MODECHECK(table[7].width == 320u && table[7].height == 240u &&
+              table[7].bits_per_pixel == 16u && table[7].pitch == 640u &&
+              table[7].vbe_mode == 0x0214u);
+    MODECHECK(table[8].width == 400u && table[8].vbe_mode == 0x0234u &&
+              table[8].pitch == 800u);
+    MODECHECK(table[9].width == 512u && table[9].vbe_mode == 0x0224u &&
+              table[9].pitch == 1024u);
+
+    /* Published under the same flag: the listed baseline geometries and the
+     * appended rows stay; baseline geometries the BIOS did not list are
+     * hidden, exactly as on a tier-0 card. */
+    published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
+                                     scanned, 6u, two_mib, known, V9X_TRUE,
+                                     publication, &first);
+    MODECHECK(first == 0u);
+    MODECHECK(publication[0] == V9X_MODE_PUB_PUBLISHED); /* 640x480x8 */
+    MODECHECK(publication[4] == V9X_MODE_PUB_PUBLISHED); /* 640x480x16 */
+    MODECHECK(publication[1] == V9X_MODE_PUB_HIDE_SCAN); /* 800x600x8 */
+    MODECHECK(publication[7] == V9X_MODE_PUB_PUBLISHED);
+    MODECHECK(publication[8] == V9X_MODE_PUB_PUBLISHED);
+    MODECHECK(publication[9] == V9X_MODE_PUB_PUBLISHED);
+    MODECHECK(published == 5u);
+}
+
 /* One refusal from a family predicate, tallied under known-defect; the
  * predicate cannot admit what the generic rules refused. */
 static v9x_u16 distrust_360_wide(const struct v9x_vbe_scan_entry *entry)
@@ -949,7 +1080,7 @@ static void test_build_ex_reasons_and_distrust(void)
     make_entry(&scanned[3], 0x0112u, 640u, 480u, 24u, 1920u); /* depth */
 
     count = v9x_vbe_build_mode_table_ex(baseline_seven, BASELINE_SEVEN_COUNT,
-                                        scanned, 4u, 0ul, distrust_360_wide,
+                                        scanned, 4u, 0ul, 0u, distrust_360_wide,
                                         table, masks, V9X_MODE_TABLE_MAX,
                                         &dropped, reasons);
     MODECHECK(count == BASELINE_SEVEN_COUNT + 1u);
@@ -963,7 +1094,7 @@ static void test_build_ex_reasons_and_distrust(void)
     /* Without the predicate, the 360-wide row is admitted: the predicate only
      * narrows. */
     count = v9x_vbe_build_mode_table_ex(baseline_seven, BASELINE_SEVEN_COUNT,
-                                        scanned, 4u, 0ul, 0,
+                                        scanned, 4u, 0ul, 0u, 0,
                                         table, masks, V9X_MODE_TABLE_MAX,
                                         &dropped, reasons);
     MODECHECK(count == BASELINE_SEVEN_COUNT + 2u);
@@ -1119,7 +1250,7 @@ static void test_publish_hides_contradicted_baseline(void)
     MODECHECK(count == BASELINE_SEVEN_COUNT + 1u);
 
     published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
-                                     scanned, 3u, 0ul, V9X_TRUE,
+                                     scanned, 3u, 0ul, 0u, V9X_TRUE,
                                      publication, &first);
     MODECHECK(published == 3u);
     MODECHECK(first == 0u); /* row zero (640x480x8) is alive */
@@ -1132,7 +1263,7 @@ static void test_publish_hides_contradicted_baseline(void)
     /* Same table, untrustworthy scan: everything published, exactly as
      * today. */
     published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
-                                     scanned, 3u, 0ul, V9X_FALSE,
+                                     scanned, 3u, 0ul, 0u, V9X_FALSE,
                                      publication, &first);
     MODECHECK(published == count);
     for (index = 0u; index < count; ++index) {
@@ -1141,7 +1272,7 @@ static void test_publish_hides_contradicted_baseline(void)
 
     /* An empty cache contradicts nothing, even when trusted. */
     published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
-                                     scanned, 0u, 0ul, V9X_TRUE,
+                                     scanned, 0u, 0ul, 0u, V9X_TRUE,
                                      publication, &first);
     MODECHECK(published == count);
     MODECHECK(first == 0u);
@@ -1167,7 +1298,7 @@ static void test_publish_fallback_rules(void)
                                      scanned, 1u, 0ul,
                                      table, masks, V9X_MODE_TABLE_MAX, 0);
     published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
-                                     scanned, 1u, 0ul, V9X_TRUE,
+                                     scanned, 1u, 0ul, 0u, V9X_TRUE,
                                      publication, &first);
     MODECHECK(published == 1u);
     MODECHECK(first == 1u);
@@ -1182,7 +1313,7 @@ static void test_publish_fallback_rules(void)
                                      table, masks, V9X_MODE_TABLE_MAX, 0);
     MODECHECK(count == BASELINE_SEVEN_COUNT);
     published = v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
-                                     scanned, 1u, 0ul, V9X_TRUE,
+                                     scanned, 1u, 0ul, 0u, V9X_TRUE,
                                      publication, &first);
     MODECHECK(published == count);
     MODECHECK(first == 0u);
@@ -1210,7 +1341,7 @@ static void test_dd_subset_publication(void)
                                      scanned, 2u, 0ul,
                                      table, masks, V9X_MODE_TABLE_MAX, 0);
     (void)v9x_vbe_publish_rows(table, count, BASELINE_SEVEN_COUNT,
-                               scanned, 2u, 0ul, V9X_TRUE,
+                               scanned, 2u, 0ul, 0u, V9X_TRUE,
                                publication, &first);
 
     chosen = v9x_vbe_dd_subset(table, count, publication, indices,
@@ -1244,6 +1375,8 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_masks_to_bits();
     test_admit_reasons();
     test_build_ex_reasons_and_distrust();
+    test_aperture_known_waives_aperture_rules();
+    test_aperture_known_merges_an_s3_list();
     test_publish_hides_contradicted_baseline();
     test_publish_fallback_rules();
     test_dd_subset_publication();

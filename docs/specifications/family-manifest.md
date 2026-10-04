@@ -265,13 +265,19 @@ compiler is caught there rather than by a link failure three steps later - and
 that each is within `-CodeSegmentBudgetBytes` (default 57,344, i.e. 8 KiB below
 the hard limit).
 
-`MiniVddVbeCollect` is optional; absent means `$true`. `$false` builds the
-family's `V9XMINI.VXD` with the boot-time VBE collection assembled out
-(`build-minivdd-skeleton.ps1 -DisableVbeCollect`), which is correct for any
-family whose chips have a `read_aperture` hook: such drivers never consult the
-mini-VDD's 4F9Ch cache, and the collection is eight nested BIOS calls at
-`Device_Init` with nothing to show for them. Tier-0 families must leave it on.
-See `docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md`.
+`MiniVddVbeCollect` is optional for a tier-0 family, where absent means
+`$true` and `$false` is refused: without the collection it has no aperture.
+`$false` builds the family's `V9XMINI.VXD` with the boot-time VBE collection
+assembled out (`build-minivdd-skeleton.ps1 -DisableVbeCollect`).
+
+A family whose chips have a `read_aperture` hook must state the key. Such a
+driver never needs the 4F9Ch cache for its aperture; with `$true` the scan
+feeds only the runtime mode merge, under
+`V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN`, and with `$false` the family's table is
+its baseline. `s3` collects (since 2026-10-04); `matrox-m2` does not. The
+`PCIRebalance` INF value follows the hook, not this key. See
+`docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md` and
+`docs\decisions\2026-10-04-trio3d-8904-on-the-virge-path.md`.
 
 When collection is on, each chip mode's `VbeMode` is also a build input to the
 mini-VDD: `build-minivdd-skeleton.ps1 -Family <id>` generates the bounded

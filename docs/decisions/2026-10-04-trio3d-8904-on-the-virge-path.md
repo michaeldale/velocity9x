@@ -63,11 +63,21 @@ not known.
 
 ## Memory size: 2 MiB, measured
 
-CR36 bits 7:5 = 4, which the ViRGE/Trio64 decoder reads as 2 MiB. VBE
-`4F00h` reports 127 64 KiB blocks (about 8 MiB). 86Box's model encodes
-the Trio3D/2X differently from the ViRGE/DX (`build/reference-
-vid_s3_virge.c`, 4 MiB = code 2, 8 MiB = code 0), so the decode alone
-proved nothing for this part. Michael expected more than 2 MiB.
+CR36 bits 7:5 = 4, which the ViRGE/Trio64 decoder reads as 2 MiB. 86Box's
+model encodes the Trio3D/2X differently from the ViRGE/DX
+(`build/reference-vid_s3_virge.c`, 4 MiB = code 2, 8 MiB = code 0), so
+the decode alone proved nothing for this part. Michael expected more
+than 2 MiB.
+
+**Retracted: "VBE reports about 8 MiB".** The `VbeController`,
+`VbeCache` and `VbeModeNN` lines in boot 198's `V9XBOOT.INI` are the
+Rage XL's, left from boot 181: they match
+`docs/probe/a8u4i5-rage-xl-pci-2026-10-03/first-boot/V9XBOOT.INI` line
+for line. The s3 family builds its mini-VDD without the VBE collection
+(`MiniVddVbeCollect = $false`) and never calls `v9x_vbe_trace_cache`,
+which is the only writer that clears those keys. The Trio3D's BIOS was
+never asked anything; the 8 MiB, the `0xDC000000` base and the mode list
+were another card's.
 
 `V9XVRAM.EXE` (new, `tools/diag/vram_walk_win32.c`) wrote a signature
 every 512 KiB from 0 to 7.5 MiB through the primary's lock, highest
@@ -82,8 +92,8 @@ first, read them back and restored the originals (`V9XVRAM.INI`,
 | 6 - 7.5 MiB | unrelated values |
 
 Writes between 2 and 4 MiB do not stick, and the decode wraps at 4 MiB.
-The card holds 2 MiB as configured; VBE's 8 MiB is the BIOS overstating
-it. CR36 and the 512 KiB heap at 1024x768x16 were right. Whether more
+The card holds 2 MiB as configured. CR36 and the 512 KiB heap at
+1024x768x16 were right. Whether more
 memory is fitted but strapped off was not looked at; counting the chips
 on the board would answer that.
 
@@ -104,16 +114,67 @@ Michael: the menu works, a map fails, in both Direct3D and OpenGL.
   and redrawn by the CPU path, as designed. Why a map then fails was not
   watched.
 
-The driver offers no 16-bpp mode below 640x480. This BIOS lists 512x384,
-400x300 and 320x240 at 16 bpp (`V9XBOOT.INI` VbeMode15-1d); the family's
-mode table does not carry them, because the other S3 BIOSes measured do
-not all list them (`s3_hw16.c`).
+## The s3 family merges its BIOS's mode list (boot 199)
+
+Michael asked for the S3 BIOS list to be merged and for 512x384, 400x300
+and 320x240 to be offered. Done without static rows:
+
+- `s3` now builds its mini-VDD with the VBE collection
+  (`MiniVddVbeCollect = $true`), reversing decision 2 of
+  `2026-08-18-minivdd-vbe-collect-gating.md` for this family. The VBE
+  1.2 S3 BIOSes measured on 2026-08-20 stop at the ring-0 2.0 check, so
+  on them this is one 4F00h call at boot and the baseline table.
+- `v9x_vbe_scan_admit_flags` with `V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN`
+  waives the linear-attribute and PhysBasePtr rules for a family with a
+  `read_aperture` hook; `modes16.c` passes it, and judges VRAM against
+  the smaller of the BIOS figure and the family's own (CR36 here). Host
+  tests written first and watched failing (18 checks).
+- `check-tree` now requires a hooked family to state the key rather than
+  forbidding the collection; `PCIRebalance` follows the hook, not the key.
+- The hook path now calls `v9x_vbe_trace_cache`, so a card swap can no
+  longer leave the previous card's VBE lines in `V9XBOOT.INI`.
+
+Evidence in `bios-mode-merge-b199/`. The Trio3D's own BIOS, read for the
+first time: VBE 2.0, `mem=32` (2 MiB, agreeing with the walk), every mode
+linear at `0xD8000000` - so the aperture waiver was not needed on this
+card. 48 listed, 32 cached, 17 admitted, 10 merged into baseline rows.
+`V9XMODES.INI`: 29 rows, 27 published. New: 320x200, 320x240 (`0133`),
+400x300 (`0143`), 512x384 (`0153`) and 640x400 at 16 bpp; the same and
+1152x864 at 8, 16 and 32 bpp as the BIOS lists them; 1600x1200x8.
+1280x1024x16 and 1024x768x32 are hidden: this BIOS marks them
+unsupported (attributes `009A`). `V9XSYNC.INI` added 17 modes to the
+registry, `Status=ok`.
+
+Open: the new sub-640 16-bpp rows carry S3 OEM numbers with no VESA
+5:5:5 sibling, so they publish 5:6:5 while the baseline 16-bpp rows are
+5:5:5 (`555-auto`, hardware S3D). Hardware Direct3D at one of those modes
+would draw ZRGB1555 into a 5:6:5 surface. The BIOS lists 48 modes and
+the ring-0 shape filter drops the 15-bpp ones, so whether it has 5:5:5
+siblings for them is not recorded.
+
+## Half-Life does not use them
+
+HL's Direct3D video-mode list (`hl-d3d-video-modes.png`) offers 640x480,
+800x600, 1024x768 and 1152x864 only: nothing below 640 for a hardware
+renderer. Setting its saved mode to 512x384 in the registry did not
+change what it selected; the value was put back to 640x480.
+
+The refusal is also not the heap. With the desktop at 640x480x16 the
+DirectDraw heap is 1.41 MiB (`GblHalVidMemTotal=0x16A000`), room for a
+back and a Z surface, and HL still refuses. **Retracted:** "Z and Mixed
+did not run: `0x88760231`" was read earlier as a failure; it is
+`V9X_DDERR_UNSUPPORTED`, the probe's own not-run marker, and appears on
+machines where HL runs.
+
+Unmeasured hypothesis for the refusal: a texture format. The S3D path
+enumerates 1555 and 4444 only (`TexFormatCount=2`, `TexFormat565=0`);
+the Rage XL, which runs HL here, offers 565, and Incoming was recorded
+refusing this chip for want of 565 or P8
+(`docs/issues/2026-09-05-incoming-refuses-*.md`). Nothing has tested it.
 
 ## Disputed or unresolved
 
-- **LFB address.** Every VBE mode reports its linear base at
-  `0xDC000000`, 64 MiB above the `0xD8000000` the driver maps. The
-  desktop, GDI read-back and Direct3D read-back all go through the
-  driver's mapping and agree with each other. Nobody has looked at the
-  monitor, so whether the scanout matches has not been checked.
+- **LFB address.** Retracted: the `0xDC000000` base was the Rage XL's.
+  The driver maps the Trio3D's aperture from CR59/CR5A at `0xD8000000`.
+  Nobody has looked at the monitor.
 - The Trio3D/2X's two-state blend trap was not looked for on this card.

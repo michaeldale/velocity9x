@@ -1,7 +1,9 @@
 # Per-family gating of the mini-VDD's boot-time VBE collection
 
 Date: 2026-08-18
-Status: accepted
+Status: accepted; decision 2 superseded for `s3` on 2026-10-04, when the
+runtime mode merge gave a hooked family a use for the cache (see
+`2026-10-04-trio3d-8904-on-the-virge-path.md`)
 
 The first physical-hardware run (BARRY, S3 Trio64) hung the boot with a Windows
 protection error, isolated to `V9XMINI.VXD` and then to its `Device_Init` VBE

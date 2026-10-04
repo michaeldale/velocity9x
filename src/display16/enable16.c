@@ -955,6 +955,14 @@ WORD FAR PASCAL V9xHardwareEnable(void)
                                        : v9x_vbe_default_aperture();
     v9x_write_ini_key("ApertureStage", "post");
     v9x_trace_aperture(base);
+    /* The hook path never reaches v9x_vbe_default_aperture, which is where
+     * the boot record's VBE lines are written - and cleared. Without this a
+     * card swapped in under a hooked family inherits the previous card's
+     * lines: on A8U4I5 (2026-10-04) a Trio3D boot carried the Rage XL's
+     * controller, modes and 8 MiB, and they were read as the Trio3D's. */
+    if (v9x_hw16.read_aperture != 0) {
+        v9x_vbe_trace_cache();
+    }
     if (base == 0ul) {
         return 0u;
     }

@@ -312,10 +312,16 @@ if (Compare-Object -ReferenceObject $registryExpected -DifferenceObject $registr
 #   no read_aperture hook -> the collection is MANDATORY. Without it the 4F9Ch
 #     cache is empty, there is no aperture, and the driver cannot enable. That
 #     half is asserted per-family in Test-V9xFamilyManifest.
-#   a read_aperture hook   -> the collection is FORBIDDEN. The cache is never
-#     consulted, so eight nested Exec_Int 10h calls at boot are all risk and no
-#     benefit - the 2026-08-18 gating decision, made after that code path hung a
-#     physical Trio64.
+#   a read_aperture hook   -> the collection is OPTIONAL but must be STATED.
+#     Such a family never needs the cache for its aperture; what the scan can
+#     still give it is the BIOS's own mode list, merged by modes16.c under
+#     V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN. Until 2026-10-04 this half read
+#     FORBIDDEN, on the 2026-08-18 premise that the cache was never consulted
+#     on a hooked family - which was true only until the mode merge, and the
+#     s3 family now collects for it. The boot-time Exec_Int 10h calls are still
+#     a cost (that code path, before its alignment fix, hung a physical
+#     Trio64), so a hooked family must write the key either way: it cannot
+#     acquire the calls by leaving the key out.
 #
 # This used to be spelled "enabled only for vbe". That hardcoded list is what
 # kept the ati family broken: ati has no hook, so disabling its collection made
@@ -330,12 +336,11 @@ if (Compare-Object -ReferenceObject $registryExpected -DifferenceObject $registr
 foreach ($family in $families) {
     $hasHook = Test-V9xFamilyHasApertureHook -Family $family -RepoRoot $repoRoot
     $collects = $family.Build.MiniVddVbeCollect -ne $false
-    if ($hasHook -and $collects) {
-        throw ("Family $($family.Id) fills the read_aperture slot, so its " +
-               "mini-VDD must assemble the VBE collection out " +
-               "(Build.MiniVddVbeCollect = `$false): the 4F9Ch cache is never " +
-               "consulted on such a family, so the boot-time BIOS calls are " +
-               "all risk and no benefit.")
+    if ($hasHook -and -not $family.Build.ContainsKey('MiniVddVbeCollect')) {
+        throw ("Family $($family.Id) fills the read_aperture slot, so it must " +
+               "state Build.MiniVddVbeCollect explicitly: the collection only " +
+               "feeds its mode merge, and its boot-time BIOS calls must not " +
+               "arrive by omission.")
     }
     if (-not $hasHook -and -not $collects) {
         throw ("Family $($family.Id) has no read_aperture hook, so it must " +

@@ -307,12 +307,20 @@
         SkeletonOutput = 'build\win16-ddi-s3'
         PackageOutput = 'build\win98se-s3'
         VmStageDirectory = 'build\vm-probe\S3'
-        # Both S3 chips read the aperture from hardware, so the driver never
-        # consults the mini-VDD's 4F9Ch VBE cache. Boot-time BIOS collection is
-        # all risk and no benefit here, and it hung a physical Trio64 (see
-        # docs\issues\2026-08-18-trio64-minivdd-boot-hang.md), so this family
-        # ships the mini-VDD with the collection assembled out.
-        MiniVddVbeCollect = $false
+        # The collection runs, for the BIOS's mode list only (Michael,
+        # 2026-10-04). Both S3 chips still read their aperture from the card;
+        # modes16.c merges whatever 16/8/32-bpp modes the BIOS lists under
+        # V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN, which is how a 2 MiB Trio3D gets
+        # its BIOS's sub-640x480 high-colour modes for Half-Life.
+        #
+        # From 2026-08-18 to 2026-10-04 this was $false: the cache was never
+        # read here, and the collection, before its V86-buffer alignment fix,
+        # hung a physical Trio64 (docs\issues\2026-08-18-trio64-minivdd-boot-
+        # hang.md). The fixed collection booted that Trio64 clean twice. The
+        # VBE 1.2 S3 BIOSes measured (2026-08-20-vbe-mode-inventory.md) stop
+        # at the ring-0 2.0 version check, so on them this is one 4F00h call
+        # at boot and the baseline table, unchanged.
+        MiniVddVbeCollect = $true
     }
 
     Audit = @{

@@ -17,6 +17,19 @@
 
 $script:V9xSettingsPageClsid = '{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}'
 
+# Does this family read its framebuffer aperture from the card? PCIRebalance
+# follows that fact, and it used to be read off MiniVddVbeCollect = $false,
+# which stood in for it while only hookless families collected. The s3 family
+# now has the hook and collects (its scan feeds the mode merge), so the proxy
+# no longer holds and the one detection in family.ps1 is asked instead. The
+# repository root is two levels above scripts\lib.
+function Test-V9xInfFamilyReadsAperture {
+    param([Parameter(Mandatory = $true)]$Family)
+
+    $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    return (Test-V9xFamilyHasApertureHook -Family $Family -RepoRoot $repoRoot)
+}
+
 function Get-V9xInfModeLines {
     param([Parameter(Mandatory = $true)]$Modes)
 
@@ -301,11 +314,10 @@ function New-V9xInfText {
         'HKR,DEFAULT,minivdd,,v9xmini.vxd'
     }) + @(
         'HKR,DEFAULT,RefreshRate,,0'
-    ) + @(if ($Family.Build.MiniVddVbeCollect -eq $false) {
+    ) + @(if (Test-V9xInfFamilyReadsAperture -Family $Family) {
         # PCIRebalance tells Windows the driver copes with its resources
-        # being moved. Only a family that reads its aperture from the PCI BAR
-        # (the read_aperture hook, which is what MiniVddVbeCollect = $false
-        # requires) does. A family that trusts VBE 4F01h does not: on the
+        # being moved. Only a family that reads its aperture from the card
+        # (the read_aperture hook) does. A family that trusts VBE 4F01h does not: on the
         # Gateway (2026-09-28) Windows moved BAR0 from F5000000 to 0B000000
         # at the first Velocity9x boot, the BIOS still reported F5000000, and
         # the driver mapped an aperture the card no longer decoded.
@@ -498,7 +510,7 @@ function Assert-V9xInf {
                   "DEFAULT,Mode,,`"$DefaultMode`"",
                   'DEFAULT,vdd,,"*vdd,*vflatd"',
                   'DEFAULT,RefreshRate,,0')
-    if ($Family.Build.MiniVddVbeCollect -eq $false) {
+    if (Test-V9xInfFamilyReadsAperture -Family $Family) {
         $required += 'DEFAULT,PCIRebalance,,1'
     } elseif ($text.IndexOf('PCIRebalance', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
         throw ("The generated INF for $($Family.Id) sets PCIRebalance, but the " +

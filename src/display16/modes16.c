@@ -345,7 +345,9 @@ void v9x_modes16_init(void)
     WORD trusted;
     WORD first = 0u;
     WORD published;
+    WORD admit_flags;
     DWORD vram;
+    DWORD chip_vram;
 
     /* The layout setting first: the baseline commit below publishes masks
      * derived from it. The chip is not known yet, so automatic resolves to
@@ -385,6 +387,27 @@ void v9x_modes16_init(void)
     vram = (DWORD)v9x_minivdd_total64k * 65536ul;
     v9x_runtime_vram_reported = vram;
 
+    /*
+     * A family that reads its own memory size is believed over the BIOS:
+     * admission is judged against the smaller figure, so a BIOS that
+     * overstates cannot offer a mode the card cannot hold. The S3 hook is
+     * CR36, which a VRAM walk confirmed on the Trio3D (2026-10-04). Only a
+     * family whose scan proved usable reaches this, so the others pay no
+     * register read at load.
+     */
+    if (v9x_hw16.read_video_memory != 0) {
+        chip_vram = v9x_hw16.read_video_memory();
+        if (chip_vram != 0ul && (vram == 0ul || chip_vram < vram)) {
+            vram = chip_vram;
+        }
+    }
+
+    /* A family with its own aperture hook does not need the BIOS to say
+     * where the framebuffer is - see V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN. */
+    admit_flags = v9x_hw16.read_aperture != 0
+                      ? V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN
+                      : 0u;
+
     /* Step 3: at most V9X_VBE_CACHE_MAX records into bounded storage. */
     count = v9x_minivdd_cached;
     if (count > V9X_VBE_CACHE_MAX) {
@@ -402,7 +425,7 @@ void v9x_modes16_init(void)
     /* Steps 4 and 5: build into staging, then refuse anything malformed. */
     count = v9x_vbe_build_mode_table_ex(
         v9x_hw16.modes, v9x_hw16.mode_count,
-        v9x_scan_entries, v9x_scan_count, vram, 0,
+        v9x_scan_entries, v9x_scan_count, vram, admit_flags, 0,
         v9x_stage_modes, v9x_stage_masks, V9X_MODE_TABLE_MAX,
         &v9x_runtime_dropped, v9x_runtime_reasons);
     if (count < v9x_hw16.mode_count || count > V9X_MODE_TABLE_MAX ||
@@ -427,7 +450,7 @@ void v9x_modes16_init(void)
     published = v9x_vbe_publish_rows(v9x_stage_modes, count,
                                      v9x_hw16.mode_count,
                                      v9x_scan_entries, v9x_scan_count, vram,
-                                     trusted, v9x_stage_publication, &first);
+                                     admit_flags, trusted, v9x_stage_publication, &first);
     if (published == 0u || first >= count) {
         v9x_runtime_scan_state = 4u;
         return;

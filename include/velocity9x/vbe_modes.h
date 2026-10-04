@@ -135,6 +135,21 @@ struct v9x_vbe_scan_entry {
 #define V9X_VBE_ADMIT_REASON_COUNT ((v9x_u16)13u)
 
 /*
+ * Admission flags: what the caller's family can vouch for that the BIOS
+ * record cannot.
+ *
+ * APERTURE_KNOWN: the family finds its framebuffer itself (a read_aperture
+ * hook) and enables linear addressing itself, so the record's linear
+ * attribute and PhysBasePtr answer a question it never asks. The two rules
+ * that exist to find the aperture are waived; every rule about the mode
+ * itself - supported, memory model, depth, stride, geometry, VRAM, layout -
+ * still applies. Motivated by the S3 BIOSes, which describe drivable modes
+ * with neither (docs\decisions\2026-08-20-vbe-mode-inventory.md, "The filter
+ * is right for tier-0 and wrong for a family with an aperture hook").
+ */
+#define V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN ((v9x_u16)0x0001u)
+
+/*
  * A family's distrust predicate: V9X_TRUE refuses a record the generic rules
  * accepted, with the known-defect reason. It may only refuse - a predicate
  * cannot admit what the generic rules rejected, so a family cannot use it to
@@ -209,6 +224,14 @@ v9x_u16 v9x_vbe_scan_admit(const struct v9x_vbe_scan_entry *entry,
                            v9x_u32 vram_bytes);
 
 /*
+ * v9x_vbe_scan_admit under the caller's V9X_VBE_ADMIT_FLAG_* set. Zero flags
+ * is v9x_vbe_scan_admit exactly; the flags can only waive rules, never add
+ * one, so a flagged answer is OK wherever the unflagged one is.
+ */
+v9x_u16 v9x_vbe_scan_admit_flags(const struct v9x_vbe_scan_entry *entry,
+                                 v9x_u32 vram_bytes, v9x_u16 admit_flags);
+
+/*
  * Merge the family's baseline rows with the scanned ones into table/masks.
  * Returns the number of rows written; *dropped, when non-null, receives the
  * count of accepted scanned modes there was no room for.
@@ -241,13 +264,14 @@ v9x_u16 v9x_vbe_build_mode_table(
  * generic admission rules and before a record can touch the table, and an
  * optional per-reason rejection tally for the inventory -
  * reason_counts[V9X_VBE_ADMIT_REASON_COUNT], zeroed here, one increment per
- * scanned record (OK counts the admitted ones). The base function is exactly
- * this one with both extras absent.
+ * scanned record (OK counts the admitted ones). admit_flags is passed to
+ * v9x_vbe_scan_admit_flags for every record. The base function is exactly
+ * this one with all three extras absent.
  */
 v9x_u16 v9x_vbe_build_mode_table_ex(
     const V9X_HW16_MODE *baseline, v9x_u16 baseline_count,
     const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
-    v9x_u32 vram_bytes, v9x_vbe_distrust_fn distrust,
+    v9x_u32 vram_bytes, v9x_u16 admit_flags, v9x_vbe_distrust_fn distrust,
     V9X_HW16_MODE *table, struct v9x_mode_masks *masks,
     v9x_u16 capacity, v9x_u16 *dropped, v9x_u16 *reason_counts);
 
@@ -270,11 +294,15 @@ v9x_u16 v9x_vbe_build_mode_table_ex(
  * If hiding would leave nothing published - a defect, since a trustworthy
  * scan that admits nothing is contradictory - every row is published instead
  * and the caller's table stands whole.
+ *
+ * "Admitted" is judged under admit_flags, which must be the set the table
+ * was built with: a record the build admitted cannot then fail to vouch for
+ * the row it merged into.
  */
 v9x_u16 v9x_vbe_publish_rows(
     const V9X_HW16_MODE *table, v9x_u16 count, v9x_u16 baseline_rows,
     const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
-    v9x_u32 vram_bytes, v9x_u16 scan_trustworthy,
+    v9x_u32 vram_bytes, v9x_u16 admit_flags, v9x_u16 scan_trustworthy,
     v9x_u8 *publication, v9x_u16 *first_published);
 
 /*
