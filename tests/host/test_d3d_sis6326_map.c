@@ -91,7 +91,24 @@ static void test_untextured_depth_blend_alpha(void)
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_NONE);
     CHECK(textured == 0);
-    CHECK(state.enable == V9X_SIS3D_ENABLE_PRIM_SETUP);
+    /* Texturing stays on: an untextured batch before a textured one stalls
+     * the engine (SIS3D /phase4b, A8U4I5 boots 219-227), a Cpix one does
+     * not. Colour and alpha from the vertex, a 1x1 RGB565 dummy at the
+     * target's offset, perspective off so W is ignored. */
+    CHECK(state.enable == (V9X_SIS3D_ENABLE_PRIM_SETUP |
+                           V9X_SIS3D_ENABLE_TEXTURE |
+                           V9X_SIS3D_ENABLE_TEXTURE_CACHE |
+                           V9X_SIS3D_ENABLE_LARGE_CACHE |
+                           V9X_SIS3D_ENABLE_BIT15));
+    CHECK(texture.colour_mode == V9X_SIS3D_TBLEND_CPIX);
+    CHECK(texture.alpha_mode == V9X_SIS3D_TBLEND_APIX);
+    CHECK(texture.format == V9X_SIS3D_TEXEL_RGB565);
+    CHECK(texture.log2_width == 0ul && texture.log2_height == 0ul);
+    CHECK(texture.levels == 0ul);
+    CHECK(texture.offset == 0x00100000ul);
+    CHECK(texture.pitch_bytes == 4ul);
+    CHECK(texture.filter == V9X_SIS3D_MIN_NEAREST);
+    CHECK(v9x_sis3d_build_texture(&texture, &writes) == V9X_STATUS_OK);
     CHECK(state.target.offset == 0x00100000ul);
     CHECK(state.target.pitch_bytes == 1600ul);
     CHECK(state.blend_source == V9X_SIS3D_BLEND_ONE);
@@ -113,9 +130,9 @@ static void test_untextured_depth_blend_alpha(void)
     draw.depth.height = 600ul;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_NONE);
-    CHECK(state.enable == (V9X_SIS3D_ENABLE_PRIM_SETUP |
-                           V9X_SIS3D_ENABLE_Z_TEST |
-                           V9X_SIS3D_ENABLE_Z_WRITE));
+    CHECK((state.enable & (V9X_SIS3D_ENABLE_Z_TEST |
+                           V9X_SIS3D_ENABLE_Z_WRITE)) ==
+          (V9X_SIS3D_ENABLE_Z_TEST | V9X_SIS3D_ENABLE_Z_WRITE));
     CHECK(state.z_compare == V9X_SIS3D_CMP_LEQUAL);
     CHECK(state.z_offset == 0x00200000ul);
     CHECK(state.z_pitch_bytes == 1600ul);

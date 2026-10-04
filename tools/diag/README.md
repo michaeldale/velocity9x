@@ -56,13 +56,16 @@ with `scripts/build-sis6326-3d.ps1` and run `SIS3D.EXE` beside `SIS2D.VXD`
 (which it shares with SIS2D) under Velocity9x at 16 bpp; with no switch it
 runs phase 1, with `/phase2` the shading, Z16, alpha-test and blend scenes,
 with `/phase3` the texture scenes (`/phase3a` the raw pitch-field sweep,
-`/phase3m` the mip scenes alone).
+`/phase3m` the mip scenes alone), with `/phase4` V9XDDP's first textured
+draws through the driver's own mapping, and with `/phase4b` (plus `/va` to
+`/vi`) the register stream that stalled the engine, replayed.
 It **writes the card**: SR39 (restored) and the 3D registers, firing
 triangles into guarded off-screen RGB565 targets (and Z16 buffers) and
 comparing each pixel with a reference. It publishes `C:\V9XDIAG\SIS3D.TXT`.
 See [2026-10-05 SiS 6326 3D first triangle](../../docs/decisions/2026-10-05-sis6326-3d-first-triangle.md),
 [shading and depth](../../docs/decisions/2026-10-05-sis6326-3d-shading-and-depth.md)
-and [textures](../../docs/decisions/2026-10-05-sis6326-3d-textures.md).
+[textures](../../docs/decisions/2026-10-05-sis6326-3d-textures.md) and
+[the Direct3D engine](../../docs/decisions/2026-10-05-sis6326-d3d-engine.md).
 
 `ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's
 Phase 2 engine scenes ([plan](../../docs/plans/ati-rage-iic-hardware-3d.md)).

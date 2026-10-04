@@ -30,6 +30,8 @@
 
 #define V9X_D3D_SIS_MIN_MASK 0x00000007ul
 #define V9X_D3D_SIS_TEXTURE_SIDE_MAX 512ul
+/* The pitch field's 4-byte unit: the dummy texel's row. */
+#define V9X_D3D_SIS_PITCH_UNIT 4ul
 
 static v9x_u32 v9x_d3d_sis_bits(float value)
 {
@@ -271,6 +273,41 @@ static v9x_u32 v9x_d3d_sis_map_texture(const V9X_R3D_DRAW *draw,
     return V9X_D3D_SIS_REFUSE_NONE;
 }
 
+/*
+ * An untextured draw, drawn textured. A batch with texturing off before a
+ * textured one leaves the engine drawing the textured triangle and then
+ * never idle (89FCh 00200074h) - whether the first batch blends or not,
+ * whatever the write order or cache bits; a textured batch alone, or after
+ * a textured batch whose colour comes from the vertex, goes idle (SIS3D
+ * /phase4b, A8U4I5 boots 219-227). So texturing stays on: colour mode Cpix
+ * and the vertex's alpha, a 1x1 RGB565 texel at the target's own offset,
+ * which the blend ignores, and perspective off so the vertices' W - which
+ * an untextured TLVERTEX need not set - is not read.
+ */
+static void v9x_d3d_sis_map_untextured(const V9X_R3D_DRAW *draw,
+                                       v9x_u32 vram_bytes,
+                                       struct v9x_sis3d_texture *texture)
+{
+    v9x_u32 level;
+
+    texture->vram_bytes = vram_bytes;
+    texture->format = V9X_SIS3D_TEXEL_RGB565;
+    texture->log2_width = 0ul;
+    texture->log2_height = 0ul;
+    texture->levels = 0ul;
+    texture->offset = draw->target.offset;
+    texture->pitch_bytes = V9X_D3D_SIS_PITCH_UNIT;
+    texture->mapping = V9X_SIS3D_TEXTURE_WRAP_U | V9X_SIS3D_TEXTURE_WRAP_V;
+    texture->filter = V9X_SIS3D_MIN_NEAREST;
+    texture->colour_mode = V9X_SIS3D_TBLEND_CPIX;
+    texture->alpha_mode = V9X_SIS3D_TBLEND_APIX;
+    texture->clear_cache = 0;
+    texture->blend_mask_bit = 0ul;
+    for (level = 0ul; level < V9X_SIS3D_MIP_LEVELS_MAX; ++level) {
+        texture->level_offsets[level] = draw->target.offset;
+    }
+}
+
 v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
                              const V9X_D3D_SIS_TEXTURE *resolved,
                              v9x_u32 vram_bytes,
@@ -339,20 +376,22 @@ v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
         return reason;
     }
 
+    /* Texturing as SiS's HAL enabled it (8A00h 00208CA0h), on for every
+     * draw. */
+    state->enable |= V9X_SIS3D_ENABLE_TEXTURE |
+                     V9X_SIS3D_ENABLE_TEXTURE_CACHE |
+                     V9X_SIS3D_ENABLE_LARGE_CACHE |
+                     V9X_SIS3D_ENABLE_BIT15;
     if (draw->texture.object == 0) {
+        v9x_d3d_sis_map_untextured(draw, vram_bytes, texture);
         return V9X_D3D_SIS_REFUSE_NONE;
     }
     reason = v9x_d3d_sis_map_texture(draw, resolved, vram_bytes, texture);
     if (reason != V9X_D3D_SIS_REFUSE_NONE) {
         return reason;
     }
-    /* Texturing as SiS's HAL enabled it (8A00h 00208CA0h), with W as RHW
-     * for perspective (textures record). */
-    state->enable |= V9X_SIS3D_ENABLE_TEXTURE |
-                     V9X_SIS3D_ENABLE_TEXTURE_CACHE |
-                     V9X_SIS3D_ENABLE_LARGE_CACHE |
-                     V9X_SIS3D_ENABLE_BIT15 |
-                     V9X_SIS3D_ENABLE_PERSPECTIVE;
+    /* W as RHW for perspective (textures record). */
+    state->enable |= V9X_SIS3D_ENABLE_PERSPECTIVE;
     *textured = 1;
     return V9X_D3D_SIS_REFUSE_NONE;
 }

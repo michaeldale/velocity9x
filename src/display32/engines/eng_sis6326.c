@@ -77,6 +77,16 @@ static int v9x_sis_validated(void)
         (v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul;
 }
 
+/*
+ * A real timeout gives up on the engine for the rest of the mode: the
+ * descriptor is invalidated, so v9x_engine32() answers none, blits and
+ * fills fall to the CPU, and Lock's drain completes. Before this, a stuck
+ * engine answered every Lock with WASSTILLDRAWING, which DDLOCK_WAIT
+ * retries for ever; A8U4I5 froze that way twice under V9XDDP (boots 212
+ * and 215, 89 timeouts in the second). The fault trace is written on the
+ * first timeout only, so the ring shows what led to it rather than the
+ * retries after.
+ */
 static int v9x_sis_wait_idle(int wait)
 {
     DWORD spins;
@@ -99,6 +109,11 @@ static int v9x_sis_wait_idle(int wait)
                 return 1;
             }
         }
+        if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+            v9x_trace_flush_fault(0x53324944ul, V9X_SIS_2D_CMD_STATUS);
+        }
+        v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
+        return 0;
     }
     ++v9x_hal->engine.idle_timeouts;
     v9x_trace_flush_fault(0x53324944ul, V9X_SIS_2D_CMD_STATUS);

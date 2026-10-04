@@ -77,26 +77,159 @@ static DWORD v9x_d3d_sis_read(v9x_u32 offset)
 
 /*
  * Set when the 3D engine fails to go idle; no 3D register is touched again
- * this boot. A hung 3D engine survived the probe's exit until a reboot
- * (textures record), and a V9XDDP run hard-locked A8U4I5 at boot 212 for a
- * reason not yet established, so a stuck engine is left alone rather than
- * fed more work.
+ * this boot. A stalled engine stays stalled until a reboot (textures
+ * record), and on A8U4I5 boots 212 and 215 one froze the machine: the 2D
+ * engine, behind it in the shared queue, never went idle, every Lock
+ * answered WASSTILLDRAWING, and DDLOCK_WAIT retried for ever (engine
+ * record, 2026-10-05).
  */
 static int v9x_d3d_sis_quarantined = 0;
 
-/* 89FCh D1: the 3D engine idle and its queue empty. */
+/* "S3ID": the 3D idle timeout, in V9XTRACE.INI's FaultCode. */
+#define V9X_D3D_SIS_FAULT_3D_IDLE 0x53334944ul
+
+/*
+ * The last two batches' register streams, for the first timeout's record.
+ * V9XDDP on A8U4I5 boot 217 stalled the engine (89FCh 00200074h) right after
+ * its first textured batch, while the SIS3D probe replaying those words did
+ * not; this records what the driver actually wrote.
+ */
+#define V9X_D3D_SIS_LOG_PATH "C:\\V9XDIAG\\V9XSIS3D.TXT"
+#define V9X_D3D_SIS_WAIT_BEFORE_STATE    1ul
+#define V9X_D3D_SIS_WAIT_BEFORE_TRIANGLE 2ul
+#define V9X_D3D_SIS_WAIT_AFTER_BATCH     3ul
+
+typedef struct v9x_d3d_sis_batch_log {
+    DWORD number;
+    DWORD textured;
+    DWORD triangles;
+    v9x_u32 primitive;
+    struct v9x_sis3d_writes state;
+    struct v9x_sis3d_writes clear;
+    struct v9x_sis3d_writes texture;
+    struct v9x_sis3d_writes vertex;
+} V9X_D3D_SIS_BATCH_LOG;
+
+static V9X_D3D_SIS_BATCH_LOG v9x_d3d_sis_log[2];
+static DWORD v9x_d3d_sis_batches = 0ul;
+static DWORD v9x_d3d_sis_wait_site = 0ul;
+static DWORD v9x_d3d_sis_wait_triangle = 0ul;
+
+static void v9x_d3d_sis_log_text(HANDLE file, const char *text)
+{
+    DWORD length = 0ul;
+    DWORD written;
+
+    while (text[length] != '\0') {
+        ++length;
+    }
+    WriteFile(file, text, length, &written, 0);
+}
+
+static void v9x_d3d_sis_log_hex(HANDLE file, const char *key, DWORD value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char line[64];
+    int at = 0;
+    int shift;
+
+    while (*key != '\0' && at < 40) {
+        line[at++] = *key++;
+    }
+    line[at++] = '=';
+    for (shift = 28; shift >= 0; shift -= 4) {
+        line[at++] = digits[(value >> shift) & 0xful];
+    }
+    line[at++] = '\r';
+    line[at++] = '\n';
+    line[at] = '\0';
+    v9x_d3d_sis_log_text(file, line);
+}
+
+static void v9x_d3d_sis_log_writes(HANDLE file,
+                                   const struct v9x_sis3d_writes *writes)
+{
+    v9x_u32 index;
+
+    for (index = 0u; index < writes->count; ++index) {
+        v9x_d3d_sis_log_hex(file, "  Offset", writes->offsets[index]);
+        v9x_d3d_sis_log_hex(file, "  Value", writes->values[index]);
+    }
+}
+
+static void v9x_d3d_sis_log_batch(HANDLE file, const char *name,
+                                  const V9X_D3D_SIS_BATCH_LOG *batch)
+{
+    v9x_d3d_sis_log_text(file, name);
+    v9x_d3d_sis_log_text(file, "\r\n");
+    v9x_d3d_sis_log_hex(file, "Number", batch->number);
+    v9x_d3d_sis_log_hex(file, "Textured", batch->textured);
+    v9x_d3d_sis_log_hex(file, "Triangles", batch->triangles);
+    v9x_d3d_sis_log_hex(file, "Primitive0", batch->primitive);
+    v9x_d3d_sis_log_text(file, "State\r\n");
+    v9x_d3d_sis_log_writes(file, &batch->state);
+    v9x_d3d_sis_log_text(file, "TextureClear\r\n");
+    v9x_d3d_sis_log_writes(file, &batch->clear);
+    v9x_d3d_sis_log_text(file, "Texture\r\n");
+    v9x_d3d_sis_log_writes(file, &batch->texture);
+    v9x_d3d_sis_log_text(file, "Vertices0\r\n");
+    v9x_d3d_sis_log_writes(file, &batch->vertex);
+}
+
+/* Fixed storage and KERNEL32 file I/O only, as the fault trace. */
+static void v9x_d3d_sis_log_timeout(DWORD status)
+{
+    HANDLE file;
+    DWORD current = (v9x_d3d_sis_batches - 1ul) & 1ul;
+
+    file = CreateFileA(V9X_D3D_SIS_LOG_PATH, GENERIC_WRITE,
+                       FILE_SHARE_READ, 0, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    v9x_d3d_sis_log_text(file, "[Sis3dTimeout]\r\n");
+    v9x_d3d_sis_log_hex(file, "Status", status);
+    v9x_d3d_sis_log_hex(file, "WaitSite", v9x_d3d_sis_wait_site);
+    v9x_d3d_sis_log_hex(file, "WaitTriangle", v9x_d3d_sis_wait_triangle);
+    v9x_d3d_sis_log_hex(file, "Batches", v9x_d3d_sis_batches);
+    v9x_d3d_sis_log_batch(file, "[Current]", &v9x_d3d_sis_log[current]);
+    if (v9x_d3d_sis_batches > 1ul) {
+        v9x_d3d_sis_log_batch(file, "[Previous]",
+                              &v9x_d3d_sis_log[current ^ 1ul]);
+    }
+    CloseHandle(file);
+}
+
+/*
+ * 89FCh D1: the 3D engine idle and its queue empty.
+ *
+ * On a timeout the record is written through to disk first: the last two
+ * batches to V9XSIS3D.TXT, then the fault trace with the last status in
+ * FaultAddress. Then the 3D engine is quarantined and the engine descriptor
+ * invalidated, which stops the 2D engine too (eng_sis6326.c requires it
+ * valid), so the 2D engine is never fed behind a stalled 3D one and Lock's
+ * drain completes. Until the next mode set DirectDraw falls back to the
+ * CPU.
+ */
 static int v9x_d3d_sis_wait_idle(void)
 {
     DWORD spins;
+    DWORD status = 0ul;
 
     for (spins = 0ul; spins < V9X_D3D_SIS_SPINS; ++spins) {
-        if ((v9x_d3d_sis_read(V9X_SIS3D_STATUS) &
-             V9X_SIS3D_STATUS_IDLE_EMPTY) != 0ul) {
+        status = v9x_d3d_sis_read(V9X_SIS3D_STATUS);
+        if ((status & V9X_SIS3D_STATUS_IDLE_EMPTY) != 0ul) {
             return 1;
         }
     }
-    ++v9x_hal->engine.idle_timeouts;
+    /* The first timeout of the boot only, as eng_sis6326.c does. */
+    if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+        v9x_d3d_sis_log_timeout(status);
+        v9x_trace_flush_fault(V9X_D3D_SIS_FAULT_3D_IDLE, status);
+    }
     v9x_d3d_sis_quarantined = 1;
+    v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
     return 0;
 }
 
@@ -464,6 +597,7 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
     struct v9x_sis3d_texture texture;
     struct v9x_sis3d_vertex corners[3];
     const V9X_ENGINE32_OPS *engine2d;
+    V9X_D3D_SIS_BATCH_LOG *log;
     DWORD index;
     DWORD packets = 0ul;
     int textured;
@@ -486,20 +620,17 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
         V9X_STATUS_OK) {
         return 0;
     }
-    /* The texture cache is cleared on every textured batch, D4 pulsed:
-     * left set while drawing, it hung the engine (textures record). */
-    if (textured) {
-        texture.clear_cache = 1;
-        if (v9x_sis3d_build_texture(&texture, &v9x_d3d_sis_clear_writes) !=
-            V9X_STATUS_OK) {
-            return 0;
-        }
-        texture.clear_cache = 0;
-        if (v9x_sis3d_build_texture(&texture,
-                                    &v9x_d3d_sis_texture_writes) !=
-            V9X_STATUS_OK) {
-            return 0;
-        }
+    /* Every batch carries texture words (d3d_sis6326_map.c), and the cache
+     * is cleared with D4 pulsed, as the probe phases ran it. */
+    texture.clear_cache = 1;
+    if (v9x_sis3d_build_texture(&texture, &v9x_d3d_sis_clear_writes) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    texture.clear_cache = 0;
+    if (v9x_sis3d_build_texture(&texture, &v9x_d3d_sis_texture_writes) !=
+        V9X_STATUS_OK) {
+        return 0;
     }
 
     /* Every triangle's words before any write. */
@@ -517,23 +648,35 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
         return 1;
     }
 
+    /* Kept for the first timeout's record (v9x_d3d_sis_log_timeout). */
+    log = &v9x_d3d_sis_log[v9x_d3d_sis_batches & 1ul];
+    log->number = v9x_d3d_sis_batches++;
+    log->textured = (DWORD)textured;
+    log->triangles = packets;
+    log->primitive = v9x_d3d_sis_primitives[0];
+    log->state = v9x_d3d_sis_state_writes;
+    log->clear = v9x_d3d_sis_clear_writes;
+    log->texture = v9x_d3d_sis_texture_writes;
+    log->vertex = v9x_d3d_sis_vertex_writes[0];
+
     /* Blits that wrote what this batch reads or overwrites finish first. */
     engine2d = v9x_engine32();
     if (engine2d != 0 && engine2d->wait_idle != 0 &&
         !engine2d->wait_idle(1)) {
         return 0;
     }
+    v9x_d3d_sis_wait_site = V9X_D3D_SIS_WAIT_BEFORE_STATE;
     if (!v9x_d3d_sis_wait_idle()) {
         return 0;
     }
     v9x_d3d_sis_emit(&v9x_d3d_sis_state_writes);
-    if (textured) {
-        v9x_d3d_sis_emit(&v9x_d3d_sis_clear_writes);
-        v9x_d3d_sis_emit(&v9x_d3d_sis_texture_writes);
-    }
+    v9x_d3d_sis_emit(&v9x_d3d_sis_clear_writes);
+    v9x_d3d_sis_emit(&v9x_d3d_sis_texture_writes);
     v9x_present_note_submission();
+    v9x_d3d_sis_wait_site = V9X_D3D_SIS_WAIT_BEFORE_TRIANGLE;
     for (index = 0ul; index < packets; ++index) {
         /* One triangle at a time: the Turbo Queue is off. */
+        v9x_d3d_sis_wait_triangle = index;
         if (!v9x_d3d_sis_wait_idle()) {
             return 0;
         }
@@ -541,6 +684,7 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
                           v9x_d3d_sis_primitives[index]);
         v9x_d3d_sis_emit(&v9x_d3d_sis_vertex_writes[index]);
     }
+    v9x_d3d_sis_wait_site = V9X_D3D_SIS_WAIT_AFTER_BATCH;
     return v9x_d3d_sis_wait_idle();
 }
 

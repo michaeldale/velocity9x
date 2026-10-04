@@ -58,8 +58,12 @@ typedef struct v9x_d3d_sis_texture {
  * specular_rgb is non-zero when some vertex of the batch carries specular
  * colour: SPECULARENABLE defaults on, and specular that adds nothing is no
  * reason to refuse. Returns a V9X_D3D_SIS_REFUSE_* reason; on NONE, state
- * (and texture when *textured) is ready for v9x_sis3d_build_state and
- * v9x_sis3d_build_texture, which make the remaining range checks.
+ * and texture are ready for v9x_sis3d_build_state and
+ * v9x_sis3d_build_texture, which make the remaining range checks. Every
+ * draw has texture words: an untextured one samples a dummy texel and takes
+ * its colour from the vertex, because an untextured batch before a textured
+ * one stalls the engine. *textured says whether the vertices' U, V and W
+ * are used.
  */
 v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
                              const V9X_D3D_SIS_TEXTURE *resolved,

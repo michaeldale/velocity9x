@@ -68,3 +68,25 @@ Neither change is known to address the lock.
 Rerun V9XDDP with the narrowed build. If the step log ends at the same
 depth fill, hypothesis 1 is out. Each run risks a hard lock that someone
 has to reset at the machine.
+
+## 2026-10-05, later: cause found, fixed (boots 215-228)
+
+- **Boot 215.** The narrowed build froze at the same depth fill, so
+  hypothesis 1 is out. Michael reset it again. The fault trace showed 89
+  2D idle timeouts and every Lock answering WASSTILLDRAWING. V9XDDP locks
+  with DDLOCK_WAIT, so the "hard lock" was a retry loop on a stuck
+  engine, not a bus hang.
+- **Boots 217-218.** With the engine invalidated on a timeout, the first
+  fault was a 3D stall (89FCh 00200074h), right after V9XDDP's first
+  textured batch. The batch before it was untextured. V9XDDP completed.
+- **Boots 216 and 219-227.** The SIS3D probe reproduced the stall from
+  the logged words, with no 2D command. Any batch drawn with texturing off
+  stalls the next textured one. Drawing it textured with colour mode Cpix
+  does not.
+- **Boot 228.** Untextured draws are now drawn textured with Cpix.
+  V9XDDP completed with 0 idle timeouts: 99 checks match SiS's HAL, and
+  depth passes.
+
+Hypotheses 1 to 3 above are all wrong. Status: fixed in the engine; the
+remaining V9XDDP failures are listed in
+[the decision record](../decisions/2026-10-05-sis6326-d3d-engine.md).

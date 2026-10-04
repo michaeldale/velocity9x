@@ -23,6 +23,12 @@ mapping are in. The first V9XDDP run (boot 212) matched SiS's HAL on every
 untextured check, refused every textured draw (a mapping bug, fixed), and
 hard-locked the machine at a depth fill
 ([issue](../issues/2026-10-05-a8u4i5-hard-lock-under-sis-d3d-v9xddp.md)).
+Found the same day
+([engine record](../decisions/2026-10-05-sis6326-d3d-engine.md)): an
+untextured batch stalls the next textured one, and the "lock" was a Lock
+retry loop on the stuck engine. With untextured draws drawn textured (Cpix),
+V9XDDP passes 99 checks SiS's HAL passes, plus depth; specular, fog,
+flip-pixel, ramp and sprite-with-Z remain.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 

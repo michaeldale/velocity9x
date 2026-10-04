@@ -49,6 +49,8 @@
 #include "velocity9x/sis6326_3d.h"
 
 #include "../../src/chipsets/sis/sis6326_3d.c"
+/* Phase 4 replays the driver's own translation (d3d_sis6326_map.c). */
+#include "../../src/display32/d3d/d3d_sis6326_map.c"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -2295,6 +2297,575 @@ static void sis3d_phase3(int addressing, int mips_only)
     sis3d_phase3_textures();
 }
 
+/*
+ * Phase 4: V9XDDP's first textured draws, replayed through the driver's
+ * translation. On A8U4I5 boot 215 the first textured draw (D3DBaseTexture)
+ * read correct and every textured draw after it read black, which is what
+ * the engine's quarantine produces after a 3D idle timeout; boots 212 and
+ * 215 then hard-locked at the next 2D-engine command. This replays the base
+ * draw and the two tiled ones word for word - same state, texture and
+ * vertex words, same waits - into a 640x480 RGB565 target at 3 MiB, with no
+ * 2D command, so a stall is recorded rather than built on. It stops at the
+ * first wait that does not end.
+ */
+#define SIS3D_P4_TEXTURE   0x002e0000ul
+#define SIS3D_P4_TARGET    0x00300000ul
+#define SIS3D_P4_WIDTH     640ul
+#define SIS3D_P4_HEIGHT    480ul
+#define SIS3D_P4_PITCH     1280ul
+/* V9XDDP's base texture: 64x64 ARGB1555, every texel 83E0h (green). */
+#define SIS3D_P4_SIDE      64ul
+#define SIS3D_P4_TEXEL     0x83e083e0ul
+#define SIS3D_P4_GREEN     0x07e0u
+#define SIS3D_2D_STATUS    0x000082a8ul
+#define SIS3D_2D_BUSY      0x40000000ul
+
+/* Read 82A8h after one candidate write (offset 0: none), polling up to
+ * 1000 reads for D30 to clear; reports the first and last value. */
+static void sis3d_p4_try(const char *name, DWORD offset, DWORD value)
+{
+    char key[48];
+    DWORD first;
+    DWORD index;
+    DWORD reads[16];
+    DWORD count = 0ul;
+
+    sis3d_begin();
+    if (offset != 0ul) {
+        sis3d_add(SIS3D_OP_MMIO_WRITE32, offset, value, 0ul);
+    }
+    first = sis3d_add(SIS3D_OP_MMIO_READ32, SIS3D_2D_STATUS, 0ul, 0ul);
+    for (index = 0ul; index < 16ul; ++index) {
+        reads[index] = sis3d_add(SIS3D_OP_MMIO_READ32, SIS3D_2D_STATUS, 0ul,
+                                 0ul);
+    }
+    if (!sis3d_run()) {
+        sis3d_key(key, name, "Result");
+        sis3d_write(key, "RUN-FAILED");
+        return;
+    }
+    for (index = 0ul; index < 16ul; ++index) {
+        if ((sis3d_value(reads[index]) & SIS3D_2D_BUSY) != 0ul) {
+            ++count;
+        }
+    }
+    sis3d_key(key, name, "Status2D");
+    sis3d_write_hex(key, sis3d_value(first));
+    sis3d_key(key, name, "Status2DLast");
+    sis3d_write_hex(key, sis3d_value(reads[15]));
+    sis3d_key(key, name, "BusyOf16");
+    sis3d_write_decimal(key, count);
+}
+
+static int sis3d_p4_token;
+
+/* No C runtime: -zl. */
+static void v9x_zero_bytes(void *block, DWORD length)
+{
+    unsigned char *bytes = (unsigned char *)block;
+
+    while (length-- != 0ul) {
+        *bytes++ = 0u;
+    }
+}
+
+/* One driver batch: wait, state, texture with D4 pulsed, then the triangle
+ * after its own wait, then the closing wait - d3d_sis6326.c's order. */
+static int sis3d_p4_draw(const char *name, const V9X_R3D_VERTEX *triangle)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_SIS_TEXTURE resolved;
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_texture texture;
+    struct v9x_sis3d_writes writes;
+    struct v9x_sis3d_writes clear_writes;
+    struct v9x_sis3d_writes texture_writes;
+    struct v9x_sis3d_writes vertex_writes;
+    struct v9x_sis3d_vertex corners[3];
+    char key[48];
+    v9x_u32 primitive;
+    v9x_u32 reason;
+    DWORD waits[3];
+    DWORD status_index;
+    DWORD status2d_index;
+    DWORD pixel_index[3];
+    int textured;
+
+    v9x_zero_bytes(&draw, sizeof(draw));
+    draw.target.offset = SIS3D_P4_TARGET;
+    draw.target.pitch = SIS3D_P4_PITCH;
+    draw.target.width = SIS3D_P4_WIDTH;
+    draw.target.height = SIS3D_P4_HEIGHT;
+    draw.target.format = V9X_R3D_FORMAT_RGB565;
+    draw.depth_func = V9X_R3D_CMP_LESSEQUAL;
+    draw.alpha_func = V9X_R3D_CMP_ALWAYS;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    draw.shade_mode = V9X_R3D_SHADE_GOURAUD;
+    draw.texture.object = &sis3d_p4_token;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.op = V9X_R3D_TEXOP_COPY;
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw.texture.wrap_either = 1ul;     /* as the core leaves it */
+
+    v9x_zero_bytes(&resolved, sizeof(resolved));
+    resolved.format = V9X_SIS3D_TEXEL_ARGB1555;
+    resolved.has_alpha = 1;
+    resolved.width = SIS3D_P4_SIDE;
+    resolved.height = SIS3D_P4_SIDE;
+    resolved.levels = 1ul;
+    resolved.offset = SIS3D_P4_TEXTURE;
+    resolved.pitch_bytes = SIS3D_P4_SIDE * 2ul;
+    resolved.level_offsets[0] = SIS3D_P4_TEXTURE;
+
+    reason = v9x_d3d_sis_map_draw(&draw, &resolved, SIS3D_VRAM_BYTES, 0ul,
+                                  &state, &texture, &textured);
+    sis3d_key(key, name, "MapReason");
+    sis3d_write_decimal(key, reason);
+    if (reason != V9X_D3D_SIS_REFUSE_NONE || !textured ||
+        v9x_sis3d_build_state(&state, &writes) != V9X_STATUS_OK) {
+        return 1;
+    }
+    texture.clear_cache = 1;
+    if (v9x_sis3d_build_texture(&texture, &clear_writes) != V9X_STATUS_OK) {
+        return 1;
+    }
+    texture.clear_cache = 0;
+    if (v9x_sis3d_build_texture(&texture, &texture_writes) !=
+            V9X_STATUS_OK ||
+        !v9x_d3d_sis_triangle(triangle, V9X_R3D_SHADE_GOURAUD, 1, corners,
+                              &primitive)) {
+        return 1;
+    }
+    v9x_sis3d_build_vertices(corners, &vertex_writes);
+    sis3d_key(key, name, "Enable");
+    sis3d_write_hex(key, state.enable);
+    sis3d_key(key, name, "TextureSet");
+    sis3d_write_hex(key, texture_writes.values[0]);
+    sis3d_key(key, name, "Primitive");
+    sis3d_write_hex(key, primitive);
+
+    sis3d_begin();
+    waits[0] = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                         V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add_writes(&writes);
+    sis3d_add_writes(&clear_writes);
+    sis3d_add_writes(&texture_writes);
+    waits[1] = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                         V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_PRIMITIVE, primitive, 0ul);
+    sis3d_add_writes(&vertex_writes);
+    waits[2] = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                         V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    status_index = sis3d_add(SIS3D_OP_MMIO_READ32, V9X_SIS3D_STATUS, 0ul,
+                             0ul);
+    /* The 2D engine's view after the batch: 82A8h D30 is 82ABh D6, "engine
+     * busy or hardware queue not empty", which eng_sis6326.c waits on. */
+    status2d_index = sis3d_add(SIS3D_OP_MMIO_READ32, SIS3D_2D_STATUS, 0ul,
+                               0ul);
+    /* V9XDDP's sample points: (16,16), (40,12), (12,12). */
+    pixel_index[0] = sis3d_add(SIS3D_OP_LFB_READ32, SIS3D_P4_TARGET +
+                               16ul * SIS3D_P4_PITCH + 16ul * 2ul, 0ul, 0ul);
+    pixel_index[1] = sis3d_add(SIS3D_OP_LFB_READ32, SIS3D_P4_TARGET +
+                               12ul * SIS3D_P4_PITCH + 40ul * 2ul, 0ul, 0ul);
+    pixel_index[2] = sis3d_add(SIS3D_OP_LFB_READ32, SIS3D_P4_TARGET +
+                               12ul * SIS3D_P4_PITCH + 12ul * 2ul, 0ul, 0ul);
+    if (!sis3d_run()) {
+        sis3d_key(key, name, "Result");
+        sis3d_write(key, "RUN-FAILED");
+        return 0;
+    }
+    sis3d_key(key, name, "WaitBeforeState");
+    sis3d_write_hex(key, sis3d_value(waits[0]));
+    sis3d_key(key, name, "WaitBeforeTriangle");
+    sis3d_write_hex(key, sis3d_value(waits[1]));
+    sis3d_key(key, name, "WaitAfter");
+    sis3d_write_hex(key, sis3d_value(waits[2]));
+    sis3d_key(key, name, "StatusAfter");
+    sis3d_write_hex(key, sis3d_value(status_index));
+    sis3d_key(key, name, "Status2DAfter");
+    sis3d_write_hex(key, sis3d_value(status2d_index));
+    sis3d_key(key, name, "Pixel16x16");
+    sis3d_write_hex(key, sis3d_value(pixel_index[0]) & 0xfffful);
+    sis3d_key(key, name, "Pixel40x12");
+    sis3d_write_hex(key, sis3d_value(pixel_index[1]) & 0xfffful);
+    sis3d_key(key, name, "Pixel12x12");
+    sis3d_write_hex(key, sis3d_value(pixel_index[2]) & 0xfffful);
+    if (sis3d_value(waits[0]) == SIS3D_TIMEOUT ||
+        sis3d_value(waits[1]) == SIS3D_TIMEOUT ||
+        sis3d_value(waits[2]) == SIS3D_TIMEOUT) {
+        sis3d_key(key, name, "Result");
+        sis3d_write(key, "STALLED");
+        return 0;
+    }
+    sis3d_key(key, name, "Result");
+    sis3d_write(key, (sis3d_value(pixel_index[0]) & 0xfffful) ==
+                     SIS3D_P4_GREEN ? "GREEN" : "OTHER");
+    return 1;
+}
+
+static void sis3d_p4_vertex(V9X_R3D_VERTEX *v, float x, float y, float u,
+                            float t)
+{
+    v9x_zero_bytes(v, sizeof(*v));
+    v->sx = x;
+    v->sy = y;
+    v->sz = 0.0f;
+    v->rhw = 1.0f;
+    v->color = 0xfffffffful;
+    v->tu = u;
+    v->tv = t;
+}
+
+static void sis3d_phase4(void)
+{
+    V9X_R3D_VERTEX triangle[3];
+
+    /* Texture green, target black: one fill op each. */
+    sis3d_begin();
+    sis3d_add(SIS3D_OP_LFB_FILL32, SIS3D_P4_TEXTURE, SIS3D_P4_TEXEL,
+              SIS3D_P4_SIDE * SIS3D_P4_SIDE / 2ul);
+    sis3d_add(SIS3D_OP_LFB_FILL32, SIS3D_P4_TARGET, 0ul,
+              SIS3D_P4_PITCH * SIS3D_P4_HEIGHT / 4ul);
+    if (!sis3d_run()) {
+        sis3d_write("Phase4Fill", "FAILED");
+        return;
+    }
+    sis3d_p4_try("BeforeDraws", 0ul, 0ul);
+
+    /* V9XDDP's D3DBaseTexture, then D3DTiledTexture and D3DTiledNegative:
+     * (8.25,8.25) (55.75,8.25) (8.25,55.75), W 1.0, white. */
+    sis3d_p4_vertex(&triangle[0], 8.25f, 8.25f, 0.125f, 0.125f);
+    sis3d_p4_vertex(&triangle[1], 55.75f, 8.25f, 0.875f, 0.125f);
+    sis3d_p4_vertex(&triangle[2], 8.25f, 55.75f, 0.125f, 0.875f);
+    if (!sis3d_p4_draw("Base", triangle)) {
+        return;
+    }
+    sis3d_p4_vertex(&triangle[0], 8.25f, 8.25f, 0.0f, 0.0f);
+    sis3d_p4_vertex(&triangle[1], 55.75f, 8.25f, 2.0f, 0.0f);
+    sis3d_p4_vertex(&triangle[2], 8.25f, 55.75f, 0.0f, 2.0f);
+    if (!sis3d_p4_draw("Tiled", triangle)) {
+        return;
+    }
+    sis3d_p4_vertex(&triangle[0], 8.25f, 8.25f, -0.5f, -0.5f);
+    sis3d_p4_vertex(&triangle[1], 55.75f, 8.25f, 0.5f, -0.5f);
+    sis3d_p4_vertex(&triangle[2], 8.25f, 55.75f, -0.5f, 0.5f);
+    if (!sis3d_p4_draw("TiledNegative", triangle)) {
+        return;
+    }
+
+    /* Boot 215's trace: 82A8h never idle again after the first textured
+     * draw. What, if anything, clears it - in order, each on the last. */
+    sis3d_p4_try("AfterDraws", 0ul, 0ul);
+    sis3d_p4_try("TextureOff", V9X_SIS3D_ENABLE, V9X_SIS3D_ENABLE_PRIM_SETUP);
+    sis3d_p4_try("CachePulse", V9X_SIS3D_TEXTURE_SET, 0x52030010ul);
+    sis3d_p4_try("CacheClear", V9X_SIS3D_TEXTURE_SET, 0x52030000ul);
+    sis3d_p4_try("EnableZero", V9X_SIS3D_ENABLE, 0ul);
+}
+
+/*
+ * Phase 4b: the register stream the driver wrote when the engine stalled,
+ * from V9XSIS3D.TXT on A8U4I5 boot 218 (V9XDDP's first textured batch,
+ * number 27, after an untextured blend batch). The engine drew the triangle
+ * and then never reported idle (89FCh 00200074h, at the wait after the
+ * batch). The words are replayed exactly, with the destination base
+ * (8A18h) and texture base (8A44h) moved to 3 MiB, in three layouts that
+ * separate the two differences from phase 4's clean replay: the texture
+ * immediately after the 64x64 target, and the blend batch before.
+ */
+#define SIS3D_P4B_TARGET   0x00300000ul
+#define SIS3D_P4B_ADJACENT 0x00302000ul   /* target + 64 rows x 128 */
+#define SIS3D_P4B_FAR      0x00340000ul
+
+static const DWORD sis3d_p4b_state_offsets[10] = {
+    0x8a00ul, 0x8a04ul, 0x8a08ul, 0x8a0cul, 0x8a14ul,
+    0x8a18ul, 0x8a20ul, 0x8a28ul, 0x8a30ul, 0x8a34ul
+};
+/* Batch 26: untextured, SRCALPHA/INVSRCALPHA. */
+static const DWORD sis3d_p4b_blend_state[10] = {
+    0x00000804ul, 0x00170080ul, 0x00000000ul, 0x07000000ul, 0x0c110080ul,
+    0x0012c000ul, 0x00000000ul, 0x54000000ul, 0x0000003ful, 0x0000003ful
+};
+/* Batch 27: textured, COPY, 64x64 ARGB1555. */
+static const DWORD sis3d_p4b_texture_state[10] = {
+    0x00008ea0ul, 0x00170080ul, 0x00000000ul, 0x07000000ul, 0x0c110080ul,
+    0x0012c000ul, 0x00000000ul, 0x01000000ul, 0x0000003ful, 0x0000003ful
+};
+static const DWORD sis3d_p4b_texture_offsets[5] = {
+    0x8a38ul, 0x8a3cul, 0x8a44ul, 0x8a6cul, 0x8a80ul
+};
+static const DWORD sis3d_p4b_texture_words[5] = {
+    0x52030000ul, 0x00000000ul, 0x0012e000ul, 0x02800000ul, 0x66000000ul
+};
+/* Per vertex: fog/specular, Z, X, Y, ARGB, U, V, W. (8.25,8.25),
+ * (55.75,8.25), (8.25,55.75) after the 1/256 shift. */
+static const DWORD sis3d_p4b_blend_vertices[24] = {
+    0ul, 0ul, 0x4103f000ul, 0x4103f000ul, 0x80ff0000ul, 0ul, 0ul, 0x3f800000ul,
+    0ul, 0ul, 0x425efc00ul, 0x4103f000ul, 0x80ff0000ul, 0ul, 0ul, 0x3f800000ul,
+    0ul, 0ul, 0x4103f000ul, 0x425efc00ul, 0x80ff0000ul, 0ul, 0ul, 0x3f800000ul
+};
+static const DWORD sis3d_p4b_texture_vertices[24] = {
+    0ul, 0ul, 0x4103f000ul, 0x4103f000ul, 0xfffffffful, 0x3e000000ul,
+    0x3e000000ul, 0x3f800000ul,
+    0ul, 0ul, 0x425efc00ul, 0x4103f000ul, 0xfffffffful, 0x3f600000ul,
+    0x3e000000ul, 0x3f800000ul,
+    0ul, 0ul, 0x4103f000ul, 0x425efc00ul, 0xfffffffful, 0x3e000000ul,
+    0x3f600000ul, 0x3f800000ul
+};
+#define SIS3D_P4B_PRIMITIVE 0x00106602ul
+
+static int sis3d_p4b_texture_first = 0;
+
+static int sis3d_has_switch(const char *name);
+
+/* Batch 26 with blending off: enable 0800h, ONE/ZERO. */
+static const DWORD sis3d_p4b_plain_state[10] = {
+    0x00000800ul, 0x00170080ul, 0x00000000ul, 0x07000000ul, 0x0c110080ul,
+    0x0012c000ul, 0x00000000ul, 0x01000000ul, 0x0000003ful, 0x0000003ful
+};
+
+/* Nonzero: the enable word written for the plain and textured batches. */
+static DWORD sis3d_p4b_plain_enable = 0ul;
+static DWORD sis3d_p4b_texture_enable = 0ul;
+/* Nonzero: 8A3Ch written for a textured batch instead of the logged 0. */
+static DWORD sis3d_p4b_texture_blend = 0ul;
+
+static void sis3d_p4b_add_state(const DWORD *state)
+{
+    DWORD index;
+    DWORD value;
+
+    for (index = 0ul; index < 10ul; ++index) {
+        value = sis3d_p4b_state_offsets[index] == V9X_SIS3D_DST_BASE
+                    ? SIS3D_P4B_TARGET : state[index];
+        if (index == 0ul && state == sis3d_p4b_plain_state &&
+            sis3d_p4b_plain_enable != 0ul) {
+            value = sis3d_p4b_plain_enable;
+        }
+        if (index == 0ul && state == sis3d_p4b_texture_state &&
+            sis3d_p4b_texture_enable != 0ul) {
+            value = sis3d_p4b_texture_enable;
+        }
+        sis3d_add(SIS3D_OP_MMIO_WRITE32, sis3d_p4b_state_offsets[index],
+                  value, 0ul);
+    }
+}
+
+/* One batch as d3d_sis6326.c emits it, with the two bases moved;
+ * texture_first writes the texture words before the state (enable) words. */
+static void sis3d_p4b_add_batch(const DWORD *state, int textured,
+                                DWORD texture_base, const DWORD *vertices,
+                                DWORD *wait_index)
+{
+    DWORD index;
+    DWORD value;
+
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    if (!(textured && sis3d_p4b_texture_first)) {
+        sis3d_p4b_add_state(state);
+    }
+    if (textured) {
+        /* D4 pulsed: the clear words, then the same without it. */
+        for (index = 0ul; index < 5ul; ++index) {
+            value = sis3d_p4b_texture_words[index];
+            if (sis3d_p4b_texture_offsets[index] == V9X_SIS3D_TEXTURE_BASE0) {
+                value = texture_base;
+            } else if (index == 0ul) {
+                value |= 0x10ul;
+            } else if (sis3d_p4b_texture_offsets[index] ==
+                           V9X_SIS3D_TEXTURE_BLEND &&
+                       vertices == sis3d_p4b_blend_vertices) {
+                value = sis3d_p4b_texture_blend;
+            }
+            sis3d_add(SIS3D_OP_MMIO_WRITE32,
+                      sis3d_p4b_texture_offsets[index], value, 0ul);
+        }
+        for (index = 0ul; index < 5ul; ++index) {
+            value = sis3d_p4b_texture_offsets[index] ==
+                        V9X_SIS3D_TEXTURE_BASE0
+                    ? texture_base : sis3d_p4b_texture_words[index];
+            if (sis3d_p4b_texture_offsets[index] == V9X_SIS3D_TEXTURE_BLEND &&
+                vertices == sis3d_p4b_blend_vertices) {
+                value = sis3d_p4b_texture_blend;
+            }
+            sis3d_add(SIS3D_OP_MMIO_WRITE32,
+                      sis3d_p4b_texture_offsets[index], value, 0ul);
+        }
+        if (sis3d_p4b_texture_first) {
+            sis3d_p4b_add_state(state);
+        }
+    }
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_PRIMITIVE,
+              SIS3D_P4B_PRIMITIVE, 0ul);
+    for (index = 0ul; index < 24ul; ++index) {
+        sis3d_add(SIS3D_OP_MMIO_WRITE32,
+                  V9X_SIS3D_VERTEX_A + (index / 8ul) * V9X_SIS3D_VERTEX_STRIDE +
+                  (index % 8ul) * 4ul, vertices[index], 0ul);
+    }
+    *wait_index = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                            V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+}
+
+/* What precedes the textured batch. */
+#define SIS3D_P4B_BEFORE_NONE  0
+#define SIS3D_P4B_BEFORE_BLEND 1
+#define SIS3D_P4B_BEFORE_PLAIN 2
+/* The blend batch, then enable 0800h and ONE/ZERO with an idle wait. */
+#define SIS3D_P4B_BEFORE_BLEND_RESET 3
+
+/* One layout: fill, what precedes, the textured batch. Zero when the
+ * engine stalled, which ends the phase. */
+static int sis3d_p4b_layout(const char *name, DWORD texture_base,
+                            int before)
+{
+    char key[48];
+    DWORD blend_wait = 0ul;
+    DWORD texture_wait;
+    DWORD status_index;
+    DWORD pixel_index;
+    int with_blend = before != SIS3D_P4B_BEFORE_NONE;
+
+    sis3d_begin();
+    sis3d_add(SIS3D_OP_LFB_FILL32, SIS3D_P4B_TARGET, 0ul, 64ul * 128ul / 4ul);
+    sis3d_add(SIS3D_OP_LFB_FILL32, texture_base, SIS3D_P4_TEXEL,
+              64ul * 128ul / 4ul);
+    if (before == SIS3D_P4B_BEFORE_PLAIN && sis3d_p4b_texture_blend != 0ul) {
+        /* The "untextured" batch drawn textured, colour from the vertex. */
+        sis3d_p4b_add_batch(sis3d_p4b_texture_state, 1, texture_base,
+                            sis3d_p4b_blend_vertices, &blend_wait);
+    } else if (before == SIS3D_P4B_BEFORE_PLAIN) {
+        sis3d_p4b_add_batch(sis3d_p4b_plain_state, 0, 0ul,
+                            sis3d_p4b_blend_vertices, &blend_wait);
+    } else if (with_blend) {
+        sis3d_p4b_add_batch(sis3d_p4b_blend_state, 0, 0ul,
+                            sis3d_p4b_blend_vertices, &blend_wait);
+    }
+    if (before == SIS3D_P4B_BEFORE_BLEND_RESET) {
+        sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_ENABLE,
+                  V9X_SIS3D_ENABLE_PRIM_SETUP, 0ul);
+        sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_BLEND, 0x01000000ul, 0ul);
+        sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                  V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    }
+    sis3d_p4b_add_batch(sis3d_p4b_texture_state, 1, texture_base,
+                        sis3d_p4b_texture_vertices, &texture_wait);
+    status_index = sis3d_add(SIS3D_OP_MMIO_READ32, V9X_SIS3D_STATUS, 0ul,
+                             0ul);
+    pixel_index = sis3d_add(SIS3D_OP_LFB_READ32, SIS3D_P4B_TARGET +
+                            16ul * 128ul + 16ul * 2ul, 0ul, 0ul);
+    if (!sis3d_run()) {
+        sis3d_key(key, name, "Result");
+        sis3d_write(key, "RUN-FAILED");
+        return 0;
+    }
+    if (with_blend) {
+        sis3d_key(key, name, "BlendWaitAfter");
+        sis3d_write_hex(key, sis3d_value(blend_wait));
+    }
+    sis3d_key(key, name, "TextureWaitAfter");
+    sis3d_write_hex(key, sis3d_value(texture_wait));
+    sis3d_key(key, name, "StatusAfter");
+    sis3d_write_hex(key, sis3d_value(status_index));
+    sis3d_key(key, name, "Pixel16x16");
+    sis3d_write_hex(key, sis3d_value(pixel_index) & 0xfffful);
+    if (sis3d_value(texture_wait) == SIS3D_TIMEOUT ||
+        (with_blend && sis3d_value(blend_wait) == SIS3D_TIMEOUT)) {
+        sis3d_key(key, name, "Result");
+        sis3d_write(key, "STALLED");
+        return 0;
+    }
+    sis3d_key(key, name, "Result");
+    sis3d_write(key, "IDLE");
+    return 1;
+}
+
+/*
+ * Build p4c ran the three layouts in order and stalled on the first,
+ * FarWithBlend (boot 219): the blend batch then the textured batch, the
+ * texture far from the target. Each variant below is one run on a fresh
+ * boot, chosen by switch:
+ *   /va  a plain untextured batch (no blend) before the textured one;
+ *   /vb  the blend batch, then the textured batch with its texture words
+ *        before its enable word;
+ *   /vc  the blend batch, then enable 0800h and ONE/ZERO and an idle
+ *        wait, then the textured batch;
+ *   none the three original layouts.
+ */
+static void sis3d_phase4b(void)
+{
+    if (sis3d_has_switch("/va")) {
+        (void)sis3d_p4b_layout("PlainThenTexture", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_PLAIN);
+        return;
+    }
+    if (sis3d_has_switch("/vb")) {
+        sis3d_p4b_texture_first = 1;
+        (void)sis3d_p4b_layout("BlendThenTextureFirst", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_BLEND);
+        return;
+    }
+    if (sis3d_has_switch("/vc")) {
+        (void)sis3d_p4b_layout("BlendResetThenTexture", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_BLEND_RESET);
+        return;
+    }
+    /* Boots 220-222: va, vb and vc all stalled. */
+    if (sis3d_has_switch("/vd")) {
+        (void)sis3d_p4b_layout("TextureAlone", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_NONE);
+        return;
+    }
+    if (sis3d_has_switch("/ve")) {
+        /* The untextured batch keeps the cache bits: 0x80A0 | 0x800. */
+        sis3d_p4b_plain_enable = V9X_SIS3D_ENABLE_PRIM_SETUP |
+                                 V9X_SIS3D_ENABLE_TEXTURE_CACHE |
+                                 V9X_SIS3D_ENABLE_LARGE_CACHE |
+                                 V9X_SIS3D_ENABLE_BIT15;
+        (void)sis3d_p4b_layout("PlainKeepsCacheThenTexture", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_PLAIN);
+        return;
+    }
+    if (sis3d_has_switch("/vf")) {
+        /* The textured batch without large cache and bit 15: 0E80h. */
+        sis3d_p4b_texture_enable = V9X_SIS3D_ENABLE_PRIM_SETUP |
+                                   V9X_SIS3D_ENABLE_TEXTURE |
+                                   V9X_SIS3D_ENABLE_TEXTURE_CACHE |
+                                   V9X_SIS3D_ENABLE_PERSPECTIVE;
+        (void)sis3d_p4b_layout("PlainThenSmallCacheTexture", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_PLAIN);
+        return;
+    }
+    /* Boots 223-225: vd (textured alone) idle; ve and vf stalled. */
+    if (sis3d_has_switch("/vg")) {
+        /* Cpix colour (mode 1), vertex alpha: 8A3Ch = 05000000h. */
+        sis3d_p4b_texture_blend = 0x05000000ul;
+        (void)sis3d_p4b_layout("CpixTexturedThenTexture", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_PLAIN);
+        return;
+    }
+    if (sis3d_has_switch("/vi")) {
+        sis3d_p4b_plain_enable = V9X_SIS3D_ENABLE_PRIM_SETUP |
+                                 V9X_SIS3D_ENABLE_PERSPECTIVE;
+        (void)sis3d_p4b_layout("PlainPerspectiveThenTexture", SIS3D_P4B_FAR,
+                               SIS3D_P4B_BEFORE_PLAIN);
+        return;
+    }
+    if (!sis3d_p4b_layout("FarWithBlend", SIS3D_P4B_FAR,
+                          SIS3D_P4B_BEFORE_BLEND)) {
+        return;
+    }
+    if (!sis3d_p4b_layout("AdjacentAlone", SIS3D_P4B_ADJACENT,
+                          SIS3D_P4B_BEFORE_NONE)) {
+        return;
+    }
+    (void)sis3d_p4b_layout("AdjacentWithBlend", SIS3D_P4B_ADJACENT,
+                           SIS3D_P4B_BEFORE_BLEND);
+}
+
 /* A switch anywhere on the command line, case-insensitive. */
 static int sis3d_has_switch(const char *name)
 {
@@ -2363,6 +2934,8 @@ void WINAPI V9xSis3dProbeEntry(void)
     int phase2 = sis3d_has_switch("/phase2");
     int phase3a = sis3d_has_switch("/phase3a");
     int phase3m = sis3d_has_switch("/phase3m");
+    int phase4b = sis3d_has_switch("/phase4b");
+    int phase4 = phase4b || sis3d_has_switch("/phase4");
     int phase3 = phase3a || phase3m || sis3d_has_switch("/phase3");
 
     display = GetDC(0);
@@ -2383,8 +2956,8 @@ void WINAPI V9xSis3dProbeEntry(void)
     }
     WriteFile(sis3d_output, header, (DWORD)lstrlenA(header), &written, 0);
     sis3d_write("Build", V9X_BUILD_ID);
-    sis3d_write("Phase", phase3a ? "3a" : phase3m ? "3m" : phase3 ? "3"
-                         : phase2 ? "2" : "1");
+    sis3d_write("Phase", phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
+                         : phase3 ? "3" : phase2 ? "2" : "1");
     sis3d_write_decimal("DesktopWidth", width);
     sis3d_write_decimal("DesktopHeight", height);
     sis3d_write_decimal("DesktopBpp", bits);
@@ -2452,7 +3025,11 @@ void WINAPI V9xSis3dProbeEntry(void)
         goto restore;
     }
 
-    if (phase3) {
+    if (phase4b) {
+        sis3d_phase4b();
+    } else if (phase4) {
+        sis3d_phase4();
+    } else if (phase3) {
         sis3d_phase3(phase3a, phase3m);
     } else if (phase2) {
         sis3d_phase2();
