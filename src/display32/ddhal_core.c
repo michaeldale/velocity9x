@@ -14,6 +14,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/drawnote.h"
+#include "velocity9x/vsync.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -464,6 +465,16 @@ static DWORD v9x_flip_pending_polls = 0ul;
  * interface rather than only in a counter.
  */
 static DWORD v9x_flip_untracked = 0ul;
+/*
+ * Set while the pending flip was issued without vsync on a scanout that
+ * queues flips itself (Intel: MI_DISPLAY_FLIP is applied at the retrace
+ * whatever the HAL does). The flip stays tracked, so Flip still refuses to
+ * queue a second one behind it, but GetFlipStatus and the draw waits stop
+ * holding the application for it. Without this, an untracked flip let the
+ * next one into the ring while the first was still pending, which nothing
+ * has measured on this part. docs\plans\vsync-off-setting.md, decision 3.
+ */
+static DWORD v9x_flip_unsynced = 0ul;
 
 /*
  * Accepted flips so far. The sequence number every present-trace record
@@ -603,7 +614,13 @@ static void v9x_flip_abandon(void)
 static void v9x_flip_arm(int novsync)
 {
     v9x_flip_pending_polls = 0ul;
+    v9x_flip_unsynced = 0ul;
     if (novsync) {
+        if (v9x_scanout_hw_flip() && v9x_scanout_vblank_available()) {
+            v9x_flip_state = V9X_FLIP_WAIT_HW;
+            v9x_flip_unsynced = 1ul;
+            return;
+        }
         v9x_flip_state = V9X_FLIP_IDLE;
         return;
     }
@@ -716,7 +733,9 @@ int v9x_flip_wait_done(void)
     DWORD started;
     int result = V9X_FLIP_WAIT_TIMEOUT;
 
-    if (v9x_flip_state == V9X_FLIP_IDLE) {
+    /* An unsynced flip is not waited for: the draw landing in the buffer
+     * still on screen is the tearing that vsync off asks for. */
+    if (v9x_flip_state == V9X_FLIP_IDLE || v9x_flip_unsynced != 0ul) {
         return V9X_FLIP_WAIT_NONE;
     }
     /* Timed only when a flip is pending: the question is what a draw pays
@@ -736,9 +755,33 @@ int v9x_flip_wait_done(void)
     return result;
 }
 
+/*
+ * Whether this flip skips the blank: the application's DDFLIP_NOVSYNC, as
+ * the [Velocity9x] VSync setting overrides it. The 16-bit driver stamps the
+ * setting as two bits; both set is a word nobody wrote, and is read as
+ * neither so the application keeps the choice.
+ */
+static v9x_u16 v9x_flip_vsync_state(void)
+{
+    DWORD caps = v9x_hal->engine.engine_caps;
+    int on = (caps & V9X_DD_ENGINE_CAP_VSYNC_ON) != 0ul;
+    int off = (caps & V9X_DD_ENGINE_CAP_VSYNC_OFF) != 0ul;
+
+    if (off && !on) {
+        return V9X_VSYNC_STATE_OFF;
+    }
+    if (on && !off) {
+        return V9X_VSYNC_STATE_ON;
+    }
+    return V9X_VSYNC_STATE_APPLICATION;
+}
+
 static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
 {
     DWORD offset = v9x_surface_offset(data->lpSurfTarg);
+    v9x_u16 application_novsync =
+        (data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul ? V9X_TRUE : V9X_FALSE;
+    v9x_u16 novsync;
 
     if (offset == 0xfffffffful) {
         data->ddRVal = V9X_DD_OK;
@@ -803,16 +846,18 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * lower-half tearing intel65 shows. Not in the blank yet: still
          * drawing, and DirectDraw asks again.
          *
-         * Two exits before the wait. NOVSYNC is the application declining
-         * synchronisation, and honouring it means writing now and tearing,
-         * not waiting on its behalf. And a scanout the vblank source cannot
+         * Two exits before the wait. NOVSYNC is the application, or the
+         * VSync setting, declining synchronisation, and honouring it means
+         * writing now and tearing, not waiting on its behalf. And a scanout
+         * the vblank source cannot
          * see would make this wait the intel63 hang in a new place - no flip
          * is armed here, so the pending path's recovery never runs - so it is
          * asked first, and an unresolvable scanout declines to DirectDraw's
          * copy exactly as set_display_start would have.
          */
-        if (v9x_scanout_writes_in_blank() &&
-            (data->dwFlags & V9X_DDFLIP_NOVSYNC) == 0ul) {
+        novsync = v9x_vsync_flip_novsync(v9x_flip_vsync_state(),
+                                         application_novsync);
+        if (v9x_scanout_writes_in_blank() && novsync == V9X_FALSE) {
             if (!v9x_scanout_vblank_available()) {
                 data->ddRVal = V9X_DD_OK;
                 ++v9x_hal->d3d_diagnostics.flip_declined;
@@ -844,7 +889,12 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         v9x_draw_note_flip(&v9x_present_draw_note);
         v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
                           offset);
-        v9x_flip_arm((data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul);
+        /* Counted at acceptance, not per attempt: a flip refused for its
+         * window is retried, and would be counted once per retry. */
+        if (novsync != application_novsync) {
+            ++v9x_hal->d3d_diagnostics.flip_vsync_overridden;
+        }
+        v9x_flip_arm(novsync != V9X_FALSE);
     }
     data->ddRVal = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.flip_handled;
@@ -1071,8 +1121,11 @@ DWORD __stdcall V9xHalGetFlipStatus(V9X_DDHAL_GETFLIPSTATUSDATA *data)
     v9x_trace_count(V9X_TRACE_GETFLIPSTATUS, data->dwFlags);
     /* Both questions - "can I flip" and "is the last flip done" - have the
      * same answer here: not until the scanout has taken the last start
-     * address. See v9x_flip_arm. */
-    data->ddRVal = v9x_flip_done() ? V9X_DD_OK : V9X_DDERR_WASSTILLDRAWING;
+     * address. See v9x_flip_arm. An unsynced flip is answered done at once:
+     * the state machine still advances, and Flip itself still refuses to
+     * queue behind it, but the application is not held. */
+    data->ddRVal = (v9x_flip_done() || v9x_flip_unsynced != 0ul)
+                       ? V9X_DD_OK : V9X_DDERR_WASSTILLDRAWING;
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -1930,6 +1983,7 @@ DWORD __stdcall DriverInit(DWORD context)
     v9x_flip_state = V9X_FLIP_IDLE;
     v9x_flip_pending_polls = 0ul;
     v9x_flip_untracked = 0ul;
+    v9x_flip_unsynced = 0ul;
     /* And the completion channel: a new session brings the status page up
      * again and proves it again (review R3). */
     v9x_d3d_i9xx_reset();

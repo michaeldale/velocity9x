@@ -331,6 +331,7 @@
             # family publishes the result as Direct3DMode= whether or not it
             # has a DirectDraw HAL to apply it to.
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
+            @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
             @{ Name = 'mobility_hw16'; Path = 'src\chipsets\ati\mobility\mobility_hw16.c' }

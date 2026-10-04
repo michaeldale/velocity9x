@@ -175,6 +175,7 @@
             # family publishes the result as Direct3DMode= whether or not it
             # has a DirectDraw HAL to apply it to.
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
+            @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'mga2_hw16'; Path = 'src\chipsets\matrox\millennium2\mga2_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }

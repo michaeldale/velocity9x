@@ -52,6 +52,13 @@ typedef struct v9x_settings_status {
      */
     int highcolor_request;
     char colour_layout[64];
+    /*
+     * Vertical sync. `vsync_request` is the raw [Velocity9x] VSync value,
+     * one of the V9X_VSYNC_REQUEST_* numbers, and `vsync` is what the driver
+     * last stamped, from V9XHW.INI's VSync=, as a sentence for the report.
+     */
+    int vsync_request;
+    char vsync[48];
     /* The runtime mode table's story, from C:\V9XDIAG\V9XMODES.INI: published and
      * hidden counts, or the static-list statement when no inventory exists. */
     char dynamic_modes[128];

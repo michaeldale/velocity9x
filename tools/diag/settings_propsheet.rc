@@ -23,6 +23,11 @@
 // Its cy of 60 is the dropped-down height; closed it occupies about 12 units
 // from y=122, clearing the 136 row below it.
 //
+// The VSync combo shares the Active mode row for the same reason, the way
+// Video memory shares the PCI ID row. The mode value keeps 70 units, which
+// holds "1600 x 1200 x 32 bpp"; the closed combo spans y=60 to about 72,
+// clearing the Clock row at 74.
+//
 // The list is built at run time and holds only what this build implements,
 // which is the same discipline the driver applies to capabilities: an
 // unimplemented mode is not offered. When SYSTEM.INI already names one, the
@@ -55,7 +60,10 @@ BEGIN
     LTEXT           "Video memory:", -1, 134, 52, 50, 8
     LTEXT           "", V9X_IDC_VIDEO_MEMORY, 186, 52, 52, 8
     LTEXT           "Active mode:", -1, 14, 63, 56, 8
-    LTEXT           "", V9X_IDC_ACTIVE_MODE, 72, 63, 166, 8
+    LTEXT           "", V9X_IDC_ACTIVE_MODE, 72, 63, 70, 8
+    LTEXT           "VSync:", -1, 144, 63, 24, 8
+    COMBOBOX        V9X_IDC_VSYNC, 170, 60, 68, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Clock:", -1, 14, 74, 56, 8
     LTEXT           "", V9X_IDC_CORE_CLOCK, 72, 74, 166, 8
 

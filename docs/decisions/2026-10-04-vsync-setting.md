@@ -1,0 +1,80 @@
+# A VSync setting on the Velocity9x page, measured on the Rage XL
+
+Date: 2026-10-04. Machine: A8U4I5, ATI 3D Rage XL PCI (`1002:4752`),
+Mach64 engine path, 1024x768x16 at 60 Hz. Plan:
+`docs/plans/vsync-off-setting.md`. Evidence:
+`docs/probe/a8u4i5-rage-xl-pci-2026-10-03/vsync/`.
+
+## Decisions taken
+
+- **Three values: Game decides, Always on, Always off** (Michael, decision
+  2). SYSTEM.INI `[Velocity9x] VSync=` holds 0, 1 or 2; the page deletes
+  the key for Game decides. Zero is Game decides so that an absent key or
+  text `GetPrivateProfileInt` cannot parse never turns vsync off.
+- **Flips only** (decision 1, the plan's recommendation; not answered).
+  WaitForVerticalBlank is unchanged.
+- **Intel keeps the ring flip** (decision 3, the plan's recommendation; not
+  answered). An unsynced flip on a scanout that queues flips itself stays
+  tracked: Flip still refuses to queue a second one behind it, while
+  GetFlipStatus and the draw waits stop holding the application. This also
+  changes an application's own `DDFLIP_NOVSYNC` on Intel, which used to
+  leave the flip untracked and could queue a second MI_DISPLAY_FLIP behind
+  a pending one. Not measured on the netbook.
+
+## What was built
+
+- `src/common/vsync.c`: the resolve and the per-flip rule, host-tested
+  in `tests/host/test_vsync.c`. The test was written first and failed ten
+  checks against a stub.
+- `dd16.c` reads the key every time DirectDraw creates its driver object.
+  It stamps `V9X_DD_ENGINE_CAP_VSYNC_ON` or `_OFF` in both places that
+  build `engine_caps`, and writes the resolved state to `V9XHW.INI` as
+  `VSync=`.
+- `v9x_flip_body` applies the rule at both blank gates. A new counter,
+  `flip_vsync_overridden` (`FlipVSyncOverridden`, ABI 2026100308), counts
+  accepted flips whose vsync the setting changed.
+- The page has a VSync selector on the Active mode row, so the dialog is
+  no taller.
+
+## Measured
+
+V9XDDP's default run times 20 back-to-back `Flip(DDFLIP_WAIT)` calls.
+All three runs were in one boot, with the setting changed on the page
+between them and no restart. The counters are cumulative across the
+boot.
+
+| Setting | Flip20Ms | FlipMaxMs | FlipHandled | FlipVSyncOverridden | FlipStillDrawing | FlipWindowClosed |
+|---------|---------:|----------:|------------:|--------------------:|-----------------:|-----------------:|
+| Game decides (no key) | 332 | 18 | 23 | 0 | 7,349 | 92,223 |
+| Always off | 0 | 0 | 46 | 23 | 7,349 | 92,223 |
+| Always on | 332 | 18 | 69 | 23 | 14,719 | 180,776 |
+
+- With vsync on, 332 ms for 20 flips is 16.6 ms each: one 60 Hz frame
+  per flip.
+- With Always off, every flip was overridden (+23), and neither wait
+  counter moved. The flip loop no longer waited for the blank.
+- Always on behaved like Game decides. V9XDDP never passes
+  `DDFLIP_NOVSYNC`, so there was nothing to override. That Always on
+  overrides an application's NOVSYNC is covered only by the host test.
+- The change took effect at the next DirectDraw program with no restart.
+  That is what the page's Apply message says, and this run is the
+  evidence for it.
+- On reopening, the page showed the saved value each time.
+  `C:\WINDOWS\SYSTEM.INI` on disk still read `VSync=1` after the page
+  had gone back to Game decides. The Win16 profile cache had not been
+  written out yet, and both the page and the driver read through that
+  cache. The existing Direct3D= and HighColor= settings work the same
+  way.
+
+`FlipPixelOk=0` in every run is the probe's GDI read-back, which sees
+only the GDI page once real flips are in play (the probe's own comment
+at `/hold`). It is unrelated to this change.
+
+## Not established
+
+- Tearing was not watched on the monitor. The counters say the waits
+  were skipped; nobody looked at the screen.
+- The Intel ring path, the ViRGE/Trio VGA latch, and a no-flip family
+  (Matrox, VBE) were not run. The setting is shared code, so it applies
+  to all of them as built.
+- Games other than V9XDDP were not run with the setting.

@@ -720,6 +720,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("FlipStillDrawing", snapshot.d3d.flip_still_drawing);
     v9x_write_uint("FlipWindowClosed", snapshot.d3d.flip_window_closed);
     v9x_write_uint("FlipDeclined", snapshot.d3d.flip_declined);
+    v9x_write_uint("FlipVSyncOverridden",
+                   snapshot.d3d.flip_vsync_overridden);
     v9x_write_uint("FlipForcedIdle", snapshot.d3d.flip_forced_idle);
     v9x_write_uint("ScanoutUnresolved", snapshot.d3d.scanout_unresolved);
     v9x_write_uint("ScanATickLine", snapshot.d3d.scan_a_tick_line);

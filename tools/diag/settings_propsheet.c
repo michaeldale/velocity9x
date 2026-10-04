@@ -25,6 +25,7 @@
 
 #include "velocity9x/build.h"
 #include "velocity9x/d3dmode.h"
+#include "velocity9x/vsync.h"
 #include "settings_propsheet.h"
 #include "settings_status.h"
 
@@ -227,6 +228,115 @@ static void v9x_page_fill_d3d(HWND dialog)
     }
 }
 
+/*
+ * The vertical sync selector, on the same terms as the layout selector.
+ *
+ * Game decides is the key's absence and today's behaviour; choosing it
+ * deletes the key. Every card gets all three entries: the rule is applied by
+ * the shared flip path, and on a card whose flips DirectDraw copies instead
+ * it changes nothing, which is not worth hiding the control for. The labels
+ * are short because the closed control is 68 units wide.
+ */
+static int v9x_page_vsync_loaded;
+
+static const struct v9x_vsync_choice {
+    int value;
+    const char *label;
+} v9x_page_vsync_choices[] = {
+    { (int)V9X_VSYNC_REQUEST_APPLICATION, "Game decides" },
+    { (int)V9X_VSYNC_REQUEST_ON,          "Always on" },
+    { (int)V9X_VSYNC_REQUEST_OFF,         "Always off" }
+};
+#define V9X_PAGE_VSYNC_CHOICE_COUNT \
+    (sizeof(v9x_page_vsync_choices) / sizeof(v9x_page_vsync_choices[0]))
+
+static void v9x_page_fill_vsync(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_VSYNC);
+    UINT index;
+    LRESULT item;
+
+    if (combo == 0) {
+        return;
+    }
+    SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+    v9x_page_vsync_loaded = v9x_page_status.vsync_request;
+    for (index = 0u; index < V9X_PAGE_VSYNC_CHOICE_COUNT; ++index) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_vsync_choices[index].label);
+        if (item < 0) {
+            continue;
+        }
+        SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                     (LPARAM)v9x_page_vsync_choices[index].value);
+        if (v9x_page_vsync_choices[index].value == v9x_page_vsync_loaded) {
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+    /* A value this page does not offer keeps its own entry, so OK on an
+     * untouched page does not rewrite it. The driver reads it as Game
+     * decides. */
+    if (SendMessageA(combo, CB_GETCURSEL, 0, 0) == CB_ERR) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)"Other (SYSTEM.INI)");
+        if (item >= 0) {
+            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                         (LPARAM)v9x_page_vsync_loaded);
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+}
+
+static int v9x_page_selected_vsync(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_VSYNC);
+    LRESULT selection;
+    LRESULT data;
+
+    if (combo == 0) {
+        return v9x_page_vsync_loaded;
+    }
+    selection = SendMessageA(combo, CB_GETCURSEL, 0, 0);
+    if (selection == CB_ERR) {
+        return v9x_page_vsync_loaded;
+    }
+    data = SendMessageA(combo, CB_GETITEMDATA, (WPARAM)selection, 0);
+    if (data == CB_ERR) {
+        return v9x_page_vsync_loaded;
+    }
+    return (int)data;
+}
+
+static int v9x_page_apply_vsync(HWND dialog)
+{
+    int selected = v9x_page_selected_vsync(dialog);
+    const char *value;
+
+    if (selected == v9x_page_vsync_loaded) {
+        return 0;
+    }
+    if (selected == (int)V9X_VSYNC_REQUEST_APPLICATION) {
+        value = 0;
+    } else if (selected == (int)V9X_VSYNC_REQUEST_ON) {
+        value = "1";
+    } else if (selected == (int)V9X_VSYNC_REQUEST_OFF) {
+        value = "2";
+    } else {
+        return 0;
+    }
+    if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION,
+                                    V9X_VSYNC_SETTING_KEY, value,
+                                    V9X_SETTINGS_INI)) {
+        MessageBoxA(dialog,
+                    "Could not write the VSync setting to SYSTEM.INI.\n\n"
+                    "The file may be read-only or in use.",
+                    v9x_page_caption, MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+    v9x_page_vsync_loaded = selected;
+    return 1;
+}
+
 /* The selector's current value, or the loaded one when nothing is selected. */
 static int v9x_page_selected_d3d(HWND dialog)
 {
@@ -400,8 +510,19 @@ static void v9x_page_apply(HWND dialog)
 {
     int wrote_d3d = v9x_page_apply_d3d(dialog);
     int wrote_layout = v9x_page_apply_layout(dialog);
+    int wrote_vsync = v9x_page_apply_vsync(dialog);
 
+    if (!wrote_d3d && !wrote_layout && !wrote_vsync) {
+        return;
+    }
+    /* VSync alone needs no restart: the 16-bit driver reads it each time
+     * DirectDraw creates its driver object. */
     if (!wrote_d3d && !wrote_layout) {
+        MessageBoxA(dialog,
+                    "The setting has been saved to SYSTEM.INI.\n\n"
+                    "It takes effect the next time a DirectDraw or "
+                    "Direct3D program starts.",
+                    v9x_page_caption, MB_OK | MB_ICONINFORMATION);
         return;
     }
     MessageBoxA(dialog,
@@ -454,6 +575,7 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
                         v9x_page_status.directdraw);
         v9x_page_fill_d3d(dialog);
         v9x_page_fill_layout(dialog);
+        v9x_page_fill_vsync(dialog);
         SetDlgItemTextA(dialog, V9X_IDC_MODE_SWITCH,
                         v9x_page_status.mode_switching);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
@@ -473,11 +595,13 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         /* Enable Apply only once the selection actually differs from the
          * file, so OK on an untouched page writes nothing. */
         if ((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||
-             LOWORD(wparam) == V9X_IDC_COLOUR_LAYOUT) &&
+             LOWORD(wparam) == V9X_IDC_COLOUR_LAYOUT ||
+             LOWORD(wparam) == V9X_IDC_VSYNC) &&
             HIWORD(wparam) == CBN_SELCHANGE) {
             if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded ||
                 v9x_page_selected_layout(dialog) !=
-                    v9x_page_layout_loaded) {
+                    v9x_page_layout_loaded ||
+                v9x_page_selected_vsync(dialog) != v9x_page_vsync_loaded) {
                 SendMessageA(GetParent(dialog), PSM_CHANGED,
                              (WPARAM)dialog, 0);
             } else {

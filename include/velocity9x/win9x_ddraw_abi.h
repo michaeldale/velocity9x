@@ -1520,6 +1520,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100308: flips the VSync setting overrode. An append. */
 /* 2026100307: TextureCreate refusals for a full handle table. An append. */
 /* 2026100306: the passive check's refusals by reason. An append. */
 /* 2026100305: the Rage IIC's last refused alpha test. An append. */
@@ -1632,7 +1633,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100307ul
+#define V9X_DD_SHARED_ABI   2026100308ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3192,6 +3193,9 @@ typedef struct v9x_d3d_diagnostics {
      * The runtime binds handle 0 for that texture and the application's
      * draws go untextured; 3DMark 99's Game 2 drew black that way. */
     DWORD texture_table_full;
+    /* Accepted flips whose vsync the [Velocity9x] VSync setting changed
+     * from what the application asked (docs\plans\vsync-off-setting.md). */
+    DWORD flip_vsync_overridden;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

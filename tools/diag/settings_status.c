@@ -11,6 +11,7 @@
 #include <windows.h>
 
 #include "velocity9x/d3dmode.h"
+#include "velocity9x/vsync.h"
 #include "velocity9x/diagpaths.h"
 
 #include "settings_status.h"
@@ -408,6 +409,30 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             v9x_append(status->colour_layout, sizeof(status->colour_layout),
                        "Not reported by this driver build");
         }
+        /*
+         * Vertical sync: the setting, and what the driver last stamped.
+         * VSync= is written by dd16.c from v9x_vsync_text when DirectDraw
+         * creates its driver object, so a value changed since the last
+         * DirectDraw program reads as the previous one until the next.
+         */
+        status->vsync_request = (int)GetPrivateProfileIntA(
+            V9X_SETTINGS_SECTION, V9X_VSYNC_SETTING_KEY,
+            (INT)V9X_VSYNC_REQUEST_APPLICATION, V9X_SETTINGS_INI);
+        {
+            char vsync[16];
+
+            GetPrivateProfileStringA("Velocity9xHardware", "VSync", "",
+                                     vsync, sizeof(vsync), V9X_DIAG_HW_INI);
+            status->vsync[0] = '\0';
+            v9x_append(status->vsync, sizeof(status->vsync),
+                       lstrcmpiA(vsync, "always-on") == 0
+                           ? "Always on"
+                           : (lstrcmpiA(vsync, "always-off") == 0
+                              ? "Always off"
+                              : (lstrcmpiA(vsync, "application") == 0
+                                 ? "Game decides"
+                                 : "Not yet stamped by DirectDraw")));
+        }
         status->direct3d[0] = '\0';
         if (lstrcmpiA(direct3d_mode, "user-disabled") == 0) {
             v9x_append(status->direct3d, sizeof(status->direct3d),
@@ -609,6 +634,13 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                " (SYSTEM.INI Direct3D=");
     v9x_append_uint(status->report, sizeof(status->report),
                     (UINT)status->direct3d_request);
+    v9x_append(status->report, sizeof(status->report), ")");
+    v9x_append(status->report, sizeof(status->report), "\r\nVSync: ");
+    v9x_append(status->report, sizeof(status->report), status->vsync);
+    v9x_append(status->report, sizeof(status->report),
+               " (SYSTEM.INI VSync=");
+    v9x_append_uint(status->report, sizeof(status->report),
+                    (UINT)status->vsync_request);
     v9x_append(status->report, sizeof(status->report), ")");
     v9x_append(status->report, sizeof(status->report),
         "\r\nBaseline modes: " V9X_MODES_SUMMARY

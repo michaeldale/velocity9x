@@ -68,6 +68,9 @@ $sources = @(
     # pure, and host-tested in tests\host\test_pe_export.c. The HAL uses it
     # to reach KERNEL32's Win16-mutex ordinals, which GetProcAddress refuses.
     "src\common\pe_export.c",
+    # The [Velocity9x] VSync rule the flip path asks per flip: pure, and
+    # host-tested in tests\host\test_vsync.c.
+    "src\common\vsync.c",
     "src\display32\ddhal_core.c",
     # The Win16 mutex measurement: resolves _ConfirmWin16Lock through the
     # walk above and counts its answer at six callback entry points.

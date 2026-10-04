@@ -13,6 +13,7 @@
 #undef SetCursor
 
 #include "velocity9x/d3dmode.h"
+#include "velocity9x/vsync.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe_modes.h"
@@ -151,6 +152,41 @@ const char *v9x_dd_d3d_soft_sysmem_text(void)
 }
 
 #ifndef V9X_TARGET_MATROX_MILLENNIUM2
+
+/*
+ * [Velocity9x] VSync as engine_caps policy bits.
+ *
+ * Read on every call rather than latched at Enable, so a change on the
+ * settings page reaches the next DirectDraw program without a restart:
+ * v9x_dd_refresh_framebuffer runs at each driver-object creation. The
+ * resolved state goes to V9XHW.INI only when it changes, because this runs
+ * on every DirectDraw session setup. Inside the DirectDraw guard: a target
+ * with no HAL has no flip for it to act on.
+ */
+static v9x_u16 v9x_dd_vsync_published = (v9x_u16)0xffffu;
+
+static DWORD v9x_dd_vsync_caps(void)
+{
+    v9x_u16 state;
+
+    state = v9x_vsync_resolve(
+        (v9x_u16)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
+                                      V9X_VSYNC_SETTING_KEY,
+                                      (int)V9X_VSYNC_REQUEST_APPLICATION,
+                                      V9X_SETTINGS_INI));
+    if (state != v9x_dd_vsync_published) {
+        WritePrivateProfileString("Velocity9xHardware", "VSync",
+                                  v9x_vsync_text(state), V9X_DIAG_HW_INI);
+        v9x_dd_vsync_published = state;
+    }
+    if (state == V9X_VSYNC_STATE_ON) {
+        return V9X_DD_ENGINE_CAP_VSYNC_ON;
+    }
+    if (state == V9X_VSYNC_STATE_OFF) {
+        return V9X_DD_ENGINE_CAP_VSYNC_OFF;
+    }
+    return 0ul;
+}
 
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);
 extern DWORD FAR PASCAL V9xDdSharedLinear(void);
@@ -497,6 +533,8 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
         }
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
+    /* The vsync bits, here and again in v9x_dd_refresh_framebuffer. */
+    engine_caps |= v9x_dd_vsync_caps();
     shared->engine.engine_caps = engine_caps;
     v9x_dd_publish_engine_stamp(engine_type, engine_caps,
                                 shared->engine.ring_linear_base);
@@ -698,6 +736,12 @@ static void v9x_dd_refresh_framebuffer(void)
         }
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
+
+    /* The vsync bits, outside the descriptor branch: the setting applies to
+     * every chip, and a family with no flip simply never consults them.
+     * Stamped here as well as in v9x_dd_stamp_engine_caps, for the reason
+     * the system-memory bit above gives. */
+    shared->engine.engine_caps |= v9x_dd_vsync_caps();
 
     shared->engine.io_base = 0ul;
     shared->engine.crtc_index_port = 0ul;

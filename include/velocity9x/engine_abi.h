@@ -136,5 +136,15 @@
  * The descriptor's existing caps word carries it without growing the shared
  * block. */
 #define V9X_DD_ENGINE_CAP_ASYNC_SUBMIT  0x00000400ul
+/*
+ * The user's [Velocity9x] VSync setting, as two policy bits. Neither set is
+ * the application's choice, today's behaviour. Stamped by the 16-bit driver
+ * on every chip, in both places that build this word, and read by the HAL's
+ * flip path through include\velocity9x\vsync.h. A policy bit removes or
+ * forces a wait; it grants no flip the chip cannot do.
+ * docs\plans\vsync-off-setting.md.
+ */
+#define V9X_DD_ENGINE_CAP_VSYNC_ON      0x00000800ul
+#define V9X_DD_ENGINE_CAP_VSYNC_OFF     0x00001000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

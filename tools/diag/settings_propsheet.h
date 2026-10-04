@@ -28,5 +28,7 @@
 /* The 16-bit colour layout selector: Automatic, 5:6:5 or 5:5:5. The second
  * control that changes anything. */
 #define V9X_IDC_COLOUR_LAYOUT 2021
+/* The vertical sync selector: Game decides, Always on or Always off. */
+#define V9X_IDC_VSYNC         2022
 
 #endif

@@ -269,6 +269,7 @@
             # family publishes the result as Direct3DMode= whether or not it
             # has a DirectDraw HAL to apply it to.
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
+            @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'virge_backend'; Path = 'src\chipsets\s3\virge\backend.c' }
             @{ Name = 'virge_clocks'; Path = 'src\chipsets\s3\virge\clocks.c' }
