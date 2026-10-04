@@ -115,9 +115,15 @@ Progress, 2026-10-05: the builder and its host tests are in, and the write
 probe (`SIS2D.EXE`) ran it on card 2 at 8 and 16 bpp: fill, forward copy,
 right-overlap and down-overlap copy all match byte for byte. *n*-1 and the
 last-byte start are measured
-([decision](../decisions/2026-10-05-sis6326-2d-engine-writes.md)). Next: the
-engine type, the device hook with the sequencer enable after every mode set,
-the mini-VDD map of BAR1, and `eng_sis6326.c`.
+([decision](../decisions/2026-10-05-sis6326-2d-engine-writes.md)).
+
+Done, 2026-10-05: `afd2154` adds the SIS_6326 engine type, the enable hook
+after every mode set, the mini-VDD map of BAR1 and `eng_sis6326.c`. On boot
+209 every DirectDraw blit went to the engine with correct pixels, through
+24 mode-set enables and no timeouts
+([decision](../decisions/2026-10-05-sis6326-engine-under-directdraw.md)).
+Phase 2 is complete for DirectDraw; GDI acceleration and throughput are not
+measured.
 
 ## Later (sketch only)
 
