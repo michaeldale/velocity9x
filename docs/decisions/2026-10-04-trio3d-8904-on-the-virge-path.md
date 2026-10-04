@@ -61,16 +61,56 @@ None of the failures has been compared with the Trio3D/2X's matrix on
 this machine, so which are this chip and which are the probe at 2 MiB is
 not known.
 
+## Memory size: 2 MiB, measured
+
+CR36 bits 7:5 = 4, which the ViRGE/Trio64 decoder reads as 2 MiB. VBE
+`4F00h` reports 127 64 KiB blocks (about 8 MiB). 86Box's model encodes
+the Trio3D/2X differently from the ViRGE/DX (`build/reference-
+vid_s3_virge.c`, 4 MiB = code 2, 8 MiB = code 0), so the decode alone
+proved nothing for this part. Michael expected more than 2 MiB.
+
+`V9XVRAM.EXE` (new, `tools/diag/vram_walk_win32.c`) wrote a signature
+every 512 KiB from 0 to 7.5 MiB through the primary's lock, highest
+first, read them back and restored the originals (`V9XVRAM.INI`,
+640x480x16 desktop):
+
+| Offset | Read back |
+|--------|-----------|
+| 0 - 1.5 MiB | own signatures 0-3 |
+| 2 - 3.5 MiB | unrelated values, not a signature |
+| 4 - 5.5 MiB | signatures 0-3 |
+| 6 - 7.5 MiB | unrelated values |
+
+Writes between 2 and 4 MiB do not stick, and the decode wraps at 4 MiB.
+The card holds 2 MiB as configured; VBE's 8 MiB is the BIOS overstating
+it. CR36 and the 512 KiB heap at 1024x768x16 were right. Whether more
+memory is fitted but strapped off was not looked at; counting the chips
+on the board would answer that.
+
+## Half-Life 1.1.1.0
+
+Michael: the menu works, a map fails, in both Direct3D and OpenGL.
+
+- **Direct3D**, `-d3d -w 640 -h 480 -full`: the menu draws in hardware
+  (5 contexts, 128,718 primitives, 256 flips, the Z surface accepted,
+  no texture or surface refusals in `V9XSNAP.INI`). Then HL itself
+  reports "The selected D3D mode is not supported by your video card"
+  (`half-life/d3d-mode-not-supported.png`). At 640x480x16 the front,
+  back and Z surfaces take 1.8 MiB of the 2; the driver refused nothing,
+  so the refusal is HL's own judgement of what is left.
+- **OpenGL**, `-gl -w 640 -h 480 -full`: the menu draws. In `V9XGL.LOG`
+  890 of 1,781 texture creations fail with `0x8876017C`
+  (DDERR_OUTOFVIDEOMEMORY) and 1,374 batches are refused by the engine
+  and redrawn by the CPU path, as designed. Why a map then fails was not
+  watched.
+
+The driver offers no 16-bpp mode below 640x480. This BIOS lists 512x384,
+400x300 and 320x240 at 16 bpp (`V9XBOOT.INI` VbeMode15-1d); the family's
+mode table does not carry them, because the other S3 BIOSes measured do
+not all list them (`s3_hw16.c`).
+
 ## Disputed or unresolved
 
-- **Memory size.** CR36 bits 7:5 = 4, which the ViRGE/Trio64 decoder
-  reads as 2 MiB. VBE `4F00h` reports 127 64 KiB blocks (about 8 MiB).
-  The driver used CR36, leaving a 512 KiB DirectDraw heap at
-  1024x768x16 (`GblHalVidMemTotal=0x80000`). The Trio3D/2X note in
-  `memory.c` says its encoding differs from the ViRGE's; whether the
-  Trio3D's does is not measured. If the card has more than 2 MiB, the
-  driver is under-using it, not overrunning it. A write-read walk past
-  2 MiB in the aperture would settle it.
 - **LFB address.** Every VBE mode reports its linear base at
   `0xDC000000`, 64 MiB above the `0xD8000000` the driver maps. The
   desktop, GDI read-back and Direct3D read-back all go through the
