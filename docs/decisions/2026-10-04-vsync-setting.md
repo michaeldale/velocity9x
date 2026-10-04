@@ -70,11 +70,40 @@ boot.
 only the GDI page once real flips are in play (the probe's own comment
 at `/hold`). It is unrelated to this change.
 
+## The netbook: the setting reaches the ring flip and changes nothing
+
+Same day, build `795ea49`, on the HP Mini 110 (945GSE), 1024x576x16,
+over wifi at 10.0.1.254. The DRV, VxD, HAL, page and ICD were deployed
+together. Evidence: `docs/probe/netbook-vsync-and-textures-2026-10-04/`.
+
+This netbook's Display Properties has no Velocity9x tab: its page
+handler was never registered. So the setting was changed by editing
+SYSTEM.INI. The original was fetched, the `[Velocity9x]` section with
+`VSync=` was appended, the file was pushed, and the original was put
+back afterwards. The driver read each edit with no restart.
+
+| Setting | Flip20Ms | FlipHandled | FlipVSyncOverridden | FlipStillDrawing | FlipRingIssued |
+|---------|---------:|------------:|--------------------:|-----------------:|---------------:|
+| Game decides (no key) | 321 | 23 | 0 | 89,529 | 25 |
+| Always off | 324 | 46 | 23 | 187,590 | 50 |
+| Always on | 317 | 69 | 23 | 291,871 | 75 |
+
+All 23 flips were overridden under Always off, and every one went
+through the ring. The loop still ran at one frame per flip, and Flip
+refused about 98,000 times per run either way. This is decision 3's
+"A" measured. The flip stays tracked while MI_DISPLAY_FLIP is pending,
+so Flip will not queue the next one. GetFlipStatus and the draw waits
+are released, but a flip-bound application is not. On Intel, Always
+off therefore changes nothing a game would notice. The plan's next step
+for this outcome is decision 3 "B": the register write instead of the
+ring when vsync is off. That is not done and needs Michael's call,
+because the register path's latch has never been read from a register
+(`i9xx_scanout.c`, intel65 to intel90).
+
 ## Not established
 
 - Tearing was not watched on the monitor. The counters say the waits
   were skipped; nobody looked at the screen.
-- The Intel ring path, the ViRGE/Trio VGA latch, and a no-flip family
-  (Matrox, VBE) were not run. The setting is shared code, so it applies
-  to all of them as built.
+- The ViRGE/Trio VGA latch and a no-flip family (Matrox, VBE) were not
+  run. The setting is shared code, so it applies to them as built.
 - Games other than V9XDDP were not run with the setting.

@@ -100,6 +100,19 @@ been measured: rerun the netbook and read `D3dTextureCreates`,
 `D3dTextureDestroys` and `D3dTextureTableFull` before acting on anything
 below.
 
+**Measured 2026-10-04 (build `795ea49`): not the cause on the netbook.**
+The run was Game 1, Game 2 and Image Quality at 1024x576x16 with triple
+buffering (`docs/probe/netbook-vsync-and-textures-2026-10-04/`). It
+counted `D3dTextureTableFull=0`, with 21,912 creates matched by 21,912
+destroys. The netbook creates and destroys textures continuously, which
+the Rage XL (2,737 creates, 50 destroys in Game 2) does not, so its live
+count never approached 4,096. `DrawsNoHandle=20170` of 112,993 draws to
+the back buffer is 18 per cent, the same share as intel102. Three
+creates were refused, as system-memory surfaces. Why the creates and
+destroys churn, and whether the untextured draws are the missing
+textures, are still open. Nothing in this plan below is changed by this
+result.
+
 The untextured fragment program (`src/chipsets/intel/i9xx_fragprog.c`) is
 `dcl T8; mov oC, T8`: interpolated diffuse and nothing else.
 `DrawsNoHandle=30140` is 17 per cent of draws submitted with
