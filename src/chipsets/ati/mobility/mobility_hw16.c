@@ -84,6 +84,31 @@ static void v9x_mobility_fill_engine(unsigned long framebuffer_linear_base,
     *engine_caps = V9X_DD_ENGINE_CAP_D3D;
 }
 
+/*
+ * The Rage XL PCI, A8U4I5 (2026-10-04): the Mobility-M's engine, and the
+ * Rage IIC's flips through CRTC_OFF_PITCH and CRTC_VLINE (m64_scanout.c),
+ * the same Mach64 CRTC registers in the same block-0 window, watched on
+ * its CRT. Without them every flip was declined and DirectDraw copied the
+ * back buffer to the front unsynced (FlipDeclined=61145 in 3DMark 99).
+ * Not the Mobility-M: a panel CRTC, not measured.
+ */
+static void v9x_rage_xl_fill_engine(unsigned long framebuffer_linear_base,
+                                    unsigned long *control_linear_base,
+                                    unsigned long *mapped_aperture_bytes,
+                                    unsigned long *engine_type,
+                                    unsigned long *engine_caps,
+                                    unsigned long *gtt_linear_base,
+                                    unsigned long *ring_linear_base,
+                                    unsigned long *ring_bytes)
+{
+    v9x_mobility_fill_engine(framebuffer_linear_base, control_linear_base,
+                             mapped_aperture_bytes, engine_type, engine_caps,
+                             gtt_linear_base, ring_linear_base, ring_bytes);
+    if (*engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_VBLANK;
+    }
+}
+
 /* Not static: resolved by name in the link map by the per-object audit. */
 const V9X_HW16_DEVICE v9x_rage_mobility_device = {
     0x1002u, 0x4c4du,
@@ -189,7 +214,13 @@ const V9X_HW16_DEVICE v9x_ati_4752_device = {
     0x1002u, 0x4752u,
     "ATI 3D Rage XL PCI",
     "1002", "4752",
-    V9X_MOBILITY_ALIAS_TAIL
+    "ati-mach64-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill",
+    "hardware-mach64",
+    0,
+    v9x_rage_xl_fill_engine,
+    0
 };
 
 const V9X_HW16_DEVICE v9x_ati_4753_device = {

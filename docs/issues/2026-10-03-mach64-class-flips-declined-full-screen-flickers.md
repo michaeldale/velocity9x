@@ -34,7 +34,16 @@ With a Rage XL PCI (`1002:4752`) fitted, V9XDDP's run left
 (`docs/probe/a8u4i5-rage-xl-pci-2026-10-03/first-boot/V9XSNA7.INI`). The
 flicker itself has not yet been watched on the monitor.
 
-## Next
+## Fixed for the Rage XL PCI (2026-10-04)
+
+The Rage IIC's CRTC flip is enabled for `4752`. In 3DMark 99, 4,209
+flips were handled and none declined, the reported refresh went from
+"VSync Off" to 59 Hz, and Michael watched the monitor: "looks good"
+(`docs/decisions/2026-10-04-rage-xl-page-flips.md`). The reporter's Rage
+XL AGP (`474D`) and the rest of the class are not enabled yet: each
+needs a watched run. DxDiag's full-screen test was not rerun.
+
+## Next (before the fix)
 
 - Measure the Mach64-class CRTC as the Rage IIC was measured (ATIRX
   `/crtc`): whether `CRTC_OFF_PITCH` moves the scanout in the VBE modes,
