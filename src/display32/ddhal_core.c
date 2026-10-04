@@ -1753,6 +1753,10 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     }
     wait = (data->dwFlags &
             (V9X_DDBLT_ASYNC | V9X_DDBLT_DONOTWAIT)) == 0ul;
+    /* The value on the full scale of the format, as the engine's depth
+     * buffer holds it; both the engine fill and the CPU fill read it here. */
+    data->bltFX.dwFillColor =
+        v9x_d3d_depth_fill_value(data->bltFX.dwFillColor);
 
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {

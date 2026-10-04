@@ -312,6 +312,14 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD depth_pitch_own;
     /*
+     * Bits the depth buffer drops from a DDBLT_DEPTHFILL value, whose scale
+     * is the full format (FFFFh the far plane in 16 bits). Zero for every
+     * engine but the SiS 6326, whose Z16 holds z x 2^15 and compares 15 bits
+     * (A8U4I5, 2026-10-05). Appended 2026-10-05; an initialiser that stops
+     * short leaves it zero.
+     */
+    DWORD depth_fill_shift;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

@@ -296,6 +296,20 @@ DWORD v9x_d3d_depth_bytes_per_pixel(void)
     return ops->limits->depth_bits_per_pixel >> 3;
 }
 
+/* A DDBLT_DEPTHFILL value as the fitted engine's depth buffer holds it
+ * (v9x_d3d_state_depth_fill); unchanged on a chip with no D3D engine. */
+DWORD v9x_d3d_depth_fill_value(DWORD value)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (ops == 0 || ops->limits == 0) {
+        return value;
+    }
+    return v9x_d3d_state_depth_fill(value,
+                                    ops->limits->depth_bits_per_pixel,
+                                    ops->limits->depth_fill_shift);
+}
+
 /*
  * Re-read the render target's address from DirectDraw before it is used.
  *

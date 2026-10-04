@@ -58,6 +58,16 @@ void v9x_d3d_state_fill(const V9X_D3D_STATE_RAW *raw, V9X_R3D_DRAW *draw);
  * no Z buffer, and acting on the state alone would point the depth unit at
  * offset 0, the visible framebuffer.
  */
+/*
+ * A DDBLT_DEPTHFILL value as the engine's depth buffer holds it: the bits of
+ * a depth_bits-wide word, moved down by shift. The fill value is on the full
+ * scale of its format (FFFFh the far plane in 16 bits); an engine whose depth
+ * occupies fewer bits - the SiS 6326 compares 15 of its 16 - names the
+ * difference in its limits (depth_fill_shift).
+ */
+v9x_u32 v9x_d3d_state_depth_fill(v9x_u32 value, v9x_u32 depth_bits,
+                                 v9x_u32 shift);
+
 v9x_u32 v9x_d3d_state_depth_active(v9x_u32 z_enable, v9x_u32 depth_bound,
                                    v9x_u32 depth_pitch);
 

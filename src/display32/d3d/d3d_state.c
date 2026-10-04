@@ -78,6 +78,15 @@ void v9x_d3d_state_fill(const V9X_D3D_STATE_RAW *raw, V9X_R3D_DRAW *draw)
     draw->alpha_force = raw->alpha_force;
 }
 
+v9x_u32 v9x_d3d_state_depth_fill(v9x_u32 value, v9x_u32 depth_bits,
+                                 v9x_u32 shift)
+{
+    if (depth_bits < 32ul) {
+        value &= (1ul << depth_bits) - 1ul;
+    }
+    return value >> shift;
+}
+
 v9x_u32 v9x_d3d_state_depth_active(v9x_u32 z_enable, v9x_u32 depth_bound,
                                    v9x_u32 depth_pitch)
 {

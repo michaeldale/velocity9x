@@ -145,6 +145,25 @@ static void test_depth_active_needs_all_three(void)
     SCHECK(v9x_d3d_state_depth_active(2ul, 1ul, 1280ul) == 1ul);
 }
 
+/*
+ * DDBLT_DEPTHFILL's value is on the 16-bit scale (FFFFh the far plane). The
+ * SiS 6326's Z16 holds z x 2^15 and compares the low 15 bits (A8U4I5,
+ * 2026-10-05): a shift of 1 keeps the meaning, FFFFh far, ABCDh 0.67.
+ */
+static void test_depth_fill_value(void)
+{
+    SCHECK(v9x_d3d_state_depth_fill(0x0000ffffu, 16ul, 0ul) == 0xffffu);
+    SCHECK(v9x_d3d_state_depth_fill(0x0000abcdu, 16ul, 0ul) == 0xabcdu);
+    SCHECK(v9x_d3d_state_depth_fill(0x0000ffffu, 16ul, 1ul) == 0x7fffu);
+    SCHECK(v9x_d3d_state_depth_fill(0x0000abcdu, 16ul, 1ul) == 0x55e6u);
+    SCHECK(v9x_d3d_state_depth_fill(0x00001234u, 16ul, 1ul) == 0x091au);
+    /* Bits above the depth format are not depth. */
+    SCHECK(v9x_d3d_state_depth_fill(0xffff1234u, 16ul, 0ul) == 0x1234u);
+    SCHECK(v9x_d3d_state_depth_fill(0xffffffffu, 16ul, 1ul) == 0x7fffu);
+    /* A 32-bit depth word passes whole. */
+    SCHECK(v9x_d3d_state_depth_fill(0x89abcdefu, 32ul, 0ul) == 0x89abcdefu);
+}
+
 unsigned int v9x_run_d3d_state_tests(void)
 {
     state_failures = 0u;
@@ -152,6 +171,7 @@ unsigned int v9x_run_d3d_state_tests(void)
     test_every_field_routes();
     test_undefined_address_is_clamp();
     test_depth_active_needs_all_three();
+    test_depth_fill_value();
     if (state_failures == 0u) {
         puts("PASS: Direct3D state to neutral draw");
     }

@@ -28,7 +28,10 @@ Found the same day
 untextured batch stalls the next textured one, and the "lock" was a Lock
 retry loop on the stuck engine. With untextured draws drawn textured (Cpix),
 V9XDDP passes 99 checks SiS's HAL passes, plus depth; specular, fog,
-flip-pixel, ramp and sprite-with-Z remain.
+flip-pixel, ramp and sprite-with-Z remain. The Z test compares 15 bits
+([record](../decisions/2026-10-05-sis6326-z-compares-15-bits.md)), so
+depth fills are halved; V9XDDP's raw Z readback check now fails by design,
+and its sprite and ramp cells inherit that. Next: measure specular and fog.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 

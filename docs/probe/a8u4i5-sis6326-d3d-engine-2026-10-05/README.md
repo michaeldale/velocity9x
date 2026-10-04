@@ -15,7 +15,8 @@
 | 217 | `d3dc21f-dirty` (quarantine) | `B217-*` | The 3D idle timeout recorded as the first fault (`S3ID`, 89FCh 00200074h); 2D stopped with it; V9XDDP completed, no freeze. |
 | 218 | + `V9XSIS3D.TXT` | `B218-*` | The stalled batch's register stream: batch 27, the first textured one, after untextured batch 26; stall at the wait after the triangle. |
 | 219-227 | probe `p4c`-`p4f` | `B2xx-SIS3D-P4B-*` | `/phase4b` replays of that stream (below). |
-| 228 | `d3dc21f-dirty` (Cpix) | `B228-*` | Untextured draws drawn textured with Cpix: V9XDDP complete, 0 idle timeouts (`B228-V9XSNAP.INI`). |
+| 228 | `d3dc21f-dirty` (Cpix) | `B228-*` | Untextured draws drawn textured with Cpix: V9XDDP complete, 0 idle timeouts (`B228-V9XSNAP.INI`). `B228-SIS3D-P4Z-FILLS.TXT`: SIS3D `/phase4z`, the Z test reads 15 bits. |
+| 229 | + depth fill halved | `B229-*` | V9XDDP complete; `ZDepthFillRaw=091A` after writing 1234h. `B229-SIS3D-P4Z-FORMATS.TXT`: Z formats 1-3. See [the 15-bit record](../../decisions/2026-10-05-sis6326-z-compares-15-bits.md). |
 
 `/phase4b` variants, one per boot. Each is the logged batch 27 at 3 MiB,
 preceded by:

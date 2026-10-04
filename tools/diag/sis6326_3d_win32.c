@@ -487,6 +487,11 @@ static void sis3d_shot(const char *name, DWORD region, const long q[3][2],
 /* A Z16 buffer cleared to FFFFh holds 1.0, the far plane. */
 #define SIS3D_FLOAT_ONE        0x3f800000ul
 #define SIS3D_Z_CLEAR          0xfffffffful
+
+/* The Z buffer's fill, as two Z16 words; phase 4z varies it. */
+static DWORD sis3d_z_clear = SIS3D_Z_CLEAR;
+/* Nonzero: 8A04h D[21:20] written instead of the builder's Z16 (01). */
+static DWORD sis3d_z_format = 0ul;
 #define SIS3D_Z_FAR            0xffffu
 
 #define SIS3D_RED        0xffff0000ul
@@ -927,13 +932,22 @@ static int sis3d_scene_draw(const struct sis3d_scene *scene, DWORD base,
         sis3d_write(key, "BUILD-REFUSED");
         return 0;
     }
+    if (sis3d_z_format != 0ul) {
+        for (index = 0ul; index < writes.count; ++index) {
+            if (writes.offsets[index] == V9X_SIS3D_Z_SET) {
+                writes.values[index] =
+                    (writes.values[index] & ~0x00300000ul) |
+                    (sis3d_z_format << 20);
+            }
+        }
+    }
 
     sis3d_begin();
     sis3d_add(SIS3D_OP_LFB_FILL32, base,
               scene->background | (scene->background << 16),
               SIS3D_REGION_STRIDE / 4ul);
     if (scene->z_region != 0ul) {
-        sis3d_add(SIS3D_OP_LFB_FILL32, z_base, SIS3D_Z_CLEAR,
+        sis3d_add(SIS3D_OP_LFB_FILL32, z_base, sis3d_z_clear,
                   SIS3D_REGION_STRIDE / 4ul);
     }
     sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
@@ -2866,6 +2880,76 @@ static void sis3d_phase4b(void)
                            SIS3D_P4B_BEFORE_BLEND);
 }
 
+/*
+ * Phase 4z: how many bits the Z test compares. Z16 stores z x 2^15, so the
+ * engine never writes bit 15 (phase 2), and V9XDDP's sprite-with-Z cells
+ * drew nothing over a buffer depth-filled with ABCDh at z 0.5 (boot 228). A
+ * green triangle at z 0.5 (4000h), LESS, Z write off, over buffers filled
+ * with values either side of 4000h in 15 and 16 bits: drawn means the
+ * stored value compared greater than 4000h. Untextured, alone.
+ */
+static const struct sis3d_draw sis3d_z15_draws[1] = {
+    { { { 36l, 36l }, { 476l, 44l }, { 44l, 476l } }, SIS3D_FLOAT_HALF,
+      { SIS3D_GREEN, SIS3D_GREEN, SIS3D_GREEN } }
+};
+
+static void sis3d_phase4z(void)
+{
+    static const DWORD fills[6] = {
+        0xfffful, 0x7ffful, 0x8000ul, 0xabcdul, 0xc000ul, 0x3ffful
+    };
+    static char names[6][12];
+    struct sis3d_scene scene;
+    DWORD index;
+
+    scene.name = 0;
+    scene.region = 0ul;
+    scene.z_region = 0ul;
+    scene.background = SIS3D_GUARD;
+    scene.shade = V9X_SIS3D_SHADE_FLAT_TOP;
+    scene.fraction_bits = 4;
+    scene.shift = 0l;
+    scene.owner = SIS3D_ENGINE_OWNER;
+    scene.enable = SIS3D_FLAT_ENABLE | V9X_SIS3D_ENABLE_Z_TEST;
+    scene.z_compare = V9X_SIS3D_CMP_LESS;
+    scene.alpha_compare = V9X_SIS3D_CMP_ALWAYS;
+    scene.alpha_reference = 0ul;
+    scene.blend_source = V9X_SIS3D_BLEND_ONE;
+    scene.blend_destination = V9X_SIS3D_BLEND_ZERO;
+    scene.draws = sis3d_z15_draws;
+    scene.draw_count = 1ul;
+    for (index = 0ul; index < 6ul; ++index) {
+        lstrcpyA(names[index], "ZFill");
+        sis3d_hex(names[index] + 5, fills[index], 4);
+        scene.name = names[index];
+        scene.region = 230ul + index * 2ul;
+        scene.z_region = 231ul + index * 2ul;
+        sis3d_z_clear = fills[index] | (fills[index] << 16);
+        sis3d_run_scene(&scene);
+    }
+    sis3d_z_clear = SIS3D_Z_CLEAR;
+
+    /*
+     * Z formats 2 and 3 (8A04h D[21:20]; the datasheet names 00 Z8 and 01
+     * Z16 only): z 0.5 written with ALWAYS, the value read back. Z16 wrote
+     * 4000h (phase 2); a format that writes 7FFFh or 8000h would be the
+     * full-scale Z the 15-bit compare is not.
+     */
+    scene.enable = SIS3D_FLAT_ENABLE | V9X_SIS3D_ENABLE_Z_TEST |
+                   V9X_SIS3D_ENABLE_Z_WRITE;
+    scene.z_compare = V9X_SIS3D_CMP_ALWAYS;
+    for (index = 1ul; index <= 3ul; ++index) {
+        lstrcpyA(names[index - 1ul], "ZFormat");
+        sis3d_decimal(names[index - 1ul] + 7, index);
+        scene.name = names[index - 1ul];
+        scene.region = 242ul + index * 2ul;
+        scene.z_region = 243ul + index * 2ul;
+        sis3d_z_format = index;
+        sis3d_run_scene(&scene);
+    }
+    sis3d_z_format = 0ul;
+}
+
 /* A switch anywhere on the command line, case-insensitive. */
 static int sis3d_has_switch(const char *name)
 {
@@ -2934,8 +3018,9 @@ void WINAPI V9xSis3dProbeEntry(void)
     int phase2 = sis3d_has_switch("/phase2");
     int phase3a = sis3d_has_switch("/phase3a");
     int phase3m = sis3d_has_switch("/phase3m");
+    int phase4z = sis3d_has_switch("/phase4z");
     int phase4b = sis3d_has_switch("/phase4b");
-    int phase4 = phase4b || sis3d_has_switch("/phase4");
+    int phase4 = phase4b || phase4z || sis3d_has_switch("/phase4");
     int phase3 = phase3a || phase3m || sis3d_has_switch("/phase3");
 
     display = GetDC(0);
@@ -2956,7 +3041,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     }
     WriteFile(sis3d_output, header, (DWORD)lstrlenA(header), &written, 0);
     sis3d_write("Build", V9X_BUILD_ID);
-    sis3d_write("Phase", phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
+    sis3d_write("Phase", phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
                          : phase3 ? "3" : phase2 ? "2" : "1");
     sis3d_write_decimal("DesktopWidth", width);
     sis3d_write_decimal("DesktopHeight", height);
@@ -3025,7 +3110,9 @@ void WINAPI V9xSis3dProbeEntry(void)
         goto restore;
     }
 
-    if (phase4b) {
+    if (phase4z) {
+        sis3d_phase4z();
+    } else if (phase4b) {
         sis3d_phase4b();
     } else if (phase4) {
         sis3d_phase4();

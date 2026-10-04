@@ -60,7 +60,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_sis_limits = {
     16ul,           /* depth_bits_per_pixel */
     V9X_D3D_SIS_TEXTURE_ALIGN, /* texture_align */
     1ul,            /* clip_in_core */
-    0ul             /* depth_pitch_own */
+    0ul,            /* depth_pitch_own */
+    /* Z16 holds z x 2^15 and the test compares the low 15 bits: fills of
+     * 8000h and ABCDh failed LESS at z 0.5, FFFFh and 7FFFh passed, C000h
+     * passed on the pixels written 3FFFh (SIS3D /phase4z, boot 228). */
+    1ul             /* depth_fill_shift */
 };
 
 static void v9x_d3d_sis_write(v9x_u32 offset, v9x_u32 value)
