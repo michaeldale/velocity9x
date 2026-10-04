@@ -43,6 +43,14 @@ suppresses its decodes and reads no MMIO. `/unlock` makes the one data write:
 SR05 = 86h, read, then SR05 = 00h to lock again. See
 [the register reference](../../docs/specifications/sis6326-registers.md).
 
+`sis6326_2d.asm` and `sis6326_2d_win32.c` are the SiS 6326 2D engine write
+probe. Build them with `scripts/build-sis6326-2d.ps1`; run `SIS2D.EXE` beside
+`SIS2D.VXD` under Velocity9x tier-0 at 8 or 16 bpp. It **writes the card**:
+SR05/SRB/SR27 (read first, written back last) and the engine, into off-screen
+VRAM at 2 MiB and above, checking each fill and copy byte for byte against the
+host-tested builder it compiles in. It publishes `C:\V9XDIAG\SIS2D.TXT`. See
+[2026-10-05 SiS 6326 2D engine writes](../../docs/decisions/2026-10-05-sis6326-2d-engine-writes.md).
+
 `ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's
 Phase 2 engine scenes ([plan](../../docs/plans/ati-rage-iic-hardware-3d.md)).
 Build them with `scripts/build-ati-rage2-scene.ps1`, and run `ATIRX.EXE`

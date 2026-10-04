@@ -256,14 +256,16 @@ require it. Keep it until a probe shows it is unnecessary.
 
 ### 5.4 Open points
 
-- **Not found:** whether width and height are *n* or *n*-1. REF §5.4 (Xorg)
-  writes height-1 and width-in-bytes-1. DS says only "Rectangular Width/Height"
-  (DS L2491-2502). A one-pixel-boundary fill probe settles it.
+- **Measured 2026-10-05: *n*-1.** REF §5.4 (Xorg) writes height-1 and
+  width-in-bytes-1; DS says only "Rectangular Width/Height" (DS L2491-2502).
+  A fill holding 31 and 3 wrote exactly 32 bytes by 4 rows at 8 and 16 bpp
+  ([decision](../decisions/2026-10-05-sis6326-2d-engine-writes.md)).
 - **[S, inference]** The width is in bytes. The register is 12 bits wide and
   1280×16 bpp needs 2560 bytes, so 4095 is enough for every DS mode except 1600
   wide at more than 8 bpp, which DS does not offer (DS L548).
-- **Not found:** whether the reverse-X start must point at the last byte of
-  the pixel (REF §10, from Xorg).
+- **Measured 2026-10-05: the last byte.** A right-to-left copy started on
+  the last byte of its last pixel (REF §10, from Xorg) lands exactly at 8 and
+  16 bpp (same decision).
 - 24 bpp: only source/destination BitBlt, pattern/destination BitBlt and
   colour expansion (DS L349-352). Solid fill at 24 bpp is a pattern/destination
   BitBlt with the pattern taken from the FG colour.

@@ -111,6 +111,14 @@ source settles: whether width and height are programmed as *n* or *n*-1, and
 whether a reverse-X copy starts at the last byte of the pixel. Both writes go
 to off-screen VRAM inside guards, read back by the CPU.
 
+Progress, 2026-10-05: the builder and its host tests are in, and the write
+probe (`SIS2D.EXE`) ran it on card 2 at 8 and 16 bpp: fill, forward copy,
+right-overlap and down-overlap copy all match byte for byte. *n*-1 and the
+last-byte start are measured
+([decision](../decisions/2026-10-05-sis6326-2d-engine-writes.md)). Next: the
+engine type, the device hook with the sequencer enable after every mode set,
+the mini-VDD map of BAR1, and `eng_sis6326.c`.
+
 ## Later (sketch only)
 
 - GDI acceleration: `gdi_accel.c` has arms only for the S3 engines today.
