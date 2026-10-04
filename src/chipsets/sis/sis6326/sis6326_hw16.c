@@ -159,8 +159,11 @@ static void v9x_sis6326_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_SIS_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_SIS_6326;
+    /* FLIP: the HAL's start address, CR0D/CR0C and SR27 D[3:0]
+     * (eng_sis6326.c). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
     if (v9x_sis_3d_enabled != 0u) {
         *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
     }

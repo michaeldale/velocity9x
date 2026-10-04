@@ -211,6 +211,57 @@ static int v9x_sis_can_blt(void)
     return v9x_sis_wait_idle(0);
 }
 
+/*
+ * The display start, for page flips.
+ *
+ * Without this the SiS family declared no V9X_DD_ENGINE_CAP_FLIP, the HAL
+ * declined every flip (FlipDeclined=46, FlipHandled=0 on A8U4I5 boot 228),
+ * and V9XDDP's FlipPixelOk failed before and after the Direct3D engine. The
+ * VGA fallback cannot serve: its high bits go to S3's CR69. On the 6326 the
+ * start address is CR0D (bits 7:0), CR0C (15:8) and SR27 D[3:0] (19:16)
+ * (datasheet 7.7.38, registers section 2), in doublewords, which twenty
+ * bits make 4 MiB - the board's whole aperture. SR27 D[7:4] (Turbo Queue,
+ * engine enable, logical width) are kept as read. The extensions are left
+ * unlocked by the 16-bit enable hook, as SiS's own driver leaves them.
+ * Written straight to the CRTC: the core's blank wait times it.
+ */
+#define V9X_SIS_SEQ_INDEX        0x03c4u
+#define V9X_SIS_SEQ_DATA         0x03c5u
+#define V9X_SIS_SR27             0x27u
+#define V9X_SIS_SR27_START_MASK  0x0fu
+#define V9X_SIS_START_LIMIT      0x00100000ul    /* 20 bits of doublewords */
+
+int v9x_sis_scanout_active(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
+        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_SIS_6326) {
+        return 0;
+    }
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
+}
+
+int v9x_sis_set_display_start(DWORD byte_offset)
+{
+    DWORD start = byte_offset >> 2;
+    unsigned char sr27;
+
+    /* A start the registers cannot express is declined, not rounded: see
+     * v9x_vga_set_display_start. */
+    if ((byte_offset & 3ul) != 0ul || start >= V9X_SIS_START_LIMIT) {
+        return 0;
+    }
+    v9x_write_crtc(0x0du, (unsigned char)(start & 0xfful));
+    v9x_write_crtc(0x0cu, (unsigned char)((start >> 8) & 0xfful));
+    v9x_outp(V9X_SIS_SEQ_INDEX, V9X_SIS_SR27);
+    sr27 = v9x_inp(V9X_SIS_SEQ_DATA);
+    v9x_outp(V9X_SIS_SEQ_DATA,
+             (unsigned char)((sr27 & (unsigned char)~V9X_SIS_SR27_START_MASK) |
+                             (unsigned char)((start >> 16) &
+                                             V9X_SIS_SR27_START_MASK)));
+    return 1;
+}
+
 const V9X_ENGINE32_OPS v9x_engine32_sis6326 = {
     v9x_sis_ready,
     v9x_sis_validate,

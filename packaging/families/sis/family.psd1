@@ -33,7 +33,7 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'hardware-sis6326'
             EngineType = 'SIS_6326'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # Both measured boards carry 4 MiB (SRC D[2:1] = 10 under SiS's
             # driver) behind a 4 MiB BAR0, the datasheet's maximum. Every
             # advertised mode lays out in it.

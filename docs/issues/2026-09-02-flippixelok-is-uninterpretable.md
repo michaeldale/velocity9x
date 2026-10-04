@@ -69,3 +69,14 @@ Not simply deleted - the question it asks is a real one. Options, none costed:
 
 Nothing here should change until it is decided which of those is wanted; the
 present state is at least consistent across every target.
+
+## 2026-10-05: the same on the SiS 6326, and a counter-example to watch
+
+A8U4I5's SiS 6326 read `FlipPixelOk=0` with `Flip20Ms=0` until its flips
+were declined no longer. Since boot 230, 20 flips take 328 ms, and it
+still reads 0. On A8U4I5 every pass in the record (Rage IIC boots 126-130)
+took about 505 ms for 20 flips: DirectDraw copying into the GDI page.
+Every hardware-flipped run read 0: Rage IIC boot 142, the Rage XL PCI with
+vsync on, and the SiS. A `FlipPixelOk=1` is therefore a sign the flips
+were emulated, not a pass.
+See [2026-10-05 SiS 6326 page flips](../decisions/2026-10-05-sis6326-page-flips.md).

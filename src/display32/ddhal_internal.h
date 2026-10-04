@@ -419,9 +419,14 @@ int v9x_m64_scanout_active(void);
 int v9x_m64_in_vblank(void);
 int v9x_m64_flip_window_open(void);
 int v9x_m64_set_display_start(DWORD byte_offset);
+/* The SiS 6326's start address (CR0D, CR0C, SR27 D[3:0]), in
+ * engines/eng_sis6326.c: active only for SIS_6326 stamped with
+ * V9X_DD_ENGINE_CAP_FLIP. */
+int v9x_sis_scanout_active(void);
+int v9x_sis_set_display_start(DWORD byte_offset);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
- * that chip, the VGA ones otherwise. */
+ * that chip, the SiS start address on the 6326, the VGA ones otherwise. */
 int v9x_in_vblank(void);
 int v9x_set_display_start(DWORD byte_offset);
 /* The same, for a flip that skips the blank: the base is written to the

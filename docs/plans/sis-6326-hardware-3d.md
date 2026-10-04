@@ -31,7 +31,11 @@ V9XDDP passes 99 checks SiS's HAL passes, plus depth; specular, fog,
 flip-pixel, ramp and sprite-with-Z remain. The Z test compares 15 bits
 ([record](../decisions/2026-10-05-sis6326-z-compares-15-bits.md)), so
 depth fills are halved; V9XDDP's raw Z readback check now fails by design,
-and its sprite and ramp cells inherit that. Next: measure specular and fog.
+and its sprite and ramp cells inherit that. Page flips now program the
+start address (CR0D/CR0C/SR27 D[3:0]); 20 flips take 328 ms, and
+FlipPixelOk's 0 is its known GDI-page blind spot
+([record](../decisions/2026-10-05-sis6326-page-flips.md)). Next: measure
+specular and fog.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 
