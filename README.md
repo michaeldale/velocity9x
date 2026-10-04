@@ -251,6 +251,14 @@ board's stock Matrox mini-VDD — passed physical software-GDI tests at
 archive or replacement of the stock mini-VDD; see the
 [bring-up boundary](docs/specifications/matrox-millennium2-bringup.md).
 
+The **SiS 6326** family (`1039:6326`) is tier-0: the video BIOS sets modes
+and the CPU draws, with no SiS register written. It reached `enable-ok` on
+one physical AGP board (rev 0Bh, 4 MB) with 22 modes, GDI, mode switching
+and a DirectDraw HAL passing; DirectDraw refuses three low-resolution 8 bpp
+modes that GDI sets. No hardware acceleration or Direct3D yet; see the
+[first-boot record](docs/decisions/2026-10-05-sis6326-first-velocity9x-bind.md)
+and the [plan](docs/plans/sis-6326-family.md).
+
 ### 2D and DirectDraw
 
 - **Display modes** — 640x480, 800x600 and 1024x768 at 256 colours and

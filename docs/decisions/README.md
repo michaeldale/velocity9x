@@ -215,6 +215,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 
 - [2026-10-04 SiS 6326 first survey: two cards, one locks, and four datasheet questions settled](2026-10-04-sis6326-first-survey.md)
 - [2026-10-04 SiS 6326 3D registers caught live under SiS's HAL](2026-10-04-sis6326-3d-state-under-sis-hal.md)
+- [2026-10-05 The SiS 6326 runs Velocity9x at tier-0: enable-ok on the first boot](2026-10-05-sis6326-first-velocity9x-bind.md)
 
 ## NVIDIA and other surveyed cards
 

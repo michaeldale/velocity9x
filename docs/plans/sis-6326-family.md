@@ -2,11 +2,11 @@
 
 Date: 2026-10-04
 
-Status: proposed. Phase 0 under SiS's driver done 2026-10-04 on a second
-card ([survey](../decisions/2026-10-04-sis6326-first-survey.md)): card 1
-(rev C3, EDO) locks A8U4I5 under SiS 2.28 and is parked; card 2 (rev 0Bh,
-SGRAM, BIOS 1.28q) is stable and is the bring-up card. 3D state not yet
-captured. Nothing in the driver.
+Status: Phase 1 done 2026-10-05 ([first boot](../decisions/2026-10-05-sis6326-first-velocity9x-bind.md)):
+the sis family reaches enable-ok on card 2 (rev 0Bh) with 22 modes, GDI,
+mode switching and a DirectDraw HAL passing; DirectDraw refuses three
+low-resolution 8 bpp modes (open). Phase 0 survey: card 1 (rev C3) locks
+A8U4I5 under SiS 2.28 and is parked. Next: Phase 2, the 2D engine.
 
 The first SiS chip, and the first new vendor since Matrox. The card goes into
 A8U4I5 (10.0.1.172), in place of the Trio3D. That machine has no DOS mode, so

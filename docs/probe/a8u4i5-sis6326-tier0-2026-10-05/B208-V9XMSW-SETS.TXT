@@ -1,0 +1,49 @@
+set:640x480x8 Result=INCOMPLETE 
+set:640x480x8 Result=INCOMPLETE 
+set:800x600x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:1024x768x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:640x400x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:640x480x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:800x600x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:1024x768x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:320x200x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:320x240x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:320x400x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:400x300x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:512x384x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:1280x1024x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:1600x1200x8 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:320x200x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:320x240x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=INCOMPLETE 
+set:320x400x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:400x300x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:512x384x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:640x400x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:1280x1024x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:1600x1200x16 Result=PASS ChangeResult=0
+set:640x480x8 Result=PASS ChangeResult=0
+set:640x480x8 exit=0 Result=INCOMPLETE StartW=640 StartBpp=8
+set:320x240x16 exit=0 Result=PASS StartW=640 StartBpp=8 ChangeResult=0
+set:640x480x8 exit=0 Result=PASS StartW=320 StartBpp=16 ChangeResult=0
+set:320x240x16 exit=0 Result=PASS StartW=640 StartBpp=8 ChangeResult=0
+set:640x480x8 exit=0 Result=PASS StartW=320 StartBpp=16 ChangeResult=0
