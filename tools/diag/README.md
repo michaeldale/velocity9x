@@ -31,6 +31,15 @@ optionally with `/block1`. It publishes `C:\V9XDIAG\ATIIC.TXT` and the 64 KiB
 shadow at C0000h as `C:\V9XDIAG\ATIIC.ROM`. See
 [2026-10-02 Rage IIC register survey](../../docs/decisions/2026-10-02-rage-iic-register-survey.md).
 
+`sis6326_probe.asm` and `sis6326_probe_win32.c` are the SiS 6326
+(`1039:6326`) Phase 0 survey. Build them with `scripts/build-sis6326-probe.ps1`;
+run `SIS6326.EXE` beside `SIS6326.VXD` under SiS's own driver, optionally with
+`/force3d` to read the 3D block when SR39 D2 is clear. It publishes
+`C:\V9XDIAG\SIS6326.TXT` and the C0000h shadow as `C:\V9XDIAG\SIS6326.ROM`.
+It writes no MMIO, PCI or data register; the sequencer and CRTC index ports
+are written to read SR00-SR3F, CR00-CR3F and CR80, and restored. See
+[the register reference](../../docs/specifications/sis6326-registers.md).
+
 `ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's
 Phase 2 engine scenes ([plan](../../docs/plans/ati-rage-iic-hardware-3d.md)).
 Build them with `scripts/build-ati-rage2-scene.ps1`, and run `ATIRX.EXE`
