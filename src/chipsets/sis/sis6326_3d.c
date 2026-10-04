@@ -28,7 +28,18 @@
  * D[27:24] - plain replacement, the value SiS's HAL left. */
 #define V9X_SIS3D_BLEND_REPLACE   0x01000000ul
 
+#define V9X_SIS3D_Z_COMPARE_SHIFT     16
+#define V9X_SIS3D_ALPHA_COMPARE_SHIFT 24
+#define V9X_SIS3D_ALPHA_REF_SHIFT     16
+#define V9X_SIS3D_BLEND_DST_SHIFT     28
+#define V9X_SIS3D_BLEND_SRC_SHIFT     24
+
 v9x_u32 v9x_sis3d_float_q4(v9x_s32 q)
+{
+    return v9x_sis3d_float_fixed(q, V9X_SIS3D_Q4_SHIFT);
+}
+
+v9x_u32 v9x_sis3d_float_fixed(v9x_s32 q, int fraction_bits)
 {
     v9x_u32 sign = 0ul;
     v9x_u32 magnitude;
@@ -55,7 +66,7 @@ v9x_u32 v9x_sis3d_float_q4(v9x_s32 q)
         mantissa = magnitude >> (top - V9X_SIS3D_FLOAT_MANTISSA);
     }
     return sign |
-           (((v9x_u32)(top - V9X_SIS3D_Q4_SHIFT) + V9X_SIS3D_FLOAT_BIAS)
+           ((v9x_u32)(top - fraction_bits + (int)V9X_SIS3D_FLOAT_BIAS)
             << V9X_SIS3D_FLOAT_MANTISSA) |
            (mantissa & ((1ul << V9X_SIS3D_FLOAT_MANTISSA) - 1ul));
 }
@@ -126,36 +137,54 @@ static void v9x_sis3d_emit(struct v9x_sis3d_writes *writes, v9x_u32 offset,
     ++writes->count;
 }
 
+/*
+ * A surface of width x height 16-bit pixels at offset, inside VRAM and the
+ * 22-bit address range, with a pitch its field holds. INVALID_ARGUMENT for
+ * one the caller got wrong, UNSUPPORTED for one the fields cannot express.
+ */
+static v9x_status v9x_sis3d_check_surface(v9x_u32 vram_bytes, v9x_u32 offset,
+                                          v9x_u32 pitch_bytes,
+                                          v9x_u32 width, v9x_u32 height)
+{
+    v9x_u32 bytes;
+
+    if (width == 0ul || height == 0ul || pitch_bytes == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (pitch_bytes > V9X_SIS3D_DST_PITCH_MAX ||
+        width > V9X_SIS3D_CLIP_MAX + 1ul ||
+        height > V9X_SIS3D_CLIP_MAX + 1ul ||
+        offset >= V9X_SIS3D_ADDRESS_LIMIT) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (width > pitch_bytes / V9X_SIS3D_BYTES_PER_PIXEL) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    bytes = pitch_bytes * height;
+    if (offset >= vram_bytes || bytes > vram_bytes - offset) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (bytes > V9X_SIS3D_ADDRESS_LIMIT - offset) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_sis3d_build_flat_state(const struct v9x_sis3d_target *target,
                                       struct v9x_sis3d_writes *writes)
 {
-    v9x_u32 bytes;
+    v9x_status status;
 
     if (target == 0 || writes == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     writes->count = 0u;
 
-    if (target->width == 0ul || target->height == 0ul ||
-        target->pitch_bytes == 0ul) {
-        return V9X_STATUS_INVALID_ARGUMENT;
-    }
-    if (target->pitch_bytes > V9X_SIS3D_DST_PITCH_MAX ||
-        target->width > V9X_SIS3D_CLIP_MAX + 1ul ||
-        target->height > V9X_SIS3D_CLIP_MAX + 1ul ||
-        target->offset >= V9X_SIS3D_ADDRESS_LIMIT) {
-        return V9X_STATUS_UNSUPPORTED;
-    }
-    if (target->width > target->pitch_bytes / V9X_SIS3D_BYTES_PER_PIXEL) {
-        return V9X_STATUS_INVALID_ARGUMENT;
-    }
-    bytes = target->pitch_bytes * target->height;
-    if (target->offset >= target->vram_bytes ||
-        bytes > target->vram_bytes - target->offset) {
-        return V9X_STATUS_INVALID_ARGUMENT;
-    }
-    if (bytes > V9X_SIS3D_ADDRESS_LIMIT - target->offset) {
-        return V9X_STATUS_UNSUPPORTED;
+    status = v9x_sis3d_check_surface(target->vram_bytes, target->offset,
+                                     target->pitch_bytes, target->width,
+                                     target->height);
+    if (status != V9X_STATUS_OK) {
+        return status;
     }
 
     v9x_sis3d_emit(writes, V9X_SIS3D_ENABLE, V9X_SIS3D_ENABLE_PRIM_SETUP);
@@ -171,6 +200,72 @@ v9x_status v9x_sis3d_build_flat_state(const struct v9x_sis3d_target *target,
     /* Top/left in the high 13-bit field, bottom/right in the low one, both
      * inclusive: SiS clipped its 64x64 target to 0 and 63. The texture
      * registers are left alone; the enable word carries no texture bit. */
+    v9x_sis3d_emit(writes, V9X_SIS3D_CLIP_TB,
+                   (0ul << V9X_SIS3D_CLIP_HIGH_SHIFT) |
+                   (target->height - 1ul));
+    v9x_sis3d_emit(writes, V9X_SIS3D_CLIP_LR,
+                   (0ul << V9X_SIS3D_CLIP_HIGH_SHIFT) |
+                   (target->width - 1ul));
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_sis3d_build_state(const struct v9x_sis3d_state *state,
+                                 struct v9x_sis3d_writes *writes)
+{
+    const struct v9x_sis3d_target *target;
+    v9x_status status;
+
+    if (state == 0 || writes == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    writes->count = 0u;
+    target = &state->target;
+
+    if (state->z_compare > V9X_SIS3D_CMP_ALWAYS ||
+        state->alpha_compare > V9X_SIS3D_CMP_ALWAYS ||
+        state->alpha_reference > 0xfful ||
+        state->blend_destination > V9X_SIS3D_BLEND_INV_DST_ALPHA ||
+        state->blend_source > V9X_SIS3D_BLEND_BOTH_INV_SRC_ALPHA ||
+        state->blend_source == V9X_SIS3D_BLEND_SRC_COLOR ||
+        state->blend_source == V9X_SIS3D_BLEND_INV_SRC_COLOR) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_sis3d_check_surface(target->vram_bytes, target->offset,
+                                     target->pitch_bytes, target->width,
+                                     target->height);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    /* The Z buffer matters only when the engine reads or writes it. */
+    if ((state->enable & (V9X_SIS3D_ENABLE_Z_TEST |
+                          V9X_SIS3D_ENABLE_Z_WRITE)) != 0ul) {
+        status = v9x_sis3d_check_surface(target->vram_bytes,
+                                         state->z_offset,
+                                         state->z_pitch_bytes,
+                                         target->width, target->height);
+        if (status != V9X_STATUS_OK) {
+            return status;
+        }
+    }
+
+    v9x_sis3d_emit(writes, V9X_SIS3D_ENABLE, state->enable);
+    v9x_sis3d_emit(writes, V9X_SIS3D_Z_SET,
+                   V9X_SIS3D_Z16 |
+                   (state->z_compare << V9X_SIS3D_Z_COMPARE_SHIFT) |
+                   (state->z_pitch_bytes & V9X_SIS3D_DST_PITCH_MAX));
+    v9x_sis3d_emit(writes, V9X_SIS3D_Z_BASE, state->z_offset);
+    v9x_sis3d_emit(writes, V9X_SIS3D_ALPHA_SET,
+                   (state->alpha_compare << V9X_SIS3D_ALPHA_COMPARE_SHIFT) |
+                   (state->alpha_reference << V9X_SIS3D_ALPHA_REF_SHIFT));
+    v9x_sis3d_emit(writes, V9X_SIS3D_DST_SET,
+                   (V9X_SIS3D_ROP_COPY << V9X_SIS3D_ROP_SHIFT) |
+                   (V9X_SIS3D_DST_RGB565 << V9X_SIS3D_DST_FORMAT_SHIFT) |
+                   target->pitch_bytes);
+    v9x_sis3d_emit(writes, V9X_SIS3D_DST_BASE, target->offset);
+    v9x_sis3d_emit(writes, V9X_SIS3D_FOG, 0ul);
+    v9x_sis3d_emit(writes, V9X_SIS3D_BLEND,
+                   (state->blend_destination << V9X_SIS3D_BLEND_DST_SHIFT) |
+                   (state->blend_source << V9X_SIS3D_BLEND_SRC_SHIFT));
     v9x_sis3d_emit(writes, V9X_SIS3D_CLIP_TB,
                    (0ul << V9X_SIS3D_CLIP_HIGH_SHIFT) |
                    (target->height - 1ul));

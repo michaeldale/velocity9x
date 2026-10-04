@@ -355,6 +355,13 @@ TEND at 8AFFh is a dummy byte register marking the end of a primitive list
 | 8A30h | Clip top/bottom | D[25:13] top, D[12:0] bottom; s12 sign-magnitude |
 | 8A34h | Clip left/right | D[25:13] left, D[12:0] right; s12 |
 
+Measured on card 2 (rev 0Bh), 2026-10-05
+([record](../decisions/2026-10-05-sis6326-3d-shading-and-depth.md)): Z16
+stores z x 2^15 truncated, so 0.5 writes 4000h and 0.99999994 writes 7FFFh,
+while z = 1.0 and above write 0000h. LESS and alpha GREATER (strict)
+behave as the table says. The 8A28h nibbles are destination high, source
+low. ONE/ONE saturates.
+
 The ≤/≠/≥ glyphs in the Z and alpha test tables are Symbol-font fields that
 the text extract dropped (DS L4945-4948); the RTF has SYMBOL 163, 185 and 179
 there, i.e. ≤, ≠, ≥. The order matches REF §23.

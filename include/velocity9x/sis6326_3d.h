@@ -31,6 +31,7 @@
 #define V9X_SIS3D_STATUS         0x89fcul
 #define V9X_SIS3D_ENABLE         0x8a00ul
 #define V9X_SIS3D_Z_SET          0x8a04ul
+#define V9X_SIS3D_Z_BASE         0x8a08ul
 #define V9X_SIS3D_ALPHA_SET      0x8a0cul
 #define V9X_SIS3D_DST_SET        0x8a14ul
 #define V9X_SIS3D_DST_BASE       0x8a18ul
@@ -44,7 +45,43 @@
 #define V9X_SIS3D_STATUS_IDLE       0x00000001ul
 
 /* 8A00h enable bits (datasheet 7.14.6). */
+#define V9X_SIS3D_ENABLE_DITHER     0x00000001ul
+#define V9X_SIS3D_ENABLE_BLEND      0x00000004ul
 #define V9X_SIS3D_ENABLE_PRIM_SETUP 0x00000800ul
+#define V9X_SIS3D_ENABLE_ALPHA_TEST 0x00020000ul
+#define V9X_SIS3D_ENABLE_Z_TEST     0x00100000ul
+#define V9X_SIS3D_ENABLE_Z_WRITE    0x00200000ul
+
+/* Compare functions, shared by the Z test (8A04h D[18:16]) and the alpha
+ * test (8A0Ch D[26:24]) (7.14.7-8). */
+#define V9X_SIS3D_CMP_NEVER         0ul
+#define V9X_SIS3D_CMP_LESS          1ul
+#define V9X_SIS3D_CMP_EQUAL         2ul
+#define V9X_SIS3D_CMP_LEQUAL        3ul
+#define V9X_SIS3D_CMP_GREATER       4ul
+#define V9X_SIS3D_CMP_NOTEQUAL      5ul
+#define V9X_SIS3D_CMP_GEQUAL        6ul
+#define V9X_SIS3D_CMP_ALWAYS        7ul
+
+/* 8A04h D[21:20] = 01: Z16. */
+#define V9X_SIS3D_Z16               0x00100000ul
+
+/* Blend factors, 8A28h: destination in D[31:28], source in D[27:24]
+ * (7.14.12). Source codes 2 and 3 are reserved; destination codes above
+ * 7 are reserved. */
+#define V9X_SIS3D_BLEND_ZERO          0ul
+#define V9X_SIS3D_BLEND_ONE           1ul
+#define V9X_SIS3D_BLEND_SRC_COLOR     2ul
+#define V9X_SIS3D_BLEND_INV_SRC_COLOR 3ul
+#define V9X_SIS3D_BLEND_SRC_ALPHA     4ul
+#define V9X_SIS3D_BLEND_INV_SRC_ALPHA 5ul
+#define V9X_SIS3D_BLEND_DST_ALPHA     6ul
+#define V9X_SIS3D_BLEND_INV_DST_ALPHA 7ul
+#define V9X_SIS3D_BLEND_DST_COLOR     8ul
+#define V9X_SIS3D_BLEND_INV_DST_COLOR 9ul
+#define V9X_SIS3D_BLEND_SRC_ALPHA_SAT 10ul
+#define V9X_SIS3D_BLEND_BOTH_SRC_ALPHA 11ul
+#define V9X_SIS3D_BLEND_BOTH_INV_SRC_ALPHA 12ul
 
 /* 89F8h fields (datasheet 7.14.4). */
 #define V9X_SIS3D_DRAW_TRIANGLE     0x00000002ul
@@ -73,6 +110,7 @@
 
 /* Dwords a triangle's state writes, and its vertex writes. */
 #define V9X_SIS3D_STATE_DWORDS      9u
+#define V9X_SIS3D_FULL_STATE_DWORDS 10u
 #define V9X_SIS3D_VERTEX_DWORDS     24u
 
 struct v9x_sis3d_vertex {
@@ -100,8 +138,35 @@ struct v9x_sis3d_writes {
     v9x_u32 count;
 };
 
+/*
+ * Everything a draw's state can switch: Gouraud or flat is the primitive
+ * word's business, not this. A field whose feature is not enabled is
+ * ignored and its register left at a harmless value.
+ */
+struct v9x_sis3d_state {
+    struct v9x_sis3d_target target;
+    v9x_u32 enable;          /* V9X_SIS3D_ENABLE_* */
+    v9x_u32 z_offset;        /* Z16 buffer, same width and height */
+    v9x_u32 z_pitch_bytes;
+    v9x_u32 z_compare;       /* V9X_SIS3D_CMP_* */
+    v9x_u32 alpha_compare;
+    v9x_u32 alpha_reference; /* 0-255 */
+    v9x_u32 blend_source;    /* V9X_SIS3D_BLEND_* */
+    v9x_u32 blend_destination;
+};
+
+/* q / 2^fraction_bits as IEEE single bits, exact for |q| below 2^24 and
+ * fraction_bits 0-30. */
+v9x_u32 v9x_sis3d_float_fixed(v9x_s32 q, int fraction_bits);
+
 /* q / 16 as IEEE single bits, exact for |q| below 2^24. */
 v9x_u32 v9x_sis3d_float_q4(v9x_s32 q);
+
+/* The whole state, enable word first and clip last. Refuses a Z buffer or
+ * target outside VRAM or the address range, a pitch past its field, and a
+ * reserved blend factor or compare code. */
+v9x_status v9x_sis3d_build_state(const struct v9x_sis3d_state *state,
+                                 struct v9x_sis3d_writes *writes);
 
 /* Indices of the top, middle and bottom vertex by Y; ties keep input
  * order. */

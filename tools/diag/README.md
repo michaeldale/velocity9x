@@ -51,13 +51,15 @@ VRAM at 2 MiB and above, checking each fill and copy byte for byte against the
 host-tested builder it compiles in. It publishes `C:\V9XDIAG\SIS2D.TXT`. See
 [2026-10-05 SiS 6326 2D engine writes](../../docs/decisions/2026-10-05-sis6326-2d-engine-writes.md).
 
-`sis6326_3d_win32.c` is the SiS 6326 3D engine write probe, phase 1. Build it
+`sis6326_3d_win32.c` is the SiS 6326 3D engine write probe. Build it
 with `scripts/build-sis6326-3d.ps1` and run `SIS3D.EXE` beside `SIS2D.VXD`
-(which it shares with SIS2D) under Velocity9x at 16 bpp. It **writes the
-card**: SR39 (restored) and the 3D registers, firing triangles into guarded
-off-screen RGB565 targets and comparing each row with a reference. It
-publishes `C:\V9XDIAG\SIS3D.TXT`. See
-[2026-10-05 SiS 6326 3D first triangle](../../docs/decisions/2026-10-05-sis6326-3d-first-triangle.md).
+(which it shares with SIS2D) under Velocity9x at 16 bpp; with no switch it
+runs phase 1, with `/phase2` the shading, Z16, alpha-test and blend scenes.
+It **writes the card**: SR39 (restored) and the 3D registers, firing
+triangles into guarded off-screen RGB565 targets (and Z16 buffers) and
+comparing each pixel with a reference. It publishes `C:\V9XDIAG\SIS3D.TXT`.
+See [2026-10-05 SiS 6326 3D first triangle](../../docs/decisions/2026-10-05-sis6326-3d-first-triangle.md)
+and [shading and depth](../../docs/decisions/2026-10-05-sis6326-3d-shading-and-depth.md).
 
 `ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's
 Phase 2 engine scenes ([plan](../../docs/plans/ati-rage-iic-hardware-3d.md)).

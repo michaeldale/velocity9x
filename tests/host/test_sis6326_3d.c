@@ -172,8 +172,125 @@ static void test_vertices(void)
     CHECK(write_value(&writes, 0x8850ul) == 0xff00ff00ul);  /* C's ARGB */
 }
 
+static void test_float_fixed(void)
+{
+    CHECK(v9x_sis3d_float_fixed(1, 0) == 0x3f800000ul);    /* 1.0 */
+    CHECK(v9x_sis3d_float_fixed(1, 8) == 0x3b800000ul);    /* 1/256 */
+    CHECK(v9x_sis3d_float_fixed(1, 16) == 0x37800000ul);   /* 1/65536 */
+    CHECK(v9x_sis3d_float_fixed(-3, 2) == 0xbf400000ul);   /* -0.75 */
+    /* 4 - 1/256: the shifted tie vertex at its finest. */
+    CHECK(v9x_sis3d_float_fixed(1023, 8) == 0x407fc000ul);
+    CHECK(v9x_sis3d_float_fixed(132, 4) == v9x_sis3d_float_q4(132));
+}
+
+static void base_state(struct v9x_sis3d_state *state)
+{
+    memset(state, 0, sizeof(*state));
+    state->target.vram_bytes = 4194304ul;
+    state->target.offset = 0x00200000ul;
+    state->target.pitch_bytes = 64ul;
+    state->target.width = 32ul;
+    state->target.height = 32ul;
+    state->enable = V9X_SIS3D_ENABLE_PRIM_SETUP;
+    state->z_offset = 0x00210000ul;
+    state->z_pitch_bytes = 64ul;
+    state->z_compare = V9X_SIS3D_CMP_ALWAYS;
+    state->alpha_compare = V9X_SIS3D_CMP_ALWAYS;
+    state->blend_source = V9X_SIS3D_BLEND_ONE;
+    state->blend_destination = V9X_SIS3D_BLEND_ZERO;
+}
+
+static void test_full_state(void)
+{
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_writes writes;
+
+    base_state(&state);
+    state.enable |= V9X_SIS3D_ENABLE_Z_TEST | V9X_SIS3D_ENABLE_Z_WRITE |
+                    V9X_SIS3D_ENABLE_ALPHA_TEST | V9X_SIS3D_ENABLE_BLEND;
+    state.z_compare = V9X_SIS3D_CMP_LESS;
+    state.alpha_compare = V9X_SIS3D_CMP_GREATER;
+    state.alpha_reference = 0x80ul;
+    state.blend_source = V9X_SIS3D_BLEND_SRC_ALPHA;
+    state.blend_destination = V9X_SIS3D_BLEND_INV_SRC_ALPHA;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(writes.count == V9X_SIS3D_FULL_STATE_DWORDS);
+    CHECK(writes.offsets[0] == V9X_SIS3D_ENABLE);
+    CHECK(write_value(&writes, V9X_SIS3D_ENABLE) == 0x00320804ul);
+    CHECK(write_value(&writes, V9X_SIS3D_Z_SET) == 0x00110040ul);
+    CHECK(write_value(&writes, V9X_SIS3D_Z_BASE) == 0x00210000ul);
+    CHECK(write_value(&writes, V9X_SIS3D_ALPHA_SET) == 0x04800000ul);
+    CHECK(write_value(&writes, V9X_SIS3D_BLEND) == 0x54000000ul);
+    CHECK(write_value(&writes, V9X_SIS3D_DST_SET) == 0x0c110040ul);
+    CHECK(write_value(&writes, V9X_SIS3D_CLIP_LR) == 0x1ful);
+
+    /* The values SiS's HAL left, as these encodings produce them: Z set
+     * 00030000h is LEQUAL with format code 00 and pitch 0; alpha set
+     * 07000000h is ALWAYS, reference 0. */
+    base_state(&state);
+    state.z_compare = V9X_SIS3D_CMP_ALWAYS;
+    state.alpha_compare = V9X_SIS3D_CMP_ALWAYS;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_ALPHA_SET) == 0x07000000ul);
+    CHECK((write_value(&writes, V9X_SIS3D_Z_SET) & 0x00070000ul) ==
+          0x00070000ul);
+
+    /* Additive: ONE / ONE. */
+    base_state(&state);
+    state.blend_destination = V9X_SIS3D_BLEND_ONE;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_BLEND) == 0x11000000ul);
+}
+
+static void test_full_state_refusals(void)
+{
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_writes writes;
+
+    base_state(&state);
+    CHECK(v9x_sis3d_build_state(0, &writes) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_sis3d_build_state(&state, 0) == V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Reserved source factors and destination factors past 7. */
+    base_state(&state);
+    state.blend_source = V9X_SIS3D_BLEND_SRC_COLOR;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.blend_destination = V9X_SIS3D_BLEND_DST_COLOR;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.z_compare = 8ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.alpha_reference = 256ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* With Z enabled, the Z buffer must fit like the target. */
+    base_state(&state);
+    state.enable |= V9X_SIS3D_ENABLE_Z_TEST;
+    state.z_offset = 4194304ul - 1024ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.enable |= V9X_SIS3D_ENABLE_Z_WRITE;
+    state.z_pitch_bytes = 32ul;   /* narrower than 32 pixels of Z16 */
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* With Z disabled, the Z fields are not checked. */
+    base_state(&state);
+    state.z_pitch_bytes = 32ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_sis6326_3d_tests(void)
 {
+    test_float_fixed();
+    test_full_state();
+    test_full_state_refusals();
     test_float_q4();
     test_primitive_matches_sis_capture();
     test_order_signs_and_ties();
