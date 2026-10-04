@@ -15,7 +15,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-10-02 The Rage IIC's first engine copy hung A8U4I5 (high)](2026-10-02-rage-iic-first-engine-copy-hangs.md)
 - [2026-09-30 Gateway intermittently hard-locks with a black screen during the broad probe](2026-09-30-gateway-intermittent-black-screen-probe-lock.md)
 - [2026-09-30 Final Reality's Robots test kills the process inside DrawPrimitives on the netbook (high)](2026-09-30-final-reality-robots-faults-inside-drawprimitives-on-the-netbook.md)
-- [2026-08-15 Doom95 renders half-width in garbage colours](2026-08-15-doom95-low-resolution-modes.md)
+- [2026-08-15 Doom95 renders half-width in garbage colours (DirectDraw's low-resolution refusal fixed 2026-10-05: our refresh rate; Doom95 not re-run)](2026-08-15-doom95-low-resolution-modes.md)
 - [2026-08-20 A live mode switch leaves the desktop unrepainted on the physical Trio64](2026-08-20-live-mode-switch-no-repaint-barry.md)
 - [2026-08-23 The S3 pedestal bit: black comes out dark grey](2026-08-23-s3-pedestal-black-level.md)
 - [2026-08-27 GDI acceleration corrupts the display on physical S3 Trio64 silicon](2026-08-27-gdi-accel-corrupts-display-on-physical-trio64.md)

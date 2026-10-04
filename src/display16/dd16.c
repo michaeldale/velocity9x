@@ -309,7 +309,15 @@ extern WORD v9x_modes16_is_published(WORD index);
  * replaces the last (lowest-priority) selection, because a DirectDraw list
  * without the mode the primary surface is in is useless to every caller.
  *
- * Refresh remains the 60 Hz convention, recorded as such in the inventory.
+ * Every row's refresh is 0, "the default", as in the Win98 DDK's S3 sample
+ * (src\display\mini\s3v\DDDRV.C), not the 60 Hz the inventory records. At
+ * 60, DirectDraw dropped every mode below 640x480 - 640x400, 512x384,
+ * 400x300, 320x240, 320x200 - from EnumDisplayModes and refused them in
+ * SetDisplayMode, while GDI set them all: measured on the SiS 6326, 10 of 22
+ * modes enumerated at 60 and all 22 at 0 (boots 209-210,
+ * docs\issues\2026-08-15-doom95-low-resolution-modes.md). Why is
+ * inferred, not measured: with an explicit rate DirectDraw appears to judge
+ * the mode's implied line rate against the monitor.
  */
 static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
 {
@@ -378,7 +386,8 @@ static void v9x_dd_fill_modes(V9X_DD_SHARED FAR *shared)
         mode->dwHeight = (DWORD)source->height;
         mode->lPitch = (LONG)(DWORD)source->pitch;
         mode->dwBPP = (DWORD)source->bits_per_pixel;
-        mode->wRefreshRate = 60u;
+        /* 0, the default: see the comment above this function. */
+        mode->wRefreshRate = 0u;
         mode->dwAlphaBitMask = 0ul;
         if (source->bits_per_pixel == 8u) {
             mode->wFlags = V9X_DDMODEINFO_PALETTIZED;

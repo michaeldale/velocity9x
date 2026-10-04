@@ -85,3 +85,36 @@ written) and Doom95 at 320x200 crashes with an access violation reading
 2. Decide whether to keep 640x400. It is a working GDI/desktop mode and real
    S3 Win9x drivers list it, but it does not help DirectDraw, so it buys
    nothing for games today.
+
+## 2026-10-05: the DirectDraw refusal was our refresh rate
+
+The conclusion above - "DirectDraw refuses 640x400 no matter what the
+driver publishes" - is disputed by a measurement on the SiS 6326 (A8U4I5,
+card 2, `sis` family with its DirectDraw HAL attached).
+
+`dd16.c` published every DirectDraw mode with `wRefreshRate = 60`. The
+Win98 DDK's S3 sample (`src\display\mini\s3v\DDDRV.C`) publishes 0, "the
+default", for every mode.
+
+| Boot | `wRefreshRate` | `EnumModeCount` | `/pal8` SetDisplayMode 640x400, 320x240, 320x200 at 8 bpp |
+|---|---|---|---|
+| 209 | 60 | 10 of 22: nothing below 640x480 | `88760078` (`DDERR_INVALIDMODE`) for all three |
+| 210 | 0 | 22 of 22 | `S_OK` for all three |
+
+At boot 210 each of the three gave a primary of the right size, 8 bpp and
+a packed pitch, with a palette attached and a successful `Lock`. Index 40
+read back through both the surface and the screen DC, as at 640x480. These
+are the driver's own published modes, not DirectDraw's ModeX emulation.
+The only change between the two boots was that field (an experiment
+`V9XDISP.DRV`, deployed by WININIT rename).
+
+Why an explicit 60 hides them is inferred, not measured. DirectDraw
+appears to judge each mode's implied line rate against the monitor: 60 Hz
+at 400 or 240 lines is below what a VGA-class monitor scans.
+
+Fixed in `dd16.c` for every family; the fix commit names this record.
+
+Not re-run: Doom95 itself, at 640x400 or 320x200; the ViRGE guest this
+record was found on; and any family other than sis. The 2026-08-15 crash
+under `DDSCL_ALLOWMODEX` was DirectDraw's own ModeX path, which this
+change does not touch.
