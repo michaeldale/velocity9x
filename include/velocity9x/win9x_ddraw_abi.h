@@ -1520,6 +1520,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100409: the untextured-batch census. An append. */
 /* 2026100308: flips the VSync setting overrode. An append. */
 /* 2026100307: TextureCreate refusals for a full handle table. An append. */
 /* 2026100306: the passive check's refusals by reason. An append. */
@@ -1633,7 +1634,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100308ul
+#define V9X_DD_SHARED_ABI   2026100409ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3196,6 +3197,25 @@ typedef struct v9x_d3d_diagnostics {
     /* Accepted flips whose vsync the [Velocity9x] VSync setting changed
      * from what the application asked (docs\plans\vsync-off-setting.md). */
     DWORD flip_vsync_overridden;
+    /*
+     * What an untextured batch is (TEXTUREHANDLE 0), counted per batch in
+     * v9x_d3d_dispatch_draw: the blend it asked for, whether its first
+     * triangle carries texture coordinates that vary, and whether that
+     * triangle is white. A modulating pass with varying coordinates is a
+     * lightmap that lost its texture, the Rage XL's 2026-10-04 defect;
+     * opaque geometry with constant coordinates was meant untextured. The
+     * netbook's 3DMark Game 1 draws 39 per cent of its batches untextured
+     * against the Rage XL's 0.8 (docs\plans\intel-3dmark99-missing-
+     * textures.md). last_state packs src | dest << 8 | alphablend << 16 |
+     * texture_blend << 24, each clamped to a byte.
+     */
+    DWORD no_handle_blend_off;
+    DWORD no_handle_blend_modulate;
+    DWORD no_handle_blend_other;
+    DWORD no_handle_with_uv;
+    DWORD no_handle_white;
+    DWORD no_handle_last_state;
+    DWORD no_handle_last_color;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

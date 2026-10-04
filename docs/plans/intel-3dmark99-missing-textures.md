@@ -113,6 +113,12 @@ destroys churn, and whether the untextured draws are the missing
 textures, are still open. Nothing in this plan below is changed by this
 result.
 
+**Resolved 2026-10-04, later the same day.** The untextured batches are
+3DMark's fog pass, drawn because the Intel device advertises no fog. A
+frame captured in Game 1 is fully textured. See
+`docs/decisions/2026-10-04-netbook-3dmark-untextured-draws-are-a-fog-pass.md`.
+The "defect" reading in the next paragraph is superseded by that.
+
 **Localised 2026-10-04: the untextured draws are Game 1's, and they are a
 defect on this part.** Each game was run alone with no mid-run trace. A
 trace taken during a run killed 3DMark once on the netbook. Counters are

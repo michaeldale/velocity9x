@@ -412,6 +412,53 @@ static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
     v9x_d3d_state_fill(&raw, draw);
 }
 
+/* A byte of the census's packed state; a value past 255 reads as 255. */
+static DWORD v9x_d3d_census_byte(DWORD value)
+{
+    return value > 0xfful ? 0xfful : value;
+}
+
+/*
+ * What an untextured batch is. Diagnostics only: nothing here changes a
+ * draw. The first triangle stands for the batch, which is what Direct3D's
+ * render state already does - one state per batch.
+ *
+ * Varying coordinates are the tell. The Rage XL's lost lightmaps carried
+ * tu/tv of 0.25 to 0.97 with no texture bound; geometry an application
+ * means to draw untextured leaves them constant, usually zero.
+ */
+static void v9x_d3d_census_untextured(const V9X_D3D_CONTEXT *context,
+                                      const V9X_D3DTLVERTEX *vertices)
+{
+    V9X_D3D_DIAGNOSTICS *diag;
+
+    if (v9x_hal == 0 || context->texture_handle != 0ul || vertices == 0) {
+        return;
+    }
+    diag = &v9x_hal->d3d_diagnostics;
+    if (context->alpha_blend_enable == 0ul) {
+        ++diag->no_handle_blend_off;
+    } else if (context->src_blend == V9X_D3DBLEND_DESTCOLOR ||
+               context->dest_blend == V9X_D3DBLEND_SRCCOLOR) {
+        ++diag->no_handle_blend_modulate;
+    } else {
+        ++diag->no_handle_blend_other;
+    }
+    if (vertices[0].tu != vertices[1].tu || vertices[0].tu != vertices[2].tu ||
+        vertices[0].tv != vertices[1].tv || vertices[0].tv != vertices[2].tv) {
+        ++diag->no_handle_with_uv;
+    }
+    if ((vertices[0].color & 0x00fffffful) == 0x00fffffful) {
+        ++diag->no_handle_white;
+    }
+    diag->no_handle_last_state =
+        v9x_d3d_census_byte(context->src_blend) |
+        (v9x_d3d_census_byte(context->dest_blend) << 8) |
+        (v9x_d3d_census_byte(context->alpha_blend_enable) << 16) |
+        (v9x_d3d_census_byte(context->texture_blend) << 24);
+    diag->no_handle_last_color = vertices[0].color;
+}
+
 /* One batch to the engine, by whichever entry it serves. */
 static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
                                  V9X_D3D_CONTEXT *context,
@@ -420,6 +467,9 @@ static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
 {
     V9X_R3D_DRAW draw;
 
+    if (triangle_count != 0ul) {
+        v9x_d3d_census_untextured(context, vertices);
+    }
     if (ops->draw == 0) {
         return ops->draw_triangles(context, vertices, triangle_count);
     }

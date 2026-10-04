@@ -931,6 +931,14 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("DrawsNoHandle", snapshot.d3d.draws_no_handle);
     v9x_write_uint("DrawsHandleUnresolved",
                    snapshot.d3d.draws_handle_unresolved);
+    v9x_write_uint("NoHandleBlendOff", snapshot.d3d.no_handle_blend_off);
+    v9x_write_uint("NoHandleBlendModulate",
+                   snapshot.d3d.no_handle_blend_modulate);
+    v9x_write_uint("NoHandleBlendOther", snapshot.d3d.no_handle_blend_other);
+    v9x_write_uint("NoHandleWithUv", snapshot.d3d.no_handle_with_uv);
+    v9x_write_uint("NoHandleWhite", snapshot.d3d.no_handle_white);
+    v9x_write_hex("NoHandleLastState", snapshot.d3d.no_handle_last_state);
+    v9x_write_hex("NoHandleLastColor", snapshot.d3d.no_handle_last_color);
     v9x_write_uint("RenderStateDropped", snapshot.d3d.render_state_dropped);
     v9x_write_uint("TextureHandleSets", snapshot.d3d.texture_handle_sets);
     v9x_write_hex("TextureHandleLast", snapshot.d3d.texture_handle_last);
