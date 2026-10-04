@@ -39,9 +39,10 @@ flicker itself has not yet been watched on the monitor.
 The Rage IIC's CRTC flip is enabled for `4752`. In 3DMark 99, 4,209
 flips were handled and none declined, the reported refresh went from
 "VSync Off" to 59 Hz, and Michael watched the monitor: "looks good"
-(`docs/decisions/2026-10-04-rage-xl-page-flips.md`). The reporter's Rage
-XL AGP (`474D`) and the rest of the class are not enabled yet: each
-needs a watched run. DxDiag's full-screen test was not rerun.
+(`docs/decisions/2026-10-04-rage-xl-page-flips.md`). The whole Rage Pro
+class shares the CRTC and now takes the flip through the shared hook,
+including the reporter's Rage XL AGP (`474D`), with an override for any
+part that misbehaves. DxDiag's full-screen test was not rerun.
 
 ## Next (before the fix)
 

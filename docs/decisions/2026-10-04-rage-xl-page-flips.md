@@ -22,10 +22,9 @@ vertical blank, read from `CRTC_VLINE` (`m64_scanout.c`, measured with
 ATIRX `/crtc`). The Rage XL has the same Mach64 CRTC registers at the
 same block-0 offsets of its 4 KiB register window. `m64_scanout.c`
 accepts the Mach64 engine type as well as the Rage IIC's, still gated on
-the cap. Only the Rage XL PCI's 16-bit record (`mobility_hw16.c`,
-`v9x_rage_xl_fill_engine`) adds `FLIP` and `VBLANK`. The Mobility-M (a
-panel CRTC, not measured) and the other aliases are unchanged. Boot
-snapshot: `EngineCaps=0x1C`.
+the cap. The run below had it on the Rage XL PCI's record alone; the
+shared Rage Pro-class hook now declares `FLIP` and `VBLANK` for every
+part it binds (see the end). Boot snapshot: `EngineCaps=0x1C`.
 
 ## Measured
 
@@ -53,8 +52,12 @@ The engine refused nothing in this run, so those draws reach the chip.
 
 - DxDiag's and DX7's full-screen tests, which the reporter saw flicker,
   were not run with this build.
-- The Rage XL AGP (`474D`, the reporter's) and PCI-66 (`474F`) are the
-  same part but were not enabled: only `4752` was watched.
+- The rest of the class. Since this record, the flip is enabled for the
+  whole Rage Pro class through the shared hook (`v9x_mobility_fill_engine`):
+  Rage XL/XC, Rage Pro, LT Pro and the Mobility parts, the Gateway's
+  included. It is the same CRTC, and a fix measured on one part applies to
+  parts of the same design, with an override for any that misbehaves
+  (Michael, 2026-10-04). Only `4752` has been watched.
 - The flip-completion timing, a single run. The state machine releases
   the old buffer when the blank ends, as on the Rage IIC, where a write
   applied at once. Whether the Rage XL latches at once too was not
