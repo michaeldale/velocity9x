@@ -11,6 +11,7 @@
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/matrox_millennium2.h"
 #include "velocity9x/s3_virge.h"
+#include "velocity9x/sis_6326.h"
 #include "velocity9x/vbe_generic.h"
 
 static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
@@ -58,5 +59,6 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x5333u, 0x8813u, v9x_s3_virge_backend }, /* s3 / trio64 alias */
     { 0x5333u, 0x8814u, v9x_s3_virge_backend }, /* s3 / trio64 alias */
     { 0x5333u, 0x8901u, v9x_s3_virge_backend }, /* s3 / trio64 alias */
+    { 0x1039u, 0x6326u, v9x_sis_6326_backend }, /* sis / sis6326 */
     { 0x1234u, 0x1111u, v9x_vbe_generic_backend }, /* vbe / std-vga */
 };
