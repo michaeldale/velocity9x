@@ -39,6 +39,11 @@
 #define V9X_SIS3D_BLEND          0x8a28ul
 #define V9X_SIS3D_CLIP_TB        0x8a30ul
 #define V9X_SIS3D_CLIP_LR        0x8a34ul
+#define V9X_SIS3D_TEXTURE_SET    0x8a38ul
+#define V9X_SIS3D_TEXTURE_BLEND  0x8a3cul
+#define V9X_SIS3D_TEXTURE_BASE0  0x8a44ul
+#define V9X_SIS3D_TEXTURE_PITCH01 0x8a6cul
+#define V9X_SIS3D_TEXTURE_SIZE   0x8a80ul
 
 /* 89FCh read: D1 engine idle and 3D queue empty, D0 engine idle. */
 #define V9X_SIS3D_STATUS_IDLE_EMPTY 0x00000002ul
@@ -47,7 +52,13 @@
 /* 8A00h enable bits (datasheet 7.14.6). */
 #define V9X_SIS3D_ENABLE_DITHER     0x00000001ul
 #define V9X_SIS3D_ENABLE_BLEND      0x00000004ul
+#define V9X_SIS3D_ENABLE_LARGE_CACHE 0x00000020ul
+#define V9X_SIS3D_ENABLE_TEXTURE_CACHE 0x00000080ul
+#define V9X_SIS3D_ENABLE_PERSPECTIVE 0x00000200ul
+#define V9X_SIS3D_ENABLE_TEXTURE    0x00000400ul
 #define V9X_SIS3D_ENABLE_PRIM_SETUP 0x00000800ul
+/* Reserved in the datasheet; SiS's HAL sets it with texturing on. */
+#define V9X_SIS3D_ENABLE_BIT15      0x00008000ul
 #define V9X_SIS3D_ENABLE_ALPHA_TEST 0x00020000ul
 #define V9X_SIS3D_ENABLE_Z_TEST     0x00100000ul
 #define V9X_SIS3D_ENABLE_Z_WRITE    0x00200000ul
@@ -83,6 +94,37 @@
 #define V9X_SIS3D_BLEND_BOTH_SRC_ALPHA 11ul
 #define V9X_SIS3D_BLEND_BOTH_INV_SRC_ALPHA 12ul
 
+/* Texel formats, 8A38h D[31:24] (registers section 8.1). */
+#define V9X_SIS3D_TEXEL_RGB555      0x50ul
+#define V9X_SIS3D_TEXEL_RGB565      0x51ul
+#define V9X_SIS3D_TEXEL_ARGB1555    0x52ul
+#define V9X_SIS3D_TEXEL_ARGB4444    0x53ul
+#define V9X_SIS3D_TEXEL_ARGB8888    0x73ul
+
+/* 8A38h D[23:16] mapping: wrap beats mirror beats clamp. */
+#define V9X_SIS3D_TEXTURE_WRAP_U    0x01ul
+#define V9X_SIS3D_TEXTURE_WRAP_V    0x02ul
+#define V9X_SIS3D_TEXTURE_MIRROR_U  0x04ul
+#define V9X_SIS3D_TEXTURE_MIRROR_V  0x08ul
+#define V9X_SIS3D_TEXTURE_CLAMP_U   0x10ul
+#define V9X_SIS3D_TEXTURE_CLAMP_V   0x20ul
+
+/* 8A38h D3 magnification, D[2:0] minification. */
+#define V9X_SIS3D_MAG_LINEAR        0x08ul
+#define V9X_SIS3D_MIN_NEAREST       0ul
+#define V9X_SIS3D_MIN_LINEAR        1ul
+#define V9X_SIS3D_MIN_NEAREST_MIP_NEAREST 2ul
+#define V9X_SIS3D_MIN_LINEAR_MIP_LINEAR 5ul
+
+/* 8A3Ch D[31:26] colour mode and D[25:24] alpha mode; only the three
+ * unambiguous colour modes are named (registers section 8). */
+#define V9X_SIS3D_TBLEND_CTEX       0x00ul
+#define V9X_SIS3D_TBLEND_CPIX       0x01ul
+#define V9X_SIS3D_TBLEND_DECALALPHA 0x04ul
+#define V9X_SIS3D_TBLEND_ATEX       0ul
+#define V9X_SIS3D_TBLEND_APIX       1ul
+#define V9X_SIS3D_TBLEND_APIX_ATEX  2ul
+
 /* 89F8h fields (datasheet 7.14.4). */
 #define V9X_SIS3D_DRAW_TRIANGLE     0x00000002ul
 #define V9X_SIS3D_DIRECTION_BIT     0x00000080ul
@@ -112,6 +154,7 @@
 #define V9X_SIS3D_STATE_DWORDS      9u
 #define V9X_SIS3D_FULL_STATE_DWORDS 10u
 #define V9X_SIS3D_VERTEX_DWORDS     24u
+#define V9X_SIS3D_TEXTURE_DWORDS    5u
 
 struct v9x_sis3d_vertex {
     v9x_u32 x;      /* IEEE single bits, pixels */
@@ -154,6 +197,46 @@ struct v9x_sis3d_state {
     v9x_u32 blend_source;    /* V9X_SIS3D_BLEND_* */
     v9x_u32 blend_destination;
 };
+
+/* Levels after level 0: 8A38h D[11:8] holds the last level's index. */
+#define V9X_SIS3D_MIP_LEVELS_MAX    9u
+
+/*
+ * One texture level. The pitch field is a small float, measured on
+ * A8U4I5 on 2026-10-05: exponent D[10:7], mantissa D[6:0], (2m + 1) <<
+ * (e + 2) bytes. The engine ORs the row term into the column offset, so the
+ * pitch's power-of-two factor must cover the row's bytes; a power-of-two
+ * texture at its tight pitch always does.
+ */
+struct v9x_sis3d_texture {
+    v9x_u32 vram_bytes;
+    v9x_u32 format;          /* V9X_SIS3D_TEXEL_* */
+    v9x_u32 log2_width;      /* 0-9 */
+    v9x_u32 log2_height;
+    v9x_u32 levels;          /* 8A38h D[11:8]: last level, 0 single */
+    v9x_u32 offset;          /* level 0 */
+    v9x_u32 pitch_bytes;
+    v9x_u32 mapping;         /* V9X_SIS3D_TEXTURE_WRAP_U ... */
+    v9x_u32 filter;          /* V9X_SIS3D_MAG_LINEAR | V9X_SIS3D_MIN_* */
+    v9x_u32 colour_mode;     /* V9X_SIS3D_TBLEND_CTEX ... */
+    v9x_u32 alpha_mode;      /* V9X_SIS3D_TBLEND_ATEX ... */
+    int clear_cache;         /* 8A38h D4 */
+    v9x_u32 blend_mask_bit;  /* 8A38h D[14:12]: Atex bit the masked modes read */
+    /* Levels 1 to levels, at tight pitches (a row rounded up to 4 bytes). */
+    v9x_u32 level_offsets[V9X_SIS3D_MIP_LEVELS_MAX];
+};
+
+/* The 11-bit pitch field for a row pitch in bytes. UNSUPPORTED for a
+ * pitch it cannot express: not 4 x odd x 2^k with the odd factor up to
+ * 255 and k up to 15. */
+v9x_status v9x_sis3d_texture_pitch_field(v9x_u32 pitch_bytes,
+                                         v9x_u32 *field);
+
+/* Texture set, blend, level 0 base and pitch, size: five dwords. Refuses a
+ * format whose texel size it does not know (UNSUPPORTED), a level past
+ * VRAM, and a pitch the engine would misaddress. */
+v9x_status v9x_sis3d_build_texture(const struct v9x_sis3d_texture *texture,
+                                   struct v9x_sis3d_writes *writes);
 
 /* q / 2^fraction_bits as IEEE single bits, exact for |q| below 2^24 and
  * fraction_bits 0-30. */

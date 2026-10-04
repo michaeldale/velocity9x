@@ -11,7 +11,14 @@ rule; 3D runs with the Turbo Queue off. Phase 2 done the same day
 ([shading and depth](../decisions/2026-10-05-sis6326-3d-shading-and-depth.md)):
 a 1/256 shift suffices (2^-16 resolved); Gouraud is prestepped in y but not
 x; Z16 is z x 2^15 and wraps to 0 at z = 1.0, so the driver clamps z; alpha
-test, SRCALPHA blending and saturating additive work. Next: phase 3.
+test, SRCALPHA blending and saturating additive work. Phase 3 done the
+same day ([textures](../decisions/2026-10-05-sis6326-3d-textures.md)):
+the pitch field is a float, (2m + 1) << (e + 2) bytes; U/V normalised,
+W = RHW; all five D3D formats exact; wrap/mirror/clamp and bilinear are
+Direct3D's; blend modes 0, 2, 4, 8 and 12 map DECAL, MODULATE, DECALALPHA,
+DECALMASK and MODULATEMASK; mips are per pixel with quarter-step blending;
+8A38h D4 must be pulsed (held with level field 0, it hung the engine
+until a reboot). Next: phase 4.
 
 Target: SiS 6326 card 2 (rev 0Bh, 4 MiB SGRAM) in A8U4I5, running the `sis`
 family with the 2D engine on DirectDraw

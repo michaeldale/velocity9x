@@ -420,6 +420,17 @@ L5639-5766). **8B00h-8B7Fh**: 32×32 stipple pattern.
 **Not found:** the unit of the texture pitch (bytes would cap a level at 2047
 bytes, which is less than 512 texels × 4 bytes).
 
+Measured on card 2 (rev 0Bh), 2026-10-05
+([record](../decisions/2026-10-05-sis6326-3d-textures.md)):
+- **Pitch.** Each 11-bit field is a float: exponent D[10:7], mantissa
+  D[6:0], (2m + 1) << (e + 2) bytes, so 280h is 128 bytes. The engine
+  ORs the row term into the column offset.
+- **Coordinates.** U/V are normalised, and W is RHW (8A00h D9).
+- **Levels.** 8A38h D[11:8] is the last level's index.
+- **Blend modes.** 8A3Ch modes 2, 6 and 8-13 are MODULATE, an Apix
+  lerp, and the masked modes; only D[29:26] matter.
+- **D4.** It must not be left set while drawing.
+
 ### 8.1 Texel formats (D[31:24] of 8A38h, DS L5140-5266)
 
 D31 selects BGR order; D[30:28] the class; D[27:24] the variant.

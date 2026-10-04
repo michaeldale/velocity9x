@@ -34,6 +34,29 @@
 #define V9X_SIS3D_BLEND_DST_SHIFT     28
 #define V9X_SIS3D_BLEND_SRC_SHIFT     24
 
+/* Texture registers (registers section 8). */
+#define V9X_SIS3D_TEXEL_SHIFT         24
+#define V9X_SIS3D_MAPPING_SHIFT       16
+#define V9X_SIS3D_LEVELS_SHIFT        8
+#define V9X_SIS3D_CLEAR_CACHE         0x00000010ul
+#define V9X_SIS3D_MIN_MASK            0x00000007ul
+#define V9X_SIS3D_TEXTURE_LOG2_MAX    9ul
+#define V9X_SIS3D_BLEND_MASK_SHIFT    12
+#define V9X_SIS3D_BLEND_MASK_BIT_MAX  7ul
+#define V9X_SIS3D_PITCH_UNIT          4ul
+#define V9X_SIS3D_PITCH_EVEN_SHIFT    16
+/* Pitch field: (2m + 1) << (e + 2) bytes, e in D[10:7], m in D[6:0]. */
+#define V9X_SIS3D_PITCH_UNIT_SHIFT    2
+#define V9X_SIS3D_PITCH_UNIT_MASK     0x00000003ul
+#define V9X_SIS3D_PITCH_EXPONENT_SHIFT 7
+#define V9X_SIS3D_PITCH_EXPONENT_MAX  15ul
+#define V9X_SIS3D_PITCH_ODD_MAX       255ul
+#define V9X_SIS3D_TBLEND_COLOUR_MAX   0x3ful
+#define V9X_SIS3D_TBLEND_COLOUR_SHIFT 26
+#define V9X_SIS3D_TBLEND_ALPHA_SHIFT  24
+#define V9X_SIS3D_LOG2_WIDTH_SHIFT    28
+#define V9X_SIS3D_LOG2_HEIGHT_SHIFT   24
+
 v9x_u32 v9x_sis3d_float_q4(v9x_s32 q)
 {
     return v9x_sis3d_float_fixed(q, V9X_SIS3D_Q4_SHIFT);
@@ -272,6 +295,182 @@ v9x_status v9x_sis3d_build_state(const struct v9x_sis3d_state *state,
     v9x_sis3d_emit(writes, V9X_SIS3D_CLIP_LR,
                    (0ul << V9X_SIS3D_CLIP_HIGH_SHIFT) |
                    (target->width - 1ul));
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_sis3d_texture_pitch_field(v9x_u32 pitch_bytes,
+                                         v9x_u32 *field)
+{
+    v9x_u32 exponent = 0ul;
+    v9x_u32 odd;
+
+    if (field == 0 || pitch_bytes == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((pitch_bytes & V9X_SIS3D_PITCH_UNIT_MASK) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    odd = pitch_bytes >> V9X_SIS3D_PITCH_UNIT_SHIFT;
+    while ((odd & 1ul) == 0ul) {
+        odd >>= 1;
+        ++exponent;
+    }
+    if (exponent > V9X_SIS3D_PITCH_EXPONENT_MAX ||
+        odd > V9X_SIS3D_PITCH_ODD_MAX) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    *field = (exponent << V9X_SIS3D_PITCH_EXPONENT_SHIFT) | (odd >> 1);
+    return V9X_STATUS_OK;
+}
+
+/* Bytes per texel of the formats the builder accepts; 0 for the rest. */
+static v9x_u32 v9x_sis3d_texel_bytes(v9x_u32 format)
+{
+    if (format == V9X_SIS3D_TEXEL_RGB555 ||
+        format == V9X_SIS3D_TEXEL_RGB565 ||
+        format == V9X_SIS3D_TEXEL_ARGB1555 ||
+        format == V9X_SIS3D_TEXEL_ARGB4444) {
+        return 2ul;
+    }
+    if (format == V9X_SIS3D_TEXEL_ARGB8888) {
+        return 4ul;
+    }
+    return 0ul;
+}
+
+/* A side's log2 at a level: halved per level, never below one texel. */
+static v9x_u32 v9x_sis3d_mip_log2(v9x_u32 log2_size, v9x_u32 level)
+{
+    return log2_size > level ? log2_size - level : 0ul;
+}
+
+/* A level's tight pitch: its row, rounded up to the 4-byte pitch unit.
+ * Rows are powers of two, so the engine's OR of row and column is safe. */
+static v9x_u32 v9x_sis3d_mip_pitch(const struct v9x_sis3d_texture *texture,
+                                   v9x_u32 texel_bytes, v9x_u32 level)
+{
+    v9x_u32 row = texel_bytes << v9x_sis3d_mip_log2(texture->log2_width,
+                                                    level);
+
+    return row < V9X_SIS3D_PITCH_UNIT ? V9X_SIS3D_PITCH_UNIT : row;
+}
+
+/* The pitch field of level 1-9, or 0 past the chain's last level. */
+static v9x_u32 v9x_sis3d_mip_pitch_field(
+    const struct v9x_sis3d_texture *texture, v9x_u32 texel_bytes,
+    v9x_u32 level)
+{
+    v9x_u32 field = 0ul;
+
+    if (level > texture->levels) {
+        return 0ul;
+    }
+    /* A power of two from 4 to 2048 bytes always encodes. */
+    (void)v9x_sis3d_texture_pitch_field(
+        v9x_sis3d_mip_pitch(texture, texel_bytes, level), &field);
+    return field;
+}
+
+v9x_status v9x_sis3d_build_texture(const struct v9x_sis3d_texture *texture,
+                                   struct v9x_sis3d_writes *writes)
+{
+    v9x_u32 texel_bytes;
+    v9x_u32 row_bytes;
+    v9x_u32 level_bytes;
+    v9x_u32 pitch_field;
+    v9x_u32 level;
+    v9x_u32 offset;
+    v9x_status status;
+
+    if (texture == 0 || writes == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    writes->count = 0u;
+
+    if (texture->log2_width > V9X_SIS3D_TEXTURE_LOG2_MAX ||
+        texture->log2_height > V9X_SIS3D_TEXTURE_LOG2_MAX ||
+        texture->levels > (texture->log2_width > texture->log2_height
+                               ? texture->log2_width
+                               : texture->log2_height) ||
+        texture->blend_mask_bit > V9X_SIS3D_BLEND_MASK_BIT_MAX ||
+        texture->mapping > 0xfful ||
+        (texture->filter & ~(V9X_SIS3D_MAG_LINEAR |
+                             V9X_SIS3D_MIN_MASK)) != 0ul ||
+        (texture->filter & V9X_SIS3D_MIN_MASK) >
+            V9X_SIS3D_MIN_LINEAR_MIP_LINEAR ||
+        texture->colour_mode > V9X_SIS3D_TBLEND_COLOUR_MAX ||
+        texture->alpha_mode > V9X_SIS3D_TBLEND_APIX_ATEX) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    texel_bytes = v9x_sis3d_texel_bytes(texture->format);
+    if (texel_bytes == 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    status = v9x_sis3d_texture_pitch_field(texture->pitch_bytes,
+                                           &pitch_field);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    /* The row term is ORed into the column offset (measured 2026-10-05):
+     * the pitch's lowest set bit must cover the row. */
+    row_bytes = texel_bytes << texture->log2_width;
+    if ((texture->pitch_bytes & (0ul - texture->pitch_bytes)) < row_bytes) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Rows are at most 512 x 4 bytes and pitches at most 2^17, so the
+     * level size stays below 2^26. */
+    level_bytes = texture->pitch_bytes << texture->log2_height;
+    if (texture->offset >= texture->vram_bytes ||
+        level_bytes > texture->vram_bytes - texture->offset) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (level_bytes > V9X_SIS3D_ADDRESS_LIMIT - texture->offset) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    for (level = 1ul; level <= texture->levels; ++level) {
+        level_bytes = v9x_sis3d_mip_pitch(texture, texel_bytes, level) <<
+                      v9x_sis3d_mip_log2(texture->log2_height, level);
+        offset = texture->level_offsets[level - 1ul];
+        if (offset >= texture->vram_bytes ||
+            level_bytes > texture->vram_bytes - offset) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        if (offset >= V9X_SIS3D_ADDRESS_LIMIT ||
+            level_bytes > V9X_SIS3D_ADDRESS_LIMIT - offset) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+    }
+
+    v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_SET,
+                   (texture->format << V9X_SIS3D_TEXEL_SHIFT) |
+                   (texture->mapping << V9X_SIS3D_MAPPING_SHIFT) |
+                   (texture->blend_mask_bit << V9X_SIS3D_BLEND_MASK_SHIFT) |
+                   (texture->levels << V9X_SIS3D_LEVELS_SHIFT) |
+                   (texture->clear_cache ? V9X_SIS3D_CLEAR_CACHE : 0ul) |
+                   texture->filter);
+    v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_BLEND,
+                   (texture->colour_mode << V9X_SIS3D_TBLEND_COLOUR_SHIFT) |
+                   (texture->alpha_mode << V9X_SIS3D_TBLEND_ALPHA_SHIFT));
+    v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_BASE0, texture->offset);
+    /* Two levels a register: the even one in the high field. */
+    v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_PITCH01,
+                   (pitch_field << V9X_SIS3D_PITCH_EVEN_SHIFT) |
+                   v9x_sis3d_mip_pitch_field(texture, texel_bytes, 1ul));
+    v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_SIZE,
+                   (texture->log2_width << V9X_SIS3D_LOG2_WIDTH_SHIFT) |
+                   (texture->log2_height << V9X_SIS3D_LOG2_HEIGHT_SHIFT));
+    for (level = 1ul; level <= texture->levels; ++level) {
+        v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_BASE0 + level * 4ul,
+                       texture->level_offsets[level - 1ul]);
+    }
+    for (level = 2ul; level <= texture->levels; level += 2ul) {
+        v9x_sis3d_emit(writes, V9X_SIS3D_TEXTURE_PITCH01 + level * 2ul,
+                       (v9x_sis3d_mip_pitch_field(texture, texel_bytes,
+                                                  level)
+                        << V9X_SIS3D_PITCH_EVEN_SHIFT) |
+                       v9x_sis3d_mip_pitch_field(texture, texel_bytes,
+                                                 level + 1ul));
+    }
     return V9X_STATUS_OK;
 }
 

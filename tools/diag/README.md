@@ -54,12 +54,15 @@ host-tested builder it compiles in. It publishes `C:\V9XDIAG\SIS2D.TXT`. See
 `sis6326_3d_win32.c` is the SiS 6326 3D engine write probe. Build it
 with `scripts/build-sis6326-3d.ps1` and run `SIS3D.EXE` beside `SIS2D.VXD`
 (which it shares with SIS2D) under Velocity9x at 16 bpp; with no switch it
-runs phase 1, with `/phase2` the shading, Z16, alpha-test and blend scenes.
+runs phase 1, with `/phase2` the shading, Z16, alpha-test and blend scenes,
+with `/phase3` the texture scenes (`/phase3a` the raw pitch-field sweep,
+`/phase3m` the mip scenes alone).
 It **writes the card**: SR39 (restored) and the 3D registers, firing
 triangles into guarded off-screen RGB565 targets (and Z16 buffers) and
 comparing each pixel with a reference. It publishes `C:\V9XDIAG\SIS3D.TXT`.
-See [2026-10-05 SiS 6326 3D first triangle](../../docs/decisions/2026-10-05-sis6326-3d-first-triangle.md)
-and [shading and depth](../../docs/decisions/2026-10-05-sis6326-3d-shading-and-depth.md).
+See [2026-10-05 SiS 6326 3D first triangle](../../docs/decisions/2026-10-05-sis6326-3d-first-triangle.md),
+[shading and depth](../../docs/decisions/2026-10-05-sis6326-3d-shading-and-depth.md)
+and [textures](../../docs/decisions/2026-10-05-sis6326-3d-textures.md).
 
 `ati_rage2_scene.asm` and `ati_rage2_scene_win32.c` run the Rage IIC's
 Phase 2 engine scenes ([plan](../../docs/plans/ati-rage-iic-hardware-3d.md)).

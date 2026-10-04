@@ -1,0 +1,17 @@
+[Sis3dProbe]
+Build=sis3d-20261005-p3b
+Phase=3
+DesktopWidth=800
+DesktopHeight=600
+DesktopBpp=16
+SR05Found=0x000000A1
+SR05Unlocked=0x000000A1
+SRB=0x0000006C
+SR27=0x00000040
+SR39Found=0x00000000
+SR39Enabled=0x00000004
+StatusAtEnable=0x00200074
+IdleWaitAtEnable=0xFFFFFFFF
+Result=3D-NOT-IDLE
+Restored=1
+SR39Final=0x00000000
