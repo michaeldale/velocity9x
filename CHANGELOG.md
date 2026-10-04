@@ -4,6 +4,101 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.10.1 - 2026-10-04
+
+The Rage XL and fog release. The Rage Pro class's first desktop card ran
+here, a Rage XL PCI (`1002:4752`, 8 MB) in A8U4I5. The GMA 950 gains
+vertex fog, and every chip gains a VSync setting. Measured on A8U4I5
+(Rage XL PCI) and the HP Mini 110 netbook (GMA 950). Changes in shared
+code reach every chip of the same design, per the rule recorded with
+the Rage Pro flip below. Families not named were not run.
+
+| On A8U4I5 at 640x480, Rage XL PCI | Velocity9x 0.10.1 |
+|---|---|
+| Half-Life `mwd5` timedemo, Direct3D | 18.1 fps |
+| Quake 2 demo timedemo, OpenGL | 11.6 fps |
+| 3DMark 99 Max | 1225 3DMarks |
+
+Recorded, not chased
+([record](docs/decisions/2026-10-03-rage-xl-pci-benchmarks-a8u4i5.md)).
+
+### ATI Rage Pro class (Rage XL measured)
+
+- **Bound and running on a Rage XL PCI** through the Mach64 engine path,
+  with every V9XDDP triangle, texture, fog and mip check passing
+  ([probe](docs/probe/a8u4i5-rage-xl-pci-2026-10-03/README.md)).
+- **Page flips** through `CRTC_OFF_PITCH` in the vertical blank, the Rage
+  IIC's flip unchanged. Before, every flip on this class was declined and
+  full-screen programs flickered. Watched on the monitor; now declared
+  for the whole Rage Pro class through its shared hook
+  ([record](docs/decisions/2026-10-04-rage-xl-page-flips.md)).
+- **Half-Life's HUD drawn**: an alpha test that passes for every alpha
+  from the batch's least vertex alpha up is dropped rather than refused,
+  which took about 15,000 refusals a run to none
+  ([record](docs/decisions/2026-10-04-mach64-alpha-test-that-cannot-discard.md)).
+- **4x4 and 2x2 textures**, measured; 357 Half-Life draws a run were
+  refused for a 4x4
+  ([record](docs/decisions/2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md)).
+
+### ATI Rage IIC
+
+- **The alpha test on ARGB4444**, through texels whose alpha LSB holds
+  the test's answer, and on RGB565 where the vertex alpha cannot fail
+  it. Blended textured sprites with Z off stay refused: drawn, they
+  hard-locked the machine four times
+  ([record](docs/decisions/2026-10-03-rage-iic-alpha-test.md)).
+- **MASKZ advertised**, being true; it was not why ATI's driver draws a
+  Z-off pass that ours does not
+  ([record](docs/decisions/2026-10-03-rage-iic-ati-driver-sampled-texture-cache.md)).
+
+### Intel GMA 950
+
+- **Vertex fog**, in the fragment program as Mesa's i915 does it, now
+  advertised. Without it 3DMark 99 drew Game 1's fog as a second
+  untextured pass, 19,696 batches a run, now about 300
+  ([record](docs/decisions/2026-10-04-gen3-vertex-fog.md),
+  [the finding](docs/decisions/2026-10-04-netbook-3dmark-untextured-draws-are-a-fog-pass.md)).
+- **The settings page reports DirectDraw acceleration**: the chip
+  published no DirectDraw word, so the page said software emulation
+  while blits have run on the Gen3 blitter since 0.8.1.
+
+### Shared core (all engines)
+
+- **4,096 texture handles instead of 256.** 3DMark 99's Game 2 keeps
+  about 2,700 alive; past 256 TextureCreate failed silently and the
+  lightmap passes drew black. A full table is now counted
+  ([record](docs/decisions/2026-10-04-texture-handle-table-full.md)).
+- **A VSync setting** on the settings page: Game decides (the default),
+  Always on, Always off. It applies at the next DirectDraw program with
+  no restart. Off took 20 flips from 332 ms to 0 on the Rage XL, and from
+  324 ms to 4 on the netbook once an unsynced Intel flip writes the plane
+  base instead of the ring
+  ([record](docs/decisions/2026-10-04-vsync-setting.md)).
+- **OpenGL textures over a device's size limit** are fitted from the
+  chain's smaller levels or a box-filtered copy, not dropped
+  (host-tested; no hardware run has bound one).
+- **The settings page's Direct3D and DirectDraw rows.** The Direct3D
+  line read the colour layout's value and always said "Not advertised";
+  the ATI DirectDraw words had no sentence.
+- **The mode-list sync** picks the display instance present this boot
+  when a swapped card left a second one marked.
+- **DxDiag shows the driver version**: Win16 version resources are now
+  laid out by the build, which fails if Windows cannot read them.
+
+### Diagnostics
+
+- V9XTRACE gains `D3dTextureTableFull`, `FlipVSyncOverridden`, a census
+  of untextured batches (`NoHandle*`: blend, varying coordinates, white,
+  last state and colour), and per-reason counts for the Mach64 passive
+  check and the Rage IIC's alpha test (shared ABI 2026100409; DRV, HAL
+  and V9XTRACE deploy together).
+
+Still open: the Rage IIC's blended Z-off sprites hard-lock it and stay
+refused; texel-times-vertex alpha is refused on the Rage IIC; Image
+Quality's Game 1 capture is washed white on the Rage XL, not looked at;
+Intel table fog and specular colour are not drawn; the GMA 950's fog was
+seen only in 128x72 captures.
+
 ## 0.10.0 - 2026-10-03
 
 The Rage IIC release: hardware Direct3D and the first OpenGL this card has

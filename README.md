@@ -18,9 +18,9 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.10.0, the Rage IIC release** — see the
-[changelog](CHANGELOG.md). Download it from
-[releases/0.10.0](releases/0.10.0/README.md).
+**Current version: 0.10.1, the Rage XL and fog release** — see the
+[changelog](CHANGELOG.md). Its downloads are not published yet; the latest
+published release is [0.10.0](releases/0.10.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
