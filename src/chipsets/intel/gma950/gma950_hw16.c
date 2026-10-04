@@ -83,16 +83,12 @@ unsigned long v9x_gma950_reserve_video_memory(
  * machine. So both come from the mini-VDD, which mapped them during the
  * capture and GTT paths, and neither is computed here.
  *
- * WHAT THIS DOES NOT DO: claim D3D.
+ * D3D is claimed only with a ring (below). Caps published against an engine
+ * that cannot submit is the exact failure V9X_D3D_ENGINE_OPS gained its
+ * `ready` member to prevent: every call accepted, every HRESULT a success,
+ * and nothing on the screen.
  *
- * engine_caps carries no V9X_DD_ENGINE_CAP_D3D, and that is deliberate rather
- * than pending. The engine behind V9X_DD_ENGINE_TYPE_INTEL_GEN3 reports itself
- * not ready - it has no submission path yet - and caps published against an
- * engine that refuses every draw is the exact failure V9X_D3D_ENGINE_OPS
- * gained its `ready` member to prevent: every call accepted, every HRESULT a
- * success, and nothing on the screen.
- *
- * The type IS set, which matters. Leaving it NONE would make
+ * The type is set even without the claim, which matters. Leaving it NONE would make
  * v9x_d3d_publish_engine fall through to its default - the binary's one
  * hardware engine, which is the ViRGE - so a Gen3 part would resolve an S3
  * engine at the point in DriverInit where engine_type is normally unreadable.
@@ -189,13 +185,9 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * "an application may drive this engine" should not rest on that staying
      * true.
      *
-     * NOT YET RUN. No guest has executed one of these streams. The first boot
-     * with this bit set is the experiment the amendment describes, not a
-     * driver release.
-     *
-     * 2D capabilities stay absent: engine-only ownership means the VBIOS keeps
-     * the display, and nothing here has driven a blit outside the armed
-     * diagnostic, so solid fill, screen copy, flip and vblank are unclaimed.
+     * No 2D bit is needed for DirectDraw fills and copies: the HAL routes
+     * those by engine_type to engines\eng_i9xx.c, which falls back to the
+     * CPU without a ring. FLIP is claimed below; the VBIOS keeps the mode.
      */
     if (v9x_intel_runtime3d_allowed != 0u && *ring_linear_base != 0ul) {
         *engine_caps = V9X_DD_ENGINE_CAP_D3D;

@@ -1,34 +1,20 @@
 /*
- * The Intel Gen3 engine seam, wired and NOT READY.
+ * The Intel Gen3 Direct3D engine: runtime draws on the GMA 950, submitted to
+ * the ring by this file's own path (v9x_d3d_i9xx_ring_submit).
  *
- * This file exists so the plumbing around a Gen3 engine is present and tested
- * while the engine itself is not. `ready` returns zero, `describe_caps`
- * publishes nothing and `draw_triangles` refuses every batch, so nothing can
- * reach hardware through it. The intel-gma family manifest still declares
- * EngineType NONE, so nothing selects it either.
+ * Every stream built here passes the decoder's allowlist before it reaches
+ * the ring. That allowlist is what the sustained-3D amendment to the errata
+ * gate put in place of the diagnostic path's draw bound and CRC gate
+ * (docs\decisions\2026-09-15-intel-phase5-errata-gate.md). The capability
+ * bit comes from the 16-bit side only when this boot's IntelRuntime3D
+ * permission brought a ring up (gma950_hw16.c), and `ready` checks the
+ * windows and the ring again, so the caps never outlive the engine behind
+ * them.
  *
- * Two things stand between here and an engine that draws, and only one of them
- * is code:
- *
- *  - There is NO 32-bit ring submission path. Every Gen3 draw this project has
- *    performed went through the mini-VDD's armed one-shot verb, staged and
- *    CRC-gated, with the driver blind to the ring. A HAL that draws on demand
- *    needs its own submission, completion and recovery, and none of that
- *    exists.
- *
- *  - Sustained 3D work is NOT AUTHORISED. The errata gate authorises five
- *    independent diagnostic draws per armed boot and names "sustained or
- *    repeated 3D work in the sense of a workload" among the things it does
- *    not cover (docs\decisions\2026-09-15-intel-phase5-errata-gate.md). An
- *    application issuing draws is exactly that. Publishing caps before that
- *    decision is taken would put the machine outside its own authorisation on
- *    the first frame.
- *
- * So what is here is the seam: the ABI value, the selector arms, the limits
- * this part is MEASURED to support, and the render-target binding every
- * runtime draw will need. The binding is real arithmetic with a host test,
- * because it is the first thing a draw does and the first thing that can be
- * wrong about an arbitrary surface rather than the diagnostic sandbox.
+ * The file began as a seam that reported NOT READY (efe0d5d). The
+ * render-target binding from that time is still a leaf unit with a host
+ * test, because it is the first thing a draw does and the first thing that
+ * can be wrong about an arbitrary surface.
  *
  * docs\plans\hardware-d3d-on-intel-gma950.md phase 7.
  */
@@ -2647,7 +2633,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
 }
 
 /*
- * Ready when the two windows are mapped, and not otherwise.
+ * Ready when the two windows and the ring are mapped, and not otherwise.
  *
  * The header records why this entry point exists: without it an engine can
  * resolve, publish caps, accept every call and draw nothing, with every
@@ -2655,10 +2641,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
  * submission path; there is one now, so it answers the real question -
  * whether the windows a submission needs are there.
  *
- * WHAT THIS IS NOT is a claim that the engine draws. No guest has executed
- * one of these streams. What keeps applications away from it is the
- * capability bit, which the 16-bit side still does not set; this answering
- * yes only means the core would route a draw here if one arrived.
+ * It is not the gate on applications: the capability bit is, which the
+ * 16-bit side sets only with a ring. This answering yes means the core may
+ * route a draw here.
  */
 static int v9x_d3d_i9xx_ready(void)
 {
@@ -2678,10 +2663,6 @@ static int v9x_d3d_i9xx_ready(void)
      * the descriptor means the mini-VDD brought one up and reported where it
      * is; its absence means it could not, and an engine without one would
      * advance a TAIL nobody reads.
-     *
-     * This is still not a claim that the engine draws. No guest has executed
-     * one of these streams. What keeps applications away is the capability
-     * bit, which the 16-bit side does not set.
      */
     if (v9x_hal->engine.ring_linear_base == 0ul ||
         v9x_hal->engine.ring_bytes == 0ul) {

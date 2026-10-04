@@ -87,10 +87,14 @@ DirectDraw surface allocation and VGA-port vblank services are shared by the
 S3, ATI and VBE packages. The guarded Matrox candidate packages the display
 driver and settings page without `V9XHAL.DLL`; its historical mixed-pair result
 establishes software GDI only.
-Hardware primary page flipping is S3 and Intel GMA 950 only: the
+Hardware primary page flipping is S3, Intel GMA 950 and ATI only: the
 [HAL](../src/display32/ddhal_core.c) declines it without a native display-start
-capability. A successful surface allocation or vblank probe does not establish
-hardware flipping on ATI or VBE. All targets use software cursors.
+capability. ATI flips and reads the blank through `CRTC_OFF_PITCH` and
+`CRTC_VLINE` rather than the VGA port, measured on the Rage IIC
+([record](decisions/2026-10-03-rage-iic-scanout-start.md)) and a Rage XL PCI,
+and claimed for the Mobility-M on that shared CRTC. A successful surface
+allocation or vblank probe does not establish hardware flipping on VBE. All
+targets use software cursors.
 
 ## Open work, in order
 

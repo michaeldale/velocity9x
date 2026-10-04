@@ -604,6 +604,9 @@ It must initially refuse:
 The silicon exposes more than this boundary. The boundary describes the first
 implementation that can be made truthful and testable with 4 MiB VRAM.
 
+Since crossed: mipmapping (`e0b04db`, per-level offsets and measured level
+thresholds) and trilinear filtering on mip chains (`9f24520`).
+
 ## The 4 MiB constraint
 
 A full-screen front, back and Z16 consume three 16-bpp surfaces before

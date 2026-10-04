@@ -8,8 +8,10 @@ A8U4I5 (10.0.1.172). Started 2026-10-02.
 - Read-only register survey and desk research:
   [2026-10-02 register survey](../decisions/2026-10-02-rage-iic-register-survey.md).
   The part is a 264GT2C (Rage II class). It has the Mobility's register
-  window (BAR2, 4 KiB), its 2D engine and the `GUI_STAT` FIFO model, but no
-  triangle setup engine.
+  window (BAR2, 4 KiB) and its 2D engine, but no triangle setup engine. The
+  survey also credited it with the Mobility's `GUI_STAT` FIFO model; that was
+  wrong, and it takes the 16-entry `FIFO_STAT` model (Phase 1 second
+  attempt, below).
 - Tier-0 bind (`397da71`) and first boot:
   [2026-10-02 first bind](../decisions/2026-10-02-rage-iic-first-velocity9x-bind.md).
   GDI, all 19 published modes, and DirectDraw mode/palette/flip all pass.

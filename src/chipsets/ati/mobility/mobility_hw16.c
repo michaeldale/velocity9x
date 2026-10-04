@@ -43,10 +43,10 @@ extern unsigned short __far __pascal V9xMiniAtiMmioMap(
  * CONFIG_CHIP_ID names a part it knows before handing the window over;
  * eng_mach64.c then checks it names a Rage Pro-class part.
  *
- * Claims D3D, flips and the blank. The 2D fill still reaches the engine by
- * type, because the HAL routes DirectDraw colour and depth fills by
- * engine_type; it is the Phase 2 fill/clear stream. Screen copy declines in
- * eng_mach64.c, so no copy claim is made.
+ * Claims D3D, flips and the blank. 2D fills and copies reach the engine
+ * without a claim, because the HAL routes DirectDraw colour and depth fills
+ * and screen copies by engine_type: the Phase 2 fill/clear and copy streams
+ * in eng_mach64.c (copy since 2026-09-29).
  *
  * VT2 never gets this: it has no Rage setup engine, and its entry keeps a
  * NULL hook.
