@@ -37,6 +37,7 @@
 #define V9X_GL_CULL_FACE      0x0B44u
 #define V9X_GL_BLEND          0x0BE2u
 #define V9X_GL_ALPHA_TEST     0x0BC0u
+#define V9X_GL_POLYGON_OFFSET_FILL 0x8037u
 
 #define V9X_GL_NEVER          0x0200u
 #define V9X_GL_LESS           0x0201u
@@ -99,6 +100,13 @@ typedef struct v9x_gl_pipeline {
     GLfloat alpha_ref;
     GLdouble depth_near;
     GLdouble depth_far;
+    /* glPolygonOffset's factor and units (3.5.5), applied to filled
+     * triangles while POLYGON_OFFSET_FILL is enabled. */
+    GLfloat offset_factor;
+    GLfloat offset_units;
+    /* POLYGON_OFFSET_FILL as it was at Begin; it cannot change before
+     * End, and the triangles do not look it up each. */
+    int offset_on;
     /* The primitive being assembled: its mode, how many vertices so far,
      * and the ones the next triangle may need. */
     GLenum mode;
@@ -207,6 +215,9 @@ void v9x_gl_prim_alpha_func(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                             GLenum func, GLclampf ref);
 void v9x_gl_prim_depth_range(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                              GLclampd near_value, GLclampd far_value);
+void v9x_gl_prim_polygon_offset(V9X_GL_STATE *state,
+                                V9X_GL_PIPELINE *pipeline,
+                                GLfloat factor, GLfloat units);
 
 /* glBegin, glVertex, glEnd. A vertex outside Begin/End is ignored, which is
  * what the specification leaves open (2.6.3). */

@@ -364,6 +364,78 @@ static void v9x_glp_sgis(GLint width, GLint height)
     glDisable(GL_TEXTURE_2D);
 }
 
+/*
+ * glPolygonOffset with POLYGON_OFFSET_FILL (GL 1.1 3.5.5), as Half-Life's
+ * decals use it: under LESS, a second quad in the first one's plane loses
+ * without an offset, wins with units -4 (four depth steps nearer) and
+ * loses again with +4. Read from the back buffer before any swap.
+ */
+static void v9x_glp_offset_quad(GLint width, GLint height)
+{
+    glBegin(GL_QUADS);
+    glVertex3f(0.0f, 0.0f, 0.0f);
+    glVertex3f((GLfloat)width, 0.0f, 0.0f);
+    glVertex3f((GLfloat)width, (GLfloat)height, 0.0f);
+    glVertex3f(0.0f, (GLfloat)height, 0.0f);
+    glEnd();
+}
+
+static void v9x_glp_polygon_offset(GLint width, GLint height)
+{
+    DWORD rgb;
+    GLfloat value = 0.0f;
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearDepth(1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glColor3f(1.0f, 0.0f, 0.0f);
+    v9x_glp_offset_quad(width, height);
+    glColor3f(0.0f, 1.0f, 0.0f);
+    v9x_glp_offset_quad(width, height);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("OffsetNone", rgb);
+    v9x_glp_uint("OffsetNoneOk", v9x_glp_near(rgb, 255ul, 0ul, 0ul) ? 1ul : 0ul);
+
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(0.0f, -4.0f);
+    v9x_glp_offset_quad(width, height);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("OffsetNearer", rgb);
+    v9x_glp_uint("OffsetNearerOk",
+                 v9x_glp_near(rgb, 0ul, 255ul, 0ul) ? 1ul : 0ul);
+
+    glPolygonOffset(0.0f, 4.0f);
+    glColor3f(0.0f, 0.0f, 1.0f);
+    v9x_glp_offset_quad(width, height);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("OffsetFarther", rgb);
+    v9x_glp_uint("OffsetFartherOk",
+                 v9x_glp_near(rgb, 0ul, 255ul, 0ul) ? 1ul : 0ul);
+
+    glGetFloatv(GL_POLYGON_OFFSET_UNITS, &value);
+    v9x_glp_uint("OffsetUnitsQueryOk", value == 4.0f ? 1ul : 0ul);
+    v9x_glp_hex("ErrorAfterOffset", (DWORD)glGetError());
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(0.0f, 0.0f);
+    glDisable(GL_DEPTH_TEST);
+}
+
 void __stdcall V9xGlProbeEntry(void)
 {
     WNDCLASSA window_class;
@@ -1593,6 +1665,8 @@ void __stdcall V9xGlProbeEntry(void)
             GetClientRect(window, &client);
             v9x_glp_sgis(client.right - client.left,
                          client.bottom - client.top);
+            v9x_glp_polygon_offset(client.right - client.left,
+                                   client.bottom - client.top);
         }
         {
             DWORD started = GetTickCount();

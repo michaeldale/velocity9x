@@ -97,6 +97,9 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->alpha_ref = 0.0f;
     pipeline->depth_near = 0.0;
     pipeline->depth_far = 1.0;
+    pipeline->offset_factor = 0.0f;
+    pipeline->offset_units = 0.0f;
+    pipeline->offset_on = 0;
     pipeline->mode = V9X_GL_TRIANGLES;
     pipeline->count = 0ul;
     pipeline->ring_head = 0u;
@@ -290,6 +293,17 @@ void v9x_gl_prim_depth_range(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                         : (far_value > 1.0 ? 1.0 : far_value);
 }
 
+void v9x_gl_prim_polygon_offset(V9X_GL_STATE *state,
+                                V9X_GL_PIPELINE *pipeline,
+                                GLfloat factor, GLfloat units)
+{
+    if (!v9x_gl_prim_allowed(state)) {
+        return;
+    }
+    pipeline->offset_factor = factor;
+    pipeline->offset_units = units;
+}
+
 void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
 {
     if (pipeline->batch_triangles == 0ul) {
@@ -370,6 +384,8 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     state->in_begin = 1;
     pipeline->mode = mode;
     pipeline->count = 0ul;
+    pipeline->offset_on =
+        v9x_gl_state_cap(state, V9X_GL_POLYGON_OFFSET_FILL) ? 1 : 0;
     if (v9x_gl_prim_begin_unchanged(state, pipeline)) {
         return;
     }
@@ -724,6 +740,49 @@ static void v9x_gl_prim_emit(const V9X_GL_STATE *state,
     out->tv = v->tex[1] / q;
 }
 
+/*
+ * Polygon offset (3.5.5) on one emitted triangle: every depth moves by
+ * factor * m + units * r and is clamped to [0, 1]. m is the larger of
+ * |dz/dx| and |dz/dy| over the triangle's plane in window coordinates -
+ * the specification's allowed approximation of the gradient's length - and
+ * r is one step of the 16-bit depth buffer every engine here has. A
+ * triangle with no area has no plane, and is offset by the units alone.
+ * The low clamp gives +0.0, never -0.0, which Gen3's stream builder refuses.
+ */
+#define V9X_GL_PRIM_DEPTH_STEP (1.0f / 65535.0f)
+
+static GLfloat v9x_gl_prim_abs(GLfloat value)
+{
+    return value < 0.0f ? -value : value;
+}
+
+static void v9x_gl_prim_offset(const V9X_GL_PIPELINE *pipeline,
+                               V9X_R3D_ABI_VERTEX *out)
+{
+    GLfloat x1 = out[1].sx - out[0].sx;
+    GLfloat y1 = out[1].sy - out[0].sy;
+    GLfloat z1 = out[1].sz - out[0].sz;
+    GLfloat x2 = out[2].sx - out[0].sx;
+    GLfloat y2 = out[2].sy - out[0].sy;
+    GLfloat z2 = out[2].sz - out[0].sz;
+    GLfloat area = x1 * y2 - x2 * y1;
+    GLfloat slope = 0.0f;
+    GLfloat offset;
+    unsigned int i;
+
+    if (area != 0.0f) {
+        GLfloat dzdx = v9x_gl_prim_abs((z1 * y2 - z2 * y1) / area);
+        GLfloat dzdy = v9x_gl_prim_abs((x1 * z2 - x2 * z1) / area);
+
+        slope = dzdx > dzdy ? dzdx : dzdy;
+    }
+    offset = pipeline->offset_factor * slope +
+             pipeline->offset_units * V9X_GL_PRIM_DEPTH_STEP;
+    for (i = 0u; i < 3u; ++i) {
+        out[i].sz = v9x_gl_prim_clamp(out[i].sz + offset, 0.0f, 1.0f);
+    }
+}
+
 /* Culled by its signed window area, positive counter-clockwise (2.13.1). */
 static int v9x_gl_prim_culled(const V9X_GL_STATE *state,
                               const V9X_GL_PIPELINE *pipeline, GLfloat area)
@@ -781,6 +840,9 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
             if (pipeline->shade_model == V9X_GL_FLAT) {
                 out[i].color = v9x_gl_prim_argb(provoking->color);
             }
+        }
+        if (pipeline->offset_on) {
+            v9x_gl_prim_offset(pipeline, out);
         }
         if (pipeline->units > 1ul) {
             GLfloat *tex1 =
@@ -841,6 +903,9 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
                          &window[i]);
         v9x_gl_prim_emit(state, pipeline, &out[2], &polygon[i + 1u],
                          &window[i + 1u]);
+        if (pipeline->offset_on) {
+            v9x_gl_prim_offset(pipeline, out);
+        }
         if (pipeline->units > 1ul) {
             GLfloat *tex1 =
                 &pipeline->batch_tex1[pipeline->batch_triangles * 6ul];

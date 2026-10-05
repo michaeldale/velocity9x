@@ -1,0 +1,3 @@
+195 pid=FFE3A777 counters hwtex live=214 creates=214 create-failed=0 evictions=0 uploads=3093 partial=2853 upload-kb=4470 squared=0 alpha-dropped=8924 stubs=0 failed r4=0 r7=0 r8=0 other=0
+198 pid=FFE3A777 counters hwtex live=0 creates=214 create-failed=0 evictions=0 uploads=3093 partial=2853 upload-kb=4470 squared=0 alpha-dropped=9278 stubs=0 failed r4=0 r7=0 r8=0 other=0
+200 pid=FFE3A777 detach slots-called=0 stub-calls=0

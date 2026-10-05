@@ -1041,6 +1041,98 @@ static void test_second_texture_coordinate(void)
     PCHECK(sunk_triangles == 1ul && sunk_tex1_batches == 0ul);
 }
 
+/*
+ * glPolygonOffset (GL 1.1 3.5.5): with POLYGON_OFFSET_FILL, every window
+ * depth of a triangle moves by factor * m + units * r, m the larger of
+ * |dz/dx| and |dz/dy| in window coordinates and r one step of the 16-bit
+ * depth buffer, clamped to [0, 1]. Under this scene's ortho a vertex at
+ * object z has window depth 0.5 - z / 2.
+ */
+#define V9X_GL_POLYGON_OFFSET_FILL_CAP 0x8037u
+
+static void offset_triangle(V9X_GL_STATE *s, V9X_GL_PIPELINE *p, float x0,
+                            float z1)
+{
+    v9x_gl_prim_begin(s, p, V9X_GL_TRIANGLES);
+    v9x_gl_prim_vertex(s, p, x0, 0.0f, 0.0f, 1.0f);
+    v9x_gl_prim_vertex(s, p, x0 + 100.0f, 0.0f, z1, 1.0f);
+    v9x_gl_prim_vertex(s, p, x0, 100.0f, 0.0f, 1.0f);
+    v9x_gl_prim_end(s, p);
+}
+
+static void test_polygon_offset(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    const float step = 1.0f / 65535.0f;
+    v9x_u32 i;
+
+    /* Off: the depths as they are, whatever the offset says. */
+    scene(&s, &p);
+    v9x_gl_prim_polygon_offset(&s, &p, 2.0f, 8.0f);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    PCHECK(p.offset_factor == 2.0f && p.offset_units == 8.0f);
+    offset_triangle(&s, &p, 10.0f, 0.5f);
+    PCHECK(sunk_triangles == 1ul && near_value(sunk[0].sz, 0.5f) &&
+           near_value(sunk[1].sz, 0.25f) && near_value(sunk[2].sz, 0.5f));
+
+    /* The slope: z falls 0.25 over 100 pixels, so m is 0.0025 and a
+     * factor of two moves every corner by 0.005. */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_POLYGON_OFFSET_FILL_CAP, 1);
+    v9x_gl_prim_polygon_offset(&s, &p, 2.0f, 0.0f);
+    offset_triangle(&s, &p, 10.0f, 0.5f);
+    PCHECK(sunk_triangles == 1ul && near_value(sunk[0].sz, 0.505f) &&
+           near_value(sunk[1].sz, 0.255f) && near_value(sunk[2].sz, 0.505f));
+
+    /* Units on a level triangle: four depth steps nearer, exactly. */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_POLYGON_OFFSET_FILL_CAP, 1);
+    v9x_gl_prim_polygon_offset(&s, &p, 0.0f, -4.0f);
+    offset_triangle(&s, &p, 10.0f, 0.0f);
+    for (i = 0ul; i < 3ul; ++i) {
+        float d = sunk[i].sz - (0.5f - 4.0f * step);
+
+        PCHECK(d < 0.0000005f && d > -0.0000005f);
+    }
+
+    /* The same through the clipper: a triangle half off the left edge is
+     * offset in every piece. */
+    sunk_triangles = 0ul;
+    offset_triangle(&s, &p, -50.0f, 0.0f);
+    PCHECK(sunk_triangles >= 1ul);
+    for (i = 0ul; i < vsunk_count(); ++i) {
+        float d = sunk[i].sz - (0.5f - 4.0f * step);
+
+        PCHECK(d < 0.0000005f && d > -0.0000005f);
+    }
+
+    /* Clamped to the depth range's ends, the low end as +0.0 (Gen3's
+     * stream builder refuses a sign bit). */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_POLYGON_OFFSET_FILL_CAP, 1);
+    v9x_gl_prim_polygon_offset(&s, &p, 0.0f, -100000.0f);
+    offset_triangle(&s, &p, 10.0f, 0.0f);
+    {
+        union { float f; v9x_u32 u; } bits;
+
+        bits.f = sunk[0].sz;
+        PCHECK(bits.u == 0ul);
+    }
+    v9x_gl_prim_polygon_offset(&s, &p, 0.0f, 100000.0f);
+    sunk_triangles = 0ul;
+    offset_triangle(&s, &p, 10.0f, 0.0f);
+    PCHECK(sunk[1].sz == 1.0f);
+
+    /* Inside Begin/End it is INVALID_OPERATION and changes nothing. */
+    scene(&s, &p);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    v9x_gl_prim_polygon_offset(&s, &p, 1.0f, 1.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    PCHECK(p.offset_factor == 0.0f && p.offset_units == 0.0f);
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
     gl_prim_failures = 0u;
@@ -1057,6 +1149,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_scissor_clips_geometry();
     test_pipeline_output_unchanged();
     test_second_texture_coordinate();
+    test_polygon_offset();
     test_begin_follows_state_changes();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");

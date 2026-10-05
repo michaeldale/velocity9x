@@ -117,6 +117,12 @@ static void test_after_commands(void)
     v9x_gl_prim_depth_range(&s, &p, 0.25, 0.75);
     v9x_gl_get(&s, &p, &t, 0x0B70u, V9X_GL_GET_DOUBLE, d);
     GGCHECK(near_value(d[0], 0.25) && near_value(d[1], 0.75));
+    /* POLYGON_OFFSET_FACTOR and _UNITS (table 6.9). */
+    v9x_gl_prim_polygon_offset(&s, &p, -1.5f, -2.0f);
+    v9x_gl_get(&s, &p, &t, 0x8038u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(near_value(f[0], -1.5));
+    v9x_gl_get(&s, &p, &t, 0x2A00u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(near_value(f[0], -2.0));
     v9x_gl_prim_blend_func(&s, &p, V9X_GL_SRC_ALPHA,
                            V9X_GL_ONE_MINUS_SRC_ALPHA);
     GGCHECK(geti(0x0BE1u) == (GLint)V9X_GL_SRC_ALPHA);

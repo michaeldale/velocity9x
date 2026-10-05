@@ -2521,6 +2521,15 @@ static void V9X_GL_API v9x_gl_depth_range(GLclampd near_value,
                                                  near_value, far_value));
 }
 
+/* glPolygonOffset (3.5.5): applied as each triangle is emitted, so a batch
+ * already held keeps the depths it was made with. */
+static void V9X_GL_API v9x_gl_polygon_offset(GLfloat factor, GLfloat units)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_polygon_offset(&context_->state,
+                                                    &context_->pipeline,
+                                                    factor, units));
+}
+
 /* ---- Normals and vertex arrays (2.7, 2.8), gl_varray.c --------------- */
 
 static void V9X_GL_API v9x_gl_normal3f(GLfloat x, GLfloat y, GLfloat z)
@@ -2814,6 +2823,7 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glBlendFunc, v9x_gl_blend_func);
     V9X_GL_OVERRIDE(glAlphaFunc, v9x_gl_alpha_func);
     V9X_GL_OVERRIDE(glDepthRange, v9x_gl_depth_range);
+    V9X_GL_OVERRIDE(glPolygonOffset, v9x_gl_polygon_offset);
     V9X_GL_OVERRIDE(glGenTextures, v9x_gl_gen_textures);
     V9X_GL_OVERRIDE(glDeleteTextures, v9x_gl_delete_textures);
     V9X_GL_OVERRIDE(glIsTexture, v9x_gl_is_texture);

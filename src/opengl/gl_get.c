@@ -128,6 +128,10 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
         return 1;
     case 0x0B21u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT, state->line_width);
         return 1;
+    case 0x8038u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT,
+                             pipeline->offset_factor); return 1;
+    case 0x2A00u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT,
+                             pipeline->offset_units); return 1;
     case 0x0B11u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT, state->point_size);
         return 1;
     /* Lines and points are aliased and one pixel wide here: the ranges
