@@ -50,7 +50,11 @@ folded: the benchmark runs with no refusal and no timeout
 ([record](../decisions/2026-10-05-sis6326-mag-filter-fold.md)). 3DMark 99
 Max ran its full suite the same way
 ([evidence](../probe/a8u4i5-sis6326-3dmark99-2026-10-05/README.md)).
-Half-Life remains.
+Half-Life's mwd5 timedemo at 640x480 ran with no timeout: Direct3D
+10.4-11.4 fps, with 37,303 batches refused for DESTCOLOR/SRCCOLOR
+blending. OpenGL ran at 0.8 fps on the CPU engine only, since the SiS
+engine takes no render-interface draws
+([evidence](../probe/a8u4i5-sis6326-halflife-2026-10-05/README.md)).
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 
