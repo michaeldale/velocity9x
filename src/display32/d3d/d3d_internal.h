@@ -320,6 +320,13 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD depth_fill_shift;
     /*
+     * Textures one render-interface draw may combine: 2 for an engine that
+     * draws V9X_R3D_DRAW.texture1, and zero or 1 for one unit. Appended
+     * 2026-10-05 (docs\plans\gen3-sgis-multitexture.md); an initialiser
+     * that stops short leaves it zero.
+     */
+    DWORD texture_units;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

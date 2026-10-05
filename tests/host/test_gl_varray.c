@@ -22,11 +22,12 @@ static V9X_R3D_ABI_VERTEX vsunk[3u * VSINK_MAX];
 static v9x_u32 vsunk_triangles;
 
 static int vsink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
-                 v9x_u32 triangle_count)
+                 const GLfloat *texcoords1, v9x_u32 triangle_count)
 {
     v9x_u32 i;
 
     (void)user;
+    (void)texcoords1;
     for (i = 0ul; i < triangle_count * 3ul &&
                   vsunk_triangles * 3ul + i < 3ul * VSINK_MAX; ++i) {
         vsunk[vsunk_triangles * 3ul + i] = vertices[i];

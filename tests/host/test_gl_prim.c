@@ -26,8 +26,11 @@ static V9X_R3D_ABI_VERTEX sunk[3u * SINK_MAX];
 static v9x_u32 sunk_triangles;
 static v9x_u32 sunk_batches;
 
+static GLfloat sunk_tex1[2u * 3u * SINK_MAX];
+static v9x_u32 sunk_tex1_batches;
+
 static int sink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
-                v9x_u32 triangle_count)
+                const GLfloat *texcoords1, v9x_u32 triangle_count)
 {
     v9x_u32 i;
 
@@ -35,6 +38,14 @@ static int sink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     for (i = 0ul; i < triangle_count * 3ul && sunk_triangles * 3ul + i <
                                                   3ul * SINK_MAX; ++i) {
         sunk[sunk_triangles * 3ul + i] = vertices[i];
+        if (texcoords1 != 0) {
+            sunk_tex1[(sunk_triangles * 3ul + i) * 2ul] = texcoords1[i * 2ul];
+            sunk_tex1[(sunk_triangles * 3ul + i) * 2ul + 1ul] =
+                texcoords1[i * 2ul + 1ul];
+        }
+    }
+    if (texcoords1 != 0) {
+        ++sunk_tex1_batches;
     }
     sunk_triangles += triangle_count;
     ++sunk_batches;
@@ -68,6 +79,7 @@ static void scene(V9X_GL_STATE *s, V9X_GL_PIPELINE *p)
     v9x_gl_state_matrix_mode(s, V9X_GL_MODELVIEW);
     sunk_triangles = 0ul;
     sunk_batches = 0ul;
+    sunk_tex1_batches = 0ul;
 }
 
 static void vertex(V9X_GL_STATE *s, V9X_GL_PIPELINE *p, float x, float y)
@@ -765,13 +777,14 @@ static v9x_u32 golden_seed;
 static v9x_u32 golden_counts[V9X_GL_PRIM_PROF_DWORDS];
 
 static int golden_sink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
-                       v9x_u32 triangle_count)
+                       const GLfloat *texcoords1, v9x_u32 triangle_count)
 {
     const unsigned char *bytes = (const unsigned char *)vertices;
     v9x_u32 count = triangle_count * 3ul * (v9x_u32)sizeof(*vertices);
     v9x_u32 i;
 
     (void)user;
+    (void)texcoords1;
     for (i = 0ul; i < count; ++i) {
         golden_hash = (golden_hash ^ bytes[i]) * 16777619ul;
     }
@@ -859,6 +872,175 @@ static void test_pipeline_output_unchanged(void)
     PCHECK(golden_counts[V9X_GL_PRIM_PROF_CULLED] > 100ul);
 }
 
+/*
+ * GL_SGIS_multitexture's second coordinate: carried beside the vertex, in
+ * the vertex's order, through the fast path and the clipper, and not
+ * touching a byte of the 32-byte vertices. A run of the golden stream with
+ * q = 1 and a unit-1 coordinate that is an affine function of unit 0's -
+ * (2s + 1, t - 3) - must sink the same vertices as the same run with one
+ * unit, and every vertex's unit-1 coordinate must be that function of its
+ * emitted tu/tv, because clipping interpolates both linearly.
+ */
+static v9x_u32 pair_hash;
+static v9x_u32 pair_vertices;
+static v9x_u32 pair_tex1_batches;
+static v9x_u32 pair_tex1_wrong;
+
+static int pair_sink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                     const GLfloat *texcoords1, v9x_u32 triangle_count)
+{
+    const unsigned char *bytes = (const unsigned char *)vertices;
+    v9x_u32 count = triangle_count * 3ul * (v9x_u32)sizeof(*vertices);
+    v9x_u32 i;
+
+    (void)user;
+    for (i = 0ul; i < count; ++i) {
+        pair_hash = (pair_hash ^ bytes[i]) * 16777619ul;
+    }
+    if (texcoords1 != 0) {
+        ++pair_tex1_batches;
+        for (i = 0ul; i < triangle_count * 3ul; ++i) {
+            float s1 = 2.0f * vertices[i].tu + 1.0f;
+            float t1 = vertices[i].tv - 3.0f;
+            float ds = texcoords1[i * 2ul] - s1;
+            float dt = texcoords1[i * 2ul + 1ul] - t1;
+
+            if (ds > 0.001f || ds < -0.001f || dt > 0.001f || dt < -0.001f) {
+                ++pair_tex1_wrong;
+            }
+        }
+    }
+    pair_vertices += triangle_count * 3ul;
+    return 1;
+}
+
+static void pair_run(v9x_u32 units)
+{
+    static const GLenum modes[6] = {
+        V9X_GL_TRIANGLES, V9X_GL_TRIANGLE_STRIP, V9X_GL_TRIANGLE_FAN,
+        V9X_GL_QUADS, V9X_GL_QUAD_STRIP, V9X_GL_POLYGON
+    };
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    unsigned int pass;
+    unsigned int prim;
+    unsigned int k;
+
+    pair_hash = 2166136261ul;
+    pair_vertices = 0ul;
+    pair_tex1_batches = 0ul;
+    pair_tex1_wrong = 0ul;
+    golden_seed = 12345ul;
+    for (pass = 0u; pass < 8u; ++pass) {
+        v9x_gl_state_init(&s);
+        v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_RGB565, 1);
+        v9x_gl_pipeline_init(&p);
+        v9x_gl_pipeline_sink(&p, pair_sink, 0);
+        v9x_gl_pipeline_units(&p, units);
+        v9x_gl_state_matrix_mode(&s, V9X_GL_PROJECTION);
+        v9x_gl_state_frustum(&s, -1.0, 1.0, -0.625, 0.625, 1.0, 400.0);
+        v9x_gl_state_matrix_mode(&s, V9X_GL_MODELVIEW);
+        v9x_gl_state_translate(&s, 0.0f, 0.0f, -60.0f);
+        v9x_gl_state_rotate(&s, 17.0f + 11.0f * (GLfloat)pass, 0.3f, 1.0f,
+                            0.2f);
+        if ((pass & 1u) != 0u) {
+            v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+        }
+        if ((pass & 2u) != 0u) {
+            v9x_gl_prim_shade_model(&s, &p, V9X_GL_FLAT);
+        }
+        if ((pass & 4u) != 0u) {
+            v9x_gl_state_enable(&s, V9X_GL_SCISSOR_TEST_CAP, 1);
+            v9x_gl_state_scissor(&s, 40, 30, 200, 120);
+        }
+        for (prim = 0u; prim < 60u; ++prim) {
+            unsigned int count = 3u + (unsigned int)(golden_seed % 7u);
+            float spread = (prim & 1u) != 0u ? 1.0f : 0.15f;
+
+            v9x_gl_prim_begin(&s, &p, modes[prim % 6u]);
+            for (k = 0u; k < count; ++k) {
+                GLfloat ts;
+                GLfloat tt;
+
+                v9x_gl_prim_color(&p, 0.5f + golden_random(0.5f),
+                                  0.5f + golden_random(0.5f),
+                                  0.5f + golden_random(0.5f), 1.0f);
+                ts = golden_random(4.0f);
+                tt = golden_random(4.0f);
+                v9x_gl_prim_texcoord(&p, ts, tt, 0.0f, 1.0f);
+                v9x_gl_prim_texcoord1(&p, 2.0f * ts + 1.0f, tt - 3.0f);
+                v9x_gl_prim_vertex(&s, &p, golden_random(90.0f * spread),
+                                   golden_random(60.0f * spread),
+                                   golden_random(80.0f * spread), 1.0f);
+            }
+            v9x_gl_prim_end(&s, &p);
+        }
+        v9x_gl_prim_flush(&p);
+    }
+}
+
+static void test_second_texture_coordinate(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    v9x_u32 one_hash;
+    v9x_u32 one_vertices;
+    v9x_u32 i;
+
+    pair_run(1ul);
+    one_hash = pair_hash;
+    one_vertices = pair_vertices;
+    PCHECK(pair_tex1_batches == 0ul && one_vertices > 1000ul);
+    pair_run(2ul);
+    PCHECK(pair_hash == one_hash && pair_vertices == one_vertices);
+    PCHECK(pair_tex1_batches != 0ul && pair_tex1_wrong == 0ul);
+
+    /* A triangle half off the left edge: the cut vertices' unit-1
+     * coordinates are the edge's interpolation, (x + 160) / 320 in s and
+     * y / 100 in window t, as for any attribute under an ortho view. */
+    scene(&s, &p);
+    v9x_gl_pipeline_units(&p, 2ul);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    v9x_gl_prim_texcoord1(&p, 0.0f, 0.0f);
+    vertex(&s, &p, -160.0f, 0.0f);
+    v9x_gl_prim_texcoord1(&p, 1.0f, 0.0f);
+    vertex(&s, &p, 160.0f, 0.0f);
+    v9x_gl_prim_texcoord1(&p, 0.0f, 1.0f);
+    vertex(&s, &p, -160.0f, 100.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles >= 1ul && sunk_tex1_batches == sunk_batches);
+    for (i = 0ul; i < vsunk_count(); ++i) {
+        PCHECK(near_value(sunk_tex1[i * 2ul], (sunk[i].sx + 160.0f) / 320.0f));
+        PCHECK(near_value(sunk_tex1[i * 2ul + 1ul],
+                          (200.0f - sunk[i].sy) / 100.0f));
+    }
+
+    /* Inside: the three as given, in order. */
+    scene(&s, &p);
+    v9x_gl_pipeline_units(&p, 2ul);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    v9x_gl_prim_texcoord1(&p, 0.25f, 0.5f);
+    vertex(&s, &p, 10.0f, 10.0f);
+    v9x_gl_prim_texcoord1(&p, 0.75f, 0.5f);
+    vertex(&s, &p, 50.0f, 10.0f);
+    v9x_gl_prim_texcoord1(&p, 0.25f, 1.5f);
+    vertex(&s, &p, 10.0f, 50.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 1ul && sunk_tex1_batches == 1ul);
+    PCHECK(sunk_tex1[0] == 0.25f && sunk_tex1[1] == 0.5f &&
+           sunk_tex1[2] == 0.75f && sunk_tex1[3] == 0.5f &&
+           sunk_tex1[4] == 0.25f && sunk_tex1[5] == 1.5f);
+
+    /* One unit sends none. */
+    scene(&s, &p);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 10.0f, 10.0f);
+    vertex(&s, &p, 50.0f, 10.0f);
+    vertex(&s, &p, 10.0f, 50.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 1ul && sunk_tex1_batches == 0ul);
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
     gl_prim_failures = 0u;
@@ -874,6 +1056,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_same_draw();
     test_scissor_clips_geometry();
     test_pipeline_output_unchanged();
+    test_second_texture_coordinate();
     test_begin_follows_state_changes();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");

@@ -74,6 +74,12 @@ typedef void (__stdcall *V9X_PFN_SETPROCTABLE)(V9X_GLCLTPROCTABLE *table);
 typedef struct v9x_gl_pending {
     V9X_R3D_ABI_TEXTURE texture;
     V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+    /* The second unit (GL_SGIS_multitexture), storage NONE without one,
+     * kept the same way, and its s and t two floats a vertex. */
+    V9X_R3D_ABI_TEXTURE texture1;
+    V9X_R3D_ABI_LEVEL levels1[V9X_GL_TEXTURE_LEVELS];
+    GLuint texture1_name;
+    GLfloat texcoords1[2u * 3u * V9X_R3D_ABI_BATCH_MAX];
     V9X_R3D_ABI_STATE state;
     GLuint texture_name;
     unsigned int targets;
@@ -97,8 +103,10 @@ typedef struct v9x_gl_context {
     /* Client state (2.8): the vertex arrays. */
     V9X_GL_ARRAYS arrays;
     V9X_GL_PENDING pending;
-    /* The levels a batch's texture names, valid for the draw call. */
+    /* The levels a batch's texture names, valid for the draw call, and its
+     * second unit's. */
     V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+    V9X_R3D_ABI_LEVEL levels1[V9X_GL_TEXTURE_LEVELS];
 } V9X_GL_CONTEXT;
 
 static const char v9x_gl_build_id[] = "V9XGL build=" V9X_BUILD_ID;
@@ -118,8 +126,16 @@ static DWORD v9x_gl_hw_squared_draws;
 /* Batches sent without an alpha test that could discard nothing. */
 static DWORD v9x_gl_alpha_tests_dropped;
 static DWORD v9x_gl_stub_total;
-/* A squared copy's draw: the batch with s and t scaled to the square. */
+/* A squared copy's draw: the batch with s and t scaled to the square, and
+ * the second unit's coordinates scaled to its own. */
 static V9X_R3D_ABI_VERTEX v9x_gl_scaled_vertices[3u * V9X_R3D_ABI_BATCH_MAX];
+static GLfloat v9x_gl_scaled_tex1[2u * 3u * V9X_R3D_ABI_BATCH_MAX];
+/* Batches and triangles drawn with two units, and the SGIS entry points'
+ * first calls (logged once each). */
+static DWORD v9x_gl_mtex_batches;
+static DWORD v9x_gl_mtex_triangles;
+static int v9x_gl_mtex_select_seen;
+static int v9x_gl_mtex_coord_seen;
 #define V9X_GL_RESULT_SLOTS 10u
 static DWORD v9x_gl_draw_failures[V9X_GL_RESULT_SLOTS];
 static DWORD v9x_gl_failures_dumped;
@@ -488,6 +504,15 @@ static void v9x_gl_stub_called(unsigned int slot)
 
 /* ---- GL commands --------------------------------------------------- */
 
+/* Whether the engine combines two textures in a draw, which is when
+ * GL_SGIS_multitexture is offered (docs\plans\gen3-sgis-multitexture.md). */
+static int v9x_gl_two_units(void)
+{
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+
+    return description != 0 && description->texture_units >= 2ul;
+}
+
 static const GLubyte * V9X_GL_API v9x_gl_get_string(GLenum name)
 {
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
@@ -504,7 +529,10 @@ static const GLubyte * V9X_GL_API v9x_gl_get_string(GLenum name)
     case V9X_GL_VERSION:
         return (const GLubyte *)"1.1.0";
     case V9X_GL_EXTENSIONS:
-        return (const GLubyte *)"";
+        /* With the trailing space: GLQuake looks for the name followed by
+         * one (gl_vidnt.c:580), so it must not end the string bare. */
+        return (const GLubyte *)(v9x_gl_two_units()
+                                     ? "GL_SGIS_multitexture " : "");
     default:
         v9x_gl_state_error(&v9x_gl_current()->state, V9X_GL_INVALID_ENUM);
         return 0;
@@ -581,7 +609,8 @@ static void V9X_GL_API v9x_gl_enable(GLenum cap)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
-    if (context != 0) {
+    if (context != 0 &&
+        !v9x_gl_tex_enable_selected(&context->textures, cap, 1)) {
         v9x_gl_state_enable(&context->state, cap, 1);
     }
 }
@@ -590,7 +619,8 @@ static void V9X_GL_API v9x_gl_disable(GLenum cap)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
-    if (context != 0) {
+    if (context != 0 &&
+        !v9x_gl_tex_enable_selected(&context->textures, cap, 0)) {
         v9x_gl_state_enable(&context->state, cap, 0);
     }
 }
@@ -605,7 +635,8 @@ static GLboolean V9X_GL_API v9x_gl_is_enabled(GLenum cap)
         return 0;
     }
     /* The client arrays are glIsEnabled's too (2.8), but not glEnable's. */
-    if (v9x_gl_arrays_is_enabled(&context->arrays, cap, &enabled)) {
+    if (v9x_gl_arrays_is_enabled(&context->arrays, cap, &enabled) ||
+        v9x_gl_tex_is_enabled_selected(&context->textures, cap, &enabled)) {
         return enabled;
     }
     return v9x_gl_state_is_enabled(&context->state, cap);
@@ -1196,7 +1227,12 @@ static void v9x_gl_hwtex_free(void *memory)
     HeapFree(GetProcessHeap(), 0, hw);
 }
 
-/* The least recently used copy that holds a surface, other than `keep`. */
+/* A copy the draw being built already names - unit 0's, while unit 1's is
+ * made - which eviction must not release under it. */
+static const V9X_GL_HWTEX *v9x_gl_hwtex_pinned;
+
+/* The least recently used copy that holds a surface, other than `keep` and
+ * the pinned one. */
 static V9X_GL_HWTEX *v9x_gl_hwtex_oldest(const V9X_GL_HWTEX *keep)
 {
     V9X_GL_HWTEX *oldest = 0;
@@ -1205,7 +1241,8 @@ static V9X_GL_HWTEX *v9x_gl_hwtex_oldest(const V9X_GL_HWTEX *keep)
     for (i = 0u; i < v9x_gl_hwtex_count; ++i) {
         V9X_GL_HWTEX *candidate = v9x_gl_hwtex_live[i];
 
-        if (candidate != keep && candidate->surface != 0 &&
+        if (candidate != keep && candidate != v9x_gl_hwtex_pinned &&
+            candidate->surface != 0 &&
             (oldest == 0 || candidate->last_used < oldest->last_used)) {
             oldest = candidate;
         }
@@ -1257,19 +1294,20 @@ static int v9x_gl_redescribe_all(void)
     return v9x_gl_device_redescribe();
 }
 
-/* The bound texture as the interface's CPU description, its alpha op
+/* A unit's bound texture as the interface's CPU description, its alpha op
  * normalised when nothing reads the fragment's alpha (gl_texture.h). */
-static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context,
-                                    V9X_R3D_ABI_TEXTURE *texture)
+static void v9x_gl_describe_texture(V9X_GL_CONTEXT *context, v9x_u32 unit,
+                                    V9X_R3D_ABI_TEXTURE *texture,
+                                    V9X_R3D_ABI_LEVEL *levels)
 {
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
 
-    v9x_gl_tex_describe(&context->state, &context->textures, texture,
-                        context->levels);
+    v9x_gl_tex_describe_unit(&context->state, &context->textures, unit,
+                             texture, levels);
     /* Past the interface's largest texture the draw is refused as
      * invalid and not drawn (a 512x256 on the Rage XL, 2026-10-03). */
     if (description != 0) {
-        v9x_gl_tex_fit(&context->textures, texture, context->levels,
+        v9x_gl_tex_fit(&context->textures, unit, texture, levels,
                        description->texture_size_max);
     }
     if (!v9x_gl_prim_fragment_alpha_used(&context->state,
@@ -1504,14 +1542,14 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
  */
 #define V9X_GL_STATE_SEEN_MAX 48u
 
-static v9x_u32 v9x_gl_state_seen[V9X_GL_STATE_SEEN_MAX][4];
+static v9x_u32 v9x_gl_state_seen[V9X_GL_STATE_SEEN_MAX][5];
 static unsigned int v9x_gl_state_seen_count;
 /* The same, for the states the engine refused: what a game asks for that
  * sends it to the CPU. */
-static v9x_u32 v9x_gl_refused_seen[V9X_GL_STATE_SEEN_MAX][4];
+static v9x_u32 v9x_gl_refused_seen[V9X_GL_STATE_SEEN_MAX][5];
 static unsigned int v9x_gl_refused_seen_count;
 
-static void v9x_gl_note_state_in(v9x_u32 (*seen)[4], unsigned int *count,
+static void v9x_gl_note_state_in(v9x_u32 (*seen)[5], unsigned int *count,
                                  const char *tag,
                                  const V9X_GL_CONTEXT *context,
                                  const V9X_R3D_ABI_DRAW *draw);
@@ -1530,13 +1568,14 @@ static void v9x_gl_note_refused(const V9X_GL_CONTEXT *context,
                          "refused", context, draw);
 }
 
-static void v9x_gl_note_state_in(v9x_u32 (*seen)[4], unsigned int *count,
+static void v9x_gl_note_state_in(v9x_u32 (*seen)[5], unsigned int *count,
                                  const char *tag,
                                  const V9X_GL_CONTEXT *context,
                                  const V9X_R3D_ABI_DRAW *draw)
 {
     const V9X_R3D_ABI_TEXTURE *texture = &draw->texture;
-    v9x_u32 key[4];
+    const V9X_R3D_ABI_TEXTURE *texture1 = &draw->texture1;
+    v9x_u32 key[5];
     v9x_u32 edge = 0ul;
     unsigned int i;
     char text[240];
@@ -1555,27 +1594,34 @@ static void v9x_gl_note_state_in(v9x_u32 (*seen)[4], unsigned int *count,
              (draw->state.dst_blend << 8) | draw->state.alpha_test_enable;
     key[3] = (draw->state.depth_enable << 24) | (draw->state.depth_func << 16) |
              (draw->state.depth_write << 8) | texture->mip;
+    /* The second unit's combine: which env modes a game sets on it is
+     * what the plan's census asks (gen3-sgis-multitexture.md). */
+    key[4] = (texture1->storage << 24) | (texture1->format << 16) |
+             (texture1->color_op << 8) | texture1->alpha_op;
     for (i = 0u; i < *count; ++i) {
         if (seen[i][0] == key[0] && seen[i][1] == key[1] &&
-            seen[i][2] == key[2] && seen[i][3] == key[3]) {
+            seen[i][2] == key[2] && seen[i][3] == key[3] &&
+            seen[i][4] == key[4]) {
             return;
         }
     }
     if (*count >= V9X_GL_STATE_SEEN_MAX) {
         return;
     }
-    for (i = 0u; i < 4u; ++i) {
+    for (i = 0u; i < 5u; ++i) {
         seen[*count][i] = key[i];
     }
     ++*count;
     wsprintfA(text, "%s tex=%lu size=%08lX tex=%08lX blend=%08lX "
               "depth=%08lX colour=%08lX mask=%lX scissor=%lu,%lu,%lu,%lu "
-              "fog=%lu",
+              "fog=%lu tex1=%lu/%08lX env1=%06lX",
               tag, key[0], edge, key[1], key[2], key[3],
               draw->vertices != 0 ? draw->vertices[0].color : 0ul,
               draw->state.write_mask, draw->state.scissor_left,
               draw->state.scissor_top, draw->state.scissor_right,
-              draw->state.scissor_bottom, draw->state.fog_enable);
+              draw->state.scissor_bottom, draw->state.fog_enable,
+              (DWORD)context->pending.texture1_name, key[4],
+              texture1->env_color);
     v9x_gl_log(text);
 }
 
@@ -1698,12 +1744,13 @@ static void v9x_gl_path_log(void)
 
     wsprintfA(text, "paths batches/triangles untextured=%lu/%lu "
               "hw=%lu/%lu cpu=%lu/%lu cpu-nonsquare=%lu/%lu "
-              "hw-refused=%lu/%lu",
+              "hw-refused=%lu/%lu two-units=%lu/%lu",
               v9x_gl_path_batches[0], v9x_gl_path_triangles[0],
               v9x_gl_path_batches[1], v9x_gl_path_triangles[1],
               v9x_gl_path_batches[2], v9x_gl_path_triangles[2],
               v9x_gl_path_batches[3], v9x_gl_path_triangles[3],
-              v9x_gl_path_batches[4], v9x_gl_path_triangles[4]);
+              v9x_gl_path_batches[4], v9x_gl_path_triangles[4],
+              v9x_gl_mtex_batches, v9x_gl_mtex_triangles);
     v9x_gl_log(text);
 }
 
@@ -1733,8 +1780,11 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     unsigned int i;
     unsigned int path;
     int hardware;
+    int two_units = pending->texture1.storage != V9X_R3D_ABI_TEXTURE_NONE;
     float scale_s;
     float scale_t;
+    float scale_s1 = 1.0f;
+    float scale_t1 = 1.0f;
     DWORD draw_start;
 
     draw_start = v9x_gl_tsc_begin();
@@ -1757,6 +1807,12 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     draw.state = pending->state;
     draw.vertices = pending->vertices;
     draw.triangle_count = pending->triangles;
+    if (two_units) {
+        draw.texture1 = pending->texture1;
+        draw.texcoords1 = pending->texcoords1;
+        ++v9x_gl_mtex_batches;
+        v9x_gl_mtex_triangles += pending->triangles;
+    }
     v9x_gl_note_state(context, &draw);
     if (draw.texture.storage == V9X_R3D_ABI_TEXTURE_NONE) {
         path = V9X_GL_PATH_UNTEXTURED;
@@ -1768,6 +1824,26 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
     hardware = v9x_gl_hw_texture(context, pending->texture_name,
                                  pending->alpha_used, &draw.texture,
                                  &scale_s, &scale_t);
+    /* Both units on surfaces or both on the CPU: an engine that samples
+     * surfaces refuses CPU levels, and the software fallback takes no
+     * surface, so a draw with one of each could be drawn by neither. */
+    if (two_units) {
+        const V9X_GL_TEXOBJ *object0 =
+            v9x_gl_tex_object(&context->textures, pending->texture_name);
+        int hardware1;
+
+        v9x_gl_hwtex_pinned = hardware && object0 != 0
+            ? (const V9X_GL_HWTEX *)object0->hw : 0;
+        hardware1 = v9x_gl_hw_texture(context, pending->texture1_name,
+                                      pending->alpha_used, &draw.texture1,
+                                      &scale_s1, &scale_t1);
+        v9x_gl_hwtex_pinned = 0;
+        if (hardware1 != hardware) {
+            draw.texture = pending->texture;
+            draw.texture1 = pending->texture1;
+            hardware = 0;
+        }
+    }
     v9x_gl_tsc_end(V9X_GL_TSC_HWTEX, draw_start);
     if (hardware) {
         path = V9X_GL_PATH_HW_TEXTURE;
@@ -1779,9 +1855,20 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
             }
             draw.vertices = v9x_gl_scaled_vertices;
         }
+        if (two_units && (scale_s1 != 1.0f || scale_t1 != 1.0f)) {
+            for (i = 0u; i < pending->triangles * 3ul; ++i) {
+                v9x_gl_scaled_tex1[i * 2u] =
+                    pending->texcoords1[i * 2u] * scale_s1;
+                v9x_gl_scaled_tex1[i * 2u + 1u] =
+                    pending->texcoords1[i * 2u + 1u] * scale_t1;
+            }
+            draw.texcoords1 = v9x_gl_scaled_tex1;
+        }
     }
-    /* An alpha test that can discard nothing is not sent (gl_prim.h). */
-    if (v9x_gl_prim_alpha_test_passes(&draw.state, &draw.texture,
+    /* An alpha test that can discard nothing is not sent (gl_prim.h). The
+     * test reads unit 0's alpha only, so a second unit keeps it. */
+    if (!two_units &&
+        v9x_gl_prim_alpha_test_passes(&draw.state, &draw.texture,
                                       draw.vertices,
                                       pending->triangles * 3ul)) {
         draw.state.alpha_test_enable = 0ul;
@@ -1807,6 +1894,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         v9x_gl_note_refused(context, &draw);
         draw.texture = pending->texture;
         draw.vertices = pending->vertices;
+        if (two_units) {
+            draw.texture1 = pending->texture1;
+            draw.texcoords1 = pending->texcoords1;
+        }
         draw_start = v9x_gl_tsc_begin();
         result = iface->draw(&draw, outcome);
         v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
@@ -1827,6 +1918,10 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         }
         draw.texture = pending->texture;
         draw.vertices = pending->vertices;
+        if (two_units) {
+            draw.texture1 = pending->texture1;
+            draw.texcoords1 = pending->texcoords1;
+        }
         draw_start = v9x_gl_tsc_begin();
         result = iface->draw(&draw, outcome);
         v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
@@ -1882,10 +1977,12 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
  */
 static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
                                   const V9X_R3D_ABI_VERTEX *vertices,
+                                  const GLfloat *texcoords1,
                                   v9x_u32 triangle_count,
                                   DWORD *prep_started);
 
 static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                             const GLfloat *texcoords1,
                              v9x_u32 triangle_count)
 {
     V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
@@ -1895,24 +1992,30 @@ static int v9x_gl_draw_batch(void *user, const V9X_R3D_ABI_VERTEX *vertices,
     int result;
 
     ++v9x_gl_count_sinks;
-    result = v9x_gl_draw_batch_body(context, vertices, triangle_count,
-                                    &prep_started);
+    result = v9x_gl_draw_batch_body(context, vertices, texcoords1,
+                                    triangle_count, &prep_started);
     v9x_gl_tsc_end(V9X_GL_TSC_SINK, sink_started);
     return result;
 }
 
 static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
                                   const V9X_R3D_ABI_VERTEX *vertices,
+                                  const GLfloat *texcoords1,
                                   v9x_u32 triangle_count,
                                   DWORD *prep_started)
 {
     V9X_GL_PENDING *pending = &context->pending;
     V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_TEXTURE texture1;
     V9X_R3D_ABI_STATE state;
     unsigned int targets;
     v9x_u32 i;
     v9x_u32 level;
     int same;
+    /* Unit 1 enabled with unit 0 off: its texture is the draw's one, in
+     * the interface's unit 0, with its coordinates as tu/tv. */
+    int unit1_alone = 0;
+    GLuint name0 = context->textures.units[0].bound;
     DWORD part_started;
 
     if (v9x_gl_device_interface() == 0) {
@@ -1923,7 +2026,19 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
         return 1;
     }
     *prep_started = v9x_gl_tsc_begin();
-    v9x_gl_describe_texture(context, &texture);
+    v9x_gl_describe_texture(context, 0ul, &texture, context->levels);
+    texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    if (texcoords1 != 0) {
+        v9x_gl_describe_texture(context, 1ul, &texture1, context->levels1);
+        if (texture1.storage == V9X_R3D_ABI_TEXTURE_NONE) {
+            texcoords1 = 0;
+        } else if (texture.storage == V9X_R3D_ABI_TEXTURE_NONE) {
+            texture = texture1;
+            texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+            name0 = context->textures.units[1].bound;
+            unit1_alone = 1;
+        }
+    }
     part_started = v9x_gl_tsc_begin();
     v9x_gl_tsc_end(V9X_GL_TSC_PREP_TEXTURE, *prep_started);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &state);
@@ -1933,7 +2048,11 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
            (pending->targets == targets &&
             pending->triangles + triangle_count <= V9X_R3D_ABI_BATCH_MAX &&
             v9x_gl_prim_same_draw(&pending->texture, &pending->state,
-                                  &texture, &state));
+                                  &texture, &state) &&
+            pending->texture1.storage == texture1.storage &&
+            (texture1.storage == V9X_R3D_ABI_TEXTURE_NONE ||
+             v9x_gl_prim_same_draw(&pending->texture1, &pending->state,
+                                   &texture1, &state)));
     v9x_gl_tsc_end(V9X_GL_TSC_PREP_SAME, part_started);
     v9x_gl_tsc_end(V9X_GL_TSC_SINK_PREP, *prep_started);
     if (!same) {
@@ -1950,15 +2069,35 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
             }
             pending->texture.levels = pending->levels;
         }
+        pending->texture1 = texture1;
+        if (texture1.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+            for (level = 0ul; level < texture1.level_count; ++level) {
+                pending->levels1[level] = texture1.levels[level];
+            }
+            pending->texture1.levels = pending->levels1;
+        }
+        pending->texture1_name = context->textures.units[1].bound;
         pending->state = state;
         pending->targets = targets;
-        pending->texture_name = context->textures.bound;
+        pending->texture_name = name0;
         pending->alpha_used =
             v9x_gl_prim_fragment_alpha_used(&context->state,
                                             &context->pipeline);
     }
     for (i = 0ul; i < triangle_count * 3ul; ++i) {
         pending->vertices[pending->triangles * 3ul + i] = vertices[i];
+    }
+    if (unit1_alone) {
+        for (i = 0ul; i < triangle_count * 3ul; ++i) {
+            pending->vertices[pending->triangles * 3ul + i].tu =
+                texcoords1[i * 2ul];
+            pending->vertices[pending->triangles * 3ul + i].tv =
+                texcoords1[i * 2ul + 1ul];
+        }
+    } else if (texture1.storage != V9X_R3D_ABI_TEXTURE_NONE) {
+        for (i = 0ul; i < triangle_count * 6ul; ++i) {
+            pending->texcoords1[pending->triangles * 6ul + i] = texcoords1[i];
+        }
     }
     pending->triangles += triangle_count;
     v9x_gl_tsc_end(V9X_GL_TSC_SINK_COPY, part_started);
@@ -1980,7 +2119,16 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
 static void V9X_GL_API v9x_gl_begin(GLenum mode)
 {
     DWORD started = v9x_gl_tsc_begin();
+    V9X_GL_CONTEXT *context = v9x_gl_current();
 
+    /* Unit 1's coordinates are carried only when they can be drawn; its
+     * enable cannot change before glEnd. */
+    if (context != 0 && !context->state.in_begin) {
+        v9x_gl_pipeline_units(&context->pipeline,
+                              context->textures.units[1].enabled &&
+                                      v9x_gl_two_units()
+                                  ? 2ul : 1ul);
+    }
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_begin(&context_->state,
                                            &context_->pipeline, mode));
     v9x_gl_tsc_end(V9X_GL_TSC_BEGINEND, started);
@@ -2126,6 +2274,59 @@ static void V9X_GL_API v9x_gl_texcoord2fv(const GLfloat *v)
 {
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_texcoord(&context_->pipeline, v[0], v[1],
                                               0.0f, 1.0f));
+}
+
+/*
+ * GL_SGIS_multitexture, through DrvGetProcAddress: glSelectTextureSGIS and
+ * glMTexCoord2f(v)SGIS, the three the census found GLQuake and Quake 2
+ * load. Unit 0's coordinate is glTexCoord's; unit 1's is its own. A target
+ * that is neither unit is INVALID_ENUM.
+ */
+static void V9X_GL_API v9x_gl_select_texture_sgis(GLenum target)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (!v9x_gl_mtex_select_seen) {
+        v9x_gl_mtex_select_seen = 1;
+        v9x_gl_log3("sgis first glSelectTextureSGIS target=%04lX",
+                    (DWORD)target, 0ul, 0ul);
+    }
+    if (context != 0) {
+        v9x_gl_tex_select(&context->state, &context->textures, target);
+    }
+}
+
+static void v9x_gl_mtexcoord(GLenum target, GLfloat s, GLfloat t)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (!v9x_gl_mtex_coord_seen) {
+        v9x_gl_mtex_coord_seen = 1;
+        v9x_gl_log3("sgis first glMTexCoord2fSGIS target=%04lX",
+                    (DWORD)target, 0ul, 0ul);
+    }
+    if (context == 0) {
+        return;
+    }
+    if (target == V9X_GL_TEXTURE0_SGIS) {
+        v9x_gl_prim_texcoord(&context->pipeline, s, t, 0.0f, 1.0f);
+    } else if (target == V9X_GL_TEXTURE1_SGIS) {
+        v9x_gl_prim_texcoord1(&context->pipeline, s, t);
+    } else {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_ENUM);
+    }
+}
+
+static void V9X_GL_API v9x_gl_mtexcoord2f_sgis(GLenum target, GLfloat s,
+                                               GLfloat t)
+{
+    v9x_gl_mtexcoord(target, s, t);
+}
+
+static void V9X_GL_API v9x_gl_mtexcoord2fv_sgis(GLenum target,
+                                                const GLfloat *v)
+{
+    v9x_gl_mtexcoord(target, v[0], v[1]);
 }
 
 static void V9X_GL_API v9x_gl_shade_model(GLenum mode)
@@ -2826,15 +3027,29 @@ BOOL __stdcall DrvRealizeLayerPalette(HDC hdc, INT layer, BOOL realize)
     return FALSE;
 }
 
-/* No extension is offered yet, so no extension entry point exists. */
+/*
+ * An extension's entry point, only for an extension GL_EXTENSIONS offers:
+ * GLQuake enables glColorTableEXT on any non-null answer whether or not
+ * the extension is advertised, so every other name must be null.
+ */
 PROC __stdcall DrvGetProcAddress(LPCSTR name)
 {
     char text[200];
+    PROC proc = 0;
 
-    wsprintfA(text, "DrvGetProcAddress name=%s -> NULL",
-              name != 0 ? name : "(null)");
+    if (name != 0 && v9x_gl_two_units()) {
+        if (lstrcmpA(name, "glSelectTextureSGIS") == 0) {
+            proc = (PROC)v9x_gl_select_texture_sgis;
+        } else if (lstrcmpA(name, "glMTexCoord2fSGIS") == 0) {
+            proc = (PROC)v9x_gl_mtexcoord2f_sgis;
+        } else if (lstrcmpA(name, "glMTexCoord2fvSGIS") == 0) {
+            proc = (PROC)v9x_gl_mtexcoord2fv_sgis;
+        }
+    }
+    wsprintfA(text, "DrvGetProcAddress name=%s -> %s",
+              name != 0 ? name : "(null)", proc != 0 ? "entry" : "NULL");
     v9x_gl_log(text);
-    return 0;
+    return proc;
 }
 
 BOOL __stdcall V9xGlEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)

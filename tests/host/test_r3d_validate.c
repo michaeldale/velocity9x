@@ -374,6 +374,78 @@ static void draw_reset(V9X_R3D_ABI_DRAW *d, int *target_surface)
     d->state = state;
     d->vertices = draw_vertices;
     d->triangle_count = 1ul;
+    d->texture1 = d->texture;
+    d->texcoords1 = 0;
+}
+
+static float draw_texcoords1[2u * 3u * 65u];
+
+static void test_draw_second_unit(void)
+{
+    V9X_R3D_ABI_DRAW d;
+    V9X_R3D_ABI_LEVEL levels[V9X_R3D_ABI_LEVELS_MAX];
+    int target;
+    int surface;
+
+    levels_reset(levels);
+
+    /* Both units on CPU levels, the second blending toward its colour. */
+    draw_reset(&d, &target);
+    d.texture.storage = V9X_R3D_ABI_TEXTURE_CPU;
+    d.texture.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.texture.levels = levels;
+    d.texture.level_count = 1ul;
+    d.texture1 = d.texture;
+    d.texture1.color_op = V9X_R3D_ABI_COLOROP_BLEND;
+    d.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+    d.texture1.env_color = 0x00102030ul;
+    d.texcoords1 = draw_texcoords1;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_OK);
+
+    /* And on a surface: the HW rule is unit 1's as much as unit 0's. */
+    d.texture1.storage = V9X_R3D_ABI_TEXTURE_HW;
+    d.texture1.surface.surface = &surface;
+    d.texture1.levels = 0;
+    d.texture1.level_count = 0ul;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_OK);
+    d.texture1.levels = levels;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+
+    /* Unit 1 is validated as unit 0 is: a field out of range refuses. */
+    draw_reset(&d, &target);
+    d.texture.storage = V9X_R3D_ABI_TEXTURE_CPU;
+    d.texture.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.texture.levels = levels;
+    d.texture.level_count = 1ul;
+    d.texture1 = d.texture;
+    d.texcoords1 = draw_texcoords1;
+    d.texture1.env_color = 0x01000000ul;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+    d.texture1.env_color = 0ul;
+    d.texture1.storage = 9ul;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+    d.texture1.storage = V9X_R3D_ABI_TEXTURE_CPU;
+    d.texture1.level_count = 0ul;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+    d.texture1.level_count = 1ul;
+
+    /* Coordinates exactly when there is a second unit. */
+    d.texcoords1 = 0;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+    d.texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_OK);
+    d.texcoords1 = draw_texcoords1;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+
+    /* Unit 1 only with unit 0: a front end with unit 0 off sends its one
+     * texture as unit 0. */
+    draw_reset(&d, &target);
+    d.texture1.storage = V9X_R3D_ABI_TEXTURE_CPU;
+    d.texture1.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.texture1.levels = levels;
+    d.texture1.level_count = 1ul;
+    d.texcoords1 = draw_texcoords1;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
 }
 
 static void test_draw_header(void)
@@ -489,6 +561,7 @@ unsigned int v9x_run_r3d_validate_tests(void)
     test_texture_description();
     test_state_ranges();
     test_draw_header();
+    test_draw_second_unit();
     test_clear_header_and_rects();
     if (validate_failures == 0u) {
         printf("PASS: render interface validators\n");

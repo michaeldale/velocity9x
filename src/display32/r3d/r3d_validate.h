@@ -60,7 +60,9 @@ v9x_u32 v9x_r3d_validate_state(const V9X_R3D_ABI_STATE *state,
  * A draw request's header, in the order that dereferences least: null is
  * INVALID; struct_bytes other than this build's is ABI, and nothing after
  * it is read; a generation other than `generation` is STALE; then a named
- * target, vertices, a count of 1..V9X_R3D_ABI_BATCH_MAX, and the texture.
+ * target, vertices, a count of 1..V9X_R3D_ABI_BATCH_MAX, and the texture;
+ * then the second unit, which needs unit 0 and texcoords1, and texcoords1
+ * null without it.
  * The surfaces and the state are checked once resolved, by the three
  * functions above.
  */

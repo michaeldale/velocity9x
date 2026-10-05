@@ -241,6 +241,18 @@ typedef struct v9x_r3d_draw {
      * alpha 255; zero when unknown. An engine's accepts() has no vertices,
      * so this is how one that must know (the Mach64's MODULATEALPHA) can. */
     v9x_u32 vertex_alpha_opaque;
+    /*
+     * A second texture unit, from the render interface only: texcoords1 is
+     * non-null exactly when there is one, and then holds two floats a
+     * vertex - tu1, tv1 - in the order of the vertices ops->draw receives.
+     * texture1 is described as `texture` is, and on such a draw both carry
+     * their combine in color_op/alpha_op/env_color whatever their storage;
+     * `op` is not set. Only an engine whose limits say two units is handed
+     * one, and the core does not clip it (docs\plans\gen3-sgis-
+     * multitexture.md). Direct3D leaves texcoords1 null.
+     */
+    V9X_R3D_TEXTURE texture1;
+    const float *texcoords1;
 } V9X_R3D_DRAW;
 
 /*

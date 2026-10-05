@@ -46,13 +46,14 @@ static void fresh(V9X_GL_STATE *s, V9X_GL_TEXTURES *t)
 
 static const V9X_GL_TEXOBJ *bound_object(V9X_GL_TEXTURES *t)
 {
+    GLuint bound = t->units[t->active].bound;
     GLuint i;
 
-    if (t->bound == 0u) {
+    if (bound == 0u) {
         return &t->default_object;
     }
     for (i = 0u; i < t->capacity; ++i) {
-        if (t->objects[i].in_use && t->objects[i].name == t->bound) {
+        if (t->objects[i].in_use && t->objects[i].name == bound) {
             return &t->objects[i];
         }
     }
@@ -66,23 +67,25 @@ static void test_names_and_binding(void)
     GLuint names[3];
 
     fresh(&s, &t);
-    TCHECK(t.bound == 0u && t.env_mode == V9X_GL_MODULATE &&
+    TCHECK(t.units[0].bound == 0u &&
+           t.units[0].env_mode == V9X_GL_MODULATE &&
            t.unpack_alignment == 4);
     v9x_gl_tex_gen(&s, &t, 3, names);
     TCHECK(names[0] != 0u && names[1] != names[0] && names[2] != names[1]);
     /* Generated but never bound is not yet a texture (3.8.10). */
     TCHECK(v9x_gl_tex_is(&s, &t, names[0]) == 0);
     v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, names[0]);
-    TCHECK(t.bound == names[0] && v9x_gl_tex_is(&s, &t, names[0]) == 1);
+    TCHECK(t.units[0].bound == names[0] &&
+           v9x_gl_tex_is(&s, &t, names[0]) == 1);
     /* A name never generated may be bound, and becomes a texture. */
     v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 5000u);
     TCHECK(v9x_gl_tex_is(&s, &t, 5000u) == 1);
     /* Deleting the bound texture binds 0 again. */
     v9x_gl_tex_delete(&s, &t, 1, names + 0);
     v9x_gl_tex_delete(&s, &t, 1, names + 0);     /* twice is harmless */
-    TCHECK(t.bound == 5000u);
+    TCHECK(t.units[0].bound == 5000u);
     v9x_gl_tex_delete(&s, &t, 1, (const GLuint *)"\x88\x13\0\0");
-    TCHECK(t.bound == 0u);
+    TCHECK(t.units[0].bound == 0u);
     TCHECK(v9x_gl_tex_is(&s, &t, 0u) == 0);
     v9x_gl_tex_bind(&s, &t, 0x0DE0u, 1u);        /* TEXTURE_1D: not yet */
     TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
@@ -262,7 +265,7 @@ static void test_lookup_after_reuse_and_growth(void)
     /* 10's slot freed, then taken by 12: 12 is found, 10 is not. */
     name = 10u;
     v9x_gl_tex_delete(&s, &t, 1, &name);
-    TCHECK(t.bound == 0u && described_width(&s, &t) == 0ul);
+    TCHECK(t.units[0].bound == 0u && described_width(&s, &t) == 0ul);
     v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 12u);
     upload_one(&s, &t, 2);
     TCHECK(described_width(&s, &t) == 2ul);
@@ -367,15 +370,15 @@ static void test_fit_to_size_max(void)
                          (GLint)V9X_GL_LINEAR_MIPMAP_NEAREST);
     v9x_gl_tex_describe(&s, &t, &d, levels);
     held = outstanding;
-    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 4ul);
     TCHECK(d.level_count == 3ul && d.levels == levels);
     TCHECK(levels[0].width == 4ul && levels[2].width == 1ul);
     TCHECK(d.mip == V9X_R3D_ABI_MIP_POINT && outstanding == held);
     /* Within the limit, or no limit: untouched. */
     v9x_gl_tex_describe(&s, &t, &d, levels);
-    v9x_gl_tex_fit(&t, &d, levels, 8ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 8ul);
     TCHECK(d.level_count == 4ul && levels[0].width == 8ul);
-    v9x_gl_tex_fit(&t, &d, levels, 0ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 0ul);
     TCHECK(d.level_count == 4ul);
     v9x_gl_textures_release(&t);
     TCHECK(outstanding == 0l);
@@ -395,7 +398,7 @@ static void test_fit_to_size_max(void)
     v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
                          (GLint)V9X_GL_LINEAR);
     v9x_gl_tex_describe(&s, &t, &d, levels);
-    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 4ul);
     TCHECK(d.level_count == 1ul && d.storage == V9X_R3D_ABI_TEXTURE_CPU);
     TCHECK(levels[0].width == 4ul && levels[0].height == 4ul &&
            levels[0].pitch == 8ul && levels[0].bytes == 32ul);
@@ -406,7 +409,7 @@ static void test_fit_to_size_max(void)
     reduced = levels[0].pixels;
     held = outstanding;
     v9x_gl_tex_describe(&s, &t, &d, levels);
-    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 4ul);
     TCHECK(levels[0].pixels == reduced && outstanding == held);
     /* A new image is a new copy. */
     for (i = 0u; i < 8u * 8u; ++i) {
@@ -415,11 +418,11 @@ static void test_fit_to_size_max(void)
     v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 0, 0, 8, 8,
                             V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, stripes);
     v9x_gl_tex_describe(&s, &t, &d, levels);
-    v9x_gl_tex_fit(&t, &d, levels, 4ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 4ul);
     TCHECK(((const v9x_u16 *)levels[0].pixels)[0] == 0xff00u);
     /* Two halvings at once: 8 to 2. */
     v9x_gl_tex_describe(&s, &t, &d, levels);
-    v9x_gl_tex_fit(&t, &d, levels, 2ul);
+    v9x_gl_tex_fit(&t, 0ul, &d, levels, 2ul);
     TCHECK(levels[0].width == 2ul && levels[0].bytes == 8ul &&
            ((const v9x_u16 *)levels[0].pixels)[3] == 0xff00u);
     v9x_gl_textures_release(&t);
@@ -511,6 +514,104 @@ static void test_environment_table(void)
     TCHECK(d.env_color == 0x00ff8000ul);
     v9x_gl_tex_env(&s, &t, V9X_GL_TEXTURE_ENV, V9X_GL_TEXTURE_ENV_MODE, &bad);
     TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    v9x_gl_textures_release(&t);
+    TCHECK(outstanding == 0l);
+}
+
+/* GL_SGIS_multitexture's units: each its own binding, images, environment
+ * and enable, selected by the SGIS tokens, and described apart. */
+static void test_sgis_units(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    V9X_R3D_ABI_TEXTURE d0;
+    V9X_R3D_ABI_TEXTURE d1;
+    V9X_R3D_ABI_LEVEL levels0[V9X_GL_TEXTURE_LEVELS];
+    V9X_R3D_ABI_LEVEL levels1[V9X_GL_TEXTURE_LEVELS];
+    GLfloat replace = (GLfloat)V9X_GL_REPLACE;
+    GLfloat blend = (GLfloat)V9X_GL_BLEND_ENV;
+    GLfloat colour[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
+    GLboolean enabled = 0;
+    const V9X_GL_TEXOBJ *first;
+    const V9X_GL_TEXOBJ *second;
+    GLuint name;
+
+    fresh(&s, &t);
+    v9x_gl_pixel_store(&s, &t, V9X_GL_UNPACK_ALIGNMENT, 1);
+
+    /* Unit 0: texture 1, RGB, REPLACE. */
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 1u);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 1, 1, 0, V9X_GL_RGB,
+                        V9X_GL_UNSIGNED_BYTE, "abc");
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_NEAREST);
+    v9x_gl_tex_env(&s, &t, V9X_GL_TEXTURE_ENV, V9X_GL_TEXTURE_ENV_MODE,
+                   &replace);
+    first = bound_object(&t);
+
+    /* Unit 1: texture 2, a luminance lightmap, BLEND toward green. */
+    v9x_gl_tex_select(&s, &t, V9X_GL_TEXTURE1_SGIS);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR && t.active == 1ul);
+    TCHECK(t.units[1].bound == 0u && t.units[1].env_mode == V9X_GL_MODULATE);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, 2u);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 1, 1, 1, 0,
+                        V9X_GL_LUMINANCE, V9X_GL_UNSIGNED_BYTE, "z");
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_NEAREST);
+    v9x_gl_tex_env(&s, &t, V9X_GL_TEXTURE_ENV, V9X_GL_TEXTURE_ENV_MODE, &blend);
+    v9x_gl_tex_env(&s, &t, V9X_GL_TEXTURE_ENV, V9X_GL_TEXTURE_ENV_COLOR,
+                   colour);
+    second = bound_object(&t);
+    TCHECK(first != second && t.units[0].bound == 1u &&
+           t.units[1].bound == 2u &&
+           t.units[0].env_mode == V9X_GL_REPLACE &&
+           t.units[0].env_color_packed == 0ul);
+
+    /* Unit 1's enable is its own, not the state's TEXTURE_2D. */
+    TCHECK(v9x_gl_tex_enable_selected(&t, V9X_GL_TEXTURE_2D, 1));
+    TCHECK(!v9x_gl_state_cap(&s, V9X_GL_TEXTURE_2D));
+    TCHECK(v9x_gl_tex_is_enabled_selected(&t, V9X_GL_TEXTURE_2D, &enabled) &&
+           enabled == 1);
+    TCHECK(!v9x_gl_tex_enable_selected(&t, 0x0B71u, 1));    /* DEPTH_TEST */
+
+    /* Unit 0 off, unit 1 on: only unit 1 describes. */
+    v9x_gl_tex_describe_unit(&s, &t, 0ul, &d0, levels0);
+    v9x_gl_tex_describe_unit(&s, &t, 1ul, &d1, levels1);
+    TCHECK(d0.storage == V9X_R3D_ABI_TEXTURE_NONE);
+    TCHECK(d1.storage == V9X_R3D_ABI_TEXTURE_CPU &&
+           d1.color_op == V9X_R3D_ABI_COLOROP_BLEND &&
+           d1.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT &&
+           d1.env_color == 0x0000ff00ul && d1.levels == levels1 &&
+           levels1[0].pixels == second->levels[0].texels);
+
+    /* With unit 0 selected, TEXTURE_2D is the state's again. */
+    v9x_gl_tex_select(&s, &t, V9X_GL_TEXTURE0_SGIS);
+    TCHECK(t.active == 0ul);
+    TCHECK(!v9x_gl_tex_enable_selected(&t, V9X_GL_TEXTURE_2D, 1));
+    TCHECK(!v9x_gl_tex_is_enabled_selected(&t, V9X_GL_TEXTURE_2D, &enabled));
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_2D, 1);
+    v9x_gl_tex_describe_unit(&s, &t, 0ul, &d0, levels0);
+    TCHECK(d0.storage == V9X_R3D_ABI_TEXTURE_CPU &&
+           d0.color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+           levels0[0].pixels == first->levels[0].texels);
+    v9x_gl_tex_describe(&s, &t, &d1, levels1);
+    TCHECK(d1.storage == d0.storage && levels1[0].pixels ==
+           levels0[0].pixels);
+    TCHECK(t.units[1].enabled == 1);
+
+    /* Any other target is INVALID_ENUM and selects nothing; a unit past
+     * the last describes nothing. */
+    v9x_gl_tex_select(&s, &t, V9X_GL_TEXTURE1_SGIS + 1u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM &&
+           t.active == 0ul);
+    v9x_gl_tex_describe_unit(&s, &t, V9X_GL_TEXTURE_UNITS, &d0, levels0);
+    TCHECK(d0.storage == V9X_R3D_ABI_TEXTURE_NONE);
+
+    /* Deleting a texture unbinds it from whichever unit holds it. */
+    name = 2u;
+    v9x_gl_tex_delete(&s, &t, 1, &name);
+    TCHECK(t.units[1].bound == 0u && t.units[0].bound == 1u);
+
     v9x_gl_textures_release(&t);
     TCHECK(outstanding == 0l);
 }
@@ -712,6 +813,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_fit_to_size_max();
     test_lookup_after_reuse_and_growth();
     test_environment_table();
+    test_sgis_units();
     test_hardware_copy_bookkeeping();
     test_retarget_to_1555();
     test_square_copy();

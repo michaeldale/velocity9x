@@ -264,6 +264,8 @@ v9x_u32 v9x_r3d_validate_draw(const V9X_R3D_ABI_DRAW *draw,
                               v9x_u32 generation,
                               v9x_u32 texture_size_max)
 {
+    v9x_u32 result;
+
     if (draw == 0) {
         return V9X_R3D_RESULT_INVALID;
     }
@@ -280,7 +282,23 @@ v9x_u32 v9x_r3d_validate_draw(const V9X_R3D_ABI_DRAW *draw,
         draw->triangle_count > V9X_R3D_ABI_BATCH_MAX) {
         return V9X_R3D_RESULT_INVALID;
     }
-    return v9x_r3d_validate_texture(&draw->texture, texture_size_max);
+    result = v9x_r3d_validate_texture(&draw->texture, texture_size_max);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+
+    /* The second unit: coordinates exactly when it is there, and only on
+     * top of unit 0, so an engine never meets a draw whose one texture is
+     * in the second slot. */
+    if (draw->texture1.storage == V9X_R3D_ABI_TEXTURE_NONE) {
+        return draw->texcoords1 == 0 ? V9X_R3D_RESULT_OK
+                                     : V9X_R3D_RESULT_INVALID;
+    }
+    if (draw->texcoords1 == 0 ||
+        draw->texture.storage == V9X_R3D_ABI_TEXTURE_NONE) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    return v9x_r3d_validate_texture(&draw->texture1, texture_size_max);
 }
 
 v9x_u32 v9x_r3d_validate_clear(const V9X_R3D_ABI_CLEAR *clear,

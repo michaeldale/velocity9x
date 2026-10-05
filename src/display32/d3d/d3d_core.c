@@ -402,6 +402,10 @@ static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
     draw->texture.level_count = 0ul;
     draw->explicit_state = 0ul;
     draw->vertex_alpha_opaque = 0ul;
+    draw->texture1.object = 0;
+    draw->texture1.levels = 0;
+    draw->texture1.level_count = 0ul;
+    draw->texcoords1 = 0;
     raw.z_enable = context->z_enable;
     raw.z_write = context->z_write;
     raw.z_func = context->z_func;
@@ -3156,6 +3160,8 @@ static DWORD v9x_r3d_generation = 1ul;
 static V9X_D3D_CONTEXT v9x_r3d_context;
 /* And for its CPU texture levels, likewise. */
 static V9X_R3D_LEVEL v9x_r3d_levels[V9X_R3D_ABI_LEVELS_MAX];
+/* And for the second unit's. */
+static V9X_R3D_LEVEL v9x_r3d_levels1[V9X_R3D_ABI_LEVELS_MAX];
 
 void v9x_d3d_render_new_session(void)
 {
@@ -3284,12 +3290,83 @@ static DWORD v9x_r3d_min_filter(const V9X_R3D_ABI_TEXTURE *texture)
     return texture->min_filter;
 }
 
+/*
+ * One unit's texture as the neutral core describes it, into `texture`, its
+ * CPU levels into `levels`. A one-unit draw's surface texture must be a D3D
+ * texture op, which is what the one-unit engines implement; on a two-unit
+ * draw the engine reads color_op/alpha_op/env_color for both units, so they
+ * are carried whatever the storage and `op` is not needed.
+ */
+static DWORD v9x_r3d_describe_texture(const V9X_R3D_ABI_TEXTURE *source,
+                                      int two_units,
+                                      V9X_R3D_LEVEL *levels,
+                                      V9X_R3D_TEXTURE *texture)
+{
+    if (source->storage == V9X_R3D_ABI_TEXTURE_CPU) {
+        DWORD level;
+
+        /* The levels array, then each level's declared storage, proven
+         * readable before any engine samples it: a bad pointer here would
+         * fault inside the HAL with the Win16 mutex held. The validator has
+         * already bounded count, sizes and extents arithmetically. */
+        if (IsBadReadPtr(source->levels,
+                         source->level_count * sizeof(V9X_R3D_ABI_LEVEL))) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+        for (level = 0ul; level < source->level_count; ++level) {
+            const V9X_R3D_ABI_LEVEL *from = &source->levels[level];
+
+            if (IsBadReadPtr(from->pixels, from->bytes)) {
+                return V9X_R3D_RESULT_INVALID;
+            }
+            levels[level].pixels = from->pixels;
+            levels[level].pitch = from->pitch;
+            levels[level].width = from->width;
+            levels[level].height = from->height;
+        }
+        texture->levels = levels;
+        texture->level_count = source->level_count;
+        texture->format = source->format;
+        texture->mip = source->mip;
+        texture->color_op = source->color_op;
+        texture->alpha_op = source->alpha_op;
+        texture->env_color = source->env_color;
+        texture->min_filter = v9x_r3d_min_filter(source);
+        texture->mag_filter = source->mag_filter;
+        texture->address = source->address;
+    }
+    if (source->storage == V9X_R3D_ABI_TEXTURE_HW) {
+        texture->object = v9x_d3d_surface_lcl(source->surface.surface,
+                                              V9X_D3D_LCL_SITE_R3D_TEXTURE);
+        if (texture->object == 0) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+        if (two_units) {
+            texture->format = source->format;
+            texture->color_op = source->color_op;
+            texture->alpha_op = source->alpha_op;
+            texture->env_color = source->env_color;
+        } else {
+            texture->op = v9x_r3d_texture_op(source);
+            if (texture->op == 0ul) {
+                return V9X_R3D_RESULT_UNSUPPORTED;
+            }
+        }
+        texture->min_filter = v9x_r3d_min_filter(source);
+        texture->mag_filter = source->mag_filter;
+        texture->address = source->address;
+    }
+    return V9X_R3D_RESULT_OK;
+}
+
 /* The request as the neutral core describes a batch. */
 static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
                               V9X_R3D_DRAW *draw)
 {
     const V9X_R3D_ABI_STATE *state = &request->state;
     const V9X_D3D_CONTEXT *context = &v9x_r3d_context;
+    int two_units = request->texcoords1 != 0;
+    DWORD result;
 
     v9x_r3d_zero(draw, sizeof(*draw));
     draw->target.offset = context->target_offset;
@@ -3304,53 +3381,18 @@ static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
     draw->depth.height = context->height;
     draw->depth.object = context->zbuffer;
 
-    if (request->texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
-        const V9X_R3D_ABI_TEXTURE *texture = &request->texture;
-        DWORD level;
-
-        /* The levels array, then each level's declared storage, proven
-         * readable before any engine samples it: a bad pointer here would
-         * fault inside the HAL with the Win16 mutex held. The validator has
-         * already bounded count, sizes and extents arithmetically. */
-        if (IsBadReadPtr(texture->levels,
-                         texture->level_count * sizeof(V9X_R3D_ABI_LEVEL))) {
-            return V9X_R3D_RESULT_INVALID;
-        }
-        for (level = 0ul; level < texture->level_count; ++level) {
-            const V9X_R3D_ABI_LEVEL *source = &texture->levels[level];
-
-            if (IsBadReadPtr(source->pixels, source->bytes)) {
-                return V9X_R3D_RESULT_INVALID;
-            }
-            v9x_r3d_levels[level].pixels = source->pixels;
-            v9x_r3d_levels[level].pitch = source->pitch;
-            v9x_r3d_levels[level].width = source->width;
-            v9x_r3d_levels[level].height = source->height;
-        }
-        draw->texture.levels = v9x_r3d_levels;
-        draw->texture.level_count = texture->level_count;
-        draw->texture.format = texture->format;
-        draw->texture.mip = texture->mip;
-        draw->texture.color_op = texture->color_op;
-        draw->texture.alpha_op = texture->alpha_op;
-        draw->texture.env_color = texture->env_color;
-        draw->texture.min_filter = v9x_r3d_min_filter(texture);
-        draw->texture.mag_filter = texture->mag_filter;
-        draw->texture.address = texture->address;
+    result = v9x_r3d_describe_texture(&request->texture, two_units,
+                                      v9x_r3d_levels, &draw->texture);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
     }
-    if (request->texture.storage == V9X_R3D_ABI_TEXTURE_HW) {
-        draw->texture.object = v9x_d3d_surface_lcl(
-            request->texture.surface.surface, V9X_D3D_LCL_SITE_R3D_TEXTURE);
-        if (draw->texture.object == 0) {
-            return V9X_R3D_RESULT_INVALID;
+    if (two_units) {
+        result = v9x_r3d_describe_texture(&request->texture1, two_units,
+                                          v9x_r3d_levels1, &draw->texture1);
+        if (result != V9X_R3D_RESULT_OK) {
+            return result;
         }
-        draw->texture.op = v9x_r3d_texture_op(&request->texture);
-        if (draw->texture.op == 0ul) {
-            return V9X_R3D_RESULT_UNSUPPORTED;
-        }
-        draw->texture.min_filter = v9x_r3d_min_filter(&request->texture);
-        draw->texture.mag_filter = request->texture.mag_filter;
-        draw->texture.address = request->texture.address;
+        draw->texcoords1 = request->texcoords1;
     }
 
     /* Everything the request states, stated: each engine's accepts()
@@ -3430,6 +3472,60 @@ static v9x_u32 v9x_r3d_vertices_opaque(const V9X_R3D_ABI_VERTEX *vertices,
     return 1ul;
 }
 
+/* Textures the engine combines in one render-interface draw; an engine that
+ * leaves the limit zero has one. */
+static DWORD v9x_r3d_texture_units(const V9X_D3D_ENGINE_OPS *ops)
+{
+    return ops->limits->texture_units > 1ul ? ops->limits->texture_units : 1ul;
+}
+
+/*
+ * A two-unit draw, straight to the engine. The list builder is not used: it
+ * clips, culls and stages, any of which would part a vertex from its entry
+ * in texcoords1, and the ICD has already done all three to the drawable.
+ * What the builder would refuse is refused here the same way - a coordinate
+ * past the engine's guard band or not finite. An engine that needs its
+ * triangles on the target (clip_in_core) gets no vertex more than a pixel
+ * off it: rounding of the ICD's own clip is inside that, and anything
+ * further is a caller that did not clip, whose triangle the engine would
+ * otherwise draw with a moved edge.
+ */
+#define V9X_R3D_ON_TARGET_SLACK 1.0f
+
+static DWORD v9x_r3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
+                                    const V9X_R3D_DRAW *draw,
+                                    const V9X_R3D_ABI_DRAW *request,
+                                    V9X_R3D_ABI_OUTCOME *outcome)
+{
+    const V9X_R3D_VERTEX *vertices = (const V9X_R3D_VERTEX *)request->vertices;
+    float limit = ops->limits->coordinate_limit;
+    float left = -limit;
+    float top = -limit;
+    float right = limit;
+    float bottom = limit;
+    DWORD index;
+
+    if (ops->limits->clip_in_core != 0ul) {
+        left = -V9X_R3D_ON_TARGET_SLACK;
+        top = -V9X_R3D_ON_TARGET_SLACK;
+        right = (float)v9x_r3d_context.width + V9X_R3D_ON_TARGET_SLACK;
+        bottom = (float)v9x_r3d_context.height + V9X_R3D_ON_TARGET_SLACK;
+    }
+    for (index = 0ul; index < request->triangle_count * 3ul; ++index) {
+        /* Written so a NaN fails both compares and is refused. */
+        if (!(vertices[index].sx >= left && vertices[index].sx <= right) ||
+            !(vertices[index].sy >= top && vertices[index].sy <= bottom)) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+    }
+    outcome->submitted = 0ul;
+    if (!ops->draw(draw, vertices, request->triangle_count)) {
+        return V9X_R3D_RESULT_INDETERMINATE;
+    }
+    outcome->submitted = request->triangle_count;
+    return V9X_R3D_RESULT_OK;
+}
+
 static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
                                V9X_R3D_ABI_OUTCOME *outcome)
 {
@@ -3451,6 +3547,18 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
                      request->triangle_count * 3ul *
                          sizeof(V9X_R3D_ABI_VERTEX))) {
         return V9X_R3D_RESULT_INVALID;
+    }
+    if (request->texcoords1 != 0) {
+        /* Describe said one unit to the ICD, so this is a caller that did
+         * not ask; nothing here could draw it exactly. */
+        if (v9x_r3d_texture_units(ops) < 2ul) {
+            return V9X_R3D_RESULT_UNSUPPORTED;
+        }
+        if (IsBadReadPtr(request->texcoords1,
+                         request->triangle_count * 3ul * 2ul *
+                             sizeof(float))) {
+            return V9X_R3D_RESULT_INVALID;
+        }
     }
     result = v9x_r3d_bind(request->target.surface, request->depth.surface);
     if (result != V9X_R3D_RESULT_OK) {
@@ -3481,6 +3589,8 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
          * surface sampler (one linear level) would read wrongly. The ICD
          * answers UNSUPPORTED by sending its CPU copy instead. */
         if (fallback == 0 || draw.texture.object != 0 ||
+            draw.texture1.object != 0 ||
+            (draw.texcoords1 != 0 && v9x_r3d_texture_units(fallback) < 2ul) ||
             !fallback->accepts(&draw)) {
             return V9X_R3D_RESULT_UNSUPPORTED;
         }
@@ -3489,6 +3599,10 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
             return result;
         }
         ops = fallback;
+    }
+
+    if (draw.texcoords1 != 0) {
+        return v9x_r3d_draw_two_units(ops, &draw, request, outcome);
     }
 
     sink.ops = ops;
@@ -3646,6 +3760,7 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
                            (1ul << V9X_R3D_ABI_FORMAT_ARGB4444);
     out->texture_size_max = v9x_r3d_texture_size_max(ops);
     out->batch_max = V9X_R3D_ABI_BATCH_MAX;
+    out->texture_units = v9x_r3d_texture_units(ops);
     /* Surface textures, where the engine samples them for the interface:
      * Gen3's bind takes powers of two within its limits, square or not
      * (v9x_d3d_i9xx_texture_shape); the ViRGE's takes a square power of

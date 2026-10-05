@@ -32,8 +32,10 @@
 #include "velocity9x/types.h"
 
 /* 2: describe states the hardware sampler's texture limits (2026-09-26).
- * 3: and its smallest edge, and names the Mach64 (2026-09-29). */
-#define V9X_R3D_ABI_VERSION 3ul
+ * 3: and its smallest edge, and names the Mach64 (2026-09-29).
+ * 4: a second texture unit - describe's texture_units, the draw's texture1
+ *    and texcoords1 (2026-10-05, docs\plans\gen3-sgis-multitexture.md). */
+#define V9X_R3D_ABI_VERSION 4ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -228,6 +230,9 @@ typedef struct v9x_r3d_abi_describe {
     v9x_u32 hw_texture_size_max;
     v9x_u32 hw_texture_shape;   /* V9X_R3D_ABI_HWTEX_* */
     v9x_u32 hw_texture_size_min; /* the smallest edge, 1 when any */
+    /* Textures one draw may combine in one pass: 2 when the engine takes a
+     * draw's texture1, 1 otherwise. */
+    v9x_u32 texture_units;
 } V9X_R3D_ABI_DESCRIBE;
 
 #define V9X_R3D_ABI_HWTEX_SQUARE     1ul    /* width equal to height */
@@ -242,6 +247,21 @@ typedef struct v9x_r3d_abi_draw {
     V9X_R3D_ABI_STATE state;
     const V9X_R3D_ABI_VERTEX *vertices;  /* 3 * triangle_count, a list */
     v9x_u32 triangle_count;
+    /*
+     * The second texture unit, storage NONE for a one-unit draw. Its colour
+     * and alpha ops combine its texel with what unit 0 produced, as GL 1.1's
+     * table 3.18 does for one unit with the fragment. A draw names unit 1
+     * only with unit 0, and only to an engine whose describe said two units.
+     *
+     * texcoords1 holds unit 1's coordinates, two floats a vertex - tu1, tv1
+     * - in the order of `vertices`, prepared as tu/tv are; null exactly when
+     * texture1 is NONE. They are interpolated with the vertex's rhw, which
+     * is exact when unit 0's coordinate has q = 1. The vertex keeps its 32
+     * bytes, so a draw with a second unit is not clipped by the HAL: its
+     * triangles arrive clipped to the drawable, as the ICD sends every one.
+     */
+    V9X_R3D_ABI_TEXTURE texture1;
+    const float *texcoords1;
 } V9X_R3D_ABI_DRAW;
 
 /* Triangles that reached the engine, meaningful for OK and PARTIAL. */
@@ -308,8 +328,8 @@ typedef char v9x_r3d_abi_assert_vertex[sizeof(V9X_R3D_ABI_VERTEX) == 32 ? 1 : -1
 typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 76 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 136 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 80 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 188 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_interface[sizeof(V9X_R3D_INTERFACE) == 28 ? 1 : -1];
 #endif

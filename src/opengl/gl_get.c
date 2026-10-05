@@ -142,7 +142,8 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
     case 0x0B23u:
     case 0x0B13u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT, 0.0); return 1;
     /* Texturing (table 6.12). */
-    case 0x8069u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, textures->bound);
+    case 0x8069u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                             textures->units[textures->active].bound);
         return 1;
     /* Pixel operations (table 6.15). */
     case 0x0C10u:

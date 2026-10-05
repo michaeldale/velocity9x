@@ -43,6 +43,7 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
                           V9X_GL_FREE_FN release)
 {
     unsigned int i;
+    unsigned int unit;
 
     textures->alloc = alloc;
     textures->release = release;
@@ -52,12 +53,16 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
     textures->capacity = 0ul;
     textures->find_hint = 0ul;
     textures->next_name = 1u;
-    textures->bound = 0u;
-    textures->env_mode = V9X_GL_MODULATE;
-    for (i = 0u; i < 4u; ++i) {
-        textures->env_color[i] = 0.0f;
+    for (unit = 0u; unit < V9X_GL_TEXTURE_UNITS; ++unit) {
+        textures->units[unit].bound = 0u;
+        textures->units[unit].env_mode = V9X_GL_MODULATE;
+        for (i = 0u; i < 4u; ++i) {
+            textures->units[unit].env_color[i] = 0.0f;
+        }
+        textures->units[unit].env_color_packed = 0ul;
+        textures->units[unit].enabled = 0;
     }
-    textures->env_color_packed = 0ul;
+    textures->active = 0ul;
     textures->unpack_alignment = 4;
     textures->unpack_row_length = 0;
     textures->unpack_skip_rows = 0;
@@ -113,8 +118,13 @@ void v9x_gl_textures_release(V9X_GL_TEXTURES *textures)
     }
     textures->objects = 0;
     textures->capacity = 0ul;
-    textures->bound = 0u;
+    for (i = 0ul; i < V9X_GL_TEXTURE_UNITS; ++i) {
+        textures->units[i].bound = 0u;
+    }
 }
+
+/* The selected unit's binding. */
+#define V9X_GL_TEX_SELECTED(textures) ((textures)->units[(textures)->active])
 
 static V9X_GL_TEXOBJ *v9x_gl_texobj_find(V9X_GL_TEXTURES *textures,
                                          GLuint name)
@@ -214,6 +224,7 @@ void v9x_gl_tex_delete(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
     }
     for (i = 0; i < n; ++i) {
         V9X_GL_TEXOBJ *object;
+        unsigned int unit;
 
         /* Zero and names that are not textures are silently ignored. */
         if (names[i] == 0u) {
@@ -225,8 +236,11 @@ void v9x_gl_tex_delete(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         }
         v9x_gl_texobj_free_levels(textures, object);
         object->in_use = 0;
-        if (textures->bound == names[i]) {
-            textures->bound = 0u;
+        /* Every unit bound to it reverts to the default (3.8.8). */
+        for (unit = 0u; unit < V9X_GL_TEXTURE_UNITS; ++unit) {
+            if (textures->units[unit].bound == names[i]) {
+                textures->units[unit].bound = 0u;
+            }
         }
     }
 }
@@ -262,7 +276,7 @@ void v9x_gl_tex_bind(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         }
         v9x_gl_texobj_defaults(object, name);
     }
-    textures->bound = name;
+    V9X_GL_TEX_SELECTED(textures).bound = name;
 }
 
 static int v9x_gl_tex_filter_valid(GLint value, int mipmaps)
@@ -286,7 +300,8 @@ void v9x_gl_tex_parameter(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return;
     }
-    object = v9x_gl_texobj_find(textures, textures->bound);
+    object = v9x_gl_texobj_find(textures,
+                                V9X_GL_TEX_SELECTED(textures).bound);
     switch (pname) {
     case V9X_GL_TEXTURE_MIN_FILTER:
     case V9X_GL_TEXTURE_MAG_FILTER:
@@ -325,6 +340,7 @@ void v9x_gl_tex_parameter(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
 void v9x_gl_tex_env(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
                     GLenum target, GLenum pname, const GLfloat *values)
 {
+    V9X_GL_TEXUNIT *unit = &V9X_GL_TEX_SELECTED(textures);
     unsigned int i;
 
     if (!v9x_gl_tex_allowed(state)) {
@@ -344,7 +360,7 @@ void v9x_gl_tex_env(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
 
         for (i = 0u; i < 4u; ++i) {
             if (values[0] == (GLfloat)modes[i]) {
-                textures->env_mode = modes[i];
+                unit->env_mode = modes[i];
                 return;
             }
         }
@@ -355,16 +371,47 @@ void v9x_gl_tex_env(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         for (i = 0u; i < 4u; ++i) {
             GLfloat value = values[i];
 
-            textures->env_color[i] = value < 0.0f ? 0.0f
-                                   : (value > 1.0f ? 1.0f : value);
+            unit->env_color[i] = value < 0.0f ? 0.0f
+                               : (value > 1.0f ? 1.0f : value);
         }
-        textures->env_color_packed =
-            (v9x_gl_tex_byte(textures->env_color[0]) << 16) |
-            (v9x_gl_tex_byte(textures->env_color[1]) << 8) |
-            v9x_gl_tex_byte(textures->env_color[2]);
+        unit->env_color_packed =
+            (v9x_gl_tex_byte(unit->env_color[0]) << 16) |
+            (v9x_gl_tex_byte(unit->env_color[1]) << 8) |
+            v9x_gl_tex_byte(unit->env_color[2]);
         return;
     }
     v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+}
+
+void v9x_gl_tex_select(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
+                       GLenum target)
+{
+    if (target < V9X_GL_TEXTURE0_SGIS ||
+        target >= V9X_GL_TEXTURE0_SGIS + V9X_GL_TEXTURE_UNITS) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return;
+    }
+    textures->active = (v9x_u32)(target - V9X_GL_TEXTURE0_SGIS);
+}
+
+int v9x_gl_tex_enable_selected(V9X_GL_TEXTURES *textures, GLenum cap,
+                               int enable)
+{
+    if (cap != V9X_GL_TEXTURE_2D || textures->active == 0ul) {
+        return 0;
+    }
+    V9X_GL_TEX_SELECTED(textures).enabled = enable ? 1 : 0;
+    return 1;
+}
+
+int v9x_gl_tex_is_enabled_selected(const V9X_GL_TEXTURES *textures,
+                                   GLenum cap, GLboolean *enabled)
+{
+    if (cap != V9X_GL_TEXTURE_2D || textures->active == 0ul) {
+        return 0;
+    }
+    *enabled = V9X_GL_TEX_SELECTED(textures).enabled ? 1 : 0;
+    return 1;
 }
 
 void v9x_gl_pixel_store(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
@@ -616,7 +663,8 @@ void v9x_gl_tex_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
         return;
     }
-    object = v9x_gl_texobj_find(textures, textures->bound);
+    object = v9x_gl_texobj_find(textures,
+                                V9X_GL_TEX_SELECTED(textures).bound);
     texels = (v9x_u16 *)textures->alloc((v9x_u32)width * (v9x_u32)height *
                                         2ul);
     if (texels == 0) {
@@ -673,7 +721,8 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
         return;
     }
-    object = v9x_gl_texobj_find(textures, textures->bound);
+    object = v9x_gl_texobj_find(textures,
+                                V9X_GL_TEX_SELECTED(textures).bound);
     slot = &object->levels[level];
     if (slot->texels == 0) {
         v9x_gl_state_error(state, V9X_GL_INVALID_OPERATION);
@@ -758,19 +807,34 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
                          V9X_R3D_ABI_TEXTURE *out,
                          V9X_R3D_ABI_LEVEL *levels)
 {
+    v9x_gl_tex_describe_unit(state, textures, 0ul, out, levels);
+}
+
+void v9x_gl_tex_describe_unit(const V9X_GL_STATE *state,
+                              V9X_GL_TEXTURES *textures, v9x_u32 unit,
+                              V9X_R3D_ABI_TEXTURE *out,
+                              V9X_R3D_ABI_LEVEL *levels)
+{
+    const V9X_GL_TEXUNIT *source;
     const V9X_GL_TEXOBJ *object;
     GLenum base;
-    GLenum mode = textures->env_mode;
+    GLenum mode;
     int has_alpha;
     v9x_u32 count;
     v9x_u32 level;
 
     v9x_gl_tex_zero(out, sizeof(*out));
     out->storage = V9X_R3D_ABI_TEXTURE_NONE;
-    if (!v9x_gl_state_cap(state, V9X_GL_TEXTURE_2D)) {
+    if (unit >= V9X_GL_TEXTURE_UNITS) {
         return;
     }
-    object = v9x_gl_texobj_find(textures, textures->bound);
+    source = &textures->units[unit];
+    mode = source->env_mode;
+    if (unit == 0ul ? !v9x_gl_state_cap(state, V9X_GL_TEXTURE_2D)
+                    : !source->enabled) {
+        return;
+    }
+    object = v9x_gl_texobj_find(textures, source->bound);
     count = object != 0 ? v9x_gl_tex_complete(object) : 0ul;
     if (count == 0ul) {
         return;
@@ -806,7 +870,7 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
      * decides it. Different modes per axis are not drawn exactly yet. */
     out->address = object->wrap_s == V9X_GL_CLAMP
         ? V9X_R3D_ABI_ADDRESS_CLAMP : V9X_R3D_ABI_ADDRESS_WRAP;
-    out->env_color = textures->env_color_packed;
+    out->env_color = source->env_color_packed;
 
     /* Table 3.18, per base format, as the interface's colour and alpha ops.
      * ALPHA textures are stored white, so colour-from-the-fragment is
@@ -901,7 +965,8 @@ static void v9x_gl_tex_box(const v9x_u16 *source, v9x_u32 width,
     }
 }
 
-void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
+void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, v9x_u32 unit,
+                    V9X_R3D_ABI_TEXTURE *texture,
                     V9X_R3D_ABI_LEVEL *levels, v9x_u32 size_max)
 {
     V9X_GL_TEXOBJ *object;
@@ -914,6 +979,7 @@ void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
     v9x_u32 out_height;
 
     if (texture == 0 || levels == 0 || size_max == 0ul ||
+        unit >= V9X_GL_TEXTURE_UNITS ||
         texture->storage != V9X_R3D_ABI_TEXTURE_CPU ||
         texture->level_count == 0ul ||
         (levels[0].width <= size_max && levels[0].height <= size_max)) {
@@ -937,7 +1003,7 @@ void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
 
     /* One level still past it: halve both edges together until it fits,
      * from the copy on the object when that is current. */
-    object = v9x_gl_texobj_find(textures, textures->bound);
+    object = v9x_gl_texobj_find(textures, textures->units[unit].bound);
     if (object == 0 || texture->level_count != 1ul) {
         return;
     }
@@ -985,7 +1051,8 @@ void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
 
 V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures)
 {
-    V9X_GL_TEXOBJ *object = v9x_gl_texobj_find(textures, textures->bound);
+    V9X_GL_TEXOBJ *object =
+        v9x_gl_texobj_find(textures, V9X_GL_TEX_SELECTED(textures).bound);
 
     /* glBindTexture makes every name it binds an object, so only a
      * binding the tables lost could miss; the default stands in. */

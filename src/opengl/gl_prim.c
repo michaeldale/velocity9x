@@ -102,6 +102,9 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->ring_head = 0u;
     pipeline->begin_valid = 0;
     pipeline->batch_triangles = 0ul;
+    pipeline->tex1[0] = 0.0f;
+    pipeline->tex1[1] = 0.0f;
+    pipeline->units = 1ul;
     pipeline->argb_valid = 0;
     pipeline->sink = 0;
     pipeline->sink_user = 0;
@@ -132,6 +135,17 @@ void v9x_gl_prim_texcoord(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t,
     pipeline->tex[1] = t;
     pipeline->tex[2] = r;
     pipeline->tex[3] = q;
+}
+
+void v9x_gl_pipeline_units(V9X_GL_PIPELINE *pipeline, v9x_u32 units)
+{
+    pipeline->units = units > 1ul ? 2ul : 1ul;
+}
+
+void v9x_gl_prim_texcoord1(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t)
+{
+    pipeline->tex1[0] = s;
+    pipeline->tex1[1] = t;
 }
 
 void v9x_gl_prim_normal(V9X_GL_PIPELINE *pipeline, GLfloat x, GLfloat y,
@@ -283,6 +297,7 @@ void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
     }
     if (pipeline->sink == 0 ||
         !pipeline->sink(pipeline->sink_user, pipeline->batch,
+                        pipeline->units > 1ul ? pipeline->batch_tex1 : 0,
                         pipeline->batch_triangles)) {
         ++pipeline->sink_failures;
     }
@@ -454,6 +469,8 @@ static void v9x_gl_prim_lerp(V9X_GL_VERTEX *out, const V9X_GL_VERTEX *a,
         out->color[i] = a->color[i] + (b->color[i] - a->color[i]) * t;
         out->tex[i] = a->tex[i] + (b->tex[i] - a->tex[i]) * t;
     }
+    out->tex1[0] = a->tex1[0] + (b->tex1[0] - a->tex1[0]) * t;
+    out->tex1[1] = a->tex1[1] + (b->tex1[1] - a->tex1[1]) * t;
 }
 
 /* A triangle clipped against the ten planes grows by at most one vertex
@@ -765,6 +782,15 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
                 out[i].color = v9x_gl_prim_argb(provoking->color);
             }
         }
+        if (pipeline->units > 1ul) {
+            GLfloat *tex1 =
+                &pipeline->batch_tex1[pipeline->batch_triangles * 6ul];
+
+            for (i = 0u; i < 3u; ++i) {
+                tex1[i * 2u] = corner[i]->tex1[0];
+                tex1[i * 2u + 1u] = corner[i]->tex1[1];
+            }
+        }
         ++pipeline->batch_triangles;
         if (pipeline->batch_triangles >= V9X_R3D_ABI_BATCH_MAX) {
             v9x_gl_prim_flush(pipeline);
@@ -815,6 +841,17 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
                          &window[i]);
         v9x_gl_prim_emit(state, pipeline, &out[2], &polygon[i + 1u],
                          &window[i + 1u]);
+        if (pipeline->units > 1ul) {
+            GLfloat *tex1 =
+                &pipeline->batch_tex1[pipeline->batch_triangles * 6ul];
+
+            tex1[0] = polygon[0].tex1[0];
+            tex1[1] = polygon[0].tex1[1];
+            tex1[2] = polygon[i].tex1[0];
+            tex1[3] = polygon[i].tex1[1];
+            tex1[4] = polygon[i + 1u].tex1[0];
+            tex1[5] = polygon[i + 1u].tex1[1];
+        }
         ++pipeline->batch_triangles;
     }
     /* A full batch goes as soon as it fills, not at the next triangle. */
@@ -876,6 +913,8 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
         vp->color[row] = pipeline->color[row];
         vp->tex[row] = pipeline->tex[row];
     }
+    vp->tex1[0] = pipeline->tex1[0];
+    vp->tex1[1] = pipeline->tex1[1];
     /* Inside by the clipper's own test, plane by plane (v9x_gl_prim_clip):
      * then its window position and emitted vertex are what any triangle
      * it is a corner of would compute (V9X_GL_VERTEX.inside). */

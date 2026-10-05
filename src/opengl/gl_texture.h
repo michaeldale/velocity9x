@@ -91,6 +91,29 @@ typedef struct v9x_gl_texobj {
     v9x_u32 reduced_height;
 } V9X_GL_TEXOBJ;
 
+/*
+ * GL_SGIS_multitexture's two units (docs\plans\gen3-sgis-multitexture.md),
+ * named by the tokens GLQuake, Quake 2 and Half-Life use. The census found
+ * them at 0x835E and 0x835F in all three
+ * (docs\decisions\2026-09-26-opengl-icd-interface-research.md).
+ */
+#define V9X_GL_TEXTURE_UNITS    2u
+#define V9X_GL_TEXTURE0_SGIS    0x835Eu
+#define V9X_GL_TEXTURE1_SGIS    0x835Fu
+
+/* What each unit has of its own: a binding and an environment, and unit
+ * 1's enable. Unit 0's enable is the state's TEXTURE_2D capability, which
+ * glIsEnabled and glPushAttrib already keep. */
+typedef struct v9x_gl_texunit {
+    GLuint bound;
+    GLenum env_mode;
+    GLfloat env_color[4];
+    /* env_color as the interface's 0x00RRGGBB, packed when it is set
+     * rather than at every describe (2026-10-01). */
+    v9x_u32 env_color_packed;
+    int enabled;
+} V9X_GL_TEXUNIT;
+
 typedef struct v9x_gl_textures {
     V9X_GL_ALLOC_FN alloc;
     V9X_GL_FREE_FN release;
@@ -107,12 +130,11 @@ typedef struct v9x_gl_textures {
      * and a hit is checked against in_use and the name every time. */
     v9x_u32 find_hint;
     GLuint next_name;
-    GLuint bound;
-    GLenum env_mode;
-    GLfloat env_color[4];
-    /* env_color as the interface's 0x00RRGGBB, packed when it is set
-     * rather than at every describe (2026-10-01). */
-    v9x_u32 env_color_packed;
+    /* The units, and the one glSelectTextureSGIS chose: binding, texture
+     * images and parameters, the environment and TEXTURE_2D's enable are
+     * all the selected unit's. */
+    V9X_GL_TEXUNIT units[V9X_GL_TEXTURE_UNITS];
+    v9x_u32 active;
     GLint unpack_alignment;
     GLint unpack_row_length;
     GLint unpack_skip_rows;
@@ -150,12 +172,31 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
                              GLint yoffset, GLsizei width, GLsizei height,
                              GLenum format, GLenum type, const void *pixels);
 
+/* glSelectTextureSGIS: TEXTURE0_SGIS or TEXTURE1_SGIS, INVALID_ENUM for
+ * anything else. */
+void v9x_gl_tex_select(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
+                       GLenum target);
 /*
- * The render interface's texture for a draw: NONE unless TEXTURE_2D is
- * enabled and the bound object is complete (3.8.9); otherwise CPU storage
- * naming `levels`, which must have room for V9X_GL_TEXTURE_LEVELS and
- * stays valid until the next texture command.
+ * glEnable/glDisable/glIsEnabled of TEXTURE_2D with unit 1 selected, which
+ * is unit 1's enable and not the state's capability. Non-zero when `cap`
+ * was that and is done; zero leaves the call to the state.
  */
+int v9x_gl_tex_enable_selected(V9X_GL_TEXTURES *textures, GLenum cap,
+                               int enable);
+int v9x_gl_tex_is_enabled_selected(const V9X_GL_TEXTURES *textures,
+                                   GLenum cap, GLboolean *enabled);
+
+/*
+ * The render interface's texture for a draw from `unit`: NONE unless its
+ * TEXTURE_2D is enabled and its bound object is complete (3.8.9);
+ * otherwise CPU storage naming `levels`, which must have room for
+ * V9X_GL_TEXTURE_LEVELS and stays valid until the next texture command.
+ * v9x_gl_tex_describe is unit 0's.
+ */
+void v9x_gl_tex_describe_unit(const V9X_GL_STATE *state,
+                              V9X_GL_TEXTURES *textures, v9x_u32 unit,
+                              V9X_R3D_ABI_TEXTURE *out,
+                              V9X_R3D_ABI_LEVEL *levels);
 void v9x_gl_tex_describe(const V9X_GL_STATE *state,
                          V9X_GL_TEXTURES *textures,
                          V9X_R3D_ABI_TEXTURE *out,
@@ -168,12 +209,15 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
  * replaced by a box-filtered copy kept on the bound object until its next
  * image. The Mach64 and the Rage IIC sample to 256 and have no software
  * fallback, so a 512 texture's draw was refused as invalid and not drawn.
- * `levels` is the array `texture` names.
+ * `levels` is the array `texture` names; `unit` the unit it was described
+ * from, whose bound object keeps the copy.
  */
-void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, V9X_R3D_ABI_TEXTURE *texture,
+void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, v9x_u32 unit,
+                    V9X_R3D_ABI_TEXTURE *texture,
                     V9X_R3D_ABI_LEVEL *levels, v9x_u32 size_max);
 
-/* The bound object (never null: name 0 is the default texture). */
+/* The selected unit's bound object (never null: name 0 is the default
+ * texture). */
 V9X_GL_TEXOBJ *v9x_gl_tex_bound_object(V9X_GL_TEXTURES *textures);
 /* The object named `name` (0 the default), or null when there is none. */
 V9X_GL_TEXOBJ *v9x_gl_tex_object(V9X_GL_TEXTURES *textures, GLuint name);

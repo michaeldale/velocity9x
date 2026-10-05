@@ -55,6 +55,8 @@ typedef struct v9x_gl_vertex {
     GLfloat clip[4];
     GLfloat color[4];
     GLfloat tex[4];
+    /* Unit 1's s and t (GL_SGIS_multitexture), interpolated as tex is. */
+    GLfloat tex1[2];
     /*
      * Set when the vertex is inside all ten clip planes, with its window
      * position (x, y, z, rhw) and the interface vertex it emits. A triangle
@@ -69,13 +71,21 @@ typedef struct v9x_gl_vertex {
 } V9X_GL_VERTEX;
 
 /* Where a full batch goes, and the state the batch was made with. The sink
- * answers non-zero when it took the batch; the pipeline then empties it. */
+ * answers non-zero when it took the batch; the pipeline then empties it.
+ * texcoords1 is unit 1's s and t, two floats a vertex in the vertices'
+ * order, when the pipeline carries two units, and null otherwise. */
 typedef int (*V9X_GL_SINK_FN)(void *user, const V9X_R3D_ABI_VERTEX *vertices,
+                              const GLfloat *texcoords1,
                               v9x_u32 triangle_count);
 
 typedef struct v9x_gl_pipeline {
     GLfloat color[4];
     GLfloat tex[4];
+    /* Unit 1's current s and t (glMTexCoord2fSGIS), initially 0, 0. */
+    GLfloat tex1[2];
+    /* Units whose coordinates the batch carries: 2 sends texcoords1 to the
+     * sink. Set by the front end outside Begin/End. */
+    v9x_u32 units;
     /* The current normal (2.7). Held for queries and vertex arrays; no
      * lighting reads it yet. */
     GLfloat normal[3];
@@ -131,8 +141,9 @@ typedef struct v9x_gl_pipeline {
     GLfloat argb_from[4];
     v9x_u32 argb;
     int argb_valid;
-    /* The batch. */
+    /* The batch, and unit 1's coordinates for it. */
     V9X_R3D_ABI_VERTEX batch[3u * V9X_R3D_ABI_BATCH_MAX];
+    GLfloat batch_tex1[2u * 3u * V9X_R3D_ABI_BATCH_MAX];
     v9x_u32 batch_triangles;
     V9X_GL_SINK_FN sink;
     void *sink_user;
@@ -166,12 +177,17 @@ typedef struct v9x_gl_pipeline {
 void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline);
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
                           void *user);
+/* 1 or 2: whether the next primitives carry unit 1's coordinate. Outside
+ * Begin/End only; the batch is empty then (glEnd flushes it). */
+void v9x_gl_pipeline_units(V9X_GL_PIPELINE *pipeline, v9x_u32 units);
 
 /* Current attributes. Legal inside and outside Begin/End. */
 void v9x_gl_prim_color(V9X_GL_PIPELINE *pipeline, GLfloat r, GLfloat g,
                        GLfloat b, GLfloat a);
 void v9x_gl_prim_texcoord(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t,
                           GLfloat r, GLfloat q);
+/* Unit 1's s and t (glMTexCoord2fSGIS with TEXTURE1_SGIS). */
+void v9x_gl_prim_texcoord1(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t);
 void v9x_gl_prim_normal(V9X_GL_PIPELINE *pipeline, GLfloat x, GLfloat y,
                         GLfloat z);
 
