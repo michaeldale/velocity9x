@@ -47,7 +47,10 @@ TEND after every triangle does: Final Reality's full benchmark renders
 with no timeout ([record](../decisions/2026-10-05-sis6326-tend-after-each-triangle.md)).
 Its 17,013 refused batches were all a mip magnification filter, now
 folded: the benchmark runs with no refusal and no timeout
-([record](../decisions/2026-10-05-sis6326-mag-filter-fold.md)).
+([record](../decisions/2026-10-05-sis6326-mag-filter-fold.md)). 3DMark 99
+Max ran its full suite the same way
+([evidence](../probe/a8u4i5-sis6326-3dmark99-2026-10-05/README.md)).
+Half-Life remains.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 
