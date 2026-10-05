@@ -18,7 +18,7 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.10.1, the Rage XL and fog release** — see the
+**Current version: 0.11.0, the SiS 6326 release** — see the
 [changelog](CHANGELOG.md). Its downloads are not published yet; the latest
 published release is [0.10.0](releases/0.10.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
@@ -251,15 +251,22 @@ board's stock Matrox mini-VDD — passed physical software-GDI tests at
 archive or replacement of the stock mini-VDD; see the
 [bring-up boundary](docs/specifications/matrox-millennium2-bringup.md).
 
-The **SiS 6326** family (`1039:6326`) sets modes through the video BIOS and
-runs DirectDraw fills and copies on the chip's 2D engine; GDI and Direct3D
-are drawn by the CPU. Measured on one physical AGP board (rev 0Bh, 4 MB):
-22 modes, GDI, mode switching and DirectDraw pass, and every DirectDraw blit
-lands on the engine pixel-correct; DirectDraw refuses three low-resolution
-8 bpp modes that GDI sets. See the
+The **SiS 6326** family (`1039:6326`), new in 0.11.0, sets modes through
+the video BIOS. DirectDraw fills, copies and flips run on the chip's 2D
+engine, and Direct3D and OpenGL run on its 3D engine. GDI is drawn by the
+CPU. Measured on one physical AGP board (rev 0Bh, 4 MB):
+- 22 modes, GDI and mode switching pass, and every DirectDraw blit lands
+  on the engine pixel-correct.
+- V9XDDP fails no check that SiS's own driver passes.
+- Final Reality, 3DMark 99 Max and Half-Life (Direct3D and OpenGL) run
+  with no refused batch. Half-Life's `mwd5` timedemo runs at 8.6 fps in
+  Direct3D and 6.5 fps in OpenGL at 640x480.
+
+See the
 [first-boot record](docs/decisions/2026-10-05-sis6326-first-velocity9x-bind.md),
-the [engine record](docs/decisions/2026-10-05-sis6326-engine-under-directdraw.md)
-and the [plan](docs/plans/sis-6326-family.md).
+the [engine record](docs/decisions/2026-10-05-sis6326-engine-under-directdraw.md),
+the [Direct3D plan](docs/plans/sis-6326-hardware-3d.md) and the
+[OpenGL plan](docs/plans/sis-6326-opengl.md).
 
 ### 2D and DirectDraw
 

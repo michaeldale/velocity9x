@@ -4,14 +4,26 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.10.1 - 2026-10-04
+## 0.11.0 - 2026-10-05
 
-The Rage XL and fog release. The Rage Pro class's first desktop card ran
-here, a Rage XL PCI (`1002:4752`, 8 MB) in A8U4I5. The GMA 950 gains
-vertex fog, and every chip gains a VSync setting. Measured on A8U4I5
-(Rage XL PCI) and the HP Mini 110 netbook (GMA 950). Changes in shared
-code reach every chip of the same design, per the rule recorded with
-the Rage Pro flip below. Families not named were not run.
+The SiS 6326 release. A sixth family, `sis`, runs the SiS 6326
+(`1039:6326`): modes through the BIOS, DirectDraw on its 2D engine, and
+Direct3D and OpenGL on its 3D engine. The S3 Trio3D (`5333:8904`) joins
+the s3 family. 0.10.1 was never published, so its changes, the Rage XL
+and fog release, are part of this one and listed after the SiS sections.
+
+Measured on A8U4I5 (SiS 6326 card 2, rev 0Bh, 4 MB AGP; earlier a Rage XL
+PCI and a Trio3D) and the HP Mini 110 netbook (GMA 950). Changes in
+shared code reach every chip of the same design, per the rule recorded
+with the Rage Pro flip below. Families not named were not run.
+
+| On A8U4I5 at 640x480, SiS 6326 | Velocity9x 0.11.0 |
+|---|---|
+| Half-Life `mwd5` timedemo, Direct3D | 8.6 fps |
+| Half-Life `mwd5` timedemo, OpenGL | 6.5 fps |
+| Quake 2 demo `timerefresh`, OpenGL | 7.8 fps |
+| 3DMark 99 Max (800x600) | 274 3DMarks |
+| Final Reality | 3.51 Reality marks |
 
 | On A8U4I5 at 640x480, Rage XL PCI | Velocity9x 0.10.1 |
 |---|---|
@@ -20,7 +32,78 @@ the Rage Pro flip below. Families not named were not run.
 | 3DMark 99 Max | 1225 3DMarks |
 
 Recorded, not chased
-([record](docs/decisions/2026-10-03-rage-xl-pci-benchmarks-a8u4i5.md)).
+([SiS evidence](docs/probe/a8u4i5-sis6326-opengl-2026-10-05/README.md),
+[Rage XL record](docs/decisions/2026-10-03-rage-xl-pci-benchmarks-a8u4i5.md)).
+
+### SiS 6326 (new family)
+
+- **Tier-0 first:** the BIOS sets 22 modes at 8 and 16 bpp, enable-ok on
+  the first boot, GDI and mode switching pass
+  ([record](docs/decisions/2026-10-05-sis6326-first-velocity9x-bind.md)).
+  The datasheet was reconciled against Mesa and Xorg first
+  ([register reference](docs/specifications/sis6326-registers.md)).
+- **DirectDraw on the 2D engine:** fill and copies, each encoding
+  measured byte-exact by a write probe before the driver used it; every
+  V9XDDP blit lands on the engine
+  ([record](docs/decisions/2026-10-05-sis6326-engine-under-directdraw.md)).
+  **Page flips** program the start address
+  ([record](docs/decisions/2026-10-05-sis6326-page-flips.md)).
+- **Direct3D on the 3D engine.** It was probed in phases before any
+  driver code:
+  - the first triangle;
+  - shading and Z16;
+  - textures, whose pitch field is a small float;
+  - vertex fog and specular;
+  - the colour blend factors.
+
+  V9XDDP fails no check SiS's own driver passes on the same card, and
+  passes three it fails
+  ([records](docs/plans/sis-6326-hardware-3d.md)). Three engine traps,
+  each measured:
+  - **an untextured batch before a textured one stalls the engine**, so
+    every draw is textured
+    ([record](docs/decisions/2026-10-05-sis6326-d3d-engine.md));
+  - **the Z test compares 15 bits**, so depth fills are halved
+    ([record](docs/decisions/2026-10-05-sis6326-z-compares-15-bits.md));
+  - **TEND must follow every triangle.** Without it, Final Reality's
+    first Z-tested batch hung the engine
+    ([record](docs/decisions/2026-10-05-sis6326-tend-after-each-triangle.md)).
+
+  A stalled engine is quarantined and logged, and the machine stays up.
+- **Half-Life's 2x modulate** (DESTCOLOR/SRCCOLOR) drawn, and a mip
+  filter set for magnification folded to its in-level half: Half-Life,
+  Final Reality and 3DMark 99 run with no refused batch
+  ([blend record](docs/decisions/2026-10-05-sis6326-colour-blend-factors.md),
+  [filter record](docs/decisions/2026-10-05-sis6326-mag-filter-fold.md)).
+- **OpenGL on the 3D engine.** Changes:
+  - render-interface draws taken;
+  - the scissor in the clip registers, measured;
+  - VRAM textures for the ICD;
+  - the ICD's depth clears halved like Direct3D's.
+
+  V9XGLP passes; Half-Life's OpenGL renderer went from 0.8 fps on the CPU
+  to 6.5 fps
+  ([record](docs/decisions/2026-10-05-sis6326-opengl.md)).
+- **GDI is still drawn by the CPU.**
+
+### S3 Trio3D (`5333:8904`)
+
+- **Bound to the ViRGE path** as a `virge-dx` alias with the Trio3D/2X's
+  engine descriptor. It boots, passes GDI acceleration, and draws
+  hardware Direct3D
+  ([record](docs/decisions/2026-10-04-trio3d-8904-on-the-virge-path.md)).
+- **The S3 BIOS's own mode list is merged,** adding 320x240, 400x300 and
+  512x384 at 16 bpp. The 2 MiB board's memory was measured by a VRAM
+  walk.
+- **Half-Life refuses Direct3D on the 2 MiB board.** Parked as an issue.
+
+### Shared core: DirectDraw modes and the render interface
+
+- **DirectDraw modes publish the default refresh (0), not 60.** At 60,
+  DirectDraw dropped every mode below 640x480 from its list and refused
+  to set it. Measured on the SiS 6326, applied to every family.
+- **The render interface's describe** names the SiS engine (ABI engine
+  6), and its depth clear follows the engine's depth-fill rule.
 
 ### ATI Rage Pro class (Rage XL measured)
 
@@ -92,12 +175,26 @@ Recorded, not chased
   last state and colour), and per-reason counts for the Mach64 passive
   check and the Rage IIC's alpha test (shared ABI 2026100409; DRV, HAL
   and V9XTRACE deploy together).
+- The SiS 3D engine:
+  - counts its refusals by reason in the same counters: `M64PolicyNN` for
+    Direct3D, `M64AcceptPolicyNN` for the render interface;
+  - on a stall, writes the stalled batch, every triangle of it, its
+    texture and its Z buffer to `C:\V9XDIAG` (`V9XSIS3D.TXT`,
+    `V9XSIS3T.BIN`, `V9XSIS3Z.BIN`).
+- SIS3D, the 3D write probe, replays such a log from a file
+  (`/phase6 /file`).
 
-Still open: the Rage IIC's blended Z-off sprites hard-lock it and stay
-refused; texel-times-vertex alpha is refused on the Rage IIC; Image
-Quality's Game 1 capture is washed white on the Rage XL, not looked at;
-Intel table fog and specular colour are not drawn; the GMA 950's fog was
-seen only in 128x72 captures.
+Still open:
+- the Rage IIC's blended Z-off sprites hard-lock it and stay refused;
+- texel-times-vertex alpha is refused on the Rage IIC;
+- Image Quality's Game 1 capture is washed white on the Rage XL, not
+  looked at;
+- Intel table fog and specular colour are not drawn;
+- the GMA 950's fog was seen only in 128x72 captures;
+- the SiS 6326 has no software fallback for the draws it refuses;
+- the SiS 6326's GDI is not accelerated;
+- why the SiS 6326 needs TEND is not established;
+- the Trio3D's Half-Life refusal is parked.
 
 ## 0.10.0 - 2026-10-03
 
