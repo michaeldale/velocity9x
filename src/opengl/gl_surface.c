@@ -450,6 +450,94 @@ int v9x_gl_hwtex_upload(void *surface, v9x_u32 levels,
     return ok;
 }
 
+/* One level's rectangle into a locked surface: the rows and columns it
+ * covers, nothing else. */
+static int v9x_gl_hwtex_fill_rect(LPDIRECTDRAWSURFACE surface,
+                                  const V9X_R3D_ABI_LEVEL *level,
+                                  const V9X_GL_TEXRECT *rect, int to_1555)
+{
+    DDSURFACEDESC desc;
+    const BYTE *source;
+    BYTE *target;
+    DWORD row;
+    DWORD i;
+    HRESULT hr;
+
+    if (rect->right > level->width || rect->bottom > level->height) {
+        return 0;
+    }
+    v9x_gl_surface_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = IDirectDrawSurface_Lock(surface, 0, &desc,
+                                 DDLOCK_WAIT | DDLOCK_WRITEONLY, 0);
+    if (hr != DD_OK) {
+        /* A lost surface lost its texels too: refused, so the caller
+         * refills it whole. */
+        v9x_gl_log3("hwtex rect lock hr=%08lX", (DWORD)hr, 0ul, 0ul);
+        return 0;
+    }
+    if (desc.dwWidth != level->width || desc.dwHeight != level->height) {
+        IDirectDrawSurface_Unlock(surface, 0);
+        return 0;
+    }
+    source = (const BYTE *)level->pixels + rect->top * level->pitch +
+             rect->left * 2ul;
+    target = (BYTE *)desc.lpSurface + rect->top * (DWORD)desc.lPitch +
+             rect->left * 2ul;
+    for (row = rect->top; row < rect->bottom; ++row) {
+        if (to_1555) {
+            for (i = 0ul; i < rect->right - rect->left; ++i) {
+                ((v9x_u16 *)target)[i] =
+                    v9x_gl_tex_565_to_1555(((const v9x_u16 *)source)[i]);
+            }
+        } else {
+            for (i = 0ul; i < (rect->right - rect->left) * 2ul; ++i) {
+                target[i] = source[i];
+            }
+        }
+        source += level->pitch;
+        target += desc.lPitch;
+    }
+    IDirectDrawSurface_Unlock(surface, 0);
+    return 1;
+}
+
+int v9x_gl_hwtex_upload_rects(void *surface, v9x_u32 levels,
+                              const V9X_R3D_ABI_LEVEL *source,
+                              const V9X_GL_TEXRECT *rects, int to_1555)
+{
+    LPDIRECTDRAWSURFACE level = (LPDIRECTDRAWSURFACE)surface;
+    LPDIRECTDRAWSURFACE next;
+    DDSCAPS caps;
+    v9x_u32 index;
+    int ok = 1;
+
+    /* The chain walked as v9x_gl_hwtex_upload walks it; a level with
+     * nothing to refill is not locked, which is the point - every Lock
+     * waits for the GPU. */
+    for (index = 0ul; index < levels && ok; ++index) {
+        if (rects[index].right > rects[index].left &&
+            rects[index].bottom > rects[index].top) {
+            ok = v9x_gl_hwtex_fill_rect(level, &source[index], &rects[index],
+                                        to_1555);
+        }
+        next = 0;
+        if (ok && index + 1ul < levels) {
+            caps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP;
+            if (IDirectDrawSurface_GetAttachedSurface(level, &caps, &next) !=
+                    DD_OK) {
+                next = 0;
+                ok = 0;
+            }
+        }
+        if (index != 0ul) {
+            IDirectDrawSurface_Release(level);
+        }
+        level = next;
+    }
+    return ok;
+}
+
 void v9x_gl_hwtex_release(void *surface)
 {
     if (surface != 0) {

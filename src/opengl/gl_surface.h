@@ -14,6 +14,7 @@
 
 #include "velocity9x/types.h"
 #include "velocity9x/r3d_abi.h"
+#include "gl_texture.h"
 
 typedef struct v9x_gl_drawable V9X_GL_DRAWABLE;
 
@@ -75,6 +76,14 @@ void *v9x_gl_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
                           v9x_u32 format);
 int v9x_gl_hwtex_upload(void *surface, v9x_u32 levels,
                         const V9X_R3D_ABI_LEVEL *source, int to_1555);
+/*
+ * The same for a copy already filled, refilling only `rects[level]` of each
+ * level and not locking a level whose rectangle is empty. Each rectangle is
+ * inside its level. Zero when a level it needs cannot be locked.
+ */
+int v9x_gl_hwtex_upload_rects(void *surface, v9x_u32 levels,
+                              const V9X_R3D_ABI_LEVEL *source,
+                              const V9X_GL_TEXRECT *rects, int to_1555);
 void v9x_gl_hwtex_release(void *surface);
 /* The drawable for a window if one exists, without making or resizing. */
 V9X_GL_DRAWABLE *v9x_gl_drawable_find(void *window);

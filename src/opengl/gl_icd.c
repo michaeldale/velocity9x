@@ -120,6 +120,8 @@ static DWORD v9x_gl_sequence;
 static DWORD v9x_gl_hw_creates;
 static DWORD v9x_gl_hw_create_failures;
 static DWORD v9x_gl_hw_uploads;
+/* Of those, the ones that refilled only what changed. */
+static DWORD v9x_gl_hw_partial_uploads;
 static DWORD v9x_gl_hw_upload_kb;
 /* Draws that sampled a square copy of a non-square or too-small image. */
 static DWORD v9x_gl_hw_squared_draws;
@@ -1386,6 +1388,9 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     v9x_u32 levels;
     DWORD upload_start;
     int uploaded;
+    /* A refill of only the rectangles that changed (below). */
+    V9X_GL_TEXRECT rects[V9X_GL_TEXTURE_LEVELS];
+    int partial = 0;
 
     *scale_s = 1.0f;
     *scale_t = 1.0f;
@@ -1495,9 +1500,42 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
             }
             upload_levels = squared_levels;
         }
+        /*
+         * Only what changed, when the copy can be brought up that way: it
+         * was filled, it is not a square copy (whose texels are a
+         * rearrangement), and its levels are the object's own from level 0
+         * (v9x_gl_tex_fit did not drop any). Every level it would lock is
+         * a drain of the GPU, so a level nothing touched is not locked.
+         * Quake 2 and Half-Life update a lightmap a surface at a time under
+         * multitexture, and refilling the whole 32 KB page each time was
+         * most of what made it slower (2026-10-05).
+         */
+        partial = hw->filled && !squared &&
+                  levels == texture->level_count &&
+                  texture->levels[0].pixels == object->levels[0].texels;
+        for (level = 0ul; partial && level < levels; ++level) {
+            if (!v9x_gl_tex_dirty_rect(object, hw->revision, level,
+                                       &rects[level])) {
+                partial = 0;
+            }
+        }
         upload_start = v9x_gl_ticks();
-        uploaded = v9x_gl_hwtex_upload(hw->surface, levels, upload_levels,
-                                       to_1555);
+        uploaded = 0;
+        if (partial) {
+            uploaded = v9x_gl_hwtex_upload_rects(hw->surface, levels,
+                                                 upload_levels, rects,
+                                                 to_1555);
+            if (uploaded) {
+                ++v9x_gl_hw_partial_uploads;
+            } else {
+                /* A level that would not lock (lost, restored): whole. */
+                partial = 0;
+            }
+        }
+        if (!partial) {
+            uploaded = v9x_gl_hwtex_upload(hw->surface, levels,
+                                           upload_levels, to_1555);
+        }
         v9x_gl_upload_ticks += v9x_gl_ticks() - upload_start;
         if (!uploaded) {
             if (squared_storage != 0) {
@@ -1510,8 +1548,10 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         }
         hw->revision = object->revision;
         hw->filled = 1;
+        /* The one copy is current: changes count from here. */
+        v9x_gl_tex_dirty_reset(object);
         ++v9x_gl_hw_uploads;
-        for (level = 0ul; level < levels; ++level) {
+        for (level = 0ul; !partial && level < levels; ++level) {
             v9x_gl_hw_upload_kb += upload_levels[level].bytes / 1024ul;
         }
         if (squared_storage != 0) {
@@ -1658,12 +1698,13 @@ static void v9x_gl_counters_log(void)
 
     v9x_gl_path_log();
     wsprintfA(text, "counters hwtex live=%lu creates=%lu create-failed=%lu "
-              "evictions=%lu uploads=%lu "
+              "evictions=%lu uploads=%lu partial=%lu "
               "upload-kb=%lu squared=%lu alpha-dropped=%lu stubs=%lu "
               "failed r4=%lu r7=%lu r8=%lu other=%lu",
               (DWORD)v9x_gl_hwtex_count, v9x_gl_hw_creates,
               v9x_gl_hw_create_failures, v9x_gl_hw_evictions,
-              v9x_gl_hw_uploads, v9x_gl_hw_upload_kb,
+              v9x_gl_hw_uploads, v9x_gl_hw_partial_uploads,
+              v9x_gl_hw_upload_kb,
               v9x_gl_hw_squared_draws, v9x_gl_alpha_tests_dropped,
               v9x_gl_stub_total,
               v9x_gl_draw_failures[4], v9x_gl_draw_failures[7],

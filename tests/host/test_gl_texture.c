@@ -616,6 +616,75 @@ static void test_sgis_units(void)
     TCHECK(outstanding == 0l);
 }
 
+/*
+ * What a hardware copy at a revision must refill: nothing when current, the
+ * union of glTexSubImage2D's rectangles per level since the last reset, or
+ * the whole object when it is older than that (an image was specified, or
+ * the copy predates the rectangles).
+ */
+static void test_dirty_rectangles(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    V9X_GL_TEXOBJ *object;
+    V9X_GL_TEXRECT rect;
+    static v9x_u8 image[16 * 16 * 3];
+    v9x_u32 copy;
+
+    fresh(&s, &t);
+    v9x_gl_pixel_store(&s, &t, V9X_GL_UNPACK_ALIGNMENT, 1);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 16, 16, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, image);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 1, 3, 8, 8, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, image);
+    object = v9x_gl_tex_bound_object(&t);
+    copy = object->revision;
+
+    /* A copy made now is current: nothing to refill on any level. */
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 0u, &rect) == 1 &&
+           rect.right <= rect.left);
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 1u, &rect) == 1 &&
+           rect.right <= rect.left);
+
+    /* Two sub-images on level 0: their union, level 1 untouched. */
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 2, 3, 4, 2,
+                            V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, image);
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 10, 1, 3, 3,
+                            V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, image);
+    TCHECK(object->revision == copy + 2ul);
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 0u, &rect) == 1 &&
+           rect.left == 2ul && rect.top == 1ul && rect.right == 13ul &&
+           rect.bottom == 5ul);
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 1u, &rect) == 1 &&
+           rect.right <= rect.left);
+
+    /* After the copy is refilled and the rectangles reset, a later
+     * sub-image is all there is. */
+    v9x_gl_tex_dirty_reset(object);
+    copy = object->revision;
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 1, 0, 0, 1, 1,
+                            V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, image);
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 0u, &rect) == 1 &&
+           rect.right <= rect.left);
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 1u, &rect) == 1 &&
+           rect.left == 0ul && rect.right == 1ul && rect.bottom == 1ul);
+
+    /* A copy older than the reset cannot be brought up by rectangles. */
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy - 1ul, 0u, &rect) == 0);
+    /* Nor one older than an image specification, which restarts them. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 1, 3, 8, 8, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, image);
+    TCHECK(v9x_gl_tex_dirty_rect(object, copy, 0u, &rect) == 0);
+    TCHECK(v9x_gl_tex_dirty_rect(object, object->revision, 1u, &rect) ==
+               1 &&
+           rect.right <= rect.left);
+    /* A level past the chain is refused. */
+    TCHECK(v9x_gl_tex_dirty_rect(object, object->revision,
+                                 V9X_GL_TEXTURE_LEVELS, &rect) == 0);
+    v9x_gl_textures_release(&t);
+    TCHECK(outstanding == 0l);
+}
+
 static v9x_u32 hw_released;
 static void *hw_last;
 
@@ -814,6 +883,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_lookup_after_reuse_and_growth();
     test_environment_table();
     test_sgis_units();
+    test_dirty_rectangles();
     test_hardware_copy_bookkeeping();
     test_retarget_to_1555();
     test_square_copy();

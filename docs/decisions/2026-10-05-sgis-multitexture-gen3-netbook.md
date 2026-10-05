@@ -62,3 +62,32 @@ frequently updated texture could avoid the drain. Either is a change to
 the ICD's hardware copies and the HAL's Lock, outside this plan's steps.
 Until one lands, the extension as offered on Gen3 is a regression for
 both games measured.
+
+## Refilling only what changed (same day, same boot)
+
+The ICD now records, per texture object, the rectangles glTexSubImage2D
+wrote since its hardware copy was last current, and refills only those,
+locking no level nothing touched. A copy that is older than an image
+specification, squared, or of fitted levels still refills whole.
+Evidence: `docs/probe/sgis-multitexture-netbook-2026-10-05/partial-uploads/`.
+ICD alone replaced (the ABI did not change).
+
+| | multitexture | without |
+|---|---|---|
+| Quake 2 `timerefresh`, demo1 spawn | **35.29 fps** (was 21.00) | 32.96 fps (was 31.83) |
+| Half-Life `timedemo mwd5` | 15.68, 15.53; 15.05, 15.90 | 17.24, 18.19 |
+
+Quake 2: 41,211 refills of which 41,144 partial, 2.2 MB refilled whole
+(was 614 MB). Multitexture is now the faster path.
+
+Half-Life: whole refills fell from 95.8 MB to 4.5 MB, and it is still
+slower with the extension. A HAL snapshot either side of one measured
+timedemo each way (`hlprof.py`) shows the HAL is not where it goes: about
+297,000 submissions in both windows, render-interface time 9.30 s against
+9.00 s, no wait for the GPU in either, breadcrumb drains 0.03 s against
+0.04 s. Per frame Half-Life sends about 3,500 vertices and 407 draws with
+the extension, 3,660 and 358 without: the extension saves it little
+geometry and costs it draws. What the remaining difference - about 8 ms a
+frame - is spent on, in the ICD or in Half-Life itself, is not measured.
+A first attempt to sum the ICD's ten-second buckets misparsed the log and
+was discarded.

@@ -63,6 +63,14 @@ typedef struct v9x_gl_texlevel {
     v9x_u32 height;
 } V9X_GL_TEXLEVEL;
 
+/* A half-open rectangle of texels; empty when right <= left. */
+typedef struct v9x_gl_texrect {
+    v9x_u32 left;
+    v9x_u32 top;
+    v9x_u32 right;
+    v9x_u32 bottom;
+} V9X_GL_TEXRECT;
+
 typedef struct v9x_gl_texobj {
     GLuint name;
     int in_use;
@@ -79,6 +87,16 @@ typedef struct v9x_gl_texobj {
     /* Bumped by every glTexImage2D and glTexSubImage2D on any level, so a
      * copy made from the images can tell it is stale. */
     v9x_u32 revision;
+    /*
+     * What changed since revision `dirty_from`: per level, the union of the
+     * rectangles glTexSubImage2D wrote. A glTexImage2D restarts it with
+     * nothing dirty, so a copy older than that refills whole. Lets the
+     * ICD's hardware copy refill only what an update touched
+     * (v9x_gl_tex_dirty_rect); Quake 2 and Half-Life update a lightmap a
+     * surface at a time under multitexture (2026-10-05).
+     */
+    v9x_u32 dirty_from;
+    V9X_GL_TEXRECT dirty[V9X_GL_TEXTURE_LEVELS];
     /* The ICD's hardware copy of the images, opaque here; released through
      * V9X_GL_TEXTURES.hw_release when the object's storage goes. */
     void *hw;
@@ -215,6 +233,18 @@ void v9x_gl_tex_describe(const V9X_GL_STATE *state,
 void v9x_gl_tex_fit(V9X_GL_TEXTURES *textures, v9x_u32 unit,
                     V9X_R3D_ABI_TEXTURE *texture,
                     V9X_R3D_ABI_LEVEL *levels, v9x_u32 size_max);
+
+/*
+ * For a copy of `object` made at revision `copy_revision`: 1 with `rect`
+ * the part of `level` to refill (empty for none), or 0 when the copy cannot
+ * be brought up to date by rectangles and must refill whole - it predates
+ * dirty_from, or `level` is past the chain. v9x_gl_tex_dirty_reset starts
+ * the rectangles again from the current revision, once the one copy that
+ * reads them is current.
+ */
+int v9x_gl_tex_dirty_rect(const V9X_GL_TEXOBJ *object, v9x_u32 copy_revision,
+                          v9x_u32 level, V9X_GL_TEXRECT *rect);
+void v9x_gl_tex_dirty_reset(V9X_GL_TEXOBJ *object);
 
 /* The selected unit's bound object (never null: name 0 is the default
  * texture). */

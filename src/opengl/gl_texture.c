@@ -694,6 +694,8 @@ void v9x_gl_tex_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
     slot->width = (v9x_u32)width;
     slot->height = (v9x_u32)height;
     ++object->revision;
+    /* A new image: a copy from before it cannot be patched up. */
+    v9x_gl_tex_dirty_reset(object);
     if (level == 0) {
         object->base_format = base;
         object->storage_format =
@@ -744,6 +746,31 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
                         v9x_gl_tex_source_offset(textures, width, components,
                                                  x, y),
                     format, object->base_format);
+        }
+    }
+    if (width != 0 && height != 0) {
+        V9X_GL_TEXRECT *dirty = &object->dirty[level];
+        v9x_u32 right = (v9x_u32)xoffset + (v9x_u32)width;
+        v9x_u32 bottom = (v9x_u32)yoffset + (v9x_u32)height;
+
+        if (dirty->right <= dirty->left) {
+            dirty->left = (v9x_u32)xoffset;
+            dirty->top = (v9x_u32)yoffset;
+            dirty->right = right;
+            dirty->bottom = bottom;
+        } else {
+            if ((v9x_u32)xoffset < dirty->left) {
+                dirty->left = (v9x_u32)xoffset;
+            }
+            if ((v9x_u32)yoffset < dirty->top) {
+                dirty->top = (v9x_u32)yoffset;
+            }
+            if (right > dirty->right) {
+                dirty->right = right;
+            }
+            if (bottom > dirty->bottom) {
+                dirty->bottom = bottom;
+            }
         }
     }
     ++object->revision;
@@ -1142,5 +1169,35 @@ void v9x_gl_tex_as_1555(V9X_R3D_ABI_TEXTURE *texture, int alpha_used)
         texture->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
     } else if (texture->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
         texture->alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+    }
+}
+
+int v9x_gl_tex_dirty_rect(const V9X_GL_TEXOBJ *object, v9x_u32 copy_revision,
+                          v9x_u32 level, V9X_GL_TEXRECT *rect)
+{
+    rect->left = rect->top = rect->right = rect->bottom = 0ul;
+    /* Revisions only grow; a copy from before dirty_from missed an image
+     * the rectangles do not describe. */
+    if (object == 0 || level >= V9X_GL_TEXTURE_LEVELS ||
+        copy_revision < object->dirty_from) {
+        return 0;
+    }
+    if (copy_revision == object->revision) {
+        return 1;
+    }
+    *rect = object->dirty[level];
+    return 1;
+}
+
+void v9x_gl_tex_dirty_reset(V9X_GL_TEXOBJ *object)
+{
+    v9x_u32 level;
+
+    object->dirty_from = object->revision;
+    for (level = 0ul; level < V9X_GL_TEXTURE_LEVELS; ++level) {
+        object->dirty[level].left = 0ul;
+        object->dirty[level].top = 0ul;
+        object->dirty[level].right = 0ul;
+        object->dirty[level].bottom = 0ul;
     }
 }
