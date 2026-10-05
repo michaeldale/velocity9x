@@ -67,3 +67,34 @@ i.e. triangle 11 pending; with `only=11`, wait 2.
 | `only11z05`, `only11z099` (every Z 0.5, 0.99) | 265, 266 | STALLED |
 | `t11tex64k`, `t11tex2k` (texture moved) | 267, 268 | STALLED |
 | `t11z2k` (Z buffer moved) | 269 | STALLED |
+
+## SiS 2.28 on the same card (boot 270)
+
+`sis228-b270/`: the device's Enum `Driver` value pointed at SiS's class key
+`Display\0009` (`TOSIS.REG`) for one boot, then back to `Display\0010`
+(`TOV9X.REG`). `ENUM-SIS6326-BEFORE.REG` is the key before the swap.
+`B270-SIS6326-CAP01..20.TXT` are SIS6326 register snapshots taken every 16
+s through Final Reality's full benchmark, which SiS's HAL rendered
+throughout (`B270-FR-SHOTS.png`). `B270-SIS6326-DESKTOP.TXT` is the same
+probe at SiS's 800x600x16 desktop, `B274-SIS6326-VELOCITY9X.TXT` at ours.
+
+SiS's state for Final Reality's Z-tested strip (CAP04, CAP07, CAP10):
+enable `00308EA1h` (ours plus dither), Z set `00130500h`, texture
+`50030009h` (RGB555, wrap, bilinear, 256x256), with the Turbo Queue on
+(SR27 D0h, SR2C 7Eh, SR3C 43h). It also writes 8A10h, 8A20h D24, 8A24h,
+8A2Ch and 8A80h-8A88h D23, which the driver never does.
+
+## Replays with SiS's differences (boots 271-283, build `p6l`)
+
+| Replay | Boot | Result |
+|---|---|---|
+| `only11sisall`, `sisall` (dither, 8A10h, 8A20h D24, 8A24h, 8A2Ch, alpha mode 0, 8A80h-8A88h D23) | 271, 272 | STALLED |
+| `only11fmt50`, `fmt50` (RGB555) | 273, 274 | STALLED |
+| `only11sr3d` (SR3D A2h, beyond the datasheet) | 275 | STALLED |
+| `only11thr` (SR08 8Fh, SR09 0Bh: SiS's arbitration thresholds) | 276 | STALLED |
+| `only11sr3e` (SR3E 08h) | 277 | STALLED |
+| `only11tq`, `tq` (Turbo Queue on as SiS has it) | 278, 279 | STALLED; status shows the queue live |
+| `only11zfail` (Z buffer 0000h: every pixel fails LEQUAL) | 280 | IDLE |
+| `only11zffff`, `zffff` (Z buffer FFFFh) | 280, 281 | STALLED |
+| `only11noshift` (integer vertices) | 282 | STALLED |
+| `only11sisshift` (vertices 2^-15 up-left, as SiS) | 283 | STALLED |

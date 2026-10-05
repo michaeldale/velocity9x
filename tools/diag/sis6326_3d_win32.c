@@ -3494,7 +3494,9 @@ static void sis3d_phase6(void)
  *   W off val      MMIO write
  *   I              wait for 89FCh idle; numbered from 0 in order
  *   F off val n    fill n dwords of VRAM
- *   S idx val      sequencer write; SR3C and SR34 only, restored at the end
+ *   S idx val      sequencer write; SR08, SR09, SR34, SR3C, SR3D, SR3E,
+ *                  SR2C and SR27 only, each restored at the end, SR27
+ *                  first, so the Turbo Queue goes off before its base moves
  *   D n            n reads of 89FCh, a delay
  *   P n            n idle waits whose timeouts are tolerated; the number of
  *                  the first that sees idle is reported (ReplayPollIdleAt)
@@ -3503,8 +3505,15 @@ static void sis3d_phase6(void)
 #define SIS3D_P6_REPLAY_PATH "C:\\V9XDIAG\\P6REPLAY.TXT"
 #define SIS3D_P6_REPLAY_BYTES 262144u
 #define SIS3D_P6_CHUNK (SIS3D_OP_MAX - 16u)
-#define SIS_SR34 0x34ul
-#define SIS_SR3C 0x3cul
+/* The sequencer registers SiS 2.28 programs differently from the BIOS
+ * (B270 captures): SR08/SR09 the CRT/CPU/engine arbitration thresholds
+ * (DS SR8, SR9), SR3D/SR3E beyond the datasheet, SR3C the queue split. */
+#define SIS3D_P6_SR_COUNT 8u
+static const DWORD sis3d_p6_srs[SIS3D_P6_SR_COUNT] = {
+    0x08ul, 0x09ul, 0x34ul, 0x3cul, 0x3dul, 0x3eul,
+    0x2cul, 0x27ul    /* Turbo Queue base, then its enable (SR27 D7) */
+};
+static DWORD sis3d_p6_sr_saved[SIS3D_P6_SR_COUNT];
 
 static char sis3d_p6_text[SIS3D_P6_REPLAY_BYTES + 1u];
 static DWORD sis3d_p6_wait_numbers[SIS3D_OP_MAX];
@@ -3582,9 +3591,10 @@ static void sis3d_phase6_file(void)
     DWORD ops = 0ul;
     DWORD waits = 0ul;
     DWORD stalled = 0ul;
-    DWORD sr34 = 0ul;
-    DWORD sr3c = 0ul;
+    DWORD sr_index[SIS3D_P6_SR_COUNT];
     DWORD status_index;
+    char key[16];
+    int allowed;
     const char *p;
     char op;
     int ok = 1;
@@ -3602,18 +3612,22 @@ static void sis3d_phase6_file(void)
     CloseHandle(file);
     sis3d_p6_text[length] = '\0';
 
-    /* The two sequencer registers a replay may change, kept to restore. */
+    /* The sequencer registers a replay may change, kept to restore. */
     sis3d_begin();
-    index = sis3d_add(SIS3D_OP_SR_READ, SIS_SR34, 0ul, 0ul);
-    a = sis3d_add(SIS3D_OP_SR_READ, SIS_SR3C, 0ul, 0ul);
+    for (index = 0ul; index < SIS3D_P6_SR_COUNT; ++index) {
+        sr_index[index] = sis3d_add(SIS3D_OP_SR_READ, sis3d_p6_srs[index],
+                                    0ul, 0ul);
+    }
     if (!sis3d_run()) {
         sis3d_write("ReplayResult", "SR-READ-FAILED");
         return;
     }
-    sr34 = sis3d_value(index);
-    sr3c = sis3d_value(a);
-    sis3d_write_hex("ReplaySR34", sr34);
-    sis3d_write_hex("ReplaySR3C", sr3c);
+    for (index = 0ul; index < SIS3D_P6_SR_COUNT; ++index) {
+        sis3d_p6_sr_saved[index] = sis3d_value(sr_index[index]);
+        lstrcpyA(key, "ReplaySR00");
+        sis3d_hex(key + 8, sis3d_p6_srs[index], 2);
+        sis3d_write_hex(key, sis3d_p6_sr_saved[index]);
+    }
 
     sis3d_begin();
     for (p = sis3d_p6_text; *p != '\0' && ok;) {
@@ -3644,7 +3658,13 @@ static void sis3d_phase6_file(void)
             ok = 0;
             break;
         }
-        if (op == 'S' && a != SIS_SR34 && a != SIS_SR3C) {
+        allowed = op != 'S';
+        for (index = 0ul; index < SIS3D_P6_SR_COUNT; ++index) {
+            if (a == sis3d_p6_srs[index]) {
+                allowed = 1;
+            }
+        }
+        if (!allowed) {
             sis3d_write("ReplayResult", "SR-NOT-ALLOWED");
             reported = 1;
             ok = 0;
@@ -3716,8 +3736,11 @@ static void sis3d_phase6_file(void)
     sis3d_begin();
     status_index = sis3d_add(SIS3D_OP_MMIO_READ32, V9X_SIS3D_STATUS, 0ul,
                              0ul);
-    sis3d_add(SIS3D_OP_SR_WRITE, SIS_SR34, sr34, 0ul);
-    sis3d_add(SIS3D_OP_SR_WRITE, SIS_SR3C, sr3c, 0ul);
+    /* In reverse: SR27 (the queue's enable) before SR2C (its base). */
+    for (index = SIS3D_P6_SR_COUNT; index > 0ul; --index) {
+        sis3d_add(SIS3D_OP_SR_WRITE, sis3d_p6_srs[index - 1ul],
+                  sis3d_p6_sr_saved[index - 1ul], 0ul);
+    }
     if (sis3d_run()) {
         sis3d_write_hex("ReplayStatus", sis3d_value(status_index));
     }

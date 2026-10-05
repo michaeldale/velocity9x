@@ -16,11 +16,26 @@ Variants (comma-separated in argv[3]):
   from=N     triangles from N on
   only=N     triangle N alone
   texdelta=HEX, zdelta=HEX  move the texture or Z buffer further
+  noshift, sisshift  X and Y without the 1/256 shift, or with 2^-15
+  zfill=HEX  the Z buffer's fill dword (default 7FFF7FFF)
   z=HEX      every vertex's Z register
+  sr=II:VV   sequencer write before the batch (SR08/09/34/3C/3D/3E)
+  fmt=HEX    texel format code (8A38h D[31:24])
+  sisall     SiS 2.28's extra values (B270): dither, 8A20 D24, 8A24, 8A2C,
+             8A10, alpha mode 0, 8A80-8A88 D23; sis-<name> adds one
   pollN      after the last triangle, N tolerant idle waits
 """
 import re
+import struct
 import sys
+
+
+def f2b(value):
+    return struct.unpack('<I', struct.pack('<f', value))[0]
+
+
+def b2f(bits):
+    return struct.unpack('<f', struct.pack('<I', bits))[0]
 
 DELTA = 0x200000
 STATE_BASES = {0x8A08, 0x8A18}
@@ -95,6 +110,8 @@ def main():
     start = 0
     delay = 0
     zbits = None
+    zfill = 0x7FFF7FFF
+    shift = None
     for v in variants:
         if v.startswith('upto='):
             upto = int(v[5:])
@@ -104,6 +121,12 @@ def main():
             EXTRA['tex'] = int(v[9:], 16)
         if v.startswith('zdelta='):
             EXTRA['z'] = int(v[7:], 16)
+        if v == 'noshift':
+            shift = 0.0
+        if v == 'sisshift':
+            shift = 1.0 / 32768
+        if v.startswith('zfill='):
+            zfill = int(v[6:], 16)
         if v.startswith('z='):
             zbits = int(v[2:], 16)
         if v.startswith('only='):
@@ -122,6 +145,9 @@ def main():
                 value &= ~0x0F
             if 'clamp' in variants:
                 value = (value & ~0x00FF0000) | 0x00300000
+            for v in variants:
+                if v.startswith('fmt='):
+                    value = (value & 0x00FFFFFF) | (int(v[4:], 16) << 24)
         texture_words.append((offset, value))
 
     # Fills: target, Z and level 0, sized from the state and texture words.
@@ -130,7 +156,7 @@ def main():
     lines.append('F %X 0 %X' % (state[0x8A18] + DELTA, pitch * height // 4))
     if state[0x8A08] != 0:
         zpitch = state[0x8A04] & 0x3FFF
-        lines.append('F %X 7FFF7FFF %X' % (state[0x8A08] + DELTA + EXTRA['z'],
+        lines.append('F %X %X %X' % (state[0x8A08] + DELTA + EXTRA['z'], zfill,
                                            zpitch * height // 4))
     tex = dict(texture_words)
     size = tex[0x8A80]
@@ -142,18 +168,52 @@ def main():
 
     if 'tq3' in variants:
         lines.append('S 3C 43')
+    for v in variants:
+        if v.startswith('sr='):
+            index, value = v[3:].split(':')
+            lines.append('S %s %s' % (index, value))
+
+    sis = set()
+    for v in variants:
+        if v == 'sisall':
+            sis |= {'dither', 'fog24', 'r8a24', 'r8a2c', 'r8a10', 'aatex', 'mix80'}
+        elif v.startswith('sis-'):
+            sis.add(v[4:])
+    if 'dither' in sis:
+        enable |= 0x1
+    fixed = []
+    for offset, value in texture_words:
+        if offset == 0x8A3C and 'aatex' in sis:
+            value &= ~0x03000000
+        if offset == 0x8A80 and 'mix80' in sis:
+            value |= 0x00800000
+        fixed.append((offset, value))
+    texture_words = fixed
 
     lines.append('I')
     for offset, value in batch['state']:
         if offset == 0x8A00:
             value = enable
+        if offset == 0x8A20 and 'fog24' in sis and value == 0:
+            value = 0x01000000
         lines.append('W %X %X' % (offset, moved(offset, value)))
+    # SiS 2.28's values for registers the driver never writes (B270 captures).
+    if 'r8a10' in sis:
+        lines.append('W 8A10 C08400')
+    if 'r8a24' in sis:
+        lines.append('W 8A24 8004')
+    if 'r8a2c' in sis:
+        lines.append('W 8A2C 1A8040')
     for offset, value in texture_words:
         if offset == 0x8A38:
             value |= 0x10
         lines.append('W %X %X' % (offset, moved(offset, value)))
     for offset, value in texture_words:
         lines.append('W %X %X' % (offset, moved(offset, value)))
+    if 'mix80' in sis:
+        mix = dict(texture_words)[0x8A80]
+        lines.append('W 8A84 %X' % mix)
+        lines.append('W 8A88 %X' % mix)
     for index, t in enumerate(triangles[start:upto]):
         lines.append('I')
         if delay:
@@ -162,6 +222,9 @@ def main():
         for offset, value in t['writes']:
             if zbits is not None and (offset - 0x8800) % 0x20 == 4:
                 value = zbits
+            if shift is not None and (offset - 0x8800) % 0x20 in (8, 12):
+                # The driver's 1/256 shift undone, then `shift` applied.
+                value = f2b(b2f(value) + 1.0 / 256 - shift)
             lines.append('W %X %X' % (offset, value))
     for v in variants:
         if v.startswith('poll'):

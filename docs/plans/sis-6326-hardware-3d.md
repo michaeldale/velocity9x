@@ -41,7 +41,8 @@ fails nothing SiS's HAL passes, and passes three it fails. **Phase 4 done.**
 Phase 5 started: Final Reality stalls the engine on its first Z-tested
 batch (256x256 texture), reproduced by the probe but not yet explained
 ([issue](../issues/2026-10-05-a8u4i5-sis-3d-stalls-in-final-reality.md)).
-Next: the same scene under SiS's own driver.
+SiS's own driver renders the scene with the same state; none of its
+register differences, the Turbo Queue included, stops the replayed stall.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 

@@ -71,3 +71,30 @@ blend. Its texture lies directly after its Z buffer.
 
 Run Final Reality under SiS's 2.28 driver on the same card and capture its
 3D registers mid-run.
+
+## 2026-10-05: SiS's own driver draws it
+
+For boot 270 the device was bound back to SiS 2.28's class key (one Enum
+`Driver` value, restored for boot 271). SiS's HAL rendered Final
+Reality's whole benchmark, and register snapshots during the robot scenes
+show the same state as the stalling batch: Z test and write, a 256x256
+texture, wrap, bilinear, no mip levels. Its differences, each replayed on
+our stalling triangle (boots 271-283), changed nothing:
+
+- dither, and SiS's values for 8A10h, 8A20h D24, 8A24h, 8A2Ch and
+  8A80h-8A88h D23, registers the driver never writes;
+- RGB555 texels instead of RGB565;
+- SR3D bit 7 and SR3E, beyond the Rev. Ax/Bx datasheet;
+- SiS's CRT/engine arbitration thresholds (SR08, SR09);
+- the Turbo Queue on, with SiS's base and 2D/3D split;
+- integer vertices, or SiS's 2^-15 offset instead of the driver's 1/256.
+
+One change did: a Z buffer every pixel fails (boot 280). So the hang needs
+pixels that pass the Z test and then texture. A buffer of FFFFh instead of
+the driver's halved 7FFFh still stalls, so the halved depth fill is not
+it.
+
+Not yet compared: the order and set of register writes SiS issues per
+triangle (the snapshots show state, not sequence), TEND (8AFFh, which the
+datasheet calls the end of a primitive list and the driver never writes),
+and the texture's contents, which the replays fill with one value.
