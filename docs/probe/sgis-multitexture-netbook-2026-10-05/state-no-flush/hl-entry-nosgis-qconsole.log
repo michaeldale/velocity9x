@@ -1,0 +1,29 @@
+The sound hardware is in use by another app.
+Sound not available ( 2 ).
+WON initialized.
+Server module initialized.
+World module initialized.
+]echo V9X_entry-nosgis_WARM
+V9X_entry-nosgis_WARM 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 22.825 seconds 17.218 fps
+No demos listed with startdemos
+]echo V9X_entry-nosgis_RUN1
+V9X_entry-nosgis_RUN1 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 21.880 seconds 17.961 fps
+]echo V9X_entry-nosgis_RUN2
+V9X_entry-nosgis_RUN2 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 22.021 seconds 17.847 fps
+]quit
+World module shutdown.
+WON shutdown.
+Server module shutdown.

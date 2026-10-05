@@ -238,7 +238,20 @@ static long v9x_gl_tsc_to_long(double value);
  * whose texture went to the CPU instead (2026-10-02, Serious Sam). */
 #define V9X_GL_TSC_HWTEX           16u
 #define V9X_GL_TSC_IFACE_CPU       17u
-#define V9X_GL_TSC_BUCKETS         18u
+/* Entry points by kind (2026-10-05, Half-Life under multitexture): each
+ * texture command whole, the held batch it draws first, the SGIS calls and
+ * glEnable/glDisable/glIsEnabled. Each with a call count (entry line). */
+#define V9X_GL_TSC_TEXSUB          18u
+#define V9X_GL_TSC_TEXIMAGE        19u
+#define V9X_GL_TSC_TEXBIND         20u
+#define V9X_GL_TSC_TEXPARAM        21u
+#define V9X_GL_TSC_TEXENV          22u
+#define V9X_GL_TSC_TEXOTHER        23u
+#define V9X_GL_TSC_TEXFLUSH        24u
+#define V9X_GL_TSC_SGIS_SELECT     25u
+#define V9X_GL_TSC_SGIS_COORD      26u
+#define V9X_GL_TSC_ENABLE          27u
+#define V9X_GL_TSC_BUCKETS         28u
 
 /* Why v9x_gl_hw_texture answered no, counted per call (2026-10-02) and
  * logged as the hwno line: the batch is then drawn from its CPU copy. */
@@ -259,6 +272,8 @@ static DWORD v9x_gl_hwno[V9X_GL_HWNO_COUNT];
 static DWORD v9x_gl_count_sinks;
 static DWORD v9x_gl_tsc_state;  /* 0 unknown, 1 usable, 2 absent */
 static DWORD v9x_gl_tsc[V9X_GL_TSC_BUCKETS * 2u];
+/* Calls per bucket, for the entry line; reset with the buckets. */
+static DWORD v9x_gl_tsc_calls[V9X_GL_TSC_BUCKETS];
 /* The vertex pipeline's stage profile (V9X_GL_PIPELINE.profile), shared by
  * every context of the process and reported and cleared with the tsc line. */
 static v9x_u32 v9x_gl_prim_profile[V9X_GL_PRIM_PROF_DWORDS];
@@ -362,7 +377,9 @@ static DWORD v9x_gl_tsc_bucket_ms(unsigned int bucket, DWORD interval_ms)
 
 static void v9x_gl_tsc_log(DWORD interval_ms, DWORD swaps)
 {
-    char text[320];
+    /* The entry line is the longest: about 200 characters of format and
+     * twenty numbers of up to ten digits. */
+    char text[480];
     double wall;
     unsigned int i;
 
@@ -432,8 +449,36 @@ static void v9x_gl_tsc_log(DWORD interval_ms, DWORD swaps)
     for (i = 0u; i < V9X_GL_PRIM_PROF_DWORDS; ++i) {
         v9x_gl_prim_profile[i] = 0ul;
     }
+    wsprintfA(text, "entry texsub-ms=%lu/%lu teximage-ms=%lu/%lu "
+              "bind-ms=%lu/%lu param-ms=%lu/%lu env-ms=%lu/%lu "
+              "other-ms=%lu/%lu tex-flush-ms=%lu/%lu select-ms=%lu/%lu "
+              "mtexcoord-ms=%lu/%lu enable-ms=%lu/%lu",
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXSUB, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXSUB],
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXIMAGE, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXIMAGE],
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXBIND, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXBIND],
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXPARAM, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXPARAM],
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXENV, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXENV],
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXOTHER, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXOTHER],
+              v9x_gl_tsc_ms(V9X_GL_TSC_TEXFLUSH, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_TEXFLUSH],
+              v9x_gl_tsc_ms(V9X_GL_TSC_SGIS_SELECT, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_SGIS_SELECT],
+              v9x_gl_tsc_ms(V9X_GL_TSC_SGIS_COORD, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_SGIS_COORD],
+              v9x_gl_tsc_ms(V9X_GL_TSC_ENABLE, wall, interval_ms),
+              v9x_gl_tsc_calls[V9X_GL_TSC_ENABLE]);
+    v9x_gl_log(text);
     for (i = 0u; i < V9X_GL_TSC_BUCKETS * 2u; ++i) {
         v9x_gl_tsc[i] = 0ul;
+    }
+    for (i = 0u; i < V9X_GL_TSC_BUCKETS; ++i) {
+        v9x_gl_tsc_calls[i] = 0ul;
     }
     v9x_gl_count_vertices = 0ul;
     v9x_gl_count_flushes = 0ul;
@@ -452,7 +497,8 @@ static V9X_GL_CONTEXT v9x_gl_contexts[V9X_GL_CONTEXTS_MAX];
 void v9x_gl_log(const char *text)
 {
     HANDLE file;
-    char line[320];
+    /* The longest text (the tsc entry line, under 480) plus the prefix. */
+    char line[520];
     DWORD written;
     int length;
 
@@ -609,22 +655,28 @@ static void V9X_GL_API v9x_gl_depth_mask(GLboolean flag)
 
 static void V9X_GL_API v9x_gl_enable(GLenum cap)
 {
+    DWORD started = v9x_gl_tsc_begin();
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
     if (context != 0 &&
         !v9x_gl_tex_enable_selected(&context->textures, cap, 1)) {
         v9x_gl_state_enable(&context->state, cap, 1);
     }
+    ++v9x_gl_tsc_calls[V9X_GL_TSC_ENABLE];
+    v9x_gl_tsc_end(V9X_GL_TSC_ENABLE, started);
 }
 
 static void V9X_GL_API v9x_gl_disable(GLenum cap)
 {
+    DWORD started = v9x_gl_tsc_begin();
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
     if (context != 0 &&
         !v9x_gl_tex_enable_selected(&context->textures, cap, 0)) {
         v9x_gl_state_enable(&context->state, cap, 0);
     }
+    ++v9x_gl_tsc_calls[V9X_GL_TSC_ENABLE];
+    v9x_gl_tsc_end(V9X_GL_TSC_ENABLE, started);
 }
 
 static GLboolean V9X_GL_API v9x_gl_is_enabled(GLenum cap)
@@ -1007,17 +1059,50 @@ static void v9x_gl_heap_free(void *memory)
 
 /* Every texture command draws the held batch first: its levels point at
  * images these commands replace, delete or rebind. */
-#define V9X_GL_WITH_TEXTURES(call) do { \
+#define V9X_GL_WITH_TEXTURES_IN(bucket, call) do { \
+    DWORD entry_started_ = v9x_gl_tsc_begin(); \
     V9X_GL_CONTEXT *context_ = v9x_gl_current(); \
     if (context_ != 0) { \
+        DWORD flush_started_ = v9x_gl_tsc_begin(); \
+        if (context_->pending.triangles != 0ul) { \
+            ++v9x_gl_tsc_calls[V9X_GL_TSC_TEXFLUSH]; \
+        } \
         v9x_gl_pending_flush(context_); \
+        v9x_gl_tsc_end(V9X_GL_TSC_TEXFLUSH, flush_started_); \
         call; \
     } \
+    ++v9x_gl_tsc_calls[bucket]; \
+    v9x_gl_tsc_end(bucket, entry_started_); \
+} while (0)
+#define V9X_GL_WITH_TEXTURES(call) \
+    V9X_GL_WITH_TEXTURES_IN(V9X_GL_TSC_TEXOTHER, call)
+
+/*
+ * A texture command that changes no texel storage - binding, parameters,
+ * the environment, pixel store, name generation - without drawing the held
+ * batch first. The batch carries its own copy of everything it was
+ * described with (the combine, environment colour, filters, the levels'
+ * pointers) and reaches its object only by name for the hardware copy, so
+ * none of these can change what it draws. The commands that do change or
+ * free texels - glTexImage2D, glTexSubImage2D, glDeleteTextures - still
+ * draw it first. Half-Life calls glTexEnv about 540 times a frame under
+ * multitexture and glBindTexture about 80, and flushing on each made
+ * nearly every one of its ~427 draws a frame (2026-10-05).
+ */
+#define V9X_GL_WITH_TEXTURE_STATE_IN(bucket, call) do { \
+    DWORD entry_started_ = v9x_gl_tsc_begin(); \
+    V9X_GL_CONTEXT *context_ = v9x_gl_current(); \
+    if (context_ != 0) { \
+        call; \
+    } \
+    ++v9x_gl_tsc_calls[bucket]; \
+    v9x_gl_tsc_end(bucket, entry_started_); \
 } while (0)
 
 static void V9X_GL_API v9x_gl_gen_textures(GLsizei n, GLuint *names)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_tex_gen(&context_->state, &context_->textures,
+    V9X_GL_WITH_TEXTURE_STATE_IN(V9X_GL_TSC_TEXOTHER,
+        v9x_gl_tex_gen(&context_->state, &context_->textures,
                                         n, names));
 }
 
@@ -1038,14 +1123,16 @@ static GLboolean V9X_GL_API v9x_gl_is_texture(GLuint name)
 
 static void V9X_GL_API v9x_gl_bind_texture(GLenum target, GLuint name)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_tex_bind(&context_->state,
+    V9X_GL_WITH_TEXTURE_STATE_IN(V9X_GL_TSC_TEXBIND,
+        v9x_gl_tex_bind(&context_->state,
                                          &context_->textures, target, name));
 }
 
 static void V9X_GL_API v9x_gl_tex_parameteri(GLenum target, GLenum pname,
                                              GLint value)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_tex_parameter(&context_->state,
+    V9X_GL_WITH_TEXTURE_STATE_IN(V9X_GL_TSC_TEXPARAM,
+        v9x_gl_tex_parameter(&context_->state,
                                               &context_->textures, target,
                                               pname, value));
 }
@@ -1072,7 +1159,8 @@ static void V9X_GL_API v9x_gl_tex_parameterfv(GLenum target, GLenum pname,
 static void V9X_GL_API v9x_gl_tex_envfv(GLenum target, GLenum pname,
                                         const GLfloat *values)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_tex_env(&context_->state,
+    V9X_GL_WITH_TEXTURE_STATE_IN(V9X_GL_TSC_TEXENV,
+        v9x_gl_tex_env(&context_->state,
                                         &context_->textures, target, pname,
                                         values));
 }
@@ -1116,7 +1204,8 @@ static void V9X_GL_API v9x_gl_tex_enviv(GLenum target, GLenum pname,
 
 static void V9X_GL_API v9x_gl_pixel_storei(GLenum pname, GLint value)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_pixel_store(&context_->state,
+    V9X_GL_WITH_TEXTURE_STATE_IN(V9X_GL_TSC_TEXOTHER,
+        v9x_gl_pixel_store(&context_->state,
                                             &context_->textures, pname,
                                             value));
 }
@@ -1132,7 +1221,8 @@ static void V9X_GL_API v9x_gl_api_tex_image_2d(GLenum target, GLint level,
                                            GLint border, GLenum format,
                                            GLenum type, const GLvoid *pixels)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_tex_image_2d(&context_->state,
+    V9X_GL_WITH_TEXTURES_IN(V9X_GL_TSC_TEXIMAGE,
+        v9x_gl_tex_image_2d(&context_->state,
                                              &context_->textures, target,
                                              level, internal_format, width,
                                              height, border, format, type,
@@ -1145,7 +1235,8 @@ static void V9X_GL_API v9x_gl_api_tex_sub_image_2d(GLenum target, GLint level,
                                                GLenum format, GLenum type,
                                                const GLvoid *pixels)
 {
-    V9X_GL_WITH_TEXTURES(v9x_gl_tex_sub_image_2d(&context_->state,
+    V9X_GL_WITH_TEXTURES_IN(V9X_GL_TSC_TEXSUB,
+        v9x_gl_tex_sub_image_2d(&context_->state,
                                                  &context_->textures, target,
                                                  level, xoffset, yoffset,
                                                  width, height, format, type,
@@ -2325,6 +2416,7 @@ static void V9X_GL_API v9x_gl_texcoord2fv(const GLfloat *v)
  */
 static void V9X_GL_API v9x_gl_select_texture_sgis(GLenum target)
 {
+    DWORD started = v9x_gl_tsc_begin();
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
     if (!v9x_gl_mtex_select_seen) {
@@ -2335,9 +2427,22 @@ static void V9X_GL_API v9x_gl_select_texture_sgis(GLenum target)
     if (context != 0) {
         v9x_gl_tex_select(&context->state, &context->textures, target);
     }
+    ++v9x_gl_tsc_calls[V9X_GL_TSC_SGIS_SELECT];
+    v9x_gl_tsc_end(V9X_GL_TSC_SGIS_SELECT, started);
 }
 
+static void v9x_gl_mtexcoord_body(GLenum target, GLfloat s, GLfloat t);
+
 static void v9x_gl_mtexcoord(GLenum target, GLfloat s, GLfloat t)
+{
+    DWORD started = v9x_gl_tsc_begin();
+
+    v9x_gl_mtexcoord_body(target, s, t);
+    ++v9x_gl_tsc_calls[V9X_GL_TSC_SGIS_COORD];
+    v9x_gl_tsc_end(V9X_GL_TSC_SGIS_COORD, started);
+}
+
+static void v9x_gl_mtexcoord_body(GLenum target, GLfloat s, GLfloat t)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
 

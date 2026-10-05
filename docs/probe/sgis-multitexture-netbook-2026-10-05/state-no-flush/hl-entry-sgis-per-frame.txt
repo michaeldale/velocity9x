@@ -1,0 +1,31 @@
+session pid FFE3A777, 2980 frames in demo intervals
+  entry:bind-ms                 2.81 ms/frame      79.8 calls/frame   35.18 us/call
+  entry:enable-ms               0.27 ms/frame    1402.7 calls/frame    0.19 us/call
+  entry:env-ms                 13.63 ms/frame     543.5 calls/frame   25.07 us/call
+  entry:mtexcoord-ms            0.10 ms/frame     963.1 calls/frame    0.10 us/call
+  entry:other-ms                0.00 ms/frame       0.0 calls/frame    0.00 us/call
+  entry:param-ms                0.00 ms/frame       1.0 calls/frame    0.32 us/call
+  entry:select-ms               0.04 ms/frame     221.8 calls/frame    0.20 us/call
+  entry:tex-flush-ms           15.64 ms/frame     425.0 calls/frame   36.81 us/call
+  entry:teximage-ms             0.32 ms/frame       0.6 calls/frame  552.68 us/call
+  entry:texsub-ms               0.20 ms/frame       1.0 calls/frame  194.20 us/call
+  sink:begin-ms                 0.53 ms/frame
+  sink:copy-ms                  0.40 ms/frame
+  sink:flush-ms                 0.18 ms/frame
+  sink:prep-same-ms             0.11 ms/frame
+  sink:prep-state-ms            0.23 ms/frame
+  sink:prep-texture-ms          1.58 ms/frame
+  tsc:beginend-ms               3.32 ms/frame
+  tsc:bind-ms                   1.23 ms/frame
+  tsc:draws                    427.2 per frame
+  tsc:flush-in-vertex-ms        0.05 ms/frame
+  tsc:flush-other-ms           15.57 ms/frame
+  tsc:flushes                  427.2 per frame
+  tsc:iface-ms                 12.11 ms/frame
+  tsc:sink-ms                   2.72 ms/frame
+  tsc:sink-prep-ms              1.95 ms/frame
+  tsc:sinks                    556.9 per frame
+  tsc:swap-ms                   0.06 ms/frame
+  tsc:vertex-ms                 7.22 ms/frame
+  tsc:vertices                4094.9 per frame
+  tsc:wall-ms                  40.29 ms/frame

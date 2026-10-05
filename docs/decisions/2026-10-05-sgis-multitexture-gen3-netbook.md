@@ -91,3 +91,47 @@ geometry and costs it draws. What the remaining difference - about 8 ms a
 frame - is spent on, in the ICD or in Half-Life itself, is not measured.
 A first attempt to sum the ICD's ten-second buckets misparsed the log and
 was discarded.
+
+## Timing the ICD's entry points, and texture state that drew the batch
+
+Evidence: `docs/probe/sgis-multitexture-netbook-2026-10-05/state-no-flush/`
+(`entrysum.py` sums the ten-second lines of a log's last session, demo
+intervals only; Win9x reuses process ids, which is what the discarded
+first attempt above got wrong).
+
+The ICD now times each kind of texture command, the held batch it draws
+first, the SGIS calls and glEnable/glDisable, with call counts (the
+`entry` line). Half-Life `mwd5`, per frame, on the partial-upload ICD
+(`hl-entry-*-per-frame.txt`):
+
+| | multitexture | without |
+|---|---|---|
+| glTexEnv calls | 543 (13.6 ms) | 361 (10.8 ms) |
+| glBindTexture calls | 80 (2.8 ms) | 51 (2.1 ms) |
+| held batch drawn by a texture command | 425 (15.6 ms) | 375 (12.2 ms) |
+| draws | 427 | 382 |
+| glMTexCoord2fSGIS / glSelectTextureSGIS | 963 (0.10 ms) / 222 (0.04 ms) | - |
+
+Nearly every draw was a texture command drawing the held batch, and the
+commands Half-Life calls most - glTexEnv and glBindTexture - change no
+texel. The batch carries its own copy of what it was described with and
+reaches its object only by name, so binding, parameters, the
+environment, pixel store and name generation no longer draw it; only
+glTexImage2D, glTexSubImage2D and glDeleteTextures do.
+
+V9XGLP afterwards: every key as before on the netbook (boot 100) and on
+86Box `Win98SE-Fast-D3D` (software engine, boot 601).
+
+| | multitexture | without |
+|---|---|---|
+| Half-Life `mwd5` | 17.64, 17.65 fps | 17.63, 17.40 fps |
+| Quake 2 `timerefresh` | 34.92 fps | 30.40 fps |
+| Half-Life draws a frame | 48 (was 427) | 42 (was 382) |
+
+The two Half-Life paths are now level. Its frame rate did not follow its
+draws - 382 to 42 a frame without multitexture left it at 17.4-17.6
+where it was 17.5-17.9 - so the timedemo is now bound by something the
+ICD's counters do not show: Half-Life's own work on the Atom, or the
+GPU. Not measured. Quake 2's no-multitexture figure is 2.6 fps under the
+previous build's 32.96; not separated from run-to-run variation or the
+added timers.
