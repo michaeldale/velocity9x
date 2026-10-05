@@ -60,7 +60,11 @@ with `/phase3` the texture scenes (`/phase3a` the raw pitch-field sweep,
 draws through the driver's own mapping, and with `/phase4b` (plus `/va` to
 `/vi`) the register stream that stalled the engine, replayed, and with
 `/phase4z` the Z test's width and the Z formats, and with `/phase5` vertex
-fog and specular through the driver's mapping.
+fog and specular through the driver's mapping. `/phase6` replays Final
+Reality's stalling triangle with one change per switch (`/fb` to `/fy`),
+and `/phase6 /file` replays a register stream from
+`C:\V9XDIAG\P6REPLAY.TXT`, written from a driver stall log by
+`docs/probe/a8u4i5-sis6326-fr-stall-2026-10-05/make_replay.py`.
 It **writes the card**: SR39 (restored) and the 3D registers, firing
 triangles into guarded off-screen RGB565 targets (and Z16 buffers) and
 comparing each pixel with a reference. It publishes `C:\V9XDIAG\SIS3D.TXT`.

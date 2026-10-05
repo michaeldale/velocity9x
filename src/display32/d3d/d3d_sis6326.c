@@ -185,6 +185,7 @@ static void v9x_d3d_sis_log_timeout(DWORD status)
 {
     HANDLE file;
     DWORD current = (v9x_d3d_sis_batches - 1ul) & 1ul;
+    DWORD index;
 
     file = CreateFileA(V9X_D3D_SIS_LOG_PATH, GENERIC_WRITE,
                        FILE_SHARE_READ, 0, CREATE_ALWAYS,
@@ -201,6 +202,15 @@ static void v9x_d3d_sis_log_timeout(DWORD status)
     if (v9x_d3d_sis_batches > 1ul) {
         v9x_d3d_sis_log_batch(file, "[Previous]",
                               &v9x_d3d_sis_log[current ^ 1ul]);
+    }
+    /* Every triangle of the current batch, which is still in the build
+     * buffers: Final Reality's second stall (boot 256) came at triangle 9
+     * of 64, where Vertices0 says nothing. */
+    v9x_d3d_sis_log_text(file, "[CurrentTriangles]\r\n");
+    for (index = 0ul; index < v9x_d3d_sis_log[current].triangles; ++index) {
+        v9x_d3d_sis_log_hex(file, "Triangle", index);
+        v9x_d3d_sis_log_hex(file, "Primitive", v9x_d3d_sis_primitives[index]);
+        v9x_d3d_sis_log_writes(file, &v9x_d3d_sis_vertex_writes[index]);
     }
     CloseHandle(file);
 }

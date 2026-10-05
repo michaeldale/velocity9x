@@ -3159,6 +3159,580 @@ static void sis3d_phase5(void)
     }
 }
 
+/*
+ * Phase 6: Final Reality's stall. The full benchmark on A8U4I5 boot 231
+ * timed the engine out (89FCh 00200074h) at the wait after the first
+ * triangle of batch 565, and V9XSIS3D.TXT kept it and batch 564. Unlike the
+ * phase 4b stall, both batches are textured: 564 a blended 64x64 ARGB4444
+ * triangle with Z off, 565 an opaque 256x256 RGB565 one with Z test and
+ * write, its texture just past the end of its Z buffer. 564's texture
+ * (130100h) lies inside 565's Z buffer (12C000h-1C2000h).
+ *
+ * The words are replayed as logged with every base moved up 2 MiB, which
+ * keeps those overlaps; the colour, Z and texture contents are not logged
+ * and are filled. Each variant is one run on a fresh boot, by switch:
+ *   none the two batches as logged;
+ *   /fb  batch 565 alone;
+ *   /fc  both, 565 with Z test and write off;
+ *   /fd  both, 565's vertices moved right one pixel (no negative X);
+ *   /fe  both, 565's texture 128x128.
+ * Boots 232-236: the logged pair and 565 alone stalled; /fc, /fd and /fe
+ * went idle. Then:
+ *   /ff  both, 565's left edge at X = 0 exactly;
+ *   /fg  both, 565 drawn 16 columns right in a frame shifted by its bases;
+ *   /fh  both, 565 at positive X but negative Y.
+ * Boot 237 locked the machine (ping only) while /ff ran; the output never
+ * reached the disk, so /ff is not proven to be the cause. Boot 238: /fg
+ * stalled. Then:
+ *   /fi  both, 565's left edge at X = +2^-8;
+ *   /fj  /fg with the clip starting at 0.
+ * Boots 239-241: /fi and /fh idle, /fj stalled. Every stall so far starts
+ * at row 80 column 0, 4 KiB into both buffers. Then:
+ *   /fk  both, 565 one row down (column 0, not aligned);
+ *   /fl  both, 565 starting mid-row at a 4 KiB-aligned address.
+ * Boots 242-243: both stalled, so neither column 0 nor alignment is it.
+ * The register settings a driver could change, each on the logged pair:
+ *   /fm  565 without the texture-cache clear pulse;
+ *   /fn  565 without large cache and enable bit 15;
+ *   /fo  565 nearest instead of bilinear;
+ *   /fp  565 without perspective.
+ * Boots 244-247: only /fo (nearest) went idle. Bilinear at the wrap corner:
+ *   /fq  565's V moved off the seam;
+ *   /fr  565's U moved off the seam;
+ *   /ft  565 with clamp instead of wrap.
+ * Boots 248-250: /fq and /fr stalled, /ft idle. Then:
+ *   /fu  565 with both U and V off their seams, wrap kept;
+ *   /fv  565 with mirror instead of wrap.
+ * Boots 251-252: both stalled; the seam is not it, clamp alone is idle.
+ *   /fw  565's texture 256 wide x 128 high;
+ *   /fx  565's texture 128 wide x 256 high;
+ *   /fy  565 with Z test but no Z write.
+ */
+#define SIS3D_P6_DELTA 0x00200000ul
+
+static const DWORD sis3d_p6_state_564[10] = {
+    0x00008ea4ul, 0x00170500ul, 0x00000000ul, 0x07000000ul, 0x0c110500ul,
+    0x00096000ul, 0x00000000ul, 0x54000000ul, 0x000001dful, 0x0000027ful
+};
+static const DWORD sis3d_p6_texture_564[5] = {
+    0x53030000ul, 0x08000000ul, 0x00130100ul, 0x02800000ul, 0x66000000ul
+};
+static const DWORD sis3d_p6_vertices_564[24] = {
+    0ul, 0x3e000000ul, 0x4103f000ul, 0x4103f000ul, 0xfffffffful, 0ul,
+    0x3f000000ul, 0x3f800000ul,
+    0ul, 0x3e000000ul, 0x425efc00ul, 0x4103f000ul, 0xfffffffful, 0x3f800000ul,
+    0x3f000000ul, 0x3f800000ul,
+    0ul, 0x3e000000ul, 0x4103f000ul, 0x425efc00ul, 0xfffffffful, 0ul,
+    0x3f000000ul, 0x3f800000ul
+};
+static const DWORD sis3d_p6_state_565[10] = {
+    0x00308ea0ul, 0x00130500ul, 0x0012c000ul, 0x07000000ul, 0x0c110500ul,
+    0x00096000ul, 0x00000000ul, 0x01000000ul, 0x000001dful, 0x0000027ful
+};
+static const DWORD sis3d_p6_texture_565[5] = {
+    0x51030009ul, 0x09000000ul, 0x001c2000ul, 0x03800000ul, 0x88000000ul
+};
+static const DWORD sis3d_p6_vertices_565[24] = {
+    0x00040301ul, 0x3f7ffffful, 0xbb800000ul, 0x429ffe00ul, 0xff757575ul,
+    0x3f7e4a6aul, 0xbc5c8ccdul, 0x3f800000ul,
+    0x00200003ul, 0x3f7ffffful, 0xbb800000ul, 0x42a9fe00ul, 0xff717171ul,
+    0x3f7f7480ul, 0xbb544426ul, 0x3f800000ul,
+    0x00080000ul, 0x3f7ffffful, 0x411ff000ul, 0x429ffe00ul, 0xff6e6e6eul,
+    0x3f7c777ful, 0xbcace1b9ul, 0x3f800000ul
+};
+#define SIS3D_P6_PRIMITIVE_564 0x00106602ul
+#define SIS3D_P6_PRIMITIVE_565 0x00109602ul
+/* 565's target and Z: 640x480 at pitch 1280. */
+#define SIS3D_P6_SURFACE_BYTES 0x00096000ul
+#define SIS3D_P6_Z_FILL        0x7fff7ffful
+#define SIS3D_P6_TEXEL         0x7bef7beful
+
+/* Nonzero: 565's texture words are written once, without the D4 pulse. */
+static int sis3d_p6_no_clear = 0;
+
+static DWORD sis3d_p6_moved(DWORD offset, DWORD value)
+{
+    if (offset == V9X_SIS3D_DST_BASE || offset == V9X_SIS3D_TEXTURE_BASE0 ||
+        (offset == V9X_SIS3D_Z_BASE && value != 0ul)) {
+        return value + SIS3D_P6_DELTA;
+    }
+    return value;
+}
+
+/* One batch as d3d_sis6326.c emits it: wait, state, texture words with D4
+ * pulsed, wait, the primitive and one triangle, wait. Returns the index of
+ * the last wait. */
+static DWORD sis3d_p6_add_batch(const DWORD *state, const DWORD *texture,
+                                DWORD primitive, const DWORD *vertices)
+{
+    DWORD index;
+    DWORD value;
+
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    for (index = 0ul; index < 10ul; ++index) {
+        sis3d_add(SIS3D_OP_MMIO_WRITE32, sis3d_p4b_state_offsets[index],
+                  sis3d_p6_moved(sis3d_p4b_state_offsets[index],
+                                 state[index]), 0ul);
+    }
+    for (index = 0ul; index < 10ul; ++index) {
+        if (index < 5ul && sis3d_p6_no_clear &&
+            texture != sis3d_p6_texture_564) {
+            continue;
+        }
+        value = sis3d_p6_moved(sis3d_p4b_texture_offsets[index % 5ul],
+                               texture[index % 5ul]);
+        if (index == 0ul) {
+            value |= 0x10ul;
+        }
+        sis3d_add(SIS3D_OP_MMIO_WRITE32,
+                  sis3d_p4b_texture_offsets[index % 5ul], value, 0ul);
+    }
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_PRIMITIVE, primitive, 0ul);
+    for (index = 0ul; index < 24ul; ++index) {
+        sis3d_add(SIS3D_OP_MMIO_WRITE32,
+                  V9X_SIS3D_VERTEX_A + (index / 8ul) * V9X_SIS3D_VERTEX_STRIDE +
+                  (index % 8ul) * 4ul, vertices[index], 0ul);
+    }
+    return sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                     V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+}
+
+static void sis3d_phase6(void)
+{
+    DWORD state[10];
+    DWORD texture[5];
+    DWORD vertices[24];
+    DWORD wait_564 = SIS3D_OP_MAX;
+    DWORD wait_565;
+    DWORD status_index;
+    DWORD index;
+    int with_564 = !sis3d_has_switch("/fb");
+    const char *name = "Logged";
+
+    for (index = 0ul; index < 10ul; ++index) {
+        state[index] = sis3d_p6_state_565[index];
+    }
+    for (index = 0ul; index < 5ul; ++index) {
+        texture[index] = sis3d_p6_texture_565[index];
+    }
+    for (index = 0ul; index < 24ul; ++index) {
+        vertices[index] = sis3d_p6_vertices_565[index];
+    }
+    if (!with_564) {
+        name = "Alone";
+    } else if (sis3d_has_switch("/fc")) {
+        name = "NoZ";
+        state[0] &= ~(V9X_SIS3D_ENABLE_Z_TEST | V9X_SIS3D_ENABLE_Z_WRITE);
+    } else if (sis3d_has_switch("/fd")) {
+        /* X 0 - 2^-8 becomes 1 - 2^-8; 10 - 2^-8 becomes 11 - 2^-8. */
+        name = "NoNegativeX";
+        vertices[2] = 0x3f7f0000ul;
+        vertices[10] = 0x3f7f0000ul;
+        vertices[18] = 0x412ff000ul;
+    } else if (sis3d_has_switch("/fe")) {
+        name = "Texture128";
+        texture[3] = 0x03000000ul;
+        texture[4] = 0x77000000ul;
+    } else if (sis3d_has_switch("/ff")) {
+        /* The left edge clamped to exactly 0 rather than 0 - 2^-8. */
+        name = "XClampedToZero";
+        vertices[2] = 0ul;
+        vertices[10] = 0ul;
+    } else if (sis3d_has_switch("/fg")) {
+        /* The same pixels, 16 columns further right in the engine's
+         * frame: both bases 32 bytes lower, X + 16, clip 16..655. */
+        name = "FrameShifted16";
+        state[2] -= 32ul;
+        state[5] -= 32ul;
+        state[9] = (16ul << 13) | (639ul + 16ul);
+        vertices[2] = 0x417ff000ul;
+        vertices[10] = 0x417ff000ul;
+        vertices[18] = 0x41cff800ul;
+    } else if (sis3d_has_switch("/fh")) {
+        /* Negative Y instead: X as /fd, the flat top at 0 - 2^-8 and the
+         * bottom at 5 - 2^-8. */
+        name = "NegativeY";
+        vertices[2] = 0x3f7f0000ul;
+        vertices[10] = 0x3f7f0000ul;
+        vertices[18] = 0x412ff000ul;
+        vertices[3] = 0xbb800000ul;
+        vertices[11] = 0x409fe000ul;
+        vertices[19] = 0xbb800000ul;
+    } else if (sis3d_has_switch("/fi")) {
+        /* The left edge just inside the clip: X = +2^-8. */
+        name = "XAtPlusShift";
+        vertices[2] = 0x3b800000ul;
+        vertices[10] = 0x3b800000ul;
+    } else if (sis3d_has_switch("/fj")) {
+        /* /fg's frame with the clip from 0, so the edge at 16 - 2^-8 no
+         * longer crosses it. */
+        name = "FrameShifted16ClipFrom0";
+        state[2] -= 32ul;
+        state[5] -= 32ul;
+        state[9] = 639ul + 16ul;
+        vertices[2] = 0x417ff000ul;
+        vertices[10] = 0x417ff000ul;
+        vertices[18] = 0x41cff800ul;
+    } else if (sis3d_has_switch("/fk")) {
+        /* One row down: column 0 of row 81, which is not 4 KiB aligned. */
+        name = "DownOneRow";
+        vertices[3] = 0x42a1fe00ul;
+        vertices[11] = 0x42abfe00ul;
+        vertices[19] = 0x42a1fe00ul;
+    } else if (sis3d_has_switch("/fl")) {
+        /* First pixel at row 3, column 128: 3 x 1280 + 256 = 4096 bytes in,
+         * 4 KiB aligned in both buffers, mid-row. */
+        name = "Aligned4KMidRow";
+        vertices[2] = 0x42fffe00ul;
+        vertices[10] = 0x42fffe00ul;
+        vertices[18] = 0x4309ff00ul;
+        vertices[3] = 0x403fc000ul;
+        vertices[11] = 0x40ffe000ul;
+        vertices[19] = 0x403fc000ul;
+    } else if (sis3d_has_switch("/fm")) {
+        name = "NoCacheClear";
+        sis3d_p6_no_clear = 1;
+    } else if (sis3d_has_switch("/fn")) {
+        name = "NoLargeCacheNoBit15";
+        state[0] &= ~(V9X_SIS3D_ENABLE_LARGE_CACHE | V9X_SIS3D_ENABLE_BIT15);
+    } else if (sis3d_has_switch("/fo")) {
+        name = "Nearest";
+        texture[0] &= ~(V9X_SIS3D_MAG_LINEAR | V9X_SIS3D_MIN_MASK);
+    } else if (sis3d_has_switch("/fp")) {
+        name = "NoPerspective";
+        state[0] &= ~V9X_SIS3D_ENABLE_PERSPECTIVE;
+    } else if (sis3d_has_switch("/fq")) {
+        /* V + 0.5: off the V seam (v -0.021..-0.003 becomes 0.48..0.50). */
+        name = "VOffSeam";
+        vertices[6] = 0x3ef91b9aul;
+        vertices[14] = 0x3efe5778ul;
+        vertices[22] = 0x3ef531e4ul;
+    } else if (sis3d_has_switch("/fr")) {
+        /* U - 0.5: off the U seam (u 0.986..0.998 becomes 0.49..0.50). */
+        name = "UOffSeam";
+        vertices[5] = 0x3efc94d4ul;
+        vertices[13] = 0x3efee900ul;
+        vertices[21] = 0x3ef8eefeul;
+    } else if (sis3d_has_switch("/ft")) {
+        /* Clamp both axes instead of wrap: mapping 30h for 03h. */
+        name = "Clamp";
+        texture[0] = (texture[0] & ~0x00ff0000ul) |
+                     ((V9X_SIS3D_TEXTURE_CLAMP_U | V9X_SIS3D_TEXTURE_CLAMP_V)
+                      << 16);
+    } else if (sis3d_has_switch("/fu")) {
+        /* Both off their seams, wrap kept. */
+        name = "BothOffSeam";
+        vertices[5] = 0x3efc94d4ul;
+        vertices[13] = 0x3efee900ul;
+        vertices[21] = 0x3ef8eefeul;
+        vertices[6] = 0x3ef91b9aul;
+        vertices[14] = 0x3efe5778ul;
+        vertices[22] = 0x3ef531e4ul;
+    } else if (sis3d_has_switch("/fv")) {
+        name = "Mirror";
+        texture[0] = (texture[0] & ~0x00ff0000ul) |
+                     ((V9X_SIS3D_TEXTURE_MIRROR_U |
+                       V9X_SIS3D_TEXTURE_MIRROR_V) << 16);
+    } else if (sis3d_has_switch("/fw")) {
+        /* 256 wide, 128 high: the pitch stays 512. */
+        name = "Texture256x128";
+        texture[4] = 0x87000000ul;
+    } else if (sis3d_has_switch("/fx")) {
+        /* 128 wide, 256 high: pitch 256. */
+        name = "Texture128x256";
+        texture[3] = 0x03000000ul;
+        texture[4] = 0x78000000ul;
+    } else if (sis3d_has_switch("/fy")) {
+        name = "ZTestNoWrite";
+        state[0] &= ~V9X_SIS3D_ENABLE_Z_WRITE;
+    }
+    sis3d_write("Phase6Variant", name);
+
+    sis3d_begin();
+    sis3d_add(SIS3D_OP_LFB_FILL32, 0x00096000ul + SIS3D_P6_DELTA, 0ul,
+              SIS3D_P6_SURFACE_BYTES / 4ul);
+    sis3d_add(SIS3D_OP_LFB_FILL32, 0x0012c000ul + SIS3D_P6_DELTA,
+              SIS3D_P6_Z_FILL, SIS3D_P6_SURFACE_BYTES / 4ul);
+    sis3d_add(SIS3D_OP_LFB_FILL32, 0x001c2000ul + SIS3D_P6_DELTA,
+              SIS3D_P6_TEXEL, 256ul * 256ul * 2ul / 4ul);
+    sis3d_add(SIS3D_OP_LFB_FILL32, 0x00130100ul + SIS3D_P6_DELTA,
+              0xf0f0f0f0ul, 64ul * 64ul * 2ul / 4ul);
+    if (with_564) {
+        wait_564 = sis3d_p6_add_batch(sis3d_p6_state_564,
+                                      sis3d_p6_texture_564,
+                                      SIS3D_P6_PRIMITIVE_564,
+                                      sis3d_p6_vertices_564);
+    }
+    wait_565 = sis3d_p6_add_batch(state, texture, SIS3D_P6_PRIMITIVE_565,
+                                  vertices);
+    status_index = sis3d_add(SIS3D_OP_MMIO_READ32, V9X_SIS3D_STATUS, 0ul,
+                             0ul);
+    if (!sis3d_run()) {
+        sis3d_write("Phase6Result", "RUN-FAILED");
+        return;
+    }
+    if (with_564) {
+        sis3d_write_hex("Phase6Wait564", sis3d_value(wait_564));
+    }
+    sis3d_write_hex("Phase6Wait565", sis3d_value(wait_565));
+    sis3d_write_hex("Phase6Status", sis3d_value(status_index));
+    sis3d_write("Phase6Result",
+                sis3d_value(wait_565) == SIS3D_TIMEOUT ||
+                        (with_564 && sis3d_value(wait_564) == SIS3D_TIMEOUT)
+                    ? "STALLED" : "IDLE");
+}
+
+/*
+ * Phase 6 /file: a register stream from C:\V9XDIAG\P6REPLAY.TXT, written on
+ * the host from a driver stall log. The single-triangle variants above did
+ * not predict Final Reality: with nearest, then clamp, the driver drew
+ * triangle 0 and stalled at 9, then 11, of the same batch (boots 256-258).
+ * One op a line, hex fields:
+ *   W off val      MMIO write
+ *   I              wait for 89FCh idle; numbered from 0 in order
+ *   F off val n    fill n dwords of VRAM
+ *   S idx val      sequencer write; SR3C and SR34 only, restored at the end
+ *   D n            n reads of 89FCh, a delay
+ *   P n            n idle waits whose timeouts are tolerated; the number of
+ *                  the first that sees idle is reported (ReplayPollIdleAt)
+ * The first idle wait that times out is reported and ends the run.
+ */
+#define SIS3D_P6_REPLAY_PATH "C:\\V9XDIAG\\P6REPLAY.TXT"
+#define SIS3D_P6_REPLAY_BYTES 262144u
+#define SIS3D_P6_CHUNK (SIS3D_OP_MAX - 16u)
+#define SIS_SR34 0x34ul
+#define SIS_SR3C 0x3cul
+
+static char sis3d_p6_text[SIS3D_P6_REPLAY_BYTES + 1u];
+static DWORD sis3d_p6_wait_numbers[SIS3D_OP_MAX];
+static int sis3d_p6_tolerant[SIS3D_OP_MAX];
+static DWORD sis3d_p6_poll_count = 0ul;
+static DWORD sis3d_p6_poll_idle_at = SIS3D_TIMEOUT;
+
+static const char *sis3d_p6_hex(const char *p, DWORD *value)
+{
+    DWORD v = 0ul;
+    int digits = 0;
+    char c;
+
+    while (*p == ' ' || *p == '\t') {
+        ++p;
+    }
+    for (;; ++p) {
+        c = *p;
+        if (c >= '0' && c <= '9') {
+            v = (v << 4) | (DWORD)(c - '0');
+        } else if (c >= 'a' && c <= 'f') {
+            v = (v << 4) | (DWORD)(c - 'a' + 10);
+        } else if (c >= 'A' && c <= 'F') {
+            v = (v << 4) | (DWORD)(c - 'A' + 10);
+        } else {
+            break;
+        }
+        ++digits;
+    }
+    *value = v;
+    return digits != 0 ? p : 0;
+}
+
+/* Runs the ops queued so far. Returns 0 when a wait timed out (number in
+ * *stalled) or the run failed (*stalled = SIS3D_TIMEOUT). */
+static int sis3d_p6_flush(DWORD *stalled)
+{
+    DWORD index;
+
+    if (!sis3d_run()) {
+        *stalled = SIS3D_TIMEOUT;
+        return 0;
+    }
+    for (index = 0ul; index < sis3d_request_buffer.count; ++index) {
+        if (sis3d_request_buffer.ops[index].code != SIS3D_OP_WAIT_SET) {
+            continue;
+        }
+        if (sis3d_p6_tolerant[index]) {
+            if (sis3d_value(index) != SIS3D_TIMEOUT &&
+                sis3d_p6_poll_idle_at == SIS3D_TIMEOUT) {
+                sis3d_p6_poll_idle_at = sis3d_p6_wait_numbers[index];
+            }
+            continue;
+        }
+        if (sis3d_value(index) == SIS3D_TIMEOUT) {
+            *stalled = sis3d_p6_wait_numbers[index];
+            return 0;
+        }
+    }
+    sis3d_begin();
+    for (index = 0ul; index < SIS3D_OP_MAX; ++index) {
+        sis3d_p6_tolerant[index] = 0;
+    }
+    return 1;
+}
+
+static void sis3d_phase6_file(void)
+{
+    HANDLE file;
+    DWORD length = 0ul;
+    DWORD a;
+    DWORD b;
+    DWORD c;
+    DWORD index;
+    DWORD ops = 0ul;
+    DWORD waits = 0ul;
+    DWORD stalled = 0ul;
+    DWORD sr34 = 0ul;
+    DWORD sr3c = 0ul;
+    DWORD status_index;
+    const char *p;
+    char op;
+    int ok = 1;
+    int reported = 0;
+
+    file = CreateFileA(SIS3D_P6_REPLAY_PATH, GENERIC_READ, FILE_SHARE_READ,
+                       0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        sis3d_write("ReplayResult", "NO-FILE");
+        return;
+    }
+    if (!ReadFile(file, sis3d_p6_text, SIS3D_P6_REPLAY_BYTES, &length, 0)) {
+        length = 0ul;
+    }
+    CloseHandle(file);
+    sis3d_p6_text[length] = '\0';
+
+    /* The two sequencer registers a replay may change, kept to restore. */
+    sis3d_begin();
+    index = sis3d_add(SIS3D_OP_SR_READ, SIS_SR34, 0ul, 0ul);
+    a = sis3d_add(SIS3D_OP_SR_READ, SIS_SR3C, 0ul, 0ul);
+    if (!sis3d_run()) {
+        sis3d_write("ReplayResult", "SR-READ-FAILED");
+        return;
+    }
+    sr34 = sis3d_value(index);
+    sr3c = sis3d_value(a);
+    sis3d_write_hex("ReplaySR34", sr34);
+    sis3d_write_hex("ReplaySR3C", sr3c);
+
+    sis3d_begin();
+    for (p = sis3d_p6_text; *p != '\0' && ok;) {
+        op = *p++;
+        a = b = c = 0ul;
+        if (op == '\r' || op == '\n' || op == ' ' || op == '\t') {
+            continue;
+        }
+        if (op == 'W' || op == 'S') {
+            p = sis3d_p6_hex(p, &a);
+            p = p != 0 ? sis3d_p6_hex(p, &b) : 0;
+        } else if (op == 'F') {
+            p = sis3d_p6_hex(p, &a);
+            p = p != 0 ? sis3d_p6_hex(p, &b) : 0;
+            p = p != 0 ? sis3d_p6_hex(p, &c) : 0;
+        } else if (op == 'D' || op == 'P') {
+            p = sis3d_p6_hex(p, &a);
+        } else if (op != 'I') {
+            /* Anything else is skipped to the end of its line. */
+            while (*p != '\0' && *p != '\n') {
+                ++p;
+            }
+            continue;
+        }
+        if (p == 0) {
+            sis3d_write("ReplayResult", "PARSE-ERROR");
+            reported = 1;
+            ok = 0;
+            break;
+        }
+        if (op == 'S' && a != SIS_SR34 && a != SIS_SR3C) {
+            sis3d_write("ReplayResult", "SR-NOT-ALLOWED");
+            reported = 1;
+            ok = 0;
+            break;
+        }
+        if (sis3d_request_buffer.count +
+                (op == 'D' || op == 'P' ? a : 1ul) >= SIS3D_P6_CHUNK) {
+            if (!sis3d_p6_flush(&stalled)) {
+                ok = 0;
+                break;
+            }
+        }
+        switch (op) {
+        case 'W':
+            sis3d_add(SIS3D_OP_MMIO_WRITE32, a, b, 0ul);
+            break;
+        case 'S':
+            sis3d_add(SIS3D_OP_SR_WRITE, a, b & 0xfful, 0ul);
+            break;
+        case 'F':
+            sis3d_add(SIS3D_OP_LFB_FILL32, a, b, c);
+            break;
+        case 'D':
+            for (index = 0ul; index < a && index < SIS3D_P6_CHUNK / 2u;
+                 ++index) {
+                sis3d_add(SIS3D_OP_MMIO_READ32, V9X_SIS3D_STATUS, 0ul, 0ul);
+            }
+            break;
+        case 'P':
+            for (b = 0ul; b < a && b < SIS3D_P6_CHUNK / 2u; ++b) {
+                index = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                                  V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+                if (index < SIS3D_OP_MAX) {
+                    sis3d_p6_tolerant[index] = 1;
+                    sis3d_p6_wait_numbers[index] = sis3d_p6_poll_count;
+                }
+                ++sis3d_p6_poll_count;
+            }
+            break;
+        default:
+            index = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+            if (index < SIS3D_OP_MAX) {
+                sis3d_p6_wait_numbers[index] = waits;
+            }
+            ++waits;
+            break;
+        }
+        ++ops;
+        while (*p != '\0' && *p != '\n') {
+            ++p;
+        }
+    }
+    if (ok) {
+        if (!sis3d_p6_flush(&stalled)) {
+            ok = 0;
+        }
+    }
+    sis3d_write_decimal("ReplayOps", ops);
+    sis3d_write_decimal("ReplayWaits", waits);
+    if (sis3d_p6_poll_count != 0ul) {
+        sis3d_write_decimal("ReplayPolls", sis3d_p6_poll_count);
+        if (sis3d_p6_poll_idle_at == SIS3D_TIMEOUT) {
+            sis3d_write("ReplayPollIdleAt", "never");
+        } else {
+            sis3d_write_decimal("ReplayPollIdleAt", sis3d_p6_poll_idle_at);
+        }
+    }
+    sis3d_begin();
+    status_index = sis3d_add(SIS3D_OP_MMIO_READ32, V9X_SIS3D_STATUS, 0ul,
+                             0ul);
+    sis3d_add(SIS3D_OP_SR_WRITE, SIS_SR34, sr34, 0ul);
+    sis3d_add(SIS3D_OP_SR_WRITE, SIS_SR3C, sr3c, 0ul);
+    if (sis3d_run()) {
+        sis3d_write_hex("ReplayStatus", sis3d_value(status_index));
+    }
+    if (ok) {
+        sis3d_write("ReplayResult", "IDLE");
+    } else if (reported) {
+        return;
+    } else if (stalled != SIS3D_TIMEOUT) {
+        sis3d_write_decimal("ReplayStalledWait", stalled);
+        sis3d_write("ReplayResult", "STALLED");
+    } else {
+        sis3d_write("ReplayResult", "RUN-FAILED");
+    }
+}
+
 /* A switch anywhere on the command line, case-insensitive. */
 static int sis3d_has_switch(const char *name)
 {
@@ -3227,6 +3801,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     int phase2 = sis3d_has_switch("/phase2");
     int phase3a = sis3d_has_switch("/phase3a");
     int phase3m = sis3d_has_switch("/phase3m");
+    int phase6 = sis3d_has_switch("/phase6");
     int phase5 = sis3d_has_switch("/phase5");
     int phase4z = sis3d_has_switch("/phase4z");
     int phase4b = sis3d_has_switch("/phase4b");
@@ -3251,7 +3826,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     }
     WriteFile(sis3d_output, header, (DWORD)lstrlenA(header), &written, 0);
     sis3d_write("Build", V9X_BUILD_ID);
-    sis3d_write("Phase", phase5 ? "5" : phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
+    sis3d_write("Phase", phase6 ? "6" : phase5 ? "5" : phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
                          : phase3 ? "3" : phase2 ? "2" : "1");
     sis3d_write_decimal("DesktopWidth", width);
     sis3d_write_decimal("DesktopHeight", height);
@@ -3320,7 +3895,11 @@ void WINAPI V9xSis3dProbeEntry(void)
         goto restore;
     }
 
-    if (phase5) {
+    if (phase6 && sis3d_has_switch("/file")) {
+        sis3d_phase6_file();
+    } else if (phase6) {
+        sis3d_phase6();
+    } else if (phase5) {
         sis3d_phase5();
     } else if (phase4z) {
         sis3d_phase4z();
