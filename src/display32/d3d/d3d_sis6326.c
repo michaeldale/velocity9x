@@ -680,15 +680,22 @@ static int v9x_d3d_sis_accepts(const V9X_R3D_DRAW *draw)
     V9X_D3D_SIS_TEXTURE resolved;
     struct v9x_sis3d_state state;
     struct v9x_sis3d_texture texture;
+    v9x_u32 reason;
     int textured;
 
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
     v9x_d3d_sis_resolve_texture(draw, &resolved);
-    return v9x_d3d_sis_map_draw(draw, &resolved, v9x_hal->fb.vram_bytes,
-                                0ul, &state, &texture, &textured) ==
-           V9X_D3D_SIS_REFUSE_NONE;
+    reason = v9x_d3d_sis_map_draw(draw, &resolved, v9x_hal->fb.vram_bytes,
+                                  0ul, &state, &texture, &textured);
+    /* The render interface asks here and nowhere else, so its refusals
+     * are counted here, by reason, as the Mach64's are (V9XTRACE
+     * M64AcceptPolicyNN): an OpenGL draw the SiS declines is not drawn. */
+    if (reason != V9X_D3D_SIS_REFUSE_NONE && reason < 20ul) {
+        ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
+    }
+    return reason == V9X_D3D_SIS_REFUSE_NONE;
 }
 
 static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,

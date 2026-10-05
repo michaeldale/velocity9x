@@ -3406,6 +3406,156 @@ static void sis3d_phase7(void)
 }
 
 /*
+ * Phase 8: the clip registers as an OpenGL scissor. The driver has only
+ * ever clipped to the whole target (0 to width - 1, as SiS's HAL did). An
+ * explicit draw - the render interface's, with an RGB write mask - and a
+ * scissor of x 10-40, y 12-44 (half-open) goes through the driver's
+ * mapping over a 64x64 target filled black; one green triangle covers the
+ * whole target. Each edge is read one pixel inside and one outside.
+ */
+struct sis3d_p8_point {
+    const char *name;
+    DWORD x;
+    DWORD y;
+    int inside;
+};
+
+static const struct sis3d_p8_point sis3d_p8_points[10] = {
+    { "LeftOut", 9ul, 20ul, 0 },     { "LeftIn", 10ul, 20ul, 1 },
+    { "RightIn", 39ul, 20ul, 1 },    { "RightOut", 40ul, 20ul, 0 },
+    { "TopOut", 20ul, 11ul, 0 },     { "TopIn", 20ul, 12ul, 1 },
+    { "BottomIn", 20ul, 43ul, 1 },   { "BottomOut", 20ul, 44ul, 0 },
+    { "CornerIn", 10ul, 12ul, 1 },   { "CornerOut", 9ul, 11ul, 0 }
+};
+
+static void sis3d_phase8(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_R3D_VERTEX triangle[3];
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_texture texture;
+    struct v9x_sis3d_writes writes;
+    struct v9x_sis3d_writes clear_writes;
+    struct v9x_sis3d_writes texture_writes;
+    struct v9x_sis3d_writes vertex_writes;
+    struct v9x_sis3d_vertex corners[3];
+    DWORD read_index[10];
+    char key[48];
+    v9x_u32 primitive;
+    v9x_u32 reason;
+    DWORD wait_index;
+    DWORD pixel;
+    DWORD index;
+    DWORD offset;
+    DWORD wrong = 0ul;
+    int textured;
+
+    v9x_zero_bytes(&draw, sizeof(draw));
+    draw.target.offset = SIS3D_P5_TARGET;
+    draw.target.pitch = SIS3D_P5_PITCH;
+    draw.target.width = SIS3D_P5_SIDE;
+    draw.target.height = SIS3D_P5_SIDE;
+    draw.target.format = V9X_R3D_FORMAT_RGB565;
+    draw.depth_func = V9X_R3D_CMP_LESSEQUAL;
+    draw.alpha_func = V9X_R3D_CMP_ALWAYS;
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    draw.shade_mode = V9X_R3D_SHADE_GOURAUD;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw.explicit_state = 1ul;
+    draw.write_mask = 7ul;
+    draw.scissor_left = 10ul;
+    draw.scissor_top = 12ul;
+    draw.scissor_right = 40ul;
+    draw.scissor_bottom = 44ul;
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_zero_bytes(&triangle[index], sizeof(triangle[index]));
+        triangle[index].rhw = 1.0f;
+        triangle[index].color = 0xff00ff00ul;
+    }
+    triangle[0].sx = 0.0f;   triangle[0].sy = 0.0f;
+    triangle[1].sx = 128.0f; triangle[1].sy = 0.0f;
+    triangle[2].sx = 0.0f;   triangle[2].sy = 128.0f;
+
+    reason = v9x_d3d_sis_map_draw(&draw, 0, SIS3D_VRAM_BYTES, 0ul, &state,
+                                  &texture, &textured);
+    sis3d_write_decimal("Phase8MapReason", reason);
+    if (reason != V9X_D3D_SIS_REFUSE_NONE ||
+        v9x_sis3d_build_state(&state, &writes) != V9X_STATUS_OK) {
+        sis3d_write("Phase8Result", "NOT-MAPPED");
+        return;
+    }
+    texture.clear_cache = 1;
+    if (v9x_sis3d_build_texture(&texture, &clear_writes) != V9X_STATUS_OK) {
+        return;
+    }
+    texture.clear_cache = 0;
+    if (v9x_sis3d_build_texture(&texture, &texture_writes) !=
+            V9X_STATUS_OK ||
+        !v9x_d3d_sis_triangle(triangle, V9X_R3D_SHADE_GOURAUD, textured,
+                              corners, &primitive)) {
+        return;
+    }
+    v9x_sis3d_build_vertices(corners, &vertex_writes);
+    for (index = 0ul; index < writes.count; ++index) {
+        if (writes.offsets[index] == V9X_SIS3D_CLIP_TB) {
+            sis3d_write_hex("Phase8ClipTB", writes.values[index]);
+        }
+        if (writes.offsets[index] == V9X_SIS3D_CLIP_LR) {
+            sis3d_write_hex("Phase8ClipLR", writes.values[index]);
+        }
+    }
+
+    sis3d_begin();
+    sis3d_add(SIS3D_OP_LFB_FILL32, SIS3D_P5_TARGET, 0ul,
+              SIS3D_P5_PITCH * SIS3D_P5_SIDE / 4ul);
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add_writes(&writes);
+    sis3d_add_writes(&clear_writes);
+    sis3d_add_writes(&texture_writes);
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_PRIMITIVE, primitive, 0ul);
+    sis3d_add_writes(&vertex_writes);
+    sis3d_add(SIS3D_OP_MMIO_WRITE8, V9X_SIS3D_TEND, 0ul, 0ul);
+    wait_index = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                           V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    for (index = 0ul; index < 10ul; ++index) {
+        offset = SIS3D_P5_TARGET + sis3d_p8_points[index].y * SIS3D_P5_PITCH +
+                 sis3d_p8_points[index].x * 2ul;
+        read_index[index] = sis3d_add(SIS3D_OP_LFB_READ32, offset & ~3ul,
+                                      0ul, 0ul);
+    }
+    if (!sis3d_run()) {
+        sis3d_write("Phase8Result", "RUN-FAILED");
+        return;
+    }
+    sis3d_write_hex("Phase8WaitAfter", sis3d_value(wait_index));
+    if (sis3d_value(wait_index) == SIS3D_TIMEOUT) {
+        sis3d_write("Phase8Result", "STALLED");
+        return;
+    }
+    for (index = 0ul; index < 10ul; ++index) {
+        pixel = sis3d_value(read_index[index]);
+        if ((sis3d_p8_points[index].x & 1ul) != 0ul) {
+            pixel >>= 16;
+        }
+        pixel &= 0xfffful;
+        sis3d_key(key, sis3d_p8_points[index].name, "Pixel");
+        sis3d_write_hex(key, pixel);
+        if ((pixel == 0x07e0ul) != (sis3d_p8_points[index].inside != 0)) {
+            ++wrong;
+        }
+    }
+    sis3d_write_decimal("Phase8Wrong", wrong);
+    sis3d_write("Phase8Result", wrong == 0ul ? "MATCH" : "DIFF");
+}
+
+/*
  * Phase 6: Final Reality's stall. The full benchmark on A8U4I5 boot 231
  * timed the engine out (89FCh 00200074h) at the wait after the first
  * triangle of batch 565, and V9XSIS3D.TXT kept it and batch 564. Unlike the
@@ -4142,6 +4292,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     int phase2 = sis3d_has_switch("/phase2");
     int phase3a = sis3d_has_switch("/phase3a");
     int phase3m = sis3d_has_switch("/phase3m");
+    int phase8 = sis3d_has_switch("/phase8");
     int phase7 = sis3d_has_switch("/phase7");
     int phase6 = sis3d_has_switch("/phase6");
     int phase5 = sis3d_has_switch("/phase5");
@@ -4168,7 +4319,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     }
     WriteFile(sis3d_output, header, (DWORD)lstrlenA(header), &written, 0);
     sis3d_write("Build", V9X_BUILD_ID);
-    sis3d_write("Phase", phase7 ? "7" : phase6 ? "6" : phase5 ? "5" : phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
+    sis3d_write("Phase", phase8 ? "8" : phase7 ? "7" : phase6 ? "6" : phase5 ? "5" : phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
                          : phase3 ? "3" : phase2 ? "2" : "1");
     sis3d_write_decimal("DesktopWidth", width);
     sis3d_write_decimal("DesktopHeight", height);
@@ -4237,7 +4388,9 @@ void WINAPI V9xSis3dProbeEntry(void)
         goto restore;
     }
 
-    if (phase7) {
+    if (phase8) {
+        sis3d_phase8();
+    } else if (phase7) {
         sis3d_phase7();
     } else if (phase6 && sis3d_has_switch("/file")) {
         sis3d_phase6_file();

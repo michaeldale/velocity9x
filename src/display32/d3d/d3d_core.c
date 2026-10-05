@@ -3577,7 +3577,9 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.clear_color = request->clear_color;
     clear.clear_depth = request->clear_depth;
     clear.color_value = request->color_value;
-    clear.depth_value = request->depth_value;
+    /* As the engine's depth buffer holds it: halved on the SiS, whose Z
+     * test compares 15 bits (v9x_d3d_depth_fill_value). */
+    clear.depth_value = v9x_d3d_depth_fill_value(request->depth_value);
     clear.write_red = (request->write_mask & V9X_R3D_ABI_WRITE_RED) != 0ul;
     clear.write_green = (request->write_mask & V9X_R3D_ABI_WRITE_GREEN) != 0ul;
     clear.write_blue = (request->write_mask & V9X_R3D_ABI_WRITE_BLUE) != 0ul;
@@ -3621,6 +3623,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_rage2) {
         out->engine = V9X_R3D_ABI_ENGINE_RAGE2;
         name = "Velocity9x Rage IIC";
+    } else if (ops == &v9x_d3d_engine_sis6326) {
+        out->engine = V9X_R3D_ABI_ENGINE_SIS6326;
+        name = "Velocity9x SiS 6326";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -3669,6 +3674,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         /* The Rage IIC's as the Mach64's: powers of two, 8 to 256, square
          * or not (measured, Phase 4 T10/T14), all three formats, placed by
          * v9x_d3d_rage2_create_surface at pitch = width. */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_sis6326) {
+        /* The SiS samples what its Direct3D path does: power-of-two edges,
+         * 1 to 512, square or not, all three formats, placed by
+         * v9x_d3d_sis_create_surface (docs\decisions\2026-10-05-sis6326-
+         * 3d-textures.md). It has no software fallback, so a texture
+         * the ICD keeps on the CPU is not drawn. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

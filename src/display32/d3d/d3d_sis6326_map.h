@@ -39,7 +39,9 @@ typedef struct v9x_d3d_sis_texture {
 
 #define V9X_D3D_SIS_REFUSE_NONE            0ul
 #define V9X_D3D_SIS_REFUSE_TARGET          1ul  /* not RGB565 */
-#define V9X_D3D_SIS_REFUSE_EXPLICIT        2ul  /* render-interface draw */
+#define V9X_D3D_SIS_REFUSE_EXPLICIT        2ul  /* render-interface draw:
+                                                   partial write mask or
+                                                   CPU texture levels */
 #define V9X_D3D_SIS_REFUSE_DEPTH_FUNC      3ul
 #define V9X_D3D_SIS_REFUSE_BLEND           4ul
 #define V9X_D3D_SIS_REFUSE_ALPHA_FUNC      5ul

@@ -239,12 +239,28 @@ v9x_status v9x_sis3d_build_state(const struct v9x_sis3d_state *state,
 {
     const struct v9x_sis3d_target *target;
     v9x_status status;
+    v9x_u32 left = 0ul;
+    v9x_u32 top = 0ul;
+    v9x_u32 right;
+    v9x_u32 bottom;
 
     if (state == 0 || writes == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     writes->count = 0u;
     target = &state->target;
+    right = target->width;
+    bottom = target->height;
+    if (state->scissor) {
+        left = state->scissor_left;
+        top = state->scissor_top;
+        right = state->scissor_right;
+        bottom = state->scissor_bottom;
+        if (left >= right || top >= bottom || right > target->width ||
+            bottom > target->height) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
 
     if (state->z_compare > V9X_SIS3D_CMP_ALWAYS ||
         state->alpha_compare > V9X_SIS3D_CMP_ALWAYS ||
@@ -298,12 +314,11 @@ v9x_status v9x_sis3d_build_state(const struct v9x_sis3d_state *state,
     v9x_sis3d_emit(writes, V9X_SIS3D_BLEND,
                    (state->blend_destination << V9X_SIS3D_BLEND_DST_SHIFT) |
                    (state->blend_source << V9X_SIS3D_BLEND_SRC_SHIFT));
+    /* The whole target, or the scissor: half-open in, inclusive out. */
     v9x_sis3d_emit(writes, V9X_SIS3D_CLIP_TB,
-                   (0ul << V9X_SIS3D_CLIP_HIGH_SHIFT) |
-                   (target->height - 1ul));
+                   (top << V9X_SIS3D_CLIP_HIGH_SHIFT) | (bottom - 1ul));
     v9x_sis3d_emit(writes, V9X_SIS3D_CLIP_LR,
-                   (0ul << V9X_SIS3D_CLIP_HIGH_SHIFT) |
-                   (target->width - 1ul));
+                   (left << V9X_SIS3D_CLIP_HIGH_SHIFT) | (right - 1ul));
     return V9X_STATUS_OK;
 }
 

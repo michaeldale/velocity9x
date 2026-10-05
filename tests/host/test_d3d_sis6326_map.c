@@ -235,10 +235,51 @@ static void test_refusals(void)
     draw.target.format = V9X_R3D_FORMAT_XRGB1555;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_TARGET);
+    /* An OpenGL draw through the render interface (explicit_state): taken
+     * with an RGB write mask, its scissor in the clip registers, a surface
+     * texture or none; CPU levels and partial masks refused. */
     d3d_draw(&draw);
     draw.explicit_state = 1ul;
+    draw.write_mask = 7ul;
+    draw.scissor_left = 0ul;
+    draw.scissor_top = 0ul;
+    draw.scissor_right = 800ul;
+    draw.scissor_bottom = 600ul;
+    CHECK(map(&draw, 0, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK(state.scissor == 0);
+    draw.scissor_left = 10ul;
+    draw.scissor_top = 20ul;
+    draw.scissor_right = 310ul;
+    draw.scissor_bottom = 220ul;
+    CHECK(map(&draw, 0, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK(state.scissor != 0);
+    CHECK(state.scissor_left == 10ul && state.scissor_top == 20ul &&
+          state.scissor_right == 310ul && state.scissor_bottom == 220ul);
+    draw.write_mask = 3ul;      /* red and green */
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_EXPLICIT);
+    draw.write_mask = 0ul;
+    CHECK(map(&draw, 0, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_EXPLICIT);
+    draw.write_mask = 7ul;
+    {
+        V9X_R3D_LEVEL level;
+
+        memset(&level, 0, sizeof(level));
+        draw.texture.levels = &level;
+        draw.texture.level_count = 1ul;
+        CHECK(map(&draw, 0, &state, &texture, &textured) ==
+              V9X_D3D_SIS_REFUSE_EXPLICIT);
+        draw.texture.levels = 0;
+        draw.texture.level_count = 0ul;
+    }
+    /* A Direct3D draw has no scissor whatever the fields hold. */
+    draw.explicit_state = 0ul;
+    CHECK(map(&draw, 0, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK(state.scissor == 0);
     /* Vertex fog: the factor rides in each vertex's specular alpha, which
      * goes to the fog/specular register as it is; 8A20h takes the colour. */
     d3d_draw(&draw);

@@ -224,6 +224,47 @@ static void test_fog_state(void)
            V9X_SIS3D_ENABLE_SPECULAR));
 }
 
+/* A scissor, half-open as the render interface gives it, in the clip
+ * registers' inclusive fields: top/left high, bottom/right low. */
+static void test_scissor_state(void)
+{
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_writes writes;
+
+    base_state(&state);
+    state.scissor = 1;
+    state.scissor_left = 4ul;
+    state.scissor_top = 2ul;
+    state.scissor_right = 20ul;
+    state.scissor_bottom = 10ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_CLIP_TB) ==
+          ((2ul << 13) | 9ul));
+    CHECK(write_value(&writes, V9X_SIS3D_CLIP_LR) ==
+          ((4ul << 13) | 19ul));
+
+    /* The whole target, as without one. */
+    state.scissor_left = 0ul;
+    state.scissor_top = 0ul;
+    state.scissor_right = 32ul;
+    state.scissor_bottom = 32ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_CLIP_TB) == 31ul);
+    CHECK(write_value(&writes, V9X_SIS3D_CLIP_LR) == 31ul);
+
+    /* Empty, inverted or outside the target. */
+    state.scissor_right = 0ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.scissor_right = 33ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.scissor_right = 32ul;
+    state.scissor_top = 32ul;
+    CHECK(v9x_sis3d_build_state(&state, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_full_state(void)
 {
     struct v9x_sis3d_state state;
@@ -535,6 +576,7 @@ unsigned int v9x_run_sis6326_3d_tests(void)
     test_fog_state();
     test_full_state();
     test_full_state_refusals();
+    test_scissor_state();
     test_float_q4();
     test_primitive_matches_sis_capture();
     test_order_signs_and_ties();

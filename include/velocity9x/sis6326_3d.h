@@ -202,6 +202,13 @@ struct v9x_sis3d_state {
     v9x_u32 blend_source;    /* V9X_SIS3D_BLEND_* */
     v9x_u32 blend_destination;
     v9x_u32 fog_color;       /* 0x00RRGGBB; used while ENABLE_FOG is set */
+    /* Nonzero: clip to the scissor, half-open in target pixels, instead of
+     * the whole target (an OpenGL draw's, through the render interface). */
+    int scissor;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
 };
 
 /* Levels after level 0: 8A38h D[11:8] holds the last level's index. */

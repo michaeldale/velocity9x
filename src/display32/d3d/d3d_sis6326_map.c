@@ -31,6 +31,8 @@
 #define V9X_D3D_SIS_MIN_MASK 0x00000007ul
 #define V9X_D3D_SIS_TEXTURE_SIDE_MAX 512ul
 #define V9X_D3D_SIS_RGB_MASK 0x00fffffful
+/* V9X_R3D_ABI_WRITE_RGB: red, green and blue all written. */
+#define V9X_D3D_SIS_WRITE_RGB 7ul
 /* The pitch field's 4-byte unit: the dummy texel's row. */
 #define V9X_D3D_SIS_PITCH_UNIT 4ul
 
@@ -348,7 +350,17 @@ v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
     v9x_u32 reason;
 
     *textured = 0;
-    if (draw->explicit_state != 0ul) {
+    /*
+     * An OpenGL draw through the render interface carries state a Direct3D
+     * one does not (r3d.h, explicit_state). Perspective, blend, alpha test,
+     * fog and depth are mapped below as for Direct3D; the scissor goes to
+     * the clip registers. A partial write mask has no engine function, and
+     * CPU texture levels no sampler: the ICD sends a surface texture where
+     * the describe says it may (docs\plans\sis-6326-opengl.md).
+     */
+    if (draw->explicit_state != 0ul &&
+        (draw->write_mask != V9X_D3D_SIS_WRITE_RGB ||
+         draw->texture.levels != 0)) {
         return V9X_D3D_SIS_REFUSE_EXPLICIT;
     }
     if (draw->target.format != V9X_R3D_FORMAT_RGB565) {
@@ -371,6 +383,17 @@ v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
     state->alpha_compare = V9X_SIS3D_CMP_ALWAYS;
     state->alpha_reference = 0ul;
     state->fog_color = 0ul;
+    state->scissor = 0;
+    if (draw->explicit_state != 0ul &&
+        (draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
+         draw->scissor_right != draw->target.width ||
+         draw->scissor_bottom != draw->target.height)) {
+        state->scissor = 1;
+        state->scissor_left = draw->scissor_left;
+        state->scissor_top = draw->scissor_top;
+        state->scissor_right = draw->scissor_right;
+        state->scissor_bottom = draw->scissor_bottom;
+    }
 
     /*
      * Vertex fog and specular: each vertex's specular dword (fog factor in
