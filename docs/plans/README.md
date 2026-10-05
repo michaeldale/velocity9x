@@ -35,7 +35,7 @@
 - [Gen4 and Gen5: a free tier-0 desktop, and why the engine does not come with it](intel-gen4-gen5-bringup.md) - Proposed; nothing coded, blocked on whether Windows 98 runs on any Gen4 or Gen5 machine at all.
 - [OpenGL 1.1 ICD on a render core shared with Direct3D](opengl-1.1-icd.md) - Design for approval; nothing coded.
 - [OpenGL 1.1 requirements inventory](opengl-1.1-requirements.md) - Open; generated from the dispatch manifest, no evidence yet.
-- [GL_SGIS_multitexture on Gen3, with the software engine as its reference](gen3-sgis-multitexture.md) - In progress; steps 1-3 done (ABI 4, the ICD, the CPU rasterizer and software engine; V9XGLP exact and Quake 2 using it on the software guest); step 4, Gen3, next.
+- [GL_SGIS_multitexture on Gen3, with the software engine as its reference](gen3-sgis-multitexture.md) - In progress; steps 1-3 done (software guest: V9XGLP exact, Quake 2 uses it); step 4, Gen3, coded and host-tested, netbook gate owed.
 - [Optional update checker, guarded auto-updater, and installed-file audit](optional-update-checker-and-auto-updater.md) - Proposed; nothing implemented.
 - [Write-combining the aperture, Stage B: write one MTRR, on two machines](write-combining-stage-b.md) - Proposed; nothing coded. The netbook's readout accepts (r=0) but Stage A's 4 MiB window misses its 7.7 MiB; two decisions owed (kill switch, scope).
 - [Intel Gen3: textures in system memory through the GTT (DVMT)](intel-gen3-system-memory-textures.md) - Proposed; nothing coded. Serious Sam runs 3.46 fps on the netbook's ~5 MiB of free stolen memory; a 32 MiB pool of locked RAM in the unused GTT entries, texture-only DirectDraw heap. Three decisions and an errata gate owed.

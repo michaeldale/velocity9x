@@ -1,8 +1,19 @@
 # GL_SGIS_multitexture on Gen3, with the software engine as its reference
 
-Date: 2026-10-05. Status: started at Michael's request ("do multitexture
-on Gen3"). Machine for the hardware steps: MICHAEL-NETBOOK (945GSE / GMA
-950), offline when this was written.
+Date: 2026-10-05. Status: steps 1-3 done and measured on the software
+guest; step 4 coded and host-tested, waiting for the netbook. Started at
+Michael's request ("do multitexture on Gen3"). Machine for the hardware
+steps: MICHAEL-NETBOOK (945GSE / GMA 950), offline when this was written.
+
+- Steps 1-2 (a7cd710): ABI 4, the ICD's units, entry points and
+  extension string.
+- Step 3 (64acf20): the CPU rasterizer and software engine; V9XGLP's
+  SGIS section exact and Quake 2 using the extension on 86Box
+  `Win98SE-Fast-D3D`
+  (`docs/decisions/2026-10-05-sgis-multitexture-software-engine.md`).
+- Step 4 (f7286f4): Gen3's two-unit program, state, vertex run and
+  decoder licence, compiled into the 32-bit HAL only; I9XXCODE unchanged
+  at 0xdfd9. No two-unit dword has run on the GPU.
 
 ## Why
 
