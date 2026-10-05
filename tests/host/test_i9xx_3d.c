@@ -2703,6 +2703,332 @@ static void test_runtime_textured_and_depth(void)
  * when any one of its four parts (S4, constants, program, stride) is
  * missing or disagrees with the limits.
  */
+#if V9X_I9XX_TWO_UNITS
+/*
+ * Two texture units (docs\plans\gen3-sgis-multitexture.md): a full stream
+ * from the two-unit builders that the 32-bit decoder licenses, the
+ * program's words where they are arithmetic, and the corruptions the
+ * licence exists to refuse.
+ */
+static v9x_u32 v9x_test_two_unit_stream(v9x_u32 *stream, v9x_u32 capacity,
+                                        const struct v9x_i9xx_combine *ops,
+                                        v9x_u32 fog, v9x_u32 triangles,
+                                        struct v9x_i9xx_decode_limits *limits,
+                                        struct v9x_i9xx_decode_unit1 *unit1)
+{
+    static v9x_u32 xyzw[64ul * 3ul * 4ul];
+    static v9x_u32 uv0[64ul * 3ul * 2ul];
+    static v9x_u32 uv1[64ul * 3ul * 2ul];
+    static v9x_u32 colors[64ul * 3ul];
+    static v9x_u32 speculars[64ul * 3ul];
+    struct v9x_i9xx_texture maps[2];
+    v9x_u32 rgb[9];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 vertex;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 half = 0x3f000000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+    const v9x_u32 depth = 0x00400000ul;
+
+    maps[0].offset = 0x00300000ul;
+    maps[0].width = 64ul;
+    maps[0].height = 32ul;
+    maps[0].pitch = 128ul;
+    maps[0].format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+    maps[0].wrap = V9X_I9XX_ADDRESS_WRAP;
+    maps[0].mag_linear = 1ul;
+    maps[0].min_linear = 1ul;
+    maps[0].mip_filter = 0ul;
+    maps[0].max_lod = 0ul;
+    maps[1] = maps[0];
+    maps[1].offset = 0x00310000ul;
+    maps[1].width = 128ul;
+    maps[1].height = 128ul;
+    maps[1].pitch = 256ul;
+    maps[1].format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+    maps[1].wrap = V9X_I9XX_ADDRESS_CLAMP;
+    maps[1].mag_linear = 0ul;
+    for (vertex = 0ul; vertex < 64ul * 3ul; ++vertex) {
+        xyzw[vertex * 4ul + 0ul] = 0x43200000ul + (vertex & 7ul);
+        xyzw[vertex * 4ul + 1ul] = 0x42f00000ul;
+        xyzw[vertex * 4ul + 2ul] = half;
+        xyzw[vertex * 4ul + 3ul] = one;
+        colors[vertex] = 0xff808080ul;
+        speculars[vertex] = (vertex & 0xfful) << 24;
+        uv0[vertex * 2ul + 0ul] = half;
+        uv0[vertex * 2ul + 1ul] = one;
+        uv1[vertex * 2ul + 0ul] = 0x3e800000ul;     /* 0.25 */
+        uv1[vertex * 2ul + 1ul] = 0x40000000ul;     /* 2.0 */
+    }
+    for (vertex = 0ul; vertex < 9ul; ++vertex) {
+        rgb[vertex] = half;
+    }
+
+    v9x_test_limits(limits, surface, pitch * height, V9X_I9XX_SCENE_RUNTIME);
+    limits->target_pitch = pitch;
+    limits->target_width = width;
+    limits->target_height = height;
+    limits->texture_offset = maps[0].offset;
+    limits->texture_bytes = maps[0].height * maps[0].pitch;
+    limits->texture_width = maps[0].width;
+    limits->texture_height = maps[0].height;
+    limits->texture_pitch = maps[0].pitch;
+    limits->texture_format = maps[0].format;
+    limits->texture_wrap = maps[0].wrap;
+    limits->texture_mag_linear = maps[0].mag_linear;
+    limits->texture_min_linear = maps[0].min_linear;
+    limits->depth_offset = depth;
+    limits->depth_bytes = height * pitch;
+    limits->depth_pitch = pitch;
+    limits->depth_writes = 1ul;
+    limits->depth_compare = V9X_I9XX_COMPAREFUNC_LESS;
+    limits->blend_src = V9X_I9XX_BLENDFACT_ZERO;
+    limits->blend_dst = V9X_I9XX_BLENDFACT_SRC_COLR;
+    limits->fog = fog;
+    unit1->offset = maps[1].offset;
+    unit1->bytes = maps[1].height * maps[1].pitch;
+    unit1->width = maps[1].width;
+    unit1->height = maps[1].height;
+    unit1->pitch = maps[1].pitch;
+    unit1->format = maps[1].format;
+    unit1->wrap = maps[1].wrap;
+    unit1->mag_linear = maps[1].mag_linear;
+    unit1->min_linear = maps[1].min_linear;
+    unit1->mip_filter = maps[1].mip_filter;
+    unit1->max_lod = maps[1].max_lod;
+    unit1->constants_mask = v9x_i9xx_two_unit_constants_mask(ops, fog);
+
+    stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    CHECK(v9x_i9xx_build_two_unit_state(
+              surface, pitch, width, height, maps, depth, pitch, 1ul,
+              V9X_I9XX_COMPAREFUNC_LESS, V9X_I9XX_BLENDFACT_ZERO,
+              V9X_I9XX_BLENDFACT_SRC_COLR, 0ul, fog, stream + at,
+              capacity - at, &produced) == V9X_STATUS_OK);
+    CHECK(produced == v9x_i9xx_two_unit_state_extent(1ul, 1ul));
+    at += produced;
+    CHECK(v9x_i9xx_build_two_unit_constants(ops, fog, rgb, stream + at,
+                                            capacity - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_two_unit_program(ops, fog, stream + at,
+                                          capacity - at, &produced) ==
+          V9X_STATUS_OK);
+    CHECK(produced == v9x_i9xx_two_unit_program_extent(ops, fog));
+    at += produced;
+    CHECK(v9x_i9xx_build_two_unit_run(xyzw, colors,
+                                      fog != 0ul ? speculars : 0, uv0, uv1,
+                                      triangles, width, height, stream + at,
+                                      capacity - at, &produced) ==
+          V9X_STATUS_OK);
+    CHECK(produced == v9x_i9xx_two_unit_run_dwords(triangles, fog));
+    at += produced;
+    stream[at++] = V9X_I9XX_MI_FLUSH;
+    if ((at & 1ul) != 0ul) {
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+    return at;
+}
+
+/* The first dword index of `opcode`'s packet in `stream`, or `count`. */
+static v9x_u32 v9x_test_find_packet(const v9x_u32 *stream, v9x_u32 count,
+                                    v9x_u32 opcode)
+{
+    v9x_u32 at;
+
+    for (at = 0ul; at < count; ++at) {
+        if ((stream[at] & 0xffff0000ul) == opcode) {
+            return at;
+        }
+    }
+    return count;
+}
+
+static void test_two_unit_stream(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_unit1 unit1;
+    struct v9x_i9xx_combine ops[2];
+    static v9x_u32 stream[2304];
+    static v9x_u32 copy[2304];
+    v9x_u32 program[96];
+    v9x_u32 produced = 0ul;
+    v9x_u32 count;
+    v9x_u32 index = 0ul;
+    v9x_u32 at;
+    v9x_u32 i;
+
+    /* MODULATE then MODULATE, keeping the fragment alpha, no fog: Quake 2's
+     * world, word for word where the arithmetic says. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_MODULATE;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_KEEP;
+    ops[1].colour_op = V9X_I9XX_COMBINE_MODULATE;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_KEEP;
+    CHECK(v9x_i9xx_two_unit_program_extent(ops, 0ul) == 34ul);
+    CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
+                                          &produced) == V9X_STATUS_OK);
+    CHECK(produced == 34ul);
+    CHECK(program[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 32ul));
+    CHECK(program[1] == 0x19083c00ul);           /* dcl T0 */
+    CHECK(program[4] == 0x19087c00ul);           /* dcl T1 */
+    CHECK(program[7] == 0x19180000ul);           /* dcl S0 */
+    CHECK(program[10] == 0x19184000ul);          /* dcl S1 */
+    CHECK(program[13] == 0x190a3c00ul);          /* dcl T8 */
+    CHECK(program[16] == 0x15000000ul && program[17] == 0x01000000ul);
+    CHECK(program[19] == 0x15004001ul && program[20] == 0x01020000ul);
+    /* mul R2.xyz, T8, R0 */
+    CHECK(program[22] == 0x03009ca0ul && program[23] == 0x01230001ul &&
+          program[24] == 0x23000000ul);
+    /* mov R2.w, T8 */
+    CHECK(program[25] == 0x0200a0a0ul && program[26] == 0x01230000ul);
+    /* mul R2.xyz, R2, R1 */
+    CHECK(program[28] == 0x03009c08ul && program[29] == 0x01230101ul);
+    /* mov oC, R2 */
+    CHECK(program[31] == 0x02203c08ul && program[32] == 0x01230000ul &&
+          program[33] == 0ul);
+    CHECK(v9x_i9xx_two_unit_constants_mask(ops, 0ul) == 0ul);
+
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, 0ul, 64ul,
+                                     &limits, &unit1);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* The largest batch fits the HAL's 2,304-dword stream: fog, both
+     * environment colours, DECAL then BLEND, 64 triangles. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_BLEND;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_MODULATE;
+    ops[1].colour_op = V9X_I9XX_COMBINE_BLEND;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_REPLACE;
+    CHECK(v9x_i9xx_two_unit_constants_mask(ops, 1ul) == 7ul);
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, 1ul, 64ul,
+                                     &limits, &unit1);
+    CHECK(count + V9X_I9XX_BREADCRUMB_STREAM_DWORDS <= 2304ul);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_OK);
+    ops[0].colour_op = V9X_I9XX_COMBINE_DECAL;
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, 1ul, 64ul,
+                                     &limits, &unit1);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_OK);
+    CHECK(unit1.constants_mask == 5ul);
+
+    /* Every combine pairing builds and decodes. */
+    for (i = 0ul; i < 16ul; ++i) {
+        ops[0].colour_op = 1ul + (i & 3ul);
+        ops[0].alpha_op = (i >> 2) % 3ul;
+        ops[1].colour_op = 1ul + ((i >> 2) & 3ul);
+        ops[1].alpha_op = i % 3ul;
+        count = v9x_test_two_unit_stream(stream, 2304ul, ops, i & 1ul, 3ul,
+                                         &limits, &unit1);
+        CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits,
+                                              &unit1, &index) == V9X_I9XX_P5_OK);
+    }
+    ops[0].colour_op = 5ul;
+    CHECK(v9x_i9xx_two_unit_program_extent(ops, 0ul) == 0ul);
+    CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
+                                          &produced) != V9X_STATUS_OK);
+
+    /* The corruptions, each on a fresh copy of a BLEND/MODULATE fog
+     * stream. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_MODULATE;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_KEEP;
+    ops[1].colour_op = V9X_I9XX_COMBINE_BLEND;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_KEEP;
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, 1ul, 4ul, &limits,
+                                     &unit1);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* Sampler 1 naming map 0. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    at = v9x_test_find_packet(copy, count, V9X_I9XX_3DSTATE_SAMPLER_STATE);
+    copy[at + 6ul] &= ~(0xful << V9X_I9XX_SS3_MAP_INDEX_SHIFT);
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+    /* Unit 1's map a page along. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    at = v9x_test_find_packet(copy, count, V9X_I9XX_3DSTATE_MAP_STATE);
+    copy[at + 5ul] += 4096ul;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+    /* Unit 1's pitch doubled. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    copy[at + 7ul] += 64ul << V9X_I9XX_MS4_PITCH_SHIFT;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_TEXTURE_STATE);
+    /* S2 declaring set 0 alone. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    at = v9x_test_find_packet(copy, count, V9X_I9XX_3DSTATE_LOAD_STATE_IMM1);
+    copy[at + 1ul] = V9X_I9XX_S2_TEXTURED_UNIT0;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_TEXTURE_FORBIDDEN);
+    /* A texld from sampler 2, which nothing declares. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    at = v9x_test_find_packet(copy, count, V9X_I9XX_3DSTATE_PIXEL_SHADER);
+    /* Behind the header and six declarations (T9 too: this one fogs). */
+    CHECK(copy[at + 22ul] == 0x15004001ul);
+    copy[at + 22ul] = 0x15004002ul;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_SHADER);
+    /* Sampler 1 read through coordinate set 0. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    copy[at + 23ul] = 0x01000000ul;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_SHADER);
+    /* The program reading C2 with its constant not declared loaded. */
+    {
+        struct v9x_i9xx_decode_unit1 wrong = unit1;
+
+        wrong.constants_mask = 1ul;
+        CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits,
+                                              &wrong, &index) ==
+              V9X_I9XX_P5_SHADER);
+        /* Two units without unit 1's range. */
+        wrong = unit1;
+        wrong.bytes = 0ul;
+        CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits,
+                                              &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        /* And the same stream through the one-unit entry. */
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, count, &limits,
+                                            &index) != V9X_I9XX_P5_OK);
+        CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, 0,
+                                              &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+    }
+    /* A constant above one. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    at = v9x_test_find_packet(copy, count, V9X_I9XX_3DSTATE_PS_CONSTANTS);
+    copy[at + 2ul] = 0x3f800001ul;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_SHADER);
+    /* Unit 1's s a NaN in the first vertex. */
+    for (i = 0ul; i < count; ++i) { copy[i] = stream[i]; }
+    for (at = 0ul; at < count &&
+                   (copy[at] & 0xff000000ul) != V9X_I9XX_3DPRIMITIVE_INLINE;
+         ++at) {
+    }
+    copy[at + 1ul + 8ul] = 0x7fc00000ul;
+    CHECK(v9x_i9xx_decode_two_unit_stream(copy, count, &limits, &unit1,
+                                          &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+}
+#endif
+
 static void test_runtime_fog(void)
 {
     struct v9x_i9xx_decode_limits limits;
@@ -5598,6 +5924,9 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_runtime_mode();
     test_runtime_textured_and_depth();
     test_runtime_fog();
+#if V9X_I9XX_TWO_UNITS
+    test_two_unit_stream();
+#endif
     test_runtime_batch_bound();
     test_float_in_range();
     test_runtime_run();

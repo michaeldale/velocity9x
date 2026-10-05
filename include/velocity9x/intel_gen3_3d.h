@@ -1613,6 +1613,125 @@ v9x_status v9x_i9xx_build_fogged_runtime_run(
     const v9x_u32 *uv, v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 
+/*
+ * TWO TEXTURE UNITS (docs\plans\gen3-sgis-multitexture.md), for the 32-bit
+ * HAL and the host tests alone.
+ *
+ * The 16-bit driver links i9xx_3d.c and i9xx_3d_decode.c into I9XXCODE,
+ * which stood at 57,305 of its 57,344 bytes on 2026-10-05. So the two-unit
+ * state builder and the decoder's two-unit licence are compiled only where
+ * the model is flat - Open Watcom's __386__, or a host compiler's - and the
+ * 16-bit build's code is the same bytes as before. The program, constants
+ * and vertex builders are in i9xx_multitex.c, which the 16-bit driver does
+ * not link at all.
+ *
+ * The part: eight samplers and maps, a coordinate format nibble per set in
+ * S2, the sets last in the vertex in set order, and MAP_STATE and
+ * SAMPLER_STATE three dwords a unit
+ * (docs\decisions\2026-09-16-intel-gen3-texture-packet-audit.md). Sampler n
+ * reads map n and coordinate set n here, always. DERIVED AND UNVALIDATED
+ * for a second unit until a capture on the netbook says otherwise.
+ */
+/* Open Watcom defines _M_IX86 for its 16-bit targets too, so for it only
+ * __386__ says flat; the other macros are the host compilers'. */
+#if defined(__WATCOMC__)
+#if defined(__386__)
+#define V9X_I9XX_TWO_UNITS 1
+#else
+#define V9X_I9XX_TWO_UNITS 0
+#endif
+#elif defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || \
+    defined(__x86_64__)
+#define V9X_I9XX_TWO_UNITS 1
+#else
+#define V9X_I9XX_TWO_UNITS 0
+#endif
+
+#define V9X_I9XX_TEXTURE_UNITS_MAX        2ul
+/* Sets 0 and 1 two-dimensional, the rest absent. */
+#define V9X_I9XX_S2_TEXTURED_UNITS01      ((v9x_u32)0xffffff00ul)
+/* XYZW, diffuse, then two coordinate pairs: nine dwords (ten with fog). */
+#define V9X_I9XX_TWO_UNIT_VERTEX_DWORDS   ((v9x_u32)9ul)
+#define V9X_I9XX_FS_A0_ADD                ((v9x_u32)0x01000000ul)
+/* src1's negation, split as its swizzle is: X and Y in A1, Z and W in A2. */
+#define V9X_I9XX_FS_A1_NEGATE_SRC1_XY     ((v9x_u32)0x00000088ul)
+#define V9X_I9XX_FS_A2_NEGATE_SRC1_ZW     ((v9x_u32)0x88000000ul)
+
+/*
+ * One unit's combine, GL 1.1 table 3.18 with the previous unit's colour (or
+ * the fragment's, for unit 0) as Cp/Ap. The colour ops: REPLACE Ct; MODULATE
+ * Cp Ct; DECAL Cp (1 - At) + Ct At; BLEND Cp (1 - Ct) + Cc Ct. The alpha
+ * ops: KEEP Ap; REPLACE At; MODULATE Ap At. Numbered as the render
+ * interface numbers its colour and alpha ops, which d3d_i9xx.c asserts.
+ */
+#define V9X_I9XX_COMBINE_REPLACE   1ul
+#define V9X_I9XX_COMBINE_MODULATE  2ul
+#define V9X_I9XX_COMBINE_DECAL     3ul
+#define V9X_I9XX_COMBINE_BLEND     4ul
+#define V9X_I9XX_ALPHA_KEEP        0ul
+#define V9X_I9XX_ALPHA_REPLACE     1ul
+#define V9X_I9XX_ALPHA_MODULATE    2ul
+
+struct v9x_i9xx_combine {
+    v9x_u32 colour_op;
+    v9x_u32 alpha_op;
+};
+
+#if V9X_I9XX_TWO_UNITS
+/*
+ * The two-unit program (i9xx_multitex.c): texld R0 from S0/T0 and R1 from
+ * S1/T1, each unit's combine into R2 - Gen3 has no LRP, so DECAL and BLEND
+ * are an ADD with a negated source into R3 and a MAD - then the fog form
+ * (C0, as the fog programs) or a plain move to oC. A BLEND unit k reads its
+ * environment colour from C(1 + k). Zero / INVALID for an op outside the
+ * vocabulary.
+ */
+v9x_u32 v9x_i9xx_two_unit_program_extent(
+    const struct v9x_i9xx_combine *units, v9x_u32 fog);
+v9x_status v9x_i9xx_build_two_unit_program(
+    const struct v9x_i9xx_combine *units, v9x_u32 fog,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The constants such a program reads: C0 the fog colour when fog is set, C1
+ * and C2 the environment colours of a BLEND unit 0 and unit 1. `rgb_bits`
+ * holds three float bit patterns each for the fog colour and the two
+ * environment colours, in that order, each in [0, 1]. Nothing is written
+ * when no constant is read (*written zero, OK). The mask the packet carries
+ * is v9x_i9xx_two_unit_constants_mask's.
+ */
+v9x_u32 v9x_i9xx_two_unit_constants_mask(
+    const struct v9x_i9xx_combine *units, v9x_u32 fog);
+v9x_status v9x_i9xx_build_two_unit_constants(
+    const struct v9x_i9xx_combine *units, v9x_u32 fog,
+    const v9x_u32 *rgb_bits,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The vertex run with both coordinate sets: the runtime run's checks on
+ * every vertex, and both pairs finite. `speculars` non-null is the fog form.
+ */
+v9x_u32 v9x_i9xx_two_unit_run_dwords(v9x_u32 triangles, v9x_u32 fog);
+v9x_status v9x_i9xx_build_two_unit_run(
+    const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *speculars,
+    const v9x_u32 *uv0, const v9x_u32 *uv1,
+    v9x_u32 triangles, v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * The runtime state block for two units (i9xx_3d.c): the one-unit block
+ * with MAP_STATE and SAMPLER_STATE for maps[0] and maps[1], sampler n on map
+ * n, and S2 declaring sets 0 and 1. No cylinder: GL has none.
+ */
+v9x_u32 v9x_i9xx_two_unit_state_extent(v9x_u32 depthed, v9x_u32 blend);
+v9x_status v9x_i9xx_build_two_unit_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *maps,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
+    v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 alpha_test, v9x_u32 fog,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+#endif
+
 /* src\chipsets\intel\i9xx_3d_decode.c */
 /*
  * What a stream is allowed to touch, and what kind of stream it is.
@@ -1777,5 +1896,42 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     const struct v9x_i9xx_decode_limits *limits,
     v9x_u32 *rejected_index);
+
+#if V9X_I9XX_TWO_UNITS
+/*
+ * A RUNTIME stream with two texture units, licensed by the 32-bit decoder
+ * alone. A struct of its own rather than fields appended above: the 16-bit
+ * driver keeps a v9x_i9xx_decode_limits on its stack, and growing it grew
+ * I9XXCODE by 24 bytes of longer frame offsets (2026-10-05).
+ *
+ * With one: MAP_STATE and SAMPLER_STATE carry two units, unit 0 described
+ * by the limits' texture_* fields and unit 1 by these, sampler n on map n;
+ * S2 declares sets 0 and 1; each vertex carries both pairs; the program
+ * declares and reads only S0/S1 through T0/T1, the diffuse and fog colours,
+ * temporaries and the constants in `constants_mask`, which one constants
+ * packet before it must load, every component in [0, 1].
+ * v9x_i9xx_decode_phase5_stream is this with none.
+ */
+struct v9x_i9xx_decode_unit1 {
+    v9x_u32 offset;
+    v9x_u32 bytes;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 pitch;
+    v9x_u32 format;
+    v9x_u32 wrap;
+    v9x_u32 mag_linear;
+    v9x_u32 min_linear;
+    v9x_u32 mip_filter;
+    v9x_u32 max_lod;
+    v9x_u32 constants_mask;
+};
+
+v9x_u16 v9x_i9xx_decode_two_unit_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    const struct v9x_i9xx_decode_limits *limits,
+    const struct v9x_i9xx_decode_unit1 *unit1,
+    v9x_u32 *rejected_index);
+#endif
 
 #endif /* VELOCITY9X_INTEL_GEN3_3D_H */

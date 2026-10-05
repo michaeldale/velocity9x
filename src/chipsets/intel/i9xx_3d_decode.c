@@ -182,10 +182,249 @@ void v9x_i9xx_decode_limits_clear(
     }
 }
 
+#if V9X_I9XX_TWO_UNITS
+/*
+ * THE TWO-UNIT LICENCE (docs\plans\gen3-sgis-multitexture.md), 32-bit
+ * decoder alone: see V9X_I9XX_TWO_UNITS. The 16-bit decoder is unchanged
+ * and refuses a two-unit stream at its MAP_STATE length, as it always has.
+ *
+ * Each unit's map and sampler entry is held to what the engine declared
+ * for it, as unit 0's is above; the program is checked for what it may
+ * READ - which samplers, through which coordinate sets, which constants -
+ * which is the part of a program that names memory or state. What it
+ * computes from them is a colour, and an allowlist asserting colours
+ * would be asserting the picture.
+ */
+#define V9X_I9XX_DECODE_S2(textured, limits) \
+    (unit1 != 0 ? V9X_I9XX_S2_TEXTURED_UNITS01 \
+     : ((textured) != V9X_FALSE ? V9X_I9XX_S2_TEXTURED_UNIT0 \
+                                : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT))
+#define V9X_I9XX_DECODE_STRIDE(textured, limits) \
+    (unit1 != 0 ? V9X_I9XX_TWO_UNIT_VERTEX_DWORDS \
+     : ((textured) != V9X_FALSE ? V9X_I9XX_TEXTURED_VERTEX_DWORDS \
+                                : V9X_I9XX_VERTEX_DWORDS))
+
+/* The longest two-unit program the builder emits is 64 dwords; this is
+ * room for it and no more than a program could need. */
+#define V9X_I9XX_DECODE_PROGRAM_MAX 96ul
+
+/* One unit's MAP_STATE entry - address, MS3, MS4 - against its shape. */
+static v9x_u16 v9x_i9xx_decode_map_entry(const v9x_u32 *entry,
+                                         v9x_u32 offset, v9x_u32 width,
+                                         v9x_u32 height, v9x_u32 pitch,
+                                         v9x_u32 format, v9x_u32 max_lod)
+{
+    if (width == 0ul || height == 0ul || pitch == 0ul ||
+        max_lod > V9X_I9XX_MAX_LOD_LEVELS ||
+        v9x_i9xx_map_format_known(format) == V9X_FALSE) {
+        return V9X_FALSE;
+    }
+    return (entry[0] == offset &&
+            entry[1] == (format |
+                         ((height - 1ul) << V9X_I9XX_MS3_HEIGHT_SHIFT) |
+                         ((width - 1ul) << V9X_I9XX_MS3_WIDTH_SHIFT)) &&
+            entry[2] == ((((pitch >> 2) - 1ul) << V9X_I9XX_MS4_PITCH_SHIFT) |
+                         V9X_I9XX_MS4_MAX_LOD(max_lod)))
+               ? V9X_TRUE : V9X_FALSE;
+}
+
+/* One unit's SAMPLER_STATE entry - SS2, SS3, SS4 - naming map `index`. */
+static v9x_u16 v9x_i9xx_decode_sampler_entry(const v9x_u32 *entry,
+                                             v9x_u32 min_linear,
+                                             v9x_u32 mag_linear,
+                                             v9x_u32 mip_filter,
+                                             v9x_u32 wrap, v9x_u32 index)
+{
+    v9x_u32 mode;
+
+    if (!V9X_I9XX_MIPFILTER_KNOWN(mip_filter) ||
+        !V9X_I9XX_ADDRESS_KNOWN(wrap)) {
+        return V9X_FALSE;
+    }
+    mode = V9X_I9XX_ADDRESS_TEXCOORDMODE(wrap);
+    return (entry[0] == (v9x_i9xx_sampler_filter_word(min_linear,
+                                                      mag_linear) |
+                         V9X_I9XX_SS2_MIP(mip_filter)) &&
+            entry[1] == (V9X_I9XX_SS3_NORMALIZED_COORDS |
+                         (mode << V9X_I9XX_SS3_TCX_SHIFT) |
+                         (mode << V9X_I9XX_SS3_TCY_SHIFT) |
+                         (mode << V9X_I9XX_SS3_TCZ_SHIFT) |
+                         (index << V9X_I9XX_SS3_MAP_INDEX_SHIFT)) &&
+            entry[2] == V9X_I9XX_SS4_BORDER_COLOR)
+               ? V9X_TRUE : V9X_FALSE;
+}
+
+/*
+ * One source operand a two-unit program may read: a temporary R0..R4, a
+ * declared coordinate or colour register, or a loaded constant.
+ */
+static v9x_u16 v9x_i9xx_decode_source(v9x_u32 type, v9x_u32 nr,
+                                      v9x_u32 declared_t,
+                                      v9x_u32 constants)
+{
+    if (type == V9X_I9XX_FS_REG_TYPE_R) {
+        return nr <= 4ul ? V9X_TRUE : V9X_FALSE;
+    }
+    if (type == V9X_I9XX_FS_REG_TYPE_T) {
+        return nr < 16ul && (declared_t & (1ul << nr)) != 0ul ? V9X_TRUE
+                                                              : V9X_FALSE;
+    }
+    if (type == V9X_I9XX_FS_REG_TYPE_CONST) {
+        return nr < 16ul && (constants & (1ul << nr)) != 0ul ? V9X_TRUE
+                                                             : V9X_FALSE;
+    }
+    return V9X_FALSE;
+}
+
+/*
+ * The program's instructions, three dwords each: declarations of T0, T1,
+ * the diffuse colour and - in a fog stream - the fog colour, and of S0 and
+ * S1; texlds into R0..R4 from S0 through T0 or S1 through T1, each sampler
+ * declared first; ADD, MOV, MUL and MAD into R0..R4 or oC, every source
+ * one v9x_i9xx_decode_source allows; and some instruction writing oC.
+ * Returns the offending dword's position in `program`, or `dwords` when
+ * the program is licensed.
+ */
+static v9x_u32 v9x_i9xx_decode_two_unit_program(const v9x_u32 *program,
+                                                v9x_u32 dwords,
+                                                v9x_u32 fog,
+                                                v9x_u32 constants)
+{
+    v9x_u32 declared_t = 0ul;
+    v9x_u32 declared_s = 0ul;
+    v9x_u16 writes_output = V9X_FALSE;
+    v9x_u32 at;
+
+    if (dwords == 0ul || dwords > V9X_I9XX_DECODE_PROGRAM_MAX ||
+        dwords % 3ul != 0ul) {
+        return 0ul;
+    }
+    for (at = 0ul; at < dwords; at += 3ul) {
+        v9x_u32 d0 = program[at];
+        v9x_u32 d1 = program[at + 1ul];
+        v9x_u32 d2 = program[at + 2ul];
+        v9x_u32 opcode = d0 & 0x1f000000ul;
+        v9x_u32 dest_type = (d0 >> V9X_I9XX_FS_TYPE_SHIFT) & 7ul;
+        v9x_u32 dest_nr = (d0 >> V9X_I9XX_FS_NR_SHIFT) & 0x1ful;
+        v9x_u32 operands = 0ul;
+
+        if (opcode == V9X_I9XX_FS_D0_DCL) {
+            if (d1 != 0ul || d2 != 0ul) {
+                return at + 1ul;
+            }
+            if (dest_type == V9X_I9XX_FS_REG_TYPE_S &&
+                dest_nr < V9X_I9XX_TEXTURE_UNITS_MAX &&
+                d0 == (V9X_I9XX_FS_D0_DCL |
+                       (dest_type << V9X_I9XX_FS_TYPE_SHIFT) |
+                       (dest_nr << V9X_I9XX_FS_NR_SHIFT))) {
+                declared_s |= 1ul << dest_nr;
+                continue;
+            }
+            if (dest_type == V9X_I9XX_FS_REG_TYPE_T &&
+                (dest_nr == V9X_I9XX_FS_T_TEX0 ||
+                 dest_nr == V9X_I9XX_FS_T_TEX0 + 1ul ||
+                 dest_nr == V9X_I9XX_FS_T_DIFFUSE ||
+                 (dest_nr == V9X_I9XX_FS_T_SPECULAR && fog != 0ul)) &&
+                d0 == (V9X_I9XX_FS_D0_DCL |
+                       (dest_type << V9X_I9XX_FS_TYPE_SHIFT) |
+                       (dest_nr << V9X_I9XX_FS_NR_SHIFT) |
+                       V9X_I9XX_FS_CHANNEL_ALL)) {
+                declared_t |= 1ul << dest_nr;
+                continue;
+            }
+            return at;
+        }
+        if (opcode == V9X_I9XX_T0_TEXLD) {
+            v9x_u32 sampler = d0 & 0xful;
+
+            /* Sampler n through coordinate set n, into a temporary; the
+             * sampler declared, which is what binds it to its map. */
+            if (dest_type != V9X_I9XX_FS_REG_TYPE_R || dest_nr > 4ul ||
+                sampler >= V9X_I9XX_TEXTURE_UNITS_MAX ||
+                (declared_s & (1ul << sampler)) == 0ul ||
+                (d0 & 0x00003ff0ul) != 0ul) {
+                return at;
+            }
+            if (d1 != ((V9X_I9XX_FS_REG_TYPE_T <<
+                        V9X_I9XX_T1_ADDR_TYPE_SHIFT) |
+                       ((V9X_I9XX_FS_T_TEX0 + sampler) <<
+                        V9X_I9XX_T1_ADDR_NR_SHIFT)) ||
+                (declared_t & (1ul << (V9X_I9XX_FS_T_TEX0 + sampler))) ==
+                    0ul ||
+                d2 != 0ul) {
+                return at + 1ul;
+            }
+            continue;
+        }
+        if (opcode == V9X_I9XX_FS_A0_MOV) {
+            operands = 1ul;
+        } else if (opcode == V9X_I9XX_FS_A0_MUL ||
+                   opcode == V9X_I9XX_FS_A0_ADD) {
+            operands = 2ul;
+        } else if (opcode == V9X_I9XX_FS_A0_MAD) {
+            operands = 3ul;
+        } else {
+            return at;
+        }
+        if (dest_type == V9X_I9XX_FS_REG_TYPE_OC && dest_nr == 0ul) {
+            writes_output = V9X_TRUE;
+        } else if (dest_type != V9X_I9XX_FS_REG_TYPE_R || dest_nr > 4ul) {
+            return at;
+        }
+        if (v9x_i9xx_decode_source((d0 >> V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT) &
+                                       7ul,
+                                   (d0 >> V9X_I9XX_FS_A0_SRC0_NR_SHIFT) &
+                                       0x1ful,
+                                   declared_t, constants) == V9X_FALSE) {
+            return at;
+        }
+        if (operands >= 2ul &&
+            v9x_i9xx_decode_source((d1 >> V9X_I9XX_FS_A1_SRC1_TYPE_SHIFT) &
+                                       7ul,
+                                   (d1 >> V9X_I9XX_FS_A1_SRC1_NR_SHIFT) &
+                                       0x1ful,
+                                   declared_t, constants) == V9X_FALSE) {
+            return at + 1ul;
+        }
+        if (operands >= 3ul &&
+            v9x_i9xx_decode_source((d2 >> V9X_I9XX_FS_A2_SRC2_TYPE_SHIFT) &
+                                       7ul,
+                                   (d2 >> V9X_I9XX_FS_A2_SRC2_NR_SHIFT) &
+                                       0x1ful,
+                                   declared_t, constants) == V9X_FALSE) {
+            return at + 2ul;
+        }
+        /* An operand the instruction does not take must say nothing. */
+        if ((operands < 2ul && ((d1 & 0x0000fffful) != 0ul || d2 != 0ul)) ||
+            (operands < 3ul && (d2 & 0x00fffffful) != 0ul)) {
+            return at + 1ul;
+        }
+    }
+    return writes_output != V9X_FALSE ? dwords : 0ul;
+}
+#else
+#define V9X_I9XX_DECODE_S2(textured, limits) \
+    ((textured) != V9X_FALSE ? V9X_I9XX_S2_TEXTURED_UNIT0 \
+                             : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT)
+#define V9X_I9XX_DECODE_STRIDE(textured, limits) \
+    ((textured) != V9X_FALSE ? V9X_I9XX_TEXTURED_VERTEX_DWORDS \
+                             : V9X_I9XX_VERTEX_DWORDS)
+#endif /* V9X_I9XX_TWO_UNITS */
+
+#if V9X_I9XX_TWO_UNITS
+/* The whole decoder, with the second unit's declaration or null; the two
+ * public entries at the end of the file are it. */
+static v9x_u16 v9x_i9xx_decode_body(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    const struct v9x_i9xx_decode_limits *limits,
+    const struct v9x_i9xx_decode_unit1 *unit1,
+    v9x_u32 *rejected_index)
+#else
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,
     const struct v9x_i9xx_decode_limits *limits,
     v9x_u32 *rejected_index)
+#endif
 {
     v9x_u32 index = 0ul;
     v9x_u32 target_end;
@@ -313,6 +552,15 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     target_end = target_offset + target_bytes;
+#if V9X_I9XX_TWO_UNITS
+    /* Two units: a runtime stream sampling both, each with a range. */
+    if (unit1 != 0 &&
+        (limits->kind != V9X_I9XX_SCENE_RUNTIME ||
+         textured == V9X_FALSE || unit1->bytes == 0ul ||
+         unit1->offset > 0xfffffffful - unit1->bytes)) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, 0ul);
+    }
+#endif
 
     while (index < dword_count) {
         v9x_u32 command = stream[index];
@@ -488,6 +736,62 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if (textured == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index);
             }
+#if V9X_I9XX_TWO_UNITS
+            if (unit1 != 0) {
+                /* Both units' entries, each held to its own declaration,
+                 * sampler n naming map n; the mask both bits. */
+                v9x_u16 map = (command & 0xffff0000ul) ==
+                                  V9X_I9XX_3DSTATE_MAP_STATE ? V9X_TRUE
+                                                             : V9X_FALSE;
+
+                if (dword_count - index < 8ul) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+                }
+                if ((command & 0x0000fffful) != 6ul ||
+                    stream[index + 1ul] != 3ul) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_LENGTH, index);
+                }
+                if (map != V9X_FALSE &&
+                    (v9x_i9xx_decode_map_entry(
+                         stream + index + 2ul, texture_offset,
+                         limits->texture_width, limits->texture_height,
+                         limits->texture_pitch,
+                         limits->texture_format != 0ul
+                             ? limits->texture_format
+                             : V9X_I9XX_MAPSURF_16BIT_RGB565,
+                         limits->texture_max_lod) == V9X_FALSE ||
+                     v9x_i9xx_decode_map_entry(
+                         stream + index + 5ul, unit1->offset,
+                         unit1->width, unit1->height,
+                         unit1->pitch,
+                         unit1->format != 0ul
+                             ? unit1->format
+                             : V9X_I9XX_MAPSURF_16BIT_RGB565,
+                         unit1->max_lod) == V9X_FALSE)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 2ul);
+                }
+                if (map == V9X_FALSE &&
+                    (v9x_i9xx_decode_sampler_entry(
+                         stream + index + 2ul, limits->texture_min_linear,
+                         limits->texture_mag_linear,
+                         limits->texture_mip_filter, limits->texture_wrap,
+                         0ul) == V9X_FALSE ||
+                     v9x_i9xx_decode_sampler_entry(
+                         stream + index + 5ul, unit1->min_linear,
+                         unit1->mag_linear,
+                         unit1->mip_filter, unit1->wrap,
+                         1ul) == V9X_FALSE)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index + 2ul);
+                }
+                if (map != V9X_FALSE) {
+                    saw_map_state = V9X_TRUE;
+                } else {
+                    saw_sampler_state = V9X_TRUE;
+                }
+                index += 8ul;
+                continue;
+            }
+#endif
             {
                 /* The length is the payload less one, and the payload is the
                  * enable mask plus three dwords per unit. One unit. */
@@ -731,10 +1035,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * flat texel over the whole triangle and looks like a plausible
              * picture.
              */
-            if (stream[index + 1ul] !=
-                    ((textured != V9X_FALSE)
-                         ? V9X_I9XX_S2_TEXTURED_UNIT0
-                         : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT)) {
+            if (stream[index + 1ul] != V9X_I9XX_DECODE_S2(textured, limits)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index + 1ul);
             }
             /*
@@ -884,6 +1185,26 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * the untextured program is caught here, and that program would
              * write the interpolated vertex colour and never sample at all.
              */
+#if V9X_I9XX_TWO_UNITS
+            if (unit1 != 0) {
+                v9x_u32 bad;
+
+                /* Its constants loaded first, as the fog programs' C0. */
+                if (unit1->constants_mask != 0ul &&
+                    saw_fog_constants == V9X_FALSE) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+                }
+                bad = v9x_i9xx_decode_two_unit_program(
+                    stream + index + 1ul, payload, fog_dwords,
+                    unit1->constants_mask);
+                if (bad != payload) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index + 1ul + bad);
+                }
+                saw_shader = V9X_TRUE;
+                index += payload + 1ul;
+                continue;
+            }
+#endif
             {
                 v9x_u32 want;
 
@@ -938,6 +1259,44 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * IEEE-754 magnitudes order as integers and anything above
              * 0x3f800000 is greater than one, infinite, a NaN or negative.
              */
+#if V9X_I9XX_TWO_UNITS
+            if (unit1 != 0) {
+                /* Exactly the registers the program reads, once, each
+                 * component in [0, 1]; C0 is the fog colour exactly when
+                 * the stream fogs. */
+                v9x_u32 mask = unit1->constants_mask;
+                v9x_u32 count = 0ul;
+                v9x_u32 reg;
+
+                for (reg = 0ul; reg < 3ul; ++reg) {
+                    if ((mask & (1ul << reg)) != 0ul) {
+                        ++count;
+                    }
+                }
+                if (mask == 0ul || (mask & ~7ul) != 0ul ||
+                    ((mask & 1ul) != 0ul) != (fog_dwords != 0ul) ||
+                    saw_fog_constants != V9X_FALSE ||
+                    command != (V9X_I9XX_3DSTATE_PS_CONSTANTS |
+                                (count * 4ul))) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
+                }
+                if (dword_count - index < 2ul + count * 4ul) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+                }
+                if (stream[index + 1ul] != mask) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index + 1ul);
+                }
+                for (reg = 0ul; reg < count * 4ul; ++reg) {
+                    if (stream[index + 2ul + reg] > 0x3f800000ul) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER,
+                                        index + 2ul + reg);
+                    }
+                }
+                saw_fog_constants = V9X_TRUE;
+                index += 2ul + count * 4ul;
+                continue;
+            }
+#endif
             if (fog_dwords == 0ul || saw_fog_constants != V9X_FALSE ||
                 command != (V9X_I9XX_3DSTATE_PS_CONSTANTS |
                             (V9X_I9XX_FOG_CONSTANTS_DWORDS - 2ul))) {
@@ -1277,9 +1636,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * have the hardware read two dwords of the NEXT vertex as this
              * one's coordinates.
              */
-            stride = ((textured != V9X_FALSE)
-                          ? V9X_I9XX_TEXTURED_VERTEX_DWORDS
-                          : V9X_I9XX_VERTEX_DWORDS) + fog_dwords;
+            stride = V9X_I9XX_DECODE_STRIDE(textured, limits) + fog_dwords;
             /*
              * Vertices: three per triangle, and a depth scene draws three
              * triangles where every other kind draws one. Bounded by the
@@ -1515,6 +1872,19 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                             V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
                                             base + 6ul + fog_dwords);
                         }
+#if V9X_I9XX_TWO_UNITS
+                        /* Set 1, after set 0. */
+                        if (unit1 != 0 &&
+                            (v9x_i9xx_float_finite(
+                                 stream[base + 7ul + fog_dwords]) ==
+                                 V9X_FALSE ||
+                             v9x_i9xx_float_finite(
+                                 stream[base + 8ul + fog_dwords]) ==
+                                 V9X_FALSE)) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
+                                            base + 7ul + fog_dwords);
+                        }
+#endif
                     } else {
                         if (v9x_i9xx_normalized_half(stream[base + 5ul]) ==
                                 V9X_FALSE) {
@@ -1602,3 +1972,28 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     }
     return V9X_I9XX_P5_OK;
 }
+
+#if V9X_I9XX_TWO_UNITS
+v9x_u16 v9x_i9xx_decode_phase5_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    const struct v9x_i9xx_decode_limits *limits,
+    v9x_u32 *rejected_index)
+{
+    return v9x_i9xx_decode_body(stream, dword_count, limits, 0,
+                                rejected_index);
+}
+
+v9x_u16 v9x_i9xx_decode_two_unit_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    const struct v9x_i9xx_decode_limits *limits,
+    const struct v9x_i9xx_decode_unit1 *unit1,
+    v9x_u32 *rejected_index)
+{
+    if (unit1 == 0) {
+        if (rejected_index != 0) { *rejected_index = 0ul; }
+        return V9X_I9XX_P5_TEXTURE_STATE;
+    }
+    return v9x_i9xx_decode_body(stream, dword_count, limits, unit1,
+                                rejected_index);
+}
+#endif

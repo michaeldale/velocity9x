@@ -658,3 +658,115 @@ static v9x_status v9x_i9xx_build_state_common(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+#if V9X_I9XX_TWO_UNITS
+/*
+ * TWO TEXTURE UNITS, for the 32-bit HAL alone (V9X_I9XX_TWO_UNITS): the
+ * runtime block of v9x_i9xx_build_state_common with both maps. Written out
+ * rather than folded into that function because a parameter there grows
+ * the 16-bit driver's copy, and I9XXCODE had 39 bytes to spare. Every
+ * packet is one the one-unit block emits, in the same order; MAP_STATE and
+ * SAMPLER_STATE carry two units, sampler n naming map n, and S2 declares
+ * coordinate sets 0 and 1.
+ */
+v9x_u32 v9x_i9xx_two_unit_state_extent(v9x_u32 depthed, v9x_u32 blend)
+{
+    return v9x_i9xx_3d_state_extent() +
+           (blend != 0ul ? 1ul : 0ul) +
+           v9x_i9xx_map_state_extent(V9X_I9XX_TEXTURE_UNITS_MAX) +
+           v9x_i9xx_sampler_state_extent(V9X_I9XX_TEXTURE_UNITS_MAX) +
+           (depthed != 0ul ? 3ul : 0ul);
+}
+
+v9x_status v9x_i9xx_build_two_unit_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *maps,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
+    v9x_u32 blend_src, v9x_u32 blend_dst,
+    v9x_u32 alpha_test, v9x_u32 fog,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    v9x_u32 blend = (blend_src != 0ul || blend_dst != 0ul) ? 1ul : 0ul;
+    v9x_u32 needed = v9x_i9xx_two_unit_state_extent(depth_offset != 0ul
+                                                        ? 1ul : 0ul,
+                                                    blend);
+    v9x_u32 s6 = V9X_I9XX_S6_PHASE5;
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 || maps == 0 || capacity < needed) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* The runtime builder's argument rules, each for its reason there. */
+    if ((alpha_test & ~V9X_I9XX_S6_ALPHA_TEST_MASK) != 0ul ||
+        (alpha_test != 0ul &&
+         (alpha_test & V9X_I9XX_S6_ALPHA_TEST_ENABLE) == 0ul)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((blend_src != 0ul) != (blend_dst != 0ul) ||
+        (blend_src != 0ul &&
+         (v9x_i9xx_blend_factor_known(blend_src) == V9X_FALSE ||
+          v9x_i9xx_blend_factor_known(blend_dst) == V9X_FALSE))) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (depth_offset != 0ul &&
+        ((depth_pitch & 3ul) != 0ul || depth_pitch == 0ul ||
+         depth_pitch > V9X_I9XX_BUF_3D_PITCH_MASK)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (width == 0ul || height == 0ul ||
+        width > 0x10000ul || height > 0x10000ul ||
+        target_pitch == 0ul || (target_pitch & 3ul) != 0ul ||
+        target_pitch > V9X_I9XX_BUF_3D_PITCH_MASK ||
+        (target_offset & 3ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    at += v9x_i9xx_emit_invariant(stream + at);
+    at += v9x_i9xx_emit_target(stream + at, target_offset, target_pitch,
+                               width, height);
+    if (depth_offset != 0ul) {
+        stream[at++] = V9X_I9XX_3DSTATE_BUF_INFO;
+        stream[at++] = V9X_I9XX_BUF_3D_ID_DEPTH |
+                       (depth_pitch & V9X_I9XX_BUF_3D_PITCH_MASK);
+        stream[at++] = depth_offset;
+    }
+    if (v9x_i9xx_build_map_state(maps, V9X_I9XX_TEXTURE_UNITS_MAX,
+                                 stream + at, capacity - at, &produced) !=
+            V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    at += produced;
+    if (v9x_i9xx_build_sampler_state(maps, V9X_I9XX_TEXTURE_UNITS_MAX,
+                                     stream + at, capacity - at,
+                                     &produced) != V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    at += produced;
+    if (blend != 0ul) {
+        stream[at++] = V9X_I9XX_IAB_DISABLE_DWORD;
+        s6 |= V9X_I9XX_S6_BLEND_ENABLE |
+              (V9X_I9XX_BLENDFUNC_ADD << V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
+              (blend_src << V9X_I9XX_S6_SRC_FACTOR_SHIFT) |
+              (blend_dst << V9X_I9XX_S6_DST_FACTOR_SHIFT);
+    }
+    s6 |= alpha_test;
+    if (depth_offset != 0ul) {
+        s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
+              ((depth_compare & 7ul) << V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
+        if (depth_writes != 0ul) {
+            s6 |= V9X_I9XX_S6_DEPTH_WRITE_ENABLE;
+        }
+    }
+    at += v9x_i9xx_emit_pipeline(stream + at, V9X_I9XX_S2_TEXTURED_UNITS01,
+                                 0ul, s6, fog);
+    if (at != needed) {
+        return V9X_STATUS_INVALID_STATE;
+    }
+    *written = at;
+    return V9X_STATUS_OK;
+}
+#endif /* V9X_I9XX_TWO_UNITS */

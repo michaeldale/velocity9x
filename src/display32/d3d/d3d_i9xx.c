@@ -22,6 +22,7 @@
 #include "velocity9x/i9xx_depth.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/intel_gen3_3d.h"
+#include "velocity9x/r3d_abi.h"
 /* The render-target binding is a LEAF unit so the host suite can reach it;
  * this file cannot be, because it includes the DDHAL headers. */
 #include "d3d_i9xx_target.h"
@@ -53,12 +54,13 @@ typedef char v9x_assert_batch_fits_runtime[
     (V9X_D3D_INDEXED_BATCH <= V9X_I9XX_RUNTIME_MAX_TRIANGLES) ? 1 : -1];
 typedef char v9x_assert_batch_fits_vertices[
     (V9X_D3D_INDEXED_BATCH * 3u <= 192u) ? 1 : -1];
-/* Sized for the largest batch: a textured, depth-bound state block, the
- * fog constants and the fog form of the modulate program, and 64 triangles
- * of eight-dword fogged vertices - 1,537 dwords of primitive alone, which
- * is why this is no longer 1,536. The ring takes any submission up to its
- * size less the guard, so 8 KiB is far inside it. */
-#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)2048ul)
+/* Sized for the largest batch: a two-unit, depth-bound, blended state
+ * block (60 dwords), three constants (14), the longest two-unit fog
+ * program (64), and 64 triangles of ten-dword fogged two-unit vertices -
+ * 1,921 dwords of primitive alone - then the flushes and the breadcrumb:
+ * about 2,070, past the 2,048 a one-unit batch needed. The ring takes any
+ * submission up to its size less the guard, so 9 KiB is far inside it. */
+#define V9X_I9XX_SUBMIT_DWORDS    ((DWORD)2304ul)
 
 /*
  * What this part is measured to do, and nothing wider.
@@ -134,7 +136,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     0ul,                        /* clip_in_core           */
     /* BUF_INFO carries the depth pitch, so a padded Z surface is drawn at
      * its own pitch (v9x_d3d_i9xx_create_surface). */
-    1ul                         /* depth_pitch_own        */
+    1ul,                        /* depth_pitch_own        */
+    0ul,                        /* depth_fill_shift       */
+    /* Two samplers in one program for the render interface's two-unit
+     * draws (docs\plans\gen3-sgis-multitexture.md); the part has eight. */
+    2ul                         /* texture_units          */
 };
 
 /*
@@ -1401,11 +1407,11 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     return verified;
 }
 
-static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_DRAW *draw,
+static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
                                      struct v9x_i9xx_texture *map,
                                      DWORD *bytes_out)
 {
-    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
+    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)texture->object;
     struct v9x_d3d_i9xx_miptree tree;
     DWORD format = 0ul;
     DWORD offset;
@@ -1510,15 +1516,15 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_DRAW *draw,
      * without them keeps the SS2 word it always had. MAG's has no meaning -
      * magnification is level 0 - and is dropped.
      */
-    if (draw->texture.address == V9X_R3D_ADDRESS_WRAP) {
+    if (texture->address == V9X_R3D_ADDRESS_WRAP) {
         map->wrap = V9X_I9XX_ADDRESS_WRAP;
-    } else if (draw->texture.address == V9X_R3D_ADDRESS_MIRROR) {
+    } else if (texture->address == V9X_R3D_ADDRESS_MIRROR) {
         map->wrap = V9X_I9XX_ADDRESS_MIRROR;
     } else {
         map->wrap = V9X_I9XX_ADDRESS_CLAMP;
     }
-    v9x_d3d_i9xx_filter(draw->texture.mag_filter, &map->mag_linear, &mag_mip);
-    v9x_d3d_i9xx_filter(draw->texture.min_filter, &map->min_linear, &mip_filter);
+    v9x_d3d_i9xx_filter(texture->mag_filter, &map->mag_linear, &mag_mip);
+    v9x_d3d_i9xx_filter(texture->min_filter, &map->min_linear, &mip_filter);
     map->mip_filter = V9X_I9XX_MIPFILTER_NONE;
     map->max_lod = 0ul;
     if (levels > 1ul) {
@@ -2032,6 +2038,8 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
 static DWORD v9x_d3d_i9xx_stream[V9X_I9XX_SUBMIT_DWORDS];
 static DWORD v9x_d3d_i9xx_xyzw[V9X_I9XX_SUBMIT_VERTICES * 4ul];
 static DWORD v9x_d3d_i9xx_uv[V9X_I9XX_SUBMIT_VERTICES * 2ul];
+/* Unit 1's coordinates, for a two-unit draw. */
+static DWORD v9x_d3d_i9xx_uv1[V9X_I9XX_SUBMIT_VERTICES * 2ul];
 static DWORD v9x_d3d_i9xx_colors[V9X_I9XX_SUBMIT_VERTICES];
 /* The secondary colours of a fog draw; their alpha is the fog factor. */
 static DWORD v9x_d3d_i9xx_speculars[V9X_I9XX_SUBMIT_VERTICES];
@@ -2182,7 +2190,13 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                             DWORD triangle_count)
 {
     struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_unit1 unit1;
     struct v9x_i9xx_texture map;
+    /* A two-unit draw's maps, unit 0's being `map`, and their combines. */
+    struct v9x_i9xx_texture maps[2];
+    struct v9x_i9xx_combine combine[2];
+    DWORD map1_bytes = 0ul;
+    int two_units = draw != 0 && draw->texcoords1 != 0;
     DWORD *stream = v9x_d3d_i9xx_stream;
     DWORD *xyzw = v9x_d3d_i9xx_xyzw;
     DWORD *uv = v9x_d3d_i9xx_uv;
@@ -2315,7 +2329,25 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      * un-Z'd, both counted. A hole in the frame is worse than a wrong colour
      * in it, and the counters are what keep the fallback from being silent.
      */
-    textured = v9x_d3d_i9xx_bind_texture(draw, &map, &map_bytes);
+    textured = v9x_d3d_i9xx_bind_texture(&draw->texture, &map, &map_bytes);
+    /*
+     * A second unit, for the render interface only. Its accepts() took
+     * both surfaces as bindable; a bind that still fails - the footprint
+     * against the aperture - refuses the draw, since drawing it with one
+     * unit would be a different picture.
+     */
+    if (two_units) {
+        if (textured == 0 ||
+            !v9x_d3d_i9xx_bind_texture(&draw->texture1, &maps[1],
+                                       &map1_bytes)) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+        }
+        maps[0] = map;
+        combine[0].colour_op = draw->texture.color_op;
+        combine[0].alpha_op = draw->texture.alpha_op;
+        combine[1].colour_op = draw->texture1.color_op;
+        combine[1].alpha_op = draw->texture1.alpha_op;
+    }
     depthed = v9x_d3d_i9xx_bind_depth_surface(draw, &depth_offset,
                                               &depth_pitch, &depth_writes,
                                               &depth_compare);
@@ -2380,6 +2412,14 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
             uv[(vertex * 2ul) + 0ul] = bits[6];
             uv[(vertex * 2ul) + 1ul] = bits[7];
         }
+        /* Unit 1's pair, from beside the vertices, as bit patterns. */
+        if (two_units) {
+            const DWORD *pair =
+                (const DWORD *)&draw->texcoords1[vertex * 2ul];
+
+            v9x_d3d_i9xx_uv1[(vertex * 2ul) + 0ul] = pair[0];
+            v9x_d3d_i9xx_uv1[(vertex * 2ul) + 1ul] = pair[1];
+        }
     }
 
     /*
@@ -2406,6 +2446,54 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     state_begin = at;
     stream[at++] = V9X_I9XX_MI_FLUSH_READ;
 
+    if (two_units) {
+        /* Fog colour, then each unit's environment colour, as constants;
+         * the builder loads the ones the program reads. */
+        DWORD rgb[9];
+        DWORD k;
+
+        for (k = 0ul; k < 3ul; ++k) {
+            DWORD packed = k == 0ul ? draw->fog_color
+                         : (k == 1ul ? draw->texture.env_color
+                                     : draw->texture1.env_color);
+
+            rgb[k * 3ul] = v9x_d3d_i9xx_unit_bits((packed >> 16) & 0xfful);
+            rgb[k * 3ul + 1ul] =
+                v9x_d3d_i9xx_unit_bits((packed >> 8) & 0xfful);
+            rgb[k * 3ul + 2ul] = v9x_d3d_i9xx_unit_bits(packed & 0xfful);
+        }
+        if (v9x_i9xx_build_two_unit_state(
+                draw->target.offset, draw->target.pitch, draw->target.width,
+                draw->target.height, maps, depth_offset, depth_pitch,
+                depth_writes, depth_compare, blend_src, blend_dst,
+                alpha_test, fog, stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+        }
+        at += produced;
+        if (v9x_i9xx_build_two_unit_constants(
+                combine, fog, rgb, stream + at,
+                V9X_I9XX_SUBMIT_DWORDS - at, &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
+        }
+        at += produced;
+        if (v9x_i9xx_build_two_unit_program(
+                combine, fog, stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
+        }
+        at += produced;
+        state_end = at;
+        if (v9x_i9xx_build_two_unit_run(
+                xyzw, colors, fog != 0ul ? speculars : 0, uv,
+                v9x_d3d_i9xx_uv1, triangle_count, draw->target.width,
+                draw->target.height, stream + at,
+                V9X_I9XX_SUBMIT_DWORDS - at, &produced) != V9X_STATUS_OK) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+        }
+        at += produced;
+        prim_dwords = produced;
+    } else {
     if (v9x_i9xx_build_runtime_state_fog(draw->target.offset,
                                          draw->target.pitch,
                                          draw->target.width,
@@ -2478,6 +2566,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     }
     at += produced;
     prim_dwords = produced;
+    }
     /*
      * An MI_FLUSH after the draw, so the wait below means "drawn" and not
      * only "parsed".
@@ -2585,10 +2674,27 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     limits.texture_max_lod = textured != 0 ? map.max_lod : 0ul;
     limits.breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_expected != 0ul
                                    ? v9x_d3d_i9xx_breadcrumb_offset() : 0ul;
+    /* The second unit's declaration, for the 32-bit decoder's licence. */
+    if (two_units) {
+        unit1.offset = maps[1].offset;
+        unit1.bytes = map1_bytes;
+        unit1.width = maps[1].width;
+        unit1.height = maps[1].height;
+        unit1.pitch = maps[1].pitch;
+        unit1.format = maps[1].format;
+        unit1.wrap = maps[1].wrap;
+        unit1.mag_linear = maps[1].mag_linear;
+        unit1.min_linear = maps[1].min_linear;
+        unit1.mip_filter = maps[1].mip_filter;
+        unit1.max_lod = maps[1].max_lod;
+        unit1.constants_mask = v9x_i9xx_two_unit_constants_mask(combine, fog);
+    }
     {
         DWORD decode_started = V9X_TIME_BEGIN();
-        v9x_u16 decoded = v9x_i9xx_decode_phase5_stream(stream, at, &limits,
-                                                        &rejected);
+        v9x_u16 decoded = two_units
+            ? v9x_i9xx_decode_two_unit_stream(stream, at, &limits, &unit1,
+                                              &rejected)
+            : v9x_i9xx_decode_phase5_stream(stream, at, &limits, &rejected);
 
         V9X_TIME_END(V9X_TIME_DECODE, decode_started);
         if (decoded != V9X_I9XX_P5_OK) {
@@ -2699,6 +2805,16 @@ static int v9x_d3d_i9xx_texture_bindable(const V9X_DD_SURFACE_LCL *surface)
     return 1;
 }
 
+/* The render interface's combine numbers are the two-unit program's. */
+typedef char v9x_assert_i9xx_combine_numbers[
+    (V9X_R3D_ABI_COLOROP_REPLACE == V9X_I9XX_COMBINE_REPLACE &&
+     V9X_R3D_ABI_COLOROP_MODULATE == V9X_I9XX_COMBINE_MODULATE &&
+     V9X_R3D_ABI_COLOROP_DECALALPHA == V9X_I9XX_COMBINE_DECAL &&
+     V9X_R3D_ABI_COLOROP_BLEND == V9X_I9XX_COMBINE_BLEND &&
+     V9X_R3D_ABI_ALPHAOP_FRAGMENT == V9X_I9XX_ALPHA_KEEP &&
+     V9X_R3D_ABI_ALPHAOP_REPLACE == V9X_I9XX_ALPHA_REPLACE &&
+     V9X_R3D_ABI_ALPHAOP_MODULATE == V9X_I9XX_ALPHA_MODULATE) ? 1 : -1];
+
 static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
 {
     if (draw == 0 ||
@@ -2709,6 +2825,31 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
     /* An explicit draw's CPU texture, scissor or channel mask: the command
      * builder here emits none of them yet (the ring could carry a scissor
      * and a write mask; neither is built). */
+    /* A second unit: both surfaces bindable, every combine the two-unit
+     * program has (all of table 3.18), addressing the sampler has. Its
+     * colour and alpha ops are the render interface's numbers, which are
+     * V9X_I9XX_COMBINE_* / _ALPHA_* by the assertion above this engine's
+     * draw. The single-unit `op` is not set on such a draw. */
+    if (draw->texcoords1 != 0) {
+        const V9X_R3D_TEXTURE *unit[2];
+        DWORD k;
+
+        unit[0] = &draw->texture;
+        unit[1] = &draw->texture1;
+        for (k = 0ul; k < 2ul; ++k) {
+            if (unit[k]->object == 0 || unit[k]->levels != 0 ||
+                !v9x_d3d_i9xx_texture_bindable(
+                    (const V9X_DD_SURFACE_LCL *)unit[k]->object) ||
+                unit[k]->color_op < V9X_I9XX_COMBINE_REPLACE ||
+                unit[k]->color_op > V9X_I9XX_COMBINE_BLEND ||
+                unit[k]->alpha_op > V9X_I9XX_ALPHA_MODULATE ||
+                (unit[k]->address != V9X_R3D_ADDRESS_WRAP &&
+                 unit[k]->address != V9X_R3D_ADDRESS_MIRROR &&
+                 unit[k]->address != V9X_R3D_ADDRESS_CLAMP)) {
+                return 0;
+            }
+        }
+    }
     if (draw->explicit_state != 0ul &&
         (draw->texture.levels != 0 || draw->write_mask != 7ul ||
          draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
@@ -2744,7 +2885,7 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
             (const V9X_DD_SURFACE_LCL *)draw->texture.object)) {
         return 0;
     }
-    if (draw->texture.object != 0) {
+    if (draw->texture.object != 0 && draw->texcoords1 == 0) {
         if (draw->texture.op != V9X_R3D_TEXOP_DECAL &&
             draw->texture.op != V9X_R3D_TEXOP_MODULATE &&
             draw->texture.op != V9X_R3D_TEXOP_MODULATEALPHA) {
