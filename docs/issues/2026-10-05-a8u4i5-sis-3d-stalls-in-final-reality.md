@@ -98,3 +98,12 @@ Not yet compared: the order and set of register writes SiS issues per
 triangle (the snapshots show state, not sequence), TEND (8AFFh, which the
 datasheet calls the end of a primitive list and the driver never writes),
 and the texture's contents, which the replays fill with one value.
+
+## 2026-10-05: fixed by TEND
+
+Writing TEND (8AFFh, a byte) after every triangle stops the stall: both
+logged batches and triangle 11 alone drew to the end in replay (boots
+287-288), and Final Reality's full benchmark rendered with no idle
+timeout (boot 289). Real texture contents did not matter (boot 286). See
+[TEND after each triangle](../decisions/2026-10-05-sis6326-tend-after-each-triangle.md).
+Status: fixed; the hardware cause is not established.

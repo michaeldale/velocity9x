@@ -43,6 +43,9 @@ batch (256x256 texture), reproduced by the probe but not yet explained
 ([issue](../issues/2026-10-05-a8u4i5-sis-3d-stalls-in-final-reality.md)).
 SiS's own driver renders the scene with the same state; none of its
 register differences, the Turbo Queue included, stops the replayed stall.
+TEND after every triangle does: Final Reality's full benchmark renders
+with no timeout ([record](../decisions/2026-10-05-sis6326-tend-after-each-triangle.md)).
+It refuses 17,013 of the benchmark's batches, reason not yet counted.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 

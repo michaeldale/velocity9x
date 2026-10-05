@@ -44,6 +44,9 @@
 #define V9X_SIS3D_TEXTURE_BASE0  0x8a44ul
 #define V9X_SIS3D_TEXTURE_PITCH01 0x8a6cul
 #define V9X_SIS3D_TEXTURE_SIZE   0x8a80ul
+/* TEND: a dummy byte register marking the end of a primitive list (DS
+ * L5772-5777). Written as a byte; the dword at 8AFCh is not documented. */
+#define V9X_SIS3D_TEND           0x8afful
 
 /* 89FCh read: D1 engine idle and 3D queue empty, D0 engine idle. */
 #define V9X_SIS3D_STATUS_IDLE_EMPTY 0x00000002ul

@@ -98,3 +98,28 @@ enable `00308EA1h` (ours plus dither), Z set `00130500h`, texture
 | `only11zffff`, `zffff` (Z buffer FFFFh) | 280, 281 | STALLED |
 | `only11noshift` (integer vertices) | 282 | STALLED |
 | `only11sisshift` (vertices 2^-15 up-left, as SiS) | 283 | STALLED |
+
+## Real texture contents, and TEND (boots 284-289, build `p6m`)
+
+Boot 284 reinstalled the committed driver (`a141406`). Boot 285 ran a build
+that also writes the current batch's texture level 0 and Z buffer to
+`V9XSIS3T.BIN` and `V9XSIS3Z.BIN` on a timeout; Final Reality stalled at
+batch 0, triangle 0 (`B285-V9XSIS3D.TXT`). The Z buffer was 7FFFh
+throughout, the value the replays already filled. The texture held 10,373
+distinct texels; it is Final Reality's artwork and is not kept here. SIS3D
+gained `B` (MMIO byte write, a new VxD op) and `X` (load a file into VRAM).
+
+| Replay | Boot | Result |
+|---|---|---|
+| `f5realtex` (boot 285's batch with Final Reality's texture loaded) | 286 | STALLED at wait 2 (triangle 0) |
+| `f5tend` (boot 285's batch, TEND after each triangle) | 287 | IDLE, all 64 triangles |
+| `f4tend` (boot 258's batch, TEND after each triangle) | 287 | IDLE, all 64 triangles |
+| `only11tend` (triangle 11 alone, with TEND) | 288 | IDLE |
+
+`tend-b289/`: Final Reality's full benchmark on the driver writing TEND
+after every triangle (boot 289). It rendered every scene; the snapshot
+reads `EngineIdleTimeouts=0`, `FlipDeclined=0`, 290,226 primitive calls,
+and 17,013 batches refused by the mapping (`BatchesEngineRefused`, reason
+not counted). Scores as reported: 2D 6.64, 3D 1.85, bus 3.56, overall
+3.55; fill rate 14.09 Mpixels/s, robots 8.80 images/s, visual appearance
+88.89%.

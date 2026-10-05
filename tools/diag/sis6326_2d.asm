@@ -8,6 +8,8 @@
 ;   SR read / SR write   - sequencer index and data, atomic with interrupts
 ;                          off and the index restored; index 00h-3Fh only.
 ;   MMIO write32/16/read - BAR1, offsets below 64 KiB, naturally aligned.
+;   MMIO write8          - BAR1, any offset below 64 KiB (SIS3D's TEND,
+;                          8AFFh, a byte register).
 ;   LFB write/read/fill  - BAR0, dword-aligned offsets below 4 MiB.
 ;   wait clear / set     - read an MMIO dword until (value & mask) is 0, or
 ;                          equals mask, at most SIS2D_WAIT_LIMIT reads.
@@ -50,6 +52,7 @@ SIS2D_OP_LFB_READ32     equ 7
 SIS2D_OP_LFB_FILL32     equ 8
 SIS2D_OP_WAIT_CLEAR     equ 9
 SIS2D_OP_WAIT_SET       equ 10
+SIS2D_OP_MMIO_WRITE8    equ 11
 
 ; Status bits.
 SIS2D_PCI_FOUND         equ 00000001h
@@ -202,6 +205,8 @@ BeginProc Sis2d_Execute_One
     je      Sis2d_Do_Wait_Clear
     cmp     eax, SIS2D_OP_WAIT_SET
     je      Sis2d_Do_Wait_Set
+    cmp     eax, SIS2D_OP_MMIO_WRITE8
+    je      Sis2d_Do_Mmio_Write8
     jmp     Sis2d_Do_Refuse
 
 ; a = index 00h-3Fh.
@@ -261,6 +266,13 @@ Sis2d_Do_Mmio_Write16:
     jnz     Sis2d_Do_Refuse
     mov     edi, Sis2dMmioLinear
     mov     word ptr [edi+ebx], cx
+    jmp     Sis2d_Do_Done
+
+Sis2d_Do_Mmio_Write8:
+    cmp     ebx, SIS2D_MMIO_BYTES - 1
+    ja      Sis2d_Do_Refuse
+    mov     edi, Sis2dMmioLinear
+    mov     byte ptr [edi+ebx], cl
     jmp     Sis2d_Do_Done
 
 Sis2d_Do_Mmio_Read32:

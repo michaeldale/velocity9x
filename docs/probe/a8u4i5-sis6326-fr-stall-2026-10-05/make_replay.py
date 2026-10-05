@@ -23,6 +23,8 @@ Variants (comma-separated in argv[3]):
   fmt=HEX    texel format code (8A38h D[31:24])
   sisall     SiS 2.28's extra values (B270): dither, 8A20 D24, 8A24, 8A2C,
              8A10, alpha mode 0, 8A80-8A88 D23; sis-<name> adds one
+  texfile=PATH  load the texture from a guest file (a driver VRAM dump)
+  tend       write TEND (8AFFh, a byte) after each triangle
   pollN      after the last triangle, N tolerant idle waits
 """
 import re
@@ -163,8 +165,15 @@ def main():
     w = 1 << ((size >> 28) & 0xF)
     h = 1 << ((size >> 24) & 0xF)
     texel = {0x50: 2, 0x51: 2, 0x52: 2, 0x53: 2, 0x73: 4}.get(tex[0x8A38] >> 24, 2)
-    lines.append('F %X 7BEF39E7 %X' % (tex[0x8A44] + DELTA + EXTRA['tex'],
-                                       w * h * texel // 4))
+    texfile = None
+    for v in variants:
+        if v.startswith('texfile='):
+            texfile = v[8:]
+    if texfile:
+        lines.append('X %X %s' % (tex[0x8A44] + DELTA + EXTRA['tex'], texfile))
+    else:
+        lines.append('F %X 7BEF39E7 %X' % (tex[0x8A44] + DELTA + EXTRA['tex'],
+                                           w * h * texel // 4))
 
     if 'tq3' in variants:
         lines.append('S 3C 43')
@@ -226,6 +235,8 @@ def main():
                 # The driver's 1/256 shift undone, then `shift` applied.
                 value = f2b(b2f(value) + 1.0 / 256 - shift)
             lines.append('W %X %X' % (offset, value))
+        if 'tend' in variants:
+            lines.append('B 8AFF 0')
     for v in variants:
         if v.startswith('poll'):
             lines.append('P %X' % int(v[4:]))

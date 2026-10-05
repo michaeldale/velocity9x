@@ -73,6 +73,19 @@ static void v9x_d3d_sis_write(v9x_u32 offset, v9x_u32 value)
         value;
 }
 
+/*
+ * TEND after every triangle. Without it Final Reality's first Z-tested batch
+ * hung the engine at one triangle or another however its state, texture,
+ * Z contents, sequencer setup or Turbo Queue were changed; with it the
+ * replayed batch drew all 64 triangles (SIS3D /phase6 /file, A8U4I5 boot
+ * 287; issue 2026-10-05-a8u4i5-sis-3d-stalls-in-final-reality.md).
+ */
+static void v9x_d3d_sis_end_primitive(void)
+{
+    *(volatile unsigned char *)(v9x_hal->engine.control_linear_base +
+                                V9X_SIS3D_TEND) = 0u;
+}
+
 static DWORD v9x_d3d_sis_read(v9x_u32 offset)
 {
     return *(volatile DWORD *)(v9x_hal->engine.control_linear_base +
@@ -99,6 +112,11 @@ static int v9x_d3d_sis_quarantined = 0;
  * not; this records what the driver actually wrote.
  */
 #define V9X_D3D_SIS_LOG_PATH "C:\\V9XDIAG\\V9XSIS3D.TXT"
+/* The current batch's texture level 0 and Z buffer, as VRAM held them at
+ * the timeout: the probe's replays of Final Reality's stall filled both
+ * with one value, and a buffer every pixel fails went idle (boot 280). */
+#define V9X_D3D_SIS_TEXTURE_PATH "C:\\V9XDIAG\\V9XSIS3T.BIN"
+#define V9X_D3D_SIS_DEPTH_PATH   "C:\\V9XDIAG\\V9XSIS3Z.BIN"
 #define V9X_D3D_SIS_WAIT_BEFORE_STATE    1ul
 #define V9X_D3D_SIS_WAIT_BEFORE_TRIANGLE 2ul
 #define V9X_D3D_SIS_WAIT_AFTER_BATCH     3ul
@@ -108,6 +126,10 @@ typedef struct v9x_d3d_sis_batch_log {
     DWORD textured;
     DWORD triangles;
     v9x_u32 primitive;
+    DWORD texture_offset;
+    DWORD texture_bytes;
+    DWORD depth_offset;
+    DWORD depth_bytes;
     struct v9x_sis3d_writes state;
     struct v9x_sis3d_writes clear;
     struct v9x_sis3d_writes texture;
@@ -170,6 +192,10 @@ static void v9x_d3d_sis_log_batch(HANDLE file, const char *name,
     v9x_d3d_sis_log_hex(file, "Textured", batch->textured);
     v9x_d3d_sis_log_hex(file, "Triangles", batch->triangles);
     v9x_d3d_sis_log_hex(file, "Primitive0", batch->primitive);
+    v9x_d3d_sis_log_hex(file, "TextureOffset", batch->texture_offset);
+    v9x_d3d_sis_log_hex(file, "TextureBytes", batch->texture_bytes);
+    v9x_d3d_sis_log_hex(file, "DepthOffset", batch->depth_offset);
+    v9x_d3d_sis_log_hex(file, "DepthBytes", batch->depth_bytes);
     v9x_d3d_sis_log_text(file, "State\r\n");
     v9x_d3d_sis_log_writes(file, &batch->state);
     v9x_d3d_sis_log_text(file, "TextureClear\r\n");
@@ -178,6 +204,28 @@ static void v9x_d3d_sis_log_batch(HANDLE file, const char *name,
     v9x_d3d_sis_log_writes(file, &batch->texture);
     v9x_d3d_sis_log_text(file, "Vertices0\r\n");
     v9x_d3d_sis_log_writes(file, &batch->vertex);
+}
+
+/* `bytes` of VRAM from `offset` to `path`, when both lie in the aperture. */
+static void v9x_d3d_sis_dump_vram(const char *path, DWORD offset,
+                                  DWORD bytes)
+{
+    HANDLE file;
+    DWORD written;
+
+    if (bytes == 0ul || offset >= v9x_hal->fb.vram_bytes ||
+        bytes > v9x_hal->fb.vram_bytes - offset) {
+        return;
+    }
+    file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0,
+                       CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    WriteFile(file, (const void *)(v9x_hal->fb.linear_base + offset), bytes,
+              &written, 0);
+    CloseHandle(file);
 }
 
 /* Fixed storage and KERNEL32 file I/O only, as the fault trace. */
@@ -213,6 +261,12 @@ static void v9x_d3d_sis_log_timeout(DWORD status)
         v9x_d3d_sis_log_writes(file, &v9x_d3d_sis_vertex_writes[index]);
     }
     CloseHandle(file);
+    v9x_d3d_sis_dump_vram(V9X_D3D_SIS_TEXTURE_PATH,
+                          v9x_d3d_sis_log[current].texture_offset,
+                          v9x_d3d_sis_log[current].texture_bytes);
+    v9x_d3d_sis_dump_vram(V9X_D3D_SIS_DEPTH_PATH,
+                          v9x_d3d_sis_log[current].depth_offset,
+                          v9x_d3d_sis_log[current].depth_bytes);
 }
 
 /*
@@ -678,6 +732,16 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
     log->clear = v9x_d3d_sis_clear_writes;
     log->texture = v9x_d3d_sis_texture_writes;
     log->vertex = v9x_d3d_sis_vertex_writes[0];
+    log->texture_offset = textured ? texture.offset : 0ul;
+    log->texture_bytes = textured
+                             ? texture.pitch_bytes << texture.log2_height
+                             : 0ul;
+    log->depth_offset = 0ul;
+    log->depth_bytes = 0ul;
+    if ((state.enable & V9X_SIS3D_ENABLE_Z_TEST) != 0ul) {
+        log->depth_offset = state.z_offset;
+        log->depth_bytes = state.z_pitch_bytes * state.target.height;
+    }
 
     /* Blits that wrote what this batch reads or overwrites finish first. */
     engine2d = v9x_engine32();
@@ -703,6 +767,7 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
         v9x_d3d_sis_write(V9X_SIS3D_PRIMITIVE,
                           v9x_d3d_sis_primitives[index]);
         v9x_d3d_sis_emit(&v9x_d3d_sis_vertex_writes[index]);
+        v9x_d3d_sis_end_primitive();
     }
     v9x_d3d_sis_wait_site = V9X_D3D_SIS_WAIT_AFTER_BATCH;
     return v9x_d3d_sis_wait_idle();

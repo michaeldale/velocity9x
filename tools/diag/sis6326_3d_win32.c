@@ -68,6 +68,7 @@
 #define SIS3D_OP_LFB_READ32   7ul
 #define SIS3D_OP_LFB_FILL32   8ul
 #define SIS3D_OP_WAIT_SET     10ul
+#define SIS3D_OP_MMIO_WRITE8  11ul
 
 #define SIS3D_RAN 0x00000004ul
 
@@ -3498,6 +3499,8 @@ static void sis3d_phase6(void)
  *                  SR2C and SR27 only, each restored at the end, SR27
  *                  first, so the Turbo Queue goes off before its base moves
  *   D n            n reads of 89FCh, a delay
+ *   B off val      MMIO byte write (TEND, 8AFFh)
+ *   X off file     load a file into VRAM at off (a driver VRAM dump)
  *   P n            n idle waits whose timeouts are tolerated; the number of
  *                  the first that sees idle is reported (ReplayPollIdleAt)
  * The first idle wait that times out is reported and ends the run.
@@ -3580,6 +3583,60 @@ static int sis3d_p6_flush(DWORD *stalled)
     return 1;
 }
 
+/* The rest of the line at `p` names a file; its bytes go to VRAM from
+ * `offset`, dword by dword, after the ops queued so far have run. */
+static char sis3d_p6_load_buffer[4096];
+
+static int sis3d_p6_load(DWORD offset, const char *p, DWORD *stalled)
+{
+    char path[MAX_PATH];
+    HANDLE file;
+    DWORD length;
+    DWORD index;
+    DWORD count = 0ul;
+    DWORD value;
+    const unsigned char *bytes;
+
+    while (*p == ' ' || *p == '\t') {
+        ++p;
+    }
+    while (*p != '\0' && *p != '\r' && *p != '\n' && count + 1u < MAX_PATH) {
+        path[count++] = *p++;
+    }
+    path[count] = '\0';
+    if (count == 0ul || !sis3d_p6_flush(stalled)) {
+        return 0;
+    }
+    file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    bytes = (const unsigned char *)sis3d_p6_load_buffer;
+    for (;;) {
+        if (!ReadFile(file, sis3d_p6_load_buffer,
+                      sizeof(sis3d_p6_load_buffer), &length, 0) ||
+            length == 0ul) {
+            break;
+        }
+        for (index = 0ul; index + 4ul <= length; index += 4ul) {
+            if (sis3d_request_buffer.count + 1u >= SIS3D_P6_CHUNK &&
+                !sis3d_p6_flush(stalled)) {
+                CloseHandle(file);
+                return 0;
+            }
+            value = (DWORD)bytes[index] |
+                    ((DWORD)bytes[index + 1ul] << 8) |
+                    ((DWORD)bytes[index + 2ul] << 16) |
+                    ((DWORD)bytes[index + 3ul] << 24);
+            sis3d_add(SIS3D_OP_LFB_WRITE32, offset, value, 0ul);
+            offset += 4ul;
+        }
+    }
+    CloseHandle(file);
+    return sis3d_p6_flush(stalled);
+}
+
 static void sis3d_phase6_file(void)
 {
     HANDLE file;
@@ -3636,9 +3693,22 @@ static void sis3d_phase6_file(void)
         if (op == '\r' || op == '\n' || op == ' ' || op == '\t') {
             continue;
         }
-        if (op == 'W' || op == 'S') {
+        if (op == 'W' || op == 'S' || op == 'B') {
             p = sis3d_p6_hex(p, &a);
             p = p != 0 ? sis3d_p6_hex(p, &b) : 0;
+        } else if (op == 'X') {
+            p = sis3d_p6_hex(p, &a);
+            if (p == 0 || !sis3d_p6_load(a, p, &stalled)) {
+                sis3d_write("ReplayResult", "LOAD-FAILED");
+                reported = 1;
+                ok = 0;
+                break;
+            }
+            while (*p != '\0' && *p != '\n') {
+                ++p;
+            }
+            ++ops;
+            continue;
         } else if (op == 'F') {
             p = sis3d_p6_hex(p, &a);
             p = p != 0 ? sis3d_p6_hex(p, &b) : 0;
@@ -3680,6 +3750,9 @@ static void sis3d_phase6_file(void)
         switch (op) {
         case 'W':
             sis3d_add(SIS3D_OP_MMIO_WRITE32, a, b, 0ul);
+            break;
+        case 'B':
+            sis3d_add(SIS3D_OP_MMIO_WRITE8, a, b & 0xfful, 0ul);
             break;
         case 'S':
             sis3d_add(SIS3D_OP_SR_WRITE, a, b & 0xfful, 0ul);

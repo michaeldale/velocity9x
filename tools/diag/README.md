@@ -64,7 +64,9 @@ fog and specular through the driver's mapping. `/phase6` replays Final
 Reality's stalling triangle with one change per switch (`/fb` to `/fy`),
 and `/phase6 /file` replays a register stream from
 `C:\V9XDIAG\P6REPLAY.TXT`, written from a driver stall log by
-`docs/probe/a8u4i5-sis6326-fr-stall-2026-10-05/make_replay.py`.
+`docs/probe/a8u4i5-sis6326-fr-stall-2026-10-05/make_replay.py`; the
+stream can load a VRAM dump from a file and write TEND, a byte register,
+through the VxD's byte-write op.
 It **writes the card**: SR39 (restored) and the 3D registers, firing
 triangles into guarded off-screen RGB565 targets (and Z16 buffers) and
 comparing each pixel with a reference. It publishes `C:\V9XDIAG\SIS3D.TXT`.
