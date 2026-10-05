@@ -55,6 +55,10 @@ Half-Life's mwd5 timedemo at 640x480 ran with no timeout: Direct3D
 blending. OpenGL ran at 0.8 fps on the CPU engine only, since the SiS
 engine takes no render-interface draws
 ([evidence](../probe/a8u4i5-sis6326-halflife-2026-10-05/README.md)).
+The colour blend factors are now measured and taken
+([record](../decisions/2026-10-05-sis6326-colour-blend-factors.md)):
+Half-Life draws every batch at 7.9-8.6 fps, and V9XDDP's BlendMultiply
+passes.
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 

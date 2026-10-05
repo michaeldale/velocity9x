@@ -3161,6 +3161,251 @@ static void sis3d_phase5(void)
 }
 
 /*
+ * Phase 7: the colour blend factors. Half-Life's Direct3D path draws 2x
+ * modulate (source DESTCOLOR, destination SRCCOLOR) and had 37,303 batches
+ * refused for it (A8U4I5 boot 291); V9XDDP's BlendMultiply is DESTCOLOR/
+ * ZERO. The datasheet gives the source side DST_COLOR 8 and INV_DST_COLOR
+ * 9 and the destination side SRC_COLOR 2 and INV_SRC_COLOR 3 (DS
+ * L5067-5111). Each case fills a 64x64 RGB565 target with D, draws one
+ * triangle of colour S through the driver's mapping with blending forced
+ * to the pair, and reads one pixel against Direct3D's
+ *   saturate(S x Fs + D x Fd), factors 0-1 per channel from 8-bit values,
+ * D the 565 fill expanded by bit replication. TEND follows the triangle.
+ */
+struct sis3d_p7_case {
+    const char *name;
+    int textured;           /* the phase 4 texture (ARGB1555 83E0h) COPY */
+    DWORD source;           /* V9X_SIS3D_BLEND_* */
+    DWORD destination;
+    DWORD colour;           /* S when untextured, xRGB */
+    DWORD fill;             /* D, xRGB, packed to 565 for the fill */
+};
+
+static const struct sis3d_p7_case sis3d_p7_cases[12] = {
+    { "Copy", 0, V9X_SIS3D_BLEND_ONE, V9X_SIS3D_BLEND_ZERO,
+      0x0080c040ul, 0x0060a0f0ul },
+    { "DstColorZero", 0, V9X_SIS3D_BLEND_DST_COLOR, V9X_SIS3D_BLEND_ZERO,
+      0x0080c040ul, 0x0060a0f0ul },
+    { "ZeroSrcColor", 0, V9X_SIS3D_BLEND_ZERO, V9X_SIS3D_BLEND_SRC_COLOR,
+      0x0080c040ul, 0x0060a0f0ul },
+    { "DstColorSrcColor", 0, V9X_SIS3D_BLEND_DST_COLOR,
+      V9X_SIS3D_BLEND_SRC_COLOR, 0x0080c040ul, 0x0060a0f0ul },
+    { "DstColorSrcColorSat", 0, V9X_SIS3D_BLEND_DST_COLOR,
+      V9X_SIS3D_BLEND_SRC_COLOR, 0x00e0e0e0ul, 0x00f0f0f0ul },
+    { "DstColorSrcColorDark", 0, V9X_SIS3D_BLEND_DST_COLOR,
+      V9X_SIS3D_BLEND_SRC_COLOR, 0x00204060ul, 0x00406080ul },
+    { "InvDstColorZero", 0, V9X_SIS3D_BLEND_INV_DST_COLOR,
+      V9X_SIS3D_BLEND_ZERO, 0x0080c040ul, 0x0060a0f0ul },
+    { "ZeroInvSrcColor", 0, V9X_SIS3D_BLEND_ZERO,
+      V9X_SIS3D_BLEND_INV_SRC_COLOR, 0x0080c040ul, 0x0060a0f0ul },
+    { "DstColorOne", 0, V9X_SIS3D_BLEND_DST_COLOR, V9X_SIS3D_BLEND_ONE,
+      0x0080c040ul, 0x0060a0f0ul },
+    { "OneSrcColor", 0, V9X_SIS3D_BLEND_ONE, V9X_SIS3D_BLEND_SRC_COLOR,
+      0x0080c040ul, 0x0060a0f0ul },
+    { "TexDstColorSrcColor", 1, V9X_SIS3D_BLEND_DST_COLOR,
+      V9X_SIS3D_BLEND_SRC_COLOR, 0ul, 0x00a08060ul },
+    { "TexDstColorZero", 1, V9X_SIS3D_BLEND_DST_COLOR, V9X_SIS3D_BLEND_ZERO,
+      0ul, 0x00a08060ul }
+};
+
+/* One factor for one channel, 0-255, by V9X_SIS3D_BLEND_* code. */
+static DWORD sis3d_p7_factor(DWORD code, DWORD s, DWORD d)
+{
+    switch (code) {
+    case V9X_SIS3D_BLEND_ONE:
+        return 255ul;
+    case V9X_SIS3D_BLEND_SRC_COLOR:
+        return s;
+    case V9X_SIS3D_BLEND_INV_SRC_COLOR:
+        return 255ul - s;
+    case V9X_SIS3D_BLEND_DST_COLOR:
+        return d;
+    case V9X_SIS3D_BLEND_INV_DST_COLOR:
+        return 255ul - d;
+    }
+    return 0ul;
+}
+
+static DWORD sis3d_p7_expected(const struct sis3d_p7_case *c, DWORD source)
+{
+    DWORD destination = sis3d_unpack565(sis3d_pack565(c->fill));
+    DWORD result = 0ul;
+    DWORD s;
+    DWORD d;
+    DWORD v;
+    int shift;
+
+    for (shift = 0; shift <= 16; shift += 8) {
+        s = sis3d_channel(source, shift);
+        d = sis3d_channel(destination, shift);
+        v = (s * sis3d_p7_factor(c->source, s, d) +
+             d * sis3d_p7_factor(c->destination, s, d) + 127ul) / 255ul;
+        if (v > 255ul) {
+            v = 255ul;
+        }
+        result |= v << shift;
+    }
+    return sis3d_pack565(result);
+}
+
+static int sis3d_p7_draw(const struct sis3d_p7_case *c)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_SIS_TEXTURE resolved;
+    V9X_R3D_VERTEX triangle[3];
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_texture texture;
+    struct v9x_sis3d_writes writes;
+    struct v9x_sis3d_writes clear_writes;
+    struct v9x_sis3d_writes texture_writes;
+    struct v9x_sis3d_writes vertex_writes;
+    struct v9x_sis3d_vertex corners[3];
+    char key[48];
+    v9x_u32 primitive;
+    v9x_u32 reason;
+    DWORD wait_index;
+    DWORD pixel_index;
+    DWORD actual;
+    DWORD expected;
+    DWORD fill;
+    DWORD index;
+    int textured;
+
+    v9x_zero_bytes(&draw, sizeof(draw));
+    draw.target.offset = SIS3D_P5_TARGET;
+    draw.target.pitch = SIS3D_P5_PITCH;
+    draw.target.width = SIS3D_P5_SIDE;
+    draw.target.height = SIS3D_P5_SIDE;
+    draw.target.format = V9X_R3D_FORMAT_RGB565;
+    draw.depth_func = V9X_R3D_CMP_LESSEQUAL;
+    draw.alpha_func = V9X_R3D_CMP_ALWAYS;
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    draw.shade_mode = V9X_R3D_SHADE_GOURAUD;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.op = V9X_R3D_TEXOP_COPY;
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    if (c->textured) {
+        draw.texture.object = &sis3d_p4_token;
+    }
+    v9x_zero_bytes(&resolved, sizeof(resolved));
+    resolved.format = V9X_SIS3D_TEXEL_ARGB1555;
+    resolved.has_alpha = 1;
+    resolved.width = SIS3D_P4_SIDE;
+    resolved.height = SIS3D_P4_SIDE;
+    resolved.levels = 1ul;
+    resolved.offset = SIS3D_P4_TEXTURE;
+    resolved.pitch_bytes = SIS3D_P4_SIDE * 2ul;
+    resolved.level_offsets[0] = SIS3D_P4_TEXTURE;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_zero_bytes(&triangle[index], sizeof(triangle[index]));
+        triangle[index].sz = 0.0f;
+        triangle[index].rhw = 1.0f;
+        triangle[index].color = 0xff000000ul | c->colour;
+        triangle[index].tu = 0.25f;
+        triangle[index].tv = 0.25f;
+    }
+    triangle[0].sx = 2.0f;  triangle[0].sy = 2.0f;
+    triangle[1].sx = 60.0f; triangle[1].sy = 2.0f;
+    triangle[2].sx = 2.0f;  triangle[2].sy = 60.0f;
+
+    reason = v9x_d3d_sis_map_draw(&draw, &resolved, SIS3D_VRAM_BYTES, 0ul,
+                                  &state, &texture, &textured);
+    sis3d_key(key, c->name, "MapReason");
+    sis3d_write_decimal(key, reason);
+    if (reason != V9X_D3D_SIS_REFUSE_NONE) {
+        return 1;
+    }
+    /* The pair under test, past the mapping's refusal of colour factors. */
+    state.enable |= V9X_SIS3D_ENABLE_BLEND;
+    state.blend_source = c->source;
+    state.blend_destination = c->destination;
+    if (v9x_sis3d_build_state(&state, &writes) != V9X_STATUS_OK) {
+        return 1;
+    }
+    texture.clear_cache = 1;
+    if (v9x_sis3d_build_texture(&texture, &clear_writes) != V9X_STATUS_OK) {
+        return 1;
+    }
+    texture.clear_cache = 0;
+    if (v9x_sis3d_build_texture(&texture, &texture_writes) !=
+            V9X_STATUS_OK ||
+        !v9x_d3d_sis_triangle(triangle, V9X_R3D_SHADE_GOURAUD, textured,
+                              corners, &primitive)) {
+        return 1;
+    }
+    v9x_sis3d_build_vertices(corners, &vertex_writes);
+
+    fill = sis3d_pack565(c->fill);
+    sis3d_begin();
+    sis3d_add(SIS3D_OP_LFB_FILL32, SIS3D_P5_TARGET, fill | (fill << 16),
+              SIS3D_P5_PITCH * SIS3D_P5_SIDE / 4ul);
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add_writes(&writes);
+    sis3d_add_writes(&clear_writes);
+    sis3d_add_writes(&texture_writes);
+    sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+              V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    sis3d_add(SIS3D_OP_MMIO_WRITE32, V9X_SIS3D_PRIMITIVE, primitive, 0ul);
+    sis3d_add_writes(&vertex_writes);
+    sis3d_add(SIS3D_OP_MMIO_WRITE8, V9X_SIS3D_TEND, 0ul, 0ul);
+    wait_index = sis3d_add(SIS3D_OP_WAIT_SET, V9X_SIS3D_STATUS,
+                           V9X_SIS3D_STATUS_IDLE_EMPTY, 0ul);
+    pixel_index = sis3d_add(SIS3D_OP_LFB_READ32, SIS3D_P5_TARGET +
+                            16ul * SIS3D_P5_PITCH + 16ul * 2ul, 0ul, 0ul);
+    if (!sis3d_run()) {
+        sis3d_key(key, c->name, "Result");
+        sis3d_write(key, "RUN-FAILED");
+        return 0;
+    }
+    actual = sis3d_value(pixel_index) & 0xfffful;
+    /* S: the vertex colour, or the phase 4 texel 83E0h (ARGB1555 green)
+     * expanded by bit replication. */
+    expected = sis3d_p7_expected(c, c->textured ? 0x0000ff00ul : c->colour);
+    sis3d_key(key, c->name, "WaitAfter");
+    sis3d_write_hex(key, sis3d_value(wait_index));
+    sis3d_key(key, c->name, "Fill");
+    sis3d_write_hex(key, fill);
+    sis3d_key(key, c->name, "Pixel");
+    sis3d_write_hex(key, actual);
+    sis3d_key(key, c->name, "Expected");
+    sis3d_write_hex(key, expected);
+    if (sis3d_value(wait_index) == SIS3D_TIMEOUT) {
+        sis3d_key(key, c->name, "Result");
+        sis3d_write(key, "STALLED");
+        return 0;
+    }
+    sis3d_key(key, c->name, "Result");
+    sis3d_write(key, sis3d_difference(actual, expected) <= 1ul
+                     ? "MATCH" : "DIFF");
+    return 1;
+}
+
+static void sis3d_phase7(void)
+{
+    DWORD index;
+
+    sis3d_begin();
+    sis3d_add(SIS3D_OP_LFB_FILL32, SIS3D_P4_TEXTURE, SIS3D_P4_TEXEL,
+              SIS3D_P4_SIDE * SIS3D_P4_SIDE / 2ul);
+    if (!sis3d_run()) {
+        sis3d_write("Phase7Fill", "FAILED");
+        return;
+    }
+    for (index = 0ul;
+         index < sizeof(sis3d_p7_cases) / sizeof(sis3d_p7_cases[0]);
+         ++index) {
+        if (!sis3d_p7_draw(&sis3d_p7_cases[index])) {
+            sis3d_write("StoppedAt", sis3d_p7_cases[index].name);
+            return;
+        }
+    }
+}
+
+/*
  * Phase 6: Final Reality's stall. The full benchmark on A8U4I5 boot 231
  * timed the engine out (89FCh 00200074h) at the wait after the first
  * triangle of batch 565, and V9XSIS3D.TXT kept it and batch 564. Unlike the
@@ -3897,6 +4142,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     int phase2 = sis3d_has_switch("/phase2");
     int phase3a = sis3d_has_switch("/phase3a");
     int phase3m = sis3d_has_switch("/phase3m");
+    int phase7 = sis3d_has_switch("/phase7");
     int phase6 = sis3d_has_switch("/phase6");
     int phase5 = sis3d_has_switch("/phase5");
     int phase4z = sis3d_has_switch("/phase4z");
@@ -3922,7 +4168,7 @@ void WINAPI V9xSis3dProbeEntry(void)
     }
     WriteFile(sis3d_output, header, (DWORD)lstrlenA(header), &written, 0);
     sis3d_write("Build", V9X_BUILD_ID);
-    sis3d_write("Phase", phase6 ? "6" : phase5 ? "5" : phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
+    sis3d_write("Phase", phase7 ? "7" : phase6 ? "6" : phase5 ? "5" : phase4z ? "4z" : phase4b ? "4b" : phase4 ? "4" : phase3a ? "3a" : phase3m ? "3m"
                          : phase3 ? "3" : phase2 ? "2" : "1");
     sis3d_write_decimal("DesktopWidth", width);
     sis3d_write_decimal("DesktopHeight", height);
@@ -3991,7 +4237,9 @@ void WINAPI V9xSis3dProbeEntry(void)
         goto restore;
     }
 
-    if (phase6 && sis3d_has_switch("/file")) {
+    if (phase7) {
+        sis3d_phase7();
+    } else if (phase6 && sis3d_has_switch("/file")) {
         sis3d_phase6_file();
     } else if (phase6) {
         sis3d_phase6();

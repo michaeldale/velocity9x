@@ -160,15 +160,29 @@ static void test_untextured_depth_blend_alpha(void)
           V9X_D3D_SIS_REFUSE_NONE);
     CHECK(state.blend_source == V9X_SIS3D_BLEND_ONE &&
           state.blend_destination == V9X_SIS3D_BLEND_ONE);
-    /* Only the factors phase 2 measured: ZERO, ONE, SRCALPHA and
-     * INVSRCALPHA. The colour factors were published on the datasheet's
-     * word alone, and the run that drew SRC DESTCOLOR (V9XDDP's
-     * BlendMultiply) ended in a hard lock of A8U4I5 a few steps later;
-     * the cause is not established, the factors are not measured. */
+    /* Phase 2 measured ZERO, ONE, SRCALPHA and INVSRCALPHA; SIS3D /phase7
+     * (A8U4I5 boot 293) the colour factors on the side the datasheet gives
+     * them: DESTCOLOR and INVDESTCOLOR as source, SRCCOLOR and INVSRCCOLOR
+     * as destination. Half-Life's 2x modulate is DESTCOLOR/SRCCOLOR. */
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_SRCCOLOR;
+    CHECK(map(&draw, 0, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK(state.blend_source == V9X_SIS3D_BLEND_DST_COLOR);
+    CHECK(state.blend_destination == V9X_SIS3D_BLEND_SRC_COLOR);
+    draw.src_blend = V9X_R3D_BLEND_INVDESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCCOLOR;
+    CHECK(map(&draw, 0, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK(state.blend_source == V9X_SIS3D_BLEND_INV_DST_COLOR);
+    CHECK(state.blend_destination == V9X_SIS3D_BLEND_INV_SRC_COLOR);
+    /* The other side's colour factor has no engine code, nor do the
+     * destination-alpha and saturate factors without an alpha buffer. */
     draw.src_blend = V9X_R3D_BLEND_SRCCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_BLEND);
-    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.src_blend = V9X_R3D_BLEND_INVSRCCOLOR;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_BLEND);
     draw.src_blend = V9X_R3D_BLEND_SRCALPHASAT;
@@ -178,10 +192,10 @@ static void test_untextured_depth_blend_alpha(void)
     draw.dst_blend = V9X_R3D_BLEND_DESTCOLOR;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_BLEND);
-    draw.dst_blend = V9X_R3D_BLEND_DESTALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVDESTCOLOR;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_BLEND);
-    draw.dst_blend = V9X_R3D_BLEND_INVSRCCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_DESTALPHA;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_BLEND);
     draw.dst_blend = V9X_R3D_BLEND_ZERO;

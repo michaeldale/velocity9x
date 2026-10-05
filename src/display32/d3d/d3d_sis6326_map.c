@@ -84,11 +84,30 @@ static int v9x_d3d_sis_blend_measured(v9x_u32 factor)
            factor == V9X_R3D_BLEND_INVSRCALPHA;
 }
 
+/* The colour factors, each on the one side the datasheet gives it a code
+ * (DS L5067-5111): DESTCOLOR and INVDESTCOLOR as source, SRCCOLOR and
+ * INVSRCCOLOR as destination. */
+static int v9x_d3d_sis_blend_source(v9x_u32 factor)
+{
+    return v9x_d3d_sis_blend_measured(factor) ||
+           factor == V9X_R3D_BLEND_DESTCOLOR ||
+           factor == V9X_R3D_BLEND_INVDESTCOLOR;
+}
+
+static int v9x_d3d_sis_blend_destination(v9x_u32 factor)
+{
+    return v9x_d3d_sis_blend_measured(factor) ||
+           factor == V9X_R3D_BLEND_SRCCOLOR ||
+           factor == V9X_R3D_BLEND_INVSRCCOLOR;
+}
+
 /*
- * Direct3D's blend factors are the engine's codes plus one. Only the
- * measured four are taken, on either side: the colour factors went out
- * once on the datasheet's word, and the V9XDDP run that drew SRC DESTCOLOR
- * hard-locked A8U4I5 a few steps later (boot 212, cause not established).
+ * Direct3D's blend factors are the engine's codes plus one. Taken are the
+ * four phase 2 measured on either side and the colour factors SIS3D
+ * /phase7 measured against Direct3D's formula, 12 of 12 within one step,
+ * Half-Life's 2x modulate included (A8U4I5 boot 293). The V9XDDP run that
+ * once drew SRC DESTCOLOR and locked a few steps later (boot 212) was the
+ * untextured-batch stall and the Lock loop on it (engine record).
  */
 static v9x_u32 v9x_d3d_sis_map_blend(const V9X_R3D_DRAW *draw,
                                      struct v9x_sis3d_state *state)
@@ -101,8 +120,8 @@ static v9x_u32 v9x_d3d_sis_map_blend(const V9X_R3D_DRAW *draw,
     if (draw->blend_enable == 0ul) {
         return V9X_D3D_SIS_REFUSE_NONE;
     }
-    if (!v9x_d3d_sis_blend_measured(draw->src_blend) ||
-        !v9x_d3d_sis_blend_measured(draw->dst_blend)) {
+    if (!v9x_d3d_sis_blend_source(draw->src_blend) ||
+        !v9x_d3d_sis_blend_destination(draw->dst_blend)) {
         return V9X_D3D_SIS_REFUSE_BLEND;
     }
     source = draw->src_blend - V9X_R3D_BLEND_ZERO;

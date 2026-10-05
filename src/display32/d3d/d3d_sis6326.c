@@ -425,11 +425,16 @@ static void v9x_d3d_sis_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
     tri->dwAlphaCmpCaps = tri->dwZCmpCaps;
-    /* The four factors phase 2 measured (d3d_sis6326_map.c). */
+    /* The four factors phase 2 measured, plus the colour factors phase 7
+     * measured, each on its own side (d3d_sis6326_map.c). */
     tri->dwSrcBlendCaps =
         V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
-        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA;
-    tri->dwDestBlendCaps = tri->dwSrcBlendCaps;
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR | V9X_D3DPBLENDCAPS_INVDESTCOLOR;
+    tri->dwDestBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR;
     tri->dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
