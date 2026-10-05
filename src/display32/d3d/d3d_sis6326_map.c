@@ -146,11 +146,19 @@ static int v9x_d3d_sis_map_filter(const V9X_R3D_TEXTURE *sampler,
     default:
         return 0;
     }
-    if (sampler->mag_filter == V9X_R3D_FILTER_LINEAR) {
+    /* Magnification has no levels to choose between, so a mip filter set
+     * there takes its within-level half, as d3d_i9xx.c folds it. Final
+     * Reality's full run had all 17,192 of its refusals here (A8U4I5 boot
+     * 290). */
+    switch (sampler->mag_filter) {
+    case V9X_R3D_FILTER_LINEAR:
+    case V9X_R3D_FILTER_MIPLINEAR:
+    case V9X_R3D_FILTER_LINEARMIPLINEAR:
         *filter = V9X_SIS3D_MAG_LINEAR | min;
         return 1;
-    }
-    if (sampler->mag_filter == V9X_R3D_FILTER_NEAREST) {
+    case V9X_R3D_FILTER_NEAREST:
+    case V9X_R3D_FILTER_MIPNEAREST:
+    case V9X_R3D_FILTER_LINEARMIPNEAREST:
         *filter = min;
         return 1;
     }

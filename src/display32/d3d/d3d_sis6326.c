@@ -644,6 +644,30 @@ static DWORD v9x_d3d_sis_specular_rgb(const V9X_R3D_VERTEX *vertices,
     return rgb;
 }
 
+/*
+ * A refused draw by V9X_D3D_SIS_REFUSE_* reason, in the Mach64's policy
+ * counters as the Rage IIC does (V9XTRACE's M64PolicyNN): Final Reality's
+ * full run had 17,013 refused batches and nothing to say why (boot 289).
+ * The texture op and blend pair of the refused draw are kept as well.
+ */
+static void v9x_d3d_sis_count_refusal(const V9X_R3D_DRAW *draw,
+                                      v9x_u32 reason)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+
+    diagnostics->m64_policy_last = reason;
+    if (reason < 20ul) {
+        ++diagnostics->m64_policy_counts[reason];
+    }
+    if (reason == V9X_D3D_SIS_REFUSE_TEXTURE_OP && draw->texture.op < 32ul) {
+        diagnostics->m64_texop_refused_mask |= 1ul << draw->texture.op;
+    }
+    if (reason == V9X_D3D_SIS_REFUSE_BLEND) {
+        diagnostics->blend_last_pair =
+            (draw->src_blend << 16) | (draw->dst_blend & 0xfffful);
+    }
+}
+
 /* Passive, as the contract requires: the vertices' specular colour is not
  * known here, so draw() checks it again. */
 static int v9x_d3d_sis_accepts(const V9X_R3D_DRAW *draw)
@@ -674,6 +698,7 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
     V9X_D3D_SIS_BATCH_LOG *log;
     DWORD index;
     DWORD packets = 0ul;
+    v9x_u32 reason;
     int textured;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
@@ -683,11 +708,12 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
 
     /* The mapping first: nothing below runs for a draw it refuses. */
     v9x_d3d_sis_resolve_texture(draw, &resolved);
-    if (v9x_d3d_sis_map_draw(draw, &resolved, v9x_hal->fb.vram_bytes,
-                             v9x_d3d_sis_specular_rgb(vertices,
-                                                      triangle_count * 3ul),
-                             &state, &texture, &textured) !=
-        V9X_D3D_SIS_REFUSE_NONE) {
+    reason = v9x_d3d_sis_map_draw(draw, &resolved, v9x_hal->fb.vram_bytes,
+                                  v9x_d3d_sis_specular_rgb(vertices,
+                                      triangle_count * 3ul),
+                                  &state, &texture, &textured);
+    if (reason != V9X_D3D_SIS_REFUSE_NONE) {
+        v9x_d3d_sis_count_refusal(draw, reason);
         return 0;
     }
     if (v9x_sis3d_build_state(&state, &v9x_d3d_sis_state_writes) !=

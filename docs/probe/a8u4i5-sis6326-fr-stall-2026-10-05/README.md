@@ -118,8 +118,25 @@ gained `B` (MMIO byte write, a new VxD op) and `X` (load a file into VRAM).
 
 `tend-b289/`: Final Reality's full benchmark on the driver writing TEND
 after every triangle (boot 289). It rendered every scene; the snapshot
-reads `EngineIdleTimeouts=0`, `FlipDeclined=0`, 290,226 primitive calls,
+reads `EngineIdleTimeouts=0`, `FlipDeclined=0`, 290,226 primitive calls
+(the 17,013 refusals are explained under `fold-b291` below),
 and 17,013 batches refused by the mapping (`BatchesEngineRefused`, reason
 not counted). Scores as reported: 2D 6.64, 3D 1.85, bus 3.56, overall
 3.55; fill rate 14.09 Mpixels/s, robots 8.80 images/s, visual appearance
 88.89%.
+
+## Refusal reasons, and the magnification filter (boots 290-291)
+
+`fold-b291/`. Boot 290's build counts SiS mapping refusals by
+`V9X_D3D_SIS_REFUSE_*` reason in V9XTRACE's `M64PolicyNN`. Final Reality's
+full run (`B290-V9XSNAP-AFTER-FR.INI`): all 17,192 refusals were reason 13,
+the texture filter. Boot 291's build folds a mip filter set as the
+magnification filter to its within-level half. Final Reality's full run
+(`B291-*`) then had `BatchesEngineRefused=0` and `EngineIdleTimeouts=0`.
+Scores as reported: 2D 6.60, 3D 1.83, bus 3.50, overall 3.51.
+
+V9XDDP on the same boot (`B291-V9XDD.INI`, `B291-V9XDDT.TXT`) completed
+with no idle timeout. `ddp_compare.py` against boot 231 shows no
+difference in any compared check, and against SiS's HAL still none that
+SiS passes and this fails. Its 5 refusals (`B291-V9XSNAP-AFTER-DDP.INI`):
+3 blend (the last DESTCOLOR/ONE), 1 colour key, 1 texture format.

@@ -45,7 +45,9 @@ SiS's own driver renders the scene with the same state; none of its
 register differences, the Turbo Queue included, stops the replayed stall.
 TEND after every triangle does: Final Reality's full benchmark renders
 with no timeout ([record](../decisions/2026-10-05-sis6326-tend-after-each-triangle.md)).
-It refuses 17,013 of the benchmark's batches, reason not yet counted.
+Its 17,013 refused batches were all a mip magnification filter, now
+folded: the benchmark runs with no refusal and no timeout
+([record](../decisions/2026-10-05-sis6326-mag-filter-fold.md)).
 V9XDDP's `D3DZ*Hr=88760231h` is its not-run marker, so "SiS's Z tests fail"
 above means they did not run.
 

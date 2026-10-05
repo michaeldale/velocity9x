@@ -314,7 +314,26 @@ static void test_texture_mapping(void)
     CHECK(map(&draw, &resolved, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_NONE);
     CHECK((texture.filter & 7ul) == V9X_SIS3D_MIN_LINEAR);
+    /* A mip filter as the magnification filter takes its within-level half,
+     * as d3d_i9xx.c folds it: Final Reality's full run had every one of its
+     * 17,192 refusals on the filter (A8U4I5 boot 290). */
     draw.texture.mag_filter = V9X_R3D_FILTER_MIPNEAREST;
+    CHECK(map(&draw, &resolved, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((texture.filter & V9X_SIS3D_MAG_LINEAR) == 0ul);
+    draw.texture.mag_filter = V9X_R3D_FILTER_MIPLINEAR;
+    CHECK(map(&draw, &resolved, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((texture.filter & V9X_SIS3D_MAG_LINEAR) != 0ul);
+    draw.texture.mag_filter = V9X_R3D_FILTER_LINEARMIPNEAREST;
+    CHECK(map(&draw, &resolved, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((texture.filter & V9X_SIS3D_MAG_LINEAR) == 0ul);
+    draw.texture.mag_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &resolved, &state, &texture, &textured) ==
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((texture.filter & V9X_SIS3D_MAG_LINEAR) != 0ul);
+    draw.texture.mag_filter = 0ul;
     CHECK(map(&draw, &resolved, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_TEXTURE_FILTER);
 
