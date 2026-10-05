@@ -30,6 +30,7 @@
 
 #define V9X_D3D_SIS_MIN_MASK 0x00000007ul
 #define V9X_D3D_SIS_TEXTURE_SIDE_MAX 512ul
+#define V9X_D3D_SIS_RGB_MASK 0x00fffffful
 /* The pitch field's 4-byte unit: the dummy texel's row. */
 #define V9X_D3D_SIS_PITCH_UNIT 4ul
 
@@ -330,12 +331,6 @@ v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
         draw->shade_mode != V9X_R3D_SHADE_GOURAUD) {
         return V9X_D3D_SIS_REFUSE_SHADE;
     }
-    if (draw->fog_enable != 0ul) {
-        return V9X_D3D_SIS_REFUSE_FOG;
-    }
-    if (draw->specular_enable != 0ul && specular_rgb != 0ul) {
-        return V9X_D3D_SIS_REFUSE_SPECULAR;
-    }
 
     state->target.vram_bytes = vram_bytes;
     state->target.offset = draw->target.offset;
@@ -348,6 +343,23 @@ v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
     state->z_compare = V9X_SIS3D_CMP_ALWAYS;
     state->alpha_compare = V9X_SIS3D_CMP_ALWAYS;
     state->alpha_reference = 0ul;
+    state->fog_color = 0ul;
+
+    /*
+     * Vertex fog and specular: each vertex's specular dword (fog factor in
+     * the alpha byte, colour in RGB) goes to the fog/specular register as
+     * it is (v9x_d3d_sis_triangle), 8A20h takes the fog colour. Specular
+     * is enabled only where some vertex carries colour - SPECULARENABLE
+     * defaults on, and adding black would only cost the engine. Measured
+     * against Direct3D's formulas by SIS3D /phase5.
+     */
+    if (draw->fog_enable != 0ul) {
+        state->enable |= V9X_SIS3D_ENABLE_FOG;
+        state->fog_color = draw->fog_color & V9X_D3D_SIS_RGB_MASK;
+    }
+    if (draw->specular_enable != 0ul && specular_rgb != 0ul) {
+        state->enable |= V9X_SIS3D_ENABLE_SPECULAR;
+    }
 
     /* Depth needs the state, a bound surface and a pitch. */
     if (draw->depth_enable != 0ul && draw->depth.object != 0 &&

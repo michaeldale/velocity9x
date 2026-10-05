@@ -52,6 +52,8 @@
 /* 8A00h enable bits (datasheet 7.14.6). */
 #define V9X_SIS3D_ENABLE_DITHER     0x00000001ul
 #define V9X_SIS3D_ENABLE_BLEND      0x00000004ul
+#define V9X_SIS3D_ENABLE_FOG        0x00000008ul
+#define V9X_SIS3D_ENABLE_SPECULAR   0x00000010ul
 #define V9X_SIS3D_ENABLE_LARGE_CACHE 0x00000020ul
 #define V9X_SIS3D_ENABLE_TEXTURE_CACHE 0x00000080ul
 #define V9X_SIS3D_ENABLE_PERSPECTIVE 0x00000200ul
@@ -196,6 +198,7 @@ struct v9x_sis3d_state {
     v9x_u32 alpha_reference; /* 0-255 */
     v9x_u32 blend_source;    /* V9X_SIS3D_BLEND_* */
     v9x_u32 blend_destination;
+    v9x_u32 fog_color;       /* 0x00RRGGBB; used while ENABLE_FOG is set */
 };
 
 /* Levels after level 0: 8A38h D[11:8] holds the last level's index. */

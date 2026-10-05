@@ -33,6 +33,8 @@
 #define V9X_SIS3D_ALPHA_REF_SHIFT     16
 #define V9X_SIS3D_BLEND_DST_SHIFT     28
 #define V9X_SIS3D_BLEND_SRC_SHIFT     24
+#define V9X_SIS3D_FOG_PER_VERTEX      0x01000000ul
+#define V9X_SIS3D_FOG_COLOR_MASK      0x00fffffful
 
 /* Texture registers (registers section 8). */
 #define V9X_SIS3D_TEXEL_SHIFT         24
@@ -285,7 +287,14 @@ v9x_status v9x_sis3d_build_state(const struct v9x_sis3d_state *state,
                    (V9X_SIS3D_DST_RGB565 << V9X_SIS3D_DST_FORMAT_SHIFT) |
                    target->pitch_bytes);
     v9x_sis3d_emit(writes, V9X_SIS3D_DST_BASE, target->offset);
-    v9x_sis3d_emit(writes, V9X_SIS3D_FOG, 0ul);
+    /* 8A20h D24: 0 constant, 1 normal fog - read as the factor from each
+     * vertex, which phase 5 measures; D[23:0] the fog colour (registers
+     * section 7). */
+    v9x_sis3d_emit(writes, V9X_SIS3D_FOG,
+                   (state->enable & V9X_SIS3D_ENABLE_FOG) != 0ul
+                       ? V9X_SIS3D_FOG_PER_VERTEX |
+                             (state->fog_color & V9X_SIS3D_FOG_COLOR_MASK)
+                       : 0ul);
     v9x_sis3d_emit(writes, V9X_SIS3D_BLEND,
                    (state->blend_destination << V9X_SIS3D_BLEND_DST_SHIFT) |
                    (state->blend_source << V9X_SIS3D_BLEND_SRC_SHIFT));

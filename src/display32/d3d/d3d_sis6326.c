@@ -316,9 +316,9 @@ static DWORD v9x_d3d_sis_texel_bytes(DWORD format)
 }
 
 /*
- * The measured boundary (textures and shading-and-depth records). Fog,
- * specular and colour keys were not measured and are refused per draw, as
- * the published caps say; so is everything d3d_sis6326_map.c refuses.
+ * The measured boundary (the textures, shading-and-depth and phase 5
+ * records). Colour keys were not measured and are refused per draw, as the
+ * published caps say; so is everything d3d_sis6326_map.c refuses.
  */
 static void v9x_d3d_sis_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -353,7 +353,8 @@ static void v9x_d3d_sis_describe_caps(V9X_DD_SHARED *shared)
                       V9X_D3DPMISCCAPS_CULLCCW;
     /* Ties to 1/65536 pixel and the integer sample point: phases 1-2. */
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_SUBPIXEL;
+                        V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
@@ -368,7 +369,12 @@ static void v9x_d3d_sis_describe_caps(V9X_DD_SHARED *shared)
     tri->dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
-        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        /* Vertex fog and specular, against Direct3D's formulas, textured
+         * and not, specular before fog (SIS3D /phase5, boot 230). */
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD |
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB;
     /* W is RHW; any power-of-two rectangle; texel alpha. */
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |

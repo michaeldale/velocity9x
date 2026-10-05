@@ -200,6 +200,30 @@ static void base_state(struct v9x_sis3d_state *state)
     state->blend_destination = V9X_SIS3D_BLEND_ZERO;
 }
 
+/* 8A20h: D24 normal (per-vertex) fog, D[23:0] the fog colour, written
+ * only while the enable word carries fog; zero otherwise, as before. */
+static void test_fog_state(void)
+{
+    struct v9x_sis3d_state state;
+    struct v9x_sis3d_writes writes;
+
+    base_state(&state);
+    state.fog_color = 0x000000fful;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_FOG) == 0ul);
+    state.enable |= V9X_SIS3D_ENABLE_FOG;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_FOG) == 0x010000fful);
+    state.fog_color = 0xff123456ul;     /* D3DCOLOR alpha is not colour */
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_FOG) == 0x01123456ul);
+    state.enable |= V9X_SIS3D_ENABLE_SPECULAR;
+    CHECK(v9x_sis3d_build_state(&state, &writes) == V9X_STATUS_OK);
+    CHECK(write_value(&writes, V9X_SIS3D_ENABLE) ==
+          (V9X_SIS3D_ENABLE_PRIM_SETUP | V9X_SIS3D_ENABLE_FOG |
+           V9X_SIS3D_ENABLE_SPECULAR));
+}
+
 static void test_full_state(void)
 {
     struct v9x_sis3d_state state;
@@ -508,6 +532,7 @@ unsigned int v9x_run_sis6326_3d_tests(void)
     test_texture_mip_chain();
     test_texture_refusals();
     test_float_fixed();
+    test_fog_state();
     test_full_state();
     test_full_state_refusals();
     test_float_q4();

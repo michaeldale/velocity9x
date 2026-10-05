@@ -225,17 +225,26 @@ static void test_refusals(void)
     draw.explicit_state = 1ul;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_EXPLICIT);
+    /* Vertex fog: the factor rides in each vertex's specular alpha, which
+     * goes to the fog/specular register as it is; 8A20h takes the colour. */
     d3d_draw(&draw);
     draw.fog_enable = 1ul;
+    draw.fog_color = 0xff0000fful;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
-          V9X_D3D_SIS_REFUSE_FOG);
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((state.enable & V9X_SIS3D_ENABLE_FOG) != 0ul);
+    CHECK(state.fog_color == 0x000000fful);
+    /* Specular on only where some vertex carries specular colour. */
     d3d_draw(&draw);
     draw.specular_enable = 1ul;
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
           V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((state.enable & V9X_SIS3D_ENABLE_SPECULAR) == 0ul);
+    CHECK((state.enable & V9X_SIS3D_ENABLE_FOG) == 0ul);
     CHECK(v9x_d3d_sis_map_draw(&draw, 0, 4194304ul, 0x00010000ul, &state,
                                &texture, &textured) ==
-          V9X_D3D_SIS_REFUSE_SPECULAR);
+          V9X_D3D_SIS_REFUSE_NONE);
+    CHECK((state.enable & V9X_SIS3D_ENABLE_SPECULAR) != 0ul);
     d3d_draw(&draw);
     draw.shade_mode = 3ul;           /* Phong */
     CHECK(map(&draw, 0, &state, &texture, &textured) ==
