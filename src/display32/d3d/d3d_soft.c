@@ -178,7 +178,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_soft_limits = {
     8ul,                        /* texture_align          */
     /* v9x_d3d_soft_coordinate clamps an off-target vertex, which moves the
      * triangle's edge rather than cutting it. */
-    1ul                         /* clip_in_core           */
+    1ul,                        /* clip_in_core           */
+    0ul,                        /* depth_pitch_own        */
+    0ul,                        /* depth_fill_shift       */
+    /* The rasterizer's second unit (v9x_d3d_raster_triangle2), for the
+     * render interface's two-unit draws on CPU levels. */
+    2ul                         /* texture_units          */
 };
 
 /*
@@ -907,6 +912,24 @@ static v9x_s32 v9x_d3d_soft_repeat_base(v9x_s32 value)
  * V9X_D3D_SOFT_TEXCOORD_LIMIT * 2 + 1 repeats. That is the number
  * V9X_D3D_RASTER_TEXCOORD_REPEATS is set to.
  */
+/* The same shift for one axis of three corners: unit 1's coordinates,
+ * which wrap or clamp by unit 1's own address mode. */
+static void v9x_d3d_soft_normalise_axis(v9x_s32 *a, v9x_s32 *b, v9x_s32 *c)
+{
+    v9x_s32 base = *a;
+
+    if (*b < base) {
+        base = *b;
+    }
+    if (*c < base) {
+        base = *c;
+    }
+    base = v9x_d3d_soft_repeat_base(base);
+    *a -= base;
+    *b -= base;
+    *c -= base;
+}
+
 static void v9x_d3d_soft_normalise(V9X_D3D_RASTER_VERTEX *triangle)
 {
     v9x_s32 base;
@@ -996,11 +1019,10 @@ typedef char v9x_assert_soft_explicit_numbers[
      V9X_R3D_ABI_MIP_NONE == V9X_D3D_RASTER_MIP_NONE &&
      V9X_R3D_ABI_MIP_LINEAR == V9X_D3D_RASTER_MIP_LINEAR) ? 1 : -1];
 
-static int v9x_d3d_soft_texture_levels(const V9X_R3D_DRAW *draw,
+static int v9x_d3d_soft_texture_levels(const V9X_R3D_TEXTURE *source,
                                        V9X_D3D_RASTER_TEXTURE *texture,
                                        V9X_D3D_RASTER_LEVEL *mips)
 {
-    const V9X_R3D_TEXTURE *source = &draw->texture;
     DWORD level;
     DWORD min = source->min_filter;
 
@@ -1149,8 +1171,12 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
     V9X_D3D_RASTER_FOG fog;
     const V9X_D3D_RASTER_FOG *fog_arg = 0;
     V9X_D3D_RASTER_LEVEL mips[V9X_D3D_RASTER_MIPS_MAX];
+    V9X_D3D_RASTER_TEXTURE texture1;
+    const V9X_D3D_RASTER_TEXTURE *texture1_arg = 0;
+    V9X_D3D_RASTER_LEVEL mips1[V9X_D3D_RASTER_MIPS_MAX];
     int explicit_draw;
     int wrapping;
+    int wrapping1 = 0;
     DWORD index;
 
     if (draw == 0 || vertices == 0 || v9x_hal == 0) {
@@ -1227,10 +1253,21 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
         /* An explicit draw's CPU texture refuses the batch when it does not
          * validate, rather than drawing untextured: the front end asked
          * for exactly this, and the render interface reports the refusal. */
-        if (!v9x_d3d_soft_texture_levels(draw, &texture, mips)) {
+        if (!v9x_d3d_soft_texture_levels(&draw->texture, &texture, mips)) {
             return 0;
         }
         texture_arg = &texture;
+    }
+    /* The render interface's second unit, CPU levels only (accepts). Its
+     * coordinates arrive beside the vertices, two floats each. */
+    if (explicit_draw && draw->texcoords1 != 0) {
+        if (texture_arg == 0 ||
+            !v9x_d3d_soft_texture_levels(&draw->texture1, &texture1,
+                                         mips1)) {
+            return 0;
+        }
+        texture1_arg = &texture1;
+        wrapping1 = texture1.address == V9X_D3D_RASTER_ADDRESS_WRAP;
     }
 
     /*
@@ -1320,6 +1357,15 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
                                                  draw->target.height);
                 triangle[corner].fog = (v9x_s32)(source->specular >> 24);
             }
+            if (texture1_arg != 0) {
+                const float *tex1 =
+                    &draw->texcoords1[(index * 3ul + corner) * 2ul];
+
+                triangle[corner].u1 = v9x_d3d_soft_texcoord(tex1[0],
+                                                            wrapping1);
+                triangle[corner].v1 = v9x_d3d_soft_texcoord(tex1[1],
+                                                            wrapping1);
+            }
         }
         if (explicit_draw && texture_arg != 0) {
             v9x_d3d_soft_perspective(&vertices[index * 3ul], triangle);
@@ -1327,9 +1373,15 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
         if (wrapping) {
             v9x_d3d_soft_normalise(triangle);
         }
-        if (!v9x_d3d_raster_triangle(&target, depth_arg, texture_arg,
-                                     alpha_arg, alpha_test_arg, fog_arg,
-                                     triangle)) {
+        if (wrapping1) {
+            v9x_d3d_soft_normalise_axis(&triangle[0].u1, &triangle[1].u1,
+                                        &triangle[2].u1);
+            v9x_d3d_soft_normalise_axis(&triangle[0].v1, &triangle[1].v1,
+                                        &triangle[2].v1);
+        }
+        if (!v9x_d3d_raster_triangle2(&target, depth_arg, texture_arg,
+                                      texture1_arg, alpha_arg,
+                                      alpha_test_arg, fog_arg, triangle)) {
             return 0;
         }
     }
@@ -1351,6 +1403,13 @@ static int v9x_d3d_soft_accepts(const V9X_R3D_DRAW *draw)
      * and its descriptors were validated by the render interface; the
      * rasterizer's own checks decide the rest when it draws. */
     if (draw->explicit_state != 0ul) {
+        /* Two units on CPU levels only: the surface sampler reads one
+         * linear level, which is not what a second unit names. */
+        if (draw->texcoords1 != 0 &&
+            (draw->texture.object != 0 || draw->texture.levels == 0 ||
+             draw->texture1.object != 0 || draw->texture1.levels == 0)) {
+            return 0;
+        }
         return 1;
     }
     if (draw->blend_enable != 0ul &&

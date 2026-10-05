@@ -2242,6 +2242,312 @@ static void test_texture_blend_modes(void)
 }
 
 /*
+ * The second texture unit (docs/specifications/cpu-rasterizer-contract.md,
+ * "A second texture unit"). Unit 1 has its own 4x4 cells, so either unit's
+ * texels can be set without touching the other's.
+ */
+static v9x_u16 raster_unit1_cells[RASTER_TEX_CELLS];
+static v9x_u16 raster_saved_cells[RASTER_CELLS];
+
+static void raster_unit1_reset(V9X_D3D_RASTER_TEXTURE *texture,
+                               v9x_u32 format, v9x_u32 blend, v9x_u16 texel)
+{
+    unsigned int index;
+
+    for (index = 0u; index < RASTER_TEX_CELLS; ++index) {
+        raster_unit1_cells[index] = 0u;
+    }
+    for (index = 0u; index < RASTER_TEX_SIZE * RASTER_TEX_SIZE; ++index) {
+        raster_unit1_cells[RASTER_TEX_GUARD + index] = texel;
+    }
+    texture->pixels = &raster_unit1_cells[RASTER_TEX_GUARD];
+    texture->pitch = RASTER_TEX_SIZE * 2ul;
+    texture->width = RASTER_TEX_SIZE;
+    texture->height = RASTER_TEX_SIZE;
+    texture->format = format;
+    texture->filter = V9X_D3D_RASTER_FILTER_POINT;
+    texture->blend = blend;
+    texture->address = V9X_D3D_RASTER_ADDRESS_CLAMP;
+    texture->alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+    texture->mip = V9X_D3D_RASTER_MIP_NONE;
+    texture->mip_count = 0ul;
+    texture->mips = 0;
+    texture->env_red = 0l;
+    texture->env_green = 0l;
+    texture->env_blue = 0l;
+}
+
+static void raster_texture_fill(v9x_u16 texel)
+{
+    unsigned int x;
+    unsigned int y;
+
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        for (x = 0u; x < RASTER_TEX_SIZE; ++x) {
+            raster_texel_set(x, y, texel);
+        }
+    }
+}
+
+/* The textured quad with both units, unit 1's coordinates (u1, v1) at
+ * every vertex - constant across the quad - and the alpha test if any. */
+static int raster_quad2(V9X_D3D_RASTER_TARGET *target,
+                        const V9X_D3D_RASTER_TEXTURE *texture,
+                        const V9X_D3D_RASTER_TEXTURE *texture1,
+                        const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                        v9x_s32 u1, v9x_s32 v1,
+                        v9x_s32 red, v9x_s32 green, v9x_s32 blue)
+{
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    v9x_s32 edge = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+    unsigned int corner;
+    int ok;
+
+    raster_vertex(&triangle[0], PX(0), PX(0), red, green, blue);
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(0), red, green, blue);
+    triangle[1].u = edge;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), red, green, blue);
+    triangle[2].v = edge;
+    for (corner = 0u; corner < 3u; ++corner) {
+        triangle[corner].u1 = u1;
+        triangle[corner].v1 = v1;
+    }
+    ok = v9x_d3d_raster_triangle2(target, 0, texture, texture1, 0,
+                                  alpha_test, 0, triangle) != 0;
+
+    raster_vertex(&triangle[0], PX(RASTER_WIDTH), PX(0), red, green, blue);
+    triangle[0].u = edge;
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(RASTER_HEIGHT),
+                  red, green, blue);
+    triangle[1].u = edge;
+    triangle[1].v = edge;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), red, green, blue);
+    triangle[2].v = edge;
+    for (corner = 0u; corner < 3u; ++corner) {
+        triangle[corner].u1 = u1;
+        triangle[corner].v1 = v1;
+    }
+    return ok && v9x_d3d_raster_triangle2(target, 0, texture, texture1, 0,
+                                          alpha_test, 0, triangle) != 0;
+}
+
+/* Without a second texture the second unit's coordinates are not read,
+ * whatever they hold, and every pixel is the one-unit path's. */
+static void test_second_unit_absent_is_one_unit(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    unsigned int index;
+    int same = 1;
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB4444,
+                         V9X_D3D_RASTER_FILTER_LINEAR,
+                         V9X_D3D_RASTER_BLEND_MODULATE);
+    raster_texel_set(0u, 0u, 0xf00fu);
+    raster_texel_set(3u, 1u, 0x0f0fu);
+    raster_texel_set(2u, 3u, 0x00ffu);
+    texture.alpha = V9X_D3D_RASTER_TEXALPHA_MODULATE;
+
+    raster_reset(&target);
+    RCHECK(raster_textured_quad(&target, &texture, 200l, 150l, 90l) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_saved_cells[index] = raster_cells[index];
+    }
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, 0, 0, -77l, 0x7fffffffl,
+                        200l, 150l, 90l) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        if (raster_cells[index] != raster_saved_cells[index]) {
+            same = 0;
+        }
+    }
+    RCHECK(same);
+}
+
+/*
+ * Unit 1 combines with what unit 0 produced exactly as one unit combines
+ * with a fragment of that colour: unit 0 REPLACEs a uniform texel, whose
+ * 565 decode (16, 32, 16 -> 132, 130, 132) is then the colour unit 1
+ * sees, so each of unit 1's ops must match the one-unit draw of the same
+ * texture on a vertex of that colour, pixel for pixel.
+ */
+static void raster_check_against_one_unit(v9x_u32 format, v9x_u32 blend,
+                                          v9x_u16 texel1,
+                                          unsigned int line)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    V9X_D3D_RASTER_TEXTURE texture1;
+    unsigned int index;
+    int same = 1;
+
+    raster_unit1_reset(&texture1, format, blend, texel1);
+    texture1.env_red = 40l;
+    texture1.env_green = 220l;
+    texture1.env_blue = 100l;
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture1, 0, 0, 0l, 0l,
+                        132l, 130l, 132l) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_saved_cells[index] = raster_cells[index];
+    }
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    raster_texture_fill(0x8410u);
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0, 0l, 0l,
+                        7l, 250l, 31l) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        if (raster_cells[index] != raster_saved_cells[index]) {
+            same = 0;
+        }
+    }
+    if (!same) {
+        printf("FAIL %s:%u: unit 1 op %lu on format %lu differs from one "
+               "unit\n", __FILE__, line, blend, format);
+        ++raster_failures;
+    }
+}
+
+static void test_second_unit_combines_after_the_first(void)
+{
+    raster_check_against_one_unit(V9X_D3D_RASTER_TEXFMT_RGB565,
+                                  V9X_D3D_RASTER_BLEND_MODULATE, 0x8410u,
+                                  __LINE__);
+    raster_check_against_one_unit(V9X_D3D_RASTER_TEXFMT_RGB565,
+                                  V9X_D3D_RASTER_BLEND_MODULATE, 0xffffu,
+                                  __LINE__);
+    raster_check_against_one_unit(V9X_D3D_RASTER_TEXFMT_RGB565,
+                                  V9X_D3D_RASTER_BLEND_ENV, 0x4208u,
+                                  __LINE__);
+    raster_check_against_one_unit(V9X_D3D_RASTER_TEXFMT_RGB565,
+                                  V9X_D3D_RASTER_BLEND_DECAL, 0xf81fu,
+                                  __LINE__);
+    raster_check_against_one_unit(V9X_D3D_RASTER_TEXFMT_ARGB4444,
+                                  V9X_D3D_RASTER_BLEND_DECALALPHA, 0x8f40u,
+                                  __LINE__);
+}
+
+/*
+ * Alpha: unit 0's op, then unit 1's. Unit 0 REPLACEs a 4444 alpha of 8
+ * (136); unit 1 MODULATEs another 136, giving (136 * 136 + 127) / 255 =
+ * 73. A GREATER test at 72 keeps the quad and at 73 discards it. With unit
+ * 1's alpha op IGNORE the 136 stands and 73 passes.
+ */
+static void test_second_unit_alpha_chains(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    V9X_D3D_RASTER_TEXTURE texture1;
+    V9X_D3D_RASTER_ALPHA_TEST test;
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB4444,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    raster_texture_fill(0x8fffu);
+    texture.alpha = V9X_D3D_RASTER_TEXALPHA_REPLACE;
+    raster_unit1_reset(&texture1, V9X_D3D_RASTER_TEXFMT_ARGB4444,
+                       V9X_D3D_RASTER_BLEND_MODULATE, 0x8fffu);
+    texture1.alpha = V9X_D3D_RASTER_TEXALPHA_MODULATE;
+    test.compare = V9X_D3D_RASTER_CMP_GREATER;
+
+    test.reference = 72l;
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, &test, 0l, 0l,
+                        255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(16u, 12u) != RASTER_BACKGROUND);
+
+    test.reference = 73l;
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, &test, 0l, 0l,
+                        255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(16u, 12u) == RASTER_BACKGROUND);
+
+    texture1.alpha = V9X_D3D_RASTER_TEXALPHA_IGNORE;
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, &test, 0l, 0l,
+                        255l, 255l, 255l) != 0);
+    RCHECK(raster_pixel(16u, 12u) != RASTER_BACKGROUND);
+}
+
+/*
+ * Unit 1 samples at its own coordinates: unit 0 spans its texture across
+ * the quad while unit 1's coordinate is held at a quarter or three
+ * quarters of a texture whose left half is red and right half blue, and
+ * REPLACE puts that one texel everywhere.
+ */
+static void test_second_unit_own_coordinates(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    V9X_D3D_RASTER_TEXTURE texture1;
+    unsigned int y;
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    raster_texture_fill(0x07e0u);
+    raster_unit1_reset(&texture1, V9X_D3D_RASTER_TEXFMT_RGB565,
+                       V9X_D3D_RASTER_BLEND_DECAL, 0xf800u);
+    for (y = 0u; y < RASTER_TEX_SIZE; ++y) {
+        raster_unit1_cells[RASTER_TEX_GUARD + y * RASTER_TEX_SIZE + 2u] =
+            0x001fu;
+        raster_unit1_cells[RASTER_TEX_GUARD + y * RASTER_TEX_SIZE + 3u] =
+            0x001fu;
+    }
+
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0,
+                        V9X_D3D_RASTER_TEXCOORD_ONE / 4l,
+                        V9X_D3D_RASTER_TEXCOORD_ONE / 2l, 0l, 0l, 0l) != 0);
+    RCHECK(raster_pixel(1u, 1u) == 0xf800u &&
+           raster_pixel(30u, 22u) == 0xf800u);
+
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0,
+                        (V9X_D3D_RASTER_TEXCOORD_ONE / 4l) * 3l,
+                        V9X_D3D_RASTER_TEXCOORD_ONE / 2l, 0l, 0l, 0l) != 0);
+    RCHECK(raster_pixel(1u, 1u) == 0x001fu &&
+           raster_pixel(30u, 22u) == 0x001fu);
+    raster_check_untouched_margins();
+}
+
+/* With a second texture its coordinates are held to u's range, and a
+ * second texture that fails validation refuses the triangle. */
+static void test_second_unit_refusals(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    V9X_D3D_RASTER_TEXTURE texture1;
+
+    raster_texture_reset(&texture, V9X_D3D_RASTER_TEXFMT_RGB565,
+                         V9X_D3D_RASTER_FILTER_POINT,
+                         V9X_D3D_RASTER_BLEND_DECAL);
+    raster_unit1_reset(&texture1, V9X_D3D_RASTER_TEXFMT_RGB565,
+                       V9X_D3D_RASTER_BLEND_MODULATE, 0xffffu);
+
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0, -1l, 0l,
+                        255l, 255l, 255l) == 0);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0, 0l,
+                        V9X_D3D_RASTER_TEXCOORD_MAX + 1l,
+                        255l, 255l, 255l) == 0);
+    RCHECK(raster_pixel(16u, 12u) == RASTER_BACKGROUND);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0,
+                        V9X_D3D_RASTER_TEXCOORD_MAX, 0l,
+                        255l, 255l, 255l) != 0);
+
+    texture1.format = 9ul;
+    raster_reset(&target);
+    RCHECK(raster_quad2(&target, &texture, &texture1, 0, 0l, 0l,
+                        255l, 255l, 255l) == 0);
+    RCHECK(raster_pixel(16u, 12u) == RASTER_BACKGROUND);
+    raster_check_untouched_margins();
+}
+
+/*
  * An unusable texture, or a coordinate outside the range, is refused - and
  * refusing draws nothing.
  *
@@ -3366,6 +3672,114 @@ static void test_fog_order_and_refusals(void)
     RCHECK(raster_pixel(12u, 10u) == RASTER_BACKGROUND);
 }
 
+/*
+ * Unit 1 addresses, filters and selects levels as unit 0 does: given unit
+ * 0's texture and coordinates under REPLACE, on top of a unit 0 it replaces
+ * entirely, it draws what unit 0 alone draws, pixel for pixel - affine and
+ * perspective, point and bilinear, with and without a mip chain.
+ */
+static int raster_quad_units(const V9X_D3D_RASTER_TARGET *target,
+                             const V9X_D3D_RASTER_TEXTURE *texture,
+                             const V9X_D3D_RASTER_TEXTURE *texture1,
+                             v9x_s32 repeats, v9x_s32 near_q, v9x_s32 far_q)
+{
+    V9X_D3D_RASTER_VERTEX triangle[3];
+    v9x_s32 edge = repeats * V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+    unsigned int corner;
+    int ok;
+
+    raster_vertex(&triangle[0], PX(0), PX(0), 255l, 255l, 255l);
+    triangle[0].q = near_q;
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(0), 255l, 255l, 255l);
+    triangle[1].u = edge;
+    triangle[1].q = far_q;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), 255l, 255l, 255l);
+    triangle[2].v = edge / 2l;
+    triangle[2].q = near_q;
+    for (corner = 0u; corner < 3u; ++corner) {
+        triangle[corner].u1 = triangle[corner].u;
+        triangle[corner].v1 = triangle[corner].v;
+    }
+    ok = v9x_d3d_raster_triangle2(target, 0, texture, texture1, 0, 0, 0,
+                                  triangle) != 0;
+
+    raster_vertex(&triangle[0], PX(RASTER_WIDTH), PX(0), 255l, 255l, 255l);
+    triangle[0].u = edge;
+    triangle[0].q = far_q;
+    raster_vertex(&triangle[1], PX(RASTER_WIDTH), PX(RASTER_HEIGHT),
+                  255l, 255l, 255l);
+    triangle[1].u = edge;
+    triangle[1].v = edge / 2l;
+    triangle[1].q = far_q;
+    raster_vertex(&triangle[2], PX(0), PX(RASTER_HEIGHT), 255l, 255l, 255l);
+    triangle[2].v = edge / 2l;
+    triangle[2].q = near_q;
+    for (corner = 0u; corner < 3u; ++corner) {
+        triangle[corner].u1 = triangle[corner].u;
+        triangle[corner].v1 = triangle[corner].v;
+    }
+    return ok && v9x_d3d_raster_triangle2(target, 0, texture, texture1, 0, 0,
+                                          0, triangle) != 0;
+}
+
+static void raster_check_unit1_as_unit0(V9X_D3D_RASTER_TEXTURE *sampled,
+                                        v9x_s32 repeats, v9x_s32 near_q,
+                                        v9x_s32 far_q, unsigned int line)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE white;
+    unsigned int index;
+    int same = 1;
+
+    raster_reset(&target);
+    RCHECK(raster_quad_units(&target, sampled, 0, repeats, near_q,
+                             far_q) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster_saved_cells[index] = raster_cells[index];
+    }
+    raster_unit1_reset(&white, V9X_D3D_RASTER_TEXFMT_RGB565,
+                       V9X_D3D_RASTER_BLEND_DECAL, 0xffffu);
+    raster_reset(&target);
+    RCHECK(raster_quad_units(&target, &white, sampled, repeats, near_q,
+                             far_q) != 0);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        if (raster_cells[index] != raster_saved_cells[index]) {
+            same = 0;
+        }
+    }
+    if (!same) {
+        printf("FAIL %s:%u: unit 1 sampled otherwise than unit 0\n",
+               __FILE__, line);
+        ++raster_failures;
+    }
+}
+
+static void test_second_unit_samples_as_unit_zero(void)
+{
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_column_texture(&texture);
+    raster_check_unit1_as_unit0(&texture, 1l, V9X_D3D_RASTER_Q_ONE,
+                                V9X_D3D_RASTER_Q_ONE, __LINE__);
+    raster_check_unit1_as_unit0(&texture, 1l, V9X_D3D_RASTER_Q_ONE,
+                                V9X_D3D_RASTER_Q_ONE / 4l, __LINE__);
+    texture.filter = V9X_D3D_RASTER_FILTER_LINEAR;
+    raster_check_unit1_as_unit0(&texture, 1l, V9X_D3D_RASTER_Q_ONE / 4l,
+                                V9X_D3D_RASTER_Q_ONE, __LINE__);
+
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_POINT);
+    raster_check_unit1_as_unit0(&texture, 8l, V9X_D3D_RASTER_Q_ONE,
+                                V9X_D3D_RASTER_Q_ONE, __LINE__);
+    raster_check_unit1_as_unit0(&texture, 8l, V9X_D3D_RASTER_Q_ONE,
+                                V9X_D3D_RASTER_Q_ONE / 4l, __LINE__);
+    raster_mip_chain(&texture, 8u, 8u, V9X_D3D_RASTER_MIP_LINEAR);
+    texture.filter = V9X_D3D_RASTER_FILTER_LINEAR;
+    raster_check_unit1_as_unit0(&texture, 16l, V9X_D3D_RASTER_Q_ONE,
+                                V9X_D3D_RASTER_Q_ONE, __LINE__);
+    raster_check_unit1_as_unit0(&texture, 16l, V9X_D3D_RASTER_Q_ONE / 4l,
+                                V9X_D3D_RASTER_Q_ONE, __LINE__);
+}
+
 unsigned int v9x_run_d3d_raster_tests(void)
 {
     test_rgb565_packing();
@@ -3427,6 +3841,12 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_bilinear_uniform_formats();
     test_texture_blend_modes();
     test_texture_refusals();
+    test_second_unit_absent_is_one_unit();
+    test_second_unit_combines_after_the_first();
+    test_second_unit_alpha_chains();
+    test_second_unit_own_coordinates();
+    test_second_unit_refusals();
+    test_second_unit_samples_as_unit_zero();
     test_edge_stepping_corpus();
     return raster_failures;
 }

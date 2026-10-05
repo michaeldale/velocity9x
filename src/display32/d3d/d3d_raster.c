@@ -1208,11 +1208,14 @@ typedef struct V9X_D3D_RASTER_EDGE {
     V9X_D3D_RASTER_VERTEX remainder;
     V9X_D3D_RASTER_VERTEX error;
     v9x_s32 span;
+    /* 2 when unit 1's coordinates are walked too; with one unit they are
+     * the caller's to leave unset, and are not read. */
+    int units;
 } V9X_D3D_RASTER_EDGE;
 
 static int v9x_d3d_raster_edge_start(const V9X_D3D_RASTER_VERTEX *from,
                                   const V9X_D3D_RASTER_VERTEX *to,
-                                  v9x_s32 sample,
+                                  v9x_s32 sample, int units,
                                   V9X_D3D_RASTER_EDGE *edge)
 {
     v9x_s32 span = to->y - from->y;
@@ -1244,6 +1247,11 @@ static int v9x_d3d_raster_edge_start(const V9X_D3D_RASTER_VERTEX *from,
     V9X_EDGE_START(alpha);
     V9X_EDGE_START(q);
     V9X_EDGE_START(fog);
+    edge->units = units;
+    if (units > 1) {
+        V9X_EDGE_START(u1);
+        V9X_EDGE_START(v1);
+    }
 #undef V9X_EDGE_START
     return 1;
 }
@@ -1270,6 +1278,10 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
     V9X_EDGE_NEXT(alpha);
     V9X_EDGE_NEXT(q);
     V9X_EDGE_NEXT(fog);
+    if (edge->units > 1) {
+        V9X_EDGE_NEXT(u1);
+        V9X_EDGE_NEXT(v1);
+    }
 #undef V9X_EDGE_NEXT
     edge->value.y += V9X_D3D_RASTER_SUBPIXEL_ONE;
 }
@@ -1302,6 +1314,111 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
             V9X_D3D_RASTER_DIV255(((channel) - (to)) * (factor) + 127l); \
     } \
 } while (0)
+
+/*
+ * A unit's colour combine on the span's out_red/out_green/out_blue, from
+ * its texel's colour and alpha. Unit 0 combines with the fragment colour,
+ * unit 1 with what unit 0 left (cpu-rasterizer-contract.md). A macro for
+ * the same reason the store is one: it sits in the per-pixel loop.
+ *
+ * MODULATE's two factors are both 0..255 - the texel by decode, the
+ * channel by the span's clamp or the previous unit's combine - which is
+ * what puts the rounded product inside the exact divide's range.
+ */
+#define V9X_D3D_RASTER_COMBINE(unit, tr, tg, tb, ta) do { \
+    if ((unit)->colour_op == V9X_D3D_RASTER_BLEND_MODULATE) { \
+        out_red = V9X_D3D_RASTER_DIV255((tr) * out_red + 127l); \
+        out_green = V9X_D3D_RASTER_DIV255((tg) * out_green + 127l); \
+        out_blue = V9X_D3D_RASTER_DIV255((tb) * out_blue + 127l); \
+    } else if ((unit)->colour_op == V9X_D3D_RASTER_BLEND_DECALALPHA) { \
+        V9X_D3D_RASTER_MIX_CHANNEL(out_red, (tr), (ta)); \
+        V9X_D3D_RASTER_MIX_CHANNEL(out_green, (tg), (ta)); \
+        V9X_D3D_RASTER_MIX_CHANNEL(out_blue, (tb), (ta)); \
+    } else if ((unit)->colour_op == V9X_D3D_RASTER_BLEND_ENV) { \
+        V9X_D3D_RASTER_MIX_CHANNEL(out_red, (unit)->env_red, (tr)); \
+        V9X_D3D_RASTER_MIX_CHANNEL(out_green, (unit)->env_green, (tg)); \
+        V9X_D3D_RASTER_MIX_CHANNEL(out_blue, (unit)->env_blue, (tb)); \
+    } else { \
+        out_red = (tr); \
+        out_green = (tg); \
+        out_blue = (tb); \
+    } \
+} while (0)
+
+/* A unit's alpha op on the span's out_alpha, from its texel's alpha. */
+#define V9X_D3D_RASTER_ALPHA_OP(unit, ta) do { \
+    if ((unit)->alpha_op == V9X_D3D_RASTER_TEXALPHA_REPLACE) { \
+        out_alpha = (ta); \
+    } else if ((unit)->alpha_op == V9X_D3D_RASTER_TEXALPHA_MODULATE) { \
+        out_alpha = V9X_D3D_RASTER_DIV255((ta) * out_alpha + 127l); \
+    } \
+} while (0)
+
+/*
+ * Unit 1's texel at the pixel: unit 0's addressing, written out once more
+ * as a function rather than a second inline copy, since unit 0's is the
+ * one every draw pays for. `scaled_u` and `scaled_v` are the interpolants
+ * at the texture coordinates' precision - u and v, or u * q and v * q on
+ * the perspective path, divided here by unit 0's per-pixel `reciprocal`.
+ * `lambda` is the span's level of detail on the affine path; on the
+ * perspective path with `slopes` it is taken per pixel from the span's
+ * x steps and the triangle's y gradients, as unit 0's is.
+ */
+static void v9x_d3d_raster_fetch(const V9X_D3D_RASTER_SAMPLER *sampler,
+                                 int perspective,
+                                 v9x_s32 scaled_u, v9x_s32 scaled_v,
+                                 v9x_s32 q16, v9x_s32 reciprocal,
+                                 v9x_s32 lambda,
+                                 const V9X_D3D_RASTER_GRADIENTS *slopes,
+                                 v9x_s32 du_dx, v9x_s32 dv_dx, v9x_s32 dq_dx,
+                                 v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue,
+                                 v9x_s32 *texel_alpha)
+{
+    v9x_s32 texel_u = scaled_u;
+    v9x_s32 texel_v = scaled_v;
+
+    if (perspective) {
+        texel_u = v9x_d3d_raster_divide_by_q(scaled_u, reciprocal);
+        texel_v = v9x_d3d_raster_divide_by_q(scaled_v, reciprocal);
+        if (slopes != 0) {
+            lambda = v9x_d3d_raster_lod(
+                sampler,
+                v9x_d3d_raster_derivative_q(du_dx, texel_u, dq_dx, q16,
+                                            reciprocal),
+                v9x_d3d_raster_derivative_q(dv_dx, texel_v, dq_dx, q16,
+                                            reciprocal),
+                v9x_d3d_raster_derivative_q(slopes->du_dy, texel_u,
+                                            slopes->dq_dy, q16, reciprocal),
+                v9x_d3d_raster_derivative_q(slopes->dv_dy, texel_v,
+                                            slopes->dq_dy, q16, reciprocal));
+        }
+    }
+    /* The same bounds as unit 0's, for the same reasons (see the span). */
+    if (texel_u < 0l) {
+        texel_u = 0l;
+    }
+    if (texel_v < 0l) {
+        texel_v = 0l;
+    }
+    if (sampler->clamp) {
+        if (texel_u > V9X_D3D_RASTER_TEXCOORD_ONE - 1l) {
+            texel_u = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+        }
+        if (texel_v > V9X_D3D_RASTER_TEXCOORD_ONE - 1l) {
+            texel_v = V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+        }
+    } else {
+        texel_u &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+        texel_v &= V9X_D3D_RASTER_TEXCOORD_ONE - 1l;
+    }
+    if (!sampler->select) {
+        v9x_d3d_raster_sample(sampler, &sampler->levels[0], texel_u, texel_v,
+                              red, green, blue, texel_alpha);
+    } else {
+        v9x_d3d_raster_sample_mip(sampler, lambda, texel_u, texel_v, red,
+                                  green, blue, texel_alpha);
+    }
+}
 
 /*
  * The span's pixel store under the colour mask. The unmasked case is the
@@ -1337,11 +1454,13 @@ static void v9x_d3d_raster_edge_next(V9X_D3D_RASTER_EDGE *edge)
 static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                 const V9X_D3D_RASTER_DEPTH *depth,
                                 const V9X_D3D_RASTER_SAMPLER *sampler,
+                                const V9X_D3D_RASTER_SAMPLER *sampler1,
                                 const V9X_D3D_RASTER_ALPHA *alpha,
                                 const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                                 const V9X_D3D_RASTER_FOG *fog,
                                 int perspective,
                                 const V9X_D3D_RASTER_GRADIENTS *slopes,
+                                const V9X_D3D_RASTER_GRADIENTS *slopes1,
                                 v9x_s32 row,
                                 const V9X_D3D_RASTER_VERTEX *left,
                                 const V9X_D3D_RASTER_VERTEX *right)
@@ -1358,6 +1477,13 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 u_step = 0l;
     v9x_s32 v_step = 0l;
     v9x_s32 q_step = 0l;
+    /* Unit 1's coordinates and steps; zero, and stepped as zero, without a
+     * unit 1, so the loop below adds them unconditionally. */
+    v9x_s32 u1_step = 0l;
+    v9x_s32 v1_step = 0l;
+    v9x_s32 u1 = 0l;
+    v9x_s32 v1 = 0l;
+    v9x_s32 lod1 = 0l;
     /* The level of detail, 16.16; on the affine path once per span, on the
      * perspective path per pixel from there. Only read when `slopes` is
      * set, which is when the sampler selects a level. */
@@ -1443,6 +1569,12 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         u_step = ((right->u - left->u) << V9X_D3D_RASTER_DEPTH_BITS) / width;
         v_step = ((right->v - left->v) << V9X_D3D_RASTER_DEPTH_BITS) / width;
         q_step = ((right->q - left->q) << V9X_D3D_RASTER_DEPTH_BITS) / width;
+        if (sampler1 != 0) {
+            u1_step = ((right->u1 - left->u1) << V9X_D3D_RASTER_DEPTH_BITS) /
+                      width;
+            v1_step = ((right->v1 - left->v1) << V9X_D3D_RASTER_DEPTH_BITS) /
+                      width;
+        }
     }
 
     /* The colour at the first pixel centre, then one whole pixel per step. */
@@ -1462,6 +1594,10 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     u = (left->u << V9X_D3D_RASTER_DEPTH_BITS) + u_step * offset;
     v = (left->v << V9X_D3D_RASTER_DEPTH_BITS) + v_step * offset;
     q = (left->q << V9X_D3D_RASTER_DEPTH_BITS) + q_step * offset;
+    if (sampler1 != 0) {
+        u1 = (left->u1 << V9X_D3D_RASTER_DEPTH_BITS) + u1_step * offset;
+        v1 = (left->v1 << V9X_D3D_RASTER_DEPTH_BITS) + v1_step * offset;
+    }
     red_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     green_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     blue_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
@@ -1471,12 +1607,18 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     u_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     v_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
     q_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    u1_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
+    v1_step <<= V9X_D3D_RASTER_SUBPIXEL_BITS;
 
     if (slopes != 0 && !perspective) {
         /* Affine: the derivatives are the same at every pixel of the span,
          * so the level is chosen once. The steps are 8.24 per pixel here. */
         lod = v9x_d3d_raster_lod(sampler, u_step / 256l, v_step / 256l,
                                  slopes->du_dy, slopes->dv_dy);
+    }
+    if (slopes1 != 0 && !perspective) {
+        lod1 = v9x_d3d_raster_lod(sampler1, u1_step / 256l, v1_step / 256l,
+                                  slopes1->du_dy, slopes1->dv_dy);
     }
 
     if (alpha != 0) {
@@ -1500,7 +1642,9 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     }
     alpha_used = alpha_varies || alpha_test != 0 ||
                  (sampler != 0 &&
-                  sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE);
+                  sampler->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE) ||
+                 (sampler1 != 0 &&
+                  sampler1->alpha_op != V9X_D3D_RASTER_TEXALPHA_IGNORE);
 
     if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
         pack = v9x_d3d_raster_pack1555;
@@ -1587,6 +1731,7 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
              * it: the vertex's, then the texel's if the draw says so. */
             v9x_s32 out_alpha = 255l;
             v9x_s32 tex_alpha = 255l;
+            v9x_s32 tex1_alpha = 255l;
 
             V9X_D3D_RASTER_CLAMP255(out_red);
             V9X_D3D_RASTER_CLAMP255(out_green);
@@ -1703,33 +1848,23 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                                               texel_v, &tex_red, &tex_green,
                                               &tex_blue, &tex_alpha);
                 }
-                if (sampler->colour_op == V9X_D3D_RASTER_BLEND_MODULATE) {
-                    /* Both factors are 0..255 - the texel by decode, the
-                     * interpolant by the clamp above - which is what puts the
-                     * rounded product inside the exact divide's range. */
-                    out_red = V9X_D3D_RASTER_DIV255(tex_red * out_red + 127l);
-                    out_green =
-                        V9X_D3D_RASTER_DIV255(tex_green * out_green + 127l);
-                    out_blue =
-                        V9X_D3D_RASTER_DIV255(tex_blue * out_blue + 127l);
-                } else if (sampler->colour_op ==
-                           V9X_D3D_RASTER_BLEND_DECALALPHA) {
-                    V9X_D3D_RASTER_MIX_CHANNEL(out_red, tex_red, tex_alpha);
-                    V9X_D3D_RASTER_MIX_CHANNEL(out_green, tex_green,
-                                               tex_alpha);
-                    V9X_D3D_RASTER_MIX_CHANNEL(out_blue, tex_blue, tex_alpha);
-                } else if (sampler->colour_op ==
-                           V9X_D3D_RASTER_BLEND_ENV) {
-                    V9X_D3D_RASTER_MIX_CHANNEL(out_red, sampler->env_red,
-                                               tex_red);
-                    V9X_D3D_RASTER_MIX_CHANNEL(out_green, sampler->env_green,
-                                               tex_green);
-                    V9X_D3D_RASTER_MIX_CHANNEL(out_blue, sampler->env_blue,
-                                               tex_blue);
-                } else {
-                    out_red = tex_red;
-                    out_green = tex_green;
-                    out_blue = tex_blue;
+                V9X_D3D_RASTER_COMBINE(sampler, tex_red, tex_green,
+                                       tex_blue, tex_alpha);
+                if (sampler1 != 0) {
+                    v9x_s32 tex1_red;
+                    v9x_s32 tex1_green;
+                    v9x_s32 tex1_blue;
+
+                    v9x_d3d_raster_fetch(sampler1, perspective,
+                                         u1 >> V9X_D3D_RASTER_DEPTH_BITS,
+                                         v1 >> V9X_D3D_RASTER_DEPTH_BITS,
+                                         q16, reciprocal, lod1, slopes1,
+                                         u1_step / 256l, v1_step / 256l,
+                                         q_step / 256l, &tex1_red,
+                                         &tex1_green, &tex1_blue,
+                                         &tex1_alpha);
+                    V9X_D3D_RASTER_COMBINE(sampler1, tex1_red, tex1_green,
+                                           tex1_blue, tex1_alpha);
                 }
             }
 
@@ -1752,13 +1887,10 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                 out_alpha = fragment_alpha >> V9X_D3D_RASTER_COLOUR_BITS;
                 V9X_D3D_RASTER_CLAMP255(out_alpha);
                 if (sampler != 0) {
-                    if (sampler->alpha_op == V9X_D3D_RASTER_TEXALPHA_REPLACE) {
-                        out_alpha = tex_alpha;
-                    } else if (sampler->alpha_op ==
-                               V9X_D3D_RASTER_TEXALPHA_MODULATE) {
-                        out_alpha = V9X_D3D_RASTER_DIV255(tex_alpha * out_alpha +
-                                                          127l);
-                    }
+                    V9X_D3D_RASTER_ALPHA_OP(sampler, tex_alpha);
+                }
+                if (sampler1 != 0) {
+                    V9X_D3D_RASTER_ALPHA_OP(sampler1, tex1_alpha);
                 }
                 if (alpha_test != 0) {
                     v9x_s32 relation = V9X_D3D_RASTER_RELATION_EQUAL;
@@ -1780,6 +1912,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                         u += u_step;
                         v += v_step;
                         q += q_step;
+                        u1 += u1_step;
+                        v1 += v1_step;
                         continue;
                     }
                 }
@@ -1838,6 +1972,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
                     u += u_step;
                     v += v_step;
                     q += q_step;
+                    u1 += u1_step;
+                    v1 += v1_step;
                     continue;
                 }
                 if (alpha_varies) {
@@ -1892,6 +2028,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
         u += u_step;
         v += v_step;
         q += q_step;
+        u1 += u1_step;
+        v1 += v1_step;
     }
 }
 
@@ -1902,6 +2040,19 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                             const V9X_D3D_RASTER_FOG *fog,
                             const V9X_D3D_RASTER_VERTEX *vertices)
+{
+    return v9x_d3d_raster_triangle2(target, depth, texture, 0, alpha,
+                                    alpha_test, fog, vertices);
+}
+
+int v9x_d3d_raster_triangle2(const V9X_D3D_RASTER_TARGET *target,
+                             const V9X_D3D_RASTER_DEPTH *depth,
+                             const V9X_D3D_RASTER_TEXTURE *texture,
+                             const V9X_D3D_RASTER_TEXTURE *texture1,
+                             const V9X_D3D_RASTER_ALPHA *alpha,
+                             const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                             const V9X_D3D_RASTER_FOG *fog,
+                             const V9X_D3D_RASTER_VERTEX *vertices)
 {
     const V9X_D3D_RASTER_VERTEX *top;
     const V9X_D3D_RASTER_VERTEX *middle;
@@ -1920,6 +2071,9 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
      * receive, and a null one is what untextured means. */
     V9X_D3D_RASTER_SAMPLER sampler;
     const V9X_D3D_RASTER_SAMPLER *bound = 0;
+    V9X_D3D_RASTER_SAMPLER sampler1;
+    const V9X_D3D_RASTER_SAMPLER *bound1 = 0;
+    int units = texture1 != 0 ? 2 : 1;
     /* The perspective path walks a copy of the vertices with u and v
      * already multiplied by q; the affine path walks the caller's. */
     V9X_D3D_RASTER_VERTEX carried[3];
@@ -1929,6 +2083,8 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
      * has to be chosen; null otherwise, and the span never reads them. */
     V9X_D3D_RASTER_GRADIENTS gradients;
     const V9X_D3D_RASTER_GRADIENTS *slopes = 0;
+    V9X_D3D_RASTER_GRADIENTS gradients1;
+    const V9X_D3D_RASTER_GRADIENTS *slopes1 = 0;
 
     if (!v9x_d3d_raster_target_valid(target) || vertices == 0) {
         return 0;
@@ -1952,6 +2108,12 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     if (texture != 0 && !v9x_d3d_raster_texture_valid(texture)) {
         return 0;
     }
+    /* A second unit only on top of a first, as the render interface sends
+     * one, and held to the same rules. */
+    if (texture1 != 0 &&
+        (texture == 0 || !v9x_d3d_raster_texture_valid(texture1))) {
+        return 0;
+    }
     if (alpha != 0 && !v9x_d3d_raster_alpha_valid(alpha)) {
         return 0;
     }
@@ -1970,6 +2132,13 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
             vertices[index].q > V9X_D3D_RASTER_Q_ONE) {
             return 0;
         }
+        if (texture1 != 0 &&
+            (vertices[index].u1 < 0l ||
+             vertices[index].u1 > V9X_D3D_RASTER_TEXCOORD_MAX ||
+             vertices[index].v1 < 0l ||
+             vertices[index].v1 > V9X_D3D_RASTER_TEXCOORD_MAX)) {
+            return 0;
+        }
     }
 
     /* After validation, never before: the sampler reads the size, format and
@@ -1977,6 +2146,10 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     if (texture != 0) {
         v9x_d3d_raster_sampler_start(texture, &sampler);
         bound = &sampler;
+    }
+    if (texture1 != 0) {
+        v9x_d3d_raster_sampler_start(texture1, &sampler1);
+        bound1 = &sampler1;
     }
 
     /* Perspective when the three q differ (see V9X_D3D_RASTER_VERTEX.q).
@@ -1989,6 +2162,12 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                                                          vertices[index].q);
             carried[index].v = v9x_d3d_raster_scale_by_q(vertices[index].v,
                                                          vertices[index].q);
+            if (texture1 != 0) {
+                carried[index].u1 = v9x_d3d_raster_scale_by_q(
+                    vertices[index].u1, vertices[index].q);
+                carried[index].v1 = v9x_d3d_raster_scale_by_q(
+                    vertices[index].v1, vertices[index].q);
+            }
         }
         walked = carried;
         perspective = 1;
@@ -2005,6 +2184,18 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
             &walked[0], &walked[1], &walked[2],
             walked[0].q, walked[1].q, walked[2].q) : 0l;
         slopes = &gradients;
+    }
+    if (bound1 != 0 && bound1->select) {
+        gradients1.du_dy = v9x_d3d_raster_gradient_y(
+            &walked[0], &walked[1], &walked[2],
+            walked[0].u1, walked[1].u1, walked[2].u1);
+        gradients1.dv_dy = v9x_d3d_raster_gradient_y(
+            &walked[0], &walked[1], &walked[2],
+            walked[0].v1, walked[1].v1, walked[2].v1);
+        gradients1.dq_dy = perspective ? v9x_d3d_raster_gradient_y(
+            &walked[0], &walked[1], &walked[2],
+            walked[0].q, walked[1].q, walked[2].q) : 0l;
+        slopes1 = &gradients1;
     }
 
     top = &walked[0];
@@ -2050,21 +2241,22 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
         v9x_s32 sample = (first_row << V9X_D3D_RASTER_SUBPIXEL_BITS) +
                          V9X_D3D_RASTER_SUBPIXEL_HALF;
         lower = sample >= middle->y;
-        if (!v9x_d3d_raster_edge_start(top, bottom, sample, &along) ||
+        if (!v9x_d3d_raster_edge_start(top, bottom, sample, units, &along) ||
             !v9x_d3d_raster_edge_start(lower ? middle : top,
-                                       lower ? bottom : middle, sample, &across)) {
+                                       lower ? bottom : middle, sample, units,
+                                       &across)) {
             return 1;
         }
     }
     for (row = first_row; row < last_row; ++row) {
         if (along.value.x <= across.value.x) {
-            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, fog,
-                                perspective, slopes, row,
-                                &along.value, &across.value);
+            v9x_d3d_raster_span(target, depth, bound, bound1, alpha,
+                                alpha_test, fog, perspective, slopes, slopes1,
+                                row, &along.value, &across.value);
         } else {
-            v9x_d3d_raster_span(target, depth, bound, alpha, alpha_test, fog,
-                                perspective, slopes, row,
-                                &across.value, &along.value);
+            v9x_d3d_raster_span(target, depth, bound, bound1, alpha,
+                                alpha_test, fog, perspective, slopes, slopes1,
+                                row, &across.value, &along.value);
         }
         if (row + 1l < last_row) {
             v9x_d3d_raster_edge_next(&along);
@@ -2072,7 +2264,8 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
              * stepping the upper edge past the middle would extrapolate. */
             if (!lower && along.value.y >= middle->y) {
                 lower = 1;
-                if (!v9x_d3d_raster_edge_start(middle, bottom, along.value.y, &across)) {
+                if (!v9x_d3d_raster_edge_start(middle, bottom, along.value.y,
+                                               units, &across)) {
                     return 1;
                 }
             } else {
@@ -2082,3 +2275,4 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
     }
     return 1;
 }
+

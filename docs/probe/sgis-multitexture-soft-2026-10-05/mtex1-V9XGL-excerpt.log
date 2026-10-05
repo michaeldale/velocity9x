@@ -1,0 +1,78 @@
+40 pid=FFFD32DF DrvGetProcAddress name=glMTexCoord2fSGIS -> entry
+41 pid=FFFD32DF DrvGetProcAddress name=glSelectTextureSGIS -> entry
+42 pid=FFFD32DF state tex=1156 size=01000100 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+48 pid=FFFD32DF paths batches/triangles untextured=0/0 hw=0/0 cpu=1/3 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0
+50 pid=FFFD32DF state tex=1155 size=00800080 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+51 pid=FFFD32DF state tex=1155 size=00000000 tex=00000000 blend=00050601 depth=00040100 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+52 pid=FFFD32DF sgis first glSelectTextureSGIS target=835F
+58 pid=FFFD32DF paths batches/triangles untextured=24/72 hw=0/0 cpu=475/27563 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0
+65 pid=FFFD32DF paths batches/triangles untextured=53/159 hw=0/0 cpu=999/57643 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0
+72 pid=FFFD32DF paths batches/triangles untextured=80/240 hw=0/0 cpu=1512/87348 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0
+74 pid=FFFD32DF sgis first glMTexCoord2fSGIS target=835E
+75 pid=FFFD32DF state tex=1237 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+76 pid=FFFD32DF state tex=1158 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+77 pid=FFFD32DF state tex=1268 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+78 pid=FFFD32DF state tex=1269 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+79 pid=FFFD32DF state tex=1170 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+80 pid=FFFD32DF state tex=1215 size=00400020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+81 pid=FFFD32DF state tex=1173 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+82 pid=FFFD32DF state tex=1177 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+83 pid=FFFD32DF state tex=1216 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+84 pid=FFFD32DF state tex=1161 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+85 pid=FFFD32DF state tex=1185 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+86 pid=FFFD32DF state tex=1184 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+87 pid=FFFD32DF state tex=1165 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+88 pid=FFFD32DF state tex=1202 size=00200080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+89 pid=FFFD32DF state tex=1213 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+90 pid=FFFD32DF state tex=1212 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+91 pid=FFFD32DF state tex=1193 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+92 pid=FFFD32DF state tex=1208 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+93 pid=FFFD32DF state tex=1232 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+94 pid=FFFD32DF state tex=1272 size=00400010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+95 pid=FFFD32DF state tex=1167 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+96 pid=FFFD32DF state tex=1227 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+97 pid=FFFD32DF state tex=1209 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+98 pid=FFFD32DF state tex=1223 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+99 pid=FFFD32DF state tex=1162 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+100 pid=FFFD32DF state tex=1222 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/01010200 env1=000000
+101 pid=FFFD32DF state tex=1384 size=01000100 tex=01010101 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/00000000 env1=000000
+102 pid=FFFD32DF state tex=1383 size=01000100 tex=01010101 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/00000000 env1=000000
+103 pid=FFFD32DF state tex=1386 size=01000100 tex=01010101 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/00000000 env1=000000
+104 pid=FFFD32DF state tex=1337 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FFA55D15 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+105 pid=FFFD32DF state tex=1349 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF3F3121 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+106 pid=FFFD32DF state tex=1350 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FF653611 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+107 pid=FFFD32DF state tex=1362 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF52341D mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+108 pid=FFFD32DF state tex=1279 size=00800080 tex=01010200 blend=01050600 depth=01040102 colour=54808080 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+109 pid=FFFD32DF state tex=1152 size=01000100 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+115 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=2475/99749 cpu-nonsquare=108/3431 hw-refused=0/0 two-units=846/3927
+122 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=3800/106237 cpu-nonsquare=291/9521 hw-refused=0/0 two-units=2214/10433
+129 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=5163/112796 cpu-nonsquare=474/15621 hw-refused=0/0 two-units=3620/17022
+131 pid=FFFD32DF state tex=1313 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+132 pid=FFFD32DF state tex=1153 size=00080008 tex=01040202 blend=01050600 depth=01040002 colour=FFFF9300 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+133 pid=FFFD32DF state tex=1314 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+134 pid=FFFD32DF state tex=1315 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFE3E3E3 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+140 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=6884/121230 cpu-nonsquare=725/22725 hw-refused=0/0 two-units=5396/23387
+142 pid=FFFD32DF state tex=1316 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFE3E3E3 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+143 pid=FFFD32DF state tex=1388 size=00800020 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+149 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=8840/136548 cpu-nonsquare=1042/31355 hw-refused=0/0 two-units=7320/29401
+151 pid=FFFD32DF state tex=1181 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+152 pid=FFFD32DF state tex=1178 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+153 pid=FFFD32DF state tex=1180 size=00200020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+154 pid=FFFD32DF state tex=1172 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+160 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=9302/140549 cpu-nonsquare=1106/32838 hw-refused=0/0 two-units=7772/31375
+167 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=9672/142447 cpu-nonsquare=1150/33178 hw-refused=0/0 two-units=8173/33349
+174 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=10176/144861 cpu-nonsquare=1237/35175 hw-refused=0/0 two-units=8710/35708
+181 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=10883/148376 cpu-nonsquare=1378/39325 hw-refused=0/0 two-units=9451/38392
+188 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=12067/156104 cpu-nonsquare=1649/45745 hw-refused=0/0 two-units=10702/42547
+195 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=13952/168049 cpu-nonsquare=1982/55267 hw-refused=0/0 two-units=12625/48728
+202 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=15957/181512 cpu-nonsquare=2329/65561 hw-refused=0/0 two-units=14636/54958
+209 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=17851/194297 cpu-nonsquare=2629/74039 hw-refused=0/0 two-units=16530/60775
+216 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=19680/206140 cpu-nonsquare=2910/82027 hw-refused=0/0 two-units=18380/66605
+223 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=20739/211505 cpu-nonsquare=3007/84666 hw-refused=0/0 two-units=19455/70292
+230 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=21155/213236 cpu-nonsquare=3036/84771 hw-refused=0/0 two-units=19898/72116
+237 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=21560/215010 cpu-nonsquare=3087/84979 hw-refused=0/0 two-units=20354/74098
+244 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=22019/217341 cpu-nonsquare=3144/85217 hw-refused=0/0 two-units=20867/76658
+251 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=22467/219725 cpu-nonsquare=3190/85389 hw-refused=0/0 two-units=21354/79191
+258 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=22861/221902 cpu-nonsquare=3234/85558 hw-refused=0/0 two-units=21776/81487
+265 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=23272/224013 cpu-nonsquare=3261/85669 hw-refused=0/0 two-units=22201/83664
+268 pid=FFFD32DF paths batches/triangles untextured=88/264 hw=0/0 cpu=23592/225598 cpu-nonsquare=3287/85752 hw-refused=0/0 two-units=22540/85293

@@ -285,6 +285,10 @@ typedef struct v9x_d3d_raster_vertex {
     v9x_s32 z;
     v9x_s32 u;
     v9x_s32 v;
+    /* The second texture unit's coordinates, as u and v and on the same q;
+     * read only by v9x_d3d_raster_triangle2 with a second texture. */
+    v9x_s32 u1;
+    v9x_s32 v1;
     v9x_s32 red;
     v9x_s32 green;
     v9x_s32 blue;
@@ -590,5 +594,21 @@ int v9x_d3d_raster_triangle(const V9X_D3D_RASTER_TARGET *target,
                             const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
                             const V9X_D3D_RASTER_FOG *fog,
                             const V9X_D3D_RASTER_VERTEX *vertices);
+
+/*
+ * The same with a second texture unit (GL_SGIS_multitexture): `texture1`
+ * sampled at each vertex's u1/v1 and combined with unit 0's result, its
+ * alpha op applied after unit 0's (cpu-rasterizer-contract.md, "A second
+ * texture unit"). Null is v9x_d3d_raster_triangle exactly, u1/v1 unread.
+ * A second texture needs a first; one without is refused.
+ */
+int v9x_d3d_raster_triangle2(const V9X_D3D_RASTER_TARGET *target,
+                             const V9X_D3D_RASTER_DEPTH *depth,
+                             const V9X_D3D_RASTER_TEXTURE *texture,
+                             const V9X_D3D_RASTER_TEXTURE *texture1,
+                             const V9X_D3D_RASTER_ALPHA *alpha,
+                             const V9X_D3D_RASTER_ALPHA_TEST *alpha_test,
+                             const V9X_D3D_RASTER_FOG *fog,
+                             const V9X_D3D_RASTER_VERTEX *vertices);
 
 #endif

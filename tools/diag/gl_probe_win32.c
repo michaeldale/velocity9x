@@ -167,6 +167,203 @@ static void v9x_glp_string(const char *key, GLenum name)
     v9x_glp_text(key, text);
 }
 
+/*
+ * GL_SGIS_multitexture (docs\plans\gen3-sgis-multitexture.md): whether it
+ * is offered with GLQuake's trailing space, its entry points, and what
+ * each unit-1 environment draws over a known unit 0. Unit 0 REPLACEs a
+ * uniform (200, 100, 50); unit 1 is a uniform (128, 255, 64), or with
+ * alpha 128 for DECAL, BLEND toward (0, 0, 255). GL 1.1 table 3.18 gives
+ *
+ *   MODULATE  (100, 100, 13)    REPLACE  (128, 255, 64)
+ *   BLEND     (100,   0, 101)   DECAL    (164, 178, 57)
+ *
+ * before the target's 565 or 555 quantisation; each is reported with an
+ * Ok that allows 8 a channel for it. Then unit 1 at its own coordinates:
+ * a texture black on the left and white on the right, MODULATE, s held at
+ * 0.25 and then 0.75 while unit 0's s spans the quad - black, then unit
+ * 0's colour. Then unit 1 disabled: unit 0's colour alone. Read from the
+ * back buffer before any swap.
+ */
+typedef void (APIENTRY *V9X_GLP_SELECT_FN)(GLenum target);
+typedef void (APIENTRY *V9X_GLP_MTEX_FN)(GLenum target, GLfloat s, GLfloat t);
+
+#define V9X_GLP_TEXTURE0_SGIS 0x835Eu
+#define V9X_GLP_TEXTURE1_SGIS 0x835Fu
+
+static int v9x_glp_contains(const GLubyte *text, const char *word)
+{
+    unsigned int at;
+    unsigned int i;
+
+    if (text == 0) {
+        return 0;
+    }
+    for (at = 0u; text[at] != 0u; ++at) {
+        for (i = 0u; word[i] != '\0' && text[at + i] == (GLubyte)word[i]; ++i) {
+        }
+        if (word[i] == '\0') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int v9x_glp_near(DWORD rgb, DWORD red, DWORD green, DWORD blue)
+{
+    LONG dr = (LONG)((rgb >> 16) & 0xfful) - (LONG)red;
+    LONG dg = (LONG)((rgb >> 8) & 0xfful) - (LONG)green;
+    LONG db = (LONG)(rgb & 0xfful) - (LONG)blue;
+
+    return dr <= 8l && dr >= -8l && dg <= 8l && dg >= -8l &&
+           db <= 8l && db >= -8l;
+}
+
+static void v9x_glp_mtex_quad(V9X_GLP_MTEX_FN mtex, GLfloat width,
+                              GLfloat height, GLfloat s1)
+{
+    glBegin(GL_QUADS);
+    mtex(V9X_GLP_TEXTURE0_SGIS, 0.0f, 0.0f);
+    mtex(V9X_GLP_TEXTURE1_SGIS, s1, 0.5f);
+    glVertex2f(0.0f, 0.0f);
+    mtex(V9X_GLP_TEXTURE0_SGIS, 1.0f, 0.0f);
+    mtex(V9X_GLP_TEXTURE1_SGIS, s1, 0.5f);
+    glVertex2f(width, 0.0f);
+    mtex(V9X_GLP_TEXTURE0_SGIS, 1.0f, 1.0f);
+    mtex(V9X_GLP_TEXTURE1_SGIS, s1, 0.5f);
+    glVertex2f(width, height);
+    mtex(V9X_GLP_TEXTURE0_SGIS, 0.0f, 1.0f);
+    mtex(V9X_GLP_TEXTURE1_SGIS, s1, 0.5f);
+    glVertex2f(0.0f, height);
+    glEnd();
+}
+
+static void v9x_glp_sgis_case(V9X_GLP_MTEX_FN mtex, const char *key,
+                              GLint width, GLint height, GLfloat s1,
+                              DWORD red, DWORD green, DWORD blue)
+{
+    char name[48];
+    DWORD rgb;
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    v9x_glp_mtex_quad(mtex, (GLfloat)width, (GLfloat)height, s1);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    wsprintfA(name, "Sgis%s", key);
+    v9x_glp_hex(name, rgb);
+    wsprintfA(name, "Sgis%sOk", key);
+    v9x_glp_uint(name, v9x_glp_near(rgb, red, green, blue) ? 1ul : 0ul);
+}
+
+static void v9x_glp_sgis(GLint width, GLint height)
+{
+    static GLubyte rgb0[4 * 3];
+    static GLubyte rgb1[4 * 3];
+    static GLubyte rgba1[4 * 4];
+    static GLubyte halves[4 * 3];
+    V9X_GLP_SELECT_FN select;
+    V9X_GLP_MTEX_FN mtex;
+    GLuint names[4];
+    GLfloat blue_env[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+    int i;
+
+    v9x_glp_uint("SgisAdvertised",
+                 v9x_glp_contains(glGetString(GL_EXTENSIONS),
+                                  "GL_SGIS_multitexture ") ? 1ul : 0ul);
+    select = (V9X_GLP_SELECT_FN)wglGetProcAddress("glSelectTextureSGIS");
+    mtex = (V9X_GLP_MTEX_FN)wglGetProcAddress("glMTexCoord2fSGIS");
+    v9x_glp_uint("SgisEntryPoints", (select != 0 ? 1ul : 0ul) +
+                                    (mtex != 0 ? 1ul : 0ul));
+    if (select == 0 || mtex == 0) {
+        return;
+    }
+
+    for (i = 0; i < 4; ++i) {
+        rgb0[i * 3 + 0] = 200u;
+        rgb0[i * 3 + 1] = 100u;
+        rgb0[i * 3 + 2] = 50u;
+        rgb1[i * 3 + 0] = 128u;
+        rgb1[i * 3 + 1] = 255u;
+        rgb1[i * 3 + 2] = 64u;
+        rgba1[i * 4 + 0] = 128u;
+        rgba1[i * 4 + 1] = 255u;
+        rgba1[i * 4 + 2] = 64u;
+        rgba1[i * 4 + 3] = 128u;
+        halves[i * 3 + 0] = (GLubyte)((i & 1) != 0 ? 255u : 0u);
+        halves[i * 3 + 1] = halves[i * 3 + 0];
+        halves[i * 3 + 2] = halves[i * 3 + 0];
+    }
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glGenTextures(4, names);
+
+    select(V9X_GLP_TEXTURE0_SGIS);
+    glBindTexture(GL_TEXTURE_2D, names[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glEnable(GL_TEXTURE_2D);
+
+    select(V9X_GLP_TEXTURE1_SGIS);
+    glBindTexture(GL_TEXTURE_2D, names[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, blue_env);
+    glEnable(GL_TEXTURE_2D);
+    v9x_glp_hex("SgisErrorAfterSetup", (DWORD)glGetError());
+
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    v9x_glp_sgis_case(mtex, "Modulate", width, height, 0.5f, 100ul, 100ul,
+                      13ul);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    v9x_glp_sgis_case(mtex, "Replace", width, height, 0.5f, 128ul, 255ul,
+                      64ul);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_BLEND);
+    v9x_glp_sgis_case(mtex, "Blend", width, height, 0.5f, 100ul, 0ul,
+                      101ul);
+    glBindTexture(GL_TEXTURE_2D, names[2]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 rgba1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+    v9x_glp_sgis_case(mtex, "Decal", width, height, 0.5f, 164ul, 178ul,
+                      57ul);
+
+    glBindTexture(GL_TEXTURE_2D, names[3]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 halves);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    v9x_glp_sgis_case(mtex, "CoordLeft", width, height, 0.25f, 0ul, 0ul,
+                      0ul);
+    v9x_glp_sgis_case(mtex, "CoordRight", width, height, 0.75f, 200ul, 100ul,
+                      50ul);
+
+    glDisable(GL_TEXTURE_2D);
+    v9x_glp_sgis_case(mtex, "Unit1Off", width, height, 0.25f, 200ul, 100ul,
+                      50ul);
+    v9x_glp_hex("SgisErrorAfterDraws", (DWORD)glGetError());
+
+    select(V9X_GLP_TEXTURE0_SGIS);
+    glDeleteTextures(4, names);
+    glDisable(GL_TEXTURE_2D);
+}
+
 void __stdcall V9xGlProbeEntry(void)
 {
     WNDCLASSA window_class;
@@ -1388,6 +1585,14 @@ void __stdcall V9xGlProbeEntry(void)
             v9x_glp_uint("LifetimeVramFreeFirst", free_first);
             v9x_glp_uint("LifetimeVramFreeLast", free_last);
             wglMakeCurrent(hdc, context);
+        }
+        {
+            RECT client;
+
+            v9x_glp_pump();
+            GetClientRect(window, &client);
+            v9x_glp_sgis(client.right - client.left,
+                         client.bottom - client.top);
         }
         {
             DWORD started = GetTickCount();

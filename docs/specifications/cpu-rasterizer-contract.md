@@ -150,15 +150,45 @@ Where this document says "tested", the test is named. Where it says
   (`test_texture_colour_combine_ops`,
   `test_texture_alpha_replace_and_modulate`).
 
+### A second texture unit
+
+For GL_SGIS_multitexture (`docs/plans/gen3-sgis-multitexture.md`),
+`v9x_d3d_raster_triangle2` takes a second texture beside the first, and
+the vertex carries its coordinates as `u1`, `v1`.
+
+- **Coordinates:** the same range as `u`/`v`, on the same q. Under
+  perspective all four are carried multiplied by q and divided by the one
+  per-pixel reciprocal, so the second unit costs two divides a pixel, not a
+  second reciprocal.
+- **Sampling:** the second unit has its own filter, address mode, mip chain
+  and level of detail, from its own derivatives. Nothing about it is taken
+  from unit 0.
+- **Combine:** unit 0's colour combine on the fragment colour, then unit
+  1's on that result, each the one-unit rule above. Unit 1's DECAL lerps by
+  unit 1's texel alpha.
+- **Alpha:** unit 0's alpha op on the vertex alpha, then unit 1's on that,
+  with each unit's texel alpha. It is resolved after fog, as for one unit;
+  fog changes no alpha, so the result is the one GL computes in the texture
+  stage.
+- **Identity:** a null second texture is the one-unit path, and its output
+  does not change in any bit (`test_second_unit_absent_is_one_unit`).
+  With the second texture present, every vertex's `u1`/`v1` must be inside
+  the range, as `u`/`v` must; a coordinate outside it refuses the triangle.
+
+Tests: `test_second_unit_combines_after_the_first`,
+`test_second_unit_alpha_chains`, `test_second_unit_own_coordinates`,
+`test_second_unit_refusals`.
+
 ## Fragment order
 
 For each covered pixel, in this order:
 
 1. Scissor - already applied to the rows and columns.
 2. Depth test: compare only, against the bound depth buffer.
-3. Texture sample and colour combine; then fog, if the draw carries a
-   colour; then the fragment alpha, resolved only when something consumes
-   it: the vertex alpha, then the texel's under REPLACE or MODULATE.
+3. Texture sample and colour combine, unit 0 then unit 1; then fog, if
+   the draw carries a colour; then the fragment alpha, resolved only when
+   something consumes it: the vertex alpha, then each unit's texel alpha
+   under REPLACE or MODULATE, unit 0 first.
 4. Alpha test (`V9X_D3D_RASTER_ALPHA_TEST`, compare and 0..255
    reference). A fragment that fails writes nothing - neither colour nor
    depth (`test_alpha_test_gates_colour_and_depth`).
