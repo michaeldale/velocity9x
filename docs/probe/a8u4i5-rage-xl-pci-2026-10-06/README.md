@@ -154,3 +154,30 @@ Open:
   reproduced with the breadcrumb log; cause unknown. The drain loop in
   `Clear2` has since been bounded.
 - Points and lines in DrawPrimitives2 are parsed and not drawn.
+
+## DDI 6 regression check: Half-Life on the Rage XL and the netbook (`ddi6-halflife/`)
+
+Build `a24aaba` on both. Half-Life 1.1.1.0 `timedemo mwd5`, `-d3d -w 640 -h
+480 -full`, three runs each, DDI 5 and DDI 6 on the same build and boot
+(the setting is read per DirectDraw program), Half-Life restarted between.
+
+| Machine | DDI 5 (runs) | DDI 6 (runs) | Change |
+|---|---|---|---|
+| A8U4I5, Rage XL PCI | 17.16, 17.97, 17.96 | 10.60, 12.27, 12.27 | -32 % |
+| Netbook, GMA 950 (boot 103) | 35.31, 42.09, 42.02 | 21.46, 23.71, 23.59 | -44 % |
+
+- Pictures are correct at DDI 6 on both (`*-ddi6-frame.png`); no refusals,
+  unparsed or malformed records, FVF or buffer refusals.
+- The runtime sends Half-Life as about 1,000 DrawPrimitives2 calls a frame,
+  each with 2 to 3 records (inline fans and INDEXEDTRIANGLELIST2) and about
+  5 triangles; opcodes seen `0x36800100` (render state, fan_imm, stage
+  state, indexed list2, viewport, W info). Each call ends in its own engine
+  batch, so nothing is merged across calls.
+- The cost is per call, not per triangle. On the netbook an extra ~7 s a
+  run over ~400,000 calls is ~18 us a call; what share is the runtime's
+  translation and what is the HAL's (three pointer probes, FPU save, the
+  per-call flush and submission) is not measured: the timing counters were
+  off.
+
+Conclusion: DDI 6 stays off by default. It is correct but a large
+regression for DX5-era games until the per-call cost comes down.
