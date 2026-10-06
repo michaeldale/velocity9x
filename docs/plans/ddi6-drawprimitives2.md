@@ -124,5 +124,6 @@ the netbook.
   Direct3D 9 stays unavailable because it needs a DDI 7 driver, not
   because of T&L; DDI 7 (the DX7 DrawPrimitives2 records and
   GetDriverState) would be the next step for it.
-- The netbook took DirectX 9.0c (December 2005 redistributable, setup
-  log "succeeded need restart") and did not come back from the restart.
+- The netbook took DirectX 9.0c (December 2005 redistributable); the
+  agent restart hung and it came back on a power cycle (boot 113). 3DMark
+  2001 SE then ran there too (probe README).
