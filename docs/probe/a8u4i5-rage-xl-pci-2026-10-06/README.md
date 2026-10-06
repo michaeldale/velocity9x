@@ -56,5 +56,53 @@ not re-hashed.
 - `V9XMODES.INI`: build `526c508`, family `ati`, 19 rows published.
 - Desktop screenshot at 16 bpp.
 
-Open: `SYSTEM.INI` `[Velocity9x]` still carries `Direct3D=0` from earlier work; check what
-it gates before the issue 2 runs.
+`SYSTEM.INI` `[Velocity9x]` carries `Direct3D=0`. That is `V9X_D3D_REQUEST_HARDWARE`
+(`include\velocity9x\d3dmode.h`: 0 hardware, 1 disabled, 2 software, 3 hybrid, 4
+offload), the same as an absent key, and `V9XHW.INI` reports `Direct3DMode=hardware`. It
+does not gate anything.
+
+## Issue 2: DxDiag (boot 299, DirectX 9.0c, `dxdiag/`)
+
+- Display tab: "Velocity9x ATI Rage XL PCI", 8.0 MB, driver 0.11, **DDI Version 5**,
+  DirectDraw and Direct3D acceleration Enabled. Notes: "Hardware accelerated Direct3D 8+
+  is not available because the display driver does not support it."
+  (`dxdiag-display-tab.png`, `DXI2.TXT`).
+- D3D7 test: the textured spinning cube renders correctly, fullscreen 640x480x16
+  (`d3d7-cube.png`). One of four agent screenshots during the run was entirely black
+  (`d3d7-black-frame.png`). The trace shows `FlipHandled=418`, `FlipDeclined=0`, so the
+  test page-flipped; a GDI screenshot of a flipping primary can catch the buffer just
+  flipped away, so this frame is **not** proof of the flicker the reporter saw. Unresolved
+  without eyes on the monitor.
+- D3D8 and D3D9 tests: skipped by DxDiag 9.0c, "the display driver does not support it".
+  The reporter's DX8-era DxDiag ran it and failed at GetDeviceCaps with `0x8876086A`
+  (`D3DERR_NOTAVAILABLE`). Same cause: the D3D8 runtime does not drive a DDI 5 (DX5-level)
+  HAL. Reproduced; it is a missing feature, not a Mobility-P fault.
+- The "screen goes dark on a caps query" symptom was not seen on DxDiag start or on the
+  Display tab (CRT on a VGA-to-HDMI adapter, so a panel-only effect would not show here).
+- `V9XSNA7.INI` after DxDiag: one DXDIAG.EXE context, 421 `RenderPrimitive` calls, 1 texture, engine
+  type 4 (Mach64), zero FIFO/idle timeouts and resets, `D3dDepthOffered=0`.
+
+## Issue 2: 3DMark 99 Max (boot 299, defaults: 800x600x16, Z16, triple buffer, all tests)
+
+- Ran through 9 of 26 tests without a hang (Game 1 race at about 9 fps, then the texture
+  rendering tests). Michael stopped it there to look at the monitor, so there is no score
+  and no full-session trace.
+- The monitor (CRT output through a VGA-to-HDMI adapter into a USB capture card, OBS at
+  1024x768) showed a stretched corner of the picture: about the left 220 pixels and 400
+  lines of the 800x600 frame, scaled up. The agent's framebuffer screenshots at the same
+  time were correct full 800x600 frames. The desktop at 800x600x16 was already wrong on
+  the monitor before 3DMark started.
+- Cause: the VGA-to-HDMI adapter's sync, not the driver. After 3DMark was closed the
+  picture came back correct with no driver change. Supporting evidence: mode switching on
+  this card is `vbe-lfb` (the ATI BIOS sets the timings), and `m64_scanout.c` rewrites
+  only the start-address field of `CRTC_OFF_PITCH`, keeping the BIOS pitch, so nothing of
+  ours can scale the picture.
+- Consequence for testing: a "broken screen" seen through this capture chain needs a
+  framebuffer screenshot beside it before it counts as a driver fault.
+
+## Not established
+
+- Whether 3DMark 99 completes at 800x600 on this build (it did at 640x480 on 3 Oct).
+- Whether the reporter's 3DMark hang reproduces on any Mach64 here; it did not in the
+  first 9 tests.
+- The D3D7 cube flicker: needs eyes on the screen, not an agent screenshot.
