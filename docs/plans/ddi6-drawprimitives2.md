@@ -60,8 +60,11 @@ Measured on A8U4I5 with no key set, alternating programs on one boot: the
 D3D8 probe gets the HAL (`D3D_OK`, Callbacks3 served), Half-Life then runs
 DDI 5 (`Dp2Calls` 0, 2.27M DX5 records, 17.96 and 17.98 fps), the probe
 again gets the HAL. 3DMark 2001 SE (build 330) runs on the HAL with
-software T&L. The netbook was not measured: it did not come back from the
-restart onto this build (see the probe README).
+software T&L. Netbook (boot 112, DirectX 8.0, 2026-10-07): the probe gets
+the HAL, Half-Life runs DDI 5 (Dp2Calls 0) at 40.19 and 40.16 fps against
+42.24 and 42.00 on the previous build; the 5 % is not explained (the
+decision is read only while DirectDraw negotiates). It came back from the
+restart once it was looked at; the hang was not diagnosed.
 
 The original text:
 
