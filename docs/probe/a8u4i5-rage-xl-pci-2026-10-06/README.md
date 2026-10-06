@@ -318,5 +318,7 @@ Open from this:
 - The texture `CreateTexture` refused with INVALIDCALL (Point Sprites), and
   why High Polygon Count reports N/A.
 - The netbook did not come back from the restart onto this build (boot 111
-  was the last seen; no ping after 13 minutes). Not known whether it hung
-  shutting down or booting.
+  was the last seen; no ping after 20 minutes). It was back on boot 112
+  after Michael looked at it; whether it hung shutting down or booting is
+  not known. On boot 112 Part B behaves as on A8U4I5 (see the plan), with
+  Half-Life 5 % below the previous build at DDI 5, unexplained.
