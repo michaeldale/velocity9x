@@ -421,3 +421,97 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
 malformed:
     result->status = V9X_DP2_MALFORMED;
 }
+
+/* d3dtypes.h: the D3DFVF_ bits this driver reads. */
+#define V9X_DP2_FVF_POSITION_MASK 0x00eul
+#define V9X_DP2_FVF_XYZRHW        0x004ul
+#define V9X_DP2_FVF_NORMAL        0x010ul
+#define V9X_DP2_FVF_RESERVED1     0x020ul
+#define V9X_DP2_FVF_DIFFUSE       0x040ul
+#define V9X_DP2_FVF_SPECULAR      0x080ul
+#define V9X_DP2_FVF_TEXCOUNT(f)   (((f) >> 8) & 0xful)
+/* D3DFVF_TEXTUREFORMAT1..4 are encoded 3, 0, 1, 2 at bits 16 + 2i. */
+#define V9X_DP2_FVF_TEXFLOATS(f, i) \
+    ("\2\3\4\1"[((f) >> (16ul + 2ul * (i))) & 3ul])
+
+int v9x_dp2_fvf_layout(v9x_u32 fvf, V9X_DP2_FVF *layout)
+{
+    v9x_u32 at = 16ul;
+    v9x_u32 sets;
+    v9x_u32 i;
+
+    if ((fvf & V9X_DP2_FVF_POSITION_MASK) != V9X_DP2_FVF_XYZRHW ||
+        (fvf & V9X_DP2_FVF_NORMAL) != 0ul) {
+        return 0;
+    }
+    sets = V9X_DP2_FVF_TEXCOUNT(fvf);
+    if (sets > 8ul) {
+        return 0;
+    }
+    /* DX6's D3DLVERTEX padding DWORD, still a legal FVF bit. */
+    if ((fvf & V9X_DP2_FVF_RESERVED1) != 0ul) {
+        at += 4ul;
+    }
+    layout->diffuse = V9X_DP2_FVF_ABSENT;
+    layout->specular = V9X_DP2_FVF_ABSENT;
+    layout->tex0 = V9X_DP2_FVF_ABSENT;
+    layout->tex0_floats = 0ul;
+    if ((fvf & V9X_DP2_FVF_DIFFUSE) != 0ul) {
+        layout->diffuse = at;
+        at += 4ul;
+    }
+    if ((fvf & V9X_DP2_FVF_SPECULAR) != 0ul) {
+        layout->specular = at;
+        at += 4ul;
+    }
+    for (i = 0ul; i < sets; ++i) {
+        v9x_u32 floats = (v9x_u32)V9X_DP2_FVF_TEXFLOATS(fvf, i);
+
+        if (i == 0ul) {
+            layout->tex0 = at;
+            layout->tex0_floats = floats;
+        }
+        at += floats * 4ul;
+    }
+    layout->stride = at;
+    return 1;
+}
+
+int v9x_dp2_fvf_is_tlvertex(const V9X_DP2_FVF *layout)
+{
+    return layout->stride == 32ul && layout->diffuse == 16ul &&
+           layout->specular == 20ul && layout->tex0 == 24ul &&
+           layout->tex0_floats == 2ul;
+}
+
+static void v9x_dp2_put(v9x_u8 *p, v9x_u32 value)
+{
+    p[0] = (v9x_u8)value;
+    p[1] = (v9x_u8)(value >> 8);
+    p[2] = (v9x_u8)(value >> 16);
+    p[3] = (v9x_u8)(value >> 24);
+}
+
+void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
+                         v9x_u8 *tlvertex)
+{
+    v9x_u32 i;
+
+    for (i = 0ul; i < 16ul; ++i) {
+        tlvertex[i] = source[i];
+    }
+    v9x_dp2_put(tlvertex + 16, layout->diffuse != V9X_DP2_FVF_ABSENT
+                                   ? v9x_dp2_dword(source + layout->diffuse)
+                                   : 0xfffffffful);
+    v9x_dp2_put(tlvertex + 20, layout->specular != V9X_DP2_FVF_ABSENT
+                                   ? v9x_dp2_dword(source + layout->specular)
+                                   : 0xff000000ul);
+    /* Float bits are copied, never converted: 0ul is +0.0f. */
+    v9x_dp2_put(tlvertex + 24, layout->tex0 != V9X_DP2_FVF_ABSENT
+                                   ? v9x_dp2_dword(source + layout->tex0)
+                                   : 0ul);
+    v9x_dp2_put(tlvertex + 28, layout->tex0 != V9X_DP2_FVF_ABSENT &&
+                                       layout->tex0_floats >= 2ul
+                                   ? v9x_dp2_dword(source + layout->tex0 + 4ul)
+                                   : 0ul);
+}

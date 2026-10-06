@@ -148,7 +148,8 @@ for this driver is not established; `SoftwareOnly=0` in the registry was
 checked and is not it.
 
 Open:
-- Why D3D8 has no 3D-accelerated format for this HAL.
+- Why D3D8 has no 3D-accelerated format for this HAL. Answered below: the
+  audit refuses `FVFCaps` zero.
 - One hard hang (Windows alive, Ctrl+Alt+Del dead) during a DxDiag run at
   DDI 6 before the two requirements were met, with `Clear2` served. Not
   reproduced with the breadcrumb log; cause unknown. The drain loop in
@@ -210,3 +211,47 @@ point that touches the engine, a surface or a texture; the state snapshot
 compared once per primitive; the probe cache, dropped on every surface or
 context destruction; the guard band only for engines with `clip_in_core`.
 DDI 6 stays off by default.
+
+## Direct3D 8 on the HAL: the FVFCaps rule (`ddi6-d3d8/`)
+
+Why d3d8.dll 4.09.0000.0904 had no 3D-accelerated format, read out of the
+DLL and then measured. The probe (`ddi6/d3d8probe.c`, extended to dump the
+runtime's adapter block) showed the format list built (7 entries) with every
+operation mask zero except the display format's `0x400` (display mode
+only). The legacy-caps audit at `0x40f6d0` requires, among others, a
+non-zero texture caps, a non-zero `FVFCaps`, and for a driver with no
+streams (`MaxStreams` 0) the DX7 defaults for point size, shader versions
+and vertex index; on any failure `0x40f910` cuts every format down to
+`0x400`. Each rule was checked against the dump: the only one this driver
+broke was `FVFCaps` (`+0x8c`) zero, which the DX6 extended caps reported
+because DrawPrimitives2 only took D3DTLVERTEX. `MaxPointSize` 0 passes (the
+constant it is compared with at `0x407bac` is 0.0).
+
+Fix (one build, `V9X_DD_SHARED_ABI` 2026100605): `dwFVFCaps` 1 (one texture
+coordinate set), and DrawPrimitives2 accepts any XYZRHW flexible vertex
+format, converting each vertex into D3DTLVERTEX (`v9x_dp2_fvf_layout` and
+`v9x_dp2_fvf_convert` in `d3d_dp2.c`, host-tested). Missing diffuse is
+white, missing specular black with no fog, missing coordinates zero.
+D3DTLVERTEX itself is not copied. Counter `Dp2ConvertedCalls`.
+
+Measured at DDI 6:
+
+| Machine | Runtime | Result |
+|---|---|---|
+| A8U4I5, Rage XL (boot 311) | DirectX 9.0c | `CheckDeviceType` and `GetDeviceCaps` HAL `D3D_OK`, R5G6B5 ops `0xc00` (3D acceleration). DxDiag's D3D8 test draws the textured cube correctly (`rage-xl-dxdiag-d3d8-cube.png`): 62 DrawPrimitives2 calls, 360 triangles, FVF `0x144` (XYZRHW, diffuse, one set), all converted; nothing refused, unparsed or malformed. D3D9 is skipped (`rage-xl-dxdiag-d3d9-skipped.png`), as expected below DDI 7 |
+| Netbook, GMA 950 (boot 110) | DirectX 8.0 | `Direct3DCreate8` takes only SDK version 120 there; HAL `D3D_OK`. DxDiag 4.08's tests: "All tests were successful" (`netbook-dxdiag80-all-passed.png`), the hardware cube correct (`netbook-dxdiag80-hal-cube.png`): 200 calls, 2,400 triangles, FVF `0xc4` (no coordinates), all converted |
+
+The D3D7 cube in the same DxDiag run now also arrives as FVF `0x144` and is
+converted: with FVFCaps non-zero the runtime stops expanding to D3DTLVERTEX
+itself.
+
+Regression: Half-Life at DDI 6 on the Rage XL, 12.57 and 12.58 fps against
+12.60 and 12.61 for the previous build (`rage-xl-halflife-ddi6.png`). It
+sends D3DTLVERTEX, so none of its 1.06M calls was converted. The netbook's
+Half-Life was not rerun.
+
+Not established:
+- Whether the netbook's DirectX 8.0 refused the HAL before this build; it
+  was not probed at DDI 6 on the old one.
+- A real DX8 title on either machine (plan Part A step 3).
+- Both machines are back at DDI 5 (`Direct3DDdi` unset).

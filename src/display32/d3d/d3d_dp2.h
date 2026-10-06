@@ -121,4 +121,42 @@ typedef struct v9x_dp2_result {
 void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                   V9X_DP2_RESULT *result);
 
+/*
+ * Flexible vertex formats (dwVertexType), turned into the D3DTLVERTEX the
+ * engines draw.
+ *
+ * A driver that reports dwFVFCaps zero is held to D3DFVF_TLVERTEX, and the
+ * Direct3D 8 runtime will not use such a driver at all: d3d8.dll
+ * 4.09.0000.0904 audits the legacy caps (0x40f6d0) and, finding FVFCaps
+ * zero, cuts every format's operations down to display-mode only, so
+ * GetDeviceCaps answers D3DERR_NOTAVAILABLE (0x8876086A, GitHub issue 2).
+ * With one texture coordinate set reported, the runtime sends whatever
+ * pre-transformed layout the application declared: XYZRHW always, then
+ * DIFFUSE, SPECULAR and coordinate sets only if present.
+ *
+ * Only XYZRHW positions are taken, as no engine here transforms. A missing
+ * diffuse is opaque white and a missing specular black with a fog factor of
+ * one (no fog), which is what the runtime's own rasteriser assumes; missing
+ * coordinates are zero. Of the coordinate sets only the first is kept.
+ */
+#define V9X_DP2_FVF_ABSENT 0xfffffffful
+
+typedef struct v9x_dp2_fvf {
+    v9x_u32 stride;              /* bytes per vertex                   */
+    v9x_u32 diffuse;             /* byte offsets, or V9X_DP2_FVF_ABSENT */
+    v9x_u32 specular;
+    v9x_u32 tex0;
+    v9x_u32 tex0_floats;         /* 1 to 4 when tex0 is present        */
+} V9X_DP2_FVF;
+
+/* Fill layout for fvf; 0 when this driver cannot draw the format. */
+int v9x_dp2_fvf_layout(v9x_u32 fvf, V9X_DP2_FVF *layout);
+
+/* Whether the layout is D3DTLVERTEX itself, so no copy is needed. */
+int v9x_dp2_fvf_is_tlvertex(const V9X_DP2_FVF *layout);
+
+/* One vertex of layout at source into the 32 bytes of a D3DTLVERTEX. */
+void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
+                         v9x_u8 *tlvertex);
+
 #endif

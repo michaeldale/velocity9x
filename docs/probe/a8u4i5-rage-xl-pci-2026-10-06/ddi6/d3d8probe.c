@@ -21,11 +21,18 @@ int main(void)
     UINT count, i;
     unsigned long hr;
     DWORD caps[64];
+    int internals;
 
     if (out == 0) return 1;
     if (lib == 0) { fprintf(out, "no d3d8.dll\n"); return 2; }
     create = (CREATE8)GetProcAddress(lib, "Direct3DCreate8");
     d3d = create != 0 ? create(220) : 0;
+    internals = d3d != 0;
+    if (d3d == 0 && create != 0) {
+        /* DirectX 8.0's runtime takes only its own D3D_SDK_VERSION. */
+        d3d = create(120);
+        fprintf(out, "SdkVersion=120 (DirectX 8.0 runtime)\n");
+    }
     if (d3d == 0) { fprintf(out, "Direct3DCreate8 failed\n"); return 3; }
 
     fprintf(out, "Adapters=%lu\n",
@@ -56,7 +63,41 @@ int main(void)
     hr = ((unsigned long (__stdcall *)(void *, UINT, UINT, DWORD *))
               SLOT(d3d, 13))(d3d, 0, 2, caps);
     fprintf(out, "GetDeviceCaps REF hr=%08lx\n", hr);
+
+    /* d3d8.dll 4.09.0000.0904 internals, read out of GetDeviceCaps
+     * (0x410b90) and its caps getter (0x40fcc0): adapter 0's HAL block at
+     * this+0x158, format-op count at +0xfc and list at +0x100, entries of
+     * 0x6c bytes with the D3DFORMAT at +0x50 and the op flags at +0x58. */
+    if (internals) {
+        unsigned char *self = (unsigned char *)d3d;
+        unsigned char *hal = self + 0x158;
+        DWORD n = *(DWORD *)(hal + 0xfc);
+        unsigned char *list = *(unsigned char **)(hal + 0x100);
+        DWORD k;
+
+        fprintf(out, "HalBlock flagsF8=%08lx count=%lu list=%08lx "
+                "noHal33c4=%08lx\n", *(DWORD *)(hal + 0xf8), n,
+                (unsigned long)list, *(DWORD *)(self + 0x33c4));
+        for (k = 0; k < 0x110; k += 16) {
+            fprintf(out, "Hal+%03lx %08lx %08lx %08lx %08lx\n", k,
+                    *(DWORD *)(hal + k), *(DWORD *)(hal + k + 4),
+                    *(DWORD *)(hal + k + 8), *(DWORD *)(hal + k + 12));
+        }
+        for (k = 0; list != 0 && k < n && k < 40; ++k) {
+            unsigned char *e = list + k * 0x6c;
+            fprintf(out, "Fmt%02lu flags4c=%08lx format=%lu ops=%08lx\n", k,
+                    *(DWORD *)(e + 0x4c), *(DWORD *)(e + 0x50),
+                    *(DWORD *)(e + 0x58));
+        }
+    }
     ((unsigned long (__stdcall *)(void *))SLOT(d3d, 2))(d3d);
     fclose(out);
     return 0;
+}
+
+/* GUI-subsystem entry, for agents that refuse console programs. */
+int WINAPI WinMain(HINSTANCE i, HINSTANCE p, LPSTR c, int s)
+{
+    (void)i; (void)p; (void)c; (void)s;
+    return main();
 }

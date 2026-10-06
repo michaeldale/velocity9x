@@ -298,5 +298,62 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     walk(&c, &r);
     CHECK(r.status == V9X_DP2_OK && r.records == 0ul && r.stop_offset == 0ul);
 
+    /* Flexible vertex formats. */
+    {
+        V9X_DP2_FVF f;
+        v9x_u32 in[12];
+        v9x_u32 out[8];
+
+        /* D3DFVF_TLVERTEX is the engines' own layout. */
+        CHECK(v9x_dp2_fvf_layout(0x1c4ul, &f) && f.stride == 32ul &&
+              v9x_dp2_fvf_is_tlvertex(&f));
+        /* XYZRHW|DIFFUSE|TEX1: no specular, 28 bytes. */
+        CHECK(v9x_dp2_fvf_layout(0x144ul, &f) && f.stride == 28ul &&
+              f.diffuse == 16ul && f.specular == V9X_DP2_FVF_ABSENT &&
+              f.tex0 == 20ul && !v9x_dp2_fvf_is_tlvertex(&f));
+        /* XYZRHW|TEX2 with set 0 one float and set 1 three floats. */
+        CHECK(v9x_dp2_fvf_layout(0x204ul | (3ul << 16) | (1ul << 18), &f) &&
+              f.tex0 == 16ul && f.tex0_floats == 1ul && f.stride == 32ul);
+        /* RESERVED1 pads a DWORD before diffuse. */
+        CHECK(v9x_dp2_fvf_layout(0x064ul, &f) && f.diffuse == 20ul &&
+              f.stride == 24ul);
+        /* Untransformed positions and normals are refused. */
+        CHECK(!v9x_dp2_fvf_layout(0x152ul, &f));
+        CHECK(!v9x_dp2_fvf_layout(0x014ul, &f));
+
+        /* XYZRHW|SPECULAR|TEX1: diffuse defaults to white. */
+        CHECK(v9x_dp2_fvf_layout(0x184ul, &f) && f.stride == 28ul);
+        in[0] = 1ul; in[1] = 2ul; in[2] = 3ul; in[3] = 4ul;
+        in[4] = 0x11223344ul; in[5] = 5ul; in[6] = 6ul;
+        v9x_dp2_fvf_convert(&f, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[0] == 1ul && out[3] == 4ul && out[4] == 0xfffffffful &&
+              out[5] == 0x11223344ul && out[6] == 5ul && out[7] == 6ul);
+
+        /* XYZRHW alone: specular is black with no fog, coordinates 0. */
+        CHECK(v9x_dp2_fvf_layout(0x004ul, &f) && f.stride == 16ul);
+        v9x_dp2_fvf_convert(&f, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[4] == 0xfffffffful && out[5] == 0xff000000ul &&
+              out[6] == 0ul && out[7] == 0ul);
+
+        /* The walker steps a pool by the format's stride. */
+        memset(&c, 0, sizeof(c)); used = 0ul;
+        command(V9X_DP2OP_TRIANGLELIST, 1ul); put16(1ul);
+        {
+            V9X_DP2_STREAM s;
+            V9X_DP2_SINK k;
+
+            s.commands = COMMANDS; s.command_bytes = used;
+            s.vertices = pool; s.vertex_count = 4ul; s.vertex_stride = 16ul;
+            k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
+            k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
+            v9x_dp2_walk(&s, &k, &r);
+            CHECK(r.status == V9X_DP2_OK && r.triangles == 1ul);
+            /* Vertices 1 to 3 need a pool of four. */
+            s.vertex_count = 3ul;
+            v9x_dp2_walk(&s, &k, &r);
+            CHECK(r.status == V9X_DP2_MALFORMED);
+        }
+    }
+
     return failures;
 }

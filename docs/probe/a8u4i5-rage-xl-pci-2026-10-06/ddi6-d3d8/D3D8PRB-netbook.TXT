@@ -1,0 +1,10 @@
+SdkVersion=120 (DirectX 8.0 runtime)
+Adapters=2
+DisplayMode hr=00000000 1024x576 rate 0 format 23
+ModeCount=2
+Mode00 hr=00000000 640x480 rate 0 format 23
+Mode01 hr=00000000 1024x576 rate 0 format 23
+CheckDeviceType HAL 565 windowed hr=00000000
+CheckDeviceType HAL 565 fullscreen hr=00000000
+GetDeviceCaps HAL hr=00000000 DevCaps=00082650
+GetDeviceCaps REF hr=00000000

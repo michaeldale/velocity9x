@@ -3104,6 +3104,9 @@ typedef struct v9x_d3d_dp2_user {
     V9X_D3D_CONTEXT *context;
     V9X_R3D_RECORDS *run;
     DWORD *rstates;
+    /* The call's vertex format, or null when it is D3DTLVERTEX and the
+     * pool's vertices are used as they are. */
+    const V9X_DP2_FVF *fvf;
 } V9X_D3D_DP2_USER;
 
 /*
@@ -3309,25 +3312,82 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
     }
 }
 
+/* One vertex of the call's format as the engines' vertex. */
+static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
+                               const v9x_u8 *source, V9X_R3D_VERTEX *vertex)
+{
+    if (user->fvf == 0) {
+        *vertex = *(const V9X_R3D_VERTEX *)source;
+    } else {
+        v9x_dp2_fvf_convert(user->fvf, source, (v9x_u8 *)vertex);
+    }
+}
+
+/* Converted triangles go to the run this many at a time. */
+#define V9X_D3D_DP2_CONVERT 16ul
+
 static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
                              v9x_u32 triangles)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_R3D_VERTEX converted[V9X_D3D_DP2_CONVERT * 3ul];
 
     v9x_d3d_dp2_settle(user);
-    (void)v9x_r3d_records_append_list(user->run,
-                                      (const V9X_R3D_VERTEX *)first,
-                                      triangles);
+    if (user->fvf == 0) {
+        (void)v9x_r3d_records_append_list(user->run,
+                                          (const V9X_R3D_VERTEX *)first,
+                                          triangles);
+        return;
+    }
+    while (triangles != 0ul) {
+        v9x_u32 n = triangles < V9X_D3D_DP2_CONVERT ? triangles
+                                                    : V9X_D3D_DP2_CONVERT;
+        v9x_u32 i;
+
+        for (i = 0ul; i < n * 3ul; ++i) {
+            v9x_d3d_dp2_vertex(user, first, &converted[i]);
+            first += user->fvf->stride;
+        }
+        (void)v9x_r3d_records_append_list(user->run, converted, n);
+        triangles -= n;
+    }
 }
 
 static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
                             v9x_u32 vertices)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_R3D_VERTEX converted[V9X_D3D_DP2_CONVERT + 2ul];
+    v9x_u32 done;
 
     v9x_d3d_dp2_settle(user);
-    (void)v9x_r3d_records_append_fan(user->run,
-                                     (const V9X_R3D_VERTEX *)first, vertices);
+    if (user->fvf == 0) {
+        (void)v9x_r3d_records_append_fan(user->run,
+                                         (const V9X_R3D_VERTEX *)first,
+                                         vertices);
+        return;
+    }
+    if (vertices < 3ul) {
+        return;
+    }
+    /* Pieces of the fan that each restart at its hub and overlap the
+     * previous piece by one edge vertex. */
+    v9x_d3d_dp2_vertex(user, first, &converted[0]);
+    done = 1ul;
+    while (done + 1ul < vertices) {
+        v9x_u32 n = vertices - done;
+        v9x_u32 i;
+
+        if (n > V9X_D3D_DP2_CONVERT + 1ul) {
+            n = V9X_D3D_DP2_CONVERT + 1ul;
+        }
+        for (i = 0ul; i < n; ++i) {
+            v9x_d3d_dp2_vertex(user, first + (done + i) * user->fvf->stride,
+                               &converted[1ul + i]);
+        }
+        (void)v9x_r3d_records_append_fan(user->run, converted, n + 1ul);
+        done += n - 1ul;
+    }
 }
 
 static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
@@ -3337,9 +3397,9 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
     V9X_R3D_VERTEX triangle[3];
 
     v9x_d3d_dp2_settle(user);
-    triangle[0] = *(const V9X_R3D_VERTEX *)a;
-    triangle[1] = *(const V9X_R3D_VERTEX *)b;
-    triangle[2] = *(const V9X_R3D_VERTEX *)c;
+    v9x_d3d_dp2_vertex(user, a, &triangle[0]);
+    v9x_d3d_dp2_vertex(user, b, &triangle[1]);
+    v9x_d3d_dp2_vertex(user, c, &triangle[2]);
     (void)v9x_r3d_records_append_list(user->run, triangle, 1ul);
 }
 
@@ -3544,6 +3604,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     V9X_DP2_SINK sink;
     V9X_DP2_RESULT walked;
     V9X_D3D_DP2_USER user;
+    V9X_DP2_FVF fvf;
     V9X_R3D_RECORDS *run = &v9x_d3d_dp2_run;
 
     if (data == 0) {
@@ -3562,7 +3623,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
      * nothing drawn, which is what the DX5 entry points do for the same
      * conditions; an error here would stop an application over a frame.
      */
-    if (data->dwVertexType != V9X_D3DFVF_TLVERTEX) {
+    if (!v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_refused_fvf;
             v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -3580,8 +3641,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
         (data->dwVertexLength != 0ul &&
          (vertices == 0 ||
           !v9x_d3d_dp2_readable(1ul, vertices + data->dwVertexOffset,
-                                data->dwVertexLength *
-                                    sizeof(V9X_D3DTLVERTEX)))) ||
+                                data->dwVertexLength * fvf.stride))) ||
         !v9x_d3d_dp2_readable(0ul, commands + data->dwCommandOffset,
                               data->dwCommandLength)) {
         if (v9x_hal != 0) {
@@ -3597,7 +3657,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     stream.command_bytes = data->dwCommandLength;
     stream.vertices = vertices != 0 ? vertices + data->dwVertexOffset : 0;
     stream.vertex_count = vertices != 0 ? data->dwVertexLength : 0ul;
-    stream.vertex_stride = sizeof(V9X_D3DTLVERTEX);
+    stream.vertex_stride = fvf.stride;
 
     /* Triangles another context left pending are drawn on it first: the
      * batch sink draws on whichever context it names. */
@@ -3619,6 +3679,11 @@ static DWORD v9x_d3d_draw_primitives2_body(
     user.context = context;
     user.run = run;
     user.rstates = data->lpdwRStates;
+    user.fvf = v9x_dp2_fvf_is_tlvertex(&fvf) ? 0 : &fvf;
+    if (!v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.dp2_converted_calls;
+        v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
+    }
     if (user.rstates != 0 && user.rstates != v9x_d3d_dp2_probed_rstates) {
         if (IsBadWritePtr(user.rstates,
                           V9X_D3DHAL_MAX_RSTATES_DX6 * sizeof(DWORD))) {
@@ -3776,7 +3841,9 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
  * answer that is a function of the nine.
  *
  * The guard band is the engine's coordinate range (see below). dwFVFCaps
- * zero is "TLVERTEX only".
+ * is one texture coordinate set: zero ("TLVERTEX only") is what made
+ * d3d8.dll refuse the HAL, see v9x_dp2_fvf_layout, and DrawPrimitives2
+ * converts the other pre-transformed layouts it is then sent.
  * dwMaxTextureRepeat and dvMaxVertexW are not limits measured on any card:
  * the first is the DDK samples' customary 2048, the second large enough
  * that no W-based depth is refused.
@@ -3827,7 +3894,7 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
         caps->dvGuardBandRight = band;
         caps->dvGuardBandBottom = band;
     }
-    caps->dwFVFCaps = 0ul;
+    caps->dwFVFCaps = 1ul;
     caps->dwTextureOpCaps = V9X_D3DTEXOPCAPS_DISABLE |
                             V9X_D3DTEXOPCAPS_SELECTARG1 |
                             V9X_D3DTEXOPCAPS_SELECTARG2 |

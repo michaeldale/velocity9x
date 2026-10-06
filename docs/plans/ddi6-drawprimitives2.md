@@ -1,6 +1,7 @@
 # DDI 6 (DrawPrimitives2): Direct3D 8, per-application opt-in, the runtime's flush rate
 
-Date: 2026-10-06. Status: open. Part A in progress; Parts B and C recorded
+Date: 2026-10-06. Status: in progress. Part A steps 1 and 2 done (D3D8
+uses the HAL on both machines); step 3 open. Parts B and C recorded
 at Michael's request to be done after it. Machines: A8U4I5 with the Rage XL
 PCI (`10.0.1.172`), the netbook (GMA 950, `10.0.1.254`).
 
@@ -14,7 +15,7 @@ correct but slower than at DDI 5 (netbook 27.2 vs 42.1 fps, Rage XL 12.6 vs
 runtime making about three DrawPrimitives2 calls for each of the game's
 DX5-style DrawPrimitive calls.
 
-## Part A: Direct3D 8 on the HAL (in progress)
+## Part A: Direct3D 8 on the HAL (steps 1 and 2 done)
 
 `d3d8.dll` refuses the HAL device in `GetDeviceCaps` unless the adapter's
 format-operation list holds a format with `D3DFORMAT_OP_3DACCELERATION`.
@@ -32,6 +33,14 @@ it for this driver. Steps:
    confirm with `docs/probe/.../ddi6/d3d8probe.c` (`GetDeviceCaps` HAL
    returns `D3D_OK`), then the DxDiag D3D8 cube.
 3. A real DX8 title on both machines.
+
+Steps 1 and 2, 2026-10-06: the failing rule is `FVFCaps` zero (audit at
+`0x40f6d0`, which cuts every format to display-mode only). Fixed by
+reporting one texture coordinate set and converting flexible vertex
+formats in DrawPrimitives2. D3D8's DxDiag cube draws on the Rage XL
+(DirectX 9.0c) and DxDiag 8.0 passes on the netbook; see
+`docs/probe/a8u4i5-rage-xl-pci-2026-10-06/README.md`, "Direct3D 8 on the
+HAL".
 
 ## Part B: DDI 6 for the applications that need it
 
