@@ -111,3 +111,18 @@ driver can change and re-measure Half-Life on both machines.
 Measurement for all three parts: Half-Life `timedemo mwd5`, 640x480 D3D,
 DDI 5 and DDI 6 on the same build and boot; the Gen3 timing buckets on
 the netbook.
+
+## Follow-ups after Parts A to C (2026-10-07)
+
+- Points and lines in DrawPrimitives2 are drawn (one-pixel quads; see
+  `docs/plans/d3d-line-raster-and-backface-cull.md`, "Update 2026-10-07").
+- Texture stages past the first are not used: every engine publishes one
+  blend stage, so a well-behaved application multipasses. Using a second
+  stage needs the Gen3 multitexture path (the OpenGL ICD's) and the FVF
+  converter to keep a second coordinate set; a project of its own.
+- Hardware transform and lighting does not exist on any of these chips.
+  Direct3D 9 stays unavailable because it needs a DDI 7 driver, not
+  because of T&L; DDI 7 (the DX7 DrawPrimitives2 records and
+  GetDriverState) would be the next step for it.
+- The netbook took DirectX 9.0c (December 2005 redistributable, setup
+  log "succeeded need restart") and did not come back from the restart.

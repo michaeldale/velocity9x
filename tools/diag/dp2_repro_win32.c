@@ -295,6 +295,108 @@ static void run_phase(int number, const char *name)
             (unsigned long)(t1.QuadPart - t0.QuadPart), (unsigned long)last);
 }
 
+/*
+ * Lines and points, read back. The target is cleared to black by a colour
+ * fill, a horizontal line (100,150)-(200,150), a vertical one
+ * (50,100)-(50,200) and a point at (220,220) are drawn in white with no
+ * texture, and the target is locked and counted: lit pixels on each, and
+ * on the rows or columns either side, which a one-pixel line leaves dark.
+ * IDirectDrawSurface slots 5 Blt, 25 Lock, 32 Unlock.
+ */
+#define D3DPT_POINTLIST 1ul
+#define D3DPT_LINELIST 2ul
+#define DDBLT_COLORFILL 0x400ul
+#define DDBLT_WAIT 0x1000000ul
+
+static void line_check(void *target)
+{
+    DWORD fx[25];
+    TLV v[4];
+    SURFDESC d;
+    HRESULT hr_line, hr_point, hr;
+    int on_h = 0, off_h = 0, on_v = 0, off_v = 0, on_p = 0, around_p = 0;
+    int x, y;
+
+    memset(fx, 0, sizeof(fx));
+    fx[0] = sizeof(fx);
+    hr = ((HRESULT (__stdcall *)(void *, RECT *, void *, RECT *, DWORD,
+                                 DWORD *))VT(target)[5])(
+        target, 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, fx);
+    fprintf(out, "LineClear=%08lx\n", (unsigned long)hr);
+    set_state(RS_TEXTUREHANDLE, 0ul);
+    ((HRESULT (__stdcall *)(void *))VT(dev)[10])(dev);
+    make_quad(v, 0.0f, 0.0f, 1.0f);
+    v[0].color = 0xffffffffu;
+    v[0].sx = 100.0f; v[0].sy = 150.0f;
+    v[1] = v[0];
+    v[1].sx = 200.0f;
+    hr_line = draw(D3DPT_LINELIST, v, 2ul, 0ul);
+    v[0].sx = 50.0f; v[0].sy = 100.0f;
+    v[1] = v[0];
+    v[1].sy = 200.0f;
+    hr = draw(D3DPT_LINELIST, v, 2ul, 0ul);
+    if (hr != 0) {
+        hr_line = hr;
+    }
+    v[0].sx = 220.0f; v[0].sy = 220.0f;
+    hr_point = draw(D3DPT_POINTLIST, v, 1ul, 0ul);
+    ((HRESULT (__stdcall *)(void *))VT(dev)[11])(dev);
+    fprintf(out, "LineDrawHr=%08lx PointDrawHr=%08lx\n",
+            (unsigned long)hr_line, (unsigned long)hr_point);
+
+    memset(&d, 0, sizeof(d));
+    d.dwSize = sizeof(d);
+    hr = ((HRESULT (__stdcall *)(void *, RECT *, SURFDESC *, DWORD, HANDLE))
+              VT(target)[25])(target, 0, &d, DDLOCK_WAIT, 0);
+    fprintf(out, "LineLock=%08lx pitch=%ld\n", (unsigned long)hr,
+            (long)d.lPitch);
+    if (hr != 0 || d.lpSurface == 0) {
+        return;
+    }
+#define PIX(px, py) (((WORD *)((BYTE *)d.lpSurface + (py) * d.lPitch))[px])
+    for (x = 100; x < 200; ++x) {
+        on_h += PIX(x, 150) != 0;
+        off_h += (PIX(x, 148) != 0) + (PIX(x, 152) != 0);
+    }
+    for (y = 100; y < 200; ++y) {
+        on_v += PIX(50, y) != 0;
+        off_v += (PIX(48, y) != 0) + (PIX(52, y) != 0);
+    }
+    /* Every row and column near each line, so a half-pixel convention
+     * shows as a shift rather than a miss. */
+    for (y = 147; y <= 153; ++y) {
+        int lit = 0;
+
+        for (x = 90; x < 210; ++x) {
+            lit += PIX(x, y) != 0;
+        }
+        fprintf(out, "Row%d=%d\n", y, lit);
+    }
+    for (x = 47; x <= 53; ++x) {
+        int lit = 0;
+
+        for (y = 90; y < 210; ++y) {
+            lit += PIX(x, y) != 0;
+        }
+        fprintf(out, "Col%d=%d\n", x, lit);
+    }
+    /* The point's pixel, whichever of the four round (220,220) the fill
+     * rule picks, and the ring two pixels out. */
+    for (y = 219; y <= 220; ++y) {
+        for (x = 219; x <= 220; ++x) {
+            on_p += PIX(x, y) != 0;
+        }
+    }
+    for (x = 217; x <= 222; ++x) {
+        around_p += (PIX(x, 217) != 0) + (PIX(x, 222) != 0);
+    }
+#undef PIX
+    ((HRESULT (__stdcall *)(void *, void *))VT(target)[32])(target, 0);
+    fprintf(out, "LineH=%d/100 LineHBeside=%d\n", on_h, off_h);
+    fprintf(out, "LineV=%d/100 LineVBeside=%d\n", on_v, off_v);
+    fprintf(out, "Point=%d/4 PointAround=%d\n", on_p, around_p);
+}
+
 static void *make_surface(void *dd, DWORD caps, DWORD w, DWORD h, int fmt)
 {
     SURFDESC d;
@@ -449,6 +551,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     run_phase(16, "indexed-24-vertex-array");
     run_phase(17, "indexed-32-vertex-array");
     run_phase(18, "indexed-48-vertex-array");
+    line_check(target);
     ((ULONG (__stdcall *)(void *))VT(dev)[2])(dev);
     dev = 0;
 

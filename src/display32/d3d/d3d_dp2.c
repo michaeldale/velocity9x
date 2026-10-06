@@ -75,6 +75,8 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
     result->states = 0ul;
     result->stage_states = 0ul;
     result->undrawn = 0ul;
+    result->points = 0ul;
+    result->lines = 0ul;
     result->ops_seen[0] = 0ul;
     result->ops_seen[1] = 0ul;
 
@@ -110,7 +112,21 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                     goto malformed;
                 }
             }
-            ++result->undrawn;
+            if (sink->point == 0) {
+                ++result->undrawn;
+                break;
+            }
+            /* D3DHAL_DP2POINTS: WORD count, WORD start vertex. */
+            for (i = 0ul; i < count; ++i) {
+                v9x_u32 n = v9x_dp2_word(data + i * 4ul);
+                v9x_u32 first = v9x_dp2_word(data + i * 4ul + 2ul);
+                v9x_u32 k;
+
+                for (k = 0ul; k < n; ++k) {
+                    sink->point(sink->user, v9x_dp2_vertex(stream, first + k));
+                }
+                result->points += n;
+            }
             break;
 
         case V9X_DP2OP_INDEXEDLINELIST:
@@ -119,7 +135,17 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                 !v9x_dp2_indices(stream, data, count * 2ul, 2ul, 0ul)) {
                 goto malformed;
             }
-            ++result->undrawn;
+            if (sink->line == 0) {
+                ++result->undrawn;
+                break;
+            }
+            for (i = 0ul; i < count; ++i) {
+                sink->line(sink->user,
+                           v9x_dp2_vertex(stream, v9x_dp2_word(data + i * 4ul)),
+                           v9x_dp2_vertex(stream,
+                                          v9x_dp2_word(data + i * 4ul + 2ul)));
+            }
+            result->lines += count;
             break;
 
         case V9X_DP2OP_INDEXEDTRIANGLELIST:
@@ -166,7 +192,20 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                 !v9x_dp2_span(stream, v9x_dp2_word(data), count * 2ul)) {
                 goto malformed;
             }
-            ++result->undrawn;
+            if (sink->line == 0) {
+                ++result->undrawn;
+                break;
+            }
+            {
+                v9x_u32 first = v9x_dp2_word(data);
+
+                for (i = 0ul; i < count; ++i) {
+                    sink->line(sink->user,
+                               v9x_dp2_vertex(stream, first + i * 2ul),
+                               v9x_dp2_vertex(stream, first + i * 2ul + 1ul));
+                }
+            }
+            result->lines += count;
             break;
 
         case V9X_DP2OP_LINESTRIP:
@@ -176,7 +215,20 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                  !v9x_dp2_span(stream, v9x_dp2_word(data), count + 1ul))) {
                 goto malformed;
             }
-            ++result->undrawn;
+            if (sink->line == 0) {
+                ++result->undrawn;
+                break;
+            }
+            {
+                v9x_u32 first = v9x_dp2_word(data);
+
+                for (i = 0ul; i < count; ++i) {
+                    sink->line(sink->user,
+                               v9x_dp2_vertex(stream, first + i),
+                               v9x_dp2_vertex(stream, first + i + 1ul));
+                }
+            }
+            result->lines += count;
             break;
 
         case V9X_DP2OP_INDEXEDLINESTRIP:
@@ -185,7 +237,17 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                 !v9x_dp2_indices(stream, data, need / 2ul, 2ul, 0ul)) {
                 goto malformed;
             }
-            ++result->undrawn;
+            if (sink->line == 0) {
+                ++result->undrawn;
+                break;
+            }
+            for (i = 0ul; i < count; ++i) {
+                sink->line(sink->user,
+                           v9x_dp2_vertex(stream, v9x_dp2_word(data + i * 2ul)),
+                           v9x_dp2_vertex(stream,
+                                          v9x_dp2_word(data + i * 2ul + 2ul)));
+            }
+            result->lines += count;
             break;
 
         case V9X_DP2OP_TRIANGLELIST:
@@ -305,7 +367,22 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             if (need > left) {
                 goto malformed;
             }
-            ++result->undrawn;
+            if (sink->line == 0) {
+                ++result->undrawn;
+                break;
+            }
+            {
+                const v9x_u8 *inline_vertices = data + v9x_dp2_pad(data);
+
+                for (i = 0ul; i < count; ++i) {
+                    sink->line(sink->user,
+                               inline_vertices +
+                                   i * 2ul * stream->vertex_stride,
+                               inline_vertices +
+                                   (i * 2ul + 1ul) * stream->vertex_stride);
+                }
+            }
+            result->lines += count;
             break;
 
         case V9X_DP2OP_TEXTURESTAGESTATE:
@@ -356,7 +433,23 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                                  v9x_dp2_word(data))) {
                 goto malformed;
             }
-            ++result->undrawn;
+            if (sink->line == 0) {
+                ++result->undrawn;
+                break;
+            }
+            {
+                v9x_u32 base = v9x_dp2_word(data);
+
+                for (i = 0ul; i < count; ++i) {
+                    const v9x_u8 *l = data + 2ul + i * 4ul;
+
+                    sink->line(sink->user,
+                               v9x_dp2_vertex(stream, base + v9x_dp2_word(l)),
+                               v9x_dp2_vertex(stream,
+                                              base + v9x_dp2_word(l + 2)));
+                }
+            }
+            result->lines += count;
             break;
 
         case V9X_DP2OP_VIEWPORTINFO:
@@ -517,4 +610,68 @@ void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
                                        layout->tex0_floats >= 2ul
                                    ? v9x_dp2_dword(source + layout->tex0 + 4ul)
                                    : 0ul);
+}
+
+/* Floats through the bytes, so the walker stays free of aliasing casts. */
+typedef union v9x_dp2_float_bits {
+    float f;
+    v9x_u32 u;
+} V9X_DP2_FLOAT_BITS;
+
+static float v9x_dp2_get_float(const v9x_u8 *p)
+{
+    V9X_DP2_FLOAT_BITS bits;
+
+    bits.u = v9x_dp2_dword(p);
+    return bits.f;
+}
+
+/* A copy of the 32-byte vertex at source with sx and sy moved by dx, dy. */
+static void v9x_dp2_moved(const v9x_u8 *source, float dx, float dy,
+                          v9x_u8 *out)
+{
+    V9X_DP2_FLOAT_BITS bits;
+    v9x_u32 i;
+
+    for (i = 0ul; i < 32ul; ++i) {
+        out[i] = source[i];
+    }
+    bits.f = v9x_dp2_get_float(source) + dx;
+    v9x_dp2_put(out, bits.u);
+    bits.f = v9x_dp2_get_float(source + 4) + dy;
+    v9x_dp2_put(out + 4, bits.u);
+}
+
+v9x_u32 v9x_dp2_line_quad(const v9x_u8 *a, const v9x_u8 *b, v9x_u8 *out)
+{
+    float dx = v9x_dp2_get_float(b) - v9x_dp2_get_float(a);
+    float dy = v9x_dp2_get_float(b + 4) - v9x_dp2_get_float(a + 4);
+    float adx = dx < 0.0f ? -dx : dx;
+    float ady = dy < 0.0f ? -dy : dy;
+    /* Across the minor axis, one pixel past the line (d3d_dp2.h). */
+    float ox = adx >= ady ? 0.0f : 1.0f;
+    float oy = adx >= ady ? 1.0f : 0.0f;
+
+    if (adx == 0.0f && ady == 0.0f) {
+        return 0ul;
+    }
+    /* A+ A B+, then A B B+: both start on a copy of a. */
+    v9x_dp2_moved(a, ox, oy, out);
+    v9x_dp2_moved(a, 0.0f, 0.0f, out + 32);
+    v9x_dp2_moved(b, ox, oy, out + 64);
+    v9x_dp2_moved(a, 0.0f, 0.0f, out + 96);
+    v9x_dp2_moved(b, 0.0f, 0.0f, out + 128);
+    v9x_dp2_moved(b, ox, oy, out + 160);
+    return 2ul;
+}
+
+v9x_u32 v9x_dp2_point_quad(const v9x_u8 *v, v9x_u8 *out)
+{
+    v9x_dp2_moved(v, 0.0f, 0.0f, out);
+    v9x_dp2_moved(v, 1.0f, 0.0f, out + 32);
+    v9x_dp2_moved(v, 1.0f, 1.0f, out + 64);
+    v9x_dp2_moved(v, 0.0f, 0.0f, out + 96);
+    v9x_dp2_moved(v, 1.0f, 1.0f, out + 128);
+    v9x_dp2_moved(v, 0.0f, 1.0f, out + 160);
+    return 2ul;
 }

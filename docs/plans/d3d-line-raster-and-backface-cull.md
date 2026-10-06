@@ -1,6 +1,7 @@
 # Direct3D gaps: backface culling and line rasterisation
 
-> Status: Open. The two capabilities remain unimplemented compatibility gaps.
+> Status: Open. Lines and points are drawn on the DDI 6 path since
+> 2026-10-07 (section 2, "Update"); the DX5 entry points still refuse them.
 
 Two capabilities the HAL does not have. Neither is a defect — nothing is
 broken, and nothing regressed. They came out of a caps-level comparison
@@ -129,3 +130,26 @@ out of it.
 Below everything in [STATUS.md](../STATUS.md)'s open-work table. Culling is the
 cheaper of the two and the one with a correctness argument behind it; lines
 should not be started until step 1 above says an application wants them.
+
+## Update 2026-10-07: lines and points at DDI 6
+
+DrawPrimitives2 is the first path the runtime sends lines and points to,
+so they are drawn there, on every engine, as one-pixel quads
+(`v9x_dp2_line_quad`, `v9x_dp2_point_quad` in `src/display32/d3d/d3d_dp2.c`,
+host-tested): each line a quad from a to b one pixel deep across its minor
+axis, each point the unit square at its position, a quad triangle the
+context's cull mode would remove turned round rather than dropped. All
+seven DP2 point and line opcodes reach them.
+
+The minor axis spans [c, c + 1), not c plus or minus a half: on the Rage
+XL the first version (plus or minus a half) lit row 149 for a line on row
+150, because the Mach64 samples at the pixel centre plus half a pixel;
+[c, c + 1) holds both c and c + 0.5 and lands on 150 under either
+convention. Measured on A8U4I5 with `tools/diag/dp2_repro_win32.c` read
+back: a line (100,150)-(200,150) lights 100 pixels of row 150 and nothing
+on rows 147 to 153 otherwise, (50,100)-(50,200) 100 pixels of column 50,
+and a point one pixel.
+
+Not done: the DX5 entry points (`DrawOnePrimitive`, `DrawPrimitives`)
+still refuse lines; `dpcLineCaps` is still empty; no engine but the Mach64
+was looked at.

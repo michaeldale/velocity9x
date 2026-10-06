@@ -3499,6 +3499,62 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
 }
 
 /*
+ * Points and lines, as one-pixel quads (v9x_dp2_line_quad says how): no
+ * engine here has a line primitive, and DrawPrimitives2 is the first path
+ * that is sent them. A line has no back, so a quad triangle the context's
+ * cull mode would remove is turned round instead: two of its vertices
+ * swap, and the first, the one flat shading reads, stays where it is.
+ */
+static void v9x_d3d_dp2_quad(V9X_D3D_DP2_USER *user, V9X_R3D_VERTEX *quad,
+                             v9x_u32 triangles)
+{
+    v9x_u32 t;
+
+    for (t = 0ul; t < triangles; ++t) {
+        V9X_R3D_VERTEX *tri = quad + t * 3ul;
+
+        if (v9x_d3d_triangle_culled(user->context,
+                                    (const V9X_D3DTLVERTEX *)tri)) {
+            V9X_R3D_VERTEX swap = tri[1];
+
+            tri[1] = tri[2];
+            tri[2] = swap;
+        }
+    }
+    if (triangles != 0ul) {
+        (void)v9x_r3d_records_append_list(user->run, quad, triangles);
+    }
+}
+
+static void v9x_d3d_dp2_line(void *opaque, const v9x_u8 *a, const v9x_u8 *b)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_R3D_VERTEX ends[2];
+    V9X_R3D_VERTEX quad[6];
+
+    v9x_d3d_dp2_settle(user);
+    v9x_d3d_dp2_vertex(user, a, &ends[0]);
+    v9x_d3d_dp2_vertex(user, b, &ends[1]);
+    v9x_d3d_dp2_quad(user, quad,
+                     v9x_dp2_line_quad((const v9x_u8 *)&ends[0],
+                                       (const v9x_u8 *)&ends[1],
+                                       (v9x_u8 *)quad));
+}
+
+static void v9x_d3d_dp2_point(void *opaque, const v9x_u8 *v)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_R3D_VERTEX centre;
+    V9X_R3D_VERTEX quad[6];
+
+    v9x_d3d_dp2_settle(user);
+    v9x_d3d_dp2_vertex(user, v, &centre);
+    v9x_d3d_dp2_quad(user, quad,
+                     v9x_dp2_point_quad((const v9x_u8 *)&centre,
+                                        (v9x_u8 *)quad));
+}
+
+/*
  * The memory behind a DrawPrimitives2 surface: the LOCAL object the runtime
  * passed (not an interface wrapper, unlike the DX5 callbacks), its GLOBAL
  * half, and fpVidMem. Every pointer is the runtime's and is tested before
@@ -3835,6 +3891,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     sink.list = v9x_d3d_dp2_list;
     sink.fan = v9x_d3d_dp2_fan;
     sink.triangle = v9x_d3d_dp2_triangle;
+    sink.point = v9x_d3d_dp2_point;
+    sink.line = v9x_d3d_dp2_line;
     sink.record = v9x_d3d_dp2_ring_entry != 0 ? v9x_d3d_dp2_ring_record : 0;
 
     v9x_dp2_walk(&stream, &sink, &walked);

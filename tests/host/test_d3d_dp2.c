@@ -119,6 +119,44 @@ static void on_record(void *user, v9x_u32 op, v9x_u32 count,
     last_record_op = op;
 }
 
+static v9x_u32 lines_seen[8][2];
+static v9x_u32 line_count;
+static v9x_u32 points_seen[8];
+static v9x_u32 point_count;
+
+static void on_line(void *user, const v9x_u8 *a, const v9x_u8 *b)
+{
+    (void)user;
+    if (line_count < 8ul) {
+        lines_seen[line_count][0] = (v9x_u32)((a - pool) / STRIDE);
+        lines_seen[line_count][1] = (v9x_u32)((b - pool) / STRIDE);
+    }
+    ++line_count;
+}
+
+static void on_point(void *user, const v9x_u8 *v)
+{
+    (void)user;
+    if (point_count < 8ul) {
+        points_seen[point_count] = (v9x_u32)((v - pool) / STRIDE);
+    }
+    ++point_count;
+}
+
+static float float_at(const v9x_u8 *p)
+{
+    float f;
+
+    memcpy(&f, p, sizeof(f));
+    return f;
+}
+
+static void set_xy(v9x_u8 *v, float x, float y)
+{
+    memcpy(v, &x, sizeof(x));
+    memcpy(v + 4, &y, sizeof(y));
+}
+
 static void put8(v9x_u32 value) { COMMANDS[used++] = (v9x_u8)value; }
 static void put16(v9x_u32 value) { put8(value & 0xfful); put8(value >> 8); }
 static void put32(v9x_u32 value) { put16(value & 0xfffful); put16(value >> 16); }
@@ -144,6 +182,8 @@ static void walk(CAPTURE *c, V9X_DP2_RESULT *r)
     k.fan = on_fan;
     k.triangle = on_triangle;
     k.record = 0;
+    k.point = 0;
+    k.line = 0;
     v9x_dp2_walk(&s, &k, r);
 }
 
@@ -362,6 +402,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = on_record;
+            k.point = 0; k.line = 0;
             records_seen = 0ul; record_bytes = 0ul;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && records_seen == 2ul &&
@@ -381,6 +422,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = 0;
+            k.point = 0; k.line = 0;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && r.triangles == 1ul);
             /* Vertices 1 to 3 need a pool of four. */
@@ -388,6 +430,60 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_MALFORMED);
         }
+    }
+
+    /* Points and lines, when the sink takes them. */
+    {
+        V9X_DP2_STREAM s;
+        V9X_DP2_SINK k;
+        v9x_u8 quad[6 * 32];
+        v9x_u8 va[32], vb[32];
+
+        memset(&c, 0, sizeof(c)); used = 0ul;
+        command(V9X_DP2OP_LINESTRIP, 2ul); put16(3ul);
+        command(V9X_DP2OP_INDEXEDLINELIST2, 1ul); put16(4ul);
+        put16(1ul); put16(5ul);
+        command(V9X_DP2OP_POINTS, 1ul); put16(2ul); put16(7ul);
+        s.commands = COMMANDS; s.command_bytes = used;
+        s.vertices = pool; s.vertex_count = POOL; s.vertex_stride = STRIDE;
+        k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
+        k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
+        k.record = 0; k.point = on_point; k.line = on_line;
+        line_count = 0ul; point_count = 0ul;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_OK && r.lines == 3ul && r.points == 2ul &&
+              r.undrawn == 0ul);
+        CHECK(line_count == 3ul && lines_seen[0][0] == 3ul &&
+              lines_seen[0][1] == 4ul && lines_seen[1][0] == 4ul &&
+              lines_seen[1][1] == 5ul && lines_seen[2][0] == 5ul &&
+              lines_seen[2][1] == 9ul);
+        CHECK(point_count == 2ul && points_seen[0] == 7ul &&
+              points_seen[1] == 8ul);
+
+        /* Without the callbacks the same stream draws nothing. */
+        walk(&c, &r);
+        CHECK(r.status == V9X_DP2_OK && r.undrawn == 3ul && r.lines == 0ul);
+
+        /* An x-major line widens in y, both triangles start on a. */
+        memset(va, 0, sizeof(va)); memset(vb, 0, sizeof(vb));
+        set_xy(va, 10.0f, 20.0f); set_xy(vb, 30.0f, 25.0f);
+        va[16] = 0x11u; vb[16] = 0x22u;
+        CHECK(v9x_dp2_line_quad(va, vb, quad) == 2ul);
+        CHECK(float_at(quad) == 10.0f && float_at(quad + 4) == 21.0f);
+        CHECK(float_at(quad + 32 + 4) == 20.0f);
+        CHECK(float_at(quad + 64) == 30.0f && float_at(quad + 68) == 26.0f);
+        CHECK(quad[16] == 0x11u && quad[96 + 16] == 0x11u &&
+              quad[128 + 16] == 0x22u);
+        /* A y-major line widens in x. */
+        set_xy(vb, 12.0f, 40.0f);
+        CHECK(v9x_dp2_line_quad(va, vb, quad) == 2ul);
+        CHECK(float_at(quad) == 11.0f && float_at(quad + 4) == 20.0f);
+        /* No length, no triangles. */
+        CHECK(v9x_dp2_line_quad(va, va, quad) == 0ul);
+        /* A point is the unit square from its position. */
+        CHECK(v9x_dp2_point_quad(va, quad) == 2ul);
+        CHECK(float_at(quad) == 10.0f && float_at(quad + 4) == 20.0f &&
+              float_at(quad + 64) == 11.0f && float_at(quad + 68) == 21.0f);
     }
 
     return failures;

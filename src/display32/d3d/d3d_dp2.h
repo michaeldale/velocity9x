@@ -92,6 +92,10 @@ typedef struct v9x_dp2_sink {
     void (*fan)(void *user, const v9x_u8 *first, v9x_u32 vertices);
     void (*triangle)(void *user, const v9x_u8 *a, const v9x_u8 *b,
                      const v9x_u8 *c);
+    /* Optional, may be null: points and lines, one call each. With these
+     * null the records are consumed and counted as undrawn. */
+    void (*point)(void *user, const v9x_u8 *v);
+    void (*line)(void *user, const v9x_u8 *a, const v9x_u8 *b);
     /* Optional, may be null: every record consumed, after the callbacks
      * above, with its payload and payload length. For instruments. */
     void (*record)(void *user, v9x_u32 op, v9x_u32 count,
@@ -115,9 +119,12 @@ typedef struct v9x_dp2_result {
     v9x_u32 triangles;           /* triangles handed to the sink       */
     v9x_u32 states;              /* render states handed over          */
     v9x_u32 stage_states;        /* texture stage states handed over   */
-    /* Records parsed and consumed but not drawn: points and lines, which
-     * no engine here rasterises, and the palette records. */
+    /* Records parsed and consumed but not drawn: points and lines when
+     * the sink takes none, and the palette records. */
     v9x_u32 undrawn;
+    /* Points and lines handed to the sink. */
+    v9x_u32 points;
+    v9x_u32 lines;
     /* One bit per opcode below 64 that was consumed. */
     v9x_u32 ops_seen[2];
 } V9X_DP2_RESULT;
@@ -162,5 +169,26 @@ int v9x_dp2_fvf_is_tlvertex(const V9X_DP2_FVF *layout);
 /* One vertex of layout at source into the 32 bytes of a D3DTLVERTEX. */
 void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
                          v9x_u8 *tlvertex);
+
+/*
+ * Points and lines as triangles, for engines that draw nothing else.
+ *
+ * A DirectX 6 point is one pixel and a line one pixel wide, whatever the
+ * point size (DDI 6 has no point sprites). A line becomes a quad from a to
+ * b one pixel deep across its minor axis, from the line to one pixel past
+ * it, and a point the unit square from its position to one pixel past. Not
+ * half a pixel either side: the engines sample at the pixel centre plus
+ * half a pixel, so a quad centred on row 150 lit row 149 on the Rage XL
+ * (2026-10-07, tools\diag\dp2_repro_win32.c), while [c, c + 1) holds both
+ * c and c + 0.5 and lands on the same row under either convention. The
+ * major axis keeps a and b, so the last pixel is left out as Direct3D
+ * does. Every output vertex is a copy of a
+ * D3DTLVERTEX (32 bytes) with only sx or sy moved, and both triangles of a
+ * line start on a copy of a, so flat shading takes a's colour as Direct3D
+ * does. Each returns the triangles written to out (6 vertices of room): 2,
+ * or 0 for a line of no length.
+ */
+v9x_u32 v9x_dp2_line_quad(const v9x_u8 *a, const v9x_u8 *b, v9x_u8 *out);
+v9x_u32 v9x_dp2_point_quad(const v9x_u8 *v, v9x_u8 *out);
 
 #endif
