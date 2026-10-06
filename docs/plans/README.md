@@ -4,6 +4,7 @@
 - [3dfx Voodoo3: what the retro-agent work supplies to the 2D and D3D engines](3dfx-voodoo3-prior-work.md) - Open; desk work, nothing coded.
 - [ATI Rage Mobility-M hardware Direct3D and OpenGL](ati-rage-mobility-hardware-3d.md) - Proposed; research complete, physical bring-up not started.
 - [Direct3D gaps: backface culling and line rasterisation](d3d-line-raster-and-backface-cull.md) - Open.
+- [DDI 6 (DrawPrimitives2): Direct3D 8, per-application opt-in, the runtime's flush rate](ddi6-drawprimitives2.md) - Open; Part A (D3D8 on the HAL) in progress, B and C recorded.
 - [dispbench as the instrument mode 3 needs, and the four other products proposed alongside it](dispbench-as-the-measurement-instrument.md) - Open.
 - [Making the main VDD willing to manage the DOS-box round trip](dos-box-vdd-virtualization.md) - Open.
 - [Dynamic VBE pipeline](dynamic-vbe-pipeline.md) - Shipped in 0.5.0.
