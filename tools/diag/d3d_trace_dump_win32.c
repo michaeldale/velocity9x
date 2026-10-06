@@ -445,13 +445,13 @@ static int v9x_has_switch(const char *match)
     if (cmd == 0) {
         return 0;
     }
-    for (; *cmd != ' '; ++cmd) {
-        for (index = 0; match[index] != ' '; ++index) {
+    for (; *cmd != '\0'; ++cmd) {
+        for (index = 0; match[index] != '\0'; ++index) {
             if (cmd[index] != match[index]) {
                 break;
             }
         }
-        if (match[index] == ' ') {
+        if (match[index] == '\0') {
             return 1;
         }
     }

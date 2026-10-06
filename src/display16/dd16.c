@@ -421,7 +421,7 @@ static void v9x_dd_stamp_append(char *line, WORD *at, const char *text)
 {
     WORD index = 0u;
 
-    while (text[index] != ' ') {
+    while (text[index] != '\0') {
         line[*at] = text[index];
         ++(*at);
         ++index;
