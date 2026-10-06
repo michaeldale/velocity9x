@@ -322,3 +322,22 @@ Open from this:
   after Michael looked at it; whether it hung shutting down or booting is
   not known. On boot 112 Part B behaves as on A8U4I5 (see the plan), with
   Half-Life 5 % below the previous build at DDI 5, unexplained.
+
+## Netbook: DirectX 9.0c and 3DMark 2001 SE (2026-10-07)
+
+DirectX 9.0c (December 2005 redistributable, retro-web file 61, fetched
+through A8U4I5 because the netbook's 0.7.1 agent download failed) installed
+with `DXSETUP /silent`; setup logged "succeeded need restart". The agent
+restart hung again and the machine was power-cycled (boot 113). After it
+`d3d8.dll` and `ddraw.dll` match A8U4I5's, and the D3D8 probe gets the HAL
+with R5G6B5 ops 0xc00.
+
+3DMark 2001 SE build 330 at 640x480x16, software T&L, default tests
+(`3dmark2001-netbook-640-error.log`): Car Chase 2.5 / 1.1 fps, Dragothic
+2.7 / 1.4, Lobby 5.4 / 2.9, fill 64.9 / 65.4 MTexels/s, High Polygon Count
+0.5 / 0.5 MTriangles/s, Vertex Shader 2.7 fps; Nature, EMBM, DOT3 and Pixel
+Shader not supported; the same `CreateTexture` INVALIDCALL ends the run at
+Point Sprites. The netbook fills four times faster than the Rage XL and its
+game tests are still 1 to 5 fps, and 0.5 MTriangles/s is low for software
+T&L on a 1.66 GHz CPU: the cost looks per draw, not per pixel. Not
+measured yet.

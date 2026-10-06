@@ -1,0 +1,365 @@
+Application info
+----------------
+
+Name          3DMark2001 SE
+Build         330
+
+Error log
+---------
+
+Could not create texture - D3DERR_INVALIDCALL
+
+System info available: yes
+Project available:     yes
+
+
+
+Result file
+-----------
+
+3DMARK2001 PROJECT FILE
+
+PROJECT
+Name	My Benchmark
+Description	
+Registration Name	
+Registration Key	
+3DMark Version	330
+
+DISPLAY
+Platform	Velocity9x Intel GMA 950 (945GSE)
+CPU Optimization	D3D Software T&L
+Width	640
+Height	480
+Depth	16 bit
+Z-Buffering	16 bit
+Texture Format	16 bit
+Buffering	Double
+Refresh Rate	Default
+FSAA Mode	None
+
+OPTIONS
+Show Title Screens	Yes
+Continuous Benchmark	No
+Benchmark Run Count	1
+Demo Sounds Enabled	Yes
+Continuous Demo	No
+Game Sound Effects Enabled	Yes
+Game Music Enabled	Yes
+Game Detail Level	Low
+
+RESULTS
+3DMark Score	N/A
+Game 1 - Car Chase - Low Detail	2.5 fps
+Game 1 - Car Chase - High Detail	1.1 fps
+Game 2 - Dragothic - Low Detail	2.7 fps
+Game 2 - Dragothic - High Detail	1.4 fps
+Game 3 - Lobby - Low Detail	5.4 fps
+Game 3 - Lobby - High Detail	2.9 fps
+Game 4 - Nature	Not supported by hardware
+Fill Rate (Single-Texturing)	64.9 MTexels/s
+Fill Rate (Multi-Texturing)	65.4 MTexels/s
+High Polygon Count (1 Light)	0.5 MTriangles/s
+High Polygon Count (8 Lights)	0.5 MTriangles/s
+Environment Bump Mapping	Not supported by hardware
+DOT3 Bump Mapping	Not supported by hardware
+Vertex Shader	2.7 fps
+Pixel Shader	Not supported by hardware
+Advanced Pixel Shader	N/A
+Point Sprites	N/A
+
+SYSTEM INFO
+
+System Info Version	2.2
+Installation ID	0x00000000
+OEM ID	
+
+CPU INFO
+CENTRAL PROCESSING UNITS
+Manufacturer	Intel
+Family	<unknown>
+Internal Clock	1.66 GHz
+Internal Clock Maximum	1.75 GHz
+External Clock	167 MHz
+Socket Designation	CPU 1
+Type	<unknown>
+Upgrade	<unknown>
+Capabilities	MMX, CMov, RDTSC, SSE, SSE2
+Version	Intel(R) Atom(TM) CPU N280   @ 1.66GHz              
+CPUID	0x000106c2
+
+CACHES
+Level	1 
+Capacity	24 KB
+Type	Data, Internal
+Type Details	<unknown>
+Error Correction Type	Parity
+Associativity	<unknown>
+
+Level	2 
+Capacity	512 KB
+Type	Instruction, Data, Internal
+Type Details	<unknown>
+Error Correction Type	Single-bit ECC
+Associativity	8-way Set-Associative
+
+DIRECTX INFO
+DirectX Version	9.0
+
+DIRECTDRAW INFO
+DirectDraw Version 	4.09.00.0904
+
+DISPLAY DEVICES
+Description	Primary Display Driver
+Manufacturer	Velocity9x
+Name	Velocity9x Intel GMA 950 (945GSE)
+Total Local Video Memory	8 MB
+Total Local Texture Memory	8 MB
+Total AGP Memory	0  bytes
+Display Driver	v9xdisp.drv
+Display Driver Version	0.11.0 (6ff23ee-dirty)
+Driver WHQL Certified	No
+Max Texture Width 	1024 
+Max Texture Height	1024 
+Max User Clipping Planes	0 
+Max Active Hardware Lights	0 
+Max Texture Blending Stages	1 
+Textures In Single Pass	1 
+Vertex Shader Version	N/A
+Pixel Shader Version	N/A
+Max Vertex Blend Matrices	0 
+Max Texture Coordinates	1 
+Vendor ID	0x8086
+Device ID	0x27ae
+Sub-System ID	0x308f103c
+Revision	0x03
+
+DISPLAY MODES
+Resolution	640x480x16-bit RGB [565]
+Resolution	1024x576x16-bit RGB [565]
+
+TEXTURE FORMATS
+Pixel Format	16-bit RGB [565]
+Pixel Format	16-bit ARGB [1555]
+Pixel Format	16-bit ARGB [4444]
+3D Capabilities	Subpixel Accurate Rasterizing, Vertex Fog, Bilinear Filtering, Point Sampling, Trilinear Filtering, Multiplicative Texture Blending, Texture Alpha Blending, Texture Clamping, Texture Mirroring, Texture Wrapping, Rendering to a Window
+
+DIRECTSHOW INFO
+DirectShow Version	6.05.01.0900
+
+REGISTERED DIRECTSHOW FILTERS
+Filter	.RAM file Parser
+Filter	AC3 Parser Filter
+Filter	ACELP.net Sipro Lab Audio Decoder
+Filter	ACM Wrapper
+Filter	ASF ACM Handler
+Filter	ASF DIB Handler
+Filter	ASF DJPEG Handler
+Filter	ASF ICM Handler
+Filter	ASF JPEG Handler
+Filter	ASF URL Handler
+Filter	ASF embedded stuff Handler
+Filter	ASX file Parser
+Filter	ASX v.2 file Parser
+Filter	AVI Decompressor
+Filter	AVI Draw
+Filter	AVI Splitter
+Filter	AVI/WAV File Source
+Filter	BDA MPE Filter
+Filter	BDA MPEG2 Transport Information Filter
+Filter	BDA Slip De-Framer
+Filter	ClearVideo® Decompression Filter
+Filter	Color Space Converter
+Filter	DV Muxer
+Filter	DV Splitter
+Filter	DV Video Decoder
+Filter	Default DirectSound Device
+Filter	Default MidiOut Device
+Filter	File Source (Async.)
+Filter	File Source (Netshow URL)
+Filter	File Source (URL)
+Filter	File stream renderer
+Filter	IVF source filter
+Filter	Indeo(R) audio software
+Filter	Indeo® video 4.3 Decompression Filter
+Filter	Indeo® video 5.04 Decompression Filter
+Filter	Internal LMRT Renderer
+Filter	Internal Script Command Renderer
+Filter	Line 21 Decoder
+Filter	Line 21 Decoder 2
+Filter	Lyric Parser
+Filter	MIDI Parser
+Filter	MJPEG Decompressor
+Filter	MPEG Audio Decoder
+Filter	MPEG Layer-3 Decoder
+Filter	MPEG Video Decoder
+Filter	MPEG-2 Demultiplexer
+Filter	MPEG-2 Sections and Tables
+Filter	MPEG-2 Splitter
+Filter	MPEG-I Stream Splitter
+Filter	Microsoft MPEG-4 Video Decompressor
+Filter	Multi-file Parser
+Filter	NSC file Parser
+Filter	Overlay Mixer2
+Filter	QT Decompressor
+Filter	QuickTime Movie Parser
+Filter	SAMI (CC) Parser
+Filter	TrueMotion 2.0 Decompressor
+Filter	URL StreamRenderer
+Filter	VBI Surface Allocator
+Filter	VGA 16 Color Ditherer
+Filter	VIVO Audio Decoder Filter
+Filter	VIVO Video Decoder Filter
+Filter	Video Renderer
+Filter	Voxware MetaSound Audio Decoder
+Filter	Voxware MetaVoice Audio Decoder
+Filter	WM ASF Reader
+Filter	WM ASF Writer
+Filter	WST Decoder
+Filter	Wave Parser
+Filter	Windows Media Multiplexer
+Filter	Windows Media source filter
+Filter	XML Playlist
+
+MEMORY INFO
+Total Physical Memory	1.99 GB
+Free Physical Memory	1.67 GB
+Total Pagefile Memory	8.82 MB
+Free Pagefile Memory	0  bytes
+
+MEMORY ARRAYS
+Max Module Capacity	4 GB
+Location	System Board
+Use	System
+Supported Error D&C	None
+Supported Speeds	<unknown>
+Supported Types	<unknown>
+Supported Voltages	<unknown>
+
+MEMORY SLOTS
+Installed & Enabled Size	2 GB
+Form Factor	DIMM
+Frequency	0 Hz
+Slot	DIMM0 [BANK0]
+Manufacturer	Manufacturer0
+Type	SDRAM
+Type Details	Synchronous
+Enabled Size	2 GB
+Total Bit Width	64 
+Data Bit Width	64 
+
+MOTHERBOARD INFO
+Manufacturer	Hewlett-Packard
+Model	308F
+Version	KBC Version 02.10
+BIOS Vendor	Hewlett-Packard
+BIOS Version	308F0 Ver. F.07
+BIOS Release Date	06/18/2009
+BIOS Properties	Plug and Play, Flash
+
+CARD SLOTS
+Number	0 
+Designation	AGP
+Type	AGP 4X
+Characteristics	3.3V, Shared, PME Signal
+Data Bus Width	32 
+Details	Available, Long
+Device Class	<unknown>
+Device Name	
+Device Manufacturer	
+Device Driver Date	
+Device Vendor ID	0x0000
+Device ID	0x0000
+Device Sub-System ID	0x00000000
+Device Revision	0x00
+IRQ	0 
+
+Number	1 
+Designation	PCI1
+Type	PCI
+Characteristics	3.3V, Shared, PME Signal
+Data Bus Width	32 
+Details	Available, Long
+Device Class	<unknown>
+Device Name	
+Device Manufacturer	
+Device Driver Date	
+Device Vendor ID	0x0000
+Device ID	0x0000
+Device Sub-System ID	0x00000000
+Device Revision	0x00
+IRQ	0 
+
+SYSTEM DEVICES
+Description	PCI standard host CPU bridge
+Manufacturer	(Standard system devices)
+Vendor ID	0x8086
+Device ID	0x27ac
+Subsystem ID	0x308f103c
+Revision	0x03
+
+Description	PCI standard PCI-to-PCI bridge
+Manufacturer	(Standard system devices)
+Vendor ID	0x8086
+Device ID	0x27d0
+Subsystem ID	0x00000000
+Revision	0x02
+
+Description	PCI standard PCI-to-PCI bridge
+Manufacturer	(Standard system devices)
+Vendor ID	0x8086
+Device ID	0x27d2
+Subsystem ID	0x00000000
+Revision	0x02
+
+Description	PCI standard PCI-to-PCI bridge
+Manufacturer	(Standard system devices)
+Vendor ID	0x8086
+Device ID	0x2448
+Subsystem ID	0x00000000
+Revision	0xe2
+
+Description	PCI standard ISA bridge
+Manufacturer	(Standard system devices)
+Vendor ID	0x8086
+Device ID	0x27b9
+Subsystem ID	0x308f103c
+Revision	0x02
+
+Revision	N/A
+Rate	<unknown>
+Aperture Size	256 MB
+Sideband Addressing	not supported
+Fast Write	not supported
+
+MONITOR INFO
+MONITORS
+Name	Plug and Play Monitor
+Manufacturer	(Standard monitor types)
+Max Width	1024 
+Max Height	576 
+
+Name	Default Monitor
+Manufacturer	(Standard monitor types)
+Max Width	0 
+Max Height	0 
+
+POWER SUPPLY INFO
+BATTERIES
+
+OPERATING SYSTEM INFO
+Operating System	Microsoft Windows 98
+Version	4.10.2222  A 
+Service Pack	 A 
+Locale	US
+Desktop Width	1024 
+Desktop Height	576 
+Desktop BPP	16 
+
+HARD DISK INFO
+HARD DISKS
+Name	GENERIC IDE  DISK TYPE95
+Manufacturer	(Standard disk drives)
+Capacity	99.98 GB
+Model	<unknown>
+Interface Type	<unknown>
