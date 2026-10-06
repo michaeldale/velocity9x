@@ -1707,6 +1707,9 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100604: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives2 settle
+ * counters. An append. */
+/* 2026100603: V9X_D3D_DIAGNOSTICS gains dp2_flushes_external. An append. */
 /* 2026100602: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives2 counters. An
  * append. */
 /* 2026100601: V9X_DD_SHARED and V9X_DD_TRACE_SNAPSHOT gain the identity
@@ -1827,7 +1830,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100602ul
+#define V9X_DD_SHARED_ABI   2026100604ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3446,6 +3449,15 @@ typedef struct v9x_d3d_diagnostics {
     DWORD dp2_clear2_refused;
     /* Records the runtime's parser took (GUID_D3DParseUnknownCommandCallback). */
     DWORD dp2_parsed_by_runtime;
+    /* Pending DrawPrimitives2 runs drawn because another entry point
+     * needed the engine or a surface (v9x_d3d_dp2_flush_pending). */
+    DWORD dp2_flushes_external;
+    /* Runs drawn early because a state change altered the context, and
+     * which states did it: render states 0..63 one bit each, then texture
+     * stage states 0..31 (stage 0). */
+    DWORD dp2_settle_flushes;
+    DWORD dp2_settle_rs_mask[2];
+    DWORD dp2_settle_tss_mask;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

@@ -181,3 +181,32 @@ Build `a24aaba` on both. Half-Life 1.1.1.0 `timedemo mwd5`, `-d3d -w 640 -h
 
 Conclusion: DDI 6 stays off by default. It is correct but a large
 regression for DX5-era games until the per-call cost comes down.
+
+## DDI 6 performance work, same evening (`ddi6-perf/`)
+
+Half-Life `timedemo mwd5`, 640x480 D3D, best of runs 2 and 3. Netbook cycle
+figures are the Gen3 timing buckets over the whole Half-Life session.
+
+| Step | Netbook DDI 6 | Rage XL DDI 6 | What the counters said |
+|---|---|---|---|
+| DDI 5 reference | 42.1 | 17.9 | netbook HAL 66.1 G cycles, 921k engine batches |
+| DDI 6 as first built | 23.7 | 12.3 | a batch per DrawPrimitives2 call |
+| + run kept across calls | (not run) | 12.3 | still a flush per call: per-state settle |
+| + guard band for every engine | 19.6 | 12.2 | Gen3 refused ~298k batches (vertex range), replayed |
+| + pointer-probe cache | 21.9 | - | HAL overhead 81k -> 15k cycles a call |
+| + settle once per group | 22.2 | - | settle flushes 2.1M -> 114k |
+| + guard band only where the core clips | **27.2** | **12.6** | netbook 238k batches, HAL 52.5 G cycles; XL 172k batches |
+
+Where it ends: on both machines the driver now does less work than at
+DDI 5 (fewer engine batches, and on the netbook fewer HAL cycles: 52.5 G
+against 66.1 G), and Half-Life is still slower, because the runtime makes
+about three times as many calls to translate the game's DX5-style
+DrawPrimitive calls into DrawPrimitives2: 3.09M DrawPrimitives2 calls on
+the netbook against 0.94M DX5 calls. That cost is in the runtime, not
+measured here, and not reachable from the driver as built.
+
+Kept from this work: the run held across calls with flushes at every entry
+point that touches the engine, a surface or a texture; the state snapshot
+compared once per primitive; the probe cache, dropped on every surface or
+context destruction; the guard band only for engines with `clip_in_core`.
+DDI 6 stays off by default.

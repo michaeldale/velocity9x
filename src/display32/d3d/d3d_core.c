@@ -1383,6 +1383,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
     v9x_trace_enter(V9X_TRACE_D3D_CTXCREATE,
                     data != 0 ? data->dwPID : 0ul);
     v9x_d3d_dp2_log("CTX create", data != 0 ? data->dwPID : 0ul, 0ul);
+    v9x_d3d_dp2_forget_probes();
     if (ops == 0 || data == 0 || v9x_hal == 0 || data->lpDDS == 0 ||
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
         v9x_hal->fb.bits_per_pixel != ops->limits->target_bits_per_pixel) {
@@ -1468,6 +1469,8 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
 {
     V9X_D3D_CONTEXT *context;
 
+    v9x_d3d_dp2_flush_pending();
+    v9x_d3d_dp2_forget_probes();
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
     v9x_trace_enter(V9X_TRACE_D3D_CTXDESTROY,
                     data != 0 ? data->dwhContext : 0ul);
@@ -1533,6 +1536,8 @@ DWORD __stdcall V9xD3dContextDestroyAll(
 {
     DWORD index;
 
+    v9x_d3d_dp2_flush_pending();
+    v9x_d3d_dp2_forget_probes();
     v9x_trace_enter(V9X_TRACE_D3D_CTXDESTROYALL,
                     data != 0 ? data->dwPID : 0ul);
     if (data == 0) {
@@ -1644,6 +1649,7 @@ DWORD __stdcall V9xD3dTextureDestroy(V9X_D3DHAL_TEXTUREDESTROYDATA *data)
 {
     V9X_D3D_TEXTURE *texture;
 
+    v9x_d3d_dp2_flush_pending();
     v9x_trace_enter(V9X_TRACE_D3D_TEXTUREDESTROY,
                     data != 0 ? data->dwHandle : 0ul);
     texture = data != 0
@@ -1671,6 +1677,7 @@ DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
     V9X_D3D_TEXTURE *second;
     void *surface;
 
+    v9x_d3d_dp2_flush_pending();
     v9x_trace_enter(V9X_TRACE_D3D_TEXTURESWAP,
                     data != 0 ? data->dwHandle1 : 0ul);
     first = data != 0
@@ -1891,6 +1898,7 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
     V9X_D3DSTATE *states;
     DWORD index;
 
+    v9x_d3d_dp2_flush_pending();
     v9x_trace_enter(V9X_TRACE_D3D_RENDERSTATE,
                     data != 0 ? data->dwCount : 0ul);
     if (v9x_hal != 0) {
@@ -2074,6 +2082,7 @@ DWORD __stdcall V9xD3dExecute(V9X_D3DHAL_EXECUTEDATA *data)
     DWORD end;
     int one_instruction;
 
+    v9x_d3d_dp2_flush_pending();
     v9x_trace_enter(V9X_TRACE_D3D_EXECUTE,
                     data != 0 ? data->dwFlags : 0ul);
     if (v9x_hal != 0) {
@@ -2194,6 +2203,7 @@ DWORD __stdcall V9xD3dRenderPrimitive(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_RENDERPRIM);
+    v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_render_primitive_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
@@ -2348,6 +2358,7 @@ DWORD __stdcall V9xD3dSetRenderTarget(
     V9X_D3D_CONTEXT *context = data != 0
         ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
 
+    v9x_d3d_dp2_flush_pending();
     v9x_trace_enter(V9X_TRACE_D3D_SETRENDERTARGET,
                     data != 0 ? data->dwhContext : 0ul);
     if (context == 0 ||
@@ -2385,6 +2396,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWONE);
+    v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_draw_one_primitive_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
@@ -2570,6 +2582,7 @@ DWORD __stdcall V9xD3dDrawPrimitives(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWPRIMS);
+    v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_draw_primitives_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
@@ -2836,6 +2849,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWINDEX);
+    v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_draw_one_indexed_primitive_body(data);
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
@@ -3080,6 +3094,11 @@ static void v9x_d3d_apply_ddi_level(void)
             ? (V9X_DD_VOID_PTR)&v9x_hal->execute_buffer_callbacks : 0;
 }
 
+/* The pending run's snapshot and its drawing; see v9x_d3d_dp2_run. */
+static V9X_D3D_CONTEXT v9x_d3d_dp2_snapshot;
+static int v9x_d3d_dp2_snapshot_valid;
+static void v9x_d3d_dp2_draw_run(void);
+
 /* What the walker's callbacks need, behind its void pointer. */
 typedef struct v9x_d3d_dp2_user {
     V9X_D3D_CONTEXT *context;
@@ -3093,25 +3112,56 @@ typedef struct v9x_d3d_dp2_user {
  * DX5 DrawPrimitives records, and for the same reason - the batch sink reads
  * the live context.
  */
-static void v9x_d3d_dp2_settle(V9X_D3D_DP2_USER *user,
-                               const V9X_D3D_CONTEXT *before)
+/*
+ * A state is about to change. If triangles are pending and no snapshot is
+ * held yet, the state they were recorded under is kept, and which state
+ * opened the group is noted for the diagnostics.
+ */
+static void v9x_d3d_dp2_note_state(V9X_D3D_DP2_USER *user, DWORD stage,
+                                   DWORD state)
 {
-    if (user->run->pending != 0ul &&
-        !v9x_d3d_context_same(before, user->context)) {
-        V9X_D3D_CONTEXT after = *user->context;
-
-        *user->context = *before;
-        (void)v9x_r3d_records_flush(user->run);
-        *user->context = after;
+    if (user->run->pending == 0ul || v9x_d3d_dp2_snapshot_valid) {
+        return;
     }
+    v9x_d3d_dp2_snapshot = *user->context;
+    v9x_d3d_dp2_snapshot_valid = 1;
+    if (v9x_hal != 0) {
+        V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
+
+        if (stage == 0xfffffffful && state < 64ul) {
+            d->dp2_settle_rs_mask[state >> 5] |= 1ul << (state & 31ul);
+        } else if (stage != 0xfffffffful && state < 32ul) {
+            d->dp2_settle_tss_mask |= 1ul << state;
+        }
+    }
+}
+
+/*
+ * A primitive is about to be appended: if the states since the pending
+ * triangles left the context different, those triangles are drawn first,
+ * under the snapshot. If it came back the same, they simply keep going.
+ */
+static void v9x_d3d_dp2_settle(V9X_D3D_DP2_USER *user)
+{
+    if (!v9x_d3d_dp2_snapshot_valid) {
+        return;
+    }
+    if (user->run->pending != 0ul &&
+        !v9x_d3d_context_same(&v9x_d3d_dp2_snapshot, user->context)) {
+        v9x_d3d_dp2_draw_run();
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_settle_flushes;
+        }
+    }
+    v9x_d3d_dp2_snapshot_valid = 0;
 }
 
 static void v9x_d3d_dp2_render_state(void *opaque, v9x_u32 state,
                                      v9x_u32 value)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
-    V9X_D3D_CONTEXT before = *user->context;
 
+    v9x_d3d_dp2_note_state(user, 0xfffffffful, (DWORD)state);
     v9x_d3d_apply_state(user->context, (DWORD)state, (DWORD)value);
     /* The runtime keeps its copy of the render states in this array and
      * reads GetRenderState answers from it; a DDI 6 driver writes what it
@@ -3119,7 +3169,6 @@ static void v9x_d3d_dp2_render_state(void *opaque, v9x_u32 state,
     if (user->rstates != 0 && state < V9X_D3DHAL_MAX_RSTATES_DX6) {
         user->rstates[state] = (DWORD)value;
     }
-    v9x_d3d_dp2_settle(user, &before);
 }
 
 /* D3DTSS_MINFILTER and MIPFILTER folded into the one DX5 value. Anything
@@ -3189,7 +3238,6 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_D3D_CONTEXT *context = user->context;
-    V9X_D3D_CONTEXT before;
 
     /* One texture unit, reported as one blend stage: a later stage has
      * nothing to configure, and counting it says whether anyone tried. */
@@ -3199,7 +3247,7 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
         }
         return;
     }
-    before = *context;
+    v9x_d3d_dp2_note_state(user, (DWORD)stage, (DWORD)state);
     switch (state) {
     case V9X_D3DTSS_TEXTUREMAP:
         context->stage_texture = (DWORD)value;
@@ -3259,7 +3307,6 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
          * them. */
         break;
     }
-    v9x_d3d_dp2_settle(user, &before);
 }
 
 static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
@@ -3267,6 +3314,7 @@ static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
 
+    v9x_d3d_dp2_settle(user);
     (void)v9x_r3d_records_append_list(user->run,
                                       (const V9X_R3D_VERTEX *)first,
                                       triangles);
@@ -3277,6 +3325,7 @@ static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
 
+    v9x_d3d_dp2_settle(user);
     (void)v9x_r3d_records_append_fan(user->run,
                                      (const V9X_R3D_VERTEX *)first, vertices);
 }
@@ -3287,6 +3336,7 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_R3D_VERTEX triangle[3];
 
+    v9x_d3d_dp2_settle(user);
     triangle[0] = *(const V9X_R3D_VERTEX *)a;
     triangle[1] = *(const V9X_R3D_VERTEX *)b;
     triangle[2] = *(const V9X_R3D_VERTEX *)c;
@@ -3299,16 +3349,174 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
  * half, and fpVidMem. Every pointer is the runtime's and is tested before
  * it is read, for the reason v9x_d3d_surface_lcl gives.
  */
-static BYTE *v9x_d3d_dp2_memory(void *surface)
+/*
+ * What has already been probed, so it is not probed again.
+ *
+ * IsBadReadPtr and IsBadWritePtr are each a trip into the Windows 98
+ * kernel, and a DrawPrimitives2 call made seven of them: both halves of two
+ * surfaces, both data ranges and the render-state array. On the netbook
+ * (2026-10-06) that was ~81,000 cycles a call outside the engine against a
+ * DX5 path that probes once or twice, and Half-Life sends a thousand calls a
+ * frame through buffers the runtime reuses call after call.
+ *
+ * So each pointer is probed once and remembered, and the memory is the
+ * same so long as the pointer is: the runtime hands over the same surface
+ * objects and the same render-state array until it destroys them. The
+ * remembered values are dropped whenever a surface or a context is
+ * destroyed (v9x_d3d_dp2_forget_probes), which is when a remembered pointer
+ * could go stale, and a range outside what was probed is probed afresh.
+ */
+typedef struct v9x_d3d_dp2_probed {
+    const void *surface;    /* the LCL handed over                   */
+    const void *global;     /* its lpGbl when probed                 */
+    BYTE *base;             /* fpVidMem when probed                  */
+    const BYTE *range;      /* start of the last range probed        */
+    DWORD range_bytes;      /* and its length                        */
+} V9X_D3D_DP2_PROBED;
+
+static V9X_D3D_DP2_PROBED v9x_d3d_dp2_probed[2];   /* commands, vertices */
+static DWORD *v9x_d3d_dp2_probed_rstates;
+
+void v9x_d3d_dp2_forget_probes(void)
+{
+    BYTE *bytes = (BYTE *)v9x_d3d_dp2_probed;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(v9x_d3d_dp2_probed); ++index) {
+        bytes[index] = 0u;
+    }
+    v9x_d3d_dp2_probed_rstates = 0;
+}
+
+static BYTE *v9x_d3d_dp2_memory(void *surface, DWORD slot)
 {
     V9X_DD_SURFACE_LCL *lcl = (V9X_DD_SURFACE_LCL *)surface;
+    V9X_D3D_DP2_PROBED *probed = &v9x_d3d_dp2_probed[slot];
 
-    if (lcl == 0 || IsBadReadPtr(lcl, sizeof(*lcl)) || lcl->lpGbl == 0 ||
-        IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl)) ||
-        lcl->lpGbl->fpVidMem == 0ul) {
+    if (lcl == 0) {
         return 0;
     }
-    return (BYTE *)lcl->lpGbl->fpVidMem;
+    if (lcl != probed->surface) {
+        if (IsBadReadPtr(lcl, sizeof(*lcl)) || lcl->lpGbl == 0 ||
+            IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl))) {
+            probed->surface = 0;
+            return 0;
+        }
+        probed->surface = lcl;
+        probed->global = 0;
+    }
+    if (lcl->lpGbl != probed->global) {
+        if (lcl->lpGbl == 0 ||
+            IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl))) {
+            probed->surface = 0;
+            return 0;
+        }
+        probed->global = lcl->lpGbl;
+        probed->range = 0;
+        probed->range_bytes = 0ul;
+    }
+    if (lcl->lpGbl->fpVidMem == 0ul) {
+        return 0;
+    }
+    if ((BYTE *)lcl->lpGbl->fpVidMem != probed->base) {
+        probed->base = (BYTE *)lcl->lpGbl->fpVidMem;
+        probed->range = 0;
+        probed->range_bytes = 0ul;
+    }
+    return probed->base;
+}
+
+/* Whether [start, start + bytes) is readable, probing only what the last
+ * probe of this slot did not already cover. */
+static int v9x_d3d_dp2_readable(DWORD slot, const BYTE *start, DWORD bytes)
+{
+    V9X_D3D_DP2_PROBED *probed = &v9x_d3d_dp2_probed[slot];
+
+    if (bytes == 0ul) {
+        return 1;
+    }
+    if (probed->range != 0 && start >= probed->range &&
+        bytes <= probed->range_bytes &&
+        (DWORD)(start - probed->range) <= probed->range_bytes - bytes) {
+        return 1;
+    }
+    if (IsBadReadPtr(start, bytes)) {
+        return 0;
+    }
+    probed->range = start;
+    probed->range_bytes = bytes;
+    return 1;
+}
+
+/*
+ * The DrawPrimitives2 run, kept ACROSS calls.
+ *
+ * The runtime sends a DX5-era game as about a thousand DrawPrimitives2 calls
+ * a frame of about five triangles each, and an engine batch costs the same
+ * whatever it carries: the Gen3 draw measured ~45,000 cycles a batch on the
+ * netbook (2026-10-06), and Half-Life lost 44 % there and 32 % on the Rage
+ * XL against DDI 5 when every call ended in its own batch
+ * (docs\probe\a8u4i5-rage-xl-pci-2026-10-06\README.md). So the triangles
+ * stay pending until the state they were recorded under changes
+ * (v9x_d3d_dp2_settle), the run fills, another context draws, or anything
+ * else is about to touch the engine, the surfaces or the textures: every
+ * such entry point calls v9x_d3d_dp2_flush_pending first. A pending
+ * triangle is a copy, so nothing ties it to the runtime's buffers.
+ *
+ * Its own storage, not v9x_d3d_gather: the DX5 paths use that as scratch
+ * within one call and would overwrite triangles held between calls.
+ */
+static V9X_R3D_VERTEX v9x_d3d_dp2_storage[V9X_D3D_INDEXED_BATCH * 3u];
+static V9X_D3D_LIST_SINK v9x_d3d_dp2_batch_sink;
+static V9X_R3D_RECORDS v9x_d3d_dp2_run;
+
+/*
+ * The state the pending triangles were recorded under, once a state change
+ * has arrived after them.
+ *
+ * Compared when the next primitive arrives, not after every state. The
+ * DX5 DrawPrimitives path compares once per record, after all its pairs;
+ * comparing after each DrawPrimitives2 state flushed on any state that
+ * changed and changed back within one group, or that the stage-0
+ * translation passed through on the way to the same answer. On the
+ * netbook (2026-10-06) that was a flush per call, 3.2M engine batches for
+ * Half-Life against 0.92M at DDI 5.
+ */
+/* Draw the pending run under the state it was recorded with. */
+static void v9x_d3d_dp2_draw_run(void)
+{
+    V9X_D3D_CONTEXT *context = v9x_d3d_dp2_batch_sink.context;
+
+    if (v9x_d3d_dp2_run.pending != 0ul && context != 0 &&
+        v9x_d3d_dp2_snapshot_valid &&
+        !v9x_d3d_context_same(&v9x_d3d_dp2_snapshot, context)) {
+        V9X_D3D_CONTEXT live = *context;
+
+        *context = v9x_d3d_dp2_snapshot;
+        (void)v9x_r3d_records_flush(&v9x_d3d_dp2_run);
+        *context = live;
+    } else {
+        (void)v9x_r3d_records_flush(&v9x_d3d_dp2_run);
+    }
+    v9x_d3d_dp2_snapshot_valid = 0;
+}
+
+void v9x_d3d_dp2_flush_pending(void)
+{
+    V9X_FPU_AREA fpu;
+
+    if (v9x_d3d_dp2_run.pending == 0ul) {
+        v9x_d3d_dp2_snapshot_valid = 0;
+        return;
+    }
+    /* Callers include Flip, Lock and Blt, which do not save the
+     * application's FPU state; the clipper and the engines use it. */
+    v9x_fpu_save(&fpu);
+    v9x_d3d_dp2_draw_run();
+    v9x_fpu_restore(&fpu);
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.dp2_flushes_external;
+    }
 }
 
 static DWORD v9x_d3d_draw_primitives2_body(
@@ -3336,8 +3544,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     V9X_DP2_SINK sink;
     V9X_DP2_RESULT walked;
     V9X_D3D_DP2_USER user;
-    V9X_D3D_LIST_SINK batch_sink;
-    V9X_R3D_RECORDS run;
+    V9X_R3D_RECORDS *run = &v9x_d3d_dp2_run;
 
     if (data == 0) {
         return V9X_DDHAL_DRIVER_HANDLED;
@@ -3365,18 +3572,18 @@ static DWORD v9x_d3d_draw_primitives2_body(
         v9x_fpu_restore(&fpu);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
-    commands = v9x_d3d_dp2_memory(data->lpDDCommands);
+    commands = v9x_d3d_dp2_memory(data->lpDDCommands, 0ul);
     vertices = (data->dwFlags & V9X_D3DHALDP2_USERMEMVERTICES) != 0ul
                    ? (BYTE *)data->lpVertices
-                   : v9x_d3d_dp2_memory(data->lpVertices);
+                   : v9x_d3d_dp2_memory(data->lpVertices, 1ul);
     if (ops == 0 || context == 0 || !ops->ready() || commands == 0 ||
         (data->dwVertexLength != 0ul &&
          (vertices == 0 ||
-          IsBadReadPtr(vertices + data->dwVertexOffset,
-                       data->dwVertexLength * sizeof(V9X_D3DTLVERTEX)))) ||
-        (data->dwCommandLength != 0ul &&
-         IsBadReadPtr(commands + data->dwCommandOffset,
-                      data->dwCommandLength))) {
+          !v9x_d3d_dp2_readable(1ul, vertices + data->dwVertexOffset,
+                                data->dwVertexLength *
+                                    sizeof(V9X_D3DTLVERTEX)))) ||
+        !v9x_d3d_dp2_readable(0ul, commands + data->dwCommandOffset,
+                              data->dwCommandLength)) {
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_refused_buffers;
         }
@@ -3392,22 +3599,33 @@ static DWORD v9x_d3d_draw_primitives2_body(
     stream.vertex_count = vertices != 0 ? data->dwVertexLength : 0ul;
     stream.vertex_stride = sizeof(V9X_D3DTLVERTEX);
 
-    batch_sink.ops = ops;
-    batch_sink.context = context;
-    run.vertices = (V9X_R3D_VERTEX *)v9x_d3d_gather;
-    run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
-    run.pending = 0ul;
-    run.record_count = 0ul;
-    run.batch = v9x_d3d_records_batch;
-    run.user = &batch_sink;
+    /* Triangles another context left pending are drawn on it first: the
+     * batch sink draws on whichever context it names. */
+    if (run->pending != 0ul &&
+        (v9x_d3d_dp2_batch_sink.context != context ||
+         v9x_d3d_dp2_batch_sink.ops != ops)) {
+        v9x_d3d_dp2_flush_pending();
+    }
+    v9x_d3d_dp2_batch_sink.ops = ops;
+    v9x_d3d_dp2_batch_sink.context = context;
+    run->vertices = v9x_d3d_dp2_storage;
+    run->capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+    run->batch = v9x_d3d_records_batch;
+    run->user = &v9x_d3d_dp2_batch_sink;
+    if (run->pending == 0ul) {
+        run->record_count = 0ul;
+    }
 
     user.context = context;
-    user.run = &run;
+    user.run = run;
     user.rstates = data->lpdwRStates;
-    if (user.rstates != 0 &&
-        IsBadWritePtr(user.rstates,
-                      V9X_D3DHAL_MAX_RSTATES_DX6 * sizeof(DWORD))) {
-        user.rstates = 0;
+    if (user.rstates != 0 && user.rstates != v9x_d3d_dp2_probed_rstates) {
+        if (IsBadWritePtr(user.rstates,
+                          V9X_D3DHAL_MAX_RSTATES_DX6 * sizeof(DWORD))) {
+            user.rstates = 0;
+        } else {
+            v9x_d3d_dp2_probed_rstates = user.rstates;
+        }
     }
 
     sink.user = &user;
@@ -3438,7 +3656,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
             DWORD resumed;
 
             ++rounds;
-            (void)v9x_r3d_records_flush(&run);
+            v9x_d3d_dp2_draw_run();
             parsed = v9x_d3d_parse_unknown((void *)at, &after);
             v9x_d3d_dp2_log("DP2 parse", walked.stop_op, parsed);
             if (parsed != V9X_DD_OK || after == 0 ||
@@ -3470,7 +3688,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
             walked.stop_offset = resumed + next.stop_offset;
         }
     }
-    (void)v9x_r3d_records_flush(&run);
+    /* No flush here: what is pending waits for the next call, a state
+     * change or v9x_d3d_dp2_flush_pending (see v9x_d3d_dp2_run). */
 
     if (v9x_hal != 0) {
         V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
@@ -3556,8 +3775,8 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
  * rather than kept in the shared block, so the block does not grow for an
  * answer that is a function of the nine.
  *
- * Guard band zero says the runtime must clip to the viewport, which is what
- * it has always done for this driver. dwFVFCaps zero is "TLVERTEX only".
+ * The guard band is the engine's coordinate range (see below). dwFVFCaps
+ * zero is "TLVERTEX only".
  * dwMaxTextureRepeat and dvMaxVertexW are not limits measured on any card:
  * the first is the DDK samples' customary 2048, the second large enough
  * that no W-based depth is refused.
@@ -3577,6 +3796,37 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
         (v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps &
          V9X_D3DPTEXTURECAPS_SQUAREONLY) != 0ul ? 1ul : 0ul;
     caps->dwMaxAnisotropy = 1ul;
+    /*
+     * The guard band: the engine's own coordinate range, one pixel inside
+     * it. Zero told the runtime that nothing off the target may reach the
+     * driver, so it clipped and culled every triangle on the CPU before
+     * calling DrawPrimitives2 - and Half-Life ran 32 % slower on the Rage
+     * XL than at DDI 5 while the driver did less work (2026-10-06). The
+     * core already clips to the target for an engine that needs it
+     * (clip_in_core) and refuses a vertex past coordinate_limit, which is
+     * exactly what the runtime is now told it may send.
+     */
+    /*
+     * Only for an engine the core clips for. One that does not (Gen3,
+     * clip_in_core 0) has builders that take a vertex inside the target
+     * and nothing else, because the runtime always clipped for it: given a
+     * guard band, Half-Life's off-screen vertices reached them and 298,000
+     * batches a run were refused as bad vertex streams and replayed record
+     * by record (netbook, 2026-10-06).
+     */
+    {
+        const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+        float band = ops != 0 && ops->limits != 0 &&
+                             ops->limits->clip_in_core != 0ul &&
+                             ops->limits->coordinate_limit > 1.0f
+                         ? ops->limits->coordinate_limit - 1.0f
+                         : 0.0f;
+
+        caps->dvGuardBandLeft = -band;
+        caps->dvGuardBandTop = -band;
+        caps->dvGuardBandRight = band;
+        caps->dvGuardBandBottom = band;
+    }
     caps->dwFVFCaps = 0ul;
     caps->dwTextureOpCaps = V9X_D3DTEXOPCAPS_DISABLE |
                             V9X_D3DTEXOPCAPS_SELECTARG1 |
@@ -4587,6 +4837,8 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_clear2_calls;
     }
+    /* Pending triangles land before the clear, not on top of it. */
+    v9x_d3d_dp2_flush_pending();
     v9x_fpu_save(&fpu);
     context = v9x_d3d_context_from_handle(data->dwhContext);
     if (context == 0 || v9x_hal == 0 ||
@@ -4859,6 +5111,7 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
      * pass on the host.
      */
     v9x_fpu_save(&fpu);
+    v9x_d3d_dp2_flush_pending();
     result = v9x_r3d_draw_body(draw, outcome);
     v9x_fpu_restore(&fpu);
     v9x_win16_leave();
@@ -4890,6 +5143,7 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_clear(const V9X_R3D_ABI_CLEAR *clear)
     if (!v9x_win16_enter()) {
         return V9X_R3D_RESULT_NOT_READY;
     }
+    v9x_d3d_dp2_flush_pending();
     result = v9x_r3d_clear_body(clear);
     v9x_win16_leave();
     return result;

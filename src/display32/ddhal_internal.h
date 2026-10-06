@@ -619,6 +619,13 @@ DWORD v9x_d3d_depth_fill_value(DWORD value);
 /* The DDI 6 bring-up breadcrumbs (d3d_core.c), a no-op unless
  * Direct3DDdiProbe asks for them. */
 void v9x_d3d_dp2_log(const char *event, DWORD a, DWORD b);
+/* Draw what DrawPrimitives2 holds between calls (d3d_core.c,
+ * v9x_d3d_dp2_run). Called first by every entry point that touches the
+ * engine, a surface or a texture; a no-op when nothing is pending. */
+void v9x_d3d_dp2_flush_pending(void);
+/* Drop what DrawPrimitives2 has already pointer-probed (d3d_core.c,
+ * v9x_d3d_dp2_probed): called wherever a surface or a context goes. */
+void v9x_d3d_dp2_forget_probes(void);
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data);
 
 #endif /* VELOCITY9X_DDHAL_INTERNAL_H */

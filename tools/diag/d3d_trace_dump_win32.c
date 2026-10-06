@@ -1611,6 +1611,11 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("Dp2Clear2Calls", snapshot.d3d.dp2_clear2_calls);
     v9x_write_uint("Dp2Clear2Refused", snapshot.d3d.dp2_clear2_refused);
     v9x_write_uint("Dp2ParsedByRuntime", snapshot.d3d.dp2_parsed_by_runtime);
+    v9x_write_uint("Dp2FlushesExternal", snapshot.d3d.dp2_flushes_external);
+    v9x_write_uint("Dp2SettleFlushes", snapshot.d3d.dp2_settle_flushes);
+    v9x_write_hex("Dp2SettleRs0", snapshot.d3d.dp2_settle_rs_mask[0]);
+    v9x_write_hex("Dp2SettleRs1", snapshot.d3d.dp2_settle_rs_mask[1]);
+    v9x_write_hex("Dp2SettleTss", snapshot.d3d.dp2_settle_tss_mask);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);
     v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);

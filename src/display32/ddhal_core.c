@@ -1011,6 +1011,10 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     v9x_trace_enter(V9X_TRACE_DESTROYSURFACE,
                     data != 0 ? data->lpDDSurface : 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_DESTROYSURFACE);
+    /* Before the surface goes: a pending DrawPrimitives2 triangle may draw
+     * into it or sample it. */
+    v9x_d3d_dp2_flush_pending();
+    v9x_d3d_dp2_forget_probes();
     if (data != 0) {
         v9x_d3d_color_key_forget(
             (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
@@ -1093,6 +1097,8 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
     DWORD started = V9X_TIME_BEGIN();
 
     v9x_win16_sample(V9X_WIN16_SITE_FLIP);
+    /* The frame's last DrawPrimitives2 triangles, before it is shown. */
+    v9x_d3d_dp2_flush_pending();
     /* The first flip of the session, for the slow-start bracket. */
     if (v9x_hal != 0 && v9x_hal->d3d_diagnostics.uptime_first_flip == 0ul) {
         v9x_hal->d3d_diagnostics.uptime_first_flip = GetTickCount();
@@ -1140,6 +1146,7 @@ typedef struct v9x_ddhal_fliptogdidata {
 DWORD __stdcall V9xHalFlipToGDISurface(V9X_DDHAL_FLIPTOGDIDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_FLIPTOGDI, data->dwToGDI);
+    v9x_d3d_dp2_flush_pending();
     if (data->dwToGDI != 0ul) {
         if (v9x_engine_status_validated() && !v9x_wait_idle(1)) {
             data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1173,6 +1180,7 @@ DWORD __stdcall V9xHalSetExclusiveMode(
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     v9x_trace_enter(V9X_TRACE_SETEXCLUSIVE, data->dwEnterExcl);
+    v9x_d3d_dp2_flush_pending();
     if (data->dwEnterExcl == 0ul) {
         if (v9x_engine_status_validated() && !v9x_wait_idle(1)) {
             data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
@@ -1203,6 +1211,8 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
 
     v9x_win16_sample(V9X_WIN16_SITE_LOCK);
     v9x_d3d_dp2_log("DD lock", data != 0 ? data->dwFlags : 0ul, 0ul);
+    /* The CPU is about to read or write a surface the engine may owe. */
+    v9x_d3d_dp2_flush_pending();
     result = v9x_lock_body(data);
 
     V9X_TIME_END(V9X_TIME_LOCK, started);
@@ -1283,6 +1293,8 @@ DWORD __stdcall V9xExeBufCreate(V9X_DDHAL_CREATESURFACEDATA *data)
 DWORD __stdcall V9xExeBufDestroy(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_EXEBUF_DESTROY, 0ul);
+    v9x_d3d_dp2_flush_pending();
+    v9x_d3d_dp2_forget_probes();
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
@@ -1824,6 +1836,8 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     v9x_trace_enter(V9X_TRACE_BLT, data != 0 ? data->dwFlags : 0ul);
     v9x_d3d_dp2_log("DD blt", data != 0 ? data->dwFlags : 0ul, 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_BLT);
+    /* A windowed present, a clear or a copy out of the target. */
+    v9x_d3d_dp2_flush_pending();
     if (data != 0) {
         v9x_d3d_color_key_touch(data->lpDDDestSurface);
         v9x_d3d_alpha_mask_touch(data->lpDDDestSurface);
