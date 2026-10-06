@@ -1,7 +1,7 @@
 # DDI 6 (DrawPrimitives2): Direct3D 8, per-application opt-in, the runtime's flush rate
 
 Date: 2026-10-06. Status: in progress. Part A steps 1 and 2 done (D3D8
-uses the HAL on both machines); step 3 open. Parts B and C recorded
+uses the HAL on both machines); step 3 open. Part C done 2026-10-06. Parts B and C recorded
 at Michael's request to be done after it. Machines: A8U4I5 with the Rage XL
 PCI (`10.0.1.172`), the netbook (GMA 950, `10.0.1.254`).
 
@@ -59,7 +59,18 @@ else.
   asks for `GUID_D3DCallbacks3`, and stay the same for that driver object.
 - Settings page: expose it beside the Direct3D mode selector.
 
-## Part C: why the runtime flushes DrawPrimitives2 so often
+## Part C: why the runtime flushes DrawPrimitives2 so often (done)
+
+Answered 2026-10-06 in
+`docs/decisions/2026-10-06-ddi6-runtime-call-rate.md`. The premise below
+was wrong: the session totals are dominated by the console screen, a demo
+frame is 130 to 210 calls, and the runtime ends a batch only where it does
+not own the vertices (an indexed array over 16 vertices, or a vertex buffer
+the application locks; Half-Life does the second). No driver cap tried
+changes that. The regression was `Clear2` clearing Z on the CPU: with the
+Z part on the engine, DDI 6 is within 2.5 % of DDI 5 on the Rage XL and
+level on the netbook. The original text, kept for the record:
+
 
 Half-Life arrives as ~1,000 DrawPrimitives2 calls a frame of 2-3 records
 (netbook: 3.09M calls against the DX5 path's 0.94M for the same demo).

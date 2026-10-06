@@ -623,6 +623,9 @@ void v9x_d3d_dp2_log(const char *event, DWORD a, DWORD b);
  * v9x_d3d_dp2_run). Called first by every entry point that touches the
  * engine, a surface or a texture; a no-op when nothing is pending. */
 void v9x_d3d_dp2_flush_pending(void);
+/* ddhal_core.c: a depth-surface rectangle through the DEPTHFILL path. */
+int v9x_hal_depth_fill(V9X_DD_SURFACE_LCL *surface, LONG left, LONG top,
+                       LONG right, LONG bottom, DWORD value);
 /* Drop what DrawPrimitives2 has already pointer-probed (d3d_core.c,
  * v9x_d3d_dp2_probed): called wherever a surface or a context goes. */
 void v9x_d3d_dp2_forget_probes(void);

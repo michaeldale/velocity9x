@@ -1,0 +1,34 @@
+entries 8192, calls 8092, calls skipped before 497918, item slots 24
+entry kinds: {'CALL': 8092, 'BLT': 39, 'CLEAR2': 39, 'LOCK': 11, 'UNLOCK': 11}
+records/call: [(1, 325), (2, 5578), (3, 1002), (4, 579), (5, 155), (6, 82), (7, 69), (8, 75), (9, 16), (10, 20), (11, 28), (12, 20), (13, 10), (14, 14), (15, 49), (16, 2)]
+triangles/call: [(0, 470), (1, 16), (2, 951), (3, 222), (4, 678), (5, 129), (6, 148), (7, 28), (8, 997), (9, 117), (10, 222), (11, 39), (12, 317), (13, 159), (14, 277), (15, 24), (16, 259), (17, 106), (18, 275), (19, 7), (20, 152), (22, 60), (23, 16), (24, 115)]
+dwFlags: {'0x8': 8092}
+vertex types: {'0x1c4': 8092}
+command surfaces 1, vertex surfaces 1
+command offset 0 in 8092 of 8092 calls
+command bytes p50 98 p90 402 max 5244
+vertex count p50 32768 p90 32768 max 32768; vertex offset 0 in 8092 calls
+req sizes in (vertex, command): [((65536, 0), 8092)]
+next call's vertices: continue 0, restart at 0 8091, other 0
+cycles inside a call p50 47877 p90 231105; between calls p50 22823 p90 144475
+sum inside 2009333436, sum between 901822650 (cycles)
+HAL entries between consecutive calls:
+     8002  (none)
+       39  BLT
+       39  CLEAR2
+       11  LOCK UNLOCK
+most common call signatures:
+     5056  TSS.0 IDXTRILIST2
+      240  SHADEMODE SHADEMODE
+      237  TSS.0 IDXTRILIST2 SHADEMODE SHADEMODE
+      234  IDXTRILIST2 ZWRITEENABLE ALPHABLENDENABLE ALPHABLENDENABLE ZWRITEENABLE
+      182  TSS.0 IDXTRILIST2 IDXTRILIST2
+      141  IDXTRILIST2 SHADEMODE SHADEMODE
+      133  TSS.0 IDXTRILIST2 ALPHATESTENABLE ALPHABLENDENABLE ALPHABLENDENABLE ALPHATESTENABLE
+      130  TSS.0 IDXTRILIST2 ZWRITEENABLE ALPHABLENDENABLE TSS.MIPFILTER
+      116  TSS.0 IDXTRILIST2 ALPHABLENDENABLE ZWRITEENABLE TSS.MIPFILTER
+      114  TSS.0 IDXTRILIST2 ALPHABLENDENABLE ZWRITEENABLE SHADEMODE
+       93  TSS.0 IDXTRILIST2 ALPHATESTENABLE ZWRITEENABLE ALPHABLENDENABLE ZWRITEENABLE ALPHABLENDENABLE ALPHATESTENABLE
+       90  TSS.0 IDXTRILIST2 ZWRITEENABLE ALPHABLENDENABLE TSS.MIPFILTER TSS.COLOROP
+first item of a call: [('TSS.0', 6987), ('IDXTRILIST2', 635), ('SHADEMODE', 249), ('VIEWPORT', 79), ('TSS.ADDRESSU', 37), ('ALPHATESTENABLE', 36)]
+last item of a call: [('IDXTRILIST2', 5499), ('SHADEMODE', 846), ('TSS.MIPFILTER', 499), ('ALPHATESTENABLE', 343), ('ZWRITEENABLE', 312), ('TSS.COLOROP', 230)]

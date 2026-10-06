@@ -1,0 +1,34 @@
+entries 8192, calls 8050, calls skipped before 282559, item slots 24
+entry kinds: {'CALL': 8050, 'BLT': 61, 'CLEAR2': 61, 'LOCK': 10, 'UNLOCK': 10}
+records/call: [(1, 409), (2, 4756), (3, 1346), (4, 679), (5, 156), (6, 156), (7, 115), (8, 112), (9, 26), (10, 41), (11, 36), (12, 30), (13, 10), (14, 16), (15, 72), (16, 7)]
+triangles/call: [(0, 647), (1, 14), (2, 1382), (3, 181), (4, 539), (5, 180), (6, 133), (7, 27), (8, 772), (9, 132), (10, 220), (11, 71), (12, 375), (13, 123), (14, 170), (15, 16), (16, 191), (17, 60), (18, 307), (19, 6), (20, 178), (21, 8), (22, 87), (23, 48)]
+dwFlags: {'0x8': 8050}
+vertex types: {'0x1c4': 8050}
+command surfaces 1, vertex surfaces 1
+command offset 0 in 8050 of 8050 calls
+command bytes p50 96 p90 402 max 5112
+vertex count p50 32768 p90 32768 max 32768; vertex offset 0 in 8050 calls
+req sizes in (vertex, command): [((65536, 0), 8050)]
+next call's vertices: continue 0, restart at 0 8049, other 0
+cycles inside a call p50 49930 p90 381532; between calls p50 24182 p90 189506
+sum inside 2416841733, sum between 2546935301 (cycles)
+HAL entries between consecutive calls:
+     7917  (none)
+       61  BLT
+       61  CLEAR2
+       10  LOCK UNLOCK
+most common call signatures:
+     4079  TSS.0 IDXTRILIST2
+      413  IDXTRILIST2 ZWRITEENABLE ALPHABLENDENABLE ALPHABLENDENABLE ZWRITEENABLE
+      351  SHADEMODE SHADEMODE
+      301  TSS.0 IDXTRILIST2 ALPHATESTENABLE ALPHABLENDENABLE ALPHABLENDENABLE ALPHATESTENABLE
+      275  TSS.0 IDXTRILIST2 IDXTRILIST2
+      195  TSS.0 IDXTRILIST2 SHADEMODE SHADEMODE
+      137  TSS.0 IDXTRILIST2 ALPHABLENDENABLE ZWRITEENABLE SHADEMODE
+      124  TSS.0 IDXTRILIST2 ZWRITEENABLE ALPHABLENDENABLE TSS.MIPFILTER TSS.COLOROP
+      117  TSS.0 IDXTRILIST2 ZWRITEENABLE ALPHABLENDENABLE TSS.MIPFILTER
+      106  TSS.0 IDXTRILIST2 ALPHABLENDENABLE ZWRITEENABLE TSS.MIPFILTER
+      103  IDXTRILIST2 SHADEMODE SHADEMODE
+       79  TSS.0 TRIFAN_IMM TRIFAN_IMM
+first item of a call: [('TSS.0', 6543), ('IDXTRILIST2', 860), ('SHADEMODE', 409), ('VIEWPORT', 123), ('TSS.ADDRESSU', 34), ('CULLMODE', 32)]
+last item of a call: [('IDXTRILIST2', 4718), ('SHADEMODE', 942), ('TSS.MIPFILTER', 560), ('ZWRITEENABLE', 538), ('ALPHATESTENABLE', 468), ('TSS.COLOROP', 273)]

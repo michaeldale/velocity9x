@@ -411,6 +411,9 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
         if (op < 64ul) {
             result->ops_seen[op >> 5] |= 1ul << (op & 31ul);
         }
+        if (sink->record != 0) {
+            sink->record(sink->user, op, count, data, need);
+        }
         ++result->records;
         at += 4ul + need;
     }

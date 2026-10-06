@@ -255,3 +255,26 @@ Not established:
   was not probed at DDI 6 on the old one.
 - A real DX8 title on either machine (plan Part A step 3).
 - Both machines are back at DDI 5 (`Direct3DDdi` unset).
+
+## DDI 6 call rate and the Clear2 regression (`ddi6-runtime-flush/`)
+
+The full account, with the hypotheses the evidence killed, is
+`docs/decisions/2026-10-06-ddi6-runtime-call-rate.md`. In short:
+
+- A per-call capture of DrawPrimitives2 (probe bit 32,
+  `tools/diag/dp2ring.py`) showed the "three calls per draw" was the console
+  screen between demos; a demo frame is 130 to 210 calls. On the Rage XL a
+  demo frame was 81 M cycles, ~25.5 M of it one Z-only `Clear2` done by the
+  CPU across PCI (`xl-demo-capture-before-clear2-fix.txt`).
+- `Clear2` now clears Z through the `DDBLT_DEPTHFILL` path on the engine.
+  Same build and boot, `timedemo mwd5` runs 2 and 3: Rage XL DDI 5 17.99 and
+  17.98, DDI 6 17.05 and 17.53 (was 12.57 and 12.58); netbook DDI 5 42.24
+  and 42.00, DDI 6 40.82 and 42.25 (was 27.2). Pictures correct
+  (`xl-halflife-ddi6-frame.png`, `netbook-halflife-ddi6-frame.png`).
+- The reproducer (`tools/diag/dp2_repro_win32.c`, `repro-*`) shows the
+  runtime batches across texture and state changes and ends a batch only
+  for an indexed array over 16 vertices (user memory, `dwFlags 0x9`) or a
+  vertex buffer locked between draws (`dwFlags 0x8`, Half-Life's case).
+  Withholding `D3DDEVCAPS_TLVERTEXSYSTEMMEMORY` (probe bit 64) changed
+  nothing.
+- Both machines left at DDI 5.

@@ -179,14 +179,21 @@
  *   4  null the DX3 execute-buffer entries (RenderState, RenderPrimitive)
  *   8  hand DirectDraw the execute-buffer callback table
  *  16  write-through breadcrumbs to C:\V9XDIAG\V9XDP2.LOG (d3d_core.c)
+ *  32  capture DrawPrimitives2 calls to C:\V9XDIAG\V9XDP2R.BIN
+ *      (d3d_dp2_ring.h)
+ *  64  withhold D3DDEVCAPS_TLVERTEXSYSTEMMEMORY, so the runtime copies
+ *      transformed vertices into its own buffer rather than handing
+ *      over the application's (Part C of the DDI 6 plan)
  * Remove with the experiment.
  */
-#define V9X_DD_ENGINE_CAP_DP2_PROBE_MASK  0x001f0000ul
+#define V9X_DD_ENGINE_CAP_DP2_PROBE_MASK  0x007f0000ul
 #define V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT 16
 #define V9X_DP2_PROBE_NO_DEVCAP           1ul
 #define V9X_DP2_PROBE_NO_DP2_ENTRY        2ul
 #define V9X_DP2_PROBE_NO_DX3_ENTRIES      4ul
 #define V9X_DP2_PROBE_EXEBUF_CALLBACKS    8ul
 #define V9X_DP2_PROBE_LOG                16ul
+#define V9X_DP2_PROBE_RING               32ul
+#define V9X_DP2_PROBE_NO_TLV_SYSMEM      64ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

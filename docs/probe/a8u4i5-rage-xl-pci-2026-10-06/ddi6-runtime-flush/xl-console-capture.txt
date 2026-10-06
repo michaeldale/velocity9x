@@ -1,0 +1,25 @@
+entries 8192, calls 8170, calls skipped before 122124, item slots 24
+entry kinds: {'CALL': 8170, 'BLT': 22}
+records/call: [(2, 8079), (3, 46), (4, 22), (22, 23)]
+triangles/call: [(0, 23), (2, 8147)]
+dwFlags: {'0x8': 8170}
+vertex types: {'0x1c4': 8170}
+command surfaces 1, vertex surfaces 1
+command offset 0 in 8170 of 8170 calls
+command bytes p50 38 p90 38 max 432
+vertex count p50 32768 p90 32768 max 32768; vertex offset 0 in 8170 calls
+req sizes in (vertex, command): [((65536, 0), 8170)]
+next call's vertices: continue 0, restart at 0 8169, other 0
+cycles inside a call p50 3570 p90 3975; between calls p50 7273 p90 9998
+sum inside 194482224, sum between 165757896 (cycles)
+HAL entries between consecutive calls:
+     8147  (none)
+       22  BLT
+most common call signatures:
+     8079  IDXTRILIST2 ALPHATESTENABLE ALPHATESTENABLE
+       23  VIEWPORT WINFO ZENABLE CULLMODE ALPHABLENDENABLE ALPHATESTENABLE WINFO ALPHABLENDENABLE WINFO ZENABLE CULLMODE VIEWPORT WINFO ZENABLE CULLMODE ALPHABLENDENABLE WINFO ZENABLE CULLMODE ALPHABLENDENABLE VIEWPORT WINFO ZENABLE CULLMODE
+       23  TSS.0 IDXTRILIST2 TSS.MAGFILTER TSS.MINFILTER TSS.COLOROP TSS.ALPHAOP
+       23  TSS.0 IDXTRILIST2 ALPHATESTENABLE ALPHATESTENABLE
+       22  IDXTRILIST2 ALPHATESTENABLE WINFO ZENABLE CULLMODE ALPHABLENDENABLE
+first item of a call: [('IDXTRILIST2', 8101), ('TSS.0', 46), ('VIEWPORT', 23)]
+last item of a call: [('ALPHATESTENABLE', 8102), ('?', 23), ('TSS.ALPHAOP', 23), ('ALPHABLENDENABLE', 22)]

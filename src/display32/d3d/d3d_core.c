@@ -34,6 +34,7 @@
 #include "d3d_state.h"
 #include "d3d_select.h"
 #include "d3d_dp2.h"
+#include "d3d_dp2_ring.h"
 #include "velocity9x/diag_identity.h"
 
 
@@ -1383,6 +1384,8 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
     v9x_trace_enter(V9X_TRACE_D3D_CTXCREATE,
                     data != 0 ? data->dwPID : 0ul);
     v9x_d3d_dp2_log("CTX create", data != 0 ? data->dwPID : 0ul, 0ul);
+    V9X_DP2_RING_EVENT(V9X_DP2R_CONTEXT_CREATE, 0ul, 0ul);
+    v9x_dp2_ring_rearm();
     v9x_d3d_dp2_forget_probes();
     if (ops == 0 || data == 0 || v9x_hal == 0 || data->lpDDS == 0 ||
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
@@ -1471,6 +1474,8 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
 
     v9x_d3d_dp2_flush_pending();
     v9x_d3d_dp2_forget_probes();
+    V9X_DP2_RING_EVENT(V9X_DP2R_CONTEXT_DESTROY,
+                       data != 0 ? data->dwhContext : 0ul, 0ul);
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
     v9x_trace_enter(V9X_TRACE_D3D_CTXDESTROY,
                     data != 0 ? data->dwhContext : 0ul);
@@ -1527,6 +1532,23 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->alpha_ref = 0ul;
     data->ddrval = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.context_destroys;
+    /* The capture (d3d_dp2_ring.h) is written when its process has no
+     * context left: the same pid, since the table is shared. */
+    {
+        DWORD index;
+        DWORD pid = GetCurrentProcessId();
+        int live = 0;
+
+        for (index = 0ul; index < V9X_D3D_CONTEXT_COUNT; ++index) {
+            if (v9x_d3d_contexts[index].active != 0ul &&
+                v9x_d3d_contexts[index].pid == pid) {
+                live = 1;
+            }
+        }
+        if (!live) {
+            v9x_dp2_ring_flush();
+        }
+    }
     v9x_trace_exit(V9X_TRACE_D3D_CTXDESTROY, data->ddrval);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
@@ -1538,6 +1560,8 @@ DWORD __stdcall V9xD3dContextDestroyAll(
 
     v9x_d3d_dp2_flush_pending();
     v9x_d3d_dp2_forget_probes();
+    V9X_DP2_RING_EVENT(V9X_DP2R_CONTEXT_DESTROY, 0ul, 1ul);
+    v9x_dp2_ring_flush();
     v9x_trace_enter(V9X_TRACE_D3D_CTXDESTROYALL,
                     data != 0 ? data->dwPID : 0ul);
     if (data == 0) {
@@ -1593,6 +1617,7 @@ DWORD __stdcall V9xD3dTextureCreate(V9X_D3DHAL_TEXTURECREATEDATA *data)
     DWORD tried;
     V9X_DD_SURFACE_LCL *lcl;
 
+    V9X_DP2_RING_EVENT(V9X_DP2R_TEXTURE_CREATE, data != 0 ? (DWORD)data->lpDDS : 0ul, 0ul);
     v9x_trace_enter(V9X_TRACE_D3D_TEXTURECREATE,
                     data != 0 ? data->dwhContext : 0ul);
     if (data == 0 || data->lpDDS == 0 ||
@@ -1650,6 +1675,7 @@ DWORD __stdcall V9xD3dTextureDestroy(V9X_D3DHAL_TEXTUREDESTROYDATA *data)
     V9X_D3D_TEXTURE *texture;
 
     v9x_d3d_dp2_flush_pending();
+    V9X_DP2_RING_EVENT(V9X_DP2R_TEXTURE_DESTROY, data != 0 ? data->dwHandle : 0ul, 0ul);
     v9x_trace_enter(V9X_TRACE_D3D_TEXTUREDESTROY,
                     data != 0 ? data->dwHandle : 0ul);
     texture = data != 0
@@ -1678,6 +1704,7 @@ DWORD __stdcall V9xD3dTextureSwap(V9X_D3DHAL_TEXTURESWAPDATA *data)
     void *surface;
 
     v9x_d3d_dp2_flush_pending();
+    V9X_DP2_RING_EVENT(V9X_DP2R_TEXTURE_SWAP, data != 0 ? data->dwHandle1 : 0ul, data != 0 ? data->dwHandle2 : 0ul);
     v9x_trace_enter(V9X_TRACE_D3D_TEXTURESWAP,
                     data != 0 ? data->dwHandle1 : 0ul);
     first = data != 0
@@ -1720,6 +1747,7 @@ DWORD __stdcall V9xD3dTextureGetSurf(V9X_D3DHAL_TEXTUREGETSURFDATA *data)
 {
     V9X_D3D_TEXTURE *texture;
 
+    V9X_DP2_RING_EVENT(V9X_DP2R_TEXTURE_GETSURF, data != 0 ? data->dwHandle : 0ul, 0ul);
     v9x_trace_enter(V9X_TRACE_D3D_TEXTUREGETSURF,
                     data != 0 ? data->dwHandle : 0ul);
     texture = data != 0
@@ -1899,6 +1927,7 @@ DWORD __stdcall V9xD3dRenderState(V9X_D3DHAL_RENDERSTATEDATA *data)
     DWORD index;
 
     v9x_d3d_dp2_flush_pending();
+    V9X_DP2_RING_EVENT(V9X_DP2R_RENDER_STATE, data != 0 ? data->dwCount : 0ul, 0ul);
     v9x_trace_enter(V9X_TRACE_D3D_RENDERSTATE,
                     data != 0 ? data->dwCount : 0ul);
     if (v9x_hal != 0) {
@@ -2359,6 +2388,7 @@ DWORD __stdcall V9xD3dSetRenderTarget(
         ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
 
     v9x_d3d_dp2_flush_pending();
+    V9X_DP2_RING_EVENT(V9X_DP2R_SET_TARGET, 0ul, 0ul);
     v9x_trace_enter(V9X_TRACE_D3D_SETRENDERTARGET,
                     data != 0 ? data->dwhContext : 0ul);
     if (context == 0 ||
@@ -2396,6 +2426,7 @@ DWORD __stdcall V9xD3dDrawOnePrimitive(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWONE);
+    V9X_DP2_RING_EVENT(V9X_DP2R_DX5_DRAW, 1ul, 0ul);
     v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_draw_one_primitive_body(data);
 
@@ -2582,6 +2613,7 @@ DWORD __stdcall V9xD3dDrawPrimitives(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWPRIMS);
+    V9X_DP2_RING_EVENT(V9X_DP2R_DX5_DRAW, 2ul, 0ul);
     v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_draw_primitives_body(data);
 
@@ -2849,6 +2881,7 @@ DWORD __stdcall V9xD3dDrawOneIndexedPrimitive(
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_D3D_DRAWINDEX);
+    V9X_DP2_RING_EVENT(V9X_DP2R_DX5_DRAW, 3ul, 0ul);
     v9x_d3d_dp2_flush_pending();
     result = v9x_d3d_draw_one_indexed_primitive_body(data);
 
@@ -3079,6 +3112,12 @@ static void v9x_d3d_apply_ddi_level(void)
     } else {
         v9x_hal->d3d_global.hwCaps.dwDevCaps &=
             ~V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
+    }
+    /* Every engine sets TLVERTEXSYSTEMMEMORY in its own caps; the probe
+     * takes it away, and nothing puts it back until the next boot. */
+    if ((probe & V9X_DP2_PROBE_NO_TLV_SYSMEM) != 0ul) {
+        v9x_hal->d3d_global.hwCaps.dwDevCaps &=
+            ~V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY;
     }
     if ((probe & V9X_DP2_PROBE_NO_DX3_ENTRIES) != 0ul) {
         v9x_hal->d3d_callbacks.RenderState = 0;
@@ -3582,11 +3621,52 @@ void v9x_d3d_dp2_flush_pending(void)
 static DWORD v9x_d3d_draw_primitives2_body(
     V9X_D3DHAL_DRAWPRIMITIVES2DATA *data);
 
+/* The capture entry of the call in progress (d3d_dp2_ring.h), or null. */
+static V9X_DP2R_ENTRY *v9x_d3d_dp2_ring_entry;
+
+static void v9x_d3d_dp2_ring_record(void *opaque, v9x_u32 op, v9x_u32 count,
+                                    const v9x_u8 *payload, v9x_u32 bytes)
+{
+    (void)opaque;
+    v9x_dp2_ring_record(v9x_d3d_dp2_ring_entry, op, count, payload, bytes);
+}
+
 /* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
 DWORD __stdcall V9xD3dDrawPrimitives2(V9X_D3DHAL_DRAWPRIMITIVES2DATA *data)
 {
     DWORD started = V9X_TIME_BEGIN();
-    DWORD result = v9x_d3d_draw_primitives2_body(data);
+    DWORD result;
+    V9X_DP2R_ENTRY *ring = 0;
+    DWORD records_before = 0ul;
+    DWORD triangles_before = 0ul;
+
+    if (data != 0 && v9x_hal != 0) {
+        ring = v9x_dp2_ring_call(
+            (v9x_d3d_dp2_probe() & V9X_DP2_PROBE_RING) != 0ul);
+    }
+    if (ring != 0) {
+        ring->flags = data->dwFlags;
+        ring->command_offset = data->dwCommandOffset;
+        ring->command_length = data->dwCommandLength;
+        ring->vertex_offset = data->dwVertexOffset;
+        ring->vertex_length = data->dwVertexLength;
+        ring->command_surface = (v9x_u32)data->lpDDCommands;
+        ring->vertex_surface = (v9x_u32)data->lpVertices;
+        ring->vertex_type = data->dwVertexType;
+        ring->req_vertex = data->dwReqVertexBufSize;
+        ring->req_command = data->dwReqCommandBufSize;
+        records_before = v9x_hal->d3d_diagnostics.dp2_records;
+        triangles_before = v9x_hal->d3d_diagnostics.dp2_triangles;
+    }
+    v9x_d3d_dp2_ring_entry = ring;
+    result = v9x_d3d_draw_primitives2_body(data);
+    v9x_d3d_dp2_ring_entry = 0;
+    if (ring != 0) {
+        ring->records = v9x_hal->d3d_diagnostics.dp2_records - records_before;
+        ring->triangles =
+            v9x_hal->d3d_diagnostics.dp2_triangles - triangles_before;
+        v9x_dp2_ring_done(ring);
+    }
 
     V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
     return result;
@@ -3699,6 +3779,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     sink.list = v9x_d3d_dp2_list;
     sink.fan = v9x_d3d_dp2_fan;
     sink.triangle = v9x_d3d_dp2_triangle;
+    sink.record = v9x_d3d_dp2_ring_entry != 0 ? v9x_d3d_dp2_ring_record : 0;
 
     v9x_dp2_walk(&stream, &sink, &walked);
     /*
@@ -3815,6 +3896,7 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
     if (data == 0) {
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    V9X_DP2_RING_EVENT(V9X_DP2R_VALIDATE_TSS, data->dwhContext, 0ul);
     context = v9x_d3d_context_from_handle(data->dwhContext);
     if (context == 0) {
         data->dwNumPasses = 0ul;
@@ -4872,9 +4954,11 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
  * Its doc says it is "no longer used for DirectX 7.0 and beyond", where the
  * clear moved into the DrawPrimitives2 stream - which makes it the DX6
  * driver's clear, and this driver claims the DX6 interface, not the DX7 one.
- * Done on the CPU through the same r3d clear the render interface uses, on
- * the context's own target and Z surface, after the engine has drained so
- * nothing it still owes lands on top. Rectangles are clamped to the target;
+ * The Z part goes through the DDBLT_DEPTHFILL path (the engine's fill, as
+ * the DX5 runtime's Blt does); the rest is done on the CPU through the same
+ * r3d clear the render interface uses, on the context's own target and Z
+ * surface, after the engine has drained so nothing it still owes lands on
+ * top. Rectangles are clamped to the target;
  * one that clamps to nothing is skipped. Stencil has no buffer here.
  */
 static V9X_R3D_CLEAR_RECT v9x_d3d_clear2_rects[64];
@@ -4895,6 +4979,7 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
     V9X_D3D_CONTEXT *context;
     V9X_R3D_CLEAR clear;
     DWORD done = 0ul;
+    DWORD depth_full_scale = 0ul;
     int drained;
     int ok = 1;
 
@@ -4904,6 +4989,7 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_clear2_calls;
     }
+    V9X_DP2_RING_EVENT(V9X_DP2R_CLEAR2, data->dwFlags, data->dwNumRects);
     /* Pending triangles land before the clear, not on top of it. */
     v9x_d3d_dp2_flush_pending();
     v9x_fpu_save(&fpu);
@@ -4916,26 +5002,6 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
         }
-        data->ddrval = 0x80070057ul;
-        v9x_fpu_restore(&fpu);
-        return V9X_DDHAL_DRIVER_HANDLED;
-    }
-
-    /* Bounded: each call is itself a bounded wait, and BUSY forever is an
-     * engine that will not drain, which must refuse the clear rather than
-     * spin inside a callback that holds the Win16 lock. */
-    {
-        DWORD tries = 0ul;
-
-        v9x_d3d_dp2_log("CLR2 enter", data->dwFlags, data->dwNumRects);
-        drained = v9x_render_drain(1);
-        while (drained == V9X_RENDER_DRAIN_BUSY && ++tries < 64ul) {
-            drained = v9x_render_drain(1);
-        }
-        v9x_d3d_dp2_log("CLR2 drained", (DWORD)drained, tries);
-    }
-    if (drained != V9X_RENDER_DRAIN_DONE) {
-        ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
         data->ddrval = 0x80070057ul;
         v9x_fpu_restore(&fpu);
         return V9X_DDHAL_DRIVER_HANDLED;
@@ -4965,6 +5031,66 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
             value = (DWORD)v9x_d3d_to_long((double)depth * 65535.0);
         }
         clear.depth_value = v9x_d3d_depth_fill_value(value);
+        depth_full_scale = value;
+    }
+
+    /*
+     * The Z part through the DDBLT_DEPTHFILL path, the engine's own fill,
+     * which is how the DX5 runtime clears depth (a Blt). Queued behind
+     * whatever the engine is still drawing, exactly as that Blt is, so it
+     * needs no drain. Done on the CPU it cost the Rage XL ~25 ms a frame
+     * of Half-Life (v9x_hal_depth_fill). A rectangle the path refuses
+     * leaves the Z part to the CPU clear below, for every rectangle.
+     */
+    if (clear.clear_depth) {
+        DWORD r;
+        int filled = 1;
+
+        for (r = 0ul; r < data->dwNumRects && filled; ++r) {
+            const V9X_D3DRECT *rect = &data->lpRects[r];
+            LONG x1 = rect->x1 < 0 ? 0 : rect->x1;
+            LONG y1 = rect->y1 < 0 ? 0 : rect->y1;
+            LONG x2 = rect->x2 > (LONG)context->width ? (LONG)context->width
+                                                      : rect->x2;
+            LONG y2 = rect->y2 > (LONG)context->height
+                          ? (LONG)context->height : rect->y2;
+
+            if (x1 < x2 && y1 < y2) {
+                filled = v9x_hal_depth_fill(context->zbuffer, x1, y1, x2, y2,
+                                            depth_full_scale);
+            }
+        }
+        if (filled) {
+            clear.clear_depth = 0;
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.dp2_clear2_engine_depth;
+            }
+        }
+    }
+    if (!clear.clear_color && !clear.clear_depth) {
+        data->ddrval = V9X_DD_OK;
+        v9x_fpu_restore(&fpu);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+
+    /* The CPU part. Bounded: each call is itself a bounded wait, and BUSY
+     * forever is an engine that will not drain, which must refuse the clear
+     * rather than spin inside a callback that holds the Win16 lock. */
+    {
+        DWORD tries = 0ul;
+
+        v9x_d3d_dp2_log("CLR2 enter", data->dwFlags, data->dwNumRects);
+        drained = v9x_render_drain(1);
+        while (drained == V9X_RENDER_DRAIN_BUSY && ++tries < 64ul) {
+            drained = v9x_render_drain(1);
+        }
+        v9x_d3d_dp2_log("CLR2 drained", (DWORD)drained, tries);
+    }
+    if (drained != V9X_RENDER_DRAIN_DONE) {
+        ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
+        data->ddrval = 0x80070057ul;
+        v9x_fpu_restore(&fpu);
+        return V9X_DDHAL_DRIVER_HANDLED;
     }
     clear.write_red = 1ul;
     clear.write_green = 1ul;

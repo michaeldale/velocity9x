@@ -13,6 +13,7 @@
  * shared block are valid in every process.
  */
 #include "ddhal_internal.h"
+#include "d3d/d3d_dp2_ring.h"
 #include "velocity9x/drawnote.h"
 #include "velocity9x/vsync.h"
 
@@ -985,6 +986,7 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_trace_enter(V9X_TRACE_CREATESURFACE,
                     data != 0 ? data->dwSCnt : 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_CREATESURFACE);
+    V9X_DP2_RING_EVENT(V9X_DP2R_CREATE_SURFACE, 0ul, data != 0 ? data->dwSCnt : 0ul);
     v9x_d3d_dp2_log("DD create",
                     data != 0 ? data->dwSCnt : 0ul,
                     data != 0 && data->lpDDSurfaceDesc != 0
@@ -1011,6 +1013,7 @@ DWORD __stdcall V9xHalDestroySurface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     v9x_trace_enter(V9X_TRACE_DESTROYSURFACE,
                     data != 0 ? data->lpDDSurface : 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_DESTROYSURFACE);
+    V9X_DP2_RING_EVENT(V9X_DP2R_DESTROY_SURFACE, data != 0 ? data->lpDDSurface : 0ul, 0ul);
     /* Before the surface goes: a pending DrawPrimitives2 triangle may draw
      * into it or sample it. */
     v9x_d3d_dp2_flush_pending();
@@ -1097,6 +1100,7 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
     DWORD started = V9X_TIME_BEGIN();
 
     v9x_win16_sample(V9X_WIN16_SITE_FLIP);
+    V9X_DP2_RING_EVENT(V9X_DP2R_FLIP, 0ul, 0ul);
     /* The frame's last DrawPrimitives2 triangles, before it is shown. */
     v9x_d3d_dp2_flush_pending();
     /* The first flip of the session, for the slow-start bracket. */
@@ -1126,6 +1130,7 @@ DWORD __stdcall V9xHalFlip(V9X_DDHAL_FLIPDATA *data)
 DWORD __stdcall V9xHalGetFlipStatus(V9X_DDHAL_GETFLIPSTATUSDATA *data)
 {
     v9x_trace_count(V9X_TRACE_GETFLIPSTATUS, data->dwFlags);
+    V9X_DP2_RING_EVENT(V9X_DP2R_WAIT_FLIP, data->dwFlags, 1ul);
     /* Both questions - "can I flip" and "is the last flip done" - have the
      * same answer here: not until the scanout has taken the last start
      * address. See v9x_flip_arm. */
@@ -1210,6 +1215,7 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_LOCK);
+    V9X_DP2_RING_EVENT(V9X_DP2R_LOCK, data != 0 ? data->dwFlags : 0ul, 0ul);
     v9x_d3d_dp2_log("DD lock", data != 0 ? data->dwFlags : 0ul, 0ul);
     /* The CPU is about to read or write a surface the engine may owe. */
     v9x_d3d_dp2_flush_pending();
@@ -1254,6 +1260,7 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
 DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_UNLOCK, 0ul);
+    V9X_DP2_RING_EVENT(V9X_DP2R_UNLOCK, data != 0 ? data->lpDDSurface : 0ul, 0ul);
     if (v9x_lock_held_started != 0ul) {
         V9X_TIME_END(V9X_TIME_LOCK_HELD, v9x_lock_held_started);
         v9x_lock_held_started = 0ul;
@@ -1807,6 +1814,42 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * One rectangle of a depth surface filled through the DDBLT_DEPTHFILL path
+ * above: the engine where it can, the CPU fill where it declines. For
+ * Clear2, the DX6 clear: on A8U4I5 (Rage XL, 2026-10-06) Half-Life's
+ * per-frame Z clear arrived there instead of as this Blt, and done on the
+ * CPU across PCI it took ~25 ms of an 81 ms frame, which was the whole of
+ * the DDI 6 regression against DDI 5 on that card
+ * (docs\probe\a8u4i5-rage-xl-pci-2026-10-06\README.md). value is on the
+ * 16-bit full scale, as dwFillDepth is. 1 when the rectangle is filled.
+ */
+int v9x_hal_depth_fill(V9X_DD_SURFACE_LCL *surface, LONG left, LONG top,
+                       LONG right, LONG bottom, DWORD value)
+{
+    V9X_DDHAL_BLTDATA data;
+    BYTE *bytes = (BYTE *)&data;
+    DWORD i;
+    int engine_used = 0;
+
+    for (i = 0ul; i < sizeof(data); ++i) {
+        bytes[i] = 0u;
+    }
+    data.lpDDDestSurface = surface;
+    data.rDest[0] = left;
+    data.rDest[1] = top;
+    data.rDest[2] = right;
+    data.rDest[3] = bottom;
+    data.dwFlags = V9X_DDBLT_DEPTHFILL | V9X_DDBLT_WAIT;
+    data.bltFX.dwFillColor = value;
+    if (surface == 0 ||
+        v9x_depthfill_body(&data, &engine_used) !=
+            V9X_DDHAL_DRIVER_HANDLED) {
+        return 0;
+    }
+    return data.ddRVal == V9X_DD_OK;
+}
+
 static DWORD v9x_blt_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 {
     if (data == 0) {
@@ -1836,6 +1879,7 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     v9x_trace_enter(V9X_TRACE_BLT, data != 0 ? data->dwFlags : 0ul);
     v9x_d3d_dp2_log("DD blt", data != 0 ? data->dwFlags : 0ul, 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_BLT);
+    V9X_DP2_RING_EVENT(V9X_DP2R_BLT, data != 0 ? data->dwFlags : 0ul, 0ul);
     /* A windowed present, a clear or a copy out of the target. */
     v9x_d3d_dp2_flush_pending();
     if (data != 0) {
@@ -1882,6 +1926,7 @@ DWORD __stdcall V9xHalGetBltStatus(V9X_DDHAL_GETBLTSTATUSDATA *data)
     const V9X_ENGINE32_OPS *ops = v9x_engine32();
 
     v9x_trace_count(V9X_TRACE_GETBLTSTATUS, data->dwFlags);
+    V9X_DP2_RING_EVENT(V9X_DP2R_WAIT_FLIP, data->dwFlags, 2ul);
     if (ops == 0 || !ops->ready()) {
         data->ddRVal = V9X_DD_OK;
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1913,6 +1958,7 @@ DWORD __stdcall V9xHalWaitForVerticalBlank(
     DWORD spins;
 
     v9x_trace_count(V9X_TRACE_WAITFORVBLANK, data->dwFlags);
+    V9X_DP2_RING_EVENT(V9X_DP2R_SCAN_LINE, data->dwFlags, 0ul);
     switch (data->dwFlags) {
     case V9X_DDWAITVB_I_TESTVB:
         data->bIsInVB = v9x_in_vblank() ? 1ul : 0ul;

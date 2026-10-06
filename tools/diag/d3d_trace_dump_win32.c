@@ -1617,6 +1617,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("Dp2SettleRs1", snapshot.d3d.dp2_settle_rs_mask[1]);
     v9x_write_hex("Dp2SettleTss", snapshot.d3d.dp2_settle_tss_mask);
     v9x_write_uint("Dp2ConvertedCalls", snapshot.d3d.dp2_converted_calls);
+    v9x_write_uint("Dp2Clear2EngineDepth",
+                   snapshot.d3d.dp2_clear2_engine_depth);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);
     v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);

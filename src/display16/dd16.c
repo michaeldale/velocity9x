@@ -228,7 +228,7 @@ static DWORD v9x_dd_ddi_caps(DWORD engine_caps)
            (((DWORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
                                          "Direct3DDdiProbe", 0,
                                          V9X_SETTINGS_INI) &
-             0x001ful) << V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT);
+             0x007ful) << V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT);
 }
 
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);

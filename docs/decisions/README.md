@@ -250,3 +250,4 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-04 Rage XL follow-ups: 4x4 and 2x2 textures measured, the mode sync, the DRV version, oversized GL textures](2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md)
 - [2026-10-04 Mach64: an alpha test that cannot discard is not sent, and Half-Life's HUD draws on the Rage XL](2026-10-04-mach64-alpha-test-that-cannot-discard.md)
 - [2026-10-04 Rage XL PCI: page flips through the Mach64 CRTC, watched on the monitor](2026-10-04-rage-xl-page-flips.md)
+- [2026-10-06 What ends a DrawPrimitives2 call, and what DDI 6 actually cost Half-Life](2026-10-06-ddi6-runtime-call-rate.md)

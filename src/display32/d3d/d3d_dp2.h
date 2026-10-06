@@ -92,6 +92,10 @@ typedef struct v9x_dp2_sink {
     void (*fan)(void *user, const v9x_u8 *first, v9x_u32 vertices);
     void (*triangle)(void *user, const v9x_u8 *a, const v9x_u8 *b,
                      const v9x_u8 *c);
+    /* Optional, may be null: every record consumed, after the callbacks
+     * above, with its payload and payload length. For instruments. */
+    void (*record)(void *user, v9x_u32 op, v9x_u32 count,
+                   const v9x_u8 *payload, v9x_u32 bytes);
 } V9X_DP2_SINK;
 
 typedef struct v9x_dp2_stream {

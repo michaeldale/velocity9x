@@ -106,6 +106,19 @@ static void on_fan(void *user, const v9x_u8 *first, v9x_u32 vertices)
     }
 }
 
+static v9x_u32 records_seen;
+static v9x_u32 record_bytes;
+static v9x_u32 last_record_op;
+
+static void on_record(void *user, v9x_u32 op, v9x_u32 count,
+                      const v9x_u8 *payload, v9x_u32 bytes)
+{
+    (void)user; (void)count; (void)payload;
+    ++records_seen;
+    record_bytes += bytes;
+    last_record_op = op;
+}
+
 static void put8(v9x_u32 value) { COMMANDS[used++] = (v9x_u8)value; }
 static void put16(v9x_u32 value) { put8(value & 0xfful); put8(value >> 8); }
 static void put32(v9x_u32 value) { put16(value & 0xfffful); put16(value >> 16); }
@@ -130,6 +143,7 @@ static void walk(CAPTURE *c, V9X_DP2_RESULT *r)
     k.list = on_list;
     k.fan = on_fan;
     k.triangle = on_triangle;
+    k.record = 0;
     v9x_dp2_walk(&s, &k, r);
 }
 
@@ -335,6 +349,26 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         CHECK(out[4] == 0xfffffffful && out[5] == 0xff000000ul &&
               out[6] == 0ul && out[7] == 0ul);
 
+        /* The optional record callback sees every record consumed. */
+        memset(&c, 0, sizeof(c)); used = 0ul;
+        command(V9X_DP2OP_RENDERSTATE, 1ul); put32(9ul); put32(2ul);
+        command(V9X_DP2OP_TRIANGLELIST, 1ul); put16(0ul);
+        {
+            V9X_DP2_STREAM s;
+            V9X_DP2_SINK k;
+
+            s.commands = COMMANDS; s.command_bytes = used;
+            s.vertices = pool; s.vertex_count = POOL; s.vertex_stride = STRIDE;
+            k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
+            k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
+            k.record = on_record;
+            records_seen = 0ul; record_bytes = 0ul;
+            v9x_dp2_walk(&s, &k, &r);
+            CHECK(r.status == V9X_DP2_OK && records_seen == 2ul &&
+                  record_bytes == 10ul && last_record_op ==
+                  V9X_DP2OP_TRIANGLELIST);
+        }
+
         /* The walker steps a pool by the format's stride. */
         memset(&c, 0, sizeof(c)); used = 0ul;
         command(V9X_DP2OP_TRIANGLELIST, 1ul); put16(1ul);
@@ -346,6 +380,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             s.vertices = pool; s.vertex_count = 4ul; s.vertex_stride = 16ul;
             k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
+            k.record = 0;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && r.triangles == 1ul);
             /* Vertices 1 to 3 need a pool of four. */
