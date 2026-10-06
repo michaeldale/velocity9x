@@ -164,7 +164,10 @@ EXTRN _v9x_gdi_engine_dirty:WORD
 ; process's address space; the alternative was continuing to pick which
 ; addresses the 32-bit side is allowed to know, which is how the GTT size
 ; ended up as a constant rather than a field.
-V9X_DD_SHARED_BYTES EQU 8192
+;
+; Three pages since the trace identity (2026-10-06): two builds, a clock
+; stamp and an eight-row process table did not fit the 164 bytes left.
+V9X_DD_SHARED_BYTES EQU 12288
 
 .code
 
@@ -2782,6 +2785,40 @@ V9XENSUREDIAGDIR PROC FAR
 V9xEnsureDiagDirDone:
     retf
 V9XENSUREDIAGDIR ENDP
+
+; Read the DOS clock for the shared block's creation stamp (dd16.c): the date
+; into the first DWORD the caller points at as year << 16 | month << 8 | day,
+; the time into the second as hour << 24 | minute << 16 | second << 8 |
+; hundredths. INT 21h AH=2Ah and 2Ch through the DPMI translation Win16
+; provides, as V9XENSUREDIAGDIR uses it. Neither call can fail.
+PUBLIC V9XDOSCLOCK
+V9XDOSCLOCK PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    es
+
+    mov     ah, 2ah
+    int     21h
+    les     bx, dword ptr 6[bp]
+    mov     es:[bx], dx
+    mov     es:[bx+2], cx
+
+    mov     ah, 2ch
+    int     21h
+    les     bx, dword ptr 6[bp]
+    mov     es:[bx+4], dx
+    mov     es:[bx+6], cx
+
+    pop     es
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XDOSCLOCK ENDP
 
 ; Map the aperture in _v9x_map_physical_base and return its selector in AX,
 ; or 0 on failure. Stages 4 to 7 of the enable sequence.

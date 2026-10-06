@@ -378,7 +378,7 @@ $manifest = @(
     "Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)",
     "Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)",
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
-    "HAL trace: driver writes C:\V9XDIAG\V9XTRACE.INI on faults; V9XTRACE.EXE writes live C:\V9XDIAG\V9XSNAP.INI",
+    "HAL trace: driver writes C:\V9XDIAG\V9XTRACE.INI on faults; V9XTRACE.EXE writes live snapshots C:\V9XDIAG\V9XSNAP.INI, V9XSNA1-7.INI, with builds, card, installed files and programs",
     "Window inventory: V9XWND.EXE writes GDI-free C:\V9XDIAG\V9XWND.INI",
     "Preflight: V9XSTAGE.EXE (no mode change and no installation)",
     "Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED",

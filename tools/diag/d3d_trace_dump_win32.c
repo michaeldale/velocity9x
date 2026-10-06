@@ -20,6 +20,9 @@
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
+/* After the fallback above, so build.h keeps this tool's: for
+ * V9X_VERSION_STRING. */
+#include "velocity9x/build.h"
 
 #define V9X_SECTION      "Velocity9xTrace"
 
@@ -44,6 +47,9 @@
  */
 #define V9X_RESULT_MAX_FILES 8u
 static char v9x_result_path[] = V9X_DIAG_SNAP_INI;
+/* Set when every name was taken and the last is being written over: the
+ * file then says so itself (SnapshotReused). */
+static int v9x_result_reused = 0;
 /* The digit sits where the final P of V9XSNAP does: V9XSNAP.INI becomes
  * V9XSNA1.INI and so on, which stays inside 8.3. */
 #define V9X_RESULT_DIGIT (sizeof(v9x_result_path) - 6u)
@@ -68,6 +74,7 @@ static const char *v9x_result_file(void)
         }
     }
     /* All taken: reuse the last rather than stop recording. */
+    v9x_result_reused = 1;
     v9x_result_path[V9X_RESULT_DIGIT] =
         (char)('0' + (V9X_RESULT_MAX_FILES - 1u));
     return v9x_result_path;
@@ -544,6 +551,587 @@ static void v9x_dd_release(void *object)
     release(object);
 }
 
+/*
+ * The machine and the installation, written before the driver is asked for
+ * anything: a snapshot refused for an ABI mismatch still says what is
+ * installed, which is the case a mismatch most needs explained.
+ *
+ * Each section is cleared at the start of a run, because the eighth file is
+ * reused and a section left by an earlier run would read as this one's.
+ */
+#define V9X_SECTION_SYSTEM    "System"
+#define V9X_SECTION_INSTALLED "Installed"
+#define V9X_SECTION_CARD      "Card"
+#define V9X_SECTION_HARDWARE  "Hardware"
+#define V9X_SECTION_SETTINGS  "Settings"
+#define V9X_SECTION_FILES     "DiagFiles"
+
+static const char *const v9x_identity_sections[] = {
+    V9X_SECTION_SYSTEM, V9X_SECTION_INSTALLED, V9X_SECTION_CARD,
+    V9X_SECTION_HARDWARE, V9X_SECTION_SETTINGS, V9X_SECTION_FILES
+};
+
+static void v9x_write_in(const char *section, const char *key,
+                         const char *value)
+{
+    WritePrivateProfileStringA(section, key, value, V9X_RESULT_PATH);
+}
+
+static void v9x_clear_identity_sections(void)
+{
+    unsigned index;
+
+    for (index = 0u; index < sizeof(v9x_identity_sections) /
+                             sizeof(v9x_identity_sections[0]); ++index) {
+        WritePrivateProfileStringA(v9x_identity_sections[index], 0, 0,
+                                   V9X_RESULT_PATH);
+    }
+}
+
+/*
+ * The registry, through ADVAPI32 loaded at run time: this tool's import
+ * contract is KERNEL32, USER32 and GDI32 only (build-trace-dump.ps1), and a
+ * machine whose ADVAPI32 will not load still gets every other section.
+ */
+#ifndef HKEY_DYN_DATA
+#define HKEY_DYN_DATA ((HKEY)0x80000006ul)
+#endif
+
+typedef LONG (WINAPI *V9X_REG_OPEN)(HKEY, LPCSTR, DWORD, REGSAM, PHKEY);
+typedef LONG (WINAPI *V9X_REG_ENUM_KEY)(HKEY, DWORD, LPSTR, DWORD);
+typedef LONG (WINAPI *V9X_REG_ENUM_VALUE)(HKEY, DWORD, LPSTR, LPDWORD,
+                                          LPDWORD, LPDWORD, LPBYTE, LPDWORD);
+typedef LONG (WINAPI *V9X_REG_QUERY)(HKEY, LPCSTR, LPDWORD, LPDWORD, LPBYTE,
+                                     LPDWORD);
+typedef LONG (WINAPI *V9X_REG_CLOSE)(HKEY);
+
+static V9X_REG_OPEN v9x_reg_open;
+static V9X_REG_ENUM_KEY v9x_reg_enum_key;
+static V9X_REG_ENUM_VALUE v9x_reg_enum_value;
+static V9X_REG_QUERY v9x_reg_query;
+static V9X_REG_CLOSE v9x_reg_close;
+
+static int v9x_reg_load(void)
+{
+    HMODULE module;
+
+    if (v9x_reg_open != 0) {
+        return 1;
+    }
+    module = LoadLibraryA("ADVAPI32.DLL");
+    if (module == 0) {
+        return 0;
+    }
+    v9x_reg_enum_key = (V9X_REG_ENUM_KEY)GetProcAddress(module, "RegEnumKeyA");
+    v9x_reg_enum_value =
+        (V9X_REG_ENUM_VALUE)GetProcAddress(module, "RegEnumValueA");
+    v9x_reg_query = (V9X_REG_QUERY)GetProcAddress(module, "RegQueryValueExA");
+    v9x_reg_close = (V9X_REG_CLOSE)GetProcAddress(module, "RegCloseKey");
+    if (v9x_reg_enum_key == 0 || v9x_reg_enum_value == 0 ||
+        v9x_reg_query == 0 || v9x_reg_close == 0) {
+        return 0;
+    }
+    /* Last, so a partial load is never taken for a complete one. */
+    v9x_reg_open = (V9X_REG_OPEN)GetProcAddress(module, "RegOpenKeyExA");
+    return v9x_reg_open != 0;
+}
+
+static int v9x_reg_open_key(HKEY parent, const char *name, HKEY *key)
+{
+    return v9x_reg_open(parent, name, 0ul, KEY_READ, key) == ERROR_SUCCESS;
+}
+
+/* A string value, or an empty one when it is missing or not a string. */
+static int v9x_reg_text(HKEY key, const char *name, char *out, DWORD bytes)
+{
+    DWORD type = 0ul;
+    DWORD size = bytes - 1ul;
+
+    out[0] = '\0';
+    if (v9x_reg_query(key, name, 0, &type, (LPBYTE)out, &size) !=
+            ERROR_SUCCESS ||
+        (type != REG_SZ && type != REG_EXPAND_SZ)) {
+        out[0] = '\0';
+        return 0;
+    }
+    out[size < bytes ? size : bytes - 1ul] = '\0';
+    return 1;
+}
+
+/* A DWORD value as Configuration Manager stores one: four binary bytes. */
+static int v9x_reg_dword(HKEY key, const char *name, DWORD *out)
+{
+    DWORD type = 0ul;
+    DWORD size = sizeof(*out);
+
+    *out = 0ul;
+    return v9x_reg_query(key, name, 0, &type, (LPBYTE)out, &size) ==
+               ERROR_SUCCESS && size == sizeof(*out);
+}
+
+static void v9x_indexed_key(char *out, const char *prefix, DWORD index,
+                            const char *field)
+{
+    wsprintfA(out, "%s%lu%s", prefix, index, field);
+}
+
+/*
+ * Whether Configuration Manager has a devnode for this hardware key this
+ * boot, and its problem code. Enum\PCI keeps every card the machine has
+ * ever held - marxveix's swapped between several Rages - so the registry
+ * alone cannot say which one is in the slot; HKEY_DYN_DATA can.
+ */
+static int v9x_card_present(const char *hardware_key, DWORD *problem)
+{
+    HKEY nodes;
+    HKEY node;
+    char name[64];
+    char value[200];
+    DWORD index;
+    int found = 0;
+
+    *problem = 0ul;
+    if (!v9x_reg_open_key(HKEY_DYN_DATA, "Config Manager\\Enum", &nodes)) {
+        return 0;
+    }
+    for (index = 0ul; !found &&
+         v9x_reg_enum_key(nodes, index, name, sizeof(name)) == ERROR_SUCCESS;
+         ++index) {
+        if (!v9x_reg_open_key(nodes, name, &node)) {
+            continue;
+        }
+        if (v9x_reg_text(node, "HardWareKey", value, sizeof(value)) &&
+            lstrcmpiA(value, hardware_key) == 0) {
+            found = 1;
+            v9x_reg_dword(node, "Problem", problem);
+        }
+        v9x_reg_close(node);
+    }
+    v9x_reg_close(nodes);
+    return found;
+}
+
+/*
+ * Every display-class PCI device Windows has enumerated: its id string,
+ * which carries vendor, device, subsystem and revision, its bus location,
+ * and whether it is the one present.
+ */
+#define V9X_CARD_MAX 6ul
+
+static void v9x_write_cards(void)
+{
+    HKEY pci;
+    HKEY device;
+    HKEY instance;
+    char device_name[128];
+    char instance_name[64];
+    char hardware_key[200];
+    char value[200];
+    char key[40];
+    DWORD device_index;
+    DWORD instance_index;
+    DWORD count = 0ul;
+    DWORD problem;
+
+    if (!v9x_reg_load()) {
+        v9x_write_in(V9X_SECTION_CARD, "Error", "no-advapi32");
+        return;
+    }
+    if (!v9x_reg_open_key(HKEY_LOCAL_MACHINE, "Enum\\PCI", &pci)) {
+        v9x_write_in(V9X_SECTION_CARD, "Error", "no-enum-pci");
+        return;
+    }
+    for (device_index = 0ul; count < V9X_CARD_MAX &&
+         v9x_reg_enum_key(pci, device_index, device_name,
+                          sizeof(device_name)) == ERROR_SUCCESS;
+         ++device_index) {
+        if (!v9x_reg_open_key(pci, device_name, &device)) {
+            continue;
+        }
+        for (instance_index = 0ul; count < V9X_CARD_MAX &&
+             v9x_reg_enum_key(device, instance_index, instance_name,
+                              sizeof(instance_name)) == ERROR_SUCCESS;
+             ++instance_index) {
+            if (!v9x_reg_open_key(device, instance_name, &instance)) {
+                continue;
+            }
+            if (v9x_reg_text(instance, "Class", value, sizeof(value)) &&
+                lstrcmpiA(value, "DISPLAY") == 0) {
+                ++count;
+                v9x_indexed_key(key, "Card", count, "Id");
+                v9x_write_in(V9X_SECTION_CARD, key, device_name);
+                v9x_indexed_key(key, "Card", count, "Location");
+                v9x_write_in(V9X_SECTION_CARD, key, instance_name);
+                v9x_reg_text(instance, "DeviceDesc", value, sizeof(value));
+                v9x_indexed_key(key, "Card", count, "Desc");
+                v9x_write_in(V9X_SECTION_CARD, key, value);
+                v9x_reg_text(instance, "Driver", value, sizeof(value));
+                v9x_indexed_key(key, "Card", count, "Driver");
+                v9x_write_in(V9X_SECTION_CARD, key, value);
+                wsprintfA(hardware_key, "PCI\\%s\\%s", device_name,
+                          instance_name);
+                v9x_indexed_key(key, "Card", count, "Present");
+                v9x_write_in(V9X_SECTION_CARD, key,
+                             v9x_card_present(hardware_key, &problem)
+                                 ? "1" : "0");
+                v9x_indexed_key(key, "Card", count, "Problem");
+                v9x_uint_text(value, problem);
+                v9x_write_in(V9X_SECTION_CARD, key, value);
+            }
+            v9x_reg_close(instance);
+        }
+        v9x_reg_close(device);
+    }
+    v9x_reg_close(pci);
+    v9x_uint_text(value, count);
+    v9x_write_in(V9X_SECTION_CARD, "Count", value);
+}
+
+/*
+ * Every display driver Windows has installed, one line each. Reinstalling
+ * adds an entry rather than replacing one, so a machine installed several
+ * times - marxveix's - shows them all, and CardNDriver above says which is
+ * in use.
+ */
+#define V9X_DISPLAY_CLASS_MAX 12ul
+
+static void v9x_write_display_classes(void)
+{
+    HKEY classes;
+    HKEY entry;
+    HKEY defaults;
+    char name[32];
+    char key[48];
+    char desc[128];
+    char drv[32];
+    char vdd[32];
+    char inf[32];
+    char section[64];
+    char date[32];
+    char line[400];
+    DWORD index;
+
+    if (!v9x_reg_open_key(HKEY_LOCAL_MACHINE,
+                          "System\\CurrentControlSet\\Services\\Class\\Display",
+                          &classes)) {
+        v9x_write_in(V9X_SECTION_INSTALLED, "DisplayClass", "unreadable");
+        return;
+    }
+    for (index = 0ul; index < V9X_DISPLAY_CLASS_MAX &&
+         v9x_reg_enum_key(classes, index, name, sizeof(name)) ==
+             ERROR_SUCCESS;
+         ++index) {
+        if (!v9x_reg_open_key(classes, name, &entry)) {
+            continue;
+        }
+        v9x_reg_text(entry, "DriverDesc", desc, sizeof(desc));
+        v9x_reg_text(entry, "InfPath", inf, sizeof(inf));
+        v9x_reg_text(entry, "InfSection", section, sizeof(section));
+        v9x_reg_text(entry, "DriverDate", date, sizeof(date));
+        drv[0] = '\0';
+        vdd[0] = '\0';
+        if (v9x_reg_open_key(entry, "DEFAULT", &defaults)) {
+            v9x_reg_text(defaults, "drv", drv, sizeof(drv));
+            v9x_reg_text(defaults, "minivdd", vdd, sizeof(vdd));
+            v9x_reg_close(defaults);
+        }
+        v9x_reg_close(entry);
+        wsprintfA(line, "%s; drv=%s; minivdd=%s; inf=%s; section=%s; date=%s",
+                  desc, drv, vdd, inf, section, date);
+        wsprintfA(key, "Display\\%s", name);
+        v9x_write_in(V9X_SECTION_INSTALLED, key, line);
+    }
+    v9x_reg_close(classes);
+}
+
+/* Which OpenGL ICDs are registered, by name: the ICD Velocity9x installs
+ * and any other one that would be loaded instead. */
+static void v9x_write_opengl_drivers(void)
+{
+    HKEY drivers;
+    char name[64];
+    char data[MAX_PATH];
+    char key[80];
+    DWORD index;
+    DWORD name_bytes;
+    DWORD data_bytes;
+    DWORD type;
+
+    if (!v9x_reg_open_key(HKEY_LOCAL_MACHINE,
+                          "Software\\Microsoft\\Windows\\CurrentVersion\\"
+                          "OpenGLDrivers", &drivers)) {
+        v9x_write_in(V9X_SECTION_INSTALLED, "OpenGLDrivers", "none");
+        return;
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        name_bytes = sizeof(name);
+        data_bytes = sizeof(data) - 1ul;
+        if (v9x_reg_enum_value(drivers, index, name, &name_bytes, 0, &type,
+                               (LPBYTE)data, &data_bytes) != ERROR_SUCCESS) {
+            break;
+        }
+        if (type != REG_SZ) {
+            continue;
+        }
+        data[data_bytes < sizeof(data) ? data_bytes : sizeof(data) - 1u] =
+            '\0';
+        wsprintfA(key, "OpenGL\\%s", name);
+        v9x_write_in(V9X_SECTION_INSTALLED, key, data);
+    }
+    v9x_reg_close(drivers);
+}
+
+/*
+ * The build a driver file carries, found by its text: every Velocity9x
+ * binary embeds "build=" and its V9X_BUILD_ID ("V9XHAL build=",
+ * "V9XGL build=", the 16-bit "V9X-DRV load build="). Reading the file
+ * rather than its version resource needs no VERSION.DLL, and finds a stale
+ * DLL that the running build alone would not show.
+ *
+ * The first MiB only: the largest driver file, V9XGL.DLL, is 404 KiB, and
+ * every build string sits in the data section well inside that. Allocated
+ * on first use: a static array this size is written into the executable by
+ * wlink, and the tool has to fit the floppy.
+ */
+#define V9X_SCAN_BYTES 0x00100000ul
+static char *v9x_scan_buffer;
+
+static int v9x_build_char(char value)
+{
+    return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
+           (value >= '0' && value <= '9') || value == '.' || value == '_' ||
+           value == '+' || value == '-';
+}
+
+static void v9x_file_build(const char *path, char *out, DWORD bytes)
+{
+    static const char marker[] = "build=";
+    const DWORD marker_bytes = sizeof(marker) - 1u;
+    HANDLE file;
+    DWORD read = 0ul;
+    DWORD index;
+    DWORD at;
+    DWORD length;
+
+    lstrcpyA(out, "unknown");
+    if (v9x_scan_buffer == 0) {
+        v9x_scan_buffer = (char *)VirtualAlloc(0, V9X_SCAN_BYTES, MEM_COMMIT,
+                                               PAGE_READWRITE);
+        if (v9x_scan_buffer == 0) {
+            return;
+        }
+    }
+    file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        lstrcpyA(out, "unreadable");
+        return;
+    }
+    if (!ReadFile(file, v9x_scan_buffer, V9X_SCAN_BYTES, &read, 0)) {
+        read = 0ul;
+    }
+    CloseHandle(file);
+
+    /* The first marker followed by an id; "build=" with nothing after it
+     * is some other text. */
+    for (index = 0ul; index + marker_bytes < read; ++index) {
+        for (at = 0ul; at < marker_bytes &&
+                       v9x_scan_buffer[index + at] == marker[at]; ++at) {
+        }
+        if (at != marker_bytes) {
+            continue;
+        }
+        at = index + marker_bytes;
+        length = 0ul;
+        while (at < read && length + 1ul < bytes &&
+               v9x_build_char(v9x_scan_buffer[at])) {
+            out[length++] = v9x_scan_buffer[at++];
+        }
+        if (length != 0ul) {
+            out[length] = '\0';
+            return;
+        }
+    }
+}
+
+/* One line per file matching `pattern` in `directory`: size, local
+ * modification time, and with `scan` the build the file carries. */
+static void v9x_write_file_list(const char *section, const char *directory,
+                                const char *pattern, int scan)
+{
+    WIN32_FIND_DATAA found;
+    HANDLE search;
+    FILETIME local;
+    SYSTEMTIME time;
+    char path[MAX_PATH + 16];
+    char build[48];
+    char line[160];
+    DWORD count = 0ul;
+
+    wsprintfA(path, "%s\\%s", directory, pattern);
+    search = FindFirstFileA(path, &found);
+    if (search != INVALID_HANDLE_VALUE) {
+        do {
+            if ((found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0ul) {
+                continue;
+            }
+            ++count;
+            FileTimeToLocalFileTime(&found.ftLastWriteTime, &local);
+            FileTimeToSystemTime(&local, &time);
+            wsprintfA(line, "size=%lu date=%04u-%02u-%02u %02u:%02u:%02u",
+                      found.nFileSizeLow, (unsigned)time.wYear,
+                      (unsigned)time.wMonth, (unsigned)time.wDay,
+                      (unsigned)time.wHour, (unsigned)time.wMinute,
+                      (unsigned)time.wSecond);
+            if (scan) {
+                wsprintfA(path, "%s\\%s", directory, found.cFileName);
+                v9x_file_build(path, build, sizeof(build));
+                lstrcatA(line, " build=");
+                lstrcatA(line, build);
+            }
+            v9x_write_in(section, found.cFileName, line);
+        } while (FindNextFileA(search, &found));
+        FindClose(search);
+    }
+    if (count == 0ul) {
+        v9x_write_in(section, "Files", "none");
+    }
+}
+
+/* Windows, DirectX and memory: the three things a report's first reply
+ * otherwise has to ask for. */
+static void v9x_write_system(void)
+{
+    OSVERSIONINFOA version;
+    MEMORYSTATUS memory;
+    HKEY directx;
+    char text[192];
+
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (GetVersionExA(&version)) {
+        wsprintfA(text, "%lu.%lu.%lu %s", version.dwMajorVersion,
+                  version.dwMinorVersion, version.dwBuildNumber & 0xfffful,
+                  version.szCSDVersion);
+        v9x_write_in(V9X_SECTION_SYSTEM, "Windows", text);
+    }
+    memory.dwLength = sizeof(memory);
+    GlobalMemoryStatus(&memory);
+    v9x_uint_text(text, memory.dwTotalPhys / 1024ul);
+    v9x_write_in(V9X_SECTION_SYSTEM, "MemoryKB", text);
+    if (v9x_reg_load() &&
+        v9x_reg_open_key(HKEY_LOCAL_MACHINE, "Software\\Microsoft\\DirectX",
+                         &directx)) {
+        v9x_reg_text(directx, "Version", text, sizeof(text));
+        v9x_write_in(V9X_SECTION_SYSTEM, "DirectX", text);
+        v9x_reg_close(directx);
+    }
+}
+
+/* A whole INI section copied across, or Present=0 when it is empty. On the
+ * stack, which is 64 KiB, rather than in the executable's image. */
+static void v9x_copy_section(const char *section, const char *source_section,
+                             const char *source_file)
+{
+    char buffer[8192];
+    DWORD length;
+
+    length = GetPrivateProfileSectionA(source_section, buffer, sizeof(buffer),
+                                       source_file);
+    if (length == 0ul) {
+        v9x_write_in(section, "Present", "0");
+        return;
+    }
+    WritePrivateProfileSectionA(section, buffer, V9X_RESULT_PATH);
+}
+
+static void v9x_write_machine_identity(void)
+{
+    char directory[MAX_PATH];
+
+    v9x_clear_identity_sections();
+    v9x_write_system();
+    if (GetSystemDirectoryA(directory, sizeof(directory)) != 0u) {
+        v9x_write_in(V9X_SECTION_INSTALLED, "SystemDir", directory);
+        v9x_write_file_list(V9X_SECTION_INSTALLED, directory, "V9X*.*", 1);
+    }
+    if (v9x_reg_load()) {
+        v9x_write_display_classes();
+        v9x_write_opengl_drivers();
+    }
+    v9x_write_cards();
+    /* What the driver wrote at boot and what the user set: the card's
+     * name and memory, and the [Velocity9x] keys from SYSTEM.INI. */
+    v9x_copy_section(V9X_SECTION_HARDWARE, "Velocity9xHardware",
+                     V9X_DIAG_HW_INI);
+    v9x_copy_section(V9X_SECTION_SETTINGS, "Velocity9x", "SYSTEM.INI");
+    /* The other files a report should carry, so the reader knows which
+     * exist without asking. */
+    v9x_write_file_list(V9X_SECTION_FILES, V9X_DIAG_DIR, "*.*", 0);
+}
+
+/*
+ * The driver's half, from the snapshot: the builds that wrote the counters,
+ * the boot they belong to, and the programs that drew.
+ */
+static void v9x_identity_text(char *out, const char *field, DWORD bytes)
+{
+    DWORD index;
+
+    for (index = 0ul; index + 1ul < bytes && field[index] != '\0'; ++index) {
+        out[index] = field[index];
+    }
+    out[index] = '\0';
+}
+
+static void v9x_write_driver_identity(const struct v9x_diag_identity *identity)
+{
+    static const char trace_build[] = V9X_VERSION_STRING " " V9X_BUILD_ID;
+    char driver[V9X_DIAG_BUILD_BYTES];
+    char hal[V9X_DIAG_BUILD_BYTES];
+    char name[V9X_DIAG_PROCESS_NAME_BYTES];
+    char text[128];
+    char key[24];
+    DWORD index;
+    DWORD date = identity->block_date;
+    DWORD time = identity->block_time;
+    const struct v9x_diag_process *process;
+
+    v9x_identity_text(driver, identity->driver_build, sizeof(driver));
+    v9x_identity_text(hal, identity->hal_build, sizeof(hal));
+    v9x_write_text("DriverBuild", driver);
+    /* Empty until DriverInit has run once this boot - nothing has used
+     * DirectDraw yet - which is not a disagreement. */
+    v9x_write_text("HalBuild", hal);
+    v9x_write_text("TraceBuild", trace_build);
+    v9x_write_uint("BuildsAgree",
+                   (lstrcmpA(driver, trace_build) == 0 &&
+                    (hal[0] == '\0' || lstrcmpA(driver, hal) == 0))
+                       ? 1ul : 0ul);
+    /*
+     * An identifier for the boot, not the time it started: the DOS clock
+     * when the driver made its shared block, which is the first DirectDraw
+     * use or the first V9XTRACE run, whichever came first. The same id in
+     * two files means the same boot; only those subtract.
+     */
+    wsprintfA(text, "%04lu-%02lu-%02lu %02lu:%02lu:%02lu.%02lu",
+              date >> 16, (date >> 8) & 0xfful, date & 0xfful,
+              time >> 24, (time >> 16) & 0xfful, (time >> 8) & 0xfful,
+              time & 0xfful);
+    v9x_write_text("BootId", text);
+    v9x_write_uint("Processes", identity->process_count);
+    v9x_write_uint("ProcessesUnrecorded", identity->process_unrecorded);
+    for (index = 0ul; index < identity->process_count &&
+                      index < (DWORD)V9X_DIAG_PROCESS_SLOTS; ++index) {
+        process = &identity->processes[index];
+        v9x_identity_text(name, process->name, sizeof(name));
+        wsprintfA(text, "%s d3d-contexts=%lu gl-describes=%lu "
+                  "first-uptime-ms=%lu", name, process->d3d_contexts,
+                  process->gl_describes, process->first_uptime_ms);
+        v9x_indexed_key(key, "Process", index + 1ul, "");
+        v9x_write_text(key, text);
+    }
+}
+
 void __stdcall V9xTraceDumpEntry(void)
 {
     V9X_DCICMD command;
@@ -560,6 +1148,9 @@ void __stdcall V9xTraceDumpEntry(void)
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", "V9XTRACEDUMP build=" V9X_BUILD_ID);
     v9x_write_dump_identity();
+    v9x_write_text("SnapshotFile", V9X_RESULT_PATH);
+    v9x_write_uint("SnapshotReused", (DWORD)v9x_result_reused);
+    v9x_write_machine_identity();
     if (v9x_has_switch("-dd")) {
         dd_object = v9x_dd_hold_open();
     }
@@ -635,6 +1226,7 @@ void __stdcall V9xTraceDumpEntry(void)
     }
 
     v9x_write_uint("Ok", 1ul);
+    v9x_write_driver_identity(&snapshot.identity);
     v9x_write_uint("DriverInitDone", snapshot.driver_init_done);
     v9x_write_uint("ModeWidth", snapshot.fb.width);
     v9x_write_uint("ModeHeight", snapshot.fb.height);

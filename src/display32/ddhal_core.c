@@ -19,6 +19,10 @@
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
+/* After the fallback above, so build.h keeps this module's: for
+ * V9X_VERSION_STRING. */
+#include "velocity9x/build.h"
+#include "velocity9x/diag_identity.h"
 
 static const char v9x_hal_build_id[] = "V9XHAL build=" V9X_BUILD_ID;
 
@@ -2008,6 +2012,12 @@ DWORD __stdcall DriverInit(DWORD context)
     if (shared->d3d_diagnostics.uptime_driver_init == 0ul) {
         shared->d3d_diagnostics.uptime_driver_init = GetTickCount();
     }
+    /* Every init, not the first: a HAL replaced without a reboot is the
+     * one a report needs named, and the 16-bit side's stamp beside it
+     * still says what the boot started with. */
+    v9x_diag_copy_text(shared->identity.hal_build,
+                       V9X_VERSION_STRING " " V9X_BUILD_ID,
+                       (v9x_u32)V9X_DIAG_BUILD_BYTES);
 
     shared->info.dwSize = sizeof(V9X_DDHALINFO);
     shared->info.dwNumModes = mode_count;

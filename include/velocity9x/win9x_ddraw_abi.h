@@ -4,6 +4,8 @@
 /* Engine type and capability values are shared with the 16-bit hardware
  * layer, which cannot include this header. */
 #include "velocity9x/engine_abi.h"
+/* The snapshot identity, written by both sides; fixed-width fields only. */
+#include "velocity9x/diag_identity.h"
 
 /*
  * Minimal Windows 9x DirectDraw HAL ABI used by Velocity9x, written from
@@ -1522,6 +1524,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100601: V9X_DD_SHARED and V9X_DD_TRACE_SNAPSHOT gain the identity
+ * (diag_identity.h): both builds, the block's creation clock and the process
+ * table. An append, and the block grows past two pages - V9X_DD_SHARED_BYTES
+ * in runtime.asm moves to three with it. */
 /* 2026100409: the untextured-batch census. An append. */
 /* 2026100308: flips the VSync setting overrode. An append. */
 /* 2026100307: TextureCreate refusals for a full handle table. An append. */
@@ -1636,7 +1642,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100409ul
+#define V9X_DD_SHARED_ABI   2026100601ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3402,6 +3408,7 @@ typedef struct v9x_dd_trace_snapshot {
     V9X_D3D_DIAGNOSTICS d3d;
     V9X_DD_TRACE trace;
     V9X_D3D_DRAW_CENSUS census;
+    struct v9x_diag_identity identity;
 } V9X_DD_TRACE_SNAPSHOT;
 
 /*
@@ -3710,6 +3717,10 @@ typedef struct v9x_dd_shared {
      * them.
      */
     V9X_D3DHAL_D3DEXTENDEDCAPS d3d_extended_caps;
+    /* Which builds wrote all of the above, since when, for which programs.
+     * The 16-bit side stamps its half when it creates the block, the HAL
+     * the rest; the trace snapshot copies it whole. */
+    struct v9x_diag_identity identity;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)
@@ -3787,7 +3798,7 @@ typedef char v9x_dd_assert_opengl_getinfo[
 /* Must match V9X_DD_SHARED_BYTES in src/display16/runtime.asm, which is the
  * size the 16-bit side DPMI-allocates and the limit it sets on the selector. */
 typedef char v9x_dd_assert_shared_fits_dpmi_block[
-    sizeof(V9X_DD_SHARED) <= 8192 ? 1 : -1];
+    sizeof(V9X_DD_SHARED) <= 12288 ? 1 : -1];
 
 /*
  * How much of Gen3's second aperture the driver maps, in bytes.

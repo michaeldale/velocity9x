@@ -122,6 +122,9 @@ unsigned int v9x_run_donewait_tests(void);
  * which turns on a submission having happened rather than on the backend's
  * return value. */
 unsigned int v9x_run_drawnote_tests(void);
+/* tests\host\test_diag_identity.c: the trace snapshot's process table and
+ * text copies, same convention. */
+unsigned int v9x_run_diag_identity_tests(void);
 /* tests/host/test_i9xx_wm.c: the Gen3 display FIFO watermark arithmetic,
  * settled here because the machine it runs on has no network. */
 unsigned int v9x_run_i9xx_cover_tests(void);
@@ -1174,6 +1177,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_sis6326_map_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
+    failures += v9x_run_diag_identity_tests();
     failures += v9x_run_i9xx_cover_tests();
     failures += v9x_run_i9xx_depth_tests();
     failures += v9x_run_i9xx_wm_tests();

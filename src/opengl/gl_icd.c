@@ -3212,12 +3212,23 @@ BOOL __stdcall V9xGlEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
+        /* The program and the build, which every later line of this
+         * process is read against: a log from a user's machine names
+         * neither otherwise, and holds several programs' sessions. */
+        char path[MAX_PATH];
+        char text[MAX_PATH + 96];
+
         CreateDirectoryA(V9X_DIAG_DIR, 0);
         InitializeCriticalSection(&v9x_gl_lock);
         v9x_gl_tls = TlsAlloc();
-        v9x_gl_log3("attach instance=%08lX tls=%lu build-marker=%lu",
-                    (DWORD)instance, v9x_gl_tls,
-                    (DWORD)(v9x_gl_build_id[0] != '\0'));
+        if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
+            path[0] = '\0';
+        }
+        path[sizeof(path) - 1u] = '\0';
+        wsprintfA(text, "attach instance=%08lX tls=%lu version=%s %s exe=%s",
+                  (DWORD)instance, v9x_gl_tls, V9X_VERSION_STRING,
+                  v9x_gl_build_id, path);
+        v9x_gl_log(text);
     } else if (reason == DLL_PROCESS_DETACH) {
         DWORD slot;
         DWORD distinct = 0ul;

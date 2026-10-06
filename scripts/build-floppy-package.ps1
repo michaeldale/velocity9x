@@ -214,8 +214,17 @@ let Windows redetect Standard PCI Graphics Adapter (VGA).
 
 6. REPORTING A PROBLEM
 
-Copy these files off the machine if they exist:
+Right after the program that went wrong, run V9XTRACE.EXE. Each run writes
+the next of C:\V9XDIAG\V9XSNAP.INI, V9XSNA1.INI ... V9XSNA7.INI (the last
+is reused once all eight exist). A snapshot names the driver build, the
+card, the installed driver files, the Velocity9x settings, and every
+program that used Direct3D or OpenGL since Windows started. Its counters
+add up from startup: for one program's numbers, restart Windows, run only
+that program, then V9XTRACE.EXE.
 
+Then copy the whole C:\V9XDIAG folder off the machine. The files in it:
+
+   C:\V9XDIAG\V9XSNA*.INI    V9XTRACE.EXE snapshots
    C:\V9XDIAG\V9XBOOT.INI    how far the driver got during startup
    C:\V9XDIAG\V9XHW.INI      what the driver detected about the card
    C:\V9XDIAG\V9XGDI.INI     last framebuffer test result

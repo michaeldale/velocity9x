@@ -58,6 +58,9 @@ $sources = @(
     # having happened and not on a return value. Pure, and host-tested in
     # tests\host\test_drawnote.c.
     "src\common\drawnote.c",
+    # The trace snapshot's process table and text copies: pure, and
+    # host-tested in tests\host\test_diag_identity.c.
+    "src\common\diag_identity.c",
     # The Gen3 display FIFO watermark, as arithmetic: pure, and
     # host-tested in tests\host\test_i9xx_wm.c because the
     # machine it describes has no network.

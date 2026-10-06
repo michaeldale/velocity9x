@@ -12,6 +12,7 @@
 #include <windows.h>
 #undef SetCursor
 
+#include "velocity9x/build.h"
 #include "velocity9x/d3dmode.h"
 #include "velocity9x/vsync.h"
 #include "velocity9x/diagpaths.h"
@@ -189,6 +190,9 @@ static DWORD v9x_dd_vsync_caps(void)
 }
 
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);
+/* runtime.asm: the DOS date and time, packed as diag_identity.h describes
+ * block_date and block_time. */
+extern void FAR PASCAL V9xDosClock(DWORD FAR *date_time);
 extern DWORD FAR PASCAL V9xDdSharedLinear(void);
 extern DWORD FAR PASCAL V9xHardwareBase(void);
 
@@ -571,6 +575,27 @@ static V9X_DD_SHARED FAR *v9x_dd_block(void)
     }
     v9x_dd_shared->dwSize = sizeof(V9X_DD_SHARED);
     v9x_dd_shared->abi = V9X_DD_SHARED_ABI;
+    /*
+     * This side's half of the trace identity: the build and the clock. The
+     * block is made once per boot - the selector outlives every mode change -
+     * so the clock - read at the first DirectDraw use or V9XTRACE run, not
+     * at startup - identifies the boot: two snapshots carrying the same
+     * stamp are from one boot. The rest of the block was zeroed above,
+     * which is what leaves the build field terminated.
+     */
+    {
+        static const char build[] = V9X_VERSION_STRING " " V9X_BUILD_ID;
+        DWORD date_time[2];
+        WORD index;
+
+        for (index = 0u; index + 1u < V9X_DIAG_BUILD_BYTES &&
+                         build[index] != '\0'; ++index) {
+            v9x_dd_shared->identity.driver_build[index] = build[index];
+        }
+        V9xDosClock((DWORD FAR *)date_time);
+        v9x_dd_shared->identity.block_date = date_time[0];
+        v9x_dd_shared->identity.block_time = date_time[1];
+    }
     v9x_dd_fill_modes(v9x_dd_shared);
     /*
      * Stamp the engine capabilities here, before DriverInit rather than after.
@@ -1068,6 +1093,12 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             source = (const BYTE FAR *)&v9x_dd_shared->census;
             destination = (BYTE FAR *)&snapshot->census;
             for (index = 0u; index < sizeof(V9X_D3D_DRAW_CENSUS); ++index) {
+                destination[index] = source[index];
+            }
+            source = (const BYTE FAR *)&v9x_dd_shared->identity;
+            destination = (BYTE FAR *)&snapshot->identity;
+            for (index = 0u; index < sizeof(struct v9x_diag_identity);
+                 ++index) {
                 destination[index] = source[index];
             }
         }

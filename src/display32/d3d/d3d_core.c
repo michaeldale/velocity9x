@@ -33,6 +33,7 @@
 #include "velocity9x/r3d_abi.h"
 #include "d3d_state.h"
 #include "d3d_select.h"
+#include "velocity9x/diag_identity.h"
 
 
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -661,6 +662,30 @@ static void v9x_d3d_note_client(DWORD pid)
     ++v9x_hal->d3d_diagnostics.d3d_pid_distinct;
 }
 
+/*
+ * The calling program, into the trace identity's process table
+ * (diag_identity.h), so a snapshot can say which programs its counters came
+ * from. Both callers run in the application's own process - DirectDraw
+ * calls the HAL there, and the ICD is loaded into it - so the module that
+ * started the process is the program. KERNEL32 only: the r3d caller holds
+ * the Win16 mutex.
+ */
+static void v9x_d3d_note_process(v9x_u32 kind)
+{
+    char path[MAX_PATH];
+    char name[V9X_DIAG_PROCESS_NAME_BYTES];
+
+    if (v9x_hal == 0) {
+        return;
+    }
+    if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
+        return;
+    }
+    path[sizeof(path) - 1u] = '\0';
+    v9x_diag_base_name(name, path, (v9x_u32)sizeof(name));
+    v9x_diag_note_process(&v9x_hal->identity, name, kind, GetTickCount());
+}
+
 static void v9x_d3d_textures_destroy_context(DWORD context)
 {
     DWORD index;
@@ -1276,6 +1301,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             }
             context->pid = data->dwPID;
             v9x_d3d_note_client(data->dwPID);
+            v9x_d3d_note_process(V9X_DIAG_PROCESS_D3D);
             if (v9x_hal->d3d_diagnostics.uptime_first_d3d == 0ul) {
                 v9x_hal->d3d_diagnostics.uptime_first_d3d = GetTickCount();
             }
@@ -3834,6 +3860,7 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_describe(V9X_R3D_ABI_DESCRIBE *out)
     if (!v9x_win16_enter()) {
         return V9X_R3D_RESULT_NOT_READY;
     }
+    v9x_d3d_note_process(V9X_DIAG_PROCESS_GL);
     result = v9x_r3d_describe_body(out);
     v9x_win16_leave();
     return result;

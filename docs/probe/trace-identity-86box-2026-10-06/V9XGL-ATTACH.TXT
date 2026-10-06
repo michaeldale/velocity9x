@@ -1,0 +1,2 @@
+1 pid=FFFD9C8B attach instance=00600000 tls=2 version=0.11.0 V9XGL build=bea97bd-dirty exe=C:\V9XGLP.EXE
+1 pid=FFFD9C8B attach instance=00600000 tls=2 version=0.11.0 V9XGL build=bea97bd-dirty exe=C:\V9XGLP.EXE
