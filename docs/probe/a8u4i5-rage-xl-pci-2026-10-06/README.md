@@ -278,3 +278,45 @@ The full account, with the hypotheses the evidence killed, is
   Withholding `D3DDEVCAPS_TLVERTEXSYSTEMMEMORY` (probe bit 64) changed
   nothing.
 - Both machines left at DDI 5.
+
+## Part B and the first Direct3D 8 title (3DMark 2001 SE)
+
+Installed from the retro-web share (10.0.0.7:8081, files 2, 7 and 3):
+3DMark2000 1.1 on both machines, 3DMark 2001 SE plus its build 330 patch on
+A8U4I5. The InstallShield self-extractors refused to unpack when started by
+the agent ("The contents of this file cannot be unpacked", the archive tests
+clean with 7-Zip), so each was extracted on the host and its `Setup.exe` run
+from `C:\BENCH\`. The netbook cannot take 3DMark 2001 SE: it has
+DirectX 8.0 and the installer requires 8.1.
+
+Per-program DDI 6 (plan Part B), build after `6ff23ee`, no `Direct3DDdi`
+key: see the plan for the alternation test. 3DMark 2001 SE, 640x480x16,
+16-bit textures and Z, double buffered, D3D software T&L, default tests:
+
+| Test | Result |
+|---|---|
+| Game 1 Car Chase, low / high detail | 1.5 / 0.8 fps |
+| Game 2 Dragothic, low / high | 1.9 / 0.9 fps |
+| Game 3 Lobby, low / high | 2.3 / 1.0 fps |
+| Game 4 Nature, EMBM, DOT3, Pixel Shader | not supported by hardware |
+| Fill rate single / multi texturing | 17.0 / 15.6 MTexels/s |
+| High Polygon Count 1 and 8 lights | N/A |
+| Vertex Shader | 1.3 fps |
+| Advanced Pixel Shader, Point Sprites | N/A |
+
+Car Chase renders correctly (`3dmark2001-car-chase-1024.png`, from the
+first attempt). The run ended with "Could not create texture -
+D3DERR_INVALIDCALL" at the Point Sprites test, so there is no total score.
+At 1024x768 it stopped earlier: `CreateTexture (for a rendertarget)`
+`D3DERR_OUTOFVIDEOMEMORY` on the 8 MB card.
+
+Open from this:
+- Why the game tests run at 1 to 2 fps when Half-Life runs at 18: not
+  measured. Candidates are the runtime's batch ending (vertex buffers
+  locked per draw, decision `2026-10-06-ddi6-runtime-call-rate.md`), the
+  flexible-vertex conversion, and the Mach64 engine itself.
+- The texture `CreateTexture` refused with INVALIDCALL (Point Sprites), and
+  why High Polygon Count reports N/A.
+- The netbook did not come back from the restart onto this build (boot 111
+  was the last seen; no ping after 13 minutes). Not known whether it hung
+  shutting down or booting.

@@ -306,11 +306,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         status->mode_switching[0] = '\0';
         v9x_append(status->mode_switching, sizeof(status->mode_switching),
                    status->live_depth_switching
-                       ? "Live, including color depth"
+                       ? "Live, any depth"
                        : (status->live_mode_switching
-                          ? "Live (same color depth); depth change requires"
-                            " restart"
-                          : "Selected at boot"));
+                          ? "Live, same depth"
+                          : "At boot"));
         GetPrivateProfileStringA("Velocity9xHardware", "Acceleration",
                                  "disabled", acceleration,
                                  sizeof(acceleration), V9X_DIAG_HW_INI);
@@ -451,6 +450,25 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                               ? "Always off"
                               : (lstrcmpiA(vsync, "application") == 0
                                  ? "Game decides"
+                                 : "Not yet stamped by DirectDraw")));
+        }
+        /* The DDI: Direct3DDdi= is stamped by dd16.c beside VSync=. */
+        {
+            char ddi[8];
+            int asked = (int)GetPrivateProfileIntA(
+                V9X_SETTINGS_SECTION, "Direct3DDdi", 0, V9X_SETTINGS_INI);
+
+            status->ddi_request = asked == 5 || asked == 6 ? asked : 0;
+            GetPrivateProfileStringA("Velocity9xHardware", "Direct3DDdi", "",
+                                     ddi, sizeof(ddi), V9X_DIAG_HW_INI);
+            status->ddi[0] = '\0';
+            v9x_append(status->ddi, sizeof(status->ddi),
+                       lstrcmpiA(ddi, "6") == 0
+                           ? "DDI 6 for every program"
+                           : (lstrcmpiA(ddi, "5") == 0
+                              ? "DDI 5 for every program"
+                              : (lstrcmpiA(ddi, "A") == 0
+                                 ? "DDI 6 for Direct3D 8 programs"
                                  : "Not yet stamped by DirectDraw")));
         }
         status->direct3d[0] = '\0';
@@ -661,6 +679,14 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                " (SYSTEM.INI VSync=");
     v9x_append_uint(status->report, sizeof(status->report),
                     (UINT)status->vsync_request);
+    v9x_append(status->report, sizeof(status->report), ")");
+    v9x_append(status->report, sizeof(status->report),
+               "\r\nDirect3D DDI: ");
+    v9x_append(status->report, sizeof(status->report), status->ddi);
+    v9x_append(status->report, sizeof(status->report),
+               " (SYSTEM.INI Direct3DDdi=");
+    v9x_append_uint(status->report, sizeof(status->report),
+                    (UINT)status->ddi_request);
     v9x_append(status->report, sizeof(status->report), ")");
     v9x_append(status->report, sizeof(status->report),
         "\r\nBaseline modes: " V9X_MODES_SUMMARY

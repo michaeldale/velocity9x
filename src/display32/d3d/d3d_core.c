@@ -3075,7 +3075,9 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
  */
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void);
 
-static int v9x_d3d_dp2_enabled(void)
+/* Whether DDI 6 may be offered at all: the 16-bit side's policy bit, a
+ * Direct3D engine, and one to publish. Cheap; read on hot paths. */
+static int v9x_d3d_dp2_available(void)
 {
     return v9x_hal != 0 &&
            (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
@@ -3083,10 +3085,64 @@ static int v9x_d3d_dp2_enabled(void)
            v9x_d3d_publish_engine() != 0;
 }
 
+/*
+ * Whether the calling process gets DDI 6 (docs\plans\ddi6-drawprimitives2.md,
+ * Part B). Asked only while the runtime negotiates - GetDriverInfo and the
+ * publish - so the file and INI reads below are paid a handful of times per
+ * DirectDraw object, never per draw. The answer cannot be cached in a
+ * static: this DLL's data is shared by every DirectDraw process
+ * (docs\issues\2026-10-06-hal-statics-shared-across-processes.md).
+ *
+ * In order: [Velocity9x.Direct3DDdi] <program>.EXE=5 or =6 decides for that
+ * program; Direct3DDdi=6 means every program; otherwise a program that has
+ * loaded D3D8.DLL gets DDI 6, because the Direct3D 8 runtime has no
+ * hardware device without it, and every other program keeps DDI 5. The
+ * program is named by its file name alone, as SYSTEM.INI keys are, with no
+ * path.
+ */
+#define V9X_D3D_DDI_PROGRAMS "Velocity9x.Direct3DDdi"
+
+static int v9x_d3d_dp2_for_process(void)
+{
+    char path[MAX_PATH];
+    const char *name = path;
+    const char *at;
+    UINT listed;
+
+    if (!v9x_d3d_dp2_available()) {
+        return 0;
+    }
+    path[0] = '\0';
+    if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
+        path[0] = '\0';
+    }
+    path[sizeof(path) - 1u] = '\0';
+    for (at = path; *at != '\0'; ++at) {
+        if (*at == '\\' || *at == '/' || *at == ':') {
+            name = at + 1;
+        }
+    }
+    if (*name != '\0') {
+        listed = GetPrivateProfileIntA(V9X_D3D_DDI_PROGRAMS, name, 0,
+                                       "SYSTEM.INI");
+        if (listed == 5u) {
+            return 0;
+        }
+        if (listed == 6u) {
+            return 1;
+        }
+    }
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D_DP2_ALL) !=
+        0ul) {
+        return 1;
+    }
+    return GetModuleHandleA("D3D8.DLL") != 0;
+}
+
 /* The instrument's bits (engine_abi.h), zero for the plain answer. */
 static DWORD v9x_d3d_dp2_probe(void)
 {
-    if (!v9x_d3d_dp2_enabled()) {
+    if (!v9x_d3d_dp2_available()) {
         return 0ul;
     }
     return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_DP2_PROBE_MASK)
@@ -3100,14 +3156,14 @@ static DWORD v9x_d3d_dp2_probe(void)
  * published and again on every GetDriverInfo, because the level is read
  * per driver object and nothing here knows which copy the runtime keeps.
  */
-static void v9x_d3d_apply_ddi_level(void)
+static void v9x_d3d_apply_ddi_level(int ddi6)
 {
     DWORD probe = v9x_d3d_dp2_probe();
 
     if (v9x_hal == 0) {
         return;
     }
-    if (v9x_d3d_dp2_enabled() && (probe & V9X_DP2_PROBE_NO_DEVCAP) == 0ul) {
+    if (ddi6 && (probe & V9X_DP2_PROBE_NO_DEVCAP) == 0ul) {
         v9x_hal->d3d_global.hwCaps.dwDevCaps |= V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
     } else {
         v9x_hal->d3d_global.hwCaps.dwDevCaps &=
@@ -4064,6 +4120,7 @@ static void v9x_d3d_note_driver_info_guid(DWORD data1)
 
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
 {
+    int ddi6;
 #if V9X_C3_SERVE_D3D_CALLBACKS2
     DWORD index;
     DWORD bytes;
@@ -4100,14 +4157,15 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
     }
 
     /*
-     * The DDI 6 answers, when the setting asks for them. The device caps'
-     * DrawPrimitives2 bit moves with the same decision on every call, so a
-     * runtime never sees the bit without the callbacks or the reverse:
-     * the setting is read per driver object on the 16-bit side, and the
-     * runtime asks for these after that.
+     * The DDI 6 answers, when this process gets them
+     * (v9x_d3d_dp2_for_process). The device caps' DrawPrimitives2 bit moves
+     * with the same decision on every call, so a runtime never sees the bit
+     * without the callbacks or the reverse: the setting is read per driver
+     * object on the 16-bit side, and the runtime asks for these after that.
      */
-    v9x_d3d_apply_ddi_level();
-    if (v9x_d3d_dp2_enabled() &&
+    ddi6 = v9x_d3d_dp2_for_process();
+    v9x_d3d_apply_ddi_level(ddi6);
+    if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_callbacks3)) {
         DWORD copy = sizeof(v9x_d3d_callbacks3);
         DWORD at;
@@ -4132,7 +4190,7 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
-    if (v9x_d3d_dp2_enabled() &&
+    if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_parse_unknown)) {
         /* Here lpvData is not a buffer to fill but the parser itself. */
         data->dwActualSize = 0ul;
@@ -4144,7 +4202,7 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
-    if (v9x_d3d_dp2_enabled() &&
+    if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_z_pixel_formats)) {
         data->dwActualSize = v9x_d3d_z_pixel_formats(0, 0ul);
         if (data->lpvData != 0 && data->dwExpectedSize != 0ul) {
@@ -4178,7 +4236,7 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         /* At DDI 6 the DX6 and DX7 fields follow the nine: a DrawPrimitives2
          * runtime reads the blend stages, texture ops and FVF caps from
          * them. Otherwise the nine alone, exactly as before. */
-        int dx6 = v9x_d3d_dp2_enabled();
+        int dx6 = ddi6;
         V9X_D3DHAL_D3DEXTENDEDCAPS7 caps7;
         DWORD size = dx6 ? sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS7)
                          : sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
@@ -4355,7 +4413,7 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
         (V9X_DD_CODE_PTR)V9xD3dValidateTextureStageState;
     v9x_d3d_callbacks3.DrawPrimitives2 =
         (V9X_DD_CODE_PTR)V9xD3dDrawPrimitives2;
-    v9x_d3d_apply_ddi_level();
+    v9x_d3d_apply_ddi_level(v9x_d3d_dp2_for_process());
 }
 
 /*

@@ -24,7 +24,10 @@
 // from y=122, clearing the 136 row below it.
 //
 // The VSync combo shares the Active mode row for the same reason, the way
-// Video memory shares the PCI ID row. The mode value keeps 70 units, which
+// Video memory shares the PCI ID row, and the DDI 6 combo shares the Mode
+// switching row: its value is cut to 70 units, which is why the mode
+// switching sentences are short; the closed combo spans y=147 to about 159,
+// inside the Acceleration box that ends at 161. The mode value keeps 70 units, which
 // holds "1600 x 1200 x 32 bpp"; the closed combo spans y=60 to about 72,
 // clearing the Clock row at 74.
 //
@@ -79,7 +82,10 @@ BEGIN
     COMBOBOX        V9X_IDC_COLOUR_LAYOUT, 72, 136, 166, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Mode switching:", -1, 14, 150, 56, 8
-    LTEXT           "", V9X_IDC_MODE_SWITCH, 72, 150, 166, 8
+    LTEXT           "", V9X_IDC_MODE_SWITCH, 72, 150, 70, 8
+    LTEXT           "DDI 6:", -1, 144, 150, 24, 8
+    COMBOBOX        V9X_IDC_DDI, 170, 147, 68, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
     GROUPBOX        "Runtime diagnostics", -1, 7, 165, 238, 36
     LTEXT           "Driver / framebuffer:", -1, 14, 176, 66, 8

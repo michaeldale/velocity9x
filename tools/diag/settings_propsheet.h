@@ -30,5 +30,8 @@
 #define V9X_IDC_COLOUR_LAYOUT 2021
 /* The vertical sync selector: Game decides, Always on or Always off. */
 #define V9X_IDC_VSYNC         2022
+/* The DDI 6 selector: Automatic, Never or Always ([Velocity9x]
+ * Direct3DDdi absent, 5 or 6). */
+#define V9X_IDC_DDI           2023
 
 #endif

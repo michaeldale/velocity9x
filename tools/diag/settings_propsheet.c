@@ -337,6 +337,101 @@ static int v9x_page_apply_vsync(HWND dialog)
     return 1;
 }
 
+/*
+ * The DDI 6 selector, on the same terms as the VSync one.
+ *
+ * Automatic is the key's absence: DrawPrimitives2 for programs that load
+ * Direct3D 8, and for any [Velocity9x.Direct3DDdi] lists with 6; the DX5
+ * interface for the rest (engine_abi.h, docs\plans\ddi6-drawprimitives2.md
+ * Part B). Never and Always write 5 and 6. Like VSync it needs no restart.
+ */
+static int v9x_page_ddi_loaded;
+
+static const struct v9x_ddi_choice {
+    int value;
+    const char *label;
+} v9x_page_ddi_choices[] = {
+    { 0, "Automatic" },
+    { 5, "Never" },
+    { 6, "Always" }
+};
+#define V9X_PAGE_DDI_CHOICE_COUNT \
+    (sizeof(v9x_page_ddi_choices) / sizeof(v9x_page_ddi_choices[0]))
+
+static void v9x_page_fill_ddi(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_DDI);
+    UINT index;
+    LRESULT item;
+
+    if (combo == 0) {
+        return;
+    }
+    SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+    v9x_page_ddi_loaded = v9x_page_status.ddi_request;
+    for (index = 0u; index < V9X_PAGE_DDI_CHOICE_COUNT; ++index) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_ddi_choices[index].label);
+        if (item < 0) {
+            continue;
+        }
+        SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                     (LPARAM)v9x_page_ddi_choices[index].value);
+        if (v9x_page_ddi_choices[index].value == v9x_page_ddi_loaded) {
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+}
+
+static int v9x_page_selected_ddi(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_DDI);
+    LRESULT selection;
+    LRESULT data;
+
+    if (combo == 0) {
+        return v9x_page_ddi_loaded;
+    }
+    selection = SendMessageA(combo, CB_GETCURSEL, 0, 0);
+    if (selection == CB_ERR) {
+        return v9x_page_ddi_loaded;
+    }
+    data = SendMessageA(combo, CB_GETITEMDATA, (WPARAM)selection, 0);
+    if (data == CB_ERR) {
+        return v9x_page_ddi_loaded;
+    }
+    return (int)data;
+}
+
+static int v9x_page_apply_ddi(HWND dialog)
+{
+    int selected = v9x_page_selected_ddi(dialog);
+    const char *value;
+
+    if (selected == v9x_page_ddi_loaded) {
+        return 0;
+    }
+    if (selected == 0) {
+        value = 0;
+    } else if (selected == 5) {
+        value = "5";
+    } else if (selected == 6) {
+        value = "6";
+    } else {
+        return 0;
+    }
+    if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION, "Direct3DDdi",
+                                    value, V9X_SETTINGS_INI)) {
+        MessageBoxA(dialog,
+                    "Could not write the DDI 6 setting to SYSTEM.INI.\n\n"
+                    "The file may be read-only or in use.",
+                    v9x_page_caption, MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+    v9x_page_ddi_loaded = selected;
+    return 1;
+}
+
 /* The selector's current value, or the loaded one when nothing is selected. */
 static int v9x_page_selected_d3d(HWND dialog)
 {
@@ -511,12 +606,13 @@ static void v9x_page_apply(HWND dialog)
     int wrote_d3d = v9x_page_apply_d3d(dialog);
     int wrote_layout = v9x_page_apply_layout(dialog);
     int wrote_vsync = v9x_page_apply_vsync(dialog);
+    int wrote_ddi = v9x_page_apply_ddi(dialog);
 
-    if (!wrote_d3d && !wrote_layout && !wrote_vsync) {
+    if (!wrote_d3d && !wrote_layout && !wrote_vsync && !wrote_ddi) {
         return;
     }
-    /* VSync alone needs no restart: the 16-bit driver reads it each time
-     * DirectDraw creates its driver object. */
+    /* VSync and the DDI alone need no restart: the 16-bit driver reads both
+     * each time DirectDraw creates its driver object. */
     if (!wrote_d3d && !wrote_layout) {
         MessageBoxA(dialog,
                     "The setting has been saved to SYSTEM.INI.\n\n"
@@ -576,6 +672,7 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         v9x_page_fill_d3d(dialog);
         v9x_page_fill_layout(dialog);
         v9x_page_fill_vsync(dialog);
+        v9x_page_fill_ddi(dialog);
         SetDlgItemTextA(dialog, V9X_IDC_MODE_SWITCH,
                         v9x_page_status.mode_switching);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
@@ -596,12 +693,14 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
          * file, so OK on an untouched page writes nothing. */
         if ((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||
              LOWORD(wparam) == V9X_IDC_COLOUR_LAYOUT ||
-             LOWORD(wparam) == V9X_IDC_VSYNC) &&
+             LOWORD(wparam) == V9X_IDC_VSYNC ||
+             LOWORD(wparam) == V9X_IDC_DDI) &&
             HIWORD(wparam) == CBN_SELCHANGE) {
             if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded ||
                 v9x_page_selected_layout(dialog) !=
                     v9x_page_layout_loaded ||
-                v9x_page_selected_vsync(dialog) != v9x_page_vsync_loaded) {
+                v9x_page_selected_vsync(dialog) != v9x_page_vsync_loaded ||
+                v9x_page_selected_ddi(dialog) != v9x_page_ddi_loaded) {
                 SendMessageA(GetParent(dialog), PSM_CHANGED,
                              (WPARAM)dialog, 0);
             } else {

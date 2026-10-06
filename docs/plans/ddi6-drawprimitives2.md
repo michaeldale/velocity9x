@@ -1,7 +1,7 @@
 # DDI 6 (DrawPrimitives2): Direct3D 8, per-application opt-in, the runtime's flush rate
 
 Date: 2026-10-06. Status: in progress. Part A steps 1 and 2 done (D3D8
-uses the HAL on both machines); step 3 open. Part C done 2026-10-06. Parts B and C recorded
+uses the HAL on both machines); step 3 done on the Rage XL (3DMark 2001 SE). Parts B and C done 2026-10-06. Parts B and C recorded
 at Michael's request to be done after it. Machines: A8U4I5 with the Rage XL
 PCI (`10.0.1.172`), the netbook (GMA 950, `10.0.1.254`).
 
@@ -42,7 +42,29 @@ formats in DrawPrimitives2. D3D8's DxDiag cube draws on the Rage XL
 `docs/probe/a8u4i5-rage-xl-pci-2026-10-06/README.md`, "Direct3D 8 on the
 HAL".
 
-## Part B: DDI 6 for the applications that need it
+## Part B: DDI 6 for the applications that need it (done)
+
+Built 2026-10-06. `[Velocity9x] Direct3DDdi`: absent (the new default) is
+per program, 5 is DDI 5 for every program, 6 is DDI 6 for every program.
+Per program, the HAL decides when the runtime negotiates
+(`v9x_d3d_dp2_for_process`, `src/display32/d3d/d3d_core.c`): a program
+listed in `[Velocity9x.Direct3DDdi]` as `NAME.EXE=5` or `=6` gets that;
+otherwise DDI 6 if it has loaded `D3D8.DLL`, DDI 5 if not. The 16-bit side
+stamps `CAP_D3D_DP2` (may) and `CAP_D3D_DP2_ALL` (every program); V9XHW.INI
+records `Direct3DDdi=5`, `6` or `A`. Settings page: a "DDI 6" selector
+(Automatic, Never, Always) sharing the Mode switching row. The default is
+per program because it cannot take anything away: a Direct3D 8 program had
+no hardware device before, and DX5 to DX7 programs keep DDI 5.
+
+Measured on A8U4I5 with no key set, alternating programs on one boot: the
+D3D8 probe gets the HAL (`D3D_OK`, Callbacks3 served), Half-Life then runs
+DDI 5 (`Dp2Calls` 0, 2.27M DX5 records, 17.96 and 17.98 fps), the probe
+again gets the HAL. 3DMark 2001 SE (build 330) runs on the HAL with
+software T&L. The netbook was not measured: it did not come back from the
+restart onto this build (see the probe README).
+
+The original text:
+
 
 DDI 6 replaces the DX5 interface for every Direct3D program, which costs
 DX5- and DX6-era games their speed. Make it selectable per application:

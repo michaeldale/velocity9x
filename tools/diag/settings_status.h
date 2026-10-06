@@ -59,6 +59,14 @@ typedef struct v9x_settings_status {
      */
     int vsync_request;
     char vsync[48];
+    /*
+     * The Direct3D driver interface. `ddi_request` is [Velocity9x]
+     * Direct3DDdi as the page offers it: 5, 6, or 0 for absent or anything
+     * else, which the driver reads as per program. `ddi` is what the driver
+     * last stamped, from V9XHW.INI's Direct3DDdi=, as a sentence.
+     */
+    int ddi_request;
+    char ddi[48];
     /* The runtime mode table's story, from C:\V9XDIAG\V9XMODES.INI: published and
      * hidden counts, or the static-list statement when no inventory exists. */
     char dynamic_modes[128];

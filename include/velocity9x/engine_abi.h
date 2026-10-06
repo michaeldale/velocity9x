@@ -158,16 +158,25 @@
  * The DirectX 6 driver interface: GUID_D3DCallbacks3 (DrawPrimitives2),
  * GUID_ZPixelFormats and the DX6 extended caps, which together are what the
  * Direct3D 8 runtime needs before it uses hardware at all
- * (src\display32\d3d\d3d_dp2.h). A policy bit from [Velocity9x]
- * Direct3DDdi=6, stamped by the 16-bit driver only beside CAP_D3D and in
- * both places that build this word.
+ * (src\display32\d3d\d3d_dp2.h). Policy bits from [Velocity9x]
+ * Direct3DDdi, stamped by the 16-bit driver only beside CAP_D3D and in both
+ * places that build this word:
  *
- * Off unless asked for, because it is not a feature beside the DX5 path but
- * a replacement for it: a runtime that finds DrawPrimitives2 sends every
- * Direct3D application through it, DX5 ones included, so turning it on
- * changes every game on every family at once.
+ *   D3D_DP2      DDI 6 may be offered. Set unless Direct3DDdi=5.
+ *   D3D_DP2_ALL  offer it to every process (Direct3DDdi=6).
+ *
+ * With D3D_DP2 alone the 32-bit side decides per process, when the runtime
+ * negotiates (v9x_d3d_dp2_for_process in d3d_core.c): DDI 6 for a program
+ * that has loaded D3D8.DLL, or that [Velocity9x.Direct3DDdi] lists with 6;
+ * DDI 5 for the rest, or for one listed with 5. Per process because DDI 6
+ * is not a feature beside the DX5 path but a replacement for it: a runtime
+ * that finds DrawPrimitives2 sends a DX5 game through it as well, which
+ * cost Half-Life 30 % before the Clear2 fix
+ * (docs\decisions\2026-10-06-ddi6-runtime-call-rate.md), while a Direct3D 8
+ * program gets no hardware device at all without it.
  */
 #define V9X_DD_ENGINE_CAP_D3D_DP2       0x00002000ul
+#define V9X_DD_ENGINE_CAP_D3D_DP2_ALL   0x00004000ul
 /*
  * AN INSTRUMENT, NOT A SETTING, and temporary: independent changes to the
  * DDI 6 answer, from the [Velocity9x] Direct3DDdiProbe bitmask, applied

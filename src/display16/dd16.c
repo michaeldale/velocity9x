@@ -190,15 +190,17 @@ static DWORD v9x_dd_vsync_caps(void)
 }
 
 /*
- * [Velocity9x] Direct3DDdi as the DDI 6 policy bit.
+ * [Velocity9x] Direct3DDdi as the DDI 6 policy bits.
  *
  * Read on every call for the reason the VSync key is: a change reaches the
  * next DirectDraw program without a restart, and the runtime fetches the
  * callbacks once per driver object, which is when this runs. Granted only
  * beside CAP_D3D, so it can never advertise DrawPrimitives2 for a chip that
- * has no Direct3D to send it to. 5, or an absent key, is the DX5 interface
- * every family shipped with; 6 asks for DrawPrimitives2
- * (include\velocity9x\engine_abi.h says why that is a setting).
+ * has no Direct3D to send it to. 5 is the DX5 interface for every program;
+ * 6 is DrawPrimitives2 for every program; anything else, the absent key
+ * included, lets the 32-bit side choose per program
+ * (include\velocity9x\engine_abi.h says how and why). V9XHW.INI gets 5, 6,
+ * or A for the per-program answer.
  */
 #define V9X_D3D_DDI_KEY "Direct3DDdi"
 static WORD v9x_dd_ddi_published = 0xffffu;
@@ -206,25 +208,28 @@ static WORD v9x_dd_ddi_published = 0xffffu;
 static DWORD v9x_dd_ddi_caps(DWORD engine_caps)
 {
     WORD level = 5u;
+    WORD asked;
     char text[4];
 
-    if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
-        GetPrivateProfileInt(V9X_SETTINGS_SECTION, V9X_D3D_DDI_KEY, 5,
-                             V9X_SETTINGS_INI) == 6) {
-        level = 6u;
+    if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul) {
+        asked = (WORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
+                                           V9X_D3D_DDI_KEY, 0,
+                                           V9X_SETTINGS_INI);
+        level = asked == 5u ? 5u : (asked == 6u ? 6u : 0u);
     }
     if (level != v9x_dd_ddi_published) {
-        text[0] = (char)('0' + level);
+        text[0] = level == 0u ? 'A' : (char)('0' + level);
         text[1] = '\0';
         WritePrivateProfileString("Velocity9xHardware", V9X_D3D_DDI_KEY,
                                   text, V9X_DIAG_HW_INI);
         v9x_dd_ddi_published = level;
     }
-    if (level != 6u) {
+    if (level == 5u) {
         return 0ul;
     }
-    /* The instrument's bits (engine_abi.h), only beside DDI 6. */
+    /* The instrument's bits (engine_abi.h), only where DDI 6 can be. */
     return V9X_DD_ENGINE_CAP_D3D_DP2 |
+           (level == 6u ? V9X_DD_ENGINE_CAP_D3D_DP2_ALL : 0ul) |
            (((DWORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
                                          "Direct3DDdiProbe", 0,
                                          V9X_SETTINGS_INI) &
