@@ -154,5 +154,39 @@
  */
 #define V9X_DD_ENGINE_CAP_VSYNC_ON      0x00000800ul
 #define V9X_DD_ENGINE_CAP_VSYNC_OFF     0x00001000ul
+/*
+ * The DirectX 6 driver interface: GUID_D3DCallbacks3 (DrawPrimitives2),
+ * GUID_ZPixelFormats and the DX6 extended caps, which together are what the
+ * Direct3D 8 runtime needs before it uses hardware at all
+ * (src\display32\d3d\d3d_dp2.h). A policy bit from [Velocity9x]
+ * Direct3DDdi=6, stamped by the 16-bit driver only beside CAP_D3D and in
+ * both places that build this word.
+ *
+ * Off unless asked for, because it is not a feature beside the DX5 path but
+ * a replacement for it: a runtime that finds DrawPrimitives2 sends every
+ * Direct3D application through it, DX5 ones included, so turning it on
+ * changes every game on every family at once.
+ */
+#define V9X_DD_ENGINE_CAP_D3D_DP2       0x00002000ul
+/*
+ * AN INSTRUMENT, NOT A SETTING, and temporary: independent changes to the
+ * DDI 6 answer, from the [Velocity9x] Direct3DDdiProbe bitmask, applied
+ * only while Direct3DDdi=6. Added 2026-10-06 because serving the DDI 6
+ * answer made DirectDraw drop the whole HAL on A8U4I5, and the first
+ * measurement put the trigger on the device cap rather than the table:
+ *   1  never set D3DDEVCAPS_DRAWPRIMITIVES2
+ *   2  serve D3DHAL_CALLBACKS3 with no DrawPrimitives2 in it
+ *   4  null the DX3 execute-buffer entries (RenderState, RenderPrimitive)
+ *   8  hand DirectDraw the execute-buffer callback table
+ *  16  write-through breadcrumbs to C:\V9XDIAG\V9XDP2.LOG (d3d_core.c)
+ * Remove with the experiment.
+ */
+#define V9X_DD_ENGINE_CAP_DP2_PROBE_MASK  0x001f0000ul
+#define V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT 16
+#define V9X_DP2_PROBE_NO_DEVCAP           1ul
+#define V9X_DP2_PROBE_NO_DP2_ENTRY        2ul
+#define V9X_DP2_PROBE_NO_DX3_ENTRIES      4ul
+#define V9X_DP2_PROBE_EXEBUF_CALLBACKS    8ul
+#define V9X_DP2_PROBE_LOG                16ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

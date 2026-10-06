@@ -1583,6 +1583,34 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_hex(key, snapshot.d3d.driver_info_guids[guid]);
         }
     }
+    /* DrawPrimitives2 (DDI 6); d3d_dp2.h. Dp2Ops0/1 are one bit per
+     * D3DHAL_DP2OPERATION value consumed. */
+    v9x_write_uint("Dp2Callbacks3Served",
+                   snapshot.d3d.dp2_callbacks3_served);
+    v9x_write_uint("Dp2ZFormatsServed", snapshot.d3d.dp2_zformats_served);
+    v9x_write_uint("Dp2Calls", snapshot.d3d.dp2_calls);
+    v9x_write_hex("Dp2FlagsSeen", snapshot.d3d.dp2_flags_seen);
+    v9x_write_uint("Dp2Records", snapshot.d3d.dp2_records);
+    v9x_write_uint("Dp2Triangles", snapshot.d3d.dp2_triangles);
+    v9x_write_uint("Dp2States", snapshot.d3d.dp2_states);
+    v9x_write_uint("Dp2StageStates", snapshot.d3d.dp2_stage_states);
+    v9x_write_uint("Dp2Undrawn", snapshot.d3d.dp2_undrawn);
+    v9x_write_hex("Dp2Ops0", snapshot.d3d.dp2_ops_seen[0]);
+    v9x_write_hex("Dp2Ops1", snapshot.d3d.dp2_ops_seen[1]);
+    v9x_write_uint("Dp2Unparsed", snapshot.d3d.dp2_unparsed);
+    v9x_write_uint("Dp2UnparsedOpLast", snapshot.d3d.dp2_unparsed_op_last);
+    v9x_write_uint("Dp2Malformed", snapshot.d3d.dp2_malformed);
+    v9x_write_uint("Dp2MalformedOpLast",
+                   snapshot.d3d.dp2_malformed_op_last);
+    v9x_write_uint("Dp2RefusedFvf", snapshot.d3d.dp2_refused_fvf);
+    v9x_write_hex("Dp2FvfLast", snapshot.d3d.dp2_fvf_last);
+    v9x_write_uint("Dp2RefusedBuffers", snapshot.d3d.dp2_refused_buffers);
+    v9x_write_uint("Dp2Stage0Approximated",
+                   snapshot.d3d.dp2_stage0_approximated);
+    v9x_write_uint("Dp2Stage1States", snapshot.d3d.dp2_stage1_states);
+    v9x_write_uint("Dp2Clear2Calls", snapshot.d3d.dp2_clear2_calls);
+    v9x_write_uint("Dp2Clear2Refused", snapshot.d3d.dp2_clear2_refused);
+    v9x_write_uint("Dp2ParsedByRuntime", snapshot.d3d.dp2_parsed_by_runtime);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);
     v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);

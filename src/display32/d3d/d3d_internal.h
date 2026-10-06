@@ -182,6 +182,21 @@ typedef struct v9x_d3d_context {
     DWORD alpha_test_enable;
     DWORD alpha_func;
     DWORD alpha_ref;
+    /*
+     * Texture stage 0 as DrawPrimitives2 states it (D3DTSS_*), kept so the
+     * stage can be re-expressed as the DX5 fields above whenever one of its
+     * states changes: the texture handle, the colour and alpha combines and
+     * their arguments, and the minification and mip filters, which DX5
+     * folds into the one texture_min value. Only the DDI 6 path writes
+     * these; ContextCreate sets Direct3D's stage-0 defaults.
+     */
+    DWORD stage_texture;
+    DWORD stage_color_op;
+    DWORD stage_color_arg1;
+    DWORD stage_color_arg2;
+    DWORD stage_alpha_op;
+    DWORD stage_min;
+    DWORD stage_mip;
 } V9X_D3D_CONTEXT;
 
 /*

@@ -103,6 +103,10 @@ unsigned int v9x_run_gl_varray_tests(void);
  * the vocabulary's numbers against d3dtypes.h, same convention. */
 unsigned int v9x_run_d3d_state_tests(void);
 
+/* tests\host\test_d3d_dp2.c: the DrawPrimitives2 command walker's record
+ * layouts, strip winding, _IMM alignment and bounds. */
+unsigned int v9x_run_d3d_dp2_tests(void);
+
 /* tests\host\test_d3d_select.c: the fail-closed D3D engine selector for
  * every engine type, validity and the software override. */
 unsigned int v9x_run_d3d_select_tests(void);
@@ -1172,6 +1176,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_pixels_tests();
     failures += v9x_run_gl_varray_tests();
     failures += v9x_run_d3d_state_tests();
+    failures += v9x_run_d3d_dp2_tests();
     failures += v9x_run_d3d_select_tests();
     failures += v9x_run_d3d_mach64_map_tests();
     failures += v9x_run_d3d_sis6326_map_tests();

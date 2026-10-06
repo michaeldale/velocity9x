@@ -683,6 +683,72 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DHAL2_CB32_DRAWONEINDEXEDPRIMITIVE 0x00000008ul
 #define V9X_D3DHAL2_CB32_DRAWPRIMITIVES     0x00000010ul
 
+/*
+ * The DirectX 6 driver interface (DDI 6): DrawPrimitives2 and what goes with
+ * it. The Windows 98 DDK predates all of it, so these are transcribed from
+ * the Windows SDK (10.0.26100.0, um), whose d3dhal.h, d3dcaps.h and
+ * d3dtypes.h still carry the DirectX 7 DDK declarations. Served only when
+ * the 16-bit side stamps V9X_DD_ENGINE_CAP_D3D_DP2
+ * (src\display32\d3d\d3d_dp2.h says why it exists).
+ */
+/* d3dcaps.h: the device can take DrawPrimitives2 (DX6). The EX form is the
+ * DirectX 7 DDI and is not claimed. */
+#define V9X_D3DDEVCAPS_DRAWPRIMITIVES2    0x00002000ul
+/* d3dhal.h: D3DHAL_CALLBACKS3.dwFlags. */
+#define V9X_D3DHAL3_CB32_DRAWPRIMITIVES2  0x00000008ul
+/* d3dhal.h: D3DHAL_DRAWPRIMITIVES2DATA.dwFlags - lpVertices is a user
+ * pointer rather than lpDDVertex a surface. */
+#define V9X_D3DHALDP2_USERMEMVERTICES     0x00000001ul
+#define V9X_D3DHALDP2_EXECUTEBUFFER       0x00000002ul
+/* d3dhal.h: MAKE_DDHRESULT(3000), the driver asking the runtime to parse the
+ * record at dwErrorOffset itself. */
+#define V9X_D3DERR_COMMAND_UNPARSED       0x88760bb8ul
+/* d3dtypes.h: D3DFVF_XYZRHW | DIFFUSE | SPECULAR | TEX1, which is what a
+ * driver reporting dwFVFCaps zero ("TLVERTEX only", d3dhal.h) is sent. */
+#define V9X_D3DFVF_TLVERTEX               0x000001c4ul
+/* d3dhal.h: D3DHAL_MAX_RSTATES for DX6 - the length of lpdwRStates. */
+#define V9X_D3DHAL_MAX_RSTATES_DX6        256ul
+/* d3dhal.h: D3DTSS_TEXTUREMAP, the stage's texture handle; d3dtypes.h for
+ * the rest of D3DTEXTURESTAGESTATETYPE. */
+#define V9X_D3DTSS_TEXTUREMAP              0ul
+#define V9X_D3DTSS_COLOROP                 1ul
+#define V9X_D3DTSS_COLORARG1               2ul
+#define V9X_D3DTSS_COLORARG2               3ul
+#define V9X_D3DTSS_ALPHAOP                 4ul
+#define V9X_D3DTSS_ALPHAARG1               5ul
+#define V9X_D3DTSS_ALPHAARG2               6ul
+#define V9X_D3DTSS_ADDRESS                12ul
+#define V9X_D3DTSS_ADDRESSU               13ul
+#define V9X_D3DTSS_ADDRESSV               14ul
+#define V9X_D3DTSS_BORDERCOLOR            15ul
+#define V9X_D3DTSS_MAGFILTER              16ul
+#define V9X_D3DTSS_MINFILTER              17ul
+#define V9X_D3DTSS_MIPFILTER              18ul
+/* d3dtypes.h: D3DTEXTUREOP. */
+#define V9X_D3DTOP_DISABLE                 1ul
+#define V9X_D3DTOP_SELECTARG1              2ul
+#define V9X_D3DTOP_SELECTARG2              3ul
+#define V9X_D3DTOP_MODULATE                4ul
+#define V9X_D3DTOP_BLENDTEXTUREALPHA      13ul
+/* d3dtypes.h: D3DTA_*, the argument selectors. */
+#define V9X_D3DTA_SELECTMASK      0x0000000ful
+#define V9X_D3DTA_DIFFUSE         0x00000000ul
+#define V9X_D3DTA_CURRENT         0x00000001ul
+#define V9X_D3DTA_TEXTURE         0x00000002ul
+/* d3dtypes.h: D3DTEXTUREMAGFILTER, D3DTEXTUREMINFILTER and
+ * D3DTEXTUREMIPFILTER. MAG and MIN share POINT 1 and LINEAR 2. */
+#define V9X_D3DTFG_POINT                   1ul
+#define V9X_D3DTFG_LINEAR                  2ul
+#define V9X_D3DTFP_NONE                    1ul
+#define V9X_D3DTFP_POINT                   2ul
+#define V9X_D3DTFP_LINEAR                  3ul
+/* d3dcaps.h: D3DTEXOPCAPS for the ops above. */
+#define V9X_D3DTEXOPCAPS_DISABLE          0x00000001ul
+#define V9X_D3DTEXOPCAPS_SELECTARG1       0x00000002ul
+#define V9X_D3DTEXOPCAPS_SELECTARG2       0x00000004ul
+#define V9X_D3DTEXOPCAPS_MODULATE         0x00000008ul
+#define V9X_D3DTEXOPCAPS_BLENDTEXTUREALPHA 0x00001000ul
+
 typedef struct v9x_d3dtransformcaps {
     DWORD dwSize;
     DWORD dwCaps;
@@ -807,6 +873,53 @@ typedef struct v9x_d3dhal_d3dextendedcaps {
     DWORD dwMinStippleHeight;
     DWORD dwMaxStippleHeight;
 } V9X_D3DHAL_D3DEXTENDEDCAPS;
+
+/*
+ * D3DHAL_D3DEXTENDEDCAPS as the SDK's d3dhal.h declares it with the DirectX 6
+ * and 7 fields after the nine above. Answered only to a DDI 6 caller; the
+ * copy is still bounded by the caller's dwExpectedSize, for the reason the
+ * nine-DWORD form gives. The DX7 tail is all zero but dvMaxVertexW: a
+ * driver with no transform engine has no lights, clip planes or blend
+ * matrices to report.
+ */
+typedef struct v9x_d3dhal_d3dextendedcaps7 {
+    V9X_D3DHAL_D3DEXTENDEDCAPS dx5;
+    DWORD dwMaxTextureRepeat;
+    DWORD dwMaxTextureAspectRatio;
+    DWORD dwMaxAnisotropy;
+    float dvGuardBandLeft;
+    float dvGuardBandTop;
+    float dvGuardBandRight;
+    float dvGuardBandBottom;
+    float dvExtentsAdjust;
+    DWORD dwStencilCaps;
+    DWORD dwFVFCaps;
+    DWORD dwTextureOpCaps;
+    WORD wMaxTextureBlendStages;
+    WORD wMaxSimultaneousTextures;
+    DWORD dwMaxActiveLights;
+    float dvMaxVertexW;
+    WORD wMaxUserClipPlanes;
+    WORD wMaxVertexBlendMatrices;
+    DWORD dwVertexProcessingCaps;
+    DWORD dwReserved1;
+    DWORD dwReserved2;
+    DWORD dwReserved3;
+    DWORD dwReserved4;
+} V9X_D3DHAL_D3DEXTENDEDCAPS7;
+
+typedef char v9x_assert_extended_caps7_size[
+    sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS7) == 116u ? 1 : -1];
+
+/* D3DHAL_CALLBACKS3, d3dhal.h: six pointer-sized fields. */
+typedef struct v9x_d3dhal_callbacks3 {
+    DWORD dwSize;
+    DWORD dwFlags;
+    V9X_DD_CODE_PTR Clear2;
+    V9X_DD_VOID_PTR lpvReserved;
+    V9X_DD_CODE_PTR ValidateTextureStageState;
+    V9X_DD_CODE_PTR DrawPrimitives2;
+} V9X_D3DHAL_CALLBACKS3;
 
 /*
  * One sampled frame, identified.
@@ -1292,6 +1405,76 @@ typedef struct v9x_d3dhal_drawprimitivesdata {
     DWORD ddrval;
 } V9X_D3DHAL_DRAWPRIMITIVESDATA;
 
+/*
+ * D3DHAL_DRAWPRIMITIVES2DATA, d3dhal.h. lpDDCommands and lpDDVertex are
+ * surface LOCAL objects, not the interface wrappers the DX5 callbacks
+ * receive; lpVertices replaces lpDDVertex when dwFlags carries
+ * V9X_D3DHALDP2_USERMEMVERTICES. dwVertexSize in, ddrval out, share a
+ * DWORD. dwErrorOffset is taken from the start of the command surface's
+ * memory, so it includes dwCommandOffset: the header calls it the "offset
+ * in lpDDCommands", which is how the DDK sample drivers compute it as
+ * recalled, and nothing here has measured it yet.
+ */
+typedef struct v9x_d3dhal_drawprimitives2data {
+    DWORD dwhContext;
+    DWORD dwFlags;
+    DWORD dwVertexType;
+    void *lpDDCommands;
+    DWORD dwCommandOffset;
+    DWORD dwCommandLength;
+    void *lpVertices;
+    DWORD dwVertexOffset;
+    DWORD dwVertexLength;
+    DWORD dwReqVertexBufSize;
+    DWORD dwReqCommandBufSize;
+    DWORD *lpdwRStates;
+    DWORD ddrval;
+    DWORD dwErrorOffset;
+} V9X_D3DHAL_DRAWPRIMITIVES2DATA;
+
+/* D3DRECT and D3DHAL_CLEAR2DATA, d3dtypes.h and d3dhal.h: the DX6 clear,
+ * which a DDI 6 driver serves through D3DHAL_CALLBACKS3.Clear2 (DX7 moved it
+ * into the DrawPrimitives2 stream). The rectangles exclude x2 and y2. */
+typedef struct v9x_d3drect {
+    LONG x1;
+    LONG y1;
+    LONG x2;
+    LONG y2;
+} V9X_D3DRECT;
+
+#define V9X_D3DCLEAR_TARGET      0x00000001ul
+#define V9X_D3DCLEAR_ZBUFFER     0x00000002ul
+#define V9X_D3DCLEAR_STENCIL     0x00000004ul
+#define V9X_D3DHAL3_CB32_CLEAR2  0x00000001ul
+
+typedef struct v9x_d3dhal_clear2data {
+    DWORD dwhContext;
+    DWORD dwFlags;
+    DWORD dwFillColor;
+    float dvFillDepth;
+    DWORD dwFillStencil;
+    V9X_D3DRECT *lpRects;
+    DWORD dwNumRects;
+    DWORD ddrval;
+} V9X_D3DHAL_CLEAR2DATA;
+
+/* D3DHAL_VALIDATETEXTURESTAGESTATEDATA, d3dhal.h. */
+#define V9X_D3DHAL3_CB32_VALIDATETEXTURESTAGESTATE 0x00000004ul
+typedef struct v9x_d3dhal_validatetexturestagestatedata {
+    DWORD dwhContext;
+    DWORD dwFlags;
+    DWORD dwReserved;
+    DWORD dwNumPasses;
+    DWORD ddrval;
+} V9X_D3DHAL_VALIDATETEXTURESTAGESTATEDATA;
+
+/* D3DParseUnknownCommand, ddrawi.h: the runtime's parser for a
+ * DrawPrimitives2 record the driver does not know, handed to the driver
+ * through GUID_D3DParseUnknownCommandCallback. It returns D3D_OK and the
+ * record after the one it parsed, or D3DERR_COMMAND_UNPARSED. */
+typedef DWORD (__stdcall *V9X_D3D_PARSE_UNKNOWN_FN)(void *command,
+                                                    void **next);
+
 typedef struct v9x_d3dhal_drawprimcounts {
     WORD wNumStateChanges;
     WORD wPrimitiveType;
@@ -1524,6 +1707,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100602: V9X_D3D_DIAGNOSTICS gains the DrawPrimitives2 counters. An
+ * append. */
 /* 2026100601: V9X_DD_SHARED and V9X_DD_TRACE_SNAPSHOT gain the identity
  * (diag_identity.h): both builds, the block's creation clock and the process
  * table. An append, and the block grows past two pages - V9X_DD_SHARED_BYTES
@@ -1642,7 +1827,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100601ul
+#define V9X_DD_SHARED_ABI   2026100602ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3224,6 +3409,43 @@ typedef struct v9x_d3d_diagnostics {
     DWORD no_handle_white;
     DWORD no_handle_last_state;
     DWORD no_handle_last_color;
+    /*
+     * DrawPrimitives2, the DDI 6 entry (2026-10-06; src\display32\d3d\
+     * d3d_dp2.h). Calls, and what the walker made of them: records,
+     * triangles, states and stage states handed on, records consumed but
+     * not drawn (points, lines, palettes), and one bit per opcode seen.
+     * Then the two ways a walk stops early - an opcode handed back to the
+     * runtime and a record outside its buffers - each with the last
+     * opcode, a vertex format other than TLVERTEX, and a call whose
+     * buffers did not resolve. flags_seen ORs dwFlags. The served counts
+     * say how often the runtime fetched the DDI 6 answers at all.
+     */
+    DWORD dp2_calls;
+    DWORD dp2_records;
+    DWORD dp2_triangles;
+    DWORD dp2_states;
+    DWORD dp2_stage_states;
+    DWORD dp2_undrawn;
+    DWORD dp2_ops_seen[2];
+    DWORD dp2_unparsed;
+    DWORD dp2_unparsed_op_last;
+    DWORD dp2_malformed;
+    DWORD dp2_malformed_op_last;
+    DWORD dp2_refused_fvf;
+    DWORD dp2_fvf_last;
+    DWORD dp2_refused_buffers;
+    DWORD dp2_flags_seen;
+    /* Stage 0 combines the DX5 blend modes cannot say, drawn as MODULATE,
+     * and stage-1 states, which one texture unit ignores. */
+    DWORD dp2_stage0_approximated;
+    DWORD dp2_stage1_states;
+    DWORD dp2_callbacks3_served;
+    DWORD dp2_zformats_served;
+    /* Clear2 calls, and those refused or not fully cleared. */
+    DWORD dp2_clear2_calls;
+    DWORD dp2_clear2_refused;
+    /* Records the runtime's parser took (GUID_D3DParseUnknownCommandCallback). */
+    DWORD dp2_parsed_by_runtime;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

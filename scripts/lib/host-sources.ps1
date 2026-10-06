@@ -102,6 +102,9 @@ function Get-V9xHostSourceNames {
         # Direct3D render state to the neutral draw: the identity, asserted.
         'src\display32\d3d\d3d_state.c',
         'tests\host\test_d3d_state.c',
+        # The DrawPrimitives2 command walker: record layouts and bounds.
+        'src\display32\d3d\d3d_dp2.c',
+        'tests\host\test_d3d_dp2.c',
         # Which D3D engine serves the chip, at publish time and every call.
         'src\display32\d3d\d3d_select.c',
         'tests\host\test_d3d_select.c',

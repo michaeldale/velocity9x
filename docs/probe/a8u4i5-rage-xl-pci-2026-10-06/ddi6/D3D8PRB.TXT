@@ -1,0 +1,17 @@
+Adapters=1
+DisplayMode hr=00000000 800x600 rate 0 format 23
+ModeCount=9
+Mode00 hr=00000000 640x480 rate 0 format 23
+Mode01 hr=00000000 800x600 rate 0 format 23
+Mode02 hr=00000000 1024x768 rate 0 format 23
+Mode03 hr=00000000 320x200 rate 0 format 23
+Mode04 hr=00000000 320x240 rate 0 format 23
+Mode05 hr=00000000 400x300 rate 0 format 23
+Mode06 hr=00000000 512x384 rate 0 format 23
+Mode07 hr=00000000 640x350 rate 0 format 23
+Mode08 hr=00000000 1280x1024 rate 0 format 23
+CheckDeviceType HAL 565 windowed hr=8876086a
+CheckDeviceType HAL 565 fullscreen hr=8876086a
+GetDeviceCaps HAL hr=8876086a DevCaps=00000000
+GetDeviceCaps REF hr=00000000
+

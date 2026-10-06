@@ -116,6 +116,9 @@ $sources = @(
     # Direct3D render state to the neutral draw description; pure and
     # host-tested in tests\host\test_d3d_state.c.
     "src\display32\d3d\d3d_state.c",
+    # The DrawPrimitives2 command walker; pure and host-tested in
+    # tests\host\test_d3d_dp2.c.
+    "src\display32\d3d\d3d_dp2.c",
     "src\display32\d3d\d3d_select.c",
     "src\display32\d3d\d3d_mach64_map.c",
     # The SiS 6326 3D engine: register words, the neutral draw to them, and

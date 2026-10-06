@@ -189,6 +189,48 @@ static DWORD v9x_dd_vsync_caps(void)
     return 0ul;
 }
 
+/*
+ * [Velocity9x] Direct3DDdi as the DDI 6 policy bit.
+ *
+ * Read on every call for the reason the VSync key is: a change reaches the
+ * next DirectDraw program without a restart, and the runtime fetches the
+ * callbacks once per driver object, which is when this runs. Granted only
+ * beside CAP_D3D, so it can never advertise DrawPrimitives2 for a chip that
+ * has no Direct3D to send it to. 5, or an absent key, is the DX5 interface
+ * every family shipped with; 6 asks for DrawPrimitives2
+ * (include\velocity9x\engine_abi.h says why that is a setting).
+ */
+#define V9X_D3D_DDI_KEY "Direct3DDdi"
+static WORD v9x_dd_ddi_published = 0xffffu;
+
+static DWORD v9x_dd_ddi_caps(DWORD engine_caps)
+{
+    WORD level = 5u;
+    char text[4];
+
+    if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
+        GetPrivateProfileInt(V9X_SETTINGS_SECTION, V9X_D3D_DDI_KEY, 5,
+                             V9X_SETTINGS_INI) == 6) {
+        level = 6u;
+    }
+    if (level != v9x_dd_ddi_published) {
+        text[0] = (char)('0' + level);
+        text[1] = '\0';
+        WritePrivateProfileString("Velocity9xHardware", V9X_D3D_DDI_KEY,
+                                  text, V9X_DIAG_HW_INI);
+        v9x_dd_ddi_published = level;
+    }
+    if (level != 6u) {
+        return 0ul;
+    }
+    /* The instrument's bits (engine_abi.h), only beside DDI 6. */
+    return V9X_DD_ENGINE_CAP_D3D_DP2 |
+           (((DWORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
+                                         "Direct3DDdiProbe", 0,
+                                         V9X_SETTINGS_INI) &
+             0x001ful) << V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT);
+}
+
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);
 /* runtime.asm: the DOS date and time, packed as diag_identity.h describes
  * block_date and block_time. */
@@ -548,6 +590,8 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
     }
     /* The vsync bits, here and again in v9x_dd_refresh_framebuffer. */
     engine_caps |= v9x_dd_vsync_caps();
+    /* And the DDI level, last: it depends on the final D3D bit. */
+    engine_caps |= v9x_dd_ddi_caps(engine_caps);
     shared->engine.engine_caps = engine_caps;
     v9x_dd_publish_engine_stamp(engine_type, engine_caps,
                                 shared->engine.ring_linear_base);
@@ -776,6 +820,8 @@ static void v9x_dd_refresh_framebuffer(void)
      * Stamped here as well as in v9x_dd_stamp_engine_caps, for the reason
      * the system-memory bit above gives. */
     shared->engine.engine_caps |= v9x_dd_vsync_caps();
+    shared->engine.engine_caps |=
+        v9x_dd_ddi_caps(shared->engine.engine_caps);
 
     shared->engine.io_base = 0ul;
     shared->engine.crtc_index_port = 0ul;

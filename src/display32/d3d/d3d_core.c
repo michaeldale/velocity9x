@@ -33,6 +33,7 @@
 #include "velocity9x/r3d_abi.h"
 #include "d3d_state.h"
 #include "d3d_select.h"
+#include "d3d_dp2.h"
 #include "velocity9x/diag_identity.h"
 
 
@@ -54,6 +55,51 @@ static const BYTE v9x_guid_d3d_extended_caps[16] = {
     0x80u, 0x1fu, 0xe4u, 0x7du, 0x93u, 0x9du, 0xd0u, 0x11u,
     0x89u, 0xabu, 0x00u, 0xa0u, 0xc9u, 0x05u, 0x41u, 0x29u
 };
+
+/*
+ * The two DDI 6 GUIDs, from the Windows SDK's ddrawi.h (the Windows 98 DDK
+ * has neither):
+ *   GUID_D3DCallbacks3  0xddf41230, 0xec0a, 0x11d0,
+ *                       {0xa9,0xb6,0x00,0xaa,0x00,0xc0,0x99,0x3e}
+ *   GUID_ZPixelFormats  0x93869880, 0x36cf, 0x11d1,
+ *                       {0x9b,0x1b,0x00,0xaa,0x00,0xbb,0xb8,0xae}
+ * Both Data1 values are in the GUID table of the Rage XL's DxDiag run
+ * (2026-10-06), asked for and declined.
+ */
+static const BYTE v9x_guid_d3d_callbacks3[16] = {
+    0x30u, 0x12u, 0xf4u, 0xddu, 0x0au, 0xecu, 0xd0u, 0x11u,
+    0xa9u, 0xb6u, 0x00u, 0xaau, 0x00u, 0xc0u, 0x99u, 0x3eu
+};
+
+static const BYTE v9x_guid_z_pixel_formats[16] = {
+    0x80u, 0x98u, 0x86u, 0x93u, 0xcfu, 0x36u, 0xd1u, 0x11u,
+    0x9bu, 0x1bu, 0x00u, 0xaau, 0x00u, 0xbbu, 0xb8u, 0xaeu
+};
+
+/*
+ * GUID_D3DParseUnknownCommandCallback, ddrawi.h:
+ *   0x2e04ffa0, 0x98e4, 0x11d1, {0x8c,0xe1,0x00,0xa0,0xc9,0x06,0x29,0xa8}
+ *
+ * NOT optional on this runtime, whatever the documentation implies. Read
+ * out of Windows 98's DDRAW.DLL (4.09.0000.0904, the DirectX 9.0c runtime)
+ * on 2026-10-06: when the global data carries D3DDEVCAPS_DRAWPRIMITIVES2,
+ * the code after the GUID_D3DCallbacks3 query requires that table to pass
+ * its flag/pointer check, requires DrawPrimitives2 AND
+ * ValidateTextureStageState non-null, and then offers its parser through
+ * this GUID and requires DDHAL_DRIVER_HANDLED with DD_OK. Any failure skips
+ * the rest of the driver's setup, and DirectDraw runs the device without
+ * its HAL: "DDraw Status: Not Available" in DxDiag, which is what four
+ * builds did before the code was read
+ * (docs\probe\a8u4i5-rage-xl-pci-2026-10-06\README.md).
+ */
+static const BYTE v9x_guid_d3d_parse_unknown[16] = {
+    0xa0u, 0xffu, 0x04u, 0x2eu, 0xe4u, 0x98u, 0xd1u, 0x11u,
+    0x8cu, 0xe1u, 0x00u, 0xa0u, 0xc9u, 0x06u, 0x29u, 0xa8u
+};
+
+/* The runtime's parser, from the GUID above. One per process space is
+ * enough: it is the same DDRAW.DLL entry for every driver object. */
+static V9X_D3D_PARSE_UNKNOWN_FN v9x_d3d_parse_unknown;
 
 static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
@@ -232,6 +278,64 @@ void v9x_d3d_alpha_mask_forget(const V9X_DD_SURFACE_LCL *surface)
     }
 }
 static V9X_D3DHAL_CALLBACKS2 v9x_d3d_callbacks2;
+/* GUID_D3DCallbacks3's answer, served only at DDI 6. */
+static V9X_D3DHAL_CALLBACKS3 v9x_d3d_callbacks3;
+DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data);
+static DWORD v9x_d3d_dp2_probe(void);
+
+/*
+ * Breadcrumbs for the DDI 6 bring-up, under Direct3DDdiProbe bit 16
+ * (engine_abi.h). DxDiag at DDI 6 hung Windows with the Win16 lock held on
+ * A8U4I5 (2026-10-06), and a hang loses every counter in the shared block,
+ * so each line goes to disk write-through and the file is closed after it.
+ * Fixed storage and KERNEL32 file I/O only, as the SiS timeout log. Bounded
+ * at 4,000 lines a boot so a frame loop cannot fill the disk.
+ */
+#define V9X_D3D_DP2_LOG_PATH "C:\\V9XDIAG\\V9XDP2.LOG"
+static DWORD v9x_d3d_dp2_log_lines;
+
+void v9x_d3d_dp2_log(const char *event, DWORD a, DWORD b)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char line[96];
+    int at = 0;
+    int shift;
+    HANDLE file;
+    DWORD written;
+    DWORD tick = GetTickCount();
+
+    if ((v9x_d3d_dp2_probe() & V9X_DP2_PROBE_LOG) == 0ul ||
+        v9x_d3d_dp2_log_lines >= 4000ul) {
+        return;
+    }
+    ++v9x_d3d_dp2_log_lines;
+    for (shift = 28; shift >= 0; shift -= 4) {
+        line[at++] = digits[(tick >> shift) & 0xful];
+    }
+    line[at++] = ' ';
+    while (*event != '\0' && at < 60) {
+        line[at++] = *event++;
+    }
+    line[at++] = ' ';
+    for (shift = 28; shift >= 0; shift -= 4) {
+        line[at++] = digits[(a >> shift) & 0xful];
+    }
+    line[at++] = ' ';
+    for (shift = 28; shift >= 0; shift -= 4) {
+        line[at++] = digits[(b >> shift) & 0xful];
+    }
+    line[at++] = '\r';
+    line[at++] = '\n';
+    file = CreateFileA(V9X_D3D_DP2_LOG_PATH, GENERIC_WRITE, FILE_SHARE_READ,
+                       0, OPEN_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    SetFilePointer(file, 0, 0, FILE_END);
+    WriteFile(file, line, (DWORD)at, &written, 0);
+    CloseHandle(file);
+}
 
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
 {
@@ -1278,6 +1382,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
 
     v9x_trace_enter(V9X_TRACE_D3D_CTXCREATE,
                     data != 0 ? data->dwPID : 0ul);
+    v9x_d3d_dp2_log("CTX create", data != 0 ? data->dwPID : 0ul, 0ul);
     if (ops == 0 || data == 0 || v9x_hal == 0 || data->lpDDS == 0 ||
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
         v9x_hal->fb.bits_per_pixel != ops->limits->target_bits_per_pixel) {
@@ -1335,6 +1440,16 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->alpha_test_enable = 0ul;
             context->alpha_func = V9X_D3DCMP_ALWAYS;
             context->alpha_ref = 0ul;
+            /* Direct3D's stage-0 defaults (d3dtypes.h): modulate the
+             * texture by the diffuse colour, take alpha from the texture,
+             * point sampling, no mip-mapping. */
+            context->stage_texture = 0ul;
+            context->stage_color_op = V9X_D3DTOP_MODULATE;
+            context->stage_color_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage_color_arg2 = V9X_D3DTA_CURRENT;
+            context->stage_alpha_op = V9X_D3DTOP_SELECTARG1;
+            context->stage_min = V9X_D3DTFG_POINT;
+            context->stage_mip = V9X_D3DTFP_NONE;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -2890,6 +3005,623 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
 
 
 /*
+ * DrawPrimitives2, the DirectX 6 driver interface (DDI 6).
+ *
+ * Served only when the 16-bit side stamps V9X_DD_ENGINE_CAP_D3D_DP2, from
+ * [Velocity9x] Direct3DDdi=6: a runtime that finds this entry sends every
+ * Direct3D application through it, so it replaces the DX5 paths above
+ * rather than adding to them, and stays off until it has been measured on
+ * each family (include\velocity9x\engine_abi.h).
+ *
+ * It is a front end on the same machinery, not a new draw path. The command
+ * stream is walked by d3d_dp2.c, which checks every length and index; render
+ * states go through v9x_d3d_apply_state exactly as the DX5 RenderState and
+ * DrawPrimitives pairs do; and the triangles go into the same record run,
+ * clipper, culling and engine batch as DrawPrimitives. Texture stage 0 is
+ * re-expressed as the DX5 fields, because that is what every engine reads.
+ *
+ * The vertices are D3DTLVERTEX and nothing else: the extended caps report
+ * dwFVFCaps zero, which d3dhal.h defines as "TLVERTEX only", so the runtime
+ * converts any other format before it gets here. A call that arrives with
+ * another format anyway is refused whole and counted rather than read at a
+ * stride the engines do not take.
+ */
+static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void);
+
+static int v9x_d3d_dp2_enabled(void)
+{
+    return v9x_hal != 0 &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D_DP2) != 0ul &&
+           v9x_d3d_publish_engine() != 0;
+}
+
+/* The instrument's bits (engine_abi.h), zero for the plain answer. */
+static DWORD v9x_d3d_dp2_probe(void)
+{
+    if (!v9x_d3d_dp2_enabled()) {
+        return 0ul;
+    }
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_DP2_PROBE_MASK)
+           >> V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT;
+}
+
+/*
+ * The parts of the published description that follow the DDI level: the
+ * DrawPrimitives2 device cap, and under the probe bits the DX3 execute
+ * entries and the execute-buffer table. Applied when the tables are
+ * published and again on every GetDriverInfo, because the level is read
+ * per driver object and nothing here knows which copy the runtime keeps.
+ */
+static void v9x_d3d_apply_ddi_level(void)
+{
+    DWORD probe = v9x_d3d_dp2_probe();
+
+    if (v9x_hal == 0) {
+        return;
+    }
+    if (v9x_d3d_dp2_enabled() && (probe & V9X_DP2_PROBE_NO_DEVCAP) == 0ul) {
+        v9x_hal->d3d_global.hwCaps.dwDevCaps |= V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
+    } else {
+        v9x_hal->d3d_global.hwCaps.dwDevCaps &=
+            ~V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
+    }
+    if ((probe & V9X_DP2_PROBE_NO_DX3_ENTRIES) != 0ul) {
+        v9x_hal->d3d_callbacks.RenderState = 0;
+        v9x_hal->d3d_callbacks.RenderPrimitive = 0;
+    } else {
+        v9x_hal->d3d_callbacks.RenderState =
+            (V9X_DD_CODE_PTR)V9xD3dRenderState;
+        v9x_hal->d3d_callbacks.RenderPrimitive =
+            (V9X_DD_CODE_PTR)V9xD3dRenderPrimitive;
+    }
+    v9x_hal->info.lpDDExeBufCallbacks =
+        (probe & V9X_DP2_PROBE_EXEBUF_CALLBACKS) != 0ul
+            ? (V9X_DD_VOID_PTR)&v9x_hal->execute_buffer_callbacks : 0;
+}
+
+/* What the walker's callbacks need, behind its void pointer. */
+typedef struct v9x_d3d_dp2_user {
+    V9X_D3D_CONTEXT *context;
+    V9X_R3D_RECORDS *run;
+    DWORD *rstates;
+} V9X_D3D_DP2_USER;
+
+/*
+ * After a state change: if the context moved and triangles are pending,
+ * draw them under the state they were recorded with. The same rule as the
+ * DX5 DrawPrimitives records, and for the same reason - the batch sink reads
+ * the live context.
+ */
+static void v9x_d3d_dp2_settle(V9X_D3D_DP2_USER *user,
+                               const V9X_D3D_CONTEXT *before)
+{
+    if (user->run->pending != 0ul &&
+        !v9x_d3d_context_same(before, user->context)) {
+        V9X_D3D_CONTEXT after = *user->context;
+
+        *user->context = *before;
+        (void)v9x_r3d_records_flush(user->run);
+        *user->context = after;
+    }
+}
+
+static void v9x_d3d_dp2_render_state(void *opaque, v9x_u32 state,
+                                     v9x_u32 value)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_D3D_CONTEXT before = *user->context;
+
+    v9x_d3d_apply_state(user->context, (DWORD)state, (DWORD)value);
+    /* The runtime keeps its copy of the render states in this array and
+     * reads GetRenderState answers from it; a DDI 6 driver writes what it
+     * was sent. */
+    if (user->rstates != 0 && state < V9X_D3DHAL_MAX_RSTATES_DX6) {
+        user->rstates[state] = (DWORD)value;
+    }
+    v9x_d3d_dp2_settle(user, &before);
+}
+
+/* D3DTSS_MINFILTER and MIPFILTER folded into the one DX5 value. Anything
+ * past LINEAR (anisotropic) is drawn linear, which is what this caps claim. */
+static DWORD v9x_d3d_dp2_min_filter(const V9X_D3D_CONTEXT *context)
+{
+    int linear = context->stage_min >= V9X_D3DTFG_LINEAR;
+
+    if (context->stage_mip <= V9X_D3DTFP_NONE) {
+        return linear ? V9X_D3DFILTER_LINEAR : V9X_D3DFILTER_NEAREST;
+    }
+    if (context->stage_mip == V9X_D3DTFP_POINT) {
+        return linear ? V9X_D3DFILTER_MIPLINEAR : V9X_D3DFILTER_MIPNEAREST;
+    }
+    return linear ? V9X_D3DFILTER_LINEARMIPLINEAR
+                  : V9X_D3DFILTER_LINEARMIPNEAREST;
+}
+
+/*
+ * Stage 0's combine as the DX5 texture blend, and whether it samples the
+ * texture at all.
+ *
+ * DX5 says "no texture" with handle 0, so a stage that is disabled, or that
+ * selects or multiplies only non-texture arguments, binds handle 0. The four
+ * combines DX5 has names for map exactly: SELECTARG of the texture is DECAL,
+ * MODULATE is MODULATE (MODULATEALPHA when alpha modulates too), and
+ * BLENDTEXTUREALPHA is DECALALPHA. Anything else is drawn as MODULATE and
+ * counted, because the caps claim only those ops and an application that
+ * asks for another has not checked them.
+ */
+static void v9x_d3d_dp2_express_stage(V9X_D3D_CONTEXT *context)
+{
+    DWORD op = context->stage_color_op;
+    DWORD arg1 = context->stage_color_arg1 & V9X_D3DTA_SELECTMASK;
+    DWORD arg2 = context->stage_color_arg2 & V9X_D3DTA_SELECTMASK;
+    DWORD textured;
+    DWORD blend = V9X_D3DTBLEND_MODULATE;
+
+    if (op == V9X_D3DTOP_DISABLE) {
+        textured = 0ul;
+    } else if (op == V9X_D3DTOP_SELECTARG1) {
+        textured = arg1 == V9X_D3DTA_TEXTURE;
+        blend = V9X_D3DTBLEND_DECAL;
+    } else if (op == V9X_D3DTOP_SELECTARG2) {
+        textured = arg2 == V9X_D3DTA_TEXTURE;
+        blend = V9X_D3DTBLEND_DECAL;
+    } else if (op == V9X_D3DTOP_MODULATE) {
+        textured = arg1 == V9X_D3DTA_TEXTURE || arg2 == V9X_D3DTA_TEXTURE;
+        blend = context->stage_alpha_op == V9X_D3DTOP_MODULATE
+                    ? V9X_D3DTBLEND_MODULATEALPHA : V9X_D3DTBLEND_MODULATE;
+    } else if (op == V9X_D3DTOP_BLENDTEXTUREALPHA) {
+        textured = 1ul;
+        blend = V9X_D3DTBLEND_DECALALPHA;
+    } else {
+        textured = 1ul;
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_stage0_approximated;
+        }
+    }
+    v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, blend);
+    v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                        textured ? context->stage_texture : 0ul);
+}
+
+static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
+                                    v9x_u32 state, v9x_u32 value)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_D3D_CONTEXT *context = user->context;
+    V9X_D3D_CONTEXT before;
+
+    /* One texture unit, reported as one blend stage: a later stage has
+     * nothing to configure, and counting it says whether anyone tried. */
+    if (stage != 0ul) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_stage1_states;
+        }
+        return;
+    }
+    before = *context;
+    switch (state) {
+    case V9X_D3DTSS_TEXTUREMAP:
+        context->stage_texture = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
+        break;
+    case V9X_D3DTSS_COLOROP:
+        context->stage_color_op = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
+        break;
+    case V9X_D3DTSS_COLORARG1:
+        context->stage_color_arg1 = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
+        break;
+    case V9X_D3DTSS_COLORARG2:
+        context->stage_color_arg2 = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
+        break;
+    case V9X_D3DTSS_ALPHAOP:
+        context->stage_alpha_op = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
+        break;
+    case V9X_D3DTSS_ADDRESS:
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREADDRESS,
+                            (DWORD)value);
+        break;
+    case V9X_D3DTSS_ADDRESSU:
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREADDRESSU,
+                            (DWORD)value);
+        break;
+    case V9X_D3DTSS_ADDRESSV:
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREADDRESSV,
+                            (DWORD)value);
+        break;
+    case V9X_D3DTSS_BORDERCOLOR:
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_BORDERCOLOR,
+                            (DWORD)value);
+        break;
+    case V9X_D3DTSS_MAGFILTER:
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMAG,
+                            value >= V9X_D3DTFG_LINEAR
+                                ? V9X_D3DFILTER_LINEAR
+                                : V9X_D3DFILTER_NEAREST);
+        break;
+    case V9X_D3DTSS_MINFILTER:
+        context->stage_min = (DWORD)value;
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMIN,
+                            v9x_d3d_dp2_min_filter(context));
+        break;
+    case V9X_D3DTSS_MIPFILTER:
+        context->stage_mip = (DWORD)value;
+        v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMIN,
+                            v9x_d3d_dp2_min_filter(context));
+        break;
+    default:
+        /* The alpha arguments, texture coordinate index, LOD bias and the
+         * bump-map states: one unit with the DX5 blends has no use for
+         * them. */
+        break;
+    }
+    v9x_d3d_dp2_settle(user, &before);
+}
+
+static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
+                             v9x_u32 triangles)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+
+    (void)v9x_r3d_records_append_list(user->run,
+                                      (const V9X_R3D_VERTEX *)first,
+                                      triangles);
+}
+
+static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
+                            v9x_u32 vertices)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+
+    (void)v9x_r3d_records_append_fan(user->run,
+                                     (const V9X_R3D_VERTEX *)first, vertices);
+}
+
+static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
+                                 const v9x_u8 *b, const v9x_u8 *c)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_R3D_VERTEX triangle[3];
+
+    triangle[0] = *(const V9X_R3D_VERTEX *)a;
+    triangle[1] = *(const V9X_R3D_VERTEX *)b;
+    triangle[2] = *(const V9X_R3D_VERTEX *)c;
+    (void)v9x_r3d_records_append_list(user->run, triangle, 1ul);
+}
+
+/*
+ * The memory behind a DrawPrimitives2 surface: the LOCAL object the runtime
+ * passed (not an interface wrapper, unlike the DX5 callbacks), its GLOBAL
+ * half, and fpVidMem. Every pointer is the runtime's and is tested before
+ * it is read, for the reason v9x_d3d_surface_lcl gives.
+ */
+static BYTE *v9x_d3d_dp2_memory(void *surface)
+{
+    V9X_DD_SURFACE_LCL *lcl = (V9X_DD_SURFACE_LCL *)surface;
+
+    if (lcl == 0 || IsBadReadPtr(lcl, sizeof(*lcl)) || lcl->lpGbl == 0 ||
+        IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl)) ||
+        lcl->lpGbl->fpVidMem == 0ul) {
+        return 0;
+    }
+    return (BYTE *)lcl->lpGbl->fpVidMem;
+}
+
+static DWORD v9x_d3d_draw_primitives2_body(
+    V9X_D3DHAL_DRAWPRIMITIVES2DATA *data);
+
+/* Timed as V9X_TIME_D3D_CALLS; the work is in the body. */
+DWORD __stdcall V9xD3dDrawPrimitives2(V9X_D3DHAL_DRAWPRIMITIVES2DATA *data)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD result = v9x_d3d_draw_primitives2_body(data);
+
+    V9X_TIME_END(V9X_TIME_D3D_CALLS, started);
+    return result;
+}
+
+static DWORD v9x_d3d_draw_primitives2_body(
+    V9X_D3DHAL_DRAWPRIMITIVES2DATA *data)
+{
+    V9X_FPU_AREA fpu;
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+    V9X_D3D_CONTEXT *context;
+    BYTE *commands;
+    BYTE *vertices;
+    V9X_DP2_STREAM stream;
+    V9X_DP2_SINK sink;
+    V9X_DP2_RESULT walked;
+    V9X_D3D_DP2_USER user;
+    V9X_D3D_LIST_SINK batch_sink;
+    V9X_R3D_RECORDS run;
+
+    if (data == 0) {
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.dp2_calls;
+        v9x_hal->d3d_diagnostics.dp2_flags_seen |= data->dwFlags;
+    }
+    v9x_d3d_dp2_log("DP2 enter", data->dwFlags, data->dwCommandLength);
+    v9x_fpu_save(&fpu);
+    context = v9x_d3d_context_from_handle(data->dwhContext);
+
+    /*
+     * Nothing to draw with, or nothing to draw from. Answered DD_OK with
+     * nothing drawn, which is what the DX5 entry points do for the same
+     * conditions; an error here would stop an application over a frame.
+     */
+    if (data->dwVertexType != V9X_D3DFVF_TLVERTEX) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_refused_fvf;
+            v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
+        }
+        data->dwErrorOffset = 0ul;
+        data->ddrval = V9X_DD_OK;
+        v9x_fpu_restore(&fpu);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    commands = v9x_d3d_dp2_memory(data->lpDDCommands);
+    vertices = (data->dwFlags & V9X_D3DHALDP2_USERMEMVERTICES) != 0ul
+                   ? (BYTE *)data->lpVertices
+                   : v9x_d3d_dp2_memory(data->lpVertices);
+    if (ops == 0 || context == 0 || !ops->ready() || commands == 0 ||
+        (data->dwVertexLength != 0ul &&
+         (vertices == 0 ||
+          IsBadReadPtr(vertices + data->dwVertexOffset,
+                       data->dwVertexLength * sizeof(V9X_D3DTLVERTEX)))) ||
+        (data->dwCommandLength != 0ul &&
+         IsBadReadPtr(commands + data->dwCommandOffset,
+                      data->dwCommandLength))) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_refused_buffers;
+        }
+        data->dwErrorOffset = 0ul;
+        data->ddrval = V9X_DD_OK;
+        v9x_fpu_restore(&fpu);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+
+    stream.commands = commands + data->dwCommandOffset;
+    stream.command_bytes = data->dwCommandLength;
+    stream.vertices = vertices != 0 ? vertices + data->dwVertexOffset : 0;
+    stream.vertex_count = vertices != 0 ? data->dwVertexLength : 0ul;
+    stream.vertex_stride = sizeof(V9X_D3DTLVERTEX);
+
+    batch_sink.ops = ops;
+    batch_sink.context = context;
+    run.vertices = (V9X_R3D_VERTEX *)v9x_d3d_gather;
+    run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+    run.pending = 0ul;
+    run.record_count = 0ul;
+    run.batch = v9x_d3d_records_batch;
+    run.user = &batch_sink;
+
+    user.context = context;
+    user.run = &run;
+    user.rstates = data->lpdwRStates;
+    if (user.rstates != 0 &&
+        IsBadWritePtr(user.rstates,
+                      V9X_D3DHAL_MAX_RSTATES_DX6 * sizeof(DWORD))) {
+        user.rstates = 0;
+    }
+
+    sink.user = &user;
+    sink.render_state = v9x_d3d_dp2_render_state;
+    sink.stage_state = v9x_d3d_dp2_stage_state;
+    sink.list = v9x_d3d_dp2_list;
+    sink.fan = v9x_d3d_dp2_fan;
+    sink.triangle = v9x_d3d_dp2_triangle;
+
+    v9x_dp2_walk(&stream, &sink, &walked);
+    /*
+     * A record this walker does not parse goes to the runtime's own parser
+     * when it gave us one, and the walk resumes after it. The pending run
+     * is drawn first so the order of the stream is kept. Bounded, so a
+     * parser that keeps answering with the same record cannot hold the
+     * Win16 lock forever; what is left over is handed back with
+     * D3DERR_COMMAND_UNPARSED as before.
+     */
+    {
+        DWORD rounds = 0ul;
+        V9X_DP2_RESULT next;
+
+        while (walked.status == V9X_DP2_UNPARSED &&
+               v9x_d3d_parse_unknown != 0 && rounds < 64ul) {
+            const v9x_u8 *at = stream.commands + walked.stop_offset;
+            void *after = 0;
+            DWORD parsed;
+            DWORD resumed;
+
+            ++rounds;
+            (void)v9x_r3d_records_flush(&run);
+            parsed = v9x_d3d_parse_unknown((void *)at, &after);
+            v9x_d3d_dp2_log("DP2 parse", walked.stop_op, parsed);
+            if (parsed != V9X_DD_OK || after == 0 ||
+                (const v9x_u8 *)after <= at ||
+                (const v9x_u8 *)after > stream.commands +
+                                            stream.command_bytes) {
+                break;
+            }
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.dp2_parsed_by_runtime;
+            }
+            resumed = (DWORD)((const v9x_u8 *)after - stream.commands);
+            {
+                V9X_DP2_STREAM rest = stream;
+
+                rest.commands = stream.commands + resumed;
+                rest.command_bytes = stream.command_bytes - resumed;
+                v9x_dp2_walk(&rest, &sink, &next);
+            }
+            walked.records += next.records + 1ul;
+            walked.triangles += next.triangles;
+            walked.states += next.states;
+            walked.stage_states += next.stage_states;
+            walked.undrawn += next.undrawn;
+            walked.ops_seen[0] |= next.ops_seen[0];
+            walked.ops_seen[1] |= next.ops_seen[1];
+            walked.status = next.status;
+            walked.stop_op = next.stop_op;
+            walked.stop_offset = resumed + next.stop_offset;
+        }
+    }
+    (void)v9x_r3d_records_flush(&run);
+
+    if (v9x_hal != 0) {
+        V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
+
+        d->dp2_records += walked.records;
+        d->dp2_triangles += walked.triangles;
+        d->dp2_states += walked.states;
+        d->dp2_stage_states += walked.stage_states;
+        d->dp2_undrawn += walked.undrawn;
+        d->dp2_ops_seen[0] |= walked.ops_seen[0];
+        d->dp2_ops_seen[1] |= walked.ops_seen[1];
+        ++d->render_primitive_calls;
+        if (walked.status == V9X_DP2_UNPARSED) {
+            ++d->dp2_unparsed;
+            d->dp2_unparsed_op_last = walked.stop_op;
+        } else if (walked.status == V9X_DP2_MALFORMED) {
+            ++d->dp2_malformed;
+            d->dp2_malformed_op_last = walked.stop_op;
+        }
+    }
+
+    /*
+     * An opcode the walker does not parse goes back to the runtime with its
+     * offset, which is the interface's contract for an execute buffer's own
+     * instructions: the runtime parses that record and calls again with the
+     * rest. A malformed record is this call's own description - an index or
+     * a count outside the buffers - and is answered as the DX5 indexed path
+     * answers a bad index.
+     */
+    data->dwErrorOffset = data->dwCommandOffset + walked.stop_offset;
+    if (walked.status == V9X_DP2_UNPARSED) {
+        data->ddrval = V9X_D3DERR_COMMAND_UNPARSED;
+    } else if (walked.status == V9X_DP2_MALFORMED) {
+        data->ddrval = 0x80070057ul;
+    } else {
+        data->ddrval = V9X_DD_OK;
+    }
+    v9x_d3d_dp2_log("DP2 exit", data->ddrval, walked.records);
+    v9x_fpu_restore(&fpu);
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/*
+ * ValidateTextureStageState: whether the current stage setup draws in one
+ * pass. Required by this runtime before it keeps the DDI 6 table at all
+ * (see v9x_guid_d3d_parse_unknown). One pass for the stage-0 combines the
+ * DX5 blends express exactly - the ones the extended caps claim - and
+ * D3DERR_UNSUPPORTEDCOLOROPERATION for the rest, which v9x_d3d_dp2_express_
+ * stage would draw as MODULATE: an application that asks deserves the truth
+ * rather than the approximation.
+ */
+DWORD __stdcall V9xD3dValidateTextureStageState(
+    V9X_D3DHAL_VALIDATETEXTURESTAGESTATEDATA *data)
+{
+    V9X_D3D_CONTEXT *context;
+    DWORD op;
+
+    if (data == 0) {
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    context = v9x_d3d_context_from_handle(data->dwhContext);
+    if (context == 0) {
+        data->dwNumPasses = 0ul;
+        data->ddrval = 0x80070057ul;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    op = context->stage_color_op;
+    if (op == V9X_D3DTOP_DISABLE || op == V9X_D3DTOP_SELECTARG1 ||
+        op == V9X_D3DTOP_SELECTARG2 || op == V9X_D3DTOP_MODULATE ||
+        op == V9X_D3DTOP_BLENDTEXTUREALPHA) {
+        data->dwNumPasses = 1ul;
+        data->ddrval = V9X_DD_OK;
+    } else {
+        data->dwNumPasses = 0ul;
+        data->ddrval = 0x88760819ul;
+    }
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/*
+ * The DX6 extended caps: the engine's nine DX5 fields, then what one texture
+ * unit with the DX5 blends and no transform engine can say. Built per call
+ * rather than kept in the shared block, so the block does not grow for an
+ * answer that is a function of the nine.
+ *
+ * Guard band zero says the runtime must clip to the viewport, which is what
+ * it has always done for this driver. dwFVFCaps zero is "TLVERTEX only".
+ * dwMaxTextureRepeat and dvMaxVertexW are not limits measured on any card:
+ * the first is the DDK samples' customary 2048, the second large enough
+ * that no W-based depth is refused.
+ */
+static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
+{
+    BYTE *bytes = (BYTE *)caps;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(*caps); ++index) {
+        bytes[index] = 0u;
+    }
+    caps->dx5 = v9x_hal->d3d_extended_caps;
+    caps->dx5.dwSize = sizeof(*caps);
+    caps->dwMaxTextureRepeat = 2048ul;
+    caps->dwMaxTextureAspectRatio =
+        (v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps &
+         V9X_D3DPTEXTURECAPS_SQUAREONLY) != 0ul ? 1ul : 0ul;
+    caps->dwMaxAnisotropy = 1ul;
+    caps->dwFVFCaps = 0ul;
+    caps->dwTextureOpCaps = V9X_D3DTEXOPCAPS_DISABLE |
+                            V9X_D3DTEXOPCAPS_SELECTARG1 |
+                            V9X_D3DTEXOPCAPS_SELECTARG2 |
+                            V9X_D3DTEXOPCAPS_MODULATE |
+                            V9X_D3DTEXOPCAPS_BLENDTEXTUREALPHA;
+    caps->wMaxTextureBlendStages = 1u;
+    caps->wMaxSimultaneousTextures = 1u;
+    caps->dvMaxVertexW = 1.0e10f;
+}
+
+/*
+ * GUID_ZPixelFormats: a DWORD count, then that many DDPIXELFORMATs. The
+ * engine's one depth format, which is all any engine here has - its width
+ * from the engine limits the core already sizes Z surfaces by. The Z
+ * fields share the RGB slots: bit depth, stencil depth, Z mask, stencil
+ * mask.
+ */
+static DWORD v9x_d3d_z_pixel_formats(BYTE *out, DWORD room)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+    DWORD bits = ops != 0 && ops->limits != 0
+                     ? ops->limits->depth_bits_per_pixel : 0ul;
+    DWORD answer[1 + sizeof(V9X_DDPIXELFORMAT) / sizeof(DWORD)];
+    V9X_DDPIXELFORMAT *format = (V9X_DDPIXELFORMAT *)&answer[1];
+    DWORD bytes;
+    DWORD index;
+
+    answer[0] = bits != 0ul ? 1ul : 0ul;
+    format->dwSize = sizeof(V9X_DDPIXELFORMAT);
+    format->dwFlags = V9X_DDPF_ZBUFFER;
+    format->dwFourCC = 0ul;
+    format->dwRGBBitCount = bits;
+    format->dwRBitMask = 0ul;
+    format->dwGBitMask = bits >= 32ul ? 0xfffffffful : (1ul << bits) - 1ul;
+    format->dwBBitMask = 0ul;
+    format->dwRGBAlphaBitMask = 0ul;
+    bytes = answer[0] != 0ul ? sizeof(answer) : sizeof(DWORD);
+    for (index = 0ul; out != 0 && index < bytes && index < room; ++index) {
+        out[index] = ((const BYTE *)answer)[index];
+    }
+    return bytes;
+}
+
+/*
  * Sixteen bytes, compared. The callbacks2 path below walks its own GUID
  * inline and is left as it is; this exists because a second GUID makes the
  * comparison worth naming.
@@ -2965,6 +3697,65 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         ++v9x_hal->d3d_diagnostics.driver_info_calls;
         v9x_hal->d3d_diagnostics.driver_info_last = data1;
         v9x_d3d_note_driver_info_guid(data1);
+        v9x_d3d_dp2_log("GDI", data1, data->dwExpectedSize);
+    }
+
+    /*
+     * The DDI 6 answers, when the setting asks for them. The device caps'
+     * DrawPrimitives2 bit moves with the same decision on every call, so a
+     * runtime never sees the bit without the callbacks or the reverse:
+     * the setting is read per driver object on the 16-bit side, and the
+     * runtime asks for these after that.
+     */
+    v9x_d3d_apply_ddi_level();
+    if (v9x_d3d_dp2_enabled() &&
+        v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_callbacks3)) {
+        DWORD copy = sizeof(v9x_d3d_callbacks3);
+        DWORD at;
+        V9X_D3DHAL_CALLBACKS3 answer = v9x_d3d_callbacks3;
+
+        /* Probe bit 2: the table with no DrawPrimitives2 in it. */
+        if ((v9x_d3d_dp2_probe() & V9X_DP2_PROBE_NO_DP2_ENTRY) != 0ul) {
+            answer.dwFlags = 0ul;
+            answer.DrawPrimitives2 = 0;
+        }
+        if (data->dwExpectedSize < copy) {
+            copy = data->dwExpectedSize;
+        }
+        data->dwActualSize = sizeof(v9x_d3d_callbacks3);
+        if (data->lpvData != 0 && copy != 0ul) {
+            for (at = 0ul; at < copy; ++at) {
+                ((BYTE *)data->lpvData)[at] = ((const BYTE *)&answer)[at];
+            }
+            data->ddRVal = V9X_DD_OK;
+            ++v9x_hal->d3d_diagnostics.dp2_callbacks3_served;
+        }
+        v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (v9x_d3d_dp2_enabled() &&
+        v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_parse_unknown)) {
+        /* Here lpvData is not a buffer to fill but the parser itself. */
+        data->dwActualSize = 0ul;
+        if (data->lpvData != 0 &&
+            !IsBadCodePtr((FARPROC)data->lpvData)) {
+            v9x_d3d_parse_unknown = (V9X_D3D_PARSE_UNKNOWN_FN)data->lpvData;
+        }
+        data->ddRVal = V9X_DD_OK;
+        v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (v9x_d3d_dp2_enabled() &&
+        v9x_d3d_guid_matches(data->guidInfo, v9x_guid_z_pixel_formats)) {
+        data->dwActualSize = v9x_d3d_z_pixel_formats(0, 0ul);
+        if (data->lpvData != 0 && data->dwExpectedSize != 0ul) {
+            (void)v9x_d3d_z_pixel_formats((BYTE *)data->lpvData,
+                                          data->dwExpectedSize);
+            data->ddRVal = V9X_DD_OK;
+            ++v9x_hal->d3d_diagnostics.dp2_zformats_served;
+        }
+        v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
     }
 
     /*
@@ -2985,18 +3776,29 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
     if (v9x_hal != 0 &&
         v9x_hal->d3d_extended_caps.dwSize != 0ul &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_extended_caps)) {
-        DWORD copy = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+        /* At DDI 6 the DX6 and DX7 fields follow the nine: a DrawPrimitives2
+         * runtime reads the blend stages, texture ops and FVF caps from
+         * them. Otherwise the nine alone, exactly as before. */
+        int dx6 = v9x_d3d_dp2_enabled();
+        V9X_D3DHAL_D3DEXTENDEDCAPS7 caps7;
+        DWORD size = dx6 ? sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS7)
+                         : sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+        DWORD copy = size;
         DWORD index;
         BYTE *destination;
         const BYTE *source;
 
+        if (dx6) {
+            v9x_d3d_extended_caps7(&caps7);
+        }
         if (data->dwExpectedSize < copy) {
             copy = data->dwExpectedSize;
         }
-        data->dwActualSize = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+        data->dwActualSize = size;
         if (data->lpvData != 0 && copy != 0ul) {
             destination = (BYTE *)data->lpvData;
-            source = (const BYTE *)&v9x_hal->d3d_extended_caps;
+            source = dx6 ? (const BYTE *)&caps7
+                         : (const BYTE *)&v9x_hal->d3d_extended_caps;
             for (index = 0ul; index < copy; ++index) {
                 destination[index] = source[index];
             }
@@ -3138,6 +3940,23 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
         (V9X_DD_CODE_PTR)V9xD3dDrawOneIndexedPrimitive;
     v9x_d3d_callbacks2.DrawPrimitives =
         (V9X_DD_CODE_PTR)V9xD3dDrawPrimitives;
+
+    /* Served only at DDI 6; see V9xHalGetDriverInfo. Clear2 is the DX6
+     * driver's clear (see V9xD3dClear2). ValidateTextureStageState is
+     * required by this runtime (see v9x_guid_d3d_parse_unknown), and every
+     * pointer needs its flag bit: DDRAW.DLL checks the slots against
+     * dwFlags one bit each. */
+    v9x_d3d_callbacks3.dwSize = sizeof(V9X_D3DHAL_CALLBACKS3);
+    v9x_d3d_callbacks3.dwFlags = V9X_D3DHAL3_CB32_CLEAR2 |
+                                 V9X_D3DHAL3_CB32_VALIDATETEXTURESTAGESTATE |
+                                 V9X_D3DHAL3_CB32_DRAWPRIMITIVES2;
+    v9x_d3d_callbacks3.Clear2 = (V9X_DD_CODE_PTR)V9xD3dClear2;
+    v9x_d3d_callbacks3.lpvReserved = 0;
+    v9x_d3d_callbacks3.ValidateTextureStageState =
+        (V9X_DD_CODE_PTR)V9xD3dValidateTextureStageState;
+    v9x_d3d_callbacks3.DrawPrimitives2 =
+        (V9X_DD_CODE_PTR)V9xD3dDrawPrimitives2;
+    v9x_d3d_apply_ddi_level();
 }
 
 /*
@@ -3728,6 +4547,146 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.rect_count = request->rect_count;
     return v9x_r3d_clear(&clear) ? V9X_R3D_RESULT_OK
                                  : V9X_R3D_RESULT_INVALID;
+}
+
+/*
+ * Clear2, the DX6 clear (D3DHAL_CALLBACKS3), served beside DrawPrimitives2.
+ *
+ * Its doc says it is "no longer used for DirectX 7.0 and beyond", where the
+ * clear moved into the DrawPrimitives2 stream - which makes it the DX6
+ * driver's clear, and this driver claims the DX6 interface, not the DX7 one.
+ * Done on the CPU through the same r3d clear the render interface uses, on
+ * the context's own target and Z surface, after the engine has drained so
+ * nothing it still owes lands on top. Rectangles are clamped to the target;
+ * one that clamps to nothing is skipped. Stencil has no buffer here.
+ */
+static V9X_R3D_CLEAR_RECT v9x_d3d_clear2_rects[64];
+
+/* A float to the nearest long through the FPU's own store. The HAL links no
+ * C runtime and Open Watcom lowers a float-to-integer cast to a __CHP call,
+ * so the conversion is the instruction itself, as in src\opengl\gl_state.c. */
+static long v9x_d3d_to_long(double value);
+#pragma aux v9x_d3d_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+
+DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
+{
+    V9X_FPU_AREA fpu;
+    V9X_D3D_CONTEXT *context;
+    V9X_R3D_CLEAR clear;
+    DWORD done = 0ul;
+    int drained;
+    int ok = 1;
+
+    if (data == 0) {
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.dp2_clear2_calls;
+    }
+    v9x_fpu_save(&fpu);
+    context = v9x_d3d_context_from_handle(data->dwhContext);
+    if (context == 0 || v9x_hal == 0 ||
+        (data->dwNumRects != 0ul &&
+         (data->lpRects == 0 ||
+          IsBadReadPtr(data->lpRects,
+                       data->dwNumRects * sizeof(V9X_D3DRECT))))) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
+        }
+        data->ddrval = 0x80070057ul;
+        v9x_fpu_restore(&fpu);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+
+    /* Bounded: each call is itself a bounded wait, and BUSY forever is an
+     * engine that will not drain, which must refuse the clear rather than
+     * spin inside a callback that holds the Win16 lock. */
+    {
+        DWORD tries = 0ul;
+
+        v9x_d3d_dp2_log("CLR2 enter", data->dwFlags, data->dwNumRects);
+        drained = v9x_render_drain(1);
+        while (drained == V9X_RENDER_DRAIN_BUSY && ++tries < 64ul) {
+            drained = v9x_render_drain(1);
+        }
+        v9x_d3d_dp2_log("CLR2 drained", (DWORD)drained, tries);
+    }
+    if (drained != V9X_RENDER_DRAIN_DONE) {
+        ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
+        data->ddrval = 0x80070057ul;
+        v9x_fpu_restore(&fpu);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+
+    clear.color = (void *)(v9x_hal->fb.linear_base + context->target_offset);
+    clear.color_pitch = context->pitch;
+    clear.depth = context->zbuffer != 0
+        ? (void *)(v9x_hal->fb.linear_base + context->depth_offset) : 0;
+    clear.depth_pitch = context->depth_pitch;
+    clear.width = context->width;
+    clear.height = context->height;
+    clear.format = context->target_format;
+    clear.clear_color = (data->dwFlags & V9X_D3DCLEAR_TARGET) != 0ul;
+    clear.clear_depth = (data->dwFlags & V9X_D3DCLEAR_ZBUFFER) != 0ul &&
+                        context->zbuffer != 0;
+    clear.color_value = data->dwFillColor & 0x00fffffful;
+    {
+        float depth = data->dvFillDepth;
+        DWORD value;
+
+        if (!(depth > 0.0f)) {
+            value = 0ul;
+        } else if (depth >= 1.0f) {
+            value = 0xfffful;
+        } else {
+            value = (DWORD)v9x_d3d_to_long((double)depth * 65535.0);
+        }
+        clear.depth_value = v9x_d3d_depth_fill_value(value);
+    }
+    clear.write_red = 1ul;
+    clear.write_green = 1ul;
+    clear.write_blue = 1ul;
+    clear.write_depth = 1ul;
+    clear.rects = v9x_d3d_clear2_rects;
+
+    while (done < data->dwNumRects) {
+        DWORD count = 0ul;
+
+        while (done < data->dwNumRects && count < 64ul) {
+            const V9X_D3DRECT *r = &data->lpRects[done++];
+            LONG x1 = r->x1 < 0 ? 0 : r->x1;
+            LONG y1 = r->y1 < 0 ? 0 : r->y1;
+            LONG x2 = r->x2 > (LONG)context->width ? (LONG)context->width
+                                                   : r->x2;
+            LONG y2 = r->y2 > (LONG)context->height ? (LONG)context->height
+                                                    : r->y2;
+
+            if (x1 < x2 && y1 < y2) {
+                v9x_d3d_clear2_rects[count].left = (v9x_u32)x1;
+                v9x_d3d_clear2_rects[count].top = (v9x_u32)y1;
+                v9x_d3d_clear2_rects[count].right = (v9x_u32)x2;
+                v9x_d3d_clear2_rects[count].bottom = (v9x_u32)y2;
+                ++count;
+            }
+        }
+        if (count != 0ul) {
+            clear.rect_count = count;
+            if (!v9x_r3d_clear(&clear)) {
+                ok = 0;
+            }
+        }
+    }
+    if (!ok) {
+        ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
+    }
+    data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
+    v9x_d3d_dp2_log("CLR2 exit", data->ddrval, 0ul);
+    v9x_fpu_restore(&fpu);
+    return V9X_DDHAL_DRIVER_HANDLED;
 }
 
 typedef char v9x_d3d_assert_r3d_abi_rect[

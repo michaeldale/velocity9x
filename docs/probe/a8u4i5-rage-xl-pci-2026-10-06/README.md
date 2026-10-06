@@ -106,3 +106,51 @@ does not gate anything.
 - Whether the reporter's 3DMark hang reproduces on any Mach64 here; it did not in the
   first 9 tests.
 - The D3D7 cube flicker: needs eyes on the screen, not an agent screenshot.
+
+## DDI 6 (DrawPrimitives2) bring-up, same evening (`ddi6/`)
+
+Built behind `[Velocity9x] Direct3DDdi=6` (off by default): the DrawPrimitives2
+walker (`src\display32\d3d\d3d_dp2.c`, host-tested), the core glue, stage-0
+texture states re-expressed as the DX5 fields, the DX7-length extended caps,
+`GUID_ZPixelFormats`, `Clear2` and `ValidateTextureStageState`. The probe
+bits (`Direct3DDdiProbe`, `include\velocity9x\engine_abi.h`) and the
+breadcrumb log `C:\V9XDIAG\V9XDP2.LOG` are temporary instruments.
+
+What the runtime requires, read out of Windows 98's DDRAW.DLL
+(4.09.0000.0904) because four builds measured "DDraw Status: Not Available"
+and the documentation did not explain it. After `GUID_D3DCallbacks3`, when
+the global data carries `D3DDEVCAPS_DRAWPRIMITIVES2`:
+
+- the table must pass a flag/pointer check (every non-null slot needs its
+  `dwFlags` bit and must pass `IsBadCodePtr`);
+- `DrawPrimitives2` **and `ValidateTextureStageState`** must be non-null;
+- the driver must then accept `GUID_D3DParseUnknownCommandCallback`
+  (`2e04ffa0-...`) with DDHAL_DRIVER_HANDLED and DD_OK.
+
+Any failure skips the rest of driver setup, so DirectDraw runs without its
+HAL. Hypotheses killed on the way, each by a build on the card: the
+execute-buffer callback table, nulling RenderState/RenderPrimitive, and
+`Clear2` on its own.
+
+With both requirements met: **DDI Version 6, DDraw and D3D Enabled**. The
+DxDiag D3D7 cube draws through DrawPrimitives2 (29 DP2 and 27 Clear2 calls,
+all DD_OK, `d3d7-cube-dp2.png`). The D3D8 test now runs instead of being
+skipped and fails exactly as the issue 2 reporter saw: step 5
+`GetDeviceCaps` `0x8876086A` (`d3d8-getdevicecaps.png`).
+
+`d3d8probe.c` (`D3D8PRB.TXT`): display mode and all nine modes are R5G6B5;
+`CheckDeviceType` and `GetDeviceCaps` for HAL return `0x8876086A`; REF works.
+From d3d8.dll: `GetDeviceCaps` needs a format whose op flags carry
+`D3DFORMAT_OP_3DACCELERATION`; the legacy builder grants it from
+`dwDeviceRenderBitDepth` (`DDBD_16`, which the Mach64 publishes), and an
+audit throws the whole list away on a rule violation. Which step drops it
+for this driver is not established; `SoftwareOnly=0` in the registry was
+checked and is not it.
+
+Open:
+- Why D3D8 has no 3D-accelerated format for this HAL.
+- One hard hang (Windows alive, Ctrl+Alt+Del dead) during a DxDiag run at
+  DDI 6 before the two requirements were met, with `Clear2` served. Not
+  reproduced with the breadcrumb log; cause unknown. The drain loop in
+  `Clear2` has since been bounded.
+- Points and lines in DrawPrimitives2 are parsed and not drawn.

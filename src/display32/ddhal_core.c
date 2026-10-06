@@ -903,6 +903,7 @@ DWORD __stdcall V9xHalCanCreateSurface(
     DWORD caps = desc != 0 ? desc->ddsCaps.dwCaps : 0ul;
 
     v9x_trace_enter(V9X_TRACE_CANCREATESURFACE, caps);
+    v9x_d3d_dp2_log("DD cancreate", caps, 0ul);
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
@@ -984,6 +985,12 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_trace_enter(V9X_TRACE_CREATESURFACE,
                     data != 0 ? data->dwSCnt : 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_CREATESURFACE);
+    v9x_d3d_dp2_log("DD create",
+                    data != 0 ? data->dwSCnt : 0ul,
+                    data != 0 && data->lpDDSurfaceDesc != 0
+                        ? ((const V9X_DDSURFACEDESC *)
+                               data->lpDDSurfaceDesc)->ddsCaps.dwCaps
+                        : 0ul);
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
@@ -1195,6 +1202,7 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
     DWORD result;
 
     v9x_win16_sample(V9X_WIN16_SITE_LOCK);
+    v9x_d3d_dp2_log("DD lock", data != 0 ? data->dwFlags : 0ul, 0ul);
     result = v9x_lock_body(data);
 
     V9X_TIME_END(V9X_TIME_LOCK, started);
@@ -1814,6 +1822,7 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     int engine_used = 0;
 
     v9x_trace_enter(V9X_TRACE_BLT, data != 0 ? data->dwFlags : 0ul);
+    v9x_d3d_dp2_log("DD blt", data != 0 ? data->dwFlags : 0ul, 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_BLT);
     if (data != 0) {
         v9x_d3d_color_key_touch(data->lpDDDestSurface);
