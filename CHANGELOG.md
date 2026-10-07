@@ -4,10 +4,9 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.12.0 - unreleased
+## 0.12.0 - 2026-10-07
 
-The Direct3D 8 release, in progress: not yet published, and the notes
-below will change before it is. Direct3D 8 runs on the hardware through
+The Direct3D 8 release. Direct3D 8 runs on the hardware through
 the DirectX 6 driver interface (DDI 6), measured on A8U4I5 (Rage XL PCI)
 and the HP Mini 110 netbook (GMA 950), with the S3 ViRGE/DX checked in
 86Box. GitHub issue 2's `GetDeviceCaps` `0x8876086A` no longer happens on
