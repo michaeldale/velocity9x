@@ -275,6 +275,66 @@ static v9x_u32 v9x_m64_policy_texture(
     return V9X_M64_REFUSE_NONE;
 }
 
+/* The render interface's combine numbers (r3d_abi.h), which a second
+ * texture's request carries. */
+#define M64_COLOROP_MODULATE 2ul
+#define M64_ALPHAOP_FRAGMENT 0ul
+
+/*
+ * A second texture, modulated with the first in the same pass. Mesa 7.10's
+ * driver is the reference: it drew unit 1's MODULATE through the composite
+ * and sent every other unit-1 environment to software, and it ran every
+ * texture with MIP_MAP_DISABLE, which the builder does here too, so a mip
+ * filter samples level 0. The composite is formed before TEX_LIGHT_FCN
+ * (ATI's Rage Pro note), so unit 0's REPLACE and MODULATE are the light
+ * function over the product, while its DECAL by texel alpha would lerp the
+ * product, not unit 0's colour, and is refused. COMP_ALPHA is never set,
+ * so the fragment keeps unit 0's alpha: unit 1's own alpha is allowed only
+ * where nothing reads it. Fog and specular over a composite have no scene.
+ */
+static v9x_u32 v9x_m64_policy_composite(
+                              const struct v9x_m64_draw_request *request)
+{
+    if (request->composite_format != V9X_M64_TEXTURE_FORMAT_RGB565 &&
+        !v9x_m64_policy_format_has_alpha(request->composite_format)) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (!v9x_m64_policy_edge(request->composite_width) ||
+        !v9x_m64_policy_edge(request->composite_height)) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->composite_mag_filter != M64_FILTER_NEAREST &&
+        request->composite_mag_filter != M64_FILTER_LINEAR) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->composite_min_filter != M64_FILTER_NEAREST &&
+        request->composite_min_filter != M64_FILTER_LINEAR &&
+        request->composite_min_filter != M64_FILTER_MIPNEAREST &&
+        request->composite_min_filter != M64_FILTER_MIPLINEAR &&
+        request->composite_min_filter != M64_FILTER_LINEARMIPLINEAR) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->composite_address != M64_ADDRESS_WRAP &&
+        request->composite_address != M64_ADDRESS_CLAMP) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->composite_color_op != M64_COLOROP_MODULATE) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->composite_alpha_op != M64_ALPHAOP_FRAGMENT &&
+        v9x_m64_policy_fragment_alpha_read(request)) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->texture_op == M64_TEXOP_DECALALPHA &&
+        v9x_m64_policy_format_has_alpha(request->texture_format)) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    if (request->fog_enable != 0ul || request->specular_enable != 0ul) {
+        return V9X_M64_REFUSE_COMPOSITE;
+    }
+    return V9X_M64_REFUSE_NONE;
+}
+
 static v9x_u32 v9x_m64_policy_check(
                               const struct v9x_m64_draw_request *request,
                               struct v9x_m64_draw_decision *decision)
@@ -310,6 +370,15 @@ static v9x_u32 v9x_m64_policy_check(
 
     if (request->textured != 0ul) {
         reason = v9x_m64_policy_texture(request, decision);
+        if (reason != V9X_M64_REFUSE_NONE) {
+            return reason;
+        }
+    }
+    if (request->composite != 0ul) {
+        if (request->textured == 0ul) {
+            return V9X_M64_REFUSE_COMPOSITE;
+        }
+        reason = v9x_m64_policy_composite(request);
         if (reason != V9X_M64_REFUSE_NONE) {
             return reason;
         }

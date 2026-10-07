@@ -273,6 +273,145 @@ static void test_texture_matches_texture_builder(void)
     CHECK(offsets[18] == ref_offsets[18]);
 }
 
+/* A second texture, 32x8 ARGB4444 at 0x205000: wide, so its TEX_SIZE_PITCH
+ * fields differ from the first texture's 8x8 in every place. */
+static void composite_fields(struct v9x_m64_draw_state *state)
+{
+    state->composite = 1ul;
+    state->composite_offset = 0x00205000ul;
+    state->composite_pitch_bytes = 64ul;
+    state->composite_width = 32ul;
+    state->composite_height = 8ul;
+    state->composite_format = V9X_M64_TEXTURE_FORMAT_ARGB4444;
+}
+
+static void test_composite_state_words(void)
+{
+    struct v9x_m64_draw_state state;
+    struct v9x_m64_draw_decision decision;
+    v9x_u32 offsets[CAP], values[CAP], written;
+    v9x_u32 ref_offsets[CAP], ref_values[CAP], ref_written;
+    unsigned int index;
+
+    base_state(&state);
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_RGB565);
+    decision.light_fcn = V9X_M64_TEX_LIGHT_FCN_REPLACE;
+    decision.texture_alpha = 0ul;
+    decision.alpha_test_dropped = 0ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, ref_offsets,
+                                   ref_values, CAP, &ref_written) ==
+          V9X_STATUS_OK);
+
+    composite_fields(&state);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul);
+    /* Only the four composite words move; every register is the same. */
+    for (index = 0u; index < 19u; ++index) {
+        CHECK(offsets[index] == ref_offsets[index]);
+        if (index != 10u && index != 13u && index != 15u && index != 16u &&
+            index != 17u) {
+            CHECK(values[index] == ref_values[index]);
+        }
+    }
+    /* Mesa's two-texture SCALE_3D_CNTL: TRILINEAR | TEX_CACHE_SPLIT. */
+    CHECK(values[10] == 0x0d010281ul);
+    /* COMPOSITE_PIX_WIDTH [7:4] = 15, ARGB4444. */
+    CHECK(values[13] == 0x400404f4ul);
+    /* The second texture's width, larger edge and height in [27:16]. */
+    CHECK(values[15] == 0x03550333ul);
+    /* COMPOSITE | COMBINE_MODULATE | SECONDARY_STW, both clamped. */
+    CHECK(values[16] == 0xc3860300ul);
+    CHECK(offsets[17] == V9X_M64_SECONDARY_TEX_OFF);
+    CHECK(values[17] == 0x00205000ul);
+
+    /* Wrapped and bilinear: the clamps go, COMP_BLEND and COMP_FILTER on. */
+    state.composite_wrap_s = 1ul;
+    state.composite_wrap_t = 1ul;
+    state.composite_bilinear_min = 1ul;
+    state.composite_bilinear_mag = 1ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(values[16] == 0xc0861b00ul);
+
+    /* The first texture's bilinear magnification stays its own bit. */
+    state.bilinear_mag = 1ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(values[10] == 0x0f010281ul);
+
+    /* Composite off: the field values are ignored entirely. */
+    state.composite = 0ul;
+    state.bilinear_mag = 0ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    for (index = 0u; index < 19u; ++index) {
+        CHECK(values[index] == ref_values[index]);
+    }
+}
+
+static void test_composite_state_refusals(void)
+{
+    struct v9x_m64_draw_state state;
+    struct v9x_m64_draw_decision decision;
+    v9x_u32 offsets[CAP], values[CAP], written;
+
+    memset(&decision, 0, sizeof(decision));
+
+    /* Untextured: there is no first texture to combine with. */
+    base_state(&state);
+    composite_fields(&state);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+
+    /* A chain under the first texture: the blend function is taken. */
+    base_state(&state);
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_RGB565);
+    composite_fields(&state);
+    state.level_count = 2ul;
+    state.level_offsets[0] = state.texture_offset;
+    state.level_offsets[1] = 0x00206000ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+
+    base_state(&state);
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_RGB565);
+    composite_fields(&state);
+    state.composite_offset = 0x00205020ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    composite_fields(&state);
+    state.composite_pitch_bytes = 128ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    composite_fields(&state);
+    state.composite_width = 24ul;
+    state.composite_pitch_bytes = 48ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    composite_fields(&state);
+    state.composite_format = 3ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    composite_fields(&state);
+    state.composite_wrap_s = 2ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    composite_fields(&state);
+    state.composite_wrap_s = 0ul;
+    state.composite_offset = 0x003fff00ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+    /* On the target. */
+    composite_fields(&state);
+    state.composite_offset = 0x00200400ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(written == 0ul);
+}
+
 static void test_state_arguments(void)
 {
     struct v9x_m64_draw_state state;
@@ -501,6 +640,94 @@ static void test_setup_register_reuse(void)
     CHECK(written == 19ul);
 }
 
+static void test_setup_secondary(void)
+{
+    static const v9x_u32 secondary[3][3] = {
+        { V9X_M64_VERTEX_1_SECONDARY_S, V9X_M64_VERTEX_1_SECONDARY_T,
+          V9X_M64_VERTEX_1_SECONDARY_W },
+        { V9X_M64_VERTEX_2_SECONDARY_S, V9X_M64_VERTEX_2_SECONDARY_T,
+          V9X_M64_VERTEX_2_SECONDARY_W },
+        { V9X_M64_VERTEX_3_SECONDARY_S, V9X_M64_VERTEX_3_SECONDARY_T,
+          V9X_M64_VERTEX_3_SECONDARY_W }
+    };
+    struct v9x_m64_setup_vertex v[3];
+    struct v9x_m64_setup_slot slot[3];
+    v9x_u32 offsets[CAP], values[CAP], written;
+    v9x_u32 ref_offsets[CAP], ref_values[CAP], ref_written;
+    unsigned int corner;
+    unsigned int word;
+
+    setup_triangle(v);
+    for (corner = 0u; corner < 3u; ++corner) {
+        v[corner].s = 0.25f * (float)corner;
+        v[corner].t = 0.5f;
+        v[corner].rhw = 0.5f + 0.25f * (float)corner;
+        v[corner].s1 = 0.125f + (float)corner;
+        v[corner].t1 = 2.0f - (float)corner;
+    }
+    CHECK(v9x_m64_build_setup(v, 1ul, 0ul, ref_offsets, ref_values, CAP,
+                              &ref_written) == V9X_STATUS_OK);
+    CHECK(v9x_m64_build_setup(v, 1ul, V9X_M64_SETUP_SECONDARY, offsets,
+                              values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 28ul);
+    /* Each vertex's six words, then its S1, T1 and W; the area last. */
+    for (corner = 0u; corner < 3u; ++corner) {
+        for (word = 0u; word < 6u; ++word) {
+            CHECK(offsets[corner * 9u + word] ==
+                  ref_offsets[corner * 6u + word]);
+            CHECK(values[corner * 9u + word] ==
+                  ref_values[corner * 6u + word]);
+        }
+        CHECK(offsets[corner * 9u + 6u] == secondary[corner][0]);
+        CHECK(offsets[corner * 9u + 7u] == secondary[corner][1]);
+        CHECK(offsets[corner * 9u + 8u] == secondary[corner][2]);
+        CHECK(values[corner * 9u + 6u] == bits(v[corner].s1));
+        CHECK(values[corner * 9u + 7u] == bits(v[corner].t1));
+        CHECK(values[corner * 9u + 8u] == bits(v[corner].rhw));
+    }
+    CHECK(offsets[27] == V9X_M64_ONE_OVER_AREA);
+    CHECK(values[27] == ref_values[18]);
+
+    /* With fog: the specular words first, as without the second texture. */
+    CHECK(v9x_m64_build_setup(v, 1ul, V9X_M64_SETUP_FOG |
+                              V9X_M64_SETUP_SECONDARY, offsets, values, CAP,
+                              &written) == V9X_STATUS_OK);
+    CHECK(written == 31ul);
+    CHECK(offsets[0] == V9X_M64_VERTEX_1_SPEC_ARGB);
+    CHECK(offsets[9] == V9X_M64_VERTEX_1_SECONDARY_S);
+    CHECK(v9x_m64_build_setup(v, 1ul, V9X_M64_SETUP_FOG |
+                              V9X_M64_SETUP_SECONDARY, offsets, values, 30ul,
+                              &written) == V9X_STATUS_INVALID_ARGUMENT);
+
+    /* No first texture, no second; a non-finite S1 names no texel. */
+    CHECK(v9x_m64_build_setup(v, 0ul, V9X_M64_SETUP_SECONDARY, offsets,
+                              values, CAP, &written) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v[1].t1 = test_mach64_draw_nan();
+    CHECK(v9x_m64_build_setup(v, 1ul, V9X_M64_SETUP_SECONDARY, offsets,
+                              values, CAP, &written) ==
+          V9X_STATUS_INVALID_STATE);
+    CHECK(written == 0ul);
+    v[1].t1 = 1.0f;
+
+    /* Reuse compares the second coordinates: the same triangle again is
+     * the trigger alone, and a changed S1 resends that vertex in full. */
+    memset(slot, 0, sizeof(slot));
+    CHECK(v9x_m64_build_reused_setup(v, 1ul, V9X_M64_SETUP_SECONDARY, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 28ul);
+    CHECK(v9x_m64_build_reused_setup(v, 1ul, V9X_M64_SETUP_SECONDARY, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 1ul);
+    v[0].s1 = 7.0f;
+    CHECK(v9x_m64_build_reused_setup(v, 1ul, V9X_M64_SETUP_SECONDARY, slot,
+          offsets, values, CAP, &written) == V9X_STATUS_OK);
+    CHECK(written == 10ul);
+    CHECK(offsets[6] == V9X_M64_VERTEX_1_SECONDARY_S);
+    CHECK(values[6] == bits(7.0f));
+    CHECK(offsets[9] == V9X_M64_ONE_OVER_AREA);
+}
+
 unsigned int v9x_run_mach64_draw_tests(void)
 {
     test_untextured_matches_gouraud_builder();
@@ -508,10 +735,13 @@ unsigned int v9x_run_mach64_draw_tests(void)
     test_fog_matches_item12();
     test_depth_words_match_depth_builder();
     test_texture_matches_texture_builder();
+    test_composite_state_words();
+    test_composite_state_refusals();
     test_state_arguments();
     test_setup_matches_phase3();
     test_setup_subpixel_texture_fog();
     test_setup_refusals();
     test_setup_register_reuse();
+    test_setup_secondary();
     return failures;
 }
