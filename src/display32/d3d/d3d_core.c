@@ -3118,8 +3118,12 @@ static void v9x_d3d_apply_ddi_level(int ddi6)
         *lines = v9x_hal->d3d_global.hwCaps.dpcTriCaps;
         v9x_hal->d3d_global.hwCaps.dwFlags |= V9X_D3DDD_LINECAPS;
     } else {
-        v9x_hal->d3d_global.hwCaps.dwDevCaps &=
-            ~V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
+        /* D3DDEVCAPS_DRAWPRIMITIVES2 is left as it is: the runtime sets it
+         * itself for a driver without DDI 6 (it emulates DrawPrimitives2
+         * over the DX5 callbacks), and clearing it, as this did from
+         * 2026-10-06, changed what DX5 to DX7 programs were told: the
+         * ViRGE's V9XDD.INI read D3DDevice2HwDevCaps 0x0651 instead of the
+         * 0x2651 every earlier build reported (2026-10-07). */
         bytes = (BYTE *)lines;
         for (i = 0ul; i < sizeof(*lines); ++i) {
             bytes[i] = 0u;

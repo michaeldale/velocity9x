@@ -365,3 +365,23 @@ Point Sprites and High Polygon Count now report N/A without an error
 (no point size is published); Advanced Pixel Shader reports not
 supported. Half-Life's picture is correct. The netbook's restart onto
 this build came back by itself (boot 114).
+
+## S3 ViRGE/DX in 86Box before the push (2026-10-07)
+
+Profile `Win86SE` (ViRGE/DX 86C375, DirectX 6.1, agent 127.0.0.1:9869),
+cold-backed-up first (`Win86SE-pre-velocity9x-20261007-120059`).
+
+- `V9XDDP` on the installed (September) driver and then on this build:
+  every `...Ok` key identical. One real difference, fixed before the push:
+  `D3DDevice2HwDevCaps` read 0x0651 instead of 0x2651. The runtime sets
+  D3DDEVCAPS_DRAWPRIMITIVES2 itself for a driver without DDI 6, and the DDI
+  level code had been clearing it in DDI 5 processes since 2026-10-06; it
+  now leaves the bit alone there (0x2651 again). Both probe files end at
+  958 lines, the Windows 9x INI size limit, not a fault.
+- DDI 6 forced for the reproducer (`[Velocity9x.Direct3DDdi]
+  DP2REPRO.EXE=6`) on the S3D engine under the DX6.1 runtime
+  (`virge-vm-ddi6-repro.INI`): all 22 phases without an error; lines 100/100
+  on row 150 and column 50, nothing beside; the point one pixel; the
+  colour Clear2 2048/2048 on the engine; no unparsed, malformed or refused
+  calls.
+- The settings page shows the DDI 6 selector (`virge-vm-settings-page.png`).
