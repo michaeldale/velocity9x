@@ -192,9 +192,12 @@ static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
          * a texture, D3DSpecularTex (2026-09-29). */
         V9X_D3DPSHADECAPS_SPECULARFLATRGB |
         V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB;
+    /* Not SQUAREONLY since 2026-10-07: rectangles have been placed and
+     * sampled since 2026-10-01 (v9x_d3d_mach64_create_chain), and the
+     * leftover bit made Direct3D 8 refuse every non-square CreateTexture
+     * with INVALIDCALL, which stopped 3DMark 2001 SE. */
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
-                         V9X_D3DPTEXTURECAPS_SQUAREONLY |
                          V9X_D3DPTEXTURECAPS_ALPHA;
     /* Level selection, nearest (MIPNEAREST) or bilinear (MIPLINEAR) within
      * the level, and trilinear (LINEARMIPLINEAR, measured by the probe's

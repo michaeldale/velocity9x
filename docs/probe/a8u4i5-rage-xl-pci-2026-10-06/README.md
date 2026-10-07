@@ -341,3 +341,27 @@ Point Sprites. The netbook fills four times faster than the Rage XL and its
 game tests are still 1 to 5 fps, and 0.5 MTriangles/s is low for software
 T&L on a 1.66 GHz CPU: the cost looks per draw, not per pixel. Not
 measured yet.
+
+## SQUAREONLY removed: 3DMark 2001 SE completes, HUD correct (2026-10-07)
+
+Michael photographed the netbook's 3DMark HUD stretched off the bottom of
+the frame; on the Rage XL its "time" and "fps" labels were drawn rotated
+(`3dmark2001-*-hud-before.png`). Both engines still published
+`D3DPTEXTURECAPS_SQUAREONLY`, left over from before they accepted
+rectangles (Gen3 2026-09-26, Mach64 2026-10-01). Under Direct3D 8 that bit
+makes every non-square `CreateTexture` fail with `D3DERR_INVALIDCALL`
+(the error that ended both runs at Point Sprites), and 3DMark lays its
+HUD out on square textures it would otherwise have made rectangular.
+
+Cleared on both. Same 640x480 settings:
+
+| Machine | 3DMark score | HUD | Half-Life DDI 5 before / after |
+|---|---|---|---|
+| A8U4I5 Rage XL | 111 (first complete run) | correct (`3dmark2001-xl-hud-fixed.png`) | 17.96 / 17.98 to 18.56 / 18.59 |
+| Netbook GMA 950 | 244 | correct (`3dmark2001-netbook-hud-fixed.png`) | 40.19 / 40.16 to 41.01 / 40.42 |
+
+Game tests are unchanged (Rage XL 1.6 / 0.8, 1.9 / 0.9, 2.3 / 1.0 fps).
+Point Sprites and High Polygon Count now report N/A without an error
+(no point size is published); Advanced Pixel Shader reports not
+supported. Half-Life's picture is correct. The netbook's restart onto
+this build came back by itself (boot 114).

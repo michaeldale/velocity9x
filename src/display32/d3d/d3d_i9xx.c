@@ -1447,8 +1447,9 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
      * Powers of two within the limits, square or not
      * (v9x_d3d_i9xx_texture_shape): MAP_STATE holds width and height
      * separately. Until 2026-09-26 this refused non-square maps as the
-     * sampler's rule; the Direct3D caps still say SQUAREONLY, so Direct3D
-     * applications are not offered them, and the OpenGL ICD is.
+     * sampler's rule; the Direct3D caps said SQUAREONLY until 2026-10-07,
+     * when the leftover bit was found refusing 3DMark 2001 SE's
+     * non-square textures under Direct3D 8.
      */
     if (v9x_d3d_i9xx_texture_shape((DWORD)surface->lpGbl->wWidth,
                                    (DWORD)surface->lpGbl->wHeight,
@@ -1886,7 +1887,7 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
         shared->d3d_global.hwCaps.dpcTriCaps.dwSrcBlendCaps;
     shared->d3d_global.hwCaps.dpcTriCaps.dwTextureCaps =
         V9X_D3DPTEXTURECAPS_PERSPECTIVE | V9X_D3DPTEXTURECAPS_POW2 |
-        V9X_D3DPTEXTURECAPS_SQUAREONLY | V9X_D3DPTEXTURECAPS_ALPHA;
+        V9X_D3DPTEXTURECAPS_ALPHA;
     /*
      * NEAREST and LINEAR, WRAP and CLAMP: the two filter values and the two
      * address modes the sampler state now carries from the render states.
