@@ -410,3 +410,34 @@ format list as the Rage XL), and with DDI 6 forced for `dp2_repro` lines
 unparsed, malformed or refused DrawPrimitives2 calls
 (`rage-iic-0.12-ddi6-repro.INI`). 3DMark 2001 SE was not run on the 4 MB
 card.
+
+## Deksor's issue 2 traces, and DX5 fans and strips (2026-10-07)
+
+`V9XDIAG` from GitHub issue 2 (Rage Mobility-M AGP `1002:4C4D`, 8 MB,
+0.11.0 build `f666f63`, DirectX 8.0, 1024x768x16): `V9XSNAP` after
+installing, `SNA1` after DxDiag, `SNA2` after UT99, `SNA3` after 3DMark
+99. UT99 made 25,629 DrawOnePrimitive calls, every one a TLVERTEX
+triangle fan (`OnePrimPrimTypeSeen` 0x40) and every one refused
+(`OnePrimRefusedPrimType` 25,629, `OnePrimDrawn` 0): the entry point took
+triangle lists only. Otherwise: 399 textured triangles skipped for a W not
+above zero in UT99 and 8,921 in 3DMark 99 (`M64Unrenderable`), nine
+3DMark 99 batches refused for a texture (`M64RefuseLast` 4), no Mach64
+policy refusal. The machine reported `Acceleration=directdraw-fill`
+where the Rage XL reports `directdraw-fill-copy`; not looked into.
+
+Fix: DrawOnePrimitive takes fans and strips; the batched DrawPrimitives
+takes strips and skips a record of another shape on its own instead of
+ending the call. `dp2_repro`'s fan and strip check (40x40 white quads on
+black, a 4-vertex and a 98-vertex fan and strip, DDI 5):
+
+| | 0.12.0 code (netbook) | Fixed: Rage XL, ViRGE VM |
+|---|---|---|
+| Fan, 4 vertices | 1600 | 1600, 1600 |
+| Strip, 4 vertices | 0 | 1600, 1600 |
+| Fan, 98 vertices | 0 | 1600, 1600 |
+| Strip, 98 vertices | 0 | 1600, 1600 |
+
+Both runtimes send the large ones through DrawOnePrimitive
+(`OnePrimPrimTypeSeen` 0x70). Half-Life on the Rage XL: 18.44 / 18.43 fps,
+357 policy-8 refusals as on 0.12.0. Note: the card in A8U4I5 was the Rage
+XL again for these runs (V9XHW.INI `4752`), not the Rage IIC.

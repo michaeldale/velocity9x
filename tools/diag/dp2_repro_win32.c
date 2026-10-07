@@ -454,6 +454,106 @@ static void clear_check(void *target, void *vp3)
             outside);
 }
 
+/*
+ * A fan and a strip, read back: GitHub issue 2's UT99 sent every
+ * DrawOnePrimitive as a TLVERTEX fan and the DX5 path drew none. On black,
+ * a white 40x40 quad as a fan at (20,20) and one as a strip at (80,20),
+ * untextured; each should light 1600 pixels.
+ */
+#define D3DPT_TRIANGLESTRIP 5ul
+
+static int count_lit(SURFDESC *d, int x0, int y0)
+{
+    int x, y, lit = 0;
+
+    for (y = y0; y < y0 + 40; ++y) {
+        for (x = x0; x < x0 + 40; ++x) {
+            lit += ((WORD *)((BYTE *)d->lpSurface + y * d->lPitch))[x] != 0;
+        }
+    }
+    return lit;
+}
+
+static void fan_strip_check(void *target)
+{
+    DWORD fx[25];
+    TLV fan[4], strip[4];
+    static TLV big_fan[98], big_strip[98];
+    SURFDESC d;
+    HRESULT hr_fan, hr_strip, hr_big_fan, hr_big_strip;
+    int i;
+
+    memset(fx, 0, sizeof(fx));
+    fx[0] = sizeof(fx);
+    ((HRESULT (__stdcall *)(void *, RECT *, void *, RECT *, DWORD,
+                            DWORD *))VT(target)[5])(
+        target, 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, fx);
+    set_state(RS_TEXTUREHANDLE, 0ul);
+    make_quad(fan, 20.0f, 20.0f, 40.0f);
+    make_quad(strip, 80.0f, 20.0f, 40.0f);
+    /* make_quad goes round the square; a strip wants 0, 1, 3, 2. */
+    {
+        TLV t = strip[2];
+
+        strip[2] = strip[3];
+        strip[3] = t;
+    }
+    for (i = 0; i < 4; ++i) {
+        fan[i].color = 0xffffffffu;
+        strip[i].color = 0xffffffffu;
+    }
+    ((HRESULT (__stdcall *)(void *))VT(dev)[10])(dev);
+    hr_fan = draw(D3DPT_TRIANGLEFAN, fan, 4ul, 0ul);
+    hr_strip = draw(D3DPT_TRIANGLESTRIP, strip, 4ul, 0ul);
+    /* Large ones, 98 vertices each, which a runtime may send through
+     * DrawOnePrimitive rather than batch: a fan from the centre of the
+     * square at (140,20) round its edge, and a strip zigzagging down the
+     * square at (200,20). */
+    {
+        int k;
+
+        for (k = 0; k < 98; ++k) {
+            big_fan[k] = fan[0];
+            big_strip[k] = fan[0];
+        }
+        big_fan[0].sx = 160.0f; big_fan[0].sy = 40.0f;
+        for (k = 0; k < 97; ++k) {
+            int side = (k % 96) / 24, step = (k % 96) % 24;
+            float t = (float)step * (40.0f / 24.0f);
+
+            big_fan[k + 1].sx = side == 0 ? 140.0f + t : side == 1 ? 180.0f
+                              : side == 2 ? 180.0f - t : 140.0f;
+            big_fan[k + 1].sy = side == 0 ? 20.0f : side == 1 ? 20.0f + t
+                              : side == 2 ? 60.0f : 60.0f - t;
+        }
+        for (k = 0; k < 49; ++k) {
+            float y = 20.0f + (float)k * (40.0f / 48.0f);
+
+            big_strip[k * 2].sx = 200.0f; big_strip[k * 2].sy = y;
+            big_strip[k * 2 + 1].sx = 240.0f; big_strip[k * 2 + 1].sy = y;
+        }
+    }
+    hr_big_fan = draw(D3DPT_TRIANGLEFAN, big_fan, 98ul, 0ul);
+    hr_big_strip = draw(D3DPT_TRIANGLESTRIP, big_strip, 98ul, 0ul);
+    ((HRESULT (__stdcall *)(void *))VT(dev)[11])(dev);
+    memset(&d, 0, sizeof(d));
+    d.dwSize = sizeof(d);
+    if (((HRESULT (__stdcall *)(void *, RECT *, SURFDESC *, DWORD, HANDLE))
+             VT(target)[25])(target, 0, &d, DDLOCK_WAIT, 0) != 0 ||
+        d.lpSurface == 0) {
+        fprintf(out, "FanStripLock=failed\n");
+        return;
+    }
+    fprintf(out, "FanHr=%08lx FanLit=%d/1600 StripHr=%08lx StripLit=%d/1600\n",
+            (unsigned long)hr_fan, count_lit(&d, 20, 20),
+            (unsigned long)hr_strip, count_lit(&d, 80, 20));
+    fprintf(out, "BigFanHr=%08lx BigFanLit=%d/1600 BigStripHr=%08lx "
+            "BigStripLit=%d/1600\n",
+            (unsigned long)hr_big_fan, count_lit(&d, 140, 20),
+            (unsigned long)hr_big_strip, count_lit(&d, 200, 20));
+    ((HRESULT (__stdcall *)(void *, void *))VT(target)[32])(target, 0);
+}
+
 static void *make_surface(void *dd, DWORD caps, DWORD w, DWORD h, int fmt)
 {
     SURFDESC d;
@@ -609,6 +709,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     run_phase(17, "indexed-32-vertex-array");
     run_phase(18, "indexed-48-vertex-array");
     line_check(target);
+    fan_strip_check(target);
     ((ULONG (__stdcall *)(void *))VT(dev)[2])(dev);
     dev = 0;
 

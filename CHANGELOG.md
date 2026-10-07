@@ -4,6 +4,20 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+- **DX5 fans and strips are drawn.** The single-primitive entry point took
+  triangle lists only, and the batched one refused strips and stopped the
+  whole call at any record it did not take, so the triangles after it were
+  lost as well. Deksor's Rage Mobility-M traces for GitHub issue 2 (0.11.0)
+  showed UT99 sending all 25,629 of its DrawOnePrimitive calls as fans,
+  every one refused: the dropped polygons the issue reported. A fan and
+  strip read-back on the 0.12.0 code drew 1600 of 1600 pixels for a small
+  fan and 0 for a small strip, a 98-vertex fan and a 98-vertex strip; with
+  the fix all four draw 1600 on the Rage XL (DirectX 9.0c) and the ViRGE/DX
+  (DirectX 6.1). Lines and points on the DX5 path are skipped on their own
+  instead of ending the call. Half-Life unchanged (Rage XL 18.4 fps).
+
 ## 0.12.0 - 2026-10-07
 
 The Direct3D 8 release. Direct3D 8 runs on the hardware through

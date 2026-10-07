@@ -2359,6 +2359,9 @@ static DWORD v9x_d3d_type_bit(DWORD value)
     return value < 32ul ? (1ul << value) : 1ul;
 }
 
+static int v9x_d3d_records_batch(void *user,
+                                 const V9X_R3D_VERTEX *vertices,
+                                 v9x_u32 triangles);
 static DWORD v9x_d3d_draw_one_primitive_body(
     V9X_D3DHAL_DRAWONEPRIMITIVEDATA *data);
 
@@ -2396,9 +2399,10 @@ static DWORD v9x_d3d_draw_one_primitive_body(
     context = data != 0 ? v9x_d3d_context_from_handle(data->dwhContext) : 0;
     /*
      * Counted, which it was not until 2026-09-20. This entry point is
-     * advertised in the callbacks table and serves exactly one shape - a
+     * advertised in the callbacks table and served exactly one shape - a
      * three-vertex TRIANGLELIST - so everything else set an error and drew
-     * nothing with no record that it had happened.
+     * nothing with no record that it had happened. Lists of any length,
+     * fans and strips since (below).
      */
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.oneprim_calls;
@@ -2449,8 +2453,64 @@ static DWORD v9x_d3d_draw_one_primitive_body(
             v9x_hal->d3d_diagnostics.oneprim_triangles +=
                 data->dwNumVertices / 3ul;
         }
+    } else if (ops != 0 && context != 0 && ops->ready() &&
+               (data->PrimitiveType == V9X_D3DPT_TRIANGLEFAN ||
+                data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP) &&
+               data->VertexType == V9X_D3DVT_TLVERTEX &&
+               data->lpvVertices != 0 && data->dwNumVertices >= 3ul) {
+        /*
+         * Fans and strips, refused here until 2026-10-07. Deksor's Rage
+         * Mobility-M traces for GitHub issue 2 (0.11.0) showed UT99 sending
+         * all 25,629 of its DrawOnePrimitive calls as TLVERTEX fans, every
+         * one refused and none drawn - the "missing polygons" the issue
+         * reported. Both go through the record run DrawPrimitives uses for
+         * its fans, so the engines see the same batches; a strip's odd
+         * triangles swap their first two vertices, as the indexed strips
+         * do, so culling sees one winding.
+         */
+        const V9X_R3D_VERTEX *vertices =
+            (const V9X_R3D_VERTEX *)data->lpvVertices;
+        V9X_R3D_RECORDS run;
+        V9X_D3D_LIST_SINK sink;
+        DWORD triangles = data->dwNumVertices - 2ul;
+
+        sink.ops = ops;
+        sink.context = context;
+        run.vertices = (V9X_R3D_VERTEX *)v9x_d3d_gather;
+        run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+        run.pending = 0ul;
+        run.record_count = 0ul;
+        run.batch = v9x_d3d_records_batch;
+        run.user = &sink;
+        ok = 1;
+        if (data->PrimitiveType == V9X_D3DPT_TRIANGLEFAN) {
+            ok = v9x_r3d_records_append_fan(&run, vertices,
+                                            (v9x_u32)data->dwNumVertices) >
+                 0;
+        } else {
+            DWORD i;
+
+            for (i = 0ul; i < triangles && ok; ++i) {
+                V9X_R3D_VERTEX triangle[3];
+
+                triangle[0] = vertices[(i & 1ul) != 0ul ? i + 1ul : i];
+                triangle[1] = vertices[(i & 1ul) != 0ul ? i : i + 1ul];
+                triangle[2] = vertices[i + 2ul];
+                ok = v9x_r3d_records_append_list(&run, triangle, 1ul) > 0;
+            }
+        }
+        if (!v9x_r3d_records_flush(&run)) {
+            ok = 0;
+        }
+        served = 1;
+        if (ok && v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.oneprim_drawn;
+            v9x_hal->d3d_diagnostics.oneprim_triangles += triangles;
+        }
     } else if (v9x_hal != 0 && data != 0) {
-        if (data->PrimitiveType != V9X_D3DPT_TRIANGLELIST) {
+        if (data->PrimitiveType != V9X_D3DPT_TRIANGLELIST &&
+            data->PrimitiveType != V9X_D3DPT_TRIANGLEFAN &&
+            data->PrimitiveType != V9X_D3DPT_TRIANGLESTRIP) {
             ++v9x_hal->d3d_diagnostics.oneprim_refused_primtype;
         } else if (data->VertexType != V9X_D3DVT_TLVERTEX) {
             ++v9x_hal->d3d_diagnostics.oneprim_refused_vertextype;
@@ -2683,13 +2743,37 @@ static DWORD v9x_d3d_draw_primitives_body(
                 v9x_hal->d3d_diagnostics.dp_verttype_seen |=
                     v9x_d3d_type_bit((DWORD)counts->wVertexType);
             }
-            if ((counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST &&
-                 counts->wPrimitiveType != V9X_D3DPT_TRIANGLEFAN) ||
-                counts->wVertexType != V9X_D3DVT_TLVERTEX ||
-                counts->wNumVertices > 192u ||
-                (counts->wPrimitiveType == V9X_D3DPT_TRIANGLEFAN
-                     ? counts->wNumVertices < 3u
-                     : (counts->wNumVertices % 3u) != 0u)) {
+            /*
+             * A record of another shape - lines, points, or a list whose
+             * count is not a whole number of triangles - is skipped on its
+             * own and counted, and the walk goes on: its length is known
+             * from the TLVERTEX stride. Until 2026-10-07 any such record
+             * ended the whole call, so the triangles after it were lost as
+             * well, and strips were refused outright (a strip lit no pixel
+             * of dp_repro's fan-and-strip check on A8U4I5).
+             */
+            if (counts->wVertexType == V9X_D3DVT_TLVERTEX &&
+                counts->wNumVertices <= 192u &&
+                !((counts->wPrimitiveType == V9X_D3DPT_TRIANGLELIST &&
+                   (counts->wNumVertices % 3u) == 0u) ||
+                  ((counts->wPrimitiveType == V9X_D3DPT_TRIANGLEFAN ||
+                    counts->wPrimitiveType == V9X_D3DPT_TRIANGLESTRIP) &&
+                   counts->wNumVertices >= 3u))) {
+                if (v9x_hal != 0) {
+                    if (counts->wPrimitiveType != V9X_D3DPT_TRIANGLELIST) {
+                        ++v9x_hal->d3d_diagnostics.dp_refused_primtype;
+                    } else {
+                        ++v9x_hal->d3d_diagnostics.dp_refused_count;
+                    }
+                    v9x_hal->d3d_diagnostics.dp_refused_vertices_last =
+                        (DWORD)counts->wNumVertices;
+                }
+                cursor += (DWORD)counts->wNumVertices *
+                          sizeof(V9X_D3DTLVERTEX);
+                continue;
+            }
+            if (counts->wVertexType != V9X_D3DVT_TLVERTEX ||
+                counts->wNumVertices > 192u) {
                 /* Which of the four, and whether this buffer had already
                  * drawn - see the note beside dp_primtype_seen. */
                 if (v9x_hal != 0) {
@@ -2716,9 +2800,9 @@ static DWORD v9x_d3d_draw_primitives_body(
              * measure the opportunity independently of the accumulator.
              */
             record_triangles = counts->wPrimitiveType ==
-                                       V9X_D3DPT_TRIANGLEFAN
-                                   ? (v9x_u32)counts->wNumVertices - 2ul
-                                   : (v9x_u32)counts->wNumVertices / 3ul;
+                                       V9X_D3DPT_TRIANGLELIST
+                                   ? (v9x_u32)counts->wNumVertices / 3ul
+                                   : (v9x_u32)counts->wNumVertices - 2ul;
             if (v9x_hal != 0) {
                 v9x_u32 previous_run = record_run;
 
@@ -2762,6 +2846,20 @@ static DWORD v9x_d3d_draw_primitives_body(
                 (void)v9x_r3d_records_append_fan(
                     &run, (const V9X_R3D_VERTEX *)cursor,
                     (v9x_u32)counts->wNumVertices);
+            } else if (counts->wPrimitiveType == V9X_D3DPT_TRIANGLESTRIP) {
+                /* Odd triangles swap their first two vertices, as the
+                 * indexed strips do, so culling sees one winding. */
+                const V9X_R3D_VERTEX *v = (const V9X_R3D_VERTEX *)cursor;
+                v9x_u32 t;
+
+                for (t = 0ul; t < record_triangles; ++t) {
+                    V9X_R3D_VERTEX triangle[3];
+
+                    triangle[0] = v[(t & 1ul) != 0ul ? t + 1ul : t];
+                    triangle[1] = v[(t & 1ul) != 0ul ? t : t + 1ul];
+                    triangle[2] = v[t + 2ul];
+                    (void)v9x_r3d_records_append_list(&run, triangle, 1ul);
+                }
             } else {
                 (void)v9x_r3d_records_append_list(
                     &run, (const V9X_R3D_VERTEX *)cursor, record_triangles);
