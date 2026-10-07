@@ -1,0 +1,28 @@
+Desktop 800x600 format 23 hr=00000000
+Modes 9: 16-bit 9, 32-bit 0, other 0
+CheckDeviceType HAL (display, back, windowed):
+  565/565 full 00000000  565/565 win 00000000
+  X888/X888 full 8876086a  X888/A888 full 8876086a
+  desktop(23)/same win 00000000
+Texture R8G8B8    on 565 8876086a  RenderTarget 8876086a
+Texture A8R8G8B8  on 565 8876086a  RenderTarget 8876086a
+Texture X8R8G8B8  on 565 8876086a  RenderTarget 8876086a
+Texture R5G6B5    on 565 00000000  RenderTarget 00000000
+Texture X1R5G5B5  on 565 8876086a  RenderTarget 8876086a
+Texture A1R5G5B5  on 565 00000000  RenderTarget 8876086a
+Texture A4R4G4B4  on 565 00000000  RenderTarget 8876086a
+Texture A8        on 565 8876086a  RenderTarget 8876086a
+Texture X4R4G4B4  on 565 8876086a  RenderTarget 8876086a
+Texture P8        on 565 8876086a  RenderTarget 8876086a
+Texture L8        on 565 8876086a  RenderTarget 8876086a
+Texture A8L8      on 565 8876086a  RenderTarget 8876086a
+Texture DXT1      on 565 8876086a  RenderTarget 8876086a
+Texture DXT3      on 565 8876086a  RenderTarget 8876086a
+Texture DXT5      on 565 8876086a  RenderTarget 8876086a
+Depth D16_LOCKABLE on 565 00000000
+Depth D32          on 565 8876086a
+Depth D15S1        on 565 8876086a
+Depth D24S8        on 565 8876086a
+Depth D24X8        on 565 8876086a
+Depth D24X4S4      on 565 8876086a
+Depth D16          on 565 00000000

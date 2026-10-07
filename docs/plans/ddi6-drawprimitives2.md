@@ -127,3 +127,26 @@ the netbook.
 - The netbook took DirectX 9.0c (December 2005 redistributable); the
   agent restart hung and it came back on a power cycle (boot 113). 3DMark
   2001 SE then ran there too (probe README).
+
+## What Direct3D 8 is offered (2026-10-07)
+
+Measured with `tools/diag/d3d8_formats_win32.c` on both machines
+(`docs/probe/a8u4i5-rage-xl-pci-2026-10-06/d3d8-formats-*.txt`):
+
+- Display modes: 16-bit only. D3D8 lists no 32-bit mode at all, because
+  only R5G6B5 carries the display-mode operation; a game that insists on
+  32-bit has nothing to choose.
+- HAL device: R5G6B5 fullscreen and windowed; X8R8G8B8 and A8R8G8B8 back
+  buffers refused (D3DERR_NOTAVAILABLE).
+- Textures: R5G6B5, A1R5G5B5, A4R4G4B4. Not X1R5G5B5, A8R8G8B8, X8R8G8B8,
+  A8, L8, A8L8, P8 or DXT1/3/5.
+- Render targets: R5G6B5 only. Depth: D16 (and D16_LOCKABLE on the Rage
+  XL); no 24-bit Z, no stencil.
+
+Why: both engines publish `dwDeviceRenderBitDepth` DDBD_16 and three
+16-bit texture formats, and the core renders only to 5:6:5 and 1:5:5:5
+targets. What 32-bit support would take, per engine, is not measured yet:
+a 32-bit target and clear path in the core, the engines' destination
+format (Gen3 COLOR_BUF ARGB8888, Mach64 DP_PIX_WIDTH 32 bpp), 32-bit
+texture formats in each sampler, and a 32-bit desktop to test on. 24-bit
+Z with stencil exists only on the GMA 950.
