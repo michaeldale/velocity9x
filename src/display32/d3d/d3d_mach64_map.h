@@ -50,6 +50,25 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
                               struct v9x_m64_draw_state *state);
 
 /*
+ * A render-interface draw's second texture (draw->texcoords1 non-null) onto
+ * a request map_request already filled. texture1 is unit 1 as the engine
+ * resolved it, or null when it could not be, which the policy refuses.
+ * Nothing changes for a one-unit draw.
+ */
+void v9x_d3d_mach64_map_composite(const V9X_R3D_DRAW *draw,
+                                  const V9X_D3D_MACH64_TEXTURE *texture1,
+                                  struct v9x_m64_draw_request *request);
+
+/* The second texture's state for a composite request the policy accepted,
+ * onto a state map_state already filled. Unit 0 keeps its chain with at
+ * most bilinear filtering within the selected level: the composite takes
+ * the blend function trilinear would need. */
+void v9x_d3d_mach64_map_composite_state(
+                              const struct v9x_m64_draw_request *request,
+                              const V9X_D3D_MACH64_TEXTURE *texture1,
+                              struct v9x_m64_draw_state *state);
+
+/*
  * Where a wrapped triangle's whole-number rebase should centre it: s and t
  * at the triangle's centroid, perspective-correct, sum(s * rhw) / sum(rhw).
  * The Mach64 picks its mip level from the gradient of S*W divided by the

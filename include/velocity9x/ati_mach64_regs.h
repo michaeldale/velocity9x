@@ -70,6 +70,18 @@
 #define V9X_M64_VERTEX_3_Z            0x00000290ul
 #define V9X_M64_VERTEX_3_ARGB         0x00000294ul
 #define V9X_M64_VERTEX_3_X_Y          0x00000298ul
+/* The second texture's coordinates (Rage Pro class), block 1 as above:
+ * Mesa 7.10 mach64_reg.h, which agrees with xf86-video-mach64 atiregs.h's
+ * indices 1_CA..1_CF and 1_A8..1_AA. Vertex 3's follow ONE_OVER_AREA. */
+#define V9X_M64_VERTEX_1_SECONDARY_S  0x00000328ul
+#define V9X_M64_VERTEX_1_SECONDARY_T  0x0000032cul
+#define V9X_M64_VERTEX_1_SECONDARY_W  0x00000330ul
+#define V9X_M64_VERTEX_2_SECONDARY_S  0x00000334ul
+#define V9X_M64_VERTEX_2_SECONDARY_T  0x00000338ul
+#define V9X_M64_VERTEX_2_SECONDARY_W  0x0000033cul
+#define V9X_M64_VERTEX_3_SECONDARY_S  0x000002a0ul
+#define V9X_M64_VERTEX_3_SECONDARY_T  0x000002a4ul
+#define V9X_M64_VERTEX_3_SECONDARY_W  0x000002a8ul
 #define V9X_M64_SETUP_CNTL            0x00000304ul
 #define V9X_M64_SETUP_GOURAUD         0x00000000ul
 #define V9X_M64_SETUP_FLAT_VERTEX_3   0x00000018ul
@@ -155,8 +167,11 @@
 #define V9X_M64_DRAW_STATE_DWORDS \
     (V9X_M64_TEXTURED_STATE_DWORDS + V9X_M64_TEXTURE_MIP_DWORDS)
 #define V9X_M64_SPECULAR_DWORDS       3ul
+/* A second texture's S, T and W for each of the three vertices. */
+#define V9X_M64_SECONDARY_DWORDS      9ul
 #define V9X_M64_SETUP_DWORDS \
-    (V9X_M64_FLAT_TRIANGLE_DWORDS + V9X_M64_SPECULAR_DWORDS)
+    (V9X_M64_FLAT_TRIANGLE_DWORDS + V9X_M64_SPECULAR_DWORDS + \
+     V9X_M64_SECONDARY_DWORDS)
 
 #define V9X_M64_SCALE_3D_FCN_TEXTURE  0x00000080ul
 #define V9X_M64_SCALE_3D_TEXTURE_RGB565 0x40000000ul
@@ -188,6 +203,31 @@
 #define V9X_M64_TEXTURE_CLAMP_T       0x00040000ul
 #define V9X_M64_TEX_CACHE_FLUSH       0x00800000ul
 #define V9X_M64_TEX_CACHE_SIZE_4K     0x40000000ul
+
+/*
+ * The composite: a second texture combined with the first in the same
+ * pass, before TEX_LIGHT_FCN applies the vertex colour (ATI's Rage Pro
+ * multitexture note, 2000). TEX_CNTL fields from xf86-video-mach64
+ * atiregs.h; the way they are set is Mesa 7.10's mach64 driver
+ * (mach64_texstate.c), which also gives the second texture TEX_SIZE_PITCH
+ * [27:16], DP_PIX_WIDTH COMPOSITE_PIX_WIDTH [7:4] and, with two textures,
+ * SCALE_3D_CNTL TEX_BLEND_FCN_TRILINEAR | TEX_CACHE_SPLIT.
+ */
+#define V9X_M64_TEXTURE_COMPOSITE     0x00000100ul
+#define V9X_M64_COMP_COMBINE_MODULATE 0x00000200ul
+#define V9X_M64_COMP_BLEND_BILINEAR   0x00000800ul
+#define V9X_M64_COMP_FILTER_BILINEAR  0x00001000ul
+#define V9X_M64_SEC_TEX_CLAMP_S       0x01000000ul
+#define V9X_M64_SEC_TEX_CLAMP_T       0x02000000ul
+#define V9X_M64_SECONDARY_STW         0x80000000ul
+/* TEX_CNTL bit 19 (atiregs.h MACH64_TEX_ST_DIRECT): S and T arrive
+ * premultiplied by W; clear is TEX_ST_MULT_W. */
+#define V9X_M64_TEX_ST_DIRECT         0x00080000ul
+#define V9X_M64_TEX_CACHE_SPLIT       0x00000200ul
+#define V9X_M64_TEX_BLEND_FCN_MASK    0x0c000000ul
+#define V9X_M64_COMPOSITE_PIX_WIDTH_MASK  0x000000f0ul
+#define V9X_M64_COMPOSITE_PIX_WIDTH_SHIFT 4u
+#define V9X_M64_SCALE_PIX_WIDTH_SHIFT     28u
 
 #define V9X_M64_ALPHA_BLEND_ENABLE       0x00000800ul
 #define V9X_M64_ALPHA_BLEND_SATURATE     0x00002000ul

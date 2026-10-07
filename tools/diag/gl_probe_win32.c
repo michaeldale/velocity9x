@@ -365,6 +365,257 @@ static void v9x_glp_sgis(GLint width, GLint height)
 }
 
 /*
+ * Which mip level unit 0 samples, with unit 1 off and with it on
+ * (2026-10-08, docs\decisions\2026-10-08-rage-xl-draw-cost.md): the Rage
+ * Pro's composite drew Quake 2's walls from levels far too small. Unit 0
+ * is a 64x64 chain whose seven levels are each one solid colour, drawn
+ * NEAREST_MIPMAP_NEAREST over a square of 64, 32, 16, 8 and 4 pixels, so
+ * the expected level is 0 to 4. Unit 1 is white, MODULATE, which leaves
+ * the colour alone: a 2x2 and a 64x64 texture with coordinates 0..1, and
+ * the 2x2 again with 0..8, so a level that follows unit 1's size or its
+ * coordinates' rate shows as a different column. Each square's centre is
+ * read and named by the level whose colour it is (SgisMip<case><edge>=L<n>,
+ * or L? for none). Then the ways Quake 2's walls differ, one at a time,
+ * with unit 1 off and with the 2x2: unit 0 LINEAR_MIPMAP_NEAREST with
+ * LINEAR magnification (SgisMipLin...), unit 1 LINEAR both ways
+ * (SgisMipU1Lin...), and the square in perspective at eye depth 2, so
+ * every vertex's W is 2 (SgisMipPersp...).
+ */
+#define V9X_GLP_MIP_LEVELS 7
+
+static const GLubyte v9x_glp_mip_colours[V9X_GLP_MIP_LEVELS][3] = {
+    { 255u, 0u, 0u }, { 0u, 255u, 0u }, { 0u, 0u, 255u },
+    { 255u, 255u, 0u }, { 255u, 0u, 255u }, { 0u, 255u, 255u },
+    { 255u, 255u, 255u }
+};
+
+static void v9x_glp_mip_name(const char *key, DWORD rgb)
+{
+    char value[8];
+    int level;
+    int found = -1;
+
+    for (level = 0; level < V9X_GLP_MIP_LEVELS; ++level) {
+        if ((((rgb >> 16) & 0xfful) > 127ul) ==
+                (v9x_glp_mip_colours[level][0] > 127u) &&
+            (((rgb >> 8) & 0xfful) > 127ul) ==
+                (v9x_glp_mip_colours[level][1] > 127u) &&
+            ((rgb & 0xfful) > 127ul) ==
+                (v9x_glp_mip_colours[level][2] > 127u)) {
+            found = level;
+            break;
+        }
+    }
+    if (found < 0) {
+        lstrcpyA(value, "L?");
+    } else {
+        wsprintfA(value, "L%d", found);
+    }
+    v9x_glp_text(key, value);
+}
+
+static void v9x_glp_mip_square(V9X_GLP_MTEX_FN mtex, GLfloat edge,
+                               GLfloat s1, GLfloat depth)
+{
+    /* At eye depth `depth` under glFrustum(0, w, 0, h, 1, ...), a vertex
+     * at (x * depth, y * depth) lands on pixel (x, y). */
+    GLfloat z = -depth;
+    GLfloat far_edge = edge * depth;
+
+    glBegin(GL_QUADS);
+    if (mtex != 0) {
+        mtex(V9X_GLP_TEXTURE0_SGIS, 0.0f, 0.0f);
+        mtex(V9X_GLP_TEXTURE1_SGIS, 0.0f, 0.0f);
+    } else {
+        glTexCoord2f(0.0f, 0.0f);
+    }
+    glVertex3f(0.0f, 0.0f, z);
+    if (mtex != 0) {
+        mtex(V9X_GLP_TEXTURE0_SGIS, 1.0f, 0.0f);
+        mtex(V9X_GLP_TEXTURE1_SGIS, s1, 0.0f);
+    } else {
+        glTexCoord2f(1.0f, 0.0f);
+    }
+    glVertex3f(far_edge, 0.0f, z);
+    if (mtex != 0) {
+        mtex(V9X_GLP_TEXTURE0_SGIS, 1.0f, 1.0f);
+        mtex(V9X_GLP_TEXTURE1_SGIS, s1, s1);
+    } else {
+        glTexCoord2f(1.0f, 1.0f);
+    }
+    glVertex3f(far_edge, far_edge, z);
+    if (mtex != 0) {
+        mtex(V9X_GLP_TEXTURE0_SGIS, 0.0f, 1.0f);
+        mtex(V9X_GLP_TEXTURE1_SGIS, 0.0f, s1);
+    } else {
+        glTexCoord2f(0.0f, 1.0f);
+    }
+    glVertex3f(0.0f, far_edge, z);
+    glEnd();
+}
+
+/* One sweep of square edges 64 down to 4 under the state already set. */
+static void v9x_glp_mip_sweep(V9X_GLP_MTEX_FN mtex, const char *name,
+                              GLfloat s1, GLfloat depth)
+{
+    GLint edge;
+
+    for (edge = 64; edge >= 4; edge /= 2) {
+        char key[40];
+
+        glClear(GL_COLOR_BUFFER_BIT);
+        v9x_glp_mip_square(mtex, (GLfloat)edge, s1, depth);
+        glFinish();
+        wsprintfA(key, "SgisMip%s%d", name, (int)edge);
+        v9x_glp_mip_name(key, v9x_glp_read(edge / 2, edge / 2));
+    }
+}
+
+static void v9x_glp_sgis_mip(GLint width, GLint height)
+{
+    static GLubyte level_texels[64 * 64 * 3];
+    static GLubyte white[64 * 64 * 3];
+    static const char *const cases[4] = { "Off", "W2", "W64", "W2x8" };
+    static const char *const off_names[3] = {
+        "LinOff", "U1LinOff", "PerspOff"
+    };
+    static const char *const on_names[3] = { "LinW2", "U1LinW2", "PerspW2" };
+    V9X_GLP_SELECT_FN select;
+    V9X_GLP_MTEX_FN mtex;
+    GLuint names[3];
+    int level;
+    int variant;
+    int i;
+    int c;
+
+    select = (V9X_GLP_SELECT_FN)wglGetProcAddress("glSelectTextureSGIS");
+    mtex = (V9X_GLP_MTEX_FN)wglGetProcAddress("glMTexCoord2fSGIS");
+    for (i = 0; i < 64 * 64 * 3; ++i) {
+        white[i] = 255u;
+    }
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glGenTextures(3, names);
+
+    if (select != 0) {
+        select(V9X_GLP_TEXTURE0_SGIS);
+    }
+    glBindTexture(GL_TEXTURE_2D, names[0]);
+    for (level = 0; level < V9X_GLP_MIP_LEVELS; ++level) {
+        GLint side = 64 >> level;
+
+        for (i = 0; i < side * side; ++i) {
+            level_texels[i * 3 + 0] = v9x_glp_mip_colours[level][0];
+            level_texels[i * 3 + 1] = v9x_glp_mip_colours[level][1];
+            level_texels[i * 3 + 2] = v9x_glp_mip_colours[level][2];
+        }
+        glTexImage2D(GL_TEXTURE_2D, level, 3, side, side, 0, GL_RGB,
+                     GL_UNSIGNED_BYTE, level_texels);
+    }
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                    GL_NEAREST_MIPMAP_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glEnable(GL_TEXTURE_2D);
+
+    if (select != 0) {
+        select(V9X_GLP_TEXTURE1_SGIS);
+        glBindTexture(GL_TEXTURE_2D, names[1]);
+        glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                     white);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, names[2]);
+        glTexImage2D(GL_TEXTURE_2D, 0, 3, 64, 64, 0, GL_RGB,
+                     GL_UNSIGNED_BYTE, white);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    }
+
+    for (c = 0; c < 4; ++c) {
+        if (c > 0 && select == 0) {
+            break;
+        }
+        if (select != 0) {
+            select(V9X_GLP_TEXTURE1_SGIS);
+            if (c == 0) {
+                glDisable(GL_TEXTURE_2D);
+            } else {
+                glBindTexture(GL_TEXTURE_2D, names[c == 2 ? 2 : 1]);
+                glEnable(GL_TEXTURE_2D);
+            }
+        }
+        v9x_glp_mip_sweep(c == 0 ? 0 : mtex, cases[c],
+                          c == 3 ? 8.0f : 1.0f, 1.0f);
+    }
+
+    for (variant = 0; variant < 3; ++variant) {
+        GLfloat depth = variant == 2 ? 2.0f : 1.0f;
+
+        if (select != 0) {
+            select(V9X_GLP_TEXTURE0_SGIS);
+        }
+        glBindTexture(GL_TEXTURE_2D, names[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                        variant == 0 ? GL_LINEAR_MIPMAP_NEAREST
+                                     : GL_NEAREST_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                        variant == 0 ? GL_LINEAR : GL_NEAREST);
+        if (select != 0) {
+            select(V9X_GLP_TEXTURE1_SGIS);
+            glBindTexture(GL_TEXTURE_2D, names[1]);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                            variant == 1 ? GL_LINEAR : GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                            variant == 1 ? GL_LINEAR : GL_NEAREST);
+        }
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        if (variant == 2) {
+            glFrustum(0.0, (GLdouble)width, 0.0, (GLdouble)height, 1.0,
+                      10.0);
+        } else {
+            glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+        }
+        glMatrixMode(GL_MODELVIEW);
+        if (select != 0) {
+            select(V9X_GLP_TEXTURE1_SGIS);
+            glDisable(GL_TEXTURE_2D);
+        }
+        v9x_glp_mip_sweep(0, off_names[variant], 1.0f, depth);
+        if (select != 0) {
+            glEnable(GL_TEXTURE_2D);
+            v9x_glp_mip_sweep(mtex, on_names[variant], 1.0f, depth);
+        }
+    }
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    v9x_glp_hex("SgisMipError", (DWORD)glGetError());
+
+    if (select != 0) {
+        select(V9X_GLP_TEXTURE1_SGIS);
+        glDisable(GL_TEXTURE_2D);
+        select(V9X_GLP_TEXTURE0_SGIS);
+    }
+    glDeleteTextures(3, names);
+    glDisable(GL_TEXTURE_2D);
+}
+
+/*
  * glPolygonOffset with POLYGON_OFFSET_FILL (GL 1.1 3.5.5), as Half-Life's
  * decals use it: under LESS, a second quad in the first one's plane loses
  * without an offset, wins with units -4 (four depth steps nearer) and
@@ -1665,6 +1916,8 @@ void __stdcall V9xGlProbeEntry(void)
             GetClientRect(window, &client);
             v9x_glp_sgis(client.right - client.left,
                          client.bottom - client.top);
+            v9x_glp_sgis_mip(client.right - client.left,
+                             client.bottom - client.top);
             v9x_glp_polygon_offset(client.right - client.left,
                                    client.bottom - client.top);
         }

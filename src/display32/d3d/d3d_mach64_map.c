@@ -5,6 +5,15 @@
 #define M64_MAP_WRITE_RGB    7ul
 #define M64_MAP_SPECULAR_RGB 0x00fffffful
 
+/* The render interface's combine numbers (r3d_abi.h), which a two-unit
+ * draw carries in color_op and alpha_op. */
+#define M64_MAP_COLOROP_REPLACE    1ul
+#define M64_MAP_COLOROP_MODULATE   2ul
+#define M64_MAP_COLOROP_DECALALPHA 3ul
+#define M64_MAP_ALPHAOP_FRAGMENT   0ul
+#define M64_MAP_ALPHAOP_REPLACE    1ul
+#define M64_MAP_ALPHAOP_MODULATE   2ul
+
 /* The filter within a level. "LINEAR" after "MIP" is bilinear within the
  * level and "LINEAR" before it the blend between two; the Windows 98 DDK's
  * ViRGE HAL settles the reading (d3d_i9xx.c v9x_d3d_i9xx_filter). Until
@@ -193,6 +202,90 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
         state->fog_color = draw->fog_color;
     }
     state->specular_enable = request->specular_enable != 0ul ? 1ul : 0ul;
+}
+
+/*
+ * Unit 0's combine as the Direct3D op the policy reads. A two-unit draw
+ * carries only color_op and alpha_op (d3d_core.c v9x_r3d_describe_texture,
+ * which leaves `op` zero there), so they are read as v9x_r3d_texture_op
+ * reads a one-unit draw's: MODULATE takes the texel's alpha when the
+ * texture has one and the fragment's when it does not. Zero is no op the
+ * policy accepts.
+ */
+static v9x_u32 v9x_d3d_mach64_unit0_op(const V9X_R3D_DRAW *draw,
+                                       v9x_u32 has_alpha)
+{
+    if (draw->texture.color_op == M64_MAP_COLOROP_REPLACE &&
+        draw->texture.alpha_op == M64_MAP_ALPHAOP_REPLACE) {
+        return V9X_R3D_TEXOP_DECAL;
+    }
+    if (draw->texture.color_op == M64_MAP_COLOROP_MODULATE) {
+        if (draw->texture.alpha_op == M64_MAP_ALPHAOP_MODULATE) {
+            return V9X_R3D_TEXOP_MODULATEALPHA;
+        }
+        if (draw->texture.alpha_op == (has_alpha != 0ul
+                                           ? M64_MAP_ALPHAOP_REPLACE
+                                           : M64_MAP_ALPHAOP_FRAGMENT)) {
+            return V9X_R3D_TEXOP_MODULATE;
+        }
+        return 0ul;
+    }
+    if (draw->texture.color_op == M64_MAP_COLOROP_DECALALPHA &&
+        draw->texture.alpha_op == M64_MAP_ALPHAOP_FRAGMENT) {
+        return V9X_R3D_TEXOP_DECALALPHA;
+    }
+    return 0ul;
+}
+
+void v9x_d3d_mach64_map_composite(const V9X_R3D_DRAW *draw,
+                                  const V9X_D3D_MACH64_TEXTURE *texture1,
+                                  struct v9x_m64_draw_request *request)
+{
+    if (draw == 0 || request == 0 || draw->texcoords1 == 0) {
+        return;
+    }
+    request->texture_op = v9x_d3d_mach64_unit0_op(draw,
+        request->texture_format != V9X_M64_TEXTURE_FORMAT_RGB565 ? 1ul : 0ul);
+    request->composite = 1ul;
+    request->composite_format = V9X_D3D_MACH64_TEXTURE_UNKNOWN;
+    if (texture1 != 0 && draw->texture1.object != 0) {
+        request->composite_format = texture1->format;
+        request->composite_width = texture1->width;
+        request->composite_height = texture1->height;
+    }
+    request->composite_min_filter = draw->texture1.min_filter;
+    request->composite_mag_filter = draw->texture1.mag_filter;
+    request->composite_address = draw->texture1.address;
+    request->composite_color_op = draw->texture1.color_op;
+    request->composite_alpha_op = draw->texture1.alpha_op;
+}
+
+void v9x_d3d_mach64_map_composite_state(
+                              const struct v9x_m64_draw_request *request,
+                              const V9X_D3D_MACH64_TEXTURE *texture1,
+                              struct v9x_m64_draw_state *state)
+{
+    if (request == 0 || texture1 == 0 || state == 0 ||
+        request->composite == 0ul || state->textured == 0ul) {
+        return;
+    }
+    if (state->bilinear_min > 1ul) {
+        state->bilinear_min = 1ul;
+    }
+    state->composite = 1ul;
+    state->composite_offset = texture1->offset;
+    state->composite_pitch_bytes = texture1->pitch_bytes;
+    state->composite_width = texture1->width;
+    state->composite_height = texture1->height;
+    state->composite_format = texture1->format;
+    state->composite_wrap_s =
+        request->composite_address == V9X_R3D_ADDRESS_WRAP ? 1ul : 0ul;
+    state->composite_wrap_t = state->composite_wrap_s;
+    state->composite_bilinear_min =
+        v9x_d3d_mach64_base_filter(request->composite_min_filter) ==
+            V9X_R3D_FILTER_LINEAR ? 1ul : 0ul;
+    state->composite_bilinear_mag =
+        request->composite_mag_filter == V9X_R3D_FILTER_LINEAR ? 1ul : 0ul;
 }
 
 v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,

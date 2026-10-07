@@ -301,6 +301,22 @@ struct v9x_m64_draw_request {
     v9x_u32 vertex_alpha_opaque;
     /* The least vertex alpha of the batch, 0..255; zero when unknown. */
     v9x_u32 vertex_alpha_min;
+    /*
+     * A second texture (the render interface's texture1), read only when
+     * `composite` is non-zero. Its filters and address take the numbering
+     * above; its combine takes the render interface's V9X_R3D_ABI_COLOROP_*
+     * and _ALPHAOP_* numbers, since Direct3D's single texture op has no
+     * second unit to describe.
+     */
+    v9x_u32 composite;
+    v9x_u32 composite_format;
+    v9x_u32 composite_width;
+    v9x_u32 composite_height;
+    v9x_u32 composite_min_filter;
+    v9x_u32 composite_mag_filter;
+    v9x_u32 composite_address;
+    v9x_u32 composite_color_op;
+    v9x_u32 composite_alpha_op;
 };
 
 /* What an accepted draw emits for the texture stage, so the draw path
@@ -335,6 +351,7 @@ struct v9x_m64_draw_decision {
 #define V9X_M64_REFUSE_SPECULAR         17ul
 #define V9X_M64_REFUSE_COLOR_KEY        18ul
 #define V9X_M64_REFUSE_ALPHA_FORCE      19ul
+#define V9X_M64_REFUSE_COMPOSITE        20ul
 
 /* Returns V9X_M64_REFUSE_NONE and fills `decision` when the draw is inside
  * the measured boundary, otherwise the first refusal reason.  Passive: it
@@ -379,6 +396,24 @@ struct v9x_m64_draw_state {
     v9x_u32 fog_color;
     /* Add the vertex specular colour (ALPHA_TST_CNTL SPECULAR_LIGHT_EN). */
     v9x_u32 specular_enable;
+    /*
+     * A second texture modulated with the first (TEX_CNTL
+     * TEXTURE_COMPOSITE), read only when `composite` is non-zero and the
+     * draw is textured. One level, edge*2 bytes a row, on the base
+     * alignment: SECONDARY_TEX_OFF is a single offset. The first texture
+     * keeps its chain and selects a level, but is not trilinear
+     * (bilinear_min at most 1): the composite takes that blend function.
+     */
+    v9x_u32 composite;
+    v9x_u32 composite_offset;
+    v9x_u32 composite_pitch_bytes;
+    v9x_u32 composite_width;
+    v9x_u32 composite_height;
+    v9x_u32 composite_format;
+    v9x_u32 composite_wrap_s;
+    v9x_u32 composite_wrap_t;
+    v9x_u32 composite_bilinear_min;
+    v9x_u32 composite_bilinear_mag;
 };
 
 /*
@@ -399,6 +434,10 @@ struct v9x_m64_setup_vertex {
     float t;
     v9x_u32 argb;
     v9x_u32 specular;
+    /* The second texture's coordinates, read only under
+     * V9X_M64_SETUP_SECONDARY; its W is rhw, as Mesa's driver sends it. */
+    float s1;
+    float t1;
 };
 
 /* A candidate cache of the setup engine's three vertex slots.  It is
@@ -408,6 +447,8 @@ struct v9x_m64_setup_slot {
     v9x_u32 word[6];
     v9x_u32 specular;
     v9x_u32 known;
+    /* SECONDARY_S, _T and _W, compared only under V9X_M64_SETUP_SECONDARY. */
+    v9x_u32 secondary[3];
 };
 
 /* The largest pixel coordinate a setup packet takes: the flat state's
@@ -425,9 +466,13 @@ v9x_status v9x_m64_build_draw_state(
  * whose W, S or T is non-finite or W not positive, which cannot be drawn.
  * Either is skipped alone; every other failure is a caller error. `fog` is a
  * set of V9X_M64_SETUP_* flags: either sends the three specular words
- * first, FOG with the vertex specular alpha and SPECULAR with its RGB. */
-#define V9X_M64_SETUP_FOG      1ul
-#define V9X_M64_SETUP_SPECULAR 2ul
+ * first, FOG with the vertex specular alpha and SPECULAR with its RGB.
+ * SECONDARY sends each vertex's second-texture S, T and W after its own
+ * six words, Mesa's order, and premultiplies every S and T by W for the
+ * composite's TEX_ST_DIRECT; the triangle must be textured. */
+#define V9X_M64_SETUP_FOG       1ul
+#define V9X_M64_SETUP_SPECULAR  2ul
+#define V9X_M64_SETUP_SECONDARY 4ul
 v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
                                v9x_u32 textured, v9x_u32 fog,
                                v9x_u32 *offsets, v9x_u32 *values,

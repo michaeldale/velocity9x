@@ -376,6 +376,128 @@ static void test_wrap_reference(void)
     CHECK(s == 9.0f);
 }
 
+/* A render-interface two-unit draw: unit 0 an 8x8 chain under MIPLINEAR,
+ * unit 1 a 16x16 lightmap modulated over it (r3d_abi.h's numbers). */
+static void composite_draw(V9X_R3D_DRAW *draw,
+                           V9X_D3D_MACH64_TEXTURE *texture,
+                           V9X_D3D_MACH64_TEXTURE *texture1)
+{
+    static const float coordinates[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+
+    d3d_draw(draw);
+    draw->explicit_state = 1ul;
+    draw->scissor_right = 64ul;
+    draw->scissor_bottom = 28ul;
+    draw->write_mask = 7ul;
+    draw->texture.object = &surface_token;
+    draw->texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    draw->texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    draw->texture.address = V9X_R3D_ADDRESS_WRAP;
+    /* A two-unit draw leaves op zero and states REPLACE/REPLACE. */
+    draw->texture.color_op = 1ul;
+    draw->texture.alpha_op = 1ul;
+    draw->texture1.object = &surface_token;
+    draw->texture1.min_filter = V9X_R3D_FILTER_LINEAR;
+    draw->texture1.mag_filter = V9X_R3D_FILTER_LINEAR;
+    draw->texture1.address = V9X_R3D_ADDRESS_CLAMP;
+    draw->texture1.color_op = 2ul;
+    draw->texture1.alpha_op = 0ul;
+    draw->texcoords1 = coordinates;
+
+    texture_8x8(texture, V9X_M64_TEXTURE_FORMAT_RGB565);
+    texture->levels = 4ul;
+    texture->level_offsets[0] = texture->offset;
+    texture->level_offsets[1] = 0x00204080ul;
+    texture->level_offsets[2] = 0x00204100ul;
+    texture->level_offsets[3] = 0x00204140ul;
+    memset(texture1, 0, sizeof(*texture1));
+    texture1->format = V9X_M64_TEXTURE_FORMAT_RGB565;
+    texture1->width = 16ul;
+    texture1->height = 16ul;
+    texture1->levels = 1ul;
+    texture1->offset = 0x00205000ul;
+    texture1->pitch_bytes = 32ul;
+    texture1->level_offsets[0] = texture1->offset;
+}
+
+static void test_composite_mapping(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MACH64_TEXTURE texture;
+    V9X_D3D_MACH64_TEXTURE texture1;
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+    struct v9x_m64_draw_state state;
+    v9x_u32 offsets[32], values[32], written;
+
+    composite_draw(&draw, &texture, &texture1);
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_composite(&draw, &texture1, &request);
+    CHECK(request.composite == 1ul);
+    CHECK(request.composite_format == V9X_M64_TEXTURE_FORMAT_RGB565);
+    CHECK(request.composite_width == 16ul && request.composite_height == 16ul);
+    CHECK(request.composite_min_filter == V9X_R3D_FILTER_LINEAR);
+    CHECK(request.composite_address == V9X_R3D_ADDRESS_CLAMP);
+    CHECK(request.composite_color_op == 2ul);
+    CHECK(request.texture_op == V9X_R3D_TEXOP_DECAL);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_REPLACE);
+
+    /* Unit 0 MODULATE over RGB565 keeps the fragment's alpha: D3D's
+     * MODULATE; BLEND has no op and is refused. */
+    draw.texture.color_op = 2ul;
+    draw.texture.alpha_op = 0ul;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_composite(&draw, &texture1, &request);
+    CHECK(request.texture_op == V9X_R3D_TEXOP_MODULATE);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_MODULATE);
+    draw.texture.color_op = 4ul;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_composite(&draw, &texture1, &request);
+    CHECK(request.texture_op == 0ul);
+    CHECK(v9x_m64_check_draw(&request, &decision) ==
+          V9X_M64_REFUSE_TEXTURE_OP);
+    draw.texture.color_op = 1ul;
+    draw.texture.alpha_op = 1ul;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_composite(&draw, &texture1, &request);
+
+    /* Unit 0's chain keeps its levels, bilinear within the selected one:
+     * the composite takes the trilinear function. Unit 1 clamps and
+     * filters on its own. */
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul, &state);
+    v9x_d3d_mach64_map_composite_state(&request, &texture1, &state);
+    CHECK(state.level_count == 4ul && state.bilinear_min == 1ul);
+    CHECK(state.composite == 1ul && state.composite_offset == 0x00205000ul);
+    CHECK(state.composite_pitch_bytes == 32ul);
+    CHECK(state.composite_wrap_s == 0ul && state.composite_wrap_t == 0ul);
+    CHECK(state.composite_bilinear_min == 1ul);
+    CHECK(state.composite_bilinear_mag == 1ul);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, 32ul,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 22ul);
+    CHECK((values[16] & 0x80000300ul) == 0x80000300ul);
+    CHECK(values[17] == 0x00205000ul);
+
+    /* A one-unit draw maps no composite, whatever texture1 holds. */
+    draw.texcoords1 = 0;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_composite(&draw, &texture1, &request);
+    CHECK(request.composite == 0ul);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul, &state);
+    v9x_d3d_mach64_map_composite_state(&request, &texture1, &state);
+    CHECK(state.composite == 0ul && state.level_count == 4ul);
+
+    /* No resolved second texture: an unknown format, refused. */
+    composite_draw(&draw, &texture, &texture1);
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_composite(&draw, 0, &request);
+    CHECK(request.composite == 1ul);
+    CHECK(v9x_m64_check_draw(&request, &decision) ==
+          V9X_M64_REFUSE_COMPOSITE);
+}
+
 unsigned int v9x_run_d3d_mach64_map_tests(void)
 {
     test_direct3d_defaults();
@@ -386,5 +508,6 @@ unsigned int v9x_run_d3d_mach64_map_tests(void)
     test_specular_needs_colour();
     test_state_end_to_end();
     test_wrap_reference();
+    test_composite_mapping();
     return failures;
 }

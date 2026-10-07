@@ -600,6 +600,123 @@ static void test_measured_scenes_accept(void)
     CHECK(check(&request) == V9X_M64_REFUSE_NONE);
 }
 
+/* Render-interface combine numbers (r3d_abi.h), written out. */
+#define T_COLOROP_REPLACE    1ul
+#define T_COLOROP_MODULATE   2ul
+#define T_COLOROP_DECALALPHA 3ul
+#define T_COLOROP_BLEND      4ul
+#define T_ALPHAOP_FRAGMENT   0ul
+#define T_ALPHAOP_REPLACE    1ul
+#define T_ALPHAOP_MODULATE   2ul
+
+/* GLQuake's lightmap pass in one: unit 0 replace, unit 1 a 16x16 RGB565
+ * lightmap modulated over it, both bilinear and clamped. */
+static void composite(struct v9x_m64_draw_request *request)
+{
+    textured(request, 0ul);
+    request->composite = 1ul;
+    request->composite_format = 0ul;
+    request->composite_width = 16ul;
+    request->composite_height = 16ul;
+    request->composite_min_filter = T_FILTER_LINEAR;
+    request->composite_mag_filter = T_FILTER_LINEAR;
+    request->composite_address = T_ADDRESS_CLAMP;
+    request->composite_color_op = T_COLOROP_MODULATE;
+    request->composite_alpha_op = T_ALPHAOP_FRAGMENT;
+}
+
+static void test_composite(void)
+{
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+
+    composite(&request);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_REPLACE);
+    request.texture_op = T_TEXOP_MODULATE;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_MODULATE);
+
+    /* Wrapped, other formats, mip filters (sampled at level 0). */
+    composite(&request);
+    request.composite_address = T_ADDRESS_WRAP;
+    request.composite_format = 1ul;
+    request.composite_min_filter = T_FILTER_MIPLINEAR;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.composite_format = 2ul;
+    request.composite_width = 256ul;
+    request.composite_height = 2ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+
+    /* Untextured, or a texture the sampler cannot read. */
+    composite(&request);
+    request.textured = 0ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.composite_format = 0xfffffffful;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.composite_width = 512ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.composite_height = 12ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.composite_mag_filter = T_FILTER_MIPNEAREST;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.composite_min_filter = T_FILTER_LINEARMIPNEAREST;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.composite_address = T_ADDRESS_MIRROR;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+
+    /* MODULATE is the one combine Mesa's driver drew; the others refuse. */
+    composite(&request);
+    request.composite_color_op = T_COLOROP_REPLACE;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    request.composite_color_op = T_COLOROP_DECALALPHA;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    request.composite_color_op = T_COLOROP_BLEND;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+
+    /* The second texture's alpha only where nothing reads it. */
+    composite(&request);
+    request.composite_format = 2ul;
+    request.composite_alpha_op = T_ALPHAOP_MODULATE;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.blend_enable = 1ul;
+    request.src_blend = T_BLEND_SRCALPHA;
+    request.dst_blend = T_BLEND_INVSRCALPHA;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    request.composite_alpha_op = T_ALPHAOP_REPLACE;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    request.composite_alpha_op = T_ALPHAOP_FRAGMENT;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+
+    /* Decal by the first texture's alpha is a lerp before the product,
+     * not after it; RGB565's DECALALPHA is REPLACE and stays. */
+    composite(&request);
+    request.texture_format = 1ul;
+    request.texture_op = T_TEXOP_DECALALPHA;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    request.texture_format = 0ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+
+    /* Fog and specular over the composite were not measured. */
+    composite(&request);
+    request.fog_enable = 1ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+    composite(&request);
+    request.specular_enable = 1ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_COMPOSITE);
+
+    /* The first texture's own rules still apply first. */
+    composite(&request);
+    request.texture_width = 512ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_SHAPE);
+}
+
 unsigned int v9x_run_mach64_policy_tests(void)
 {
     test_arguments_and_target();
@@ -612,5 +729,6 @@ unsigned int v9x_run_mach64_policy_tests(void)
     test_alpha_test();
     test_fog_and_unmeasured_knobs();
     test_measured_scenes_accept();
+    test_composite();
     return failures;
 }

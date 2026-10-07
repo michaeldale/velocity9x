@@ -70,7 +70,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mach64_limits = {
     16ul,           /* depth_bits_per_pixel */
     V9X_M64_TEXTURE_BASE_ALIGN, /* texture_align */
     1ul,            /* clip_in_core */
-    0ul             /* depth_pitch_own */
+    0ul,            /* depth_pitch_own */
+    0ul,            /* depth_fill_shift */
+    /* The composite: unit 1 modulated over unit 0 in one pass, the Rage
+     * Pro's second texture (mach64_draw.c v9x_m64_draw_composite). */
+    2ul             /* texture_units */
 };
 
 /* The counters live in the shared diagnostics block (m64_*), where
@@ -361,7 +365,8 @@ static DWORD v9x_d3d_mach64_chain(const V9X_DD_SURFACE_LCL *top,
     return count;
 }
 
-static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_DRAW *draw,
+/* One unit's texture, `source` being draw->texture or draw->texture1. */
+static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_TEXTURE *source,
                                            V9X_D3D_MACH64_TEXTURE *texture)
 {
     V9X_DD_SURFACE_LCL *surface;
@@ -375,7 +380,7 @@ static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_DRAW *draw,
     texture->offset = 0ul;
     texture->pitch_bytes = 0ul;
 
-    surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
+    surface = (V9X_DD_SURFACE_LCL *)source->object;
     if (surface == 0 || surface->lpGbl == 0) {
         return;
     }
@@ -404,6 +409,7 @@ static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_DRAW *draw,
 static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
 {
     V9X_D3D_MACH64_TEXTURE texture;
+    V9X_D3D_MACH64_TEXTURE texture1;
     struct v9x_m64_draw_request request;
     struct v9x_m64_draw_decision decision;
     v9x_u32 reason;
@@ -411,8 +417,12 @@ static int v9x_d3d_mach64_accepts(const V9X_R3D_DRAW *draw)
     if (draw == 0) {
         return 0;
     }
-    v9x_d3d_mach64_resolve_texture(draw, &texture);
+    v9x_d3d_mach64_resolve_texture(&draw->texture, &texture);
     v9x_d3d_mach64_map_request(draw, &texture, 0ul, &request);
+    if (draw->texcoords1 != 0) {
+        v9x_d3d_mach64_resolve_texture(&draw->texture1, &texture1);
+        v9x_d3d_mach64_map_composite(draw, &texture1, &request);
+    }
     request.vertex_alpha_opaque = draw->vertex_alpha_opaque;
     /* Only opacity is known before the vertices: 255 or unknown. */
     request.vertex_alpha_min = draw->vertex_alpha_opaque != 0ul ? 255ul : 0ul;
@@ -516,6 +526,39 @@ static void v9x_d3d_mach64_wrap_origin(struct v9x_m64_setup_vertex *setup)
 }
 
 /*
+ * The same rebase for the second texture's coordinates when it wraps: its
+ * own centroid, by the same W, moved by its own whole number.
+ */
+static void v9x_d3d_mach64_wrap_origin1(struct v9x_m64_setup_vertex *setup)
+{
+    struct v9x_m64_setup_vertex second[3];
+    float centre_s;
+    float centre_t;
+    float base_s;
+    float base_t;
+    DWORD corner;
+
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        second[corner].rhw = setup[corner].rhw;
+        second[corner].s = setup[corner].s1;
+        second[corner].t = setup[corner].t1;
+    }
+    if (!v9x_d3d_mach64_wrap_reference(second, &centre_s, &centre_t)) {
+        return;
+    }
+    if (centre_s < -1.0e9f || centre_s > 1.0e9f ||
+        centre_t < -1.0e9f || centre_t > 1.0e9f) {
+        return;
+    }
+    base_s = v9x_d3d_mach64_floor(centre_s + 0.5f);
+    base_t = v9x_d3d_mach64_floor(centre_t + 0.5f);
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        setup[corner].s1 -= base_s;
+        setup[corner].t1 -= base_t;
+    }
+}
+
+/*
  * The cycles since `start` charged to one part of an accepted draw, in the
  * Rage IIC's cost fields (V9X_R2_COST_*): the two engines never share a
  * machine, and V9XTRACE already reports them. Here PREPARE is the policy
@@ -545,6 +588,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                DWORD triangle_count)
 {
     V9X_D3D_MACH64_TEXTURE texture;
+    V9X_D3D_MACH64_TEXTURE texture1;
     struct v9x_m64_draw_request request;
     struct v9x_m64_draw_decision decision;
     struct v9x_m64_draw_state state;
@@ -554,6 +598,7 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     const V9X_R3D_VERTEX *triangle;
     v9x_u32 state_written = 0ul;
     v9x_u32 reason;
+    v9x_u32 setup_flags;
     v9x_u32 writes_before;
     v9x_u32 fifo_reads_before;
     v9x_status status;
@@ -572,10 +617,14 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     }
 
     /* The policy first: nothing below runs for a draw it refuses. */
-    v9x_d3d_mach64_resolve_texture(draw, &texture);
+    v9x_d3d_mach64_resolve_texture(&draw->texture, &texture);
     v9x_d3d_mach64_map_request(draw, &texture,
         v9x_d3d_mach64_specular_rgb(vertices, triangle_count * 3ul),
         &request);
+    if (draw->texcoords1 != 0) {
+        v9x_d3d_mach64_resolve_texture(&draw->texture1, &texture1);
+        v9x_d3d_mach64_map_composite(draw, &texture1, &request);
+    }
     request.vertex_alpha_opaque =
         v9x_d3d_mach64_vertices_opaque(vertices, triangle_count * 3ul);
     request.vertex_alpha_min =
@@ -616,6 +665,9 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
 
     v9x_d3d_mach64_map_state(draw, &request, &texture,
                              v9x_hal->fb.vram_bytes, &state);
+    if (request.composite != 0ul) {
+        v9x_d3d_mach64_map_composite_state(&request, &texture1, &state);
+    }
     status = v9x_m64_build_draw_state(&state, &decision,
                                       v9x_d3d_mach64_state_offsets,
                                       v9x_d3d_mach64_state_values,
@@ -630,6 +682,10 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
 
     /* Every packet before any write, so a bad vertex refuses the batch. */
     flat = request.shade_mode == V9X_R3D_SHADE_FLAT;
+    setup_flags = (request.fog_enable != 0ul ? V9X_M64_SETUP_FOG : 0ul) |
+                  (request.specular_enable != 0ul
+                     ? V9X_M64_SETUP_SPECULAR : 0ul) |
+                  (request.composite != 0ul ? V9X_M64_SETUP_SECONDARY : 0ul);
     for (corner = 0ul; corner < 3ul; ++corner) {
         setup_slot[corner].known = 0ul;
     }
@@ -640,16 +696,24 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                        flat, &setup[corner])) {
                 return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_VERTEX);
             }
+            /* Unit 1's tu1, tv1: two floats a vertex, in vertex order. */
+            if (request.composite != 0ul) {
+                setup[corner].s1 =
+                    draw->texcoords1[(index * 3ul + corner) * 2ul];
+                setup[corner].t1 =
+                    draw->texcoords1[(index * 3ul + corner) * 2ul + 1ul];
+            }
         }
         if (request.textured != 0ul &&
             request.texture_address == V9X_R3D_ADDRESS_WRAP) {
             v9x_d3d_mach64_wrap_origin(setup);
         }
+        if (request.composite != 0ul &&
+            request.composite_address == V9X_R3D_ADDRESS_WRAP) {
+            v9x_d3d_mach64_wrap_origin1(setup);
+        }
         status = v9x_m64_build_reused_setup(setup, request.textured,
-                                  (request.fog_enable != 0ul
-                                     ? V9X_M64_SETUP_FOG : 0ul) |
-                                  (request.specular_enable != 0ul
-                                     ? V9X_M64_SETUP_SPECULAR : 0ul),
+                                  setup_flags,
                                   setup_slot,
                                   v9x_d3d_mach64_setup_offsets[packets],
                                   v9x_d3d_mach64_setup_values[packets],
