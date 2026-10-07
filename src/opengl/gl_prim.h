@@ -279,7 +279,8 @@ int v9x_gl_prim_alpha_test_passes(const V9X_R3D_ABI_STATE *state,
  *   REPLACE     C = Ct               no blend
  *   DECALALPHA  C = Cd(1-At) + Ct At (SRCALPHA, INVSRCALPHA)
  *   BLEND       C = Cd(1-Ct)         (ZERO, INVSRCCOLOR), then
- *               C += Cc Ct           (ONE, ONE), the vertex colour Cc
+ *               C += Cc Ct           (ONE, ONE), the vertex colour Cc,
+ *                                    unless Cc is black (GL's default)
  *
  * Over the same pixels only: with depth writes the later passes test
  * EQUAL against the depth pass 0 wrote; without them they repeat pass 0's

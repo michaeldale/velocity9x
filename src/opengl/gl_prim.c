@@ -1330,6 +1330,12 @@ v9x_u32 v9x_gl_prim_split(const V9X_R3D_ABI_STATE *state,
                                 V9X_R3D_ABI_COLOROP_REPLACE,
                                 V9X_GL_SPLIT_BLEND_ZERO,
                                 V9X_GL_SPLIT_BLEND_INVSRCCOLOR);
+        /* GL's default environment colour is black, and then Cc Ct adds
+         * nothing: QuakeWorld's lightmaps are unit 1 BLEND with the colour
+         * never set (id's QW gl_rsurf.c, R_DrawSequentialPoly). */
+        if ((texture1->env_color & 0x00FFFFFFul) == 0ul) {
+            return 2ul;
+        }
         /* Cc Ct: the texel modulated by a vertex colour that is the
          * environment colour, added. */
         v9x_gl_prim_split_unit1(state, &passes[2],

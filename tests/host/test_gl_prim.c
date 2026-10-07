@@ -1215,6 +1215,7 @@ static void test_split_into_passes(void)
     /* BLEND: Cd(1-Ct), then Cc Ct added, the vertex colour Cc. */
     split_texture(&texture1, V9X_R3D_ABI_COLOROP_BLEND,
                   V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    texture1.env_color = 0x000000FFul;
     PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 3ul);
     PCHECK(passes[1].color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
            passes[1].state.src_blend == 1ul &&
@@ -1229,6 +1230,15 @@ static void test_split_into_passes(void)
                passes[i].state.depth_write == 0ul &&
                passes[i].state.alpha_test_enable == 0ul);
     }
+    /* BLEND with GL's default black environment adds nothing: QuakeWorld's
+     * lightmaps (unit 1 BLEND, colour never set) are Cd(1-Ct) alone. The
+     * environment's alpha is not part of the packed RGB. */
+    texture1.env_color = 0ul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[1].state.src_blend == 1ul &&
+           passes[1].state.dst_blend == 4ul);
+    texture1.env_color = 0x000000FFul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 3ul);
 
     /* Without depth writes the later passes repeat pass 0's test against
      * the buffer pass 0 left alone; without depth, none. */
