@@ -267,6 +267,48 @@ int v9x_gl_prim_alpha_test_passes(const V9X_R3D_ABI_STATE *state,
                                   const V9X_R3D_ABI_VERTEX *vertices,
                                   v9x_u32 vertex_count);
 
+/*
+ * A two-unit draw no engine took, drawn as single-unit passes instead -
+ * what the application would have drawn itself had GL_SGIS_multitexture
+ * not been offered. Pass 0 is unit 0's draw as it stands; the passes
+ * after it draw unit 1's texture at unit 1's coordinates over the pixels
+ * pass 0 wrote, with a blend that applies unit 1's combine (GL 1.1 table
+ * 3.18, RGB; the target has no alpha plane):
+ *
+ *   MODULATE    C = Cd * Ct          (DESTCOLOR, ZERO)
+ *   REPLACE     C = Ct               no blend
+ *   DECALALPHA  C = Cd(1-At) + Ct At (SRCALPHA, INVSRCALPHA)
+ *   BLEND       C = Cd(1-Ct)         (ZERO, INVSRCCOLOR), then
+ *               C += Cc Ct           (ONE, ONE), the vertex colour Cc
+ *
+ * Over the same pixels only: with depth writes the later passes test
+ * EQUAL against the depth pass 0 wrote; without them they repeat pass 0's
+ * test against the unchanged buffer. Triangles of one batch that overlap
+ * without depth writes take unit 1 twice where they overlap.
+ *
+ * Returns the number of passes, 0 when the draw cannot be split exactly:
+ * the application blends (the passes need the blender), or an alpha test
+ * that could discard has no depth writes to confine the later passes to
+ * what it kept, or unit 1 changes the alpha a test reads.
+ */
+#define V9X_GL_SPLIT_PASSES_MAX 3u
+
+typedef struct v9x_gl_split_pass {
+    /* 0: unit 0's texture and coordinates; 1: unit 1's. */
+    v9x_u32 unit;
+    /* For a unit-1 pass, its texture's combine; unit 0's pass keeps its
+     * own. */
+    v9x_u32 color_op;
+    v9x_u32 alpha_op;
+    /* Non-zero: every vertex's colour is unit 1's environment colour. */
+    v9x_u32 env_colour;
+    V9X_R3D_ABI_STATE state;
+} V9X_GL_SPLIT_PASS;
+
+v9x_u32 v9x_gl_prim_split(const V9X_R3D_ABI_STATE *state,
+                          const V9X_R3D_ABI_TEXTURE *texture1,
+                          V9X_GL_SPLIT_PASS *passes);
+
 /* The fragment state as the render interface takes it, from the GL state
  * and the pipeline's functions. */
 void v9x_gl_prim_abi_state(V9X_GL_STATE *state,

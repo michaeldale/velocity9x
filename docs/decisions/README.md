@@ -255,3 +255,4 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-07 The Rage Pro's second texture draws in one pass on the Rage XL, and Quake 2 runs at half the frame rate with it: not enabled](2026-10-07-rage-pro-composite-multitexture.md)
 - [2026-10-08 Where a Rage XL draw's time goes: the chip filling at 640x480, the driver's setup at 320x240, and not the texture-cache flush](2026-10-08-rage-xl-draw-cost.md)
 - [2026-10-08 The Rage Pro composite's mip level follows W unless its coordinates arrive premultiplied: with TEX_ST_DIRECT, Quake 2 and Half-Life draw single-pass on the Rage XL](2026-10-08-rage-pro-composite-direct.md)
+- [2026-10-08 A two-unit draw no engine takes is drawn as single-unit passes: the Rage's refused unit-1 modes draw again](2026-10-08-icd-two-unit-split.md)

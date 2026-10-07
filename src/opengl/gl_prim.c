@@ -1239,3 +1239,106 @@ int v9x_gl_prim_alpha_test_passes(const V9X_R3D_ABI_STATE *state,
                                      high < 255ul ? high + 1ul : high,
                                      state->alpha_ref);
 }
+
+/* The interface's (D3D's) numbers the split's passes use. */
+#define V9X_GL_SPLIT_CMP_EQUAL       3ul
+#define V9X_GL_SPLIT_BLEND_ZERO      1ul
+#define V9X_GL_SPLIT_BLEND_ONE       2ul
+#define V9X_GL_SPLIT_BLEND_INVSRCCOLOR 4ul
+#define V9X_GL_SPLIT_BLEND_SRCALPHA  5ul
+#define V9X_GL_SPLIT_BLEND_INVSRCALPHA 6ul
+#define V9X_GL_SPLIT_BLEND_DESTCOLOR 9ul
+
+/* One unit-1 pass: unit 1's texel, blended as given, over pass 0's
+ * pixels only. */
+static void v9x_gl_prim_split_unit1(const V9X_R3D_ABI_STATE *state,
+                                    V9X_GL_SPLIT_PASS *pass,
+                                    v9x_u32 color_op, v9x_u32 src_blend,
+                                    v9x_u32 dst_blend)
+{
+    pass->unit = 1ul;
+    pass->color_op = color_op;
+    /* The interface's DECAL: the texel, its alpha with it, which the
+     * DECALALPHA pass's blend reads and no other pass does. */
+    pass->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    pass->env_colour = 0ul;
+    pass->state = *state;
+    pass->state.blend_enable =
+        src_blend == V9X_GL_SPLIT_BLEND_ONE &&
+        dst_blend == V9X_GL_SPLIT_BLEND_ZERO ? 0ul : 1ul;
+    pass->state.src_blend = src_blend;
+    pass->state.dst_blend = dst_blend;
+    /* Pass 0 alone tests alpha; with depth writes what it kept is what
+     * holds its depth, so EQUAL finds exactly those pixels. Without them
+     * the buffer is as pass 0 found it, and its own test finds them. */
+    pass->state.alpha_test_enable = 0ul;
+    if (state->depth_enable != 0ul && state->depth_write != 0ul) {
+        pass->state.depth_func = V9X_GL_SPLIT_CMP_EQUAL;
+    }
+    pass->state.depth_write = 0ul;
+}
+
+v9x_u32 v9x_gl_prim_split(const V9X_R3D_ABI_STATE *state,
+                          const V9X_R3D_ABI_TEXTURE *texture1,
+                          V9X_GL_SPLIT_PASS *passes)
+{
+    if (state == 0 || texture1 == 0 || passes == 0 ||
+        texture1->storage == V9X_R3D_ABI_TEXTURE_NONE) {
+        return 0ul;
+    }
+    /* The passes combine through the blender, so the application's own
+     * blend cannot also be had. */
+    if (state->blend_enable != 0ul) {
+        return 0ul;
+    }
+    /* A test that may discard leaves the later passes nothing to find
+     * its survivors by but their depth, and it must test the alpha the
+     * two units would have left: unit 1 must keep the fragment's. */
+    if (state->alpha_test_enable != 0ul &&
+        (state->depth_enable == 0ul || state->depth_write == 0ul ||
+         texture1->alpha_op != V9X_R3D_ABI_ALPHAOP_FRAGMENT)) {
+        return 0ul;
+    }
+
+    passes[0].unit = 0ul;
+    passes[0].color_op = 0ul;
+    passes[0].alpha_op = 0ul;
+    passes[0].env_colour = 0ul;
+    passes[0].state = *state;
+
+    switch (texture1->color_op) {
+    case V9X_R3D_ABI_COLOROP_MODULATE:
+        v9x_gl_prim_split_unit1(state, &passes[1],
+                                V9X_R3D_ABI_COLOROP_REPLACE,
+                                V9X_GL_SPLIT_BLEND_DESTCOLOR,
+                                V9X_GL_SPLIT_BLEND_ZERO);
+        return 2ul;
+    case V9X_R3D_ABI_COLOROP_REPLACE:
+        v9x_gl_prim_split_unit1(state, &passes[1],
+                                V9X_R3D_ABI_COLOROP_REPLACE,
+                                V9X_GL_SPLIT_BLEND_ONE,
+                                V9X_GL_SPLIT_BLEND_ZERO);
+        return 2ul;
+    case V9X_R3D_ABI_COLOROP_DECALALPHA:
+        v9x_gl_prim_split_unit1(state, &passes[1],
+                                V9X_R3D_ABI_COLOROP_REPLACE,
+                                V9X_GL_SPLIT_BLEND_SRCALPHA,
+                                V9X_GL_SPLIT_BLEND_INVSRCALPHA);
+        return 2ul;
+    case V9X_R3D_ABI_COLOROP_BLEND:
+        v9x_gl_prim_split_unit1(state, &passes[1],
+                                V9X_R3D_ABI_COLOROP_REPLACE,
+                                V9X_GL_SPLIT_BLEND_ZERO,
+                                V9X_GL_SPLIT_BLEND_INVSRCCOLOR);
+        /* Cc Ct: the texel modulated by a vertex colour that is the
+         * environment colour, added. */
+        v9x_gl_prim_split_unit1(state, &passes[2],
+                                V9X_R3D_ABI_COLOROP_MODULATE,
+                                V9X_GL_SPLIT_BLEND_ONE,
+                                V9X_GL_SPLIT_BLEND_ONE);
+        passes[2].env_colour = 1ul;
+        return 3ul;
+    default:
+        return 0ul;
+    }
+}

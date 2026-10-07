@@ -136,6 +136,11 @@ static GLfloat v9x_gl_scaled_tex1[2u * 3u * V9X_R3D_ABI_BATCH_MAX];
  * first calls (logged once each). */
 static DWORD v9x_gl_mtex_batches;
 static DWORD v9x_gl_mtex_triangles;
+/* Two-unit batches drawn in single-unit passes because nothing took them
+ * whole, and those v9x_gl_prim_split could not split exactly. */
+static DWORD v9x_gl_split_batches;
+static DWORD v9x_gl_split_triangles;
+static DWORD v9x_gl_split_declined;
 static int v9x_gl_mtex_select_seen;
 static int v9x_gl_mtex_coord_seen;
 #define V9X_GL_RESULT_SLOTS 10u
@@ -1872,17 +1877,20 @@ static void v9x_gl_note_failure(v9x_u32 result, const V9X_GL_PENDING *pending,
 
 static void v9x_gl_path_log(void)
 {
-    char text[200];
+    char text[320];
 
     wsprintfA(text, "paths batches/triangles untextured=%lu/%lu "
               "hw=%lu/%lu cpu=%lu/%lu cpu-nonsquare=%lu/%lu "
-              "hw-refused=%lu/%lu two-units=%lu/%lu",
+              "hw-refused=%lu/%lu two-units=%lu/%lu split=%lu/%lu "
+              "split-declined=%lu",
               v9x_gl_path_batches[0], v9x_gl_path_triangles[0],
               v9x_gl_path_batches[1], v9x_gl_path_triangles[1],
               v9x_gl_path_batches[2], v9x_gl_path_triangles[2],
               v9x_gl_path_batches[3], v9x_gl_path_triangles[3],
               v9x_gl_path_batches[4], v9x_gl_path_triangles[4],
-              v9x_gl_mtex_batches, v9x_gl_mtex_triangles);
+              v9x_gl_mtex_batches, v9x_gl_mtex_triangles,
+              v9x_gl_split_batches, v9x_gl_split_triangles,
+              v9x_gl_split_declined);
     v9x_gl_log(text);
 }
 
@@ -1895,17 +1903,25 @@ static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
                                       : v9x_gl_drawable_back(drawable);
 }
 
+static v9x_u32 v9x_gl_draw_split(V9X_GL_CONTEXT *context,
+                                 const V9X_GL_PENDING *pending,
+                                 unsigned int which,
+                                 V9X_R3D_ABI_OUTCOME *outcome);
+
 /*
- * The held batch into one colour buffer. The front's result is shown on
- * the window at once: GL_FRONT drawing is what the application means to be
- * seen without a swap, and nothing else would put it there.
+ * A held batch into one colour buffer. The front's result is shown on the
+ * window at once: GL_FRONT drawing is what the application means to be
+ * seen without a swap, and nothing else would put it there. `split`
+ * allows a two-unit batch no engine takes to be drawn in single-unit
+ * passes; the passes themselves are drawn with it clear.
  */
-static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
-                                V9X_R3D_ABI_OUTCOME *outcome)
+static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context,
+                                const V9X_GL_PENDING *pending,
+                                unsigned int which,
+                                V9X_R3D_ABI_OUTCOME *outcome, int split)
 {
     const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
-    V9X_GL_PENDING *pending = &context->pending;
     V9X_GL_DRAWABLE *drawable;
     V9X_R3D_ABI_DRAW draw;
     v9x_u32 result;
@@ -2059,8 +2075,74 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context, unsigned int which,
         v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
         ++v9x_gl_count_draws;
     }
+    if (result == V9X_R3D_RESULT_UNSUPPORTED && two_units && split) {
+        return v9x_gl_draw_split(context, pending, which, outcome);
+    }
     if (result == V9X_R3D_RESULT_OK && which == V9X_GL_DRAW_FRONT) {
         v9x_gl_drawable_show_front(drawable);
+    }
+    return result;
+}
+
+/*
+ * A two-unit batch that neither the engine nor the software fallback took
+ * - on the Mach64, which has no fallback, a unit-1 combine its composite
+ * does not have - drawn as the single-unit passes the application would
+ * have drawn without GL_SGIS_multitexture (v9x_gl_prim_split). Without
+ * them such a batch drew nothing, where the application not offered the
+ * extension drew it. A unit-1 pass is unit 1's texture at unit 1's
+ * coordinates, built in a copy of the batch.
+ */
+static V9X_GL_PENDING v9x_gl_split_pending;
+
+static v9x_u32 v9x_gl_draw_split(V9X_GL_CONTEXT *context,
+                                 const V9X_GL_PENDING *pending,
+                                 unsigned int which,
+                                 V9X_R3D_ABI_OUTCOME *outcome)
+{
+    V9X_GL_SPLIT_PASS passes[V9X_GL_SPLIT_PASSES_MAX];
+    V9X_GL_PENDING *copy = &v9x_gl_split_pending;
+    v9x_u32 count;
+    v9x_u32 pass;
+    v9x_u32 i;
+    v9x_u32 result = V9X_R3D_RESULT_UNSUPPORTED;
+
+    count = v9x_gl_prim_split(&pending->state, &pending->texture1, passes);
+    if (count == 0ul) {
+        ++v9x_gl_split_declined;
+        return V9X_R3D_RESULT_UNSUPPORTED;
+    }
+    ++v9x_gl_split_batches;
+    v9x_gl_split_triangles += pending->triangles;
+    for (pass = 0ul; pass < count; ++pass) {
+        *copy = *pending;
+        copy->texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+        copy->state = passes[pass].state;
+        if (passes[pass].unit != 0ul) {
+            copy->texture = pending->texture1;
+            copy->texture.color_op = passes[pass].color_op;
+            /* MODULATE over a texture without alpha is the stage that
+             * keeps the fragment's (v9x_r3d_texture_op); the passes read
+             * no alpha but DECALALPHA's, which is a REPLACE. */
+            copy->texture.alpha_op =
+                passes[pass].color_op == V9X_R3D_ABI_COLOROP_MODULATE &&
+                pending->texture1.format == V9X_R3D_ABI_FORMAT_RGB565
+                    ? V9X_R3D_ABI_ALPHAOP_FRAGMENT : passes[pass].alpha_op;
+            copy->texture_name = pending->texture1_name;
+            copy->alpha_used = v9x_gl_prim_blend_reads_alpha(&copy->state);
+            for (i = 0ul; i < pending->triangles * 3ul; ++i) {
+                copy->vertices[i].tu = pending->texcoords1[i * 2ul];
+                copy->vertices[i].tv = pending->texcoords1[i * 2ul + 1ul];
+                if (passes[pass].env_colour != 0ul) {
+                    copy->vertices[i].color =
+                        0xFF000000ul | pending->texture1.env_color;
+                }
+            }
+        }
+        result = v9x_gl_draw_into(context, copy, which, outcome, 0);
+        if (result != V9X_R3D_RESULT_OK) {
+            return result;
+        }
     }
     return result;
 }
@@ -2088,7 +2170,7 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
             continue;
         }
         outcome.submitted = 0ul;
-        result = v9x_gl_draw_into(context, which, &outcome);
+        result = v9x_gl_draw_into(context, pending, which, &outcome, 1);
         if (result != V9X_R3D_RESULT_OK) {
             v9x_gl_note_failure(result, pending, outcome.submitted);
         }

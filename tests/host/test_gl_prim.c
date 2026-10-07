@@ -1133,9 +1133,153 @@ static void test_polygon_offset(void)
     PCHECK(p.offset_factor == 0.0f && p.offset_units == 0.0f);
 }
 
+/* A depth-tested, depth-writing opaque draw, Quake's world. */
+static void split_state(V9X_R3D_ABI_STATE *state)
+{
+    unsigned int i;
+
+    for (i = 0u; i < sizeof(*state); ++i) {
+        ((unsigned char *)state)[i] = 0u;
+    }
+    state->depth_enable = 1ul;
+    state->depth_write = 1ul;
+    state->depth_func = 4ul;            /* LESSEQUAL */
+    state->src_blend = 2ul;
+    state->dst_blend = 1ul;
+    state->alpha_func = 8ul;
+    state->write_mask = V9X_R3D_ABI_WRITE_RGB;
+    state->scissor_right = 640ul;
+    state->scissor_bottom = 480ul;
+}
+
+static void split_texture(V9X_R3D_ABI_TEXTURE *texture, v9x_u32 color_op,
+                          v9x_u32 alpha_op)
+{
+    unsigned int i;
+
+    for (i = 0u; i < sizeof(*texture); ++i) {
+        ((unsigned char *)texture)[i] = 0u;
+    }
+    texture->storage = V9X_R3D_ABI_TEXTURE_HW;
+    texture->format = V9X_R3D_ABI_FORMAT_ARGB4444;
+    texture->color_op = color_op;
+    texture->alpha_op = alpha_op;
+}
+
+static void test_split_into_passes(void)
+{
+    V9X_R3D_ABI_STATE state;
+    V9X_R3D_ABI_TEXTURE texture1;
+    V9X_GL_SPLIT_PASS passes[V9X_GL_SPLIT_PASSES_MAX];
+    unsigned int i;
+
+    /* MODULATE: pass 0 as it stands, then Cd * Ct over the same pixels,
+     * EQUAL against the depth pass 0 wrote, writing none. */
+    split_state(&state);
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_MODULATE,
+                  V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[0].unit == 0ul && passes[0].env_colour == 0ul);
+    PCHECK(passes[0].state.depth_func == 4ul &&
+           passes[0].state.depth_write == 1ul &&
+           passes[0].state.blend_enable == 0ul);
+    PCHECK(passes[1].unit == 1ul && passes[1].env_colour == 0ul);
+    PCHECK(passes[1].color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+           passes[1].alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    PCHECK(passes[1].state.blend_enable == 1ul &&
+           passes[1].state.src_blend == 9ul &&
+           passes[1].state.dst_blend == 1ul);
+    PCHECK(passes[1].state.depth_enable == 1ul &&
+           passes[1].state.depth_func == 3ul &&
+           passes[1].state.depth_write == 0ul);
+    PCHECK(passes[1].state.write_mask == V9X_R3D_ABI_WRITE_RGB &&
+           passes[1].state.scissor_right == 640ul);
+
+    /* REPLACE: Ct, unblended. */
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_REPLACE,
+                  V9X_R3D_ABI_ALPHAOP_REPLACE);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[1].state.blend_enable == 0ul &&
+           passes[1].color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+
+    /* DECAL by texel alpha: the texel's alpha weighs it over Cd. */
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_DECALALPHA,
+                  V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[1].color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+           passes[1].alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    PCHECK(passes[1].state.blend_enable == 1ul &&
+           passes[1].state.src_blend == 5ul &&
+           passes[1].state.dst_blend == 6ul);
+
+    /* BLEND: Cd(1-Ct), then Cc Ct added, the vertex colour Cc. */
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_BLEND,
+                  V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 3ul);
+    PCHECK(passes[1].color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+           passes[1].state.src_blend == 1ul &&
+           passes[1].state.dst_blend == 4ul && passes[1].env_colour == 0ul);
+    PCHECK(passes[2].unit == 1ul &&
+           passes[2].color_op == V9X_R3D_ABI_COLOROP_MODULATE &&
+           passes[2].env_colour == 1ul &&
+           passes[2].state.src_blend == 2ul &&
+           passes[2].state.dst_blend == 2ul);
+    for (i = 1u; i < 3u; ++i) {
+        PCHECK(passes[i].state.depth_func == 3ul &&
+               passes[i].state.depth_write == 0ul &&
+               passes[i].state.alpha_test_enable == 0ul);
+    }
+
+    /* Without depth writes the later passes repeat pass 0's test against
+     * the buffer pass 0 left alone; without depth, none. */
+    state.depth_write = 0ul;
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_MODULATE,
+                  V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[1].state.depth_func == 4ul &&
+           passes[1].state.depth_write == 0ul);
+    state.depth_enable = 0ul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[1].state.depth_enable == 0ul);
+
+    /* The application's own blend needs the blender the passes use. */
+    split_state(&state);
+    state.blend_enable = 1ul;
+    state.src_blend = 5ul;
+    state.dst_blend = 6ul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
+
+    /* An alpha test: kept on pass 0 only, which needs depth writes to
+     * confine the rest to what it kept, and unit 1 must not change the
+     * alpha it tests. */
+    split_state(&state);
+    state.alpha_test_enable = 1ul;
+    state.alpha_func = 5ul;
+    state.alpha_ref = 128ul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 2ul);
+    PCHECK(passes[0].state.alpha_test_enable == 1ul &&
+           passes[1].state.alpha_test_enable == 0ul);
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_MODULATE,
+                  V9X_R3D_ABI_ALPHAOP_MODULATE);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
+    split_texture(&texture1, V9X_R3D_ABI_COLOROP_MODULATE,
+                  V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    state.depth_write = 0ul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
+
+    /* No second texture, or an unknown combine: nothing to split. */
+    split_state(&state);
+    split_texture(&texture1, 9ul, V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
+    texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    texture1.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
     gl_prim_failures = 0u;
+    test_split_into_passes();
     test_alpha_test_that_cannot_fail();
     test_triangle_to_surface();
     test_provoking_vertex_and_quads();

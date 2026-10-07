@@ -1,0 +1,241 @@
+1 pid=FFFDB947 attach instance=01CF0000 tls=11 version=0.12.2 V9XGL build=cf6df25-dirty exe=C:\Q2DEMO\QUAKE2.EXE
+2 pid=FFFDB947 DrvValidateVersion version=1
+3 pid=FFFDB947 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFDB947 describe result=0 engine=4 formats=00000002
+5 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+9 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFDB947 DrvSetPixelFormat hdc=00000782 index=1
+33 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFDB947 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+37 pid=FFFDB947 DrvCreateLayerContext hdc=00000782 layer=0 -> 1
+38 pid=FFFDB947 drawable window=00000160 640x480
+39 pid=FFFDB947 DrvSetContext hdc=00000782 context=1 -> 1
+40 pid=FFFDB947 DrvGetProcAddress name=glMTexCoord2fSGIS -> entry
+41 pid=FFFDB947 DrvGetProcAddress name=glSelectTextureSGIS -> entry
+42 pid=FFFDB947 state tex=1156 size=01000100 tex=01010100 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+43 pid=FFFDB947 time interval-ms=142057 swaps=0 present-ms=0 draw-ms=6812982 upload-ms=12
+44 pid=FFFDB947 tsc frames=0 wall-ms=142057 vertex-ms=16093 flush-in-vertex-ms=0 flush-other-ms=7424568 bind-ms=9602 iface-ms=47524 beginend-ms=118494 swap-ms=0 vertices=8 flushes=1 draws=1 sink-ms=46176 sink-prep-ms=44360 sinks=2
+45 pid=FFFDB947 sink begin-ms=71990 flush-ms=0 copy-ms=2007 prep-texture-ms=42019 prep-state-ms=1189 prep-same-ms=948
+46 pid=FFFDB947 hwno hwtex-ms=7174951 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+47 pid=FFFDB947 prim transform-ms=2580 inside-ms=1975 window-ms=4084 assemble-ms=5264 history-ms=519 fast=4 clipped=0 culled=0
+48 pid=FFFDB947 entry texsub-ms=0/0 teximage-ms=10229790/10 bind-ms=45244/7 param-ms=7143/18 env-ms=131/1 other-ms=0/0 tex-flush-ms=3474/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=28665/9
+49 pid=FFFDB947 paths batches/triangles untextured=0/0 hw=1/2 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+50 pid=FFFDB947 counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 partial=0 upload-kb=128 squared=0 alpha-dropped=1 stubs=0 failed r4=0 r7=0 r8=0 other=0
+51 pid=FFFDB947 state tex=1155 size=00800080 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+52 pid=FFFDB947 state tex=1155 size=00000000 tex=00000000 blend=00050601 depth=00040100 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+53 pid=FFFDB947 sgis first glSelectTextureSGIS target=835F
+54 pid=FFFDB947 sgis first glMTexCoord2fSGIS target=835E
+55 pid=FFFDB947 state tex=1237 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+56 pid=FFFDB947 state tex=1158 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+57 pid=FFFDB947 state tex=1268 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+58 pid=FFFDB947 state tex=1269 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+59 pid=FFFDB947 state tex=1170 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+60 pid=FFFDB947 state tex=1215 size=00400020 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+61 pid=FFFDB947 state tex=1173 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1029/01010200 env1=000000
+62 pid=FFFDB947 state tex=1177 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+63 pid=FFFDB947 state tex=1216 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+64 pid=FFFDB947 state tex=1161 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+65 pid=FFFDB947 state tex=1185 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+66 pid=FFFDB947 state tex=1184 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+67 pid=FFFDB947 state tex=1165 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+68 pid=FFFDB947 state tex=1202 size=00200080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+69 pid=FFFDB947 state tex=1213 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+70 pid=FFFDB947 state tex=1212 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+71 pid=FFFDB947 state tex=1193 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+72 pid=FFFDB947 state tex=1208 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1028/01010200 env1=000000
+73 pid=FFFDB947 state tex=1232 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+74 pid=FFFDB947 state tex=1272 size=00400010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+75 pid=FFFDB947 state tex=1167 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+76 pid=FFFDB947 state tex=1227 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+77 pid=FFFDB947 state tex=1209 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+78 pid=FFFDB947 state tex=1223 size=00800080 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+79 pid=FFFDB947 state tex=1162 size=00100010 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1036/01010200 env1=000000
+80 pid=FFFDB947 state tex=1222 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/01010200 env1=000000
+81 pid=FFFDB947 state tex=1384 size=01000100 tex=01010101 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/00000000 env1=000000
+82 pid=FFFDB947 state tex=1383 size=01000100 tex=01010101 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/00000000 env1=000000
+83 pid=FFFDB947 state tex=1386 size=01000100 tex=01010101 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1035/00000000 env1=000000
+84 pid=FFFDB947 state tex=1337 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FFA55D15 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+85 pid=FFFDB947 state tex=1349 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF3F3121 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+86 pid=FFFDB947 state tex=1350 size=00800040 tex=01040201 blend=00050600 depth=01040102 colour=FF7B4C27 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+87 pid=FFFDB947 state tex=1362 size=01000080 tex=01040201 blend=00050600 depth=01040102 colour=FF52341D mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+88 pid=FFFDB947 state tex=1279 size=00800080 tex=01010200 blend=01050600 depth=01040102 colour=54808080 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+89 pid=FFFDB947 state tex=1152 size=01000100 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+90 pid=FFFDB947 state tex=1313 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1024/00000000 env1=000000
+91 pid=FFFDB947 state tex=1153 size=00080008 tex=01040202 blend=01050600 depth=01040002 colour=FFEF7F00 mask=7 scissor=0,0,640,480 fog=0 tex1=1024/00000000 env1=000000
+92 pid=FFFDB947 refused tex=1153 size=00080008 tex=02040202 blend=01050600 depth=01040002 colour=D8EF7F00 mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+93 pid=FFFDB947 draw result=4 triangles=64 submitted=0
+94 pid=FFFDB947   v0 sx=4376C782 sy=433182D4 sz=3F7D786A rhw=3B31BCE0 tu=3D800000 tv=3D800000
+95 pid=FFFDB947   v1 sx=4376C782 sy=432E4A0E sz=3F7D786A rhw=3B31BCE0 tu=3F880000 tv=3D800000
+96 pid=FFFDB947   v2 sx=437A004A sy=433182D4 sz=3F7D786A rhw=3B31BCE0 tu=3D800000 tv=3F880000
+97 pid=FFFDB947 draw result=4 triangles=64 submitted=0
+98 pid=FFFDB947   v0 sx=437FA5DE sy=43249DFC sz=3F7D94A7 rhw=3B2AAF7E tu=3D800000 tv=3D800000
+99 pid=FFFDB947   v1 sx=437FA5DE sy=43217270 sz=3F7D94A7 rhw=3B2AAF7E tu=3F880000 tv=3D800000
+100 pid=FFFDB947   v2 sx=438168B6 sy=43249DFC sz=3F7D94A7 rhw=3B2AAF7E tu=3D800000 tv=3F880000
+101 pid=FFFDB947 draw result=4 triangles=64 submitted=0
+102 pid=FFFDB947   v0 sx=435E4498 sy=433E2E4A sz=3F7D1A71 rhw=3B493565 tu=3D800000 tv=3D800000
+103 pid=FFFDB947   v1 sx=435E4498 sy=433AC97E sz=3F7D1A71 rhw=3B493565 tu=3F880000 tv=3D800000
+104 pid=FFFDB947   v2 sx=4361A960 sy=433E2E4A sz=3F7D1A71 rhw=3B493565 tu=3D800000 tv=3F880000
+105 pid=FFFDB947 draw result=4 triangles=64 submitted=0
+106 pid=FFFDB947   v0 sx=437578A9 sy=431C4DCA sz=3F7D87C7 rhw=3B2DE6A4 tu=3D800000 tv=3D800000
+107 pid=FFFDB947   v1 sx=437578A9 sy=43191C34 sz=3F7D87C7 rhw=3B2DE6A4 tu=3F880000 tv=3D800000
+108 pid=FFFDB947   v2 sx=4378AA3F sy=431C4DCA sz=3F7D87C7 rhw=3B2DE6A4 tu=3D800000 tv=3F880000
+109 pid=FFFDB947 state tex=1314 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1024/00000000 env1=000000
+110 pid=FFFDB947 draw result=4 triangles=64 submitted=0
+111 pid=FFFDB947   v0 sx=43953BBB sy=42A07B6C sz=3F7DD594 rhw=3B1A7847 tu=3D800000 tv=3D800000
+112 pid=FFFDB947   v1 sx=43953BBB sy=429A6120 sz=3F7DD594 rhw=3B1A7846 tu=3F880000 tv=3D800000
+113 pid=FFFDB947   v2 sx=4396C24E sy=42A07B6C sz=3F7DD594 rhw=3B1A7847 tu=3D800000 tv=3F880000
+114 pid=FFFDB947 draw result=4 triangles=64 submitted=0
+115 pid=FFFDB947   v0 sx=4346E891 sy=433199A0 sz=3F7D16E0 rhw=3B4A19A2 tu=3D800000 tv=3D800000
+116 pid=FFFDB947   v1 sx=4346E891 sy=432E332A sz=3F7D16E0 rhw=3B4A19A2 tu=3F880000 tv=3D800000
+117 pid=FFFDB947   v2 sx=434A4F06 sy=433199A0 sz=3F7D16E0 rhw=3B4A19A1 tu=3D800000 tv=3F880000
+118 pid=FFFDB947 state tex=1315 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+119 pid=FFFDB947 time interval-ms=10026 swaps=122 present-ms=477 draw-ms=1338 upload-ms=318
+120 pid=FFFDB947 tsc frames=122 wall-ms=10026 vertex-ms=462 flush-in-vertex-ms=9 flush-other-ms=1724 bind-ms=14 iface-ms=1338 beginend-ms=1736 swap-ms=478 vertices=360979 flushes=9469 draws=9504 sink-ms=1672 sink-prep-ms=147 sinks=71190
+121 pid=FFFDB947 sink begin-ms=64 flush-ms=1476 copy-ms=28 prep-texture-ms=85 prep-state-ms=27 prep-same-ms=30
+122 pid=FFFDB947 hwno hwtex-ms=354 iface-cpu-ms=0 not-cpu=88 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+123 pid=FFFDB947 prim transform-ms=70 inside-ms=62 window-ms=97 assemble-ms=146 history-ms=26 fast=155289 clipped=15326 culled=25796
+124 pid=FFFDB947 entry texsub-ms=273/2486 teximage-ms=683/1403 bind-ms=15/8418 param-ms=0/426 env-ms=0/884 other-ms=0/0 tex-flush-ms=259/2349 select-ms=4/25425 mtexcoord-ms=14/118834 enable-ms=1/1430
+125 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=9347/160787 cpu=0/0 cpu-nonsquare=0/0 hw-refused=35/2139 two-units=6980/31398 split=0/0 split-declined=0
+126 pid=FFFDB947 counters hwtex live=50 creates=50 create-failed=0 evictions=0 uploads=2399 partial=2349 upload-kb=1782 squared=0 alpha-dropped=177 stubs=0 failed r4=35 r7=0 r8=0 other=0
+127 pid=FFFDB947 state tex=1316 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+128 pid=FFFDB947 state tex=1317 size=00800040 tex=01010200 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+129 pid=FFFDB947 state tex=1318 size=00800040 tex=01010200 blend=01050600 depth=01040002 colour=60FFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+130 pid=FFFDB947 state tex=1319 size=00800040 tex=01010200 blend=01050600 depth=01040002 colour=30FFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+131 pid=FFFDB947 time interval-ms=10000 swaps=136 present-ms=525 draw-ms=3230 upload-ms=334
+132 pid=FFFDB947 tsc frames=136 wall-ms=10000 vertex-ms=914 flush-in-vertex-ms=2 flush-other-ms=3761 bind-ms=44 iface-ms=3230 beginend-ms=3726 swap-ms=525 vertices=666315 flushes=30187 draws=30348 sink-ms=3605 sink-prep-ms=286 sinks=90946
+133 pid=FFFDB947 sink begin-ms=108 flush-ms=3231 copy-ms=60 prep-texture-ms=198 prep-state-ms=37 prep-same-ms=43
+134 pid=FFFDB947 hwno hwtex-ms=435 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+135 pid=FFFDB947 prim transform-ms=134 inside-ms=112 window-ms=191 assemble-ms=314 history-ms=46 fast=231877 clipped=62844 culled=106112
+136 pid=FFFDB947 entry texsub-ms=579/6295 teximage-ms=0/0 bind-ms=31/33056 param-ms=0/0 env-ms=1/3636 other-ms=0/0 tex-flush-ms=540/6126 select-ms=15/105210 mtexcoord-ms=56/491976 enable-ms=1/3712
+137 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=39373/416032 cpu=0/0 cpu-nonsquare=0/0 hw-refused=196/9939 two-units=34141/161337 split=0/0 split-declined=0
+138 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=8523 partial=8469 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=196 r7=0 r8=0 other=0
+139 pid=FFFDB947 time interval-ms=10002 swaps=140 present-ms=540 draw-ms=3338 upload-ms=167
+140 pid=FFFDB947 tsc frames=140 wall-ms=10002 vertex-ms=893 flush-in-vertex-ms=0 flush-other-ms=3693 bind-ms=43 iface-ms=3338 beginend-ms=3881 swap-ms=541 vertices=650367 flushes=29709 draws=29779 sink-ms=3755 sink-prep-ms=290 sinks=92242
+141 pid=FFFDB947 sink begin-ms=110 flush-ms=3378 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+142 pid=FFFDB947 hwno hwtex-ms=261 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+143 pid=FFFDB947 prim transform-ms=131 inside-ms=109 window-ms=185 assemble-ms=309 history-ms=46 fast=224450 clipped=64165 culled=103114
+144 pid=FFFDB947 entry texsub-ms=352/4688 teximage-ms=0/0 bind-ms=30/33223 param-ms=0/0 env-ms=1/3640 other-ms=0/0 tex-flush-ms=323/4663 select-ms=15/107318 mtexcoord-ms=57/501678 enable-ms=1/3780
+145 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=69012/669997 cpu=0/0 cpu-nonsquare=0/0 hw-refused=266/12183 two-units=60975/293878 split=0/0 split-declined=0
+146 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=13187 partial=13133 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=266 r7=0 r8=0 other=0
+147 pid=FFFDB947 time interval-ms=10029 swaps=140 present-ms=540 draw-ms=3348 upload-ms=164
+148 pid=FFFDB947 tsc frames=140 wall-ms=10029 vertex-ms=899 flush-in-vertex-ms=1 flush-other-ms=3702 bind-ms=43 iface-ms=3348 beginend-ms=3886 swap-ms=541 vertices=652374 flushes=29974 draws=30054 sink-ms=3762 sink-prep-ms=291 sinks=92497
+149 pid=FFFDB947 sink begin-ms=110 flush-ms=3383 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+150 pid=FFFDB947 hwno hwtex-ms=259 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+151 pid=FFFDB947 prim transform-ms=132 inside-ms=109 window-ms=186 assemble-ms=312 history-ms=46 fast=225128 clipped=64501 culled=103063
+152 pid=FFFDB947 entry texsub-ms=358/4875 teximage-ms=0/0 bind-ms=31/33446 param-ms=0/0 env-ms=1/3640 other-ms=0/0 tex-flush-ms=328/4857 select-ms=16/107800 mtexcoord-ms=58/504000 enable-ms=1/3780
+153 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=98906/924790 cpu=0/0 cpu-nonsquare=0/0 hw-refused=346/14598 two-units=88062/427018 split=0/0 split-declined=0
+154 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=18044 partial=17990 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=346 r7=0 r8=0 other=0
+155 pid=FFFDB947 time interval-ms=10000 swaps=139 present-ms=535 draw-ms=3341 upload-ms=168
+156 pid=FFFDB947 tsc frames=139 wall-ms=10000 vertex-ms=896 flush-in-vertex-ms=1 flush-other-ms=3712 bind-ms=58 iface-ms=3341 beginend-ms=3901 swap-ms=536 vertices=651903 flushes=29804 draws=29870 sink-ms=3776 sink-prep-ms=291 sinks=92324
+157 pid=FFFDB947 sink begin-ms=109 flush-ms=3398 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+158 pid=FFFDB947 hwno hwtex-ms=261 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+159 pid=FFFDB947 prim transform-ms=132 inside-ms=109 window-ms=185 assemble-ms=311 history-ms=46 fast=224305 clipped=65065 culled=102893
+160 pid=FFFDB947 entry texsub-ms=351/4683 teximage-ms=0/0 bind-ms=30/33382 param-ms=0/0 env-ms=1/3628 other-ms=0/0 tex-flush-ms=322/4659 select-ms=16/107785 mtexcoord-ms=57/503932 enable-ms=1/3763
+161 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=128644/1179016 cpu=0/0 cpu-nonsquare=0/0 hw-refused=412/16647 two-units=115002/560151 split=0/0 split-declined=0
+162 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=22703 partial=22649 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=412 r7=0 r8=0 other=0
+163 pid=FFFDB947 time interval-ms=10000 swaps=140 present-ms=539 draw-ms=3323 upload-ms=173
+164 pid=FFFDB947 tsc frames=140 wall-ms=10000 vertex-ms=895 flush-in-vertex-ms=1 flush-other-ms=3683 bind-ms=43 iface-ms=3323 beginend-ms=3859 swap-ms=540 vertices=649607 flushes=29768 draws=29851 sink-ms=3735 sink-prep-ms=289 sinks=91900
+165 pid=FFFDB947 sink begin-ms=109 flush-ms=3358 copy-ms=59 prep-texture-ms=200 prep-state-ms=38 prep-same-ms=44
+166 pid=FFFDB947 hwno hwtex-ms=266 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+167 pid=FFFDB947 prim transform-ms=131 inside-ms=109 window-ms=185 assemble-ms=310 history-ms=46 fast=224103 clipped=64121 culled=102565
+168 pid=FFFDB947 entry texsub-ms=363/4854 teximage-ms=0/0 bind-ms=30/33210 param-ms=0/0 env-ms=1/3626 other-ms=0/0 tex-flush-ms=334/4830 select-ms=15/107045 mtexcoord-ms=57/500468 enable-ms=1/3770
+169 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=158329/1432077 cpu=0/0 cpu-nonsquare=0/0 hw-refused=495/19451 two-units=141896/692347 split=0/0 split-declined=0
+170 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=27533 partial=27479 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=495 r7=0 r8=0 other=0
+171 pid=FFFDB947 time interval-ms=10022 swaps=140 present-ms=540 draw-ms=3344 upload-ms=163
+172 pid=FFFDB947 tsc frames=140 wall-ms=10022 vertex-ms=898 flush-in-vertex-ms=1 flush-other-ms=3694 bind-ms=41 iface-ms=3344 beginend-ms=3882 swap-ms=541 vertices=651746 flushes=29935 draws=30007 sink-ms=3758 sink-prep-ms=291 sinks=92419
+173 pid=FFFDB947 sink begin-ms=110 flush-ms=3378 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+174 pid=FFFDB947 hwno hwtex-ms=258 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+175 pid=FFFDB947 prim transform-ms=132 inside-ms=109 window-ms=186 assemble-ms=312 history-ms=46 fast=224941 clipped=64447 culled=103092
+176 pid=FFFDB947 entry texsub-ms=354/4832 teximage-ms=0/0 bind-ms=31/33446 param-ms=0/0 env-ms=1/3640 other-ms=0/0 tex-flush-ms=325/4814 select-ms=16/107800 mtexcoord-ms=57/504000 enable-ms=1/3780
+177 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=188192/1686567 cpu=0/0 cpu-nonsquare=0/0 hw-refused=567/21730 two-units=168954/825487 split=0/0 split-declined=0
+178 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=32347 partial=32293 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=567 r7=0 r8=0 other=0
+179 pid=FFFDB947 time interval-ms=10006 swaps=140 present-ms=540 draw-ms=3347 upload-ms=157
+180 pid=FFFDB947 tsc frames=140 wall-ms=10006 vertex-ms=894 flush-in-vertex-ms=0 flush-other-ms=3692 bind-ms=43 iface-ms=3347 beginend-ms=3896 swap-ms=540 vertices=650100 flushes=29739 draws=29799 sink-ms=3771 sink-prep-ms=291 sinks=92421
+181 pid=FFFDB947 sink begin-ms=109 flush-ms=3392 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+182 pid=FFFDB947 hwno hwtex-ms=250 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+183 pid=FFFDB947 prim transform-ms=131 inside-ms=108 window-ms=186 assemble-ms=310 history-ms=46 fast=224247 clipped=64666 culled=103021
+184 pid=FFFDB947 entry texsub-ms=336/4562 teximage-ms=0/0 bind-ms=30/33342 param-ms=0/0 env-ms=1/3640 other-ms=0/0 tex-flush-ms=308/4544 select-ms=16/107800 mtexcoord-ms=58/504000 enable-ms=1/3780
+185 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=217871/1941080 cpu=0/0 cpu-nonsquare=0/0 hw-refused=627/23450 two-units=195827/958627 split=0/0 split-declined=0
+186 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=36891 partial=36837 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=627 r7=0 r8=0 other=0
+187 pid=FFFDB947 time interval-ms=10000 swaps=139 present-ms=536 draw-ms=3346 upload-ms=172
+188 pid=FFFDB947 tsc frames=139 wall-ms=10000 vertex-ms=894 flush-in-vertex-ms=0 flush-other-ms=3707 bind-ms=41 iface-ms=3346 beginend-ms=3883 swap-ms=537 vertices=650611 flushes=29935 draws=30028 sink-ms=3757 sink-prep-ms=290 sinks=92153
+189 pid=FFFDB947 sink begin-ms=109 flush-ms=3379 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+190 pid=FFFDB947 hwno hwtex-ms=267 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+191 pid=FFFDB947 prim transform-ms=131 inside-ms=109 window-ms=186 assemble-ms=309 history-ms=46 fast=224574 clipped=64254 culled=102455
+192 pid=FFFDB947 entry texsub-ms=365/4866 teximage-ms=0/0 bind-ms=31/33400 param-ms=0/0 env-ms=1/3615 other-ms=0/0 tex-flush-ms=336/4842 select-ms=16/107747 mtexcoord-ms=58/503824 enable-ms=1/3757
+193 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=247713/2194888 cpu=0/0 cpu-nonsquare=0/0 hw-refused=720/25981 two-units=222882/1091732 split=0/0 split-declined=0
+194 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=41733 partial=41679 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=720 r7=0 r8=0 other=0
+195 pid=FFFDB947 time interval-ms=10000 swaps=140 present-ms=538 draw-ms=3340 upload-ms=157
+196 pid=FFFDB947 tsc frames=140 wall-ms=10000 vertex-ms=895 flush-in-vertex-ms=0 flush-other-ms=3685 bind-ms=41 iface-ms=3340 beginend-ms=3885 swap-ms=540 vertices=649893 flushes=29784 draws=29850 sink-ms=3760 sink-prep-ms=291 sinks=92406
+197 pid=FFFDB947 sink begin-ms=110 flush-ms=3381 copy-ms=59 prep-texture-ms=201 prep-state-ms=38 prep-same-ms=44
+198 pid=FFFDB947 hwno hwtex-ms=251 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+199 pid=FFFDB947 prim transform-ms=131 inside-ms=109 window-ms=186 assemble-ms=310 history-ms=46 fast=224515 clipped=64257 culled=103081
+200 pid=FFFDB947 entry texsub-ms=339/4624 teximage-ms=0/0 bind-ms=32/33385 param-ms=0/0 env-ms=1/3639 other-ms=0/0 tex-flush-ms=311/4606 select-ms=16/107779 mtexcoord-ms=57/503920 enable-ms=1/3776
+201 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=277431/2449323 cpu=0/0 cpu-nonsquare=0/0 hw-refused=786/27935 two-units=249797/1224848 split=0/0 split-declined=0
+202 pid=FFFDB947 counters hwtex live=54 creates=54 create-failed=0 evictions=0 uploads=46339 partial=46285 upload-kb=1866 squared=0 alpha-dropped=177 stubs=0 failed r4=786 r7=0 r8=0 other=0
+203 pid=FFFDB947 state tex=1388 size=00800020 tex=01040101 blend=00050601 depth=00040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1037/00000000 env1=000000
+204 pid=FFFDB947 time interval-ms=10000 swaps=131 present-ms=509 draw-ms=3477 upload-ms=169
+205 pid=FFFDB947 tsc frames=131 wall-ms=10000 vertex-ms=963 flush-in-vertex-ms=0 flush-other-ms=3866 bind-ms=75 iface-ms=3477 beginend-ms=4069 swap-ms=510 vertices=706859 flushes=29350 draws=29431 sink-ms=3930 sink-prep-ms=308 sinks=109333
+206 pid=FFFDB947 sink begin-ms=121 flush-ms=3525 copy-ms=64 prep-texture-ms=205 prep-state-ms=44 prep-same-ms=50
+207 pid=FFFDB947 hwno hwtex-ms=263 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+208 pid=FFFDB947 prim transform-ms=141 inside-ms=123 window-ms=200 assemble-ms=321 history-ms=50 fast=256926 clipped=61027 culled=96714
+209 pid=FFFDB947 entry texsub-ms=379/5280 teximage-ms=1/1 bind-ms=29/31765 param-ms=0/2 env-ms=1/3406 other-ms=0/0 tex-flush-ms=347/5269 select-ms=15/100466 mtexcoord-ms=54/469672 enable-ms=1/3537
+210 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=306700/2733203 cpu=0/0 cpu-nonsquare=0/0 hw-refused=867/30964 two-units=275607/1348871 split=0/0 split-declined=0
+211 pid=FFFDB947 counters hwtex live=55 creates=55 create-failed=0 evictions=0 uploads=51608 partial=51553 upload-kb=1874 squared=0 alpha-dropped=222 stubs=0 failed r4=867 r7=0 r8=0 other=0
+212 pid=FFFDB947 time interval-ms=10062 swaps=120 present-ms=498 draw-ms=3215 upload-ms=159
+213 pid=FFFDB947 tsc frames=120 wall-ms=10062 vertex-ms=907 flush-in-vertex-ms=0 flush-other-ms=3972 bind-ms=451 iface-ms=3215 beginend-ms=4119 swap-ms=499 vertices=624351 flushes=26696 draws=26768 sink-ms=3981 sink-prep-ms=307 sinks=95765
+214 pid=FFFDB947 sink begin-ms=120 flush-ms=3567 copy-ms=60 prep-texture-ms=209 prep-state-ms=43 prep-same-ms=47
+215 pid=FFFDB947 hwno hwtex-ms=252 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+216 pid=FFFDB947 prim transform-ms=146 inside-ms=109 window-ms=186 assemble-ms=301 history-ms=49 fast=225925 clipped=54995 culled=88327
+217 pid=FFFDB947 entry texsub-ms=411/4741 teximage-ms=0/0 bind-ms=29/29016 param-ms=0/0 env-ms=1/3120 other-ms=0/0 tex-flush-ms=382/4729 select-ms=14/92108 mtexcoord-ms=54/430584 enable-ms=1/3240
+218 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=333324/2984372 cpu=0/0 cpu-nonsquare=0/0 hw-refused=939/33355 two-units=299212/1462657 split=0/0 split-declined=0
+219 pid=FFFDB947 counters hwtex live=55 creates=55 create-failed=0 evictions=0 uploads=56337 partial=56282 upload-kb=1874 squared=0 alpha-dropped=255 stubs=0 failed r4=939 r7=0 r8=0 other=0
+220 pid=FFFDB947 state tex=1181 size=00400040 tex=01010101 blend=00050600 depth=01040102 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=1030/01010200 env1=000000
+221 pid=FFFDB947 time interval-ms=10000 swaps=141 present-ms=553 draw-ms=3442 upload-ms=192
+222 pid=FFFDB947 tsc frames=141 wall-ms=10000 vertex-ms=899 flush-in-vertex-ms=0 flush-other-ms=3841 bind-ms=77 iface-ms=3442 beginend-ms=4015 swap-ms=554 vertices=662070 flushes=25305 draws=25404 sink-ms=3884 sink-prep-ms=278 sinks=103309
+223 pid=FFFDB947 sink begin-ms=114 flush-ms=3519 copy-ms=55 prep-texture-ms=178 prep-state-ms=43 prep-same-ms=49
+224 pid=FFFDB947 hwno hwtex-ms=275 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+225 pid=FFFDB947 prim transform-ms=133 inside-ms=110 window-ms=176 assemble-ms=316 history-ms=47 fast=233995 clipped=72592 culled=77053
+226 pid=FFFDB947 entry texsub-ms=390/4992 teximage-ms=0/0 bind-ms=28/29254 param-ms=0/0 env-ms=1/3002 other-ms=0/0 tex-flush-ms=359/4914 select-ms=13/89038 mtexcoord-ms=48/419168 enable-ms=1/3575
+227 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=358530/3245849 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1038/36279 two-units=321155/1567326 split=0/0 split-declined=0
+228 pid=FFFDB947 counters hwtex live=63 creates=63 create-failed=0 evictions=0 uploads=61238 partial=61175 upload-kb=2010 squared=0 alpha-dropped=321 stubs=0 failed r4=1038 r7=0 r8=0 other=0
+229 pid=FFFDB947 time interval-ms=10000 swaps=164 present-ms=655 draw-ms=3644 upload-ms=27
+230 pid=FFFDB947 tsc frames=164 wall-ms=10000 vertex-ms=581 flush-in-vertex-ms=0 flush-other-ms=3912 bind-ms=140 iface-ms=3644 beginend-ms=4201 swap-ms=655 vertices=424734 flushes=8557 draws=8557 sink-ms=4116 sink-prep-ms=148 sinks=70431
+231 pid=FFFDB947 sink begin-ms=75 flush-ms=3892 copy-ms=56 prep-texture-ms=84 prep-state-ms=27 prep-same-ms=31
+232 pid=FFFDB947 hwno hwtex-ms=98 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+233 pid=FFFDB947 prim transform-ms=82 inside-ms=69 window-ms=79 assemble-ms=247 history-ms=30 fast=134984 clipped=92861 culled=423
+234 pid=FFFDB947 entry texsub-ms=4/13 teximage-ms=0/0 bind-ms=12/13840 param-ms=0/0 env-ms=0/1319 other-ms=0/0 tex-flush-ms=4/11 select-ms=6/42287 mtexcoord-ms=24/209004 enable-ms=1/3456
+235 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=367087/3408085 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1038/36279 two-units=327328/1612074 split=0/0 split-declined=0
+236 pid=FFFDB947 counters hwtex live=67 creates=67 create-failed=0 evictions=0 uploads=61253 partial=61186 upload-kb=2152 squared=0 alpha-dropped=433 stubs=0 failed r4=1038 r7=0 r8=0 other=0
+237 pid=FFFDB947 DrvReleaseContext context=1 -> 1
+238 pid=FFFDB947 paths batches/triangles untextured=88/176 hw=369957/3476304 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1038/36279 two-units=329113/1625640 split=0/0 split-declined=0
+239 pid=FFFDB947 counters hwtex live=0 creates=67 create-failed=0 evictions=0 uploads=61253 partial=61186 upload-kb=2152 squared=0 alpha-dropped=484 stubs=0 failed r4=1038 r7=0 r8=0 other=0
+240 pid=FFFDB947 DrvDeleteContext context=1 -> 1
+241 pid=FFFDB947 detach slots-called=0 stub-calls=0
