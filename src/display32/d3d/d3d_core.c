@@ -4108,12 +4108,12 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
      * exactly what the runtime is now told it may send.
      */
     /*
-     * Only for an engine the core clips for. One that does not (Gen3,
-     * clip_in_core 0) has builders that take a vertex inside the target
-     * and nothing else, because the runtime always clipped for it: given a
-     * guard band, Half-Life's off-screen vertices reached them and 298,000
-     * batches a run were refused as bad vertex streams and replayed record
-     * by record (netbook, 2026-10-06).
+     * Only for an engine the core clips for. Gen3 was not one until
+     * 2026-10-07: its builders take a vertex inside the target and nothing
+     * else, and given a guard band with no core clip, Half-Life's
+     * off-screen vertices reached them and 298,000 batches a run were
+     * refused as bad vertex streams and replayed record by record
+     * (netbook, 2026-10-06). It is clipped in the core now, like the rest.
      */
     {
         const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();

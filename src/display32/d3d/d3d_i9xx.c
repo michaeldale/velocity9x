@@ -130,10 +130,18 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * is to measure the real alignment rather than to guess a smaller one.
      */
     V9X_I9XX_SANDBOX_PAGE_BYTES, /* texture_align         */
-    /* Gen3 clips against its own drawing rectangle inside the 4096 guard
-     * band above, and 3DMark99 ran on the netbook with the DX5 paths
-     * unclipped; that measured behaviour is kept. */
-    0ul,                        /* clip_in_core           */
+    /*
+     * The core clips for this engine, as for every other. It was 0, on the
+     * reading that Gen3 clips against its own drawing rectangle inside the
+     * 4096 guard band - but the vertex builders (i9xx_vertex.c) accept a
+     * vertex on the target and nothing else, so with 0 nothing clipped at
+     * all and one vertex off the screen refused its whole batch (reason 6).
+     * 3DMark99 and Half-Life at DDI 5 send vertices on the target and never
+     * showed it; UT99's DX5 draws do not: 260,126 batches refused in one
+     * intro and DM-Morpheus run on the netbook (2026-10-07), walls drawn as
+     * holes and flat colour.
+     */
+    1ul,                        /* clip_in_core           */
     /* BUF_INFO carries the depth pitch, so a padded Z surface is drawn at
      * its own pitch (v9x_d3d_i9xx_create_surface). */
     1ul,                        /* depth_pitch_own        */

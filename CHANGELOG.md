@@ -4,6 +4,18 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+- **Intel GMA 950: triangles crossing the screen edge are clipped.** The
+  Gen3 engine was the one engine the core did not clip for, on the
+  reading that its hardware clips inside a 4096 guard band, but its vertex
+  builders take only vertices on the target, so a single off-screen vertex
+  refused its whole batch. UT99 on the netbook lost 207,032 batches in one
+  intro and DM-Morpheus run on 0.12.1 (holes, walls in flat colour); with
+  the core clipping, 77, and the scene draws as on the Rage XL, 33 to 35
+  fps. Half-Life (DDI 5 and 6) and Quake 2 OpenGL unchanged.
+  [Decision](docs/decisions/2026-10-07-gen3-clip-in-core.md).
+
 ## 0.12.1 - 2026-10-07
 
 - **DX5 fans and strips are drawn.** The single-primitive entry point took

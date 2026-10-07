@@ -1,0 +1,4 @@
+170 pid=FFFF1E45 paths batches/triangles untextured=636/2520 hw=255494/3987614 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=200270/1157340
+178 pid=FFFF1E45 paths batches/triangles untextured=664/2660 hw=289579/4468156 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=228071/1310418
+186 pid=FFFF1E45 paths batches/triangles untextured=813/3075 hw=310828/4910215 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=242573/1404326
+189 pid=FFFF1E45 paths batches/triangles untextured=851/3265 hw=332917/5262046 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=259884/1502776
