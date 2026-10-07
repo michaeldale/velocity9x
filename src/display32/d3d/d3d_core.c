@@ -282,61 +282,6 @@ static V9X_D3DHAL_CALLBACKS2 v9x_d3d_callbacks2;
 /* GUID_D3DCallbacks3's answer, served only at DDI 6. */
 static V9X_D3DHAL_CALLBACKS3 v9x_d3d_callbacks3;
 DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data);
-static DWORD v9x_d3d_dp2_probe(void);
-
-/*
- * Breadcrumbs for the DDI 6 bring-up, under Direct3DDdiProbe bit 16
- * (engine_abi.h). DxDiag at DDI 6 hung Windows with the Win16 lock held on
- * A8U4I5 (2026-10-06), and a hang loses every counter in the shared block,
- * so each line goes to disk write-through and the file is closed after it.
- * Fixed storage and KERNEL32 file I/O only, as the SiS timeout log. Bounded
- * at 4,000 lines a boot so a frame loop cannot fill the disk.
- */
-#define V9X_D3D_DP2_LOG_PATH "C:\\V9XDIAG\\V9XDP2.LOG"
-static DWORD v9x_d3d_dp2_log_lines;
-
-void v9x_d3d_dp2_log(const char *event, DWORD a, DWORD b)
-{
-    static const char digits[] = "0123456789ABCDEF";
-    char line[96];
-    int at = 0;
-    int shift;
-    HANDLE file;
-    DWORD written;
-    DWORD tick = GetTickCount();
-
-    if ((v9x_d3d_dp2_probe() & V9X_DP2_PROBE_LOG) == 0ul ||
-        v9x_d3d_dp2_log_lines >= 4000ul) {
-        return;
-    }
-    ++v9x_d3d_dp2_log_lines;
-    for (shift = 28; shift >= 0; shift -= 4) {
-        line[at++] = digits[(tick >> shift) & 0xful];
-    }
-    line[at++] = ' ';
-    while (*event != '\0' && at < 60) {
-        line[at++] = *event++;
-    }
-    line[at++] = ' ';
-    for (shift = 28; shift >= 0; shift -= 4) {
-        line[at++] = digits[(a >> shift) & 0xful];
-    }
-    line[at++] = ' ';
-    for (shift = 28; shift >= 0; shift -= 4) {
-        line[at++] = digits[(b >> shift) & 0xful];
-    }
-    line[at++] = '\r';
-    line[at++] = '\n';
-    file = CreateFileA(V9X_D3D_DP2_LOG_PATH, GENERIC_WRITE, FILE_SHARE_READ,
-                       0, OPEN_ALWAYS,
-                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
-    if (file == INVALID_HANDLE_VALUE) {
-        return;
-    }
-    SetFilePointer(file, 0, 0, FILE_END);
-    WriteFile(file, line, (DWORD)at, &written, 0);
-    CloseHandle(file);
-}
 
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
 {
@@ -1383,7 +1328,6 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
 
     v9x_trace_enter(V9X_TRACE_D3D_CTXCREATE,
                     data != 0 ? data->dwPID : 0ul);
-    v9x_d3d_dp2_log("CTX create", data != 0 ? data->dwPID : 0ul, 0ul);
     V9X_DP2_RING_EVENT(V9X_DP2R_CONTEXT_CREATE, 0ul, 0ul);
     v9x_dp2_ring_rearm();
     v9x_d3d_dp2_forget_probes();
@@ -3139,54 +3083,50 @@ static int v9x_d3d_dp2_for_process(void)
     return GetModuleHandleA("D3D8.DLL") != 0;
 }
 
-/* The instrument's bits (engine_abi.h), zero for the plain answer. */
-static DWORD v9x_d3d_dp2_probe(void)
+/* Whether the capture diagnostic is asked for (engine_abi.h). */
+static int v9x_d3d_dp2_capture_armed(void)
 {
-    if (!v9x_d3d_dp2_available()) {
-        return 0ul;
-    }
-    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_DP2_PROBE_MASK)
-           >> V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT;
+    return v9x_d3d_dp2_available() &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_DP2_CAPTURE) !=
+               0ul;
 }
 
 /*
  * The parts of the published description that follow the DDI level: the
- * DrawPrimitives2 device cap, and under the probe bits the DX3 execute
- * entries and the execute-buffer table. Applied when the tables are
- * published and again on every GetDriverInfo, because the level is read
- * per driver object and nothing here knows which copy the runtime keeps.
+ * DrawPrimitives2 device cap, and the line caps. Applied when the tables
+ * are published and again on every GetDriverInfo, because the level is
+ * decided per process and the shared block is every process's.
+ *
+ * Lines and points are drawn only on the DDI 6 path, as triangles
+ * (v9x_dp2_line_quad), so a DDI 6 process is told its line caps are its
+ * triangle caps and D3DDD_LINECAPS is set; any other process gets the
+ * empty line caps every engine publishes, because the DX5 entry points
+ * still refuse lines.
  */
 static void v9x_d3d_apply_ddi_level(int ddi6)
 {
-    DWORD probe = v9x_d3d_dp2_probe();
+    V9X_D3DPRIMCAPS *lines;
+    BYTE *bytes;
+    DWORD i;
 
     if (v9x_hal == 0) {
         return;
     }
-    if (ddi6 && (probe & V9X_DP2_PROBE_NO_DEVCAP) == 0ul) {
+    lines = &v9x_hal->d3d_global.hwCaps.dpcLineCaps;
+    if (ddi6) {
         v9x_hal->d3d_global.hwCaps.dwDevCaps |= V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
+        *lines = v9x_hal->d3d_global.hwCaps.dpcTriCaps;
+        v9x_hal->d3d_global.hwCaps.dwFlags |= V9X_D3DDD_LINECAPS;
     } else {
         v9x_hal->d3d_global.hwCaps.dwDevCaps &=
             ~V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
+        bytes = (BYTE *)lines;
+        for (i = 0ul; i < sizeof(*lines); ++i) {
+            bytes[i] = 0u;
+        }
+        lines->dwSize = sizeof(*lines);
+        v9x_hal->d3d_global.hwCaps.dwFlags &= ~V9X_D3DDD_LINECAPS;
     }
-    /* Every engine sets TLVERTEXSYSTEMMEMORY in its own caps; the probe
-     * takes it away, and nothing puts it back until the next boot. */
-    if ((probe & V9X_DP2_PROBE_NO_TLV_SYSMEM) != 0ul) {
-        v9x_hal->d3d_global.hwCaps.dwDevCaps &=
-            ~V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY;
-    }
-    if ((probe & V9X_DP2_PROBE_NO_DX3_ENTRIES) != 0ul) {
-        v9x_hal->d3d_callbacks.RenderState = 0;
-        v9x_hal->d3d_callbacks.RenderPrimitive = 0;
-    } else {
-        v9x_hal->d3d_callbacks.RenderState =
-            (V9X_DD_CODE_PTR)V9xD3dRenderState;
-        v9x_hal->d3d_callbacks.RenderPrimitive =
-            (V9X_DD_CODE_PTR)V9xD3dRenderPrimitive;
-    }
-    v9x_hal->info.lpDDExeBufCallbacks =
-        (probe & V9X_DP2_PROBE_EXEBUF_CALLBACKS) != 0ul
-            ? (V9X_DD_VOID_PTR)&v9x_hal->execute_buffer_callbacks : 0;
 }
 
 /* The pending run's snapshot and its drawing; see v9x_d3d_dp2_run. */
@@ -3753,8 +3693,7 @@ DWORD __stdcall V9xD3dDrawPrimitives2(V9X_D3DHAL_DRAWPRIMITIVES2DATA *data)
     DWORD triangles_before = 0ul;
 
     if (data != 0 && v9x_hal != 0) {
-        ring = v9x_dp2_ring_call(
-            (v9x_d3d_dp2_probe() & V9X_DP2_PROBE_RING) != 0ul);
+        ring = v9x_dp2_ring_call(v9x_d3d_dp2_capture_armed());
     }
     if (ring != 0) {
         ring->flags = data->dwFlags;
@@ -3806,7 +3745,6 @@ static DWORD v9x_d3d_draw_primitives2_body(
         ++v9x_hal->d3d_diagnostics.dp2_calls;
         v9x_hal->d3d_diagnostics.dp2_flags_seen |= data->dwFlags;
     }
-    v9x_d3d_dp2_log("DP2 enter", data->dwFlags, data->dwCommandLength);
     v9x_fpu_save(&fpu);
     context = v9x_d3d_context_from_handle(data->dwhContext);
 
@@ -3918,7 +3856,6 @@ static DWORD v9x_d3d_draw_primitives2_body(
             ++rounds;
             v9x_d3d_dp2_draw_run();
             parsed = v9x_d3d_parse_unknown((void *)at, &after);
-            v9x_d3d_dp2_log("DP2 parse", walked.stop_op, parsed);
             if (parsed != V9X_DD_OK || after == 0 ||
                 (const v9x_u8 *)after <= at ||
                 (const v9x_u8 *)after > stream.commands +
@@ -3987,7 +3924,6 @@ static DWORD v9x_d3d_draw_primitives2_body(
     } else {
         data->ddrval = V9X_DD_OK;
     }
-    v9x_d3d_dp2_log("DP2 exit", data->ddrval, walked.records);
     v9x_fpu_restore(&fpu);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
@@ -4211,7 +4147,6 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         ++v9x_hal->d3d_diagnostics.driver_info_calls;
         v9x_hal->d3d_diagnostics.driver_info_last = data1;
         v9x_d3d_note_driver_info_guid(data1);
-        v9x_d3d_dp2_log("GDI", data1, data->dwExpectedSize);
     }
 
     /*
@@ -4229,11 +4164,6 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         DWORD at;
         V9X_D3DHAL_CALLBACKS3 answer = v9x_d3d_callbacks3;
 
-        /* Probe bit 2: the table with no DrawPrimitives2 in it. */
-        if ((v9x_d3d_dp2_probe() & V9X_DP2_PROBE_NO_DP2_ENTRY) != 0ul) {
-            answer.dwFlags = 0ul;
-            answer.DrawPrimitives2 = 0;
-        }
         if (data->dwExpectedSize < copy) {
             copy = data->dwExpectedSize;
         }
@@ -5234,12 +5164,10 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
     {
         DWORD tries = 0ul;
 
-        v9x_d3d_dp2_log("CLR2 enter", data->dwFlags, data->dwNumRects);
         drained = v9x_render_drain(1);
         while (drained == V9X_RENDER_DRAIN_BUSY && ++tries < 64ul) {
             drained = v9x_render_drain(1);
         }
-        v9x_d3d_dp2_log("CLR2 drained", (DWORD)drained, tries);
     }
     if (drained != V9X_RENDER_DRAIN_DONE) {
         ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
@@ -5284,7 +5212,6 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
         ++v9x_hal->d3d_diagnostics.dp2_clear2_refused;
     }
     data->ddrval = ok ? V9X_DD_OK : 0x80070057ul;
-    v9x_d3d_dp2_log("CLR2 exit", data->ddrval, 0ul);
     v9x_fpu_restore(&fpu);
     return V9X_DDHAL_DRIVER_HANDLED;
 }

@@ -6,7 +6,7 @@
  * phases of the same 200 quads, each phase changing one thing: primitive
  * type, indexed or not, D3DDP_DONOTCLIP, a texture change or a render
  * state change between draws, the size of the vertex array an indexed draw
- * hands over. Run under Direct3DDdi=6 with Direct3DDdiProbe=32, the
+ * hands over. Run at DDI 6 with [Velocity9x] Dp2Capture=1, the
  * DrawPrimitives2 capture (src\display32\d3d\d3d_dp2_ring.h) then shows how
  * many calls each phase became and what each call carried; the phases are
  * separated in the capture by a Lock of a small surface (tools\diag\

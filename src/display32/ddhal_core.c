@@ -904,7 +904,6 @@ DWORD __stdcall V9xHalCanCreateSurface(
     DWORD caps = desc != 0 ? desc->ddsCaps.dwCaps : 0ul;
 
     v9x_trace_enter(V9X_TRACE_CANCREATESURFACE, caps);
-    v9x_d3d_dp2_log("DD cancreate", caps, 0ul);
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
@@ -987,12 +986,6 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
                     data != 0 ? data->dwSCnt : 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_CREATESURFACE);
     V9X_DP2_RING_EVENT(V9X_DP2R_CREATE_SURFACE, 0ul, data != 0 ? data->dwSCnt : 0ul);
-    v9x_d3d_dp2_log("DD create",
-                    data != 0 ? data->dwSCnt : 0ul,
-                    data != 0 && data->lpDDSurfaceDesc != 0
-                        ? ((const V9X_DDSURFACEDESC *)
-                               data->lpDDSurfaceDesc)->ddsCaps.dwCaps
-                        : 0ul);
     if (data != 0) {
         data->ddRVal = V9X_DD_OK;
     }
@@ -1216,7 +1209,6 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
 
     v9x_win16_sample(V9X_WIN16_SITE_LOCK);
     V9X_DP2_RING_EVENT(V9X_DP2R_LOCK, data != 0 ? data->dwFlags : 0ul, 0ul);
-    v9x_d3d_dp2_log("DD lock", data != 0 ? data->dwFlags : 0ul, 0ul);
     /* The CPU is about to read or write a surface the engine may owe. */
     v9x_d3d_dp2_flush_pending();
     result = v9x_lock_body(data);
@@ -1909,7 +1901,6 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     int engine_used = 0;
 
     v9x_trace_enter(V9X_TRACE_BLT, data != 0 ? data->dwFlags : 0ul);
-    v9x_d3d_dp2_log("DD blt", data != 0 ? data->dwFlags : 0ul, 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_BLT);
     V9X_DP2_RING_EVENT(V9X_DP2R_BLT, data != 0 ? data->dwFlags : 0ul, 0ul);
     /* A windowed present, a clear or a copy out of the target. */

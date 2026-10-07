@@ -227,13 +227,12 @@ static DWORD v9x_dd_ddi_caps(DWORD engine_caps)
     if (level == 5u) {
         return 0ul;
     }
-    /* The instrument's bits (engine_abi.h), only where DDI 6 can be. */
+    /* The capture diagnostic (engine_abi.h), only where DDI 6 can be. */
     return V9X_DD_ENGINE_CAP_D3D_DP2 |
            (level == 6u ? V9X_DD_ENGINE_CAP_D3D_DP2_ALL : 0ul) |
-           (((DWORD)GetPrivateProfileInt(V9X_SETTINGS_SECTION,
-                                         "Direct3DDdiProbe", 0,
-                                         V9X_SETTINGS_INI) &
-             0x007ful) << V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT);
+           (GetPrivateProfileInt(V9X_SETTINGS_SECTION, "Dp2Capture", 0,
+                                 V9X_SETTINGS_INI) != 0
+                ? V9X_DD_ENGINE_CAP_DP2_CAPTURE : 0ul);
 }
 
 extern WORD FAR PASCAL V9xDdSharedAlloc(void);

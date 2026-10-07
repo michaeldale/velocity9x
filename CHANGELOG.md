@@ -4,6 +4,36 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+Direct3D 8 on the hardware, on the DirectX 6 driver interface (DDI 6),
+measured on A8U4I5 (Rage XL PCI) and the HP Mini 110 netbook (GMA 950).
+GitHub issue 2's `GetDeviceCaps` `0x8876086A` no longer happens on either.
+
+- DrawPrimitives2, Clear2 and the DX6 caps, behind the new **DDI 6**
+  selector (Automatic, Never, Always; `[Velocity9x] Direct3DDdi`, and
+  `[Velocity9x.Direct3DDdi]` per program). Automatic, the default, gives
+  DDI 6 to programs that load Direct3D 8 and DDI 5 to the rest.
+- Flexible vertex formats are converted, so Direct3D 8's audit no longer
+  refuses the device (it rejected `FVFCaps` zero).
+- Points and lines are drawn at DDI 6, one pixel wide, and line caps are
+  published to DDI 6 programs.
+- Clear2 clears depth and colour on the engine; on the CPU the depth clear
+  cost the Rage XL a third of each Half-Life frame at DDI 6.
+- Non-square textures are offered on the Mach64 and GMA 950
+  (`SQUAREONLY` dropped): Direct3D 8 refused every non-square texture
+  before, which stopped 3DMark 2001 SE and garbled its HUD.
+
+| At 640x480 | Rage XL PCI | GMA 950 |
+|---|---|---|
+| 3DMark 2001 SE | 111 3DMarks | 244 3DMarks |
+| Half-Life `mwd5`, Direct3D (DDI 5) | 18.6 fps | 41.0 fps |
+
+Diagnostic: `[Velocity9x] Dp2Capture=1` records the next DDI 6 program's
+DrawPrimitives2 calls to `C:\V9XDIAG\V9XDP2R.BIN`
+(`tools/diag/dp2ring.py`). Not yet run: the S3, SiS, Rage IIC and
+software families at DDI 6.
+
 ## 0.11.0 - 2026-10-05
 
 The SiS 6326 release. A sixth family, `sis`, runs the SiS 6326

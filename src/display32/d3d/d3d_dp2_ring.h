@@ -1,5 +1,5 @@
 /*
- * A capture of the DrawPrimitives2 calls, AN INSTRUMENT and temporary
+ * A capture of the DrawPrimitives2 calls, a documented diagnostic
  * (docs\plans\ddi6-drawprimitives2.md, Part C).
  *
  * Half-Life arrives at DDI 6 as one DrawPrimitives2 call for about every
@@ -12,7 +12,7 @@
  * runtime reached between them. What precedes the start of each call is
  * then the runtime's reason for having ended the previous one.
  *
- * Armed by [Velocity9x] Direct3DDdiProbe bit 32 under Direct3DDdi=6. The
+ * Armed by [Velocity9x] Dp2Capture=1, for a process that gets DDI 6. The
  * first Dp2RingSkip DrawPrimitives2 calls (same section), and every call
  * in the first Dp2RingDelayMs after the first one, are let through
  * unrecorded; then V9X_DP2_RING_ENTRIES entries are kept and written once to

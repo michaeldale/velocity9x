@@ -1,6 +1,6 @@
 /*
  * The DrawPrimitives2 capture; d3d_dp2_ring.h says what it is for. An
- * instrument: nothing here runs unless Direct3DDdiProbe bit 32 is set.
+ * diagnostic: nothing here runs unless [Velocity9x] Dp2Capture=1.
  */
 #include "d3d_internal.h"
 #include "d3d_dp2_ring.h"

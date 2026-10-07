@@ -178,31 +178,14 @@
 #define V9X_DD_ENGINE_CAP_D3D_DP2       0x00002000ul
 #define V9X_DD_ENGINE_CAP_D3D_DP2_ALL   0x00004000ul
 /*
- * AN INSTRUMENT, NOT A SETTING, and temporary: independent changes to the
- * DDI 6 answer, from the [Velocity9x] Direct3DDdiProbe bitmask, applied
- * only while Direct3DDdi=6. Added 2026-10-06 because serving the DDI 6
- * answer made DirectDraw drop the whole HAL on A8U4I5, and the first
- * measurement put the trigger on the device cap rather than the table:
- *   1  never set D3DDEVCAPS_DRAWPRIMITIVES2
- *   2  serve D3DHAL_CALLBACKS3 with no DrawPrimitives2 in it
- *   4  null the DX3 execute-buffer entries (RenderState, RenderPrimitive)
- *   8  hand DirectDraw the execute-buffer callback table
- *  16  write-through breadcrumbs to C:\V9XDIAG\V9XDP2.LOG (d3d_core.c)
- *  32  capture DrawPrimitives2 calls to C:\V9XDIAG\V9XDP2R.BIN
- *      (d3d_dp2_ring.h)
- *  64  withhold D3DDEVCAPS_TLVERTEXSYSTEMMEMORY, so the runtime copies
- *      transformed vertices into its own buffer rather than handing
- *      over the application's (Part C of the DDI 6 plan)
- * Remove with the experiment.
+ * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
+ * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
+ * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only
+ * beside D3D_DP2. The bring-up's other probe bits (1 to 64, 2026-10-06)
+ * were removed on 2026-10-07 once DDI 6 worked; this one stayed because
+ * it is how docs\decisions\2026-10-06-ddi6-runtime-call-rate.md was
+ * measured.
  */
-#define V9X_DD_ENGINE_CAP_DP2_PROBE_MASK  0x007f0000ul
-#define V9X_DD_ENGINE_CAP_DP2_PROBE_SHIFT 16
-#define V9X_DP2_PROBE_NO_DEVCAP           1ul
-#define V9X_DP2_PROBE_NO_DP2_ENTRY        2ul
-#define V9X_DP2_PROBE_NO_DX3_ENTRIES      4ul
-#define V9X_DP2_PROBE_EXEBUF_CALLBACKS    8ul
-#define V9X_DP2_PROBE_LOG                16ul
-#define V9X_DP2_PROBE_RING               32ul
-#define V9X_DP2_PROBE_NO_TLV_SYSMEM      64ul
+#define V9X_DD_ENGINE_CAP_DP2_CAPTURE   0x00200000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

@@ -173,6 +173,41 @@ and applications fall back to Microsoft's software rasterizers — useful
 with a second graphics card, or when a game misbehaves. It takes effect
 after a restart.
 
+### Direct3D 8 games (DDI 6)
+
+DirectX 8 games need a newer driver interface than earlier games use,
+DrawPrimitives2 (DDI 6). Without it, Direct3D 8 finds no hardware device
+and games fail with "D3DERR_NOTAVAILABLE" (`0x8876086A`). Velocity9x
+offers DDI 6 to the programs that need it and keeps the older interface
+for the rest, which is faster for DirectX 5 to 7 games.
+
+The **DDI 6** selector on the Velocity9x page sets this, and takes effect
+the next time a program starts, with no restart:
+
+- **Automatic** (the default): DDI 6 for any program that uses Direct3D 8,
+  the older interface for everything else.
+- **Never**: the older interface for every program. Direct3D 8 games then
+  get no hardware device.
+- **Always**: DDI 6 for every Direct3D program.
+
+The same choice in `SYSTEM.INI`, `[Velocity9x]` section: no
+`Direct3DDdi` line for Automatic, `Direct3DDdi=5` for Never,
+`Direct3DDdi=6` for Always. One program can be set on its own in a
+section of its own, by file name, `5` or `6`:
+
+```ini
+[Velocity9x.Direct3DDdi]
+HL.EXE=6
+```
+
+What works so far, measured on the Rage XL and the GMA 950: DxDiag's
+Direct3D 8 test, and 3DMark 2001 SE to a full score (111 and 244 3DMarks
+at 640x480; its game tests are slow on cards of this age). Direct3D 8 is
+offered 16-bit colour only: 16-bit display modes, 16-bit textures and a
+16-bit depth buffer, with no stencil. A game that insists on 32-bit
+colour, compressed textures or stencil will not start or will drop the
+feature. Direct3D 9 needs a newer interface still and is not available.
+
 ## OpenGL
 
 New in 0.9.0: an **OpenGL 1.1 installable client driver**, `V9XGL.DLL`.
