@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.12.1 - not yet released (pending UT99 testing)
+## 0.12.1 - 2026-10-07
 
 - **DX5 fans and strips are drawn.** The single-primitive entry point took
   triangle lists only, and the batched one refused strips and stopped the
