@@ -17,6 +17,22 @@ build identifier so exact guest-tested binaries remain traceable.
   the fix all four draw 1600 on the Rage XL (DirectX 9.0c) and the ViRGE/DX
   (DirectX 6.1). Lines and points on the DX5 path are skipped on their own
   instead of ending the call. Half-Life unchanged (Rage XL 18.4 fps).
+  UT99 (Direct3D, A8U4I5 Rage XL): 8,122 DrawOnePrimitive calls and 1.39M
+  DrawPrimitives records over an intro and DM-Morpheus run, none refused,
+  14 to 17 fps average in the match.
+- **OpenGL survives a display mode change.** UT99's OpenGL renderer
+  started windowed on the 800x600 desktop and switched to 640x480
+  fullscreen (the same path as changing the video driver in its
+  preferences) died on its first frame with `Assertion failed:
+  SwapBuffers( hDC )`. The ICD's primary surface had been made in the old
+  mode, `Restore` fails there (`DDERR_WRONGMODE`), and the present gave
+  up. The primary is now made again when it cannot be restored; the same
+  switch on A8U4I5 logs `primary restore hr=8876024B, made again` and UT
+  keeps rendering at 640x480.
+- **OpenGL windows larger than the screen.** The back and depth buffers
+  are held to the screen size. UT99 windowed on a 640x480 desktop asked for
+  644x465, the video-memory surface was refused (`DDERR_INVALIDPARAMS`),
+  no context was made and UT asserted in `wglMakeCurrent`; it now renders.
 
 ## 0.12.0 - 2026-10-07
 

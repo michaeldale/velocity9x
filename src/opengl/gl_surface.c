@@ -164,6 +164,45 @@ static void v9x_gl_drawable_release_surfaces(struct v9x_gl_drawable *drawable)
     drawable->height = 0ul;
 }
 
+/*
+ * Bring a lost primary back. Restore only works in the mode the primary was
+ * made in; after a mode change it fails (DDERR_WRONGMODE) and the surface
+ * stays lost for good, so it is made again. UT99's OpenGL renderer on A8U4I5
+ * (2026-10-07) opened the ICD on the 800x600 desktop, switched to 640x480
+ * fullscreen, and its first SwapBuffers failed DDERR_SURFACELOST: a fatal
+ * assertion in UT. Non-zero when the primary is usable.
+ */
+static int v9x_gl_primary_recover(void)
+{
+    DDSURFACEDESC desc;
+    HRESULT hr;
+
+    if (v9x_gl_primary == 0) {
+        return 0;
+    }
+    if (IDirectDrawSurface_IsLost(v9x_gl_primary) != DDERR_SURFACELOST) {
+        return 1;
+    }
+    hr = IDirectDrawSurface_Restore(v9x_gl_primary);
+    if (hr == DD_OK) {
+        return 1;
+    }
+    v9x_gl_log3("primary restore hr=%08lX, made again", (DWORD)hr, 0ul, 0ul);
+    IDirectDrawSurface_Release(v9x_gl_primary);
+    v9x_gl_primary = 0;
+    v9x_gl_surface_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS;
+    desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+    hr = IDirectDraw_CreateSurface(v9x_gl_ddraw, &desc, &v9x_gl_primary, 0);
+    if (hr != DD_OK) {
+        v9x_gl_log3("primary again hr=%08lX", (DWORD)hr, 0ul, 0ul);
+        v9x_gl_primary = 0;
+        return 0;
+    }
+    return 1;
+}
+
 int v9x_gl_device_redescribe(void)
 {
     unsigned int index;
@@ -174,10 +213,7 @@ int v9x_gl_device_redescribe(void)
     for (index = 0u; index < V9X_GL_DRAWABLES_MAX; ++index) {
         v9x_gl_drawable_release_surfaces(&v9x_gl_drawables[index]);
     }
-    if (v9x_gl_primary != 0 &&
-        IDirectDrawSurface_IsLost(v9x_gl_primary) == DDERR_SURFACELOST) {
-        IDirectDrawSurface_Restore(v9x_gl_primary);
-    }
+    (void)v9x_gl_primary_recover();
     return v9x_gl_describe_now();
 }
 
@@ -236,6 +272,17 @@ V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
                                        : 1ul;
     height = client.bottom > client.top ? (DWORD)(client.bottom - client.top)
                                         : 1ul;
+    /* No more than the screen: a client area past its edge can never be
+     * seen, and the HAL refuses a video-memory surface wider than the
+     * display (DDERR_INVALIDPARAMS). UT99 windowed on a 640x480 desktop
+     * asked for 644x465 on A8U4I5 (2026-10-07), got no context and asserted
+     * in wglMakeCurrent. */
+    if (width > (DWORD)GetSystemMetrics(SM_CXSCREEN)) {
+        width = (DWORD)GetSystemMetrics(SM_CXSCREEN);
+    }
+    if (height > (DWORD)GetSystemMetrics(SM_CYSCREEN)) {
+        height = (DWORD)GetSystemMetrics(SM_CYSCREEN);
+    }
     drawable = v9x_gl_drawable_find(window);
     if (drawable == 0) {
         for (index = 0u; index < V9X_GL_DRAWABLES_MAX; ++index) {
@@ -675,10 +722,14 @@ int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
     hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->back, 0,
                                 DDBLT_WAIT, 0);
     if (hr == DDERR_SURFACELOST) {
-        IDirectDrawSurface_Restore(v9x_gl_primary);
-        IDirectDrawSurface_Restore(drawable->back);
-        hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->back, 0,
-                                    DDBLT_WAIT, 0);
+        if (IDirectDrawSurface_IsLost(drawable->back) == DDERR_SURFACELOST) {
+            IDirectDrawSurface_Restore(drawable->back);
+        }
+        if (v9x_gl_primary_recover()) {
+            IDirectDrawSurface_SetClipper(v9x_gl_primary, drawable->clipper);
+            hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->back,
+                                        0, DDBLT_WAIT, 0);
+        }
     }
     if (hr != DD_OK) {
         v9x_gl_log3("present hr=%08lX", (DWORD)hr, 0ul, 0ul);
