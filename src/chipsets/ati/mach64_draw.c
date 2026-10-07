@@ -171,8 +171,10 @@ static v9x_status v9x_m64_draw_composite(
          V9X_M64_COMPOSITE_PIX_WIDTH_SHIFT);
     values[M64_SLOT_TEX_SIZE] |= (width_log2 << 16) | (max_log2 << 20) |
                                  (height_log2 << 24);
+    /* TEX_ST_DIRECT: the setup packets send S and T premultiplied by W
+     * under the composite (v9x_m64_build_setup). */
     control = V9X_M64_TEXTURE_COMPOSITE | V9X_M64_COMP_COMBINE_MODULATE |
-              V9X_M64_SECONDARY_STW;
+              V9X_M64_SECONDARY_STW | V9X_M64_TEX_ST_DIRECT;
     if (state->composite_wrap_s == 0ul) {
         control |= V9X_M64_SEC_TEX_CLAMP_S;
     }
@@ -428,15 +430,23 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
      * premultiplied under ST_MULT_W until 2026-09-29, which squared W: on
      * the Gateway a uniform rhw k scaled every coordinate by k and shifted
      * the mip level by log2 k, and 3DMark's tunnel drew smeared.
+     *
+     * Under the composite the state sets TEX_ST_DIRECT and every S and T
+     * goes premultiplied, Mesa's form: with ST_MULT_W there, unit 0's mip
+     * level came out log2 W too coarse while unit 1 was on (V9XGLP
+     * SgisMipPersp, A8U4I5 2026-10-08), and Quake 2's walls drew from
+     * their smallest levels.
      */
     for (index = 0ul; index < 3ul; ++index) {
         v = &vertex[index];
         offsets[at] = registers[index][0];
         values[at++] = textured != 0ul
-            ? v9x_m64_draw_float_bits(v->s) : 0ul;
+            ? v9x_m64_draw_float_bits(second != 0ul ? v->s * v->rhw : v->s)
+            : 0ul;
         offsets[at] = registers[index][1];
         values[at++] = textured != 0ul
-            ? v9x_m64_draw_float_bits(v->t) : 0ul;
+            ? v9x_m64_draw_float_bits(second != 0ul ? v->t * v->rhw : v->t)
+            : 0ul;
         offsets[at] = registers[index][2];
         values[at++] = textured != 0ul
             ? v9x_m64_draw_float_bits(v->rhw) : M64_FLOAT_ONE_BITS;
@@ -451,9 +461,9 @@ v9x_status v9x_m64_build_setup(const struct v9x_m64_setup_vertex *vertex,
          * vertex's own words as Mesa's mach64_tris.c sends them. */
         if (second != 0ul) {
             offsets[at] = secondary_registers[index][0];
-            values[at++] = v9x_m64_draw_float_bits(v->s1);
+            values[at++] = v9x_m64_draw_float_bits(v->s1 * v->rhw);
             offsets[at] = secondary_registers[index][1];
-            values[at++] = v9x_m64_draw_float_bits(v->t1);
+            values[at++] = v9x_m64_draw_float_bits(v->t1 * v->rhw);
             offsets[at] = secondary_registers[index][2];
             values[at++] = v9x_m64_draw_float_bits(v->rhw);
         }

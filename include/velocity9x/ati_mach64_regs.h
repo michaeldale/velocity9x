@@ -220,6 +220,9 @@
 #define V9X_M64_SEC_TEX_CLAMP_S       0x01000000ul
 #define V9X_M64_SEC_TEX_CLAMP_T       0x02000000ul
 #define V9X_M64_SECONDARY_STW         0x80000000ul
+/* TEX_CNTL bit 19 (atiregs.h MACH64_TEX_ST_DIRECT): S and T arrive
+ * premultiplied by W; clear is TEX_ST_MULT_W. */
+#define V9X_M64_TEX_ST_DIRECT         0x00080000ul
 #define V9X_M64_TEX_CACHE_SPLIT       0x00000200ul
 #define V9X_M64_TEX_BLEND_FCN_MASK    0x0c000000ul
 #define V9X_M64_COMPOSITE_PIX_WIDTH_MASK  0x000000f0ul

@@ -468,7 +468,8 @@ v9x_status v9x_m64_build_draw_state(
  * set of V9X_M64_SETUP_* flags: either sends the three specular words
  * first, FOG with the vertex specular alpha and SPECULAR with its RGB.
  * SECONDARY sends each vertex's second-texture S, T and W after its own
- * six words, Mesa's order; the triangle must be textured. */
+ * six words, Mesa's order, and premultiplies every S and T by W for the
+ * composite's TEX_ST_DIRECT; the triangle must be textured. */
 #define V9X_M64_SETUP_FOG       1ul
 #define V9X_M64_SETUP_SPECULAR  2ul
 #define V9X_M64_SETUP_SECONDARY 4ul

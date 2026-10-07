@@ -320,8 +320,9 @@ static void test_composite_state_words(void)
     CHECK(values[13] == 0x400404f4ul);
     /* The second texture's width, larger edge and height in [27:16]. */
     CHECK(values[15] == 0x03550333ul);
-    /* COMPOSITE | COMBINE_MODULATE | SECONDARY_STW, both clamped. */
-    CHECK(values[16] == 0xc3860300ul);
+    /* COMPOSITE | COMBINE_MODULATE | SECONDARY_STW, both clamped, and
+     * TEX_ST_DIRECT: the coordinates arrive premultiplied by W. */
+    CHECK(values[16] == 0xc38e0300ul);
     CHECK(offsets[17] == V9X_M64_SECONDARY_TEX_OFF);
     CHECK(values[17] == 0x00205000ul);
 
@@ -332,7 +333,7 @@ static void test_composite_state_words(void)
     state.composite_bilinear_mag = 1ul;
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
                                    &written) == V9X_STATUS_OK);
-    CHECK(values[16] == 0xc0861b00ul);
+    CHECK(values[16] == 0xc08e1b00ul);
 
     /* The first texture's bilinear magnification stays its own bit. */
     state.bilinear_mag = 1ul;
@@ -681,19 +682,28 @@ static void test_setup_secondary(void)
     CHECK(v9x_m64_build_setup(v, 1ul, V9X_M64_SETUP_SECONDARY, offsets,
                               values, CAP, &written) == V9X_STATUS_OK);
     CHECK(written == 28ul);
-    /* Each vertex's six words, then its S1, T1 and W; the area last. */
+    /* Each vertex's six words, then its S1, T1 and W; the area last.
+     * Under the composite every S and T is premultiplied by W, for
+     * TEX_ST_DIRECT; the other words are the one-texture packet's. */
     for (corner = 0u; corner < 3u; ++corner) {
         for (word = 0u; word < 6u; ++word) {
             CHECK(offsets[corner * 9u + word] ==
                   ref_offsets[corner * 6u + word]);
-            CHECK(values[corner * 9u + word] ==
-                  ref_values[corner * 6u + word]);
+            if (word >= 2u) {
+                CHECK(values[corner * 9u + word] ==
+                      ref_values[corner * 6u + word]);
+            }
         }
+        CHECK(values[corner * 9u] == bits(v[corner].s * v[corner].rhw));
+        CHECK(values[corner * 9u + 1u] ==
+              bits(v[corner].t * v[corner].rhw));
         CHECK(offsets[corner * 9u + 6u] == secondary[corner][0]);
         CHECK(offsets[corner * 9u + 7u] == secondary[corner][1]);
         CHECK(offsets[corner * 9u + 8u] == secondary[corner][2]);
-        CHECK(values[corner * 9u + 6u] == bits(v[corner].s1));
-        CHECK(values[corner * 9u + 7u] == bits(v[corner].t1));
+        CHECK(values[corner * 9u + 6u] ==
+              bits(v[corner].s1 * v[corner].rhw));
+        CHECK(values[corner * 9u + 7u] ==
+              bits(v[corner].t1 * v[corner].rhw));
         CHECK(values[corner * 9u + 8u] == bits(v[corner].rhw));
     }
     CHECK(offsets[27] == V9X_M64_ONE_OVER_AREA);
@@ -735,7 +745,7 @@ static void test_setup_secondary(void)
           offsets, values, CAP, &written) == V9X_STATUS_OK);
     CHECK(written == 10ul);
     CHECK(offsets[6] == V9X_M64_VERTEX_1_SECONDARY_S);
-    CHECK(values[6] == bits(7.0f));
+    CHECK(values[6] == bits(7.0f * v[0].rhw));
     CHECK(offsets[9] == V9X_M64_ONE_OVER_AREA);
 }
 
