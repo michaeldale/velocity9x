@@ -1850,6 +1850,38 @@ int v9x_hal_depth_fill(V9X_DD_SURFACE_LCL *surface, LONG left, LONG top,
     return data.ddRVal == V9X_DD_OK;
 }
 
+/*
+ * The colour twin of v9x_hal_depth_fill: one rectangle of a render target
+ * through the DDBLT_COLORFILL path, the engine where it can, the CPU fill
+ * where it declines. value is already in the surface's pixel format. For
+ * Clear2's colour part (2026-10-07), on the same evidence as the depth part.
+ */
+int v9x_hal_color_fill(V9X_DD_SURFACE_LCL *surface, LONG left, LONG top,
+                       LONG right, LONG bottom, DWORD value)
+{
+    V9X_DDHAL_BLTDATA data;
+    BYTE *bytes = (BYTE *)&data;
+    DWORD i;
+    int engine_used = 0;
+
+    for (i = 0ul; i < sizeof(data); ++i) {
+        bytes[i] = 0u;
+    }
+    data.lpDDDestSurface = surface;
+    data.rDest[0] = left;
+    data.rDest[1] = top;
+    data.rDest[2] = right;
+    data.rDest[3] = bottom;
+    data.dwFlags = V9X_DDBLT_COLORFILL | V9X_DDBLT_WAIT;
+    data.bltFX.dwFillColor = value;
+    if (surface == 0 ||
+        v9x_colorfill_body(&data, &engine_used) !=
+            V9X_DDHAL_DRIVER_HANDLED) {
+        return 0;
+    }
+    return data.ddRVal == V9X_DD_OK;
+}
+
 static DWORD v9x_blt_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
 {
     if (data == 0) {

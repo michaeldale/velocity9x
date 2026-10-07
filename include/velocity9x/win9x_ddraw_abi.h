@@ -1707,6 +1707,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026100701: V9X_D3D_DIAGNOSTICS gains dp2_clear2_engine_color. An
+ * append. */
 /* 2026100606: V9X_D3D_DIAGNOSTICS gains dp2_clear2_engine_depth. An
  * append. */
 /* 2026100605: V9X_D3D_DIAGNOSTICS gains dp2_converted_calls. An append. */
@@ -1833,7 +1835,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100606ul
+#define V9X_DD_SHARED_ABI   2026100701ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3467,6 +3469,8 @@ typedef struct v9x_d3d_diagnostics {
     DWORD dp2_converted_calls;
     /* Clear2 calls whose Z part the DDBLT_DEPTHFILL path did. */
     DWORD dp2_clear2_engine_depth;
+    /* Clear2 calls whose colour part the DDBLT_COLORFILL path did. */
+    DWORD dp2_clear2_engine_color;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

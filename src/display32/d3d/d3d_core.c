@@ -5183,6 +5183,45 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
             }
         }
     }
+    /*
+     * The colour part the same way, through DDBLT_COLORFILL on the render
+     * target, the colour packed as the CPU clear packs it (r3d_clear.c).
+     * Done only for a render target's own layouts; anything else, and any
+     * rectangle the path refuses, is left to the CPU clear below.
+     */
+    if (clear.clear_color && context->target != 0 &&
+        (context->target_format == V9X_D3D_TARGET_FORMAT_RGB565 ||
+         context->target_format == V9X_D3D_TARGET_FORMAT_XRGB1555)) {
+        DWORD rgb = clear.color_value;
+        DWORD packed = context->target_format == V9X_D3D_TARGET_FORMAT_RGB565
+            ? (((rgb >> 8) & 0xf800ul) | ((rgb >> 5) & 0x07e0ul) |
+               ((rgb >> 3) & 0x001ful))
+            : (((rgb >> 9) & 0x7c00ul) | ((rgb >> 6) & 0x03e0ul) |
+               ((rgb >> 3) & 0x001ful));
+        DWORD r;
+        int filled = 1;
+
+        for (r = 0ul; r < data->dwNumRects && filled; ++r) {
+            const V9X_D3DRECT *rect = &data->lpRects[r];
+            LONG x1 = rect->x1 < 0 ? 0 : rect->x1;
+            LONG y1 = rect->y1 < 0 ? 0 : rect->y1;
+            LONG x2 = rect->x2 > (LONG)context->width ? (LONG)context->width
+                                                      : rect->x2;
+            LONG y2 = rect->y2 > (LONG)context->height
+                          ? (LONG)context->height : rect->y2;
+
+            if (x1 < x2 && y1 < y2) {
+                filled = v9x_hal_color_fill(context->target, x1, y1, x2, y2,
+                                            packed);
+            }
+        }
+        if (filled) {
+            clear.clear_color = 0;
+            if (v9x_hal != 0) {
+                ++v9x_hal->d3d_diagnostics.dp2_clear2_engine_color;
+            }
+        }
+    }
     if (!clear.clear_color && !clear.clear_depth) {
         data->ddrval = V9X_DD_OK;
         v9x_fpu_restore(&fpu);

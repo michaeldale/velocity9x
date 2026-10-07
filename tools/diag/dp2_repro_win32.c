@@ -88,6 +88,7 @@ static WORD quad_index[6] = { 0, 1, 2, 0, 2, 3 };
 static WORD vb_index[6];
 static void *dev3;
 static void *vb;
+static void *vp3_used;
 #define VB_VERTICES 32768ul
 #define D3DFVF_TLVERTEX 0x1c4ul
 #define DDLOCK_WRITEONLY 0x20ul
@@ -397,6 +398,62 @@ static void line_check(void *target)
     fprintf(out, "Point=%d/4 PointAround=%d\n", on_p, around_p);
 }
 
+/*
+ * A colour clear through IDirect3DViewport3::Clear2 (slot 20), which a
+ * DDI 6 runtime turns into the HAL's Clear2: the target is first filled
+ * black, a rectangle (10,10)-(74,42) is cleared red, and the target is read
+ * back for red inside and black just outside.
+ */
+#define D3DCLEAR_TARGET 1ul
+
+static void clear_check(void *target, void *vp3)
+{
+    DWORD fx[25];
+    LONG rect[4];
+    SURFDESC d;
+    HRESULT hr;
+    int inside = 0, outside = 0, x, y;
+
+    if (vp3 == 0) {
+        fprintf(out, "ClearCheck=skipped\n");
+        return;
+    }
+    memset(fx, 0, sizeof(fx));
+    fx[0] = sizeof(fx);
+    ((HRESULT (__stdcall *)(void *, RECT *, void *, RECT *, DWORD,
+                            DWORD *))VT(target)[5])(
+        target, 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, fx);
+    rect[0] = 10; rect[1] = 10; rect[2] = 74; rect[3] = 42;
+    hr = ((HRESULT (__stdcall *)(void *, DWORD, LONG *, DWORD, DWORD, float,
+                                 DWORD))VT(vp3)[20])(
+        vp3, 1ul, rect, D3DCLEAR_TARGET, 0x00ff0000ul, 1.0f, 0ul);
+    fprintf(out, "Clear2Hr=%08lx\n", (unsigned long)hr);
+    memset(&d, 0, sizeof(d));
+    d.dwSize = sizeof(d);
+    if (((HRESULT (__stdcall *)(void *, RECT *, SURFDESC *, DWORD, HANDLE))
+             VT(target)[25])(target, 0, &d, DDLOCK_WAIT, 0) != 0 ||
+        d.lpSurface == 0) {
+        fprintf(out, "ClearLock=failed\n");
+        return;
+    }
+#define PIX(px, py) (((WORD *)((BYTE *)d.lpSurface + (py) * d.lPitch))[px])
+    for (y = 10; y < 42; ++y) {
+        for (x = 10; x < 74; ++x) {
+            inside += PIX(x, y) == 0xf800u;
+        }
+    }
+    for (x = 8; x < 76; ++x) {
+        outside += (PIX(x, 9) != 0) + (PIX(x, 42) != 0);
+    }
+    for (y = 10; y < 42; ++y) {
+        outside += (PIX(9, y) != 0) + (PIX(74, y) != 0);
+    }
+#undef PIX
+    ((HRESULT (__stdcall *)(void *, void *))VT(target)[32])(target, 0);
+    fprintf(out, "ClearInside=%d/2048 ClearOutsideLit=%d\n", inside,
+            outside);
+}
+
 static void *make_surface(void *dd, DWORD caps, DWORD w, DWORD h, int fmt)
 {
     SURFDESC d;
@@ -585,6 +642,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
                     vp3, &v);
                 ((HRESULT (__stdcall *)(void *, void *))VT(dev3)[12])(dev3,
                                                                      vp3);
+                vp3_used = vp3;
             }
             vbdesc[0] = sizeof(vbdesc);
             vbdesc[1] = 0ul;
@@ -603,6 +661,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     run_phase3(21, "vb-indexed-lock-nooverwrite");
     run_phase3(22, "vb-indexed-lock");
     run_phase3(23, "device3-indexed-64-usermem");
+    clear_check(target, vp3_used);
     phase_marker();
     fprintf(out, "Done=1\n");
     fclose(out);
