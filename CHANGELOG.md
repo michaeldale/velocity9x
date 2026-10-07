@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.12.2 - not yet released
+## 0.12.2 - 2026-10-07
 
 - **Intel GMA 950: triangles crossing the screen edge are clipped.** The
   Gen3 engine was the one engine the core did not clip for, on the
