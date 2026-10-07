@@ -269,9 +269,13 @@ static void v9x_rdtsc_pair(DWORD *pair);
  * latest Lock, so this is an approximation where they occur. */
 #define V9X_TIME_LOCK_HELD     11u
 
+/* And on the Rage Pro class's Mach64 engine since 2026-10-07: its setup
+ * engine is a PCI 2.1 or AGP part, in a Pentium-class host or later, as
+ * the Rage IIC's always-on cost split already assumes (d3d_rage2.c). */
 #define V9X_TIME_ENABLED() \
     (v9x_hal != 0 && \
-     v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3)
+     (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 || \
+      v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64))
 #define V9X_TIME_BEGIN() (V9X_TIME_ENABLED() ? v9x_rdtsc_low() : 0ul)
 #define V9X_TIME_END(bucket, start) \
     { \

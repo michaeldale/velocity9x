@@ -3373,7 +3373,10 @@ typedef struct v9x_d3d_diagnostics {
      * high) in each part of an accepted draw, and the batches, pieces,
      * register writes, FIFO status reads, pixels and trapezoids they
      * made. Quake 2 spent 8 s
-     * of every 10 s inside the draw with nothing to say where. */
+     * of every 10 s inside the draw with nothing to say where. The Rage
+     * Pro class's Mach64 engine charges the same fields since 2026-10-07
+     * (d3d_mach64.c v9x_d3d_mach64_charge), SPLIT there being the state's
+     * emission; pixels and trapezoids stay zero. */
     DWORD r2_cycles[4 * 2];
     DWORD r2_work[6];
     /* Rage IIC texture creation (2026-10-03), V9X_R2_SURFACE_*: what

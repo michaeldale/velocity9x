@@ -515,6 +515,31 @@ static void v9x_d3d_mach64_wrap_origin(struct v9x_m64_setup_vertex *setup)
     }
 }
 
+/*
+ * The cycles since `start` charged to one part of an accepted draw, in the
+ * Rage IIC's cost fields (V9X_R2_COST_*): the two engines never share a
+ * machine, and V9XTRACE already reports them. Here PREPARE is the policy
+ * and the state, BUILD the vertices and setup packets, SPLIT the state's
+ * emission and EMIT the packets', each FIFO wait inside its own. A render
+ * interface draw cost about 0.4 ms on the Rage XL (2026-10-07) with
+ * nothing to say where.
+ */
+static void v9x_d3d_mach64_charge(DWORD part, DWORD start)
+{
+    DWORD delta;
+    DWORD *sum;
+
+    if (!V9X_TIME_ENABLED()) {
+        return;
+    }
+    delta = v9x_rdtsc_low() - start;
+    sum = &v9x_hal->d3d_diagnostics.r2_cycles[part * 2u];
+    sum[0] += delta;
+    if (sum[0] < delta) {
+        ++sum[1];
+    }
+}
+
 static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                const V9X_R3D_VERTEX *vertices,
                                DWORD triangle_count)
@@ -529,10 +554,13 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     const V9X_R3D_VERTEX *triangle;
     v9x_u32 state_written = 0ul;
     v9x_u32 reason;
+    v9x_u32 writes_before;
+    v9x_u32 fifo_reads_before;
     v9x_status status;
     DWORD index;
     DWORD corner;
     DWORD packets = 0ul;
+    DWORD part_started = V9X_TIME_BEGIN();
     int flat;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
@@ -597,6 +625,8 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         return v9x_d3d_mach64_refuse(request.textured != 0ul
             ? V9X_D3D_MACH64_REFUSE_TEXTURE : V9X_D3D_MACH64_REFUSE_STATE);
     }
+    v9x_d3d_mach64_charge(V9X_R2_COST_PREPARE, part_started);
+    part_started = V9X_TIME_BEGIN();
 
     /* Every packet before any write, so a bad vertex refuses the batch. */
     flat = request.shade_mode == V9X_R3D_SHADE_FLAT;
@@ -647,6 +677,10 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         ++v9x_hal->d3d_diagnostics.m64_draws;
         return 1;
     }
+    v9x_d3d_mach64_charge(V9X_R2_COST_BUILD, part_started);
+    part_started = V9X_TIME_BEGIN();
+    writes_before = core->register_writes;
+    fifo_reads_before = core->fifo_reads;
 
     /*
      * The full state every batch: no redundant-state skipping until this
@@ -659,6 +693,8 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_EMIT);
     }
     v9x_present_note_submission();
+    v9x_d3d_mach64_charge(V9X_R2_COST_SPLIT, part_started);
+    part_started = V9X_TIME_BEGIN();
     for (index = 0ul; index < packets; ++index) {
         if (v9x_m64_emit_batch(core, v9x_d3d_mach64_setup_offsets[index],
                                v9x_d3d_mach64_setup_values[index],
@@ -666,6 +702,15 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
                                V9X_D3D_MACH64_SPINS) != V9X_STATUS_OK) {
             return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_EMIT);
         }
+    }
+    v9x_d3d_mach64_charge(V9X_R2_COST_EMIT, part_started);
+    if (V9X_TIME_ENABLED()) {
+        DWORD *work = v9x_hal->d3d_diagnostics.r2_work;
+
+        ++work[V9X_R2_WORK_BATCHES];
+        work[V9X_R2_WORK_PIECES] += packets;
+        work[V9X_R2_WORK_WRITES] += core->register_writes - writes_before;
+        work[V9X_R2_WORK_FIFO_READS] += core->fifo_reads - fifo_reads_before;
     }
     ++v9x_hal->d3d_diagnostics.m64_draws;
     v9x_hal->d3d_diagnostics.m64_triangles += packets;
