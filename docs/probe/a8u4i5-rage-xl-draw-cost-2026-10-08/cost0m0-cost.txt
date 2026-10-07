@@ -1,0 +1,8 @@
+wall ms 12548, r3d calls 21031, batches 20657, triangles 703051, triangles/batch 34.0
+r3d cycles 4.293e+09, per call 204146
+Prepare    2.6% of r3d,    5307 cycles a batch,    156 a triangle
+Split      1.3% of r3d,    2727 cycles a batch,     80 a triangle
+Build     38.8% of r3d,   80612 cycles a batch,   2369 a triangle
+Emit      47.9% of r3d,   99532 cycles a batch,   2924 a triangle
+outside the engine draw   9.5%,   19314 cycles a call
+register writes a batch 448.9, FIFO status reads a batch 111.8, reads a write 0.25

@@ -253,3 +253,4 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-06 What ends a DrawPrimitives2 call, and what DDI 6 actually cost Half-Life](2026-10-06-ddi6-runtime-call-rate.md)
 - [2026-10-07 Gen3 is clipped in the core, like every other engine: UT99 on the GMA 950 from 207,032 refused batches to 77](2026-10-07-gen3-clip-in-core.md)
 - [2026-10-07 The Rage Pro's second texture draws in one pass on the Rage XL, and Quake 2 runs at half the frame rate with it: not enabled](2026-10-07-rage-pro-composite-multitexture.md)
+- [2026-10-08 Where a Rage XL draw's time goes: the chip filling at 640x480, the driver's setup at 320x240, and not the texture-cache flush](2026-10-08-rage-xl-draw-cost.md)
