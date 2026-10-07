@@ -385,3 +385,28 @@ cold-backed-up first (`Win86SE-pre-velocity9x-20261007-120059`).
   colour Clear2 2048/2048 on the engine; no unparsed, malformed or refused
   calls.
 - The settings page shows the DDI 6 selector (`virge-vm-settings-page.png`).
+
+## Rage IIC back in A8U4I5: the 0.12.0 build (2026-10-07)
+
+Michael swapped the Rage XL for the 3D Rage IIC AGP (`1002:4757`, 4 MB);
+V9XHW.INI reads `Adapter=ATI 3D Rage IIC AGP`, `Direct3D=hardware-rage2`.
+The 0.12.0 ati package (`8a1c093`), boot 325, no `Direct3DDdi` key:
+
+| Test | 0.12.0 | Earlier |
+|---|---|---|
+| Half-Life `mwd5`, Direct3D (DDI 5) | 5.47, 5.55, 5.54 fps | 5.57 (0.10.0, README) |
+| Quake 2 attract timedemo, OpenGL | 4.5, 4.6 fps | 4.4 |
+
+Pictures correct (`rage-iic-0.12-halflife.png`, `rage-iic-0.12-quake2.png`).
+A first Half-Life run read 4.89 and 5.13 because the benchmark script typed
+its next timedemo before a 72-second demo had finished; the paced runs are
+the ones above. Half-Life's 10,843 refused batches are all
+`R2SkipTexture`, the known refused ARGB4444 alpha test and texel-times-
+vertex alpha; none came from the DDI 6 run.
+
+Direct3D 8 on the Rage II engine: the HAL is offered (R5G6B5, the same
+format list as the Rage XL), and with DDI 6 forced for `dp2_repro` lines
+100/100, the point and the colour Clear2 2048/2048 read back exact, no
+unparsed, malformed or refused DrawPrimitives2 calls
+(`rage-iic-0.12-ddi6-repro.INI`). 3DMark 2001 SE was not run on the 4 MB
+card.

@@ -45,8 +45,12 @@ run at 1 to 5 fps on both machines; why is not measured yet.
 
 On the ViRGE/DX (86Box, DirectX 6.1) the DDI 5 probe results are
 identical to the 0.11.0-era driver, and with DDI 6 forced for one program
-lines, points and the engine colour clear read back exact on the S3D. Not
-run at DDI 6: the SiS, Rage IIC and software families.
+lines, points and the engine colour clear read back exact on the S3D. On
+the Rage IIC (A8U4I5, 0.12.0 build) Half-Life `mwd5` runs 5.47 / 5.55 /
+5.54 fps (0.10.0: 5.57) and Quake 2's OpenGL timedemo 4.5 / 4.6 fps
+(4.4), pictures correct; Direct3D 8 gets the HAL there and DDI 6 lines,
+points and the colour clear read back exact. Not run at DDI 6: the SiS
+and software families.
 
 ### OpenGL
 
