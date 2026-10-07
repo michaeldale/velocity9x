@@ -365,13 +365,24 @@ static void test_composite_state_refusals(void)
                                    &written) == V9X_STATUS_INVALID_ARGUMENT);
     CHECK(written == 0ul);
 
-    /* A chain under the first texture: the blend function is taken. */
+    /* A chain under the first texture selects its level as without the
+     * composite: MIP_MAP_DISABLE clear and every TEX_n_OFF below the top.
+     * Trilinear would need the blend function the composite takes. */
     base_state(&state);
     texture_fields(&state, V9X_M64_TEXTURE_FORMAT_RGB565);
     composite_fields(&state);
     state.level_count = 2ul;
     state.level_offsets[0] = state.texture_offset;
     state.level_offsets[1] = 0x00206000ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 22ul);
+    CHECK((values[10] & V9X_M64_MIP_MAP_DISABLE) == 0ul);
+    CHECK((values[10] & 0x0c000200ul) == 0x0c000200ul);
+    CHECK(values[17] == 0x00205000ul);
+    CHECK(offsets[19] == V9X_M64_TEX_0_OFF + 2ul * 4ul);
+    CHECK(values[19] == 0x00206000ul);
+    state.bilinear_min = 2ul;
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
                                    &written) == V9X_STATUS_INVALID_ARGUMENT);
     CHECK(written == 0ul);

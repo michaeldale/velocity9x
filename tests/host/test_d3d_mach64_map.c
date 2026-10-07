@@ -463,11 +463,12 @@ static void test_composite_mapping(void)
     v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
     v9x_d3d_mach64_map_composite(&draw, &texture1, &request);
 
-    /* Unit 0's chain is sampled at level 0, bilinear: the composite takes
-     * the trilinear function. Unit 1 clamps and filters on its own. */
+    /* Unit 0's chain keeps its levels, bilinear within the selected one:
+     * the composite takes the trilinear function. Unit 1 clamps and
+     * filters on its own. */
     v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul, &state);
     v9x_d3d_mach64_map_composite_state(&request, &texture1, &state);
-    CHECK(state.level_count == 1ul && state.bilinear_min == 1ul);
+    CHECK(state.level_count == 4ul && state.bilinear_min == 1ul);
     CHECK(state.composite == 1ul && state.composite_offset == 0x00205000ul);
     CHECK(state.composite_pitch_bytes == 32ul);
     CHECK(state.composite_wrap_s == 0ul && state.composite_wrap_t == 0ul);
@@ -475,7 +476,7 @@ static void test_composite_mapping(void)
     CHECK(state.composite_bilinear_mag == 1ul);
     CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, 32ul,
                                    &written) == V9X_STATUS_OK);
-    CHECK(written == 19ul);
+    CHECK(written == 22ul);
     CHECK((values[16] & 0x80000300ul) == 0x80000300ul);
     CHECK(values[17] == 0x00205000ul);
 

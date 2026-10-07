@@ -60,9 +60,9 @@ void v9x_d3d_mach64_map_composite(const V9X_R3D_DRAW *draw,
                                   struct v9x_m64_draw_request *request);
 
 /* The second texture's state for a composite request the policy accepted,
- * onto a state map_state already filled. Unit 0 is then sampled at level 0
- * with at most bilinear filtering: the composite takes the blend function
- * a chain or trilinear would need. */
+ * onto a state map_state already filled. Unit 0 keeps its chain with at
+ * most bilinear filtering within the selected level: the composite takes
+ * the blend function trilinear would need. */
 void v9x_d3d_mach64_map_composite_state(
                               const struct v9x_m64_draw_request *request,
                               const V9X_D3D_MACH64_TEXTURE *texture1,

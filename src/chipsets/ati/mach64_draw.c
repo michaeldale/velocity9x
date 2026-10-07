@@ -115,7 +115,7 @@ static v9x_status v9x_m64_draw_composite(
     v9x_u32 color_end;
     v9x_u32 control;
 
-    if (state->textured == 0ul || state->level_count > 1ul ||
+    if (state->textured == 0ul || state->bilinear_min > 1ul ||
         (state->composite_offset & (V9X_M64_TEXTURE_BASE_ALIGN - 1ul)) != 0ul ||
         state->composite_width < 2ul || state->composite_width > 1024ul ||
         state->composite_height < 2ul || state->composite_height > 1024ul ||

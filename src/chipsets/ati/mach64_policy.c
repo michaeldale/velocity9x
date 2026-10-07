@@ -284,8 +284,9 @@ static v9x_u32 v9x_m64_policy_texture(
  * A second texture, modulated with the first in the same pass. Mesa 7.10's
  * driver is the reference: it drew unit 1's MODULATE through the composite
  * and sent every other unit-1 environment to software, and it ran every
- * texture with MIP_MAP_DISABLE, which the builder does here too, so a mip
- * filter samples level 0. The composite is formed before TEX_LIGHT_FCN
+ * texture with MIP_MAP_DISABLE. Here unit 0 keeps level selection, which
+ * is a bit of its own, and only loses trilinear, whose blend function the
+ * composite takes; unit 1 samples its one level. The composite is formed before TEX_LIGHT_FCN
  * (ATI's Rage Pro note), so unit 0's REPLACE and MODULATE are the light
  * function over the product, while its DECAL by texel alpha would lerp the
  * product, not unit 0's colour, and is refused. COMP_ALPHA is never set,

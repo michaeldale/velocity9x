@@ -269,7 +269,6 @@ void v9x_d3d_mach64_map_composite_state(
         request->composite == 0ul || state->textured == 0ul) {
         return;
     }
-    state->level_count = 1ul;
     if (state->bilinear_min > 1ul) {
         state->bilinear_min = 1ul;
     }

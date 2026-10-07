@@ -401,8 +401,8 @@ struct v9x_m64_draw_state {
      * TEXTURE_COMPOSITE), read only when `composite` is non-zero and the
      * draw is textured. One level, edge*2 bytes a row, on the base
      * alignment: SECONDARY_TEX_OFF is a single offset. The first texture
-     * is then a single level too (level_count 0 or 1), because the
-     * composite takes the trilinear blend function a chain would use.
+     * keeps its chain and selects a level, but is not trilinear
+     * (bilinear_min at most 1): the composite takes that blend function.
      */
     v9x_u32 composite;
     v9x_u32 composite_offset;
