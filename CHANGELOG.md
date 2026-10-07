@@ -4,11 +4,16 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## Unreleased
+## 0.12.0 - unreleased
 
-Direct3D 8 on the hardware, on the DirectX 6 driver interface (DDI 6),
-measured on A8U4I5 (Rage XL PCI) and the HP Mini 110 netbook (GMA 950).
-GitHub issue 2's `GetDeviceCaps` `0x8876086A` no longer happens on either.
+The Direct3D 8 release, in progress: not yet published, and the notes
+below will change before it is. Direct3D 8 runs on the hardware through
+the DirectX 6 driver interface (DDI 6), measured on A8U4I5 (Rage XL PCI)
+and the HP Mini 110 netbook (GMA 950), with the S3 ViRGE/DX checked in
+86Box. GitHub issue 2's `GetDeviceCaps` `0x8876086A` no longer happens on
+either physical machine. Families not named were not run.
+
+### Direct3D 8 (DDI 6)
 
 - DrawPrimitives2, Clear2 and the DX6 caps, behind the new **DDI 6**
   selector (Automatic, Never, Always; `[Velocity9x] Direct3DDdi`, and
@@ -31,8 +36,36 @@ GitHub issue 2's `GetDeviceCaps` `0x8876086A` no longer happens on either.
 
 Diagnostic: `[Velocity9x] Dp2Capture=1` records the next DDI 6 program's
 DrawPrimitives2 calls to `C:\V9XDIAG\V9XDP2R.BIN`
-(`tools/diag/dp2ring.py`). Not yet run: the S3, SiS, Rage IIC and
-software families at DDI 6.
+(`tools/diag/dp2ring.py`).
+
+Limits: Direct3D 8 is offered 16-bit colour only (16-bit display modes,
+R5G6B5, A1R5G5B5 and A4R4G4B4 textures, D16, no stencil); Direct3D 9
+needs a DDI 7 driver and is not available. 3DMark 2001 SE's game tests
+run at 1 to 5 fps on both machines; why is not measured yet.
+
+On the ViRGE/DX (86Box, DirectX 6.1) the DDI 5 probe results are
+identical to the 0.11.0-era driver, and with DDI 6 forced for one program
+lines, points and the engine colour clear read back exact on the S3D. Not
+run at DDI 6: the SiS, Rage IIC and software families.
+
+### OpenGL
+
+- GL_SGIS_multitexture: a second texture unit through the render
+  interface, combined on the CPU by the software engine and in one
+  fragment program on the GMA 950. Correct on the netbook (V9XGLP's seven
+  cases in tolerance; Half-Life `-gl` uses it).
+- Texture copies refill only the rectangles `glTexSubImage2D` changed:
+  Quake 2 `timerefresh` 21.0 to 35.3 fps with multitexture on the GMA 950.
+- Texture state (bind, parameters, environment) no longer draws the held
+  batch: Half-Life `-gl` 427 to 48 draws a frame, 17.6 fps with or
+  without multitexture.
+- `glPolygonOffset` is implemented; Half-Life's decals called a stub.
+
+### Diagnostics
+
+- A `V9XTRACE` snapshot names the driver builds, the boot, the card and
+  the programs that used Direct3D or OpenGL, so two snapshots can be
+  matched.
 
 ## 0.11.0 - 2026-10-05
 
