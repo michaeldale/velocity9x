@@ -275,6 +275,86 @@ static void test_line(void)
     VCHECK(approx(out[5].sx, 2.0f) && approx(out[5].sy, 10.0f));
 }
 
+static float tri_area(const V9X_R3D_ABI_VERTEX *t)
+{
+    float area = ((t[1].sx - t[0].sx) * (t[2].sy - t[0].sy) -
+                  (t[2].sx - t[0].sx) * (t[1].sy - t[0].sy)) * 0.5f;
+
+    return area < 0.0f ? -area : area;
+}
+
+static void clip_vertex(V9X_R3D_ABI_VERTEX *v, float x, float y, float rhw,
+                        float tu, v9x_u32 color)
+{
+    v->sx = x;
+    v->sy = y;
+    v->sz = 0.5f;
+    v->rhw = rhw;
+    v->color = color;
+    v->specular = 0xFF000000ul;
+    v->tu = tu;
+    v->tv = 0.0f;
+}
+
+/* NFS II SE's HUD panes are clip windows (census), and Gen3 refuses a
+ * draw with a partial scissor (netbook, 2026-10-09). */
+static void test_clip_rect(void)
+{
+    V9X_R3D_ABI_VERTEX tri[3];
+    V9X_R3D_ABI_VERTEX out[3u * V9X_GLIDE_CLIP_TRIANGLES_MAX];
+    unsigned int count;
+    unsigned int i;
+    float area = 0.0f;
+    int inside = 1;
+
+    clip_vertex(&tri[0], 0.0f, 0.0f, 1.0f, 0.0f, 0xFF000000ul);
+    clip_vertex(&tri[1], 10.0f, 0.0f, 1.0f, 1.0f, 0xFF0000FFul);
+    clip_vertex(&tri[2], 0.0f, 10.0f, 1.0f, 0.0f, 0xFF000000ul);
+
+    /* Wholly inside: unchanged, one triangle. */
+    count = v9x_glide_clip_rect(tri, 0.0f, 0.0f, 640.0f, 480.0f, out);
+    VCHECK(count == 1u);
+    VCHECK(count == 1u && approx(out[1].sx, 10.0f) && out[1].color == 0xFF0000FFul);
+
+    /* Wholly outside: nothing. */
+    VCHECK(v9x_glide_clip_rect(tri, 20.0f, 0.0f, 40.0f, 10.0f, out) == 0u);
+
+    /* Cut at x = 5: the part left of it, area 37.5, all inside. */
+    count = v9x_glide_clip_rect(tri, 0.0f, 0.0f, 5.0f, 10.0f, out);
+    VCHECK(count >= 2u && count <= V9X_GLIDE_CLIP_TRIANGLES_MAX);
+    for (i = 0u; i < count * 3u; ++i) {
+        if (out[i].sx < -0.001f || out[i].sx > 5.001f ||
+            out[i].sy < -0.001f || out[i].sy > 10.001f) {
+            inside = 0;
+        }
+        /* At x = 5 on the top edge, halfway along a with rhw 1 throughout:
+         * tu 0.5 and blue half way. */
+        if (approx(out[i].sx, 5.0f) && approx(out[i].sy, 0.0f)) {
+            VCHECK(approx(out[i].tu, 0.5f));
+            VCHECK(out[i].color == 0xFF000080ul || out[i].color == 0xFF00007Ful);
+        }
+    }
+    for (i = 0u; i < count; ++i) {
+        area += tri_area(&out[i * 3u]);
+    }
+    VCHECK(inside);
+    VCHECK(approx(area, 37.5f));
+
+    /* Perspective: from rhw 1 (tu 0) to rhw 0.25 (tu 1), the screen-space
+     * midpoint has rhw 0.625 and tu = (0.5 * 0.25) / 0.625 = 0.2. */
+    clip_vertex(&tri[0], 0.0f, 0.0f, 1.0f, 0.0f, 0xFF000000ul);
+    clip_vertex(&tri[1], 10.0f, 0.0f, 0.25f, 1.0f, 0xFF000000ul);
+    clip_vertex(&tri[2], 0.0f, 10.0f, 1.0f, 0.0f, 0xFF000000ul);
+    count = v9x_glide_clip_rect(tri, 0.0f, 0.0f, 5.0f, 10.0f, out);
+    VCHECK(count >= 2u);
+    for (i = 0u; i < count * 3u; ++i) {
+        if (approx(out[i].sx, 5.0f) && approx(out[i].sy, 0.0f)) {
+            VCHECK(approx(out[i].rhw, 0.625f));
+            VCHECK(approx(out[i].tu, 0.2f));
+        }
+    }
+}
+
 unsigned int v9x_run_glide_vertex_tests(void)
 {
     glide_vertex_failures = 0u;
@@ -285,5 +365,6 @@ unsigned int v9x_run_glide_vertex_tests(void)
     test_fog();
     test_cull();
     test_line();
+    test_clip_rect();
     return glide_vertex_failures;
 }

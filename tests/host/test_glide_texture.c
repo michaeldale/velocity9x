@@ -144,6 +144,35 @@ static void test_records_full(void)
     XCHECK(v9x_glide_texmem_find(&mem, 8ul, 3ul, &tiny) >= 0);
 }
 
+/* 2 MiB of 32x32 ARGB1555 textures, NFS II SE's commonest, all live at
+ * once: every one must still be found. A 512-record table evicted live
+ * textures in the game's demo race (netbook, 2026-10-08). */
+static void test_records_track(void)
+{
+    V9X_GLIDE_TEXINFO tile;
+    unsigned int i;
+    unsigned int found = 0u;
+
+    v9x_glide_texmem_init(&mem);
+    info_set(&tile, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);    /* 2048 */
+    for (i = 0u; i < 1024u; ++i) {
+        (void)v9x_glide_texmem_download(&mem, i * 2048ul, 3ul, &tile);
+    }
+    for (i = 0u; i < 1024u; ++i) {
+        if (v9x_glide_texmem_find(&mem, i * 2048ul, 3ul, &tile) >= 0) {
+            ++found;
+        }
+    }
+    XCHECK(found == 1024u);
+    /* Overwriting the first half by one large download leaves the rest. */
+    info_set(&tile, 0ul, 0ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);   /* 128 KiB */
+    XCHECK(v9x_glide_texmem_download(&mem, 0ul, 3ul, &tile) >= 0);
+    info_set(&tile, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);
+    XCHECK(v9x_glide_texmem_find(&mem, 2048ul, 3ul, &tile) == -1);
+    XCHECK(v9x_glide_texmem_find(&mem, 131072ul, 3ul, &tile) >= 0);
+    XCHECK(v9x_glide_texmem_find(&mem, 1023ul * 2048ul, 3ul, &tile) >= 0);
+}
+
 static void test_formats(void)
 {
     v9x_u16 src16[4];
@@ -220,6 +249,7 @@ unsigned int v9x_run_glide_texture_tests(void)
     test_required();
     test_records();
     test_records_full();
+    test_records_track();
     test_formats();
     return glide_texture_failures;
 }

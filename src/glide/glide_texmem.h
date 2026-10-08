@@ -33,9 +33,17 @@ typedef struct v9x_glide_texinfo {
     v9x_u32 format;
 } V9X_GLIDE_TEXINFO;
 
-/* Enough for 2 MiB of the smallest textures NFS II SE downloaded (2x2,
- * census) eight times over; when full the oldest record goes. */
-#define V9X_GLIDE_TEXMEM_RECORDS 512u
+/*
+ * Records: 2 MiB holds 1,024 of the 32x32 ARGB1555 textures NFS II SE
+ * downloads most (census), and the first 512-record table evicted live
+ * ones in its demo race (netbook, 2026-10-08), so four times that. When
+ * full the oldest record goes. grTexSource looks a record up by start
+ * address through a hash of buckets, since NFS II SE calls it tens of
+ * thousands of times a second (census); a bucket chains records by
+ * `next`, an index plus one, zero ending the chain.
+ */
+#define V9X_GLIDE_TEXMEM_RECORDS 4096u
+#define V9X_GLIDE_TEXMEM_BUCKETS 1024u
 
 typedef struct v9x_glide_texrec {
     v9x_u32 in_use;
@@ -44,10 +52,12 @@ typedef struct v9x_glide_texrec {
     v9x_u32 even_odd;
     V9X_GLIDE_TEXINFO info;
     v9x_u32 serial;
+    v9x_u32 next;
 } V9X_GLIDE_TEXREC;
 
 typedef struct v9x_glide_texmem {
     V9X_GLIDE_TEXREC records[V9X_GLIDE_TEXMEM_RECORDS];
+    v9x_u32 buckets[V9X_GLIDE_TEXMEM_BUCKETS];
     v9x_u32 next_serial;
 } V9X_GLIDE_TEXMEM;
 

@@ -74,6 +74,21 @@ v9x_u16 v9x_glide_cull_keep(v9x_u32 cull_mode, v9x_u32 origin,
                             const V9X_R3D_ABI_VERTEX *b,
                             const V9X_R3D_ABI_VERTEX *c);
 
+/*
+ * A converted triangle cut to the half-open rectangle [left, right) x
+ * [top, bottom): the clip window, which the hardware engines will not take
+ * as a scissor (Gen3 refuses one, d3d_i9xx.c). Writes up to
+ * V9X_GLIDE_CLIP_TRIANGLES_MAX triangles (three vertices each) to `out`
+ * and returns how many; 0 when nothing is inside. Depth and rhw are
+ * interpolated linearly in screen space, texture coordinates through rhw
+ * (perspective-correct), colours linearly.
+ */
+#define V9X_GLIDE_CLIP_TRIANGLES_MAX 5u
+
+unsigned int v9x_glide_clip_rect(const V9X_R3D_ABI_VERTEX *triangle,
+                                 float left, float top, float right,
+                                 float bottom, V9X_R3D_ABI_VERTEX *out);
+
 /* A line as two triangles one pixel wide across its minor axis, from the
  * line's coordinate to the next whole pixel (out holds six vertices). */
 void v9x_glide_line_triangles(const V9X_R3D_ABI_VERTEX *a,

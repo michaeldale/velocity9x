@@ -140,6 +140,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-08 Need for Speed II SE draws through 50 Glide calls: a W-buffer, table fog, paletted textures, chroma key and HUD lines](2026-10-08-nfs2se-glide-census.md)
 - [2026-10-08 The render interface draws into a Glide flip chain: clears, flips, depth, clip and lines read back the same on Gen3 and the software engine](2026-10-08-glide-phase2-flip-chain.md)
 - [2026-10-08 Glide textures, palettes, chroma key, blending and table fog draw alike on Gen3 and the software engine, and both fog through the render interface](2026-10-08-glide-phase3-textures-fog.md)
+- [2026-10-09 Need for Speed II SE races on GLIDE2X.DLL over Gen3, everything drawn, at about 5 frames a second](2026-10-09-nfs2se-races-on-glide-gen3.md)
 
 ## VBE generic family and dynamic modes
 

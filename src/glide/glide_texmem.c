@@ -82,12 +82,39 @@ v9x_u32 v9x_glide_texmem_required(const V9X_GLIDE_TEXINFO *info,
     return total;
 }
 
+/* A start address's bucket. Textures sit at multiples of the granule and
+ * often of 2 KiB, so the bits are mixed rather than taken low. */
+static unsigned int v9x_glide_bucket(v9x_u32 start)
+{
+    return (unsigned int)(((start >> 3) * 2654435761ul) >> 22) %
+           V9X_GLIDE_TEXMEM_BUCKETS;
+}
+
+static void v9x_glide_unlink(V9X_GLIDE_TEXMEM *mem, unsigned int index)
+{
+    v9x_u32 *link = &mem->buckets[v9x_glide_bucket(mem->records[index].start)];
+
+    while (*link != 0ul) {
+        if (*link == (v9x_u32)index + 1ul) {
+            *link = mem->records[index].next;
+            break;
+        }
+        link = &mem->records[*link - 1ul].next;
+    }
+    mem->records[index].in_use = 0ul;
+    mem->records[index].next = 0ul;
+}
+
 void v9x_glide_texmem_init(V9X_GLIDE_TEXMEM *mem)
 {
     unsigned int i;
 
     for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
         mem->records[i].in_use = 0ul;
+        mem->records[i].next = 0ul;
+    }
+    for (i = 0u; i < V9X_GLIDE_TEXMEM_BUCKETS; ++i) {
+        mem->buckets[i] = 0ul;
     }
     mem->next_serial = 0ul;
 }
@@ -100,7 +127,8 @@ int v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
     v9x_u32 end = start + bytes;
     unsigned int i;
     unsigned int slot = V9X_GLIDE_TEXMEM_RECORDS;
-    unsigned int oldest = 0u;
+    unsigned int oldest = V9X_GLIDE_TEXMEM_RECORDS;
+    unsigned int bucket;
 
     if (bytes == 0ul) {
         return -1;
@@ -110,7 +138,7 @@ int v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
     for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
         record = &mem->records[i];
         if (record->in_use && start < record->end && record->start < end) {
-            record->in_use = 0ul;
+            v9x_glide_unlink(mem, i);
         }
     }
 
@@ -119,12 +147,14 @@ int v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
             slot = i;
             break;
         }
-        if (mem->records[i].serial < mem->records[oldest].serial) {
+        if (oldest == V9X_GLIDE_TEXMEM_RECORDS ||
+            mem->records[i].serial < mem->records[oldest].serial) {
             oldest = i;
         }
     }
     if (slot == V9X_GLIDE_TEXMEM_RECORDS) {
         slot = oldest;
+        v9x_glide_unlink(mem, slot);
     }
 
     record = &mem->records[slot];
@@ -134,6 +164,9 @@ int v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
     record->even_odd = even_odd;
     record->info = *info;
     record->serial = ++mem->next_serial;
+    bucket = v9x_glide_bucket(start);
+    record->next = mem->buckets[bucket];
+    mem->buckets[bucket] = (v9x_u32)slot + 1ul;
     return (int)slot;
 }
 
@@ -141,18 +174,19 @@ int v9x_glide_texmem_find(const V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
                           v9x_u32 even_odd, const V9X_GLIDE_TEXINFO *info)
 {
     const V9X_GLIDE_TEXREC *record;
-    unsigned int i;
+    v9x_u32 link = mem->buckets[v9x_glide_bucket(start)];
 
-    for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
-        record = &mem->records[i];
+    while (link != 0ul) {
+        record = &mem->records[link - 1ul];
         if (record->in_use && record->start == start &&
             record->even_odd == even_odd &&
             record->info.small_lod == info->small_lod &&
             record->info.large_lod == info->large_lod &&
             record->info.aspect == info->aspect &&
             record->info.format == info->format) {
-            return (int)i;
+            return (int)(link - 1ul);
         }
+        link = record->next;
     }
     return -1;
 }

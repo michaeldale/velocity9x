@@ -31,6 +31,7 @@ static V9X_R3D_ABI_DESCRIBE v9x_glide_description;
 static HWND v9x_glide_window;
 static int v9x_glide_window_ours;
 static int v9x_glide_open;
+static v9x_u32 v9x_glide_hwtex_failures;
 
 static void v9x_glide_zero(void *block, DWORD bytes)
 {
@@ -448,8 +449,12 @@ void *v9x_glide_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 format)
     desc.ddsCaps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
     hr = IDirectDraw_CreateSurface(v9x_glide_ddraw, &desc, &surface, 0);
     if (hr != DD_OK) {
-        v9x_glide_log3("hwtex create %08lX format=%lu hr=%08lX",
-                       (width << 16) | height, format, (DWORD)hr);
+        /* Out of video memory is routine (the caller evicts and retries);
+         * the first few are enough to say so. */
+        if (v9x_glide_hwtex_failures++ < 8ul) {
+            v9x_glide_log3("hwtex create %08lX format=%lu hr=%08lX",
+                           (width << 16) | height, format, (DWORD)hr);
+        }
         return 0;
     }
     return surface;
