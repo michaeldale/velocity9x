@@ -18,9 +18,20 @@ extern unsigned short __far __pascal V9xMiniI9xxEngineMap(
  * the mini-VDD at all: the HAL talks to this driver only through the shared
  * block. It also must not derive the address - it did once, from the already
  * reduced fb.vram_bytes, and landed inside the DirectDraw heap.
+ *
+ * gmadr is BAR2, read fresh from PCI config just before the call: the
+ * mini-VDD maps the ring through it. It was a constant there, the netbook's
+ * D0000000, which on the 915GM survey is BAR0 - the register file.
  */
 extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
-    unsigned long __far *base, unsigned long __far *bytes);
+    unsigned long gmadr, unsigned long __far *base,
+    unsigned long __far *bytes);
+
+/* Fresh BAR2, BAR3, BSM and GGC reads into the globals below; non-zero when
+ * every read validated (runtime.asm). Read-only config access. */
+extern unsigned short __far __pascal V9xPciReadIntelGttConfig(void);
+extern unsigned long v9x_i9xx_gmadr_bar2;
+extern unsigned long v9x_vbe_vram_reported;
 
 /*
  * Whether this boot may touch the ring at all. Data, not a call, so no
@@ -148,9 +159,27 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * publishing, and the engine reports itself not ready without a ring
      * rather than submitting to one that is not there.
      */
+    /*
+     * The two refusals ahead of RingOpen are about WHERE the ring goes, and
+     * both run before it because RingOpen writes RING_START.
+     *
+     * A reported size other than the one the ring offset was generated for
+     * puts the ring inside the DirectDraw heap (V9X_I9XX_RUNTIME_RING_START).
+     * Zero is let through: the earliest descriptor call, at enable-start,
+     * runs before 4F00h is read, and refusing there would decide the netbook's
+     * first answer on a figure nobody has yet.
+     */
     if (v9x_intel_runtime3d_allowed == 0u) {
         v9x_gma950_engine_status = "runtime3d-not-permitted";
-    } else if (V9xMiniI9xxRingOpen(&ring, &ring_size) == 0u) {
+    } else if (v9x_vbe_vram_reported != 0ul &&
+               v9x_gma950_reserve_video_memory(v9x_vbe_vram_reported, 0ul) !=
+                   V9X_I9XX_RUNTIME_RING_START) {
+        v9x_gma950_engine_status = "ring-layout-mismatch";
+    } else if (V9xPciReadIntelGttConfig() == 0u ||
+               v9x_i9xx_gmadr_bar2 == 0ul) {
+        v9x_gma950_engine_status = "gmadr-unread";
+    } else if (V9xMiniI9xxRingOpen(v9x_i9xx_gmadr_bar2, &ring,
+                                   &ring_size) == 0u) {
         v9x_gma950_engine_status = "ring-refused";
     } else if (ring == 0ul || ring_size == 0ul) {
         v9x_gma950_engine_status = "ring-incomplete";
@@ -221,6 +250,30 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
     }
 }
 
+/*
+ * The 915GM: the 945's descriptor, plus the one difference the HAL has to
+ * know about. MAP_STATE carries no layout bit Mesa ever sets, and with it
+ * clear a 945 samples levels in the i945 arrangement while a 915 samples them
+ * stacked (gallium i915_resource_texture.c, i915_texture_layout_2d against
+ * i945_texture_layout_2d, chosen by is_i945). The bit says which to place.
+ */
+static void v9x_gma900_fill_engine(unsigned long framebuffer_linear_base,
+                                   unsigned long *control_linear_base,
+                                   unsigned long *mapped_aperture_bytes,
+                                   unsigned long *engine_type,
+                                   unsigned long *engine_caps,
+                                   unsigned long *gtt_linear_base,
+                                   unsigned long *ring_linear_base,
+                                   unsigned long *ring_bytes)
+{
+    v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
+                           mapped_aperture_bytes, engine_type, engine_caps,
+                           gtt_linear_base, ring_linear_base, ring_bytes);
+    if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_MIP_STACKED;
+    }
+}
+
 /* Exact physical target. The aperture hook remains absent: this family takes
  * the engine only, and the VBIOS keeps the display. */
 const V9X_HW16_DEVICE v9x_gma950_device = {
@@ -261,5 +314,24 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
     0,
     v9x_gma950_fill_engine,
     /* VBE reports the framebuffer in GMADR BAR2. */
+    2u
+};
+
+/*
+ * The 915GM's GMA 900. Its BARs, stolen-memory decode, BSM and VBE size match
+ * the 945GSE's in the one survey there is
+ * (docs\probe\references\lenovo-3000-c100-915gm-vgasurv-2026-10-07.ini);
+ * nothing here has run on one.
+ */
+const V9X_HW16_DEVICE v9x_gma900_device = {
+    0x8086u, 0x2592u,
+    "Intel GMA 900 (915GM)",
+    "8086", "2592",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen3",
+    0,
+    v9x_gma900_fill_engine,
     2u
 };

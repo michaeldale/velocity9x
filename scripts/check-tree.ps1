@@ -1378,6 +1378,29 @@ if ($loaderRingOffset -ne $headerRingOffset) {
            'intel_gma.h. The submission boundaries are computed against one ' +
            'and written against the other.') -f $loaderRingOffset, $headerRingOffset
 }
+
+# The runtime ring's start, generated into i9xx3d.inc for the mini-VDD and
+# restated in intel_gma.h for the descriptor's layout check. The check is
+# worth nothing if the two can name different offsets.
+$generatedRingStart = $null
+$i9xx3dText = Get-Content -LiteralPath (
+    Join-Path $repoRoot 'src\minivdd32\i9xx3d.inc') -Raw
+if ($i9xx3dText -match '(?m)^V9X_I9XX_RING_START\s+EQU\s+0([0-9A-Fa-f]+)h') {
+    $generatedRingStart = [Convert]::ToUInt32($Matches[1], 16)
+}
+$headerRingStart = $null
+if ($intelGmaText -match '(?m)^#define\s+V9X_I9XX_RUNTIME_RING_START\s+\(\(v9x_u32\)0x([0-9A-Fa-f]+)ul\)') {
+    $headerRingStart = [Convert]::ToUInt32($Matches[1], 16)
+}
+if ($null -eq $generatedRingStart -or $null -eq $headerRingStart) {
+    throw ('V9X_I9XX_RING_START must be in src\minivdd32\i9xx3d.inc and ' +
+           'V9X_I9XX_RUNTIME_RING_START in include\velocity9x\intel_gma.h.')
+}
+if ($generatedRingStart -ne $headerRingStart) {
+    throw ("The mini-VDD starts the ring at 0x{0:X} and intel_gma.h says " +
+           '0x{1:X}. The descriptor would let the heap reach the ring.') -f
+           $generatedRingStart, $headerRingStart
+}
 if (($loaderRingOffset -band 7) -ne 0) {
     throw ('V9X_I9XX_P5_RING_OFFSET is not qword aligned. RING_TAIL holds a ' +
            'qword-aligned offset and drops bit 2 - measured 2026-09-16 - so ' +
@@ -1852,9 +1875,11 @@ $gma950Text = Get-Content -Raw -LiteralPath (
 # RingOpen is a card-state write - RING_START and RING_CTL on a boot carrying
 # no token. Reaching it because the BARs mapped put the one sequence that can
 # start a GPU fetching behind no permission at all, on every DirectDraw
-# session, with nothing to stop it from DOS afterwards.
+# session, with nothing to stop it from DOS afterwards. Further refusals may
+# sit between the two (the 915GM's layout and GMADR checks), but only inside
+# the same if/else chain: no line between may close it with a bare brace.
 if ($gma950Text -notmatch
-        '(?m)^\s*if \(v9x_intel_runtime3d_allowed == 0u\) \{\r?\n(?:[^\r\n]*\r?\n)?\s*\} else if \(V9xMiniI9xxRingOpen\(') {
+        '(?m)^\s*if \(v9x_intel_runtime3d_allowed == 0u\) \{\r?\n(?:(?!\s*\}\s*\r?$)(?![^\r\n]*V9xMiniI9xxRingOpen\()[^\r\n]*\r?\n)*\s*\} else if \(V9xMiniI9xxRingOpen\(') {
     throw ('gma950_hw16.c must gate V9xMiniI9xxRingOpen on ' +
            'v9x_intel_runtime3d_allowed. It writes ring registers on a boot ' +
            'with no arm token, and an ungated call has no off switch.')

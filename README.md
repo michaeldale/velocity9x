@@ -18,11 +18,11 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.12.2**, a fix release for the Direct3D 8 release
-(0.12.0): Unreal Tournament's missing polygons under Direct3D, on the ATI
-cards (0.12.1) and the Intel GMA 950 (0.12.2), and its OpenGL renderer
-surviving a switch to fullscreen. See the [changelog](CHANGELOG.md).
-Download it from [releases/0.12.2](releases/0.12.2/README.md).
+**Current version: 0.13.0**: single-pass multitexture on the ATI Rage
+Pro class, an OpenGL driver that draws two-texture batches in passes when
+no engine takes them whole, and the Intel GMA 900 (915GM) claimed for the
+first time, untested on that chip. See the [changelog](CHANGELOG.md).
+Download it from [releases/0.13.0](releases/0.13.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
@@ -50,6 +50,12 @@ is open.
 | See what changed | [CHANGELOG.md](CHANGELOG.md) |
 
 ## Intel GMA 950
+
+From 0.13.0 the `intel-gma` package also claims the **GMA 900 on the 915GM**
+(`8086:2592`), the same engine, from a hardware survey sent in by a user.
+No 915 has run it yet; the
+[decision record](docs/decisions/2026-10-08-intel-915gm-gma900-support.md)
+lists what a first boot would check.
 
 The `intel-gma` package drives the **GMA 950 on the 945GSE**
 (`8086:27AE`). The video BIOS sets the modes (640x480 and the panel's

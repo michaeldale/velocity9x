@@ -7,6 +7,12 @@
 
 #define V9X_PCI_VENDOR_INTEL             ((v9x_u16)0x8086u)
 #define V9X_PCI_DEVICE_GMA950_945GSE     ((v9x_u16)0x27aeu)
+/*
+ * The 915GM's GMA 900, function 0. Same Gen3 command set as the 945; claimed
+ * from a DOS survey only (docs\decisions\2026-10-08-intel-915gm-gma900-
+ * support.md), with no 915 in the fleet.
+ */
+#define V9X_PCI_DEVICE_GMA900_915GM      ((v9x_u16)0x2592u)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)
@@ -40,6 +46,15 @@
  * only the count would keep passing if this moved to an odd multiple of four.
  */
 #define V9X_I9XX_P5_RING_OFFSET          ((v9x_u32)0x00001000ul)
+/*
+ * Where the mini-VDD puts the runtime ring: V9X_I9XX_RING_START in the
+ * generated src\minivdd32\i9xx3d.inc, which check-tree asserts equal. It is
+ * the reserve offset for a VBE-reported 0x7B0000 (8 MiB stolen), fixed at
+ * build time, while the DirectDraw heap ends wherever the reported size puts
+ * the reserve. A part reporting any other size would hand the heap the ring's
+ * pages, so the descriptor withholds the ring unless the two agree.
+ */
+#define V9X_I9XX_RUNTIME_RING_START      ((v9x_u32)0x006b0000ul)
 
 /*
  * Phase 5's render target: 640x480 at 16 bpp, RGB565, linear.

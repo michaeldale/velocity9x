@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA (Gen3)'
-    Description = 'Intel GMA 950 on 945GSE: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine.'
+    Description = 'Intel GMA 950 on 945GSE and GMA 900 on 915GM: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine.'
 
     Chips = @(
         @{
@@ -44,6 +44,38 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_gma950_device')
+        }
+        @{
+            # The 915GM's GMA 900, from 0.13.0. Claimed on a DOS survey of a
+            # Lenovo 3000 C100 sent with GitHub issue 3; no 915 has run this
+            # driver. The descriptor is the 945's plus the stacked mip layout
+            # bit: docs\decisions\2026-10-08-intel-915gm-gma900-support.md.
+            Id = 'gma900-915gm'
+            Name = 'Intel GMA 900 (915GM)'
+            VendorId = '8086'
+            DeviceId = '2592'
+            DeviceDesc = 'Velocity9x Intel GMA 900 (915GM)'
+            Adapter = 'Intel GMA 900 (915GM)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-gen3'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('D3D')
+            VideoMemoryBytes = 4194304
+            # The family's table, which the driver's own must equal. The
+            # 1024x576 rows are the netbook's OEM modes and this BIOS does not
+            # describe them; the runtime VBE scan hides them and offers the
+            # BIOS's 1024x768 instead.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_gma900_device')
         }
     )
 
@@ -143,7 +175,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE exactly'
+        HardwareIdHint = 'PCI 8086:27AE or 8086:2592 exactly'
     }
 
     Vm = @{

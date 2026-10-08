@@ -4050,7 +4050,7 @@ static void test_i9xx_miptree_layout(void)
      * 368, 376, 380, 382 down the right-hand column. Level 1 ends at row 384
      * and the 1x1 level's two aligned rows end there too.
      */
-    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 9ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 9ul, V9X_FALSE, &tree) == V9X_TRUE);
     CHECK(tree.levels == 9ul);
     CHECK(tree.pitch == 512ul);
     CHECK(tree.rows == 384ul);
@@ -4066,7 +4066,7 @@ static void test_i9xx_miptree_layout(void)
 
     /* The probe's ladder: 128 to 16, four levels, pitch 256. Level 2 at
      * column 64 of row 128; level 3 at row 160 in that column. */
-    CHECK(v9x_d3d_i9xx_layout_miptree(128ul, 128ul, 4ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(128ul, 128ul, 4ul, V9X_FALSE, &tree) == V9X_TRUE);
     CHECK(tree.pitch == 256ul);
     CHECK(tree.rows == 192ul);
     CHECK(tree.level_offset[1] == 32768ul);
@@ -4079,26 +4079,26 @@ static void test_i9xx_miptree_layout(void)
      * bytes and then to 64. Level 2 sits 4 texels (8 bytes) right of level
      * 1, and its single row takes two.
      */
-    CHECK(v9x_d3d_i9xx_layout_miptree(4ul, 4ul, 3ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(4ul, 4ul, 3ul, V9X_FALSE, &tree) == V9X_TRUE);
     CHECK(tree.pitch == 64ul);
     CHECK(tree.rows == 6ul);
     CHECK(tree.level_offset[1] == 256ul);
     CHECK(tree.level_offset[2] == 264ul);
 
     /* One level is a tree too: no widening, one aligned level. */
-    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 1ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 1ul, V9X_FALSE, &tree) == V9X_TRUE);
     CHECK(tree.pitch == 512ul);
     CHECK(tree.rows == 256ul);
 
     /* Refusals: not a power of two, zero, too large, more levels than the
      * top has, and none at all. */
-    CHECK(v9x_d3d_i9xx_layout_miptree(96ul, 96ul, 2ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(0ul, 0ul, 1ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(4096ul, 4096ul, 1ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 6ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 5ul, &tree) == V9X_TRUE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 0ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 1ul, 0) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(96ul, 96ul, 2ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(0ul, 0ul, 1ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(4096ul, 4096ul, 1ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 6ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 5ul, V9X_FALSE, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 0ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 16ul, 1ul, V9X_FALSE, 0) == V9X_FALSE);
 
     /*
      * Non-square (Phase 2 of the OpenGL plan, 2026-09-26). Mesa's
@@ -4113,7 +4113,7 @@ static void test_i9xx_miptree_layout(void)
      * it (64 bytes); then down the right-hand column by 4, 2, 2, 2 rows -
      * a one-row level still takes two - to row 28.
      */
-    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 16ul, 7ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 16ul, 7ul, V9X_FALSE, &tree) == V9X_TRUE);
     CHECK(tree.levels == 7ul);
     CHECK(tree.pitch == 128ul);
     CHECK(tree.rows == 28ul);
@@ -4130,7 +4130,7 @@ static void test_i9xx_miptree_layout(void)
      * row 64, 32 rows tall, so the tree is 96 rows; level 2 eight texels
      * (16 bytes) right of it at row 64, then rows 80, 88, 92, 94.
      */
-    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 64ul, 7ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(16ul, 64ul, 7ul, V9X_FALSE, &tree) == V9X_TRUE);
     CHECK(tree.pitch == 64ul);
     CHECK(tree.rows == 96ul);
     CHECK(tree.level_offset[1] == 4096ul);
@@ -4142,11 +4142,68 @@ static void test_i9xx_miptree_layout(void)
 
     /* The chain is as long as the larger edge allows, and each edge is
      * checked on its own. */
-    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 16ul, 8ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 24ul, 1ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 0ul, 1ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 4096ul, 1ul, &tree) == V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_layout_miptree(1ul, 2048ul, 12ul, &tree) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 16ul, 8ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 24ul, 1ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 0ul, 1ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 4096ul, 1ul, V9X_FALSE, &tree) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_miptree(1ul, 2048ul, 12ul, V9X_FALSE, &tree) == V9X_TRUE);
+}
+
+/*
+ * The 915's stacked layout (gallium i915_texture_layout_2d): every level at
+ * the left edge, each below the one before, rows aligned to two, the pitch
+ * level 0's. Worked by hand from that rule; no 915 has sampled one.
+ */
+static void test_i9xx_miptree_layout_stacked(void)
+{
+    struct v9x_d3d_i9xx_miptree tree;
+
+    /* 256 to 1: rows 0, 256, 384, 448, 480, 496, 504, 508, 510, and the
+     * 1x1 level's two aligned rows end the tree at 512. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 9ul, V9X_TRUE,
+                                      &tree) == V9X_TRUE);
+    CHECK(tree.levels == 9ul);
+    CHECK(tree.pitch == 512ul);
+    CHECK(tree.rows == 512ul);
+    CHECK(tree.level_offset[0] == 0ul);
+    CHECK(tree.level_offset[1] == 131072ul);
+    CHECK(tree.level_offset[2] == 196608ul);
+    CHECK(tree.level_offset[3] == 229376ul);
+    CHECK(tree.level_offset[4] == 245760ul);
+    CHECK(tree.level_offset[5] == 253952ul);
+    CHECK(tree.level_offset[6] == 258048ul);
+    CHECK(tree.level_offset[7] == 260096ul);
+    CHECK(tree.level_offset[8] == 261120ul);
+
+    /* 4 to 1: no widening for level 2, which the 945 layout needed; the
+     * pitch is level 0's 8 bytes aligned to 64. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(4ul, 4ul, 3ul, V9X_TRUE,
+                                      &tree) == V9X_TRUE);
+    CHECK(tree.pitch == 64ul);
+    CHECK(tree.rows == 8ul);
+    CHECK(tree.level_offset[1] == 256ul);
+    CHECK(tree.level_offset[2] == 384ul);
+
+    /* 64x16, seven levels: heights 16, 8, 4, 2 and three one-row levels
+     * that take two each, so rows 0, 16, 24, 28, 30, 32, 34 and 36 in all. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(64ul, 16ul, 7ul, V9X_TRUE,
+                                      &tree) == V9X_TRUE);
+    CHECK(tree.pitch == 128ul);
+    CHECK(tree.rows == 36ul);
+    CHECK(tree.level_offset[1] == 2048ul);
+    CHECK(tree.level_offset[2] == 3072ul);
+    CHECK(tree.level_offset[3] == 3584ul);
+    CHECK(tree.level_offset[4] == 3840ul);
+    CHECK(tree.level_offset[5] == 4096ul);
+    CHECK(tree.level_offset[6] == 4352ul);
+
+    /* One level is the same in either layout. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 1ul, V9X_TRUE,
+                                      &tree) == V9X_TRUE);
+    CHECK(tree.pitch == 512ul);
+    CHECK(tree.rows == 256ul);
+    CHECK(v9x_d3d_i9xx_layout_miptree(96ul, 96ul, 2ul, V9X_TRUE,
+                                      &tree) == V9X_FALSE);
 }
 
 /* Every bound MAP_STATE refuses, and both sides of each. */
@@ -5902,6 +5959,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_runtime_decal_program();
     test_runtime_mip_chain();
     test_i9xx_miptree_layout();
+    test_i9xx_miptree_layout_stacked();
     test_i9xx_texture_shape();
     test_runtime_blend();
     test_runtime_alpha_test();

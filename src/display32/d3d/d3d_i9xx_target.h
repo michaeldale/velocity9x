@@ -70,6 +70,12 @@ v9x_u16 v9x_d3d_i9xx_bind_depth(
  * to 64 bytes. UNMEASURED on this part until the probe's mip ladder reads
  * each level's colour back.
  *
+ * `stacked` asks for the 915's layout instead (gallium
+ * i915_texture_layout_2d, which Mesa picks when is_i945 is false): every level
+ * at the left edge, each below the one before, rows aligned to 2, the pitch
+ * level 0's aligned to 64. The HAL passes it on V9X_DD_ENGINE_CAP_I9XX_MIP_
+ * STACKED. Desk evidence only; no 915 has sampled a chain this driver placed.
+ *
  * `size` is the top level's edge, a power of two up to MAP_STATE's 2048;
  * `levels` counts the top, from 1 to log2(size) + 1. level_offset[n] is
  * level n's byte offset from the chain's base, pitch is bytes and rows is
@@ -89,7 +95,7 @@ struct v9x_d3d_i9xx_miptree {
  * two within the map bounds, and the chain as long as the larger edge
  * allows. Direct3D passes a square, which its caps still require. */
 v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
-                                    v9x_u32 levels,
+                                    v9x_u32 levels, v9x_u16 stacked,
                                     struct v9x_d3d_i9xx_miptree *tree);
 
 /*

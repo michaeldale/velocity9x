@@ -55,7 +55,8 @@ v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
     state->pci.revision = 0u;
 
     if (pci->vendor_id != V9X_PCI_VENDOR_INTEL ||
-        pci->device_id != V9X_PCI_DEVICE_GMA950_945GSE) {
+        (pci->device_id != V9X_PCI_DEVICE_GMA950_945GSE &&
+         pci->device_id != V9X_PCI_DEVICE_GMA900_915GM)) {
         return V9X_STATUS_UNSUPPORTED;
     }
     state->pci = *pci;

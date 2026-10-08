@@ -220,6 +220,14 @@ chips.
 
 None is a machine anyone is relying on, which is the right shape for this.
 
+Two more surveys arrived with GitHub issue 3 (2026-10-07), from machines
+outside the fleet: a G45/G43 (`8086:2E22`, Dell Inspiron 560) and a Q45/Q43
+(`8086:2E12`, HP Compaq 8000 Elite SFF), both Gen4 with the topology above,
+32 MiB stolen and VBE 3.0 to 1920x1440
+(`docs\probe\references\*-g45-*` and `*-q45-*`; summary in
+`docs\decisions\2026-10-08-intel-915gm-gma900-support.md`). Whether either
+runs Windows 98 is not known.
+
 ## Order
 
 1. **Windows 98 SE on any of the three.** Everything is blocked here, and

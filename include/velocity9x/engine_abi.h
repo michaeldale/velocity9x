@@ -178,6 +178,14 @@
 #define V9X_DD_ENGINE_CAP_D3D_DP2       0x00002000ul
 #define V9X_DD_ENGINE_CAP_D3D_DP2_ALL   0x00004000ul
 /*
+ * Intel Gen3: this part samples a mip chain with every level stacked below
+ * the one before, the 915's layout, rather than the 945's level-2-beside-
+ * level-1. A chip identity bit, stamped by the 915GM's descriptor only;
+ * MAP_STATE has no field that selects it. Desk evidence (Mesa's is_i945),
+ * unmeasured on a 915: docs\decisions\2026-10-08-intel-915gm-gma900-support.md.
+ */
+#define V9X_DD_ENGINE_CAP_I9XX_MIP_STACKED 0x00008000ul
+/*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
  * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only

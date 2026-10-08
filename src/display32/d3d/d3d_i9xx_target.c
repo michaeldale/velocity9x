@@ -188,7 +188,7 @@ static v9x_u32 v9x_d3d_i9xx_align(v9x_u32 value, v9x_u32 unit)
 }
 
 v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
-                                    v9x_u32 levels,
+                                    v9x_u32 levels, v9x_u16 stacked,
                                     struct v9x_d3d_i9xx_miptree *tree)
 {
     v9x_u32 level;
@@ -230,7 +230,7 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
      * enter it, which is what lets a tall map keep a narrow pitch.
      */
     pitch_texels = width;
-    if (levels > 1ul) {
+    if (levels > 1ul && stacked == V9X_FALSE) {
         v9x_u32 mip1 =
             v9x_d3d_i9xx_align(v9x_d3d_i9xx_minify(width, 1ul),
                                V9X_I9XX_MIP_ALIGN_TEXELS) +
@@ -250,6 +250,10 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
      * right after second mipmap". The step across is level 1's WIDTH and
      * each step down its own level's HEIGHT, which for a square were the
      * same number (i945_miptree_layout_2d).
+     *
+     * Stacked, the 915's: every level at x = 0, each below the one before,
+     * its rows aligned to two (gallium i915_texture_layout_2d). Level 1 then
+     * steps down like the rest, and the pitch stays level 0's.
      */
     for (level = 0ul; level < levels; ++level) {
         v9x_u32 level_width = v9x_d3d_i9xx_minify(width, level);
@@ -260,7 +264,7 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
         if (y + rows > tree->rows) {
             tree->rows = y + rows;
         }
-        if (level == 1ul) {
+        if (level == 1ul && stacked == V9X_FALSE) {
             x += v9x_d3d_i9xx_align(level_width, V9X_I9XX_MIP_ALIGN_TEXELS);
         } else {
             y += rows;

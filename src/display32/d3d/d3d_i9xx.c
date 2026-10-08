@@ -1082,6 +1082,14 @@ static DWORD v9x_d3d_i9xx_miptree_decline(DWORD reason)
     return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
+/* Which arrangement this part samples a chain in: the 915's stacked one when
+ * its descriptor says so, the 945's otherwise (v9x_d3d_i9xx_layout_miptree). */
+static v9x_u16 v9x_d3d_i9xx_mip_stacked(void)
+{
+    return (v9x_hal->engine.engine_caps &
+            V9X_DD_ENGINE_CAP_I9XX_MIP_STACKED) != 0ul ? V9X_TRUE : V9X_FALSE;
+}
+
 /* Gen3's placements are page aligned: MAP_STATE's address is. */
 static DWORD v9x_d3d_i9xx_place_block(V9X_DDHAL_CREATESURFACEDATA *data,
                                       DWORD pitch, DWORD rows,
@@ -1177,7 +1185,9 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
         pixel->dwRGBBitCount != 16ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    if (v9x_d3d_i9xx_layout_miptree(width, height, 1ul, &tree) == V9X_FALSE ||
+    if (v9x_d3d_i9xx_layout_miptree(width, height, 1ul,
+                                    v9x_d3d_i9xx_mip_stacked(),
+                                    &tree) == V9X_FALSE ||
         v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
                                  tree.level_offset, &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1268,7 +1278,8 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         pixel->dwRGBBitCount != 16ul) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_FORMAT);
     }
-    if (v9x_d3d_i9xx_layout_miptree(width, height, data->dwSCnt, &tree) ==
+    if (v9x_d3d_i9xx_layout_miptree(width, height, data->dwSCnt,
+                                    v9x_d3d_i9xx_mip_stacked(), &tree) ==
             V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
     }
@@ -1368,7 +1379,8 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (count == 1ul) {
         return 1ul;
     }
-    if (v9x_d3d_i9xx_layout_miptree(width, height, count, tree) ==
+    if (v9x_d3d_i9xx_layout_miptree(width, height, count,
+                                    v9x_d3d_i9xx_mip_stacked(), tree) ==
             V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.mip_gap_shape;
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
@@ -1403,7 +1415,8 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (verified < count) {
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         if (verified <= 1ul ||
-            v9x_d3d_i9xx_layout_miptree(width, height, verified, tree) ==
+            v9x_d3d_i9xx_layout_miptree(width, height, verified,
+                                        v9x_d3d_i9xx_mip_stacked(), tree) ==
                 V9X_FALSE) {
             return 1ul;
         }

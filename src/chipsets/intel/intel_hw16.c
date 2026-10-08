@@ -3,6 +3,7 @@
 
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
+extern const V9X_HW16_DEVICE v9x_gma900_device;
 extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
 
@@ -21,10 +22,15 @@ static void v9x_intel_publish_event_near(unsigned short kind,
 }
 
 static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
-    &v9x_gma950_device
+    &v9x_gma950_device,
+    &v9x_gma900_device
 };
 
-/* Measured on the 1024x576 LVDS target; 0160/0161 are this VBIOS's OEM rows. */
+/*
+ * Measured on the 1024x576 LVDS target; 0160/0161 are this VBIOS's OEM rows.
+ * The 915GM's BIOS leaves both undescribed (its survey), so on that part the
+ * runtime VBE scan hides them and publishes the BIOS's own rows instead.
+ */
 static const V9X_HW16_MODE v9x_intel_modes[] = {
     {  640u, 480u,  8u,  640u, 0x0101u, 254, 127 },
     { 1024u, 576u,  8u, 1024u, 0x0160u, 407, 203 },
@@ -128,7 +134,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     0,
     0,
-    /* Strict PCI identity: only 8086:27AE is claimed. */
+    /* Strict PCI identity: only 8086:27AE and 8086:2592 are claimed. */
     0u,
     0,
     v9x_gma950_reserve_video_memory,

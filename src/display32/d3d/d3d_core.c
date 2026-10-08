@@ -5344,7 +5344,12 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         name = "Velocity9x ViRGE";
     } else if (ops == &v9x_d3d_engine_i9xx) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN3;
-        name = "Velocity9x GMA 950";
+        /* The stacked mip layout is the 915GM's alone among Gen3 parts
+         * this driver claims, so it names the chip too. */
+        name = (v9x_hal->engine.engine_caps &
+                V9X_DD_ENGINE_CAP_I9XX_MIP_STACKED) != 0ul
+                   ? "Velocity9x GMA 900"
+                   : "Velocity9x GMA 950";
     } else if (ops == &v9x_d3d_engine_mach64) {
         out->engine = V9X_R3D_ABI_ENGINE_MACH64;
         name = "Velocity9x Mach64";

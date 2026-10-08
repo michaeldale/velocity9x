@@ -48,6 +48,7 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x4C54u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
     { 0x1002u, 0x4C47u, v9x_ati_mach64_backend }, /* ati / rage-iic alias */
     { 0x8086u, 0x27AEu, v9x_intel_gma_backend }, /* intel-gma / gma950-945gse */
+    { 0x8086u, 0x2592u, v9x_intel_gma_backend }, /* intel-gma / gma900-915gm */
     { 0x102Bu, 0x051Bu, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2164w */
     { 0x102Bu, 0x0519u, v9x_matrox_millennium2_backend }, /* matrox-m2 / mga2064w */
     { 0x5333u, 0x8A01u, v9x_s3_virge_backend }, /* s3 / virge-dx */

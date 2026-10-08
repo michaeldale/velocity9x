@@ -198,6 +198,9 @@ V9xI9xxEventContext dd 0
 ; Phase 4 staging has a physical-RAM write path but no register write path.
 ; The single tested machine's reserve is fixed here; a moved BSM refuses.
 V9xI9xxRingLinear   dd 0
+; The GMADR base the runtime ring open mapped V9xI9xxRingLinear through.
+; Zero when an armed path mapped it, which composes the netbook's constant.
+V9xI9xxRingGmadr    dd 0
 
 ; The read-only reserve hash (API v7). It keeps its OWN mapping, separate
 ; from the staging one, for two reasons: it must work in a build with no
@@ -250,8 +253,10 @@ include i9xx3d.inc
 ; The reserve's physical address is the GMADR base plus the GENERATED
 ; offset. The base is a PCI BAR value measured on the one tested machine
 ; and cannot come from the C builders; the offset can and does, so the two
-; halves cannot drift apart. Every path that maps the reserve composes it
-; here rather than spelling a literal.
+; halves cannot drift apart. Every ARMED path that maps the reserve composes
+; it here rather than spelling a literal; the runtime ring open adds the same
+; offset to the GMADR its caller read, since the base is not the same on a
+; 915GM.
 V9X_I9XX_GMADR_BASE         EQU 0d0000000h
 V9X_I9XX_RESERVE_PHYS       EQU V9X_I9XX_GMADR_BASE + V9X_I9XX_RESERVE_OFFSET
 V9X_I9XX_RESERVE_BYTES_TOTAL EQU 000100000h
@@ -2306,6 +2311,11 @@ ENDIF
 ; Idempotent: a ring already enabled with the expected START and CTL is
 ; reported as success without being touched, because re-running the sequence
 ; would reset HEAD and TAIL underneath work in flight.
+;
+; EBX = GMADR (BAR2) physical base, read by the display driver. The window
+; was composed from V9X_I9XX_GMADR_BASE, the netbook's D0000000, until the
+; 915GM: its survey has BAR0 - the register file - at D0000000 and GMADR at
+; A0000000. So the base is checked before the first store, not after.
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
 BeginProc V9xMini_I9xx_Ring_Open
     push    esi
@@ -2313,6 +2323,29 @@ BeginProc V9xMini_I9xx_Ring_Open
     mov     esi, V9xI9xxMmioLinear
     test    esi, esi
     jz      V9xMini_I9xx_Ring_Open_Fail
+
+    ; A 256 MiB-aligned memory BAR, the check runtime.asm applies when it
+    ; reads BAR2, and neither of the two windows already mapped here.
+    cmp     ebx, 01000000h
+    jb      V9xMini_I9xx_Ring_Open_Fail
+    test    ebx, 0fffffffh
+    jnz     V9xMini_I9xx_Ring_Open_Fail
+    cmp     ebx, V9xI9xxMmioBase
+    je      V9xMini_I9xx_Ring_Open_Fail
+    cmp     ebx, V9xI9xxGttBase
+    je      V9xMini_I9xx_Ring_Open_Fail
+    ; A window already mapped must be the one this base names, so a moved
+    ; BAR is refused rather than mapped a second time.
+    cmp     V9xI9xxRingLinear, 0
+    je      short V9xMini_I9xx_Ring_Open_Based
+    mov     eax, V9xI9xxRingGmadr
+    test    eax, eax
+    jnz     short V9xMini_I9xx_Ring_Open_Same
+    mov     eax, V9X_I9XX_GMADR_BASE
+V9xMini_I9xx_Ring_Open_Same:
+    cmp     ebx, eax
+    jne     V9xMini_I9xx_Ring_Open_Fail
+V9xMini_I9xx_Ring_Open_Based:
 
     ; Already up? START matching and CTL enabled is the whole test; HEAD and
     ; TAIL are wherever previous work left them and are not ours to judge.
@@ -2356,11 +2389,14 @@ V9xMini_I9xx_Ring_Open_Ready:
     mov     eax, V9xI9xxRingLinear
     test    eax, eax
     jnz     short V9xMini_I9xx_Ring_Open_Have
-    mov     eax, V9X_I9XX_RESERVE_PHYS
+    ; The caller's GMADR plus the generated offset. EBX survives the VMM
+    ; call, which preserves it by the C convention.
+    lea     eax, [ebx+V9X_I9XX_RESERVE_OFFSET]
     VMMcall _MapPhysToLinear,<eax,V9X_I9XX_RESERVE_BYTES_TOTAL,0>
     cmp     eax, 0ffffffffh
     je      short V9xMini_I9xx_Ring_Open_Fail
     mov     V9xI9xxRingLinear, eax
+    mov     V9xI9xxRingGmadr, ebx
 V9xMini_I9xx_Ring_Open_Have:
     mov     ebx, eax
     mov     ecx, 000010000h
@@ -2380,6 +2416,7 @@ ENDIF
 
 V9xMini_Api_I9xxRingOpen:
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     ebx, [ebp.Client_EBX]
     call    V9xMini_I9xx_Ring_Open
     mov     [ebp.Client_EBX], ebx
     mov     [ebp.Client_ECX], ecx

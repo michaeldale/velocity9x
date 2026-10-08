@@ -10,6 +10,7 @@ Single-pass multitexture on the ATI Rage Pro class, and an OpenGL ICD
 that draws a two-texture batch in passes when no engine takes it whole.
 Measured on A8U4I5 (Rage XL PCI) and the HP Mini 110 netbook (GMA 950).
 The Gateway's Rage Mobility-M runs the same Mach64 code and was not run.
+The Intel GMA 900 (915GM) is claimed, untested on hardware.
 
 ### ATI Rage Pro class (Mach64)
 
@@ -50,6 +51,31 @@ The Gateway's Rage Mobility-M runs the same Mach64 code and was not run.
   for its default path, and Half-Life OpenGL at 640x480 at 17.1-17.6 fps,
   as on 0.12.
   [Decision](docs/decisions/2026-10-08-netbook-multitexture-recheck.md).
+
+### Intel GMA 900 (915GM)
+
+- **The 915GM's GMA 900 (`8086:2592`) is claimed by the intel-gma
+  package**, with the GMA 950's Gen3 Direct3D, blits and ring flips.
+  From a DOS survey sent with GitHub issue 3; no 915 has run this
+  driver. Its BARs, stolen memory, BSM and VBE size match the netbook's.
+  Mip chains are placed in the 915's stacked layout rather than the
+  945's (Mesa's `is_i945`). The 1024x576 rows are the netbook's; on the
+  915GM the BIOS's own modes, to 1024x768, come from the VBE scan.
+  `IntelRuntime3D=0` leaves a 2D desktop. OpenGL names it "Velocity9x
+  GMA 900".
+  [Decision](docs/decisions/2026-10-08-intel-915gm-gma900-support.md).
+- The mini-VDD mapped the runtime ring through the netbook's aperture
+  address, a constant. It now takes the aperture the driver reads from
+  BAR2, and refuses one it cannot trust before writing a register. On
+  the 915GM survey the constant was the register BAR. The descriptor
+  also withholds the ring when the reported video memory would put the
+  DirectDraw heap over it.
+- The netbook ran this build for regressions: V9XDDP's checks as on
+  2026-09-26 or better, the ring and ring flips up through the new path,
+  V9XGLP passing, and Quake 2 at 34.8 fps against 34.5.
+- The GMA 4500 surveys from the same issue are recorded against the
+  [Gen4 plan](docs/plans/intel-gen4-gen5-bringup.md); nothing changes for
+  them.
 
 ### Diagnostics
 
