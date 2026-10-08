@@ -41,6 +41,7 @@
 #include "glide_vertex.h"
 #include "glide_state.h"
 #include "glide_texmem.h"
+#include "glide_texfmt.h"
 #include "glide_surface.h"
 
 static void v9x_glide_stub_called(unsigned int ix);
@@ -181,6 +182,8 @@ static v9x_u32 v9x_glide_refused;
 static v9x_u32 v9x_glide_culled;
 static v9x_u32 v9x_glide_skipped_textured;
 static v9x_u32 v9x_glide_unrecognized_logged;
+static v9x_u32 v9x_glide_fog_dropped;
+static v9x_u32 v9x_glide_uploads;
 
 /* ---- the log ------------------------------------------------------- */
 
@@ -322,6 +325,9 @@ static void v9x_glide_summary(const char *why)
               v9x_glide_drawn, v9x_glide_refused, v9x_glide_culled,
               v9x_glide_skipped_textured);
     v9x_glide_log(text);
+    wsprintfA(text, "census   draws: fog-dropped=%lu uploads=%lu",
+              v9x_glide_fog_dropped, v9x_glide_uploads);
+    v9x_glide_log(text);
     for (ix = 0u; ix < V9X_GLIDE_EXPORT_COUNT; ++ix) {
         if (v9x_glide_calls[ix] == 0ul) {
             continue;
@@ -371,6 +377,18 @@ static void v9x_glide_zero(void *block, unsigned int bytes)
     }
 }
 
+static int v9x_glide_same(const void *a, const void *b, unsigned int bytes)
+{
+    unsigned int i;
+
+    for (i = 0u; i < bytes; ++i) {
+        if (((const v9x_u8 *)a)[i] != ((const v9x_u8 *)b)[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 /* An unrecognised state is drawn with the closest mapping; the first few
  * are logged so the census of a new title names what to add. */
 static void v9x_glide_note_unrecognized(const V9X_GLIDE_DRAW_SETUP *setup)
@@ -392,28 +410,90 @@ static void v9x_glide_note_unrecognized(const V9X_GLIDE_DRAW_SETUP *setup)
                    (s->blend_src << 8) | s->blend_dst);
 }
 
-static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
-                                   V9X_GLIDE_VERTEX_SETUP *vs)
+/*
+ * The textures the game downloaded, one entry per glide_texmem.c record
+ * (same index). An entry keeps the game's texels of the largest level - the
+ * pointer it downloaded from is the game's to reuse - its 16-bit conversion,
+ * and on an engine that samples video memory a surface holding that
+ * conversion. `variant` names a conversion: the palette for P_8 and the
+ * chroma key, which both change texels.
+ */
+typedef struct v9x_glide_texture {
+    v9x_u32 serial;
+    v9x_u8 *raw;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 format;
+    v9x_u16 *texels;
+    v9x_u32 abi_format;
+    v9x_u32 variant;
+    void *surface;
+    v9x_u32 surface_format;
+    v9x_u32 surface_variant;
+} V9X_GLIDE_TEXTURE;
+
+static V9X_GLIDE_TEXMEM v9x_glide_texmem;
+static V9X_GLIDE_TEXTURE v9x_glide_textures[V9X_GLIDE_TEXMEM_RECORDS];
+static int v9x_glide_source = -1;
+static v9x_u32 v9x_glide_source_aspect = V9X_GLIDE_ASPECT_1X1;
+static v9x_u32 v9x_glide_palette[V9X_GLIDE_PALETTE_ENTRIES];
+static v9x_u32 v9x_glide_palette_serial = 1ul;
+
+/* Triangles held while nothing they are drawn with changes, as the ICD
+ * holds them (gl_icd.c): every batch through the interface costs a lock,
+ * a validation and a submission whatever its size. NFS II SE sends about
+ * 2,300 triangles a frame one grDrawTriangle at a time (census). The
+ * texture is kept with `levels` null and pointed at `level` when drawn. */
+static struct {
+    V9X_GLIDE_DRAW_SETUP setup;
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_LEVEL level;
+    V9X_R3D_ABI_VERTEX vertices[3u * V9X_R3D_ABI_BATCH_MAX];
+    v9x_u32 triangles;
+} v9x_glide_pending;
+
+static void *v9x_glide_alloc(v9x_u32 bytes)
 {
-    vs->origin = v9x_glide_state.origin;
-    vs->height = (float)v9x_glide_state.height;
-    vs->depth_mode = v9x_glide_state.depth_mode;
-    vs->s_scale = 1.0f / (float)V9X_GLIDE_LOD_EDGE;
-    vs->t_scale = 1.0f / (float)V9X_GLIDE_LOD_EDGE;
-    vs->color_source = draw->color_source;
-    vs->alpha_source = draw->alpha_source;
-    vs->constant_argb = v9x_glide_color_to_argb(v9x_glide_state.constant_color,
-                                                v9x_glide_color_format);
-    vs->fog_mode = v9x_glide_state.fog_mode & V9X_GLIDE_FOG_SOURCE_MASK;
-    vs->fog_table = v9x_glide_fog;
+    return HeapAlloc(GetProcessHeap(), 0, bytes);
+}
+
+static void v9x_glide_free(void *block)
+{
+    if (block != 0) {
+        HeapFree(GetProcessHeap(), 0, block);
+    }
+}
+
+static void v9x_glide_texture_free(V9X_GLIDE_TEXTURE *texture)
+{
+    v9x_glide_free(texture->raw);
+    v9x_glide_free(texture->texels);
+    v9x_glide_hwtex_release(texture->surface);
+    v9x_glide_zero(texture, sizeof(*texture));
+}
+
+/* Surfaces go before the device that made them; the texels stay, so a
+ * reopened device uploads them again. */
+static void v9x_glide_textures_drop_surfaces(void)
+{
+    unsigned int i;
+
+    for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
+        v9x_glide_hwtex_release(v9x_glide_textures[i].surface);
+        v9x_glide_textures[i].surface = 0;
+        v9x_glide_textures[i].surface_variant = 0ul;
+    }
 }
 
 /*
- * One untextured batch through the render interface, into the buffer
- * grRenderBuffer chose. STALE means a mode change started a new
- * generation: describe again and retry once.
+ * One batch through the render interface, into the buffer grRenderBuffer
+ * chose. STALE means a mode change started a new generation: describe
+ * again and retry once. A fogged batch the engine refuses is drawn again
+ * without fog and counted: whether an engine fogs through this interface
+ * is measured per engine, not assumed.
  */
-static void v9x_glide_submit(const V9X_GLIDE_DRAW_SETUP *setup,
+static void v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
+                             const V9X_R3D_ABI_TEXTURE *texture,
                              const V9X_R3D_ABI_VERTEX *vertices,
                              v9x_u32 triangles)
 {
@@ -430,27 +510,288 @@ static void v9x_glide_submit(const V9X_GLIDE_DRAW_SETUP *setup,
     draw.struct_bytes = sizeof(draw);
     draw.target.surface = v9x_glide_device_buffer(v9x_glide_render_buffer);
     draw.depth.surface = v9x_glide_device_buffer(V9X_GLIDE_BUFFER_AUX);
-    draw.texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    draw.texture = *texture;
     draw.texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
     draw.state = setup->state;
     draw.vertices = vertices;
     draw.triangle_count = triangles;
-    for (attempt = 0u; attempt < 2u; ++attempt) {
+    for (attempt = 0u; attempt < 3u; ++attempt) {
         draw.generation = v9x_glide_device_generation();
         v9x_glide_zero(&outcome, sizeof(outcome));
         result = iface->draw(&draw, &outcome);
-        if (result != V9X_R3D_RESULT_STALE || !v9x_glide_device_redescribe()) {
-            break;
+        if (result == V9X_R3D_RESULT_STALE && v9x_glide_device_redescribe()) {
+            continue;
         }
+        if (result == V9X_R3D_RESULT_UNSUPPORTED && draw.state.fog_enable) {
+            draw.state.fog_enable = 0ul;
+            v9x_glide_fog_dropped += triangles;
+            continue;
+        }
+        break;
     }
     if (result == V9X_R3D_RESULT_OK || result == V9X_R3D_RESULT_PARTIAL) {
         v9x_glide_drawn += outcome.submitted;
         return;
     }
     if (v9x_glide_refused++ < 8ul) {
-        v9x_glide_log3("draw refused: result=%lu triangles=%lu", result,
-                       triangles, 0ul);
+        v9x_glide_log3("draw refused: result=%lu triangles=%lu storage=%lu", result,
+                       triangles, texture->storage);
     }
+}
+
+static void v9x_glide_flush(void)
+{
+    V9X_R3D_ABI_TEXTURE texture;
+
+    if (v9x_glide_pending.triangles == 0ul) {
+        return;
+    }
+    texture = v9x_glide_pending.texture;
+    if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+        texture.levels = &v9x_glide_pending.level;
+        texture.level_count = 1ul;
+    }
+    v9x_glide_submit(&v9x_glide_pending.setup, &texture,
+                     v9x_glide_pending.vertices, v9x_glide_pending.triangles);
+    v9x_glide_pending.triangles = 0ul;
+}
+
+static void v9x_glide_queue(const V9X_GLIDE_DRAW_SETUP *setup,
+                            const V9X_R3D_ABI_TEXTURE *texture,
+                            const V9X_R3D_ABI_LEVEL *level,
+                            const V9X_R3D_ABI_VERTEX *vertices,
+                            v9x_u32 triangles)
+{
+    v9x_u32 i;
+
+    if (v9x_glide_pending.triangles != 0ul &&
+        (v9x_glide_pending.triangles + triangles > V9X_R3D_ABI_BATCH_MAX ||
+         !v9x_glide_same(&v9x_glide_pending.setup, setup, sizeof(*setup)) ||
+         !v9x_glide_same(&v9x_glide_pending.texture, texture, sizeof(*texture)) ||
+         !v9x_glide_same(&v9x_glide_pending.level, level, sizeof(*level)))) {
+        v9x_glide_flush();
+    }
+    if (v9x_glide_pending.triangles == 0ul) {
+        v9x_glide_pending.setup = *setup;
+        v9x_glide_pending.texture = *texture;
+        v9x_glide_pending.level = *level;
+    }
+    for (i = 0ul; i < triangles * 3ul; ++i) {
+        v9x_glide_pending.vertices[v9x_glide_pending.triangles * 3ul + i] =
+            vertices[i];
+    }
+    v9x_glide_pending.triangles += triangles;
+}
+
+/* The conversion the current palette and chroma key call for. */
+static v9x_u32 v9x_glide_variant(const V9X_GLIDE_TEXTURE *texture,
+                                 v9x_u32 key_enable, v9x_u32 key_rgb)
+{
+    v9x_u32 variant = 0x80000000ul;
+
+    if (texture->format == V9X_GLIDE_TEXFMT_P_8) {
+        variant |= (v9x_glide_palette_serial & 0x7FFFul) << 16;
+    }
+    if (key_enable) {
+        variant ^= 0x8000ul | ((key_rgb ^ (key_rgb >> 15)) & 0x7FFFul);
+    }
+    return variant;
+}
+
+/*
+ * The current source as the draw's texture: its conversion brought up to
+ * date, then a surface when the engine samples video memory and takes the
+ * size and format, the CPU texels otherwise. Zero when there is nothing
+ * to draw with (no source, a record overwritten since, a format not
+ * converted).
+ */
+static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
+                                  V9X_R3D_ABI_TEXTURE *out,
+                                  V9X_R3D_ABI_LEVEL *level)
+{
+    const V9X_R3D_ABI_DESCRIBE *describe = v9x_glide_device_description();
+    const V9X_GLIDE_TEXREC *record;
+    V9X_GLIDE_TEXTURE *texture;
+    v9x_u32 key_rgb = v9x_glide_color_to_argb(v9x_glide_state.chroma_value,
+                                              v9x_glide_color_format) &
+                      0x00FFFFFFul;
+    v9x_u32 variant;
+    v9x_u32 edge;
+
+    if (v9x_glide_source < 0 || describe == 0) {
+        return 0;
+    }
+    record = &v9x_glide_texmem.records[v9x_glide_source];
+    texture = &v9x_glide_textures[v9x_glide_source];
+    if (!record->in_use || texture->serial != record->serial ||
+        texture->raw == 0) {
+        return 0;
+    }
+    variant = v9x_glide_variant(texture, setup->key_texture, key_rgb);
+    if (texture->variant != variant) {
+        /* A held batch may sample these texels or their surface. */
+        v9x_glide_flush();
+        if (texture->texels == 0) {
+            texture->texels = (v9x_u16 *)v9x_glide_alloc(texture->width *
+                                                         texture->height * 2ul);
+        }
+        if (texture->texels == 0 ||
+            !v9x_glide_texfmt_convert(texture->format, texture->raw,
+                                      texture->width * texture->height,
+                                      v9x_glide_palette, setup->key_texture,
+                                      key_rgb, texture->texels,
+                                      &texture->abi_format)) {
+            return 0;
+        }
+        texture->variant = variant;
+    }
+
+    v9x_glide_zero(out, sizeof(*out));
+    v9x_glide_zero(level, sizeof(*level));
+    out->format = texture->abi_format;
+    out->min_filter = setup->min_filter;
+    out->mag_filter = setup->mag_filter;
+    out->mip = V9X_R3D_ABI_MIP_NONE;
+    out->address = setup->address;
+    out->color_op = setup->color_op;
+    out->alpha_op = setup->alpha_op;
+
+    edge = texture->width > texture->height ? texture->width : texture->height;
+    if (describe->hw_texture_size_max >= edge &&
+        texture->width >= describe->hw_texture_size_min &&
+        texture->height >= describe->hw_texture_size_min &&
+        (describe->texture_formats & (1ul << texture->abi_format)) != 0ul) {
+        if (texture->surface != 0 && texture->surface_format != texture->abi_format) {
+            v9x_glide_flush();
+            v9x_glide_hwtex_release(texture->surface);
+            texture->surface = 0;
+        }
+        if (texture->surface == 0) {
+            texture->surface = v9x_glide_hwtex_create(texture->width,
+                                                      texture->height,
+                                                      texture->abi_format);
+            texture->surface_format = texture->abi_format;
+            texture->surface_variant = 0ul;
+        }
+        if (texture->surface != 0 && texture->surface_variant != variant) {
+            v9x_glide_flush();
+            if (v9x_glide_hwtex_upload(texture->surface, texture->texels,
+                                       texture->width, texture->height)) {
+                texture->surface_variant = variant;
+                ++v9x_glide_uploads;
+            }
+        }
+        if (texture->surface != 0 && texture->surface_variant == variant) {
+            out->storage = V9X_R3D_ABI_TEXTURE_HW;
+            out->surface.surface = texture->surface;
+            return 1;
+        }
+    }
+    out->storage = V9X_R3D_ABI_TEXTURE_CPU;
+    level->pixels = texture->texels;
+    level->bytes = texture->width * texture->height * 2ul;
+    level->pitch = texture->width * 2ul;
+    level->width = texture->width;
+    level->height = texture->height;
+    return 1;
+}
+
+/* grTexDownloadMipMap's texels into the record's entry: the largest
+ * level, which is the first in the game's data when the even/odd mask
+ * includes it. NFS II SE downloads single levels with both (census). */
+static void v9x_glide_texture_download(v9x_u32 address, v9x_u32 even_odd,
+                                       const v9x_u32 *info)
+{
+    V9X_GLIDE_TEXINFO texinfo;
+    V9X_GLIDE_TEXTURE *texture;
+    const v9x_u8 *data;
+    v9x_u32 parity;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 bytes;
+    v9x_u32 i;
+    int index;
+
+    v9x_glide_flush();
+    texinfo.small_lod = info[0];
+    texinfo.large_lod = info[1];
+    texinfo.aspect = info[2];
+    texinfo.format = info[3];
+    data = (const v9x_u8 *)info[4];
+    index = v9x_glide_texmem_download(&v9x_glide_texmem, address, even_odd,
+                                      &texinfo);
+
+    /* Entries whose records the download overwrote, or that it reused. */
+    for (i = 0ul; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
+        if (v9x_glide_textures[i].serial != 0ul &&
+            (!v9x_glide_texmem.records[i].in_use ||
+             v9x_glide_texmem.records[i].serial != v9x_glide_textures[i].serial)) {
+            v9x_glide_texture_free(&v9x_glide_textures[i]);
+        }
+    }
+    if (index < 0) {
+        return;
+    }
+    texture = &v9x_glide_textures[index];
+    texture->serial = v9x_glide_texmem.records[index].serial;
+    parity = (texinfo.large_lod & 1ul) ? V9X_GLIDE_MIPMAPLEVELMASK_ODD :
+                                         V9X_GLIDE_MIPMAPLEVELMASK_EVEN;
+    if (data == 0 || (even_odd & parity) == 0ul ||
+        !v9x_glide_texfmt_supported(texinfo.format) ||
+        !v9x_glide_level_size(texinfo.large_lod, texinfo.aspect, &width, &height)) {
+        return;
+    }
+    bytes = width * height * (texinfo.format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
+    texture->raw = (v9x_u8 *)v9x_glide_alloc(bytes);
+    if (texture->raw == 0) {
+        return;
+    }
+    for (i = 0ul; i < bytes; ++i) {
+        texture->raw[i] = data[i];
+    }
+    texture->width = width;
+    texture->height = height;
+    texture->format = texinfo.format;
+}
+
+static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
+                                   V9X_GLIDE_VERTEX_SETUP *vs)
+{
+    vs->origin = v9x_glide_state.origin;
+    vs->height = (float)v9x_glide_state.height;
+    vs->depth_mode = v9x_glide_state.depth_mode;
+    if (!draw->textured ||
+        !v9x_glide_texture_scales(v9x_glide_source_aspect, &vs->s_scale,
+                                  &vs->t_scale)) {
+        vs->s_scale = 1.0f / (float)V9X_GLIDE_LOD_EDGE;
+        vs->t_scale = 1.0f / (float)V9X_GLIDE_LOD_EDGE;
+    }
+    vs->color_source = draw->color_source;
+    vs->alpha_source = draw->alpha_source;
+    vs->constant_argb = v9x_glide_color_to_argb(v9x_glide_state.constant_color,
+                                                v9x_glide_color_format);
+    vs->fog_mode = v9x_glide_state.fog_mode & V9X_GLIDE_FOG_SOURCE_MASK;
+    vs->fog_table = v9x_glide_fog;
+}
+
+/* The draw's setup and texture, or zero when it cannot be drawn. */
+static int v9x_glide_prepare(V9X_GLIDE_DRAW_SETUP *setup,
+                             V9X_R3D_ABI_TEXTURE *texture,
+                             V9X_R3D_ABI_LEVEL *level)
+{
+    v9x_glide_state_map(&v9x_glide_state, setup);
+    v9x_glide_note_unrecognized(setup);
+    if (!setup->textured) {
+        v9x_glide_zero(texture, sizeof(*texture));
+        v9x_glide_zero(level, sizeof(*level));
+        texture->storage = V9X_R3D_ABI_TEXTURE_NONE;
+        return 1;
+    }
+    if (!v9x_glide_texture_bind(setup, texture, level)) {
+        ++v9x_glide_skipped_textured;
+        return 0;
+    }
+    return 1;
 }
 
 static void v9x_glide_draw_triangle(const float *a, const float *b,
@@ -458,15 +799,11 @@ static void v9x_glide_draw_triangle(const float *a, const float *b,
 {
     V9X_GLIDE_DRAW_SETUP setup;
     V9X_GLIDE_VERTEX_SETUP vs;
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_LEVEL level;
     V9X_R3D_ABI_VERTEX v[3];
 
-    if (a == 0 || b == 0 || c == 0) {
-        return;
-    }
-    v9x_glide_state_map(&v9x_glide_state, &setup);
-    v9x_glide_note_unrecognized(&setup);
-    if (setup.textured) {
-        ++v9x_glide_skipped_textured;
+    if (a == 0 || b == 0 || c == 0 || !v9x_glide_prepare(&setup, &texture, &level)) {
         return;
     }
     v9x_glide_vertex_setup(&setup, &vs);
@@ -478,30 +815,26 @@ static void v9x_glide_draw_triangle(const float *a, const float *b,
         ++v9x_glide_culled;
         return;
     }
-    v9x_glide_submit(&setup, v, 1ul);
+    v9x_glide_queue(&setup, &texture, &level, v, 1ul);
 }
 
 static void v9x_glide_draw_line(const float *a, const float *b)
 {
     V9X_GLIDE_DRAW_SETUP setup;
     V9X_GLIDE_VERTEX_SETUP vs;
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_LEVEL level;
     V9X_R3D_ABI_VERTEX ends[2];
     V9X_R3D_ABI_VERTEX v[6];
 
-    if (a == 0 || b == 0) {
-        return;
-    }
-    v9x_glide_state_map(&v9x_glide_state, &setup);
-    v9x_glide_note_unrecognized(&setup);
-    if (setup.textured) {
-        ++v9x_glide_skipped_textured;
+    if (a == 0 || b == 0 || !v9x_glide_prepare(&setup, &texture, &level)) {
         return;
     }
     v9x_glide_vertex_setup(&setup, &vs);
     v9x_glide_vertex_convert(&vs, a, &ends[0]);
     v9x_glide_vertex_convert(&vs, b, &ends[1]);
     v9x_glide_line_triangles(&ends[0], &ends[1], v);
-    v9x_glide_submit(&setup, v, 2ul);
+    v9x_glide_queue(&setup, &texture, &level, v, 2ul);
 }
 
 /* grBufferClear: the colour buffer always, the depth buffer when depth
@@ -519,6 +852,7 @@ static void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     if (iface == 0) {
         return;
     }
+    v9x_glide_flush();
     v9x_glide_state_map(&v9x_glide_state, &setup);
     rect.left = setup.state.scissor_left;
     rect.top = setup.state.scissor_top;
@@ -556,6 +890,14 @@ static void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     }
 }
 
+/* Before the device goes: what is held, then the surfaces it made. */
+static void v9x_glide_close(void)
+{
+    v9x_glide_flush();
+    v9x_glide_textures_drop_surfaces();
+    v9x_glide_device_close();
+}
+
 /* ---- initialisation and the board ---------------------------------- */
 
 void __stdcall grGlideInit(void)
@@ -573,7 +915,7 @@ void __stdcall grGlideShutdown(void)
     v9x_glide_summary("shutdown");
     /* A title may shut down without grSstWinClose (plan, hazards): the
      * display mode is given back either way. */
-    v9x_glide_device_close();
+    v9x_glide_close();
 }
 
 void __stdcall grGlideGetVersion(char *version)
@@ -635,6 +977,7 @@ v9x_u32 __stdcall grSstWinOpen(v9x_u32 window, v9x_u32 resolution,
         v9x_glide_color_format = color_format;
         v9x_glide_render_buffer = V9X_GLIDE_BUFFER_BACK;
         v9x_glide_state_init(&v9x_glide_state, width, height, origin);
+        v9x_glide_close();
         opened = v9x_glide_device_open((void *)window, width, height,
                                        color_buffers, aux_buffers) ?
                  V9X_GLIDE_TRUE : V9X_GLIDE_FALSE;
@@ -652,7 +995,7 @@ void __stdcall grSstWinClose(void)
 
     v9x_glide_logf(V9X_GLIDE_IX_grSstWinClose, call, "");
     v9x_glide_summary("winclose");
-    v9x_glide_device_close();
+    v9x_glide_close();
 }
 
 void __stdcall grSstIdle(void)
@@ -713,6 +1056,7 @@ void __stdcall grBufferSwap(v9x_u32 interval)
                        interval);
     }
     if (v9x_glide_device_is_open()) {
+        v9x_glide_flush();
         (void)v9x_glide_device_swap(interval);
     } else if (interval != 0ul) {
         Sleep(interval * V9X_GLIDE_FRAME_MS);
@@ -744,6 +1088,7 @@ void __stdcall grRenderBuffer(v9x_u32 buffer)
         v9x_glide_logf(V9X_GLIDE_IX_grRenderBuffer, call, "buffer=%lu", buffer);
     }
     if (buffer == V9X_GLIDE_BUFFER_FRONT || buffer == V9X_GLIDE_BUFFER_BACK) {
+        v9x_glide_flush();
         v9x_glide_render_buffer = buffer;
     }
 }
@@ -1050,7 +1395,19 @@ void __stdcall grTexSource(v9x_u32 tmu, v9x_u32 address, v9x_u32 even_odd,
                            const v9x_u32 *info)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grTexSource);
+    V9X_GLIDE_TEXINFO texinfo;
 
+    /* The record the draws sample until the next grTexSource; one TMU. */
+    v9x_glide_source = -1;
+    if (info != 0) {
+        texinfo.small_lod = info[0];
+        texinfo.large_lod = info[1];
+        texinfo.aspect = info[2];
+        texinfo.format = info[3];
+        v9x_glide_source = v9x_glide_texmem_find(&v9x_glide_texmem, address,
+                                                 even_odd, &texinfo);
+        v9x_glide_source_aspect = texinfo.aspect;
+    }
     if (!v9x_glide_noted(V9X_GLIDE_IX_grTexSource,
                          v9x_glide_info_key(address ^ (even_odd << 28), info))) {
         return;
@@ -1071,6 +1428,9 @@ void __stdcall grTexDownloadMipMap(v9x_u32 tmu, v9x_u32 address,
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grTexDownloadMipMap);
 
+    if (info != 0) {
+        v9x_glide_texture_download(address, even_odd, info);
+    }
     if (!v9x_glide_noted(V9X_GLIDE_IX_grTexDownloadMipMap,
                          v9x_glide_info_key(address ^ (even_odd << 28), info))) {
         return;
@@ -1099,6 +1459,18 @@ void __stdcall grTexDownloadTable(v9x_u32 tmu, v9x_u32 type,
         v9x_glide_logf(V9X_GLIDE_IX_grTexDownloadTable, call,
                        "tmu=%lu type=%lu data=null", tmu, type);
         return;
+    }
+    /* A new palette changes every P_8 texel: held batches draw first, and
+     * the serial marks every P_8 conversion out of date. NCC tables are
+     * for the YIQ formats, which are not converted. */
+    if (type == V9X_GLIDE_TEXTABLE_PALETTE) {
+        unsigned int entry;
+
+        v9x_glide_flush();
+        for (entry = 0u; entry < V9X_GLIDE_PALETTE_ENTRIES; ++entry) {
+            v9x_glide_palette[entry] = data[entry];
+        }
+        ++v9x_glide_palette_serial;
     }
     sum = v9x_glide_checksum(data, words);
     if (!v9x_glide_noted(V9X_GLIDE_IX_grTexDownloadTable,
@@ -1157,6 +1529,8 @@ v9x_u32 __stdcall grLfbLock(v9x_u32 type, v9x_u32 buffer, v9x_u32 write_mode,
         void *pixels;
         v9x_u32 pitch;
 
+        /* Held triangles land first: the lock is to see or to follow them. */
+        v9x_glide_flush();
         if (v9x_glide_device_lock(buffer, (type & V9X_GLIDE_LFB_WRITE_ONLY) == 0ul,
                                   &pixels, &pitch)) {
             v9x_glide_lfb_locked = buffer + 1ul;
@@ -1215,6 +1589,7 @@ v9x_u32 __stdcall grLfbReadRegion(v9x_u32 buffer, v9x_u32 x, v9x_u32 y,
         void *base;
         v9x_u32 pitch;
 
+        v9x_glide_flush();
         if (x + width > v9x_glide_state.width ||
             y + height > v9x_glide_state.height ||
             !v9x_glide_device_lock(buffer, 1, &base, &pitch)) {
@@ -1317,6 +1692,7 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
         /* The 640x480 a Voodoo opens most often, until grSstWinOpen says. */
         v9x_glide_state_init(&v9x_glide_state, 640ul, 480ul,
                              V9X_GLIDE_ORIGIN_UPPER_LEFT);
+        v9x_glide_texmem_init(&v9x_glide_texmem);
         if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
             path[0] = '\0';
         }

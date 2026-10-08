@@ -69,6 +69,29 @@ typedef DWORD (__stdcall *GLIDP_LOCK)(DWORD, DWORD, DWORD, DWORD, DWORD,
 typedef void (__stdcall *GLIDP_TRI)(const float *, const float *,
                                     const float *);
 typedef void (__stdcall *GLIDP_LINE)(const float *, const float *);
+typedef void (__stdcall *GLIDP_TEX)(DWORD, DWORD, DWORD, const DWORD *);
+typedef void (__stdcall *GLIDP_TABLE)(DWORD, DWORD, const void *);
+typedef void (__stdcall *GLIDP_FOGTABLE)(const BYTE *);
+
+/* Phase 3: GrTexInfo is small LOD, large LOD, aspect, format, data. An
+ * 8x8 texture is LOD 5 (256 >> 5); aspect 3 is square. */
+#define GLIDP_LOD_8           5ul
+#define GLIDP_ASPECT_1X1      3ul
+#define GLIDP_TEXFMT_P_8      5ul
+#define GLIDP_TEXFMT_RGB_565  10ul
+#define GLIDP_EVENODD_BOTH    3ul
+#define GLIDP_TEXTABLE_PALETTE 2ul
+#define GLIDP_COMBINE_SCALE_OTHER 3ul
+#define GLIDP_FACTOR_LOCAL    1ul
+#define GLIDP_OTHER_TEXTURE   1ul
+#define GLIDP_TEXCOMBINE_DECAL 1ul
+#define GLIDP_TEXTURE_POINT   0ul
+#define GLIDP_TEXTURE_CLAMP   1ul
+#define GLIDP_CHROMAKEY_ENABLE 1ul
+#define GLIDP_BLEND_SRC_ALPHA 1ul
+#define GLIDP_BLEND_ONE_MINUS_SRC_ALPHA 5ul
+#define GLIDP_FOG_TABLE       2ul
+#define GLIDP_TEXELS          64u
 
 static HMODULE glidp_dll;
 static unsigned int glidp_failures;
@@ -143,6 +166,50 @@ static void glidp_check(const char *key, DWORD buffer, DWORD x, DWORD y,
     glidp_text(key, text);
 }
 
+/* Blended pixels round differently per engine: each 565 channel within
+ * one step of the expected. */
+static void glidp_check_near(const char *key, DWORD buffer, DWORD x, DWORD y,
+                             DWORD expected)
+{
+    char text[64];
+    DWORD value = glidp_read(buffer, x, y);
+    long dr = (long)((value >> 11) & 31ul) - (long)((expected >> 11) & 31ul);
+    long dg = (long)((value >> 5) & 63ul) - (long)((expected >> 5) & 63ul);
+    long db = (long)(value & 31ul) - (long)(expected & 31ul);
+    int ok = value != 0xFFFFFFFFul && dr >= -1l && dr <= 1l && dg >= -1l &&
+             dg <= 1l && db >= -1l && db <= 1l;
+
+    if (!ok) {
+        ++glidp_failures;
+    }
+    wsprintfA(text, "%s read=%04lX expected=%04lX+-1 at=%lu,%lu",
+              ok ? "PASS" : "FAIL", value, expected, x, y);
+    glidp_text(key, text);
+}
+
+/* A textured square, s and t over the whole texture, white vertices. */
+static void glidp_quad(GLIDP_TRI triangle, float x, float y, float edge,
+                       float oow, float alpha)
+{
+    float a[GLIDP_VERTEX_FLOATS];
+    float b[GLIDP_VERTEX_FLOATS];
+    float c[GLIDP_VERTEX_FLOATS];
+    float d[GLIDP_VERTEX_FLOATS];
+
+    glidp_vertex(a, x, y, oow, 255.0f, 255.0f, 255.0f);
+    glidp_vertex(b, x + edge, y, oow, 255.0f, 255.0f, 255.0f);
+    glidp_vertex(c, x, y + edge, oow, 255.0f, 255.0f, 255.0f);
+    glidp_vertex(d, x + edge, y + edge, oow, 255.0f, 255.0f, 255.0f);
+    a[7] = alpha; b[7] = alpha; c[7] = alpha; d[7] = alpha;
+    /* sow and tow are s/w and t/w; Glide's s and t span 0..256. */
+    b[9] = 256.0f * oow;
+    c[10] = 256.0f * oow;
+    d[9] = 256.0f * oow;
+    d[10] = 256.0f * oow;
+    triangle(a, b, c);
+    triangle(b, d, c);
+}
+
 void __stdcall V9xGlideProbeEntry(void)
 {
     GLIDP_V0 init;
@@ -165,6 +232,24 @@ void __stdcall V9xGlideProbeEntry(void)
     GLIDP_V1 depth_mask;
     GLIDP_TRI triangle;
     GLIDP_LINE line;
+    GLIDP_TEX download;
+    GLIDP_TEX source;
+    GLIDP_TABLE table;
+    GLIDP_V2 tex_function;
+    GLIDP_V3 tex_filter;
+    GLIDP_V3 tex_clamp;
+    GLIDP_V1 chroma_mode;
+    GLIDP_V1 chroma_value;
+    GLIDP_V1 fog_mode;
+    GLIDP_V1 fog_color;
+    GLIDP_FOGTABLE fog_table;
+    WORD texels565[GLIDP_TEXELS];
+    WORD green565[GLIDP_TEXELS];
+    BYTE texels8[GLIDP_TEXELS];
+    DWORD palette[256];
+    BYTE fog[64];
+    DWORD info[5];
+    unsigned int i;
     DWORD hardware[64];
     float a[GLIDP_VERTEX_FLOATS];
     float b[GLIDP_VERTEX_FLOATS];
@@ -200,6 +285,17 @@ void __stdcall V9xGlideProbeEntry(void)
     depth_mask = (GLIDP_V1)glidp_proc("_grDepthMask@4");
     triangle = (GLIDP_TRI)glidp_proc("_grDrawTriangle@12");
     line = (GLIDP_LINE)glidp_proc("_grDrawLine@8");
+    download = (GLIDP_TEX)glidp_proc("_grTexDownloadMipMap@16");
+    source = (GLIDP_TEX)glidp_proc("_grTexSource@16");
+    table = (GLIDP_TABLE)glidp_proc("_grTexDownloadTable@12");
+    tex_function = (GLIDP_V2)glidp_proc("_grTexCombineFunction@8");
+    tex_filter = (GLIDP_V3)glidp_proc("_grTexFilterMode@12");
+    tex_clamp = (GLIDP_V3)glidp_proc("_grTexClampMode@12");
+    chroma_mode = (GLIDP_V1)glidp_proc("_grChromakeyMode@4");
+    chroma_value = (GLIDP_V1)glidp_proc("_grChromakeyValue@4");
+    fog_mode = (GLIDP_V1)glidp_proc("_grFogMode@4");
+    fog_color = (GLIDP_V1)glidp_proc("_grFogColorValue@4");
+    fog_table = (GLIDP_FOGTABLE)glidp_proc("_grFogTable@4");
 
     init();
     query(hardware);
@@ -283,6 +379,87 @@ void __stdcall V9xGlideProbeEntry(void)
     glidp_vertex(c, GLIDP_SNAP + 400.0f, GLIDP_SNAP + 450.0f, 1.0f, 255.0f, 255.0f, 255.0f);
     triangle(a, b, c);
     glidp_check("Snap", GLIDP_BUFFER_BACK, 410ul, 360ul, GLIDP_WHITE);
+
+    /* Phase 3. Textures, texture times white Gouraud (MODULATE), point
+     * sampled and clamped so every texel read is exact. */
+    color_combine(GLIDP_COMBINE_SCALE_OTHER, GLIDP_FACTOR_LOCAL,
+                  GLIDP_LOCAL_ITERATED, GLIDP_OTHER_TEXTURE, 0ul);
+    alpha_combine(GLIDP_COMBINE_SCALE_OTHER, GLIDP_FACTOR_LOCAL,
+                  GLIDP_LOCAL_ITERATED, GLIDP_OTHER_TEXTURE, 0ul);
+    tex_function(0ul, GLIDP_TEXCOMBINE_DECAL);
+    tex_filter(0ul, GLIDP_TEXTURE_POINT, GLIDP_TEXTURE_POINT);
+    tex_clamp(0ul, GLIDP_TEXTURE_CLAMP, GLIDP_TEXTURE_CLAMP);
+    info[0] = GLIDP_LOD_8;
+    info[1] = GLIDP_LOD_8;
+    info[2] = GLIDP_ASPECT_1X1;
+
+    /* An RGB565 texture, all red. */
+    for (i = 0u; i < GLIDP_TEXELS; ++i) {
+        texels565[i] = (WORD)GLIDP_RED;
+        green565[i] = (WORD)GLIDP_GREEN;
+        texels8[i] = 1u;
+    }
+    info[3] = GLIDP_TEXFMT_RGB_565;
+    info[4] = (DWORD)texels565;
+    download(0ul, 0x0ul, GLIDP_EVENODD_BOTH, info);
+    source(0ul, 0x0ul, GLIDP_EVENODD_BOTH, info);
+    glidp_quad(triangle, 100.0f, 100.0f, 64.0f, 1.0f, 255.0f);
+    glidp_check("Texture565", GLIDP_BUFFER_BACK, 120ul, 120ul, GLIDP_RED);
+
+    /* P_8 through the palette: entry 1 green, then blue. */
+    for (i = 0u; i < 256u; ++i) {
+        palette[i] = 0xFF000000ul;
+    }
+    palette[1] = 0xFF00FF00ul;
+    table(0ul, GLIDP_TEXTABLE_PALETTE, palette);
+    info[3] = GLIDP_TEXFMT_P_8;
+    info[4] = (DWORD)texels8;
+    download(0ul, 0x1000ul, GLIDP_EVENODD_BOTH, info);
+    source(0ul, 0x1000ul, GLIDP_EVENODD_BOTH, info);
+    glidp_quad(triangle, 200.0f, 100.0f, 64.0f, 1.0f, 255.0f);
+    glidp_check("TexturePalette", GLIDP_BUFFER_BACK, 220ul, 120ul, GLIDP_GREEN);
+    palette[1] = 0xFF0000FFul;
+    table(0ul, GLIDP_TEXTABLE_PALETTE, palette);
+    glidp_quad(triangle, 200.0f, 100.0f, 64.0f, 1.0f, 255.0f);
+    glidp_check("TexturePaletteChange", GLIDP_BUFFER_BACK, 220ul, 120ul,
+                GLIDP_BLUE);
+
+    /* The chroma key: a green texture keyed on green leaves the red under
+     * it; with the key off it covers it. */
+    info[3] = GLIDP_TEXFMT_RGB_565;
+    info[4] = (DWORD)green565;
+    download(0ul, 0x2000ul, GLIDP_EVENODD_BOTH, info);
+    source(0ul, 0x2000ul, GLIDP_EVENODD_BOTH, info);
+    chroma_value(0x0000FF00ul);
+    chroma_mode(GLIDP_CHROMAKEY_ENABLE);
+    glidp_quad(triangle, 100.0f, 100.0f, 64.0f, 1.0f, 255.0f);
+    glidp_check("ChromaKeyed", GLIDP_BUFFER_BACK, 120ul, 120ul, GLIDP_RED);
+    chroma_mode(0ul);
+    glidp_quad(triangle, 100.0f, 100.0f, 64.0f, 1.0f, 255.0f);
+    glidp_check("ChromaOff", GLIDP_BUFFER_BACK, 120ul, 120ul, GLIDP_GREEN);
+
+    /* Untextured from here: white at alpha 128 blended over black. */
+    color_combine(GLIDP_COMBINE_LOCAL, 0ul, GLIDP_LOCAL_ITERATED,
+                  GLIDP_OTHER_CONSTANT, 0ul);
+    alpha_combine(GLIDP_COMBINE_LOCAL, 0ul, GLIDP_LOCAL_ITERATED,
+                  GLIDP_OTHER_CONSTANT, 0ul);
+    blend(GLIDP_BLEND_SRC_ALPHA, GLIDP_BLEND_ONE_MINUS_SRC_ALPHA,
+          GLIDP_BLEND_ZERO, GLIDP_BLEND_ZERO);
+    glidp_quad(triangle, 550.0f, 300.0f, 64.0f, 1.0f, 128.0f);
+    glidp_check_near("BlendHalf", GLIDP_BUFFER_BACK, 570ul, 320ul, 0x8410ul);
+
+    /* Table fog at full strength everywhere, blue: the fog colour must
+     * replace the white the triangle carries. */
+    blend(GLIDP_BLEND_ONE, GLIDP_BLEND_ZERO, GLIDP_BLEND_ONE, GLIDP_BLEND_ZERO);
+    for (i = 0u; i < 64u; ++i) {
+        fog[i] = 255u;
+    }
+    fog_table(fog);
+    fog_color(0x000000FFul);
+    fog_mode(GLIDP_FOG_TABLE);
+    glidp_quad(triangle, 550.0f, 380.0f, 64.0f, 0.5f, 255.0f);
+    glidp_check_near("FogTable", GLIDP_BUFFER_BACK, 570ul, 400ul, GLIDP_BLUE);
+    fog_mode(0ul);
 
     /* Show the result for a moment, then give the desktop back. */
     swap(1ul);

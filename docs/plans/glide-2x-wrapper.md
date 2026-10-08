@@ -9,7 +9,10 @@ Phase 1 done: `glide_vertex.c`, `glide_texmem.c`, `glide_texfmt.c` and
 (keyed texels to alpha 0 plus the alpha test), no ABI change.
 Phase 2 done: the flip chain is a render target on Gen3 and the software
 engine ([2026-10-08-glide-phase2-flip-chain.md](../decisions/2026-10-08-glide-phase2-flip-chain.md));
-no Blt fallback needed.
+no Blt fallback needed. Phase 3 done: textures, palettes, chroma key,
+blending, table fog and batching, 21/21 on both engines, and both fog
+through the render interface
+([2026-10-08-glide-phase3-textures-fog.md](../decisions/2026-10-08-glide-phase3-textures-fog.md)).
 First game: Need for Speed II SE. First engine: Gen3 on the netbook.
 
 ## Context

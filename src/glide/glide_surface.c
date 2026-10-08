@@ -280,6 +280,11 @@ const V9X_R3D_INTERFACE *v9x_glide_device_interface(void)
     return v9x_glide_open ? v9x_glide_interface : 0;
 }
 
+const V9X_R3D_ABI_DESCRIBE *v9x_glide_device_description(void)
+{
+    return v9x_glide_open ? &v9x_glide_description : 0;
+}
+
 v9x_u32 v9x_glide_device_generation(void)
 {
     return v9x_glide_description.generation;
@@ -386,5 +391,113 @@ void v9x_glide_device_unlock(v9x_u32 buffer)
 
     if (surface != 0) {
         IDirectDrawSurface_Unlock(surface, 0);
+    }
+}
+
+/* The DirectDraw pixel format of a V9X_R3D_ABI_FORMAT_* layout, as
+ * gl_surface.c's v9x_gl_hwtex_pixel_format gives it. */
+static int v9x_glide_hwtex_pixel_format(v9x_u32 format, DDPIXELFORMAT *out)
+{
+    v9x_glide_zero(out, sizeof(*out));
+    out->dwSize = sizeof(*out);
+    out->dwFlags = DDPF_RGB;
+    out->dwRGBBitCount = 16ul;
+    if (format == V9X_R3D_ABI_FORMAT_RGB565) {
+        out->dwRBitMask = 0xF800ul;
+        out->dwGBitMask = 0x07E0ul;
+        out->dwBBitMask = 0x001Ful;
+        return 1;
+    }
+    out->dwFlags |= DDPF_ALPHAPIXELS;
+    if (format == V9X_R3D_ABI_FORMAT_ARGB1555) {
+        out->dwRBitMask = 0x7C00ul;
+        out->dwGBitMask = 0x03E0ul;
+        out->dwBBitMask = 0x001Ful;
+        out->dwRGBAlphaBitMask = 0x8000ul;
+        return 1;
+    }
+    if (format == V9X_R3D_ABI_FORMAT_ARGB4444) {
+        out->dwRBitMask = 0x0F00ul;
+        out->dwGBitMask = 0x00F0ul;
+        out->dwBBitMask = 0x000Ful;
+        out->dwRGBAlphaBitMask = 0xF000ul;
+        return 1;
+    }
+    return 0;
+}
+
+void *v9x_glide_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 format)
+{
+    DDSURFACEDESC desc;
+    LPDIRECTDRAWSURFACE surface = 0;
+    HRESULT hr;
+
+    if (!v9x_glide_open) {
+        return 0;
+    }
+    v9x_glide_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+    desc.dwWidth = width;
+    desc.dwHeight = height;
+    if (!v9x_glide_hwtex_pixel_format(format, &desc.ddpfPixelFormat)) {
+        return 0;
+    }
+    /* Video memory, where the HAL's placement puts what the sampler reads;
+     * Gen3's bind refuses a system-memory texture (gl_surface.c). */
+    desc.ddsCaps.dwCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
+    hr = IDirectDraw_CreateSurface(v9x_glide_ddraw, &desc, &surface, 0);
+    if (hr != DD_OK) {
+        v9x_glide_log3("hwtex create %08lX format=%lu hr=%08lX",
+                       (width << 16) | height, format, (DWORD)hr);
+        return 0;
+    }
+    return surface;
+}
+
+int v9x_glide_hwtex_upload(void *surface, const v9x_u16 *texels,
+                           v9x_u32 width, v9x_u32 height)
+{
+    LPDIRECTDRAWSURFACE target = (LPDIRECTDRAWSURFACE)surface;
+    DDSURFACEDESC desc;
+    const BYTE *source = (const BYTE *)texels;
+    BYTE *row;
+    DWORD y;
+    DWORD i;
+    HRESULT hr;
+
+    v9x_glide_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = IDirectDrawSurface_Lock(target, 0, &desc,
+                                 DDLOCK_WAIT | DDLOCK_WRITEONLY, 0);
+    if (hr == DDERR_SURFACELOST) {
+        IDirectDrawSurface_Restore(target);
+        hr = IDirectDrawSurface_Lock(target, 0, &desc,
+                                     DDLOCK_WAIT | DDLOCK_WRITEONLY, 0);
+    }
+    if (hr != DD_OK) {
+        v9x_glide_log3("hwtex lock hr=%08lX", (DWORD)hr, 0ul, 0ul);
+        return 0;
+    }
+    if (desc.dwWidth != width || desc.dwHeight != height) {
+        IDirectDrawSurface_Unlock(target, 0);
+        return 0;
+    }
+    row = (BYTE *)desc.lpSurface;
+    for (y = 0ul; y < height; ++y) {
+        for (i = 0ul; i < width * 2ul; ++i) {
+            row[i] = source[i];
+        }
+        source += width * 2ul;
+        row += desc.lPitch;
+    }
+    IDirectDrawSurface_Unlock(target, 0);
+    return 1;
+}
+
+void v9x_glide_hwtex_release(void *surface)
+{
+    if (surface != 0) {
+        IDirectDrawSurface_Release((LPDIRECTDRAWSURFACE)surface);
     }
 }
