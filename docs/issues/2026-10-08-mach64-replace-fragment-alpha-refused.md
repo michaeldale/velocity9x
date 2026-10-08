@@ -36,3 +36,12 @@ Half-Life.
 - In the ICD, send such a draw as REPLACE/REPLACE when the texture has
   no alpha and the fragment's alpha is 1 across the batch (GLQuake's
   vertices are white), which makes the two the same.
+
+## 2026-10-08, later: the same request on Gen3
+
+The netbook (GMA 950) refuses the same 111,908 batches in the same run
+(`docs/decisions/2026-10-08-netbook-multitexture-recheck.md`). Gen3 has a
+software fallback, so they draw, but GLQuake's `-nomtex +gl_texsort 0`
+timedemo then runs at 3.5 fps against 52.8 for its default path. The gap
+is in the core's Direct3D-op mapping, not one engine, so the title's
+"Mach64" is narrower than the defect.
