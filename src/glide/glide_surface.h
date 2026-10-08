@@ -42,6 +42,10 @@ int v9x_glide_device_redescribe(void);
  * flip exchanges memory under these interfaces, so they stay valid. */
 void *v9x_glide_device_buffer(v9x_u32 buffer);
 
+/* Returns once the last flip has reached the screen (bounded), so the
+ * back buffer is no longer shown. Every write path calls it first. */
+void v9x_glide_device_wait_flip(void);
+
 /* Flips the chain, after submitting what was drawn. */
 int v9x_glide_device_swap(v9x_u32 interval);
 

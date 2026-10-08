@@ -146,29 +146,49 @@ float v9x_glide_fog_index_to_w(unsigned int index)
     return power / (float)(8u - (index & 3u));
 }
 
+/*
+ * The 64 entries' W, worked out once. Table fog is looked up for every
+ * vertex NFS II SE draws in a race; computing each entry's W with a loop
+ * of doublings, and walking the entries in order, was part of about 16,000
+ * cycles a triangle spent in the DLL on the netbook (2026-10-09).
+ */
+static float v9x_glide_fog_w[V9X_GLIDE_FOG_TABLE_SIZE];
+static int v9x_glide_fog_w_ready;
+
 v9x_u32 v9x_glide_fog_amount(const v9x_u8 *table, float w)
 {
-    unsigned int index;
-    float low;
-    float high;
+    unsigned int low = 0u;
+    unsigned int high = V9X_GLIDE_FOG_TABLE_SIZE - 1u;
+    unsigned int middle;
     float fraction;
     float amount;
 
-    if (!(w > v9x_glide_fog_index_to_w(0u))) {
+    if (!v9x_glide_fog_w_ready) {
+        for (middle = 0u; middle < V9X_GLIDE_FOG_TABLE_SIZE; ++middle) {
+            v9x_glide_fog_w[middle] = v9x_glide_fog_index_to_w(middle);
+        }
+        v9x_glide_fog_w_ready = 1;
+    }
+    if (!(w > v9x_glide_fog_w[0])) {
         return (v9x_u32)table[0];
     }
-    high = v9x_glide_fog_index_to_w(0u);
-    for (index = 1u; index < V9X_GLIDE_FOG_TABLE_SIZE; ++index) {
-        low = high;
-        high = v9x_glide_fog_index_to_w(index);
-        if (w <= high) {
-            fraction = (w - low) / (high - low);
-            amount = (float)table[index - 1u] +
-                     fraction * ((float)table[index] - (float)table[index - 1u]);
-            return v9x_glide_byte(amount);
+    if (w >= v9x_glide_fog_w[high]) {
+        return (v9x_u32)table[high];
+    }
+    /* The entries either side of w: fog_w[low] < w <= fog_w[high]. */
+    while (high - low > 1u) {
+        middle = (low + high) / 2u;
+        if (v9x_glide_fog_w[middle] < w) {
+            low = middle;
+        } else {
+            high = middle;
         }
     }
-    return (v9x_u32)table[V9X_GLIDE_FOG_TABLE_SIZE - 1u];
+    fraction = (w - v9x_glide_fog_w[low]) /
+               (v9x_glide_fog_w[high] - v9x_glide_fog_w[low]);
+    amount = (float)table[low] +
+             fraction * ((float)table[high] - (float)table[low]);
+    return v9x_glide_byte(amount);
 }
 
 /*
@@ -271,6 +291,20 @@ unsigned int v9x_glide_clip_rect(const V9X_R3D_ABI_VERTEX *triangle,
     rect[1] = top;
     rect[2] = right;
     rect[3] = bottom;
+
+    /* Most triangles are inside: passed on as they are. */
+    for (i = 0u; i < 3u; ++i) {
+        if (triangle[i].sx < left || triangle[i].sx > right ||
+            triangle[i].sy < top || triangle[i].sy > bottom) {
+            break;
+        }
+    }
+    if (i == 3u) {
+        out[0] = triangle[0];
+        out[1] = triangle[1];
+        out[2] = triangle[2];
+        return 1u;
+    }
     for (i = 0u; i < 3u; ++i) {
         polygons[0][i] = triangle[i];
     }

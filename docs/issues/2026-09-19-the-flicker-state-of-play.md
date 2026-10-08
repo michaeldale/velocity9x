@@ -13,6 +13,20 @@ of 2026-09-19 carry the captures and the arguments; the long-running
 narrative is
 `2026-09-18-final-reality-flicker-is-the-buffer-under-construction.md`.
 
+## 2026-10-09: Glide reproduced it, and a third buffer cured it
+
+GLIDE2X.DLL draws NFS II SE through the render interface into a
+DirectDraw flip chain of its own. Once it reached 18 fps on the netbook
+it flickered the way Final Reality does, and the operator said so. With
+two buffers, waiting on `GetFlipStatus(DDGFS_ISFLIPDONE)` before every
+write did not cure it. A finish plus `WaitForVerticalBlank` after each
+flip did, at 15 fps. Three buffers did, with no wait, at 18.5 fps. That
+fits the buffer-under-construction mechanism: drawing starts in the
+buffer still on screen, and the flip-done status does not guard
+against it on Gen3. It is one client's fix, not the HAL's; Final
+Reality's own chain is not changed by it. Detail:
+`docs\decisions\2026-10-09-glide-frame-rate-netbook.md`.
+
 ## 2026-09-25: 3D WinBench 98 flickers too, on the netbook
 
 **Operator observation, not a capture.** Watching the netbook panel during

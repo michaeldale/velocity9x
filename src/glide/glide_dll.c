@@ -188,6 +188,41 @@ static v9x_u32 v9x_glide_refusals_logged;
 static v9x_u32 v9x_glide_surface_hits;
 static v9x_u32 v9x_glide_surface_evictions;
 
+/*
+ * Where a frame's time goes, in CPU cycles, as the ICD measures (gl_icd.c):
+ * low-dword TSC deltas, each under a call or a frame, added into 64-bit
+ * buckets and written with every summary, then cleared. NFS II SE ran at
+ * about 5 frames a second with uploads already cut (2026-10-09); these say
+ * whether the time is the game's, the DLL's or the engine's. Every
+ * machine the DLL has run on has a TSC (Atom N280, Pentium III).
+ */
+static DWORD v9x_glide_rdtsc_low(void);
+#pragma aux v9x_glide_rdtsc_low = 0x0f 0x31 value [eax] modify exact [eax edx];
+
+#define V9X_GLIDE_PROF_FRAME   0u   /* swap to swap: everything */
+#define V9X_GLIDE_PROF_ENTRY   1u   /* inside grDrawTriangle and grDrawLine */
+#define V9X_GLIDE_PROF_PREPARE 2u   /* state mapping and texture binding */
+#define V9X_GLIDE_PROF_UPLOAD  3u   /* texture surface creation and fill */
+#define V9X_GLIDE_PROF_SUBMIT  4u   /* the render interface's draw */
+#define V9X_GLIDE_PROF_SWAP    5u   /* the flip */
+#define V9X_GLIDE_PROF_CLEAR   6u   /* the render interface's clear */
+#define V9X_GLIDE_PROF_COUNT   7u
+
+static v9x_u32 v9x_glide_prof[V9X_GLIDE_PROF_COUNT * 2u];
+static v9x_u32 v9x_glide_breaks[3];
+static v9x_u32 v9x_glide_prof_batches;
+static v9x_u32 v9x_glide_prof_swap_mark;
+
+static void v9x_glide_prof_add(unsigned int bucket, v9x_u32 delta)
+{
+    v9x_u32 *pair = &v9x_glide_prof[bucket * 2u];
+
+    pair[0] += delta;
+    if (pair[0] < delta) {
+        ++pair[1];
+    }
+}
+
 /* ---- the log ------------------------------------------------------- */
 
 /* One line, appended: sequence, process, milliseconds, text. Shared with
@@ -332,6 +367,29 @@ static void v9x_glide_summary(const char *why)
               v9x_glide_fog_dropped, v9x_glide_uploads, v9x_glide_surface_hits,
               v9x_glide_surface_evictions);
     v9x_glide_log(text);
+    {
+        /* Megacycles (2^20) since the last summary, then cleared. */
+        v9x_u32 mc[V9X_GLIDE_PROF_COUNT];
+        unsigned int b;
+
+        for (b = 0u; b < V9X_GLIDE_PROF_COUNT; ++b) {
+            mc[b] = (v9x_glide_prof[b * 2u + 1u] << 12) |
+                    (v9x_glide_prof[b * 2u] >> 20);
+            v9x_glide_prof[b * 2u] = 0ul;
+            v9x_glide_prof[b * 2u + 1u] = 0ul;
+        }
+        wsprintfA(text, "census   cycles(Mc): frame=%lu entry=%lu prepare=%lu upload=%lu submit=%lu swap=%lu clear=%lu batches=%lu",
+                  mc[0], mc[1], mc[2], mc[3], mc[4], mc[5], mc[6],
+                  v9x_glide_prof_batches);
+        v9x_glide_prof_batches = 0ul;
+        v9x_glide_log(text);
+        wsprintfA(text, "census   batch ends: full=%lu texture=%lu state=%lu",
+                  v9x_glide_breaks[0], v9x_glide_breaks[1], v9x_glide_breaks[2]);
+        v9x_glide_breaks[0] = 0ul;
+        v9x_glide_breaks[1] = 0ul;
+        v9x_glide_breaks[2] = 0ul;
+        v9x_glide_log(text);
+    }
     for (ix = 0u; ix < V9X_GLIDE_EXPORT_COUNT; ++ix) {
         if (v9x_glide_calls[ix] == 0ul) {
             continue;
@@ -381,12 +439,16 @@ static void v9x_glide_zero(void *block, unsigned int bytes)
     }
 }
 
+/* Word by word: the setup, texture and level compared for every queued
+ * triangle are all 32-bit fields. */
 static int v9x_glide_same(const void *a, const void *b, unsigned int bytes)
 {
+    const v9x_u32 *x = (const v9x_u32 *)a;
+    const v9x_u32 *y = (const v9x_u32 *)b;
     unsigned int i;
 
-    for (i = 0u; i < bytes; ++i) {
-        if (((const v9x_u8 *)a)[i] != ((const v9x_u8 *)b)[i]) {
+    for (i = 0u; i < bytes / 4u; ++i) {
+        if (x[i] != y[i]) {
             return 0;
         }
     }
@@ -558,19 +620,20 @@ static void v9x_glide_log_refusal(v9x_u32 result, const V9X_R3D_ABI_DRAW *draw)
  * without fog and counted: whether an engine fogs through this interface
  * is measured per engine, not assumed.
  */
-static void v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
-                             const V9X_R3D_ABI_TEXTURE *texture,
-                             const V9X_R3D_ABI_VERTEX *vertices,
-                             v9x_u32 triangles)
+static v9x_u32 v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
+                                 const V9X_R3D_ABI_TEXTURE *texture,
+                                 const V9X_R3D_ABI_VERTEX *vertices,
+                                 v9x_u32 triangles)
 {
     const V9X_R3D_INTERFACE *iface = v9x_glide_device_interface();
     V9X_R3D_ABI_DRAW draw;
     V9X_R3D_ABI_OUTCOME outcome;
     v9x_u32 result = V9X_R3D_RESULT_INVALID;
+    v9x_u32 start;
     unsigned int attempt;
 
     if (iface == 0 || triangles == 0ul) {
-        return;
+        return V9X_R3D_RESULT_NOT_READY;
     }
     v9x_glide_zero(&draw, sizeof(draw));
     draw.struct_bytes = sizeof(draw);
@@ -581,6 +644,9 @@ static void v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
     draw.state = setup->state;
     draw.vertices = vertices;
     draw.triangle_count = triangles;
+    v9x_glide_device_wait_flip();
+    start = v9x_glide_rdtsc_low();
+    ++v9x_glide_prof_batches;
     for (attempt = 0u; attempt < 3u; ++attempt) {
         draw.generation = v9x_glide_device_generation();
         v9x_glide_zero(&outcome, sizeof(outcome));
@@ -595,15 +661,17 @@ static void v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
         }
         break;
     }
+    v9x_glide_prof_add(V9X_GLIDE_PROF_SUBMIT, v9x_glide_rdtsc_low() - start);
     if (result == V9X_R3D_RESULT_OK || result == V9X_R3D_RESULT_PARTIAL) {
         v9x_glide_drawn += outcome.submitted;
-        return;
+        return result;
     }
     if (v9x_glide_refusals_logged < 24ul) {
         ++v9x_glide_refusals_logged;
         v9x_glide_log_refusal(result, &draw);
     }
     v9x_glide_refused += triangles;
+    return result;
 }
 
 static void v9x_glide_flush(void)
@@ -618,8 +686,9 @@ static void v9x_glide_flush(void)
         texture.levels = &v9x_glide_pending.level;
         texture.level_count = 1ul;
     }
-    v9x_glide_submit(&v9x_glide_pending.setup, &texture,
-                     v9x_glide_pending.vertices, v9x_glide_pending.triangles);
+    (void)v9x_glide_submit(&v9x_glide_pending.setup, &texture,
+                           v9x_glide_pending.vertices,
+                           v9x_glide_pending.triangles);
     v9x_glide_pending.triangles = 0ul;
 }
 
@@ -631,12 +700,26 @@ static void v9x_glide_queue(const V9X_GLIDE_DRAW_SETUP *setup,
 {
     v9x_u32 i;
 
-    if (v9x_glide_pending.triangles != 0ul &&
-        (v9x_glide_pending.triangles + triangles > V9X_R3D_ABI_BATCH_MAX ||
-         !v9x_glide_same(&v9x_glide_pending.setup, setup, sizeof(*setup)) ||
-         !v9x_glide_same(&v9x_glide_pending.texture, texture, sizeof(*texture)) ||
-         !v9x_glide_same(&v9x_glide_pending.level, level, sizeof(*level)))) {
-        v9x_glide_flush();
+    if (v9x_glide_pending.triangles != 0ul) {
+        /* Why a batch ends, counted: full, a texture change, or a state
+         * change (the measure of what larger batches would need). */
+        unsigned int reason = 0u;
+
+        if (v9x_glide_pending.triangles + triangles > V9X_R3D_ABI_BATCH_MAX) {
+            reason = 1u;
+        } else if (!v9x_glide_same(&v9x_glide_pending.texture, texture,
+                                   sizeof(*texture)) ||
+                   !v9x_glide_same(&v9x_glide_pending.level, level,
+                                   sizeof(*level))) {
+            reason = 2u;
+        } else if (!v9x_glide_same(&v9x_glide_pending.setup, setup,
+                                   sizeof(*setup))) {
+            reason = 3u;
+        }
+        if (reason != 0u) {
+            ++v9x_glide_breaks[reason - 1u];
+            v9x_glide_flush();
+        }
     }
     if (v9x_glide_pending.triangles == 0ul) {
         v9x_glide_pending.setup = *setup;
@@ -720,6 +803,7 @@ static V9X_GLIDE_CACHED_SURFACE *v9x_glide_surface_for(V9X_GLIDE_TEXTURE *textur
     unsigned int i;
     unsigned int slot = V9X_GLIDE_SURFACES;
     unsigned int oldest = 0u;
+    v9x_u32 start;
     v9x_u32 edge = texture->width > texture->height ? texture->width :
                                                       texture->height;
 
@@ -776,6 +860,7 @@ static V9X_GLIDE_CACHED_SURFACE *v9x_glide_surface_for(V9X_GLIDE_TEXTURE *textur
     }
     entry = &v9x_glide_surfaces[slot];
     v9x_glide_zero(entry, sizeof(*entry));
+    start = v9x_glide_rdtsc_low();
     entry->surface = v9x_glide_hwtex_create(texture->width, texture->height,
                                             texture->abi_format);
     /*
@@ -811,8 +896,10 @@ static V9X_GLIDE_CACHED_SURFACE *v9x_glide_surface_for(V9X_GLIDE_TEXTURE *textur
                                 texture->height)) {
         v9x_glide_hwtex_release(entry->surface);
         entry->surface = 0;
+        v9x_glide_prof_add(V9X_GLIDE_PROF_UPLOAD, v9x_glide_rdtsc_low() - start);
         return 0;
     }
+    v9x_glide_prof_add(V9X_GLIDE_PROF_UPLOAD, v9x_glide_rdtsc_low() - start);
     ++v9x_glide_uploads;
     entry->in_use = 1ul;
     entry->sum = texture->sum;
@@ -1007,19 +1094,21 @@ static int v9x_glide_prepare(V9X_GLIDE_DRAW_SETUP *setup,
                              V9X_R3D_ABI_TEXTURE *texture,
                              V9X_R3D_ABI_LEVEL *level)
 {
+    v9x_u32 start = v9x_glide_rdtsc_low();
+    int ok = 1;
+
     v9x_glide_state_map(&v9x_glide_state, setup);
     v9x_glide_note_unrecognized(setup);
     if (!setup->textured) {
         v9x_glide_zero(texture, sizeof(*texture));
         v9x_glide_zero(level, sizeof(*level));
         texture->storage = V9X_R3D_ABI_TEXTURE_NONE;
-        return 1;
-    }
-    if (!v9x_glide_texture_bind(setup, texture, level)) {
+    } else if (!v9x_glide_texture_bind(setup, texture, level)) {
         ++v9x_glide_skipped_textured;
-        return 0;
+        ok = 0;
     }
-    return 1;
+    v9x_glide_prof_add(V9X_GLIDE_PROF_PREPARE, v9x_glide_rdtsc_low() - start);
+    return ok;
 }
 
 static void v9x_glide_draw_triangle(const float *a, const float *b,
@@ -1066,17 +1155,37 @@ static void v9x_glide_draw_line(const float *a, const float *b)
     v9x_glide_queue_clipped(&setup, &texture, &level, &v[3]);
 }
 
-/* grBufferClear: the colour buffer always, the depth buffer when depth
- * buffering is on and writable (Reference Manual), inside the clip
- * window. */
+/*
+ * grBufferClear: the colour buffer always, the depth buffer when depth
+ * buffering is on and writable (Reference Manual), inside the clip window.
+ *
+ * Drawn, not cleared. The render interface's clear waits for the engine
+ * and writes both buffers with the CPU: on the netbook, through the
+ * uncached aperture, that was 53-64% of every NFS II SE frame (2026-10-09).
+ * DirectDraw's blitter fills (DDBLT_COLORFILL) were cheap but flickered:
+ * with the flip waited for, with everything drained before and with the
+ * fill waited for after, Michael still saw it; the colour fill alone did
+ * it, and the CPU clear did not. So the clear is one rectangle through the
+ * engine that draws everything else, in order with it by construction:
+ * the clear colour, depth test ALWAYS, depth writes on at the clear depth.
+ * The interface's clear stays as the fallback when that draw is refused.
+ */
 static void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
 {
     const V9X_R3D_INTERFACE *iface = v9x_glide_device_interface();
     V9X_GLIDE_DRAW_SETUP setup;
+    V9X_R3D_ABI_TEXTURE none;
+    V9X_R3D_ABI_VERTEX quad[6];
     V9X_R3D_ABI_CLEAR clear;
     V9X_R3D_ABI_RECT rect;
     v9x_u32 result = V9X_R3D_RESULT_INVALID;
+    v9x_u32 start;
+    float left;
+    float top;
+    float right;
+    float bottom;
     unsigned int attempt;
+    unsigned int i;
 
     if (iface == 0) {
         return;
@@ -1107,6 +1216,46 @@ static void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     }
     clear.rects = &rect;
     clear.rect_count = 1ul;
+    start = v9x_glide_rdtsc_low();
+
+    /* The rectangle as two triangles, at the clear depth (0xFFFF is 1.0,
+     * the far plane, in both buffer modes: glide_vertex.c). */
+    v9x_glide_zero(&setup.state, sizeof(setup.state));
+    setup.state.depth_enable = clear.clear_depth;
+    setup.state.depth_write = clear.clear_depth;
+    setup.state.depth_func = V9X_GLIDE_CMP_ALWAYS + 1ul;
+    setup.state.src_blend = 2ul;            /* D3DBLEND_ONE */
+    setup.state.dst_blend = 1ul;            /* D3DBLEND_ZERO */
+    setup.state.write_mask = V9X_R3D_ABI_WRITE_RGB;
+    setup.state.scissor_right = v9x_glide_state.width;
+    setup.state.scissor_bottom = v9x_glide_state.height;
+    v9x_glide_zero(&none, sizeof(none));
+    none.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    left = (float)rect.left;
+    top = (float)rect.top;
+    right = (float)rect.right;
+    bottom = (float)rect.bottom;
+    for (i = 0u; i < 6u; ++i) {
+        quad[i].sz = (float)clear.depth_value / 65535.0f;
+        quad[i].rhw = 1.0f;
+        quad[i].color = 0xFF000000ul | clear.color_value;
+        quad[i].specular = 0xFF000000ul;
+        quad[i].tu = 0.0f;
+        quad[i].tv = 0.0f;
+    }
+    quad[0].sx = left;  quad[0].sy = top;
+    quad[1].sx = right; quad[1].sy = top;
+    quad[2].sx = left;  quad[2].sy = bottom;
+    quad[3].sx = right; quad[3].sy = top;
+    quad[4].sx = right; quad[4].sy = bottom;
+    quad[5].sx = left;  quad[5].sy = bottom;
+    result = v9x_glide_submit(&setup, &none, quad, 2ul);
+    if (result == V9X_R3D_RESULT_OK || result == V9X_R3D_RESULT_PARTIAL) {
+        v9x_glide_prof_add(V9X_GLIDE_PROF_CLEAR, v9x_glide_rdtsc_low() - start);
+        return;
+    }
+
+    v9x_glide_device_wait_flip();
     for (attempt = 0u; attempt < 2u; ++attempt) {
         clear.generation = v9x_glide_device_generation();
         result = iface->clear(&clear);
@@ -1114,7 +1263,9 @@ static void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
             break;
         }
     }
-    if (result != V9X_R3D_RESULT_OK && v9x_glide_refused++ < 8ul) {
+    v9x_glide_prof_add(V9X_GLIDE_PROF_CLEAR, v9x_glide_rdtsc_low() - start);
+    if (result != V9X_R3D_RESULT_OK && v9x_glide_refusals_logged < 24ul) {
+        ++v9x_glide_refusals_logged;
         v9x_glide_log3("clear refused: result=%lu", result, 0ul, 0ul);
     }
 }
@@ -1285,10 +1436,22 @@ void __stdcall grBufferSwap(v9x_u32 interval)
                        interval);
     }
     if (v9x_glide_device_is_open()) {
+        v9x_u32 start;
+
         v9x_glide_flush();
+        start = v9x_glide_rdtsc_low();
         (void)v9x_glide_device_swap(interval);
+        v9x_glide_prof_add(V9X_GLIDE_PROF_SWAP, v9x_glide_rdtsc_low() - start);
     } else if (interval != 0ul) {
         Sleep(interval * V9X_GLIDE_FRAME_MS);
+    }
+    {
+        v9x_u32 mark = v9x_glide_rdtsc_low();
+
+        if (v9x_glide_prof_swap_mark != 0ul) {
+            v9x_glide_prof_add(V9X_GLIDE_PROF_FRAME, mark - v9x_glide_prof_swap_mark);
+        }
+        v9x_glide_prof_swap_mark = mark;
     }
     now = GetTickCount();
     if (now - v9x_glide_summary_tick >= V9X_GLIDE_SUMMARY_MS) {
@@ -1870,8 +2033,11 @@ void __stdcall grDrawTriangle(const v9x_u32 *a, const v9x_u32 *b,
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grDrawTriangle);
 
     if (v9x_glide_device_is_open()) {
+        v9x_u32 start = v9x_glide_rdtsc_low();
+
         v9x_glide_draw_triangle((const float *)a, (const float *)b,
                                 (const float *)c);
+        v9x_glide_prof_add(V9X_GLIDE_PROF_ENTRY, v9x_glide_rdtsc_low() - start);
     }
     if (!v9x_glide_sampled(call)) {
         return;
@@ -1887,7 +2053,10 @@ void __stdcall grDrawLine(const v9x_u32 *a, const v9x_u32 *b)
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grDrawLine);
 
     if (v9x_glide_device_is_open()) {
+        v9x_u32 start = v9x_glide_rdtsc_low();
+
         v9x_glide_draw_line((const float *)a, (const float *)b);
+        v9x_glide_prof_add(V9X_GLIDE_PROF_ENTRY, v9x_glide_rdtsc_low() - start);
     }
     if (!v9x_glide_sampled(call)) {
         return;

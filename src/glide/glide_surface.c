@@ -17,6 +17,7 @@ typedef HRESULT (WINAPI *V9X_GLIDE_DDRAW_CREATE)(GUID *, LPDIRECTDRAW *,
  * what every engine's Direct3D Z buffer takes. */
 #define V9X_GLIDE_DEPTH_BITS 16ul
 #define V9X_GLIDE_DISPLAY_BITS 16ul
+#define V9X_GLIDE_EXTRA_BUFFERS 1ul
 
 static const char v9x_glide_window_class[] = "Velocity9xGlide";
 
@@ -32,6 +33,7 @@ static HWND v9x_glide_window;
 static int v9x_glide_window_ours;
 static int v9x_glide_open;
 static v9x_u32 v9x_glide_hwtex_failures;
+static int v9x_glide_flip_pending;
 
 static void v9x_glide_zero(void *block, DWORD bytes)
 {
@@ -181,7 +183,20 @@ int v9x_glide_device_open(void *window, v9x_u32 width, v9x_u32 height,
     desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
     desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP |
                           DDSCAPS_COMPLEX | DDSCAPS_3DDEVICE;
-    desc.dwBackBufferCount = color_buffers > 1ul ? color_buffers - 1ul : 1ul;
+    /*
+     * One buffer more than the game asked for. With two, the back buffer
+     * after a flip is the one still on screen until the retrace latches
+     * the flip, and drawing into it at once showed as flicker on the
+     * netbook - the panel showing the frame under construction, as Final
+     * Reality's open issue describes
+     * (docs\issues\2026-09-18-final-reality-flicker-is-the-buffer-under-construction.md).
+     * Finishing the engine and waiting a retrace after every flip cured it
+     * at a fifth of the frame time (Michael watching, 2026-10-09). With
+     * three, the buffer drawn next is neither shown nor waiting to be.
+     * GrBuffer_t keeps its meaning: FRONT is what is shown, BACK is drawn.
+     */
+    desc.dwBackBufferCount = (color_buffers > 1ul ? color_buffers - 1ul : 1ul) +
+                             V9X_GLIDE_EXTRA_BUFFERS;
     hr = IDirectDraw_CreateSurface(v9x_glide_ddraw, &desc, &v9x_glide_primary, 0);
     if (hr != DD_OK) {
         v9x_glide_log3("device: flip chain of %lu hr=%08lX", desc.dwBackBufferCount,
@@ -330,6 +345,32 @@ static void v9x_glide_restore(void)
     }
 }
 
+/*
+ * Before the first write into the back buffer after a flip: the flip is
+ * queued for the next retrace, and until it happens the "back" buffer is
+ * still on screen, and a frame-buffer lock or a draw into it would show.
+ * Added while chasing flicker from blitter fills (netbook, 2026-10-09);
+ * the wait alone did not cure that (the fills are gone, glide_dll.c's
+ * clear says why). Bounded: the retrace comes within a frame, and a
+ * refresh that never reports done must not hang the game.
+ */
+#define V9X_GLIDE_FLIP_WAIT_MS 50ul
+
+void v9x_glide_device_wait_flip(void)
+{
+    DWORD start;
+
+    if (!v9x_glide_flip_pending || v9x_glide_back == 0) {
+        return;
+    }
+    v9x_glide_flip_pending = 0;
+    start = GetTickCount();
+    while (IDirectDrawSurface_GetFlipStatus(v9x_glide_back, DDGFS_ISFLIPDONE) ==
+               DDERR_WASSTILLDRAWING &&
+           GetTickCount() - start < V9X_GLIDE_FLIP_WAIT_MS) {
+    }
+}
+
 int v9x_glide_device_swap(v9x_u32 interval)
 {
     HRESULT hr;
@@ -353,6 +394,7 @@ int v9x_glide_device_swap(v9x_u32 interval)
         v9x_glide_log3("device: flip hr=%08lX", (DWORD)hr, 0ul, 0ul);
         return 0;
     }
+    v9x_glide_flip_pending = 1;
     return 1;
 }
 
@@ -366,6 +408,7 @@ int v9x_glide_device_lock(v9x_u32 buffer, int read_only, void **pixels,
     if (surface == 0) {
         return 0;
     }
+    v9x_glide_device_wait_flip();
     v9x_glide_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
     hr = IDirectDrawSurface_Lock(surface, 0, &desc,

@@ -1,0 +1,492 @@
+== B129-1-PROFILED-CPU-CLEAR
+3 pid=FFFF8A0B t=1655921 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFF8A0B t=1655921 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFF8A0B t=1655924 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+8 pid=FFFF8A0B t=1656436 device: open 640x480 buffers=2
+594 pid=FFFF8A0B t=1671046 census periodic swaps=116
+595 pid=FFFF8A0B t=1671046 census   draws: drawn=4600 refused=0 culled=0 skipped-textured=0
+596 pid=FFFF8A0B t=1671046 census   draws: fog-dropped=0 uploads=1336 surface-hits=964 evictions=916
+597 pid=FFFF8A0B t=1671046 census   cycles(Mc): frame=20413 entry=1088 prepare=1056 upload=969 submit=133 swap=25 clear=18518 batches=2300
+1253 pid=FFFF8A0B t=1686283 census periodic swaps=209
+1254 pid=FFFF8A0B t=1686283 census   draws: drawn=9400 refused=0 culled=0 skipped-textured=0
+1255 pid=FFFF8A0B t=1686283 census   draws: fog-dropped=0 uploads=3437 surface-hits=1263 evictions=2866
+1256 pid=FFFF8A0B t=1686283 census   cycles(Mc): frame=20059 entry=1682 prepare=1648 upload=1520 submit=143 swap=14 clear=14266 batches=2400
+1919 pid=FFFF8A0B t=1701374 census periodic swaps=342
+1920 pid=FFFF8A0B t=1701374 census   draws: drawn=121010 refused=0 culled=0 skipped-textured=0
+1921 pid=FFFF8A0B t=1701374 census   draws: fog-dropped=0 uploads=3799 surface-hits=2428 evictions=3070
+1922 pid=FFFF8A0B t=1701374 census   cycles(Mc): frame=23922 entry=2510 prepare=323 upload=136 submit=1473 swap=93 clear=20441 batches=36536
+1959 pid=FFFF8A0B t=1716383 census periodic swaps=434
+1960 pid=FFFF8A0B t=1716383 census   draws: drawn=198452 refused=0 culled=0 skipped-textured=0
+1961 pid=FFFF8A0B t=1716383 census   draws: fog-dropped=0 uploads=6647 surface-hits=12720 evictions=5852
+1962 pid=FFFF8A0B t=1716383 census   cycles(Mc): frame=23792 entry=3108 prepare=1605 upload=1151 submit=1123 swap=113 clear=14035 batches=29199
+3531 pid=FFFF8A0B t=1731554 census periodic swaps=542
+3532 pid=FFFF8A0B t=1731554 census   draws: drawn=411996 refused=0 culled=50592 skipped-textured=0
+3533 pid=FFFF8A0B t=1731554 census   draws: fog-dropped=0 uploads=7417 surface-hits=14318 evictions=6728
+3534 pid=FFFF8A0B t=1731554 census   cycles(Mc): frame=24050 entry=8011 prepare=756 upload=410 submit=3203 swap=8 clear=13037 batches=79148
+3580 pid=FFFF8A0B t=1746585 census periodic swaps=623
+3581 pid=FFFF8A0B t=1746585 census   draws: drawn=682488 refused=0 culled=116716 skipped-textured=0
+3582 pid=FFFF8A0B t=1746585 census   draws: fog-dropped=0 uploads=7419 surface-hits=14596 evictions=6728
+3583 pid=FFFF8A0B t=1746585 census   cycles(Mc): frame=23827 entry=9793 prepare=354 upload=0 submit=4069 swap=4 clear=12729 batches=100570
+3633 pid=FFFF8A0B t=1761760 census periodic swaps=704
+3634 pid=FFFF8A0B t=1761760 census   draws: drawn=953133 refused=0 culled=183896 skipped-textured=0
+3635 pid=FFFF8A0B t=1761760 census   draws: fog-dropped=0 uploads=7428 surface-hits=14596 evictions=6728
+3636 pid=FFFF8A0B t=1761761 census   cycles(Mc): frame=24056 entry=9966 prepare=361 upload=9 submit=4161 swap=4 clear=12785 batches=100467
+== B129-2-BLITTER-FILLS
+3 pid=FFFF8A0B t=1867938 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFF8A0B t=1867938 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFF8A0B t=1867938 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+8 pid=FFFF8A0B t=1868454 device: open 640x480 buffers=2
+594 pid=FFFF8A0B t=1882962 census periodic swaps=215
+595 pid=FFFF8A0B t=1882962 census   draws: drawn=8560 refused=0 culled=0 skipped-textured=0
+596 pid=FFFF8A0B t=1882962 census   draws: fog-dropped=0 uploads=3316 surface-hits=964 evictions=2896
+597 pid=FFFF8A0B t=1882962 census   cycles(Mc): frame=21167 entry=2884 prepare=2821 upload=2609 submit=262 swap=41 clear=13 batches=4280
+1554 pid=FFFF8A0B t=1897967 census periodic swaps=406
+1555 pid=FFFF8A0B t=1897967 census   draws: drawn=30160 refused=0 culled=0 skipped-textured=0
+1556 pid=FFFF8A0B t=1897967 census   draws: fog-dropped=0 uploads=7046 surface-hits=1434 evictions=6410
+1557 pid=FFFF8A0B t=1897967 census   cycles(Mc): frame=19690 entry=3326 prepare=3061 upload=2808 submit=369 swap=31 clear=14 batches=7074
+1919 pid=FFFF8A0B t=1912977 census periodic swaps=880
+1920 pid=FFFF8A0B t=1912977 census   draws: drawn=426166 refused=0 culled=0 skipped-textured=0
+1921 pid=FFFF8A0B t=1912977 census   draws: fog-dropped=0 uploads=12125 surface-hits=19542 evictions=11330
+1922 pid=FFFF8A0B t=1912977 census   cycles(Mc): frame=23793 entry=11168 prepare=3320 upload=2104 submit=5504 swap=476 clear=23 batches=146175
+2343 pid=FFFF8A0B t=1927999 census periodic swaps=1290
+2344 pid=FFFF8A0B t=1927999 census   draws: drawn=728534 refused=0 culled=0 skipped-textured=0
+2345 pid=FFFF8A0B t=1927999 census   draws: fog-dropped=0 uploads=17469 surface-hits=39503 evictions=16653
+2346 pid=FFFF8A0B t=1927999 census   cycles(Mc): frame=23812 entry=9617 prepare=3385 upload=2284 submit=4553 swap=497 clear=35 batches=121112
+3543 pid=FFFF8A0B t=1943049 census periodic swaps=1473
+3544 pid=FFFF8A0B t=1943050 census   draws: drawn=1286365 refused=0 culled=139536 skipped-textured=0
+3545 pid=FFFF8A0B t=1943050 census   draws: fog-dropped=0 uploads=17708 surface-hits=40360 evictions=17239
+3546 pid=FFFF8A0B t=1943050 census   cycles(Mc): frame=23859 entry=20660 prepare=1003 upload=188 submit=8473 swap=10 clear=14 batches=209011
+3595 pid=FFFF8A0B t=1958101 census periodic swaps=1648
+3596 pid=FFFF8A0B t=1958101 census   draws: drawn=1866110 refused=0 culled=284234 skipped-textured=0
+3597 pid=FFFF8A0B t=1958101 census   draws: fog-dropped=0 uploads=17716 surface-hits=40360 evictions=17239
+3598 pid=FFFF8A0B t=1958102 census   cycles(Mc): frame=23860 entry=21093 prepare=815 upload=9 submit=8744 swap=8 clear=17 batches=216065
+6644 pid=FFFF8A0B t=1973130 census periodic swaps=1821
+6645 pid=FFFF8A0B t=1973130 census   draws: drawn=2433538 refused=0 culled=427824 skipped-textured=0
+6646 pid=FFFF8A0B t=1973130 census   draws: fog-dropped=0 uploads=17716 surface-hits=40360 evictions=17239
+6647 pid=FFFF8A0B t=1973130 census   cycles(Mc): frame=23824 entry=20765 prepare=793 upload=0 submit=8661 swap=7 clear=17 batches=211511
+== B129-3-FOG-CLIP-COMPARE
+3 pid=FFFF8A0B t=2098080 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFF8A0B t=2098080 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFF8A0B t=2098080 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+8 pid=FFFF8A0B t=2098622 device: open 640x480 buffers=2
+594 pid=FFFF8A0B t=2113141 census periodic swaps=215
+595 pid=FFFF8A0B t=2113141 census   draws: drawn=8560 refused=0 culled=0 skipped-textured=0
+596 pid=FFFF8A0B t=2113141 census   draws: fog-dropped=0 uploads=3316 surface-hits=964 evictions=2896
+597 pid=FFFF8A0B t=2113141 census   cycles(Mc): frame=21166 entry=2863 prepare=2826 upload=2613 submit=256 swap=41 clear=12 batches=4280
+1554 pid=FFFF8A0B t=2128142 census periodic swaps=401
+1555 pid=FFFF8A0B t=2128142 census   draws: drawn=26600 refused=0 culled=0 skipped-textured=0
+1556 pid=FFFF8A0B t=2128142 census   draws: fog-dropped=0 uploads=7066 surface-hits=1434 evictions=6430
+1557 pid=FFFF8A0B t=2128142 census   cycles(Mc): frame=19683 entry=3239 prepare=3087 upload=2837 submit=337 swap=30 clear=10 batches=6266
+1919 pid=FFFF8A0B t=2143148 census periodic swaps=931
+1920 pid=FFFF8A0B t=2143148 census   draws: drawn=467184 refused=0 culled=0 skipped-textured=0
+1921 pid=FFFF8A0B t=2143148 census   draws: fog-dropped=0 uploads=12198 surface-hits=20099 evictions=11403
+1922 pid=FFFF8A0B t=2143148 census   cycles(Mc): frame=23788 entry=10614 prepare=3429 upload=2151 submit=6012 swap=621 clear=22 batches=162500
+3450 pid=FFFF8A0B t=2158177 census periodic swaps=1366
+3451 pid=FFFF8A0B t=2158177 census   draws: drawn=891872 refused=0 culled=35904 skipped-textured=0
+3452 pid=FFFF8A0B t=2158177 census   draws: fog-dropped=0 uploads=16819 surface-hits=35912 evictions=16330
+3453 pid=FFFF8A0B t=2158177 census   cycles(Mc): frame=23824 entry=11019 prepare=3194 upload=2057 submit=6355 swap=490 clear=18 batches=165245
+3560 pid=FFFF8A0B t=2173196 census periodic swaps=1636
+3561 pid=FFFF8A0B t=2173196 census   draws: drawn=1775430 refused=0 culled=256262 skipped-textured=0
+3562 pid=FFFF8A0B t=2173196 census   draws: fog-dropped=0 uploads=16873 surface-hits=37581 evictions=16330
+3563 pid=FFFF8A0B t=2173196 census   cycles(Mc): frame=23808 entry=19549 prepare=1270 upload=18 submit=13289 swap=14 clear=24 batches=330439
+6619 pid=FFFF8A0B t=2188245 census periodic swaps=1901
+6620 pid=FFFF8A0B t=2188245 census   draws: drawn=2653482 refused=0 culled=476052 skipped-textured=0
+6621 pid=FFFF8A0B t=2188245 census   draws: fog-dropped=0 uploads=16884 surface-hits=37581 evictions=16330
+6622 pid=FFFF8A0B t=2188245 census   cycles(Mc): frame=23856 entry=19372 prepare=1234 upload=10 submit=13155 swap=12 clear=26 batches=327325
+6664 pid=FFFF8A0B t=2203286 census periodic swaps=2170
+6665 pid=FFFF8A0B t=2203286 census   draws: drawn=3534231 refused=0 culled=699322 skipped-textured=0
+6666 pid=FFFF8A0B t=2203286 census   draws: fog-dropped=0 uploads=16884 surface-hits=37581 evictions=16330
+6667 pid=FFFF8A0B t=2203286 census   cycles(Mc): frame=23843 entry=19625 prepare=1232 upload=0 submit=13358 swap=13 clear=27 batches=328834
+== B129-4-BATCH-ENDS
+3 pid=FFFF8A0B t=2257703 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFF8A0B t=2257703 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFF8A0B t=2257703 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFF8A0B t=2257703 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFF8A0B t=2258255 device: open 640x480 buffers=2
+594 pid=FFFF8A0B t=2272769 census periodic swaps=215
+595 pid=FFFF8A0B t=2272769 census   draws: drawn=8560 refused=0 culled=0 skipped-textured=0
+596 pid=FFFF8A0B t=2272769 census   draws: fog-dropped=0 uploads=3316 surface-hits=964 evictions=2896
+597 pid=FFFF8A0B t=2272769 census   cycles(Mc): frame=21170 entry=2867 prepare=2821 upload=2606 submit=255 swap=41 clear=12 batches=4280
+598 pid=FFFF8A0B t=2272769 census   batch ends: full=0 texture=0 state=0
+1555 pid=FFFF8A0B t=2287774 census periodic swaps=413
+1556 pid=FFFF8A0B t=2287774 census   draws: drawn=34360 refused=0 culled=0 skipped-textured=0
+1557 pid=FFFF8A0B t=2287774 census   draws: fog-dropped=0 uploads=7046 surface-hits=1434 evictions=6410
+1558 pid=FFFF8A0B t=2287774 census   cycles(Mc): frame=19688 entry=3304 prepare=3060 upload=2802 submit=400 swap=35 clear=10 batches=8040
+1559 pid=FFFF8A0B t=2287774 census   batch ends: full=120 texture=3861 state=0
+1921 pid=FFFF8A0B t=2302794 census periodic swaps=942
+1922 pid=FFFF8A0B t=2302794 census   draws: drawn=476756 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFF8A0B t=2302794 census   draws: fog-dropped=0 uploads=12178 surface-hits=20099 evictions=11383
+1924 pid=FFFF8A0B t=2302794 census   cycles(Mc): frame=23812 entry=10527 prepare=3325 upload=2092 submit=6000 swap=623 clear=22 batches=164416
+1925 pid=FFFF8A0B t=2302794 census   batch ends: full=1622 texture=157196 state=0
+3469 pid=FFFF8A0B t=2317811 census periodic swaps=1376
+3470 pid=FFFF8A0B t=2317811 census   draws: drawn=909999 refused=0 culled=39168 skipped-textured=0
+3471 pid=FFFF8A0B t=2317811 census   draws: fog-dropped=0 uploads=16733 surface-hits=35675 evictions=16265
+3472 pid=FFFF8A0B t=2317811 census   cycles(Mc): frame=23806 entry=11064 prepare=3118 upload=1984 submit=6434 swap=481 clear=19 batches=168389
+3473 pid=FFFF8A0B t=2317813 census   batch ends: full=888 texture=161303 state=0
+3568 pid=FFFF8A0B t=2332823 census periodic swaps=1649
+3569 pid=FFFF8A0B t=2332823 census   draws: drawn=1801776 refused=0 culled=261990 skipped-textured=0
+3570 pid=FFFF8A0B t=2332823 census   draws: fog-dropped=0 uploads=16781 surface-hits=36842 evictions=16265
+3571 pid=FFFF8A0B t=2332823 census   cycles(Mc): frame=23796 entry=19523 prepare=1259 upload=16 submit=13311 swap=14 clear=26 batches=333595
+3572 pid=FFFF8A0B t=2332823 census   batch ends: full=1979 texture=331061 state=0
+6628 pid=FFFF8A0B t=2347844 census periodic swaps=1916
+6629 pid=FFFF8A0B t=2347844 census   draws: drawn=2687355 refused=0 culled=483472 skipped-textured=0
+6630 pid=FFFF8A0B t=2347844 census   draws: fog-dropped=0 uploads=16792 surface-hits=36842 evictions=16265
+6631 pid=FFFF8A0B t=2347844 census   cycles(Mc): frame=23810 entry=19312 prepare=1230 upload=9 submit=13147 swap=12 clear=27 batches=329991
+6632 pid=FFFF8A0B t=2347844 census   batch ends: full=2024 texture=327422 state=0
+6674 pid=FFFF8A0B t=2362893 census periodic swaps=2187
+6675 pid=FFFF8A0B t=2362893 census   draws: drawn=3578065 refused=0 culled=708402 skipped-textured=0
+6676 pid=FFFF8A0B t=2362893 census   draws: fog-dropped=0 uploads=16792 surface-hits=36842 evictions=16265
+6677 pid=FFFF8A0B t=2362893 census   cycles(Mc): frame=23858 entry=19638 prepare=1229 upload=0 submit=13416 swap=13 clear=27 batches=331612
+6678 pid=FFFF8A0B t=2362893 census   batch ends: full=2103 texture=328967 state=0
+== B129-5-FILLS-FINISH-BEFORE
+3 pid=FFFF8A0B t=2411233 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFF8A0B t=2411233 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFF8A0B t=2411233 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFF8A0B t=2411233 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFF8A0B t=2411777 device: open 640x480 buffers=2
+594 pid=FFFF8A0B t=2426292 census periodic swaps=215
+595 pid=FFFF8A0B t=2426292 census   draws: drawn=8560 refused=0 culled=0 skipped-textured=0
+596 pid=FFFF8A0B t=2426292 census   draws: fog-dropped=0 uploads=3316 surface-hits=964 evictions=2896
+597 pid=FFFF8A0B t=2426292 census   cycles(Mc): frame=21165 entry=2867 prepare=2831 upload=2622 submit=252 swap=41 clear=13 batches=4280
+598 pid=FFFF8A0B t=2426292 census   batch ends: full=0 texture=0 state=0
+1555 pid=FFFF8A0B t=2441295 census periodic swaps=411
+1556 pid=FFFF8A0B t=2441295 census   draws: drawn=33160 refused=0 culled=0 skipped-textured=0
+1557 pid=FFFF8A0B t=2441297 census   draws: fog-dropped=0 uploads=7046 surface-hits=1434 evictions=6410
+1558 pid=FFFF8A0B t=2441297 census   cycles(Mc): frame=19688 entry=3295 prepare=3065 upload=2813 submit=387 swap=34 clear=10 batches=7764
+1559 pid=FFFF8A0B t=2441297 census   batch ends: full=112 texture=3595 state=0
+1921 pid=FFFF8A0B t=2456297 census periodic swaps=931
+1922 pid=FFFF8A0B t=2456297 census   draws: drawn=467773 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFF8A0B t=2456297 census   draws: fog-dropped=0 uploads=12178 surface-hits=20099 evictions=11383
+1924 pid=FFFF8A0B t=2456297 census   cycles(Mc): frame=23781 entry=10536 prepare=3412 upload=2161 submit=5968 swap=613 clear=22 batches=161284
+1925 pid=FFFF8A0B t=2456297 census   batch ends: full=1599 texture=154096 state=0
+3463 pid=FFFF8A0B t=2471306 census periodic swaps=1362
+3464 pid=FFFF8A0B t=2471307 census   draws: drawn=897219 refused=0 culled=38352 skipped-textured=0
+3465 pid=FFFF8A0B t=2471307 census   draws: fog-dropped=0 uploads=16728 surface-hits=35675 evictions=16265
+3466 pid=FFFF8A0B t=2471307 census   cycles(Mc): frame=23793 entry=11054 prepare=3195 upload=2049 submit=6391 swap=481 clear=18 batches=166698
+3467 pid=FFFF8A0B t=2471307 census   batch ends: full=880 texture=159628 state=0
+3564 pid=FFFF8A0B t=2486316 census periodic swaps=1635
+3565 pid=FFFF8A0B t=2486316 census   draws: drawn=1790528 refused=0 culled=261168 skipped-textured=0
+3566 pid=FFFF8A0B t=2486316 census   draws: fog-dropped=0 uploads=16779 surface-hits=36845 evictions=16265
+3567 pid=FFFF8A0B t=2486316 census   cycles(Mc): frame=23794 entry=19507 prepare=1261 upload=17 submit=13292 swap=14 clear=47 batches=333635
+3568 pid=FFFF8A0B t=2486316 census   batch ends: full=1992 texture=331086 state=0
+6622 pid=FFFF8A0B t=2501368 census periodic swaps=1903
+6623 pid=FFFF8A0B t=2501368 census   draws: drawn=2677095 refused=0 culled=483472 skipped-textured=0
+6624 pid=FFFF8A0B t=2501368 census   draws: fog-dropped=0 uploads=16788 surface-hits=36845 evictions=16265
+6625 pid=FFFF8A0B t=2501368 census   cycles(Mc): frame=23860 entry=19345 prepare=1227 upload=9 submit=13167 swap=13 clear=40 batches=330939
+6626 pid=FFFF8A0B t=2501368 census   batch ends: full=1983 texture=328411 state=0
+6668 pid=FFFF8A0B t=2516373 census periodic swaps=2174
+6669 pid=FFFF8A0B t=2516373 census   draws: drawn=3565464 refused=0 culled=708402 skipped-textured=0
+6670 pid=FFFF8A0B t=2516373 census   draws: fog-dropped=0 uploads=16788 surface-hits=36845 evictions=16265
+6671 pid=FFFF8A0B t=2516373 census   cycles(Mc): frame=23786 entry=19559 prepare=1226 upload=0 submit=13355 swap=13 clear=37 batches=331294
+6672 pid=FFFF8A0B t=2516373 census   batch ends: full=2073 texture=328679 state=0
+== B129-6-COLOR-FILL-ONLY
+3 pid=FFFF8A0B t=2554045 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFF8A0B t=2554045 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFF8A0B t=2554045 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFF8A0B t=2554045 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFF8A0B t=2554981 device: open 640x480 buffers=2
+594 pid=FFFF8A0B t=2569070 census periodic swaps=207
+595 pid=FFFF8A0B t=2569070 census   draws: drawn=8240 refused=0 culled=0 skipped-textured=0
+596 pid=FFFF8A0B t=2569070 census   draws: fog-dropped=0 uploads=3156 surface-hits=964 evictions=2736
+597 pid=FFFF8A0B t=2569072 census   cycles(Mc): frame=20436 entry=2633 prepare=2600 upload=2404 submit=244 swap=41 clear=4023 batches=4120
+598 pid=FFFF8A0B t=2569072 census   batch ends: full=0 texture=0 state=0
+1555 pid=FFFF8A0B t=2584071 census periodic swaps=381
+1556 pid=FFFF8A0B t=2584071 census   draws: drawn=19640 refused=0 culled=0 skipped-textured=0
+1557 pid=FFFF8A0B t=2584071 census   draws: fog-dropped=0 uploads=6886 surface-hits=1434 evictions=6250
+1558 pid=FFFF8A0B t=2584071 census   cycles(Mc): frame=19681 entry=3046 prepare=2974 upload=2739 submit=267 swap=25 clear=3322 batches=4728
+1559 pid=FFFF8A0B t=2584071 census   batch ends: full=24 texture=669 state=0
+1921 pid=FFFF8A0B t=2599084 census periodic swaps=708
+1922 pid=FFFF8A0B t=2599084 census   draws: drawn=291538 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFF8A0B t=2599084 census   draws: fog-dropped=0 uploads=11147 surface-hits=17005 evictions=10352
+1924 pid=FFFF8A0B t=2599084 census   cycles(Mc): frame=23800 entry=6987 prepare=2693 upload=1796 submit=3610 swap=350 clear=6193 batches=97695
+1925 pid=FFFF8A0B t=2599084 census   batch ends: full=1067 texture=92092 state=0
+3410 pid=FFFF8A0B t=2614146 census periodic swaps=972
+3411 pid=FFFF8A0B t=2614146 census   draws: drawn=527519 refused=0 culled=16320 skipped-textured=0
+3412 pid=FFFF8A0B t=2614146 census   draws: fog-dropped=0 uploads=15937 surface-hits=33536 evictions=15418
+3413 pid=FFFF8A0B t=2614146 census   cycles(Mc): frame=23877 entry=7200 prepare=3100 upload=2197 submit=3475 swap=275 clear=4563 batches=90581
+3414 pid=FFFF8A0B t=2614146 census   batch ends: full=541 texture=83779 state=0
+3627 pid=FFFF8A0B t=2629168 census periodic swaps=1195
+3628 pid=FFFF8A0B t=2629168 census   draws: drawn=1256976 refused=0 culled=198288 skipped-textured=0
+3629 pid=FFFF8A0B t=2629168 census   draws: fog-dropped=0 uploads=16034 surface-hits=34927 evictions=15418
+3630 pid=FFFF8A0B t=2629168 census   cycles(Mc): frame=23812 entry=15938 prepare=1039 upload=24 submit=10849 swap=13 clear=4345 batches=273148
+3631 pid=FFFF8A0B t=2629168 census   batch ends: full=1596 texture=271060 state=0
+3683 pid=FFFF8A0B t=2644193 census periodic swaps=1417
+3684 pid=FFFF8A0B t=2644193 census   draws: drawn=1994287 refused=0 culled=382204 skipped-textured=0
+3685 pid=FFFF8A0B t=2644194 census   draws: fog-dropped=0 uploads=16045 surface-hits=34927 evictions=15418
+3686 pid=FFFF8A0B t=2644194 census   cycles(Mc): frame=23819 entry=16014 prepare=1008 upload=10 submit=10894 swap=9 clear=4350 batches=274233
+3687 pid=FFFF8A0B t=2644194 census   batch ends: full=1710 texture=272068 state=0
+3729 pid=FFFF8A0B t=2659228 census periodic swaps=1639
+3730 pid=FFFF8A0B t=2659228 census   draws: drawn=2722109 refused=0 culled=566464 skipped-textured=0
+3731 pid=FFFF8A0B t=2659228 census   draws: fog-dropped=0 uploads=16045 surface-hits=34927 evictions=15418
+3732 pid=FFFF8A0B t=2659228 census   cycles(Mc): frame=23833 entry=16015 prepare=993 upload=0 submit=10910 swap=11 clear=4374 batches=271391
+3733 pid=FFFF8A0B t=2659228 census   batch ends: full=1697 texture=269250 state=0
+== B129-7-NO-FILLS
+3 pid=FFFDECF3 t=3362010 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFDECF3 t=3362010 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFDECF3 t=3362010 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFDECF3 t=3362010 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFDECF3 t=3362601 device: open 640x480 buffers=2
+594 pid=FFFDECF3 t=3377091 census periodic swaps=115
+595 pid=FFFDECF3 t=3377091 census   draws: drawn=4560 refused=0 culled=0 skipped-textured=0
+596 pid=FFFDECF3 t=3377091 census   draws: fog-dropped=0 uploads=1316 surface-hits=964 evictions=896
+597 pid=FFFDECF3 t=3377091 census   cycles(Mc): frame=20218 entry=1059 prepare=1042 upload=956 submit=131 swap=25 clear=18378 batches=2280
+598 pid=FFFDECF3 t=3377091 census   batch ends: full=0 texture=0 state=0
+1254 pid=FFFDECF3 t=3392436 census periodic swaps=209
+1255 pid=FFFDECF3 t=3392436 census   draws: drawn=9400 refused=0 culled=0 skipped-textured=0
+1256 pid=FFFDECF3 t=3392436 census   draws: fog-dropped=0 uploads=3437 surface-hits=1263 evictions=2866
+1257 pid=FFFDECF3 t=3392436 census   cycles(Mc): frame=20229 entry=1689 prepare=1670 upload=1542 submit=152 swap=14 clear=14418 batches=2420
+1258 pid=FFFDECF3 t=3392436 census   batch ends: full=0 texture=0 state=0
+1921 pid=FFFDECF3 t=3407438 census periodic swaps=345
+1922 pid=FFFDECF3 t=3407438 census   draws: drawn=123569 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFDECF3 t=3407440 census   draws: fog-dropped=0 uploads=3799 surface-hits=1818 evictions=3070
+1924 pid=FFFDECF3 t=3407440 census   cycles(Mc): frame=23783 entry=2176 prepare=330 upload=138 submit=1506 swap=108 clear=20909 batches=37470
+1925 pid=FFFDECF3 t=3407440 census   batch ends: full=517 texture=36457 state=0
+1962 pid=FFFDECF3 t=3422510 census periodic swaps=426
+1963 pid=FFFDECF3 t=3422511 census   draws: drawn=189374 refused=0 culled=0 skipped-textured=0
+1964 pid=FFFDECF3 t=3422511 census   draws: fog-dropped=0 uploads=7250 surface-hits=15472 evictions=6455
+1965 pid=FFFDECF3 t=3422511 census   cycles(Mc): frame=23892 entry=3064 prepare=1976 upload=1436 submit=1027 swap=116 clear=12344 batches=26575
+1966 pid=FFFDECF3 t=3422511 census   batch ends: full=124 texture=22962 state=0
+3538 pid=FFFDECF3 t=3437616 census periodic swaps=554
+3539 pid=FFFDECF3 t=3437616 census   draws: drawn=405828 refused=0 culled=45696 skipped-textured=0
+3540 pid=FFFDECF3 t=3437616 census   draws: fog-dropped=0 uploads=8025 surface-hits=17137 evictions=7311
+3541 pid=FFFDECF3 t=3437616 census   cycles(Mc): frame=23946 entry=4936 prepare=760 upload=403 submit=3158 swap=31 clear=16052 batches=78857
+3542 pid=FFFDECF3 t=3437616 census   batch ends: full=555 texture=76121 state=0
+3592 pid=FFFDECF3 t=3452687 census periodic swaps=651
+3593 pid=FFFDECF3 t=3452687 census   draws: drawn=730078 refused=0 culled=124966 skipped-textured=0
+3594 pid=FFFDECF3 t=3452687 census   draws: fog-dropped=0 uploads=8031 surface-hits=17571 evictions=7311
+3595 pid=FFFDECF3 t=3452687 census   cycles(Mc): frame=23890 entry=7103 prepare=440 upload=0 submit=4838 swap=4 clear=15233 batches=120770
+3596 pid=FFFDECF3 t=3452687 census   batch ends: full=761 texture=119809 state=0
+3644 pid=FFFDECF3 t=3467739 census periodic swaps=748
+3645 pid=FFFDECF3 t=3467741 census   draws: drawn=1053716 refused=0 culled=205476 skipped-textured=0
+3646 pid=FFFDECF3 t=3467741 census   draws: fog-dropped=0 uploads=8038 surface-hits=17571 evictions=7311
+3647 pid=FFFDECF3 t=3467741 census   cycles(Mc): frame=23861 entry=7097 prepare=446 upload=9 submit=4824 swap=5 clear=15239 batches=120154
+3648 pid=FFFDECF3 t=3467741 census   batch ends: full=750 texture=119203 state=0
+3690 pid=FFFDECF3 t=3482855 census periodic swaps=846
+3691 pid=FFFDECF3 t=3482855 census   draws: drawn=1374809 refused=0 culled=286816 skipped-textured=0
+3692 pid=FFFDECF3 t=3482855 census   draws: fog-dropped=0 uploads=8038 surface-hits=17571 evictions=7311
+3693 pid=FFFDECF3 t=3482855 census   cycles(Mc): frame=23961 entry=7045 prepare=431 upload=0 submit=4799 swap=5 clear=15391 batches=119807
+3694 pid=FFFDECF3 t=3482855 census   batch ends: full=748 texture=118863 state=0
+3736 pid=FFFDECF3 t=3497898 census periodic swaps=943
+3737 pid=FFFDECF3 t=3497898 census   draws: drawn=1692824 refused=0 culled=367326 skipped-textured=0
+3738 pid=FFFDECF3 t=3497898 census   draws: fog-dropped=0 uploads=8038 surface-hits=17571 evictions=7311
+3739 pid=FFFDECF3 t=3497898 census   cycles(Mc): frame=23847 entry=7069 prepare=427 upload=0 submit=4839 swap=5 clear=15255 batches=118581
+3740 pid=FFFDECF3 t=3497898 census   batch ends: full=744 texture=117643 state=0
+3807 pid=FFFDECF3 t=3513011 census periodic swaps=1040
+3808 pid=FFFDECF3 t=3513011 census   draws: drawn=2008512 refused=0 culled=447736 skipped-textured=0
+3809 pid=FFFDECF3 t=3513011 census   draws: fog-dropped=0 uploads=8102 surface-hits=17753 evictions=7362
+3810 pid=FFFDECF3 t=3513011 census   cycles(Mc): frame=23957 entry=7131 prepare=457 upload=21 submit=4878 swap=3 clear=15305 batches=118890
+3811 pid=FFFDECF3 t=3513011 census   batch ends: full=688 texture=117944 state=0
+== B129-8-DEPTH-FILL-ONLY
+3 pid=FFFE5147 t=3546592 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFE5147 t=3546592 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFE5147 t=3546592 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFE5147 t=3546592 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFE5147 t=3547010 device: open 640x480 buffers=2
+594 pid=FFFE5147 t=3561687 census periodic swaps=123
+595 pid=FFFE5147 t=3561687 census   draws: drawn=4880 refused=0 culled=0 skipped-textured=0
+596 pid=FFFE5147 t=3561688 census   draws: fog-dropped=0 uploads=1476 surface-hits=964 evictions=1056
+597 pid=FFFE5147 t=3561688 census   cycles(Mc): frame=20581 entry=1203 prepare=1184 upload=1088 submit=139 swap=26 clear=18428 batches=2440
+598 pid=FFFE5147 t=3561688 census   batch ends: full=0 texture=0 state=0
+1254 pid=FFFE5147 t=3576990 census periodic swaps=221
+1255 pid=FFFE5147 t=3576990 census   draws: drawn=9880 refused=0 culled=0 skipped-textured=0
+1256 pid=FFFE5147 t=3576990 census   draws: fog-dropped=0 uploads=3677 surface-hits=1263 evictions=3106
+1257 pid=FFFE5147 t=3576990 census   cycles(Mc): frame=20162 entry=1781 prepare=1760 upload=1625 submit=150 swap=15 clear=14204 batches=2500
+1258 pid=FFFE5147 t=3576990 census   batch ends: full=0 texture=0 state=0
+1921 pid=FFFE5147 t=3592107 census periodic swaps=364
+1922 pid=FFFE5147 t=3592107 census   draws: drawn=129700 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFE5147 t=3592108 census   draws: fog-dropped=0 uploads=4039 surface-hits=2428 evictions=3310
+1924 pid=FFFE5147 t=3592108 census   cycles(Mc): frame=23964 entry=2289 prepare=336 upload=138 submit=1593 swap=115 clear=20663 batches=39636
+1925 pid=FFFE5147 t=3592108 census   batch ends: full=534 texture=38599 state=0
+1962 pid=FFFE5147 t=3607165 census periodic swaps=450
+1963 pid=FFFE5147 t=3607165 census   draws: drawn=202802 refused=0 culled=0 skipped-textured=0
+1964 pid=FFFE5147 t=3607165 census   draws: fog-dropped=0 uploads=7556 surface-hits=15711 evictions=6761
+1965 pid=FFFE5147 t=3607165 census   cycles(Mc): frame=23869 entry=3257 prepare=2053 upload=1473 submit=1122 swap=121 clear=12335 batches=29192
+1966 pid=FFFE5147 t=3607165 census   batch ends: full=150 texture=25483 state=0
+3536 pid=FFFE5147 t=3622182 census periodic swaps=579
+3537 pid=FFFE5147 t=3622182 census   draws: drawn=440839 refused=0 culled=53040 skipped-textured=0
+3538 pid=FFFE5147 t=3622182 census   draws: fog-dropped=0 uploads=8327 surface-hits=17327 evictions=7641
+3539 pid=FFFE5147 t=3622182 census   cycles(Mc): frame=23806 entry=5453 prepare=793 upload=409 submit=3493 swap=20 clear=15287 batches=86821
+3540 pid=FFFE5147 t=3622183 census   batch ends: full=601 texture=84033 state=0
+3587 pid=FFFE5147 t=3637253 census periodic swaps=680
+3588 pid=FFFE5147 t=3637253 census   draws: drawn=776057 refused=0 culled=135756 skipped-textured=0
+3589 pid=FFFE5147 t=3637253 census   draws: fog-dropped=0 uploads=8330 surface-hits=17587 evictions=7641
+3590 pid=FFFE5147 t=3637253 census   cycles(Mc): frame=23890 entry=7347 prepare=456 upload=0 submit=5005 swap=5 clear=14940 batches=124879
+3591 pid=FFFE5147 t=3637253 census   batch ends: full=770 texture=123904 state=0
+3639 pid=FFFE5147 t=3652310 census periodic swaps=781
+3640 pid=FFFE5147 t=3652310 census   draws: drawn=1111385 refused=0 culled=219586 skipped-textured=0
+3641 pid=FFFE5147 t=3652310 census   draws: fog-dropped=0 uploads=8337 surface-hits=17587 evictions=7641
+3642 pid=FFFE5147 t=3652310 census   cycles(Mc): frame=23868 entry=7344 prepare=458 upload=9 submit=4993 swap=3 clear=14937 batches=125023
+3643 pid=FFFE5147 t=3652310 census   batch ends: full=768 texture=124046 state=0
+3685 pid=FFFE5147 t=3667449 census periodic swaps=883
+3686 pid=FFFE5147 t=3667449 census   draws: drawn=1445838 refused=0 culled=304246 skipped-textured=0
+3687 pid=FFFE5147 t=3667451 census   draws: fog-dropped=0 uploads=8337 surface-hits=17587 evictions=7641
+3688 pid=FFFE5147 t=3667451 census   cycles(Mc): frame=24000 entry=7330 prepare=448 upload=0 submit=4990 swap=5 clear=15087 batches=124688
+3689 pid=FFFE5147 t=3667451 census   batch ends: full=783 texture=123701 state=0
+3731 pid=FFFE5147 t=3682526 census periodic swaps=984
+3732 pid=FFFE5147 t=3682526 census   draws: drawn=1776592 refused=0 culled=388076 skipped-textured=0
+3733 pid=FFFE5147 t=3682526 census   draws: fog-dropped=0 uploads=8337 surface-hits=17587 evictions=7641
+3734 pid=FFFE5147 t=3682526 census   cycles(Mc): frame=23900 entry=7358 prepare=443 upload=0 submit=5029 swap=5 clear=14973 batches=123461
+3735 pid=FFFE5147 t=3682526 census   batch ends: full=775 texture=122484 state=0
+3803 pid=FFFE5147 t=3697630 census periodic swaps=1085
+3804 pid=FFFE5147 t=3697630 census   draws: drawn=2101100 refused=0 culled=471614 skipped-textured=0
+3805 pid=FFFE5147 t=3697630 census   draws: fog-dropped=0 uploads=8402 surface-hits=17768 evictions=7661
+3806 pid=FFFE5147 t=3697630 census   cycles(Mc): frame=23942 entry=7353 prepare=459 upload=12 submit=5046 swap=5 clear=15011 batches=123755
+3807 pid=FFFE5147 t=3697630 census   batch ends: full=650 texture=122838 state=0
+== B129-9-DRAWN-CLEAR
+3 pid=FFFE5147 t=3849981 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFE5147 t=3849981 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFE5147 t=3849981 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFE5147 t=3849981 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFE5147 t=3850407 device: open 640x480 buffers=2
+594 pid=FFFE5147 t=3865053 census periodic swaps=217
+595 pid=FFFE5147 t=3865053 census   draws: drawn=9086 refused=0 culled=0 skipped-textured=0
+596 pid=FFFE5147 t=3865053 census   draws: fog-dropped=0 uploads=3356 surface-hits=964 evictions=2936
+597 pid=FFFE5147 t=3865053 census   cycles(Mc): frame=21392 entry=3477 prepare=3440 upload=3225 submit=279 swap=45 clear=18 batches=4543
+598 pid=FFFE5147 t=3865053 census   batch ends: full=0 texture=0 state=0
+1555 pid=FFFE5147 t=3880091 census periodic swaps=389
+1556 pid=FFFE5147 t=3880091 census   draws: drawn=17954 refused=0 culled=0 skipped-textured=0
+1557 pid=FFFE5147 t=3880091 census   draws: fog-dropped=0 uploads=7146 surface-hits=1434 evictions=6510
+1558 pid=FFFE5147 t=3880091 census   cycles(Mc): frame=19743 entry=3707 prepare=3670 upload=3431 submit=257 swap=28 clear=12 batches=4272
+1559 pid=FFFE5147 t=3880091 census   batch ends: full=4 texture=4 state=0
+1921 pid=FFFE5147 t=3895202 census periodic swaps=915
+1922 pid=FFFE5147 t=3895202 census   draws: drawn=453634 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFE5147 t=3895202 census   draws: fog-dropped=0 uploads=12316 surface-hits=20356 evictions=11521
+1924 pid=FFFE5147 t=3895202 census   cycles(Mc): frame=23953 entry=10772 prepare=3672 upload=2393 submit=5955 swap=600 clear=37 batches=159070
+1925 pid=FFFE5147 t=3895202 census   batch ends: full=1688 texture=151223 state=0
+1965 pid=FFFE5147 t=3910369 census periodic swaps=1377
+1966 pid=FFFE5147 t=3910369 census   draws: drawn=806673 refused=0 culled=0 skipped-textured=0
+1967 pid=FFFE5147 t=3910369 census   draws: fog-dropped=0 uploads=17713 surface-hits=40594 evictions=16918
+1968 pid=FFFE5147 t=3910369 census   cycles(Mc): frame=24043 entry=9860 prepare=3751 upload=2559 submit=5269 swap=619 clear=67 batches=140461
+1969 pid=FFFE5147 t=3910369 census   batch ends: full=735 texture=132570 state=0
+3623 pid=FFFE5147 t=3925411 census periodic swaps=1650
+3624 pid=FFFE5147 t=3925411 census   draws: drawn=1626976 refused=0 culled=204000 skipped-textured=0
+3625 pid=FFFE5147 t=3925411 census   draws: fog-dropped=0 uploads=18227 surface-hits=42749 evictions=17536
+3626 pid=FFFE5147 t=3925411 census   cycles(Mc): frame=23845 entry=18628 prepare=1548 upload=280 submit=12452 swap=14 clear=14 batches=306787
+3627 pid=FFFE5147 t=3925411 census   batch ends: full=1831 texture=303224 state=0
+6680 pid=FFFE5147 t=3940419 census periodic swaps=1912
+6681 pid=FFFE5147 t=3940420 census   draws: drawn=2496481 refused=0 culled=420478 skipped-textured=0
+6682 pid=FFFE5147 t=3940420 census   draws: fog-dropped=0 uploads=18236 surface-hits=42749 evictions=17536
+6683 pid=FFFE5147 t=3940420 census   cycles(Mc): frame=23791 entry=19400 prepare=1289 upload=14 submit=13149 swap=13 clear=18 batches=324441
+6684 pid=FFFE5147 t=3940420 census   batch ends: full=1963 texture=321421 state=0
+6726 pid=FFFE5147 t=3955446 census periodic swaps=2181
+6727 pid=FFFE5147 t=3955446 census   draws: drawn=3379114 refused=0 culled=643748 skipped-textured=0
+6728 pid=FFFE5147 t=3955446 census   draws: fog-dropped=0 uploads=18236 surface-hits=42749 evictions=17536
+6729 pid=FFFE5147 t=3955446 census   cycles(Mc): frame=23819 entry=19686 prepare=1291 upload=0 submit=13356 swap=13 clear=18 batches=329901
+6730 pid=FFFE5147 t=3955446 census   batch ends: full=2037 texture=326788 state=0
+6772 pid=FFFE5147 t=3970476 census periodic swaps=2450
+6773 pid=FFFE5147 t=3970476 census   draws: drawn=4262587 refused=0 culled=867018 skipped-textured=0
+6774 pid=FFFE5147 t=3970476 census   draws: fog-dropped=0 uploads=18236 surface-hits=42749 evictions=17536
+6775 pid=FFFE5147 t=3970476 census   cycles(Mc): frame=23827 entry=19698 prepare=1296 upload=0 submit=13358 swap=13 clear=18 batches=329940
+6776 pid=FFFE5147 t=3970476 census   batch ends: full=2060 texture=326804 state=0
+6844 pid=FFFE5147 t=3985533 census periodic swaps=2720
+6845 pid=FFFE5147 t=3985533 census   draws: drawn=5128000 refused=0 culled=1090008 skipped-textured=0
+6846 pid=FFFE5147 t=3985533 census   draws: fog-dropped=0 uploads=18313 surface-hits=43105 evictions=17576
+6847 pid=FFFE5147 t=3985533 census   cycles(Mc): frame=23867 entry=19733 prepare=1307 upload=18 submit=13478 swap=14 clear=18 batches=331735
+6848 pid=FFFE5147 t=3985533 census   batch ends: full=1677 texture=328901 state=0
+7144 pid=FFFE5147 t=4000588 census periodic swaps=2982
+7145 pid=FFFE5147 t=4000588 census   draws: drawn=5968817 refused=0 culled=1305320 skipped-textured=0
+7146 pid=FFFE5147 t=4000588 census   draws: fog-dropped=0 uploads=18628 surface-hits=43893 evictions=17872
+7147 pid=FFFE5147 t=4000588 census   cycles(Mc): frame=23866 entry=19673 prepare=1402 upload=111 submit=13426 swap=13 clear=18 batches=329091
+7148 pid=FFFE5147 t=4000588 census   batch ends: full=1388 texture=326340 state=0
+== B129-10-FINISH-AND-RETRACE
+3 pid=FFFE5147 t=4046746 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFE5147 t=4046746 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFE5147 t=4046746 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFE5147 t=4046746 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFE5147 t=4047170 device: open 640x480 buffers=2
+594 pid=FFFE5147 t=4061800 census periodic swaps=216
+595 pid=FFFE5147 t=4061800 census   draws: drawn=9044 refused=0 culled=0 skipped-textured=0
+596 pid=FFFE5147 t=4061800 census   draws: fog-dropped=0 uploads=3336 surface-hits=964 evictions=2916
+597 pid=FFFE5147 t=4061800 census   cycles(Mc): frame=21382 entry=3463 prepare=3427 upload=3218 submit=265 swap=2944 clear=15 batches=4522
+598 pid=FFFE5147 t=4061800 census   batch ends: full=0 texture=0 state=0
+1555 pid=FFFE5147 t=4076809 census periodic swaps=390
+1556 pid=FFFE5147 t=4076810 census   draws: drawn=20236 refused=0 culled=0 skipped-textured=0
+1557 pid=FFFE5147 t=4076810 census   draws: fog-dropped=0 uploads=7086 surface-hits=1434 evictions=6450
+1558 pid=FFFE5147 t=4076810 census   cycles(Mc): frame=19697 entry=3708 prepare=3643 upload=3407 submit=269 swap=2373 clear=11 batches=4786
+1559 pid=FFFE5147 t=4076810 census   batch ends: full=20 texture=536 state=0
+1921 pid=FFFE5147 t=4091903 census periodic swaps=789
+1922 pid=FFFE5147 t=4091903 census   draws: drawn=351679 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFE5147 t=4091903 census   draws: fog-dropped=0 uploads=11878 surface-hits=18609 evictions=11083
+1924 pid=FFFE5147 t=4091903 census   cycles(Mc): frame=23926 entry=8599 prepare=3264 upload=2210 submit=4482 swap=3890 clear=43 batches=120236
+1925 pid=FFFE5147 t=4091903 census   batch ends: full=1278 texture=113427 state=0
+3407 pid=FFFE5147 t=4106946 census periodic swaps=1106
+3408 pid=FFFE5147 t=4106946 census   draws: drawn=630417 refused=0 culled=17136 skipped-textured=0
+3409 pid=FFFE5147 t=4106946 census   draws: fog-dropped=0 uploads=16557 surface-hits=34948 evictions=15927
+3410 pid=FFFE5147 t=4106946 census   cycles(Mc): frame=23846 entry=8184 prepare=3205 upload=2254 submit=4179 swap=3721 clear=64 batches=108114
+3411 pid=FFFE5147 t=4106946 census   batch ends: full=608 texture=101008 state=0
+3624 pid=FFFE5147 t=4121989 census periodic swaps=1336
+3625 pid=FFFE5147 t=4121989 census   draws: drawn=1384738 refused=0 culled=204816 skipped-textured=0
+3626 pid=FFFE5147 t=4121989 census   draws: fog-dropped=0 uploads=16651 surface-hits=35983 evictions=15927
+3627 pid=FFFE5147 t=4121989 census   cycles(Mc): frame=23846 entry=16834 prepare=1143 upload=25 submit=11408 swap=3379 clear=17 batches=281728
+3628 pid=FFFE5147 t=4121989 census   batch ends: full=1680 texture=279138 state=0
+3695 pid=FFFE5147 t=4137031 census periodic swaps=1561
+3696 pid=FFFE5147 t=4137032 census   draws: drawn=2119324 refused=0 culled=390744 skipped-textured=0
+3697 pid=FFFE5147 t=4137032 census   draws: fog-dropped=0 uploads=16678 surface-hits=35983 evictions=15944
+3698 pid=FFFE5147 t=4137032 census   cycles(Mc): frame=23846 entry=16428 prepare=1153 upload=82 submit=11083 swap=3915 clear=17 batches=274013
+3699 pid=FFFE5147 t=4137032 census   batch ends: full=1709 texture=271377 state=0
+3742 pid=FFFE5147 t=4152074 census periodic swaps=1786
+3743 pid=FFFE5147 t=4152075 census   draws: drawn=2808349 refused=0 culled=576594 skipped-textured=0
+3744 pid=FFFE5147 t=4152075 census   draws: fog-dropped=0 uploads=16679 surface-hits=35983 evictions=15945
+3745 pid=FFFE5147 t=4152075 census   cycles(Mc): frame=23846 entry=15295 prepare=1011 upload=7 submit=10343 swap=5144 clear=17 batches=256102
+3746 pid=FFFE5147 t=4152075 census   batch ends: full=1731 texture=253470 state=0
+6793 pid=FFFE5147 t=4167117 census periodic swaps=2008
+6794 pid=FFFE5147 t=4167117 census   draws: drawn=3486646 refused=0 culled=759966 skipped-textured=0
+6795 pid=FFFE5147 t=4167118 census   draws: fog-dropped=0 uploads=16679 surface-hits=35983 evictions=15945
+6796 pid=FFFE5147 t=4167118 census   cycles(Mc): frame=23846 entry=15084 prepare=987 upload=0 submit=10212 swap=5013 clear=16 batches=252714
+6797 pid=FFFE5147 t=4167118 census   batch ends: full=1663 texture=250163 state=0
+6876 pid=FFFE5147 t=4182144 census periodic swaps=2232
+6877 pid=FFFE5147 t=4182144 census   draws: drawn=4154047 refused=0 culled=943910 skipped-textured=0
+6878 pid=FFFE5147 t=4182144 census   draws: fog-dropped=0 uploads=16759 surface-hits=36286 evictions=16021
+6879 pid=FFFE5147 t=4182144 census   cycles(Mc): frame=23820 entry=15340 prepare=1026 upload=25 submit=10448 swap=4942 clear=61 batches=257314
+6880 pid=FFFE5147 t=4182144 census   batch ends: full=1318 texture=255020 state=0
+== B129-11-TRIPLE-BUFFER
+3 pid=FFFE5147 t=4262228 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+4 pid=FFFE5147 t=4262228 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+5 pid=FFFE5147 t=4262228 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6 pid=FFFE5147 t=4262228 census   batch ends: full=0 texture=0 state=0
+8 pid=FFFE5147 t=4262653 device: open 640x480 buffers=3
+594 pid=FFFE5147 t=4277296 census periodic swaps=217
+595 pid=FFFE5147 t=4277296 census   draws: drawn=9086 refused=0 culled=0 skipped-textured=0
+596 pid=FFFE5147 t=4277296 census   draws: fog-dropped=0 uploads=3356 surface-hits=964 evictions=2986
+597 pid=FFFE5147 t=4277296 census   cycles(Mc): frame=21369 entry=3484 prepare=3448 upload=3239 submit=279 swap=49 clear=15 batches=4543
+598 pid=FFFE5147 t=4277296 census   batch ends: full=0 texture=0 state=0
+1555 pid=FFFE5147 t=4292302 census periodic swaps=412
+1556 pid=FFFE5147 t=4292302 census   draws: drawn=33480 refused=0 culled=0 skipped-textured=0
+1557 pid=FFFE5147 t=4292302 census   draws: fog-dropped=0 uploads=7086 surface-hits=1434 evictions=6500
+1558 pid=FFFE5147 t=4292302 census   cycles(Mc): frame=19691 entry=3840 prepare=3615 upload=3367 submit=400 swap=39 clear=13 batches=7823
+1559 pid=FFFE5147 t=4292302 census   batch ends: full=108 texture=3462 state=0
+1921 pid=FFFE5147 t=4307311 census periodic swaps=932
+1922 pid=FFFE5147 t=4307311 census   draws: drawn=469176 refused=0 culled=0 skipped-textured=0
+1923 pid=FFFE5147 t=4307311 census   draws: fog-dropped=0 uploads=12264 surface-hits=20053 evictions=11569
+1924 pid=FFFE5147 t=4307311 census   cycles(Mc): frame=23793 entry=10753 prepare=3564 upload=2296 submit=6047 swap=611 clear=39 batches=161643
+1925 pid=FFFE5147 t=4307311 census   batch ends: full=1611 texture=153878 state=0
+3440 pid=FFFE5147 t=4322359 census periodic swaps=1369
+3441 pid=FFFE5147 t=4322359 census   draws: drawn=868966 refused=0 culled=26928 skipped-textured=0
+3442 pid=FFFE5147 t=4322359 census   draws: fog-dropped=0 uploads=17178 surface-hits=36788 evictions=16749
+3443 pid=FFFE5147 t=4322359 census   cycles(Mc): frame=23854 entry=10743 prepare=3431 upload=2282 submit=6039 swap=514 clear=22 batches=156540
+3444 pid=FFFE5147 t=4322361 census   batch ends: full=813 texture=148759 state=0
+3589 pid=FFFE5147 t=4337404 census periodic swaps=1638
+3590 pid=FFFE5147 t=4337404 census   draws: drawn=1747085 refused=0 culled=246172 skipped-textured=0
+3591 pid=FFFE5147 t=4337404 census   draws: fog-dropped=0 uploads=17260 surface-hits=37948 evictions=16749
+3592 pid=FFFE5147 t=4337404 census   cycles(Mc): frame=23849 entry=19613 prepare=1370 upload=83 submit=13300 swap=15 clear=16 batches=328870
+3593 pid=FFFE5147 t=4337404 census   batch ends: full=1958 texture=325860 state=0
+6650 pid=FFFE5147 t=4352434 census periodic swaps=1908
+6651 pid=FFFE5147 t=4352434 census   draws: drawn=2606303 refused=0 culled=464318 skipped-textured=0
+6652 pid=FFFE5147 t=4352434 census   draws: fog-dropped=0 uploads=17274 surface-hits=37948 evictions=16749
+6653 pid=FFFE5147 t=4352434 census   cycles(Mc): frame=23826 entry=19234 prepare=1278 upload=34 submit=13105 swap=15 clear=18 batches=325592
+6654 pid=FFFE5147 t=4352434 census   batch ends: full=2034 texture=322464 state=0
+6698 pid=FFFE5147 t=4367471 census periodic swaps=2185
+6699 pid=FFFE5147 t=4367471 census   draws: drawn=3477928 refused=0 culled=687026 skipped-textured=0
+6700 pid=FFFE5147 t=4367471 census   draws: fog-dropped=0 uploads=17276 surface-hits=37948 evictions=16749
+6701 pid=FFFE5147 t=4367471 census   cycles(Mc): frame=23836 entry=19329 prepare=1256 upload=0 submit=13159 swap=15 clear=19 batches=325244
+6702 pid=FFFE5147 t=4367471 census   batch ends: full=2107 texture=322027 state=0
+6744 pid=FFFE5147 t=4382484 census periodic swaps=2464
+6745 pid=FFFE5147 t=4382484 census   draws: drawn=4348656 refused=0 culled=911342 skipped-textured=0
+6746 pid=FFFE5147 t=4382484 census   draws: fog-dropped=0 uploads=17276 surface-hits=37948 evictions=16749
+6747 pid=FFFE5147 t=4382484 census   cycles(Mc): frame=23799 entry=19288 prepare=1255 upload=0 submit=13119 swap=15 clear=19 batches=324333
+6748 pid=FFFE5147 t=4382484 census   batch ends: full=2112 texture=321105 state=0
+6816 pid=FFFE5147 t=4397507 census periodic swaps=2742
+6817 pid=FFFE5147 t=4397507 census   draws: drawn=5189822 refused=0 culled=1134176 skipped-textured=0
+6818 pid=FFFE5147 t=4397507 census   draws: fog-dropped=0 uploads=17343 surface-hits=38203 evictions=16749
+6819 pid=FFFE5147 t=4397507 census   cycles(Mc): frame=23814 entry=19292 prepare=1249 upload=8 submit=13241 swap=16 clear=22 batches=325645
+6820 pid=FFFE5147 t=4397507 census   batch ends: full=1599 texture=322867 state=0

@@ -13,6 +13,11 @@ no Blt fallback needed. Phase 3 done: textures, palettes, chroma key,
 blending, table fog and batching, 21/21 on both engines, and both fog
 through the render interface
 ([2026-10-08-glide-phase3-textures-fog.md](../decisions/2026-10-08-glide-phase3-textures-fog.md)).
+Phase 4 in progress: NFS II SE races on the netbook with everything
+drawn ([2026-10-09-nfs2se-races-on-glide-gen3.md](../decisions/2026-10-09-nfs2se-races-on-glide-gen3.md)),
+at about 18.5 fps with three buffers and no flicker in game
+([2026-10-09-glide-frame-rate-netbook.md](../decisions/2026-10-09-glide-frame-rate-netbook.md));
+the pause and exit dialogs draw wrongly.
 First game: Need for Speed II SE. First engine: Gen3 on the netbook.
 
 ## Context
