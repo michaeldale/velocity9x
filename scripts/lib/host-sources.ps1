@@ -99,6 +99,11 @@ function Get-V9xHostSourceNames {
         'src\opengl\gl_get.c',
         'src\opengl\gl_pixels.c',
         'src\opengl\gl_varray.c',
+        # GLIDE2X.DLL's pure logic (docs\plans\glide-2x-wrapper.md, Phase 1).
+        'src\glide\glide_vertex.c',
+        'src\glide\glide_texmem.c',
+        'src\glide\glide_texfmt.c',
+        'src\glide\glide_state.c',
         # Direct3D render state to the neutral draw: the identity, asserted.
         'src\display32\d3d\d3d_state.c',
         'tests\host\test_d3d_state.c',
@@ -143,6 +148,9 @@ function Get-V9xHostSourceNames {
         'tests\host\test_gl_get.c',
         'tests\host\test_gl_pixels.c',
         'tests\host\test_gl_varray.c',
+        'tests\host\test_glide_vertex.c',
+        'tests\host\test_glide_texture.c',
+        'tests\host\test_glide_state.c',
         'tests\host\test_donewait.c',
         'tests\host\test_drawnote.c',
         'tests\host\test_diag_identity.c',

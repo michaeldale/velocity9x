@@ -30,8 +30,10 @@ $null = Write-V9xGlideExportHeader -RepoRoot $repoRoot -OutputDir $output
 $entries = Get-V9xGlideEntries -RepoRoot $repoRoot
 
 # glide_dll.c is the platform file: the exports, the log and the DLL entry.
+# The rest is the pure logic the host tests also compile; built here under
+# the DLL's options (no C runtime, warnings as errors) as well.
 $objects = @()
-foreach ($name in @('glide_dll')) {
+foreach ($name in @('glide_dll', 'glide_vertex', 'glide_texmem', 'glide_texfmt', 'glide_state')) {
     $source = Join-Path $repoRoot "src\glide\$name.c"
     $object = Join-Path $output "$name.obj"
     & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `

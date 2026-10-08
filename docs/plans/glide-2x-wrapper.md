@@ -4,6 +4,9 @@ Date: 2026-10-08
 
 Status: in progress. Phase 0 done: census DLL built, NFS II SE's calls
 measured ([2026-10-08-nfs2se-glide-census.md](../decisions/2026-10-08-nfs2se-glide-census.md)).
+Phase 1 done: `glide_vertex.c`, `glide_texmem.c`, `glide_texfmt.c` and
+`glide_state.c` with host tests; chroma key approximated in the DLL
+(keyed texels to alpha 0 plus the alpha test), no ABI change.
 First game: Need for Speed II SE. First engine: Gen3 on the netbook.
 
 ## Context

@@ -2019,6 +2019,20 @@ foreach ($entry in $glideEntries) {
     }
 }
 
+# GLIDE2X.DLL reaches the hardware only through the render interface
+# (r3d_abi.h), as the ICD does: its pure files name none of the HAL's
+# private headers or register helpers.
+foreach ($glideFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src\glide") -File -Include *.c, *.h -Recurse)) {
+    if ($glideFile.Name -eq 'glide_dll.c') { continue }
+    $text = Get-Content -LiteralPath $glideFile.FullName -Raw
+    foreach ($forbidden in @('ddhal_internal.h', 'd3d_internal.h', 'win9x_ddraw_abi.h',
+                             'v9x_mmio_write', 'v9x_mmio_read')) {
+        if ($text -match [regex]::Escape($forbidden)) {
+            throw "src\glide\$($glideFile.Name) names $forbidden; Glide reaches the chip only through r3d_abi.h."
+        }
+    }
+}
+
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
                  "{1} families: {2}, {3} contract constants)."
 Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,
