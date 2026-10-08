@@ -4,6 +4,50 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.14.0 - not yet released
+
+A Glide 2.x `GLIDE2X.DLL` that draws through the render interface, so
+a game written for a 3dfx Voodoo runs on a Velocity9x 3D engine. Need
+for Speed II SE races on the HP Mini 110 netbook (GMA 950). No other
+machine or engine has run it, and no Voodoo was used for comparison.
+
+### Glide
+
+- **`GLIDE2X.DLL`** exports all 130 Glide 2.x entry points. It opens an
+  exclusive fullscreen DirectDraw flip chain and draws into it through
+  `V9xRenderInterface`, the same path as the OpenGL ICD. It covers
+  everything NFS II SE calls: a W-buffer, table fog, ARGB1555, RGB565,
+  ARGB4444 and P_8 paletted textures, chroma key, alpha blending, the
+  clip window, lines and LFB locks. The game's 50 calls were measured
+  with a census build first.
+  [Plan](docs/plans/glide-2x-wrapper.md),
+  [census](docs/decisions/2026-10-08-nfs2se-glide-census.md).
+- The vertex, texture memory, texel format and state mapping are
+  host-tested C. A probe, `V9XGLIDP.EXE`, reads back 21 checks
+  (clears, flips, depth, textures, palettes, chroma key, blending, fog).
+  They read back alike on Gen3 and the software engine.
+  [Flip chain](docs/decisions/2026-10-08-glide-phase2-flip-chain.md),
+  [textures and fog](docs/decisions/2026-10-08-glide-phase3-textures-fog.md).
+- **NFS II SE on the GMA 950**, 640x480: menus and a race with
+  everything drawn, nothing refused, at about 18.5 frames a second.
+  [Race](docs/decisions/2026-10-09-nfs2se-races-on-glide-gen3.md),
+  [frame rate](docs/decisions/2026-10-09-glide-frame-rate-netbook.md).
+  - The clip window is applied in geometry, because the hardware
+    engines refuse a partial scissor.
+  - The clear is drawn as a quad, because the CPU clear took half of
+    each frame.
+  - The chain has three buffers, because with two the game flickered
+    as Final Reality does.
+- **Not packaged.** The family packages do not install the DLL yet. Copy
+  `GLIDE2X.DLL` into the game's directory. On a machine with a real
+  Voodoo, do not install it system-wide.
+  - The pause dialog draws correctly.
+- Known problems:
+  - Gamma is not applied.
+  - A small flicker remains in the menus.
+  - Only Gen3 falls back to the software engine when a draw is refused.
+    The Rage, SiS and ViRGE engines have not run Glide.
+
 ## 0.13.0 - 2026-10-08
 
 Single-pass multitexture on the ATI Rage Pro class, and an OpenGL ICD

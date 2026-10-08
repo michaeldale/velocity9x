@@ -1,0 +1,359 @@
+3611 pid=FFFE5147 t=5261585 census   grTexFilterMode calls=2 lines=2
+3612 pid=FFFE5147 t=5261585 census   grTexMaxAddress calls=1829 lines=22
+3613 pid=FFFE5147 t=5261586 census   grTexMinAddress calls=7 lines=4
+3614 pid=FFFE5147 t=5261586 census   grTexMipMapMode calls=1 lines=1
+3615 pid=FFFE5147 t=5261586 census   grTexSource calls=831769 lines=1008
+3616 pid=FFFE5147 t=5261586 census   guFogGenerateExp calls=20 lines=20
+3617 pid=FFFE5147 t=5268212 grRenderBuffer#2233 buffer=0
+3634 pid=FFFE5147 t=5268241 grClipWindow#4123 min=64,48 max=576,432
+3697 pid=FFFE5147 t=5271481 capture frame after swap 1800
+3698 pid=FFFE5147 t=5271481 grRenderBuffer#2543 buffer=1
+3699 pid=FFFE5147 t=5271481 grRenderBuffer#2544 buffer=1
+3700 pid=FFFE5147 t=5271481 grBufferClear#2236 color=FF000000 alpha=00 depth=FFFF
+3701 pid=FFFE5147 t=5271482 grClipWindow#4533 min=0,0 max=640,480
+3702 pid=FFFE5147 t=5271482 grCullMode#2167 mode=00000000
+3703 pid=FFFE5147 t=5271482 grDepthBufferFunction#2181 func=00000007
+3704 pid=FFFE5147 t=5271482 grDepthMask#2181 enable=00000000
+3705 pid=FFFE5147 t=5271482 grColorCombine#5815 func=1 factor=0 local=0 other=2 invert=0
+3706 pid=FFFE5147 t=5271482 grAlphaCombine#5815 func=1 factor=0 local=0 other=2 invert=0
+3764 pid=FFFE5147 t=5271486 grColorCombine#5816 func=3 factor=1 local=0 other=1 invert=0
+3765 pid=FFFE5147 t=5271486 grAlphaCombine#5816 func=3 factor=1 local=0 other=1 invert=0
+3775 pid=FFFE5147 t=5271488 grDepthBufferMode#1092 mode=00000002
+3776 pid=FFFE5147 t=5271488 grDepthBufferFunction#2182 func=00000003
+3777 pid=FFFE5147 t=5271488 grDepthMask#2182 enable=00000001
+4355 pid=FFFE5147 t=5271529 grChromakeyMode#4855 mode=00000001
+4356 pid=FFFE5147 t=5271529 grChromakeyValue#4854 color=00000000
+4422 pid=FFFE5147 t=5271534 grTexClampMode#71934 tmu=0 s=0 t=0
+4431 pid=FFFE5147 t=5271535 grTexClampMode#71935 tmu=0 s=1 t=1
+4444 pid=FFFE5147 t=5271537 grTexClampMode#71936 tmu=0 s=0 t=0
+4453 pid=FFFE5147 t=5271537 grTexClampMode#71937 tmu=0 s=1 t=1
+4466 pid=FFFE5147 t=5271538 grTexClampMode#71938 tmu=0 s=0 t=0
+4475 pid=FFFE5147 t=5271538 grTexClampMode#71939 tmu=0 s=1 t=1
+4488 pid=FFFE5147 t=5271539 grTexClampMode#71940 tmu=0 s=0 t=0
+4497 pid=FFFE5147 t=5271540 grTexClampMode#71941 tmu=0 s=1 t=1
+4506 pid=FFFE5147 t=5271540 grTexClampMode#71942 tmu=0 s=0 t=0
+4511 pid=FFFE5147 t=5271542 grTexClampMode#71943 tmu=0 s=1 t=1
+4520 pid=FFFE5147 t=5271542 grTexClampMode#71944 tmu=0 s=0 t=0
+4525 pid=FFFE5147 t=5271542 grTexClampMode#71945 tmu=0 s=1 t=1
+4538 pid=FFFE5147 t=5271543 grTexClampMode#71946 tmu=0 s=0 t=0
+4547 pid=FFFE5147 t=5271543 grTexClampMode#71947 tmu=0 s=1 t=1
+4560 pid=FFFE5147 t=5271544 grTexClampMode#71948 tmu=0 s=0 t=0
+4569 pid=FFFE5147 t=5271545 grTexClampMode#71949 tmu=0 s=1 t=1
+4582 pid=FFFE5147 t=5271546 grTexClampMode#71950 tmu=0 s=0 t=0
+4591 pid=FFFE5147 t=5271547 grTexClampMode#71951 tmu=0 s=1 t=1
+4604 pid=FFFE5147 t=5271547 grTexClampMode#71952 tmu=0 s=0 t=0
+4613 pid=FFFE5147 t=5271548 grTexClampMode#71953 tmu=0 s=1 t=1
+4626 pid=FFFE5147 t=5271550 grTexClampMode#71954 tmu=0 s=0 t=0
+4635 pid=FFFE5147 t=5271550 grTexClampMode#71955 tmu=0 s=1 t=1
+4648 pid=FFFE5147 t=5271551 grTexClampMode#71956 tmu=0 s=0 t=0
+4657 pid=FFFE5147 t=5271551 grTexClampMode#71957 tmu=0 s=1 t=1
+4670 pid=FFFE5147 t=5271552 grTexClampMode#71958 tmu=0 s=0 t=0
+4679 pid=FFFE5147 t=5271553 grTexClampMode#71959 tmu=0 s=1 t=1
+4692 pid=FFFE5147 t=5271554 grTexClampMode#71960 tmu=0 s=0 t=0
+4701 pid=FFFE5147 t=5271554 grTexClampMode#71961 tmu=0 s=1 t=1
+4710 pid=FFFE5147 t=5271555 grTexClampMode#71962 tmu=0 s=0 t=0
+4715 pid=FFFE5147 t=5271556 grTexClampMode#71963 tmu=0 s=1 t=1
+4724 pid=FFFE5147 t=5271556 grTexClampMode#71964 tmu=0 s=0 t=0
+4729 pid=FFFE5147 t=5271558 grTexClampMode#71965 tmu=0 s=1 t=1
+4738 pid=FFFE5147 t=5271558 grTexClampMode#71966 tmu=0 s=0 t=0
+4743 pid=FFFE5147 t=5271558 grTexClampMode#71967 tmu=0 s=1 t=1
+4752 pid=FFFE5147 t=5271558 grTexClampMode#71968 tmu=0 s=0 t=0
+4757 pid=FFFE5147 t=5271559 grTexClampMode#71969 tmu=0 s=1 t=1
+4770 pid=FFFE5147 t=5271560 grTexClampMode#71970 tmu=0 s=0 t=0
+4779 pid=FFFE5147 t=5271560 grTexClampMode#71971 tmu=0 s=1 t=1
+4792 pid=FFFE5147 t=5271561 grTexClampMode#71972 tmu=0 s=0 t=0
+4801 pid=FFFE5147 t=5271562 grTexClampMode#71973 tmu=0 s=1 t=1
+4814 pid=FFFE5147 t=5271563 grTexClampMode#71974 tmu=0 s=0 t=0
+4823 pid=FFFE5147 t=5271563 grTexClampMode#71975 tmu=0 s=1 t=1
+4836 pid=FFFE5147 t=5271564 grTexClampMode#71976 tmu=0 s=0 t=0
+4845 pid=FFFE5147 t=5271566 grTexClampMode#71977 tmu=0 s=1 t=1
+4858 pid=FFFE5147 t=5271566 grTexClampMode#71978 tmu=0 s=0 t=0
+4867 pid=FFFE5147 t=5271567 grTexClampMode#71979 tmu=0 s=1 t=1
+4880 pid=FFFE5147 t=5271567 grTexClampMode#71980 tmu=0 s=0 t=0
+4889 pid=FFFE5147 t=5271568 grTexClampMode#71981 tmu=0 s=1 t=1
+4902 pid=FFFE5147 t=5271569 grTexClampMode#71982 tmu=0 s=0 t=0
+4911 pid=FFFE5147 t=5271570 grTexClampMode#71983 tmu=0 s=1 t=1
+4924 pid=FFFE5147 t=5271571 grTexClampMode#71984 tmu=0 s=0 t=0
+4933 pid=FFFE5147 t=5271571 grTexClampMode#71985 tmu=0 s=1 t=1
+4946 pid=FFFE5147 t=5271572 grTexClampMode#71986 tmu=0 s=0 t=0
+4955 pid=FFFE5147 t=5271574 grTexClampMode#71987 tmu=0 s=1 t=1
+4964 pid=FFFE5147 t=5271574 grTexClampMode#71988 tmu=0 s=0 t=0
+4969 pid=FFFE5147 t=5271574 grTexClampMode#71989 tmu=0 s=1 t=1
+4978 pid=FFFE5147 t=5271575 grTexClampMode#71990 tmu=0 s=0 t=0
+4983 pid=FFFE5147 t=5271575 grTexClampMode#71991 tmu=0 s=1 t=1
+4996 pid=FFFE5147 t=5271576 grTexClampMode#71992 tmu=0 s=0 t=0
+5005 pid=FFFE5147 t=5271577 grTexClampMode#71993 tmu=0 s=1 t=1
+5018 pid=FFFE5147 t=5271577 grTexClampMode#71994 tmu=0 s=0 t=0
+5027 pid=FFFE5147 t=5271578 grTexClampMode#71995 tmu=0 s=1 t=1
+5040 pid=FFFE5147 t=5271579 grTexClampMode#71996 tmu=0 s=0 t=0
+5049 pid=FFFE5147 t=5271581 grTexClampMode#71997 tmu=0 s=1 t=1
+5062 pid=FFFE5147 t=5271581 grTexClampMode#71998 tmu=0 s=0 t=0
+5071 pid=FFFE5147 t=5271581 grTexClampMode#71999 tmu=0 s=1 t=1
+5084 pid=FFFE5147 t=5271582 grTexClampMode#72000 tmu=0 s=0 t=0
+5093 pid=FFFE5147 t=5271583 grTexClampMode#72001 tmu=0 s=1 t=1
+5106 pid=FFFE5147 t=5271584 grTexClampMode#72002 tmu=0 s=0 t=0
+5115 pid=FFFE5147 t=5271584 grTexClampMode#72003 tmu=0 s=1 t=1
+5124 pid=FFFE5147 t=5271585 grTexClampMode#72004 tmu=0 s=0 t=0
+5129 pid=FFFE5147 t=5271586 grTexClampMode#72005 tmu=0 s=1 t=1
+5138 pid=FFFE5147 t=5271586 grTexClampMode#72006 tmu=0 s=0 t=0
+5143 pid=FFFE5147 t=5271587 grTexClampMode#72007 tmu=0 s=1 t=1
+5156 pid=FFFE5147 t=5271587 grTexClampMode#72008 tmu=0 s=0 t=0
+5165 pid=FFFE5147 t=5271589 grTexClampMode#72009 tmu=0 s=1 t=1
+5178 pid=FFFE5147 t=5271589 grTexClampMode#72010 tmu=0 s=0 t=0
+5187 pid=FFFE5147 t=5271590 grTexClampMode#72011 tmu=0 s=1 t=1
+5200 pid=FFFE5147 t=5271591 grTexClampMode#72012 tmu=0 s=0 t=0
+5209 pid=FFFE5147 t=5271591 grTexClampMode#72013 tmu=0 s=1 t=1
+5222 pid=FFFE5147 t=5271592 grTexClampMode#72014 tmu=0 s=0 t=0
+5231 pid=FFFE5147 t=5271593 grTexClampMode#72015 tmu=0 s=1 t=1
+5240 pid=FFFE5147 t=5271594 grTexClampMode#72016 tmu=0 s=0 t=0
+5245 pid=FFFE5147 t=5271594 grTexClampMode#72017 tmu=0 s=1 t=1
+5254 pid=FFFE5147 t=5271595 grTexClampMode#72018 tmu=0 s=0 t=0
+5259 pid=FFFE5147 t=5271595 grTexClampMode#72019 tmu=0 s=1 t=1
+5268 pid=FFFE5147 t=5271597 grTexClampMode#72020 tmu=0 s=0 t=0
+5273 pid=FFFE5147 t=5271597 grTexClampMode#72021 tmu=0 s=1 t=1
+5286 pid=FFFE5147 t=5271597 grTexClampMode#72022 tmu=0 s=0 t=0
+5295 pid=FFFE5147 t=5271598 grTexClampMode#72023 tmu=0 s=1 t=1
+5308 pid=FFFE5147 t=5271598 grTexClampMode#72024 tmu=0 s=0 t=0
+5317 pid=FFFE5147 t=5271599 grTexClampMode#72025 tmu=0 s=1 t=1
+5330 pid=FFFE5147 t=5271600 grTexClampMode#72026 tmu=0 s=0 t=0
+5339 pid=FFFE5147 t=5271601 grTexClampMode#72027 tmu=0 s=1 t=1
+5352 pid=FFFE5147 t=5271602 grTexClampMode#72028 tmu=0 s=0 t=0
+5361 pid=FFFE5147 t=5271602 grTexClampMode#72029 tmu=0 s=1 t=1
+5374 pid=FFFE5147 t=5271603 grTexClampMode#72030 tmu=0 s=0 t=0
+5383 pid=FFFE5147 t=5271605 grTexClampMode#72031 tmu=0 s=1 t=1
+5396 pid=FFFE5147 t=5271605 grTexClampMode#72032 tmu=0 s=0 t=0
+5405 pid=FFFE5147 t=5271606 grTexClampMode#72033 tmu=0 s=1 t=1
+5418 pid=FFFE5147 t=5271606 grTexClampMode#72034 tmu=0 s=0 t=0
+5427 pid=FFFE5147 t=5271607 grTexClampMode#72035 tmu=0 s=1 t=1
+5440 pid=FFFE5147 t=5271608 grTexClampMode#72036 tmu=0 s=0 t=0
+5449 pid=FFFE5147 t=5271609 grTexClampMode#72037 tmu=0 s=1 t=1
+5462 pid=FFFE5147 t=5271610 grTexClampMode#72038 tmu=0 s=0 t=0
+5471 pid=FFFE5147 t=5271610 grTexClampMode#72039 tmu=0 s=1 t=1
+5480 pid=FFFE5147 t=5271611 grTexClampMode#72040 tmu=0 s=0 t=0
+5485 pid=FFFE5147 t=5271611 grTexClampMode#72041 tmu=0 s=1 t=1
+5494 pid=FFFE5147 t=5271612 grTexClampMode#72042 tmu=0 s=0 t=0
+5499 pid=FFFE5147 t=5271612 grTexClampMode#72043 tmu=0 s=1 t=1
+5508 pid=FFFE5147 t=5271614 grTexClampMode#72044 tmu=0 s=0 t=0
+5513 pid=FFFE5147 t=5271614 grTexClampMode#72045 tmu=0 s=1 t=1
+5522 pid=FFFE5147 t=5271614 grTexClampMode#72046 tmu=0 s=0 t=0
+5527 pid=FFFE5147 t=5271614 grTexClampMode#72047 tmu=0 s=1 t=1
+5540 pid=FFFE5147 t=5271615 grTexClampMode#72048 tmu=0 s=0 t=0
+5549 pid=FFFE5147 t=5271617 grTexClampMode#72049 tmu=0 s=1 t=1
+5562 pid=FFFE5147 t=5271617 grTexClampMode#72050 tmu=0 s=0 t=0
+5571 pid=FFFE5147 t=5271618 grTexClampMode#72051 tmu=0 s=1 t=1
+5584 pid=FFFE5147 t=5271618 grTexClampMode#72052 tmu=0 s=0 t=0
+5593 pid=FFFE5147 t=5271620 grTexClampMode#72053 tmu=0 s=1 t=1
+5606 pid=FFFE5147 t=5271620 grTexClampMode#72054 tmu=0 s=0 t=0
+5615 pid=FFFE5147 t=5271621 grTexClampMode#72055 tmu=0 s=1 t=1
+5628 pid=FFFE5147 t=5271622 grTexClampMode#72056 tmu=0 s=0 t=0
+5637 pid=FFFE5147 t=5271622 grTexClampMode#72057 tmu=0 s=1 t=1
+5650 pid=FFFE5147 t=5271623 grTexClampMode#72058 tmu=0 s=0 t=0
+5659 pid=FFFE5147 t=5271624 grTexClampMode#72059 tmu=0 s=1 t=1
+5672 pid=FFFE5147 t=5271625 grTexClampMode#72060 tmu=0 s=0 t=0
+5681 pid=FFFE5147 t=5271626 grTexClampMode#72061 tmu=0 s=1 t=1
+5694 pid=FFFE5147 t=5271626 grTexClampMode#72062 tmu=0 s=0 t=0
+5703 pid=FFFE5147 t=5271628 grTexClampMode#72063 tmu=0 s=1 t=1
+5705 pid=FFFE5147 t=5271628 grChromakeyValue#4855 color=0000FF00
+5706 pid=FFFE5147 t=5271628 grChromakeyMode#4856 mode=00000000
+5769 pid=FFFE5147 t=5271632 grClipWindow#4534 min=0,0 max=640,480
+5770 pid=FFFE5147 t=5271632 grSstIdle#773 
+5771 pid=FFFE5147 t=5271632 grRenderBuffer#2545 buffer=1
+5772 pid=FFFE5147 t=5271632 grClipWindow#4535 min=64,48 max=576,432
+5773 pid=FFFE5147 t=5271632 grColorCombine#5817 func=1 factor=0 local=0 other=2 invert=0
+5774 pid=FFFE5147 t=5271632 grAlphaCombine#5817 func=1 factor=0 local=0 other=2 invert=0
+5784 pid=FFFE5147 t=5271633 grColorCombine#5818 func=3 factor=1 local=0 other=1 invert=0
+5785 pid=FFFE5147 t=5271633 grAlphaCombine#5818 func=3 factor=1 local=0 other=1 invert=0
+5922 pid=FFFE5147 t=5271644 grColorCombine#5819 func=1 factor=0 local=0 other=2 invert=0
+5923 pid=FFFE5147 t=5271644 grAlphaCombine#5819 func=1 factor=0 local=0 other=2 invert=0
+5989 pid=FFFE5147 t=5271647 grColorCombine#5820 func=3 factor=1 local=0 other=1 invert=0
+5990 pid=FFFE5147 t=5271647 grAlphaCombine#5820 func=3 factor=1 local=0 other=1 invert=0
+6039 pid=FFFE5147 t=5271652 grClipWindow#4536 min=0,0 max=640,480
+6040 pid=FFFE5147 t=5271652 grBufferSwap#1801 interval=1
+6043 pid=FFFE5147 t=5276602 census periodic swaps=1935
+6044 pid=FFFE5147 t=5276602 census   draws: drawn=2798050 refused=0 culled=441212 skipped-textured=0
+6045 pid=FFFE5147 t=5276602 census   draws: fog-dropped=0 uploads=14659 surface-hits=29477 evictions=14190
+6046 pid=FFFE5147 t=5276602 census   cycles(Mc): frame=23808 entry=18431 prepare=1272 upload=96 submit=12913 swap=904 clear=18 batches=318927
+6047 pid=FFFE5147 t=5276602 census   batch ends: full=972 texture=316709 state=0
+6048 pid=FFFE5147 t=5276602 census   grAlphaBlendFunction calls=205763 lines=145
+6049 pid=FFFE5147 t=5276602 census   grAlphaCombine calls=6624 lines=10
+6050 pid=FFFE5147 t=5276602 census   grAlphaTestFunction calls=1 lines=1
+6051 pid=FFFE5147 t=5276602 census   grAlphaTestReferenceValue calls=1 lines=1
+6052 pid=FFFE5147 t=5276602 census   grBufferClear calls=2370 lines=12
+6053 pid=FFFE5147 t=5276602 census   grBufferSwap calls=1935 lines=25
+6054 pid=FFFE5147 t=5276602 census   grChromakeyMode calls=5372 lines=6
+6055 pid=FFFE5147 t=5276602 census   grChromakeyValue calls=5371 lines=5
+6056 pid=FFFE5147 t=5276603 census   grClipWindow calls=5072 lines=10
+6057 pid=FFFE5147 t=5276603 census   grColorCombine calls=6624 lines=10
+6058 pid=FFFE5147 t=5276603 census   grCullMode calls=2301 lines=4
+6059 pid=FFFE5147 t=5276603 census   grDepthBufferFunction calls=2450 lines=6
+6060 pid=FFFE5147 t=5276603 census   grDepthBufferMode calls=1226 lines=4
+6061 pid=FFFE5147 t=5276603 census   grDepthMask calls=2450 lines=6
+6062 pid=FFFE5147 t=5276603 census   grDitherMode calls=1 lines=1
+6063 pid=FFFE5147 t=5276603 census   grDrawLine calls=308775 lines=72
+6064 pid=FFFE5147 t=5276603 census   grDrawTriangle calls=2609011 lines=2120
+6065 pid=FFFE5147 t=5276603 census   grFogColorValue calls=2 lines=2
+6066 pid=FFFE5147 t=5276603 census   grFogMode calls=2 lines=2
+6067 pid=FFFE5147 t=5276603 census   grFogTable calls=901 lines=2
+6068 pid=FFFE5147 t=5276603 census   grGammaCorrectionValue calls=3 lines=3
+6069 pid=FFFE5147 t=5276603 census   grGlideInit calls=1 lines=1
+6070 pid=FFFE5147 t=5276603 census   grLfbLock calls=4 lines=4
+6071 pid=FFFE5147 t=5276603 census   grLfbUnlock calls=4 lines=4
+6072 pid=FFFE5147 t=5276603 census   grRenderBuffer calls=2947 lines=17
+6073 pid=FFFE5147 t=5276605 census   grSstIdle calls=907 lines=25
+6074 pid=FFFE5147 t=5276605 census   grSstQueryHardware calls=1 lines=1
+6075 pid=FFFE5147 t=5276605 census   grSstSelect calls=1 lines=1
+6076 pid=FFFE5147 t=5276605 census   grSstWinOpen calls=1 lines=1
+6077 pid=FFFE5147 t=5276605 census   grTexCalcMemRequired calls=1829 lines=38
+6078 pid=FFFE5147 t=5276605 census   grTexClampMode calls=88571 lines=133
+6079 pid=FFFE5147 t=5276605 census   grTexCombine calls=1 lines=1
+6080 pid=FFFE5147 t=5276605 census   grTexCombineFunction calls=1 lines=1
+6081 pid=FFFE5147 t=5276605 census   grTexDownloadMipMap calls=72879 lines=1753
+6082 pid=FFFE5147 t=5276605 census   grTexDownloadTable calls=2525 lines=8
+6083 pid=FFFE5147 t=5276605 census   grTexFilterMode calls=2 lines=2
+6084 pid=FFFE5147 t=5276605 census   grTexMaxAddress calls=1829 lines=22
+6085 pid=FFFE5147 t=5276605 census   grTexMinAddress calls=7 lines=4
+6086 pid=FFFE5147 t=5276605 census   grTexMipMapMode calls=1 lines=1
+6087 pid=FFFE5147 t=5276605 census   grTexSource calls=1158512 lines=1327
+6088 pid=FFFE5147 t=5276605 census   guFogGenerateExp calls=20 lines=20
+6089 pid=FFFE5147 t=5291610 census periodic swaps=2417
+6090 pid=FFFE5147 t=5291610 census   draws: drawn=3512564 refused=0 culled=441212 skipped-textured=0
+6091 pid=FFFE5147 t=5291611 census   draws: fog-dropped=0 uploads=14659 surface-hits=30093 evictions=14190
+6092 pid=FFFE5147 t=5291611 census   cycles(Mc): frame=23792 entry=17503 prepare=1083 upload=0 submit=12765 swap=1848 clear=62 batches=311341
+6093 pid=FFFE5147 t=5291611 census   batch ends: full=4 texture=309891 state=0
+6094 pid=FFFE5147 t=5291611 census   grAlphaBlendFunction calls=280293 lines=145
+6095 pid=FFFE5147 t=5291611 census   grAlphaCombine calls=9516 lines=10
+6096 pid=FFFE5147 t=5291611 census   grAlphaTestFunction calls=1 lines=1
+6097 pid=FFFE5147 t=5291611 census   grAlphaTestReferenceValue calls=1 lines=1
+6098 pid=FFFE5147 t=5291611 census   grBufferClear calls=2852 lines=12
+6099 pid=FFFE5147 t=5291611 census   grBufferSwap calls=2417 lines=25
+6100 pid=FFFE5147 t=5291611 census   grChromakeyMode calls=6926 lines=6
+6101 pid=FFFE5147 t=5291611 census   grChromakeyValue calls=6925 lines=5
+6102 pid=FFFE5147 t=5291611 census   grClipWindow calls=7000 lines=10
+6103 pid=FFFE5147 t=5291611 census   grColorCombine calls=9516 lines=10
+6104 pid=FFFE5147 t=5291611 census   grCullMode calls=2783 lines=4
+6105 pid=FFFE5147 t=5291611 census   grDepthBufferFunction calls=3414 lines=6
+6106 pid=FFFE5147 t=5291611 census   grDepthBufferMode calls=1708 lines=4
+6107 pid=FFFE5147 t=5291611 census   grDepthMask calls=3414 lines=6
+6108 pid=FFFE5147 t=5291613 census   grDitherMode calls=1 lines=1
+6109 pid=FFFE5147 t=5291613 census   grDrawLine calls=308775 lines=72
+6110 pid=FFFE5147 t=5291613 census   grDrawTriangle calls=3322079 lines=2120
+6111 pid=FFFE5147 t=5291613 census   grFogColorValue calls=2 lines=2
+6112 pid=FFFE5147 t=5291613 census   grFogMode calls=2 lines=2
+6113 pid=FFFE5147 t=5291613 census   grFogTable calls=901 lines=2
+6114 pid=FFFE5147 t=5291613 census   grGammaCorrectionValue calls=3 lines=3
+6115 pid=FFFE5147 t=5291613 census   grGlideInit calls=1 lines=1
+6116 pid=FFFE5147 t=5291613 census   grLfbLock calls=4 lines=4
+6117 pid=FFFE5147 t=5291613 census   grLfbUnlock calls=4 lines=4
+6118 pid=FFFE5147 t=5291613 census   grRenderBuffer calls=4393 lines=17
+6119 pid=FFFE5147 t=5291613 census   grSstIdle calls=1389 lines=25
+6120 pid=FFFE5147 t=5291613 census   grSstQueryHardware calls=1 lines=1
+6121 pid=FFFE5147 t=5291613 census   grSstSelect calls=1 lines=1
+6122 pid=FFFE5147 t=5291613 census   grSstWinOpen calls=1 lines=1
+6123 pid=FFFE5147 t=5291613 census   grTexCalcMemRequired calls=1829 lines=38
+6124 pid=FFFE5147 t=5291613 census   grTexClampMode calls=149885 lines=133
+6125 pid=FFFE5147 t=5291613 census   grTexCombine calls=1 lines=1
+6126 pid=FFFE5147 t=5291613 census   grTexCombineFunction calls=1 lines=1
+6127 pid=FFFE5147 t=5291613 census   grTexDownloadMipMap calls=72879 lines=1753
+6128 pid=FFFE5147 t=5291613 census   grTexDownloadTable calls=2926 lines=8
+6129 pid=FFFE5147 t=5291613 census   grTexFilterMode calls=2 lines=2
+6130 pid=FFFE5147 t=5291613 census   grTexMaxAddress calls=1829 lines=22
+6131 pid=FFFE5147 t=5291613 census   grTexMinAddress calls=7 lines=4
+6132 pid=FFFE5147 t=5291613 census   grTexMipMapMode calls=1 lines=1
+6133 pid=FFFE5147 t=5291613 census   grTexSource calls=1483713 lines=1327
+6134 pid=FFFE5147 t=5291613 census   guFogGenerateExp calls=20 lines=20
+6135 pid=FFFE5147 t=5294782 grGlideShutdown#1 
+6136 pid=FFFE5147 t=5294782 census shutdown swaps=2509
+6137 pid=FFFE5147 t=5294782 census   draws: drawn=3664622 refused=0 culled=441212 skipped-textured=0
+6138 pid=FFFE5147 t=5294782 census   draws: fog-dropped=0 uploads=14659 surface-hits=30223 evictions=14190
+6139 pid=FFFE5147 t=5294782 census   cycles(Mc): frame=5025 entry=3753 prepare=237 upload=0 submit=2731 swap=339 clear=4 batches=66047
+6140 pid=FFFE5147 t=5294782 census   batch ends: full=0 texture=65771 state=0
+6141 pid=FFFE5147 t=5294782 census   grAlphaBlendFunction calls=294807 lines=145
+6142 pid=FFFE5147 t=5294782 census   grAlphaCombine calls=10068 lines=10
+6143 pid=FFFE5147 t=5294782 census   grAlphaTestFunction calls=1 lines=1
+6144 pid=FFFE5147 t=5294782 census   grAlphaTestReferenceValue calls=1 lines=1
+6145 pid=FFFE5147 t=5294782 census   grBufferClear calls=2944 lines=12
+6146 pid=FFFE5147 t=5294782 census   grBufferSwap calls=2509 lines=25
+6147 pid=FFFE5147 t=5294782 census   grChromakeyMode calls=7244 lines=6
+6148 pid=FFFE5147 t=5294782 census   grChromakeyValue calls=7243 lines=5
+6149 pid=FFFE5147 t=5294782 census   grClipWindow calls=7368 lines=10
+6150 pid=FFFE5147 t=5294782 census   grColorCombine calls=10068 lines=10
+6151 pid=FFFE5147 t=5294782 census   grCullMode calls=2875 lines=4
+6152 pid=FFFE5147 t=5294782 census   grDepthBufferFunction calls=3598 lines=6
+6153 pid=FFFE5147 t=5294782 census   grDepthBufferMode calls=1800 lines=4
+6154 pid=FFFE5147 t=5294782 census   grDepthMask calls=3598 lines=6
+6155 pid=FFFE5147 t=5294782 census   grDitherMode calls=1 lines=1
+6156 pid=FFFE5147 t=5294782 census   grDrawLine calls=308775 lines=72
+6157 pid=FFFE5147 t=5294782 census   grDrawTriangle calls=3473861 lines=2120
+6158 pid=FFFE5147 t=5294782 census   grFogColorValue calls=2 lines=2
+6159 pid=FFFE5147 t=5294782 census   grFogMode calls=2 lines=2
+6160 pid=FFFE5147 t=5294782 census   grFogTable calls=901 lines=2
+6161 pid=FFFE5147 t=5294782 census   grGammaCorrectionValue calls=3 lines=3
+6162 pid=FFFE5147 t=5294782 census   grGlideInit calls=1 lines=1
+6163 pid=FFFE5147 t=5294782 census   grGlideShutdown calls=1 lines=1
+6164 pid=FFFE5147 t=5294782 census   grLfbLock calls=4 lines=4
+6165 pid=FFFE5147 t=5294782 census   grLfbUnlock calls=4 lines=4
+6166 pid=FFFE5147 t=5294782 census   grRenderBuffer calls=4669 lines=17
+6167 pid=FFFE5147 t=5294782 census   grSstIdle calls=1481 lines=25
+6168 pid=FFFE5147 t=5294782 census   grSstQueryHardware calls=1 lines=1
+6169 pid=FFFE5147 t=5294782 census   grSstSelect calls=1 lines=1
+6170 pid=FFFE5147 t=5294782 census   grSstWinOpen calls=1 lines=1
+6171 pid=FFFE5147 t=5294782 census   grTexCalcMemRequired calls=1829 lines=38
+6172 pid=FFFE5147 t=5294782 census   grTexClampMode calls=161857 lines=133
+6173 pid=FFFE5147 t=5294782 census   grTexCombine calls=1 lines=1
+6174 pid=FFFE5147 t=5294782 census   grTexCombineFunction calls=1 lines=1
+6175 pid=FFFE5147 t=5294782 census   grTexDownloadMipMap calls=72879 lines=1753
+6176 pid=FFFE5147 t=5294782 census   grTexDownloadTable calls=3016 lines=8
+6177 pid=FFFE5147 t=5294782 census   grTexFilterMode calls=2 lines=2
+6178 pid=FFFE5147 t=5294782 census   grTexMaxAddress calls=1829 lines=22
+6179 pid=FFFE5147 t=5294782 census   grTexMinAddress calls=7 lines=4
+6180 pid=FFFE5147 t=5294782 census   grTexMipMapMode calls=1 lines=1
+6181 pid=FFFE5147 t=5294782 census   grTexSource calls=1552471 lines=1327
+6182 pid=FFFE5147 t=5294782 census   guFogGenerateExp calls=20 lines=20
+6183 pid=FFFE5147 t=5295197 device: closed
+6184 pid=FFFE5147 t=5295220 census detach swaps=2509
+6185 pid=FFFE5147 t=5295220 census   draws: drawn=3664622 refused=0 culled=441212 skipped-textured=0
+6186 pid=FFFE5147 t=5295220 census   draws: fog-dropped=0 uploads=14659 surface-hits=30223 evictions=14190
+6187 pid=FFFE5147 t=5295220 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+6188 pid=FFFE5147 t=5295220 census   batch ends: full=0 texture=0 state=0
+6189 pid=FFFE5147 t=5295220 census   grAlphaBlendFunction calls=294807 lines=145
+6190 pid=FFFE5147 t=5295220 census   grAlphaCombine calls=10068 lines=10
+6191 pid=FFFE5147 t=5295220 census   grAlphaTestFunction calls=1 lines=1
+6192 pid=FFFE5147 t=5295220 census   grAlphaTestReferenceValue calls=1 lines=1
+6193 pid=FFFE5147 t=5295220 census   grBufferClear calls=2944 lines=12
+6194 pid=FFFE5147 t=5295220 census   grBufferSwap calls=2509 lines=25
+6195 pid=FFFE5147 t=5295220 census   grChromakeyMode calls=7244 lines=6
+6196 pid=FFFE5147 t=5295220 census   grChromakeyValue calls=7243 lines=5
+6197 pid=FFFE5147 t=5295220 census   grClipWindow calls=7368 lines=10
+6198 pid=FFFE5147 t=5295220 census   grColorCombine calls=10068 lines=10
+6199 pid=FFFE5147 t=5295220 census   grCullMode calls=2875 lines=4
+6200 pid=FFFE5147 t=5295220 census   grDepthBufferFunction calls=3598 lines=6
+6201 pid=FFFE5147 t=5295220 census   grDepthBufferMode calls=1800 lines=4
+6202 pid=FFFE5147 t=5295220 census   grDepthMask calls=3598 lines=6
+6203 pid=FFFE5147 t=5295220 census   grDitherMode calls=1 lines=1
+6204 pid=FFFE5147 t=5295220 census   grDrawLine calls=308775 lines=72
+6205 pid=FFFE5147 t=5295220 census   grDrawTriangle calls=3473861 lines=2120
+6206 pid=FFFE5147 t=5295220 census   grFogColorValue calls=2 lines=2
+6207 pid=FFFE5147 t=5295220 census   grFogMode calls=2 lines=2
+6208 pid=FFFE5147 t=5295220 census   grFogTable calls=901 lines=2
+6209 pid=FFFE5147 t=5295220 census   grGammaCorrectionValue calls=3 lines=3
+6210 pid=FFFE5147 t=5295220 census   grGlideInit calls=1 lines=1
+6211 pid=FFFE5147 t=5295220 census   grGlideShutdown calls=1 lines=1
+6212 pid=FFFE5147 t=5295220 census   grLfbLock calls=4 lines=4
+6213 pid=FFFE5147 t=5295220 census   grLfbUnlock calls=4 lines=4
+6214 pid=FFFE5147 t=5295220 census   grRenderBuffer calls=4669 lines=17
+6215 pid=FFFE5147 t=5295220 census   grSstIdle calls=1481 lines=25
+6216 pid=FFFE5147 t=5295220 census   grSstQueryHardware calls=1 lines=1
+6217 pid=FFFE5147 t=5295220 census   grSstSelect calls=1 lines=1
+6218 pid=FFFE5147 t=5295220 census   grSstWinOpen calls=1 lines=1
+6219 pid=FFFE5147 t=5295220 census   grTexCalcMemRequired calls=1829 lines=38
+6220 pid=FFFE5147 t=5295220 census   grTexClampMode calls=161857 lines=133
+6221 pid=FFFE5147 t=5295220 census   grTexCombine calls=1 lines=1
+6222 pid=FFFE5147 t=5295220 census   grTexCombineFunction calls=1 lines=1
+6223 pid=FFFE5147 t=5295222 census   grTexDownloadMipMap calls=72879 lines=1753
+6224 pid=FFFE5147 t=5295222 census   grTexDownloadTable calls=3016 lines=8
+6225 pid=FFFE5147 t=5295222 census   grTexFilterMode calls=2 lines=2
+6226 pid=FFFE5147 t=5295222 census   grTexMaxAddress calls=1829 lines=22
+6227 pid=FFFE5147 t=5295222 census   grTexMinAddress calls=7 lines=4
+6228 pid=FFFE5147 t=5295222 census   grTexMipMapMode calls=1 lines=1
+6229 pid=FFFE5147 t=5295222 census   grTexSource calls=1552471 lines=1327
+6230 pid=FFFE5147 t=5295222 census   guFogGenerateExp calls=20 lines=20

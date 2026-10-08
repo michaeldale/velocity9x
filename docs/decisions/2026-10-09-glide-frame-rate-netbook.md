@@ -84,9 +84,17 @@ Swaps per 15 s in the race, from the probe folder's table:
   latched-but-not-scanned flip, or a status that is per-surface and
   asked of the wrong one are all open.
 
+## The pause dialog
+
+Earlier builds drew it wrongly. With this DLL (run 12), Escape held for
+400 ms opens it. The game draws once into the front buffer, then draws
+the dialog into the back buffer inside a 64,48-576,432 clip window and
+keeps swapping. Operator, watching the panel: "looked good". The
+agent's screenshot shows it complete (`B129-12-PAUSE.png`). Which of
+this record's changes fixed it was not isolated.
+
 ## Open
 
-- The pause and exit dialogs draw wrongly.
 - The distant sky view without the HUD (previous record) is unexplained.
 - Gamma is not applied.
 - The menu's small flicker.
