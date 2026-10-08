@@ -4,6 +4,72 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.13.0 - not yet released
+
+Single-pass multitexture on the ATI Rage Pro class, and an OpenGL ICD
+that draws a two-texture batch in passes when no engine takes it whole.
+Measured on A8U4I5 (Rage XL PCI) and the HP Mini 110 netbook (GMA 950).
+The Gateway's Rage Mobility-M runs the same Mach64 code and was not run.
+
+### ATI Rage Pro class (Mach64)
+
+- **GL_SGIS_multitexture.** The Rage Pro's second texture (the TEX_CNTL
+  composite) is driven as Mesa 7.10's driver drove it, and the engine
+  now reports two texture units. Unit 1 MODULATE over unit 0 REPLACE or
+  MODULATE draws in one pass, the lightmap case Quake 2 and Half-Life
+  use. The coordinates go premultiplied by W under TEX_ST_DIRECT. With
+  the engine multiplying them itself, unit 0's mip level came out log2 W
+  too coarse under the composite, and Quake 2's walls drew from their
+  smallest levels.
+  [Decision](docs/decisions/2026-10-08-rage-pro-composite-direct.md).
+- Unit 0 loses trilinear under the composite (it takes the blend
+  function), and unit 1 samples one level.
+
+| On the Rage XL PCI | 0.12 (one unit) | 0.13 (composite) |
+|---|---|---|
+| Quake 2 demo1 spawn `timerefresh`, 640x480 window | 15.4 fps | 17.9 fps |
+| Half-Life `timedemo mwd5`, OpenGL, 400x300 window | 14.8 fps | 16.0-16.6 fps |
+| GLQuake v0.97 `timedemo demo1`, default settings | 21.5 fps | 21.5 fps (no multitexture) |
+
+### OpenGL ICD
+
+- **A two-unit batch no engine takes is drawn in single-unit passes**,
+  as the application would have drawn it without the extension: unit 0,
+  then unit 1's texture blended to apply its combine (MODULATE, REPLACE,
+  DECAL, and BLEND, which takes one pass or two). Without it, on the
+  Rage, which has no software fallback, such a batch drew nothing.
+  GLQuake and QuakeWorld draw their single-pass lightmaps with unit 1
+  GL_BLEND (`gl_texsort 0`). On the Rage XL all 41,772 such batches in
+  GLQuake's demo1 drew this way at 21.6 fps, against 21.5 for its default
+  path. Declined, as before, when the application blends or an alpha
+  test has no depth writes to confine the passes.
+  [Decision](docs/decisions/2026-10-08-icd-two-unit-split.md),
+  [GLQuake](docs/decisions/2026-10-08-glquake-blend-lightmaps-split.md).
+- On the GMA 950 the split never runs: Gen3 draws every two-unit batch
+  itself. GLQuake's unit-1 BLEND path runs there at 59.7 fps against 52.8
+  for its default path, and Half-Life OpenGL at 640x480 at 17.1-17.6 fps,
+  as on 0.12.
+  [Decision](docs/decisions/2026-10-08-netbook-multitexture-recheck.md).
+
+### Diagnostics
+
+- V9XTRACE reports the Mach64 draw's cost split (`R2Cycles*`, `R2Work`),
+  and the render interface's entry timer runs on the Mach64. On the Rage
+  XL at 640x480 a draw's time is the chip filling pixels, not the driver.
+  [Decision](docs/decisions/2026-10-08-rage-xl-draw-cost.md).
+- V9XGLP's `SgisMip` section names the mip level unit 0 samples, with
+  unit 1 off and on, in perspective too.
+
+### Known
+
+- REPLACE with the fragment's alpha has no Direct3D op in the core, so
+  such draws are refused: on the Rage they draw nothing, on the GMA 950
+  they draw in software. GLQuake's `-nomtex +gl_texsort 0` lightmaps are
+  the measured case; its default path does not draw this way.
+  [Issue](docs/issues/2026-10-08-mach64-replace-fragment-alpha-refused.md).
+- Direct3D still sees one texture stage on every engine
+  ([plan](docs/plans/d3d-two-stage-multitexture.md)).
+
 ## 0.12.2 - 2026-10-07
 
 - **Intel GMA 950: triangles crossing the screen edge are clipped.** The
