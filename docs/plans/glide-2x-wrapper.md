@@ -21,7 +21,9 @@ the pause dialog draws correctly. Phase 5 in progress: every package
 installs GLIDE2X.DLL to SYSTEM with a version-checked copy that keeps a
 3dfx card's own
 ([2026-10-09-glide-packaging-copy-flag.md](../decisions/2026-10-09-glide-packaging-copy-flag.md));
-a full Have Disk install of a package is owed.
+a Have Disk install of the S3 package kept a 3dfx Glide and upgraded
+an older Velocity9x one. Open: Windows 95, and V9XCOPY.BAT's check in
+DOS.
 First game: Need for Speed II SE. First engine: Gen3 on the netbook.
 
 ## Context

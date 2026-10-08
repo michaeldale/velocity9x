@@ -1,8 +1,10 @@
 # Every package installs GLIDE2X.DLL to SYSTEM, and SetupX keeps a 3dfx card's own
 
 Date: 2026-10-09
-Machine: 86Box `Win98SE-Fast-D3D` guest, boot 602.
-Evidence: [`../probe/86box-glide-inf-copy-flag-2026-10-09/`](../probe/86box-glide-inf-copy-flag-2026-10-09/)
+Machines: 86Box `Win98SE-Fast-D3D` guest, boot 602; 86Box
+`Win98SE-Trio64` guest, boots 359-361.
+Evidence: [`../probe/86box-glide-inf-copy-flag-2026-10-09/`](../probe/86box-glide-inf-copy-flag-2026-10-09/),
+[`../probe/86box-glide-have-disk-2026-10-09/`](../probe/86box-glide-have-disk-2026-10-09/)
 Plan: [glide-2x-wrapper.md](../plans/glide-2x-wrapper.md), Phase 5.
 
 ## Why
@@ -32,11 +34,21 @@ Measured through SetupX with a one-line INF on the guest:
   for the next boot, as the in-use flag stages the other driver files.
   The restart prompt is the one a display install shows anyway.
 
+## Have Disk, the whole package
+
+On the `Win98SE-Trio64` guest (boots 359-361), the S3 package was
+installed twice through Display Properties, Adapter, Change, Have Disk
+([evidence](../probe/86box-glide-have-disk-2026-10-09/)):
+
+- Over the 3dfx 2.56 the guest already had: kept, with no prompt and
+  nothing staged for it. The rest of the package installed and the
+  driver started (`DriverInitResult=ok`).
+- Over a 0.13.0 build of ours: staged through `WININIT.INI` and replaced
+  at the restart by the package's DLL, confirmed by hash. The driver
+  started.
+
 ## Not measured
 
-- A full Have Disk install of a family package carrying the line. The
-  test INF ran the same copy line through `InstallHinfSection`, not
-  through the display class installer.
 - Windows 95's SetupX.
 - `V9XCOPY.BAT`'s check. It cannot compare versions, so it replaces an
   existing `GLIDE2X.DLL` only if `FIND` sees `V9XGLIDE.LOG` in it, a
