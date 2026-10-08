@@ -168,6 +168,7 @@ function New-V9xInfText {
         'v9xsetp.dll=1'
         'v9xhal.dll=1'
         'v9xgl.dll=1'
+        'glide2x.dll=1'
         ''
         '[Manufacturer]'
         ('{0}={1}' -f $inf.Manufacturer, $models)
@@ -275,6 +276,17 @@ function New-V9xInfText {
         'v9xsetp.dll,,,12'
         'v9xhal.dll,,,12'
         'v9xgl.dll,,,12'
+        # Glide (src\glide) keeps the name every Glide 2 game loads, so a
+        # 3dfx card's own GLIDE2X.DLL may already be here: a Voodoo 1 or 2
+        # sits beside the 2D card this INF installs for. 40 is
+        # COPYFLG_NO_VERSION_DIALOG (0x20, do not copy if the target is
+        # newer) plus the in-use flag the other files carry, and drops the
+        # NOVERSIONCHECK they use. The 3dfx ones on hand are versioned 1.00
+        # and 2.61 (docs\plans\glide-2x-wrapper.md, Phase 5) and ours
+        # carry the Velocity9x version, so theirs is kept and an older one
+        # of ours is replaced; at Velocity9x 1.0 that comparison has to be
+        # revisited. NO_OVERWRITE (0x10) would never update ours.
+        'glide2x.dll,,,40'
         ''
         '[Velocity9x.Previous]'
         'HKR,,Ver'
@@ -503,6 +515,7 @@ function Assert-V9xInf {
 
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
                   'v9xgl.dll,,,12', 'v9xgl.dll=1',
+                  'glide2x.dll,,,40', 'glide2x.dll=1',
                   'CurrentVersion\OpenGLDrivers",Velocity9x,,"v9xgl.dll"',
                   'Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x',
                   'RunOnce,V9xSettingsPage,,"rundll32.exe v9xsetp.dll,V9xRegisterPage"',

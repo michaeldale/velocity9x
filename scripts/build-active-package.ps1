@@ -97,6 +97,7 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-window-list.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-ddraw-hal-dll.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-opengl-icd.ps1") -BuildId $BuildId
+& (Join-Path $PSScriptRoot "build-glide.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-vxd-loader-probe.ps1") `
     -BuildId $BuildId -DdkRoot $DdkRoot
 & (Join-Path $PSScriptRoot "build-win16-loader-probe.ps1") -BuildId $BuildId
@@ -144,6 +145,8 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\ddraw-hal\v9xhal.dll") `
     -Destination (Join-Path $outputDir "V9XHAL.DLL") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\opengl\v9xgl.dll") `
     -Destination (Join-Path $outputDir "V9XGL.DLL") -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "build\glide\glide2x.dll") `
+    -Destination (Join-Path $outputDir "GLIDE2X.DLL") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\gdi-smoke\v9xgdi.exe") `
     -Destination (Join-Path $outputDir "V9XGDI.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\palette-smoke\v9xpal.exe") `
@@ -375,6 +378,7 @@ $manifest = @(
     "Mode switching: live same-depth via ReEnable; depth change needs restart",
     "DirectDraw HAL: $($familyManifest.Package.HalDescription)",
     "OpenGL: V9XGL.DLL, an OpenGL 1.1 ICD registered under OpenGLDrivers (16-bit desktops the engine can draw)",
+    "Glide: GLIDE2X.DLL, Glide 2.x over the same engine; never copied over a newer GLIDE2X.DLL, such as a 3dfx card's",
     "Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)",
     "Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)",
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
@@ -399,7 +403,7 @@ Set-Content -LiteralPath (Join-Path $outputDir "SHA256.TXT") `
     -Encoding Ascii -Value $hashLines
 
 $expectedPackageFiles = @(
-    "FIRSTBOOT.TXT", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
+    "FIRSTBOOT.TXT", "GLIDE2X.DLL", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
     "V9X16LD.EXE", "V9XCOPY.BAT", "V9XDDP.EXE", "V9XDISP.DRV",
     "V9XFIX.BAT", "V9XHAL.DLL", "V9XGL.DLL",
     "V9XGDI.EXE", "V9XMSW.EXE", "V9XPAL.EXE", "V9XPWR.EXE",

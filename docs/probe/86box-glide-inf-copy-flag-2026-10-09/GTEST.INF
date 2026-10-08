@@ -1,0 +1,19 @@
+; SetupX copy-flag test: the same glide2x.dll line the Velocity9x INF carries.
+[Version]
+Signature="$CHICAGO$"
+
+[DestinationDirs]
+DefaultDestDir=11
+G.Copy=11
+
+[SourceDisksNames]
+1="Velocity9x Glide test",,0
+
+[SourceDisksFiles]
+glide2x.dll=1
+
+[DefaultInstall]
+CopyFiles=G.Copy
+
+[G.Copy]
+glide2x.dll,,,40

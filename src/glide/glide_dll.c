@@ -524,9 +524,22 @@ typedef struct v9x_glide_cached_surface {
     v9x_u32 last_used;
 } V9X_GLIDE_CACHED_SURFACE;
 
-static V9X_GLIDE_TEXMEM v9x_glide_texmem;
-static V9X_GLIDE_TEXTURE v9x_glide_textures[V9X_GLIDE_TEXMEM_RECORDS];
-static V9X_GLIDE_CACHED_SURFACE v9x_glide_surfaces[V9X_GLIDE_SURFACES];
+/*
+ * The three tables, about 430 KB, are committed at attach rather than held
+ * as statics: wlink puts _BSS in DGROUP and writes it into the image, which
+ * made GLIDE2X.DLL 468 KB and overflowed a family's floppy. The names stay
+ * those of the arrays they replace.
+ */
+typedef struct v9x_glide_tables {
+    V9X_GLIDE_TEXMEM texmem;
+    V9X_GLIDE_TEXTURE textures[V9X_GLIDE_TEXMEM_RECORDS];
+    V9X_GLIDE_CACHED_SURFACE surfaces[V9X_GLIDE_SURFACES];
+} V9X_GLIDE_TABLES;
+
+static V9X_GLIDE_TABLES *v9x_glide_tables;
+#define v9x_glide_texmem   (v9x_glide_tables->texmem)
+#define v9x_glide_textures (v9x_glide_tables->textures)
+#define v9x_glide_surfaces (v9x_glide_tables->surfaces)
 static v9x_u32 v9x_glide_surface_stamp;
 static v9x_u32 v9x_glide_use_clock;
 static int v9x_glide_source = -1;
@@ -2088,6 +2101,13 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
         char text[MAX_PATH + 96];
 
         CreateDirectoryA(V9X_DIAG_DIR, 0);
+        /* Committed pages are zero, as the statics were. */
+        v9x_glide_tables = (V9X_GLIDE_TABLES *)VirtualAlloc(
+            0, sizeof(V9X_GLIDE_TABLES), MEM_COMMIT, PAGE_READWRITE);
+        if (v9x_glide_tables == 0) {
+            v9x_glide_log("attach refused: no memory for the texture tables");
+            return FALSE;
+        }
         v9x_glide_summary_tick = GetTickCount();
         /* The 640x480 a Voodoo opens most often, until grSstWinOpen says. */
         v9x_glide_state_init(&v9x_glide_state, 640ul, 480ul,
@@ -2105,6 +2125,10 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
         if (v9x_glide_lfb != 0) {
             VirtualFree(v9x_glide_lfb, 0, MEM_RELEASE);
             v9x_glide_lfb = 0;
+        }
+        if (v9x_glide_tables != 0) {
+            VirtualFree(v9x_glide_tables, 0, MEM_RELEASE);
+            v9x_glide_tables = 0;
         }
     }
     return TRUE;

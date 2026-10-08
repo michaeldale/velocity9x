@@ -181,7 +181,9 @@ floppy works, but Windows may ask for the disk again later.
 
 The first boot comes up at 640x480 in 256 colours. The install also
 registers V9XGL.DLL, the OpenGL driver, which OpenGL programs use on a
-High Color desktop the card can draw into.
+High Color desktop the card can draw into, and GLIDE2X.DLL, a Glide 2
+driver for games written for 3dfx cards, unless a Voodoo card's own newer
+GLIDE2X.DLL is already installed.
 
 Full detail is in INSTALL.TXT inside the folder. FIRSTBOOT.TXT there is
 the step-by-step checklist for the first boot.
@@ -232,6 +234,7 @@ Then copy the whole C:\V9XDIAG folder off the machine. The files in it:
    C:\V9XDIAG\V9XDD.INI      DirectDraw and Direct3D probe results
    C:\V9XDIAG\V9XTRACE.INI   DirectDraw callback trace after a fault
    C:\V9XDIAG\V9XGL.LOG      OpenGL driver log
+   C:\V9XDIAG\V9XGLIDE.LOG   Glide driver log
 
 Also note the chip, the mode in use when it went wrong, and the build ID at
 the top of this file. V9XSET.EXE has a Copy report button that puts most of

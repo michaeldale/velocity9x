@@ -142,6 +142,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-08 Glide textures, palettes, chroma key, blending and table fog draw alike on Gen3 and the software engine, and both fog through the render interface](2026-10-08-glide-phase3-textures-fog.md)
 - [2026-10-09 Need for Speed II SE races on GLIDE2X.DLL over Gen3, everything drawn, at about 5 frames a second](2026-10-09-nfs2se-races-on-glide-gen3.md)
 - [2026-10-09 NFS II SE on Glide over Gen3 goes from 5 to 18 frames a second; a third buffer, not a wait, ends the flicker](2026-10-09-glide-frame-rate-netbook.md)
+- [2026-10-09 Every package installs GLIDE2X.DLL to SYSTEM, and SetupX keeps a 3dfx card's own](2026-10-09-glide-packaging-copy-flag.md)
 
 ## VBE generic family and dynamic modes
 
