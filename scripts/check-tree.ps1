@@ -236,10 +236,12 @@ $allowedOsBoundaries = @(
     # through these or not at all.
     (Join-Path $repoRoot "src\opengl\gl_icd.c"),
     (Join-Path $repoRoot "src\opengl\gl_surface.c"),
-    # GLIDE2X.DLL's platform file: the exports, the log and the DLL entry
-    # (docs\plans\glide-2x-wrapper.md). Its pure logic, when it comes, sits
-    # beside it under src\glide and stays OS-free like the ICD's.
+    # GLIDE2X.DLL's two platform files (docs\plans\glide-2x-wrapper.md):
+    # glide_dll.c, the exports, the log and the DLL entry; glide_surface.c,
+    # its DirectDraw device. Its pure logic sits beside them under src\glide
+    # and stays OS-free like the ICD's.
     (Join-Path $repoRoot "src\glide\glide_dll.c"),
+    (Join-Path $repoRoot "src\glide\glide_surface.c"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
 )
 $forbidden = $sourceFiles |
@@ -2023,7 +2025,7 @@ foreach ($entry in $glideEntries) {
 # (r3d_abi.h), as the ICD does: its pure files name none of the HAL's
 # private headers or register helpers.
 foreach ($glideFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src\glide") -File -Include *.c, *.h -Recurse)) {
-    if ($glideFile.Name -eq 'glide_dll.c') { continue }
+    if ($glideFile.Name -in @('glide_dll.c', 'glide_surface.c')) { continue }
     $text = Get-Content -LiteralPath $glideFile.FullName -Raw
     foreach ($forbidden in @('ddhal_internal.h', 'd3d_internal.h', 'win9x_ddraw_abi.h',
                              'v9x_mmio_write', 'v9x_mmio_read')) {

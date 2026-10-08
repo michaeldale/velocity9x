@@ -96,6 +96,7 @@
 #define V9X_DIAG_SCLP_INI    V9X_DIAG_PATH("V9XSCLP.INI")   /* surface_clip_probe_win32.c */
 #define V9X_DIAG_R3DP_INI    V9X_DIAG_PATH("V9XR3DP.INI")   /* r3d_probe_win32.c */
 #define V9X_DIAG_GLP_INI     V9X_DIAG_PATH("V9XGLP.INI")    /* gl_probe_win32.c */
+#define V9X_DIAG_GLIDP_INI   V9X_DIAG_PATH("V9XGLIDP.INI")  /* glide_probe_win32.c */
 
 /* The OpenGL ICD (src\opengl). A log rather than an INI: the ICD's calls
  * are ordered and unbounded, and their order is the evidence. */

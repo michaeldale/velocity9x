@@ -253,23 +253,26 @@ static void test_line(void)
     b = a;
     b.sx = 10.0f; b.sy = 2.0f;  b.color = 0xFF202020ul;
 
-    /* X-major: widened by half a pixel up and down. */
+    /* X-major: the strip runs from y to y + 1, so the row a line through
+     * integer y names is lit whether the engine samples pixels at their
+     * corner or their centre. A strip of y +- 0.5 lit nothing at y = 400
+     * on Gen3 (V9XGLIDP, netbook boot 127). */
     v9x_glide_line_triangles(&a, &b, out);
-    VCHECK(approx(out[0].sx, 0.0f) && approx(out[0].sy, -0.5f));
-    VCHECK(approx(out[1].sx, 0.0f) && approx(out[1].sy, 0.5f));
-    VCHECK(approx(out[2].sx, 10.0f) && approx(out[2].sy, 2.5f));
-    VCHECK(approx(out[3].sx, 0.0f) && approx(out[3].sy, -0.5f));
-    VCHECK(approx(out[4].sx, 10.0f) && approx(out[4].sy, 2.5f));
-    VCHECK(approx(out[5].sx, 10.0f) && approx(out[5].sy, 1.5f));
+    VCHECK(approx(out[0].sx, 0.0f) && approx(out[0].sy, 0.0f));
+    VCHECK(approx(out[1].sx, 0.0f) && approx(out[1].sy, 1.0f));
+    VCHECK(approx(out[2].sx, 10.0f) && approx(out[2].sy, 3.0f));
+    VCHECK(approx(out[3].sx, 0.0f) && approx(out[3].sy, 0.0f));
+    VCHECK(approx(out[4].sx, 10.0f) && approx(out[4].sy, 3.0f));
+    VCHECK(approx(out[5].sx, 10.0f) && approx(out[5].sy, 2.0f));
     VCHECK(out[0].color == 0xFF101010ul && out[2].color == 0xFF202020ul);
 
-    /* Y-major: widened left and right. */
+    /* Y-major: from x to x + 1. */
     b.sx = 2.0f; b.sy = 10.0f;
     v9x_glide_line_triangles(&a, &b, out);
-    VCHECK(approx(out[0].sx, -0.5f) && approx(out[0].sy, 0.0f));
-    VCHECK(approx(out[1].sx, 0.5f) && approx(out[1].sy, 0.0f));
-    VCHECK(approx(out[2].sx, 2.5f) && approx(out[2].sy, 10.0f));
-    VCHECK(approx(out[5].sx, 1.5f) && approx(out[5].sy, 10.0f));
+    VCHECK(approx(out[0].sx, 0.0f) && approx(out[0].sy, 0.0f));
+    VCHECK(approx(out[1].sx, 1.0f) && approx(out[1].sy, 0.0f));
+    VCHECK(approx(out[2].sx, 3.0f) && approx(out[2].sy, 10.0f));
+    VCHECK(approx(out[5].sx, 2.0f) && approx(out[5].sy, 10.0f));
 }
 
 unsigned int v9x_run_glide_vertex_tests(void)

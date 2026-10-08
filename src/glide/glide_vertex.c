@@ -216,16 +216,21 @@ void v9x_glide_line_triangles(const V9X_R3D_ABI_VERTEX *a,
     if (dy < 0.0f) {
         dy = -dy;
     }
+    /* One pixel across the minor axis, from the line's coordinate to the
+     * next whole pixel: a line through integer y lights row y whether the
+     * engine samples at a pixel's corner or its centre. Centred on the
+     * line (y - 0.5 to y + 0.5) it lit nothing at y = 400 on Gen3, whose
+     * sample point sat on the strip's excluded edge (V9XGLIDP, netbook,
+     * 2026-10-08). Which row a Voodoo lights for an integer y is not
+     * measured here. */
     if (dx >= dy) {
-        off_y = 0.5f;
+        off_y = 1.0f;
     } else {
-        off_x = 0.5f;
+        off_x = 1.0f;
     }
 
-    /* a-, a+, b+ and a-, b+, b-: one quad, each end keeping its colour. */
+    /* a, a+, b+ and a, b+, b: one quad, each end keeping its colour. */
     out[0] = *a;
-    out[0].sx -= off_x;
-    out[0].sy -= off_y;
     out[1] = *a;
     out[1].sx += off_x;
     out[1].sy += off_y;
@@ -235,6 +240,4 @@ void v9x_glide_line_triangles(const V9X_R3D_ABI_VERTEX *a,
     out[3] = out[0];
     out[4] = out[2];
     out[5] = *b;
-    out[5].sx -= off_x;
-    out[5].sy -= off_y;
 }

@@ -223,6 +223,49 @@ static void v9x_glide_map_combine(const V9X_GLIDE_STATE *state,
     }
 }
 
+/* GrScreenResolution_t, GR_RESOLUTION_320x200 (0) to _400x300 (15). */
+static const v9x_u16 v9x_glide_resolutions[][2] = {
+    { 320u, 200u }, { 320u, 240u }, { 400u, 256u }, { 512u, 384u },
+    { 640u, 200u }, { 640u, 350u }, { 640u, 400u }, { 640u, 480u },
+    { 800u, 600u }, { 960u, 720u }, { 856u, 480u }, { 512u, 256u },
+    { 1024u, 768u }, { 1280u, 1024u }, { 1600u, 1200u }, { 400u, 300u }
+};
+
+#define V9X_GLIDE_RESOLUTIONS \
+    (sizeof(v9x_glide_resolutions) / sizeof(v9x_glide_resolutions[0]))
+
+v9x_u16 v9x_glide_resolution_size(v9x_u32 resolution, v9x_u32 *width,
+                                  v9x_u32 *height)
+{
+    if (resolution >= V9X_GLIDE_RESOLUTIONS) {
+        return V9X_FALSE;
+    }
+    *width = v9x_glide_resolutions[resolution][0];
+    *height = v9x_glide_resolutions[resolution][1];
+    return V9X_TRUE;
+}
+
+/* GrColorFormat_t: ARGB 0, ABGR 1, RGBA 2, BGRA 3. */
+#define V9X_GLIDE_COLORFORMAT_ABGR 1ul
+#define V9X_GLIDE_COLORFORMAT_RGBA 2ul
+#define V9X_GLIDE_COLORFORMAT_BGRA 3ul
+
+v9x_u32 v9x_glide_color_to_argb(v9x_u32 color, v9x_u32 color_format)
+{
+    if (color_format == V9X_GLIDE_COLORFORMAT_ABGR) {
+        return (color & 0xFF00FF00ul) | ((color & 0xFFul) << 16) |
+               ((color >> 16) & 0xFFul);
+    }
+    if (color_format == V9X_GLIDE_COLORFORMAT_RGBA) {
+        return (color >> 8) | (color << 24);
+    }
+    if (color_format == V9X_GLIDE_COLORFORMAT_BGRA) {
+        return ((color & 0xFFul) << 24) | (((color >> 8) & 0xFFul) << 16) |
+               (((color >> 16) & 0xFFul) << 8) | (color >> 24);
+    }
+    return color;
+}
+
 static v9x_u32 v9x_glide_clamp(v9x_u32 value, v9x_u32 limit)
 {
     return value > limit ? limit : value;

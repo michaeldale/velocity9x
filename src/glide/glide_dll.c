@@ -1,9 +1,11 @@
 /*
  * GLIDE2X.DLL, Glide 2.x over the render interface
- * (docs\plans\glide-2x-wrapper.md). This is the Phase 0 census build: it
- * draws nothing. It answers which Glide calls Need for Speed II SE makes,
- * with which arguments and in what order, so the later phases implement
- * that list and no other.
+ * (docs\plans\glide-2x-wrapper.md). Phase 0 made it a census of the calls
+ * Need for Speed II SE makes; Phase 2 gives it a device. grSstWinOpen takes
+ * the screen (glide_surface.c); clears, swaps, frame-buffer locks and
+ * untextured triangles and lines reach it through the render interface,
+ * with the state mapped by glide_state.c and the vertices by
+ * glide_vertex.c. Textured draws are counted and skipped until Phase 3.
  *
  * All 130 retail exports exist (src\glide\glide_entrypoints.psd1). The 50
  * that NFS2SEA.EXE imports are written here: each logs its arguments and
@@ -13,10 +15,10 @@
  *
  * The log is C:\V9XDIAG\V9XGLIDE.LOG, appended a line at a time with the
  * file opened and closed each time, so a game that dies mid-run leaves
- * everything it logged (the ICD's rule, gl_icd.c). Volume is bounded per
- * export: a state call logs when its arguments change, up to a cap; a draw
- * or poll call logs its first calls and then one in 4096. Every export is
- * counted, and the counts are written every 600 swaps and at shutdown.
+ * everything it logged (the ICD's rule, gl_icd.c). Volume is bounded by the
+ * rules above V9X_GLIDE_CAPTURE_FIRST below: whole frames now and then, and
+ * each distinct argument set once. Every export is counted, and the counts
+ * are written every 15 s and at shutdown.
  *
  * Floats are logged as their IEEE bit patterns: converting one to an
  * integer lowers to Watcom's __CHP helper, which a DLL linked without the C
@@ -35,6 +37,11 @@
 #include <stdarg.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
+#include "glide_api.h"
+#include "glide_vertex.h"
+#include "glide_state.h"
+#include "glide_texmem.h"
+#include "glide_surface.h"
 
 static void v9x_glide_stub_called(unsigned int ix);
 #define V9X_GLIDE_STUB_HOOK(ix) v9x_glide_stub_called(ix)
@@ -76,30 +83,17 @@ static const char *const v9x_glide_names[V9X_GLIDE_EXPORT_COUNT] =
 #define V9X_GLIDE_TEX_MIN_ADDRESS 0ul
 #define V9X_GLIDE_TEX_MAX_ADDRESS (V9X_GLIDE_TMU_MIB << 20)
 
-/*
- * Texture memory arithmetic for grTexCalcMemRequired (Reference Manual,
- * grTexCalcMemRequired and "Texture formats"). LODs run GR_LOD_256 (0) to
- * GR_LOD_1 (8), the largest edge 256 >> lod; aspects run GR_ASPECT_8x1 (0)
- * to GR_ASPECT_1x8 (6) with GR_ASPECT_1x1 at 3; formats from
- * GR_TEXFMT_ARGB_8332 (8) up are 16 bits a texel, those below 8 bits. Each
- * level is rounded up to 8 bytes, the TMU's address granule - an
- * assumption the census tests against the addresses the game picks.
- */
-#define V9X_GLIDE_LOD_256        0ul
-#define V9X_GLIDE_LOD_1          8ul
-#define V9X_GLIDE_ASPECT_1X1     3ul
-#define V9X_GLIDE_ASPECT_1X8     6ul
-#define V9X_GLIDE_TEXFMT_16BIT   8ul
-#define V9X_GLIDE_TEX_GRANULE    8ul
-
-/* grTexDownloadTable types (GrTexTable_t): GR_TEXTABLE_NCC0, NCC1 and
- * PALETTE. A palette is 256 FxU32; an NCC table (GuNccTable) 112 bytes. */
-#define V9X_GLIDE_TEXTABLE_PALETTE  2ul
-#define V9X_GLIDE_PALETTE_DWORDS    256u
+/* grTexDownloadTable: a palette is 256 FxU32 (glide_api.h); an NCC table
+ * (GuNccTable) 112 bytes. */
 #define V9X_GLIDE_NCC_TABLE_DWORDS  28u
 
-/* GR_FOG_TABLE_SIZE: 64 FxU8 entries. */
-#define V9X_GLIDE_FOG_TABLE_BYTES 64u
+/* grTexCombineFunction's GR_TEXTURECOMBINE_DECAL: the texel passes through,
+ * as grTexCombine with LOCAL for colour and alpha. */
+#define V9X_GLIDE_TEXTURECOMBINE_DECAL 1ul
+
+/* A function the state mapping does not know, so a TMU set to it is
+ * reported unrecognised. */
+#define V9X_GLIDE_COMBINE_FUNCTION_OTHER 0xFFul
 
 /*
  * grLfbLock. GrLfbInfo_t is size, lfbPtr, strideInBytes, writeMode,
@@ -110,6 +104,8 @@ static const char *const v9x_glide_names[V9X_GLIDE_EXPORT_COUNT] =
  * the stride writes inside it. GR_LFBWRITEMODE_ANY (0xFF) reports 565 (0).
  */
 #define V9X_GLIDE_LFB_INFO_BYTES   20ul
+/* GrLock_t: GR_LFB_READ_ONLY 0, GR_LFB_WRITE_ONLY 1, GR_LFB_NOIDLE 0x10. */
+#define V9X_GLIDE_LFB_WRITE_ONLY   1ul
 #define V9X_GLIDE_LFB_WRITE_565    0ul
 #define V9X_GLIDE_LFB_WRITE_888    4ul
 #define V9X_GLIDE_LFB_WRITE_8888   5ul
@@ -171,10 +167,27 @@ static v9x_u32 v9x_glide_swaps;
 static v9x_u32 v9x_glide_status_toggle;
 static v9x_u8 *v9x_glide_lfb;
 
+/* The Glide state as the game set it, and what grSstWinOpen chose. */
+static V9X_GLIDE_STATE v9x_glide_state;
+static v9x_u32 v9x_glide_color_format;
+static v9x_u32 v9x_glide_render_buffer = V9X_GLIDE_BUFFER_BACK;
+static v9x_u8 v9x_glide_fog[V9X_GLIDE_FOG_TABLE_SIZE];
+/* The buffer grLfbLock locked on the device, plus one; 0 for the shadow. */
+static v9x_u32 v9x_glide_lfb_locked;
+
+/* Draw outcomes, written with the census counts. */
+static v9x_u32 v9x_glide_drawn;
+static v9x_u32 v9x_glide_refused;
+static v9x_u32 v9x_glide_culled;
+static v9x_u32 v9x_glide_skipped_textured;
+static v9x_u32 v9x_glide_unrecognized_logged;
+
 /* ---- the log ------------------------------------------------------- */
 
-/* One line, appended: sequence, process, milliseconds, text. */
-static void v9x_glide_log(const char *text)
+/* One line, appended: sequence, process, milliseconds, text. Shared with
+ * glide_surface.c (glide_surface.h), as gl_icd.c's log is with
+ * gl_surface.c; not exported from the DLL. */
+void v9x_glide_log(const char *text)
 {
     HANDLE file;
     /* The longest text (a vertex line, under 200) plus the prefix. */
@@ -192,6 +205,14 @@ static void v9x_glide_log(const char *text)
                        GetCurrentProcessId(), GetTickCount(), text);
     WriteFile(file, line, (DWORD)length, &written, 0);
     CloseHandle(file);
+}
+
+void v9x_glide_log3(const char *format, v9x_u32 a, v9x_u32 b, v9x_u32 c)
+{
+    char text[256];
+
+    wsprintfA(text, format, a, b, c);
+    v9x_glide_log(text);
 }
 
 /* The export's name and call number, then the formatted arguments. */
@@ -297,6 +318,10 @@ static void v9x_glide_summary(const char *why)
 
     wsprintfA(text, "census %s swaps=%lu", why, v9x_glide_swaps);
     v9x_glide_log(text);
+    wsprintfA(text, "census   draws: drawn=%lu refused=%lu culled=%lu skipped-textured=%lu",
+              v9x_glide_drawn, v9x_glide_refused, v9x_glide_culled,
+              v9x_glide_skipped_textured);
+    v9x_glide_log(text);
     for (ix = 0u; ix < V9X_GLIDE_EXPORT_COUNT; ++ix) {
         if (v9x_glide_calls[ix] == 0ul) {
             continue;
@@ -335,6 +360,202 @@ static void v9x_glide_vertex(unsigned int ix, v9x_u32 call, char tag,
                    v[10], v[11]);
 }
 
+/* ---- drawing on the device ------------------------------------------ */
+
+static void v9x_glide_zero(void *block, unsigned int bytes)
+{
+    unsigned int i;
+
+    for (i = 0u; i < bytes; ++i) {
+        ((v9x_u8 *)block)[i] = 0u;
+    }
+}
+
+/* An unrecognised state is drawn with the closest mapping; the first few
+ * are logged so the census of a new title names what to add. */
+static void v9x_glide_note_unrecognized(const V9X_GLIDE_DRAW_SETUP *setup)
+{
+    const V9X_GLIDE_STATE *s = &v9x_glide_state;
+
+    if (setup->recognized || v9x_glide_unrecognized_logged >= 16ul) {
+        return;
+    }
+    ++v9x_glide_unrecognized_logged;
+    v9x_glide_log3("unrecognized: color func=%lu factor=%lu local/other/invert=%06lX",
+                   s->color.function, s->color.factor,
+                   (s->color.local << 16) | (s->color.other << 8) | s->color.invert);
+    v9x_glide_log3("unrecognized: alpha func=%lu factor=%lu local/other/invert=%06lX",
+                   s->alpha.function, s->alpha.factor,
+                   (s->alpha.local << 16) | (s->alpha.other << 8) | s->alpha.invert);
+    v9x_glide_log3("unrecognized: tmu rgb/alpha=%lu/%lu blend=%04lX",
+                   s->tex_rgb_function, s->tex_alpha_function,
+                   (s->blend_src << 8) | s->blend_dst);
+}
+
+static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
+                                   V9X_GLIDE_VERTEX_SETUP *vs)
+{
+    vs->origin = v9x_glide_state.origin;
+    vs->height = (float)v9x_glide_state.height;
+    vs->depth_mode = v9x_glide_state.depth_mode;
+    vs->s_scale = 1.0f / (float)V9X_GLIDE_LOD_EDGE;
+    vs->t_scale = 1.0f / (float)V9X_GLIDE_LOD_EDGE;
+    vs->color_source = draw->color_source;
+    vs->alpha_source = draw->alpha_source;
+    vs->constant_argb = v9x_glide_color_to_argb(v9x_glide_state.constant_color,
+                                                v9x_glide_color_format);
+    vs->fog_mode = v9x_glide_state.fog_mode & V9X_GLIDE_FOG_SOURCE_MASK;
+    vs->fog_table = v9x_glide_fog;
+}
+
+/*
+ * One untextured batch through the render interface, into the buffer
+ * grRenderBuffer chose. STALE means a mode change started a new
+ * generation: describe again and retry once.
+ */
+static void v9x_glide_submit(const V9X_GLIDE_DRAW_SETUP *setup,
+                             const V9X_R3D_ABI_VERTEX *vertices,
+                             v9x_u32 triangles)
+{
+    const V9X_R3D_INTERFACE *iface = v9x_glide_device_interface();
+    V9X_R3D_ABI_DRAW draw;
+    V9X_R3D_ABI_OUTCOME outcome;
+    v9x_u32 result = V9X_R3D_RESULT_INVALID;
+    unsigned int attempt;
+
+    if (iface == 0 || triangles == 0ul) {
+        return;
+    }
+    v9x_glide_zero(&draw, sizeof(draw));
+    draw.struct_bytes = sizeof(draw);
+    draw.target.surface = v9x_glide_device_buffer(v9x_glide_render_buffer);
+    draw.depth.surface = v9x_glide_device_buffer(V9X_GLIDE_BUFFER_AUX);
+    draw.texture.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    draw.texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+    draw.state = setup->state;
+    draw.vertices = vertices;
+    draw.triangle_count = triangles;
+    for (attempt = 0u; attempt < 2u; ++attempt) {
+        draw.generation = v9x_glide_device_generation();
+        v9x_glide_zero(&outcome, sizeof(outcome));
+        result = iface->draw(&draw, &outcome);
+        if (result != V9X_R3D_RESULT_STALE || !v9x_glide_device_redescribe()) {
+            break;
+        }
+    }
+    if (result == V9X_R3D_RESULT_OK || result == V9X_R3D_RESULT_PARTIAL) {
+        v9x_glide_drawn += outcome.submitted;
+        return;
+    }
+    if (v9x_glide_refused++ < 8ul) {
+        v9x_glide_log3("draw refused: result=%lu triangles=%lu", result,
+                       triangles, 0ul);
+    }
+}
+
+static void v9x_glide_draw_triangle(const float *a, const float *b,
+                                    const float *c)
+{
+    V9X_GLIDE_DRAW_SETUP setup;
+    V9X_GLIDE_VERTEX_SETUP vs;
+    V9X_R3D_ABI_VERTEX v[3];
+
+    if (a == 0 || b == 0 || c == 0) {
+        return;
+    }
+    v9x_glide_state_map(&v9x_glide_state, &setup);
+    v9x_glide_note_unrecognized(&setup);
+    if (setup.textured) {
+        ++v9x_glide_skipped_textured;
+        return;
+    }
+    v9x_glide_vertex_setup(&setup, &vs);
+    v9x_glide_vertex_convert(&vs, a, &v[0]);
+    v9x_glide_vertex_convert(&vs, b, &v[1]);
+    v9x_glide_vertex_convert(&vs, c, &v[2]);
+    if (!v9x_glide_cull_keep(v9x_glide_state.cull_mode, v9x_glide_state.origin,
+                             &v[0], &v[1], &v[2])) {
+        ++v9x_glide_culled;
+        return;
+    }
+    v9x_glide_submit(&setup, v, 1ul);
+}
+
+static void v9x_glide_draw_line(const float *a, const float *b)
+{
+    V9X_GLIDE_DRAW_SETUP setup;
+    V9X_GLIDE_VERTEX_SETUP vs;
+    V9X_R3D_ABI_VERTEX ends[2];
+    V9X_R3D_ABI_VERTEX v[6];
+
+    if (a == 0 || b == 0) {
+        return;
+    }
+    v9x_glide_state_map(&v9x_glide_state, &setup);
+    v9x_glide_note_unrecognized(&setup);
+    if (setup.textured) {
+        ++v9x_glide_skipped_textured;
+        return;
+    }
+    v9x_glide_vertex_setup(&setup, &vs);
+    v9x_glide_vertex_convert(&vs, a, &ends[0]);
+    v9x_glide_vertex_convert(&vs, b, &ends[1]);
+    v9x_glide_line_triangles(&ends[0], &ends[1], v);
+    v9x_glide_submit(&setup, v, 2ul);
+}
+
+/* grBufferClear: the colour buffer always, the depth buffer when depth
+ * buffering is on and writable (Reference Manual), inside the clip
+ * window. */
+static void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
+{
+    const V9X_R3D_INTERFACE *iface = v9x_glide_device_interface();
+    V9X_GLIDE_DRAW_SETUP setup;
+    V9X_R3D_ABI_CLEAR clear;
+    V9X_R3D_ABI_RECT rect;
+    v9x_u32 result = V9X_R3D_RESULT_INVALID;
+    unsigned int attempt;
+
+    if (iface == 0) {
+        return;
+    }
+    v9x_glide_state_map(&v9x_glide_state, &setup);
+    rect.left = setup.state.scissor_left;
+    rect.top = setup.state.scissor_top;
+    rect.right = setup.state.scissor_right;
+    rect.bottom = setup.state.scissor_bottom;
+    if (rect.right <= rect.left || rect.bottom <= rect.top) {
+        return;
+    }
+    v9x_glide_zero(&clear, sizeof(clear));
+    clear.struct_bytes = sizeof(clear);
+    clear.target.surface = v9x_glide_device_buffer(v9x_glide_render_buffer);
+    clear.depth.surface = v9x_glide_device_buffer(V9X_GLIDE_BUFFER_AUX);
+    clear.clear_color = 1ul;
+    clear.color_value = v9x_glide_color_to_argb(color, v9x_glide_color_format) &
+                        0x00FFFFFFul;
+    clear.write_mask = V9X_R3D_ABI_WRITE_RGB;
+    if (clear.depth.surface != 0 &&
+        v9x_glide_state.depth_mode != V9X_GLIDE_DEPTH_DISABLE &&
+        v9x_glide_state.depth_mask) {
+        clear.clear_depth = 1ul;
+        clear.write_depth = 1ul;
+        clear.depth_value = depth & 0xFFFFul;
+    }
+    clear.rects = &rect;
+    clear.rect_count = 1ul;
+    for (attempt = 0u; attempt < 2u; ++attempt) {
+        clear.generation = v9x_glide_device_generation();
+        result = iface->clear(&clear);
+        if (result != V9X_R3D_RESULT_STALE || !v9x_glide_device_redescribe()) {
+            break;
+        }
+    }
+    if (result != V9X_R3D_RESULT_OK && v9x_glide_refused++ < 8ul) {
+        v9x_glide_log3("clear refused: result=%lu", result, 0ul, 0ul);
+    }
+}
+
 /* ---- initialisation and the board ---------------------------------- */
 
 void __stdcall grGlideInit(void)
@@ -350,6 +571,9 @@ void __stdcall grGlideShutdown(void)
 
     v9x_glide_logf(V9X_GLIDE_IX_grGlideShutdown, call, "");
     v9x_glide_summary("shutdown");
+    /* A title may shut down without grSstWinClose (plan, hazards): the
+     * display mode is given back either way. */
+    v9x_glide_device_close();
 }
 
 void __stdcall grGlideGetVersion(char *version)
@@ -403,12 +627,23 @@ v9x_u32 __stdcall grSstWinOpen(v9x_u32 window, v9x_u32 resolution,
                                v9x_u32 aux_buffers)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grSstWinOpen);
+    v9x_u32 width = 0ul;
+    v9x_u32 height = 0ul;
+    v9x_u32 opened = V9X_GLIDE_FALSE;
 
+    if (v9x_glide_resolution_size(resolution, &width, &height)) {
+        v9x_glide_color_format = color_format;
+        v9x_glide_render_buffer = V9X_GLIDE_BUFFER_BACK;
+        v9x_glide_state_init(&v9x_glide_state, width, height, origin);
+        opened = v9x_glide_device_open((void *)window, width, height,
+                                       color_buffers, aux_buffers) ?
+                 V9X_GLIDE_TRUE : V9X_GLIDE_FALSE;
+    }
     v9x_glide_logf(V9X_GLIDE_IX_grSstWinOpen, call,
-                   "hwnd=%08lX res=%lu refresh=%lu cformat=%lu origin=%lu colbuf=%lu auxbuf=%lu -> 1",
+                   "hwnd=%08lX res=%lu refresh=%lu cformat=%lu origin=%lu colbuf=%lu auxbuf=%lu -> %lu",
                    window, resolution, refresh, color_format, origin,
-                   color_buffers, aux_buffers);
-    return V9X_GLIDE_TRUE;
+                   color_buffers, aux_buffers, opened);
+    return opened;
 }
 
 void __stdcall grSstWinClose(void)
@@ -417,6 +652,7 @@ void __stdcall grSstWinClose(void)
 
     v9x_glide_logf(V9X_GLIDE_IX_grSstWinClose, call, "");
     v9x_glide_summary("winclose");
+    v9x_glide_device_close();
 }
 
 void __stdcall grSstIdle(void)
@@ -463,12 +699,12 @@ void __stdcall grBufferClear(v9x_u32 color, v9x_u32 alpha, v9x_u32 depth)
                        "color=%08lX alpha=%02lX depth=%04lX", color,
                        alpha & 0xfful, depth & 0xfffful);
     }
+    v9x_glide_clear(color, depth);
 }
 
 void __stdcall grBufferSwap(v9x_u32 interval)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grBufferSwap);
-
     v9x_u32 now;
 
     ++v9x_glide_swaps;
@@ -476,7 +712,9 @@ void __stdcall grBufferSwap(v9x_u32 interval)
         v9x_glide_logf(V9X_GLIDE_IX_grBufferSwap, call, "interval=%lu",
                        interval);
     }
-    if (interval != 0ul) {
+    if (v9x_glide_device_is_open()) {
+        (void)v9x_glide_device_swap(interval);
+    } else if (interval != 0ul) {
         Sleep(interval * V9X_GLIDE_FRAME_MS);
     }
     now = GetTickCount();
@@ -505,6 +743,9 @@ void __stdcall grRenderBuffer(v9x_u32 buffer)
     if (v9x_glide_noted(V9X_GLIDE_IX_grRenderBuffer, buffer)) {
         v9x_glide_logf(V9X_GLIDE_IX_grRenderBuffer, call, "buffer=%lu", buffer);
     }
+    if (buffer == V9X_GLIDE_BUFFER_FRONT || buffer == V9X_GLIDE_BUFFER_BACK) {
+        v9x_glide_render_buffer = buffer;
+    }
 }
 
 void __stdcall grClipWindow(v9x_u32 min_x, v9x_u32 min_y, v9x_u32 max_x,
@@ -517,16 +758,21 @@ void __stdcall grClipWindow(v9x_u32 min_x, v9x_u32 min_y, v9x_u32 max_x,
         v9x_glide_logf(V9X_GLIDE_IX_grClipWindow, call, "min=%lu,%lu max=%lu,%lu",
                        min_x, min_y, max_x, max_y);
     }
+    v9x_glide_state.clip_min_x = min_x;
+    v9x_glide_state.clip_min_y = min_y;
+    v9x_glide_state.clip_max_x = max_x;
+    v9x_glide_state.clip_max_y = max_y;
 }
 
 /* ---- render state -------------------------------------------------- */
 
 /*
  * The one-argument state calls share a shape: log the value under the
- * rules above. A macro rather than a helper so each export keeps its own
- * index and its own name in the log.
+ * rules above, then store it where the state mapping reads it (`store`,
+ * a statement on `value`). A macro rather than a helper so each export
+ * keeps its own index and its own name in the log.
  */
-#define V9X_GLIDE_STATE1(name, label)                                        \
+#define V9X_GLIDE_STATE1(name, label, store)                                 \
     void __stdcall name(v9x_u32 value)                                       \
     {                                                                        \
         v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_##name);                 \
@@ -534,21 +780,28 @@ void __stdcall grClipWindow(v9x_u32 min_x, v9x_u32 min_y, v9x_u32 max_x,
         if (v9x_glide_noted(V9X_GLIDE_IX_##name, value)) {                   \
             v9x_glide_logf(V9X_GLIDE_IX_##name, call, label "=%08lX", value); \
         }                                                                    \
+        store;                                                               \
     }
 
-V9X_GLIDE_STATE1(grCullMode, "mode")
-V9X_GLIDE_STATE1(grDepthBiasLevel, "bias")
-V9X_GLIDE_STATE1(grDepthBufferFunction, "func")
-V9X_GLIDE_STATE1(grDepthBufferMode, "mode")
-V9X_GLIDE_STATE1(grDepthMask, "enable")
-V9X_GLIDE_STATE1(grDitherMode, "mode")
-V9X_GLIDE_STATE1(grAlphaTestFunction, "func")
-V9X_GLIDE_STATE1(grAlphaTestReferenceValue, "ref")
-V9X_GLIDE_STATE1(grChromakeyMode, "mode")
-V9X_GLIDE_STATE1(grChromakeyValue, "color")
-V9X_GLIDE_STATE1(grFogColorValue, "color")
-V9X_GLIDE_STATE1(grFogMode, "mode")
-V9X_GLIDE_STATE1(grGammaCorrectionValue, "gamma-bits")
+V9X_GLIDE_STATE1(grCullMode, "mode", v9x_glide_state.cull_mode = value)
+/* Not used by NFS II SE (census); no render-interface field. */
+V9X_GLIDE_STATE1(grDepthBiasLevel, "bias", (void)value)
+V9X_GLIDE_STATE1(grDepthBufferFunction, "func",
+                 v9x_glide_state.depth_func = value)
+V9X_GLIDE_STATE1(grDepthBufferMode, "mode", v9x_glide_state.depth_mode = value)
+V9X_GLIDE_STATE1(grDepthMask, "enable", v9x_glide_state.depth_mask = value)
+/* The engines dither 16-bit targets as they choose. */
+V9X_GLIDE_STATE1(grDitherMode, "mode", (void)value)
+V9X_GLIDE_STATE1(grAlphaTestFunction, "func", v9x_glide_state.alpha_func = value)
+V9X_GLIDE_STATE1(grAlphaTestReferenceValue, "ref",
+                 v9x_glide_state.alpha_ref = value)
+V9X_GLIDE_STATE1(grChromakeyMode, "mode", v9x_glide_state.chroma_mode = value)
+V9X_GLIDE_STATE1(grChromakeyValue, "color",
+                 v9x_glide_state.chroma_value = value)
+V9X_GLIDE_STATE1(grFogColorValue, "color", v9x_glide_state.fog_color = value)
+V9X_GLIDE_STATE1(grFogMode, "mode", v9x_glide_state.fog_mode = value)
+/* Gamma has no render-interface field yet (census, open). */
+V9X_GLIDE_STATE1(grGammaCorrectionValue, "gamma-bits", (void)value)
 
 void __stdcall grAlphaBlendFunction(v9x_u32 rgb_src, v9x_u32 rgb_dst,
                                   v9x_u32 alpha_src, v9x_u32 alpha_dst)
@@ -561,6 +814,22 @@ void __stdcall grAlphaBlendFunction(v9x_u32 rgb_src, v9x_u32 rgb_dst,
                        "rgb=%lu,%lu alpha=%lu,%lu", rgb_src, rgb_dst,
                        alpha_src, alpha_dst);
     }
+    /* The alpha factors blend a destination alpha the 16-bit targets do
+     * not have. */
+    v9x_glide_state.blend_src = rgb_src;
+    v9x_glide_state.blend_dst = rgb_dst;
+}
+
+static void v9x_glide_store_combine(V9X_GLIDE_COMBINE *combine,
+                                    v9x_u32 function, v9x_u32 factor,
+                                    v9x_u32 local, v9x_u32 other,
+                                    v9x_u32 invert)
+{
+    combine->function = function;
+    combine->factor = factor;
+    combine->local = local;
+    combine->other = other;
+    combine->invert = invert;
 }
 
 /* grColorCombine and grAlphaCombine: function, factor, local, other,
@@ -577,6 +846,8 @@ void __stdcall grColorCombine(v9x_u32 function, v9x_u32 factor, v9x_u32 local,
                        "func=%lu factor=%lu local=%lu other=%lu invert=%lu",
                        function, factor, local, other, invert);
     }
+    v9x_glide_store_combine(&v9x_glide_state.color, function, factor, local,
+                            other, invert);
 }
 
 void __stdcall grAlphaCombine(v9x_u32 function, v9x_u32 factor, v9x_u32 local,
@@ -591,18 +862,24 @@ void __stdcall grAlphaCombine(v9x_u32 function, v9x_u32 factor, v9x_u32 local,
                        "func=%lu factor=%lu local=%lu other=%lu invert=%lu",
                        function, factor, local, other, invert);
     }
+    v9x_glide_store_combine(&v9x_glide_state.alpha, function, factor, local,
+                            other, invert);
 }
 
 void __stdcall grFogTable(const v9x_u32 *table)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grFogTable);
     v9x_u32 key;
+    unsigned int index;
 
     if (table == 0) {
         v9x_glide_logf(V9X_GLIDE_IX_grFogTable, call, "table=null");
         return;
     }
-    key = v9x_glide_checksum(table, V9X_GLIDE_FOG_TABLE_BYTES / 4u);
+    for (index = 0u; index < V9X_GLIDE_FOG_TABLE_SIZE; ++index) {
+        v9x_glide_fog[index] = ((const v9x_u8 *)table)[index];
+    }
+    key = v9x_glide_checksum(table, V9X_GLIDE_FOG_TABLE_SIZE / 4u);
     if (!v9x_glide_noted(V9X_GLIDE_IX_grFogTable, key)) {
         return;
     }
@@ -625,7 +902,7 @@ void __stdcall guFogGenerateExp(v9x_u8 *table, v9x_u32 density)
     unsigned int index;
 
     if (table != 0) {
-        for (index = 0u; index < V9X_GLIDE_FOG_TABLE_BYTES; ++index) {
+        for (index = 0u; index < V9X_GLIDE_FOG_TABLE_SIZE; ++index) {
             table[index] = 0u;
         }
     }
@@ -644,6 +921,8 @@ void __stdcall grTexClampMode(v9x_u32 tmu, v9x_u32 s_mode, v9x_u32 t_mode)
         v9x_glide_logf(V9X_GLIDE_IX_grTexClampMode, call, "tmu=%lu s=%lu t=%lu",
                        tmu, s_mode, t_mode);
     }
+    v9x_glide_state.clamp_s = s_mode;
+    v9x_glide_state.clamp_t = t_mode;
 }
 
 void __stdcall grTexFilterMode(v9x_u32 tmu, v9x_u32 min_filter,
@@ -656,6 +935,8 @@ void __stdcall grTexFilterMode(v9x_u32 tmu, v9x_u32 min_filter,
         v9x_glide_logf(V9X_GLIDE_IX_grTexFilterMode, call,
                        "tmu=%lu min=%lu mag=%lu", tmu, min_filter, mag_filter);
     }
+    v9x_glide_state.min_filter = min_filter;
+    v9x_glide_state.mag_filter = mag_filter;
 }
 
 void __stdcall grTexMipMapMode(v9x_u32 tmu, v9x_u32 mode, v9x_u32 lod_blend)
@@ -687,17 +968,28 @@ void __stdcall grTexCombine(v9x_u32 tmu, v9x_u32 rgb_function,
                        rgb_function, rgb_factor, alpha_function, alpha_factor,
                        rgb_invert, alpha_invert);
     }
+    /* With one TMU there is no "other" texture: the unit's output is the
+     * texel exactly when its function is LOCAL and nothing is inverted. */
+    v9x_glide_state.tex_rgb_function = rgb_invert ?
+        V9X_GLIDE_COMBINE_FUNCTION_OTHER : rgb_function;
+    v9x_glide_state.tex_alpha_function = alpha_invert ?
+        V9X_GLIDE_COMBINE_FUNCTION_OTHER : alpha_function;
 }
 
 void __stdcall grTexCombineFunction(v9x_u32 tmu, v9x_u32 function)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grTexCombineFunction);
+    v9x_u32 unit;
 
     if (v9x_glide_noted(V9X_GLIDE_IX_grTexCombineFunction,
                         v9x_glide_key(tmu, function, 0ul, 0ul))) {
         v9x_glide_logf(V9X_GLIDE_IX_grTexCombineFunction, call,
                        "tmu=%lu func=%lu", tmu, function);
     }
+    unit = function == V9X_GLIDE_TEXTURECOMBINE_DECAL ?
+           V9X_GLIDE_COMBINE_FUNCTION_LOCAL : V9X_GLIDE_COMBINE_FUNCTION_OTHER;
+    v9x_glide_state.tex_rgb_function = unit;
+    v9x_glide_state.tex_alpha_function = unit;
 }
 
 v9x_u32 __stdcall grTexMinAddress(v9x_u32 tmu)
@@ -722,49 +1014,20 @@ v9x_u32 __stdcall grTexMaxAddress(v9x_u32 tmu)
     return V9X_GLIDE_TEX_MAX_ADDRESS;
 }
 
-/* The bytes one LOD of a texture occupies, rounded to the granule. */
-static v9x_u32 v9x_glide_level_bytes(v9x_u32 lod, v9x_u32 aspect,
-                                     v9x_u32 format)
-{
-    v9x_u32 edge = 256ul >> lod;
-    v9x_u32 width = edge;
-    v9x_u32 height = edge;
-    v9x_u32 bytes;
-
-    if (aspect < V9X_GLIDE_ASPECT_1X1) {
-        height = edge >> (V9X_GLIDE_ASPECT_1X1 - aspect);
-    } else if (aspect > V9X_GLIDE_ASPECT_1X1) {
-        width = edge >> (aspect - V9X_GLIDE_ASPECT_1X1);
-    }
-    if (width == 0ul) {
-        width = 1ul;
-    }
-    if (height == 0ul) {
-        height = 1ul;
-    }
-    bytes = width * height;
-    if (format >= V9X_GLIDE_TEXFMT_16BIT) {
-        bytes *= 2ul;
-    }
-    return (bytes + V9X_GLIDE_TEX_GRANULE - 1ul) & ~(V9X_GLIDE_TEX_GRANULE - 1ul);
-}
-
 /* lodmin is the smallest level (the larger GrLOD_t number), lodmax the
- * largest; the order is taken from the values, not the argument names. */
+ * largest; glide_texmem.c takes the order from the values. */
 v9x_u32 __stdcall grTexCalcMemRequired(v9x_u32 lodmin, v9x_u32 lodmax,
                                        v9x_u32 aspect, v9x_u32 format)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grTexCalcMemRequired);
-    v9x_u32 first = lodmin < lodmax ? lodmin : lodmax;
-    v9x_u32 last = lodmin < lodmax ? lodmax : lodmin;
-    v9x_u32 total = 0ul;
-    v9x_u32 lod;
+    V9X_GLIDE_TEXINFO texinfo;
+    v9x_u32 total;
 
-    if (last <= V9X_GLIDE_LOD_1 && aspect <= V9X_GLIDE_ASPECT_1X8) {
-        for (lod = first; lod <= last; ++lod) {
-            total += v9x_glide_level_bytes(lod, aspect, format);
-        }
-    }
+    texinfo.small_lod = lodmin;
+    texinfo.large_lod = lodmax;
+    texinfo.aspect = aspect;
+    texinfo.format = format;
+    total = v9x_glide_texmem_required(&texinfo, V9X_GLIDE_MIPMAPLEVELMASK_BOTH);
     if (v9x_glide_noted(V9X_GLIDE_IX_grTexCalcMemRequired,
                         v9x_glide_key(lodmin, lodmax, aspect, format))) {
         v9x_glide_logf(V9X_GLIDE_IX_grTexCalcMemRequired, call,
@@ -829,7 +1092,7 @@ void __stdcall grTexDownloadTable(v9x_u32 tmu, v9x_u32 type,
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grTexDownloadTable);
     unsigned int words = type == V9X_GLIDE_TEXTABLE_PALETTE ?
-                         V9X_GLIDE_PALETTE_DWORDS : V9X_GLIDE_NCC_TABLE_DWORDS;
+                         V9X_GLIDE_PALETTE_ENTRIES : V9X_GLIDE_NCC_TABLE_DWORDS;
     v9x_u32 sum;
 
     if (data == 0) {
@@ -877,7 +1140,34 @@ v9x_u32 __stdcall grLfbLock(v9x_u32 type, v9x_u32 buffer, v9x_u32 write_mode,
                        type, buffer, write_mode, origin, pipeline, size,
                        (v9x_u32)shadow, stride);
     }
-    if (shadow == 0 || info == 0 || size < V9X_GLIDE_LFB_INFO_BYTES) {
+    if (info == 0 || size < V9X_GLIDE_LFB_INFO_BYTES) {
+        return V9X_GLIDE_FALSE;
+    }
+
+    /*
+     * On the device, the buffer itself, when its 16-bit 565 layout is what
+     * the lock asks for: a read, or a write in 565 or "any". Other write
+     * modes (888, 1555, the depth forms) keep the shadow until a title
+     * needs them; NFS II SE wrote 565 only (census). The pixel pipeline
+     * flag is not honoured: writes go straight to memory.
+     */
+    if (v9x_glide_device_is_open() && v9x_glide_lfb_locked == 0ul &&
+        ((type & V9X_GLIDE_LFB_WRITE_ONLY) == 0ul ||
+         mode == V9X_GLIDE_LFB_WRITE_565)) {
+        void *pixels;
+        v9x_u32 pitch;
+
+        if (v9x_glide_device_lock(buffer, (type & V9X_GLIDE_LFB_WRITE_ONLY) == 0ul,
+                                  &pixels, &pitch)) {
+            v9x_glide_lfb_locked = buffer + 1ul;
+            info[1] = (v9x_u32)pixels;
+            info[2] = pitch;
+            info[3] = V9X_GLIDE_LFB_WRITE_565;
+            info[4] = origin;
+            return V9X_GLIDE_TRUE;
+        }
+    }
+    if (shadow == 0) {
         return V9X_GLIDE_FALSE;
     }
     info[1] = (v9x_u32)shadow;
@@ -895,10 +1185,14 @@ v9x_u32 __stdcall grLfbUnlock(v9x_u32 type, v9x_u32 buffer)
         v9x_glide_logf(V9X_GLIDE_IX_grLfbUnlock, call, "type=%02lX buffer=%lu",
                        type, buffer);
     }
+    if (v9x_glide_lfb_locked != 0ul) {
+        v9x_glide_device_unlock(v9x_glide_lfb_locked - 1ul);
+        v9x_glide_lfb_locked = 0ul;
+    }
     return V9X_GLIDE_TRUE;
 }
 
-/* grLfbReadRegion reads 16-bit pixels; the census build returns black. */
+/* grLfbReadRegion reads 16-bit pixels; off the device it returns black. */
 v9x_u32 __stdcall grLfbReadRegion(v9x_u32 buffer, v9x_u32 x, v9x_u32 y,
                                   v9x_u32 width, v9x_u32 height,
                                   v9x_u32 dst_stride, v9x_u8 *dst)
@@ -915,6 +1209,26 @@ v9x_u32 __stdcall grLfbReadRegion(v9x_u32 buffer, v9x_u32 x, v9x_u32 y,
     if (dst == 0 || width > V9X_GLIDE_LFB_STRIDE_16 / 2ul ||
         height > V9X_GLIDE_LFB_LINES || dst_stride < width * 2ul) {
         return V9X_GLIDE_FALSE;
+    }
+    if (v9x_glide_device_is_open()) {
+        const v9x_u8 *pixels;
+        void *base;
+        v9x_u32 pitch;
+
+        if (x + width > v9x_glide_state.width ||
+            y + height > v9x_glide_state.height ||
+            !v9x_glide_device_lock(buffer, 1, &base, &pitch)) {
+            return V9X_GLIDE_FALSE;
+        }
+        pixels = (const v9x_u8 *)base;
+        for (row = 0ul; row < height; ++row) {
+            for (column = 0ul; column < width * 2ul; ++column) {
+                dst[row * dst_stride + column] =
+                    pixels[(y + row) * pitch + x * 2ul + column];
+            }
+        }
+        v9x_glide_device_unlock(buffer);
+        return V9X_GLIDE_TRUE;
     }
     for (row = 0ul; row < height; ++row) {
         for (column = 0ul; column < width * 2ul; ++column) {
@@ -949,6 +1263,10 @@ void __stdcall grDrawTriangle(const v9x_u32 *a, const v9x_u32 *b,
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grDrawTriangle);
 
+    if (v9x_glide_device_is_open()) {
+        v9x_glide_draw_triangle((const float *)a, (const float *)b,
+                                (const float *)c);
+    }
     if (!v9x_glide_sampled(call)) {
         return;
     }
@@ -962,6 +1280,9 @@ void __stdcall grDrawLine(const v9x_u32 *a, const v9x_u32 *b)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grDrawLine);
 
+    if (v9x_glide_device_is_open()) {
+        v9x_glide_draw_line((const float *)a, (const float *)b);
+    }
     if (!v9x_glide_sampled(call)) {
         return;
     }
@@ -993,6 +1314,9 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 
         CreateDirectoryA(V9X_DIAG_DIR, 0);
         v9x_glide_summary_tick = GetTickCount();
+        /* The 640x480 a Voodoo opens most often, until grSstWinOpen says. */
+        v9x_glide_state_init(&v9x_glide_state, 640ul, 480ul,
+                             V9X_GLIDE_ORIGIN_UPPER_LEFT);
         if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
             path[0] = '\0';
         }

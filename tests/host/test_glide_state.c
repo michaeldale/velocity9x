@@ -251,9 +251,34 @@ static void test_clip_and_texture(void)
     SCHECK(d.address == V9X_R3D_ABI_ADDRESS_WRAP);
 }
 
+static void test_resolution_and_color(void)
+{
+    v9x_u32 width = 0ul;
+    v9x_u32 height = 0ul;
+
+    /* NFS II SE opened resolution 7 (census). */
+    SCHECK(v9x_glide_resolution_size(7ul, &width, &height));
+    SCHECK(width == 640ul && height == 480ul);
+    SCHECK(v9x_glide_resolution_size(8ul, &width, &height));
+    SCHECK(width == 800ul && height == 600ul);
+    SCHECK(v9x_glide_resolution_size(12ul, &width, &height));
+    SCHECK(width == 1024ul && height == 768ul);
+    SCHECK(v9x_glide_resolution_size(1ul, &width, &height));
+    SCHECK(width == 320ul && height == 240ul);
+    SCHECK(v9x_glide_resolution_size(15ul, &width, &height));
+    SCHECK(width == 400ul && height == 300ul);
+    SCHECK(!v9x_glide_resolution_size(0xFFul, &width, &height));
+
+    SCHECK(v9x_glide_color_to_argb(0x80112233ul, 0ul) == 0x80112233ul);
+    SCHECK(v9x_glide_color_to_argb(0x80332211ul, 1ul) == 0x80112233ul);
+    SCHECK(v9x_glide_color_to_argb(0x11223380ul, 2ul) == 0x80112233ul);
+    SCHECK(v9x_glide_color_to_argb(0x33221180ul, 3ul) == 0x80112233ul);
+}
+
 unsigned int v9x_run_glide_state_tests(void)
 {
     glide_state_failures = 0u;
+    test_resolution_and_color();
     test_defaults();
     test_depth_and_blend();
     test_combine();

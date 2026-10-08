@@ -85,4 +85,14 @@ void v9x_glide_state_init(V9X_GLIDE_STATE *state, v9x_u32 width,
 void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
                          V9X_GLIDE_DRAW_SETUP *out);
 
+/* grSstWinOpen's GrScreenResolution_t as pixels; V9X_FALSE for a value
+ * outside the table (GR_RESOLUTION_NONE among them). */
+v9x_u16 v9x_glide_resolution_size(v9x_u32 resolution, v9x_u32 *width,
+                                  v9x_u32 *height);
+
+/* grBufferClear's or grConstantColorValue's GrColor_t, in the colour
+ * format grSstWinOpen named, as 0xAARRGGBB. GR_COLORFORMAT_ARGB (0) is
+ * the identity; ABGR (1), RGBA (2) and BGRA (3) are reordered. */
+v9x_u32 v9x_glide_color_to_argb(v9x_u32 color, v9x_u32 color_format);
+
 #endif /* VELOCITY9X_GLIDE_STATE_H */

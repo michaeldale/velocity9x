@@ -138,6 +138,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 ## Glide
 
 - [2026-10-08 Need for Speed II SE draws through 50 Glide calls: a W-buffer, table fog, paletted textures, chroma key and HUD lines](2026-10-08-nfs2se-glide-census.md)
+- [2026-10-08 The render interface draws into a Glide flip chain: clears, flips, depth, clip and lines read back the same on Gen3 and the software engine](2026-10-08-glide-phase2-flip-chain.md)
 
 ## VBE generic family and dynamic modes
 

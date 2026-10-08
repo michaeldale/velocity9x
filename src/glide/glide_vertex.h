@@ -74,8 +74,8 @@ v9x_u16 v9x_glide_cull_keep(v9x_u32 cull_mode, v9x_u32 origin,
                             const V9X_R3D_ABI_VERTEX *b,
                             const V9X_R3D_ABI_VERTEX *c);
 
-/* A line as two triangles one pixel wide, its width across the line's
- * minor axis, as the Voodoo draws a line (out holds six vertices). */
+/* A line as two triangles one pixel wide across its minor axis, from the
+ * line's coordinate to the next whole pixel (out holds six vertices). */
 void v9x_glide_line_triangles(const V9X_R3D_ABI_VERTEX *a,
                               const V9X_R3D_ABI_VERTEX *b,
                               V9X_R3D_ABI_VERTEX *out);

@@ -102,6 +102,7 @@ if (-not $SkipHostTests) {
 # export table against the manifest.
 Invoke-CheckStep "Glide DLL" {
     & (Join-Path $PSScriptRoot "build-glide.ps1") -BuildId $BuildId
+    & (Join-Path $PSScriptRoot "build-glide-probe.ps1") -BuildId $BuildId
 }
 
 # build-all-packages runs each family's builder, which links, audits through
