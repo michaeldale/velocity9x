@@ -1,0 +1,8 @@
+dwLength=32
+dwMemoryLoad=8
+dwTotalPhys=7F72E000
+dwAvailPhys=6B78C000
+dwTotalPageFile=008D1000
+dwAvailPageFile=00000000
+dwTotalVirtual=7FC00000
+dwAvailVirtual=7F9A0000

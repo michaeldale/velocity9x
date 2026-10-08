@@ -1,0 +1,9 @@
+dwLength=32
+dwMemoryLoad=10
+dwTotalPhys=3FF7E000
+dwAvailPhys=34C36000
+dwTotalPageFile=40081000
+dwAvailPageFile=3D58F000
+dwTotalVirtual=7FC00000
+dwAvailVirtual=7F9A0000
+C: sectors/cluster=64 bytes/sector=512 free-clusters=65526 total-clusters=65526 free-MiB=2016

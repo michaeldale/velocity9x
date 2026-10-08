@@ -101,6 +101,9 @@
  * are ordered and unbounded, and their order is the evidence. */
 #define V9X_DIAG_GL_LOG      V9X_DIAG_PATH("V9XGL.LOG")     /* gl_icd.c */
 
+/* GLIDE2X.DLL (src\glide), the same reasoning: ordered, unbounded calls. */
+#define V9X_DIAG_GLIDE_LOG   V9X_DIAG_PATH("V9XGLIDE.LOG")  /* glide_dll.c */
+
 /* DOS tools. Defaults only: each accepts /out: to redirect, which stays the
  * recovery route when C: is absent or read-only (vga_survey_dos.c prints it
  * as the advice when the default path fails). */

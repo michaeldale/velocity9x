@@ -97,6 +97,13 @@ if (-not $SkipHostTests) {
     }
 }
 
+# GLIDE2X.DLL is not packaged yet (docs\plans\glide-2x-wrapper.md, Phase
+# 5), so nothing else compiles it; its build audits the imports and the
+# export table against the manifest.
+Invoke-CheckStep "Glide DLL" {
+    & (Join-Path $PSScriptRoot "build-glide.ps1") -BuildId $BuildId
+}
+
 # build-all-packages runs each family's builder, which links, audits through
 # audit-family-binary.ps1, generates and asserts the INF, and assembles the
 # floppy from the manifests.

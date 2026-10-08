@@ -236,6 +236,10 @@ $allowedOsBoundaries = @(
     # through these or not at all.
     (Join-Path $repoRoot "src\opengl\gl_icd.c"),
     (Join-Path $repoRoot "src\opengl\gl_surface.c"),
+    # GLIDE2X.DLL's platform file: the exports, the log and the DLL entry
+    # (docs\plans\glide-2x-wrapper.md). Its pure logic, when it comes, sits
+    # beside it under src\glide and stays OS-free like the ICD's.
+    (Join-Path $repoRoot "src\glide\glide_dll.c"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
 )
 $forbidden = $sourceFiles |
@@ -1993,6 +1997,26 @@ if ($bootText -notmatch '(?s)v9x_intel_boot_set\("IntelInFlight", ""\).{0,1200}?
     throw ('intel_boot16.c must clear IntelInFlight BEFORE IntelIncomplete, ' +
            'so an interrupted retirement leaves the flag set and refuses ' +
            'rather than clear and bypasses.')
+}
+
+# The Glide manifest against glide_dll.c, compiler-free: every Written
+# export is defined there by hand and every Stub export is not, or the
+# generated stub and the hand-written body would both claim the name (a
+# link error) or neither would (an export the build audit catches only
+# with a compiler). The manifest's own schema is checked by the same
+# function the build uses.
+. (Join-Path $PSScriptRoot 'lib\glide-exports.ps1')
+$glideEntries = Get-V9xGlideEntries -RepoRoot $repoRoot
+$glideDllText = Get-Content -LiteralPath (Join-Path $repoRoot "src\glide\glide_dll.c") -Raw
+foreach ($entry in $glideEntries) {
+    $defined = ($glideDllText -match "__stdcall\s+$($entry.Name)\s*\(") -or
+               ($glideDllText -match "V9X_GLIDE_STATE1\(\s*$($entry.Name)\s*,")
+    if ($entry.Kind -eq 'Written' -and -not $defined) {
+        throw "glide_entrypoints.psd1 marks $($entry.Name) Written, but glide_dll.c does not define it."
+    }
+    if ($entry.Kind -eq 'Stub' -and $defined) {
+        throw "glide_dll.c defines $($entry.Name), which glide_entrypoints.psd1 marks Stub."
+    }
 }
 
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +

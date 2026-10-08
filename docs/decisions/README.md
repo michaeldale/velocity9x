@@ -135,6 +135,10 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 5: OpenGL textures on the ViRGE - what draws and what cannot](2026-09-26-phase5-virge-hardware-textures-for-opengl.md)
 - [2026-09-26 Phase 3: explicit draws - the software engine takes CPU textures, a scissor and a colour mask through the render interface, and Direct3D draws the same](2026-09-26-phase3-explicit-draws-cpu-textures-scissor-and-masks.md)
 
+## Glide
+
+- [2026-10-08 Need for Speed II SE draws through 50 Glide calls: a W-buffer, table fog, paletted textures, chroma key and HUD lines](2026-10-08-nfs2se-glide-census.md)
+
 ## VBE generic family and dynamic modes
 
 - [2026-08-16 The VBE tier-0 family](2026-08-16-vbe-tier0-family.md)
