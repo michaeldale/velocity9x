@@ -176,6 +176,9 @@ const V9X_HW16_DEVICE v9x_ati_4c53_device = {
 const V9X_HW16_DEVICE v9x_sis6326_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_mga2064w_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)
@@ -217,6 +220,10 @@ unsigned short v9x_active_width = 0u;
 #include "../../src/chipsets/sis/sis_hw16.c"
 #undef v9x_hw16
 
+#define v9x_hw16 v9x_hw16_matrox
+#include "../../src/chipsets/matrox/mga_hw16.c"
+#undef v9x_hw16
+
 static const struct {
     const char *family_id;
     const V9X_HW16_OPS *ops;
@@ -224,7 +231,8 @@ static const struct {
     { "s3",  &v9x_hw16_s3  },
     { "vbe", &v9x_hw16_vbe },
     { "ati", &v9x_hw16_ati },
-    { "sis", &v9x_hw16_sis }
+    { "sis", &v9x_hw16_sis },
+    { "matrox", &v9x_hw16_matrox }
 };
 
 #define V9X_HW16_TABLE_COUNT \

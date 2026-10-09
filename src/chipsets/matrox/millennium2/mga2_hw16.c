@@ -1,11 +1,10 @@
 /*
- * Matrox Millennium hardware table: the MGA-2164W and the MGA-2064W.
+ * Matrox Millennium II hardware table: the MGA-2164W.
  *
- * Both chips take the same path - a VBE mode set, a scan-line pitch forced
- * through 4F06h, a framebuffer aperture read from PCI configuration space,
- * and no MGA register written at all - so they share this file the way the
- * Trio64 aliases share theirs rather than getting one each. They differ in
- * two things: the strings, and which BAR carries the framebuffer.
+ * A VBE mode set, a scan-line pitch forced through 4F06h, a framebuffer
+ * aperture read from PCI configuration space, and no MGA register written
+ * at all. The MGA-2064W shared this file until 2026-10-09 and is now the
+ * INF-installed matrox family's (src\chipsets\matrox\mga_hw16.c).
  *
  * Two things set this family apart from the S3 ones, and both used to be
  * #ifdef'd into src\display16\ddi.c:
@@ -62,51 +61,13 @@ const V9X_HW16_DEVICE v9x_mga2_device = {
     0,
     /* MGABASE2, the framebuffer, is BAR0 on this chip - which is what the
      * aperture read assumed before the field existed. Stated rather than
-     * left to the default, because its sibling below is the reason the field
-     * exists. */
+     * left to the default, because the MGA-2064W, this file's second chip
+     * until it moved to the matrox family, is the reason the field exists. */
     0u
 };
 
-/*
- * The original Millennium, MGA-2064W plus a TI TVP3026.
- *
- * A candidate on the same terms as its sibling and no further: nothing has
- * set a mode on this card, in Windows or anywhere else. What is measured is
- * the card's own BIOS, executed on an emulated CPU with I/O passed through to
- * the hardware - VBE 2.0, and 0101h, 0111h, 0114h and 0117h all advertising a
- * linear framebuffer at FD000000h, which is this card's BAR1 base
- * (C:\everything\bringupkit\runs\handoff-matrox-2064w-full).
- *
- * Two facts from that run bear on this entry directly. The framebuffer is in
- * BAR1, hence the index below. And the BIOS reports 1920 bytes per scan line
- * for 0114h where the family's table asks for a packed 1600, so on this chip
- * v9x_mga2_post_mode_set will either force it to 1600 or refuse the mode with
- * stage 9 - the second is the designed outcome and is why 800x600x16 is not
- * claimed for this chip in the manifest.
- *
- * The subsystem id reads 0000 on this part, so its hardware ID carries no
- * &SUBSYS_ suffix; the Millennium II's physical sample reported
- * SUBSYS_1200102B and can.
- */
-const V9X_HW16_DEVICE v9x_mga2064w_device = {
-    0x102bu, 0x0519u,
-    "Matrox Millennium MGA-2064W",
-    "102B", "0519",
-    "matrox-mga2064w-unavailable-v1",
-    "single-mode",
-    0,
-    0,
-    0,
-    0,
-    /* MGABASE1, the 16 KiB control aperture, is BAR0 here; the framebuffer is
-     * BAR1. Reading BAR0 would hand the display code a 16 KiB MMIO window as
-     * its framebuffer. */
-    1u
-};
-
 static const V9X_HW16_DEVICE * const v9x_mga2_devices[] = {
-    &v9x_mga2_device,
-    &v9x_mga2064w_device
+    &v9x_mga2_device
 };
 
 static const V9X_HW16_MODE v9x_mga2_modes[] = {

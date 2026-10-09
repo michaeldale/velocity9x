@@ -1307,8 +1307,16 @@ static WORD v9x_build_pdevice(LPVOID device_info,
      * (MICHAEL-NETBOOK, 2026-09-25). The two stride fields are set to the
      * mode's, as the Millennium II's own record builder does
      * (v9x_mga2_build_screen_pdevice).
+     *
+     * Not only for that family. A row merged from the BIOS carries the
+     * stride the BIOS reports, and stage 9 keeps the card scanning at it,
+     * so a BIOS that pads a mode needs the same correction: the 2064W
+     * reports 960 bytes for 800x600x8, and the first live switch to it
+     * drew at 800 and sheared every row (Win98SE-Millennium, 2026-10-09:
+     * Surface=pitch=960 dwb=800 dds=800). Where the strides already agree
+     * this changes nothing.
      */
-    if (v9x_hw16.unalias_pitch != 0u && v9x_selected_mode != 0 &&
+    if (v9x_selected_mode != 0 &&
         v9x_driver_pdevice->deWidthBytes != v9x_selected_mode->pitch) {
         v9x_driver_pdevice->deWidthBytes = v9x_selected_mode->pitch;
         v9x_driver_pdevice->deDeltaScan = (DWORD)v9x_selected_mode->pitch;
