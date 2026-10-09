@@ -2,8 +2,8 @@
 #
 # The VBE 4F02h mode set programs the card and 4F01h reports where the
 # framebuffer landed. The chips' engine hook has the mini-VDD map the
-# control aperture, and DirectDraw fill and copy run on the drawing engine
-# (MGA); everything else is drawn by the CPU
+# control aperture, and DirectDraw and GDI fill and copy run on the drawing
+# engine (MGA); everything else is drawn by the CPU
 # (docs\plans\matrox-millennium-family.md).
 #
 # Both chips are one design and one family; the BAR order is per-chip hw16
@@ -17,7 +17,7 @@
     SchemaVersion = 1
     Id = 'matrox'
     DisplayName = 'Matrox Millennium'
-    Description = 'Matrox Millennium MGA-2064W and Millennium II MGA-2164W (PCI 102B:0519, 102B:051B): VBE mode set, the drawing engine for DirectDraw fill and copy, CPU drawing otherwise.'
+    Description = 'Matrox Millennium MGA-2064W and Millennium II MGA-2164W (PCI 102B:0519, 102B:051B): VBE mode set, the drawing engine for DirectDraw and GDI fill and copy, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -147,11 +147,13 @@
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
-            # Ordinal 1, last so it links after the runtime symbols it calls;
-            # this family takes its decline branch on every blit.
+            # The HAL's register builder, for gdi_accel.c's MGA arm.
+            @{ Name = 'mga_engine'; Path = 'src\chipsets\matrox\mga_engine.c' }
+            # Ordinal 1, last so it links after the runtime symbols it calls.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @()
+        # gdi_accel.c's MGA fill and copy, compiled into this family only.
+        Defines = @('V9X_MGA_FAMILY')
         # runtime.asm's BAR0 read and mini-VDD map for the drawing engine.
         RuntimeDefines = @('V9X_MGA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-matrox'

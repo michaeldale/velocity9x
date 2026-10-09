@@ -12,10 +12,11 @@
  *
  * The VBE sets modes and 4F01h reports the framebuffer. The engine hook has
  * the mini-VDD map the control aperture and claims the drawing engine for
- * DirectDraw fill and copy as MGA. No register is written here: the
+ * DirectDraw and GDI fill and copy as MGA. No register is written here: the
  * engine's own state (MACCESS, the plane mask, the clip window) is written
  * by the HAL before its first operation in each mode
- * (src\display32\engines\eng_mga.c).
+ * (src\display32\engines\eng_mga.c) and by gdi_accel.c before every GDI
+ * operation.
  *
  * Measured on the 2064W in A8U4I5 (2026-10-09): the BIOS's mode set turns
  * mgamode on (CRTCEXT3 81h) and the engine path passes on silicon. The

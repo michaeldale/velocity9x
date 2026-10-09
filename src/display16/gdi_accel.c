@@ -1,10 +1,12 @@
 /*
  * GDI acceleration for V9XDISP.DRV: the BitBlt dispatcher, its acceptance
- * gates, the S3 primitives, the bounded waits, and the poison latch.
+ * gates, the S3 and Matrox primitives, the bounded waits, and the poison
+ * latch.
  *
  * Ordinal 1 used to be an unconditional `jmp DIB_BitBlt`. It is this file now,
  * and that has a consequence worth stating at the top: every family links the
- * same display16 layer, and only the two S3 engines have primitives here. So
+ * same display16 layer, and only the two S3 engines and, in the matrox
+ * family's build, the MGA have primitives here. So
  * for every other family the decline path below is not scaffolding on the
  * way to acceleration; it is the shipping code, on every blit. Its cost is one WORD test
  * against v9x_gdi_enabled, which a family with no engine leaves at zero.
@@ -44,6 +46,14 @@
 #include "velocity9x/win9x_ddraw_abi.h"
 #include "win9x_display_abi.h"
 #include "gdi_accel.h"
+/*
+ * The Matrox arm uses the same host-tested register builder as the HAL's
+ * eng_mga.c, linked into this family's DRV only; every other family's
+ * build has no mga_engine object and compiles none of this.
+ */
+#ifdef V9X_MGA_FAMILY
+#include "velocity9x/mga_engine.h"
+#endif
 
 /* ddi.c: the live screen PDEVICE, or NULL between Disable and Enable. This is
  * the driver's own liveness test and the identity an accelerated destination
@@ -54,7 +64,7 @@ extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 
 /* runtime.asm. */
 extern DWORD FAR PASCAL V9xLinearBase(void);
-extern WORD FAR PASCAL V9xEngineSelector(void);
+extern WORD FAR PASCAL V9xEngineSelector(DWORD linear_base, WORD limit);
 extern DWORD FAR PASCAL V9xEngineRead(WORD offset);
 extern void FAR PASCAL V9xEngineWrite(WORD offset, DWORD value);
 extern void FAR PASCAL V9xEngineImageRow(WORD source_selector,
@@ -404,6 +414,26 @@ static WORD v9x_gdi_wait_idle(void)
                     return 1u;
                 }
             } while (spins-- != 0ul);
+#ifdef V9X_MGA_FAMILY
+        } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+            do {
+                if (v9x_mga_status_busy(v9x_gdi_read(V9X_MGA_STATUS)) ==
+                        0ul) {
+                    /*
+                     * The engine's writes do not flush the chip's CPU read
+                     * cache, and any VGA register write invalidates it
+                     * (MGA-1064SG 5.1.6); the CPU reads the framebuffer
+                     * next, as on the HAL side (eng_mga.c). The CRTC index
+                     * written back with its own value changes nothing else,
+                     * so this is safe at interrupt time between another
+                     * caller's index and data cycles.
+                     */
+                    v9x_gdi_port_out(V9X_CRTC_INDEX,
+                                     v9x_gdi_port_in(V9X_CRTC_INDEX));
+                    return 1u;
+                }
+            } while (spins-- != 0ul);
+#endif
         } else {
             do {
                 if ((v9x_gdi_virge_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
@@ -459,6 +489,11 @@ typedef struct v9x_gdi_op {
     WORD source_y;
     WORD width;
     WORD height;
+#ifdef V9X_MGA_FAMILY
+    /* The MGA fill or copy, built at gate 8 so a rectangle the builder
+     * refuses declines before the cursor is excluded. */
+    struct v9x_mga_writes mga;
+#endif
 } V9X_GDI_OP;
 
 static WORD v9x_gdi_virge_fill(const V9X_GDI_OP *op)
@@ -660,6 +695,48 @@ static WORD v9x_gdi_virge_upload(const V9X_GDI_OP *op)
     }
     return 1u;
 }
+
+#ifdef V9X_MGA_FAMILY
+static void v9x_gdi_mga_emit(const struct v9x_mga_writes *writes)
+{
+    DWORD index;
+
+    for (index = 0ul; index < writes->count; ++index) {
+        v9x_gdi_write(writes->offsets[index], writes->values[index]);
+    }
+}
+
+/*
+ * One MGA fill or copy, built at gate 8 by the builder eng_mga.c uses.
+ *
+ * Waits for idle first rather than for FIFO slots: idle means the 32-entry
+ * FIFO is empty (STATUS dwgengsts, p.4-74), and the setup and the operation
+ * together are at most fifteen writes.
+ *
+ * The per-mode state - pixel width, plane mask, clip window - is written
+ * before every operation, for the reason v9x_gdi_trio_prepare gives: it is
+ * write-only, so nothing here can tell whether a DOS box's BIOS mode set or
+ * anything else changed it since the last call, and the HAL writes the same
+ * values on its own schedule. Its last write goes to YDSTLEN + 100h, which
+ * starts the engine; the setup writes go to the plain registers and start
+ * nothing.
+ */
+static WORD v9x_gdi_mga_draw(const V9X_GDI_OP *op)
+{
+    struct v9x_mga_writes setup;
+
+    if (v9x_mga_build_setup((v9x_u32)op->bytes_per_pixel, &setup) !=
+            V9X_STATUS_OK) {
+        return 0u;
+    }
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    v9x_gdi_mga_emit(&setup);
+    v9x_gdi_mga_emit(&op->mga);
+    return 1u;
+}
+#endif
 
 /*
  * Establish the engine's latched global state.
@@ -1232,7 +1309,20 @@ void v9x_gdi_accel_configure(void)
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX &&
                control_base != 0ul &&
                aperture_bytes > V9X_VIRGE_RECT_DEST_XY + 4ul) {
-        v9x_gdi_engine_live = V9xEngineSelector() != 0u ? 1u : 0u;
+        v9x_gdi_engine_live =
+            V9xEngineSelector(control_base, 0xffffu) != 0u ? 1u : 0u;
+#ifdef V9X_MGA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA &&
+               control_base != 0ul &&
+               aperture_bytes > V9X_MGA_STATUS + 4ul) {
+        /* The mini-VDD withholds a window whose STATUS reads all ones; this
+         * is the same refusal on this side, before anything is written. */
+        if (V9xEngineSelector(control_base, (WORD)(aperture_bytes - 1ul)) !=
+                0u &&
+            v9x_gdi_read(V9X_MGA_STATUS) != 0xfffffffful) {
+            v9x_gdi_engine_live = 1u;
+        }
+#endif
     }
     if (v9x_gdi_engine_live == 0u) {
         v9x_gdi.enabled = 0ul;
@@ -1434,6 +1524,14 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     } else if (destination_device->deBitsPixel == 16u) {
         op.bytes_per_pixel = 2u;
         all_ones = 0x0000fffful;
+#ifdef V9X_MGA_FAMILY
+    } else if (destination_device->deBitsPixel == 32u &&
+               v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        /* The MGA's fill and copy were measured at 32 bpp on silicon by the
+         * write probe (docs\decisions\2026-10-09-mga2064w-drawing-engine.md). */
+        op.bytes_per_pixel = 4u;
+        all_ones = 0xfffffffful;
+#endif
     } else {
         ++v9x_gdi.decline_depth;
         goto decline;
@@ -1730,6 +1828,57 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             ++v9x_gdi.decline_engine;
             goto decline;
         }
+#ifdef V9X_MGA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        /*
+         * The builder is the authority: a pitch outside the linearizer's
+         * list or an origin off its grid is UNSUPPORTED and declines here.
+         * vram_bytes is the screen surface's own extent, which is all a GDI
+         * screen operation can touch and all the builder needs to bound it.
+         */
+        v9x_u32 surface_bytes = op.base +
+            op.pitch * (v9x_u32)destination_device->deHeight;
+        v9x_status built;
+
+        if (upload != 0u) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+        if (rop256 == V9X_ROP256_SRCCOPY) {
+            struct v9x_mga_copy copy;
+
+            copy.vram_bytes = surface_bytes;
+            copy.source_offset = op.base;
+            copy.source_pitch_bytes = op.pitch;
+            copy.destination_offset = op.base;
+            copy.destination_pitch_bytes = op.pitch;
+            copy.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            copy.source_left = (v9x_u32)op.source_x;
+            copy.source_top = (v9x_u32)op.source_y;
+            copy.destination_left = (v9x_u32)op.destination_x;
+            copy.destination_top = (v9x_u32)op.destination_y;
+            copy.width = (v9x_u32)op.width;
+            copy.height = (v9x_u32)op.height;
+            built = v9x_mga_build_copy(&copy, &op.mga);
+        } else {
+            struct v9x_mga_fill fill;
+
+            fill.vram_bytes = surface_bytes;
+            fill.target_offset = op.base;
+            fill.pitch_bytes = op.pitch;
+            fill.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            fill.left = (v9x_u32)op.destination_x;
+            fill.top = (v9x_u32)op.destination_y;
+            fill.width = (v9x_u32)op.width;
+            fill.height = (v9x_u32)op.height;
+            fill.color = op.color;
+            built = v9x_mga_build_fill(&fill, &op.mga);
+        }
+        if (built != V9X_STATUS_OK) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+#endif
     } else {
         ++v9x_gdi.decline_engine;
         goto decline;
@@ -1774,6 +1923,10 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_virge_copy(&op)
                                                   : v9x_gdi_virge_fill(&op);
         }
+#ifdef V9X_MGA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        issued = v9x_gdi_mga_draw(&op);
+#endif
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)
                                               : v9x_gdi_trio_fill(&op);

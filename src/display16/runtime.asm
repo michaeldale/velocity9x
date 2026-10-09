@@ -120,7 +120,8 @@ V9xHardwareStageCode dw 0
 V9xCreateDibReturn dd 0
 V9xDdSharedSel   dw 0
 V9xDdSharedLin   dd 0
-; One LDT descriptor over the ViRGE new-MMIO window, for GDI acceleration.
+; One LDT descriptor over the engine's MMIO window (the ViRGE's new-MMIO
+; window, the Matrox control aperture), for GDI acceleration.
 ; Allocated lazily by V9XENGINESELECTOR and held for the driver's lifetime,
 ; for the same reason V9xScreenSelector is (see V9XHARDWAREDISABLE): a
 ; descriptor handed back to the LDT and re-acquired later is a descriptor that
@@ -424,44 +425,49 @@ V9XDDSHAREDALLOC ENDP
 ; is below 0x10000, which is exactly the constraint that makes one 64 KiB
 ; selector enough.
 
-; Allocate (once) and return the MMIO window selector in AX, 0 on failure.
+; V9xEngineSelector(DWORD linear_base, WORD limit): describe the engine's
+; register window and return its selector in AX, 0 on failure.
 ;
-; Base is V9xLinearAddress + 16 MiB: V9XMAPAPERTURE maps the whole 64 MiB PCI
-; BAR and the new-MMIO window sits at BAR + 0x01000000. Limit is 0xFFFF, one
-; 64 KiB window. Callers that are not on a ViRGE never call this, so a
-; default-off build allocates no descriptor at all.
+; The base is the chip hook's control_linear_base: on the ViRGE the new-MMIO
+; window at the 64 MiB BAR + 0x01000000 (limit 0xFFFF), on the Matrox the
+; 16 KiB control aperture the mini-VDD mapped (limit 0x3FFF). The descriptor
+; is allocated once; its base and limit are set on every call, so an Enable
+; after the window moved describes the new one. Families with no MMIO engine
+; never call this, so they allocate no descriptor at all.
+;
+; FAR PASCAL pushes left to right: linear_base at [bp+8], limit at [bp+6].
 PUBLIC V9XENGINESELECTOR
 V9XENGINESELECTOR PROC FAR
+    push    bp
+    mov     bp, sp
     push    bx
     push    cx
     push    dx
 
-    mov     ax, V9xEngineSel
-    cmp     ax, 0
-    jne     short V9xEngineSelectorDone
-    ; No aperture mapped means no window to describe.
-    cmp     V9xLinearAddress, 0
+    ; No window mapped means nothing to describe.
+    cmp     dword ptr [bp+8], 0
     je      short V9xEngineSelectorFailed
 
+    mov     ax, V9xEngineSel
+    cmp     ax, 0
+    jne     short V9xEngineSelectorDescribe
     xor     ax, ax
     mov     cx, 1
     int     31h
     jc      short V9xEngineSelectorFailed
     mov     V9xEngineSel, ax
 
-    mov     bx, ax
-    mov     eax, V9xLinearAddress
-    add     eax, 01000000h
-    mov     dx, ax
-    shr     eax, 16
-    mov     cx, ax
+V9xEngineSelectorDescribe:
+    mov     bx, V9xEngineSel
+    mov     dx, word ptr [bp+8]
+    mov     cx, word ptr [bp+10]
     mov     ax, 0007h
     int     31h
     jc      short V9xEngineSelectorFree
 
     mov     bx, V9xEngineSel
     xor     cx, cx
-    mov     dx, 0ffffh
+    mov     dx, word ptr [bp+6]
     mov     ax, 0008h
     int     31h
     jc      short V9xEngineSelectorFree
@@ -480,7 +486,8 @@ V9xEngineSelectorDone:
     pop     dx
     pop     cx
     pop     bx
-    retf
+    pop     bp
+    retf    6
 V9XENGINESELECTOR ENDP
 
 ; V9xEngineRead(WORD offset) -> DWORD in DX:AX, the Watcom 16-bit convention.

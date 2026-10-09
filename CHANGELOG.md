@@ -11,8 +11,15 @@ build identifier so exact guest-tested binaries remain traceable.
   on the MGA drawing engine. On A8U4I5's physical card V9XDDP completed
   with every fill and overlap cell pixel-correct, 4 of 6 operations on
   the engine (the other two are a surface the engine cannot address) and
-  no engine timeouts. GDI is still drawn by the CPU, and there is no
-  page flip. The Millennium II (MGA-2164W) joins the same family and the
+  no engine timeouts. There is no page flip.
+- **GDI on the Millennium's engine.** Solid fills and screen copies,
+  overlapping ones included, run on the MGA engine at 8, 16 and 32 bpp.
+  The register values come from the same builder DirectDraw uses.
+  `V9XGDI /accel` passed at all three depths on the 86Box guest and on
+  A8U4I5's card, with 160 fills and 131 copies per run on the engine and
+  no timeouts. Text is still drawn by the CPU. Nothing was timed, and
+  nobody has looked at the monitor.
+  [Decision](docs/decisions/2026-10-09-mga2064w-gdi-on-the-engine.md). The Millennium II (MGA-2164W) joins the same family and the
   separate `matrox-m2` drop-in package is retired; the 2164W has not run
   on this path.
   [Plan](docs/plans/matrox-millennium-family.md).
