@@ -92,6 +92,17 @@ foreach ($family in $floppyFamilies) {
     Copy-Item -LiteralPath $sources[$family.Id] `
         -Destination (Join-Path $diskDir $family.Floppy.Folder) -Recurse -Force
 
+    # GLIDE3X.DLL took the room a disk had left (81 KB against 33 to 45 KB
+    # free), so the DirectDraw probe V9XDDP.EXE, a diagnostic nothing
+    # installs, stays in the zip packages only (Michael, 2026-10-10). Its
+    # line leaves the disk's SHA256.TXT with it.
+    $diskPackage = Join-Path $diskDir $family.Floppy.Folder
+    Remove-Item -LiteralPath (Join-Path $diskPackage "V9XDDP.EXE") -Force
+    $diskHashes = Join-Path $diskPackage "SHA256.TXT"
+    Set-Content -LiteralPath $diskHashes -Encoding Ascii -Value @(
+        Get-Content -LiteralPath $diskHashes |
+            Where-Object { $_ -notmatch '\sV9XDDP\.EXE$' })
+
     # Recovery instructions belong at the root as well as inside the package:
     # if the machine will not display after the install, the reader needs them
     # without opening a folder.
@@ -181,12 +192,14 @@ floppy works, but Windows may ask for the disk again later.
 
 The first boot comes up at 640x480 in 256 colours. The install also
 registers V9XGL.DLL, the OpenGL driver, which OpenGL programs use on a
-High Color desktop the card can draw into, and GLIDE2X.DLL, a Glide 2
-driver for games written for 3dfx cards, unless a Voodoo card's own newer
-GLIDE2X.DLL is already installed.
+High Color desktop the card can draw into, and GLIDE2X.DLL and
+GLIDE3X.DLL, Glide 2 and Glide 3 drivers for games written for 3dfx
+cards, unless a Voodoo card's own newer copy is already installed.
 
 Full detail is in INSTALL.TXT inside the folder. FIRSTBOOT.TXT there is
-the step-by-step checklist for the first boot.
+the step-by-step checklist for the first boot. The DirectDraw probe
+V9XDDP.EXE that MANIFEST.TXT lists is in the download only; it does not
+fit on the disk.
 
 
 4. CHECKING IT WORKED

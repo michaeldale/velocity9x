@@ -6,6 +6,24 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.15.1 - not yet released
 
+- **Glide 3: `GLIDE3X.DLL`.** Games written for Voodoo3-era Glide 3 now
+  draw through the same engine as `GLIDE2X.DLL`. Diablo II (shareware
+  demo) runs from its title screen to the Rogue Encampment on an ATI
+  Rage XL. Rollcage (demo) draws its menus and races on the Rage XL and
+  the Intel GMA 950: 4.2 million triangles on the GMA with none refused.
+  On the Rage XL about 0.8 % of Diablo II's triangles are refused: these
+  are see-through sprites the chip has no blend for.
+  [Decision](docs/decisions/2026-10-10-glide3-first-frames.md).
+- **Every package installs `GLIDE3X.DLL` to SYSTEM** beside `GLIDE2X.DLL`,
+  under the same rule: a newer copy, such as a Voodoo3's own, is kept.
+  To make room on the floppies, the DirectDraw probe `V9XDDP.EXE` is now
+  in the zip downloads only.
+- **Glide chroma key.** A keyed texture under an alpha combine that takes
+  alpha from the vertex or a constant now hides its keyed texels. Before,
+  they were drawn, or, on the Rage XL, the whole draw was refused. This
+  applies to 565 and paletted textures; formats with their own alpha
+  behave as before.
+
 ## 0.15.0 - 2026-10-09
 
 - **Matrox Millennium (MGA-2064W).** A `matrox` family boots the 2064W

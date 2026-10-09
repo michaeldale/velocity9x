@@ -2,8 +2,8 @@
 # (docs\plans\glide-3x-wrapper.md): every export of 3dfx's GLIDE3X.DLL,
 # the Glide 3 front end (src\glide3\glide3_dll.c) over the engine
 # GLIDE2X.DLL draws with (src\glide\glide_core.c and the modules beside
-# it), logging to C:\V9XDIAG\V9XGLD3.LOG. Not packaged yet (plan, Phase 5):
-# it is copied into a game's own folder.
+# it), logging to C:\V9XDIAG\V9XGLD3.LOG. Every family package installs it
+# to SYSTEM beside GLIDE2X.DLL (scripts\lib\inf.ps1).
 [CmdletBinding()]
 param(
     [string]$BuildId,

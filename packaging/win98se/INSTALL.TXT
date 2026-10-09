@@ -13,6 +13,10 @@ GLIDE2X.DLL is a Glide 2 driver for games written for 3dfx Voodoo cards,
 drawing through the same engine. The INF copies it to SYSTEM unless a newer
 GLIDE2X.DLL is there already, as a Voodoo card's own is; that one is kept.
 It has been run on the Intel GMA 950 only.
+GLIDE3X.DLL is the Glide 3 driver (Diablo II, Rollcage), over the same
+engine and copied under the same rule: a newer GLIDE3X.DLL, such as a
+Voodoo3's own, is kept. It has been run on the ATI Rage XL and the Intel
+GMA 950.
 V9XSTAGE.EXE is an optional one-click preflight. It loads the VxD lifecycle
 probe and asks the DRV only for GDIINFO/mode validation; it never sets a mode.
 V9XGDI.EXE is the post-boot framebuffer test. Run it only after the new desktop

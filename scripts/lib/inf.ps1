@@ -169,6 +169,7 @@ function New-V9xInfText {
         'v9xhal.dll=1'
         'v9xgl.dll=1'
         'glide2x.dll=1'
+        'glide3x.dll=1'
         'v9xtrace.exe=1'
         'v9xupd.exe=1'
         ''
@@ -289,6 +290,9 @@ function New-V9xInfText {
         # of ours is replaced; at Velocity9x 1.0 that comparison has to be
         # revisited. NO_OVERWRITE (0x10) would never update ours.
         'glide2x.dll,,,40'
+        # GLIDE3X.DLL (src\glide3), the Glide 3 name Diablo II and Rollcage
+        # load, under the same rule: a Voodoo3's own is kept while newer.
+        'glide3x.dll,,,40'
         # The tools the Display Properties buttons start: Send report...
         # runs V9XUPD.EXE /REPORT, which runs V9XTRACE.EXE. Installed here,
         # rather than left in the package folder, so the buttons work after
@@ -525,6 +529,7 @@ function Assert-V9xInf {
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
                   'v9xgl.dll,,,12', 'v9xgl.dll=1',
                   'glide2x.dll,,,40', 'glide2x.dll=1',
+                  'glide3x.dll,,,40', 'glide3x.dll=1',
                   'v9xtrace.exe,,,12', 'v9xtrace.exe=1',
                   'v9xupd.exe,,,12', 'v9xupd.exe=1',
                   'CurrentVersion\OpenGLDrivers",Velocity9x,,"v9xgl.dll"',

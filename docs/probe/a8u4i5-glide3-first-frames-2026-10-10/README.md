@@ -21,5 +21,8 @@ Evidence for [2026-10-10-glide3-first-frames.md](../../decisions/2026-10-10-glid
 | `NB-NFS-B-KEYALPHA-ALL.png` | The first fix, texture alpha for every keyed format: the track map is gone. |
 | `NB-NFS-C-KEYALPHA-NARROW.png` | The final fix, key alpha only for 565 and P_8: as A. |
 
+| `NB-RC-INTRO.png`, `NB-RC-ATTRACT.png` | Rollcage on the netbook (Gen3), final GLIDE3X.DLL (`a73cc57-dirty`), run from the extracted demo (`C:\RCDEMO\DISK1\ROLLCAGE\GLIDE`; the agent refuses InstallShield's SETUP.EXE there): the intro, then its attract race. |
+| `V9XGLD3-NB-RC-SUMMARY.LOG` | That run's census lines: 4,171,158 drawn, none refused, 20 to 28 swaps a second. |
+
 All three NFS runs were driven the same way (Escape, Down four times at
 1.5 s, Enter, 40 s); the race clock reads 0:30.2 to 0:30.3 in each.

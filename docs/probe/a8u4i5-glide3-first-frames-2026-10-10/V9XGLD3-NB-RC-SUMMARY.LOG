@@ -1,0 +1,480 @@
+1 pid=FFFCFDD3 t=10054856 attach instance=006D0000 version=0.15.1 V9XGLD3 build=a73cc57-dirty exe=C:\RCDEMO\DISK1\ROLLCAGE\GLIDE\ROLLCAGE.EXE
+6 pid=FFFCFDD3 t=10054964 census shutdown swaps=0
+7 pid=FFFCFDD3 t=10054964 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+8 pid=FFFCFDD3 t=10054964 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+9 pid=FFFCFDD3 t=10054964 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+10 pid=FFFCFDD3 t=10054964 census   batch ends: full=0 texture=0 state=0
+11 pid=FFFCFDD3 t=10054964 census   grGlideInit calls=1 lines=1
+12 pid=FFFCFDD3 t=10054964 census   grGlideShutdown calls=1 lines=1
+13 pid=FFFCFDD3 t=10054964 census   grQueryResolutions calls=2 lines=2
+23 pid=FFFCFDD3 t=10085448 grSstWinOpen#1 hwnd=000006C8 res=7 refresh=0 cformat=2 origin=0 colbuf=2 auxbuf=1 -> 1
+62 pid=FFFCFDD3 t=10085454 census periodic swaps=1
+63 pid=FFFCFDD3 t=10085454 census   draws: drawn=2 refused=0 culled=0 skipped-textured=0
+64 pid=FFFCFDD3 t=10085454 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+65 pid=FFFCFDD3 t=10085454 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=8 clear=0 batches=1
+66 pid=FFFCFDD3 t=10085454 census   batch ends: full=0 texture=0 state=0
+67 pid=FFFCFDD3 t=10085454 census   grAlphaBlendFunction calls=1 lines=1
+68 pid=FFFCFDD3 t=10085454 census   grAlphaCombine calls=1 lines=1
+69 pid=FFFCFDD3 t=10085454 census   grBufferClear calls=1 lines=1
+70 pid=FFFCFDD3 t=10085454 census   grBufferSwap calls=1 lines=1
+71 pid=FFFCFDD3 t=10085454 census   grChromakeyMode calls=1 lines=1
+72 pid=FFFCFDD3 t=10085454 census   grChromakeyValue calls=1 lines=1
+73 pid=FFFCFDD3 t=10085454 census   grClipWindow calls=1 lines=1
+74 pid=FFFCFDD3 t=10085454 census   grColorCombine calls=1 lines=1
+75 pid=FFFCFDD3 t=10085454 census   grCoordinateSpace calls=1 lines=1
+76 pid=FFFCFDD3 t=10085454 census   grCullMode calls=1 lines=1
+77 pid=FFFCFDD3 t=10085454 census   grDepthBufferFunction calls=2 lines=2
+78 pid=FFFCFDD3 t=10085454 census   grDepthBufferMode calls=1 lines=1
+79 pid=FFFCFDD3 t=10085454 census   grDepthMask calls=2 lines=2
+80 pid=FFFCFDD3 t=10085454 census   grDitherMode calls=1 lines=1
+81 pid=FFFCFDD3 t=10085454 census   grFogMode calls=1 lines=1
+82 pid=FFFCFDD3 t=10085454 census   grGet calls=4 lines=4
+83 pid=FFFCFDD3 t=10085454 census   grGlideInit calls=2 lines=2
+84 pid=FFFCFDD3 t=10085454 census   grGlideShutdown calls=1 lines=1
+85 pid=FFFCFDD3 t=10085454 census   grQueryResolutions calls=4 lines=4
+86 pid=FFFCFDD3 t=10085454 census   grRenderBuffer calls=1 lines=1
+87 pid=FFFCFDD3 t=10085454 census   grSstSelect calls=1 lines=1
+88 pid=FFFCFDD3 t=10085454 census   grSstWinOpen calls=1 lines=1
+89 pid=FFFCFDD3 t=10085454 census   grTexClampMode calls=1 lines=1
+90 pid=FFFCFDD3 t=10085454 census   grTexCombine calls=1 lines=1
+91 pid=FFFCFDD3 t=10085454 census   grTexMaxAddress calls=1 lines=1
+92 pid=FFFCFDD3 t=10085454 census   grTexMinAddress calls=1 lines=1
+93 pid=FFFCFDD3 t=10085454 census   grTexMipMapMode calls=1 lines=1
+94 pid=FFFCFDD3 t=10085454 census   grVertexLayout calls=11 lines=11
+95 pid=FFFCFDD3 t=10085454 census   guGammaCorrectionRGB calls=1 lines=1
+313 pid=FFFCFDD3 t=10089855 unrecognized: color func=1 factor=0 local/other/invert=000200
+314 pid=FFFCFDD3 t=10089855 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+315 pid=FFFCFDD3 t=10089855 unrecognized: tmu rgb/alpha=1/1 blend=0404
+316 pid=FFFCFDD3 t=10089860 unrecognized: color func=1 factor=0 local/other/invert=000200
+317 pid=FFFCFDD3 t=10089860 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+318 pid=FFFCFDD3 t=10089860 unrecognized: tmu rgb/alpha=1/1 blend=0404
+319 pid=FFFCFDD3 t=10089860 unrecognized: color func=1 factor=0 local/other/invert=000200
+320 pid=FFFCFDD3 t=10089860 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+321 pid=FFFCFDD3 t=10089860 unrecognized: tmu rgb/alpha=1/1 blend=0404
+326 pid=FFFCFDD3 t=10089895 unrecognized: color func=1 factor=0 local/other/invert=000200
+327 pid=FFFCFDD3 t=10089895 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+328 pid=FFFCFDD3 t=10089895 unrecognized: tmu rgb/alpha=1/1 blend=0404
+329 pid=FFFCFDD3 t=10089895 unrecognized: color func=1 factor=0 local/other/invert=000200
+330 pid=FFFCFDD3 t=10089895 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+331 pid=FFFCFDD3 t=10089895 unrecognized: tmu rgb/alpha=1/1 blend=0404
+332 pid=FFFCFDD3 t=10089895 unrecognized: color func=1 factor=0 local/other/invert=000200
+333 pid=FFFCFDD3 t=10089895 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+334 pid=FFFCFDD3 t=10089895 unrecognized: tmu rgb/alpha=1/1 blend=0404
+371 pid=FFFCFDD3 t=10089925 unrecognized: color func=1 factor=0 local/other/invert=000200
+372 pid=FFFCFDD3 t=10089925 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+373 pid=FFFCFDD3 t=10089925 unrecognized: tmu rgb/alpha=1/1 blend=0404
+374 pid=FFFCFDD3 t=10089925 unrecognized: color func=1 factor=0 local/other/invert=000200
+375 pid=FFFCFDD3 t=10089925 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+376 pid=FFFCFDD3 t=10089925 unrecognized: tmu rgb/alpha=1/1 blend=0404
+391 pid=FFFCFDD3 t=10089955 unrecognized: color func=1 factor=0 local/other/invert=000200
+392 pid=FFFCFDD3 t=10089955 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+393 pid=FFFCFDD3 t=10089955 unrecognized: tmu rgb/alpha=1/1 blend=0404
+394 pid=FFFCFDD3 t=10089955 unrecognized: color func=1 factor=0 local/other/invert=000200
+395 pid=FFFCFDD3 t=10089955 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+396 pid=FFFCFDD3 t=10089955 unrecognized: tmu rgb/alpha=1/1 blend=0404
+399 pid=FFFCFDD3 t=10089990 unrecognized: color func=1 factor=0 local/other/invert=000200
+400 pid=FFFCFDD3 t=10089990 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+401 pid=FFFCFDD3 t=10089990 unrecognized: tmu rgb/alpha=1/1 blend=0404
+402 pid=FFFCFDD3 t=10089998 unrecognized: color func=1 factor=0 local/other/invert=000200
+403 pid=FFFCFDD3 t=10089998 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+404 pid=FFFCFDD3 t=10089998 unrecognized: tmu rgb/alpha=1/1 blend=0404
+407 pid=FFFCFDD3 t=10090015 unrecognized: color func=1 factor=0 local/other/invert=000200
+408 pid=FFFCFDD3 t=10090015 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+409 pid=FFFCFDD3 t=10090015 unrecognized: tmu rgb/alpha=1/1 blend=0404
+412 pid=FFFCFDD3 t=10090015 unrecognized: color func=1 factor=0 local/other/invert=000200
+413 pid=FFFCFDD3 t=10090015 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+414 pid=FFFCFDD3 t=10090015 unrecognized: tmu rgb/alpha=1/1 blend=0404
+417 pid=FFFCFDD3 t=10090015 unrecognized: color func=1 factor=0 local/other/invert=000200
+418 pid=FFFCFDD3 t=10090015 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+419 pid=FFFCFDD3 t=10090015 unrecognized: tmu rgb/alpha=1/1 blend=0404
+422 pid=FFFCFDD3 t=10090015 unrecognized: color func=1 factor=0 local/other/invert=000200
+423 pid=FFFCFDD3 t=10090015 unrecognized: alpha func=3 factor=8 local/other/invert=010100
+424 pid=FFFCFDD3 t=10090015 unrecognized: tmu rgb/alpha=1/1 blend=0404
+490 pid=FFFCFDD3 t=10100485 census periodic swaps=306
+491 pid=FFFCFDD3 t=10100485 census   draws: drawn=378916 refused=0 culled=0 skipped-textured=0
+492 pid=FFFCFDD3 t=10100485 census   draws: fog-dropped=0 uploads=314 surface-hits=0 evictions=254
+493 pid=FFFCFDD3 t=10100485 census   cycles(Mc): frame=19728 entry=7037 prepare=3483 upload=2448 submit=2083 swap=46 clear=11 batches=19107
+494 pid=FFFCFDD3 t=10100485 census   batch ends: full=4443 texture=13392 state=350
+495 pid=FFFCFDD3 t=10100485 census   grAlphaBlendFunction calls=3611 lines=3
+496 pid=FFFCFDD3 t=10100485 census   grAlphaCombine calls=1 lines=1
+497 pid=FFFCFDD3 t=10100485 census   grBufferClear calls=306 lines=5
+498 pid=FFFCFDD3 t=10100485 census   grBufferSwap calls=306 lines=24
+499 pid=FFFCFDD3 t=10100485 census   grChromakeyMode calls=1 lines=1
+500 pid=FFFCFDD3 t=10100485 census   grChromakeyValue calls=1 lines=1
+501 pid=FFFCFDD3 t=10100485 census   grClipWindow calls=910 lines=9
+502 pid=FFFCFDD3 t=10100485 census   grColorCombine calls=3031 lines=3
+503 pid=FFFCFDD3 t=10100485 census   grCoordinateSpace calls=1 lines=1
+504 pid=FFFCFDD3 t=10100485 census   grCullMode calls=1 lines=1
+505 pid=FFFCFDD3 t=10100485 census   grDepthBufferFunction calls=3 lines=3
+506 pid=FFFCFDD3 t=10100485 census   grDepthBufferMode calls=1 lines=1
+507 pid=FFFCFDD3 t=10100485 census   grDepthMask calls=3918 lines=8
+508 pid=FFFCFDD3 t=10100485 census   grDitherMode calls=1 lines=1
+509 pid=FFFCFDD3 t=10100485 census   grDrawTriangle calls=2950 lines=48
+510 pid=FFFCFDD3 t=10100485 census   grDrawVertexArray calls=16396 lines=48
+511 pid=FFFCFDD3 t=10100485 census   grDrawVertexArrayContiguous calls=332704 lines=48
+512 pid=FFFCFDD3 t=10100485 census   grFogMode calls=1 lines=1
+513 pid=FFFCFDD3 t=10100485 census   grGet calls=6 lines=5
+514 pid=FFFCFDD3 t=10100485 census   grGlideInit calls=2 lines=2
+515 pid=FFFCFDD3 t=10100485 census   grGlideShutdown calls=1 lines=1
+516 pid=FFFCFDD3 t=10100485 census   grQueryResolutions calls=4 lines=4
+517 pid=FFFCFDD3 t=10100485 census   grRenderBuffer calls=1 lines=1
+518 pid=FFFCFDD3 t=10100485 census   grSstSelect calls=1 lines=1
+519 pid=FFFCFDD3 t=10100485 census   grSstWinOpen calls=1 lines=1
+520 pid=FFFCFDD3 t=10100485 census   grTexClampMode calls=1 lines=1
+521 pid=FFFCFDD3 t=10100485 census   grTexCombine calls=14125 lines=14
+522 pid=FFFCFDD3 t=10100485 census   grTexDownloadMipMap calls=406 lines=83
+523 pid=FFFCFDD3 t=10100485 census   grTexDownloadTable calls=14124 lines=16
+524 pid=FFFCFDD3 t=10100485 census   grTexFilterMode calls=303 lines=1
+525 pid=FFFCFDD3 t=10100485 census   grTexMaxAddress calls=3 lines=2
+526 pid=FFFCFDD3 t=10100485 census   grTexMinAddress calls=3 lines=2
+527 pid=FFFCFDD3 t=10100485 census   grTexMipMapMode calls=1 lines=1
+528 pid=FFFCFDD3 t=10100485 census   grTexSource calls=14124 lines=20
+529 pid=FFFCFDD3 t=10100485 census   grTexTextureMemRequired calls=102 lines=10
+530 pid=FFFCFDD3 t=10100485 census   grVertexLayout calls=11 lines=11
+531 pid=FFFCFDD3 t=10100485 census   guGammaCorrectionRGB calls=1 lines=1
+532 pid=FFFCFDD3 t=10115510 census periodic swaps=726
+533 pid=FFFCFDD3 t=10115510 census   draws: drawn=1170142 refused=0 culled=0 skipped-textured=0
+534 pid=FFFCFDD3 t=10115510 census   draws: fog-dropped=0 uploads=734 surface-hits=0 evictions=674
+535 pid=FFFCFDD3 t=10115510 census   cycles(Mc): frame=23818 entry=10812 prepare=3913 upload=2021 submit=3852 swap=22 clear=16 batches=30798
+536 pid=FFFCFDD3 t=10115510 census   batch ends: full=10232 texture=18886 state=420
+537 pid=FFFCFDD3 t=10115510 census   grAlphaBlendFunction calls=8651 lines=3
+538 pid=FFFCFDD3 t=10115510 census   grAlphaCombine calls=1 lines=1
+539 pid=FFFCFDD3 t=10115510 census   grBufferClear calls=726 lines=5
+540 pid=FFFCFDD3 t=10115510 census   grBufferSwap calls=726 lines=24
+541 pid=FFFCFDD3 t=10115510 census   grChromakeyMode calls=1 lines=1
+542 pid=FFFCFDD3 t=10115510 census   grChromakeyValue calls=1 lines=1
+543 pid=FFFCFDD3 t=10115510 census   grClipWindow calls=2170 lines=9
+544 pid=FFFCFDD3 t=10115510 census   grColorCombine calls=7231 lines=3
+545 pid=FFFCFDD3 t=10115510 census   grCoordinateSpace calls=1 lines=1
+546 pid=FFFCFDD3 t=10115510 census   grCullMode calls=1 lines=1
+547 pid=FFFCFDD3 t=10115510 census   grDepthBufferFunction calls=3 lines=3
+548 pid=FFFCFDD3 t=10115510 census   grDepthBufferMode calls=1 lines=1
+549 pid=FFFCFDD3 t=10115510 census   grDepthMask calls=9378 lines=8
+550 pid=FFFCFDD3 t=10115510 census   grDitherMode calls=1 lines=1
+551 pid=FFFCFDD3 t=10115510 census   grDrawTriangle calls=2950 lines=48
+552 pid=FFFCFDD3 t=10115510 census   grDrawVertexArray calls=39466 lines=48
+553 pid=FFFCFDD3 t=10115510 census   grDrawVertexArrayContiguous calls=1054712 lines=48
+554 pid=FFFCFDD3 t=10115510 census   grFogMode calls=1 lines=1
+555 pid=FFFCFDD3 t=10115510 census   grGet calls=6 lines=5
+556 pid=FFFCFDD3 t=10115510 census   grGlideInit calls=2 lines=2
+557 pid=FFFCFDD3 t=10115510 census   grGlideShutdown calls=1 lines=1
+558 pid=FFFCFDD3 t=10115510 census   grQueryResolutions calls=4 lines=4
+559 pid=FFFCFDD3 t=10115510 census   grRenderBuffer calls=1 lines=1
+560 pid=FFFCFDD3 t=10115510 census   grSstSelect calls=1 lines=1
+561 pid=FFFCFDD3 t=10115510 census   grSstWinOpen calls=1 lines=1
+562 pid=FFFCFDD3 t=10115510 census   grTexClampMode calls=1 lines=1
+563 pid=FFFCFDD3 t=10115510 census   grTexCombine calls=33865 lines=14
+564 pid=FFFCFDD3 t=10115510 census   grTexDownloadMipMap calls=826 lines=83
+565 pid=FFFCFDD3 t=10115510 census   grTexDownloadTable calls=33864 lines=16
+566 pid=FFFCFDD3 t=10115510 census   grTexFilterMode calls=723 lines=1
+567 pid=FFFCFDD3 t=10115510 census   grTexMaxAddress calls=3 lines=2
+568 pid=FFFCFDD3 t=10115510 census   grTexMinAddress calls=3 lines=2
+569 pid=FFFCFDD3 t=10115510 census   grTexMipMapMode calls=1 lines=1
+570 pid=FFFCFDD3 t=10115510 census   grTexSource calls=33864 lines=20
+571 pid=FFFCFDD3 t=10115510 census   grTexTextureMemRequired calls=102 lines=10
+572 pid=FFFCFDD3 t=10115510 census   grVertexLayout calls=11 lines=11
+573 pid=FFFCFDD3 t=10115510 census   guGammaCorrectionRGB calls=1 lines=1
+647 pid=FFFCFDD3 t=10130512 census periodic swaps=1048
+648 pid=FFFCFDD3 t=10130512 census   draws: drawn=1663119 refused=0 culled=0 skipped-textured=0
+649 pid=FFFCFDD3 t=10130512 census   draws: fog-dropped=0 uploads=888 surface-hits=0 evictions=846
+650 pid=FFFCFDD3 t=10130512 census   cycles(Mc): frame=19685 entry=7494 prepare=2523 upload=1489 submit=2980 swap=86 clear=12 batches=25091
+651 pid=FFFCFDD3 t=10130512 census   batch ends: full=4622 texture=18477 state=1196
+652 pid=FFFCFDD3 t=10130512 census   grAlphaBlendFunction calls=25126 lines=4
+653 pid=FFFCFDD3 t=10130512 census   grAlphaCombine calls=1 lines=1
+654 pid=FFFCFDD3 t=10130512 census   grBufferClear calls=1048 lines=6
+655 pid=FFFCFDD3 t=10130512 census   grBufferSwap calls=1048 lines=24
+656 pid=FFFCFDD3 t=10130512 census   grChromakeyMode calls=1 lines=1
+657 pid=FFFCFDD3 t=10130512 census   grChromakeyValue calls=1 lines=1
+658 pid=FFFCFDD3 t=10130512 census   grClipWindow calls=3129 lines=9
+659 pid=FFFCFDD3 t=10130512 census   grColorCombine calls=10759 lines=3
+660 pid=FFFCFDD3 t=10130512 census   grCoordinateSpace calls=1 lines=1
+661 pid=FFFCFDD3 t=10130512 census   grCullMode calls=1 lines=1
+662 pid=FFFCFDD3 t=10130512 census   grDepthBufferFunction calls=3 lines=3
+663 pid=FFFCFDD3 t=10130512 census   grDepthBufferMode calls=1 lines=1
+664 pid=FFFCFDD3 t=10130512 census   grDepthMask calls=26175 lines=8
+665 pid=FFFCFDD3 t=10130512 census   grDitherMode calls=1 lines=1
+666 pid=FFFCFDD3 t=10130512 census   grDrawTriangle calls=41932 lines=48
+667 pid=FFFCFDD3 t=10130512 census   grDrawVertexArray calls=180201 lines=48
+668 pid=FFFCFDD3 t=10130512 census   grDrawVertexArrayContiguous calls=1203038 lines=48
+669 pid=FFFCFDD3 t=10130512 census   grFogColorValue calls=1 lines=1
+670 pid=FFFCFDD3 t=10130512 census   grFogMode calls=411 lines=2
+671 pid=FFFCFDD3 t=10130512 census   grGet calls=8 lines=5
+672 pid=FFFCFDD3 t=10130512 census   grGlideInit calls=2 lines=2
+673 pid=FFFCFDD3 t=10130512 census   grGlideShutdown calls=1 lines=1
+674 pid=FFFCFDD3 t=10130512 census   grQueryResolutions calls=4 lines=4
+675 pid=FFFCFDD3 t=10130512 census   grRenderBuffer calls=1 lines=1
+676 pid=FFFCFDD3 t=10130512 census   grSstSelect calls=1 lines=1
+677 pid=FFFCFDD3 t=10130512 census   grSstWinOpen calls=1 lines=1
+678 pid=FFFCFDD3 t=10130512 census   grTexClampMode calls=1 lines=1
+679 pid=FFFCFDD3 t=10130512 census   grTexCombine calls=54126 lines=14
+680 pid=FFFCFDD3 t=10130512 census   grTexDownloadMipMap calls=985 lines=103
+681 pid=FFFCFDD3 t=10130512 census   grTexDownloadTable calls=54125 lines=35
+682 pid=FFFCFDD3 t=10130512 census   grTexFilterMode calls=1043 lines=1
+683 pid=FFFCFDD3 t=10130512 census   grTexMaxAddress calls=5 lines=2
+684 pid=FFFCFDD3 t=10130512 census   grTexMinAddress calls=5 lines=2
+685 pid=FFFCFDD3 t=10130512 census   grTexMipMapMode calls=1 lines=1
+686 pid=FFFCFDD3 t=10130512 census   grTexSource calls=54125 lines=50
+687 pid=FFFCFDD3 t=10130512 census   grTexTextureMemRequired calls=145 lines=10
+688 pid=FFFCFDD3 t=10130512 census   grVertexLayout calls=11 lines=11
+689 pid=FFFCFDD3 t=10130512 census   guGammaCorrectionRGB calls=1 lines=1
+692 pid=FFFCFDD3 t=10145532 census periodic swaps=1427
+693 pid=FFFCFDD3 t=10145532 census   draws: drawn=2587226 refused=0 culled=0 skipped-textured=0
+694 pid=FFFCFDD3 t=10145532 census   draws: fog-dropped=0 uploads=1100 surface-hits=0 evictions=1062
+695 pid=FFFCFDD3 t=10145532 census   cycles(Mc): frame=23810 entry=13541 prepare=4002 upload=2019 submit=5594 swap=356 clear=14 batches=57532
+696 pid=FFFCFDD3 t=10145532 census   batch ends: full=7679 texture=39002 state=9662
+697 pid=FFFCFDD3 t=10145532 census   grAlphaBlendFunction calls=61506 lines=4
+698 pid=FFFCFDD3 t=10145532 census   grAlphaCombine calls=1 lines=1
+699 pid=FFFCFDD3 t=10145532 census   grBufferClear calls=1427 lines=6
+700 pid=FFFCFDD3 t=10145532 census   grBufferSwap calls=1427 lines=24
+701 pid=FFFCFDD3 t=10145532 census   grChromakeyMode calls=1 lines=1
+702 pid=FFFCFDD3 t=10145532 census   grChromakeyValue calls=1 lines=1
+703 pid=FFFCFDD3 t=10145532 census   grClipWindow calls=4266 lines=9
+704 pid=FFFCFDD3 t=10145532 census   grColorCombine calls=20605 lines=3
+705 pid=FFFCFDD3 t=10145532 census   grCoordinateSpace calls=1 lines=1
+706 pid=FFFCFDD3 t=10145532 census   grCullMode calls=1 lines=1
+707 pid=FFFCFDD3 t=10145532 census   grDepthBufferFunction calls=3 lines=3
+708 pid=FFFCFDD3 t=10145532 census   grDepthBufferMode calls=1 lines=1
+709 pid=FFFCFDD3 t=10145532 census   grDepthMask calls=62934 lines=8
+710 pid=FFFCFDD3 t=10145532 census   grDitherMode calls=1 lines=1
+711 pid=FFFCFDD3 t=10145532 census   grDrawTriangle calls=130136 lines=48
+712 pid=FFFCFDD3 t=10145532 census   grDrawVertexArray calls=490815 lines=48
+713 pid=FFFCFDD3 t=10145532 census   grDrawVertexArrayContiguous calls=1382170 lines=48
+714 pid=FFFCFDD3 t=10145532 census   grFogColorValue calls=1 lines=1
+715 pid=FFFCFDD3 t=10145532 census   grFogMode calls=1169 lines=2
+716 pid=FFFCFDD3 t=10145532 census   grGet calls=8 lines=5
+717 pid=FFFCFDD3 t=10145532 census   grGlideInit calls=2 lines=2
+718 pid=FFFCFDD3 t=10145532 census   grGlideShutdown calls=1 lines=1
+719 pid=FFFCFDD3 t=10145532 census   grQueryResolutions calls=4 lines=4
+720 pid=FFFCFDD3 t=10145532 census   grRenderBuffer calls=1 lines=1
+721 pid=FFFCFDD3 t=10145532 census   grSstSelect calls=1 lines=1
+722 pid=FFFCFDD3 t=10145532 census   grSstWinOpen calls=1 lines=1
+723 pid=FFFCFDD3 t=10145532 census   grTexClampMode calls=1 lines=1
+724 pid=FFFCFDD3 t=10145532 census   grTexCombine calls=97552 lines=14
+725 pid=FFFCFDD3 t=10145532 census   grTexDownloadMipMap calls=1217 lines=103
+726 pid=FFFCFDD3 t=10145532 census   grTexDownloadTable calls=97551 lines=36
+727 pid=FFFCFDD3 t=10145532 census   grTexFilterMode calls=1422 lines=1
+728 pid=FFFCFDD3 t=10145532 census   grTexMaxAddress calls=5 lines=2
+729 pid=FFFCFDD3 t=10145532 census   grTexMinAddress calls=5 lines=2
+730 pid=FFFCFDD3 t=10145532 census   grTexMipMapMode calls=1 lines=1
+731 pid=FFFCFDD3 t=10145532 census   grTexSource calls=97551 lines=51
+732 pid=FFFCFDD3 t=10145532 census   grTexTextureMemRequired calls=145 lines=10
+733 pid=FFFCFDD3 t=10145532 census   grVertexLayout calls=11 lines=11
+734 pid=FFFCFDD3 t=10145532 census   guGammaCorrectionRGB calls=1 lines=1
+3737 pid=FFFCFDD3 t=10160552 census periodic swaps=1828
+3738 pid=FFFCFDD3 t=10160552 census   draws: drawn=3414208 refused=0 culled=0 skipped-textured=0
+3739 pid=FFFCFDD3 t=10160552 census   draws: fog-dropped=0 uploads=1340 surface-hits=1 evictions=1301
+3740 pid=FFFCFDD3 t=10160552 census   cycles(Mc): frame=23810 entry=12040 prepare=3747 upload=2081 submit=4495 swap=133 clear=14 batches=39878
+3741 pid=FFFCFDD3 t=10160552 census   batch ends: full=7544 texture=26748 state=4155
+3742 pid=FFFCFDD3 t=10160552 census   grAlphaBlendFunction calls=91641 lines=73
+3743 pid=FFFCFDD3 t=10160552 census   grAlphaCombine calls=1 lines=1
+3744 pid=FFFCFDD3 t=10160552 census   grBufferClear calls=1828 lines=7
+3745 pid=FFFCFDD3 t=10160552 census   grBufferSwap calls=1828 lines=24
+3746 pid=FFFCFDD3 t=10160552 census   grChromakeyMode calls=1 lines=1
+3747 pid=FFFCFDD3 t=10160552 census   grChromakeyValue calls=1 lines=1
+3748 pid=FFFCFDD3 t=10160552 census   grClipWindow calls=5469 lines=12
+3749 pid=FFFCFDD3 t=10160552 census   grColorCombine calls=27331 lines=7
+3750 pid=FFFCFDD3 t=10160552 census   grCoordinateSpace calls=1 lines=1
+3751 pid=FFFCFDD3 t=10160552 census   grCullMode calls=1 lines=1
+3752 pid=FFFCFDD3 t=10160552 census   grDepthBufferFunction calls=3 lines=3
+3753 pid=FFFCFDD3 t=10160552 census   grDepthBufferMode calls=1 lines=1
+3754 pid=FFFCFDD3 t=10160552 census   grDepthMask calls=93470 lines=78
+3755 pid=FFFCFDD3 t=10160552 census   grDitherMode calls=1 lines=1
+3756 pid=FFFCFDD3 t=10160552 census   grDrawTriangle calls=227419 lines=462
+3757 pid=FFFCFDD3 t=10160552 census   grDrawVertexArray calls=786743 lines=1816
+3758 pid=FFFCFDD3 t=10160552 census   grDrawVertexArrayContiguous calls=1480584 lines=482
+3759 pid=FFFCFDD3 t=10160552 census   grFogColorValue calls=1 lines=1
+3760 pid=FFFCFDD3 t=10160552 census   grFogMode calls=1971 lines=3
+3761 pid=FFFCFDD3 t=10160552 census   grGet calls=8 lines=5
+3762 pid=FFFCFDD3 t=10160552 census   grGlideInit calls=2 lines=2
+3763 pid=FFFCFDD3 t=10160552 census   grGlideShutdown calls=1 lines=1
+3764 pid=FFFCFDD3 t=10160552 census   grQueryResolutions calls=4 lines=4
+3765 pid=FFFCFDD3 t=10160552 census   grRenderBuffer calls=1 lines=1
+3766 pid=FFFCFDD3 t=10160552 census   grSstSelect calls=1 lines=1
+3767 pid=FFFCFDD3 t=10160552 census   grSstWinOpen calls=1 lines=1
+3768 pid=FFFCFDD3 t=10160552 census   grTexClampMode calls=1 lines=1
+3769 pid=FFFCFDD3 t=10160552 census   grTexCombine calls=127775 lines=92
+3770 pid=FFFCFDD3 t=10160552 census   grTexDownloadMipMap calls=1618 lines=104
+3771 pid=FFFCFDD3 t=10160552 census   grTexDownloadTable calls=127774 lines=114
+3772 pid=FFFCFDD3 t=10160552 census   grTexFilterMode calls=1823 lines=2
+3773 pid=FFFCFDD3 t=10160552 census   grTexMaxAddress calls=5 lines=2
+3774 pid=FFFCFDD3 t=10160552 census   grTexMinAddress calls=5 lines=2
+3775 pid=FFFCFDD3 t=10160552 census   grTexMipMapMode calls=1 lines=1
+3776 pid=FFFCFDD3 t=10160552 census   grTexSource calls=127774 lines=129
+3777 pid=FFFCFDD3 t=10160552 census   grTexTextureMemRequired calls=145 lines=10
+3778 pid=FFFCFDD3 t=10160552 census   grVertexLayout calls=11 lines=11
+3779 pid=FFFCFDD3 t=10160552 census   guGammaCorrectionRGB calls=1 lines=1
+3780 pid=FFFCFDD3 t=10175613 census periodic swaps=2247
+3781 pid=FFFCFDD3 t=10175613 census   draws: drawn=4139973 refused=0 culled=0 skipped-textured=0
+3782 pid=FFFCFDD3 t=10175614 census   draws: fog-dropped=0 uploads=1679 surface-hits=1 evictions=1644
+3783 pid=FFFCFDD3 t=10175614 census   cycles(Mc): frame=23876 entry=11611 prepare=4973 upload=3119 submit=3598 swap=174 clear=21 batches=36317
+3784 pid=FFFCFDD3 t=10175614 census   batch ends: full=6705 texture=24829 state=3199
+3785 pid=FFFCFDD3 t=10175614 census   grAlphaBlendFunction calls=119471 lines=73
+3786 pid=FFFCFDD3 t=10175614 census   grAlphaCombine calls=1 lines=1
+3787 pid=FFFCFDD3 t=10175614 census   grBufferClear calls=2247 lines=7
+3788 pid=FFFCFDD3 t=10175614 census   grBufferSwap calls=2247 lines=24
+3789 pid=FFFCFDD3 t=10175614 census   grChromakeyMode calls=1 lines=1
+3790 pid=FFFCFDD3 t=10175614 census   grChromakeyValue calls=1 lines=1
+3791 pid=FFFCFDD3 t=10175614 census   grClipWindow calls=6726 lines=12
+3792 pid=FFFCFDD3 t=10175614 census   grColorCombine calls=32599 lines=7
+3793 pid=FFFCFDD3 t=10175614 census   grCoordinateSpace calls=1 lines=1
+3794 pid=FFFCFDD3 t=10175614 census   grCullMode calls=1 lines=1
+3795 pid=FFFCFDD3 t=10175614 census   grDepthBufferFunction calls=3 lines=3
+3796 pid=FFFCFDD3 t=10175614 census   grDepthBufferMode calls=1 lines=1
+3797 pid=FFFCFDD3 t=10175614 census   grDepthMask calls=121719 lines=78
+3798 pid=FFFCFDD3 t=10175614 census   grDitherMode calls=1 lines=1
+3799 pid=FFFCFDD3 t=10175614 census   grDrawTriangle calls=303110 lines=462
+3800 pid=FFFCFDD3 t=10175614 census   grDrawVertexArray calls=1035352 lines=1816
+3801 pid=FFFCFDD3 t=10175614 census   grDrawVertexArrayContiguous calls=1592965 lines=482
+3802 pid=FFFCFDD3 t=10175614 census   grFogColorValue calls=1 lines=1
+3803 pid=FFFCFDD3 t=10175614 census   grFogMode calls=2809 lines=3
+3804 pid=FFFCFDD3 t=10175614 census   grGet calls=8 lines=5
+3805 pid=FFFCFDD3 t=10175614 census   grGlideInit calls=2 lines=2
+3806 pid=FFFCFDD3 t=10175614 census   grGlideShutdown calls=1 lines=1
+3807 pid=FFFCFDD3 t=10175614 census   grQueryResolutions calls=4 lines=4
+3808 pid=FFFCFDD3 t=10175614 census   grRenderBuffer calls=1 lines=1
+3809 pid=FFFCFDD3 t=10175614 census   grSstSelect calls=1 lines=1
+3810 pid=FFFCFDD3 t=10175614 census   grSstWinOpen calls=1 lines=1
+3811 pid=FFFCFDD3 t=10175614 census   grTexClampMode calls=1 lines=1
+3812 pid=FFFCFDD3 t=10175614 census   grTexCombine calls=155239 lines=92
+3813 pid=FFFCFDD3 t=10175614 census   grTexDownloadMipMap calls=2037 lines=104
+3814 pid=FFFCFDD3 t=10175614 census   grTexDownloadTable calls=155238 lines=114
+3815 pid=FFFCFDD3 t=10175614 census   grTexFilterMode calls=2242 lines=2
+3816 pid=FFFCFDD3 t=10175614 census   grTexMaxAddress calls=5 lines=2
+3817 pid=FFFCFDD3 t=10175614 census   grTexMinAddress calls=5 lines=2
+3818 pid=FFFCFDD3 t=10175614 census   grTexMipMapMode calls=1 lines=1
+3819 pid=FFFCFDD3 t=10175614 census   grTexSource calls=155238 lines=129
+3820 pid=FFFCFDD3 t=10175614 census   grTexTextureMemRequired calls=145 lines=10
+3821 pid=FFFCFDD3 t=10175614 census   grVertexLayout calls=11 lines=11
+3822 pid=FFFCFDD3 t=10175614 census   guGammaCorrectionRGB calls=1 lines=1
+3824 pid=FFFCFDD3 t=10176971 census winclose swaps=2267
+3825 pid=FFFCFDD3 t=10176971 census   draws: drawn=4171158 refused=0 culled=0 skipped-textured=0
+3826 pid=FFFCFDD3 t=10176971 census   draws: fog-dropped=0 uploads=1702 surface-hits=1 evictions=1665
+3827 pid=FFFCFDD3 t=10176971 census   cycles(Mc): frame=1102 entry=602 prepare=350 upload=270 submit=131 swap=7 clear=0 batches=1232
+3828 pid=FFFCFDD3 t=10176971 census   batch ends: full=288 texture=773 state=89
+3829 pid=FFFCFDD3 t=10176971 census   grAlphaBlendFunction calls=120677 lines=73
+3830 pid=FFFCFDD3 t=10176971 census   grAlphaCombine calls=1 lines=1
+3831 pid=FFFCFDD3 t=10176971 census   grBufferClear calls=2268 lines=7
+3832 pid=FFFCFDD3 t=10176971 census   grBufferSwap calls=2267 lines=24
+3833 pid=FFFCFDD3 t=10176971 census   grChromakeyMode calls=1 lines=1
+3834 pid=FFFCFDD3 t=10176971 census   grChromakeyValue calls=1 lines=1
+3835 pid=FFFCFDD3 t=10176971 census   grClipWindow calls=6787 lines=12
+3836 pid=FFFCFDD3 t=10176971 census   grColorCombine calls=32829 lines=7
+3837 pid=FFFCFDD3 t=10176971 census   grCoordinateSpace calls=1 lines=1
+3838 pid=FFFCFDD3 t=10176971 census   grCullMode calls=1 lines=1
+3839 pid=FFFCFDD3 t=10176971 census   grDepthBufferFunction calls=3 lines=3
+3840 pid=FFFCFDD3 t=10176971 census   grDepthBufferMode calls=1 lines=1
+3841 pid=FFFCFDD3 t=10176971 census   grDepthMask calls=122946 lines=78
+3842 pid=FFFCFDD3 t=10176971 census   grDitherMode calls=1 lines=1
+3843 pid=FFFCFDD3 t=10176971 census   grDrawTriangle calls=307666 lines=462
+3844 pid=FFFCFDD3 t=10176971 census   grDrawVertexArray calls=1045192 lines=1816
+3845 pid=FFFCFDD3 t=10176971 census   grDrawVertexArrayContiguous calls=1597581 lines=482
+3846 pid=FFFCFDD3 t=10176971 census   grFogColorValue calls=1 lines=1
+3847 pid=FFFCFDD3 t=10176971 census   grFogMode calls=2849 lines=3
+3848 pid=FFFCFDD3 t=10176971 census   grGet calls=8 lines=5
+3849 pid=FFFCFDD3 t=10176971 census   grGlideInit calls=2 lines=2
+3850 pid=FFFCFDD3 t=10176971 census   grGlideShutdown calls=1 lines=1
+3851 pid=FFFCFDD3 t=10176971 census   grQueryResolutions calls=4 lines=4
+3852 pid=FFFCFDD3 t=10176971 census   grRenderBuffer calls=1 lines=1
+3853 pid=FFFCFDD3 t=10176971 census   grSstSelect calls=1 lines=1
+3854 pid=FFFCFDD3 t=10176971 census   grSstWinClose calls=1 lines=1
+3855 pid=FFFCFDD3 t=10176971 census   grSstWinOpen calls=1 lines=1
+3856 pid=FFFCFDD3 t=10176971 census   grTexClampMode calls=1 lines=1
+3857 pid=FFFCFDD3 t=10176971 census   grTexCombine calls=156108 lines=92
+3858 pid=FFFCFDD3 t=10176971 census   grTexDownloadMipMap calls=2057 lines=104
+3859 pid=FFFCFDD3 t=10176971 census   grTexDownloadTable calls=156107 lines=114
+3860 pid=FFFCFDD3 t=10176971 census   grTexFilterMode calls=2262 lines=2
+3861 pid=FFFCFDD3 t=10176971 census   grTexMaxAddress calls=5 lines=2
+3862 pid=FFFCFDD3 t=10176971 census   grTexMinAddress calls=5 lines=2
+3863 pid=FFFCFDD3 t=10176971 census   grTexMipMapMode calls=1 lines=1
+3864 pid=FFFCFDD3 t=10176971 census   grTexSource calls=156107 lines=129
+3865 pid=FFFCFDD3 t=10176971 census   grTexTextureMemRequired calls=145 lines=10
+3866 pid=FFFCFDD3 t=10176971 census   grVertexLayout calls=11 lines=11
+3867 pid=FFFCFDD3 t=10176971 census   guGammaCorrectionRGB calls=1 lines=1
+3870 pid=FFFCFDD3 t=10176978 census shutdown swaps=2267
+3871 pid=FFFCFDD3 t=10176978 census   draws: drawn=4171158 refused=0 culled=0 skipped-textured=0
+3872 pid=FFFCFDD3 t=10176978 census   draws: fog-dropped=0 uploads=1702 surface-hits=1 evictions=1665
+3873 pid=FFFCFDD3 t=10176978 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+3874 pid=FFFCFDD3 t=10176978 census   batch ends: full=0 texture=0 state=0
+3875 pid=FFFCFDD3 t=10176978 census   grAlphaBlendFunction calls=120677 lines=73
+3876 pid=FFFCFDD3 t=10176978 census   grAlphaCombine calls=1 lines=1
+3877 pid=FFFCFDD3 t=10176978 census   grBufferClear calls=2268 lines=7
+3878 pid=FFFCFDD3 t=10176978 census   grBufferSwap calls=2267 lines=24
+3879 pid=FFFCFDD3 t=10176978 census   grChromakeyMode calls=1 lines=1
+3880 pid=FFFCFDD3 t=10176978 census   grChromakeyValue calls=1 lines=1
+3881 pid=FFFCFDD3 t=10176978 census   grClipWindow calls=6787 lines=12
+3882 pid=FFFCFDD3 t=10176978 census   grColorCombine calls=32829 lines=7
+3883 pid=FFFCFDD3 t=10176978 census   grCoordinateSpace calls=1 lines=1
+3884 pid=FFFCFDD3 t=10176978 census   grCullMode calls=1 lines=1
+3885 pid=FFFCFDD3 t=10176978 census   grDepthBufferFunction calls=3 lines=3
+3886 pid=FFFCFDD3 t=10176978 census   grDepthBufferMode calls=1 lines=1
+3887 pid=FFFCFDD3 t=10176978 census   grDepthMask calls=122946 lines=78
+3888 pid=FFFCFDD3 t=10176978 census   grDitherMode calls=1 lines=1
+3889 pid=FFFCFDD3 t=10176978 census   grDrawTriangle calls=307666 lines=462
+3890 pid=FFFCFDD3 t=10176978 census   grDrawVertexArray calls=1045192 lines=1816
+3891 pid=FFFCFDD3 t=10176978 census   grDrawVertexArrayContiguous calls=1597581 lines=482
+3892 pid=FFFCFDD3 t=10176979 census   grFogColorValue calls=1 lines=1
+3893 pid=FFFCFDD3 t=10176979 census   grFogMode calls=2849 lines=3
+3894 pid=FFFCFDD3 t=10176979 census   grGet calls=8 lines=5
+3895 pid=FFFCFDD3 t=10176979 census   grGlideInit calls=2 lines=2
+3896 pid=FFFCFDD3 t=10176979 census   grGlideShutdown calls=2 lines=2
+3897 pid=FFFCFDD3 t=10176979 census   grQueryResolutions calls=4 lines=4
+3898 pid=FFFCFDD3 t=10176979 census   grRenderBuffer calls=1 lines=1
+3899 pid=FFFCFDD3 t=10176979 census   grSstSelect calls=1 lines=1
+3900 pid=FFFCFDD3 t=10176979 census   grSstWinClose calls=1 lines=1
+3901 pid=FFFCFDD3 t=10176979 census   grSstWinOpen calls=1 lines=1
+3902 pid=FFFCFDD3 t=10176979 census   grTexClampMode calls=1 lines=1
+3903 pid=FFFCFDD3 t=10176979 census   grTexCombine calls=156108 lines=92
+3904 pid=FFFCFDD3 t=10176979 census   grTexDownloadMipMap calls=2057 lines=104
+3905 pid=FFFCFDD3 t=10176979 census   grTexDownloadTable calls=156107 lines=114
+3906 pid=FFFCFDD3 t=10176979 census   grTexFilterMode calls=2262 lines=2
+3907 pid=FFFCFDD3 t=10176979 census   grTexMaxAddress calls=5 lines=2
+3908 pid=FFFCFDD3 t=10176979 census   grTexMinAddress calls=5 lines=2
+3909 pid=FFFCFDD3 t=10176979 census   grTexMipMapMode calls=1 lines=1
+3910 pid=FFFCFDD3 t=10176979 census   grTexSource calls=156107 lines=129
+3911 pid=FFFCFDD3 t=10176979 census   grTexTextureMemRequired calls=145 lines=10
+3912 pid=FFFCFDD3 t=10176979 census   grVertexLayout calls=11 lines=11
+3913 pid=FFFCFDD3 t=10176979 census   guGammaCorrectionRGB calls=1 lines=1
+3914 pid=FFFCFDD3 t=10177027 census detach swaps=2267
+3915 pid=FFFCFDD3 t=10177027 census   draws: drawn=4171158 refused=0 culled=0 skipped-textured=0
+3916 pid=FFFCFDD3 t=10177027 census   draws: fog-dropped=0 uploads=1702 surface-hits=1 evictions=1665
+3917 pid=FFFCFDD3 t=10177027 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+3918 pid=FFFCFDD3 t=10177027 census   batch ends: full=0 texture=0 state=0
+3919 pid=FFFCFDD3 t=10177027 census   grAlphaBlendFunction calls=120677 lines=73
+3920 pid=FFFCFDD3 t=10177027 census   grAlphaCombine calls=1 lines=1
+3921 pid=FFFCFDD3 t=10177027 census   grBufferClear calls=2268 lines=7
+3922 pid=FFFCFDD3 t=10177027 census   grBufferSwap calls=2267 lines=24
+3923 pid=FFFCFDD3 t=10177027 census   grChromakeyMode calls=1 lines=1
+3924 pid=FFFCFDD3 t=10177027 census   grChromakeyValue calls=1 lines=1
+3925 pid=FFFCFDD3 t=10177027 census   grClipWindow calls=6787 lines=12
+3926 pid=FFFCFDD3 t=10177027 census   grColorCombine calls=32829 lines=7
+3927 pid=FFFCFDD3 t=10177027 census   grCoordinateSpace calls=1 lines=1
+3928 pid=FFFCFDD3 t=10177027 census   grCullMode calls=1 lines=1
+3929 pid=FFFCFDD3 t=10177027 census   grDepthBufferFunction calls=3 lines=3
+3930 pid=FFFCFDD3 t=10177027 census   grDepthBufferMode calls=1 lines=1
+3931 pid=FFFCFDD3 t=10177027 census   grDepthMask calls=122946 lines=78
+3932 pid=FFFCFDD3 t=10177027 census   grDitherMode calls=1 lines=1
+3933 pid=FFFCFDD3 t=10177027 census   grDrawTriangle calls=307666 lines=462
+3934 pid=FFFCFDD3 t=10177027 census   grDrawVertexArray calls=1045192 lines=1816
+3935 pid=FFFCFDD3 t=10177027 census   grDrawVertexArrayContiguous calls=1597581 lines=482
+3936 pid=FFFCFDD3 t=10177027 census   grFogColorValue calls=1 lines=1
+3937 pid=FFFCFDD3 t=10177027 census   grFogMode calls=2849 lines=3
+3938 pid=FFFCFDD3 t=10177027 census   grGet calls=8 lines=5
+3939 pid=FFFCFDD3 t=10177027 census   grGlideInit calls=2 lines=2
+3940 pid=FFFCFDD3 t=10177027 census   grGlideShutdown calls=2 lines=2
+3941 pid=FFFCFDD3 t=10177027 census   grQueryResolutions calls=4 lines=4
+3942 pid=FFFCFDD3 t=10177027 census   grRenderBuffer calls=1 lines=1
+3943 pid=FFFCFDD3 t=10177027 census   grSstSelect calls=1 lines=1
+3944 pid=FFFCFDD3 t=10177027 census   grSstWinClose calls=1 lines=1
+3945 pid=FFFCFDD3 t=10177027 census   grSstWinOpen calls=1 lines=1
+3946 pid=FFFCFDD3 t=10177027 census   grTexClampMode calls=1 lines=1
+3947 pid=FFFCFDD3 t=10177027 census   grTexCombine calls=156108 lines=92
+3948 pid=FFFCFDD3 t=10177027 census   grTexDownloadMipMap calls=2057 lines=104
+3949 pid=FFFCFDD3 t=10177029 census   grTexDownloadTable calls=156107 lines=114
+3950 pid=FFFCFDD3 t=10177029 census   grTexFilterMode calls=2262 lines=2
+3951 pid=FFFCFDD3 t=10177029 census   grTexMaxAddress calls=5 lines=2
+3952 pid=FFFCFDD3 t=10177029 census   grTexMinAddress calls=5 lines=2
+3953 pid=FFFCFDD3 t=10177029 census   grTexMipMapMode calls=1 lines=1
+3954 pid=FFFCFDD3 t=10177029 census   grTexSource calls=156107 lines=129
+3955 pid=FFFCFDD3 t=10177029 census   grTexTextureMemRequired calls=145 lines=10
+3956 pid=FFFCFDD3 t=10177029 census   grVertexLayout calls=11 lines=11
+3957 pid=FFFCFDD3 t=10177029 census   guGammaCorrectionRGB calls=1 lines=1

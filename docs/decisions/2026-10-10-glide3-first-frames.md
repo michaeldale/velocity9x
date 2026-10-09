@@ -77,6 +77,15 @@ chose (probably attract mode). Whether that scene is complete (a black
 billboard, floating track pieces) is not known: there is no reference
 frame.
 
+## Gen3
+
+The final GLIDE3X.DLL ran Rollcage on the netbook (GMA 950, boot 130) from
+the extracted demo: the intro and an attract race on a Mars track drew,
+4,171,158 triangles, none refused, 20 to 28 swaps a second. The same 48
+`unrecognized` lines as on the Rage XL (an iterated colour beside a
+texture alpha, drawn with the closest mapping). Diablo II is not
+installed there.
+
 ## Options for the remainder
 
 - Leave translucent keyed sprites refused on the Rage XL.

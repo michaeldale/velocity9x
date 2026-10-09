@@ -2046,16 +2046,16 @@ foreach ($glideFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src\gl
     }
 }
 
-# Every family package ships GLIDE2X.DLL. A 3dfx family would install it
-# over the card's own Glide, which the version-checked copy keeps only
-# while 3dfx's version is the newer, so a family claiming vendor 121A is
-# refused until that is decided (docs\plans\glide-2x-wrapper.md, Phase 5;
+# Every family package ships GLIDE2X.DLL and GLIDE3X.DLL. A 3dfx family
+# would install them over the card's own Glide, which the version-checked
+# copy keeps only while 3dfx's version is the newer, so a family claiming
+# vendor 121A is refused until that is decided (docs\plans\glide-2x-wrapper.md, Phase 5;
 # docs\plans\3dfx-voodoo3-prior-work.md).
 foreach ($family in $families) {
     foreach ($chip in @($family.Chips)) {
         if ([string]$chip.VendorId -eq '121A') {
             throw ("Family $($family.Id) claims 3dfx chip $($chip.Id), and every " +
-                   'package installs GLIDE2X.DLL; decide how it keeps the card''s own Glide first.')
+                   'package installs GLIDE2X.DLL and GLIDE3X.DLL; decide how it keeps the card''s own Glide first.')
         }
     }
 }

@@ -2,7 +2,8 @@
 
 Date: 2026-10-10
 
-Status: Phases 1 to 4 have first evidence on the Rage XL. The census
+Status: Phases 1 to 4 have first evidence on the Rage XL and Gen3; Phase 5
+is built, not yet installed on a machine. The census
 measured Diablo II's menus
 ([2026-10-10-diablo2-glide3-census.md](../decisions/2026-10-10-diablo2-glide3-census.md))
 and Rollcage's start-up and unattended 3D
@@ -10,8 +11,10 @@ and Rollcage's start-up and unattended 3D
 The real GLIDE3X.DLL, a front end over GLIDE2X.DLL's engine, draws Rollcage
 (menu and a race) and Diablo II (title to town) on A8U4I5
 ([2026-10-10-glide3-first-frames.md](../decisions/2026-10-10-glide3-first-frames.md)).
-Open: Diablo II's translucent keyed sprites, which the Mach64 refuses
-(0.8 % of its triangles); a second engine (Gen3); packaging (Phase 5).
+Rollcage also draws on the netbook's Gen3 with nothing refused. Every
+package carries GLIDE3X.DLL (Phase 5). Open: Diablo II's translucent keyed
+sprites, which the Mach64 refuses (0.8 % of its triangles); a Have Disk
+install that shows GLIDE3X.DLL landing in SYSTEM.
 
 ## Context
 
@@ -128,6 +131,13 @@ draws correctly on the Rage XL.
 
 `GLIDE3X.DLL` in the packages, installed with the same version-checked
 copy as `GLIDE2X.DLL` so a 3dfx card's own is kept.
+
+Built 2026-10-10: the INF copies `glide3x.dll` with flag 40 beside
+`glide2x.dll`, the updater follows the INF, and `V9XCOPY.BAT` keeps a
+GLIDE3X.DLL that lacks our `V9XGLD3.LOG` marker. The floppies had 33 to
+45 KB free against its 81 KB, so `V9XDDP.EXE` left the floppy copy (it
+stays in the zips); ATI then has 47 KB free. Gate open: a Have Disk
+install on a machine.
 
 ## Hazards already known
 

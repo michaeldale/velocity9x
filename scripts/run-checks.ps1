@@ -106,8 +106,7 @@ Invoke-CheckStep "Glide DLL" {
 }
 
 # GLIDE3X.DLL links the same engine (src\glide\glide_core.c), so a change
-# there must build it too; nothing packages it yet either
-# (docs\plans\glide-3x-wrapper.md, Phase 5).
+# there must build it too, and its audit runs here as GLIDE2X.DLL's does.
 Invoke-CheckStep "Glide 3 DLL" {
     & (Join-Path $PSScriptRoot "build-glide3.ps1") -BuildId $BuildId
 }
