@@ -1,0 +1,4 @@
+285 pid=FFFDF28B paths batches/triangles untextured=1806/3612 hw=381169/11268793 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=107148/1033845 split=0/0 split-declined=0
+286 pid=FFFDF28B counters hwtex live=0 creates=219 create-failed=0 evictions=0 uploads=4194 partial=3936 upload-kb=5512 squared=0 alpha-dropped=16973 fog-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+288 pid=FFFDF28B detach slots-called=0 stub-calls=0
+1 pid=FFFDF28B attach instance=09C90000 tls=21 version=0.14.0 V9XGL build=52471db-dirty exe=C:\SIERRA\HALF-LIFE\HL.EXE

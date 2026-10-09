@@ -62,10 +62,31 @@ wrong place. Both runs with the new ICD read the expected
 That scene only clears and swaps, which this change does not touch. The
 baseline value is unexplained, and was not reproduced.
 
+## A game: Half-Life on the netbook
+
+Half-Life 1.1.1.0, `hl.exe -console -condebug -gl`, fullscreen at
+640x480, ran on the new ICD (netbook, boot 129). It played `timedemo
+mwd5` three times in one console session: 15.836, 17.774 and 17.421 fps,
+393 frames each. These are recorded, not compared: earlier records
+used other builds, boots and launch methods. A `playdemo mwd5`
+screenshot mid-demo shows the Xen map drawn right, with lightmapped
+textures, sky, viewmodel and HUD. Half-Life quit cleanly from its
+console. Over the whole session the ICD logged `stubs=0`, `hw-refused=0`,
+`fog-dropped=0`, no failed draws, and every texture surface freed at
+exit (`hwtex live=0`). The console's `Tracker Error: TrackerUI.dll
+invalid` is Half-Life's friends UI and does not involve OpenGL.
+
+This is a regression run. It does not exercise the new code: the
+netbook's V9XGL.LOG history shows that no game run there (GLQuake,
+Quake 2, Half-Life) ever called a fog or new-variant stub. The ICD counts
+calls only to stubs, so a run cannot show which implemented slots a game
+used. The config.cfg Half-Life rewrites on quit was put back.
+
 ## Not measured
 
 - The fog-drop path. The ViRGE guest (9869) runs an older probe ICD, and
   the drop was not exercised anywhere.
 - A count proving Gen3, not its fallback, drew the netbook's fog
   (above; the render interface counts no fallback draws).
-- Fog in a game. Quake 2 and Half-Life were not run.
+- Fog in a game. None of the games installed on the test machines has
+  been seen calling glFog.
