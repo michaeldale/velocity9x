@@ -59,6 +59,39 @@ build identifier so exact guest-tested binaries remain traceable.
   bits, which the driver publishes at every Enable. The rows no family
   publishes yet are listed in an
   [issue](docs/issues/2026-10-09-settings-page-data-gaps.md).
+- **Send report** on the Velocity9x Advanced tab. It runs `V9XTRACE.EXE`,
+  lists the `C:\V9XDIAG` files it would send with their sizes and what
+  they contain, takes an optional one-line description, and on **Send**
+  uploads them to the update server at michaeldale.com.au. The reply is
+  a report code such as `V9X-4F7K2Q` to quote in a GitHub issue, shown
+  with a Copy button and included in **Copy report**. Nothing is sent
+  without the click. Without a network it says so and points at the web
+  form, which works from any computer. One report from the 86Box guest
+  reached the server with all six files intact.
+- **Check for updates** on the Velocity9x tab. It asks before contacting
+  the server, sends only the installed version and card family, and
+  offers a newer release with its notes. **Update now** downloads it,
+  checks it against the release's signature, keeps the current files and
+  settings in `C:\V9XDIAG\UPDATE\BACKUP`, and installs it at the next
+  restart. The new INF's files and registry settings are applied the way
+  a Device Manager reinstall applies them, and a newer Glide from a 3dfx
+  card is kept. After the restart it checks every file and says how the
+  update went once the desktop is up. Measured with locally signed test
+  releases: three updates on the 86Box ViRGE guest and one on A8U4I5's
+  Matrox card, each reaching the desktop unattended with the new build
+  running. No update has yet gone through the real server; this release
+  is the first that carries one. Installations older than 0.15.0 have
+  no updater and update by hand once.
+  [Decision](docs/decisions/2026-10-09-updater-cycles-on-the-virge-guest.md).
+- **Signed releases.** Each release now carries `SIGNED.TXT`, the size and
+  SHA-256 of every family zip under an Ed25519 signature. The updater
+  trusts only that file, because plain HTTP can be altered on the way.
+  The signature check, SHA-256 and the zip unpacking are written in this
+  repository and tested against the standards' own test vectors and every
+  past release zip. [Releasing](docs/RELEASING.md).
+- The INF now installs `V9XTRACE.EXE` and `V9XUPD.EXE` into the Windows
+  system folder, so both buttons work after the install disk is gone. The
+  build number moved from the Velocity9x tab to **About**.
 
 - **OpenGL fog.** `glFogf`, `glFogfv`, `glFogi` and `glFogiv` were stubs
   and now work. LINEAR, EXP and EXP2 fog factors are computed per vertex
