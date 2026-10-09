@@ -83,8 +83,11 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_MGA_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_MGA;
+    /* FLIP: the HAL writes the start address through CRTC0C/0D and
+     * CRTCEXT0, in units the mode's CRTC13 decides (eng_mga.c). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
 }
 
 /* Not static: resolved by name in the link map by the per-object audit.

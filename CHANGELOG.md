@@ -11,7 +11,7 @@ build identifier so exact guest-tested binaries remain traceable.
   on the MGA drawing engine. On A8U4I5's physical card V9XDDP completed
   with every fill and overlap cell pixel-correct, 4 of 6 operations on
   the engine (the other two are a surface the engine cannot address) and
-  no engine timeouts. There is no page flip.
+  no engine timeouts.
 - **GDI on the Millennium's engine.** Solid fills and screen copies,
   overlapping ones included, run on the MGA engine at 8, 16 and 32 bpp.
   The register values come from the same builder DirectDraw uses.
@@ -27,7 +27,15 @@ build identifier so exact guest-tested binaries remain traceable.
   skipping its timeout and clip checks at 32 bpp, a depth the S3 engines
   do not draw; it now runs them on the MGA, which does, and the GDI
   record's 32 bpp claim is corrected.
-  [Decision](docs/decisions/2026-10-09-mga2064w-text-on-the-engine.md). The Millennium II (MGA-2164W) joins the same family and the
+  [Decision](docs/decisions/2026-10-09-mga2064w-text-on-the-engine.md).
+- **Page flips on the Millennium.** DirectDraw flips now move the display
+  start instead of being declined. The start-address unit comes from the
+  mode's own line-length register, because the 1064SG databook and
+  FreeBE disagree about it on the 2064W. On A8U4I5's card 20 flips take
+  331 ms, paced by the retrace, where they were declined before. The
+  86Box guest's scanout shows each flipped page. Nobody has yet watched
+  the physical card's monitor during a flip.
+  [Decision](docs/decisions/2026-10-09-mga2064w-page-flips.md). The Millennium II (MGA-2164W) joins the same family and the
   separate `matrox-m2` drop-in package is retired; the 2164W has not run
   on this path.
   [Plan](docs/plans/matrox-millennium-family.md).

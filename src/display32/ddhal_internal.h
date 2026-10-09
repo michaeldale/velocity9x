@@ -429,6 +429,12 @@ int v9x_m64_set_display_start(DWORD byte_offset);
  * V9X_DD_ENGINE_CAP_FLIP. */
 int v9x_sis_scanout_active(void);
 int v9x_sis_set_display_start(DWORD byte_offset);
+/* The Millennium's start address (CRTC0D, CRTC0C, CRTCEXT0<3:0>), in
+ * engines/eng_mga.c: active only for MGA stamped with
+ * V9X_DD_ENGINE_CAP_FLIP. Applied at the next line, so written in the
+ * blank. */
+int v9x_mga_scanout_active(void);
+int v9x_mga_set_display_start(DWORD byte_offset);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */

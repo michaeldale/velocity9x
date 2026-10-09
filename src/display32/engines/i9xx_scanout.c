@@ -1413,6 +1413,9 @@ int v9x_set_display_start(DWORD byte_offset)
     if (v9x_sis_scanout_active()) {
         return v9x_sis_set_display_start(byte_offset);
     }
+    if (v9x_mga_scanout_active()) {
+        return v9x_mga_set_display_start(byte_offset);
+    }
     return v9x_vga_set_display_start(byte_offset);
 }
 
@@ -1650,6 +1653,12 @@ int v9x_scanout_writes_in_blank(void)
      * after the latch, and released a frame early.
      */
     if (v9x_m64_scanout_active()) {
+        return 1;
+    }
+    /* The MGA applies a new start at the next line (1064SG 5.6.5), so its
+     * write goes in the VGA blank, the window
+     * v9x_scanout_flip_window_open gives every non-Intel scanout. */
+    if (v9x_mga_scanout_active()) {
         return 1;
     }
     if (V9X_I9XX_FLIP_WRITE_IN_BLANK == 0) {

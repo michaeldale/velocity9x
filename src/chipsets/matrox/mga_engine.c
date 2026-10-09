@@ -526,6 +526,73 @@ int v9x_mga_surface_ok(v9x_u32 pitch_bytes, v9x_u32 offset,
         V9X_STATUS_OK;
 }
 
+/*
+ * CRTCEXT0 (p.4-130): startadd<19:16> in bits 3:0, the offset's bits 9:8
+ * in 5:4, interlace in 7.
+ */
+#define V9X_MGA_EXT0_START_MASK     0x0ful
+#define V9X_MGA_EXT0_OFFSET_MASK    0x30ul
+#define V9X_MGA_EXT0_OFFSET_SHIFT   4u
+#define V9X_MGA_EXT0_INTERLACE      0x80ul
+#define V9X_MGA_START_LIMIT         0x00100000ul    /* 20 bits */
+
+/*
+ * The documents disagree about the 2064W's units, so the mode's own CRTC
+ * decides. The 1064SG, whose 2D core is the 2064W's, programs the offset
+ * (CRTC13 plus CRTCEXT0<5:4>) as pitch * bpp / 128, 16 bytes a unit, and
+ * startadd in 8-byte units (section 5.6.5, p.5-66). FreeBE's Millennium
+ * path (0519 only) uses 8 and 4. In VGA byte addressing a start unit is
+ * half an offset unit under both, so whichever the BIOS set, the start
+ * follows from it. A8U4I5's BIOS at 1024x768x16 set 128 for 2048 bytes,
+ * the 1064SG's rule (V9XTIME, 2026-10-09). Any other ratio is refused:
+ * nothing here says what it would mean.
+ */
+v9x_status v9x_mga_display_start(v9x_u32 byte_offset, v9x_u32 pitch_bytes,
+                                 v9x_u32 crtc13, v9x_u32 crtcext0,
+                                 v9x_u32 vram_bytes, v9x_u32 *start)
+{
+    v9x_u32 offset_units;
+    v9x_u32 unit;
+    v9x_u32 value;
+
+    if (start == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *start = 0ul;
+    if (byte_offset >= vram_bytes) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((crtcext0 & V9X_MGA_EXT0_INTERLACE) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    offset_units = (crtc13 & 0xfful) |
+        (((crtcext0 & V9X_MGA_EXT0_OFFSET_MASK) >> V9X_MGA_EXT0_OFFSET_SHIFT)
+         << 8);
+    if (offset_units == 0ul || (pitch_bytes % offset_units) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    unit = pitch_bytes / offset_units;
+    if (unit != 16ul && unit != 8ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    unit /= 2ul;
+    if ((byte_offset % unit) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    value = byte_offset / unit;
+    if (value >= V9X_MGA_START_LIMIT) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    *start = value;
+    return V9X_STATUS_OK;
+}
+
+v9x_u32 v9x_mga_crtcext0_with_start(v9x_u32 crtcext0, v9x_u32 start)
+{
+    return (crtcext0 & ~V9X_MGA_EXT0_START_MASK & 0xfful) |
+        ((start >> 16) & V9X_MGA_EXT0_START_MASK);
+}
+
 v9x_u32 v9x_mga_status_busy(v9x_u32 status)
 {
     return status & V9X_MGA_STATUS_BUSY;

@@ -135,6 +135,21 @@ v9x_u32 v9x_mga_opmode_for_iload(v9x_u32 opmode);
  * origin, the test every destination passes. */
 int v9x_mga_surface_ok(v9x_u32 pitch_bytes, v9x_u32 offset,
                        v9x_u32 bytes_per_pixel);
+/*
+ * The display start for a page flip: the 20-bit startadd that puts
+ * byte_offset at the top left of the screen. `crtc13` and `crtcext0` are
+ * the live CRTC13 and CRTCEXT0, whose offset field says how many bytes one
+ * offset unit is in this mode; startadd counts half that. OK, or
+ * UNSUPPORTED when the mode's unit is not one this driver knows or the
+ * offset cannot be expressed, which declines the flip rather than
+ * rounding it.
+ */
+v9x_status v9x_mga_display_start(v9x_u32 byte_offset, v9x_u32 pitch_bytes,
+                                 v9x_u32 crtc13, v9x_u32 crtcext0,
+                                 v9x_u32 vram_bytes, v9x_u32 *start);
+/* CRTCEXT0 with startadd<19:16> replaced, the offset and interlace bits
+ * kept. */
+v9x_u32 v9x_mga_crtcext0_with_start(v9x_u32 crtcext0, v9x_u32 start);
 v9x_u32 v9x_mga_status_busy(v9x_u32 status);
 v9x_u32 v9x_mga_fifo_free(v9x_u32 fifostatus);
 

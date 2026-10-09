@@ -456,6 +456,60 @@ static void test_opmode_and_surface(void)
     CHECK(v9x_mga_surface_ok(1920ul, 0ul, 3ul) == 0);
 }
 
+static void test_display_start(void)
+{
+    v9x_u32 start = 0xdeadbeeful;
+
+    /* A8U4I5's BIOS at 1024x768x16 (V9XTIME, 2026-10-09): CRTC13 80h,
+     * CRTCEXT0 00h, 2048 bytes per line, so 16 bytes per offset unit and
+     * 8 per start unit - the 1064SG's rule. The second page starts at
+     * 2048 * 768 bytes. */
+    CHECK(v9x_mga_display_start(0ul, 2048ul, 0x80ul, 0x00ul, 8388608ul,
+                                &start) == V9X_STATUS_OK);
+    CHECK(start == 0ul);
+    CHECK(v9x_mga_display_start(2048ul * 768ul, 2048ul, 0x80ul, 0x00ul,
+                                8388608ul, &start) == V9X_STATUS_OK);
+    CHECK(start == 0x00030000ul);
+    /* The padded 960-byte 8 bpp line: 60 units of 16. */
+    CHECK(v9x_mga_display_start(960ul * 600ul, 960ul, 0x3cul, 0x00ul,
+                                8388608ul, &start) == V9X_STATUS_OK);
+    CHECK(start == 960ul * 600ul / 8ul);
+    /* FreeBE's Millennium rule, offset in 8-byte units (here 256, carried
+     * in CRTCEXT0<5:4>): start in dwords. The startadd bits are not the
+     * offset. */
+    CHECK(v9x_mga_display_start(2048ul * 768ul, 2048ul, 0x00ul, 0x1ful,
+                                8388608ul, &start) == V9X_STATUS_OK);
+    CHECK(start == 2048ul * 768ul / 4ul);
+    /* Interlaced: no source here describes its addressing. */
+    CHECK(v9x_mga_display_start(0ul, 2048ul, 0x80ul, 0x80ul, 8388608ul,
+                                &start) == V9X_STATUS_UNSUPPORTED);
+
+    /* Not a whole start unit. */
+    CHECK(v9x_mga_display_start(2048ul * 768ul + 4ul, 2048ul, 0x80ul,
+                                0x00ul, 8388608ul, &start) ==
+          V9X_STATUS_UNSUPPORTED);
+    /* A unit nobody has described, and no offset at all. */
+    CHECK(v9x_mga_display_start(0ul, 2048ul, 0x40ul, 0x00ul, 8388608ul,
+                                &start) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_mga_display_start(0ul, 2048ul, 0x00ul, 0x00ul, 8388608ul,
+                                &start) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_mga_display_start(0ul, 2050ul, 0x80ul, 0x00ul, 8388608ul,
+                                &start) == V9X_STATUS_UNSUPPORTED);
+    /* Twenty bits of dwords reach 4 MiB, short of an 8 MiB card. */
+    CHECK(v9x_mga_display_start(0x00400000ul, 2048ul, 0x00ul, 0x10ul,
+                                8388608ul, &start) ==
+          V9X_STATUS_UNSUPPORTED);
+    /* Past the end of VRAM. */
+    CHECK(v9x_mga_display_start(8388608ul, 2048ul, 0x80ul, 0x00ul,
+                                8388608ul, &start) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_mga_display_start(0ul, 2048ul, 0x80ul, 0x00ul, 8388608ul,
+                                0) == V9X_STATUS_INVALID_ARGUMENT);
+
+    CHECK(v9x_mga_crtcext0_with_start(0x9ful, 0x00030000ul) == 0x93ul);
+    CHECK(v9x_mga_crtcext0_with_start(0x00ul, 0x000f0000ul) == 0x0ful);
+}
+
 static void test_status(void)
 {
     CHECK(v9x_mga_status_busy(0x00010000ul) != 0ul);
@@ -481,6 +535,7 @@ unsigned int v9x_run_mga_engine_tests(void)
     test_expand_transparent_and_depths();
     test_expand_refusals();
     test_opmode_and_surface();
+    test_display_start();
     test_status();
     return failures;
 }

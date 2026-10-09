@@ -37,7 +37,7 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'MGA'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # A floor. The part shipped with 2, 4 and 8 MiB; 2 MiB is the base
             # Millennium and covers every static mode below. The runtime heap
             # sizes from 4F00h, not from this
@@ -86,7 +86,7 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'MGA'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # The smallest Millennium II; the physical sample had 8 MiB. The
             # heap sizes from 4F00h.
             VideoMemoryBytes = 4194304
@@ -181,7 +181,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem, engine fill and copy)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy)'
     }
 
     Floppy = @{

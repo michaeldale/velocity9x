@@ -133,7 +133,10 @@ and the horizontal clip by CXBNDRY. Opaque rectangles use the fill.
 ## Later (sketch only)
 
 - Page flipping: display start through `CRTC0C`/`0D` plus `CRTCEXT0<3:0>`,
-  and the HAL's display-start capability.
+  and the HAL's display-start capability. Coded 2026-10-09
+  ([record](../decisions/2026-10-09-mga2064w-page-flips.md)): flips are
+  handled and retrace-paced on A8U4I5, and the guest's scanout shows them.
+  The physical scanout is still owed a look at the monitor.
 - Hardware cursor in the TVP3026.
 - A Millennium II run. First check: whether `V9XMINI.VXD` reproduces the
   August surface corruption that Matrox's own mini-VDD did not

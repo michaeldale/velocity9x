@@ -242,6 +242,57 @@ static int v9x_mga_can_blt(void)
     return v9x_mga_wait_idle(0);
 }
 
+/*
+ * The display start, for page flips: CRTC0D (bits 7:0), CRTC0C (15:8) and
+ * CRTCEXT0<3:0> (19:16), in units the mode's own CRTC13 decides - see
+ * v9x_mga_display_start, host-tested, for why the documents cannot.
+ *
+ * The VGA fallback cannot serve: its high bits go to S3's CR69. CRTCEXT0
+ * is written last, because the change takes effect "at the beginning of
+ * the next horizontal retrace following the write to CRTCEXT0" (1064SG
+ * 5.6.5, p.5-66). That is applied at once, not latched at the retrace, so
+ * the core writes it inside the vertical blank (v9x_scanout_writes_in_blank)
+ * and completes the flip when that blank ends.
+ */
+#define V9X_MGA_CRTCEXT_INDEX 0x03deu
+#define V9X_MGA_CRTCEXT_DATA  0x03dfu
+#define V9X_MGA_CRTCEXT0      0x00u
+#define V9X_MGA_CRTC_OFFSET   0x13u
+
+int v9x_mga_scanout_active(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
+        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_MGA) {
+        return 0;
+    }
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
+}
+
+int v9x_mga_set_display_start(DWORD byte_offset)
+{
+    v9x_u32 start;
+    unsigned char ext0;
+
+    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul) {
+        return 0;
+    }
+    v9x_outp(V9X_MGA_CRTCEXT_INDEX, V9X_MGA_CRTCEXT0);
+    ext0 = v9x_inp(V9X_MGA_CRTCEXT_DATA);
+    if (v9x_mga_display_start(byte_offset, v9x_hal->fb.pitch,
+                              v9x_read_crtc(V9X_MGA_CRTC_OFFSET), ext0,
+                              v9x_hal->fb.vram_bytes, &start) !=
+            V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_write_crtc(0x0du, (unsigned char)(start & 0xfful));
+    v9x_write_crtc(0x0cu, (unsigned char)((start >> 8) & 0xfful));
+    v9x_outp(V9X_MGA_CRTCEXT_INDEX, V9X_MGA_CRTCEXT0);
+    v9x_outp(V9X_MGA_CRTCEXT_DATA,
+             (unsigned char)v9x_mga_crtcext0_with_start(ext0, start));
+    return 1;
+}
+
 const V9X_ENGINE32_OPS v9x_engine32_mga = {
     v9x_mga_ready,
     v9x_mga_validate,
