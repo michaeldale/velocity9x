@@ -18,11 +18,13 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.14.0**: a Glide 2.x driver, `GLIDE2X.DLL`, so games
-written for 3dfx Voodoo cards draw through Velocity9x's 3D engines. Need
-for Speed II SE races on the Intel GMA 950; no other card has run it. A
-Voodoo card's own Glide is kept. See the [changelog](CHANGELOG.md).
-Download it from [releases/0.14.0](releases/0.14.0/README.md).
+**Current version: 0.15.0**: the Matrox Millennium, with DirectDraw, GDI
+and text on its drawing engine; OpenGL fog and 112 more OpenGL entry
+points; and two buttons in Display Properties: **Check for updates**,
+which installs a signed newer release in place, and **Send report**,
+which sends the diagnostic files for a GitHub issue. See the
+[changelog](CHANGELOG.md).
+Download it from [releases/0.15.0](releases/0.15.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
