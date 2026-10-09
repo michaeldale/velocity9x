@@ -15,8 +15,9 @@
 
 $script:V9xGlide3ExportCount = 99
 $script:V9xGlide3DiabloCount = 36
+$script:V9xGlide3RollcageCount = 42
 $script:V9xGlide3Written = @(
-    'grGet', 'grGetString',
+    'grGet', 'grGetString', 'grQueryResolutions',
     'grTexMinAddress', 'grTexMaxAddress', 'grTexTextureMemRequired',
     'grTexCalcMemRequired', 'grTexSource', 'grTexDownloadMipMap',
     'grDrawVertexArray', 'grDrawVertexArrayContiguous',
@@ -47,13 +48,17 @@ function Get-V9xGlide3Entries {
         if ([string]$e.Return -notin @('void', 'u32', 'float')) {
             throw "glide3_entrypoints.psd1: $($e.Name) has Return '$($e.Return)'."
         }
-        if ([string]$e.Use -notin @('Diablo', 'Other')) {
+        if ([string]$e.Use -notin @('Diablo', 'Rollcage', 'Both', 'Other')) {
             throw "glide3_entrypoints.psd1: $($e.Name) has Use '$($e.Use)'."
         }
     }
-    $diablo = @($entries | Where-Object { $_.Use -eq 'Diablo' }).Count
+    $diablo = @($entries | Where-Object { $_.Use -in @('Diablo', 'Both') }).Count
     if ($diablo -ne $script:V9xGlide3DiabloCount) {
         throw "glide3_entrypoints.psd1 marks $diablo Diablo entries; D2Glide.dll imports $script:V9xGlide3DiabloCount."
+    }
+    $rollcage = @($entries | Where-Object { $_.Use -in @('Rollcage', 'Both') }).Count
+    if ($rollcage -ne $script:V9xGlide3RollcageCount) {
+        throw "glide3_entrypoints.psd1 marks $rollcage Rollcage entries; its ROLLCAGE.EXE imports $script:V9xGlide3RollcageCount."
     }
     foreach ($name in $script:V9xGlide3Written) {
         if ($name -notin $names) {

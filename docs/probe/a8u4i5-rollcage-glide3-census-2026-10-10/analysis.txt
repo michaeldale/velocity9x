@@ -1,0 +1,341 @@
+========================================================================
+process 1: attach census build=6561d08-dirty process=C:\PROGRAM FILES\PSYGNOSIS\ROLLCAGE\GLIDE\ROLLCAGE.EXE
+last summary (detach): swaps=0
+    grGlideInit                    1
+    grQueryResolutions             1
+
+queries:
+
+distinct state arguments (logged sets; captured frames repeat them):
+  grGlideInit
+        x1
+
+draws (mode, count[, stride]) as logged:
+    grDrawTriangle logged x0
+
+texture infos (Glide 3 LOD/aspect log2 numbers):
+
+first vertices as floats (x y r g b q s t at the declared offsets):
+    LFB calls: 0
+
+========================================================================
+process 2: attach census build=0320d07-dirty process=C:\PROGRAM FILES\PSYGNOSIS\ROLLCAGE\GLIDE\ROLLCAGE.EXE
+last summary (shutdown): swaps=2794
+    grAlphaBlendFunction           146763
+    grAlphaCombine                 1
+    grBufferClear                  2795
+    grBufferSwap                   2794
+    grChromakeyMode                1
+    grChromakeyValue               1
+    grClipWindow                   8364
+    grColorCombine                 44355
+    grCoordinateSpace              1
+    grCullMode                     1
+    grDepthBufferFunction          3
+    grDepthBufferMode              1
+    grDepthMask                    149559
+    grDitherMode                   1
+    grDrawTriangle                 312800
+    grDrawVertexArray              1509804
+    grDrawVertexArrayContiguous    1662847
+    grFogColorValue                1
+    grFogMode                      3707
+    grGet                          8
+    grGlideInit                    2
+    grGlideShutdown                2
+    grQueryResolutions             4
+    grRenderBuffer                 1
+    grSstSelect                    1
+    grSstWinClose                  1
+    grSstWinOpen                   1
+    grTexClampMode                 1
+    grTexCombine                   208645
+    grTexDownloadMipMap            1146
+    grTexDownloadTable             208644
+    grTexFilterMode                2787
+    grTexMaxAddress                5
+    grTexMinAddress                5
+    grTexMipMapMode                1
+    grTexSource                    208644
+    grTexTextureMemRequired        151
+    grVertexLayout                 11
+    guGammaCorrectionRGB           1
+
+queries:
+    grQueryResolutions template=FFFFFFFF,00000000,00000002,00000001 -> 32 bytes
+    grGet pname=0F -> 1 (4 bytes)
+    grGet pname=27 -> 1 (8 bytes)
+    grGet pname=13 -> 1 (4 bytes)
+    grGet pname=02 -> 5 (16 bytes)
+
+grSstWinOpen (hwnd, res, refresh, cformat, origin, colbuf, auxbuf):
+    0000038C 00000007 00000000 00000002 00000000 00000002 00000001
+
+grVertexLayout (param, offset, mode) in call order:
+    FOG_EXT  offset=0   disable
+    PARGB    offset=0   disable
+    ST2      offset=0   disable
+    Z        offset=0   disable
+    W        offset=0   disable
+    XY       offset=0   enable
+    RGB      offset=8   enable
+    Q        offset=20  enable
+    Q0       offset=20  enable
+    ST0      offset=24  enable
+    ST1      offset=24  enable
+
+distinct state arguments (logged sets; captured frames repeat them):
+  grAlphaBlendFunction
+      00000004 00000000 00000004 00000000  x41  rgb ONE/ZERO alpha ONE/ZERO
+      00000004 00000004 00000004 00000004  x23  rgb ONE/ONE alpha ONE/ONE
+      00000000 00000006 00000004 00000004  x5  rgb ZERO/ONE_MINUS_SRC_COLOR alpha ONE/ONE
+  grAlphaCombine
+      00000003 00000008 00000001 00000001 00000000  x1
+  grBufferClear
+      00000000 00000000 0000FFFF  x25
+      18389C00 00000000 0000FFFF  x2
+  grChromakeyMode
+      00000001  x1
+  grChromakeyValue
+      00000000  x1
+  grClipWindow
+      00000000 00000000 00000280 000001E0  x20  (0,0)-(640,480)
+      000001A9 00000005 00000255 00000079  x2  (425,5)-(597,121)
+      000001A9 00000000 00000255 FFFFFFF9  x1  (425,0)-(597,-7)
+      000001A9 00000000 00000255 0000000E  x1  (425,0)-(597,14)
+      000001A9 00000000 00000255 00000023  x1  (425,0)-(597,35)
+      000001A9 00000000 00000255 00000038  x1  (425,0)-(597,56)
+      000001A9 00000000 00000255 0000004D  x1  (425,0)-(597,77)
+      000001A9 00000000 00000255 00000062  x1  (425,0)-(597,98)
+      000001A9 00000003 00000255 00000077  x1  (425,3)-(597,119)
+      00000000 00000005 00000280 000001DB  x1  (0,5)-(640,475)
+  grColorCombine
+      00000003 00000001 00000000 00000001 00000000  x16
+      00000001 00000000 00000000 00000002 00000000  x16
+  grCoordinateSpace
+      00000000  x1
+  grCullMode
+      00000000  x1
+  grDepthBufferFunction
+      00000003  x2  LEQUAL
+      00000001  x1  LESS
+  grDepthBufferMode
+      00000002  x1
+  grDepthMask
+      00000001  x45
+      00000000  x24
+  grDitherMode
+      00000001  x1
+  grFogColorValue
+      3C467F00  x1
+  grFogMode
+      00000000  x27
+  grGlideInit
+        x2
+  grGlideShutdown
+        x2
+  grRenderBuffer
+      00000001  x1
+  grSstSelect
+      00000000  x1
+  grSstWinClose
+      00000001  x1
+  grTexClampMode
+      00000000 00000001 00000001  x1
+  grTexCombine
+      00000000 00000001 00000000 00000001 00000000 00000000 00000000  x93
+  grTexFilterMode
+      00000000 00000001 00000001  x26
+  grTexMaxAddress
+      00000000  x5
+  grTexMinAddress
+      00000000  x5
+  grTexMipMapMode
+      00000000 00000000 00000000  x1
+  guGammaCorrectionRGB
+      3FB00000 3FB00000 3FB00000  x1
+
+draws (mode, count[, stride]) as logged:
+    grDrawVertexArray            TRIANGLES  count=6   stride=None  x278
+    grDrawVertexArrayContiguous  POLYGON    count=3   stride=32  x75
+    grDrawVertexArrayContiguous  POLYGON    count=4   stride=32  x41
+    grDrawVertexArrayContiguous  POLYGON    count=5   stride=32  x1
+    grDrawVertexArrayContiguous  POLYGON    count=6   stride=32  x1
+    grDrawTriangle logged x228
+
+texture infos (Glide 3 LOD/aspect log2 numbers):
+    small=8 large=8 aspect=0 format=05  x1
+    small=8 large=8 aspect=1 format=05  x1
+    small=8 large=8 aspect=2 format=05  x1
+    small=8 large=8 aspect=3 format=05  x1
+    download addresses: 106 distinct, 0x0..0x1DC000
+
+first vertices as floats (x y r g b q s t at the declared offsets):
+    grDrawVertexArrayContiguous  0 0 254 254 254 0.4762 0.2333 0.2333
+    grDrawVertexArrayContiguous  256 0 254 254 254 0.4762 121.7 0.2333
+    grDrawVertexArrayContiguous  256 0 254 254 254 0.4762 0.2333 0.2333
+    grDrawVertexArrayContiguous  512 0 254 254 254 0.4762 121.7 0.2333
+    grDrawVertexArrayContiguous  512 0 254 254 254 0.4762 0.2333 0.2333
+    grDrawVertexArrayContiguous  640 0 254 254 254 0.4762 60.71 0.2333
+    LFB calls: 0
+
+========================================================================
+process 3: attach census build=0320d07-dirty process=C:\PROGRAM FILES\PSYGNOSIS\ROLLCAGE\GLIDE\ROLLCAGE.EXE
+last summary (detach): swaps=2242
+    grAlphaBlendFunction           136982
+    grAlphaCombine                 1
+    grBufferClear                  2243
+    grBufferSwap                   2242
+    grChromakeyMode                1
+    grChromakeyValue               1
+    grClipWindow                   6712
+    grColorCombine                 29395
+    grCoordinateSpace              1
+    grCullMode                     1
+    grDepthBufferFunction          3
+    grDepthBufferMode              1
+    grDepthMask                    139226
+    grDitherMode                   1
+    grDrawTriangle                 310698
+    grDrawVertexArray              1106077
+    grDrawVertexArrayContiguous    1489473
+    grFogColorValue                1
+    grFogMode                      2601
+    grGet                          7
+    grGlideInit                    1
+    grGlideShutdown                1
+    grQueryResolutions             2
+    grRenderBuffer                 1
+    grSstSelect                    1
+    grSstWinClose                  1
+    grSstWinOpen                   1
+    grTexClampMode                 1
+    grTexCombine                   211490
+    grTexDownloadMipMap            1995
+    grTexDownloadTable             211489
+    grTexFilterMode                2237
+    grTexMaxAddress                4
+    grTexMinAddress                4
+    grTexMipMapMode                1
+    grTexSource                    211489
+    grTexTextureMemRequired        110
+    grVertexLayout                 11
+    guGammaCorrectionRGB           1
+
+queries:
+    grGet pname=0F -> 1 (4 bytes)
+    grQueryResolutions template=FFFFFFFF,00000000,00000002,00000001 -> 32 bytes
+    grGet pname=27 -> 1 (8 bytes)
+    grGet pname=13 -> 1 (4 bytes)
+    grGet pname=02 -> 5 (16 bytes)
+
+grSstWinOpen (hwnd, res, refresh, cformat, origin, colbuf, auxbuf):
+    00000400 00000007 00000000 00000002 00000000 00000002 00000001
+
+grVertexLayout (param, offset, mode) in call order:
+    FOG_EXT  offset=0   disable
+    PARGB    offset=0   disable
+    ST2      offset=0   disable
+    Z        offset=0   disable
+    W        offset=0   disable
+    XY       offset=0   enable
+    RGB      offset=8   enable
+    Q        offset=20  enable
+    Q0       offset=20  enable
+    ST0      offset=24  enable
+    ST1      offset=24  enable
+
+distinct state arguments (logged sets; captured frames repeat them):
+  grAlphaBlendFunction
+      00000004 00000000 00000004 00000000  x49  rgb ONE/ZERO alpha ONE/ZERO
+      00000004 00000004 00000004 00000004  x23  rgb ONE/ONE alpha ONE/ONE
+      00000000 00000006 00000004 00000004  x4  rgb ZERO/ONE_MINUS_SRC_COLOR alpha ONE/ONE
+  grAlphaCombine
+      00000003 00000008 00000001 00000001 00000000  x1
+  grBufferClear
+      00000000 00000000 0000FFFF  x25
+      00000800 00000000 0000FFFF  x2
+  grChromakeyMode
+      00000001  x1
+  grChromakeyValue
+      00000000  x1
+  grClipWindow
+      00000000 00000000 00000280 000001E0  x20  (0,0)-(640,480)
+      000001A9 00000005 00000255 00000079  x2  (425,5)-(597,121)
+      000001A9 00000000 00000255 00000004  x1  (425,0)-(597,4)
+      000001A9 00000000 00000255 0000000E  x1  (425,0)-(597,14)
+      000001A9 00000000 00000255 00000023  x1  (425,0)-(597,35)
+      000001A9 00000000 00000255 00000038  x1  (425,0)-(597,56)
+      000001A9 00000000 00000255 00000058  x1  (425,0)-(597,88)
+      000001A9 00000000 00000255 00000062  x1  (425,0)-(597,98)
+      000001A9 00000003 00000255 00000077  x1  (425,3)-(597,119)
+  grColorCombine
+      00000003 00000001 00000000 00000001 00000000  x21
+      00000001 00000000 00000000 00000002 00000000  x21
+  grCoordinateSpace
+      00000000  x1
+  grCullMode
+      00000000  x1
+  grDepthBufferFunction
+      00000003  x2  LEQUAL
+      00000001  x1  LESS
+  grDepthBufferMode
+      00000002  x1
+  grDepthMask
+      00000001  x53
+      00000000  x23
+  grDitherMode
+      00000001  x1
+  grFogColorValue
+      3C467F00  x1
+  grFogMode
+      00000000  x27
+  grGlideInit
+        x1
+  grGlideShutdown
+        x1
+  grRenderBuffer
+      00000001  x1
+  grSstSelect
+      00000000  x1
+  grSstWinClose
+      00000001  x1
+  grTexClampMode
+      00000000 00000001 00000001  x1
+  grTexCombine
+      00000000 00000001 00000000 00000001 00000000 00000000 00000000  x141
+  grTexFilterMode
+      00000000 00000001 00000001  x26
+  grTexMaxAddress
+      00000000  x4
+  grTexMinAddress
+      00000000  x4
+  grTexMipMapMode
+      00000000 00000000 00000000  x1
+  guGammaCorrectionRGB
+      3FB00000 3FB00000 3FB00000  x1
+
+draws (mode, count[, stride]) as logged:
+    grDrawVertexArray            TRIANGLES  count=6   stride=None  x648
+    grDrawVertexArrayContiguous  POLYGON    count=3   stride=32  x104
+    grDrawVertexArrayContiguous  POLYGON    count=4   stride=32  x63
+    grDrawVertexArrayContiguous  POLYGON    count=5   stride=32  x2
+    grDrawVertexArrayContiguous  POLYGON    count=6   stride=32  x1
+    grDrawTriangle logged x306
+
+texture infos (Glide 3 LOD/aspect log2 numbers):
+    small=8 large=8 aspect=0 format=05  x1
+    small=8 large=8 aspect=1 format=05  x1
+    small=8 large=8 aspect=3 format=05  x1
+    small=8 large=8 aspect=2 format=05  x1
+    download addresses: 86 distinct, 0x0..0x200000
+
+first vertices as floats (x y r g b q s t at the declared offsets):
+    grDrawVertexArrayContiguous  0 0 254 254 254 0.4762 0.2333 0.2333
+    grDrawVertexArrayContiguous  256 0 254 254 254 0.4762 121.7 0.2333
+    grDrawVertexArrayContiguous  256 0 254 254 254 0.4762 0.2333 0.2333
+    grDrawVertexArrayContiguous  512 0 254 254 254 0.4762 121.7 0.2333
+    grDrawVertexArrayContiguous  512 0 254 254 254 0.4762 0.2333 0.2333
+    grDrawVertexArrayContiguous  640 0 254 254 254 0.4762 60.71 0.2333
+    LFB calls: 0
+

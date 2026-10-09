@@ -2,10 +2,12 @@
 
 Date: 2026-10-10
 
-Status: Phase 0 in progress. The census DLL is built and Diablo II's menus
-are measured on A8U4I5 (Rage XL)
-([2026-10-10-diablo2-glide3-census.md](../decisions/2026-10-10-diablo2-glide3-census.md));
-the in-game census is open.
+Status: Phase 0 in progress. The census DLL is built. On A8U4I5 (Rage XL)
+it has measured Diablo II's menus
+([2026-10-10-diablo2-glide3-census.md](../decisions/2026-10-10-diablo2-glide3-census.md))
+and Rollcage's start-up and unattended 3D
+([2026-10-10-rollcage-glide3-census.md](../decisions/2026-10-10-rollcage-glide3-census.md)).
+Both games' in-game census is open.
 
 ## Context
 
@@ -22,6 +24,8 @@ surfaces it owns, so every engine that serves the OpenGL ICD and Glide 2
 serves Glide 3 too.
 
 - **First game:** Diablo II, the 1.0 shareware demo, on A8U4I5.
+- **Second game:** the Rollcage demo (Psygnosis 1999), also on A8U4I5. It
+  adds a depth buffer, `grDrawTriangle` and the mode query.
 - **First engine:** the Rage XL (Mach64). It has no software fallback for a
   draw it refuses, so every state the game uses must be one the engine
   takes, or the DLL must lower it to one.
@@ -76,6 +80,13 @@ the in-game census comes from the first run that shows frames.
 2. Done: the menus, recorded in the decision above.
 3. Open: in-game. Either drive the game blind with the coordinates from a
    DirectDraw run, or take it from the Phase 3 DLL once frames show.
+4. Done: Rollcage, the second Glide 3 title
+   ([2026-10-10-rollcage-glide3-census.md](../decisions/2026-10-10-rollcage-glide3-census.md)).
+   Its start-up, settings dialog and two unattended 3D runs are measured.
+   It needs `grQueryResolutions` to start at all. Depth is a W-buffer from
+   Q with one aux buffer; colour is float RGB; drawing is `GR_POLYGON`,
+   `GR_TRIANGLES` and `grDrawTriangle`. It uses no mipmaps, no fog and no
+   LFB. A player's race is taken from the real DLL, as for Diablo II.
 
 **Gate:** check-tree green; the decision record and its evidence committed.
 

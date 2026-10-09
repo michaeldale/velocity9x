@@ -1,0 +1,12 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\Software\Psygnosis]
+
+[HKEY_LOCAL_MACHINE\Software\Psygnosis\Rollcage]
+
+[HKEY_LOCAL_MACHINE\Software\Psygnosis\Rollcage\Installer]
+"Destination"="C:\\Program Files\\Psygnosis\\Rollcage"
+"Language"=dword:00000000
+"Uninstall"="\"C:\\WINDOWS\\ISUNINST.EXE\" -f\"C:\\Program Files\\Psygnosis\\Rollcage\\Uninst.isu\""
+"Source"="C:\\RCDEMO\\DISK1\\"
+

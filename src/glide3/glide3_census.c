@@ -347,6 +347,87 @@ v9x_u32 __stdcall grGetString(v9x_u32 pname)
     return (v9x_u32)answer;
 }
 
+/*
+ * grQueryResolutions(template, output): the GrResolution entries
+ * (resolution, refresh, numColorBuffers, numAuxBuffers; 16 bytes) that
+ * match the template, GR_QUERY_ANY matching any value. Returns their size
+ * in bytes and writes them to output when it is not null, so a caller asks
+ * twice: once for the size, once for the list. Rollcage fills its mode
+ * list from it and offered none while it was a stub (A8U4I5, 2026-10-10).
+ *
+ * The census offers the modes the flip chain has opened (640x480, 800x600,
+ * 1024x768) at 60 Hz, one to three colour buffers and up to one aux
+ * buffer, keeping only those whose 16-bit buffers fit the board's frame
+ * buffer less the 64 KiB 3dfx's own check holds back for the FIFO.
+ */
+#define V9X_GR_QUERY_ANY          0xfffffffful
+#define V9X_GR_REFRESH_60Hz       0x00ul
+#define V9X_GR_RESOLUTION_ENTRY   16ul
+#define V9X_G3_COLOR_BUFFERS_MAX  3ul
+#define V9X_G3_AUX_BUFFERS_MAX    1ul
+#define V9X_G3_FIFO_RESERVE       0x10000ul
+
+static const v9x_u32 v9x_g3_modes[3][3] = {
+    { 0x07ul, 640ul, 480ul },
+    { 0x08ul, 800ul, 600ul },
+    { 0x0cul, 1024ul, 768ul }
+};
+
+static int v9x_g3_matches(v9x_u32 wanted, v9x_u32 value)
+{
+    return wanted == V9X_GR_QUERY_ANY || wanted == value;
+}
+
+v9x_u32 __stdcall grQueryResolutions(v9x_u32 res_template, v9x_u32 output);
+v9x_u32 __stdcall grQueryResolutions(v9x_u32 res_template, v9x_u32 output)
+{
+    const v9x_u32 *want = (const v9x_u32 *)res_template;
+    v9x_u32 *out = (v9x_u32 *)output;
+    v9x_u32 args[2];
+    v9x_u32 size = 0ul;
+    v9x_u32 mode;
+    v9x_u32 color;
+    v9x_u32 aux;
+    char text[160];
+
+    args[0] = res_template;
+    args[1] = output;
+    v9x_g3_call(V9X_GLIDE3_IX_grQueryResolutions, args, 2u);
+    if (want == 0) {
+        v9x_g3_note("grQueryResolutions template=null -> 0");
+        return 0ul;
+    }
+    for (mode = 0ul; mode < 3ul; ++mode) {
+        if (!v9x_g3_matches(want[0], v9x_g3_modes[mode][0]) ||
+            !v9x_g3_matches(want[1], V9X_GR_REFRESH_60Hz)) {
+            continue;
+        }
+        for (color = 1ul; color <= V9X_G3_COLOR_BUFFERS_MAX; ++color) {
+            for (aux = 0ul; aux <= V9X_G3_AUX_BUFFERS_MAX; ++aux) {
+                if (!v9x_g3_matches(want[2], color) ||
+                    !v9x_g3_matches(want[3], aux) ||
+                    v9x_g3_modes[mode][1] * v9x_g3_modes[mode][2] * 2ul *
+                        (color + aux) >=
+                        V9X_G3_MEMORY_FB - V9X_G3_FIFO_RESERVE) {
+                    continue;
+                }
+                size += V9X_GR_RESOLUTION_ENTRY;
+                if (out != 0) {
+                    out[0] = v9x_g3_modes[mode][0];
+                    out[1] = V9X_GR_REFRESH_60Hz;
+                    out[2] = color;
+                    out[3] = aux;
+                    out += 4;
+                }
+            }
+        }
+    }
+    wsprintfA(text, "grQueryResolutions template=%08lX,%08lX,%08lX,%08lX -> %lu bytes",
+              want[0], want[1], want[2], want[3], size);
+    v9x_g3_note(text);
+    return size;
+}
+
 /* ---- texture memory -------------------------------------------------- */
 
 /*
