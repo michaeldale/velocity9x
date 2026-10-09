@@ -637,6 +637,7 @@ static void v9x_publish_hardware_diagnostics(void)
      * thing without either half having to know about the other.
      */
     v9x_write_hardware_info("GdiAcceleration", v9x_gdi_accel_state_text());
+    v9x_write_hardware_info("EngineCaps", v9x_gdi_accel_engine_caps_text());
     /*
      * The same split, for the same reason. Direct3D= is the chip module's
      * manifest word for what the silicon has ("hardware-s3d" on the ViRGE,

@@ -11,8 +11,25 @@
 typedef struct v9x_settings_status {
     char adapter_name[96];
     char pci_id[24];
+    /* The PCI revision from the device's Enum key name (REV_xx), or
+     * "Unavailable" for a card Windows did not enumerate on PCI. */
+    char revision[16];
     char video_memory[48];
     char active_mode[48];
+    /* The page's split of the mode: "800 x 600", "16-bit (65,536 colours)"
+     * and the refresh as GDI reports it. */
+    char resolution[24];
+    char colour_depth[40];
+    char refresh_rate[32];
+    /* The mini-VDD's build, read out of V9XMINI.VXD's own marker, so a
+     * driver and mini-VDD from different builds are visible. */
+    char minivdd_build[48];
+    /* 2D drawing: the engine primitives GDI uses, from GdiAcceleration=. */
+    char gdi_rendering[64];
+    /* Short forms for the page; the long ones stay in the report. */
+    char driver_short[48];
+    char gdi_short[48];
+    char ddraw_test[64];
     char core_clock[96];
     char memory_clock[64];
     char clock_detector[64];
@@ -70,7 +87,7 @@ typedef struct v9x_settings_status {
     /* The runtime mode table's story, from C:\V9XDIAG\V9XMODES.INI: published and
      * hidden counts, or the static-list statement when no inventory exists. */
     char dynamic_modes[128];
-    char report[1536];
+    char report[2048];
 } V9X_SETTINGS_STATUS;
 
 unsigned long v9x_settings_string_length(const char *text);

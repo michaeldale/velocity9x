@@ -1,49 +1,30 @@
-// Velocity9x Display Properties page dialog template.
+// Velocity9x Display Properties page dialog templates.
 // The logo bitmap resource (101) is appended by the build script.
 //
-// HEIGHT IS THE BINDING CONSTRAINT. A property sheet sizes itself to its
-// tallest page, and this page is the tallest, so its height sets the size of
-// the whole native Display Properties dialog. The driver's default first boot
-// is 640x480, where the work area is about 450 pixels tall; a page much over
-// 211 dialog units pushes the OK/Cancel/Apply row off the bottom of the
-// screen and makes the dialog unusable. Rows are on an 11-unit pitch and the
-// logo gets a deliberately modest slot for that reason. Re-check at 640x480
-// after changing anything here.
+// Two pages, both at the size of the stock Display Properties tabs (252 x
+// 222 units). A property sheet sizes itself to its largest page, so a wider
+// or taller page changes the whole native dialog: wider makes every other
+// tab look wrong (tried 2026-10-09 at 340 and rejected), taller pushes the
+// OK/Cancel/Apply row off a 640x480 screen, the driver's default first boot.
+// What does not fit goes on the second page, not into a bigger one.
+// Re-check at 640x480 after changing anything here.
 //
-// The logo slot must also stay larger than the generated bitmap in both axes:
+// Velocity9x: what the card and driver are, read-only, with the logo.
+// Velocity9x Advanced: everything that writes SYSTEM.INI.
+//
+// The logo slot must stay larger than the generated bitmap in both axes:
 // SS_CENTERIMAGE centres the image and clips whatever does not fit rather
-// than scaling it. The bitmap is generated at 185x37 (see
-// scripts/build-settings-page.ps1) against this 238x24 slot.
+// than scaling it. The bitmap is 185x37 pixels (scripts\build-settings-
+// page.ps1) against this 238x24-unit slot.
 //
-// The Direct3D row is the one exception to that: it is a combo box, not a
-// label, and it is the only control here that changes anything. It replaced
-// the value LTEXT in place rather than being added as a new row, because the
-// height budget above has none to give - a dropped-down combo costs nothing
-// vertically, an extra row costs 11 units and would push the dialog past 211.
-// Its cy of 60 is the dropped-down height; closed it occupies about 12 units
-// from y=122, clearing the 136 row below it.
-//
-// The VSync combo shares the Active mode row for the same reason, the way
-// Video memory shares the PCI ID row, and the DDI 6 combo shares the Mode
-// switching row: its value is cut to 70 units, which is why the mode
-// switching sentences are short; the closed combo spans y=147 to about 159,
-// inside the Acceleration box that ends at 161. The mode value keeps 70 units, which
-// holds "1600 x 1200 x 32 bpp"; the closed combo spans y=60 to about 72,
-// clearing the Clock row at 74.
-//
-// The list is built at run time and holds only what this build implements,
-// which is the same discipline the driver applies to capabilities: an
-// unimplemented mode is not offered. When SYSTEM.INI already names one, the
-// page adds an entry for it so that opening the page cannot silently rewrite
-// a setting somebody put there deliberately.
-//
-// Every other row is a read-only label/value pair. The page previously used
-// disabled checkboxes for "DIB Engine rendering", "Hardware acceleration"
-// and "Live mode switching", but those are statements of fact rather than
-// settings: a permanently checked, permanently greyed box tells the reader
-// nothing it could ever not say. They are value rows now, naming what the
-// driver actually does, and they can report a narrower answer on a chip or a
-// build where less is available.
+// Rows are on an 11-unit pitch for labels and 16 for combo boxes, whose cy
+// (60) is the dropped-down height. Controls for features this driver does
+// not have yet - texture filtering, write combining, running the
+// diagnostics from here - are present and disabled, so the page shows where
+// they will go without promising them. Every combo carries only entries this
+// build implements; when SYSTEM.INI already names something else the page
+// adds an entry for it, so opening the page cannot silently rewrite a
+// setting somebody put there deliberately.
 #include <windows.h>
 #include "settings_propsheet.h"
 
@@ -55,47 +36,80 @@ BEGIN
     CONTROL         "#101", -1, "STATIC", SS_BITMAP | SS_CENTERIMAGE,
                     7, 2, 238, 24
 
-    GROUPBOX        "Display adapter", -1, 7, 30, 238, 58
-    LTEXT           "Adapter:", -1, 14, 41, 56, 8
-    LTEXT           "", V9X_IDC_ADAPTER, 72, 41, 166, 8
-    LTEXT           "PCI ID:", -1, 14, 52, 56, 8
-    LTEXT           "", V9X_IDC_PCI_ID, 72, 52, 58, 8
-    LTEXT           "Video memory:", -1, 134, 52, 50, 8
-    LTEXT           "", V9X_IDC_VIDEO_MEMORY, 186, 52, 52, 8
-    LTEXT           "Active mode:", -1, 14, 63, 56, 8
-    LTEXT           "", V9X_IDC_ACTIVE_MODE, 72, 63, 70, 8
-    LTEXT           "VSync:", -1, 144, 63, 24, 8
-    COMBOBOX        V9X_IDC_VSYNC, 170, 60, 68, 60,
-                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Clock:", -1, 14, 74, 56, 8
-    LTEXT           "", V9X_IDC_CORE_CLOCK, 72, 74, 166, 8
+    GROUPBOX        "Adapter", -1, 7, 28, 238, 45
+    LTEXT           "Adapter:", -1, 14, 38, 50, 8
+    LTEXT           "", V9X_IDC_ADAPTER, 66, 38, 174, 8
+    LTEXT           "PCI ID:", -1, 14, 49, 50, 8
+    LTEXT           "", V9X_IDC_PCI_ID, 66, 49, 56, 8
+    LTEXT           "Revision:", -1, 128, 49, 40, 8
+    LTEXT           "", V9X_IDC_REVISION, 170, 49, 70, 8
+    LTEXT           "Video memory:", -1, 14, 60, 50, 8
+    LTEXT           "", V9X_IDC_VIDEO_MEMORY, 66, 60, 56, 8
+    LTEXT           "Mini-VDD:", -1, 128, 60, 40, 8
+    LTEXT           "", V9X_IDC_MINIVDD, 170, 60, 70, 8
 
-    GROUPBOX        "Acceleration", -1, 7, 92, 238, 69
-    LTEXT           "Rendering:", -1, 14, 103, 56, 8
-    LTEXT           "", V9X_IDC_RENDERING, 72, 103, 166, 8
-    LTEXT           "DirectDraw:", -1, 14, 114, 56, 8
-    LTEXT           "", V9X_IDC_DIRECTDRAW, 72, 114, 166, 8
-    LTEXT           "Direct3D:", -1, 14, 125, 56, 8
-    COMBOBOX        V9X_IDC_DIRECT3D_MODE, 72, 122, 166, 60,
-                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "16-bit colour:", -1, 14, 139, 56, 8
-    COMBOBOX        V9X_IDC_COLOUR_LAYOUT, 72, 136, 166, 60,
-                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Mode switching:", -1, 14, 150, 56, 8
-    LTEXT           "", V9X_IDC_MODE_SWITCH, 72, 150, 70, 8
-    LTEXT           "DDI 6:", -1, 144, 150, 24, 8
-    COMBOBOX        V9X_IDC_DDI, 170, 147, 68, 60,
-                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Display mode", -1, 7, 76, 238, 45
+    LTEXT           "Resolution:", -1, 14, 86, 50, 8
+    LTEXT           "", V9X_IDC_RESOLUTION, 66, 86, 56, 8
+    LTEXT           "Refresh:", -1, 128, 86, 40, 8
+    LTEXT           "", V9X_IDC_REFRESH, 170, 86, 70, 8
+    LTEXT           "Colour depth:", -1, 14, 97, 50, 8
+    LTEXT           "", V9X_IDC_COLOUR_DEPTH, 66, 97, 174, 8
+    LTEXT           "Switching:", -1, 14, 108, 50, 8
+    LTEXT           "", V9X_IDC_MODE_SWITCH, 66, 108, 174, 8
 
-    GROUPBOX        "Runtime diagnostics", -1, 7, 165, 238, 36
-    LTEXT           "Driver / framebuffer:", -1, 14, 176, 66, 8
-    LTEXT           "", V9X_IDC_FRAMEBUFFER, 82, 176, 156, 8
-    LTEXT           "Last GDI test:", -1, 14, 187, 66, 8
-    LTEXT           "", V9X_IDC_GDI_TEST, 82, 187, 156, 8
+    GROUPBOX        "Acceleration", -1, 7, 124, 238, 45
+    LTEXT           "2D (GDI):", -1, 14, 134, 50, 8
+    LTEXT           "", V9X_IDC_RENDERING, 66, 134, 174, 8
+    LTEXT           "DirectDraw:", -1, 14, 145, 50, 8
+    LTEXT           "", V9X_IDC_DIRECTDRAW, 66, 145, 174, 8
+    LTEXT           "Direct3D:", -1, 14, 156, 50, 8
+    LTEXT           "", V9X_IDC_DIRECT3D, 66, 156, 174, 8
 
-    LTEXT           "", V9X_IDC_VERSION, 7, 206, 80, 8
-    LTEXT           "", V9X_IDC_BUILD, 89, 206, 96, 8
-    LTEXT           "", V9X_IDC_NOTICE, 0, 0, 0, 0
+    GROUPBOX        "Diagnostics", -1, 7, 172, 238, 34
+    LTEXT           "Driver:", -1, 14, 182, 50, 8
+    LTEXT           "", V9X_IDC_FRAMEBUFFER, 66, 182, 60, 8
+    LTEXT           "GDI test:", -1, 128, 182, 40, 8
+    LTEXT           "", V9X_IDC_GDI_TEST, 170, 182, 70, 8
+    LTEXT           "DirectDraw test:", -1, 14, 193, 56, 8
+    LTEXT           "", V9X_IDC_DDRAW_TEST, 72, 193, 168, 8
 
-    PUSHBUTTON      "Copy report", V9X_IDC_COPY_REPORT, 190, 204, 55, 14
+    LTEXT           "", V9X_IDC_VERSION, 7, 210, 64, 8
+    LTEXT           "", V9X_IDC_BUILD, 73, 210, 76, 8
+    PUSHBUTTON      "Copy report", V9X_IDC_COPY_REPORT, 151, 208, 50, 13
+    PUSHBUTTON      "About...", V9X_IDC_ABOUT, 205, 208, 40, 13
+END
+
+V9X_ID_PAGE_ADVANCED DIALOG 0, 0, 252, 222
+STYLE DS_3DLOOK | WS_CHILD | WS_DISABLED | WS_CAPTION
+CAPTION "Velocity9x Advanced"
+FONT 8, "MS Sans Serif"
+BEGIN
+    GROUPBOX        "3D", -1, 7, 4, 238, 78
+    LTEXT           "Direct3D:", -1, 14, 18, 64, 8
+    COMBOBOX        V9X_IDC_DIRECT3D_MODE, 80, 15, 160, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Direct3D 8 DDI:", -1, 14, 34, 64, 8
+    COMBOBOX        V9X_IDC_DDI, 80, 31, 160, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Texture filtering:", -1, 14, 50, 64, 8, WS_DISABLED
+    COMBOBOX        V9X_IDC_TEXTURE_FILTER, 80, 47, 160, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_DISABLED
+    LTEXT           "Direct3D needs a restart to change. The DDI applies to the next Direct3D program.", -1, 14, 64, 226, 16
+
+    GROUPBOX        "Display", -1, 7, 86, 238, 74
+    LTEXT           "Vertical sync:", -1, 14, 100, 64, 8
+    COMBOBOX        V9X_IDC_VSYNC, 80, 97, 160, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "16-bit colour:", -1, 14, 116, 64, 8
+    COMBOBOX        V9X_IDC_COLOUR_LAYOUT, 80, 113, 160, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX    "Write combining (MTRR)", V9X_IDC_WRITE_COMBINE,
+                    14, 130, 226, 10, WS_DISABLED
+    LTEXT           "Vertical sync applies to the next DirectDraw program; the colour layout needs a restart.", -1, 14, 143, 226, 16
+
+    GROUPBOX        "Diagnostics", -1, 7, 164, 238, 34
+    LTEXT           "Exercise the driver's GDI and DirectDraw paths and record the results.", -1, 14, 176, 140, 16
+    PUSHBUTTON      "Run diagnostics...", V9X_IDC_RUN_DIAGNOSTICS,
+                    160, 177, 80, 14, WS_DISABLED
 END

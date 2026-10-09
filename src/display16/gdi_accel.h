@@ -48,6 +48,13 @@ void v9x_gdi_accel_flush_report(void);
  */
 const char *v9x_gdi_accel_state_text(void);
 
+/*
+ * The chip's engine capability bits as its descriptor reported them at this
+ * Enable, as eight hex digits, for the EngineCaps= diagnostics key. Returns a
+ * static string; never null. 00000000 for a chip with no descriptor.
+ */
+const char *v9x_gdi_accel_engine_caps_text(void);
+
 /* V9X_GDIGETSTATS. Non-zero when the block was filled in. */
 WORD v9x_gdi_accel_stats(void FAR *output);
 

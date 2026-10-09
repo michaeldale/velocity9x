@@ -35,7 +35,9 @@ $libraries = @(
     (Join-Path $watcomRoot "lib386\nt\kernel32.lib"),
     (Join-Path $watcomRoot "lib386\nt\user32.lib"),
     (Join-Path $watcomRoot "lib386\nt\gdi32.lib"),
-    (Join-Path $watcomRoot "lib386\nt\shell32.lib")
+    (Join-Path $watcomRoot "lib386\nt\shell32.lib"),
+    # settings_status.c reads the PCI revision from the device's Enum key.
+    (Join-Path $watcomRoot "lib386\nt\advapi32.lib")
 )
 $logoSource = Join-Path $repoRoot "logo\velocity9x-logo-concept.png"
 $missingInputs = @(@($compiler, $linker, $dumper, $resourceCompiler,
@@ -171,7 +173,8 @@ $dllNames = [regex]::Matches($dumpText, "DLL name = <([^>]+)>") |
     ForEach-Object { $_.Groups[1].Value.ToUpperInvariant() } |
     Sort-Object -Unique
 $unexpectedDlls = @($dllNames | Where-Object {
-    $_ -notin @("KERNEL32.DLL", "USER32.DLL", "GDI32.DLL", "SHELL32.DLL")
+    $_ -notin @("KERNEL32.DLL", "USER32.DLL", "GDI32.DLL", "SHELL32.DLL",
+                "ADVAPI32.DLL")
 })
 if ($unexpectedDlls.Count -ne 0 -or
     $dumpText -match "GetCommandLineW|GetModuleFileNameW|__CHK") {

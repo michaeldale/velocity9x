@@ -1239,6 +1239,29 @@ void v9x_gdi_accel_configure(void)
     }
 }
 
+/*
+ * What the settings page needs to say which DirectDraw operations run on the
+ * engine, published at every Enable. DirectDraw's own EngineStamp= carries
+ * the same bits but is written only when DirectDraw builds its driver object,
+ * and the next Enable - any mode change - clears the section it lives in, so
+ * on most boots the page found nothing (A8U4I5, 2026-10-09). These are the
+ * descriptor's bits before dd16.c adds its Direct3D and vsync policy ones,
+ * which is all the page reads.
+ */
+const char *v9x_gdi_accel_engine_caps_text(void)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    static char text[9];
+    WORD index;
+
+    for (index = 0u; index < 8u; ++index) {
+        text[index] = digits[(WORD)((v9x_gdi_engine_caps >>
+                                     ((7u - index) * 4u)) & 0xful)];
+    }
+    text[8] = '\0';
+    return text;
+}
+
 const char *v9x_gdi_accel_state_text(void)
 {
     if (v9x_gdi_poisoned != 0u) {

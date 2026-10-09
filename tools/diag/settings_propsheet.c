@@ -644,7 +644,55 @@ static BOOL v9x_guid_equal(const V9X_GUID *left, const V9X_GUID *right)
 }
 
 /*
- * Property page dialog procedure.
+ * Let a combo's dropped list be wider than the closed control, so a label cut
+ * short in the closed box reads in full when the list is open.
+ */
+static void v9x_page_widen_list(HWND dialog, int control)
+{
+    HWND combo = GetDlgItem(dialog, control);
+    RECT units;
+
+    if (combo == 0) {
+        return;
+    }
+    units.left = 0;
+    units.top = 0;
+    units.right = 200;
+    units.bottom = 8;
+    MapDialogRect(dialog, &units);
+    SendMessageA(combo, CB_SETDROPPEDWIDTH, (WPARAM)units.right, 0);
+}
+
+static void v9x_page_about(HWND dialog)
+{
+    MessageBoxA(dialog,
+                "Velocity9x " V9X_VERSION_STRING "\n"
+                "Build " V9X_BUILD_ID "\n\n"
+                "A display driver for Windows 95 and 98: a 16-bit display "
+                "driver, a DirectDraw and Direct3D HAL, and a mini-VDD.\n\n"
+                "Settings on this page are stored in SYSTEM.INI under "
+                "[Velocity9x]. Copy report puts the full diagnostic report "
+                "on the clipboard.",
+                "About Velocity9x", MB_OK | MB_ICONINFORMATION);
+}
+
+/* Disabled controls for features this driver does not have yet, each with
+ * the one entry that says so. */
+static void v9x_page_fill_unavailable(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_TEXTURE_FILTER);
+
+    if (combo != 0) {
+        SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+        SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)"Not available");
+        SendMessageA(combo, CB_SETCURSEL, 0, 0);
+    }
+    CheckDlgButton(dialog, V9X_IDC_WRITE_COMBINE, BST_UNCHECKED);
+}
+
+/*
+ * The Velocity9x page: what the card and driver are. Read-only, apart from
+ * the three buttons, none of which writes anything.
  */
 static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
                                           UINT message,
@@ -659,29 +707,32 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         SetDlgItemTextA(dialog, V9X_IDC_ADAPTER,
                         v9x_page_status.adapter_name);
         SetDlgItemTextA(dialog, V9X_IDC_PCI_ID, v9x_page_status.pci_id);
+        SetDlgItemTextA(dialog, V9X_IDC_REVISION, v9x_page_status.revision);
         SetDlgItemTextA(dialog, V9X_IDC_VIDEO_MEMORY,
                         v9x_page_status.video_memory);
-        SetDlgItemTextA(dialog, V9X_IDC_ACTIVE_MODE,
-                        v9x_page_status.active_mode);
-        SetDlgItemTextA(dialog, V9X_IDC_CORE_CLOCK,
-                        v9x_page_status.core_clock);
-        SetDlgItemTextA(dialog, V9X_IDC_RENDERING,
-                        v9x_page_status.rendering);
-        SetDlgItemTextA(dialog, V9X_IDC_DIRECTDRAW,
-                        v9x_page_status.directdraw);
-        v9x_page_fill_d3d(dialog);
-        v9x_page_fill_layout(dialog);
-        v9x_page_fill_vsync(dialog);
-        v9x_page_fill_ddi(dialog);
+        SetDlgItemTextA(dialog, V9X_IDC_MINIVDD,
+                        v9x_page_status.minivdd_build);
+        SetDlgItemTextA(dialog, V9X_IDC_RESOLUTION,
+                        v9x_page_status.resolution);
+        SetDlgItemTextA(dialog, V9X_IDC_REFRESH,
+                        v9x_page_status.refresh_rate);
+        SetDlgItemTextA(dialog, V9X_IDC_COLOUR_DEPTH,
+                        v9x_page_status.colour_depth);
         SetDlgItemTextA(dialog, V9X_IDC_MODE_SWITCH,
                         v9x_page_status.mode_switching);
+        SetDlgItemTextA(dialog, V9X_IDC_RENDERING,
+                        v9x_page_status.gdi_rendering);
+        SetDlgItemTextA(dialog, V9X_IDC_DIRECTDRAW,
+                        v9x_page_status.directdraw);
+        SetDlgItemTextA(dialog, V9X_IDC_DIRECT3D, v9x_page_status.direct3d);
+        SetDlgItemTextA(dialog, V9X_IDC_FRAMEBUFFER,
+                        v9x_page_status.driver_short);
+        SetDlgItemTextA(dialog, V9X_IDC_GDI_TEST, v9x_page_status.gdi_short);
+        SetDlgItemTextA(dialog, V9X_IDC_DDRAW_TEST,
+                        v9x_page_status.ddraw_test);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
                         "Version: " V9X_VERSION_STRING);
         SetDlgItemTextA(dialog, V9X_IDC_BUILD, "Build: " V9X_BUILD_ID);
-        SetDlgItemTextA(dialog, V9X_IDC_FRAMEBUFFER,
-                        v9x_page_status.framebuffer_status);
-        SetDlgItemTextA(dialog, V9X_IDC_GDI_TEST,
-                        v9x_page_status.gdi_status);
         return TRUE;
     case WM_COMMAND:
         if (LOWORD(wparam) == V9X_IDC_COPY_REPORT) {
@@ -689,6 +740,39 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
                                            v9x_page_status.report);
             return TRUE;
         }
+        if (LOWORD(wparam) == V9X_IDC_ABOUT) {
+            v9x_page_about(dialog);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
+/*
+ * The Velocity9x Advanced page: every control that writes SYSTEM.INI, and
+ * the disabled controls for features not built yet. It collects its own
+ * status, since the sheet may open on either page.
+ */
+static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
+                                              UINT message,
+                                              WPARAM wparam,
+                                              LPARAM lparam)
+{
+    switch (message) {
+    case WM_INITDIALOG:
+        (void)lparam;
+        v9x_settings_collect(&v9x_page_status, V9X_VERSION_STRING,
+                             V9X_BUILD_ID);
+        v9x_page_fill_d3d(dialog);
+        v9x_page_fill_layout(dialog);
+        v9x_page_fill_vsync(dialog);
+        v9x_page_fill_ddi(dialog);
+        v9x_page_fill_unavailable(dialog);
+        v9x_page_widen_list(dialog, V9X_IDC_DIRECT3D_MODE);
+        v9x_page_widen_list(dialog, V9X_IDC_COLOUR_LAYOUT);
+        return TRUE;
+    case WM_COMMAND:
         /* Enable Apply only once the selection actually differs from the
          * file, so OK on an untouched page writes nothing. */
         if ((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||
@@ -711,9 +795,9 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         }
         break;
     case WM_NOTIFY:
-        /* Every row but the two selectors is a statement of fact. Apply
-         * succeeds either way: a failed write reports itself in its own box
-         * rather than keeping the user in a dialog they cannot leave. */
+        /* Apply succeeds either way: a failed write reports itself in its
+         * own box rather than keeping the user in a dialog they cannot
+         * leave. */
         if (((NMHDR FAR *)lparam)->code == (UINT)PSN_APPLY) {
             v9x_page_apply(dialog);
             SetWindowLongA(dialog, DWL_MSGRESULT, PSNRET_NOERROR);
@@ -808,25 +892,39 @@ static LONG WINAPI v9x_ext_add_pages(void *self,
     BYTE *bytes = (BYTE *)&page;
     WORD index;
 
+    /* Two pages at the stock tab size rather than one larger page, which
+     * would resize the whole native dialog: the information page, then the
+     * settings page. */
+    static const struct {
+        WORD resource;
+        DLGPROC procedure;
+    } pages[2] = {
+        { V9X_ID_PAGE_DIALOG, (DLGPROC)v9x_page_dialog_proc },
+        { V9X_ID_PAGE_ADVANCED, (DLGPROC)v9x_advanced_dialog_proc }
+    };
+    WORD which;
+
     (void)self;
     if (add_page == 0) {
         return V9X_E_POINTER;
     }
-    for (index = 0u; index < sizeof(page); ++index) {
-        bytes[index] = 0u;
-    }
-    page.dwSize = sizeof(page);
-    page.dwFlags = PSP_DEFAULT;
-    page.hInstance = v9x_page_instance;
-    page.pszTemplate = MAKEINTRESOURCEA(V9X_ID_PAGE_DIALOG);
-    page.pfnDlgProc = (DLGPROC)v9x_page_dialog_proc;
-    handle = CreatePropertySheetPageA(&page);
-    if (handle == 0) {
-        return V9X_E_OUTOFMEMORY;
-    }
-    if (!add_page(handle, lparam)) {
-        DestroyPropertySheetPage(handle);
-        return V9X_E_FAIL;
+    for (which = 0u; which < 2u; ++which) {
+        for (index = 0u; index < sizeof(page); ++index) {
+            bytes[index] = 0u;
+        }
+        page.dwSize = sizeof(page);
+        page.dwFlags = PSP_DEFAULT;
+        page.hInstance = v9x_page_instance;
+        page.pszTemplate = MAKEINTRESOURCEA(pages[which].resource);
+        page.pfnDlgProc = pages[which].procedure;
+        handle = CreatePropertySheetPageA(&page);
+        if (handle == 0) {
+            return V9X_E_OUTOFMEMORY;
+        }
+        if (!add_page(handle, lparam)) {
+            DestroyPropertySheetPage(handle);
+            return V9X_E_FAIL;
+        }
     }
     return V9X_S_OK;
 }

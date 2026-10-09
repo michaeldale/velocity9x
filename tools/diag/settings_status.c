@@ -11,6 +11,7 @@
 #include <windows.h>
 
 #include "velocity9x/d3dmode.h"
+#include "velocity9x/engine_abi.h"
 #include "velocity9x/vsync.h"
 #include "velocity9x/diagpaths.h"
 
@@ -141,6 +142,51 @@ static BOOL v9x_parse_u32(const char *text, DWORD *value)
     return TRUE;
 }
 
+/* The first occurrence of `needle` in `text`, or null. */
+static const char *v9x_find_text(const char *text, const char *needle)
+{
+    DWORD at;
+
+    if (text == 0 || needle == 0 || needle[0] == '\0') {
+        return 0;
+    }
+    for (at = 0ul; text[at] != '\0'; ++at) {
+        DWORD index = 0ul;
+
+        while (needle[index] != '\0' && text[at + index] == needle[index]) {
+            ++index;
+        }
+        if (needle[index] == '\0') {
+            return text + at + index;
+        }
+    }
+    return 0;
+}
+
+/* Exactly eight hex digits, as dd16.c writes every EngineStamp field. */
+static BOOL v9x_parse_hex32(const char *text, DWORD *value)
+{
+    DWORD result = 0ul;
+    DWORD index;
+
+    for (index = 0ul; index < 8ul; ++index) {
+        char digit = text[index];
+
+        result <<= 4;
+        if (digit >= '0' && digit <= '9') {
+            result |= (DWORD)(digit - '0');
+        } else if (digit >= 'A' && digit <= 'F') {
+            result |= (DWORD)(digit - 'A' + 10);
+        } else if (digit >= 'a' && digit <= 'f') {
+            result |= (DWORD)(digit - 'a' + 10);
+        } else {
+            return FALSE;
+        }
+    }
+    *value = result;
+    return TRUE;
+}
+
 static void v9x_format_clock(char *destination,
                              DWORD capacity,
                              const char *khz_text,
@@ -166,6 +212,317 @@ static void v9x_format_clock(char *destination,
     v9x_append(destination, capacity, " MHz");
     if (shared_memory) {
         v9x_append(destination, capacity, " (shared with memory)");
+    }
+}
+
+/*
+ * The PCI revision, from the name Windows gave the device's Enum key:
+ * HKLM\Enum\PCI\VEN_vvvv&DEV_dddd&SUBSYS_ssssssss&REV_rr. Read there rather
+ * than from the chip because the page does no hardware access, and the
+ * driver publishes no revision. A device Windows did not enumerate on PCI -
+ * the VLB Trio64, root-enumerated as *PNP0913 - has no such key.
+ */
+static void v9x_collect_revision(V9X_SETTINGS_STATUS *status)
+{
+    char vendor[8];
+    char device[8];
+    char prefix[24];
+    HKEY pci;
+    DWORD index = 0ul;
+
+    status->revision[0] = '\0';
+    GetPrivateProfileStringA("Velocity9xHardware", "VendorId", "", vendor,
+                             sizeof(vendor), V9X_DIAG_HW_INI);
+    GetPrivateProfileStringA("Velocity9xHardware", "DeviceId", "", device,
+                             sizeof(device), V9X_DIAG_HW_INI);
+    prefix[0] = '\0';
+    v9x_append(prefix, sizeof(prefix), "VEN_");
+    v9x_append(prefix, sizeof(prefix), vendor);
+    v9x_append(prefix, sizeof(prefix), "&DEV_");
+    v9x_append(prefix, sizeof(prefix), device);
+    if (vendor[0] != '\0' && device[0] != '\0' &&
+        RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Enum\\PCI", 0ul, KEY_READ,
+                      &pci) == ERROR_SUCCESS) {
+        for (;;) {
+            char name[96];
+            DWORD length = sizeof(name);
+            const char *rev;
+
+            if (RegEnumKeyExA(pci, index++, name, &length, 0, 0, 0, 0) !=
+                    ERROR_SUCCESS) {
+                break;
+            }
+            if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, name,
+                               (int)v9x_settings_string_length(prefix),
+                               prefix, -1) != CSTR_EQUAL) {
+                continue;
+            }
+            rev = v9x_find_text(name, "&REV_");
+            if (rev != 0 && rev[0] != '\0' && rev[1] != '\0') {
+                status->revision[0] = rev[0];
+                status->revision[1] = rev[1];
+                status->revision[2] = '\0';
+                break;
+            }
+        }
+        RegCloseKey(pci);
+    }
+    if (status->revision[0] == '\0') {
+        v9x_append(status->revision, sizeof(status->revision), "Unavailable");
+    }
+}
+
+/*
+ * The mini-VDD's build, from the "velocity9x:<build>" marker the build
+ * stamps into V9XMINI.VXD (scripts\build-minivdd-skeleton.ps1, which also
+ * fails a build whose image lacks it). The file is read, not loaded.
+ */
+/* Heap, not static: the Watcom linker writes a static array into the image
+ * as zeros, and two of these grew both settings binaries by 96 KiB, which
+ * pushed the s3 floppy over capacity. */
+#define V9X_MINIVDD_READ_BYTES 65536ul
+
+static void v9x_collect_minivdd_build(V9X_SETTINGS_STATUS *status)
+{
+    static const char marker[] = "velocity9x:";
+    char *image;
+    char path[MAX_PATH];
+    HANDLE file;
+    DWORD read = 0ul;
+    DWORD at;
+
+    status->minivdd_build[0] = '\0';
+    image = (char *)HeapAlloc(GetProcessHeap(), 0, V9X_MINIVDD_READ_BYTES);
+    if (image == 0) {
+        v9x_append(status->minivdd_build, sizeof(status->minivdd_build),
+                   "Unavailable");
+        return;
+    }
+    if (GetSystemDirectoryA(path, sizeof(path) - 16u) != 0u) {
+        v9x_append(path, sizeof(path), "\\V9XMINI.VXD");
+        file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0,
+                           OPEN_EXISTING, 0, 0);
+        if (file != INVALID_HANDLE_VALUE) {
+            if (!ReadFile(file, image, V9X_MINIVDD_READ_BYTES - 1ul, &read,
+                          0)) {
+                read = 0ul;
+            }
+            CloseHandle(file);
+        }
+    }
+    image[read] = '\0';
+    for (at = 0ul; at + sizeof(marker) <= read; ++at) {
+        DWORD index = 0ul;
+
+        while (index + 1ul < sizeof(marker) &&
+               image[at + index] == marker[index]) {
+            ++index;
+        }
+        if (index + 1ul == sizeof(marker)) {
+            const char *build = image + at + index;
+            DWORD length = 0ul;
+
+            while (length + 1ul < sizeof(status->minivdd_build) &&
+                   build[length] >= ' ' && build[length] <= '~') {
+                status->minivdd_build[length] = build[length];
+                ++length;
+            }
+            status->minivdd_build[length] = '\0';
+            break;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, image);
+    if (status->minivdd_build[0] == '\0') {
+        v9x_append(status->minivdd_build, sizeof(status->minivdd_build),
+                   "Unavailable");
+    }
+}
+
+#define V9X_DDRAW_SECTION_BYTES 32000ul
+
+/*
+ * The last V9XDDP run, from C:\V9XDIAG\V9XDD.INI: its result and how many of
+ * its pixel checks held. Flip* checks are left out of the count:
+ * FlipPixelOk cannot be read as a verdict
+ * (docs\issues\2026-09-02-flippixelok-is-uninterpretable.md).
+ */ void v9x_collect_ddraw_test(V9X_SETTINGS_STATUS *status)
+{
+    /* Under 32767: Windows 9x's profile API refuses larger buffers. On the
+     * heap for the reason given over V9X_MINIVDD_READ_BYTES. */
+    char *section;
+    char result[24];
+    const char *line;
+    DWORD checks = 0ul;
+    DWORD passed = 0ul;
+
+    status->ddraw_test[0] = '\0';
+    GetPrivateProfileStringA("Velocity9xDDraw", "Result", "", result,
+                             sizeof(result), V9X_DIAG_DD_INI);
+    if (result[0] == '\0') {
+        v9x_append(status->ddraw_test, sizeof(status->ddraw_test), "Not run");
+        return;
+    }
+    section = (char *)HeapAlloc(GetProcessHeap(), 0, V9X_DDRAW_SECTION_BYTES);
+    if (section == 0) {
+        v9x_append(status->ddraw_test, sizeof(status->ddraw_test), result);
+        return;
+    }
+    if (GetPrivateProfileSectionA("Velocity9xDDraw", section,
+                                  V9X_DDRAW_SECTION_BYTES,
+                                  V9X_DIAG_DD_INI) == 0ul) {
+        section[0] = '\0';
+        section[1] = '\0';
+    }
+    for (line = section; *line != '\0';
+         line += v9x_settings_string_length(line) + 1ul) {
+        const char *equals = v9x_find_text(line, "=");
+        DWORD key_length;
+
+        if (equals == 0) {
+            continue;
+        }
+        key_length = (DWORD)(equals - line) - 1ul;
+        if (key_length < 7ul ||
+            (line[0] == 'F' && line[1] == 'l' && line[2] == 'i' &&
+             line[3] == 'p')) {
+            continue;
+        }
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, 0,
+                           line + key_length - 7ul, 7, "PixelOk", 7) !=
+                CSTR_EQUAL) {
+            continue;
+        }
+        ++checks;
+        if (equals[0] == '1') {
+            ++passed;
+        }
+    }
+    HeapFree(GetProcessHeap(), 0, section);
+    v9x_append(status->ddraw_test, sizeof(status->ddraw_test),
+               lstrcmpiA(result, "COMPLETE") == 0 ? "Complete" : result);
+    if (checks != 0ul) {
+        v9x_append(status->ddraw_test, sizeof(status->ddraw_test), ", ");
+        v9x_append_uint(status->ddraw_test, sizeof(status->ddraw_test),
+                        (UINT)passed);
+        v9x_append(status->ddraw_test, sizeof(status->ddraw_test), " of ");
+        v9x_append_uint(status->ddraw_test, sizeof(status->ddraw_test),
+                        (UINT)checks);
+        v9x_append(status->ddraw_test, sizeof(status->ddraw_test),
+                   " pixel checks pass");
+    }
+}
+
+/*
+ * 2D drawing as GDI gets it. GdiAcceleration= is written by ddi.c from
+ * v9x_gdi_accel_state_text: "none", "gdi-poisoned", or "gdi" followed by one
+ * "-word" per enabled primitive.
+ */
+static void v9x_collect_gdi_rendering(V9X_SETTINGS_STATUS *status)
+{
+    char state[48];
+    const char *word;
+    int first = 1;
+
+    status->gdi_rendering[0] = '\0';
+    GetPrivateProfileStringA("Velocity9xHardware", "GdiAcceleration", "none",
+                             state, sizeof(state), V9X_DIAG_HW_INI);
+    if (lstrcmpiA(state, "gdi-poisoned") == 0) {
+        v9x_append(status->gdi_rendering, sizeof(status->gdi_rendering),
+                   "CPU (engine off after a timeout)");
+        return;
+    }
+    if (state[0] != 'g' || state[1] != 'd' || state[2] != 'i' ||
+        state[3] != '-') {
+        v9x_append(status->gdi_rendering, sizeof(status->gdi_rendering),
+                   "CPU (Windows DIB Engine)");
+        return;
+    }
+    v9x_append(status->gdi_rendering, sizeof(status->gdi_rendering),
+               "Engine:");
+    for (word = state + 3; *word == '-'; ) {
+        char name[16];
+        DWORD length = 0ul;
+
+        ++word;
+        while (*word != '\0' && *word != '-' && length + 1ul < sizeof(name)) {
+            name[length++] = *word++;
+        }
+        name[length] = '\0';
+        v9x_append(status->gdi_rendering, sizeof(status->gdi_rendering),
+                   first ? " " : ", ");
+        first = 0;
+        v9x_append(status->gdi_rendering, sizeof(status->gdi_rendering),
+                   name);
+    }
+}
+
+/*
+ * The rows only the property page shows, collected after everything they
+ * are derived from.
+ */
+static void v9x_collect_page_rows(V9X_SETTINGS_STATUS *status, UINT width,
+                                  UINT height, UINT bits)
+{
+    HDC display = GetDC(0);
+    int refresh = GetDeviceCaps(display, VREFRESH);
+
+    ReleaseDC(0, display);
+
+    status->resolution[0] = '\0';
+    v9x_append_uint(status->resolution, sizeof(status->resolution), width);
+    v9x_append(status->resolution, sizeof(status->resolution), " x ");
+    v9x_append_uint(status->resolution, sizeof(status->resolution), height);
+
+    status->colour_depth[0] = '\0';
+    v9x_append_uint(status->colour_depth, sizeof(status->colour_depth), bits);
+    v9x_append(status->colour_depth, sizeof(status->colour_depth),
+               bits == 8u ? "-bit (256 colours)"
+                          : (bits == 16u ? "-bit (65,536 colours)"
+                                         : (bits >= 24u ? "-bit (true colour)"
+                                                        : "-bit")));
+
+    /* GDI answers 0 or 1 for "the hardware default", which is what a VBE
+     * mode set gives: the BIOS's own timing for the mode. */
+    status->refresh_rate[0] = '\0';
+    if (refresh > 1) {
+        v9x_append_uint(status->refresh_rate, sizeof(status->refresh_rate),
+                        (UINT)refresh);
+        v9x_append(status->refresh_rate, sizeof(status->refresh_rate), " Hz");
+    } else {
+        v9x_append(status->refresh_rate, sizeof(status->refresh_rate),
+                   "Adapter default");
+    }
+
+    v9x_collect_revision(status);
+    v9x_collect_minivdd_build(status);
+    v9x_collect_ddraw_test(status);
+    v9x_collect_gdi_rendering(status);
+
+    /* The GDI test's result and mode without its build id, which the report
+     * keeps. */
+    status->gdi_short[0] = '\0';
+    {
+        DWORD at = 0ul;
+
+        while (status->gdi_status[at] != '\0' &&
+               status->gdi_status[at] != '(' &&
+               at + 1ul < sizeof(status->gdi_short)) {
+            status->gdi_short[at] = status->gdi_status[at];
+            ++at;
+        }
+        while (at != 0ul && status->gdi_short[at - 1ul] == ' ') {
+            --at;
+        }
+        status->gdi_short[at] = '\0';
+    }
+
+    status->driver_short[0] = '\0';
+    if (lstrcmpiA(status->driver_stage, "enable-ok") == 0) {
+        v9x_append(status->driver_short, sizeof(status->driver_short),
+                   "Running (enable-ok)");
+    } else {
+        v9x_append(status->driver_short, sizeof(status->driver_short),
+                   status->driver_stage);
     }
 }
 
@@ -245,9 +602,17 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
 
     /*
      * Installed video memory, reported in whole MB when it divides evenly.
-     * The driver decodes this from the chip and reports nothing when the
-     * encoding is one it does not recognise, so an unknown card shows
-     * "Unavailable" rather than a fabricated size.
+     *
+     * Two sources, and the chip's own wins. VideoMemoryBytes= is a register
+     * decode, written only by a family with a read_video_memory hook - the
+     * S3 parts' CR36 - and marked invalid when the encoding is unknown.
+     * VbeVramBytes= is the VBE BIOS's 4F00h total, which every tier-0 family
+     * publishes (ati, intel-gma, matrox, sis, vbe). Reading only the first
+     * left every card but an S3 at "Unavailable" while the driver had sized
+     * its heap from the second (Matrox 2064W, A8U4I5, 2026-10-09). On a GMA
+     * the BIOS figure is the stolen system memory, which is what the driver
+     * uses as video memory there. A card whose source answered nothing
+     * still shows "Unavailable" rather than a fabricated size.
      */
     {
         char memory_status[16];
@@ -260,11 +625,21 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         GetPrivateProfileStringA("Velocity9xHardware", "VideoMemoryBytes",
                                  "0", memory_bytes_text,
                                  sizeof(memory_bytes_text), V9X_DIAG_HW_INI);
-        if (!v9x_parse_u32(memory_bytes_text, &memory_bytes)) {
+        if (lstrcmpiA(memory_status, "valid") != 0 ||
+            !v9x_parse_u32(memory_bytes_text, &memory_bytes)) {
             memory_bytes = 0ul;
         }
+        if (memory_bytes == 0ul) {
+            GetPrivateProfileStringA("Velocity9xHardware", "VbeVramBytes",
+                                     "0", memory_bytes_text,
+                                     sizeof(memory_bytes_text),
+                                     V9X_DIAG_HW_INI);
+            if (!v9x_parse_u32(memory_bytes_text, &memory_bytes)) {
+                memory_bytes = 0ul;
+            }
+        }
         status->video_memory[0] = '\0';
-        if (lstrcmpiA(memory_status, "valid") == 0 && memory_bytes != 0ul) {
+        if (memory_bytes != 0ul) {
             if ((memory_bytes % (1024ul * 1024ul)) == 0ul) {
                 v9x_append_uint(status->video_memory,
                                 sizeof(status->video_memory),
@@ -298,11 +673,17 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         GetPrivateProfileStringA("Velocity9xHardware", "ModeSwitching",
                                  "reboot-selected", switching,
                                  sizeof(switching), V9X_DIAG_HW_INI);
+        /* vbe-lfb, the tier-0 word nine chips carry, switches through the
+         * same ReEnable path at any depth: measured on the MGA-2064W, 13
+         * modes across 8, 16 and 32 bpp with no restart (V9XMSW, A8U4I5,
+         * 2026-10-09). It read as "At boot" until then. */
         status->live_mode_switching =
             lstrcmpiA(switching, "live-any-depth") == 0 ||
-            lstrcmpiA(switching, "live-same-depth") == 0;
+            lstrcmpiA(switching, "live-same-depth") == 0 ||
+            lstrcmpiA(switching, "vbe-lfb") == 0;
         status->live_depth_switching =
-            lstrcmpiA(switching, "live-any-depth") == 0;
+            lstrcmpiA(switching, "live-any-depth") == 0 ||
+            lstrcmpiA(switching, "vbe-lfb") == 0;
         status->mode_switching[0] = '\0';
         v9x_append(status->mode_switching, sizeof(status->mode_switching),
                    status->live_depth_switching
@@ -319,32 +700,66 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             lstrcmpiA(acceleration, "directdraw-fill") == 0 ||
             lstrcmpiA(acceleration, "directdraw-solid-fill") == 0;
 
-        /* Describe what the DirectDraw HAL runs on the engine. Anything the
-         * driver does not claim is reported as software so the page never
-         * overstates the hardware path.
+        /*
+         * What the DirectDraw HAL actually does, from the capability bits
+         * the driver stamped when DirectDraw built its driver object
+         * (EngineStamp= caps, src\display16\dd16.c), not from the
+         * Acceleration= word.
          *
-         * Every word a chip manifest can carry has a branch. The ATI words
-         * had none, so a Rage XL whose engine fills and flips read as
-         * "Software emulation only" (A8U4I5, 2026-10-04). Both ATI chips
-         * flip and wait for the blank: the Rage IIC's descriptor carries
-         * FLIP and VBLANK, and the Rage Pro class gets both from
-         * v9x_mobility_fill_engine since b3549a0. */
-        status->directdraw[0] = '\0';
-        if (lstrcmpiA(acceleration, "directdraw-fill-blt") == 0) {
-            v9x_append(status->directdraw, sizeof(status->directdraw),
-                       "Surfaces, page flip, vblank, fill, blit");
-        } else if (lstrcmpiA(acceleration, "directdraw-fill-copy") == 0) {
-            v9x_append(status->directdraw, sizeof(status->directdraw),
-                       "Surfaces, page flip, vblank, fill, copy");
-        } else if (lstrcmpiA(acceleration, "directdraw-fill") == 0) {
-            v9x_append(status->directdraw, sizeof(status->directdraw),
-                       "Surfaces, page flip, vblank, fill");
-        } else if (lstrcmpiA(acceleration, "directdraw-solid-fill") == 0) {
-            v9x_append(status->directdraw, sizeof(status->directdraw),
-                       "Surfaces, page flip, vblank, fill");
-        } else {
-            v9x_append(status->directdraw, sizeof(status->directdraw),
-                       "Software emulation only");
+         * The word could not say it. It names what the engine draws, and
+         * this sentence used to add "page flip" to every word that named an
+         * engine - so the SiS, ATI and Matrox pages all promised flips, and
+         * the Matrox HAL declines every flip (no CAP_FLIP; A8U4I5,
+         * 2026-10-09). Surfaces and the vertical blank wait are served on
+         * every family: the HAL exports WaitForVerticalBlank unconditionally
+         * and reads the blank through the VGA status port or the chip's own
+         * counter. Fill, copy and flip are each the chip's own bit.
+         *
+         * No stamp means DirectDraw has not started since boot; the page says
+         * so rather than guessing from the manifest word.
+         */
+        {
+            char stamp[64];
+            const char *caps_text;
+            DWORD caps = 0ul;
+            int have_caps = 0;
+
+            GetPrivateProfileStringA("Velocity9xHardware", "EngineStamp", "",
+                                     stamp, sizeof(stamp), V9X_DIAG_HW_INI);
+            caps_text = v9x_find_text(stamp, "caps=");
+            if (caps_text != 0) {
+                have_caps = v9x_parse_hex32(caps_text, &caps);
+            }
+            /* The stamp is the later word - Gen3 maps its engine after
+             * Enable - but any mode change since DirectDraw ran clears it.
+             * EngineCaps= is the descriptor's answer at Enable, written
+             * every time (ddi.c). */
+            if (!have_caps) {
+                GetPrivateProfileStringA("Velocity9xHardware", "EngineCaps",
+                                         "", stamp, sizeof(stamp),
+                                         V9X_DIAG_HW_INI);
+                have_caps = v9x_parse_hex32(stamp, &caps);
+            }
+            status->directdraw[0] = '\0';
+            if (!have_caps) {
+                v9x_append(status->directdraw, sizeof(status->directdraw),
+                           "Not reported by this driver build");
+            } else {
+                /* Short enough for the 174-unit row on the standard-size
+                 * page: surfaces and the blank wait are every family's and
+                 * go unsaid; what varies is who blits and whether it flips. */
+                int fill = (caps & V9X_DD_ENGINE_CAP_SOLID_FILL) != 0ul;
+                int copy = (caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) != 0ul;
+                int flip = (caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
+
+                v9x_append(status->directdraw, sizeof(status->directdraw),
+                           fill && copy ? "Engine fill and copy"
+                                        : (fill ? "Engine fill, CPU copy"
+                                                : (copy ? "Engine copy, CPU fill"
+                                                        : "CPU fill and copy")));
+                v9x_append(status->directdraw, sizeof(status->directdraw),
+                           flip ? ", page flip" : "; no page flip");
+            }
         }
 
         /*
@@ -631,6 +1046,8 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         v9x_append(status->gdi_status, sizeof(status->gdi_status), ")");
     }
 
+    v9x_collect_page_rows(status, width, height, bits);
+
     status->report[0] = '\0';
     v9x_append(status->report, sizeof(status->report),
                "Velocity9x settings report\r\nVersion: ");
@@ -641,8 +1058,17 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
     v9x_append(status->report, sizeof(status->report), status->adapter_name);
     v9x_append(status->report, sizeof(status->report), "\r\nPCI ID: ");
     v9x_append(status->report, sizeof(status->report), status->pci_id);
+    v9x_append(status->report, sizeof(status->report), "\r\nRevision: ");
+    v9x_append(status->report, sizeof(status->report), status->revision);
     v9x_append(status->report, sizeof(status->report), "\r\nVideo memory: ");
     v9x_append(status->report, sizeof(status->report), status->video_memory);
+    v9x_append(status->report, sizeof(status->report), "\r\nMini-VDD build: ");
+    v9x_append(status->report, sizeof(status->report), status->minivdd_build);
+    v9x_append(status->report, sizeof(status->report), "\r\n2D (GDI): ");
+    v9x_append(status->report, sizeof(status->report), status->gdi_rendering);
+    v9x_append(status->report, sizeof(status->report),
+               "\r\nLast DirectDraw test: ");
+    v9x_append(status->report, sizeof(status->report), status->ddraw_test);
     v9x_append(status->report, sizeof(status->report), "\r\nActive mode: ");
     v9x_append(status->report, sizeof(status->report), status->active_mode);
     v9x_append(status->report, sizeof(status->report),
