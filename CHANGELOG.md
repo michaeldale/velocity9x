@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.14.0 - not yet released
+## 0.14.0 - 2026-10-09
 
 A Glide 2.x `GLIDE2X.DLL` that draws through the render interface, so
 a game written for a 3dfx Voodoo runs on a Velocity9x 3D engine. Need
@@ -38,6 +38,7 @@ machine or engine has run it, and no Voodoo was used for comparison.
     each frame.
   - The chain has three buffers, because with two the game flickered
     as Final Reality does.
+  - The pause dialog draws correctly.
 - **Every family package installs `GLIDE2X.DLL` to SYSTEM**, except over
   a newer one: a Voodoo 1 or 2 beside the 2D card keeps its own 3dfx
   Glide. Measured on Windows 98 SE guests: through SetupX, 3dfx 1.00,
@@ -46,7 +47,6 @@ machine or engine has run it, and no Voodoo was used for comparison.
   Velocity9x Glide replaced at the restart. Windows 95 was not run.
   `V9XCOPY.BAT` replaces only a `GLIDE2X.DLL` of ours (untested in DOS).
   [Decision](docs/decisions/2026-10-09-glide-packaging-copy-flag.md).
-  - The pause dialog draws correctly.
 - Known problems:
   - Gamma is not applied.
   - A small flicker remains in the menus.
