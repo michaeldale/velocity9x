@@ -4,6 +4,30 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.14.1 - not yet released
+
+- **OpenGL fog.** `glFogf`, `glFogfv`, `glFogi` and `glFogiv` were stubs
+  and now work. LINEAR, EXP and EXP2 fog factors are computed per vertex
+  from the eye distance and passed to the 3D engine as vertex fog. The
+  software engine, the Mach64 and Gen3 draw it, and the fog state can be
+  read back with `glGet`. In V9XGLP a red quad under blue fog read
+  the same pixels on all three (86Box software guest, Rage XL, GMA 950).
+  On an engine with no fog and no software fallback, such as the ViRGE,
+  a fogged batch is drawn unfogged and counted as `fog-dropped` in
+  `V9XGL.LOG`. Nothing has measured that path yet.
+  [Decision](docs/decisions/2026-10-09-icd-fog-and-immediate-forms.md).
+- **97 more OpenGL entry points.** These are the integer and double forms of
+  `glColor`, `glTexCoord`, `glVertex` and `glNormal`, plus `glRect`,
+  `glEdgeFlag` and the colour-index calls. Integer colours and normals
+  convert as the vertex arrays already did. The ICD now implements 204
+  of OpenGL 1.1's 336 entry points, up from 103. The rest are still stubs
+  that set `GL_INVALID_OPERATION`: lighting, display lists, attribute
+  stacks, raster position and pixel paths, evaluators, feedback and
+  selection, stencil, texgen.
+- Half-Life's OpenGL renderer on the GMA 950 drew `mwd5` correctly through
+  this ICD with no stub calls (15.8, 17.8 and 17.4 fps). No installed test
+  game has been seen calling `glFog`.
+
 ## 0.14.0 - 2026-10-09
 
 A Glide 2.x `GLIDE2X.DLL` that draws through the render interface, so
