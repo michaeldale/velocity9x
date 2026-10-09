@@ -45,12 +45,16 @@ copied.
   argument bytes, return kind, and whether Diablo II imports it. Generated
   stubs come from `scripts/lib/glide3-exports.ps1`.
 - `glide3_census.c`: Phase 0 only, replaced by the real DLL in Phase 2.
-- The real DLL reuses `src/glide`'s host-tested modules where the semantics
-  are the same: `glide_texfmt.c` (P_8 expansion), `glide_texmem.c`,
-  `glide_state.c` (combine, blend, chroma), and `glide_surface.c`
-  (presentation). Glide 3 adds a vertex-layout module with host tests:
-  `grVertexLayout` state, and reading a vertex at any declared offset into
-  the render interface's vertex.
+- The real DLL links the engine GLIDE2X.DLL draws with. It was split out
+  of `glide_dll.c` into `src/glide/glide_core.c` (`glide_core.h`): the census
+  log, texture engine and surface cache, batching, drawing, clears, window
+  and LFB. `glide_dll.c` keeps only the Glide 2 exports, and
+  `glide3_dll.c` will be the Glide 3 front end over the same core,
+  alongside `glide_texfmt.c`, `glide_texmem.c`, `glide_state.c` and
+  `glide_surface.c`. The core works in Glide 2's terms (GrVertex floats,
+  Glide 2 LOD and aspect), so the Glide 3 front end converts into them. It
+  adds a vertex-layout module with host tests: `grVertexLayout` state, and
+  reading a vertex at any declared offset into a GrVertex.
 
 ### Identity
 

@@ -20,7 +20,7 @@
 #define V9X_GLIDE_BUFFER_BACK  1ul
 #define V9X_GLIDE_BUFFER_AUX   2ul
 
-/* glide_dll.c's log, shared as gl_icd.c's is with gl_surface.c. */
+/* glide_core.c's log, shared as gl_icd.c's is with gl_surface.c. */
 void v9x_glide_log(const char *text);
 void v9x_glide_log3(const char *format, v9x_u32 a, v9x_u32 b, v9x_u32 c);
 

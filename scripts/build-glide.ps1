@@ -29,11 +29,12 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 $null = Write-V9xGlideExportHeader -RepoRoot $repoRoot -OutputDir $output
 $entries = Get-V9xGlideEntries -RepoRoot $repoRoot
 
-# glide_dll.c and glide_surface.c are the platform files: the exports, the
-# log and the DLL entry; the DirectDraw device. The rest is the pure logic the host tests also compile; built here under
+# glide_dll.c, glide_core.c and glide_surface.c are the platform files: the
+# Glide 2 exports and the DLL entry; the engine shared with GLIDE3X.DLL; the
+# DirectDraw device. The rest is the pure logic the host tests also compile; built here under
 # the DLL's options (no C runtime, warnings as errors) as well.
 $objects = @()
-foreach ($name in @('glide_dll', 'glide_surface', 'glide_vertex', 'glide_texmem', 'glide_texfmt', 'glide_state')) {
+foreach ($name in @('glide_dll', 'glide_core', 'glide_surface', 'glide_vertex', 'glide_texmem', 'glide_texfmt', 'glide_state')) {
     $source = Join-Path $repoRoot "src\glide\$name.c"
     $object = Join-Path $output "$name.obj"
     & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `

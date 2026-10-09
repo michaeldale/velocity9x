@@ -241,11 +241,13 @@ $allowedOsBoundaries = @(
     # through these or not at all.
     (Join-Path $repoRoot "src\opengl\gl_icd.c"),
     (Join-Path $repoRoot "src\opengl\gl_surface.c"),
-    # GLIDE2X.DLL's two platform files (docs\plans\glide-2x-wrapper.md):
-    # glide_dll.c, the exports, the log and the DLL entry; glide_surface.c,
-    # its DirectDraw device. Its pure logic sits beside them under src\glide
+    # GLIDE2X.DLL's three platform files (docs\plans\glide-2x-wrapper.md):
+    # glide_dll.c, the Glide 2 exports and the DLL entry; glide_core.c, the
+    # engine both Glide DLLs link (log, textures, drawing); glide_surface.c,
+    # the DirectDraw device. The pure logic sits beside them under src\glide
     # and stays OS-free like the ICD's.
     (Join-Path $repoRoot "src\glide\glide_dll.c"),
+    (Join-Path $repoRoot "src\glide\glide_core.c"),
     (Join-Path $repoRoot "src\glide\glide_surface.c"),
     # GLIDE3X.DLL's census (docs\plans\glide-3x-wrapper.md, Phase 0): the
     # exports, the log and the DLL entry in one file. Glide 3's pure logic
