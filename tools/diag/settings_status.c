@@ -1177,7 +1177,27 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
      * evidence of what the mini-VDD hooked, which it never was.
      */
     v9x_append(status->report, sizeof(status->report),
-               "\r\nMini-VDD callbacks: VESA, monitor power\r\n");
+               "\r\nMini-VDD callbacks: VESA, monitor power");
+
+    /* The code of the last report V9XUPD.EXE sent, so a pasted settings
+     * report points at the files behind it. */
+    {
+        char line[40];
+
+        GetPrivateProfileStringA("Velocity9xReport", "LastReport", "none",
+                                 line, sizeof(line), V9X_DIAG_REPORT_INI);
+        v9x_append(status->report, sizeof(status->report),
+                   "\r\nLast report sent: ");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9xReport", "LastReportTime", "",
+                                 line, sizeof(line), V9X_DIAG_REPORT_INI);
+        if (line[0] != '\0') {
+            v9x_append(status->report, sizeof(status->report), " (");
+            v9x_append(status->report, sizeof(status->report), line);
+            v9x_append(status->report, sizeof(status->report), ")");
+        }
+    }
+    v9x_append(status->report, sizeof(status->report), "\r\n");
 }
 
 int v9x_settings_copy_report(void *owner_window,

@@ -94,6 +94,7 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 & (Join-Path $PSScriptRoot "build-power-cycle.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-ddraw-probe.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-trace-dump.ps1") -BuildId $BuildId
+& (Join-Path $PSScriptRoot "build-update.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-window-list.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-ddraw-hal-dll.ps1") -BuildId $BuildId
 & (Join-Path $PSScriptRoot "build-opengl-icd.ps1") -BuildId $BuildId
@@ -159,6 +160,8 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\ddraw-probe\v9xddp.exe") `
     -Destination (Join-Path $outputDir "V9XDDP.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\trace-dump\v9xtrace.exe") `
     -Destination (Join-Path $outputDir "V9XTRACE.EXE") -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "build\update\v9xupd.exe") `
+    -Destination (Join-Path $outputDir "V9XUPD.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\window-list\v9xwnd.exe") `
     -Destination (Join-Path $outputDir "V9XWND.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\vxd-probe\v9xprobe.vxd") `
@@ -384,6 +387,7 @@ $manifest = @(
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
     "HAL trace: driver writes C:\V9XDIAG\V9XTRACE.INI on faults; V9XTRACE.EXE writes live snapshots C:\V9XDIAG\V9XSNAP.INI, V9XSNA1-7.INI, with builds, card, installed files and programs",
     "Window inventory: V9XWND.EXE writes GDI-free C:\V9XDIAG\V9XWND.INI",
+    "Reports: V9XUPD.EXE /REPORT (Send report... on the Advanced tab) runs V9XTRACE.EXE and sends C:\V9XDIAG files to michaeldale.com.au on request; both are installed in the system directory",
     "Preflight: V9XSTAGE.EXE (no mode change and no installation)",
     "Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED",
     "",
@@ -409,7 +413,7 @@ $expectedPackageFiles = @(
     "V9XGDI.EXE", "V9XMSW.EXE", "V9XPAL.EXE", "V9XPWR.EXE",
     "V9XMINI.VXD", "V9XPROBE.VXD",
     "V9XSET.EXE", "V9XSETP.DLL", "V9XSTAGE.EXE", "V9XTRACE.EXE",
-    "V9XWND.EXE",
+    "V9XUPD.EXE", "V9XWND.EXE",
     "VELOCITY9X.INF"
 )
 if ($familyManifest.Id -eq 'intel-gma') {

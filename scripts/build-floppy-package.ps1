@@ -216,7 +216,16 @@ let Windows redetect Standard PCI Graphics Adapter (VGA).
 
 6. REPORTING A PROBLEM
 
-Right after the program that went wrong, run V9XTRACE.EXE. Each run writes
+Right after the program that went wrong, open Display Properties, Settings,
+Advanced, the Velocity9x Advanced tab, and click Send report. It runs
+V9XTRACE.EXE, lists the files it will send, and after you click Send gives
+you a code such as V9X-4F7K2Q. Quote the code in an issue at
+https://github.com/michaeldale/velocity9x/issues. Nothing is sent unless
+you click Send. If that machine has no network, open
+http://michaeldale.com.au/v9update/report on any computer and attach the
+files from C:\V9XDIAG there.
+
+To do the same by hand: run V9XTRACE.EXE. Each run writes
 the next of C:\V9XDIAG\V9XSNAP.INI, V9XSNA1.INI ... V9XSNA7.INI (the last
 is reused once all eight exist). A snapshot names the driver build, the
 card, the installed driver files, the Velocity9x settings, and every

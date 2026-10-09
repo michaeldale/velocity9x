@@ -113,7 +113,9 @@ BEGIN
     LTEXT           "", V9X_IDC_CORE_CLOCK, 80, 175, 160, 8
     LTEXT           "Memory clock:", -1, 14, 186, 64, 8
     LTEXT           "", V9X_IDC_MEMORY_CLOCK, 80, 186, 160, 8
-    LTEXT           "Exercise the driver's GDI and DirectDraw paths and record the results.", -1, 14, 199, 140, 16
+    LTEXT           "Report a problem:", -1, 14, 203, 62, 8
+    PUSHBUTTON      "Send report...", V9X_IDC_SEND_REPORT,
+                    78, 200, 78, 14, WS_TABSTOP
     PUSHBUTTON      "Run diagnostics...", V9X_IDC_RUN_DIAGNOSTICS,
                     160, 200, 80, 14, WS_DISABLED
 END

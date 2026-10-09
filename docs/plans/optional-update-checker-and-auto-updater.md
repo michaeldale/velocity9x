@@ -1,330 +1,169 @@
-# Optional update checker, guarded auto-updater, and installed-file audit
+# Update checker, updater and diagnostic report submission
 
-Date: 2026-09-27
+Date: 2026-09-27, rewritten 2026-10-09
 
-Status: proposed; nothing implemented.
+Status: in progress. The 2026-09-27 version of this plan (a signed channel
+index, periodic checks, `AutoInstall`, 20-cycle gates per install model) is
+superseded by the decisions below, made with Michael on 2026-10-09.
 
 ## Outcome
 
-Add one optional Windows 98SE utility that can:
+Three things a Win98 user can do from Display Properties without copying a
+file or typing anything:
 
-1. report whether a newer Velocity9x release exists for the installed adapter
-   family;
-2. audit every installed Velocity9x runtime file against the selected release;
-3. when separately enabled, download, verify, stage, and finish an update; and
-4. preserve a tested standard-VGA or file-restore recovery path.
+1. **Check for updates** (Velocity9x tab): see whether a newer release exists
+   for the installed family.
+2. **Update** (same flow): download, verify, install and restart, in place of
+   reinstalling through Device Manager.
+3. **Send diagnostics** (Velocity9x Advanced tab): run `V9XTRACE.EXE` and send
+   its snapshot and the other `C:\V9XDIAG` files to the update server, getting
+   back a report code to quote in a GitHub issue.
 
-Checking, downloading, installing, and rebooting are four distinct permissions.
-The defaults are no network access, no background task, no automatic install,
-and no automatic reboot. A user may enable periodic checks without enabling
-downloads or installation. "Auto update" means that an opted-in user can let a
-verified update proceed without selecting files by hand; it does not mean an
-unattended rewrite of a live display stack.
+The server side is the `v9x_update_checker` Bluetrait plugin at
+`http://michaeldale.com.au/v9update/` (its `README.md` and
+`docs/REPORT-SUBMISSION.md` are the protocol). Nothing happens without a
+click: no background checks, no scheduled task, no automatic install, no
+automatic upload, no client ID.
 
-Windows 95 and Windows Me remain out of scope until the existing Win98SE
-installation and recovery gates pass on those systems.
+## Decisions (2026-10-09)
 
-## Existing pieces to retain
+- **Manual only.** One button each. No periodic checks, no `AutoInstall`,
+  no beta channel switch. Stable channel.
+- **Authenticity is an Ed25519 signature, not the transport.** Plain HTTP and
+  the server's MD5/SHA-256 lines protect against a corrupt download, not a
+  substituted one. `build-release.ps1` writes `SIGNED.TXT` listing the version
+  and each family zip's size and SHA-256, and signs it with an offline key. The
+  updater ships the public key and refuses anything that does not verify.
+- **The private key** lives outside the repository, in the developer's environment or a private `KEY=value` file, as
+  `V9X_SIGNING_KEY=<64 hex seed>`, never in the repository. Only a release
+  build needs it.
+- **Downgrade protection is the signed version**, compared numerically against
+  the updater's own compiled-in version. The server's `sequence=` is assigned
+  at publish time, so it cannot be signed and is not trusted.
+- **No third-party code.** SHA-256, SHA-512, Ed25519 (verify, plus sign for
+  the host tool), CRC-32, Deflate decoding and the zip reader are written here
+  from FIPS 180-4, RFC 8032, RFC 1951 and APPNOTE, and host-tested against the
+  standards' own vectors and every committed release zip.
+- **The updater applies the INF, not just the files.** The INF changes in about
+  half of all releases (mode tables live in it), so a files-only update would
+  drift from what Device Manager would install. `V9XUPD.EXE` interprets the
+  subset of INF our generator emits: the installed model's `CopyFiles`,
+  `DelReg` and `AddReg`, with `HKR` bound to this machine's display driver key.
+  `check-tree.ps1` fails if the generator emits any directive outside that
+  subset.
+- **`V9XTRACE.EXE` and `V9XUPD.EXE` are installed** by the INF into the system
+  directory beside the driver, so the buttons always have something to launch
+  and an update replaces the tools with the driver.
+- **Gates are one or two cycles**, not twenty: the UTM Win98 guest and one
+  physical machine.
+- **Old installs** (0.15.0 and earlier) update by hand once to the first
+  release that carries the updater.
+- **File audit**: optional; the updater hashes installed files anyway, and
+  `V9XUPD.INI` records what it found.
 
-- `include/velocity9x/build.h` is the product-version authority. The same build
-  identifier is already embedded in the display driver, mini-VDD, HAL, OpenGL
-  ICD, and settings components.
-- `scripts/build-all-packages.ps1` already writes family, version, build, file
-  size, and SHA-256 data to `build/packages.json`.
-- Every built package already contains `MANIFEST.TXT` and `SHA256.TXT`.
-- The INF installs five runtime files into the Windows system directory:
-  `V9XDISP.DRV`, `V9XMINI.VXD`, `V9XHAL.DLL`, `V9XSETP.DLL`, and `V9XGL.DLL`.
-- `V9XCOPY.BAT` demonstrates the offline-DOS replacement path and
-  `V9XFIX.BAT` demonstrates delayed replacement through `WININIT.INI`.
+## Components
 
-The updater must use the family manifests and package output as its inputs. It
-must not introduce another hand-maintained list of families, hardware IDs, or
-versions.
+| Piece | Where | Notes |
+|---|---|---|
+| `V9XUPD.EXE` | `tools/diag/update_win32.c` | The only process that touches the network. `/CHECK`, `/REPORT`, `/FINISH`. Launched by the property pages; network work never runs inside Display Properties. |
+| HTTP | `tools/diag/update_net_win32.c` | WinInet (`INTERNET_OPEN_TYPE_PRECONFIG`, honours IE proxy) loaded at run time, falling back to raw Winsock HTTP/1.0. |
+| Pure logic | `src/common/` | `sha256`, `sha512`, `ed25519`, `crc32`, `inflate`, `zipread`, release-file parsing and version order, URL encoding and HTTP response parsing, the INF-subset interpreter's planner, the `WININIT.INI` planner. Host-tested. |
+| Signing tool | `tools/release/v9xsign.c` | Host-only. Derives the public key, signs, verifies. |
+| Release step | `scripts/build-release.ps1` | Writes and signs `releases/<version>/SIGNED.TXT`. |
+| Server | `v9x_update_checker` | Mirrors `SIGNED.TXT` with the zips and returns a `signed=` URL in every check response. |
 
-## Release metadata
+## Signed release file
 
-Publish a small, ASCII, machine-readable channel index separately from the
-human release page. The release builder emits it from `packages.json`, then
-signs it. Each channel entry contains:
+```
+[Velocity9xRelease]
+Schema=1
+App=velocity9x
+Version=0.16.0
+Build=1a2b3c4
 
-- schema version and monotonically increasing release sequence;
-- channel (`stable` initially; test channels may follow);
-- product version and build identifier;
-- minimum updater version;
-- supported family and exact PCI hardware-ID set;
-- package URL, byte length, and SHA-256;
-- an exact installed-runtime file set, with destination, size, SHA-256, and
-  embedded build identifier for each file;
-- INF hash and any required registry migration identifier;
-- release-notes and recovery-notes URLs; and
-- an explicit revocation list for bad release sequences or package hashes.
+[Family.ati]
+File=velocity9x-0.16.0-ati.zip
+Size=347696
+Sha256=8c48...
 
-Sign the canonical bytes of the index with an offline release key. The checker
-ships only the public key. Transport encryption is useful for privacy and
-availability, but must not be the authenticity boundary: an unpatched Win98
-machine cannot be assumed to negotiate current TLS or possess a current root
-store. The Phase 0 spike chooses a small verifier that can be built and audited
-with this repository's C89/Open Watcom constraints. No update feature ships
-until a modified index, modified package, wrong-family package, replayed older
-sequence, revoked release, truncation, and key-rotation fixture are all refused.
+[Signature]
+Ed25519=<128 hex>
+```
 
-Store the greatest accepted release sequence locally. A downgrade requires an
-explicit manual override and is never selected by an automatic policy. Do not
-make correctness depend on the machine's wall clock, which is often wrong on
-retro hardware.
+The signature covers every byte before the `[Signature]` line. The client
+verifies first, then parses only the signed bytes with its own parser (not
+`GetPrivateProfileString`, which would also read anything appended after the
+signature), and requires exactly one `[Signature]` section with nothing after
+it.
 
-## Local installed-version receipt
+## Report flow (`V9XUPD.EXE /REPORT`)
 
-After a successful INF install or updater commit, keep a compact signed-release
-receipt outside the package staging directory. It records:
+1. Run `V9XTRACE.EXE` from the system directory and wait for it.
+2. Gather, in the server brief's order: the newest snapshot (`SnapshotFile=`
+   from the dump, else the newest of `V9XSNAP.INI`, `V9XSNA1-7.INI`),
+   `V9XTRACE.INI`, `V9XBOOT.INI`, `V9XHW.INI`, `V9XDD.INI`, `V9XGL.LOG`,
+   `V9XUPD.INI`. Skip missing files; send the last 512 KB of a longer one.
+3. Show the files, sizes and the privacy summary, an optional one-line
+   description, Send / Cancel.
+4. POST the snapshot, then the rest with `report=`/`key=`, following the
+   server's per-status rules.
+5. Show the code with a Copy button; record `LastReport=` in
+   `C:\V9XDIAG\V9XRPT.INI`. The key is held in memory only.
 
-- family, hardware ID, product version, build identifier, and release sequence;
-- the expected five-file runtime set and hashes;
-- the installed INF hash and registry migration identifier;
-- previous receipt and backup location; and
-- transaction state: downloaded, verified, staged, booted, committed, or
-  rolled back.
+## Update flow (`V9XUPD.EXE /CHECK`)
 
-The remote signature remains attached to the receipt. Local state may select a
-signed release but may not redefine its files or hashes. If an old hand install
-has no receipt, the audit reports `BASELINE UNKNOWN`; it may show embedded build
-identifiers, but it must not claim integrity until the matching signed release
-metadata has been obtained or a package has been selected locally.
+1. **Network present?** `InternetGetConnectedState`, then resolve the host.
+   Neither: say so and stop.
+2. **Consent.** "Check michaeldale.com.au for a newer Velocity9x?"
+3. **Check.** `GET /v9update/check?app=velocity9x&version=<compiled>&family=<HKR V9xFamily>`.
+   `current`: say so. `update`: fetch `signed=`, verify, and require its
+   version to equal `latest=` and exceed the installed version, and its entry
+   for this family to match the package's size and SHA-256.
+4. **Offer.** Old/new version, release notes, **Update now** / **Cancel**.
+5. **Download** to `C:\V9XDIAG\UPDATE\`, resuming with `Range`, and check
+   size and SHA-256 against the signed file.
+6. **Unpack** the INF and every file its model's `CopyFiles` names; check each
+   CRC-32 and the zip name rules.
+7. **Preflight.** No pending `WININIT.INI` work of anyone else's; the
+   installed model's `InfSection` exists in the new INF; free space.
+8. **Back up** the installed copies of every file being replaced, the
+   registry values the INF will change, and the live `OEMn.INF`, to
+   `C:\V9XDIAG\UPDATE\BACKUP\<old version>\`.
+9. **Stage.** New files to 8.3 names in the root of the Windows drive;
+   `WININIT.INI` `[Rename]` lines `dest=src` only, never `NUL=` (a `NUL=`
+   line deletes even when the rename fails, which is how a 0-byte display
+   driver happened on 2026-08-30). Apply `DelReg`/`AddReg`. Replace the live
+   `OEMn.INF` (read `InfPath`; never guess from the newest file). Add a
+   `RunOnce` entry for `/FINISH`.
+10. **Restart now** / **Later**.
+11. **Finish** (`/FINISH`, after the reboot): hash every installed file
+    against the staged ones and read the driver's build from `V9XBOOT.INI`.
+    Match: record success in `V9XUPD.INI`. Mismatch: say so and name the
+    backup folder and `RECOVER.TXT`.
 
-## Installed-file audit
-
-Expose the audit in the settings utility and as a command-line mode suitable
-for support (`V9XUPD.EXE /AUDIT`). It is read-only and works with networking
-disabled.
-
-For every file in the receipt's runtime set, report:
-
-- missing, expected, modified, wrong version/build, or unreadable;
-- expected and actual size and SHA-256;
-- expected and discovered embedded build identifier; and
-- whether a replacement is already pending in `WININIT.INI`.
-
-Also enumerate `V9X*.DRV`, `V9X*.VXD`, and `V9X*.DLL` in the system directory.
-Files outside the signed runtime set are reported as `UNEXPECTED`, never
-silently deleted. This catches stale components while avoiding the false claim
-that package-only tools such as `V9XDDP.EXE` must be installed. The summary is
-one of:
-
-- `MATCH`: exact set and hashes match the receipt;
-- `MIXED`: recognised Velocity9x files come from different builds;
-- `MODIFIED`: the expected version is named but one or more hashes differ;
-- `INCOMPLETE`: an expected runtime file is absent or unreadable;
-- `PENDING`: a staged update makes the on-disk set intentionally transitional;
-- `BASELINE UNKNOWN`: no trusted expected set is available.
-
-Write the full result to `C:\V9XDIAG\V9XUPDATE.INI` using the existing bounded
-diagnostic-writing conventions. The settings page shows only the summary,
-installed version/build, and a button to open the utility; network and update
-work must not run inside the Display Properties process.
-
-An audit compares hashes, not just version strings. Matching version resources
-or embedded strings cannot prove that all driver files came from one package.
-
-## Update check and policy
-
-`V9XUPD.EXE /CHECK` reads the installed family and hardware ID from the current
-driver status, downloads only the signed channel index, verifies it, applies
-revocations, and selects the newest compatible release. It never selects a
-generic package merely because its version is newer.
-
-Configuration is explicit and independently switchable:
-
-- `EnableChecks=0|1` (default `0`);
-- `CheckIntervalDays` with a conservative default when checks are enabled;
-- `Channel=stable`;
-- `AutoDownload=0|1` (default `0`);
-- `AutoInstall=0|1` (default `0` and unavailable until the install gates pass);
-- `IncludePrerelease=0|1` (default `0`); and
-- `AllowMetered` is not needed on Win98; a check has a documented byte bound.
-
-Periodic checking uses a visible Startup/Task Scheduler entry created only by
-the user's opt-in. Failures are quiet apart from status/logging; success may
-offer the release notes and update action. Retry uses a bounded interval and
-never delays boot or desktop startup.
-
-## Download and verification
-
-Download into a versioned directory outside the Windows system directory. Use
-temporary names and resume only when the server and local partial-file metadata
-agree. Before staging anything:
-
-1. verify the signed channel index;
-2. confirm family and exact hardware-ID compatibility;
-3. enforce release sequence and minimum-updater rules;
-4. enforce a maximum package and per-file size;
-5. verify the complete package hash;
-6. unpack into a new directory with fixed filenames, rejecting absolute paths,
-   `..`, duplicate/case-colliding names, links, devices, and undeclared files;
-7. verify every extracted file against the signed installed-file list; and
-8. run the existing no-install preflight against the staged display driver and
-   mini-VDD pair.
-
-Phase 0 decides the transport container. Prefer a format that has a small,
-bounded Win98 implementation and no shell dependency. Do not depend on a
-browser, modern TLS library already being installed, or a general-purpose
-self-extracting executable.
-
-## Guarded installation transaction
-
-The updater does not overwrite loaded display files. Its state machine is:
-
-1. **Preflight**: require the exact supported adapter, sufficient free space,
-   no existing `WININIT.INI` work, no other update transaction, and an audit of
-   the current installation.
-2. **Recover**: copy the current five runtime files, receipt, relevant registry
-   keys, and recovery instructions to a versioned backup. Hash the backup and
-   prove it can be read. Refuse automatic installation if no standard-VGA or
-   tested offline restore path is available.
-3. **Stage**: copy all five new runtime files to unique temporary names, verify
-   them again, then append one bounded, fully parsed rename transaction to
-   `WININIT.INI`. Preserve unrelated valid entries rather than replacing the
-   file. Stage registry changes separately and record exactly when they apply.
-4. **Consent**: show old/new versions, family, audit result, backup location,
-   release notes, and that the next boot may require recovery. Installation and
-   reboot remain separate choices.
-5. **Boot**: on the next boot, existing driver diagnostics must report the new
-   version/build pair. A startup finisher audits all five installed hashes and
-   checks the display-driver readiness evidence before committing the receipt.
-6. **Commit or recover**: a complete match commits and retires only temporary
-   files. A mismatch records `INCOMPLETE`, stops further automatic action, and
-   offers the offline restore procedure. Do not attempt a second live rewrite
-   of a partially loaded display stack.
-
-The first implementation is interactive `Download and stage`. `AutoInstall`
-stays compile-time disabled until the same transaction has survived the guest
-and physical-machine gates below. Even after enablement it may stage an update
-automatically, but it must notify the user before reboot and retain recovery.
-
-Updating must replace the entire signed runtime set even when one hash already
-matches. This makes the post-boot state all-or-nothing and prevents a plausible
-but unsupported mixed build. Package utilities and diagnostics are updated in
-the download cache, not copied into the system directory.
-
-## Implementation boundaries
-
-- New user-mode `tools/diag` code owns UI, policy, network transfer, hashing,
-  signature verification, receipts, and transaction logs. No network or update
-  policy enters the 16-bit display driver, 32-bit HAL, mini-VDD, or OpenGL ICD.
-- Pure parsing, version ordering, manifest selection, path validation, and
-  transaction planning live in host-testable C modules.
-- A narrow Win32 layer supplies file, registry, downloader, and reboot-staging
-  operations. Every write operation has a dry-run representation that tests can
-  compare.
-- Release scripts generate and sign metadata; the private signing key is never
-  committed and is not required for ordinary developer builds. Test keys and
-  deterministic fixtures are committed for host tests only.
-- `scripts/check-tree.ps1` asserts that the INF runtime copy set, package
-  runtime set, updater manifest set, and recovery copy set stay identical.
+`GLIDE2X.DLL` keeps the INF's rule (flag 40): it is not replaced when the
+installed copy is newer, so a 3dfx card's own DLL survives.
 
 ## Phases and gates
 
-### Phase 0: feasibility and threat-model spike
-
-- Measure candidate networking and signature-verification code on the oldest
-  supported Win98SE image and Open Watcom toolchain.
-- Choose the signed-index canonical form and bounded package container.
-- Record code size, memory use, download behavior, proxy behavior, and failure
-  behavior with no network and a wrong system clock.
-
-Gate: a decision record selects the mechanisms and contains passing tamper,
-replay, wrong-family, revocation, and malformed-container evidence. Otherwise
-the supported design becomes offline package selection plus audit only.
-
-### Phase 1: release metadata and offline audit
-
-- Generate deterministic channel metadata from `packages.json`.
-- Add signing as a release-only step and public-key verification fixtures.
-- Implement receipt import from a selected local package and `/AUDIT`.
-- Add the settings-page summary and diagnostic report.
-
-Gate: host tests cover every audit state, and each current family package
-produces `MATCH` only against its own five installed runtime files. No network
-or installation occurs in this phase.
-
-### Phase 2: opt-in update checking
-
-- Implement manual `/CHECK`, compatible-family selection, release notes, and
-  persisted opt-in settings.
-- Add the optional periodic launcher with bounded retries.
-
-Gate: a controlled server fixture proves no request occurs before opt-in; the
-checker refuses bad signatures, older sequences, revoked builds, wrong hardware,
-oversized responses, redirects outside policy, and interrupted metadata.
-
-### Phase 3: verified download
-
-- Add resumable download, bounded unpacking, full-file verification, cache
-  cleanup, and the staged-pair preflight.
-- Offer `Download` and `Download and stage` separately.
-
-Gate: power loss or process termination at every download/unpack boundary
-leaves the installed driver unchanged and either a resumable partial or a
-deletable cache. Fuzzed paths cannot write outside the new staging directory.
-
-### Phase 4: interactive guarded install
-
-- Implement backup, complete five-file `WININIT.INI` transaction, boot
-  finisher, commit, and documented offline restore.
-- Keep automatic installation disabled.
-
-Gate: on a cold-copy Win98SE VM for every install model (INF and guarded Matrox
-replacement), complete 20 update cycles including same-version repair,
-new-version update, refused downgrade, interrupted staging, deliberately
-corrupted download, deliberately mixed installed files, and rollback. Each
-successful cycle ends with a hash `MATCH`, the expected build in driver
-diagnostics, working Display Properties, DirectDraw probe, OpenGL probe, clean
-restart/shutdown, and no leftover pending rename.
-
-### Phase 5: opt-in automatic staging
-
-- Enable `AutoDownload`, then `AutoInstall`, as two separate rollout changes.
-- Automatic installation may prepare and stage only after a clean audit or a
-  user-approved repair; it never automatically reboots.
-
-Gate: repeat the Phase 4 matrix on the physical S3 and each other family before
-  enabling that family in signed metadata. Induce a failed first boot and prove
-  the documented standard-VGA/offline restore from the retained backup. A
-  family with no measured recovery result remains check/download-only.
-
-## Required host tests
-
-- Strict parser limits, duplicate fields, unknown required fields, integer
-  overflow, malformed UTF/ASCII, and canonical-signature bytes.
-- Semantic version comparison plus release-sequence precedence; no string sort.
-- Exact family/hardware-ID selection and no compatible candidate.
-- Signature success/failure, test-key rotation, revocation, rollback, package
-  hash mismatch, file hash mismatch, size mismatch, and unexpected files.
-- Case-insensitive DOS/Windows filename collisions, reserved names, traversal,
-  absolute paths, and overlong paths.
-- Audit state table, including locked/unreadable files and a pending rename.
-- Transaction planning with pre-existing `WININIT.INI` content, insufficient
-  space, partial backup, partial staging, repeated invocation, and reboot resume.
-- Equality of the five runtime-file authorities listed under implementation
-  boundaries.
-
-## Documentation and release work
-
-- Add an updater section to `docs/INSTALL.md` with defaults, consent boundaries,
-  bandwidth, proxy limitations, recovery, and how to disable/remove scheduling.
-- Add an audit/support section explaining all six results and attach
-  `V9XUPDATE.INI` to reports.
-- Add release-key rotation and revocation procedures to the private release
-  runbook without placing private key material in the repository.
-- Release notes state separately whether a family is check-only,
-  check-and-download, interactive-install, or automatic-stage qualified.
+1. **Report submission.** Gate: one report from the UTM guest reaches
+   production with every file, the code shown and recorded. Delete the test
+   report afterwards.
+2. **Crypto, inflate, zip.** Gate: host tests pass the FIPS and RFC 8032
+   vectors and the negatives; every zip under `releases/` extracts byte-equal
+   to .NET.
+3. **Signed release metadata and server.** Gate: `build-release.ps1` writes a
+   `SIGNED.TXT` that `v9xsign verify` accepts; the server returns `signed=`
+   and serves the file byte-identical.
+4. **Check.** Gate: on the UTM guest, `current` and `update` both shown
+   correctly; a tampered `SIGNED.TXT` is refused.
+5. **Update.** Gate: one update cycle on the UTM guest and one on a physical
+   machine end with matching hashes, the new build in `V9XBOOT.INI`, working
+   Display Properties and no pending `WININIT.INI`.
 
 ## Non-goals
 
-- Updating Windows, DirectX, certificates, browsers, or unrelated drivers.
-- Installing a package for an unlisted PCI ID or changing the selected family.
-- Silent telemetry, inventory upload, crash upload, or unique client IDs.
-- Peer-to-peer distribution, delta patches, or updating directly from a source
-  checkout.
-- Automatic reboot, automatic deletion of unexpected files, or hiding a failed
-  integrity check behind a version string.
-
+- Silent telemetry, scheduled uploads, crash uploads or unique client IDs.
+- Updating Windows, DirectX, browsers or another vendor's driver.
+- Changing the installed family, or installing for an unlisted PCI ID.
+- Automatic reboot, or deleting files the updater did not put there.

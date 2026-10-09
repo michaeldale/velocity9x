@@ -46,5 +46,9 @@
 #define V9X_IDC_RUN_DIAGNOSTICS 2033
 #define V9X_IDC_TEXTURE_FILTER  2034
 #define V9X_IDC_WRITE_COMBINE   2035
+/* The two buttons that start V9XUPD.EXE: Send report... on the Advanced
+ * tab, Check for updates... on the Velocity9x tab. */
+#define V9X_IDC_SEND_REPORT     2038
+#define V9X_IDC_CHECK_UPDATES   2039
 
 #endif

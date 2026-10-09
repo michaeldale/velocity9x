@@ -1,0 +1,42 @@
+// V9XUPD.EXE dialogs. Sized in dialog units for 640x480: the smallest
+// desktop a Velocity9x machine is expected to run.
+#include <windows.h>
+#include "update_resource.h"
+
+V9X_UPD_DLG_REPORT DIALOG 0, 0, 260, 214
+STYLE DS_MODALFRAME | DS_3DLOOK | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Send a Velocity9x report"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "These files from C:\\V9XDIAG will be sent to the Velocity9x update server, michaeldale.com.au:",
+                    -1, 7, 7, 246, 16
+    LISTBOX         V9X_UPD_IDC_FILES, 7, 25, 246, 58,
+                    LBS_NOINTEGRALHEIGHT | LBS_USETABSTOPS | WS_VSCROLL | WS_BORDER
+    LTEXT           "", V9X_UPD_IDC_TOTAL, 7, 86, 246, 8
+    LTEXT           "They contain your Windows and DirectX versions and memory size, the PCI IDs of display adapters Windows has seen, the installed display and OpenGL drivers, Velocity9x versions and settings, the names of programs that used Direct3D or OpenGL since startup, and the time. They do not contain your computer name, user name, network addresses or any ID.",
+                    -1, 7, 99, 246, 48
+    LTEXT           "What happened? (optional)", -1, 7, 152, 246, 8
+    EDITTEXT        V9X_UPD_IDC_DESCRIPTION, 7, 162, 246, 14, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "Send", IDOK, 149, 193, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 203, 193, 50, 14
+END
+
+V9X_UPD_DLG_PROGRESS DIALOG 0, 0, 220, 40
+STYLE DS_MODALFRAME | DS_3DLOOK | DS_CENTER | WS_POPUP | WS_CAPTION
+CAPTION "Velocity9x"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "", V9X_UPD_IDC_STATUS, 10, 16, 200, 8
+END
+
+V9X_UPD_DLG_SENT DIALOG 0, 0, 240, 158
+STYLE DS_MODALFRAME | DS_3DLOOK | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Velocity9x report sent"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Your report code:", -1, 7, 7, 226, 8
+    CTEXT           "", V9X_UPD_IDC_CODE, 7, 19, 226, 20, SS_NOPREFIX
+    LTEXT           "", V9X_UPD_IDC_MESSAGE, 7, 45, 226, 88, SS_NOPREFIX
+    PUSHBUTTON      "Copy code", V9X_UPD_IDC_COPY, 129, 137, 50, 14
+    DEFPUSHBUTTON   "Close", IDOK, 183, 137, 50, 14
+END

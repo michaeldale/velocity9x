@@ -676,6 +676,38 @@ static void v9x_page_about(HWND dialog)
                 "About Velocity9x", MB_OK | MB_ICONINFORMATION);
 }
 
+/*
+ * Start V9XUPD.EXE from the system directory, where the INF installs it.
+ * The network work runs in that process, never in Display Properties
+ * (docs\plans\optional-update-checker-and-auto-updater.md), so a slow or
+ * failed connection cannot hang this dialog.
+ */
+static void v9x_page_launch_update(HWND dialog, const char *switch_text)
+{
+    char command[MAX_PATH + 16];
+    UINT length = GetSystemDirectoryA(command + 1, MAX_PATH);
+
+    if (length == 0u || length + 32u > sizeof(command)) {
+        return;
+    }
+    command[0] = '"';
+    lstrcatA(command, "\\V9XUPD.EXE");
+    if (GetFileAttributesA(command + 1) == 0xFFFFFFFFul) {
+        MessageBoxA(dialog,
+                    "V9XUPD.EXE is not installed in the Windows system "
+                    "folder. Reinstall Velocity9x from a release that "
+                    "includes it.",
+                    v9x_page_caption, MB_OK | MB_ICONEXCLAMATION);
+        return;
+    }
+    lstrcatA(command, "\" ");
+    lstrcatA(command, switch_text);
+    if (WinExec(command, SW_SHOWNORMAL) < 32u) {
+        MessageBoxA(dialog, "V9XUPD.EXE could not be started.",
+                    v9x_page_caption, MB_OK | MB_ICONEXCLAMATION);
+    }
+}
+
 /* Disabled controls for features this driver does not have yet, each with
  * the one entry that says so. */
 static void v9x_page_fill_unavailable(HWND dialog)
@@ -777,6 +809,10 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
                         v9x_page_status.memory_clock);
         return TRUE;
     case WM_COMMAND:
+        if (LOWORD(wparam) == V9X_IDC_SEND_REPORT) {
+            v9x_page_launch_update(dialog, "/REPORT");
+            return TRUE;
+        }
         /* Enable Apply only once the selection actually differs from the
          * file, so OK on an untouched page writes nothing. */
         if ((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||

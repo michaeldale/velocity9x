@@ -23,6 +23,8 @@ function Get-V9xHostSourceNames {
         'src\common\vbe_cache.c',
         'src\common\edid.c',
         'src\common\mtrr.c',
+        # V9XUPD.EXE's protocol text handling; the network half is Win32.
+        'src\common\update_proto.c',
         'src\common\d3dmode.c',
         'src\common\vsync.c',
         'src\common\vbe_crtc.c',
@@ -133,6 +135,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vbe_cache.c',
         'tests\host\test_edid.c',
         'tests\host\test_mtrr.c',
+        'tests\host\test_update_proto.c',
         'tests\host\test_d3dmode.c',
         'tests\host\test_vsync.c',
         'tests\host\test_vbe_crtc.c',
