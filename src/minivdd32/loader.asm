@@ -152,6 +152,15 @@ V9xSisMmioBase   dd 0
 V9xSisMmioLinear dd 0
 ENDIF
 
+IFDEF V9X_MGA_MMIO
+; Matrox MGA-2064W: the 16 KiB control aperture (MGABASE1, BAR0), mapped once
+; for the drawing engine. 1E14h is STATUS (MGA-1064SG specification p.4-74).
+V9X_MGA_MMIO_BYTES      equ 00004000h
+V9X_MGA_STATUS          equ 00001e14h
+V9xMgaMmioBase   dd 0
+V9xMgaMmioLinear dd 0
+ENDIF
+
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
@@ -2232,6 +2241,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_AtiMmioMap
     cmp     ax, V9XMINI_FN_SIS_MMIO_MAP
     je      V9xMini_Api_SisMmioMap
+    cmp     ax, V9XMINI_FN_MGA_MMIO_MAP
+    je      V9xMini_Api_MgaMmioMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2578,6 +2589,47 @@ V9xMini_Api_SisMmioMap_Check:
 V9xMini_Api_SisMmioMap_Failed:
     mov     V9xSisMmioBase, 0
 V9xMini_Api_SisMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR0 physical. See V9XMINI_FN_MGA_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_MgaMmioMap:
+IFDEF V9X_MGA_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_MgaMmioMap_Refused
+    cmp     eax, 0ffffc000h
+    ja      short V9xMini_Api_MgaMmioMap_Refused
+    test    eax, V9X_MGA_MMIO_BYTES - 1
+    jnz     short V9xMini_Api_MgaMmioMap_Refused
+
+    cmp     V9xMgaMmioLinear, 0
+    je      short V9xMini_Api_MgaMmioMap_Map
+    cmp     eax, V9xMgaMmioBase
+    jne     short V9xMini_Api_MgaMmioMap_Refused
+    jmp     short V9xMini_Api_MgaMmioMap_Check
+
+V9xMini_Api_MgaMmioMap_Map:
+    mov     V9xMgaMmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_MGA_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_MgaMmioMap_Failed
+    mov     V9xMgaMmioLinear, eax
+
+    ; An aperture that does not decode reads all ones; withhold it.
+V9xMini_Api_MgaMmioMap_Check:
+    mov     edx, V9xMgaMmioLinear
+    mov     eax, [edx+V9X_MGA_STATUS]
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_MgaMmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_MgaMmioMap_Failed:
+    mov     V9xMgaMmioBase, 0
+V9xMini_Api_MgaMmioMap_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

@@ -101,6 +101,10 @@ $sources = @(
     # The SiS 6326 2D engine: fill and copy through the host-tested builder.
     "src\display32\engines\eng_sis6326.c",
     "src\chipsets\sis\sis6326_engine.c",
+    # The MGA-2064W drawing engine: fill and copy through the host-tested
+    # builder.
+    "src\display32\engines\eng_mga.c",
+    "src\chipsets\matrox\mga_engine.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",

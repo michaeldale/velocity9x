@@ -1,9 +1,9 @@
 # Velocity9x family manifest: Matrox MGA (the original Millennium).
 #
-# Tier-0: every hw16 hook is NULL, so the VBE 4F02h mode set programs the
-# card, 4F01h reports where the framebuffer landed, and the CPU draws.
-# EngineType and EngineCaps below say exactly that, and change only when the
-# MGA drawing engine exists and has been measured
+# The VBE 4F02h mode set programs the card and 4F01h reports where the
+# framebuffer landed. The chip's engine hook has the mini-VDD map the
+# control aperture, and DirectDraw fill and copy run on the drawing engine
+# (MGA_2064W); everything else is drawn by the CPU
 # (docs\plans\matrox-millennium-family.md, Phase 2).
 #
 # This is the INF-installed family. The Millennium II stays in matrox-m2,
@@ -15,7 +15,7 @@
     SchemaVersion = 1
     Id = 'matrox'
     DisplayName = 'Matrox Millennium'
-    Description = 'Matrox Millennium MGA-2064W (PCI 102B:0519) at tier-0: VBE mode set, CPU drawing, no MGA register writes.'
+    Description = 'Matrox Millennium MGA-2064W (PCI 102B:0519): VBE mode set, the drawing engine for DirectDraw fill and copy, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -29,10 +29,13 @@
             Adapter = 'Matrox Millennium MGA-2064W'
             ClockDetector = 'matrox-mga2064w-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            Acceleration = 'none'
+            # The drawing engine through BAR0's control aperture, for
+            # DirectDraw fill and copy (eng_mga.c). No 3D engine on this
+            # chip; Direct3D is the software rasterizer when selected.
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'MGA_2064W'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # A floor. The part shipped with 2, 4 and 8 MiB; 2 MiB is the base
             # Millennium and covers every static mode below. The runtime heap
             # sizes from 4F00h, not from this
@@ -104,7 +107,8 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
-        RuntimeDefines = @()
+        # runtime.asm's BAR0 read and mini-VDD map for the drawing engine.
+        RuntimeDefines = @('V9X_MGA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-matrox'
         PackageOutput = 'build\win98se-matrox'
         VmStageDirectory = 'build\vm-probe\MATROX'
@@ -130,7 +134,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem, CPU blits only)'
+        HalDescription = 'V9XHAL.DLL (vidmem, engine fill and copy)'
     }
 
     Floppy = @{

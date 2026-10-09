@@ -51,6 +51,14 @@ VRAM at 2 MiB and above, checking each fill and copy byte for byte against the
 host-tested builder it compiles in. It publishes `C:\V9XDIAG\SIS2D.TXT`. See
 [2026-10-05 SiS 6326 2D engine writes](../../docs/decisions/2026-10-05-sis6326-2d-engine-writes.md).
 
+`mga2d.asm` and `mga2d_win32.c` are the Matrox MGA-2064W drawing engine
+write probe. Build them with `scripts/build-mga2d.ps1`; run `MGA2D.EXE` beside
+`MGA2D.VXD` under Velocity9x at 8, 16 or 32 bpp. It **writes the card**: the
+drawing registers, and a 1 MiB region 1 MiB below the end of VRAM, comparing
+seven fills and copies with the intended image, edges and overlaps included.
+`/nosetup` skips the engine setup writes. It publishes `C:\V9XDIAG\MGA2D.TXT`.
+See [2026-10-09 MGA-2064W drawing engine](../../docs/decisions/2026-10-09-mga2064w-drawing-engine.md).
+
 `sis6326_3d_win32.c` is the SiS 6326 3D engine write probe. Build it
 with `scripts/build-sis6326-3d.ps1` and run `SIS3D.EXE` beside `SIS2D.VXD`
 (which it shares with SIS2D) under Velocity9x at 16 bpp; with no switch it

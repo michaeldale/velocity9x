@@ -2483,6 +2483,98 @@ V9xMiniSisMmioMapDone:
 V9XMINISISMMIOMAP ENDP
 ENDIF
 
+IFDEF V9X_MGA_FAMILY
+; WORD FAR PASCAL V9xPciReadMgaMmioBar(DWORD FAR *base)
+; The MGA-2064W's BAR0, MGABASE1, its 16 KiB control aperture (DC000000h on
+; A8U4I5; the framebuffer is BAR1 on this chip). A read-only config access;
+; a refusal changes no stage code, because a missing engine must not fail
+; Enable.
+PUBLIC V9XPCIREADMGAMMIOBAR
+V9XPCIREADMGAMMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadMgaMmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadMgaMmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadMgaMmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadMgaMmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadMgaMmioBarFailed
+    cmp     eax, 0ffffc000h
+    ja      short V9xPciReadMgaMmioBarFailed
+    test    eax, 00003fffh
+    jnz     short V9xPciReadMgaMmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadMgaMmioBarDone
+V9xPciReadMgaMmioBarFailed:
+    xor     ax, ax
+V9xPciReadMgaMmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADMGAMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniMgaMmioMap(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_MGA_MMIO_MAP: the mini-VDD maps BAR0, checks it decodes, and
+; returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMINIMGAMMIOMAP
+V9XMINIMGAMMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniMgaMmioMapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_MGA_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniMgaMmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniMgaMmioMapDone
+V9xMiniMgaMmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniMgaMmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINIMGAMMIOMAP ENDP
+ENDIF
+
 IFDEF V9X_INTEL_GMA_FAMILY
 ; WORD FAR PASCAL V9xPciReadIntelMmioBar(DWORD FAR *base)
 ; Fresh BAR0 config read for each Phase-1 capture. Unlike the framebuffer BAR

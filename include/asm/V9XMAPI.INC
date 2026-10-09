@@ -386,6 +386,19 @@ V9XMINI_FN_ATI_MMIO_MAP     EQU 001Ah
 ; implements it; every other image refuses cleanly.
 V9XMINI_FN_SIS_MMIO_MAP     EQU 001Bh
 
+; Matrox MGA-2064W: map the 16 KiB control aperture (MGABASE1, BAR0) and say
+; where.
+;
+; In: EBX = BAR0 physical base, freshly read from PCI config by the display
+; driver. Out: AX=1, EBX = linear address of the window, whose drawing
+; registers begin at +1C00h. AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR, as the SiS map does. The window is
+; handed over only after STATUS (+1E14h) read through it is not all ones,
+; which is what an aperture that does not decode returns. Only the matrox
+; family image implements it; every other image refuses cleanly.
+V9XMINI_FN_MGA_MMIO_MAP     EQU 001Ch
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

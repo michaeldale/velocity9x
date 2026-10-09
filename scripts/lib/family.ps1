@@ -17,7 +17,7 @@ $script:V9xFamilySchemaVersion = 1
 # catching it here names the manifest and the chip instead.
 $script:V9xEngineTypes = @('NONE', 'S3_VIRGE_DX', 'S3_TRIO64',
                            'INTEL_GEN3', 'ATI_MACH64', 'ATI_RAGE2',
-                           'SIS_6326')
+                           'SIS_6326', 'MGA_2064W')
 $script:V9xEngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
 
 function Get-V9xFamilyRoot {

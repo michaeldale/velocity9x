@@ -118,6 +118,8 @@ $intelMmio = ($Family -eq 'intel-gma')
 $atiMmio = ($Family -eq 'ati')
 # The SiS 6326's register BAR map for its 2D engine.
 $sisMmio = ($Family -eq 'sis')
+# The MGA-2064W's control aperture map for its drawing engine.
+$mgaMmio = ($Family -eq 'matrox')
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -411,6 +413,9 @@ if ($atiMmio) {
 }
 if ($sisMmio) {
     $assemblerArguments = @("-DV9X_SIS_MMIO") + $assemblerArguments
+}
+if ($mgaMmio) {
+    $assemblerArguments = @("-DV9X_MGA_MMIO") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments

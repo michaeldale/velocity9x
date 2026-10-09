@@ -6,7 +6,10 @@ Status: Phase 1 done 2026-10-09
 ([first boot](../decisions/2026-10-09-mga2064w-tier0-first-boot.md)):
 enable-ok on the guest and on A8U4I5, 13 modes to 1600x1200 at 8/16/32 bpp,
 GDI and the DirectDraw HAL passing; the monitor itself not yet looked at.
-Next: Phase 2, the drawing engine.
+Phase 2 done 2026-10-09
+([engine](../decisions/2026-10-09-mga2064w-drawing-engine.md)): the write
+probe passes on silicon at 8/16/32 bpp, and DirectDraw fill and copy run on
+the engine with correct pixels and no timeouts. Next: Phase 3, GDI.
 
 The MGA-2064W (`102B:0519`) is in A8U4I5 (10.0.1.172) since 2026-10-09,
 replacing the Rage XL. Until now the chip sat in `matrox-m2`, a guarded
@@ -89,6 +92,11 @@ It settles what the 1064SG document cannot for this chip: whether the
 2064W needs `MACCESS` written at all after a VBE mode set, whether the
 end coordinates are inclusive, and whether BLK (block mode) fills are safe
 on this card's WRAM.
+
+Done 2026-10-09 except BLK, which is untried: the setup is required, the
+fill edge is exclusive and the blit edge inclusive. The engine state is
+written by `eng_mga.c` on first validation per mode rather than by a 16-bit
+enable hook, because it is MMIO-only and the HAL already holds the window.
 
 ## Phase 3 - GDI acceleration
 

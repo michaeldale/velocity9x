@@ -174,6 +174,10 @@ unsigned int v9x_run_rage2_trap_tests(void);
  * against the stock driver's measured fill and the datasheet. */
 unsigned int v9x_run_sis6326_engine_tests(void);
 
+/* tests\host\test_mga_engine.c: MGA-2064W fill and copy register values
+ * against the MGA-1064SG specification's encodings and limits. */
+unsigned int v9x_run_mga_engine_tests(void);
+
 /* tests\host\test_sis6326_3d.c: SiS 6326 triangle register values against
  * SiS's own HAL as captured live and the datasheet. */
 unsigned int v9x_run_sis6326_3d_tests(void);
@@ -1213,6 +1217,7 @@ int main(int argc, char **argv)
     failures += v9x_run_rage2_draw_tests();
     failures += v9x_run_sis6326_engine_tests();
     failures += v9x_run_sis6326_3d_tests();
+    failures += v9x_run_mga_engine_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);
