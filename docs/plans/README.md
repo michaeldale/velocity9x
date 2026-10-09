@@ -3,6 +3,7 @@
 - [3dfx Voodoo3 family: tier-0 bring-up](3dfx-voodoo3-family.md) - Open.
 - [3dfx Voodoo3: what the retro-agent work supplies to the 2D and D3D engines](3dfx-voodoo3-prior-work.md) - Open; desk work, nothing coded.
 - [ATI Rage Mobility-M hardware Direct3D and OpenGL](ati-rage-mobility-hardware-3d.md) - Proposed; research complete, physical bring-up not started.
+- [ATI Rage Pro class: table fog and 8-bit paletted textures](rage-pro-table-fog-and-paletted-textures.md) - Proposed; research only, nothing coded or measured.
 - [Direct3D gaps: backface culling and line rasterisation](d3d-line-raster-and-backface-cull.md) - Open.
 - [Direct3D two-stage multitexture on engines with two texture units](d3d-two-stage-multitexture.md) - Not started; a census of Direct3D titles that use stage 1 comes first (none measured has).
 - [DDI 6 (DrawPrimitives2): Direct3D 8, per-application opt-in, the runtime's flush rate](ddi6-drawprimitives2.md) - In progress; Part A steps 1-2 done (D3D8 uses the HAL on the Rage XL and the netbook; FVFCaps zero was the blocker), a real DX8 title run (3DMark 2001 SE); Part C done (the regression was Clear2 on the CPU, now on the engine: DDI 6 within 2.5 % of DDI 5); Part B done (DDI 6 per program, default: programs that load D3D8.DLL); 3DMark 2001 SE runs on the Rage XL HAL at 1 to 2 fps.
