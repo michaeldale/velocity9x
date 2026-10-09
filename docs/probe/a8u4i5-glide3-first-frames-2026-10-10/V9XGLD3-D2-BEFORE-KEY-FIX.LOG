@@ -1,0 +1,980 @@
+1 pid=FFF0CCF3 t=4784145 attach instance=02500000 version=0.15.1 V9XGLD3 build=1ae5474-dirty exe=C:\PROGRAM FILES\DIABLO II SHAREWARE\DIABLO II.EXE
+2 pid=FFF0CCF3 t=4784150 grGet#1 pname=0F -> 1 (4 bytes)
+3 pid=FFF0CCF3 t=4784150 grGlideInit#1 
+4 pid=FFF0CCF3 t=4784150 grSstSelect#1 sst=0
+5 pid=FFF0CCF3 t=4784150 grGetString#1 pname=A1 -> Voodoo3
+6 pid=FFF0CCF3 t=4784150 grGetString#2 pname=A3 -> 3Dfx Interactive
+7 pid=FFF0CCF3 t=4784150 grGetString#3 pname=A2 -> Glide
+8 pid=FFF0CCF3 t=4784150 grGetString#4 pname=A4 -> 3.01 Velocity9x 1ae5474-dirty
+9 pid=FFF0CCF3 t=4784196 device: window=00000510 ours=0
+10 pid=FFF0CCF3 t=4786245 device: describe result=0 engine=4 generation=15
+11 pid=FFF0CCF3 t=4786245 device: target formats=00000002 texture formats=0000001A hw max=256
+12 pid=FFF0CCF3 t=4786245 device: open 640x480 buffers=3
+13 pid=FFF0CCF3 t=4786245 grSstWinOpen#1 hwnd=00000510 res=7 refresh=0 cformat=2 origin=0 colbuf=2 auxbuf=0 -> 1
+14 pid=FFF0CCF3 t=4786245 grGet#2 pname=0A -> 256 (4 bytes)
+15 pid=FFF0CCF3 t=4786245 grGet#3 pname=0B -> 3 (4 bytes)
+16 pid=FFF0CCF3 t=4786250 grGet#4 pname=11 -> 1 (4 bytes)
+17 pid=FFF0CCF3 t=4786250 grGet#5 pname=13 -> 1 (4 bytes)
+18 pid=FFF0CCF3 t=4786250 grGet#6 pname=24 -> 8 (4 bytes)
+19 pid=FFF0CCF3 t=4786250 grGet#7 pname=0E -> 0 (4 bytes)
+20 pid=FFF0CCF3 t=4786250 grCoordinateSpace#1 mode=0
+21 pid=FFF0CCF3 t=4786250 grVertexLayout#1 param=01 offset=0 mode=1
+22 pid=FFF0CCF3 t=4786250 grVertexLayout#2 param=50 offset=12 mode=1
+23 pid=FFF0CCF3 t=4786250 grVertexLayout#3 param=40 offset=16 mode=1
+24 pid=FFF0CCF3 t=4786250 grVertexLayout#4 param=30 offset=8 mode=1
+25 pid=FFF0CCF3 t=4786250 grDepthMask#1 enable=00000000
+26 pid=FFF0CCF3 t=4786250 grColorMask#1 rgb=1 alpha=0 (ignored)
+27 pid=FFF0CCF3 t=4786250 grTexCombine#1 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+28 pid=FFF0CCF3 t=4786250 grTexFilterMode#1 tmu=0 min=0 mag=0
+29 pid=FFF0CCF3 t=4786250 grTexCombine#2 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+30 pid=FFF0CCF3 t=4786250 grChromakeyValue#1 color=000000FF
+31 pid=FFF0CCF3 t=4786250 grTexMinAddress#1 tmu=0 -> 0
+32 pid=FFF0CCF3 t=4786250 grTexMaxAddress#1 tmu=0 -> 003E0000
+33 pid=FFF0CCF3 t=4786250 grTexDownloadMipMap#1 tmu=0 addr=00000000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+34 pid=FFF0CCF3 t=4786250 grTexDownloadMipMap#2 tmu=0 addr=00000080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+35 pid=FFF0CCF3 t=4786250 grTexDownloadMipMap#3 tmu=0 addr=00000100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+36 pid=FFF0CCF3 t=4786250 grTexDownloadMipMap#4 tmu=0 addr=00000180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+37 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#5 tmu=0 addr=00000200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+38 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#6 tmu=0 addr=00000280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+39 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#7 tmu=0 addr=00000300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+40 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#8 tmu=0 addr=00000380 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+41 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#9 tmu=0 addr=00000400 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+42 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#10 tmu=0 addr=00000480 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+43 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#11 tmu=0 addr=00000500 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+44 pid=FFF0CCF3 t=4786255 grTexDownloadMipMap#12 tmu=0 addr=00000580 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+45 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#13 tmu=0 addr=00000600 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+46 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#14 tmu=0 addr=00000680 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+47 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#15 tmu=0 addr=00000700 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+48 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#16 tmu=0 addr=00000780 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+49 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#17 tmu=0 addr=00000800 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+50 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#18 tmu=0 addr=00000880 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+51 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#19 tmu=0 addr=00000900 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+52 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#20 tmu=0 addr=00000980 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+53 pid=FFF0CCF3 t=4786260 grTexDownloadMipMap#21 tmu=0 addr=00000A00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+54 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#22 tmu=0 addr=00000A80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+55 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#23 tmu=0 addr=00000B00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+56 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#24 tmu=0 addr=00000B80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+57 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#25 tmu=0 addr=00000C00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+58 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#26 tmu=0 addr=00000C80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+59 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#27 tmu=0 addr=00000D00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+60 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#28 tmu=0 addr=00000D80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+61 pid=FFF0CCF3 t=4786265 grTexDownloadMipMap#29 tmu=0 addr=00000E00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+62 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#30 tmu=0 addr=00000E80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+63 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#31 tmu=0 addr=00000F00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+64 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#32 tmu=0 addr=00000F80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+65 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#33 tmu=0 addr=00001000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+66 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#34 tmu=0 addr=00001080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+67 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#35 tmu=0 addr=00001100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+68 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#36 tmu=0 addr=00001180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+69 pid=FFF0CCF3 t=4786270 grTexDownloadMipMap#37 tmu=0 addr=00001200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+70 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#38 tmu=0 addr=00001280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+71 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#39 tmu=0 addr=00001300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+72 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#40 tmu=0 addr=00001380 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+73 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#41 tmu=0 addr=00001400 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+74 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#42 tmu=0 addr=00001480 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+75 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#43 tmu=0 addr=00001500 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+76 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#44 tmu=0 addr=00001580 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+77 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#45 tmu=0 addr=00001600 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+78 pid=FFF0CCF3 t=4786275 grTexDownloadMipMap#46 tmu=0 addr=00001680 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+79 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#47 tmu=0 addr=00001700 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+80 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#48 tmu=0 addr=00001780 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+81 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#49 tmu=0 addr=00001800 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+82 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#50 tmu=0 addr=00001880 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+83 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#51 tmu=0 addr=00001900 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+84 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#52 tmu=0 addr=00001980 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+85 pid=FFF0CCF3 t=4786281 grTexDownloadMipMap#53 tmu=0 addr=00001A00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+86 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#54 tmu=0 addr=00001A80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+87 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#55 tmu=0 addr=00001B00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+88 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#56 tmu=0 addr=00001B80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+89 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#57 tmu=0 addr=00001C00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+90 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#58 tmu=0 addr=00001C80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+91 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#59 tmu=0 addr=00001D00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+92 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#60 tmu=0 addr=00001D80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+93 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#61 tmu=0 addr=00001E00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+94 pid=FFF0CCF3 t=4786285 grTexDownloadMipMap#62 tmu=0 addr=00001E80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+95 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#63 tmu=0 addr=00001F00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+96 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#64 tmu=0 addr=00001F80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+97 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#65 tmu=0 addr=00002000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+98 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#66 tmu=0 addr=00002080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+99 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#67 tmu=0 addr=00002100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+100 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#68 tmu=0 addr=00002180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+101 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#69 tmu=0 addr=00002200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+102 pid=FFF0CCF3 t=4786290 grTexDownloadMipMap#70 tmu=0 addr=00002280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+103 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#71 tmu=0 addr=00002300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+104 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#72 tmu=0 addr=00002380 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+105 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#73 tmu=0 addr=00002400 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+106 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#74 tmu=0 addr=00002480 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+107 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#75 tmu=0 addr=00002500 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+108 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#76 tmu=0 addr=00002580 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+109 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#77 tmu=0 addr=00002600 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+110 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#78 tmu=0 addr=00002680 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+111 pid=FFF0CCF3 t=4786295 grTexDownloadMipMap#79 tmu=0 addr=00002700 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+112 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#80 tmu=0 addr=00002780 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+113 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#81 tmu=0 addr=00002800 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+114 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#82 tmu=0 addr=00002880 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+115 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#83 tmu=0 addr=00002900 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+116 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#84 tmu=0 addr=00002980 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+117 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#85 tmu=0 addr=00002A00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+118 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#86 tmu=0 addr=00002A80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+119 pid=FFF0CCF3 t=4786300 grTexDownloadMipMap#87 tmu=0 addr=00002B00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+120 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#88 tmu=0 addr=00002B80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+121 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#89 tmu=0 addr=00002C00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+122 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#90 tmu=0 addr=00002C80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+123 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#91 tmu=0 addr=00002D00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+124 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#92 tmu=0 addr=00002D80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+125 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#93 tmu=0 addr=00002E00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+126 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#94 tmu=0 addr=00002E80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+127 pid=FFF0CCF3 t=4786305 grTexDownloadMipMap#95 tmu=0 addr=00002F00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+128 pid=FFF0CCF3 t=4786310 grTexDownloadMipMap#96 tmu=0 addr=00002F80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+129 pid=FFF0CCF3 t=4786310 grBufferClear#1 color=00000000 alpha=00 depth=0000
+130 pid=FFF0CCF3 t=4786310 grBufferSwap#1 interval=1
+131 pid=FFF0CCF3 t=4786325 capture frame after swap 1
+132 pid=FFF0CCF3 t=4786325 grGet#8 pname=05 -> 256 (4 bytes)
+133 pid=FFF0CCF3 t=4786325 grGet#9 pname=2A -> 8 (4 bytes)
+134 pid=FFF0CCF3 t=4786325 grLoadGammaTable#1 entries=256 r=02ED0090 g=02ED0090 b=02ED0090 (ignored)
+135 pid=FFF0CCF3 t=4786380 grTexDownloadTable#1 type=2 sum=994A8D17 first=FF000000 FF240000 FF1C1808 FF2C2410
+136 pid=FFF0CCF3 t=4786380 grTexDownloadTable#2 type=2 sum=994A8D17 first=FF000000 FF240000 FF1C1808 FF2C2410
+137 pid=FFF0CCF3 t=4786761 grTexDownloadTable#3 type=2 sum=994A8D17 first=FF000000 FF240000 FF1C1808 FF2C2410
+138 pid=FFF0CCF3 t=4786761 grTexDownloadTable#4 type=2 sum=994A8D17 first=FF000000 FF240000 FF1C1808 FF2C2410
+139 pid=FFF0CCF3 t=4786761 grFinish#1 
+140 pid=FFF0CCF3 t=4786761 grSstWinClose#1 context=1
+141 pid=FFF0CCF3 t=4786761 census winclose swaps=1
+142 pid=FFF0CCF3 t=4786761 census   draws: drawn=2 refused=0 culled=0 skipped-textured=0
+143 pid=FFF0CCF3 t=4786761 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+144 pid=FFF0CCF3 t=4786761 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=13 clear=0 batches=1
+145 pid=FFF0CCF3 t=4786761 census   batch ends: full=0 texture=0 state=0
+146 pid=FFF0CCF3 t=4786761 census   grBufferClear calls=1 lines=1
+147 pid=FFF0CCF3 t=4786761 census   grBufferSwap calls=1 lines=1
+148 pid=FFF0CCF3 t=4786761 census   grChromakeyValue calls=1 lines=1
+149 pid=FFF0CCF3 t=4786761 census   grColorMask calls=1 lines=1
+150 pid=FFF0CCF3 t=4786761 census   grCoordinateSpace calls=1 lines=1
+151 pid=FFF0CCF3 t=4786761 census   grDepthMask calls=1 lines=1
+152 pid=FFF0CCF3 t=4786761 census   grFinish calls=1 lines=1
+153 pid=FFF0CCF3 t=4786761 census   grGet calls=9 lines=9
+154 pid=FFF0CCF3 t=4786761 census   grGetString calls=4 lines=4
+155 pid=FFF0CCF3 t=4786761 census   grGlideInit calls=1 lines=1
+156 pid=FFF0CCF3 t=4786761 census   grLoadGammaTable calls=1 lines=1
+157 pid=FFF0CCF3 t=4786761 census   grSstSelect calls=1 lines=1
+158 pid=FFF0CCF3 t=4786761 census   grSstWinClose calls=1 lines=1
+159 pid=FFF0CCF3 t=4786761 census   grSstWinOpen calls=1 lines=1
+160 pid=FFF0CCF3 t=4786761 census   grTexCombine calls=2 lines=2
+161 pid=FFF0CCF3 t=4786761 census   grTexDownloadMipMap calls=96 lines=96
+162 pid=FFF0CCF3 t=4786761 census   grTexDownloadTable calls=4 lines=4
+163 pid=FFF0CCF3 t=4786761 census   grTexFilterMode calls=1 lines=1
+164 pid=FFF0CCF3 t=4786761 census   grTexMaxAddress calls=1 lines=1
+165 pid=FFF0CCF3 t=4786761 census   grTexMinAddress calls=1 lines=1
+166 pid=FFF0CCF3 t=4786761 census   grVertexLayout calls=4 lines=4
+167 pid=FFF0CCF3 t=4788525 device: closed
+168 pid=FFF0CCF3 t=4788525 grGlideShutdown#1 
+169 pid=FFF0CCF3 t=4788525 census shutdown swaps=1
+170 pid=FFF0CCF3 t=4788525 census   draws: drawn=2 refused=0 culled=0 skipped-textured=0
+171 pid=FFF0CCF3 t=4788525 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+172 pid=FFF0CCF3 t=4788525 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+173 pid=FFF0CCF3 t=4788525 census   batch ends: full=0 texture=0 state=0
+174 pid=FFF0CCF3 t=4788525 census   grBufferClear calls=1 lines=1
+175 pid=FFF0CCF3 t=4788525 census   grBufferSwap calls=1 lines=1
+176 pid=FFF0CCF3 t=4788525 census   grChromakeyValue calls=1 lines=1
+177 pid=FFF0CCF3 t=4788525 census   grColorMask calls=1 lines=1
+178 pid=FFF0CCF3 t=4788525 census   grCoordinateSpace calls=1 lines=1
+179 pid=FFF0CCF3 t=4788525 census   grDepthMask calls=1 lines=1
+180 pid=FFF0CCF3 t=4788525 census   grFinish calls=1 lines=1
+181 pid=FFF0CCF3 t=4788525 census   grGet calls=9 lines=9
+182 pid=FFF0CCF3 t=4788525 census   grGetString calls=4 lines=4
+183 pid=FFF0CCF3 t=4788525 census   grGlideInit calls=1 lines=1
+184 pid=FFF0CCF3 t=4788525 census   grGlideShutdown calls=1 lines=1
+185 pid=FFF0CCF3 t=4788525 census   grLoadGammaTable calls=1 lines=1
+186 pid=FFF0CCF3 t=4788525 census   grSstSelect calls=1 lines=1
+187 pid=FFF0CCF3 t=4788525 census   grSstWinClose calls=1 lines=1
+188 pid=FFF0CCF3 t=4788525 census   grSstWinOpen calls=1 lines=1
+189 pid=FFF0CCF3 t=4788525 census   grTexCombine calls=2 lines=2
+190 pid=FFF0CCF3 t=4788525 census   grTexDownloadMipMap calls=96 lines=96
+191 pid=FFF0CCF3 t=4788525 census   grTexDownloadTable calls=4 lines=4
+192 pid=FFF0CCF3 t=4788525 census   grTexFilterMode calls=1 lines=1
+193 pid=FFF0CCF3 t=4788525 census   grTexMaxAddress calls=1 lines=1
+194 pid=FFF0CCF3 t=4788525 census   grTexMinAddress calls=1 lines=1
+195 pid=FFF0CCF3 t=4788525 census   grVertexLayout calls=4 lines=4
+196 pid=FFF0CCF3 t=4788525 grGlideInit#2 
+197 pid=FFF0CCF3 t=4788525 grSstSelect#2 sst=0
+198 pid=FFF0CCF3 t=4788550 device: window=00000510 ours=0
+199 pid=FFF0CCF3 t=4790605 device: describe result=0 engine=4 generation=16
+200 pid=FFF0CCF3 t=4790605 device: target formats=00000002 texture formats=0000001A hw max=256
+201 pid=FFF0CCF3 t=4790605 device: open 640x480 buffers=3
+202 pid=FFF0CCF3 t=4790605 grSstWinOpen#2 hwnd=00000510 res=7 refresh=0 cformat=2 origin=0 colbuf=2 auxbuf=0 -> 1
+203 pid=FFF0CCF3 t=4790605 grCoordinateSpace#2 mode=0
+204 pid=FFF0CCF3 t=4790605 grVertexLayout#5 param=01 offset=0 mode=1
+205 pid=FFF0CCF3 t=4790605 grVertexLayout#6 param=50 offset=12 mode=1
+206 pid=FFF0CCF3 t=4790605 grVertexLayout#7 param=40 offset=16 mode=1
+207 pid=FFF0CCF3 t=4790605 grVertexLayout#8 param=30 offset=8 mode=1
+208 pid=FFF0CCF3 t=4790605 grDepthMask#2 enable=00000000
+209 pid=FFF0CCF3 t=4790605 grColorMask#2 rgb=1 alpha=0 (ignored)
+210 pid=FFF0CCF3 t=4790605 grTexFilterMode#2 tmu=0 min=0 mag=0
+211 pid=FFF0CCF3 t=4790605 grTexCombine#3 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+212 pid=FFF0CCF3 t=4790605 grChromakeyValue#2 color=000000FF
+213 pid=FFF0CCF3 t=4790605 grTexMinAddress#2 tmu=0 -> 0
+214 pid=FFF0CCF3 t=4790605 grTexMaxAddress#2 tmu=0 -> 003E0000
+215 pid=FFF0CCF3 t=4790610 grTexDownloadMipMap#97 tmu=0 addr=00000000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+216 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#98 tmu=0 addr=00000080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+217 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#99 tmu=0 addr=00000100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+218 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#100 tmu=0 addr=00000180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+219 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#101 tmu=0 addr=00000200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+220 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#102 tmu=0 addr=00000280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+221 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#103 tmu=0 addr=00000300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+222 pid=FFF0CCF3 t=4790612 grTexDownloadMipMap#104 tmu=0 addr=00000380 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+223 pid=FFF0CCF3 t=4790615 grTexDownloadMipMap#105 tmu=0 addr=00000400 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+224 pid=FFF0CCF3 t=4790615 grTexDownloadMipMap#106 tmu=0 addr=00000480 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+225 pid=FFF0CCF3 t=4790615 grTexDownloadMipMap#107 tmu=0 addr=00000500 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+226 pid=FFF0CCF3 t=4790615 grTexDownloadMipMap#108 tmu=0 addr=00000580 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+227 pid=FFF0CCF3 t=4790618 grTexDownloadMipMap#109 tmu=0 addr=00000600 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+228 pid=FFF0CCF3 t=4790618 grTexDownloadMipMap#110 tmu=0 addr=00000680 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+229 pid=FFF0CCF3 t=4790618 grTexDownloadMipMap#111 tmu=0 addr=00000700 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+230 pid=FFF0CCF3 t=4790618 grTexDownloadMipMap#112 tmu=0 addr=00000780 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+231 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#113 tmu=0 addr=00000800 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+232 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#114 tmu=0 addr=00000880 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+233 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#115 tmu=0 addr=00000900 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+234 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#116 tmu=0 addr=00000980 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+235 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#117 tmu=0 addr=00000A00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+236 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#118 tmu=0 addr=00000A80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+237 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#119 tmu=0 addr=00000B00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+238 pid=FFF0CCF3 t=4790620 grTexDownloadMipMap#120 tmu=0 addr=00000B80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+239 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#121 tmu=0 addr=00000C00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+240 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#122 tmu=0 addr=00000C80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+241 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#123 tmu=0 addr=00000D00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+242 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#124 tmu=0 addr=00000D80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+243 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#125 tmu=0 addr=00000E00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+244 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#126 tmu=0 addr=00000E80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+245 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#127 tmu=0 addr=00000F00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+246 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#128 tmu=0 addr=00000F80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+247 pid=FFF0CCF3 t=4790625 grTexDownloadMipMap#129 tmu=0 addr=00001000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+248 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#130 tmu=0 addr=00001080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+249 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#131 tmu=0 addr=00001100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+250 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#132 tmu=0 addr=00001180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+251 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#133 tmu=0 addr=00001200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+252 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#134 tmu=0 addr=00001280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+253 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#135 tmu=0 addr=00001300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+254 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#136 tmu=0 addr=00001380 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+255 pid=FFF0CCF3 t=4790630 grTexDownloadMipMap#137 tmu=0 addr=00001400 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+256 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#138 tmu=0 addr=00001480 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+257 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#139 tmu=0 addr=00001500 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+258 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#140 tmu=0 addr=00001580 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+259 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#141 tmu=0 addr=00001600 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+260 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#142 tmu=0 addr=00001680 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+261 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#143 tmu=0 addr=00001700 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+262 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#144 tmu=0 addr=00001780 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+263 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#145 tmu=0 addr=00001800 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+264 pid=FFF0CCF3 t=4790635 grTexDownloadMipMap#146 tmu=0 addr=00001880 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+265 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#147 tmu=0 addr=00001900 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+266 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#148 tmu=0 addr=00001980 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+267 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#149 tmu=0 addr=00001A00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+268 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#150 tmu=0 addr=00001A80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+269 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#151 tmu=0 addr=00001B00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+270 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#152 tmu=0 addr=00001B80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+271 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#153 tmu=0 addr=00001C00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+272 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#154 tmu=0 addr=00001C80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+273 pid=FFF0CCF3 t=4790640 grTexDownloadMipMap#155 tmu=0 addr=00001D00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+274 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#156 tmu=0 addr=00001D80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+275 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#157 tmu=0 addr=00001E00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+276 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#158 tmu=0 addr=00001E80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+277 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#159 tmu=0 addr=00001F00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+278 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#160 tmu=0 addr=00001F80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+279 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#161 tmu=0 addr=00002000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+280 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#162 tmu=0 addr=00002080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+281 pid=FFF0CCF3 t=4790645 grTexDownloadMipMap#163 tmu=0 addr=00002100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+282 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#164 tmu=0 addr=00002180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+283 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#165 tmu=0 addr=00002200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+284 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#166 tmu=0 addr=00002280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+285 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#167 tmu=0 addr=00002300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+286 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#168 tmu=0 addr=00002380 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+287 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#169 tmu=0 addr=00002400 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+288 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#170 tmu=0 addr=00002480 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+289 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#171 tmu=0 addr=00002500 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+290 pid=FFF0CCF3 t=4790650 grTexDownloadMipMap#172 tmu=0 addr=00002580 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+291 pid=FFF0CCF3 t=4790655 grTexDownloadMipMap#173 tmu=0 addr=00002600 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+292 pid=FFF0CCF3 t=4790655 grTexDownloadMipMap#174 tmu=0 addr=00002680 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+293 pid=FFF0CCF3 t=4790655 grTexDownloadMipMap#175 tmu=0 addr=00002700 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+294 pid=FFF0CCF3 t=4790655 grTexDownloadMipMap#176 tmu=0 addr=00002780 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+295 pid=FFF0CCF3 t=4790658 grTexDownloadMipMap#177 tmu=0 addr=00002800 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+296 pid=FFF0CCF3 t=4790658 grTexDownloadMipMap#178 tmu=0 addr=00002880 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+297 pid=FFF0CCF3 t=4790658 grTexDownloadMipMap#179 tmu=0 addr=00002900 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+298 pid=FFF0CCF3 t=4790658 grTexDownloadMipMap#180 tmu=0 addr=00002980 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+299 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#181 tmu=0 addr=00002A00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+300 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#182 tmu=0 addr=00002A80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+301 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#183 tmu=0 addr=00002B00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+302 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#184 tmu=0 addr=00002B80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+303 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#185 tmu=0 addr=00002C00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+304 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#186 tmu=0 addr=00002C80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+305 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#187 tmu=0 addr=00002D00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+306 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#188 tmu=0 addr=00002D80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+307 pid=FFF0CCF3 t=4790660 grTexDownloadMipMap#189 tmu=0 addr=00002E00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+308 pid=FFF0CCF3 t=4790665 grTexDownloadMipMap#190 tmu=0 addr=00002E80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+309 pid=FFF0CCF3 t=4790665 grTexDownloadMipMap#191 tmu=0 addr=00002F00 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+310 pid=FFF0CCF3 t=4790665 grTexDownloadMipMap#192 tmu=0 addr=00002F80 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D3FAB0
+311 pid=FFF0CCF3 t=4790665 grBufferClear#2 color=00000000 alpha=00 depth=0000
+312 pid=FFF0CCF3 t=4790665 grBufferSwap#2 interval=1
+313 pid=FFF0CCF3 t=4790680 capture frame after swap 2
+314 pid=FFF0CCF3 t=4790680 grGet#10 pname=05 -> 256 (4 bytes)
+315 pid=FFF0CCF3 t=4790680 grGet#11 pname=2A -> 8 (4 bytes)
+316 pid=FFF0CCF3 t=4790680 grLoadGammaTable#2 entries=256 r=02F10090 g=02F10090 b=02F10090 (ignored)
+317 pid=FFF0CCF3 t=4790680 grBufferClear#3 color=00000000 alpha=00 depth=0000
+318 pid=FFF0CCF3 t=4790680 grBufferSwap#3 interval=1
+319 pid=FFF0CCF3 t=4790700 grBufferClear#4 color=00000000 alpha=00 depth=0000
+320 pid=FFF0CCF3 t=4790700 grBufferSwap#4 interval=1
+321 pid=FFF0CCF3 t=4790717 grFinish#2 
+322 pid=FFF0CCF3 t=4790717 grSstWinClose#2 context=1
+323 pid=FFF0CCF3 t=4790717 census winclose swaps=4
+324 pid=FFF0CCF3 t=4790717 census   draws: drawn=8 refused=0 culled=0 skipped-textured=0
+325 pid=FFF0CCF3 t=4790717 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+326 pid=FFF0CCF3 t=4790717 census   cycles(Mc): frame=100 entry=0 prepare=0 upload=0 submit=0 swap=44 clear=1 batches=3
+327 pid=FFF0CCF3 t=4790717 census   batch ends: full=0 texture=0 state=0
+328 pid=FFF0CCF3 t=4790717 census   grBufferClear calls=4 lines=4
+329 pid=FFF0CCF3 t=4790717 census   grBufferSwap calls=4 lines=4
+330 pid=FFF0CCF3 t=4790717 census   grChromakeyValue calls=2 lines=2
+331 pid=FFF0CCF3 t=4790717 census   grColorMask calls=2 lines=2
+332 pid=FFF0CCF3 t=4790717 census   grCoordinateSpace calls=2 lines=2
+333 pid=FFF0CCF3 t=4790717 census   grDepthMask calls=2 lines=2
+334 pid=FFF0CCF3 t=4790717 census   grFinish calls=2 lines=2
+335 pid=FFF0CCF3 t=4790717 census   grGet calls=11 lines=11
+336 pid=FFF0CCF3 t=4790717 census   grGetString calls=4 lines=4
+337 pid=FFF0CCF3 t=4790717 census   grGlideInit calls=2 lines=2
+338 pid=FFF0CCF3 t=4790717 census   grGlideShutdown calls=1 lines=1
+339 pid=FFF0CCF3 t=4790717 census   grLoadGammaTable calls=2 lines=2
+340 pid=FFF0CCF3 t=4790717 census   grSstSelect calls=2 lines=2
+341 pid=FFF0CCF3 t=4790717 census   grSstWinClose calls=2 lines=2
+342 pid=FFF0CCF3 t=4790717 census   grSstWinOpen calls=2 lines=2
+343 pid=FFF0CCF3 t=4790717 census   grTexCombine calls=3 lines=3
+344 pid=FFF0CCF3 t=4790717 census   grTexDownloadMipMap calls=192 lines=192
+345 pid=FFF0CCF3 t=4790717 census   grTexDownloadTable calls=4 lines=4
+346 pid=FFF0CCF3 t=4790717 census   grTexFilterMode calls=2 lines=2
+347 pid=FFF0CCF3 t=4790717 census   grTexMaxAddress calls=2 lines=2
+348 pid=FFF0CCF3 t=4790717 census   grTexMinAddress calls=2 lines=2
+349 pid=FFF0CCF3 t=4790717 census   grVertexLayout calls=8 lines=8
+350 pid=FFF0CCF3 t=4792480 device: closed
+351 pid=FFF0CCF3 t=4792480 grGlideShutdown#2 
+352 pid=FFF0CCF3 t=4792480 census shutdown swaps=4
+353 pid=FFF0CCF3 t=4792480 census   draws: drawn=8 refused=0 culled=0 skipped-textured=0
+354 pid=FFF0CCF3 t=4792480 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+355 pid=FFF0CCF3 t=4792480 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+356 pid=FFF0CCF3 t=4792480 census   batch ends: full=0 texture=0 state=0
+357 pid=FFF0CCF3 t=4792480 census   grBufferClear calls=4 lines=4
+358 pid=FFF0CCF3 t=4792480 census   grBufferSwap calls=4 lines=4
+359 pid=FFF0CCF3 t=4792480 census   grChromakeyValue calls=2 lines=2
+360 pid=FFF0CCF3 t=4792480 census   grColorMask calls=2 lines=2
+361 pid=FFF0CCF3 t=4792480 census   grCoordinateSpace calls=2 lines=2
+362 pid=FFF0CCF3 t=4792480 census   grDepthMask calls=2 lines=2
+363 pid=FFF0CCF3 t=4792480 census   grFinish calls=2 lines=2
+364 pid=FFF0CCF3 t=4792480 census   grGet calls=11 lines=11
+365 pid=FFF0CCF3 t=4792480 census   grGetString calls=4 lines=4
+366 pid=FFF0CCF3 t=4792480 census   grGlideInit calls=2 lines=2
+367 pid=FFF0CCF3 t=4792480 census   grGlideShutdown calls=2 lines=2
+368 pid=FFF0CCF3 t=4792480 census   grLoadGammaTable calls=2 lines=2
+369 pid=FFF0CCF3 t=4792480 census   grSstSelect calls=2 lines=2
+370 pid=FFF0CCF3 t=4792480 census   grSstWinClose calls=2 lines=2
+371 pid=FFF0CCF3 t=4792480 census   grSstWinOpen calls=2 lines=2
+372 pid=FFF0CCF3 t=4792480 census   grTexCombine calls=3 lines=3
+373 pid=FFF0CCF3 t=4792480 census   grTexDownloadMipMap calls=192 lines=192
+374 pid=FFF0CCF3 t=4792480 census   grTexDownloadTable calls=4 lines=4
+375 pid=FFF0CCF3 t=4792480 census   grTexFilterMode calls=2 lines=2
+376 pid=FFF0CCF3 t=4792480 census   grTexMaxAddress calls=2 lines=2
+377 pid=FFF0CCF3 t=4792480 census   grTexMinAddress calls=2 lines=2
+378 pid=FFF0CCF3 t=4792480 census   grVertexLayout calls=8 lines=8
+379 pid=FFF0CCF3 t=4792480 grGlideInit#3 
+380 pid=FFF0CCF3 t=4792480 grSstSelect#3 sst=0
+381 pid=FFF0CCF3 t=4792510 device: window=00000510 ours=0
+382 pid=FFF0CCF3 t=4794560 device: describe result=0 engine=4 generation=17
+383 pid=FFF0CCF3 t=4794560 device: target formats=00000002 texture formats=0000001A hw max=256
+384 pid=FFF0CCF3 t=4794560 device: open 800x600 buffers=3
+385 pid=FFF0CCF3 t=4794560 grSstWinOpen#3 hwnd=00000510 res=8 refresh=0 cformat=2 origin=0 colbuf=2 auxbuf=0 -> 1
+386 pid=FFF0CCF3 t=4794560 grCoordinateSpace#3 mode=0
+387 pid=FFF0CCF3 t=4794560 grVertexLayout#9 param=01 offset=0 mode=1
+388 pid=FFF0CCF3 t=4794560 grVertexLayout#10 param=50 offset=12 mode=1
+389 pid=FFF0CCF3 t=4794560 grVertexLayout#11 param=40 offset=16 mode=1
+390 pid=FFF0CCF3 t=4794560 grVertexLayout#12 param=30 offset=8 mode=1
+391 pid=FFF0CCF3 t=4794560 grDepthMask#3 enable=00000000
+392 pid=FFF0CCF3 t=4794560 grColorMask#3 rgb=1 alpha=0 (ignored)
+393 pid=FFF0CCF3 t=4794560 grTexFilterMode#3 tmu=0 min=0 mag=0
+394 pid=FFF0CCF3 t=4794560 grTexCombine#4 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+395 pid=FFF0CCF3 t=4794560 grChromakeyValue#3 color=000000FF
+396 pid=FFF0CCF3 t=4794560 grTexMinAddress#3 tmu=0 -> 0
+397 pid=FFF0CCF3 t=4794560 grTexMaxAddress#3 tmu=0 -> 003E0000
+398 pid=FFF0CCF3 t=4794560 grBufferSwap#5 interval=1
+399 pid=FFF0CCF3 t=4794580 grGet#12 pname=05 -> 256 (4 bytes)
+400 pid=FFF0CCF3 t=4794580 grGet#13 pname=2A -> 8 (4 bytes)
+401 pid=FFF0CCF3 t=4794580 grLoadGammaTable#3 entries=256 r=02F10090 g=02F10090 b=02F10090 (ignored)
+402 pid=FFF0CCF3 t=4794580 grTexDownloadTable#5 type=2 sum=994A8D17 first=FF000000 FF240000 FF1C1808 FF2C2410
+403 pid=FFF0CCF3 t=4794625 grTexDownloadTable#6 type=2 sum=8F1DBEF8 first=FF000000 FF240000 FF1C1808 FF2C2410
+404 pid=FFF0CCF3 t=4794625 grChromakeyMode#1 mode=00000001
+405 pid=FFF0CCF3 t=4794630 grTexDownloadMipMap#193 tmu=0 addr=00010000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+406 pid=FFF0CCF3 t=4794630 grTexSource#1 tmu=0 addr=00010000 evenodd=3 lod=8..8 aspect=0 format=5
+407 pid=FFF0CCF3 t=4794630 grAlphaCombine#1 func=0 factor=0 local=1 other=2 invert=0
+408 pid=FFF0CCF3 t=4794630 grAlphaBlendFunction#1 rgb=4,0 alpha=0,0
+409 pid=FFF0CCF3 t=4794630 grColorCombine#1 func=3 factor=1 local=0 other=1 invert=0
+410 pid=FFF0CCF3 t=4794630 unrecognized: color func=3 factor=1 local/other/invert=000100
+411 pid=FFF0CCF3 t=4794630 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+412 pid=FFF0CCF3 t=4794630 unrecognized: tmu rgb/alpha=1/1 blend=0400
+413 pid=FFF0CCF3 t=4794650 unrecognized: color func=3 factor=1 local/other/invert=000100
+414 pid=FFF0CCF3 t=4794650 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+415 pid=FFF0CCF3 t=4794650 unrecognized: tmu rgb/alpha=1/1 blend=0400
+416 pid=FFF0CCF3 t=4794650 grDrawVertexArrayContiguous#1 mode=5 count=4 stride=28 swap=5
+417 pid=FFF0CCF3 t=4794650 grDrawVertexArrayContiguous#1   v0 00000000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 00000000
+418 pid=FFF0CCF3 t=4794650 grDitherMode#1 mode=00000002
+419 pid=FFF0CCF3 t=4794650 draw refused: result=4 triangles=2 storage/format=0203
+420 pid=FFF0CCF3 t=4794650   ops color/alpha=2/0 address/filters=010101
+421 pid=FFF0CCF3 t=4794650   blend=0 2/1
+422 pid=FFF0CCF3 t=4794650   alpha test=1 func=5 ref=0
+423 pid=FFF0CCF3 t=4794650   fog=0 depth enable/write/func=002 scissor-right=800
+424 pid=FFF0CCF3 t=4794655 grTexDownloadMipMap#194 tmu=0 addr=00020000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+425 pid=FFF0CCF3 t=4794655 grTexSource#2 tmu=0 addr=00020000 evenodd=3 lod=8..8 aspect=0 format=5
+426 pid=FFF0CCF3 t=4794655 unrecognized: color func=3 factor=1 local/other/invert=000100
+427 pid=FFF0CCF3 t=4794655 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+428 pid=FFF0CCF3 t=4794655 unrecognized: tmu rgb/alpha=1/1 blend=0400
+429 pid=FFF0CCF3 t=4794670 unrecognized: color func=3 factor=1 local/other/invert=000100
+430 pid=FFF0CCF3 t=4794670 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+431 pid=FFF0CCF3 t=4794670 unrecognized: tmu rgb/alpha=1/1 blend=0400
+432 pid=FFF0CCF3 t=4794670 grDrawVertexArrayContiguous#2 mode=5 count=4 stride=28 swap=5
+433 pid=FFF0CCF3 t=4794670 grDrawVertexArrayContiguous#2   v0 43800000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 43800000
+434 pid=FFF0CCF3 t=4794670 draw refused: result=4 triangles=2 storage/format=0203
+435 pid=FFF0CCF3 t=4794670   ops color/alpha=2/0 address/filters=010101
+436 pid=FFF0CCF3 t=4794670   blend=0 2/1
+437 pid=FFF0CCF3 t=4794670   alpha test=1 func=5 ref=0
+438 pid=FFF0CCF3 t=4794670   fog=0 depth enable/write/func=002 scissor-right=800
+439 pid=FFF0CCF3 t=4794675 grTexDownloadMipMap#195 tmu=0 addr=00030000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+440 pid=FFF0CCF3 t=4794675 grTexSource#3 tmu=0 addr=00030000 evenodd=3 lod=8..8 aspect=0 format=5
+441 pid=FFF0CCF3 t=4794675 unrecognized: color func=3 factor=1 local/other/invert=000100
+442 pid=FFF0CCF3 t=4794675 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+443 pid=FFF0CCF3 t=4794675 unrecognized: tmu rgb/alpha=1/1 blend=0400
+444 pid=FFF0CCF3 t=4794690 unrecognized: color func=3 factor=1 local/other/invert=000100
+445 pid=FFF0CCF3 t=4794690 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+446 pid=FFF0CCF3 t=4794690 unrecognized: tmu rgb/alpha=1/1 blend=0400
+447 pid=FFF0CCF3 t=4794690 grDrawVertexArrayContiguous#3 mode=5 count=4 stride=28 swap=5
+448 pid=FFF0CCF3 t=4794690 grDrawVertexArrayContiguous#3   v0 44000000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 44000000
+449 pid=FFF0CCF3 t=4794690 draw refused: result=4 triangles=2 storage/format=0203
+450 pid=FFF0CCF3 t=4794690   ops color/alpha=2/0 address/filters=010101
+451 pid=FFF0CCF3 t=4794690   blend=0 2/1
+452 pid=FFF0CCF3 t=4794690   alpha test=1 func=5 ref=0
+453 pid=FFF0CCF3 t=4794690   fog=0 depth enable/write/func=002 scissor-right=800
+454 pid=FFF0CCF3 t=4794690 grTexDownloadMipMap#196 tmu=0 addr=001F0000 evenodd=3 lod=8..8 aspect=-3 format=5 data=02B30010
+455 pid=FFF0CCF3 t=4794690 grTexSource#4 tmu=0 addr=001F0000 evenodd=3 lod=8..8 aspect=-3 format=5
+456 pid=FFF0CCF3 t=4794690 unrecognized: color func=3 factor=1 local/other/invert=000100
+457 pid=FFF0CCF3 t=4794690 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+458 pid=FFF0CCF3 t=4794690 unrecognized: tmu rgb/alpha=1/1 blend=0400
+459 pid=FFF0CCF3 t=4794695 unrecognized: color func=3 factor=1 local/other/invert=000100
+460 pid=FFF0CCF3 t=4794695 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+461 pid=FFF0CCF3 t=4794695 unrecognized: tmu rgb/alpha=1/1 blend=0400
+462 pid=FFF0CCF3 t=4794695 grDrawVertexArrayContiguous#4 mode=5 count=4 stride=28 swap=5
+463 pid=FFF0CCF3 t=4794695 grDrawVertexArrayContiguous#4   v0 44400000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 44400000
+464 pid=FFF0CCF3 t=4794695 draw refused: result=4 triangles=2 storage/format=0203
+465 pid=FFF0CCF3 t=4794695   ops color/alpha=2/0 address/filters=010101
+466 pid=FFF0CCF3 t=4794695   blend=0 2/1
+467 pid=FFF0CCF3 t=4794695   alpha test=1 func=5 ref=0
+468 pid=FFF0CCF3 t=4794695   fog=0 depth enable/write/func=002 scissor-right=800
+469 pid=FFF0CCF3 t=4794699 grTexDownloadMipMap#197 tmu=0 addr=00040000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+470 pid=FFF0CCF3 t=4794699 grTexSource#5 tmu=0 addr=00040000 evenodd=3 lod=8..8 aspect=0 format=5
+471 pid=FFF0CCF3 t=4794699 unrecognized: color func=3 factor=1 local/other/invert=000100
+472 pid=FFF0CCF3 t=4794699 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+473 pid=FFF0CCF3 t=4794700 unrecognized: tmu rgb/alpha=1/1 blend=0400
+474 pid=FFF0CCF3 t=4794715 unrecognized: color func=3 factor=1 local/other/invert=000100
+475 pid=FFF0CCF3 t=4794715 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+476 pid=FFF0CCF3 t=4794715 unrecognized: tmu rgb/alpha=1/1 blend=0400
+477 pid=FFF0CCF3 t=4794715 grDrawVertexArrayContiguous#5 mode=5 count=4 stride=28 swap=5
+478 pid=FFF0CCF3 t=4794715 grDrawVertexArrayContiguous#5   v0 00000000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 00000000
+479 pid=FFF0CCF3 t=4794715 draw refused: result=4 triangles=2 storage/format=0203
+480 pid=FFF0CCF3 t=4794715   ops color/alpha=2/0 address/filters=010101
+481 pid=FFF0CCF3 t=4794715   blend=0 2/1
+482 pid=FFF0CCF3 t=4794715   alpha test=1 func=5 ref=0
+483 pid=FFF0CCF3 t=4794715   fog=0 depth enable/write/func=002 scissor-right=800
+484 pid=FFF0CCF3 t=4794715 grTexDownloadMipMap#198 tmu=0 addr=00050000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+485 pid=FFF0CCF3 t=4794715 grTexSource#6 tmu=0 addr=00050000 evenodd=3 lod=8..8 aspect=0 format=5
+486 pid=FFF0CCF3 t=4794715 unrecognized: color func=3 factor=1 local/other/invert=000100
+487 pid=FFF0CCF3 t=4794715 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+488 pid=FFF0CCF3 t=4794715 unrecognized: tmu rgb/alpha=1/1 blend=0400
+489 pid=FFF0CCF3 t=4794730 unrecognized: color func=3 factor=1 local/other/invert=000100
+490 pid=FFF0CCF3 t=4794730 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+491 pid=FFF0CCF3 t=4794730 unrecognized: tmu rgb/alpha=1/1 blend=0400
+492 pid=FFF0CCF3 t=4794730 grDrawVertexArrayContiguous#6 mode=5 count=4 stride=28 swap=5
+493 pid=FFF0CCF3 t=4794730 grDrawVertexArrayContiguous#6   v0 43800000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 43800000
+494 pid=FFF0CCF3 t=4794735 draw refused: result=4 triangles=2 storage/format=0203
+495 pid=FFF0CCF3 t=4794735   ops color/alpha=2/0 address/filters=010101
+496 pid=FFF0CCF3 t=4794735   blend=0 2/1
+497 pid=FFF0CCF3 t=4794735   alpha test=1 func=5 ref=0
+498 pid=FFF0CCF3 t=4794735   fog=0 depth enable/write/func=002 scissor-right=800
+499 pid=FFF0CCF3 t=4794739 grTexDownloadMipMap#199 tmu=0 addr=00060000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+500 pid=FFF0CCF3 t=4794739 grTexSource#7 tmu=0 addr=00060000 evenodd=3 lod=8..8 aspect=0 format=5
+501 pid=FFF0CCF3 t=4794739 unrecognized: color func=3 factor=1 local/other/invert=000100
+502 pid=FFF0CCF3 t=4794739 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+503 pid=FFF0CCF3 t=4794739 unrecognized: tmu rgb/alpha=1/1 blend=0400
+504 pid=FFF0CCF3 t=4794750 unrecognized: color func=3 factor=1 local/other/invert=000100
+505 pid=FFF0CCF3 t=4794750 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+506 pid=FFF0CCF3 t=4794750 unrecognized: tmu rgb/alpha=1/1 blend=0400
+507 pid=FFF0CCF3 t=4794750 grDrawVertexArrayContiguous#7 mode=5 count=4 stride=28 swap=5
+508 pid=FFF0CCF3 t=4794750 grDrawVertexArrayContiguous#7   v0 44000000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 44000000
+509 pid=FFF0CCF3 t=4794750 draw refused: result=4 triangles=2 storage/format=0203
+510 pid=FFF0CCF3 t=4794750   ops color/alpha=2/0 address/filters=010101
+511 pid=FFF0CCF3 t=4794750   blend=0 2/1
+512 pid=FFF0CCF3 t=4794750   alpha test=1 func=5 ref=0
+513 pid=FFF0CCF3 t=4794755   fog=0 depth enable/write/func=002 scissor-right=800
+514 pid=FFF0CCF3 t=4794755 grTexDownloadMipMap#200 tmu=0 addr=001F4000 evenodd=3 lod=8..8 aspect=-3 format=5 data=02B30010
+515 pid=FFF0CCF3 t=4794755 grTexSource#8 tmu=0 addr=001F4000 evenodd=3 lod=8..8 aspect=-3 format=5
+516 pid=FFF0CCF3 t=4794755 unrecognized: color func=3 factor=1 local/other/invert=000100
+517 pid=FFF0CCF3 t=4794755 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+518 pid=FFF0CCF3 t=4794755 unrecognized: tmu rgb/alpha=1/1 blend=0400
+519 pid=FFF0CCF3 t=4794755 unrecognized: color func=3 factor=1 local/other/invert=000100
+520 pid=FFF0CCF3 t=4794755 unrecognized: alpha func=0 factor=0 local/other/invert=010200
+521 pid=FFF0CCF3 t=4794755 unrecognized: tmu rgb/alpha=1/1 blend=0400
+522 pid=FFF0CCF3 t=4794755 grDrawVertexArrayContiguous#8 mode=5 count=4 stride=28 swap=5
+523 pid=FFF0CCF3 t=4794755 grDrawVertexArrayContiguous#8   v0 44400000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 44400000
+524 pid=FFF0CCF3 t=4794755 draw refused: result=4 triangles=2 storage/format=0203
+525 pid=FFF0CCF3 t=4794755   ops color/alpha=2/0 address/filters=010101
+526 pid=FFF0CCF3 t=4794755   blend=0 2/1
+527 pid=FFF0CCF3 t=4794755   alpha test=1 func=5 ref=0
+528 pid=FFF0CCF3 t=4794755   fog=0 depth enable/write/func=002 scissor-right=800
+529 pid=FFF0CCF3 t=4794755 grTexDownloadMipMap#201 tmu=0 addr=00070000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+530 pid=FFF0CCF3 t=4794755 grTexSource#9 tmu=0 addr=00070000 evenodd=3 lod=8..8 aspect=1 format=5
+531 pid=FFF0CCF3 t=4794765 grDrawVertexArrayContiguous#9 mode=5 count=4 stride=28 swap=5
+532 pid=FFF0CCF3 t=4794765 grDrawVertexArrayContiguous#9   v0 00000000 43FF8000 FFFFFFFF 3F800000 00000000 42200000 00000000 00000000
+533 pid=FFF0CCF3 t=4794765 draw refused: result=4 triangles=2 storage/format=0203
+534 pid=FFF0CCF3 t=4794765   ops color/alpha=2/0 address/filters=010101
+535 pid=FFF0CCF3 t=4794765   blend=0 2/1
+536 pid=FFF0CCF3 t=4794765   alpha test=1 func=5 ref=0
+537 pid=FFF0CCF3 t=4794765   fog=0 depth enable/write/func=002 scissor-right=800
+538 pid=FFF0CCF3 t=4794765 grTexDownloadMipMap#202 tmu=0 addr=00080000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+539 pid=FFF0CCF3 t=4794765 grTexSource#10 tmu=0 addr=00080000 evenodd=3 lod=8..8 aspect=1 format=5
+540 pid=FFF0CCF3 t=4794775 grDrawVertexArrayContiguous#10 mode=5 count=4 stride=28 swap=5
+541 pid=FFF0CCF3 t=4794775 grDrawVertexArrayContiguous#10   v0 43800000 43FF8000 FFFFFFFF 3F800000 00000000 42200000 00000000 43800000
+542 pid=FFF0CCF3 t=4794775 draw refused: result=4 triangles=2 storage/format=0203
+543 pid=FFF0CCF3 t=4794775   ops color/alpha=2/0 address/filters=010101
+544 pid=FFF0CCF3 t=4794775   blend=0 2/1
+545 pid=FFF0CCF3 t=4794775   alpha test=1 func=5 ref=0
+546 pid=FFF0CCF3 t=4794775   fog=0 depth enable/write/func=002 scissor-right=800
+547 pid=FFF0CCF3 t=4794779 grTexDownloadMipMap#203 tmu=0 addr=00090000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+548 pid=FFF0CCF3 t=4794779 grTexSource#11 tmu=0 addr=00090000 evenodd=3 lod=8..8 aspect=1 format=5
+549 pid=FFF0CCF3 t=4794785 grDrawVertexArrayContiguous#11 mode=5 count=4 stride=28 swap=5
+550 pid=FFF0CCF3 t=4794785 grDrawVertexArrayContiguous#11   v0 44000000 43FF8000 FFFFFFFF 3F800000 00000000 42200000 00000000 44000000
+551 pid=FFF0CCF3 t=4794785 draw refused: result=4 triangles=2 storage/format=0203
+552 pid=FFF0CCF3 t=4794785   ops color/alpha=2/0 address/filters=010101
+553 pid=FFF0CCF3 t=4794785   blend=0 2/1
+554 pid=FFF0CCF3 t=4794785   alpha test=1 func=5 ref=0
+555 pid=FFF0CCF3 t=4794785   fog=0 depth enable/write/func=002 scissor-right=800
+556 pid=FFF0CCF3 t=4794785 grTexDownloadMipMap#204 tmu=0 addr=002EC000 evenodd=3 lod=7..7 aspect=-2 format=5 data=02B30010
+557 pid=FFF0CCF3 t=4794785 grTexSource#12 tmu=0 addr=002EC000 evenodd=3 lod=7..7 aspect=-2 format=5
+558 pid=FFF0CCF3 t=4794790 grDrawVertexArrayContiguous#12 mode=5 count=4 stride=28 swap=5
+559 pid=FFF0CCF3 t=4794790 grDrawVertexArrayContiguous#12   v0 44400000 43FF8000 FFFFFFFF 3F800000 00000000 42A00000 00000000 44400000
+560 pid=FFF0CCF3 t=4794790 grBufferSwap#6 interval=1
+561 pid=FFF0CCF3 t=4794790 draw refused: result=4 triangles=2 storage/format=0203
+562 pid=FFF0CCF3 t=4794790   ops color/alpha=2/0 address/filters=010101
+563 pid=FFF0CCF3 t=4794790   blend=0 2/1
+564 pid=FFF0CCF3 t=4794790   alpha test=1 func=5 ref=0
+565 pid=FFF0CCF3 t=4794790   fog=0 depth enable/write/func=002 scissor-right=800
+566 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#13 mode=5 count=4 stride=28 swap=6
+567 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#13   v0 00000000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 00000000
+568 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+569 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+570 pid=FFF0CCF3 t=4794800   blend=0 2/1
+571 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+572 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+573 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#14 mode=5 count=4 stride=28 swap=6
+574 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#14   v0 43800000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 43800000
+575 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+576 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+577 pid=FFF0CCF3 t=4794800   blend=0 2/1
+578 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+579 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+580 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#15 mode=5 count=4 stride=28 swap=6
+581 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#15   v0 44000000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 44000000
+582 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+583 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+584 pid=FFF0CCF3 t=4794800   blend=0 2/1
+585 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+586 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+587 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#16 mode=5 count=4 stride=28 swap=6
+588 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#16   v0 44400000 00000000 FFFFFFFF 3F800000 00000000 00000000 00000000 44400000
+589 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+590 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+591 pid=FFF0CCF3 t=4794800   blend=0 2/1
+592 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+593 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+594 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#17 mode=5 count=4 stride=28 swap=6
+595 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#17   v0 00000000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 00000000
+596 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+597 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+598 pid=FFF0CCF3 t=4794800   blend=0 2/1
+599 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+600 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+601 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#18 mode=5 count=4 stride=28 swap=6
+602 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#18   v0 43800000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 43800000
+603 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+604 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+605 pid=FFF0CCF3 t=4794800   blend=0 2/1
+606 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+607 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+608 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#19 mode=5 count=4 stride=28 swap=6
+609 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#19   v0 44000000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 44000000
+610 pid=FFF0CCF3 t=4794800 draw refused: result=4 triangles=2 storage/format=0203
+611 pid=FFF0CCF3 t=4794800   ops color/alpha=2/0 address/filters=010101
+612 pid=FFF0CCF3 t=4794800   blend=0 2/1
+613 pid=FFF0CCF3 t=4794800   alpha test=1 func=5 ref=0
+614 pid=FFF0CCF3 t=4794800   fog=0 depth enable/write/func=002 scissor-right=800
+615 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#20 mode=5 count=4 stride=28 swap=6
+616 pid=FFF0CCF3 t=4794800 grDrawVertexArrayContiguous#20   v0 44400000 43800000 FFFFFFFF 3F800000 00000000 00000000 00000000 44400000
+617 pid=FFF0CCF3 t=4794805 draw refused: result=4 triangles=2 storage/format=0203
+618 pid=FFF0CCF3 t=4794805   ops color/alpha=2/0 address/filters=010101
+619 pid=FFF0CCF3 t=4794805   blend=0 2/1
+620 pid=FFF0CCF3 t=4794805   alpha test=1 func=5 ref=0
+621 pid=FFF0CCF3 t=4794805   fog=0 depth enable/write/func=002 scissor-right=800
+622 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#21 mode=5 count=4 stride=28 swap=6
+623 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#21   v0 00000000 43FF8000 FFFFFFFF 3F800000 00000000 42200000 00000000 00000000
+624 pid=FFF0CCF3 t=4794805 draw refused: result=4 triangles=2 storage/format=0203
+625 pid=FFF0CCF3 t=4794805   ops color/alpha=2/0 address/filters=010101
+626 pid=FFF0CCF3 t=4794805   blend=0 2/1
+627 pid=FFF0CCF3 t=4794805   alpha test=1 func=5 ref=0
+628 pid=FFF0CCF3 t=4794805   fog=0 depth enable/write/func=002 scissor-right=800
+629 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#22 mode=5 count=4 stride=28 swap=6
+630 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#22   v0 43800000 43FF8000 FFFFFFFF 3F800000 00000000 42200000 00000000 43800000
+631 pid=FFF0CCF3 t=4794805 draw refused: result=4 triangles=2 storage/format=0203
+632 pid=FFF0CCF3 t=4794805   ops color/alpha=2/0 address/filters=010101
+633 pid=FFF0CCF3 t=4794805   blend=0 2/1
+634 pid=FFF0CCF3 t=4794805   alpha test=1 func=5 ref=0
+635 pid=FFF0CCF3 t=4794805   fog=0 depth enable/write/func=002 scissor-right=800
+636 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#23 mode=5 count=4 stride=28 swap=6
+637 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#23   v0 44000000 43FF8000 FFFFFFFF 3F800000 00000000 42200000 00000000 44000000
+638 pid=FFF0CCF3 t=4794805 draw refused: result=4 triangles=2 storage/format=0203
+639 pid=FFF0CCF3 t=4794805   ops color/alpha=2/0 address/filters=010101
+640 pid=FFF0CCF3 t=4794805   blend=0 2/1
+641 pid=FFF0CCF3 t=4794805   alpha test=1 func=5 ref=0
+642 pid=FFF0CCF3 t=4794805   fog=0 depth enable/write/func=002 scissor-right=800
+643 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#24 mode=5 count=4 stride=28 swap=6
+644 pid=FFF0CCF3 t=4794805 grDrawVertexArrayContiguous#24   v0 44400000 43FF8000 FFFFFFFF 3F800000 00000000 42A00000 00000000 44400000
+645 pid=FFF0CCF3 t=4794805 grBufferSwap#7 interval=1
+646 pid=FFF0CCF3 t=4794805 draw refused: result=4 triangles=2 storage/format=0203
+647 pid=FFF0CCF3 t=4794805   ops color/alpha=2/0 address/filters=010101
+648 pid=FFF0CCF3 t=4794805   blend=0 2/1
+649 pid=FFF0CCF3 t=4794805   alpha test=1 func=5 ref=0
+650 pid=FFF0CCF3 t=4794805   fog=0 depth enable/write/func=002 scissor-right=800
+651 pid=FFF0CCF3 t=4794835 grBufferSwap#8 interval=1
+652 pid=FFF0CCF3 t=4794875 grBufferSwap#9 interval=1
+653 pid=FFF0CCF3 t=4794915 grBufferSwap#10 interval=1
+654 pid=FFF0CCF3 t=4794955 grBufferSwap#11 interval=1
+655 pid=FFF0CCF3 t=4794995 grBufferSwap#12 interval=1
+656 pid=FFF0CCF3 t=4795035 grBufferSwap#13 interval=1
+657 pid=FFF0CCF3 t=4795075 grBufferSwap#14 interval=1
+658 pid=FFF0CCF3 t=4795115 grBufferSwap#15 interval=1
+659 pid=FFF0CCF3 t=4795155 grBufferSwap#16 interval=1
+660 pid=FFF0CCF3 t=4795195 grBufferSwap#17 interval=1
+661 pid=FFF0CCF3 t=4795235 grBufferSwap#18 interval=1
+662 pid=FFF0CCF3 t=4795275 grBufferSwap#19 interval=1
+663 pid=FFF0CCF3 t=4795315 grBufferSwap#20 interval=1
+664 pid=FFF0CCF3 t=4795355 grBufferSwap#21 interval=1
+665 pid=FFF0CCF3 t=4795395 grBufferSwap#22 interval=1
+666 pid=FFF0CCF3 t=4795435 grBufferSwap#23 interval=1
+667 pid=FFF0CCF3 t=4795475 grBufferSwap#24 interval=1
+668 pid=FFF0CCF3 t=4799180 census periodic swaps=116
+669 pid=FFF0CCF3 t=4799180 census   draws: drawn=454 refused=2664 culled=0 skipped-textured=0
+670 pid=FFF0CCF3 t=4799180 census   draws: fog-dropped=0 uploads=11 surface-hits=1 evictions=0
+671 pid=FFF0CCF3 t=4799180 census   cycles(Mc): frame=8090 entry=137 prepare=123 upload=101 submit=9 swap=2019 clear=7 batches=1555
+672 pid=FFF0CCF3 t=4799180 census   batch ends: full=0 texture=1210 state=0
+673 pid=FFF0CCF3 t=4799180 census   grAlphaBlendFunction calls=111 lines=1
+674 pid=FFF0CCF3 t=4799180 census   grAlphaCombine calls=111 lines=1
+675 pid=FFF0CCF3 t=4799180 census   grBufferClear calls=227 lines=4
+676 pid=FFF0CCF3 t=4799180 census   grBufferSwap calls=116 lines=24
+677 pid=FFF0CCF3 t=4799180 census   grChromakeyMode calls=111 lines=1
+678 pid=FFF0CCF3 t=4799180 census   grChromakeyValue calls=3 lines=3
+679 pid=FFF0CCF3 t=4799180 census   grColorCombine calls=111 lines=1
+680 pid=FFF0CCF3 t=4799180 census   grColorMask calls=3 lines=3
+681 pid=FFF0CCF3 t=4799180 census   grCoordinateSpace calls=3 lines=3
+682 pid=FFF0CCF3 t=4799180 census   grDepthMask calls=3 lines=3
+683 pid=FFF0CCF3 t=4799180 census   grDitherMode calls=1332 lines=1
+684 pid=FFF0CCF3 t=4799180 census   grDrawVertexArrayContiguous calls=1332 lines=48
+685 pid=FFF0CCF3 t=4799180 census   grFinish calls=2 lines=2
+686 pid=FFF0CCF3 t=4799180 census   grGet calls=13 lines=13
+687 pid=FFF0CCF3 t=4799180 census   grGetString calls=4 lines=4
+688 pid=FFF0CCF3 t=4799180 census   grGlideInit calls=3 lines=3
+689 pid=FFF0CCF3 t=4799180 census   grGlideShutdown calls=2 lines=2
+690 pid=FFF0CCF3 t=4799180 census   grLoadGammaTable calls=3 lines=3
+691 pid=FFF0CCF3 t=4799180 census   grSstSelect calls=3 lines=3
+692 pid=FFF0CCF3 t=4799180 census   grSstWinClose calls=2 lines=2
+693 pid=FFF0CCF3 t=4799180 census   grSstWinOpen calls=3 lines=3
+694 pid=FFF0CCF3 t=4799180 census   grTexCombine calls=4 lines=4
+695 pid=FFF0CCF3 t=4799185 census   grTexDownloadMipMap calls=204 lines=204
+696 pid=FFF0CCF3 t=4799185 census   grTexDownloadTable calls=6 lines=6
+697 pid=FFF0CCF3 t=4799185 census   grTexFilterMode calls=114 lines=3
+698 pid=FFF0CCF3 t=4799185 census   grTexMaxAddress calls=3 lines=3
+699 pid=FFF0CCF3 t=4799185 census   grTexMinAddress calls=3 lines=3
+700 pid=FFF0CCF3 t=4799185 census   grTexSource calls=1332 lines=12
+701 pid=FFF0CCF3 t=4799185 census   grVertexLayout calls=12 lines=12
+702 pid=FFF0CCF3 t=4804177 grTexDownloadTable#7 type=2 sum=775207E4 first=FF000000 FF240000 FF1C1808 FF2C2410
+703 pid=FFF0CCF3 t=4804222 grTexDownloadMipMap#205 tmu=0 addr=000A0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+704 pid=FFF0CCF3 t=4804222 grTexSource#2737 tmu=0 addr=000A0000 evenodd=3 lod=8..8 aspect=0 format=5
+705 pid=FFF0CCF3 t=4804250 grTexDownloadMipMap#206 tmu=0 addr=000B0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+706 pid=FFF0CCF3 t=4804250 grTexSource#2738 tmu=0 addr=000B0000 evenodd=3 lod=8..8 aspect=0 format=5
+707 pid=FFF0CCF3 t=4804304 grTexDownloadMipMap#207 tmu=0 addr=000C0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+708 pid=FFF0CCF3 t=4804304 grTexSource#2739 tmu=0 addr=000C0000 evenodd=3 lod=8..8 aspect=0 format=5
+709 pid=FFF0CCF3 t=4804320 grTexDownloadMipMap#208 tmu=0 addr=001F8000 evenodd=3 lod=8..8 aspect=-3 format=5 data=02B30010
+710 pid=FFF0CCF3 t=4804320 grTexSource#2740 tmu=0 addr=001F8000 evenodd=3 lod=8..8 aspect=-3 format=5
+711 pid=FFF0CCF3 t=4804325 grTexDownloadMipMap#209 tmu=0 addr=000D0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+712 pid=FFF0CCF3 t=4804325 grTexSource#2741 tmu=0 addr=000D0000 evenodd=3 lod=8..8 aspect=0 format=5
+713 pid=FFF0CCF3 t=4804599 grTexDownloadMipMap#210 tmu=0 addr=000E0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+714 pid=FFF0CCF3 t=4804599 grTexSource#2742 tmu=0 addr=000E0000 evenodd=3 lod=8..8 aspect=0 format=5
+715 pid=FFF0CCF3 t=4804615 grTexDownloadMipMap#211 tmu=0 addr=000F0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+716 pid=FFF0CCF3 t=4804615 grTexSource#2743 tmu=0 addr=000F0000 evenodd=3 lod=8..8 aspect=0 format=5
+717 pid=FFF0CCF3 t=4804630 grTexDownloadMipMap#212 tmu=0 addr=001FC000 evenodd=3 lod=8..8 aspect=-3 format=5 data=02B30010
+718 pid=FFF0CCF3 t=4804630 grTexSource#2744 tmu=0 addr=001FC000 evenodd=3 lod=8..8 aspect=-3 format=5
+719 pid=FFF0CCF3 t=4804635 grTexDownloadMipMap#213 tmu=0 addr=00100000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+720 pid=FFF0CCF3 t=4804635 grTexSource#2745 tmu=0 addr=00100000 evenodd=3 lod=8..8 aspect=1 format=5
+721 pid=FFF0CCF3 t=4804645 grTexDownloadMipMap#214 tmu=0 addr=00110000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+722 pid=FFF0CCF3 t=4804645 grTexSource#2746 tmu=0 addr=00110000 evenodd=3 lod=8..8 aspect=1 format=5
+723 pid=FFF0CCF3 t=4804655 grTexDownloadMipMap#215 tmu=0 addr=00120000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+724 pid=FFF0CCF3 t=4804655 grTexSource#2747 tmu=0 addr=00120000 evenodd=3 lod=8..8 aspect=1 format=5
+725 pid=FFF0CCF3 t=4804660 grTexDownloadMipMap#216 tmu=0 addr=002ED000 evenodd=3 lod=7..7 aspect=-2 format=5 data=02B30010
+726 pid=FFF0CCF3 t=4804660 grTexSource#2748 tmu=0 addr=002ED000 evenodd=3 lod=7..7 aspect=-2 format=5
+727 pid=FFF0CCF3 t=4804665 grTexDownloadMipMap#217 tmu=0 addr=00130000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+728 pid=FFF0CCF3 t=4804665 grTexSource#2749 tmu=0 addr=00130000 evenodd=3 lod=8..8 aspect=1 format=5
+729 pid=FFF0CCF3 t=4804677 grTexDownloadMipMap#218 tmu=0 addr=00140000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+730 pid=FFF0CCF3 t=4804677 grTexSource#2750 tmu=0 addr=00140000 evenodd=3 lod=8..8 aspect=0 format=5
+731 pid=FFF0CCF3 t=4804677 grAlphaCombine#230 func=1 factor=0 local=1 other=2 invert=0
+732 pid=FFF0CCF3 t=4804677 grAlphaBlendFunction#230 rgb=4,4 alpha=0,0
+733 pid=FFF0CCF3 t=4804677 grConstantColorValue#1 color=000000FF
+734 pid=FFF0CCF3 t=4804677 grDitherMode#2750 mode=00000000
+735 pid=FFF0CCF3 t=4804695 grTexDownloadMipMap#219 tmu=0 addr=00150000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+736 pid=FFF0CCF3 t=4804695 grTexSource#2751 tmu=0 addr=00150000 evenodd=3 lod=8..8 aspect=1 format=5
+737 pid=FFF0CCF3 t=4804705 grTexDownloadMipMap#220 tmu=0 addr=00160000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+738 pid=FFF0CCF3 t=4804705 grTexSource#2752 tmu=0 addr=00160000 evenodd=3 lod=8..8 aspect=0 format=5
+739 pid=FFF0CCF3 t=4804720 grTexDownloadMipMap#221 tmu=0 addr=002EE000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+740 pid=FFF0CCF3 t=4804720 grTexSource#2753 tmu=0 addr=002EE000 evenodd=3 lod=6..6 aspect=1 format=5
+741 pid=FFF0CCF3 t=4804720 grTexDownloadMipMap#222 tmu=0 addr=002EF000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+742 pid=FFF0CCF3 t=4804720 grTexSource#2754 tmu=0 addr=002EF000 evenodd=3 lod=6..6 aspect=1 format=5
+743 pid=FFF0CCF3 t=4804725 grTexDownloadMipMap#223 tmu=0 addr=002F0000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+744 pid=FFF0CCF3 t=4804725 grTexSource#2755 tmu=0 addr=002F0000 evenodd=3 lod=6..6 aspect=1 format=5
+745 pid=FFF0CCF3 t=4804725 grTexDownloadMipMap#224 tmu=0 addr=002F1000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+746 pid=FFF0CCF3 t=4804725 grTexSource#2756 tmu=0 addr=002F1000 evenodd=3 lod=6..6 aspect=1 format=5
+747 pid=FFF0CCF3 t=4804725 grTexDownloadMipMap#225 tmu=0 addr=002F2000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+748 pid=FFF0CCF3 t=4804725 grTexSource#2757 tmu=0 addr=002F2000 evenodd=3 lod=6..6 aspect=1 format=5
+749 pid=FFF0CCF3 t=4804739 grTexDownloadMipMap#226 tmu=0 addr=002F3000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+750 pid=FFF0CCF3 t=4804739 grTexSource#2758 tmu=0 addr=002F3000 evenodd=3 lod=6..6 aspect=1 format=5
+751 pid=FFF0CCF3 t=4804740 grTexDownloadMipMap#227 tmu=0 addr=002F4000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+752 pid=FFF0CCF3 t=4804740 grTexSource#2759 tmu=0 addr=002F4000 evenodd=3 lod=6..6 aspect=1 format=5
+753 pid=FFF0CCF3 t=4804740 grTexDownloadMipMap#228 tmu=0 addr=002F5000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+754 pid=FFF0CCF3 t=4804740 grTexSource#2760 tmu=0 addr=002F5000 evenodd=3 lod=6..6 aspect=1 format=5
+755 pid=FFF0CCF3 t=4804740 grTexDownloadMipMap#229 tmu=0 addr=002F6000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+756 pid=FFF0CCF3 t=4804740 grTexSource#2761 tmu=0 addr=002F6000 evenodd=3 lod=6..6 aspect=1 format=5
+757 pid=FFF0CCF3 t=4804740 grTexDownloadMipMap#230 tmu=0 addr=002F7000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+758 pid=FFF0CCF3 t=4804745 grTexSource#2762 tmu=0 addr=002F7000 evenodd=3 lod=6..6 aspect=1 format=5
+759 pid=FFF0CCF3 t=4804745 grTexDownloadMipMap#231 tmu=0 addr=002F8000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+760 pid=FFF0CCF3 t=4804745 grTexSource#2763 tmu=0 addr=002F8000 evenodd=3 lod=6..6 aspect=1 format=5
+761 pid=FFF0CCF3 t=4804745 grTexDownloadMipMap#232 tmu=0 addr=002F9000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+762 pid=FFF0CCF3 t=4804745 grTexSource#2765 tmu=0 addr=002F9000 evenodd=3 lod=6..6 aspect=1 format=5
+763 pid=FFF0CCF3 t=4804745 grTexDownloadMipMap#233 tmu=0 addr=002FA000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+764 pid=FFF0CCF3 t=4804745 grTexSource#2766 tmu=0 addr=002FA000 evenodd=3 lod=6..6 aspect=1 format=5
+765 pid=FFF0CCF3 t=4804750 grTexDownloadMipMap#234 tmu=0 addr=002FB000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+766 pid=FFF0CCF3 t=4804750 grTexSource#2770 tmu=0 addr=002FB000 evenodd=3 lod=6..6 aspect=1 format=5
+767 pid=FFF0CCF3 t=4804750 grTexDownloadMipMap#235 tmu=0 addr=002FC000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+768 pid=FFF0CCF3 t=4804750 grTexSource#2771 tmu=0 addr=002FC000 evenodd=3 lod=6..6 aspect=1 format=5
+769 pid=FFF0CCF3 t=4804750 grTexDownloadMipMap#236 tmu=0 addr=002FD000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+770 pid=FFF0CCF3 t=4804750 grTexSource#2773 tmu=0 addr=002FD000 evenodd=3 lod=6..6 aspect=1 format=5
+771 pid=FFF0CCF3 t=4804755 grTexDownloadMipMap#237 tmu=0 addr=002FE000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+772 pid=FFF0CCF3 t=4804755 grTexSource#2775 tmu=0 addr=002FE000 evenodd=3 lod=6..6 aspect=1 format=5
+773 pid=FFF0CCF3 t=4804755 grTexDownloadMipMap#238 tmu=0 addr=002FF000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+774 pid=FFF0CCF3 t=4804755 grTexSource#2777 tmu=0 addr=002FF000 evenodd=3 lod=6..6 aspect=1 format=5
+775 pid=FFF0CCF3 t=4804755 grTexDownloadMipMap#239 tmu=0 addr=00300000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+776 pid=FFF0CCF3 t=4804755 grTexSource#2779 tmu=0 addr=00300000 evenodd=3 lod=6..6 aspect=1 format=5
+777 pid=FFF0CCF3 t=4804760 grTexDownloadMipMap#240 tmu=0 addr=00301000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+778 pid=FFF0CCF3 t=4804760 grTexSource#2780 tmu=0 addr=00301000 evenodd=3 lod=6..6 aspect=1 format=5
+779 pid=FFF0CCF3 t=4804760 grTexDownloadMipMap#241 tmu=0 addr=00302000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+780 pid=FFF0CCF3 t=4804760 grTexSource#2782 tmu=0 addr=00302000 evenodd=3 lod=6..6 aspect=1 format=5
+781 pid=FFF0CCF3 t=4804760 grTexDownloadMipMap#242 tmu=0 addr=00303000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+782 pid=FFF0CCF3 t=4804760 grTexSource#2788 tmu=0 addr=00303000 evenodd=3 lod=6..6 aspect=1 format=5
+783 pid=FFF0CCF3 t=4804765 grTexDownloadMipMap#243 tmu=0 addr=00304000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+784 pid=FFF0CCF3 t=4804765 grTexSource#2792 tmu=0 addr=00304000 evenodd=3 lod=6..6 aspect=1 format=5
+785 pid=FFF0CCF3 t=4804765 grTexDownloadMipMap#244 tmu=0 addr=00305000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+786 pid=FFF0CCF3 t=4804765 grTexSource#2796 tmu=0 addr=00305000 evenodd=3 lod=6..6 aspect=1 format=5
+787 pid=FFF0CCF3 t=4804765 grTexDownloadMipMap#245 tmu=0 addr=00306000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+788 pid=FFF0CCF3 t=4804765 grTexSource#2801 tmu=0 addr=00306000 evenodd=3 lod=6..6 aspect=1 format=5
+789 pid=FFF0CCF3 t=4804770 grTexDownloadMipMap#246 tmu=0 addr=00307000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+790 pid=FFF0CCF3 t=4804770 grTexSource#2808 tmu=0 addr=00307000 evenodd=3 lod=6..6 aspect=1 format=5
+791 pid=FFF0CCF3 t=4804770 grTexDownloadMipMap#247 tmu=0 addr=00308000 evenodd=3 lod=6..6 aspect=1 format=5 data=02B30010
+792 pid=FFF0CCF3 t=4804770 grTexSource#2811 tmu=0 addr=00308000 evenodd=3 lod=6..6 aspect=1 format=5
+793 pid=FFF0CCF3 t=4804775 grTexDownloadMipMap#248 tmu=0 addr=00170000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+794 pid=FFF0CCF3 t=4804775 grTexSource#2824 tmu=0 addr=00170000 evenodd=3 lod=8..8 aspect=1 format=5
+795 pid=FFF0CCF3 t=4804780 grTexDownloadMipMap#249 tmu=0 addr=00180000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+796 pid=FFF0CCF3 t=4804780 grTexSource#2825 tmu=0 addr=00180000 evenodd=3 lod=8..8 aspect=0 format=5
+797 pid=FFF0CCF3 t=4804800 grTexDownloadMipMap#250 tmu=0 addr=00190000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+798 pid=FFF0CCF3 t=4804800 grTexSource#2826 tmu=0 addr=00190000 evenodd=3 lod=8..8 aspect=1 format=5
+799 pid=FFF0CCF3 t=4804805 grTexDownloadMipMap#251 tmu=0 addr=001A0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+800 pid=FFF0CCF3 t=4804805 grTexSource#2827 tmu=0 addr=001A0000 evenodd=3 lod=8..8 aspect=0 format=5
+801 pid=FFF0CCF3 t=4804825 grTexDownloadMipMap#252 tmu=0 addr=001B0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+802 pid=FFF0CCF3 t=4804825 grTexSource#2899 tmu=0 addr=001B0000 evenodd=3 lod=8..8 aspect=1 format=5
+803 pid=FFF0CCF3 t=4804830 grTexDownloadMipMap#253 tmu=0 addr=001C0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+804 pid=FFF0CCF3 t=4804830 grTexSource#2900 tmu=0 addr=001C0000 evenodd=3 lod=8..8 aspect=0 format=5
+805 pid=FFF0CCF3 t=4804850 grTexDownloadMipMap#254 tmu=0 addr=001D0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+806 pid=FFF0CCF3 t=4804850 grTexSource#2901 tmu=0 addr=001D0000 evenodd=3 lod=8..8 aspect=1 format=5
+807 pid=FFF0CCF3 t=4804855 grTexDownloadMipMap#255 tmu=0 addr=001E0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+808 pid=FFF0CCF3 t=4804855 grTexSource#2902 tmu=0 addr=001E0000 evenodd=3 lod=8..8 aspect=0 format=5
+809 pid=FFF0CCF3 t=4804875 grTexDownloadMipMap#256 tmu=0 addr=00010000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+810 pid=FFF0CCF3 t=4804875 grTexSource#2974 tmu=0 addr=00010000 evenodd=3 lod=8..8 aspect=1 format=5
+811 pid=FFF0CCF3 t=4804900 grTexDownloadMipMap#258 tmu=0 addr=00030000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+812 pid=FFF0CCF3 t=4804900 grTexSource#2976 tmu=0 addr=00030000 evenodd=3 lod=8..8 aspect=1 format=5
+813 pid=FFF0CCF3 t=4804925 grTexDownloadMipMap#260 tmu=0 addr=00050000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+814 pid=FFF0CCF3 t=4804930 grTexSource#3049 tmu=0 addr=00050000 evenodd=3 lod=8..8 aspect=1 format=5
+815 pid=FFF0CCF3 t=4804955 grTexDownloadMipMap#263 tmu=0 addr=00080000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+816 pid=FFF0CCF3 t=4804955 grTexSource#3052 tmu=0 addr=00080000 evenodd=3 lod=8..8 aspect=0 format=5
+817 pid=FFF0CCF3 t=4804982 grTexDownloadMipMap#265 tmu=0 addr=00130000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+818 pid=FFF0CCF3 t=4804982 grTexSource#3125 tmu=0 addr=00130000 evenodd=3 lod=8..8 aspect=0 format=5
+819 pid=FFF0CCF3 t=4805000 grTexDownloadMipMap#266 tmu=0 addr=00140000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+820 pid=FFF0CCF3 t=4805000 grTexSource#3126 tmu=0 addr=00140000 evenodd=3 lod=8..8 aspect=1 format=5
+821 pid=FFF0CCF3 t=4805005 grTexDownloadMipMap#267 tmu=0 addr=00150000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+822 pid=FFF0CCF3 t=4805005 grTexSource#3127 tmu=0 addr=00150000 evenodd=3 lod=8..8 aspect=0 format=5
+823 pid=FFF0CCF3 t=4805025 grTexDownloadMipMap#268 tmu=0 addr=00160000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+824 pid=FFF0CCF3 t=4805025 grTexSource#3199 tmu=0 addr=00160000 evenodd=3 lod=8..8 aspect=1 format=5
+825 pid=FFF0CCF3 t=4805030 grTexDownloadMipMap#269 tmu=0 addr=00170000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+826 pid=FFF0CCF3 t=4805030 grTexSource#3200 tmu=0 addr=00170000 evenodd=3 lod=8..8 aspect=0 format=5
+827 pid=FFF0CCF3 t=4805050 grTexDownloadMipMap#270 tmu=0 addr=00180000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+828 pid=FFF0CCF3 t=4805050 grTexSource#3201 tmu=0 addr=00180000 evenodd=3 lod=8..8 aspect=1 format=5
+829 pid=FFF0CCF3 t=4805055 grTexDownloadMipMap#271 tmu=0 addr=00190000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+830 pid=FFF0CCF3 t=4805055 grTexSource#3202 tmu=0 addr=00190000 evenodd=3 lod=8..8 aspect=0 format=5
+831 pid=FFF0CCF3 t=4805075 grTexDownloadMipMap#272 tmu=0 addr=001A0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+832 pid=FFF0CCF3 t=4805075 grTexSource#3274 tmu=0 addr=001A0000 evenodd=3 lod=8..8 aspect=1 format=5
+833 pid=FFF0CCF3 t=4805080 grTexDownloadMipMap#273 tmu=0 addr=001B0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+834 pid=FFF0CCF3 t=4805080 grTexSource#3275 tmu=0 addr=001B0000 evenodd=3 lod=8..8 aspect=0 format=5
+835 pid=FFF0CCF3 t=4805102 grTexDownloadMipMap#274 tmu=0 addr=001C0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+836 pid=FFF0CCF3 t=4805102 grTexSource#3276 tmu=0 addr=001C0000 evenodd=3 lod=8..8 aspect=1 format=5
+837 pid=FFF0CCF3 t=4805105 grTexDownloadMipMap#275 tmu=0 addr=001D0000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+838 pid=FFF0CCF3 t=4805105 grTexSource#3277 tmu=0 addr=001D0000 evenodd=3 lod=8..8 aspect=0 format=5
+839 pid=FFF0CCF3 t=4805125 grTexDownloadMipMap#276 tmu=0 addr=001E0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+840 pid=FFF0CCF3 t=4805125 grTexSource#3349 tmu=0 addr=001E0000 evenodd=3 lod=8..8 aspect=1 format=5
+841 pid=FFF0CCF3 t=4805150 grTexDownloadMipMap#278 tmu=0 addr=00020000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+842 pid=FFF0CCF3 t=4805150 grTexSource#3351 tmu=0 addr=00020000 evenodd=3 lod=8..8 aspect=1 format=5
+843 pid=FFF0CCF3 t=4805175 grTexDownloadMipMap#280 tmu=0 addr=00040000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+844 pid=FFF0CCF3 t=4805175 grTexSource#3424 tmu=0 addr=00040000 evenodd=3 lod=8..8 aspect=1 format=5
+845 pid=FFF0CCF3 t=4805200 grTexDownloadMipMap#282 tmu=0 addr=00060000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+846 pid=FFF0CCF3 t=4805200 grTexSource#3426 tmu=0 addr=00060000 evenodd=3 lod=8..8 aspect=1 format=5
+847 pid=FFF0CCF3 t=4805205 grTexDownloadMipMap#283 tmu=0 addr=00070000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+848 pid=FFF0CCF3 t=4805205 grTexSource#3427 tmu=0 addr=00070000 evenodd=3 lod=8..8 aspect=0 format=5
+849 pid=FFF0CCF3 t=4805230 grTexDownloadMipMap#285 tmu=0 addr=00090000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+850 pid=FFF0CCF3 t=4805230 grTexSource#3500 tmu=0 addr=00090000 evenodd=3 lod=8..8 aspect=0 format=5
+851 pid=FFF0CCF3 t=4805306 hwtex create 01000100 format=3 hr=8876017C
+852 pid=FFF0CCF3 t=4805335 hwtex create 01000100 format=3 hr=8876017C
+853 pid=FFF0CCF3 t=4805355 hwtex create 01000100 format=3 hr=8876017C
+854 pid=FFF0CCF3 t=4805425 hwtex create 01000100 format=3 hr=8876017C
+855 pid=FFF0CCF3 t=4805465 hwtex create 01000100 format=3 hr=8876017C
+856 pid=FFF0CCF3 t=4805485 hwtex create 01000100 format=3 hr=8876017C
+857 pid=FFF0CCF3 t=4805520 hwtex create 01000100 format=3 hr=8876017C
+858 pid=FFF0CCF3 t=4805520 hwtex create 01000100 format=3 hr=8876017C
+859 pid=FFF0CCF3 t=4814165 grTexDownloadMipMap#993 tmu=0 addr=00200000 evenodd=3 lod=8..8 aspect=-3 format=5 data=02B30010
+860 pid=FFF0CCF3 t=4814165 grTexSource#16765 tmu=0 addr=00200000 evenodd=3 lod=8..8 aspect=-3 format=5
+861 pid=FFF0CCF3 t=4814222 grTexDownloadMipMap#997 tmu=0 addr=00204000 evenodd=3 lod=8..8 aspect=-3 format=5 data=02B30010
+862 pid=FFF0CCF3 t=4814222 grTexSource#16769 tmu=0 addr=00204000 evenodd=3 lod=8..8 aspect=-3 format=5
+863 pid=FFF0CCF3 t=4814250 grTexDownloadMipMap#1001 tmu=0 addr=00309000 evenodd=3 lod=7..7 aspect=-2 format=5 data=02B30010
+864 pid=FFF0CCF3 t=4814250 grTexSource#16773 tmu=0 addr=00309000 evenodd=3 lod=7..7 aspect=-2 format=5
+865 pid=FFF0CCF3 t=4814275 grTexDownloadMipMap#1006 tmu=0 addr=00208000 evenodd=3 lod=8..8 aspect=2 format=5 data=02B30010
+866 pid=FFF0CCF3 t=4814275 grTexSource#16778 tmu=0 addr=00208000 evenodd=3 lod=8..8 aspect=2 format=5
+867 pid=FFF0CCF3 t=4814281 grTexDownloadMipMap#1007 tmu=0 addr=0030A000 evenodd=3 lod=6..6 aspect=-2 format=5 data=02B30010
+868 pid=FFF0CCF3 t=4814281 grTexSource#16779 tmu=0 addr=0030A000 evenodd=3 lod=6..6 aspect=-2 format=5
+869 pid=FFF0CCF3 t=4814286 grTexDownloadMipMap#1008 tmu=0 addr=0030B000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+870 pid=FFF0CCF3 t=4814286 grTexSource#16780 tmu=0 addr=0030B000 evenodd=3 lod=5..5 aspect=0 format=5
+871 pid=FFF0CCF3 t=4814286 grAlphaBlendFunction#1169 rgb=0,2 alpha=0,0
+872 pid=FFF0CCF3 t=4814286 grTexDownloadMipMap#1009 tmu=0 addr=0030C000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+873 pid=FFF0CCF3 t=4814286 grTexSource#16781 tmu=0 addr=0030C000 evenodd=3 lod=5..5 aspect=0 format=5
+874 pid=FFF0CCF3 t=4814286 grTexDownloadMipMap#1010 tmu=0 addr=0030D000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+875 pid=FFF0CCF3 t=4814286 grTexSource#16782 tmu=0 addr=0030D000 evenodd=3 lod=5..5 aspect=0 format=5
+876 pid=FFF0CCF3 t=4814290 grTexDownloadMipMap#1011 tmu=0 addr=0030E000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+877 pid=FFF0CCF3 t=4814290 grTexSource#16783 tmu=0 addr=0030E000 evenodd=3 lod=5..5 aspect=0 format=5
+878 pid=FFF0CCF3 t=4814290 grTexDownloadMipMap#1012 tmu=0 addr=0030F000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+879 pid=FFF0CCF3 t=4814290 grTexSource#16784 tmu=0 addr=0030F000 evenodd=3 lod=5..5 aspect=0 format=5
+880 pid=FFF0CCF3 t=4814290 grTexDownloadMipMap#1013 tmu=0 addr=00310000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+881 pid=FFF0CCF3 t=4814290 grTexSource#16785 tmu=0 addr=00310000 evenodd=3 lod=5..5 aspect=0 format=5
+882 pid=FFF0CCF3 t=4814290 grTexDownloadMipMap#1014 tmu=0 addr=00311000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+883 pid=FFF0CCF3 t=4814290 grTexSource#16786 tmu=0 addr=00311000 evenodd=3 lod=5..5 aspect=0 format=5
+884 pid=FFF0CCF3 t=4814295 grTexDownloadMipMap#1015 tmu=0 addr=00312000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+885 pid=FFF0CCF3 t=4814295 grTexSource#16787 tmu=0 addr=00312000 evenodd=3 lod=5..5 aspect=0 format=5
+886 pid=FFF0CCF3 t=4814295 grTexDownloadMipMap#1016 tmu=0 addr=00313000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+887 pid=FFF0CCF3 t=4814295 grTexSource#16789 tmu=0 addr=00313000 evenodd=3 lod=5..5 aspect=0 format=5
+888 pid=FFF0CCF3 t=4814295 grTexDownloadMipMap#1017 tmu=0 addr=00314000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+889 pid=FFF0CCF3 t=4814295 grTexSource#16790 tmu=0 addr=00314000 evenodd=3 lod=5..5 aspect=0 format=5
+890 pid=FFF0CCF3 t=4814295 grTexDownloadMipMap#1018 tmu=0 addr=00315000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+891 pid=FFF0CCF3 t=4814295 grTexSource#16792 tmu=0 addr=00315000 evenodd=3 lod=5..5 aspect=0 format=5
+892 pid=FFF0CCF3 t=4814300 grTexDownloadMipMap#1019 tmu=0 addr=00316000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+893 pid=FFF0CCF3 t=4814300 grTexSource#16796 tmu=0 addr=00316000 evenodd=3 lod=5..5 aspect=0 format=5
+894 pid=FFF0CCF3 t=4814300 grTexDownloadMipMap#1020 tmu=0 addr=00317000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+895 pid=FFF0CCF3 t=4814300 grTexSource#16798 tmu=0 addr=00317000 evenodd=3 lod=5..5 aspect=0 format=5
+896 pid=FFF0CCF3 t=4814300 grTexDownloadMipMap#1021 tmu=0 addr=00318000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+897 pid=FFF0CCF3 t=4814300 grTexSource#16800 tmu=0 addr=00318000 evenodd=3 lod=5..5 aspect=0 format=5
+898 pid=FFF0CCF3 t=4814300 grTexDownloadMipMap#1022 tmu=0 addr=00319000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+899 pid=FFF0CCF3 t=4814300 grTexSource#16803 tmu=0 addr=00319000 evenodd=3 lod=5..5 aspect=0 format=5
+900 pid=FFF0CCF3 t=4814305 grTexDownloadMipMap#1023 tmu=0 addr=0031A000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+901 pid=FFF0CCF3 t=4814305 grTexSource#16805 tmu=0 addr=0031A000 evenodd=3 lod=5..5 aspect=0 format=5
+902 pid=FFF0CCF3 t=4814305 grTexDownloadMipMap#1024 tmu=0 addr=0031B000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+903 pid=FFF0CCF3 t=4814305 grTexSource#16809 tmu=0 addr=0031B000 evenodd=3 lod=4..4 aspect=0 format=5
+904 pid=FFF0CCF3 t=4814305 grTexDownloadMipMap#1025 tmu=0 addr=0031C000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+905 pid=FFF0CCF3 t=4814305 grTexSource#16810 tmu=0 addr=0031C000 evenodd=3 lod=4..4 aspect=0 format=5
+906 pid=FFF0CCF3 t=4814305 grTexDownloadMipMap#1026 tmu=0 addr=0031D000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+907 pid=FFF0CCF3 t=4814305 grTexSource#16811 tmu=0 addr=0031D000 evenodd=3 lod=4..4 aspect=0 format=5
+908 pid=FFF0CCF3 t=4814310 grTexDownloadMipMap#1027 tmu=0 addr=0031E000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+909 pid=FFF0CCF3 t=4814310 grTexSource#16812 tmu=0 addr=0031E000 evenodd=3 lod=4..4 aspect=0 format=5
+910 pid=FFF0CCF3 t=4814310 grTexDownloadMipMap#1028 tmu=0 addr=0031F000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+911 pid=FFF0CCF3 t=4814310 grTexSource#16813 tmu=0 addr=0031F000 evenodd=3 lod=4..4 aspect=0 format=5
+912 pid=FFF0CCF3 t=4814310 grTexDownloadMipMap#1029 tmu=0 addr=00320000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+913 pid=FFF0CCF3 t=4814310 grTexSource#16814 tmu=0 addr=00320000 evenodd=3 lod=4..4 aspect=0 format=5
+914 pid=FFF0CCF3 t=4814310 grTexDownloadMipMap#1030 tmu=0 addr=00321000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+915 pid=FFF0CCF3 t=4814310 grTexSource#16818 tmu=0 addr=00321000 evenodd=3 lod=4..4 aspect=0 format=5
+916 pid=FFF0CCF3 t=4814310 grTexDownloadMipMap#1031 tmu=0 addr=00322000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+917 pid=FFF0CCF3 t=4814310 grTexSource#16819 tmu=0 addr=00322000 evenodd=3 lod=4..4 aspect=0 format=5
+918 pid=FFF0CCF3 t=4814315 grTexDownloadMipMap#1032 tmu=0 addr=00323000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+919 pid=FFF0CCF3 t=4814315 grTexSource#16821 tmu=0 addr=00323000 evenodd=3 lod=4..4 aspect=0 format=5
+920 pid=FFF0CCF3 t=4814315 grTexDownloadMipMap#1033 tmu=0 addr=00324000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+921 pid=FFF0CCF3 t=4814315 grTexSource#16822 tmu=0 addr=00324000 evenodd=3 lod=4..4 aspect=0 format=5
+922 pid=FFF0CCF3 t=4814315 grTexDownloadMipMap#1034 tmu=0 addr=00325000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+923 pid=FFF0CCF3 t=4814315 grTexSource#16823 tmu=0 addr=00325000 evenodd=3 lod=4..4 aspect=0 format=5
+924 pid=FFF0CCF3 t=4814315 grTexDownloadMipMap#1035 tmu=0 addr=00326000 evenodd=3 lod=4..4 aspect=0 format=5 data=02B30010
+925 pid=FFF0CCF3 t=4814315 grTexSource#16824 tmu=0 addr=00326000 evenodd=3 lod=4..4 aspect=0 format=5
+926 pid=FFF0CCF3 t=4814315 grTexDownloadMipMap#1036 tmu=0 addr=00327000 evenodd=3 lod=5..5 aspect=0 format=5 data=02B30010
+927 pid=FFF0CCF3 t=4814315 grTexSource#16825 tmu=0 addr=00327000 evenodd=3 lod=5..5 aspect=0 format=5
+928 pid=FFF0CCF3 t=4814324 census periodic swaps=421
+929 pid=FFF0CCF3 t=4814324 census   draws: drawn=1674 refused=33650 culled=0 skipped-textured=0
+930 pid=FFF0CCF3 t=4814324 census   draws: fog-dropped=0 uploads=467 surface-hits=377 evictions=360
+931 pid=FFF0CCF3 t=4814324 census   cycles(Mc): frame=14470 entry=7057 prepare=6926 upload=6211 submit=91 swap=2861 clear=148 batches=15354
+932 pid=FFF0CCF3 t=4814324 census   batch ends: full=0 texture=13609 state=0
+933 pid=FFF0CCF3 t=4814324 census   grAlphaBlendFunction calls=1172 lines=3
+934 pid=FFF0CCF3 t=4814324 census   grAlphaCombine calls=1172 lines=2
+935 pid=FFF0CCF3 t=4814324 census   grBufferClear calls=837 lines=4
+936 pid=FFF0CCF3 t=4814324 census   grBufferSwap calls=421 lines=24
+937 pid=FFF0CCF3 t=4814324 census   grChromakeyMode calls=416 lines=1
+938 pid=FFF0CCF3 t=4814324 census   grChromakeyValue calls=3 lines=3
+939 pid=FFF0CCF3 t=4814324 census   grColorCombine calls=416 lines=1
+940 pid=FFF0CCF3 t=4814324 census   grColorMask calls=3 lines=3
+941 pid=FFF0CCF3 t=4814325 census   grConstantColorValue calls=403 lines=1
+942 pid=FFF0CCF3 t=4814325 census   grCoordinateSpace calls=3 lines=3
+943 pid=FFF0CCF3 t=4814325 census   grDepthMask calls=3 lines=3
+944 pid=FFF0CCF3 t=4814325 census   grDitherMode calls=17228 lines=2
+945 pid=FFF0CCF3 t=4814325 census   grDrawVertexArrayContiguous calls=16825 lines=48
+946 pid=FFF0CCF3 t=4814325 census   grFinish calls=2 lines=2
+947 pid=FFF0CCF3 t=4814325 census   grGet calls=13 lines=13
+948 pid=FFF0CCF3 t=4814325 census   grGetString calls=4 lines=4
+949 pid=FFF0CCF3 t=4814325 census   grGlideInit calls=3 lines=3
+950 pid=FFF0CCF3 t=4814325 census   grGlideShutdown calls=2 lines=2
+951 pid=FFF0CCF3 t=4814325 census   grLoadGammaTable calls=3 lines=3
+952 pid=FFF0CCF3 t=4814325 census   grSstSelect calls=3 lines=3
+953 pid=FFF0CCF3 t=4814325 census   grSstWinClose calls=2 lines=2
+954 pid=FFF0CCF3 t=4814325 census   grSstWinOpen calls=3 lines=3
+955 pid=FFF0CCF3 t=4814325 census   grTexCombine calls=4 lines=4
+956 pid=FFF0CCF3 t=4814325 census   grTexDownloadMipMap calls=1036 lines=310
+957 pid=FFF0CCF3 t=4814325 census   grTexDownloadTable calls=10 lines=7
+958 pid=FFF0CCF3 t=4814325 census   grTexFilterMode calls=419 lines=3
+959 pid=FFF0CCF3 t=4814325 census   grTexMaxAddress calls=3 lines=3
+960 pid=FFF0CCF3 t=4814325 census   grTexMinAddress calls=3 lines=3
+961 pid=FFF0CCF3 t=4814325 census   grTexSource calls=16825 lines=118
+962 pid=FFF0CCF3 t=4814325 census   grVertexLayout calls=12 lines=12
+963 pid=FFF0CCF3 t=4814365 grTexDownloadMipMap#1041 tmu=0 addr=000A0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+964 pid=FFF0CCF3 t=4814365 grTexSource#16902 tmu=0 addr=000A0000 evenodd=3 lod=8..8 aspect=1 format=5
+965 pid=FFF0CCF3 t=4814370 grTexDownloadMipMap#1043 tmu=0 addr=000C0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+966 pid=FFF0CCF3 t=4814370 grTexSource#16904 tmu=0 addr=000C0000 evenodd=3 lod=8..8 aspect=1 format=5
+967 pid=FFF0CCF3 t=4814445 grTexDownloadMipMap#1045 tmu=0 addr=000E0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+968 pid=FFF0CCF3 t=4814445 grTexSource#17030 tmu=0 addr=000E0000 evenodd=3 lod=8..8 aspect=1 format=5
+969 pid=FFF0CCF3 t=4814450 grTexDownloadMipMap#1048 tmu=0 addr=00110000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+970 pid=FFF0CCF3 t=4814450 grTexSource#17033 tmu=0 addr=00110000 evenodd=3 lod=8..8 aspect=0 format=5
+971 pid=FFF0CCF3 t=4814670 grTexDownloadMipMap#1063 tmu=0 addr=000B0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+972 pid=FFF0CCF3 t=4814670 grTexSource#17352 tmu=0 addr=000B0000 evenodd=3 lod=8..8 aspect=1 format=5
+973 pid=FFF0CCF3 t=4814705 grTexDownloadMipMap#1065 tmu=0 addr=000D0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+974 pid=FFF0CCF3 t=4814705 grTexSource#17414 tmu=0 addr=000D0000 evenodd=3 lod=8..8 aspect=1 format=5
+975 pid=FFF0CCF3 t=4814732 grTexDownloadMipMap#1067 tmu=0 addr=000F0000 evenodd=3 lod=8..8 aspect=1 format=5 data=02B30010
+976 pid=FFF0CCF3 t=4814732 grTexSource#17416 tmu=0 addr=000F0000 evenodd=3 lod=8..8 aspect=1 format=5
+977 pid=FFF0CCF3 t=4814735 grTexDownloadMipMap#1068 tmu=0 addr=00100000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+978 pid=FFF0CCF3 t=4814735 grTexSource#17417 tmu=0 addr=00100000 evenodd=3 lod=8..8 aspect=0 format=5
+979 pid=FFF0CCF3 t=4814755 grTexDownloadMipMap#1070 tmu=0 addr=00120000 evenodd=3 lod=8..8 aspect=0 format=5 data=02B30010
+980 pid=FFF0CCF3 t=4814755 grTexSource#17479 tmu=0 addr=00120000 evenodd=3 lod=8..8 aspect=0 format=5

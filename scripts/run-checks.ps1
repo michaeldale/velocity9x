@@ -105,6 +105,13 @@ Invoke-CheckStep "Glide DLL" {
     & (Join-Path $PSScriptRoot "build-glide-probe.ps1") -BuildId $BuildId
 }
 
+# GLIDE3X.DLL links the same engine (src\glide\glide_core.c), so a change
+# there must build it too; nothing packages it yet either
+# (docs\plans\glide-3x-wrapper.md, Phase 5).
+Invoke-CheckStep "Glide 3 DLL" {
+    & (Join-Path $PSScriptRoot "build-glide3.ps1") -BuildId $BuildId
+}
+
 # build-all-packages runs each family's builder, which links, audits through
 # audit-family-binary.ps1, generates and asserts the INF, and assembles the
 # floppy from the manifests.

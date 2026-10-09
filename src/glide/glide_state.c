@@ -266,6 +266,15 @@ v9x_u32 v9x_glide_color_to_argb(v9x_u32 color, v9x_u32 color_format)
     return color;
 }
 
+/* Whether a blend factor reads the source alpha. Destination alpha is
+ * not the fragment's, and the 16-bit targets have none. */
+static v9x_u16 v9x_glide_blend_reads_alpha(v9x_u32 factor)
+{
+    return (factor == V9X_GLIDE_BLEND_SRC_ALPHA ||
+            factor == V9X_GLIDE_BLEND_ONE_MINUS_SRC_ALPHA ||
+            factor == V9X_GLIDE_BLEND_ALPHA_SATURATE) ? V9X_TRUE : V9X_FALSE;
+}
+
 static v9x_u32 v9x_glide_clamp(v9x_u32 value, v9x_u32 limit)
 {
     return value > limit ? limit : value;
@@ -299,6 +308,7 @@ void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
     out->color_op = V9X_R3D_ABI_COLOROP_MODULATE;
     out->alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
     out->key_texture = V9X_FALSE;
+    out->key_alpha = V9X_FALSE;
 
     abi->depth_enable = state->depth_mode != V9X_GLIDE_DEPTH_DISABLE ? 1ul : 0ul;
     abi->depth_write = abi->depth_enable && state->depth_mask ? 1ul : 0ul;
@@ -326,9 +336,26 @@ void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
 
     /* The chroma-key approximation (glide_texfmt.h): keyed texels arrive
      * with alpha 0, and a game that left the alpha test off gets one that
-     * discards exactly those. */
+     * discards exactly those. Glide keys before the alpha combine, so the
+     * texture's alpha must reach the test even when the combine takes
+     * alpha from the vertex or a constant: alone when nothing else reads
+     * the source alpha, scaled by the fragment's when a blend or the
+     * game's own test does (an unkeyed texel's alpha is one). Diablo II
+     * keys with a ZERO or constant alpha combine; the fragment's alpha
+     * alone kept every keyed texel, and the Rage XL refused the draw
+     * (A8U4I5, 2026-10-10). That holds only where the converted alpha is
+     * the key alone; key_alpha tells the texture bind, which knows the
+     * format, to keep the fragment's alpha for a format with its own. */
     if (state->chroma_mode == V9X_GLIDE_CHROMAKEY_ENABLE && out->textured) {
         out->key_texture = V9X_TRUE;
+        if (out->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+            out->key_alpha = V9X_TRUE;
+            out->alpha_op = (abi->alpha_test_enable ||
+                             v9x_glide_blend_reads_alpha(state->blend_src) ||
+                             v9x_glide_blend_reads_alpha(state->blend_dst)) ?
+                            V9X_R3D_ABI_ALPHAOP_MODULATE :
+                            V9X_R3D_ABI_ALPHAOP_REPLACE;
+        }
         if (!abi->alpha_test_enable) {
             abi->alpha_test_enable = 1ul;
             abi->alpha_func = V9X_GLIDE_D3D_CMP_GREATER;

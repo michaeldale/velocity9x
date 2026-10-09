@@ -19,6 +19,12 @@ v9x_u16 v9x_glide_texfmt_supported(v9x_u32 format)
             format == V9X_GLIDE_TEXFMT_P_8) ? V9X_TRUE : V9X_FALSE;
 }
 
+v9x_u16 v9x_glide_texfmt_key_alpha_only(v9x_u32 format)
+{
+    return (format == V9X_GLIDE_TEXFMT_RGB_565 ||
+            format == V9X_GLIDE_TEXFMT_P_8) ? V9X_TRUE : V9X_FALSE;
+}
+
 static v9x_u32 v9x_glide_key_565(v9x_u32 key_rgb)
 {
     return (((key_rgb >> 19) & 0x1Ful) << 11) |

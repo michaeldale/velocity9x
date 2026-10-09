@@ -25,6 +25,10 @@
 
 v9x_u16 v9x_glide_texfmt_supported(v9x_u32 format);
 
+/* Whether a keyed conversion's alpha is the key alone (565 and P_8, whose
+ * texels carry none); 1555 and 4444 keep their own alpha beside it. */
+v9x_u16 v9x_glide_texfmt_key_alpha_only(v9x_u32 format);
+
 /*
  * Converts `count` texels. 8-bit formats read bytes from `src`, 16-bit
  * formats read 16-bit words. `palette` (256 entries, 0xAARRGGBB as

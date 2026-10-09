@@ -69,6 +69,9 @@ typedef struct v9x_glide_draw_setup {
     v9x_u32 color_source;   /* V9X_GLIDE_SOURCE_* for the vertex setup */
     v9x_u32 alpha_source;
     v9x_u32 key_texture;    /* convert the texture with the chroma key */
+    v9x_u32 key_alpha;      /* alpha_op takes the texture's alpha for the
+                               key alone; valid only where the converted
+                               alpha is the key (texfmt_key_alpha_only) */
     v9x_u32 recognized;     /* V9X_FALSE: drawn with the closest mapping */
 } V9X_GLIDE_DRAW_SETUP;
 

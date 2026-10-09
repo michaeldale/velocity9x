@@ -6,9 +6,10 @@
 # decorated names the linker exports, as scripts\lib\glide-exports.ps1 does
 # for Glide 2. Dot-sourced by scripts\build-glide3.ps1.
 #
-# The census (docs\plans\glide-3x-wrapper.md, Phase 0) writes a few
-# exports by hand in src\glide3\glide3_census.c; their names are listed in
-# $script:V9xGlide3Written and every other export gets a generated stub
+# The front end (src\glide3\glide3_dll.c) writes the exports Diablo II and
+# Rollcage import, and a few state calls beside them, by hand; their names
+# are listed in $script:V9xGlide3Written and every other export gets a
+# generated stub
 # that hands its arguments to V9X_GLIDE3_STUB_HOOK(ix, args, count) and
 # returns zero. A hand-written export whose parameters disagree with the
 # manifest leaves its decorated name unresolved, so the link checks them.
@@ -18,11 +19,23 @@ $script:V9xGlide3DiabloCount = 36
 $script:V9xGlide3RollcageCount = 42
 $script:V9xGlide3Written = @(
     'grGet', 'grGetString', 'grQueryResolutions',
+    'grGlideInit', 'grGlideShutdown', 'grSstSelect', 'grSstWinOpen',
+    'grSstWinClose', 'grSelectContext', 'grFinish', 'grFlush',
+    'grBufferClear', 'grBufferSwap', 'grRenderBuffer', 'grClipWindow',
+    'grColorMask', 'grCoordinateSpace',
+    'grCullMode', 'grDepthBufferMode', 'grDepthBufferFunction', 'grDepthMask',
+    'grDepthBiasLevel', 'grDitherMode', 'grAlphaTestFunction',
+    'grAlphaTestReferenceValue', 'grChromakeyMode', 'grChromakeyValue',
+    'grFogColorValue', 'grConstantColorValue', 'grFogMode', 'grFogTable',
+    'grAlphaBlendFunction', 'grColorCombine', 'grAlphaCombine',
+    'grLoadGammaTable', 'guGammaCorrectionRGB',
+    'grTexClampMode', 'grTexFilterMode', 'grTexMipMapMode', 'grTexCombine',
     'grTexMinAddress', 'grTexMaxAddress', 'grTexTextureMemRequired',
     'grTexCalcMemRequired', 'grTexSource', 'grTexDownloadMipMap',
-    'grDrawVertexArray', 'grDrawVertexArrayContiguous',
-    'grSstWinOpen', 'grSstWinClose', 'grSelectContext', 'grBufferSwap',
-    'grLfbLock', 'grLfbUnlock', 'grGlideShutdown'
+    'grTexDownloadTable',
+    'grVertexLayout', 'grDrawVertexArray', 'grDrawVertexArrayContiguous',
+    'grDrawTriangle', 'grDrawLine', 'grDrawPoint',
+    'grLfbLock', 'grLfbUnlock'
 )
 
 function Get-V9xGlide3Entries {

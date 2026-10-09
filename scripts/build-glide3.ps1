@@ -1,7 +1,9 @@
-# Build GLIDE3X.DLL, the Glide 3.x census (docs\plans\glide-3x-wrapper.md,
-# Phase 0): every export of 3dfx's GLIDE3X.DLL, logging to
-# C:\V9XDIAG\V9XGLD3.LOG and drawing nothing. Not packaged: it is copied
-# into a game's own folder for a census run.
+# Build GLIDE3X.DLL, Glide 3.x over the render interface
+# (docs\plans\glide-3x-wrapper.md): every export of 3dfx's GLIDE3X.DLL,
+# the Glide 3 front end (src\glide3\glide3_dll.c) over the engine
+# GLIDE2X.DLL draws with (src\glide\glide_core.c and the modules beside
+# it), logging to C:\V9XDIAG\V9XGLD3.LOG. Not packaged yet (plan, Phase 5):
+# it is copied into a game's own folder.
 [CmdletBinding()]
 param(
     [string]$BuildId,
@@ -27,12 +29,23 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 $null = Write-V9xGlide3ExportHeader -RepoRoot $repoRoot -OutputDir $output
 $entries = Get-V9xGlide3Entries -RepoRoot $repoRoot
 
-$source = Join-Path $repoRoot 'src\glide3\glide3_census.c'
-$object = Join-Path $output 'glide3_census.obj'
-& $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `
-    "-i=$(Join-Path $repoRoot 'include')" "-i=$output" `
-    "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
-if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+# The Glide 3 front end and its pure layout module, then the shared
+# engine and its modules, each under the DLL's options (no C runtime,
+# warnings as errors).
+$sources = @('src\glide3\glide3_dll.c', 'src\glide3\glide3_layout.c',
+    'src\glide\glide_core.c', 'src\glide\glide_surface.c',
+    'src\glide\glide_vertex.c', 'src\glide\glide_texmem.c',
+    'src\glide\glide_texfmt.c', 'src\glide\glide_state.c')
+$objects = @()
+foreach ($relative in $sources) {
+    $source = Join-Path $repoRoot $relative
+    $object = Join-Path $output ([IO.Path]::GetFileNameWithoutExtension($relative) + '.obj')
+    & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `
+        "-i=$(Join-Path $repoRoot 'include')" "-i=$output" `
+        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+    if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+    $objects += $object
+}
 
 $dll = Join-Path $output 'glide3x.dll'
 $mapFile = Join-Path $output 'glide3x.map'
@@ -41,8 +54,8 @@ $symbols = @($entries | ForEach-Object { Get-V9xGlide3ExportSymbol -Entry $_ })
 $lines = @('format windows nt dll', 'runtime windows=4.0', 'option quiet',
     'option nodefaultlibs', "option start='_V9xGlide3Entry@12'",
     "alias '__DLLstart_'='_V9xGlide3Entry@12'",
-    "option map='$mapFile'", "option modname='GLIDE3X'", "name '$dll'",
-    "file '$object'")
+    "option map='$mapFile'", "option modname='GLIDE3X'", "name '$dll'")
+$lines += $objects | ForEach-Object { "file '$_'" }
 $lines += $symbols | ForEach-Object { "export '$_'" }
 $lines += @(
     "library '$(Join-Path $watcomRoot 'lib386\nt\kernel32.lib')'",
@@ -51,7 +64,7 @@ Set-Content -LiteralPath $linkFile -Value $lines -Encoding Ascii
 & $linker "@$linkFile"
 if ($LASTEXITCODE -ne 0) { throw 'Glide 3 DLL link failed.' }
 Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $dll `
-    -BuildId $BuildId -FileDescription 'Velocity9x Glide 3.x census' -Kind dll
+    -BuildId $BuildId -FileDescription 'Velocity9x Glide 3.x over the render interface' -Kind dll
 
 $dump = (@(& $dumper -e $dll 2>&1)) -join "`n"
 if ($LASTEXITCODE -ne 0) { throw 'Glide 3 DLL import audit failed.' }
@@ -68,5 +81,5 @@ $extra = @($exported | Where-Object { $_ -notin $symbols })
 if ($extra.Count) { throw "The Glide 3 DLL exports names outside the manifest: $($extra -join ', ')" }
 $imageText = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($dll))
 if (-not $imageText.Contains($BuildId)) { throw 'The Glide 3 DLL is missing the build identifier.' }
-Write-Output "Built Glide 3 census DLL: $dll"
+Write-Output "Built Glide 3 DLL: $dll"
 Write-Output "Verified imports: $($imports -join ', '); exports: $($symbols.Count)"

@@ -189,6 +189,16 @@ static void test_formats(void)
     XCHECK(!v9x_glide_texfmt_supported(V9X_GLIDE_TEXFMT_RGB_332));
     XCHECK(!v9x_glide_texfmt_supported(V9X_GLIDE_TEXFMT_ALPHA_INTENSITY_88));
 
+    /* Keyed, 565 and P_8 come out with alpha from the key alone; 1555 and
+     * 4444 keep their own alpha beside it. NFS II SE's map pane, an
+     * alpha format keyed under a vertex-alpha combine, vanished when its
+     * texture alpha was put in charge (netbook, 2026-10-10). */
+    XCHECK(v9x_glide_texfmt_key_alpha_only(V9X_GLIDE_TEXFMT_RGB_565));
+    XCHECK(v9x_glide_texfmt_key_alpha_only(V9X_GLIDE_TEXFMT_P_8));
+    XCHECK(!v9x_glide_texfmt_key_alpha_only(V9X_GLIDE_TEXFMT_ARGB_1555));
+    XCHECK(!v9x_glide_texfmt_key_alpha_only(V9X_GLIDE_TEXFMT_ARGB_4444));
+    XCHECK(!v9x_glide_texfmt_key_alpha_only(V9X_GLIDE_TEXFMT_RGB_332));
+
     /* 565 copies; with a key it becomes 1555 and keyed texels lose alpha. */
     src16[0] = 0x0000u; src16[1] = 0xFFFFu; src16[2] = 0x07E0u; src16[3] = 0xF800u;
     XCHECK(v9x_glide_texfmt_convert(V9X_GLIDE_TEXFMT_RGB_565, src16, 4ul, 0,

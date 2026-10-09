@@ -879,6 +879,13 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
     out->address = setup->address;
     out->color_op = setup->color_op;
     out->alpha_op = setup->alpha_op;
+    /* The key's alpha stands in for the fragment's only where the
+     * conversion's alpha is the key alone (glide_state.c); a format with
+     * its own alpha keeps the fragment's, as before the key promotion.
+     * NFS II SE's map pane needs the latter (netbook, 2026-10-10). */
+    if (setup->key_alpha && !v9x_glide_texfmt_key_alpha_only(texture->format)) {
+        out->alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    }
 
     entry = v9x_glide_surface_for(texture, variant, setup->key_texture, key_rgb);
     if (entry != 0) {

@@ -2,12 +2,16 @@
 
 Date: 2026-10-10
 
-Status: Phase 0 in progress. The census DLL is built. On A8U4I5 (Rage XL)
-it has measured Diablo II's menus
+Status: Phases 1 to 4 have first evidence on the Rage XL. The census
+measured Diablo II's menus
 ([2026-10-10-diablo2-glide3-census.md](../decisions/2026-10-10-diablo2-glide3-census.md))
 and Rollcage's start-up and unattended 3D
 ([2026-10-10-rollcage-glide3-census.md](../decisions/2026-10-10-rollcage-glide3-census.md)).
-Both games' in-game census is open.
+The real GLIDE3X.DLL, a front end over GLIDE2X.DLL's engine, draws Rollcage
+(menu and a race) and Diablo II (title to town) on A8U4I5
+([2026-10-10-glide3-first-frames.md](../decisions/2026-10-10-glide3-first-frames.md)).
+Open: Diablo II's translucent keyed sprites, which the Mach64 refuses
+(0.8 % of its triangles); a second engine (Gen3); packaging (Phase 5).
 
 ## Context
 
@@ -44,7 +48,8 @@ copied.
 - `glide3_entrypoints.psd1`: the 99 exports of 3dfx's `GLIDE3X.DLL`, name,
   argument bytes, return kind, and whether Diablo II imports it. Generated
   stubs come from `scripts/lib/glide3-exports.ps1`.
-- `glide3_census.c`: Phase 0 only, replaced by the real DLL in Phase 2.
+- `glide3_census.c`: Phase 0 only; replaced by `glide3_dll.c`, which keeps
+  its logging (through the engine's census).
 - The real DLL links the engine GLIDE2X.DLL draws with. It was split out
   of `glide_dll.c` into `src/glide/glide_core.c` (`glide_core.h`): the census
   log, texture engine and surface cache, batching, drawing, clears, window

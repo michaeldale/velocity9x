@@ -188,8 +188,8 @@ static void test_chroma_and_fog(void)
     s.chroma_value = 0x0000FF00ul;
     v9x_glide_state_map(&s, &d);
     /* Keyed texels get alpha 0; an alpha test the game left off discards
-     * them. */
-    SCHECK(d.key_texture);
+     * them. The alpha op was the texture's already: not promoted. */
+    SCHECK(d.key_texture && !d.key_alpha);
     SCHECK(d.state.alpha_test_enable && d.state.alpha_func == D3D_CMP_GREATER &&
            d.state.alpha_ref == 0ul);
     /* The game's own test already discards alpha 0: it is kept. */
@@ -211,6 +211,69 @@ static void test_chroma_and_fog(void)
     s.fog_mode = V9X_GLIDE_FOG_DISABLE;
     v9x_glide_state_map(&s, &d);
     SCHECK(!d.state.fog_enable);
+}
+
+/*
+ * The chroma key does not depend on the alpha combine (Glide keys before
+ * it), so a keyed draw whose alpha comes from the vertex or a constant
+ * must still carry the texture's key alpha to the test. Diablo II's menus
+ * key with alpha from a ZERO combine or the constant colour, blending
+ * ONE/ZERO, ONE/ONE or ZERO/SRC_COLOR (census): the fragment alpha alone
+ * left every keyed texel drawn, and the Rage XL refused the draw outright
+ * (A8U4I5, 2026-10-10).
+ */
+static void test_chroma_alpha_source(void)
+{
+    V9X_GLIDE_STATE s;
+    V9X_GLIDE_DRAW_SETUP d;
+
+    v9x_glide_state_init(&s, 800ul, 600ul, V9X_GLIDE_ORIGIN_UPPER_LEFT);
+    combine(&s.color, V9X_GLIDE_COMBINE_FUNCTION_SCALE_OTHER,
+            V9X_GLIDE_COMBINE_FACTOR_LOCAL, V9X_GLIDE_COMBINE_LOCAL_ITERATED,
+            V9X_GLIDE_COMBINE_OTHER_TEXTURE);
+    combine(&s.alpha, V9X_GLIDE_COMBINE_FUNCTION_ZERO, 0ul,
+            V9X_GLIDE_COMBINE_LOCAL_CONSTANT, V9X_GLIDE_COMBINE_OTHER_CONSTANT);
+    s.chroma_mode = V9X_GLIDE_CHROMAKEY_ENABLE;
+
+    /* Nothing reads the source alpha: the key alone decides it. */
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.key_texture && d.key_alpha);
+    SCHECK(d.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    SCHECK(d.state.alpha_test_enable && d.state.alpha_func == D3D_CMP_GREATER);
+
+    combine(&s.alpha, V9X_GLIDE_COMBINE_FUNCTION_LOCAL, 0ul,
+            V9X_GLIDE_COMBINE_LOCAL_CONSTANT, V9X_GLIDE_COMBINE_OTHER_CONSTANT);
+    s.blend_src = V9X_GLIDE_BLEND_ONE;
+    s.blend_dst = V9X_GLIDE_BLEND_ONE;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    s.blend_src = V9X_GLIDE_BLEND_ZERO;
+    s.blend_dst = V9X_GLIDE_BLEND_COLOR;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+
+    /* A blend that reads the source alpha keeps the fragment's, scaled by
+     * the key: an unkeyed texel's alpha is one. */
+    s.blend_src = V9X_GLIDE_BLEND_SRC_ALPHA;
+    s.blend_dst = V9X_GLIDE_BLEND_ONE_MINUS_SRC_ALPHA;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+
+    /* So does the game's own alpha test. */
+    s.blend_src = V9X_GLIDE_BLEND_ONE;
+    s.blend_dst = V9X_GLIDE_BLEND_ZERO;
+    s.alpha_func = 4ul;
+    s.alpha_ref = 0x10ul;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+
+    /* Without the key the fragment alpha stands, as before. */
+    s.alpha_func = V9X_GLIDE_CMP_ALWAYS;
+    s.chroma_mode = V9X_GLIDE_CHROMAKEY_DISABLE;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(!d.key_texture && !d.key_alpha &&
+           d.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
 }
 
 static void test_clip_and_texture(void)
@@ -283,6 +346,7 @@ unsigned int v9x_run_glide_state_tests(void)
     test_depth_and_blend();
     test_combine();
     test_chroma_and_fog();
+    test_chroma_alpha_source();
     test_clip_and_texture();
     return glide_state_failures;
 }
