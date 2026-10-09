@@ -771,6 +771,10 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
         v9x_page_fill_unavailable(dialog);
         v9x_page_widen_list(dialog, V9X_IDC_DIRECT3D_MODE);
         v9x_page_widen_list(dialog, V9X_IDC_COLOUR_LAYOUT);
+        SetDlgItemTextA(dialog, V9X_IDC_CORE_CLOCK,
+                        v9x_page_status.core_clock);
+        SetDlgItemTextA(dialog, V9X_IDC_MEMORY_CLOCK,
+                        v9x_page_status.memory_clock);
         return TRUE;
     case WM_COMMAND:
         /* Enable Apply only once the selection actually differs from the

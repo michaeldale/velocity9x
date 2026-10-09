@@ -108,8 +108,12 @@ BEGIN
                     14, 130, 226, 10, WS_DISABLED
     LTEXT           "Vertical sync applies to the next DirectDraw program; the colour layout needs a restart.", -1, 14, 143, 226, 16
 
-    GROUPBOX        "Diagnostics", -1, 7, 164, 238, 34
-    LTEXT           "Exercise the driver's GDI and DirectDraw paths and record the results.", -1, 14, 176, 140, 16
+    GROUPBOX        "Hardware and diagnostics", -1, 7, 164, 238, 56
+    LTEXT           "Core clock:", -1, 14, 175, 64, 8
+    LTEXT           "", V9X_IDC_CORE_CLOCK, 80, 175, 160, 8
+    LTEXT           "Memory clock:", -1, 14, 186, 64, 8
+    LTEXT           "", V9X_IDC_MEMORY_CLOCK, 80, 186, 160, 8
+    LTEXT           "Exercise the driver's GDI and DirectDraw paths and record the results.", -1, 14, 199, 140, 16
     PUSHBUTTON      "Run diagnostics...", V9X_IDC_RUN_DIAGNOSTICS,
-                    160, 177, 80, 14, WS_DISABLED
+                    160, 200, 80, 14, WS_DISABLED
 END

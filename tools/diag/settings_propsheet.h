@@ -39,6 +39,9 @@
 #define V9X_IDC_COLOUR_DEPTH    2029
 #define V9X_IDC_REFRESH         2030
 #define V9X_IDC_ABOUT           2032
+/* The Advanced tab's clock rows, from the driver's clock detector. */
+#define V9X_IDC_CORE_CLOCK      2036
+#define V9X_IDC_MEMORY_CLOCK    2037
 /* Present and disabled until the driver has the feature. */
 #define V9X_IDC_RUN_DIAGNOSTICS 2033
 #define V9X_IDC_TEXTURE_FILTER  2034
