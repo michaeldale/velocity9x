@@ -52,11 +52,40 @@ Win98 4.10.2222 A, agent 0.9.1). Plan:
   0.15.3 (build fixture0153). The driver now running reports build
   fixture0153" appeared on the desktop.
 
+## The physical machine: A8U4I5
+
+A8U4I5 (P3, Matrox Millennium MGA-2064W, boot 373) against the same kind
+of fixture, served on the LAN (`/SERVER=http://10.11.6.137:8000`), with
+the family `matrox`.
+
+- Six display class keys carry `V9xFamily` there (vbe, two ati, s3, sis,
+  matrox) from earlier cards. The updater chose `Display\0011`, the one a
+  present device uses.
+- **Finding:** that key's `InfSection` was `Velocity9x.Install`, from an
+  older Matrox package; the current INF calls the model
+  `V9x.Install.mga2064w`. Planning by `InfSection` alone would have refused
+  the update. The updater now finds the model as SetupX does, by the key's
+  `MatchingDeviceId` (`PCI\VEN_102B&DEV_0519`) in the new INF's models
+  section, falls back to `InfSection` only when no model lists the ID, and
+  writes the section it used back to `InfSection`.
+- Eight files staged, `GLIDE2X.DLL` among them: A8U4I5's was our own older
+  build, so flag 40 replaced it, where the ViRGE guest's 3dfx one was kept.
+- Boot 374 reached the desktop unattended. `/RESULT` then reported 0.15.1
+  build `fixture0151`, with the running driver reporting the same build.
+  `InfSection` reads `V9x.Install.mga2064w`.
+- A8U4I5 is left on the fixture build with a test-key `V9XUPD.EXE`.
+
+## The production server
+
+The plugin change is deployed: `/v9update/signed/velocity9x/0.14.0`
+answers the plugin's own plain-text 404 (an unknown path gets Apache's HTML
+404), as it should for a release with no `SIGNED.TXT`. The check reply is
+unchanged until a release carries one.
+
 ## Not measured
 
-- A physical machine (the plan's second gate machine).
-- The production server path: the `SIGNED.TXT` plugin change is committed,
-  not deployed, and no release has a `SIGNED.TXT` yet.
+- An end-to-end update through the production server: no release has a
+  `SIGNED.TXT` yet. The first will be 0.15.0.
 - A failed update's path (a hash mismatch after restart), and the Winsock
   fallback.
 - The guest still runs the 0.15.3 fixture build with a test-key

@@ -27,6 +27,13 @@ static const char inf_text[] =
     "Signature=\"$CHICAGO$\"\r\n"
     "Class=DISPLAY\r\n"
     "\r\n"
+    "[Manufacturer]\r\n"
+    "Velocity9x=Velocity9x.Models\r\n"
+    "\r\n"
+    "[Velocity9x.Models]\r\n"
+    "\"Velocity9x Matrox Millennium MGA-2064W\"=V9x.Install.mga2064w,PCI\\VEN_102B&DEV_0519\r\n"
+    "\"Velocity9x, any VESA adapter\"=Velocity9x.Install.Manual\r\n"
+    "\r\n"
     "[DestinationDirs]\r\n"
     "DefaultDestDir=11\r\n"
     "Velocity9x.Copy=11\r\n"
@@ -180,9 +187,39 @@ static void test_refusals(void)
     INFCHECK(strcmp(plan.ops[7].data, "a;b") == 0);
 }
 
+static void test_find_section(void)
+{
+    char section[64];
+    v9x_u32 length = (v9x_u32)strlen(inf_text);
+
+    /* A8U4I5's Matrox key: an InfSection the new INF no longer has, found
+     * by its MatchingDeviceId instead, without case. */
+    INFCHECK(v9x_inf_find_section(inf_text, length, "pci\\ven_102b&dev_0519",
+                                  "Velocity9x.Install", section,
+                                  sizeof(section)));
+    INFCHECK(strcmp(section, "V9x.Install.mga2064w") == 0);
+    /* The ID wins over a still-present old section name. */
+    INFCHECK(v9x_inf_find_section(inf_text, length, "PCI\\VEN_102B&DEV_0519",
+                                  "Velocity9x.Install.Manual", section,
+                                  sizeof(section)));
+    INFCHECK(strcmp(section, "V9x.Install.mga2064w") == 0);
+    /* No ID (a manual-select install): the old name, if it is still here. */
+    INFCHECK(v9x_inf_find_section(inf_text, length, "",
+                                  "Velocity9x.Install.Manual", section,
+                                  sizeof(section)));
+    INFCHECK(strcmp(section, "Velocity9x.Install.Manual") == 0);
+    /* Neither: refused. A prefix of a listed ID is not that ID. */
+    INFCHECK(!v9x_inf_find_section(inf_text, length, "PCI\\VEN_102B",
+                                   "Velocity9x.Install", section,
+                                   sizeof(section)));
+    INFCHECK(!v9x_inf_find_section(inf_text, length, "PCI\\VEN_5333&DEV_8A01",
+                                   "", section, sizeof(section)));
+}
+
 unsigned int v9x_run_update_inf_tests(void)
 {
     test_plan();
+    test_find_section();
     test_refusals();
     return inf_failures;
 }

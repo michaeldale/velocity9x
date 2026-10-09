@@ -305,9 +305,12 @@ BOOL v9x_install_find(struct v9x_install *install, char *why, DWORD why_size)
                             sizeof(install->family));
     (void)v9x_install_query(key, "InfSection", install->inf_section,
                             sizeof(install->inf_section));
+    (void)v9x_install_query(key, "MatchingDeviceId", install->device_id,
+                            sizeof(install->device_id));
     (void)v9x_install_query(key, "InfPath", windows, sizeof(windows));
     RegCloseKey(key);
-    if (install->inf_section[0] == '\0' || windows[0] == '\0') {
+    if ((install->inf_section[0] == '\0' && install->device_id[0] == '\0') ||
+        windows[0] == '\0') {
         v9x_install_copy(why, why_size,
             "The display driver key does not record the INF it was "
             "installed from. Install the new release by hand.");
@@ -488,6 +491,7 @@ BOOL v9x_install_prepare(struct v9x_update_job *job)
     char stage_dir[16];
     char windows[MAX_PATH];
     char path[MAX_PATH];
+    char section[64];
     BYTE *buffer;
     DWORD length;
     unsigned int index;
@@ -528,8 +532,20 @@ BOOL v9x_install_prepare(struct v9x_update_job *job)
                              V9X_INF_FILE_MAX, &job->inf_length)) {
         goto done;
     }
-    if (!v9x_inf_plan(job->inf, job->inf_length,
-                      job->install.inf_section, job->plan)) {
+    /* The new INF's model for this device, by hardware ID first: section
+     * names have changed between releases. */
+    if (!v9x_inf_find_section(job->inf, job->inf_length,
+                              job->install.device_id,
+                              job->install.inf_section, section,
+                              sizeof(section))) {
+        v9x_install_fail(job, "The new INF has no model for this card",
+                         job->install.device_id);
+        goto done;
+    }
+    /* Recorded as SetupX records it, when the registry half is applied. */
+    lstrcpynA(job->install.inf_section, section,
+              sizeof(job->install.inf_section));
+    if (!v9x_inf_plan(job->inf, job->inf_length, section, job->plan)) {
         v9x_install_fail(job, "The new INF cannot be applied directly:",
                          job->plan->error);
         goto done;
@@ -990,6 +1006,9 @@ BOOL v9x_install_commit(struct v9x_update_job *job)
         v9x_install_append(job->error, sizeof(job->error), job->backup_dir);
         return FALSE;
     }
+    (void)RegSetValueExA(driver_key, "InfSection", 0, REG_SZ,
+                         (const BYTE *)job->install.inf_section,
+                         v9x_install_length(job->install.inf_section) + 1ul);
     RegCloseKey(driver_key);
 
     /* The live OEM INF, so a later reinstall from Device Manager installs

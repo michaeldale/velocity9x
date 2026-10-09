@@ -17,6 +17,7 @@ struct v9x_install {
     char instance[16];           /* "0001": Class\Display\0001 */
     char family[32];             /* its V9xFamily value */
     char inf_section[64];        /* its InfSection value */
+    char device_id[96];          /* its MatchingDeviceId value */
     char inf_path[MAX_PATH];     /* the live OEM INF, from InfPath */
 };
 

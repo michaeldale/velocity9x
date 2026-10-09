@@ -66,6 +66,21 @@ struct v9x_inf_plan {
     char error[96];
 };
 
+/*
+ * The install section the new INF offers for this device, the way SetupX
+ * chooses one: the model in [Manufacturer]'s models section whose ID list
+ * names device_id (the driver key's MatchingDeviceId), compared without
+ * case. Section names change between releases - A8U4I5's Matrox key said
+ * Velocity9x.Install, which the 2026-10-09 INF calls
+ * V9x.Install.mga2064w - so the old InfSection is only the fallback, used
+ * when no model lists the ID (a manual-select install) and the INF still
+ * has a section of that name. V9X_FALSE when neither finds one.
+ */
+v9x_u16 v9x_inf_find_section(const char *text, v9x_u32 length,
+                             const char *device_id,
+                             const char *old_section,
+                             char *section, v9x_u32 capacity);
+
 /* Plan the install section of the INF text. V9X_FALSE, with plan->error
  * set, for anything outside the subset above. */
 v9x_u16 v9x_inf_plan(const char *text, v9x_u32 length,
