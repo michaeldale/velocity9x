@@ -3,11 +3,10 @@
  * gates, the S3 primitives, the bounded waits, and the poison latch.
  *
  * Ordinal 1 used to be an unconditional `jmp DIB_BitBlt`. It is this file now,
- * and that has a consequence worth stating at the top: all four families link
- * the same display16 layer, and three of them - ati, vbe and matrox-m2 -
- * declare EngineType NONE on every chip. So for three quarters of the fleet
- * the decline path below is not scaffolding on the way to acceleration; it is
- * the shipping code, on every blit, for ever. Its cost is one WORD test
+ * and that has a consequence worth stating at the top: every family links the
+ * same display16 layer, and only the two S3 engines have primitives here. So
+ * for every other family the decline path below is not scaffolding on the
+ * way to acceleration; it is the shipping code, on every blit. Its cost is one WORD test
  * against v9x_gdi_enabled, which a family with no engine leaves at zero.
  *
  * The signature and the gate order are copied from first-party DDK code, not
@@ -1346,9 +1345,9 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     /*
      * Gate 1: is anything on at all?
      *
-     * This is the whole cost of this file to ati, vbe and matrox-m2, whose
-     * chips declare no engine and therefore never leave v9x_gdi.enabled
-     * non-zero. It is also where a poisoned session declines for ever, since
+     * This is the whole cost of this file to every family but s3, whose
+     * engines have no primitive here and therefore never leave
+     * v9x_gdi.enabled non-zero. It is also where a poisoned session declines for ever, since
      * the latch clears the mask.
      */
     if (v9x_gdi.enabled == 0ul || v9x_gdi_engine_live == 0u) {

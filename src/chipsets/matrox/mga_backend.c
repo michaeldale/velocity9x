@@ -65,13 +65,13 @@ v9x_status v9x_matrox_mga_probe(
     state->pci.revision = 0u;
 
     /*
-     * The exact id, never a vendor-wide match: the Millennium II (051B)
-     * swaps the BAR order and belongs to matrox-m2, and the Mystique
-     * (051A) and G-series have different RAMDACs and memory controllers,
-     * none of which has run in this family.
+     * The two Millennium generations by exact id, never a vendor-wide
+     * match: the Mystique (051A) and the G-series have different RAMDACs
+     * and memory controllers, and none has run in this family.
      */
     if (pci->vendor_id != V9X_PCI_VENDOR_MATROX_MGA ||
-        pci->device_id != V9X_PCI_DEVICE_MGA2064W) {
+        (pci->device_id != V9X_PCI_DEVICE_MGA2064W &&
+         pci->device_id != V9X_PCI_DEVICE_MGA2164W)) {
         return V9X_STATUS_UNSUPPORTED;
     }
 

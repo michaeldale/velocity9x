@@ -386,11 +386,11 @@ V9XMINI_FN_ATI_MMIO_MAP     EQU 001Ah
 ; implements it; every other image refuses cleanly.
 V9XMINI_FN_SIS_MMIO_MAP     EQU 001Bh
 
-; Matrox MGA-2064W: map the 16 KiB control aperture (MGABASE1, BAR0) and say
-; where.
+; Matrox MGA-2064W / MGA-2164W: map the 16 KiB control aperture (MGABASE1:
+; BAR0 on the 2064W, BAR1 on the 2164W) and say where.
 ;
-; In: EBX = BAR0 physical base, freshly read from PCI config by the display
-; driver. Out: AX=1, EBX = linear address of the window, whose drawing
+; In: EBX = that BAR's physical base, freshly read from PCI config by the
+; display driver. Out: AX=1, EBX = linear address of the window, whose drawing
 ; registers begin at +1C00h. AX=0 leaves EBX zero.
 ;
 ; Maps once and refuses a moved BAR, as the SiS map does. The window is

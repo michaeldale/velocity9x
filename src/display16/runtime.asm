@@ -2484,11 +2484,11 @@ V9XMINISISMMIOMAP ENDP
 ENDIF
 
 IFDEF V9X_MGA_FAMILY
-; WORD FAR PASCAL V9xPciReadMgaMmioBar(DWORD FAR *base)
-; The MGA-2064W's BAR0, MGABASE1, its 16 KiB control aperture (DC000000h on
-; A8U4I5; the framebuffer is BAR1 on this chip). A read-only config access;
-; a refusal changes no stage code, because a missing engine must not fail
-; Enable.
+; WORD FAR PASCAL V9xPciReadMgaMmioBar(DWORD FAR *base, WORD bar_index)
+; MGABASE1, the 16 KiB control aperture: BAR0 on the MGA-2064W (DC000000h on
+; A8U4I5), BAR1 on the MGA-2164W; the chip module says which. Indexes other
+; than 0 and 1 are refused. A read-only config access; a refusal changes no
+; stage code, because a missing engine must not fail Enable.
 PUBLIC V9XPCIREADMGAMMIOBAR
 V9XPCIREADMGAMMIOBAR PROC FAR
     push    bp
@@ -2499,10 +2499,15 @@ V9XPCIREADMGAMMIOBAR PROC FAR
     push    si
     push    di
     push    es
+    ; PASCAL pushes left to right: bar_index is the nearer argument.
+    cmp     word ptr [bp+6], 1
+    ja      short V9xPciReadMgaMmioBarFailed
     call    V9xFindPciDevice
     or      ax, ax
     jz      short V9xPciReadMgaMmioBarFailed
-    mov     di, 0010h
+    mov     di, word ptr [bp+6]
+    shl     di, 2
+    add     di, 0010h
     mov     ax, 0b10ah
     int     1ah
     jc      short V9xPciReadMgaMmioBarFailed
@@ -2518,7 +2523,7 @@ V9XPCIREADMGAMMIOBAR PROC FAR
     ja      short V9xPciReadMgaMmioBarFailed
     test    eax, 00003fffh
     jnz     short V9xPciReadMgaMmioBarFailed
-    les     bx, dword ptr [bp+6]
+    les     bx, dword ptr [bp+8]
     mov     es:[bx], eax
     mov     ax, 1
     jmp     short V9xPciReadMgaMmioBarDone
@@ -2532,12 +2537,12 @@ V9xPciReadMgaMmioBarDone:
     pop     cx
     pop     bx
     pop     bp
-    retf    4
+    retf    6
 V9XPCIREADMGAMMIOBAR ENDP
 
-; WORD FAR PASCAL V9xMiniMgaMmioMap(DWORD bar0, DWORD FAR *linear)
-; V9XMINI_FN_MGA_MMIO_MAP: the mini-VDD maps BAR0, checks it decodes, and
-; returns the linear window. On any refusal *linear is 0.
+; WORD FAR PASCAL V9xMiniMgaMmioMap(DWORD control_bar, DWORD FAR *linear)
+; V9XMINI_FN_MGA_MMIO_MAP: the mini-VDD maps the control aperture, checks it
+; decodes, and returns the linear window. On any refusal *linear is 0.
 PUBLIC V9XMINIMGAMMIOMAP
 V9XMINIMGAMMIOMAP PROC FAR
     push    bp
@@ -2549,7 +2554,7 @@ V9XMINIMGAMMIOMAP PROC FAR
     call    V9xMiniApiInitialize
     or      ax, ax
     jz      short V9xMiniMgaMmioMapFailed
-    ; PASCAL pushes left to right: bar0 is the farther argument.
+    ; PASCAL pushes left to right: control_bar is the farther argument.
     mov     ebx, dword ptr [bp+10]
     mov     eax, V9XMINI_FN_MGA_MMIO_MAP
     call    dword ptr V9xMiniApiEntry

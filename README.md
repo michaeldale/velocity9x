@@ -287,11 +287,12 @@ The Trio32 86C732 and the Trio64V+ 86C765 publish `8811` itself, and are
 measured on an 86Box Trio32 guest
 ([record](docs/decisions/2026-08-29-s3-trio32-alias-guest.md)).
 
-The **Matrox Millennium II** family (`102B:051B`) uses a guarded drop-in
-package. Its historical mixed pair — Velocity9x's display driver with the
-board's stock Matrox mini-VDD — passed physical software-GDI tests at
-640x480x16 and 1024x768x16. That evidence does not validate the current release
-archive or replacement of the stock mini-VDD; see the
+The **Matrox** family covers the Millennium MGA-2064W (`102B:0519`) and the
+Millennium II MGA-2164W (`102B:051B`). It sets modes through the video BIOS,
+and DirectDraw fills and copies run on the drawing engine; GDI is drawn by
+the CPU. Measured on one physical 2064W
+([plan](docs/plans/matrox-millennium-family.md)). The 2164W has not run on
+this path; its August guarded drop-in, now retired, is recorded in the
 [bring-up boundary](docs/specifications/matrox-millennium2-bringup.md).
 
 The **SiS 6326** family (`1039:6326`), new in 0.11.0, sets modes through

@@ -1,5 +1,13 @@
 # Matrox Millennium II bring-up boundary
 
+> **Historical since 2026-10-09.** The guarded drop-in package, its recovery
+> guard and the `matrox-m2` family this page describes were retired; the
+> MGA-2164W is now a chip of the INF-installed `matrox` family
+> ([plan](../plans/matrox-millennium-family.md)). The measurements below
+> stand - in particular that replacing Matrox's mini-VDD with the
+> Velocity9x one of the time corrupted surfaces on this board - and are the
+> first things to check when a 2164W runs the current path.
+
 Target: MGA-2164W PCI `102B:051B`. The first physical board is subsystem
 `1200:102B`, revision `00`, with a TI TVP3026 RAMDAC and 8 MiB WRAM.
 

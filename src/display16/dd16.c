@@ -30,12 +30,6 @@ extern LONG FAR PASCAL V9xDibControlCall(LPVOID device, WORD function,
 /*
  * Which Direct3D back end this boot serves, resolved at Enable.
  *
- * Outside the target guard below, and deliberately: matrox-m2 has no
- * DirectDraw HAL but still publishes a Direct3DMode= key, because a
- * diagnostics reader that could not distinguish "this family has no HAL" from
- * "the key was never written" would be unable to tell a stale file from a
- * working one. The state it reports there is NONE, which is the truth.
- *
  * The chip's own descriptor is read here rather than taken from the shared
  * block, for the same reason gdi_accel.c reads it: the shared block does not
  * exist yet at Enable, and DirectDraw may never create it at all.
@@ -151,8 +145,6 @@ const char *v9x_dd_d3d_soft_sysmem_text(void)
     }
     return v9x_dd_d3d_soft_sysmem != V9X_FALSE ? "allowed" : "refused";
 }
-
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
 
 /*
  * [Velocity9x] VSync as engine_caps policy bits.
@@ -698,7 +690,7 @@ static void v9x_dd_refresh_framebuffer(void)
     /* Tier-0 learns this from VBE 4F00h, and a family with a read_video_memory
      * hook from its own chip - CR36 on both S3 parts. The literal is the last
      * resort for a family with neither, or one whose size code did not decode:
-     * the Millennium II today. It is an assumption, and on a card holding less
+     * no family today. It is an assumption, and on a card holding less
      * than 4 MiB it is an over-advertisement that DirectDraw will allocate
      * against, so a family that can read the real size should. */
     shared->fb.vram_bytes = v9x_vbe_vram_bytes != 0ul ? v9x_vbe_vram_bytes
@@ -1219,26 +1211,6 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
     }
 }
 
-#else /* no DirectDraw HAL on this target */
-
-/*
- * ddi.c calls these on every Enable, Disable and ReEnable. Rather than guard
- * each call site on the target, a family without a HAL links the no-op forms.
- * The full versions are retired into a family capability at phase 6 of
- * docs\plans\multi-chip-restructure.md.
- */
-WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
-{
-    (void)reset;
-    return 0u;
-}
-
-void FAR PASCAL V9xDdInvalidate(void)
-{
-}
-
-#endif /* DirectDraw targets */
-
 /*
  * The two GDI acceleration escapes.
  *
@@ -1282,13 +1254,7 @@ static LONG v9x_gdi_command(V9X_DCICMD FAR *command, LPVOID output)
  * return (win9x_ddraw_abi.h, V9X_OPENGL_GETINFO). The trace events record
  * what was asked, whether a buffer came with it and what its first DWORD
  * held before the driver wrote, which is the Phase 0.1 measurement.
- *
- * Under the same guard as the DCI branch in Control, and for the same
- * reason: the Millennium build ships no DirectDraw HAL and has no shared
- * block, so it has no capability word to answer from. The escape is simply
- * unsupported there and the DIB engine's default answers it.
  */
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
 static int v9x_dd_opengl_advertised(void)
 {
     if (v9x_dd_block() == 0) {
@@ -1331,14 +1297,12 @@ static LONG v9x_dd_opengl_getinfo(LPVOID output)
     v9x_serial_write("V9X-DD opengl-getinfo Velocity9x\r\n");
     return 1;
 }
-#endif
 
 LONG __loadds FAR PASCAL Control(LPVOID device,
                                  WORD function,
                                  LPVOID input,
                                  LPVOID output)
 {
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
     if (function == V9X_QUERYESCSUPPORT && input != 0 &&
         *(WORD FAR *)input == V9X_OPENGL_GETINFO) {
         return v9x_dd_opengl_query();
@@ -1346,7 +1310,6 @@ LONG __loadds FAR PASCAL Control(LPVOID device,
     if (function == V9X_OPENGL_GETINFO) {
         return v9x_dd_opengl_getinfo(output);
     }
-#endif
     if (function == V9X_DCICOMMAND && input != 0) {
         V9X_DCICMD FAR *command = (V9X_DCICMD FAR *)input;
 
@@ -1358,7 +1321,6 @@ LONG __loadds FAR PASCAL Control(LPVOID device,
             return v9x_gdi_command(command, output);
         }
     }
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
     if (function == V9X_QUERYESCSUPPORT && input != 0) {
         if (*(WORD FAR *)input == V9X_DCICOMMAND) {
             return (LONG)V9X_DD_HAL_VERSION;
@@ -1372,6 +1334,5 @@ LONG __loadds FAR PASCAL Control(LPVOID device,
         /* Real DCI and unknown versions fall through to the DIB engine
          * (required for correct behavior of the emulated path). */
     }
-#endif
     return V9xDibControlCall(device, function, input, output);
 }

@@ -1305,8 +1305,8 @@ static WORD v9x_build_pdevice(LPVOID device_info,
      * the scanout to 2112, and the first boot with the wider stride showed
      * exactly that: Surface=pitch=2112 dwb=2048 dds=2048 and a sheared panel
      * (MICHAEL-NETBOOK, 2026-09-25). The two stride fields are set to the
-     * mode's, as the Millennium II's own record builder does
-     * (v9x_mga2_build_screen_pdevice).
+     * mode's, as the retired Millennium II candidate's own record builder
+     * did.
      *
      * Not only for that family. A row merged from the BIOS carries the
      * stride the BIOS reports, and stage 9 keeps the card scanning at it,

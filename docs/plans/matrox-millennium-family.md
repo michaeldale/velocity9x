@@ -10,6 +10,9 @@ Phase 2 done 2026-10-09
 ([engine](../decisions/2026-10-09-mga2064w-drawing-engine.md)): the write
 probe passes on silicon at 8/16/32 bpp, and DirectDraw fill and copy run on
 the engine with correct pixels and no timeouts. Next: Phase 3, GDI.
+Later the same day the Millennium II (`051B`) was folded in and `matrox-m2`
+retired: one family, both chips, the BAR order per-chip data. Re-measured
+on the guest and A8U4I5's 2064W afterwards; the 2164W has not run.
 
 The MGA-2064W (`102B:0519`) is in A8U4I5 (10.0.1.172) since 2026-10-09,
 replacing the Rage XL. Until now the chip sat in `matrox-m2`, a guarded
@@ -59,7 +62,16 @@ Done in code 2026-10-09: `packaging/families/matrox/family.psd1`,
 `include/velocity9x/matrox_mga.h`, `src/chipsets/matrox/mga_backend.c`,
 `mga_hw16.c`, `mga2064w/mga2064w_hw16.c`. Every hw16 hook NULL,
 `MiniVddVbeCollect`, seven static 8/16 bpp rows, floppy slot 4. The 2064W
-left `matrox-m2`, which keeps the Millennium II.
+left `matrox-m2`, which kept the Millennium II.
+
+That split was a mistake: the library is organised by family, and two
+families for one design split every fix between them. Corrected the same
+day: the 2164W joined `matrox` as a second chip in one module,
+`millennium/millennium_hw16.c`, whose engine hook maps whichever BAR does
+not hold the framebuffer (BAR0 on the 2064W, BAR1 on the 2164W).
+`matrox-m2`, its guarded drop-in package and its recovery and guard
+tooling were removed, and with them the `V9X_TARGET_MATROX_MILLENNIUM2`
+carve-outs in `dd16.c` and the Win16 loader probe.
 
 Exit gate:
 
@@ -109,8 +121,9 @@ screen-to-screen copy first, then monochrome expansion for text
 - Page flipping: display start through `CRTC0C`/`0D` plus `CRTCEXT0<3:0>`,
   and the HAL's display-start capability.
 - Hardware cursor in the TVP3026.
-- Moving the Millennium II (`051B`) into this family once the 2064W path is
-  measured; the drawing engine is the same core.
+- A Millennium II run. First check: whether `V9XMINI.VXD` reproduces the
+  August surface corruption that Matrox's own mini-VDD did not
+  ([boundary](../specifications/matrox-millennium2-bringup.md)).
 
 ## Decisions fixed
 

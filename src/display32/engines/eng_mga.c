@@ -1,9 +1,9 @@
 /*
- * Matrox MGA-2064W drawing engine for V9XHAL.DLL: DirectDraw solid fill and
- * screen copy.
+ * Matrox Millennium drawing engine (MGA-2064W, MGA-2164W) for V9XHAL.DLL:
+ * DirectDraw solid fill and screen copy.
  *
- * Registers through the 16 KiB control aperture (BAR0) the 16-bit side had
- * the mini-VDD map (mga2064w_hw16.c). Register values come from the
+ * Registers through the 16 KiB control aperture the 16-bit side had the
+ * mini-VDD map (millennium_hw16.c). Register values come from the
  * host-tested builder, src\chipsets\matrox\mga_engine.c.
  *
  * The engine's per-mode state - pixel width, plane mask, clip window - is
@@ -43,7 +43,7 @@ static int v9x_mga_ready(void)
     return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
-        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_MGA_2064W &&
+        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_MGA &&
         v9x_hal->engine.control_linear_base != 0ul &&
         v9x_hal->engine.mapped_aperture_bytes >= V9X_MGA_MMIO_BYTES;
 }

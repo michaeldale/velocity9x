@@ -1562,9 +1562,9 @@ static DWORD v9x_accel_run(HWND window)
              * memory-source work and neither claim above is being tested.
              *
              * `enabled != 0` is load-bearing, not defensive. On a family with
-             * no 2D engine every operation declines at the first gate and no
-             * per-reason counter past it ever moves - so without this the check
-             * would fail on ati, vbe and matrox-m2 while they behave exactly as
+             * no GDI primitive every operation declines at the first gate and
+             * no per-reason counter past it ever moves - so without this the
+             * check would fail on every non-S3 family while it behaves exactly as
              * designed. The three checks above self-gate the same way, through
              * their own `enabled &` test.
              */

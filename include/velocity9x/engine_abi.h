@@ -50,12 +50,12 @@
  */
 #define V9X_DD_ENGINE_TYPE_SIS_6326     6ul
 /*
- * Matrox MGA-2064W drawing engine, MMIO through the 16 KiB control aperture
- * in BAR0: solid fill and screen copy, built by src\chipsets\matrox\
- * mga_engine.c. The chip has no 3D engine; d3d_select.c gives this type
+ * Matrox Millennium drawing engine (MGA-2064W and MGA-2164W), MMIO through
+ * the 16 KiB control aperture: solid fill and screen copy, built by
+ * src\chipsets\matrox\mga_engine.c. Neither chip has a 3D engine; d3d_select.c gives this type
  * none, and software Direct3D still wins when it is selected.
  */
-#define V9X_DD_ENGINE_TYPE_MGA_2064W    7ul
+#define V9X_DD_ENGINE_TYPE_MGA          7ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

@@ -1,4 +1,4 @@
-﻿# Velocity9x family manifest: ATI Mach64 / Rage.
+# Velocity9x family manifest: ATI Mach64 / Rage.
 #
 # One binary, two chips, dispatched at run time by PCI id - the shape the s3
 # family proved at phase 8. The chips are three years apart deliberately: the
@@ -66,7 +66,7 @@
             # are data in this object, stamped into DGROUP by ddi.c, so no
             # instruction signature could find them. The 4F00h/4F01h calls that
             # do produce instructions live in shared src\display16\hw\vbe16.c
-            # and appear in the s3, matrox-m2 and vbe images too - claiming
+            # and appear in the s3, matrox and vbe images too - claiming
             # them here would fail those three builds while proving nothing
             # about this one. Same reasoning as the vbe family.
             #

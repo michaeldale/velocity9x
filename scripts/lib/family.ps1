@@ -17,7 +17,7 @@ $script:V9xFamilySchemaVersion = 1
 # catching it here names the manifest and the chip instead.
 $script:V9xEngineTypes = @('NONE', 'S3_VIRGE_DX', 'S3_TRIO64',
                            'INTEL_GEN3', 'ATI_MACH64', 'ATI_RAGE2',
-                           'SIS_6326', 'MGA_2064W')
+                           'SIS_6326', 'MGA')
 $script:V9xEngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
 
 function Get-V9xFamilyRoot {
@@ -376,7 +376,7 @@ function Test-V9xFamilyManifest {
     # Windows does not enumerate - the 486's VLB Trio64, root-enumerated as
     # *PNP0913 with no PCI bus to scan - where a PCI\VEN_ model can never bind.
     # The guard is deliberately outside a Generate = $false family's path:
-    # matrox-m2 declares nothing here and is untouched.
+    # no family uses it today.
     if ($Family.Inf -is [hashtable] -and $Family.Inf.ContainsKey('ManualSelect')) {
         $manual = $Family.Inf.ManualSelect
         Assert-V9xFamilyKeys -Table $manual -Required @('Description', 'VideoMemoryBytes') `

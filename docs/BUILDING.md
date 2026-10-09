@@ -84,7 +84,7 @@ else - it is not the mode matrix. It needs virtual machines and minutes, which
 is why it is not in `run-checks`, but it is one command. It prints the targets
 it skips **by name** rather than equating "each family with an emulator" with
 "every family": today it reaches `s3` (both chips) and `ati`/mach64-vt2, and
-skips `matrox-m2` and `ati`/rage-mobility-m, which are physical-hardware targets.
+skips `matrox` and `ati`/rage-mobility-m, which are physical-hardware targets.
 
 `vbe` is a third case: the gate covers it, but its guest is QEMU-hosted and this
 gate launches 86Box profiles only, so bring that guest up first or pass
@@ -109,7 +109,7 @@ build scripts read instead of hard-coding chip facts. See
 | Family | Chips | Package |
 |---|---|---|
 | `s3` | S3 ViRGE/DX 86C375 (`5333:8A01`), S3 Trio32/64 86C764 (`5333:8811`) | `build/win98se-s3` |
-| `matrox-m2` | Matrox Millennium II MGA-2164W (`102B:051B`) | `build/matrox-candidate` |
+| `matrox` | Matrox Millennium MGA-2064W (`102B:0519`), Millennium II MGA-2164W (`102B:051B`) | `build/win98se-matrox` |
 | `vbe` | QEMU/Bochs std-vga (`1234:1111`) automatically; any VBE 2.0 card by Have-Disk | `build/win98se-vbe` |
 | `ati` | ATI Mach64 VT2 (`1002:5654`), ATI Rage Mobility-M (`1002:4C4D`) | `build/win98se-ati` |
 

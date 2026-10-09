@@ -2,10 +2,9 @@
  * GDI acceleration: the interface the rest of the 16-bit driver needs.
  *
  * The implementation is src\display16\gdi_accel.c, which links into every
- * family. Three of the four have no 2D engine at all - ati, vbe and matrox-m2
- * all declare EngineType NONE on every chip - so for three quarters of the
- * fleet the decline path in that file is not scaffolding, it is the shipping
- * code, permanently. Everything here is written with that in mind: nothing
+ * family. Only the two S3 engines have primitives there, so for every other
+ * family the decline path in that file is not scaffolding, it is the
+ * shipping code. Everything here is written with that in mind: nothing
  * costs a family without an engine more than one flag test.
  *
  * See docs\plans\gdi-acceleration.md and

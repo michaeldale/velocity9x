@@ -71,7 +71,7 @@ than the controller's default port.
 |---|---|---|---|
 | `s3` / `-ChipId virge-dx` | `Win86SE` | 9869 | The Velocity9x bring-up guest. |
 | `s3` / `-ChipId trio64` | `Win98SE-Trio64` | 9871 | A clone of the native-S3 guest, so its agent still reports ComputerName `WIN98-S3NATIVE`. Identify it by port, never by name. |
-| `matrox-m2` | none | - | `Vm.Emulator = 'none'`: no emulator covers the MGA-2164W, so the VM runner refuses with a real-hardware-only error. |
+| `matrox` | `Win98SE-Millennium` (by hand) | 9877 | `Vm.Emulator = 'none'`: the guest models the MGA-2064W and is driven by hand, not by the VM runner, which refuses the family. Nothing emulates the MGA-2164W. |
 | `ati` / `-ChipId mach64-vt2` | `Win98SE-Mach64VT2` | 9873 | Cloned from `Win98SE-Native-S3` 2026-08-16, so it too reports ComputerName `WIN98-S3NATIVE`. Identify it by port. |
 | `ati` / `-ChipId rage-mobility-m` | none | - | Per-target `Emulator = 'none'`: 86Box emulates no Rage. Real hardware only, at `10.0.1.22`. |
 

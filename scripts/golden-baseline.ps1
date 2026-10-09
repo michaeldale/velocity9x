@@ -39,11 +39,11 @@ $manifestPath = Join-Path $archiveDir "golden.txt"
 $trackedTrees = @(
     "build\win98se-s3",
     "build\floppy",
-    "build\matrox-candidate"
+    "build\win98se-matrox"
 )
 $trackedMaps = @(
     "build\win16-ddi-s3\v9xdisp.map",
-    "build\win16-ddi-mga2\v9xdisp.map",
+    "build\win16-ddi-matrox\v9xdisp.map",
     # The intel-gma map is the one that was actually at risk: the family
     # reached 2 KiB of 16-bit code headroom with neither this list nor the
     # binary auditor watching it (docs\plans\intel-gma950-phase5.md). It now
@@ -239,8 +239,6 @@ function Get-MapSegmentLines {
 
 if (-not $SkipBuild) {
     & (Join-Path $PSScriptRoot "build-floppy-package.ps1") -BuildId $BuildId |
-        Out-Null
-    & (Join-Path $PSScriptRoot "build-matrox-candidate.ps1") -BuildId $BuildId |
         Out-Null
 }
 

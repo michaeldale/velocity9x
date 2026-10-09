@@ -1,9 +1,8 @@
 /*
  * The DirectDraw glue's interface to the rest of the 16-bit driver.
  *
- * The implementation is src\display16\dd16.c. A family with no DirectDraw HAL
- * - matrox-m2 today - links no-op forms of the two driver-object entries from
- * the same file, so every caller here is unconditional.
+ * The implementation is src\display16\dd16.c. Every family has the
+ * DirectDraw HAL, so every caller here is unconditional.
  *
  * Include <windows.h> before this header: the types below are the Win16 ones,
  * the same convention gdi_accel.h uses.

@@ -4,7 +4,7 @@
 #include "velocity9x/build.h"
 #include "velocity9x/components.h"
 #include "velocity9x/backend_registry.h"
-#include "velocity9x/matrox_millennium2.h"
+#include "velocity9x/matrox_mga.h"
 #include "velocity9x/s3_virge.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/intel_gen3_3d.h"
@@ -604,7 +604,7 @@ static void test_s3_virge_memory_decode(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
-static void test_backend_registry_and_millennium2(void)
+static void test_backend_registry_and_millennium(void)
 {
     struct v9x_backend_state state;
     struct v9x_pci_identity pci;
@@ -614,11 +614,11 @@ static void test_backend_registry_and_millennium2(void)
     const struct v9x_backend_ops *ops;
 
     memset(&state, 0, sizeof(state));
-    pci.vendor_id = V9X_PCI_VENDOR_MATROX;
-    pci.device_id = V9X_PCI_DEVICE_MILLENNIUM_II;
+    pci.vendor_id = V9X_PCI_VENDOR_MATROX_MGA;
+    pci.device_id = V9X_PCI_DEVICE_MGA2164W;
     pci.revision = 0u;
     ops = v9x_backend_for_pci(&pci);
-    CHECK(ops == v9x_matrox_millennium2_backend());
+    CHECK(ops == v9x_matrox_mga_backend());
     CHECK(ops->probe(&state, &pci) == V9X_STATUS_OK);
     CHECK(state.initialized == V9X_TRUE);
     CHECK(state.pci.vendor_id == 0x102bu);
@@ -640,9 +640,15 @@ static void test_backend_registry_and_millennium2(void)
     CHECK(ops->validate_mode(&state, &request, &layout) == V9X_STATUS_OK);
     CHECK(layout.pitch_bytes == 2048ul);
 
+    /* Both Millennium generations take the one family's backend. */
+    pci.device_id = V9X_PCI_DEVICE_MGA2064W;
+    CHECK(v9x_backend_for_pci(&pci) == v9x_matrox_mga_backend());
+    CHECK(v9x_matrox_mga_probe(&state, &pci) == V9X_STATUS_OK);
+    CHECK(state.pci.device_id == 0x0519u);
+
     pci.device_id = 0x051au; /* Mystique is a separate future backend. */
     CHECK(v9x_backend_for_pci(&pci) == 0);
-    CHECK(v9x_matrox_millennium2_probe(&state, &pci) ==
+    CHECK(v9x_matrox_mga_probe(&state, &pci) ==
           V9X_STATUS_UNSUPPORTED);
     CHECK(state.initialized == V9X_FALSE);
 
@@ -1152,7 +1158,7 @@ int main(int argc, char **argv)
     test_probe_is_strict();
     test_s3_virge_clock_decode();
     test_s3_virge_memory_decode();
-    test_backend_registry_and_millennium2();
+    test_backend_registry_and_millennium();
     test_components_and_log();
     test_build_identity();
     failures += v9x_run_family_matrix_tests();

@@ -19,7 +19,8 @@ no 2064W databook was available. Everything below is measured.
 - `MGA2D.EXE` + `MGA2D.VXD`: the write probe, in the SIS2D pattern. Seven
   cases into a 1 MiB region 1 MiB below the end of VRAM, each compared with
   the intended image including a guard border.
-- The driver: engine type `MGA_2064W` (7), a mini-VDD map of BAR0's 16 KiB
+- The driver: engine type `MGA_2064W` (7; renamed `MGA` the same day, when
+  the Millennium II joined the family), a mini-VDD map of BAR0's 16 KiB
   (`V9XMINI_FN_MGA_MMIO_MAP`, 1Ch), the chip's engine hook, and
   `src/display32/engines/eng_mga.c`.
 

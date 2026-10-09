@@ -55,10 +55,10 @@ static void test_every_engine_type(void)
         { 1, V9X_DD_ENGINE_TYPE_SIS_6326, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
         /* The MGA-2064W has a 2D engine and no 3D one. */
-        { 1, V9X_DD_ENGINE_TYPE_MGA_2064W,
+        { 1, V9X_DD_ENGINE_TYPE_MGA,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
           V9X_D3D_SELECT_NONE },
-        { 1, V9X_DD_ENGINE_TYPE_MGA_2064W, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
+        { 1, V9X_DD_ENGINE_TYPE_MGA, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
         { 1, 8ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },

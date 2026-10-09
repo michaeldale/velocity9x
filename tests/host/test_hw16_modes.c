@@ -12,11 +12,6 @@
  * v9x_hw16 symbol, so the four of them cannot coexist in one binary. Each is
  * therefore included as source under its own name, which also means the file
  * under test is the one that ships rather than a copy of its contents.
- *
- * matrox-m2 is deliberately absent. Its table is #ifdef-variant on
- * V9X_MATROX_16BPP, so there is no single row set to compare, and
- * mga2_hw16.c uses Windows types that do not belong in a host build. Its
- * manifest and INF are held together by Assert-V9xInf instead.
  */
 #include <stdio.h>
 #include <string.h>
@@ -179,6 +174,9 @@ const V9X_HW16_DEVICE v9x_sis6326_device = {
 const V9X_HW16_DEVICE v9x_mga2064w_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_mga2164w_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)
@@ -272,7 +270,7 @@ static void test_mode_tables_match_manifests(void)
         unsigned int mode_index;
 
         if (ops == 0) {
-            continue; /* matrox-m2, per the note at the top of this file. */
+            continue; /* A family whose table this file does not include. */
         }
         ++checked;
         HCHECK(chip->family_id, strcmp(ops->family_id, chip->family_id) == 0);

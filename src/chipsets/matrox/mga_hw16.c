@@ -1,10 +1,10 @@
 /*
  * The matrox family table.
  *
- * One chip, and no family-wide hook: the VBE 4F02h mode set programs the
- * card, 4F01h reports where the framebuffer landed and 4F00h its size. The
- * chip's own engine hook (mga2064w_hw16.c) describes the drawing engine to
- * DirectDraw.
+ * Two chips, the Millennium and the Millennium II, and no family-wide hook:
+ * the VBE 4F02h mode set programs the card, 4F01h reports where the
+ * framebuffer landed and 4F00h its size. The chips' engine hook
+ * (millennium\millennium_hw16.c) describes the drawing engine to DirectDraw.
  */
 #include "velocity9x/hw16.h"
 
@@ -12,24 +12,27 @@
 extern unsigned long v9x_vbe_vram_reported;
 
 extern const V9X_HW16_DEVICE v9x_mga2064w_device;
+extern const V9X_HW16_DEVICE v9x_mga2164w_device;
 
 static const V9X_HW16_DEVICE * const v9x_mga_devices[] = {
-    &v9x_mga2064w_device
+    &v9x_mga2064w_device,
+    &v9x_mga2164w_device
 };
 
 /*
- * The VESA-standard 8 and 16 bpp rows. Every mode number is in this BIOS's
- * own list with a linear framebuffer, measured by emulated int10 on
- * 2026-09-11 (docs\probe\matrox-2064w-full-2026-09-11\vbe.ndjson). The
+ * The VESA-standard 8 and 16 bpp rows. Every mode number is in the 2064W
+ * BIOS's own list with a linear framebuffer, measured by emulated int10 on
+ * 2026-09-11 (docs\probe\matrox-2064w-full-2026-09-11\vbe.ndjson); the
+ * 2164W's physical sample ran 0101h, 0111h, 0114h and 0117h under the
+ * guarded candidate (docs\specifications\matrox-millennium2-bringup.md). The
  * boot-time BIOS merge adds the rest - 1280x1024, 1600x1200 and the 32 bpp
  * modes - from the mini-VDD's collection.
  *
- * The BIOS pads both 800-wide rows: 960 bytes per scan line for 0103h and
- * 1920 for 0114h, where these rows ask for packed 800 and 1600. Stage 9
- * asks 4F06h for the packed width in pixels, the form this BIOS honours
- * (its byte form returns success and changes nothing, same record), and
- * refuses the mode if the stride does not follow. Which of the two happens
- * is not measured.
+ * The 2064W BIOS pads both 800-wide rows: 960 bytes per scan line for 0103h
+ * and 1920 for 0114h. The merged row carries the BIOS's stride, stage 9
+ * keeps the card scanning at it, and the DIB is built at it (ddi.c), which
+ * A8U4I5 runs at 800x600 (docs\decisions\2026-10-09-mga2064w-tier0-first-
+ * boot.md).
  *
  * 640x400 sits after the other 8-bpp rows so this list runs in the order of
  * the MODES registry key GDI enumerates, as in every other family.
@@ -146,9 +149,11 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* The generic linear-framebuffer bit. This BIOS advertises a linear
      * framebuffer on every mode above (attributes 9Bh). */
     V9X_HW16_VBE_LINEAR,
-    /* 8 MiB, the BAR1 window Configuration Manager assigns this card and
-     * the 2064W's maximum, so also the ceiling believed from 4F00h. */
-    0x007fu, 0xffffu,
+    /* 16 MiB, the Millennium II's framebuffer window and largest memory;
+     * the 2064W's is 8 MiB. This is only the ceiling believed from 4F00h,
+     * which reported 8 MiB on the 2064W, so a card is mapped at its own
+     * size. */
+    0x00ffu, 0xffffu,
     v9x_mga_publish_diagnostics,
     0,
     /* NULL: the mode set is sufficient at tier-0; stage 9 checks the

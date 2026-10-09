@@ -38,18 +38,13 @@ foreach ($manifest in $families) {
     $directoryName = Split-Path -Leaf $manifest.Build.PackageOutput
     $outputDir = Join-Path $repoRoot "build\$directoryName"
 
+    # Every family is an INF package. The one that installed by guarded file
+    # replacement, matrox-m2, was retired into matrox on 2026-10-09.
     if ($manifest.Inf.Generate -eq $false) {
-        # Families that install by guarded file replacement have their own
-        # packaging script; there is no INF package to build here.
-        $script = Join-Path $PSScriptRoot "build-matrox-candidate.ps1"
-        if (-not (Test-Path -LiteralPath $script)) {
-            throw "Family $($manifest.Id) has no INF and no dedicated packaging script."
-        }
-        & $script -BuildId $BuildId -DdkRoot $DdkRoot | Write-Verbose
-    } else {
-        & (Join-Path $PSScriptRoot "build-active-package.ps1") `
-            -BuildId $BuildId -DdkRoot $DdkRoot -Family $manifest.Id | Write-Verbose
+        throw "Family $($manifest.Id) has no INF; no family installs any other way."
     }
+    & (Join-Path $PSScriptRoot "build-active-package.ps1") `
+        -BuildId $BuildId -DdkRoot $DdkRoot -Family $manifest.Id | Write-Verbose
 
     $files = @(Get-ChildItem -LiteralPath $outputDir -File | Sort-Object Name |
         ForEach-Object {

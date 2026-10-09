@@ -153,8 +153,8 @@ V9xSisMmioLinear dd 0
 ENDIF
 
 IFDEF V9X_MGA_MMIO
-; Matrox MGA-2064W: the 16 KiB control aperture (MGABASE1, BAR0), mapped once
-; for the drawing engine. 1E14h is STATUS (MGA-1064SG specification p.4-74).
+; Matrox Millennium (MGA-2064W, BAR0) and Millennium II (MGA-2164W, BAR1): the
+; 16 KiB control aperture, MGABASE1, mapped once for the drawing engine. 1E14h is STATUS (MGA-1064SG specification p.4-74).
 V9X_MGA_MMIO_BYTES      equ 00004000h
 V9X_MGA_STATUS          equ 00001e14h
 V9xMgaMmioBase   dd 0
@@ -609,7 +609,7 @@ IFDEF V9X_ADVFUNC_SHIELD
 ; to Simulate_IO, which re-enters here one access at a time.
 ;
 ; The mini-VDD is one binary for every family, so the trap is installed on
-; cards that do not decode 4AE8H too (ati, matrox-m2, vbe). There the write
+; cards that do not decode 4AE8H too (ati, matrox, vbe). There the write
 ; would have reached nothing, and swallowing it changes nothing; the one
 ; card class where it would matter, an 8514/A-compatible driven by its own
 ; DOS software, is not one this project drives.

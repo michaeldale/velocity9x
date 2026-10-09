@@ -371,7 +371,7 @@ DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface)
  * v9x_set_display_start writes S3 extension register CR69 to carry address
  * bits 19:16, so it is only correct on a chip that actually has S3-style
  * scanout. V9X_DD_ENGINE_CAP_FLIP says precisely that, and until now nothing
- * read it: the two S3 chips declare it, and the matrox-m2, vbe and ati
+ * read it: the two S3 chips declare it, and the vbe and ati
  * families declare no capabilities at all.
  *
  * Without this gate every family programs CR69 regardless of what silicon it
@@ -1591,7 +1591,7 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_mach64;
     case V9X_DD_ENGINE_TYPE_SIS_6326:
         return &v9x_engine32_sis6326;
-    case V9X_DD_ENGINE_TYPE_MGA_2064W:
+    case V9X_DD_ENGINE_TYPE_MGA:
         return &v9x_engine32_mga;
     default:
         break;

@@ -274,7 +274,7 @@ A family whose chips have a `read_aperture` hook must state the key. Such a
 driver never needs the 4F9Ch cache for its aperture; with `$true` the scan
 feeds only the runtime mode merge, under
 `V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN`, and with `$false` the family's table is
-its baseline. `s3` collects (since 2026-10-04); `matrox-m2` does not. The
+its baseline. `s3` collects (since 2026-10-04). The
 `PCIRebalance` INF value follows the hook, not this key. See
 `docs\decisions\2026-08-18-minivdd-vbe-collect-gating.md` and
 `docs\decisions\2026-10-04-trio3d-8904-on-the-virge-path.md`.

@@ -19,19 +19,10 @@ typedef struct v9x_probe_mode {
 
 static int v9x_supported_mode(WORD width, WORD height, WORD bits_per_pixel)
 {
-#ifdef V9X_TARGET_MATROX_MILLENNIUM2
-#ifdef V9X_MATROX_16BPP
-    return ((width == 640u && height == 480u) ||
-            (width == 800u && height == 600u) ||
-            (width == 1024u && height == 768u)) && bits_per_pixel == 16u;
-#else
-    return width == 640u && height == 480u && bits_per_pixel == 8u;
-#endif
-#else
     /*
      * A plausibility check on the GDIINFO the driver reports for whatever mode
      * the registry currently names - not an enumeration of the family's table.
-     * It has to admit every mode any non-Matrox family can be sitting in, so it
+     * It has to admit every mode any family can be sitting in, so it
      * is deliberately generous: this listed three resolutions at 8 and 16 bpp
      * and started failing the moment a guest was left in a 32-bpp or 1280x1024
      * desktop, which blocked the deploy that would have replaced the driver.
@@ -45,7 +36,6 @@ static int v9x_supported_mode(WORD width, WORD height, WORD bits_per_pixel)
     return supported_resolution &&
            (bits_per_pixel == 8u || bits_per_pixel == 16u ||
             bits_per_pixel == 24u || bits_per_pixel == 32u);
-#endif
 }
 
 static int v9x_is_quiet(const char FAR *command_line)
@@ -72,14 +62,10 @@ int PASCAL WinMain(HINSTANCE instance,
     V9X_VALIDATE_PROC validate_proc;
     V9X_PROBE_MODE mode;
     WORD FAR *gdi_words = (WORD FAR *)v9x_gdi_info;
-#if !defined(V9X_TARGET_MATROX_MILLENNIUM2) || defined(V9X_MATROX_16BPP)
     static const WORD widths[] = { 640u, 800u, 1024u };
     static const WORD heights[] = { 480u, 600u, 768u };
     WORD index;
-#ifndef V9X_TARGET_MATROX_MILLENNIUM2
     WORD depth;
-#endif
-#endif
     int quiet = v9x_is_quiet(command_line);
 
     driver = LoadLibrary("V9XDISP.DRV");
@@ -117,33 +103,6 @@ int PASCAL WinMain(HINSTANCE instance,
         return 3;
     }
 
-#ifdef V9X_TARGET_MATROX_MILLENNIUM2
-#ifdef V9X_MATROX_16BPP
-    for (index = 0u; index < 3u; ++index) {
-        mode.size = sizeof(mode);
-        mode.bits_per_pixel = 16u;
-        mode.width = (short)widths[index];
-        mode.height = (short)heights[index];
-        if (validate_proc(&mode) != 0u) {
-            FreeLibrary(driver);
-            return 4;
-        }
-    }
-#else
-    mode.size = sizeof(mode);
-    mode.bits_per_pixel = 8u;
-    mode.width = 640;
-    mode.height = 480;
-    if (validate_proc(&mode) != 0u) {
-        FreeLibrary(driver);
-        if (!quiet) {
-            MessageBox(0, "The guarded 640x480 Matrox mode was rejected.",
-                       v9x_title, MB_OK | MB_ICONHAND);
-        }
-        return 4;
-    }
-#endif
-#else
     for (depth = 8u; depth <= 16u; depth += 8u) {
         for (index = 0u; index < 3u; ++index) {
             mode.size = sizeof(mode);
@@ -160,7 +119,6 @@ int PASCAL WinMain(HINSTANCE instance,
             }
         }
     }
-#endif
     /*
      * A geometry no family table has or plausibly will, to prove ValidateMode
      * is still a whitelist rather than an accept-all.
@@ -196,15 +154,9 @@ int PASCAL WinMain(HINSTANCE instance,
 
     if (!quiet) {
         MessageBox(0,
-#ifdef V9X_TARGET_MATROX_MILLENNIUM2
-                   "V9XDISP.DRV passed its DIB Engine inquiry and guarded "
-                   "640x480 validation without enabling the display. "
-                   "Click OK to unload it.",
-#else
                    "V9XDISP.DRV passed its DIB Engine inquiry and all six "
                    "mode validations without enabling the display. Click "
                    "OK to unload it.",
-#endif
                    v9x_title,
                    MB_OK | MB_ICONINFORMATION);
     }
