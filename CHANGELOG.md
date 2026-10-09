@@ -4,7 +4,38 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.14.1 - not yet released
+## 0.15.0 - not yet released
+
+- **Matrox Millennium (MGA-2064W).** A `matrox` family boots the 2064W
+  at tier-0 through its VBE BIOS, then puts DirectDraw fills and copies
+  on the MGA drawing engine. On A8U4I5's physical card V9XDDP completed
+  with every fill and overlap cell pixel-correct, 4 of 6 operations on
+  the engine (the other two are a surface the engine cannot address) and
+  no engine timeouts. GDI is still drawn by the CPU, and there is no
+  page flip. The Millennium II (MGA-2164W) joins the same family and the
+  separate `matrox-m2` drop-in package is retired; the 2164W has not run
+  on this path.
+  [Plan](docs/plans/matrox-millennium-family.md).
+- The DIB now follows the BIOS's padded row stride on every family, not
+  only Gen3. Before this, a mode whose stride was wider than its width
+  sheared every row on the 2064W.
+- Through a USB HDMI capture the 2064W's desktop looks soft under both
+  Velocity9x and Matrox's own driver. This is parked as an open issue
+  with a timing probe, `V9XTIME.EXE`.
+  [Issue](docs/issues/2026-10-09-mga2064w-capture-looks-soft.md).
+- **A redesigned Velocity9x page.** Display Properties now has two
+  stock-size tabs. **Velocity9x** shows the adapter (with PCI revision and
+  mini-VDD build), the display mode, the acceleration paths and the last
+  diagnostics. **Velocity9x Advanced** holds the Direct3D, DDI, vertical
+  sync and 16-bit colour selectors and the core and memory clocks.
+  Texture filtering, write combining and Run diagnostics are shown greyed
+  out until the driver has them. `V9XSET.EXE` uses the same layout.
+- The page's video memory line read "Unavailable" on every family but
+  S3; it now uses the BIOS's total. Its DirectDraw line claimed a page
+  flip for every engine; it now reports the engine's own capability
+  bits, which the driver publishes at every Enable. The rows no family
+  publishes yet are listed in an
+  [issue](docs/issues/2026-10-09-settings-page-data-gaps.md).
 
 - **OpenGL fog.** `glFogf`, `glFogfv`, `glFogi` and `glFogiv` were stubs
   and now work. LINEAR, EXP and EXP2 fog factors are computed per vertex
