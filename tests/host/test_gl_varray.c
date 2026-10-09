@@ -257,6 +257,26 @@ static void test_conversions(void)
     VCHECK(p.count == 1ul);
     v9x_gl_prim_end(&s, &p);
     VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+
+    /* The same conversion the immediate-mode integer forms call: the
+     * 32-bit ends of table 2.6, and an unnormalized value as it is. */
+    {
+        static const v9x_u32 colour_ui[2] = { 0xFFFFFFFFul, 0ul };
+        static const GLint colour_i[2] = { 2147483647, -2147483647 - 1 };
+        static const GLshort coordinate_s[1] = { -7 };
+
+        VCHECK(vnear(v9x_gl_arrays_component(colour_ui,
+                                             V9X_GL_UNSIGNED_INT, 0u, 1),
+                     1.0f));
+        VCHECK(v9x_gl_arrays_component(colour_ui, V9X_GL_UNSIGNED_INT, 1u,
+                                       1) == 0.0f);
+        VCHECK(vnear(v9x_gl_arrays_component(colour_i, V9X_GL_INT, 0u, 1),
+                     1.0f));
+        VCHECK(vnear(v9x_gl_arrays_component(colour_i, V9X_GL_INT, 1u, 1),
+                     -1.0f));
+        VCHECK(v9x_gl_arrays_component(coordinate_s, V9X_GL_SHORT, 0u, 0) ==
+               -7.0f);
+    }
 }
 
 static void test_interleaved(void)

@@ -1133,6 +1133,227 @@ static void test_polygon_offset(void)
     PCHECK(p.offset_factor == 0.0f && p.offset_units == 0.0f);
 }
 
+static void fog_vertex(V9X_GL_STATE *s, V9X_GL_PIPELINE *p, float x,
+                       float y, float z)
+{
+    v9x_gl_prim_vertex(s, p, x, y, z, 1.0f);
+}
+
+/* One triangle whose corners are at eye distances 0.25, 0 and 0.75: the
+ * scene's modelview is the identity, so c = |z|. */
+static void fog_triangle(V9X_GL_STATE *s, V9X_GL_PIPELINE *p)
+{
+    v9x_gl_prim_begin(s, p, V9X_GL_TRIANGLES);
+    fog_vertex(s, p, 10.0f, 10.0f, -0.25f);
+    fog_vertex(s, p, 100.0f, 10.0f, 0.0f);
+    fog_vertex(s, p, 10.0f, 100.0f, -0.75f);
+    v9x_gl_prim_end(s, p);
+}
+
+static v9x_u32 fog_of(v9x_u32 vertex)
+{
+    return sunk[vertex].specular >> 24;
+}
+
+static void test_fog(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    V9X_R3D_ABI_STATE abi;
+    GLfloat value[4];
+    v9x_u32 i;
+
+    /* Table 6.8's initial values. */
+    scene(&s, &p);
+    PCHECK(p.fog_mode == V9X_GL_EXP && p.fog_density == 1.0f &&
+           p.fog_start == 0.0f && p.fog_end == 1.0f &&
+           p.fog_index == 0.0f);
+    PCHECK(p.fog_color[0] == 0.0f && p.fog_color[1] == 0.0f &&
+           p.fog_color[2] == 0.0f && p.fog_color[3] == 0.0f);
+
+    /* Disabled: every vertex unfogged and the draw says so, whatever the
+     * fog state. */
+    value[0] = 4.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_DENSITY, value, 0);
+    fog_triangle(&s, &p);
+    PCHECK(sunk_triangles == 1ul);
+    PCHECK(fog_of(0) == 255ul && fog_of(1) == 255ul && fog_of(2) == 255ul);
+    v9x_gl_prim_abi_state(&s, &p, &abi);
+    PCHECK(abi.fog_enable == 0ul);
+
+    /* LINEAR from 0 to 1: f = 1 - c, so 0.75, 1 and 0.25. */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_FOG, 1);
+    value[0] = (GLfloat)V9X_GL_LINEAR;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_MODE, value, 0);
+    PCHECK(p.fog_mode == V9X_GL_LINEAR);
+    fog_triangle(&s, &p);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    PCHECK(fog_of(0) == 191ul && fog_of(1) == 255ul && fog_of(2) == 64ul);
+    /* Fog is not shaded: the colour stays as it was. */
+    PCHECK(sunk[0].color == 0xfffffffful);
+
+    /* EXP with density 2: e^-0.5 and e^-1.5. */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_FOG, 1);
+    value[0] = 2.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_DENSITY, value, 0);
+    fog_triangle(&s, &p);
+    PCHECK(fog_of(0) == 155ul && fog_of(1) == 255ul && fog_of(2) == 57ul);
+
+    /* EXP2 with density 2: e^-0.25 and e^-2.25. */
+    value[0] = (GLfloat)V9X_GL_EXP2;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_MODE, value, 1);
+    sunk_triangles = 0ul;
+    fog_triangle(&s, &p);
+    PCHECK(fog_of(0) == 199ul && fog_of(1) == 255ul && fog_of(2) == 27ul);
+
+    /* The factor itself, clamped to [0, 1]: LINEAR outside its range, a
+     * start equal to the end, and EXP far away. */
+    value[0] = (GLfloat)V9X_GL_LINEAR;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_MODE, value, 0);
+    value[0] = 10.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_START, value, 0);
+    value[0] = 20.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_END, value, 0);
+    PCHECK(v9x_gl_prim_fog_factor(&p, 5.0f) == 1.0f);
+    PCHECK(near_value(v9x_gl_prim_fog_factor(&p, 15.0f), 0.5f));
+    PCHECK(v9x_gl_prim_fog_factor(&p, 25.0f) == 0.0f);
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_START, value, 0);
+    PCHECK(v9x_gl_prim_fog_factor(&p, 25.0f) == 1.0f);
+    value[0] = (GLfloat)V9X_GL_EXP;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_MODE, value, 0);
+    value[0] = 1.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_DENSITY, value, 0);
+    PCHECK(near_value(v9x_gl_prim_fog_factor(&p, 1.0f), 0.367879f));
+    PCHECK(near_value(v9x_gl_prim_fog_factor(&p, 7.0f), 0.000912f));
+    PCHECK(v9x_gl_prim_fog_factor(&p, 1000.0f) == 0.0f);
+    value[0] = 0.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_DENSITY, value, 0);
+    PCHECK(v9x_gl_prim_fog_factor(&p, 1000.0f) == 1.0f);
+
+    /* A clipped vertex is fogged at its own distance: the triangle runs
+     * from c = 0 at x = -100 to c = 0.8 at x = 100, so the corners the
+     * left edge makes are at c = 0.4. LINEAR 0..2 gives 0.8 there and
+     * 0.6 at the right. */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_FOG, 1);
+    value[0] = (GLfloat)V9X_GL_LINEAR;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_MODE, value, 0);
+    value[0] = 2.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_END, value, 0);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    fog_vertex(&s, &p, -100.0f, 10.0f, 0.0f);
+    fog_vertex(&s, &p, 100.0f, 10.0f, -0.8f);
+    fog_vertex(&s, &p, 100.0f, 100.0f, -0.8f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles >= 1ul);
+    for (i = 0ul; i < vsunk_count(); ++i) {
+        if (near_value(sunk[i].sx, 0.0f)) {
+            PCHECK(fog_of(i) == 204ul);
+        } else {
+            PCHECK(fog_of(i) == 153ul);
+        }
+    }
+
+    /* The draw carries the enable and the colour, clamped when given. */
+    value[0] = 1.0f;
+    value[1] = 0.5f;
+    value[2] = -1.0f;
+    value[3] = 2.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_COLOR, value, 1);
+    PCHECK(p.fog_color[0] == 1.0f && p.fog_color[1] == 0.5f &&
+           p.fog_color[2] == 0.0f && p.fog_color[3] == 1.0f);
+    v9x_gl_prim_abi_state(&s, &p, &abi);
+    PCHECK(abi.fog_enable == 1ul && abi.fog_color == 0x00ff8000ul);
+
+    /* Errors, each changing nothing: a colour through a scalar form, an
+     * unknown name or mode, a negative density, inside Begin/End. */
+    scene(&s, &p);
+    value[0] = 1.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_COLOR, value, 0);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    PCHECK(p.fog_color[0] == 0.0f);
+    v9x_gl_prim_fog(&s, &p, 0x0B67u, value, 1);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    value[0] = (GLfloat)V9X_GL_FLAT;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_MODE, value, 0);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    PCHECK(p.fog_mode == V9X_GL_EXP);
+    value[0] = -0.5f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_DENSITY, value, 0);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
+    PCHECK(p.fog_density == 1.0f);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    value[0] = 5.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_END, value, 0);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    PCHECK(p.fog_end == 1.0f);
+
+    /* The index is held; negative start and end are legal. */
+    value[0] = 3.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_INDEX, value, 0);
+    value[0] = -2.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_START, value, 0);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    PCHECK(p.fog_index == 3.0f && p.fog_start == -2.0f);
+}
+
+static void test_rect_edge_flag_and_index(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    v9x_u32 i;
+
+    /* (10,10)-(50,40): a counter-clockwise quad as two triangles, every
+     * corner one of the four. */
+    scene(&s, &p);
+    v9x_gl_prim_rect(&s, &p, 10.0f, 10.0f, 50.0f, 40.0f);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    PCHECK(sunk_triangles == 2ul && !s.in_begin);
+    for (i = 0ul; i < 6ul; ++i) {
+        PCHECK((near_value(sunk[i].sx, 10.0f) ||
+                near_value(sunk[i].sx, 50.0f)) &&
+               (near_value(sunk[i].sy, 190.0f) ||
+                near_value(sunk[i].sy, 160.0f)));
+    }
+    PCHECK(near_value(sunk[0].sx, 10.0f) && near_value(sunk[0].sy, 190.0f));
+    PCHECK(near_value(sunk[1].sx, 50.0f) && near_value(sunk[1].sy, 190.0f));
+
+    /* Front-facing: culling the back leaves it, culling the front takes
+     * it; reversed corners make it a back face. */
+    v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+    sunk_triangles = 0ul;
+    v9x_gl_prim_rect(&s, &p, 10.0f, 10.0f, 50.0f, 40.0f);
+    PCHECK(sunk_triangles == 2ul);
+    sunk_triangles = 0ul;
+    v9x_gl_prim_rect(&s, &p, 50.0f, 10.0f, 10.0f, 40.0f);
+    PCHECK(sunk_triangles == 0ul);
+
+    /* Inside Begin/End: an error, and the primitive being built gets no
+     * vertices from it. */
+    scene(&s, &p);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 0.0f, 0.0f);
+    v9x_gl_prim_rect(&s, &p, 10.0f, 10.0f, 50.0f, 40.0f);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    PCHECK(s.in_begin && p.count == 1ul);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 0ul);
+
+    /* The edge flag and index: TRUE and 1, then what was set, legal
+     * inside Begin/End. */
+    scene(&s, &p);
+    PCHECK(p.edge_flag == 1u && p.index == 1.0f);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    v9x_gl_prim_edge_flag(&p, 0u);
+    v9x_gl_prim_index(&p, 7.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    PCHECK(p.edge_flag == 0u && p.index == 7.0f);
+}
+
 /* A depth-tested, depth-writing opaque draw, Quake's world. */
 static void split_state(V9X_R3D_ABI_STATE *state)
 {
@@ -1259,6 +1480,12 @@ static void test_split_into_passes(void)
     state.dst_blend = 6ul;
     PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
 
+    /* Fog applies to the two units' combined colour, which no pass
+     * holds. */
+    split_state(&state);
+    state.fog_enable = 1ul;
+    PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
+
     /* An alpha test: kept on pass 0 only, which needs depth writes to
      * confine the rest to what it kept, and unit 1 must not change the
      * alpha it tests. */
@@ -1304,6 +1531,8 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_pipeline_output_unchanged();
     test_second_texture_coordinate();
     test_polygon_offset();
+    test_fog();
+    test_rect_edge_flag_and_index();
     test_begin_follows_state_changes();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");

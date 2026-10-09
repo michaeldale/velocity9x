@@ -210,12 +210,75 @@ static void test_conversions(void)
     v9x_gl_textures_release(&t);
 }
 
+/* Fog (table 6.8), the current edge flag, index and normal (table 6.5),
+ * and the index mask and clear value (tables 6.15, 6.16). */
+static void test_fog_index_and_edge_queries(void)
+{
+    GLint v[4];
+    GLfloat f[4];
+    GLboolean b[4];
+    GLfloat colour[4];
+
+    fresh();
+    GGCHECK(geti(0x0B65u) == (GLint)V9X_GL_EXP);        /* FOG_MODE */
+    v9x_gl_get(&s, &p, &t, 0x0B62u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(f[0] == 1.0f);                              /* FOG_DENSITY */
+    GGCHECK(geti(0x0B63u) == 0 && geti(0x0B64u) == 1);  /* START, END */
+    GGCHECK(geti(0x0B61u) == 0);                        /* FOG_INDEX */
+    v9x_gl_get(&s, &p, &t, 0x0B66u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(f[0] == 0.0f && f[3] == 0.0f);              /* FOG_COLOR */
+    v9x_gl_get(&s, &p, &t, 0x0B43u, V9X_GL_GET_BOOLEAN, b);
+    GGCHECK(b[0] == 1);                                 /* EDGE_FLAG */
+    GGCHECK(geti(0x0B01u) == 1);                        /* CURRENT_INDEX */
+    GGCHECK(geti(0x0C20u) == 0);                        /* INDEX_CLEAR_VALUE */
+    GGCHECK(geti(0x0C21u) == -1);                       /* INDEX_WRITEMASK */
+    v9x_gl_get(&s, &p, &t, 0x0B02u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(f[0] == 0.0f && f[1] == 0.0f && f[2] == 1.0f); /* NORMAL */
+
+    colour[0] = 1.0f;
+    colour[1] = 0.5f;
+    colour[2] = 0.0f;
+    colour[3] = 1.0f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_COLOR, colour, 1);
+    v9x_gl_get(&s, &p, &t, 0x0B66u, V9X_GL_GET_INTEGER, v);
+    GGCHECK(v[0] == 2147483647 && v[2] == 0);
+    colour[0] = 2.5f;
+    v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_END, colour, 0);
+    v9x_gl_get(&s, &p, &t, 0x0B64u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(f[0] == 2.5f);
+    v9x_gl_prim_edge_flag(&p, 0u);
+    v9x_gl_get(&s, &p, &t, 0x0B43u, V9X_GL_GET_BOOLEAN, b);
+    GGCHECK(b[0] == 0);
+    v9x_gl_prim_index(&p, 9.0f);
+    GGCHECK(geti(0x0B01u) == 9);
+    v9x_gl_state_index_mask(&s, 0x0Fu);
+    GGCHECK(geti(0x0C21u) == 15);
+    v9x_gl_state_clear_index(&s, 4.0f);
+    v9x_gl_get(&s, &p, &t, 0x0C20u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(f[0] == 4.0f);
+    /* A normal reads as a mapped value through the integer query. */
+    v9x_gl_prim_normal(&p, 1.0f, 0.0f, -1.0f);
+    v9x_gl_get(&s, &p, &t, 0x0B02u, V9X_GL_GET_INTEGER, v);
+    GGCHECK(v[0] == 2147483647 && v[1] == 0 && v[2] == -2147483647 - 1);
+    GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+
+    /* The index state commands are INVALID_OPERATION inside Begin/End. */
+    s.in_begin = 1;
+    v9x_gl_state_index_mask(&s, 0u);
+    v9x_gl_state_clear_index(&s, 1.0f);
+    GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    s.in_begin = 0;
+    GGCHECK(geti(0x0C21u) == 15);
+    v9x_gl_textures_release(&t);
+}
+
 unsigned int v9x_run_gl_get_tests(void)
 {
     gl_get_failures = 0u;
     test_initial_values();
     test_after_commands();
     test_conversions();
+    test_fog_index_and_edge_queries();
     if (gl_get_failures == 0u) {
         printf("PASS: OpenGL state queries\n");
     }

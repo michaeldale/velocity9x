@@ -1,0 +1,2 @@
+540 pid=FFFDD051 paths batches/triangles untextured=11/34 hw=45/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=50/50 two-units=0/0 split=0/0 split-declined=0
+541 pid=FFFDD051 counters hwtex live=0 creates=67 create-failed=0 evictions=0 uploads=70 partial=2 upload-kb=702 squared=3 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=50 r7=0 r8=0 other=0

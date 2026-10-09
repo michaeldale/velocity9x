@@ -100,6 +100,17 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->offset_factor = 0.0f;
     pipeline->offset_units = 0.0f;
     pipeline->offset_on = 0;
+    pipeline->edge_flag = 1u;
+    pipeline->index = 1.0f;
+    pipeline->fog_mode = V9X_GL_EXP;
+    pipeline->fog_density = 1.0f;
+    pipeline->fog_start = 0.0f;
+    pipeline->fog_end = 1.0f;
+    for (i = 0u; i < 4u; ++i) {
+        pipeline->fog_color[i] = 0.0f;
+    }
+    pipeline->fog_index = 0.0f;
+    pipeline->fog_on = 0;
     pipeline->mode = V9X_GL_TRIANGLES;
     pipeline->count = 0ul;
     pipeline->ring_head = 0u;
@@ -304,6 +315,147 @@ void v9x_gl_prim_polygon_offset(V9X_GL_STATE *state,
     pipeline->offset_units = units;
 }
 
+void v9x_gl_prim_edge_flag(V9X_GL_PIPELINE *pipeline, GLboolean flag)
+{
+    pipeline->edge_flag = flag ? 1u : 0u;
+}
+
+void v9x_gl_prim_index(V9X_GL_PIPELINE *pipeline, GLfloat index)
+{
+    pipeline->index = index;
+}
+
+static GLfloat v9x_gl_prim_clamp(GLfloat value, GLfloat low, GLfloat high);
+
+void v9x_gl_prim_fog(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                     GLenum pname, const GLfloat *params, int vector)
+{
+    GLenum mode;
+    unsigned int i;
+
+    if (!v9x_gl_prim_allowed(state)) {
+        return;
+    }
+    switch (pname) {
+    case V9X_GL_FOG_MODE:
+        mode = (GLenum)v9x_gl_prim_to_long((double)params[0]);
+        if (mode != V9X_GL_LINEAR && mode != V9X_GL_EXP &&
+            mode != V9X_GL_EXP2) {
+            v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+            return;
+        }
+        pipeline->fog_mode = mode;
+        return;
+    case V9X_GL_FOG_DENSITY:
+        if (params[0] < 0.0f) {
+            v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
+            return;
+        }
+        pipeline->fog_density = params[0];
+        return;
+    case V9X_GL_FOG_START:
+        pipeline->fog_start = params[0];
+        return;
+    case V9X_GL_FOG_END:
+        pipeline->fog_end = params[0];
+        return;
+    case V9X_GL_FOG_INDEX:
+        pipeline->fog_index = params[0];
+        return;
+    case V9X_GL_FOG_COLOR:
+        if (!vector) {
+            v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+            return;
+        }
+        for (i = 0u; i < 4u; ++i) {
+            pipeline->fog_color[i] = v9x_gl_prim_clamp(params[i], 0.0f, 1.0f);
+        }
+        return;
+    default:
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return;
+    }
+}
+
+/*
+ * e^-x for x >= 0 without a C runtime: halve x to at most one half, sum
+ * the Taylor series there - eight terms leave an error near 5e-9, which
+ * the six squarings back grow to under 1e-6, far below the 1/255 a factor
+ * is stored to - and square back. Past V9X_GL_PRIM_EXP_ZERO the result is
+ * under 1e-9, which no factor byte tells from zero. The term divisor is
+ * counted in a double: an unsigned-to-double conversion would call the
+ * runtime helper the ICD does not link.
+ */
+#define V9X_GL_PRIM_EXP_ZERO 21.0
+
+static double v9x_gl_prim_exp_negative(double x)
+{
+    double term = 1.0;
+    double sum = 1.0;
+    double divisor;
+    unsigned int halvings = 0u;
+
+    if (!(x > 0.0)) {
+        return 1.0;
+    }
+    if (x > V9X_GL_PRIM_EXP_ZERO) {
+        return 0.0;
+    }
+    while (x > 0.5) {
+        x *= 0.5;
+        ++halvings;
+    }
+    for (divisor = 1.0; divisor <= 8.0; divisor += 1.0) {
+        term *= -x / divisor;
+        sum += term;
+    }
+    while (halvings > 0u) {
+        sum *= sum;
+        --halvings;
+    }
+    return sum;
+}
+
+GLfloat v9x_gl_prim_fog_factor(const V9X_GL_PIPELINE *pipeline, GLfloat c)
+{
+    double f;
+    double dc;
+
+    if (pipeline->fog_mode == V9X_GL_LINEAR) {
+        /* No range to fog across: the division is undefined, and an
+         * unfogged fragment is what other implementations draw. */
+        if (pipeline->fog_end == pipeline->fog_start) {
+            return 1.0f;
+        }
+        f = ((double)pipeline->fog_end - (double)c) /
+            ((double)pipeline->fog_end - (double)pipeline->fog_start);
+    } else {
+        dc = (double)pipeline->fog_density * (double)c;
+        f = v9x_gl_prim_exp_negative(pipeline->fog_mode == V9X_GL_EXP2
+                                         ? dc * dc : dc);
+    }
+    if (!(f > 0.0)) {
+        return 0.0f;
+    }
+    return f >= 1.0 ? 1.0f : (GLfloat)f;
+}
+
+void v9x_gl_prim_rect(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                      GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2)
+{
+    /* Checked here, not left to glBegin: its error would still let the
+     * four vertices join the primitive being assembled. */
+    if (!v9x_gl_prim_allowed(state)) {
+        return;
+    }
+    v9x_gl_prim_begin(state, pipeline, V9X_GL_POLYGON);
+    v9x_gl_prim_vertex(state, pipeline, x1, y1, 0.0f, 1.0f);
+    v9x_gl_prim_vertex(state, pipeline, x2, y1, 0.0f, 1.0f);
+    v9x_gl_prim_vertex(state, pipeline, x2, y2, 0.0f, 1.0f);
+    v9x_gl_prim_vertex(state, pipeline, x1, y2, 0.0f, 1.0f);
+    v9x_gl_prim_end(state, pipeline);
+}
+
 void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
 {
     if (pipeline->batch_triangles == 0ul) {
@@ -386,6 +538,7 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->count = 0ul;
     pipeline->offset_on =
         v9x_gl_state_cap(state, V9X_GL_POLYGON_OFFSET_FILL) ? 1 : 0;
+    pipeline->fog_on = v9x_gl_state_cap(state, V9X_GL_FOG) ? 1 : 0;
     if (v9x_gl_prim_begin_unchanged(state, pipeline)) {
         return;
     }
@@ -487,6 +640,7 @@ static void v9x_gl_prim_lerp(V9X_GL_VERTEX *out, const V9X_GL_VERTEX *a,
     }
     out->tex1[0] = a->tex1[0] + (b->tex1[0] - a->tex1[0]) * t;
     out->tex1[1] = a->tex1[1] + (b->tex1[1] - a->tex1[1]) * t;
+    out->fog_c = a->fog_c + (b->fog_c - a->fog_c) * t;
 }
 
 /* A triangle clipped against the ten planes grows by at most one vertex
@@ -728,7 +882,10 @@ static void v9x_gl_prim_emit(const V9X_GL_STATE *state,
      * tu/tv the divided s/q and t/q (the rasterizer contract). A q of one
      * divides nothing, and is what every non-projective call sends. */
     out->color = v9x_gl_prim_argb_cached(pipeline, v->color);
-    out->specular = 0xff000000ul;
+    /* Fog per vertex, interpolated by the engine (3.9 allows it). */
+    out->specular = pipeline->fog_on
+        ? v9x_gl_prim_byte(v9x_gl_prim_fog_factor(pipeline, v->fog_c)) << 24
+        : 0xff000000ul;
     if (q == 1.0f) {
         out->rhw = w->rhw;
         out->tu = v->tex[0];
@@ -980,6 +1137,7 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     }
     vp->tex1[0] = pipeline->tex1[0];
     vp->tex1[1] = pipeline->tex1[1];
+    vp->fog_c = v9x_gl_prim_abs(eye[2]);
     /* Inside by the clipper's own test, plane by plane (v9x_gl_prim_clip):
      * then its window position and emitted vertex are what any triangle
      * it is a corner of would compute (V9X_GL_VERTEX.inside). */
@@ -1077,8 +1235,13 @@ void v9x_gl_prim_abi_state(V9X_GL_STATE *state,
         v9x_gl_state_cap(state, V9X_GL_ALPHA_TEST) ? 1ul : 0ul;
     out->alpha_func = (v9x_u32)(pipeline->alpha_func - V9X_GL_NEVER) + 1ul;
     out->alpha_ref = v9x_gl_prim_byte(pipeline->alpha_ref);
-    out->fog_enable = 0ul;
-    out->fog_color = 0ul;
+    /* The vertices carry the factor (v9x_gl_prim_emit); the colour has no
+     * alpha here, as fog leaves the fragment's alpha alone (3.9). */
+    out->fog_enable = v9x_gl_state_cap(state, V9X_GL_FOG) ? 1ul : 0ul;
+    out->fog_color = out->fog_enable == 0ul ? 0ul :
+                     (v9x_gl_prim_byte(pipeline->fog_color[0]) << 16) |
+                     (v9x_gl_prim_byte(pipeline->fog_color[1]) << 8) |
+                     v9x_gl_prim_byte(pipeline->fog_color[2]);
     out->write_mask = (state->color_mask[0] ? V9X_R3D_ABI_WRITE_RED : 0ul) |
                       (state->color_mask[1] ? V9X_R3D_ABI_WRITE_GREEN : 0ul) |
                       (state->color_mask[2] ? V9X_R3D_ABI_WRITE_BLUE : 0ul);
@@ -1289,6 +1452,10 @@ v9x_u32 v9x_gl_prim_split(const V9X_R3D_ABI_STATE *state,
     /* The passes combine through the blender, so the application's own
      * blend cannot also be had. */
     if (state->blend_enable != 0ul) {
+        return 0ul;
+    }
+    /* Fog applies to the units' combined colour, which no pass holds. */
+    if (state->fog_enable != 0ul) {
         return 0ul;
     }
     /* A test that may discard leaves the later passes nothing to find

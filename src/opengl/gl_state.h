@@ -78,6 +78,10 @@ typedef struct v9x_gl_state {
     GLenum read_buffer;
     GLfloat line_width;
     GLfloat point_size;
+    /* glIndexMask and glClearIndex (4.2.2, 4.2.3), held for queries:
+     * there is no colour-index pixel format for them to act on. */
+    GLuint index_mask;
+    GLfloat clear_index;
 } V9X_GL_STATE;
 
 #define V9X_GL_DONT_CARE 0x1100u
@@ -200,5 +204,8 @@ unsigned int v9x_gl_state_draw_targets(const V9X_GL_STATE *state);
 int v9x_gl_state_reads_front(const V9X_GL_STATE *state);
 void v9x_gl_state_line_width(V9X_GL_STATE *state, GLfloat width);
 void v9x_gl_state_point_size(V9X_GL_STATE *state, GLfloat size);
+/* Initially all ones and 0. INVALID_OPERATION inside Begin/End. */
+void v9x_gl_state_index_mask(V9X_GL_STATE *state, GLuint mask);
+void v9x_gl_state_clear_index(V9X_GL_STATE *state, GLfloat index);
 
 #endif /* VELOCITY9X_GL_STATE_H */

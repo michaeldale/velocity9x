@@ -8,7 +8,7 @@
  * What reaches the sink is what the CPU rasterizer contract
  * (docs\specifications\cpu-rasterizer-contract.md) describes: surface
  * coordinates with y down, sz the window depth, rhw q/w, colour packed
- * ARGB, specular alpha the fog factor (255: no fog yet).
+ * ARGB, specular alpha the fog factor (255: unfogged).
  */
 #ifndef VELOCITY9X_GL_PRIM_H
 #define VELOCITY9X_GL_PRIM_H
@@ -39,6 +39,17 @@
 #define V9X_GL_ALPHA_TEST     0x0BC0u
 #define V9X_GL_POLYGON_OFFSET_FILL 0x8037u
 
+#define V9X_GL_FOG            0x0B60u
+#define V9X_GL_FOG_INDEX      0x0B61u
+#define V9X_GL_FOG_DENSITY    0x0B62u
+#define V9X_GL_FOG_START      0x0B63u
+#define V9X_GL_FOG_END        0x0B64u
+#define V9X_GL_FOG_MODE       0x0B65u
+#define V9X_GL_FOG_COLOR      0x0B66u
+#define V9X_GL_EXP            0x0800u
+#define V9X_GL_EXP2           0x0801u
+#define V9X_GL_LINEAR         0x2601u
+
 #define V9X_GL_NEVER          0x0200u
 #define V9X_GL_LESS           0x0201u
 #define V9X_GL_LEQUAL         0x0203u
@@ -58,6 +69,10 @@ typedef struct v9x_gl_vertex {
     GLfloat tex[4];
     /* Unit 1's s and t (GL_SGIS_multitexture), interpolated as tex is. */
     GLfloat tex1[2];
+    /* The fog coordinate c (3.9): the eye-space distance, approximated by
+     * |z_e| as the specification allows, interpolated as the colour is so
+     * a clipped vertex is fogged at its own distance. */
+    GLfloat fog_c;
     /*
      * Set when the vertex is inside all ten clip planes, with its window
      * position (x, y, z, rhw) and the interface vertex it emits. A triangle
@@ -90,6 +105,11 @@ typedef struct v9x_gl_pipeline {
     /* The current normal (2.7). Held for queries and vertex arrays; no
      * lighting reads it yet. */
     GLfloat normal[3];
+    /* The current edge flag and colour index (2.7), held for queries:
+     * polygon modes LINE and POINT are not drawn, and there is no
+     * colour-index pixel format. */
+    GLboolean edge_flag;
+    GLfloat index;
     GLenum shade_model;
     GLenum cull_face;
     GLenum front_face;
@@ -107,6 +127,17 @@ typedef struct v9x_gl_pipeline {
     /* POLYGON_OFFSET_FILL as it was at Begin; it cannot change before
      * End, and the triangles do not look it up each. */
     int offset_on;
+    /* glFog's state (3.9, table 6.8): the mode, density, linear start
+     * and end, colour (clamped when given) and index. */
+    GLenum fog_mode;
+    GLfloat fog_density;
+    GLfloat fog_start;
+    GLfloat fog_end;
+    GLfloat fog_color[4];
+    GLfloat fog_index;
+    /* FOG as it was at Begin, as offset_on is: each emitted vertex then
+     * carries its fog factor in the specular alpha. */
+    int fog_on;
     /* The primitive being assembled: its mode, how many vertices so far,
      * and the ones the next triangle may need. */
     GLenum mode;
@@ -181,7 +212,8 @@ typedef struct v9x_gl_pipeline {
 
 /* The initial values of the pipeline's state (colour 1,1,1,1, texture
  * coordinate 0,0,0,1, normal 0,0,1, SMOOTH, BACK, CCW, LESS, ONE/ZERO, ALWAYS/0, depth
- * range 0..1) and no sink. */
+ * range 0..1, edge flag TRUE, index 1, fog EXP with density 1, start 0,
+ * end 1, colour 0,0,0,0 and index 0) and no sink. */
 void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline);
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
                           void *user);
@@ -198,6 +230,8 @@ void v9x_gl_prim_texcoord(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t,
 void v9x_gl_prim_texcoord1(V9X_GL_PIPELINE *pipeline, GLfloat s, GLfloat t);
 void v9x_gl_prim_normal(V9X_GL_PIPELINE *pipeline, GLfloat x, GLfloat y,
                         GLfloat z);
+void v9x_gl_prim_edge_flag(V9X_GL_PIPELINE *pipeline, GLboolean flag);
+void v9x_gl_prim_index(V9X_GL_PIPELINE *pipeline, GLfloat index);
 
 /* State the pipeline or the fragment stage reads; each is
  * INVALID_OPERATION inside Begin/End and INVALID_ENUM for a bad value. */
@@ -219,6 +253,25 @@ void v9x_gl_prim_polygon_offset(V9X_GL_STATE *state,
                                 V9X_GL_PIPELINE *pipeline,
                                 GLfloat factor, GLfloat units);
 
+/*
+ * glFog (3.9). `params` holds one value, or four for FOG_COLOR, which only
+ * the vector forms (`vector` non-zero) accept. FOG_MODE's value is the
+ * enum as a float. INVALID_ENUM for an unknown name, a colour through a
+ * scalar form or an unknown mode; INVALID_VALUE for a negative density.
+ * The integer forms convert before calling: a colour by table 2.6, the
+ * rest directly.
+ */
+void v9x_gl_prim_fog(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                     GLenum pname, const GLfloat *params, int vector);
+
+/*
+ * The fog factor f for fog coordinate c (3.9), in [0, 1]: LINEAR
+ * (end - c) / (end - start), one when start equals end; EXP e^(-dc); EXP2
+ * e^(-(dc)^2). It is computed per vertex and interpolated, which the
+ * specification allows.
+ */
+GLfloat v9x_gl_prim_fog_factor(const V9X_GL_PIPELINE *pipeline, GLfloat c);
+
 /* glBegin, glVertex, glEnd. A vertex outside Begin/End is ignored, which is
  * what the specification leaves open (2.6.3). */
 void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
@@ -226,6 +279,12 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
 void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                         GLfloat x, GLfloat y, GLfloat z, GLfloat w);
 void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline);
+
+/* glRect (2.9): Begin(POLYGON), (x1,y1), (x2,y1), (x2,y2), (x1,y2) at
+ * z 0, End. Inside Begin/End it is INVALID_OPERATION and adds nothing to
+ * the primitive being assembled. */
+void v9x_gl_prim_rect(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                      GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2);
 
 /* Hand what is batched to the sink now (glFlush, glFinish, a state change
  * the batch was not made with). */
@@ -288,7 +347,9 @@ int v9x_gl_prim_alpha_test_passes(const V9X_R3D_ABI_STATE *state,
  * without depth writes take unit 1 twice where they overlap.
  *
  * Returns the number of passes, 0 when the draw cannot be split exactly:
- * the application blends (the passes need the blender), or an alpha test
+ * the application blends (the passes need the blender), the draw is
+ * fogged (fog applies to the two units' combined colour, which no pass
+ * holds), or an alpha test
  * that could discard has no depth writes to confine the later passes to
  * what it kept, or unit 1 changes the alpha a test reads.
  */

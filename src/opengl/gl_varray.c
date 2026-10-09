@@ -236,14 +236,8 @@ static double gl_varray_unsigned(v9x_u32 value)
     return (double)(long)(value >> 1) * 2.0 + (double)(long)(value & 1ul);
 }
 
-/*
- * Component `index` of the element at `base` as a float. With `normalize`
- * (colours and normals), integers map by table 2.6: unsigned c to
- * c / (2^b - 1), signed c to (2c + 1) / (2^b - 1). Otherwise they convert
- * directly.
- */
-static GLfloat gl_varray_component(const void *base, GLenum type,
-                                   unsigned int index, int normalize)
+GLfloat v9x_gl_arrays_component(const void *base, GLenum type,
+                                unsigned int index, int normalize)
 {
     double value;
 
@@ -305,7 +299,7 @@ static void gl_varray_fetch(const V9X_GL_ARRAY *array, GLint index,
     unsigned int i;
 
     for (i = 0u; i < (unsigned int)array->size; ++i) {
-        out[i] = gl_varray_component(base, array->type, i, normalize);
+        out[i] = v9x_gl_arrays_component(base, array->type, i, normalize);
     }
 }
 

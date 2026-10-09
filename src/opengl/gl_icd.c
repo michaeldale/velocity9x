@@ -127,6 +127,8 @@ static DWORD v9x_gl_hw_upload_kb;
 static DWORD v9x_gl_hw_squared_draws;
 /* Batches sent without an alpha test that could discard nothing. */
 static DWORD v9x_gl_alpha_tests_dropped;
+/* Triangles drawn unfogged because the engine refused their fog. */
+static DWORD v9x_gl_fog_dropped;
 static DWORD v9x_gl_stub_total;
 /* A squared copy's draw: the batch with s and t scaled to the square, and
  * the second unit's coordinates scaled to its own. */
@@ -1789,20 +1791,20 @@ static void v9x_gl_path_log(void);
 
 static void v9x_gl_counters_log(void)
 {
-    /* Thirteen counters of up to ten digits past a 180-character format. */
+    /* Fifteen counters of up to ten digits past a 190-character format. */
     char text[400];
 
     v9x_gl_path_log();
     wsprintfA(text, "counters hwtex live=%lu creates=%lu create-failed=%lu "
               "evictions=%lu uploads=%lu partial=%lu "
-              "upload-kb=%lu squared=%lu alpha-dropped=%lu stubs=%lu "
-              "failed r4=%lu r7=%lu r8=%lu other=%lu",
+              "upload-kb=%lu squared=%lu alpha-dropped=%lu fog-dropped=%lu "
+              "stubs=%lu failed r4=%lu r7=%lu r8=%lu other=%lu",
               (DWORD)v9x_gl_hwtex_count, v9x_gl_hw_creates,
               v9x_gl_hw_create_failures, v9x_gl_hw_evictions,
               v9x_gl_hw_uploads, v9x_gl_hw_partial_uploads,
               v9x_gl_hw_upload_kb,
               v9x_gl_hw_squared_draws, v9x_gl_alpha_tests_dropped,
-              v9x_gl_stub_total,
+              v9x_gl_fog_dropped, v9x_gl_stub_total,
               v9x_gl_draw_failures[4], v9x_gl_draw_failures[7],
               v9x_gl_draw_failures[8],
               v9x_gl_draw_failures[0] + v9x_gl_draw_failures[1] +
@@ -1924,6 +1926,8 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context,
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_DRAWABLE *drawable;
     V9X_R3D_ABI_DRAW draw;
+    /* The draw as first sent, for the unfogged retry. */
+    V9X_R3D_ABI_DRAW first;
     v9x_u32 result;
     unsigned int i;
     unsigned int path;
@@ -2028,6 +2032,7 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context,
             v9x_gl_tex_fragment_alpha_unused(&draw.texture);
         }
     }
+    first = draw;
     draw_start = v9x_gl_tsc_begin();
     result = iface->draw(&draw, outcome);
     v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
@@ -2046,6 +2051,24 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context,
             draw.texture1 = pending->texture1;
             draw.texcoords1 = pending->texcoords1;
         }
+        draw_start = v9x_gl_tsc_begin();
+        result = iface->draw(&draw, outcome);
+        v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
+        ++v9x_gl_count_draws;
+    }
+    /*
+     * An engine without fog (the ViRGE's S3D refuses it, d3d_virge.c) and
+     * no software fallback draws the batch unfogged rather than not at
+     * all, counted: the Glide wrapper's rule (glide_dll.c). It retries the
+     * first form - the hardware texture, if there was one - since the CPU
+     * copy is what such an engine refuses as well.
+     */
+    if (result == V9X_R3D_RESULT_UNSUPPORTED &&
+        first.state.fog_enable != 0ul) {
+        draw = first;
+        draw.state.fog_enable = 0ul;
+        draw.state.fog_color = 0ul;
+        v9x_gl_fog_dropped += pending->triangles;
         draw_start = v9x_gl_tsc_begin();
         result = iface->draw(&draw, outcome);
         v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
@@ -2330,19 +2353,23 @@ static int v9x_gl_draw_batch_body(V9X_GL_CONTEXT *context,
     } \
 } while (0)
 
-static void V9X_GL_API v9x_gl_begin(GLenum mode)
+/* Unit 1's coordinates are carried only when they can be drawn; its
+ * enable cannot change before glEnd. Before every glBegin and glRect. */
+static void v9x_gl_begin_units(V9X_GL_CONTEXT *context)
 {
-    DWORD started = v9x_gl_tsc_begin();
-    V9X_GL_CONTEXT *context = v9x_gl_current();
-
-    /* Unit 1's coordinates are carried only when they can be drawn; its
-     * enable cannot change before glEnd. */
     if (context != 0 && !context->state.in_begin) {
         v9x_gl_pipeline_units(&context->pipeline,
                               context->textures.units[1].enabled &&
                                       v9x_gl_two_units()
                                   ? 2ul : 1ul);
     }
+}
+
+static void V9X_GL_API v9x_gl_begin(GLenum mode)
+{
+    DWORD started = v9x_gl_tsc_begin();
+
+    v9x_gl_begin_units(v9x_gl_current());
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_begin(&context_->state,
                                            &context_->pipeline, mode));
     v9x_gl_tsc_end(V9X_GL_TSC_BEGINEND, started);
@@ -2488,6 +2515,339 @@ static void V9X_GL_API v9x_gl_texcoord2fv(const GLfloat *v)
 {
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_texcoord(&context_->pipeline, v[0], v[1],
                                               0.0f, 1.0f));
+}
+
+/*
+ * The remaining forms of glColor, glTexCoord, glVertex and glNormal (2.7):
+ * each gathers its components and converts them with the vertex arrays'
+ * conversion (v9x_gl_arrays_component), colours and normals by table 2.6,
+ * so an immediate-mode call and the equivalent array element agree. The
+ * forms are generated per type; a scalar form stores its arguments in an
+ * array of its own type first.
+ */
+static void v9x_gl_gather(const void *v, GLenum type, unsigned int count,
+                          int normalize, GLfloat *out)
+{
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        out[i] = v9x_gl_arrays_component(v, type, i, normalize);
+    }
+}
+
+static void v9x_gl_color_from(const void *v, GLenum type, unsigned int count)
+{
+    GLfloat c[4];
+
+    c[3] = 1.0f;
+    v9x_gl_gather(v, type, count, 1, c);
+    v9x_gl_color4(c[0], c[1], c[2], c[3]);
+}
+
+static void v9x_gl_texcoord_from(const void *v, GLenum type,
+                                 unsigned int count)
+{
+    GLfloat c[4];
+
+    c[1] = 0.0f;
+    c[2] = 0.0f;
+    c[3] = 1.0f;
+    v9x_gl_gather(v, type, count, 0, c);
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_texcoord(&context_->pipeline, c[0], c[1],
+                                              c[2], c[3]));
+}
+
+static void v9x_gl_vertex_from(const void *v, GLenum type,
+                               unsigned int count)
+{
+    GLfloat c[4];
+
+    c[2] = 0.0f;
+    c[3] = 1.0f;
+    v9x_gl_gather(v, type, count, 0, c);
+    v9x_gl_vertex4(c[0], c[1], c[2], c[3]);
+}
+
+static void v9x_gl_normal_from(const void *v, GLenum type)
+{
+    GLfloat c[3];
+
+    v9x_gl_gather(v, type, 3u, 1, c);
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_normal(&context_->pipeline, c[0], c[1],
+                                            c[2]));
+}
+
+/* glColor3 and glColor4, scalar and vector, for one type. */
+#define V9X_GL_COLOR_FORMS(sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_color3##sfx(ctype r, ctype g, ctype b) \
+{ \
+    ctype v[3]; \
+    v[0] = r; \
+    v[1] = g; \
+    v[2] = b; \
+    v9x_gl_color_from(v, type, 3u); \
+} \
+static void V9X_GL_API v9x_gl_color3##sfx##v(const ctype *v) \
+{ \
+    v9x_gl_color_from(v, type, 3u); \
+} \
+static void V9X_GL_API v9x_gl_color4##sfx(ctype r, ctype g, ctype b, \
+                                          ctype a) \
+{ \
+    ctype v[4]; \
+    v[0] = r; \
+    v[1] = g; \
+    v[2] = b; \
+    v[3] = a; \
+    v9x_gl_color_from(v, type, 4u); \
+} \
+static void V9X_GL_API v9x_gl_color4##sfx##v(const ctype *v) \
+{ \
+    v9x_gl_color_from(v, type, 4u); \
+}
+
+V9X_GL_COLOR_FORMS(b, GLbyte, V9X_GL_BYTE)
+V9X_GL_COLOR_FORMS(s, GLshort, V9X_GL_SHORT)
+V9X_GL_COLOR_FORMS(i, GLint, V9X_GL_INT)
+V9X_GL_COLOR_FORMS(us, GLushort, V9X_GL_UNSIGNED_SHORT)
+V9X_GL_COLOR_FORMS(ui, GLuint, V9X_GL_UNSIGNED_INT)
+
+/* The double forms glColor3d did not already have. */
+static void V9X_GL_API v9x_gl_color3dv(const GLdouble *v)
+{
+    v9x_gl_color_from(v, V9X_GL_DOUBLE, 3u);
+}
+
+static void V9X_GL_API v9x_gl_color4d(GLdouble r, GLdouble g, GLdouble b,
+                                      GLdouble a)
+{
+    v9x_gl_color4((GLfloat)r, (GLfloat)g, (GLfloat)b, (GLfloat)a);
+}
+
+static void V9X_GL_API v9x_gl_color4dv(const GLdouble *v)
+{
+    v9x_gl_color_from(v, V9X_GL_DOUBLE, 4u);
+}
+
+/* glTexCoord1..4 and glVertex2..4, scalar and vector, for one type. */
+#define V9X_GL_COORD1(base, from, sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_##base##1##sfx(ctype a) \
+{ \
+    from(&a, type, 1u); \
+} \
+static void V9X_GL_API v9x_gl_##base##1##sfx##v(const ctype *v) \
+{ \
+    from(v, type, 1u); \
+}
+
+#define V9X_GL_COORD2(base, from, sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_##base##2##sfx(ctype a, ctype b) \
+{ \
+    ctype v[2]; \
+    v[0] = a; \
+    v[1] = b; \
+    from(v, type, 2u); \
+}
+
+#define V9X_GL_COORD2V(base, from, sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_##base##2##sfx##v(const ctype *v) \
+{ \
+    from(v, type, 2u); \
+}
+
+#define V9X_GL_COORD3(base, from, sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_##base##3##sfx(ctype a, ctype b, ctype c) \
+{ \
+    ctype v[3]; \
+    v[0] = a; \
+    v[1] = b; \
+    v[2] = c; \
+    from(v, type, 3u); \
+}
+
+#define V9X_GL_COORD3V(base, from, sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_##base##3##sfx##v(const ctype *v) \
+{ \
+    from(v, type, 3u); \
+}
+
+#define V9X_GL_COORD4(base, from, sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_##base##4##sfx(ctype a, ctype b, ctype c, \
+                                             ctype d) \
+{ \
+    ctype v[4]; \
+    v[0] = a; \
+    v[1] = b; \
+    v[2] = c; \
+    v[3] = d; \
+    from(v, type, 4u); \
+} \
+static void V9X_GL_API v9x_gl_##base##4##sfx##v(const ctype *v) \
+{ \
+    from(v, type, 4u); \
+}
+
+V9X_GL_COORD1(texcoord, v9x_gl_texcoord_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD1(texcoord, v9x_gl_texcoord_from, f, GLfloat, V9X_GL_FLOAT)
+V9X_GL_COORD1(texcoord, v9x_gl_texcoord_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD1(texcoord, v9x_gl_texcoord_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD2(texcoord, v9x_gl_texcoord_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD2V(texcoord, v9x_gl_texcoord_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD2(texcoord, v9x_gl_texcoord_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD2V(texcoord, v9x_gl_texcoord_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD2(texcoord, v9x_gl_texcoord_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD2V(texcoord, v9x_gl_texcoord_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD3(texcoord, v9x_gl_texcoord_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD3V(texcoord, v9x_gl_texcoord_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD3(texcoord, v9x_gl_texcoord_from, f, GLfloat, V9X_GL_FLOAT)
+V9X_GL_COORD3V(texcoord, v9x_gl_texcoord_from, f, GLfloat, V9X_GL_FLOAT)
+V9X_GL_COORD3(texcoord, v9x_gl_texcoord_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD3V(texcoord, v9x_gl_texcoord_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD3(texcoord, v9x_gl_texcoord_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD3V(texcoord, v9x_gl_texcoord_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD4(texcoord, v9x_gl_texcoord_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD4(texcoord, v9x_gl_texcoord_from, f, GLfloat, V9X_GL_FLOAT)
+V9X_GL_COORD4(texcoord, v9x_gl_texcoord_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD4(texcoord, v9x_gl_texcoord_from, s, GLshort, V9X_GL_SHORT)
+
+/* glVertex2/3 f, i and d scalar forms and the float vectors exist. */
+V9X_GL_COORD2V(vertex, v9x_gl_vertex_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD2V(vertex, v9x_gl_vertex_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD2(vertex, v9x_gl_vertex_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD2V(vertex, v9x_gl_vertex_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD3V(vertex, v9x_gl_vertex_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD3V(vertex, v9x_gl_vertex_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD3(vertex, v9x_gl_vertex_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD3V(vertex, v9x_gl_vertex_from, s, GLshort, V9X_GL_SHORT)
+V9X_GL_COORD4(vertex, v9x_gl_vertex_from, d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_COORD4(vertex, v9x_gl_vertex_from, i, GLint, V9X_GL_INT)
+V9X_GL_COORD4(vertex, v9x_gl_vertex_from, s, GLshort, V9X_GL_SHORT)
+
+/* glNormal3, scalar and vector, for one type. */
+#define V9X_GL_NORMAL_FORMS(sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_normal3##sfx(ctype x, ctype y, ctype z) \
+{ \
+    ctype v[3]; \
+    v[0] = x; \
+    v[1] = y; \
+    v[2] = z; \
+    v9x_gl_normal_from(v, type); \
+} \
+static void V9X_GL_API v9x_gl_normal3##sfx##v(const ctype *v) \
+{ \
+    v9x_gl_normal_from(v, type); \
+}
+
+V9X_GL_NORMAL_FORMS(b, GLbyte, V9X_GL_BYTE)
+V9X_GL_NORMAL_FORMS(d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_NORMAL_FORMS(i, GLint, V9X_GL_INT)
+V9X_GL_NORMAL_FORMS(s, GLshort, V9X_GL_SHORT)
+
+/* glRect (2.9), by corners or by two corner vectors. */
+static void v9x_gl_rect(GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    v9x_gl_begin_units(context);
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_rect(&context_->state,
+                                          &context_->pipeline, x1, y1, x2,
+                                          y2));
+}
+
+#define V9X_GL_RECT_FORMS(sfx, ctype) \
+static void V9X_GL_API v9x_gl_rect##sfx(ctype x1, ctype y1, ctype x2, \
+                                        ctype y2) \
+{ \
+    v9x_gl_rect((GLfloat)x1, (GLfloat)y1, (GLfloat)x2, (GLfloat)y2); \
+} \
+static void V9X_GL_API v9x_gl_rect##sfx##v(const ctype *v1, \
+                                           const ctype *v2) \
+{ \
+    v9x_gl_rect((GLfloat)v1[0], (GLfloat)v1[1], (GLfloat)v2[0], \
+                (GLfloat)v2[1]); \
+}
+
+V9X_GL_RECT_FORMS(d, GLdouble)
+V9X_GL_RECT_FORMS(f, GLfloat)
+V9X_GL_RECT_FORMS(i, GLint)
+V9X_GL_RECT_FORMS(s, GLshort)
+
+/* glEdgeFlag and the colour index (2.7), held for their queries. */
+static void V9X_GL_API v9x_gl_edge_flag(GLboolean flag)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_edge_flag(&context_->pipeline, flag));
+}
+
+static void V9X_GL_API v9x_gl_edge_flagv(const GLboolean *flag)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_edge_flag(&context_->pipeline, *flag));
+}
+
+#define V9X_GL_INDEX_FORMS(sfx, ctype) \
+static void V9X_GL_API v9x_gl_index##sfx(ctype c) \
+{ \
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_index(&context_->pipeline, \
+                                           (GLfloat)c)); \
+} \
+static void V9X_GL_API v9x_gl_index##sfx##v(const ctype *c) \
+{ \
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_index(&context_->pipeline, \
+                                           (GLfloat)*c)); \
+}
+
+V9X_GL_INDEX_FORMS(d, GLdouble)
+V9X_GL_INDEX_FORMS(f, GLfloat)
+V9X_GL_INDEX_FORMS(i, GLint)
+V9X_GL_INDEX_FORMS(s, GLshort)
+V9X_GL_INDEX_FORMS(ub, GLubyte)
+
+static void V9X_GL_API v9x_gl_index_mask(GLuint mask)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_index_mask(&context_->state, mask));
+}
+
+static void V9X_GL_API v9x_gl_clear_index(GLfloat c)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_clear_index(&context_->state, c));
+}
+
+/* glFog (3.9). The integer vector form converts a colour by table 2.6, as
+ * glColor4iv does, and everything else directly. */
+static void V9X_GL_API v9x_gl_fogf(GLenum pname, GLfloat param)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_fog(&context_->state,
+                                         &context_->pipeline, pname, &param,
+                                         0));
+}
+
+static void V9X_GL_API v9x_gl_fogfv(GLenum pname, const GLfloat *params)
+{
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_fog(&context_->state,
+                                         &context_->pipeline, pname, params,
+                                         1));
+}
+
+static void V9X_GL_API v9x_gl_fogi(GLenum pname, GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_fog(&context_->state,
+                                         &context_->pipeline, pname, &value,
+                                         0));
+}
+
+static void V9X_GL_API v9x_gl_fogiv(GLenum pname, const GLint *params)
+{
+    GLfloat values[4];
+
+    if (pname == V9X_GL_FOG_COLOR) {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+    } else {
+        values[0] = (GLfloat)params[0];
+    }
+    V9X_GL_WITH_PIPELINE(v9x_gl_prim_fog(&context_->state,
+                                         &context_->pipeline, pname, values,
+                                         1));
 }
 
 /*
@@ -2898,6 +3258,107 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glColor4ubv, v9x_gl_color4ubv);
     V9X_GL_OVERRIDE(glTexCoord2f, v9x_gl_texcoord2f);
     V9X_GL_OVERRIDE(glTexCoord2fv, v9x_gl_texcoord2fv);
+    V9X_GL_OVERRIDE(glColor3b, v9x_gl_color3b);
+    V9X_GL_OVERRIDE(glColor3bv, v9x_gl_color3bv);
+    V9X_GL_OVERRIDE(glColor4b, v9x_gl_color4b);
+    V9X_GL_OVERRIDE(glColor4bv, v9x_gl_color4bv);
+    V9X_GL_OVERRIDE(glColor3s, v9x_gl_color3s);
+    V9X_GL_OVERRIDE(glColor3sv, v9x_gl_color3sv);
+    V9X_GL_OVERRIDE(glColor4s, v9x_gl_color4s);
+    V9X_GL_OVERRIDE(glColor4sv, v9x_gl_color4sv);
+    V9X_GL_OVERRIDE(glColor3i, v9x_gl_color3i);
+    V9X_GL_OVERRIDE(glColor3iv, v9x_gl_color3iv);
+    V9X_GL_OVERRIDE(glColor4i, v9x_gl_color4i);
+    V9X_GL_OVERRIDE(glColor4iv, v9x_gl_color4iv);
+    V9X_GL_OVERRIDE(glColor3us, v9x_gl_color3us);
+    V9X_GL_OVERRIDE(glColor3usv, v9x_gl_color3usv);
+    V9X_GL_OVERRIDE(glColor4us, v9x_gl_color4us);
+    V9X_GL_OVERRIDE(glColor4usv, v9x_gl_color4usv);
+    V9X_GL_OVERRIDE(glColor3ui, v9x_gl_color3ui);
+    V9X_GL_OVERRIDE(glColor3uiv, v9x_gl_color3uiv);
+    V9X_GL_OVERRIDE(glColor4ui, v9x_gl_color4ui);
+    V9X_GL_OVERRIDE(glColor4uiv, v9x_gl_color4uiv);
+    V9X_GL_OVERRIDE(glColor3dv, v9x_gl_color3dv);
+    V9X_GL_OVERRIDE(glColor4d, v9x_gl_color4d);
+    V9X_GL_OVERRIDE(glColor4dv, v9x_gl_color4dv);
+    V9X_GL_OVERRIDE(glTexCoord1d, v9x_gl_texcoord1d);
+    V9X_GL_OVERRIDE(glTexCoord1dv, v9x_gl_texcoord1dv);
+    V9X_GL_OVERRIDE(glTexCoord1f, v9x_gl_texcoord1f);
+    V9X_GL_OVERRIDE(glTexCoord1fv, v9x_gl_texcoord1fv);
+    V9X_GL_OVERRIDE(glTexCoord1i, v9x_gl_texcoord1i);
+    V9X_GL_OVERRIDE(glTexCoord1iv, v9x_gl_texcoord1iv);
+    V9X_GL_OVERRIDE(glTexCoord1s, v9x_gl_texcoord1s);
+    V9X_GL_OVERRIDE(glTexCoord1sv, v9x_gl_texcoord1sv);
+    V9X_GL_OVERRIDE(glTexCoord2d, v9x_gl_texcoord2d);
+    V9X_GL_OVERRIDE(glTexCoord2dv, v9x_gl_texcoord2dv);
+    V9X_GL_OVERRIDE(glTexCoord2i, v9x_gl_texcoord2i);
+    V9X_GL_OVERRIDE(glTexCoord2iv, v9x_gl_texcoord2iv);
+    V9X_GL_OVERRIDE(glTexCoord2s, v9x_gl_texcoord2s);
+    V9X_GL_OVERRIDE(glTexCoord2sv, v9x_gl_texcoord2sv);
+    V9X_GL_OVERRIDE(glTexCoord3d, v9x_gl_texcoord3d);
+    V9X_GL_OVERRIDE(glTexCoord3dv, v9x_gl_texcoord3dv);
+    V9X_GL_OVERRIDE(glTexCoord3f, v9x_gl_texcoord3f);
+    V9X_GL_OVERRIDE(glTexCoord3fv, v9x_gl_texcoord3fv);
+    V9X_GL_OVERRIDE(glTexCoord3i, v9x_gl_texcoord3i);
+    V9X_GL_OVERRIDE(glTexCoord3iv, v9x_gl_texcoord3iv);
+    V9X_GL_OVERRIDE(glTexCoord3s, v9x_gl_texcoord3s);
+    V9X_GL_OVERRIDE(glTexCoord3sv, v9x_gl_texcoord3sv);
+    V9X_GL_OVERRIDE(glTexCoord4d, v9x_gl_texcoord4d);
+    V9X_GL_OVERRIDE(glTexCoord4dv, v9x_gl_texcoord4dv);
+    V9X_GL_OVERRIDE(glTexCoord4f, v9x_gl_texcoord4f);
+    V9X_GL_OVERRIDE(glTexCoord4fv, v9x_gl_texcoord4fv);
+    V9X_GL_OVERRIDE(glTexCoord4i, v9x_gl_texcoord4i);
+    V9X_GL_OVERRIDE(glTexCoord4iv, v9x_gl_texcoord4iv);
+    V9X_GL_OVERRIDE(glTexCoord4s, v9x_gl_texcoord4s);
+    V9X_GL_OVERRIDE(glTexCoord4sv, v9x_gl_texcoord4sv);
+    V9X_GL_OVERRIDE(glVertex2dv, v9x_gl_vertex2dv);
+    V9X_GL_OVERRIDE(glVertex2iv, v9x_gl_vertex2iv);
+    V9X_GL_OVERRIDE(glVertex2s, v9x_gl_vertex2s);
+    V9X_GL_OVERRIDE(glVertex2sv, v9x_gl_vertex2sv);
+    V9X_GL_OVERRIDE(glVertex3dv, v9x_gl_vertex3dv);
+    V9X_GL_OVERRIDE(glVertex3iv, v9x_gl_vertex3iv);
+    V9X_GL_OVERRIDE(glVertex3s, v9x_gl_vertex3s);
+    V9X_GL_OVERRIDE(glVertex3sv, v9x_gl_vertex3sv);
+    V9X_GL_OVERRIDE(glVertex4d, v9x_gl_vertex4d);
+    V9X_GL_OVERRIDE(glVertex4dv, v9x_gl_vertex4dv);
+    V9X_GL_OVERRIDE(glVertex4i, v9x_gl_vertex4i);
+    V9X_GL_OVERRIDE(glVertex4iv, v9x_gl_vertex4iv);
+    V9X_GL_OVERRIDE(glVertex4s, v9x_gl_vertex4s);
+    V9X_GL_OVERRIDE(glVertex4sv, v9x_gl_vertex4sv);
+    V9X_GL_OVERRIDE(glNormal3b, v9x_gl_normal3b);
+    V9X_GL_OVERRIDE(glNormal3bv, v9x_gl_normal3bv);
+    V9X_GL_OVERRIDE(glNormal3d, v9x_gl_normal3d);
+    V9X_GL_OVERRIDE(glNormal3dv, v9x_gl_normal3dv);
+    V9X_GL_OVERRIDE(glNormal3i, v9x_gl_normal3i);
+    V9X_GL_OVERRIDE(glNormal3iv, v9x_gl_normal3iv);
+    V9X_GL_OVERRIDE(glNormal3s, v9x_gl_normal3s);
+    V9X_GL_OVERRIDE(glNormal3sv, v9x_gl_normal3sv);
+    V9X_GL_OVERRIDE(glRectd, v9x_gl_rectd);
+    V9X_GL_OVERRIDE(glRectdv, v9x_gl_rectdv);
+    V9X_GL_OVERRIDE(glRectf, v9x_gl_rectf);
+    V9X_GL_OVERRIDE(glRectfv, v9x_gl_rectfv);
+    V9X_GL_OVERRIDE(glRecti, v9x_gl_recti);
+    V9X_GL_OVERRIDE(glRectiv, v9x_gl_rectiv);
+    V9X_GL_OVERRIDE(glRects, v9x_gl_rects);
+    V9X_GL_OVERRIDE(glRectsv, v9x_gl_rectsv);
+    V9X_GL_OVERRIDE(glEdgeFlag, v9x_gl_edge_flag);
+    V9X_GL_OVERRIDE(glEdgeFlagv, v9x_gl_edge_flagv);
+    V9X_GL_OVERRIDE(glIndexd, v9x_gl_indexd);
+    V9X_GL_OVERRIDE(glIndexdv, v9x_gl_indexdv);
+    V9X_GL_OVERRIDE(glIndexf, v9x_gl_indexf);
+    V9X_GL_OVERRIDE(glIndexfv, v9x_gl_indexfv);
+    V9X_GL_OVERRIDE(glIndexi, v9x_gl_indexi);
+    V9X_GL_OVERRIDE(glIndexiv, v9x_gl_indexiv);
+    V9X_GL_OVERRIDE(glIndexs, v9x_gl_indexs);
+    V9X_GL_OVERRIDE(glIndexsv, v9x_gl_indexsv);
+    V9X_GL_OVERRIDE(glIndexub, v9x_gl_indexub);
+    V9X_GL_OVERRIDE(glIndexubv, v9x_gl_indexubv);
+    V9X_GL_OVERRIDE(glIndexMask, v9x_gl_index_mask);
+    V9X_GL_OVERRIDE(glClearIndex, v9x_gl_clear_index);
+    V9X_GL_OVERRIDE(glFogf, v9x_gl_fogf);
+    V9X_GL_OVERRIDE(glFogfv, v9x_gl_fogfv);
+    V9X_GL_OVERRIDE(glFogi, v9x_gl_fogi);
+    V9X_GL_OVERRIDE(glFogiv, v9x_gl_fogiv);
     V9X_GL_OVERRIDE(glShadeModel, v9x_gl_shade_model);
     V9X_GL_OVERRIDE(glCullFace, v9x_gl_cull_face);
     V9X_GL_OVERRIDE(glFrontFace, v9x_gl_front_face);

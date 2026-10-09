@@ -81,6 +81,16 @@ void v9x_gl_arrays_get_pointer(V9X_GL_STATE *state,
                                const V9X_GL_ARRAYS *arrays, GLenum pname,
                                void **out);
 
+/*
+ * Component `index` of an attribute of `type` at `values` as a float.
+ * With `normalize` (colours and normals) integers map by table 2.6:
+ * unsigned c to c / (2^b - 1), signed c to (2c + 1) / (2^b - 1); without
+ * it they convert directly. The immediate-mode integer forms (glColor3b,
+ * glNormal3s, ...) use it, so they convert exactly as the arrays do.
+ */
+GLfloat v9x_gl_arrays_component(const void *values, GLenum type,
+                                unsigned int index, int normalize);
+
 void v9x_gl_arrays_element(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                            const V9X_GL_ARRAYS *arrays, GLint index);
 void v9x_gl_arrays_draw(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,

@@ -687,6 +687,106 @@ static void v9x_glp_polygon_offset(GLint width, GLint height)
     glDisable(GL_DEPTH_TEST);
 }
 
+/*
+ * glFog (GL 1.1 3.9) and the integer/double immediate-mode forms. A red
+ * quad at eye distance 0.5 under blue fog: LINEAR 0..1 leaves f = 0.5,
+ * so half red and half blue; EXP with density 2 leaves f = e^-1, red 94
+ * and blue 161. Then the same with fog off, colours and corners given
+ * through glColor3us, glColor4b, glRecti and glVertex2s, each read back
+ * from the back buffer before any swap.
+ */
+static void v9x_glp_fog_quad(GLint width, GLint height, GLfloat z)
+{
+    glBegin(GL_QUADS);
+    glVertex3f(0.0f, 0.0f, z);
+    glVertex3f((GLfloat)width, 0.0f, z);
+    glVertex3f((GLfloat)width, (GLfloat)height, z);
+    glVertex3f(0.0f, (GLfloat)height, z);
+    glEnd();
+}
+
+static void v9x_glp_fog(GLint width, GLint height)
+{
+    static const GLint blue[4] = { 0, 0, 2147483647, 2147483647 };
+    GLint mode = 0;
+    GLfloat colour[4];
+    GLboolean edge = GL_TRUE;
+    DWORD rgb;
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glEnable(GL_FOG);
+    glFogi(GL_FOG_MODE, GL_LINEAR);
+    glFogf(GL_FOG_START, 0.0f);
+    glFogf(GL_FOG_END, 1.0f);
+    glFogiv(GL_FOG_COLOR, blue);
+    glColor3f(1.0f, 0.0f, 0.0f);
+    v9x_glp_fog_quad(width, height, -0.5f);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("FogLinear", rgb);
+    v9x_glp_uint("FogLinearOk", v9x_glp_near(rgb, 128ul, 0ul, 127ul) ? 1ul : 0ul);
+
+    glFogi(GL_FOG_MODE, GL_EXP);
+    glFogf(GL_FOG_DENSITY, 2.0f);
+    v9x_glp_fog_quad(width, height, -0.5f);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("FogExp", rgb);
+    v9x_glp_uint("FogExpOk", v9x_glp_near(rgb, 94ul, 0ul, 161ul) ? 1ul : 0ul);
+
+    /* At the eye EXP leaves the fragment as it is. */
+    v9x_glp_fog_quad(width, height, 0.0f);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("FogExpAtEye", rgb);
+    v9x_glp_uint("FogExpAtEyeOk", v9x_glp_near(rgb, 255ul, 0ul, 0ul) ? 1ul : 0ul);
+
+    glGetIntegerv(GL_FOG_MODE, &mode);
+    glGetFloatv(GL_FOG_COLOR, colour);
+    v9x_glp_uint("FogQueryOk", mode == GL_EXP && colour[2] > 0.99f &&
+                               colour[0] < 0.01f ? 1ul : 0ul);
+    glDisable(GL_FOG);
+    v9x_glp_hex("ErrorAfterFog", (DWORD)glGetError());
+
+    /* The added immediate-mode forms, unfogged. */
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor3us(0u, 65535u, 0u);
+    glRecti(0, 0, width / 2, height);
+    glColor4b(127, 127, 0, 127);
+    glBegin(GL_QUADS);
+    glVertex2s((GLshort)(width / 2), 0);
+    glVertex2s((GLshort)width, 0);
+    glVertex2s((GLshort)width, (GLshort)height);
+    glVertex2s((GLshort)(width / 2), (GLshort)height);
+    glEnd();
+    glFinish();
+    rgb = v9x_glp_read(width / 4, height / 2);
+    v9x_glp_hex("RectColor3us", rgb);
+    v9x_glp_uint("RectColor3usOk", v9x_glp_near(rgb, 0ul, 255ul, 0ul) ? 1ul : 0ul);
+    rgb = v9x_glp_read(width * 3 / 4, height / 2);
+    v9x_glp_hex("Vertex2sColor4b", rgb);
+    v9x_glp_uint("Vertex2sColor4bOk",
+                 v9x_glp_near(rgb, 255ul, 255ul, 0ul) ? 1ul : 0ul);
+
+    glEdgeFlag(GL_FALSE);
+    glGetBooleanv(GL_EDGE_FLAG, &edge);
+    glEdgeFlag(GL_TRUE);
+    v9x_glp_uint("EdgeFlagQueryOk", edge == GL_FALSE ? 1ul : 0ul);
+    v9x_glp_hex("ErrorAfterVariants", (DWORD)glGetError());
+}
+
 void __stdcall V9xGlProbeEntry(void)
 {
     WNDCLASSA window_class;
@@ -1920,6 +2020,8 @@ void __stdcall V9xGlProbeEntry(void)
                              client.bottom - client.top);
             v9x_glp_polygon_offset(client.right - client.left,
                                    client.bottom - client.top);
+            v9x_glp_fog(client.right - client.left,
+                        client.bottom - client.top);
         }
         {
             DWORD started = GetTickCount();

@@ -115,6 +115,35 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
         return 1;
     case 0x0B54u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
                              pipeline->shade_model); return 1;
+    /* CURRENT_NORMAL maps as a colour does through the integer query
+     * (6.1.2); CURRENT_INDEX and EDGE_FLAG do not. */
+    case 0x0B02u:
+        out->kind = V9X_GL_CLASS_MAPPED;
+        out->count = 3u;
+        out->v[0] = pipeline->normal[0];
+        out->v[1] = pipeline->normal[1];
+        out->v[2] = pipeline->normal[2];
+        return 1;
+    case 0x0B01u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT, pipeline->index);
+        return 1;
+    case 0x0B43u: v9x_gl_one(out, V9X_GL_CLASS_BOOLEAN, pipeline->edge_flag);
+        return 1;
+    /* Fog (table 6.8). */
+    case V9X_GL_FOG_COLOR:
+        v9x_gl_four(out, V9X_GL_CLASS_MAPPED, pipeline->fog_color[0],
+                    pipeline->fog_color[1], pipeline->fog_color[2],
+                    pipeline->fog_color[3]);
+        return 1;
+    case V9X_GL_FOG_INDEX: v9x_gl_one(out, V9X_GL_CLASS_FLOAT,
+                                      pipeline->fog_index); return 1;
+    case V9X_GL_FOG_DENSITY: v9x_gl_one(out, V9X_GL_CLASS_FLOAT,
+                                        pipeline->fog_density); return 1;
+    case V9X_GL_FOG_START: v9x_gl_one(out, V9X_GL_CLASS_FLOAT,
+                                      pipeline->fog_start); return 1;
+    case V9X_GL_FOG_END: v9x_gl_one(out, V9X_GL_CLASS_FLOAT,
+                                    pipeline->fog_end); return 1;
+    case V9X_GL_FOG_MODE: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                                     pipeline->fog_mode); return 1;
     /* Rasterization (table 6.9). */
     case 0x0B45u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
                              pipeline->cull_face); return 1;
@@ -164,8 +193,13 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
         return 1;
     case 0x0BE0u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, pipeline->blend_dst);
         return 1;
-    /* Framebuffer control (table 6.16). */
+    /* Framebuffer control (table 6.16). The index mask is a bit pattern:
+     * as a signed integer, all ones reads as -1. */
     case 0x0C01u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, state->draw_buffer);
+        return 1;
+    case 0x0C21u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                             (double)(GLint)state->index_mask); return 1;
+    case 0x0C20u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT, state->clear_index);
         return 1;
     case 0x0C02u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, state->read_buffer);
         return 1;

@@ -138,6 +138,8 @@ void v9x_gl_state_init(V9X_GL_STATE *state)
     state->read_buffer = V9X_GL_BACK_BUFFER;
     state->line_width = 1.0f;
     state->point_size = 1.0f;
+    state->index_mask = 0xFFFFFFFFul;
+    state->clear_index = 0.0f;
 }
 
 void v9x_gl_state_hint(V9X_GL_STATE *state, GLenum target, GLenum mode)
@@ -248,6 +250,22 @@ void v9x_gl_state_point_size(V9X_GL_STATE *state, GLfloat size)
         return;
     }
     state->point_size = size;
+}
+
+void v9x_gl_state_index_mask(V9X_GL_STATE *state, GLuint mask)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    state->index_mask = mask;
+}
+
+void v9x_gl_state_clear_index(V9X_GL_STATE *state, GLfloat index)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    state->clear_index = index;
 }
 
 void v9x_gl_state_drawable(V9X_GL_STATE *state, v9x_u32 width,
