@@ -164,6 +164,52 @@ typedef struct v9x_gl_textures {
 
 void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
                           V9X_GL_FREE_FN release);
+
+/* A unit's part of glPushAttrib's TEXTURE_BIT: its binding, environment
+ * and enable, and the parameters of the object it had bound. */
+typedef struct v9x_gl_texunit_saved {
+    V9X_GL_TEXUNIT unit;
+    GLenum min_filter;
+    GLenum mag_filter;
+    GLenum wrap_s;
+    GLenum wrap_t;
+} V9X_GL_TEXUNIT_SAVED;
+
+void v9x_gl_tex_save_units(V9X_GL_TEXTURES *textures,
+                           V9X_GL_TEXUNIT_SAVED *units, v9x_u32 *active);
+/* The units as saved, the selected one too, and each saved binding's
+ * parameters on the object it names. A name deleted since the save is made
+ * an object again with the saved parameters. Zero when one could not be
+ * made (out of memory); that unit is left bound to the default texture. */
+int v9x_gl_tex_restore_units(V9X_GL_TEXTURES *textures,
+                             const V9X_GL_TEXUNIT_SAVED *units,
+                             v9x_u32 active);
+
+/*
+ * glGetTexParameter, glGetTexLevelParameter and glGetTexEnv (6.1.3): the
+ * values as floats in `out` (up to four), and the count; zero after
+ * recording an error - INVALID_OPERATION inside Begin/End, INVALID_ENUM for
+ * a target or name not taken (TEXTURE_2D only, as glTexImage2D takes: no
+ * 1D textures and no proxies yet), INVALID_VALUE for a level outside the
+ * chain. *colour is set non-zero when the values are a colour, which an
+ * integer query maps rather than rounds (6.1.2).
+ *
+ * A level with no image answers width, height and sizes 0 and internal
+ * format 1, the state table's initial values. An image's internal format
+ * is its base format; the sizes are those it is stored with: RGB565 for
+ * RGB and LUMINANCE (luminance 5), ARGB4444 for the rest.
+ */
+unsigned int v9x_gl_tex_get_parameter(V9X_GL_STATE *state,
+                                      V9X_GL_TEXTURES *textures,
+                                      GLenum target, GLenum pname,
+                                      GLfloat *out, int *colour);
+unsigned int v9x_gl_tex_get_level_parameter(V9X_GL_STATE *state,
+                                            V9X_GL_TEXTURES *textures,
+                                            GLenum target, GLint level,
+                                            GLenum pname, GLfloat *out);
+unsigned int v9x_gl_tex_get_env(V9X_GL_STATE *state,
+                                V9X_GL_TEXTURES *textures, GLenum target,
+                                GLenum pname, GLfloat *out, int *colour);
 /* Every object's storage back to the allocator (context deletion). */
 void v9x_gl_textures_release(V9X_GL_TEXTURES *textures);
 

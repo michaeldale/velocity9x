@@ -787,6 +787,81 @@ static void v9x_glp_fog(GLint width, GLint height)
     v9x_glp_hex("ErrorAfterVariants", (DWORD)glGetError());
 }
 
+/*
+ * glPushAttrib/glPopAttrib (GL 1.1 6.1.11), glPushClientAttrib, the
+ * texture queries and glClearStencil. A red clear colour and blending are
+ * pushed with COLOR_BUFFER_BIT, changed to green and off, and popped; the
+ * clear after the pop must be red, from the back buffer. The depth test,
+ * changed in between and not pushed, must stay as changed. Then a 4x2
+ * texture's level size and environment through the integer queries.
+ */
+static void v9x_glp_attrib(GLint width, GLint height)
+{
+    static const GLubyte texels[4 * 2 * 3] = { 0 };
+    GLint depth = -1;
+    GLint value = 0;
+    GLint size[2];
+    GLint alignment = 0;
+    GLfloat clear[4];
+    GLuint name = 0u;
+    DWORD rgb;
+
+    glViewport(0, 0, width, height);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+    glEnable(GL_BLEND);
+    glPushAttrib(GL_COLOR_BUFFER_BIT);
+    glGetIntegerv(GL_ATTRIB_STACK_DEPTH, &depth);
+    v9x_glp_uint("AttribDepthOk", depth == 1 ? 1ul : 0ul);
+    glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glPopAttrib();
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, clear);
+    v9x_glp_uint("AttribPopOk", clear[0] == 1.0f && clear[1] == 0.0f &&
+                                glIsEnabled(GL_BLEND) &&
+                                glIsEnabled(GL_DEPTH_TEST) ? 1ul : 0ul);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("AttribClear", rgb);
+    v9x_glp_uint("AttribClearOk", v9x_glp_near(rgb, 255ul, 0ul, 0ul) ? 1ul : 0ul);
+    glPopAttrib();
+    v9x_glp_uint("AttribUnderflowOk",
+                 glGetError() == GL_STACK_UNDERFLOW ? 1ul : 0ul);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPopClientAttrib();
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+    v9x_glp_uint("ClientAttribOk", alignment == 4 ? 1ul : 0ul);
+
+    glGenTextures(1, &name);
+    glBindTexture(GL_TEXTURE_2D, name);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 4, 2, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 texels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &size[0]);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &size[1]);
+    v9x_glp_uint("TexLevelQueryOk", size[0] == 4 && size[1] == 2 ? 1ul : 0ul);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glGetTexEnviv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, &value);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    v9x_glp_uint("TexEnvQueryOk", value == GL_REPLACE ? 1ul : 0ul);
+    glClearStencil(3);
+    value = 0;
+    glGetIntegerv(GL_STENCIL_CLEAR_VALUE, &value);
+    v9x_glp_uint("ClearStencilQueryOk", value == 3 ? 1ul : 0ul);
+    glClearStencil(0);
+    glDeleteTextures(1, &name);
+    v9x_glp_hex("ErrorAfterAttrib", (DWORD)glGetError());
+}
+
 void __stdcall V9xGlProbeEntry(void)
 {
     WNDCLASSA window_class;
@@ -916,7 +991,7 @@ void __stdcall V9xGlProbeEntry(void)
             v9x_glp_hex("ErrorAfterRead", (DWORD)glGetError());
             glBegin(GL_POINTS);
             glEnd();
-            glPushAttrib(GL_ALL_ATTRIB_BITS);   /* Phase 6: still a stub */
+            glAccum(GL_ACCUM, 1.0f);            /* Phase 6: still a stub */
             v9x_glp_hex("ErrorAfterStub", (DWORD)glGetError());
 
             /*
@@ -2022,6 +2097,8 @@ void __stdcall V9xGlProbeEntry(void)
                                    client.bottom - client.top);
             v9x_glp_fog(client.right - client.left,
                         client.bottom - client.top);
+            v9x_glp_attrib(client.right - client.left,
+                           client.bottom - client.top);
         }
         {
             DWORD started = GetTickCount();

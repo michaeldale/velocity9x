@@ -29,7 +29,7 @@ $null = Write-V9xGlDispatchHeader -RepoRoot $repoRoot -OutputDir $output
 # gl_icd.c and gl_surface.c are the two platform files; gl_state.c is the
 # pure GL state, the same source the host tests compile.
 $objects = @()
-foreach ($name in @('gl_icd', 'gl_surface', 'gl_state', 'gl_matrix', 'gl_prim', 'gl_texture', 'gl_get', 'gl_pixels', 'gl_varray')) {
+foreach ($name in @('gl_icd', 'gl_surface', 'gl_state', 'gl_matrix', 'gl_prim', 'gl_texture', 'gl_get', 'gl_pixels', 'gl_varray', 'gl_attrib')) {
     $source = Join-Path $repoRoot "src\opengl\$name.c"
     $object = Join-Path $output "$name.obj"
     # -ox: the vertex pipeline runs per GL vertex, and unoptimised it cost

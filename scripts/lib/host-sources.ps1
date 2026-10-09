@@ -99,6 +99,7 @@ function Get-V9xHostSourceNames {
         'src\opengl\gl_get.c',
         'src\opengl\gl_pixels.c',
         'src\opengl\gl_varray.c',
+        'src\opengl\gl_attrib.c',
         # GLIDE2X.DLL's pure logic (docs\plans\glide-2x-wrapper.md, Phase 1).
         'src\glide\glide_vertex.c',
         'src\glide\glide_texmem.c',
@@ -148,6 +149,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_gl_get.c',
         'tests\host\test_gl_pixels.c',
         'tests\host\test_gl_varray.c',
+        'tests\host\test_gl_attrib.c',
         'tests\host\test_glide_vertex.c',
         'tests\host\test_glide_texture.c',
         'tests\host\test_glide_state.c',

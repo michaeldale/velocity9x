@@ -272,6 +272,27 @@ static void test_fog_index_and_edge_queries(void)
     v9x_gl_textures_release(&t);
 }
 
+/* ATTRIB_STACK_DEPTH and CLIENT_ATTRIB_STACK_DEPTH (table 6.30) read the
+ * state's depths; STENCIL_CLEAR_VALUE (table 6.16) what glClearStencil
+ * held, which is INVALID_OPERATION inside Begin/End. */
+static void test_stack_depth_and_stencil_queries(void)
+{
+    fresh();
+    GGCHECK(geti(0x0BB0u) == 0 && geti(0x0BB1u) == 0);
+    s.attrib_depth = 3ul;
+    s.client_attrib_depth = 2ul;
+    GGCHECK(geti(0x0BB0u) == 3 && geti(0x0BB1u) == 2);
+    GGCHECK(geti(0x0B91u) == 0);
+    v9x_gl_state_clear_stencil(&s, 5);
+    GGCHECK(geti(0x0B91u) == 5);
+    s.in_begin = 1;
+    v9x_gl_state_clear_stencil(&s, 9);
+    s.in_begin = 0;
+    GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    GGCHECK(geti(0x0B91u) == 5);
+    v9x_gl_textures_release(&t);
+}
+
 unsigned int v9x_run_gl_get_tests(void)
 {
     gl_get_failures = 0u;
@@ -279,6 +300,7 @@ unsigned int v9x_run_gl_get_tests(void)
     test_after_commands();
     test_conversions();
     test_fog_index_and_edge_queries();
+    test_stack_depth_and_stencil_queries();
     if (gl_get_failures == 0u) {
         printf("PASS: OpenGL state queries\n");
     }

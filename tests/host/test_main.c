@@ -98,6 +98,8 @@ unsigned int v9x_run_gl_get_tests(void);
 unsigned int v9x_run_gl_pixels_tests(void);
 /* tests\host\test_gl_varray.c: vertex arrays. */
 unsigned int v9x_run_gl_varray_tests(void);
+/* tests\host\test_gl_attrib.c: the attribute stacks. */
+unsigned int v9x_run_gl_attrib_tests(void);
 /* tests\host\test_glide_vertex.c: Glide vertices to the render interface's. */
 unsigned int v9x_run_glide_vertex_tests(void);
 /* tests\host\test_glide_texture.c: Glide texture memory and texel formats. */
@@ -1181,6 +1183,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_get_tests();
     failures += v9x_run_gl_pixels_tests();
     failures += v9x_run_gl_varray_tests();
+    failures += v9x_run_gl_attrib_tests();
     failures += v9x_run_glide_vertex_tests();
     failures += v9x_run_glide_texture_tests();
     failures += v9x_run_glide_state_tests();

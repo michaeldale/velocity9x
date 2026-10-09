@@ -1,0 +1,116 @@
+[C:\Q2DEMO\QUAKE2.EXE]
+152 pid=FFFDF28B detach slots-called=0 stub-calls=0
+153 pid=FFFDF28B census glBegin=1279128 glColor3f=4389 glColor4f=2734760 glColor4ubv=34030 glEnd=1279128 glTexCoord2f=4241868 glVertex2f=1373720 glVertex3f=68060 glVertex3fv=4807370 glCullFace=1519 glPolygonMode=1 glShadeModel=14019 glTexParameterf=446 glTexImage2D=1414 glTexEnvf=28518 glDrawBuffer=1608 glClear=1608 glClearColor=3 glDepthMask=9108 glDisable=22817 glEnable=15048 glFinish=1607 glFlush=3 glAlphaFunc=1
+154 pid=FFFDF28B census glBlendFunc=3037 glDepthFunc=1607 glGetError=1608 glGetFloatv=1518 glGetString=5 glDepthRange=4643 glFrustum=1518 glLoadIdentity=9286 glLoadMatrixf=1518 glMatrixMode=9286 glOrtho=3125 glPopMatrix=11222 glPushMatrix=11222 glRotatef=38220 glTranslatef=12740 glViewport=4643 glBindTexture=268906 glDeleteTextures=236 glTexSubImage2D=35431
+155 pid=FFFDF28B census implemented-slots-called=43
+
+[C:\QUAKE\GLQUAKE.EXE]
+346 pid=FFFC7E27 detach slots-called=0 stub-calls=0
+347 pid=FFFC7E27 census glBegin=2048154 glColor3f=3520313 glColor3ubv=358224 glColor4f=22766 glColor4fv=954 glEnd=2048154 glTexCoord2f=7877182 glVertex2f=2516048 glVertex3f=4222543 glVertex3fv=3516776 glCullFace=2690 glPolygonMode=1 glShadeModel=36376 glTexParameterf=416 glTexImage2D=1141 glTexEnvf=1224439 glDrawBuffer=164 glClearColor=1 glDepthMask=5378 glDisable=34845 glEnable=614342 glFinish=1994 glFlush=4 glAlphaFunc=1
+348 pid=FFFC7E27 census glBlendFunc=5379 glDepthFunc=2689 glGetFloatv=2689 glGetString=5 glDepthRange=8067 glFrustum=2689 glLoadIdentity=11822 glLoadMatrixf=2689 glMatrixMode=10868 glOrtho=2745 glPopMatrix=26972 glPushMatrix=26972 glRotatef=96269 glScalef=16843 glTranslatef=46504 glViewport=5434 glBindTexture=279077 glTexSubImage2D=254
+349 pid=FFFC7E27 census implemented-slots-called=42
+
+[C:\SIERRA\HALF-LIFE\HL.EXE]
+136 pid=FFFE565B detach slots-called=0 stub-calls=0
+137 pid=FFFE565B census glBegin=920328 glColor3f=4290 glColor4f=2741187 glColor4ub=2402 glEnd=920328 glTexCoord2f=4000201 glVertex2f=1633860 glVertex3f=2213487 glVertex3fv=632765 glCullFace=6952 glPolygonMode=1 glShadeModel=12540 glTexParameterf=2506 glTexImage2D=1810 glTexEnvf=643107 glClear=388 glClearColor=1 glDepthMask=23412 glDisable=1257297 glEnable=565717 glFinish=1614 glFlush=3 glAlphaFunc=2060 glBlendFunc=10270
+138 pid=FFFE565B census glDepthFunc=388 glGetFloatv=2262 glGetString=4 glDepthRange=1162 glFrustum=388 glLoadIdentity=16148 glLoadMatrixf=1486 glMatrixMode=31520 glOrtho=7686 glPopMatrix=20794 glPushMatrix=20794 glRotatef=7862 glTranslatef=5334 glViewport=6588 glBindTexture=81592 glPolygonOffset=463 glTexSubImage2D=1035
+139 pid=FFFE565B census implemented-slots-called=41
+
+[C:\UNREALTOURNAMENT\SYSTEM\UNREALTOURNAMENT.EXE]
+4602 pid=FFFC6473 detach slots-called=0 stub-calls=0
+4603 pid=FFFC6473 census glBegin=188255 glColor4f=145828 glColor4fv=86241 glEnd=188255 glTexCoord2f=857651 glVertex3f=60568 glVertex3fv=797547 glShadeModel=1 glTexParameteri=22096 glTexImage2D=7020 glTexEnvf=1 glClear=195 glClearDepth=716 glDepthMask=66763 glDisable=624 glEnable=627 glFinish=716 glFlush=717 glAlphaFunc=1 glBlendFunc=67710 glDepthFunc=1802 glGetString=16 glDepthRange=716 glFrustum=1627 glLoadIdentity=1628
+4604 pid=FFFC6473 census glMatrixMode=1628 glMultMatrixf=1 glViewport=1627 glBindTexture=70095 glDeleteTextures=1 glGenTextures=1281 glTexSubImage2D=64481
+4605 pid=FFFC6473 census implemented-slots-called=32
+
+[C:\V9XGLP.EXE]
+518 pid=FFFE565B detach slots-called=1 stub-calls=1
+519 pid=FFFE565B census glBegin=148 glColor3f=19 glColor3us=1 glColor4b=1 glColor4f=5 glEdgeFlag=2 glEnd=148 glRecti=1 glTexCoord2f=342 glVertex2f=274 glVertex2s=4 glVertex3f=268 glFogf=3 glFogi=2 glFogiv=1 glHint=1 glScissor=2 glTexParameteri=66 glTexImage2D=393 glTexEnvfv=1 glTexEnvi=26 glDrawBuffer=5 glClear=136 glClearColor=18 glClearStencil=2 glClearDepth=3 glDepthMask=2 glDisable=60 glEnable=81 glFinish=196 glFlush=57
+520 pid=FFFE565B census glPopAttrib=2 glPushAttrib=1 glBlendFunc=4 glDepthFunc=4 glPixelStorei=192 glReadBuffer=6 glReadPixels=129 glGetBooleanv=1 glGetError=77 glGetFloatv=4 glGetIntegerv=5 glGetString=5 glGetTexEnviv=1 glGetTexLevelParameteriv=2 glIsEnabled=3 glDepthRange=1 glFrustum=3 glLoadIdentity=33 glMatrixMode=37 glOrtho=15 glTranslatef=1 glViewport=8 glBindTexture=79 glColorPointer=1 glDisableClientState=2
+521 pid=FFFE565B census glDrawArrays=1 glDrawElements=1 glEnableClientState=2 glInterleavedArrays=1 glPolygonOffset=3 glVertexPointer=1 glDeleteTextures=11 glGenTextures=61 glTexSubImage2D=2 glPopClientAttrib=1 glPushClientAttrib=1
+522 pid=FFFE565B census implemented-slots-called=67
+
+[union] 84 entry points
+glAlphaFunc QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE
+glBegin QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glBindTexture QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glBlendFunc QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glClear QUAKE2.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glClearColor QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,V9XGLP.EXE
+glClearDepth UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glClearStencil V9XGLP.EXE
+glColor3f QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,V9XGLP.EXE
+glColor3ubv GLQUAKE.EXE
+glColor3us V9XGLP.EXE
+glColor4b V9XGLP.EXE
+glColor4f QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glColor4fv GLQUAKE.EXE,UNREALTOURNAMENT.EXE
+glColor4ub HL.EXE
+glColor4ubv QUAKE2.EXE
+glColorPointer V9XGLP.EXE
+glCullFace QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glDeleteTextures QUAKE2.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glDepthFunc QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glDepthMask QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glDepthRange QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glDisable QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glDisableClientState V9XGLP.EXE
+glDrawArrays V9XGLP.EXE
+glDrawBuffer QUAKE2.EXE,GLQUAKE.EXE,V9XGLP.EXE
+glDrawElements V9XGLP.EXE
+glEdgeFlag V9XGLP.EXE
+glEnable QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glEnableClientState V9XGLP.EXE
+glEnd QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glFinish QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glFlush QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glFogf V9XGLP.EXE
+glFogi V9XGLP.EXE
+glFogiv V9XGLP.EXE
+glFrustum QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glGenTextures UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glGetBooleanv V9XGLP.EXE
+glGetError QUAKE2.EXE,V9XGLP.EXE
+glGetFloatv QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,V9XGLP.EXE
+glGetIntegerv V9XGLP.EXE
+glGetString QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glGetTexEnviv V9XGLP.EXE
+glGetTexLevelParameteriv V9XGLP.EXE
+glHint V9XGLP.EXE
+glInterleavedArrays V9XGLP.EXE
+glIsEnabled V9XGLP.EXE
+glLoadIdentity QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glLoadMatrixf QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glMatrixMode QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glMultMatrixf UNREALTOURNAMENT.EXE
+glOrtho QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,V9XGLP.EXE
+glPixelStorei V9XGLP.EXE
+glPolygonMode QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glPolygonOffset HL.EXE,V9XGLP.EXE
+glPopAttrib V9XGLP.EXE
+glPopClientAttrib V9XGLP.EXE
+glPopMatrix QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glPushAttrib V9XGLP.EXE
+glPushClientAttrib V9XGLP.EXE
+glPushMatrix QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glReadBuffer V9XGLP.EXE
+glReadPixels V9XGLP.EXE
+glRecti V9XGLP.EXE
+glRotatef QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glScalef GLQUAKE.EXE
+glScissor V9XGLP.EXE
+glShadeModel QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE
+glTexCoord2f QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glTexEnvf QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE
+glTexEnvfv V9XGLP.EXE
+glTexEnvi V9XGLP.EXE
+glTexImage2D QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glTexParameterf QUAKE2.EXE,GLQUAKE.EXE,HL.EXE
+glTexParameteri UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glTexSubImage2D QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glTranslatef QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,V9XGLP.EXE
+glVertex2f QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,V9XGLP.EXE
+glVertex2s V9XGLP.EXE
+glVertex3f QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE
+glVertex3fv QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE
+glVertexPointer V9XGLP.EXE
+glViewport QUAKE2.EXE,GLQUAKE.EXE,HL.EXE,UNREALTOURNAMENT.EXE,V9XGLP.EXE

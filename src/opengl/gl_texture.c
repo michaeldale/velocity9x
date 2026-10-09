@@ -383,6 +383,229 @@ void v9x_gl_tex_env(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
     v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
 }
 
+void v9x_gl_tex_save_units(V9X_GL_TEXTURES *textures,
+                           V9X_GL_TEXUNIT_SAVED *units, v9x_u32 *active)
+{
+    unsigned int unit;
+
+    for (unit = 0u; unit < V9X_GL_TEXTURE_UNITS; ++unit) {
+        /* The bound name always has an object: binding makes one, and
+         * deleting a bound one rebinds the default. */
+        const V9X_GL_TEXOBJ *object =
+            v9x_gl_texobj_find(textures, textures->units[unit].bound);
+
+        units[unit].unit = textures->units[unit];
+        units[unit].min_filter = object->min_filter;
+        units[unit].mag_filter = object->mag_filter;
+        units[unit].wrap_s = object->wrap_s;
+        units[unit].wrap_t = object->wrap_t;
+    }
+    *active = textures->active;
+}
+
+int v9x_gl_tex_restore_units(V9X_GL_TEXTURES *textures,
+                             const V9X_GL_TEXUNIT_SAVED *units,
+                             v9x_u32 active)
+{
+    unsigned int unit;
+    int made = 1;
+
+    for (unit = 0u; unit < V9X_GL_TEXTURE_UNITS; ++unit) {
+        GLuint name = units[unit].unit.bound;
+        V9X_GL_TEXOBJ *object = v9x_gl_texobj_find(textures, name);
+
+        textures->units[unit] = units[unit].unit;
+        /* Deleted since the save: an object again, as binding the name
+         * would make it. */
+        if (object == 0) {
+            object = v9x_gl_texobj_slot(textures);
+            if (object == 0) {
+                textures->units[unit].bound = 0u;
+                made = 0;
+                continue;
+            }
+            v9x_gl_texobj_defaults(object, name);
+        }
+        object->min_filter = units[unit].min_filter;
+        object->mag_filter = units[unit].mag_filter;
+        object->wrap_s = units[unit].wrap_s;
+        object->wrap_t = units[unit].wrap_t;
+    }
+    textures->active = active;
+    return made;
+}
+
+/* The texture parameter and environment names the queries answer. */
+#define V9X_GL_TEXTURE_BORDER_COLOR 0x1004u
+#define V9X_GL_TEXTURE_PRIORITY     0x8066u
+#define V9X_GL_TEXTURE_RESIDENT     0x8067u
+#define V9X_GL_TEXTURE_WIDTH        0x1000u
+#define V9X_GL_TEXTURE_HEIGHT       0x1001u
+#define V9X_GL_TEXTURE_INTERNAL_FORMAT 0x1003u
+#define V9X_GL_TEXTURE_BORDER       0x1005u
+#define V9X_GL_TEXTURE_RED_SIZE     0x805Cu
+#define V9X_GL_TEXTURE_INTENSITY_SIZE 0x8061u
+
+unsigned int v9x_gl_tex_get_parameter(V9X_GL_STATE *state,
+                                      V9X_GL_TEXTURES *textures,
+                                      GLenum target, GLenum pname,
+                                      GLfloat *out, int *colour)
+{
+    const V9X_GL_TEXOBJ *object;
+    unsigned int i;
+
+    if (!v9x_gl_tex_allowed(state)) {
+        return 0u;
+    }
+    if (target != V9X_GL_TEXTURE_2D) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return 0u;
+    }
+    object = v9x_gl_texobj_find(textures,
+                                V9X_GL_TEX_SELECTED(textures).bound);
+    *colour = 0;
+    switch (pname) {
+    case V9X_GL_TEXTURE_MIN_FILTER:
+        out[0] = (GLfloat)object->min_filter;
+        return 1u;
+    case V9X_GL_TEXTURE_MAG_FILTER:
+        out[0] = (GLfloat)object->mag_filter;
+        return 1u;
+    case V9X_GL_TEXTURE_WRAP_S:
+        out[0] = (GLfloat)object->wrap_s;
+        return 1u;
+    case V9X_GL_TEXTURE_WRAP_T:
+        out[0] = (GLfloat)object->wrap_t;
+        return 1u;
+    case V9X_GL_TEXTURE_BORDER_COLOR:
+        /* Its initial value: glTexParameter accepts and keeps no border
+         * colour, since borders are not drawn. */
+        for (i = 0u; i < 4u; ++i) {
+            out[i] = 0.0f;
+        }
+        *colour = 1;
+        return 4u;
+    case V9X_GL_TEXTURE_PRIORITY:
+        /* Likewise the initial 1: priorities are accepted and not kept. */
+        out[0] = 1.0f;
+        return 1u;
+    case V9X_GL_TEXTURE_RESIDENT:
+        /* Every image is in the ICD's memory, which is where it is drawn
+         * from or copied to the card from. */
+        out[0] = 1.0f;
+        return 1u;
+    default:
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return 0u;
+    }
+}
+
+/* A component's bits in a base format's storage (gl_texture.h), indexed
+ * from RED_SIZE: red, green, blue, alpha, luminance, intensity. */
+static GLfloat v9x_gl_tex_component_bits(GLenum base, unsigned int component)
+{
+    static const unsigned char rgb[6] = { 5, 6, 5, 0, 0, 0 };
+    static const unsigned char rgba[6] = { 4, 4, 4, 4, 0, 0 };
+    static const unsigned char alpha[6] = { 0, 0, 0, 4, 0, 0 };
+    static const unsigned char luminance[6] = { 0, 0, 0, 0, 5, 0 };
+    static const unsigned char luminance_alpha[6] = { 0, 0, 0, 4, 4, 0 };
+    static const unsigned char intensity[6] = { 0, 0, 0, 0, 0, 4 };
+    const unsigned char *bits;
+
+    switch (base) {
+    case V9X_GL_RGB: bits = rgb; break;
+    case V9X_GL_RGBA: bits = rgba; break;
+    case V9X_GL_ALPHA: bits = alpha; break;
+    case V9X_GL_LUMINANCE: bits = luminance; break;
+    case V9X_GL_LUMINANCE_ALPHA: bits = luminance_alpha; break;
+    case V9X_GL_INTENSITY: bits = intensity; break;
+    default: return 0.0f;
+    }
+    return (GLfloat)bits[component];
+}
+
+unsigned int v9x_gl_tex_get_level_parameter(V9X_GL_STATE *state,
+                                            V9X_GL_TEXTURES *textures,
+                                            GLenum target, GLint level,
+                                            GLenum pname, GLfloat *out)
+{
+    const V9X_GL_TEXOBJ *object;
+    const V9X_GL_TEXLEVEL *image;
+    int present;
+
+    if (!v9x_gl_tex_allowed(state)) {
+        return 0u;
+    }
+    if (target != V9X_GL_TEXTURE_2D) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return 0u;
+    }
+    if (level < 0 || level >= (GLint)V9X_GL_TEXTURE_LEVELS) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
+        return 0u;
+    }
+    object = v9x_gl_texobj_find(textures,
+                                V9X_GL_TEX_SELECTED(textures).bound);
+    image = &object->levels[level];
+    present = image->texels != 0 && object->base_format != 0u;
+    if (pname >= V9X_GL_TEXTURE_RED_SIZE &&
+        pname <= V9X_GL_TEXTURE_INTENSITY_SIZE) {
+        out[0] = present
+            ? v9x_gl_tex_component_bits(
+                  object->base_format,
+                  (unsigned int)(pname - V9X_GL_TEXTURE_RED_SIZE))
+            : 0.0f;
+        return 1u;
+    }
+    switch (pname) {
+    case V9X_GL_TEXTURE_WIDTH:
+        out[0] = present ? (GLfloat)(long)image->width : 0.0f;
+        return 1u;
+    case V9X_GL_TEXTURE_HEIGHT:
+        out[0] = present ? (GLfloat)(long)image->height : 0.0f;
+        return 1u;
+    case V9X_GL_TEXTURE_INTERNAL_FORMAT:
+        out[0] = present ? (GLfloat)object->base_format : 1.0f;
+        return 1u;
+    case V9X_GL_TEXTURE_BORDER:
+        out[0] = 0.0f;
+        return 1u;
+    default:
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return 0u;
+    }
+}
+
+unsigned int v9x_gl_tex_get_env(V9X_GL_STATE *state,
+                                V9X_GL_TEXTURES *textures, GLenum target,
+                                GLenum pname, GLfloat *out, int *colour)
+{
+    const V9X_GL_TEXUNIT *unit = &V9X_GL_TEX_SELECTED(textures);
+    unsigned int i;
+
+    if (!v9x_gl_tex_allowed(state)) {
+        return 0u;
+    }
+    if (target != V9X_GL_TEXTURE_ENV) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return 0u;
+    }
+    *colour = 0;
+    if (pname == V9X_GL_TEXTURE_ENV_MODE) {
+        out[0] = (GLfloat)unit->env_mode;
+        return 1u;
+    }
+    if (pname == V9X_GL_TEXTURE_ENV_COLOR) {
+        for (i = 0u; i < 4u; ++i) {
+            out[i] = unit->env_color[i];
+        }
+        *colour = 1;
+        return 4u;
+    }
+    v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+    return 0u;
+}
+
 void v9x_gl_tex_select(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
                        GLenum target)
 {

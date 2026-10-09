@@ -13,11 +13,18 @@
 #   V9X_GL_API           the calling convention of a slot (__stdcall)
 #   V9X_GL_STUB_HOOK(n)  what a stub does before returning zero; the ICD counts
 #                        the slot, the host test records it
+# and, with V9X_GL_DEFINE_CENSUS:
+#   V9X_GL_CENSUS_HOOK(n)    what a census forwarder does before calling on
+#   V9X_GL_CENSUS_TARGET(n)  the V9X_GL_PROC it calls on, with the arguments
 # and gets:
 #   V9X_GL_SLOT_COUNT, V9X_GL_SLOT_NAMES (an initialiser of 336 strings),
 #   V9X_GL_PFN_<name> typedefs, v9x_gl_stub_<name> static definitions when
 #   V9X_GL_DEFINE_STUBS is defined, and V9X_GL_DISPATCH_INIT (an initialiser
-#   of 336 V9X_GL_PROC values in slot order).
+#   of 336 V9X_GL_PROC values in slot order). With V9X_GL_DEFINE_CENSUS also
+#   v9x_gl_census_<name>, which runs the hook and forwards every argument and
+#   the result, and V9X_GL_CENSUS_INIT, their table in slot order: the ICD
+#   counts the calls an implemented slot gets by putting its forwarder in
+#   the table in front of it.
 
 function Write-V9xGlDispatchHeader {
     param(
@@ -69,18 +76,28 @@ function Write-V9xGlDispatchHeader {
         $lines.Add("typedef $($e.Return) (V9X_GL_API *V9X_GL_PFN_$($e.Name))($($e.Params));")
     }
     $lines.Add("")
-    $lines.Add("#ifdef V9X_GL_DEFINE_STUBS")
+    # Each entry's parameter names, in order.
+    $argNames = @{}
     foreach ($e in $entries) {
-        $ret = [string]$e.Return
         $params = [string]$e.Params
-        $body = @()
+        $found = @()
         if ($params -ne 'void') {
             foreach ($p in ($params -split ',')) {
                 $token = ($p.Trim() -replace '\[.*\]$', '')
                 $name = ($token -split '\s+')[-1].TrimStart('*')
                 if ($name -eq '') { throw "Cannot name a parameter of $($e.Name): '$p'" }
-                $body += "(void)$name;"
+                $found += $name
             }
+        }
+        $argNames[$e.Name] = $found
+    }
+    $lines.Add("#ifdef V9X_GL_DEFINE_STUBS")
+    foreach ($e in $entries) {
+        $ret = [string]$e.Return
+        $params = [string]$e.Params
+        $body = @()
+        foreach ($name in $argNames[$e.Name]) {
+            $body += "(void)$name;"
         }
         $body += "V9X_GL_STUB_HOOK($($e.Slot));"
         if ($ret -ne 'void') {
@@ -89,6 +106,22 @@ function Write-V9xGlDispatchHeader {
         $lines.Add("static $ret V9X_GL_API v9x_gl_stub_$($e.Name)($params) { $($body -join ' ') }")
     }
     $lines.Add("#endif /* V9X_GL_DEFINE_STUBS */")
+    $lines.Add("")
+    $lines.Add("#ifdef V9X_GL_DEFINE_CENSUS")
+    foreach ($e in $entries) {
+        $ret = [string]$e.Return
+        $call = "((V9X_GL_PFN_$($e.Name))V9X_GL_CENSUS_TARGET($($e.Slot)))($($argNames[$e.Name] -join ', '))"
+        $tail = if ($ret -eq 'void') { "$call;" } else { "return $call;" }
+        $lines.Add("static $ret V9X_GL_API v9x_gl_census_$($e.Name)($($e.Params)) { V9X_GL_CENSUS_HOOK($($e.Slot)); $tail }")
+    }
+    $lines.Add("")
+    $lines.Add("#define V9X_GL_CENSUS_INIT { \")
+    for ($i = 0; $i -lt $entries.Count; $i++) {
+        $sep = if ($i -lt $entries.Count - 1) { "," } else { "" }
+        $lines.Add("    (V9X_GL_PROC)v9x_gl_census_$($entries[$i].Name)$sep \")
+    }
+    $lines.Add("}")
+    $lines.Add("#endif /* V9X_GL_DEFINE_CENSUS */")
     $lines.Add("")
     $lines.Add("#define V9X_GL_DISPATCH_INIT { \")
     for ($i = 0; $i -lt $entries.Count; $i++) {

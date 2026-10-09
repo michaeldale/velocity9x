@@ -872,10 +872,143 @@ static void test_square_copy(void)
            square[2] == 0x0001u && square[3] == 0x0001u);
 }
 
+/* glGetTexParameter, glGetTexLevelParameter and glGetTexEnv. */
+static void test_texture_queries(void)
+{
+    static const GLubyte rgb[4 * 2 * 3] = { 0 };
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    GLfloat v[4];
+    GLfloat colour[4];
+    GLuint name;
+    int is_colour = -1;
+
+    fresh(&s, &t);
+    v9x_gl_tex_gen(&s, &t, 1, &name);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, name);
+
+    /* Parameters: the initial filters and wraps, then set ones; border
+     * colour 0,0,0,0 as a colour; priority 1; resident. */
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D,
+                                    V9X_GL_TEXTURE_MIN_FILTER, v,
+                                    &is_colour) == 1u);
+    TCHECK(v[0] == (GLfloat)V9X_GL_NEAREST_MIPMAP_LINEAR && !is_colour);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D,
+                                    V9X_GL_TEXTURE_WRAP_T, v,
+                                    &is_colour) == 1u &&
+           v[0] == (GLfloat)V9X_GL_REPEAT);
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MAG_FILTER,
+                         (GLint)V9X_GL_NEAREST);
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_WRAP_S,
+                         (GLint)V9X_GL_CLAMP);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D,
+                                    V9X_GL_TEXTURE_MAG_FILTER, v,
+                                    &is_colour) == 1u &&
+           v[0] == (GLfloat)V9X_GL_NEAREST);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D,
+                                    V9X_GL_TEXTURE_WRAP_S, v,
+                                    &is_colour) == 1u &&
+           v[0] == (GLfloat)V9X_GL_CLAMP);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0x1004u, v,
+                                    &is_colour) == 4u);
+    TCHECK(is_colour && v[0] == 0.0f && v[3] == 0.0f);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0x8066u, v,
+                                    &is_colour) == 1u && v[0] == 1.0f);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0x8067u, v,
+                                    &is_colour) == 1u && v[0] == 1.0f);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+
+    /* An empty level: 0 by 0, internal format 1, no bits. */
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1000u, v) == 1u && v[0] == 0.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1003u, v) == 1u && v[0] == 1.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Cu, v) == 1u && v[0] == 0.0f);
+
+    /* A 4x2 RGB image: its size, its base format, stored 5-6-5. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 4, 2, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, rgb);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1000u, v) == 1u && v[0] == 4.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1001u, v) == 1u && v[0] == 2.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1003u, v) == 1u &&
+           v[0] == (GLfloat)V9X_GL_RGB);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1005u, v) == 1u && v[0] == 0.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Cu, v) == 1u && v[0] == 5.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Du, v) == 1u && v[0] == 6.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Fu, v) == 1u && v[0] == 0.0f);
+    /* RGBA is stored 4-4-4-4; LUMINANCE as 5-6-5 grey, so luminance 5. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, V9X_GL_RGBA, 2, 2, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, rgb);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Fu, v) == 1u && v[0] == 4.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Cu, v) == 1u && v[0] == 4.0f);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, V9X_GL_LUMINANCE, 2, 2,
+                        0, V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, rgb);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x8060u, v) == 1u && v[0] == 5.0f);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x805Cu, v) == 1u && v[0] == 0.0f);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+
+    /* The environment: MODULATE and black, then what was set. */
+    TCHECK(v9x_gl_tex_get_env(&s, &t, V9X_GL_TEXTURE_ENV,
+                              V9X_GL_TEXTURE_ENV_MODE, v, &is_colour) == 1u);
+    TCHECK(v[0] == (GLfloat)V9X_GL_MODULATE && !is_colour);
+    colour[0] = 0.25f;
+    colour[1] = 0.5f;
+    colour[2] = 0.75f;
+    colour[3] = 1.0f;
+    v9x_gl_tex_env(&s, &t, V9X_GL_TEXTURE_ENV, V9X_GL_TEXTURE_ENV_COLOR,
+                   colour);
+    TCHECK(v9x_gl_tex_get_env(&s, &t, V9X_GL_TEXTURE_ENV,
+                              V9X_GL_TEXTURE_ENV_COLOR, v, &is_colour) == 4u);
+    TCHECK(is_colour && v[0] == 0.25f && v[2] == 0.75f && v[3] == 1.0f);
+
+    /* Errors, each recorded and answering nothing. */
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, 0x0DE0u, V9X_GL_TEXTURE_WRAP_S,
+                                    v, &is_colour) == 0u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    TCHECK(v9x_gl_tex_get_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0x1234u, v,
+                                    &is_colour) == 0u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, -1,
+                                          0x1000u, v) == 0u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D,
+                                          (GLint)V9X_GL_TEXTURE_LEVELS,
+                                          0x1000u, v) == 0u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, 0x8064u, 0, 0x1000u,
+                                          v) == 0u);   /* PROXY_TEXTURE_2D */
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    TCHECK(v9x_gl_tex_get_level_parameter(&s, &t, V9X_GL_TEXTURE_2D, 0,
+                                          0x1234u, v) == 0u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    TCHECK(v9x_gl_tex_get_env(&s, &t, V9X_GL_TEXTURE_2D,
+                              V9X_GL_TEXTURE_ENV_MODE, v, &is_colour) == 0u);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    s.in_begin = 1;
+    TCHECK(v9x_gl_tex_get_env(&s, &t, V9X_GL_TEXTURE_ENV,
+                              V9X_GL_TEXTURE_ENV_MODE, v, &is_colour) == 0u);
+    s.in_begin = 0;
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    v9x_gl_textures_release(&t);
+}
+
 unsigned int v9x_run_gl_texture_tests(void)
 {
     gl_texture_failures = 0u;
     outstanding = 0l;
+    test_texture_queries();
     test_names_and_binding();
     test_uploads();
     test_completeness_and_describe();

@@ -201,6 +201,13 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
                              (double)(GLint)state->index_mask); return 1;
     case 0x0C20u: v9x_gl_one(out, V9X_GL_CLASS_FLOAT, state->clear_index);
         return 1;
+    case 0x0B91u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, state->clear_stencil);
+        return 1;
+    /* The attribute stacks' depths (table 6.30). */
+    case 0x0BB0u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                             (GLint)state->attrib_depth); return 1;
+    case 0x0BB1u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                             (GLint)state->client_attrib_depth); return 1;
     case 0x0C02u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, state->read_buffer);
         return 1;
     case 0x0C23u:

@@ -17,6 +17,12 @@ static unsigned int gl_last_slot = 9999u;
 static unsigned int gl_hook_calls = 0u;
 #define V9X_GL_STUB_HOOK(slot) (gl_last_slot = (slot), ++gl_hook_calls)
 #define V9X_GL_DEFINE_STUBS
+/* The census forwarders, aimed at the recording functions below. */
+static unsigned int gl_census_slot = 9999u;
+static void (__stdcall *gl_census_target[512])(void);
+#define V9X_GL_CENSUS_HOOK(slot) (gl_census_slot = (slot))
+#define V9X_GL_CENSUS_TARGET(slot) gl_census_target[slot]
+#define V9X_GL_DEFINE_CENSUS
 #include "gl_dispatch_gen.h"
 
 static unsigned int gl_failures = 0u;
@@ -116,12 +122,56 @@ static void test_stubs_report_their_slot(void)
     GLCHECK(gl_hook_calls == 7u);
 }
 
+static const V9X_GL_PROC gl_census_table[V9X_GL_SLOT_COUNT] =
+    V9X_GL_CENSUS_INIT;
+static GLfloat gl_seen[3];
+static GLenum gl_seen_cap;
+
+static void __stdcall gl_record_vertex3f(GLfloat x, GLfloat y, GLfloat z)
+{
+    gl_seen[0] = x;
+    gl_seen[1] = y;
+    gl_seen[2] = z;
+}
+
+static GLboolean __stdcall gl_record_is_enabled(GLenum cap)
+{
+    gl_seen_cap = cap;
+    return 1u;
+}
+
+/* A census forwarder runs the hook with its own slot, then calls its
+ * target with every argument and hands back the target's result. */
+static void test_census_forwards(void)
+{
+    unsigned int slot;
+
+    slot = gl_slot_of("glVertex3f");
+    gl_census_target[slot] = (V9X_GL_PROC)gl_record_vertex3f;
+    gl_census_slot = 9999u;
+    ((V9X_GL_PFN_glVertex3f)gl_census_table[slot])(1.0f, 2.0f, 3.0f);
+    GLCHECK(gl_census_slot == slot);
+    GLCHECK(gl_seen[0] == 1.0f && gl_seen[1] == 2.0f && gl_seen[2] == 3.0f);
+
+    slot = gl_slot_of("glIsEnabled");
+    gl_census_target[slot] = (V9X_GL_PROC)gl_record_is_enabled;
+    gl_census_slot = 9999u;
+    GLCHECK(((V9X_GL_PFN_glIsEnabled)gl_census_table[slot])(0x0B71u) == 1u);
+    GLCHECK(gl_census_slot == slot && gl_seen_cap == 0x0B71u);
+
+    for (slot = 0u; slot < V9X_GL_SLOT_COUNT; ++slot) {
+        GLCHECK(gl_census_table[slot] != 0 &&
+                gl_census_table[slot] != gl_table[slot]);
+    }
+}
+
 unsigned int v9x_run_gl_dispatch_tests(void)
 {
     gl_failures = 0u;
     gl_hook_calls = 0u;
     test_order_and_shape();
     test_stubs_report_their_slot();
+    test_census_forwards();
     if (gl_failures == 0u) {
         puts("PASS: generated OpenGL dispatch table");
     }

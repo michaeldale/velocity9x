@@ -39,12 +39,25 @@
 #include "gl_get.h"
 #include "gl_pixels.h"
 #include "gl_varray.h"
+#include "gl_attrib.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
 #define V9X_GL_STUB_HOOK(slot) v9x_gl_stub_called(slot)
 #define V9X_GL_DEFINE_STUBS
+/* The census (v9x_gl_install_census): calls per implemented slot, and the
+ * implementation each forwarder calls on. Sized before the header gives
+ * the count; the assertion below holds them equal. */
+#define V9X_GL_CENSUS_SLOTS 336u
+static DWORD v9x_gl_census_calls[V9X_GL_CENSUS_SLOTS];
+static void (V9X_GL_API *v9x_gl_census_targets[V9X_GL_CENSUS_SLOTS])(void);
+#define V9X_GL_CENSUS_HOOK(slot) (++v9x_gl_census_calls[slot])
+#define V9X_GL_CENSUS_TARGET(slot) v9x_gl_census_targets[slot]
+#define V9X_GL_DEFINE_CENSUS
 #include "gl_dispatch_gen.h"
+
+typedef char v9x_gl_assert_census_slots[
+    V9X_GL_CENSUS_SLOTS == V9X_GL_SLOT_COUNT ? 1 : -1];
 
 /* The ICD-side names of the runtime's types (Mesa gldrv.h, ReactOS icd.h). */
 typedef ULONG V9X_DHGLRC;
@@ -102,6 +115,12 @@ typedef struct v9x_gl_context {
     V9X_GL_TEXTURES textures;
     /* Client state (2.8): the vertex arrays. */
     V9X_GL_ARRAYS arrays;
+    /* glPushAttrib's and glPushClientAttrib's stacks, about 10 KB, from the
+     * heap at the first push: in the context table they would be zeros in
+     * the DLL's image, sixteen times over (the linker writes _BSS out;
+     * docs/issues/2026-09-26-floppy-over-capacity-with-opengl-icd.md).
+     * Their depths are in the state. */
+    V9X_GL_ATTRIB_STACK *attribs;
     V9X_GL_PENDING pending;
     /* The levels a batch's texture names, valid for the draw call, and its
      * second unit's. */
@@ -527,6 +546,41 @@ void v9x_gl_log3(const char *format, v9x_u32 a, v9x_u32 b, v9x_u32 c)
 
     wsprintfA(text, format, a, b, c);
     v9x_gl_log(text);
+}
+
+/* The census at process exit: "census name=calls ..." for every
+ * implemented slot that was called, as many lines as it takes, then the
+ * count of them. A name is at most 26 characters and a count 10, so a
+ * line is closed once it passes V9X_GL_CENSUS_LINE and stays inside
+ * v9x_gl_log's 520. */
+#define V9X_GL_CENSUS_LINE 400
+
+static void v9x_gl_census_log(void)
+{
+    char text[480];
+    int length = 0;
+    DWORD slot;
+    DWORD distinct = 0ul;
+
+    for (slot = 0ul; slot < V9X_GL_SLOT_COUNT; ++slot) {
+        if (v9x_gl_census_calls[slot] == 0ul) {
+            continue;
+        }
+        ++distinct;
+        if (length == 0) {
+            length = wsprintfA(text, "census");
+        }
+        length += wsprintfA(text + length, " %s=%lu", v9x_gl_slot_names[slot],
+                            v9x_gl_census_calls[slot]);
+        if (length > V9X_GL_CENSUS_LINE) {
+            v9x_gl_log(text);
+            length = 0;
+        }
+    }
+    if (length != 0) {
+        v9x_gl_log(text);
+    }
+    v9x_gl_log3("census implemented-slots-called=%lu", distinct, 0ul, 0ul);
 }
 
 static V9X_GL_CONTEXT *v9x_gl_current(void)
@@ -3129,6 +3183,183 @@ static void V9X_GL_API v9x_gl_get_doublev(GLenum pname, GLdouble *out)
     v9x_gl_get_any(pname, V9X_GL_GET_DOUBLE, out);
 }
 
+/* ---- Attribute stacks (6.1.11), gl_attrib.c ------------------------- */
+
+/*
+ * Neither draws the held batch: it carries its own copy of the state it
+ * was described with, and the next batch compares its state with it.
+ *
+ * A push makes the context's stacks first, OUT_OF_MEMORY if it cannot. A
+ * pop with none made has depth 0, so it records STACK_UNDERFLOW without
+ * reading them.
+ */
+static V9X_GL_ATTRIB_STACK *v9x_gl_attrib_stacks(V9X_GL_CONTEXT *context)
+{
+    if (context->attribs == 0) {
+        context->attribs = (V9X_GL_ATTRIB_STACK *)v9x_gl_heap_alloc(
+            sizeof(V9X_GL_ATTRIB_STACK));
+        if (context->attribs == 0) {
+            v9x_gl_state_error(&context->state, V9X_GL_OUT_OF_MEMORY);
+        }
+    }
+    return context->attribs;
+}
+
+static void V9X_GL_API v9x_gl_push_attrib(GLbitfield mask)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context != 0 && v9x_gl_attrib_stacks(context) != 0) {
+        v9x_gl_attrib_push(&context->state, &context->pipeline,
+                           &context->textures, context->attribs, mask);
+    }
+}
+
+static void V9X_GL_API v9x_gl_pop_attrib(void)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_attrib_pop(&context_->state,
+                                          &context_->pipeline,
+                                          &context_->textures,
+                                          context_->attribs));
+}
+
+static void V9X_GL_API v9x_gl_push_client_attrib(GLbitfield mask)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context != 0 && v9x_gl_attrib_stacks(context) != 0) {
+        v9x_gl_attrib_push_client(&context->state, &context->textures,
+                                  &context->arrays, context->attribs, mask);
+    }
+}
+
+static void V9X_GL_API v9x_gl_pop_client_attrib(void)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_attrib_pop_client(&context_->state,
+                                                 &context_->textures,
+                                                 &context_->arrays,
+                                                 context_->attribs));
+}
+
+/* ---- Texture queries (6.1.3), gl_texture.c -------------------------- */
+
+/* Query values as integers (6.1.2): a colour maps [-1, 1] linearly onto
+ * the whole range, anything else rounds. */
+static void v9x_gl_query_ints(const GLfloat *values, unsigned int count,
+                              int colour, GLint *out)
+{
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        GLfloat value = values[i];
+
+        if (!colour) {
+            out[i] = (GLint)v9x_gl_whole(value);
+        } else if (value >= 1.0f) {
+            out[i] = 2147483647;
+        } else if (value <= -1.0f) {
+            out[i] = -2147483647 - 1;
+        } else {
+            out[i] = (GLint)v9x_gl_whole(value * 2147483647.0f);
+        }
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_tex_parameterfv(GLenum target,
+                                                  GLenum pname,
+                                                  GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = 0u;
+    unsigned int i;
+    int colour;
+
+    V9X_GL_WITH_CONTEXT(count = v9x_gl_tex_get_parameter(
+                            &context_->state, &context_->textures, target,
+                            pname, values, &colour));
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_tex_parameteriv(GLenum target,
+                                                  GLenum pname,
+                                                  GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = 0u;
+    int colour = 0;
+
+    V9X_GL_WITH_CONTEXT(count = v9x_gl_tex_get_parameter(
+                            &context_->state, &context_->textures, target,
+                            pname, values, &colour));
+    v9x_gl_query_ints(values, count, colour, params);
+}
+
+static void V9X_GL_API v9x_gl_get_tex_level_parameterfv(GLenum target,
+                                                        GLint level,
+                                                        GLenum pname,
+                                                        GLfloat *params)
+{
+    GLfloat value;
+    unsigned int count = 0u;
+
+    V9X_GL_WITH_CONTEXT(count = v9x_gl_tex_get_level_parameter(
+                            &context_->state, &context_->textures, target,
+                            level, pname, &value));
+    if (count != 0u) {
+        params[0] = value;
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_tex_level_parameteriv(GLenum target,
+                                                        GLint level,
+                                                        GLenum pname,
+                                                        GLint *params)
+{
+    GLfloat value;
+    unsigned int count = 0u;
+
+    V9X_GL_WITH_CONTEXT(count = v9x_gl_tex_get_level_parameter(
+                            &context_->state, &context_->textures, target,
+                            level, pname, &value));
+    v9x_gl_query_ints(&value, count, 0, params);
+}
+
+static void V9X_GL_API v9x_gl_get_tex_envfv(GLenum target, GLenum pname,
+                                            GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = 0u;
+    unsigned int i;
+    int colour;
+
+    V9X_GL_WITH_CONTEXT(count = v9x_gl_tex_get_env(
+                            &context_->state, &context_->textures, target,
+                            pname, values, &colour));
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_tex_enviv(GLenum target, GLenum pname,
+                                            GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = 0u;
+    int colour = 0;
+
+    V9X_GL_WITH_CONTEXT(count = v9x_gl_tex_get_env(
+                            &context_->state, &context_->textures, target,
+                            pname, values, &colour));
+    v9x_gl_query_ints(values, count, colour, params);
+}
+
+static void V9X_GL_API v9x_gl_clear_stencil(GLint s)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_state_clear_stencil(&context_->state, s));
+}
+
 static void V9X_GL_API v9x_gl_hint(GLenum target, GLenum mode)
 {
     V9X_GL_WITH_CONTEXT(v9x_gl_state_hint(&context_->state, target, mode));
@@ -3182,6 +3413,27 @@ static void v9x_gl_set_slot(const char *name, V9X_GL_PROC proc)
     V9X_GL_PFN_##slot_name typed_ = function; \
     v9x_gl_set_slot(#slot_name, (V9X_GL_PROC)typed_); \
 } while (0)
+
+/*
+ * Every implemented slot behind its census forwarder, which counts the call
+ * and calls on: the stubs count only themselves, so without this a game
+ * run could not say which implemented entry points it used. A slot still
+ * holding its stub is left as it is. The forwarder costs an increment and
+ * an indirect call, against a vertex's ~1.9 us (2026-10-01).
+ */
+static void v9x_gl_install_census(void)
+{
+    static const V9X_GL_PROC stubs[V9X_GL_SLOT_COUNT] = V9X_GL_DISPATCH_INIT;
+    static const V9X_GL_PROC census[V9X_GL_SLOT_COUNT] = V9X_GL_CENSUS_INIT;
+    unsigned int slot;
+
+    for (slot = 0u; slot < V9X_GL_SLOT_COUNT; ++slot) {
+        if (v9x_gl_table.entries[slot] != stubs[slot]) {
+            v9x_gl_census_targets[slot] = v9x_gl_table.entries[slot];
+            v9x_gl_table.entries[slot] = census[slot];
+        }
+    }
+}
 
 static void v9x_gl_install_overrides(void)
 {
@@ -3359,6 +3611,19 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glFogfv, v9x_gl_fogfv);
     V9X_GL_OVERRIDE(glFogi, v9x_gl_fogi);
     V9X_GL_OVERRIDE(glFogiv, v9x_gl_fogiv);
+    V9X_GL_OVERRIDE(glPushAttrib, v9x_gl_push_attrib);
+    V9X_GL_OVERRIDE(glPopAttrib, v9x_gl_pop_attrib);
+    V9X_GL_OVERRIDE(glPushClientAttrib, v9x_gl_push_client_attrib);
+    V9X_GL_OVERRIDE(glPopClientAttrib, v9x_gl_pop_client_attrib);
+    V9X_GL_OVERRIDE(glGetTexParameterfv, v9x_gl_get_tex_parameterfv);
+    V9X_GL_OVERRIDE(glGetTexParameteriv, v9x_gl_get_tex_parameteriv);
+    V9X_GL_OVERRIDE(glGetTexLevelParameterfv,
+                    v9x_gl_get_tex_level_parameterfv);
+    V9X_GL_OVERRIDE(glGetTexLevelParameteriv,
+                    v9x_gl_get_tex_level_parameteriv);
+    V9X_GL_OVERRIDE(glGetTexEnvfv, v9x_gl_get_tex_envfv);
+    V9X_GL_OVERRIDE(glGetTexEnviv, v9x_gl_get_tex_enviv);
+    V9X_GL_OVERRIDE(glClearStencil, v9x_gl_clear_stencil);
     V9X_GL_OVERRIDE(glShadeModel, v9x_gl_shade_model);
     V9X_GL_OVERRIDE(glCullFace, v9x_gl_cull_face);
     V9X_GL_OVERRIDE(glFrontFace, v9x_gl_front_face);
@@ -3393,6 +3658,7 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glReadBuffer, v9x_gl_read_buffer);
     V9X_GL_OVERRIDE(glLineWidth, v9x_gl_line_width);
     V9X_GL_OVERRIDE(glPointSize, v9x_gl_point_size);
+    v9x_gl_install_census();
 }
 
 /* ---- Pixel formats ------------------------------------------------- */
@@ -3472,6 +3738,7 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 v9x_gl_state_init(&context->state);
                 v9x_gl_pipeline_init(&context->pipeline);
                 v9x_gl_arrays_init(&context->arrays);
+                context->attribs = 0;
                 v9x_gl_textures_init(&context->textures, v9x_gl_heap_alloc,
                                      v9x_gl_heap_free);
                 context->textures.hw_release = v9x_gl_hwtex_free;
@@ -3565,6 +3832,10 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
             TlsSetValue(v9x_gl_tls, 0);
         }
         v9x_gl_textures_release(&context->textures);
+        if (context->attribs != 0) {
+            v9x_gl_heap_free(context->attribs);
+            context->attribs = 0;
+        }
         context->in_use = 0;
         context->owner = 0ul;
         context->drawable = 0;
@@ -3785,6 +4056,7 @@ BOOL __stdcall V9xGlEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
         }
         v9x_gl_log3("detach slots-called=%lu stub-calls=%lu", distinct, total,
                     0ul);
+        v9x_gl_census_log();
         if (v9x_gl_tls != 0xfffffffful) {
             TlsFree(v9x_gl_tls);
         }

@@ -27,10 +27,28 @@
 #define V9X_GL_INVALID_OPERATION  0x0502u
 #define V9X_GL_OUT_OF_MEMORY      0x0505u
 
+/* glClear's buffers, which are also glPushAttrib's groups of those names,
+ * and the rest of the attribute groups (table 6.30). */
+#define V9X_GL_CURRENT_BIT         0x00000001u
+#define V9X_GL_POINT_BIT           0x00000002u
+#define V9X_GL_LINE_BIT            0x00000004u
+#define V9X_GL_POLYGON_BIT         0x00000008u
+#define V9X_GL_POLYGON_STIPPLE_BIT 0x00000010u
+#define V9X_GL_PIXEL_MODE_BIT      0x00000020u
+#define V9X_GL_LIGHTING_BIT        0x00000040u
+#define V9X_GL_FOG_BIT             0x00000080u
 #define V9X_GL_DEPTH_BUFFER_BIT   0x00000100u
 #define V9X_GL_ACCUM_BUFFER_BIT   0x00000200u
 #define V9X_GL_STENCIL_BUFFER_BIT 0x00000400u
+#define V9X_GL_VIEWPORT_BIT        0x00000800u
+#define V9X_GL_TRANSFORM_BIT       0x00001000u
+#define V9X_GL_ENABLE_BIT          0x00002000u
 #define V9X_GL_COLOR_BUFFER_BIT   0x00004000u
+#define V9X_GL_HINT_BIT            0x00008000u
+#define V9X_GL_EVAL_BIT            0x00010000u
+#define V9X_GL_LIST_BIT            0x00020000u
+#define V9X_GL_TEXTURE_BIT         0x00040000u
+#define V9X_GL_SCISSOR_BIT         0x00080000u
 
 #define V9X_GL_DITHER             0x0BD0u
 #define V9X_GL_DEPTH_TEST         0x0B71u
@@ -82,6 +100,12 @@ typedef struct v9x_gl_state {
      * there is no colour-index pixel format for them to act on. */
     GLuint index_mask;
     GLfloat clear_index;
+    /* glClearStencil (4.2.3), held: no pixel format has a stencil buffer
+     * for a clear to write. */
+    GLint clear_stencil;
+    /* The attribute stacks' depths (gl_attrib.c), here for the queries. */
+    v9x_u32 attrib_depth;
+    v9x_u32 client_attrib_depth;
 } V9X_GL_STATE;
 
 #define V9X_GL_DONT_CARE 0x1100u
@@ -207,5 +231,18 @@ void v9x_gl_state_point_size(V9X_GL_STATE *state, GLfloat size);
 /* Initially all ones and 0. INVALID_OPERATION inside Begin/End. */
 void v9x_gl_state_index_mask(V9X_GL_STATE *state, GLuint mask);
 void v9x_gl_state_clear_index(V9X_GL_STATE *state, GLfloat index);
+/* Initially 0. INVALID_OPERATION inside Begin/End. */
+void v9x_gl_state_clear_stencil(V9X_GL_STATE *state, GLint s);
+
+/*
+ * For glPopAttrib: every capability in an attribute group `mask` names
+ * takes its value from `saved`, the caps array as it was at the push.
+ * ENABLE_BIT names them all; each other group names its own (table 6.30:
+ * ALPHA_TEST, BLEND, DITHER and the logic ops COLOR_BUFFER; FOG FOG;
+ * CULL_FACE and the polygon smooth, stipple and offsets POLYGON; and so
+ * on).
+ */
+void v9x_gl_state_restore_caps(V9X_GL_STATE *state, const GLboolean *saved,
+                               GLbitfield mask);
 
 #endif /* VELOCITY9X_GL_STATE_H */

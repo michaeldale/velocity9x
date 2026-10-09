@@ -75,6 +75,52 @@ static const GLenum v9x_gl_caps[V9X_GL_CAP_COUNT] = {
     0x0C63u, 0x0C62u, 0x0C60u, 0x0C61u          /* TEXTURE_GEN_Q,R,S,T */
 };
 
+/* Each capability's attribute group (table 6.30), in v9x_gl_caps' order;
+ * ENABLE_BIT holds every one of them as well. */
+#define V9X_GL_CB  V9X_GL_COLOR_BUFFER_BIT
+#define V9X_GL_EV  V9X_GL_EVAL_BIT
+#define V9X_GL_TR  V9X_GL_TRANSFORM_BIT
+#define V9X_GL_LI  V9X_GL_LIGHTING_BIT
+#define V9X_GL_PO  V9X_GL_POLYGON_BIT
+#define V9X_GL_TX  V9X_GL_TEXTURE_BIT
+static const GLbitfield v9x_gl_cap_groups[V9X_GL_CAP_COUNT] = {
+    V9X_GL_CB,                                  /* ALPHA_TEST */
+    V9X_GL_EV,                                  /* AUTO_NORMAL */
+    V9X_GL_CB,                                  /* BLEND */
+    V9X_GL_TR, V9X_GL_TR, V9X_GL_TR, V9X_GL_TR, V9X_GL_TR, V9X_GL_TR,
+    V9X_GL_CB,                                  /* COLOR_LOGIC_OP */
+    V9X_GL_LI,                                  /* COLOR_MATERIAL */
+    V9X_GL_PO,                                  /* CULL_FACE */
+    V9X_GL_DEPTH_BUFFER_BIT,                    /* DEPTH_TEST */
+    V9X_GL_CB,                                  /* DITHER */
+    V9X_GL_FOG_BIT,                             /* FOG */
+    V9X_GL_CB,                                  /* INDEX_LOGIC_OP */
+    V9X_GL_LI, V9X_GL_LI, V9X_GL_LI, V9X_GL_LI, /* LIGHT0-3 */
+    V9X_GL_LI, V9X_GL_LI, V9X_GL_LI, V9X_GL_LI, /* LIGHT4-7 */
+    V9X_GL_LI,                                  /* LIGHTING */
+    V9X_GL_LINE_BIT,                            /* LINE_SMOOTH */
+    V9X_GL_LINE_BIT,                            /* LINE_STIPPLE */
+    V9X_GL_EV, V9X_GL_EV, V9X_GL_EV, V9X_GL_EV, V9X_GL_EV,
+    V9X_GL_EV, V9X_GL_EV, V9X_GL_EV, V9X_GL_EV,
+    V9X_GL_EV, V9X_GL_EV, V9X_GL_EV, V9X_GL_EV, V9X_GL_EV,
+    V9X_GL_EV, V9X_GL_EV, V9X_GL_EV, V9X_GL_EV,
+    V9X_GL_TR,                                  /* NORMALIZE */
+    V9X_GL_POINT_BIT,                           /* POINT_SMOOTH */
+    V9X_GL_PO, V9X_GL_PO, V9X_GL_PO,            /* POLYGON_OFFSET_* */
+    V9X_GL_PO,                                  /* POLYGON_SMOOTH */
+    V9X_GL_PO,                                  /* POLYGON_STIPPLE */
+    V9X_GL_SCISSOR_BIT,                         /* SCISSOR_TEST */
+    V9X_GL_STENCIL_BUFFER_BIT,                  /* STENCIL_TEST */
+    V9X_GL_TX, V9X_GL_TX,                       /* TEXTURE_1D, _2D */
+    V9X_GL_TX, V9X_GL_TX, V9X_GL_TX, V9X_GL_TX  /* TEXTURE_GEN_* */
+};
+#undef V9X_GL_CB
+#undef V9X_GL_EV
+#undef V9X_GL_TR
+#undef V9X_GL_LI
+#undef V9X_GL_PO
+#undef V9X_GL_TX
+
 static int v9x_gl_cap_index(GLenum cap)
 {
     unsigned int index;
@@ -140,6 +186,9 @@ void v9x_gl_state_init(V9X_GL_STATE *state)
     state->point_size = 1.0f;
     state->index_mask = 0xFFFFFFFFul;
     state->clear_index = 0.0f;
+    state->clear_stencil = 0;
+    state->attrib_depth = 0ul;
+    state->client_attrib_depth = 0ul;
 }
 
 void v9x_gl_state_hint(V9X_GL_STATE *state, GLenum target, GLenum mode)
@@ -266,6 +315,27 @@ void v9x_gl_state_clear_index(V9X_GL_STATE *state, GLfloat index)
         return;
     }
     state->clear_index = index;
+}
+
+void v9x_gl_state_clear_stencil(V9X_GL_STATE *state, GLint s)
+{
+    if (!v9x_gl_outside_begin(state)) {
+        return;
+    }
+    state->clear_stencil = s;
+}
+
+void v9x_gl_state_restore_caps(V9X_GL_STATE *state, const GLboolean *saved,
+                               GLbitfield mask)
+{
+    unsigned int index;
+
+    for (index = 0u; index < V9X_GL_CAP_COUNT; ++index) {
+        if ((mask & V9X_GL_ENABLE_BIT) != 0u ||
+            (mask & v9x_gl_cap_groups[index]) != 0u) {
+            state->caps[index] = saved[index];
+        }
+    }
 }
 
 void v9x_gl_state_drawable(V9X_GL_STATE *state, v9x_u32 width,

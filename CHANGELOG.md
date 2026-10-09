@@ -27,6 +27,17 @@ build identifier so exact guest-tested binaries remain traceable.
 - Half-Life's OpenGL renderer on the GMA 950 drew `mwd5` correctly through
   this ICD with no stub calls (15.8, 17.8 and 17.4 fps). No installed test
   game has been seen calling `glFog`.
+- **Attribute stacks and texture queries.** `glPushAttrib`, `glPopAttrib`,
+  `glPushClientAttrib` and `glPopClientAttrib` work, as do
+  `glGetTexParameter`, `glGetTexLevelParameter` and `glGetTexEnv` (both
+  forms each) and `glClearStencil`. These are the stubs Half-Life, Quake 2
+  and Serious Sam had been seen calling. The ICD now implements 215 of
+  336 entry points.
+- **A call census in `V9XGL.LOG`.** At exit the ICD logs how many times
+  each implemented entry point was called. On the GMA 950, Half-Life,
+  Quake 2, GLQuake and UT99 together used 52 entry points, called no
+  stub, and did not reach the attribute stacks in these sessions.
+  [Decision](docs/decisions/2026-10-09-icd-call-census-and-attrib-stacks.md).
 
 ## 0.14.0 - 2026-10-09
 
