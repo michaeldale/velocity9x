@@ -19,9 +19,9 @@ param(
     # published version is a fixed thing, and quietly replacing one is how the
     # checksums people were given stop matching what they can download.
     [switch]$Force,
-    # Where V9X_SIGNING_KEY is read from when it is not already set in the
-    # environment: the developer's .env beside this checkout, never a file
-    # in the repository.
+    # A KEY=value file holding V9X_SIGNING_KEY, when the key is not already
+    # in the environment; V9X_SIGNING_ENV_FILE names it otherwise. Never a
+    # file in the repository (docs\RELEASING.md).
     [string]$EnvFile
 )
 

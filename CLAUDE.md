@@ -5,7 +5,8 @@ DirectDraw/Direct3D HAL, and a mini-VDD, built with Open Watcom against the
 Windows 98 DDK and driven by PowerShell scripts in `scripts/`.
 
 Read `docs/specifications/win9x-driver-boundaries.md` before changing anything
-that crosses a module boundary.
+that crosses a module boundary. Releases follow `docs/RELEASING.md`, step by
+step.
 
 ## Verify before you claim
 

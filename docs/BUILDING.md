@@ -171,6 +171,9 @@ to publish if the version disagrees with `include/velocity9x/build.h` or the
 build id carries `-dirty`, so a published folder always names one commit. Pass
 `-Force` to replace a version folder that already exists.
 
+The whole release, from the changelog through GitHub, the update server and
+the next version bump, is in [RELEASING.md](RELEASING.md).
+
 ## Post-link auditing
 
 ```powershell

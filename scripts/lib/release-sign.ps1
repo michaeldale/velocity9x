@@ -8,9 +8,10 @@
 # one (docs\plans\optional-update-checker-and-auto-updater.md). The format
 # and its rules are in include\velocity9x\update_release.h.
 #
-# The private key is V9X_SIGNING_KEY: from the environment, else from the
-# developer's .env beside this checkout. It is passed to v9xsign through the
-# environment, never on a command line, and cleared afterwards.
+# The private key is V9X_SIGNING_KEY: from the environment, else read from a
+# KEY=value file kept outside the repository, named by -EnvFile or by
+# V9X_SIGNING_ENV_FILE (docs\RELEASING.md). It is passed to v9xsign through
+# the environment, never on a command line, and cleared afterwards.
 function Write-V9xSignedRelease {
     param(
         [Parameter(Mandatory = $true)][string]$RepoRoot,
@@ -48,9 +49,10 @@ function Write-V9xSignedRelease {
     }
     try {
         if ($env:V9X_SIGNING_KEY -notmatch '^[0-9a-fA-F]{64}$') {
-            throw ("No usable V9X_SIGNING_KEY (64 hex digits) in the " +
-                   "environment or $EnvFile. A release has to be signed, or " +
-                   "no installed updater will accept it.")
+            throw ("No usable V9X_SIGNING_KEY (64 hex digits): set it, or " +
+                   "name the file holding it with V9X_SIGNING_ENV_FILE or " +
+                   "-EnvFile (docs\RELEASING.md). A release has to be " +
+                   "signed, or no installed updater will accept it.")
         }
 
         # The key must be the one shipped updaters trust, or every client

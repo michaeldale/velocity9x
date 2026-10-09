@@ -2,8 +2,8 @@
  * The Ed25519 public key that signs Velocity9x releases.
  *
  * build-release.ps1 signs releases\<version>\SIGNED.TXT with the matching
- * private key, which lives outside the repository (V9X_SIGNING_KEY in the
- * developer's .env); V9XUPD.EXE refuses a release whose signature does not
+ * private key, which lives outside the repository (V9X_SIGNING_KEY,
+ * docs\RELEASING.md); V9XUPD.EXE refuses a release whose signature does not
  * verify under this key. Generated 2026-10-09. Replacing it means every
  * installed updater from then on refuses releases signed with the new key
  * until it is itself updated by hand, so a rotation ships the new key in a

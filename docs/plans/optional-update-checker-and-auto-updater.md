@@ -38,9 +38,9 @@ automatic upload, no client ID.
   substituted one. `build-release.ps1` writes `SIGNED.TXT` listing the version
   and each family zip's size and SHA-256, and signs it with an offline key. The
   updater ships the public key and refuses anything that does not verify.
-- **The private key** lives outside the repository, in the developer's environment or a private `KEY=value` file, as
-  `V9X_SIGNING_KEY=<64 hex seed>`, never in the repository. Only a release
-  build needs it.
+- **The private key** lives outside the repository, in the developer's
+  environment or a private `KEY=value` file (`docs/RELEASING.md`), as
+  `V9X_SIGNING_KEY=<64 hex seed>`. Only a release build needs it.
 - **Downgrade protection is the signed version**, compared numerically against
   the updater's own compiled-in version. The server's `sequence=` is assigned
   at publish time, so it cannot be signed and is not trusted.
