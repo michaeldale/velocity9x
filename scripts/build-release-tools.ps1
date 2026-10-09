@@ -2,6 +2,7 @@
 #
 #   v9xsign.exe   derive the release public key, sign SIGNED.TXT, verify it
 #   v9xunzip.exe  extract a release zip with the updater's own zip reader
+#   v9xinfplan.exe  plan every model of an INF with the updater's INF subset
 #
 # Both link the same src\common modules V9XUPD.EXE does, so a file v9xsign
 # accepts and an archive v9xunzip extracts are ones the updater will too.
@@ -35,7 +36,10 @@ $tools = @(
         "src\common\sha512.c") },
     @{ Name = "v9xunzip.exe"; Sources = @(
         "tools\release\v9xunzip.c", "src\common\zipread.c",
-        "src\common\inflate.c", "src\common\crc32.c") }
+        "src\common\inflate.c", "src\common\crc32.c") },
+    @{ Name = "v9xinfplan.exe"; Sources = @(
+        "tools\release\v9xinfplan.c", "src\common\update_inf.c",
+        "src\common\update_proto.c") }
 )
 
 Push-Location $outputDir

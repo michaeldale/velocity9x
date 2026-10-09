@@ -6,7 +6,12 @@
 # import audit at the end is the same contract the other tools keep.
 [CmdletBinding()]
 param(
-    [string]$BuildId
+    [string]$BuildId,
+    # Trust the committed test key instead of the release key, for an update
+    # cycle against a local fixture signed with it (release_key.h). The build
+    # id gains -testkey so such a binary is never mistaken for a shipped one;
+    # no package script passes this.
+    [switch]$TestKey
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +25,11 @@ if (-not $BuildId) {
 }
 if ($BuildId -notmatch '^[A-Za-z0-9._+-]+$') {
     throw "BuildId may contain only letters, digits, dot, underscore, plus, and hyphen."
+}
+$keyDefines = @()
+if ($TestKey) {
+    $BuildId = "$BuildId-testkey"
+    $keyDefines = @("-dV9X_RELEASE_TEST_KEY")
 }
 
 # ADVAPI32 for the display driver key (V9xFamily, InfSection) and the
@@ -42,8 +52,10 @@ $includeDir = Join-Path $repoRoot "include"
 $sources = @(
     (Join-Path $diagDir "update_win32.c"),
     (Join-Path $diagDir "update_net_win32.c"),
-    (Join-Path $repoRoot "src\common\update_proto.c")
-)
+    (Join-Path $diagDir "update_install_win32.c")
+) + @("update_proto.c", "update_release.c", "update_inf.c", "sha256.c",
+      "sha512.c", "ed25519.c", "crc32.c", "inflate.c", "zipread.c" |
+    ForEach-Object { Join-Path $repoRoot "src\common\$_" })
 $executable = Join-Path $outputDir "v9xupd.exe"
 $mapFile = Join-Path $outputDir "v9xupd.map"
 $linkFile = Join-Path $outputDir "v9xupd.lnk"
@@ -55,7 +67,7 @@ foreach ($source in $sources) {
         [IO.Path]::GetFileNameWithoutExtension($source) + ".obj")
     & $toolchain.Compiler "-bt=nt" "-zq" "-wx" "-we" "-zl" "-s" `
         "-i=$diagDir" "-i=$includeDir" `
-        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+        "-dV9X_BUILD_ID=`"$BuildId`"" @keyDefines "-fo=$object" $source
     if ($LASTEXITCODE -ne 0) {
         throw "Open Watcom failed to compile $source."
     }

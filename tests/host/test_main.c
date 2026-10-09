@@ -62,6 +62,10 @@ unsigned int v9x_run_update_release_tests(void);
  * convention. */
 unsigned int v9x_run_inflate_tests(void);
 
+/* tests\host\test_update_inf.c: the INF subset an update applies, same
+ * convention. */
+unsigned int v9x_run_update_inf_tests(void);
+
 /* tests\host\test_d3dmode.c: which Direct3D back end the SYSTEM.INI setting
  * and the chip's engine descriptor resolve to, same convention. */
 unsigned int v9x_run_d3dmode_tests(void);
@@ -1188,6 +1192,7 @@ int main(int argc, char **argv)
     failures += v9x_run_crypto_tests();
     failures += v9x_run_update_release_tests();
     failures += v9x_run_inflate_tests();
+    failures += v9x_run_update_inf_tests();
     failures += v9x_run_pe_export_tests();
     failures += v9x_run_gl_dispatch_tests();
     failures += v9x_run_d3dmode_tests();

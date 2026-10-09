@@ -19,14 +19,22 @@ function Write-V9xSignedRelease {
         [Parameter(Mandatory = $true)][string]$BuildId,
         # Objects with .Family and .Name (the zip's file name in ReleaseDir).
         [Parameter(Mandatory = $true)][object[]]$Packages,
-        [string]$EnvFile
+        [string]$EnvFile,
+        # Sign with the committed test seed (tests\host\test_update_release.c)
+        # for an update-cycle fixture that only a build-update.ps1 -TestKey
+        # V9XUPD.EXE accepts. Never for a release.
+        [switch]$TestKey
     )
 
     & (Join-Path $RepoRoot "scripts\build-release-tools.ps1") | Out-Null
     $signTool = Join-Path $RepoRoot "build\release-tools\v9xsign.exe"
 
-    $keyFromEnvironment = [bool]$env:V9X_SIGNING_KEY
-    if (-not $keyFromEnvironment) {
+    $savedKey = $env:V9X_SIGNING_KEY
+    if ($TestKey) {
+        $env:V9X_SIGNING_KEY =
+            "76397855100102030405060708090a0b0c0d0e0f101112131415161718191a1b"
+    }
+    if (-not $env:V9X_SIGNING_KEY) {
         if (-not $EnvFile) {
             $EnvFile = $env:V9X_SIGNING_ENV_FILE
         }
@@ -49,8 +57,10 @@ function Write-V9xSignedRelease {
         # refuses the release.
         $headerText = Get-Content -LiteralPath (Join-Path $RepoRoot `
             "include\velocity9x\release_key.h") -Raw
-        if ($headerText -notmatch 'V9X_RELEASE_PUBLIC_KEY_HEX\s*\\\s*"([0-9a-f]{64})"') {
-            throw "include\velocity9x\release_key.h has no V9X_RELEASE_PUBLIC_KEY_HEX."
+        $keyName = if ($TestKey) { 'V9X_RELEASE_TEST_PUBLIC_KEY_HEX' }
+                   else { 'V9X_RELEASE_PUBLIC_KEY_HEX' }
+        if ($headerText -notmatch "$keyName\s*\\\s*`"([0-9a-f]{64})`"") {
+            throw "include\velocity9x\release_key.h has no $keyName."
         }
         $publicKey = $Matches[1]
         $derived = (& $signTool public env | Out-String).Trim()
@@ -94,7 +104,11 @@ function Write-V9xSignedRelease {
                 $body + "[Signature]`r`nEd25519=$signature`r`n"))
         return $signedPath
     } finally {
-        if (-not $keyFromEnvironment) {
+        # Leave the environment as it was: a key read from the .env file
+        # (or the test seed) does not outlive the call.
+        if ($savedKey) {
+            $env:V9X_SIGNING_KEY = $savedKey
+        } else {
             Remove-Item Env:\V9X_SIGNING_KEY -ErrorAction SilentlyContinue
         }
     }

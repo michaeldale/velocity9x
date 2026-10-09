@@ -2,7 +2,11 @@
 
 Date: 2026-09-27, rewritten 2026-10-09
 
-Status: in progress. The 2026-09-27 version of this plan (a signed channel
+Status: phases 1-5 implemented. Gates passed: report submission (V9X-AF9SKW),
+host tests, and three update cycles on the ViRGE guest against a local
+fixture (docs/decisions/2026-10-09-updater-cycles-on-the-virge-guest.md).
+Open: the physical-machine cycle, deploying the plugin's SIGNED.TXT change,
+and the first signed release. The 2026-09-27 version of this plan (a signed channel
 index, periodic checks, `AutoInstall`, 20-cycle gates per install model) is
 superseded by the decisions below, made with Michael on 2026-10-09.
 

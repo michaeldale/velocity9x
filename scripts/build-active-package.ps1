@@ -172,6 +172,16 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\driver-stage-probe\v9xstage.e
     -Destination (Join-Path $outputDir "V9XSTAGE.EXE") -Force
 Set-Content -LiteralPath (Join-Path $outputDir "VELOCITY9X.INF") `
     -Value $infLines -Encoding Ascii
+# Every model the INF offers must be one V9XUPD.EXE can apply itself
+# (src\common\update_inf.c), or an installed user's update would be
+# refused for a reason only this build could have caught.
+& (Join-Path $PSScriptRoot "build-release-tools.ps1") | Out-Null
+& (Join-Path $repoRoot "build\release-tools\v9xinfplan.exe") `
+    (Join-Path $outputDir "VELOCITY9X.INF") | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw ("The generated INF has a model V9XUPD.EXE cannot apply; " +
+           "v9xinfplan printed why above.")
+}
 # INSTALL.TXT is a template: the family summary, the model-selection step and
 # the after-first-boot mode wording all come from the manifest, so one file
 # cannot describe another family's package (the vbe package shipped S3

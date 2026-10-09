@@ -35,6 +35,8 @@ function Get-V9xHostSourceNames {
         'src\common\crc32.c',
         'src\common\inflate.c',
         'src\common\zipread.c',
+        # The INF subset an update applies.
+        'src\common\update_inf.c',
         'src\common\d3dmode.c',
         'src\common\vsync.c',
         'src\common\vbe_crtc.c',
@@ -149,6 +151,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_crypto.c',
         'tests\host\test_update_release.c',
         'tests\host\test_inflate.c',
+        'tests\host\test_update_inf.c',
         'tests\host\test_d3dmode.c',
         'tests\host\test_vsync.c',
         'tests\host\test_vbe_crtc.c',

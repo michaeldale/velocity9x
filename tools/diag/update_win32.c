@@ -7,20 +7,30 @@
  * Properties pages start it; nothing network-related runs inside that
  * process.
  *
- *   V9XUPD /REPORT  run V9XTRACE.EXE, show what would be sent, send it.
+ *   V9XUPD [/CHECK]  ask the server for a newer release; offer to install it.
+ *   V9XUPD /REPORT   run V9XTRACE.EXE, show what would be sent, send it.
+ *   V9XUPD /FINISH   after the restart an update needs: did it take?
+ *   /SERVER=http://host[:port]  another server, for a local test fixture.
+ *
+ * Nothing the server says about a release is believed until the release's
+ * SIGNED.TXT verifies against the key compiled in (release_key.h): plain
+ * HTTP can be rewritten on the way.
  *
  * Runtime-free like the other diagnostic tools: static imports are KERNEL32,
- * USER32 and GDI32, and the network DLLs are loaded at run time by
- * update_net_win32.c.
+ * USER32, GDI32 and ADVAPI32, and the network DLLs are loaded at run time
+ * by update_net_win32.c.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/release_key.h"
+#include "velocity9x/sha256.h"
 #include "velocity9x/update_proto.h"
 #include "update_net_win32.h"
 #include "update_resource.h"
+#include "update_win32.h"
 
 #define V9X_UPD_TITLE "Velocity9x"
 
@@ -36,7 +46,6 @@
  * the files already on disk are still worth sending. */
 #define V9X_TRACE_WAIT_MS    60000ul
 
-#define V9X_WM_PROGRESS (WM_APP + 1)
 #define V9X_WM_FINISHED (WM_APP + 2)
 
 /* A report's outcome, set by the worker thread. */
@@ -64,7 +73,6 @@ struct v9x_report_state {
     char code[16];
     char message[256];
     char skipped[256];
-    HWND progress;
 };
 
 struct v9x_memory_sink {
@@ -74,6 +82,9 @@ struct v9x_memory_sink {
 };
 
 static HINSTANCE v9x_instance;
+/* The update server: michaeldale.com.au, or /SERVER='s test fixture. */
+static struct v9x_update_url v9x_server;
+static BOOL v9x_server_override;
 static struct v9x_report_state v9x_report;
 static BYTE v9x_reply[V9X_REPLY_MAX];
 
@@ -416,11 +427,11 @@ static BOOL v9x_report_path(const struct v9x_report_file *file,
 }
 
 /*
- * The worker thread: one POST per file, the snapshot first, as the server
- * brief's "Suggested flow" and per-status table say. The key lives only in
- * this function; it is never written to disk.
+ * The report job, on the worker thread: one POST per file, the snapshot
+ * first, as the server brief's "Suggested flow" and per-status table say.
+ * The key lives only in this function; it is never written to disk.
  */
-static DWORD WINAPI v9x_report_worker(LPVOID parameter)
+static void v9x_report_job(void)
 {
     char key[40];
     char path[V9X_UPDATE_PATH_MAX + V9X_DESCRIPTION_MAX * 3 + 64];
@@ -428,7 +439,6 @@ static DWORD WINAPI v9x_report_worker(LPVOID parameter)
     BYTE *buffer;
     unsigned int index;
 
-    (void)parameter;
     key[0] = '\0';
     v9x_report.outcome = V9X_REPORT_SENT;
     buffer = (BYTE *)VirtualAlloc(0, V9X_REPORT_FILE_MAX, MEM_COMMIT,
@@ -447,7 +457,13 @@ static DWORD WINAPI v9x_report_worker(LPVOID parameter)
         struct v9x_memory_sink sink;
         int result;
 
-        PostMessageA(v9x_report.progress, V9X_WM_PROGRESS, index, 0);
+        {
+            char line[64];
+
+            wsprintfA(line, "Sending %s (%u of %u)...", file->name,
+                      index + 1u, v9x_report.count);
+            v9x_progress_set(line);
+        }
         if (!v9x_report_read(file, buffer)) {
             v9x_report_note_skip(file->name, "could not be read");
             continue;
@@ -546,46 +562,73 @@ done:
     if (buffer != 0) {
         VirtualFree(buffer, 0ul, MEM_RELEASE);
     }
-    PostMessageA(v9x_report.progress, V9X_WM_FINISHED, 0, 0);
+}
+
+/*
+ * The progress dialog: one line of text while a job runs on a worker
+ * thread, so a slow modem or a stalled server never leaves a window that
+ * does not repaint. The job sets the text through v9x_progress_set, whose
+ * SetDlgItemTextA is answered by this thread's dialog loop.
+ */
+typedef void (*v9x_job_fn)(void);
+
+static v9x_job_fn v9x_job;
+static HWND v9x_progress_window;
+static BOOL v9x_job_started;
+
+void v9x_progress_set(const char *text)
+{
+    if (v9x_progress_window != 0) {
+        SetDlgItemTextA(v9x_progress_window, V9X_UPD_IDC_STATUS, text);
+    }
+}
+
+static DWORD WINAPI v9x_job_thread(LPVOID parameter)
+{
+    (void)parameter;
+    v9x_job();
+    PostMessageA(v9x_progress_window, V9X_WM_FINISHED, 0, 0);
     return 0ul;
 }
 
 static BOOL CALLBACK v9x_progress_dialog(HWND dialog, UINT message,
                                          WPARAM wparam, LPARAM lparam)
 {
-    char line[64];
     DWORD thread_id;
     HANDLE thread;
 
-    (void)lparam;
+    (void)wparam;
     switch (message) {
     case WM_INITDIALOG:
-        v9x_report.progress = dialog;
-        SetDlgItemTextA(dialog, V9X_UPD_IDC_STATUS,
-                        "Connecting to the update server...");
-        thread = CreateThread(0, 0ul, v9x_report_worker, 0, 0ul, &thread_id);
+        v9x_progress_window = dialog;
+        SetDlgItemTextA(dialog, V9X_UPD_IDC_STATUS, (const char *)lparam);
+        thread = CreateThread(0, 0ul, v9x_job_thread, 0, 0ul, &thread_id);
         if (thread == 0) {
-            v9x_report.outcome = V9X_REPORT_FAILED;
-            v9x_copy(v9x_report.message, sizeof(v9x_report.message),
-                     "Could not start the sending thread.");
             EndDialog(dialog, 0);
             return TRUE;
         }
+        v9x_job_started = TRUE;
         CloseHandle(thread);
         return TRUE;
-    case V9X_WM_PROGRESS:
-        if ((unsigned int)wparam < v9x_report.count) {
-            wsprintfA(line, "Sending %s (%u of %u)...",
-                      v9x_report.files[wparam].name,
-                      (unsigned int)wparam + 1u, v9x_report.count);
-            SetDlgItemTextA(dialog, V9X_UPD_IDC_STATUS, line);
-        }
-        return TRUE;
     case V9X_WM_FINISHED:
+        v9x_progress_window = 0;
         EndDialog(dialog, 0);
         return TRUE;
     }
     return FALSE;
+}
+
+/* Run job on a worker thread behind the progress dialog. FALSE only when
+ * the thread could not be started. */
+static BOOL v9x_run_job(v9x_job_fn job, const char *first_text)
+{
+    v9x_job = job;
+    v9x_job_started = FALSE;
+    (void)DialogBoxParamA(v9x_instance,
+                          MAKEINTRESOURCEA(V9X_UPD_DLG_PROGRESS), 0,
+                          v9x_progress_dialog, (LPARAM)first_text);
+    v9x_progress_window = 0;
+    return v9x_job_started;
 }
 
 static void v9x_copy_to_clipboard(HWND owner, const char *text)
@@ -724,6 +767,11 @@ static void v9x_run_report(void)
         v9x_copy(v9x_report.endpoint.path,
                  sizeof(v9x_report.endpoint.path), V9X_UPDATE_REPORT_PATH);
     }
+    if (v9x_server_override) {
+        v9x_copy(v9x_report.endpoint.host,
+                 sizeof(v9x_report.endpoint.host), v9x_server.host);
+        v9x_report.endpoint.port = v9x_server.port;
+    }
 
     if (!v9x_net_present(v9x_report.endpoint.host)) {
         v9x_copy(text, sizeof(text),
@@ -746,9 +794,10 @@ static void v9x_run_report(void)
                         v9x_report_dialog, 0) != IDOK) {
         return;
     }
-    (void)DialogBoxParamA(v9x_instance,
-                          MAKEINTRESOURCEA(V9X_UPD_DLG_PROGRESS), 0,
-                          v9x_progress_dialog, 0);
+    if (!v9x_run_job(v9x_report_job, "Connecting to the update server...")) {
+        v9x_message(0, "Could not start sending.", MB_ICONEXCLAMATION);
+        return;
+    }
 
     if (v9x_report.code[0] != '\0') {
         v9x_report_record();
@@ -774,6 +823,498 @@ static void v9x_run_report(void)
         v9x_append(text, sizeof(text), v9x_report.skipped);
     }
     v9x_message(0, text, MB_ICONEXCLAMATION);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Check, download and install
+ * ------------------------------------------------------------------ */
+
+/* Generous bounds on what each fetch may return: a check reply is a dozen
+ * lines, SIGNED.TXT one section per family, notes a page of text, and a
+ * package about 400 KB (the largest 0.14.0 zip is 394 KB). */
+#define V9X_CHECK_REPLY_MAX  8192u
+#define V9X_SIGNED_MAX       16384u
+#define V9X_NOTES_MAX        16384u
+#define V9X_PACKAGE_MAX      (8ul * 1024ul * 1024ul)
+
+struct v9x_check_state {
+    char status[24];
+    char latest[V9X_RELEASE_VERSION_MAX];
+    char message[160];
+    char notes_url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
+    char signed_url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
+    char package_url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
+    char package_file[V9X_RELEASE_FILE_MAX];
+    char package_size[16];
+    char package_sha256[72];
+    /* Set only when the signed file verified and agreed with the reply. */
+    BOOL verified;
+    char error[256];
+};
+
+/* A sink that hashes as it stores and refuses past its capacity. */
+struct v9x_package_sink {
+    BYTE *data;
+    DWORD capacity;
+    DWORD used;
+    struct v9x_sha256 hash;
+};
+
+static struct v9x_check_state v9x_check;
+static struct v9x_update_job v9x_update;
+/* The large buffers, allocated when a check starts rather than static:
+ * Watcom's linker writes _BSS into the image, and these would add some
+ * 140 KB to an executable that has to fit each family's floppy. */
+struct v9x_check_buffers {
+    struct v9x_inf_plan plan;
+    char signed_text[V9X_SIGNED_MAX + 1u];
+    char notes_text[V9X_NOTES_MAX + 1u];
+    char check_reply[V9X_CHECK_REPLY_MAX + 1u];
+};
+
+static struct v9x_check_buffers *v9x_buffers;
+
+static BOOL v9x_package_sink_write(void *context, const BYTE *data,
+                                   DWORD length)
+{
+    struct v9x_package_sink *sink = (struct v9x_package_sink *)context;
+    DWORD index;
+
+    if (sink->used + length > sink->capacity) {
+        return FALSE;
+    }
+    for (index = 0ul; index < length; ++index) {
+        sink->data[sink->used + index] = data[index];
+    }
+    sink->used += length;
+    v9x_sha256_update(&sink->hash, data, length);
+    return TRUE;
+}
+
+/* GET url into a sink. V9X_NET_* as v9x_net_send, plus V9X_NET_FAILED for
+ * a URL that is not plain http or a reply that is not 200. */
+static int v9x_get(const char *url, v9x_net_sink sink, void *context)
+{
+    struct v9x_update_url parts;
+    struct v9x_net_request request;
+    struct v9x_net_reply reply;
+    int result;
+
+    if (!v9x_update_url_split(url, &parts)) {
+        return V9X_NET_FAILED;
+    }
+    /* /SERVER redirects every fetch, including the URLs the reply hands
+     * back, so a local fixture serves the whole exchange. */
+    if (v9x_server_override) {
+        v9x_copy(parts.host, sizeof(parts.host), v9x_server.host);
+        parts.port = v9x_server.port;
+    }
+    request.method = "GET";
+    request.host = parts.host;
+    request.port = parts.port;
+    request.path = parts.path;
+    request.extra_header = 0;
+    request.body = 0;
+    request.body_length = 0ul;
+    request.sink = sink;
+    request.sink_context = context;
+    result = v9x_net_send(&request, &reply);
+    if (result == V9X_NET_OK && reply.status != 200ul) {
+        return V9X_NET_FAILED;
+    }
+    return result;
+}
+
+static void v9x_check_value(const char *section, const char *key,
+                            char *value, DWORD capacity, DWORD length)
+{
+    if (!v9x_update_ini_value(v9x_buffers->check_reply, length, section,
+                              key, value, capacity)) {
+        value[0] = '\0';
+    }
+}
+
+/*
+ * The check job: ask the server, and when it offers an update, fetch and
+ * verify SIGNED.TXT and hold the reply to it. Only the signed file's
+ * version, size and SHA-256 are used from here on; the reply's are
+ * compared, never trusted.
+ */
+static void v9x_check_job(void)
+{
+    struct v9x_memory_sink sink;
+    struct v9x_release_info *release = &v9x_update.release;
+    static const v9x_u8 key[32] = V9X_RELEASE_PUBLIC_KEY;
+    char encoded_family[96];
+    char path[V9X_UPDATE_PATH_MAX];
+    char url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
+    char report_url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
+    v9x_u32 covered = 0ul;
+    v9x_u8 reply_digest[32];
+    int result;
+
+    v9x_check.verified = FALSE;
+    v9x_check.error[0] = '\0';
+    if (!v9x_update_url_encode(v9x_update.install.family, encoded_family,
+                               sizeof(encoded_family))) {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 "The card family name is too long.");
+        return;
+    }
+    wsprintfA(path, V9X_UPDATE_CHECK_PATH "?app=" V9X_UPDATE_APP
+              "&version=" V9X_VERSION_STRING "&family=%s", encoded_family);
+    wsprintfA(url, "http://%s:%u%s", v9x_server.host,
+              (unsigned int)v9x_server.port, path);
+
+    sink.data = (BYTE *)v9x_buffers->check_reply;
+    sink.capacity = sizeof(v9x_buffers->check_reply);
+    sink.used = 0ul;
+    result = v9x_get(url, v9x_memory_sink_write, &sink);
+    if (result != V9X_NET_OK) {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 result == V9X_NET_NO_NETWORK
+                     ? "The update server could not be reached."
+                     : "The update server's reply could not be read.");
+        return;
+    }
+    v9x_check_value("update", "status", v9x_check.status,
+                    sizeof(v9x_check.status), sink.used);
+    v9x_check_value("update", "latest", v9x_check.latest,
+                    sizeof(v9x_check.latest), sink.used);
+    v9x_check_value("update", "message", v9x_check.message,
+                    sizeof(v9x_check.message), sink.used);
+    v9x_check_value("update", "notes", v9x_check.notes_url,
+                    sizeof(v9x_check.notes_url), sink.used);
+    v9x_check_value("update", "signed", v9x_check.signed_url,
+                    sizeof(v9x_check.signed_url), sink.used);
+    v9x_check_value("package", "url", v9x_check.package_url,
+                    sizeof(v9x_check.package_url), sink.used);
+    v9x_check_value("package", "file", v9x_check.package_file,
+                    sizeof(v9x_check.package_file), sink.used);
+    v9x_check_value("package", "size", v9x_check.package_size,
+                    sizeof(v9x_check.package_size), sink.used);
+    v9x_check_value("package", "sha256", v9x_check.package_sha256,
+                    sizeof(v9x_check.package_sha256), sink.used);
+
+    /* The report URL the server advertises, for /REPORT next time. */
+    {
+        struct v9x_update_url parts;
+
+        v9x_check_value("update", "report", report_url, sizeof(report_url),
+                        sink.used);
+        if (report_url[0] != '\0' &&
+            v9x_update_url_split(report_url, &parts)) {
+            CreateDirectoryA(V9X_DIAG_DIR, 0);
+            WritePrivateProfileStringA("Velocity9xUpdate", "ReportUrl",
+                                       report_url, V9X_DIAG_UPDATE_INI);
+        }
+    }
+
+    if (lstrcmpA(v9x_check.status, "update") != 0) {
+        return;
+    }
+
+    v9x_progress_set("Checking the release signature...");
+    if (v9x_check.signed_url[0] == '\0') {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 "The server offers no signed release file for this "
+                 "version, so it cannot be installed from here.");
+        return;
+    }
+    sink.data = (BYTE *)v9x_buffers->signed_text;
+    sink.capacity = sizeof(v9x_buffers->signed_text);
+    sink.used = 0ul;
+    if (v9x_get(v9x_check.signed_url, v9x_memory_sink_write, &sink) !=
+        V9X_NET_OK) {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 "The signed release file could not be downloaded.");
+        return;
+    }
+    if (!v9x_release_verify(v9x_buffers->signed_text, sink.used, key,
+                            &covered) ||
+        !v9x_release_read(v9x_buffers->signed_text, covered, V9X_UPDATE_APP,
+                          v9x_update.install.family, release)) {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 "The release file's signature does not verify, or it has "
+                 "no package for this card. Nothing was installed. This can "
+                 "mean the download was altered on the way.");
+        return;
+    }
+    /* The signed file decides; the reply must agree with it. */
+    if (lstrcmpA(release->version, v9x_check.latest) != 0 ||
+        v9x_update_version_compare(release->version,
+                                   V9X_VERSION_STRING) != 1 ||
+        lstrcmpA(release->file, v9x_check.package_file) != 0 ||
+        !v9x_release_hex_digest(v9x_check.package_sha256, reply_digest)) {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 "The server's reply does not match the signed release "
+                 "file, or offers a version that is not newer. Nothing was "
+                 "installed.");
+        return;
+    }
+    {
+        unsigned int index;
+
+        for (index = 0u; index < 32u; ++index) {
+            if (reply_digest[index] != release->sha256[index]) {
+                v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                         "The server's package hash does not match the "
+                         "signed release file. Nothing was installed.");
+                return;
+            }
+        }
+    }
+    v9x_check.verified = TRUE;
+
+    /* Release notes are a courtesy: a failure leaves the box empty. */
+    v9x_buffers->notes_text[0] = '\0';
+    if (v9x_check.notes_url[0] != '\0') {
+        v9x_progress_set("Reading the release notes...");
+        sink.data = (BYTE *)v9x_buffers->notes_text;
+        sink.capacity = sizeof(v9x_buffers->notes_text);
+        sink.used = 0ul;
+        if (v9x_get(v9x_check.notes_url, v9x_memory_sink_write, &sink) !=
+            V9X_NET_OK) {
+            v9x_buffers->notes_text[0] = '\0';
+        }
+    }
+}
+
+/* The download job: fetch the package, hash it against the signed
+ * SHA-256, then unpack and stage (v9x_install_prepare). */
+static void v9x_download_job(void)
+{
+    struct v9x_package_sink sink;
+    v9x_u8 digest[32];
+    unsigned int index;
+    int result;
+
+    v9x_update.error[0] = '\0';
+    if (v9x_update.release.size > V9X_PACKAGE_MAX) {
+        v9x_copy(v9x_update.error, sizeof(v9x_update.error),
+                 "The package is larger than this updater accepts.");
+        return;
+    }
+    v9x_update.zip = (BYTE *)VirtualAlloc(0, v9x_update.release.size,
+                                          MEM_COMMIT, PAGE_READWRITE);
+    if (v9x_update.zip == 0) {
+        v9x_copy(v9x_update.error, sizeof(v9x_update.error),
+                 "Not enough memory to download the package.");
+        return;
+    }
+    sink.data = v9x_update.zip;
+    sink.capacity = v9x_update.release.size;
+    sink.used = 0ul;
+    v9x_sha256_init(&sink.hash);
+    v9x_progress_set("Downloading the new release...");
+    result = v9x_get(v9x_check.package_url, v9x_package_sink_write, &sink);
+    if (result != V9X_NET_OK) {
+        v9x_copy(v9x_update.error, sizeof(v9x_update.error),
+                 result == V9X_NET_REFUSED
+                     ? "The package is larger than the signed release "
+                       "file says."
+                     : "The download failed part-way.");
+        return;
+    }
+    v9x_sha256_final(&sink.hash, digest);
+    if (sink.used != v9x_update.release.size) {
+        v9x_copy(v9x_update.error, sizeof(v9x_update.error),
+                 "The package is not the size the signed release file "
+                 "says.");
+        return;
+    }
+    for (index = 0u; index < 32u; ++index) {
+        if (digest[index] != v9x_update.release.sha256[index]) {
+            v9x_copy(v9x_update.error, sizeof(v9x_update.error),
+                     "The package's SHA-256 does not match the signed "
+                     "release file. Nothing was installed.");
+            return;
+        }
+    }
+    v9x_update.zip_length = sink.used;
+
+    v9x_progress_set("Unpacking...");
+    v9x_update.plan = &v9x_buffers->plan;
+    if (!v9x_install_prepare(&v9x_update)) {
+        /* v9x_install_prepare wrote the reason. */
+        return;
+    }
+}
+
+static BOOL CALLBACK v9x_update_dialog(HWND dialog, UINT message,
+                                       WPARAM wparam, LPARAM lparam)
+{
+    char headline[160];
+
+    (void)lparam;
+    switch (message) {
+    case WM_INITDIALOG:
+        wsprintfA(headline, "Velocity9x %s is available. This computer "
+                  "has %s, for the %s family.", v9x_update.release.version,
+                  V9X_VERSION_STRING, v9x_update.install.family);
+        SetDlgItemTextA(dialog, V9X_UPD_IDC_HEADLINE, headline);
+        SetDlgItemTextA(dialog, V9X_UPD_IDC_NOTES,
+                        v9x_buffers->notes_text[0] != '\0'
+                            ? v9x_buffers->notes_text
+                            : "The release notes could not be read.");
+        /* Focus on the button, not the notes, which would otherwise come
+         * up with all their text selected. */
+        SetFocus(GetDlgItem(dialog, IDOK));
+        return FALSE;
+    case WM_COMMAND:
+        if (LOWORD(wparam) == IDOK || LOWORD(wparam) == IDCANCEL) {
+            EndDialog(dialog, LOWORD(wparam));
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
+static void v9x_record_check(const char *result)
+{
+    SYSTEMTIME now;
+    char text[32];
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    GetLocalTime(&now);
+    wsprintfA(text, "%04u-%02u-%02u %02u:%02u", now.wYear, now.wMonth,
+              now.wDay, now.wHour, now.wMinute);
+    WritePrivateProfileStringA("Velocity9xUpdate", "LastCheck", text,
+                               V9X_DIAG_UPDATE_INI);
+    WritePrivateProfileStringA("Velocity9xUpdate", "LastCheckResult", result,
+                               V9X_DIAG_UPDATE_INI);
+    WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_UPDATE_INI);
+}
+
+/*
+ * The Check for updates... button: network present, then consent, then
+ * the check, then - for a verified newer release - the offer, the
+ * download, the staging and the restart. Each refusal says why and what
+ * to do instead.
+ */
+static void v9x_run_check(void)
+{
+    char text[640];
+    char why[320];
+
+    v9x_buffers = (struct v9x_check_buffers *)VirtualAlloc(0,
+        sizeof(*v9x_buffers), MEM_COMMIT, PAGE_READWRITE);
+    if (v9x_buffers == 0) {
+        v9x_message(0, "Not enough memory to check for updates.",
+                    MB_ICONEXCLAMATION);
+        return;
+    }
+    if (!v9x_install_find(&v9x_update.install, why, sizeof(why))) {
+        v9x_message(0, why, MB_ICONEXCLAMATION);
+        return;
+    }
+    if (!v9x_net_present(v9x_server.host)) {
+        v9x_message(0, "No network connection was found, so Velocity9x "
+                       "cannot check for updates from this computer.\r\n\r\n"
+                       "New releases are listed at "
+                       "https://github.com/michaeldale/velocity9x/releases.",
+                       MB_ICONEXCLAMATION);
+        return;
+    }
+    wsprintfA(text, "Check for a newer Velocity9x?\r\n\r\nThis contacts %s "
+              "and sends only the installed version (%s) and card family "
+              "(%s).", v9x_server.host, V9X_VERSION_STRING,
+              v9x_update.install.family);
+    if (MessageBoxA(0, text, V9X_UPD_TITLE,
+                    MB_YESNO | MB_ICONQUESTION) != IDYES) {
+        return;
+    }
+
+    if (!v9x_run_job(v9x_check_job, "Contacting the update server...")) {
+        v9x_message(0, "Could not start the check.", MB_ICONEXCLAMATION);
+        return;
+    }
+    if (v9x_check.error[0] != '\0') {
+        v9x_record_check("error");
+        v9x_message(0, v9x_check.error, MB_ICONEXCLAMATION);
+        return;
+    }
+    if (lstrcmpA(v9x_check.status, "current") == 0) {
+        v9x_record_check("current");
+        wsprintfA(text, "Velocity9x %s is the latest release.",
+                  V9X_VERSION_STRING);
+        v9x_message(0, text, MB_ICONINFORMATION);
+        return;
+    }
+    if (lstrcmpA(v9x_check.status, "update") != 0 || !v9x_check.verified) {
+        v9x_record_check(v9x_check.status);
+        wsprintfA(text, "The update server answered: %s%s%s",
+                  v9x_check.status[0] != '\0' ? v9x_check.status
+                                              : "nothing usable",
+                  v9x_check.message[0] != '\0' ? ". " : ".",
+                  v9x_check.message);
+        v9x_message(0, text, MB_ICONEXCLAMATION);
+        return;
+    }
+    v9x_record_check("update");
+
+    if (DialogBoxParamA(v9x_instance, MAKEINTRESOURCEA(V9X_UPD_DLG_UPDATE),
+                        0, v9x_update_dialog, 0) != IDOK) {
+        return;
+    }
+    if (!v9x_run_job(v9x_download_job, "Downloading the new release...")) {
+        v9x_message(0, "Could not start the download.", MB_ICONEXCLAMATION);
+        return;
+    }
+    if (v9x_update.error[0] != '\0') {
+        v9x_message(0, v9x_update.error, MB_ICONEXCLAMATION);
+        return;
+    }
+    if (!v9x_install_commit(&v9x_update)) {
+        v9x_message(0, v9x_update.error, MB_ICONEXCLAMATION);
+        return;
+    }
+    wsprintfA(text, "Velocity9x %s is ready to install. It replaces the "
+              "driver files when Windows restarts; the current ones are "
+              "kept in %s.\r\n\r\nRestart Windows now?",
+              v9x_update.release.version, v9x_update.backup_dir);
+    if (MessageBoxA(0, text, V9X_UPD_TITLE, MB_YESNO | MB_ICONQUESTION) ==
+        IDYES) {
+        (void)ExitWindowsEx(EWX_REBOOT, 0ul);
+        return;
+    }
+    v9x_message(0, "The update will be installed the next time Windows "
+                   "restarts.", MB_ICONINFORMATION);
+}
+
+/* The value after "/NAME=" on the command line, up to the next space. */
+static BOOL v9x_switch_value(const char *switch_text, char *value,
+                             DWORD capacity)
+{
+    const char *command = GetCommandLineA();
+    DWORD length = v9x_length(switch_text);
+
+    for (; *command != '\0'; ++command) {
+        DWORD index;
+
+        for (index = 0ul; index < length; ++index) {
+            char left = command[index];
+
+            if (left >= 'a' && left <= 'z') {
+                left = (char)(left - 'a' + 'A');
+            }
+            if (left != switch_text[index]) {
+                break;
+            }
+        }
+        if (index != length) {
+            continue;
+        }
+        command += length;
+        for (index = 0ul; command[index] != '\0' && command[index] != ' ' &&
+                          index + 1ul < capacity; ++index) {
+            value[index] = command[index];
+        }
+        value[index] = '\0';
+        return index != 0ul;
+    }
+    return FALSE;
 }
 
 /* Whether the command line carries switch_text, without case. */
@@ -808,8 +1349,22 @@ void WINAPI V9xUpdateEntry(void)
     HANDLE mutex;
 
     v9x_instance = GetModuleHandleA(0);
-    /* One at a time: two copies would send the same files twice, or later
-     * stage two updates. */
+
+    /* /FINISH runs from RunOnce, before the desktop, and Windows waits for
+     * it: it checks silently and starts /RESULT to say how it went. Both
+     * come before the single-instance mutex, which /FINISH still holds
+     * when /RESULT starts. */
+    if (v9x_has_switch("/FINISH")) {
+        v9x_install_finish();
+        ExitProcess(0ul);
+    }
+    if (v9x_has_switch("/RESULT")) {
+        v9x_install_result();
+        ExitProcess(0ul);
+    }
+
+    /* One at a time: two copies would send the same files twice, or stage
+     * two updates. */
     mutex = CreateMutexA(0, FALSE, "Velocity9xUpdate");
     if (mutex != 0 && GetLastError() == ERROR_ALREADY_EXISTS) {
         v9x_message(0, "Velocity9x is already checking for updates or "
@@ -817,12 +1372,33 @@ void WINAPI V9xUpdateEntry(void)
         ExitProcess(1ul);
     }
 
+    v9x_copy(v9x_server.host, sizeof(v9x_server.host), V9X_UPDATE_HOST);
+    v9x_server.port = (v9x_u16)V9X_UPDATE_PORT;
+    {
+        char url[V9X_UPDATE_HOST_MAX + 16];
+
+        if (v9x_switch_value("/SERVER=", url, sizeof(url))) {
+            if (!v9x_update_url_split(url, &v9x_server)) {
+                v9x_message(0, "/SERVER= takes http://host[:port].",
+                            MB_ICONEXCLAMATION);
+                ExitProcess(1ul);
+            }
+            v9x_server_override = TRUE;
+        }
+    }
+
     if (v9x_has_switch("/REPORT")) {
         v9x_run_report();
         ExitProcess(0ul);
     }
-    v9x_message(0, "V9XUPD.EXE " V9X_VERSION_STRING ", build "
-                   V9X_BUILD_ID "\r\n\r\n"
-                   "/REPORT  send a diagnostic report", MB_ICONINFORMATION);
+    if (v9x_has_switch("/?")) {
+        v9x_message(0, "V9XUPD.EXE " V9X_VERSION_STRING ", build "
+                       V9X_BUILD_ID "\r\n\r\n"
+                       "/CHECK   check for a newer release (the default)\r\n"
+                       "/REPORT  send a diagnostic report",
+                       MB_ICONINFORMATION);
+        ExitProcess(0ul);
+    }
+    v9x_run_check();
     ExitProcess(0ul);
 }

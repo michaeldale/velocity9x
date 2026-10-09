@@ -764,7 +764,6 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
                         v9x_page_status.ddraw_test);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
                         "Version: " V9X_VERSION_STRING);
-        SetDlgItemTextA(dialog, V9X_IDC_BUILD, "Build: " V9X_BUILD_ID);
         return TRUE;
     case WM_COMMAND:
         if (LOWORD(wparam) == V9X_IDC_COPY_REPORT) {
@@ -774,6 +773,10 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         }
         if (LOWORD(wparam) == V9X_IDC_ABOUT) {
             v9x_page_about(dialog);
+            return TRUE;
+        }
+        if (LOWORD(wparam) == V9X_IDC_CHECK_UPDATES) {
+            v9x_page_launch_update(dialog, "/CHECK");
             return TRUE;
         }
         break;

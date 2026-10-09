@@ -17,6 +17,20 @@ If restoring the backup is inconvenient:
 Do not delete the active Velocity9x files before switching the adapter back to
 standard VGA. Do not overwrite the known-good backup with a failed boot.
 
+AFTER AN UPDATE FROM "CHECK FOR UPDATES"
+
+The updater keeps the files it replaced in C:\V9XDIAG\UPDATE\BACKUP\V<old
+version>, for example V0_15_0, with REGISTRY.REG (the old display settings)
+and OEM.INF (the old INF). If Windows does not reach a desktop after the
+update restart:
+
+1. Press F8 before Windows starts and choose Safe Mode Command Prompt Only.
+2. Copy the old files back, for example:
+      CD C:\V9XDIAG\UPDATE\BACKUP\V0_15_0
+      COPY V9X*.* C:\WINDOWS\SYSTEM
+3. Restart. Once the desktop is back, double-click REGISTRY.REG in the same
+   folder to restore the old display settings, and restart again.
+
 After a failed LIVE mode switch (garbled desktop without a crash), a plain
 reboot is usually sufficient: the boot-time mode path is unchanged and will
 re-enter the registry-selected mode. Use the steps above only if the machine

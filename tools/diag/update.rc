@@ -29,6 +29,20 @@ BEGIN
     LTEXT           "", V9X_UPD_IDC_STATUS, 10, 16, 200, 8
 END
 
+V9X_UPD_DLG_UPDATE DIALOG 0, 0, 280, 200
+STYLE DS_MODALFRAME | DS_3DLOOK | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Velocity9x update"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "", V9X_UPD_IDC_HEADLINE, 7, 7, 266, 16, SS_NOPREFIX
+    EDITTEXT        V9X_UPD_IDC_NOTES, 7, 26, 266, 112,
+                    ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    LTEXT           "Update now downloads the new release, checks its signature, keeps the current files in C:\\V9XDIAG\\UPDATE\\BACKUP, and installs it when Windows next restarts.",
+                    -1, 7, 143, 266, 26
+    DEFPUSHBUTTON   "Update now", IDOK, 169, 179, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 223, 179, 50, 14
+END
+
 V9X_UPD_DLG_SENT DIALOG 0, 0, 240, 158
 STYLE DS_MODALFRAME | DS_3DLOOK | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Velocity9x report sent"

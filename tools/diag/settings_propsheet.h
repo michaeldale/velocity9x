@@ -10,7 +10,6 @@
 /* The second page: every control that writes SYSTEM.INI. */
 #define V9X_ID_PAGE_ADVANCED  2100
 #define V9X_IDC_ADAPTER       2001
-#define V9X_IDC_BUILD         2008
 #define V9X_IDC_FRAMEBUFFER   2009
 #define V9X_IDC_GDI_TEST      2010
 #define V9X_IDC_COPY_REPORT   2011

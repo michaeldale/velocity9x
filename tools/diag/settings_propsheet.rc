@@ -75,7 +75,8 @@ BEGIN
     LTEXT           "", V9X_IDC_DDRAW_TEST, 72, 193, 168, 8
 
     LTEXT           "", V9X_IDC_VERSION, 7, 210, 64, 8
-    LTEXT           "", V9X_IDC_BUILD, 73, 210, 76, 8
+    PUSHBUTTON      "Check for updates...", V9X_IDC_CHECK_UPDATES,
+                    73, 208, 74, 13, WS_TABSTOP
     PUSHBUTTON      "Copy report", V9X_IDC_COPY_REPORT, 151, 208, 50, 13
     PUSHBUTTON      "About...", V9X_IDC_ABOUT, 205, 208, 40, 13
 END
