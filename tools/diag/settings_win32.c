@@ -114,19 +114,19 @@ static void v9x_create_controls(HWND window)
                       BS_GROUPBOX, 14, 64, 402, 78, 0);
     v9x_row(window, "Adapter:", v9x_status.adapter_name,
             28, 82, 90, 0);
-    v9x_row(window, "PCI ID:", v9x_status.pci_id, 28, 102, 90, 110);
-    v9x_row(window, "Revision:", v9x_status.revision, 232, 102, 74, 0);
+    v9x_row(window, "PCI ID:", v9x_status.pci_id, 28, 102, 90, 100);
+    v9x_row(window, "Revision:", v9x_status.revision, 222, 102, 66, 0);
     v9x_row(window, "Video memory:", v9x_status.video_memory,
-            28, 122, 90, 110);
+            28, 122, 90, 100);
     v9x_row(window, "Mini-VDD:", v9x_status.minivdd_build,
-            232, 122, 74, 0);
+            222, 122, 66, 0);
 
     (void)v9x_control(window, "BUTTON", "Display mode",
                       BS_GROUPBOX, 14, 146, 402, 78, 0);
     v9x_row(window, "Resolution:", v9x_status.resolution,
-            28, 164, 90, 110);
+            28, 164, 90, 100);
     v9x_row(window, "Refresh:", v9x_status.refresh_rate,
-            232, 164, 74, 0);
+            222, 164, 66, 0);
     v9x_row(window, "Colour depth:", v9x_status.colour_depth,
             28, 184, 90, 0);
     v9x_row(window, "Switching:", v9x_status.mode_switching,
@@ -143,8 +143,8 @@ static void v9x_create_controls(HWND window)
     (void)v9x_control(window, "BUTTON", "Diagnostics",
                       BS_GROUPBOX, 14, 310, 402, 58, 0);
     v9x_row(window, "Driver:", v9x_status.driver_short,
-            28, 328, 90, 110);
-    v9x_row(window, "GDI test:", v9x_status.gdi_short, 232, 328, 74, 0);
+            28, 328, 90, 100);
+    v9x_row(window, "GDI test:", v9x_status.gdi_short, 222, 328, 66, 0);
     v9x_row(window, "DirectDraw test:", v9x_status.ddraw_test,
             28, 348, 90, 0);
 
