@@ -10,10 +10,12 @@ Phase 2 done 2026-10-09
 ([engine](../decisions/2026-10-09-mga2064w-drawing-engine.md)): the write
 probe passes on silicon at 8/16/32 bpp, and DirectDraw fill and copy run on
 the engine with correct pixels and no timeouts.
-Phase 3 half done 2026-10-09
-([GDI](../decisions/2026-10-09-mga2064w-gdi-on-the-engine.md)): GDI fill,
-copy and overlap copy on the engine, `V9XGDI /accel` PASS at 8/16/32 bpp on
-the guest and on A8U4I5. Next: text (monochrome expansion).
+Phase 3 done 2026-10-09
+([GDI](../decisions/2026-10-09-mga2064w-gdi-on-the-engine.md),
+[text](../decisions/2026-10-09-mga2064w-text-on-the-engine.md)): GDI fill,
+copy, overlap copy and text on the engine, `V9XGDI /accel` PASS at 8/16/32
+bpp on the guest and on A8U4I5. Text is on by default in this family.
+Next: the items under Later.
 Later the same day the Millennium II (`051B`) was folded in and `matrox-m2`
 retired: one family, both chips, the BAR order per-chip data. Re-measured
 on the guest and A8U4I5's 2064W afterwards; the 2164W has not run.
@@ -123,6 +125,10 @@ screen-to-screen copy first, then monochrome expansion for text
 Fill and copy done 2026-10-09: an MGA arm built from `mga_engine.c`, through
 the same control aperture as the HAL, with the setup written before every
 operation and the read cache invalidated after every idle wait.
+
+Text done the same day: one linear ILOAD with BMONOWF expansion per string
+bitmap, fed through DMAWIN, with the vertical clip done by skipping rows
+and the horizontal clip by CXBNDRY. Opaque rectangles use the fill.
 
 ## Later (sketch only)
 

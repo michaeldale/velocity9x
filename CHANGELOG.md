@@ -17,9 +17,17 @@ build identifier so exact guest-tested binaries remain traceable.
   The register values come from the same builder DirectDraw uses.
   `V9XGDI /accel` passed at all three depths on the 86Box guest and on
   A8U4I5's card, with 160 fills and 131 copies per run on the engine and
-  no timeouts. Text is still drawn by the CPU. Nothing was timed, and
-  nobody has looked at the monitor.
-  [Decision](docs/decisions/2026-10-09-mga2064w-gdi-on-the-engine.md). The Millennium II (MGA-2164W) joins the same family and the
+  no timeouts. Nothing was timed, and nobody has looked at the monitor.
+  [Decision](docs/decisions/2026-10-09-mga2064w-gdi-on-the-engine.md).
+- **Text on the Millennium's engine**, on by default in that family. Each
+  string the DIB Engine lays out is expanded onto the screen by one MGA
+  ILOAD. `V9XGDI /accel` passed at 8, 16 and 32 bpp on the guest and on
+  A8U4I5's card: all 84 text operations per run were drawn on the engine,
+  none fell back, and every harness check ran. The harness had been
+  skipping its timeout and clip checks at 32 bpp, a depth the S3 engines
+  do not draw; it now runs them on the MGA, which does, and the GDI
+  record's 32 bpp claim is corrected.
+  [Decision](docs/decisions/2026-10-09-mga2064w-text-on-the-engine.md). The Millennium II (MGA-2164W) joins the same family and the
   separate `matrox-m2` drop-in package is retired; the 2164W has not run
   on this path.
   [Plan](docs/plans/matrox-millennium-family.md).

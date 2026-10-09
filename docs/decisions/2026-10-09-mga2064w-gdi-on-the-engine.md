@@ -51,8 +51,17 @@ session poisons, so each run gets its own boot. INIs are in
 | A8U4I5 (boot 365) | 1024x768x8 | 1024 | 160 | 131 | PASS | PASS |
 | A8U4I5 (boot 366) | 1024x768x32 | 4096 | 160 | 131 | PASS | PASS |
 
-Every run had `IdleTimeouts=0`, `DeclineEngine=0` and `DeclineDepth=0`, and
-the injected timeout poisoned the session (`PoisonedAfterInject=1`). The
+Every run had `IdleTimeouts=0`, `DeclineEngine=0` and `DeclineDepth=0`. In
+the 8 and 16 bpp runs the injected timeout poisoned the session
+(`PoisonedAfterInject=1`).
+
+**Correction, same day:** the two 32 bpp runs did not run the injection,
+clip or zero-counter checks. The harness treated 32 bpp as a depth no
+primitive serves (`InjectionSkipped=depth-not-accelerated`), which is
+true of the S3 but not the MGA, and an earlier version of this line said
+every run had poisoned. The 32 bpp fills and copies did draw on the engine
+and compare clean. The harness was fixed and 32 bpp re-run with every
+check in the [text record](2026-10-09-mga2064w-text-on-the-engine.md). The
 guest's 8 bpp mode carries the BIOS's padded 960-byte stride, which the
 linearizer takes as a 960-pixel pitch.
 
@@ -78,7 +87,7 @@ The selector change leaves the ViRGE where it was.
 - **The Millennium II (2164W).** It takes the same code with its BARs
   swapped, and has not run.
 - At 32 bpp the harness ran none of its clip operations
-  (`ClipOperations=0`, on both machines). That is the harness's own choice
-  at that depth, so clipped blits are checked at 8 and 16 bpp only.
+  (`ClipOperations=0`, on both machines), for the reason in the correction
+  above. The text record's 32 bpp runs do include them.
 - `V9XENGINESELECTOR` changed signature, from no arguments to a base and a
   limit. No symbol became external.

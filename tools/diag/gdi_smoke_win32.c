@@ -1501,9 +1501,12 @@ static DWORD v9x_accel_run(HWND window)
      * same thing and gating them differently produced two false positives at
      * 32 bpp on a driver that was behaving perfectly. The S3 primitives serve
      * 8 and 16 bpp only; above that every operation is declined at the depth
-     * gate, so no primitive can fire and no bounded wait can run.
+     * gate, so no primitive can fire and no bounded wait can run. The MGA's
+     * also serve 32 bpp, and leaving it out skipped all three checks there
+     * on a driver that was drawing on the engine (2026-10-09).
      */
-    accelerated_depth = screen_bpp == 8 || screen_bpp == 16;
+    accelerated_depth = screen_bpp == 8 || screen_bpp == 16 ||
+        (screen_bpp == 32 && stats.engine_type == V9X_DD_ENGINE_TYPE_MGA);
     if (error == 0) {
         int serviceable = accelerated_depth;
 

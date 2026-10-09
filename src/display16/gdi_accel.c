@@ -317,6 +317,22 @@ static void v9x_gdi_recover(void)
 {
     BYTE cr66;
 
+#ifdef V9X_MGA_FAMILY
+    /*
+     * An ILOAD that was sent too few dwords waits for the rest for ever
+     * (MGA-1064SG 5.5.7). Writing OPMODE's byte 0 "will terminate the
+     * current DMA sequence" (p.4-66); the dword is written back unchanged
+     * because writes go through V9xEngineWrite whole. Whether that also
+     * releases the drawing engine is not stated, and no timeout has been
+     * seen to find out. The poison has already cleared engine_live; the
+     * selector is still allocated, and without one the write does nothing.
+     */
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        v9x_gdi_write(V9X_MGA_OPMODE, v9x_gdi_read(V9X_MGA_OPMODE));
+        ++v9x_gdi.resets;
+        return;
+    }
+#endif
     if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         return;
     }
@@ -1121,6 +1137,85 @@ static WORD v9x_gdi_virge_text(const V9X_GDI_TEXT_OP *op)
     return v9x_gdi_wait_idle();
 }
 
+#ifdef V9X_MGA_FAMILY
+/*
+ * The same string bitmap on the MGA: ILOAD with expansion, values from
+ * v9x_mga_build_expand. The DIB Engine's bitmap is width_bytes * 8 pixels
+ * by height rows with no padding between rows, so it goes to the engine
+ * as one linear stream, and the rows above and below the clip are not sent
+ * at all: the vertical clip is done here by starting further into the
+ * bitmap, the horizontal one by CXBNDRY. Colours straight, for the reason
+ * v9x_gdi_virge_text gives: a set bit is a glyph pixel.
+ *
+ * The data goes to DMAWIN through V9xEngineImageRow, one window's worth
+ * at a time from offset 0, which assembles the last partial dword without
+ * reading past the bitmap. Exactly v9x_mga_expand_dwords dwords must
+ * follow the start: the engine waits for ever on fewer and reads more as
+ * register writes (section 5.5.7), so a mismatch declines before anything
+ * is written.
+ *
+ * OPMODE is put in DMA BLIT write mode first; its reset value would have
+ * the window read as register indices. Afterwards the setup goes in again
+ * to open CXBNDRY, because the HAL writes it once per mode and would
+ * otherwise draw through this string's clip. Waits idle before returning,
+ * as the S3 primitives do: the DIB Engine un-excludes the cursor next.
+ */
+static WORD v9x_gdi_mga_text(const V9X_GDI_TEXT_OP *op)
+{
+    struct v9x_mga_expand expand;
+    struct v9x_mga_writes setup;
+    struct v9x_mga_writes writes;
+    DWORD skip = (DWORD)op->clip_top - (DWORD)op->y;
+    DWORD rows = (DWORD)op->clip_bottom - (DWORD)op->clip_top + 1ul;
+    DWORD source = (DWORD)op->source_offset + skip * (DWORD)op->width_bytes;
+    DWORD remaining = rows * (DWORD)op->width_bytes;
+
+    expand.vram_bytes = op->base +
+        op->pitch * ((DWORD)op->clip_bottom + 1ul);
+    expand.target_offset = op->base;
+    expand.pitch_bytes = op->pitch;
+    expand.bytes_per_pixel = (v9x_u32)op->bytes_per_pixel;
+    expand.left = (v9x_u32)op->x;
+    expand.top = (v9x_u32)op->clip_top;
+    expand.width = (v9x_u32)op->width_bytes * 8ul;
+    expand.height = rows;
+    expand.clip_left = (v9x_u32)op->clip_left;
+    expand.clip_right = (v9x_u32)op->clip_right;
+    expand.foreground = op->foreground;
+    expand.background = op->background;
+    expand.transparent = op->transparent != 0u ? 1ul : 0ul;
+    if (v9x_mga_build_setup(expand.bytes_per_pixel, &setup) !=
+            V9X_STATUS_OK ||
+        v9x_mga_build_expand(&expand, &writes) != V9X_STATUS_OK ||
+        v9x_mga_expand_dwords(&expand) != (remaining + 3ul) / 4ul) {
+        return 0u;
+    }
+
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    v9x_gdi_mga_emit(&setup);
+    v9x_gdi_write(V9X_MGA_OPMODE,
+                  v9x_mga_opmode_for_iload(v9x_gdi_read(V9X_MGA_OPMODE)));
+    v9x_gdi_mga_emit(&writes);
+    while (remaining != 0ul) {
+        WORD chunk = remaining > V9X_MGA_DMAWIN_BYTES
+                         ? (WORD)V9X_MGA_DMAWIN_BYTES : (WORD)remaining;
+
+        /* Both stay inside the bitmap's selector: the callback bounded the
+         * whole bitmap to 64 KiB of it. */
+        V9xEngineImageRow(op->source_selector, (WORD)source, chunk);
+        source += (DWORD)chunk;
+        remaining -= (DWORD)chunk;
+    }
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    v9x_gdi_mga_emit(&setup);
+    return 1u;
+}
+#endif
+
 /*
  * Lift a software cursor out of the rectangle about to be drawn.
  *
@@ -1262,8 +1357,13 @@ void v9x_gdi_accel_configure(void)
                                  V9X_SYSTEM_INI) != 0) {
             enabled |= V9X_GDI_PRIM_UPLOAD;
         }
+        /* The MGA's text ships on: it was measured before it shipped
+         * (docs\decisions\2026-10-09-mga2064w-text-on-the-engine.md), and
+         * the S3 default is that family's own unfinished question. */
         if (GetPrivateProfileInt(V9X_INI_SECTION, "GdiAccelText",
-                                 V9X_GDI_DEFAULT_TEXT,
+                                 v9x_gdi_engine_type ==
+                                         V9X_DD_ENGINE_TYPE_MGA
+                                     ? 1 : V9X_GDI_DEFAULT_TEXT,
                                  V9X_SYSTEM_INI) != 0) {
             enabled |= V9X_GDI_PRIM_TEXT;
         }
@@ -1283,10 +1383,15 @@ void v9x_gdi_accel_configure(void)
     if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
         enabled &= ~V9X_GDI_PRIM_UPLOAD;
     }
-    /* Text has a primitive on both S3 chips: the Trio64's CPU-data fill and
-     * the ViRGE's monochrome-source BitBLT. Anything else declines. */
+    /* Text has a primitive on both S3 chips - the Trio64's CPU-data fill and
+     * the ViRGE's monochrome-source BitBLT - and, in the matrox build, the
+     * MGA's ILOAD expansion. Anything else declines. */
     if (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_TRIO64 &&
-        v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX) {
+        v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_S3_VIRGE_DX
+#ifdef V9X_MGA_FAMILY
+        && v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_MGA
+#endif
+        ) {
         enabled &= ~V9X_GDI_PRIM_TEXT;
     }
     if ((enabled & V9X_GDI_PRIM_COPY) == 0ul) {
@@ -2216,6 +2321,11 @@ WORD __loadds FAR PASCAL V9xGdiDrawTextBitmap(V9X_DIB_ENGINE FAR *device,
      * before calling; the primitive waits idle before returning, so nothing is
      * left in flight for the exclusion's end to race. */
     device->deFlags |= V9X_DE_BUSY;
+#ifdef V9X_MGA_FAMILY
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        issued = v9x_gdi_mga_text(&op);
+    } else
+#endif
     issued = v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
                  ? v9x_gdi_trio_text(&op) : v9x_gdi_virge_text(&op);
     device->deFlags &= (WORD)~V9X_DE_BUSY;
@@ -2277,6 +2387,24 @@ WORD __loadds FAR PASCAL V9xGdiDrawOpaqueRect(V9X_DIB_ENGINE FAR *device,
     op.height = (WORD)(bottom - (long)y);
 
     device->deFlags |= V9X_DE_BUSY;
+#ifdef V9X_MGA_FAMILY
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        struct v9x_mga_fill fill;
+
+        fill.vram_bytes = op.base + op.pitch * (DWORD)op.height +
+            op.pitch * (DWORD)op.destination_y;
+        fill.target_offset = op.base;
+        fill.pitch_bytes = op.pitch;
+        fill.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+        fill.left = (v9x_u32)op.destination_x;
+        fill.top = (v9x_u32)op.destination_y;
+        fill.width = (v9x_u32)op.width;
+        fill.height = (v9x_u32)op.height;
+        fill.color = op.color;
+        issued = v9x_mga_build_fill(&fill, &op.mga) == V9X_STATUS_OK
+                     ? v9x_gdi_mga_draw(&op) : 0u;
+    } else
+#endif
     issued = v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_S3_TRIO64
                  ? v9x_gdi_trio_fill(&op) : v9x_gdi_virge_fill(&op);
     device->deFlags &= (WORD)~V9X_DE_BUSY;
@@ -2367,7 +2495,12 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
         V9X_GDI_TEXT_REJECT(5u);
         goto decline;
     }
-    if (device->deBitsPixel != 8u && device->deBitsPixel != 16u) {
+    if (device->deBitsPixel != 8u && device->deBitsPixel != 16u
+#ifdef V9X_MGA_FAMILY
+        && !(device->deBitsPixel == 32u &&
+             v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA)
+#endif
+        ) {
         V9X_GDI_TEXT_REJECT(6u);
         goto decline;
     }
@@ -2391,6 +2524,18 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
             V9X_GDI_TEXT_REJECT(7u);
             goto decline;
         }
+#ifdef V9X_MGA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
+        /* The linearizer's pitch list and origin grid, the test every MGA
+         * destination passes, so a callback is never handed a surface its
+         * builder would refuse. */
+        if (!v9x_mga_surface_ok((v9x_u32)device->deWidthBytes,
+                                device->deBitsOffset,
+                                (v9x_u32)device->deBitsPixel / 8ul)) {
+            V9X_GDI_TEXT_REJECT(7u);
+            goto decline;
+        }
+#endif
     } else {
         V9X_GDI_TEXT_REJECT(8u);
         goto decline;

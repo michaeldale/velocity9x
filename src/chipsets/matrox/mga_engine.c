@@ -1,6 +1,6 @@
 /*
- * Matrox MGA-2064W drawing engine: register values for solid fill and
- * screen copy.
+ * Matrox MGA-2064W drawing engine: register values for solid fill, screen
+ * copy and monochrome expansion (text).
  *
  * Pure policy, no I/O; see mga_engine.h. Every value is from the MGA-1064SG
  * Developer Specification (1997), whose 2D core is the 2064W's (p.1-2),
@@ -396,6 +396,134 @@ v9x_status v9x_mga_build_copy(const struct v9x_mga_copy *copy,
     v9x_mga_put(writes, V9X_MGA_YDSTLEN + V9X_MGA_GO,
                 (destination_top << 16) | copy->height);
     return V9X_STATUS_OK;
+}
+
+/*
+ * Expansion of a monochrome host bitmap: ILOAD with expansion (section
+ * 5.5.7.3, p.5-50), the source linear (5.5.7.1, p.5-47), so the rows of
+ * the DIB Engine's unpadded string bitmap run on as one stream padded only
+ * at its end. The value is FreeBE's PutMonoImage for a linear source and
+ * a replace mix, with RPL for its transparent case too, which p.5-50
+ * permits; FreeBE uses BLK there, which this driver does not use.
+ * BMONOWF is Windows bit order, the most significant bit of each byte
+ * leftmost (MONO B, p.5-13), which is the DIB Engine's.
+ */
+#define V9X_MGA_DWGCTL_EXPAND      0x080c6089ul
+#define V9X_MGA_DWGCTL_TRANSC      0x40000000ul
+
+/* AR0 holds 18 bits (p.4-20); for a linear ILOAD it is the pixel count
+ * less one. */
+#define V9X_MGA_AR0_LIMIT          0x00040000ul
+
+/* OPMODE dmamod <3:2> (p.4-66): DMA BLIT write, the mode DMAWIN data must
+ * be in for an ILOAD. Reset value 0 is general purpose, in which the data
+ * would be read as register indices. */
+#define V9X_MGA_OPMODE_DMAMOD_MASK 0x0000000cul
+#define V9X_MGA_OPMODE_DMA_BLIT    0x00000004ul
+
+v9x_status v9x_mga_build_expand(const struct v9x_mga_expand *expand,
+                                struct v9x_mga_writes *writes)
+{
+    v9x_u32 pitch_pixels;
+    v9x_u32 origin_pixels;
+    v9x_status status;
+
+    if (expand == 0 || writes == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    writes->count = 0ul;
+    if (!v9x_mga_depth_ok(expand->bytes_per_pixel)) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (expand->width == 0ul || expand->height == 0ul ||
+        expand->clip_left < expand->left ||
+        expand->clip_right < expand->clip_left ||
+        expand->clip_right - expand->left >= expand->width) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Both factors are bounded before they are multiplied. */
+    if (expand->width > V9X_MGA_AR0_LIMIT ||
+        expand->height > V9X_MGA_AR0_LIMIT ||
+        expand->width * expand->height > V9X_MGA_AR0_LIMIT ||
+        expand->left + expand->width > V9X_MGA_X_LIMIT) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+
+    /* Only the clipped columns are written, so they are what the surface
+     * must hold; the bitmap's padding beyond them is never drawn. */
+    status = v9x_mga_check_rect(expand->vram_bytes, expand->target_offset,
+                                expand->pitch_bytes,
+                                expand->bytes_per_pixel, expand->clip_left,
+                                expand->top,
+                                expand->clip_right - expand->clip_left + 1ul,
+                                expand->height);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    status = v9x_mga_destination(expand->target_offset, expand->pitch_bytes,
+                                 expand->bytes_per_pixel,
+                                 expand->top + expand->height - 1ul,
+                                 &pitch_pixels, &origin_pixels);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+
+    v9x_mga_put(writes, V9X_MGA_DWGCTL,
+                V9X_MGA_DWGCTL_EXPAND |
+                (expand->transparent != 0ul ? V9X_MGA_DWGCTL_TRANSC : 0ul));
+    v9x_mga_put(writes, V9X_MGA_PITCH, pitch_pixels);
+    v9x_mga_put(writes, V9X_MGA_YDSTORG, origin_pixels);
+    v9x_mga_put(writes, V9X_MGA_FCOL,
+                v9x_mga_color_field(expand->foreground,
+                                    expand->bytes_per_pixel));
+    v9x_mga_put(writes, V9X_MGA_BCOL,
+                v9x_mga_color_field(expand->background,
+                                    expand->bytes_per_pixel));
+    /* AR3 and AR5 "must be 0" (5.5.7.1); a copy leaves AR5 a pitch. */
+    v9x_mga_put(writes, V9X_MGA_AR0,
+                expand->width * expand->height - 1ul);
+    v9x_mga_put(writes, V9X_MGA_AR3, 0ul);
+    v9x_mga_put(writes, V9X_MGA_AR5, 0ul);
+    v9x_mga_put(writes, V9X_MGA_CXBNDRY,
+                (expand->clip_right << 16) | expand->clip_left);
+    /* Inclusive right edge, as FreeBE writes it for this operation. */
+    v9x_mga_put(writes, V9X_MGA_FXBNDRY,
+                ((expand->left + expand->width - 1ul) << 16) | expand->left);
+    v9x_mga_put(writes, V9X_MGA_YDSTLEN + V9X_MGA_GO,
+                (expand->top << 16) | expand->height);
+    return V9X_STATUS_OK;
+}
+
+/* Total = INT((psiz * width * Nlines + 31) / 32) for a linear source,
+ * psiz 1 for BMONOWF (section 5.5.7, Table 5-2). */
+v9x_u32 v9x_mga_expand_dwords(const struct v9x_mga_expand *expand)
+{
+    if (expand == 0 || expand->width > V9X_MGA_AR0_LIMIT ||
+        expand->height > V9X_MGA_AR0_LIMIT) {
+        return 0ul;
+    }
+    return (expand->width * expand->height + 31ul) / 32ul;
+}
+
+v9x_u32 v9x_mga_opmode_for_iload(v9x_u32 opmode)
+{
+    return (opmode & ~V9X_MGA_OPMODE_DMAMOD_MASK) | V9X_MGA_OPMODE_DMA_BLIT;
+}
+
+int v9x_mga_surface_ok(v9x_u32 pitch_bytes, v9x_u32 offset,
+                       v9x_u32 bytes_per_pixel)
+{
+    v9x_u32 pitch_pixels;
+    v9x_u32 origin_pixels;
+
+    if (!v9x_mga_depth_ok(bytes_per_pixel) || pitch_bytes == 0ul ||
+        (pitch_bytes % bytes_per_pixel) != 0ul ||
+        (offset % bytes_per_pixel) != 0ul) {
+        return 0;
+    }
+    return v9x_mga_destination(offset, pitch_bytes, bytes_per_pixel, 0ul,
+                               &pitch_pixels, &origin_pixels) ==
+        V9X_STATUS_OK;
 }
 
 v9x_u32 v9x_mga_status_busy(v9x_u32 status)

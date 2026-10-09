@@ -1,6 +1,6 @@
 /*
- * Matrox MGA-2064W drawing engine: register values for solid fill and
- * screen copy.
+ * Matrox MGA-2064W drawing engine: register values for solid fill, screen
+ * copy and monochrome expansion (text).
  *
  * Pure policy, no I/O. The engine module writes what these builders return,
  * every dword in order; the last write of a fill or copy goes to its
@@ -21,6 +21,7 @@
 #define V9X_MGA_DWGCTL      0x1c00ul
 #define V9X_MGA_MACCESS     0x1c04ul
 #define V9X_MGA_PLNWT       0x1c1cul
+#define V9X_MGA_BCOL        0x1c20ul
 #define V9X_MGA_FCOL        0x1c24ul
 #define V9X_MGA_SGN         0x1c58ul
 #define V9X_MGA_AR0         0x1c60ul
@@ -35,6 +36,13 @@
 #define V9X_MGA_YBOT        0x1c9cul
 #define V9X_MGA_FIFOSTATUS  0x1e10ul
 #define V9X_MGA_STATUS      0x1e14ul
+#define V9X_MGA_OPMODE      0x1e54ul
+
+/* DMAWIN, MGABASE1 + 0000h-1BFFh: the 7 KiB pseudo-DMA window an ILOAD's
+ * data is written to (Table 3-4). Its addresses are not decoded during an
+ * ILOAD (section 5.5.7), so a long transfer restarts at offset 0 every
+ * window's worth, as FreeBE's PutMonoImage does. */
+#define V9X_MGA_DMAWIN_BYTES 0x1c00ul
 
 /* Writing a drawing register at this offset above itself starts the
  * engine (Table 3-4: 1D00h-1DFFh mirror 1C00h-1CFCh). */
@@ -48,7 +56,7 @@
 #define V9X_MGA_STATUS_BUSY      0x00010000ul
 
 /* The most writes any builder emits. */
-#define V9X_MGA_MAX_WRITES 10u
+#define V9X_MGA_MAX_WRITES 12u
 
 struct v9x_mga_writes {
     v9x_u32 offsets[V9X_MGA_MAX_WRITES];
@@ -83,6 +91,31 @@ struct v9x_mga_copy {
     v9x_u32 height;
 };
 
+/*
+ * A monochrome bitmap expanded onto the screen (ILOAD, BMONOWF): the
+ * DIB Engine's string bitmap for text. The bitmap is `width` pixels by
+ * `height` rows with no padding between rows, so the engine takes it as one
+ * linear stream; a set bit draws the foreground, a clear bit the background
+ * unless `transparent`. Only columns clip_left..clip_right (inclusive) are
+ * drawn. That narrows CXBNDRY, which the caller must open again afterwards
+ * by writing the setup, since the HAL writes it only once per mode.
+ */
+struct v9x_mga_expand {
+    v9x_u32 vram_bytes;
+    v9x_u32 target_offset;
+    v9x_u32 pitch_bytes;
+    v9x_u32 bytes_per_pixel;
+    v9x_u32 left;
+    v9x_u32 top;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 clip_left;
+    v9x_u32 clip_right;
+    v9x_u32 foreground;
+    v9x_u32 background;
+    v9x_u32 transparent;
+};
+
 /* The per-mode state: pixel width, plane mask, a clip window wide open. */
 v9x_status v9x_mga_build_setup(v9x_u32 bytes_per_pixel,
                                struct v9x_mga_writes *writes);
@@ -90,6 +123,18 @@ v9x_status v9x_mga_build_fill(const struct v9x_mga_fill *fill,
                               struct v9x_mga_writes *writes);
 v9x_status v9x_mga_build_copy(const struct v9x_mga_copy *copy,
                               struct v9x_mga_writes *writes);
+v9x_status v9x_mga_build_expand(const struct v9x_mga_expand *expand,
+                                struct v9x_mga_writes *writes);
+/* The dwords an expansion's data occupies in DMAWIN, padded at the end:
+ * exactly this many must follow the start, or the engine waits for ever
+ * (fewer) or reads the rest as register writes (more). */
+v9x_u32 v9x_mga_expand_dwords(const struct v9x_mga_expand *expand);
+/* OPMODE with dmamod set to DMA BLIT write, the other fields kept. */
+v9x_u32 v9x_mga_opmode_for_iload(v9x_u32 opmode);
+/* Nonzero when the linearizer can address a surface with this pitch and
+ * origin, the test every destination passes. */
+int v9x_mga_surface_ok(v9x_u32 pitch_bytes, v9x_u32 offset,
+                       v9x_u32 bytes_per_pixel);
 v9x_u32 v9x_mga_status_busy(v9x_u32 status);
 v9x_u32 v9x_mga_fifo_free(v9x_u32 fifostatus);
 

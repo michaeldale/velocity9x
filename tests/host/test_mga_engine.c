@@ -314,6 +314,148 @@ static void test_copy_refusals(void)
     CHECK(v9x_mga_build_copy(0, &writes) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* A string bitmap at 800x600x16: 64 pixels (8 bytes) by 13 rows at
+ * (100, 200), drawn through columns 102..150. */
+static void base_expand(struct v9x_mga_expand *expand)
+{
+    memset(expand, 0, sizeof(*expand));
+    expand->vram_bytes = 8388608ul;
+    expand->pitch_bytes = 1920ul;
+    expand->bytes_per_pixel = 2ul;
+    expand->left = 100ul;
+    expand->top = 200ul;
+    expand->width = 64ul;
+    expand->height = 13ul;
+    expand->clip_left = 102ul;
+    expand->clip_right = 150ul;
+    expand->foreground = 0x1234ul;
+    expand->background = 0x5678ul;
+}
+
+static void test_expand_opaque(void)
+{
+    struct v9x_mga_expand expand;
+    struct v9x_mga_writes writes;
+
+    base_expand(&expand);
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_OK);
+    /* ILOAD, linear source, BMONOWF, sgnzero, shftzero, RPL, bop C: the
+     * value FreeBE's PutMonoImage writes for a replace mix. */
+    CHECK(reg_value(&writes, V9X_MGA_DWGCTL) == 0x080c6089ul);
+    CHECK(reg_value(&writes, V9X_MGA_PITCH) == 960ul);
+    CHECK(reg_value(&writes, V9X_MGA_YDSTORG) == 0ul);
+    CHECK(reg_value(&writes, V9X_MGA_FCOL) == 0x12341234ul);
+    CHECK(reg_value(&writes, V9X_MGA_BCOL) == 0x56785678ul);
+    /* Linear source: AR0 is the total pixel count less one. */
+    CHECK(reg_value(&writes, V9X_MGA_AR0) == 64ul * 13ul - 1ul);
+    CHECK(reg_value(&writes, V9X_MGA_AR3) == 0ul);
+    CHECK(reg_value(&writes, V9X_MGA_AR5) == 0ul);
+    CHECK(reg_value(&writes, V9X_MGA_CXBNDRY) == ((150ul << 16) | 102ul));
+    /* Inclusive right edge, as for a blit. */
+    CHECK(reg_value(&writes, V9X_MGA_FXBNDRY) == ((163ul << 16) | 100ul));
+    CHECK(reg_value(&writes, V9X_MGA_YDSTLEN + V9X_MGA_GO) ==
+          ((200ul << 16) | 13ul));
+    CHECK(go_is_last(&writes, V9X_MGA_YDSTLEN));
+    CHECK(writes.count <= V9X_MGA_MAX_WRITES);
+    CHECK(v9x_mga_expand_dwords(&expand) == 26ul);
+}
+
+static void test_expand_transparent_and_depths(void)
+{
+    struct v9x_mga_expand expand;
+    struct v9x_mga_writes writes;
+
+    base_expand(&expand);
+    expand.transparent = 1ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_OK);
+    CHECK(reg_value(&writes, V9X_MGA_DWGCTL) == 0x480c6089ul);
+
+    base_expand(&expand);
+    expand.bytes_per_pixel = 1ul;
+    expand.pitch_bytes = 960ul;
+    expand.foreground = 0xabul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_OK);
+    CHECK(reg_value(&writes, V9X_MGA_FCOL) == 0xabababab);
+    CHECK(reg_value(&writes, V9X_MGA_PITCH) == 960ul);
+
+    base_expand(&expand);
+    expand.bytes_per_pixel = 4ul;
+    expand.pitch_bytes = 4096ul;
+    expand.foreground = 0x00c0ffeeul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_OK);
+    CHECK(reg_value(&writes, V9X_MGA_FCOL) == 0x00c0ffeeul);
+    CHECK(reg_value(&writes, V9X_MGA_PITCH) == 1024ul);
+
+    /* A bitmap that is not a whole number of dwords pads at its end. */
+    base_expand(&expand);
+    expand.width = 24ul;
+    expand.height = 3ul;
+    expand.clip_right = 110ul;
+    CHECK(v9x_mga_expand_dwords(&expand) == 3ul);
+}
+
+static void test_expand_refusals(void)
+{
+    struct v9x_mga_expand expand;
+    struct v9x_mga_writes writes;
+
+    base_expand(&expand);
+    expand.clip_right = 164ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_expand(&expand);
+    expand.clip_left = 99ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_expand(&expand);
+    expand.clip_left = 151ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_expand(&expand);
+    expand.height = 0ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* AR0 holds 18 bits of pixel count (p.4-20). */
+    base_expand(&expand);
+    expand.width = 1024ul;
+    expand.height = 257ul;
+    expand.left = 0ul;
+    expand.clip_left = 0ul;
+    expand.clip_right = 799ul;
+    expand.top = 0ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_UNSUPPORTED);
+    /* Past the 11-bit clip window. */
+    base_expand(&expand);
+    expand.left = 2000ul;
+    expand.clip_left = 2000ul;
+    expand.clip_right = 2010ul;
+    expand.pitch_bytes = 4096ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_UNSUPPORTED);
+    /* A pitch the linearizer has no entry for. */
+    base_expand(&expand);
+    expand.pitch_bytes = 1700ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_UNSUPPORTED);
+    base_expand(&expand);
+    expand.bytes_per_pixel = 3ul;
+    CHECK(v9x_mga_build_expand(&expand, &writes) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_mga_build_expand(0, &writes) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_opmode_and_surface(void)
+{
+    /* dmamod <3:2> becomes DMA BLIT write; dmaDataSiz and dirDataSiz stay. */
+    CHECK(v9x_mga_opmode_for_iload(0ul) == 0x00000004ul);
+    CHECK(v9x_mga_opmode_for_iload(0x0003030cul) == 0x00030304ul);
+
+    CHECK(v9x_mga_surface_ok(1920ul, 0ul, 2ul) != 0);
+    CHECK(v9x_mga_surface_ok(960ul, 0ul, 1ul) != 0);
+    CHECK(v9x_mga_surface_ok(1700ul, 0ul, 2ul) == 0);
+    /* An origin of 32 pixels is on the 16-bpp grid; 1 pixel is not. */
+    CHECK(v9x_mga_surface_ok(1920ul, 64ul, 2ul) != 0);
+    CHECK(v9x_mga_surface_ok(1920ul, 2ul, 2ul) == 0);
+    CHECK(v9x_mga_surface_ok(1920ul, 0ul, 3ul) == 0);
+}
+
 static void test_status(void)
 {
     CHECK(v9x_mga_status_busy(0x00010000ul) != 0ul);
@@ -335,6 +477,10 @@ unsigned int v9x_run_mga_engine_tests(void)
     test_copy_right_is_right_to_left();
     test_copy_between_surfaces();
     test_copy_refusals();
+    test_expand_opaque();
+    test_expand_transparent_and_depths();
+    test_expand_refusals();
+    test_opmode_and_surface();
     test_status();
     return failures;
 }
