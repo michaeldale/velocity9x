@@ -174,7 +174,7 @@ see a hardware device. Five engines sit behind it:
   the generic VESA package at 16 bpp, opt-in on S3 and ATI. Nothing has
   measured it on a period machine; expect it to be slow.
 
-A **Direct3D mode selector** on the Velocity9x page in Display Properties
+A **Direct3D mode selector** on the Velocity9x Advanced tab in Display Properties
 chooses the chip's engine, the CPU rasterizer, or none. With none, the
 driver advertises no Direct3D, so DirectDraw enumerates no hardware device
 and applications fall back to Microsoft's software rasterizers — useful
@@ -189,7 +189,7 @@ and games fail with "D3DERR_NOTAVAILABLE" (`0x8876086A`). Velocity9x
 offers DDI 6 to the programs that need it and keeps the older interface
 for the rest, which is faster for DirectX 5 to 7 games.
 
-The **DDI 6** selector on the Velocity9x page sets this, and takes effect
+The **DDI 6** selector on the Velocity9x Advanced tab sets this, and takes effect
 the next time a program starts, with no restart:
 
 - **Automatic** (the default): DDI 6 for any program that uses Direct3D 8,
@@ -332,12 +332,27 @@ the [Direct3D plan](docs/plans/sis-6326-hardware-3d.md) and the
   surfaces and vertical-blank services; fills and blits on the chip's 2D
   engine where there is a backend (both S3 parts, the GMA 950) and on the
   CPU where there is not.
-- **A Velocity9x page inside Display Properties** reporting the detected
-  adapter, PCI ID, video memory, active mode and clock, which acceleration
-  paths are live, and the driver's runtime diagnostics.
+- **Two Velocity9x tabs inside Display Properties**, at the stock tab
+  size. **Velocity9x** reports the adapter, PCI ID and revision, video
+  memory, the mini-VDD build, the active mode, which acceleration paths
+  are live, and the last GDI and DirectDraw test results.
+  **Velocity9x Advanced** holds the Direct3D, DDI 6, vertical sync and
+  16-bit colour selectors, and shows the core and memory clocks. Features
+  the driver does not have yet are greyed out. `V9XSET.EXE`, shipped
+  beside the driver files, shows the same status in its own window.
 
-![The Velocity9x page in Windows 98 Display Properties, showing an S3 ViRGE/DX
-at 800x600x16 with the linear aperture mapped and a passing GDI test](docs/images/velocity9x-display-properties.png)
+![The Velocity9x tab in Windows 98 Display Properties on an S3 ViRGE/DX at
+1024x768x16: engine fill, copy and page flip, hardware Direct3D, and passing
+GDI and DirectDraw tests](docs/images/velocity9x-display-properties.png)
+![The Velocity9x Advanced tab: the Direct3D, DDI, vertical sync and 16-bit
+colour selectors, greyed-out texture filtering and write combining, and a
+56.079 MHz core and memory clock](docs/images/velocity9x-display-properties-advanced.png)
+
+![V9XSET.EXE, the standalone Velocity9x Settings window, showing the same
+adapter, mode, acceleration and diagnostics rows](docs/images/velocity9x-settings-window.png)
+
+The screenshots are from the 86Box ViRGE/DX guest running driver build
+2252df1; the window is the 47ec1b8 `V9XSET.EXE`, which only moves a column.
 
 ### Verified on physical hardware: S3 Trio64 on PCI
 
