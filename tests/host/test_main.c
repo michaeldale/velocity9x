@@ -50,6 +50,18 @@ unsigned int v9x_run_mtrr_tests(void);
  * handling, same convention. */
 unsigned int v9x_run_update_proto_tests(void);
 
+/* tests\host\test_crypto.c: SHA-256, SHA-512 and Ed25519 against the FIPS
+ * 180 and RFC 8032 vectors, same convention. */
+unsigned int v9x_run_crypto_tests(void);
+
+/* tests\host\test_update_release.c: the signed release file's framing and
+ * fields, same convention. */
+unsigned int v9x_run_update_release_tests(void);
+
+/* tests\host\test_inflate.c: Deflate, CRC-32 and the zip reader, same
+ * convention. */
+unsigned int v9x_run_inflate_tests(void);
+
 /* tests\host\test_d3dmode.c: which Direct3D back end the SYSTEM.INI setting
  * and the chip's engine descriptor resolve to, same convention. */
 unsigned int v9x_run_d3dmode_tests(void);
@@ -1173,6 +1185,9 @@ int main(int argc, char **argv)
     failures += v9x_run_edid_tests();
     failures += v9x_run_mtrr_tests();
     failures += v9x_run_update_proto_tests();
+    failures += v9x_run_crypto_tests();
+    failures += v9x_run_update_release_tests();
+    failures += v9x_run_inflate_tests();
     failures += v9x_run_pe_export_tests();
     failures += v9x_run_gl_dispatch_tests();
     failures += v9x_run_d3dmode_tests();

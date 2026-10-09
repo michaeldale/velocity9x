@@ -25,6 +25,16 @@ function Get-V9xHostSourceNames {
         'src\common\mtrr.c',
         # V9XUPD.EXE's protocol text handling; the network half is Win32.
         'src\common\update_proto.c',
+        # SHA-256, SHA-512 and Ed25519 for the updater's signed release
+        # file, and the file's own framing.
+        'src\common\sha256.c',
+        'src\common\sha512.c',
+        'src\common\ed25519.c',
+        'src\common\update_release.c',
+        # Deflate, CRC-32 and the zip reader the updater unpacks with.
+        'src\common\crc32.c',
+        'src\common\inflate.c',
+        'src\common\zipread.c',
         'src\common\d3dmode.c',
         'src\common\vsync.c',
         'src\common\vbe_crtc.c',
@@ -136,6 +146,9 @@ function Get-V9xHostSourceNames {
         'tests\host\test_edid.c',
         'tests\host\test_mtrr.c',
         'tests\host\test_update_proto.c',
+        'tests\host\test_crypto.c',
+        'tests\host\test_update_release.c',
+        'tests\host\test_inflate.c',
         'tests\host\test_d3dmode.c',
         'tests\host\test_vsync.c',
         'tests\host\test_vbe_crtc.c',

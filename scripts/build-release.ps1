@@ -18,7 +18,11 @@ param(
     # Overwrite an existing releases\<version> folder. Off by default: a
     # published version is a fixed thing, and quietly replacing one is how the
     # checksums people were given stop matching what they can download.
-    [switch]$Force
+    [switch]$Force,
+    # Where V9X_SIGNING_KEY is read from when it is not already set in the
+    # environment: the developer's .env beside this checkout, never a file
+    # in the repository.
+    [string]$EnvFile
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,6 +136,7 @@ foreach ($package in $index.Packages) {
     }
 
     $published += [pscustomobject]@{
+        Family = $package.Family
         Name = $zipName
         Title = $package.DisplayName
         HardwareIds = @($package.HardwareIds)
@@ -157,6 +162,14 @@ $hashLines = Get-ChildItem -LiteralPath $releaseDir -File -Filter *.zip |
     }
 Set-Content -LiteralPath (Join-Path $releaseDir "SHA256SUMS.txt") `
     -Encoding Ascii -Value $hashLines
+
+# The same zip hashes, per family, under the release key's signature: what
+# V9XUPD.EXE checks before it installs anything (scripts\lib\release-sign.ps1).
+. (Join-Path $PSScriptRoot "lib\release-sign.ps1")
+$signedPath = Write-V9xSignedRelease -RepoRoot $repoRoot -ReleaseDir $releaseDir `
+    -Version $productVersion -BuildId $buildId -Packages $published `
+    -EnvFile $EnvFile
+Write-Output "Signed $signedPath"
 
 # The index is generated, not written by hand, so that the hardware ids and the
 # tested-status line in it are the ones the build actually stamped into each
@@ -220,7 +233,9 @@ $readme += ""
 $readme += "## Checksums"
 $readme += ""
 $readme += "``SHA256SUMS.txt`` covers the zips in this folder. Each package also ships"
-$readme += "its own ``SHA256.TXT`` covering the files inside it."
+$readme += "its own ``SHA256.TXT`` covering the files inside it. ``SIGNED.TXT``"
+$readme += "lists the same zip hashes per family under an Ed25519 signature; it is"
+$readme += "what the built-in updater (``V9XUPD.EXE``) checks before installing."
 $readme += ""
 
 Set-Content -LiteralPath (Join-Path $releaseDir "README.md") `
