@@ -51,6 +51,13 @@ VRAM at 2 MiB and above, checking each fill and copy byte for byte against the
 host-tested builder it compiles in. It publishes `C:\V9XDIAG\SIS2D.TXT`. See
 [2026-10-05 SiS 6326 2D engine writes](../../docs/decisions/2026-10-05-sis6326-2d-engine-writes.md).
 
+`vga_timing_win32.c` is `V9XTIME.EXE`, built by `scripts/build-vga-timing.ps1`:
+the scanout timing right now, under any driver. It reads CRTC CR00-CR18 and
+Misc Output (and with `/mga` the Matrox CRTCEXT0-5), times the vertical
+retrace for two seconds, and writes the totals, refresh, line rate and pixel
+clock to `C:\V9XDIAG\V9XTIME.INI`. Read-only apart from restoring the index
+ports. See [2026-10-09 soft capture](../../docs/issues/2026-10-09-mga2064w-capture-looks-soft.md).
+
 `mga2d.asm` and `mga2d_win32.c` are the Matrox MGA-2064W drawing engine
 write probe. Build them with `scripts/build-mga2d.ps1`; run `MGA2D.EXE` beside
 `MGA2D.VXD` under Velocity9x at 8, 16 or 32 bpp. It **writes the card**: the
