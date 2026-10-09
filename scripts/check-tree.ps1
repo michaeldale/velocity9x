@@ -247,6 +247,10 @@ $allowedOsBoundaries = @(
     # and stays OS-free like the ICD's.
     (Join-Path $repoRoot "src\glide\glide_dll.c"),
     (Join-Path $repoRoot "src\glide\glide_surface.c"),
+    # GLIDE3X.DLL's census (docs\plans\glide-3x-wrapper.md, Phase 0): the
+    # exports, the log and the DLL entry in one file. Glide 3's pure logic
+    # will sit beside it, OS-free, as Glide 2's does.
+    (Join-Path $repoRoot "src\glide3\glide3_census.c"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
 )
 $forbidden = $sourceFiles |
