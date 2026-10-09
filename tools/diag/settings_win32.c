@@ -11,6 +11,9 @@
 #define V9X_ID_GDI_TEST     1004
 #define V9X_ID_LOGO_BITMAP  101
 
+/* The right edge of every group's contents, in client pixels. */
+#define V9X_GROUP_RIGHT     404
+
 static const char v9x_class_name[] = "Velocity9xSettingsWindow";
 static const char v9x_window_title[] = "Velocity9x Settings";
 static HFONT v9x_ui_font;
@@ -69,6 +72,33 @@ static HWND v9x_control(HWND parent,
     return control;
 }
 
+/*
+ * A label and its value. `value_width` 0 means the rest of the group's
+ * width, for a row with nothing beside it.
+ */
+static void v9x_row(HWND window, const char *label, const char *value,
+                    int x, int y, int label_width, int value_width)
+{
+    if (value_width == 0) {
+        value_width = V9X_GROUP_RIGHT - (x + label_width);
+    }
+    (void)v9x_control(window, "STATIC", label, SS_LEFT,
+                      x, y, label_width - 4, 16, 0);
+    (void)v9x_control(window, "STATIC", value, SS_LEFT | SS_NOPREFIX,
+                      x + label_width, y, value_width, 16, 0);
+}
+
+/*
+ * The same groups and rows as the Velocity9x tab in Display Properties
+ * (tools\diag\settings_propsheet.rc), so the two read alike. This window
+ * stays read-only: it is what an installed package offers beside the driver
+ * files, including when Display Properties is not usable, and the settings
+ * that write SYSTEM.INI are on the Velocity9x Advanced tab. The window fits
+ * a 640x480 screen, the driver's first-boot mode.
+ *
+ * Value rows, not checkboxes: these are statements of what the driver does,
+ * and a permanently checked, permanently greyed box conveys nothing.
+ */
 static void v9x_create_controls(HWND window)
 {
     HWND control;
@@ -80,67 +110,48 @@ static void v9x_create_controls(HWND window)
                      (LPARAM)v9x_logo_bitmap);
     }
 
-    (void)v9x_control(window, "BUTTON", "Display adapter",
-                      BS_GROUPBOX, 14, 66, 402, 90, 0);
-    (void)v9x_control(window, "STATIC", "Adapter:",
-                      SS_LEFT, 28, 84, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.adapter_name,
-                      SS_LEFT, 118, 84, 270, 16, 0);
-    (void)v9x_control(window, "STATIC", "PCI ID:",
-                      SS_LEFT, 28, 106, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.pci_id,
-                      SS_LEFT, 118, 106, 96, 16, 0);
-    (void)v9x_control(window, "STATIC", "Video memory:",
-                      SS_LEFT, 222, 106, 90, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.video_memory,
-                      SS_LEFT, 316, 106, 72, 16, 0);
-    (void)v9x_control(window, "STATIC", "Active mode:",
-                      SS_LEFT, 28, 128, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.active_mode,
-                      SS_LEFT, 118, 128, 270, 16, 0);
+    (void)v9x_control(window, "BUTTON", "Adapter",
+                      BS_GROUPBOX, 14, 64, 402, 78, 0);
+    v9x_row(window, "Adapter:", v9x_status.adapter_name,
+            28, 82, 90, 0);
+    v9x_row(window, "PCI ID:", v9x_status.pci_id, 28, 102, 90, 110);
+    v9x_row(window, "Revision:", v9x_status.revision, 232, 102, 74, 0);
+    v9x_row(window, "Video memory:", v9x_status.video_memory,
+            28, 122, 90, 110);
+    v9x_row(window, "Mini-VDD:", v9x_status.minivdd_build,
+            232, 122, 74, 0);
 
-    /* Value rows, not checkboxes: these are statements of what the driver
-     * does, and a permanently checked, permanently greyed box conveys
-     * nothing. See tools/diag/settings_propsheet.rc. */
+    (void)v9x_control(window, "BUTTON", "Display mode",
+                      BS_GROUPBOX, 14, 146, 402, 78, 0);
+    v9x_row(window, "Resolution:", v9x_status.resolution,
+            28, 164, 90, 110);
+    v9x_row(window, "Refresh:", v9x_status.refresh_rate,
+            232, 164, 74, 0);
+    v9x_row(window, "Colour depth:", v9x_status.colour_depth,
+            28, 184, 90, 0);
+    v9x_row(window, "Switching:", v9x_status.mode_switching,
+            28, 204, 90, 0);
+
     (void)v9x_control(window, "BUTTON", "Acceleration",
-                      BS_GROUPBOX, 14, 162, 402, 112, 0);
-    (void)v9x_control(window, "STATIC", "Rendering:",
-                      SS_LEFT, 28, 180, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.rendering,
-                      SS_LEFT, 118, 180, 270, 16, 0);
-    (void)v9x_control(window, "STATIC", "DirectDraw:",
-                      SS_LEFT, 28, 202, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.directdraw,
-                      SS_LEFT, 118, 202, 270, 16, 0);
-    (void)v9x_control(window, "STATIC", "Direct3D:",
-                      SS_LEFT, 28, 224, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.direct3d,
-                      SS_LEFT, 118, 224, 270, 16, 0);
-    (void)v9x_control(window, "STATIC", "Mode switching:",
-                      SS_LEFT, 28, 246, 84, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.mode_switching,
-                      SS_LEFT, 118, 246, 270, 16, 0);
+                      BS_GROUPBOX, 14, 228, 402, 78, 0);
+    v9x_row(window, "2D (GDI):", v9x_status.gdi_rendering,
+            28, 246, 90, 0);
+    v9x_row(window, "DirectDraw:", v9x_status.directdraw,
+            28, 266, 90, 0);
+    v9x_row(window, "Direct3D:", v9x_status.direct3d, 28, 286, 90, 0);
 
-    (void)v9x_control(window, "BUTTON", "Runtime diagnostics",
-                      BS_GROUPBOX, 14, 280, 402, 90, 0);
-    (void)v9x_control(window, "STATIC", "Clock:",
-                      SS_LEFT, 28, 298, 116, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.core_clock,
-                      SS_LEFT, 148, 298, 250, 16, 0);
-    (void)v9x_control(window, "STATIC", "Driver / framebuffer:",
-                      SS_LEFT, 28, 320, 116, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.framebuffer_status,
-                      SS_LEFT, 148, 320, 250, 16, 0);
-    (void)v9x_control(window, "STATIC", "Last GDI test:",
-                      SS_LEFT, 28, 342, 116, 16, 0);
-    (void)v9x_control(window, "STATIC", v9x_status.gdi_status,
-                      SS_LEFT, 148, 342, 250, 16, 0);
+    (void)v9x_control(window, "BUTTON", "Diagnostics",
+                      BS_GROUPBOX, 14, 310, 402, 58, 0);
+    v9x_row(window, "Driver:", v9x_status.driver_short,
+            28, 328, 90, 110);
+    v9x_row(window, "GDI test:", v9x_status.gdi_short, 232, 328, 74, 0);
+    v9x_row(window, "DirectDraw test:", v9x_status.ddraw_test,
+            28, 348, 90, 0);
 
     (void)v9x_control(window, "STATIC",
-                      "Engineering bring-up build - read-only status page."
-                      "   Version: " V9X_VERSION_STRING
-                      "   Build: " V9X_BUILD_ID,
-                      SS_LEFT, 16, 376, 398, 16, 0);
+                      "Version: " V9X_VERSION_STRING
+                      "     Build: " V9X_BUILD_ID,
+                      SS_LEFT | SS_NOPREFIX, 16, 376, 398, 16, 0);
 
     (void)v9x_control(window, "BUTTON", "Copy report",
                       BS_PUSHBUTTON | WS_TABSTOP, 15, 396, 92, 26,
