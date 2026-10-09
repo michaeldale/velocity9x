@@ -1,0 +1,2 @@
+515 pid=FFFDF28B paths batches/triangles untextured=11/34 hw=132/224 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=36/72 split=0/0 split-declined=0
+516 pid=FFFDF28B counters hwtex live=0 creates=73 create-failed=0 evictions=0 uploads=76 partial=2 upload-kb=710 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0

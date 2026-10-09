@@ -3,10 +3,12 @@
 Date: 2026-10-09
 Machines: `Win98SE-Fast-D3D` (86Box, port 9878, boot 608, software
 engine, "Velocity9x Software"); A8U4I5, ATI Rage XL PCI, 800x600x16,
-boot 346 ("Velocity9x Mach64").
+boot 346 ("Velocity9x Mach64"); the netbook (Intel GMA 950, wifi at
+10.0.1.254, 1024x576, boot 129, "Velocity9x GMA 950").
 Driver: each machine's installed display driver and HAL (render-interface
 ABI 4), with V9XGL.DLL swapped for one built from this change. 9878 was
-left on the new ICD; A8U4I5 was put back on its own ICD (CRC 2F18703A).
+left on the new ICD. A8U4I5 (CRC 2F18703A) and the netbook (its 0.13.0
+ICD, CRC 632D4946) were put back on their own.
 Evidence: [`../probe/icd-fog-immediate-forms-2026-10-09/`](../probe/icd-fog-immediate-forms-2026-10-09/)
 
 ## The change
@@ -28,21 +30,30 @@ draw nothing. The two-unit split declines fogged batches.
 V9XGLP's new fog scene: a red quad at eye distance 0.5 under blue fog,
 read back with glReadPixels. The probe tolerance is +-8.
 
-| key | expected | before (stubs) | soft, after | Mach64, after |
-|---|---|---|---|---|
-| FogLinear (0..1) | (128,0,127) | 0xFF0000 | 0x84007B, Ok | 0x84007B, Ok |
-| FogExp (density 2) | (94,0,161) | 0xFF0000 | 0x5A00A5, Ok | 0x5A00A5, Ok |
-| FogExpAtEye | (255,0,0) | Ok | Ok | Ok |
-| FogQueryOk | 1 | 0 | 1 | 1 |
-| RectColor3us (glRecti, glColor3us) | green | black | Ok | Ok |
-| Vertex2sColor4b (glVertex2s, glColor4b) | yellow | black | Ok | Ok |
-| EdgeFlagQueryOk | 1 | 0 | 1 | 1 |
-| ErrorAfterFog / ErrorAfterVariants | 0 | 0x502 | 0 | 0 |
+| key | expected | before (stubs) | soft, after | Mach64, after | Gen3, after |
+|---|---|---|---|---|---|
+| FogLinear (0..1) | (128,0,127) | 0xFF0000 | 0x84007B, Ok | 0x84007B, Ok | 0x84007B, Ok |
+| FogExp (density 2) | (94,0,161) | 0xFF0000 | 0x5A00A5, Ok | 0x5A00A5, Ok | 0x5A00A5, Ok |
+| FogExpAtEye | (255,0,0) | Ok | Ok | Ok | Ok |
+| FogQueryOk | 1 | 0 | 1 | 1 | 1 |
+| RectColor3us (glRecti, glColor3us) | green | black | Ok | Ok | Ok |
+| Vertex2sColor4b (glVertex2s, glColor4b) | yellow | black | Ok | Ok | Ok |
+| EdgeFlagQueryOk | 1 | 0 | 1 | 1 | 1 |
+| ErrorAfterFog / ErrorAfterVariants | 0 | 0x502 | 0 | 0 | 0 |
 
-Both engines read the same pixels. The Mach64 fogged in hardware: its
-ICD counters show `fog-dropped=0`.
+The "before" column held on all three machines. All three engines read
+the same pixels, and none dropped fog (`fog-dropped=0`). The Mach64 has
+no software fallback, so it fogged in hardware. On the netbook the ICD
+saw no refusal (`hw-refused=0`). Gen3's software fallback sits inside
+the render interface, and nothing counts its use, so the counters cannot
+say which drew the fogged quads. Reading the code says Gen3 did. The
+fallback runs only when `v9x_d3d_i9xx_accepts` refuses, and that function
+has no fog condition. The probe's untextured quad meets every condition
+it does check: full write mask, a full-drawable scissor, no blend and no
+alpha test. That is code reading, not a measurement.
 
-Every other V9XGLP key on 9878 is identical before and after. On
+Every other V9XGLP key on 9878 and on the netbook is identical before
+and after. On
 A8U4I5 two keys differ: `ScissorInsidePixel` and `ScissorOutsidePixel`,
 GDI `GetPixel` reads taken just after SwapBuffers. The baseline run read
 0xFFFFFF/0x00FF00, the window background and the green clear in the
@@ -55,5 +66,6 @@ baseline value is unexplained, and was not reproduced.
 
 - The fog-drop path. The ViRGE guest (9869) runs an older probe ICD, and
   the drop was not exercised anywhere.
-- Gen3, which also fogs in hardware. The netbook was offline.
+- A count proving Gen3, not its fallback, drew the netbook's fog
+  (above; the render interface counts no fallback draws).
 - Fog in a game. Quake 2 and Half-Life were not run.
