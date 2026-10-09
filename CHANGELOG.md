@@ -39,9 +39,9 @@ machine or engine has run it, and no Voodoo was used for comparison.
   - The chain has three buffers, because with two the game flickered
     as Final Reality does.
   - The pause dialog draws correctly.
-- **Every family package installs `GLIDE2X.DLL` to SYSTEM**, except over
-  a newer one: a Voodoo 1 or 2 beside the 2D card keeps its own 3dfx
-  Glide. Measured on Windows 98 SE guests: through SetupX, 3dfx 1.00,
+- **Every package with a 3D engine installs `GLIDE2X.DLL` to SYSTEM**
+  (all but the Matrox, which has none), except over a newer one: a
+  Voodoo 1 or 2 beside the 2D card keeps its own 3dfx Glide. Measured on Windows 98 SE guests: through SetupX, 3dfx 1.00,
   2.56 and 2.61 kept and an older Velocity9x Glide replaced; through a
   full Have Disk install of the S3 package, 3dfx 2.56 kept and an older
   Velocity9x Glide replaced at the restart. Windows 95 was not run.
