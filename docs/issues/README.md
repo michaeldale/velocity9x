@@ -6,6 +6,8 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 - [2026-10-11 3DMark2000 shows "3D pattern corruption" on a reporter's GMA 900 (not yet seen; mip-tree declines, untextured draws and refused geometry are candidates)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)
 - [2026-10-10 Carmageddon II exits after its intro video on a reporter's GMA 900: D3D draws and then quits, Glide refuses 93 % of its draws](2026-10-10-carmageddon2-exits-after-intro-gma900.md)
+- [2026-10-10 Age of Empires refuses DirectDraw on a Trio VLB under Windows 95 (reproduced on 486VLB: Windows 95's DirectDraw will not set 8 bpp from a 16-bpp desktop, with Microsoft's s3.drv too; an 8-bpp desktop works around it)](2026-10-10-aoe-trial-refuses-directdraw-trio-vlb-win95.md)
+- [2026-10-10 NFS II SE on a reporter's Rage XL AGP: the demo faults in its PowerVR path, the full game ran blind when the render interface was not ready](2026-10-10-nfs2se-field-report-rage-xl-agp.md)
 - [2026-10-09 GLQuake draws white where its tiled background belongs beside the status bar](2026-10-09-glquake-white-beside-status-bar.md)
 - [2026-10-08 Mach64 refuses REPLACE with the fragment's alpha, so GLQuake's -nomtex lightmaps draw nothing](2026-10-08-mach64-replace-fragment-alpha-refused.md)
 - [2026-10-07 Rage XL hard lock on UT99's first OpenGL frame after a fresh boot (unreproduced)](2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md)
