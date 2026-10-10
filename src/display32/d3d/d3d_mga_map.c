@@ -69,6 +69,17 @@ static int v9x_d3d_mga_alpha_passes(v9x_u32 func, v9x_u32 ref,
     }
 }
 
+/* Source times destination: DESTCOLOR/ZERO, ZERO/SRCCOLOR, or both
+ * (Direct3D's 2x modulate). */
+static int v9x_d3d_mga_multiplies(const V9X_R3D_DRAW *draw)
+{
+    return (draw->src_blend == V9X_R3D_BLEND_DESTCOLOR &&
+            (draw->dst_blend == V9X_R3D_BLEND_ZERO ||
+             draw->dst_blend == V9X_R3D_BLEND_SRCCOLOR)) ||
+        (draw->src_blend == V9X_R3D_BLEND_ZERO &&
+         draw->dst_blend == V9X_R3D_BLEND_SRCCOLOR);
+}
+
 v9x_u32 v9x_d3d_mga_stipple(v9x_u32 alpha)
 {
     /* Nearest of 16, 8, 4 and 2 sixteenths, or none (patterns 0000, 0001,
@@ -203,6 +214,14 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
         } else if (draw->src_blend == V9X_R3D_BLEND_SRCALPHA &&
                    draw->dst_blend == V9X_R3D_BLEND_INVSRCALPHA) {
             out->stipple = 1ul;
+        } else if (v9x_d3d_mga_multiplies(draw)) {
+            /* Multiplying into the frame needs the destination, which the
+             * 3D engine never reads. The source is drawn through the half
+             * stipple instead: light and shade show as every other pixel
+             * of the lightmap. Half-Life's lighting is DESTCOLOR/SRCCOLOR
+             * (boot 391, all 28,728 blend refusals); refused, its world
+             * was unlit. */
+            base->trans = V9X_D3D_MGA_STIPPLE_HALF;
         } else {
             return V9X_D3D_MGA_REFUSE_BLEND;
         }

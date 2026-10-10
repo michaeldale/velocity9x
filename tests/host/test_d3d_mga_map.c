@@ -329,6 +329,47 @@ static void test_additive(void)
                                &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
 }
 
+/*
+ * Multiplying into the frame, which the chip cannot: the source is drawn
+ * through the half-density stipple, so the frame shows the lightmap at
+ * every other pixel. Half-Life's lighting is DESTCOLOR/SRCCOLOR (A8U4I5
+ * boot 391, all 28,728 blend refusals).
+ */
+static void test_multiply(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MGA_TEXTURE texture;
+    V9X_D3D_MGA_MAPPED mapped;
+
+    base_draw(&draw, &texture);
+    bind_texture(&draw, &texture, V9X_MGA3D_TEX_TW16);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_SRCCOLOR;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.stipple == 0ul);
+    CHECK(mapped.base.trans == V9X_D3D_MGA_STIPPLE_HALF);
+
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.trans == V9X_D3D_MGA_STIPPLE_HALF);
+
+    draw.src_blend = V9X_R3D_BLEND_ZERO;
+    draw.dst_blend = V9X_R3D_BLEND_SRCCOLOR;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.trans == V9X_D3D_MGA_STIPPLE_HALF);
+
+    /* Other pairs stay refused. */
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+}
+
 unsigned int v9x_run_d3d_mga_map_tests(void)
 {
     failures = 0u;
@@ -337,5 +378,6 @@ unsigned int v9x_run_d3d_mga_map_tests(void)
     test_texture();
     test_alpha();
     test_additive();
+    test_multiply();
     return failures;
 }

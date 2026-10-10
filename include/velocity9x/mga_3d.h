@@ -82,6 +82,15 @@
 #define V9X_MGA3D_TEX_TW12 4ul
 
 /*
+ * The perspective path takes s and t in eighths of a texel, adds one
+ * eighth, and only then divides by q: one eighth of a texel at q = 1, and
+ * less as s, t and q are scaled up together
+ * (docs\decisions\2026-10-10-mga2164w-d3d-engine.md). A setup that wants
+ * floor(s / q) takes the eighth off s and t.
+ */
+#define V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS 3u
+
+/*
  * A texture for a textured trapezoid (opcode 0110, hypothesised). The
  * texels are 1 << log2_width by 1 << log2_height, stored row after row
  * from byte `offset`, 1 << log2_pitch texels to a row (8 to 1024).

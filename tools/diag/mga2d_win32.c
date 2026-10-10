@@ -2006,12 +2006,26 @@ static const struct mga2d_tex_case mga2d_tex_cases[] = {
         MGA2D_TEX_Q_ONE / 32L, 0L, 0L, 0L, MGA2D_TEX_Q_ONE }, 0ul, 1ul, 1ul,
       MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 5ul, 0ul, 0ul },
     /* A steeper ramp, q 1 to 3 over 16 pixels, and a start offset. The
-     * card's divider differs from floor(s / q + 1/8) where that lands
-     * exactly on an integer: a known divergence, reported, not failed. */
+     * card's divider differs from the model at 2 pixels a row, where the
+     * quotient is exactly an integer: a known divergence, reported, not
+     * failed. */
     { "TexPerspectiveSteep", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
       { 3L * MGA2D_TEX_ONE, 0L, 0L, MGA2D_TEX_ONE, MGA2D_TEX_Q_ONE / 8L, 0L,
         MGA2D_TEX_ONE / 4L, 0L, MGA2D_TEX_Q_ONE }, 0ul, 1ul, 1ul,
-      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul, 1ul }
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul, 1ul },
+    /* The ramp with s, t and q all 256 and 1024 times larger, q to 2^27
+     * and s to 2^30: does the divider use q's high bits, as the setup
+     * now scales them to keep q's step precise (mga_setup.c)? It does,
+     * and the scaled ramps lost the 1/8 texel at pixel 1 (boot 391): the
+     * eighth is added before the divide, not after. */
+    { "TexPerspectiveRampK256", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      { 256L * MGA2D_TEX_ONE, 0L, 0L, 256L * MGA2D_TEX_ONE,
+        16L * MGA2D_TEX_Q_ONE, 0L, 0L, 0L, 256L * MGA2D_TEX_Q_ONE }, 0ul,
+      1ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    { "TexPerspectiveRampK1024", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      { 1024L * MGA2D_TEX_ONE, 0L, 0L, 1024L * MGA2D_TEX_ONE,
+        64L * MGA2D_TEX_Q_ONE, 0L, 0L, 0L, 1024L * MGA2D_TEX_Q_ONE }, 0ul,
+      1ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul }
 };
 
 #define MGA2D_TEX_CASE_COUNT \

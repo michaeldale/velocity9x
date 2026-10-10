@@ -76,8 +76,6 @@
 #define V9X_MGA3D_TEXORG_ALIGN        32ul
 /* s and t: 1 << 20 spans the texture; q is 16.16. */
 #define V9X_MGA3D_TEX_COORD_BITS      20u
-/* The perspective path's 1/8-texel bias, in fraction bits. */
-#define V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS 3u
 
 /* SGN (3-77): sdxl<1> and sdxr<5>, each edge moving left. scanleft<0> and
  * sdy<2> must stay 0 for a trapezoid. */
@@ -741,18 +739,25 @@ static v9x_u32 v9x_mga3d_tex_coord(v9x_u32 accumulator, v9x_u32 q,
 
     if (perspective != 0ul) {
         /*
-         * The card's perspective texel is floor(s / q + 1/8), not
-         * floor(s / q): with q rising 1/16 a pixel it chose the next texel
-         * whenever s / q fell within 0.111 to 0.130 of it, and only then
-         * (docs\decisions\2026-10-10-mga2164w-textures.md). Taken in
-         * eighths: floor(8v) + 1, then the integer part.
+         * The card adds an eighth of a texel to s, divides by q and keeps
+         * the texel: at q = 1 that is floor(s / q + 1/8), as first
+         * measured, but the eighth is added before the divide - with s, t
+         * and q all 256 and 1024 times larger it was gone (boot 391), and
+         * this fits both rows of every ramp, 16 and 32 texels, plain and
+         * scaled. The steep ramp still differs at two pixels a row
+         * (docs\decisions\2026-10-10-mga2164w-d3d-engine.md).
          */
-        coord = v9x_mga3d_asr((v9x_s32)accumulator,
+        v9x_s32 eighth = (v9x_s32)(1ul << (V9X_MGA3D_TEX_COORD_BITS -
+                                           V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS -
+                                           (unsigned int)log2_size));
+
+        coord = (v9x_s32)accumulator;
+        if (coord <= 0x7fffffffL - eighth) {
+            coord += eighth;
+        }
+        coord = v9x_mga3d_asr(v9x_mga3d_div_q(coord, (v9x_s32)q),
                               V9X_MGA3D_TEX_COORD_BITS -
-                              V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS -
                               (unsigned int)log2_size);
-        coord = v9x_mga3d_asr(v9x_mga3d_div_q(coord, (v9x_s32)q) + 1L,
-                              V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS);
     } else {
         coord = v9x_mga3d_asr((v9x_s32)accumulator,
                               V9X_MGA3D_TEX_COORD_BITS -

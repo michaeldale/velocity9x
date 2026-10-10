@@ -49,9 +49,17 @@
  * top (depth record), so a start past it is held there. */
 #define V9X_MGA_SETUP_DEPTH_LOW    -65536.0
 #define V9X_MGA_SETUP_DEPTH_HIGH   65535.99
-/* The engine adds 1/8 texel before its perspective floor (textures
- * record). */
-#define V9X_MGA_SETUP_TEXEL_BIAS   0.125
+/* The eighth of a texel the engine adds to s and t before its perspective
+ * divide (mga_3d.h), taken off their starts. */
+#define V9X_MGA_SETUP_BIAS_PARTS \
+    ((double)(1ul << V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS))
+/* Perspective's common scale of s, t and q: q's 16.16 field holds 2^14
+ * with a factor of two to spare, and s and t are kept to a quarter of
+ * their signed 32 bits at 1 << 20 a texture (512 textures). */
+#define V9X_MGA_SETUP_Q_SCALE_MAX  16384.0
+#define V9X_MGA_SETUP_ST_HEADROOM  512.0
+/* The scale's fall, each time a sliver's steps overflow at it. */
+#define V9X_MGA_SETUP_Q_SCALE_STEP 16.0
 
 /* The double's two words, for the exponent test and the magic rounding,
  * as rage2_setup.c has them (local: the shared helper lives in another
@@ -294,12 +302,25 @@ static v9x_status v9x_mga_setup_emit(
     }
     if (base->texture.enabled != 0ul) {
         /* s and t already carry q where perspective is on, and run past the
-         * texture by design where it wraps: no clamp, only the field. */
+         * texture by design where it wraps: no clamp, only the field. The
+         * engine's perspective constant comes off their starts, so it
+         * draws floor(s / q). */
+        double s_bias = 0.0;
+        double t_bias = 0.0;
+
+        if (base->texture.perspective != 0ul) {
+            s_bias = 1.0 / (V9X_MGA_SETUP_BIAS_PARTS *
+                            (double)(1ul << base->texture.log2_width));
+            t_bias = 1.0 / (V9X_MGA_SETUP_BIAS_PARTS *
+                            (double)(1ul << base->texture.log2_height));
+        }
         if (!v9x_mga_setup_fix(&planes->s,
-                               v9x_mga_setup_at(&planes->s, v, px, py),
+                               v9x_mga_setup_at(&planes->s, v, px, py) -
+                                   s_bias,
                                V9X_MGA_SETUP_ST_ONE, s) ||
             !v9x_mga_setup_fix(&planes->t,
-                               v9x_mga_setup_at(&planes->t, v, px, py),
+                               v9x_mga_setup_at(&planes->t, v, px, py) -
+                                   t_bias,
                                V9X_MGA_SETUP_ST_ONE, t) ||
             !v9x_mga_setup_fix(&planes->q,
                                v9x_mga_setup_at(&planes->q, v, px, py),
@@ -312,17 +333,54 @@ static v9x_status v9x_mga_setup_emit(
 }
 
 /*
+ * s, t and q times the largest power of two that keeps s and t a quarter
+ * of their fields: the engine divides s by q, so only the ratio is drawn,
+ * and the bits gained are q's. At q's own scale, 1.0 the largest, a
+ * receding wall's q step per pixel has few significant bits, and the
+ * rounding builds up across the span into a texel that moves with the
+ * view - Half-Life's walls swam on A8U4I5 (boot 390). `cap` bounds the
+ * scale, which the caller lowers for a sliver whose steps then overflow.
+ */
+static void v9x_mga_setup_scale_perspective(double *s, double *t, double *q,
+                                            double cap)
+{
+    double largest = 0.0;
+    double scale = 1.0;
+    unsigned int index;
+
+    for (index = 0u; index < 3u; ++index) {
+        double a = s[index] < 0.0 ? -s[index] : s[index];
+        double b = t[index] < 0.0 ? -t[index] : t[index];
+
+        if (a > largest) {
+            largest = a;
+        }
+        if (b > largest) {
+            largest = b;
+        }
+    }
+    while (scale < cap &&
+           largest * scale * 2.0 <= V9X_MGA_SETUP_ST_HEADROOM) {
+        scale *= 2.0;
+    }
+    for (index = 0u; index < 3u; ++index) {
+        s[index] *= scale;
+        t[index] *= scale;
+        q[index] *= scale;
+    }
+}
+
+/*
  * The per-vertex s, t and q the planes run through. With perspective, q is
- * 1/w scaled so the largest is 1, and s, t are (u, v) times it, less the
- * engine's 1/8-texel bias; without, q is 1 and s, t are u, v.
+ * 1/w scaled so the largest is 1, and s, t are (u, v) times it, all three
+ * then scaled up together; without, q is 1 and s, t are u, v.
  */
 static void v9x_mga_setup_texture_values(
     const struct v9x_mga3d_texture *texture,
-    const struct v9x_mga_setup_vertex *v, double *s, double *t, double *q)
+    const struct v9x_mga_setup_vertex *v, double cap, double *s, double *t,
+    double *q)
 {
     double q_max = v[0].q;
-    double u_bias;
-    double v_bias;
     unsigned int index;
 
     if (v[1].q > q_max) {
@@ -331,22 +389,27 @@ static void v9x_mga_setup_texture_values(
     if (v[2].q > q_max) {
         q_max = v[2].q;
     }
-    u_bias = V9X_MGA_SETUP_TEXEL_BIAS /
-        (double)(1ul << texture->log2_width);
-    v_bias = V9X_MGA_SETUP_TEXEL_BIAS /
-        (double)(1ul << texture->log2_height);
     for (index = 0u; index < 3u; ++index) {
         if (texture->perspective != 0ul) {
             q[index] = v[index].q / q_max;
-            s[index] = (v[index].u - u_bias) * q[index];
-            t[index] = (v[index].v - v_bias) * q[index];
+            s[index] = v[index].u * q[index];
+            t[index] = v[index].v * q[index];
         } else {
             q[index] = 1.0;
             s[index] = v[index].u;
             t[index] = v[index].v;
         }
     }
+    if (texture->perspective != 0ul) {
+        v9x_mga_setup_scale_perspective(s, t, q, cap);
+    }
 }
+
+static v9x_status v9x_mga_setup_emit_both(
+    const struct v9x_mga3d_trap *base, const struct v9x_mga_setup_vertex *v,
+    const struct v9x_mga_setup_planes *planes, int long_on_left,
+    v9x_s32 r0, v9x_s32 r1, v9x_s32 r2, struct v9x_mga3d_trap *traps,
+    v9x_u32 *count);
 
 v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
                                   const struct v9x_mga_setup_vertex *vertices,
@@ -361,6 +424,7 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
     double q[3];
     double det;
     double inverse_det;
+    double cap;
     v9x_s32 r0;
     v9x_s32 r1;
     v9x_s32 r2;
@@ -425,13 +489,6 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
         v9x_mga_setup_plane_of(v, v[0].z, v[1].z, v[2].z, inverse_det,
                                &planes.z);
     }
-    if (base->texture.enabled != 0ul) {
-        v9x_mga_setup_texture_values(&base->texture, v, s, t, q);
-        v9x_mga_setup_plane_of(v, s[0], s[1], s[2], inverse_det, &planes.s);
-        v9x_mga_setup_plane_of(v, t[0], t[1], t[2], inverse_det, &planes.t);
-        v9x_mga_setup_plane_of(v, q[0], q[1], q[2], inverse_det, &planes.q);
-    }
-
     /*
      * Which side the long edge v0 -> v2 is on. With y down, the middle
      * vertex lies to its left when the cross product of the long edge
@@ -442,11 +499,46 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
     long_on_left = (double)(v[2].x - v[0].x) * (double)(v[1].y - v[0].y) -
         (double)(v[1].x - v[0].x) * (double)(v[2].y - v[0].y) < 0.0;
 
+    /* A perspective sliver whose steps overflow at the full scale is set
+     * up again at a smaller one, down to q's own. */
+    for (cap = V9X_MGA_SETUP_Q_SCALE_MAX; ; cap /= V9X_MGA_SETUP_Q_SCALE_STEP) {
+        if (cap < 1.0) {
+            cap = 1.0;
+        }
+        if (base->texture.enabled != 0ul) {
+            v9x_mga_setup_texture_values(&base->texture, v, cap, s, t, q);
+            v9x_mga_setup_plane_of(v, s[0], s[1], s[2], inverse_det,
+                                   &planes.s);
+            v9x_mga_setup_plane_of(v, t[0], t[1], t[2], inverse_det,
+                                   &planes.t);
+            v9x_mga_setup_plane_of(v, q[0], q[1], q[2], inverse_det,
+                                   &planes.q);
+        }
+        status = v9x_mga_setup_emit_both(base, v, &planes, long_on_left,
+                                         r0, r1, r2, traps, count);
+        if (status == V9X_STATUS_OK || base->texture.enabled == 0ul ||
+            base->texture.perspective == 0ul || cap <= 1.0) {
+            return status;
+        }
+    }
+}
+
+/* The triangle's one or two trapezoids: rows [r0, r1) above the middle
+ * vertex, [r1, r2) below. */
+static v9x_status v9x_mga_setup_emit_both(
+    const struct v9x_mga3d_trap *base, const struct v9x_mga_setup_vertex *v,
+    const struct v9x_mga_setup_planes *planes, int long_on_left,
+    v9x_s32 r0, v9x_s32 r1, v9x_s32 r2, struct v9x_mga3d_trap *traps,
+    v9x_u32 *count)
+{
+    v9x_status status;
+
+    *count = 0ul;
     if (r1 > r0) {
         status = long_on_left
-            ? v9x_mga_setup_emit(base, v, &planes, &v[0], &v[2], &v[0], &v[1],
+            ? v9x_mga_setup_emit(base, v, planes, &v[0], &v[2], &v[0], &v[1],
                                  r0, r1, &traps[*count])
-            : v9x_mga_setup_emit(base, v, &planes, &v[0], &v[1], &v[0], &v[2],
+            : v9x_mga_setup_emit(base, v, planes, &v[0], &v[1], &v[0], &v[2],
                                  r0, r1, &traps[*count]);
         if (status != V9X_STATUS_OK) {
             *count = 0ul;
@@ -456,9 +548,9 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
     }
     if (r2 > r1) {
         status = long_on_left
-            ? v9x_mga_setup_emit(base, v, &planes, &v[0], &v[2], &v[1], &v[2],
+            ? v9x_mga_setup_emit(base, v, planes, &v[0], &v[2], &v[1], &v[2],
                                  r1, r2, &traps[*count])
-            : v9x_mga_setup_emit(base, v, &planes, &v[1], &v[2], &v[0], &v[2],
+            : v9x_mga_setup_emit(base, v, planes, &v[1], &v[2], &v[0], &v[2],
                                  r1, r2, &traps[*count]);
         if (status != V9X_STATUS_OK) {
             *count = 0ul;

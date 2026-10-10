@@ -83,6 +83,8 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
  * (the patterns are decoded in docs\specifications\mga2164w-3d-engine.md).
  */
 #define V9X_D3D_MGA_STIPPLE_NONE 15ul
+/* 8 of every 16 pixels (pattern 0001). */
+#define V9X_D3D_MGA_STIPPLE_HALF 1ul
 v9x_u32 v9x_d3d_mga_stipple(v9x_u32 alpha);
 
 #endif
