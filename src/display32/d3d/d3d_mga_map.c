@@ -132,6 +132,7 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     int textured;
     int key_alpha = 0;
     int key_color = 0;
+    int key_black = 0;
     v9x_u32 index;
     unsigned char *bytes;
 
@@ -173,16 +174,38 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
         ? 1ul : 0ul;
     out->flat = draw->shade_mode == V9X_R3D_SHADE_FLAT ? 1ul : 0ul;
 
-    /* Blending: none, ONE/ZERO (the same), or source alpha over the
-     * destination, drawn as a stipple. */
+    /*
+     * Blending: none, ONE/ZERO (the same), source alpha over the
+     * destination drawn as a stipple, or additive.
+     *
+     * Additive (ONE/ONE, or SRCALPHA/ONE at the stipple density of the
+     * alpha) has no counterpart on the chip. On a texture, black adds
+     * nothing, so its texels are keyed out (below) and the rest drawn over
+     * the destination: exact for black-backed sprites such as Half-Life's
+     * HUD, which boot 388 drew none of (33,449 ONE/ONE draws refused);
+     * elsewhere a colour replaces what it should add to. Matrox's HAL draws
+     * the same HUD with the black boxes left in (boot 389). Untextured,
+     * there is nothing to key, and it is refused.
+     */
     if (draw->blend_enable != 0ul &&
         !(draw->src_blend == V9X_R3D_BLEND_ONE &&
           draw->dst_blend == V9X_R3D_BLEND_ZERO)) {
-        if (draw->src_blend != V9X_R3D_BLEND_SRCALPHA ||
-            draw->dst_blend != V9X_R3D_BLEND_INVSRCALPHA) {
+        if (draw->dst_blend == V9X_R3D_BLEND_ONE &&
+            (draw->src_blend == V9X_R3D_BLEND_ONE ||
+             draw->src_blend == V9X_R3D_BLEND_SRCALPHA)) {
+            if (draw->texture.object == 0) {
+                return V9X_D3D_MGA_REFUSE_BLEND;
+            }
+            key_black = 1;
+            if (draw->src_blend == V9X_R3D_BLEND_SRCALPHA) {
+                out->stipple = 1ul;
+            }
+        } else if (draw->src_blend == V9X_R3D_BLEND_SRCALPHA &&
+                   draw->dst_blend == V9X_R3D_BLEND_INVSRCALPHA) {
+            out->stipple = 1ul;
+        } else {
             return V9X_D3D_MGA_REFUSE_BLEND;
         }
-        out->stipple = 1ul;
     }
 
     /* Depth: the engine's Z buffer has the target's pitch, and ZORG is the
@@ -270,10 +293,11 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     }
 
     if (textured) {
-        if (key_color && key_alpha) {
+        /* TEXTRANS holds one key. */
+        if (key_color + key_alpha + key_black > 1) {
             return V9X_D3D_MGA_REFUSE_KEYS;
         }
-        if (key_color) {
+        if (key_color || key_black) {
             /* A colour key compares colour: on 1555 the alpha bit is left
              * out, as Matrox's HAL leaves it (V9XDDP ColorKeyOk, texel
              * FC1Fh against key 7C1Fh, A8U4I5 boot 383). */
@@ -281,7 +305,8 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
                 texture->format == V9X_MGA3D_TEX_TW15
                     ? (V9X_D3D_MGA_ALL_KEY_MASK & ~V9X_D3D_MGA_ALPHA_BIT)
                     : V9X_D3D_MGA_ALL_KEY_MASK;
-            base->texture.key = texture->color_key & base->texture.key_mask;
+            base->texture.key = key_black
+                ? 0ul : texture->color_key & base->texture.key_mask;
         } else if (key_alpha) {
             base->texture.key = 0ul;
             base->texture.key_mask = V9X_D3D_MGA_ALPHA_BIT;

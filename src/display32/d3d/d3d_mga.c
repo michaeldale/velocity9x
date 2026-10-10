@@ -398,6 +398,20 @@ static DWORD v9x_d3d_mga_specular_rgb(const V9X_R3D_VERTEX *vertices,
     return rgb;
 }
 
+/* Every vertex at alpha 255. */
+static v9x_u32 v9x_d3d_mga_vertices_opaque(const V9X_R3D_VERTEX *vertices,
+                                           DWORD count)
+{
+    DWORD index;
+
+    for (index = 0ul; index < count; ++index) {
+        if ((vertices[index].color & 0xff000000ul) != 0xff000000ul) {
+            return 0ul;
+        }
+    }
+    return 1ul;
+}
+
 /* A refusal by reason, in the counters the Rage IIC and the SiS use
  * (V9XTRACE's M64PolicyNN). */
 static void v9x_d3d_mga_count_refusal(const V9X_R3D_DRAW *draw,
@@ -489,6 +503,7 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
                             const V9X_R3D_VERTEX *vertices,
                             DWORD triangle_count)
 {
+    V9X_R3D_DRAW described;
     V9X_D3D_MGA_TEXTURE texture;
     V9X_D3D_MGA_MAPPED mapped;
     struct v9x_mga3d_trap base;
@@ -508,13 +523,23 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
         triangle_count > V9X_D3D_MGA_MAX_TRIANGLES || !v9x_d3d_mga_ready()) {
         return 0;
     }
-    v9x_d3d_mga_resolve_texture(draw, &texture);
-    reason = v9x_d3d_mga_map_draw(draw, &texture, v9x_hal->fb.vram_bytes,
+    /* Direct3D's draw leaves vertex_alpha_opaque zero (d3d_core.c); the
+     * batch's own vertices decide it here, as the Mach64's and the Rage
+     * II's draws do. Without it every alpha test was refused: Half-Life's
+     * ladders and grates, A8U4I5 boot 388. */
+    described = *draw;
+    if (described.explicit_state == 0ul) {
+        described.vertex_alpha_opaque =
+            v9x_d3d_mga_vertices_opaque(vertices, triangle_count * 3ul);
+    }
+    v9x_d3d_mga_resolve_texture(&described, &texture);
+    reason = v9x_d3d_mga_map_draw(&described, &texture,
+                                  v9x_hal->fb.vram_bytes,
                                   v9x_d3d_mga_specular_rgb(
                                       vertices, triangle_count * 3ul),
                                   &mapped);
     if (reason != V9X_D3D_MGA_REFUSE_NONE) {
-        v9x_d3d_mga_count_refusal(draw, reason);
+        v9x_d3d_mga_count_refusal(&described, reason);
         return 0;
     }
     if (mapped.skip != 0ul) {

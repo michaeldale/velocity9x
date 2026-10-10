@@ -272,6 +272,63 @@ static void test_alpha(void)
                                &mapped) == V9X_D3D_MGA_REFUSE_EXPLICIT);
 }
 
+/*
+ * Additive blending, which the chip does not have, on a texture: black adds
+ * nothing, so its texels are keyed out and the rest drawn over the
+ * destination. Exact for Half-Life's black-backed HUD sprites (A8U4I5 boot
+ * 388 refused 33,449 ONE/ONE draws, leaving no HUD); elsewhere a colour
+ * replaces where it should add.
+ */
+static void test_additive(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MGA_TEXTURE texture;
+    V9X_D3D_MGA_MAPPED mapped;
+
+    /* ONE/ONE on 565: key 0 over all 16 bits, no stipple. */
+    base_draw(&draw, &texture);
+    bind_texture(&draw, &texture, V9X_MGA3D_TEX_TW16);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.stipple == 0ul);
+    CHECK(mapped.base.texture.key == 0ul);
+    CHECK(mapped.base.texture.key_mask == 0xfffful);
+
+    /* On 1555 the colour bits only. */
+    texture.format = V9X_MGA3D_TEX_TW15;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.texture.key == 0ul);
+    CHECK(mapped.base.texture.key_mask == 0x7ffful);
+
+    /* SRCALPHA/ONE: the same, at the stipple density of the alpha. */
+    texture.format = V9X_MGA3D_TEX_TW16;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.stipple == 1ul);
+    CHECK(mapped.base.texture.key_mask == 0xfffful);
+
+    /* With a colour key as well: two keys, refused. */
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    texture.has_color_key = 1ul;
+    texture.color_key = 0x0000f81ful;
+    draw.color_key_enable = 1ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_KEYS);
+
+    /* Untextured: nothing to key, refused. */
+    base_draw(&draw, &texture);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+}
+
 unsigned int v9x_run_d3d_mga_map_tests(void)
 {
     failures = 0u;
@@ -279,5 +336,6 @@ unsigned int v9x_run_d3d_mga_map_tests(void)
     test_blend_fog_specular();
     test_texture();
     test_alpha();
+    test_additive();
     return failures;
 }
