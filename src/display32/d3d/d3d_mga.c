@@ -124,18 +124,23 @@ static int v9x_d3d_mga_wait_fifo(DWORD entries)
     DWORD fifo = 0ul;
     DWORD free_entries;
 
+    DWORD started;
+
     if (v9x_d3d_mga_fifo_credit >= entries) {
         v9x_d3d_mga_fifo_credit -= entries;
         return 1;
     }
+    started = V9X_TIME_BEGIN();
     for (spins = 0ul; spins < V9X_D3D_MGA_SPINS; ++spins) {
         fifo = v9x_d3d_mga_read(V9X_MGA_FIFOSTATUS);
         free_entries = fifo & V9X_D3D_MGA_FIFO_COUNT_MASK;
         if (free_entries >= entries) {
             v9x_d3d_mga_fifo_credit = free_entries - entries;
+            V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, started);
             return 1;
         }
     }
+    V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, started);
     return v9x_d3d_mga_timed_out(fifo);
 }
 
@@ -154,13 +159,16 @@ static void v9x_d3d_mga_batch_begin(void)
 static int v9x_d3d_mga_emit(const struct v9x_mga3d_writes *writes)
 {
     DWORD index;
+    DWORD started;
 
     if (!v9x_d3d_mga_wait_fifo(writes->count)) {
         return 0;
     }
+    started = V9X_TIME_BEGIN();
     for (index = 0ul; index < writes->count; ++index) {
         v9x_d3d_mga_write(writes->offsets[index], writes->values[index]);
     }
+    V9X_TIME_END(V9X_TIME_RING_WRITE, started);
     return 1;
 }
 
@@ -549,9 +557,9 @@ static DWORD v9x_d3d_mga_triangle_alpha(const V9X_R3D_VERTEX *triangle,
             (triangle[2].color >> 24)) / 3ul;
 }
 
-static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
-                            const V9X_R3D_VERTEX *vertices,
-                            DWORD triangle_count)
+static int v9x_d3d_mga_draw_batch(const V9X_R3D_DRAW *draw,
+                                  const V9X_R3D_VERTEX *vertices,
+                                  DWORD triangle_count)
 {
     V9X_R3D_DRAW described;
     V9X_D3D_MGA_TEXTURE texture;
@@ -563,9 +571,11 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
     v9x_u32 reason;
     v9x_u32 count;
     v9x_u32 trap;
+    v9x_status status;
     DWORD index;
     DWORD corner;
     DWORD alpha;
+    DWORD started;
     int flat;
     int emitted = 0;
 
@@ -638,14 +648,20 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
                 (triangle[0].rhw != triangle[1].rhw ||
                  triangle[0].rhw != triangle[2].rhw) ? 1ul : 0ul;
         }
-        if (v9x_mga_setup_triangle(&base, corners, v9x_d3d_mga_traps,
-                                   &count) != V9X_STATUS_OK) {
+        started = V9X_TIME_BEGIN();
+        status = v9x_mga_setup_triangle(&base, corners, v9x_d3d_mga_traps,
+                                        &count);
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        if (status != V9X_STATUS_OK) {
             v9x_d3d_mga_count_setup(draw, V9X_D3D_MGA_SETUP_SPLIT);
             continue;
         }
         for (trap = 0ul; trap < count; ++trap) {
-            if (v9x_mga3d_build_trap(&v9x_d3d_mga_traps[trap],
-                                     &v9x_d3d_mga_writes) != V9X_STATUS_OK) {
+            started = V9X_TIME_BEGIN();
+            status = v9x_mga3d_build_trap(&v9x_d3d_mga_traps[trap],
+                                          &v9x_d3d_mga_writes);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            if (status != V9X_STATUS_OK) {
                 v9x_d3d_mga_count_setup(draw, V9X_D3D_MGA_SETUP_BUILD);
                 continue;
             }
@@ -671,6 +687,23 @@ static int v9x_d3d_mga_is_target(const V9X_DD_SURFACE_LCL *surface)
                              V9X_DDSCAPS_FLIP | V9X_DDSCAPS_BACKBUFFER |
                              V9X_DDSCAPS_TEXTURE |
                              V9X_DDSCAPS_ZBUFFER)) == 0ul;
+}
+
+/*
+ * A batch, timed where the CPU has a TSC (ddhal_internal.h). The buckets
+ * are named for the Gen3 ring and mean, here: EngineDraw the whole batch,
+ * Decode the triangle setup and the register builder, RingWait the FIFO
+ * polls and RingWrite the register writes.
+ */
+static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
+                            const V9X_R3D_VERTEX *vertices,
+                            DWORD triangle_count)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    int result = v9x_d3d_mga_draw_batch(draw, vertices, triangle_count);
+
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return result;
 }
 
 /*

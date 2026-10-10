@@ -2085,6 +2085,29 @@ static DWORD v9x_published_mode_count(const V9X_DD_SHARED *shared)
     return shared->mode_count;
 }
 
+/* Nonzero when the CPU has a TSC (ddhal_internal.h). */
+int v9x_hal_tsc = 0;
+
+#define V9X_EFLAGS_ID   0x00200000ul
+#define V9X_CPUID1_TSC  0x00000010ul
+
+static int v9x_detect_tsc(void)
+{
+    DWORD original = v9x_read_eflags();
+    DWORD toggled;
+
+    v9x_write_eflags(original ^ V9X_EFLAGS_ID);
+    toggled = v9x_read_eflags();
+    v9x_write_eflags(original);
+    if (((toggled ^ original) & V9X_EFLAGS_ID) == 0ul) {
+        return 0;
+    }
+    if (v9x_cpuid0_eax() < 1ul) {
+        return 0;
+    }
+    return (v9x_cpuid1_edx() & V9X_CPUID1_TSC) != 0ul;
+}
+
 DWORD __stdcall DriverInit(DWORD context)
 {
     V9X_DD_SHARED *shared = (V9X_DD_SHARED *)context;
@@ -2116,6 +2139,7 @@ DWORD __stdcall DriverInit(DWORD context)
         }
     }
     v9x_hal = shared;
+    v9x_hal_tsc = v9x_detect_tsc();
     SetUnhandledExceptionFilter(v9x_unhandled_exception_filter);
     /* The Win16 mutex instrument: resolved from this process's KERNEL32
      * mapping, which is the same in every process. */

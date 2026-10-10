@@ -253,6 +253,29 @@ static void v9x_rdtsc_pair(DWORD *pair);
 #pragma aux v9x_rdtsc_pair = 0x0f 0x31 0x89 0x01 0x89 0x51 0x04 \
     parm [ecx] modify exact [eax edx];
 
+/*
+ * Whether this CPU has a TSC: CPUID exists when EFLAGS.ID (bit 21) can be
+ * toggled, and leaf 1 reports the TSC in EDX bit 4. Opcode bytes, as the
+ * RDTSC above: PUSHFD/POP EAX, PUSH EAX/POPFD, and MOV EAX,n with CPUID
+ * (0F A2), which writes EBX too. v9x_hal_tsc holds the answer, taken once
+ * by DriverInit (ddhal_core.c).
+ */
+static DWORD v9x_read_eflags(void);
+#pragma aux v9x_read_eflags = 0x9c 0x58 value [eax] modify exact [eax];
+
+static void v9x_write_eflags(DWORD flags);
+#pragma aux v9x_write_eflags = 0x50 0x9d parm [eax] modify exact [];
+
+static DWORD v9x_cpuid0_eax(void);
+#pragma aux v9x_cpuid0_eax = 0xb8 0x00 0x00 0x00 0x00 0x0f 0xa2 \
+    value [eax] modify exact [eax ebx ecx edx];
+
+static DWORD v9x_cpuid1_edx(void);
+#pragma aux v9x_cpuid1_edx = 0xb8 0x01 0x00 0x00 0x00 0x0f 0xa2 \
+    value [edx] modify exact [eax ebx ecx edx];
+
+extern int v9x_hal_tsc;
+
 #define V9X_TIME_D3D_CALLS     0u   /* the four D3D draw entry points   */
 #define V9X_TIME_ENGINE_DRAW   1u   /* Gen3 draw_triangles, whole       */
 #define V9X_TIME_DECODE        2u   /* the allowlist over one stream    */
@@ -272,10 +295,14 @@ static void v9x_rdtsc_pair(DWORD *pair);
 /* And on the Rage Pro class's Mach64 engine since 2026-10-07: its setup
  * engine is a PCI 2.1 or AGP part, in a Pentium-class host or later, as
  * the Rage IIC's always-on cost split already assumes (d3d_rage2.c). */
+/* And on the Millennium since 2026-10-11, only where the CPU has a TSC:
+ * the 2064W and 2164W are PCI parts a 486 board can carry. */
 #define V9X_TIME_ENABLED() \
     (v9x_hal != 0 && \
      (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 || \
-      v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64))
+      v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 || \
+      (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_MGA && \
+       v9x_hal_tsc)))
 #define V9X_TIME_BEGIN() (V9X_TIME_ENABLED() ? v9x_rdtsc_low() : 0ul)
 #define V9X_TIME_END(bucket, start) \
     { \
