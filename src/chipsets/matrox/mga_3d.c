@@ -48,6 +48,32 @@
 /* A 33.15 value's top half occupies <15:0> of the MSB register (3-39). */
 #define V9X_MGA3D_Z48_HI_LIMIT 0x00008000L
 
+/*
+ * Texturing, all hypothesised from 86Box's vid_mga.c: Matrox's public
+ * specification omits it (mga_3d.h). TEXTURE_TRAP is opcod 0110, with
+ * atype I or ZI. TEXCTL: texformat<2:0>, tpitch<18:16> (8 << tpitch
+ * texels a row), npcen<21> (no perspective), clampv<27>, clampu<28>,
+ * tmodulate<29>. TEXWIDTH and TEXHEIGHT: log2 size in <5:0>, size - 1 in
+ * <28:18>. TEXTRANS: key <15:0>, key mask <31:16>.
+ */
+#define V9X_MGA3D_DWGCTL_TEXTURE_TRAP 0x000c4006ul
+#define V9X_MGA3D_OPCOD_MASK          0x0000000ful
+#define V9X_MGA3D_TEXCTL_TPITCH_SHIFT 16u
+#define V9X_MGA3D_TEXCTL_NPCEN        0x00200000ul
+#define V9X_MGA3D_TEXCTL_TAKEY        0x02000000ul
+#define V9X_MGA3D_TEXCTL_TAMASK       0x04000000ul
+#define V9X_MGA3D_TEXCTL_CLAMPV       0x08000000ul
+#define V9X_MGA3D_TEXCTL_CLAMPU       0x10000000ul
+#define V9X_MGA3D_TEXCTL_TMODULATE    0x20000000ul
+#define V9X_MGA3D_TEXSIZE_MASK_SHIFT  18u
+#define V9X_MGA3D_TEX_LOG2_MAX        10ul
+#define V9X_MGA3D_TEX_PITCH_LOG2_MIN  3ul
+#define V9X_MGA3D_TEXORG_ALIGN        32ul
+/* s and t: 1 << 20 spans the texture; q is 16.16. */
+#define V9X_MGA3D_TEX_COORD_BITS      20u
+/* The perspective path's 1/8-texel bias, in fraction bits. */
+#define V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS 3u
+
 /* SGN (3-77): sdxl<1> and sdxr<5>, each edge moving left. scanleft<0> and
  * sdy<2> must stay 0 for a trapezoid. */
 #define V9X_MGA3D_SGN_SDXL 0x00000002ul
@@ -276,6 +302,103 @@ static v9x_status v9x_mga3d_check_depth(const struct v9x_mga3d_trap *trap,
     return V9X_STATUS_OK;
 }
 
+/*
+ * The texture half of the checks: a format the model and builder know
+ * (the 16-bit ones; the palettised ones need the LUT load, not yet
+ * measured), sizes inside the fields, a pitch at least the width, and the
+ * texels inside VRAM. Texturing writes the Gouraud registers too, so the
+ * destination must be one Gouraud can draw (not 8 bpp).
+ */
+static v9x_status v9x_mga3d_check_texture(const struct v9x_mga3d_trap *trap)
+{
+    const struct v9x_mga3d_texture *texture = &trap->texture;
+    v9x_u32 bytes;
+
+    if (texture->enabled == 0ul) {
+        return V9X_STATUS_OK;
+    }
+    if (trap->shade != V9X_MGA3D_SHADE_GOURAUD) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* TW12 (format 4 in 86Box) drew garbage on the 2164W, and Matrox's
+     * HAL offers no 4444; the palettised formats wait on the LUT load. */
+    if (texture->format != V9X_MGA3D_TEX_TW15 &&
+        texture->format != V9X_MGA3D_TEX_TW16) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (trap->bytes_per_pixel == 1ul ||
+        texture->log2_width > V9X_MGA3D_TEX_LOG2_MAX ||
+        texture->log2_height > V9X_MGA3D_TEX_LOG2_MAX ||
+        texture->log2_pitch < V9X_MGA3D_TEX_PITCH_LOG2_MIN ||
+        texture->log2_pitch > V9X_MGA3D_TEX_LOG2_MAX ||
+        texture->log2_pitch < texture->log2_width) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    /* The card ignores TEXORG's low five bits: 16 bytes off fetched 8
+     * texels early, 32 off was exact (docs\decisions\
+     * 2026-10-10-mga2164w-textures.md). */
+    if ((texture->offset % V9X_MGA3D_TEXORG_ALIGN) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    /* Two bytes a texel; both sizes at most 1024, so no overflow. */
+    bytes = (1ul << texture->log2_height) * (1ul << texture->log2_pitch) *
+        2ul;
+    if (texture->offset >= trap->vram_bytes ||
+        bytes > trap->vram_bytes - texture->offset) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return V9X_STATUS_OK;
+}
+
+static v9x_u32 v9x_mga3d_texsize(v9x_u32 log2_size)
+{
+    return (((1ul << log2_size) - 1ul) << V9X_MGA3D_TEXSIZE_MASK_SHIFT) |
+        log2_size;
+}
+
+/* TMR0-TMR8, then the texture's own registers, all ahead of DWGCTL. */
+static void v9x_mga3d_put_texture(struct v9x_mga3d_writes *writes,
+                                  const struct v9x_mga3d_texture *texture)
+{
+    v9x_u32 index;
+    v9x_u32 texctl;
+
+    for (index = 0ul; index < 9ul; ++index) {
+        v9x_mga3d_put(writes, V9X_MGA_TMR0 + index * 4ul,
+                      (v9x_u32)texture->tmr[index]);
+    }
+    texctl = texture->format |
+        ((texture->log2_pitch - V9X_MGA3D_TEX_PITCH_LOG2_MIN) <<
+         V9X_MGA3D_TEXCTL_TPITCH_SHIFT);
+    if (texture->perspective == 0ul) {
+        texctl |= V9X_MGA3D_TEXCTL_NPCEN;
+    }
+    if (texture->clamp_v != 0ul) {
+        texctl |= V9X_MGA3D_TEXCTL_CLAMPV;
+    }
+    if (texture->clamp_u != 0ul) {
+        texctl |= V9X_MGA3D_TEXCTL_CLAMPU;
+    }
+    if (texture->modulate != 0ul) {
+        texctl |= V9X_MGA3D_TEXCTL_TMODULATE;
+    }
+    if (texture->alpha_key != 0ul) {
+        texctl |= V9X_MGA3D_TEXCTL_TAKEY;
+    }
+    if (texture->alpha_mask != 0ul) {
+        texctl |= V9X_MGA3D_TEXCTL_TAMASK;
+    }
+    v9x_mga3d_put(writes, V9X_MGA_TEXORG, texture->offset);
+    v9x_mga3d_put(writes, V9X_MGA_TEXWIDTH,
+                  v9x_mga3d_texsize(texture->log2_width));
+    v9x_mga3d_put(writes, V9X_MGA_TEXHEIGHT,
+                  v9x_mga3d_texsize(texture->log2_height));
+    v9x_mga3d_put(writes, V9X_MGA_TEXCTL, texctl);
+    v9x_mga3d_put(writes, V9X_MGA_TEXTRANS,
+                  (texture->key & 0xfffful) |
+                  ((texture->key_mask & 0xfffful) << 16));
+}
+
 static v9x_status v9x_mga3d_check(const struct v9x_mga3d_trap *trap,
                                   v9x_u32 *pitch_pixels,
                                   v9x_u32 *origin_pixels)
@@ -355,6 +478,10 @@ v9x_status v9x_mga3d_build_trap(const struct v9x_mga3d_trap *trap,
     if (status != V9X_STATUS_OK) {
         return status;
     }
+    status = v9x_mga3d_check_texture(trap);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
     v9x_mga3d_edge_terms(&trap->left, &left);
     v9x_mga3d_edge_terms(&trap->right, &right);
     if (left.direction < 0L) {
@@ -416,6 +543,11 @@ v9x_status v9x_mga3d_build_trap(const struct v9x_mga3d_trap *trap,
                                         : V9X_MGA3D_ATYPE_I)
                  << V9X_MGA3D_ATYPE_SHIFT) |
                 (trap->zmode << V9X_MGA3D_ZMODE_SHIFT);
+        }
+        if (trap->texture.enabled != 0ul) {
+            v9x_mga3d_put_texture(writes, &trap->texture);
+            dwgctl = (dwgctl & ~V9X_MGA3D_OPCOD_MASK) |
+                (V9X_MGA3D_DWGCTL_TEXTURE_TRAP & V9X_MGA3D_OPCOD_MASK);
         }
         v9x_mga3d_put(writes, V9X_MGA_DWGCTL, dwgctl);
     } else {
@@ -527,11 +659,179 @@ static int v9x_mga3d_z_pass(v9x_u32 zmode, v9x_u32 incoming, v9x_u32 stored)
     }
 }
 
+/* value >> count rounding towards minus infinity, without relying on
+ * C89's implementation-defined shift of a negative value. */
+static v9x_s32 v9x_mga3d_asr(v9x_s32 value, unsigned int count)
+{
+    if (value >= 0L) {
+        return (v9x_s32)((v9x_u32)value >> count);
+    }
+    return (v9x_s32)~((~(v9x_u32)value) >> count);
+}
+
+/*
+ * trunc(coord / (q / 65536)), q being 16.16, in integers: the model is
+ * linked into tools that carry no floating-point runtime. The dividend
+ * |coord| x 65536 is up to 48 bits, so the division is a 64-by-32 shift
+ * and subtract. A quotient past 31 bits saturates; q = 0 gives 0, as
+ * 86Box's division by an infinite q does.
+ */
+static v9x_s32 v9x_mga3d_div_q(v9x_s32 coord, v9x_s32 q)
+{
+    v9x_u32 magnitude = coord < 0L ? 0ul - (v9x_u32)coord : (v9x_u32)coord;
+    v9x_u32 divisor = q < 0L ? 0ul - (v9x_u32)q : (v9x_u32)q;
+    v9x_u32 high = magnitude >> 16;
+    v9x_u32 low = magnitude << 16;
+    v9x_u32 remainder = 0ul;
+    v9x_u32 quotient = 0ul;
+    int bit;
+    int negative = (coord < 0L) != (q < 0L);
+
+    if (divisor == 0ul) {
+        return 0L;
+    }
+    if (high >= divisor) {
+        quotient = 0x7ffffffful;
+    } else {
+        remainder = high;
+        for (bit = 31; bit >= 0; --bit) {
+            int carry = (remainder & 0x80000000ul) != 0ul;
+
+            remainder = (remainder << 1) | ((low >> bit) & 1ul);
+            quotient <<= 1;
+            if (carry || remainder >= divisor) {
+                remainder -= divisor;
+                quotient |= 1ul;
+            }
+        }
+        if (quotient > 0x7ffffffful) {
+            quotient = 0x7ffffffful;
+        }
+    }
+    return negative ? -(v9x_s32)quotient : (v9x_s32)quotient;
+}
+
+/* One texture coordinate: s (or t) at the texture's scale, divided by q
+ * with perspective, then wrapped or clamped into 0 .. size - 1. */
+static v9x_u32 v9x_mga3d_tex_coord(v9x_u32 accumulator, v9x_u32 q,
+                                   v9x_u32 log2_size, v9x_u32 perspective,
+                                   v9x_u32 clamp)
+{
+    v9x_s32 coord;
+    v9x_s32 mask = (v9x_s32)((1ul << log2_size) - 1ul);
+
+    if (perspective != 0ul) {
+        /*
+         * The card's perspective texel is floor(s / q + 1/8), not
+         * floor(s / q): with q rising 1/16 a pixel it chose the next texel
+         * whenever s / q fell within 0.111 to 0.130 of it, and only then
+         * (docs\decisions\2026-10-10-mga2164w-textures.md). Taken in
+         * eighths: floor(8v) + 1, then the integer part.
+         */
+        coord = v9x_mga3d_asr((v9x_s32)accumulator,
+                              V9X_MGA3D_TEX_COORD_BITS -
+                              V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS -
+                              (unsigned int)log2_size);
+        coord = v9x_mga3d_asr(v9x_mga3d_div_q(coord, (v9x_s32)q) + 1L,
+                              V9X_MGA3D_TEX_PERSPECTIVE_BIAS_BITS);
+    } else {
+        coord = v9x_mga3d_asr((v9x_s32)accumulator,
+                              V9X_MGA3D_TEX_COORD_BITS -
+                              (unsigned int)log2_size);
+    }
+    if (clamp != 0ul) {
+        return coord < 0L ? 0ul
+                          : (coord > mask ? (v9x_u32)mask : (v9x_u32)coord);
+    }
+    return (v9x_u32)coord & (v9x_u32)mask;
+}
+
+/* 5- and 6-bit channels widen to eight by replicating their top bits into
+ * the bottom ones, as the card's modulated texels showed. */
+static v9x_u32 v9x_mga3d_widen5(v9x_u32 value)
+{
+    return (value << 3) | (value >> 2);
+}
+
+static v9x_u32 v9x_mga3d_widen6(v9x_u32 value)
+{
+    return (value << 2) | (value >> 4);
+}
+
+/*
+ * The textured pixel at 32 bpp, or 0 when the texel is keyed out. Started
+ * from 86Box's blit_texture_trap and texture_read and corrected by the
+ * card (docs\decisions\2026-10-10-mga2164w-textures.md): channels widen by
+ * replication, and the written pixel carries FCOL's alpha byte. Decal shows
+ * the Gouraud colour where the texel's alpha under tamask equals takey.
+ * TW16 has no alpha bit and counts as 0, as measured: only tamask and
+ * takey both set show its texels in decal. TW15's alpha is bit 15. TW12 is
+ * not a format this chip has (format 4 drew garbage on the card), so only
+ * the two 16-bit formats reach here.
+ */
+static int v9x_mga3d_tex_pixel(const struct v9x_mga3d_texture *texture,
+                               const struct v9x_mga3d_depth_io *io,
+                               const v9x_u32 *tmr, v9x_u32 i_red,
+                               v9x_u32 i_green, v9x_u32 i_blue,
+                               v9x_u32 *pixel)
+{
+    v9x_u32 s;
+    v9x_u32 t;
+    v9x_u32 texel;
+    v9x_u32 red;
+    v9x_u32 green;
+    v9x_u32 blue;
+    v9x_u32 alpha;
+    v9x_u32 alpha_mask = texture->alpha_mask != 0ul ? 1ul : 0ul;
+    v9x_u32 alpha_key = texture->alpha_key != 0ul ? 1ul : 0ul;
+    int alpha_transparent;
+
+    s = v9x_mga3d_tex_coord(tmr[0], tmr[2], texture->log2_width,
+                            texture->perspective, texture->clamp_u);
+    t = v9x_mga3d_tex_coord(tmr[1], tmr[2], texture->log2_height,
+                            texture->perspective, texture->clamp_v);
+    texel = io->texel(io->texel_context, s, t) & 0xfffful;
+    if (texture->format == V9X_MGA3D_TEX_TW16) {
+        red = v9x_mga3d_widen5(texel >> 11);
+        green = v9x_mga3d_widen6((texel >> 5) & 0x3ful);
+        blue = v9x_mga3d_widen5(texel & 0x1ful);
+        alpha = 0ul;
+    } else {
+        red = v9x_mga3d_widen5((texel >> 10) & 0x1ful);
+        green = v9x_mga3d_widen5((texel >> 5) & 0x1ful);
+        blue = v9x_mga3d_widen5(texel & 0x1ful);
+        alpha = texel >> 15;
+    }
+    alpha_transparent = (alpha & alpha_mask) == alpha_key;
+    if ((texel & texture->key_mask & 0xfffful) ==
+        (texture->key & 0xfffful)) {
+        return 0;
+    }
+    if (texture->modulate != 0ul) {
+        red = (red * i_red) >> 8;
+        green = (green * i_green) >> 8;
+        blue = (blue * i_blue) >> 8;
+    } else if (alpha_transparent) {
+        red = i_red;
+        green = i_green;
+        blue = i_blue;
+    }
+    *pixel = (red << 16) | (green << 8) | blue;
+    return 1;
+}
+
 v9x_status v9x_mga3d_model_trap(const struct v9x_mga3d_trap *trap,
                                 v9x_u32 fold, v9x_mga3d_plot_fn plot,
                                 void *context,
                                 const struct v9x_mga3d_depth_io *depth_io)
 {
+    /* s, t and q at the left edge of the row, and at the pixel. */
+    v9x_u32 row_tmr[3];
+    v9x_u32 tmr[3];
+    v9x_u32 i_red;
+    v9x_u32 i_green;
+    v9x_u32 i_blue;
+    v9x_u32 index;
     v9x_u32 zorg;
     struct v9x_mga3d_z48 z_steps[3];
     const struct v9x_mga3d_z48 *z_step;
@@ -567,12 +867,20 @@ v9x_status v9x_mga3d_model_trap(const struct v9x_mga3d_trap *trap,
     if (status != V9X_STATUS_OK) {
         return status;
     }
+    status = v9x_mga3d_check_texture(trap);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
     if (trap->shade == V9X_MGA3D_SHADE_GOURAUD &&
         trap->bytes_per_pixel != 4ul) {
         return V9X_STATUS_UNSUPPORTED;
     }
     if (trap->depth != V9X_MGA3D_DEPTH_NONE &&
         (depth_io == 0 || depth_io->read == 0 || depth_io->write == 0)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (trap->texture.enabled != 0ul &&
+        (depth_io == 0 || depth_io->texel == 0)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -591,29 +899,48 @@ v9x_status v9x_mga3d_model_trap(const struct v9x_mga3d_trap *trap,
         z_step = z_steps;
     }
     row_z32 = z_step[0];
+    for (index = 0ul; index < 3ul; ++index) {
+        row_tmr[index] = (v9x_u32)trap->texture.tmr[6ul + index];
+    }
     for (row = 0ul; row < trap->length; ++row) {
         red = row_red;
         green = row_green;
         blue = row_blue;
         z32 = row_z32;
+        for (index = 0ul; index < 3ul; ++index) {
+            tmr[index] = row_tmr[index];
+        }
         for (x = left.x; x < right.x; ++x) {
+            pass = 1;
             if (trap->shade == V9X_MGA3D_SHADE_GOURAUD) {
-                pixel = (trap->color & 0xff000000ul) |
-                    (v9x_mga3d_level(red) << 16) |
-                    (v9x_mga3d_level(green) << 8) | v9x_mga3d_level(blue);
+                i_red = v9x_mga3d_level(red);
+                i_green = v9x_mga3d_level(green);
+                i_blue = v9x_mga3d_level(blue);
+                pixel = (trap->color & 0xff000000ul) | (i_red << 16) |
+                    (i_green << 8) | i_blue;
                 red += trap->red[1];
                 green += trap->green[1];
                 blue += trap->blue[1];
+                if (trap->texture.enabled != 0ul) {
+                    pass = v9x_mga3d_tex_pixel(&trap->texture, depth_io, tmr,
+                                               i_red, i_green, i_blue,
+                                               &pixel);
+                    pixel |= trap->color & 0xff000000ul;
+                    for (index = 0ul; index < 3ul; ++index) {
+                        tmr[index] += (v9x_u32)trap->texture.tmr[index * 2ul];
+                    }
+                }
             } else {
                 pixel = trap->color;
             }
-            pass = 1;
             if (trap->depth != V9X_MGA3D_DEPTH_NONE) {
                 incoming = trap->depth == V9X_MGA3D_DEPTH_32
                     ? v9x_mga3d_z32_stored(&z32) : v9x_mga3d_z16_stored(&z32);
-                pass = v9x_mga3d_z_pass(trap->zmode, incoming,
-                                        depth_io->read(depth_io->context, x,
-                                                       row));
+                /* A transparent texel is skipped before the Z write. */
+                pass = pass &&
+                    v9x_mga3d_z_pass(trap->zmode, incoming,
+                                     depth_io->read(depth_io->context, x,
+                                                    row));
                 if (pass && trap->z_write != 0ul) {
                     depth_io->write(depth_io->context, x, row, incoming);
                 }
@@ -629,11 +956,18 @@ v9x_status v9x_mga3d_model_trap(const struct v9x_mga3d_trap *trap,
         row_green += trap->green[2];
         row_blue += trap->blue[2];
         v9x_mga3d_z48_add(&row_z32, &z_step[2]);
+        for (index = 0ul; index < 3ul; ++index) {
+            row_tmr[index] += (v9x_u32)trap->texture.tmr[index * 2ul + 1ul];
+        }
         if (fold == V9X_MGA3D_FOLD_EDGE) {
             row_red += moved * trap->red[1];
             row_green += moved * trap->green[1];
             row_blue += moved * trap->blue[1];
             v9x_mga3d_z48_add_times(&row_z32, &z_step[1], moved);
+            for (index = 0ul; index < 3ul; ++index) {
+                row_tmr[index] += (v9x_u32)moved *
+                    (v9x_u32)trap->texture.tmr[index * 2ul];
+            }
         }
     }
     return V9X_STATUS_OK;

@@ -473,6 +473,162 @@ static void test_depth_refusals(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* A 16 x 16 texture whose texels are all distinct: red is s, green t. */
+static v9x_u32 texel_565(void *context, v9x_u32 s, v9x_u32 t)
+{
+    (void)context;
+    return (s << 11) | (t << 5) | ((s + t) & 0x1ful);
+}
+
+static v9x_u32 z_never(void *context, v9x_s32 x, v9x_u32 row)
+{
+    (void)context;
+    (void)x;
+    (void)row;
+    return 0ul;
+}
+
+static void z_ignore(void *context, v9x_s32 x, v9x_u32 row, v9x_u32 value)
+{
+    (void)context;
+    (void)x;
+    (void)row;
+    (void)value;
+}
+
+static const struct v9x_mga3d_depth_io texel_io = {
+    z_never, z_ignore, 0, texel_565, 0
+};
+
+/* The pixel a 565 texel (s, t) decodes to at 32 bpp: each channel widened
+ * by replicating its top bits, as measured. */
+static long texel_pixel(v9x_u32 s, v9x_u32 t)
+{
+    v9x_u32 texel = texel_565(0, s, t);
+    v9x_u32 red = texel >> 11;
+    v9x_u32 green = (texel >> 5) & 0x3ful;
+    v9x_u32 blue = texel & 0x1ful;
+
+    return (long)((((red << 3) | (red >> 2)) << 16) |
+                  (((green << 2) | (green >> 4)) << 8) |
+                  ((blue << 3) | (blue >> 2)));
+}
+
+static void base_texture(struct v9x_mga3d_trap *trap)
+{
+    base_trap(trap);
+    trap->shade = V9X_MGA3D_SHADE_GOURAUD;
+    trap->length = 2ul;
+    trap->left.x = 0L;
+    trap->left.dy = 2L;
+    trap->right.x = 20L;
+    trap->right.dy = 2L;
+    trap->texture.enabled = 1ul;
+    trap->texture.offset = 0x00380000ul;
+    trap->texture.format = V9X_MGA3D_TEX_TW16;
+    trap->texture.log2_width = 4ul;
+    trap->texture.log2_height = 4ul;
+    trap->texture.log2_pitch = 4ul;
+    trap->texture.key = 0xfffful;
+    trap->texture.key_mask = 0xfffful;
+    /* tamask and takey set: 565 counts as alpha 0, so its texels show in
+     * decal only so. */
+    trap->texture.alpha_mask = 1ul;
+    trap->texture.alpha_key = 1ul;
+    /* One texel a pixel across, one a row down. */
+    trap->texture.tmr[0] = 0x00010000L;
+    trap->texture.tmr[3] = 0x00010000L;
+    trap->texture.tmr[8] = 0x00010000L;
+}
+
+static void test_texture(void)
+{
+    struct v9x_mga3d_trap trap;
+    struct v9x_mga3d_writes writes;
+
+    base_texture(&trap);
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_OK);
+    CHECK(reg_value(&writes, V9X_MGA_TMR0) == 0x00010000ul);
+    CHECK(reg_value(&writes, V9X_MGA_TMR0 + 12u) == 0x00010000ul);
+    CHECK(reg_value(&writes, V9X_MGA_TMR0 + 32u) == 0x00010000ul);
+    CHECK(reg_value(&writes, V9X_MGA_TEXORG) == 0x00380000ul);
+    CHECK(reg_value(&writes, V9X_MGA_TEXWIDTH) == ((15ul << 18) | 4ul));
+    /* TW16, tpitch 1 (16 texels), npcen, takey, tamask. */
+    CHECK(reg_value(&writes, V9X_MGA_TEXCTL) == 0x06210003ul);
+    CHECK(reg_value(&writes, V9X_MGA_TEXTRANS) == 0xfffffffful);
+    /* TEXTURE_TRAP, atype I, NOZCMP. */
+    CHECK(reg_value(&writes, V9X_MGA_DWGCTL) == 0x000c4076ul);
+    CHECK(writes.offsets[writes.count - 1u] ==
+          V9X_MGA_YDSTLEN + V9X_MGA_GO);
+
+    /* Identity, then wrapping past column 15. */
+    clear_grid();
+    CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, plot, 0,
+                               &texel_io) == V9X_STATUS_OK);
+    CHECK(grid[0][0] == texel_pixel(0u, 0u));
+    CHECK(grid[0][5] == texel_pixel(5u, 0u));
+    CHECK(grid[1][5] == texel_pixel(5u, 1u));
+    CHECK(grid[0][17] == texel_pixel(1u, 0u));
+
+    /* Clamped instead. */
+    trap.texture.clamp_u = 1ul;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_OK);
+    CHECK(reg_value(&writes, V9X_MGA_TEXCTL) == 0x16210003ul);
+    clear_grid();
+    CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, plot, 0,
+                               &texel_io) == V9X_STATUS_OK);
+    CHECK(grid[0][17] == texel_pixel(15u, 0u));
+
+    /* Perspective with q = 1 is the identity too. */
+    base_texture(&trap);
+    trap.texture.perspective = 1ul;
+    clear_grid();
+    CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, plot, 0,
+                               &texel_io) == V9X_STATUS_OK);
+    CHECK(grid[1][7] == texel_pixel(7u, 1u));
+
+    /* tamask and takey clear: every texel shows the Gouraud colour in
+     * decal, as the card drew it. */
+    base_texture(&trap);
+    trap.texture.alpha_mask = 0ul;
+    trap.texture.alpha_key = 0ul;
+    trap.red[0] = 0x80L * V9X_MGA3D_COLOR_ONE;
+    clear_grid();
+    CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, plot, 0,
+                               &texel_io) == V9X_STATUS_OK);
+    CHECK(grid[0][5] == 0x00800000L);
+
+    /* A keyed texel is not drawn. */
+    base_texture(&trap);
+    trap.texture.key = texel_565(0, 3u, 0u);
+    clear_grid();
+    CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, plot, 0,
+                               &texel_io) == V9X_STATUS_OK);
+    CHECK(grid[0][3] == -1L);
+    CHECK(grid[0][4] == texel_pixel(4u, 0u));
+
+    /* Refusals: palettised formats, no Gouraud, the model with no texels. */
+    base_texture(&trap);
+    trap.texture.format = V9X_MGA3D_TEX_TW8;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&trap);
+    trap.shade = V9X_MGA3D_SHADE_FLAT;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&trap);
+    trap.texture.log2_pitch = 3ul;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_UNSUPPORTED);
+    /* TEXORG off a 32-byte boundary: the card ignores the low bits. */
+    base_texture(&trap);
+    trap.texture.offset += 0x10ul;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_UNSUPPORTED);
+    trap.texture.offset += 0x10ul;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_OK);
+    base_texture(&trap);
+    CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, plot, 0, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_mga_3d_tests(void)
 {
     failures = 0u;
@@ -483,5 +639,6 @@ unsigned int v9x_run_mga_3d_tests(void)
     test_depth16();
     test_depth32();
     test_depth_refusals();
+    test_texture();
     return failures;
 }

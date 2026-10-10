@@ -58,7 +58,66 @@
 #define V9X_MGA3D_COLOR_ONE 0x00008000L
 #define V9X_MGA3D_Z_ONE     0x00008000L
 
-#define V9X_MGA3D_MAX_WRITES 32u
+#define V9X_MGA3D_MAX_WRITES 48u
+
+/*
+ * Texture registers, NOT in Matrox's public 2164W specification, which
+ * leaves 2C00h-2C34h out of its register map. Offsets and fields are
+ * hypotheses from 86Box's vid_mga.c (docs\specifications\
+ * mga2164w-3d-engine.md section 10) until a decision record measures them:
+ * phase 3 of docs\plans\matrox-mga2164w-hardware-3d.md.
+ */
+#define V9X_MGA_TMR0       0x2c00ul
+#define V9X_MGA_TEXORG     0x2c24ul
+#define V9X_MGA_TEXWIDTH   0x2c28ul
+#define V9X_MGA_TEXHEIGHT  0x2c2cul
+#define V9X_MGA_TEXCTL     0x2c30ul
+#define V9X_MGA_TEXTRANS   0x2c34ul
+
+/* TEXCTL texformat<2:0>, hypothesised. */
+#define V9X_MGA3D_TEX_TW4  0ul
+#define V9X_MGA3D_TEX_TW8  1ul
+#define V9X_MGA3D_TEX_TW15 2ul
+#define V9X_MGA3D_TEX_TW16 3ul
+#define V9X_MGA3D_TEX_TW12 4ul
+
+/*
+ * A texture for a textured trapezoid (opcode 0110, hypothesised). The
+ * texels are 1 << log2_width by 1 << log2_height, stored row after row
+ * from byte `offset`, 1 << log2_pitch texels to a row (8 to 1024).
+ * `perspective` zero sets TEXCTL.npcen: s and t are then linear. `tmr` is
+ * TMR0-TMR8 as written - s, t, q per pixel (0, 2, 4), per row (1, 3, 5)
+ * and at the left edge of the first row (6, 7, 8) - with s and t scaled so
+ * that 1 << 20 spans the texture, and q 16.16. `modulate` multiplies the
+ * texel by the Gouraud colour; otherwise the texel replaces it (decal).
+ * A texel whose bits under key_mask equal key is transparent (TEXTRANS).
+ * alpha_mask and alpha_key are TEXCTL's tamask and takey: in decal, a
+ * texel whose alpha under the mask equals the key shows the Gouraud
+ * colour instead. With the mask 0 every texel does. TW16 has no alpha bit
+ * and counts as 0, so its texels show in decal only with both set
+ * (docs\decisions\2026-10-10-mga2164w-textures.md).
+ */
+struct v9x_mga3d_texture {
+    v9x_u32 enabled;
+    v9x_u32 offset;
+    v9x_u32 format;
+    v9x_u32 log2_width;
+    v9x_u32 log2_height;
+    v9x_u32 log2_pitch;
+    v9x_u32 clamp_u;
+    v9x_u32 clamp_v;
+    v9x_u32 modulate;
+    v9x_u32 perspective;
+    v9x_u32 key;
+    v9x_u32 key_mask;
+    v9x_u32 alpha_mask;
+    v9x_u32 alpha_key;
+    v9x_s32 tmr[9];
+};
+
+/* The model's view of texture memory: the texel bits at (s, t), already
+ * wrapped or clamped into the texture. */
+typedef v9x_u32 (*v9x_mga3d_texel_fn)(void *context, v9x_u32 s, v9x_u32 t);
 
 /* Depth buffer width, MACCESS.zwidth (3-70). */
 #define V9X_MGA3D_DEPTH_NONE 0ul
@@ -141,6 +200,7 @@ struct v9x_mga3d_trap {
     v9x_u32 z_offset;
     v9x_s32 z[3];
     struct v9x_mga3d_z48 z32[3];
+    struct v9x_mga3d_texture texture;
 };
 
 /* The model's view of the Z buffer: read the stored value at (x, row) of
@@ -149,6 +209,9 @@ struct v9x_mga3d_depth_io {
     v9x_u32 (*read)(void *context, v9x_s32 x, v9x_u32 row);
     void (*write)(void *context, v9x_s32 x, v9x_u32 row, v9x_u32 value);
     void *context;
+    /* Texels, for a textured trapezoid; may be 0 otherwise. */
+    v9x_mga3d_texel_fn texel;
+    void *texel_context;
 };
 
 /*

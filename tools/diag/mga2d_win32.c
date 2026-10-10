@@ -42,7 +42,8 @@
  * Command line: /nosetup skips v9x_mga_build_setup; /vram:N (2-16) sets VRAM
  * to N MiB in place of the BIOS's figure from V9XBOOT.INI, which places the
  * region 1 MiB below N; /tri draws trapezoids instead of fills and copies,
- * and /depth Gouraud trapezoids with a Z buffer (32 bpp only).
+ * /depth Gouraud trapezoids with a Z buffer (32 bpp only), and /tex
+ * textured trapezoids (32 bpp, 2164W only).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -1804,6 +1805,8 @@ static void mga2d_depth_test(const struct mga2d_depth_case *test,
     depth_io.read = mga2d_z_read;
     depth_io.write = mga2d_z_write;
     depth_io.context = &z_target;
+    depth_io.texel = 0;
+    depth_io.texel_context = 0;
     status = v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, mga2d_tri_plot,
                                   &target, &depth_io);
     if (status != V9X_STATUS_OK) {
@@ -1852,6 +1855,515 @@ static void mga2d_depth_test(const struct mga2d_depth_case *test,
     mga2d_key(key, test->name, "Result");
     if (color_mismatches == 0ul && z_mismatches == 0ul) {
         mga2d_write(key, "PASS");
+    } else {
+        mga2d_write(key, "FAIL");
+        ++mga2d_failures;
+    }
+}
+
+/*
+ * /tex: textured trapezoids (phase 3 of the plan), at 32 bpp on the 2164W.
+ * Every register and field used here is a hypothesis from 86Box; Matrox's
+ * public specification omits texturing. Each case uploads a 16 x 16
+ * texture whose texels are all distinct into the region's second half,
+ * draws a rectangle of rows over it and compares the colour with the model
+ * (RGB only: the model writes no alpha byte, and what the card writes there
+ * is reported). For TW16 each drawn pixel is also decoded back to the
+ * texel it shows, red giving s and green t, and written as "s.t".
+ */
+#define MGA2D_TEX_BAND_ROWS 7ul
+/* Colour bands in the region's first 768 KiB, textures in the last 256,
+ * 8 KiB a case. */
+#define MGA2D_TEX_AREA 0x000c0000ul
+#define MGA2D_TEX_SIZE 16ul
+#define MGA2D_TEX_ONE 0x00010000L   /* one texel of a 16-texel side */
+#define MGA2D_TEX_Q_ONE 0x00010000L
+
+struct mga2d_tex_case {
+    const char *name;
+    DWORD format;
+    DWORD width;
+    DWORD length;
+    long tmr[9];
+    DWORD clamp_u;
+    DWORD perspective;
+    DWORD modulate;
+    DWORD key_s;            /* key the texel at (key_s, 0) when not 0xFFFF */
+    DWORD key_mask;
+    DWORD alpha_mask;       /* TEXCTL tamask */
+    DWORD alpha_key;        /* TEXCTL takey */
+    DWORD log2_size;        /* 0 means 4: 16 x 16 */
+    DWORD log2_pitch;       /* 0 means the size */
+    DWORD org_extra;        /* bytes added to the 8 KiB-aligned TEXORG */
+    DWORD known_divergence; /* mismatches reported, not failed */
+};
+
+#define MGA2D_TEX_NOKEY 0xfffful
+#define MGA2D_TEX_STEPS(ds, dsdy, s0) \
+    { (ds), (dsdy), 0L, MGA2D_TEX_ONE, 0L, 0L, (s0), 0L, MGA2D_TEX_Q_ONE }
+
+static const struct mga2d_tex_case mga2d_tex_cases[] = {
+    /* Coordinates, read through modulation by white Gouraud so the texel
+     * shows whatever decal does: one texel a pixel across, one a row
+     * down. */
+    { "TexIdentity", V9X_MGA3D_TEX_TW16, 16ul, 4ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* Half a texel a pixel: magnification, and the sample point. */
+    { "TexMagnify", V9X_MGA3D_TEX_TW16, 32ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE / 2L, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* Starting half a texel in. */
+    { "TexHalfStart", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, MGA2D_TEX_ONE / 2L), 0ul, 0ul,
+      1ul, MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul },
+    /* 40 texels across a 16-texel texture: wrap. */
+    { "TexWrap", V9X_MGA3D_TEX_TW16, 40ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* The same clamped. */
+    { "TexClampU", V9X_MGA3D_TEX_TW16, 40ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 1ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* From s = -4: wrap below zero. */
+    { "TexNegative", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, -4L * MGA2D_TEX_ONE), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* s also gains a texel a row: TMR1. */
+    { "TexSkew", V9X_MGA3D_TEX_TW16, 16ul, 4ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, MGA2D_TEX_ONE, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* Perspective on, q = 1: the identity, if q is 16.16. */
+    { "TexPerspective", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 1ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* Perspective, q = 2 and s, t doubled: the identity again. */
+    { "TexPerspectiveQ2", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      { 2L * MGA2D_TEX_ONE, 0L, 0L, 2L * MGA2D_TEX_ONE, 0L, 0L, 0L, 0L,
+        2L * MGA2D_TEX_Q_ONE }, 0ul, 1ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful,
+      0ul, 0ul, 0ul, 0ul, 0ul },
+    /* Texel (3, 0) keyed out with a full mask. */
+    { "TexKey", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul, 3ul, 0xfffful,
+      0ul, 0ul, 0ul, 0ul, 0ul },
+    /* TEXTRANS zero: an empty mask keys every texel out. */
+    { "TexZeroTrans", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul, 0ul, 0ul,
+      0ul, 0ul, 0ul, 0ul, 0ul },
+    /* Decal on 565 under each tamask/takey: which shows the texel? */
+    { "DecalMask0", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    { "DecalMask1Key0", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 1ul, 0ul, 0ul, 0ul, 0ul },
+    { "DecalMask1Key1", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 1ul, 1ul, 0ul, 0ul, 0ul },
+    /* 1555 decal, the alpha bit set on odd columns. */
+    { "Decal15Key0", V9X_MGA3D_TEX_TW15, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 1ul, 0ul, 0ul, 0ul, 0ul },
+    { "Decal15Key1", V9X_MGA3D_TEX_TW15, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 1ul, 1ul, 0ul, 0ul, 0ul },
+    { "Tex15Modulate", V9X_MGA3D_TEX_TW15, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* True perspective: q from 1 rising 1/16 a pixel, s one texel a
+     * pixel, so the texel is x / (1 + x / 16). */
+    { "TexPerspectiveRamp", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      { MGA2D_TEX_ONE, 0L, 0L, MGA2D_TEX_ONE, MGA2D_TEX_Q_ONE / 16L, 0L,
+        0L, 0L, MGA2D_TEX_Q_ONE }, 0ul, 1ul, 1ul, MGA2D_TEX_NOKEY,
+      0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* 32 x 32: one texel a pixel is 1 << 15 at this size. */
+    { "TexSize32", V9X_MGA3D_TEX_TW16, 32ul, 4ul,
+      { MGA2D_TEX_ONE / 2L, 0L, 0L, MGA2D_TEX_ONE / 2L, 0L, 0L, 0L, 0L,
+        MGA2D_TEX_Q_ONE }, 0ul, 0ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful,
+      0ul, 0ul, 5ul, 0ul, 0ul },
+    /* 16 x 16 in rows of 64 texels. */
+    { "TexPitch64", V9X_MGA3D_TEX_TW16, 16ul, 4ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 6ul, 0ul },
+    /* TEXORG 64 and 32 bytes past an 8 KiB boundary. 8 and 16 bytes past
+     * fetched early (b385, MGA2D-tex-round4.TXT): the builder refuses
+     * them. */
+    { "TexOrg64", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0x40ul },
+    { "TexOrg32", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0x20ul },
+    /* Linear, starting 7/8 of a texel in: floor, or a bias as in the
+     * perspective path? */
+    { "TexStart7of8", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, (MGA2D_TEX_ONE * 7L) / 8L), 0ul,
+      0ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* The perspective ramp on a 32-texel texture: is the bias 1/8 of a
+     * texel, or of a fixed coordinate step? */
+    { "TexPerspectiveRamp32", V9X_MGA3D_TEX_TW16, 32ul, 2ul,
+      { MGA2D_TEX_ONE / 2L, 0L, 0L, MGA2D_TEX_ONE / 2L,
+        MGA2D_TEX_Q_ONE / 32L, 0L, 0L, 0L, MGA2D_TEX_Q_ONE }, 0ul, 1ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 5ul, 0ul, 0ul },
+    /* A steeper ramp, q 1 to 3 over 16 pixels, and a start offset. The
+     * card's divider differs from floor(s / q + 1/8) where that lands
+     * exactly on an integer: a known divergence, reported, not failed. */
+    { "TexPerspectiveSteep", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      { 3L * MGA2D_TEX_ONE, 0L, 0L, MGA2D_TEX_ONE, MGA2D_TEX_Q_ONE / 8L, 0L,
+        MGA2D_TEX_ONE / 4L, 0L, MGA2D_TEX_Q_ONE }, 0ul, 1ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul, 1ul }
+};
+
+#define MGA2D_TEX_CASE_COUNT \
+    (sizeof(mga2d_tex_cases) / sizeof(mga2d_tex_cases[0]))
+
+/* The texel at (s, t) of each format's test texture: all distinct up to
+ * 32 x 32, red carrying s and green t.
+ * TW12's alpha nibble is F; TW15's alpha bit is set on odd columns. */
+static DWORD mga2d_tex_texel(DWORD format, DWORD s, DWORD t)
+{
+    if (format == V9X_MGA3D_TEX_TW15) {
+        return ((s & 1ul) << 15) | (s << 10) | (t << 5) | ((s + t) & 0x1ful);
+    }
+    if (format == V9X_MGA3D_TEX_TW12) {
+        return 0xf000ul | (s << 8) | (t << 4) | ((s + t) & 0x0ful);
+    }
+    return (s << 11) | (t << 5) | ((s + t) & 0x1ful);
+}
+
+static DWORD mga2d_tex_format;
+
+static v9x_u32 mga2d_tex_texel_fn(void *context, v9x_u32 s, v9x_u32 t)
+{
+    (void)context;
+    return mga2d_tex_texel(mga2d_tex_format, s, t);
+}
+
+static v9x_u32 mga2d_tex_no_z(void *context, v9x_s32 x, v9x_u32 row)
+{
+    (void)context;
+    (void)x;
+    (void)row;
+    return 0ul;
+}
+
+static void mga2d_tex_no_z_write(void *context, v9x_s32 x, v9x_u32 row,
+                                 v9x_u32 value)
+{
+    (void)context;
+    (void)x;
+    (void)row;
+    (void)value;
+}
+
+/* A 5- or 6-bit channel widened by replication, as the card does it. */
+static DWORD mga2d_widen(DWORD value, DWORD bits)
+{
+    return (value << (8ul - bits)) | (value >> (2ul * bits - 8ul));
+}
+
+/*
+ * Which texel a drawn pixel shows: every (s, t) of the test texture tried,
+ * as the card renders it - widened, and under modulation by white times
+ * 255 >> 8. Non-zero when exactly one texel matches.
+ */
+static int mga2d_tex_decode(DWORD format, DWORD modulate, DWORD size,
+                            DWORD pixel, DWORD *s_out, DWORD *t_out)
+{
+    DWORD s;
+    DWORD t;
+    DWORD texel;
+    DWORD red;
+    DWORD green;
+    DWORD blue;
+    DWORD matches = 0ul;
+
+    for (t = 0ul; t < size; ++t) {
+        for (s = 0ul; s < size; ++s) {
+            texel = mga2d_tex_texel(format, s, t);
+            if (format == V9X_MGA3D_TEX_TW16) {
+                red = mga2d_widen(texel >> 11, 5ul);
+                green = mga2d_widen((texel >> 5) & 0x3ful, 6ul);
+            } else {
+                red = mga2d_widen((texel >> 10) & 0x1ful, 5ul);
+                green = mga2d_widen((texel >> 5) & 0x1ful, 5ul);
+            }
+            blue = mga2d_widen(texel & 0x1ful, 5ul);
+            if (modulate) {
+                red = (red * 0xfful) >> 8;
+                green = (green * 0xfful) >> 8;
+                blue = (blue * 0xfful) >> 8;
+            }
+            if (((red << 16) | (green << 8) | blue) == pixel) {
+                *s_out = s;
+                *t_out = t;
+                ++matches;
+            }
+        }
+    }
+    return matches == 1ul;
+}
+
+/* Upload the case's texture: size rows of size texels, pitch texels a
+ * row. The VxD takes dword stores, so an offset that is not a multiple of
+ * four is refused here (TexOrg8's 8 is). */
+static int mga2d_tex_upload(DWORD offset, DWORD format, DWORD size,
+                            DWORD pitch)
+{
+    DWORD t;
+    DWORD s;
+
+    if ((offset & 3ul) != 0ul) {
+        return 0;
+    }
+    mga2d_begin();
+    for (t = 0ul; t < size; ++t) {
+        for (s = 0ul; s < size; s += 2ul) {
+            mga2d_add(MGA2D_OP_LFB_WRITE32, offset + (t * pitch + s) * 2ul,
+                      mga2d_tex_texel(format, s, t) |
+                      (mga2d_tex_texel(format, s + 1ul, t) << 16), 0ul);
+            if (mga2d_request_buffer.count == MGA2D_OP_MAX) {
+                if (!mga2d_run()) {
+                    return 0;
+                }
+                mga2d_begin();
+            }
+        }
+    }
+    return mga2d_request_buffer.count == 0ul || mga2d_run();
+}
+
+static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
+{
+    struct v9x_mga3d_trap trap;
+    struct v9x_mga3d_writes writes;
+    struct mga2d_window window;
+    struct mga2d_plot_target target;
+    struct v9x_mga3d_depth_io io;
+    char key[64];
+    char text[MGA2D_TRI_COLS * 6ul + 32ul];
+    DWORD destination_row = band * MGA2D_TEX_BAND_ROWS + MGA2D_GUARD;
+    DWORD log2_size = test->log2_size != 0ul ? test->log2_size : 4ul;
+    DWORD log2_pitch = test->log2_pitch != 0ul ? test->log2_pitch
+                                               : log2_size;
+    DWORD texture_offset = mga2d_region_base + MGA2D_TEX_AREA +
+        band * 0x2000ul + test->org_extra;
+    DWORD left = 8ul;
+    DWORD row;
+    DWORD col;
+    DWORD index;
+    DWORD count;
+    DWORD mismatches = 0ul;
+    DWORD first_row = 0ul;
+    DWORD first_col = 0ul;
+    DWORD alpha_seen = 0xfffffffful;
+    DWORD image_row;
+    DWORD pixel;
+    DWORD s;
+    DWORD t;
+    v9x_u32 offsets[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
+    v9x_u32 values[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
+    v9x_status status;
+
+    if (mga2d_bpp != 4ul) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "SKIPPED-DEPTH");
+        return;
+    }
+    if (!mga2d_is_2164w) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "SKIPPED-CHIP");
+        return;
+    }
+    window.row0 = destination_row - MGA2D_GUARD;
+    window.rows = test->length + 2ul * MGA2D_GUARD;
+    window.cols = MGA2D_TRI_COLS;
+    if ((window.row0 + window.rows) * mga2d_pitch_bytes >
+            MGA2D_TEX_AREA ||
+        left + test->width > MGA2D_TRI_COLS) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "WINDOW-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+
+    mga2d_zero(&trap, sizeof(trap));
+    trap.vram_bytes = mga2d_vram_bytes;
+    trap.target_offset = mga2d_row_offset(destination_row);
+    trap.pitch_bytes = mga2d_pitch_bytes;
+    trap.bytes_per_pixel = mga2d_bpp;
+    trap.length = test->length;
+    trap.left.x = (long)left;
+    trap.left.dy = (long)test->length;
+    trap.right.x = (long)(left + test->width);
+    trap.right.dy = (long)test->length;
+    trap.shade = V9X_MGA3D_SHADE_GOURAUD;
+    trap.color = MGA2D_TRI_ALPHA;
+    /* White under modulation, so the texel shows; 80/FF/40 under decal, so
+     * the Gouraud colour is told from any texel. */
+    trap.red[0] = MGA2D_LEVEL(test->modulate ? 0xff : 0x80);
+    trap.green[0] = MGA2D_LEVEL(0xff);
+    trap.blue[0] = MGA2D_LEVEL(test->modulate ? 0xff : 0x40);
+    trap.texture.enabled = 1ul;
+    trap.texture.offset = texture_offset;
+    trap.texture.format = test->format;
+    trap.texture.log2_width = log2_size;
+    trap.texture.log2_height = log2_size;
+    trap.texture.log2_pitch = log2_pitch;
+    trap.texture.clamp_u = test->clamp_u;
+    trap.texture.perspective = test->perspective;
+    trap.texture.modulate = test->modulate;
+    trap.texture.key = test->key_s == MGA2D_TEX_NOKEY
+        ? (test->key_mask == 0ul ? 0ul : 0xfffful)
+        : mga2d_tex_texel(test->format, test->key_s, 0ul);
+    trap.texture.key_mask = test->key_mask;
+    trap.texture.alpha_mask = test->alpha_mask;
+    trap.texture.alpha_key = test->alpha_key;
+    for (index = 0ul; index < 9ul; ++index) {
+        trap.texture.tmr[index] = test->tmr[index];
+    }
+    status = v9x_mga3d_build_trap(&trap, &writes);
+    if (status != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "BUILD-REFUSED");
+        mga2d_key(key, test->name, "BuildStatus");
+        mga2d_write_decimal(key, status);
+        ++mga2d_failures;
+        return;
+    }
+    mga2d_key(key, test->name, "DestinationRow");
+    mga2d_write_decimal(key, destination_row);
+    mga2d_report_list(test->name, writes.offsets, writes.values,
+                      writes.count);
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            mga2d_before[row][col] = mga2d_pattern(col, window.row0 + row);
+        }
+    }
+    if (!mga2d_stream_write(&window, mga2d_before) ||
+        !mga2d_tex_upload(texture_offset, test->format, 1ul << log2_size,
+                          1ul << log2_pitch)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "PREPARE-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    count = 0ul;
+    for (index = 0ul; index < mga2d_setup.count; ++index) {
+        offsets[count] = mga2d_setup.offsets[index];
+        values[count] = mga2d_setup.values[index];
+        ++count;
+    }
+    for (index = 0ul; index < writes.count; ++index) {
+        offsets[count] = writes.offsets[index];
+        values[count] = writes.values[index];
+        ++count;
+    }
+    if (!mga2d_run_list(test->name, offsets, values, count)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, mga2d_engine_dead ? "ENGINE-TIMEOUT" : "RUN-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    if (!mga2d_stream_read(&window, mga2d_actual)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "READBACK-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            text[col] = mga2d_actual[row][col] != mga2d_before[row][col]
+                ? '#' : '.';
+        }
+        text[window.cols] = '\0';
+        lstrcpyA(key, test->name);
+        lstrcatA(key, "Row");
+        mga2d_signed(key + lstrlenA(key),
+                     (long)(window.row0 + row) - (long)destination_row);
+        mga2d_write(key, text);
+    }
+
+    /* Each drawn row as the card shows it: decoded texels for TW16, raw
+     * RGB otherwise. */
+    for (row = 0ul; row < test->length; ++row) {
+        image_row = destination_row + row - window.row0;
+        text[0] = '\0';
+        for (col = left; col < left + test->width; ++col) {
+            pixel = mga2d_actual[image_row][col];
+            if (col != left) {
+                lstrcatA(text, " ");
+            }
+            if (pixel == mga2d_before[image_row][col]) {
+                lstrcatA(text, "--");
+                continue;
+            }
+            if (alpha_seen == 0xfffffffful) {
+                alpha_seen = pixel >> 24;
+            }
+            if (test->format != V9X_MGA3D_TEX_TW12 &&
+                mga2d_tex_decode(test->format, test->modulate,
+                                 1ul << log2_size, pixel & 0x00fffffful,
+                                 &s, &t)) {
+                mga2d_decimal(text + lstrlenA(text), s);
+                lstrcatA(text, ".");
+                mga2d_decimal(text + lstrlenA(text), t);
+            } else {
+                mga2d_hex(text + lstrlenA(text), pixel & 0x00fffffful, 6);
+            }
+        }
+        lstrcpyA(key, test->name);
+        lstrcatA(key, "Texels");
+        mga2d_decimal(key + lstrlenA(key), row);
+        mga2d_write(key, text);
+    }
+    if (alpha_seen != 0xfffffffful) {
+        mga2d_key(key, test->name, "AlphaByte");
+        mga2d_write_hex(key, alpha_seen);
+    }
+
+    /* The model, RGB only. */
+    mga2d_bytes(mga2d_expected, mga2d_before, sizeof(mga2d_image));
+    target.first_row = destination_row;
+    target.window_row0 = window.row0;
+    target.window_rows = window.rows;
+    mga2d_tex_format = test->format;
+    io.read = mga2d_tex_no_z;
+    io.write = mga2d_tex_no_z_write;
+    io.context = 0;
+    io.texel = mga2d_tex_texel_fn;
+    io.texel_context = 0;
+    status = v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, mga2d_tri_plot,
+                                  &target, &io);
+    if (status != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "MODEL-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            if (((mga2d_actual[row][col] ^ mga2d_expected[row][col]) &
+                 0x00fffffful) != 0ul ||
+                ((mga2d_actual[row][col] == mga2d_before[row][col]) !=
+                 (mga2d_expected[row][col] == mga2d_before[row][col]))) {
+                if (mismatches++ == 0ul) {
+                    first_row = row;
+                    first_col = col;
+                }
+            }
+        }
+    }
+    mga2d_tri_report_mismatch(test->name, "Mismatches", mismatches,
+                              first_row, first_col, &window,
+                              destination_row);
+    mga2d_key(key, test->name, "Result");
+    if (mismatches == 0ul) {
+        mga2d_write(key, "PASS");
+    } else if (test->known_divergence) {
+        mga2d_write(key, "KNOWN-DIVERGENCE");
     } else {
         mga2d_write(key, "FAIL");
         ++mga2d_failures;
@@ -1938,6 +2450,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     int no_setup;
     int trapezoids;
     int depth;
+    int textures;
     int have_option;
     CONFIGRET cm_status;
     static const char header[] = "[Mga2dProbe]\r\n";
@@ -1956,6 +2469,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     no_setup = mga2d_find(command_line, "/nosetup") != 0;
     trapezoids = mga2d_find(command_line, "/tri") != 0;
     depth = mga2d_find(command_line, "/depth") != 0;
+    textures = mga2d_find(command_line, "/tex") != 0;
     option_mib = mga2d_parse_decimal(mga2d_find(command_line, "/vram:"),
                                      &have_option);
 
@@ -1969,7 +2483,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     WriteFile(mga2d_output, header, (DWORD)lstrlenA(header), &written, 0);
     mga2d_write("Build", V9X_BUILD_ID);
     mga2d_write("NoSetup", no_setup ? "1" : "0");
-    mga2d_write("Mode", depth ? "depth"
+    mga2d_write("Mode", textures ? "textures" : depth ? "depth"
                         : trapezoids ? "trapezoids" : "fill-copy");
     if (have_option) {
         mga2d_write_decimal("VramOptionMiB", option_mib);
@@ -2166,7 +2680,14 @@ void WINAPI V9xMga2dProbeEntry(void)
         mga2d_write("Setup", "emitted");
     }
 
-    if (depth) {
+    if (textures) {
+        for (index = 0ul; index < MGA2D_TEX_CASE_COUNT; ++index) {
+            mga2d_tex_test(&mga2d_tex_cases[index], index);
+            if (mga2d_engine_dead) {
+                break;
+            }
+        }
+    } else if (depth) {
         for (index = 0ul; index < MGA2D_DEPTH_CASE_COUNT; ++index) {
             mga2d_depth_test(&mga2d_depth_cases[index], index);
             if (mga2d_engine_dead) {

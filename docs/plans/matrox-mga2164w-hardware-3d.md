@@ -107,7 +107,14 @@ which is the probe-first shape SiS and the Rage IIC already use.
    stored value clamps at the top as well as at 0. Planned as: ZI and I
    with 16-bit Z, then 32-bit: ZORG alignment and the bank advice, the
    stored bits, clamp or wrap at 1.0, compare direction, Z pitch.
-3. **Textures (probe).** First, does opcode 0110 draw at all with the
+3. **Textures (probe).** Done 2026-10-10 for 565 and 1555
+   ([record](../decisions/2026-10-10-mga2164w-textures.md)): opcode 0110
+   and the 2C00h block as 86Box has them, coordinates, wrap, clamp,
+   pitch, perspective, key and modulate confirmed; corrected for bit
+   replication, the decal alpha rule (565 counts as alpha 0), no 4444,
+   32-byte TEXORG and a 1/8-texel perspective bias. Left as 3b: the
+   palettised formats and the LUT load, textures with depth, and a 16 bpp
+   target. As planned: first, does opcode 0110 draw at all with the
    2C00h block as hypothesised; the probe refuses the 2064W, so this never
    runs on the Millennium. Then TW16 linear (npcen), the TMR scales and
    TEXWIDTH/TEXHEIGHT, wrap and clamp, the pitch field; then perspective

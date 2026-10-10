@@ -68,7 +68,9 @@ compares each with `src/chipsets/matrox/mga_3d.c`'s model (Gouraud at 32 bpp
 only), writing each case's coverage as text rows. `/depth` draws Gouraud
 trapezoids over a prefilled 16- or 32-bit Z buffer (32 bpp desktops only,
 32-bit Z on the 2164W only) and compares both the colour and the Z with the
-model. `/vram:N` sets the memory size in place of the BIOS's. `/nosetup` skips the engine
+model. `/tex` draws textured trapezoids from a texture of distinct texels
+(32 bpp, 2164W only), decodes each drawn pixel back to its texel and
+compares with the model. `/vram:N` sets the memory size in place of the BIOS's. `/nosetup` skips the engine
 setup writes. It publishes `C:\V9XDIAG\MGA2D.TXT`. See
 [2026-10-09 MGA-2064W drawing engine](../../docs/decisions/2026-10-09-mga2064w-drawing-engine.md)
 and [2026-10-10 MGA-2164W trapezoids](../../docs/decisions/2026-10-10-mga2164w-trapezoids.md).

@@ -538,6 +538,14 @@ filtering or mipmapping.** Treat both as unknown, not absent.
 
 ## 10. What 86Box assumes for the missing texture interface
 
+Measured on A8U4I5 on 2026-10-10
+([record](../decisions/2026-10-10-mga2164w-textures.md)): the register
+map, TMR meaning, size fields, pitch, npcen, wrap/clamp, key and modulate
+below hold; channels widen by replication, 565 counts as alpha 0 in the
+tamask/takey decal rule, format 4 is not 4444, TEXORG ignores its low five
+bits, and perspective adds about 1/8 of a texel. The list is kept as the
+hypotheses were written.
+
 86Box's `src/video/vid_mga.c` (upstream `f566f9c`, 2026-08-08, in
 `build/upstream-86box`) models the 2164W and implements TEXTURE_TRAP. It is
 reverse-engineered emulator code, not a Matrox source, and it does not
