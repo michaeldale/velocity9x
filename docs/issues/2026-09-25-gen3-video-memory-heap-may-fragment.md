@@ -106,3 +106,12 @@ pieces too small for a whole mip tree even when the total would do.
 - `docs\decisions\2026-09-25-placing-plain-textures-on-gen3.md`
 - `docs\decisions\2026-09-25-mip-trees-on-gen3.md`
 - `docs\decisions\2026-09-25-scanning-out-at-2112-on-gen3.md`
+
+## 2026-10-11: a field report on the GMA 900
+
+V9X-WPVJHN (915GM, 0.15.0 `11d348f`, 1024x768x16, 8 MB VBE), one boot
+of 3DMark2001 SE then 3DMark2000: `MipTreeAllocs` 28,431,
+`MipTreeDeclined` 21,121, `MipTreeDeclinedLast` 4. The reporter calls
+what they saw "3D pattern corruption"; the image has not been seen, so
+whether the declines are the cause is open. Recorded in
+[2026-10-11 3DMark2000 pattern corruption](2026-10-11-3dmark2000-pattern-corruption-gma900.md).
