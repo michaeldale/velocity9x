@@ -41,7 +41,8 @@
  *
  * Command line: /nosetup skips v9x_mga_build_setup; /vram:N (2-16) sets VRAM
  * to N MiB in place of the BIOS's figure from V9XBOOT.INI, which places the
- * region 1 MiB below N; /tri draws trapezoids instead of fills and copies.
+ * region 1 MiB below N; /tri draws trapezoids instead of fills and copies,
+ * and /depth Gouraud trapezoids with a Z buffer (32 bpp only).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -791,20 +792,35 @@ static void mga2d_report_writes(const char *name,
  * The builder's writes behind a FIFO wait for all of them, then a bounded
  * idle wait and the read-cache flush, so the CPU readback that follows sees
  * what the engine wrote rather than dwords cached before it ran. The VxD
- * accepts a FIFO wait of at most 32 entries, the 2064W's depth.
+ * accepts a FIFO wait of at most 32 entries, the 2064W's depth, so a longer
+ * list waits again before each further 32; the first wait is the one
+ * reported.
  */
+#define MGA2D_FIFO_WAIT_MAX 32ul
+
 static int mga2d_run_list(const char *name, const v9x_u32 *offsets,
                           const v9x_u32 *values, DWORD count)
 {
     char key[48];
-    DWORD fifo;
+    DWORD fifo = 0ul;
     DWORD idle;
     DWORD flush;
     DWORD index;
+    DWORD block;
 
     mga2d_begin();
-    fifo = mga2d_add(MGA2D_OP_WAIT_FIFO, count, 0ul, 0ul);
     for (index = 0ul; index < count; ++index) {
+        if ((index % MGA2D_FIFO_WAIT_MAX) == 0ul) {
+            block = count - index;
+            if (block > MGA2D_FIFO_WAIT_MAX) {
+                block = MGA2D_FIFO_WAIT_MAX;
+            }
+            if (index == 0ul) {
+                fifo = mga2d_add(MGA2D_OP_WAIT_FIFO, block, 0ul, 0ul);
+            } else {
+                mga2d_add(MGA2D_OP_WAIT_FIFO, block, 0ul, 0ul);
+            }
+        }
         mga2d_add(MGA2D_OP_MMIO_WRITE32, offsets[index], values[index], 0ul);
     }
     idle = mga2d_add(MGA2D_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
@@ -1175,7 +1191,7 @@ static DWORD mga2d_tri_compare(const struct v9x_mga3d_trap *trap,
     DWORD mismatches = 0ul;
 
     mga2d_bytes(mga2d_expected, mga2d_before, sizeof(mga2d_image));
-    if (v9x_mga3d_model_trap(trap, fold, mga2d_tri_plot, target) !=
+    if (v9x_mga3d_model_trap(trap, fold, mga2d_tri_plot, target, 0) !=
         V9X_STATUS_OK) {
         return 0xfffffffful;
     }
@@ -1403,6 +1419,445 @@ static void mga2d_tri_test(const struct mga2d_tri_case *test)
     }
 }
 
+/*
+ * /depth: Gouraud trapezoids with a Z buffer (phase 2 of the plan). Colour
+ * bands sit in the region's first half; each case's Z rows sit in the
+ * second half at the same row index, Z width per pixel, so ZORG works out
+ * the same for every case. Each case's Z rows are prefilled, drawn over,
+ * and read back with the colour, and both are compared with mga_3d.c's
+ * model. Edges run from lx moving ldx over ldy rows to a vertical right
+ * edge at rx; colour is constant (0x40, 0x80, 0xC0); depth starts at z
+ * (16-bit, 17.15) or z32 (32-bit, 33.15), with [1] per pixel, [2] per row.
+ * The prefill is `prefill` everywhere, plus `ramp` times the column.
+ */
+#define MGA2D_DEPTH_BAND_ROWS 8ul
+#define MGA2D_DEPTH_Z_HALF (MGA2D_REGION_BYTES / 2ul)
+#define MGA2D_DEPTH_ONE V9X_MGA3D_Z_ONE
+
+struct mga2d_depth_case {
+    const char *name;
+    DWORD depth;
+    DWORD zmode;
+    DWORD z_write;
+    long lx;
+    long ldx;
+    long ldy;
+    long rx;
+    DWORD length;
+    long z[3];
+    struct v9x_mga3d_z48 z32[3];
+    DWORD prefill;
+    DWORD ramp;
+};
+
+#define MGA2D_Z16(n) ((long)(n) * MGA2D_DEPTH_ONE)
+#define MGA2D_NO_Z32 { { 0L, 0ul }, { 0L, 0ul }, { 0L, 0ul } }
+#define MGA2D_DEPTH16_MODE(name, mode) \
+    { name, V9X_MGA3D_DEPTH_16, mode, 1ul, 8L, 0L, 2L, 40L, 2ul, \
+      { MGA2D_Z16(1000), MGA2D_Z16(1), 0L }, MGA2D_NO_Z32, 1010ul, 0ul }
+
+static const struct mga2d_depth_case mga2d_depth_cases[] = {
+    /* Always write; a sloped left edge so Z's fold is seen too. The stored
+     * values say where ZORG put the buffer, its pitch, and which bits of
+     * the 17.15 value are kept. */
+    { "Z16Write", V9X_MGA3D_DEPTH_16, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 4L, 4L, 40L, 4ul,
+      { MGA2D_Z16(1000), MGA2D_Z16(1), MGA2D_Z16(64) }, MGA2D_NO_Z32,
+      0xa5a5ul, 0ul },
+    MGA2D_DEPTH16_MODE("Z16ModeE", V9X_MGA3D_ZMODE_ZE),
+    MGA2D_DEPTH16_MODE("Z16ModeNE", V9X_MGA3D_ZMODE_ZNE),
+    MGA2D_DEPTH16_MODE("Z16ModeLT", V9X_MGA3D_ZMODE_ZLT),
+    MGA2D_DEPTH16_MODE("Z16ModeLTE", V9X_MGA3D_ZMODE_ZLTE),
+    MGA2D_DEPTH16_MODE("Z16ModeGT", V9X_MGA3D_ZMODE_ZGT),
+    MGA2D_DEPTH16_MODE("Z16ModeGTE", V9X_MGA3D_ZMODE_ZGTE),
+    /* atype I: compared, never written. */
+    { "Z16TestOnly", V9X_MGA3D_DEPTH_16, V9X_MGA3D_ZMODE_ZLT, 0ul,
+      8L, 0L, 2L, 40L, 2ul,
+      { MGA2D_Z16(1000), MGA2D_Z16(1), 0L }, MGA2D_NO_Z32, 1010ul, 0ul },
+    /* Compared against a ramp rather than a constant: stored 990 + 2x. */
+    { "Z16Ramp", V9X_MGA3D_DEPTH_16, V9X_MGA3D_ZMODE_ZLT, 1ul,
+      8L, 0L, 2L, 40L, 2ul,
+      { MGA2D_Z16(1000), MGA2D_Z16(1), 0L }, MGA2D_NO_Z32, 974ul, 2ul },
+    /* Through 65535: wrap, clamp or the sign bit? */
+    { "Z16Top", V9X_MGA3D_DEPTH_16, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 0L, 1L, 40L, 1ul,
+      { MGA2D_Z16(65520), MGA2D_Z16(1), 0L }, MGA2D_NO_Z32, 0x5a5aul, 0ul },
+    /* Up through 0 from below. */
+    { "Z16Bottom", V9X_MGA3D_DEPTH_16, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 0L, 1L, 40L, 1ul,
+      { MGA2D_Z16(-10), MGA2D_Z16(1), 0L }, MGA2D_NO_Z32, 0x5a5aul, 0ul },
+    /* A half to start, a quarter a pixel: is the stored value truncated? */
+    { "Z16Fraction", V9X_MGA3D_DEPTH_16, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 0L, 1L, 40L, 1ul,
+      { MGA2D_Z16(1000) + 0x4000L, 0x2000L, 0L }, MGA2D_NO_Z32,
+      0x5a5aul, 0ul },
+    /* 32-bit Z, the 2164W's: 0x12345678 + 0x10001 a pixel, + 0x01000000 a
+     * row, all bits of the stored value distinct. */
+    { "Z32Write", V9X_MGA3D_DEPTH_32, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 4L, 4L, 40L, 4ul, { 0L, 0L, 0L },
+      { { 0x091aL, 0x2b3c0000ul }, { 0L, 0x80008000ul }, { 0x0080L, 0ul } },
+      0xa5a5a5a5ul, 0ul },
+    /* 0x7FFFFFF0 + x against 0x80000000: an unsigned compare passes the
+     * first 16; a signed one would pass none. */
+    { "Z32ModeLT", V9X_MGA3D_DEPTH_32, V9X_MGA3D_ZMODE_ZLT, 1ul,
+      8L, 0L, 2L, 40L, 2ul, { 0L, 0L, 0L },
+      { { 0x3fffL, 0xfff80000ul }, { 0L, 0x00008000ul }, { 0L, 0ul } },
+      0x80000000ul, 0ul },
+    /* Through 2^32 from 0xFFFFFFF0. */
+    { "Z32Top", V9X_MGA3D_DEPTH_32, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 0L, 1L, 40L, 1ul, { 0L, 0L, 0L },
+      { { 0x7fffL, 0xfff80000ul }, { 0L, 0x00008000ul }, { 0L, 0ul } },
+      0x5a5a5a5aul, 0ul },
+    /* Up through 0 from -10. */
+    { "Z32Bottom", V9X_MGA3D_DEPTH_32, V9X_MGA3D_ZMODE_NOZCMP, 1ul,
+      8L, 0L, 1L, 40L, 1ul, { 0L, 0L, 0L },
+      { { -1L, 0xfffb0000ul }, { 0L, 0x00008000ul }, { 0L, 0ul } },
+      0x5a5a5a5aul, 0ul }
+};
+
+#define MGA2D_DEPTH_CASE_COUNT \
+    (sizeof(mga2d_depth_cases) / sizeof(mga2d_depth_cases[0]))
+
+/* The Z images: before the draw, the model's after, and the card's. */
+static DWORD (*mga2d_zbefore)[MGA2D_WIN_COLS];
+static DWORD (*mga2d_zexpected)[MGA2D_WIN_COLS];
+static DWORD (*mga2d_zactual)[MGA2D_WIN_COLS];
+
+struct mga2d_z_target {
+    DWORD first_row;
+    DWORD window_row0;
+    DWORD window_rows;
+};
+
+static v9x_u32 mga2d_z_read(void *context, v9x_s32 x, v9x_u32 row)
+{
+    struct mga2d_z_target *target = (struct mga2d_z_target *)context;
+    DWORD image_row = target->first_row + row - target->window_row0;
+
+    if (x < 0L || (DWORD)x >= MGA2D_TRI_COLS ||
+        image_row >= target->window_rows) {
+        return 0ul;
+    }
+    return mga2d_zexpected[image_row][x];
+}
+
+static void mga2d_z_write(void *context, v9x_s32 x, v9x_u32 row,
+                          v9x_u32 value)
+{
+    struct mga2d_z_target *target = (struct mga2d_z_target *)context;
+    DWORD image_row = target->first_row + row - target->window_row0;
+
+    if (x < 0L || (DWORD)x >= MGA2D_TRI_COLS ||
+        image_row >= target->window_rows) {
+        return;
+    }
+    mga2d_zexpected[image_row][x] = value;
+}
+
+/* A window of Z values: rows from row0 of the Z half, cols from column 0,
+ * z_bytes a value. Written from or read into an image. */
+static int mga2d_z_stream(const struct mga2d_window *window, DWORD z_bytes,
+                          DWORD (*image)[MGA2D_WIN_COLS], int write)
+{
+    DWORD per_word = 4ul / z_bytes;
+    DWORD mask = z_bytes == 4ul ? 0xfffffffful : 0xfffful;
+    DWORD words = window->cols / per_word;
+    DWORD row;
+    DWORD word;
+    DWORD index;
+    DWORD value;
+    DWORD first_op = 0ul;
+    DWORD first_row = 0ul;
+    DWORD first_word = 0ul;
+    DWORD ops;
+    DWORD op;
+
+    mga2d_begin();
+    for (row = 0ul; row < window->rows; ++row) {
+        for (word = 0ul; word < words; ++word) {
+            DWORD offset = mga2d_region_base + MGA2D_DEPTH_Z_HALF +
+                (window->row0 + row) * MGA2D_PITCH_PIXELS * z_bytes +
+                word * 4ul;
+
+            if (mga2d_request_buffer.count == 0ul) {
+                first_row = row;
+                first_word = word;
+            }
+            if (write) {
+                value = 0ul;
+                for (index = 0ul; index < per_word; ++index) {
+                    value |= (image[row][word * per_word + index] & mask) <<
+                             (index * z_bytes * 8ul);
+                }
+                mga2d_add(MGA2D_OP_LFB_WRITE32, offset, value, 0ul);
+            } else {
+                mga2d_add(MGA2D_OP_LFB_READ32, offset, 0ul, 0ul);
+            }
+            if (mga2d_request_buffer.count == MGA2D_OP_MAX ||
+                (row + 1ul == window->rows && word + 1ul == words)) {
+                ops = mga2d_request_buffer.count;
+                if (!mga2d_run()) {
+                    return 0;
+                }
+                if (!write) {
+                    /* Unpack this run's reads, from where it started. */
+                    DWORD at_row = first_row;
+                    DWORD at_word = first_word;
+
+                    for (op = first_op; op < ops; ++op) {
+                        value = mga2d_value(op);
+                        for (index = 0ul; index < per_word; ++index) {
+                            image[at_row][at_word * per_word + index] =
+                                (value >> (index * z_bytes * 8ul)) & mask;
+                        }
+                        if (++at_word == words) {
+                            at_word = 0ul;
+                            ++at_row;
+                        }
+                    }
+                }
+                mga2d_begin();
+            }
+        }
+    }
+    return 1;
+}
+
+static void mga2d_report_z_row(const char *name, DWORD row_label,
+                               DWORD image_row, DWORD first_col,
+                               DWORD count, DWORD z_bytes)
+{
+    char key[64];
+    char text[24u * 9u + 8u];
+    DWORD index;
+
+    lstrcpyA(key, name);
+    lstrcatA(key, "Z");
+    mga2d_decimal(key + lstrlenA(key), row_label);
+    text[0] = '\0';
+    for (index = 0ul; index < count; ++index) {
+        if (index != 0ul) {
+            lstrcatA(text, " ");
+        }
+        mga2d_hex(text + lstrlenA(text),
+                  mga2d_zactual[image_row][first_col + index],
+                  (int)(z_bytes * 2ul));
+    }
+    mga2d_write(key, text);
+}
+
+static void mga2d_depth_test(const struct mga2d_depth_case *test,
+                             DWORD band)
+{
+    struct v9x_mga3d_trap trap;
+    struct v9x_mga3d_writes writes;
+    struct mga2d_window window;
+    struct mga2d_plot_target target;
+    struct mga2d_z_target z_target;
+    struct v9x_mga3d_depth_io depth_io;
+    char key[64];
+    char text[MGA2D_TRI_COLS + 32ul];
+    DWORD destination_row = band * MGA2D_DEPTH_BAND_ROWS + MGA2D_GUARD;
+    DWORD z_bytes = test->depth == V9X_MGA3D_DEPTH_32 ? 4ul : 2ul;
+    DWORD row;
+    DWORD col;
+    DWORD index;
+    DWORD count;
+    DWORD color_mismatches = 0ul;
+    DWORD z_mismatches = 0ul;
+    DWORD first_row = 0ul;
+    DWORD first_col = 0ul;
+    DWORD z_first_row = 0ul;
+    DWORD z_first_col = 0ul;
+    v9x_u32 offsets[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
+    v9x_u32 values[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
+    v9x_status status;
+
+    if (mga2d_bpp != 4ul) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "SKIPPED-DEPTH");
+        return;
+    }
+    if (test->depth == V9X_MGA3D_DEPTH_32 && !mga2d_is_2164w) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "SKIPPED-CHIP");
+        return;
+    }
+    window.row0 = destination_row - MGA2D_GUARD;
+    window.rows = test->length + 2ul * MGA2D_GUARD;
+    window.cols = MGA2D_TRI_COLS;
+    if ((window.row0 + window.rows) * mga2d_pitch_bytes >
+            MGA2D_DEPTH_Z_HALF ||
+        (window.row0 + window.rows) * MGA2D_PITCH_PIXELS * z_bytes >
+            MGA2D_DEPTH_Z_HALF) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "WINDOW-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+
+    mga2d_zero(&trap, sizeof(trap));
+    trap.vram_bytes = mga2d_vram_bytes;
+    trap.target_offset = mga2d_row_offset(destination_row);
+    trap.pitch_bytes = mga2d_pitch_bytes;
+    trap.bytes_per_pixel = mga2d_bpp;
+    trap.length = test->length;
+    trap.left.x = test->lx;
+    trap.left.dx = test->ldx;
+    trap.left.dy = test->ldy;
+    trap.right.x = test->rx;
+    trap.right.dy = test->ldy;
+    trap.shade = V9X_MGA3D_SHADE_GOURAUD;
+    trap.color = MGA2D_TRI_ALPHA;
+    trap.red[0] = MGA2D_LEVEL(0x40);
+    trap.green[0] = MGA2D_LEVEL(0x80);
+    trap.blue[0] = MGA2D_LEVEL(0xc0);
+    trap.depth = test->depth;
+    trap.zmode = test->zmode;
+    trap.z_write = test->z_write;
+    trap.z_offset = mga2d_region_base + MGA2D_DEPTH_Z_HALF +
+        destination_row * MGA2D_PITCH_PIXELS * z_bytes;
+    for (index = 0ul; index < 3ul; ++index) {
+        trap.z[index] = test->z[index];
+        trap.z32[index] = test->z32[index];
+    }
+    status = v9x_mga3d_build_trap(&trap, &writes);
+    if (status != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "BUILD-REFUSED");
+        mga2d_key(key, test->name, "BuildStatus");
+        mga2d_write_decimal(key, status);
+        ++mga2d_failures;
+        return;
+    }
+    mga2d_key(key, test->name, "DestinationRow");
+    mga2d_write_decimal(key, destination_row);
+    mga2d_report_list(test->name, writes.offsets, writes.values,
+                      writes.count);
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            mga2d_before[row][col] = mga2d_pattern(col, window.row0 + row);
+            mga2d_zbefore[row][col] = (test->prefill + test->ramp * col) &
+                (z_bytes == 4ul ? 0xfffffffful : 0xfffful);
+        }
+    }
+    if (!mga2d_stream_write(&window, mga2d_before) ||
+        !mga2d_z_stream(&window, z_bytes, mga2d_zbefore, 1)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "PREPARE-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    count = 0ul;
+    for (index = 0ul; index < mga2d_setup.count; ++index) {
+        offsets[count] = mga2d_setup.offsets[index];
+        values[count] = mga2d_setup.values[index];
+        ++count;
+    }
+    for (index = 0ul; index < writes.count; ++index) {
+        offsets[count] = writes.offsets[index];
+        values[count] = writes.values[index];
+        ++count;
+    }
+    if (!mga2d_run_list(test->name, offsets, values, count)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, mga2d_engine_dead ? "ENGINE-TIMEOUT" : "RUN-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    if (!mga2d_stream_read(&window, mga2d_actual) ||
+        !mga2d_z_stream(&window, z_bytes, mga2d_zactual, 0)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "READBACK-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            text[col] = mga2d_actual[row][col] != mga2d_before[row][col]
+                ? '#' : '.';
+        }
+        text[window.cols] = '\0';
+        lstrcpyA(key, test->name);
+        lstrcatA(key, "Row");
+        mga2d_signed(key + lstrlenA(key),
+                     (long)(window.row0 + row) - (long)destination_row);
+        mga2d_write(key, text);
+    }
+    for (row = 0ul; row < test->length; ++row) {
+        mga2d_report_z_row(test->name, row,
+                           destination_row + row - window.row0,
+                           (DWORD)test->lx, 24ul, z_bytes);
+    }
+
+    /* The model, run against the prefilled Z, then both images compared. */
+    mga2d_bytes(mga2d_expected, mga2d_before, sizeof(mga2d_image));
+    mga2d_bytes(mga2d_zexpected, mga2d_zbefore, sizeof(mga2d_image));
+    target.first_row = destination_row;
+    target.window_row0 = window.row0;
+    target.window_rows = window.rows;
+    z_target.first_row = destination_row;
+    z_target.window_row0 = window.row0;
+    z_target.window_rows = window.rows;
+    depth_io.read = mga2d_z_read;
+    depth_io.write = mga2d_z_write;
+    depth_io.context = &z_target;
+    status = v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_EDGE, mga2d_tri_plot,
+                                  &target, &depth_io);
+    if (status != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "MODEL-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            if (mga2d_actual[row][col] != mga2d_expected[row][col]) {
+                if (color_mismatches++ == 0ul) {
+                    first_row = row;
+                    first_col = col;
+                }
+            }
+            if (mga2d_zactual[row][col] != mga2d_zexpected[row][col]) {
+                if (z_mismatches++ == 0ul) {
+                    z_first_row = row;
+                    z_first_col = col;
+                }
+            }
+        }
+    }
+    mga2d_tri_report_mismatch(test->name, "ColorMismatches",
+                              color_mismatches, first_row, first_col,
+                              &window, destination_row);
+    mga2d_key(key, test->name, "ZMismatches");
+    mga2d_write_decimal(key, z_mismatches);
+    if (z_mismatches != 0ul) {
+        lstrcpyA(text, "x=");
+        mga2d_decimal(text + lstrlenA(text), z_first_col);
+        lstrcatA(text, " y=");
+        mga2d_signed(text + lstrlenA(text),
+                     (long)(window.row0 + z_first_row) -
+                     (long)destination_row);
+        lstrcatA(text, " got=0x");
+        mga2d_hex(text + lstrlenA(text),
+                  mga2d_zactual[z_first_row][z_first_col], 8);
+        lstrcatA(text, " want=0x");
+        mga2d_hex(text + lstrlenA(text),
+                  mga2d_zexpected[z_first_row][z_first_col], 8);
+        mga2d_key(key, test->name, "ZMismatchFirst");
+        mga2d_write(key, text);
+    }
+    mga2d_key(key, test->name, "Result");
+    if (color_mismatches == 0ul && z_mismatches == 0ul) {
+        mga2d_write(key, "PASS");
+    } else {
+        mga2d_write(key, "FAIL");
+        ++mga2d_failures;
+    }
+}
+
 /* FIFOSTATUS and STATUS, read through the VxD's two readable offsets. */
 static int mga2d_report_state(const char *prefix)
 {
@@ -1482,6 +1937,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     DWORD index;
     int no_setup;
     int trapezoids;
+    int depth;
     int have_option;
     CONFIGRET cm_status;
     static const char header[] = "[Mga2dProbe]\r\n";
@@ -1499,6 +1955,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     command_line = GetCommandLineA();
     no_setup = mga2d_find(command_line, "/nosetup") != 0;
     trapezoids = mga2d_find(command_line, "/tri") != 0;
+    depth = mga2d_find(command_line, "/depth") != 0;
     option_mib = mga2d_parse_decimal(mga2d_find(command_line, "/vram:"),
                                      &have_option);
 
@@ -1512,7 +1969,8 @@ void WINAPI V9xMga2dProbeEntry(void)
     WriteFile(mga2d_output, header, (DWORD)lstrlenA(header), &written, 0);
     mga2d_write("Build", V9X_BUILD_ID);
     mga2d_write("NoSetup", no_setup ? "1" : "0");
-    mga2d_write("Mode", trapezoids ? "trapezoids" : "fill-copy");
+    mga2d_write("Mode", depth ? "depth"
+                        : trapezoids ? "trapezoids" : "fill-copy");
     if (have_option) {
         mga2d_write_decimal("VramOptionMiB", option_mib);
     }
@@ -1540,7 +1998,14 @@ void WINAPI V9xMga2dProbeEntry(void)
         0, sizeof(mga2d_image), MEM_COMMIT, PAGE_READWRITE);
     mga2d_actual = (DWORD (*)[MGA2D_WIN_COLS])VirtualAlloc(
         0, sizeof(mga2d_image), MEM_COMMIT, PAGE_READWRITE);
-    if (mga2d_before == 0 || mga2d_expected == 0 || mga2d_actual == 0) {
+    mga2d_zbefore = (DWORD (*)[MGA2D_WIN_COLS])VirtualAlloc(
+        0, sizeof(mga2d_image), MEM_COMMIT, PAGE_READWRITE);
+    mga2d_zexpected = (DWORD (*)[MGA2D_WIN_COLS])VirtualAlloc(
+        0, sizeof(mga2d_image), MEM_COMMIT, PAGE_READWRITE);
+    mga2d_zactual = (DWORD (*)[MGA2D_WIN_COLS])VirtualAlloc(
+        0, sizeof(mga2d_image), MEM_COMMIT, PAGE_READWRITE);
+    if (mga2d_before == 0 || mga2d_expected == 0 || mga2d_actual == 0 ||
+        mga2d_zbefore == 0 || mga2d_zexpected == 0 || mga2d_zactual == 0) {
         mga2d_refuse("out-of-memory");
         ExitProcess(5u);
     }
@@ -1701,7 +2166,19 @@ void WINAPI V9xMga2dProbeEntry(void)
         mga2d_write("Setup", "emitted");
     }
 
-    if (trapezoids) {
+    if (depth) {
+        for (index = 0ul; index < MGA2D_DEPTH_CASE_COUNT; ++index) {
+            mga2d_depth_test(&mga2d_depth_cases[index], index);
+            if (mga2d_engine_dead) {
+                break;
+            }
+        }
+        /* The cases leave MACCESS with whatever Z width the last one set;
+         * the setup puts the driver's back. */
+        if (!mga2d_engine_dead && mga2d_setup.count != 0ul) {
+            mga2d_run_writes("Restore", &mga2d_setup);
+        }
+    } else if (trapezoids) {
         for (index = 0ul; index < MGA2D_TRI_CASE_COUNT; ++index) {
             mga2d_tri_test(&mga2d_tri_cases[index]);
             if (mga2d_engine_dead) {

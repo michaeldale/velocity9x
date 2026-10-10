@@ -100,9 +100,13 @@ which is the probe-first shape SiS and the Rage IIC already use.
    edge is reloaded, whether DRn y-increments are pure d/dy or along the
    left edge, sub-pixel handling (the registers are integers), the GO
    alias, dither off.
-2. **Depth (probe).** ZI and I with 16-bit Z, then 32-bit: ZORG alignment
-   and the bank advice, the stored bits, clamp or wrap at 1.0, compare
-   direction, Z pitch.
+2. **Depth (probe).** Done 2026-10-10
+   ([record](../decisions/2026-10-10-mga2164w-depth.md)): 16- and 32-bit Z
+   as specified - ZORG, the Z pitch, the six compares (unsigned), ZI and
+   I, truncated integer storage, the left-edge fold - except that the
+   stored value clamps at the top as well as at 0. Planned as: ZI and I
+   with 16-bit Z, then 32-bit: ZORG alignment and the bank advice, the
+   stored bits, clamp or wrap at 1.0, compare direction, Z pitch.
 3. **Textures (probe).** First, does opcode 0110 draw at all with the
    2C00h block as hypothesised; the probe refuses the 2064W, so this never
    runs on the Millennium. Then TW16 linear (npcen), the TMR scales and
