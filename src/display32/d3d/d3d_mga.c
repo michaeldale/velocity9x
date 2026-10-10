@@ -13,10 +13,13 @@
  * (millennium_hw16.c), and v9x_d3d_mga_ready checks it again. The 2064W
  * has no texture engine and stays on the software rasterizer.
  *
- * Synchronous for now: every trapezoid waits for room in the FIFO, and a
- * batch ends with the engine idle, so the 2D engine (eng_mga.c), which
- * waits for idle before each of its own operations, never meets 3D work in
- * flight, and neither does a Lock.
+ * A batch returns with its trapezoids still in the FIFO. Everything that
+ * touches the engine or a surface after it waits for idle first: the 2D
+ * engine before each operation (eng_mga.c), GDI before each of its own
+ * (gdi_accel.c), and Lock, Flip, Blt and DestroySurface through
+ * v9x_render_drain. Until 2026-10-10 each batch also waited for idle at its
+ * end, which kept the CPU from setting up the next batch while the engine
+ * drew this one.
  */
 #include "d3d_internal.h"
 #include "d3d_mga_map.h"
@@ -106,35 +109,48 @@ static int v9x_d3d_mga_timed_out(DWORD status)
     return 0;
 }
 
+/*
+ * FIFO entries known free: the last FIFOSTATUS read, less what has been
+ * written since. The engine only drains, so the count is conservative, and
+ * one read covers several trapezoids instead of one each - a PCI read
+ * stalls the CPU. Valid within a batch; v9x_d3d_mga_batch_begin clears it,
+ * since the 2D engine and GDI write between batches.
+ */
+static DWORD v9x_d3d_mga_fifo_credit = 0ul;
+
 static int v9x_d3d_mga_wait_fifo(DWORD entries)
 {
     DWORD spins;
     DWORD fifo = 0ul;
+    DWORD free_entries;
 
+    if (v9x_d3d_mga_fifo_credit >= entries) {
+        v9x_d3d_mga_fifo_credit -= entries;
+        return 1;
+    }
     for (spins = 0ul; spins < V9X_D3D_MGA_SPINS; ++spins) {
         fifo = v9x_d3d_mga_read(V9X_MGA_FIFOSTATUS);
-        if ((fifo & V9X_D3D_MGA_FIFO_COUNT_MASK) >= entries) {
+        free_entries = fifo & V9X_D3D_MGA_FIFO_COUNT_MASK;
+        if (free_entries >= entries) {
+            v9x_d3d_mga_fifo_credit = free_entries - entries;
             return 1;
         }
     }
     return v9x_d3d_mga_timed_out(fifo);
 }
 
-static int v9x_d3d_mga_wait_idle(void)
+static void v9x_d3d_mga_batch_begin(void)
 {
-    DWORD spins;
-    DWORD status = 0ul;
-
-    for (spins = 0ul; spins < V9X_D3D_MGA_SPINS; ++spins) {
-        status = v9x_d3d_mga_read(V9X_MGA_STATUS);
-        if (v9x_mga_status_busy(status) == 0ul) {
-            return 1;
-        }
-    }
-    return v9x_d3d_mga_timed_out(status);
+    v9x_d3d_mga_fifo_credit = 0ul;
 }
 
-/* One trapezoid's words, behind a FIFO wait for all of them. */
+/*
+ * One trapezoid's words, behind a FIFO wait for all of them. Every word is
+ * written. A cache that skipped state registers already holding their
+ * value made mwd5 slower on A8U4I5 (7.953 and 7.773 fps with it, with and
+ * without the idle wait, against 8.391 before it, boots 392-394); its
+ * lookups, three scans of 11 offsets per write, are the suspected cost.
+ */
 static int v9x_d3d_mga_emit(const struct v9x_mga3d_writes *writes)
 {
     DWORD index;
@@ -588,6 +604,7 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
 
+    v9x_d3d_mga_batch_begin();
     flat = mapped.flat != 0ul;
     for (index = 0ul; index < triangle_count; ++index) {
         triangle = vertices + index * 3ul;
@@ -638,11 +655,10 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
             emitted = 1;
         }
     }
-    if (!emitted) {
-        return 1;
+    if (emitted) {
+        v9x_present_note_submission();
     }
-    v9x_present_note_submission();
-    return v9x_d3d_mga_wait_idle();
+    return 1;
 }
 
 /* An offscreen surface Direct3D will render into. The primary and its flip
