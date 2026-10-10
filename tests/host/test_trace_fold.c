@@ -40,21 +40,29 @@ struct tf_ring {
 
 static void tf_push(struct tf_ring *ring, v9x_u16 id, v9x_u32 detail)
 {
+    v9x_u16 third = ring->used >= 3u ? ring->id[ring->used - 3u] : 0u;
     v9x_u16 previous = ring->used >= 2u ? ring->id[ring->used - 2u] : 0u;
     v9x_u16 newest = ring->used >= 1u ? ring->id[ring->used - 1u] : 0u;
-    v9x_u32 newest_detail = ring->used >= 1u ? ring->detail[ring->used - 1u]
-                                             : 0ul;
-    v9x_u32 action = v9x_trace_fold_decide(previous, newest, id, detail,
-                                           newest_detail);
+    v9x_u32 previous_detail = ring->used >= 2u
+                                  ? ring->detail[ring->used - 2u] : 0ul;
+    v9x_u32 action = v9x_trace_fold_decide(third, previous, newest,
+                                           previous_detail, id, detail);
 
     if (action == V9X_TRACE_FOLD_NEWEST) {
         ring->id[ring->used - 1u] = v9x_trace_fold_bump(newest);
         ring->detail[ring->used - 1u] = detail;
         return;
     }
-    if (action == V9X_TRACE_FOLD_PAIR) {
+    if (action == V9X_TRACE_FOLD_CLOSE) {
+        /* The pair before absorbs the call just entered: its enter takes
+         * the newest argument, both halves count one more, and the
+         * tentative enter is taken back out of the ring. */
+        ring->id[ring->used - 3u] = v9x_trace_fold_bump(third);
+        ring->detail[ring->used - 3u] = ring->detail[ring->used - 1u];
         ring->id[ring->used - 2u] = v9x_trace_fold_bump(previous);
-        ring->detail[ring->used - 2u] = detail;
+        --ring->used;
+        ring->id[ring->used] = 0u;
+        ring->detail[ring->used] = 0ul;
         return;
     }
     if (ring->used < TF_RING) {
@@ -90,7 +98,8 @@ static void test_teardown_is_two_pairs(void)
     TFCHECK(ring.detail[2] == 0x83300000ul + 545ul * 0x1C0ul);
 }
 
-/* The call that never returned: the enter count runs one ahead. */
+/* The call that never returned is the last entry, on its own, whatever
+ * came before it. */
 static void test_unreturned_call_stays_visible(void)
 {
     struct tf_ring ring;
@@ -100,19 +109,39 @@ static void test_unreturned_call_stays_visible(void)
     tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0ul);
     tf_push(&ring, TF_FLIP, 0ul);
     tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0ul);
-    tf_push(&ring, TF_FLIP, 0ul);
-    TFCHECK(ring.used == 2u);
-    TFCHECK(v9x_trace_fold_count(ring.id[0]) == 2u);
-    TFCHECK(v9x_trace_fold_count(ring.id[1]) == 1u);
-
-    /* A second unreturned enter is not folded on top of the first: the
-     * pair is open, and the new enter is its own entry. */
-    tf_push(&ring, TF_FLIP, 0ul);
+    tf_push(&ring, TF_FLIP, 7ul);
     TFCHECK(ring.used == 3u);
+    TFCHECK(v9x_trace_fold_count(ring.id[0]) == 1u);
+    TFCHECK(v9x_trace_fold_count(ring.id[1]) == 1u);
+    TFCHECK((ring.id[2] & TF_EXIT) == 0u);
+    TFCHECK(v9x_trace_fold_count(ring.id[2]) == 0u);
+    TFCHECK(ring.detail[2] == 7ul);
 }
 
-/* A different result breaks the run and is recorded on its own. */
+/* A different result is a different outcome: the call keeps its own enter
+ * and exit, with its own argument. GetDriverInfo on the ViRGE guest
+ * (2026-10-11) answered one GUID with 0 and the next with 0x88760028, and
+ * folding the enter early had put the second GUID on the first's result. */
 static void test_different_result_is_appended(void)
+{
+    struct tf_ring ring;
+
+    memset(&ring, 0, sizeof(ring));
+    tf_push(&ring, TF_FLIP, 0x7DE41F80ul);
+    tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0ul);
+    tf_push(&ring, TF_FLIP, 0xFFAA7540ul);
+    tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0x88760028ul);
+    TFCHECK(ring.used == 4u);
+    TFCHECK(v9x_trace_fold_count(ring.id[0]) == 0u);
+    TFCHECK(ring.detail[0] == 0x7DE41F80ul);
+    TFCHECK(ring.detail[1] == 0ul);
+    TFCHECK(ring.detail[2] == 0xFFAA7540ul);
+    TFCHECK(ring.detail[3] == 0x88760028ul);
+}
+
+/* An enter-only repeat on top of an open call does not close the pair
+ * before it when the exit finally comes: two enters, one exit. */
+static void test_reentered_call_is_not_closed(void)
 {
     struct tf_ring ring;
 
@@ -120,11 +149,11 @@ static void test_different_result_is_appended(void)
     tf_push(&ring, TF_FLIP, 0ul);
     tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0ul);
     tf_push(&ring, TF_FLIP, 0ul);
-    tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0x8876021Cul);
-    TFCHECK(ring.used == 3u);
-    TFCHECK(v9x_trace_fold_count(ring.id[0]) == 1u);
-    TFCHECK(v9x_trace_fold_count(ring.id[1]) == 0u);
-    TFCHECK(ring.detail[2] == 0x8876021Cul);
+    tf_push(&ring, TF_FLIP, 0ul);
+    tf_push(&ring, (v9x_u16)(TF_FLIP | TF_EXIT), 0ul);
+    TFCHECK(ring.used == 4u);
+    TFCHECK(v9x_trace_fold_count(ring.id[0]) == 0u);
+    TFCHECK(v9x_trace_fold_count(ring.id[2]) == 1u);
 }
 
 /* An event with no exit, pushed with alternating details, folds onto
@@ -180,10 +209,11 @@ static void test_count_saturates(void)
  * like any other. */
 static void test_empty_slots_never_match(void)
 {
-    TFCHECK(v9x_trace_fold_decide(0u, 0u, TF_FLIP, 0ul, 0ul) ==
+    TFCHECK(v9x_trace_fold_decide(0u, 0u, 0u, 0ul, TF_FLIP, 0ul) ==
             V9X_TRACE_FOLD_APPEND);
-    TFCHECK(v9x_trace_fold_decide(0u, 0u, (v9x_u16)(TF_FLIP | TF_EXIT), 0ul,
-                                  0ul) == V9X_TRACE_FOLD_APPEND);
+    TFCHECK(v9x_trace_fold_decide(0u, 0u, 0u, 0ul,
+                                  (v9x_u16)(TF_FLIP | TF_EXIT), 0ul) ==
+            V9X_TRACE_FOLD_APPEND);
 }
 
 unsigned int v9x_run_trace_fold_tests(void)
@@ -192,6 +222,7 @@ unsigned int v9x_run_trace_fold_tests(void)
     test_teardown_is_two_pairs();
     test_unreturned_call_stays_visible();
     test_different_result_is_appended();
+    test_reentered_call_is_not_closed();
     test_exitless_event_folds();
     test_interleaved_pairs_are_kept();
     test_count_saturates();

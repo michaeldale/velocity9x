@@ -57,6 +57,7 @@ void v9x_trace_push(WORD id, DWORD detail)
     DWORD slot;
     DWORD newest;
     DWORD previous;
+    DWORD third;
     v9x_u32 action;
 
     if (v9x_hal == 0) {
@@ -66,19 +67,29 @@ void v9x_trace_push(WORD id, DWORD detail)
     slot = trace->head < V9X_DD_TRACE_RING_COUNT ? trace->head : 0ul;
     newest = slot != 0ul ? slot - 1ul : V9X_DD_TRACE_RING_COUNT - 1ul;
     previous = newest != 0ul ? newest - 1ul : V9X_DD_TRACE_RING_COUNT - 1ul;
-    action = v9x_trace_fold_decide(trace->ring[previous].id,
-                                   trace->ring[newest].id, id, detail,
-                                   trace->ring[newest].detail);
+    third = previous != 0ul ? previous - 1ul : V9X_DD_TRACE_RING_COUNT - 1ul;
+    action = v9x_trace_fold_decide(trace->ring[third].id,
+                                   trace->ring[previous].id,
+                                   trace->ring[newest].id,
+                                   trace->ring[previous].detail, id, detail);
     if (action == V9X_TRACE_FOLD_NEWEST) {
         trace->ring[newest].id = v9x_trace_fold_bump(trace->ring[newest].id);
         trace->ring[newest].detail = detail;
         ++trace->seq;
         return;
     }
-    if (action == V9X_TRACE_FOLD_PAIR) {
+    if (action == V9X_TRACE_FOLD_CLOSE) {
+        /* The pair before absorbs the call just entered; the slot its
+         * tentative enter took becomes the next one written. Zeroed, so
+         * a reader treats it as empty until it is. */
+        trace->ring[third].id = v9x_trace_fold_bump(trace->ring[third].id);
+        trace->ring[third].detail = trace->ring[newest].detail;
         trace->ring[previous].id =
             v9x_trace_fold_bump(trace->ring[previous].id);
-        trace->ring[previous].detail = detail;
+        trace->ring[newest].id = 0u;
+        trace->ring[newest].seq = 0u;
+        trace->ring[newest].detail = 0ul;
+        trace->head = newest;
         ++trace->seq;
         return;
     }

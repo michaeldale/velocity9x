@@ -133,3 +133,40 @@ this has run on a guest or reached the server yet.
    no longer become a report cut mid-line. That also makes the client's
    Winsock retry after a failed WinInet send safe. `php -l` clean; not
    exercised by a request, and not deployed.
+
+## 2026-10-11: measured on the 86Box ViRGE/DX guest (Win86SE)
+
+Build `dd9c44f` (s3 package) deployed by WININIT rename, host port 9879.
+
+- **Server.** It was already deployed: editing the plugin folder in
+  `C:\everything\bluetraitblog` reached production. A request declaring
+  31,584 bytes and delivering 16,384 got `400`, "Incomplete upload of
+  V9XSNAP.INI: 16384 of 31584 bytes arrived.", and no report appeared.
+- **Trace ring, first rule.** After `V9XDDP` (725 DestroySurface, 35,779
+  Flip) and `V9XTRACE`, the ring showed `DestroySurface ... x3` folded.
+  It also showed the rule's flaw: `GetDriverInfo enter 0xFFAA7540 x2`,
+  `exit 0`, `exit 0x88760028`. Folding the enter before its exit put a
+  second GUID against the first GUID's result. Superseded: a pair now
+  folds only when the new call's exit is in and matches; the tentative
+  enter is appended and taken back out on a fold. Host test updated with
+  this case.
+- **Trace ring, revised rule** (HAL 387,584 bytes, boot 659): the same
+  run reads `GetDriverInfo enter 0x7DE41F80`, `exit 0`, then
+  `GetDriverInfo enter 0x3B8A0466 x2`, `exit 0x88760028 x2` - the two
+  declined GUIDs folded, the accepted one on its own - and
+  `DestroySurface ... x3`. Limitation seen: 36 of the 56 entries were
+  alternating Lock/Unlock pairs, which do not fold, since only a repeat
+  of the same call does.
+- **Upload, success.** `V9XUPD /REPORT` (new build) sent V9X-85KJH1:
+  7 files, 587,675 bytes, the snapshot at its full 33,971 bytes. WinInet
+  carried it; the Winsock retry path did not run.
+- **Upload, failure.** `/SERVER=` pointed at a host fixture that reads
+  20,000 bytes and resets. The fixture saw a WinInet POST (20,668 bytes
+  received), then a Winsock POST (20,703). The client stopped with
+  "V9XSNA7.INI: winsock send error 10054, 24576 of 33971 body bytes sent"
+  and wrote the same to `V9XUPD.INI` `LastSendFailure=`. "Sent" counts
+  what the guest stack accepted, not what arrived. Only the last
+  transport's failure is kept.
+- **Not reproduced:** the original 16 KB truncation. This guest sends by
+  WinInet, so the old Winsock would-block path was not exercised; the
+  cause of the reporter's truncation stays a hypothesis.

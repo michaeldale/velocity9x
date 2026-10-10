@@ -16,10 +16,14 @@
  *     and again (DestroySurface during a teardown, Flip in a render loop);
  *   - an event with no exit, pushed again (D3dTargetLayout, RenderLoop).
  *
- * A pair keeps two counts, one on the enter and one on the exit, and an enter
- * is folded only while they are equal. The ring exists to show the last
- * callback before a fault, and a call that never returned must still read as
- * one: "Flip enter x9, Flip exit x8" says the ninth did not come back.
+ * A pair is folded only once the new call's exit is in and matches the pair
+ * before it: the enter is appended as usual, and when its exit returns the
+ * same result as that pair's, the pair absorbs it and the tentative enter is
+ * taken back out. So a call that never returned is the last entry on its own,
+ * which is what the ring exists to show, and two calls with different
+ * results are never merged - the first version of this rule folded the
+ * enter early, and on the ViRGE guest (2026-10-11) it put one GetDriverInfo
+ * GUID against another's result.
  *
  * Encoding: the count of further occurrences sits in bits 6-14 of the entry's
  * id, between the id (bits 0-5, every trace id is below 64) and the exit flag
@@ -46,16 +50,20 @@
 /* What the writer does with the new event. */
 #define V9X_TRACE_FOLD_APPEND   0u  /* write it to the next slot             */
 #define V9X_TRACE_FOLD_NEWEST   1u  /* count it on the newest entry          */
-#define V9X_TRACE_FOLD_PAIR     2u  /* count it on the entry before that     */
+/* The event is the exit closing a repeat of the pair before: count one more
+ * on that pair's enter (third) and exit (previous), give the enter the
+ * newest entry's argument, and take the newest entry back out. */
+#define V9X_TRACE_FOLD_CLOSE    2u
 
 /*
- * The decision for event (id, detail), id carrying no count, given the two
- * newest entries as they stand: newest is the last one written, previous the
- * one before it. An empty slot is id 0, which no event uses.
+ * The decision for event (id, detail), id carrying no count, given the three
+ * newest entries as they stand - newest the last one written, previous and
+ * third the two before it - and previous's detail. An empty slot is id 0,
+ * which no event uses.
  */
-v9x_u32 v9x_trace_fold_decide(v9x_u16 previous_id, v9x_u16 newest_id,
-                              v9x_u16 id, v9x_u32 detail,
-                              v9x_u32 newest_detail);
+v9x_u32 v9x_trace_fold_decide(v9x_u16 third_id, v9x_u16 previous_id,
+                              v9x_u16 newest_id, v9x_u32 previous_detail,
+                              v9x_u16 id, v9x_u32 detail);
 
 /* The trace id an entry names, without its count or exit flag. */
 v9x_u16 v9x_trace_fold_base(v9x_u16 entry_id);
