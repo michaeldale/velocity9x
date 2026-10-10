@@ -4,8 +4,46 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.15.1 - not yet released
+## 0.16.0 - not yet released
 
+0.15.1 was never released; its changes are in this version.
+
+- **Hardware Direct3D on the Matrox Millennium II (MGA-2164W).** The
+  2164W's 3D engine now draws Direct3D: Gouraud shading, a 16-bit Z
+  buffer with all eight compares, perspective-correct 565 and 1555
+  textures, decal, modulate and copy. Matrox's public specifications
+  omit the texture engine, so every register was measured on A8U4I5's
+  card with a new probe (`MGA2D.EXE /tri`, `/depth`, `/tex`) before the
+  driver used it. Against Matrox's own driver 4.33c on the same card,
+  V9XDDP passes every triangle, texture and depth check Matrox's passes,
+  and six it fails, except specular, which is not drawn. Fog, specular,
+  4444 textures and filtering are refused rather than drawn wrong. The
+  original Millennium (2064W) has no 3D engine and keeps software
+  Direct3D. [Decision](docs/decisions/2026-10-10-mga2164w-d3d-engine.md).
+- **Half-Life on the Millennium II.** Half-Life's Direct3D renderer
+  draws with its HUD, ladders and lighting, and textured walls hold
+  still as the view moves. The chip cannot blend, so the HUD's additive
+  sprites are drawn with their black keyed out, and the lighting pass is
+  drawn at a half-density stipple rather than multiplied in. Matrox's
+  own driver draws the HUD in black boxes and the lightmaps over the
+  walls' textures. Half-Life `timedemo mwd5` at 640x480: 8.49 fps.
+  Where the time goes is written up, and the follow-ups parked, in the
+  [performance plan](docs/plans/matrox-mga2164w-performance-parked.md).
+- **The Millennium II uses all its memory.** Its VBE BIOS reports 4 MiB
+  of A8U4I5's 8. The matrox family now measures the memory itself after
+  mapping the aperture, and DirectDraw's heap and the 3D engine's Z
+  buffers and textures use all 8 MiB. The Velocity9x page still shows
+  the BIOS's 4 MB, an open
+  [issue](docs/issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md).
+- **Field reports are easier to read.** A repeated trace event is now
+  counted on the entry already there, so a teardown of 546 textures no
+  longer fills the trace ring by itself. **Send report** now includes
+  the Glide logs, and a failed upload records why, which the next report
+  carries.
+- New diagnostics: V9XTRACE lists which blend modes the Millennium II
+  refused and why triangles were declined, and times its draw stages on
+  a CPU with a time-stamp counter. The driver, HAL and V9XTRACE of this
+  version go together.
 - **Glide 3: `GLIDE3X.DLL`.** Games written for Voodoo3-era Glide 3 now
   draw through the same engine as `GLIDE2X.DLL`. Diablo II (shareware
   demo) runs from its title screen to the Rogue Encampment on an ATI
