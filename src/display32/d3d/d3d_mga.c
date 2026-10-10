@@ -412,6 +412,31 @@ static v9x_u32 v9x_d3d_mga_vertices_opaque(const V9X_R3D_VERTEX *vertices,
     return 1ul;
 }
 
+/* A refused blend pair in the diagnostics' table: its own slot while one
+ * is free, the overflow count after. */
+static void v9x_d3d_mga_count_blend(V9X_D3D_DIAGNOSTICS *diagnostics,
+                                    const V9X_R3D_DRAW *draw)
+{
+    DWORD key;
+    unsigned int slot;
+
+    key = ((draw->src_blend & 0xfful) << 16) |
+          ((draw->dst_blend & 0xfful) << 8);
+    if (draw->texture.object != 0) {
+        key |= V9X_D3D_BLEND_KEY_TEXTURED;
+    }
+    for (slot = 0u; slot < V9X_D3D_BLEND_REFUSED_SLOTS; ++slot) {
+        if (diagnostics->blend_refused_count[slot] == 0ul) {
+            diagnostics->blend_refused_key[slot] = key;
+        }
+        if (diagnostics->blend_refused_key[slot] == key) {
+            ++diagnostics->blend_refused_count[slot];
+            return;
+        }
+    }
+    ++diagnostics->blend_refused_overflow;
+}
+
 /* A refusal by reason, in the counters the Rage IIC and the SiS use
  * (V9XTRACE's M64PolicyNN). */
 static void v9x_d3d_mga_count_refusal(const V9X_R3D_DRAW *draw,
@@ -430,7 +455,16 @@ static void v9x_d3d_mga_count_refusal(const V9X_R3D_DRAW *draw,
     if (reason == V9X_D3D_MGA_REFUSE_BLEND && draw != 0) {
         diagnostics->blend_last_pair =
             (draw->src_blend << 16) | (draw->dst_blend & 0xfffful);
+        v9x_d3d_mga_count_blend(diagnostics, draw);
     }
+}
+
+/* A triangle declined after mapping, by stage, as a SETUP refusal too. */
+static void v9x_d3d_mga_count_setup(const V9X_R3D_DRAW *draw,
+                                    unsigned int stage)
+{
+    ++v9x_hal->d3d_diagnostics.mga_setup_refused[stage];
+    v9x_d3d_mga_count_refusal(draw, V9X_D3D_MGA_REFUSE_SETUP);
 }
 
 static int v9x_d3d_mga_accepts(const V9X_R3D_DRAW *draw)
@@ -572,7 +606,7 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
             }
         }
         if (corner != 3ul) {
-            v9x_d3d_mga_count_refusal(draw, V9X_D3D_MGA_REFUSE_SETUP);
+            v9x_d3d_mga_count_setup(draw, V9X_D3D_MGA_SETUP_VERTEX);
             continue;
         }
         if (base.texture.enabled != 0ul) {
@@ -580,7 +614,7 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
              * exact, the perspective path's carries the measured bias. */
             if (!(triangle[0].rhw > 0.0f && triangle[1].rhw > 0.0f &&
                   triangle[2].rhw > 0.0f)) {
-                v9x_d3d_mga_count_refusal(draw, V9X_D3D_MGA_REFUSE_SETUP);
+                v9x_d3d_mga_count_setup(draw, V9X_D3D_MGA_SETUP_RHW);
                 continue;
             }
             base.texture.perspective =
@@ -589,13 +623,13 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
         }
         if (v9x_mga_setup_triangle(&base, corners, v9x_d3d_mga_traps,
                                    &count) != V9X_STATUS_OK) {
-            v9x_d3d_mga_count_refusal(draw, V9X_D3D_MGA_REFUSE_SETUP);
+            v9x_d3d_mga_count_setup(draw, V9X_D3D_MGA_SETUP_SPLIT);
             continue;
         }
         for (trap = 0ul; trap < count; ++trap) {
             if (v9x_mga3d_build_trap(&v9x_d3d_mga_traps[trap],
                                      &v9x_d3d_mga_writes) != V9X_STATUS_OK) {
-                v9x_d3d_mga_count_refusal(draw, V9X_D3D_MGA_REFUSE_SETUP);
+                v9x_d3d_mga_count_setup(draw, V9X_D3D_MGA_SETUP_BUILD);
                 continue;
             }
             if (!v9x_d3d_mga_emit(&v9x_d3d_mga_writes)) {

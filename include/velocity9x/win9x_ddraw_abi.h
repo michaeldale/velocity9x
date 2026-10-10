@@ -1710,6 +1710,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026101001: V9X_D3D_DIAGNOSTICS gains the refused-blend table and the
+ * MGA setup stages. An append. */
 /* 2026100701: V9X_D3D_DIAGNOSTICS gains dp2_clear2_engine_color. An
  * append. */
 /* 2026100606: V9X_D3D_DIAGNOSTICS gains dp2_clear2_engine_depth. An
@@ -1838,7 +1840,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026100701ul
+#define V9X_DD_SHARED_ABI   2026101001ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2059,6 +2061,15 @@ typedef struct v9x_d3d_blt_flip_record {
 #define V9X_WIN16_SITE_D3D_DRAWINDEX  7u  /* DrawOneIndexedPrimitive        */
 #define V9X_WIN16_SITE_D3D_RENDERPRIM 8u  /* RenderPrimitive                */
 #define V9X_WIN16_SITE_COUNT          9u
+
+/* V9X_D3D_DIAGNOSTICS's refused-blend table and MGA setup stages. */
+#define V9X_D3D_BLEND_REFUSED_SLOTS 8
+#define V9X_D3D_BLEND_KEY_TEXTURED  0x00000001ul
+#define V9X_D3D_MGA_SETUP_STAGES    4
+#define V9X_D3D_MGA_SETUP_VERTEX    0
+#define V9X_D3D_MGA_SETUP_RHW       1
+#define V9X_D3D_MGA_SETUP_SPLIT     2
+#define V9X_D3D_MGA_SETUP_BUILD     3
 
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
@@ -3477,6 +3488,21 @@ typedef struct v9x_d3d_diagnostics {
     DWORD dp2_clear2_engine_depth;
     /* Clear2 calls whose colour part the DDBLT_COLORFILL path did. */
     DWORD dp2_clear2_engine_color;
+    /*
+     * Draws refused for their blend, by pair: blend_last_pair names only
+     * the latest, which could not say which pass Half-Life's unlit world
+     * was (A8U4I5 boot 390, 38,217 refusals). Each key is
+     * (src << 16) | (dst << 8) | V9X_D3D_BLEND_KEY_TEXTURED; the first
+     * eight distinct keys take a slot, later ones count in
+     * blend_refused_overflow. Filled by the MGA-2164W engine.
+     */
+    DWORD blend_refused_key[V9X_D3D_BLEND_REFUSED_SLOTS];
+    DWORD blend_refused_count[V9X_D3D_BLEND_REFUSED_SLOTS];
+    DWORD blend_refused_overflow;
+    /* Triangles the MGA-2164W engine declined after mapping, by stage:
+     * a vertex outside the setup's range, a 1/w not positive under a
+     * texture, the trapezoid setup, the register builder. */
+    DWORD mga_setup_refused[V9X_D3D_MGA_SETUP_STAGES];
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

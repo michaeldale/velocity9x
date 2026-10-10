@@ -1621,6 +1621,33 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.dp2_clear2_engine_depth);
     v9x_write_uint("Dp2Clear2EngineColor",
                    snapshot.d3d.dp2_clear2_engine_color);
+    /* Refused blend pairs, key (src << 16) | (dst << 8) | textured. */
+    {
+        static char key_name[] = "BlendRefusedKey0";
+        static char count_name[] = "BlendRefusedCount0";
+        unsigned int slot;
+
+        for (slot = 0u; slot < V9X_D3D_BLEND_REFUSED_SLOTS; ++slot) {
+            if (snapshot.d3d.blend_refused_count[slot] == 0ul) {
+                break;
+            }
+            key_name[sizeof(key_name) - 2u] = (char)('0' + slot);
+            count_name[sizeof(count_name) - 2u] = (char)('0' + slot);
+            v9x_write_hex(key_name, snapshot.d3d.blend_refused_key[slot]);
+            v9x_write_uint(count_name,
+                           snapshot.d3d.blend_refused_count[slot]);
+        }
+    }
+    v9x_write_uint("BlendRefusedOverflow",
+                   snapshot.d3d.blend_refused_overflow);
+    v9x_write_uint("MgaSetupRefusedVertex",
+                   snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_VERTEX]);
+    v9x_write_uint("MgaSetupRefusedRhw",
+                   snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_RHW]);
+    v9x_write_uint("MgaSetupRefusedSplit",
+                   snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_SPLIT]);
+    v9x_write_uint("MgaSetupRefusedBuild",
+                   snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_BUILD]);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);
     v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);
