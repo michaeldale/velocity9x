@@ -58,13 +58,17 @@ retrace for two seconds, and writes the totals, refresh, line rate and pixel
 clock to `C:\V9XDIAG\V9XTIME.INI`. Read-only apart from restoring the index
 ports. See [2026-10-09 soft capture](../../docs/issues/2026-10-09-mga2064w-capture-looks-soft.md).
 
-`mga2d.asm` and `mga2d_win32.c` are the Matrox MGA-2064W drawing engine
-write probe. Build them with `scripts/build-mga2d.ps1`; run `MGA2D.EXE` beside
-`MGA2D.VXD` under Velocity9x at 8, 16 or 32 bpp. It **writes the card**: the
-drawing registers, and a 1 MiB region 1 MiB below the end of VRAM, comparing
-seven fills and copies with the intended image, edges and overlaps included.
-`/nosetup` skips the engine setup writes. It publishes `C:\V9XDIAG\MGA2D.TXT`.
-See [2026-10-09 MGA-2064W drawing engine](../../docs/decisions/2026-10-09-mga2064w-drawing-engine.md).
+`mga2d.asm` and `mga2d_win32.c` are the Matrox MGA-2064W and MGA-2164W
+drawing engine write probe. Build them with `scripts/build-mga2d.ps1`; run
+`MGA2D.EXE` beside `MGA2D.VXD` under Velocity9x at 8, 16 or 32 bpp. It
+**writes the card**: the drawing registers, and a 1 MiB region 1 MiB below the
+end of VRAM, comparing seven fills and copies with the intended image, edges
+and overlaps included. `/tri` draws flat and Gouraud trapezoids instead and
+compares each with `src/chipsets/matrox/mga_3d.c`'s model (Gouraud at 32 bpp
+only), writing each case's coverage as text rows. `/nosetup` skips the engine
+setup writes. It publishes `C:\V9XDIAG\MGA2D.TXT`. See
+[2026-10-09 MGA-2064W drawing engine](../../docs/decisions/2026-10-09-mga2064w-drawing-engine.md)
+and [2026-10-10 MGA-2164W trapezoids](../../docs/decisions/2026-10-10-mga2164w-trapezoids.md).
 
 `sis6326_3d_win32.c` is the SiS 6326 3D engine write probe. Build it
 with `scripts/build-sis6326-3d.ps1` and run `SIS3D.EXE` beside `SIS2D.VXD`

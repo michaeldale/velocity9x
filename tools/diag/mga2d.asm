@@ -1,23 +1,31 @@
-; Matrox MGA-2064W 2D drawing engine write probe VxD.
+; Matrox MGA-2064W / MGA-2164W drawing engine write probe VxD.
 ;
 ; Loaded dynamically by MGA2D.EXE, which decides every access; this VxD only
 ; executes an op list against the card and refuses anything outside it. It
-; finds PCI 102B:0519 with configuration mechanism 1, maps BAR0 (MGABASE1,
-; the 16 KiB control aperture) and BAR1 (MGABASE2, the 8 MiB framebuffer
-; aperture) once - the 2064W orders them this way round, unlike the 2164W
-; (docs\decisions\2026-09-09-millennium-2064w-bar-ordering.md) - and runs:
+; finds PCI 102B:0519 (2064W) or 102B:051B (2164W) with configuration
+; mechanism 1 and maps MGABASE1, the 16 KiB control aperture, and MGABASE2,
+; the framebuffer aperture, once. The two chips order them differently:
+; the 2064W has the control aperture in BAR0 and an 8 MiB framebuffer in
+; BAR1 (docs\decisions\2026-09-09-millennium-2064w-bar-ordering.md); the
+; 2164W a 16 MiB framebuffer in BAR0 and the control aperture in BAR1
+; (MGA-2164W Developer Specification 2-2; A8U4I5's allocation in
+; docs\decisions\2026-10-10-mga2164w-matrox-hal-baseline.md). It runs:
 ;
-;   region       - names the one 1 MiB, 64 KiB-aligned window of BAR1 the LFB
-;                  ops may touch. Cleared on every open; LFB ops are refused
-;                  until it is set.
-;   MMIO write32 - BAR0 offsets 1C00h-1DFCh only, dword-aligned: the drawing
+;   region       - names the one 1 MiB, 64 KiB-aligned window of the
+;                  framebuffer the LFB ops may touch. Cleared on every open;
+;                  LFB ops are refused until it is set.
+;   MMIO write32 - control offsets 1C00h-1DFCh, dword-aligned: the drawing
 ;                  registers and their 1D00h-1DFFh go mirror (MGA-1064SG
-;                  Developer Specification, Table 3-4).
+;                  Developer Specification, Table 3-4). On the 2164W also
+;                  2C00h-2DFCh, the second drawing-register block (2164W
+;                  spec Table 2-3), which the 2064W reserves.
 ;   MMIO read32  - FIFOSTATUS (1E10h) and STATUS (1E14h) only.
 ;   LFB write/read/fill - dword-aligned, wholly inside the region.
 ;   wait idle    - read STATUS until dwgengsts<16> is clear (p.4-74).
-;   wait FIFO n  - read FIFOSTATUS until fifocount<5:0> >= n, 1 <= n <= 32
-;                  (p.4-57).
+;   wait FIFO n  - read FIFOSTATUS until fifocount >= n, 1 <= n <= 32. The
+;                  count is <5:0> on the 2064W's 32-entry FIFO (p.4-57) and
+;                  <6:0> on the 2164W's 64-entry one (2164W spec 3-63: it
+;                  resets to 64, which a six-bit mask reads as 0).
 ;   cache flush  - read the CRTC index at 3D4h and write the same value back.
 ;                  The chip keeps a 4-dword CPU read cache in front of the
 ;                  framebuffer that the drawing engine does not invalidate;
@@ -48,10 +56,12 @@ Declare_Virtual_Device MGA2D, 1, 0, Mga2d_Control, \
 
 MGA2D_MAGIC             equ 44324d47h ; "GM2D"
 MGA2D_DIOC_RUN          equ 1
-MGA2D_PCI_ID            equ 0519102bh
+MGA2D_PCI_ID_2064W      equ 0519102bh
+MGA2D_PCI_ID_2164W      equ 051b102bh
 MGA2D_OP_MAX            equ 512
 MGA2D_MMIO_BYTES        equ 00004000h
-MGA2D_LFB_BYTES         equ 00800000h
+MGA2D_LFB_BYTES_2064W   equ 00800000h
+MGA2D_LFB_BYTES_2164W   equ 01000000h
 MGA2D_REGION_BYTES      equ 00100000h
 MGA2D_REGION_ALIGN      equ 00010000h
 MGA2D_WAIT_LIMIT        equ 1000000
@@ -60,9 +70,12 @@ MGA2D_TIMEOUT           equ 0ffffffffh
 ; Register window the MMIO ops may reach (MGA-1064SG Table 3-4).
 MGA2D_DRAW_FIRST        equ 1c00h
 MGA2D_DRAW_LAST         equ 1dfch
+MGA2D_DRAW1_FIRST       equ 2c00h
+MGA2D_DRAW1_LAST        equ 2dfch
 MGA2D_FIFOSTATUS        equ 1e10h
 MGA2D_STATUS            equ 1e14h
-MGA2D_FIFO_COUNT_MASK   equ 0000003fh
+MGA2D_FIFO_MASK_2064W   equ 0000003fh
+MGA2D_FIFO_MASK_2164W   equ 0000007fh
 MGA2D_FIFO_DEPTH        equ 32
 MGA2D_STATUS_BUSY       equ 00010000h
 MGA2D_CRTC_INDEX        equ 03d4h
@@ -88,9 +101,9 @@ MGA2D_TIMED_OUT         equ 00000010h
 ; One op: code, a, b, c, result - five dwords.
 MGA2D_OP_DWORDS         equ 5
 ; Request: count, then ops. Result: magic, status, bar0, bar1, executed,
-; refused index, then the ops with their results.
+; refused index, the PCI id found, then the ops with their results.
 MGA2D_IN_MIN_BYTES      equ 4
-MGA2D_HEADER_DWORDS     equ 6
+MGA2D_HEADER_DWORDS     equ 7
 MGA2D_RESULT_DWORDS     equ (MGA2D_HEADER_DWORDS + MGA2D_OP_MAX * MGA2D_OP_DWORDS)
 
 VxD_LOCKED_DATA_SEG
@@ -101,7 +114,11 @@ Mga2dResult label dword
     dd 0                        ; 03 BAR1 physical
     dd 0                        ; 04 ops executed
     dd 0                        ; 05 index of the refused or timed-out op
+    dd 0                        ; 06 PCI vendor and device found, or 0
 Mga2dOps   dd (MGA2D_OP_MAX * MGA2D_OP_DWORDS) dup (0)
+Mga2dLfbBytes    dd 0
+Mga2dFifoMask    dd 0
+Mga2dHasDraw1    dd 0
 Mga2dLfbLinear   dd 0
 Mga2dMmioLinear  dd 0
 Mga2dLfbPhys     dd 0
@@ -149,7 +166,9 @@ BeginProc Mga2d_Map
 Mga2d_Map_Next:
     mov     eax, ebx
     call    Mga2d_Pci_Read
-    cmp     eax, MGA2D_PCI_ID
+    cmp     eax, MGA2D_PCI_ID_2064W
+    je      Mga2d_Map_Found
+    cmp     eax, MGA2D_PCI_ID_2164W
     je      Mga2d_Map_Found
     add     ebx, 0800h
     cmp     ebx, 81000000h
@@ -158,15 +177,32 @@ Mga2d_Map_Next:
 
 Mga2d_Map_Found:
     or      Mga2dResult[4], MGA2D_PCI_FOUND
+    mov     Mga2dResult[24], eax
+    mov     edx, eax
     lea     eax, [ebx+10h]
     call    Mga2d_Pci_Read
-    mov     esi, eax
+    mov     Mga2dResult[8], eax
     lea     eax, [ebx+14h]
     call    Mga2d_Pci_Read
-    mov     edi, eax
-    mov     Mga2dResult[8], esi
-    mov     Mga2dResult[12], edi
+    mov     Mga2dResult[12], eax
 
+    ; ESI = the control aperture's BAR, EDI = the framebuffer's, by chip.
+    cmp     edx, MGA2D_PCI_ID_2164W
+    je      Mga2d_Map_2164w
+    mov     esi, Mga2dResult[8]
+    mov     edi, Mga2dResult[12]
+    mov     Mga2dLfbBytes, MGA2D_LFB_BYTES_2064W
+    mov     Mga2dFifoMask, MGA2D_FIFO_MASK_2064W
+    mov     Mga2dHasDraw1, 0
+    jmp     Mga2d_Map_Bars
+Mga2d_Map_2164w:
+    mov     esi, Mga2dResult[12]
+    mov     edi, Mga2dResult[8]
+    mov     Mga2dLfbBytes, MGA2D_LFB_BYTES_2164W
+    mov     Mga2dFifoMask, MGA2D_FIFO_MASK_2164W
+    mov     Mga2dHasDraw1, 1
+
+Mga2d_Map_Bars:
     ; Both must be memory BARs (bit 0 clear), nonzero, and naturally
     ; aligned to the size this VxD maps.
     test    esi, 1
@@ -181,7 +217,9 @@ Mga2d_Map_Found:
     jnz     Mga2d_Map_Done
     test    edi, edi
     jz      Mga2d_Map_Done
-    test    edi, MGA2D_LFB_BYTES - 1
+    mov     eax, Mga2dLfbBytes
+    dec     eax
+    test    edi, eax
     jnz     Mga2d_Map_Done
 
     cmp     Mga2dLfbLinear, 0
@@ -193,7 +231,8 @@ Mga2d_Map_Found:
     jmp     Mga2d_Map_Ok
 
 Mga2d_Map_Fresh:
-    VMMcall _MapPhysToLinear,<edi,MGA2D_LFB_BYTES,0>
+    mov     eax, Mga2dLfbBytes
+    VMMcall _MapPhysToLinear,<edi,eax,0>
     cmp     eax, 0ffffffffh
     je      Mga2d_Map_Done
     mov     Mga2dLfbLinear, eax
@@ -273,7 +312,9 @@ Mga2d_Do_Region:
     jnz     Mga2d_Do_Refuse
     cmp     ecx, MGA2D_REGION_BYTES
     jne     Mga2d_Do_Refuse
-    cmp     ebx, MGA2D_LFB_BYTES - MGA2D_REGION_BYTES
+    mov     eax, Mga2dLfbBytes
+    sub     eax, MGA2D_REGION_BYTES
+    cmp     ebx, eax
     ja      Mga2d_Do_Refuse
     mov     Mga2dRegionBase, ebx
     add     ebx, ecx
@@ -282,12 +323,19 @@ Mga2d_Do_Region:
 
 ; a = drawing register offset, b = value.
 Mga2d_Do_Mmio_Write32:
+    test    ebx, 3
+    jnz     Mga2d_Do_Refuse
     cmp     ebx, MGA2D_DRAW_FIRST
     jb      Mga2d_Do_Refuse
     cmp     ebx, MGA2D_DRAW_LAST
+    jbe     Mga2d_Do_Mmio_Write32_Ok
+    cmp     Mga2dHasDraw1, 0
+    je      Mga2d_Do_Refuse
+    cmp     ebx, MGA2D_DRAW1_FIRST
+    jb      Mga2d_Do_Refuse
+    cmp     ebx, MGA2D_DRAW1_LAST
     ja      Mga2d_Do_Refuse
-    test    ebx, 3
-    jnz     Mga2d_Do_Refuse
+Mga2d_Do_Mmio_Write32_Ok:
     mov     edi, Mga2dMmioLinear
     mov     [edi+ebx], ecx
     jmp     Mga2d_Do_Done
@@ -364,7 +412,7 @@ Mga2d_Do_Wait_Fifo:
 Mga2d_Do_Wait_Fifo_Next:
     inc     edx
     mov     eax, [edi+MGA2D_FIFOSTATUS]
-    and     eax, MGA2D_FIFO_COUNT_MASK
+    and     eax, Mga2dFifoMask
     cmp     eax, ebx
     jae     Mga2d_Do_Wait_Store
     cmp     edx, MGA2D_WAIT_LIMIT
@@ -474,6 +522,7 @@ BeginProc Mga2d_W32_DeviceIoControl
     mov     Mga2dResult[4], 0
     mov     Mga2dResult[16], 0
     mov     Mga2dResult[20], 0
+    mov     Mga2dResult[24], 0
     lea     esi, [ebp+4]
     mov     edi, OFFSET32 Mga2dOps
     mov     ecx, eax

@@ -64,6 +64,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\sis\sis6326_3d.c',
         # MGA-2064W drawing engine: fill and copy register values, no I/O.
         'src\chipsets\matrox\mga_engine.c',
+        # MGA-2164W 3D: trapezoid register values and the engine model, no I/O.
+        'src\chipsets\matrox\mga_3d.c',
         # Rage II triangle setup into trapezoids, on the measured edge walk.
         'src\chipsets\ati\rage2_setup.c',
         'src\chipsets\ati\rage2_draw.c',
@@ -200,6 +202,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_sis6326_engine.c',
         'tests\host\test_sis6326_3d.c',
         'tests\host\test_mga_engine.c',
+        'tests\host\test_mga_3d.c',
         'tests\host\test_main.c'
     )
 

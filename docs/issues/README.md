@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-10 The MGA-2164W's VBE BIOS reports 4 MiB of its 8, and the matrox family believes it](2026-10-10-mga2164w-vbe-reports-half-its-memory.md)
 - [2026-10-09 GLQuake draws white where its tiled background belongs beside the status bar](2026-10-09-glquake-white-beside-status-bar.md)
 - [2026-10-08 Mach64 refuses REPLACE with the fragment's alpha, so GLQuake's -nomtex lightmaps draw nothing](2026-10-08-mach64-replace-fragment-alpha-refused.md)
 - [2026-10-07 Rage XL hard lock on UT99's first OpenGL frame after a fresh boot (unreproduced)](2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md)

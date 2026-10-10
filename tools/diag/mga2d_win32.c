@@ -1,5 +1,13 @@
 /*
- * MGA2D.EXE: the Matrox MGA-2064W 2D drawing engine write probe.
+ * MGA2D.EXE: the Matrox MGA-2064W / MGA-2164W drawing engine write probe.
+ *
+ * With /tri it draws trapezoids instead (phase 1 of
+ * docs\plans\matrox-mga2164w-hardware-3d.md): flat ones with sloped edges,
+ * and Gouraud ones at 32 bpp, each compared with src\chipsets\matrox\
+ * mga_3d.c's model of the engine. A Gouraud case is compared twice, once
+ * per hypothesis for the per-row colour step (V9X_MGA3D_FOLD_EDGE and
+ * _NONE), and the report says which, if either, the card matches. Every
+ * case also writes its coverage as text rows, '#' for a changed pixel.
  *
  * Publishes C:\V9XDIAG\MGA2D.TXT. Runs beside MGA2D.VXD, which executes the
  * op lists built here and refuses anything outside the drawing registers,
@@ -17,10 +25,13 @@
  * Every engine write comes from the host-tested builder
  * (src\chipsets\matrox\mga_engine.c), compiled in. Safety contract:
  *
- *   - Run under Velocity9x tier-0, whose display path writes no MGA register,
- *     at 8, 16 or 32 bpp. The engine's depth follows the desktop's.
- *   - The card must be PCI 102B:0519 with Configuration Manager's BAR0 range
- *     exactly 16 KiB (MGABASE1) at the base the VxD reads from config 10h.
+ *   - Run under Velocity9x at 8, 16 or 32 bpp. The engine's depth follows
+ *     the desktop's. The driver uses the engine too, so the probe's setup
+ *     (MACCESS, PLNWT, clip) is what the HAL writes before its own
+ *     operations anyway.
+ *   - The card must be PCI 102B:0519 or 102B:051B with Configuration
+ *     Manager's range for the control aperture exactly 16 KiB (MGABASE1) at
+ *     the base the VxD reads: config 10h on the 2064W, 14h on the 2164W.
  *   - Engine output and CPU test writes stay in a 1 MiB region starting 1 MiB
  *     below the end of VRAM, which must lie beyond the visible desktop.
  *   - Engine state written by the setup (MACCESS, PLNWT, the clip window) is
@@ -36,8 +47,10 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/mga_engine.h"
+#include "velocity9x/mga_3d.h"
 
 #include "../../src/chipsets/matrox/mga_engine.c"
+#include "../../src/chipsets/matrox/mga_3d.c"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -83,14 +96,18 @@ typedef RESOURCEID *PRESOURCEID;
 #define MGA2D_RAN       0x00000004ul
 #define MGA2D_TIMED_OUT 0x00000010ul
 
-#define MGA2D_PCI_PREFIX "VEN_102B&DEV_0519"
+#define MGA2D_PCI_PREFIX_2064W "VEN_102B&DEV_0519"
+#define MGA2D_PCI_PREFIX_2164W "VEN_102B&DEV_051B"
+#define MGA2D_PCI_ID_2164W 0x051b102bul
 #define MGA2D_RANGE_MAX 16u
-/* MGABASE1 is 16 KiB (MGA-1064SG Table 3-4); the VxD maps BAR1 as 8 MiB. */
+/* MGABASE1 is 16 KiB (MGA-1064SG Table 3-4). The VxD maps the framebuffer
+ * as 8 MiB on the 2064W and 16 MiB on the 2164W. */
 #define MGA2D_CONTROL_BYTES 0x00004000ul
-#define MGA2D_BAR1_MAP_BYTES 0x00800000ul
+#define MGA2D_FB_MAP_BYTES_2064W 0x00800000ul
+#define MGA2D_FB_MAP_BYTES_2164W 0x01000000ul
 #define MGA2D_MIB 0x00100000ul
 #define MGA2D_VRAM_MIN_MIB 2ul
-#define MGA2D_VRAM_MAX_MIB 8ul
+#define MGA2D_VRAM_MAX_MIB 16ul
 /* V9XBOOT.INI's VbeController mem= counts 64 KiB blocks (VBE 4F00h). */
 #define MGA2D_VBE_BLOCK_BYTES 0x00010000ul
 
@@ -140,6 +157,7 @@ struct mga2d_result {
     DWORD bar1;
     DWORD executed;
     DWORD refused;
+    DWORD pci_id;
     struct mga2d_op ops[MGA2D_OP_MAX];
 };
 
@@ -180,6 +198,9 @@ static HANDLE mga2d_output = INVALID_HANDLE_VALUE;
 static DWORD mga2d_failures = 0ul;
 static int mga2d_engine_dead = 0;
 static int mga2d_refused = 0;
+static int mga2d_is_2164w = 0;
+/* The per-mode state, built once; /tri sends it ahead of every case. */
+static struct v9x_mga_writes mga2d_setup;
 static DWORD mga2d_bpp;
 static DWORD mga2d_pixel_mask;
 static DWORD mga2d_vram_bytes;
@@ -396,7 +417,7 @@ static void mga2d_append_text(char *destination, const char *source,
 }
 
 /*
- * The wanted-th Enum\PCI instance of 102B:0519, counting from zero. Every
+ * The wanted-th Enum\PCI instance of 102B:0519 or 051B, counting from zero. Every
  * card ever fitted keeps its key, so the first match need not be the card in
  * the slot (sis6326_probe_win32.c, A8U4I5 2026-10-04); the caller tries each
  * until Config Manager locates a present devnode.
@@ -425,7 +446,8 @@ static LONG mga2d_find_device(char *device_id, DWORD capacity, DWORD wanted)
             break;
         }
         if (status != ERROR_SUCCESS ||
-            !mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX)) {
+            (!mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_2064W) &&
+             !mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_2164W))) {
             continue;
         }
         if (matched++ != wanted) {
@@ -739,32 +761,39 @@ static int mga2d_stream_read(const struct mga2d_window *window,
     return 1;
 }
 
-static void mga2d_report_writes(const char *name,
-                                const struct v9x_mga_writes *writes)
+static void mga2d_report_list(const char *name, const v9x_u32 *offsets,
+                              const v9x_u32 *values, DWORD count)
 {
     char key[48];
     char text[24];
     DWORD index;
 
     mga2d_key(key, name, "Writes");
-    mga2d_write_decimal(key, writes->count);
-    for (index = 0ul; index < writes->count; ++index) {
+    mga2d_write_decimal(key, count);
+    for (index = 0ul; index < count; ++index) {
         mga2d_key(key, name, "Write");
         mga2d_decimal(key + lstrlenA(key), index);
-        mga2d_hex(text, writes->offsets[index], 4);
+        mga2d_hex(text, offsets[index], 4);
         text[4] = '=';
-        mga2d_hex(text + 5, writes->values[index], 8);
+        mga2d_hex(text + 5, values[index], 8);
         mga2d_write(key, text);
     }
+}
+
+static void mga2d_report_writes(const char *name,
+                                const struct v9x_mga_writes *writes)
+{
+    mga2d_report_list(name, writes->offsets, writes->values, writes->count);
 }
 
 /*
  * The builder's writes behind a FIFO wait for all of them, then a bounded
  * idle wait and the read-cache flush, so the CPU readback that follows sees
- * what the engine wrote rather than dwords cached before it ran.
+ * what the engine wrote rather than dwords cached before it ran. The VxD
+ * accepts a FIFO wait of at most 32 entries, the 2064W's depth.
  */
-static int mga2d_run_writes(const char *name,
-                            const struct v9x_mga_writes *writes)
+static int mga2d_run_list(const char *name, const v9x_u32 *offsets,
+                          const v9x_u32 *values, DWORD count)
 {
     char key[48];
     DWORD fifo;
@@ -773,10 +802,9 @@ static int mga2d_run_writes(const char *name,
     DWORD index;
 
     mga2d_begin();
-    fifo = mga2d_add(MGA2D_OP_WAIT_FIFO, writes->count, 0ul, 0ul);
-    for (index = 0ul; index < writes->count; ++index) {
-        mga2d_add(MGA2D_OP_MMIO_WRITE32, writes->offsets[index],
-                  writes->values[index], 0ul);
+    fifo = mga2d_add(MGA2D_OP_WAIT_FIFO, count, 0ul, 0ul);
+    for (index = 0ul; index < count; ++index) {
+        mga2d_add(MGA2D_OP_MMIO_WRITE32, offsets[index], values[index], 0ul);
     }
     idle = mga2d_add(MGA2D_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
     flush = mga2d_add(MGA2D_OP_CACHE_FLUSH, 0ul, 0ul, 0ul);
@@ -798,6 +826,13 @@ static int mga2d_run_writes(const char *name,
     mga2d_key(key, name, "CrtcIndex");
     mga2d_write_hex(key, mga2d_value(flush));
     return 1;
+}
+
+static int mga2d_run_writes(const char *name,
+                            const struct v9x_mga_writes *writes)
+{
+    return mga2d_run_list(name, writes->offsets, writes->values,
+                          writes->count);
 }
 
 /* Rows of the destination rectangle in which column col changed from the
@@ -1039,6 +1074,334 @@ static void mga2d_test(const struct mga2d_case *test)
                         test->dx + test->width - 1ul);
 }
 
+/*
+ * /tri: one trapezoid per case, each in its own band of region rows. Edges
+ * are (x, dx, dy) as v9x_mga3d_edge; colours are signed 9.15 start, x step
+ * and y step. The window is MGA2D_TRI_COLS wide from column 0.
+ */
+#define MGA2D_TRI_BAND_ROWS 20ul
+#define MGA2D_TRI_COLS 64ul
+#define MGA2D_LEVEL(n) ((long)(n) * V9X_MGA3D_COLOR_ONE)
+/* FCOL's alpha byte, stored with every Gouraud pixel at 32 bpp. */
+#define MGA2D_TRI_ALPHA 0x5a000000ul
+
+struct mga2d_tri_case {
+    const char *name;
+    DWORD band;
+    DWORD shade;
+    long lx;
+    long ldx;
+    long ldy;
+    long rx;
+    long rdx;
+    long rdy;
+    DWORD length;
+    long red[3];
+    long green[3];
+    long blue[3];
+};
+
+static const struct mga2d_tri_case mga2d_tri_cases[] = {
+    /* 45-degree edges from a one-pixel top row. */
+    { "TriApex", 0ul, V9X_MGA3D_SHADE_FLAT, 20L, -8L, 8L, 21L, 8L, 8L, 8ul,
+      { 0L, 0L, 0L }, { 0L, 0L, 0L }, { 0L, 0L, 0L } },
+    /* The same from a zero-width top row: is the first row empty? */
+    { "TriPoint", 1ul, V9X_MGA3D_SHADE_FLAT, 20L, -8L, 8L, 20L, 8L, 8L, 8ul,
+      { 0L, 0L, 0L }, { 0L, 0L, 0L }, { 0L, 0L, 0L } },
+    /* Shallow edges of different slopes: where each one steps. */
+    { "TriShallow", 2ul, V9X_MGA3D_SHADE_FLAT, 20L, -3L, 8L, 22L, 5L, 8L,
+      8ul, { 0L, 0L, 0L }, { 0L, 0L, 0L }, { 0L, 0L, 0L } },
+    /* Edges closing on each other, the bottom half of a triangle. */
+    { "TriConverge", 3ul, V9X_MGA3D_SHADE_FLAT, 10L, 6L, 8L, 40L, -9L, 8L,
+      8ul, { 0L, 0L, 0L }, { 0L, 0L, 0L }, { 0L, 0L, 0L } },
+    /* Edges defined over 16 rows, drawn for 8: the long edge of a
+     * triangle split in two. */
+    { "TriLongEdge", 4ul, V9X_MGA3D_SHADE_FLAT, 20L, -8L, 16L, 21L, 8L, 16L,
+      8ul, { 0L, 0L, 0L }, { 0L, 0L, 0L }, { 0L, 0L, 0L } },
+    /* Left edge moving right one column a row, red rising two levels a
+     * pixel, blue four a row: the fold hypotheses differ by two levels of
+     * red per row at the edge. */
+    { "GouraudFoldRight", 5ul, V9X_MGA3D_SHADE_GOURAUD,
+      4L, 8L, 8L, 40L, 0L, 8L, 8ul,
+      { MGA2D_LEVEL(0x20), MGA2D_LEVEL(2), 0L },
+      { MGA2D_LEVEL(0x80), 0L, 0L },
+      { MGA2D_LEVEL(0x10), 0L, MGA2D_LEVEL(4) } },
+    /* The same with the edge moving left. */
+    { "GouraudFoldLeft", 6ul, V9X_MGA3D_SHADE_GOURAUD,
+      20L, -8L, 8L, 40L, 0L, 8L, 8ul,
+      { MGA2D_LEVEL(0x20), MGA2D_LEVEL(3), 0L },
+      { MGA2D_LEVEL(0x80), 0L, 0L },
+      { MGA2D_LEVEL(0x10), 0L, MGA2D_LEVEL(4) } },
+    /* Vertical edges, fractional steps: how the 15 fraction bits
+     * accumulate and truncate, and a falling channel. */
+    { "GouraudFraction", 7ul, V9X_MGA3D_SHADE_GOURAUD,
+      8L, 0L, 8L, 40L, 0L, 8L, 8ul,
+      { MGA2D_LEVEL(0x40) + 0x4000L, 0x2000L, 0x1000L },
+      { 0L, 0x6000L, 0L },
+      { MGA2D_LEVEL(0xff), -MGA2D_LEVEL(1), 0L } }
+};
+
+#define MGA2D_TRI_CASE_COUNT (sizeof(mga2d_tri_cases) / sizeof(mga2d_tri_cases[0]))
+
+struct mga2d_plot_target {
+    DWORD first_row;
+    DWORD window_row0;
+    DWORD window_rows;
+};
+
+static void mga2d_tri_plot(void *context, v9x_s32 x, v9x_u32 row,
+                           v9x_u32 pixel)
+{
+    struct mga2d_plot_target *target = (struct mga2d_plot_target *)context;
+    DWORD image_row = target->first_row + row - target->window_row0;
+
+    if (x < 0L || (DWORD)x >= MGA2D_TRI_COLS ||
+        image_row >= target->window_rows) {
+        return;
+    }
+    mga2d_expected[image_row][x] = pixel & mga2d_pixel_mask;
+}
+
+/* Mismatches between the card and the model under one fold hypothesis;
+ * the first one's place in *first_row, *first_col. */
+static DWORD mga2d_tri_compare(const struct v9x_mga3d_trap *trap,
+                               DWORD fold, struct mga2d_plot_target *target,
+                               const struct mga2d_window *window,
+                               DWORD *first_row, DWORD *first_col)
+{
+    DWORD row;
+    DWORD col;
+    DWORD mismatches = 0ul;
+
+    mga2d_bytes(mga2d_expected, mga2d_before, sizeof(mga2d_image));
+    if (v9x_mga3d_model_trap(trap, fold, mga2d_tri_plot, target) !=
+        V9X_STATUS_OK) {
+        return 0xfffffffful;
+    }
+    for (row = 0ul; row < window->rows; ++row) {
+        for (col = 0ul; col < window->cols; ++col) {
+            if (mga2d_actual[row][col] != mga2d_expected[row][col]) {
+                if (mismatches == 0ul) {
+                    *first_row = row;
+                    *first_col = col;
+                }
+                ++mismatches;
+            }
+        }
+    }
+    return mismatches;
+}
+
+static void mga2d_tri_report_mismatch(const char *name, const char *label,
+                                      DWORD mismatches, DWORD first_row,
+                                      DWORD first_col,
+                                      const struct mga2d_window *window,
+                                      DWORD destination_row)
+{
+    char key[64];
+    char text[96];
+
+    mga2d_key(key, name, label);
+    mga2d_write_decimal(key, mismatches);
+    if (mismatches == 0ul || mismatches == 0xfffffffful) {
+        return;
+    }
+    lstrcpyA(text, "x=");
+    mga2d_decimal(text + lstrlenA(text), first_col);
+    lstrcatA(text, " y=");
+    mga2d_signed(text + lstrlenA(text),
+                 (long)(window->row0 + first_row) - (long)destination_row);
+    lstrcatA(text, " got=0x");
+    mga2d_hex(text + lstrlenA(text), mga2d_actual[first_row][first_col],
+              (int)(mga2d_bpp * 2ul));
+    lstrcatA(text, " want=0x");
+    mga2d_hex(text + lstrlenA(text), mga2d_expected[first_row][first_col],
+              (int)(mga2d_bpp * 2ul));
+    mga2d_key(key, name, label);
+    lstrcatA(key, "First");
+    mga2d_write(key, text);
+}
+
+static void mga2d_tri_test(const struct mga2d_tri_case *test)
+{
+    struct v9x_mga3d_trap trap;
+    struct v9x_mga3d_writes writes;
+    struct mga2d_window window;
+    struct mga2d_plot_target target;
+    char key[64];
+    char text[MGA2D_TRI_COLS + 32ul];
+    DWORD destination_row = test->band * MGA2D_TRI_BAND_ROWS + MGA2D_GUARD;
+    DWORD row;
+    DWORD col;
+    DWORD first_row = 0ul;
+    DWORD first_col = 0ul;
+    DWORD edge_mismatches;
+    DWORD none_mismatches = 0xfffffffful;
+    DWORD index;
+    DWORD count;
+    v9x_u32 offsets[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
+    v9x_u32 values[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
+    v9x_status status;
+
+    if (test->shade == V9X_MGA3D_SHADE_GOURAUD && mga2d_bpp != 4ul) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "SKIPPED-DEPTH");
+        return;
+    }
+    window.row0 = destination_row - MGA2D_GUARD;
+    window.rows = test->length + 2ul * MGA2D_GUARD;
+    window.cols = MGA2D_TRI_COLS;
+    if ((window.row0 + window.rows) * mga2d_pitch_bytes > MGA2D_REGION_BYTES) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "WINDOW-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+
+    mga2d_zero(&trap, sizeof(trap));
+    trap.vram_bytes = mga2d_vram_bytes;
+    trap.target_offset = mga2d_row_offset(destination_row);
+    trap.pitch_bytes = mga2d_pitch_bytes;
+    trap.bytes_per_pixel = mga2d_bpp;
+    trap.top = 0ul;
+    trap.length = test->length;
+    trap.left.x = test->lx;
+    trap.left.dx = test->ldx;
+    trap.left.dy = test->ldy;
+    trap.right.x = test->rx;
+    trap.right.dx = test->rdx;
+    trap.right.dy = test->rdy;
+    trap.shade = test->shade;
+    if (test->shade == V9X_MGA3D_SHADE_GOURAUD) {
+        trap.color = MGA2D_TRI_ALPHA;
+        for (index = 0ul; index < 3ul; ++index) {
+            trap.red[index] = test->red[index];
+            trap.green[index] = test->green[index];
+            trap.blue[index] = test->blue[index];
+        }
+    } else {
+        trap.color = MGA2D_FILL_COLOR & mga2d_pixel_mask;
+    }
+    status = v9x_mga3d_build_trap(&trap, &writes);
+    if (status != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "BUILD-REFUSED");
+        mga2d_key(key, test->name, "BuildStatus");
+        mga2d_write_decimal(key, status);
+        ++mga2d_failures;
+        return;
+    }
+    mga2d_key(key, test->name, "DestinationRow");
+    mga2d_write_decimal(key, destination_row);
+    mga2d_report_list(test->name, writes.offsets, writes.values,
+                      writes.count);
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            mga2d_before[row][col] = mga2d_pattern(col, window.row0 + row);
+        }
+    }
+    if (!mga2d_stream_write(&window, mga2d_before)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "PREPARE-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    /* The setup again in front of the trapezoid, in the same VxD call: the
+     * driver draws GDI and DirectDraw on this engine between the probe's
+     * calls and may leave its own clip or pixel width behind. */
+    count = 0ul;
+    for (index = 0ul; index < mga2d_setup.count; ++index) {
+        offsets[count] = mga2d_setup.offsets[index];
+        values[count] = mga2d_setup.values[index];
+        ++count;
+    }
+    for (index = 0ul; index < writes.count; ++index) {
+        offsets[count] = writes.offsets[index];
+        values[count] = writes.values[index];
+        ++count;
+    }
+    if (!mga2d_run_list(test->name, offsets, values, count)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, mga2d_engine_dead ? "ENGINE-TIMEOUT" : "RUN-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    if (!mga2d_stream_read(&window, mga2d_actual)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "READBACK-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+
+    /* Coverage, row by row from the window's first row: '#' changed. */
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            text[col] = mga2d_actual[row][col] != mga2d_before[row][col]
+                ? '#' : '.';
+        }
+        text[window.cols] = '\0';
+        lstrcpyA(key, test->name);
+        lstrcatA(key, "Row");
+        mga2d_signed(key + lstrlenA(key),
+                     (long)(window.row0 + row) - (long)destination_row);
+        mga2d_write(key, text);
+    }
+
+    target.first_row = destination_row;
+    target.window_row0 = window.row0;
+    target.window_rows = window.rows;
+    edge_mismatches = mga2d_tri_compare(&trap, V9X_MGA3D_FOLD_EDGE, &target,
+                                        &window, &first_row, &first_col);
+    mga2d_tri_report_mismatch(test->name, "MismatchesFoldEdge",
+                              edge_mismatches, first_row, first_col, &window,
+                              destination_row);
+    if (test->shade == V9X_MGA3D_SHADE_GOURAUD) {
+        none_mismatches = mga2d_tri_compare(&trap, V9X_MGA3D_FOLD_NONE,
+                                            &target, &window, &first_row,
+                                            &first_col);
+        mga2d_tri_report_mismatch(test->name, "MismatchesFoldNone",
+                                  none_mismatches, first_row, first_col,
+                                  &window, destination_row);
+
+        /* Each row's first drawn pixel and its value, for the fold
+         * question read directly. */
+        for (row = 0ul; row < test->length; ++row) {
+            DWORD image_row = destination_row + row - window.row0;
+
+            for (col = 0ul; col < window.cols; ++col) {
+                if (mga2d_actual[image_row][col] !=
+                    mga2d_before[image_row][col]) {
+                    break;
+                }
+            }
+            lstrcpyA(key, test->name);
+            lstrcatA(key, "Left");
+            mga2d_decimal(key + lstrlenA(key), row);
+            if (col == window.cols) {
+                mga2d_write(key, "none");
+                continue;
+            }
+            lstrcpyA(text, "x=");
+            mga2d_decimal(text + lstrlenA(text), col);
+            lstrcatA(text, " 0x");
+            mga2d_hex(text + lstrlenA(text), mga2d_actual[image_row][col], 8);
+            mga2d_write(key, text);
+        }
+    }
+
+    mga2d_key(key, test->name, "Result");
+    if (edge_mismatches == 0ul) {
+        mga2d_write(key, test->shade == V9X_MGA3D_SHADE_GOURAUD
+                    ? "MATCH-FOLD-EDGE" : "PASS");
+    } else if (none_mismatches == 0ul) {
+        mga2d_write(key, "MATCH-FOLD-NONE");
+    } else {
+        mga2d_write(key, "FAIL");
+        ++mga2d_failures;
+    }
+}
+
 /* FIFOSTATUS and STATUS, read through the VxD's two readable offsets. */
 static int mga2d_report_state(const char *prefix)
 {
@@ -1070,7 +1433,7 @@ static DWORD mga2d_vbe_vram_bytes(void)
                              sizeof(text), V9X_DIAG_BOOT_INI);
     blocks = mga2d_parse_decimal(mga2d_find(text, "mem="), &ok);
     if (!ok || blocks == 0ul ||
-        blocks > MGA2D_BAR1_MAP_BYTES / MGA2D_VBE_BLOCK_BYTES) {
+        blocks > MGA2D_FB_MAP_BYTES_2164W / MGA2D_VBE_BLOCK_BYTES) {
         return 0ul;
     }
     return blocks * MGA2D_VBE_BLOCK_BYTES;
@@ -1100,21 +1463,24 @@ void WINAPI V9xMga2dProbeEntry(void)
     HDC display;
     const char *command_line;
     struct mga2d_range ranges[MGA2D_RANGE_MAX];
-    struct v9x_mga_writes setup;
     DWORD range_count = 0ul;
     DWORD width = 0ul;
     DWORD height = 0ul;
     DWORD bits = 0ul;
     DWORD bar0;
     DWORD bar1;
-    DWORD bar0_bytes;
-    DWORD bar1_bytes;
+    DWORD control;
+    DWORD framebuffer;
+    DWORD control_bytes;
+    DWORD framebuffer_bytes;
+    DWORD fb_map_bytes;
     DWORD vbe_bytes;
     DWORD option_mib;
     DWORD stride;
     DWORD desktop_guard;
     DWORD index;
     int no_setup;
+    int trapezoids;
     int have_option;
     CONFIGRET cm_status;
     static const char header[] = "[Mga2dProbe]\r\n";
@@ -1131,6 +1497,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     }
     command_line = GetCommandLineA();
     no_setup = mga2d_find(command_line, "/nosetup") != 0;
+    trapezoids = mga2d_find(command_line, "/tri") != 0;
     option_mib = mga2d_parse_decimal(mga2d_find(command_line, "/vram:"),
                                      &have_option);
 
@@ -1144,6 +1511,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     WriteFile(mga2d_output, header, (DWORD)lstrlenA(header), &written, 0);
     mga2d_write("Build", V9X_BUILD_ID);
     mga2d_write("NoSetup", no_setup ? "1" : "0");
+    mga2d_write("Mode", trapezoids ? "trapezoids" : "fill-copy");
     if (have_option) {
         mga2d_write_decimal("VramOptionMiB", option_mib);
     }
@@ -1210,7 +1578,7 @@ void WINAPI V9xMga2dProbeEntry(void)
         if (mga2d_result_buffer.magic != MGA2D_MAGIC) {
             mga2d_refuse("vxd-call-failed");
         } else if ((mga2d_result_buffer.status & 1ul) == 0ul) {
-            mga2d_refuse("no-102b-0519-on-pci");
+            mga2d_refuse("no-102b-0519-or-051b-on-pci");
         } else {
             mga2d_refuse("bar-unmappable");
         }
@@ -1218,32 +1586,43 @@ void WINAPI V9xMga2dProbeEntry(void)
     }
     bar0 = mga2d_result_buffer.bar0 & 0xfffffff0ul;
     bar1 = mga2d_result_buffer.bar1 & 0xfffffff0ul;
+    mga2d_write_hex("PciId", mga2d_result_buffer.pci_id);
     mga2d_write_hex("Bar0", bar0);
     mga2d_write_hex("Bar1", bar1);
 
+    /* The control aperture and the framebuffer by chip: BAR0 and BAR1 on
+     * the 2064W, the other way round on the 2164W. */
+    mga2d_is_2164w = mga2d_result_buffer.pci_id == MGA2D_PCI_ID_2164W;
+    mga2d_write("Chip", mga2d_is_2164w ? "MGA-2164W" : "MGA-2064W");
+    control = mga2d_is_2164w ? bar1 : bar0;
+    framebuffer = mga2d_is_2164w ? bar0 : bar1;
+    fb_map_bytes = mga2d_is_2164w ? MGA2D_FB_MAP_BYTES_2164W
+                                  : MGA2D_FB_MAP_BYTES_2064W;
+
     /* The live BARs must be the ranges Configuration Manager allocated, and
-     * BAR0 must be MGABASE1's 16 KiB. */
-    bar0_bytes = mga2d_range_bytes(ranges, range_count, bar0);
-    bar1_bytes = mga2d_range_bytes(ranges, range_count, bar1);
-    mga2d_write_hex("Bar0Bytes", bar0_bytes);
-    mga2d_write_hex("Bar1Bytes", bar1_bytes);
-    if (bar0_bytes != MGA2D_CONTROL_BYTES) {
-        mga2d_refuse("bar0-range-not-16k");
+     * the control aperture MGABASE1's 16 KiB. */
+    control_bytes = mga2d_range_bytes(ranges, range_count, control);
+    framebuffer_bytes = mga2d_range_bytes(ranges, range_count, framebuffer);
+    mga2d_write_hex("ControlBytes", control_bytes);
+    mga2d_write_hex("FramebufferBytes", framebuffer_bytes);
+    if (control_bytes != MGA2D_CONTROL_BYTES) {
+        mga2d_refuse("control-range-not-16k");
         goto close;
     }
-    if (bar1_bytes < MGA2D_VRAM_MIN_MIB * MGA2D_MIB ||
-        bar1_bytes > MGA2D_BAR1_MAP_BYTES) {
-        mga2d_refuse("bar1-range");
+    if (framebuffer_bytes < MGA2D_VRAM_MIN_MIB * MGA2D_MIB ||
+        framebuffer_bytes > fb_map_bytes) {
+        mga2d_refuse("framebuffer-range");
         goto close;
     }
 
     /*
-     * VRAM: BAR1's length is the aperture, not the memory - 86Box gives a
-     * 4 MiB card the same 8 MiB BAR and wraps addresses into it - so it is
-     * capped by the BIOS's figure from V9XBOOT.INI, or by /vram:N. With
-     * neither, the region could alias into the desktop, so the probe stops.
+     * VRAM: the framebuffer range is the aperture, not the memory - 86Box
+     * gives a 4 MiB card the same 8 MiB BAR and wraps addresses into it -
+     * so it is capped by the BIOS's figure from V9XBOOT.INI, or by /vram:N.
+     * With neither, the region could alias into the desktop, so the probe
+     * stops.
      */
-    mga2d_vram_bytes = bar1_bytes;
+    mga2d_vram_bytes = framebuffer_bytes;
     vbe_bytes = mga2d_vbe_vram_bytes();
     mga2d_write_hex("VbeVramBytes", vbe_bytes);
     if (vbe_bytes == 0ul && !have_option) {
@@ -1303,12 +1682,12 @@ void WINAPI V9xMga2dProbeEntry(void)
     if (no_setup) {
         mga2d_write("Setup", "skipped");
     } else {
-        if (v9x_mga_build_setup(mga2d_bpp, &setup) != V9X_STATUS_OK) {
+        if (v9x_mga_build_setup(mga2d_bpp, &mga2d_setup) != V9X_STATUS_OK) {
             mga2d_refuse("setup-build");
             goto close;
         }
-        mga2d_report_writes("Setup", &setup);
-        if (!mga2d_run_writes("Setup", &setup)) {
+        mga2d_report_writes("Setup", &mga2d_setup);
+        if (!mga2d_run_writes("Setup", &mga2d_setup)) {
             mga2d_write("Result", "FAIL");
             mga2d_write("Reason", mga2d_engine_dead ? "setup-engine-timeout"
                                                     : "setup-run-failed");
@@ -1317,10 +1696,19 @@ void WINAPI V9xMga2dProbeEntry(void)
         mga2d_write("Setup", "emitted");
     }
 
-    for (index = 0ul; index < MGA2D_CASE_COUNT; ++index) {
-        mga2d_test(&mga2d_cases[index]);
-        if (mga2d_engine_dead) {
-            break;
+    if (trapezoids) {
+        for (index = 0ul; index < MGA2D_TRI_CASE_COUNT; ++index) {
+            mga2d_tri_test(&mga2d_tri_cases[index]);
+            if (mga2d_engine_dead) {
+                break;
+            }
+        }
+    } else {
+        for (index = 0ul; index < MGA2D_CASE_COUNT; ++index) {
+            mga2d_test(&mga2d_cases[index]);
+            if (mga2d_engine_dead) {
+                break;
+            }
         }
     }
 

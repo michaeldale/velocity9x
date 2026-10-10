@@ -201,6 +201,10 @@ unsigned int v9x_run_sis6326_engine_tests(void);
  * against the MGA-1064SG specification's encodings and limits. */
 unsigned int v9x_run_mga_engine_tests(void);
 
+/* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
+ * the MGA-2164W specification's edge terms, and the engine model. */
+unsigned int v9x_run_mga_3d_tests(void);
+
 /* tests\host\test_sis6326_3d.c: SiS 6326 triangle register values against
  * SiS's own HAL as captured live and the datasheet. */
 unsigned int v9x_run_sis6326_3d_tests(void);
@@ -1253,6 +1257,7 @@ int main(int argc, char **argv)
     failures += v9x_run_sis6326_engine_tests();
     failures += v9x_run_sis6326_3d_tests();
     failures += v9x_run_mga_engine_tests();
+    failures += v9x_run_mga_3d_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

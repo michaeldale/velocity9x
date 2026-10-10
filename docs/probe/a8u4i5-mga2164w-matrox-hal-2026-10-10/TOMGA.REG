@@ -1,0 +1,210 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012]
+"InfPath"="MATROX~1.INF"
+"InfSection"="MGAX_PCI"
+"ProviderName"="Matrox Graphics"
+"DriverDesc"="Matrox Millennium II PCI"
+"MatchingDeviceId"="PCI\\VEN_102B&DEV_051B"
+"V9xFamily"="matrox"
+"V9xSyncGeneration"="2408"
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"DriverDate"="10-10-2026"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\DEFAULT]
+"Mode"="8,640,480"
+"drv"="mgapdx64.drv"
+"drv2"="mgapdx64.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="mgapdx64.vxd"
+"minivdd2"="mgapdx64.vxd"
+"RefreshRate"="0"
+"DDC"="1"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\640,480]
+@="60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\800,600]
+@="56 60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\856,480]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1024,768]
+@="43 60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1152,864]
+@="60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1280,1024]
+@="60 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1600,1024]
+@="60 76 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1600,1200]
+@="60 65 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1600,1280]
+@="65 80 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1800,1440]
+@="60 70 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1920,1034]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1920,1080]
+@="60 72 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\1920,1200]
+@="60 65 76 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\8\640,400]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="2408"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\640,480]
+@="60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\800,600]
+@="56 60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\856,480]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1024,768]
+@="43 60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1152,864]
+@="60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1280,1024]
+@="60 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1600,1024]
+@="60 76 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1600,1200]
+@="60 65 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1600,1280]
+@="65 80 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1800,1440]
+@="60 70 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1920,1034]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1920,1080]
+@="60 72 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\16\1920,1200]
+@="60 65 76 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\640,480]
+@="60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\800,600]
+@="56 60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\856,480]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1024,768]
+@="43 60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1152,864]
+@="60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1280,1024]
+@="60 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1600,1024]
+@="60 76 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1600,1200]
+@="60 65 70 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1600,1280]
+@="65 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1800,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1920,1034]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1920,1080]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\24\1920,1200]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\640,480]
+@="60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\800,600]
+@="56 60 72 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\856,480]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1024,768]
+@="43 60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1152,864]
+@="60 70 75 85 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1280,1024]
+@="60 75 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1600,1024]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1600,1280]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1800,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1920,1034]
+@="60 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1920,1080]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\MODES\32\1920,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0012\INFO]
+"ChipType"="2164W"
+"DacType"="TVP 3026"
+"MMIO"=hex:00
+"LinearAccess"=hex:01
+"HWCursor"=hex:01
+"VideoMemory"=dword:00800000
+

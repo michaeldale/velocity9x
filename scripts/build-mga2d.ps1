@@ -117,6 +117,6 @@ if ($unexpected.Count -ne 0 -or $build.DumpText -match 'GetCommandLineW|__CHK') 
     throw 'MGA2D.EXE contains an incompatible runtime import.'
 }
 
-Write-Output "Built MGA-2064W 2D probe VxD: $vxdPath"
-Write-Output "Built MGA-2064W 2D probe: $executable"
+Write-Output "Built MGA-2064W/2164W engine probe VxD: $vxdPath"
+Write-Output "Built MGA-2064W/2164W engine probe: $executable"
 Write-Output "Verified runtime-free imports: $($dllNames -join ', ')"

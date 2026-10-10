@@ -138,9 +138,11 @@ and the horizontal clip by CXBNDRY. Opaque rectangles use the fill.
   handled and retrace-paced on A8U4I5, and the guest's scanout shows them.
   The physical scanout is still owed a look at the monitor.
 - Hardware cursor in the TVP3026.
-- A Millennium II run. First check: whether `V9XMINI.VXD` reproduces the
-  August surface corruption that Matrox's own mini-VDD did not
-  ([boundary](../specifications/matrox-millennium2-bringup.md)).
+- A Millennium II run. Done 2026-10-10 on A8U4I5: engine PASS at 8/16/32
+  bpp, no surface corruption with `V9XMINI.VXD` in any readback
+  ([record](../decisions/2026-10-10-mga2164w-first-boot.md)). Owed: the
+  monitor picture in the padded modes, and why the preflight rejects a
+  mode under the Standard VGA driver.
 
 ## Decisions fixed
 

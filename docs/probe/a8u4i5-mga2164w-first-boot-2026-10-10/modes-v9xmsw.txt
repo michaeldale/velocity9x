@@ -1,0 +1,17 @@
+A8U4I5 boot 381, MGA-2164W, V9XMSW /set:<mode> then C:\V9XDIAG\V9XBOOT.INI Surface line.
+Build afb538c-dirty (dirty = uncommitted docs only).
+
+640x480x8  Result=PASS  Surface=pitch=640 bpp=8 dwb=640 dds=640 w=640 h=480 debpp=8
+800x600x8  Result=PASS  Surface=pitch=1024 bpp=8 dwb=1024 dds=1024 w=800 h=600 debpp=8
+1024x768x8  Result=PASS  Surface=pitch=1024 bpp=8 dwb=1024 dds=1024 w=1024 h=768 debpp=8
+1280x1024x8  Result=PASS  Surface=pitch=1280 bpp=8 dwb=1280 dds=1280 w=1280 h=1024 debpp=8
+1600x1200x8  Result=PASS  Surface=pitch=1664 bpp=8 dwb=1664 dds=1664 w=1600 h=1200 debpp=8
+640x400x8  Result=PASS  Surface=pitch=640 bpp=8 dwb=640 dds=640 w=640 h=400 debpp=8
+640x480x16  Result=PASS  Surface=pitch=1280 bpp=16 dwb=1280 dds=1280 w=640 h=480 debpp=16
+1024x768x16  Result=PASS  Surface=pitch=2048 bpp=16 dwb=2048 dds=2048 w=1024 h=768 debpp=16
+1280x1024x16  Result=PASS  Surface=pitch=2560 bpp=16 dwb=2560 dds=2560 w=1280 h=1024 debpp=16
+1600x1200x16  Result=PASS  Surface=pitch=3200 bpp=16 dwb=3200 dds=3200 w=1600 h=1200 debpp=16
+640x480x32  Result=PASS  Surface=pitch=2560 bpp=32 dwb=2560 dds=2560 w=640 h=480 debpp=32
+800x600x32  Result=PASS  Surface=pitch=3200 bpp=32 dwb=3200 dds=3200 w=800 h=600 debpp=32
+1024x768x32  Result=PASS  Surface=pitch=4096 bpp=32 dwb=4096 dds=4096 w=1024 h=768 debpp=32
+800x600x16  Result=PASS  Surface=pitch=1920 bpp=16 dwb=1920 dds=1920 w=800 h=600 debpp=16
