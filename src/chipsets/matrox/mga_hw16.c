@@ -1,15 +1,24 @@
 /*
  * The matrox family table.
  *
- * Two chips, the Millennium and the Millennium II, and no family-wide hook:
- * the VBE 4F02h mode set programs the card, 4F01h reports where the
- * framebuffer landed and 4F00h its size. The chips' engine hook
+ * Two chips, the Millennium and the Millennium II. The VBE 4F02h mode set
+ * programs the card and 4F01h reports where the framebuffer landed. 4F00h's
+ * memory size is only a starting point: the one family-wide hook walks the
+ * memory once the aperture is mapped, because a 2164W BIOS was measured
+ * reporting half its card. The chips' engine hook
  * (millennium\millennium_hw16.c) describes the drawing engine to DirectDraw.
  */
 #include "velocity9x/hw16.h"
+#include "velocity9x/vram_probe.h"
 
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
 extern unsigned long v9x_vbe_vram_reported;
+
+/* runtime.asm, matrox family only: one locked exchange and one read at a
+ * byte offset through the framebuffer selector. */
+extern unsigned long __far __pascal V9xMgaScreenExchange(unsigned long offset,
+                                                         unsigned long value);
+extern unsigned long __far __pascal V9xMgaScreenRead(unsigned long offset);
 
 extern const V9X_HW16_DEVICE v9x_mga2064w_device;
 extern const V9X_HW16_DEVICE v9x_mga2164w_device;
@@ -114,6 +123,58 @@ static unsigned char v9x_mga_read_crtcext3(void)
 }
 
 /*
+ * The memory walk's answer, kept for every later Enable and for the
+ * diagnostics: 0 until the first walk, then the bytes the readback showed
+ * (still 0 if the walk failed).
+ */
+static unsigned long v9x_mga_measured_bytes;
+static unsigned short v9x_mga_walked;
+static unsigned long v9x_mga_walk_original[V9X_VRAM_PROBE_MAX_POINTS];
+static unsigned long v9x_mga_walk_readback[V9X_VRAM_PROBE_MAX_POINTS];
+
+/*
+ * Installed memory, from the memory (include\velocity9x\vram_probe.h). The
+ * 2164W has no size register, and A8U4I5's BIOS reports half of what its
+ * card holds; the 2064W's BIOS has agreed with its card, and the walk costs
+ * nothing there.
+ *
+ * Signatures go in highest offset first, each exchange taking the original
+ * out as it puts the signature in, so a point that aliases a lower one hands
+ * back that lower point's original. They come out in the same order, so an
+ * aliased pair ends holding the lower point's original, which is also the
+ * higher one's. The walk runs once, at the first Enable, before anything is
+ * drawn: the mode set has just cleared the screen, and nothing else uses
+ * the engine or the framebuffer yet.
+ */
+static unsigned long v9x_mga_measure_video_memory(unsigned long mapped_bytes,
+                                                  unsigned long reported_bytes)
+{
+    v9x_u32 points;
+    v9x_u32 index;
+
+    if (v9x_mga_walked == 0u) {
+        v9x_mga_walked = 1u;
+        points = v9x_vram_probe_points(mapped_bytes);
+        for (index = points; index-- != 0u;) {
+            v9x_mga_walk_original[index] = V9xMgaScreenExchange(
+                v9x_vram_probe_offset(index), v9x_vram_probe_signature(index));
+        }
+        for (index = 0u; index < points; ++index) {
+            v9x_mga_walk_readback[index] =
+                V9xMgaScreenRead(v9x_vram_probe_offset(index));
+        }
+        for (index = points; index-- != 0u;) {
+            (void)V9xMgaScreenExchange(v9x_vram_probe_offset(index),
+                                       v9x_mga_walk_original[index]);
+        }
+        v9x_mga_measured_bytes = v9x_vram_probe_size(v9x_mga_walk_readback,
+                                                     points);
+    }
+    return v9x_vram_probe_accept(v9x_mga_measured_bytes, reported_bytes,
+                                 mapped_bytes);
+}
+
+/*
  * Key order is the diagnostic contract; see the note in s3_regs16.c.
  */
 static void v9x_mga_publish_diagnostics(const V9X_HW16_DEVICE *device,
@@ -138,6 +199,12 @@ static void v9x_mga_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     v9x_mga_format_hex8(number, v9x_mga_read_crtcext3());
     write("MgaCrtcExt3", number);
+    if (v9x_mga_walked != 0u) {
+        v9x_mga_format_u32(number, v9x_mga_measured_bytes);
+        write("VramMeasuredBytes", number);
+    } else {
+        write("VramMeasuredBytes", "not-walked");
+    }
 }
 
 const V9X_HW16_OPS v9x_hw16 = {
@@ -161,13 +228,20 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     /* NULL: ask the BIOS through 4F01h. */
     0,
-    /* NULL: the size comes from 4F00h, clamped to the mapping above. The
-     * 2026-09-11 alias probe measured 8 MiB on the BringupKit card, and
-     * that card's 4F00h said the same; MGAPDX64 gives DirectDraw 7.1 MiB
-     * of off-screen memory on this one at 800x600x16. */
+    /* NULL: no size register to read before the mapping exists. The size
+     * starts from 4F00h, clamped to the mapping above, and the memory walk
+     * at the end of this table corrects it once the aperture is mapped. */
     0,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
     0,
     /* Strict, for the reason ati_hw16.c gives. */
-    0u
+    0u,
+    /* NULL: PCI identifies both chips. */
+    0,
+    /* NULL: no top-of-memory reservation. */
+    0,
+    /* The BIOS's packed pitch. */
+    0u,
+    /* The memory walk: A8U4I5's 2164W BIOS reports 4 MiB of 8. */
+    v9x_mga_measure_video_memory
 };

@@ -36,3 +36,12 @@ and the Z buffer and textures of the
 Size the 2164W from the memory, in host-tested policy with the walk in
 the existing backend layer, capped by the 16 MiB aperture; keep 4F00h
 as the floor. Phase 0 of the plan.
+
+## 2026-10-10, boot 385: fixed for the matrox family
+
+The family now walks its memory after the aperture is mapped
+([record](../decisions/2026-10-10-mga2164w-memory-walk.md)).
+`VramMeasuredBytes=8388608` beside `VbeVramBytes=4194304`; DirectDraw's
+heap at 800x600x32 is 8 MiB less the screen, and the engine and CPU both
+pass the probe's cases at 7 MiB. Other families still believe 4F00h; no
+other card has been seen under-reporting.

@@ -139,6 +139,8 @@
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
+            # The memory walk's decision half, for mga_hw16.c's hook.
+            @{ Name = 'vram_probe'; Path = 'src\common\vram_probe.c' }
             @{ Name = 'millennium_hw16'; Path = 'src\chipsets\matrox\millennium\millennium_hw16.c' }
             @{ Name = 'mga_hw16'; Path = 'src\chipsets\matrox\mga_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }

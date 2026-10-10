@@ -192,6 +192,22 @@ unsigned long v9x_s3_read_video_memory(void) { return 0ul; }
  * manifest instead. */
 unsigned short v9x_s3_identify_without_pci(void) { return 0xffffu; }
 
+/* runtime.asm's framebuffer primitives for the matrox memory walk; the
+ * walk's decisions are tested in test_vram_probe.c. */
+unsigned long __far __pascal V9xMgaScreenExchange(unsigned long offset,
+                                                  unsigned long value)
+{
+    (void)offset;
+    (void)value;
+    return 0ul;
+}
+
+unsigned long __far __pascal V9xMgaScreenRead(unsigned long offset)
+{
+    (void)offset;
+    return 0ul;
+}
+
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
 unsigned long v9x_pci_display_ids = 0ul;

@@ -2585,6 +2585,73 @@ V9xMiniMgaMmioMapDone:
     pop     bp
     retf    8
 V9XMINIMGAMMIOMAP ENDP
+
+; DWORD FAR PASCAL V9xMgaScreenExchange(DWORD offset, DWORD value)
+;
+; One locked exchange at a byte offset of the framebuffer through the selector
+; V9XMAPAPERTURE established: stores value and returns the dword that was
+; there. XCHG with memory asserts LOCK, so the store cannot wait in a
+; write-combining buffer behind the read that follows it. The memory walk in
+; mga_hw16.c is the only caller; it keeps every offset inside the mapping
+; (include\velocity9x\vram_probe.h), and this primitive, like V9xGmadrWrite,
+; stays incapable of searching for a boundary. Returns 0, storing nothing,
+; when there is no selector.
+;
+; PASCAL pushes left to right: value is at [bp+6], offset at [bp+10].
+PUBLIC V9XMGASCREENEXCHANGE
+V9XMGASCREENEXCHANGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xMgaScreenExchangeDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    xchg    es:[ebx], eax
+V9xMgaScreenExchangeDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    8
+V9XMGASCREENEXCHANGE ENDP
+
+; DWORD FAR PASCAL V9xMgaScreenRead(DWORD offset)
+;
+; One dword read at a byte offset of the framebuffer, under the same rules as
+; V9xMgaScreenExchange. 0 when there is no selector.
+PUBLIC V9XMGASCREENREAD
+V9XMGASCREENREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xMgaScreenReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xMgaScreenReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    4
+V9XMGASCREENREAD ENDP
 ENDIF
 
 IFDEF V9X_INTEL_GMA_FAMILY

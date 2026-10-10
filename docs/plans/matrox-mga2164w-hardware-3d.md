@@ -81,10 +81,12 @@ which is the probe-first shape SiS and the Rage IIC already use.
 
 ## Phases
 
-0. **The whole memory.** This card's VBE BIOS reports 4 MiB; it has at
-   least 8 ([issue](../issues/2026-10-10-mga2164w-vbe-reports-half-its-memory.md)).
-   Size the 2164W by a write-and-wrap walk before a Z buffer and textures
-   need the room. Matrox's HAL is the reference
+0. **The whole memory.** Done 2026-10-10
+   ([record](../decisions/2026-10-10-mga2164w-memory-walk.md)): the family
+   walks its memory after mapping and the 2164W runs with 8 MiB, its
+   BIOS's 4 notwithstanding
+   ([issue](../issues/2026-10-10-mga2164w-vbe-reports-half-its-memory.md)).
+   Matrox's HAL is the reference
    ([baseline](../decisions/2026-10-10-mga2164w-matrox-hal-baseline.md)).
 1. **Untextured triangle (probe).** Done 2026-10-10
    ([record](../decisions/2026-10-10-mga2164w-trapezoids.md)): flat and

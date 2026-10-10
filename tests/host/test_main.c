@@ -205,6 +205,10 @@ unsigned int v9x_run_mga_engine_tests(void);
  * the MGA-2164W specification's edge terms, and the engine model. */
 unsigned int v9x_run_mga_3d_tests(void);
 
+/* tests\host\test_vram_probe.c: the memory walk's plan, the size its
+ * readback shows, and when the measurement overrides VBE 4F00h. */
+unsigned int v9x_run_vram_probe_tests(void);
+
 /* tests\host\test_sis6326_3d.c: SiS 6326 triangle register values against
  * SiS's own HAL as captured live and the datasheet. */
 unsigned int v9x_run_sis6326_3d_tests(void);
@@ -1258,6 +1262,7 @@ int main(int argc, char **argv)
     failures += v9x_run_sis6326_3d_tests();
     failures += v9x_run_mga_engine_tests();
     failures += v9x_run_mga_3d_tests();
+    failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {
         printf("%u host test(s) failed\n", failures);

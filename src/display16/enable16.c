@@ -813,6 +813,36 @@ static DWORD v9x_vram_usable_bytes(DWORD claimed_bytes, WORD pitch, WORD height)
     return usable;
 }
 
+/*
+ * A family's measured memory figure, once the aperture is mapped.
+ *
+ * Every Enable, because the paths above recompute v9x_vbe_vram_bytes from the
+ * BIOS's figure on every mode set; the family's hook walks the memory only
+ * the first time and answers from that afterwards. v9x_vbe_vram_reported
+ * keeps the BIOS's figure, so the diagnostics still say what the BIOS said.
+ */
+static void v9x_apply_measured_video_memory(void)
+{
+    DWORD mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
+                          (DWORD)v9x_map_pages_lo) + 1ul;
+    DWORD chosen;
+    WORD width;
+    WORD height;
+    WORD bpp;
+    WORD pitch;
+
+    if (v9x_hw16.measure_video_memory == 0) {
+        return;
+    }
+    chosen = v9x_hw16.measure_video_memory(mapped_bytes,
+                                           v9x_vbe_vram_reported);
+    if (chosen == 0ul ||
+        v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
+        return;
+    }
+    v9x_vbe_vram_bytes = v9x_vram_usable_bytes(chosen, pitch, height);
+}
+
 static DWORD v9x_vbe_default_aperture(void)
 {
     struct v9x_vbe_mode_summary mode;
@@ -1010,6 +1040,7 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     v9x_map_physical_base = base;
     mapped = V9xMapAperture();
     if (mapped != 0u) {
+        v9x_apply_measured_video_memory();
         /* After the mapping, and only on success: the aperture handed to the
          * write-combining policy has to be the one the driver actually draws
          * through, which is not known until here. Diagnostic only. */

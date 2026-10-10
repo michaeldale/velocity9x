@@ -39,8 +39,9 @@
  *     VxD, and tier-0 uses none of them.
  *   - Every wait is bounded in the VxD; a timed-out wait ends the probe.
  *
- * Command line: /nosetup skips v9x_mga_build_setup; /vram:N caps VRAM at N
- * MiB (2-8) when V9XBOOT.INI does not carry the BIOS's figure.
+ * Command line: /nosetup skips v9x_mga_build_setup; /vram:N (2-16) sets VRAM
+ * to N MiB in place of the BIOS's figure from V9XBOOT.INI, which places the
+ * region 1 MiB below N; /tri draws trapezoids instead of fills and copies.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -1629,10 +1630,14 @@ void WINAPI V9xMga2dProbeEntry(void)
         mga2d_refuse("vram-unknown-pass-vram-option");
         goto close;
     }
+    /* /vram:N wins over the BIOS when given, in either direction: a 2164W
+     * BIOS was measured reporting 4 MiB of 8 (docs\issues\
+     * 2026-10-10-mga2164w-vbe-reports-half-its-memory.md). It is still
+     * capped by the framebuffer range. */
     if (vbe_bytes != 0ul && vbe_bytes < mga2d_vram_bytes) {
         mga2d_vram_bytes = vbe_bytes;
     }
-    if (have_option && option_mib * MGA2D_MIB < mga2d_vram_bytes) {
+    if (have_option && option_mib * MGA2D_MIB <= framebuffer_bytes) {
         mga2d_vram_bytes = option_mib * MGA2D_MIB;
     }
     mga2d_write_hex("VramBytes", mga2d_vram_bytes);

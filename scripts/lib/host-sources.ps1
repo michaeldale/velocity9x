@@ -23,6 +23,7 @@ function Get-V9xHostSourceNames {
         'src\common\vbe_cache.c',
         'src\common\edid.c',
         'src\common\mtrr.c',
+        'src\common\vram_probe.c',
         # V9XUPD.EXE's protocol text handling; the network half is Win32.
         'src\common\update_proto.c',
         # SHA-256, SHA-512 and Ed25519 for the updater's signed release
@@ -151,6 +152,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vbe_cache.c',
         'tests\host\test_edid.c',
         'tests\host\test_mtrr.c',
+        'tests\host\test_vram_probe.c',
         'tests\host\test_update_proto.c',
         'tests\host\test_crypto.c',
         'tests\host\test_update_release.c',

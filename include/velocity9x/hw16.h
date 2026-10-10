@@ -348,6 +348,22 @@ typedef struct v9x_hw16_ops {
      * rendered pixel.
      */
     unsigned short unalias_pitch;
+
+    /*
+     * The memory figure to use, measured through the mapped framebuffer, or
+     * 0 to keep the one the enable sequence already has. APPENDED
+     * 2026-10-10, zero in every family that does not name it.
+     *
+     * For a card whose BIOS misreports its memory and whose chip has no size
+     * register: the MGA-2164W in A8U4I5 reports 4 MiB through 4F00h and holds
+     * 8 (docs\issues\2026-10-10-mga2164w-vbe-reports-half-its-memory.md).
+     * Called on every Enable after V9XMAPAPERTURE has mapped mapped_bytes,
+     * with reported_bytes the BIOS's figure; the family walks the memory
+     * once and decides with include\velocity9x\vram_probe.h. read_video_memory
+     * above cannot do this: it runs before there is a mapping to walk.
+     */
+    unsigned long (*measure_video_memory)(unsigned long mapped_bytes,
+                                          unsigned long reported_bytes);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */
