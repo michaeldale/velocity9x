@@ -67,6 +67,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\matrox\mga_engine.c',
         # MGA-2164W 3D: trapezoid register values and the engine model, no I/O.
         'src\chipsets\matrox\mga_3d.c',
+        # MGA-2164W triangle setup into trapezoids, on the measured walk.
+        'src\chipsets\matrox\mga_setup.c',
         # Rage II triangle setup into trapezoids, on the measured edge walk.
         'src\chipsets\ati\rage2_setup.c',
         'src\chipsets\ati\rage2_draw.c',
@@ -141,6 +143,8 @@ function Get-V9xHostSourceNames {
         # The neutral draw to SiS 6326 state, texture and triangle words.
         'src\display32\d3d\d3d_sis6326_map.c',
         'tests\host\test_d3d_sis6326_map.c',
+        'src\display32\d3d\d3d_mga_map.c',
+        'tests\host\test_d3d_mga_map.c',
         'src\display32\d3d\d3d_i9xx_target.c'
     ) + $backendSourceNames + @(
         'src\display16\display_component.c',
@@ -205,6 +209,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_sis6326_3d.c',
         'tests\host\test_mga_engine.c',
         'tests\host\test_mga_3d.c',
+        'tests\host\test_mga_setup.c',
         'tests\host\test_main.c'
     )
 

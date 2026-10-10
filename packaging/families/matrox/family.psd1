@@ -81,12 +81,12 @@
             ClockDetector = 'matrox-mga2164w-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
             # The same drawing core as the 2064W, its control aperture in
-            # BAR1. Not run on this path; see millennium_hw16.c for the
-            # mini-VDD question its August record leaves open.
+            # BAR1, plus the texture engine the 2064W lacks: Direct3D through
+            # d3d_mga.c (docs\plans\matrox-mga2164w-hardware-3d.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-mga2164w'
             EngineType = 'MGA'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # The smallest Millennium II; the physical sample had 8 MiB. The
             # heap sizes from 4F00h.
             VideoMemoryBytes = 4194304
@@ -101,11 +101,14 @@
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
             )
 
-            Objects = @('mga_hw16')
+            # The chip module, which carries the Direct3D word check-tree
+            # matches. It has no instruction of its own to audit (the hook
+            # differs from the 2064W's in data, not code), so no Required
+            # pattern: the family's CRTCEXT signature is audited on mga_hw16
+            # through the 2064W entry.
+            Objects = @('millennium_hw16')
             Audit = @{
-                Required = @(
-                    'mov\s+dx,3deH\b'
-                )
+                Required = @()
                 Forbidden = @()
             }
             MapSymbols = @('v9x_mga2164w_device')

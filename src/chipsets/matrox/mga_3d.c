@@ -34,12 +34,17 @@
 #define V9X_MGA3D_ATYPE_SHIFT 4u
 #define V9X_MGA3D_ZMODE_SHIFT 8u
 
-/* MACCESS (3-70): pwidth<1:0> 00 8 bpp, 01 16, 10 32; zwidth<3> 32-bit Z.
- * Written with depth only, so the Z width is never inherited from whatever
- * drew last. */
+/* MACCESS (3-70): pwidth<1:0> 00 8 bpp, 01 16, 10 32; zwidth<3> 32-bit Z;
+ * dit555<31> dithers shading for 5:5:5. Written with every shaded
+ * trapezoid. */
 #define V9X_MGA3D_PWIDTH_16 0x1ul
 #define V9X_MGA3D_PWIDTH_32 0x2ul
 #define V9X_MGA3D_ZWIDTH_32 0x8ul
+#define V9X_MGA3D_DIT555    0x80000000ul
+
+/* DWGCTL trans <23:20> (3-59). */
+#define V9X_MGA3D_TRANS_SHIFT 20u
+#define V9X_MGA3D_TRANS_MAX   15ul
 
 /* ZORG (3-91): a 24-bit byte address whose low nine bits must be zero. */
 #define V9X_MGA3D_ZORG_ALIGN 0x00000200ul
@@ -131,6 +136,7 @@ static void v9x_mga3d_edge_terms(const struct v9x_mga3d_edge *edge,
         stepper->error = -edge->dx;
         stepper->direction = 1L;
     }
+    stepper->error += edge->error_bias;
 }
 
 /* Advance one row; returns the columns moved. The loop ends because each
@@ -151,7 +157,8 @@ static v9x_s32 v9x_mga3d_edge_step(struct v9x_mga3d_stepper *stepper)
 static int v9x_mga3d_edge_ok(const struct v9x_mga3d_edge *edge)
 {
     return edge->dy >= 1L && edge->dy < V9X_MGA3D_EDGE_LIMIT &&
-        v9x_mga3d_abs(edge->dx) < V9X_MGA3D_EDGE_LIMIT;
+        v9x_mga3d_abs(edge->dx) < V9X_MGA3D_EDGE_LIMIT &&
+        v9x_mga3d_abs(edge->error_bias) < edge->dy;
 }
 
 static int v9x_mga3d_dr_ok(const v9x_s32 *channel)
@@ -419,6 +426,12 @@ static v9x_status v9x_mga3d_check(const struct v9x_mga3d_trap *trap,
     if (trap->shade == V9X_MGA3D_SHADE_GOURAUD && bpp == 1ul) {
         return V9X_STATUS_UNSUPPORTED;
     }
+    if (trap->trans > V9X_MGA3D_TRANS_MAX) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (trap->trans != 0ul && trap->shade != V9X_MGA3D_SHADE_GOURAUD) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
     if (trap->length == 0ul || trap->pitch_bytes == 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -532,12 +545,6 @@ v9x_status v9x_mga3d_build_trap(const struct v9x_mga3d_trap *trap,
                 v9x_mga3d_put(writes, V9X_MGA_DR3, (v9x_u32)trap->z[2]);
             }
             v9x_mga3d_put(writes, V9X_MGA_ZORG, zorg);
-            maccess = trap->bytes_per_pixel == 4ul ? V9X_MGA3D_PWIDTH_32
-                                                   : V9X_MGA3D_PWIDTH_16;
-            if (trap->depth == V9X_MGA3D_DEPTH_32) {
-                maccess |= V9X_MGA3D_ZWIDTH_32;
-            }
-            v9x_mga3d_put(writes, V9X_MGA_MACCESS, maccess);
             dwgctl = V9X_MGA3D_DWGCTL_TRAP_SHADED |
                 ((trap->z_write != 0ul ? V9X_MGA3D_ATYPE_ZI
                                         : V9X_MGA3D_ATYPE_I)
@@ -549,6 +556,18 @@ v9x_status v9x_mga3d_build_trap(const struct v9x_mga3d_trap *trap,
             dwgctl = (dwgctl & ~V9X_MGA3D_OPCOD_MASK) |
                 (V9X_MGA3D_DWGCTL_TEXTURE_TRAP & V9X_MGA3D_OPCOD_MASK);
         }
+        /* MACCESS on every shaded trapezoid, so neither the Z width nor the
+         * dither layout is inherited from whatever drew last. */
+        maccess = trap->bytes_per_pixel == 4ul ? V9X_MGA3D_PWIDTH_32
+                                               : V9X_MGA3D_PWIDTH_16;
+        if (trap->depth == V9X_MGA3D_DEPTH_32) {
+            maccess |= V9X_MGA3D_ZWIDTH_32;
+        }
+        if (trap->dither_555 != 0ul) {
+            maccess |= V9X_MGA3D_DIT555;
+        }
+        v9x_mga3d_put(writes, V9X_MGA_MACCESS, maccess);
+        dwgctl |= trap->trans << V9X_MGA3D_TRANS_SHIFT;
         v9x_mga3d_put(writes, V9X_MGA_DWGCTL, dwgctl);
     } else {
         v9x_mga3d_put(writes, V9X_MGA_FCOL,
@@ -871,8 +890,8 @@ v9x_status v9x_mga3d_model_trap(const struct v9x_mga3d_trap *trap,
     if (status != V9X_STATUS_OK) {
         return status;
     }
-    if (trap->shade == V9X_MGA3D_SHADE_GOURAUD &&
-        trap->bytes_per_pixel != 4ul) {
+    if ((trap->shade == V9X_MGA3D_SHADE_GOURAUD &&
+         trap->bytes_per_pixel != 4ul) || trap->trans != 0ul) {
         return V9X_STATUS_UNSUPPORTED;
     }
     if (trap->depth != V9X_MGA3D_DEPTH_NONE &&

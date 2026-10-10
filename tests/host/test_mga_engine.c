@@ -454,6 +454,19 @@ static void test_opmode_and_surface(void)
     CHECK(v9x_mga_surface_ok(1920ul, 64ul, 2ul) != 0);
     CHECK(v9x_mga_surface_ok(1920ul, 2ul, 2ul) == 0);
     CHECK(v9x_mga_surface_ok(1920ul, 0ul, 3ul) == 0);
+
+    /* The narrowest linearizer pitch a surface of this width fits in: the
+     * 64-pixel target V9XDDP renders to gets 640, the display widths their
+     * own, and nothing past 2048. */
+    CHECK(v9x_mga_pitch_for_width(64ul) == 640ul);
+    CHECK(v9x_mga_pitch_for_width(1ul) == 640ul);
+    CHECK(v9x_mga_pitch_for_width(640ul) == 640ul);
+    CHECK(v9x_mga_pitch_for_width(641ul) == 768ul);
+    CHECK(v9x_mga_pitch_for_width(800ul) == 800ul);
+    CHECK(v9x_mga_pitch_for_width(1024ul) == 1024ul);
+    CHECK(v9x_mga_pitch_for_width(2048ul) == 2048ul);
+    CHECK(v9x_mga_pitch_for_width(2049ul) == 0ul);
+    CHECK(v9x_mga_pitch_for_width(0ul) == 0ul);
 }
 
 static void test_display_start(void)

@@ -34,6 +34,13 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
         return V9X_D3D_SELECT_RAGE2;
     case V9X_DD_ENGINE_TYPE_SIS_6326:
         return V9X_D3D_SELECT_SIS6326;
+    case V9X_DD_ENGINE_TYPE_MGA:
+        /* One type for both Millenniums; only the 2164W has a texture
+         * engine, and only its hook stamps CAP_D3D. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+            return V9X_D3D_SELECT_NONE;
+        }
+        return V9X_D3D_SELECT_MGA;
     default:
         return V9X_D3D_SELECT_NONE;
     }

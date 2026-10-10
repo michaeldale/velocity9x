@@ -52,8 +52,10 @@
 /*
  * Matrox Millennium drawing engine (MGA-2064W and MGA-2164W), MMIO through
  * the 16 KiB control aperture: solid fill and screen copy, built by
- * src\chipsets\matrox\mga_engine.c. Neither chip has a 3D engine; d3d_select.c gives this type
- * none, and software Direct3D still wins when it is selected.
+ * src\chipsets\matrox\mga_engine.c. The 2164W adds a texture engine
+ * (d3d_mga.c) and its hook stamps V9X_DD_ENGINE_CAP_D3D; the 2064W has none,
+ * so d3d_select.c gives this type an engine only with that cap, and software
+ * Direct3D still wins when it is selected.
  */
 #define V9X_DD_ENGINE_TYPE_MGA          7ul
 

@@ -135,6 +135,10 @@ v9x_u32 v9x_mga_opmode_for_iload(v9x_u32 opmode);
  * origin, the test every destination passes. */
 int v9x_mga_surface_ok(v9x_u32 pitch_bytes, v9x_u32 offset,
                        v9x_u32 bytes_per_pixel);
+/* The narrowest pitch, in pixels, the linearizer supports for a surface
+ * this wide; zero past 2048. Where a driver places a surface the engine
+ * must draw into, this is the row it gives it. */
+v9x_u32 v9x_mga_pitch_for_width(v9x_u32 width_pixels);
 /*
  * The display start for a page flip: the 20-bit startadd that puts
  * byte_offset at the top left of the screen. `crtc13` and `crtcext0` are

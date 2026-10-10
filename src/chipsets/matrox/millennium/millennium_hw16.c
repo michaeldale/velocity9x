@@ -12,9 +12,10 @@
  *
  * The VBE sets modes and 4F01h reports the framebuffer. The engine hook has
  * the mini-VDD map the control aperture and claims the drawing engine for
- * DirectDraw and GDI fill and copy as MGA. No register is written here: the
- * engine's own state (MACCESS, the plane mask, the clip window) is written
- * by the HAL before its first operation in each mode
+ * DirectDraw and GDI fill and copy as MGA, and on the 2164W stamps D3D for
+ * its texture engine (src\display32\d3d\d3d_mga.c). No register is written
+ * here: the engine's own state (MACCESS, the plane mask, the clip window) is
+ * written by the HAL before its first operation in each mode
  * (src\display32\engines\eng_mga.c) and by gdi_accel.c before every GDI
  * operation.
  *
@@ -41,6 +42,8 @@ extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 
 /* V9X_MGA_MMIO_BYTES in the mini-VDD. */
 #define V9X_MGA_MMIO_BYTES 0x00004000ul
+
+#define V9X_MGA2164W_DEVICE_ID 0x051bu
 
 /*
  * The control aperture mapped by the mini-VDD, which withholds a window
@@ -88,6 +91,13 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
                    V9X_DD_ENGINE_CAP_FLIP;
+
+    /* The 2164W's texture engine (d3d_mga.c). The 2064W has none, so the
+     * one hook stamps D3D by chip; the HAL selects no MGA 3D engine
+     * without it. */
+    if (device->device_id == V9X_MGA2164W_DEVICE_ID) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+    }
 }
 
 /* Not static: resolved by name in the link map by the per-object audit.
@@ -107,13 +117,13 @@ const V9X_HW16_DEVICE v9x_mga2064w_device = {
 };
 
 const V9X_HW16_DEVICE v9x_mga2164w_device = {
-    0x102bu, 0x051bu,
+    0x102bu, V9X_MGA2164W_DEVICE_ID,
     "Matrox Millennium II MGA-2164W",
     "102B", "051B",
     "matrox-mga2164w-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-mga2164w",
     0,
     v9x_mga_fill_engine,
     0u

@@ -120,10 +120,15 @@ which is the probe-first shape SiS and the Rage IIC already use.
    TEXWIDTH/TEXHEIGHT, wrap and clamp, the pitch field; then perspective
    with q; then TW15/TW12, colour key, decal against modulate, the
    palette formats and the LUT load.
-4. **Driver engine.** `mga_3d.c` from the probe-proven encodings,
-   `d3d_mga.c`, caps from phases 1-3 only. Exit: V9XDDP's triangle,
-   shading, depth and texture checks pass, and every check the chip
-   cannot do is refused, not drawn wrong.
+4. **Driver engine.** Done 2026-10-10
+   ([record](../decisions/2026-10-10-mga2164w-d3d-engine.md)): V9XDDP
+   passes every triangle, texture and depth check Matrox's HAL passes on
+   the card, and more, except specular, which is refused. The engine
+   places render targets at linearizer pitches (ylin is not measured), and
+   a 1555 colour key leaves the alpha bit out. As planned: `mga_3d.c` from
+   the probe-proven encodings, `d3d_mga.c`, caps from phases 1-3 only.
+   Exit: V9XDDP's triangle, shading, depth and texture checks pass, and
+   every check the chip cannot do is refused, not drawn wrong.
 5. **Applications.** Final Reality, 3DMark 99, Half-Life (Direct3D), one
    at a time. Refusal counts recorded; scores recorded if a run produces
    them, never chased.

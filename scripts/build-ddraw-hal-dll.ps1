@@ -132,6 +132,12 @@ $sources = @(
     "src\chipsets\sis\sis6326_3d.c",
     "src\display32\d3d\d3d_sis6326_map.c",
     "src\display32\d3d\d3d_sis6326.c",
+    # The MGA-2164W 3D engine: register words, triangle setup into
+    # trapezoids, the neutral draw to them, and the engine that emits them.
+    "src\chipsets\matrox\mga_3d.c",
+    "src\chipsets\matrox\mga_setup.c",
+    "src\display32\d3d\d3d_mga_map.c",
+    "src\display32\d3d\d3d_mga.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",

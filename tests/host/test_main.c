@@ -150,6 +150,10 @@ unsigned int v9x_run_d3d_mach64_map_tests(void);
  * texture and triangle words. */
 unsigned int v9x_run_d3d_sis6326_map_tests(void);
 
+/* tests\host\test_d3d_mga_map.c: V9X_R3D_DRAW to MGA-2164W trapezoid
+ * state, and its refusals. */
+unsigned int v9x_run_d3d_mga_map_tests(void);
+
 /* tests\host\test_donewait.c: whether the idle wait keeps spinning for a
  * 3D-done bit the part may not have, same convention. */
 unsigned int v9x_run_donewait_tests(void);
@@ -204,6 +208,11 @@ unsigned int v9x_run_mga_engine_tests(void);
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
 unsigned int v9x_run_mga_3d_tests(void);
+
+/* tests\host\test_mga_setup.c: MGA-2164W triangle setup's coverage
+ * against an exact per-row reference through the engine model, and its
+ * Gouraud plane. */
+unsigned int v9x_run_mga_setup_tests(void);
 
 /* tests\host\test_vram_probe.c: the memory walk's plan, the size its
  * readback shows, and when the measurement overrides VBE 4F00h. */
@@ -1239,6 +1248,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_select_tests();
     failures += v9x_run_d3d_mach64_map_tests();
     failures += v9x_run_d3d_sis6326_map_tests();
+    failures += v9x_run_d3d_mga_map_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
     failures += v9x_run_diag_identity_tests();
@@ -1262,6 +1272,7 @@ int main(int argc, char **argv)
     failures += v9x_run_sis6326_3d_tests();
     failures += v9x_run_mga_engine_tests();
     failures += v9x_run_mga_3d_tests();
+    failures += v9x_run_mga_setup_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {

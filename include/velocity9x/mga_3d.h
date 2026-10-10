@@ -157,6 +157,13 @@ struct v9x_mga3d_edge {
     v9x_s32 x;
     v9x_s32 dx;
     v9x_s32 dy;
+    /*
+     * Added to the specification's starting error term (AR1 or AR4). Zero
+     * gives the specification's line from a pixel boundary; triangle setup
+     * (mga_setup.c) uses it to carry the first row's rounding, so the walk
+     * lands on the exact edge on every row. |error_bias| < dy.
+     */
+    v9x_s32 error_bias;
 };
 
 #define V9X_MGA3D_SHADE_FLAT    0ul
@@ -201,6 +208,17 @@ struct v9x_mga3d_trap {
     v9x_s32 z[3];
     struct v9x_mga3d_z48 z32[3];
     struct v9x_mga3d_texture texture;
+    /*
+     * DWGCTL trans <23:20>: the 4 x 4 screen-door pattern a shaded or
+     * textured trapezoid writes through, 0 for every pixel (2164W spec
+     * 3-59; the patterns are decoded in mga2164w-3d-engine.md). The engine
+     * model does not draw a pattern - where its grid falls on screen is not
+     * measured - and refuses one.
+     */
+    v9x_u32 trans;
+    /* MACCESS dit555 <31>: dither shading for a 5:5:5 target rather than
+     * 5:6:5 (3-70). */
+    v9x_u32 dither_555;
 };
 
 /* The model's view of the Z buffer: read the stored value at (x, row) of

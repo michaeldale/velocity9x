@@ -526,6 +526,24 @@ int v9x_mga_surface_ok(v9x_u32 pitch_bytes, v9x_u32 offset,
         V9X_STATUS_OK;
 }
 
+/* The table is in ascending order. */
+v9x_u32 v9x_mga_pitch_for_width(v9x_u32 width_pixels)
+{
+    v9x_u32 index;
+
+    if (width_pixels == 0ul) {
+        return 0ul;
+    }
+    for (index = 0ul;
+         index < (v9x_u32)(sizeof(v9x_mga_pitches) / sizeof(v9x_mga_pitches[0]));
+         ++index) {
+        if (v9x_mga_pitches[index] >= width_pixels) {
+            return v9x_mga_pitches[index];
+        }
+    }
+    return 0ul;
+}
+
 /*
  * CRTCEXT0 (p.4-130): startadd<19:16> in bits 3:0, the offset's bits 9:8
  * in 5:4, interlace in 7.
