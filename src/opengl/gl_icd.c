@@ -4030,7 +4030,8 @@ BOOL __stdcall V9xGlEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
          * process is read against: a log from a user's machine names
          * neither otherwise, and holds several programs' sessions. */
         char path[MAX_PATH];
-        char text[MAX_PATH + 96];
+        char text[MAX_PATH + 160];
+        SYSTEMTIME now;
 
         CreateDirectoryA(V9X_DIAG_DIR, 0);
         InitializeCriticalSection(&v9x_gl_lock);
@@ -4039,9 +4040,16 @@ BOOL __stdcall V9xGlEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
             path[0] = '\0';
         }
         path[sizeof(path) - 1u] = '\0';
-        wsprintfA(text, "attach instance=%08lX tls=%lu version=%s %s exe=%s",
+        /* When, too: the clock and the uptime place the session against a
+         * snapshot's DumpTime and DumpUptimeMs. A report of 2026-10-10
+         * carried this log from an unrelated earlier program, and only the
+         * file date in another file gave it away. */
+        GetLocalTime(&now);
+        wsprintfA(text, "attach instance=%08lX tls=%lu version=%s %s "
+                  "time=%04u-%02u-%02u %02u:%02u:%02u uptime-ms=%lu exe=%s",
                   (DWORD)instance, v9x_gl_tls, V9X_VERSION_STRING,
-                  v9x_gl_build_id, path);
+                  v9x_gl_build_id, now.wYear, now.wMonth, now.wDay,
+                  now.wHour, now.wMinute, now.wSecond, GetTickCount(), path);
         v9x_gl_log(text);
     } else if (reason == DLL_PROCESS_DETACH) {
         DWORD slot;

@@ -272,12 +272,15 @@ static int v9x_net_send_wininet(const struct v9x_net_request *request,
     int result = V9X_NET_NO_NETWORK;
 
     *delivered = FALSE;
+    reply->transport = "wininet";
+    reply->stage = "connect";
     if (!v9x_net_header_lines(request, headers, sizeof(headers))) {
         return V9X_NET_FAILED;
     }
     session = api->open(V9X_NET_AGENT, INTERNET_OPEN_TYPE_PRECONFIG, 0, 0,
                         0ul);
     if (session == 0) {
+        reply->error = GetLastError();
         return V9X_NET_NO_NETWORK;
     }
     if (api->set_option != 0) {
@@ -293,23 +296,33 @@ static int v9x_net_send_wininet(const struct v9x_net_request *request,
                               (INTERNET_PORT)request->port, 0, 0,
                               INTERNET_SERVICE_HTTP, 0ul, 0ul);
     if (connection == 0) {
+        reply->error = GetLastError();
         goto done;
     }
     handle = api->open_request(connection, request->method, request->path,
                                "HTTP/1.0", 0, 0, V9X_NET_WININET_FLAGS, 0ul);
     if (handle == 0) {
+        reply->error = GetLastError();
         goto done;
     }
+    /* WinInet sends the body inside this call and does not say how much of
+     * it went, so a failure here may have delivered part of the body. The
+     * server refuses a body shorter than its Content-Length (reports.php),
+     * so the Winsock retry that follows cannot leave a truncated report. */
+    reply->stage = "send";
     if (!api->send_request(handle, headers, v9x_net_length(headers),
                            (LPVOID)request->body, request->body_length)) {
+        reply->error = GetLastError();
         goto done;
     }
     *delivered = TRUE;
     result = V9X_NET_FAILED;
 
+    reply->stage = "reply";
     size = sizeof(value);
     if (!api->query_info(handle, HTTP_QUERY_STATUS_CODE |
                          HTTP_QUERY_FLAG_NUMBER, &value, &size, 0)) {
+        reply->error = GetLastError();
         goto done;
     }
     reply->status = value;
@@ -320,8 +333,10 @@ static int v9x_net_send_wininet(const struct v9x_net_request *request,
         reply->content_length = value;
     }
 
+    reply->stage = "receive";
     for (;;) {
         if (!api->read_file(handle, chunk, sizeof(chunk), &read)) {
+            reply->error = GetLastError();
             goto done;
         }
         if (read == 0ul) {
@@ -378,23 +393,50 @@ static BOOL v9x_net_wait(SOCKET socket_handle, BOOL for_write)
     return api->select(0, &set, 0, 0, &timeout) == 1;
 }
 
+/*
+ * Send all of data on the non-blocking socket, adding what went to *sent.
+ *
+ * A writable socket only promises room for some bytes, not for the whole
+ * piece: Win9x's stack has an 8 KB send buffer, and a non-blocking send
+ * that finds it full answers WSAEWOULDBLOCK. That is the stack asking to be
+ * called again, not a failure, and treating it as one ended a report after
+ * its first 16 KB piece. Pieces are V9X_NET_CHUNK so each fits the buffer.
+ */
 static BOOL v9x_net_send_all(SOCKET socket_handle, const char *data,
-                             DWORD length)
+                             DWORD length, DWORD *sent_total,
+                             DWORD *error)
 {
     struct v9x_winsock *api = &v9x_net_winsock;
+    DWORD progress = GetTickCount();
     int sent;
 
     while (length != 0ul) {
         if (!v9x_net_wait(socket_handle, TRUE)) {
+            *error = (DWORD)api->last_error();
             return FALSE;
         }
         sent = api->send(socket_handle, data,
-                         length > 0x4000ul ? 0x4000 : (int)length, 0);
+                         length > V9X_NET_CHUNK ? (int)V9X_NET_CHUNK
+                                                : (int)length, 0);
+        /* Retried until the same timeout a dead route gets, so a stack
+         * that reports writable and then refuses forever is a failure. */
+        if (sent == SOCKET_ERROR &&
+            api->last_error() == WSAEWOULDBLOCK) {
+            if (GetTickCount() - progress > V9X_NET_TIMEOUT_MS) {
+                *error = (DWORD)WSAEWOULDBLOCK;
+                return FALSE;
+            }
+            Sleep(10ul);
+            continue;
+        }
         if (sent <= 0) {
+            *error = sent == SOCKET_ERROR ? (DWORD)api->last_error() : 0ul;
             return FALSE;
         }
         data += sent;
         length -= (DWORD)sent;
+        *sent_total += (DWORD)sent;
+        progress = GetTickCount();
     }
     return TRUE;
 }
@@ -418,11 +460,14 @@ static int v9x_net_send_winsock(const struct v9x_net_request *request,
     int received;
     int result = V9X_NET_NO_NETWORK;
 
+    reply->transport = "winsock";
+    reply->stage = "connect";
     if (!v9x_net_load_winsock()) {
         return V9X_NET_NO_NETWORK;
     }
     host = api->gethostbyname(request->host);
     if (host == 0 || host->h_addrtype != AF_INET || host->h_length != 4) {
+        reply->error = (DWORD)api->last_error();
         return V9X_NET_NO_NETWORK;
     }
     if (!v9x_net_header_lines(request, headers, sizeof(headers))) {
@@ -471,27 +516,39 @@ static int v9x_net_send_winsock(const struct v9x_net_request *request,
     if (api->connect(socket_handle, (struct sockaddr *)&address,
                      sizeof(address)) != 0 &&
         api->last_error() != WSAEWOULDBLOCK) {
+        reply->error = (DWORD)api->last_error();
         goto done;
     }
     if (!v9x_net_wait(socket_handle, TRUE)) {
+        reply->error = (DWORD)api->last_error();
         goto done;
     }
     /* Connected. From here a failure is part-way, and is final. */
     result = V9X_NET_FAILED;
-    if (!v9x_net_send_all(socket_handle, text, used) ||
-        !v9x_net_send_all(socket_handle, (const char *)request->body,
-                          request->body_length)) {
-        goto done;
+    reply->stage = "send";
+    {
+        DWORD head_sent = 0ul;
+
+        if (!v9x_net_send_all(socket_handle, text, used, &head_sent,
+                              &reply->error) ||
+            !v9x_net_send_all(socket_handle, (const char *)request->body,
+                              request->body_length, &reply->body_sent,
+                              &reply->error)) {
+            goto done;
+        }
     }
 
+    reply->stage = "receive";
     for (;;) {
         char chunk[V9X_NET_CHUNK];
 
         if (!v9x_net_wait(socket_handle, FALSE)) {
+            reply->error = (DWORD)api->last_error();
             goto done;
         }
         received = api->recv(socket_handle, chunk, sizeof(chunk), 0);
         if (received < 0) {
+            reply->error = (DWORD)api->last_error();
             goto done;
         }
         if (received == 0) {
@@ -557,6 +614,10 @@ int v9x_net_send(const struct v9x_net_request *request,
     reply->status = 0ul;
     reply->content_length = V9X_UPDATE_NO_LENGTH;
     reply->received = 0ul;
+    reply->transport = 0;
+    reply->stage = 0;
+    reply->error = 0ul;
+    reply->body_sent = 0ul;
     if (v9x_net_load_wininet()) {
         result = v9x_net_send_wininet(request, reply, &delivered);
         if (result == V9X_NET_OK || delivered) {
@@ -565,6 +626,7 @@ int v9x_net_send(const struct v9x_net_request *request,
         reply->status = 0ul;
         reply->content_length = V9X_UPDATE_NO_LENGTH;
         reply->received = 0ul;
+        reply->error = 0ul;
     }
     return v9x_net_send_winsock(request, reply);
 }

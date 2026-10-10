@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-10 Carmageddon II exits after its intro video on a reporter's GMA 900: D3D draws and then quits, Glide refuses 93 % of its draws](2026-10-10-carmageddon2-exits-after-intro-gma900.md)
 - [2026-10-09 GLQuake draws white where its tiled background belongs beside the status bar](2026-10-09-glquake-white-beside-status-bar.md)
 - [2026-10-08 Mach64 refuses REPLACE with the fragment's alpha, so GLQuake's -nomtex lightmaps draw nothing](2026-10-08-mach64-replace-fragment-alpha-refused.md)
 - [2026-10-07 Rage XL hard lock on UT99's first OpenGL frame after a fresh boot (unreproduced)](2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md)

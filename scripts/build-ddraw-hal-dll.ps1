@@ -58,6 +58,9 @@ $sources = @(
     # having happened and not on a return value. Pure, and host-tested in
     # tests\host\test_drawnote.c.
     "src\common\drawnote.c",
+    # Whether a trace ring event is appended or counted on the entry
+    # already there: pure, and host-tested in tests\host\test_trace_fold.c.
+    "src\common\trace_fold.c",
     # The trace snapshot's process table and text copies: pure, and
     # host-tested in tests\host\test_diag_identity.c.
     "src\common\diag_identity.c",

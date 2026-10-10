@@ -759,7 +759,8 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
     if (reason == DLL_PROCESS_ATTACH) {
         /* The program and the build every later line is read against. */
         char path[MAX_PATH];
-        char text[MAX_PATH + 96];
+        char text[MAX_PATH + 160];
+        SYSTEMTIME now;
 
         if (!v9x_glide_core_attach(V9X_DIAG_GLIDE_LOG, v9x_glide_names,
                                    V9X_GLIDE_EXPORT_COUNT)) {
@@ -769,8 +770,14 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
             path[0] = '\0';
         }
         path[sizeof(path) - 1u] = '\0';
-        wsprintfA(text, "attach instance=%08lX version=%s %s exe=%s",
-                  (DWORD)instance, V9X_VERSION_STRING, v9x_glide_build_id, path);
+        /* When, as in V9XGL.LOG: the clock and uptime place the session
+         * against a snapshot's DumpTime and DumpUptimeMs. */
+        GetLocalTime(&now);
+        wsprintfA(text, "attach instance=%08lX version=%s %s "
+                  "time=%04u-%02u-%02u %02u:%02u:%02u uptime-ms=%lu exe=%s",
+                  (DWORD)instance, V9X_VERSION_STRING, v9x_glide_build_id,
+                  now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
+                  now.wSecond, GetTickCount(), path);
         v9x_glide_log(text);
     } else if (reason == DLL_PROCESS_DETACH) {
         v9x_glide_core_detach();

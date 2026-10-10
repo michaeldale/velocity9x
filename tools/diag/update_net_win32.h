@@ -34,6 +34,13 @@ struct v9x_net_reply {
     DWORD status;              /* HTTP status code */
     DWORD content_length;      /* V9X_UPDATE_NO_LENGTH when not sent */
     DWORD received;            /* body bytes handed to the sink */
+    /* Where a failed exchange stopped, so it can be recorded rather than
+     * guessed at: three uploads of 2026-10-10 reached the server as their
+     * first 16 KB, and nothing said which side gave up or why. */
+    const char *transport;     /* "wininet" or "winsock"; 0 before either */
+    const char *stage;         /* "connect", "send", "receive", "reply" */
+    DWORD error;               /* GetLastError or WSAGetLastError there */
+    DWORD body_sent;           /* request body bytes accepted (Winsock) */
 };
 
 /* Whether a network looks usable: WinInet says connected, or the host's

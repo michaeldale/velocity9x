@@ -16,6 +16,7 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/win9x_ddraw_abi.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/trace_fold.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -261,9 +262,18 @@ static void v9x_wm_name(char *out, DWORD index, const char *field)
     out[at] = 0;
 }
 
+/* How many times a ring entry happened: the HAL counts a repeat on the entry
+ * already there (trace_fold.h). Decoded from the header's encoding here
+ * because this tool builds from one source file. */
+static DWORD v9x_trace_times(WORD id)
+{
+    return (DWORD)((id >> V9X_TRACE_FOLD_COUNT_SHIFT) &
+                   V9X_TRACE_FOLD_COUNT_MAX) + 1ul;
+}
+
 static const char *v9x_trace_name(WORD id)
 {
-    switch (id & (WORD)~V9X_DD_TRACE_EXIT_FLAG) {
+    switch (id & V9X_TRACE_FOLD_ID_MASK) {
     case V9X_TRACE_DRIVERINIT:           return "DriverInit";
     case V9X_TRACE_DD16_CREATEOBJECT:    return "Dd16CreateObject";
     case V9X_TRACE_DD16_DESTROYDRIVER:   return "Dd16DestroyDriver";
@@ -404,6 +414,11 @@ static void v9x_write_ring(const V9X_DD_TRACE *trace)
                                                        : " enter ");
         v9x_hex_text(number, entry->detail);
         offset = v9x_append_text(value, offset, number);
+        if (v9x_trace_times(entry->id) > 1ul) {
+            offset = v9x_append_text(value, offset, " x");
+            v9x_uint_text(number, v9x_trace_times(entry->id));
+            offset = v9x_append_text(value, offset, number);
+        }
         v9x_write_text(key, value);
         ++emitted;
     }

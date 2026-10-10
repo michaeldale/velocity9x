@@ -89,10 +89,13 @@ static struct v9x_report_state v9x_report;
 static BYTE v9x_reply[V9X_REPLY_MAX];
 
 /* The diagnostics the report offers after the snapshot, in the order the
- * server brief lists them. */
+ * server brief lists them. The Glide 2 and Glide 3 logs follow V9XGL.LOG:
+ * without them a Glide report carries no record of the game's calls
+ * (V9X-VCWHZ1, 2026-10-10, attached only a stale Quake 2 V9XGL.LOG). A
+ * server that refuses a name costs that one file, not the report. */
 static const char *const v9x_report_names[] = {
     "V9XTRACE.INI", "V9XBOOT.INI", "V9XHW.INI", "V9XDD.INI", "V9XGL.LOG",
-    "V9XUPD.INI"
+    "V9XGLIDE.LOG", "V9XGLD3.LOG", "V9XUPD.INI"
 };
 
 static DWORD v9x_length(const char *text)
@@ -427,6 +430,35 @@ static BOOL v9x_report_path(const struct v9x_report_file *file,
 }
 
 /*
+ * Where a failed upload stopped, as one line, written to V9XUPD.INI - which
+ * the next report sends - and returned for the message. Three uploads of
+ * 2026-10-10 reached the server as their first 16 KB and nothing on either
+ * side said which transport gave up, at what stage, or with what error.
+ */
+static void v9x_report_record_failure(const struct v9x_report_file *file,
+                                      const struct v9x_net_reply *reply,
+                                      char *detail, DWORD capacity)
+{
+    SYSTEMTIME now;
+    char line[224];
+
+    wsprintfA(line, "%s: %s %s error %lu, %lu of %lu body bytes sent",
+              file->name,
+              reply->transport != 0 ? reply->transport : "no transport",
+              reply->stage != 0 ? reply->stage : "start", reply->error,
+              reply->body_sent, file->send);
+    v9x_copy(detail, capacity, line);
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    GetLocalTime(&now);
+    wsprintfA(line + v9x_length(line), " at %04u-%02u-%02u %02u:%02u",
+              now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute);
+    WritePrivateProfileStringA("Velocity9xReport", "LastSendFailure", line,
+                               V9X_DIAG_UPDATE_INI);
+    WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_UPDATE_INI);
+}
+
+/*
  * The report job, on the worker thread: one POST per file, the snapshot
  * first, as the server brief's "Suggested flow" and per-status table say.
  * The key lives only in this function; it is never written to disk.
@@ -487,6 +519,8 @@ static void v9x_report_job(void)
         request.sink_context = &sink;
         result = v9x_net_send(&request, &reply);
         if (result != V9X_NET_OK) {
+            char detail[160];
+
             v9x_report.outcome = (result == V9X_NET_NO_NETWORK &&
                                   v9x_report.sent == 0u)
                                      ? V9X_REPORT_NO_NETWORK
@@ -496,6 +530,11 @@ static void v9x_report_job(void)
                          ? "The update server could not be reached."
                          : "The connection to the update server failed "
                            "part-way.");
+            v9x_report_record_failure(file, &reply, detail, sizeof(detail));
+            v9x_append(v9x_report.message, sizeof(v9x_report.message), " (");
+            v9x_append(v9x_report.message, sizeof(v9x_report.message),
+                       detail);
+            v9x_append(v9x_report.message, sizeof(v9x_report.message), ")");
             goto done;
         }
         v9x_report.message[0] = '\0';

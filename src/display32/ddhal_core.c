@@ -15,6 +15,7 @@
 #include "ddhal_internal.h"
 #include "d3d/d3d_dp2_ring.h"
 #include "velocity9x/drawnote.h"
+#include "velocity9x/trace_fold.h"
 #include "velocity9x/vsync.h"
 
 #ifndef V9X_BUILD_ID
@@ -30,22 +31,57 @@ static const char v9x_hal_build_id[] = "V9XHAL build=" V9X_BUILD_ID;
 /* Declared in ddhal_internal.h: every module reads the shared block. */
 V9X_DD_SHARED *v9x_hal;
 
+/* The fold encoding shares the entry's id word with the exit flag and every
+ * trace id; trace_fold.h assumes both. */
+typedef char v9x_trace_fold_assert_exit[
+    V9X_TRACE_FOLD_EXIT_FLAG == V9X_DD_TRACE_EXIT_FLAG ? 1 : -1];
+typedef char v9x_trace_fold_assert_ids[
+    V9X_TRACE_DD16_OPENGL_GETINFO <= V9X_TRACE_FOLD_ID_MASK &&
+    V9X_DD_TRACE_ID_COUNT <= V9X_TRACE_FOLD_ID_MASK + 1u ? 1 : -1];
+
 /*
  * Bounded callback trace (Hellbender plan H1). Events land in the shared
  * block so the last callbacks before a fault survive the faulting process.
  * Writers are allocation-free and import-free; status polls are counted
  * but kept out of the ring so a wait loop cannot flush the history.
+ *
+ * A repeat is counted on the entry already there (trace_fold.h): a
+ * teardown of hundreds of DestroySurface calls overwrote the whole ring in
+ * the Carmageddon II reports of 2026-10-10, and with it whatever came
+ * before. trace->seq still advances per event, so a folded run shows as a
+ * gap in the sequence numbers.
  */
 void v9x_trace_push(WORD id, DWORD detail)
 {
     V9X_DD_TRACE *trace;
     DWORD slot;
+    DWORD newest;
+    DWORD previous;
+    v9x_u32 action;
 
     if (v9x_hal == 0) {
         return;
     }
     trace = &v9x_hal->trace;
     slot = trace->head < V9X_DD_TRACE_RING_COUNT ? trace->head : 0ul;
+    newest = slot != 0ul ? slot - 1ul : V9X_DD_TRACE_RING_COUNT - 1ul;
+    previous = newest != 0ul ? newest - 1ul : V9X_DD_TRACE_RING_COUNT - 1ul;
+    action = v9x_trace_fold_decide(trace->ring[previous].id,
+                                   trace->ring[newest].id, id, detail,
+                                   trace->ring[newest].detail);
+    if (action == V9X_TRACE_FOLD_NEWEST) {
+        trace->ring[newest].id = v9x_trace_fold_bump(trace->ring[newest].id);
+        trace->ring[newest].detail = detail;
+        ++trace->seq;
+        return;
+    }
+    if (action == V9X_TRACE_FOLD_PAIR) {
+        trace->ring[previous].id =
+            v9x_trace_fold_bump(trace->ring[previous].id);
+        trace->ring[previous].detail = detail;
+        ++trace->seq;
+        return;
+    }
     trace->ring[slot].id = id;
     trace->ring[slot].seq = (WORD)trace->seq;
     trace->ring[slot].detail = detail;
@@ -89,7 +125,7 @@ static int v9x_fault_flush_active;
 
 static const char *v9x_trace_name(WORD id)
 {
-    switch (id & (WORD)~V9X_DD_TRACE_EXIT_FLAG) {
+    switch (v9x_trace_fold_base(id)) {
     case V9X_TRACE_DRIVERINIT:           return "DriverInit";
     case V9X_TRACE_DD16_CREATEOBJECT:    return "Dd16CreateObject";
     case V9X_TRACE_DD16_DESTROYDRIVER:   return "Dd16DestroyDriver";
@@ -309,6 +345,12 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
             (entry->id & V9X_DD_TRACE_EXIT_FLAG) != 0u ? " exit "
                                                        : " enter ");
         at = v9x_hex_append(at, entry->detail);
+        /* A folded entry: how many times it happened in all. */
+        if (v9x_trace_fold_count(entry->id) != 0u) {
+            at = v9x_text_append(at, " times=");
+            at = v9x_hex_append(at,
+                                (DWORD)v9x_trace_fold_count(entry->id) + 1ul);
+        }
         at = v9x_text_append(at, "\r\n");
         *at = '\0';
         v9x_file_text(file, line);

@@ -3614,6 +3614,9 @@ typedef struct v9x_d3d_diagnostics {
  */
 #define V9X_TRACE_D3D_RENDERLOOP      51u
 
+/* id bits 6-14 count further occurrences of a folded repeat; 0 for an
+ * event seen once. The HAL writer folds, the 16-bit one does not; the rule
+ * and encoding are in velocity9x/trace_fold.h. */
 typedef struct v9x_dd_trace_entry {
     WORD id;            /* trace id, V9X_DD_TRACE_EXIT_FLAG on exit    */
     WORD seq;           /* low word of the event sequence              */

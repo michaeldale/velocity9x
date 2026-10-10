@@ -106,7 +106,7 @@ it.
 2. Gather, in the server brief's order: the newest snapshot (`SnapshotFile=`
    from the dump, else the newest of `V9XSNAP.INI`, `V9XSNA1-7.INI`),
    `V9XTRACE.INI`, `V9XBOOT.INI`, `V9XHW.INI`, `V9XDD.INI`, `V9XGL.LOG`,
-   `V9XUPD.INI`. Skip missing files; send the last 512 KB of a longer one.
+   `V9XGLIDE.LOG`, `V9XGLD3.LOG` (both added 2026-10-10), `V9XUPD.INI`. Skip missing files; send the last 512 KB of a longer one.
 3. Show the files, sizes and the privacy summary, an optional one-line
    description, Send / Cancel.
 4. POST the snapshot, then the rest with `report=`/`key=`, following the
