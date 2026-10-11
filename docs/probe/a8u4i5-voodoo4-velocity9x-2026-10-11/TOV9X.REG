@@ -1,0 +1,69 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014]
+"ProviderName"="Velocity9x Project"
+"DriverDesc"="Velocity9x 3dfx VSA-100"
+"MatchingDeviceId"="PCI\\VEN_121A&DEV_0009"
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"V9xFamily"="3dfx"
+"DriverDate"="10-11-2026"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="v9xmini.vxd"
+"RefreshRate"="0"
+"ExtModeSwitch"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\8\640,400]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\8\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\8\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\16\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\16\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0014\MODES\16\1024,768]
+@="60"
+
+[HKEY_CLASSES_ROOT\CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}]
+@="Velocity9x Settings Page"
+
+[HKEY_CLASSES_ROOT\CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}\InProcServer32]
+@="v9xsetp.dll"
+"ThreadingModel"="Apartment"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x]
+@="{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved]
+"{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"="Velocity9x Settings Page"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\RunOnce]
+"V9xSettingsPage"="rundll32.exe v9xsetp.dll,V9xRegisterPage"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers]
+"Velocity9x"="v9xgl.dll"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run]
+"V9xSyncModes"="rundll32.exe v9xsetp.dll,V9xSyncModes"
+
+[HKEY_LOCAL_MACHINE\Enum\PCI\VEN_121A&DEV_0009&SUBSYS_0004121A&REV_01\000800]
+"Driver"="Display\\0014"

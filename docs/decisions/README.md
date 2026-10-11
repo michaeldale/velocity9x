@@ -233,6 +233,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 
 - [2026-10-11 What VelocityNT measured on the Mini-Me VSA-100](2026-10-11-what-velocitynt-measured-on-the-mini-me-vsa100.md)
 - [2026-10-11 The Voodoo4's stock driver tiles its desktop at the top of memory](2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)
+- [2026-10-11 The Voodoo4 runs Velocity9x at tier-0, and its VBE reports half its memory](2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md)
 
 ## NVIDIA and other surveyed cards
 

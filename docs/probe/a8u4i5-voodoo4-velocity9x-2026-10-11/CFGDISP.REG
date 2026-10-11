@@ -1,0 +1,17 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\Config\0001\Display\Settings]
+"fonts.fon"="vgasys.fon"
+"fixedfon.fon"="vgafix.fon"
+"oemfonts.fon"="vgaoem.fon"
+"DPILogicalX"="96"
+"DPILogicalY"="96"
+"DPIPhysicalX"="96"
+"DPIPhysicalY"="96"
+"BitsPerPixel"="16"
+"Resolution"="640,480"
+"DPILogicalX "="96"
+"DesktopPos"="32048,24076"
+"UpgradeToDefaultMode"=""
+"AttachToDesktop"="1"
+
