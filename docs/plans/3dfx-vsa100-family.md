@@ -411,13 +411,15 @@ Exit gate: the decision record plus the archived probe output and captures.
    `MiniVddVbeCollect = $true`; static mode rows only where Phase 1's ROM
    image shows them. `Vm.Emulator = 'none'` unless the Voodoo3 chip already
    brought a guest. `EngineType 'NONE'`.
-3. **hw16 data.** `framebuffer_bar` = BAR1. Usable VRAM = min(`dramInit0`
-   decode, BIOS tile boundary), through a pure, host-tested function
-   (`v9x_tdfx_vsa100_usable_memory`). Its failing tests come first, from the
-   retail 4500's Phase 1 vector and the Mini-Me's (`0x607EADF9`, control
-   `0x3FFF`, compare `0` → 32 MiB linear of 64 decoded). Reading those
-   registers needs BAR0 mapped; that mapping is mechanics in the backend,
-   the arithmetic is policy.
+3. **hw16 data.** `framebuffer_bar` = BAR1. First bind: every hook NULL,
+   memory from VBE 4F00h clamped to a 32 MiB mapping (one chip's memory),
+   as SiS started. Then the probe reads the tile boundary this BIOS leaves
+   in a VBE mode, under our driver, and a `read_video_memory` hook takes
+   usable VRAM = min(`dramInit0` decode, BIOS tile boundary) through the
+   host-tested `v9x_tdfx_vsa100_usable_memory`. `dramInit0` is readable
+   through BAR2 (I/O) before any mapping exists; the boundary needs the
+   `lfbMemoryConfig` selector, a write, so its handling is decided from that
+   measurement.
 4. **Gates.** `check-tree`, `build-host`, `update-backend-registry`,
    `run-checks` green; enable gate and mode matrix on A8U4I5; the scanout
    check. The boot-time VBE table is archived with the record.
