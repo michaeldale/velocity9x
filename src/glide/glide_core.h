@@ -80,6 +80,9 @@ void v9x_glide_flush(void);
 void v9x_glide_triangle(const float *a, const float *b, const float *c);
 void v9x_glide_line(const float *a, const float *b);
 
+/* grConstantColorValue4's colour as ARGB. */
+void v9x_glide_set_constant_argb(v9x_u32 argb);
+
 /* ---- textures ----------------------------------------------------- */
 
 /* GrTexInfo in Glide 2's terms: smallLod, largeLod, aspectRatio, format,

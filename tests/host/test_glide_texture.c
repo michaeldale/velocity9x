@@ -105,10 +105,13 @@ static void test_records(void)
     XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &small) == a);
     XCHECK(v9x_glide_texmem_find(&mem, 0x800ul, 3ul, &other) == b);
 
-    /* One overlapping both replaces both. */
+    /* One over the second half of the first and all of the second: the
+     * second is gone, the first is still there - TMU memory is bytes, and
+     * a source of the first reads its untouched half (the DLL patches the
+     * overwritten half into its copy). */
     c = v9x_glide_texmem_download(&mem, 0x400ul, 3ul, &small);
     XCHECK(c >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &small) == -1);
+    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &small) == a);
     XCHECK(v9x_glide_texmem_find(&mem, 0x800ul, 3ul, &other) == -1);
     XCHECK(v9x_glide_texmem_find(&mem, 0x400ul, 3ul, &small) == c);
 
@@ -120,6 +123,43 @@ static void test_records(void)
 
     info_set(&other, 3ul, 3ul, 3ul, 99ul);
     XCHECK(v9x_glide_texmem_download(&mem, 0x4000ul, 3ul, &other) == -1);
+}
+
+/*
+ * Carmageddon II's menu (netbook, 2026-10-11): a 64x64 ARGB4444 texture at
+ * 0, then its 4x4 and 8x8 font glyphs downloaded to 0 over its first bytes,
+ * then the 64x64 sourced again without a new download. On a Voodoo it is
+ * still there but for those bytes; dropped, every menu draw was skipped.
+ */
+static void test_partial_overwrite_keeps(void)
+{
+    V9X_GLIDE_TEXINFO big;
+    V9X_GLIDE_TEXINFO glyph;
+    int b;
+
+    v9x_glide_texmem_init(&mem);
+    info_set(&big, 2ul, 2ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);    /* 8192 */
+    info_set(&glyph, 6ul, 6ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);  /* 32 */
+    b = v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &big);
+    XCHECK(b >= 0);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &glyph) >= 0);
+    info_set(&glyph, 5ul, 5ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);  /* 128 */
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &glyph) >= 0);
+    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &big) == b);
+    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &glyph) >= 0);
+    /* The 4x4 glyph lay wholly under the 8x8 one: gone. */
+    info_set(&glyph, 6ul, 6ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);
+    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &glyph) == -1);
+    /* The same 64x64 again at 0 covers the old one whole: a new record,
+     * and the old one is what nothing finds any more. */
+    {
+        v9x_u32 old_serial = mem.records[b].serial;
+        int again = v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &big);
+
+        XCHECK(again >= 0);
+        XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &big) == again);
+        XCHECK(mem.records[again].serial > old_serial);
+    }
 }
 
 static void test_records_full(void)
@@ -258,6 +298,7 @@ unsigned int v9x_run_glide_texture_tests(void)
     test_level_sizes();
     test_required();
     test_records();
+    test_partial_overwrite_keeps();
     test_records_full();
     test_records_track();
     test_formats();

@@ -60,6 +60,11 @@
 #define V9X_GLIDE_BLEND_ONE_MINUS_DST_ALPHA 7ul
 #define V9X_GLIDE_BLEND_ALPHA_SATURATE      15ul
 
+/* grHints: GR_HINT_STWHINT and its mask bit that gives TMU 0 its own W
+ * (Glide 2.x glide.h, GR_STWHINT_W_DIFF_TMU0 = BIT(1)). */
+#define V9X_GLIDE_HINT_STWHINT         0ul
+#define V9X_GLIDE_STWHINT_W_DIFF_TMU0  0x00000002ul
+
 /* GrCombineFunction_t (the ones mapped; the rest are reported). */
 #define V9X_GLIDE_COMBINE_FUNCTION_ZERO        0ul
 #define V9X_GLIDE_COMBINE_FUNCTION_LOCAL       1ul
@@ -67,9 +72,10 @@
 #define V9X_GLIDE_COMBINE_FUNCTION_SCALE_OTHER 3ul
 
 /* GrCombineFactor_t (the ones mapped). */
-#define V9X_GLIDE_COMBINE_FACTOR_ZERO  0ul
-#define V9X_GLIDE_COMBINE_FACTOR_LOCAL 1ul
-#define V9X_GLIDE_COMBINE_FACTOR_ONE   8ul
+#define V9X_GLIDE_COMBINE_FACTOR_ZERO          0ul
+#define V9X_GLIDE_COMBINE_FACTOR_LOCAL         1ul
+#define V9X_GLIDE_COMBINE_FACTOR_TEXTURE_ALPHA 4ul
+#define V9X_GLIDE_COMBINE_FACTOR_ONE           8ul
 
 /* GrCombineLocal_t and GrCombineOther_t. */
 #define V9X_GLIDE_COMBINE_LOCAL_ITERATED 0ul

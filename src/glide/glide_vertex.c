@@ -74,10 +74,30 @@ static float v9x_glide_unsnap(float value)
     return value;
 }
 
+/*
+ * Whether anything reads the vertex's oow: the W-buffer and table fog, and
+ * texturing unless GR_STWHINT_W_DIFF_TMU0 gives the texture TMU 0's own W.
+ * Those are the Voodoo's only uses of it; where none applies a game need not
+ * write it. Carmageddon II does not, on its untextured Z-buffered quads
+ * (netbook, 2026-10-11: -1.97, 0 and the bytes "ombi"), and Gen3 refuses an
+ * rhw that is not positive and finite.
+ */
+static int v9x_glide_oow_read(const V9X_GLIDE_VERTEX_SETUP *setup)
+{
+    return (setup->textured != 0ul && setup->tmu0_w == 0ul) ||
+           setup->depth_mode == V9X_GLIDE_DEPTH_WBUFFER ||
+           setup->fog_mode == V9X_GLIDE_FOG_TABLE;
+}
+
 void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
                               const float *in, V9X_R3D_ABI_VERTEX *out)
 {
-    float oow = in[V9X_GLIDE_VERTEX_OOW];
+    /* 1 where nothing reads oow: flat interpolation, as on the Voodoo. */
+    float oow = v9x_glide_oow_read(setup) ? in[V9X_GLIDE_VERTEX_OOW] : 1.0f;
+    /* The W texturing divides by: TMU 0's under the hint, else the
+     * vertex's. The engine's rhw is this one, since perspective-correct
+     * texturing is what it interpolates rhw for. */
+    float texture_w = setup->tmu0_w != 0ul ? in[V9X_GLIDE_VERTEX_TMU0_OOW] : oow;
     v9x_u32 rgb;
     v9x_u32 alpha;
     v9x_u32 fog = 0ul;
@@ -92,7 +112,7 @@ void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
      * and it is the depth a Direct3D projection with the near plane at 1
      * would write. Its precision on a 16-bit Z is measured, not assumed
      * (plan, hazards). */
-    out->rhw = oow;
+    out->rhw = setup->textured != 0ul ? texture_w : oow;
     if (setup->depth_mode == V9X_GLIDE_DEPTH_WBUFFER) {
         out->sz = oow >= 1.0f ? 0.0f : (oow <= 0.0f ? 1.0f : 1.0f - oow);
     } else if (setup->depth_mode == V9X_GLIDE_DEPTH_ZBUFFER) {
@@ -101,9 +121,9 @@ void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
         out->sz = 0.0f;
     }
 
-    if (oow != 0.0f) {
-        out->tu = in[V9X_GLIDE_VERTEX_SOW] / oow * setup->s_scale;
-        out->tv = in[V9X_GLIDE_VERTEX_TOW] / oow * setup->t_scale;
+    if (setup->textured != 0ul && texture_w != 0.0f) {
+        out->tu = in[V9X_GLIDE_VERTEX_SOW] / texture_w * setup->s_scale;
+        out->tv = in[V9X_GLIDE_VERTEX_TOW] / texture_w * setup->t_scale;
     } else {
         out->tu = 0.0f;
         out->tv = 0.0f;
@@ -133,6 +153,12 @@ void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
         fog = v9x_glide_byte(in[V9X_GLIDE_VERTEX_A]);
     }
     out->specular = (255ul - fog) << 24;
+}
+
+v9x_u32 v9x_glide_argb_from_floats(float a, float r, float g, float b)
+{
+    return (v9x_glide_byte(a) << 24) | (v9x_glide_byte(r) << 16) |
+           (v9x_glide_byte(g) << 8) | v9x_glide_byte(b);
 }
 
 float v9x_glide_fog_index_to_w(unsigned int index)

@@ -170,3 +170,42 @@ Build `dd9c44f` (s3 package) deployed by WININIT rename, host port 9879.
 - **Not reproduced:** the original 16 KB truncation. This guest sends by
   WinInet, so the old Winsock would-block path was not exercised; the
   cause of the reporter's truncation stays a hypothesis.
+
+## 2026-10-11: reproduced on MICHAEL-NETBOOK (945GSE) in Glide mode
+
+Carmageddon II installed by Michael; build 71318ed plus the working
+tree, boots 131-141.
+
+- **Glide not offered:** `carma2.exe` offers 3DFX (Glide) only if it can
+  load `glide2x.dll`. The netbook had been updated by WININIT renames
+  only, so the INF never put the DLL in SYSTEM. Installed by hand; the
+  launcher then offered and selected it. Not a driver defect.
+- **The reporter's refusal reproduced:** 682,745 of 688,201 triangles
+  refused (99.2 %), Gen3 reason 6. Corners logged on refusal showed the
+  untextured quads' oow as -1.97, 0 and the bytes "ombi": unwritten. A
+  Voodoo reads oow only for texturing, the W-buffer and table fog; rhw
+  is now 1 where none applies. Refused fell to 6 in 1.4 million.
+- **The intro draws:** HAL frame captures (V9XTRACE -arm) at 30 s and
+  70 s show the video - road, car, smoke - drawn as textured tiles.
+- **The menu stayed black**, and each fix below was found from the log
+  and a capture, not from the screen alone:
+  - `guColorCombineFunction`, `grConstantColorValue(4)` and `grHints`
+    were stubs; the game sets its colour combine, constant colour and
+    GR_STWHINT_W_DIFF_TMU0 only through them. Written.
+  - Alpha SCALE_OTHER by TEXTURE_ALPHA (the menu text's glyph mask)
+    was unknown; mapped, and an alpha nothing reads no longer makes a
+    draw textured.
+  - REPLACE beside the fragment's alpha on RGB565 was refused by Gen3
+    as UNSUPPORTED; with the alpha unread it is now DECAL.
+- **Still black, the cause measured:** the game downloads several
+  textures to TMU address 0 (64x64 ARGB4444, 64x64 RGB565, 4x4 and 8x8
+  glyphs) and sources earlier ones again without downloading them.
+  The DLL keeps whole textures, not bytes, so a source whose texture was
+  overwritten finds nothing: 1.46 million textured draws skipped by
+  207 s. Keeping a partly overwritten texture (committed) was not
+  enough. Next: TMU memory as bytes, decoded per source.
+- **Separate defect:** about 300 s into a run every lock and flip fails
+  with DDERR_SURFACELOST (887601C2) and the DLL never restores its
+  surfaces. Seen twice (runs 1 and 8). Not yet investigated.
+- Exiting the game: `WCLOSE.EXE CARMA2_HW.ICD` closes the window but
+  the process stays; only a reboot clears it.

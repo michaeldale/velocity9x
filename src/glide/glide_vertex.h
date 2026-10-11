@@ -17,9 +17,10 @@
 /*
  * The first twelve floats of a GrVertex: x, y, z, r, g, b, ooz, a, oow,
  * then TMU 0's sow, tow, oow. They are the same whatever TMU count the
- * game was built for. TMU 0's oow is not read: NFS II SE leaves it
- * uninitialised (census) and Glide divides by the vertex oow unless told
- * otherwise by a hint no census title has used.
+ * game was built for. TMU 0's oow is read only under grHints'
+ * GR_STWHINT_W_DIFF_TMU0: NFS II SE leaves it uninitialised (census) and
+ * sets no hint, and Carmageddon II sets the hint and leaves the vertex oow
+ * uninitialised instead (netbook, 2026-10-11).
  */
 #define V9X_GLIDE_VERTEX_X    0u
 #define V9X_GLIDE_VERTEX_Y    1u
@@ -31,6 +32,7 @@
 #define V9X_GLIDE_VERTEX_OOW  8u
 #define V9X_GLIDE_VERTEX_SOW  9u
 #define V9X_GLIDE_VERTEX_TOW  10u
+#define V9X_GLIDE_VERTEX_TMU0_OOW 11u
 #define V9X_GLIDE_VERTEX_FLOATS 12u
 
 /* Where a vertex's colour or alpha comes from, as the combine decides. */
@@ -48,6 +50,8 @@ typedef struct v9x_glide_vertex_setup {
     v9x_u32 constant_argb;  /* grConstantColorValue, ARGB */
     v9x_u32 fog_mode;       /* V9X_GLIDE_FOG_*, source byte */
     const v9x_u8 *fog_table; /* V9X_GLIDE_FOG_TABLE_SIZE entries, or null */
+    v9x_u32 textured;       /* the combine samples a texture */
+    v9x_u32 tmu0_w;         /* GR_STWHINT_W_DIFF_TMU0: texture W is TMU 0's */
 } V9X_GLIDE_VERTEX_SETUP;
 
 /* The scales that turn a texture's Glide s and t (0..256 along its longer
@@ -57,6 +61,10 @@ v9x_u16 v9x_glide_texture_scales(v9x_u32 aspect, float *s_scale,
 
 void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
                               const float *in, V9X_R3D_ABI_VERTEX *out);
+
+/* Four 0..255 floats (grConstantColorValue4's order) as ARGB, each clamped
+ * and rounded as a vertex channel is. */
+v9x_u32 v9x_glide_argb_from_floats(float a, float r, float g, float b);
 
 /* The W at which fog table entry `index` applies (the Reference Manual's
  * guFogTableIndexToW): 2^(3 + index / 4) / (8 - index % 4). */

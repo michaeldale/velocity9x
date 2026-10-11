@@ -66,6 +66,7 @@ void v9x_glide_state_init(V9X_GLIDE_STATE *state, v9x_u32 width,
     state->clamp_t = V9X_GLIDE_TEXTURE_WRAP;
     state->min_filter = V9X_GLIDE_TEXTURE_BILINEAR;
     state->mag_filter = V9X_GLIDE_TEXTURE_BILINEAR;
+    state->stw_hint = 0ul;
 }
 
 /*
@@ -122,9 +123,15 @@ static v9x_u16 v9x_glide_blend_factor(v9x_u32 factor, v9x_u16 destination,
  * What a colour or alpha combine produces, among the forms the interface
  * can draw: the local value (LOCAL), the other value (SCALE_OTHER by ONE),
  * or the texture scaled by the local value (SCALE_OTHER by LOCAL, other
- * TEXTURE). Everything else, and any inverted output, is UNKNOWN.
+ * TEXTURE). On the alpha unit, also the other value scaled by the texel's
+ * alpha (SCALE_OTHER by TEXTURE_ALPHA), which there is the texture scaled by
+ * the other value: Carmageddon II's menu text takes its glyph mask that way,
+ * and read as UNKNOWN every glyph drew as a solid quad (netbook,
+ * 2026-10-11). On the colour unit that factor scales a colour by an alpha,
+ * which no op says. Everything else, and any inverted output, is UNKNOWN.
  */
-static unsigned int v9x_glide_combine_result(const V9X_GLIDE_COMBINE *c)
+static unsigned int v9x_glide_combine_result(const V9X_GLIDE_COMBINE *c,
+                                             v9x_u16 alpha_unit)
 {
     v9x_u32 local_constant = c->local == V9X_GLIDE_COMBINE_LOCAL_CONSTANT;
 
@@ -152,6 +159,14 @@ static unsigned int v9x_glide_combine_result(const V9X_GLIDE_COMBINE *c)
         return local_constant ? V9X_GLIDE_RESULT_TEXTURE_CONSTANT :
                                 V9X_GLIDE_RESULT_TEXTURE_ITERATED;
     }
+    if (alpha_unit && c->factor == V9X_GLIDE_COMBINE_FACTOR_TEXTURE_ALPHA) {
+        if (c->other == V9X_GLIDE_COMBINE_OTHER_CONSTANT) {
+            return V9X_GLIDE_RESULT_TEXTURE_CONSTANT;
+        }
+        if (c->other == V9X_GLIDE_COMBINE_OTHER_ITERATED) {
+            return V9X_GLIDE_RESULT_TEXTURE_ITERATED;
+        }
+    }
     return V9X_GLIDE_RESULT_UNKNOWN;
 }
 
@@ -169,11 +184,27 @@ static v9x_u32 v9x_glide_result_source(unsigned int result)
            V9X_GLIDE_SOURCE_CONSTANT : V9X_GLIDE_SOURCE_ITERATED;
 }
 
+static v9x_u16 v9x_glide_blend_reads_alpha(v9x_u32 factor);
+
 static void v9x_glide_map_combine(const V9X_GLIDE_STATE *state,
                                   V9X_GLIDE_DRAW_SETUP *out)
 {
-    unsigned int color = v9x_glide_combine_result(&state->color);
-    unsigned int alpha = v9x_glide_combine_result(&state->alpha);
+    unsigned int color = v9x_glide_combine_result(&state->color, V9X_FALSE);
+    unsigned int alpha = v9x_glide_combine_result(&state->alpha, V9X_TRUE);
+    v9x_u16 alpha_read = (state->alpha_func != V9X_GLIDE_CMP_ALWAYS ||
+                          v9x_glide_blend_reads_alpha(state->blend_src) ||
+                          v9x_glide_blend_reads_alpha(state->blend_dst)) ?
+                         V9X_TRUE : V9X_FALSE;
+
+    /* An alpha nothing reads cannot make a draw textured. Carmageddon II
+     * leaves its alpha as the texture's for opaque geometry with no
+     * texture source; taken as textured, that geometry was skipped and the
+     * screen went black (netbook, 2026-10-11). The chroma key, which does
+     * read the texture's alpha, is applied after this (state_map). */
+    if (!alpha_read && alpha != V9X_GLIDE_RESULT_UNKNOWN &&
+        v9x_glide_result_textured(alpha) && !v9x_glide_result_textured(color)) {
+        alpha = V9X_GLIDE_RESULT_ITERATED;
+    }
 
     if (color == V9X_GLIDE_RESULT_UNKNOWN || alpha == V9X_GLIDE_RESULT_UNKNOWN) {
         out->recognized = V9X_FALSE;
@@ -264,6 +295,76 @@ v9x_u32 v9x_glide_color_to_argb(v9x_u32 color, v9x_u32 color_format)
                (((color >> 16) & 0xFFul) << 8) | (color >> 24);
     }
     return color;
+}
+
+/* ABGR and BGRA swap channels symmetrically, so they are their own
+ * inverses; RGBA rotates the other way. */
+v9x_u32 v9x_glide_argb_to_color(v9x_u32 argb, v9x_u32 color_format)
+{
+    if (color_format == V9X_GLIDE_COLORFORMAT_RGBA) {
+        return (argb << 8) | (argb >> 24);
+    }
+    return v9x_glide_color_to_argb(argb, color_format);
+}
+
+/*
+ * guColorCombineFunction's presets, GR_COLORCOMBINE_ZERO (0) to _ONE (16),
+ * as the grColorCombine arguments the Glide 2.x utility library passes:
+ * function, factor, local, other, invert. Written from the Glide 2.x
+ * headers' enumerations and the utility's documented table, not read from a
+ * 3dfx binary; the presets Carmageddon II uses are the textured ones, whose
+ * effect on the screen is the check. NONE is ZERO for the factor, CONSTANT
+ * for local and other, as glide.h defines it.
+ */
+#define V9X_GLIDE_CF_SCALE_OTHER_ADD_LOCAL        4u
+#define V9X_GLIDE_CF_SCALE_OTHER_ADD_LOCAL_ALPHA  5u
+#define V9X_GLIDE_CF_SCALE_OTHER_MINUS_LOCAL      6u
+#define V9X_GLIDE_CF_BLEND                        7u
+#define V9X_GLIDE_CX_LOCAL_ALPHA                  3u
+#define V9X_GLIDE_CX_TEXTURE_ALPHA                4u
+
+static const v9x_u8 v9x_glide_gu_presets[17][5] = {
+    { 0u, 0u, 1u, 2u, 0u },     /* ZERO */
+    { 1u, 0u, 1u, 2u, 0u },     /* CCRGB: the constant */
+    { 1u, 0u, 0u, 2u, 0u },     /* ITRGB: the vertex */
+    { 1u, 0u, 0u, 2u, 0u },     /* ITRGB_DELTA0 */
+    { 3u, 8u, 1u, 1u, 0u },     /* DECAL_TEXTURE */
+    { 3u, 1u, 1u, 1u, 0u },     /* TEXTURE_TIMES_CCRGB */
+    { 3u, 1u, 0u, 1u, 0u },     /* TEXTURE_TIMES_ITRGB */
+    { 3u, 1u, 0u, 1u, 0u },     /* TEXTURE_TIMES_ITRGB_DELTA0 */
+    { V9X_GLIDE_CF_SCALE_OTHER_ADD_LOCAL_ALPHA, 1u, 0u, 1u, 0u },
+                                /* TEXTURE_TIMES_ITRGB_ADD_ALPHA */
+    { 3u, V9X_GLIDE_CX_LOCAL_ALPHA, 0u, 1u, 0u },
+                                /* TEXTURE_TIMES_ALPHA */
+    { V9X_GLIDE_CF_SCALE_OTHER_ADD_LOCAL, V9X_GLIDE_CX_LOCAL_ALPHA, 0u, 1u, 0u },
+                                /* TEXTURE_TIMES_ALPHA_ADD_ITRGB */
+    { V9X_GLIDE_CF_SCALE_OTHER_ADD_LOCAL, 8u, 0u, 1u, 0u },
+                                /* TEXTURE_ADD_ITRGB */
+    { V9X_GLIDE_CF_SCALE_OTHER_MINUS_LOCAL, 8u, 0u, 1u, 0u },
+                                /* TEXTURE_SUB_ITRGB */
+    { V9X_GLIDE_CF_BLEND, V9X_GLIDE_CX_TEXTURE_ALPHA, 0u, 2u, 0u },
+                                /* CCRGB_BLEND_ITRGB_ON_TEXALPHA */
+    { V9X_GLIDE_CF_BLEND, V9X_GLIDE_CX_LOCAL_ALPHA, 0u, 1u, 0u },
+                                /* DIFF_SPEC_A */
+    { V9X_GLIDE_CF_SCALE_OTHER_ADD_LOCAL, V9X_GLIDE_CX_LOCAL_ALPHA, 0u, 1u, 0u },
+                                /* DIFF_SPEC_B */
+    { 0u, 0u, 1u, 2u, 1u }      /* ONE: zero, inverted */
+};
+
+v9x_u16 v9x_glide_gu_color_combine(v9x_u32 preset, V9X_GLIDE_COMBINE *out)
+{
+    const v9x_u8 *row;
+
+    if (preset >= sizeof(v9x_glide_gu_presets) / sizeof(v9x_glide_gu_presets[0])) {
+        return V9X_FALSE;
+    }
+    row = v9x_glide_gu_presets[preset];
+    out->function = row[0];
+    out->factor = row[1];
+    out->local = row[2];
+    out->other = row[3];
+    out->invert = row[4];
+    return V9X_TRUE;
 }
 
 /* Whether a blend factor reads the source alpha. Destination alpha is
@@ -361,6 +462,19 @@ void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
             abi->alpha_func = V9X_GLIDE_D3D_CMP_GREATER;
             abi->alpha_ref = 0ul;
         }
+    }
+
+    /* The texture's colour alone beside an alpha nothing reads (no blend on
+     * it, no test, no key): the alpha may as well be the texel's, which makes
+     * the op DECAL, one every single-unit engine has. Gen3 refused
+     * Carmageddon II's menu, REPLACE beside the fragment's alpha on RGB565,
+     * as UNSUPPORTED (netbook, 2026-10-11). */
+    if (out->textured && out->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+        out->alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT &&
+        !abi->alpha_test_enable &&
+        !v9x_glide_blend_reads_alpha(state->blend_src) &&
+        !v9x_glide_blend_reads_alpha(state->blend_dst)) {
+        out->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
     }
 
     out->address = (state->clamp_s == V9X_GLIDE_TEXTURE_CLAMP &&

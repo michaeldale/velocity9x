@@ -12,8 +12,11 @@
 #
 # Kind 'Written' is defined by hand in glide_dll.c; Kind 'Stub' is generated
 # by scripts\lib\glide-exports.ps1 (log the first call, count, return zero).
-# The 50 Written entries are exactly the Glide imports of NFS2SEA.EXE on the
-# same disc, read from its import names on 2026-10-08 (Phase 0 census).
+# 50 of the Written entries are exactly the Glide imports of NFS2SEA.EXE on
+# the same disc, read from its import names on 2026-10-08 (Phase 0 census).
+# grHints, grConstantColorValue, grConstantColorValue4 and
+# guColorCombineFunction were written for
+# Carmageddon II (2026-10-11).
 @{
     Entries = @(
         @{ Name = 'ConvertAndDownloadRle'; Bytes = 64; Return = 'void'; Kind = 'Stub' }
@@ -36,8 +39,8 @@
         @{ Name = 'grClipWindow'; Bytes = 16; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grColorCombine'; Bytes = 20; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grColorMask'; Bytes = 8; Return = 'void'; Kind = 'Stub' }
-        @{ Name = 'grConstantColorValue'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
-        @{ Name = 'grConstantColorValue4'; Bytes = 16; Return = 'void'; Kind = 'Stub' }
+        @{ Name = 'grConstantColorValue'; Bytes = 4; Return = 'void'; Kind = 'Written' }
+        @{ Name = 'grConstantColorValue4'; Bytes = 16; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grCullMode'; Bytes = 4; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grDepthBiasLevel'; Bytes = 4; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grDepthBufferFunction'; Bytes = 4; Return = 'void'; Kind = 'Written' }
@@ -63,7 +66,7 @@
         @{ Name = 'grGlideSetState'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'grGlideShamelessPlug'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'grGlideShutdown'; Bytes = 0; Return = 'void'; Kind = 'Written' }
-        @{ Name = 'grHints'; Bytes = 8; Return = 'void'; Kind = 'Stub' }
+        @{ Name = 'grHints'; Bytes = 8; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grLfbConstantAlpha'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'grLfbConstantDepth'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'grLfbLock'; Bytes = 24; Return = 'u32'; Kind = 'Written' }
@@ -118,7 +121,7 @@
         @{ Name = 'gu3dfLoad'; Bytes = 8; Return = 'u32'; Kind = 'Stub' }
         @{ Name = 'guAADrawTriangleWithClip'; Bytes = 12; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'guAlphaSource'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
-        @{ Name = 'guColorCombineFunction'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
+        @{ Name = 'guColorCombineFunction'; Bytes = 4; Return = 'void'; Kind = 'Written' }
         @{ Name = 'guDrawPolygonVertexListWithClip'; Bytes = 8; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'guDrawTriangleWithClip'; Bytes = 12; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'guEncodeRLE16'; Bytes = 16; Return = 'u32'; Kind = 'Stub' }

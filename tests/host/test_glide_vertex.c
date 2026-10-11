@@ -6,6 +6,7 @@
  * (docs\decisions\2026-10-08-nfs2se-glide-census.md).
  */
 #include <stdio.h>
+#include <string.h>
 #include "../../src/glide/glide_vertex.h"
 
 static unsigned int glide_vertex_failures;
@@ -41,6 +42,8 @@ static void setup_default(V9X_GLIDE_VERTEX_SETUP *setup)
     setup->constant_argb = 0ul;
     setup->fog_mode = V9X_GLIDE_FOG_DISABLE;
     setup->fog_table = 0;
+    setup->textured = 1ul;
+    setup->tmu0_w = 0ul;
 }
 
 static void vertex_in(float *in, float x, float y, float oow)
@@ -118,6 +121,122 @@ static void test_depth(void)
     setup.depth_mode = V9X_GLIDE_DEPTH_DISABLE;
     v9x_glide_vertex_convert(&setup, in, &out);
     VCHECK(approx(out.sz, 0.0f));
+}
+
+/* A float from its bits, for the values Carmageddon II left in oow. */
+static float float_from_bits(v9x_u32 bits)
+{
+    float value;
+
+    memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+/*
+ * oow only where something reads it. Carmageddon II's untextured, Z-buffered
+ * quads on the netbook (2026-10-11) carried oow of -1.97, 0 and the bytes
+ * "ombi" - memory it never wrote - and Gen3 refused each one for its rhw.
+ * A Voodoo reads oow for texturing, the W-buffer and table fog, and for
+ * nothing else, so where none applies rhw is 1: the same flat
+ * interpolation the Voodoo gives.
+ */
+static void test_oow_unused_is_ignored(void)
+{
+    V9X_GLIDE_VERTEX_SETUP setup;
+    V9X_R3D_ABI_VERTEX out;
+    float in[V9X_GLIDE_VERTEX_FLOATS];
+    static const v9x_u32 garbage[4] = {
+        0xBFFC05B4ul, 0x00000000ul, 0x69626D6Ful, 0x7FC00000ul
+    };
+    unsigned int i;
+
+    setup_default(&setup);
+    setup.textured = 0ul;
+    setup.depth_mode = V9X_GLIDE_DEPTH_ZBUFFER;
+    for (i = 0u; i < 4u; ++i) {
+        vertex_in(in, 10.0f, 20.0f, float_from_bits(garbage[i]));
+        in[V9X_GLIDE_VERTEX_OOZ] = 32767.5f;
+        v9x_glide_vertex_convert(&setup, in, &out);
+        VCHECK(out.rhw == 1.0f);
+        VCHECK(approx(out.sz, 0.5f));
+        VCHECK(out.tu == 0.0f && out.tv == 0.0f);
+    }
+
+    /* Each reader of oow keeps it. */
+    vertex_in(in, 10.0f, 20.0f, 0.5f);
+    setup.textured = 1ul;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(approx(out.rhw, 0.5f));
+
+    setup.textured = 0ul;
+    setup.depth_mode = V9X_GLIDE_DEPTH_WBUFFER;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(approx(out.rhw, 0.5f));
+    VCHECK(approx(out.sz, 0.5f));
+
+    setup.depth_mode = V9X_GLIDE_DEPTH_ZBUFFER;
+    setup.fog_mode = V9X_GLIDE_FOG_TABLE;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(approx(out.rhw, 0.5f));
+
+    /* Iterated-alpha fog reads the vertex alpha, not oow. */
+    setup.fog_mode = V9X_GLIDE_FOG_ITERATED_ALPHA;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(out.rhw == 1.0f);
+}
+
+/*
+ * grHints(GR_HINT_STWHINT, GR_STWHINT_W_DIFF_TMU0): the texture's W is the
+ * TMU's own oow, the vertex's twelfth float. Carmageddon II's menu text
+ * left the vertex oow unwritten (netbook, 2026-10-11: 0x0044C7F7, the bytes
+ * "fnuc", 0x0000000A) while texturing; without the hint the TMU's oow is
+ * not read, since NFS II SE leaves it unwritten instead.
+ */
+static void test_tmu_w_hint(void)
+{
+    V9X_GLIDE_VERTEX_SETUP setup;
+    V9X_R3D_ABI_VERTEX out;
+    float in[V9X_GLIDE_VERTEX_FLOATS];
+
+    setup_default(&setup);
+    setup.depth_mode = V9X_GLIDE_DEPTH_ZBUFFER;
+    vertex_in(in, 10.0f, 20.0f, float_from_bits(0x636E7566ul));
+    in[V9X_GLIDE_VERTEX_TMU0_OOW] = 0.5f;
+    in[V9X_GLIDE_VERTEX_SOW] = 64.0f;   /* s = 128 */
+    in[V9X_GLIDE_VERTEX_TOW] = 32.0f;   /* t = 64 */
+
+    setup.tmu0_w = 1ul;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(approx(out.rhw, 0.5f));
+    VCHECK(approx(out.tu, 0.5f) && approx(out.tv, 0.25f));
+
+    /* Without the hint the vertex's oow is the texture's, as before. */
+    setup.tmu0_w = 0ul;
+    in[V9X_GLIDE_VERTEX_OOW] = 0.25f;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(approx(out.rhw, 0.25f));
+    VCHECK(approx(out.tu, 1.0f));
+
+    /* The W-buffer reads the vertex's oow whatever the hint says. */
+    setup.tmu0_w = 1ul;
+    setup.depth_mode = V9X_GLIDE_DEPTH_WBUFFER;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(approx(out.sz, 0.75f));
+    VCHECK(approx(out.rhw, 0.5f));
+}
+
+/* grConstantColorValue4's four floats, 0..255 each, as ARGB. Carmageddon
+ * II sets its constant colour this way, and the menu text's alpha is that
+ * constant times the glyph's (netbook, 2026-10-11). */
+static void test_argb_from_floats(void)
+{
+    VCHECK(v9x_glide_argb_from_floats(255.0f, 17.0f, 34.0f, 51.0f) ==
+           0xFF112233ul);
+    VCHECK(v9x_glide_argb_from_floats(127.6f, 0.0f, 0.0f, 0.0f) ==
+           0x80000000ul);
+    /* Out of range clamps rather than wraps. */
+    VCHECK(v9x_glide_argb_from_floats(300.0f, -5.0f, 255.0f, 0.0f) ==
+           0xFF00FF00ul);
 }
 
 static void test_texture_coordinates(void)
@@ -360,6 +479,9 @@ unsigned int v9x_run_glide_vertex_tests(void)
     glide_vertex_failures = 0u;
     test_position();
     test_depth();
+    test_oow_unused_is_ignored();
+    test_tmu_w_hint();
+    test_argb_from_floats();
     test_texture_coordinates();
     test_color();
     test_fog();

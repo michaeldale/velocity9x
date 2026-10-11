@@ -56,6 +56,7 @@ typedef struct v9x_glide_state {
     v9x_u32 clamp_t;
     v9x_u32 min_filter;
     v9x_u32 mag_filter;
+    v9x_u32 stw_hint;       /* grHints(GR_HINT_STWHINT, mask) */
 } V9X_GLIDE_STATE;
 
 typedef struct v9x_glide_draw_setup {
@@ -97,5 +98,13 @@ v9x_u16 v9x_glide_resolution_size(v9x_u32 resolution, v9x_u32 *width,
  * format grSstWinOpen named, as 0xAARRGGBB. GR_COLORFORMAT_ARGB (0) is
  * the identity; ABGR (1), RGBA (2) and BGRA (3) are reordered. */
 v9x_u32 v9x_glide_color_to_argb(v9x_u32 color, v9x_u32 color_format);
+
+/* The inverse: an ARGB colour in the game's GrColorFormat_t. */
+v9x_u32 v9x_glide_argb_to_color(v9x_u32 argb, v9x_u32 color_format);
+
+/* guColorCombineFunction's preset (GrColorCombineFnc_t) as the colour
+ * combine grColorCombine would set; V9X_FALSE, and `out` untouched, for a
+ * preset this does not know. */
+v9x_u16 v9x_glide_gu_color_combine(v9x_u32 preset, V9X_GLIDE_COMBINE *out);
 
 #endif /* VELOCITY9X_GLIDE_STATE_H */

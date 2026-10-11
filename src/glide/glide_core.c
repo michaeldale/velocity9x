@@ -455,6 +455,7 @@ static V9X_GLIDE_TABLES *v9x_glide_tables;
 static v9x_u32 v9x_glide_surface_stamp;
 static v9x_u32 v9x_glide_use_clock;
 static int v9x_glide_source = -1;
+static v9x_u32 v9x_glide_source_misses_logged;
 static v9x_u32 v9x_glide_source_address;
 static v9x_u32 v9x_glide_source_aspect = V9X_GLIDE_ASPECT_1X1;
 static v9x_u32 v9x_glide_palette[V9X_GLIDE_PALETTE_ENTRIES];
@@ -516,12 +517,24 @@ static v9x_u32 v9x_glide_sum_bytes(const v9x_u8 *bytes, v9x_u32 count)
     return sum;
 }
 
+/* A float's bits, for the log: wsprintf has no float conversion. */
+static v9x_u32 v9x_glide_float_bits(float value)
+{
+    return *(const v9x_u32 *)&value;
+}
+
 /* A refused batch, logged in full the first few times: the state is what
- * says which combination the engine does not take. */
+ * says which combination the engine does not take, and the first triangle's
+ * corners say whether it was the geometry. Gen3 refuses a vertex off the
+ * target, a z outside [0, 1] or an rhw that is not positive and finite
+ * (i9xx_vertex.c); Carmageddon II's Glide draws were refused that way on the
+ * netbook (2026-10-11) and nothing here said which. Bits, not values. */
 static void v9x_glide_log_refusal(v9x_u32 result, const V9X_R3D_ABI_DRAW *draw)
 {
     const V9X_R3D_ABI_STATE *s = &draw->state;
     const V9X_R3D_ABI_TEXTURE *t = &draw->texture;
+    const V9X_R3D_ABI_VERTEX *v = (const V9X_R3D_ABI_VERTEX *)draw->vertices;
+    v9x_u32 corner;
 
     v9x_glide_log3("draw refused: result=%lu triangles=%lu storage/format=%04lX",
                    result, draw->triangle_count, (t->storage << 8) | t->format);
@@ -536,6 +549,17 @@ static void v9x_glide_log_refusal(v9x_u32 result, const V9X_R3D_ABI_DRAW *draw)
                    s->fog_enable,
                    (s->depth_enable << 8) | (s->depth_write << 4) | s->depth_func,
                    s->scissor_right);
+    if (v == 0 || draw->triangle_count == 0ul) {
+        return;
+    }
+    for (corner = 0ul; corner < 3ul; ++corner) {
+        v9x_glide_log3("  corner %lu x/y bits=%08lX/%08lX", corner,
+                       v9x_glide_float_bits(v[corner].sx),
+                       v9x_glide_float_bits(v[corner].sy));
+        v9x_glide_log3("  corner %lu z/rhw bits=%08lX/%08lX", corner,
+                       v9x_glide_float_bits(v[corner].sz),
+                       v9x_glide_float_bits(v[corner].rhw));
+    }
 }
 
 /*
@@ -858,8 +882,13 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
                       0x00FFFFFFul;
     v9x_u32 variant;
 
-    if (v9x_glide_source < 0 || v9x_glide_device_description() == 0) {
+    if (v9x_glide_source < 0) {
         return v9x_glide_skip(1ul, v9x_glide_source_address);
+    }
+    /* Separate from 1: the two shared a reason, and Carmageddon II's menu
+     * skips (netbook, 2026-10-11) could not say which they were. */
+    if (v9x_glide_device_description() == 0) {
+        return v9x_glide_skip(5ul, v9x_glide_source_address);
     }
     record = &v9x_glide_texmem.records[v9x_glide_source];
     texture = &v9x_glide_textures[v9x_glide_source];
@@ -905,6 +934,47 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
     level->width = texture->width;
     level->height = texture->height;
     return 1;
+}
+
+/*
+ * A download's bytes into the copies of textures it lies partly over, which
+ * texture memory keeps (glide_texmem.c): the overlap, within the largest
+ * level of both, since that is all either copy holds. The copy's
+ * conversion and hardware surface are dropped, so the next draw converts
+ * and uploads the patched texels.
+ */
+static void v9x_glide_patch_overlaps(int index, v9x_u32 start, v9x_u32 end,
+                                     const v9x_u8 *data, v9x_u32 data_bytes)
+{
+    unsigned int i;
+
+    for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
+        const V9X_GLIDE_TEXREC *r = &v9x_glide_texmem.records[i];
+        V9X_GLIDE_TEXTURE *texture = &v9x_glide_textures[i];
+        v9x_u32 from;
+        v9x_u32 to;
+        v9x_u32 raw_bytes;
+        v9x_u32 k;
+
+        if ((int)i == index || !r->in_use || texture->raw == 0 ||
+            texture->serial != r->serial ||
+            !(start < r->end && r->start < end)) {
+            continue;
+        }
+        from = start > r->start ? start : r->start;
+        to = end < r->end ? end : r->end;
+        raw_bytes = texture->width * texture->height *
+                    (texture->format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
+        for (k = from; k < to; ++k) {
+            if (k - r->start >= raw_bytes || k - start >= data_bytes) {
+                break;
+            }
+            texture->raw[k - r->start] = data[k - start];
+        }
+        texture->sum = v9x_glide_sum_bytes(texture->raw, raw_bytes);
+        texture->variant = 0ul;
+        texture->surface_slot = 0ul;
+    }
 }
 
 /* grTexDownloadMipMap's texels into the record's entry: the largest
@@ -953,6 +1023,10 @@ void v9x_glide_texture_download(v9x_u32 address, v9x_u32 even_odd,
         return;
     }
     bytes = width * height * (texinfo.format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
+    v9x_glide_patch_overlaps(index, address,
+                             address + v9x_glide_texmem_required(&texinfo,
+                                                                 even_odd),
+                             data, bytes);
     texture->raw = (v9x_u8 *)v9x_glide_alloc(bytes);
     if (texture->raw == 0) {
         return;
@@ -984,6 +1058,9 @@ static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
                                                 v9x_glide_color_format);
     vs->fog_mode = v9x_glide_state.fog_mode & V9X_GLIDE_FOG_SOURCE_MASK;
     vs->fog_table = v9x_glide_fog;
+    vs->textured = draw->textured ? 1ul : 0ul;
+    vs->tmu0_w = (v9x_glide_state.stw_hint &
+                  V9X_GLIDE_STWHINT_W_DIFF_TMU0) != 0ul ? 1ul : 0ul;
 }
 
 /*
@@ -1438,6 +1515,14 @@ void v9x_glide_set_render_buffer(v9x_u32 buffer)
     }
 }
 
+/* grConstantColorValue4's colour, ARGB, kept in the game's colour format as
+ * grConstantColorValue's is, so every reader converts it one way. */
+void v9x_glide_set_constant_argb(v9x_u32 argb)
+{
+    v9x_glide_state.constant_color =
+        v9x_glide_argb_to_color(argb, v9x_glide_color_format);
+}
+
 /* The record the draws sample until the next source; one TMU. */
 void v9x_glide_texture_source(v9x_u32 address, v9x_u32 even_odd,
                               const v9x_u32 *info)
@@ -1456,6 +1541,34 @@ void v9x_glide_texture_source(v9x_u32 address, v9x_u32 even_odd,
     v9x_glide_source = v9x_glide_texmem_find(&v9x_glide_texmem, address,
                                              even_odd, &texinfo);
     v9x_glide_source_aspect = texinfo.aspect;
+    /* A source with no download behind it, the first few times: what was
+     * asked, and what the memory holds at that address. */
+    if (v9x_glide_source < 0 && v9x_glide_source_misses_logged < 16ul) {
+        unsigned int i;
+        v9x_u32 held = 0ul;
+        v9x_u32 held_info = 0ul;
+
+        ++v9x_glide_source_misses_logged;
+        for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
+            const V9X_GLIDE_TEXREC *r = &v9x_glide_texmem.records[i];
+
+            if (r->in_use && r->start == address) {
+                ++held;
+                held_info = (r->even_odd << 24) | (r->info.small_lod << 16) |
+                            (r->info.large_lod << 12) | (r->info.aspect << 8) |
+                            r->info.format;
+            }
+        }
+        v9x_glide_log3("source miss: addr=%08lX asked=%08lX held=%lu",
+                       address,
+                       (even_odd << 24) | (texinfo.small_lod << 16) |
+                           (texinfo.large_lod << 12) | (texinfo.aspect << 8) |
+                           texinfo.format,
+                       held);
+        v9x_glide_log3("  held record=%08lX (evenodd<<24 small<<16 large<<12 "
+                       "aspect<<8 format) swap=%lu", held_info, v9x_glide_swaps,
+                       0ul);
+    }
 }
 
 /* A new palette changes every P_8 conversion; its checksum is part of a

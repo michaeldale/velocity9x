@@ -134,10 +134,18 @@ int v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
         return -1;
     }
 
-    /* New bytes over old memory: every texture they touch is gone. */
+    /*
+     * New bytes over old memory: a texture they cover whole is gone. One
+     * they cover in part is still there - TMU memory is bytes, and a later
+     * source reads the rest of it - so it stays, and the DLL patches the
+     * new bytes into its copy (glide_core.c). Carmageddon II's menu
+     * downloads font glyphs over the first bytes of a 64x64 texture and
+     * then draws that texture again; dropping it skipped every menu draw
+     * (netbook, 2026-10-11).
+     */
     for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
         record = &mem->records[i];
-        if (record->in_use && start < record->end && record->start < end) {
+        if (record->in_use && start <= record->start && record->end <= end) {
             v9x_glide_unlink(mem, i);
         }
     }

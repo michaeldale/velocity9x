@@ -174,6 +174,72 @@ static void test_combine(void)
     SCHECK(d.textured && !d.recognized);
 }
 
+/*
+ * Carmageddon II's menu text (netbook, 2026-10-11): colour LOCAL on the
+ * vertex, alpha SCALE_OTHER by TEXTURE_ALPHA with other CONSTANT - the glyph
+ * mask is the texture's alpha. Read as untextured, every glyph drew as a
+ * solid quad. The alpha unit's TEXTURE_ALPHA factor is the texture scaled
+ * by `other`; the colour beside it is approximated by MODULATE and flagged.
+ */
+static void test_texture_alpha_factor(void)
+{
+    V9X_GLIDE_STATE s;
+    V9X_GLIDE_DRAW_SETUP d;
+
+    v9x_glide_state_init(&s, 640ul, 480ul, V9X_GLIDE_ORIGIN_UPPER_LEFT);
+    combine(&s.color, V9X_GLIDE_COMBINE_FUNCTION_LOCAL,
+            V9X_GLIDE_COMBINE_FACTOR_ZERO, V9X_GLIDE_COMBINE_LOCAL_ITERATED,
+            V9X_GLIDE_COMBINE_OTHER_ITERATED);
+    combine(&s.alpha, V9X_GLIDE_COMBINE_FUNCTION_SCALE_OTHER,
+            V9X_GLIDE_COMBINE_FACTOR_TEXTURE_ALPHA,
+            V9X_GLIDE_COMBINE_LOCAL_CONSTANT, V9X_GLIDE_COMBINE_OTHER_CONSTANT);
+
+    /*
+     * Nothing reads the alpha - no blend on it, no alpha test - so the draw
+     * is not textured. Carmageddon II leaves this alpha combine set for
+     * opaque geometry with no texture source at all; taken as textured,
+     * 9.7 million such draws were skipped and the screen went black
+     * (netbook, 2026-10-11). On a Voodoo that alpha goes nowhere.
+     */
+    v9x_glide_state_map(&s, &d);
+    SCHECK(!d.textured);
+    SCHECK(d.color_source == V9X_GLIDE_SOURCE_ITERATED);
+
+    /* The text blends on it: now the texture's alpha is the glyph. */
+    s.blend_src = V9X_GLIDE_BLEND_SRC_ALPHA;
+    s.blend_dst = V9X_GLIDE_BLEND_ONE_MINUS_SRC_ALPHA;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    SCHECK(d.alpha_source == V9X_GLIDE_SOURCE_CONSTANT);
+    SCHECK(d.color_source == V9X_GLIDE_SOURCE_ITERATED);
+    SCHECK(d.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(!d.recognized);
+
+    /* Scaled by the vertex alpha instead: the texture by iterated. */
+    s.alpha.other = V9X_GLIDE_COMBINE_OTHER_ITERATED;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    SCHECK(d.alpha_source == V9X_GLIDE_SOURCE_ITERATED);
+
+    /* An alpha test reads it as well. */
+    s.blend_src = V9X_GLIDE_BLEND_ONE;
+    s.blend_dst = V9X_GLIDE_BLEND_ZERO;
+    s.alpha_func = 4ul;     /* GREATER */
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured);
+    s.alpha_func = V9X_GLIDE_CMP_ALWAYS;
+
+    /* On the colour unit the factor is a texel's alpha scaling a colour,
+     * which no op here says: still unknown, and still untextured unless
+     * the unit names the texture. */
+    s.color = s.alpha;
+    s.alpha.function = V9X_GLIDE_COMBINE_FUNCTION_LOCAL;
+    s.alpha.local = V9X_GLIDE_COMBINE_LOCAL_ITERATED;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(!d.recognized);
+}
+
 static void test_chroma_and_fog(void)
 {
     V9X_GLIDE_STATE s;
@@ -336,6 +402,87 @@ static void test_resolution_and_color(void)
     SCHECK(v9x_glide_color_to_argb(0x80332211ul, 1ul) == 0x80112233ul);
     SCHECK(v9x_glide_color_to_argb(0x11223380ul, 2ul) == 0x80112233ul);
     SCHECK(v9x_glide_color_to_argb(0x33221180ul, 3ul) == 0x80112233ul);
+
+    /* The way back, for grConstantColorValue4's floats: every format. */
+    SCHECK(v9x_glide_argb_to_color(0x80112233ul, 0ul) == 0x80112233ul);
+    SCHECK(v9x_glide_argb_to_color(0x80112233ul, 1ul) == 0x80332211ul);
+    SCHECK(v9x_glide_argb_to_color(0x80112233ul, 2ul) == 0x11223380ul);
+    SCHECK(v9x_glide_argb_to_color(0x80112233ul, 3ul) == 0x33221180ul);
+}
+
+/*
+ * guColorCombineFunction's presets as grColorCombine arguments. Carmageddon
+ * II sets its colour combine only this way; as a stub it left the default
+ * (the vertex colour), and the menu's textured tiles drew in the vertex
+ * colours the game never wrote - black (netbook, 2026-10-11).
+ */
+static void test_gu_color_combine(void)
+{
+    V9X_GLIDE_STATE s;
+    V9X_GLIDE_DRAW_SETUP d;
+
+    v9x_glide_state_init(&s, 640ul, 480ul, V9X_GLIDE_ORIGIN_UPPER_LEFT);
+
+    /* GR_COLORCOMBINE_DECAL_TEXTURE (4): the texture alone. */
+    SCHECK(v9x_glide_gu_color_combine(4ul, &s.color));
+    SCHECK(s.color.function == V9X_GLIDE_COMBINE_FUNCTION_SCALE_OTHER &&
+           s.color.factor == V9X_GLIDE_COMBINE_FACTOR_ONE &&
+           s.color.other == V9X_GLIDE_COMBINE_OTHER_TEXTURE &&
+           s.color.invert == 0ul);
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+
+    /* GR_COLORCOMBINE_TEXTURE_TIMES_ITRGB (6): texture by the vertex. */
+    SCHECK(v9x_glide_gu_color_combine(6ul, &s.color));
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(d.color_source == V9X_GLIDE_SOURCE_ITERATED);
+
+    /* GR_COLORCOMBINE_TEXTURE_TIMES_CCRGB (5): texture by the constant. */
+    SCHECK(v9x_glide_gu_color_combine(5ul, &s.color));
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.color_source == V9X_GLIDE_SOURCE_CONSTANT);
+
+    /* GR_COLORCOMBINE_CCRGB (1) and ITRGB (2): untextured. */
+    SCHECK(v9x_glide_gu_color_combine(1ul, &s.color));
+    s.alpha = s.color;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(!d.textured && d.color_source == V9X_GLIDE_SOURCE_CONSTANT);
+    SCHECK(v9x_glide_gu_color_combine(2ul, &s.color));
+    v9x_glide_state_map(&s, &d);
+    SCHECK(!d.textured && d.color_source == V9X_GLIDE_SOURCE_ITERATED);
+
+    /* GR_COLORCOMBINE_ONE (16): zero, inverted. */
+    SCHECK(v9x_glide_gu_color_combine(16ul, &s.color));
+    SCHECK(s.color.function == V9X_GLIDE_COMBINE_FUNCTION_ZERO &&
+           s.color.invert == 1ul);
+
+    /*
+     * DECAL_TEXTURE with a constant alpha, no blend and no alpha test: the
+     * alpha goes nowhere, so the texture's own is as good as the vertex's
+     * and makes the op one every engine has (REPLACE/REPLACE, DECAL).
+     * Carmageddon II's menu drew this on RGB565 textures and Gen3 refused
+     * REPLACE beside the fragment's alpha (netbook, 2026-10-11).
+     */
+    SCHECK(v9x_glide_gu_color_combine(4ul, &s.color));
+    combine(&s.alpha, V9X_GLIDE_COMBINE_FUNCTION_SCALE_OTHER,
+            V9X_GLIDE_COMBINE_FACTOR_ONE, V9X_GLIDE_COMBINE_LOCAL_CONSTANT,
+            V9X_GLIDE_COMBINE_OTHER_CONSTANT);
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    /* With a blend on the alpha, the constant is the alpha. */
+    s.blend_src = V9X_GLIDE_BLEND_SRC_ALPHA;
+    s.blend_dst = V9X_GLIDE_BLEND_ONE_MINUS_SRC_ALPHA;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    s.blend_src = V9X_GLIDE_BLEND_ONE;
+    s.blend_dst = V9X_GLIDE_BLEND_ZERO;
+
+    /* An unknown preset leaves the combine as it was. */
+    SCHECK(v9x_glide_gu_color_combine(4ul, &s.color));
+    SCHECK(!v9x_glide_gu_color_combine(17ul, &s.color));
+    SCHECK(s.color.other == V9X_GLIDE_COMBINE_OTHER_TEXTURE);
 }
 
 unsigned int v9x_run_glide_state_tests(void)
@@ -345,6 +492,8 @@ unsigned int v9x_run_glide_state_tests(void)
     test_defaults();
     test_depth_and_blend();
     test_combine();
+    test_texture_alpha_factor();
+    test_gu_color_combine();
     test_chroma_and_fog();
     test_chroma_alpha_source();
     test_clip_and_texture();

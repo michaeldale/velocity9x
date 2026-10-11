@@ -46,6 +46,7 @@
 #include "glide_texmem.h"
 #include "glide_surface.h"
 #include "glide_core.h"
+#include "glide_vertex.h"
 
 #define V9X_GLIDE_STUB_HOOK(ix) v9x_glide_stub_called(ix)
 #define V9X_GLIDE_DEFINE_STUBS
@@ -343,6 +344,23 @@ V9X_GLIDE_STATE1(grChromakeyMode, "mode", v9x_glide_state.chroma_mode = value)
 V9X_GLIDE_STATE1(grChromakeyValue, "color",
                  v9x_glide_state.chroma_value = value)
 V9X_GLIDE_STATE1(grFogColorValue, "color", v9x_glide_state.fog_color = value)
+/* The constant colour a combine's CONSTANT reads. Carmageddon II's menu
+ * text takes its alpha from it; as stubs these left it zero and every glyph
+ * drew transparent (netbook, 2026-10-11). */
+V9X_GLIDE_STATE1(grConstantColorValue, "color",
+                 v9x_glide_state.constant_color = value)
+
+void __stdcall grConstantColorValue4(float a, float r, float g, float b)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grConstantColorValue4);
+    v9x_u32 argb = v9x_glide_argb_from_floats(a, r, g, b);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_grConstantColorValue4, argb)) {
+        v9x_glide_logf(V9X_GLIDE_IX_grConstantColorValue4, call,
+                       "argb=%08lX", argb);
+    }
+    v9x_glide_set_constant_argb(argb);
+}
 V9X_GLIDE_STATE1(grFogMode, "mode", v9x_glide_state.fog_mode = value)
 /* Gamma has no render-interface field yet (census, open). */
 V9X_GLIDE_STATE1(grGammaCorrectionValue, "gamma-bits", (void)value)
@@ -392,6 +410,21 @@ void __stdcall grColorCombine(v9x_u32 function, v9x_u32 factor, v9x_u32 local,
     }
     v9x_glide_store_combine(&v9x_glide_state.color, function, factor, local,
                             other, invert);
+}
+
+/* The utility library's colour presets (glide_state.c). Carmageddon II sets
+ * its colour combine only this way; as a stub it left the vertex colour in
+ * force and the menu drew black (netbook, 2026-10-11). An unknown preset is
+ * logged and leaves the combine as it was. */
+void __stdcall guColorCombineFunction(v9x_u32 preset)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_guColorCombineFunction);
+    v9x_u16 known = v9x_glide_gu_color_combine(preset, &v9x_glide_state.color);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_guColorCombineFunction, preset)) {
+        v9x_glide_logf(V9X_GLIDE_IX_guColorCombineFunction, call,
+                       "preset=%lu known=%lu", preset, (v9x_u32)known);
+    }
 }
 
 void __stdcall grAlphaCombine(v9x_u32 function, v9x_u32 factor, v9x_u32 local,
@@ -515,6 +548,26 @@ void __stdcall grTexCombine(v9x_u32 tmu, v9x_u32 rgb_function,
         V9X_GLIDE_COMBINE_FUNCTION_OTHER : rgb_function;
     v9x_glide_state.tex_alpha_function = alpha_invert ?
         V9X_GLIDE_COMBINE_FUNCTION_OTHER : alpha_function;
+}
+
+/*
+ * Only GR_HINT_STWHINT is acted on: its W_DIFF_TMU0 bit gives texturing
+ * TMU 0's own W. Carmageddon II calls this around 180,000 times a run and,
+ * as a stub, nothing said what it asked; its menu text then drew with the
+ * vertex oow it never wrote (netbook, 2026-10-11). Each new value is logged.
+ */
+void __stdcall grHints(v9x_u32 type, v9x_u32 mask)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grHints);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_grHints,
+                        v9x_glide_key(type, mask, 0ul, 0ul))) {
+        v9x_glide_logf(V9X_GLIDE_IX_grHints, call, "type=%lu mask=%08lX",
+                       type, mask);
+    }
+    if (type == V9X_GLIDE_HINT_STWHINT) {
+        v9x_glide_state.stw_hint = mask;
+    }
 }
 
 void __stdcall grTexCombineFunction(v9x_u32 tmu, v9x_u32 function)

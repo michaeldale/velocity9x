@@ -3,9 +3,10 @@
  * (docs\plans\glide-2x-wrapper.md, Phase 1). The game picks every
  * download's start address inside grTexMinAddress..grTexMaxAddress and
  * sizes it with grTexCalcMemRequired; grTexSource names a texture by the
- * same address. Here a download becomes a record; one that overlaps
- * earlier records replaces them, as new bytes over old memory would; and a
- * source is matched to its record. Each record carries a serial so the
+ * same address. Here a download becomes a record; one that covers earlier
+ * records whole replaces them, while one that covers a record in part
+ * leaves it, as new bytes over part of old memory would (the DLL patches
+ * its copy); and a source is matched to its record. Each record carries a serial so the
  * DLL's hardware copy can tell a re-download from the texture it holds.
  *
  * Pure: no Windows headers.
