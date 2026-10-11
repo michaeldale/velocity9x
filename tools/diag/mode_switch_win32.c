@@ -262,6 +262,7 @@ void __stdcall V9xModeSwitchEntry(void)
             v9x_write_text("Result", "FAIL");
         }
         v9x_write_int("ChangeResult", change_result);
+        v9x_flush_results();
         ExitProcess(exit_code);
     }
 
