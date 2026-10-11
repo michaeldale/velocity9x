@@ -40,6 +40,7 @@ void v9x_glide_state_init(V9X_GLIDE_STATE *state, v9x_u32 width,
     state->depth_mode = V9X_GLIDE_DEPTH_DISABLE;
     state->depth_func = 1ul;    /* LESS */
     state->depth_mask = 1ul;
+    state->color_mask = 1ul;
     state->alpha_func = V9X_GLIDE_CMP_ALWAYS;
     state->alpha_ref = 0ul;
     state->blend_src = V9X_GLIDE_BLEND_ONE;
@@ -398,6 +399,14 @@ static void v9x_glide_map_scissor(const V9X_GLIDE_STATE *state,
     }
 }
 
+void v9x_glide_clear_plan(const V9X_GLIDE_STATE *state, int has_aux,
+                          V9X_GLIDE_CLEAR_PLAN *out)
+{
+    out->color = state->color_mask != 0ul ? 1ul : 0ul;
+    out->depth = has_aux && state->depth_mode != V9X_GLIDE_DEPTH_DISABLE &&
+                 state->depth_mask ? 1ul : 0ul;
+}
+
 void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
                          V9X_GLIDE_DRAW_SETUP *out)
 {
@@ -430,7 +439,9 @@ void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
     abi->fog_enable = (source == V9X_GLIDE_FOG_TABLE ||
                        source == V9X_GLIDE_FOG_ITERATED_ALPHA) ? 1ul : 0ul;
     abi->fog_color = state->fog_color & 0x00FFFFFFul;
-    abi->write_mask = V9X_R3D_ABI_WRITE_RGB;
+    /* grColorMask is all three channels or none; its alpha argument has no
+     * buffer to mask, as the targets are RGB565. */
+    abi->write_mask = state->color_mask != 0ul ? V9X_R3D_ABI_WRITE_RGB : 0ul;
     v9x_glide_map_scissor(state, abi);
 
     v9x_glide_map_combine(state, out);

@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.16.1 - not yet released
 
+- **Carmageddon II's menus have their backgrounds.** The game paints
+  each menu's backdrop straight into the frame buffer, then clears only
+  the depth buffer with colour writes masked by `grColorMask`. The Glide
+  DLLs ignored that mask, so the clear painted the backdrop black.
+  `grColorMask` now masks colour for clears and triangles in both
+  `GLIDE2X.DLL` and `GLIDE3X.DLL`, and the depth-only clear stays on the
+  3D engine.
+
 - **Reports say how a game ended.** When a program first uses the HAL,
   the driver now records how it ends: the exit code and the code address
   that called `ExitProcess` or `TerminateProcess`, any message box's

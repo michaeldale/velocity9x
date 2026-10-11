@@ -328,6 +328,21 @@ void __stdcall grClipWindow(v9x_u32 min_x, v9x_u32 min_y, v9x_u32 max_x,
         store;                                                               \
     }
 
+/* grColorMask: rgb masks colour writes, for triangles and for
+ * grBufferClear; alpha has no buffer to mask (RGB565 targets). Carmageddon
+ * II masks colour around its depth-only clear. */
+void __stdcall grColorMask(v9x_u32 rgb, v9x_u32 alpha)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grColorMask);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_grColorMask,
+                        v9x_glide_key(rgb, alpha, 0ul, 0ul))) {
+        v9x_glide_logf(V9X_GLIDE_IX_grColorMask, call, "rgb=%lu alpha=%lu",
+                       rgb, alpha);
+    }
+    v9x_glide_state.color_mask = rgb;
+}
+
 V9X_GLIDE_STATE1(grCullMode, "mode", v9x_glide_state.cull_mode = value)
 /* Not used by NFS II SE (census); no render-interface field. */
 V9X_GLIDE_STATE1(grDepthBiasLevel, "bias", (void)value)

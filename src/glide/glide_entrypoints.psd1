@@ -38,7 +38,7 @@
         @{ Name = 'grChromakeyValue'; Bytes = 4; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grClipWindow'; Bytes = 16; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grColorCombine'; Bytes = 20; Return = 'void'; Kind = 'Written' }
-        @{ Name = 'grColorMask'; Bytes = 8; Return = 'void'; Kind = 'Stub' }
+        @{ Name = 'grColorMask'; Bytes = 8; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grConstantColorValue'; Bytes = 4; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grConstantColorValue4'; Bytes = 16; Return = 'void'; Kind = 'Written' }
         @{ Name = 'grCullMode'; Bytes = 4; Return = 'void'; Kind = 'Written' }
