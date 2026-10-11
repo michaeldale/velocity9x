@@ -1646,6 +1646,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_sis6326;
     case V9X_DD_ENGINE_TYPE_MGA:
         return &v9x_engine32_mga;
+    case V9X_DD_ENGINE_TYPE_TDFX:
+        return &v9x_engine32_tdfx;
     default:
         break;
     }

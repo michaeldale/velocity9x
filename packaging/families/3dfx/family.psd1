@@ -1,8 +1,10 @@
 # Velocity9x family manifest: 3dfx.
 #
-# The VSA-100 (Voodoo4, Voodoo5) at tier-0: the VBE 4F02h mode set programs
-# the card, 4F01h reports where the framebuffer landed, 4F00h its size, and
-# the CPU draws (docs\plans\3dfx-vsa100-family.md, Phase 2). The Voodoo3 is
+# The VSA-100 (Voodoo4, Voodoo5): the VBE 4F02h mode set programs the card
+# and 4F01h reports where the framebuffer landed; memory comes from the chip's
+# straps through BAR2. DirectDraw fill and copy run on the 2D engine (TDFX);
+# everything else is drawn by the CPU (docs\plans\3dfx-vsa100-family.md,
+# Phases 2 and 3). The Voodoo3 is
 # planned as a second chip of this family (docs\plans\3dfx-voodoo3-family.md).
 #
 # The package ships no Glide: the card keeps the GLIDE2X.DLL and GLIDE3X.DLL
@@ -30,8 +32,11 @@
             Adapter = '3dfx VSA-100'
             ClockDetector = 'tdfx-vsa100-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            # The 2D engine through BAR0's 2D block, measured pixel-exact at
+            # 16 bpp (docs\decisions\2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-exact.md).
+            Acceleration = 'directdraw-fill-copy'
+            EngineType = 'TDFX'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # One chip's memory: the Voodoo4 4500's 32 MiB, decoded from
             # dramInit0 under 3dfx's driver
             # (docs\decisions\2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md).
@@ -134,7 +139,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + flip, CPU blits)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy)'
         # The card keeps its own Glide (check-tree requires this of 3dfx).
         GlideWrappers = $false
     }

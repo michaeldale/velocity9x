@@ -2580,6 +2580,96 @@ V9xTdfxReadMemoryRegsDone:
     pop     bp
     retf    4
 V9XTDFXREADMEMORYREGS ENDP
+
+; WORD FAR PASCAL V9xPciReadTdfxMmioBar(DWORD FAR *base)
+; The VSA-100's BAR0, its register space; the 2D block is at +100000h
+; (C8000000h on A8U4I5). A read-only config access; a refusal changes no
+; stage code, because a missing engine must not fail Enable.
+PUBLIC V9XPCIREADTDFXMMIOBAR
+V9XPCIREADTDFXMMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadTdfxMmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadTdfxMmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadTdfxMmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadTdfxMmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadTdfxMmioBarFailed
+    cmp     eax, 0fe000000h
+    ja      short V9xPciReadTdfxMmioBarFailed
+    ; 32 MiB or larger on every VSA-100 board, so at least 32 MiB aligned.
+    test    eax, 01ffffffh
+    jnz     short V9xPciReadTdfxMmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadTdfxMmioBarDone
+V9xPciReadTdfxMmioBarFailed:
+    xor     ax, ax
+V9xPciReadTdfxMmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADTDFXMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniTdfxMmioMap(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_TDFX_MMIO_MAP: the mini-VDD maps BAR0's 2D block, checks it
+; decodes, and returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMINITDFXMMIOMAP
+V9XMINITDFXMMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniTdfxMmioMapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_TDFX_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniTdfxMmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniTdfxMmioMapDone
+V9xMiniTdfxMmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniTdfxMmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINITDFXMMIOMAP ENDP
 ENDIF
 
 IFDEF V9X_MGA_FAMILY

@@ -58,6 +58,14 @@
  * Direct3D still wins when it is selected.
  */
 #define V9X_DD_ENGINE_TYPE_MGA          7ul
+/*
+ * 3dfx VSA-100 2D engine (Voodoo4, Voodoo5), MMIO through BAR0's 2D block:
+ * solid fill and screen copy, built by src\chipsets\tdfx\tdfx_2d.c and
+ * measured pixel-exact on the Voodoo4 4500
+ * (docs\decisions\2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-exact.md).
+ * No Direct3D engine yet, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_TDFX         8ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

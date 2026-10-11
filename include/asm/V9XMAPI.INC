@@ -399,6 +399,19 @@ V9XMINI_FN_SIS_MMIO_MAP     EQU 001Bh
 ; family image implements it; every other image refuses cleanly.
 V9XMINI_FN_MGA_MMIO_MAP     EQU 001Ch
 
+; 3dfx VSA-100: map BAR0's 2D register block and say where.
+;
+; In: EBX = BAR0's physical base, freshly read from PCI config by the display
+; driver. Out: AX=1, EBX = linear address of the 4 KiB 2D block (BAR0 +
+; 100000h), whose offset 0 aliases the status register. AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR, as the SiS and Matrox maps do. The window
+; is handed over only after status read through it is not all ones, which is
+; what a BAR whose decode is off returns. The display driver has matched the
+; chip's PCI identity and read its memory straps through BAR2 before it asks.
+; Only the 3dfx family image implements it; every other image refuses cleanly.
+V9XMINI_FN_TDFX_MMIO_MAP    EQU 001Dh
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

@@ -12,8 +12,11 @@ page (boot 410,
 All 18 published modes switch
 ([mode matrix](../probe/a8u4i5-voodoo4-velocity9x-2026-10-11/mode-matrix-boot410/README.md)),
 so Phase 2's exit gate is met apart from the scanout check, not run. Phase 0
-done; Phase 1 partly done (stock-driver game baseline not run). Next:
-Phase 3, the 2D engine. The retail Voodoo4 4500 AGP
+done; Phase 1 partly done (stock-driver game baseline not run). Phase 3:
+the 2D engine fills and copies pixel-exact and DirectDraw runs on it
+(boot 411,
+[2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md](../decisions/2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md));
+still open there: the GDI acceleration arm, the command FIFO, 8/32 bpp. The retail Voodoo4 4500 AGP
 (32 MiB) is in A8U4I5 on 3dfx 1.04.00, and its first register survey is
 recorded at 640x480
 ([2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md](../decisions/2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)).
