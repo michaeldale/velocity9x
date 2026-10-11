@@ -18,13 +18,11 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.15.0**: the Matrox Millennium, with DirectDraw, GDI
-and text on its drawing engine; OpenGL fog and 112 more OpenGL entry
-points; and two buttons in Display Properties: **Check for updates**,
-which installs a signed newer release in place, and **Send report**,
-which sends the diagnostic files for a GitHub issue. See the
-[changelog](CHANGELOG.md).
-Download it from [releases/0.15.0](releases/0.15.0/README.md).
+**Current version: 0.16.0**: hardware Direct3D on the Matrox Millennium II,
+with Half-Life drawing on it; Glide 3 (`GLIDE3X.DLL`), with Diablo II and
+Rollcage; and Carmageddon II in Glide, on texture memory held as bytes as a
+Voodoo's is. See the [changelog](CHANGELOG.md).
+Download it from [releases/0.16.0](releases/0.16.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
