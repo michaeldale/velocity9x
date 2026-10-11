@@ -275,6 +275,131 @@ reporter also stresses that 0.15.0 got further (past the video) than
 two releases that ends both renderers after about four frames, when the
 D3D process never loads `GLIDE2X.DLL`.
 
+## 2026-10-11: the "before the video" exits were a missing CD; V9X-N1A23B
+
+The reporter had not mounted the game's CD image
+([#5](https://github.com/michaeldale/velocity9x/issues/5)). Every
+0.16.0 session that ended after four swaps (20:22-21:58 guest clock, both
+renderers) was that, not the driver. With the image mounted (V9X-N1A23B,
+Glide, 512 MB by burnmem) the video plays, flickering and corrupted, and
+the game still ends after it.
+
+- **The video is textures, not LFB.** Each frame downloads 15 paletted
+  64x64 tiles (P_8, TMU addresses 0x0000-0xE000), draws each as two
+  triangles stretched to 128x128 in a 5x3 grid (y 48-432), and swaps;
+  the palette is reloaded every 160-210 ms. No `grLfb*` call in any
+  session.
+- **Snapshot (this run):** 10,189 draws, 0 refused at Gen3, 9,540
+  textured, 641 flips over 25 s. The device opened 3 buffers for the
+  game's `colbuf=2`. The frame cover sampled buffer 0x96000 blank both
+  times, and 0x12C000 drawn only in rows 272-472
+  (`Cover0Box=0,272 632,472`). CreateSurface 12,134 times.
+- **Glide log, the earlier complete video session FFFCFF73** (this
+  run's own session is in the last 24 KB the MCP cannot return): 8
+  `hwtex create ... hr=8876017C` (DDERR_OUTOFVIDEOMEMORY) at video start,
+  then `uploads=6819 evictions=6449` for `new=15` textures, so the tiles
+  are evicted and re-created nearly every frame. Three front-buffer
+  clears refused, the last 538 ms before the detach. No
+  `grGlideShutdown`, no failing call, no second `grSstWinOpen`.
+- **This run's own session, FFFC8AF5** (the full log, downloaded by
+  Michael): the same as FFFCFF73. Video from t=49776 to 70193 (112
+  palettes), 641 swaps, `uploads=6251 evictions=5881` for `new=15`, the
+  8 logged `hwtex create ... 8876017C` at t=50991-51008 (the log stops at
+  8; evictions say nearly every upload needed one), a refused
+  front-buffer clear at t=70213, detach 528 ms later, no
+  `grGlideShutdown`.
+- **Not known:** why the game ends (0.16.0 has no process watch); why
+  video memory runs out at 15 small tiles; whether eviction re-uses
+  memory a queued draw still samples (the eviction path flushes the
+  batch, and the async ring may not have run it yet); and whether
+  the third buffer makes the blank frames.
+
+## 2026-10-12: the Steam version runs on the reporter's GMA 900
+
+On [#5](https://github.com/michaeldale/velocity9x/issues/5) the reporter
+tried the Steam version instead of the retail CD, with its bundled Glide
+wrapper renamed so Velocity9x's `GLIDE2X.DLL` is used: it "seems to start
+as it should", renders correctly in game, and the menu backgrounds are
+black. No report was sent from it.
+
+So the exit after the intro belongs to the retail build on this machine,
+not to the driver in general. The retail game runs as SafeDisc's
+`CARMA2_HW.EXE` / `CARMA2_HW.ICD` (seen on the netbook); whether the Steam
+build has SafeDisc is not checked. Black menu backgrounds are not new:
+the menu backdrop is drawn with `grLfbWriteRegion`, and on the netbook
+it came out black too (02cdba8). Still open: the flickering, corrupted
+intro on the 915GM (frame-cover comparison below), and whether the Steam
+build's intro shows it.
+
+## 2026-10-12: the black menu backgrounds were grColorMask, fixed
+
+Each menu frame is one 640x480 `grLfbWriteRegion` of the backdrop, then
+`grColorMask(rgb=0)`, a `grBufferClear`, and `grColorMask(rgb=1)`: a
+depth-only clear. `grColorMask` was a generated stub in `GLIDE2X.DLL` (and
+logged-but-ignored in `GLIDE3X.DLL`), and the clear always wrote colour,
+so it painted the backdrop black. Glidulator's clear honours the mask, as
+the Glide 2 manual says; that is where the idea came from.
+
+Fixed: the mask is Glide state, triangles carry it as the write mask, and
+`v9x_glide_clear_plan` (host test written failing first) decides what a
+clear writes. A depth-only clear is the same engine rectangle blended
+(ZERO, ONE), because Gen3 refuses a partial write mask and the fallback
+is the CPU clear.
+
+Netbook, boot 160, `GLIDE2X.DLL` from this change in the game folder:
+the log shows `grColorMask#1 rgb=0 alpha=0` then `#2 rgb=1 alpha=0`
+around each clear, and an 80x60 HAL frame capture of the race-setup menu
+shows the backdrop where the same screen was black an hour earlier.
+Refusals stayed at the 6 front-buffer ones; the census clear time stayed
+at 11 Mc. Not checked: the reporter's machine and Glide 3 titles.
+
+The game was closed both times without a restart: `WCLOSE` (WM_CLOSE)
+left it running with every LFB lock failing DDERR_SURFACELOST, and a
+one-off `WKILL.EXE` (TerminateProcess) ended it with the desktop back at
+1024x576.
+
+## 2026-10-12: the same intro on MICHAEL-NETBOOK (945GSE), and what it rules out
+
+Boot 160, driver `3947344-dirty` (DRV, VxD, HAL, V9XTRACE; the game
+folder carries its own `GLIDE2X.DLL`, `02cdba8-dirty`, which loads before
+SYSTEM's). Launched as `CARMA2_HW.EXE`, which runs `CARMA2_HW.ICD`: the
+SafeDisc layout, which is why the game ended without its CD.
+
+- **Video memory is not the fault.** `V9XTXQ.EXE` (new probe) repeats
+  the Glide DLL's setup on the netbook - exclusive 640x480x16, three
+  buffers, Z16 - and then creates 64x64 ARGB1555 textures until one
+  fails: 370 of them, each a 12,288-byte block at pitch 128, from 4.55 MB
+  free. The cache keeps up to 1,024 surfaces, and every video frame
+  uploads 15 new tile images, so after about 25 frames the heap is full
+  of old frames' tiles and each new one evicts the oldest. Evictions
+  matching uploads is that, not a 14-tile limit, and the evicted tiles
+  are about 25 frames old. The netbook's log shows the same pattern
+  (25,569 uploads, 25,120 evictions) and its intro plays and reaches the
+  menu.
+- **The frames differ between the two machines.** The frame cover
+  samples the same flips on both (sequence 2, 100, 197, 295 of the
+  session):
+
+  | Flip | Netbook (945GSE) | Reporter (915GM, V9X-N1A23B) |
+  |---|---|---|
+  | 100 (0x96000) | 3,280 of 4,800 drawn, box 0,80-632,400 | 0 drawn |
+  | 197 (0x12C000) | 3,280 drawn, box 0,80-632,400 | 1,688 drawn, box 0,272-632,472 |
+  | 295 (0x96000) | 706 drawn, box 56,176-488,328 | 0 drawn |
+
+  On the netbook the video area is drawn in every sampled frame; on the
+  915GM half the samples are empty and the other half has only the lower
+  part, extending past the grid's bottom edge (432). That matches
+  "flickering and corrupted" and points at something specific to the
+  GMA 900. Engine caps differ by `V9X_DD_ENGINE_CAP_I9XX_MIP_STACKED`
+  (915: 0xA614, 945: 0x3614, which also differ in the VSync bits).
+  Not yet traced; there is no 915 hardware here.
+- **The process watch on a SafeDisc game:** `CARMA2_HW.ICD` was watched
+  (`Watch1Hooks=0x100`, the fault filter) but no import slot was
+  replaced. SafeDisc resolves the program's imports through its own
+  stubs, so its address table holds no KERNEL32 address. The game ran
+  past the intro into the menu with the watch in place. For such a
+  program only the detach record and the fault filter apply.
+
 ## 2026-10-11: the HAL now records how each program ends
 
 `src/display32/ddhal_watch.c`, with the import walk in
