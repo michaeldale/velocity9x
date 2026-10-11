@@ -229,6 +229,11 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-05 SiS 6326: DirectDraw fills and copies on the 2D engine, across mode changes](2026-10-05-sis6326-engine-under-directdraw.md)
 - [2026-10-05 SiS 6326 3D: first triangles, the direction bit, sampling and ties](2026-10-05-sis6326-3d-first-triangle.md)
 
+## 3dfx
+
+- [2026-10-11 What VelocityNT measured on the Mini-Me VSA-100](2026-10-11-what-velocitynt-measured-on-the-mini-me-vsa100.md)
+- [2026-10-11 The Voodoo4's stock driver tiles its desktop at the top of memory](2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)
+
 ## NVIDIA and other surveyed cards
 
 - [2026-09-11 The GD5430 reads its own memory size, and its BIOS mode table needs reading carefully](2026-09-11-cirrus-gd5430-memory-and-mode-table.md)
