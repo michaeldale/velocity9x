@@ -1710,6 +1710,8 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026101101: V9X_D3D_DIAGNOSTICS gains the process watch (how each
+ * program using the HAL ended, ddhal_watch.c). An append. */
 /* 2026101001: V9X_D3D_DIAGNOSTICS gains the refused-blend table and the
  * MGA setup stages. An append. */
 /* 2026100701: V9X_D3D_DIAGNOSTICS gains dp2_clear2_engine_color. An
@@ -1840,7 +1842,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026101001ul
+#define V9X_DD_SHARED_ABI   2026101101ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2070,6 +2072,97 @@ typedef struct v9x_d3d_blt_flip_record {
 #define V9X_D3D_MGA_SETUP_RHW       1
 #define V9X_D3D_MGA_SETUP_SPLIT     2
 #define V9X_D3D_MGA_SETUP_BUILD     3
+
+/*
+ * How each program that loads the HAL ended (src\display32\ddhal_watch.c).
+ *
+ * The Carmageddon II reports of 2026-10-11 ended with the driver's counters
+ * clean and nothing to say whether the game quit, crashed, or showed a
+ * message first, nor what memory it was told it had. The HAL replaces the
+ * program's import slots for ExitProcess, TerminateProcess, MessageBoxA and
+ * SetUnhandledExceptionFilter when it attaches, and records here.
+ *
+ * Processes take the next of V9X_WATCH_PROCESS_SLOTS in turn, so the game
+ * survives a launcher before it and DDHELP after it. Each record's pid ties
+ * it to a slot.
+ */
+#define V9X_WATCH_PROCESS_SLOTS 4
+#define V9X_WATCH_NAME_BYTES    16
+#define V9X_WATCH_CAPTION_BYTES 32
+#define V9X_WATCH_TEXT_BYTES    96
+
+/* hooks: which imports had a slot replaced in the program's image. The
+ * high bits say why a watch did not start. */
+#define V9X_WATCH_HOOK_EXIT_PROCESS   0x0001ul
+#define V9X_WATCH_HOOK_TERMINATE      0x0002ul
+#define V9X_WATCH_HOOK_MESSAGE_BOX    0x0004ul
+#define V9X_WATCH_HOOK_FILTER         0x0008ul
+#define V9X_WATCH_FILTER_INSTALLED    0x0100ul /* the HAL's fault filter is set */
+#define V9X_WATCH_FAILED_HEADERS      0x1000ul /* image unreadable or not PE32  */
+#define V9X_WATCH_FAILED_WALK         0x2000ul /* the import walk stopped early */
+#define V9X_WATCH_FAILED_PROTECT      0x4000ul /* VirtualProtect refused a slot */
+
+/* ended */
+#define V9X_WATCH_ENDED_RUNNING       0ul
+#define V9X_WATCH_ENDED_UNLOADED      1ul /* FreeLibrary; the program went on */
+#define V9X_WATCH_ENDED_TERMINATED    2ul /* detach during process exit       */
+
+/* exit_via */
+#define V9X_WATCH_EXIT_PROCESS        1ul
+#define V9X_WATCH_EXIT_TERMINATE      2ul
+
+typedef struct v9x_watch_process {
+    DWORD pid;
+    DWORD image;            /* the program's module base                 */
+    DWORD hooks;            /* V9X_WATCH_HOOK_* and V9X_WATCH_FAILED_*   */
+    DWORD attach_tick;
+    DWORD ended;            /* V9X_WATCH_ENDED_*                         */
+    DWORD ended_tick;
+    /* GlobalMemoryStatus at attach: what the program will be told. */
+    DWORD memory_load;
+    DWORD total_phys;
+    DWORD avail_phys;
+    DWORD total_page_file;
+    DWORD avail_page_file;
+    DWORD total_virtual;
+    DWORD avail_virtual;
+    char name[V9X_WATCH_NAME_BYTES]; /* the program's file name          */
+} V9X_WATCH_PROCESS;
+
+typedef struct v9x_watch {
+    DWORD next_slot;
+    V9X_WATCH_PROCESS processes[V9X_WATCH_PROCESS_SLOTS];
+    /* The latest ExitProcess, or TerminateProcess of the caller itself. The
+     * caller is the return address; caller_module is the base of the module
+     * it lies in, so caller - caller_module is an offset to disassemble. */
+    DWORD exit_via;         /* V9X_WATCH_EXIT_*                          */
+    DWORD exit_pid;
+    DWORD exit_code;
+    DWORD exit_caller;
+    DWORD exit_caller_module;
+    DWORD exit_tick;
+    /* The latest MessageBoxA, recorded before it is shown. */
+    DWORD message_count;
+    DWORD message_pid;
+    DWORD message_type;     /* uType                                     */
+    DWORD message_caller;
+    DWORD message_caller_module;
+    DWORD message_tick;
+    char message_caption[V9X_WATCH_CAPTION_BYTES];
+    char message_text[V9X_WATCH_TEXT_BYTES];
+    /* SetUnhandledExceptionFilter calls the HAL kept its filter through:
+     * the program's filter is called after the HAL's records the fault. */
+    DWORD filter_count;
+    DWORD filter_pid;
+    DWORD filter_last;      /* the program's filter                      */
+    DWORD filter_caller;
+    /* The latest fault the HAL's filter saw, by process. */
+    DWORD fault_pid;
+    DWORD fault_code;
+    DWORD fault_address;
+    DWORD fault_module;
+    DWORD fault_tick;
+} V9X_WATCH;
 
 typedef struct v9x_d3d_diagnostics {
     DWORD context_creates;
@@ -3503,6 +3596,8 @@ typedef struct v9x_d3d_diagnostics {
      * a vertex outside the setup's range, a 1/w not positive under a
      * texture, the trapezoid setup, the register builder. */
     DWORD mga_setup_refused[V9X_D3D_MGA_SETUP_STAGES];
+    /* How each program using the HAL ended (V9X_WATCH above). */
+    V9X_WATCH watch;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

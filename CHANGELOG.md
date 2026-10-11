@@ -6,6 +6,18 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.16.1 - not yet released
 
+- **Reports say how a game ended.** When a program first uses the HAL,
+  the driver now records how it ends: the exit code and the code address
+  that called `ExitProcess` or `TerminateProcess`, any message box's
+  caption and text, a fault's address, and whether the process exited or
+  only unloaded the driver. Each record also keeps the memory Windows
+  reported to the program. A game that installs its own fault handler no
+  longer removes the driver's; both run. `V9XTRACE` writes these as the
+  `Watch*` keys, and the Glide logs say whether the process was exiting
+  when Glide detached. Prompted by Carmageddon II reports that ended with
+  nothing recorded
+  ([issue](docs/issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)).
+
 ## 0.16.0 - 2026-10-11
 
 0.15.1 was never released; its changes are in this version.

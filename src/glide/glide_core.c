@@ -1661,8 +1661,13 @@ int v9x_glide_core_attach(const char *log_path, const char *const *names,
     return 1;
 }
 
-void v9x_glide_core_detach(void)
+void v9x_glide_core_detach(int terminating)
 {
+    /* Whether the program is exiting or only unloading the DLL: Carmageddon
+     * II's sessions of 2026-10-11 detached with no grGlideShutdown, and the
+     * log could not say which. */
+    v9x_glide_log3("detach: process exiting=%lu", (v9x_u32)(terminating != 0),
+                   0ul, 0ul);
     v9x_glide_summary("detach");
     if (v9x_glide_lfb != 0) {
         VirtualFree(v9x_glide_lfb, 0, MEM_RELEASE);

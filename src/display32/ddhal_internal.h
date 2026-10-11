@@ -345,6 +345,21 @@ void v9x_trace_enter(WORD id, DWORD detail);
 void v9x_trace_exit(WORD id, DWORD result);
 void v9x_trace_flush_fault(DWORD code, DWORD address);
 
+/*
+ * How each program using the HAL ends, in ddhal_watch.c (V9X_WATCH in
+ * win9x_ddraw_abi.h). attach and detach run from the DLL entry in each
+ * process that loads the HAL; note, from the first CreateSurface, Direct3D
+ * context or render-interface describe, loads it into a program that only
+ * calls it. DriverInit calls install_filter where it used to set the fault
+ * filter itself, and publish once v9x_hal is set, for a process that
+ * attached before any DriverInit had run.
+ */
+void v9x_watch_attach(HINSTANCE instance);
+void v9x_watch_detach(int terminating);
+void v9x_watch_note(void);
+void v9x_watch_install_filter(void);
+void v9x_watch_publish(void);
+
 /* ViRGE engine access, in ddhal.c. */
 void v9x_mmio_write(DWORD offset, DWORD value);
 int v9x_engine_status_validated(void);

@@ -51,6 +51,8 @@ function Get-V9xHostSourceNames {
         # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
+        # PE32 import-slot walk, same terms; the HAL's process-exit watch.
+        'src\common\pe_import.c',
         # Shared Mach64 FIFO, wait, reset/replay and coherence policy.
         'src\chipsets\ati\mach64_engine.c',
         # Mach64 draw acceptance: the measured Phase 4 boundary.
@@ -80,6 +82,7 @@ function Get-V9xHostSourceNames {
         # Glide's EXT_HWC escape: request decode and reply, no I/O.
         'src\chipsets\tdfx\tdfx_hwc.c',
         'tests\host\test_pe_export.c',
+        'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
         'tests\host\test_gl_dispatch.c',

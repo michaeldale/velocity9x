@@ -74,6 +74,9 @@ $sources = @(
     # pure, and host-tested in tests\host\test_pe_export.c. The HAL uses it
     # to reach KERNEL32's Win16-mutex ordinals, which GetProcAddress refuses.
     "src\common\pe_export.c",
+    # PE32 import-slot walk, same terms (tests\host\test_pe_import.c): which
+    # of the program's import slots the process watch replaces.
+    "src\common\pe_import.c",
     # The [Velocity9x] VSync rule the flip path asks per flip: pure, and
     # host-tested in tests\host\test_vsync.c.
     "src\common\vsync.c",
@@ -81,6 +84,8 @@ $sources = @(
     # The Win16 mutex measurement: resolves _ConfirmWin16Lock through the
     # walk above and counts its answer at six callback entry points.
     "src\display32\win16lock.c",
+    # How each program using the HAL ends: exit, message box, fault filter.
+    "src\display32\ddhal_watch.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",
     # The Intel pipe controls and the dispatch between them and the VGA ones.

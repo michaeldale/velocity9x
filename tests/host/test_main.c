@@ -26,6 +26,10 @@ unsigned int v9x_run_vbe_parse_tests(void);
  * synthetic image, same convention. */
 unsigned int v9x_run_pe_export_tests(void);
 
+/* tests\host\test_pe_import.c: the PE32 import-slot walk against a
+ * synthetic image, same convention. */
+unsigned int v9x_run_pe_import_tests(void);
+
 /* tests\host\test_gl_dispatch.c: the generated OpenGL dispatch table's
  * order, shape and typed stubs, same convention. */
 unsigned int v9x_run_gl_dispatch_tests(void);
@@ -1229,6 +1233,7 @@ int main(int argc, char **argv)
     failures += v9x_run_inflate_tests();
     failures += v9x_run_update_inf_tests();
     failures += v9x_run_pe_export_tests();
+    failures += v9x_run_pe_import_tests();
     failures += v9x_run_gl_dispatch_tests();
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vsync_tests();

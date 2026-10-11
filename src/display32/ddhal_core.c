@@ -372,20 +372,6 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
     v9x_fault_flush_active = 0;
 }
 
-static LONG WINAPI v9x_unhandled_exception_filter(
-    struct _EXCEPTION_POINTERS *exception)
-{
-    DWORD code = 0ul;
-    DWORD address = 0ul;
-
-    if (exception != 0 && exception->ExceptionRecord != 0) {
-        code = exception->ExceptionRecord->ExceptionCode;
-        address = (DWORD)exception->ExceptionRecord->ExceptionAddress;
-    }
-    v9x_trace_flush_fault(code, address);
-    return EXCEPTION_CONTINUE_SEARCH;
-}
-
 /*
  * Consume one armed fault injection, if any.
  *
@@ -1035,6 +1021,9 @@ DWORD __stdcall V9xHalCreateSurface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD handled;
     DWORD started = V9X_TIME_BEGIN();
 
+    /* Every DirectDraw program creates a surface: the first one starts
+     * the process watch in it (ddhal_watch.c). */
+    v9x_watch_note();
     v9x_trace_enter(V9X_TRACE_CREATESURFACE,
                     data != 0 ? data->dwSCnt : 0ul);
     v9x_win16_sample(V9X_WIN16_SITE_CREATESURFACE);
@@ -2142,7 +2131,10 @@ DWORD __stdcall DriverInit(DWORD context)
     }
     v9x_hal = shared;
     v9x_hal_tsc = v9x_detect_tsc();
-    SetUnhandledExceptionFilter(v9x_unhandled_exception_filter);
+    /* The fault filter, kept beneath the program's own (ddhal_watch.c), and
+     * this process's watch record if it attached before any v9x_hal. */
+    v9x_watch_install_filter();
+    v9x_watch_publish();
     /* The Win16 mutex instrument: resolved from this process's KERNEL32
      * mapping, which is the same in every process. */
     v9x_win16_resolve();
@@ -2370,9 +2362,13 @@ DWORD __stdcall DriverInit(DWORD context)
 
 BOOL __stdcall V9xHalEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
-    (void)instance;
-    (void)reason;
-    (void)reserved;
+    /* How each program using the HAL ends (ddhal_watch.c). A non-null
+     * reserved at detach means the process is exiting, not FreeLibrary. */
+    if (reason == DLL_PROCESS_ATTACH) {
+        v9x_watch_attach(instance);
+    } else if (reason == DLL_PROCESS_DETACH) {
+        v9x_watch_detach(reserved != 0);
+    }
     /* Keep the linker-visible reference to the build marker. */
     return v9x_hal_build_id[0] != '\0';
 }

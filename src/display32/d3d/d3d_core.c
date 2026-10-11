@@ -727,6 +727,9 @@ static void v9x_d3d_note_process(v9x_u32 kind)
     char path[MAX_PATH];
     char name[V9X_DIAG_PROCESS_NAME_BYTES];
 
+    /* A Glide or OpenGL program may reach the HAL here before any
+     * CreateSurface: start its process watch (ddhal_watch.c). */
+    v9x_watch_note();
     if (v9x_hal == 0) {
         return;
     }

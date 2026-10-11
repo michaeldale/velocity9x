@@ -835,7 +835,6 @@ void __stdcall grDrawPoint(const v9x_u32 *a)
 
 BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
-    (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         /* The program and the build every later line is read against. */
         char path[MAX_PATH];
@@ -860,7 +859,7 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
                   now.wSecond, GetTickCount(), path);
         v9x_glide_log(text);
     } else if (reason == DLL_PROCESS_DETACH) {
-        v9x_glide_core_detach();
+        v9x_glide_core_detach(reserved != 0);
     }
     return TRUE;
 }
