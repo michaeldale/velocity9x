@@ -631,6 +631,37 @@ v9x_u32 __stdcall grTexCalcMemRequired(v9x_u32 lodmin, v9x_u32 lodmax,
     return total;
 }
 
+/*
+ * The bytes a GrTexInfo takes in texture memory, for the levels evenOdd
+ * selects. Carmageddon II places each texture at the previous one's start
+ * plus this; as a stub it returned zero, every texture went to address 0
+ * over the last, and the menu's text drew from the wrong texels as a grid
+ * of dots (netbook, 2026-10-11).
+ */
+v9x_u32 __stdcall grTexTextureMemRequired(v9x_u32 even_odd, const v9x_u32 *info)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grTexTextureMemRequired);
+    V9X_GLIDE_TEXINFO texinfo;
+    v9x_u32 total;
+
+    if (info == 0) {
+        return 0ul;
+    }
+    texinfo.small_lod = info[0];
+    texinfo.large_lod = info[1];
+    texinfo.aspect = info[2];
+    texinfo.format = info[3];
+    total = v9x_glide_texmem_required(&texinfo, even_odd);
+    if (v9x_glide_noted(V9X_GLIDE_IX_grTexTextureMemRequired,
+                        v9x_glide_key(even_odd, info[0] ^ (info[1] << 8),
+                                      info[2], info[3]))) {
+        v9x_glide_logf(V9X_GLIDE_IX_grTexTextureMemRequired, call,
+                       "evenodd=%lu lod=%lu..%lu aspect=%lu format=%lu -> %lu",
+                       even_odd, info[1], info[0], info[2], info[3], total);
+    }
+    return total;
+}
+
 /* GrTexInfo: smallLod, largeLod, aspectRatio, format, data. */
 static v9x_u32 v9x_glide_info_key(v9x_u32 address, const v9x_u32 *info)
 {
@@ -751,13 +782,9 @@ v9x_u32 __stdcall grLfbWriteRegion(v9x_u32 buffer, v9x_u32 x, v9x_u32 y,
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grLfbWriteRegion);
 
-    if (v9x_glide_sampled(call)) {
-        v9x_glide_logf(V9X_GLIDE_IX_grLfbWriteRegion, call,
-                       "buffer=%lu at=%lu,%lu format=%lu size=%lux%lu stride=%ld data=%08lX",
-                       buffer, x, y, src_format, width, height,
-                       (long)src_stride, (v9x_u32)data);
-    }
-    return V9X_GLIDE_TRUE;
+    return v9x_glide_lfb_write(V9X_GLIDE_IX_grLfbWriteRegion, call, buffer,
+                               x, y, src_format, width, height, src_stride,
+                               (const v9x_u8 *)data);
 }
 
 /* ---- drawing ------------------------------------------------------- */

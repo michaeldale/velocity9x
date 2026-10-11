@@ -131,6 +131,8 @@ void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
 
     if (setup->color_source == V9X_GLIDE_SOURCE_CONSTANT) {
         rgb = setup->constant_argb & 0x00FFFFFFul;
+    } else if (setup->color_source == V9X_GLIDE_SOURCE_WHITE) {
+        rgb = 0x00FFFFFFul;
     } else {
         rgb = (v9x_glide_byte(in[V9X_GLIDE_VERTEX_R]) << 16) |
               (v9x_glide_byte(in[V9X_GLIDE_VERTEX_G]) << 8) |

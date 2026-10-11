@@ -113,6 +113,12 @@ static v9x_u32 v9x_glide_drawn;
 static v9x_u32 v9x_glide_refused;
 static v9x_u32 v9x_glide_culled;
 static v9x_u32 v9x_glide_skipped_textured;
+/* grTexSource calls, and those that read texture memory again because the
+ * entry was new or its bytes had been written: the census line that says
+ * whether a game makes the texture cache work. */
+static v9x_u32 v9x_glide_source_calls;
+static v9x_u32 v9x_glide_source_refills;
+static v9x_u32 v9x_glide_source_news;
 static v9x_u32 v9x_glide_unrecognized_logged;
 static v9x_u32 v9x_glide_fog_dropped;
 static v9x_u32 v9x_glide_uploads;
@@ -297,6 +303,10 @@ void v9x_glide_summary(const char *why)
               v9x_glide_fog_dropped, v9x_glide_uploads, v9x_glide_surface_hits,
               v9x_glide_surface_evictions);
     v9x_glide_log(text);
+    wsprintfA(text, "census   sources: calls=%lu refills=%lu new=%lu",
+              v9x_glide_source_calls, v9x_glide_source_refills,
+              v9x_glide_source_news);
+    v9x_glide_log(text);
     {
         /* Megacycles (2^20) since the last summary, then cleared. */
         v9x_u32 mc[V9X_GLIDE_PROF_COUNT];
@@ -398,8 +408,9 @@ static void v9x_glide_note_unrecognized(const V9X_GLIDE_DRAW_SETUP *setup)
  * through `surface_slot` (an index plus one) while `surface_stamp` still
  * matches the slot's.
  */
+/* A source's decoded texture, one per texture-memory cache entry: `raw` is
+ * its largest level as read from texture memory. */
 typedef struct v9x_glide_texture {
-    v9x_u32 serial;
     v9x_u8 *raw;
     v9x_u32 sum;
     v9x_u32 width;
@@ -456,6 +467,8 @@ static v9x_u32 v9x_glide_surface_stamp;
 static v9x_u32 v9x_glide_use_clock;
 static int v9x_glide_source = -1;
 static v9x_u32 v9x_glide_source_misses_logged;
+/* The TMU's bytes (glide_texmem.h), committed at attach as the tables are. */
+static v9x_u8 *v9x_glide_tmu_bytes;
 static v9x_u32 v9x_glide_source_address;
 static v9x_u32 v9x_glide_source_aspect = V9X_GLIDE_ASPECT_1X1;
 static v9x_u32 v9x_glide_palette[V9X_GLIDE_PALETTE_ENTRIES];
@@ -892,7 +905,7 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
     }
     record = &v9x_glide_texmem.records[v9x_glide_source];
     texture = &v9x_glide_textures[v9x_glide_source];
-    if (!record->in_use || texture->serial != record->serial) {
+    if (!record->in_use) {
         return v9x_glide_skip(2ul, record->start);
     }
     if (texture->raw == 0) {
@@ -936,108 +949,22 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
     return 1;
 }
 
-/*
- * A download's bytes into the copies of textures it lies partly over, which
- * texture memory keeps (glide_texmem.c): the overlap, within the largest
- * level of both, since that is all either copy holds. The copy's
- * conversion and hardware surface are dropped, so the next draw converts
- * and uploads the patched texels.
- */
-static void v9x_glide_patch_overlaps(int index, v9x_u32 start, v9x_u32 end,
-                                     const v9x_u8 *data, v9x_u32 data_bytes)
-{
-    unsigned int i;
-
-    for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
-        const V9X_GLIDE_TEXREC *r = &v9x_glide_texmem.records[i];
-        V9X_GLIDE_TEXTURE *texture = &v9x_glide_textures[i];
-        v9x_u32 from;
-        v9x_u32 to;
-        v9x_u32 raw_bytes;
-        v9x_u32 k;
-
-        if ((int)i == index || !r->in_use || texture->raw == 0 ||
-            texture->serial != r->serial ||
-            !(start < r->end && r->start < end)) {
-            continue;
-        }
-        from = start > r->start ? start : r->start;
-        to = end < r->end ? end : r->end;
-        raw_bytes = texture->width * texture->height *
-                    (texture->format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
-        for (k = from; k < to; ++k) {
-            if (k - r->start >= raw_bytes || k - start >= data_bytes) {
-                break;
-            }
-            texture->raw[k - r->start] = data[k - start];
-        }
-        texture->sum = v9x_glide_sum_bytes(texture->raw, raw_bytes);
-        texture->variant = 0ul;
-        texture->surface_slot = 0ul;
-    }
-}
-
-/* grTexDownloadMipMap's texels into the record's entry: the largest
- * level, which is the first in the game's data when the even/odd mask
- * includes it. NFS II SE downloads single levels with both (census). */
+/* grTexDownloadMipMap: bytes into texture memory, and nothing else. What a
+ * texture looks like is decided when it is sourced (glide_texmem.h). A
+ * held batch may sample a texture these bytes will change, so it goes
+ * first. */
 void v9x_glide_texture_download(v9x_u32 address, v9x_u32 even_odd,
                                 const v9x_u32 *info)
 {
     V9X_GLIDE_TEXINFO texinfo;
-    V9X_GLIDE_TEXTURE *texture;
-    const v9x_u8 *data;
-    v9x_u32 parity;
-    v9x_u32 width;
-    v9x_u32 height;
-    v9x_u32 bytes;
-    v9x_u32 i;
-    int index;
 
     v9x_glide_flush();
     texinfo.small_lod = info[0];
     texinfo.large_lod = info[1];
     texinfo.aspect = info[2];
     texinfo.format = info[3];
-    data = (const v9x_u8 *)info[4];
-    index = v9x_glide_texmem_download(&v9x_glide_texmem, address, even_odd,
-                                      &texinfo);
-
-    /* Entries whose records the download overwrote, or that it reused. */
-    for (i = 0ul; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
-        if (v9x_glide_textures[i].serial != 0ul &&
-            (!v9x_glide_texmem.records[i].in_use ||
-             v9x_glide_texmem.records[i].serial != v9x_glide_textures[i].serial)) {
-            v9x_glide_texture_free(&v9x_glide_textures[i]);
-        }
-    }
-    if (index < 0) {
-        return;
-    }
-    texture = &v9x_glide_textures[index];
-    texture->serial = v9x_glide_texmem.records[index].serial;
-    parity = (texinfo.large_lod & 1ul) ? V9X_GLIDE_MIPMAPLEVELMASK_ODD :
-                                         V9X_GLIDE_MIPMAPLEVELMASK_EVEN;
-    if (data == 0 || (even_odd & parity) == 0ul ||
-        !v9x_glide_texfmt_supported(texinfo.format) ||
-        !v9x_glide_level_size(texinfo.large_lod, texinfo.aspect, &width, &height)) {
-        return;
-    }
-    bytes = width * height * (texinfo.format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
-    v9x_glide_patch_overlaps(index, address,
-                             address + v9x_glide_texmem_required(&texinfo,
-                                                                 even_odd),
-                             data, bytes);
-    texture->raw = (v9x_u8 *)v9x_glide_alloc(bytes);
-    if (texture->raw == 0) {
-        return;
-    }
-    for (i = 0ul; i < bytes; ++i) {
-        texture->raw[i] = data[i];
-    }
-    texture->sum = v9x_glide_sum_bytes(texture->raw, bytes);
-    texture->width = width;
-    texture->height = height;
-    texture->format = texinfo.format;
+    (void)v9x_glide_texmem_download(&v9x_glide_texmem, address, even_odd,
+                                    &texinfo, (const v9x_u8 *)info[4]);
 }
 
 static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
@@ -1441,6 +1368,63 @@ v9x_u32 v9x_glide_lfb_read(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
     return V9X_GLIDE_TRUE;
 }
 
+/*
+ * grLfbWriteRegion copies 16-bit 565 pixels into a colour buffer; the
+ * pixel pipeline is not applied, as on the Voodoo. Carmageddon II draws its
+ * menu backdrop with one 640x480 write a frame; as a stub the menu showed
+ * only what the triangles drew (netbook, 2026-10-11). Other source formats
+ * are refused until a title needs one.
+ */
+v9x_u32 v9x_glide_lfb_write(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
+                            v9x_u32 x, v9x_u32 y, v9x_u32 src_format,
+                            v9x_u32 width, v9x_u32 height,
+                            v9x_u32 src_stride, const v9x_u8 *src)
+{
+    v9x_u8 *pixels;
+    void *base;
+    v9x_u32 pitch;
+    v9x_u32 row;
+    v9x_u32 column;
+
+    if (v9x_glide_sampled(call)) {
+        v9x_glide_logf(ix, call,
+                       "buffer=%lu at=%lu,%lu format=%lu size=%lux%lu stride=%ld data=%08lX",
+                       buffer, x, y, src_format, width, height,
+                       (long)src_stride, (v9x_u32)src);
+    }
+    if (src == 0 || src_format != V9X_GLIDE_LFB_WRITE_565 ||
+        (buffer != V9X_GLIDE_BUFFER_FRONT && buffer != V9X_GLIDE_BUFFER_BACK) ||
+        src_stride < width * 2ul || !v9x_glide_device_is_open()) {
+        return V9X_GLIDE_FALSE;
+    }
+
+    /* Clipped to the screen: the Voodoo drops writes past its edge. */
+    if (x >= v9x_glide_state.width || y >= v9x_glide_state.height) {
+        return V9X_GLIDE_TRUE;
+    }
+    if (width > v9x_glide_state.width - x) {
+        width = v9x_glide_state.width - x;
+    }
+    if (height > v9x_glide_state.height - y) {
+        height = v9x_glide_state.height - y;
+    }
+
+    /* Held triangles land first, so the write covers what came before it. */
+    v9x_glide_flush();
+    if (!v9x_glide_device_lock(buffer, 0, &base, &pitch)) {
+        return V9X_GLIDE_FALSE;
+    }
+    pixels = (v9x_u8 *)base;
+    for (row = 0ul; row < height; ++row) {
+        for (column = 0ul; column < width * 2ul; ++column) {
+            pixels[(y + row) * pitch + x * 2ul + column] =
+                src[row * src_stride + column];
+        }
+    }
+    v9x_glide_device_unlock(buffer);
+    return V9X_GLIDE_TRUE;
+}
+
 /* ---- the window, the frame and texture state ---------------------- */
 
 int v9x_glide_open(void *window, v9x_u32 resolution, v9x_u32 color_format,
@@ -1523,11 +1507,60 @@ void v9x_glide_set_constant_argb(v9x_u32 argb)
         v9x_glide_argb_to_color(argb, v9x_glide_color_format);
 }
 
-/* The record the draws sample until the next source; one TMU. */
+/*
+ * An entry's copy of its largest level, read from texture memory: the
+ * first bytes of its span when even_odd includes that level. A level the
+ * TMU does not hold, or a format not converted, leaves no copy, and the
+ * draws say so (v9x_glide_texture_bind). The conversion and the hardware
+ * surface are dropped, so the next draw converts and uploads these texels.
+ */
+static void v9x_glide_texture_refill(V9X_GLIDE_TEXTURE *texture,
+                                     v9x_u32 address, v9x_u32 even_odd,
+                                     const V9X_GLIDE_TEXINFO *texinfo)
+{
+    v9x_u32 parity = (texinfo->large_lod & 1ul) ? V9X_GLIDE_MIPMAPLEVELMASK_ODD :
+                                                  V9X_GLIDE_MIPMAPLEVELMASK_EVEN;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 bytes;
+    v9x_u32 i;
+
+    texture->variant = 0ul;
+    texture->surface_slot = 0ul;
+    if ((even_odd & parity) == 0ul ||
+        !v9x_glide_texfmt_supported(texinfo->format) ||
+        !v9x_glide_level_size(texinfo->large_lod, texinfo->aspect, &width,
+                              &height)) {
+        v9x_glide_free(texture->raw);
+        texture->raw = 0;
+        return;
+    }
+    bytes = width * height *
+            (texinfo->format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
+    if (texture->raw == 0) {
+        texture->raw = (v9x_u8 *)v9x_glide_alloc(bytes);
+        if (texture->raw == 0) {
+            return;
+        }
+    }
+    for (i = 0ul; i < bytes; ++i) {
+        texture->raw[i] = v9x_glide_texmem.bytes[address + i];
+    }
+    texture->sum = v9x_glide_sum_bytes(texture->raw, bytes);
+    texture->width = width;
+    texture->height = height;
+    texture->format = texinfo->format;
+}
+
+/* The entry the draws sample until the next source; one TMU. A new entry
+ * starts empty and a stale one is read again; either way a held batch,
+ * which may point at the old texels, is drawn first. */
 void v9x_glide_texture_source(v9x_u32 address, v9x_u32 even_odd,
                               const v9x_u32 *info)
 {
     V9X_GLIDE_TEXINFO texinfo;
+    V9X_GLIDE_TEXTURE *texture;
+    v9x_u32 state = V9X_GLIDE_TEXMEM_NEW;
 
     v9x_glide_source = -1;
     v9x_glide_source_address = address;
@@ -1538,37 +1571,35 @@ void v9x_glide_texture_source(v9x_u32 address, v9x_u32 even_odd,
     texinfo.large_lod = info[1];
     texinfo.aspect = info[2];
     texinfo.format = info[3];
-    v9x_glide_source = v9x_glide_texmem_find(&v9x_glide_texmem, address,
-                                             even_odd, &texinfo);
     v9x_glide_source_aspect = texinfo.aspect;
-    /* A source with no download behind it, the first few times: what was
-     * asked, and what the memory holds at that address. */
-    if (v9x_glide_source < 0 && v9x_glide_source_misses_logged < 16ul) {
-        unsigned int i;
-        v9x_u32 held = 0ul;
-        v9x_u32 held_info = 0ul;
-
-        ++v9x_glide_source_misses_logged;
-        for (i = 0u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
-            const V9X_GLIDE_TEXREC *r = &v9x_glide_texmem.records[i];
-
-            if (r->in_use && r->start == address) {
-                ++held;
-                held_info = (r->even_odd << 24) | (r->info.small_lod << 16) |
-                            (r->info.large_lod << 12) | (r->info.aspect << 8) |
-                            r->info.format;
-            }
+    ++v9x_glide_source_calls;
+    v9x_glide_source = v9x_glide_texmem_source(&v9x_glide_texmem, address,
+                                               even_odd, &texinfo, &state);
+    if (v9x_glide_source < 0) {
+        /* Invalid info, or a span past the end of texture memory. */
+        if (v9x_glide_source_misses_logged < 16ul) {
+            ++v9x_glide_source_misses_logged;
+            v9x_glide_log3("source refused: addr=%08lX info=%08lX swap=%lu",
+                           address,
+                           (even_odd << 24) | (texinfo.small_lod << 16) |
+                               (texinfo.large_lod << 12) |
+                               (texinfo.aspect << 8) | texinfo.format,
+                           v9x_glide_swaps);
         }
-        v9x_glide_log3("source miss: addr=%08lX asked=%08lX held=%lu",
-                       address,
-                       (even_odd << 24) | (texinfo.small_lod << 16) |
-                           (texinfo.large_lod << 12) | (texinfo.aspect << 8) |
-                           texinfo.format,
-                       held);
-        v9x_glide_log3("  held record=%08lX (evenodd<<24 small<<16 large<<12 "
-                       "aspect<<8 format) swap=%lu", held_info, v9x_glide_swaps,
-                       0ul);
+        return;
     }
+    if (state == V9X_GLIDE_TEXMEM_CURRENT) {
+        return;
+    }
+    v9x_glide_flush();
+    texture = &v9x_glide_textures[v9x_glide_source];
+    if (state == V9X_GLIDE_TEXMEM_NEW) {
+        ++v9x_glide_source_news;
+        v9x_glide_texture_free(texture);
+    } else {
+        ++v9x_glide_source_refills;
+    }
+    v9x_glide_texture_refill(texture, address, even_odd, &texinfo);
 }
 
 /* A new palette changes every P_8 conversion; its checksum is part of a
@@ -1615,7 +1646,18 @@ int v9x_glide_core_attach(const char *log_path, const char *const *names,
     /* The 640x480 a Voodoo opens most often, until grSstWinOpen says. */
     v9x_glide_state_init(&v9x_glide_state, 640ul, 480ul,
                          V9X_GLIDE_ORIGIN_UPPER_LEFT);
-    v9x_glide_texmem_init(&v9x_glide_texmem);
+    v9x_glide_tmu_bytes = (v9x_u8 *)VirtualAlloc(
+        0, (v9x_u32)V9X_GLIDE_TEXMEM_PAGES * V9X_GLIDE_TEXMEM_PAGE_BYTES,
+        MEM_COMMIT, PAGE_READWRITE);
+    if (v9x_glide_tmu_bytes == 0) {
+        v9x_glide_log("attach refused: no memory for the TMU");
+        VirtualFree(v9x_glide_tables, 0, MEM_RELEASE);
+        v9x_glide_tables = 0;
+        return 0;
+    }
+    v9x_glide_texmem_init(&v9x_glide_texmem, v9x_glide_tmu_bytes,
+                          (v9x_u32)V9X_GLIDE_TEXMEM_PAGES *
+                              V9X_GLIDE_TEXMEM_PAGE_BYTES);
     return 1;
 }
 
@@ -1629,5 +1671,9 @@ void v9x_glide_core_detach(void)
     if (v9x_glide_tables != 0) {
         VirtualFree(v9x_glide_tables, 0, MEM_RELEASE);
         v9x_glide_tables = 0;
+    }
+    if (v9x_glide_tmu_bytes != 0) {
+        VirtualFree(v9x_glide_tmu_bytes, 0, MEM_RELEASE);
+        v9x_glide_tmu_bytes = 0;
     }
 }

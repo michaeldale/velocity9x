@@ -99,7 +99,7 @@ void v9x_glide_fog_load(const v9x_u8 *table);
 /* ---- the linear frame buffer -------------------------------------- */
 
 /*
- * grLfbLock, grLfbUnlock and grLfbReadRegion, whole: ix and call are the
+ * grLfbLock, grLfbUnlock, grLfbReadRegion and grLfbWriteRegion, whole: ix and call are the
  * calling export's, for the log. `info` is GrLfbInfo_t as FxU32s.
  */
 v9x_u32 v9x_glide_lfb_lock(unsigned int ix, v9x_u32 call, v9x_u32 type,
@@ -110,5 +110,9 @@ v9x_u32 v9x_glide_lfb_unlock(unsigned int ix, v9x_u32 call, v9x_u32 type,
 v9x_u32 v9x_glide_lfb_read(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
                            v9x_u32 x, v9x_u32 y, v9x_u32 width,
                            v9x_u32 height, v9x_u32 dst_stride, v9x_u8 *dst);
+v9x_u32 v9x_glide_lfb_write(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
+                            v9x_u32 x, v9x_u32 y, v9x_u32 src_format,
+                            v9x_u32 width, v9x_u32 height,
+                            v9x_u32 src_stride, const v9x_u8 *src);
 
 #endif /* VELOCITY9X_GLIDE_CORE_H */

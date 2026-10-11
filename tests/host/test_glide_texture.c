@@ -79,138 +79,189 @@ static void test_required(void)
            0ul);
 }
 
-static void test_records(void)
+/* The TMU memory itself: 2 MiB, as the DLL reports. Static, so zero. */
+static v9x_u8 tmu[V9X_GLIDE_TEXMEM_PAGES * V9X_GLIDE_TEXMEM_PAGE_BYTES];
+static v9x_u8 data[131072ul];
+
+static void fill(v9x_u8 *bytes, v9x_u32 count, v9x_u8 first)
 {
-    V9X_GLIDE_TEXINFO small;
-    V9X_GLIDE_TEXINFO other;
-    int a;
-    int b;
-    int c;
-    v9x_u32 serial;
+    v9x_u32 i;
 
-    v9x_glide_texmem_init(&mem);
-    info_set(&small, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);  /* 2048 */
-    info_set(&other, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_P_8);        /* 1024 */
-
-    a = v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &small);
-    XCHECK(a >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &small) == a);
-    /* Same address, different format: not the texture that was loaded. */
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &other) == -1);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x800ul, 3ul, &small) == -1);
-
-    /* A second texture beside the first leaves it alone. */
-    b = v9x_glide_texmem_download(&mem, 0x800ul, 3ul, &other);
-    XCHECK(b >= 0 && b != a);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &small) == a);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x800ul, 3ul, &other) == b);
-
-    /* One over the second half of the first and all of the second: the
-     * second is gone, the first is still there - TMU memory is bytes, and
-     * a source of the first reads its untouched half (the DLL patches the
-     * overwritten half into its copy). */
-    c = v9x_glide_texmem_download(&mem, 0x400ul, 3ul, &small);
-    XCHECK(c >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &small) == a);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x800ul, 3ul, &other) == -1);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x400ul, 3ul, &small) == c);
-
-    /* Downloading again to the same place is a new serial. */
-    serial = mem.records[c].serial;
-    c = v9x_glide_texmem_download(&mem, 0x400ul, 3ul, &small);
-    XCHECK(c >= 0 && mem.records[c].serial != serial);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x400ul, 3ul, &small) == c);
-
-    info_set(&other, 3ul, 3ul, 3ul, 99ul);
-    XCHECK(v9x_glide_texmem_download(&mem, 0x4000ul, 3ul, &other) == -1);
+    for (i = 0ul; i < count; ++i) {
+        bytes[i] = (v9x_u8)(first + i);
+    }
 }
 
 /*
- * Carmageddon II's menu (netbook, 2026-10-11): a 64x64 ARGB4444 texture at
- * 0, then its 4x4 and 8x8 font glyphs downloaded to 0 over its first bytes,
- * then the 64x64 sourced again without a new download. On a Voodoo it is
- * still there but for those bytes; dropped, every menu draw was skipped.
+ * A download writes bytes and a source names bytes. The first source of a
+ * texture is NEW, a second with nothing written since is CURRENT, and one
+ * after a write anywhere in its span is STALE.
  */
-static void test_partial_overwrite_keeps(void)
+static void test_source_states(void)
 {
-    V9X_GLIDE_TEXINFO big;
-    V9X_GLIDE_TEXINFO glyph;
+    V9X_GLIDE_TEXINFO small;
+    V9X_GLIDE_TEXINFO other;
+    v9x_u32 state = 99ul;
+    int a;
     int b;
 
-    v9x_glide_texmem_init(&mem);
-    info_set(&big, 2ul, 2ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);    /* 8192 */
-    info_set(&glyph, 6ul, 6ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);  /* 32 */
-    b = v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &big);
-    XCHECK(b >= 0);
-    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &glyph) >= 0);
-    info_set(&glyph, 5ul, 5ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);  /* 128 */
-    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &glyph) >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &big) == b);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &glyph) >= 0);
-    /* The 4x4 glyph lay wholly under the 8x8 one: gone. */
-    info_set(&glyph, 6ul, 6ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &glyph) == -1);
-    /* The same 64x64 again at 0 covers the old one whole: a new record,
-     * and the old one is what nothing finds any more. */
-    {
-        v9x_u32 old_serial = mem.records[b].serial;
-        int again = v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &big);
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
+    info_set(&small, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);  /* 2048 */
+    info_set(&other, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_P_8);        /* 1024 */
 
-        XCHECK(again >= 0);
-        XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &big) == again);
-        XCHECK(mem.records[again].serial > old_serial);
-    }
+    fill(data, 2048ul, 1u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &small, data) == 2048ul);
+    XCHECK(tmu[0] == 1u && tmu[2047] == (v9x_u8)(1u + 2047u));
+    a = v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &small, &state);
+    XCHECK(a >= 0 && state == V9X_GLIDE_TEXMEM_NEW);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &small, &state) == a);
+    XCHECK(state == V9X_GLIDE_TEXMEM_CURRENT);
+
+    /* The same bytes in another format: another entry, decoded its way. */
+    b = v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &other, &state);
+    XCHECK(b >= 0 && b != a && state == V9X_GLIDE_TEXMEM_NEW);
+
+    /* A write beside it leaves it current; one inside its span does not. */
+    XCHECK(v9x_glide_texmem_download(&mem, 0x1000ul, 3ul, &other, data) ==
+           1024ul);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &small, &state) == a);
+    XCHECK(state == V9X_GLIDE_TEXMEM_CURRENT);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x400ul, 3ul, &other, data) ==
+           1024ul);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &small, &state) == a);
+    XCHECK(state == V9X_GLIDE_TEXMEM_STALE);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &small, &state) == a);
+    XCHECK(state == V9X_GLIDE_TEXMEM_CURRENT);
+
+    /* Invalid info, or a span past the end of memory, is no texture. */
+    info_set(&other, 3ul, 3ul, 3ul, 99ul);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &other, data) == 0ul);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &other, &state) == -1);
+    XCHECK(v9x_glide_texmem_source(&mem, sizeof(tmu) - 1024ul, 3ul, &small,
+                                   &state) == -1);
 }
 
-static void test_records_full(void)
+/*
+ * Carmageddon II's menu (netbook, 2026-10-11): a 64x64 ARGB4444 texture,
+ * a 64x64 RGB565 one, a 4x4 and an 8x8 glyph, all downloaded to address 0,
+ * and earlier ones sourced again without downloading them. Each source
+ * finds a texture, made from the bytes that are there now, as on a Voodoo.
+ */
+static void test_shared_address(void)
+{
+    V9X_GLIDE_TEXINFO big;
+    V9X_GLIDE_TEXINFO picture;
+    V9X_GLIDE_TEXINFO glyph4;
+    V9X_GLIDE_TEXINFO glyph8;
+    v9x_u32 state = 0ul;
+    int i;
+
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
+    info_set(&big, 2ul, 2ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);      /* 8192 */
+    info_set(&picture, 2ul, 2ul, 3ul, V9X_GLIDE_TEXFMT_RGB_565);    /* 8192 */
+    info_set(&glyph4, 6ul, 6ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);   /* 32 */
+    info_set(&glyph8, 5ul, 5ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);   /* 128 */
+
+    fill(data, 8192ul, 10u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &big, data) == 8192ul);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &big, &state) >= 0);
+    fill(data, 8192ul, 20u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &picture, data) ==
+           8192ul);
+    fill(data, 32ul, 30u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &glyph4, data) == 32ul);
+    fill(data, 128ul, 40u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &glyph8, data) == 128ul);
+
+    /* Every one of them is still a texture, and the overwritten ones are
+     * stale: the caller re-reads the bytes that are there. */
+    i = v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &big, &state);
+    XCHECK(i >= 0 && state == V9X_GLIDE_TEXMEM_STALE);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &glyph4, &state) >= 0);
+    XCHECK(state == V9X_GLIDE_TEXMEM_NEW);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &picture, &state) >= 0);
+    /* The bytes are the 8x8 glyph's first, then the picture's. */
+    XCHECK(tmu[0] == 40u && tmu[127] == (v9x_u8)(40u + 127u));
+    XCHECK(tmu[128] == (v9x_u8)(20u + 128u));
+}
+
+/*
+ * Levels land at Glide's offsets: each selected level after the last,
+ * rounded to the granule, read from the caller's data where all levels
+ * lie end to end. Only the even levels of a 4x4..1x1 8-bit chain: 4x4
+ * (16 bytes) at 0, 1x1 (1 byte, a granule) at 16; the 2x2 in between in
+ * the data is skipped.
+ */
+static void test_download_levels(void)
+{
+    V9X_GLIDE_TEXINFO chain;
+
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
+    info_set(&chain, 8ul, 6ul, 3ul, V9X_GLIDE_TEXFMT_P_8);
+    fill(data, 21ul, 1u);   /* 16 + 4 + 1 */
+    XCHECK(v9x_glide_texmem_download(&mem, 0x100ul, V9X_GLIDE_MIPMAPLEVELMASK_EVEN,
+                                     &chain, data) == 24ul);
+    XCHECK(tmu[0x100] == 1u && tmu[0x10F] == 16u);
+    XCHECK(tmu[0x110] == 21u);
+    /* A download that runs past the end is clipped, not wrapped. */
+    info_set(&chain, 2ul, 2ul, 3ul, V9X_GLIDE_TEXFMT_RGB_565);
+    fill(data, 8192ul, 7u);
+    XCHECK(v9x_glide_texmem_download(&mem, sizeof(tmu) - 16ul, 3ul, &chain,
+                                     data) == 16ul);
+    XCHECK(tmu[0] == 0u);
+}
+
+/* The cache is full: the least recently sourced entry goes, not one in
+ * use. 4096 entries side by side, then one more. */
+static void test_cache_full(void)
 {
     V9X_GLIDE_TEXINFO tiny;
+    v9x_u32 state = 0ul;
     unsigned int i;
     int first;
-    int last = -1;
 
-    /* 8-byte textures side by side until the table is full; the next
-     * evicts the oldest. */
-    v9x_glide_texmem_init(&mem);
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
     info_set(&tiny, 7ul, 7ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);    /* 2x2 */
-    first = v9x_glide_texmem_download(&mem, 0x0ul, 3ul, &tiny);
+    first = v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &tiny, &state);
     for (i = 1u; i < V9X_GLIDE_TEXMEM_RECORDS; ++i) {
-        last = v9x_glide_texmem_download(&mem, i * 8ul, 3ul, &tiny);
+        (void)v9x_glide_texmem_source(&mem, i * 8ul, 3ul, &tiny, &state);
     }
-    XCHECK(first >= 0 && last >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &tiny) == first);
-    XCHECK(v9x_glide_texmem_download(&mem, 0x10000ul, 3ul, &tiny) >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 0x0ul, 3ul, &tiny) == -1);
-    XCHECK(v9x_glide_texmem_find(&mem, 8ul, 3ul, &tiny) >= 0);
+    /* Touch the first again so the second is now the oldest. */
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &tiny, &state) == first);
+    XCHECK(state == V9X_GLIDE_TEXMEM_CURRENT);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x10000ul, 3ul, &tiny, &state) >= 0);
+    XCHECK(state == V9X_GLIDE_TEXMEM_NEW);
+    XCHECK(v9x_glide_texmem_source(&mem, 0x0ul, 3ul, &tiny, &state) == first);
+    XCHECK(state == V9X_GLIDE_TEXMEM_CURRENT);
+    XCHECK(v9x_glide_texmem_source(&mem, 8ul, 3ul, &tiny, &state) >= 0);
+    XCHECK(state == V9X_GLIDE_TEXMEM_NEW);
 }
 
-/* 2 MiB of 32x32 ARGB1555 textures, NFS II SE's commonest, all live at
- * once: every one must still be found. A 512-record table evicted live
- * textures in the game's demo race (netbook, 2026-10-08). */
-static void test_records_track(void)
+/* NFS II SE's pattern: 1,024 32x32 ARGB1555 textures in their own slots,
+ * each downloaded once and sourced many times, never re-read. */
+static void test_distinct_slots(void)
 {
     V9X_GLIDE_TEXINFO tile;
+    v9x_u32 state = 0ul;
     unsigned int i;
-    unsigned int found = 0u;
+    unsigned int round;
+    unsigned int refills = 0u;
 
-    v9x_glide_texmem_init(&mem);
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
     info_set(&tile, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);    /* 2048 */
+    fill(data, 2048ul, 3u);
     for (i = 0u; i < 1024u; ++i) {
-        (void)v9x_glide_texmem_download(&mem, i * 2048ul, 3ul, &tile);
+        (void)v9x_glide_texmem_download(&mem, i * 2048ul, 3ul, &tile, data);
     }
-    for (i = 0u; i < 1024u; ++i) {
-        if (v9x_glide_texmem_find(&mem, i * 2048ul, 3ul, &tile) >= 0) {
-            ++found;
+    for (round = 0u; round < 3u; ++round) {
+        for (i = 0u; i < 1024u; ++i) {
+            if (v9x_glide_texmem_source(&mem, i * 2048ul, 3ul, &tile, &state) < 0 ||
+                (round != 0u && state != V9X_GLIDE_TEXMEM_CURRENT)) {
+                ++refills;
+            }
         }
     }
-    XCHECK(found == 1024u);
-    /* Overwriting the first half by one large download leaves the rest. */
-    info_set(&tile, 0ul, 0ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_4444);   /* 128 KiB */
-    XCHECK(v9x_glide_texmem_download(&mem, 0ul, 3ul, &tile) >= 0);
-    info_set(&tile, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);
-    XCHECK(v9x_glide_texmem_find(&mem, 2048ul, 3ul, &tile) == -1);
-    XCHECK(v9x_glide_texmem_find(&mem, 131072ul, 3ul, &tile) >= 0);
-    XCHECK(v9x_glide_texmem_find(&mem, 1023ul * 2048ul, 3ul, &tile) >= 0);
+    XCHECK(refills == 0u);
 }
 
 static void test_formats(void)
@@ -297,10 +348,11 @@ unsigned int v9x_run_glide_texture_tests(void)
     glide_texture_failures = 0u;
     test_level_sizes();
     test_required();
-    test_records();
-    test_partial_overwrite_keeps();
-    test_records_full();
-    test_records_track();
+    test_source_states();
+    test_shared_address();
+    test_download_levels();
+    test_cache_full();
+    test_distinct_slots();
     test_formats();
     return glide_texture_failures;
 }

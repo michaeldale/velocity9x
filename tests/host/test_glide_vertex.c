@@ -294,6 +294,16 @@ static void test_color(void)
     v9x_glide_vertex_convert(&setup, in, &out);
     VCHECK(out.color == 0x40112233ul);
     setup.alpha_source = V9X_GLIDE_SOURCE_CONSTANT;
+    /* White: the colour a MODULATE stands in for REPLACE with
+     * (glide_state.c); the alpha is still the constant's. */
+    {
+        V9X_GLIDE_VERTEX_SETUP white = setup;
+
+        white.color_source = V9X_GLIDE_SOURCE_WHITE;
+        v9x_glide_vertex_convert(&white, in, &out);
+        VCHECK((out.color & 0x00FFFFFFul) == 0x00FFFFFFul);
+        VCHECK((out.color >> 24) == 0x80ul);
+    }
     v9x_glide_vertex_convert(&setup, in, &out);
     VCHECK(out.color == 0x80112233ul);
 }

@@ -479,6 +479,26 @@ static void test_gu_color_combine(void)
     s.blend_src = V9X_GLIDE_BLEND_ONE;
     s.blend_dst = V9X_GLIDE_BLEND_ZERO;
 
+    /*
+     * DECAL_TEXTURE beside texture-alpha times the constant, blended on it:
+     * Carmageddon II's fading menu text (netbook, 2026-10-11). REPLACE
+     * beside MODULATE is no single-unit texture op, and Gen3 refused it;
+     * MODULATE on a white vertex is the same colour exactly.
+     */
+    SCHECK(v9x_glide_gu_color_combine(4ul, &s.color));
+    combine(&s.alpha, V9X_GLIDE_COMBINE_FUNCTION_SCALE_OTHER,
+            V9X_GLIDE_COMBINE_FACTOR_TEXTURE_ALPHA,
+            V9X_GLIDE_COMBINE_LOCAL_CONSTANT, V9X_GLIDE_COMBINE_OTHER_CONSTANT);
+    s.blend_src = V9X_GLIDE_BLEND_SRC_ALPHA;
+    s.blend_dst = V9X_GLIDE_BLEND_ONE_MINUS_SRC_ALPHA;
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.textured && d.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    SCHECK(d.color_source == V9X_GLIDE_SOURCE_WHITE);
+    SCHECK(d.alpha_source == V9X_GLIDE_SOURCE_CONSTANT);
+    s.blend_src = V9X_GLIDE_BLEND_ONE;
+    s.blend_dst = V9X_GLIDE_BLEND_ZERO;
+
     /* An unknown preset leaves the combine as it was. */
     SCHECK(v9x_glide_gu_color_combine(4ul, &s.color));
     SCHECK(!v9x_glide_gu_color_combine(17ul, &s.color));

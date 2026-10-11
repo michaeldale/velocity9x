@@ -477,6 +477,16 @@ void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
         out->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
     }
 
+    /* The texture's colour alone beside a modulated alpha is no single-unit
+     * texture op, and Gen3 refused it: Carmageddon II's fading menu text,
+     * 136,470 draws by 207 s (netbook, 2026-10-11). MODULATE on a white
+     * vertex is the texel's colour exactly, and leaves the alpha as it is. */
+    if (out->textured && out->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+        out->alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE) {
+        out->color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+        out->color_source = V9X_GLIDE_SOURCE_WHITE;
+    }
+
     out->address = (state->clamp_s == V9X_GLIDE_TEXTURE_CLAMP &&
                     state->clamp_t == V9X_GLIDE_TEXTURE_CLAMP) ?
                    V9X_R3D_ABI_ADDRESS_CLAMP : V9X_R3D_ABI_ADDRESS_WRAP;

@@ -38,6 +38,8 @@
 /* Where a vertex's colour or alpha comes from, as the combine decides. */
 #define V9X_GLIDE_SOURCE_ITERATED 0ul
 #define V9X_GLIDE_SOURCE_CONSTANT 1ul
+/* Colour only: white, for a MODULATE standing in for REPLACE (glide_state.c). */
+#define V9X_GLIDE_SOURCE_WHITE    2ul
 
 typedef struct v9x_glide_vertex_setup {
     v9x_u32 origin;         /* V9X_GLIDE_ORIGIN_* */

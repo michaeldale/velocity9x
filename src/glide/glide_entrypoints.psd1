@@ -115,7 +115,7 @@
         @{ Name = 'grTexMultibaseAddress'; Bytes = 20; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'grTexNCCTable'; Bytes = 8; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'grTexSource'; Bytes = 16; Return = 'void'; Kind = 'Written' }
-        @{ Name = 'grTexTextureMemRequired'; Bytes = 8; Return = 'u32'; Kind = 'Stub' }
+        @{ Name = 'grTexTextureMemRequired'; Bytes = 8; Return = 'u32'; Kind = 'Written' }
         @{ Name = 'grTriStats'; Bytes = 8; Return = 'void'; Kind = 'Stub' }
         @{ Name = 'gu3dfGetInfo'; Bytes = 8; Return = 'u32'; Kind = 'Stub' }
         @{ Name = 'gu3dfLoad'; Bytes = 8; Return = 'u32'; Kind = 'Stub' }
