@@ -1,0 +1,877 @@
+# VSA-100 (Napalm) register fact sheet
+
+Date: 2026-10-11
+
+Status: desk extraction for Phase 0 item 2 of
+[the VSA-100 plan](../plans/3dfx-vsa100-family.md). Nothing here was
+measured by Velocity9x. Measured values come from VelocityNT's Mini-Me v2
+(single VSA-100, 64 MiB, PCI, Windows 2000) and are marked with their
+record. For the retail Voodoo4 4500 (32 MiB) every value below is a
+hypothesis until Phase 1 measures it; board-level values (BAR sizes, memory
+size, tile boundary, straps) are expected to differ.
+
+## Sources
+
+| Key | Source | Licence / use |
+|---|---|---|
+| **Napalm** | *Napalm Graphics Engine*, rev 1.13, 6 Oct 1999, `C:\everything\claude\personal\3dfx driver research\sux6000-docs\voodoo45-spec.pdf`, SHA-256 `06b5041d…5315e5e`, 249 pages | "3dfx Confidential". The databook for VSA-100 register writes (plan, 2026-10-11). Facts only; no text or tables copied. |
+| **Glide** | Open Glide h5, `…\artifacts\3dfx_glide\h5\incsrc\`: `h3regs.h` (SHA-256 `c4c702cf…c56bd`), `h3defs.h` (`fb1da053…41aa0`), `h3gdefs.h` (`b901ed43…dcd229`) | 3DFX GLIDE Source Code General Public License. Cross-check of layouts only; no code. Cited `file:line`. |
+| **VNT** | VelocityNT `docs\reference\m5*.md`, `docs\decisions\2026-10-1*-mini-me-*.md` | The author's own driver. Measured values and register semantics only; their citations into other trees were not followed. Cited by record name. |
+| Banshee/Voodoo3 spec | **Not found.** No public Banshee, Voodoo3 or Avenger spec PDF exists under `C:\everything` outside the leaked trees. VNT `m5b-timing.md` cites a bitsavers copy (`Voodoo2_Banshee_Spec_r1.1_199811.pdf`); it is not archived locally. | The second cross-check is absent. Every "Avenger" note below rests on Napalm's own change lists. |
+
+Not opened: `C:\everything\3dfx-driver` (standing rule), and
+`C:\everything\retro-3dfx\3dfx Driver Code\`, which the file search showed
+to be a second copy of the same leaked H5 tree (it contains
+`H5\DOCS\avenger_spec.doc`; that file is part of the leak, not a public
+spec, and was not read).
+
+### Citation conventions
+
+- "Napalm §x.y p.N" uses the **body** heading numbers and the PDF page,
+  which equals the printed footer. The spec's table of contents is stale:
+  it lists the init registers as §16 on p.208, the body has §17 on p.210;
+  most chapters from §8 on are off by one or two. Do not cite TOC numbers.
+- Tables in the PDF were checked against rendered pages where text
+  extraction misaligned columns (pp.25–26, 40–41, 53–64, 67–70, 86–87, 157,
+  159–162, 185, 195, 200, 210–223).
+- **Avenger** column: "inherited" means the spec's change lists (§3.5–3.7
+  pp.23–24, revision history §28 pp.244–249) name no Napalm change to that
+  register. The spec never marks registers as shared explicitly, so
+  "inherited" is an inference from silence, unchecked against a Banshee
+  spec. "Changed rev x" cites the revision-history entry.
+- **D*n*** refers to the numbered list in [Disagreements](#disagreements).
+  Where spec prose and its bit table differ, the plan follows the bit
+  table.
+
+---
+
+## 1. Address map
+
+### PCI BARs
+
+| BAR | Type | Napalm | Measured (Mini-Me) |
+|---|---|---|---|
+| 0 `memBaseAddr0` (cfg 0x10) | MMIO, non-prefetchable (bit 3 = 0) | Size strapped by FB_DATA[3:0]: 0 = 128 MiB … 4 = 64 MiB, 5 = 32 MiB … 8 = 4 MiB; resizable through `cfgPciDecode[3:0]` (§16.11 p.195). Rev 1.00 made 128 MiB the default (§28 p.245). | `0x40000000`, 128 MiB span (2026-10-10-mini-me-live-identity; plan "Identity and apertures") |
+| 1 `memBaseAddr1` (cfg 0x14) | Frame buffer, prefetchable (bit 3 = 1) | Same strap table on FB_DATA[7:4]; `cfgPciDecode[7:4]` (§16.12 pp.196–197) | `0x50000008`, 128 MiB span (same records) |
+| 2 `ioBaseAddr` (cfg 0x18) | I/O | 256/512/1024/2048 bytes by FB_DATA[9:8]; `cfgPciDecode[9:8]` (§16.13 p.197) | `0x1000–0x10FF`, 256 bytes (VNT m5b-timing.md) |
+
+Glide cross-check: h3regs.h:475–477, decode codes h3defs.h:1922–1950
+(agree). The VNT identity record lists the two 128 MiB spans and says "BAR
+indices remain unconfirmed until configuration-space discovery"; the
+BAR0/BAR1 assignment in the plan is not stated in the records read here.
+
+**BAR1 size is not VRAM size.** BAR1 offsets below the tile begin page are
+linear; offsets at or above it are the tiled view (§18.1 p.224, §17.4
+pp.212–213). Linear and tiled are each up to 64 MiB within 128 MiB (§28
+p.245, rev 1.00). See D29 for the plan's "upper half" wording.
+
+32 vs 64 MiB boards: the spec gives no per-board BAR size; the straps set
+it. The Mini-Me (64 MiB) decodes 128 MiB per BAR. The retail 4500 (32 MiB)
+is not established.
+
+### BAR0 sub-spaces (Napalm §4 p.25; Glide h3defs.h:2089–2101)
+
+| Offset | Size | Contents | Glide |
+|---|---|---|---|
+| `0x0000000` | 512 KiB | I/O register remap (init, PLL/DAC, video; same layout as BAR2) | `SST_IO_OFFSET` |
+| `0x0080000` | 512 KiB | CMD/AGP transfer/misc (CMDFIFO) registers | `SST_CMDAGP_OFFSET` |
+| `0x0100000` | 1 MiB | 2D registers | `SST_2D_OFFSET` |
+| `0x0200000` | 4 MiB | 3D registers (Glide adds an alternate map at `0x400000`) | `SST_3D_OFFSET`, `SST_3D_ALT_OFFSET` |
+| `0x0600000` | 2 MiB | TMU0 texture download alias | `SST_TEX0_OFFSET` |
+| `0x0800000` | 2 MiB | TMU1 texture download | `SST_TEX1_OFFSET` |
+| `0x0A00000` | — | Reserved for BIOS programming (`0xA00000–0xA9FFFF`), VGA memory remap (`0xAA0000–0xABFFFF`, test, `vgaInit0[7]`), reserved | `SST_RESERVED_OFFSET` |
+| `0x0C00000` | 4 MiB | YUV planar space (Y/U/V at +0, +1 MiB, +2 MiB; §19 p.226–227) | `SST_YUV_OFFSET` |
+| `0x1000000` | 16 MiB | 3D LFB space (pixel-pipeline LFB, `lfbMode` formats) | `SST_LFB_OFFSET` |
+| `0x2000000` | 32 MiB | Reserved | `SST_RESERVED2_OFFSET` |
+| `0x4000000` | 64 MiB | TMU0 texture download (64 MiB port, rev 1.09) | `SST_TEX2_OFFSET` |
+
+BAR0 is not the frame buffer. Desktop pixels go through BAR1.
+
+### BAR2 (I/O) map
+
+The I/O Base0 table (§4 pp.25–26) mirrors BAR0 `0x00–0xFF` register for
+register, plus VGA registers at I/O `0xB0–0xDF`, which are "only in I/O
+space, not memory mapped" (D17). §5.2 p.27: a VGA register is at I/O base +
+(legacy port − `0x300`). Measured: sequencer `0xC4/0xC5`, misc output read
+`0xCC`, colour CRTC `0xD4/0xD5` on the Mini-Me while it was the primary VGA
+(VNT m5b-timing.md).
+
+---
+
+## 2. PCI configuration extensions
+
+Napalm §16 map pp.192–193; Glide h3regs.h:463–513. Offsets in bytes.
+
+| Offset | Register | Use / fields | Napalm | Measured |
+|---|---|---|---|---|
+| `0x00` | Vendor/Device ID | `121A`; Napalm device IDs 6, 7, 8, 9 (lsb = packaging, standard bondout 1; pair chosen by strap, D27) | §16.1–16.2 p.193 | `121A:0009` (2026-10-10-mini-me-live-identity) |
+| `0x08` | Revision | — | §16.5 p.194 | `01` (same) |
+| `0x2C` | Subsystem vendor/ID | Loaded from the last ROM bytes after reset; writable only with `miscInit1[3]` | §16.14–16.15 p.198, §22.1 p.237 | `121A:0002` (same) |
+| `0x40` | FabID [7:0] + `cfgInitEnable` [31:8] | 8 init-register write enable (default 1); 9 PCI FIFO write enable (default 1); 10 enable writes to upper BAR bits; 11–14 snoop enables; 24:15 snoop address; 25–27 SLI swap sync; 28 multi-function (strap FB_DATA_19); 29 disable LFB read cache; 30 snooped init writes. Driver reads only. | §16.24 pp.199–200 | not read |
+| `0x44` | ACPI Reset | bit 0 = internal acpi_reset (RO) | §16.23 p.199 | — |
+| `0x48` | `cfgPciDecode` | 3:0 BAR0 decode, 7:4 BAR1 decode, 9:8 I/O decode (codes as §1), 13:10 / 17:14 snoop decode, 27:18 snoop address #1 | §16.25 pp.200–201 | not read |
+| `0x4C` | `cfgStatus` | Alias of the MMIO status register (§3) | §16.31 p.207 | not read |
+| `0x50` | `cfgScratch` | Scratch | §16.32 p.207 | — |
+| `0x54–0x64` | AGP cap/status/command, ACPI cap/ctrl | Not touched (plan: no AGP setup) | §16.33–16.38 pp.207–209 | — |
+| `0x80/0x84/0x88` | `cfgVideoCtrl0/1/2` | SLI/AA video unit; names only | §16.26 p.201 | — |
+| `0x8C` | `cfgSliLfbCtrl` | SLI LFB masks; names only (Glide h3defs.h:1859–1869) | §16.27 p.204 | — |
+| `0x90` | `cfgAaDepthBufferAperture` | names only | §16.28 p.204 | — |
+| `0x94` | `cfgAaLfbCtrl` | names only | §16.29 p.205 | — |
+| `0x98–0xA8` | `agpTestCtrl`, `agpTestData0–3` | names only | §16 p.193 | — |
+| `0xAC` | `cfgSliAaMisc` | names only | §16.30 p.206 | — |
+
+Avenger: `cfgPciDecode`, `cfgVideoCtrl*`, `cfgSli*`, `cfgAa*`, `agpTest*`
+added in rev 1.10; `cfgSliAaMisc` in 1.11; `cfgInitEnable` changed in 1.10
+(§28 pp.247–248). Disagreement: D26 (Glide's SST-1 config constants).
+
+---
+
+## 3. Init registers (BAR0 `0x00–0x4F`, also BAR2 `0x00–0x4F`)
+
+All MMIO register accesses must be 32-bit (§21.1 p.234). Napalm §17 table
+p.210; Glide `SstIORegs` h3regs.h:121–194.
+
+### `status` — 0x00, 32-bit, R (write clears PCI interrupt)
+
+Aliases: 2D `0x100000`, 3D `0x200000`, config `0x4C`.
+
+| Bits | Meaning |
+|---|---|
+| 4:0 | PCI FIFO free entries, `0x1F` = empty |
+| 5 | PCI FIFO busy |
+| 6 | Vertical retrace, **0 = in retrace**, 1 = not |
+| 7 | FBI (3D) engine busy |
+| 8 | TREX busy |
+| **9** | **Napalm busy: any unit or any FIFO** — the idle bit |
+| 10 | 2D busy |
+| 11, 12 | CMDFIFO 0, 1 busy |
+| 13, 14 | TMU 0, 1 busy |
+| 30:28 | Swap buffers pending |
+| 31 | PCI interrupt generated (§8.1 p.87: "not implemented, always 0") |
+
+- Napalm §17.1 pp.210–211; §8.1 p.87; §7.2.1 p.55.
+- Glide h3defs.h:98–111 (bits agree; `SST_FIFOLEVEL 0x3F` follows the old prose, D3).
+- Idle procedure, Napalm §21.2 pp.234–235: write `nopCMD` (3D) first, then
+  require bit 9 clear on repeated reads ("three times"; the sample code
+  needs four, D4).
+- Measured: idle as three consecutive clear reads of bit 9, 10 µs apart,
+  at most 256 polls, all-ones = device gone; no NOP issued; last value
+  `0x5F` (2026-10-11-mini-me-retained-route; VNT m5c-aperture-transition.md).
+- Avenger: inherited; "cleaned up status bit descriptions" rev 1.08 (§28 p.247).
+- Disagreements: D3, D4.
+
+### `pciInit0` — 0x04, 32-bit, R/W, default `0x01800040`
+
+| Bits | Meaning |
+|---|---|
+| 6:2 | PCI FIFO empty-entries low-water mark (never 0) |
+| 8 | Read wait states (0 = 1 ws, 1 = 2 ws). §21.8 p.237: always set it — a race with 1 ws can return wrong read data |
+| 9 | Write wait state |
+| 11, 12 | Disable I/O, memory retries |
+| 17:13 | Retry interval |
+| 18, 19 | PCI interrupt enable, interrupt timeout enable |
+| 25:20 | PCI FIFO read threshold (default `0x18`) |
+| 26 | Force PCI/CMD frame-buffer accesses high priority |
+| 28:27 | PCI FIFO → LFB write timeout (64/128/196/256 MCLK) |
+
+- Napalm §17.2 pp.211–212.
+- Glide h3defs.h:1443–1456 (bits 8, 9, 11, 12, 18, 19, 26 agree; D5).
+- Measured: not read. Velocity9x reads it in Phase 1 to see whether bit 8
+  is set by the BIOS; it does not write it.
+- Avenger: watermarks "programmable" since Avenger (§3.5 p.23); snoop note rev 1.10.
+
+### `lfbMemoryConfig` — 0x0C, 32-bit, selector-multiplexed
+
+Two registers behind one address: `lfbMemoryTileCtrl` and
+`lfbMemoryTileCompare`.
+
+| Bits (written word) | Meaning (bit table) |
+|---|---|
+| 31 | Register to write: 0 = TileCtrl, 1 = TileCompare |
+| 30 | 1 = selector-only write: updates only bit 29, no tile data |
+| 29 | Register returned by the next read: 0 = TileCtrl, 1 = TileCompare |
+| 28:0 | Data for the register chosen by bit 31 (when bit 30 = 0) |
+
+Protocol (bit table; measured): read control = write `0x40000000`, read;
+read compare = write `0x60000000`, read. Write compare = `0x80000000 |
+data`; write control = `0x00000000 | data`.
+
+`lfbMemoryTileCtrl`:
+
+| Bits | Meaning |
+|---|---|
+| 12:0 | Tile aperture begin page [12:0], 4 KiB pages (default `0x200`) |
+| 15:13 | Tile aperture stride (PCI→XY): 0 = 1 KiB … 4 = 16 KiB |
+| 22:16 | Number of SGRAM tiles in X (default `0xA`) |
+| 24:23 | Begin page [14:13] |
+
+`lfbMemoryTileCompare`:
+
+| Bits | Meaning |
+|---|---|
+| 14:0 | Begin page for the linear/tiled comparison, 4 KiB pages |
+| 15 | 1 = compare uses bits 14:0 above; 0 = compare uses TileCtrl's begin page |
+
+First tiled byte = page × 4 KiB, page = compare[14:0] if compare[15] else
+`(ctrl & 0x1FFF) | ((ctrl >> 10) & 0x6000)`.
+
+- Napalm §17.4 pp.212–213; §18.1 p.224; tiles are 128 bytes × 32 lines (§18.3 p.225).
+- Glide h3defs.h:1469–1503 (agree with the bit table); h3regs.h:127 calls
+  the register "more or less a dummy"; h3regs.h:192–193 list
+  `lfbMemoryTileCtrl/Compare` after `0xFC` with a comment that they do not
+  exist in I/O space — the spec gives no such direct address (not established).
+- Measured: after BIOS mode set, control `0x00003FFF`, compare `0x00000000`
+  → first tiled byte `0x01FFF000`: linear BAR1 view ≈ 32 MiB of 64
+  (2026-10-11-mini-me-post-mode-capture, 2026-10-11-mini-me-upper-memory-aperture).
+  Selector writes changed no tile data. Writing compare `0x8000C000` (bit 15,
+  page `0x4000`) moved the boundary to 64 MiB; restore with `0x80000000 |
+  saved` worked (VNT m5c-aperture-transition.md;
+  2026-10-11-mini-me-upper-memory-sparse, -offscreen-pages, -retained-route).
+- Avenger: TileCompare and the two-register form added rev 1.11 (§28 p.248);
+  128 MiB tiled/linear selection added rev 1.00 (p.245).
+- Disagreements: D6 (known case: prose on bit 30), D29.
+
+### `miscInit0` — 0x10, 32-bit, R/W
+
+| Bits | Meaning (bit table) |
+|---|---|
+| 0 | FBI graphics reset |
+| 1 | FBI FIFO reset (PCI FIFO and packer) |
+| 3:2 | Reserved |
+| 4 | Video timing reset |
+| 5 | 2D reset |
+| 6 | Memory timing reset |
+| 7 | VGA video timing reset |
+| 16:8 | TV-out / monitor sync delays |
+| 29:18 | Y-origin swap value (used when `renderMode[2]` = 0) |
+| **30** | **`miscInit1` alias: 0 = 0x14 is `miscInit1`, 1 = 0x14 is `vip2vmiCtrl`** |
+| 31 | VMI host port control |
+
+- Napalm §17.5 p.214; §17.7 p.217 (`vip2vmiCtrl`).
+- Glide h3defs.h:1506–1524 (bits 0–29 agree; 3:2 and 31:30 are Avenger swizzle bits, D7).
+- Measured: `0x00000000` (2026-10-11-mini-me-post-mode-capture). VNT refuses
+  any vector with bit 30 set or a reset bit set (m5b-aperture.md).
+- Rule for Velocity9x: read `miscInit0` before reading 0x14; if bit 30 is
+  set, 0x14 is not `miscInit1`.
+- Avenger: 3:2 and 31:30 swizzle removed rev 1.09; 30, 31 added rev 1.11 (§28 pp.247–248).
+
+### `miscInit1` — 0x14 when `miscInit0[30]` = 0, 32-bit, R/W
+
+| Bits | Meaning |
+|---|---|
+| 0 | `invert_clut_address` — prose: "should be set to 1 for proper operation" |
+| 2:1 | Triangle iterator mode |
+| 3 | Enable subsystem ID writes |
+| 4 | Enable ROM writes |
+| 5 | Alternate triangle address map |
+| 6 | Disable texture mapping |
+| 7–11 | Power down CLUT, DAC, video PLL, GRX PLL, memory PLL |
+| 14:12, 15 | 2D block-write threshold, disable 2D block write |
+| 16, 17 | Disable 2D-stall-on-3D / 3D-stall-on-2D (test only) |
+| 18 | Disable TMU-write broadcast in 2-ppc mode |
+| 19 | Command stream reset (only when idle; restore to 0) |
+| 21:20, 22 | BAR1 address-based byte/word swizzle select, enable |
+| 28:24 | Straps: fast device, BIOS 64 KiB, 66 MHz, AGP enabled, device type |
+| 29, 31:30 | pd pin value, pd pin drive |
+
+- Napalm §17.6 pp.215–216.
+- Glide h3defs.h:1526–1556 (agree to bit 28).
+- Measured: `0x27008001` (2026-10-11-mini-me-post-mode-capture). Per the bit
+  table: bit 0 set, bit 15 (2D block write off) set, straps 24/25/26 set,
+  27 (AGP) and 28 (device type) clear, bit 29 (pd pin) set. VNT refuses power-down,
+  command-stream reset or swizzle enable (m5b-aperture.md).
+- Avenger: 22:20 added rev 1.09, 18 rev 1.08, 31:29 rev 1.11 (§28).
+
+### `dramInit0` — 0x18, 32-bit, R/W
+
+| Bits | Meaning |
+|---|---|
+| 22:0 | SGRAM/SDRAM timing (tRRD, tRCD, tRP, tRAS, tRC, CAS, …) — read only for Velocity9x |
+| **26** | **Number of SGRAM/SDRAM chip sets: 0 = 1, 1 = 2** (strap VMI_DATA_5) |
+| **29:27** | **Part type: 0 = 8 Mbit, 1 = 16, 2 = 32, 3 = 64, 4 = 128 Mbit** (straps) |
+| 30 | Internal banks: 0 = 2, 1 = 4 (strap TV_DATA_4) |
+
+- Napalm §17.8 pp.217–218.
+- Glide h3defs.h:1563–1596 (`SST_SGRAM_NUM_CHIPSETS` bit 26, `SST_H5_SGRAM_TYPE` 29:27).
+- Measured: `0x607EADF9` → bit 26 = 0, type 4 (128 Mbit), bit 30 = 1. VNT
+  decode: bit 26 0 = 4 parts, 1 = 8 parts; bytes = parts × Mbit × 128 KiB →
+  4 × 128 Mbit = 64 MiB; paired-page sweep verified [1 MiB, 64 MiB)
+  (2026-10-11-mini-me-offscreen-pages).
+- Avenger: type/bank fields widened rev 1.00 and 1.09 (§28 pp.245, 247).
+- Disagreements: D8, D9.
+
+### `dramInit1` — 0x1C, 32-bit, R/W
+
+| Bits | Meaning |
+|---|---|
+| 0, 9:1 | Refresh enable, refresh load value |
+| 11 | Triple buffer enable |
+| 24:13 | Read sample / output delay controls |
+| 29:25 | Memory-controller test controls |
+| **30** | **`mctl_type_sdram`: 0 = SGRAM, 1 = SDRAM** (rev B0 and later) |
+
+- Napalm §17.9 p.219. Glide h3defs.h:1599–1619.
+- Measured: `0x40240031` → bit 30 = 1, SDRAM (2026-10-11-mini-me-offscreen-pages).
+- Avenger: bit 12 reserved rev 1.01.
+- Disagreements: D8.
+
+### `agpInit0` — 0x20; `tmuGbeInit` — 0x24
+
+Read only for Phase 1 survey; never written (plan: no AGP setup).
+`agpInit0`: 0 request priority, 6:4 request-FIFO threshold, 10:7 read-FIFO
+threshold, 31:27 outstanding requests (RO) (§17.10 p.220). `tmuGbeInit`:
+texture/pixel FIFO watermarks 11:0, TV-out clock delay 19:15, AA clock delay
+24:20, 27:25 memory port config (Napalm2 only) (§17.11 p.220). Glide
+h3defs.h:1621–1642. Not measured.
+
+### `vgaInit0` — 0x28, 32-bit, R/W
+
+| Bits | Meaning |
+|---|---|
+| 0 | VGA disable (strap FB_DATA_21) |
+| 1 | External video timing (also needed for 0x3DA vsync in genlock, §9 p.157) |
+| 2 | VGA CLUT width: 0 = 6-bit, 1 = 8-bit (default 1) |
+| 6 | Enable VGA extensions (CR1A–CR1F) |
+| 7 | VGA memory remap (test) |
+| 8 | Wake-up select 0x46E8 / 0x3C3 |
+| 9 | Disable legacy VGA memory/I/O decode |
+| 10 | Alternate config read-back through CR1C (0 = enable) |
+| **12** | **Extended video shift-out: 1 = VGA makes no memory accesses while the video processor scans out.** Set in extended (non-VGA) modes. |
+| 21:14, 24:23 | VGA base, 64 KiB units |
+| 22 | Disable SGRAM refresh on HBLANK |
+| 26:25 | VBE read aperture bits 11:10 |
+
+- Napalm §17.12 pp.220–222.
+- Glide h3defs.h:1644–1675 (bits 0, 1, 2, 6, 8, 9, 10, base agree; bit 12 not defined).
+- Measured: not read. The plan's "~10% on blits" for bit 12 is not in the spec.
+- Avenger: bits 3, 9:8 defaults, 24:23, 26:25 changed rev 1.00/1.10 (§28).
+- Disagreements: D19, D32.
+
+### `vgaInit1` — 0x2C, 32-bit, R/W
+
+9:0 VBE write aperture, 19:10 VBE read aperture (32 KiB units), 20 chain-4,
+21–28 VGA timing locks, 30:29 write aperture bits 11:10 (§17.13
+pp.222–223). Read only. Glide h3defs.h:1677–1679 defines nothing useful
+here. Not measured.
+
+### `0x30`, `0x34` — 2D command / srcBaseAddr aliases (Glide: `dramCommand`, `dramData`)
+
+Write-only aliases of the 2D `command` and `srcBaseAddr`, for SGRAM mode
+register initialisation (§17.14–17.15 p.223). Velocity9x never writes them.
+D1.
+
+### `strapInfo` — 0x38, 32-bit, selector
+
+Write bit 0 to choose which word later reads return: 0 = `strapInfo0`, 1 =
+`strapInfo1` (§17.16 p.223; bits §23 pp.238–240). **A read after any
+selector write is stateful**; the Phase 0 probe must save and restore the
+selector or not read it. `strapInfo1` 14:10 is the chip ID, 17:15 the PCI
+function number. Glide h3defs.h:1685. Not measured. D1, D27.
+
+### `iMatchCtrl` — 0x48 (§17.17 pp.223–224)
+
+AGP 4X impedance control. Collides with `pllCtrl2` at 0x48 (D2). Not read.
+
+---
+
+## 4. PLL, DAC and clock select
+
+### `pllCtrl0` (video) — 0x40; `pllCtrl1` (GRX) — 0x44; `pllCtrl2` — 0x48
+
+| Bits | Meaning |
+|---|---|
+| 1:0 | K, post divider |
+| 7:2 | M, input divider |
+| 15:8 | N, multiplier |
+| 16 | Test: clock = VCO output |
+
+f_out = 14.31818 MHz × (N + 2) / ((M + 2) × 2^K).
+
+- Napalm §9 and its sub-section "1.1 PllCtrl0, PllCtrl1" p.157. The note on
+  p.158 (device ID 4: GRX M forced to `0x18`, 141 MHz max) concerns Avenger
+  IDs 4/5 (§3.5 p.23); Napalm's IDs are 6–9.
+- Limits: none given for VCO or M/N ranges. §27.8 p.243 (requirements, not
+  a spec): video ≥ 135 MHz, M and N 8 bits each.
+- `pllCtrl2` appears only in the §4 map; §9 does not describe it (D30).
+- Glide h3defs.h:1168–1174 (agrees); h3regs.h:144–146.
+- Measured: `pllCtrl0` = `0x00000C01` (N = 12, M = 0, K = 1), **not the
+  active clock**: misc output `0xE3` selects clock 0 (2026-10-11-mini-me-first-mode-timing).
+- Avenger: PLL programming by device ID is an Avenger note (§3.5, §3.7).
+- Disagreements: D10.
+
+### Misc output clock select (VGA 0x3CC read / 0x3C2 write)
+
+Bits 3:2: 0 = 25.175 MHz, 1 = 28.322 MHz, 2 = 50 MHz, 3 = programmable PLL
+(Napalm §5.5.5 p.32). Measured `0xE3` → 0, 25.175 MHz; 800×525 total,
+59.940 Hz (2026-10-11-mini-me-first-mode-timing).
+
+### `dacMode` — 0x4C
+
+| Bit | Meaning |
+|---|---|
+| 0 | DAC mode 2:1 or 1:1 (polarity not stated; Glide `SST_DAC_MODE_2X` = 1, h3defs.h:1178) |
+| 1, 2 | DPMS on vsync, force vsync value |
+| 3, 4 | DPMS on hsync, force hsync value |
+
+Napalm §10.1 p.159. 2× mode also needs `vidProcCfg[26]` and halved
+horizontal CRTC timing, all horizontal timing divisible by 16 pixels (§5.4
+p.27). Measured `0` (2026-10-11-mini-me-first-mode-timing).
+
+### `dacAddr` — 0x50; `dacData` — 0x54
+
+`dacAddr` 8:0: CLUT index, 512 entries, **no auto-increment** (§10.2
+p.159). `dacData` 23:0: red 23:16, green 15:8, blue 7:0 (§10.3 p.159).
+Entries 0–255 / 256–511 are chosen per surface by `vidProcCfg[12]`/`[13]`.
+`miscInit1[0]` (invert CLUT address) affects host CLUT access. Glide
+h3defs.h:1184–1194. Not measured. D11.
+
+---
+
+## 5. Video processor and CRTC extensions
+
+Offsets per §11 table p.160 and §4 p.26; Glide h3regs.h:154–188.
+
+### `vidProcCfg` — 0x5C, 32-bit, R/W
+
+| Bits | Meaning |
+|---|---|
+| **0** | **Video processor on (VGA off)**; 0 = VGA mode. Re-toggle 0→1 after any `vidScreenSize` change (§11.1.18 p.173) |
+| 1 | Cursor mode: 0 = Windows, 1 = X11 |
+| 3 | Use 1555 alpha for chroma key (desktop format 4 only) |
+| 4 | Half mode |
+| **7** | **Desktop surface fetch enable** |
+| 8 | Overlay fetch enable |
+| **10** | **Desktop CLUT bypass** |
+| 11 | Overlay CLUT bypass |
+| 12 | Desktop CLUT select (upper 256) |
+| **20:18** | **Desktop format: 0 = 8 bpp palettised, 1 = RGB565, 2 = RGB24 packed, 3 = RGB32, 4 = RGB1555** |
+| 23:21 | Overlay format |
+| **24** | **Desktop in tile space** |
+| **26** | **2× mode (two pixels per video clock)** |
+| **27** | **Hardware cursor enable** |
+| 28, 29 | Disable memory optimisation for desktop, overlay requests |
+| 31 | Overlay deinterlace |
+
+- Napalm §11.1.3 pp.161–162.
+- Glide h3defs.h:1197–1246 (agree to bit 27; D15).
+- Measured: `0x30040C81` after VBE `4111h` → bits 0, 7, 10, 11, 18 (RGB565),
+  28, 29 (2026-10-11-mini-me-post-mode-capture). Clearing only bit 7 paused
+  desktop fetch; restoring the word worked (VNT m5c-aperture-transition.md).
+- Avenger: bit 3 and formats 4 (desktop) / 0, 2, 3 (overlay) added rev 1.01 (§28 p.245).
+- Disagreements: D15.
+
+### `hwCurPatAddr` — 0x60; `hwCurLoc` — 0x64; `hwCurC0` — 0x68; `hwCurC1` — 0x6C
+
+- `hwCurPatAddr` 25:0: byte address of a 64×64 two-plane pattern, linear,
+  16-byte line stride (plane 0 in the low 64 bits) (§11.1.4 pp.163–164).
+  Widened to 26 bits rev 1.00.
+- `hwCurLoc`: X 10:0, Y 26:16, **bottom-right corner**, 0–2047 (§11.1.5 p.164).
+- `hwCurC0/C1`: blue 7:0, green 15:8, red 23:16 (§11.1.6–11.1.7 p.164).
+- Windows mode: (0,0) C0, (1,0) C1, (0,1) screen, (1,1) inverted screen (table p.164).
+- Glide h3defs.h:1250–1261. Not measured. D12.
+
+### `vidSerialParallelPort` — 0x78 (DDC/I2C)
+
+| Bits | Meaning (bit positions per table) |
+|---|---|
+| 18 | DDC port enable |
+| 19, 20 | DDC DCK, DDA write (0 = drive low, 1 = tri-state) |
+| 21, 22 | DDC DCK, DDA state (RO) |
+| 23 | I2C port enable |
+| 24, 25 | I2C SCK, SDA write |
+| 26, 27 | I2C SCK, SDA state (RO) |
+| 17:0 | VMI host port — not touched |
+
+Napalm §11.1.9 pp.167–168. Glide h3regs.h:162 (no bit defines). Not
+measured. D16.
+
+### `vidScreenSize` — 0x98
+
+Width 11:0 pixels; height 22:12 lines; 23 `desktop_addr_fifo_enable`
+(§11.1.18 p.173). Width > 1280 needs 2× mode (same section; D34). Glide
+h3defs.h:1399–1405. Measured `0x001E0280` = 640×480
+(2026-10-11-mini-me-post-mode-capture). D13.
+
+### `vidDesktopStartAddr` — 0xE4
+
+25:0 byte address of the desktop surface (§11.1.25 p.174). Widened to 26
+bits rev 1.00. Glide h3defs.h:1423–1424. Measured `0`.
+
+### `vidDesktopOverlayStride` — 0xE8
+
+Desktop stride 14:0 (bytes if linear, tiles across the tile region if
+`vidProcCfg[24]`); overlay stride 30:16; 31 overlay fetch-width msb
+(§11.1.26 pp.174–175). Glide h3defs.h:1425–1431 (overlay 1428–1430).
+Measured `0x00000500` (1280 bytes, linear). D14.
+
+### `vidCurrOverlayStartAddr` — 0xFC (RO)
+
+25:0 overlay address in use (§11.1.31 p.176). Rev 1.10 (§28 p.247): writing
+bit 31 of 0xFC then reading 0xFC returns `vidCurrDesktopStartAddr` — a
+selector on this offset. Not measured.
+
+### VGA CRTC extensions (I/O 0x3D4/0x3D5 or BAR2 + 0xD4/0xD5)
+
+Active only when `vgaInit0[6]` = 1.
+
+| Index | Bits | Meaning | Napalm |
+|---|---|---|---|
+| CR1A | 0 HT bit 8; 2 HDE bit 8; 4 HBS bit 8; 5 HBE bit 6; 6 HRS bit 8; 7 HRE bit 5 | Horizontal extension | §5.6.27 p.40 |
+| CR1B | 0 VT bit 10; 2 VDE bit 10; 4 VBS bit 10; 6 VRS bit 10 | Vertical extension | §5.6.28 p.41 |
+| CR1C | 7:0 | PCI config read-back index/data, or scratch, by `vgaInit0[7:6]` | §5.6.29 p.41 |
+| CR1D–CR1F | 7:0 | Scratch | §5.6.30–5.6.32 pp.41–42 |
+| CR20/CR21 | | Vertical counter preload (test) | §5.6.33–5.6.34 p.42 |
+| CR22 | | Latch read-back | §5.6.35 p.42 |
+| CR24 | 7 | Attribute controller index/data state (RO) | §5.6.36 p.42 |
+| CR26 | | Display bypass / attribute index | §5.6.37 p.43 |
+
+Measured: CR1A = CR1B = `00`; CRTC `5F/4F/0B/3E/40/DF/E3` for 640×480
+(2026-10-11-mini-me-first-mode-timing). D18, D19, D31.
+
+---
+
+## 6. 2D engine (BAR0 `0x100000`)
+
+Register map §7.1 pp.53–54; Glide `SstGRegs` h3regs.h:242–278. All 2D
+registers read back the value the next operation will use (§7.2 p.55).
+Avenger: the 2D core is inherited; Napalm changes are base addresses widened
+to 26 bits (rev 1.00) and `commandExtra[28]` (rev history; highlighted in
+the table).
+
+| Offset | Register | Fields used | Napalm |
+|---|---|---|---|
+| `0x00` | `status` | Alias of §3 | §7.2.1 p.55 |
+| `0x04` | `intCtrl` | not used | §7.1 p.53 |
+| `0x08`, `0x0C` | `clip0Min`, `clip0Max` | x 11:0, y 27:16; min inclusive, max exclusive | §7.2.10 pp.62–63 |
+| `0x10` | `dstBaseAddr` | 25:0 byte address; 31 tiled | §7.2.6 pp.58–59 |
+| `0x14` | `dstFormat` | 13:0 stride (bytes linear, tiles if tiled, 6:0); 18:16 bpp: 1 = 8, 3 = 16, 4 = 24, 5 = 32 | §7.2.9 pp.60–62 |
+| `0x18–0x24` | `srcColorkeyMin/Max`, `dstColorkeyMin/Max` | 23:0; unused while colour keying is off | §7.2.11 pp.63–64 |
+| `0x28`, `0x2C` | `bresError0/1` | not used | §7.2.15 p.67 |
+| `0x30` | `rop` | ROP1 7:0, ROP2 15:8, ROP3 23:16 (colour-key results select ROP0–3) | §7.2.12 p.64 |
+| `0x34` | `srcBaseAddr` | 25:0; 31 tiled. Screen-to-screen only | §7.2.6 pp.58–59 |
+| `0x38` | `commandExtra` | 0 src colour key, 1 dst colour key, 2 wait for vsync, 3 pattern row 0, **28 preserve 1555 alpha** (idle or 3D NOP before changing; 16 bpp only) | §7.2.3 p.57 |
+| `0x3C`, `0x40` | `lineStipple`, `lineStyle` | not used | §7.2.13–7.2.14 pp.64–67 |
+| `0x44`, `0x48` | `pattern0Alias`, `pattern1Alias` | = `colorPattern[0]`, `[1]` (mono pattern rows) | §7.1 p.54, §7.2.5 p.58 |
+| `0x4C`, `0x50` | `clip1Min`, `clip1Max` | as clip0, selected by `command[23]` | §7.2.10 p.63 |
+| `0x54` | `srcFormat` | 13:0 stride; 19:16 format: 0 = mono, 1 = 8, 3 = 16, 4 = 24, 5 = 32, 8 = YUYV, 9 = UYVY; 20, 21 host byte, word swizzle; 23:22 packing: 0 = stride, 1 byte, 2 word, 3 dword | §7.2.9 pp.60–62 |
+| `0x58` | `srcSize` | width 12:0, height 28:16 (stretch only) | §7.2.7 p.59 |
+| `0x5C` | `srcXY` | x 12:0, y 28:16, signed; host blits: x gives first-pixel alignment (mono 4:0, colour 1:0) | §7.2.8 pp.59–60 |
+| `0x60`, `0x64` | `colorBack`, `colorFore` | Destination format (8: 7:0; 16: 15:0; 24: 23:0; 32: 31:0). `colorFore` is the fill colour | §7.2.4 pp.57–58 |
+| `0x68` | `dstSize` | width 12:0, height 28:16 | §7.2.7 p.59 |
+| `0x6C` | `dstXY` | x 12:0, y 28:16, signed | §7.2.8 p.60 |
+| `0x70` | `command` | see below | §7.2.2 pp.55–56 |
+| `0x74–0x7C` | reserved | "Do not write" | §7.1 p.54 |
+| `0x80–0xFF` | `launchArea` | see below | §7.3 pp.67–70 |
+| `0x100–0x1FC` | `colorPattern[0..63]` | 8×8 pattern, destination format or mono | §7.2.5 p.58 |
+
+Glide offsets agree for every row (h3regs.h:243–274); bit cross-checks in
+h3gdefs.h:37–163.
+
+### `command` — 0x70
+
+| Bits | Meaning |
+|---|---|
+| 3:0 | 0 NOP (wait for idle), 1 screen-to-screen blit, 2 stretch blit, 3 host-to-screen blit, 4 host stretch, 5 rectangle fill, 6 line, 7 polyline, 8 polygon fill, 13/14/15 SGRAM mode/mask/colour writes |
+| **8** | **Initiate: 1 = start on this write; 0 = start on a launch-area write** |
+| 9 | Reversible lines |
+| 10, 11 | After blit/fill, dstX += width, dstY += height |
+| 13 | Pattern is mono |
+| **14** | **X direction: 1 = right to left** |
+| **15** | **Y direction: 1 = bottom to top** (also flips host blits) |
+| 16 | Mono transparent |
+| 19:17, 22:20 | Pattern X, Y offset |
+| 23 | Clip select (0 = clip0, 1 = clip1) |
+| **31:24** | **ROP0** (used when colour keying is off) |
+
+With bits 15:14 set, `srcXY`/`dstXY` name the corner the copy starts from:
+01 upper right, 10 lower left, 11 lower right (§7.2.8 p.60). Direction
+bits apply to plain screen-to-screen blits only; no colour keying or
+format conversion right to left (§7.2.2 p.56).
+
+Glide h3gdefs.h:39–69 (codes 0–8, GO bit 8, bits 9–16, 23, ROP 31:24 agree).
+
+### Launch area — 0x80–0xFF
+
+- Screen-to-screen blit and stretch: one write = source x 12:0, y 28:16 →
+  `srcXY` (§7.3.1–7.3.2 pp.67–68).
+- Rectangle fill: one write = destination x 12:0, y 28:16 → `dstXY`;
+  colour from `colorFore`, size from `dstSize` (§7.3.5 p.70).
+- Host-to-screen: each write is 32 bits of packed source data; surplus is
+  discarded or used by the next host blit; too little aborts the blit
+  (§7.3.3 p.68). Spec example 1 (§7.3.3.1 pp.68–69): `command`
+  `0xCC000003`, `dstFormat` `0x00030800` (16 bpp, 2048-byte stride),
+  `srcFormat` `0x00400000` (mono, byte packed).
+- Host blits always run left to right; "Wait for Vsync" must not be used for
+  non-DMA host blits (§7.2.3 p.57).
+
+### 2D errata
+
+- **≤16-pixel blit hang (NOP first):** not in the Napalm spec. Searched
+  for "hang", "errat", "16 pixel", "workaround": no match. Source: research
+  notes only (the plan's "Facts from documents only"). Unchecked.
+- **Fence every 64 KiB of FIFO writes:** not in the spec. The spec requires
+  a fence after the last CMDFIFO write and before the bump or the jump
+  (§13.1.1.1–13.1.1.2 p.179).
+- **12 NOPs when leaving 2-ppc mode:** confirmed, §21.6 p.236 (3D,
+  `combineMode[29]`, NOPs directed at the TMUs).
+- **NOP before a compressed texture:** not found. §20.3 p.234 requires a 2D
+  NOP flush around texture downloads.
+- **`vgaInit0[12]`:** function confirmed (§17.12 pp.221–222); the "~10%"
+  figure is not in the spec.
+
+---
+
+## 7. Command FIFO (BAR0 `0x80000`)
+
+Napalm §14 p.185 (map), §15 pp.187–191 (registers), §13 pp.178–184
+(transport). Glide `SstCRegs`/`CmdFifo` h3regs.h:196–239, h3defs.h:1780–1840,
+h3gdefs.h:165–283.
+
+| Offset | Register | Fields | Napalm |
+|---|---|---|---|
+| `0x00–0x14` | `agpReqSize`, `agpHostAddressLow/High`, `agpGraphicsAddress/Stride`, `agpMoveCMD` | AGP moves — not used | §14.1–14.6 pp.186–187 |
+| `0x20` | `cmdBaseAddr0` | 23:0 base in 4 KiB pages (frame buffer or AGP) | §15.1 pp.187–188 |
+| `0x24` | `cmdBaseSize0` | 7:0 size in 4 KiB pages minus one (0 = 4 KiB); 8 enable; 9 1 = AGP; 10 disable hole counter | §15.2 p.188 |
+| `0x28` | `cmdBump0` | W: 15:0 words to add (software management) | §15.3 p.188 |
+| `0x2C` | `cmdRdPtrL0` | 31:0 byte read pointer; init = base as bytes | §15.4 p.188 |
+| `0x30` | `cmdRdPtrH0` | 3:0 upper bits; init with base | §15.5 p.188 |
+| `0x34` | `cmdAMin0` | 24:0 byte address; init base − 4; **reads back 4 more than written** | §15.6 p.188 |
+| `0x38` | reserved | | §14 p.185 |
+| `0x3C` | `cmdAMax0` | 24:0; init base − 4; reads back +4 | §15.7 p.189 |
+| `0x40` | `cmdStatus0` (RO) | 31 AGP xfer, 30 unpacker busy, 24 on-chip FIFO empty, 2:0 packet type, … debug only | §15.8 p.189 |
+| `0x44` | `cmdFifoDepth0` | 19:0 unexecuted words | §15.9 p.189 |
+| `0x48` | `cmdHoleCnt0` | 15:0 unwritten locations between AMin and AMax | §15.10 p.189 |
+| `0x50–0x78` | CMDFIFO 1 set | same layout | §15.11–15.20 pp.189–191 |
+| `0x80` | `cmdFifoThresh` | {11, 4:0} fetch threshold, 10:5 high-water mark | §15.21 p.191 |
+| `0x84` | `cmdHoleInt` | 21:0 hole timeout, 22 enable | §15.22 p.191 |
+| `0x100` | `yuvBaseAddress` | 25:0 | §15.23 p.191 |
+| `0x104` | `yuvStride` | 13:0; 31 tiled | §15.24 p.191 |
+
+Constraints from the spec:
+
+- A frame-buffer CMDFIFO must lie in the low 16 MiB (§21.8 p.237).
+- Two management modes: software (`cmdBump`) for AGP or frame buffer;
+  hardware (hole counting) for frame buffer only (§13.1.1 pp.178–179).
+- Hardware mode: write sequentially; at least four entries before a jump to
+  the top; fence before the first write to the top (§13.1.1.2 p.179).
+- Byte and 16-bit writes are not allowed in the CMDFIFO (§13.1.2 p.179).
+- Two streams, first come first served (§13.1.10 p.184).
+- Not measured on any VSA-100. The plan's ten-store bring-up order is from
+  the prior-work plan, not from this spec.
+
+### Packet headers (bits 2:0 = type)
+
+| Type | Layout (word 0) | Use | Napalm |
+|---|---|---|---|
+| 0 | 5:3 function: 0 NOP, 1 JSR, 2 RET, 3 JMP local frame buffer, 4 JMP AGP (+1 word); 28:6 address [24:2]; 31:29 zero | Wrap to start, subroutines | §13.1.3 pp.179–180 |
+| 1 | 31:16 word count (> 0); 15 increment; 14:3 register base (bit 14 = 2D, 13:11 chip field, 10:3 register number) | Burst register writes; host blits | §13.1.4 p.180 |
+| 2 | 31:3 mask of up to 29 2D registers starting at `clip0Min` (2D 0x08) | 2D state | §13.1.5 pp.180–181 |
+| 3 | Triangle setup: 5:3 command, 9:6 vertex count, 21:10 parameter mask, 27:22 setup mode, 28 packed colour, 31:29 pad | 3D | §13.1.6 pp.181–182 |
+| 4 | 28:15 14-bit general register mask; 14:3 register base; 31:29 pad words | Sparse register writes | §13.1.7 p.183 |
+| 5 | 21:3 word count; 25:22, 29:26 byte enables (active low) for last/second word; 31:30 space (LFB, YUV, 3D LFB, texture); word 1 = 27-bit address | Frame-buffer data in order with commands | §13.1.8 pp.183–184 |
+| 6 | 20:5 byte count; 4:3 space; four further words (AGP source, stride/width, FB offset, dest stride) | AGP → frame buffer; **broken with AGP CMDFIFOs** (§21.8 p.237) | §13.1.9 p.184 |
+
+Glide h3gdefs.h:182–283 agrees on types and field positions. D25, D33.
+
+---
+
+## 8. 3D and SLI registers (names only; detail deferred to the D3D plan)
+
+BAR0 `0x200000` + offset. Napalm §8 map pp.82–86; Glide `SstRegs`
+h3regs.h:289–458.
+
+| Offset | Register | One line | Napalm |
+|---|---|---|---|
+| `0x000` | `status` | Alias of §3 | §8.1 p.87 |
+| `0x120` | `nopCMD` | Any write flushes the pipeline; bit 0/1 clear pixel/triangle counters. The idle procedure's NOP | §8.17 p.94 |
+| `0x128` | `swapbufferCMD` | Swap; needs `swapPend` first | §8.19 p.95 |
+| `0x1E0` | `renderMode` | 1:0 16/15/32 bpp, Y-origin, write masks, 2-ppc bands; new in Napalm (rev 1.01) | §8.26 p.121 |
+| `0x1EC` | `colBufferAddr` | 25:4 base; 31 selects primary/secondary (AA) | §8.40 p.130 |
+| `0x1F0` | `colBufferStride` | 13:0 linear bytes or 6:0 tiles; 15 tiled | §8.41 p.130 |
+| `0x1F4` | `auxBufferAddr` | as `colBufferAddr` | §8.42 p.131 |
+| `0x1F8` | `auxBufferStride` | as `colBufferStride` | §8.43 p.131 |
+| `0x208` | `combineMode` | bit 29 = 2-ppc; bit 30 = new combine unit | §21.6 p.236 |
+| `0x20C` | `sliCtrl` | render mask 7:0, compare mask 15:8, scan mask 23:16, log2 chips 25:24, enable 26 | §8.29 p.125 |
+| `0x210` | `aaCtrl` | Primary/secondary vertex offsets, 28 AA enable | §8.30 p.125 |
+| `0x214` | `chipMask` | Per-chip write enables, default all on | §8.31 p.126 |
+| `0x218` | `leftDesktopBuf` | Desktop swap address (rev 1.10) | §8 map p.84 |
+
+Glide offsets agree (h3regs.h:366, 388–404; `sliCtrl` bits h3defs.h:546–554,
+`aaCtrl` h3defs.h:568–673). Note: the spec prints two 3D maps that differ
+for `0x40–0x7C` (pp.83 and 86); the second is the alternate triangle map
+(`miscInit1[5]`). Not needed before Phase 5.
+
+---
+
+## Disagreements
+
+Listed, not resolved by majority. "Plan follows" says which side Velocity9x
+code uses.
+
+1. **I/O map 0x30–0x3C.** §4 p.25 names 0x30/0x34 `dramCommand`/`dramData`
+   ("see 2D offset 0x70" / "0x064") and 0x38 reserved, with no 0x3C row.
+   §17.14–17.16 p.223: 0x30 = 2D `command` alias, 0x34 = 2D `srcBaseAddr`
+   alias (not `colorFore` 0x64), 0x38 = `strapInfo`. §11 p.160 and Glide
+   h3regs.h:138–141 put `vidTvOutBlankVCount` at 0x3C. Plan follows §17;
+   none of these are written.
+2. **0x48.** §17 table p.210 and §17.17 p.223: `iMatchCtrl`. §4 p.25 and
+   Glide h3regs.h:146: `pllCtrl2`. Unresolved; neither is written.
+3. **status FIFO bits (known case).** §8.1 p.87 prose: bits 5:0 free
+   space, 64 entries, empty = `0x3F`; bits 27:12 memory FIFO. Bit tables
+   (§8.1, §17.1): 4:0 free (`0x1F`), 5 busy, 13/14 TMU busy, 27:15 reserved.
+   §17.1 p.211 prose says bits 11:10 for the CMDFIFOs; the table says 11, 12.
+   Glide has both `SST_FIFOLEVEL 0x3F` and `SST_PCIFIFO_FREE 0x1F`
+   (h3defs.h:98–99). Plan follows the table and uses only bit 9 (VNT
+   measured the same choice).
+4. **Idle procedure.** §21.2 p.234 asks for a NOP before polling and three
+   clear reads; its sample code returns idle only after four. VNT's
+   measured procedure uses three reads and no NOP. Whether the NOP matters
+   on the 4500 is not established.
+5. **pciInit0.** Glide bit 0 `STALL_ENABLE`, bit 7 `HARDCODE_BASE`
+   (h3defs.h:1444, 1447); spec: 1:0 reserved, 7 reserved default 1 (§17.2
+   p.211). Spec prose says bits 25:20 group LFB writes; the table says PCI
+   FIFO read threshold. Plan: read only.
+6. **lfbMemoryConfig (known case).** Prose (§17.4 p.212): "any time the
+   incoming data to bit 30 is 1 will either [register] be updated"; also
+   reads selected by "bits 30:29 = 2 / 3". Bit table: bit 30 = selector-only,
+   no tile data. Measured on the Mini-Me: selector writes `0x40000000` /
+   `0x60000000` changed no tile data; the compare write `0x8000C000` took
+   effect. Prose also gives tiles-in-X as 21:16; table 22:16 (Glide
+   h3defs.h:1497 agrees with the table). Plan follows the table.
+7. **miscInit0 bits 3:2 and 31:30 (known case).** Prose (§17.5 p.214) and
+   Glide (h3defs.h:1509–1510, 1523–1524): byte/word swizzle enables. Bit
+   table: 3:2 reserved, 30 = `miscInit1`/`vip2vmiCtrl` alias, 31 = VMI host
+   port; revision history 1.09/1.11 (pp.247–248) records the change. Plan
+   follows the table. Measured `miscInit0` = 0: no evidence either way.
+8. **SDRAM sizing.** §17.9 p.219 prose: with SDRAM only 16 Mbit parts and a
+   16 MB frame buffer are supported, and the type/chip-set fields are
+   ignored. Mini-Me: `dramInit1[30]` = 1 (SDRAM), type 4 (128 Mbit), 64 MiB
+   verified by a full paired-page sweep. The prose is wrong for this chip;
+   plan follows the fields.
+9. **Parts per chip set.** Spec: `dramInit0[26]` = number of chip sets (0 =
+   1, 1 = 2); it never says how many parts form a set. VNT decodes 0 = 4
+   parts, 1 = 8 parts. The 4-part figure is not in the databook; the Mini-Me
+   result (64 MiB) is consistent with it. Phase 1 should record both fields
+   with the measured size.
+10. **PLL M = 0.** The plan lists "M = 0 refused" among document facts. The
+    databook says nothing about M = 0; VNT m5b-timing.md attributes it to a
+    source not followed here. Separately, the device-ID-4 note gives GRX M
+    as `0x18` (p.158) and as `0x24` (§3.7 p.24). Napalm IDs are 6–9; whether
+    either note applies is not established.
+11. **dacAddr width.** Spec 8:0, 512 entries (§10.2 p.159); Glide
+    `SST_DAC_ADDR` `0xFF` (h3defs.h:1186). Plan follows the spec.
+12. **Cursor colour order.** Spec `hwCurC0/C1`: blue 7:0, green 15:8, red
+    23:16 (§11.1.6–11.1.7 p.164), matching `dacData`. Glide: red shift 8,
+    green shift 16 (h3defs.h:1258, 1260). Plan follows the spec; Phase 1 or
+    the cursor work measures it.
+13. **vidScreenSize height.** Spec 22:12 with bit 23 =
+    `desktop_addr_fifo_enable` (§11.1.18 p.173). Glide height mask
+    `0xFFF << 12` overlaps its own bit-23 define (h3defs.h:1403–1405); VNT
+    uses 23:12. Plan follows the spec (22:12).
+14. **Desktop stride width.** Spec 14:0 (overlay 30:16, bit 31 overlay
+    fetch msb; §11.1.26 pp.174–175). Glide 13:0 / 29:16 (h3defs.h:1426); VNT
+    13:0. Plan follows the spec; values under 16 KiB are unaffected.
+15. **vidProcCfg bits 3, 29, 30.** Spec: 3 = 1555 alpha chroma key, 29 =
+    disable overlay memory optimisation, 30 reserved. Glide: bit 3 also
+    `INTERLACED_EN`, 29 `OVERLAY_EACH_VSYNC`, 30 `OVERLAY_STRIDE_ADJUST`
+    (h3defs.h:1204–1205, 1245–1246); §11.3 p.177 says interlaced output is
+    not implemented. The Mini-Me BIOS value sets bit 29; its meaning is not
+    established. Plan preserves bits 28–31 as found.
+16. **vidSerialParallelPort cross-references.** The DDC write rows (19, 20)
+    say the line state is "reflected in bit 26/27"; the I2C write rows (24,
+    25) say "bit 21/22". The table itself puts DDC state at 21/22 and I2C
+    state at 26/27 (§11.1.9 p.167). Plan follows the table's bit positions;
+    DDC is unmeasured.
+17. **VGA registers in memory space.** §4 p.26: I/O `0xB0–0xDF` VGA
+    registers exist in I/O space only. Glide places `vgaRegister[12]` there
+    in the memory-mapped struct (h3regs.h:178). Plan uses BAR2 only, as VNT
+    measured.
+18. **CR1A base-index column.** It gives bit 4 (horizontal blank start bit
+    8) a base of CR03; CR02 is start horizontal blanking (§5.6.4 p.35). Plan
+    follows the register names.
+19. **CR1C enable.** The CR1C table decodes `vgaInit0[7:6]`, with bit 7 =
+    "extended registers disabled" (§5.6.29 p.41); §17.12 p.222 defines
+    `vgaInit0[7]` as VGA memory remap (test). Not used.
+20. **2D clip select.** `command` prose says bit 31 selects clip0/clip1; the
+    table and Glide (h3gdefs.h:67) say bit 23 (§7.2.2 p.56). Plan follows
+    the table.
+21. **Host swizzle bits.** Prose: `srcFormat` bits 19 and 20 (§7.2.9 p.61);
+    table and Glide: 20 and 21 (p.62; h3gdefs.h:92–93). Plan follows the
+    table.
+22. **2D map widths.** §7.1 p.54 lists `dstFormat` as 17:0 and `srcFormat`
+    as 18:0; the §7.2.9 tables use 18:16 and 23:16. Plan follows §7.2.9.
+23. **commandExtra 31:29.** Spec table: reserved (§7.2.3 p.57); revision
+    1.05 (p.246) added SLI there; Glide defines SLI bits 29–31 and an
+    `EN_CLUT88` bit 7 (h3gdefs.h:52, 77–79). Not used single-chip.
+24. **Host blit example 2.** §7.3.3.2 p.69 repeats example 1's prose (mono,
+    byte packed) for `srcFormat` `0x00240000` (24 bpp, word swizzle) and
+    writes `dstXY` where `dstSize` is meant. Use the tables, not this
+    example.
+25. **CMDFIFO fields.** Size field: spec 7:0 (§15.2 p.188) and Glide
+    h3gdefs.h:176 `0xFF`, but Glide h3defs.h:1798 `0xF`. `cmdFifoThresh`:
+    spec {11, 4:0} + 10:5 (§15.21 p.191, more bits per rev 1.10); Glide 4:0
+    + 8:5 (h3defs.h:1836–1838). The §14 map prints `cmdFifoThresh` as
+    "0x080(96)". Glide calls 0x40 `unusedB` where the spec has `cmdStatus0`
+    (h3regs.h:205). `cmdFifoDepth1` is "freespace" on p.185 and depth on
+    pp.190–191. Plan follows §15.
+26. **Config space constants.** Glide h3defs.h:1705–1728 define
+    `SST_BUS_SNOOP0` 0x44, `SST_BUS_SNOOP1` 0x48 and init-enable bits 0–11
+    (SST-1 layout). Spec: 0x44 ACPI reset, 0x48 `cfgPciDecode`,
+    `cfgInitEnable` in bits 31:8 of 0x40 with FabID in 7:0 (§16 p.192,
+    §16.24 pp.199–200). Glide's struct (h3regs.h:488–492) agrees with the
+    spec. Plan follows the spec.
+27. **Device-ID strap.** §16.2 p.193: TV_DATA_6 picks {6,7} or {8,9}. §23
+    p.238: `strapInfo0[19]` = TV_DATA_7 = `pci_device_id`, `[18]` = TV_DATA_6
+    = force `strapInfo1` to 0; the text below it names TV_DATA_5 for that.
+    Rev 1.11 (p.248) says TV_DATA_6. Read-only; recorded only.
+28. **Stale LFB text.** §8.84 p.155 ("FIX THIS"): LFB at an 8 MiB offset,
+    4 MiB long (SST-1). §4 p.25 and Glide (h3defs.h:2099): 3D LFB at
+    `0x1000000`, 16 MiB. Plan follows §4.
+29. **"BAR1 upper half is tiled" (plan wording).** The spec defines the
+    tiled view as starting at the tile begin page, wherever that is (§17.4,
+    §18.1). On the Mini-Me it starts at `0x01FFF000`, inside the lower half
+    of BAR1. "Upper half" is true only when the boundary is set to 64 MiB.
+30. **pllCtrl2.** In the §4 map and Glide, absent from §9, which documents
+    only the video and GRX PLLs; §3.5 p.23 says the separate memory clock
+    domain was removed in Avenger, yet `miscInit1[11]` still powers down a
+    "memory PLL". Its function is not established; never written.
+31. **VNT HDE formula.** VNT m5b-timing.md writes horizontal display as
+    `CR01 + CR1a bit2*64`; that is 256 only if bit 2 is taken as its masked
+    value (4). The spec says HDE bit 8. Unexercised (CR1A = 0).
+32. **vgaInit0 bit 2.** Prose (§17.12 p.221): set 0 (6-bit DAC) for VGA
+    compatibility; table default 1 (8-bit). Not used.
+33. **Packet type 4 limits.** "Maximum of 22 words" and "N ranges from 0 to
+    16" with a 14-bit mask (§13.1.7 p.183). Internally inconsistent.
+34. **2× mode threshold.** Width > 1280 (§11.1.18 p.173); pixel clock >
+    135 MHz (§5.4 p.27); "any display larger than 1280×1024" (§11.3 p.177).
+    Not reconciled; matters only for native mode setting.
+
+---
+
+## Not established
+
+- Any value on the retail Voodoo4 4500: BAR sizes, `dramInit0/1`, tile
+  control/compare after the BIOS mode set, `vidProcCfg`, PLL, straps.
+- Whether the 4500 BIOS leaves its tile boundary at or below 32 MiB, and
+  whether it moves it for larger modes.
+- The BAR index of each memory span on the Mini-Me (the VNT identity
+  record leaves it to configuration-space discovery; the plan states it).
+- Parts per chip set for `dramInit0[26]` (D9).
+- Polarity of `dacMode[0]`; whether `dacMode[0]` and `vidProcCfg[26]` must
+  both be set for 2× mode.
+- PLL M/N/K limits and VCO range; any M = 0 restriction; `pllCtrl2`.
+- Cursor colour byte order (D12); `vidScreenSize[23]` (D13).
+- `vidProcCfg[29]` meaning (D15).
+- A direct MMIO address for `lfbMemoryTileCtrl/Compare` (Glide's 0x100/0x104
+  placement).
+- Whether the status-polling NOP (§21.2) is needed; the ≤16-pixel blit hang
+  and the 64 KiB fence rule (research notes only).
+- `pciInit0` as left by the BIOS, in particular bit 8 (2 read wait states,
+  §21.8).
+- `vgaInit0[12]` effect on 2D throughput.
+- CMDFIFO behaviour of any kind on a VSA-100; frame-buffer FIFO placement
+  below 16 MiB on a 32 MiB card.
+- DDC/I2C through `vidSerialParallelPort`.
+- `strapInfo1` contents and the stateful selector at 0x38 on a live card.
+- Which registers are truly shared with Avenger: no Banshee/Voodoo3 spec is
+  available for the second cross-check.

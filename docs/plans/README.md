@@ -2,6 +2,7 @@
 
 - [3dfx Voodoo3 family: tier-0 bring-up](3dfx-voodoo3-family.md) - Open.
 - [3dfx Voodoo3: what the retro-agent work supplies to the 2D and D3D engines](3dfx-voodoo3-prior-work.md) - Open; desk work, nothing coded.
+- [3dfx VSA-100: Voodoo4 first, Voodoo5 5500 and 6000 after](3dfx-vsa100-family.md) - Proposed; retail Voodoo4 4500 on A8U4I5, not yet surveyed. Sibling Mini-Me measurements imported from VelocityNT as predictions.
 - [ATI Rage Mobility-M hardware Direct3D and OpenGL](ati-rage-mobility-hardware-3d.md) - Proposed; research complete, physical bring-up not started.
 - [ATI Rage Pro class: table fog and 8-bit paletted textures](rage-pro-table-fog-and-paletted-textures.md) - Proposed; research only, nothing coded or measured.
 - [Direct3D gaps: backface culling and line rasterisation](d3d-line-raster-and-backface-cull.md) - Open.
