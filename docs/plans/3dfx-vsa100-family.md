@@ -9,8 +9,11 @@ VBE reports 16 MiB of the 32 and the BIOS leaves the last 4 KiB tiled; the
 memory hook, reading through BAR2, now gives the driver 32 MiB less that
 page (boot 410,
 [2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md](../decisions/2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md)).
-Phase 0 done; Phase 1 partly done; Phase 2's remaining gate is the mode
-matrix. The retail Voodoo4 4500 AGP
+All 18 published modes switch
+([mode matrix](../probe/a8u4i5-voodoo4-velocity9x-2026-10-11/mode-matrix-boot410/README.md)),
+so Phase 2's exit gate is met apart from the scanout check, not run. Phase 0
+done; Phase 1 partly done (stock-driver game baseline not run). Next:
+Phase 3, the 2D engine. The retail Voodoo4 4500 AGP
 (32 MiB) is in A8U4I5 on 3dfx 1.04.00, and its first register survey is
 recorded at 640x480
 ([2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md](../decisions/2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)).
