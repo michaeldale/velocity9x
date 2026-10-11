@@ -238,6 +238,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-11 The Voodoo4's 2D engine fills and copies pixel-exact from the builder's values](2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-exact.md)
 - [2026-10-11 The Voodoo4's DirectDraw fills and copies run on its 2D engine](2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md)
 - [2026-10-11 The Voodoo4's GDI fills and copies run on its 2D engine, PASS at 8 and 16 bpp](2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md)
+- [2026-10-11 3dfx's shipped Glide asks QUERYDEVNODE before it sends EXT_HWC](2026-10-11-shipped-glide-asks-querydevnode-before-ext-hwc.md)
 
 ## NVIDIA and other surveyed cards
 
