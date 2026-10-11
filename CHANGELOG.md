@@ -56,6 +56,24 @@ build identifier so exact guest-tested binaries remain traceable.
   under the same rule: a newer copy, such as a Voodoo3's own, is kept.
   To make room on the floppies, the DirectDraw probe `V9XDDP.EXE` is now
   in the zip downloads only.
+- **Carmageddon II in Glide.** The game now offers its 3DFX (Glide)
+  option, and its intro, menus and races draw on the Intel GMA 950. A
+  netbook session ran 8.5 minutes into a race. Four entry points it needs
+  are written (`grHints`, `grConstantColorValue4`,
+  `guColorCombineFunction` and `grTexTextureMemRequired`), and
+  `grLfbWriteRegion` now writes pixels instead of only logging them.
+  `grTexTextureMemRequired` was the stub behind a menu drawn as a grid
+  of dots: it returned 0, so the game put every texture at the same
+  address. Pressing Escape in a race quits the game; whether Direct3D
+  does the same is not checked.
+  [Plan and result](docs/plans/glide-tmu-byte-memory.md).
+- **Glide texture memory is held as bytes.** Each draw reads the texture
+  memory it names, as a Voodoo's TMU does, so a game that reuses or
+  partly overwrites texture memory draws what it wrote. Draws skipped
+  for a missing texture went from thousands to none in Carmageddon II.
+  The memory is 4 MiB, the size `GLIDE3X.DLL` reports; at 2 MiB, Diablo
+  II's town drew without its sprites. NFS II SE races at about 17 fps on
+  the netbook, and Diablo II and Rollcage draw as before on the Rage XL.
 - **Glide chroma key.** A keyed texture under an alpha combine that takes
   alpha from the vertex or a constant now hides its keyed texels. Before,
   they were drawn, or, on the Rage XL, the whole draw was refused. This

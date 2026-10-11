@@ -56,9 +56,12 @@ typedef struct v9x_glide_texinfo {
 #define V9X_GLIDE_TEXMEM_RECORDS 4096u
 #define V9X_GLIDE_TEXMEM_BUCKETS 1024u
 
-/* The memory: 2 MiB, the one TMU grSstQueryHardware reports, in pages. */
+/* The memory, in pages: 4 MiB, the larger of the two DLLs' reports.
+ * GLIDE2X.DLL's grSstQueryHardware says 2 MiB; GLIDE3X.DLL answers
+ * GR_MEMORY_TMU with 4 MiB, and Diablo II places textures above 2 MiB
+ * (A8U4I5, 2026-10-11). */
 #define V9X_GLIDE_TEXMEM_PAGE_BYTES 4096ul
-#define V9X_GLIDE_TEXMEM_PAGES      512u
+#define V9X_GLIDE_TEXMEM_PAGES      1024u
 
 typedef struct v9x_glide_texrec {
     v9x_u32 in_use;

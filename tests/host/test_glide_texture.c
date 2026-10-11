@@ -79,7 +79,7 @@ static void test_required(void)
            0ul);
 }
 
-/* The TMU memory itself: 2 MiB, as the DLL reports. Static, so zero. */
+/* The TMU memory itself, as large as the model holds. Static, so zero. */
 static v9x_u8 tmu[V9X_GLIDE_TEXMEM_PAGES * V9X_GLIDE_TEXMEM_PAGE_BYTES];
 static v9x_u8 data[131072ul];
 
@@ -264,6 +264,28 @@ static void test_distinct_slots(void)
     XCHECK(refills == 0u);
 }
 
+/*
+ * The memory spans the larger of the two DLLs' reports: GLIDE3X.DLL answers
+ * GR_MEMORY_TMU with 4 MiB, and Diablo II places textures above 2 MiB
+ * (0x2EC000, A8U4I5, 2026-10-11). With 2 MiB those sources were refused
+ * and the town drew without its sprites.
+ */
+static void test_glide3_range(void)
+{
+    V9X_GLIDE_TEXINFO tile;
+    v9x_u32 state = 99ul;
+    int a;
+
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
+    info_set(&tile, 3ul, 3ul, 3ul, V9X_GLIDE_TEXFMT_ARGB_1555);    /* 2048 */
+    fill(data, 2048ul, 7u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x2EC000ul, 3ul, &tile, data) ==
+           2048ul);
+    a = v9x_glide_texmem_source(&mem, 0x2EC000ul, 3ul, &tile, &state);
+    XCHECK(a >= 0 && state == V9X_GLIDE_TEXMEM_NEW);
+    XCHECK(tmu[0x2EC000ul] == 7u);
+}
+
 static void test_formats(void)
 {
     v9x_u16 src16[4];
@@ -353,6 +375,7 @@ unsigned int v9x_run_glide_texture_tests(void)
     test_download_levels();
     test_cache_full();
     test_distinct_slots();
+    test_glide3_range();
     test_formats();
     return glide_texture_failures;
 }

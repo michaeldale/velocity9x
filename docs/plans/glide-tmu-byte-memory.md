@@ -148,6 +148,15 @@ every texture went to address 0 over the previous one: one download a
 frame against about 290 sources, all at 0. Written, the menu draws whole
 (text, car, panels; boot 155).
 
+NFS II SE on the netbook (boot 156): the race draws, about 17 fps, no
+refusals or skips. On A8U4I5 (Rage XL, boot 402) the first Glide 3 run
+drew Diablo II's town without sprites: 349,310 draws skipped, all
+sourced at 0x2EC000. GLIDE3X.DLL reports 4 MiB of TMU memory and the
+byte model held 2 MiB, so every source above it was refused. With 4 MiB
+(a host test at 0x2EC000 failed first), the town draws whole, 0 skipped
+and about 0.75 % refused as before, and Rollcage's menu and demo race
+draw with none refused.
+
 ## Not in this plan
 
 - DDERR_SURFACELOST on every lock and flip about 300 s into a
