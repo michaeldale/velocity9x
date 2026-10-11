@@ -54,6 +54,11 @@
 #ifdef V9X_MGA_FAMILY
 #include "velocity9x/mga_engine.h"
 #endif
+/* The 3dfx arm likewise uses tdfx_2d.c, the builder eng_tdfx.c uses, linked
+ * into the 3dfx family's DRV only. */
+#ifdef V9X_TDFX_FAMILY
+#include "velocity9x/tdfx_2d.h"
+#endif
 
 /* ddi.c: the live screen PDEVICE, or NULL between Disable and Enable. This is
  * the driver's own liveness test and the identity an accelerated destination
@@ -450,6 +455,24 @@ static WORD v9x_gdi_wait_idle(void)
                 }
             } while (spins-- != 0ul);
 #endif
+#ifdef V9X_TDFX_FAMILY
+        } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
+            /* Idle is three consecutive reads with the busy bit clear
+             * (docs\specifications\vsa100-registers.md, status), as in
+             * eng_tdfx.c. */
+            WORD clear = 0u;
+
+            do {
+                if (v9x_tdfx_status_busy(v9x_gdi_read(V9X_TDFX_2D_STATUS)) ==
+                        0ul) {
+                    if (++clear >= 3u) {
+                        return 1u;
+                    }
+                } else {
+                    clear = 0u;
+                }
+            } while (spins-- != 0ul);
+#endif
         } else {
             do {
                 if ((v9x_gdi_virge_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
@@ -509,6 +532,10 @@ typedef struct v9x_gdi_op {
     /* The MGA fill or copy, built at gate 8 so a rectangle the builder
      * refuses declines before the cursor is excluded. */
     struct v9x_mga_writes mga;
+#endif
+#ifdef V9X_TDFX_FAMILY
+    /* The VSA-100 fill or copy, built at gate 8 for the same reason. */
+    struct v9x_tdfx_blt tdfx;
 #endif
 } V9X_GDI_OP;
 
@@ -750,6 +777,28 @@ static WORD v9x_gdi_mga_draw(const V9X_GDI_OP *op)
     }
     v9x_gdi_mga_emit(&setup);
     v9x_gdi_mga_emit(&op->mga);
+    return 1u;
+}
+#endif
+
+#ifdef V9X_TDFX_FAMILY
+/*
+ * One VSA-100 fill or copy, built at gate 8 by the builder eng_tdfx.c uses.
+ * Waits for idle first, as the MGA arm does; the builder's writes carry
+ * their own setup (open clip, no colour key) and end with the command,
+ * whose initiate bit starts the engine, so there is no separate per-mode
+ * state to restore.
+ */
+static WORD v9x_gdi_tdfx_draw(const V9X_GDI_OP *op)
+{
+    DWORD index;
+
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    for (index = 0ul; index < op->tdfx.count; ++index) {
+        v9x_gdi_write(op->tdfx.offsets[index], op->tdfx.values[index]);
+    }
     return 1u;
 }
 #endif
@@ -1428,6 +1477,18 @@ void v9x_gdi_accel_configure(void)
             v9x_gdi_engine_live = 1u;
         }
 #endif
+#ifdef V9X_TDFX_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX &&
+               control_base != 0ul &&
+               aperture_bytes > V9X_TDFX_2D_COMMAND + 4ul) {
+        /* The 2D block the mini-VDD mapped; it withholds one whose status
+         * reads all ones, and this is the same refusal on this side. */
+        if (V9xEngineSelector(control_base, (WORD)(aperture_bytes - 1ul)) !=
+                0u &&
+            v9x_gdi_read(V9X_TDFX_2D_STATUS) != 0xfffffffful) {
+            v9x_gdi_engine_live = 1u;
+        }
+#endif
     }
     if (v9x_gdi_engine_live == 0u) {
         v9x_gdi.enabled = 0ul;
@@ -1984,6 +2045,61 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             goto decline;
         }
 #endif
+#ifdef V9X_TDFX_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
+        /*
+         * The builder is the authority, as for the MGA: a rectangle outside
+         * the surface or the engine's fields is refused and declines here.
+         * vram_bytes is the screen surface's own extent.
+         */
+        v9x_u32 surface_bytes = op.base +
+            op.pitch * (v9x_u32)destination_device->deHeight;
+        v9x_status built;
+
+        if (upload != 0u) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+        if (rop256 == V9X_ROP256_SRCCOPY) {
+            struct v9x_tdfx_copy copy;
+
+            copy.vram_bytes = surface_bytes;
+            copy.source_offset = op.base;
+            copy.source_pitch_bytes = op.pitch;
+            copy.destination_offset = op.base;
+            copy.destination_pitch_bytes = op.pitch;
+            copy.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            copy.source_left = (v9x_u32)op.source_x;
+            copy.source_top = (v9x_u32)op.source_y;
+            copy.destination_left = (v9x_u32)op.destination_x;
+            copy.destination_top = (v9x_u32)op.destination_y;
+            copy.width = (v9x_u32)op.width;
+            copy.height = (v9x_u32)op.height;
+            built = v9x_tdfx_build_copy(&copy, &op.tdfx);
+        } else {
+            struct v9x_tdfx_fill fill;
+
+            fill.vram_bytes = surface_bytes;
+            fill.target_offset = op.base;
+            fill.pitch_bytes = op.pitch;
+            fill.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            fill.left = (v9x_u32)op.destination_x;
+            fill.top = (v9x_u32)op.destination_y;
+            fill.width = (v9x_u32)op.width;
+            fill.height = (v9x_u32)op.height;
+            /* A solid brush's Bits carry the pixel replicated across the
+             * dword (the MGA builder masks it the same way); the VSA-100
+             * builder refuses a colour wider than the pixel, so it is cut
+             * to the pixel here. */
+            fill.color = op.color & all_ones;
+            fill.rop = V9X_TDFX_ROP_SRCCOPY;
+            built = v9x_tdfx_build_fill(&fill, &op.tdfx);
+        }
+        if (built != V9X_STATUS_OK) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+#endif
     } else {
         ++v9x_gdi.decline_engine;
         goto decline;
@@ -2031,6 +2147,10 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
 #ifdef V9X_MGA_FAMILY
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
         issued = v9x_gdi_mga_draw(&op);
+#endif
+#ifdef V9X_TDFX_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
+        issued = v9x_gdi_tdfx_draw(&op);
 #endif
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)

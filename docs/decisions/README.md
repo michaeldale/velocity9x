@@ -237,6 +237,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-11 The Voodoo4's memory registers read the same through the I/O window; the driver now uses 32 MiB less one page](2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md)
 - [2026-10-11 The Voodoo4's 2D engine fills and copies pixel-exact from the builder's values](2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-exact.md)
 - [2026-10-11 The Voodoo4's DirectDraw fills and copies run on its 2D engine](2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md)
+- [2026-10-11 The Voodoo4's GDI fills and copies run on its 2D engine, PASS at 8 and 16 bpp](2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md)
 
 ## NVIDIA and other surveyed cards
 

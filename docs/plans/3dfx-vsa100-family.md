@@ -16,7 +16,10 @@ done; Phase 1 partly done (stock-driver game baseline not run). Phase 3:
 the 2D engine fills and copies pixel-exact and DirectDraw runs on it
 (boot 411,
 [2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md](../decisions/2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md));
-still open there: the GDI acceleration arm, the command FIFO, 8/32 bpp. The retail Voodoo4 4500 AGP
+GDI fill and copy run on it too, `V9XGDI /accel` PASS at 640x480x8,
+640x480x16 and 1024x768x16
+([2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md](../decisions/2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md)).
+Still open in Phase 3: the command FIFO, 32 bpp, text. Next: Phase 4. The retail Voodoo4 4500 AGP
 (32 MiB) is in A8U4I5 on 3dfx 1.04.00, and its first register survey is
 recorded at 640x480
 ([2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md](../decisions/2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)).

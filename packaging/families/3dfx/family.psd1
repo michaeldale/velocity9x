@@ -100,6 +100,9 @@
             # The memory and tile-boundary decodes the read_video_memory hook
             # decides with; host-tested in tests\host\test_vsa100_decode.c.
             @{ Name = 'vsa100_decode'; Path = 'src\chipsets\tdfx\vsa100_decode.c' }
+            # The 2D builder, for gdi_accel.c's TDFX arm; the HAL links the
+            # same file for eng_tdfx.c.
+            @{ Name = 'tdfx_2d'; Path = 'src\chipsets\tdfx\tdfx_2d.c' }
             @{ Name = 'tdfx_hw16'; Path = 'src\chipsets\tdfx\tdfx_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -111,7 +114,8 @@
             # this family takes its decline branch on every blit.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @()
+        # gdi_accel.c's TDFX arm.
+        Defines = @('V9X_TDFX_FAMILY')
         # runtime.asm's BAR2 read of dramInit0 and the tile boundary.
         RuntimeDefines = @('V9X_TDFX_FAMILY')
         SkeletonOutput = 'build\win16-ddi-3dfx'
