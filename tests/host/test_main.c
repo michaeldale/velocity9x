@@ -212,6 +212,10 @@ unsigned int v9x_run_mga_engine_tests(void);
  * decodes against the Mini-Me's measured registers. */
 unsigned int v9x_run_vsa100_decode_tests(void);
 
+/* tests\host\test_tdfx_2d.c: VSA-100 2D fill and copy register values
+ * against the Napalm section 7 encodings. */
+unsigned int v9x_run_tdfx_2d_tests(void);
+
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
 unsigned int v9x_run_mga_3d_tests(void);
@@ -1282,6 +1286,7 @@ int main(int argc, char **argv)
     failures += v9x_run_mga_3d_tests();
     failures += v9x_run_mga_setup_tests();
     failures += v9x_run_vsa100_decode_tests();
+    failures += v9x_run_tdfx_2d_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {
