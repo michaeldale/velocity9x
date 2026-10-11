@@ -53,6 +53,20 @@ function Assert-V9xFamilyKeys {
     }
 }
 
+function Test-V9xFamilyShipsGlide {
+    <#
+      Does this family's package carry the Velocity9x GLIDE2X.DLL and
+      GLIDE3X.DLL? True unless the manifest sets Package.GlideWrappers to
+      $false. One definition so the package builder, the INF generator and
+      its assertion cannot disagree.
+    #>
+    param([Parameter(Mandatory = $true)]$Family)
+
+    return -not ($Family.Package -is [hashtable] -and
+                 $Family.Package.ContainsKey('GlideWrappers') -and
+                 $Family.Package.GlideWrappers -eq $false)
+}
+
 function Test-V9xFamilyHasApertureHook {
     <#
       Does this family fill the ops table's read_aperture slot?
@@ -458,6 +472,16 @@ function Test-V9xFamilyManifest {
                    "not one of the $($manualModes.Count) modes its " +
                    "manual-select model advertises.")
         }
+    }
+
+    # Optional, default true: the package ships GLIDE2X.DLL and GLIDE3X.DLL.
+    # A family whose card has its own Glide sets it false; check-tree
+    # requires that of every family claiming a 3dfx chip.
+    if ($Family.Package -is [hashtable] -and
+        $Family.Package.ContainsKey('GlideWrappers') -and
+        $Family.Package.GlideWrappers -isnot [bool]) {
+        throw ("Family $Id Package.GlideWrappers must be a boolean when " +
+               "present; got '$($Family.Package.GlideWrappers)'.")
     }
 
     Assert-V9xFamilyKeys -Table $Family.Floppy -Context "Family $Id Floppy" -Required @(

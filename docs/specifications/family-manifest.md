@@ -458,6 +458,18 @@ and C-side servability of every member mode is already proven at the chips'
 declared VRAM by `test_advertised_modes_are_servable`. The 2 MiB packed fit is
 the only new claim, and the assertions above are what hold it.
 
+## Package
+
+`ModesSummary` and `HalDescription` are lines `MANIFEST.TXT` states.
+
+`GlideWrappers` is optional and defaults to `$true`: the package carries
+`GLIDE2X.DLL` and `GLIDE3X.DLL`, the Glide wrappers over the render
+interface, and the INF copies them with the version check that keeps a newer
+one. `$false` drops both from the package, the INF, `INSTALL.TXT` and the
+floppy text, so a card with its own Glide keeps it. `check-tree.ps1` requires
+`$false` of every family that claims a vendor `121A` (3dfx) chip, and
+`Assert-V9xInf` forbids any Glide line in such a family's INF.
+
 ## Vm
 
 ```powershell

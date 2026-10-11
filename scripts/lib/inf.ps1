@@ -129,6 +129,10 @@ function New-V9xInfText {
     $manualMiniVdd = -not ($manual -and $manual.ContainsKey('MiniVdd') -and
                            $manual.MiniVdd -eq $false)
 
+    # A family whose card has its own Glide (Package.GlideWrappers = $false,
+    # every 3dfx family) neither carries nor copies the Velocity9x DLLs.
+    $shipsGlide = Test-V9xFamilyShipsGlide -Family $Family
+
     # The header used to name one hardcoded adapter, which stopped being true
     # the moment a family carried two chips. It is generated from the manifest
     # now, so it cannot drift from the models below.
@@ -168,8 +172,10 @@ function New-V9xInfText {
         'v9xsetp.dll=1'
         'v9xhal.dll=1'
         'v9xgl.dll=1'
+    ) + @(if ($shipsGlide) {
         'glide2x.dll=1'
         'glide3x.dll=1'
+    }) + @(
         'v9xtrace.exe=1'
         'v9xupd.exe=1'
         ''
@@ -279,6 +285,7 @@ function New-V9xInfText {
         'v9xsetp.dll,,,12'
         'v9xhal.dll,,,12'
         'v9xgl.dll,,,12'
+    ) + @(if ($shipsGlide) {
         # Glide (src\glide) keeps the name every Glide 2 game loads, so a
         # 3dfx card's own GLIDE2X.DLL may already be here: a Voodoo 1 or 2
         # sits beside the 2D card this INF installs for. 40 is
@@ -293,6 +300,7 @@ function New-V9xInfText {
         # GLIDE3X.DLL (src\glide3), the Glide 3 name Diablo II and Rollcage
         # load, under the same rule: a Voodoo3's own is kept while newer.
         'glide3x.dll,,,40'
+    }) + @(
         # The tools the Display Properties buttons start: Send report...
         # runs V9XUPD.EXE /REPORT, which runs V9XTRACE.EXE. Installed here,
         # rather than left in the package folder, so the buttons work after
@@ -526,10 +534,19 @@ function Assert-V9xInf {
                "$($Family.Id), which assembles VBE collection out.")
     }
 
+    # The Glide DLLs are required where the family ships them and forbidden
+    # where it does not, so a 3dfx package cannot copy them over the card's
+    # own Glide by an INF line the builder forgot.
+    $glideEntries = @('glide2x.dll,,,40', 'glide2x.dll=1',
+                      'glide3x.dll,,,40', 'glide3x.dll=1')
+    if (-not (Test-V9xFamilyShipsGlide -Family $Family) -and
+        $text.IndexOf('glide', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw ("The generated INF for $($Family.Id) names a Glide DLL, but the " +
+               "family sets Package.GlideWrappers = `$false.")
+    }
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
-                  'v9xgl.dll,,,12', 'v9xgl.dll=1',
-                  'glide2x.dll,,,40', 'glide2x.dll=1',
-                  'glide3x.dll,,,40', 'glide3x.dll=1',
+                  'v9xgl.dll,,,12', 'v9xgl.dll=1') + @(
+        if (Test-V9xFamilyShipsGlide -Family $Family) { $glideEntries }) + @(
                   'v9xtrace.exe,,,12', 'v9xtrace.exe=1',
                   'v9xupd.exe,,,12', 'v9xupd.exe=1',
                   'CurrentVersion\OpenGLDrivers",Velocity9x,,"v9xgl.dll"',

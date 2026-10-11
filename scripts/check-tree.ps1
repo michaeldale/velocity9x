@@ -2046,16 +2046,19 @@ foreach ($glideFile in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src\gl
     }
 }
 
-# Every family package ships GLIDE2X.DLL and GLIDE3X.DLL. A 3dfx family
-# would install them over the card's own Glide, which the version-checked
-# copy keeps only while 3dfx's version is the newer, so a family claiming
-# vendor 121A is refused until that is decided (docs\plans\glide-2x-wrapper.md, Phase 5;
-# docs\plans\3dfx-voodoo3-prior-work.md).
+# Family packages ship GLIDE2X.DLL and GLIDE3X.DLL, the wrappers over the
+# render interface. On a 3dfx card they would sit where the card's own Glide
+# belongs, and the version-checked copy keeps 3dfx's only while it is the
+# newer, so a family claiming vendor 121A must set Package.GlideWrappers to
+# $false and ship neither; the INF generator and the package builder honour
+# it (docs\plans\3dfx-vsa100-family.md, Phase 2).
 foreach ($family in $families) {
     foreach ($chip in @($family.Chips)) {
-        if ([string]$chip.VendorId -eq '121A') {
-            throw ("Family $($family.Id) claims 3dfx chip $($chip.Id), and every " +
-                   'package installs GLIDE2X.DLL and GLIDE3X.DLL; decide how it keeps the card''s own Glide first.')
+        if ([string]$chip.VendorId -eq '121A' -and
+            (Test-V9xFamilyShipsGlide -Family $family)) {
+            throw ("Family $($family.Id) claims 3dfx chip $($chip.Id) but ships the " +
+                   'Velocity9x GLIDE2X.DLL and GLIDE3X.DLL; set Package.GlideWrappers = $false ' +
+                   'so the card keeps its own Glide.')
         }
     }
 }
