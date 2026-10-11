@@ -5,8 +5,12 @@ Date: 2026-10-11
 Status: Phase 2 first bind done: Velocity9x runs the Voodoo4 at tier-0,
 enable-ok at boot 409 on A8U4I5
 ([2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md](../decisions/2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md)).
-VBE reports 16 MiB of the 32 and the BIOS leaves the last 4 KiB tiled, so
-the memory hook is next. Phase 0 done; Phase 1 partly done. The retail Voodoo4 4500 AGP
+VBE reports 16 MiB of the 32 and the BIOS leaves the last 4 KiB tiled; the
+memory hook, reading through BAR2, now gives the driver 32 MiB less that
+page (boot 410,
+[2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md](../decisions/2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md)).
+Phase 0 done; Phase 1 partly done; Phase 2's remaining gate is the mode
+matrix. The retail Voodoo4 4500 AGP
 (32 MiB) is in A8U4I5 on 3dfx 1.04.00, and its first register survey is
 recorded at 640x480
 ([2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md](../decisions/2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)).

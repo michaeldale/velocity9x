@@ -2490,6 +2490,98 @@ V9xMiniSisMmioMapDone:
 V9XMINISISMMIOMAP ENDP
 ENDIF
 
+IFDEF V9X_TDFX_FAMILY
+; WORD FAR PASCAL V9xTdfxReadMemoryRegs(DWORD FAR *regs)
+; The VSA-100's memory straps and linear/tiled boundary, through BAR2, the
+; I/O window that mirrors the init registers (Napalm spec section 4; every
+; init register read the same there as through BAR0 on the Voodoo4 4500,
+; docs\decisions\2026-10-11-voodoo4-memory-registers-read-the-same-through-
+; the-io-window.md). Fills regs[0] = dramInit0 (18h), regs[1] = tile
+; control and regs[2] = tile compare, both through lfbMemoryConfig (0Ch).
+;
+; lfbMemoryConfig is two registers behind a selector: a write with bit 30
+; set changes no tile data and only picks which a read returns (Napalm spec
+; section 17.4 bit table; measured on two boards). The selector a plain read
+; was answering from is written back, so the BIOS or a later reader sees
+; what it saw before. Interrupts are off across the sequence so nothing
+; reads the register in between.
+;
+; Returns 1, or 0 with regs untouched when the card or an I/O BAR2 is not
+; found. A read-only config access; no stage code changes.
+PUBLIC V9XTDFXREADMEMORYREGS
+V9XTDFXREADMEMORYREGS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    si
+    push    edi
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      V9xTdfxReadMemoryRegsFailed
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xTdfxReadMemoryRegsFailed
+    or      ah, ah
+    jnz     V9xTdfxReadMemoryRegsFailed
+    ; Bit 0 set marks an I/O BAR; a memory BAR here is not this window.
+    test    cl, 1
+    jz      V9xTdfxReadMemoryRegsFailed
+    ; 256 bytes at least, so the base is 256-byte aligned and not zero.
+    and     cx, 0fffch
+    jz      V9xTdfxReadMemoryRegsFailed
+    test    cl, 0ffh
+    jnz     V9xTdfxReadMemoryRegsFailed
+    mov     si, cx
+
+    les     bx, dword ptr [bp+6]
+    pushf
+    cli
+    lea     dx, [si+18h]
+    in      eax, dx
+    mov     es:[bx], eax
+
+    lea     dx, [si+0ch]
+    in      eax, dx
+    mov     edi, eax
+    mov     eax, 40000000h
+    out     dx, eax
+    in      eax, dx
+    mov     es:[bx+4], eax
+    mov     eax, 60000000h
+    out     dx, eax
+    in      eax, dx
+    mov     es:[bx+8], eax
+
+    ; Control unless the plain read matched compare and not control.
+    mov     eax, 40000000h
+    cmp     edi, es:[bx+4]
+    je      short V9xTdfxReadMemoryRegsRestore
+    cmp     edi, es:[bx+8]
+    jne     short V9xTdfxReadMemoryRegsRestore
+    mov     eax, 60000000h
+V9xTdfxReadMemoryRegsRestore:
+    out     dx, eax
+    popf
+    mov     ax, 1
+    jmp     short V9xTdfxReadMemoryRegsDone
+V9xTdfxReadMemoryRegsFailed:
+    xor     ax, ax
+V9xTdfxReadMemoryRegsDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    4
+V9XTDFXREADMEMORYREGS ENDP
+ENDIF
+
 IFDEF V9X_MGA_FAMILY
 ; WORD FAR PASCAL V9xPciReadMgaMmioBar(DWORD FAR *base, WORD bar_index)
 ; MGABASE1, the 16 KiB control aperture: BAR0 on the MGA-2064W (DC000000h on

@@ -211,6 +211,14 @@ unsigned long __far __pascal V9xMgaScreenRead(unsigned long offset)
     return 0ul;
 }
 
+/* runtime.asm's BAR2 read for the 3dfx memory hook; the decode it feeds is
+ * tested in test_vsa100_decode.c. */
+unsigned short __far __pascal V9xTdfxReadMemoryRegs(unsigned long __far *regs)
+{
+    (void)regs;
+    return 0u;
+}
+
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
 unsigned long v9x_pci_display_ids = 0ul;

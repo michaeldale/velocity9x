@@ -35,6 +35,8 @@
             # One chip's memory: the Voodoo4 4500's 32 MiB, decoded from
             # dramInit0 under 3dfx's driver
             # (docs\decisions\2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md).
+            # The driver uses one page less: the BIOS serves the last 4 KiB
+            # through the tiled view.
             VideoMemoryBytes = 33554432
 
             # Every VbeMode is in the 1.15 BIOS's own mode list; see the
@@ -90,6 +92,9 @@
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vsa100_hw16'; Path = 'src\chipsets\tdfx\vsa100\vsa100_hw16.c' }
+            # The memory and tile-boundary decodes the read_video_memory hook
+            # decides with; host-tested in tests\host\test_vsa100_decode.c.
+            @{ Name = 'vsa100_decode'; Path = 'src\chipsets\tdfx\vsa100_decode.c' }
             @{ Name = 'tdfx_hw16'; Path = 'src\chipsets\tdfx\tdfx_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -102,7 +107,8 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
-        RuntimeDefines = @()
+        # runtime.asm's BAR2 read of dramInit0 and the tile boundary.
+        RuntimeDefines = @('V9X_TDFX_FAMILY')
         SkeletonOutput = 'build\win16-ddi-3dfx'
         PackageOutput = 'build\win98se-3dfx'
         VmStageDirectory = 'build\vm-probe\3DFX'

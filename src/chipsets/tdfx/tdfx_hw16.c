@@ -6,16 +6,27 @@
  * framebuffer landed, 4F00h reports its size, and the CPU draws
  * (docs\plans\3dfx-vsa100-family.md, Phase 2).
  *
- * The plan takes memory from dramInit0 and the BIOS's linear/tiled boundary
- * rather than from 4F00h. That hook waits for the boundary this BIOS leaves
- * in VBE modes to be measured: the Mini-Me's BIOS left the first tiled page
- * at 1FFFh (docs\decisions\2026-10-11-what-velocitynt-measured-on-the-mini-me-
- * vsa100.md), and this card's has not been read in a VBE mode yet.
+ * One hook: the memory size. VBE 4F00h reports 16 MiB on the 32 MiB Voodoo4
+ * 4500, and the BIOS leaves the last 4 KiB page of BAR1's linear view tiled
+ * (docs\decisions\2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-
+ * reports-half-its-memory.md). So the size comes from the chip: the dramInit0
+ * straps, clamped to the first tiled page.
  */
 #include "velocity9x/hw16.h"
+#include "velocity9x/tdfx_vsa100.h"
 
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
 extern unsigned long v9x_vbe_vram_reported;
+
+/* runtime.asm, V9X_TDFX_FAMILY: dramInit0, tile control and tile compare
+ * through BAR2. Non-zero on success. */
+extern unsigned short __far __pascal V9xTdfxReadMemoryRegs(
+    unsigned long __far *regs);
+
+/* The raw registers and the decision, kept for the diagnostics. */
+static unsigned long v9x_tdfx_dram_init0;
+static unsigned long v9x_tdfx_tile_first_page;
+static unsigned long v9x_tdfx_usable_bytes;
 
 extern const V9X_HW16_DEVICE v9x_vsa100_device;
 
@@ -74,8 +85,31 @@ static const char *v9x_tdfx_word(const char *value, const char *fallback)
 }
 
 /*
- * Key order is the diagnostic contract; see the note in s3_regs16.c. No 3dfx
- * register is read here, so the clock key says what is true.
+ * Usable video memory: the dramInit0 straps decoded, clamped to the first
+ * page BAR1 serves tiled, so the DirectDraw heap never reaches memory the
+ * CPU would see through the tiled view. 0 when the registers cannot be read
+ * or do not decode, which leaves the enable sequence on VBE 4F00h.
+ */
+static unsigned long v9x_tdfx_read_video_memory(void)
+{
+    unsigned long regs[3];
+
+    if (V9xTdfxReadMemoryRegs((unsigned long __far *)regs) == 0u) {
+        return 0ul;
+    }
+
+    v9x_tdfx_dram_init0 = regs[0];
+    v9x_tdfx_tile_first_page = v9x_tdfx_vsa100_tile_first_page(regs[1],
+                                                                regs[2]);
+    v9x_tdfx_usable_bytes = v9x_tdfx_vsa100_usable_memory(regs[0], regs[1],
+                                                          regs[2]);
+    return v9x_tdfx_usable_bytes;
+}
+
+/*
+ * Key order is the diagnostic contract; see the note in s3_regs16.c. The
+ * clock is not read, so the clock key says what is true; the memory keys
+ * appended last are the hook's inputs and answer.
  */
 static void v9x_tdfx_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                          v9x_hw16_write_fn write)
@@ -96,6 +130,16 @@ static void v9x_tdfx_publish_diagnostics(const V9X_HW16_DEVICE *device,
         write("VbeVramBytes", number);
     } else {
         write("VbeVramBytes", "unavailable");
+    }
+    if (v9x_tdfx_usable_bytes != 0ul) {
+        v9x_tdfx_format_u32(number, v9x_tdfx_dram_init0);
+        write("DramInit0", number);
+        v9x_tdfx_format_u32(number, v9x_tdfx_tile_first_page);
+        write("TileFirstPage", number);
+        v9x_tdfx_format_u32(number, v9x_tdfx_usable_bytes);
+        write("VramUsableBytes", number);
+    } else {
+        write("VramUsableBytes", "unavailable");
     }
 }
 
@@ -120,9 +164,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     /* NULL: ask the BIOS through 4F01h. */
     0,
-    /* NULL: from 4F00h, clamped to the mapping above, until the dramInit0
-     * and tile-boundary hook has its measurement (see the header). */
-    0,
+    v9x_tdfx_read_video_memory,
     /* NULL: CreateDIBPDevice builds the screen PDEVICE. */
     0,
     /* Strict, for the reason ati_hw16.c gives: a vendor package stays bound
