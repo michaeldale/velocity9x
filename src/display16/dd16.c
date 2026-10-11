@@ -1465,6 +1465,75 @@ static LONG v9x_hwc_query_devnode(LPVOID input, LPVOID output)
     ((BYTE FAR *)output)[8] = 0u;
     return 1;
 }
+
+/*
+ * EXT_HWC itself (plan step 2): the request copied in as far as its
+ * selector allows, the answer from tdfx_hwc.c, the reply copied out only
+ * into a buffer at least 44 bytes long. BAR0's 32 MiB are mapped by the
+ * mini-VDD only when Glide asks for linear addresses; BAR1 is the
+ * framebuffer mapping the driver already has, which the HAL already uses
+ * from every process. fbRam is the usable size Enable settled on.
+ *
+ * Exclusive take and release are recorded and otherwise not acted on yet
+ * (step 3).
+ */
+#include "velocity9x/tdfx_hwc.h"
+
+#define V9X_HWC_REPLY_BYTES     (V9X_TDFX_HWC_REPLY_DWORDS * 4u)
+
+extern DWORD v9x_vbe_vram_bytes;
+extern DWORD FAR PASCAL V9xLinearBase(void);
+extern WORD FAR PASCAL V9xPciReadTdfxMmioBar(DWORD FAR *base);
+extern WORD FAR PASCAL V9xMiniTdfxBar0Map(DWORD bar0, DWORD FAR *linear);
+
+static LONG v9x_hwc_answer(LPVOID input, LPVOID output)
+{
+    struct v9x_tdfx_hwc_device device;
+    struct v9x_tdfx_hwc_answer answer;
+    v9x_u32 request[V9X_TDFX_HWC_REQUEST_DWORDS];
+    WORD dwords = v9x_hwc_readable(input);
+    WORD index;
+    DWORD bar0 = 0ul;
+
+    for (index = 0u; index < V9X_TDFX_HWC_REQUEST_DWORDS; ++index) {
+        request[index] = index < dwords ? ((DWORD FAR *)input)[index] : 0ul;
+    }
+
+    device.vendor_id = 0x121aul;
+    device.device_id = 0x0009ul;
+    /* chipRev has no reader in Glide (vsa100-ext-hwc.md); not read here. */
+    device.revision = 0ul;
+    device.fb_bytes = v9x_vbe_vram_bytes;
+    device.bar0_linear = 0ul;
+    device.bar1_linear = V9xLinearBase();
+    if (dwords > V9X_TDFX_HWC_WHICH &&
+        request[V9X_TDFX_HWC_WHICH] == V9X_TDFX_HWC_GETLINEARADDR &&
+        V9xPciReadTdfxMmioBar(&bar0) != 0u) {
+        (void)V9xMiniTdfxBar0Map(bar0, &device.bar0_linear);
+    }
+
+    if (v9x_tdfx_hwc_answer(request, (v9x_u32)dwords, &device, &answer) !=
+            V9X_STATUS_OK ||
+        answer.reply_dwords == 0u) {
+        return 0;
+    }
+    if (output == 0 ||
+        GetSelectorLimit((UINT)((DWORD)output >> 16)) <
+            (DWORD)(WORD)(DWORD)output + V9X_HWC_REPLY_BYTES - 1ul) {
+        return 0;
+    }
+    for (index = 0u; index < (WORD)answer.reply_dwords; ++index) {
+        ((DWORD FAR *)output)[index] = answer.reply[index];
+    }
+    if (answer.action == V9X_TDFX_HWC_ACTION_TAKE) {
+        WritePrivateProfileString("Velocity9xHwc", "Exclusive", "taken",
+                                  V9X_DIAG_HWC_INI);
+    } else if (answer.action == V9X_TDFX_HWC_ACTION_RELEASE) {
+        WritePrivateProfileString("Velocity9xHwc", "Exclusive", "released",
+                                  V9X_DIAG_HWC_INI);
+    }
+    return (LONG)answer.escape_return;
+}
 #endif
 
 LONG __loadds FAR PASCAL Control(LPVOID device,
@@ -1478,7 +1547,8 @@ LONG __loadds FAR PASCAL Control(LPVOID device,
         return v9x_hwc_query_devnode(input, output);
     }
     if (function == V9X_EXT_HWC || function == V9X_EXT_HWC_OLD) {
-        return v9x_hwc_log(function, 0u, input, output);
+        (void)v9x_hwc_log(function, 0u, input, output);
+        return v9x_hwc_answer(input, output);
     }
     if (function == V9X_QUERYESCSUPPORT && input != 0 &&
         (*(WORD FAR *)input == V9X_EXT_HWC ||

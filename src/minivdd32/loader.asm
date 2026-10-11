@@ -171,6 +171,11 @@ V9X_TDFX_BAR0_ALIGN     equ 01ffffffh
 V9X_TDFX_2D_STATUS      equ 00000000h
 V9xTdfxMmioBase   dd 0
 V9xTdfxMmioLinear dd 0
+; BAR0's first 32 MiB, mapped once for Glide's EXT_HWC GETLINEARADDR.
+V9X_TDFX_BAR0_MAP_BYTES equ 02000000h
+V9X_TDFX_INIT_STATUS    equ 00000000h
+V9xTdfxBar0Base   dd 0
+V9xTdfxBar0Linear dd 0
 ENDIF
 
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
@@ -2257,6 +2262,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_MgaMmioMap
     cmp     ax, V9XMINI_FN_TDFX_MMIO_MAP
     je      V9xMini_Api_TdfxMmioMap
+    cmp     ax, V9XMINI_FN_TDFX_BAR0_MAP
+    je      V9xMini_Api_TdfxBar0Map
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2688,6 +2695,47 @@ V9xMini_Api_TdfxMmioMap_Check:
 V9xMini_Api_TdfxMmioMap_Failed:
     mov     V9xTdfxMmioBase, 0
 V9xMini_Api_TdfxMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR0 physical. See V9XMINI_FN_TDFX_BAR0_MAP in V9XMAPI.INC.
+V9xMini_Api_TdfxBar0Map:
+IFDEF V9X_TDFX_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_TdfxBar0Map_Refused
+    cmp     eax, 0fe000000h
+    ja      short V9xMini_Api_TdfxBar0Map_Refused
+    test    eax, V9X_TDFX_BAR0_ALIGN
+    jnz     short V9xMini_Api_TdfxBar0Map_Refused
+
+    cmp     V9xTdfxBar0Linear, 0
+    je      short V9xMini_Api_TdfxBar0Map_Map
+    cmp     eax, V9xTdfxBar0Base
+    jne     short V9xMini_Api_TdfxBar0Map_Refused
+    jmp     short V9xMini_Api_TdfxBar0Map_Check
+
+V9xMini_Api_TdfxBar0Map_Map:
+    mov     V9xTdfxBar0Base, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_TDFX_BAR0_MAP_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxBar0Map_Failed
+    mov     V9xTdfxBar0Linear, eax
+
+    ; A BAR whose decode is off reads all ones; withhold it.
+V9xMini_Api_TdfxBar0Map_Check:
+    mov     edx, V9xTdfxBar0Linear
+    mov     eax, [edx+V9X_TDFX_INIT_STATUS]
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxBar0Map_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_TdfxBar0Map_Failed:
+    mov     V9xTdfxBar0Base, 0
+V9xMini_Api_TdfxBar0Map_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

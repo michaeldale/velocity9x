@@ -103,6 +103,9 @@
             # The 2D builder, for gdi_accel.c's TDFX arm; the HAL links the
             # same file for eng_tdfx.c.
             @{ Name = 'tdfx_2d'; Path = 'src\chipsets\tdfx\tdfx_2d.c' }
+            # Glide's EXT_HWC replies, for dd16.c's Control; host-tested in
+            # tests\host\test_tdfx_hwc.c.
+            @{ Name = 'tdfx_hwc'; Path = 'src\chipsets\tdfx\tdfx_hwc.c' }
             @{ Name = 'tdfx_hw16'; Path = 'src\chipsets\tdfx\tdfx_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }

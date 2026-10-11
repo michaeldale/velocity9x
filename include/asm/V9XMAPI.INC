@@ -412,6 +412,18 @@ V9XMINI_FN_MGA_MMIO_MAP     EQU 001Ch
 ; Only the 3dfx family image implements it; every other image refuses cleanly.
 V9XMINI_FN_TDFX_MMIO_MAP    EQU 001Dh
 
+; 3dfx VSA-100: map BAR0's first 32 MiB for Glide and say where.
+;
+; In: EBX = BAR0's physical base. Out: AX=1, EBX = linear address of BAR0 +
+; 0: the init, command-FIFO, 2D, 3D and texture registers and the 3D LFB
+; window at +1000000h (Napalm spec section 4), which 3dfx's Glide addresses
+; directly from ring 3 in the game's process through EXT_HWC GETLINEARADDR
+; (docs\specifications\vsa100-ext-hwc.md). AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR; withholds a window whose status (+0)
+; reads all ones. Only the 3dfx family image implements it.
+V9XMINI_FN_TDFX_BAR0_MAP    EQU 001Eh
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

@@ -2670,6 +2670,46 @@ V9xMiniTdfxMmioMapDone:
     pop     bp
     retf    8
 V9XMINITDFXMMIOMAP ENDP
+
+; WORD FAR PASCAL V9xMiniTdfxBar0Map(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_TDFX_BAR0_MAP: the mini-VDD maps BAR0's first 32 MiB for
+; Glide's GETLINEARADDR, checks it decodes, and returns the linear base. On
+; any refusal *linear is 0.
+PUBLIC V9XMINITDFXBAR0MAP
+V9XMINITDFXBAR0MAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniTdfxBar0MapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_TDFX_BAR0_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniTdfxBar0MapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniTdfxBar0MapDone
+V9xMiniTdfxBar0MapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniTdfxBar0MapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINITDFXBAR0MAP ENDP
 ENDIF
 
 IFDEF V9X_MGA_FAMILY

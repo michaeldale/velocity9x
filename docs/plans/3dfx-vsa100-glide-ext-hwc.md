@@ -5,7 +5,9 @@ Date: 2026-10-11
 Status: step 1 done
 ([2026-10-11-shipped-glide-asks-querydevnode-before-ext-hwc.md](../decisions/2026-10-11-shipped-glide-asks-querydevnode-before-ext-hwc.md)):
 the shipped Glide needs `QUERYDEVNODE` answered before it sends `EXT_HWC`;
-that answer is in. Step 2 next. Parent
+that answer is in. Step 2 done
+([2026-10-11-shipped-glide-runs-a-session-on-velocity9x.md](../decisions/2026-10-11-shipped-glide-runs-a-session-on-velocity9x.md)):
+3dfx's Glide 3 opens, draws, closes and gives the desktop back. Step 3 next. Parent
 plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md), Phase 4. Protocol:
 [vsa100-ext-hwc.md](../specifications/vsa100-ext-hwc.md). Boundaries:
 [win9x-driver-boundaries.md](../specifications/win9x-driver-boundaries.md).

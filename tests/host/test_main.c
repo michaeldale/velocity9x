@@ -216,6 +216,10 @@ unsigned int v9x_run_vsa100_decode_tests(void);
  * against the Napalm section 7 encodings. */
 unsigned int v9x_run_tdfx_2d_tests(void);
 
+/* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
+ * 3dfx driver builds for them. */
+unsigned int v9x_run_tdfx_hwc_tests(void);
+
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
 unsigned int v9x_run_mga_3d_tests(void);
@@ -1287,6 +1291,7 @@ int main(int argc, char **argv)
     failures += v9x_run_mga_setup_tests();
     failures += v9x_run_vsa100_decode_tests();
     failures += v9x_run_tdfx_2d_tests();
+    failures += v9x_run_tdfx_hwc_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {
