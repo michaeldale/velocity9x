@@ -8,7 +8,8 @@ three known titles; GLCIF 0.05 supplies the header with constant values,
 defaults and struct layouts. marxveix (VOGONS, by PM to Michael,
 2026-10-12) and his page gona.mactar.hu/ATI3DCIF supply the title list,
 the 555 requirement, chip support and a demo pack; none of it measured
-here yet.
+here yet. The SDK 4.1, the demo pack, every ATI DLL version and the Tomb
+Raider ATI patch are downloaded (Phase 0, step 2).
 
 ## Context
 
@@ -310,10 +311,19 @@ on the engine `Direct3D=` selects.
    the DLL will use from GLCIF's header against it. Check glrage's export list
    against the export table of an ATI `ATI3DCIF.DLL` (4.12.2696 or the
    version on the Rage XL driver disk).
-2. With Michael's approval for each download: the Rage Pro SDK 4.1,
-   marxveix's `ATi3DCInterFace.7z`, gona's `all_ATI3DCIF_DLL.zip`, and
-   the first title's patch. Each goes into its own directory outside the
-   repository.
+2. Done 2026-10-12: the downloads, each in its own directory under
+   `C:\Users\michael\Downloads\3dcif\`, outside the repository. Listed,
+   not extracted or run.
+
+   | Directory | File | Size | Source | Contents |
+   |---|---|---|---|---|
+   | `sdk41` | `3d_rage_pro_sdk_4.1.zip` | 18.0 MB | vogonsdrivers.com, file 497 | `ragesdk/include/ATI3DCIF.H`, `help/SDKAPI.HLP`, `docs/agp.doc`, `docs/vq_v3.doc`, samples with source, `LICENSE.TXT` (not yet read) |
+   | `demopack` | `ATi3DCInterFace.7z` | 17.4 MB | hingetee.ee/library | marxveix's pack: SDK 4.1 again, plus an older `InterFace` tree with the Knight Demo, VQ and Morph sources; 561 files |
+   | `alldlls` | `all_ATI3DCIF_DLL.zip` | 1.2 MB | gona.mactar.hu/ATI3DCIF/drivers | ATI's `ATI3DCIF.DLL`, 15 versions 4.02.0017 to 4.12.2696, including 4.11.2691, which gona's table omits |
+   | `tombraider-ati` | `trati.zip` | 354 KB | infania.net/misc/gona/3D/files | `tombati.exe`, five codec and player DLLs, a readme; no `ATI3DCIF.DLL` |
+
+   The SDK header replaces GLCIF's copy as the source for values, once
+   its licence is read. Croc 1.0 needs no patch.
 3. First runs are the demos, a 565 one before the Knight demo (555). The
    first title after them, with Michael: Croc 1.0 or Tomb Raider (needs a
    DirectSound device on the test machine and 555).
