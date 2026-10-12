@@ -246,6 +246,65 @@ static void test_state_texture(void)
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) == 0ul);
 }
 
+/*
+ * A mip chain: the levels packed after level 0, so the base is the same as
+ * a single level's and tLOD's maximum names the smallest level sampled.
+ */
+static void test_state_mipmap(void)
+{
+    struct v9x_tdfx_3d_state state;
+    struct v9x_tdfx_3d_words words;
+
+    base_state(&state);
+    state.texture_enable = 1ul;
+    state.texture.offset = MIB(17);
+    state.texture.format = V9X_TDFX_TEX_RGB565;
+    state.texture.log2_size = 6ul;
+    state.texture.combine = V9X_TDFX_COMBINE_REPLACE;
+
+    /* 64 down to 1 texel: LOD 2 to LOD 8, 4.2 fixed point 8 and 32, so
+     * min 8 in 5:0 and max 20h in 11:6. */
+    state.texture.levels = 7ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00000808ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) ==
+          0x010d8000ul);
+
+    /* 64, 32, 16: LOD 2 to 4, max 10h. */
+    state.texture.levels = 3ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00000408ul);
+
+    /* One level, written as 1 or left 0, is the single-level tLOD. */
+    state.texture.levels = 1ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00000208ul);
+
+    /* A 256 chain to the last texel: LOD 0 to 8. */
+    state.texture.log2_size = 8ul;
+    state.texture.levels = 9ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00000800ul);
+
+    /* More levels than halvings of the edge. */
+    state.texture.log2_size = 6ul;
+    state.texture.levels = 8ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
+
+    /* The whole chain must fit: 64, 32, 16 are (4096 + 1024 + 256) x 2 =
+     * 2A00h bytes, which end exactly at the top and not 16 bytes higher. */
+    state.texture.levels = 3ul;
+    state.texture.offset = MIB(32) - 0x2a00ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    state.texture.offset = MIB(32) - 0x2a00ul + 16ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_state_refusals(void)
 {
     struct v9x_tdfx_3d_state state;
@@ -415,6 +474,7 @@ unsigned int v9x_run_tdfx_3d_tests(void)
     test_state_plain();
     test_state_depth_blend();
     test_state_texture();
+    test_state_mipmap();
     test_state_refusals();
     test_triangle_plain();
     test_triangle_depth_texture();

@@ -284,6 +284,45 @@ static void test_texture(void)
           V9X_D3D_TDFX_REFUSE_TEXTURE_FILTER);
     draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
 
+    /* A chain of seven packed levels, 64 down to 1: a mip minification
+     * filter samples all of them, any other level 0 alone. A within-level
+     * blend between levels is not built, so the LINEARMIP filters take
+     * their nearest level. */
+    resolved.levels = 7ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 1ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 7ul);
+    CHECK(state.texture.min_bilinear == 0ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPLINEAR;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 7ul);
+    CHECK(state.texture.min_bilinear == 1ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 7ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 1ul);
+    /* A mag filter does not choose levels. */
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_MIPLINEAR;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 1ul);
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    /* No chain (0, as the engine leaves an unwalked texture) is one
+     * level; more levels than the edge halves is a shape the chip cannot
+     * sample. */
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    resolved.levels = 0ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 1ul);
+    resolved.levels = 8ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE);
+    resolved.levels = 0ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+
     /* Address: wrap and clamp; mirror, border and the cylindrical wraps
      * are not built. */
     draw.texture.address = V9X_R3D_ADDRESS_CLAMP;

@@ -113,8 +113,12 @@ struct v9x_tdfx_3d_texture {
      * builder works out the base the chip wants (section 20 p.228). */
     v9x_u32 offset;
     v9x_u32 format;
-    /* Square, 2^log2_size texels a side, one level. */
+    /* Square, 2^log2_size texels a side. */
     v9x_u32 log2_size;
+    /* How many levels the sampler may read: level 0 and the halvings that
+     * follow it packed, each straight after the one before (section 20
+     * p.228). 0 and 1 both mean level 0 alone. */
+    v9x_u32 levels;
     v9x_u32 min_bilinear;
     v9x_u32 mag_bilinear;
     v9x_u32 clamp;

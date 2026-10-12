@@ -24,7 +24,8 @@
 
 /* The bound texture as the engine resolved it. format is V9X_TDFX_TEX_* or
  * V9X_D3D_TDFX_TEXTURE_UNKNOWN; offset is from the framebuffer mapping, as
- * every surface offset in a draw is. */
+ * every surface offset in a draw is. levels counts the mip levels found
+ * packed after level 0, level 0 included; 0 or 1 is no chain. */
 typedef struct v9x_d3d_tdfx_texture {
     v9x_u32 format;
     int has_alpha;
@@ -32,6 +33,7 @@ typedef struct v9x_d3d_tdfx_texture {
     v9x_u32 height;
     v9x_u32 offset;
     v9x_u32 pitch_bytes;
+    v9x_u32 levels;
 } V9X_D3D_TDFX_TEXTURE;
 
 #define V9X_D3D_TDFX_REFUSE_NONE            0ul

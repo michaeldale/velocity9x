@@ -126,9 +126,9 @@ static int v9x_d3d_tdfx_destination_factor(v9x_u32 factor, v9x_u32 *code)
     return 0;
 }
 
-/* Bilinear for this filter, with one level: a mip filter takes its
- * within-level half, LINEARMIPNEAREST (a blend between levels of nearest
- * texels) its nearest. */
+/* Bilinear for this filter. A mip filter takes its within-level half and
+ * the level the chip picks; LINEARMIPNEAREST and LINEARMIPLINEAR, which
+ * blend two levels, are not built and take the nearest level. */
 static int v9x_d3d_tdfx_filter(v9x_u32 filter, v9x_u32 *bilinear)
 {
     switch (filter) {
@@ -171,6 +171,14 @@ static int v9x_d3d_tdfx_combine(v9x_u32 op, int has_alpha, v9x_u32 *combine)
     return 0;
 }
 
+static int v9x_d3d_tdfx_mip_filter(v9x_u32 filter)
+{
+    return filter == V9X_R3D_FILTER_MIPNEAREST ||
+           filter == V9X_R3D_FILTER_MIPLINEAR ||
+           filter == V9X_R3D_FILTER_LINEARMIPNEAREST ||
+           filter == V9X_R3D_FILTER_LINEARMIPLINEAR;
+}
+
 static v9x_u32 v9x_d3d_tdfx_map_texture(const V9X_R3D_DRAW *draw,
                                         const V9X_D3D_TDFX_TEXTURE *resolved,
                                         v9x_u32 vram_base,
@@ -183,11 +191,13 @@ static v9x_u32 v9x_d3d_tdfx_map_texture(const V9X_R3D_DRAW *draw,
     if (resolved == 0 || resolved->format == V9X_D3D_TDFX_TEXTURE_UNKNOWN) {
         return V9X_D3D_TDFX_REFUSE_TEXTURE_FORMAT;
     }
-    /* Square, a power of two up to 256, rows packed: one level of the
-     * single-base layout the builder writes (section 20 p.228). */
+    /* Square, a power of two up to 256, rows packed, and any chain no
+     * longer than the edge halves: the single-base layout the builder
+     * writes (section 20 p.228). */
     log2 = v9x_d3d_tdfx_log2(resolved->width);
     if (log2 < 0 || resolved->height != resolved->width ||
-        resolved->pitch_bytes != resolved->width * V9X_D3D_TDFX_TEXEL_BYTES) {
+        resolved->pitch_bytes != resolved->width * V9X_D3D_TDFX_TEXEL_BYTES ||
+        resolved->levels > (v9x_u32)log2 + 1ul) {
         return V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE;
     }
     if (draw->color_key_enable != 0ul) {
@@ -221,6 +231,12 @@ static v9x_u32 v9x_d3d_tdfx_map_texture(const V9X_R3D_DRAW *draw,
     texture->offset = vram_base + resolved->offset;
     texture->format = resolved->format;
     texture->log2_size = (v9x_u32)log2;
+    /* Minification chooses the levels; a plain filter reads level 0. */
+    texture->levels = 1ul;
+    if (v9x_d3d_tdfx_mip_filter(sampler->min_filter) &&
+        resolved->levels > 1ul) {
+        texture->levels = resolved->levels;
+    }
     state->texture_enable = 1ul;
     return V9X_D3D_TDFX_REFUSE_NONE;
 }

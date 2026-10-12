@@ -126,12 +126,20 @@ static v9x_u32 tdfx3d_level_bytes(v9x_u32 log2_size)
     return (1ul << (2ul * log2_size)) * TDFX3D_BYTES_PER_PIXEL;
 }
 
+/* Levels sampled, 1 for a texture without a chain. */
+static v9x_u32 tdfx3d_levels(const struct v9x_tdfx_3d_texture *t)
+{
+    return t->levels == 0ul ? 1ul : t->levels;
+}
+
 static v9x_status tdfx3d_check_texture(const struct v9x_tdfx_3d_texture *t,
                                        v9x_u32 vram_bytes)
 {
-    v9x_u32 bytes;
+    v9x_u32 bytes = 0ul;
+    v9x_u32 level;
 
     if (t->log2_size > V9X_TDFX_TEX_LOG2_MAX ||
+        tdfx3d_levels(t) > t->log2_size + 1ul ||
         (t->format != V9X_TDFX_TEX_RGB565 &&
          t->format != V9X_TDFX_TEX_ARGB1555 &&
          t->format != V9X_TDFX_TEX_ARGB4444) ||
@@ -140,7 +148,9 @@ static v9x_status tdfx3d_check_texture(const struct v9x_tdfx_3d_texture *t,
          t->combine != V9X_TDFX_COMBINE_MODULATE_TEXALPHA)) {
         return V9X_STATUS_UNSUPPORTED;
     }
-    bytes = tdfx3d_level_bytes(t->log2_size);
+    for (level = 0ul; level < tdfx3d_levels(t); ++level) {
+        bytes += tdfx3d_level_bytes(t->log2_size - level);
+    }
     if ((t->offset & TDFX3D_ALIGN_MASK) != 0ul || t->offset >= vram_bytes ||
         bytes > vram_bytes - t->offset) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -281,8 +291,13 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         const struct v9x_tdfx_3d_texture *t = &state->texture;
         v9x_u32 mode = TDFX3D_TM_PERSPECTIVE | TDFX3D_TM_REPLACE |
                        (t->format << TDFX3D_TM_FORMAT_SHIFT);
+        /* LOD n is a 256 >> n texel level: the minimum is level 0, the
+         * maximum the smallest level of the chain. */
         v9x_u32 lod = (V9X_TDFX_TEX_LOG2_MAX - t->log2_size) <<
                       TDFX3D_LOD_FRACTION_SHIFT;
+        v9x_u32 lod_max = (V9X_TDFX_TEX_LOG2_MAX - t->log2_size +
+                           tdfx3d_levels(t) - 1ul) <<
+                          TDFX3D_LOD_FRACTION_SHIFT;
 
         if (t->min_bilinear != 0ul) {
             mode |= TDFX3D_TM_MIN_BILINEAR;
@@ -295,7 +310,7 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         }
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE, mode);
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD,
-                    lod | (lod << TDFX3D_LOD_MAX_SHIFT));
+                    lod | (lod_max << TDFX3D_LOD_MAX_SHIFT));
         /* Twice, a different base first: a CPU download reaches the
          * texture cache when texBaseAddr is rewritten (section 20.3
          * p.234), and the texels may have changed since the last draw. */

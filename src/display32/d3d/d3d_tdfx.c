@@ -222,8 +222,9 @@ static int v9x_d3d_tdfx_texture_format(const V9X_DD_SURFACE_LCL *surface,
 /*
  * What the builder expresses and d3d_tdfx_map.c accepts: Z and alpha tests
  * with every function, the blend factors of the 16-bit target, Gouraud,
- * one level of square textures with replace and modulate. No fog, no
- * specular, no colour key, no mipmaps; those are refused per draw.
+ * square textures and their mip chains with replace and modulate. No fog,
+ * no specular, no colour key; those are refused per draw. No blend between
+ * levels: LINEARMIPNEAREST and LINEARMIPLINEAR are not advertised.
  */
 static void v9x_d3d_tdfx_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -280,7 +281,9 @@ static void v9x_d3d_tdfx_describe_caps(V9X_DD_SHARED *shared)
                          V9X_D3DPTEXTURECAPS_ALPHA |
                          V9X_D3DPTEXTURECAPS_SQUAREONLY;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEAR;
+                               V9X_D3DPTFILTERCAPS_LINEAR |
+                               V9X_D3DPTFILTERCAPS_MIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
@@ -351,6 +354,62 @@ static int v9x_d3d_tdfx_ready(void)
         v9x_hal->engine.mapped_aperture_bytes >= V9X_D3D_TDFX_WINDOW_BYTES;
 }
 
+/*
+ * How many levels of a mip chain the sampler may read from top: level 0
+ * and each attached mip level after it whose edge halves, whose rows are
+ * packed, and which starts where the level before it ends - the layout
+ * create_surface gives a chain and the single texBaseAddr assumes (section
+ * 20 p.228). The first level that fails ends the chain, counted in the
+ * shared mip-chain fields as the Mach64 counts its own.
+ */
+static DWORD v9x_d3d_tdfx_chain(const V9X_DD_SURFACE_LCL *top, DWORD offset)
+{
+    const V9X_DD_SURFACE_LCL *level = top;
+    DWORD edge = (DWORD)top->lpGbl->wWidth;
+    DWORD count = 1ul;
+
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    while (count <= V9X_TDFX_TEX_LOG2_MAX && edge > 1ul) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+        DWORD next_offset;
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next->lpGbl == 0) {
+            break;
+        }
+        offset += edge * edge * V9X_D3D_TDFX_TEXEL_BYTES;
+        edge >>= 1;
+        if ((DWORD)next->lpGbl->wWidth != edge ||
+            (DWORD)next->lpGbl->wHeight != edge ||
+            (DWORD)next->lpGbl->lPitch != edge * V9X_D3D_TDFX_TEXEL_BYTES) {
+            ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            v9x_hal->d3d_diagnostics.mip_chain_delta =
+                ((DWORD)next->lpGbl->lPitch << 16) |
+                (DWORD)next->lpGbl->wWidth;
+            break;
+        }
+        next_offset = v9x_surface_offset(next);
+        if (next_offset != offset) {
+            ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
+            v9x_hal->d3d_diagnostics.mip_chain_delta = next_offset;
+            break;
+        }
+        ++count;
+        level = next;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = count;
+    return count;
+}
+
 /* The bound texture's format, shape and placement, from its surface; an
  * unknown format when it cannot be sampled, which the mapping refuses. */
 static void v9x_d3d_tdfx_resolve_texture(const V9X_R3D_DRAW *draw,
@@ -366,6 +425,7 @@ static void v9x_d3d_tdfx_resolve_texture(const V9X_R3D_DRAW *draw,
     texture->height = 0ul;
     texture->offset = 0ul;
     texture->pitch_bytes = 0ul;
+    texture->levels = 1ul;
 
     surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
     if (surface == 0 || surface->lpGbl == 0 ||
@@ -384,6 +444,10 @@ static void v9x_d3d_tdfx_resolve_texture(const V9X_R3D_DRAW *draw,
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->offset = offset;
     texture->pitch_bytes = (DWORD)surface->lpGbl->lPitch;
+    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul &&
+        texture->pitch_bytes == texture->width * V9X_D3D_TDFX_TEXEL_BYTES) {
+        texture->levels = v9x_d3d_tdfx_chain(surface, offset);
+    }
 }
 
 static DWORD v9x_d3d_tdfx_specular_rgb(const V9X_R3D_VERTEX *vertices,
@@ -521,10 +585,13 @@ static int v9x_d3d_tdfx_texture_edge(DWORD edge)
 
 /*
  * A texture placed where the sampler reads it: rows packed at two bytes a
- * texel, 16-byte aligned. DirectDraw would round the pitch to dwTextureAlign
- * and the chip assumes a packed level, so a video-memory texture of a
- * format and size this engine samples is placed here, and a chain created
- * in one call in one block, each level after the one before.
+ * texel, level 0 16-byte aligned. DirectDraw would round the pitch to
+ * dwTextureAlign and the chip assumes a packed level, so a video-memory
+ * texture of a format and size this engine samples is placed here, and a
+ * chain created in one call in one block, each level straight after the
+ * one before with no alignment between: the sampler finds every level
+ * from level 0's address (section 20 p.228), and the 2x2 and 1x1 levels
+ * are 8 and 2 bytes.
  */
 static DWORD v9x_d3d_tdfx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
@@ -573,7 +640,7 @@ static DWORD v9x_d3d_tdfx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             (DWORD)member->lpGbl->wHeight != edge) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        offsets[level] = (bytes + align - 1ul) & ~(align - 1ul);
+        offsets[level] = bytes;
         pitches[level] = edge * V9X_D3D_TDFX_TEXEL_BYTES;
         bytes = offsets[level] + pitches[level] * edge;
     }
