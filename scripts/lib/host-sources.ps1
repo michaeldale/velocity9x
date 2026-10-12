@@ -81,6 +81,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\tdfx\tdfx_2d.c',
         # Glide's EXT_HWC escape: request decode and reply, no I/O.
         'src\chipsets\tdfx\tdfx_hwc.c',
+        # VSA-100 3D: setup-unit and pipeline register values, no I/O.
+        'src\chipsets\tdfx\tdfx_3d.c',
         'tests\host\test_pe_export.c',
         'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
@@ -224,6 +226,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vsa100_decode.c',
         'tests\host\test_tdfx_2d.c',
         'tests\host\test_tdfx_hwc.c',
+        'tests\host\test_tdfx_3d.c',
         'tests\host\test_main.c'
     )
 
