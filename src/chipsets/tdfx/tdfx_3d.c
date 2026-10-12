@@ -15,10 +15,6 @@
 #define TDFX3D_CLIP_MAX             0x00000ffful
 #define TDFX3D_CLIP_HIGH_SHIFT      16
 
-/* The colour/depth page-parity rule from retro-3dfx's notes (D36): bit 12
- * of the two bases must differ. */
-#define TDFX3D_PAGE_PARITY          0x00001000ul
-
 /* The target is RGB565 and the depth buffer Z16: two bytes a pixel. */
 #define TDFX3D_BYTES_PER_PIXEL      2ul
 
@@ -211,9 +207,7 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         if (status != V9X_STATUS_OK) {
             return status;
         }
-        if (((state->depth.offset ^ state->target.offset) &
-             TDFX3D_PAGE_PARITY) == 0ul ||
-            state->depth_func > V9X_TDFX_CMP_ALWAYS) {
+        if (state->depth_func > V9X_TDFX_CMP_ALWAYS) {
             return V9X_STATUS_UNSUPPORTED;
         }
     }

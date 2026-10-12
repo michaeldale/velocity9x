@@ -75,9 +75,10 @@ linear RGB565 surface first.
    (`status[4:0]`) before each burst. The command FIFO is a later, separate
    step, and only after direct submission is the reference; it is also the
    thing Glide owns.
-2. **Linear 16-bit colour and Z16 in DirectDraw's heap**, 16-byte aligned,
-   colour and depth on opposite 4 KiB page parity (retro-3dfx's field rule;
-   cheap to honour, not in the spec). No tiled surfaces in this phase.
+2. **Linear 16-bit colour and Z16 in DirectDraw's heap**, 16-byte aligned.
+   No tiled surfaces in this phase. Retro-3dfx's colour/depth page-parity
+   rule was measured not to bind linear buffers (D36, boot 428), so
+   DirectDraw may place them where it likes.
 3. **One TMU (TMU0), single-base linear textures up to 256**, formats 565,
    1555, 4444; point and bilinear; modulate, decal, add. 2048 textures,
    the second TMU, P8 and compressed formats are later steps.
@@ -172,5 +173,6 @@ Later steps, each with its own record:
 - How does the setup unit choose packed `sARGB` over separate colour without
   the command-FIFO packet bit?
 - Are Z and W what the spec implies: depth counts and 1/W?
-- Does the 4500 render correctly into a linear target at any page parity?
+- ~~Does the 4500 render correctly into a linear target at any page
+  parity?~~ Yes (TDFX3D /parity, boot 428).
 - How many TMUs does Glide report on the 4500? The spec says two per chip.

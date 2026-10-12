@@ -58,14 +58,18 @@ watched the monitor.
    result `800Fh` is red 16 and blue 15, as computed.
 5. **Gouraud colour is within one step** of the barycentric model; the
    model truncates, and the chip may round.
-6. **Linear colour and depth buffers work** at opposite page parity. The
-   same parity (D36) was not tried.
+6. **Linear colour and depth buffers work at either page parity.** A
+   follow-up run (`TDFX3D /parity`, same boot) put the Z16 buffer two pages
+   above the target, on its own bit-12 parity. Everything came out the same
+   as above: all 2048 pixels green, Z `4E20h` everywhere, idle after. So the
+   retro-3dfx parity rule (D36) does not bind linear buffers, and the
+   builder no longer refuses them (`TDFX3D-parity.TXT`).
 
 ## Not established
 
 - **The fill rule** for edge pixels. Counted, not judged.
-- **Packed colour** under direct writes (D37), and same-parity colour and
-  depth (D36).
+- **Packed colour** under direct writes (D37), and tiled buffers at either
+  parity.
 - **Bilinear filtering, modulate, clamp, perspective with W ≠ 1, 1555 and
   4444 textures, and Z functions other than LESS.** The builder emits all
   of these; none ran.

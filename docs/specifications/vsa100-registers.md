@@ -792,6 +792,7 @@ aligned; stride bit 15 tiled; linear stride in bytes 13:0, a multiple of
 p.225). **The spec does not require tiled render targets.** Retro-3dfx's
 notes (FINDINGS.md) add a field rule the spec lacks: colour and depth on
 opposite 4 KiB page parity, and a hard hang from a mismatched pair (D36).
+For linear buffers the 4500 does not need it (D36).
 
 ### 8.4 Texture unit
 
@@ -973,7 +974,10 @@ code uses.
 36. **Colour/depth page parity.** Not in the spec. Retro-3dfx FINDINGS.md:
     a render target outside the matching tiled colour slot hard-hung a
     Voodoo3, and Glide gives linear buffers bit-12 parity, colour even and
-    aux odd. Plan honours the parity until a probe shows it is not needed.
+    aux odd. **Measured not needed for linear buffers:** a linear Z16
+    buffer on the colour buffer's own parity drew and compared exactly on
+    the Voodoo4 4500 (TDFX3D /parity, A8U4I5 boot 428). Tiled buffers are
+    not covered.
 37. **Packed or separate colour under direct writes.** Only the command
     FIFO's type 3 packet has a packed-colour bit (28); the spec's sample
     code uses an undefined `PACKEDCOLOR` flag (pp.139–140). How the setup

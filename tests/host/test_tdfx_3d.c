@@ -108,7 +108,6 @@ static void test_state_depth_blend(void)
 
     base_state(&state);
     state.depth_enable = 1ul;
-    /* Opposite 4 KiB page parity to the target (bit 12). */
     state.depth.offset = MIB(16) + 0x00097000ul;
     state.depth.pitch_bytes = 1280ul;
     state.depth_func = V9X_TDFX_CMP_LESS;
@@ -233,13 +232,13 @@ static void test_state_refusals(void)
     state.height = 4ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
 
-    /* Depth on the target's page parity: the field rule this plan honours
-     * until a probe says otherwise (D36). */
+    /* Depth on the target's own page parity is accepted: the probe drew it
+     * exactly on the 4500 (D36, A8U4I5 boot 428). */
     base_state(&state);
     state.depth_enable = 1ul;
     state.depth.offset = MIB(16) + 0x00096000ul;
     state.depth.pitch_bytes = 1280ul;
-    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
 
     /* Textures: a size above 256, a format outside the three, a misaligned
      * or out-of-memory level. */

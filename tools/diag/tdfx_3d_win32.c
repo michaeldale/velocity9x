@@ -74,6 +74,8 @@
  * differs (D36). Each surface is exactly one read block. */
 #define TEST_BASE 0x01800000ul
 #define DEPTH_BASE 0x01801000ul
+/* Two pages up: the target's own bit-12 parity, for /parity (D36). */
+#define DEPTH_SAME_BASE 0x01802000ul
 #define TEXTURE_BASE 0x01804000ul
 #define TEST_WIDTH 64
 #define TEST_HEIGHT 32
@@ -465,7 +467,8 @@ static void tdfx3d_write_row(const char *name, int y)
  */
 static int tdfx3d_draw(const char *name, const struct v9x_tdfx_3d_state *state,
                        const struct tdfx3d_ivertex *triangles, int count,
-                       DWORD prefill, int fill_depth, int upload_texture)
+                       DWORD prefill, DWORD depth_fill_base,
+                       int upload_texture)
 {
     struct v9x_tdfx_3d_words words;
     struct v9x_tdfx_3d_vertex v[3];
@@ -478,8 +481,9 @@ static int tdfx3d_draw(const char *name, const struct v9x_tdfx_3d_state *state,
     tdfx3d_begin();
     tdfx3d_add(TDFX3D_OP_LFB_FILL32, TEST_BASE, prefill | (prefill << 16),
                TEST_DWORDS);
-    if (fill_depth) {
-        tdfx3d_add(TDFX3D_OP_LFB_FILL32, DEPTH_BASE, 0xfffffffful,
+    /* The far plane, FFFFh, everywhere: every first draw passes LESS. */
+    if (depth_fill_base != 0ul) {
+        tdfx3d_add(TDFX3D_OP_LFB_FILL32, depth_fill_base, 0xfffffffful,
                    TEST_DWORDS);
     }
     if (upload_texture) {
@@ -720,36 +724,43 @@ static DWORD tdfx3d_count_not(const char *name, const char *what,
     return wrong;
 }
 
-static void tdfx3d_test_depth(void)
+/*
+ * Depth at `depth_base`. "Depth" puts it one page above the target, on the
+ * opposite bit-12 parity; "DepthSame" (/parity) two pages above, on the
+ * same parity, which retro-3dfx's notes say hung a Voodoo3 (D36).
+ */
+static void tdfx3d_test_depth(const char *name, DWORD depth_base)
 {
     struct v9x_tdfx_3d_state state;
     struct tdfx3d_ivertex draws[18];
+    char key[64];
     DWORD wrong;
 
     tdfx3d_base_state(&state);
     state.depth_enable = 1ul;
-    state.depth.offset = DEPTH_BASE;
+    state.depth.offset = depth_base;
     state.depth.pitch_bytes = TEST_PITCH;
     state.depth_func = V9X_TDFX_CMP_LESS;
     state.depth_write = 1ul;
     tdfx3d_full(&draws[0], 255l, 0l, 0l, 255l, 40000l);
     tdfx3d_full(&draws[6], 0l, 255l, 0l, 255l, 20000l);
     tdfx3d_full(&draws[12], 0l, 0l, 255l, 255l, 60000l);
-    if (!tdfx3d_draw("Depth", &state, draws, 6, PREFILL_GREY, 1, 0)) {
+    if (!tdfx3d_draw(name, &state, draws, 6, PREFILL_GREY, depth_base, 0)) {
         return;
     }
-    tdfx3d_write_row("Depth", 12);
-    wrong = tdfx3d_count_not("Depth", "Colour", 0x07e0u, 0l);
+    tdfx3d_write_row(name, 12);
+    wrong = tdfx3d_count_not(name, "Colour", 0x07e0u, 0l);
 
     /* The Z buffer as written: the probe's hypothesis is Z in depth
      * counts, so 20000 (4E20h) everywhere; recorded either way. */
     tdfx3d_begin();
-    tdfx3d_add(TDFX3D_OP_LFB_READ_BLOCK, DEPTH_BASE, 0u, TEST_DWORDS);
+    tdfx3d_add(TDFX3D_OP_LFB_READ_BLOCK, depth_base, 0u, TEST_DWORDS);
     if (tdfx3d_run()) {
-        tdfx3d_write_row("DepthZ", 12);
-        tdfx3d_count_not("Depth", "Z", 0x4e20u, 0l);
+        tdfx3d_write_row(tdfx3d_key(key, name, "Z"), 12);
+        tdfx3d_count_not(name, "Z", 0x4e20u, 0l);
     }
-    tdfx3d_write("DepthResult", wrong == 0u ? "PASS" : "MISMATCH");
+    tdfx3d_write(tdfx3d_key(key, name, "Result"),
+                 wrong == 0u ? "PASS" : "MISMATCH");
     if (wrong != 0u) {
         tdfx3d_failed = 1u;
     }
@@ -907,9 +918,11 @@ void WINAPI V9xTdfx3dProbeEntry(void)
     }
 
     tdfx3d_test_flat();
-    if (!tdfx3d_has_switch(GetCommandLineA(), "/flat")) {
+    if (tdfx3d_has_switch(GetCommandLineA(), "/parity")) {
+        tdfx3d_test_depth("DepthSame", DEPTH_SAME_BASE);
+    } else if (!tdfx3d_has_switch(GetCommandLineA(), "/flat")) {
         tdfx3d_test_gouraud();
-        tdfx3d_test_depth();
+        tdfx3d_test_depth("Depth", DEPTH_BASE);
         tdfx3d_test_blend();
         tdfx3d_test_texture();
     }
