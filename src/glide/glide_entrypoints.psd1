@@ -148,6 +148,6 @@
         @{ Name = 'guTexGetMipMapInfo'; Bytes = 4; Return = 'u32'; Kind = 'Stub' }
         @{ Name = 'guTexMemQueryAvail'; Bytes = 4; Return = 'u32'; Kind = 'Stub' }
         @{ Name = 'guTexMemReset'; Bytes = 0; Return = 'void'; Kind = 'Stub' }
-        @{ Name = 'guTexSource'; Bytes = 4; Return = 'void'; Kind = 'Stub' }
+        @{ Name = 'guTexSource'; Bytes = 4; Return = 'void'; Kind = 'Written' }
     )
 }

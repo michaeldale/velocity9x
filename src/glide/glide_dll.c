@@ -499,6 +499,21 @@ void __stdcall guFogGenerateExp(v9x_u8 *table, v9x_u32 density)
                    "table=%08lX density-bits=%08lX", (v9x_u32)table, density);
 }
 
+/* guTexSource selects a texture the utility memory manager holds, by the
+ * id guTexAllocateMemory returned. That manager is not implemented and
+ * Carmageddon II never allocates through it, yet calls this thousands of
+ * times a session: each distinct id is logged so a run says what it
+ * passes. Nothing is selected. */
+void __stdcall guTexSource(v9x_u32 mmid)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_guTexSource);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_guTexSource,
+                        v9x_glide_key(mmid, 0ul, 0ul, 0ul))) {
+        v9x_glide_logf(V9X_GLIDE_IX_guTexSource, call, "mmid=%08lX", mmid);
+    }
+}
+
 /* ---- textures ------------------------------------------------------ */
 
 void __stdcall grTexClampMode(v9x_u32 tmu, v9x_u32 s_mode, v9x_u32 t_mode)

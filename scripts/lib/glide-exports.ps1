@@ -23,8 +23,9 @@
 $script:V9xGlideExportCount = 130
 # NFS II SE's 50 imports, plus grHints, grConstantColorValue,
 # grConstantColorValue4, guColorCombineFunction and grTexTextureMemRequired
-# for Carmageddon II (2026-10-11), and its grColorMask (2026-10-12).
-$script:V9xGlideWrittenCount = 56
+# for Carmageddon II (2026-10-11), and its grColorMask and guTexSource
+# (2026-10-12).
+$script:V9xGlideWrittenCount = 57
 
 function Get-V9xGlideEntries {
     param([Parameter(Mandatory = $true)][string]$RepoRoot)
@@ -55,7 +56,7 @@ function Get-V9xGlideEntries {
     }
     $written = @($entries | Where-Object { $_.Kind -eq 'Written' }).Count
     if ($written -ne $script:V9xGlideWrittenCount) {
-        throw "glide_entrypoints.psd1 has $written Written entries; expected $script:V9xGlideWrittenCount (NFS2SEA.EXE's imports plus Carmageddon II's six)."
+        throw "glide_entrypoints.psd1 has $written Written entries; expected $script:V9xGlideWrittenCount (NFS2SEA.EXE's imports plus Carmageddon II's seven)."
     }
     return $entries
 }
