@@ -57,7 +57,8 @@
  * to "replace" - zero other (12, 21) and add local (18, 27) - so TMU0
  * passes its texel on. */
 #define TDFX3D_TM_PERSPECTIVE       0x00000001ul
-#define TDFX3D_TM_BILINEAR          0x00000006ul
+#define TDFX3D_TM_MIN_BILINEAR      0x00000002ul
+#define TDFX3D_TM_MAG_BILINEAR      0x00000004ul
 #define TDFX3D_TM_CLAMP             0x000000c0ul
 #define TDFX3D_TM_FORMAT_SHIFT      8
 #define TDFX3D_TM_REPLACE           0x08241000ul
@@ -135,7 +136,8 @@ static v9x_status tdfx3d_check_texture(const struct v9x_tdfx_3d_texture *t,
          t->format != V9X_TDFX_TEX_ARGB1555 &&
          t->format != V9X_TDFX_TEX_ARGB4444) ||
         (t->combine != V9X_TDFX_COMBINE_REPLACE &&
-         t->combine != V9X_TDFX_COMBINE_MODULATE)) {
+         t->combine != V9X_TDFX_COMBINE_MODULATE &&
+         t->combine != V9X_TDFX_COMBINE_MODULATE_TEXALPHA)) {
         return V9X_STATUS_UNSUPPORTED;
     }
     bytes = tdfx3d_level_bytes(t->log2_size);
@@ -176,6 +178,11 @@ static v9x_u32 tdfx3d_color_path(const struct v9x_tdfx_3d_state *state)
                TDFX3D_CP_ALPHA_TMU | TDFX3D_CP_RGB_MUL_LOCAL |
                TDFX3D_CP_RGB_REVERSE | TDFX3D_CP_ALPHA_MUL_LOCAL |
                TDFX3D_CP_ALPHA_REVERSE;
+    }
+    if (state->texture.combine == V9X_TDFX_COMBINE_MODULATE_TEXALPHA) {
+        return TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU |
+               TDFX3D_CP_ALPHA_TMU | TDFX3D_CP_RGB_MUL_LOCAL |
+               TDFX3D_CP_RGB_REVERSE;
     }
     return TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU | TDFX3D_CP_ALPHA_TMU;
 }
@@ -277,8 +284,11 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         v9x_u32 lod = (V9X_TDFX_TEX_LOG2_MAX - t->log2_size) <<
                       TDFX3D_LOD_FRACTION_SHIFT;
 
-        if (t->bilinear != 0ul) {
-            mode |= TDFX3D_TM_BILINEAR;
+        if (t->min_bilinear != 0ul) {
+            mode |= TDFX3D_TM_MIN_BILINEAR;
+        }
+        if (t->mag_bilinear != 0ul) {
+            mode |= TDFX3D_TM_MAG_BILINEAR;
         }
         if (t->clamp != 0ul) {
             mode |= TDFX3D_TM_CLAMP;
@@ -286,6 +296,11 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE, mode);
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD,
                     lod | (lod << TDFX3D_LOD_MAX_SHIFT));
+        /* Twice, a different base first: a CPU download reaches the
+         * texture cache when texBaseAddr is rewritten (section 20.3
+         * p.234), and the texels may have changed since the last draw. */
+        tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR,
+                    tdfx3d_texture_base(t) ^ TDFX3D_TEX_ADDR_MASK);
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR,
                     tdfx3d_texture_base(t));
     }

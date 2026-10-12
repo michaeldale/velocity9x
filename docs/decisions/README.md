@@ -244,6 +244,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-12 The Voodoo4's desktop moves above Glide's memory, and Diablo II exits cleanly](2026-10-12-voodoo4-desktop-above-glide.md)
 - [2026-10-12 Diablo II, Rollcage and NFS II SE run on 3dfx's own Glide, once our mode set stops clearing memory](2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md)
 - [2026-10-12 The Voodoo4's 3D engine draws what the builder says: flat, Gouraud, depth, blend, texture](2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md)
+- [2026-10-12 The Voodoo4's Direct3D engine passes V9XDDP's core on its first run](2026-10-12-voodoo4-direct3d-engine-passes-v9xddp-core.md)
 
 ## NVIDIA and other surveyed cards
 

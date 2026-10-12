@@ -86,6 +86,8 @@
 /* How the texel and the iterated colour combine at the FBI. */
 #define V9X_TDFX_COMBINE_REPLACE    0ul
 #define V9X_TDFX_COMBINE_MODULATE   1ul
+/* Colour modulated, alpha from the texel. */
+#define V9X_TDFX_COMBINE_MODULATE_TEXALPHA 2ul
 
 /* Without tLOD bit 30 the largest level is 256 texels (section 8.77). */
 #define V9X_TDFX_TEX_LOG2_MAX       8ul
@@ -113,7 +115,8 @@ struct v9x_tdfx_3d_texture {
     v9x_u32 format;
     /* Square, 2^log2_size texels a side, one level. */
     v9x_u32 log2_size;
-    v9x_u32 bilinear;
+    v9x_u32 min_bilinear;
+    v9x_u32 mag_bilinear;
     v9x_u32 clamp;
     v9x_u32 combine;
 };

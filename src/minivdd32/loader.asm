@@ -162,11 +162,13 @@ V9xMgaMmioLinear dd 0
 ENDIF
 
 IFDEF V9X_TDFX_MMIO
-; 3dfx VSA-100: BAR0's 2D register block, mapped once for the 2D engine. The
-; block is at BAR0 + 100000h (Napalm spec section 4) and its offset 0 is the
-; status register's alias (section 7.2.1).
+; 3dfx VSA-100: BAR0's engine registers, mapped once for the 2D and 3D
+; engines. The window starts at the 2D block, BAR0 + 100000h (Napalm spec
+; section 4), whose offset 0 is the status register's alias (section
+; 7.2.1), and runs through the 3D block at + 100000h to the end of TMU0's
+; registers (chip field 2, + 800h; section 8 p.81).
 V9X_TDFX_2D_OFFSET      equ 00100000h
-V9X_TDFX_MMIO_BYTES     equ 00001000h
+V9X_TDFX_MMIO_BYTES     equ 00101000h
 V9X_TDFX_BAR0_ALIGN     equ 01ffffffh
 V9X_TDFX_2D_STATUS      equ 00000000h
 V9xTdfxMmioBase   dd 0

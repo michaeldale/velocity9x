@@ -35,8 +35,12 @@
             # The 2D engine through BAR0's 2D block, measured pixel-exact at
             # 16 bpp (docs\decisions\2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-exact.md).
             Acceleration = 'directdraw-fill-copy'
+            # Direct3D through the triangle setup unit (d3d_tdfx.c), drawn
+            # pixel-exact by TDFX3D
+            # (docs\decisions\2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md).
+            Direct3D = 'hardware-vsa100'
             EngineType = 'TDFX'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # One chip's memory: the Voodoo4 4500's 32 MiB, decoded from
             # dramInit0 under 3dfx's driver
             # (docs\decisions\2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md).

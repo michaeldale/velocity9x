@@ -149,6 +149,11 @@ $sources = @(
     "src\chipsets\matrox\mga_setup.c",
     "src\display32\d3d\d3d_mga_map.c",
     "src\display32\d3d\d3d_mga.c",
+    # The VSA-100 3D engine: setup-unit and pipeline register words, the
+    # neutral draw to them, and the engine that writes them.
+    "src\chipsets\tdfx\tdfx_3d.c",
+    "src\display32\d3d\d3d_tdfx_map.c",
+    "src\display32\d3d\d3d_tdfx.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",

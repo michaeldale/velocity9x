@@ -528,6 +528,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_sis6326;
 /* Matrox MGA-2164W, in d3d_mga.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga;
 
+/* 3dfx VSA-100, in d3d_tdfx.c. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_tdfx;
+
 
 /*
  * The core services an engine may use.

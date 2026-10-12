@@ -300,6 +300,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_sis6326;
     case V9X_D3D_SELECT_MGA:
         return &v9x_d3d_engine_mga;
+    case V9X_D3D_SELECT_TDFX:
+        return &v9x_d3d_engine_tdfx;
     default:
         return 0;
     }

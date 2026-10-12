@@ -399,11 +399,13 @@ V9XMINI_FN_SIS_MMIO_MAP     EQU 001Bh
 ; family image implements it; every other image refuses cleanly.
 V9XMINI_FN_MGA_MMIO_MAP     EQU 001Ch
 
-; 3dfx VSA-100: map BAR0's 2D register block and say where.
+; 3dfx VSA-100: map BAR0's engine registers and say where.
 ;
 ; In: EBX = BAR0's physical base, freshly read from PCI config by the display
-; driver. Out: AX=1, EBX = linear address of the 4 KiB 2D block (BAR0 +
-; 100000h), whose offset 0 aliases the status register. AX=0 leaves EBX zero.
+; driver. Out: AX=1, EBX = linear address of a window from the 2D block
+; (BAR0 + 100000h), whose offset 0 aliases the status register, through the
+; 3D block 1 MiB further on to the end of TMU0's registers: 101000h bytes.
+; AX=0 leaves EBX zero.
 ;
 ; Maps once and refuses a moved BAR, as the SiS and Matrox maps do. The window
 ; is handed over only after status read through it is not all ones, which is

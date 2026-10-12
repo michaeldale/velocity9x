@@ -49,17 +49,34 @@ static void base_vertices(struct v9x_tdfx_3d_vertex *v)
     v[2].tow = 20.0f;
 }
 
-/* The value written to offset, or 0xDEADBEEF when it is not written. */
+/* The last value written to offset - what the register holds after the
+ * writes - or 0xDEADBEEF when it is not written. */
 static v9x_u32 value_at(const struct v9x_tdfx_3d_words *words, v9x_u32 offset)
 {
     v9x_u32 index;
+    v9x_u32 value = 0xdeadbeeful;
 
     for (index = 0u; index < words->count; ++index) {
         if (words->offsets[index] == offset) {
-            return words->values[index];
+            value = words->values[index];
         }
     }
-    return 0xdeadbeeful;
+    return value;
+}
+
+/* How many times offset is written. */
+static v9x_u32 times_written(const struct v9x_tdfx_3d_words *words,
+                             v9x_u32 offset)
+{
+    v9x_u32 index;
+    v9x_u32 count = 0u;
+
+    for (index = 0u; index < words->count; ++index) {
+        if (words->offsets[index] == offset) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 static v9x_u32 written(const struct v9x_tdfx_3d_words *words, v9x_u32 offset)
@@ -172,18 +189,54 @@ static void test_state_texture(void)
      * 01100000h - 28000h = 010D8000h. */
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) ==
           0x010d8000ul);
+    /* Written twice, a different base first: rewriting texBaseAddr is how
+     * a CPU download reaches the texture cache (section 20.3 p.234). */
+    CHECK(times_written(&words,
+                        V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) == 2u);
+    {
+        v9x_u32 index;
+        v9x_u32 first = 0u;
+
+        for (index = 0u; index < words.count; ++index) {
+            if (words.offsets[index] ==
+                (V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR)) {
+                first = words.values[index];
+                break;
+            }
+        }
+        CHECK(first != 0x010d8000ul);
+    }
+
+    /* Modulate the colour, take alpha from the texel: Direct3D's MODULATE
+     * on a texture with alpha. RGB select TMU, multiply by local, reverse;
+     * alpha select TMU and passed on (alpha multiply select 0, reverse
+     * clear). */
+    state.texture.combine = V9X_TDFX_COMBINE_MODULATE_TEXALPHA;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x08002405ul);
 
     /* Modulate, bilinear, clamped: RGB select TMU, multiply by local (12:10
      * = 1) with reverse blend 13; alpha select TMU, alpha multiply by local
      * alpha (21:19 = 1) with reverse 22; texture enable. */
     state.texture.combine = V9X_TDFX_COMBINE_MODULATE;
-    state.texture.bilinear = 1ul;
+    state.texture.min_bilinear = 1ul;
+    state.texture.mag_bilinear = 1ul;
     state.texture.clamp = 1ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x08482405ul);
     /* Min and mag bilinear 1, 2; clamp S, T 6, 7. */
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE) ==
           0x08241ac7ul);
+    /* Each filter bit on its own. */
+    state.texture.min_bilinear = 0ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE) ==
+          0x08241ac5ul);
+    state.texture.min_bilinear = 1ul;
+    state.texture.mag_bilinear = 0ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE) ==
+          0x08241ac3ul);
 
     /* A level-0 256 texture's base is its own offset. */
     state.texture.log2_size = 8ul;

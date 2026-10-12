@@ -8,7 +8,9 @@
  * BAR0 registers and BAR1 framebuffer of 128 MiB each, BIOS 1.15.
  *
  * The VBE sets modes and reports the framebuffer. The engine hook claims the
- * 2D engine for DirectDraw fill and copy as TDFX. No enable step: the write
+ * 2D engine for DirectDraw fill and copy and the 3D engine for Direct3D, as
+ * TDFX, through one window of BAR0's engine registers. No enable step: the
+ * write
  * probe measured the engine working pixel-exact straight after the BIOS's VBE
  * mode set, with no init register written
  * (docs\decisions\2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-
@@ -24,8 +26,10 @@ extern unsigned short __far __pascal V9xPciReadTdfxMmioBar(
 extern unsigned short __far __pascal V9xMiniTdfxMmioMap(
     unsigned long bar0, unsigned long __far *linear);
 
-/* V9X_TDFX_MMIO_BYTES in the mini-VDD: the 2D block it maps. */
-#define V9X_TDFX_MMIO_BYTES 0x00001000ul
+/* V9X_TDFX_MMIO_BYTES in the mini-VDD: from the 2D block through TMU0's 3D
+ * registers. The 2D block is the window's first 4 KiB; the 3D block starts
+ * 1 MiB in. */
+#define V9X_TDFX_MMIO_BYTES 0x00101000ul
 
 /*
  * BAR0's 2D block mapped by the mini-VDD, which withholds a window whose
@@ -62,8 +66,13 @@ static void v9x_vsa100_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_TDFX_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_TDFX;
+    /* Direct3D through the setup unit (d3d_tdfx.c), whose register words
+     * TDFX3D drew pixel-exact (docs\decisions\2026-10-12-voodoo4-3d-engine-
+     * draws-pixel-exact.md); the HAL selects no TDFX 3D engine without
+     * this bit. */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_D3D;
 }
 
 /* Not static: resolved by name in the link map by the per-object audit. */
@@ -74,7 +83,7 @@ const V9X_HW16_DEVICE v9x_vsa100_device = {
     "tdfx-vsa100-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-vsa100",
     0,
     v9x_vsa100_fill_engine,
     1u

@@ -24,6 +24,7 @@
 #define V9X_D3D_SELECT_RAGE2    5ul
 #define V9X_D3D_SELECT_SIS6326  6ul
 #define V9X_D3D_SELECT_MGA      7ul
+#define V9X_D3D_SELECT_TDFX     8ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

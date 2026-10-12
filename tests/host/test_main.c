@@ -154,6 +154,10 @@ unsigned int v9x_run_d3d_mach64_map_tests(void);
  * texture and triangle words. */
 unsigned int v9x_run_d3d_sis6326_map_tests(void);
 
+/* tests\host\test_d3d_tdfx_map.c: V9X_R3D_DRAW to VSA-100 3D builder state
+ * and vertices. */
+unsigned int v9x_run_d3d_tdfx_map_tests(void);
+
 /* tests\host\test_d3d_mga_map.c: V9X_R3D_DRAW to MGA-2164W trapezoid
  * state, and its refusals. */
 unsigned int v9x_run_d3d_mga_map_tests(void);
@@ -1272,6 +1276,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_select_tests();
     failures += v9x_run_d3d_mach64_map_tests();
     failures += v9x_run_d3d_sis6326_map_tests();
+    failures += v9x_run_d3d_tdfx_map_tests();
     failures += v9x_run_d3d_mga_map_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();

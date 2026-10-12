@@ -41,6 +41,13 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
             return V9X_D3D_SELECT_NONE;
         }
         return V9X_D3D_SELECT_MGA;
+    case V9X_DD_ENGINE_TYPE_TDFX:
+        /* The VSA-100: its hook stamps CAP_D3D beside the 2D engine, and a
+         * build without the 3D engine selects nothing. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+            return V9X_D3D_SELECT_NONE;
+        }
+        return V9X_D3D_SELECT_TDFX;
     default:
         return V9X_D3D_SELECT_NONE;
     }
