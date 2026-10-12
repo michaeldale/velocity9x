@@ -506,6 +506,8 @@ returns a usable desktop; decision record with captures.
 
 ## Phase 5 — Direct3D engine (OpenGL follows)
 
+Detailed plan: [3dfx-vsa100-d3d.md](3dfx-vsa100-d3d.md).
+
 Plugs into `V9X_D3D_ENGINE_OPS`. Napalm triangle setup and formats from the
 fact sheet, Mesa `tdfx` as a compatible worked example. 16-bit colour and
 one TMU first; 32-bit colour, stencil, 2k textures and FXT1 as separate
