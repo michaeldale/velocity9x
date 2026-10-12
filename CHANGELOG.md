@@ -14,6 +14,13 @@ build identifier so exact guest-tested binaries remain traceable.
   `GLIDE2X.DLL` and `GLIDE3X.DLL`, and the depth-only clear stays on the
   3D engine.
 
+- **Drawing to the front buffer of a flip chain works.** The HAL refused
+  any primary surface that was not at the start of video memory, but
+  flipping moves the front buffer, so with three buffers two flips in
+  three left it elsewhere. Glide clears after `grRenderBuffer` selected
+  the front buffer were refused; Carmageddon II's startup clears now all
+  run.
+
 - **Reports say how a game ended.** When a program first uses the HAL,
   the driver now records how it ends: the exit code and the code address
   that called `ExitProcess` or `TerminateProcess`, any message box's

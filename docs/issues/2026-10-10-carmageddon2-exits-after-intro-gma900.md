@@ -358,6 +358,26 @@ left it running with every LFB lock failing DDERR_SURFACELOST, and a
 one-off `WKILL.EXE` (TerminateProcess) ended it with the desktop back at
 1024x576.
 
+## 2026-10-12: the refused front-buffer clears were the primary's offset, fixed
+
+Every session refused a few clears after `grRenderBuffer(0)` (`clear
+refused: result=1`; on the netbook 6, 4 and 3 in the last three
+sessions in `V9XGLIDE.LOG`). Both the clear quad and the interface
+clear fail in `v9x_d3d_set_target`, which refused any primary surface
+whose video-memory offset was not 0. Flip swaps the chain's video
+memory, so with the game's three buffers the front buffer is at 0 one
+flip in three. The guard dates from the first HAL (f315706) with no
+recorded reason; a primary that heads a flip chain (`DDSCAPS_FLIP`) is
+now accepted and bounded by the same extent checks as any target.
+
+Netbook, boot 175 (driver set from this change; the game folder's
+`GLIDE2X.DLL` unchanged): session `FFFDD92F` made the same six
+`grRenderBuffer` calls at startup, logged no `clear refused`, drew
+59,592 triangles with none refused through the intro to the menu, and
+the menu frame capture shows its backdrop. Whether the refused clear
+just before the reporter's exit had anything to do with the exit is not
+known; the retail exit has not reproduced on the netbook.
+
 ## 2026-10-12: the same intro on MICHAEL-NETBOOK (945GSE), and what it rules out
 
 Boot 160, driver `3947344-dirty` (DRV, VxD, HAL, V9XTRACE; the game

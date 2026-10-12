@@ -1147,8 +1147,15 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         /* DDRAW's primary/flip-chain metadata has varied across the legacy
          * runtime paths. The scanout descriptor is authoritative for these
          * display-sized surfaces: using a stale surface pitch here creates
-         * diagonal/striped S3D output and can walk beyond the page. */
-        if ((primary && offset != 0ul) ||
+         * diagonal/striped S3D output and can walk beyond the page.
+         *
+         * A primary away from offset 0 is refused unless it heads a flip
+         * chain: Flip swaps the buffers' video memory, so the front buffer
+         * of a three-buffer chain sits at 0 one flip in three, and Glide's
+         * grRenderBuffer(GR_BUFFER_FRONTBUFFER) clears were refused the
+         * other two. The extent checks below bound it like any target. */
+        if ((primary && offset != 0ul &&
+             (target->ddsCaps & V9X_DDSCAPS_FLIP) == 0ul) ||
             v9x_hal->fb.bits_per_pixel != limits->target_bits_per_pixel ||
             v9x_hal->info.vmiData.lDisplayPitch !=
                 (LONG)v9x_hal->fb.pitch) {
