@@ -251,6 +251,15 @@ static WORD v9x_gdi_report_pending;
 static WORD v9x_gdi_engine_live;
 
 /*
+ * Set while another client owns the engine: 3dfx Glide between its exclusive
+ * take and release (dd16.c). Every primitive declines at gate 1 and the DIB
+ * Engine draws instead. Unlike the poison it is not a fault and is cleared
+ * on release; like it, it lives in DGROUP so a mode set inside Glide's
+ * session cannot reset it.
+ */
+static WORD v9x_gdi_held;
+
+/*
  * Set by a text callback that could not draw what the DIB Engine handed it,
  * read by the ExtTextOut dispatcher when DIB_ExtTextOutExt returns. The
  * callbacks have no decline path of their own - by the time one runs, the DIB
@@ -501,6 +510,21 @@ void __loadds FAR PASCAL V9xGdiBeginAccessSlow(void)
     ++v9x_gdi.drains;
     (void)v9x_gdi_wait_idle();
     v9x_gdi_engine_dirty = 0u;
+}
+
+/*
+ * Hand the engine to another client or take it back. Handing it over waits
+ * for the engine to go idle first, dirty or not: the busy bit covers the
+ * whole engine, so this also outlasts the HAL's last blit, which leaves no
+ * flag on this side. The wait is the BeginAccess drain and poisons on a
+ * timeout, as any bounded wait here does.
+ */
+void v9x_gdi_accel_hold(WORD held)
+{
+    if (held != 0u && v9x_gdi_engine_live != 0u) {
+        V9xGdiBeginAccessSlow();
+    }
+    v9x_gdi_held = held;
 }
 
 /*
@@ -1627,9 +1651,11 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
      * This is the whole cost of this file to every family but s3, whose
      * engines have no primitive here and therefore never leave
      * v9x_gdi.enabled non-zero. It is also where a poisoned session declines for ever, since
-     * the latch clears the mask.
+     * the latch clears the mask. A client holding the engine declines here
+     * too.
      */
-    if (v9x_gdi.enabled == 0ul || v9x_gdi_engine_live == 0u) {
+    if (v9x_gdi.enabled == 0ul || v9x_gdi_engine_live == 0u ||
+        v9x_gdi_held != 0u) {
         ++v9x_gdi.decline_disabled;
         goto decline;
     }
@@ -2589,7 +2615,8 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
         }
         probing = 1u;
     }
-    if (v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u) {
+    if (v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u ||
+        v9x_gdi_held != 0u) {
         V9X_GDI_TEXT_REJECT(1u);
         goto decline;
     }

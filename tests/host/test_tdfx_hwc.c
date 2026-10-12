@@ -163,6 +163,85 @@ static void test_declines(void)
     CHECK(answer.escape_return == 0l && answer.reply_dwords == 0u);
 }
 
+/* The shared block's V9X_DD_ENGINE_VALID, and a neighbour that must
+ * survive every transition. */
+#define HOLD_VALID 0x00000001ul
+#define HOLD_OTHER 0x00000010ul
+
+static void test_hold_take_release(void)
+{
+    struct v9x_tdfx_hwc_hold hold;
+    v9x_u32 flags;
+
+    memset(&hold, 0, sizeof(hold));
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_TAKE,
+                                    HOLD_VALID | HOLD_OTHER, HOLD_VALID);
+    CHECK(flags == HOLD_OTHER);
+    CHECK(hold.held != 0ul);
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_RELEASE,
+                                    flags, HOLD_VALID);
+    CHECK(flags == (HOLD_VALID | HOLD_OTHER));
+    CHECK(hold.held == 0ul);
+
+    /* The HAL had given the engine up before Glide took it: release must
+     * not hand it back. */
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_TAKE,
+                                    HOLD_OTHER, HOLD_VALID);
+    CHECK(flags == HOLD_OTHER);
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_RELEASE,
+                                    flags, HOLD_VALID);
+    CHECK(flags == HOLD_OTHER);
+
+    /* A second take while held keeps what the first one saved. */
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_TAKE,
+                                    HOLD_VALID, HOLD_VALID);
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_TAKE,
+                                    flags, HOLD_VALID);
+    CHECK(flags == 0ul);
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_RELEASE,
+                                    flags, HOLD_VALID);
+    CHECK(flags == HOLD_VALID);
+
+    /* A release with nothing held, and an action that is neither. */
+    CHECK(v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_RELEASE,
+                                  HOLD_OTHER, HOLD_VALID) == HOLD_OTHER);
+    CHECK(v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_NONE,
+                                  HOLD_VALID, HOLD_VALID) == HOLD_VALID);
+    CHECK(hold.held == 0ul);
+}
+
+static void test_hold_restamp(void)
+{
+    struct v9x_tdfx_hwc_hold hold;
+    v9x_u32 flags;
+
+    /* Not held: a restamp stands. */
+    memset(&hold, 0, sizeof(hold));
+    CHECK(v9x_tdfx_hwc_hold_restamp(&hold, HOLD_VALID | HOLD_OTHER,
+                                    HOLD_VALID) == (HOLD_VALID | HOLD_OTHER));
+
+    /* Held: a mode set inside Glide's session restamps VALID; it is
+     * withheld, and the release gives it back. */
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_TAKE,
+                                    HOLD_OTHER, HOLD_VALID);
+    flags = v9x_tdfx_hwc_hold_restamp(&hold, HOLD_VALID | HOLD_OTHER,
+                                      HOLD_VALID);
+    CHECK(flags == HOLD_OTHER);
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_RELEASE,
+                                    flags, HOLD_VALID);
+    CHECK(flags == (HOLD_VALID | HOLD_OTHER));
+
+    /* Held, and the restamp found no engine: the release must not invent
+     * one. */
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_TAKE,
+                                    HOLD_VALID, HOLD_VALID);
+    flags = v9x_tdfx_hwc_hold_restamp(&hold, 0ul, HOLD_VALID);
+    CHECK(flags == 0ul);
+    flags = v9x_tdfx_hwc_hold_apply(&hold, V9X_TDFX_HWC_ACTION_RELEASE,
+                                    flags, HOLD_VALID);
+    CHECK(flags == 0ul);
+}
+
 unsigned int v9x_run_tdfx_hwc_tests(void)
 {
     failures = 0u;
@@ -171,5 +250,7 @@ unsigned int v9x_run_tdfx_hwc_tests(void)
     test_exclusive_and_cleanup();
     test_share_context_no();
     test_declines();
+    test_hold_take_release();
+    test_hold_restamp();
     return failures;
 }

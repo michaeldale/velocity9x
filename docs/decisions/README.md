@@ -240,6 +240,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-11 The Voodoo4's GDI fills and copies run on its 2D engine, PASS at 8 and 16 bpp](2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md)
 - [2026-10-11 3dfx's shipped Glide asks QUERYDEVNODE before it sends EXT_HWC](2026-10-11-shipped-glide-asks-querydevnode-before-ext-hwc.md)
 - [2026-10-11 3dfx's shipped Glide 3 runs a session on Velocity9x and gives the desktop back](2026-10-11-shipped-glide-runs-a-session-on-velocity9x.md)
+- [2026-10-12 Glide's exclusive takes the Voodoo4's engine from GDI and the HAL, and gives it back](2026-10-12-glide-exclusive-takes-the-engine-from-gdi-and-the-hal.md)
 
 ## NVIDIA and other surveyed cards
 

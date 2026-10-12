@@ -61,4 +61,28 @@ v9x_status v9x_tdfx_hwc_answer(const v9x_u32 *request, v9x_u32 request_dwords,
                                const struct v9x_tdfx_hwc_device *device,
                                struct v9x_tdfx_hwc_answer *answer);
 
+/*
+ * The engine while Glide holds it exclusively. `valid` is the bit in the
+ * shared engine flags without which the HAL leaves the engine alone. A take
+ * withholds it and remembers whether it was set; a release gives back only
+ * what was taken, so an engine the HAL had already given up on stays given
+ * up. Zero-initialised means not held.
+ */
+struct v9x_tdfx_hwc_hold {
+    v9x_u32 held;
+    v9x_u32 saved_valid;
+};
+
+/* The flags after a TAKE or RELEASE action; any other action, or a release
+ * with nothing held, returns them unchanged. */
+v9x_u32 v9x_tdfx_hwc_hold_apply(struct v9x_tdfx_hwc_hold *hold,
+                                v9x_u32 action, v9x_u32 flags,
+                                v9x_u32 valid);
+
+/* The flags after the driver restamped them (a mode set or a DirectDraw
+ * session setup): while held, `valid` is recorded for the release and
+ * withheld again. */
+v9x_u32 v9x_tdfx_hwc_hold_restamp(struct v9x_tdfx_hwc_hold *hold,
+                                  v9x_u32 flags, v9x_u32 valid);
+
 #endif

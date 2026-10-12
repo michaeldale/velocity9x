@@ -138,3 +138,36 @@ v9x_status v9x_tdfx_hwc_answer(const v9x_u32 *request, v9x_u32 request_dwords,
     }
     return V9X_STATUS_OK;
 }
+
+v9x_u32 v9x_tdfx_hwc_hold_apply(struct v9x_tdfx_hwc_hold *hold,
+                                v9x_u32 action, v9x_u32 flags,
+                                v9x_u32 valid)
+{
+    if (hold == 0) {
+        return flags;
+    }
+    if (action == V9X_TDFX_HWC_ACTION_TAKE) {
+        /* A second take finds the bit already withheld; what the first one
+         * saved is what the release must give back. */
+        if (hold->held == 0ul) {
+            hold->saved_valid = flags & valid;
+            hold->held = 1ul;
+        }
+        return flags & ~valid;
+    }
+    if (action == V9X_TDFX_HWC_ACTION_RELEASE && hold->held != 0ul) {
+        hold->held = 0ul;
+        return (flags & ~valid) | hold->saved_valid;
+    }
+    return flags;
+}
+
+v9x_u32 v9x_tdfx_hwc_hold_restamp(struct v9x_tdfx_hwc_hold *hold,
+                                  v9x_u32 flags, v9x_u32 valid)
+{
+    if (hold == 0 || hold->held == 0ul) {
+        return flags;
+    }
+    hold->saved_valid = flags & valid;
+    return flags & ~valid;
+}

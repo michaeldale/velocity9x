@@ -238,6 +238,12 @@ typedef WORD (FAR PASCAL *V9X_SETINFO_FN)(V9X_DDHALINFO FAR *info,
                                           WORD reset);
 
 static V9X_DD_SHARED FAR *v9x_dd_shared;
+
+#ifdef V9X_TDFX_FAMILY
+/* Re-withhold the engine from the HAL after the flags are restamped while
+ * 3dfx Glide holds it; defined with the EXT_HWC handler below. */
+static void v9x_hwc_restamp(void);
+#endif
 static V9X_SETINFO_FN v9x_dd_set_info;
 static V9X_DDHALINFO v9x_dd_info16;
 static V9X_DDHAL_DDCALLBACKS v9x_dd_callbacks16;
@@ -591,6 +597,9 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
     shared->engine.engine_caps = engine_caps;
     v9x_dd_publish_engine_stamp(engine_type, engine_caps,
                                 shared->engine.ring_linear_base);
+#ifdef V9X_TDFX_FAMILY
+    v9x_hwc_restamp();
+#endif
 }
 
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
@@ -828,6 +837,9 @@ static void v9x_dd_refresh_framebuffer(void)
      * so it starts disarmed; after that the escape is the only writer and
      * the HAL's own consumption is the only decrementer. A forced timeout
      * acts on whichever bounded wait runs next, which is mode-independent. */
+#ifdef V9X_TDFX_FAMILY
+    v9x_hwc_restamp();
+#endif
 }
 
 /*
@@ -1033,6 +1045,9 @@ void FAR PASCAL V9xDdInvalidate(void)
     if (v9x_dd_shared != 0) {
         v9x_dd_shared->fb.flags &= ~V9X_DD_FB_VALID;
         v9x_dd_shared->engine.flags &= ~V9X_DD_ENGINE_VALID;
+#ifdef V9X_TDFX_FAMILY
+        v9x_hwc_restamp();
+#endif
     }
 }
 
@@ -1474,10 +1489,82 @@ static LONG v9x_hwc_query_devnode(LPVOID input, LPVOID output)
  * framebuffer mapping the driver already has, which the HAL already uses
  * from every process. fbRam is the usable size Enable settled on.
  *
- * Exclusive take and release are recorded and otherwise not acted on yet
- * (step 3).
+ * Exclusive take and release (step 3) move the engine between Glide and the
+ * driver: on take, GDI drains and declines every primitive, and the HAL
+ * loses V9X_DD_ENGINE_VALID, so both draw with the CPU; on release both get
+ * back what they had. Release is at RLSEXCLUSIVE, which Glide sends after
+ * its own idle wait and before its mode set back to the desktop, so the
+ * engine is no longer Glide's by then. A killed Glide process never
+ * releases, and the engine stays withheld until the next boot: the CPU
+ * draws everything, slower and correct.
  */
 #include "velocity9x/tdfx_hwc.h"
+
+static struct v9x_tdfx_hwc_hold v9x_hwc_hold;
+
+static void v9x_hwc_restamp(void)
+{
+    if (v9x_dd_shared == 0) {
+        return;
+    }
+    v9x_dd_shared->engine.flags = v9x_tdfx_hwc_hold_restamp(
+        &v9x_hwc_hold, v9x_dd_shared->engine.flags, V9X_DD_ENGINE_VALID);
+}
+
+/*
+ * The evidence for a hold, in V9XHWC.INI: the HAL's engine flags (VALID is
+ * bit 0) and GDI's engine counters at a stage of the exclusive. Fills and
+ * copies flat between Taken and BeforeRelease, with DeclineDisabled rising,
+ * is GDI staying off the engine while Glide had it. Static, not on the
+ * caller's stack: the statistics block is several hundred bytes.
+ */
+static V9X_GDI_STATS v9x_hwc_gdi_stats;
+
+static void v9x_hwc_record_value(const char *stage, const char *name,
+                                 DWORD value)
+{
+    char key[40];
+    char number[9];
+
+    lstrcpy(key, stage);
+    lstrcat(key, name);
+    v9x_hwc_hex(number, value);
+    WritePrivateProfileString("Velocity9xHwc", key, number, V9X_DIAG_HWC_INI);
+}
+
+static void v9x_hwc_record_engine(const char *stage)
+{
+    v9x_hwc_record_value(stage, "EngineFlags",
+                         v9x_dd_shared != 0 ? v9x_dd_shared->engine.flags
+                                            : 0xfffffffful);
+    if (v9x_gdi_accel_stats(&v9x_hwc_gdi_stats) == 0u) {
+        return;
+    }
+    v9x_hwc_record_value(stage, "GdiFills", v9x_hwc_gdi_stats.fills);
+    v9x_hwc_record_value(stage, "GdiCopies", v9x_hwc_gdi_stats.copies);
+    v9x_hwc_record_value(stage, "GdiDeclineDisabled",
+                         v9x_hwc_gdi_stats.decline_disabled);
+}
+
+/* Take or release, for both clients of the engine. The HAL's share exists
+ * only once DirectDraw has made the shared block; GDI's always. */
+static void v9x_hwc_exclusive(v9x_u32 action)
+{
+    if (action == V9X_TDFX_HWC_ACTION_TAKE) {
+        v9x_gdi_accel_hold(1u);
+    }
+    if (v9x_dd_shared != 0) {
+        v9x_dd_shared->engine.flags = v9x_tdfx_hwc_hold_apply(
+            &v9x_hwc_hold, action, v9x_dd_shared->engine.flags,
+            V9X_DD_ENGINE_VALID);
+    } else {
+        (void)v9x_tdfx_hwc_hold_apply(&v9x_hwc_hold, action, 0ul,
+                                      V9X_DD_ENGINE_VALID);
+    }
+    if (action == V9X_TDFX_HWC_ACTION_RELEASE) {
+        v9x_gdi_accel_hold(0u);
+    }
+}
 
 #define V9X_HWC_REPLY_BYTES     (V9X_TDFX_HWC_REPLY_DWORDS * 4u)
 
@@ -1526,11 +1613,16 @@ static LONG v9x_hwc_answer(LPVOID input, LPVOID output)
         ((DWORD FAR *)output)[index] = answer.reply[index];
     }
     if (answer.action == V9X_TDFX_HWC_ACTION_TAKE) {
+        v9x_hwc_exclusive(answer.action);
         WritePrivateProfileString("Velocity9xHwc", "Exclusive", "taken",
                                   V9X_DIAG_HWC_INI);
+        v9x_hwc_record_engine("Taken");
     } else if (answer.action == V9X_TDFX_HWC_ACTION_RELEASE) {
+        v9x_hwc_record_engine("BeforeRelease");
+        v9x_hwc_exclusive(answer.action);
         WritePrivateProfileString("Velocity9xHwc", "Exclusive", "released",
                                   V9X_DIAG_HWC_INI);
+        v9x_hwc_record_engine("Released");
     }
     return (LONG)answer.escape_return;
 }

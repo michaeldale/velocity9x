@@ -55,6 +55,11 @@ const char *v9x_gdi_accel_state_text(void);
  */
 const char *v9x_gdi_accel_engine_caps_text(void);
 
+/* Non-zero: another client owns the engine (3dfx Glide's exclusive), so
+ * drain GDI's pending work and decline every primitive. Zero: give it
+ * back. */
+void v9x_gdi_accel_hold(WORD held);
+
 /* V9X_GDIGETSTATS. Non-zero when the block was filled in. */
 WORD v9x_gdi_accel_stats(void FAR *output);
 
