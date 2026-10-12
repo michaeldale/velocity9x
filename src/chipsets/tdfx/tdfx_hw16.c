@@ -271,9 +271,13 @@ const V9X_HW16_OPS v9x_hw16 = {
     (unsigned short)(sizeof(v9x_tdfx_devices) / sizeof(v9x_tdfx_devices[0])),
     v9x_tdfx_modes,
     (unsigned short)(sizeof(v9x_tdfx_modes) / sizeof(v9x_tdfx_modes[0])),
-    /* The generic linear-framebuffer bit only. Whether this BIOS honours it
-     * is unmeasured: a BIOS that ignores it refuses at stage 3. */
-    V9X_HW16_VBE_LINEAR,
+    /* The generic linear-framebuffer bit, and VBE's don't-clear bit. The
+     * BIOS clears from offset 0, where Glide's command FIFO lives; a game
+     * that restores the desktop mode before Glide has turned its FIFO off
+     * (Rollcage on WM_CLOSE, A8U4I5 boot 427) then had the clear land in an
+     * enabled FIFO and jam it for the next Glide session. The desktop is
+     * repainted after every mode set, so nothing needs the clear. */
+    V9X_HW16_VBE_LINEAR | V9X_HW16_VBE_NO_CLEAR,
     /* 32 MiB: one VSA-100's memory, the Voodoo4 4500's whole 32 MiB, and so
      * also the ceiling this family believes from 4F00h. The ceiling matters
      * twice: the Mini-Me's BIOS left only about 32 MiB of its 64 linear, and

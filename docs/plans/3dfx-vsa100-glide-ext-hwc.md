@@ -17,7 +17,11 @@ in Glide's command FIFO
 ([issue](../issues/2026-10-12-glide-cmdfifo-overlaps-the-desktop.md)); the
 desktop now sits above Glide's memory
 ([2026-10-12-voodoo4-desktop-above-glide.md](../decisions/2026-10-12-voodoo4-desktop-above-glide.md))
-and Diablo II runs and exits. Rollcage, NFS II SE and Glide 2 next. Parent
+and Diablo II runs and exits. Step 4 done
+([2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md](../decisions/2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md)):
+Rollcage (Glide 3) and both NFS II SE builds (Glide 2) draw correctly and
+exit cleanly once the VBE mode set no longer clears memory. Open: a Glide
+process that dies before closing. Parent
 plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md), Phase 4. Protocol:
 [vsa100-ext-hwc.md](../specifications/vsa100-ext-hwc.md). Boundaries:
 [win9x-driver-boundaries.md](../specifications/win9x-driver-boundaries.md).
