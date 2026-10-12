@@ -2,8 +2,14 @@
 
 Date: 2026-10-12
 
-Status: step 0 (fact sheet) and step 1 (`tdfx_3d.c`, host-tested) done;
-step 2, the probe, next. Parent plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md),
+Status:
+- **Done:** step 0 (fact sheet); step 1 (`tdfx_3d.c`, host-tested); step 2
+  (the probe: flat, Gouraud, depth, blend and texture all pass on the 4500
+  at the first run;
+  [2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md](../decisions/2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md)).
+- **Next:** step 3, the engine.
+
+Parent plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md),
 Phase 5. Register facts: [vsa100-registers.md](../specifications/vsa100-registers.md)
 (its 3D part is names only today; step 0 fills it in). Boundaries:
 [win9x-driver-boundaries.md](../specifications/win9x-driver-boundaries.md).

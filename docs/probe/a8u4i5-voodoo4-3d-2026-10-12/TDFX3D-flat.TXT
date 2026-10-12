@@ -1,0 +1,23 @@
+[Tdfx3dProbe]
+Build=05d9622-dirty
+DesktopWidth=640
+DesktopHeight=480
+DesktopBpp=16
+Bar0=0xD8000000
+Bar1=0xE0000000
+StatusAtStart=0x0000005F
+FlatWaitBefore=0x00000006
+FlatWaitAfter=0x0000000F
+FlatOps=42
+FlatInsidePixels=429
+FlatInsideWrong=0
+FlatInsideWorstStep=0
+FlatOutsideDrawn=0
+FlatEdgePixels=288
+FlatEdgeDrawn=135
+FlatRow4=18E3 18E3 F800 F800 F800 18E3 18E3 18E3
+FlatRow12=18E3 18E3 18E3 F800 F800 F800 F800 F800
+FlatResult=PASS
+FifoWaits=3
+StatusAtEnd=0x0000005F
+Result=PASS
