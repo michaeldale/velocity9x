@@ -6,11 +6,14 @@
  * framebuffer landed, 4F00h reports its size, and the CPU draws
  * (docs\plans\3dfx-vsa100-family.md, Phase 2).
  *
- * One hook: the memory size. VBE 4F00h reports 16 MiB on the 32 MiB Voodoo4
- * 4500, and the BIOS leaves the last 4 KiB page of BAR1's linear view tiled
- * (docs\decisions\2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-
- * reports-half-its-memory.md). So the size comes from the chip: the dramInit0
- * straps, clamped to the first tiled page.
+ * Two hooks. The memory size: VBE 4F00h reports 16 MiB on the 32 MiB
+ * Voodoo4 4500, and the BIOS leaves the last 4 KiB page of BAR1's linear
+ * view tiled (docs\decisions\2026-10-11-voodoo4-runs-velocity9x-at-tier-0-
+ * and-its-vbe-reports-half-its-memory.md), so the size comes from the chip:
+ * the dramInit0 straps, clamped to the first tiled page. And the desktop's
+ * place: above the memory 3dfx's Glide is given, as 3dfx's own driver puts
+ * it, because Glide's command FIFO sits at the bottom of memory
+ * (docs\issues\2026-10-12-glide-cmdfifo-overlaps-the-desktop.md).
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/tdfx_vsa100.h"
@@ -19,14 +22,26 @@
 extern unsigned long v9x_vbe_vram_reported;
 
 /* runtime.asm, V9X_TDFX_FAMILY: dramInit0, tile control and tile compare
- * through BAR2. Non-zero on success. */
+ * through BAR2, and one init or video register either way. Non-zero on
+ * success. */
 extern unsigned short __far __pascal V9xTdfxReadMemoryRegs(
     unsigned long __far *regs);
+extern unsigned short __far __pascal V9xTdfxIoRead(unsigned short offset,
+                                                    unsigned long __far *value);
+extern unsigned short __far __pascal V9xTdfxIoWrite(unsigned short offset,
+                                                     unsigned long value);
 
-/* The raw registers and the decision, kept for the diagnostics. */
+/* The raw registers and the decision, kept for the diagnostics. The tile
+ * page is the one found at the first read: the BIOS's, or a Glide session's
+ * the BIOS did not clear. */
 static unsigned long v9x_tdfx_dram_init0;
 static unsigned long v9x_tdfx_tile_first_page;
 static unsigned long v9x_tdfx_usable_bytes;
+static unsigned long v9x_tdfx_desktop_offset_bytes;
+static unsigned long v9x_tdfx_glide_fb_bytes;
+static unsigned short v9x_tdfx_layout_known;
+/* What place_desktop last did: 1 programmed, 0 refused. Diagnostic. */
+static unsigned short v9x_tdfx_desktop_placed;
 
 extern const V9X_HW16_DEVICE v9x_vsa100_device;
 
@@ -85,25 +100,126 @@ static const char *v9x_tdfx_word(const char *value, const char *fallback)
 }
 
 /*
- * Usable video memory: the dramInit0 straps decoded, clamped to the first
- * page BAR1 serves tiled, so the DirectDraw heap never reaches memory the
- * CPU would see through the tiled view. 0 when the registers cannot be read
- * or do not decode, which leaves the enable sequence on VBE 4F00h.
+ * The memory layout, decided once: the dramInit0 straps decoded and clamped
+ * to the tile boundary the BIOS leaves - not the one found, which after a
+ * Glide session is Glide's, because place_desktop writes the BIOS's back -
+ * and split between Glide and the desktop by vsa100_decode.c. 0 when the
+ * registers cannot be read or do not decode.
  */
-static unsigned long v9x_tdfx_read_video_memory(void)
+static unsigned short v9x_tdfx_layout(void)
 {
     unsigned long regs[3];
 
-    if (V9xTdfxReadMemoryRegs((unsigned long __far *)regs) == 0u) {
-        return 0ul;
+    if (v9x_tdfx_layout_known != 0u) {
+        return 1u;
     }
-
+    if (V9xTdfxReadMemoryRegs((unsigned long __far *)regs) == 0u) {
+        return 0u;
+    }
     v9x_tdfx_dram_init0 = regs[0];
     v9x_tdfx_tile_first_page = v9x_tdfx_vsa100_tile_first_page(regs[1],
                                                                 regs[2]);
-    v9x_tdfx_usable_bytes = v9x_tdfx_vsa100_usable_memory(regs[0], regs[1],
-                                                          regs[2]);
-    return v9x_tdfx_usable_bytes;
+    v9x_tdfx_usable_bytes = v9x_tdfx_vsa100_usable_memory(
+        regs[0], V9X_TDFX_LFB_BIOS_TILE_CONTROL, 0ul);
+    if (v9x_tdfx_usable_bytes == 0ul) {
+        return 0u;
+    }
+    v9x_tdfx_desktop_offset_bytes =
+        v9x_tdfx_vsa100_desktop_offset(v9x_tdfx_usable_bytes);
+    v9x_tdfx_glide_fb_bytes =
+        v9x_tdfx_vsa100_glide_bytes(v9x_tdfx_usable_bytes);
+    v9x_tdfx_layout_known = 1u;
+    return 1u;
+}
+
+/*
+ * Video memory for the driver: from the desktop to the end of the linear
+ * view, so the DirectDraw heap never reaches Glide's memory below or the
+ * tiled view above. 0 when the layout is unknown, which leaves the enable
+ * sequence on VBE 4F00h.
+ */
+static unsigned long v9x_tdfx_read_video_memory(void)
+{
+    if (v9x_tdfx_layout() == 0u) {
+        return 0ul;
+    }
+    return v9x_tdfx_usable_bytes - v9x_tdfx_desktop_offset_bytes;
+}
+
+/*
+ * Scan the desktop out from its place in the layout, after the BIOS mode
+ * set. Four writes through BAR2, each read back where it is a plain
+ * register:
+ *
+ * 1. lfbMemoryConfig: the BIOS's tile control, so BAR1's linear view
+ *    reaches the desktop again. Glide moves the boundary to its own buffers
+ *    and leaves it there, and the mode set does not restore it.
+ * 2. vidProcCfg: desktop fetch on, overlay off, linear. A Glide session
+ *    that never closed leaves its overlay showing through a reset and a
+ *    mode set (A8U4I5 boot 425).
+ * 3. vidDesktopOverlayStride: the mode's pitch, for the same reason.
+ * 4. vidDesktopStartAddr: the offset.
+ *
+ * Returns the offset, or 0 when the registers cannot be reached or the
+ * start address did not take, and then writes the start back to 0, so the
+ * scanout and the mapping Enable makes from the answer agree.
+ */
+static unsigned long v9x_tdfx_place_desktop(unsigned short pitch_bytes)
+{
+    unsigned long value;
+
+    v9x_tdfx_desktop_placed = 0u;
+    if (v9x_tdfx_layout() == 0u ||
+        V9xTdfxIoWrite((unsigned short)V9X_TDFX_LFB_MEMORY_CONFIG,
+                       V9X_TDFX_LFB_BIOS_TILE_CONTROL) == 0u) {
+        return 0ul;
+    }
+    if (V9xTdfxIoRead((unsigned short)V9X_TDFX_VID_PROC_CFG,
+                      (unsigned long __far *)&value) == 0u ||
+        V9xTdfxIoWrite((unsigned short)V9X_TDFX_VID_PROC_CFG,
+                       v9x_tdfx_vsa100_desktop_vidproc(value)) == 0u) {
+        return 0ul;
+    }
+    if (V9xTdfxIoRead((unsigned short)V9X_TDFX_VID_DESKTOP_STRIDE,
+                      (unsigned long __far *)&value) == 0u ||
+        V9xTdfxIoWrite((unsigned short)V9X_TDFX_VID_DESKTOP_STRIDE,
+                       v9x_tdfx_vsa100_desktop_stride(value,
+                                                      pitch_bytes)) == 0u) {
+        return 0ul;
+    }
+    if (V9xTdfxIoWrite((unsigned short)V9X_TDFX_VID_DESKTOP_START,
+                       v9x_tdfx_desktop_offset_bytes) == 0u ||
+        V9xTdfxIoRead((unsigned short)V9X_TDFX_VID_DESKTOP_START,
+                      (unsigned long __far *)&value) == 0u ||
+        value != v9x_tdfx_desktop_offset_bytes) {
+        (void)V9xTdfxIoWrite((unsigned short)V9X_TDFX_VID_DESKTOP_START,
+                             0ul);
+        return 0ul;
+    }
+    v9x_tdfx_desktop_placed = 1u;
+    return v9x_tdfx_desktop_offset_bytes;
+}
+
+/*
+ * For dd16.c's EXT_HWC answer and gdi_accel.c's 2D engine arm: the
+ * desktop's byte offset in video memory as last placed, and the fbRam Glide
+ * is told. A placement that failed left the desktop at 0, and Glide is then
+ * told all the linear memory, as before the split: the overlap is back, but
+ * every address agrees with the scanout.
+ */
+unsigned long v9x_tdfx_desktop_offset(void)
+{
+    return v9x_tdfx_desktop_placed != 0u ? v9x_tdfx_desktop_offset_bytes
+                                         : 0ul;
+}
+
+unsigned long v9x_tdfx_glide_bytes(void)
+{
+    if (v9x_tdfx_layout() == 0u) {
+        return 0ul;
+    }
+    return v9x_tdfx_desktop_placed != 0u ? v9x_tdfx_glide_fb_bytes
+                                         : v9x_tdfx_usable_bytes;
 }
 
 /*
@@ -141,6 +257,12 @@ static void v9x_tdfx_publish_diagnostics(const V9X_HW16_DEVICE *device,
     } else {
         write("VramUsableBytes", "unavailable");
     }
+    /* The desktop's place and Glide's share: the place_desktop decision. */
+    v9x_tdfx_format_u32(number, v9x_tdfx_desktop_offset());
+    write("DesktopOffset", number);
+    write("DesktopPlaced", v9x_tdfx_desktop_placed != 0u ? "yes" : "no");
+    v9x_tdfx_format_u32(number, v9x_tdfx_glide_bytes());
+    write("GlideFbBytes", number);
 }
 
 const V9X_HW16_OPS v9x_hw16 = {
@@ -169,5 +291,14 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     /* Strict, for the reason ati_hw16.c gives: a vendor package stays bound
      * to the hardware it names. */
-    0u
+    0u,
+    /* NULL: no non-PCI identity. */
+    0,
+    /* NULL: DirectDraw gets everything read_video_memory reports. */
+    0,
+    /* The BIOS packs the pitch. */
+    0u,
+    /* NULL: the straps are trusted. */
+    0,
+    v9x_tdfx_place_desktop
 };

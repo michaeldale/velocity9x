@@ -11,7 +11,13 @@ that answer is in. Step 2 done
 ([2026-10-12-glide-exclusive-takes-the-engine-from-gdi-and-the-hal.md](../decisions/2026-10-12-glide-exclusive-takes-the-engine-from-gdi-and-the-hal.md)):
 GDI and the HAL stay off the engine while Glide holds it; released at
 `RLSEXCLUSIVE`; `PCI_OP` left unperformed because the six registers already
-read 0. Step 4 next. Parent
+read 0. Step 4 in progress: each game's wrapper is saved as `.v9x` beside it;
+Diablo II on 3dfx's Glide hung the machine on exit because our desktop sat
+in Glide's command FIFO
+([issue](../issues/2026-10-12-glide-cmdfifo-overlaps-the-desktop.md)); the
+desktop now sits above Glide's memory
+([2026-10-12-voodoo4-desktop-above-glide.md](../decisions/2026-10-12-voodoo4-desktop-above-glide.md))
+and Diablo II runs and exits. Rollcage, NFS II SE and Glide 2 next. Parent
 plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md), Phase 4. Protocol:
 [vsa100-ext-hwc.md](../specifications/vsa100-ext-hwc.md). Boundaries:
 [win9x-driver-boundaries.md](../specifications/win9x-driver-boundaries.md).

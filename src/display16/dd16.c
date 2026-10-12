@@ -1484,10 +1484,11 @@ static LONG v9x_hwc_query_devnode(LPVOID input, LPVOID output)
 /*
  * EXT_HWC itself (plan step 2): the request copied in as far as its
  * selector allows, the answer from tdfx_hwc.c, the reply copied out only
- * into a buffer at least 44 bytes long. BAR0's 32 MiB are mapped by the
- * mini-VDD only when Glide asks for linear addresses; BAR1 is the
- * framebuffer mapping the driver already has, which the HAL already uses
- * from every process. fbRam is the usable size Enable settled on.
+ * into a buffer at least 44 bytes long. BAR0's and BAR1's first 32 MiB are
+ * mapped by the mini-VDD only when Glide asks for linear addresses. fbRam
+ * is the memory below the desktop (tdfx_hw16.c), so Glide's command FIFO
+ * and buffers stay clear of GDI's drawing
+ * (docs\issues\2026-10-12-glide-cmdfifo-overlaps-the-desktop.md).
  *
  * Exclusive take and release (step 3) move the engine between Glide and the
  * driver: on take, GDI drains and declines every primitive, and the HAL
@@ -1568,10 +1569,12 @@ static void v9x_hwc_exclusive(v9x_u32 action)
 
 #define V9X_HWC_REPLY_BYTES     (V9X_TDFX_HWC_REPLY_DWORDS * 4u)
 
-extern DWORD v9x_vbe_vram_bytes;
-extern DWORD FAR PASCAL V9xLinearBase(void);
 extern WORD FAR PASCAL V9xPciReadTdfxMmioBar(DWORD FAR *base);
 extern WORD FAR PASCAL V9xMiniTdfxBar0Map(DWORD bar0, DWORD FAR *linear);
+extern WORD FAR PASCAL V9xMiniTdfxBar1Map(DWORD bar1, DWORD FAR *linear);
+/* tdfx_hw16.c: where the desktop was placed, and Glide's share below it. */
+extern unsigned long v9x_tdfx_desktop_offset(void);
+extern unsigned long v9x_tdfx_glide_bytes(void);
 
 static LONG v9x_hwc_answer(LPVOID input, LPVOID output)
 {
@@ -1590,13 +1593,21 @@ static LONG v9x_hwc_answer(LPVOID input, LPVOID output)
     device.device_id = 0x0009ul;
     /* chipRev has no reader in Glide (vsa100-ext-hwc.md); not read here. */
     device.revision = 0ul;
-    device.fb_bytes = v9x_vbe_vram_bytes;
+    /* The memory below the desktop: Glide's FIFO starts at 18000h and its
+     * buffers end at fbRam, so all of it stays clear of what GDI draws. */
+    device.fb_bytes = v9x_tdfx_glide_bytes();
     device.bar0_linear = 0ul;
-    device.bar1_linear = V9xLinearBase();
+    device.bar1_linear = 0ul;
+    /* Both mapped from byte 0. The driver's own framebuffer mapping starts
+     * at the desktop, so BAR1 is the aperture less the desktop's offset. */
     if (dwords > V9X_TDFX_HWC_WHICH &&
-        request[V9X_TDFX_HWC_WHICH] == V9X_TDFX_HWC_GETLINEARADDR &&
-        V9xPciReadTdfxMmioBar(&bar0) != 0u) {
-        (void)V9xMiniTdfxBar0Map(bar0, &device.bar0_linear);
+        request[V9X_TDFX_HWC_WHICH] == V9X_TDFX_HWC_GETLINEARADDR) {
+        if (V9xPciReadTdfxMmioBar(&bar0) != 0u) {
+            (void)V9xMiniTdfxBar0Map(bar0, &device.bar0_linear);
+        }
+        (void)V9xMiniTdfxBar1Map(V9xHardwareBase() -
+                                     v9x_tdfx_desktop_offset(),
+                                 &device.bar1_linear);
     }
 
     if (v9x_tdfx_hwc_answer(request, (v9x_u32)dwords, &device, &answer) !=

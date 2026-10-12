@@ -19,6 +19,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/tdfx_2d.h"
+#include "velocity9x/tdfx_vsa100.h"
 
 /* Bounded busy-wait. The write probe measured 5-10 status reads per
  * operation on small rectangles; a full 1280x1024x16 fill is far longer,
@@ -54,6 +55,19 @@ static DWORD v9x_tdfx_read32(DWORD offset)
 static void v9x_tdfx_write32(DWORD offset, DWORD value)
 {
     *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset) = value;
+}
+
+/*
+ * Where the surfaces DirectDraw describes start in video memory. Their
+ * offsets are from the framebuffer the driver maps, which begins at the
+ * desktop, and the 16-bit side places the desktop above the memory Glide is
+ * given (tdfx_hw16.c); the engine addresses video memory from its first
+ * byte. The mapped physical base is inside BAR1, which is 128 MiB aligned,
+ * so the desktop's offset is what remains of it below that alignment.
+ */
+static DWORD v9x_tdfx_desktop_offset(void)
+{
+    return v9x_hal->fb.physical_base & (V9X_TDFX_LFB_BAR_BYTES - 1ul);
 }
 
 /* A block whose decode was turned off since the map reads all ones. */
@@ -155,8 +169,8 @@ static int v9x_tdfx_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
         data->rDest[0] < 0l || data->rDest[1] < 0l) {
         return V9X_BLT_DECLINED;
     }
-    fill.vram_bytes = v9x_hal->fb.vram_bytes;
-    fill.target_offset = offset;
+    fill.vram_bytes = v9x_tdfx_desktop_offset() + v9x_hal->fb.vram_bytes;
+    fill.target_offset = v9x_tdfx_desktop_offset() + offset;
     fill.pitch_bytes = (DWORD)data->lpDDDestSurface->lpGbl->lPitch;
     fill.bytes_per_pixel = bytes_per_pixel;
     fill.left = (DWORD)data->rDest[0];
@@ -192,10 +206,10 @@ static int v9x_tdfx_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
         data->rDest[0] < 0l || data->rDest[1] < 0l) {
         return V9X_BLT_DECLINED;
     }
-    copy.vram_bytes = v9x_hal->fb.vram_bytes;
-    copy.source_offset = source_offset;
+    copy.vram_bytes = v9x_tdfx_desktop_offset() + v9x_hal->fb.vram_bytes;
+    copy.source_offset = v9x_tdfx_desktop_offset() + source_offset;
     copy.source_pitch_bytes = (DWORD)data->lpDDSrcSurface->lpGbl->lPitch;
-    copy.destination_offset = destination_offset;
+    copy.destination_offset = v9x_tdfx_desktop_offset() + destination_offset;
     copy.destination_pitch_bytes =
         (DWORD)data->lpDDDestSurface->lpGbl->lPitch;
     copy.bytes_per_pixel = bytes_per_pixel;

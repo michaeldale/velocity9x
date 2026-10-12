@@ -2710,6 +2710,150 @@ V9xMiniTdfxBar0MapDone:
     pop     bp
     retf    8
 V9XMINITDFXBAR0MAP ENDP
+
+; WORD FAR PASCAL V9xMiniTdfxBar1Map(DWORD bar1, DWORD FAR *linear)
+; V9XMINI_FN_TDFX_BAR1_MAP: the mini-VDD maps BAR1's first 32 MiB, the
+; framebuffer from byte 0, for Glide's GETLINEARADDR, and returns the linear
+; base. On any refusal *linear is 0.
+PUBLIC V9XMINITDFXBAR1MAP
+V9XMINITDFXBAR1MAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniTdfxBar1MapFailed
+    ; PASCAL pushes left to right: bar1 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_TDFX_BAR1_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniTdfxBar1MapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniTdfxBar1MapDone
+V9xMiniTdfxBar1MapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniTdfxBar1MapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINITDFXBAR1MAP ENDP
+
+; BAR2, the VSA-100's I/O window over the init and video registers, as
+; V9xTdfxReadMemoryRegs finds it. Near; AX = the I/O base, or 0 when the card
+; or an I/O BAR2 is not found. Clobbers BX, CX, DI.
+V9xTdfxIoBase PROC NEAR
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xTdfxIoBaseFailed
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xTdfxIoBaseFailed
+    or      ah, ah
+    jnz     short V9xTdfxIoBaseFailed
+    test    cl, 1
+    jz      short V9xTdfxIoBaseFailed
+    and     cx, 0fffch
+    jz      short V9xTdfxIoBaseFailed
+    test    cl, 0ffh
+    jnz     short V9xTdfxIoBaseFailed
+    mov     ax, cx
+    ret
+V9xTdfxIoBaseFailed:
+    xor     ax, ax
+    ret
+V9xTdfxIoBase ENDP
+
+; WORD FAR PASCAL V9xTdfxIoRead(WORD offset, DWORD FAR *value)
+; One init or video register through BAR2. The offset must be a dword inside
+; the 256-byte window; which registers to touch, and why, is the chip
+; module's policy (tdfx_hw16.c). Returns 1, or 0 with *value untouched.
+PUBLIC V9XTDFXIOREAD
+V9XTDFXIOREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xTdfxIoBase
+    or      ax, ax
+    jz      short V9xTdfxIoReadFailed
+    mov     cx, ax
+    mov     dx, word ptr [bp+10]
+    test    dx, 0ff03h
+    jnz     short V9xTdfxIoReadFailed
+    add     dx, cx
+    in      eax, dx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xTdfxIoReadDone
+V9xTdfxIoReadFailed:
+    xor     ax, ax
+V9xTdfxIoReadDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XTDFXIOREAD ENDP
+
+; WORD FAR PASCAL V9xTdfxIoWrite(WORD offset, DWORD value)
+; The write half of V9xTdfxIoRead, with the same bounds. Returns 1, or 0
+; with nothing written.
+PUBLIC V9XTDFXIOWRITE
+V9XTDFXIOWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xTdfxIoBase
+    or      ax, ax
+    jz      short V9xTdfxIoWriteFailed
+    mov     cx, ax
+    mov     dx, word ptr [bp+10]
+    test    dx, 0ff03h
+    jnz     short V9xTdfxIoWriteFailed
+    add     dx, cx
+    mov     eax, dword ptr [bp+6]
+    out     dx, eax
+    mov     ax, 1
+    jmp     short V9xTdfxIoWriteDone
+V9xTdfxIoWriteFailed:
+    xor     ax, ax
+V9xTdfxIoWriteDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XTDFXIOWRITE ENDP
 ENDIF
 
 IFDEF V9X_MGA_FAMILY

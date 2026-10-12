@@ -424,6 +424,21 @@ V9XMINI_FN_TDFX_MMIO_MAP    EQU 001Dh
 ; reads all ones. Only the 3dfx family image implements it.
 V9XMINI_FN_TDFX_BAR0_MAP    EQU 001Eh
 
+; 3dfx VSA-100: map BAR1's first 32 MiB, the framebuffer from its first byte,
+; for Glide and say where.
+;
+; In: EBX = BAR1's physical base. Out: AX=1, EBX = linear address of BAR1 +
+; 0. The driver's own mapping starts at the desktop, which sits above the
+; memory Glide is given
+; (docs\issues\2026-10-12-glide-cmdfifo-overlaps-the-desktop.md), so Glide's
+; GETLINEARADDR needs this one. AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR or one not 128 MiB aligned (BAR1 is
+; 128 MiB on every measured VSA-100 board). No decode check: the first word
+; is video memory, any value is valid. Only the 3dfx family image implements
+; it.
+V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

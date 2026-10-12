@@ -364,6 +364,27 @@ typedef struct v9x_hw16_ops {
      */
     unsigned long (*measure_video_memory)(unsigned long mapped_bytes,
                                           unsigned long reported_bytes);
+
+    /*
+     * Where the desktop starts in video memory, as a byte offset from the
+     * aperture, or 0 for the start, which is every other family. APPENDED
+     * 2026-10-12, zero in every family that does not name it.
+     *
+     * Called after the mode set and the tier-0 pitch step, on every Enable
+     * and on every return from a full-screen DOS box that does not take the
+     * post_mode_set branch (no family has both), with the mode's pitch:
+     * the family programs whatever scans the desktop out from there and
+     * returns the offset, which Enable adds to the aperture it maps. Every
+     * consumer of the mapping - the screen PDEVICE, DirectDraw's primary and
+     * heap - then starts at the desktop without knowing.
+     *
+     * For the VSA-100, whose Glide puts its command FIFO at 18000h: a
+     * desktop at the start of memory sits inside it, and GDI's drawing jams
+     * the 3D engine (docs\issues\2026-10-12-glide-cmdfifo-overlaps-the-
+     * desktop.md). The offset must be the same on every call; a family
+     * returns 0 when it could not program the chip.
+     */
+    unsigned long (*place_desktop)(unsigned short pitch_bytes);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */

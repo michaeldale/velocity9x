@@ -176,6 +176,12 @@ V9X_TDFX_BAR0_MAP_BYTES equ 02000000h
 V9X_TDFX_INIT_STATUS    equ 00000000h
 V9xTdfxBar0Base   dd 0
 V9xTdfxBar0Linear dd 0
+; BAR1's first 32 MiB, the framebuffer from byte 0, mapped once for the same
+; call; BAR1 is 128 MiB on every measured board, so 128 MiB aligned.
+V9X_TDFX_BAR1_MAP_BYTES equ 02000000h
+V9X_TDFX_BAR1_ALIGN     equ 07ffffffh
+V9xTdfxBar1Base   dd 0
+V9xTdfxBar1Linear dd 0
 ENDIF
 
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
@@ -2264,6 +2270,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_TdfxMmioMap
     cmp     ax, V9XMINI_FN_TDFX_BAR0_MAP
     je      V9xMini_Api_TdfxBar0Map
+    cmp     ax, V9XMINI_FN_TDFX_BAR1_MAP
+    je      V9xMini_Api_TdfxBar1Map
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2736,6 +2744,43 @@ V9xMini_Api_TdfxBar0Map_Check:
 V9xMini_Api_TdfxBar0Map_Failed:
     mov     V9xTdfxBar0Base, 0
 V9xMini_Api_TdfxBar0Map_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR1 physical. See V9XMINI_FN_TDFX_BAR1_MAP in V9XMAPI.INC.
+V9xMini_Api_TdfxBar1Map:
+IFDEF V9X_TDFX_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_TdfxBar1Map_Refused
+    cmp     eax, 0f8000000h
+    ja      short V9xMini_Api_TdfxBar1Map_Refused
+    test    eax, V9X_TDFX_BAR1_ALIGN
+    jnz     short V9xMini_Api_TdfxBar1Map_Refused
+
+    cmp     V9xTdfxBar1Linear, 0
+    je      short V9xMini_Api_TdfxBar1Map_Map
+    cmp     eax, V9xTdfxBar1Base
+    jne     short V9xMini_Api_TdfxBar1Map_Refused
+    jmp     short V9xMini_Api_TdfxBar1Map_Done
+
+V9xMini_Api_TdfxBar1Map_Map:
+    mov     V9xTdfxBar1Base, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_TDFX_BAR1_MAP_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxBar1Map_Failed
+    mov     V9xTdfxBar1Linear, eax
+
+V9xMini_Api_TdfxBar1Map_Done:
+    mov     edx, V9xTdfxBar1Linear
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_TdfxBar1Map_Failed:
+    mov     V9xTdfxBar1Base, 0
+V9xMini_Api_TdfxBar1Map_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

@@ -219,6 +219,24 @@ unsigned short __far __pascal V9xTdfxReadMemoryRegs(unsigned long __far *regs)
     return 0u;
 }
 
+/* And its register read and write for the desktop placement, whose values
+ * are tested in test_vsa100_decode.c. */
+unsigned short __far __pascal V9xTdfxIoRead(unsigned short offset,
+                                            unsigned long __far *value)
+{
+    (void)offset;
+    (void)value;
+    return 0u;
+}
+
+unsigned short __far __pascal V9xTdfxIoWrite(unsigned short offset,
+                                             unsigned long value)
+{
+    (void)offset;
+    (void)value;
+    return 0u;
+}
+
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
 unsigned long v9x_pci_display_ids = 0ul;

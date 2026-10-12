@@ -58,6 +58,9 @@
  * into the 3dfx family's DRV only. */
 #ifdef V9X_TDFX_FAMILY
 #include "velocity9x/tdfx_2d.h"
+
+/* tdfx_hw16.c: the desktop's byte offset in video memory. */
+extern unsigned long v9x_tdfx_desktop_offset(void);
 #endif
 
 /* ddi.c: the live screen PDEVICE, or NULL between Disable and Enable. This is
@@ -2077,8 +2080,13 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
          * The builder is the authority, as for the MGA: a rectangle outside
          * the surface or the engine's fields is refused and declines here.
          * vram_bytes is the screen surface's own extent.
+         *
+         * The engine addresses video memory from its first byte, and the
+         * surface's offset is from the desktop, which tdfx_hw16.c places
+         * above Glide's memory; the desktop's offset is added to both.
          */
-        v9x_u32 surface_bytes = op.base +
+        v9x_u32 surface_base = op.base + v9x_tdfx_desktop_offset();
+        v9x_u32 surface_bytes = surface_base +
             op.pitch * (v9x_u32)destination_device->deHeight;
         v9x_status built;
 
@@ -2090,9 +2098,9 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             struct v9x_tdfx_copy copy;
 
             copy.vram_bytes = surface_bytes;
-            copy.source_offset = op.base;
+            copy.source_offset = surface_base;
             copy.source_pitch_bytes = op.pitch;
-            copy.destination_offset = op.base;
+            copy.destination_offset = surface_base;
             copy.destination_pitch_bytes = op.pitch;
             copy.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
             copy.source_left = (v9x_u32)op.source_x;
@@ -2106,7 +2114,7 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             struct v9x_tdfx_fill fill;
 
             fill.vram_bytes = surface_bytes;
-            fill.target_offset = op.base;
+            fill.target_offset = surface_base;
             fill.pitch_bytes = op.pitch;
             fill.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
             fill.left = (v9x_u32)op.destination_x;
