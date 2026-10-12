@@ -9,8 +9,13 @@ Status:
   [2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md](../decisions/2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md)).
 - **Step 3, the engine:** built, and passes V9XDDP's core on the 4500
   ([2026-10-12-voodoo4-direct3d-engine-passes-v9xddp-core.md](../decisions/2026-10-12-voodoo4-direct3d-engine-passes-v9xddp-core.md)).
-  Open: the control run under 3dfx's driver.
-- **Next:** Half-Life (step 5's gate game), and OpenGL (step 4).
+  The control run under 3dfx's driver differs only in features this engine
+  refuses or lacks.
+- **Half-Life (step 5's gate game):** draws correctly
+  ([2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md](../decisions/2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md)).
+  Missing is mipmapping: Half-Life asks for MIPLINEAR. 25.7 fps against
+  3dfx's 58.9 is recorded, not chased.
+- **Next:** mipmaps, then OpenGL (step 4).
 
 Parent plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md),
 Phase 5. Register facts: [vsa100-registers.md](../specifications/vsa100-registers.md)
