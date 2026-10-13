@@ -260,6 +260,10 @@ $allowedOsBoundaries = @(
     # exports and the DLL entry, over glide_core.c. Its pure logic,
     # glide3_layout.c, sits beside it OS-free, as Glide 2's does.
     (Join-Path $repoRoot "src\glide3\glide3_dll.c"),
+    # ATI3DCIF.DLL's census (docs\plans\ati-3dcif-wrapper.md, Phase 1): the
+    # exports, the log and the DLL entry in one file. The wrapper's pure
+    # logic will sit beside it OS-free, as Glide's does.
+    (Join-Path $repoRoot "src\cif\cif_census.c"),
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
 )
 $forbidden = $sourceFiles |

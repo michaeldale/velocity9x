@@ -118,6 +118,8 @@
 #define V9X_DIAG_GLIDE_LOG   V9X_DIAG_PATH("V9XGLIDE.LOG")  /* glide_dll.c */
 /* GLIDE3X.DLL (src\glide3), for the same reason. */
 #define V9X_DIAG_GLIDE3_LOG  V9X_DIAG_PATH("V9XGLD3.LOG")   /* glide3_census.c */
+/* ATI3DCIF.DLL (src\cif), for the same reason. */
+#define V9X_DIAG_CIF_LOG     V9X_DIAG_PATH("V9XCIF.LOG")    /* cif_census.c */
 
 /* DOS tools. Defaults only: each accepts /out: to redirect, which stays the
  * recovery route when C: is absent or read-only (vga_survey_dos.c prints it
