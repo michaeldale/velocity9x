@@ -54,6 +54,19 @@ build identifier so exact guest-tested binaries remain traceable.
   [mipmaps](docs/decisions/2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md),
   [OpenGL](docs/decisions/2026-10-13-voodoo4-opengl-and-subpixel-correction.md).
 
+- **Direct3D draws on Direct3D's pixel centres on the GMA 950 and 900
+  and in software Direct3D.** Direct3D puts a pixel's centre on its whole
+  coordinate; these engines sample half a pixel further on, so point-
+  sampled textures drawn one texel to a pixel, such as a game's text,
+  read the next texel along. Direct3D's vertices now move by half a
+  pixel for the engines that sample that way, which each engine
+  declares. The software engine's last column and row are no longer
+  dropped. Measured texel by texel on the GMA 950 and the Voodoo4. The
+  ViRGE samples at Direct3D's own centres and is unchanged, as are the
+  Millennium II, SiS 6326, Mach64 and Rage IIC, which have not been
+  measured.
+  [Decision](docs/decisions/2026-10-13-direct3d-pixel-centres-per-engine.md).
+
 - **Carmageddon II's menus have their backgrounds.** The game paints
   each menu's backdrop straight into the frame buffer, then clears only
   the depth buffer with colour writes masked by `grColorMask`. The Glide

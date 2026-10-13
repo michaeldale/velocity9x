@@ -248,6 +248,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-12 Half-Life's Direct3D renderer draws correctly on the Voodoo4 engine; mipmaps are what is missing](2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md)
 - [2026-10-13 The Voodoo4 engine samples mip chains, and draws on Direct3D's pixel centres](2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md)
 - [2026-10-13 OpenGL draws on the Voodoo4 engine; subpixel correction puts its texels where both APIs want them](2026-10-13-voodoo4-opengl-and-subpixel-correction.md)
+- [2026-10-13 Direct3D's pixel centres move onto each engine's: half a pixel on the GMA 950/900, the Voodoo4 and software](2026-10-13-direct3d-pixel-centres-per-engine.md)
 
 ## NVIDIA and other surveyed cards
 
