@@ -943,15 +943,11 @@ static void test_depth_full_height_interpolation(void)
      * gap. The largest coordinate this rasterizer accepts is
      * (dimension - 1) << 4 - the bottom row's top edge, not its bottom - so
      * that row's centre lies half a pixel past the furthest geometry anything
-     * can express. The D3D core's clipper cuts to exactly the same boundary,
-     * `context->height - 1` (d3d_core.c), so this is not a limit the tests
-     * invented: through the driver, the bottom scanline and the rightmost
-     * column of a full-screen triangle are never covered either.
-     *
-     * Whether that is right is an open question about the clipper, which is
-     * chip-neutral and shared with the ViRGE engine, so it is not one the
-     * software rasterizer should answer by widening its own range. Pinned here
-     * as a number so that changing it is a deliberate act with a failing test
+     * can express. Only a target at the rasterizer's 2048-line limit meets
+     * it: the core's clipper cuts to the target's far edge itself (r3d_clip.c)
+     * and the software engine clamps there (d3d_soft.c), so a smaller
+     * full-screen triangle's last row and column are covered. Pinned here as
+     * a number so that changing it is a deliberate act with a failing test
      * attached.
      */
     RCHECK(uncovered == 1u);

@@ -13,20 +13,6 @@
 /* S and T count 256ths of a square texture's side (TDFX3D Texture); a
  * rectangle's short side counts fewer (d3d_tdfx_map.h). */
 #define V9X_D3D_TDFX_ST_SCALE     256.0f
-/*
- * The chip samples a pixel at its centre, +0.5, as OpenGL does; Direct3D
- * puts the centre on the whole coordinate. So a Direct3D draw's vertices
- * move down and right by half a pixel. V9XDDP's TexPhase, a 16x16 quad
- * drawn 1:1 and point-sampled at whole, half, quarter and eighth-pixel
- * offsets, reads exactly what Direct3D's rules give with this and subpixel
- * correction on (A8U4I5 boot 444), and what 3dfx's driver gave (boot
- * 439). Moving them up and left was tried first, boot 440: it doubled the
- * error. Before subpixel correction the texture coordinates also started
- * at the vertex rather than the pixel centre, which this shift happened to
- * mask for Direct3D's unflipped quads and did not for the ICD's
- * (docs\decisions\2026-10-13-voodoo4-opengl-and-subpixel-correction.md).
- */
-#define V9X_D3D_TDFX_PIXEL_CENTRE 0.5f
 #define V9X_D3D_TDFX_FLOAT_EXPONENT 0x7f800000ul
 
 /* V9X_R3D_ABI_WRITE_RGB: red, green and blue all written. */
@@ -375,7 +361,6 @@ static float v9x_d3d_tdfx_z(float sz)
 int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
                           v9x_u32 shade_mode,
                           const struct v9x_tdfx_3d_texture *texture,
-                          v9x_u32 centres,
                           struct v9x_tdfx_3d_vertex *out)
 {
     const V9X_R3D_VERTEX *colour;
@@ -385,8 +370,6 @@ int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
     v9x_u32 index;
     int flat = shade_mode == V9X_R3D_SHADE_FLAT;
     int textured = texture != 0;
-    float shift = centres == V9X_D3D_TDFX_CENTRES_D3D
-                      ? V9X_D3D_TDFX_PIXEL_CENTRE : 0.0f;
 
     /* The short side counts texels of the 256-long level's short side. */
     if (textured && texture->aspect != 0ul) {
@@ -424,8 +407,8 @@ int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
 
         /* Flat shading is Direct3D's: vertex 0's colour throughout. */
         colour = flat ? &triangle[0] : v;
-        out[index].x = v->sx + shift;
-        out[index].y = v->sy + shift;
+        out[index].x = v->sx;
+        out[index].y = v->sy;
         out[index].z = v9x_d3d_tdfx_z(v->sz);
         out[index].r = (float)((colour->color >> 16) & 0xfful);
         out[index].g = (float)((colour->color >> 8) & 0xfful);

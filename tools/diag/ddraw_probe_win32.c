@@ -2528,9 +2528,12 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
  * Half-Life's console font lost single-pixel strokes on the Voodoo4 engine
  * with no mip chain in play (A8U4I5 boot 438) where 3dfx's driver drew it
  * crisp: a texel-phase question the one-sample Tex8 test cannot answer.
- * A 16x16 RGB565 texture whose texel (x, y) carries x in red, y in blue
- * and full green as a marker is drawn as a 16x16 quad at (40, 40), u and v
- * 0 to 1, nearest, offset by `offset` pixels in x and y. Row 48 and column
+ * A 16x16 ARGB1555 texture, the format every engine samples (the ViRGE's
+ * S3D takes no 565), whose opaque texel (x, y) carries 2x in red, 2y in
+ * blue and full green as a marker is drawn as a 16x16 quad at (40, 40), u and v
+ * 0 to 1, nearest, offset by `offset` pixels in x and y. The pixels are
+ * read through the target's own layout, 565 or 555 (the Hellbender
+ * guest's desktop is 555). Row 48 and column
  * 48 are read back: out_cols[i] is the column pixel (40 + i, 48) sampled,
  * out_rows[i] the row pixel (48, 40 + i) sampled, as a hex digit, '.'
  * where the pixel holds no texel. An exact copy reads 0123456789ABCDEF in
@@ -2538,7 +2541,9 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
  */
 static HRESULT v9x_probe_texel_phase(struct v9x_dd *ddraw,
                                      struct v9x_d3d_device2 *device,
-                                     struct v9x_dds *target, float offset,
+                                     struct v9x_dds *target,
+                                     const V9X_PIXEL_LAYOUT *layout,
+                                     float offset,
                                      char *out_cols, char *out_rows)
 {
     static const char digits[] = "0123456789ABCDEF";
@@ -2566,11 +2571,12 @@ static HRESULT v9x_probe_texel_phase(struct v9x_dd *ddraw,
     desc.dwHeight = 16ul;
     desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
     desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
-    desc.ddpfPixelFormat.dwFlags = 0x40ul;  /* DDPF_RGB */
+    desc.ddpfPixelFormat.dwFlags = 0x41ul;  /* DDPF_RGB | ALPHAPIXELS */
     desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
-    desc.ddpfPixelFormat.dwRBitMask = 0xf800ul;
-    desc.ddpfPixelFormat.dwGBitMask = 0x07e0ul;
+    desc.ddpfPixelFormat.dwRBitMask = 0x7c00ul;
+    desc.ddpfPixelFormat.dwGBitMask = 0x03e0ul;
     desc.ddpfPixelFormat.dwBBitMask = 0x001ful;
+    desc.ddpfPixelFormat.dwRGBAlphaBitMask = 0x8000ul;
     hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &surface, 0);
     if (hr == 0 && surface != 0) {
         V9X_DDSURFACEDESC lock;
@@ -2587,7 +2593,8 @@ static HRESULT v9x_probe_texel_phase(struct v9x_dd *ddraw,
                 WORD FAR *texel = (WORD FAR *)row;
 
                 for (x = 0ul; x < 16ul; ++x) {
-                    texel[x] = (WORD)((x << 11) | 0x07e0ul | y);
+                    texel[x] = (WORD)(0x8000ul | ((x * 2ul) << 10) |
+                                      0x03e0ul | (y * 2ul));
                 }
                 row += lock.lPitch;
             }
@@ -2656,10 +2663,13 @@ static HRESULT v9x_probe_texel_phase(struct v9x_dd *ddraw,
             WORD col = v9x_surface_pixel16(target, 40ul + index, 48ul);
             WORD row = v9x_surface_pixel16(target, 48ul, 40ul + index);
 
-            out_cols[index] = (col & 0x07e0u) == 0x07e0u
-                                  ? digits[(col >> 11) & 0xfu] : '.';
-            out_rows[index] = (row & 0x07e0u) == 0x07e0u
-                                  ? digits[row & 0xfu] : '.';
+            /* 2x in five bits is about 16.45x out of 255. */
+            out_cols[index] = v9x_layout_green(layout, col) >= 0xc0ul
+                ? digits[((v9x_layout_red(layout, col) + 8ul) / 16ul) & 0xful]
+                : '.';
+            out_rows[index] = v9x_layout_green(layout, row) >= 0xc0ul
+                ? digits[((v9x_layout_blue(layout, row) + 8ul) / 16ul) & 0xful]
+                : '.';
         }
     }
     (void)device->vtbl->SetRenderState(
@@ -5212,7 +5222,8 @@ void __stdcall V9xDdrawProbeEntry(void)
                          ++phase_index) {
                         v9x_write_hresult(phase_hr_key[phase_index],
                             v9x_probe_texel_phase(ddraw, d3d_device,
-                                d3d_target, phase_offset[phase_index],
+                                d3d_target, &target_layout,
+                                phase_offset[phase_index],
                                 phase_cols, phase_rows));
                         v9x_write_text(phase_cols_key[phase_index],
                                        phase_cols);

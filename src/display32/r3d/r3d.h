@@ -289,6 +289,12 @@ typedef struct v9x_r3d_list {
     v9x_u32 staging_triangles;
     /* Optional per-call accounting, overwritten by v9x_r3d_draw_list. */
     V9X_R3D_LIST_STATS *stats;
+    /* Added to every vertex's sx and sy before the triangle is tested and
+     * clipped, in a copy: Direct3D's pixel centres moved onto the core's
+     * (d3d_core.c). Non-zero needs staging, which then carries every
+     * triangle; the caller's array is never written. Culling sees the
+     * caller's triangle, which a translation does not change. */
+    float pixel_offset;
 } V9X_R3D_LIST;
 
 /*

@@ -318,9 +318,11 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
 {
     V9X_R3D_VERTEX clipped[V9X_R3D_CLIP_MAX_VERTICES];
     V9X_R3D_VERTEX fan_list[V9X_R3D_MAX_FAN_TRIANGLES * 3u];
+    V9X_R3D_VERTEX moved[3];
     v9x_u32 run_start = 0ul;
     v9x_u32 staged = 0ul;
     v9x_u32 index;
+    int moving = list->pixel_offset != 0.0f;
     int staging_used = 0;
     int ok = 1;
 
@@ -330,6 +332,15 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
         list->stats->triangles_clipped = 0ul;
         list->stats->sink_batches = 0ul;
     }
+    /* A moved triangle is a copy, so it can only leave through staging:
+     * every triangle goes there from the start. Without staging there is
+     * nowhere to put one, and the caller's array is not written. */
+    if (moving) {
+        if (list->staging == 0 || list->staging_triangles == 0ul) {
+            return triangle_count == 0ul;
+        }
+        staging_used = 1;
+    }
 
     for (index = 0ul; index < triangle_count; ++index) {
         const V9X_R3D_VERTEX *triangle = &vertices[index * 3ul];
@@ -337,6 +348,17 @@ int v9x_r3d_draw_list(const V9X_R3D_LIST *list,
         int culled = list->culled(list->user, triangle);
         int clipped_count;
         int fan;
+
+        if (moving) {
+            v9x_u32 corner;
+
+            for (corner = 0ul; corner < 3ul; ++corner) {
+                moved[corner] = triangle[corner];
+                moved[corner].sx += list->pixel_offset;
+                moved[corner].sy += list->pixel_offset;
+            }
+            triangle = moved;
+        }
 
         if (!culled && (list->clip_in_core == 0ul ||
                         v9x_r3d_triangle_on_target(triangle, list->width,

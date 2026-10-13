@@ -183,7 +183,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_soft_limits = {
     0ul,                        /* depth_fill_shift       */
     /* The rasterizer's second unit (v9x_d3d_raster_triangle2), for the
      * render interface's two-unit draws on CPU levels. */
-    2ul                         /* texture_units          */
+    2ul,                        /* texture_units          */
+    /* The CPU rasterizer is the contract: x + 0.5. */
+    1ul                         /* pixel_centre_half      */
 };
 
 /*
@@ -762,16 +764,22 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
  *
  * The clamp is the rasterizer's precondition, and it is why that file can
  * refuse an out-of-range coordinate rather than wrap one. The core's clipper
- * has already cut the triangle to [0, extent - 1] in both axes, so this is a
+ * has already cut the triangle to [0, extent] in both axes, so this is a
  * no-op on every vertex it will actually see - but "already clipped" is a
  * claim about another file, and the surface being written here is also the
- * desktop.
+ * desktop. The far edge itself is allowed: a triangle that covers the last
+ * column has its vertex there. Direct3D's clamped a column short until its
+ * vertices moved onto the core's pixel centres (d3d_core.c,
+ * v9x_d3d_centre), when it would have lost that column.
  */
 static v9x_s32 v9x_d3d_soft_coordinate(float value, DWORD extent)
 {
     LONG fixed = v9x_float_to_long(value * V9X_D3D_SOFT_SUBPIXEL_SCALE);
-    LONG limit = ((LONG)extent - 1l) << V9X_D3D_RASTER_SUBPIXEL_BITS;
+    LONG limit = (LONG)extent << V9X_D3D_RASTER_SUBPIXEL_BITS;
 
+    if (limit > V9X_D3D_RASTER_COORD_MAX) {
+        limit = V9X_D3D_RASTER_COORD_MAX;
+    }
     if (fixed < 0l) {
         fixed = 0l;
     }
@@ -1068,30 +1076,6 @@ static int v9x_d3d_soft_texture_levels(const V9X_R3D_TEXTURE *source,
 }
 
 /*
- * An explicit draw's vertex: the same conversions as Direct3D's, except
- * that x and y may reach the target's far edge (a GL triangle that covers
- * the last column puts its vertex exactly there; the Direct3D path clamps
- * a column short, which is existing D3D behaviour left as it is), the fog
- * factor is specular's alpha, and q is set by the caller per triangle.
- */
-static v9x_s32 v9x_d3d_soft_edge_coordinate(float value, DWORD extent)
-{
-    LONG fixed = v9x_float_to_long(value * V9X_D3D_SOFT_SUBPIXEL_SCALE);
-    LONG limit = (LONG)extent << V9X_D3D_RASTER_SUBPIXEL_BITS;
-
-    if (limit > V9X_D3D_RASTER_COORD_MAX) {
-        limit = V9X_D3D_RASTER_COORD_MAX;
-    }
-    if (fixed < 0l) {
-        fixed = 0l;
-    }
-    if (fixed > limit) {
-        fixed = limit;
-    }
-    return (v9x_s32)fixed;
-}
-
-/*
  * Perspective for an explicit triangle: q is each vertex's rhw over the
  * triangle's largest, as 1.16 (the rasterizer's V9X_D3D_RASTER_VERTEX.q),
  * never below 1. Equal rhw gives equal q and the affine path. A triangle
@@ -1348,13 +1332,8 @@ static int v9x_d3d_soft_draw(const V9X_R3D_DRAW *draw,
             const V9X_R3D_VERTEX *source = &vertices[index * 3ul + corner];
 
             v9x_d3d_soft_vertex(source, draw, wrapping, &triangle[corner]);
+            /* An explicit draw's fog factor is specular's alpha. */
             if (explicit_draw) {
-                triangle[corner].x =
-                    v9x_d3d_soft_edge_coordinate(source->sx,
-                                                 draw->target.width);
-                triangle[corner].y =
-                    v9x_d3d_soft_edge_coordinate(source->sy,
-                                                 draw->target.height);
                 triangle[corner].fog = (v9x_s32)(source->specular >> 24);
             }
             if (texture1_arg != 0) {

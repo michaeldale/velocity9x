@@ -142,6 +142,55 @@ static V9X_R3D_VERTEX v9x_d3d_list_staging[V9X_D3D_INDEXED_BATCH * 3u];
  */
 static V9X_D3DTLVERTEX v9x_d3d_gather[V9X_D3D_INDEXED_BATCH * 3u];
 
+/*
+ * Direct3D's pixel centres, moved onto an engine's.
+ *
+ * Direct3D puts a pixel's centre on its whole coordinate. The render core's
+ * contract, the CPU rasterizer and some engines sample at x + 0.5, OpenGL's
+ * rule (docs\specifications\cpu-rasterizer-contract.md, Coverage), and
+ * Direct3D vertices reached them unmoved: V9XDDP's TexPhase, a 16x16
+ * texture drawn 1:1 and point-sampled, read the next texel along on the
+ * GMA 950 (netbook boot 177) and the Voodoo4 (A8U4I5 boots 438-441), where
+ * 3dfx's driver read each texel, and Half-Life's point-sampled console
+ * font lost strokes. Other engines sample at Direct3D's centres: the
+ * ViRGE's coverage was Direct3D's, and moving its vertices broke it
+ * (Hellbender guest, 2026-10-13). So each engine says which it is
+ * (V9X_D3D_ENGINE_LIMITS.pixel_centre_half), and only the x + 0.5 ones have
+ * Direct3D's triangles moved.
+ *
+ * The move comes before the clip - after would leave a full-screen quad's
+ * 640 at 640.5 - and in a copy: v9x_d3d_draw_list's input is often the
+ * application's own array, and a run refused and resent record by record
+ * would otherwise move twice. v9x_d3d_draw_list has the list builder move
+ * each triangle into its staging (V9X_R3D_LIST.pixel_offset), which costs
+ * no buffer of its own; RenderPrimitive moves its local copy here. The
+ * render interface's vertices follow the contract and pass through
+ * neither.
+ */
+#define V9X_D3D_PIXEL_CENTRE 0.5f
+
+/* The move for ops' engine: half a pixel, or none. */
+static float v9x_d3d_centre_offset(const V9X_D3D_ENGINE_OPS *ops)
+{
+    return ops->limits->pixel_centre_half != 0ul ? V9X_D3D_PIXEL_CENTRE
+                                                 : 0.0f;
+}
+
+static void v9x_d3d_centre(const V9X_D3D_ENGINE_OPS *ops,
+                           V9X_D3DTLVERTEX *vertices, DWORD count)
+{
+    float offset = v9x_d3d_centre_offset(ops);
+    DWORD index;
+
+    if (offset == 0.0f) {
+        return;
+    }
+    for (index = 0ul; index < count; ++index) {
+        vertices[index].sx += offset;
+        vertices[index].sy += offset;
+    }
+}
+
 /* Source colour keys by surface; see ddhal_internal.h. */
 static V9X_D3D_COLOR_KEY v9x_d3d_color_keys[V9X_D3D_COLOR_KEY_COUNT];
 
@@ -971,6 +1020,8 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     list.staging = v9x_d3d_list_staging;
     list.staging_triangles = (v9x_u32)V9X_D3D_INDEXED_BATCH;
     list.stats = &stats;
+    /* Onto the engine's pixel centres, in the staging (v9x_d3d_centre). */
+    list.pixel_offset = v9x_d3d_centre_offset(ops);
     ok = v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)vertices,
                            triangle_count);
     if (v9x_hal != 0) {
@@ -2266,6 +2317,9 @@ static DWORD v9x_d3d_render_primitive_body(
             source[0] = vertices[triangle->v1];
             source[1] = vertices[triangle->v2];
             source[2] = vertices[triangle->v3];
+            /* Onto the engine's pixel centres, in this copy, before the
+             * clip (v9x_d3d_centre). */
+            v9x_d3d_centre(ops, source, 3ul);
             /* Once per call, after the buffers have been read and before
              * anything is clipped or drawn. intel53-55 show this entry point
              * entered and never left; with this in the ring the next capture
@@ -5026,6 +5080,8 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
     list.staging = 0;
     list.staging_triangles = 0ul;
     list.stats = 0;
+    /* Already on the contract's pixel centres. */
+    list.pixel_offset = 0.0f;
     if (v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)request->vertices,
                           request->triangle_count)) {
         outcome->submitted = sink.submitted;

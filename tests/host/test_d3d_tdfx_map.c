@@ -436,31 +436,24 @@ static void test_triangle(void)
     corner(&t[0], 10.0f, 10.0f, 0xff804020ul);
     corner(&t[1], 100.0f, 10.0f, 0x80ff0000ul);
     corner(&t[2], 10.0f, 100.0f, 0x000000fful);
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, V9X_D3D_TDFX_CENTRES_D3D, out));
-    /* Half a pixel down and right: the chip samples at +0.5,
-     * Direct3D on the whole coordinate (V9XDDP TexPhase, boots 438-440,
-     * the first sign wrong). */
-    CHECK(out[0].x == 10.5f && out[0].y == 10.5f);
-    CHECK(out[1].x == 100.5f && out[2].y == 100.5f);
-    /* A render-interface draw is already on the chip's centres: the
-     * contract samples at +0.5 (cpu-rasterizer-contract.md, Coverage). */
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex,
-                                V9X_D3D_TDFX_CENTRES_NEUTRAL, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
+    /* Positions pass through: the core has already put Direct3D's on the
+     * render core's pixel centres, x + 0.5, which is where the chip
+     * samples with subpixel correction (d3d_core.c v9x_d3d_centre;
+     * V9XDDP and V9XGLP TexPhase, A8U4I5 boot 444). */
     CHECK(out[0].x == 10.0f && out[0].y == 10.0f);
     CHECK(out[1].x == 100.0f && out[2].y == 100.0f);
 
-    /* Its texture coordinates are not moved either: with subpixel
-     * correction the chip starts them at the pixel centre (tdfx_3d.c). */
+    /* Texture coordinates are not moved either: with subpixel correction
+     * the chip starts them at the pixel centre (tdfx_3d.c). */
     t[1].sx = 106.0f;
     t[1].tu = 1.0f;
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex,
-                                V9X_D3D_TDFX_CENTRES_NEUTRAL, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
     CHECK(out[0].sow == 32.0f && out[1].sow == 128.0f);
     t[1].sx = 100.0f;
     t[1].tu = 0.25f;
 
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex,
-                                V9X_D3D_TDFX_CENTRES_D3D, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
     CHECK(out[0].r == 128.0f && out[0].g == 64.0f && out[0].b == 32.0f &&
           out[0].a == 255.0f);
     CHECK(out[1].r == 255.0f && out[1].a == 128.0f);
@@ -479,33 +472,33 @@ static void test_triangle(void)
 
         wide.aspect = 1ul;
         wide.s_wider = 1ul;
-        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, V9X_D3D_TDFX_CENTRES_D3D, out));
+        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, out));
         CHECK(out[0].sow == 32.0f && out[0].tow == 64.0f);
         wide.s_wider = 0ul;
-        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, V9X_D3D_TDFX_CENTRES_D3D, out));
+        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, out));
         CHECK(out[0].sow == 16.0f && out[0].tow == 128.0f);
     }
 
     /* Flat: vertex 0's colour and alpha throughout. */
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_FLAT, tex, V9X_D3D_TDFX_CENTRES_D3D, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_FLAT, tex, out));
     CHECK(out[1].r == 128.0f && out[2].b == 32.0f && out[2].a == 255.0f);
 
     /* Z clamps to the buffer's range. */
     t[0].sz = 1.5f;
     t[1].sz = -0.25f;
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
     CHECK(out[0].z == 65535.0f && out[1].z == 0.0f);
 
     /* Untextured: RHW is not read, so zero is fine; textured, it is not. */
     t[0].rhw = 0.0f;
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
-    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, V9X_D3D_TDFX_CENTRES_D3D, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
+    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
     t[0].rhw = 0.5f;
 
     /* Zero area and a coordinate that is not finite draw nothing. */
     t[2].sx = 55.0f;
     t[2].sy = 10.0f;
-    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
+    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
     t[2].sx = 10.0f;
     t[2].sy = 100.0f;
     {
@@ -516,7 +509,7 @@ static void test_triangle(void)
 
         nan.bits = 0x7fc00000ul;
         t[1].sx = nan.value;
-        CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
+        CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
     }
 }
 

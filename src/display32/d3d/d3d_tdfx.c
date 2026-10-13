@@ -77,7 +77,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_tdfx_limits = {
     1ul,            /* clip_in_core */
     1ul,            /* depth_pitch_own: auxBufferStride takes the pitch */
     0ul,            /* depth_fill_shift */
-    1ul             /* texture_units */
+    1ul,            /* texture_units */
+    /* Samples at x + 0.5 with subpixel correction (tdfx_3d.c): TexPhase,
+     * A8U4I5 boots 444-445. */
+    1ul             /* pixel_centre_half */
 };
 
 /* Set when the engine fails to go idle; no 3D register is touched again
@@ -628,9 +631,6 @@ static int v9x_d3d_tdfx_draw(const V9X_R3D_DRAW *draw,
         if (!v9x_d3d_tdfx_triangle(vertices + index * 3ul, draw->shade_mode,
                                    state.texture_enable != 0ul
                                        ? &state.texture : 0,
-                                   draw->explicit_state != 0ul
-                                       ? V9X_D3D_TDFX_CENTRES_NEUTRAL
-                                       : V9X_D3D_TDFX_CENTRES_D3D,
                                    corners)) {
             continue;
         }

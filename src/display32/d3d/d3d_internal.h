@@ -342,6 +342,22 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD texture_units;
     /*
+     * 1 when the engine samples a pixel at x + 0.5, the render core's
+     * contract (cpu-rasterizer-contract.md), so the core moves Direct3D's
+     * vertices half a pixel onto it (d3d_core.c, v9x_d3d_centre); zero when
+     * it samples at Direct3D's whole-coordinate centres, or is not
+     * measured, and Direct3D's vertices pass unmoved as they always have.
+     * Measured with V9XDDP's TexPhase, a 16x16 texture drawn 1:1:
+     *  - 1: the GMA 950 (netbook boot 177) and the Voodoo4 (A8U4I5
+     *    boots 438-445), whose OpenGL read exactly and Direct3D half a
+     *    pixel off; and the software engine, which is the contract.
+     *  - 0: the ViRGE, whose Direct3D coverage was Direct3D's (Hellbender
+     *    86Box guest, 2026-10-13); the Millennium II, SiS 6326, Mach64 and
+     *    Rage IIC, not measured.
+     * Appended 2026-10-13; an initialiser that stops short leaves it zero.
+     */
+    DWORD pixel_centre_half;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

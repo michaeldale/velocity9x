@@ -148,7 +148,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     0ul,                        /* depth_fill_shift       */
     /* Two samplers in one program for the render interface's two-unit
      * draws (docs\plans\gen3-sgis-multitexture.md); the part has eight. */
-    2ul                         /* texture_units          */
+    2ul,                        /* texture_units          */
+    /* Samples at x + 0.5: V9XGLP's TexPhase reads OpenGL exactly and
+     * V9XDDP's Direct3D half a pixel off without the move (netbook
+     * boot 177). */
+    1ul                         /* pixel_centre_half      */
 };
 
 /*

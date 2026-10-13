@@ -299,6 +299,7 @@ static void clip_list_setup(V9X_R3D_LIST *list, CLIP_SINK *sink,
     list->staging = 0;
     list->staging_triangles = 0ul;
     list->stats = 0;
+    list->pixel_offset = 0.0f;
 }
 
 static void clip_fill_inside(V9X_R3D_VERTEX *v, unsigned int triangles)
@@ -405,6 +406,74 @@ static void test_list_refusals(void)
     clip_list_setup(&list, &sink, v, 1ul);
     CLCHECK(v9x_r3d_draw_list(&list, v, 0ul) == 1);
     CLCHECK(sink.count == 0u);
+}
+
+/*
+ * A pixel offset moves every triangle before it is tested and clipped, in
+ * copies through the staging: Direct3D's pixel centres onto the core's
+ * (d3d_core.c). The caller's array is untouched, the cut triangle's far
+ * vertex still lands on the target's edge, and culling still sees the
+ * caller's triangle.
+ */
+static void test_list_pixel_offset(void)
+{
+    V9X_R3D_VERTEX v[12];
+    V9X_R3D_VERTEX staging[24];
+    V9X_R3D_LIST list;
+    CLIP_SINK sink;
+    unsigned long vertex;
+    int inside = 1;
+
+    clip_fill_list(v);
+    clip_list_setup(&list, &sink, v, 1ul);
+    list.staging = staging;
+    list.staging_triangles = 8ul;
+    list.pixel_offset = 0.5f;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 4ul) == 1);
+    /* One batch of copies: 1 + the cut triangle's fan of 2 + 2. */
+    CLCHECK(sink.count == 1u);
+    CLCHECK(sink.batches[0].vertices == staging);
+    CLCHECK(sink.captured_triangles == 5ul);
+    CLCHECK(sink.captured[0].sx == 10.5f && sink.captured[0].sy == 10.5f);
+    CLCHECK(sink.captured[1].sx == 50.5f && sink.captured[2].sy == 50.5f);
+    CLCHECK(v[0].sx == 10.0f && v[0].sy == 10.0f);
+    for (vertex = 0ul; vertex < sink.captured_triangles * 3ul; ++vertex) {
+        if (sink.captured[vertex].sx > CLIP_WIDTH ||
+            sink.captured[vertex].sy > CLIP_HEIGHT) {
+            inside = 0;
+        }
+    }
+    CLCHECK(inside);
+
+    /* A full-target triangle with a vertex on the far edge: moved to 640.5,
+     * then cut back to 640. */
+    v[0] = clip_vertex(0.0f, 0.0f, 1.0f, 0xffffffff, 0.0f, 0.0f);
+    v[1] = clip_vertex(CLIP_WIDTH, 0.0f, 1.0f, 0xffffffff, 1.0f, 0.0f);
+    v[2] = clip_vertex(0.0f, CLIP_HEIGHT, 1.0f, 0xffffffff, 0.0f, 1.0f);
+    clip_list_setup(&list, &sink, v, 1ul);
+    list.staging = staging;
+    list.staging_triangles = 8ul;
+    list.pixel_offset = 0.5f;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 1ul) == 1);
+    inside = 1;
+    for (vertex = 0ul; vertex < sink.captured_triangles * 3ul; ++vertex) {
+        if (sink.captured[vertex].sx > CLIP_WIDTH ||
+            sink.captured[vertex].sy > CLIP_HEIGHT) {
+            inside = 0;
+        }
+    }
+    CLCHECK(sink.captured_triangles >= 1ul && inside);
+    CLCHECK(v[1].sx == CLIP_WIDTH);
+
+    /* Culling sees the caller's triangle: triangle 2 culled by position. */
+    clip_fill_list(v);
+    clip_list_setup(&list, &sink, v, 1ul);
+    list.staging = staging;
+    list.staging_triangles = 8ul;
+    list.pixel_offset = 0.5f;
+    sink.cull_mask = 1ul << 2;
+    CLCHECK(v9x_r3d_draw_list(&list, v, 4ul) == 1);
+    CLCHECK(sink.captured_triangles == 4ul);
 }
 
 static void test_list_merge_alternating_culls(void)
@@ -516,6 +585,7 @@ unsigned int v9x_run_r3d_clip_tests(void)
     test_list_culled_ends_run_and_is_not_sent();
     test_list_refusals();
     test_list_merge_alternating_culls();
+    test_list_pixel_offset();
     test_list_merge_clipped_middle_order();
     test_list_merge_capacity_and_refusal();
     test_list_merge_unbroken_is_window();

@@ -283,8 +283,8 @@ this on the clipboard in one go.
     $files = @(Get-ChildItem -LiteralPath $diskDir -Recurse -File)
     $total = ($files | Measure-Object -Property Length -Sum).Sum
     if ($total -gt $floppyCapacity) {
-        throw ("The {0} floppy is {1:N0} bytes, over the {2:N0} usable on a " +
-               "1.44 MB floppy." -f $family.Floppy.Folder, $total,
+        throw (("The {0} floppy is {1:N0} bytes, over the {2:N0} usable on a " +
+                "1.44 MB floppy.") -f $family.Floppy.Folder, $total,
                $floppyCapacity)
     }
     $disks += [pscustomobject]@{

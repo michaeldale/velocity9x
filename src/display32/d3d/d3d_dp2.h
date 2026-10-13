@@ -181,6 +181,9 @@ void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
  * half a pixel, so a quad centred on row 150 lit row 149 on the Rage XL
  * (2026-10-07, tools\diag\dp2_repro_win32.c), while [c, c + 1) holds both
  * c and c + 0.5 and lands on the same row under either convention. The
+ * core's half-pixel move of Direct3D's vertices for an engine that samples
+ * at x + 0.5 (d3d_core.c, v9x_d3d_centre) makes it [c + 0.5, c + 1.5),
+ * which still holds pixel c's centre and not c + 1's. The
  * major axis keeps a and b, so the last pixel is left out as Direct3D
  * does. Every output vertex is a copy of a
  * D3DTLVERTEX (32 bytes) with only sx or sy moved, and both triangles of a
