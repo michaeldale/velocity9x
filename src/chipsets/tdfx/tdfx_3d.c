@@ -63,9 +63,15 @@
 #define TDFX3D_TM_FORMAT_SHIFT      8
 #define TDFX3D_TM_REPLACE           0x08241000ul
 
-/* tLOD (section 8.77): LOD min 5:0 and max 11:6 in 4.2 fixed point. */
+/* tLOD (section 8.77): LOD min 5:0, max 11:6 and bias 17:12 in 4.2
+ * fixed point. A chain is biased +0.5: the chip truncates its LOD, and
+ * Direct3D's nearest level is the rounded one (boot 433: unbiased, the
+ * levels changed at 2, 4 and 8 texels a pixel; 3dfx's own driver changed
+ * them near 1.4, 2.8 and 5.7). */
 #define TDFX3D_LOD_FRACTION_SHIFT   2
 #define TDFX3D_LOD_MAX_SHIFT        6
+#define TDFX3D_LOD_BIAS_SHIFT       12
+#define TDFX3D_LOD_BIAS_ROUND       2ul
 
 /* texBaseAddr (section 8.79): address bits 24:4 in place, address bit 25
  * in bit 1; bit 0 (tiled) stays clear. The address wraps at 2^26, so a
@@ -298,6 +304,9 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         v9x_u32 lod_max = (V9X_TDFX_TEX_LOG2_MAX - t->log2_size +
                            tdfx3d_levels(t) - 1ul) <<
                           TDFX3D_LOD_FRACTION_SHIFT;
+        v9x_u32 lod_bias = tdfx3d_levels(t) > 1ul
+                               ? TDFX3D_LOD_BIAS_ROUND << TDFX3D_LOD_BIAS_SHIFT
+                               : 0ul;
 
         if (t->min_bilinear != 0ul) {
             mode |= TDFX3D_TM_MIN_BILINEAR;
@@ -310,7 +319,7 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         }
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE, mode);
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD,
-                    lod | (lod_max << TDFX3D_LOD_MAX_SHIFT));
+                    lod | (lod_max << TDFX3D_LOD_MAX_SHIFT) | lod_bias);
         /* Twice, a different base first: a CPU download reaches the
          * texture cache when texBaseAddr is rewritten (section 20.3
          * p.234), and the texels may have changed since the last draw. */

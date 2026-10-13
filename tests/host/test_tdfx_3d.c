@@ -263,11 +263,14 @@ static void test_state_mipmap(void)
     state.texture.combine = V9X_TDFX_COMBINE_REPLACE;
 
     /* 64 down to 1 texel: LOD 2 to LOD 8, 4.2 fixed point 8 and 32, so
-     * min 8 in 5:0 and max 20h in 11:6. */
+     * min 8 in 5:0 and max 20h in 11:6; and a bias of +0.5, 2 in 17:12,
+     * so the chip's truncated LOD picks Direct3D's nearest level (boot
+     * 433: unbiased, the levels changed at 2, 4 and 8 texels a pixel,
+     * 3dfx's driver near 1.4, 2.8 and 5.7). */
     state.texture.levels = 7ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
-          0x00000808ul);
+          0x00002808ul);
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) ==
           0x010d8000ul);
 
@@ -275,9 +278,10 @@ static void test_state_mipmap(void)
     state.texture.levels = 3ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
-          0x00000408ul);
+          0x00002408ul);
 
-    /* One level, written as 1 or left 0, is the single-level tLOD. */
+    /* One level, written as 1 or left 0, is the single-level tLOD, with
+     * no bias. */
     state.texture.levels = 1ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
@@ -288,7 +292,7 @@ static void test_state_mipmap(void)
     state.texture.levels = 9ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
-          0x00000800ul);
+          0x00002800ul);
 
     /* More levels than halvings of the edge. */
     state.texture.log2_size = 6ul;
