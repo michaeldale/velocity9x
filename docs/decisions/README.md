@@ -233,6 +233,21 @@ A decision record is a dated finding or choice, with the evidence that produced 
 
 - [2026-10-11 What VelocityNT measured on the Mini-Me VSA-100](2026-10-11-what-velocitynt-measured-on-the-mini-me-vsa100.md)
 - [2026-10-11 The Voodoo4's stock driver tiles its desktop at the top of memory](2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)
+- [2026-10-11 The Voodoo4 runs Velocity9x at tier-0, and its VBE reports half its memory](2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md)
+- [2026-10-11 The Voodoo4's memory registers read the same through the I/O window; the driver now uses 32 MiB less one page](2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md)
+- [2026-10-11 The Voodoo4's 2D engine fills and copies pixel-exact from the builder's values](2026-10-11-voodoo4-2d-engine-fills-and-copies-pixel-exact.md)
+- [2026-10-11 The Voodoo4's DirectDraw fills and copies run on its 2D engine](2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md)
+- [2026-10-11 The Voodoo4's GDI fills and copies run on its 2D engine, PASS at 8 and 16 bpp](2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md)
+- [2026-10-11 3dfx's shipped Glide asks QUERYDEVNODE before it sends EXT_HWC](2026-10-11-shipped-glide-asks-querydevnode-before-ext-hwc.md)
+- [2026-10-11 3dfx's shipped Glide 3 runs a session on Velocity9x and gives the desktop back](2026-10-11-shipped-glide-runs-a-session-on-velocity9x.md)
+- [2026-10-12 Glide's exclusive takes the Voodoo4's engine from GDI and the HAL, and gives it back](2026-10-12-glide-exclusive-takes-the-engine-from-gdi-and-the-hal.md)
+- [2026-10-12 The Voodoo4's desktop moves above Glide's memory, and Diablo II exits cleanly](2026-10-12-voodoo4-desktop-above-glide.md)
+- [2026-10-12 Diablo II, Rollcage and NFS II SE run on 3dfx's own Glide, once our mode set stops clearing memory](2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md)
+- [2026-10-12 The Voodoo4's 3D engine draws what the builder says: flat, Gouraud, depth, blend, texture](2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md)
+- [2026-10-12 The Voodoo4's Direct3D engine passes V9XDDP's core on its first run](2026-10-12-voodoo4-direct3d-engine-passes-v9xddp-core.md)
+- [2026-10-12 Half-Life's Direct3D renderer draws correctly on the Voodoo4 engine; mipmaps are what is missing](2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md)
+- [2026-10-13 The Voodoo4 engine samples mip chains, and draws on Direct3D's pixel centres](2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md)
+- [2026-10-13 OpenGL draws on the Voodoo4 engine; subpixel correction puts its texels where both APIs want them](2026-10-13-voodoo4-opengl-and-subpixel-correction.md)
 
 ## NVIDIA and other surveyed cards
 

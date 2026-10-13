@@ -120,6 +120,8 @@ $atiMmio = ($Family -eq 'ati')
 $sisMmio = ($Family -eq 'sis')
 # The MGA-2064W's control aperture map for its drawing engine.
 $mgaMmio = ($Family -eq 'matrox')
+# The VSA-100's 2D register block map for its 2D engine.
+$tdfxMmio = ($Family -eq '3dfx')
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -416,6 +418,9 @@ if ($sisMmio) {
 }
 if ($mgaMmio) {
     $assemblerArguments = @("-DV9X_MGA_MMIO") + $assemblerArguments
+}
+if ($tdfxMmio) {
+    $assemblerArguments = @("-DV9X_TDFX_MMIO") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments

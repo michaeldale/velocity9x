@@ -2,7 +2,13 @@
 
 Date: 2026-10-11
 
-Status: proposed. Nothing coded. Follows
+Status: done. The byte model is in `glide_texmem.c` with host tests, and
+the hardware table passed on the netbook (Carmageddon II's menu, NFS II
+SE's race) and A8U4I5 (Diablo II, Rollcage), boots 145-156 and 402; see
+the result below and 02cdba8, ce5be3a. On 2026-10-12 (boot 175)
+Carmageddon II ran through its intro to the menu with
+`skipped-textured=0`. Carmageddon II now closes with `WKILL.EXE
+CARMA2_HW.ICD` instead of a reboot. Follows
 [glide-2x-wrapper.md](glide-2x-wrapper.md); found on Carmageddon II,
 recorded in
 [2026-10-10-carmageddon2-exits-after-intro-gma900.md](../issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md).
@@ -162,9 +168,11 @@ draw with none refused.
 - DDERR_SURFACELOST on every lock and flip about 300 s into a
   Carmageddon II run; the DLL never restores its surfaces. A separate
   defect, seen twice, not investigated.
-- `guTexSource` (about 100,000 calls a run in Carmageddon II), still a
-  stub. The game calls no `guTexAllocateMemory`, so there is no handle
-  for it to select, and the menu draws without it.
+- `guTexSource` (about 100,000 calls a run in Carmageddon II). The game
+  calls no `guTexAllocateMemory`, so there is no handle for it to
+  select. Written on 2026-10-12 to log each distinct id: 72,650 calls in
+  a netbook session with a race (boot 175), every one `FFFFFFFF`, the
+  null mipmap handle, so selecting nothing is right.
 - A second TMU: the DLL reports one.
 
 ## Size

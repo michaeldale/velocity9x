@@ -1,0 +1,20 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\Enum\PCI\VEN_121A&DEV_0009&SUBSYS_0004121A&REV_01]
+
+[HKEY_LOCAL_MACHINE\Enum\PCI\VEN_121A&DEV_0009&SUBSYS_0004121A&REV_01\000800]
+"Capabilities"=hex:14,00,00,00
+"HardwareID"="PCI\\VEN_121A&DEV_0009&SUBSYS_0004121A&REV_01"
+"CompatibleIDs"="PCI\\VEN_121A&DEV_0009&REV_01,PCI\\VEN_121A&DEV_0009,PCI\\VEN_121A&CC_030000,PCI\\VEN_121A&CC_0300,PCI\\VEN_121A,PCI\\CC_030000,PCI\\CC_0300"
+"DeviceDesc"="3dfx Voodoo Series"
+"HWRevision"="001"
+"ClassGUID"="{4d36e968-e325-11ce-bfc1-08002be10318}"
+"Class"="Display"
+"Driver"="Display\\0013"
+"Mfg"="3dfx Interactive, Inc."
+"ConfigFlags"=hex:00,00,00,00
+"FailReasonString"="None"
+"FailReason"=dword:00000000
+"FailReasonID"=dword:00000100
+"InitAdapterPowerState"="09"
+

@@ -139,6 +139,24 @@ foreach ($family in $floppyFamilies) {
         ($hardwareIdWords -join " or ") + ". " + $noMatchSentence)
     $familyName = $family.DisplayName
     $folderName = $family.Floppy.Folder
+    # A family whose card has its own Glide ships no Glide DLLs, and the disk
+    # says so rather than promising them.
+    $glideSentence = if (Test-V9xFamilyShipsGlide -Family $family) {
+        @(
+            "The first boot comes up at 640x480 in 256 colours. The install also"
+            "registers V9XGL.DLL, the OpenGL driver, which OpenGL programs use on a"
+            "High Color desktop the card can draw into, and GLIDE2X.DLL and"
+            "GLIDE3X.DLL, Glide 2 and Glide 3 drivers for games written for 3dfx"
+            "cards, unless a Voodoo card's own newer copy is already installed."
+        ) -join "`n"
+    } else {
+        Format-V9xParagraph -Text (
+            "The first boot comes up at 640x480 in 256 colours. The install " +
+            "also registers V9XGL.DLL, the OpenGL driver, which OpenGL " +
+            "programs use on a High Color desktop the card can draw into. It " +
+            "installs no Glide driver: the card keeps the GLIDE2X.DLL and " +
+            "GLIDE3X.DLL installed for it.")
+    }
 
     $readme = @"
 VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
@@ -190,11 +208,7 @@ floppy works, but Windows may ask for the disk again later.
    6. Let Windows copy the files. Do not accept a different device ID.
    7. Shut down fully when prompted. Do not warm-restart the first boot.
 
-The first boot comes up at 640x480 in 256 colours. The install also
-registers V9XGL.DLL, the OpenGL driver, which OpenGL programs use on a
-High Color desktop the card can draw into, and GLIDE2X.DLL and
-GLIDE3X.DLL, Glide 2 and Glide 3 drivers for games written for 3dfx
-cards, unless a Voodoo card's own newer copy is already installed.
+$glideSentence
 
 Full detail is in INSTALL.TXT inside the folder. FIRSTBOOT.TXT there is
 the step-by-step checklist for the first boot. The DirectDraw probe

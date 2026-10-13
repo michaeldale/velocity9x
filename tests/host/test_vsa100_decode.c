@@ -114,12 +114,80 @@ static void test_pll(void)
     CHECK(v9x_tdfx_vsa100_pll_khz((0xfful << 8) | (1ul << 2)) == 1226590ul);
 }
 
+/*
+ * The desktop/Glide split. The Voodoo4's linear memory under the BIOS tile
+ * control is 01FFF000h; Glide's FIFO starts at 18000h and its buffers end
+ * at the fbRam it is told (A8U4I5 boot 424,
+ * docs\issues\2026-10-12-glide-cmdfifo-overlaps-the-desktop.md).
+ */
+static void test_desktop_layout(void)
+{
+    v9x_u32 linear;
+
+    linear = v9x_tdfx_vsa100_usable_memory(VOODOO4_DRAM_INIT0,
+                                           V9X_TDFX_LFB_BIOS_TILE_CONTROL,
+                                           0ul);
+    CHECK(linear == 0x01fff000ul);
+
+    /* Half, rounded down to a MiB: 15 MiB, so the desktop and DirectDraw
+     * get the 17 MiB above and Glide the memory below less the guard. */
+    CHECK(v9x_tdfx_vsa100_desktop_offset(linear) == MIB(15));
+    CHECK(v9x_tdfx_vsa100_glide_bytes(linear) == MIB(14));
+
+    /* Glide's FIFO and the largest desktop this family sets (1024x768x16)
+     * clear each other with room to spare. */
+    CHECK(v9x_tdfx_vsa100_desktop_offset(linear) > 0x00117000ul);
+    CHECK(linear - v9x_tdfx_vsa100_desktop_offset(linear) >
+          1024ul * 768ul * 2ul);
+
+    /* The Mini-Me under the same tile control: 32 MiB less a page linear,
+     * whatever its 64 MiB of parts. */
+    CHECK(v9x_tdfx_vsa100_desktop_offset(
+              v9x_tdfx_vsa100_usable_memory(MINI_ME_DRAM_INIT0,
+                                            V9X_TDFX_LFB_BIOS_TILE_CONTROL,
+                                            0ul)) == MIB(15));
+
+    /* The smallest split, and below it none: the desktop stays at 0 and
+     * Glide is told all of it, as before the split existed. */
+    CHECK(v9x_tdfx_vsa100_desktop_offset(MIB(8)) == MIB(4));
+    CHECK(v9x_tdfx_vsa100_glide_bytes(MIB(8)) == MIB(3));
+    CHECK(v9x_tdfx_vsa100_desktop_offset(MIB(8) - 1ul) == 0ul);
+    CHECK(v9x_tdfx_vsa100_glide_bytes(MIB(8) - 1ul) == MIB(8) - 1ul);
+    CHECK(v9x_tdfx_vsa100_desktop_offset(0ul) == 0ul);
+    CHECK(v9x_tdfx_vsa100_glide_bytes(0ul) == 0ul);
+}
+
+static void test_desktop_registers(void)
+{
+    /* What the BIOS mode set leaves at 640x480x16 is already right. */
+    CHECK(v9x_tdfx_vsa100_desktop_vidproc(0x30040c81ul) == 0x30040c81ul);
+
+    /* A Glide session that never closed: overlay on, desktop off. Only
+     * those two bits change. */
+    CHECK(v9x_tdfx_vsa100_desktop_vidproc(0x32e50501ul) == 0x32e50481ul);
+
+    /* A tiled desktop is made linear; nothing else moves. */
+    CHECK(v9x_tdfx_vsa100_desktop_vidproc(0x31040c81ul) == 0x30040c81ul);
+
+    /* Stride: Glide's tiled 10/10 becomes 1280 linear bytes for the
+     * desktop, the overlay half kept. */
+    CHECK(v9x_tdfx_vsa100_desktop_stride(0x000a000aul, 1280ul) ==
+          0x000a0500ul);
+    CHECK(v9x_tdfx_vsa100_desktop_stride(0x00000500ul, 2048ul) ==
+          0x00000800ul);
+    /* A pitch wider than the field cannot be expressed and is masked, not
+     * allowed to spill into the overlay stride. */
+    CHECK(v9x_tdfx_vsa100_desktop_stride(0ul, 0x00018000ul) == 0ul);
+}
+
 unsigned int v9x_run_vsa100_decode_tests(void)
 {
     failures = 0u;
     test_memory_decode();
     test_tile_boundary();
     test_usable_memory();
+    test_desktop_layout();
+    test_desktop_registers();
     test_pll();
     return failures;
 }

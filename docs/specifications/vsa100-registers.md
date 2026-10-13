@@ -675,7 +675,7 @@ Glide h3gdefs.h:182–283 agrees on types and field positions. D25, D33.
 
 ---
 
-## 8. 3D and SLI registers (names only; detail deferred to the D3D plan)
+## 8. 3D and SLI registers
 
 BAR0 `0x200000` + offset. Napalm §8 map pp.82–86; Glide `SstRegs`
 h3regs.h:289–458.
@@ -699,7 +699,130 @@ h3regs.h:289–458.
 Glide offsets agree (h3regs.h:366, 388–404; `sliCtrl` bits h3defs.h:546–554,
 `aaCtrl` h3defs.h:568–673). Note: the spec prints two 3D maps that differ
 for `0x40–0x7C` (pp.83 and 86); the second is the alternate triangle map
-(`miscInit1[5]`). Not needed before Phase 5.
+(`miscInit1[5]`).
+
+The detail below is for [3dfx-vsa100-d3d.md](../plans/3dfx-vsa100-d3d.md).
+Extracted 2026-10-12 from the spec PDF, whose bit tables extract with
+misaligned columns. Where prose fixes the order it is followed; where only
+Glide's headers do (h5 `h3defs.h`/`h3regs.h`/`h3gdefs.h`), the row says so.
+Nothing here is measured.
+
+### 8.1 Addressing and direct writes
+
+- **The CPU may drive the chip by direct writes or through a memory-backed
+  FIFO** (§3.1 p.14). The §8 map (pp.81–82) marks which 3D registers go
+  through the PCI FIFO; most do, `intrCtrl` does not (§8.2 p.88).
+- **The 4 MiB at BAR0 + 200000h decodes** byte 1:0, register 9:2, chip
+  13:10, wrap 19:14, swizzle 20, alternate map 21 (§8 p.81).
+  - Chip 0 means everyone; the lsb is FBI, then TREX0, TREX1; 6 means both
+    TMUs (§8.21 p.102). So TMU0 alone is +800h and TMU1 alone is +1000h —
+    derived from the field, not printed.
+  - Reads come from FBI; 32-bit accesses only (§8 p.81, §21.1 p.234).
+- **The PCI FIFO has 32 entries**, free count in `status[4:0]`, `1Fh` empty
+  (§3 p.19, §17.1 p.211; D3). The spec never says software must poll free
+  space before writing; it describes PCI retry (`pciInit0` 11, 12, 17:13)
+  and a low-water mark that "should never be 0" (§17.2 p.211). Not
+  established; Velocity9x polls.
+- **A register read returns the current value and ignores queued writes**
+  (§8 p.82). LFB reads block until the FIFO is empty (§8.84.2 p.157).
+
+### 8.2 Triangle setup unit
+
+Offsets from Glide's `SstRegs` order; the spec's register numbers ×4 agree
+(§8.59–8.75 pp.136–140).
+
+| Offset | Register | Format |
+|---|---|---|
+| `0x260` | `sSetupMode` | 19:0, below |
+| `0x264` / `0x268` | `sVx` / `sVy` | IEEE float |
+| `0x26C` | `sARGB` | packed A 31:24, R 23:16, G 15:8, B 7:0 |
+| `0x270`–`0x27C` | `sRed`, `sGreen`, `sBlue`, `sAlpha` | float, 0.0–255.0 |
+| `0x280` | `sVz` | float |
+| `0x284` | `sWb` (Glide `sOowfbi`) | float, global 1/W to FBI and every TMU |
+| `0x288`–`0x290` | `sWtmu0`, `sS/W0`, `sT/W0` | float, to every TMU |
+| `0x294`–`0x29C` | `sWtmu1`, `sS/Wtmu1`, `sT/Wtmu1` | float, TMU1 only |
+| `0x2A0` / `0x2A4` | `sDrawTriCMD` / `sBeginTriCMD` | any write |
+
+`sSetupMode` (§8.59 p.136; Glide `SST_SETUP_*` agrees): 0 RGB, 1 A, 2 Z,
+3 Wb, 4 W0, 5 S0/T0, 6 W1, 7 S1/T1 (a clear bit reuses the previous
+value); 16 fan (0 = strip), 17 cull enable, 18 cull sign negative, 19
+disable strip ping-pong sign flip (D35).
+
+Strips and fans (§8.60 pp.136–137): vertex then `sBeginTriCMD`, vertex then
+`sDrawTriCMD`, and the third `sDrawTriCMD`-terminated vertex draws; each
+further vertex and `sDrawTriCMD` draws one more. A fan keeps the first
+vertex.
+
+The older gradient interface remains: `vertexAx..Cy` 008h–01Ch (12.4),
+`startR..` 020h–, gradients 040h–07Ch, `triangleCMD` 080h (bit 31 the
+area's sign), float copies 088h–0FCh, `ftriangleCMD` 100h (§8.3–8.16
+pp.88–94). With subpixel correction (`fbzColorPath[26]`) the start values
+must be resent for every triangle (§21.3 p.235). Not used.
+
+### 8.3 Pixel pipeline
+
+| Offset | Register | Fields | Napalm |
+|---|---|---|---|
+| `0x104` | `fbzColorPath` | 1:0 RGB select (0 iterated, 1 TMU, 2 `color1`); 3:2 alpha select; 4 local select; 6:5 alpha local select; 7 local from texture alpha; 8 zero other; 9 subtract local; 12:10 multiply select (0 zero, 1 local, 2 other alpha, 3 local alpha, 4 texture alpha, 5 texture RGB); 13 reverse blend; 14 add local; 15 add local alpha; 16 invert; 17–25 the same for alpha; 26 subpixel; **27 texture enable**; 28 clamp | §8.20 p.96 |
+| `0x108` | `fogMode` | 0 enable; 1 add; 2 mult; 3 alpha from iterated; 4 from Z; 5 constant; 6 dither; 7 zones | §8.22 p.102 |
+| `0x10C` | `alphaMode` | 0 alpha test; 3:1 function (0 never … 7 always); 4 blend; 11:8 / 15:12 RGB source/destination factor; 19:16 / 23:20 alpha factors; 31:24 reference | §8.23 pp.105–108 |
+| `0x110` | `fbzMode` | 0 clip; 1 chroma key; 2 stipple; 3 W-buffer; 4 depth enable; 7:5 depth function; 8 dither; 9 RGB write; 10 depth/alpha write; 16 depth bias; 17 Y origin at bottom; 18 aux as alpha (0 at 15 and 32 bpp); 20 compare to `zaColor`; 21 float depth | §8.25 pp.116–120 |
+| `0x114` | `lfbMode` | 3:0 format (0 565, 1 x555, 2 1555, 4 x888, 5 8888, 12–14 Z16+colour, 15 Z16×2); 8 through the pipeline; 13 Y origin | §8.24 pp.109–115 |
+| `0x118` | `clipLeftRight` | left 27:16, right 11:0; left inclusive, right exclusive | §8.44 p.131 |
+| `0x11C` | `clipTopBottom` | top 27:16, bottom 11:0 (Glide `clipBottomTop`, same layout) | §8.44 p.131 |
+| `0x124` | `fastfillCMD` | clears the clip rectangle with `color1` and `zaColor`, gated by `fbzMode` 9/10; bit 0 no dither | §8.18 p.94 |
+| `0x12C` | `fogColor` | RGB 23:0 | §8.32 p.127 |
+| `0x130` | `zaColor` | depth 23:0, alpha 31:24 | §8.33 p.127 |
+| `0x144` / `0x148` | `color0` / `color1` | ARGB | §8.36–8.37 p.128 |
+
+Depth and blend function codes: 0 never, 1 less, 2 equal, 3 less-equal, 4
+greater, 5 not-equal, 6 greater-equal, 7 always. Blend factors: 0 zero, 1
+source alpha, 2 colour, 3 destination alpha, 4 one, 5 1−source alpha, 6
+1−colour, 7 1−destination alpha, 8 same colour, 9 1−same colour, `F`
+saturate (source) / pre-fog colour (destination).
+
+`renderMode` (1E0h, §8.26 pp.121–123): 1:0 0 = 16 bpp 565, 1 = 15 bpp
+1555, 2 = 32 bpp 8888; 17–20 per-channel write masks (32 bpp); 21
+guard-band clip; 25 dither rotation (off for fastfill). Depth is 16 bits at
+15/16 bpp, 24 bits with 8 stencil at 32 bpp (§8.83.3 p.154, §21.4).
+
+Colour and aux buffers (§8.40–8.43 pp.130–131): base 25:4, 16-byte
+aligned; stride bit 15 tiled; linear stride in bytes 13:0, a multiple of
+16; tiled stride in tiles 6:0, a tile being 128 bytes × 32 lines (§18.3
+p.225). **The spec does not require tiled render targets.** Retro-3dfx's
+notes (FINDINGS.md) add a field rule the spec lacks: colour and depth on
+opposite 4 KiB page parity, and a hard hang from a mismatched pair (D36).
+For linear buffers the 4500 does not need it (D36).
+
+### 8.4 Texture unit
+
+Two TMUs per VSA-100, each with its own cache, sharing memory (p.11, §3.5
+p.23, §20.3 p.234).
+
+| Offset | Register | Fields | Napalm |
+|---|---|---|---|
+| `0x300` | `textureMode` | 0 perspective; 1 min bilinear; 2 mag bilinear; 3 clamp W; 4 LOD dither; 6/7 clamp S/T; 11:8 format (5 P8, **10 RGB565, 11 ARGB1555, 12 ARGB4444**, 15 ARGB8888, others); 12–20 colour combine; 21–29 alpha combine; 30 trilinear; 31 compressed | §8.76 pp.141–143 |
+| `0x304` | `tLOD` | 5:0 LOD min; 11:6 LOD max; 17:12 bias; 20 S wider; 22:21 aspect; 24 multi-base; 28/29 mirror; **30 big (2048)** | §8.77 pp.147–148 |
+| `0x308` | `tDetail` | detail and filter separation | §8.78 p.149 |
+| `0x30C` | `texBaseAddr` | **0 tiled; 1 address bit 25; 24:4 address; 31:25 tile stride** | §8.79 p.150 |
+| `0x310`–`0x318` | `texBaseAddr1`, `2`, `38` | multi-base LOD bases | §8.79 |
+
+- A single base points where a full-size level 0 would start; smaller
+  levels follow packed, so the base may sit below the data, with `tLOD`
+  limiting the levels (§20 p.228).
+- After a CPU download, invalidate the texture cache by rewriting
+  `texBaseAddr` (§20.3 p.234).
+- Combine recipes, from Glide's composite defines (the spec's diagrams did
+  not extract):
+  - modulate: multiply by local, reverse blend;
+  - replace: zero other, add local;
+  - add: replace plus add local.
+
+### 8.5 Idle
+
+Write `nopCMD`, then read `status` bit 9 clear three times (§21.2 p.234;
+D4). `nopCMD` flushes pending commands and frame-buffer and texture writes
+(§8.83.1 p.153).
 
 ---
 
@@ -845,6 +968,23 @@ code uses.
 34. **2× mode threshold.** Width > 1280 (§11.1.18 p.173); pixel clock >
     135 MHz (§5.4 p.27); "any display larger than 1280×1024" (§11.3 p.177).
     Not reconciled; matters only for native mode setting.
+35. **Setup fan bit.** §8.60 prose: write `sSetupMode` bit 0 to choose fan.
+    §8.59 table and Glide `SST_SETUP_FAN`: bit 16 (bit 0 is RGB). Plan
+    follows the table.
+36. **Colour/depth page parity.** Not in the spec. Retro-3dfx FINDINGS.md:
+    a render target outside the matching tiled colour slot hard-hung a
+    Voodoo3, and Glide gives linear buffers bit-12 parity, colour even and
+    aux odd. **Measured not needed for linear buffers:** a linear Z16
+    buffer on the colour buffer's own parity drew and compared exactly on
+    the Voodoo4 4500 (TDFX3D /parity, A8U4I5 boot 428). Tiled buffers are
+    not covered.
+37. **Packed or separate colour under direct writes.** Only the command
+    FIFO's type 3 packet has a packed-colour bit (28); the spec's sample
+    code uses an undefined `PACKEDCOLOR` flag (pp.139–140). How the setup
+    unit chooses with direct writes is not established; the probe measures
+    it.
+38. **combineMode multiply-select width.** Spec 8:6, Glide 7:6. Not used in
+    Phase 5.
 
 ---
 

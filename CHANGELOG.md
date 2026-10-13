@@ -4,7 +4,88 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.16.1 - not yet released
+## 0.17.0 - not yet released
+
+0.16.1 was never released; its changes are in this version.
+
+- **A new family: 3dfx VSA-100, the Voodoo4.** The `3dfx` package
+  drives the Voodoo4 4500 at 640x480, 800x600 and 1024x768 in 8 and 16
+  bpp. Video memory is read from the chip's straps (32 MiB less a page),
+  because the BIOS's VBE reports half of it. DirectDraw and GDI fill
+  and copy run on the 2D engine (`V9XGDI /accel` PASS at 8 and 16 bpp).
+  Measured on a Voodoo4 4500 PCI in A8U4I5, and an AGP 4500 before it.
+  A Voodoo5 binds to the same id but is untested; Velocity9x uses one
+  chip.
+  [Tier-0](docs/decisions/2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md),
+  [GDI](docs/decisions/2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md).
+
+- **3dfx's own Glide runs on Velocity9x.** The 3dfx package ships no
+  Glide; the card keeps 3dfx's `GLIDE2X.DLL` and `GLIDE3X.DLL`. The
+  driver answers the requests 3dfx's Glide sends a display driver before
+  it takes the card (QUERYDEVNODE and EXT_HWC), withholds the engine
+  from GDI and DirectDraw while Glide holds it, and takes it back after.
+  The desktop moves to 15 MiB, above the memory and command FIFO Glide
+  uses, and the mode set no longer clears video memory.
+  - Diablo II, Rollcage and the Need for Speed II SE demo draw and exit
+    cleanly to a working desktop.
+  - A Glide game that crashes before closing Glide is untested.
+  [Decision](docs/decisions/2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md).
+
+- **Hardware Direct3D and OpenGL on the Voodoo4.** The 3D engine draws
+  what follows; fog, specular, trilinear, 32-bit colour, the second
+  texture unit and hardware flip are refused or not used.
+  - Gouraud shading and a 16-bit Z buffer with all eight compares.
+  - Alpha blending and the alpha test.
+  - 565, 1555 and 4444 textures up to 256 a side, including rectangles
+    to 8:1.
+  - Mipmaps at Direct3D's nearest level, and bilinear filtering.
+
+  Pixel centres follow each API's rules, measured texel by texel against
+  3dfx's driver. Half-Life `timedemo mwd5` at 640x480:
+
+  | Renderer | fps |
+  |---|---|
+  | Direct3D, Velocity9x | 25.7 |
+  | Direct3D, 3dfx's driver | 58.9 (possibly held to a 60 Hz vsync) |
+  | OpenGL, Velocity9x | 12.5 |
+
+  Quake 2's `timerefresh` on the demo map: 20.7 fps.
+  [Direct3D](docs/decisions/2026-10-12-voodoo4-direct3d-engine-passes-v9xddp-core.md),
+  [mipmaps](docs/decisions/2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md),
+  [OpenGL](docs/decisions/2026-10-13-voodoo4-opengl-and-subpixel-correction.md).
+
+- **Carmageddon II's menus have their backgrounds.** The game paints
+  each menu's backdrop straight into the frame buffer, then clears only
+  the depth buffer with colour writes masked by `grColorMask`. The Glide
+  DLLs ignored that mask, so the clear painted the backdrop black.
+  `grColorMask` now masks colour for clears and triangles in both
+  `GLIDE2X.DLL` and `GLIDE3X.DLL`, and the depth-only clear stays on the
+  3D engine.
+
+- **Drawing to the front buffer of a flip chain works.** The HAL refused
+  any primary surface that was not at the start of video memory, but
+  flipping moves the front buffer, so with three buffers two flips in
+  three left it elsewhere. Glide clears after `grRenderBuffer` selected
+  the front buffer were refused; Carmageddon II's startup clears now all
+  run.
+
+- **Reports say how a game ended.** When a program first uses the HAL,
+  the driver now records how it ends: the exit code and the code address
+  that called `ExitProcess` or `TerminateProcess`, any message box's
+  caption and text, a fault's address, and whether the process exited or
+  only unloaded the driver. Each record also keeps the memory Windows
+  reported to the program. A game that installs its own fault handler no
+  longer removes the driver's; both run. `V9XTRACE` writes these as the
+  `Watch*` keys, and the Glide logs say whether the process was exiting
+  when Glide detached. Prompted by Carmageddon II reports that ended with
+  nothing recorded
+  ([issue](docs/issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)).
+
+- **Diagnostics.**
+  - `V9XMSW /set` keeps its verdict. It exited without flushing its
+    results, so a switch could read back as INCOMPLETE.
+  - `V9XDDP` and `V9XGLP` gain a texel-phase test: a texture drawn one
+    texel to a pixel, recording which texel each pixel took.
 
 ## 0.16.0 - 2026-10-11
 

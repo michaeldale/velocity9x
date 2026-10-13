@@ -300,6 +300,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_sis6326;
     case V9X_D3D_SELECT_MGA:
         return &v9x_d3d_engine_mga;
+    case V9X_D3D_SELECT_TDFX:
+        return &v9x_d3d_engine_tdfx;
     default:
         return 0;
     }
@@ -727,6 +729,9 @@ static void v9x_d3d_note_process(v9x_u32 kind)
     char path[MAX_PATH];
     char name[V9X_DIAG_PROCESS_NAME_BYTES];
 
+    /* A Glide or OpenGL program may reach the HAL here before any
+     * CreateSurface: start its process watch (ddhal_watch.c). */
+    v9x_watch_note();
     if (v9x_hal == 0) {
         return;
     }
@@ -850,7 +855,9 @@ DWORD __stdcall V9xD3dRenderPrimitive(
 
 /*
  * The screen-space clipper and the list builder live in the neutral render
- * core, src\display323d3d_clip.c, since Phase 1a of the OpenGL plan
+ * core, src\display32
+3d
+3d_clip.c, since Phase 1a of the OpenGL plan
  * (2026-09-26); what stays here is the Direct3D context's part of each
  * call - the executing engine's guard band and the render target's size -
  * and the two decisions the list builder asks the front end for. The
@@ -1144,8 +1151,15 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         /* DDRAW's primary/flip-chain metadata has varied across the legacy
          * runtime paths. The scanout descriptor is authoritative for these
          * display-sized surfaces: using a stale surface pitch here creates
-         * diagonal/striped S3D output and can walk beyond the page. */
-        if ((primary && offset != 0ul) ||
+         * diagonal/striped S3D output and can walk beyond the page.
+         *
+         * A primary away from offset 0 is refused unless it heads a flip
+         * chain: Flip swaps the buffers' video memory, so the front buffer
+         * of a three-buffer chain sits at 0 one flip in three, and Glide's
+         * grRenderBuffer(GR_BUFFER_FRONTBUFFER) clears were refused the
+         * other two. The extent checks below bound it like any target. */
+        if ((primary && offset != 0ul &&
+             (target->ddsCaps & V9X_DDSCAPS_FLIP) == 0ul) ||
             v9x_hal->fb.bits_per_pixel != limits->target_bits_per_pixel ||
             v9x_hal->info.vmiData.lDisplayPitch !=
                 (LONG)v9x_hal->fb.pitch) {
@@ -5364,6 +5378,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_mga) {
         out->engine = V9X_R3D_ABI_ENGINE_MGA;
         name = "Velocity9x Millennium II";
+    } else if (ops == &v9x_d3d_engine_tdfx) {
+        out->engine = V9X_R3D_ABI_ENGINE_TDFX;
+        name = "Velocity9x VSA-100";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -5429,6 +5446,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         /* The 2164W's: power-of-two edges, 1 to 256, 565 and 1555,
          * placed by v9x_d3d_mga_create_surface at a power-of-two row
          * (docs\decisions\2026-10-10-mga2164w-textures.md). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_tdfx) {
+        /* The VSA-100's: power-of-two edges, 1 to 256, all three formats,
+         * placed by v9x_d3d_tdfx_create_surface. Rectangles to 8:1 only
+         * (tLOD's aspect field); the shape flags cannot say so, and a
+         * longer one is refused at draw (docs\decisions\2026-10-13-
+         * voodoo4-mipmaps-and-direct3d-pixel-centres.md). */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

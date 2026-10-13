@@ -26,6 +26,10 @@ unsigned int v9x_run_vbe_parse_tests(void);
  * synthetic image, same convention. */
 unsigned int v9x_run_pe_export_tests(void);
 
+/* tests\host\test_pe_import.c: the PE32 import-slot walk against a
+ * synthetic image, same convention. */
+unsigned int v9x_run_pe_import_tests(void);
+
 /* tests\host\test_gl_dispatch.c: the generated OpenGL dispatch table's
  * order, shape and typed stubs, same convention. */
 unsigned int v9x_run_gl_dispatch_tests(void);
@@ -150,6 +154,10 @@ unsigned int v9x_run_d3d_mach64_map_tests(void);
  * texture and triangle words. */
 unsigned int v9x_run_d3d_sis6326_map_tests(void);
 
+/* tests\host\test_d3d_tdfx_map.c: V9X_R3D_DRAW to VSA-100 3D builder state
+ * and vertices. */
+unsigned int v9x_run_d3d_tdfx_map_tests(void);
+
 /* tests\host\test_d3d_mga_map.c: V9X_R3D_DRAW to MGA-2164W trapezoid
  * state, and its refusals. */
 unsigned int v9x_run_d3d_mga_map_tests(void);
@@ -211,6 +219,18 @@ unsigned int v9x_run_mga_engine_tests(void);
 /* tests\host\test_vsa100_decode.c: VSA-100 memory, tile-boundary and PLL
  * decodes against the Mini-Me's measured registers. */
 unsigned int v9x_run_vsa100_decode_tests(void);
+
+/* tests\host\test_tdfx_2d.c: VSA-100 2D fill and copy register values
+ * against the Napalm section 7 encodings. */
+unsigned int v9x_run_tdfx_2d_tests(void);
+
+/* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
+ * 3dfx driver builds for them. */
+unsigned int v9x_run_tdfx_hwc_tests(void);
+
+/* tests\host\test_tdfx_3d.c: VSA-100 setup-unit and pixel-pipeline register
+ * values against the Napalm section 8 encodings. */
+unsigned int v9x_run_tdfx_3d_tests(void);
 
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
@@ -1221,6 +1241,7 @@ int main(int argc, char **argv)
     failures += v9x_run_inflate_tests();
     failures += v9x_run_update_inf_tests();
     failures += v9x_run_pe_export_tests();
+    failures += v9x_run_pe_import_tests();
     failures += v9x_run_gl_dispatch_tests();
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vsync_tests();
@@ -1255,6 +1276,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_select_tests();
     failures += v9x_run_d3d_mach64_map_tests();
     failures += v9x_run_d3d_sis6326_map_tests();
+    failures += v9x_run_d3d_tdfx_map_tests();
     failures += v9x_run_d3d_mga_map_tests();
     failures += v9x_run_donewait_tests();
     failures += v9x_run_drawnote_tests();
@@ -1282,6 +1304,9 @@ int main(int argc, char **argv)
     failures += v9x_run_mga_3d_tests();
     failures += v9x_run_mga_setup_tests();
     failures += v9x_run_vsa100_decode_tests();
+    failures += v9x_run_tdfx_2d_tests();
+    failures += v9x_run_tdfx_hwc_tests();
+    failures += v9x_run_tdfx_3d_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {

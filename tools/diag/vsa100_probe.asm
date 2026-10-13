@@ -19,6 +19,13 @@
 ;   returned first is matched against the two and the matching selector is
 ;   written back, so the next reader sees what it saw before.
 ;
+; Under the I/O flag the init registers 00h-4Ch are also read through BAR2,
+; the I/O window the Napalm spec says mirrors them (section 4), and the
+; lfbMemoryConfig selector protocol is repeated there, with the same
+; restore. Glide's header says the tile registers do not exist in I/O space;
+; this measures whether they do, which decides how the 16-bit driver may
+; read them before anything is mapped.
+;
 ; Offsets are accepted only inside three BAR0 windows: the init and video
 ; registers (0-FFh), the command FIFO registers (80000h-800FFh) and the 2D
 ; registers (100000h-1000FFh). The 2D launch area (100080h and up) is
@@ -75,21 +82,30 @@ VSA_FIFO_MAPPED         equ 00000080h
 VSA_2D_MAPPED           equ 00000100h
 VSA_TILE_READ           equ 00000200h
 VSA_TILE_AMBIGUOUS      equ 00000400h
+VSA_IO_READ             equ 00000800h
+VSA_IO_TILE_AMBIGUOUS   equ 00001000h
+VSA_IO_INVALID          equ 00002000h
 
 ; Input from VSA100.EXE.
 VSA_IN_BAR0             equ 0
 VSA_IN_FLAGS            equ 4
 VSA_IN_COUNT            equ 8
-VSA_IN_OFFSETS          equ 12
-VSA_IN_MIN_BYTES        equ 12
+VSA_IN_IO_BASE          equ 12
+VSA_IN_OFFSETS          equ 16
+VSA_IN_MIN_BYTES        equ 16
 VSA_FLAG_TILE           equ 00000001h
 VSA_FLAG_ENGINE         equ 00000002h
+VSA_FLAG_IO             equ 00000004h
+
+; The init registers read through BAR2: 00h-4Ch, 20 dwords.
+VSA_IO_DWORDS           equ 20
+VSA_IO_SPAN             equ 100h
 
 ; Output layout, in dwords. Must match struct vsa_result in
 ; vsa100_probe_win32.c.
-VSA_HEADER_DWORDS       equ 16
+VSA_HEADER_DWORDS       equ 20
 VSA_RESULT_DWORDS       equ (VSA_HEADER_DWORDS + VSA_CONFIG_DWORDS + \
-                             VSA_FUNCTIONS + \
+                             VSA_FUNCTIONS + VSA_IO_DWORDS + \
                              (VSA_VGA_INDEXES * 2) / 4 + \
                              VSA_OFFSET_MAX * 3 + VSA_ROM_BYTES / 4)
 
@@ -110,9 +126,14 @@ VsaResult label dword
     dd 0                        ; 12 tile control
     dd 0                        ; 13 tile compare
     dd 0                        ; 14 selector written back
-    dd 0                        ; 15 reserved
+    dd 0                        ; 15 I/O base used
+    dd 0                        ; 16 I/O lfbMemoryConfig, plain read first
+    dd 0                        ; 17 I/O tile control
+    dd 0                        ; 18 I/O tile compare
+    dd 0                        ; 19 I/O selector written back
 VsaConfig    dd VSA_CONFIG_DWORDS dup (0)
 VsaFunctions dd VSA_FUNCTIONS dup (0)
+VsaIo        dd VSA_IO_DWORDS dup (0)
 VsaSr        db VSA_VGA_INDEXES dup (0)
 VsaCr        db VSA_VGA_INDEXES dup (0)
 VsaOffsets   dd VSA_OFFSET_MAX dup (0)
@@ -120,6 +141,7 @@ VsaFirst     dd VSA_OFFSET_MAX dup (0)
 VsaSecond    dd VSA_OFFSET_MAX dup (0)
 VsaRom       dd (VSA_ROM_BYTES / 4) dup (0)
 VsaBar0      dd 0
+VsaIoBase    dd 0
 VsaFlags     dd 0
 VsaIoLinear  dd 0
 VsaFifoLinear dd 0
@@ -308,6 +330,81 @@ Vsa_Read_Tile_Restore:
     ret
 EndProc Vsa_Read_Tile
 
+; The init registers through BAR2, interrupts off: dwords 00h-4Ch, then
+; the lfbMemoryConfig selector protocol at 0Ch exactly as Vsa_Read_Tile does
+; it through BAR0, with the same restore. The base is VSA100.EXE's Config
+; Manager range, accepted only when it equals the live BAR2 and is 256-byte
+; aligned below 64 KiB.
+BeginProc Vsa_Read_Io
+    pushad
+    mov     eax, VsaConfig[24]
+    and     eax, 0000fffch
+    mov     ebx, VsaIoBase
+    test    ebx, ebx
+    jz      Vsa_Read_Io_Invalid
+    cmp     ebx, eax
+    jne     Vsa_Read_Io_Invalid
+    test    ebx, (VSA_IO_SPAN - 1)
+    jnz     Vsa_Read_Io_Invalid
+    cmp     ebx, 10000h
+    jae     Vsa_Read_Io_Invalid
+    mov     VsaResult[60], ebx
+
+    pushfd
+    cli
+    mov     edi, OFFSET32 VsaIo
+    xor     ecx, ecx
+Vsa_Read_Io_Next:
+    lea     edx, [ebx+ecx*4]
+    in      eax, dx
+    mov     [edi+ecx*4], eax
+    inc     ecx
+    cmp     ecx, VSA_IO_DWORDS
+    jb      short Vsa_Read_Io_Next
+
+    lea     edx, [ebx+VSA_LFB_MEMORY_CONFIG]
+    in      eax, dx
+    mov     VsaResult[64], eax
+    mov     esi, eax
+    mov     eax, VSA_SELECT_CONTROL
+    out     dx, eax
+    in      eax, dx
+    mov     VsaResult[68], eax
+    mov     ebp, eax
+    mov     eax, VSA_SELECT_COMPARE
+    out     dx, eax
+    in      eax, dx
+    mov     VsaResult[72], eax
+
+    ; Restore: the selector whose value matched the plain read.
+    mov     edi, VSA_SELECT_CONTROL
+    cmp     esi, ebp
+    jne     short Vsa_Read_Io_Try_Compare
+    cmp     esi, eax
+    je      short Vsa_Read_Io_Ambiguous
+    jmp     short Vsa_Read_Io_Restore
+Vsa_Read_Io_Try_Compare:
+    mov     edi, VSA_SELECT_COMPARE
+    cmp     esi, eax
+    je      short Vsa_Read_Io_Restore
+    mov     edi, VSA_SELECT_CONTROL
+Vsa_Read_Io_Ambiguous:
+    or      VsaResult[4], VSA_IO_TILE_AMBIGUOUS
+Vsa_Read_Io_Restore:
+    mov     eax, edi
+    out     dx, eax
+    mov     VsaResult[76], edi
+    popfd
+    or      VsaResult[4], VSA_IO_READ
+    popad
+    ret
+
+Vsa_Read_Io_Invalid:
+    or      VsaResult[4], VSA_IO_INVALID
+    popad
+    ret
+EndProc Vsa_Read_Io
+
 ; Copy the 64 KiB shadow at C0000h. Shadow RAM, read-only here.
 BeginProc Vsa_Copy_Rom
     pushad
@@ -437,6 +534,11 @@ Vsa_Capture_Function_Skip:
 
     call    Vsa_Read_Vga
 
+    test    VsaFlags, VSA_FLAG_IO
+    jz      short Vsa_Capture_No_Io
+    call    Vsa_Read_Io
+Vsa_Capture_No_Io:
+
     ; BAR0 as Config Manager allocated it, matched to the live BAR by
     ; VSA100.EXE: 32 MiB or larger, so at least 32 MiB-aligned.
     mov     eax, VsaBar0
@@ -532,6 +634,8 @@ BeginProc Vsa_W32_DeviceIoControl
     call    Vsa_Reset_Result
     mov     eax, [ebp+VSA_IN_BAR0]
     mov     VsaBar0, eax
+    mov     eax, [ebp+VSA_IN_IO_BASE]
+    mov     VsaIoBase, eax
     mov     eax, [ebp+VSA_IN_FLAGS]
     mov     VsaFlags, eax
     call    Vsa_Accept_Offsets

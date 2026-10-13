@@ -51,6 +51,8 @@ function Get-V9xHostSourceNames {
         # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
+        # PE32 import-slot walk, same terms; the HAL's process-exit watch.
+        'src\common\pe_import.c',
         # Shared Mach64 FIFO, wait, reset/replay and coherence policy.
         'src\chipsets\ati\mach64_engine.c',
         # Mach64 draw acceptance: the measured Phase 4 boundary.
@@ -75,7 +77,14 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rage2_draw.c',
         # VSA-100 memory, tile-boundary and PLL decodes; no I/O.
         'src\chipsets\tdfx\vsa100_decode.c',
+        # VSA-100 2D engine: fill and copy register values, no I/O.
+        'src\chipsets\tdfx\tdfx_2d.c',
+        # Glide's EXT_HWC escape: request decode and reply, no I/O.
+        'src\chipsets\tdfx\tdfx_hwc.c',
+        # VSA-100 3D: setup-unit and pipeline register values, no I/O.
+        'src\chipsets\tdfx\tdfx_3d.c',
         'tests\host\test_pe_export.c',
+        'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
         # executable), asserted against the two reference headers' order.
         'tests\host\test_gl_dispatch.c',
@@ -146,6 +155,9 @@ function Get-V9xHostSourceNames {
         # The neutral draw to SiS 6326 state, texture and triangle words.
         'src\display32\d3d\d3d_sis6326_map.c',
         'tests\host\test_d3d_sis6326_map.c',
+        # The neutral draw to VSA-100 3D builder state and vertices.
+        'src\display32\d3d\d3d_tdfx_map.c',
+        'tests\host\test_d3d_tdfx_map.c',
         'src\display32\d3d\d3d_mga_map.c',
         'tests\host\test_d3d_mga_map.c',
         'src\display32\d3d\d3d_i9xx_target.c'
@@ -215,6 +227,9 @@ function Get-V9xHostSourceNames {
         'tests\host\test_mga_3d.c',
         'tests\host\test_mga_setup.c',
         'tests\host\test_vsa100_decode.c',
+        'tests\host\test_tdfx_2d.c',
+        'tests\host\test_tdfx_hwc.c',
+        'tests\host\test_tdfx_3d.c',
         'tests\host\test_main.c'
     )
 

@@ -2522,6 +2522,159 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
     return hr;
 }
 
+/*
+ * Which texel each pixel of a 1:1 point-sampled draw reads (2026-10-13).
+ *
+ * Half-Life's console font lost single-pixel strokes on the Voodoo4 engine
+ * with no mip chain in play (A8U4I5 boot 438) where 3dfx's driver drew it
+ * crisp: a texel-phase question the one-sample Tex8 test cannot answer.
+ * A 16x16 RGB565 texture whose texel (x, y) carries x in red, y in blue
+ * and full green as a marker is drawn as a 16x16 quad at (40, 40), u and v
+ * 0 to 1, nearest, offset by `offset` pixels in x and y. Row 48 and column
+ * 48 are read back: out_cols[i] is the column pixel (40 + i, 48) sampled,
+ * out_rows[i] the row pixel (48, 40 + i) sampled, as a hex digit, '.'
+ * where the pixel holds no texel. An exact copy reads 0123456789ABCDEF in
+ * both.
+ */
+static HRESULT v9x_probe_texel_phase(struct v9x_dd *ddraw,
+                                     struct v9x_d3d_device2 *device,
+                                     struct v9x_dds *target, float offset,
+                                     char *out_cols, char *out_rows)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    V9X_DDSURFACEDESC desc;
+    V9X_D3DTLVERTEX quad[6];
+    struct v9x_dds *surface = 0;
+    struct v9x_d3d_texture2 *texture = 0;
+    DWORD handle = 0ul;
+    HRESULT hr;
+    HRESULT end_hr;
+    DWORD index;
+
+    for (index = 0ul; index < 16ul; ++index) {
+        out_cols[index] = '?';
+        out_rows[index] = '?';
+    }
+    out_cols[16] = '\0';
+    out_rows[16] = '\0';
+
+    v9x_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH | V9X_DDSD_HEIGHT |
+                   V9X_DDSD_PIXELFORMAT;
+    desc.dwWidth = 16ul;
+    desc.dwHeight = 16ul;
+    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+    desc.ddpfPixelFormat.dwSize = sizeof(V9X_DDPIXELFORMAT);
+    desc.ddpfPixelFormat.dwFlags = 0x40ul;  /* DDPF_RGB */
+    desc.ddpfPixelFormat.dwRGBBitCount = 16ul;
+    desc.ddpfPixelFormat.dwRBitMask = 0xf800ul;
+    desc.ddpfPixelFormat.dwGBitMask = 0x07e0ul;
+    desc.ddpfPixelFormat.dwBBitMask = 0x001ful;
+    hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &surface, 0);
+    if (hr == 0 && surface != 0) {
+        V9X_DDSURFACEDESC lock;
+
+        v9x_zero(&lock, sizeof(lock));
+        lock.dwSize = sizeof(lock);
+        hr = surface->vtbl->Lock(surface, 0, &lock, V9X_DDLOCK_WAIT, 0);
+        if (hr == 0) {
+            BYTE FAR *row = (BYTE FAR *)lock.lpSurface;
+            DWORD y;
+            DWORD x;
+
+            for (y = 0ul; y < 16ul; ++y) {
+                WORD FAR *texel = (WORD FAR *)row;
+
+                for (x = 0ul; x < 16ul; ++x) {
+                    texel[x] = (WORD)((x << 11) | 0x07e0ul | y);
+                }
+                row += lock.lPitch;
+            }
+            surface->vtbl->Unlock(surface, 0);
+        }
+    }
+    if (hr == 0 && surface != 0) {
+        hr = surface->vtbl->QueryInterface(surface, &v9x_iid_d3d_texture2,
+                                           (void **)&texture);
+    }
+    if (hr == 0 && texture != 0) {
+        hr = texture->vtbl->GetHandle(texture, device, &handle);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, handle);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, V9X_D3DTBLEND_COPY);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMIN, V9X_D3DFILTER_NEAREST);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREMAG, V9X_D3DFILTER_NEAREST);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_TEXTUREADDRESS,
+            V9X_D3DTADDRESS_CLAMP_R);
+    }
+    if (hr == 0) {
+        v9x_zero(quad, sizeof(quad));
+        for (index = 0ul; index < 6ul; ++index) {
+            quad[index].sz = 0.5f;
+            quad[index].rhw = 1.0f;
+            quad[index].color = 0xfffffffful;
+        }
+        /* Two triangles: (0,0) (1,0) (0,1), then (1,0) (1,1) (0,1). */
+        quad[0].sx = 40.0f; quad[0].sy = 40.0f;
+        quad[1].sx = 56.0f; quad[1].sy = 40.0f; quad[1].tu = 1.0f;
+        quad[2].sx = 40.0f; quad[2].sy = 56.0f; quad[2].tv = 1.0f;
+        quad[3] = quad[1];
+        quad[4].sx = 56.0f; quad[4].sy = 56.0f;
+        quad[4].tu = 1.0f; quad[4].tv = 1.0f;
+        quad[5] = quad[2];
+        for (index = 0ul; index < 6ul; ++index) {
+            quad[index].sx += offset;
+            quad[index].sy += offset;
+        }
+        v9x_fill_surface(target, 0ul);
+        hr = device->vtbl->BeginScene(device);
+        if (hr == 0) {
+            hr = device->vtbl->DrawPrimitive(
+                device, V9X_D3DPT_TRIANGLELIST, V9X_D3DVT_TLVERTEX,
+                quad, 6ul, 0ul);
+            end_hr = device->vtbl->EndScene(device);
+            if (hr == 0) {
+                hr = end_hr;
+            }
+        }
+        for (index = 0ul; index < 16ul; ++index) {
+            WORD col = v9x_surface_pixel16(target, 40ul + index, 48ul);
+            WORD row = v9x_surface_pixel16(target, 48ul, 40ul + index);
+
+            out_cols[index] = (col & 0x07e0u) == 0x07e0u
+                                  ? digits[(col >> 11) & 0xfu] : '.';
+            out_rows[index] = (row & 0x07e0u) == 0x07e0u
+                                  ? digits[row & 0xfu] : '.';
+        }
+    }
+    (void)device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    (void)device->vtbl->SetRenderState(
+        device, V9X_D3DRENDERSTATE_TEXTUREADDRESS, V9X_D3DTADDRESS_WRAP_R);
+    if (texture != 0) {
+        texture->vtbl->Release(texture);
+    }
+    if (surface != 0) {
+        surface->vtbl->Release(surface);
+    }
+    return hr;
+}
+
 /* Top half one texel value, bottom half another: a pattern a wrong row
  * stride reads differently, where left/right halves read the same. */
 static void v9x_fill_surface_top_bottom(struct v9x_dds *surface, WORD top,
@@ -5022,6 +5175,50 @@ void __stdcall V9xDdrawProbeEntry(void)
                     triangle[0].tu = 0.125f; triangle[0].tv = 0.125f;
                     triangle[1].tu = 0.875f; triangle[1].tv = 0.125f;
                     triangle[2].tu = 0.125f; triangle[2].tv = 0.875f;
+                }
+
+                /* Texel phase at 1:1, on whole and half pixels
+                 * (v9x_probe_texel_phase). */
+                v9x_probe_reset_state(d3d_device, triangle);
+                {
+                    /* Whole and half pixels, then quarters and finer
+                     * steps, which place the sample points. */
+                    static const float phase_offset[11] = {
+                        0.0f, -0.5f, 0.5f, -0.25f, 0.25f, -0.75f, 0.75f,
+                        0.125f, 0.3125f, 0.375f, 0.4375f };
+                    static const char *phase_cols_key[11] = {
+                        "TexPhase0Cols", "TexPhaseM5Cols", "TexPhaseP5Cols",
+                        "TexPhaseM25Cols", "TexPhaseP25Cols",
+                        "TexPhaseM75Cols", "TexPhaseP75Cols",
+                        "TexPhaseP125Cols", "TexPhaseP3125Cols",
+                        "TexPhaseP375Cols", "TexPhaseP4375Cols" };
+                    static const char *phase_rows_key[11] = {
+                        "TexPhase0Rows", "TexPhaseM5Rows", "TexPhaseP5Rows",
+                        "TexPhaseM25Rows", "TexPhaseP25Rows",
+                        "TexPhaseM75Rows", "TexPhaseP75Rows",
+                        "TexPhaseP125Rows", "TexPhaseP3125Rows",
+                        "TexPhaseP375Rows", "TexPhaseP4375Rows" };
+                    static const char *phase_hr_key[11] = {
+                        "TexPhase0Hr", "TexPhaseM5Hr", "TexPhaseP5Hr",
+                        "TexPhaseM25Hr", "TexPhaseP25Hr",
+                        "TexPhaseM75Hr", "TexPhaseP75Hr",
+                        "TexPhaseP125Hr", "TexPhaseP3125Hr",
+                        "TexPhaseP375Hr", "TexPhaseP4375Hr" };
+                    char phase_cols[17];
+                    char phase_rows[17];
+                    DWORD phase_index;
+
+                    for (phase_index = 0ul; phase_index < 11ul;
+                         ++phase_index) {
+                        v9x_write_hresult(phase_hr_key[phase_index],
+                            v9x_probe_texel_phase(ddraw, d3d_device,
+                                d3d_target, phase_offset[phase_index],
+                                phase_cols, phase_rows));
+                        v9x_write_text(phase_cols_key[phase_index],
+                                       phase_cols);
+                        v9x_write_text(phase_rows_key[phase_index],
+                                       phase_rows);
+                    }
                 }
 
                 /*

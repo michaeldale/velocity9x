@@ -328,6 +328,21 @@ void __stdcall grClipWindow(v9x_u32 min_x, v9x_u32 min_y, v9x_u32 max_x,
         store;                                                               \
     }
 
+/* grColorMask: rgb masks colour writes, for triangles and for
+ * grBufferClear; alpha has no buffer to mask (RGB565 targets). Carmageddon
+ * II masks colour around its depth-only clear. */
+void __stdcall grColorMask(v9x_u32 rgb, v9x_u32 alpha)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_grColorMask);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_grColorMask,
+                        v9x_glide_key(rgb, alpha, 0ul, 0ul))) {
+        v9x_glide_logf(V9X_GLIDE_IX_grColorMask, call, "rgb=%lu alpha=%lu",
+                       rgb, alpha);
+    }
+    v9x_glide_state.color_mask = rgb;
+}
+
 V9X_GLIDE_STATE1(grCullMode, "mode", v9x_glide_state.cull_mode = value)
 /* Not used by NFS II SE (census); no render-interface field. */
 V9X_GLIDE_STATE1(grDepthBiasLevel, "bias", (void)value)
@@ -482,6 +497,21 @@ void __stdcall guFogGenerateExp(v9x_u8 *table, v9x_u32 density)
     }
     v9x_glide_logf(V9X_GLIDE_IX_guFogGenerateExp, call,
                    "table=%08lX density-bits=%08lX", (v9x_u32)table, density);
+}
+
+/* guTexSource selects a texture the utility memory manager holds, by the
+ * id guTexAllocateMemory returned. That manager is not implemented and
+ * Carmageddon II never allocates through it, yet calls this thousands of
+ * times a session: each distinct id is logged so a run says what it
+ * passes. Nothing is selected. */
+void __stdcall guTexSource(v9x_u32 mmid)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_guTexSource);
+
+    if (v9x_glide_noted(V9X_GLIDE_IX_guTexSource,
+                        v9x_glide_key(mmid, 0ul, 0ul, 0ul))) {
+        v9x_glide_logf(V9X_GLIDE_IX_guTexSource, call, "mmid=%08lX", mmid);
+    }
 }
 
 /* ---- textures ------------------------------------------------------ */
@@ -835,7 +865,6 @@ void __stdcall grDrawPoint(const v9x_u32 *a)
 
 BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
-    (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         /* The program and the build every later line is read against. */
         char path[MAX_PATH];
@@ -860,7 +889,7 @@ BOOL __stdcall V9xGlideEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
                   now.wSecond, GetTickCount(), path);
         v9x_glide_log(text);
     } else if (reason == DLL_PROCESS_DETACH) {
-        v9x_glide_core_detach();
+        v9x_glide_core_detach(reserved != 0);
     }
     return TRUE;
 }

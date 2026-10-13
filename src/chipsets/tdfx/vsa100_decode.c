@@ -24,6 +24,17 @@
 #define VSA100_TILE_CONTROL_HIGH_SHIFT 10
 #define VSA100_TILE_CONTROL_HIGH  0x00006000ul
 
+/* The desktop split is rounded to whole MiB. */
+#define VSA100_MIB                0x00100000ul
+
+/* vidProcCfg bit 7 desktop fetch, bit 8 overlay fetch, bit 24 desktop in
+ * tile space; vidDesktopOverlayStride bits 14:0 the desktop stride (Napalm
+ * spec 11.1.3, 11.1.26). */
+#define VSA100_VPC_DESKTOP_FETCH  0x00000080ul
+#define VSA100_VPC_OVERLAY_FETCH  0x00000100ul
+#define VSA100_VPC_DESKTOP_TILED  0x01000000ul
+#define VSA100_DESKTOP_STRIDE_MASK 0x00007ffful
+
 /* pllCtrl fields and the 14.31818 MHz reference, held in 10 Hz units so the
  * largest numerator (N = 255) stays below 2^32. */
 #define VSA100_PLL_N_SHIFT        8
@@ -72,6 +83,37 @@ v9x_u32 v9x_tdfx_vsa100_usable_memory(v9x_u32 dram_init0,
     linear = v9x_tdfx_vsa100_tile_first_page(tile_control, tile_compare) *
              V9X_TDFX_TILE_PAGE_BYTES;
     return linear < decoded ? linear : decoded;
+}
+
+v9x_u32 v9x_tdfx_vsa100_desktop_offset(v9x_u32 linear_bytes)
+{
+    if (linear_bytes < V9X_TDFX_SPLIT_MIN_BYTES) {
+        return 0ul;
+    }
+    return (linear_bytes / 2ul) & ~(VSA100_MIB - 1ul);
+}
+
+v9x_u32 v9x_tdfx_vsa100_glide_bytes(v9x_u32 linear_bytes)
+{
+    v9x_u32 offset = v9x_tdfx_vsa100_desktop_offset(linear_bytes);
+
+    if (offset == 0ul) {
+        return linear_bytes;
+    }
+    return offset - V9X_TDFX_GLIDE_GUARD_BYTES;
+}
+
+v9x_u32 v9x_tdfx_vsa100_desktop_vidproc(v9x_u32 vid_proc_cfg)
+{
+    return (vid_proc_cfg | VSA100_VPC_DESKTOP_FETCH) &
+           ~(VSA100_VPC_OVERLAY_FETCH | VSA100_VPC_DESKTOP_TILED);
+}
+
+v9x_u32 v9x_tdfx_vsa100_desktop_stride(v9x_u32 stride_register,
+                                        v9x_u32 pitch_bytes)
+{
+    return (stride_register & ~VSA100_DESKTOP_STRIDE_MASK) |
+           (pitch_bytes & VSA100_DESKTOP_STRIDE_MASK);
 }
 
 v9x_u32 v9x_tdfx_vsa100_pll_khz(v9x_u32 pll_ctrl)

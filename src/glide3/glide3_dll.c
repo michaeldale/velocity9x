@@ -462,15 +462,17 @@ void __stdcall grClipWindow(v9x_u32 min_x, v9x_u32 min_y, v9x_u32 max_x,
     v9x_glide_state.clip_max_y = v9x_glide3_clip_edge(max_y);
 }
 
-/* No write mask reaches the engine yet; neither test title calls it. */
+/* rgb masks colour writes, for triangles and grBufferClear, as in
+ * GLIDE2X.DLL; alpha has no buffer to mask (RGB565 targets). */
 void __stdcall grColorMask(v9x_u32 rgb, v9x_u32 alpha)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grColorMask);
 
     if (v9x_glide_noted(V9X_GLIDE3_IX_grColorMask, v9x_glide_key(rgb, alpha, 0ul, 0ul))) {
-        v9x_glide_logf(V9X_GLIDE3_IX_grColorMask, call, "rgb=%lu alpha=%lu (ignored)",
+        v9x_glide_logf(V9X_GLIDE3_IX_grColorMask, call, "rgb=%lu alpha=%lu",
                        rgb, alpha);
     }
+    v9x_glide_state.color_mask = rgb;
 }
 
 void __stdcall grCoordinateSpace(v9x_u32 mode)
@@ -1082,7 +1084,6 @@ v9x_u32 __stdcall grLfbUnlock(v9x_u32 type, v9x_u32 buffer)
 
 BOOL __stdcall V9xGlide3Entry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
-    (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         /* The program and the build every later line is read against. */
         char path[MAX_PATH];
@@ -1108,7 +1109,7 @@ BOOL __stdcall V9xGlide3Entry(HINSTANCE instance, DWORD reason, LPVOID reserved)
                   now.wSecond, GetTickCount(), path);
         v9x_glide_log(text);
     } else if (reason == DLL_PROCESS_DETACH) {
-        v9x_glide_core_detach();
+        v9x_glide_core_detach(reserved != 0);
     }
     return TRUE;
 }

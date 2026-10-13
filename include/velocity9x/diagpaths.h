@@ -86,6 +86,9 @@
 #define V9X_DIAG_SIS2D_TXT   V9X_DIAG_PATH("SIS2D.TXT")     /* sis6326_2d_win32.c */
 #define V9X_DIAG_VSA100_TXT  V9X_DIAG_PATH("VSA100.TXT")    /* vsa100_probe_win32.c */
 #define V9X_DIAG_VSA100_ROM  V9X_DIAG_PATH("VSA100.ROM")    /* vsa100_probe_win32.c */
+#define V9X_DIAG_TDFX2D_TXT  V9X_DIAG_PATH("TDFX2D.TXT")    /* tdfx_2d_win32.c */
+#define V9X_DIAG_TDFX3D_TXT  V9X_DIAG_PATH("TDFX3D.TXT")    /* tdfx_3d_win32.c */
+#define V9X_DIAG_GL3P_INI    V9X_DIAG_PATH("V9XGL3P.INI")   /* glide3_session_win32.c */
 #define V9X_DIAG_SIS3D_TXT   V9X_DIAG_PATH("SIS3D.TXT")     /* sis6326_3d_win32.c */
 #define V9X_DIAG_MGA2D_TXT   V9X_DIAG_PATH("MGA2D.TXT")     /* mga2d_win32.c */
 #define V9X_DIAG_TIME_INI    V9X_DIAG_PATH("V9XTIME.INI")   /* vga_timing_win32.c */

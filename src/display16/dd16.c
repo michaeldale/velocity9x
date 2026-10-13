@@ -238,6 +238,12 @@ typedef WORD (FAR PASCAL *V9X_SETINFO_FN)(V9X_DDHALINFO FAR *info,
                                           WORD reset);
 
 static V9X_DD_SHARED FAR *v9x_dd_shared;
+
+#ifdef V9X_TDFX_FAMILY
+/* Re-withhold the engine from the HAL after the flags are restamped while
+ * 3dfx Glide holds it; defined with the EXT_HWC handler below. */
+static void v9x_hwc_restamp(void);
+#endif
 static V9X_SETINFO_FN v9x_dd_set_info;
 static V9X_DDHALINFO v9x_dd_info16;
 static V9X_DDHAL_DDCALLBACKS v9x_dd_callbacks16;
@@ -591,6 +597,9 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
     shared->engine.engine_caps = engine_caps;
     v9x_dd_publish_engine_stamp(engine_type, engine_caps,
                                 shared->engine.ring_linear_base);
+#ifdef V9X_TDFX_FAMILY
+    v9x_hwc_restamp();
+#endif
 }
 
 static V9X_DD_SHARED FAR *v9x_dd_block(void)
@@ -828,6 +837,9 @@ static void v9x_dd_refresh_framebuffer(void)
      * so it starts disarmed; after that the escape is the only writer and
      * the HAL's own consumption is the only decrementer. A forced timeout
      * acts on whichever bounded wait runs next, which is mode-independent. */
+#ifdef V9X_TDFX_FAMILY
+    v9x_hwc_restamp();
+#endif
 }
 
 /*
@@ -1033,6 +1045,9 @@ void FAR PASCAL V9xDdInvalidate(void)
     if (v9x_dd_shared != 0) {
         v9x_dd_shared->fb.flags &= ~V9X_DD_FB_VALID;
         v9x_dd_shared->engine.flags &= ~V9X_DD_ENGINE_VALID;
+#ifdef V9X_TDFX_FAMILY
+        v9x_hwc_restamp();
+#endif
     }
 }
 
@@ -1298,11 +1313,353 @@ static LONG v9x_dd_opengl_getinfo(LPVOID output)
     return 1;
 }
 
+#ifdef V9X_TDFX_FAMILY
+/*
+ * 3dfx Glide's escapes (docs\plans\3dfx-vsa100-glide-ext-hwc.md, step 1):
+ * EXT_HWC and EXT_HWC_OLD carry a 64-byte request whose second DWORD is the
+ * sub-function; QUERYESCMODE carries one DWORD (vsa100-ext-hwc.md, section
+ * 2). This step records each call in C:\V9XDIAG\V9XHWC.INI and declines it,
+ * which is what Glide sees from a driver without them.
+ *
+ * The request is read only as far as its selector's limit allows: GDI hands
+ * the buffer over as a 16:16 pointer, and a read past a short one would
+ * fault inside the display driver.
+ */
+#define V9X_EXT_HWC             0x3df3u
+#define V9X_EXT_HWC_OLD         0x0fd3u
+#define V9X_QUERYESCMODE        0x8001u
+#define V9X_HWC_REQUEST_DWORDS  16u
+#define V9X_HWC_LOG_CALLS       32u
+#define V9X_DIAG_HWC_INI        V9X_DIAG_PATH("V9XHWC.INI")
+
+static WORD v9x_hwc_calls = 0u;
+/* Every call counted, per escape, past the logged ones. */
+static DWORD v9x_hwc_count_hwc = 0ul;
+static DWORD v9x_hwc_count_query = 0ul;
+static DWORD v9x_hwc_count_support = 0ul;
+
+static void v9x_hwc_hex(char *text, DWORD value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    WORD index;
+
+    for (index = 0u; index < 8u; ++index) {
+        text[index] = digits[(WORD)(value >> ((7u - index) * 4u)) & 15u];
+    }
+    text[8] = '\0';
+}
+
+/* DWORDs of the buffer readable from its offset, at most the request. */
+static WORD v9x_hwc_readable(LPVOID buffer)
+{
+    DWORD limit;
+    WORD offset = (WORD)(DWORD)buffer;
+    WORD dwords;
+
+    if (buffer == 0) {
+        return 0u;
+    }
+    limit = GetSelectorLimit((UINT)((DWORD)buffer >> 16));
+    if (limit < (DWORD)offset + 3ul) {
+        return 0u;
+    }
+    dwords = (WORD)((limit - (DWORD)offset + 1ul) / 4ul);
+    return dwords < V9X_HWC_REQUEST_DWORDS ? dwords
+                                           : (WORD)V9X_HWC_REQUEST_DWORDS;
+}
+
+static LONG v9x_hwc_log(WORD function, WORD queried, LPVOID input,
+                        LPVOID output)
+{
+    char line[200];
+    char key[12];
+    char number[9];
+    WORD dwords;
+    WORD index;
+    WORD at;
+
+    if (queried != 0u) {
+        ++v9x_hwc_count_support;
+    } else if (function == V9X_QUERYESCMODE) {
+        ++v9x_hwc_count_query;
+    } else {
+        ++v9x_hwc_count_hwc;
+    }
+    /* The totals every 64 calls past the logged ones, so a loop shows as a
+     * growing count without an INI write on every call. */
+    if (v9x_hwc_calls >= V9X_HWC_LOG_CALLS) {
+        if (((v9x_hwc_count_hwc + v9x_hwc_count_query +
+              v9x_hwc_count_support) & 63ul) == 0ul) {
+            v9x_hwc_hex(number, v9x_hwc_count_hwc);
+            WritePrivateProfileString("Velocity9xHwc", "TotalExtHwc", number,
+                                      V9X_DIAG_HWC_INI);
+            v9x_hwc_hex(number, v9x_hwc_count_query);
+            WritePrivateProfileString("Velocity9xHwc", "TotalQueryEscMode",
+                                      number, V9X_DIAG_HWC_INI);
+            v9x_hwc_hex(number, v9x_hwc_count_support);
+            WritePrivateProfileString("Velocity9xHwc", "TotalQuerySupport",
+                                      number, V9X_DIAG_HWC_INI);
+        }
+        return 0;
+    }
+
+    /* esc=<function> [q=<queried escape>] out=<0|1> n=<dwords> then the
+     * request DWORDs in hex. */
+    lstrcpy(line, "esc=");
+    v9x_hwc_hex(number, function);
+    lstrcat(line, number + 4);
+    if (queried != 0u) {
+        lstrcat(line, " q=");
+        v9x_hwc_hex(number, queried);
+        lstrcat(line, number + 4);
+    }
+    lstrcat(line, output != 0 ? " out=1 n=" : " out=0 n=");
+    dwords = queried != 0u ? 0u : v9x_hwc_readable(input);
+    if (function == V9X_QUERYESCMODE && dwords > 1u) {
+        dwords = 1u;
+    }
+    v9x_hwc_hex(number, dwords);
+    lstrcat(line, number + 6);
+    at = (WORD)lstrlen(line);
+    for (index = 0u; index < dwords && at + 10u < sizeof(line); ++index) {
+        line[at++] = ' ';
+        v9x_hwc_hex(line + at, ((DWORD FAR *)input)[index]);
+        at += 8u;
+    }
+    line[at] = '\0';
+
+    lstrcpy(key, "Call");
+    v9x_hwc_hex(number, v9x_hwc_calls);
+    lstrcat(key, number + 6);
+    WritePrivateProfileString("Velocity9xHwc", key, line, V9X_DIAG_HWC_INI);
+    ++v9x_hwc_calls;
+    v9x_hwc_hex(number, v9x_hwc_calls);
+    WritePrivateProfileString("Velocity9xHwc", "Calls", number,
+                              V9X_DIAG_HWC_INI);
+    return 0;
+}
+
+/*
+ * QUERYESCMODE sub-function 3, QUERYDEVNODE: the display adapter's devnode
+ * in the first DWORD of a 12-byte reply (dwDevNode, dwValidDefGamma, then a
+ * gamma byte; vsa100-ext-hwc.md section 2). 3dfx's shipped Glide asks this
+ * before anything else and, declined, never sends EXT_HWC at all: it showed
+ * its empty error box after 64-127 of these and no EXT_HWC call (A8U4I5,
+ * boots 416-417). The devnode is the VDD's, from the same
+ * VDD_GET_DISPLAY_CONFIG call Enable makes; no default gamma is offered.
+ */
+#include "win9x_display_abi.h"
+
+#define V9X_QUERYDEVNODE        3ul
+#define V9X_QDEVNODE_BYTES      12u
+
+extern WORD FAR PASCAL V9xVddGetDisplayConfig(V9X_DISPLAY_INFO FAR *);
+
+static LONG v9x_hwc_query_devnode(LPVOID input, LPVOID output)
+{
+    V9X_DISPLAY_INFO display_info;
+    BYTE *bytes = (BYTE *)&display_info;
+    DWORD FAR *reply = (DWORD FAR *)output;
+    WORD index;
+
+    if (input == 0 || v9x_hwc_readable(input) == 0u ||
+        *(DWORD FAR *)input != V9X_QUERYDEVNODE || output == 0 ||
+        GetSelectorLimit((UINT)((DWORD)output >> 16)) <
+            (DWORD)(WORD)(DWORD)output + V9X_QDEVNODE_BYTES - 1ul) {
+        return 0;
+    }
+    for (index = 0u; index < sizeof(display_info); ++index) {
+        bytes[index] = 0u;
+    }
+    if (V9xVddGetDisplayConfig(&display_info) == 0u ||
+        display_info.device_node == 0ul) {
+        return 0;
+    }
+    reply[0] = display_info.device_node;
+    reply[1] = 0ul;
+    ((BYTE FAR *)output)[8] = 0u;
+    return 1;
+}
+
+/*
+ * EXT_HWC itself (plan step 2): the request copied in as far as its
+ * selector allows, the answer from tdfx_hwc.c, the reply copied out only
+ * into a buffer at least 44 bytes long. BAR0's and BAR1's first 32 MiB are
+ * mapped by the mini-VDD only when Glide asks for linear addresses. fbRam
+ * is the memory below the desktop (tdfx_hw16.c), so Glide's command FIFO
+ * and buffers stay clear of GDI's drawing
+ * (docs\issues\2026-10-12-glide-cmdfifo-overlaps-the-desktop.md).
+ *
+ * Exclusive take and release (step 3) move the engine between Glide and the
+ * driver: on take, GDI drains and declines every primitive, and the HAL
+ * loses V9X_DD_ENGINE_VALID, so both draw with the CPU; on release both get
+ * back what they had. Release is at RLSEXCLUSIVE, which Glide sends after
+ * its own idle wait and before its mode set back to the desktop, so the
+ * engine is no longer Glide's by then. A killed Glide process never
+ * releases, and the engine stays withheld until the next boot: the CPU
+ * draws everything, slower and correct.
+ */
+#include "velocity9x/tdfx_hwc.h"
+
+static struct v9x_tdfx_hwc_hold v9x_hwc_hold;
+
+static void v9x_hwc_restamp(void)
+{
+    if (v9x_dd_shared == 0) {
+        return;
+    }
+    v9x_dd_shared->engine.flags = v9x_tdfx_hwc_hold_restamp(
+        &v9x_hwc_hold, v9x_dd_shared->engine.flags, V9X_DD_ENGINE_VALID);
+}
+
+/*
+ * The evidence for a hold, in V9XHWC.INI: the HAL's engine flags (VALID is
+ * bit 0) and GDI's engine counters at a stage of the exclusive. Fills and
+ * copies flat between Taken and BeforeRelease, with DeclineDisabled rising,
+ * is GDI staying off the engine while Glide had it. Static, not on the
+ * caller's stack: the statistics block is several hundred bytes.
+ */
+static V9X_GDI_STATS v9x_hwc_gdi_stats;
+
+static void v9x_hwc_record_value(const char *stage, const char *name,
+                                 DWORD value)
+{
+    char key[40];
+    char number[9];
+
+    lstrcpy(key, stage);
+    lstrcat(key, name);
+    v9x_hwc_hex(number, value);
+    WritePrivateProfileString("Velocity9xHwc", key, number, V9X_DIAG_HWC_INI);
+}
+
+static void v9x_hwc_record_engine(const char *stage)
+{
+    v9x_hwc_record_value(stage, "EngineFlags",
+                         v9x_dd_shared != 0 ? v9x_dd_shared->engine.flags
+                                            : 0xfffffffful);
+    if (v9x_gdi_accel_stats(&v9x_hwc_gdi_stats) == 0u) {
+        return;
+    }
+    v9x_hwc_record_value(stage, "GdiFills", v9x_hwc_gdi_stats.fills);
+    v9x_hwc_record_value(stage, "GdiCopies", v9x_hwc_gdi_stats.copies);
+    v9x_hwc_record_value(stage, "GdiDeclineDisabled",
+                         v9x_hwc_gdi_stats.decline_disabled);
+}
+
+/* Take or release, for both clients of the engine. The HAL's share exists
+ * only once DirectDraw has made the shared block; GDI's always. */
+static void v9x_hwc_exclusive(v9x_u32 action)
+{
+    if (action == V9X_TDFX_HWC_ACTION_TAKE) {
+        v9x_gdi_accel_hold(1u);
+    }
+    if (v9x_dd_shared != 0) {
+        v9x_dd_shared->engine.flags = v9x_tdfx_hwc_hold_apply(
+            &v9x_hwc_hold, action, v9x_dd_shared->engine.flags,
+            V9X_DD_ENGINE_VALID);
+    } else {
+        (void)v9x_tdfx_hwc_hold_apply(&v9x_hwc_hold, action, 0ul,
+                                      V9X_DD_ENGINE_VALID);
+    }
+    if (action == V9X_TDFX_HWC_ACTION_RELEASE) {
+        v9x_gdi_accel_hold(0u);
+    }
+}
+
+#define V9X_HWC_REPLY_BYTES     (V9X_TDFX_HWC_REPLY_DWORDS * 4u)
+
+extern WORD FAR PASCAL V9xPciReadTdfxMmioBar(DWORD FAR *base);
+extern WORD FAR PASCAL V9xMiniTdfxBar0Map(DWORD bar0, DWORD FAR *linear);
+extern WORD FAR PASCAL V9xMiniTdfxBar1Map(DWORD bar1, DWORD FAR *linear);
+/* tdfx_hw16.c: where the desktop was placed, and Glide's share below it. */
+extern unsigned long v9x_tdfx_desktop_offset(void);
+extern unsigned long v9x_tdfx_glide_bytes(void);
+
+static LONG v9x_hwc_answer(LPVOID input, LPVOID output)
+{
+    struct v9x_tdfx_hwc_device device;
+    struct v9x_tdfx_hwc_answer answer;
+    v9x_u32 request[V9X_TDFX_HWC_REQUEST_DWORDS];
+    WORD dwords = v9x_hwc_readable(input);
+    WORD index;
+    DWORD bar0 = 0ul;
+
+    for (index = 0u; index < V9X_TDFX_HWC_REQUEST_DWORDS; ++index) {
+        request[index] = index < dwords ? ((DWORD FAR *)input)[index] : 0ul;
+    }
+
+    device.vendor_id = 0x121aul;
+    device.device_id = 0x0009ul;
+    /* chipRev has no reader in Glide (vsa100-ext-hwc.md); not read here. */
+    device.revision = 0ul;
+    /* The memory below the desktop: Glide's FIFO starts at 18000h and its
+     * buffers end at fbRam, so all of it stays clear of what GDI draws. */
+    device.fb_bytes = v9x_tdfx_glide_bytes();
+    device.bar0_linear = 0ul;
+    device.bar1_linear = 0ul;
+    /* Both mapped from byte 0. The driver's own framebuffer mapping starts
+     * at the desktop, so BAR1 is the aperture less the desktop's offset. */
+    if (dwords > V9X_TDFX_HWC_WHICH &&
+        request[V9X_TDFX_HWC_WHICH] == V9X_TDFX_HWC_GETLINEARADDR) {
+        if (V9xPciReadTdfxMmioBar(&bar0) != 0u) {
+            (void)V9xMiniTdfxBar0Map(bar0, &device.bar0_linear);
+        }
+        (void)V9xMiniTdfxBar1Map(V9xHardwareBase() -
+                                     v9x_tdfx_desktop_offset(),
+                                 &device.bar1_linear);
+    }
+
+    if (v9x_tdfx_hwc_answer(request, (v9x_u32)dwords, &device, &answer) !=
+            V9X_STATUS_OK ||
+        answer.reply_dwords == 0u) {
+        return 0;
+    }
+    if (output == 0 ||
+        GetSelectorLimit((UINT)((DWORD)output >> 16)) <
+            (DWORD)(WORD)(DWORD)output + V9X_HWC_REPLY_BYTES - 1ul) {
+        return 0;
+    }
+    for (index = 0u; index < (WORD)answer.reply_dwords; ++index) {
+        ((DWORD FAR *)output)[index] = answer.reply[index];
+    }
+    if (answer.action == V9X_TDFX_HWC_ACTION_TAKE) {
+        v9x_hwc_exclusive(answer.action);
+        WritePrivateProfileString("Velocity9xHwc", "Exclusive", "taken",
+                                  V9X_DIAG_HWC_INI);
+        v9x_hwc_record_engine("Taken");
+    } else if (answer.action == V9X_TDFX_HWC_ACTION_RELEASE) {
+        v9x_hwc_record_engine("BeforeRelease");
+        v9x_hwc_exclusive(answer.action);
+        WritePrivateProfileString("Velocity9xHwc", "Exclusive", "released",
+                                  V9X_DIAG_HWC_INI);
+        v9x_hwc_record_engine("Released");
+    }
+    return (LONG)answer.escape_return;
+}
+#endif
+
 LONG __loadds FAR PASCAL Control(LPVOID device,
                                  WORD function,
                                  LPVOID input,
                                  LPVOID output)
 {
+#ifdef V9X_TDFX_FAMILY
+    if (function == V9X_QUERYESCMODE) {
+        (void)v9x_hwc_log(function, 0u, input, output);
+        return v9x_hwc_query_devnode(input, output);
+    }
+    if (function == V9X_EXT_HWC || function == V9X_EXT_HWC_OLD) {
+        (void)v9x_hwc_log(function, 0u, input, output);
+        return v9x_hwc_answer(input, output);
+    }
+    if (function == V9X_QUERYESCSUPPORT && input != 0 &&
+        (*(WORD FAR *)input == V9X_EXT_HWC ||
+         *(WORD FAR *)input == V9X_EXT_HWC_OLD ||
+         *(WORD FAR *)input == V9X_QUERYESCMODE)) {
+        return v9x_hwc_log(function, *(WORD FAR *)input, input, output);
+    }
+#endif
     if (function == V9X_QUERYESCSUPPORT && input != 0 &&
         *(WORD FAR *)input == V9X_OPENGL_GETINFO) {
         return v9x_dd_opengl_query();

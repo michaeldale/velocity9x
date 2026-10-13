@@ -35,8 +35,10 @@ extern V9X_GLIDE_STATE v9x_glide_state;
  */
 int v9x_glide_core_attach(const char *log_path, const char *const *names,
                           unsigned int count);
-/* Writes the final summary and frees what attach and the LFB took. */
-void v9x_glide_core_detach(void);
+/* Writes the final summary and frees what attach and the LFB took.
+ * terminating: DLL_PROCESS_DETACH's reserved was non-null, the process is
+ * exiting rather than calling FreeLibrary. */
+void v9x_glide_core_detach(int terminating);
 
 void v9x_glide_log(const char *text);
 void v9x_glide_log3(const char *format, v9x_u32 a, v9x_u32 b, v9x_u32 c);

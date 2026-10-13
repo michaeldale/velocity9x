@@ -147,10 +147,20 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "build\ddraw-hal\v9xhal.dll") `
     -Destination (Join-Path $outputDir "V9XHAL.DLL") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\opengl\v9xgl.dll") `
     -Destination (Join-Path $outputDir "V9XGL.DLL") -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot "build\glide\glide2x.dll") `
-    -Destination (Join-Path $outputDir "GLIDE2X.DLL") -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot "build\glide3\glide3x.dll") `
-    -Destination (Join-Path $outputDir "GLIDE3X.DLL") -Force
+# A family whose card has its own Glide ships neither DLL; a copy left in the
+# output folder by an earlier build is removed so the file-set check below
+# sees what this build made.
+$shipsGlide = Test-V9xFamilyShipsGlide -Family $familyManifest
+foreach ($glideFile in @("GLIDE2X.DLL", "GLIDE3X.DLL")) {
+    Remove-Item -LiteralPath (Join-Path $outputDir $glideFile) -Force `
+        -ErrorAction SilentlyContinue
+}
+if ($shipsGlide) {
+    Copy-Item -LiteralPath (Join-Path $repoRoot "build\glide\glide2x.dll") `
+        -Destination (Join-Path $outputDir "GLIDE2X.DLL") -Force
+    Copy-Item -LiteralPath (Join-Path $repoRoot "build\glide3\glide3x.dll") `
+        -Destination (Join-Path $outputDir "GLIDE3X.DLL") -Force
+}
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\gdi-smoke\v9xgdi.exe") `
     -Destination (Join-Path $outputDir "V9XGDI.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\palette-smoke\v9xpal.exe") `
@@ -230,11 +240,31 @@ if ($miniVddVbeCollect) {
         'overrides a mode you chose.'
     )
 }
+# The Glide paragraph follows Package.GlideWrappers, so a 3dfx package does not
+# describe DLLs it does not carry.
+$glideLines = if ($shipsGlide) {
+    @(
+        'GLIDE2X.DLL is a Glide 2 driver for games written for 3dfx Voodoo cards,'
+        'drawing through the same engine. The INF copies it to SYSTEM unless a newer'
+        'GLIDE2X.DLL is there already, as a Voodoo card''s own is; that one is kept.'
+        'It has been run on the Intel GMA 950 only.'
+        'GLIDE3X.DLL is the Glide 3 driver (Diablo II, Rollcage), over the same'
+        'engine and copied under the same rule: a newer GLIDE3X.DLL, such as a'
+        'Voodoo3''s own, is kept. It has been run on the ATI Rage XL and the Intel'
+        'GMA 950.'
+    )
+} else {
+    @(
+        'This package installs no Glide driver: Glide games keep using the'
+        'GLIDE2X.DLL and GLIDE3X.DLL installed for the card.'
+    )
+}
 $installLines = Get-Content -LiteralPath $installSource | ForEach-Object {
     switch ($_) {
         '@FAMILY_SUMMARY@' { $familySummaryLines }
         '@MODEL_SELECTION@' { $modelLines }
         '@MODES_AFTER_FIRST_BOOT@' { $modesLines }
+        '@GLIDE@' { $glideLines }
         default { $_ -replace '@DEFAULT_MODE@', $defaultModeText }
     }
 }
@@ -270,7 +300,7 @@ if ($familyManifest.Id -eq 'intel-gma') {
         throw "V9XARM.BAT still contains an unsubstituted placeholder."
     }
     Set-Content -LiteralPath (Join-Path $outputDir "V9XARM.BAT") `
-        -Value $armLines -Encoding Ascii
+        -Value $armLines -Encoding Ascii
 
     # The Phase 5 armer on the same terms, so a colour or geometry experiment
     # is V9XCOPY then V9XARM5 in DOS rather than a host step with a build id
@@ -393,9 +423,13 @@ $manifest = @(
     "Palette test: 8-bit reserved-entry animation and screen readback",
     "Mode switching: live same-depth via ReEnable; depth change needs restart",
     "DirectDraw HAL: $($familyManifest.Package.HalDescription)",
-    "OpenGL: V9XGL.DLL, an OpenGL 1.1 ICD registered under OpenGLDrivers (16-bit desktops the engine can draw)",
-    "Glide: GLIDE2X.DLL, Glide 2.x over the same engine; never copied over a newer GLIDE2X.DLL, such as a 3dfx card's",
-    "Glide 3: GLIDE3X.DLL, Glide 3.x over the same engine; never copied over a newer GLIDE3X.DLL, such as a Voodoo3's",
+    "OpenGL: V9XGL.DLL, an OpenGL 1.1 ICD registered under OpenGLDrivers (16-bit desktops the engine can draw)"
+) + @(if ($shipsGlide) {
+    "Glide: GLIDE2X.DLL, Glide 2.x over the same engine; never copied over a newer GLIDE2X.DLL, such as a 3dfx card's"
+    "Glide 3: GLIDE3X.DLL, Glide 3.x over the same engine; never copied over a newer GLIDE3X.DLL, such as a Voodoo3's"
+} else {
+    "Glide: not included; the card keeps the GLIDE2X.DLL and GLIDE3X.DLL installed for it"
+}) + @(
     "Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)",
     "Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)",
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
@@ -421,7 +455,7 @@ Set-Content -LiteralPath (Join-Path $outputDir "SHA256.TXT") `
     -Encoding Ascii -Value $hashLines
 
 $expectedPackageFiles = @(
-    "FIRSTBOOT.TXT", "GLIDE2X.DLL", "GLIDE3X.DLL", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
+    "FIRSTBOOT.TXT", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
     "V9X16LD.EXE", "V9XCOPY.BAT", "V9XDDP.EXE", "V9XDISP.DRV",
     "V9XFIX.BAT", "V9XHAL.DLL", "V9XGL.DLL",
     "V9XGDI.EXE", "V9XMSW.EXE", "V9XPAL.EXE", "V9XPWR.EXE",
@@ -430,8 +464,12 @@ $expectedPackageFiles = @(
     "V9XUPD.EXE", "V9XWND.EXE",
     "VELOCITY9X.INF"
 )
+if ($shipsGlide) {
+    $expectedPackageFiles += "GLIDE2X.DLL"
+    $expectedPackageFiles += "GLIDE3X.DLL"
+}
 if ($familyManifest.Id -eq 'intel-gma') {
-    $expectedPackageFiles += "V9XARM.BAT"
+    $expectedPackageFiles += "V9XARM.BAT"
     $expectedPackageFiles += "V9XARM5.BAT"
     $expectedPackageFiles += "V9XARM6.BAT"
     $expectedPackageFiles += "V9X3D.BAT"

@@ -17,7 +17,7 @@ $script:V9xFamilySchemaVersion = 1
 # catching it here names the manifest and the chip instead.
 $script:V9xEngineTypes = @('NONE', 'S3_VIRGE_DX', 'S3_TRIO64',
                            'INTEL_GEN3', 'ATI_MACH64', 'ATI_RAGE2',
-                           'SIS_6326', 'MGA')
+                           'SIS_6326', 'MGA', 'TDFX')
 $script:V9xEngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
 
 function Get-V9xFamilyRoot {
@@ -51,6 +51,20 @@ function Assert-V9xFamilyKeys {
     if ($missing.Count -ne 0) {
         throw "$Context is missing key(s): $($missing -join ', ')."
     }
+}
+
+function Test-V9xFamilyShipsGlide {
+    <#
+      Does this family's package carry the Velocity9x GLIDE2X.DLL and
+      GLIDE3X.DLL? True unless the manifest sets Package.GlideWrappers to
+      $false. One definition so the package builder, the INF generator and
+      its assertion cannot disagree.
+    #>
+    param([Parameter(Mandatory = $true)]$Family)
+
+    return -not ($Family.Package -is [hashtable] -and
+                 $Family.Package.ContainsKey('GlideWrappers') -and
+                 $Family.Package.GlideWrappers -eq $false)
 }
 
 function Test-V9xFamilyHasApertureHook {
@@ -458,6 +472,16 @@ function Test-V9xFamilyManifest {
                    "not one of the $($manualModes.Count) modes its " +
                    "manual-select model advertises.")
         }
+    }
+
+    # Optional, default true: the package ships GLIDE2X.DLL and GLIDE3X.DLL.
+    # A family whose card has its own Glide sets it false; check-tree
+    # requires that of every family claiming a 3dfx chip.
+    if ($Family.Package -is [hashtable] -and
+        $Family.Package.ContainsKey('GlideWrappers') -and
+        $Family.Package.GlideWrappers -isnot [bool]) {
+        throw ("Family $Id Package.GlideWrappers must be a boolean when " +
+               "present; got '$($Family.Package.GlideWrappers)'.")
     }
 
     Assert-V9xFamilyKeys -Table $Family.Floppy -Context "Family $Id Floppy" -Required @(

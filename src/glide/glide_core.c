@@ -1117,8 +1117,11 @@ void v9x_glide_line(const float *a, const float *b)
 }
 
 /*
- * grBufferClear: the colour buffer always, the depth buffer when depth
- * buffering is on and writable (Reference Manual), inside the clip window.
+ * grBufferClear: the colour buffer while grColorMask lets colour through,
+ * the depth buffer when depth buffering is on and writable (Reference
+ * Manual; v9x_glide_clear_plan), inside the clip window. Carmageddon II
+ * masks colour for the depth-only clear after its LFB menu backdrop; a
+ * clear that ignored the mask painted the backdrop black.
  *
  * Drawn, not cleared. The render interface's clear waits for the engine
  * and writes both buffers with the CPU: on the netbook, through the
@@ -1139,6 +1142,7 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     V9X_R3D_ABI_VERTEX quad[6];
     V9X_R3D_ABI_CLEAR clear;
     V9X_R3D_ABI_RECT rect;
+    V9X_GLIDE_CLEAR_PLAN plan;
     v9x_u32 result = V9X_R3D_RESULT_INVALID;
     v9x_u32 start;
     float left;
@@ -1164,13 +1168,15 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     clear.struct_bytes = sizeof(clear);
     clear.target.surface = v9x_glide_device_buffer(v9x_glide_render_buffer);
     clear.depth.surface = v9x_glide_device_buffer(V9X_GLIDE_BUFFER_AUX);
-    clear.clear_color = 1ul;
+    v9x_glide_clear_plan(&v9x_glide_state, clear.depth.surface != 0, &plan);
+    if (!plan.color && !plan.depth) {
+        return;
+    }
+    clear.clear_color = plan.color;
     clear.color_value = v9x_glide_color_to_argb(color, v9x_glide_color_format) &
                         0x00FFFFFFul;
-    clear.write_mask = V9X_R3D_ABI_WRITE_RGB;
-    if (clear.depth.surface != 0 &&
-        v9x_glide_state.depth_mode != V9X_GLIDE_DEPTH_DISABLE &&
-        v9x_glide_state.depth_mask) {
+    clear.write_mask = plan.color ? V9X_R3D_ABI_WRITE_RGB : 0ul;
+    if (plan.depth) {
         clear.clear_depth = 1ul;
         clear.write_depth = 1ul;
         clear.depth_value = depth & 0xFFFFul;
@@ -1187,6 +1193,15 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     setup.state.depth_func = V9X_GLIDE_CMP_ALWAYS + 1ul;
     setup.state.src_blend = 2ul;            /* D3DBLEND_ONE */
     setup.state.dst_blend = 1ul;            /* D3DBLEND_ZERO */
+    /* Colour masked: the same rectangle blended (ZERO, ONE) leaves every
+     * colour pixel as it was and still writes depth. A write mask of zero
+     * would say the same, but Gen3 refuses a partial mask and the fallback
+     * is the CPU clear this function exists to avoid. */
+    if (!plan.color) {
+        setup.state.blend_enable = 1ul;
+        setup.state.src_blend = 1ul;        /* D3DBLEND_ZERO */
+        setup.state.dst_blend = 2ul;        /* D3DBLEND_ONE */
+    }
     setup.state.write_mask = V9X_R3D_ABI_WRITE_RGB;
     setup.state.scissor_right = v9x_glide_state.width;
     setup.state.scissor_bottom = v9x_glide_state.height;
@@ -1661,8 +1676,13 @@ int v9x_glide_core_attach(const char *log_path, const char *const *names,
     return 1;
 }
 
-void v9x_glide_core_detach(void)
+void v9x_glide_core_detach(int terminating)
 {
+    /* Whether the program is exiting or only unloading the DLL: Carmageddon
+     * II's sessions of 2026-10-11 detached with no grGlideShutdown, and the
+     * log could not say which. */
+    v9x_glide_log3("detach: process exiting=%lu", (v9x_u32)(terminating != 0),
+                   0ul, 0ul);
     v9x_glide_summary("detach");
     if (v9x_glide_lfb != 0) {
         VirtualFree(v9x_glide_lfb, 0, MEM_RELEASE);

@@ -154,6 +154,111 @@ static void v9x_census_name(char *out, DWORD index, const char *field)
     out[at] = 0;
 }
 
+/* A text field of the shared block, cut at its own size: the 16-bit side
+ * copies the bytes, and a terminator is not something to trust across it. */
+static void v9x_write_bounded(const char *key, const char *value,
+                              DWORD capacity)
+{
+    char text[V9X_WATCH_TEXT_BYTES + 1];
+    DWORD index;
+
+    for (index = 0ul; index < capacity && index < V9X_WATCH_TEXT_BYTES &&
+                      value[index] != '\0'; ++index) {
+        text[index] = value[index];
+    }
+    text[index] = '\0';
+    v9x_write_text(key, text);
+}
+
+/* "Watch<n><field>", assembled as v9x_census_name does. */
+static void v9x_watch_name(char *out, DWORD index, const char *field)
+{
+    DWORD at = 0ul;
+    const char *prefix = "Watch";
+
+    while (*prefix != 0) {
+        out[at++] = *prefix++;
+    }
+    out[at++] = (char)('0' + index);
+    while (*field != 0) {
+        out[at++] = *field++;
+    }
+    out[at] = 0;
+}
+
+/*
+ * How each program using the HAL ended (V9X_WATCH, ddhal_watch.c): the
+ * last four processes it attached to, then the latest exit, message box,
+ * filter replacement and fault. Caller and module together give an offset
+ * into the program to disassemble.
+ */
+static void v9x_write_watch(const V9X_WATCH *watch)
+{
+    char key[32];
+    DWORD index;
+
+    for (index = 0ul; index < V9X_WATCH_PROCESS_SLOTS; ++index) {
+        const V9X_WATCH_PROCESS *process = &watch->processes[index];
+
+        if (process->pid == 0ul) {
+            continue;
+        }
+        v9x_watch_name(key, index, "Name");
+        v9x_write_bounded(key, process->name, V9X_WATCH_NAME_BYTES);
+        v9x_watch_name(key, index, "Pid");
+        v9x_write_hex(key, process->pid);
+        v9x_watch_name(key, index, "Image");
+        v9x_write_hex(key, process->image);
+        v9x_watch_name(key, index, "Hooks");
+        v9x_write_hex(key, process->hooks);
+        v9x_watch_name(key, index, "AttachTick");
+        v9x_write_uint(key, process->attach_tick);
+        v9x_watch_name(key, index, "Ended");
+        v9x_write_uint(key, process->ended);
+        v9x_watch_name(key, index, "EndedTick");
+        v9x_write_uint(key, process->ended_tick);
+        v9x_watch_name(key, index, "MemoryLoad");
+        v9x_write_uint(key, process->memory_load);
+        v9x_watch_name(key, index, "TotalPhys");
+        v9x_write_uint(key, process->total_phys);
+        v9x_watch_name(key, index, "AvailPhys");
+        v9x_write_uint(key, process->avail_phys);
+        v9x_watch_name(key, index, "TotalPageFile");
+        v9x_write_uint(key, process->total_page_file);
+        v9x_watch_name(key, index, "AvailPageFile");
+        v9x_write_uint(key, process->avail_page_file);
+        v9x_watch_name(key, index, "TotalVirtual");
+        v9x_write_uint(key, process->total_virtual);
+        v9x_watch_name(key, index, "AvailVirtual");
+        v9x_write_uint(key, process->avail_virtual);
+    }
+    v9x_write_uint("WatchExitVia", watch->exit_via);
+    v9x_write_hex("WatchExitPid", watch->exit_pid);
+    v9x_write_hex("WatchExitCode", watch->exit_code);
+    v9x_write_hex("WatchExitCaller", watch->exit_caller);
+    v9x_write_hex("WatchExitCallerModule", watch->exit_caller_module);
+    v9x_write_uint("WatchExitTick", watch->exit_tick);
+    v9x_write_uint("WatchMessageCount", watch->message_count);
+    v9x_write_hex("WatchMessagePid", watch->message_pid);
+    v9x_write_hex("WatchMessageType", watch->message_type);
+    v9x_write_hex("WatchMessageCaller", watch->message_caller);
+    v9x_write_hex("WatchMessageCallerModule", watch->message_caller_module);
+    v9x_write_uint("WatchMessageTick", watch->message_tick);
+    v9x_write_bounded("WatchMessageCaption", watch->message_caption,
+                      V9X_WATCH_CAPTION_BYTES);
+    v9x_write_bounded("WatchMessageText", watch->message_text,
+                      V9X_WATCH_TEXT_BYTES);
+    v9x_write_uint("WatchFilterCount", watch->filter_count);
+    v9x_write_hex("WatchFilterPid", watch->filter_pid);
+    v9x_write_hex("WatchFilterLast", watch->filter_last);
+    v9x_write_hex("WatchFilterCaller", watch->filter_caller);
+    v9x_write_hex("WatchFaultPid", watch->fault_pid);
+    v9x_write_hex("WatchFaultCode", watch->fault_code);
+    v9x_write_hex("WatchFaultAddress", watch->fault_address);
+    v9x_write_hex("WatchFaultModule", watch->fault_module);
+    v9x_write_uint("WatchFaultTick", watch->fault_tick);
+}
+
 /*
  * The Gen3 display layout as it stands NOW, read by this tool straight from
  * the BAR0 window the mini-VDD mapped.
@@ -1663,6 +1768,7 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_SPLIT]);
     v9x_write_uint("MgaSetupRefusedBuild",
                    snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_BUILD]);
+    v9x_write_watch(&snapshot.d3d.watch);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);
     v9x_write_hex("AlphaTestRefLast", snapshot.d3d.alpha_test_ref_last);

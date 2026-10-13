@@ -54,6 +54,14 @@
 #ifdef V9X_MGA_FAMILY
 #include "velocity9x/mga_engine.h"
 #endif
+/* The 3dfx arm likewise uses tdfx_2d.c, the builder eng_tdfx.c uses, linked
+ * into the 3dfx family's DRV only. */
+#ifdef V9X_TDFX_FAMILY
+#include "velocity9x/tdfx_2d.h"
+
+/* tdfx_hw16.c: the desktop's byte offset in video memory. */
+extern unsigned long v9x_tdfx_desktop_offset(void);
+#endif
 
 /* ddi.c: the live screen PDEVICE, or NULL between Disable and Enable. This is
  * the driver's own liveness test and the identity an accelerated destination
@@ -244,6 +252,15 @@ static WORD v9x_gdi_report_pending;
  * engine-less family stays in for ever.
  */
 static WORD v9x_gdi_engine_live;
+
+/*
+ * Set while another client owns the engine: 3dfx Glide between its exclusive
+ * take and release (dd16.c). Every primitive declines at gate 1 and the DIB
+ * Engine draws instead. Unlike the poison it is not a fault and is cleared
+ * on release; like it, it lives in DGROUP so a mode set inside Glide's
+ * session cannot reset it.
+ */
+static WORD v9x_gdi_held;
 
 /*
  * Set by a text callback that could not draw what the DIB Engine handed it,
@@ -450,6 +467,24 @@ static WORD v9x_gdi_wait_idle(void)
                 }
             } while (spins-- != 0ul);
 #endif
+#ifdef V9X_TDFX_FAMILY
+        } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
+            /* Idle is three consecutive reads with the busy bit clear
+             * (docs\specifications\vsa100-registers.md, status), as in
+             * eng_tdfx.c. */
+            WORD clear = 0u;
+
+            do {
+                if (v9x_tdfx_status_busy(v9x_gdi_read(V9X_TDFX_2D_STATUS)) ==
+                        0ul) {
+                    if (++clear >= 3u) {
+                        return 1u;
+                    }
+                } else {
+                    clear = 0u;
+                }
+            } while (spins-- != 0ul);
+#endif
         } else {
             do {
                 if ((v9x_gdi_virge_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
@@ -481,6 +516,21 @@ void __loadds FAR PASCAL V9xGdiBeginAccessSlow(void)
 }
 
 /*
+ * Hand the engine to another client or take it back. Handing it over waits
+ * for the engine to go idle first, dirty or not: the busy bit covers the
+ * whole engine, so this also outlasts the HAL's last blit, which leaves no
+ * flag on this side. The wait is the BeginAccess drain and poisons on a
+ * timeout, as any bounded wait here does.
+ */
+void v9x_gdi_accel_hold(WORD held)
+{
+    if (held != 0u && v9x_gdi_engine_live != 0u) {
+        V9xGdiBeginAccessSlow();
+    }
+    v9x_gdi_held = held;
+}
+
+/*
  * One accelerated operation, resolved from the DDI arguments before any
  * register is touched. Gathering it first is what lets the gates run
  * cheapest-first without the primitives re-deriving anything.
@@ -509,6 +559,10 @@ typedef struct v9x_gdi_op {
     /* The MGA fill or copy, built at gate 8 so a rectangle the builder
      * refuses declines before the cursor is excluded. */
     struct v9x_mga_writes mga;
+#endif
+#ifdef V9X_TDFX_FAMILY
+    /* The VSA-100 fill or copy, built at gate 8 for the same reason. */
+    struct v9x_tdfx_blt tdfx;
 #endif
 } V9X_GDI_OP;
 
@@ -750,6 +804,28 @@ static WORD v9x_gdi_mga_draw(const V9X_GDI_OP *op)
     }
     v9x_gdi_mga_emit(&setup);
     v9x_gdi_mga_emit(&op->mga);
+    return 1u;
+}
+#endif
+
+#ifdef V9X_TDFX_FAMILY
+/*
+ * One VSA-100 fill or copy, built at gate 8 by the builder eng_tdfx.c uses.
+ * Waits for idle first, as the MGA arm does; the builder's writes carry
+ * their own setup (open clip, no colour key) and end with the command,
+ * whose initiate bit starts the engine, so there is no separate per-mode
+ * state to restore.
+ */
+static WORD v9x_gdi_tdfx_draw(const V9X_GDI_OP *op)
+{
+    DWORD index;
+
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    for (index = 0ul; index < op->tdfx.count; ++index) {
+        v9x_gdi_write(op->tdfx.offsets[index], op->tdfx.values[index]);
+    }
     return 1u;
 }
 #endif
@@ -1428,6 +1504,18 @@ void v9x_gdi_accel_configure(void)
             v9x_gdi_engine_live = 1u;
         }
 #endif
+#ifdef V9X_TDFX_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX &&
+               control_base != 0ul &&
+               aperture_bytes > V9X_TDFX_2D_COMMAND + 4ul) {
+        /* The 2D block the mini-VDD mapped; it withholds one whose status
+         * reads all ones, and this is the same refusal on this side. */
+        if (V9xEngineSelector(control_base, (WORD)(aperture_bytes - 1ul)) !=
+                0u &&
+            v9x_gdi_read(V9X_TDFX_2D_STATUS) != 0xfffffffful) {
+            v9x_gdi_engine_live = 1u;
+        }
+#endif
     }
     if (v9x_gdi_engine_live == 0u) {
         v9x_gdi.enabled = 0ul;
@@ -1566,9 +1654,11 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
      * This is the whole cost of this file to every family but s3, whose
      * engines have no primitive here and therefore never leave
      * v9x_gdi.enabled non-zero. It is also where a poisoned session declines for ever, since
-     * the latch clears the mask.
+     * the latch clears the mask. A client holding the engine declines here
+     * too.
      */
-    if (v9x_gdi.enabled == 0ul || v9x_gdi_engine_live == 0u) {
+    if (v9x_gdi.enabled == 0ul || v9x_gdi_engine_live == 0u ||
+        v9x_gdi_held != 0u) {
         ++v9x_gdi.decline_disabled;
         goto decline;
     }
@@ -1984,6 +2074,66 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             goto decline;
         }
 #endif
+#ifdef V9X_TDFX_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
+        /*
+         * The builder is the authority, as for the MGA: a rectangle outside
+         * the surface or the engine's fields is refused and declines here.
+         * vram_bytes is the screen surface's own extent.
+         *
+         * The engine addresses video memory from its first byte, and the
+         * surface's offset is from the desktop, which tdfx_hw16.c places
+         * above Glide's memory; the desktop's offset is added to both.
+         */
+        v9x_u32 surface_base = op.base + v9x_tdfx_desktop_offset();
+        v9x_u32 surface_bytes = surface_base +
+            op.pitch * (v9x_u32)destination_device->deHeight;
+        v9x_status built;
+
+        if (upload != 0u) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+        if (rop256 == V9X_ROP256_SRCCOPY) {
+            struct v9x_tdfx_copy copy;
+
+            copy.vram_bytes = surface_bytes;
+            copy.source_offset = surface_base;
+            copy.source_pitch_bytes = op.pitch;
+            copy.destination_offset = surface_base;
+            copy.destination_pitch_bytes = op.pitch;
+            copy.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            copy.source_left = (v9x_u32)op.source_x;
+            copy.source_top = (v9x_u32)op.source_y;
+            copy.destination_left = (v9x_u32)op.destination_x;
+            copy.destination_top = (v9x_u32)op.destination_y;
+            copy.width = (v9x_u32)op.width;
+            copy.height = (v9x_u32)op.height;
+            built = v9x_tdfx_build_copy(&copy, &op.tdfx);
+        } else {
+            struct v9x_tdfx_fill fill;
+
+            fill.vram_bytes = surface_bytes;
+            fill.target_offset = surface_base;
+            fill.pitch_bytes = op.pitch;
+            fill.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            fill.left = (v9x_u32)op.destination_x;
+            fill.top = (v9x_u32)op.destination_y;
+            fill.width = (v9x_u32)op.width;
+            fill.height = (v9x_u32)op.height;
+            /* A solid brush's Bits carry the pixel replicated across the
+             * dword (the MGA builder masks it the same way); the VSA-100
+             * builder refuses a colour wider than the pixel, so it is cut
+             * to the pixel here. */
+            fill.color = op.color & all_ones;
+            fill.rop = V9X_TDFX_ROP_SRCCOPY;
+            built = v9x_tdfx_build_fill(&fill, &op.tdfx);
+        }
+        if (built != V9X_STATUS_OK) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+#endif
     } else {
         ++v9x_gdi.decline_engine;
         goto decline;
@@ -2031,6 +2181,10 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
 #ifdef V9X_MGA_FAMILY
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
         issued = v9x_gdi_mga_draw(&op);
+#endif
+#ifdef V9X_TDFX_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
+        issued = v9x_gdi_tdfx_draw(&op);
 #endif
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)
@@ -2469,7 +2623,8 @@ DWORD __loadds FAR PASCAL ExtTextOut(V9X_DIB_ENGINE FAR *device,
         }
         probing = 1u;
     }
-    if (v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u) {
+    if (v9x_gdi_engine_live == 0u || v9x_gdi_poisoned != 0u ||
+        v9x_gdi_held != 0u) {
         V9X_GDI_TEXT_REJECT(1u);
         goto decline;
     }

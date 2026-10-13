@@ -2,7 +2,24 @@
 
 Date: 2026-10-11
 
-Status: Phase 0 done; Phase 1 under way. The retail Voodoo4 4500 AGP
+Status: Phase 2 first bind done: Velocity9x runs the Voodoo4 at tier-0,
+enable-ok at boot 409 on A8U4I5
+([2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md](../decisions/2026-10-11-voodoo4-runs-velocity9x-at-tier-0-and-its-vbe-reports-half-its-memory.md)).
+VBE reports 16 MiB of the 32 and the BIOS leaves the last 4 KiB tiled; the
+memory hook, reading through BAR2, now gives the driver 32 MiB less that
+page (boot 410,
+[2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md](../decisions/2026-10-11-voodoo4-memory-registers-read-the-same-through-the-io-window.md)).
+All 18 published modes switch
+([mode matrix](../probe/a8u4i5-voodoo4-velocity9x-2026-10-11/mode-matrix-boot410/README.md)),
+so Phase 2's exit gate is met apart from the scanout check, not run. Phase 0
+done; Phase 1 partly done (stock-driver game baseline not run). Phase 3:
+the 2D engine fills and copies pixel-exact and DirectDraw runs on it
+(boot 411,
+[2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md](../decisions/2026-10-11-voodoo4-directdraw-fills-and-copies-run-on-the-2d-engine.md));
+GDI fill and copy run on it too, `V9XGDI /accel` PASS at 640x480x8,
+640x480x16 and 1024x768x16
+([2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md](../decisions/2026-10-11-voodoo4-gdi-fill-and-copy-on-the-engine.md)).
+Still open in Phase 3: the command FIFO, 32 bpp, text. Next: Phase 4. The retail Voodoo4 4500 AGP
 (32 MiB) is in A8U4I5 on 3dfx 1.04.00, and its first register survey is
 recorded at 640x480
 ([2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md](../decisions/2026-10-11-voodoo4-stock-driver-tiles-its-desktop-at-the-top-of-memory.md)).
@@ -411,13 +428,15 @@ Exit gate: the decision record plus the archived probe output and captures.
    `MiniVddVbeCollect = $true`; static mode rows only where Phase 1's ROM
    image shows them. `Vm.Emulator = 'none'` unless the Voodoo3 chip already
    brought a guest. `EngineType 'NONE'`.
-3. **hw16 data.** `framebuffer_bar` = BAR1. Usable VRAM = min(`dramInit0`
-   decode, BIOS tile boundary), through a pure, host-tested function
-   (`v9x_tdfx_vsa100_usable_memory`). Its failing tests come first, from the
-   retail 4500's Phase 1 vector and the Mini-Me's (`0x607EADF9`, control
-   `0x3FFF`, compare `0` → 32 MiB linear of 64 decoded). Reading those
-   registers needs BAR0 mapped; that mapping is mechanics in the backend,
-   the arithmetic is policy.
+3. **hw16 data.** `framebuffer_bar` = BAR1. First bind: every hook NULL,
+   memory from VBE 4F00h clamped to a 32 MiB mapping (one chip's memory),
+   as SiS started. Then the probe reads the tile boundary this BIOS leaves
+   in a VBE mode, under our driver, and a `read_video_memory` hook takes
+   usable VRAM = min(`dramInit0` decode, BIOS tile boundary) through the
+   host-tested `v9x_tdfx_vsa100_usable_memory`. `dramInit0` is readable
+   through BAR2 (I/O) before any mapping exists; the boundary needs the
+   `lfbMemoryConfig` selector, a write, so its handling is decided from that
+   measurement.
 4. **Gates.** `check-tree`, `build-host`, `update-backend-registry`,
    `run-checks` green; enable gate and mode matrix on A8U4I5; the scanout
    check. The boot-time VBE table is archived with the record.
@@ -486,6 +505,8 @@ Exit gate: each title starts, renders like its baseline capture, and
 returns a usable desktop; decision record with captures.
 
 ## Phase 5 — Direct3D engine (OpenGL follows)
+
+Detailed plan: [3dfx-vsa100-d3d.md](3dfx-vsa100-d3d.md).
 
 Plugs into `V9X_D3D_ENGINE_OPS`. Napalm triangle setup and formats from the
 fact sheet, Mesa `tdfx` as a compatible worked example. 16-bit colour and

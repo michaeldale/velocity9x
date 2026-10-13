@@ -161,6 +161,31 @@ V9xMgaMmioBase   dd 0
 V9xMgaMmioLinear dd 0
 ENDIF
 
+IFDEF V9X_TDFX_MMIO
+; 3dfx VSA-100: BAR0's engine registers, mapped once for the 2D and 3D
+; engines. The window starts at the 2D block, BAR0 + 100000h (Napalm spec
+; section 4), whose offset 0 is the status register's alias (section
+; 7.2.1), and runs through the 3D block at + 100000h to the end of TMU0's
+; registers (chip field 2, + 800h; section 8 p.81).
+V9X_TDFX_2D_OFFSET      equ 00100000h
+V9X_TDFX_MMIO_BYTES     equ 00101000h
+V9X_TDFX_BAR0_ALIGN     equ 01ffffffh
+V9X_TDFX_2D_STATUS      equ 00000000h
+V9xTdfxMmioBase   dd 0
+V9xTdfxMmioLinear dd 0
+; BAR0's first 32 MiB, mapped once for Glide's EXT_HWC GETLINEARADDR.
+V9X_TDFX_BAR0_MAP_BYTES equ 02000000h
+V9X_TDFX_INIT_STATUS    equ 00000000h
+V9xTdfxBar0Base   dd 0
+V9xTdfxBar0Linear dd 0
+; BAR1's first 32 MiB, the framebuffer from byte 0, mapped once for the same
+; call; BAR1 is 128 MiB on every measured board, so 128 MiB aligned.
+V9X_TDFX_BAR1_MAP_BYTES equ 02000000h
+V9X_TDFX_BAR1_ALIGN     equ 07ffffffh
+V9xTdfxBar1Base   dd 0
+V9xTdfxBar1Linear dd 0
+ENDIF
+
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
@@ -2243,6 +2268,12 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_SisMmioMap
     cmp     ax, V9XMINI_FN_MGA_MMIO_MAP
     je      V9xMini_Api_MgaMmioMap
+    cmp     ax, V9XMINI_FN_TDFX_MMIO_MAP
+    je      V9xMini_Api_TdfxMmioMap
+    cmp     ax, V9XMINI_FN_TDFX_BAR0_MAP
+    je      V9xMini_Api_TdfxBar0Map
+    cmp     ax, V9XMINI_FN_TDFX_BAR1_MAP
+    je      V9xMini_Api_TdfxBar1Map
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -2630,6 +2661,128 @@ V9xMini_Api_MgaMmioMap_Check:
 V9xMini_Api_MgaMmioMap_Failed:
     mov     V9xMgaMmioBase, 0
 V9xMini_Api_MgaMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR0 physical. See V9XMINI_FN_TDFX_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_TdfxMmioMap:
+IFDEF V9X_TDFX_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_TdfxMmioMap_Refused
+    cmp     eax, 0fe000000h
+    ja      short V9xMini_Api_TdfxMmioMap_Refused
+    ; BAR0 is 32 MiB or larger on every VSA-100 board, so at least 32 MiB
+    ; aligned.
+    test    eax, V9X_TDFX_BAR0_ALIGN
+    jnz     short V9xMini_Api_TdfxMmioMap_Refused
+
+    cmp     V9xTdfxMmioLinear, 0
+    je      short V9xMini_Api_TdfxMmioMap_Map
+    cmp     eax, V9xTdfxMmioBase
+    jne     short V9xMini_Api_TdfxMmioMap_Refused
+    jmp     short V9xMini_Api_TdfxMmioMap_Check
+
+V9xMini_Api_TdfxMmioMap_Map:
+    mov     V9xTdfxMmioBase, eax
+    add     eax, V9X_TDFX_2D_OFFSET
+    VMMcall _MapPhysToLinear,<eax,V9X_TDFX_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxMmioMap_Failed
+    mov     V9xTdfxMmioLinear, eax
+
+    ; A BAR whose decode is off reads all ones; withhold it.
+V9xMini_Api_TdfxMmioMap_Check:
+    mov     edx, V9xTdfxMmioLinear
+    mov     eax, [edx+V9X_TDFX_2D_STATUS]
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxMmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_TdfxMmioMap_Failed:
+    mov     V9xTdfxMmioBase, 0
+V9xMini_Api_TdfxMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR0 physical. See V9XMINI_FN_TDFX_BAR0_MAP in V9XMAPI.INC.
+V9xMini_Api_TdfxBar0Map:
+IFDEF V9X_TDFX_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_TdfxBar0Map_Refused
+    cmp     eax, 0fe000000h
+    ja      short V9xMini_Api_TdfxBar0Map_Refused
+    test    eax, V9X_TDFX_BAR0_ALIGN
+    jnz     short V9xMini_Api_TdfxBar0Map_Refused
+
+    cmp     V9xTdfxBar0Linear, 0
+    je      short V9xMini_Api_TdfxBar0Map_Map
+    cmp     eax, V9xTdfxBar0Base
+    jne     short V9xMini_Api_TdfxBar0Map_Refused
+    jmp     short V9xMini_Api_TdfxBar0Map_Check
+
+V9xMini_Api_TdfxBar0Map_Map:
+    mov     V9xTdfxBar0Base, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_TDFX_BAR0_MAP_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxBar0Map_Failed
+    mov     V9xTdfxBar0Linear, eax
+
+    ; A BAR whose decode is off reads all ones; withhold it.
+V9xMini_Api_TdfxBar0Map_Check:
+    mov     edx, V9xTdfxBar0Linear
+    mov     eax, [edx+V9X_TDFX_INIT_STATUS]
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxBar0Map_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_TdfxBar0Map_Failed:
+    mov     V9xTdfxBar0Base, 0
+V9xMini_Api_TdfxBar0Map_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR1 physical. See V9XMINI_FN_TDFX_BAR1_MAP in V9XMAPI.INC.
+V9xMini_Api_TdfxBar1Map:
+IFDEF V9X_TDFX_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_TdfxBar1Map_Refused
+    cmp     eax, 0f8000000h
+    ja      short V9xMini_Api_TdfxBar1Map_Refused
+    test    eax, V9X_TDFX_BAR1_ALIGN
+    jnz     short V9xMini_Api_TdfxBar1Map_Refused
+
+    cmp     V9xTdfxBar1Linear, 0
+    je      short V9xMini_Api_TdfxBar1Map_Map
+    cmp     eax, V9xTdfxBar1Base
+    jne     short V9xMini_Api_TdfxBar1Map_Refused
+    jmp     short V9xMini_Api_TdfxBar1Map_Done
+
+V9xMini_Api_TdfxBar1Map_Map:
+    mov     V9xTdfxBar1Base, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_TDFX_BAR1_MAP_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_TdfxBar1Map_Failed
+    mov     V9xTdfxBar1Linear, eax
+
+V9xMini_Api_TdfxBar1Map_Done:
+    mov     edx, V9xTdfxBar1Linear
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_TdfxBar1Map_Failed:
+    mov     V9xTdfxBar1Base, 0
+V9xMini_Api_TdfxBar1Map_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

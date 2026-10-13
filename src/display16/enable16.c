@@ -939,9 +939,26 @@ static DWORD v9x_vbe_default_aperture(void)
  * Every failure leaves v9x_hardware_stage_code at the stage that refused,
  * which is what the boot trace reports.
  */
+/* The family's place_desktop hook, with the selected mode's pitch; 0 for a
+ * family without one or a mode with no geometry. */
+static DWORD v9x_place_desktop(void)
+{
+    WORD width;
+    WORD height;
+    WORD bpp;
+    WORD pitch;
+
+    if (v9x_hw16.place_desktop == 0 ||
+        v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u) {
+        return 0ul;
+    }
+    return v9x_hw16.place_desktop(pitch);
+}
+
 WORD FAR PASCAL V9xHardwareEnable(void)
 {
     DWORD base;
+    DWORD desktop_offset;
     const V9X_HW16_DEVICE *device;
     WORD mapped;
 
@@ -972,6 +989,7 @@ WORD FAR PASCAL V9xHardwareEnable(void)
             return 0u;
         }
     }
+    desktop_offset = v9x_place_desktop();
 
     v9x_hardware_stage_code = 3u;
     /* Written before the call and overwritten after it, so a hook that does
@@ -996,6 +1014,9 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     if (base == 0ul) {
         return 0u;
     }
+    /* After the trace, so the boot record keeps the BAR the BIOS reported;
+     * everything mapped from here on starts at the desktop. */
+    base += desktop_offset;
 
     if (device != 0 && device->enable_aperture != 0) {
         v9x_hardware_stage_code = 8u;
@@ -1080,6 +1101,10 @@ WORD FAR PASCAL V9xHardwareReset(void)
     if (v9x_hw16.read_aperture == 0 && v9x_vbe_default_pitch() == 0u) {
         return 0u;
     }
+    /* The mapping is kept, so the offset is not used here; the mode set has
+     * moved the scanout back to the start of memory, and this moves it to
+     * the desktop again. */
+    (void)v9x_place_desktop();
     if (device != 0 && device->enable_aperture != 0) {
         return device->enable_aperture();
     }

@@ -2490,6 +2490,372 @@ V9xMiniSisMmioMapDone:
 V9XMINISISMMIOMAP ENDP
 ENDIF
 
+IFDEF V9X_TDFX_FAMILY
+; WORD FAR PASCAL V9xTdfxReadMemoryRegs(DWORD FAR *regs)
+; The VSA-100's memory straps and linear/tiled boundary, through BAR2, the
+; I/O window that mirrors the init registers (Napalm spec section 4; every
+; init register read the same there as through BAR0 on the Voodoo4 4500,
+; docs\decisions\2026-10-11-voodoo4-memory-registers-read-the-same-through-
+; the-io-window.md). Fills regs[0] = dramInit0 (18h), regs[1] = tile
+; control and regs[2] = tile compare, both through lfbMemoryConfig (0Ch).
+;
+; lfbMemoryConfig is two registers behind a selector: a write with bit 30
+; set changes no tile data and only picks which a read returns (Napalm spec
+; section 17.4 bit table; measured on two boards). The selector a plain read
+; was answering from is written back, so the BIOS or a later reader sees
+; what it saw before. Interrupts are off across the sequence so nothing
+; reads the register in between.
+;
+; Returns 1, or 0 with regs untouched when the card or an I/O BAR2 is not
+; found. A read-only config access; no stage code changes.
+PUBLIC V9XTDFXREADMEMORYREGS
+V9XTDFXREADMEMORYREGS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    si
+    push    edi
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      V9xTdfxReadMemoryRegsFailed
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xTdfxReadMemoryRegsFailed
+    or      ah, ah
+    jnz     V9xTdfxReadMemoryRegsFailed
+    ; Bit 0 set marks an I/O BAR; a memory BAR here is not this window.
+    test    cl, 1
+    jz      V9xTdfxReadMemoryRegsFailed
+    ; 256 bytes at least, so the base is 256-byte aligned and not zero.
+    and     cx, 0fffch
+    jz      V9xTdfxReadMemoryRegsFailed
+    test    cl, 0ffh
+    jnz     V9xTdfxReadMemoryRegsFailed
+    mov     si, cx
+
+    les     bx, dword ptr [bp+6]
+    pushf
+    cli
+    lea     dx, [si+18h]
+    in      eax, dx
+    mov     es:[bx], eax
+
+    lea     dx, [si+0ch]
+    in      eax, dx
+    mov     edi, eax
+    mov     eax, 40000000h
+    out     dx, eax
+    in      eax, dx
+    mov     es:[bx+4], eax
+    mov     eax, 60000000h
+    out     dx, eax
+    in      eax, dx
+    mov     es:[bx+8], eax
+
+    ; Control unless the plain read matched compare and not control.
+    mov     eax, 40000000h
+    cmp     edi, es:[bx+4]
+    je      short V9xTdfxReadMemoryRegsRestore
+    cmp     edi, es:[bx+8]
+    jne     short V9xTdfxReadMemoryRegsRestore
+    mov     eax, 60000000h
+V9xTdfxReadMemoryRegsRestore:
+    out     dx, eax
+    popf
+    mov     ax, 1
+    jmp     short V9xTdfxReadMemoryRegsDone
+V9xTdfxReadMemoryRegsFailed:
+    xor     ax, ax
+V9xTdfxReadMemoryRegsDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    4
+V9XTDFXREADMEMORYREGS ENDP
+
+; WORD FAR PASCAL V9xPciReadTdfxMmioBar(DWORD FAR *base)
+; The VSA-100's BAR0, its register space; the 2D block is at +100000h
+; (C8000000h on A8U4I5). A read-only config access; a refusal changes no
+; stage code, because a missing engine must not fail Enable.
+PUBLIC V9XPCIREADTDFXMMIOBAR
+V9XPCIREADTDFXMMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadTdfxMmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadTdfxMmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadTdfxMmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadTdfxMmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadTdfxMmioBarFailed
+    cmp     eax, 0fe000000h
+    ja      short V9xPciReadTdfxMmioBarFailed
+    ; 32 MiB or larger on every VSA-100 board, so at least 32 MiB aligned.
+    test    eax, 01ffffffh
+    jnz     short V9xPciReadTdfxMmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadTdfxMmioBarDone
+V9xPciReadTdfxMmioBarFailed:
+    xor     ax, ax
+V9xPciReadTdfxMmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADTDFXMMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniTdfxMmioMap(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_TDFX_MMIO_MAP: the mini-VDD maps BAR0's 2D block, checks it
+; decodes, and returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMINITDFXMMIOMAP
+V9XMINITDFXMMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniTdfxMmioMapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_TDFX_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniTdfxMmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniTdfxMmioMapDone
+V9xMiniTdfxMmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniTdfxMmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINITDFXMMIOMAP ENDP
+
+; WORD FAR PASCAL V9xMiniTdfxBar0Map(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_TDFX_BAR0_MAP: the mini-VDD maps BAR0's first 32 MiB for
+; Glide's GETLINEARADDR, checks it decodes, and returns the linear base. On
+; any refusal *linear is 0.
+PUBLIC V9XMINITDFXBAR0MAP
+V9XMINITDFXBAR0MAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniTdfxBar0MapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_TDFX_BAR0_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniTdfxBar0MapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniTdfxBar0MapDone
+V9xMiniTdfxBar0MapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniTdfxBar0MapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINITDFXBAR0MAP ENDP
+
+; WORD FAR PASCAL V9xMiniTdfxBar1Map(DWORD bar1, DWORD FAR *linear)
+; V9XMINI_FN_TDFX_BAR1_MAP: the mini-VDD maps BAR1's first 32 MiB, the
+; framebuffer from byte 0, for Glide's GETLINEARADDR, and returns the linear
+; base. On any refusal *linear is 0.
+PUBLIC V9XMINITDFXBAR1MAP
+V9XMINITDFXBAR1MAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniTdfxBar1MapFailed
+    ; PASCAL pushes left to right: bar1 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_TDFX_BAR1_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniTdfxBar1MapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniTdfxBar1MapDone
+V9xMiniTdfxBar1MapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniTdfxBar1MapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINITDFXBAR1MAP ENDP
+
+; BAR2, the VSA-100's I/O window over the init and video registers, as
+; V9xTdfxReadMemoryRegs finds it. Near; AX = the I/O base, or 0 when the card
+; or an I/O BAR2 is not found. Clobbers BX, CX, DI.
+V9xTdfxIoBase PROC NEAR
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xTdfxIoBaseFailed
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xTdfxIoBaseFailed
+    or      ah, ah
+    jnz     short V9xTdfxIoBaseFailed
+    test    cl, 1
+    jz      short V9xTdfxIoBaseFailed
+    and     cx, 0fffch
+    jz      short V9xTdfxIoBaseFailed
+    test    cl, 0ffh
+    jnz     short V9xTdfxIoBaseFailed
+    mov     ax, cx
+    ret
+V9xTdfxIoBaseFailed:
+    xor     ax, ax
+    ret
+V9xTdfxIoBase ENDP
+
+; WORD FAR PASCAL V9xTdfxIoRead(WORD offset, DWORD FAR *value)
+; One init or video register through BAR2. The offset must be a dword inside
+; the 256-byte window; which registers to touch, and why, is the chip
+; module's policy (tdfx_hw16.c). Returns 1, or 0 with *value untouched.
+PUBLIC V9XTDFXIOREAD
+V9XTDFXIOREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xTdfxIoBase
+    or      ax, ax
+    jz      short V9xTdfxIoReadFailed
+    mov     cx, ax
+    mov     dx, word ptr [bp+10]
+    test    dx, 0ff03h
+    jnz     short V9xTdfxIoReadFailed
+    add     dx, cx
+    in      eax, dx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xTdfxIoReadDone
+V9xTdfxIoReadFailed:
+    xor     ax, ax
+V9xTdfxIoReadDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XTDFXIOREAD ENDP
+
+; WORD FAR PASCAL V9xTdfxIoWrite(WORD offset, DWORD value)
+; The write half of V9xTdfxIoRead, with the same bounds. Returns 1, or 0
+; with nothing written.
+PUBLIC V9XTDFXIOWRITE
+V9XTDFXIOWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xTdfxIoBase
+    or      ax, ax
+    jz      short V9xTdfxIoWriteFailed
+    mov     cx, ax
+    mov     dx, word ptr [bp+10]
+    test    dx, 0ff03h
+    jnz     short V9xTdfxIoWriteFailed
+    add     dx, cx
+    mov     eax, dword ptr [bp+6]
+    out     dx, eax
+    mov     ax, 1
+    jmp     short V9xTdfxIoWriteDone
+V9xTdfxIoWriteFailed:
+    xor     ax, ax
+V9xTdfxIoWriteDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XTDFXIOWRITE ENDP
+ENDIF
+
 IFDEF V9X_MGA_FAMILY
 ; WORD FAR PASCAL V9xPciReadMgaMmioBar(DWORD FAR *base, WORD bar_index)
 ; MGABASE1, the 16 KiB control aperture: BAR0 on the MGA-2064W (DC000000h on

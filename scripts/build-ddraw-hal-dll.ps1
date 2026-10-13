@@ -74,6 +74,9 @@ $sources = @(
     # pure, and host-tested in tests\host\test_pe_export.c. The HAL uses it
     # to reach KERNEL32's Win16-mutex ordinals, which GetProcAddress refuses.
     "src\common\pe_export.c",
+    # PE32 import-slot walk, same terms (tests\host\test_pe_import.c): which
+    # of the program's import slots the process watch replaces.
+    "src\common\pe_import.c",
     # The [Velocity9x] VSync rule the flip path asks per flip: pure, and
     # host-tested in tests\host\test_vsync.c.
     "src\common\vsync.c",
@@ -81,6 +84,8 @@ $sources = @(
     # The Win16 mutex measurement: resolves _ConfirmWin16Lock through the
     # walk above and counts its answer at six callback entry points.
     "src\display32\win16lock.c",
+    # How each program using the HAL ends: exit, message box, fault filter.
+    "src\display32\ddhal_watch.c",
     "src\display32\blt_cpu.c",
     "src\display32\engines\vga_scanout.c",
     # The Intel pipe controls and the dispatch between them and the VGA ones.
@@ -108,6 +113,9 @@ $sources = @(
     # builder.
     "src\display32\engines\eng_mga.c",
     "src\chipsets\matrox\mga_engine.c",
+    # The VSA-100 2D engine: fill and copy through the host-tested builder.
+    "src\display32\engines\eng_tdfx.c",
+    "src\chipsets\tdfx\tdfx_2d.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
@@ -141,6 +149,11 @@ $sources = @(
     "src\chipsets\matrox\mga_setup.c",
     "src\display32\d3d\d3d_mga_map.c",
     "src\display32\d3d\d3d_mga.c",
+    # The VSA-100 3D engine: setup-unit and pipeline register words, the
+    # neutral draw to them, and the engine that writes them.
+    "src\chipsets\tdfx\tdfx_3d.c",
+    "src\display32\d3d\d3d_tdfx_map.c",
+    "src\display32\d3d\d3d_tdfx.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",

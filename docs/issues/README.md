@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-11 The Voodoo4 was found in D3 with its BARs cleared under 3dfx's driver (preflight did not reproduce it; monitor power-down untested)](2026-10-11-voodoo4-found-in-d3-under-3dfx-driver.md)
 - [2026-10-11 The Velocity9x settings page shows 4 MB on the 8 MiB Millennium II: it reads the BIOS figure, never VramMeasuredBytes](2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)
 - [2026-10-11 3DMark2000 shows "3D pattern corruption" on a reporter's GMA 900 (not yet seen; mip-tree declines, untextured draws and refused geometry are candidates)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)
 - [2026-10-10 Carmageddon II exits after its intro video on a reporter's GMA 900: D3D draws and then quits, Glide refuses 93 % of its draws](2026-10-10-carmageddon2-exits-after-intro-gma900.md)

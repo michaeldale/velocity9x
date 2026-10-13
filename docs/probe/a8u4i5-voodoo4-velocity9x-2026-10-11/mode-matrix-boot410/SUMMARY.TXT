@@ -1,0 +1,18 @@
+640x480x8 exit=0 Result=PASS ChangeResult=0
+800x600x8 exit=0 Result=PASS ChangeResult=0
+1024x768x8 exit=0 Result=PASS ChangeResult=0
+640x400x8 exit=0 Result=PASS ChangeResult=0
+640x480x16 exit=0 Result=PASS ChangeResult=0
+800x600x16 exit=0 Result=PASS ChangeResult=0
+1024x768x16 exit=0 Result=PASS ChangeResult=0
+320x200x8 exit=0 Result=PASS ChangeResult=0
+320x240x8 exit=0 Result=PASS ChangeResult=0
+400x300x8 exit=0 Result=PASS ChangeResult=0
+512x384x8 exit=0 Result=PASS ChangeResult=0
+1280x1024x8 exit=0 Result=PASS ChangeResult=0
+320x200x16 exit=0 Result=PASS ChangeResult=0
+320x240x16 exit=0 Result=INCOMPLETE
+400x300x16 exit=0 Result=INCOMPLETE
+512x384x16 exit=0 Result=PASS ChangeResult=0
+640x400x16 exit=0 Result=PASS ChangeResult=0
+1280x1024x16 exit=0 Result=PASS ChangeResult=0

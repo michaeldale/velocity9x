@@ -105,6 +105,49 @@ static void test_depth_and_blend(void)
     SCHECK(d.state.alpha_func == D3D_CMP_GREATER && d.state.alpha_ref == 0x10ul);
 }
 
+/*
+ * grColorMask: colour writes off is what Carmageddon II sets around the
+ * depth-only clear after its 640x480 LFB backdrop (two calls a frame, netbook
+ * 2026-10-12). A clear that ignored it painted the backdrop black.
+ */
+static void test_color_mask(void)
+{
+    V9X_GLIDE_STATE s;
+    V9X_GLIDE_DRAW_SETUP d;
+    V9X_GLIDE_CLEAR_PLAN plan;
+
+    v9x_glide_state_init(&s, 640ul, 480ul, V9X_GLIDE_ORIGIN_UPPER_LEFT);
+    SCHECK(s.color_mask != 0ul);
+    s.depth_mode = V9X_GLIDE_DEPTH_ZBUFFER;
+
+    /* Both on: a colour and a depth clear, triangles write RGB. */
+    v9x_glide_clear_plan(&s, 1, &plan);
+    SCHECK(plan.color && plan.depth);
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.state.write_mask == V9X_R3D_ABI_WRITE_RGB);
+
+    /* Colour off: depth only, and triangles write no colour. */
+    s.color_mask = 0ul;
+    v9x_glide_clear_plan(&s, 1, &plan);
+    SCHECK(!plan.color && plan.depth);
+    v9x_glide_state_map(&s, &d);
+    SCHECK(d.state.write_mask == 0ul);
+
+    /* Colour off and depth masked too: nothing to clear. */
+    s.depth_mask = 0ul;
+    v9x_glide_clear_plan(&s, 1, &plan);
+    SCHECK(!plan.color && !plan.depth);
+
+    /* No aux buffer, or depth buffering off: never a depth clear. */
+    s.color_mask = 1ul;
+    s.depth_mask = 1ul;
+    v9x_glide_clear_plan(&s, 0, &plan);
+    SCHECK(plan.color && !plan.depth);
+    s.depth_mode = V9X_GLIDE_DEPTH_DISABLE;
+    v9x_glide_clear_plan(&s, 1, &plan);
+    SCHECK(plan.color && !plan.depth);
+}
+
 static void test_combine(void)
 {
     V9X_GLIDE_STATE s;
@@ -511,6 +554,7 @@ unsigned int v9x_run_glide_state_tests(void)
     test_resolution_and_color();
     test_defaults();
     test_depth_and_blend();
+    test_color_mask();
     test_combine();
     test_texture_alpha_factor();
     test_gu_color_combine();

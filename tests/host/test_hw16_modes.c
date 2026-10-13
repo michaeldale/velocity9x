@@ -177,6 +177,9 @@ const V9X_HW16_DEVICE v9x_mga2064w_device = {
 const V9X_HW16_DEVICE v9x_mga2164w_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_vsa100_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)
@@ -206,6 +209,32 @@ unsigned long __far __pascal V9xMgaScreenRead(unsigned long offset)
 {
     (void)offset;
     return 0ul;
+}
+
+/* runtime.asm's BAR2 read for the 3dfx memory hook; the decode it feeds is
+ * tested in test_vsa100_decode.c. */
+unsigned short __far __pascal V9xTdfxReadMemoryRegs(unsigned long __far *regs)
+{
+    (void)regs;
+    return 0u;
+}
+
+/* And its register read and write for the desktop placement, whose values
+ * are tested in test_vsa100_decode.c. */
+unsigned short __far __pascal V9xTdfxIoRead(unsigned short offset,
+                                            unsigned long __far *value)
+{
+    (void)offset;
+    (void)value;
+    return 0u;
+}
+
+unsigned short __far __pascal V9xTdfxIoWrite(unsigned short offset,
+                                             unsigned long value)
+{
+    (void)offset;
+    (void)value;
+    return 0u;
 }
 
 unsigned long v9x_vbe_vram_reported = 0ul;
@@ -238,6 +267,10 @@ unsigned short v9x_active_width = 0u;
 #include "../../src/chipsets/matrox/mga_hw16.c"
 #undef v9x_hw16
 
+#define v9x_hw16 v9x_hw16_tdfx
+#include "../../src/chipsets/tdfx/tdfx_hw16.c"
+#undef v9x_hw16
+
 static const struct {
     const char *family_id;
     const V9X_HW16_OPS *ops;
@@ -246,7 +279,8 @@ static const struct {
     { "vbe", &v9x_hw16_vbe },
     { "ati", &v9x_hw16_ati },
     { "sis", &v9x_hw16_sis },
-    { "matrox", &v9x_hw16_matrox }
+    { "matrox", &v9x_hw16_matrox },
+    { "3dfx", &v9x_hw16_tdfx }
 };
 
 #define V9X_HW16_TABLE_COUNT \

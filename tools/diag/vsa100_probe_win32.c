@@ -17,6 +17,9 @@
  *   /notile  skip the lfbMemoryConfig selector reads (the probe's only
  *            register write; see vsa100_probe.asm).
  *   /engine  also read the command FIFO and 2D register windows.
+ *   /noio    skip the reads through BAR2, the I/O window (on by default:
+ *            they measure whether the init and tile registers read the
+ *            same there, which the 16-bit driver depends on).
  *
  * Register meanings: docs\specifications\vsa100-registers.md.
  */
@@ -63,6 +66,8 @@ typedef RESOURCEID *PRESOURCEID;
 #define VSA_RANGE_MAX 16u
 #define VSA_FLAG_TILE 0x00000001ul
 #define VSA_FLAG_ENGINE 0x00000002ul
+#define VSA_FLAG_IO 0x00000004ul
+#define VSA_IO_DWORDS 20u
 
 #define VSA_PCI_FOUND       0x00000001ul
 #define VSA_VGA_READ        0x00000002ul
@@ -75,6 +80,9 @@ typedef RESOURCEID *PRESOURCEID;
 #define VSA_2D_MAPPED       0x00000100ul
 #define VSA_TILE_READ       0x00000200ul
 #define VSA_TILE_AMBIGUOUS  0x00000400ul
+#define VSA_IO_READ         0x00000800ul
+#define VSA_IO_TILE_AMBIGUOUS 0x00001000ul
+#define VSA_IO_INVALID      0x00002000ul
 
 /*
  * The init and video registers read by default: each one named in
@@ -119,6 +127,7 @@ struct vsa_request {
     DWORD bar0;
     DWORD flags;
     DWORD count;
+    DWORD io_base;
     DWORD offsets[VSA_OFFSET_MAX];
 };
 
@@ -138,9 +147,14 @@ struct vsa_result {
     DWORD tile_control;
     DWORD tile_compare;
     DWORD tile_selector_restored;
-    DWORD reserved;
+    DWORD io_base;
+    DWORD io_lfb_plain;
+    DWORD io_tile_control;
+    DWORD io_tile_compare;
+    DWORD io_selector_restored;
     DWORD config[VSA_CONFIG_DWORDS];
     DWORD functions[VSA_FUNCTIONS];
+    DWORD io[VSA_IO_DWORDS];
     BYTE sr[VSA_VGA_INDEXES];
     BYTE cr[VSA_VGA_INDEXES];
     DWORD offsets[VSA_OFFSET_MAX];
@@ -648,6 +662,7 @@ void WINAPI V9xVsa100ProbeEntry(void)
     request->bar0 = 0u;
     request->flags = 0u;
     request->count = 0u;
+    request->io_base = 0u;
     if (!DeviceIoControl(device, 1u, request, sizeof(*request), result,
                          sizeof(*result), &returned, 0) ||
         returned != sizeof(*result) || result->magic != VSA_MAGIC) {
@@ -659,6 +674,15 @@ void WINAPI V9xVsa100ProbeEntry(void)
             ranges[index].base == (result->config[4] & 0xfffffff0ul)) {
             request->bar0 = ranges[index].base;
         }
+        /* BAR2, the I/O window: the Config Manager I/O range at the live
+         * BAR's base, as for BAR0. */
+        if (ranges[index].type == ResType_IO &&
+            ranges[index].base == (result->config[6] & 0x0000fffcul)) {
+            request->io_base = ranges[index].base;
+        }
+    }
+    if (!vsa_has_switch(GetCommandLineA(), "/noio")) {
+        request->flags |= VSA_FLAG_IO;
     }
 
     if (!vsa_has_switch(GetCommandLineA(), "/notile")) {
@@ -785,6 +809,56 @@ void WINAPI V9xVsa100ProbeEntry(void)
                       result->tile_selector_restored);
         vsa_write_bit(output, "TileAmbiguous", result->status,
                       VSA_TILE_AMBIGUOUS);
+    }
+
+    /*
+     * BAR2 against BAR0: every init register read both ways, and how many
+     * agree. Status (00h) is left out of the count, since it can change
+     * between the two reads by itself.
+     */
+    vsa_write_hex(output, "IoBaseRequested", request->io_base);
+    vsa_write_bit(output, "IoRead", result->status, VSA_IO_READ);
+    vsa_write_bit(output, "IoInvalid", result->status, VSA_IO_INVALID);
+    if ((result->status & VSA_IO_READ) != 0ul) {
+        DWORD compared = 0u;
+        DWORD agreed = 0u;
+
+        vsa_write_hex(output, "IoBaseUsed", result->io_base);
+        for (index = 0u; index < VSA_IO_DWORDS; ++index) {
+            DWORD mmio_offset = index * 4u;
+            DWORD mmio_index;
+
+            vsa_hex(text, mmio_offset, 2);
+            key[0] = 'I'; key[1] = '_'; key[2] = '\0';
+            vsa_append(key, text, sizeof(key));
+            vsa_write_hex(output, key, result->io[index]);
+            if (mmio_offset == V9X_TDFX_STATUS) {
+                continue;
+            }
+            for (mmio_index = 0u; mmio_index < result->accepted; ++mmio_index) {
+                if (result->offsets[mmio_index] == mmio_offset) {
+                    ++compared;
+                    if (result->first[mmio_index] == result->io[index]) {
+                        ++agreed;
+                    }
+                }
+            }
+        }
+        vsa_write_decimal(output, "IoMmioCompared", compared);
+        vsa_write_decimal(output, "IoMmioAgreed", agreed);
+        vsa_write_hex(output, "IoLfbMemoryConfigPlain", result->io_lfb_plain);
+        vsa_write_hex(output, "IoTileControl", result->io_tile_control);
+        vsa_write_hex(output, "IoTileCompare", result->io_tile_compare);
+        vsa_write_hex(output, "IoTileSelectorRestored",
+                      result->io_selector_restored);
+        vsa_write_bit(output, "IoTileAmbiguous", result->status,
+                      VSA_IO_TILE_AMBIGUOUS);
+        if ((result->status & VSA_TILE_READ) != 0ul) {
+            vsa_write(output, "IoTileAgreesWithMmio",
+                      result->io_tile_control == result->tile_control &&
+                      result->io_tile_compare == result->tile_compare
+                          ? "1" : "0");
+        }
     }
 
     vsa_write_hex(output, "Bar0Used", result->bar0);

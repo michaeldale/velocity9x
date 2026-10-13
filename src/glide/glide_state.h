@@ -34,6 +34,7 @@ typedef struct v9x_glide_state {
     v9x_u32 depth_mode;
     v9x_u32 depth_func;
     v9x_u32 depth_mask;
+    v9x_u32 color_mask;     /* grColorMask's rgb: nonzero writes colour */
     v9x_u32 alpha_func;
     v9x_u32 alpha_ref;
     v9x_u32 blend_src;
@@ -88,6 +89,21 @@ void v9x_glide_state_init(V9X_GLIDE_STATE *state, v9x_u32 width,
 
 void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
                          V9X_GLIDE_DRAW_SETUP *out);
+
+/* What grBufferClear writes. */
+typedef struct v9x_glide_clear_plan {
+    v9x_u32 color;          /* the colour buffer */
+    v9x_u32 depth;          /* the aux (depth) buffer */
+} V9X_GLIDE_CLEAR_PLAN;
+
+/*
+ * grBufferClear honours the write masks, as the Voodoo's fastfill does: the
+ * colour buffer while grColorMask lets colour through, the depth buffer
+ * while depth buffering is on, there is one (has_aux), and grDepthMask lets
+ * depth through.
+ */
+void v9x_glide_clear_plan(const V9X_GLIDE_STATE *state, int has_aux,
+                          V9X_GLIDE_CLEAR_PLAN *out);
 
 /* grSstWinOpen's GrScreenResolution_t as pixels; V9X_FALSE for a value
  * outside the table (GR_RESOLUTION_NONE among them). */

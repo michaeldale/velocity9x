@@ -788,6 +788,99 @@ static void v9x_glp_fog(GLint width, GLint height)
 }
 
 /*
+ * Which texel each pixel of a 1:1 GL_NEAREST draw reads (2026-10-13), the
+ * OpenGL twin of V9XDDP's TexPhase. Half-Life's OpenGL console font lost
+ * single-pixel strokes on the Voodoo4 engine (A8U4I5 boot 442). A 16x16
+ * texture whose texel (x, y) carries x * 17 in red and y * 17 in blue, so
+ * each survives RGB565 to the nearest step, green full as a marker, is
+ * drawn under glOrtho as a 16x16 quad at (16, 16) on whole pixels, s and
+ * t 0 to 1, then at offsets of a quarter and a half pixel either way.
+ * Row 24 and column 24 are read back: TexPhase<n>Cols holds the texel
+ * column each of pixels 16..31 on row 24 took, as a hex digit, '.' for no
+ * texel. An exact copy reads 0123456789ABCDEF in both.
+ */
+static void v9x_glp_texel_phase(GLint width, GLint height)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    static const GLfloat offset[5] = { 0.0f, 0.25f, 0.5f, -0.25f, -0.5f };
+    static const char *cols_key[5] = {
+        "TexPhase0Cols", "TexPhaseP25Cols", "TexPhaseP5Cols",
+        "TexPhaseM25Cols", "TexPhaseM5Cols" };
+    static const char *rows_key[5] = {
+        "TexPhase0Rows", "TexPhaseP25Rows", "TexPhaseP5Rows",
+        "TexPhaseM25Rows", "TexPhaseM5Rows" };
+    GLubyte texels[16 * 16 * 3];
+    char cols[17];
+    char rows[17];
+    GLuint name = 0u;
+    DWORD index;
+    DWORD at;
+
+    for (index = 0ul; index < 256ul; ++index) {
+        texels[index * 3ul] = (GLubyte)((index & 15ul) * 17ul);
+        texels[index * 3ul + 1ul] = 255u;
+        texels[index * 3ul + 2ul] = (GLubyte)((index >> 4) * 17ul);
+    }
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_FOG);
+    glGenTextures(1, &name);
+    glBindTexture(GL_TEXTURE_2D, name);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 16, 16, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 texels);
+    glEnable(GL_TEXTURE_2D);
+
+    for (index = 0ul; index < 5ul; ++index) {
+        GLfloat x0 = 16.0f + offset[index];
+        GLfloat y0 = 16.0f + offset[index];
+
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex2f(x0, y0);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex2f(x0 + 16.0f, y0);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex2f(x0 + 16.0f, y0 + 16.0f);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex2f(x0, y0 + 16.0f);
+        glEnd();
+        glFinish();
+        for (at = 0ul; at < 16ul; ++at) {
+            DWORD col = v9x_glp_read((GLint)(16ul + at), 24);
+            DWORD row = v9x_glp_read(24, (GLint)(16ul + at));
+
+            cols[at] = ((col >> 8) & 0xfful) >= 0xc0ul
+                           ? digits[(((col >> 16) & 0xfful) + 8ul) / 17ul]
+                           : '.';
+            rows[at] = ((row >> 8) & 0xfful) >= 0xc0ul
+                           ? digits[((row & 0xfful) + 8ul) / 17ul] : '.';
+        }
+        cols[16] = '\0';
+        rows[16] = '\0';
+        v9x_glp_text(cols_key[index], cols);
+        v9x_glp_text(rows_key[index], rows);
+    }
+    glDisable(GL_TEXTURE_2D);
+    glDeleteTextures(1, &name);
+    v9x_glp_hex("ErrorAfterTexPhase", (DWORD)glGetError());
+}
+
+/*
  * glPushAttrib/glPopAttrib (GL 1.1 6.1.11), glPushClientAttrib, the
  * texture queries and glClearStencil. A red clear colour and blending are
  * pushed with COLOR_BUFFER_BIT, changed to green and off, and popped; the
@@ -2097,6 +2190,8 @@ void __stdcall V9xGlProbeEntry(void)
                                    client.bottom - client.top);
             v9x_glp_fog(client.right - client.left,
                         client.bottom - client.top);
+            v9x_glp_texel_phase(client.right - client.left,
+                                client.bottom - client.top);
             v9x_glp_attrib(client.right - client.left,
                            client.bottom - client.top);
         }

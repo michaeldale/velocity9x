@@ -12,9 +12,11 @@
 #include "velocity9x/matrox_mga.h"
 #include "velocity9x/s3_virge.h"
 #include "velocity9x/sis_6326.h"
+#include "velocity9x/tdfx.h"
 #include "velocity9x/vbe_generic.h"
 
 static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
+    { 0x121Au, 0x0009u, v9x_tdfx_backend }, /* 3dfx / vsa100 */
     { 0x1002u, 0x5654u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 */
     { 0x1002u, 0x5655u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 alias */
     { 0x1002u, 0x5656u, v9x_ati_mach64_backend }, /* ati / mach64-vt2 alias */

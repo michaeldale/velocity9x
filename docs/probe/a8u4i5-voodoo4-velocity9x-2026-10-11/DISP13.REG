@@ -1,0 +1,1489 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013]
+"InfPath"="3DFXIN~1.INF"
+"InfSection"="Driver.InstallV5"
+"ProviderName"="3dfx Interactive, Inc."
+"DriverDesc"="Voodoo4 4500 AGP"
+"MatchingDeviceId"="PCI\\VEN_121A&DEV_0009&SUBSYS_0004121A&REV_01"
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"DriverDate"="11-21-2000"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT]
+"Mode"="16,800,600"
+"drv"="3dfx16vs.drv"
+"drv2"="3dfx16vs.drv"
+"vdd"="*vdd"
+"minivdd"="3dfxvs.vxd"
+"minivdd2"="3dfxvs.vxd"
+"RefreshRate"="-1"
+"DDC"="1"
+"afifo"=hex:00,00,00,01
+"HTML Card Help"="3dfx Voodoo5 help.chm"
+"Localisation"="General"
+"SSTH3_AGP_XRATE"="1"
+"SSTH3_VIA_COMPATIBILITY"="0"
+"CHIPID"=hex:00,00,00,00,00,00
+"3dfxToolsAPI"="0000"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT\AGP Command FIFO]
+"Control"="Combo"
+"List"="Disable (Reboot Required),Auto Detect,AGP 1x,AGP 2x"
+"Default"="2"
+"Value"="2"
+"Tweak Map"="-1,0,1,2"
+"Tweak Value"="SSTH3_AGP_XRATE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#AGP"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT\VIA Chipset]
+"Control"="Combo"
+"List"="Performance,Compatibility,BIOS Defaults"
+"Default"="0"
+"Value"="0"
+"Tweak Map"="0,1,2"
+"Tweak Value"="SSTH3_VIA_COMPATIBILITY"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#VIA_Chipset"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT\VideoRefresh2]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Default"="0"
+"Value"="0"
+"Localisation"="Refresh Optimization"
+"Tweak Map"="*,1"
+"Tweak Value"="SSTH3_VIDEO_REFRESH_OPTIMIZATION"
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Refresh"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT\VideoRefresh]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Default"="1"
+"Value"="1"
+"Localisation"="Refresh Optimization"
+"Tweak Map"="0,*"
+"Tweak Value"="SSTH3_VIDEO_REFRESH_OPTIMIZATION"
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Refresh"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT\Info]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\DEFAULT\Info\Adapter]
+"Chip Series"="VSA 100"
+"Bus Type"="AGP"
+"Total Video Memory"="32 MB"
+"Graphic Chips"="1"
+"Graphics Clock Speed"="166 MHz"
+"BIOS Version"="1.15 "
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide]
+"FX_GLIDE_V3FIFO"=""
+"Localisation"="OpenGL/Glide"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide"
+"SSTH3_OVERLAYMODE"="1"
+"SSTH3_ALPHADITHERMODE"="1"
+"FX_GL_16BPP_ZPRECISION"="1"
+"FX_GL_32BPP_ZPRECISION"="1"
+"FX_GL_COMPRESS_LEGACY_TEXTURES"="1"
+"FX_GL_HSR"="0"
+"FX_GL_FORCE_16BPP_TEXTURES"="0"
+"FX_GLIDE_LOD_BIAS"="0"
+"FX_GLIDE_SWAPPENDINGCOUNT"="1"
+"FX_GLIDE_BPP"="16"
+"FX_GLIDE_ALLOC_COLOR"="-1"
+"FX_GLIDE_SWAPINTERVAL"="0"
+"FX_GL_GUARDBAND_ENABLED"="0"
+"SSTH3_SLI_AA_CONFIGURATION"="0"
+"SSTH3_RGAMMA"="1.30"
+"SSTH3_GGAMMA"="1.30"
+"SSTH3_BGAMMA"="1.30"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\3D Filter Quality]
+"Control"="Combo"
+"List"="Automatic,Normal,High"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_OVERLAYMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Video"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\AA Demo Key]
+"Control"="Combo"
+"List"="Disable,Num-Lock,Key-Pad /,Key-Pad *,Key-Pad -,F12"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_AA_TOGGLE_KEY"
+"Tweak Map"="*,144,111,106,109,123"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_AA_Demo"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Alpha-Blending]
+"Control"="Combo"
+"List"="Automatic,Sharper,Smoother"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_ALPHADITHERMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Alpha"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\SingleChipAASLI]
+"Control"="Combo"
+"List"="Fastest Performance,2-Sample Anti-Aliasing"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,1"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V4"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\DualChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,2,3,4"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\QuadChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing,8 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,5,6,7,8"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Depth Precision (16 Bit)]
+"Control"="Combo"
+"List"="Disable,Fast,Faster"
+"Value"="1"
+"Default"="1"
+"Performance"="2"
+"Quality"="1"
+"Tweak Value"="FX_GL_16BPP_ZPRECISION"
+"Tweak Map"="0,1,2"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_16BPP"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Depth Precision (32 Bit)]
+"Control"="Combo"
+"List"="Disable,Fast,Faster"
+"Value"="1"
+"Default"="1"
+"Performance"="2"
+"Quality"="1"
+"Tweak Value"="FX_GL_32BPP_ZPRECISION"
+"Tweak Map"="0,1,2"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_32BPP"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Glide Splash Screen]
+"Control"="Combo"
+"List"="Enable,Disable"
+"Value"="0"
+"Default"="0"
+"Tweak Map"="*,1"
+"Tweak Value"="FX_GLIDE_NO_SPLASH"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Splash"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Legacy Texture Compression]
+"Control"="Combo"
+"List"="Enable,Disable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GL_COMPRESS_LEGACY_TEXTURES"
+"Tweak Map"="1,0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Texture"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Hidden Surface Removal]
+"Control"="Combo"
+"List"="Disable,Conservative Tiling,Non-Aggressive Tiling,Semi-Aggressive Tiling,Aggressive Tiling"
+"Value"="0"
+"Default"="0"
+"Performance"="1"
+"Quality"="0"
+"Tweak Value"="FX_GL_HSR"
+"Tweak Map"="0,1,2,3,4"
+"Help"="To Be Defined"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Force 16-bit Textures]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0]"
+"Performance"="1"
+"Quality"="0"
+"Tweak Value"="FX_GL_FORCE_16BPP_TEXTURES"
+"Tweak Map"="0,1"
+"Help"="To Be Defined"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Level Of Detail Bias]
+"Control"="Simple Slider"
+"Left Label"="Sharper Image"
+"Right Label"="Best Performance"
+"Min"="-8"
+"Max"="8"
+"Value"="0"
+"Default"="0"
+"Performance"="8"
+"Quality"="0"
+"Name Map"="-2,-1.75,-1.50,-1.25,-1.00,-0.75,-0.50,-0.25,0,0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00"
+"Tweak Value"="FX_GLIDE_LOD_BIAS"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_LOD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Maximum Buffered Frames]
+"Control"="Combo"
+"List"="No Pending Buffers,1 Pending Buffer,2 Pending Buffers,3 Pending Buffers"
+"Value"="1"
+"Default"="1"
+"Performance"="3"
+"Quality"="1"
+"Tweak Value"="FX_GLIDE_SWAPPENDINGCOUNT"
+"Tweak Map"="0,1,2,3"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#SwapBuffer"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\MIP Map Dithering]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_LOD_DITHER"
+"Tweak Map"="*,1"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Mipmap"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Rendering Color-depth]
+"Control"="Combo"
+"List"="Software Controlled,Force 32bpp Rendering"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_BPP"
+"Tweak Map"="16,32"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Color"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Triple Buffering]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_ALLOC_COLOR"
+"Tweak Map"="-1,3"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Buffer"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Vertical Sync]
+"Control"="Combo"
+"List"="Software Controlled,Disable,Enable"
+"Value"="1"
+"Default"="1"
+"Tweak Map"="*,0,1"
+"Tweak Value"="FX_GLIDE_SWAPINTERVAL"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_VSync"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\Glide\Guardband Clipping]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Performance"="1"
+"Quality"="0"
+"Tweak Value"="FX_GL_GUARDBAND_ENABLED"
+"Tweak Map"="0,1"
+"HTML Help"="To Be Defined"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\800,600]
+@="60,72,75,85,100,120,140,160"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\960,720]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1024,768]
+@="60,70,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1152,864]
+@="60,70,75,85,100,120"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1280,960]
+@="60,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1280,1024]
+@="60,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1600,1024]
+@="60,76,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1600,1200]
+@="60,65,70,75,80,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1792,1344]
+@="60,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1856,1392]
+@="60,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1920,1080]
+@="60,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1920,1200]
+@="60,76,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\1920,1440]
+@="60,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\8\2048,1536]
+@="60,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\960,720]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1280,960]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1600,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1792,1344]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1856,1392]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1920,1080]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1920,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\1920,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\16\2048,1536]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\960,720]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1280,960]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1600,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1792,1344]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1856,1392]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1920,1080]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1920,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\1920,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\MODES\32\2048,1536]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS]
+"OptimalRefreshLimit"="75"
+"UseGTF"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\60Hz]
+@="800,656,752,525,490,492,12,25175000,5994,8,12246"
+"AltDFP"="0xa3,0x4f,0x60,0x8c,0x68,0x1c,0x20,0xb3,0x60,0x70,0x01,0xdf,0x67,0x88,0x20,0x00,0xcf,0x21,0x29,0x6b,0x00,120"
+"Supported"="BPP+8+16+32,DDRAW,TVO_DESK,TVO_DD,NTSC,PAL,DFP_DESK,DFP_DD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\72Hz]
+@="832,664,704,520,489,492,12,31500000,7281,8,14152"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\75Hz]
+@="840,656,720,500,481,484,12,31500000,7500,8,14351"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\85Hz]
+@="832,696,752,509,481,484,12,36000000,8501,8,15875"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\100Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\120Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\140Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,480\160Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\56Hz]
+@="1024,824,896,625,601,603,0,36000000,5625,8,13806"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\60Hz]
+@="1056,840,968,628,601,605,0,40000000,6032,8,14738"
+"AltDFP"="0xa3,0x63,0x70,0x98,0x74,0x06,0x20,0xf1,0x60,0xa0,0x0d,0x57,0xa0,0xc1,0x00,0x00,0xcf,0x21,0x29,0x6b,0x00,226"
+"Supported"="BPP+8+16+32,DDRAW,TVO_DESK,TVO_DD,NTSC,PAL,DFP_DESK,DFP_DD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\72Hz]
+@="1040,856,976,666,637,643,0,50000000,7219,8,17045"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\75Hz]
+@="1056,816,896,625,601,604,0,49500000,7500,8,17056"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\85Hz]
+@="1048,832,896,631,601,604,0,56250000,8506,8,18751"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\100Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\120Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\140Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\800,600\160Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\960,720]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\960,720\60Hz]
+@="GTF"
+"AltDFP"="0xa3,0x77,0x80,0xa5,0x80,0x94,0x24,0xf5,0x60,0x00,0x09,0xd0,0xf0,0x16,0x00,0x00,0x4f,0x21,0x07,0x6b,0x00,141"
+"Supported"="BPP+8+16+32,DDRAW,DFP_DESK,DFP_DD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\960,720\75Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\960,720\85Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768\60Hz]
+@="1344,1048,1184,806,771,777,12,65000000,6000,8,18450"
+"Supported"="BPP+8+16+32,DDRAW,DFP_DESK,DFP_DD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768\70Hz]
+@="1328,1048,1184,806,771,777,12,75000000,7007,8,20441"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768\75Hz]
+@="1312,1040,1136,800,769,772,0,78750000,7503,8,21215"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768\85Hz]
+@="1376,1072,1168,808,769,772,0,94500000,8500,8,23923"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768\100Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1024,768\120Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864\60Hz]
+@="1472,1184,1280,905,865,868,0,80000000,6005,8,20587"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864\70Hz]
+@="1480,1184,1280,912,865,868,0,94500000,7001,8,23048"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864\75Hz]
+@="1600,1216,1344,900,865,868,0,108000000,7500,8,25101"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864\85Hz]
+@="1568,1216,1344,911,865,868,0,121500000,8506,8,27436"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864\100Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1152,864\120Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,960]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,960\60Hz]
+@="1800,1376,1488,1000,961,964,0,108000000,6000,8,24397"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,960\75Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,960\85Hz]
+@="1728,1344,1504,1011,961,964,0,148500000,8500,8,30870"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,1024]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,1024\60Hz]
+@="1688,1328,1440,1066,1025,1028,0,108000000,6002,8,24385"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,1024\75Hz]
+@="1688,1296,1440,1066,1025,1028,0,135000000,7502,8,28553"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,1024\85Hz]
+@="1728,1344,1504,1072,1025,1028,0,157500000,8502,8,31961"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1280,1024\100Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1024]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1024\60Hz]
+@="2088,1632,1792,1070,1027,1030,12,134049600,6000,8,28063"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1024\76Hz]
+@="2088,1632,1792,1070,1027,1030,12,169796160,7600,8,33238"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1024\85Hz]
+@="2088,1632,1792,1070,1027,1030,12,189903600,8500,8,36149"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\60Hz]
+@="2088,1664,1856,1250,1201,1204,0,156600000,6000,8,30931"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\65Hz]
+@="2088,1664,1856,1250,1201,1204,0,169650000,6500,8,32736"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\70Hz]
+@="2088,1664,1856,1250,1201,1204,0,182700000,7000,8,34541"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\75Hz]
+@="2088,1664,1856,1250,1201,1204,0,195750000,7500,8,36346"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\80Hz]
+@="2088,1664,1856,1250,1201,1204,0,208800000,8000,8,38151"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\85Hz]
+@="2088,1664,1856,1250,1201,1204,0,221850000,8500,8,39956"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1600,1200\100Hz]
+@="2088,1664,1856,1250,1201,1204,0,261000000,10000,8,45371"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1792,1344]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1792,1344\60Hz]
+@="2448,1920,2120,1394,1345,1348,4,204750000,6000,8,37062"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1792,1344\75Hz]
+@="2456,1888,2104,1417,1345,1348,4,261000000,7500,8,44170"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1856,1392]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1856,1392\60Hz]
+@="2528,1952,2176,1439,1393,1396,4,218250000,6000,8,38721"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1856,1392\75Hz]
+@="2560,1984,2208,1500,1393,1396,4,288000000,7500,8,47353"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1080]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1080\60Hz]
+@="2368,1952,2096,1125,1083,1086,12,159840000,6000,8,31714"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1080\72Hz]
+@="2560,1968,2184,1172,1083,1086,12,216023000,7200,8,38875"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1080\75Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1080\85Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1200]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1200\60Hz]
+@="2584,1984,2240,1250,1203,1206,12,193800000,6000,8,35867"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1200\76Hz]
+@="2584,1984,2240,1250,1203,1206,12,245480000,7600,8,42635"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1200\85Hz]
+@="GTF"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1440]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1440\60Hz]
+@="2600,2048,2256,1500,1441,1444,4,234000000,6000,8,40701"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\1920,1440\75Hz]
+@="2640,2064,2288,1500,1441,1444,4,297000000,7500,8,48589"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\2048,1536]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\2048,1536\60Hz]
+@="2504,2096,2312,1597,1537,1540,0,239933000,6000,8,41587"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\2048,1536\75Hz]
+@="2656,2112,2328,1606,1537,1540,0,319915000,7500,8,51278"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,200]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,200\70Hz]
+@="400,328,376,449,413,415,5,12587500,7009,8,10661"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,200\85Hz]
+@="416,336,368,445,401,404,5,15750000,8508,8,12466"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,240]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,240\60Hz]
+@="400,328,376,525,490,492,13,12587500,5994,8,9884"
+"Supported"="BPP+8+16+32,DDRAW,TVO_DD,NTSC,PAL"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,240\72Hz]
+@="416,336,352,520,489,492,13,15750000,7281,8,11482"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,240\75Hz]
+@="424,328,360,500,481,484,13,15901442,7501,8,11689"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\320,240\85Hz]
+@="416,344,376,509,481,484,13,18000000,8501,8,12932"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\400,300]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\400,300\60Hz]
+@="528,424,488,628,601,605,1,20000000,6032,8,11315"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\400,300\72Hz]
+@="520,432,488,666,637,643,1,25000000,7219,8,13114"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\400,300\75Hz]
+@="528,408,448,625,601,604,1,24750000,7500,8,13198"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\400,300\85Hz]
+@="528,416,448,631,601,604,1,28341346,8507,8,14578"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\512,384]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\512,384\60Hz]
+@="672,528,592,806,771,777,13,32500000,6000,8,13417"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\512,384\70Hz]
+@="664,528,592,806,771,777,13,37500000,7007,8,14916"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\512,384\75Hz]
+@="656,520,568,800,769,772,13,39375000,7503,8,15546"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\512,384\85Hz]
+@="688,536,584,808,769,772,13,47250000,8500,8,17403"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,400]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,400\70Hz]
+@="800,656,752,449,413,415,4,25175000,7009,8,13023"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\640,400\85Hz]
+@="832,672,736,445,401,404,4,31500000,8508,8,15160"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,480]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,480\60Hz]
+@="896,736,856,525,490,492,12,28196000,5994,8,12828"
+"Supported"="BPP+8+16+32,DDRAW,TVO_DESK,TVO_DD,NTSC,PAL"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,480\72Hz]
+@="920,736,872,520,489,492,12,34832000,7281,8,14813"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,480\85Hz]
+@="936,784,848,509,481,484,12,40500000,8501,8,16613"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,576]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,576\72Hz]
+@="936,752,848,642,578,582,0,43266000,7200,8,15872"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TIMINGS\720,576\100Hz]
+@="936,752,848,642,578,582,0,60089400,10000,8,20354"
+"Supported"="BPP+8+16+32,DDRAW"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Features]
+"FeatureTitle"="3dfx Anti-Aliasing"
+"Status"=dword:00000001
+"Initial Category"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features]
+"Status"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\3D Filter Quality]
+"Control"="Combo"
+"List"="Automatic,Normal,High"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_OVERLAYMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Video"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\3D Stereo Glasses]
+"Control"="Combo"
+"List"="Disable (Reboot Required),Enable (Reboot Required)"
+"Value"="0"
+"Default"="0"
+"Tweak Map"="0,1"
+"Tweak Value"="SSTH3_STEREO"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#3D_Glasses"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\AA Demo Key]
+"Control"="Combo"
+"List"="Disable,Num-Lock,Key-Pad /,Key-Pad *,Key-Pad -,F12"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_AAJITTER_TOGGLE_KEY"
+"Tweak Map"="*,144,111,106,109,123"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_AA_Demo"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\Alpha-Blending]
+"Control"="Combo"
+"List"="Automatic,Sharper,Smoother"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_ALPHADITHERMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Alpha"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\SingleChipAASLI]
+"Control"="Combo"
+"List"="Fastest Performance,2-Sample Anti-Aliasing"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,1"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V4"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\DualChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,2,3,4"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\QuadChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing,8 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,5,6,7,8"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\Geometry Assist]
+"Control"="Combo"
+"List"="Disable (Reboot Required),Enable (Reboot Required)"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_GEOMETRY_ASSIST"
+"Tweak Map"="*,2"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Geometry"
+"Value Help"=""
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\Level Of Detail Bias]
+"Control"="Simple Slider"
+"Left Label"="Sharper Image"
+"Right Label"="Best Performance"
+"Min"="-8"
+"Max"="8"
+"Value"="0"
+"Default"="0"
+"Name Map"="-2,-1.75,-1.50,-1.25,-1.00,-0.75,-0.50,-0.25,0,0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00"
+"Tweak Value"="SSTH3_LOD_BIAS"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_LOD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\Maximum Buffered Frames]
+"Control"="Combo"
+"List"="Default,1 Pending Buffer,2 Pending Buffers,3 Pending Buffers,4 Pending Buffers,5 Pending Buffers,6 Pending Buffers"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_MAX_PENDING_BUFFERS"
+"Tweak Map"="0,1,2,3,4,5,6"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_SwapBuffer"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\MIP Map Dithering]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_LOD_DITHER"
+"Tweak Map"="0,1"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Mipmap"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\D3D\Z-buffer Optimization]
+"Control"="Combo"
+"List"="Enable,Disable"
+"Value"="0"
+"Default"="0"
+"Tweak Map"="1,0"
+"Tweak Value"="SSTH3_Z_CLEAR_OPTIMIZATION"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_ZBUFFER"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\3D Filter Quality]
+"Control"="Combo"
+"List"="Automatic,Normal,High"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_OVERLAYMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Video"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\AA Demo Key]
+"Control"="Combo"
+"List"="Disable,Num-Lock,Key-Pad /,Key-Pad *,Key-Pad -,F12"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_AA_TOGGLE_KEY"
+"Tweak Map"="*,144,111,106,109,123"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_AA_Demo"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Alpha-Blending]
+"Control"="Combo"
+"List"="Automatic,Sharper,Smoother"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_ALPHADITHERMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Alpha"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\SingleChipAASLI]
+"Control"="Combo"
+"List"="Fastest Performance,2-Sample Anti-Aliasing"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,1"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V4"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\DualChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,2,3,4"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\QuadChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing,8 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,5,6,7,8"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Depth Precision (16 Bit)]
+"Control"="Combo"
+"List"="Disable,Fast,Faster"
+"Value"="1"
+"Default"="1"
+"Performance"="2"
+"Quality"="1"
+"Tweak Value"="FX_GL_16BPP_ZPRECISION"
+"Tweak Map"="0,1,2"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_16BPP"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Depth Precision (32 Bit)]
+"Control"="Combo"
+"List"="Disable,Fast,Faster"
+"Value"="1"
+"Default"="1"
+"Performance"="2"
+"Quality"="1"
+"Tweak Value"="FX_GL_32BPP_ZPRECISION"
+"Tweak Map"="0,1,2"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_32BPP"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Glide Splash Screen]
+"Control"="Combo"
+"List"="Enable,Disable"
+"Value"="0"
+"Default"="0"
+"Tweak Map"="*,1"
+"Tweak Value"="FX_GLIDE_NO_SPLASH"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Splash"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Legacy Texture Compression]
+"Control"="Combo"
+"List"="Enable,Disable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GL_COMPRESS_LEGACY_TEXTURES"
+"Tweak Map"="1,0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Texture"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Hidden Surface Removal]
+"Control"="Combo"
+"List"="Disable,Conservative Tiling,Non-Aggressive Tiling,Semi-Aggressive Tiling,Aggressive Tiling"
+"Value"="0"
+"Default"="0"
+"Performance"="1"
+"Quality"="0"
+"Tweak Value"="FX_GL_HSR"
+"Tweak Map"="0,1,2,3,4"
+"Help"="To Be Defined"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Force 16-bit Textures]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0]"
+"Performance"="1"
+"Quality"="0"
+"Tweak Value"="FX_GL_FORCE_16BPP_TEXTURES"
+"Tweak Map"="0,1"
+"Help"="To Be Defined"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Level Of Detail Bias]
+"Control"="Simple Slider"
+"Left Label"="Sharper Image"
+"Right Label"="Best Performance"
+"Min"="-8"
+"Max"="8"
+"Value"="0"
+"Default"="0"
+"Performance"="8"
+"Quality"="0"
+"Name Map"="-2,-1.75,-1.50,-1.25,-1.00,-0.75,-0.50,-0.25,0,0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00"
+"Tweak Value"="FX_GLIDE_LOD_BIAS"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_LOD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Maximum Buffered Frames]
+"Control"="Combo"
+"List"="No Pending Buffers,1 Pending Buffer,2 Pending Buffers,3 Pending Buffers"
+"Value"="1"
+"Default"="1"
+"Performance"="3"
+"Quality"="1"
+"Tweak Value"="FX_GLIDE_SWAPPENDINGCOUNT"
+"Tweak Map"="0,1,2,3"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#SwapBuffer"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\MIP Map Dithering]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_LOD_DITHER"
+"Tweak Map"="*,1"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Mipmap"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Rendering Color-depth]
+"Control"="Combo"
+"List"="Software Controlled,Force 32bpp Rendering"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_BPP"
+"Tweak Map"="16,32"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Color"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Triple Buffering]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="FX_GLIDE_ALLOC_COLOR"
+"Tweak Map"="-1,3"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_Buffer"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Vertical Sync]
+"Control"="Combo"
+"List"="Software Controlled,Disable,Enable"
+"Value"="1"
+"Default"="1"
+"Tweak Map"="*,0,1"
+"Tweak Value"="FX_GLIDE_SWAPINTERVAL"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Glide_VSync"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\Glide\Guardband Clipping]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Performance"="1"
+"Quality"="0"
+"Tweak Value"="FX_GL_GUARDBAND_ENABLED"
+"Tweak Map"="0,1"
+"HTML Help"="To Be Defined"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\DEFAULT]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\DEFAULT\AGP Command FIFO]
+"Control"="Combo"
+"List"="Disable (Reboot Required),Auto Detect,AGP 1x,AGP 2x"
+"Default"="2"
+"Value"="2"
+"Tweak Map"="-1,0,1,2"
+"Tweak Value"="SSTH3_AGP_XRATE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#AGP"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\DEFAULT\VIA Chipset]
+"Control"="Combo"
+"List"="Performance,Compatibility,BIOS Defaults"
+"Default"="0"
+"Value"="0"
+"Tweak Map"="0,1,2"
+"Tweak Value"="SSTH3_VIA_COMPATIBILITY"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#VIA_Chipset"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\DEFAULT\VideoRefresh2]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Default"="0"
+"Value"="0"
+"Localisation"="Refresh Optimization"
+"Tweak Map"="*,1"
+"Tweak Value"="SSTH3_VIDEO_REFRESH_OPTIMIZATION"
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Refresh"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\DEFAULT\VideoRefresh]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Default"="1"
+"Value"="1"
+"Localisation"="Refresh Optimization"
+"Tweak Map"="0,*"
+"Tweak Value"="SSTH3_VIDEO_REFRESH_OPTIMIZATION"
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#Refresh"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Advanced Features\Backed Up\DEFAULT\Info]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Color]
+"Status"=dword:00000001
+"Color Scheme"="Current"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Color\Configurations]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Color\Configurations\Current]
+"Lock Gamma"="1"
+"Brightness"="0"
+"Contrast"="50"
+"RGAMMA"="1.00"
+"GGAMMA"="1.00"
+"BGAMMA"="1.00"
+"VContrast"="50"
+"VBrightness"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Color\Configurations\Warm]
+"Lock Gamma"="1"
+"Brightness"="0"
+"Contrast"="50"
+"RGAMMA"="1.30"
+"GGAMMA"="1.00"
+"BGAMMA"="1.00"
+"VContrast"="50"
+"VBrightness"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Color\Configurations\Cool]
+"Lock Gamma"="1"
+"Brightness"="0"
+"Contrast"="50"
+"RGAMMA"="1.00"
+"GGAMMA"="1.00"
+"BGAMMA"="1.30"
+"VContrast"="50"
+"VBrightness"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Color\GAMMA]
+"SSTH3_RGAMMA"="1.00"
+"SSTH3_GGAMMA"="1.00"
+"SSTH3_BGAMMA"="1.00"
+"SSTH3_VRGAMMA"="1.30"
+"SSTH3_VGGAMMA"="1.30"
+"SSTH3_VBGAMMA"="1.30"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Information]
+"Status"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools TV Out]
+"Status"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\3dfx Tools\3dfxTools Digital Out]
+"Status"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D]
+"Localisation"="Direct3D"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D"
+"SSTH3_OVERLAYMODE"="1"
+"SSTH3_STEREO"="0"
+"SSTH3_ALPHADITHERMODE"="1"
+"SSTH3_LOD_BIAS"="0"
+"SSTH3_MAX_PENDING_BUFFERS"="1"
+"SSTH3_LOD_DITHER"="0"
+"SSTH3_Z_CLEAR_OPTIMIZATION"="1"
+"SSTH3_SLI_AA_CONFIGURATION"="0"
+"SSTH3_RGAMMA"="1.30"
+"SSTH3_GGAMMA"="1.30"
+"SSTH3_BGAMMA"="1.30"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\3D Filter Quality]
+"Control"="Combo"
+"List"="Automatic,Normal,High"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_OVERLAYMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Video"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\3D Stereo Glasses]
+"Control"="Combo"
+"List"="Disable (Reboot Required),Enable (Reboot Required)"
+"Value"="0"
+"Default"="0"
+"Tweak Map"="0,1"
+"Tweak Value"="SSTH3_STEREO"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#3D_Glasses"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\AA Demo Key]
+"Control"="Combo"
+"List"="Disable,Num-Lock,Key-Pad /,Key-Pad *,Key-Pad -,F12"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_AAJITTER_TOGGLE_KEY"
+"Tweak Map"="*,144,111,106,109,123"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_AA_Demo"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\Alpha-Blending]
+"Control"="Combo"
+"List"="Automatic,Sharper,Smoother"
+"Value"="1"
+"Default"="1"
+"Offset"="1"
+"Tweak Value"="SSTH3_ALPHADITHERMODE"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Alpha"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\SingleChipAASLI]
+"Control"="Combo"
+"List"="Fastest Performance,2-Sample Anti-Aliasing"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,1"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V4"
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\DualChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,2,3,4"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\QuadChipAASLI]
+"Control"="Combo"
+"List"="Single Chip Only,Fastest Performance,2 Sample Anti-Aliasing,4 Sample Anti-Aliasing,8 Sample Anti-Aliasing"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_SLI_AA_CONFIGURATION"
+"Tweak Map"="0,5,6,7,8"
+"Localisation"="Anti-Aliasing"
+"Help"=""
+"Value Help"=""
+"Default On Boot"="0"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Anti-Aliasing/3dfx%20Tools%20AA%20Config%20Help.htm#V5"
+"Disabled"="2"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\Geometry Assist]
+"Control"="Combo"
+"List"="Disable (Reboot Required),Enable (Reboot Required)"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_GEOMETRY_ASSIST"
+"Tweak Map"="*,2"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Geometry"
+"Value Help"=""
+"Disabled"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\Level Of Detail Bias]
+"Control"="Simple Slider"
+"Left Label"="Sharper Image"
+"Right Label"="Best Performance"
+"Min"="-8"
+"Max"="8"
+"Value"="0"
+"Default"="0"
+"Name Map"="-2,-1.75,-1.50,-1.25,-1.00,-0.75,-0.50,-0.25,0,0.25,0.50,0.75,1.00,1.25,1.50,1.75,2.00"
+"Tweak Value"="SSTH3_LOD_BIAS"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_LOD"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\Maximum Buffered Frames]
+"Control"="Combo"
+"List"="Default,1 Pending Buffer,2 Pending Buffers,3 Pending Buffers,4 Pending Buffers,5 Pending Buffers,6 Pending Buffers"
+"Value"="1"
+"Default"="1"
+"Tweak Value"="SSTH3_MAX_PENDING_BUFFERS"
+"Tweak Map"="0,1,2,3,4,5,6"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_SwapBuffer"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\MIP Map Dithering]
+"Control"="Combo"
+"List"="Disable,Enable"
+"Value"="0"
+"Default"="0"
+"Tweak Value"="SSTH3_LOD_DITHER"
+"Tweak Map"="0,1"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_Mipmap"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\D3D\Z-buffer Optimization]
+"Control"="Combo"
+"List"="Enable,Disable"
+"Value"="0"
+"Default"="0"
+"Tweak Map"="1,0"
+"Tweak Value"="SSTH3_Z_CLEAR_OPTIMIZATION"
+"HTML Help"="hh ms-its:3dfx%20Voodoo5%20Help.chm::/Advanced%20Features/3dfx%20Tools%20Advanced%20Features%20Help.htm#D3D_ZBUFFER"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\FEATURES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\FEATURES\D3D]
+"CategoryPath"="\\\\D3D"
+"Localisation"="Direct3D"
+"CategoryBitmap"="Direct3D.bmp"
+"CategoryMask"="Direct3DMask.bmp"
+"CategoryDisabled"="Direct3DDisabled.bmp"
+"CategoryNumberSlots"="2"
+"CategorySlot0"="DualChipAASLI,QuadChipAASLI,SingleChipAASLI"
+"CategorySlot1"="AA Demo Key"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\FEATURES\Glide]
+"CategoryPath"="\\\\Glide"
+"Localisation"="OpenGL/Glide"
+"CategoryBitmap"="OpenGL.bmp"
+"CategoryMask"="OpenGLMask.bmp"
+"CategoryDisabled"="OpenGLDisabled.bmp"
+"CategoryNumberSlots"="2"
+"CategorySlot0"="DualChipAASLI,QuadChipAASLI,SingleChipAASLI"
+"CategorySlot1"="AA Demo Key"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\TV]
+"enabled"=dword:00000000
+"priorbootTV"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers\3dfxTools Advanced Features]
+@="{AB040300-8AA1-11D2-8DD1-00104BB5EAD6}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers\3dfxTools Color]
+@="{AB040301-8AA1-11D2-8DD1-00104BB5EAD6}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers\3dfxTools Information]
+@="{AB040302-8AA1-11D2-8DD1-00104BB5EAD6}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers\3dfxTools TV Out]
+@="{AB040306-8AA1-11D2-8DD1-00104BB5EAD6}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers\3dfxTools Features]
+@="{AB040307-8AA1-11D2-8DD1-00104BB5EAD6}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0013\shellex\PropertySheetHandlers\3dfxTools Digital Out]
+@="{AB040303-8AA1-11D2-8DD1-00104BB5EAD6}"
+
