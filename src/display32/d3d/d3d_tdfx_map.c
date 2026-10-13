@@ -14,16 +14,17 @@
  * rectangle's short side counts fewer (d3d_tdfx_map.h). */
 #define V9X_D3D_TDFX_ST_SCALE     256.0f
 /*
- * The chip samples a pixel at its centre, +0.5, where Direct3D puts the
- * centre on the whole coordinate. V9XDDP's TexPhase, a 16x16 quad drawn
- * 1:1 and point-sampled on A8U4I5 (2026-10-13): moved half a pixel up and
- * left, every pixel read its own texel under 3dfx's driver and the next
- * one under this engine; moved half a pixel down and right, 3dfx's lost
- * its first pixel and this engine's read exactly. So the engine sees at a
- * vertex + 0.5 what Direct3D sees at the vertex, and every vertex moves
- * down and right by it, which matches coverage and texel phase both.
- * (Moving them up and left was tried first, boot 440: it doubled the
- * error.)
+ * The chip samples a pixel at its centre, +0.5, as OpenGL does; Direct3D
+ * puts the centre on the whole coordinate. So a Direct3D draw's vertices
+ * move down and right by half a pixel. V9XDDP's TexPhase, a 16x16 quad
+ * drawn 1:1 and point-sampled at whole, half, quarter and eighth-pixel
+ * offsets, reads exactly what Direct3D's rules give with this and subpixel
+ * correction on (A8U4I5 boot 444), and what 3dfx's driver gave (boot
+ * 439). Moving them up and left was tried first, boot 440: it doubled the
+ * error. Before subpixel correction the texture coordinates also started
+ * at the vertex rather than the pixel centre, which this shift happened to
+ * mask for Direct3D's unflipped quads and did not for the ICD's
+ * (docs\decisions\2026-10-13-voodoo4-opengl-and-subpixel-correction.md).
  */
 #define V9X_D3D_TDFX_PIXEL_CENTRE 0.5f
 #define V9X_D3D_TDFX_FLOAT_EXPONENT 0x7f800000ul
@@ -283,15 +284,17 @@ v9x_u32 v9x_d3d_tdfx_map_draw(const V9X_R3D_DRAW *draw,
     }
     /*
      * An OpenGL draw through the render interface is honoured exactly or
-     * refused (r3d.h, explicit_state). The builder clips to the whole
-     * target and writes all of RGB, and samples surface textures only.
+     * refused (r3d.h, explicit_state). The builder writes all of RGB and
+     * samples surface textures only; the scissor goes to the clip
+     * registers, which take a non-empty rectangle inside the target.
      */
     if (draw->explicit_state != 0ul &&
         (draw->write_mask != V9X_D3D_TDFX_WRITE_RGB ||
          draw->texture.levels != 0 ||
-         draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
-         draw->scissor_right != draw->target.width ||
-         draw->scissor_bottom != draw->target.height)) {
+         draw->scissor_left >= draw->scissor_right ||
+         draw->scissor_top >= draw->scissor_bottom ||
+         draw->scissor_right > draw->target.width ||
+         draw->scissor_bottom > draw->target.height)) {
         return V9X_D3D_TDFX_REFUSE_EXPLICIT;
     }
     if (draw->target.format != V9X_R3D_FORMAT_RGB565) {
@@ -315,6 +318,13 @@ v9x_u32 v9x_d3d_tdfx_map_draw(const V9X_R3D_DRAW *draw,
     state->target.pitch_bytes = draw->target.pitch;
     state->width = draw->target.width;
     state->height = draw->target.height;
+    if (draw->explicit_state != 0ul) {
+        state->scissor = 1ul;
+        state->scissor_left = draw->scissor_left;
+        state->scissor_top = draw->scissor_top;
+        state->scissor_right = draw->scissor_right;
+        state->scissor_bottom = draw->scissor_bottom;
+    }
 
     /* Depth needs the state, a bound surface and a pitch. */
     if (draw->depth_enable != 0ul && draw->depth.object != 0 &&
@@ -365,6 +375,7 @@ static float v9x_d3d_tdfx_z(float sz)
 int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
                           v9x_u32 shade_mode,
                           const struct v9x_tdfx_3d_texture *texture,
+                          v9x_u32 centres,
                           struct v9x_tdfx_3d_vertex *out)
 {
     const V9X_R3D_VERTEX *colour;
@@ -374,6 +385,8 @@ int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
     v9x_u32 index;
     int flat = shade_mode == V9X_R3D_SHADE_FLAT;
     int textured = texture != 0;
+    float shift = centres == V9X_D3D_TDFX_CENTRES_D3D
+                      ? V9X_D3D_TDFX_PIXEL_CENTRE : 0.0f;
 
     /* The short side counts texels of the 256-long level's short side. */
     if (textured && texture->aspect != 0ul) {
@@ -411,8 +424,8 @@ int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
 
         /* Flat shading is Direct3D's: vertex 0's colour throughout. */
         colour = flat ? &triangle[0] : v;
-        out[index].x = v->sx + V9X_D3D_TDFX_PIXEL_CENTRE;
-        out[index].y = v->sy + V9X_D3D_TDFX_PIXEL_CENTRE;
+        out[index].x = v->sx + shift;
+        out[index].y = v->sy + shift;
         out[index].z = v9x_d3d_tdfx_z(v->sz);
         out[index].r = (float)((colour->color >> 16) & 0xfful);
         out[index].g = (float)((colour->color >> 8) & 0xfful);

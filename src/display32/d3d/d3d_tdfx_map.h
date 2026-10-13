@@ -72,7 +72,8 @@ v9x_u32 v9x_d3d_tdfx_map_draw(const V9X_R3D_DRAW *draw,
                               struct v9x_tdfx_3d_state *state);
 
 /*
- * One triangle's vertices in the builder's units: colour channels 0-255
+ * One triangle's vertices in the builder's units: positions moved to the
+ * chip's pixel centres as `centres` says, colour channels 0-255
  * (vertex 0's throughout when flat), Z in depth counts (sz x 65535), 1/W
  * from RHW, and S/W, T/W times RHW in texels of the texture's 256-long
  * level: 256 on the long side (the unit TDFX3D measured on a square
@@ -84,6 +85,21 @@ v9x_u32 v9x_d3d_tdfx_map_draw(const V9X_R3D_DRAW *draw,
 int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
                           v9x_u32 shade_mode,
                           const struct v9x_tdfx_3d_texture *texture,
+                          v9x_u32 centres,
                           struct v9x_tdfx_3d_vertex *out);
+
+/*
+ * Where the vertices' pixel centres are, for v9x_d3d_tdfx_triangle.
+ * Direct3D puts a pixel's centre on its whole coordinate and the chip
+ * samples at +0.5, so a Direct3D draw moves half a pixel (V9XDDP
+ * TexPhase). The render interface's vertices follow the CPU rasterizer
+ * contract, which samples at +0.5 as the chip does, and do not move
+ * (V9XGLP TexPhase reads OpenGL's rules exactly, A8U4I5 boot 444). A
+ * draw's explicit_state says which it is. Both rest on subpixel
+ * correction (tdfx_3d.c): docs\decisions\2026-10-13-voodoo4-opengl-and-
+ * subpixel-correction.md.
+ */
+#define V9X_D3D_TDFX_CENTRES_D3D     0ul
+#define V9X_D3D_TDFX_CENTRES_NEUTRAL 1ul
 
 #endif

@@ -18,7 +18,12 @@ Status:
 - **Mipmaps, rectangles and pixel centres:** done
   ([2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md](../decisions/2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md)).
   Trilinear is not built.
-- **Next:** OpenGL (step 4).
+- **Step 4, OpenGL:** done. V9XGLP passes, Half-Life `-gl` and Quake 2
+  draw right
+  ([2026-10-13-voodoo4-opengl-and-subpixel-correction.md](../decisions/2026-10-13-voodoo4-opengl-and-subpixel-correction.md)).
+  Performance is parked (Michael): OpenGL runs at about half of
+  Direct3D on every family.
+- **Next:** the later steps below; fog first, which both APIs refuse.
 
 Parent plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md),
 Phase 5. Register facts: [vsa100-registers.md](../specifications/vsa100-registers.md)

@@ -628,6 +628,9 @@ static int v9x_d3d_tdfx_draw(const V9X_R3D_DRAW *draw,
         if (!v9x_d3d_tdfx_triangle(vertices + index * 3ul, draw->shade_mode,
                                    state.texture_enable != 0ul
                                        ? &state.texture : 0,
+                                   draw->explicit_state != 0ul
+                                       ? V9X_D3D_TDFX_CENTRES_NEUTRAL
+                                       : V9X_D3D_TDFX_CENTRES_D3D,
                                    corners)) {
             continue;
         }

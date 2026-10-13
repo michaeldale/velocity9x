@@ -138,6 +138,15 @@ struct v9x_tdfx_3d_state {
     v9x_u32 width;
     v9x_u32 height;
 
+    /* With scissor set, drawing is confined to the half-open rectangle
+     * [left, right) x [top, bottom) inside the target; clear, to the
+     * whole target. */
+    v9x_u32 scissor;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
+
     v9x_u32 depth_enable;
     struct v9x_tdfx_3d_surface depth;
     v9x_u32 depth_func;

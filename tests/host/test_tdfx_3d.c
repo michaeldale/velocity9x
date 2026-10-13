@@ -105,9 +105,13 @@ static void test_state_plain(void)
     CHECK(value_at(&words, V9X_TDFX_3D_CLIP_TOP_BOTTOM) == 0x000001e0ul);
     /* fbzMode: clip enable (0) and RGB write (9). */
     CHECK(value_at(&words, V9X_TDFX_3D_FBZ_MODE) == 0x00000201ul);
-    /* fbzColorPath 0: iterated RGB and alpha as "other", multiplied by
-     * 1 - 0 (select zero, reverse blend clear), nothing added. */
-    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0ul);
+    /* fbzColorPath: iterated RGB and alpha as "other", multiplied by
+     * 1 - 0 (select zero, reverse blend clear), nothing added; and
+     * subpixel correction (26), on every draw, so the setup unit starts
+     * colour, depth and texture parameters at the first pixel centre, not
+     * at the vertex (section 8.20; without it V9XGLP's texel phase
+     * differed between rows and columns, A8U4I5 boot 443). */
+    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x04000000ul);
     CHECK(value_at(&words, V9X_TDFX_3D_ALPHA_MODE) == 0ul);
     CHECK(value_at(&words, V9X_TDFX_3D_FOG_MODE) == 0ul);
     /* No texture: TMU0 is not touched. */
@@ -174,7 +178,7 @@ static void test_state_texture(void)
 
     /* Replace: RGB select TMU (1:0 = 1), alpha select TMU (3:2 = 1),
      * texture enable 27. */
-    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x08000005ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x0c000005ul);
     /* textureMode on TMU0: perspective 0; format 10 in 11:8; colour
      * combine replace (zero other 12, add local 18); alpha combine replace
      * (zero other 21, add local 27). */
@@ -213,7 +217,7 @@ static void test_state_texture(void)
      * clear). */
     state.texture.combine = V9X_TDFX_COMBINE_MODULATE_TEXALPHA;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
-    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x08002405ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x0c002405ul);
 
     /* Modulate, bilinear, clamped: RGB select TMU, multiply by local (12:10
      * = 1) with reverse blend 13; alpha select TMU, alpha multiply by local
@@ -223,7 +227,7 @@ static void test_state_texture(void)
     state.texture.mag_bilinear = 1ul;
     state.texture.clamp = 1ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
-    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x08482405ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_FBZ_COLOR_PATH) == 0x0c482405ul);
     /* Min and mag bilinear 1, 2; clamp S, T 6, 7. */
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE) ==
           0x08241ac7ul);
@@ -388,6 +392,49 @@ static void test_state_aspect(void)
     state.texture.offset = MIB(17);
     state.texture.aspect = 4ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
+}
+
+/*
+ * A scissor: clipLeftRight and clipTopBottom take it as they take the
+ * whole target, left/top in 27:16, right/bottom in 11:0, half-open
+ * (section 8.44 p.131). An empty or out-of-target one is refused.
+ */
+static void test_state_scissor(void)
+{
+    struct v9x_tdfx_3d_state state;
+    struct v9x_tdfx_3d_words words;
+
+    base_state(&state);
+    state.scissor = 1ul;
+    state.scissor_left = 10ul;
+    state.scissor_right = 20ul;
+    state.scissor_top = 30ul;
+    state.scissor_bottom = 40ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_CLIP_LEFT_RIGHT) == 0x000a0014ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_CLIP_TOP_BOTTOM) == 0x001e0028ul);
+
+    /* The whole target as a scissor is the plain clip. */
+    state.scissor_left = 0ul;
+    state.scissor_right = 640ul;
+    state.scissor_top = 0ul;
+    state.scissor_bottom = 480ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_CLIP_LEFT_RIGHT) == 0x00000280ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_CLIP_TOP_BOTTOM) == 0x000001e0ul);
+
+    /* Past the target, or empty (the spec wants left < right). */
+    state.scissor_right = 641ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.scissor_right = 640ul;
+    state.scissor_bottom = 0ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.scissor_bottom = 480ul;
+    state.scissor_left = 640ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 static void test_state_refusals(void)
@@ -561,6 +608,7 @@ unsigned int v9x_run_tdfx_3d_tests(void)
     test_state_texture();
     test_state_mipmap();
     test_state_aspect();
+    test_state_scissor();
     test_state_refusals();
     test_triangle_plain();
     test_triangle_depth_texture();

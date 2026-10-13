@@ -39,6 +39,13 @@
 #define TDFX3D_CP_ALPHA_MUL_LOCAL   0x00080000ul
 #define TDFX3D_CP_ALPHA_REVERSE     0x00400000ul
 #define TDFX3D_CP_TEXTURE_ENABLE    0x08000000ul
+/* Subpixel correction (section 8.20, bit 26): the setup unit moves each
+ * triangle's start colour, depth and texture parameters from the vertex to
+ * the first pixel centre. Without it they start at the vertex's own
+ * position, and V9XGLP's 1:1 texel phase on A8U4I5 (boot 443) read
+ * columns and rows off by different amounts on the ICD's flipped quads. It
+ * costs setup clocks the rasterizer hides (section 8.20). */
+#define TDFX3D_CP_SUBPIXEL          0x04000000ul
 
 /* alphaMode (section 8.23). The alpha channel's own factors are ONE and
  * ZERO: an RGB565 target holds no alpha. */
@@ -198,20 +205,23 @@ static v9x_u32 tdfx3d_texture_base(const struct v9x_tdfx_3d_texture *t)
 static v9x_u32 tdfx3d_color_path(const struct v9x_tdfx_3d_state *state)
 {
     if (state->texture_enable == 0ul) {
-        return 0ul;
+        return TDFX3D_CP_SUBPIXEL;
     }
     if (state->texture.combine == V9X_TDFX_COMBINE_MODULATE) {
-        return TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU |
+        return TDFX3D_CP_SUBPIXEL |
+               TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU |
                TDFX3D_CP_ALPHA_TMU | TDFX3D_CP_RGB_MUL_LOCAL |
                TDFX3D_CP_RGB_REVERSE | TDFX3D_CP_ALPHA_MUL_LOCAL |
                TDFX3D_CP_ALPHA_REVERSE;
     }
     if (state->texture.combine == V9X_TDFX_COMBINE_MODULATE_TEXALPHA) {
-        return TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU |
+        return TDFX3D_CP_SUBPIXEL |
+               TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU |
                TDFX3D_CP_ALPHA_TMU | TDFX3D_CP_RGB_MUL_LOCAL |
                TDFX3D_CP_RGB_REVERSE;
     }
-    return TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU | TDFX3D_CP_ALPHA_TMU;
+    return TDFX3D_CP_SUBPIXEL | TDFX3D_CP_TEXTURE_ENABLE | TDFX3D_CP_RGB_TMU |
+           TDFX3D_CP_ALPHA_TMU;
 }
 
 v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
@@ -220,6 +230,10 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
     v9x_status status;
     v9x_u32 fbz_mode;
     v9x_u32 alpha_mode = 0ul;
+    v9x_u32 clip_left = 0ul;
+    v9x_u32 clip_top = 0ul;
+    v9x_u32 clip_right;
+    v9x_u32 clip_bottom;
 
     if (state == 0 || words == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -234,6 +248,22 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
                                   state->height, state->vram_bytes);
     if (status != V9X_STATUS_OK) {
         return status;
+    }
+    clip_right = state->width;
+    clip_bottom = state->height;
+    if (state->scissor != 0ul) {
+        /* Inside the target and not empty: the spec wants left below
+         * right and top below bottom (section 8.44 p.131). */
+        if (state->scissor_left >= state->scissor_right ||
+            state->scissor_top >= state->scissor_bottom ||
+            state->scissor_right > state->width ||
+            state->scissor_bottom > state->height) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        clip_left = state->scissor_left;
+        clip_top = state->scissor_top;
+        clip_right = state->scissor_right;
+        clip_bottom = state->scissor_bottom;
     }
     if (state->depth_enable != 0ul) {
         status = tdfx3d_check_surface(&state->depth, state->width,
@@ -272,8 +302,10 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         tdfx3d_emit(words, V9X_TDFX_3D_AUX_BUFFER_STRIDE,
                     state->depth.pitch_bytes);
     }
-    tdfx3d_emit(words, V9X_TDFX_3D_CLIP_LEFT_RIGHT, state->width);
-    tdfx3d_emit(words, V9X_TDFX_3D_CLIP_TOP_BOTTOM, state->height);
+    tdfx3d_emit(words, V9X_TDFX_3D_CLIP_LEFT_RIGHT,
+                (clip_left << TDFX3D_CLIP_HIGH_SHIFT) | clip_right);
+    tdfx3d_emit(words, V9X_TDFX_3D_CLIP_TOP_BOTTOM,
+                (clip_top << TDFX3D_CLIP_HIGH_SHIFT) | clip_bottom);
 
     fbz_mode = TDFX3D_FBZ_CLIP | TDFX3D_FBZ_RGB_WRITE;
     if (state->dither != 0ul) {

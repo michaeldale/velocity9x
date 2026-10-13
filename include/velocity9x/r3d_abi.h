@@ -214,6 +214,7 @@ typedef struct v9x_r3d_abi_state {
 #define V9X_R3D_ABI_ENGINE_RAGE2    5ul
 #define V9X_R3D_ABI_ENGINE_SIS6326  6ul
 #define V9X_R3D_ABI_ENGINE_MGA      7ul
+#define V9X_R3D_ABI_ENGINE_TDFX     8ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;

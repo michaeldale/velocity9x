@@ -197,23 +197,39 @@ static void test_fog_specular_explicit(void)
     CHECK(v9x_d3d_tdfx_map_draw(&draw, 0, BASE, VRAM, 0x00102030ul,
                                 &state) == V9X_D3D_TDFX_REFUSE_SPECULAR);
 
-    /* A render-interface draw is honoured exactly or refused: the full
-     * scissor and all of RGB written, no CPU texture levels. */
+    /* A render-interface draw is honoured exactly or refused: all of RGB
+     * written, no CPU texture levels; its scissor goes to the clip
+     * registers, and an empty one is refused (the chip wants left below
+     * right), which the core's fallback then draws as nothing. */
     base_draw(&draw);
     draw.explicit_state = 1ul;
     draw.write_mask = 7ul;
     draw.scissor_right = 640ul;
     draw.scissor_bottom = 480ul;
     CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.scissor == 1ul && state.scissor_left == 0ul &&
+          state.scissor_right == 640ul && state.scissor_top == 0ul &&
+          state.scissor_bottom == 480ul);
     draw.write_mask = 3ul;
     CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_EXPLICIT);
     draw.write_mask = 7ul;
     draw.scissor_left = 1ul;
+    draw.scissor_bottom = 479ul;
+    CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.scissor_left == 1ul && state.scissor_bottom == 479ul);
+    draw.scissor_left = 640ul;
     CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_EXPLICIT);
     draw.scissor_left = 0ul;
-    draw.scissor_bottom = 479ul;
+    draw.scissor_bottom = 481ul;
     CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_EXPLICIT);
     draw.scissor_bottom = 480ul;
+    /* A Direct3D draw carries no scissor: the whole target. */
+    draw.explicit_state = 0ul;
+    draw.scissor_left = 5ul;
+    CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.scissor == 0ul);
+    draw.scissor_left = 0ul;
+    draw.explicit_state = 1ul;
     draw.texture.level_count = 1ul;
     draw.texture.levels = (const V9X_R3D_LEVEL *)&surface_object;
     CHECK(map(&draw, 0, &state) == V9X_D3D_TDFX_REFUSE_EXPLICIT);
@@ -420,12 +436,31 @@ static void test_triangle(void)
     corner(&t[0], 10.0f, 10.0f, 0xff804020ul);
     corner(&t[1], 100.0f, 10.0f, 0x80ff0000ul);
     corner(&t[2], 10.0f, 100.0f, 0x000000fful);
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, V9X_D3D_TDFX_CENTRES_D3D, out));
     /* Half a pixel down and right: the chip samples at +0.5,
      * Direct3D on the whole coordinate (V9XDDP TexPhase, boots 438-440,
      * the first sign wrong). */
     CHECK(out[0].x == 10.5f && out[0].y == 10.5f);
     CHECK(out[1].x == 100.5f && out[2].y == 100.5f);
+    /* A render-interface draw is already on the chip's centres: the
+     * contract samples at +0.5 (cpu-rasterizer-contract.md, Coverage). */
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex,
+                                V9X_D3D_TDFX_CENTRES_NEUTRAL, out));
+    CHECK(out[0].x == 10.0f && out[0].y == 10.0f);
+    CHECK(out[1].x == 100.0f && out[2].y == 100.0f);
+
+    /* Its texture coordinates are not moved either: with subpixel
+     * correction the chip starts them at the pixel centre (tdfx_3d.c). */
+    t[1].sx = 106.0f;
+    t[1].tu = 1.0f;
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex,
+                                V9X_D3D_TDFX_CENTRES_NEUTRAL, out));
+    CHECK(out[0].sow == 32.0f && out[1].sow == 128.0f);
+    t[1].sx = 100.0f;
+    t[1].tu = 0.25f;
+
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex,
+                                V9X_D3D_TDFX_CENTRES_D3D, out));
     CHECK(out[0].r == 128.0f && out[0].g == 64.0f && out[0].b == 32.0f &&
           out[0].a == 255.0f);
     CHECK(out[1].r == 255.0f && out[1].a == 128.0f);
@@ -444,33 +479,33 @@ static void test_triangle(void)
 
         wide.aspect = 1ul;
         wide.s_wider = 1ul;
-        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, out));
+        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, V9X_D3D_TDFX_CENTRES_D3D, out));
         CHECK(out[0].sow == 32.0f && out[0].tow == 64.0f);
         wide.s_wider = 0ul;
-        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, out));
+        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, V9X_D3D_TDFX_CENTRES_D3D, out));
         CHECK(out[0].sow == 16.0f && out[0].tow == 128.0f);
     }
 
     /* Flat: vertex 0's colour and alpha throughout. */
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_FLAT, tex, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_FLAT, tex, V9X_D3D_TDFX_CENTRES_D3D, out));
     CHECK(out[1].r == 128.0f && out[2].b == 32.0f && out[2].a == 255.0f);
 
     /* Z clamps to the buffer's range. */
     t[0].sz = 1.5f;
     t[1].sz = -0.25f;
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
     CHECK(out[0].z == 65535.0f && out[1].z == 0.0f);
 
     /* Untextured: RHW is not read, so zero is fine; textured, it is not. */
     t[0].rhw = 0.0f;
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
-    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
+    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, V9X_D3D_TDFX_CENTRES_D3D, out));
     t[0].rhw = 0.5f;
 
     /* Zero area and a coordinate that is not finite draw nothing. */
     t[2].sx = 55.0f;
     t[2].sy = 10.0f;
-    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
+    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
     t[2].sx = 10.0f;
     t[2].sy = 100.0f;
     {
@@ -481,7 +516,7 @@ static void test_triangle(void)
 
         nan.bits = 0x7fc00000ul;
         t[1].sx = nan.value;
-        CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
+        CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, V9X_D3D_TDFX_CENTRES_D3D, out));
     }
 }
 

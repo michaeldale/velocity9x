@@ -5181,19 +5181,34 @@ void __stdcall V9xDdrawProbeEntry(void)
                  * (v9x_probe_texel_phase). */
                 v9x_probe_reset_state(d3d_device, triangle);
                 {
-                    static const float phase_offset[3] = {
-                        0.0f, -0.5f, 0.5f };
-                    static const char *phase_cols_key[3] = {
-                        "TexPhase0Cols", "TexPhaseM5Cols", "TexPhaseP5Cols" };
-                    static const char *phase_rows_key[3] = {
-                        "TexPhase0Rows", "TexPhaseM5Rows", "TexPhaseP5Rows" };
-                    static const char *phase_hr_key[3] = {
-                        "TexPhase0Hr", "TexPhaseM5Hr", "TexPhaseP5Hr" };
+                    /* Whole and half pixels, then quarters and finer
+                     * steps, which place the sample points. */
+                    static const float phase_offset[11] = {
+                        0.0f, -0.5f, 0.5f, -0.25f, 0.25f, -0.75f, 0.75f,
+                        0.125f, 0.3125f, 0.375f, 0.4375f };
+                    static const char *phase_cols_key[11] = {
+                        "TexPhase0Cols", "TexPhaseM5Cols", "TexPhaseP5Cols",
+                        "TexPhaseM25Cols", "TexPhaseP25Cols",
+                        "TexPhaseM75Cols", "TexPhaseP75Cols",
+                        "TexPhaseP125Cols", "TexPhaseP3125Cols",
+                        "TexPhaseP375Cols", "TexPhaseP4375Cols" };
+                    static const char *phase_rows_key[11] = {
+                        "TexPhase0Rows", "TexPhaseM5Rows", "TexPhaseP5Rows",
+                        "TexPhaseM25Rows", "TexPhaseP25Rows",
+                        "TexPhaseM75Rows", "TexPhaseP75Rows",
+                        "TexPhaseP125Rows", "TexPhaseP3125Rows",
+                        "TexPhaseP375Rows", "TexPhaseP4375Rows" };
+                    static const char *phase_hr_key[11] = {
+                        "TexPhase0Hr", "TexPhaseM5Hr", "TexPhaseP5Hr",
+                        "TexPhaseM25Hr", "TexPhaseP25Hr",
+                        "TexPhaseM75Hr", "TexPhaseP75Hr",
+                        "TexPhaseP125Hr", "TexPhaseP3125Hr",
+                        "TexPhaseP375Hr", "TexPhaseP4375Hr" };
                     char phase_cols[17];
                     char phase_rows[17];
                     DWORD phase_index;
 
-                    for (phase_index = 0ul; phase_index < 3ul;
+                    for (phase_index = 0ul; phase_index < 11ul;
                          ++phase_index) {
                         v9x_write_hresult(phase_hr_key[phase_index],
                             v9x_probe_texel_phase(ddraw, d3d_device,

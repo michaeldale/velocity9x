@@ -855,7 +855,9 @@ DWORD __stdcall V9xD3dRenderPrimitive(
 
 /*
  * The screen-space clipper and the list builder live in the neutral render
- * core, src\display323d3d_clip.c, since Phase 1a of the OpenGL plan
+ * core, src\display32
+3d
+3d_clip.c, since Phase 1a of the OpenGL plan
  * (2026-09-26); what stays here is the Direct3D context's part of each
  * call - the executing engine's guard band and the render target's size -
  * and the two decisions the list builder asks the front end for. The
@@ -5376,6 +5378,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_mga) {
         out->engine = V9X_R3D_ABI_ENGINE_MGA;
         name = "Velocity9x Millennium II";
+    } else if (ops == &v9x_d3d_engine_tdfx) {
+        out->engine = V9X_R3D_ABI_ENGINE_TDFX;
+        name = "Velocity9x VSA-100";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -5441,6 +5446,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         /* The 2164W's: power-of-two edges, 1 to 256, 565 and 1555,
          * placed by v9x_d3d_mga_create_surface at a power-of-two row
          * (docs\decisions\2026-10-10-mga2164w-textures.md). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_tdfx) {
+        /* The VSA-100's: power-of-two edges, 1 to 256, all three formats,
+         * placed by v9x_d3d_tdfx_create_surface. Rectangles to 8:1 only
+         * (tLOD's aspect field); the shape flags cannot say so, and a
+         * longer one is refused at draw (docs\decisions\2026-10-13-
+         * voodoo4-mipmaps-and-direct3d-pixel-centres.md). */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
