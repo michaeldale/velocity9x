@@ -133,6 +133,13 @@ unsigned int v9x_run_glide_state_tests(void);
 /* tests\host\test_glide3_layout.c: Glide 3 vertex layouts, texture info
  * and primitives in the shared engine's terms. */
 unsigned int v9x_run_glide3_layout_tests(void);
+/* tests\host\test_cif_vertex.c: ATI3DCIF vertices and primitives to the
+ * render interface's triangles. */
+unsigned int v9x_run_cif_vertex_tests(void);
+/* tests\host\test_cif_state.c: ATI3DCIF state to the render interface's. */
+unsigned int v9x_run_cif_state_tests(void);
+/* tests\host\test_cif_texture.c: ATI3DCIF texel formats and levels. */
+unsigned int v9x_run_cif_texture_tests(void);
 
 /* tests\host\test_d3d_state.c: the Direct3D-to-neutral state routing and
  * the vocabulary's numbers against d3dtypes.h, same convention. */
@@ -1271,6 +1278,9 @@ int main(int argc, char **argv)
     failures += v9x_run_glide_texture_tests();
     failures += v9x_run_glide_state_tests();
     failures += v9x_run_glide3_layout_tests();
+    failures += v9x_run_cif_vertex_tests();
+    failures += v9x_run_cif_state_tests();
+    failures += v9x_run_cif_texture_tests();
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_d3d_dp2_tests();
     failures += v9x_run_d3d_select_tests();

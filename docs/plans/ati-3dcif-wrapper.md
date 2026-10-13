@@ -426,6 +426,22 @@ fail.
 
 **Gate:** `build-host.ps1` and `run-checks.ps1` green.
 
+Done 2026-10-14: `src/cif/cif_vertex.c`, `cif_state.c`, `cif_texfmt.c`
+(constants in `cif_api.h`), with `tests/host/test_cif_vertex.c`,
+`test_cif_state.c` and `test_cif_texture.c` written first; against stubs
+they failed 314 checks. The tests found one real bug before it shipped:
+C3D_EZCMP and D3DCMPFUNC order EQUAL/LEQUAL and GREATER/GEQUAL
+differently, so an offset of one swaps two pairs; the map is a table.
+Conventions taken without a measurement, for Phase 3's probe to check:
+- no pixel-centre offset;
+- a non-MIP filter on a mipmapped texture picks the nearest level;
+- the chroma key is compared in the texel's own precision;
+- the viewport and scissor rectangles' bottom and right are exclusive
+  corners (the guide contradicts itself; no demo sets either);
+- the VQ codebook's 16-bit format is left to the caller.
+
+Tiled (Rage PRO) textures and quadrangle strips are not converted.
+
 ### 3. Pointers, clears and triangles, plus a probe
 
 The pointer-to-surface choice from the design, agreed and built. A probe,
