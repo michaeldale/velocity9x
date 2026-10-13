@@ -167,6 +167,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-02 Rage IIC: first Velocity9x bind on A8U4I5, tier-0, enable-ok at 1024x768x16](2026-10-02-rage-iic-first-velocity9x-bind.md)
 - [2026-10-02 Rage IIC trapezoids: rows, inclusive-exclusive spans, and an edge walk measured exactly](2026-10-02-rage-iic-trapezoid-edge-model.md)
 - [2026-10-02 Rage IIC: CPU-set-up triangles, Gouraud and Z16, exact on the card](2026-10-02-rage-iic-triangles-and-gouraud.md)
+- [2026-10-13 Rage IIC 3DCIF reference run on ATI's driver: four demos draw, four refuse, one locks the machine](2026-10-13-rage-iic-3dcif-native-reference.md)
 
 ## Matrox
 

@@ -324,6 +324,23 @@ on the engine `Direct3D=` selects.
 
    The SDK header replaces GLCIF's copy as the source for values, once
    its licence is read. Croc 1.0 needs no patch.
+
+   The SDK guide (step 1) is in the SDK zip: `ragesdk/docs/ragesdk.pdf`
+   is SDK-C02700 Rev 1.30, with `help/SDKAPI.HLP` beside it (the demo
+   pack's `ATi3DCIF Guide` folder holds the same two files).
+
+   Staged on A8U4I5 on 2026-10-13 (boot 448, Rage IIC AGP on the ati
+   package from 0c26021 by WININIT rename, enable-ok, 1024x768x16, 565):
+   `C:\3DCIF\PACK` (demo pack, includes SDK 4.1 under `Install`),
+   `C:\3DCIF\DLLS\<version>\ATI3DCIF.DLL` (all 15),
+   `C:\3DCIF\TRATI` (the Tomb Raider patch; the game itself is not on
+   the machine), `C:\V9XATI17` (the package), and
+   `C:\3DCIF\SWAP\TOATI.REG` / `TOV9X.REG`: `REGEDIT /s` one, then warm
+   restart, to switch `Display\0006` between ATI's 4.11.2611 driver
+   (files still in SYSTEM) and ours. SYSTEM holds ATI's own
+   `ATI3DCIF.DLL`, version resource 4.11.2692, 179,200 bytes, whose bytes
+   match none of gona's 15. The machine has no sound device, so Tomb
+   Raider will not start there as it stands.
 3. First runs are the demos, a 565 one before the Knight demo (555). The
    first title after them, with Michael: Croc 1.0 or Tomb Raider (needs a
    DirectSound device on the test machine and 555).
