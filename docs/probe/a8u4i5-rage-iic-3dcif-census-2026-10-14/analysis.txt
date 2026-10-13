@@ -1,0 +1,694 @@
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\CUBES\ATICUBES.EXE
+log lines 11253
+summary detach frames=1218 vertices=35982
+  Init 1
+  Term 1
+  GetInfo 1
+  TextureReg 2
+  TextureUnreg 2
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 10981
+  RenderBegin 1218
+  RenderEnd 1218
+  RenderPrimList 2436
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+  FG_CLR                   00000000 80808080
+  VERTEX_TYPE              00000003
+  PRIM_TYPE                00000001
+  SOLID_CLR                00000000
+  SHADE_MODE               00000003
+  TMAP_EN                  00000000 00000001
+  TMAP_SELECT              3 distinct, e.g. 00000000 0077C0E0 0077C0C8
+  TMAP_LIGHT               00000000 00000001
+  TMAP_PERSP_COR           00000003
+  TMAP_FILTER              00000001
+  TMAP_TEXOP               00000000
+  ALPHA_SRC                00000001
+  ALPHA_DST                00000000
+  FOG_EN                   00000000 00000001
+  DITHER_EN                00000001
+  Z_CMP_FNC                00000007
+  Z_MODE                   00000000
+  SURF_DRAW_PTR            2 distinct, e.g. D440E000 D4378000
+textures registered: 2
+  size=72 fmt=3 128x128 mip=0 levels=1 chroma=False pal=False : 1
+  size=72 fmt=3 256x256 mip=0 levels=1 chroma=False pal=False : 1
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+    10  target draw=D4378000 pitch=0 pf=0 vport=0,0,0,0 z=00000000 zpitch=0 zmode=0
+     8  target draw=D440E000 pitch=0 pf=0 vport=0,0,0,0 z=00000000 zpitch=0 zmode=0
+     1  target draw=00000000 pitch=0 pf=0 vport=0,0,0,0 z=00000000 zpitch=0 zmode=0
+vertex samples: 69; first decoded:
+  VTCF x=389.94 y=170.06 z=-0.8903 s=0.0000 t=0.0000 w=2.3529 r=192.7 g=192.7 b=192.7 a=0.0
+  VTCF x=249.06 y=170.06 z=-0.8903 s=0.0000 t=0.0000 w=2.3529 r=179.5 g=179.5 b=179.5 a=0.0
+  VTCF x=249.06 y=310.94 z=-0.8903 s=0.0000 t=0.0000 w=2.3529 r=175.7 g=175.7 b=175.7 a=0.0
+  VTCF x=422.43 y=137.57 z=-0.8771 s=0.0000 t=0.0000 w=2.5157 r=174.7 g=174.7 b=174.7 a=0.0
+  VTCF x=216.57 y=137.57 z=-0.8771 s=0.0000 t=0.0000 w=2.5157 r=167.5 g=167.5 b=167.5 a=0.0
+  VTCF x=216.57 y=343.43 z=-0.8771 s=0.0000 t=0.0000 w=2.5157 r=165.4 g=165.4 b=165.4 a=0.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 10981
+    RenderBegin 1218
+    RenderEnd 1218
+    RenderPrimList 2436
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\PIXIE\PIXIE.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\PIXIE\PIXIE.EXE
+log lines 70171
+summary detach frames=1570 vertices=2509341
+  Init 1
+  Term 1
+  TextureReg 4
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 81215
+  RenderBegin 1570
+  RenderEnd 1570
+  RenderPrimStrip 836447
+states (distinct values, in first-seen order):
+  SURF_Z_PTR               1 distinct, e.g. D44A4000
+  SURF_Z_PITCH             00000280
+  Z_MODE                   00000002 00000000
+  Z_CMP_FNC                00000002
+  TMAP_SELECT              4 distinct, e.g. 00CBC0C8 00CBC0E0 00CBC0F8 00CBC110
+  TMAP_LIGHT               00000001
+  TMAP_EN                  00000001 00000000
+  SURF_DRAW_PTR            2 distinct, e.g. D440E000 D4378000
+  TMAP_FILTER              00000004 00000000 00000002
+  SHADE_MODE               00000002 00000003
+  TMAP_PERSP_COR           00000007 00000000 00000001
+  ALPHA_SRC                00000005 00000001 00000004
+  ALPHA_DST                00000004 00000000 00000005 00000003
+  TMAP_TEXOP               00000001 00000000
+  DITHER_EN                00000000 00000001
+textures registered: 4
+  size=72 fmt=3 128x128 mip=0 levels=7 chroma=True pal=False : 1
+  size=72 fmt=3 128x128 mip=1 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 256x64 mip=0 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 512x512 mip=1 levels=10 chroma=True pal=False : 1
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+    10  target draw=D4378000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+     8  target draw=D440E000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+     1  target draw=00000000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+vertex samples: 183; first decoded:
+  VTCF x=640.00 y=425.67 z=229.4612 s=0.0070 t=-0.0147 w=0.0077 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=51.96 y=84.48 z=467.9066 s=-0.0104 t=0.0077 w=0.0027 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=567.22 y=79.79 z=477.4448 s=0.0075 t=0.0075 w=0.0026 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=640.00 y=425.67 z=229.4612 s=0.0070 t=-0.0147 w=0.0077 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=640.00 y=129.84 z=395.5322 s=0.0096 t=0.0042 w=0.0034 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=567.22 y=79.79 z=477.4448 s=0.0075 t=0.0075 w=0.0026 r=255.0 g=255.0 b=255.0 a=255.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 81215
+    RenderBegin 1570
+    RenderEnd 1570
+    RenderPrimStrip 836447
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\FAIRY\FAIRY.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\FAIRY\FAIRY.EXE
+log lines 52490
+summary detach frames=1106 vertices=1795818
+  Init 1
+  Term 1
+  TextureReg 4
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 55709
+  RenderBegin 1106
+  RenderEnd 1106
+  RenderPrimStrip 598606
+states (distinct values, in first-seen order):
+  SURF_Z_PTR               1 distinct, e.g. D44A4000
+  SURF_Z_PITCH             00000280
+  Z_MODE                   00000002 00000000
+  Z_CMP_FNC                00000002
+  TMAP_SELECT              4 distinct, e.g. 008BC0C8 008BC0E0 008BC0F8 008BC110
+  TMAP_FILTER              00000004 00000003 00000000 00000002
+  TMAP_LIGHT               00000001
+  TMAP_EN                  00000001 00000000
+  SURF_DRAW_PTR            2 distinct, e.g. D440E000 D4378000
+  SHADE_MODE               00000002 00000003
+  TMAP_PERSP_COR           00000007 00000000 00000001
+  ALPHA_SRC                00000005 00000001 00000004
+  ALPHA_DST                00000004 00000000 00000005 00000003
+  TMAP_TEXOP               00000001 00000000
+  DITHER_EN                00000000 00000001
+textures registered: 4
+  size=72 fmt=3 128x128 mip=0 levels=7 chroma=True pal=False : 1
+  size=72 fmt=3 128x128 mip=1 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 256x64 mip=0 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 512x512 mip=1 levels=10 chroma=True pal=False : 1
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     9  target draw=D4378000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+     8  target draw=D440E000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+     1  target draw=00000000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+vertex samples: 147; first decoded:
+  VTCF x=640.00 y=425.67 z=229.4612 s=0.0070 t=-0.0147 w=0.0077 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=51.96 y=84.48 z=467.9066 s=-0.0104 t=0.0077 w=0.0027 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=567.22 y=79.79 z=477.4448 s=0.0075 t=0.0075 w=0.0026 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=640.00 y=425.67 z=229.4612 s=0.0070 t=-0.0147 w=0.0077 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=640.00 y=129.84 z=395.5322 s=0.0096 t=0.0042 w=0.0034 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=567.22 y=79.79 z=477.4448 s=0.0075 t=0.0075 w=0.0026 r=255.0 g=255.0 b=255.0 a=255.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 55709
+    RenderBegin 1106
+    RenderEnd 1106
+    RenderPrimStrip 598606
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+log lines 297
+states (distinct values, in first-seen order):
+  SURF_Z_PTR               1 distinct, e.g. D44A4000
+  SURF_Z_PITCH             00000280
+  Z_MODE                   00000002
+  Z_CMP_FNC                00000001
+  TMAP_SELECT              2 distinct, e.g. 00B0C0C8 00B0C110
+  TMAP_FILTER              00000004
+  TMAP_LIGHT               00000001
+  FG_CLR                   7B7B7B7B
+  TMAP_EN                  00000001
+  SURF_DRAW_PTR            1 distinct, e.g. D440E000
+  FOG_EN                   00000000
+textures registered: 23
+  size=72 fmt=3 128x128 mip=0 levels=7 chroma=True pal=False : 1
+  size=72 fmt=3 128x128 mip=1 levels=8 chroma=True pal=False : 2
+  size=72 fmt=3 128x256 mip=1 levels=9 chroma=True pal=False : 3
+  size=72 fmt=3 128x8 mip=1 levels=8 chroma=True pal=False : 2
+  size=72 fmt=3 256x128 mip=1 levels=9 chroma=True pal=False : 1
+  size=72 fmt=3 256x256 mip=0 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 256x256 mip=1 levels=9 chroma=True pal=False : 5
+  size=72 fmt=3 256x64 mip=0 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 256x64 mip=1 levels=9 chroma=True pal=False : 1
+  size=72 fmt=3 32x16 mip=1 levels=6 chroma=True pal=False : 1
+  size=72 fmt=3 64x128 mip=1 levels=8 chroma=True pal=False : 2
+  size=72 fmt=3 64x64 mip=1 levels=7 chroma=True pal=False : 1
+  size=72 fmt=3 8x128 mip=1 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 8x8 mip=1 levels=4 chroma=True pal=False : 1
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     1  target draw=00000000 pitch=0 pf=0 vport=0,0,0,0 z=D44A4000 zpitch=640 zmode=2
+vertex samples: 36; first decoded:
+  VTCF x=231.60 y=193.04 z=1.0000 s=-0.8655 t=0.5009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=237.46 y=242.48 z=1.0000 s=-0.8655 t=1.0009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=191.70 y=216.05 z=1.0000 s=-1.2983 t=0.7513 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=244.96 y=274.84 z=2.0000 s=-0.8655 t=1.5009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=192.02 y=256.33 z=2.0000 s=-1.2983 t=1.2513 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=237.46 y=242.48 z=2.0000 s=-0.8655 t=1.0009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+anomalies: 0 distinct
+last lines:
+  RenderPrimStrip #180 004E3E18 00000003
+  RenderPrimStrip #181 004E3E18 00000003
+  RenderPrimStrip #182 004E3E18 00000003
+  RenderPrimStrip #183 004E3E18 00000003
+  RenderEnd #1
+  ---- frame 1 ----
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\DEMO.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\MORPH.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\VQ.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\ATI-3D\ATI-3D.EXE
+log lines 8181
+summary detach frames=877 vertices=10524
+  Init 1
+  Term 1
+  GetInfo 1
+  TextureReg 2
+  TextureUnreg 2
+  TexturePaletteCreate 1
+  TexturePaletteDestroy 1
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 9670
+  RenderBegin 877
+  RenderEnd 877
+  RenderPrimList 1754
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+  FG_CLR                   00000000 FF000000
+  VERTEX_TYPE              00000003
+  PRIM_TYPE                00000001
+  SOLID_CLR                00000000
+  SHADE_MODE               00000003
+  TMAP_EN                  00000000 00000001
+  TMAP_SELECT              3 distinct, e.g. 00000000 00CDC0C8 00CDC0E0
+  TMAP_LIGHT               00000001
+  TMAP_PERSP_COR           00000009
+  TMAP_FILTER              00000002
+  TMAP_TEXOP               00000000
+  ALPHA_SRC                00000001 00000002
+  ALPHA_DST                00000000 00000002
+  FOG_EN                   00000000
+  DITHER_EN                00000001
+  Z_CMP_FNC                00000007 00000004
+  Z_MODE                   00000000 00000002
+  SURF_Z_PTR               1 distinct, e.g. D4536000
+  SURF_Z_PITCH             00000280
+  SURF_DRAW_PTR            3 distinct, e.g. D440A000 D44A0000 D4374000
+textures registered: 2
+  size=88 fmt=2 256x256 mip=0 levels=8 chroma=False pal=True : 1
+  size=88 fmt=3 256x256 mip=0 levels=1 chroma=False pal=False : 1
+  TextureReg clampS=0 clampT=0 alphaBlend=0 tiling=0
+  TexturePaletteCreate kind=3 entries=256 
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     6  target draw=D440A000 pitch=0 pf=0 vport=0,0,0,0 z=D4536000 zpitch=640 zmode=2
+     6  target draw=D4374000 pitch=0 pf=0 vport=0,0,0,0 z=D4536000 zpitch=640 zmode=2
+     5  target draw=D44A0000 pitch=0 pf=0 vport=0,0,0,0 z=D4536000 zpitch=640 zmode=2
+     1  target draw=00000000 pitch=0 pf=0 vport=0,0,0,0 z=D4536000 zpitch=640 zmode=2
+vertex samples: 57; first decoded:
+  VTCF x=415.09 y=135.61 z=-0.9712 s=0.0000 t=0.0000 w=1.3547 r=38.2 g=38.2 b=38.2 a=0.0
+  VTCF x=227.03 y=323.52 z=-0.9748 s=0.0000 t=0.0000 w=1.3105 r=38.2 g=38.2 b=38.2 a=0.0
+  VTCF x=52.56 y=533.40 z=-0.7744 s=0.0000 t=0.0000 w=3.7830 r=38.2 g=38.2 b=38.2 a=0.0
+  VTCF x=414.94 y=135.45 z=-0.9712 s=1.3642 t=0.0095 w=1.3548 r=38.4 g=38.4 b=38.4 a=0.0
+  VTCF x=226.88 y=323.37 z=-0.9748 s=1.3210 t=1.3210 w=1.3105 r=38.4 g=38.4 b=38.4 a=0.0
+  VTCF x=53.01 y=533.81 z=-0.7744 s=0.0189 t=3.8016 w=3.7827 r=38.6 g=38.6 b=38.6 a=0.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 9670
+    RenderBegin 877
+    RenderEnd 877
+    RenderPrimList 1754
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\DEMO.EXE
+log lines 23885
+summary detach frames=542 vertices=1705356
+  Init 1
+  Term 1
+  GetInfo 1
+  TextureReg 7
+  TextureUnreg 7
+  TexturePaletteCreate 1
+  TexturePaletteDestroy 1
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 1988440
+  RenderBegin 542
+  RenderEnd 542
+  RenderPrimList 568452
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+  SURF_DRAW_PTR            2 distinct, e.g. D440A000 D4374000
+  SURF_DRAW_PITCH          00000280
+  SURF_Z_PTR               1 distinct, e.g. D44A0000
+  SURF_Z_PITCH             00000280
+  TMAP_PERSP_COR           00000009
+  TMAP_FILTER              00000002
+  FG_CLR                   FF000000
+  Z_MODE                   00000000 00000002
+  Z_CMP_FNC                00000002 00000000 00000001
+  TMAP_SELECT              8 distinct, e.g. 00BCC0C8 00BCC110 00BCC0F8 00BCC0E0
+  PRIM_TYPE                00000001
+  TMAP_EN                  00000001 00000000
+  TMAP_LIGHT               00000000 00000001
+  SHADE_MODE               00000001 00000003
+  SOLID_CLR                FF00FFFF 80000000
+  ALPHA_DST                00000004 00000000 00000005
+  ALPHA_SRC                00000005 00000001 00000004
+  TMAP_TEXOP               00000002 00000000
+  COMPOSITE_SELECT         2 distinct, e.g. 00000000 00BCC128
+  COMPOSITE_EN             00000000 00000001
+  COMPOSITE_FILTER         00000002
+  COMPOSITE_FNC            00000000
+  COMPOSITE_FACTOR         00000001 00000002 00000003 00000004 00000005 00000006 00000007 00000008 00000009 0000000A 0000000B 0000000C ...
+textures registered: 7
+  size=88 fmt=15 256x256 mip=0 levels=11 chroma=False pal=False : 1
+  size=88 fmt=15 512x512 mip=0 levels=11 chroma=False pal=False : 2
+  size=88 fmt=2 512x256 mip=0 levels=11 chroma=False pal=True : 1
+  size=88 fmt=3 256x256 mip=0 levels=11 chroma=False pal=False : 2
+  size=88 fmt=7 256x256 mip=0 levels=11 chroma=False pal=False : 1
+  TextureReg clampS=0 clampT=0 alphaBlend=0 tiling=2
+  TexturePaletteCreate kind=3 entries=256 
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     8  target draw=D4374000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+     8  target draw=D440A000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+     1  target draw=D440A000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=0
+vertex samples: 108; first decoded:
+  VTCF x=575.39 y=0.00 z=65531.1719 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=404.19 y=50.12 z=65532.1094 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=-1.9 b=-2.0 a=-1.9
+  VTCF x=404.19 y=306.29 z=65532.1094 s=0.0000 t=0.0001 w=0.0001 r=-1.9 g=0.0 b=0.0 a=0.0
+  VTCF x=575.39 y=0.00 z=65531.1719 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=404.19 y=306.29 z=65532.1094 s=0.0000 t=0.0001 w=0.0001 r=-1.9 g=0.0 b=0.0 a=0.0
+  VTCF x=640.00 y=330.39 z=65530.8203 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 1988440
+    RenderBegin 542
+    RenderEnd 542
+    RenderPrimList 568452
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\MORPH.EXE
+log lines 35581
+summary detach frames=894 vertices=1636194
+  Init 1
+  Term 1
+  GetInfo 1
+  TextureReg 4
+  TextureUnreg 4
+  TexturePaletteCreate 1
+  TexturePaletteDestroy 1
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 2103279
+  RenderBegin 894
+  RenderEnd 894
+  RenderPrimList 545398
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+  SURF_DRAW_PTR            2 distinct, e.g. D440A000 D4374000
+  SURF_DRAW_PITCH          00000280
+  SURF_Z_PTR               1 distinct, e.g. D44A0000
+  SURF_Z_PITCH             00000280
+  TMAP_PERSP_COR           00000009
+  TMAP_FILTER              00000002
+  FG_CLR                   FF000000
+  Z_MODE                   00000000 00000002
+  Z_CMP_FNC                00000002 00000000 00000001
+  TMAP_SELECT              4 distinct, e.g. 00BCC0C8 00BCC0E0 00BCC110 00BCC0F8
+  PRIM_TYPE                00000001
+  TMAP_EN                  00000001 00000000
+  TMAP_LIGHT               00000000 00000001
+  SHADE_MODE               00000001 00000003
+  SOLID_CLR                FF00FFFF 80000000
+  ALPHA_DST                00000004 00000000 00000005
+  ALPHA_SRC                00000005 00000001 00000004
+  TMAP_TEXOP               00000002 00000000
+  COMPOSITE_SELECT         2 distinct, e.g. 00000000 00BCC0F8
+  COMPOSITE_EN             00000000 00000001
+  COMPOSITE_FILTER         00000002
+  COMPOSITE_FNC            00000000
+  COMPOSITE_FACTOR         00000006 0000000C 00000007 00000005 00000003 00000002 00000001 00000004 00000008 00000009 0000000A 0000000B ...
+textures registered: 4
+  size=88 fmt=15 256x256 mip=0 levels=11 chroma=False pal=False : 1
+  size=88 fmt=15 512x512 mip=0 levels=11 chroma=False pal=False : 1
+  size=88 fmt=2 512x256 mip=0 levels=11 chroma=False pal=True : 1
+  size=88 fmt=3 256x256 mip=0 levels=11 chroma=False pal=False : 1
+  TextureReg clampS=0 clampT=0 alphaBlend=0 tiling=2
+  TexturePaletteCreate kind=3 entries=256 
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     9  target draw=D440A000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+     8  target draw=D4374000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+     1  target draw=D440A000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=0
+vertex samples: 144; first decoded:
+  VTCF x=630.06 y=0.00 z=65531.3789 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=512.87 y=36.67 z=65532.0312 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=-1.9 b=-2.0 a=-1.9
+  VTCF x=512.87 y=298.23 z=65532.0312 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=630.06 y=0.00 z=65531.3789 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=512.87 y=298.23 z=65532.0312 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=640.00 y=309.62 z=65531.3242 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 2103279
+    RenderBegin 894
+    RenderEnd 894
+    RenderPrimList 545398
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\VQ.EXE
+log lines 39780
+summary detach frames=684 vertices=4286376
+  Init 1
+  Term 1
+  GetInfo 1
+  TextureReg 6
+  TextureUnreg 6
+  TexturePaletteCreate 4
+  TexturePaletteDestroy 4
+  ContextCreate 1
+  ContextDestroy 1
+  ContextSetState 4983654
+  RenderBegin 684
+  RenderEnd 684
+  RenderPrimList 1428792
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+  SURF_DRAW_PTR            2 distinct, e.g. D440A000 D4374000
+  SURF_DRAW_PITCH          00000280
+  SURF_Z_PTR               1 distinct, e.g. D44A0000
+  SURF_Z_PITCH             00000280
+  TMAP_PERSP_COR           00000009
+  TMAP_FILTER              00000002
+  Z_MODE                   00000000 00000002
+  Z_CMP_FNC                00000002 00000000 00000001
+  TMAP_SELECT              7 distinct, e.g. 00BAC0C8 00BAC0F8 00BAC128 00BAC0E0
+  PRIM_TYPE                00000001
+  TMAP_EN                  00000001 00000000
+  TMAP_LIGHT               00000000 00000001
+  SHADE_MODE               00000001 00000003
+  SOLID_CLR                FFAD8452 FF00FFFF 80000000
+  ALPHA_DST                00000005 00000000
+  ALPHA_SRC                00000004 00000001
+textures registered: 6
+  size=88 fmt=2 512x256 mip=0 levels=11 chroma=False pal=True : 1
+  size=88 fmt=20 1024x256 mip=0 levels=11 chroma=False pal=True : 1
+  size=88 fmt=20 256x256 mip=0 levels=11 chroma=False pal=True : 1
+  size=88 fmt=20 512x512 mip=0 levels=11 chroma=False pal=True : 1
+  size=88 fmt=3 256x256 mip=0 levels=11 chroma=False pal=False : 1
+  size=88 fmt=3 512x512 mip=0 levels=11 chroma=False pal=False : 1
+  TextureReg clampS=0 clampT=0 alphaBlend=0 tiling=2
+  TexturePaletteCreate kind=3 entries=256 
+  TexturePaletteCreate kind=4 entries=256 
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     9  target draw=D440A000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+     8  target draw=D4374000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+     1  target draw=D440A000 pitch=640 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=0
+vertex samples: 144; first decoded:
+  VTCF x=315.75 y=120.00 z=65531.3789 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=256.18 y=138.60 z=65532.0430 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=-1.9 b=-2.0 a=-1.9
+  VTCF x=256.18 y=269.04 z=65532.0430 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=315.75 y=120.00 z=65531.3789 s=0.0000 t=0.0000 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=256.18 y=269.04 z=65532.0430 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+  VTCF x=320.00 y=274.74 z=65531.3320 s=0.0000 t=0.0001 w=0.0001 r=0.0 g=0.0 b=0.0 a=0.0
+anomalies: 0 distinct
+last lines:
+    ContextCreate 1
+    ContextDestroy 1
+    ContextSetState 4983654
+    RenderBegin 684
+    RenderEnd 684
+    RenderPrimList 1428792
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+log lines 13
+summary detach frames=0 vertices=0
+  Init 1
+  Term 1
+  GetInfo 1
+GetInfo size=48 asic=401 rev=0 ram=4194304 caps1=000003BF caps2=00000007
+states (distinct values, in first-seen order):
+textures registered: 0
+texture level0 high bytes: 
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+vertex samples: 0; first decoded:
+anomalies: 0 distinct
+last lines:
+    Term 1
+    GetInfo 1
+  summary detach frames=0 vertices=0
+    Init 1
+    Term 1
+    GetInfo 1
+========================================================================
+process C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+log lines 297
+states (distinct values, in first-seen order):
+  SURF_Z_PTR               1 distinct, e.g. D44A0000
+  SURF_Z_PITCH             00000280
+  Z_MODE                   00000002
+  Z_CMP_FNC                00000001
+  TMAP_SELECT              2 distinct, e.g. 00B0C0C8 00B0C110
+  TMAP_FILTER              00000004
+  TMAP_LIGHT               00000001
+  FG_CLR                   7B7B7B7B
+  TMAP_EN                  00000001
+  SURF_DRAW_PTR            1 distinct, e.g. D440A000
+  FOG_EN                   00000000
+textures registered: 23
+  size=72 fmt=3 128x128 mip=0 levels=7 chroma=True pal=False : 1
+  size=72 fmt=3 128x128 mip=1 levels=8 chroma=True pal=False : 2
+  size=72 fmt=3 128x256 mip=1 levels=9 chroma=True pal=False : 3
+  size=72 fmt=3 128x8 mip=1 levels=8 chroma=True pal=False : 2
+  size=72 fmt=3 256x128 mip=1 levels=9 chroma=True pal=False : 1
+  size=72 fmt=3 256x256 mip=0 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 256x256 mip=1 levels=9 chroma=True pal=False : 5
+  size=72 fmt=3 256x64 mip=0 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 256x64 mip=1 levels=9 chroma=True pal=False : 1
+  size=72 fmt=3 32x16 mip=1 levels=6 chroma=True pal=False : 1
+  size=72 fmt=3 64x128 mip=1 levels=8 chroma=True pal=False : 2
+  size=72 fmt=3 64x64 mip=1 levels=7 chroma=True pal=False : 1
+  size=72 fmt=3 8x128 mip=1 levels=8 chroma=True pal=False : 1
+  size=72 fmt=3 8x8 mip=1 levels=4 chroma=True pal=False : 1
+texture level0 high bytes: D4
+texture rewrites logged: 0
+draw targets (at RenderBegin of logged frames):
+     1  target draw=00000000 pitch=0 pf=0 vport=0,0,0,0 z=D44A0000 zpitch=640 zmode=2
+vertex samples: 36; first decoded:
+  VTCF x=422.20 y=305.56 z=1.0000 s=-0.8655 t=0.5009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=409.27 y=336.04 z=1.0000 s=-0.8655 t=1.0009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=379.42 y=310.31 z=1.0000 s=-1.2983 t=0.7513 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=420.66 y=356.99 z=2.0000 s=-0.8655 t=1.5009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=364.76 y=348.93 z=2.0000 s=-1.2983 t=1.2513 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+  VTCF x=409.27 y=336.04 z=2.0000 s=-0.8655 t=1.0009 w=1.0000 r=255.0 g=255.0 b=255.0 a=255.0
+anomalies: 0 distinct
+last lines:
+  RenderPrimStrip #180 004E3E18 00000003
+  RenderPrimStrip #181 004E3E18 00000003
+  RenderPrimStrip #182 004E3E18 00000003
+  RenderPrimStrip #183 004E3E18 00000003
+  RenderEnd #1
+  ---- frame 1 ----

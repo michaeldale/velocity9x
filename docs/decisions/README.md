@@ -168,6 +168,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-02 Rage IIC trapezoids: rows, inclusive-exclusive spans, and an edge walk measured exactly](2026-10-02-rage-iic-trapezoid-edge-model.md)
 - [2026-10-02 Rage IIC: CPU-set-up triangles, Gouraud and Z16, exact on the card](2026-10-02-rage-iic-triangles-and-gouraud.md)
 - [2026-10-13 Rage IIC 3DCIF reference run on ATI's driver: four demos draw, four refuse, one locks the machine](2026-10-13-rage-iic-3dcif-native-reference.md)
+- [2026-10-14 What ATI's 3DCIF demos ask of ATI3DCIF.DLL: a census on the Rage IIC](2026-10-14-3dcif-demo-census.md)
 
 ## Matrox
 

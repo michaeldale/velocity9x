@@ -413,6 +413,11 @@ list.
 **Gate:** check-tree green; record and evidence in
 `docs/probe/a8u4i5-<title>-cif-census-<date>/`.
 
+Done for the demos 2026-10-14 on the Rage IIC (not the Rage XL; the
+IIC is the card fitted):
+[2026-10-14-3dcif-demo-census.md](../decisions/2026-10-14-3dcif-demo-census.md).
+Laputa stops after one frame under the census; open.
+
 ### 2. Pure logic with host tests
 
 `cif_vertex.c`, `cif_state.c`, `cif_texfmt.c`, each with a test in
