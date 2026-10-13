@@ -2,9 +2,11 @@
 #
 # The VSA-100 (Voodoo4, Voodoo5): the VBE 4F02h mode set programs the card
 # and 4F01h reports where the framebuffer landed; memory comes from the chip's
-# straps through BAR2. DirectDraw fill and copy run on the 2D engine (TDFX);
-# everything else is drawn by the CPU (docs\plans\3dfx-vsa100-family.md,
-# Phases 2 and 3). The Voodoo3 is
+# straps through BAR2. DirectDraw and GDI fill and copy run on the 2D engine
+# (TDFX), Direct3D and the OpenGL ICD on the 3D engine (d3d_tdfx.c), and
+# 3dfx's own Glide is handed the card through EXT_HWC
+# (docs\plans\3dfx-vsa100-family.md, Phases 2-5). Measured on the Voodoo4
+# 4500 only; a Voodoo5 binds by the same id and is untested. The Voodoo3 is
 # planned as a second chip of this family (docs\plans\3dfx-voodoo3-family.md).
 #
 # The package ships no Glide: the card keeps the GLIDE2X.DLL and GLIDE3X.DLL
@@ -16,7 +18,7 @@
     SchemaVersion = 1
     Id = '3dfx'
     DisplayName = '3dfx VSA-100'
-    Description = '3dfx VSA-100 (PCI 121A:0009; Voodoo4, Voodoo5): VBE mode set, CPU drawing.'
+    Description = '3dfx VSA-100 (PCI 121A:0009; Voodoo4, Voodoo5): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy, the 3D engine for Direct3D and OpenGL, and the card''s own Glide.'
 
     Chips = @(
         @{
@@ -150,7 +152,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy, VSA-100 Direct3D)'
         # The card keeps its own Glide (check-tree requires this of 3dfx).
         GlideWrappers = $false
     }
