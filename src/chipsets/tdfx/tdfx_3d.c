@@ -67,10 +67,15 @@
  * fixed point. A chain is biased +0.5: the chip truncates its LOD, and
  * Direct3D's nearest level is the rounded one (boot 433: unbiased, the
  * levels changed at 2, 4 and 8 texels a pixel; 3dfx's own driver changed
- * them near 1.4, 2.8 and 5.7). */
+ * them near 1.4, 2.8 and 5.7). Only where minification and magnification
+ * filter alike: the chip picks between them on the biased LOD, so a bias
+ * filters a 1:1 texture with the minification filter, which smeared
+ * Half-Life's point-sampled console text (boot 434). */
 #define TDFX3D_LOD_FRACTION_SHIFT   2
 #define TDFX3D_LOD_MAX_SHIFT        6
 #define TDFX3D_LOD_BIAS_SHIFT       12
+#define TDFX3D_LOD_S_WIDER          0x00100000ul
+#define TDFX3D_LOD_ASPECT_SHIFT     21
 #define TDFX3D_LOD_BIAS_ROUND       2ul
 
 /* texBaseAddr (section 8.79): address bits 24:4 in place, address bit 25
@@ -126,10 +131,13 @@ static v9x_status tdfx3d_check_surface(const struct v9x_tdfx_3d_surface *s,
     return V9X_STATUS_OK;
 }
 
-/* Bytes of a square level at log2 size, two bytes a texel. */
-static v9x_u32 tdfx3d_level_bytes(v9x_u32 log2_size)
+/* Bytes of a level whose long side is 2^log2_size, the short side aspect
+ * halvings less but at least one texel; two bytes a texel. */
+static v9x_u32 tdfx3d_level_bytes(v9x_u32 log2_size, v9x_u32 aspect)
 {
-    return (1ul << (2ul * log2_size)) * TDFX3D_BYTES_PER_PIXEL;
+    v9x_u32 log2_short = log2_size > aspect ? log2_size - aspect : 0ul;
+
+    return (1ul << (log2_size + log2_short)) * TDFX3D_BYTES_PER_PIXEL;
 }
 
 /* Levels sampled, 1 for a texture without a chain. */
@@ -145,6 +153,8 @@ static v9x_status tdfx3d_check_texture(const struct v9x_tdfx_3d_texture *t,
     v9x_u32 level;
 
     if (t->log2_size > V9X_TDFX_TEX_LOG2_MAX ||
+        t->aspect > V9X_TDFX_TEX_ASPECT_MAX ||
+        t->aspect > t->log2_size ||
         tdfx3d_levels(t) > t->log2_size + 1ul ||
         (t->format != V9X_TDFX_TEX_RGB565 &&
          t->format != V9X_TDFX_TEX_ARGB1555 &&
@@ -155,7 +165,7 @@ static v9x_status tdfx3d_check_texture(const struct v9x_tdfx_3d_texture *t,
         return V9X_STATUS_UNSUPPORTED;
     }
     for (level = 0ul; level < tdfx3d_levels(t); ++level) {
-        bytes += tdfx3d_level_bytes(t->log2_size - level);
+        bytes += tdfx3d_level_bytes(t->log2_size - level, t->aspect);
     }
     if ((t->offset & TDFX3D_ALIGN_MASK) != 0ul || t->offset >= vram_bytes ||
         bytes > vram_bytes - t->offset) {
@@ -166,8 +176,9 @@ static v9x_status tdfx3d_check_texture(const struct v9x_tdfx_3d_texture *t,
 
 /*
  * The base the chip wants for one level stored at offset: where level 0 of
- * a 256-texel texture would start, so the offset less every larger level
- * (section 20 p.228), wrapped to the 26-bit address and encoded.
+ * the same aspect, 256 texels on its long side, would start, so the offset
+ * less every larger level (section 20 p.228), wrapped to the 26-bit address
+ * and encoded.
  */
 static v9x_u32 tdfx3d_texture_base(const struct v9x_tdfx_3d_texture *t)
 {
@@ -176,7 +187,7 @@ static v9x_u32 tdfx3d_texture_base(const struct v9x_tdfx_3d_texture *t)
 
     for (log2_size = V9X_TDFX_TEX_LOG2_MAX; log2_size > t->log2_size;
          --log2_size) {
-        base -= tdfx3d_level_bytes(log2_size);
+        base -= tdfx3d_level_bytes(log2_size, t->aspect);
     }
     base &= TDFX3D_TEX_WRAP_MASK;
     return (base & TDFX3D_TEX_ADDR_MASK) |
@@ -304,10 +315,16 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         v9x_u32 lod_max = (V9X_TDFX_TEX_LOG2_MAX - t->log2_size +
                            tdfx3d_levels(t) - 1ul) <<
                           TDFX3D_LOD_FRACTION_SHIFT;
-        v9x_u32 lod_bias = tdfx3d_levels(t) > 1ul
-                               ? TDFX3D_LOD_BIAS_ROUND << TDFX3D_LOD_BIAS_SHIFT
-                               : 0ul;
+        v9x_u32 lod_bias = 0ul;
+        v9x_u32 lod_shape = t->aspect << TDFX3D_LOD_ASPECT_SHIFT;
 
+        if (tdfx3d_levels(t) > 1ul &&
+            (t->min_bilinear != 0ul) == (t->mag_bilinear != 0ul)) {
+            lod_bias = TDFX3D_LOD_BIAS_ROUND << TDFX3D_LOD_BIAS_SHIFT;
+        }
+        if (t->s_wider != 0ul) {
+            lod_shape |= TDFX3D_LOD_S_WIDER;
+        }
         if (t->min_bilinear != 0ul) {
             mode |= TDFX3D_TM_MIN_BILINEAR;
         }
@@ -319,7 +336,8 @@ v9x_status v9x_tdfx_3d_build_state(const struct v9x_tdfx_3d_state *state,
         }
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEXTURE_MODE, mode);
         tdfx3d_emit(words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD,
-                    lod | (lod_max << TDFX3D_LOD_MAX_SHIFT) | lod_bias);
+                    lod | (lod_max << TDFX3D_LOD_MAX_SHIFT) | lod_bias |
+                    lod_shape);
         /* Twice, a different base first: a CPU download reaches the
          * texture cache when texBaseAddr is rewritten (section 20.3
          * p.234), and the texels may have changed since the last draw. */

@@ -246,6 +246,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-12 The Voodoo4's 3D engine draws what the builder says: flat, Gouraud, depth, blend, texture](2026-10-12-voodoo4-3d-engine-draws-pixel-exact.md)
 - [2026-10-12 The Voodoo4's Direct3D engine passes V9XDDP's core on its first run](2026-10-12-voodoo4-direct3d-engine-passes-v9xddp-core.md)
 - [2026-10-12 Half-Life's Direct3D renderer draws correctly on the Voodoo4 engine; mipmaps are what is missing](2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md)
+- [2026-10-13 The Voodoo4 engine samples mip chains, and draws on Direct3D's pixel centres](2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md)
 
 ## NVIDIA and other surveyed cards
 

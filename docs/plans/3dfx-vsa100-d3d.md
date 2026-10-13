@@ -15,7 +15,10 @@ Status:
   ([2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md](../decisions/2026-10-12-voodoo4-half-life-direct3d-on-velocity9x.md)).
   Missing is mipmapping: Half-Life asks for MIPLINEAR. 25.7 fps against
   3dfx's 58.9 is recorded, not chased.
-- **Next:** mipmaps, then OpenGL (step 4).
+- **Mipmaps, rectangles and pixel centres:** done
+  ([2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md](../decisions/2026-10-13-voodoo4-mipmaps-and-direct3d-pixel-centres.md)).
+  Trilinear is not built.
+- **Next:** OpenGL (step 4).
 
 Parent plan: [3dfx-vsa100-family.md](3dfx-vsa100-family.md),
 Phase 5. Register facts: [vsa100-registers.md](../specifications/vsa100-registers.md)

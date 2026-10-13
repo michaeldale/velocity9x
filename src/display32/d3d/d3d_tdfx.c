@@ -49,6 +49,8 @@
 /* Textures are placed 16-byte aligned: texBaseAddr is bits 24:4. */
 #define V9X_D3D_TDFX_TEXTURE_ALIGN 16ul
 #define V9X_D3D_TDFX_TEXEL_BYTES 2ul
+/* tLOD's aspect field reaches 8:1 (section 8.77). */
+#define V9X_D3D_TDFX_ASPECT_RATIO_MAX (1ul << V9X_TDFX_TEX_ASPECT_MAX)
 
 /* Fault-trace tag: "TX3D". */
 #define V9X_D3D_TDFX_FAULT_3D_IDLE 0x54583344ul
@@ -58,7 +60,7 @@ static struct v9x_tdfx_3d_words v9x_d3d_tdfx_triangle_words;
 
 /*
  * The colour and clip fields hold 12 bits and a linear stride 14 bytes in
- * multiples of 16; textures are square powers of two to 256; the core
+ * multiples of 16; textures are powers of two to 256 up to 8:1; the core
  * clips, because the setup unit has not been measured drawing a vertex off
  * the target. Z16 in depth counts, whose full scale is a DDBLT_DEPTHFILL's.
  */
@@ -222,7 +224,7 @@ static int v9x_d3d_tdfx_texture_format(const V9X_DD_SURFACE_LCL *surface,
 /*
  * What the builder expresses and d3d_tdfx_map.c accepts: Z and alpha tests
  * with every function, the blend factors of the 16-bit target, Gouraud,
- * square textures and their mip chains with replace and modulate. No fog,
+ * textures to 8:1 and their mip chains with replace and modulate. No fog,
  * no specular, no colour key; those are refused per draw. No blend between
  * levels: LINEARMIPNEAREST and LINEARMIPLINEAR are not advertised.
  */
@@ -276,10 +278,13 @@ static void v9x_d3d_tdfx_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
+    /* Not SQUAREONLY, which 3dfx's driver does not set either (boot 430:
+     * 0xCF). With it, Half-Life's console font lost strokes once
+     * mipmapped (boot 434) where 3dfx's drew it crisp (boot 436); an
+     * application asked for squares stretches a rectangle to fit. */
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
-                         V9X_D3DPTEXTURECAPS_ALPHA |
-                         V9X_D3DPTEXTURECAPS_SQUAREONLY;
+                         V9X_D3DPTEXTURECAPS_ALPHA;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
                                V9X_D3DPTFILTERCAPS_LINEAR |
                                V9X_D3DPTFILTERCAPS_MIPNEAREST |
@@ -356,8 +361,9 @@ static int v9x_d3d_tdfx_ready(void)
 
 /*
  * How many levels of a mip chain the sampler may read from top: level 0
- * and each attached mip level after it whose edge halves, whose rows are
- * packed, and which starts where the level before it ends - the layout
+ * and each attached mip level after it whose sides halve (to one texel),
+ * whose rows are packed, and which starts where the level before it ends -
+ * the layout
  * create_surface gives a chain and the single texBaseAddr assumes (section
  * 20 p.228). The first level that fails ends the chain, counted in the
  * shared mip-chain fields as the Mach64 counts its own.
@@ -365,11 +371,12 @@ static int v9x_d3d_tdfx_ready(void)
 static DWORD v9x_d3d_tdfx_chain(const V9X_DD_SURFACE_LCL *top, DWORD offset)
 {
     const V9X_DD_SURFACE_LCL *level = top;
-    DWORD edge = (DWORD)top->lpGbl->wWidth;
+    DWORD width = (DWORD)top->lpGbl->wWidth;
+    DWORD height = (DWORD)top->lpGbl->wHeight;
     DWORD count = 1ul;
 
     ++v9x_hal->d3d_diagnostics.mip_chain_checks;
-    while (count <= V9X_TDFX_TEX_LOG2_MAX && edge > 1ul) {
+    while (count <= V9X_TDFX_TEX_LOG2_MAX && (width > 1ul || height > 1ul)) {
         const V9X_DD_ATTACH_NODE *node =
             (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
         const V9X_DD_SURFACE_LCL *next = 0;
@@ -386,11 +393,12 @@ static DWORD v9x_d3d_tdfx_chain(const V9X_DD_SURFACE_LCL *top, DWORD offset)
         if (next == 0 || next->lpGbl == 0) {
             break;
         }
-        offset += edge * edge * V9X_D3D_TDFX_TEXEL_BYTES;
-        edge >>= 1;
-        if ((DWORD)next->lpGbl->wWidth != edge ||
-            (DWORD)next->lpGbl->wHeight != edge ||
-            (DWORD)next->lpGbl->lPitch != edge * V9X_D3D_TDFX_TEXEL_BYTES) {
+        offset += width * height * V9X_D3D_TDFX_TEXEL_BYTES;
+        width = width > 1ul ? width >> 1 : 1ul;
+        height = height > 1ul ? height >> 1 : 1ul;
+        if ((DWORD)next->lpGbl->wWidth != width ||
+            (DWORD)next->lpGbl->wHeight != height ||
+            (DWORD)next->lpGbl->lPitch != width * V9X_D3D_TDFX_TEXEL_BYTES) {
             ++v9x_hal->d3d_diagnostics.mip_gap_shape;
             v9x_hal->d3d_diagnostics.mip_chain_delta =
                 ((DWORD)next->lpGbl->lPitch << 16) |
@@ -482,6 +490,79 @@ static void v9x_d3d_tdfx_count_refusal(const V9X_R3D_DRAW *draw,
     }
 }
 
+/*
+ * What an alpha-tested draw sampling a mip chain looks like, in the
+ * Gen3/ViRGE mip fields this engine otherwise leaves alone (V9XTRACE's
+ * MipDraws, MipTreeLastShape, MipGapExpected, MipGapActual, MipLevelsMax).
+ * Half-Life's console font lost strokes once chains were sampled (boots
+ * 434, 435, 437) where 3dfx's driver drew it crisp; this says which
+ * texture, filter, rate and 1/W those draws carry.
+ *
+ * mip_draws counts them. mip_tree_last_shape is the last one's
+ * (log2_size << 24) | (aspect << 20) | (s_wider << 16) | (levels << 8) |
+ * (min_filter << 4) | mag_filter. mip_gap_expected is its first
+ * triangle's texels a pixel as float bits (the HAL links no float-to-
+ * integer helper), the square root of the texture-to-screen area ratio,
+ * ignoring perspective; mip_gap_actual is vertex 0's RHW as float bits. mip_levels_max counts those under 1.41 texels a
+ * pixel, where Direct3D's nearest level is level 0.
+ */
+static void v9x_d3d_tdfx_note_mip_draw(const V9X_R3D_DRAW *draw,
+                                       const struct v9x_tdfx_3d_state *state,
+                                       const V9X_D3D_TDFX_TEXTURE *resolved,
+                                       const V9X_R3D_VERTEX *v)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+    const struct v9x_tdfx_3d_texture *t = &state->texture;
+    float screen;
+    float texels;
+    float ratio = 0.0f;
+    union {
+        float value;
+        DWORD bits;
+    } rhw, rate;
+
+    if (state->texture_enable == 0ul || t->levels <= 1ul ||
+        draw->alpha_test_enable == 0ul) {
+        return;
+    }
+    ++diagnostics->mip_draws;
+    diagnostics->mip_tree_last_shape =
+        (t->log2_size << 24) | (t->aspect << 20) | (t->s_wider << 16) |
+        ((t->levels & 0xfful) << 8) |
+        ((draw->texture.min_filter & 0xful) << 4) |
+        (draw->texture.mag_filter & 0xful);
+
+    screen = (v[1].sx - v[0].sx) * (v[2].sy - v[0].sy) -
+             (v[2].sx - v[0].sx) * (v[1].sy - v[0].sy);
+    texels = ((v[1].tu - v[0].tu) * (v[2].tv - v[0].tv) -
+              (v[2].tu - v[0].tu) * (v[1].tv - v[0].tv)) *
+             (float)resolved->width * (float)resolved->height;
+    if (screen < 0.0f) {
+        screen = -screen;
+    }
+    if (texels < 0.0f) {
+        texels = -texels;
+    }
+    if (screen > 0.0f) {
+        /* Newton's square root of texels/screen: a diagnostic, no libm. */
+        float q = texels / screen;
+        float root = q > 1.0f ? q : 1.0f;
+        int step;
+
+        for (step = 0; step < 20; ++step) {
+            root = 0.5f * (root + q / root);
+        }
+        ratio = root;
+    }
+    rate.value = ratio;
+    diagnostics->mip_gap_expected = rate.bits;
+    rhw.value = v[0].rhw;
+    diagnostics->mip_gap_actual = rhw.bits;
+    if (ratio < 1.41f) {
+        ++diagnostics->mip_levels_max;
+    }
+}
+
 /* Passive, as the contract requires: the vertices' specular colour is not
  * known here, so draw() checks it again. */
 static int v9x_d3d_tdfx_accepts(const V9X_R3D_DRAW *draw)
@@ -534,6 +615,7 @@ static int v9x_d3d_tdfx_draw(const V9X_R3D_DRAW *draw,
         V9X_STATUS_OK) {
         return 0;
     }
+    v9x_d3d_tdfx_note_mip_draw(draw, &state, &resolved, vertices);
 
     /*
      * A triangle's words are built and written one at a time. Once the
@@ -544,7 +626,9 @@ static int v9x_d3d_tdfx_draw(const V9X_R3D_DRAW *draw,
      */
     for (index = 0ul; index < triangle_count; ++index) {
         if (!v9x_d3d_tdfx_triangle(vertices + index * 3ul, draw->shade_mode,
-                                   state.texture_enable != 0ul, corners)) {
+                                   state.texture_enable != 0ul
+                                       ? &state.texture : 0,
+                                   corners)) {
             continue;
         }
         v9x_d3d_tdfx_triangle_words.count = 0u;
@@ -602,6 +686,7 @@ static DWORD v9x_d3d_tdfx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD align = V9X_D3D_TDFX_TEXTURE_ALIGN;
     DWORD format;
     DWORD width;
+    DWORD height;
     DWORD bytes = 0ul;
     DWORD level;
     DWORD base;
@@ -619,30 +704,38 @@ static DWORD v9x_d3d_tdfx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     width = (DWORD)surface->lpGbl->wWidth;
+    height = (DWORD)surface->lpGbl->wHeight;
     if (!v9x_d3d_tdfx_texture_edge(width) ||
-        (DWORD)surface->lpGbl->wHeight != width ||
+        !v9x_d3d_tdfx_texture_edge(height) ||
+        width > height * V9X_D3D_TDFX_ASPECT_RATIO_MAX ||
+        height > width * V9X_D3D_TDFX_ASPECT_RATIO_MAX ||
         !v9x_d3d_tdfx_texture_format(surface, &format)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
 
+    /* Both sides halve, each stopping at one texel; the chain ends when
+     * both have (the long side's last level). */
     for (level = 0ul; level < data->dwSCnt; ++level) {
         const V9X_DD_SURFACE_LCL *member = list[level];
-        DWORD edge = width >> level;
 
-        if (edge == 0ul) {
-            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        if (level != 0ul) {
+            if (width == 1ul && height == 1ul) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            width = width > 1ul ? width >> 1 : 1ul;
+            height = height > 1ul ? height >> 1 : 1ul;
         }
         if (member == 0 || member->lpGbl == 0 ||
             (data->dwSCnt > 1ul &&
              (member->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul) ||
             (member->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-            (DWORD)member->lpGbl->wWidth != edge ||
-            (DWORD)member->lpGbl->wHeight != edge) {
+            (DWORD)member->lpGbl->wWidth != width ||
+            (DWORD)member->lpGbl->wHeight != height) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         offsets[level] = bytes;
-        pitches[level] = edge * V9X_D3D_TDFX_TEXEL_BYTES;
-        bytes = offsets[level] + pitches[level] * edge;
+        pitches[level] = width * V9X_D3D_TDFX_TEXEL_BYTES;
+        bytes = offsets[level] + pitches[level] * height;
     }
     if (v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
                             &base) != 0ul) {

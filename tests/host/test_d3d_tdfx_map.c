@@ -232,6 +232,7 @@ static void test_texture(void)
     CHECK(state.texture.offset == BASE + 0x00200000ul);
     CHECK(state.texture.format == V9X_TDFX_TEX_RGB565);
     CHECK(state.texture.log2_size == 6ul);
+    CHECK(state.texture.aspect == 0ul);
     CHECK(state.texture.min_bilinear == 0ul &&
           state.texture.mag_bilinear == 0ul);
     CHECK(state.texture.clamp == 0ul);
@@ -344,9 +345,32 @@ static void test_texture(void)
     draw.texture.wrap_either = 1ul;
     CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
 
-    /* Shape: square, a power of two up to 256, at its tight pitch. */
+    /* Shape: powers of two up to 256 a side and 8:1, at the tight pitch.
+     * The long side is log2_size; aspect and S wider say the rest. */
     resolved.height = 32ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.log2_size == 6ul && state.texture.aspect == 1ul &&
+          state.texture.s_wider == 1ul);
+    resolved.width = 16ul;
+    resolved.height = 128ul;
+    resolved.pitch_bytes = 32ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.log2_size == 7ul && state.texture.aspect == 3ul &&
+          state.texture.s_wider == 0ul);
+    /* A chain of a 16x128 runs to the long side's last texel: 8 levels. */
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    resolved.levels = 8ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_NONE);
+    CHECK(state.texture.levels == 8ul);
+    resolved.levels = 9ul;
     CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE);
+    resolved.levels = 0ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    /* 16:1 is past the chip's 8:1. */
+    resolved.width = 8ul;
+    resolved.pitch_bytes = 16ul;
+    CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE);
+    resolved.width = 64ul;
     resolved.height = 64ul;
     resolved.pitch_bytes = 256ul;
     CHECK(map(&draw, &resolved, &state) == V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE);
@@ -387,12 +411,21 @@ static void test_triangle(void)
 {
     V9X_R3D_VERTEX t[3];
     struct v9x_tdfx_3d_vertex out[3];
+    struct v9x_tdfx_3d_texture square;
+    struct v9x_tdfx_3d_texture *tex = &square;
+
+    memset(&square, 0, sizeof(square));
+    square.log2_size = 6ul;
 
     corner(&t[0], 10.0f, 10.0f, 0xff804020ul);
     corner(&t[1], 100.0f, 10.0f, 0x80ff0000ul);
     corner(&t[2], 10.0f, 100.0f, 0x000000fful);
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 1, out));
-    CHECK(out[0].x == 10.0f && out[0].y == 10.0f);
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
+    /* Half a pixel down and right: the chip samples at +0.5,
+     * Direct3D on the whole coordinate (V9XDDP TexPhase, boots 438-440,
+     * the first sign wrong). */
+    CHECK(out[0].x == 10.5f && out[0].y == 10.5f);
+    CHECK(out[1].x == 100.5f && out[2].y == 100.5f);
     CHECK(out[0].r == 128.0f && out[0].g == 64.0f && out[0].b == 32.0f &&
           out[0].a == 255.0f);
     CHECK(out[1].r == 255.0f && out[1].a == 128.0f);
@@ -403,8 +436,23 @@ static void test_triangle(void)
     CHECK(out[0].oow == 0.5f);
     CHECK(out[0].sow == 32.0f && out[0].tow == 128.0f);
 
+    /* Rectangular: S and T count texels of the 256-long level of the same
+     * aspect, so the short side's unit is 256 >> aspect (Glide's
+     * convention; not yet measured). 64x32: T in 128ths; 32x64: S. */
+    {
+        struct v9x_tdfx_3d_texture wide = square;
+
+        wide.aspect = 1ul;
+        wide.s_wider = 1ul;
+        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, out));
+        CHECK(out[0].sow == 32.0f && out[0].tow == 64.0f);
+        wide.s_wider = 0ul;
+        CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, &wide, out));
+        CHECK(out[0].sow == 16.0f && out[0].tow == 128.0f);
+    }
+
     /* Flat: vertex 0's colour and alpha throughout. */
-    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_FLAT, 1, out));
+    CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_FLAT, tex, out));
     CHECK(out[1].r == 128.0f && out[2].b == 32.0f && out[2].a == 255.0f);
 
     /* Z clamps to the buffer's range. */
@@ -416,7 +464,7 @@ static void test_triangle(void)
     /* Untextured: RHW is not read, so zero is fine; textured, it is not. */
     t[0].rhw = 0.0f;
     CHECK(v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 0, out));
-    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, 1, out));
+    CHECK(!v9x_d3d_tdfx_triangle(t, V9X_R3D_SHADE_GOURAUD, tex, out));
     t[0].rhw = 0.5f;
 
     /* Zero area and a coordinate that is not finite draw nothing. */

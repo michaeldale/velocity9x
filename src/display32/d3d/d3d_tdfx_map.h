@@ -74,14 +74,16 @@ v9x_u32 v9x_d3d_tdfx_map_draw(const V9X_R3D_DRAW *draw,
 /*
  * One triangle's vertices in the builder's units: colour channels 0-255
  * (vertex 0's throughout when flat), Z in depth counts (sz x 65535), 1/W
- * from RHW, and S/W, T/W as 256ths of the texture's width times RHW (the
- * unit TDFX3D measured). Zero when it draws nothing - zero area, a
- * coordinate that is not finite, or (textured) an RHW at or below zero -
- * and the caller skips it.
+ * from RHW, and S/W, T/W times RHW in texels of the texture's 256-long
+ * level: 256 on the long side (the unit TDFX3D measured on a square
+ * texture) and 256 >> aspect on the short. texture is null when the draw
+ * is untextured. Zero when it draws nothing - zero area, a coordinate that
+ * is not finite, or (textured) an RHW at or below zero - and the caller
+ * skips it.
  */
 int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
                           v9x_u32 shade_mode,
-                          int textured,
+                          const struct v9x_tdfx_3d_texture *texture,
                           struct v9x_tdfx_3d_vertex *out);
 
 #endif

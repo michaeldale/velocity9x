@@ -10,8 +10,22 @@
 
 /* Z16 holds depth counts 0-FFFFh; Direct3D's sz is 0..1 (TDFX3D Depth). */
 #define V9X_D3D_TDFX_Z_SCALE      65535.0f
-/* S and T count 256ths of the texture's width (TDFX3D Texture). */
+/* S and T count 256ths of a square texture's side (TDFX3D Texture); a
+ * rectangle's short side counts fewer (d3d_tdfx_map.h). */
 #define V9X_D3D_TDFX_ST_SCALE     256.0f
+/*
+ * The chip samples a pixel at its centre, +0.5, where Direct3D puts the
+ * centre on the whole coordinate. V9XDDP's TexPhase, a 16x16 quad drawn
+ * 1:1 and point-sampled on A8U4I5 (2026-10-13): moved half a pixel up and
+ * left, every pixel read its own texel under 3dfx's driver and the next
+ * one under this engine; moved half a pixel down and right, 3dfx's lost
+ * its first pixel and this engine's read exactly. So the engine sees at a
+ * vertex + 0.5 what Direct3D sees at the vertex, and every vertex moves
+ * down and right by it, which matches coverage and texel phase both.
+ * (Moving them up and left was tried first, boot 440: it doubled the
+ * error.)
+ */
+#define V9X_D3D_TDFX_PIXEL_CENTRE 0.5f
 #define V9X_D3D_TDFX_FLOAT_EXPONENT 0x7f800000ul
 
 /* V9X_R3D_ABI_WRITE_RGB: red, green and blue all written. */
@@ -187,16 +201,26 @@ static v9x_u32 v9x_d3d_tdfx_map_texture(const V9X_R3D_DRAW *draw,
     const V9X_R3D_TEXTURE *sampler = &draw->texture;
     struct v9x_tdfx_3d_texture *texture = &state->texture;
     int log2;
+    int log2_width;
+    int log2_height;
+    v9x_u32 aspect;
 
     if (resolved == 0 || resolved->format == V9X_D3D_TDFX_TEXTURE_UNKNOWN) {
         return V9X_D3D_TDFX_REFUSE_TEXTURE_FORMAT;
     }
-    /* Square, a power of two up to 256, rows packed, and any chain no
-     * longer than the edge halves: the single-base layout the builder
-     * writes (section 20 p.228). */
-    log2 = v9x_d3d_tdfx_log2(resolved->width);
-    if (log2 < 0 || resolved->height != resolved->width ||
-        resolved->pitch_bytes != resolved->width * V9X_D3D_TDFX_TEXEL_BYTES ||
+    /* Powers of two up to 256 a side and at most 8:1, rows packed, and
+     * any chain no longer than the long side halves: the single-base
+     * layout the builder writes (sections 8.77, 20 p.228). */
+    log2_width = v9x_d3d_tdfx_log2(resolved->width);
+    log2_height = v9x_d3d_tdfx_log2(resolved->height);
+    if (log2_width < 0 || log2_height < 0 ||
+        resolved->pitch_bytes != resolved->width * V9X_D3D_TDFX_TEXEL_BYTES) {
+        return V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE;
+    }
+    log2 = log2_width > log2_height ? log2_width : log2_height;
+    aspect = (v9x_u32)(log2_width > log2_height ? log2_width - log2_height
+                                                : log2_height - log2_width);
+    if (aspect > V9X_TDFX_TEX_ASPECT_MAX ||
         resolved->levels > (v9x_u32)log2 + 1ul) {
         return V9X_D3D_TDFX_REFUSE_TEXTURE_SHAPE;
     }
@@ -231,6 +255,8 @@ static v9x_u32 v9x_d3d_tdfx_map_texture(const V9X_R3D_DRAW *draw,
     texture->offset = vram_base + resolved->offset;
     texture->format = resolved->format;
     texture->log2_size = (v9x_u32)log2;
+    texture->aspect = aspect;
+    texture->s_wider = log2_width > log2_height ? 1ul : 0ul;
     /* Minification chooses the levels; a plain filter reads level 0. */
     texture->levels = 1ul;
     if (v9x_d3d_tdfx_mip_filter(sampler->min_filter) &&
@@ -338,13 +364,25 @@ static float v9x_d3d_tdfx_z(float sz)
 
 int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
                           v9x_u32 shade_mode,
-                          int textured,
+                          const struct v9x_tdfx_3d_texture *texture,
                           struct v9x_tdfx_3d_vertex *out)
 {
     const V9X_R3D_VERTEX *colour;
     float area;
+    float s_scale = V9X_D3D_TDFX_ST_SCALE;
+    float t_scale = V9X_D3D_TDFX_ST_SCALE;
     v9x_u32 index;
     int flat = shade_mode == V9X_R3D_SHADE_FLAT;
+    int textured = texture != 0;
+
+    /* The short side counts texels of the 256-long level's short side. */
+    if (textured && texture->aspect != 0ul) {
+        if (texture->s_wider != 0ul) {
+            t_scale = V9X_D3D_TDFX_ST_SCALE / (float)(1ul << texture->aspect);
+        } else {
+            s_scale = V9X_D3D_TDFX_ST_SCALE / (float)(1ul << texture->aspect);
+        }
+    }
 
     for (index = 0ul; index < 3ul; ++index) {
         if (!v9x_d3d_tdfx_finite(triangle[index].sx) ||
@@ -373,8 +411,8 @@ int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
 
         /* Flat shading is Direct3D's: vertex 0's colour throughout. */
         colour = flat ? &triangle[0] : v;
-        out[index].x = v->sx;
-        out[index].y = v->sy;
+        out[index].x = v->sx + V9X_D3D_TDFX_PIXEL_CENTRE;
+        out[index].y = v->sy + V9X_D3D_TDFX_PIXEL_CENTRE;
         out[index].z = v9x_d3d_tdfx_z(v->sz);
         out[index].r = (float)((colour->color >> 16) & 0xfful);
         out[index].g = (float)((colour->color >> 8) & 0xfful);
@@ -382,8 +420,8 @@ int v9x_d3d_tdfx_triangle(const V9X_R3D_VERTEX *triangle,
         out[index].a = (float)((colour->color >> 24) & 0xfful);
         if (textured) {
             out[index].oow = v->rhw;
-            out[index].sow = v->tu * V9X_D3D_TDFX_ST_SCALE * v->rhw;
-            out[index].tow = v->tv * V9X_D3D_TDFX_ST_SCALE * v->rhw;
+            out[index].sow = v->tu * s_scale * v->rhw;
+            out[index].tow = v->tv * t_scale * v->rhw;
         } else {
             out[index].oow = 1.0f;
             out[index].sow = 0.0f;

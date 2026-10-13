@@ -91,6 +91,8 @@
 
 /* Without tLOD bit 30 the largest level is 256 texels (section 8.77). */
 #define V9X_TDFX_TEX_LOG2_MAX       8ul
+/* tLOD's aspect field: the long side at most 2^3 times the short. */
+#define V9X_TDFX_TEX_ASPECT_MAX     3ul
 
 /* State, setup mode, three vertices of at most 13 writes each and their
  * commands: 64 is room to spare for one triangle. */
@@ -113,8 +115,12 @@ struct v9x_tdfx_3d_texture {
      * builder works out the base the chip wants (section 20 p.228). */
     v9x_u32 offset;
     v9x_u32 format;
-    /* Square, 2^log2_size texels a side. */
+    /* 2^log2_size texels on the long side, and the short side 2^aspect
+     * times smaller; s_wider is 1 when S (the width) is the long side.
+     * Zero aspect is square. */
     v9x_u32 log2_size;
+    v9x_u32 aspect;
+    v9x_u32 s_wider;
     /* How many levels the sampler may read: level 0 and the halvings that
      * follow it packed, each straight after the one before (section 20
      * p.228). 0 and 1 both mean level 0 alone. */

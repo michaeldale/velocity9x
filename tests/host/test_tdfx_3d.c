@@ -274,6 +274,21 @@ static void test_state_mipmap(void)
     CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) ==
           0x010d8000ul);
 
+    /* Minification bilinear and magnification point: no bias, because the
+     * chip's choice between the two filters follows the biased LOD, and a
+     * text texture drawn 1:1 would be filtered bilinear (Half-Life's
+     * console, boot 434). */
+    state.texture.min_bilinear = 1ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00000808ul);
+    state.texture.mag_bilinear = 1ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00002808ul);
+    state.texture.min_bilinear = 0ul;
+    state.texture.mag_bilinear = 0ul;
+
     /* 64, 32, 16: LOD 2 to 4, max 10h. */
     state.texture.levels = 3ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
@@ -307,6 +322,72 @@ static void test_state_mipmap(void)
     state.texture.offset = MIB(32) - 0x2a00ul + 16ul;
     CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
           V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/*
+ * Rectangular textures: tLOD's aspect (22:21, log2 of the ratio) and S
+ * wider (20). LOD counts down the long side, and the single base is where
+ * level 0 of the same aspect, 256 texels long, would start (section 8.77
+ * p.147, section 20 p.228).
+ */
+static void test_state_aspect(void)
+{
+    struct v9x_tdfx_3d_state state;
+    struct v9x_tdfx_3d_words words;
+
+    base_state(&state);
+    state.texture_enable = 1ul;
+    state.texture.offset = MIB(17);
+    state.texture.format = V9X_TDFX_TEX_RGB565;
+    state.texture.combine = V9X_TDFX_COMBINE_REPLACE;
+
+    /* 64x32: long side 64 (LOD 2), aspect 1, S wider. The base less the
+     * 256x128 and 128x64 levels, (32768 + 8192) x 2 = 14000h bytes:
+     * 01100000h - 14000h = 010EC000h. */
+    state.texture.log2_size = 6ul;
+    state.texture.aspect = 1ul;
+    state.texture.s_wider = 1ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00300208ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) ==
+          0x010ec000ul);
+
+    /* 32x64: the same with T wider. */
+    state.texture.s_wider = 0ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00200208ul);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TEX_BASE_ADDR) ==
+          0x010ec000ul);
+
+    /* 64x32 fits exactly at the top of memory (4096 bytes), and not 16
+     * bytes higher. */
+    state.texture.offset = MIB(32) - 4096ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    state.texture.offset = MIB(32) - 4096ul + 16ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* 256x32, 8:1, a nine-level chain: the short side stops at one texel,
+     * (8192 + 2048 + 512 + 128 + 32 + 8 + 4 + 2 + 1) x 2 = 21854 bytes.
+     * LOD 0 to 8 with the rounding bias, aspect 3, S wider. */
+    state.texture.log2_size = 8ul;
+    state.texture.aspect = 3ul;
+    state.texture.s_wider = 1ul;
+    state.texture.levels = 9ul;
+    state.texture.offset = MIB(32) - 21872ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(value_at(&words, V9X_TDFX_3D_TMU0 | V9X_TDFX_3D_TLOD) ==
+          0x00702800ul);
+    state.texture.offset = MIB(32) - 21840ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* The chip's widest ratio is 8:1. */
+    state.texture.offset = MIB(17);
+    state.texture.aspect = 4ul;
+    CHECK(v9x_tdfx_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
 }
 
 static void test_state_refusals(void)
@@ -479,6 +560,7 @@ unsigned int v9x_run_tdfx_3d_tests(void)
     test_state_depth_blend();
     test_state_texture();
     test_state_mipmap();
+    test_state_aspect();
     test_state_refusals();
     test_triangle_plain();
     test_triangle_depth_texture();
