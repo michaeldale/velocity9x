@@ -121,6 +121,50 @@ whose export tables settle the export list across versions. gona's
 matrices (driver x DLL x chip x title) are the reference for behaviour
 on real chips.
 
+Further sources from marxveix (VOGONS, 2026-10-13), read 2026-10-14 on
+the Wayback Machine; facts that bear on the design:
+- ATI's *3D RAGE White Papers* (`atitech.ca/dr/cifwhite.html`, Oct 1997),
+  a digest of the guide's chapters 1-2 and 4:
+  - Between `RenderBegin` and `RenderEnd` the chip is in 3D mode and
+    the application "will not be able to perform 2D operations, such as
+    blitting, rectangle fills, or page flipping"; `RenderBegin` saves
+    the 2D engine state and `RenderEnd` restores it. ATI recommends one
+    3D block a frame. So a title's own `Lock`, `Blt` and `Flip` fall
+    outside the block, and draining at `RenderEnd` covers them.
+  - The viewport's top-left corner is the origin of the vertex
+    coordinates, and moving it moves that origin. Its width cannot
+    exceed the screen's. The scissor's origin is always the draw
+    surface's top-left.
+  - The Z buffer "must have the same pitch in pixels and height in scan
+    lines as the drawing surface", be in video memory, and be 8-byte
+    aligned.
+  - Textures must be in video memory on PCI cards. On AGP, a DirectX 5
+    or later DirectDraw may place them in system memory (the Q1 1997
+    developer newsletter), so `apvLevels` can point at system memory.
+  - Texture coordinates are "homogeneous (s, t, and inverse w)"; flat
+    shading takes the last vertex's colour; fog takes its factor from
+    vertex alpha, which is why fog and alpha blending exclude each
+    other.
+  - 3DCIF "cannot be used with Direct3D within the same application".
+- ATI support note 3023 (1999) lists the chips 3DCIF supports: Rage I,
+  II, II+, IIc, PRO and LT PRO; not the Rage 128. Its title list:
+  WipeOut, Assault Rigs, MechWarrior II, Formula 1.
+- ATI support note 2514: Wipeout and Assault Rigs fault reading
+  `FFFFFFFF` when "some component of the 3D RAGE hardware and/or
+  software" is missing. They fault rather than report.
+- Psygnosis's Formula 1 Rage PRO patch page: the patch replaces
+  `F1ATI.EXE` and applies only to CD part number 180-G3D014-100. It
+  needs ATI's 4.35 or later drivers and fixes texture corruption that
+  those drivers caused.
+- The guide dates `C3D_3DCIFINFO`'s growth: one caps word in 4.02.0217
+  (32 bytes), caps 2 to 5 in 4.03.0039 (48), caps2 defined in
+  4.03.2511. `GetInfo` therefore sees 28, 32 or 48.
+- ATI's driver chooses 555 or 565 with `SYSTEM.INI` `[Display]
+  five6five=1`, read at boot; 555 is the default. Per marxveix it
+  applies to Direct3D and 3DCIF alike, not to OpenGL. Reported on
+  VOGONS, not checked here.
+- None of these pages gives `u32ASICID` values.
+
 ## What 3DCIF is
 
 From glrage and GLCIF's header on 2026-10-12; the SDK guide confirms each
@@ -321,6 +365,7 @@ on the engine `Direct3D=` selects.
    | `demopack` | `ATi3DCInterFace.7z` | 17.4 MB | hingetee.ee/library | marxveix's pack: SDK 4.1 again, plus an older `InterFace` tree with the Knight Demo, VQ and Morph sources; 561 files |
    | `alldlls` | `all_ATI3DCIF_DLL.zip` | 1.2 MB | gona.mactar.hu/ATI3DCIF/drivers | ATI's `ATI3DCIF.DLL`, 15 versions 4.02.0017 to 4.12.2696, including 4.11.2691, which gona's table omits |
    | `tombraider-ati` | `trati.zip` | 354 KB | infania.net/misc/gona/3D/files | `tombati.exe`, five codec and player DLLs, a readme; no `ATI3DCIF.DLL` |
+   | `rage3gl` | `ati-rage3gl-win9x.7z` | 29.6 MB | hingetee.ee/library (2026-10-14) | marxveix's OpenGL pack, not 3DCIF: ATI Rage PRO OpenGL drivers `OGL1045` to `OGL1107` (about 33 builds), MCD builds `MGL1005` to `MGL1036`, SciTech GLDirect 3.00 and 5.02, `OpenGL ATIDBG`, a GL demo, a D3D/OGL benchmark, Rage Pro Tweaker; SHA-256 `b53197e0...cd150480`. Listed, not extracted |
 
    The SDK header replaces GLCIF's copy as the source for values, once
    its licence is read. Croc 1.0 needs no patch.
