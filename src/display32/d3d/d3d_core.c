@@ -5544,15 +5544,13 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
      * none (docs\decisions\2026-09-26-phase05-mixed-engine-ordering-and-
-     * virge-colour-mismatch.md). */
+     * virge-colour-mismatch.md). The Rage IIC writes either
+     * (rage2_draw.c's policy, docs\plans\ati-555-desktop.md). */
     out->target_formats = 0ul;
     if (v9x_d3d_target_format_of(&v9x_hal->info.vmiData.ddpfDisplay,
                                  &format) &&
         !(ops == &v9x_d3d_engine_virge &&
-          format != V9X_D3D_TARGET_FORMAT_XRGB1555) &&
-        /* The Rage IIC draws 565 only (rage2_draw.c's policy). */
-        !(ops == &v9x_d3d_engine_rage2 &&
-          format != V9X_D3D_TARGET_FORMAT_RGB565)) {
+          format != V9X_D3D_TARGET_FORMAT_XRGB1555)) {
         out->target_formats = 1ul << format;
     }
     out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_RGB565) |

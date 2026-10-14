@@ -6,6 +6,20 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.17.1 - not yet released
 
+- **The Rage IIC runs 16 bits as 5:5:5**, as ATI's own driver does and
+  as titles written for ATI cards assume. Every Rage IIC desktop at 16
+  bpp changes layout; `[Velocity9x] HighColor=16` in SYSTEM.INI keeps
+  5:6:5. The Rage II's Direct3D draws into either layout. Two changes
+  were needed:
+  - The mini-VDD now keeps the 15 bpp modes an ATI BIOS reports. They
+    were dropped before, so a 555 mode set failed.
+  - The Rage II's Direct3D draws into 1555 targets as well as 565.
+
+  The Rage XL, Rage Pro and Mobility stay 5:6:5 until their own
+  measurement. Glide does not yet open on a 5:5:5 desktop.
+  [Desktop](docs/decisions/2026-10-14-rage-iic-555-desktop.md),
+  [3D](docs/decisions/2026-10-14-rage-iic-draws-1555-targets.md).
+
 ## 0.17.0 - 2026-10-13
 
 0.16.1 was never released; its changes are in this version.

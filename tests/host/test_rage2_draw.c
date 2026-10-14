@@ -59,7 +59,14 @@ static void test_policy(void)
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
     CHECK(d.scale_3d_cntl == V9X_R2_SCALE_3D_SHADE);
 
+    CHECK(d.dst_pix_width == V9X_R2_DP_PIX_WIDTH_565);
+
+    /* XRGB1555: destination code 3, as ATI's own driver programmed it
+     * (DP_PIX_WIDTH 0x40030203 under Half-Life, ATIRX-SAMPLE.TXT). */
     r.target_format = 2ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.dst_pix_width == V9X_R2_DP_PIX_WIDTH_1555);
+    r.target_format = 3ul;
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_TARGET_FORMAT);
     base_request(&r);
     r.scissor_right = 641ul;
@@ -372,6 +379,19 @@ static void test_state(void)
         }
     }
     CHECK(saw_z && saw_tex);
+
+    /* The same draw into an XRGB1555 target: destination and host 3, the
+     * texel format unchanged. */
+    r.target_format = 2ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(v9x_r2_build_draw_state(&s, &d, offsets, values,
+                                  V9X_R2_DRAW_STATE_DWORDS, &written) ==
+          V9X_STATUS_OK);
+    for (index = 0ul; index < written; ++index) {
+        if (offsets[index] == V9X_M64_DP_PIX_WIDTH) {
+            CHECK(values[index] == 0x40030003ul);
+        }
+    }
     /* Every Direct3D compare onto Z_TEST's own order (Phase 3's bands:
      * never, <, <=, ==, >=, >, !=, always). */
     {

@@ -147,6 +147,10 @@ v9x_status v9x_r2_setup_triangle(const struct v9x_r2_target *target,
 /* DP_PIX_WIDTH destination and source 16 bpp (565); DP_MIX foreground
  * source, background destination (RRG p.4-93, p.4-94). */
 #define V9X_R2_DP_PIX_WIDTH_565     0x00040004ul
+/* The same for an XRGB1555 destination: code 3 (RRG p.4-93), the value
+ * ATI's own driver ran the Rage IIC's 3D at
+ * (docs\probe\a8u4i5-rage-iic-registers-2026-10-02\hl-sample-ati\). */
+#define V9X_R2_DP_PIX_WIDTH_1555    0x00030003ul
 #define V9X_R2_DP_MIX_FRGD_SRC      0x00070003ul
 
 #define V9X_R2_SHADE_STATE_DWORDS   20ul

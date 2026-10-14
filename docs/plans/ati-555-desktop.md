@@ -2,8 +2,11 @@
 
 Date: 2026-10-14
 
-Status: Phase 0 under way; step 1 done (the 555 desktop boots on the Rage
-IIC: [2026-10-14-rage-iic-555-desktop.md](../decisions/2026-10-14-rage-iic-555-desktop.md)).
+Status: Phase 0 done on the Rage IIC. The 555 desktop boots there by
+default, and the Rage II draws 1555 targets:
+[desktop](../decisions/2026-10-14-rage-iic-555-desktop.md),
+[3D](../decisions/2026-10-14-rage-iic-draws-1555-targets.md). Phase 1
+remains for textures, 2D and the blend step; then Phases 2 and 3.
 Chosen by Michael on 2026-10-14 over keeping
 565 and correcting 555-only titles in ATI3DCIF.DLL.
 

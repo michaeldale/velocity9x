@@ -12,6 +12,7 @@
 
 /* Numbering shared with Direct3D and V9X_R3D_* (mach64_policy.c). */
 #define R2_TARGET_RGB565        1ul
+#define R2_TARGET_XRGB1555      2ul
 #define R2_WRITE_MASK_RGB       7ul
 #define R2_SHADE_FLAT           1ul
 #define R2_SHADE_GOURAUD        2ul
@@ -232,8 +233,10 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
         return V9X_M64_REFUSE_ARGUMENT;
     }
 
-    /* RGB565 is the only target the scenes drew. */
-    if (request->target_format != R2_TARGET_RGB565 ||
+    /* RGB565, as the scenes drew, or XRGB1555, as ATI's own driver draws
+     * (DP_PIX_WIDTH destination 3 under Half-Life, ATIRX-SAMPLE.TXT). */
+    if ((request->target_format != R2_TARGET_RGB565 &&
+         request->target_format != R2_TARGET_XRGB1555) ||
         request->target_width == 0ul || request->target_height == 0ul ||
         request->target_width > 2048ul || request->target_height > 2048ul) {
         return V9X_M64_REFUSE_TARGET_FORMAT;
@@ -480,6 +483,9 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
     }
 
     decision->scale_3d_cntl = scale;
+    decision->dst_pix_width =
+        request->target_format == R2_TARGET_XRGB1555
+            ? V9X_R2_DP_PIX_WIDTH_1555 : V9X_R2_DP_PIX_WIDTH_565;
     return V9X_M64_REFUSE_NONE;
 }
 
@@ -515,7 +521,7 @@ v9x_status v9x_r2_build_draw_state(const struct v9x_r2_draw_state *state,
 {
     const struct v9x_r2_target *target;
     v9x_u32 at = 0ul;
-    v9x_u32 pix_width = V9X_R2_DP_PIX_WIDTH_565;
+    v9x_u32 pix_width;
 
     if (written != 0) {
         *written = 0ul;
@@ -525,6 +531,8 @@ v9x_status v9x_r2_build_draw_state(const struct v9x_r2_draw_state *state,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     target = &state->target;
+    /* The target's layout, as the policy accepted it. */
+    pix_width = decision->dst_pix_width;
     if (target->offset > target->vram_bytes ||
         target->height > (target->vram_bytes - target->offset) /
                              (target->pitch_bytes != 0ul
