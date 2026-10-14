@@ -84,6 +84,13 @@ void v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out)
     out->rsvd_field_position = 0u;
 }
 
+v9x_u16 v9x_vbe_storage_bits(v9x_u16 bits_per_pixel)
+{
+    /* VBE 1.2 counts a 5:5:5 mode's colour bits; the pixel is still two
+     * bytes, which is what every stride and match rule here measures. */
+    return bits_per_pixel == 15u ? 16u : bits_per_pixel;
+}
+
 v9x_u16 v9x_vbe_summary_significant_depth(
     const struct v9x_vbe_mode_summary *summary)
 {

@@ -3543,6 +3543,12 @@ V9xMini_Vbe_Query_Record_Answered:
     mov     al, byte ptr [esi+25]       ; BitsPerPixel
     cmp     al, 8
     je      short V9xMini_Vbe_Query_Record_Depth_Ok
+    ; 15: an ATI BIOS's 5:5:5 modes (0x110/0x113/0x116), which the 555
+    ; desktop sets. Dropped here, they left that mode with no record and
+    ; the tier-0 aperture check answered "minivdd-no-mode" (A8U4I5 Rage
+    ; IIC, boot 457). Scanned-row admission still refuses 15 (C policy).
+    cmp     al, 15
+    je      short V9xMini_Vbe_Query_Record_Depth_Ok
     cmp     al, 16
     je      short V9xMini_Vbe_Query_Record_Depth_Ok
     cmp     al, 24

@@ -616,8 +616,27 @@ static void test_summary_clear(void)
     v9x_vbe_mode_summary_clear(0);
 }
 
+/*
+ * A 5:5:5 mode is 15 bits per pixel to an ATI BIOS (the Rage XL AGP's
+ * 0x110/0x113/0x116, docs\probe\rage-xl-agp-marxveix-2026-10-03\
+ * V9XSURV.INI) and 16 to others; either way it occupies two bytes. The
+ * tier-0 aperture check compares that storage with the 16 bpp row the
+ * desktop runs on (A8U4I5's Rage IIC refused 0x116 at boot 457 with
+ * "minivdd-no-mode" until the mini-VDD kept 15 bpp records).
+ */
+static void test_storage_bits(void)
+{
+    VCHECK(v9x_vbe_storage_bits(15u) == 16u);
+    VCHECK(v9x_vbe_storage_bits(16u) == 16u);
+    VCHECK(v9x_vbe_storage_bits(8u) == 8u);
+    VCHECK(v9x_vbe_storage_bits(24u) == 24u);
+    VCHECK(v9x_vbe_storage_bits(32u) == 32u);
+    VCHECK(v9x_vbe_storage_bits(0u) == 0u);
+}
+
 unsigned int v9x_run_vbe_parse_tests(void)
 {
+    test_storage_bits();
     test_controller_info();
     test_mode_info();
     test_mode_matches();

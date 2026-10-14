@@ -163,6 +163,13 @@ v9x_u16 v9x_vbe_summary_significant_depth(
     const struct v9x_vbe_mode_summary *summary);
 
 /*
+ * The bits a pixel occupies for a 4F01h BitsPerPixel: 16 for 15, which an
+ * ATI BIOS reports for its 5:5:5 modes (two bytes a pixel, the top bit
+ * unused), and the value itself otherwise.
+ */
+v9x_u16 v9x_vbe_storage_bits(v9x_u16 bits_per_pixel);
+
+/*
  * 4F00h. V9X_TRUE when the block is a credible VBE 2.0-or-later answer:
  * "VESA" signature, version at least 0x0200, non-zero TotalMemory. The summary
  * is zeroed on refusal.

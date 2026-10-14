@@ -891,7 +891,9 @@ static DWORD v9x_vbe_default_aperture(void)
     mode.lin_bytes_per_scan_line = 0u;
     mode.width = v9x_minivdd_width;
     mode.height = v9x_minivdd_height;
-    mode.bits_per_pixel = v9x_minivdd_bpp;
+    /* Storage, not colour bits: an ATI BIOS calls its 5:5:5 modes 15 bpp,
+     * and the 555 sibling of a 16 bpp row is two bytes a pixel like it. */
+    mode.bits_per_pixel = v9x_vbe_storage_bits(v9x_minivdd_bpp);
     mode.memory_model = v9x_minivdd_model;
     mode.phys_base = v9x_minivdd_base;
     /* Derivable from what the API did report, and only from the depth here:
