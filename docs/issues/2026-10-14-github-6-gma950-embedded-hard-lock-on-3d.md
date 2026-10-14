@@ -302,6 +302,46 @@ not among them.
   rewritten at every boot, so the file exists. It still has to be asked
   for by name.
 
+## INTELMM.TXT: pipe A, plane A (received 2026-10-15)
+
+Sent directly by the reporter. A boot-time read of a 640x480x16 desktop,
+`Bar0=FDF00000`, `Result=PASS`, decoded by the driver as
+`LivePipe=0`, `LivePlane=0`. The raw registers agree:
+
+| Register | Value | Reading |
+|---|---|---|
+| PIPEACONF `0x70008` | `80000000` | pipe A enabled |
+| PIPEBCONF `0x71008` | `00000000` | pipe B off |
+| DSPACNTR `0x70180` | `94000000` | plane A enabled, format 5 (RGB565), pipe select 0 |
+| DSPBCNTR `0x71180` | `01000000` | plane B disabled, pipe select 1 |
+| DSPAADDR / DSPASTRIDE | `0` / `0x500` | base 0, 1280 bytes |
+| PIPEA HTOTAL / VTOTAL / SRC | `031F027F` / `020C01DF` / `027F01DF` | 640x480 active, 800x525 total: 640x480 at 60 Hz |
+| PGTBL_CTL `0x2020` | `3FFC0001` | GTT enabled, at physical `3FFC0000` |
+| HWS_PGA `0x2080` | `1FFFF000` | the BIOS value, as on the netbook |
+
+Pipe B's timing registers hold the same 640x480 values with the pipe off.
+
+So exactly one pipe and one plane are live. `v9x_i9xx_scanout_pipe`
+resolves this without declining, and the flip runs on **plane A feeding
+pipe A**. Every Intel flip measured so far ran on plane B feeding pipe B
+(netbook, intel56: PIPEBCONF `80000000`, DSPBCNTR `95000000`). The
+two-pipes-live hypothesis is dead; what remains is the plane-A flip
+itself, which has never run on hardware.
+
+A reading of the flip path for plane-B assumptions (2026-10-15) found
+none. Every register is chosen by the resolved plane or pipe:
+`i9xx_scanout.c` picks DSPxADDR, DSPxSTRIDE, the pipe's DSL, VTOTAL and
+frame counters from tables. `MI_DISPLAY_FLIP_I915` is `0x0A000001`, the
+plane field is bits 21:20, and `v9x_i9xx_flip_pending_bit` maps plane 0
+to ISR bit 11. The register offsets in `intel_gma.h` match i915_reg.h.
+So the code addresses plane A as i915 says to, and what plane A does
+with it on this part is unmeasured.
+
+`V9X3D` cannot separate the plain base write from the ring flip
+(`IntelFlipRing` was removed when the ring flip became the default), so
+which of the two locks is not something the reporter can test with the
+shipped switches.
+
 ## Local reproduction
 
 None possible yet. The netbook is the same silicon but its VBIOS refuses
