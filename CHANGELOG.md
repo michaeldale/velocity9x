@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.18.1 - not yet released
+
 ## 0.18.0 - 2026-10-14
 
 0.17.1 was never released; its changes are in this version.
