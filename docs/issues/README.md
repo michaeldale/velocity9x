@@ -1,9 +1,16 @@
 # Issue records
 
-An issue record is a dated defect report or investigation. Its body is appended to as the investigation moves, never rewritten. The split below is a reading of each record and of docs/STATUS.md as of 2026-10-07; the record itself is authoritative.
+An issue record is a dated defect report or investigation. Its body is appended to as the investigation moves, never rewritten. The split below is a reading of each record and of docs/STATUS.md as of 2026-10-14; the record itself is authoritative.
 
 ## Open
 
+- [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locks on 3D under 0.17.0 (unreproduced; isolated to the Intel flip, the game runs with it off)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
+- [2026-10-14 The Rage IIC blends one step low into a 5:5:5 target (parked; a SCALE_3D_CNTL sweep is the next step)](2026-10-14-rage-iic-blend-one-step-low-at-555.md)
+- [2026-10-14 3DCIF: Pixie, Fairy and Laputa's blended sprites are refused on both ATI engines (parked; a decision is owed)](2026-10-14-3dcif-blended-sprites-refused.md)
+- [2026-10-14 3DCIF: the Phase 3 readback probe is not written (parked)](2026-10-14-3dcif-phase3-probe-not-written.md)
+- [2026-10-14 3DCIF: mipmaps, tiled textures, meshes and TLVERTEX are not drawn (parked)](2026-10-14-3dcif-unimplemented-features.md)
+- [2026-10-14 3DCIF on Gen3: some flicker, and some demos run too fast (parked)](2026-10-14-3dcif-gen3-flicker-and-speed.md)
+- [2026-10-14 Gen3 refuses a 1024x256 RGB565 texture with DDERR_INVALIDPARAMS (worked around in ATI3DCIF.DLL; cause not looked for)](2026-10-14-gen3-refuses-1024x256-texture.md)
 - [2026-10-11 The Voodoo4 was found in D3 with its BARs cleared under 3dfx's driver (preflight did not reproduce it; monitor power-down untested)](2026-10-11-voodoo4-found-in-d3-under-3dfx-driver.md)
 - [2026-10-11 The Velocity9x settings page shows 4 MB on the 8 MiB Millennium II: it reads the BIOS figure, never VramMeasuredBytes](2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)
 - [2026-10-11 3DMark2000 shows "3D pattern corruption" on a reporter's GMA 900 (not yet seen; mip-tree declines, untextured draws and refused geometry are candidates)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)
@@ -70,6 +77,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-10-12 Glide's command FIFO sat inside the desktop, and GDI's CPU drawing jammed it (fixed: the Voodoo4 desktop moved to 15 MiB, above Glide's memory)](2026-10-12-glide-cmdfifo-overlaps-the-desktop.md)
 - [2026-10-10 The MGA-2164W's VBE BIOS reports 4 MiB of its 8: the matrox family now walks its memory; fixed 2026-10-10](2026-10-10-mga2164w-vbe-reports-half-its-memory.md)
 - [2026-10-05 A8U4I5 hard-locks under V9XDDP with the SiS 6326 Direct3D engine: an untextured batch stalls the next textured one, and the freeze was a Lock retry loop; fixed 2026-10-05](2026-10-05-a8u4i5-hard-lock-under-sis-d3d-v9xddp.md)
 - [2026-10-05 SiS 6326 3D engine stalls on Final Reality's first Z-tested batch: fixed by TEND after each triangle; the hardware cause is not established](2026-10-05-a8u4i5-sis-3d-stalls-in-final-reality.md)

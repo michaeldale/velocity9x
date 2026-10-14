@@ -1,12 +1,18 @@
 # Velocity9x
 
-A from-scratch display driver for Windows 98 with **hardware Direct3D and
-OpenGL**. Its flagship target is the **Intel GMA 950**, where one driver
-package gives the chip DirectDraw on its blitter, a Direct3D HAL on its
-Gen3 3D engine, and an OpenGL 1.1 driver drawing through the same engine.
-It also drives the S3 ViRGE/DX and Trio3D/2X and the ATI Rage Mobility-M
-with hardware Direct3D and OpenGL, the S3 Trio32/64 with 2D acceleration,
-and other ATI Mach64/Rage and generic VESA cards through their video BIOS.
+A from-scratch display driver for Windows 98 with **hardware 3D on period
+cards**. One driver package per chip family gives the card:
+- DirectDraw on its 2D engine;
+- a Direct3D HAL on its 3D engine;
+- an OpenGL 1.1 driver;
+- Glide 2 and Glide 3 for games written for 3dfx cards;
+- ATI's 3DCIF for games written for ATI Rage cards.
+
+All of them draw through one shared render core. It runs the Intel GMA 950,
+the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
+Trio3D, the Matrox Millennium II, the SiS 6326 and the 3dfx Voodoo4 with
+hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
+acceleration, and other cards run through their VESA video BIOS.
 
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
 Direct3D HAL and OpenGL ICD contracts, rather than derived from anyone's
@@ -18,20 +24,19 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.18.0**: ATI3DCIF.DLL, ATI's 3D Rage interface, so
-games and demos written for ATI Rage cards draw on Velocity9x (ATI's SDK
-demos run on the Rage IIC, Rage XL and GMA 950); and ATI cards with
-hardware Direct3D run 16 bits as 5:5:5, as ATI's own driver does. See the
-[changelog](CHANGELOG.md).
-Download it from [releases/0.18.0](releases/0.18.0/README.md).
-See [current status](docs/STATUS.md) for what is verified where and what
+**Current version: 0.18.0.** It adds ATI3DCIF.DLL, ATI's 3D Rage
+interface: ATI's SDK demos run on the Rage IIC, the Rage XL and the GMA
+950. ATI cards with hardware Direct3D now run 16-bit colour as 5:5:5, as
+ATI's own driver does. See the [changelog](CHANGELOG.md), and download it
+from [releases/0.18.0](releases/0.18.0/README.md). Installed copies from
+0.15.0 on can update through **Check for updates** on the Velocity9x
+tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
 
-> Every GMA 950 result here comes from **one physical machine**, an HP
-> Mini 110 (945GSE). Coverage differs by card and feature; read the
-> [verification matrix](docs/STATUS.md) and the
-> [installation guide](docs/INSTALL.md), and keep a cold backup before
-> installing an engineering driver.
+> This is an engineering driver. Each card's results come from **one
+> physical machine**: two for the Trio64, none for a card marked
+> "claimed". Read the [installation guide](docs/INSTALL.md), and keep a
+> cold backup before installing.
 
 ## Start here
 
@@ -42,145 +47,91 @@ is open.
 | Install it on a test VM or machine | [docs/INSTALL.md](docs/INSTALL.md) |
 | Try it on a card that is not listed | [Have an unsupported card?](#have-an-unsupported-card) |
 | See how it compares to S3's own driver | [How it compares](docs/comparisons.md) |
-| Get it onto a machine with no network | [Transfer disk](#transfer-disk) |
+| Get it onto a machine with no network | [Transfer disks](#transfer-disks) |
 | Recover a machine that will not boot | [packaging/win98se/RECOVER.TXT](packaging/win98se/RECOVER.TXT) |
+| Report a problem | [Reporting problems](#reporting-problems) |
 | Build it from source | [docs/BUILDING.md](docs/BUILDING.md) |
 | Run the standard Half-Life 1 benchmark | [HL1 benchmark](tests/benchmarks/hl1/README.md) |
 | Help add support for your chip | [Helping add native support](#helping-add-native-support) |
 | Understand the design | [docs/specifications/win9x-driver-boundaries.md](docs/specifications/win9x-driver-boundaries.md) |
+| See what is verified and what is open | [docs/STATUS.md](docs/STATUS.md) |
 | See what changed | [CHANGELOG.md](CHANGELOG.md) |
 
-## Intel GMA 950
+## Supported cards
 
-From 0.13.0 the `intel-gma` package also claims the **GMA 900 on the 915GM**
-(`8086:2592`), the same engine, from a hardware survey sent in by a user.
-No 915 has run it yet; the
-[decision record](docs/decisions/2026-10-08-intel-915gm-gma900-support.md)
-lists what a first boot would check.
+Cards are grouped into *families*, one package each. A family's driver
+serves every chip in it and picks the right one by PCI id at boot.
+"Measured" means run on the physical machine named; a card that is only
+"claimed" binds by design and has not been run.
 
-The `intel-gma` package drives the **GMA 950 on the 945GSE**
-(`8086:27AE`). The video BIOS sets the modes (640x480 and the panel's
-native 1024x576, at 8 and 16 bpp); the driver owns everything above that:
+| Card | Package | 3D engine | Measured on hardware |
+|---|---|---|---|
+| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook |
+| Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Claimed from a user's survey; not run |
+| ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
+| ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
+| ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
+| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path). ViRGE/DX: GDI on the engine; its Direct3D and OpenGL on an emulator |
+| S3 Trio32/64 | `s3` | none | GDI and DirectDraw on the 8514/A engine, on PCI and on a VLB 486 under Windows 95 |
+| Matrox Millennium II (MGA-2164W) | `matrox` | MGA | Direct3D; GDI and DirectDraw on the engine |
+| Matrox Millennium (MGA-2064W) | `matrox` | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
+| SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
+| 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk |
 
-- **Direct3D** on the Gen3 3D engine, submitted through its ring
-  without the CPU waiting for each batch (0.9.2): RGB565, ARGB1555 and
-  ARGB4444 textures to 1024 texels with mip chains laid out by the
-  HAL, modulate and decal, Gouraud and flat shading, texture wrap, the
-  application's alpha test, a 16-bit Z buffer with the application's
-  comparison, and colour and alpha blending.
-- **DirectDraw** fills and copies on the Gen3 blitter, and hardware page
-  flipping.
-- **OpenGL 1.1** through `V9XGL.DLL`, drawing on the same engine:
-  textures of any power-of-two shape down to one texel sampled by the GPU,
-  least-recently-used eviction when the part's few megabytes of video
-  memory run out, and anything the GPU cannot express drawn by the CPU
-  into the same frame.
+Unvalidated **aliases** bind to the measured chip of the same design: the
+other S3 Trio ids, the rest of the Rage II and Rage Pro lines, and the
+Voodoo5, which would run on one chip. Treat them as "it should come up",
+not as supported. The ids are listed in each family's manifest under
+[packaging/families/](packaging/families/), and why each was bound in
+[docs/specifications/family-manifest.md](docs/specifications/family-manifest.md).
 
-Measured on the netbook:
+Modes come from each card's video BIOS, merged with the driver's own where
+it sets modes itself: up to 1024x768 at 8 and 16 bpp on most cards, True
+Color and 1280x1024 on the S3 cards, and 1024x576 on the GMA 950's panel.
+Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
+where the table says otherwise. No card has a hardware cursor.
 
-| Application | API | Result |
-|---|---|---|
-| 3DMark 99 | Direct3D | 1253 at 640x480 in 0.9.2 (717 in 0.8.1); 669 at 1024x576 in 0.9.0 |
-| Half-Life `mwd5` timedemo | Direct3D | 42.4 fps at 640x480 in 0.9.2, from 29.1 |
-| Quake 2 demo2 timedemo | OpenGL | 19.6-19.8 fps at 640x480 fullscreen in 0.9.2 |
-| 3D WinBench 98 quality suite | Direct3D | Runs to the end: culling, wrap, decal, mirror, add and modulate pass |
-| Half-Life | Direct3D | Runs, alpha-tested fences see-through; presents on the blitter in 0.6 ms |
-| Final Reality | Direct3D | Renders textured with depth testing and hardware flips |
-| Quake 2 demo | OpenGL | 28 fps at demo1's start (`timerefresh`, 640x480); fullscreen and `vid_restart` work |
-| Serious Sam: The First Encounter | OpenGL | Renders; its `auto-demo0001` at 2.7 fps in 0.9.2, video memory the limit |
+### Measured frame rates
 
-![Serious Sam: The First Encounter on the Intel GMA 950 through
-Velocity9x's OpenGL driver](docs/images/serious-sam-gma950-opengl-2026-09-26.png)
+Recorded on each card as it shipped, at 640x480. They are not a
+like-for-like comparison: the machines differ, and so do the versions.
 
-What is open on the GMA 950: GDI drawing still uses the CPU, and Serious
-Sam's textures outgrow the part's free video memory, so copies
-are evicted and uploaded again. The records behind each number are linked
-from the [changelog](CHANGELOG.md).
+| Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
+|---|---|---|---|
+| Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
+| 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
+| ATI Rage XL PCI (P3) | 18.1 fps | 11.6 fps | 0.10.1 |
+| ATI Rage Mobility-M (P3 laptop) | 12.0 fps | about 8 fps | 0.9.2 |
+| SiS 6326 (P3) | 8.6 fps | 7.8 fps (`timerefresh`) | 0.11.0 |
+| Matrox Millennium II (P3) | 8.49 fps | | 0.16.0 |
+| ATI Rage IIC (P3) | 5.57 fps (ATI's driver 6.63) | 4.4 fps | 0.10.0 |
 
-## ATI Rage Mobility-M
-
-New in 0.9.1. The `ati` package drives the **Rage Mobility-M**
-(`1002:4C4D`) with its Mach64 3D engine, measured on one physical machine,
-a Gateway Solo 2150 laptop (4 MB, 1024x768 panel, Pentium III):
-
-- **Direct3D**: RGB565, ARGB1555 and ARGB4444 textures with each edge a
-  power of two from 8 to 256 (rectangles from 0.9.2), with mip chains, bilinear and trilinear filtering,
-  modulate, decal and decal-alpha, wrap and clamp, perspective
-  correction, Gouraud and flat shading, a 16-bit Z buffer with every
-  comparison, the blend factors the engine measured exact, alpha test on
-  texel alpha, specular and fog. Anything the engine cannot draw exactly
-  is refused before it reaches the chip.
-- **DirectDraw** fills and copies on the engine.
-- **OpenGL 1.1** through `V9XGL.DLL`, with the engine sampling the
-  textures; a texture with an edge under 8 texels is given a square copy
-  that samples the same texels.
-
-| Application | API | Result |
-|---|---|---|
-| 3DMark 99 Max | Direct3D | All 26 tests at 640x480x16; 604 3DMarks in 0.9.2, 643 in 0.9.1 |
-| Half-Life `mwd5` timedemo | Direct3D / OpenGL | 12.0 / 7.4 fps at 640x480 in 0.9.2, sky drawn |
-| Quake 2 demo | OpenGL | Draws the world with hardware textures; about 8 fps at 640x480 fullscreen, against 22 to 24 with ATI's own driver |
-
-What is open: the engine's mip level boundaries sit a third of a level
-coarser than Direct3D's; there is no CPU fallback, so a draw the engine
-refuses is not drawn (Quake 2's particles among them); and Quake 2's frame
-rate ([plan](docs/plans/ati-rage-mobility-hardware-3d.md)). The other ATI
-id, `1002:5654`, remains tier-0.
-
-## ATI Rage IIC
-
-New in 0.10.0. The `ati` package drives the **3D Rage IIC AGP**
-(`1002:4757`, 4 MB), measured on one physical machine (Pentium III 1 GHz,
-440BX). The chip has no setup engine: the driver sets every triangle up on
-the CPU into the trapezoids its engine draws, perspective as a quadratic
-fitted per triangle and split where it would stray by half a texel.
-
-- **Direct3D**: RGB565, ARGB1555 and ARGB4444 textures, each edge a power
-  of two from 8 to 256; nearest and bilinear filtering and mip-mapping;
-  modulate, decal and copy; a 16-bit Z buffer with every comparison; the
-  blend factors the engine measured; fog; page flips in the vertical
-  blank.
-- **DirectDraw** fills and copies on the engine.
-- **OpenGL 1.1** through `V9XGL.DLL` on the same engine — the first OpenGL
-  this card has had: neither ATI ICD starts on it.
-
-| Application | API | Result |
-|---|---|---|
-| Half-Life `mwd5` timedemo | Direct3D | 5.57 fps at 640x480 (ATI's driver 6.63) |
-| Quake 2 demo timedemo | OpenGL | 4.4 fps at 640x480, 7.5 in a 320x240 window |
-| Final Reality, 3DMark 99 | Direct3D | Render correctly, watched on the monitor |
-
-What is open: ARGB4444 alpha test and texel-times-vertex alpha are
-refused, and a refused draw is not drawn; ATI's driver is still 16% ahead
-in Half-Life ([plan](docs/plans/ati-rage-iic-hardware-3d.md)).
+The records behind each number are linked from the
+[changelog](CHANGELOG.md).
 
 ## Direct3D
 
 Velocity9x publishes a Direct3D HAL through DirectDraw, so DirectX games
-see a hardware device. Five engines sit behind it:
+see a hardware device. Behind it sit the chips' own 3D engines, listed in
+the table above, and a **CPU rasterizer** for cards without one. The
+rasterizer is on by default in the `vbe` package at 16 bpp and opt-in
+elsewhere; nothing has timed it on a period machine, so expect it to be
+slow.
 
-- **Intel Gen3** on the GMA 950 — above.
-- **Mach64** on the Rage Mobility-M — above.
-- **Rage II** trapezoids on the Rage IIC, with the setup on the CPU —
-  above.
-- **S3D** on the ViRGE/DX and Trio3D/2X — a deliberately narrow but real
-  hardware path: textured, Gouraud-shaded, perspective-correct triangles
-  with mipmapping, trilinear filtering (bilinear on the Trio3D/2X), alpha
-  blending, colour-key transparency, specular highlights, fog and Z
-  testing, with depth clears on the blitter. It picks a matching 5:5:5
-  High Color desktop automatically. The S3D has no additive or
-  multiplicative blend, so some 3DMark 99 tests draw plainer
-  ([record](docs/decisions/2026-09-23-the-tunnel-texture-has-no-checker.md)).
-- **A CPU rasterizer** for cards without a 3D engine — on by default in
-  the generic VESA package at 16 bpp, opt-in on S3 and ATI. Nothing has
-  measured it on a period machine; expect it to be slow.
+Each engine draws what it was measured to draw exactly. A draw an engine
+cannot express is refused rather than drawn wrong. On the GMA 950 a
+refused draw falls back to the CPU, into the same frame. Elsewhere it is
+not drawn: see each card's records for what that leaves out. The S3D
+in particular has no additive or multiplicative blend, so some 3DMark 99
+tests draw plainer
+([record](docs/decisions/2026-09-23-the-tunnel-texture-has-no-checker.md)).
 
-A **Direct3D mode selector** on the Velocity9x Advanced tab in Display Properties
-chooses the chip's engine, the CPU rasterizer, or none. With none, the
-driver advertises no Direct3D, so DirectDraw enumerates no hardware device
-and applications fall back to Microsoft's software rasterizers — useful
-with a second graphics card, or when a game misbehaves. It takes effect
-after a restart.
+A **Direct3D mode selector** on the Velocity9x Advanced tab chooses the
+chip's engine, the CPU rasterizer, or none. With none, the driver
+advertises no Direct3D, so applications fall back to Microsoft's software
+rasterizers. That is useful with a second graphics card, or when a game
+misbehaves. It takes effect after a restart.
 
 ### Direct3D 8 games (DDI 6)
 
@@ -190,8 +141,8 @@ and games fail with "D3DERR_NOTAVAILABLE" (`0x8876086A`). Velocity9x
 offers DDI 6 to the programs that need it and keeps the older interface
 for the rest, which is faster for DirectX 5 to 7 games.
 
-The **DDI 6** selector on the Velocity9x Advanced tab sets this, and takes effect
-the next time a program starts, with no restart:
+The **DDI 6** selector on the Velocity9x Advanced tab sets this, and takes
+effect the next time a program starts, with no restart:
 
 - **Automatic** (the default): DDI 6 for any program that uses Direct3D 8,
   the older interface for everything else.
@@ -219,128 +170,89 @@ feature. Direct3D 9 needs a newer interface still and is not available.
 
 ## OpenGL
 
-New in 0.9.0: an **OpenGL 1.1 installable client driver**, `V9XGL.DLL`.
-Windows' own OPENGL32.DLL finds it through the display driver and loads
-it in place of Microsoft's software renderer, so any OpenGL program uses
-it without configuration. The driver package installs and registers it.
+`V9XGL.DLL` is an **OpenGL 1.1 installable client driver**. Windows' own
+OPENGL32.DLL finds it through the display driver and loads it in place of
+Microsoft's software renderer, so any OpenGL program uses it without
+configuration. The driver package installs and registers it.
 
 It offers a double-buffered 16-bit colour, 16-bit depth pixel format on a
-High Color desktop the card can draw into — 565 or 555, and 555 only on
-the ViRGE. Elsewhere OPENGL32 serves its own generic formats, as it would
-without it. It draws through the same render core and engines as
-Direct3D:
-
-- **GMA 950**: the GPU samples the textures; the CPU draws what the GPU
-  cannot, into the same frame. Quake 2 and Serious Sam run.
-- **Rage Mobility-M**: the engine samples the textures, square copies
-  where it takes only squares; no CPU fallback. Quake 2 runs.
-- **ViRGE**: square textures in the S3D's own formats, and nothing it
-  cannot draw exactly. Non-square textures and blends other than source
-  alpha over its inverse are refused rather than drawn wrong, so the
-  Quake 3 demo's menu draws its model but not its text.
-- **CPU rasterizer**: every fragment operation the drivers implement,
-  perspective-correct mip-mapped textures, any blend, the alpha test and
-  fog.
+High Color desktop the card can draw into, 565 or 555. It draws through
+the same engines as Direct3D, and on the GMA 950 the CPU draws what the
+GPU cannot. Quake 2, Half-Life, Serious Sam: The First Encounter and UT99
+run on one card or another.
 
 Implemented: the matrix stacks, immediate mode, vertex arrays, clipping
 (the scissor included), texture objects and images with the OpenGL 1.1
-environments, state queries, `glReadPixels`, and front-buffer drawing.
-Not yet: lighting, display lists, evaluators, feedback and selection, and
-the rest of OpenGL 1.1 — the
-[requirements inventory](docs/plans/opengl-1.1-requirements.md) tracks
-every entry point. The driver writes `C:\V9XDIAG\V9XGL.LOG`, including
-per-path counters every ten seconds, for bring-up.
+environments, fog, attribute stacks, state queries, `glReadPixels`,
+front-buffer drawing, and `GL_SGIS_multitexture` on the Rage Pro and
+Gen3. Not yet: lighting, display lists, evaluators, and feedback and
+selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
+tracks every entry point. The driver writes `C:\V9XDIAG\V9XGL.LOG`.
 
-## Supported cards
+## Glide
 
-Cards are grouped into *families*, one built package each. A family's driver
-binary serves every chip in it and picks the right one by PCI id at boot.
+`GLIDE2X.DLL` and `GLIDE3X.DLL` give games written for 3dfx Voodoo cards
+their Glide path on any card with a 3D engine, drawing through the same
+render core. Every package except `3dfx` installs both to SYSTEM, but
+never over a newer copy, so a Voodoo add-on card keeps its own. The
+Voodoo4's package ships none: the card runs 3dfx's own Glide, and the
+driver hands the card to it and takes it back.
 
-| | **Intel GMA 950** | **S3 ViRGE/DX** | **S3 Trio32/64** | **ATI Mach64 / Rage** | **Generic VESA** |
-|---|---|---|---|---|---|
-| PCI ID | `8086:27AE` (945GSE) exactly | `5333:8A01`, plus `8A13` (Trio3D/2X) | `5333:8811`, plus `8810`, `8812`, `8813`, `8814`, `8901` | `1002:5654`, `1002:4C4D`, `1002:4757`, plus unvalidated aliases: VT3/VT4 (`5655`, `5656`) on the VT2's tier-0 path, the Rage II class (`4754`, `4755`, `4756`, `4759`, `475A`, `4C54`, `4C47`) on the Rage IIC's, the Rage Pro class (`4742`, `4744`, `4747`, `4749`, `4750`, `4751`, `474C`-`474F`, `4752`, `4753`, `4C42`, `4C44`, `4C49`, `4C4E`, `4C50`-`4C53`) on the Mobility-M's | `1234:1111`, or anything via Have-Disk |
-| Package | `build/win98se-intel-gma` | `build/win98se-s3` | `build/win98se-s3` | `build/win98se-ati` | `build/win98se-vbe` |
-| Status | Hardware Direct3D and OpenGL, verified on one physical netbook | Primary S3 target, hardware Direct3D and OpenGL | Conservative baseline, verified on 2 physical machines | `4C4D`: hardware Direct3D and OpenGL, verified on one physical laptop; `4757` (Rage IIC): hardware Direct3D and OpenGL, verified on one physical P3; `5654`: tier-0 | Tier-0 fallback, verified on a physical GMA 950 and an S3 Trio3D |
-| Display modes | 640x480 and native 1024x576 at 8 and 16 bpp, set by the video BIOS | 640x400x8; 640/800/1024 at 8, 16 and 32 bpp; 1280x1024 at 8 and 16 bpp | same, subject to BIOS and VRAM | 640x400x8, 640/800/1024 at 8 and 16 bpp; see Mach64 caveat below | baseline as ATI, plus validated modes from the BIOS |
-| Direct3D | Yes (Gen3 3D engine) | Yes (narrow S3D path) | Software rasterizer, opt-in | `4C4D`: yes (Mach64 3D engine); `4757`: yes (Rage II trapezoid engine, CPU setup); `5654`: same as Trio | Software rasterizer, **on by default** at 16 bpp |
-| OpenGL (`V9XGL.DLL`) | Yes, GPU textures plus CPU fallback, at 16 bpp | Yes, S3D-expressible draws, 555 desktop | Software rasterizer at 16 bpp | `4C4D`, `4757`: engine textures, no CPU fallback, 565 desktop; `5654`: software rasterizer at 16 bpp | Software rasterizer at 16 bpp |
-| Direct3D mode selector | Hardware / Software / Disabled | Hardware / Software / Disabled | Software / Disabled | same as Trio | same as Trio |
-| DirectDraw surfaces / vblank | Yes | Yes | Yes | Yes | Yes |
-| Hardware primary page flip | Yes (through the ring) | Yes | Yes | `4757`: yes (CRTC offset in the blank); others: no, HAL declines | No; HAL declines |
-| Hardware colour fill | DirectDraw only (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`, `4757`: DirectDraw only (engine); `5654`: **no** — CPU | **No** — CPU |
-| Hardware BitBLT | DirectDraw only, non-overlapping (Gen3 blitter) | Yes (S3D) | Yes (8514/A) | `4C4D`, `4757`: DirectDraw only (engine); `5654`: **no** — CPU | **No** — CPU |
-| GDI acceleration by default | Software; the blitter is not yet used for GDI | Solid fill + screen copy (S3D) | Solid fill + screen copy (8514/A) | Software; no native backend yet | Software; generic BIOS path |
-| Live resolution change | Yes, as games switch 1024x576 to 640x480 | Yes | Yes | Yes | Yes |
-| Live colour-depth change | Not recorded | Yes | Yes | Yes | Yes |
-| Hardware cursor | No | No (software cursor) | No | No | No |
+Measured:
+- **Need for Speed II SE:** races on the GMA 950.
+- **Carmageddon II:** its Glide option runs, menus and races, on the
+  GMA 950.
+- **Diablo II** (shareware demo): to the town on the Rage XL and the
+  Rage IIC.
+- **Rollcage** (demo): menus and races on the Rage XL and the GMA 950.
 
-The OpenGL row for the cards without a 3D engine is where the software
-rasterizer is selected; OpenGL on those has not been measured on a
-physical machine. On any card the ICD needs a High Color desktop.
+A game that carries its own Glide DLL in its folder loads that first.
+The logs are `C:\V9XDIAG\V9XGLIDE.LOG` and `V9XGLD3.LOG`.
 
-The five ids after `8811` are **aliases**: parts the Trio64's code drives
-unchanged, bound so they install, but validated nowhere. Only `8901`
-(Trio64V2/DX) was even confirmed as an id here, off an option ROM. Treat them
-as "it should come up", not as supported; see
-[docs/specifications/family-manifest.md](docs/specifications/family-manifest.md)
-and [docs/decisions/2026-08-29-s3-device-id-survey.md](docs/decisions/2026-08-29-s3-device-id-survey.md).
-The Trio32 86C732 and the Trio64V+ 86C765 publish `8811` itself, and are
-measured on an 86Box Trio32 guest
-([record](docs/decisions/2026-08-29-s3-trio32-alias-guest.md)).
+## ATI 3DCIF
 
-The **Matrox** family covers the Millennium MGA-2064W (`102B:0519`) and the
-Millennium II MGA-2164W (`102B:051B`). It sets modes through the video BIOS,
-and DirectDraw fills and copies run on the drawing engine; GDI is drawn by
-the CPU. Measured on one physical 2064W
-([plan](docs/plans/matrox-millennium-family.md)). The 2164W has not run on
-this path; its August guarded drop-in, now retired, is recorded in the
-[bring-up boundary](docs/specifications/matrox-millennium2-bringup.md).
+`ATI3DCIF.DLL` is ATI's 3D Rage interface: a handful of late-90s games and
+demos were written for ATI Rage cards and draw through it, as Glide games
+draw through Glide. ATI's own copy talks to ATI's driver and cannot run
+on Velocity9x. Ours draws through the same render core, so 3DCIF also
+runs on cards ATI's never supported, the Rage XL PCI and the GMA 950
+among them. Every package installs it to SYSTEM over any copy already
+there.
 
-The **SiS 6326** family (`1039:6326`), new in 0.11.0, sets modes through
-the video BIOS. DirectDraw fills, copies and flips run on the chip's 2D
-engine, and Direct3D and OpenGL run on its 3D engine. GDI is drawn by the
-CPU. Measured on one physical AGP board (rev 0Bh, 4 MB):
-- 22 modes, GDI and mode switching pass, and every DirectDraw blit lands
-  on the engine pixel-correct.
-- V9XDDP fails no check that SiS's own driver passes.
-- Final Reality, 3DMark 99 Max and Half-Life (Direct3D and OpenGL) run
-  with no refused batch. Half-Life's `mwd5` timedemo runs at 8.6 fps in
-  Direct3D and 6.5 fps in OpenGL at 640x480.
+All eight of ATI's SDK 4.1 demos draw on the Rage IIC, the Rage XL and the
+GMA 950, VQ-compressed textures included. No game has been tried yet. Not
+yet done:
+- mipmaps;
+- the Rage Pro's tiled texture layout;
+- meshes and TLVERTEX vertices.
 
-See the
-[first-boot record](docs/decisions/2026-10-05-sis6326-first-velocity9x-bind.md),
-the [engine record](docs/decisions/2026-10-05-sis6326-engine-under-directdraw.md),
-the [Direct3D plan](docs/plans/sis-6326-hardware-3d.md) and the
-[OpenGL plan](docs/plans/sis-6326-opengl.md).
+On the ATI cards a few blended sprites that need two kinds of
+transparency at once are not drawn. The log is
+`C:\V9XDIAG\V9XCIF.LOG`.
 
-### 2D and DirectDraw
+## 16-bit colour: 5:6:5 or 5:5:5
 
-- **Display modes** — 640x480, 800x600 and 1024x768 at 256 colours and
-  High Color, plus 640x400 at 256 colours; on the S3 targets also True
-  Color at those three and 1280x1024 at 256 colours and High Color.
-  Resolution *and* colour-depth changes apply live on the ViRGE. The
-  generic VESA family asks the video BIOS which modes it really has every
-  boot and merges the drivable ones in, and the panel's EDID picks the
-  fallback mode.
-- **2D output** — through the system DIB Engine, with the framebuffer
-  mapped linearly. On both S3 chips, GDI solid fills and screen-to-screen
-  copies (window moves and scrolls, including overlapping copies in all
-  eight directions) run on the 2D engine, with a DIB Engine fallback and a
-  latch that turns acceleration off for the session after a detected
-  timeout. Text and monochrome uploads are opt-in (`GdiAccelText=1`,
-  `GdiAccelUpload=1`); physical Trio64 text validation remains open.
-- **DirectDraw** — a flat 32-bit HAL (`V9XHAL.DLL`) providing video-memory
-  surfaces and vertical-blank services; fills and blits on the chip's 2D
-  engine where there is a backend (both S3 parts, the GMA 950) and on the
-  CPU where there is not.
-- **Two Velocity9x tabs inside Display Properties**, at the stock tab
-  size. **Velocity9x** reports the adapter, PCI ID and revision, video
-  memory, the mini-VDD build, the active mode, which acceleration paths
-  are live, and the last GDI and DirectDraw test results.
-  **Velocity9x Advanced** holds the Direct3D, DDI 6, vertical sync and
-  16-bit colour selectors, and shows the core and memory clocks. Features
-  the driver does not have yet are greyed out. `V9XSET.EXE`, shipped
-  beside the driver files, shows the same status in its own window.
+High Color comes in two layouts. Most cards and games use 5:6:5. The S3
+ViRGE's 3D engine draws only 5:5:5, and ATI's own driver ran 5:5:5, which
+titles written for ATI cards assume. So on the ViRGE, and on ATI cards
+with hardware Direct3D, the driver chooses 5:5:5 by itself. Glide games
+that write the screen as 5:6:5 are converted.
+
+The **16-bit colour** selector on the Velocity9x Advanced tab overrides
+the choice, as does `[Velocity9x] HighColor=16` (or `15`) in
+`SYSTEM.INI`. It takes effect after a restart.
+
+## Display Properties
+
+Velocity9x adds two tabs to Display Properties:
+- **Velocity9x** reports the adapter, PCI id, video memory, the active
+  mode and which acceleration paths are live, and has **Check for
+  updates**.
+- **Velocity9x Advanced** holds the Direct3D, DDI 6, vertical sync and
+  16-bit colour selectors, shows the clocks, and has **Send report**.
+
+Features the driver does not have yet are greyed out. `V9XSET.EXE` shows
+the same status in its own window.
 
 ![The Velocity9x tab in Windows 98 Display Properties on an S3 ViRGE/DX at
 1024x768x16: engine fill, copy and page flip, hardware Direct3D, and passing
@@ -349,74 +261,33 @@ GDI and DirectDraw tests](docs/images/velocity9x-display-properties.png)
 colour selectors, greyed-out texture filtering and write combining, and a
 56.079 MHz core and memory clock](docs/images/velocity9x-display-properties-advanced.png)
 
-![V9XSET.EXE, the standalone Velocity9x Settings window, showing the same
-adapter, mode, acceleration and diagnostics rows](docs/images/velocity9x-settings-window.png)
+The screenshots are from the 86Box ViRGE/DX guest on build 2252df1; the
+pages have gained the update and report buttons since.
 
-The screenshots are from the 86Box ViRGE/DX guest running driver build
-2252df1; the window is the 47ec1b8 `V9XSET.EXE`, which only moves a column.
+## Where it started: the S3 Trio64
 
-### Verified on physical hardware: S3 Trio64 on PCI
-
-0.4.2 was the first release proven on a real card rather than an emulator.
-The full stack — the driver, its DirectDraw HAL and its own mini-VDD — runs
-on a physical **S3 Trio64 (86C764, 2 MB, Windows 98 SE)**: desktop at
-1024x768x16, 32-bpp modes at 640x480 and 800x600, hardware fills and blits on
-the 8514/A engine, CRTC page flipping and real vertical-blank services. It is
-faster than S3's own Windows 98 driver there in Ironfield RTS at 640x480
-fullscreen:
-
-| Presentation path | Velocity9x | Stock S3 |
-|---|---|---|
-| Direct back buffer | **27 FPS** | 25 FPS |
-| Video memory + `BltFast` | **27 FPS** | 23 FPS |
-| System RAM | 20 FPS | 22 FPS |
-| Windowed | 18 FPS | 18 FPS |
-
-With GDI acceleration, CrystalMark Retro 2.1.0's Square and Image scores
-rose from 253 to 275 and 91 to 98 on the same card, with the unaccelerated
-Circle test unchanged as a control
+0.4.2 was the first release proven on a real card rather than an
+emulator: a physical **S3 Trio64 (86C764, 2 MB)**. It was faster than S3's
+own Windows 98 driver in Ironfield RTS at 640x480, 27 fps against 25 on
+the direct back-buffer path, and GDI acceleration lifted CrystalMark
+Retro's 2D scores
 ([record](docs/decisions/2026-08-27-crystalmark-barry-accelerated.md)).
-Two bugs only real silicon exposed — a 4 MiB video-memory assumption and a
-misaligned mini-VDD scratch buffer — are written up in
-[docs/issues/](docs/issues/).
-
-### Verified on physical hardware: S3 Trio64 on VESA Local Bus, under Windows 95
-
-A **486 with an S3 Trio64 on VESA Local Bus, running Windows 95 4.00.950**:
-installed by hand from a model with no hardware ID, identifying the chip from
-the S3's own registers, at 640x480x8 with the aperture at `0x7F000000`. The
-model names no mini-VDD, because ours does not load on Win95 and a display
-devnode whose mini-VDD fails is one Windows never enables
+Two bugs only real silicon exposed are written up in
+[docs/issues/](docs/issues/). The same driver runs a Trio64 on VESA Local
+Bus under Windows 95, installed by hand without the mini-VDD
 ([handover](docs/handoffs/2026-08-22-vlb-manual-select-handover.md)).
-
-### Tier-0: how a new card starts
-
-The ATI and generic VESA columns are **tier-0**: the mode is set through the
-VESA BIOS, the framebuffer address comes from the BIOS, and the CPU does all
-the drawing. No chip register is touched, so the same code drives any card
-with a VESA 2.0 BIOS and a linear framebuffer — it drove the GMA 950 on the
-first attempt, at the panel's native 1024x576
-([findings](docs/issues/2026-08-27-netbook-gma950-findings.md)), before the
-chip had its own package. A native backend adds acceleration later; on
-Ironfield's `BltFast` path tier-0 on a Mach64 gets 6 FPS where the ViRGE's
-blitter gets 18.
-
-**Known issue:** 16 bpp modes display incorrectly on the Mach64 — 8 bpp is
-correct at every resolution
-([D5](docs/issues/2026-08-16-tier0-defects-deferred.md)). That was
-recorded on the emulated Mach64; the Rage Mobility-M runs its 1024x768
-panel at 16 bpp correctly, and whether D5 still applies elsewhere is not
-re-checked.
+[How it compares](docs/comparisons.md) has the details.
 
 ## Have an unsupported card?
 
-**Try the `VBE\` package.** Tier-0 needs nothing but a VESA 2.0 BIOS and a
-linear framebuffer, so it stands a fair chance on a card nobody here has seen.
-Its INF lists one PCI id, because that is all anyone has tested — to use it on
-anything else, pick it explicitly through **Have Disk** in the Display
-Properties adapter dialog and accept the "not intended for this hardware"
-warning. Windows should never bind this driver automatically to a card it was
-not verified on, but you should be able to choose it.
+**Try the `vbe` package.** Tier-0 needs nothing but a VESA 2.0 BIOS and a
+linear framebuffer: the mode is set through the BIOS, and the CPU does all
+the drawing, so it stands a fair chance on a card nobody here has seen. It
+drove the GMA 950 at its panel's native 1024x576 on the first attempt,
+before that chip had its own package. Its INF lists one PCI id, because
+that is all anyone has tested. To use it on anything else, pick it
+explicitly through **Have Disk** in the Display Properties adapter dialog
+and accept the "not intended for this hardware" warning.
 
 If it does not work, the failure should be legible rather than mysterious:
 `C:\V9XDIAG\V9XBOOT.INI` records how far the driver got and a `VbeDetail` key
@@ -429,62 +300,69 @@ Writing a backend for a chip means knowing what is actually on the board.
 video BIOS, the VBE mode list, your monitor's EDID and the raw VGA register
 file.
 
-**Download it from [releases/](releases/README.md)** — the newest version
+**Download it from [releases/](releases/README.md)**: the newest version
 folder holds `velocity9x-survey-<version>.zip`. It is a real-mode DOS
 program: boot to DOS (`Start` → `Shut Down` → *Restart in MS-DOS mode*), run
 `V9XSURV` (add `/rom` to include the video BIOS image), and send back the
 `C:\V9XDIAG\V9XSURV.INI` it writes. A DOS box inside Windows also works; it
 just sees less.
 
-It reads, it does not write: no mode change, nothing installed, nothing left
-behind. The one step that writes anything is the opt-in vendor probe, which
-sets documented unlock keys for your chipset family, reads the registers
-behind them and restores the originals; it is asked as a question, after the
-main report is on disk. The report is plain text; the one identifying item in
-it is your monitor's EDID, which carries its model and serial number. What it
+It reads; it does not write. There is no mode change, nothing is
+installed, and nothing is left behind. The one step that writes anything
+is the opt-in vendor probe, which sets documented unlock keys for your
+chipset family, reads the registers behind them and restores the
+originals. It is asked as a question, after the main report is on disk.
+The report is plain text; the one identifying item in it is your
+monitor's EDID, which carries its model and serial number. What it
 captures and why is in
 [docs/specifications/vga-survey.md](docs/specifications/vga-survey.md), and
 reports are decoded by
 [scripts/parse-vga-survey.ps1](scripts/parse-vga-survey.ps1).
 
-## Transfer disk
+## Transfer disks
 
-For a machine with no network, build one 1.44 MB floppy per family:
+For a machine with no network, each family that has a floppy build gets
+two 1.44 MB disks:
 
 ```powershell
 ./scripts/build-floppy-package.ps1
 ```
 
-Each disk is `build/floppy/<family>`, about 810 KB since the OpenGL driver
-joined the packages:
-
 ```
-README.TXT     what this disk is, which chips it serves, install and recovery
-RECOVER.TXT    recovery steps, at the root so they are findable in a hurry
-S3\            the family's package (here the S3 disk)
+build/floppy/S3/       disk 1: README.TXT, RECOVER.TXT, and S3\ with the
+                       INF and every file the install copies
+build/floppy/S3-2/     disk 2: README.TXT, and S3\ with the test tools
 ```
 
-Copy a disk's tree to a formatted floppy or any medium the machine can read.
-Nothing is archived, because Windows 98 has no built-in extractor; add `-Zip`
-for one archive per disk for network transfer instead. Each package carries a
-`SHA256.TXT` to confirm nothing was corrupted in transit.
+Copy both disks' `S3\` folders into one folder on the hard disk, and
+install from there. Nothing is archived, because Windows 98 has no
+built-in extractor; add `-Zip` for one archive per disk for network
+transfer instead. Each disk carries a `SHA256.TXT` of its own files to
+confirm nothing was corrupted in transit. The `intel-gma` package has no
+floppy build; use its zip.
 
 ## Common questions
 
 **Will my Direct3D games work?**
-Compatibility is title-specific. On the GMA 950, 3DMark 99, 3D WinBench 98's
-quality suite, Half-Life and Final Reality run. On the S3 hardware path,
-Final Reality and 3DMark 99 run, some 3DMark tests plainer for the S3D's
-missing blends; Incoming refuses its texture formats. Use the mode selector's
-Disabled setting to let a game fall back to Microsoft's rasterizers.
+Compatibility is title-specific. Half-Life runs on every card with a 3D
+engine. 3DMark 99 runs on the GMA 950, the Rage XL, Rage Mobility-M and
+Rage IIC, the SiS 6326 and the Trio3D/2X, and Final Reality on most of
+them. On the S3 hardware path some 3DMark tests draw
+plainer for the S3D's missing blends, and Incoming refuses its texture
+formats. Use the mode selector's Disabled setting to let a game
+fall back to Microsoft's rasterizers.
 
 **Will my OpenGL games work?**
-On the GMA 950, Quake 2 and Serious Sam: The First Encounter run. On the
-ViRGE, only draws its S3D can express exactly are drawn, so games that rely
-on non-square textures or additive and multiplicative blends — the Quake 3
-demo among them — are missing much of their picture. Lighting, display lists
-and the rest of OpenGL 1.1 are not implemented yet, so a program that needs
-them will draw wrongly or not at all.
+Quake 2 and Half-Life run on most cards with a 3D engine, and Serious Sam
+on the GMA 950. On the ViRGE only draws its S3D can express exactly are
+drawn, so games that rely on non-square textures or additive and
+multiplicative blends, the Quake 3 demo among them, are missing much of
+their picture. Lighting, display lists and the rest of OpenGL 1.1 are not
+implemented yet.
+
+**Will my Glide or ATI games work?**
+See [Glide](#glide) and [ATI 3DCIF](#ati-3dcif) for what has run. Remove or
+rename a game's own copy of the DLL from its folder so ours is used.
 
 **Will it run on Windows 95 or Windows Me?**
 Windows 98 SE is the main target. The manual VLB install is verified on one
@@ -493,43 +371,46 @@ establish general Win95 compatibility. Windows Me has no validated
 configuration.
 
 **Can I get 32-bit colour, or a resolution above 1024x768?**
-On the S3 targets, yes: True Color at 640x480, 800x600 and 1024x768, and
-1280x1024 at 256 colours and High Color, memory permitting — 1024x768 at 32
-bpp needs 3 MB. The GMA 950 offers only its video BIOS's modes. Generic VESA
-can add True Color and other resolutions from the BIOS mode list. There are
-no packed 24-bpp modes.
+On the S3 cards, yes: True Color at 640x480, 800x600 and 1024x768, and
+1280x1024 at 256 colours and High Color, memory permitting. 1024x768 at
+32 bpp needs 3 MB. The Matrox Millennium also runs 32 bpp, and modes to
+1600x1200. Other cards offer their video BIOS's modes; there are no
+packed 24-bpp modes. The 3D paths are 16-bit.
 
 **Can I run this on real hardware, or only in an emulator?**
-Both. Physical evidence covers the GMA 950 (one netbook), the ViRGE/DX and
-Trio3D/2X, and the Trio64 on PCI and VLB. Matrox has historical physical
-software-GDI evidence with its stock mini-VDD; ATI has one physical
-machine, a Gateway Solo 2150 with a Rage Mobility-M.
-Development and regression testing use [86Box](https://86box.net/) and QEMU.
-Read [docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
+Both. Every card in the [table](#supported-cards) marked as measured ran on
+a physical machine. Development and regression testing also use
+[86Box](https://86box.net/) and QEMU. Read
+[docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
 
 **Do I uninstall the existing display driver first?**
-No — and do not remove the display adapter in Device Manager either, because
-Windows re-detects it and installs Microsoft's in-box driver instead of this
-one. Install over the top with **Have Disk**, per step 6 of
-[docs/INSTALL.md](docs/INSTALL.md).
+No, and do not remove the display adapter in Device Manager either,
+because Windows re-detects it and installs Microsoft's in-box driver
+instead of this one. Install over the top with **Have Disk**, per step 6
+of [docs/INSTALL.md](docs/INSTALL.md).
 
 **My card is not in the table. Is it hopeless?**
-No. Try the `VBE\` package through Have Disk — see
+No. Try the `vbe` package through Have Disk: see
 [Have an unsupported card?](#have-an-unsupported-card).
 
 ## Reporting problems
 
-Include the chip and PCI ID, the package build identifier, the display mode in
-use, and `C:\V9XDIAG\V9XBOOT.INI` — its `Stage` key names the furthest step
-the driver reached. `C:\V9XDIAG\V9XHW.INI` carries the detected adapter,
-memory and stride. For DirectDraw or Direct3D add `C:\V9XDIAG\V9XDD.INI` and
-`C:\V9XDIAG\V9XTRACE.INI`; for OpenGL add `C:\V9XDIAG\V9XGL.LOG`. If the
-machine failed to reach the desktop, a COM1 serial capture is the most useful
-single artefact — [docs/INSTALL.md](docs/INSTALL.md) explains how.
+Right after the program that went wrong, open Display Properties,
+Settings, Advanced, the **Velocity9x Advanced** tab, and click **Send
+report**. It runs `V9XTRACE.EXE`, lists the files it will send, and after
+you click Send gives you a code such as `V9X-4F7K2Q`. Quote the code in
+an issue at
+[github.com/michaeldale/velocity9x/issues](https://github.com/michaeldale/velocity9x/issues).
+Nothing is sent unless you click Send. If that machine has no network,
+open http://michaeldale.com.au/v9update/report on any computer and attach
+the files from `C:\V9XDIAG` there.
 
-**If the picture is visibly wrong — shredded, repeated, missing, wrong
-colours — say so,** even when the driver reports success, and include a
-screenshot or photograph.
+Also say the chip, the display mode in use and what the program did. **If
+the picture is visibly wrong (shredded, repeated, missing, wrong
+colours), say so,** even when the driver reports success, and include a
+screenshot or photograph. If the machine failed to reach the desktop, a
+COM1 serial capture is the most useful single artefact;
+[docs/INSTALL.md](docs/INSTALL.md) explains how.
 
 ## Safety and licensing
 

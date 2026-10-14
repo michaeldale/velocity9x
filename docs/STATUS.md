@@ -1,120 +1,75 @@
 # Current status and next work
 
-Reviewed against the checkout and recorded evidence on 2026-09-12. Update this
-page when a default, validation result or next step changes; keep the dated
-decision records as the history. [PLAN.md](../PLAN.md) is the original planning
-baseline, not the current backlog.
+Reviewed against the checkout and the recorded evidence on 2026-10-14.
+Update this page when a default, a validation result or the next step
+changes; the dated decision records and issues are the history.
+[PLAN.md](../PLAN.md) is the original planning baseline, not the current
+backlog.
 
 ## Release and checkout
 
-The latest release is [0.7.1](../releases/0.7.1/README.md), built from `977993e`
-and published. Its archive labels record host build/audit status, not a fresh
-run of every archive on every card. The evidence below establishes particular
-features on the named builds and machines; it does not certify every current
-binary.
+The latest release is [0.18.0](../releases/0.18.0/README.md), built from
+`de564208`, published on GitHub and mirrored to the update server
+(stable). Its archives are host-audited; none has had an activation smoke
+test from the archive itself. Builds of the same code ran on the machines
+named below. The checkout is 0.18.1, unreleased, and differs from 0.18.0
+in documents only.
 
-Since that build the checkout carries two packaging changes and one code change.
-The Matrox candidate's 2064W mode list widened from three modes to nine, and
-CRTCEXT3 bit 7 is deliberately still not written
-([record](decisions/2026-09-11-the-2064w-aperture-opens-with-mgamode.md)). The
-VBE package now reads an absent `Direct3D` key as the software rasterizer
-rather than as the chip's own engine, which on that family is the difference
-between the CPU rasterizer and no Direct3D at all
-([record](decisions/2026-09-12-vbe-defaults-to-the-software-rasterizer.md)); the
-code change is the per-family default behind it, which no other family sets.
-Everything else below is released.
-
-| Feature | Released 0.7.1 | Current checkout | Evidence and limit |
-|---|---|---|---|
-| S3 GDI fill, copy and overlap | On by default at supported depths | Same defaults | [Physical Trio64 result](decisions/2026-08-27-crystalmark-barry-accelerated.md); 32-bpp drawing falls back to software |
-| ViRGE monochrome upload | Implemented, off by default (`GdiAccelUpload=0`) | Same | [Build 004](decisions/2026-08-27-gdi-accel-004.md); Trio64 and colour uploads decline |
-| GDI text acceleration | Trio64 and ViRGE implementation, off by default (`GdiAccelText=0`) | Same | [Build 005](decisions/2026-09-06-gdi-accel-005-text.md): 86Box mode matrices pass; physical ViRGE/DX passes; physical Trio64 remains unverified after its hang |
-| DOS-box ADVFUNC shield | Included by default in the mini-VDD | Same | [Shipping record](decisions/2026-09-06-advfunc-shield-ships.md): traced variant fixed 6/6 physical Trio64 trials; shipping form passed ViRGE/86Box checks but still needs physical Trio64 verification |
-| Hardware Direct3D | Default on ViRGE/DX and Trio3D/2X; matching 5:5:5 selected automatically | Same | [0.7.0 results](../CHANGELOG.md#070---2026-09-05); Trio3D uses bilinear instead of two-pass trilinear, and blend faults remain open. The 0.7.1 texture-format fix changed this path too and **has not been run on a ViRGE** |
-| Software Direct3D | Opt-in in the S3 and ATI packages through the settings page or `Direct3D=2`, and **on by default in the VBE package** since 2026-09-12 ([record](decisions/2026-09-12-vbe-defaults-to-the-software-rasterizer.md)), where the alternative is no Direct3D at all - it takes effect only at 16 bpp, and that family's default mode is 8 bpp; exact incremental edges, an exact divide-by-255, a single colour clamp, per-span format/compare dispatch, a per-triangle sampler, DESTCOLOR blending, and system-memory textures behind `D3DSoftSysMem=1` | Same | [Edge timings](decisions/2026-09-07-software-rasterizer-edge-stepping.md) about 2.2x for the synthetic small-triangle scene, then [scalar fixes](decisions/2026-09-10-rasterizer-scalar-fixes.md) and [sampler fixes](decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md) reaching 1.75x point-sampled, 1.53x bilinear, 1.48x depth-tested and 1.41x alpha-blended in RAM and about half those in emulated VRAM; pixel hashes unchanged; no physical or game-speed claim |
-
-Software mode includes depth testing, Gouraud shading, point/bilinear sampling,
-ARGB1555/ARGB4444/RGB565 textures, WRAP/CLAMP and vertex-alpha blending. It does
-not implement texture alpha, perspective correction, mip selection or fog.
-A texture that names no pixel format is in the display's, and is classified
-as such rather than refused - until 2026-09-11 both engines refused it, which
-dropped every texture Final Reality created and drew its scenes untextured
-([record](decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md)).
-Its blend factors are the four S3's own driver publishes - ONE and SRCALPHA
-for source, ZERO and INVSRCALPHA for destination - plus DESTCOLOR as a source
-factor, which the S3D unit cannot express and a CPU rasterizer gets for one
-product per channel, so the multiplicative lightmap pass draws
-([record](decisions/2026-09-11-the-lightmap-pass-now-draws.md)). A pair
-outside those five draws nothing and is counted, rather than drawing opaque
-and painting over the frame
-([record](decisions/2026-09-11-the-software-engine-drew-an-inexpressible-blend.md)).
-The hardware path still publishes and implements the original four.
-`D3DSoftSysMem=1` lets the engine sample a texture through the surface's own
-linear address instead of the aperture; it is off by default and buys Final
-Reality nothing, because DirectDraw never puts that application's textures in
-system memory
-([record](decisions/2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md)).
-The probe cell that creates a texture without naming a format, `DisplayFmtTex*`,
-carries no pass/fail key: its own draw writes nothing while the application
-renders the same kind of texture correctly, and the disagreement is unexplained.
-Rasterizer timings now come from two guests - the Pentium MMX 200
-`Win98SE-Trio64` and `Win98SE-Fast-D3D` on port 9878, a Celeron 533 whose
-measurements put the bound on the aperture rather than the CPU
-([guests](vm-environment.md)).
-The [alpha](decisions/2026-09-02-software-alpha-blending.md),
-[wrap](decisions/2026-09-02-software-texture-wrap.md) and
-[RGB565](decisions/2026-09-02-software-rgb565-textures.md) records distinguish
-the software results from hardware controls. Changing Direct3D mode requires
-a restart. Without an S3D engine, the default advertises no Direct3D until
-Software is selected.
+Owed from the 0.18.0 release:
+- **A Have Disk install with the INF line that copies ATI3DCIF.DLL.**
+- **A first update through Check for updates** on a machine running a
+  released build. No test machine runs one.
 
 ## Target coverage
 
+One physical machine per card unless the row says otherwise. A8U4I5 is
+the Pentium III test box whose card is swapped. "The netbook" is an HP
+Mini 110 (Atom N280, 945GSE).
+
 | Target | Recorded coverage | Boundary |
 |---|---|---|
-| S3 ViRGE/DX | Extensive 86Box regression; [physical ViRGE GDI/text and DOS-box checks](decisions/2026-09-06-advfunc-shield-ships.md); [CR36, CR59/CR5A and a 32-bit aperture read off a physical card](decisions/2026-09-11-virge-dx-registers-confirmed-on-silicon.md) | Recent physical GDI success does not establish physical 3D throughput, the ZRGB1555-into-RGB565 mismatch is still unanswered, and 0.7.1's [texture-format change](decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md) to the hardware path has not been run on this chip in either a guest or silicon |
-| S3 Trio3D/2X (`5333:8A13`) | Physical hardware Direct3D: Final Reality and 3DMark 99 complete in [0.7.0](../CHANGELOG.md#070---2026-09-05); [generic VBE also tested](decisions/2026-09-02-vbe-tier0-on-a-real-trio3d.md) | Uses the S3D backend with measured chip-specific restrictions; still no emulator validation, though the reason is no longer that no profile exists - 86Box build 9001 carries `trio3d2x_agp` with an 8 MiB ROM, unbooted here ([guests](vm-environment.md)) |
-| S3 Trio64 / Trio32 | Trio64 86Box regression, [physical PCI GDI](decisions/2026-08-27-crystalmark-barry-accelerated.md), [physical VLB Win95 bring-up](handoffs/2026-08-22-vlb-manual-select-handover.md), [Trio32 guest](decisions/2026-08-29-s3-trio32-alias-guest.md) | VLB Win95 omits the mini-VDD. Text remains off. Trio32 BIOS refuses 800x600x32 |
-| S3 aliases `8810`, `8812`, `8813`, `8814`, `8901` | Bound to the Trio64 path by the manifest | [Installation aliases, not validated targets](decisions/2026-08-29-s3-device-id-survey.md); `8811` is also shared by Trio32 and Trio64V+ |
-| Intel GMA 950 (`8086:27AE`) | One physical netbook (945GSE): hardware Direct3D with 3DMark 99 [scoring 717 at 640x480 and 643 at 1024x576](decisions/2026-09-25-placing-plain-textures-on-gen3.md), [DirectDraw blits on the Gen3 blitter](decisions/2026-09-25-gen3-engine-blits-half-life.md) and Half-Life [with its alpha test](decisions/2026-09-25-gen3-runtime-alpha-test.md) in 0.8.1 | No emulator can run the engine, so every change is measured on the one machine. Modes are the video BIOS's four; GDI is software |
-| Intel GMA 900 (`8086:2592`, 915GM) | One DOS survey from a user's Lenovo 3000 C100; claimed in 0.13.0 with the GMA 950's engine and the 915's stacked mip layout ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)) | Nothing has run on a 915: not Windows 98, the ring, flips, the mip layout or the BIOS's modes |
-| ATI Mach64 / Rage | Mach64 VT2 emulator bring-up; Rage Mobility-M (`4C4D`) hardware Direct3D, OpenGL, and DirectDraw fills and copies on one physical Gateway Solo 2150 (0.9.1, [plan](plans/ati-rage-mobility-hardware-3d.md)); Rage IIC (`4757`) hardware Direct3D, OpenGL, page flips, and DirectDraw fills and copies on one physical Pentium III, A8U4I5 (0.10.0, [plan](plans/ati-rage-iic-hardware-3d.md)) | [Mach64 16-bpp scanout is wrong](issues/2026-08-16-tier0-defects-deferred.md) on the emulator (the Mobility-M runs 16 bpp); GDI is still CPU-drawn; no CPU fallback for refused 3D draws (on the Rage IIC, ARGB4444 alpha test and texel-times-vertex alpha); `5654` has no physical validation |
-| Generic VESA | QEMU/86Box plus [physical GMA 950](issues/2026-08-27-netbook-gma950-findings.md) and physical Trio3D | Dynamic BIOS modes, software drawing; Have-Disk permits unlisted cards, whose behavior still needs measurement |
-| Matrox Millennium II (MGA-2164W) | In the `matrox` family since 2026-10-09, sharing the 2064W's path and drawing engine with its control aperture in BAR1. Physical card in A8U4I5 since 2026-10-10 (8 MiB, measured by the family's memory walk; its BIOS reports 4, [record](decisions/2026-10-10-mga2164w-memory-walk.md)): `enable-ok`, `V9XGDI /accel` PASS on the engine at 8, 16 and 32 bpp, `V9XDDP` COMPLETE, 14 modes switch live ([record](decisions/2026-10-10-mga2164w-first-boot.md)) | The August surface corruption did not reproduce with `V9XMINI.VXD` in any readback; the monitor picture, the padded modes especially, is not yet observed. The package preflight rejects a mode under the Standard VGA driver, cause unknown |
-| Matrox Millennium (MGA-2064W) | The `matrox` INF family since 2026-10-09: enable-ok on the 86Box `Win98SE-Millennium` guest and on one physical card in A8U4I5, 13 modes to 1600x1200 at 8/16/32 bpp ([first boot](decisions/2026-10-09-mga2064w-tier0-first-boot.md)); DirectDraw fill and copy on the drawing engine, measured on silicon at 8/16/32 bpp ([engine](decisions/2026-10-09-mga2064w-drawing-engine.md), [plan](plans/matrox-millennium-family.md)) | GDI is still CPU-drawn; surfaces whose pitch the linearizer cannot address fall to the CPU; no flips. The BIOS sets mgamode (`CRTCEXT3=81`). Nobody has looked at the physical monitor under this driver |
-| Unsupported cards with measurements only | BringupKit baselines on the Debian host `bringup-target`: [Riva TNT and TNT2 Model 64](decisions/2026-09-11-nvidia-nv4-and-nv5-baselines.md), [Cirrus GD5430](decisions/2026-09-11-cirrus-gd5430-memory-and-mode-table.md) | No code carries any of these chips. The records exist so a future family starts from measurements: both NVIDIA parts leave `CR11` bit 7 set so `CR00`-`CR06` writes are discarded, their BAR sizes are lower bounds rather than memory sizes, and the GD5430's size is decodable from `SR0F` while its aperture is closed until `SR07` opens it |
+| Intel GMA 950 (`8086:27AE`) | The netbook: Direct3D on Gen3 with asynchronous submission and ring flips, DirectDraw on the blitter, OpenGL with a CPU fallback for refused draws, Glide 2 and 3 (NFS II SE, Carmageddon II, Rollcage), DirectX 8 through DDI 6, and 3DCIF's SDK demos ([GMA 950 3DCIF](probe/netbook-gma950-3dcif-2026-10-14/README.md)) | Modes are the video BIOS's: 640x480 and 1024x576 on the netbook. GDI is drawn by the CPU. No emulator runs the engine. A reporter's embedded board hard-locks with the flip on ([issue 6](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)) |
+| Intel GMA 900 (`8086:2592`, 915GM) | Claimed from a user's survey with the GMA 950's engine ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)); two field reports since | Not run here. Reporters see Carmageddon II exit after its intro and 3DMark 2000 pattern corruption ([issue](issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md), [issue](issues/2026-10-11-3dmark2000-pattern-corruption-gma900.md)) |
+| ATI Rage XL PCI (Rage Pro class) | A8U4I5: Direct3D on the Mach64 engine, page flips, OpenGL with `GL_SGIS_multitexture`, DirectX 8, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([555](decisions/2026-10-14-rage-xl-555-desktop.md), [3DCIF](probe/a8u4i5-rage-xl-3dcif-2026-10-14/README.md)) | No CPU fallback: a refused draw is not drawn. 3DCIF's texel-times-vertex-alpha sprites are refused ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)). GDI is drawn by the CPU |
+| ATI Rage Mobility-M (`4C4D`) | One Gateway Solo 2150: Direct3D and OpenGL on the Mach64 engine (0.9.1, [plan](plans/ati-rage-mobility-hardware-3d.md)) | Not run since the Rage Pro class changed: the 5:5:5 desktop reaches it by design and has not booted on it. Intermittent hard lock under the broad probe ([issue](issues/2026-09-30-gateway-intermittent-black-screen-probe-lock.md)) |
+| ATI Rage IIC (`4757`) | A8U4I5: Direct3D on the Rage II trapezoid engine with CPU setup, page flips, OpenGL, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([desktop](decisions/2026-10-14-rage-iic-555-desktop.md), [Glide](decisions/2026-10-14-rage-iic-555-textures-and-glide.md), [plan](plans/ati-rage-iic-hardware-3d.md)) | Texel times vertex alpha is refused ([issue](issues/2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md)). The blend reads back one step low at 5:5:5 ([issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md)) |
+| ATI Mach64 VT2 (`5654`) | Emulator tier-0 | No physical validation. The [16-bpp scanout defect](issues/2026-08-16-tier0-defects-deferred.md) was recorded on the emulator |
+| S3 ViRGE/DX | Extensive 86Box regression, including Direct3D and OpenGL on the S3D. On silicon: GDI, text and DOS-box checks ([record](decisions/2026-09-06-advfunc-shield-ships.md)) | Its 3D is measured on the emulator, not on silicon |
+| S3 Trio3D/2X and Trio3D (`8A13`, `8904`) | Physical hardware Direct3D: Final Reality and 3DMark 99 ([0.7.0](../CHANGELOG.md)); the Trio3D on the ViRGE path ([record](decisions/2026-10-04-trio3d-8904-on-the-virge-path.md)) | Half-Life refuses Direct3D and OpenGL on the 2 MiB Trio3D ([issue](issues/2026-10-04-trio3d-half-life-refuses-d3d-and-gl.md)) |
+| S3 Trio64 / Trio32 | Two physical machines: PCI GDI acceleration ([record](decisions/2026-08-27-crystalmark-barry-accelerated.md)), and VLB under Windows 95 ([handover](handoffs/2026-08-22-vlb-manual-select-handover.md)); a Trio32 guest | VLB Win95 runs without the mini-VDD. Text acceleration stays off: it hung physical Trio64 ([issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md)) |
+| Matrox Millennium II (MGA-2164W) | A8U4I5: Direct3D on the MGA 3D engine, measured register by register; GDI and DirectDraw on the engine; all 8 MiB walked ([D3D](decisions/2026-10-10-mga2164w-d3d-engine.md), [plan](plans/matrox-mga2164w-hardware-3d.md)) | The chip cannot blend: Half-Life's sprites are keyed and its lighting stippled. Fog, specular, 4444 and filtering are refused. The settings page shows 4 MB ([issue](issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)) |
+| Matrox Millennium (MGA-2064W) | A8U4I5 and an 86Box guest: modes to 1600x1200 at 8, 16 and 32 bpp; GDI fills, copies and text, DirectDraw and page flips on the engine ([plan](plans/matrox-millennium-family.md)) | No 3D engine: Direct3D is the CPU rasterizer. The captured desktop looks soft under both drivers ([issue](issues/2026-10-09-mga2064w-capture-looks-soft.md)) |
+| SiS 6326 (`1039:6326`) | A8U4I5: DirectDraw and page flips on the 2D engine; Direct3D and OpenGL on the 3D engine, with no check failing that SiS's driver passes ([plan](plans/sis-6326-hardware-3d.md)) | GDI is drawn by the CPU. One of two cards hard-locked the machine and is parked |
+| 3dfx Voodoo4 4500 (VSA-100) | A8U4I5, PCI and AGP: DirectDraw and GDI fill and copy on the 2D engine; Direct3D and OpenGL on the 3D engine; 3dfx's own Glide runs and exits cleanly ([Glide](decisions/2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md), [OpenGL](decisions/2026-10-13-voodoo4-opengl-and-subpixel-correction.md)) | Fog, specular, trilinear, 32-bit colour, the second TMU and hardware flips are not used. A Voodoo5 binds and is untested |
+| Generic VESA (`vbe`) | QEMU and 86Box; tier-0 on a physical GMA 950 and Trio3D | Software drawing. Have Disk permits unlisted cards, whose behaviour is unmeasured |
 
-DirectDraw surface allocation and VGA-port vblank services are shared by the
-S3, ATI and VBE packages. The guarded Matrox candidate packages the display
-driver and settings page without `V9XHAL.DLL`; its historical mixed-pair result
-establishes software GDI only.
-Hardware primary page flipping is S3, Intel GMA 950 and ATI only: the
-[HAL](../src/display32/ddhal_core.c) declines it without a native display-start
-capability. ATI flips and reads the blank through `CRTC_OFF_PITCH` and
-`CRTC_VLINE` rather than the VGA port, measured on the Rage IIC
-([record](decisions/2026-10-03-rage-iic-scanout-start.md)) and a Rage XL PCI,
-and claimed for the Mobility-M on that shared CRTC. A successful surface
-allocation or vblank probe does not establish hardware flipping on VBE. All
-targets use software cursors.
+## Interfaces
+
+| Interface | State | Limit |
+|---|---|---|
+| Direct3D HAL (DirectX 5 to 7) | Every card above with a 3D engine; the CPU rasterizer elsewhere (default in `vbe` at 16 bpp, opt-in otherwise) | Only what each engine draws exactly; a refused draw falls back only on Gen3 |
+| DirectX 8 (DDI 6) | Rage XL and GMA 950: DxDiag and 3DMark 2001 SE to a score | 16-bit colour, depth and textures only; no stencil; no Direct3D 9 |
+| OpenGL 1.1 ICD | Every 3D engine and the CPU rasterizer | Lighting, display lists, evaluators, feedback and selection not implemented ([inventory](plans/opengl-1.1-requirements.md)). Runs at roughly half Direct3D's speed |
+| Glide 2 and 3 | Every package but `3dfx`; measured on the GMA 950, Rage XL and Rage IIC | Not measured on the S3, Matrox or SiS cards |
+| ATI 3DCIF | Every package; ATI's eight SDK demos on the Rage IIC, Rage XL and GMA 950 ([plan](plans/ati-3dcif-wrapper.md)) | No game run yet. No mipmaps, tiled textures, meshes or TLVERTEX ([issue](issues/2026-10-14-3dcif-unimplemented-features.md)) |
+| 16-bit colour layout | 5:5:5 by default on the ViRGE and on ATI with hardware Direct3D; 5:6:5 elsewhere; the settings page overrides | The GMA 950's video BIOS has no 5:5:5 modes |
+| Updates and reports | Check for updates and Send report on the settings page, since 0.15.0 | No update has been taken end to end on a released build |
+
+No card has a hardware cursor. GDI is accelerated on the S3, Matrox and
+Voodoo4 cards and drawn by the CPU on the rest.
 
 ## Open work, in order
 
+Priority is a judgement; [issues/README.md](issues/README.md) lists every
+open record.
+
 | Priority | Next step | Acceptance evidence |
 |---|---|---|
-| Measure the texture-format fix on the hardware path | 0.7.1 changed `v9x_d3d_texture_format` on the same argument that fixed the software engine, and shipped it on a default path without running it. Run Final Reality's Robots scene on the 86Box ViRGE/DX guest and then on the physical ViRGE/DX, with the refusal counters read before and after | A `V9XTRACE` pair showing `D3dTextureRefusedFormat` and a textured frame, added to [the record](decisions/2026-09-11-a-texture-with-no-pixel-format-is-in-the-displays-format.md), which currently says only that the change was read from the source |
-| Explain the `DisplayFmtTex*` disagreement | The probe cell draws nothing where the application draws correctly, so it carries no verdict and the probe is silent about the case every real application hits. The untested candidate is a handle recycled from the cell that runs before it: move the cell earlier and re-run | The cell either gains a pass/fail key or the record names what makes it differ from Final Reality |
-| Close Trio64 shield/text validation | On BARRY, start with text off and the shipping shield installed; run the bounded text probe, DOS-box cycles and acceleration harness before deciding the text default | [Text issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md) and [DOS-box issue](issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md) updated with the exact binaries and results |
-| Make desktop/DOS transitions dependable | Finish the remaining physical fullscreen-DOS return and live-mode repaint investigations; keep scanout checks independent of GDI readback | [Fullscreen DOS](issues/2026-08-28-fullscreen-dos-scanout.md), [BARRY repaint](issues/2026-08-20-live-mode-switch-no-repaint-barry.md), [VBE scanout](issues/2026-08-27-vbe-1024x768x16-scanout-stripes.md) |
-| Close Direct3D compatibility holes | The target switch, the primary-chain blend and the suspected texture loss are all closed as probe faults - an uncleared depth buffer and handles cached across a switch - and the chain rung now draws correctly end to end. Final Reality's untextured scenes are closed in the software engine by the 0.7.1 format fix. What remains is Incoming's requested texture format, the Trio3D blend state, two devices at once, and 3DMark 99's black boxes on silicon | [Refutations](decisions/2026-09-10-the-render-target-switch-and-the-uncleared-depth-buffer.md), [Incoming](issues/2026-09-05-incoming-refuses-the-hal-texture-formats.md), [latest blend investigation](decisions/2026-09-05-a-register-capture-of-both-trio3d-blend-states.md), [two devices](issues/2026-09-04-a-second-d3d-device-on-the-primary-chain-kills-the-caller.md) |
-| Make software Direct3D practical | Edge stepping, the 86Box RAM/aperture benchmark, scalar fixes 2 to 6 and the `D3DSoftSysMem` timing are done; the option measured zero on Final Reality and the second guest showed the aperture, not the CPU, is the bound. Next: paired stores and Z residency, both of which want a physical aperture number, then a named-game gate | [Edge stepping](decisions/2026-09-07-software-rasterizer-edge-stepping.md), [scalar fixes](decisions/2026-09-10-rasterizer-scalar-fixes.md), [sampler fixes](decisions/2026-09-10-rasterizer-texel-units-and-bilinear.md), [the measured zero](decisions/2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md), [plan](plans/software-rasterizer-scalar-fixes.md); every gain is about half as large on the VRAM target, and physical timings are still needed before residency policy, hybrid assistance or [SMP workers](plans/software-d3d-smp-workers.md) |
-| Add Voodoo3 as the next native family | The emulator side is further along than the plan's phase order suggests: `Win98SE-BX-Voodoo3` boots on port 9874 and reports `121A:0005`, and a Voodoo3 3500 already runs through the `vbe` package on the fast guest. What is outstanding is Phase 0 - the physical survey, which also decides whether the emulated model is the right placeholder - then tier-0, 2D and D3D with a named-game gate | [Voodoo3 plan](plans/3dfx-voodoo3-family.md) and [the two guests](vm-environment.md); the shared D3D core/engine split is already complete |
-
-MTRR write-combining remains inspect-only; writing registers needs the physical
-evidence specified in its [Stage A record](decisions/2026-08-28-mtrr-stage-a-inspect-only.md).
-Hardware cursor work remains proposed. Synthetic vblank is not a current
-tier-0 gap: the HAL already reads the VGA vblank status bit. See the corrected
-[tier-0 plan](plans/tier0-quality.md).
-
-The A8U4I5 framebuffer read-after-write hard lock reproduced under Microsoft's
-driver too; it is tracked as a [board/card investigation](issues/2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md),
-not evidence that the shield or default acceleration causes that failure.
+| A field hard-lock on the GMA 950 | GitHub issue 6: the reporter's embedded board locks with the Intel flip on and runs with it off. Next is the reporter's `INTELMM.TXT` and a `V9XTRACE` from the session that ran, to name the live pipe and plane | The [issue](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md) names the configuration, and a fix that keeps the flip runs on that board |
+| Close the 0.18.0 release checks | A Have Disk install of a 0.18.0 package, ATI3DCIF.DLL included; then a released build on a test machine, taken through Check for updates to the next release | The install's file hashes, and the updater's own record of the update |
+| A 3DCIF game | The SDK demos run; no game has. Tomb Raider's ATI patch needs a sound device on the test machine and 5:5:5; Croc needs no patch | A census and a decision record for one game on the Rage XL |
+| 3DCIF follow-ups, parked | The blended-sprite decision ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)), the Phase 3 readback probe ([issue](issues/2026-10-14-3dcif-phase3-probe-not-written.md)), Gen3 flicker and speed ([issue](issues/2026-10-14-3dcif-gen3-flicker-and-speed.md)), Gen3's 1024x256 refusal ([issue](issues/2026-10-14-gen3-refuses-1024x256-texture.md)) | Each issue's own next step |
+| The Rage IIC blend at 5:5:5, parked | A SCALE_3D_CNTL low-nibble sweep in the ATIRX scene tool | The [issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md) names the bit, or rules the nibble out |
+| The GMA 900 field reports | Carmageddon II's exit and 3DMark 2000's corruption on a reporter's 915GM | Each issue updated from the reporter's next files |
+| HAL statics across processes | The HAL's static data is shared by every DirectDraw process ([issue](issues/2026-10-06-hal-statics-shared-across-processes.md)) | A design for per-process state, or a record that the sharing is safe |
+| S3 physical validation | The ViRGE/DX's 3D on silicon; text acceleration and the DOS-box shield on the physical Trio64 | A physical run recorded against the [text issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md) and the [DOS-box issue](issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md) |
