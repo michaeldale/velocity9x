@@ -470,8 +470,18 @@ Progress 2026-10-14:
 - **Cubes draws on the Rage IIC** (boot 456):
   [probe README](../probe/a8u4i5-rage-iic-3dcif-phase3-2026-10-14/README.md).
   Its background shows the 555 problem: it clears with a 555 colour.
-- Not yet: the probe, mipmaps, VQ and tiled textures, 555 targets,
-  meshes, TLVERTEX.
+- **555 is done** ([ati-555-desktop.md](ati-555-desktop.md)). The Rage
+  IIC and the Rage Pro class run 5:5:5 by default, and Cubes clears grey
+  (boot 463).
+- **All eight demos run on the Rage XL** at 5:5:5 (boot 469,
+  [probe README](../probe/a8u4i5-rage-xl-3dcif-2026-10-14/README.md)).
+  With 8 MiB, no texture is skipped for video memory.
+- **VQ draws**: the codebook is RGB565
+  ([2026-10-14-3dcif-vq-textures.md](../decisions/2026-10-14-3dcif-vq-textures.md)).
+- **Still refused:** two keyed, blended sprites a frame in Pixie, Fairy
+  and Laputa (texel times vertex alpha, on both engines). Which way to
+  lower them is Michael's decision.
+- Not yet: the probe, mipmaps, tiled textures, meshes, TLVERTEX.
 
 ### 4. The title on the Rage XL
 

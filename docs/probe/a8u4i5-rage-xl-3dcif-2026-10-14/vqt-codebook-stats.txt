@@ -1,0 +1,15 @@
+C:\Users\michael\Downloads\3dcif\x\sdk41\ragesdk\samples\Knight\data\Dragon.vqt: tag=30747176 header h=256 w=256 res=1,0 index bytes=65536 (h*w)
+  top bit set in 422 of 1024 words; first words 0020 0020 0020 0020 73AC 73AC 73CC 73CC
+  mean block spread: green 565 0.212 / 555 0.385, red 565 0.200 / 555 0.393
+C:\Users\michael\Downloads\3dcif\x\sdk41\ragesdk\samples\Knight\data\ground1.vqt: tag=30747176 header h=128 w=128 res=1,0 index bytes=16392 (not h*w)
+  top bit set in 639 of 1024 words; first words 40E2 40E2 40E2 40E1 A369 69C4 B3EB 7A66
+  mean block spread: green 565 0.159 / 555 0.439, red 565 0.174 / 555 0.550
+C:\Users\michael\Downloads\3dcif\x\sdk41\ragesdk\samples\Knight\data\sky.vqt: tag=30747176 header h=128 w=512 res=1,0 index bytes=65536 (h*w)
+  top bit set in 364 of 1024 words; first words 28E5 28E5 2905 2905 5435 5435 5435 5435
+  mean block spread: green 565 0.141 / 555 0.313, red 565 0.140 / 555 0.301
+C:\Users\michael\Downloads\3dcif\x\sdk41\ragesdk\bmpetc\BRICK.VQT: tag=30747176 header h=0 w=0 res=64,64 index bytes=4104 (not h*w)
+  top bit set in 741 of 1024 words; first words 0000 0000 0000 0000 8BCE 7B4B 838C 7B09
+  mean block spread: green 565 0.336 / 555 0.483, red 565 0.272 / 555 0.532
+C:\Users\michael\Downloads\3dcif\x\sdk41\ragesdk\bmpetc\Mandrill.vqt: tag=76717430 header h=128 w=128 res=32769,0 index bytes=4096 (not h*w)
+  top bit set in 532 of 1024 words; first words 0000 0000 0000 0000 3164 2924 2964 2103
+  mean block spread: green 565 0.112 / 555 0.377, red 565 0.091 / 555 0.310

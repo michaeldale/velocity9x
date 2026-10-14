@@ -22,9 +22,8 @@
  * or when its key is new; refusals and skipped draws are logged the first
  * few times each.
  *
- * Not yet: mipmaps (level 0 only, drawn without level selection), VQ and
- * tiled textures (registered, drawn untextured), 555 targets on engines
- * that draw 565 only (the Mach64 class), TLVERTEX vertices, lines,
+ * Not yet: mipmaps (level 0 only, drawn without level selection), tiled
+ * textures (registered, drawn untextured), TLVERTEX vertices, lines,
  * points and rectangles.
  *
  * Constants and layouts are ATI3DCIF.H (SDK 4.1) and the SDK-C02700 Rev
@@ -84,9 +83,12 @@
 #define V9X_C3D_TMAP_TILING        84u
 #define V9X_C3D_TMAP_RAGE3_BYTES   88u
 
-/* A VQ codebook: 256 entries of four 16-bit texels. */
+/* A palette: up to 256 C3D_PALETTENTRY. A VQ codebook: 256 entries of
+ * four 16-bit texels, 2048 bytes - twice a palette's 32-bit words, which
+ * is what a palette object stores. */
 #define V9X_CIF_PALETTE_ENTRIES    256u
 #define V9X_CIF_CODEBOOK_WORDS     (256u * 4u)
+#define V9X_CIF_PALETTE_DWORDS     (V9X_CIF_CODEBOOK_WORDS / 2u)
 
 /* ---- the device the DLL describes ----------------------------------- */
 
@@ -213,7 +215,8 @@ struct v9x_cif_texture {
 struct v9x_cif_palette {
     v9x_u32 live;
     v9x_u32 kind;           /* C3D_ECI_TMAP_TYPE */
-    v9x_u32 entries[V9X_CIF_PALETTE_ENTRIES];
+    /* C3D_PALETTENTRYs, or for VQ the codebook's 16-bit texels in pairs. */
+    v9x_u32 entries[V9X_CIF_PALETTE_DWORDS];
 };
 
 static struct v9x_cif_context v9x_cif_contexts[V9X_CIF_CONTEXTS];
@@ -521,6 +524,38 @@ static v9x_u32 v9x_cif_texture_height(const struct v9x_cif_texture *texture)
 }
 
 /*
+ * A VQ texture's texels: the index map through the codebook, which holds
+ * RGB565 (cif_texfmt.c), and for the keyed copy through the RGB565 row
+ * conversion, which applies the key. It reads each texel before writing
+ * its slot, so it runs in place.
+ */
+static int v9x_cif_texture_vq(const struct v9x_cif_texture *texture,
+                              const struct v9x_cif_palette *palette,
+                              v9x_u32 keyed, v9x_u16 *texels)
+{
+    v9x_u32 row;
+
+    if (!v9x_cif_texfmt_vq_decode(texture->source, texture->width / 2ul,
+                                  (const v9x_u16 *)palette->entries,
+                                  texture->width, texture->height, texels,
+                                  texture->width * 2ul)) {
+        return 0;
+    }
+    if (!keyed) {
+        return 1;
+    }
+    for (row = 0ul; row < texture->height; ++row) {
+        if (!v9x_cif_texfmt_convert_row(
+                V9X_C3D_ETF_RGB565, texels + row * texture->width,
+                texture->width, 0, V9X_C3D_ECI_TMAP_4BIT_LOW, 1ul,
+                texture->key, texels + row * texture->width)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
  * A texture's converted copy for one variant, made on first use: the
  * registered level 0, row by row through cif_texfmt.c, into a surface of
  * the DLL's own. A palette texture takes the palette's entries as they
@@ -551,6 +586,11 @@ static int v9x_cif_texture_ready(struct v9x_cif_texture *texture,
             return 0;
         }
         nibble = palette->kind;
+    } else if (texture->format == V9X_C3D_ETF_VQ) {
+        palette = v9x_cif_palette_from(texture->palette);
+        if (palette == 0 || palette->kind != V9X_C3D_ECI_TMAP_VQ) {
+            return 0;
+        }
     }
     if (variant->texels == 0) {
         variant->texels = (v9x_u16 *)v9x_cif_alloc(texture->width *
@@ -560,13 +600,21 @@ static int v9x_cif_texture_ready(struct v9x_cif_texture *texture,
         }
         row_bytes = (texture->width * v9x_cif_texfmt_bits(texture->format)) /
                     8ul;
-        for (row = 0ul; row < texture->height; ++row) {
-            if (!v9x_cif_texfmt_convert_row(
-                    texture->format, texture->source + row * row_bytes,
-                    texture->width,
-                    palette != 0 ? palette->entries : 0, nibble, keyed,
-                    texture->key, variant->texels + row * texture->width)) {
+        if (texture->format == V9X_C3D_ETF_VQ) {
+            if (!v9x_cif_texture_vq(texture, palette, keyed,
+                                    variant->texels)) {
                 return 0;
+            }
+        } else {
+            for (row = 0ul; row < texture->height; ++row) {
+                if (!v9x_cif_texfmt_convert_row(
+                        texture->format, texture->source + row * row_bytes,
+                        texture->width,
+                        palette != 0 ? palette->entries : 0, nibble, keyed,
+                        texture->key,
+                        variant->texels + row * texture->width)) {
+                    return 0;
+                }
             }
         }
         variant->abi_format = v9x_cif_texfmt_abi_format(texture->format,
@@ -712,7 +760,7 @@ v9x_u32 __stdcall ATI3DCIF_LoadObject(v9x_u32 source, v9x_u32 dest,
  * TextureReg(ptmapToReg, phtmap): keeps the C3D_TMAP's facts and a copy of
  * level 0, read as rows of exactly the texture's width - the TMAP has no
  * pitch, so the chip reads texture levels packed. A format this DLL does
- * not convert (VQ, Y8, YUV, a tiled layout) is still registered, so the
+ * not convert (Y8, YUV, a tiled layout) is still registered, so the
  * application runs on; its draws go untextured and are logged.
  */
 v9x_u32 __stdcall ATI3DCIF_TextureReg(v9x_u32 tmap, v9x_u32 handle);
@@ -802,7 +850,9 @@ v9x_u32 __stdcall ATI3DCIF_TextureReg(v9x_u32 tmap, v9x_u32 handle)
     }
     bits = v9x_cif_texfmt_bits(texture->format);
     bytes = (texture->width * texture->height * bits) / 8ul;
-    if (bits != 0ul && texture->format != V9X_C3D_ETF_VQ &&
+    /* For VQ the level is the index map, a byte per 2x2 block: bits() is
+     * 2 a texel, so `bytes` covers it. */
+    if (bits != 0ul &&
         (size < V9X_C3D_TMAP_RAGE3_BYTES ||
          v9x_cif_peek(tmap + V9X_C3D_TMAP_TILING) != V9X_C3D_ETEXTILE_ON) &&
         level0 != 0ul && !IsBadReadPtr((const void *)level0, bytes)) {
@@ -844,8 +894,8 @@ v9x_u32 __stdcall ATI3DCIF_TextureUnreg(v9x_u32 handle)
 }
 
 /* TexturePaletteCreate(epalette, pPalette, phtpalCreated): 16 or 256
- * C3D_PALETTENTRY, or a VQ codebook of 256 entries of four 16-bit texels
- * (kept, though VQ is not yet drawn). */
+ * C3D_PALETTENTRY, or a VQ codebook of 256 entries of four 16-bit texels,
+ * kept whole. */
 v9x_u32 __stdcall ATI3DCIF_TexturePaletteCreate(v9x_u32 kind,
                                                 v9x_u32 entries,
                                                 v9x_u32 handle);
@@ -883,7 +933,7 @@ v9x_u32 __stdcall ATI3DCIF_TexturePaletteCreate(v9x_u32 kind,
         LeaveCriticalSection(&v9x_cif_lock);
         return V9X_C3D_EC_MEMALLOCFAIL;
     }
-    for (index = 0ul; index < V9X_CIF_PALETTE_ENTRIES; ++index) {
+    for (index = 0ul; index < V9X_CIF_PALETTE_DWORDS; ++index) {
         palette->entries[index] =
             index < count ? ((const v9x_u32 *)entries)[index] : 0ul;
     }

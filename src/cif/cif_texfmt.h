@@ -56,9 +56,9 @@ v9x_u16 v9x_cif_texfmt_convert_row(v9x_u32 format, const void *src,
  * `index_pitch`, into a codebook of 256 entries of four 16-bit texels in
  * the order upper-left, upper-right, lower-left, lower-right (guide,
  * "Vector Quantization (VQ) Compression"). Writes `width` x `height`
- * 16-bit texels at `dst_pitch` bytes, as the codebook holds them; which
- * 16-bit format the codebook is in is the caller's (the guide does not
- * say). Width and height are even; V9X_FALSE otherwise.
+ * 16-bit texels at `dst_pitch` bytes, as the codebook holds them: RGB565
+ * (v9x_cif_texfmt_abi_format says why). Width and height are even;
+ * V9X_FALSE otherwise.
  */
 v9x_u16 v9x_cif_texfmt_vq_decode(const v9x_u8 *indices, v9x_u32 index_pitch,
                                  const v9x_u16 *codebook, v9x_u32 width,

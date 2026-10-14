@@ -1,0 +1,90 @@
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\CUBES\ATICUBES.EXE
+  summary detach frames=1319 drawn=13036 refused=0
+     1 x device: describe result=0 engine=4 generation=14
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+  pixel readbacks: 10 pairs, 5 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\ATI-3D\ATI-3D.EXE
+  summary detach frames=1116 drawn=11507 refused=0
+     1 x device: describe result=0 engine=4 generation=15
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+  pixel readbacks: 8 pairs, 5 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\PIXIE\PIXIE.EXE
+  summary detach frames=0 drawn=0 refused=0
+     1 x device: describe result=0 engine=4 generation=16
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\PIXIE\PIXIE.EXE
+  summary detach frames=859 drawn=453408 refused=1718
+     1 x device: describe result=0 engine=4 generation=18
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+     8 x draw refused result=4 target=D43C9000 pitch=1280
+     8 x draw refused result=4 target=D4333000 pitch=1280
+    16 x   format=2 depth=00000000 texture=2
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\FAIRY\FAIRY.EXE
+  summary detach frames=0 drawn=0 refused=0
+     1 x device: describe result=0 engine=4 generation=19
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\FAIRY\FAIRY.EXE
+  summary detach frames=892 drawn=473261 refused=1784
+     1 x device: describe result=0 engine=4 generation=20
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+     8 x draw refused result=4 target=D43C9000 pitch=1280
+     8 x draw refused result=4 target=D4333000 pitch=1280
+    16 x   format=2 depth=00000000 texture=2
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+  summary detach frames=0 drawn=0 refused=0
+     1 x device: describe result=0 engine=4 generation=21
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+  summary detach frames=1372 drawn=351213 refused=2740
+     1 x device: describe result=0 engine=4 generation=22
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+     8 x draw refused result=4 target=D43C9000 pitch=1280
+     8 x draw refused result=4 target=D4333000 pitch=1280
+    16 x   format=2 depth=00000000 texture=2
+  pixel readbacks: 12 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\DEMO.EXE
+  summary detach frames=433 drawn=509561 refused=0
+     1 x device: describe result=0 engine=4 generation=23
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\MORPH.EXE
+  summary detach frames=1000 drawn=627546 refused=0
+     1 x device: describe result=0 engine=4 generation=24
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\VQ.EXE
+  summary detach frames=609 drawn=1284005 refused=0
+   skipped (texture) 438437
+     1 x device: describe result=0 engine=4 generation=25
+     1 x device: target formats=00000004 texture formats=0000001A hw max=256
+     1 x device: closed
+    16 x draw skipped: texture detail=* frame=*
+  pixel readbacks: 12 pairs, 0 changed by the draw

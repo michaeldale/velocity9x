@@ -34,8 +34,11 @@ v9x_u32 v9x_cif_texfmt_bits(v9x_u32 format)
  * 1555 and 4444 keep their own alpha; 8888 goes to 4444 for its alpha.
  * The formats without alpha - 565, 332 and the palette formats, whose
  * entries' high byte is a load flag, not alpha - become 565, or 1555 when
- * the key needs an alpha to clear. VQ's format is the codebook's, which
- * the caller knows.
+ * the key needs an alpha to clear. VQ's is its codebook's, which is RGB565:
+ * the guide does not say, but in every .vqt file of SDK 4.1 the top bit
+ * varies (it is red's), and 2x2 blocks are two to three times smoother
+ * read as 565 than as 555
+ * (docs\decisions\2026-10-14-3dcif-vq-textures.md).
  */
 v9x_u32 v9x_cif_texfmt_abi_format(v9x_u32 format, v9x_u32 keyed)
 {
@@ -49,6 +52,7 @@ v9x_u32 v9x_cif_texfmt_abi_format(v9x_u32 format, v9x_u32 keyed)
     case V9X_C3D_ETF_RGB332:
     case V9X_C3D_ETF_CI8:
     case V9X_C3D_ETF_CI4:
+    case V9X_C3D_ETF_VQ:
         return keyed ? V9X_R3D_ABI_FORMAT_ARGB1555 : V9X_R3D_ABI_FORMAT_RGB565;
     default:
         return 0ul;

@@ -45,7 +45,10 @@ static void test_bits_and_formats(void)
     TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_CI8, 0ul) == V9X_R3D_ABI_FORMAT_RGB565);
     TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_CI8, 1ul) == V9X_R3D_ABI_FORMAT_ARGB1555);
     TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_CI4, 0ul) == V9X_R3D_ABI_FORMAT_RGB565);
-    TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_VQ, 0ul) == 0ul);
+    /* A VQ codebook holds RGB565 texels (every .vqt in SDK 4.1: the top
+     * bit varies with red, and blocks are smoother read as 565). */
+    TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_VQ, 0ul) == V9X_R3D_ABI_FORMAT_RGB565);
+    TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_VQ, 1ul) == V9X_R3D_ABI_FORMAT_ARGB1555);
     TCHECK(v9x_cif_texfmt_abi_format(V9X_C3D_ETF_Y8, 0ul) == 0ul);
 }
 
