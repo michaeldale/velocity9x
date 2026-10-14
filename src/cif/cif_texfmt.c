@@ -271,6 +271,52 @@ v9x_u16 v9x_cif_texfmt_to_565(v9x_u32 abi_format, v9x_u16 *texels,
     return V9X_TRUE;
 }
 
+v9x_u32 v9x_cif_texfmt_fit_level(v9x_u32 xlg2, v9x_u32 ylg2,
+                                 v9x_u32 size_max)
+{
+    v9x_u32 largest = xlg2 > ylg2 ? xlg2 : ylg2;
+    v9x_u32 limit = 0ul;
+
+    if (size_max == 0ul) {
+        return 0ul;
+    }
+    while ((2ul << limit) <= size_max) {
+        ++limit;
+    }
+    return largest > limit ? largest - limit : 0ul;
+}
+
+void v9x_cif_texfmt_decimate(v9x_u16 *texels, v9x_u32 *width,
+                             v9x_u32 *height, v9x_u32 shift)
+{
+    v9x_u32 old_width = *width;
+    v9x_u32 new_width = old_width >> shift;
+    v9x_u32 new_height = *height >> shift;
+    v9x_u32 step_x;
+    v9x_u32 step_y;
+    v9x_u32 x;
+    v9x_u32 y;
+
+    if (new_width == 0ul) {
+        new_width = 1ul;
+    }
+    if (new_height == 0ul) {
+        new_height = 1ul;
+    }
+    step_x = old_width / new_width;
+    step_y = *height / new_height;
+    /* In place, front to back: each destination texel is at or before
+     * its source, so nothing is read after it is overwritten. */
+    for (y = 0ul; y < new_height; ++y) {
+        for (x = 0ul; x < new_width; ++x) {
+            texels[y * new_width + x] =
+                texels[(y * step_y) * old_width + x * step_x];
+        }
+    }
+    *width = new_width;
+    *height = new_height;
+}
+
 v9x_u32 v9x_cif_texfmt_levels(v9x_u32 xlg2, v9x_u32 ylg2, v9x_u32 mipmapped)
 {
     v9x_u32 levels = (xlg2 > ylg2 ? xlg2 : ylg2) + 1ul;

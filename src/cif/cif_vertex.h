@@ -53,6 +53,13 @@ void v9x_cif_vtcf_convert(const V9X_CIF_VERTEX_SETUP *setup, const float *in,
  * "Shading Modes"). Specular, which carries fog, stays per vertex. */
 void v9x_cif_triangle_flat(V9X_R3D_ABI_VERTEX *triangle);
 
+/* Whether every colour of `triangles` triangles has alpha 255. Then a
+ * texel-times-vertex alpha is the texel's alone, which the Rage IIC can
+ * blend by and the product it cannot
+ * (docs\issues\2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md). */
+v9x_u16 v9x_cif_vertices_opaque(const V9X_R3D_ABI_VERTEX *vertices,
+                                v9x_u32 triangles);
+
 /* How a primitive call's vertices are walked. */
 #define V9X_CIF_FORM_STRIP 0ul      /* RenderPrimStrip: contiguous, shared */
 #define V9X_CIF_FORM_LIST  1ul      /* RenderPrimList: separate primitives */

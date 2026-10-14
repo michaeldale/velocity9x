@@ -249,6 +249,23 @@ static void test_primitives(void)
     VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_QUAD, V9X_CIF_FORM_LIST, 3ul, 2ul) == 7ul);
 }
 
+/* Whether a batch's colours are all fully opaque: then texel alpha times
+ * vertex alpha is the texel's alone, which the Rage IIC can blend by
+ * (docs\issues\2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md). */
+static void test_opaque(void)
+{
+    V9X_R3D_ABI_VERTEX batch[6];
+    unsigned int i;
+
+    for (i = 0u; i < 6u; ++i) {
+        batch[i].color = 0xff123456ul;
+    }
+    VCHECK(v9x_cif_vertices_opaque(batch, 2ul) == V9X_TRUE);
+    batch[4].color = 0xfe123456ul;
+    VCHECK(v9x_cif_vertices_opaque(batch, 2ul) == V9X_FALSE);
+    VCHECK(v9x_cif_vertices_opaque(batch, 1ul) == V9X_TRUE);
+}
+
 unsigned int v9x_run_cif_vertex_tests(void)
 {
     cif_vertex_failures = 0u;
@@ -259,5 +276,6 @@ unsigned int v9x_run_cif_vertex_tests(void)
     test_fog();
     test_flat();
     test_primitives();
+    test_opaque();
     return cif_vertex_failures;
 }

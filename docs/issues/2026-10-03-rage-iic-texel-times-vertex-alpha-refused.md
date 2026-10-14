@@ -36,6 +36,21 @@ the Mach64 has no route for CPU textures, and the batches are not drawn
 op it is was inferred from Quake 2's particle state, not read: the draw
 path's op mask is not set by the passive check.
 
+## ATI3DCIF's keyed sprites too (2026-10-14)
+
+Under the new ATI3DCIF.DLL, Pixie, Fairy and Laputa each have two draws a
+frame refused UNSUPPORTED on A8U4I5 (boot 456). The texture is chroma-keyed
+1555 (key texels alpha 0), MODULATE on colour and alpha, blended
+SRCALPHA/INVSRCALPHA, with no depth buffer
+(`docs/probe/a8u4i5-rage-iic-3dcif-phase3-2026-10-14/README.md`). Two
+changes did not clear the refusal:
+- dropping the alpha test, which is redundant under that blend;
+- using the texel's alpha alone when every vertex alpha is 255.
+
+So the vertex alpha is below 255 and the draw needs the key's 1-bit
+alpha times the vertex alpha. That is the product this issue is about. A
+premultiplied copy cannot carry it, since 1555 has one alpha bit.
+
 ## Next
 
 First count how many distinct vertex alphas Quake 2's particle batches

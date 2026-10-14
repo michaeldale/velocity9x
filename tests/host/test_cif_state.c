@@ -307,6 +307,28 @@ static void test_texture_ops(void)
     SCHECK(out.state.alpha_func == D3DCMP_GREATER && out.state.alpha_ref == 0ul);
     SCHECK(out.recognized == V9X_TRUE);
 
+    /*
+     * Pixie's keyed, blended sprites: SRCALPHA, INVSRCALPHA leaves the
+     * target untouched where the keyed texel's alpha is 0, so with no
+     * depth write the alpha test adds nothing, and the Rage IIC refused
+     * the combination (A8U4I5, boot 456, two draws a frame). With a depth
+     * write it stays: a blended-away texel would still write depth.
+     */
+    set1(&state, V9X_C3D_ERS_ALPHA_SRC, V9X_C3D_EBLEND_SRCALPHA);
+    set1(&state, V9X_C3D_ERS_ALPHA_DST, V9X_C3D_EBLEND_INVSRCALPHA);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.key_texture == 1ul);
+    SCHECK(out.state.alpha_test_enable == 0ul);
+    set1(&state, V9X_C3D_ERS_Z_MODE, V9X_C3D_EZMODE_TESTON_WRITEZ);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.state.alpha_test_enable == 1ul);
+    set1(&state, V9X_C3D_ERS_Z_MODE, V9X_C3D_EZMODE_TESTON);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.state.alpha_test_enable == 0ul);
+    set1(&state, V9X_C3D_ERS_Z_MODE, V9X_C3D_EZMODE_OFF);
+    set1(&state, V9X_C3D_ERS_ALPHA_SRC, V9X_C3D_EBLEND_ONE);
+    set1(&state, V9X_C3D_ERS_ALPHA_DST, V9X_C3D_EBLEND_ZERO);
+
     /* Knight's texel alpha to the blender. */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_ALPHA);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);

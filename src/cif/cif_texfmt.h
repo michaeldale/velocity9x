@@ -75,6 +75,19 @@ v9x_u16 v9x_cif_texfmt_to_565(v9x_u32 abi_format, v9x_u16 *texels,
                               v9x_u32 count);
 
 /*
+ * Levels to skip so a 2^xlg2 by 2^ylg2 texture's edges fit `size_max`
+ * (the engine's hw_texture_size_max; 0 is no limit). A mipmapped texture
+ * uses that level; one without mipmaps is decimated by as much.
+ */
+v9x_u32 v9x_cif_texfmt_fit_level(v9x_u32 xlg2, v9x_u32 ylg2,
+                                 v9x_u32 size_max);
+
+/* Point-samples packed 16-bit texels in place by 2^shift on each edge,
+ * an edge stopping at one texel; *width and *height are updated. */
+void v9x_cif_texfmt_decimate(v9x_u16 *texels, v9x_u32 *width,
+                             v9x_u32 *height, v9x_u32 shift);
+
+/*
  * Levels the interface gets for a texture of 2^xlg2 by 2^ylg2: one
  * without mipmaps, else down to 1x1, at most V9X_R3D_ABI_LEVELS_MAX. A
  * 1024-texel edge has eleven levels; the smallest is dropped.

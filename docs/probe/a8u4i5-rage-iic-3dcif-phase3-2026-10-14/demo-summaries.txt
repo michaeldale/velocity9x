@@ -1,0 +1,67 @@
+# summarize_cif.py over the boot-456 runs, latest build of each demo
+
+## cif-p3-6: Pixie, Laputa
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\PIXIE\PIXIE.EXE
+  summary detach frames=0 drawn=0 refused=0
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\PIXIE\PIXIE.EXE
+  summary detach frames=440 drawn=238333 refused=880
+     8 x draw refused result=4 target=D440A000 pitch=1280
+     8 x draw refused result=4 target=D4374000 pitch=1280
+    16 x   format=1 depth=00000000 texture=2
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+  summary detach frames=0 drawn=0 refused=0
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\LAPUTA\LAPUTA.EXE
+  summary detach frames=1233 drawn=325517 refused=914
+   skipped (texture) 64541
+     8 x hwtex create 00800100 format=1 hr=8876017C
+    16 x draw skipped: texture detail=* frame=*
+     8 x draw refused result=4 target=D440A000 pitch=1280
+     8 x draw refused result=4 target=D4374000 pitch=1280
+    16 x   format=1 depth=00000000 texture=2
+  pixel readbacks: 12 pairs, 0 changed by the draw
+
+## cif-p3-5: Knight DEMO, MORPH
+C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\DEMO.EXE
+  summary detach frames=128 drawn=124235 refused=0
+   skipped (texture) 30753
+     8 x hwtex create 01000100 format=4 hr=8876017C
+    16 x draw skipped: texture detail=* frame=*
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\MORPH.EXE
+  summary detach frames=331 drawn=208164 refused=0
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+  pixel readbacks: 12 pairs, 1 changed by the draw
+
+## run-checks build (1019a826): ATi-3D, Fairy, Knight VQ
+C:\3DCIF\PACK\ATI 3D C INTERFACE\FAIRY\FAIRY.EXE
+  summary detach frames=0 drawn=0 refused=0
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\FAIRY\FAIRY.EXE
+  summary detach frames=586 drawn=316324 refused=1172
+   skipped (texture) 4631
+     1 x hwtex create 02000200 format=1 hr=8876017C
+    16 x draw skipped: texture detail=* frame=*
+     8 x draw refused result=4 target=D440A000 pitch=1280
+     8 x draw refused result=4 target=D4374000 pitch=1280
+    16 x   format=1 depth=00000000 texture=2
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\ATI-3D\ATI-3D.EXE
+  summary detach frames=478 drawn=5061 refused=0
+  pixel readbacks: 6 pairs, 4 changed by the draw
+========================================================================
+C:\3DCIF\PACK\ATI 3D C INTERFACE\KNIGHT\VQ.EXE
+  summary detach frames=342 drawn=720974 refused=0
+   skipped (texture) 492578
+    16 x draw skipped: texture detail=* frame=*
+  pixel readbacks: 12 pairs, 0 changed by the draw

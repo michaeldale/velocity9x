@@ -191,6 +191,7 @@ struct v9x_cif_variant {
     void *surface;          /* its video-memory copy, or null */
     v9x_u32 abi_format;
     v9x_u32 failed;         /* conversion refused: do not retry */
+    v9x_u32 last_frame;     /* the frame it was last drawn with */
 };
 
 struct v9x_cif_texture {
@@ -204,7 +205,8 @@ struct v9x_cif_texture {
     v9x_u32 key;            /* C3D_COLOR */
     v9x_u32 palette;        /* C3D_HTXPAL as registered */
     v9x_u32 drawable;       /* a format and layout this DLL converts */
-    v9x_u8 *source;         /* level 0 as registered */
+    v9x_u32 shrink;         /* log2 decimation to fit the engine's size */
+    v9x_u8 *source;         /* the level kept, as registered */
     struct v9x_cif_variant variant[V9X_CIF_VARIANTS];
 };
 
@@ -459,6 +461,66 @@ static struct v9x_cif_palette *v9x_cif_palette_from(v9x_u32 handle)
 }
 
 /*
+ * Video memory holds the application's own textures as well as these
+ * copies (the Knight demos' 4444 textures did not fit on the Rage IIC's
+ * 4 MiB, boot 456). Releases the surface of the copy drawn with longest
+ * ago, but none drawn with in this frame; its texels stay, and it is
+ * uploaded again when next drawn with. Non-zero if one was released.
+ */
+static v9x_u32 v9x_cif_evictions;
+
+static int v9x_cif_evict_one(void)
+{
+    struct v9x_cif_variant *oldest = 0;
+    unsigned int index;
+    unsigned int which;
+
+    for (index = 0u; index < V9X_CIF_TEXTURES; ++index) {
+        if (!v9x_cif_textures[index].live) {
+            continue;
+        }
+        for (which = 0u; which < V9X_CIF_VARIANTS; ++which) {
+            struct v9x_cif_variant *variant =
+                &v9x_cif_textures[index].variant[which];
+
+            if (variant->surface == 0 ||
+                variant->last_frame == v9x_cif_frames) {
+                continue;
+            }
+            if (oldest == 0 || variant->last_frame < oldest->last_frame) {
+                oldest = variant;
+            }
+        }
+    }
+    if (oldest == 0) {
+        return 0;
+    }
+    v9x_cif_hwtex_release(oldest->surface);
+    oldest->surface = 0;
+    if (v9x_cif_evictions++ < V9X_CIF_NOTES_MAX) {
+        v9x_cif_log3("texture surface evicted: last drawn frame %lu, now %lu",
+                     oldest->last_frame, v9x_cif_frames, 0ul);
+    }
+    return 1;
+}
+
+/* The size uploaded: the kept level's, decimated by `shrink`, never below
+ * one texel. */
+static v9x_u32 v9x_cif_texture_width(const struct v9x_cif_texture *texture)
+{
+    v9x_u32 width = texture->width >> texture->shrink;
+
+    return width != 0ul ? width : 1ul;
+}
+
+static v9x_u32 v9x_cif_texture_height(const struct v9x_cif_texture *texture)
+{
+    v9x_u32 height = texture->height >> texture->shrink;
+
+    return height != 0ul ? height : 1ul;
+}
+
+/*
  * A texture's converted copy for one variant, made on first use: the
  * registered level 0, row by row through cif_texfmt.c, into a surface of
  * the DLL's own. A palette texture takes the palette's entries as they
@@ -475,6 +537,7 @@ static int v9x_cif_texture_ready(struct v9x_cif_texture *texture,
     v9x_u32 nibble = V9X_C3D_ECI_TMAP_4BIT_LOW;
 
     if (variant->surface != 0) {
+        variant->last_frame = v9x_cif_frames;
         return 1;
     }
     if (variant->failed || !texture->drawable) {
@@ -508,21 +571,40 @@ static int v9x_cif_texture_ready(struct v9x_cif_texture *texture,
         }
         variant->abi_format = v9x_cif_texfmt_abi_format(texture->format,
                                                         keyed);
+        if (texture->shrink != 0ul) {
+            v9x_u32 width = texture->width;
+            v9x_u32 height = texture->height;
+
+            v9x_cif_texfmt_decimate(variant->texels, &width, &height,
+                                    texture->shrink);
+        }
         if (which == V9X_CIF_VARIANT_OPAQUE) {
             if (!v9x_cif_texfmt_to_565(variant->abi_format, variant->texels,
-                                       texture->width * texture->height)) {
+                                       v9x_cif_texture_width(texture) *
+                                           v9x_cif_texture_height(texture))) {
                 return 0;
             }
             variant->abi_format = V9X_R3D_ABI_FORMAT_RGB565;
         }
     }
-    variant->surface = v9x_cif_hwtex_create(texture->width, texture->height,
+    variant->surface = v9x_cif_hwtex_create(v9x_cif_texture_width(texture),
+                                            v9x_cif_texture_height(texture),
                                             variant->abi_format);
+    while (variant->surface == 0 && v9x_cif_evict_one()) {
+        variant->surface = v9x_cif_hwtex_create(
+            v9x_cif_texture_width(texture), v9x_cif_texture_height(texture),
+            variant->abi_format);
+    }
     if (variant->surface == 0) {
+        /* Out of video memory with nothing to evict: try again next
+         * frame, when this frame's textures can go. */
+        variant->failed = 0ul;
         return 0;
     }
+    variant->last_frame = v9x_cif_frames;
     if (!v9x_cif_hwtex_upload(variant->surface, variant->texels,
-                              texture->width, texture->height)) {
+                              v9x_cif_texture_width(texture),
+                              v9x_cif_texture_height(texture))) {
         v9x_cif_hwtex_release(variant->surface);
         variant->surface = 0;
         return 0;
@@ -685,13 +767,40 @@ v9x_u32 __stdcall ATI3DCIF_TextureReg(v9x_u32 tmap, v9x_u32 handle)
         texture->variant[index].texels = 0;
         texture->variant[index].surface = 0;
         texture->variant[index].failed = 0ul;
+        texture->variant[index].last_frame = 0ul;
     }
     if (size >= V9X_C3D_TMAP_RAGE3_BYTES) {
         texture->clamp_s = v9x_cif_peek(tmap + V9X_C3D_TMAP_CLAMP_S) != 0ul;
         texture->clamp_t = v9x_cif_peek(tmap + V9X_C3D_TMAP_CLAMP_T) != 0ul;
     }
-    bits = v9x_cif_texfmt_bits(texture->format);
+    /*
+     * Larger than the engine samples (the Rage II and Mach64 describe
+     * 256; Pixie registers 512x512): a mipmapped texture keeps the first
+     * level that fits, which the application supplied, and one without
+     * mipmaps is decimated when converted.
+     */
+    texture->shrink = v9x_cif_texfmt_fit_level(
+        key[2], key[3],
+        v9x_cif_device_description() != 0
+            ? v9x_cif_device_description()->hw_texture_size_max : 0ul);
     level0 = v9x_cif_peek(tmap + V9X_C3D_TMAP_LEVELS);
+    if (texture->shrink != 0ul && texture->mipmapped &&
+        texture->shrink < V9X_C3D_TEXTURE_LG2_MAX + 1ul &&
+        v9x_cif_peek(tmap + V9X_C3D_TMAP_LEVELS +
+                     texture->shrink * 4ul) != 0ul) {
+        level0 = v9x_cif_peek(tmap + V9X_C3D_TMAP_LEVELS +
+                              texture->shrink * 4ul);
+        texture->width = texture->width >> texture->shrink;
+        texture->height = texture->height >> texture->shrink;
+        if (texture->width == 0ul) {
+            texture->width = 1ul;
+        }
+        if (texture->height == 0ul) {
+            texture->height = 1ul;
+        }
+        texture->shrink = 0ul;
+    }
+    bits = v9x_cif_texfmt_bits(texture->format);
     bytes = (texture->width * texture->height * bits) / 8ul;
     if (bits != 0ul && texture->format != V9X_C3D_ETF_VQ &&
         (size < V9X_C3D_TMAP_RAGE3_BYTES ||
@@ -1201,6 +1310,15 @@ static void v9x_cif_submit(const V9X_CIF_FRAME_SETUP *frame,
     draw.state = frame->setup.state;
     draw.vertices = v9x_cif_batch;
     draw.triangle_count = triangles;
+    /* Texel alpha times an alpha of 255 is the texel's: D3D MODULATE on
+     * a texture with alpha, which the Rage IIC blends by, where the
+     * product it cannot (Pixie's sprites, A8U4I5 boot 456). */
+    if (draw.texture.storage == V9X_R3D_ABI_TEXTURE_HW &&
+        draw.texture.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE &&
+        draw.texture.format != V9X_R3D_ABI_FORMAT_RGB565 &&
+        v9x_cif_vertices_opaque(v9x_cif_batch, triangles)) {
+        draw.texture.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    }
     for (attempt = 0u; attempt < 3u; ++attempt) {
         description = v9x_cif_device_description();
         draw.generation = description != 0 ? description->generation : 0ul;
@@ -1228,6 +1346,16 @@ static void v9x_cif_submit(const V9X_CIF_FRAME_SETUP *frame,
         v9x_cif_log3("  format=%lu depth=%08lX texture=%lu",
                      frame->target.format, (v9x_u32)frame->depth.address,
                      frame->texture.storage);
+        v9x_cif_log3("  blend=%lu src=%lu dst=%lu", draw.state.blend_enable,
+                     draw.state.src_blend, draw.state.dst_blend);
+        v9x_cif_log3("  alphatest=%lu fog=%lu texformat=%lu",
+                     draw.state.alpha_test_enable, draw.state.fog_enable,
+                     frame->texture.format);
+        v9x_cif_log3("  ops color=%lu alpha=%lu filters=%08lX",
+                     frame->texture.color_op, frame->texture.alpha_op,
+                     (frame->texture.min_filter << 16) |
+                         (frame->texture.mag_filter << 8) |
+                         frame->texture.address);
     }
 }
 

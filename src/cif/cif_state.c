@@ -326,6 +326,17 @@ void v9x_cif_state_map(const V9X_CIF_STATE *state, v9x_u32 width,
             out->white = 1ul;
         }
 
+        /* A keyed texel's alpha is 0 after MODULATE, so SRCALPHA,
+         * INVSRCALPHA blends it away; without a depth write the alpha
+         * test then adds nothing, and the Rage IIC refuses a keyed,
+         * blended draw that keeps it (A8U4I5, Pixie's sprites). */
+        if (out->key_texture && out->state.blend_enable &&
+            out->state.src_blend == V9X_CIF_D3D_BLEND_SRCALPHA &&
+            out->state.dst_blend == V9X_CIF_D3D_BLEND_INVSRCALPHA &&
+            !out->state.depth_write) {
+            out->state.alpha_test_enable = 0ul;
+        }
+
         /* The interface has one addressing mode for both axes. */
         if (texture != 0 && texture->clamp_s && texture->clamp_t) {
             out->address = V9X_R3D_ABI_ADDRESS_CLAMP;

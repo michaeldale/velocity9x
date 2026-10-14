@@ -102,6 +102,19 @@ void v9x_cif_vtcf_convert(const V9X_CIF_VERTEX_SETUP *setup, const float *in,
     }
 }
 
+v9x_u16 v9x_cif_vertices_opaque(const V9X_R3D_ABI_VERTEX *vertices,
+                                v9x_u32 triangles)
+{
+    v9x_u32 index;
+
+    for (index = 0ul; index < triangles * 3ul; ++index) {
+        if ((vertices[index].color >> 24) != 0xfful) {
+            return V9X_FALSE;
+        }
+    }
+    return V9X_TRUE;
+}
+
 void v9x_cif_triangle_flat(V9X_R3D_ABI_VERTEX *triangle)
 {
     triangle[0].color = triangle[2].color;

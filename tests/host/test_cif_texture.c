@@ -202,6 +202,51 @@ static void test_to_565(void)
     TCHECK(!v9x_cif_texfmt_to_565(99ul, texels, 1ul));
 }
 
+/*
+ * Textures larger than the engine samples: the Rage II and Mach64 describe
+ * 256 as their largest, and Pixie and Fairy register 512x512 (A8U4I5,
+ * boot 456: hwtex create refused, DDERR_OUTOFVIDEOMEMORY). A mipmapped
+ * texture uses the first level that fits; one without mipmaps is
+ * decimated.
+ */
+static void test_fit(void)
+{
+    v9x_u16 texels[4u * 4u];
+    v9x_u32 width;
+    v9x_u32 height;
+    unsigned int i;
+
+    /* Levels to skip so both edges fit 256. */
+    TCHECK(v9x_cif_texfmt_fit_level(9ul, 9ul, 256ul) == 1ul);
+    TCHECK(v9x_cif_texfmt_fit_level(10ul, 8ul, 256ul) == 2ul);
+    TCHECK(v9x_cif_texfmt_fit_level(8ul, 8ul, 256ul) == 0ul);
+    TCHECK(v9x_cif_texfmt_fit_level(7ul, 3ul, 256ul) == 0ul);
+    /* No limit described: none skipped. */
+    TCHECK(v9x_cif_texfmt_fit_level(10ul, 10ul, 0ul) == 0ul);
+
+    /* Decimation in place, keeping every 2^shift-th texel of every
+     * 2^shift-th row. */
+    for (i = 0u; i < 16u; ++i) {
+        texels[i] = (v9x_u16)i;
+    }
+    width = 4ul;
+    height = 4ul;
+    v9x_cif_texfmt_decimate(texels, &width, &height, 1ul);
+    TCHECK(width == 2ul && height == 2ul);
+    TCHECK(texels[0] == 0u && texels[1] == 2u);
+    TCHECK(texels[2] == 8u && texels[3] == 10u);
+
+    /* A narrow edge stops at one texel. */
+    for (i = 0u; i < 8u; ++i) {
+        texels[i] = (v9x_u16)i;
+    }
+    width = 8ul;
+    height = 1ul;
+    v9x_cif_texfmt_decimate(texels, &width, &height, 2ul);
+    TCHECK(width == 2ul && height == 1ul);
+    TCHECK(texels[0] == 0u && texels[1] == 4u);
+}
+
 static void test_levels(void)
 {
     TCHECK(v9x_cif_texfmt_levels(8ul, 8ul, 0ul) == 1ul);
@@ -223,6 +268,7 @@ unsigned int v9x_run_cif_texture_tests(void)
     test_palettes();
     test_vq();
     test_to_565();
+    test_fit();
     test_levels();
     return cif_texture_failures;
 }
