@@ -4,7 +4,36 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.17.1 - not yet released
+## 0.18.0 - 2026-10-14
+
+0.17.1 was never released; its changes are in this version.
+
+- **New: ATI3DCIF.DLL, ATI's 3D Rage interface (3DCIF).** Games and
+  demos written for ATI Rage cards load ATI3DCIF.DLL to draw. ATI's own
+  copy talks to ATI's driver and cannot run on Velocity9x. Ours draws
+  through the same engine as Direct3D, OpenGL and Glide. Every package
+  installs it to SYSTEM, replacing any copy already there.
+  - **Measured:** all eight of ATI's SDK 4.1 demos draw and exit
+    cleanly (Cubes, ATi-3D, Pixie, Fairy, Laputa, and the Knight DEMO,
+    MORPH and VQ) on the Rage IIC, the Rage XL and the Intel GMA 950.
+    Stock 3DCIF never supported the Rage XL PCI or the GMA 950.
+  - **VQ-compressed textures** are decoded; their codebook is RGB565.
+  - **Textures** too large for the engine, or for its free memory, are
+    drawn a level smaller.
+  - **Not drawn:** on both ATI engines, two keyed, blended sprites a
+    frame in Pixie, Fairy and Laputa, which need texel times vertex
+    alpha. The GMA 950 draws them.
+  - **Not yet:** mipmaps (level 0 only), the Rage Pro's tiled texture
+    layout, meshes, TLVERTEX vertices, lines and points.
+  - **On the GMA 950:** some flicker, and some demos run too fast.
+  - **No game has been run yet,** only the SDK demos. A game that
+    carries its own ATI3DCIF.DLL in its folder loads that first; rename
+    it.
+
+  [Census](docs/decisions/2026-10-14-3dcif-demo-census.md),
+  [VQ](docs/decisions/2026-10-14-3dcif-vq-textures.md),
+  [Rage XL](docs/probe/a8u4i5-rage-xl-3dcif-2026-10-14/README.md),
+  [GMA 950](docs/probe/netbook-gma950-3dcif-2026-10-14/README.md).
 
 - **ATI cards with hardware Direct3D run 16 bits as 5:5:5**, as ATI's
   own driver does and as titles written for ATI cards assume. That
@@ -26,6 +55,22 @@ build identifier so exact guest-tested binaries remain traceable.
   [3D](docs/decisions/2026-10-14-rage-iic-draws-1555-targets.md),
   [textures and Glide](docs/decisions/2026-10-14-rage-iic-555-textures-and-glide.md),
   [Rage XL](docs/decisions/2026-10-14-rage-xl-555-desktop.md).
+  Open: the Rage IIC blends one step low into 5:5:5
+  ([issue](docs/issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md)).
+
+- **The settings page's 16-bit colour layout choices describe every
+  card.** They said what the S3 ViRGE does. Now they read "Automatic
+  (the 3D engine's layout)", "5:6:5 - 64 greens; ATI 3DCIF games
+  miscolour" and "5:5:5 - S3 ViRGE 3D and ATI 3DCIF games".
+
+- **Send report includes `INTELMM.TXT`** on Intel machines. GitHub
+  issue 6 needed the live display pipe it records
+  ([issue](docs/issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)).
+  No report has yet been seen to carry it.
+
+- **The floppies are two disks a family.** Disk 1 holds everything the
+  install reads; disk 2 holds the test tools, `V9XDDP.EXE` included,
+  which no single disk had room for. Copy both into one folder.
 
 ## 0.17.0 - 2026-10-13
 

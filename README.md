@@ -18,12 +18,12 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.17.0**: reports that say how a game ended, and the
-reported Glide fixes (Carmageddon II's menus and front-buffer clears on the
-GMA 950 and 900); Direct3D drawn on Direct3D's pixel centres on the GMA
-950/900 and in software; and a first, work-in-progress family for the 3dfx
-Voodoo4. See the [changelog](CHANGELOG.md).
-Download it from [releases/0.17.0](releases/0.17.0/README.md).
+**Current version: 0.18.0**: ATI3DCIF.DLL, ATI's 3D Rage interface, so
+games and demos written for ATI Rage cards draw on Velocity9x (ATI's SDK
+demos run on the Rage IIC, Rage XL and GMA 950); and ATI cards with
+hardware Direct3D run 16 bits as 5:5:5, as ATI's own driver does. See the
+[changelog](CHANGELOG.md).
+Download it from [releases/0.18.0](releases/0.18.0/README.md).
 See [current status](docs/STATUS.md) for what is verified where and what
 is open.
 
