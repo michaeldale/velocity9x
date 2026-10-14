@@ -1,0 +1,12 @@
+1343 t=795423 hwtex create 02000200 format=4 hr=8876017C
+1345 t=795423 hwtex create 02000200 format=4 hr=8876017C
+1347 t=795423 hwtex create 02000200 format=4 hr=8876017C
+1348 t=795423 texture 02000200 made 256x256: no surface at the size before
+450 t=815443 hwtex create 04000100 format=1 hr=80070057
+451 t=815443 texture 04000100 made 512x128: no surface at the size before
+456 t=815463 hwtex create 02000200 format=1 hr=8876017C
+457 t=815463 texture 02000200 made 256x256: no surface at the size before
+458 t=815468 hwtex create 01000100 format=1 hr=8876017C
+459 t=815468 texture 02000200 made 128x128: no surface at the size before
+460 t=815470 hwtex create 00800080 format=1 hr=8876017C
+461 t=815470 texture 02000200 made 64x64: no surface at the size before

@@ -1,0 +1,22 @@
+========================================================================
+C:\3DCIF\KNIGHT\DEMO.EXE
+  summary detach frames=744 drawn=813469 refused=0
+     1 x device: describe result=0 engine=3 generation=14
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+     3 x hwtex create 02000200 format=4 hr=8876017C
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\KNIGHT\VQ.EXE
+  summary detach frames=591 drawn=1246189 refused=0
+     1 x device: describe result=0 engine=3 generation=15
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+     1 x hwtex create 04000100 format=1 hr=80070057
+     1 x hwtex create 02000200 format=1 hr=8876017C
+     1 x hwtex create 01000100 format=1 hr=8876017C
+     1 x hwtex create 00800080 format=1 hr=8876017C
+  pixel readbacks: 12 pairs, 0 changed by the draw

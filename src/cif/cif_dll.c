@@ -523,6 +523,53 @@ static v9x_u32 v9x_cif_texture_height(const struct v9x_cif_texture *texture)
     return height != 0ul ? height : 1ul;
 }
 
+static int v9x_cif_texture_ready(struct v9x_cif_texture *texture,
+                                 unsigned int which);
+
+/*
+ * A texture surface that cannot be made with nothing left to evict, or at
+ * a size the HAL will not place. On the netbook's Gen3 (boot 180) Knight
+ * DEMO's 512x512 found no room, and Knight VQ's 1024x256 was refused
+ * DDERR_INVALIDPARAMS though Gen3 describes 1024. Each is made again a
+ * level smaller, as a texture past the engine's size is, at most
+ * V9X_CIF_SHRINK_MAX levels. Every copy's texels are rebuilt at the new
+ * size; a surface drawn with this frame is kept, since a held batch may
+ * still read it, and is rebuilt when next evicted.
+ */
+#define V9X_CIF_SHRINK_MAX 3ul
+static v9x_u32 v9x_cif_shrinks;
+
+static int v9x_cif_texture_smaller(struct v9x_cif_texture *texture,
+                                   unsigned int which)
+{
+    unsigned int index;
+
+    if (texture->shrink >= V9X_CIF_SHRINK_MAX ||
+        (v9x_cif_texture_width(texture) == 1ul &&
+         v9x_cif_texture_height(texture) == 1ul)) {
+        return 0;
+    }
+    ++texture->shrink;
+    if (v9x_cif_shrinks++ < V9X_CIF_NOTES_MAX) {
+        v9x_cif_log3("texture %08lX made %lux%lu: no surface at the size before",
+                     (texture->width << 16) | texture->height,
+                     v9x_cif_texture_width(texture),
+                     v9x_cif_texture_height(texture));
+    }
+    for (index = 0u; index < V9X_CIF_VARIANTS; ++index) {
+        struct v9x_cif_variant *variant = &texture->variant[index];
+
+        v9x_cif_free(variant->texels);
+        variant->texels = 0;
+        variant->failed = 0ul;
+        if (variant->surface != 0 && variant->last_frame != v9x_cif_frames) {
+            v9x_cif_hwtex_release(variant->surface);
+            variant->surface = 0;
+        }
+    }
+    return v9x_cif_texture_ready(texture, which);
+}
+
 /*
  * A VQ texture's texels: the index map through the codebook, which holds
  * RGB565 (cif_texfmt.c), and for the keyed copy through the RGB565 row
@@ -644,10 +691,8 @@ static int v9x_cif_texture_ready(struct v9x_cif_texture *texture,
             variant->abi_format);
     }
     if (variant->surface == 0) {
-        /* Out of video memory with nothing to evict: try again next
-         * frame, when this frame's textures can go. */
         variant->failed = 0ul;
-        return 0;
+        return v9x_cif_texture_smaller(texture, which);
     }
     variant->last_frame = v9x_cif_frames;
     if (!v9x_cif_hwtex_upload(variant->surface, variant->texels,

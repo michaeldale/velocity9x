@@ -478,10 +478,17 @@ Progress 2026-10-14:
   With 8 MiB, no texture is skipped for video memory.
 - **VQ draws**: the codebook is RGB565
   ([2026-10-14-3dcif-vq-textures.md](../decisions/2026-10-14-3dcif-vq-textures.md)).
-- **Still refused:** two keyed, blended sprites a frame in Pixie, Fairy
-  and Laputa (texel times vertex alpha, on both engines). Which way to
-  lower them is Michael's decision.
-- Not yet: the probe, mipmaps, tiled textures, meshes, TLVERTEX.
+- **Still refused on ATI:** two keyed, blended sprites a frame in Pixie,
+  Fairy and Laputa (texel times vertex alpha, on both engines). Which way
+  to lower them is Michael's decision; parked as
+  [an issue](../issues/2026-10-14-3dcif-blended-sprites-refused.md).
+- **All eight demos run on the netbook's GMA 950** (Gen3, 5:6:5, boot
+  180), the plan's second engine, with nothing refused, the sprites
+  included. A texture that cannot be made is rebuilt a level smaller
+  ([probe README](../probe/netbook-gma950-3dcif-2026-10-14/README.md)).
+- Parked as issues (2026-10-14): the
+  [probe](../issues/2026-10-14-3dcif-phase3-probe-not-written.md), and
+  [mipmaps, tiled textures, meshes, TLVERTEX](../issues/2026-10-14-3dcif-unimplemented-features.md).
 
 ### 4. The title on the Rage XL
 

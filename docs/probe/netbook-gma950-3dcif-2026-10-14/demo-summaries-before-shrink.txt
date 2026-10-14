@@ -1,0 +1,93 @@
+========================================================================
+C:\3DCIF\CUBES\ATICUBES.EXE
+  summary detach frames=23475 drawn=231802 refused=0
+     1 x device: describe result=0 engine=3 generation=2
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+  pixel readbacks: 12 pairs, 7 changed by the draw
+========================================================================
+C:\3DCIF\ATI-3D\ATI-3D.EXE
+  summary detach frames=11413 drawn=114175 refused=0
+     1 x device: describe result=0 engine=3 generation=3
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+  pixel readbacks: 12 pairs, 10 changed by the draw
+========================================================================
+C:\3DCIF\PIXIE\PIXIE.EXE
+  summary detach frames=0 drawn=0 refused=0
+     1 x device: describe result=0 engine=3 generation=4
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: closed
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\PIXIE\PIXIE.EXE
+  summary detach frames=2284 drawn=1233193 refused=0
+     1 x device: describe result=0 engine=3 generation=6
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\FAIRY\FAIRY.EXE
+  summary detach frames=0 drawn=0 refused=0
+     1 x device: describe result=0 engine=3 generation=7
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: closed
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\FAIRY\FAIRY.EXE
+  summary detach frames=2325 drawn=1241165 refused=0
+     1 x device: describe result=0 engine=3 generation=8
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\LAPUTA\LAPUTA.EXE
+  summary detach frames=0 drawn=0 refused=0
+     1 x device: describe result=0 engine=3 generation=9
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: closed
+  pixel readbacks: 0 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\LAPUTA\LAPUTA.EXE
+  summary detach frames=7390 drawn=1097910 refused=0
+     1 x device: describe result=0 engine=3 generation=10
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+  pixel readbacks: 12 pairs, 0 changed by the draw
+========================================================================
+C:\3DCIF\KNIGHT\DEMO.EXE
+  summary detach frames=680 drawn=708497 refused=0
+   skipped (texture) 42119
+     1 x device: describe result=0 engine=3 generation=11
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+     8 x hwtex create 02000200 format=4 hr=8876017C
+    16 x draw skipped: texture detail=* frame=*
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\KNIGHT\MORPH.EXE
+  summary detach frames=1182 drawn=742320 refused=0
+     1 x device: describe result=0 engine=3 generation=12
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+    16 x state drawn approximately: texop=2 composite=1 fog/blend=5
+  pixel readbacks: 12 pairs, 1 changed by the draw
+========================================================================
+C:\3DCIF\KNIGHT\VQ.EXE
+  summary detach frames=337 drawn=711092 refused=0
+   skipped (texture) 205772
+     1 x device: describe result=0 engine=3 generation=13
+     1 x device: target formats=00000002 texture formats=0000001A hw max=1024
+     1 x device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]
+     1 x device: closed
+     8 x hwtex create 04000100 format=1 hr=80070057
+    16 x draw skipped: texture detail=* frame=*
+  pixel readbacks: 12 pairs, 0 changed by the draw
