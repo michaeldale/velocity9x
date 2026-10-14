@@ -1,0 +1,103 @@
+1 pid=FFFA7EDF t=206478 attach instance=02500000 version=0.17.1 V9XGLD3 build=2ee04d24-dirty time=2026-10-14 13:13:39 uptime-ms=206478 exe=C:\PROGRAM FILES\DIABLO II SHAREWARE\DIABLO II.EXE
+2 pid=FFFA7EDF t=206482 grGet#1 pname=0F -> 1 (4 bytes)
+3 pid=FFFA7EDF t=206482 grGlideInit#1 
+4 pid=FFFA7EDF t=206482 grSstSelect#1 sst=0
+5 pid=FFFA7EDF t=206483 grGetString#1 pname=A1 -> Voodoo3
+6 pid=FFFA7EDF t=206483 grGetString#2 pname=A3 -> 3Dfx Interactive
+7 pid=FFFA7EDF t=206483 grGetString#3 pname=A2 -> Glide
+8 pid=FFFA7EDF t=206483 grGetString#4 pname=A4 -> 3.01 Velocity9x 2ee04d24-dirty
+9 pid=FFFA7EDF t=206513 device: window=00000174 ours=0
+10 pid=FFFA7EDF t=208578 device: describe result=0 engine=4 generation=6
+11 pid=FFFA7EDF t=208578 device: target formats=00000004 texture formats=0000001A hw max=256
+12 pid=FFFA7EDF t=208578 device: open 640x480 buffers=3
+13 pid=FFFA7EDF t=208578 device: target 555=1
+14 pid=FFFA7EDF t=208578 grSstWinOpen#1 hwnd=00000174 res=7 refresh=0 cformat=2 origin=0 colbuf=2 auxbuf=0 -> 1
+15 pid=FFFA7EDF t=208578 grGet#2 pname=0A -> 256 (4 bytes)
+16 pid=FFFA7EDF t=208578 grGet#3 pname=0B -> 3 (4 bytes)
+17 pid=FFFA7EDF t=208578 grGet#4 pname=11 -> 1 (4 bytes)
+18 pid=FFFA7EDF t=208578 grGet#5 pname=13 -> 1 (4 bytes)
+19 pid=FFFA7EDF t=208578 grGet#6 pname=24 -> 8 (4 bytes)
+20 pid=FFFA7EDF t=208578 grGet#7 pname=0E -> 0 (4 bytes)
+21 pid=FFFA7EDF t=208578 grCoordinateSpace#1 mode=0
+22 pid=FFFA7EDF t=208578 grVertexLayout#1 param=01 offset=0 mode=1
+23 pid=FFFA7EDF t=208578 grVertexLayout#2 param=50 offset=12 mode=1
+24 pid=FFFA7EDF t=208578 grVertexLayout#3 param=40 offset=16 mode=1
+25 pid=FFFA7EDF t=208578 grVertexLayout#4 param=30 offset=8 mode=1
+26 pid=FFFA7EDF t=208578 grDepthMask#1 enable=00000000
+27 pid=FFFA7EDF t=208578 grColorMask#1 rgb=1 alpha=0
+28 pid=FFFA7EDF t=208578 grTexCombine#1 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+29 pid=FFFA7EDF t=208578 grTexFilterMode#1 tmu=0 min=0 mag=0
+30 pid=FFFA7EDF t=208578 grTexCombine#2 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+31 pid=FFFA7EDF t=208578 grChromakeyValue#1 color=000000FF
+32 pid=FFFA7EDF t=208578 grTexMinAddress#1 tmu=0 -> 0
+33 pid=FFFA7EDF t=208578 grTexMaxAddress#1 tmu=0 -> 003E0000
+34 pid=FFFA7EDF t=208578 grTexDownloadMipMap#1 tmu=0 addr=00000000 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+35 pid=FFFA7EDF t=208578 grTexDownloadMipMap#2 tmu=0 addr=00000080 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+36 pid=FFFA7EDF t=208578 grTexDownloadMipMap#3 tmu=0 addr=00000100 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+37 pid=FFFA7EDF t=208578 grTexDownloadMipMap#4 tmu=0 addr=00000180 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+38 pid=FFFA7EDF t=208578 grTexDownloadMipMap#5 tmu=0 addr=00000200 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+39 pid=FFFA7EDF t=208578 grTexDownloadMipMap#6 tmu=0 addr=00000280 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+40 pid=FFFA7EDF t=208578 grTexDownloadMipMap#7 tmu=0 addr=00000300 evenodd=3 lod=4..4 aspect=-1 format=5 data=00D38AB0
+... (trimmed: device, census and refusal lines follow) ...
+143 pid=FFFA7EDF t=209028 census   draws: drawn=2 refused=0 culled=0 skipped-textured=0
+144 pid=FFFA7EDF t=209028 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+169 pid=FFFA7EDF t=210796 device: closed
+172 pid=FFFA7EDF t=210796 census   draws: drawn=2 refused=0 culled=0 skipped-textured=0
+173 pid=FFFA7EDF t=210796 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+201 pid=FFFA7EDF t=210823 device: window=00000174 ours=0
+202 pid=FFFA7EDF t=212878 device: describe result=0 engine=4 generation=7
+203 pid=FFFA7EDF t=212878 device: target formats=00000004 texture formats=0000001A hw max=256
+204 pid=FFFA7EDF t=212878 device: open 640x480 buffers=3
+205 pid=FFFA7EDF t=212878 device: target 555=1
+328 pid=FFFA7EDF t=212938 census   draws: drawn=8 refused=0 culled=0 skipped-textured=0
+329 pid=FFFA7EDF t=212938 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+355 pid=FFFA7EDF t=214704 device: closed
+358 pid=FFFA7EDF t=214704 census   draws: drawn=8 refused=0 culled=0 skipped-textured=0
+359 pid=FFFA7EDF t=214704 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+387 pid=FFFA7EDF t=214733 device: window=00000174 ours=0
+388 pid=FFFA7EDF t=216788 device: describe result=0 engine=4 generation=8
+389 pid=FFFA7EDF t=216788 device: target formats=00000004 texture formats=0000001A hw max=256
+390 pid=FFFA7EDF t=216788 device: open 800x600 buffers=3
+391 pid=FFFA7EDF t=216788 device: target 555=1
+556 pid=FFFA7EDF t=221440 census   draws: drawn=3146 refused=0 culled=0 skipped-textured=0
+557 pid=FFFA7EDF t=221440 census   draws: fog-dropped=0 uploads=11 surface-hits=1 evictions=0
+844 pid=FFFA7EDF t=232093 draw refused: result=4 triangles=2 storage/format=0203
+929 pid=FFFA7EDF t=232313 draw refused: result=4 triangles=2 storage/format=0203
+940 pid=FFFA7EDF t=232353 draw refused: result=4 triangles=2 storage/format=0203
+951 pid=FFFA7EDF t=232393 draw refused: result=4 triangles=2 storage/format=0203
+962 pid=FFFA7EDF t=232433 draw refused: result=4 triangles=2 storage/format=0203
+991 pid=FFFA7EDF t=232473 draw refused: result=4 triangles=2 storage/format=0203
+1002 pid=FFFA7EDF t=232513 draw refused: result=4 triangles=2 storage/format=0203
+1013 pid=FFFA7EDF t=232553 draw refused: result=4 triangles=2 storage/format=0203
+1042 pid=FFFA7EDF t=232598 draw refused: result=4 triangles=2 storage/format=0203
+1053 pid=FFFA7EDF t=232637 draw refused: result=4 triangles=2 storage/format=0203
+1064 pid=FFFA7EDF t=232677 draw refused: result=4 triangles=2 storage/format=0203
+1093 pid=FFFA7EDF t=232717 draw refused: result=4 triangles=2 storage/format=0203
+1104 pid=FFFA7EDF t=232757 draw refused: result=4 triangles=2 storage/format=0203
+1115 pid=FFFA7EDF t=232797 draw refused: result=4 triangles=2 storage/format=0203
+1140 pid=FFFA7EDF t=232838 draw refused: result=4 triangles=2 storage/format=0203
+1151 pid=FFFA7EDF t=232877 draw refused: result=4 triangles=2 storage/format=0203
+1162 pid=FFFA7EDF t=232917 draw refused: result=4 triangles=2 storage/format=0203
+1187 pid=FFFA7EDF t=232957 draw refused: result=4 triangles=2 storage/format=0203
+1198 pid=FFFA7EDF t=232997 draw refused: result=4 triangles=2 storage/format=0203
+1209 pid=FFFA7EDF t=233038 draw refused: result=4 triangles=2 storage/format=0203
+1220 pid=FFFA7EDF t=233078 draw refused: result=4 triangles=2 storage/format=0203
+1247 pid=FFFA7EDF t=233118 draw refused: result=4 triangles=2 storage/format=0203
+1258 pid=FFFA7EDF t=233158 draw refused: result=4 triangles=2 storage/format=0203
+1269 pid=FFFA7EDF t=233198 draw refused: result=4 triangles=2 storage/format=0203
+1458 pid=FFFA7EDF t=236478 census   draws: drawn=44464 refused=498 culled=0 skipped-textured=0
+1459 pid=FFFA7EDF t=236478 census   draws: fog-dropped=0 uploads=434 surface-hits=180 evictions=183
+1496 pid=FFFA7EDF t=238893 census   draws: drawn=61284 refused=1542 culled=0 skipped-textured=0
+1497 pid=FFFA7EDF t=238893 census   draws: fog-dropped=0 uploads=434 surface-hits=180 evictions=183
+1531 pid=FFFA7EDF t=240671 device: closed
+1534 pid=FFFA7EDF t=240671 census   draws: drawn=61284 refused=1542 culled=0 skipped-textured=0
+1535 pid=FFFA7EDF t=240671 census   draws: fog-dropped=0 uploads=434 surface-hits=180 evictions=183
+1571 pid=FFFA7EDF t=240698 device: window=00000174 ours=0
+1572 pid=FFFA7EDF t=242753 device: describe result=0 engine=4 generation=9
+1573 pid=FFFA7EDF t=242753 device: target formats=00000004 texture formats=0000001A hw max=256
+1574 pid=FFFA7EDF t=242753 device: open 640x480 buffers=3
+1575 pid=FFFA7EDF t=242753 device: target 555=1
+2220 pid=FFFA7EDF t=251541 census   draws: drawn=102634 refused=1798 culled=10701 skipped-textured=0
+2221 pid=FFFA7EDF t=251541 census   draws: fog-dropped=0 uploads=674 surface-hits=278 evictions=183
+3455 pid=FFFA7EDF t=266544 census   draws: drawn=1100234 refused=11776 culled=298946 skipped-textured=0
+3456 pid=FFFA7EDF t=266544 census   draws: fog-dropped=0 uploads=1372 surface-hits=2398 evictions=413

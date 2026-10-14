@@ -110,6 +110,9 @@ struct v9x_m64_flat_state {
     v9x_u32 scissor_top;
     v9x_u32 scissor_right;
     v9x_u32 scissor_bottom;
+    /* The request's numbering: 2 is XRGB1555; anything else, zero
+     * included, remains RGB565. */
+    v9x_u32 target_format;
 };
 
 struct v9x_m64_depth_state {

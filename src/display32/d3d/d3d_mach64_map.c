@@ -143,6 +143,7 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
     state->color.scissor_top = request->scissor_top;
     state->color.scissor_right = request->scissor_right;
     state->color.scissor_bottom = request->scissor_bottom;
+    state->color.target_format = request->target_format;
 
     if (request->depth_enable != 0ul) {
         state->depth_enable = 1ul;

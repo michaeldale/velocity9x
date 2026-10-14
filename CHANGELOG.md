@@ -6,24 +6,26 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.17.1 - not yet released
 
-- **The Rage IIC runs 16 bits as 5:5:5**, as ATI's own driver does and
-  as titles written for ATI cards assume. Every Rage IIC desktop at 16
-  bpp changes layout; `[Velocity9x] HighColor=16` in SYSTEM.INI keeps
-  5:6:5. The Rage II's Direct3D draws into either layout. Two changes
-  were needed:
+- **ATI cards with hardware Direct3D run 16 bits as 5:5:5**, as ATI's
+  own driver does and as titles written for ATI cards assume. That
+  covers the Rage IIC and the Rage Pro class: Rage Pro, XL and
+  Mobility. Their 16 bpp desktops change layout; `[Velocity9x]
+  HighColor=16` in SYSTEM.INI keeps 5:6:5. Both engines' Direct3D draws
+  into either layout. Two changes were needed:
   - The mini-VDD now keeps the 15 bpp modes an ATI BIOS reports. They
     were dropped before, so a 555 mode set failed.
-  - The Rage II's Direct3D draws into 1555 targets as well as 565.
+  - Both 3D engines draw into 1555 targets as well as 565.
 
   Textures created without a pixel format, which take the desktop's
   5:5:5, now draw. Glide opens on a 5:5:5 desktop and converts the 565
   frame buffer a game reads and writes. ATI3DCIF.DLL logs once when the
   desktop is 5:6:5, since titles written for ATI then show wrong colours.
-  The Rage XL, Rage Pro and Mobility stay 5:6:5 until their own
-  measurement.
+  Measured on the Rage IIC and the Rage XL; the Mobility follows by
+  design and has not booted it.
   [Desktop](docs/decisions/2026-10-14-rage-iic-555-desktop.md),
   [3D](docs/decisions/2026-10-14-rage-iic-draws-1555-targets.md),
-  [textures and Glide](docs/decisions/2026-10-14-rage-iic-555-textures-and-glide.md).
+  [textures and Glide](docs/decisions/2026-10-14-rage-iic-555-textures-and-glide.md),
+  [Rage XL](docs/decisions/2026-10-14-rage-xl-555-desktop.md).
 
 ## 0.17.0 - 2026-10-13
 

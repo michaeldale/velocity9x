@@ -12,6 +12,7 @@
 
 /* Numbering shared with Direct3D and V9X_R3D_*. */
 #define M64_TARGET_RGB565     1ul
+#define M64_TARGET_XRGB1555   2ul
 #define M64_WRITE_MASK_RGB    7ul
 #define M64_SHADE_FLAT        1ul
 #define M64_SHADE_GOURAUD     2ul
@@ -188,7 +189,10 @@ static v9x_u32 v9x_m64_policy_texture(
 {
     int has_alpha;
 
+    /* XRGB1555 - an untagged texture on a 5:5:5 desktop - samples as 1555
+     * without TEX_MAP_AEN, and is in every other way RGB565's case. */
     if (request->texture_format != V9X_M64_TEXTURE_FORMAT_RGB565 &&
+        request->texture_format != V9X_M64_TEXTURE_FORMAT_XRGB1555 &&
         !v9x_m64_policy_format_has_alpha(request->texture_format)) {
         return V9X_M64_REFUSE_TEXTURE_FORMAT;
     }
@@ -342,8 +346,13 @@ static v9x_u32 v9x_m64_policy_check(
 {
     v9x_u32 reason;
 
-    /* Only RGB565 targets were drawn; XRGB1555 waits for its own scene. */
-    if (request->target_format != M64_TARGET_RGB565 ||
+    /*
+     * RGB565, as every Phase 4 scene drew, or XRGB1555 with DP_PIX_WIDTH's
+     * destination at code 3 (mach64_engine.c): V9XDDP on the Rage XL drew
+     * the two alike (docs\decisions\2026-10-14-rage-xl-555-desktop.md).
+     */
+    if ((request->target_format != M64_TARGET_RGB565 &&
+         request->target_format != M64_TARGET_XRGB1555) ||
         request->target_width == 0ul || request->target_height == 0ul) {
         return V9X_M64_REFUSE_TARGET_FORMAT;
     }

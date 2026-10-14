@@ -75,7 +75,8 @@ static void test_direct3d_defaults(void)
     d3d_draw(&draw);
     draw.target.format = V9X_R3D_FORMAT_XRGB1555;
     v9x_d3d_mach64_map_request(&draw, 0, 0ul, &request);
-    CHECK(accept(&request) == V9X_M64_REFUSE_TARGET_FORMAT);
+    CHECK(request.target_format == 2ul);
+    CHECK(accept(&request) == V9X_M64_REFUSE_NONE);
 }
 
 static void test_depth_needs_a_bound_surface(void)
@@ -205,6 +206,13 @@ static void test_mip_mapping(void)
     v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
                              &state);
     CHECK(state.level_count == 1ul && state.bilinear_min == 1ul);
+
+    /* The target's layout reaches the state, which sets DP_PIX_WIDTH's
+     * destination from it. */
+    request.target_format = 2ul;
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.color.target_format == 2ul);
 
     /* Trilinear on the chain: bilinear_min 2 and every level. */
     draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;

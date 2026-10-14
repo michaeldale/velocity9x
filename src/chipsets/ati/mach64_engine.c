@@ -1,5 +1,8 @@
 #include "velocity9x/ati_mach64_engine.h"
 
+/* v9x_m64_flat_state.target_format, in the draw request's numbering. */
+#define M64_ENGINE_TARGET_XRGB1555 2ul
+
 static v9x_u32 v9x_m64_popcount16(v9x_u32 value)
 {
     v9x_u32 count = 0ul;
@@ -814,8 +817,16 @@ v9x_status v9x_m64_build_flat_state(
     offsets[10] = V9X_M64_SCALE_3D_CNTL; values[10] = 0x000100c1ul;
     offsets[11] = V9X_M64_DP_FRGD_CLR; values[11] = 0ul;
     offsets[12] = V9X_M64_DP_WRITE_MASK; values[12] = 0xfffffffful;
-    /* RGB565 in destination, composite, source, host and scale fields. */
-    offsets[13] = V9X_M64_DP_PIX_WIDTH; values[13] = 0x40040444ul;
+    /*
+     * RGB565 in destination, composite, source, host and scale fields; for
+     * an XRGB1555 target the destination is code 3, the code ATI's driver
+     * draws the Rage II's 1555 targets with (rage2_draw.c). The Rage XL
+     * drew V9XDDP's scenes alike at both
+     * (docs\decisions\2026-10-14-rage-xl-555-desktop.md).
+     */
+    offsets[13] = V9X_M64_DP_PIX_WIDTH;
+    values[13] = state->target_format == M64_ENGINE_TARGET_XRGB1555
+        ? 0x40040443ul : 0x40040444ul;
     /* Vertex 3 is the flat-shading provoking vertex. */
     offsets[14] = V9X_M64_SETUP_CNTL;
     values[14] = V9X_M64_SETUP_FLAT_VERTEX_3;
@@ -1056,6 +1067,7 @@ v9x_status v9x_m64_build_texture_state(
         texture_pix_width = V9X_M64_SCALE_3D_TEXTURE_RGB565;
         break;
     case V9X_M64_TEXTURE_FORMAT_ARGB1555:
+    case V9X_M64_TEXTURE_FORMAT_XRGB1555:
         texture_pix_width = V9X_M64_SCALE_3D_TEXTURE_ARGB1555;
         break;
     case V9X_M64_TEXTURE_FORMAT_ARGB4444:
@@ -1162,7 +1174,8 @@ v9x_status v9x_m64_build_texture_state(
                     ? V9X_M64_TEX_BLEND_FCN_LINEAR : 0ul) |
                  (state->bilinear_mag != 0ul
                     ? V9X_M64_BILINEAR_TEX_EN : 0ul) |
-                 (state->texture_format != V9X_M64_TEXTURE_FORMAT_RGB565
+                 (state->texture_format == V9X_M64_TEXTURE_FORMAT_ARGB1555 ||
+                  state->texture_format == V9X_M64_TEXTURE_FORMAT_ARGB4444
                     ? V9X_M64_TEX_MAP_AEN : 0ul);
     values[13] = (values[13] & 0x0ffffffful) |
                  texture_pix_width;

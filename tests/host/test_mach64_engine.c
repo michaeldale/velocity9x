@@ -455,6 +455,7 @@ static void test_flat_state_builder(void)
     v9x_u32 offsets[V9X_M64_FLAT_STATE_DWORDS];
     v9x_u32 values[V9X_M64_FLAT_STATE_DWORDS];
     v9x_u32 written = 99ul;
+    memset(&state, 0, sizeof(state));
     state.vram_bytes = 4ul * 1024ul * 1024ul;
     state.target_offset = 0x00200000ul;
     state.target_pitch_bytes = 128ul;
@@ -487,6 +488,20 @@ static void test_flat_state_builder(void)
     CHECK(offsets[15] == V9X_M64_TEX_SIZE_PITCH && values[15] == 0ul);
     CHECK(offsets[16] == V9X_M64_TEX_CNTL && values[16] == 0ul);
 
+    /* An XRGB1555 target: destination code 3, every other field as for
+     * 565; 1 is 565 too, as the request numbers them. */
+    state.target_format = 2ul;
+    CHECK(v9x_m64_build_flat_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[13] == 0x40040443ul);
+    state.target_format = 1ul;
+    CHECK(v9x_m64_build_flat_state(
+              &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[13] == 0x40040444ul);
+    state.target_format = 0ul;
+
     state.scissor_right = 65ul;
     CHECK(v9x_m64_build_flat_state(
               &state, offsets, values, V9X_M64_FLAT_STATE_DWORDS,
@@ -507,6 +522,7 @@ static void test_gouraud_builders(void)
     v9x_u32 setup_offsets[V9X_M64_GOURAUD_TRIANGLE_DWORDS];
     v9x_u32 setup_values[V9X_M64_GOURAUD_TRIANGLE_DWORDS];
     v9x_u32 written = 99ul;
+    memset(&state, 0, sizeof(state));
     state.vram_bytes = 4ul * 1024ul * 1024ul;
     state.target_offset = 0x00200100ul;
     state.target_pitch_bytes = 128ul;
@@ -725,6 +741,7 @@ static void test_depth_builders(void)
     v9x_u32 setup_offsets[V9X_M64_FLAT_TRIANGLE_DWORDS];
     v9x_u32 setup_values[V9X_M64_FLAT_TRIANGLE_DWORDS];
     v9x_u32 written = 99ul;
+    memset(&state, 0, sizeof(state));
     state.color.vram_bytes = 4ul * 1024ul * 1024ul;
     state.color.target_offset = 0x00200100ul;
     state.color.target_pitch_bytes = 128ul;
@@ -806,6 +823,17 @@ static void test_texture_builders(void)
     CHECK(offsets[10] == V9X_M64_SCALE_3D_CNTL &&
           values[10] == 0x01010081ul);
     CHECK(values[13] == 0x40040444ul);
+    /* The texture field replaces the top nibble only; the 1555
+     * destination stays. */
+    state.color.target_format = 2ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK(values[13] == 0x40040443ul);
+    state.color.target_format = 0ul;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
     CHECK(offsets[14] == V9X_M64_SETUP_CNTL && values[14] == 0ul);
     CHECK(offsets[15] == V9X_M64_TEX_SIZE_PITCH &&
           values[15] == 0x00000333ul);
@@ -891,7 +919,20 @@ static void test_texture_builders(void)
               &written) == V9X_STATUS_INVALID_ARGUMENT);
     CHECK(written == 0ul);
     state.wrap_s = 0ul;
-    state.texture_format = 3ul;
+    /* XRGB1555 samples as 1555 without TEX_MAP_AEN: its top bit is not
+     * alpha. */
+    state.texture_format = V9X_M64_TEXTURE_FORMAT_XRGB1555;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK((values[13] & 0xf0000000ul) == V9X_M64_SCALE_3D_TEXTURE_ARGB1555);
+    CHECK((values[10] & V9X_M64_TEX_MAP_AEN) == 0ul);
+    state.texture_format = V9X_M64_TEXTURE_FORMAT_ARGB1555;
+    CHECK(v9x_m64_build_texture_state(
+              &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
+              &written) == V9X_STATUS_OK);
+    CHECK((values[10] & V9X_M64_TEX_MAP_AEN) != 0ul);
+    state.texture_format = 7ul;
     CHECK(v9x_m64_build_texture_state(
               &state, offsets, values, V9X_M64_TEXTURED_STATE_DWORDS,
               &written) == V9X_STATUS_INVALID_ARGUMENT);
@@ -1283,6 +1324,7 @@ static void test_phase3_triangle_golden(void)
     v9x_u32 setup_offsets[V9X_M64_FLAT_TRIANGLE_DWORDS];
     v9x_u32 setup_values[V9X_M64_FLAT_TRIANGLE_DWORDS];
     v9x_u32 written;
+    memset(&state, 0, sizeof(state));
     state.vram_bytes = 4ul * 1024ul * 1024ul;
     state.target_offset = 0x00200100ul;
     state.target_pitch_bytes = 128ul;

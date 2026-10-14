@@ -115,9 +115,11 @@ const char *v9x_dd_d3d_state_text(void)
  * The Rage IIC writes either, and 5:5:5 is what ATI's own driver runs it at
  * and what titles written for ATI cards assume
  * (docs\plans\ati-555-desktop.md; measured on A8U4I5,
- * docs\decisions\2026-10-14-rage-iic-555-desktop.md). Gen3 wants 5:6:5 and
- * every surface measured on it is 565; the Mach64 class stays 565 until its
- * own 555 scene is measured.
+ * docs\decisions\2026-10-14-rage-iic-555-desktop.md). The Rage Pro class
+ * (Mach64 engine type) draws a 1555 target as it draws 565: V9XDDP on the
+ * Rage XL agreed at both layouts but for untagged textures, since fixed
+ * (docs\decisions\2026-10-14-rage-xl-555-desktop.md). Gen3 wants 5:6:5 and
+ * every surface measured on it is 565.
  *
  * Recorded from the last descriptor call rather than re-derived, because the
  * descriptor's answer can change during a boot - see v9x_dd_stamp_engine_caps.
@@ -125,7 +127,8 @@ const char *v9x_dd_d3d_state_text(void)
 WORD v9x_dd_engine_wants_555(void)
 {
     return (v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX ||
-            v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2)
+            v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2 ||
+            v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64)
                ? V9X_TRUE : V9X_FALSE;
 }
 

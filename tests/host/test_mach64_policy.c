@@ -89,7 +89,10 @@ static void test_arguments_and_target(void)
     CHECK(v9x_m64_check_draw(0, &decision) == V9X_M64_REFUSE_ARGUMENT);
     CHECK(v9x_m64_check_draw(&request, 0) == V9X_M64_REFUSE_ARGUMENT);
 
+    /* XRGB1555 as well as RGB565; nothing else. */
     request.target_format = 2ul;
+    CHECK(check(&request) == V9X_M64_REFUSE_NONE);
+    request.target_format = 3ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TARGET_FORMAT);
     request.target_format = 0ul;
     CHECK(check(&request) == V9X_M64_REFUSE_TARGET_FORMAT);
@@ -99,7 +102,7 @@ static void test_arguments_and_target(void)
 
     /* The first failing rule is the one reported. */
     base(&request);
-    request.target_format = 2ul;
+    request.target_format = 3ul;
     request.blend_enable = 1ul;
     request.src_blend = T_BLEND_DESTALPHA;
     CHECK(check(&request) == V9X_M64_REFUSE_TARGET_FORMAT);
@@ -232,11 +235,13 @@ static void test_texture_shape_and_sampling(void)
     v9x_u32 format;
     v9x_u32 edge;
 
-    for (format = 0ul; format < 3ul; ++format) {
+    /* 565, 1555, 4444, and XRGB1555 (an untagged texture on a 5:5:5
+     * desktop). */
+    for (format = 0ul; format < 4ul; ++format) {
         textured(&request, format);
         CHECK(check(&request) == V9X_M64_REFUSE_NONE);
     }
-    textured(&request, 3ul);
+    textured(&request, 4ul);
     CHECK(check(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
 
     /* Square powers of two from 2 to 256, the sizes the HAL probe samples
@@ -366,6 +371,11 @@ static void test_texture_ops(void)
           V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL, V9X_M64_TEX_MAP_AEN },
         { T_TEXOP_DECALALPHA, 2ul, V9X_M64_REFUSE_NONE,
           V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL, V9X_M64_TEX_MAP_AEN },
+        /* XRGB1555 has no alpha: as RGB565. */
+        { T_TEXOP_MODULATE, 3ul, V9X_M64_REFUSE_NONE,
+          V9X_M64_TEX_LIGHT_FCN_MODULATE, 0ul },
+        { T_TEXOP_DECALALPHA, 3ul, V9X_M64_REFUSE_NONE,
+          V9X_M64_TEX_LIGHT_FCN_REPLACE, 0ul },
         /* No mode produces A = At*Af, but nothing here reads the alpha,
          * so MODULATE's A = At draws the same pixels. */
         { T_TEXOP_MODULATEALPHA, 2ul, V9X_M64_REFUSE_NONE,

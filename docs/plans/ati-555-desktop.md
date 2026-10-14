@@ -8,9 +8,12 @@ default, and the Rage II draws 1555 targets:
 [3D](../decisions/2026-10-14-rage-iic-draws-1555-targets.md). On the Rage
 II, untagged XRGB1555 textures draw, and Glide opens at 555 and converts
 the LFB ([boot 464](../decisions/2026-10-14-rage-iic-555-textures-and-glide.md)).
-The 2D width code is left at 565 on purpose (same record). Remaining:
-- Phase 1's blend step (a SCALE_3D_CNTL sweep).
-- Phase 3, the Mach64 class.
+The 2D width code is left at 565 on purpose (same record). Phase 3: the
+Rage XL measured alike at both layouts, and the Rage Pro class now
+chooses 555 ([boot 469](../decisions/2026-10-14-rage-xl-555-desktop.md)).
+Remaining:
+- Phase 1's blend step on the Rage IIC (a SCALE_3D_CNTL sweep).
+- The Gateway's Rage Mobility booted at 555.
 
 Phase 2 is done on the Rage IIC: Diablo II and the NFS II demo were
 checked on the monitor. Chosen by Michael on 2026-10-14 over keeping
