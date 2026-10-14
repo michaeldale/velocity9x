@@ -206,6 +206,102 @@ Velocity9x and function 1 parked with problem 22, as on every 945.
 - The same run with the desktop at 640x480x16, which takes the 2112 pitch
   and the heap pressure out of the picture in one step.
 
+## Field report V9X-82WX2N (2026-10-14 09:51 server time)
+
+Same machine, four minutes later. `V9XBOOT.INI` and `V9XHW.INI` are
+byte-identical to V9X-6XQHDS's (same SHA-256). `V9XSNA3.INI` was dumped
+37 s into a boot at 2026-10-14 02:55 with `DriverInitDone=0` and every
+counter zero: again the boot after a lock.
+
+The one new line is in `V9XGLIDE.LOG`: a ninth `CARMA2.EXE` attach at
+02:51:41, 147 s into the 02:49 boot, detached at once with zero draws.
+So in the 02:49 session the game was started about 2.5 minutes after
+boot, and the machine was rebooted by 02:55. That fits a lock within
+about three minutes of starting the game, and still says nothing about
+which renderer drew before it.
+
+## Field reports V9X-DPRZEA and V9X-01D0DQ: the lock follows the flip
+
+Same machine, 2026-10-14 10:11 and 10:20 server time. This time the
+reporter wrote descriptions:
+
+- V9X-DPRZEA: "Carmageddon II (Glide) hard lock at start of video
+  playback (V9X3D SYNC)".
+- V9X-01D0DQ: "Carmageddon II (Glide) game ran, but with poor
+  performance and flickering (V9X3D ON) System hard lock first time i
+  hit "Send report...""
+
+Both `V9XBOOT.INI` files show the desktop now at **640x480x16, pitch
+1280** (`VddReserve=vdd=614400`), so the 2112 pitch and the 1024x768 heap
+fill are out of both runs. The engine capability word stamped in
+`V9XHW.INI` confirms what each step turned off (`engine_abi.h`):
+
+| Run | `EngineStamp caps` | FLIP 0x4 | FLIP_RING 0x200 | ASYNC 0x400 | D3D 0x10 | Result |
+|---|---|---|---|---|---|---|
+| default (V9X-6XQHDS) | `2614` | on | on | on | on | locks |
+| `V9X3D SYNC` (DPRZEA) | `2214` | on | on | off | on | locks at the start of the intro video |
+| `V9X3D ON` (01D0DQ) | `2010` | off | off | off | on | the game runs |
+
+The `V9X3D ON` run's Glide log closes one session with `swaps=1009`,
+`drawn=1294580`, `refused=0`, 3,193 mip-map downloads and
+`process exiting=1`: Carmageddon II played through Glide on the Gen3
+engine to an orderly exit. The SYNC run's log has one attach at
+03:11:03, detached at once with zero draws, as in every earlier locked
+boot.
+
+So **asynchronous submission is cleared**: turning it off alone did not
+stop the lock. **The 3D engine at 640x480 is cleared** for Glide: 1.29
+million triangles with no lock once the flip was off. What remains is
+the Intel flip (plain and ring together; `V9X3D` has no step that
+separates them), and the lock now has a moment: the start of the intro
+video, which is a full-screen DirectDraw session that flips before
+Glide has drawn anything. That fits the review's first hypothesis, the
+live-pipe path on a board whose only output is the external monitor,
+and does not yet prove it: nothing from inside a locked session has been
+captured.
+
+"Poor performance and flickering" with the flip off is what declining
+every flip looks like (the copy-to-front path, the same symptom the
+Mach64-class flip record describes). It is the expected cost of the
+workaround, not a separate defect.
+
+The lock on the first "Send report..." under `V9X3D ON` is outside this
+issue, which is the game locking the machine. It is noted here only so it
+is not lost; the flip is off in that boot and the second attempt worked.
+
+All three snapshots in these reports (`V9XSNA4.INI`, `V9XSNA5.INI`, and
+`V9XSNA3.INI` before them) are again fresh boots with
+`DriverInitDone=0`.
+
+### What would locate it
+
+The `V9X3D ON` session is the one that ran, so its counters say what the
+pipe resolution found: `ScanoutUnresolved`, the `Scan*` and `Pipestat*`
+lines, and the `Wm*` watermark records. A `V9XTRACE` dump taken in that
+state, after the game exits and before anything else, would show which
+pipe and plane the driver saw. Without the flip it cannot show what the
+flip did, but if it reports two pipes live, or the plane on pipe A, that
+is the configuration no Intel flip has run on.
+
+## The reporter's C:\V9XDIAG files (received 2026-10-14)
+
+Sent directly: `INTELARM.TXT` and all six snapshots, `V9XSNAP.INI` and
+`V9XSNA1.INI` to `V9XSNA5.INI`. `INTELMM.TXT`, the one asked for, was
+not among them.
+
+- `INTELARM.TXT` (107 bytes) is the `V9X3D ON` content:
+  `IntelRuntime3D=1`, `IntelFlip=0`, `IntelAsyncSubmit=0`. The machine is
+  left on the setting under which the game ran.
+- `V9XSNAP.INI` (dumped 2026-10-14 00:19, 136 s into a boot) and
+  `V9XSNA1.INI` (02:41, 255 s in) are the two not seen before. Both have
+  `Processes=0` and `DriverInitDone=0`, with every counter zero, like
+  the four already read. No DirectDraw session had run in any boot when
+  its snapshot was taken, so none of the six holds evidence about the
+  lock. The question about the older snapshots is closed.
+- Each snapshot's `[DiagFiles]` lists `INTELMM.TXT` at 1,543 bytes,
+  rewritten at every boot, so the file exists. It still has to be asked
+  for by name.
+
 ## Local reproduction
 
 None possible yet. The netbook is the same silicon but its VBIOS refuses
