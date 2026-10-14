@@ -30,6 +30,17 @@ v9x_u32 v9x_r3d_validate_surface(const V9X_R3D_SURFACE *surface,
                                  v9x_u32 vram_bytes,
                                  v9x_u32 dimension_max);
 
+/*
+ * A V9X_R3D_ABI_RAW as a surface (ABI 5): `address` is its linear address
+ * as the caller converted it, which must lie in [linear_base, linear_base
+ * + vram_bytes); `out` gets the offset from linear_base and the raw's
+ * pitch, size and format, with no object. This checks the address only;
+ * the layout is v9x_r3d_validate_surface's or _depth's, as for a surface.
+ */
+v9x_u32 v9x_r3d_validate_raw(const V9X_R3D_ABI_RAW *raw, v9x_u32 address,
+                             v9x_u32 linear_base, v9x_u32 vram_bytes,
+                             V9X_R3D_SURFACE *out);
+
 /* A 16-bit depth buffer for `target`: the same extent rule, and at least
  * the target's width and height. */
 v9x_u32 v9x_r3d_validate_depth(const V9X_R3D_SURFACE *depth,
@@ -59,8 +70,10 @@ v9x_u32 v9x_r3d_validate_state(const V9X_R3D_ABI_STATE *state,
 /*
  * A draw request's header, in the order that dereferences least: null is
  * INVALID; struct_bytes other than this build's is ABI, and nothing after
- * it is read; a generation other than `generation` is STALE; then a named
- * target, vertices, a count of 1..V9X_R3D_ABI_BATCH_MAX, and the texture;
+ * it is read; a generation other than `generation` is STALE; then a target
+ * named exactly one way (surface or raw address) with a depth buffer named
+ * the same way or not at all, vertices, a count of 1..V9X_R3D_ABI_BATCH_MAX,
+ * and the texture;
  * then the second unit, which needs unit 0 and texcoords1, and texcoords1
  * null without it.
  * The surfaces and the state are checked once resolved, by the three

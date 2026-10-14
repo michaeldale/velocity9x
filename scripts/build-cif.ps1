@@ -1,8 +1,8 @@
-# Build ATI3DCIF.DLL, the 3DCIF census (docs\plans\ati-3dcif-wrapper.md,
-# Phase 1): every export of ATI's ATI3DCIF.DLL, logging to
-# C:\V9XDIAG\V9XCIF.LOG and drawing nothing. Not packaged: it is copied
-# into a demo's or title's own folder for a census run, where Windows finds
-# it before the system directory's copy.
+# Build ATI3DCIF.DLL (docs\plans\ati-3dcif-wrapper.md, Phase 3): ATI's 3D
+# Rage Common Interface over the render interface, with the census's
+# logging to C:\V9XDIAG\V9XCIF.LOG. Not packaged yet: it is copied into a
+# demo's or title's own folder, where Windows finds it before the system
+# directory's copy.
 #
 # Each manifest entry is exported twice, as ATI's DLL does: the __stdcall
 # function _ATI3DCIF_<Name>@<Bytes>, and ATI3DCIF_<Name>_lib, the variable
@@ -40,12 +40,18 @@ foreach ($e in $entries) {
 $functions = @($entries | ForEach-Object { "_ATI3DCIF_$($_.Name)@$([int]$_.Bytes)" })
 $pointers = @($entries | ForEach-Object { "ATI3DCIF_$($_.Name)_lib" })
 
-$source = Join-Path $repoRoot 'src\cif\cif_census.c'
-$object = Join-Path $output 'cif_census.obj'
-& $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `
-    "-i=$(Join-Path $repoRoot 'include')" `
-    "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
-if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+# The DLL's two platform files and the pure logic the host tests cover.
+$sources = @('cif_dll.c', 'cif_surface.c', 'cif_vertex.c', 'cif_state.c', 'cif_texfmt.c')
+$objects = @()
+foreach ($name in $sources) {
+    $source = Join-Path $repoRoot "src\cif\$name"
+    $object = Join-Path $output ([IO.Path]::ChangeExtension($name, '.obj'))
+    & $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `
+        "-i=$(Join-Path $repoRoot 'include')" `
+        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+    if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+    $objects += $object
+}
 
 $dll = Join-Path $output 'ATI3DCIF.DLL'
 $mapFile = Join-Path $output 'ati3dcif.map'
@@ -53,8 +59,8 @@ $linkFile = Join-Path $output 'ati3dcif.lnk'
 $lines = @('format windows nt dll', 'runtime windows=4.0', 'option quiet',
     'option nodefaultlibs', "option start='_V9xCifEntry@12'",
     "alias '__DLLstart_'='_V9xCifEntry@12'",
-    "option map='$mapFile'", "option modname='ATI3DCIF'", "name '$dll'",
-    "file '$object'")
+    "option map='$mapFile'", "option modname='ATI3DCIF'", "name '$dll'") + @(
+    ($objects | ForEach-Object { "file '$_'" }))
 $lines += ($functions + $pointers) | ForEach-Object { "export '$_'" }
 $lines += @(
     "library '$(Join-Path $watcomRoot 'lib386\nt\kernel32.lib')'",
@@ -63,7 +69,7 @@ Set-Content -LiteralPath $linkFile -Value $lines -Encoding Ascii
 & $linker "@$linkFile"
 if ($LASTEXITCODE -ne 0) { throw '3DCIF DLL link failed.' }
 Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $dll `
-    -BuildId $BuildId -FileDescription 'Velocity9x ATI3DCIF census' -Kind dll
+    -BuildId $BuildId -FileDescription 'Velocity9x ATI3DCIF' -Kind dll
 
 $dump = (@(& $dumper -e $dll 2>&1)) -join "`n"
 if ($LASTEXITCODE -ne 0) { throw '3DCIF DLL import audit failed.' }
@@ -121,5 +127,5 @@ foreach ($name in $pointers) {
 }
 $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
 if (-not $imageText.Contains($BuildId)) { throw 'The 3DCIF DLL is missing the build identifier.' }
-Write-Output "Built 3DCIF census DLL: $dll"
+Write-Output "Built 3DCIF DLL: $dll"
 Write-Output "Verified imports: $($imports -join ', '); exports: $($functions.Count) functions, $($pointers.Count) _lib pointers in data"

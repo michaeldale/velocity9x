@@ -1387,6 +1387,96 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     return 1;
 }
 
+/*
+ * The depth "surface" of a raw depth buffer (render interface ABI 5).
+ * The engines only test the depth object for null (the survey of
+ * 2026-10-14: d3d_mach64_map.c, d3d_soft.c, d3d_virge.c and the others
+ * read the offset and pitch), so a raw depth buffer needs a non-null
+ * object and nothing more. It is zeroed so that a reader that did
+ * dereference it would find no GBL rather than another surface's.
+ */
+static V9X_DD_SURFACE_LCL v9x_d3d_raw_depth_object;
+
+/*
+ * A target, and a depth buffer or none, named by linear address (render
+ * interface ABI 5, for ATI3DCIF.DLL; docs\plans\ati-3dcif-wrapper.md,
+ * Phase 3). The refusals are the offscreen branch of v9x_d3d_set_target's,
+ * taken from the raw values instead of a GBL: the address inside the
+ * frame-buffer mapping and the extent inside video memory
+ * (r3d_validate.c), the engine's bits per pixel, pitch alignment and
+ * maximum, and for depth the 8-byte base, the packed pitch and the
+ * exclusion of the visible frame buffer, each for the reason given there.
+ * There is no surface to read a format from, so the caller's is taken,
+ * 565 or 1555 only.
+ */
+static int v9x_d3d_set_target_raw(V9X_D3D_CONTEXT *context,
+                                  const V9X_R3D_ABI_RAW *raw_target,
+                                  const V9X_R3D_ABI_RAW *raw_depth)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+    const V9X_D3D_ENGINE_LIMITS *limits;
+    V9X_R3D_SURFACE target;
+    V9X_R3D_SURFACE depth;
+    DWORD base;
+    DWORD vram;
+    DWORD depth_bytes;
+    DWORD depth_expected;
+    int has_depth = raw_depth != 0 && raw_depth->address != 0;
+
+    if (ops == 0 || context == 0 || v9x_hal == 0 ||
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul) {
+        return 0;
+    }
+    limits = ops->limits;
+    base = v9x_hal->fb.linear_base;
+    vram = v9x_hal->fb.vram_bytes;
+    if (v9x_r3d_validate_raw(raw_target, (DWORD)raw_target->address, base,
+                             vram, &target) != V9X_R3D_RESULT_OK ||
+        v9x_r3d_validate_surface(&target, vram,
+                                 limits->target_dimension_max) !=
+            V9X_R3D_RESULT_OK) {
+        return 0;
+    }
+    /* Both layouts are 16 bits a pixel, and the engine must draw 16. */
+    if (limits->target_bits_per_pixel != 16ul ||
+        (target.pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
+        target.pitch > limits->target_pitch_max) {
+        return 0;
+    }
+    if (has_depth) {
+        if (v9x_r3d_validate_raw(raw_depth, (DWORD)raw_depth->address, base,
+                                 vram, &depth) != V9X_R3D_RESULT_OK ||
+            v9x_r3d_validate_depth(&depth, &target, vram,
+                                   limits->target_dimension_max) !=
+                V9X_R3D_RESULT_OK) {
+            return 0;
+        }
+        depth_bytes = limits->depth_bits_per_pixel >> 3;
+        depth_expected = ((depth.width * depth_bytes) + 7ul) & ~7ul;
+        if ((depth.offset & 7ul) != 0ul ||
+            depth.offset < v9x_hal->fb.visible_bytes ||
+            (limits->depth_pitch_own != 0ul
+                 ? depth.pitch < depth_expected
+                 : depth.pitch != depth_expected) ||
+            (depth.pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
+            depth.pitch > limits->target_pitch_max) {
+            return 0;
+        }
+    }
+    context->target = 0;
+    context->zbuffer = has_depth ? &v9x_d3d_raw_depth_object : 0;
+    context->target_offset = target.offset;
+    context->target_format = target.format;
+    context->pitch = target.pitch;
+    context->width = target.width;
+    context->height = target.height;
+    context->depth_offset = has_depth ? depth.offset : 0ul;
+    context->depth_pitch = has_depth ? depth.pitch : 0ul;
+    context->z_enable = has_depth ? 1ul : 0ul;
+    context->z_write = has_depth ? 1ul : 0ul;
+    return 1;
+}
+
 DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
@@ -4706,6 +4796,17 @@ static DWORD v9x_r3d_bind(void *target, void *depth)
     return V9X_R3D_RESULT_OK;
 }
 
+/* The same for a draw that names its target by address (ABI 5). */
+static DWORD v9x_r3d_bind_raw(const V9X_R3D_ABI_RAW *target,
+                              const V9X_R3D_ABI_RAW *depth)
+{
+    v9x_r3d_zero(&v9x_r3d_context, sizeof(v9x_r3d_context));
+    if (!v9x_d3d_set_target_raw(&v9x_r3d_context, target, depth)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    return V9X_R3D_RESULT_OK;
+}
+
 /*
  * The texture combine as the D3D texture op the engines implement, or zero
  * when none is exactly it. D3D MODULATE takes the texel's alpha when the
@@ -5022,7 +5123,9 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
             return V9X_R3D_RESULT_INVALID;
         }
     }
-    result = v9x_r3d_bind(request->target.surface, request->depth.surface);
+    result = request->raw_target.address != 0
+        ? v9x_r3d_bind_raw(&request->raw_target, &request->raw_depth)
+        : v9x_r3d_bind(request->target.surface, request->depth.surface);
     if (result != V9X_R3D_RESULT_OK) {
         return result;
     }

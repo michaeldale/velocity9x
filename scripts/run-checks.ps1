@@ -111,6 +111,13 @@ Invoke-CheckStep "Glide 3 DLL" {
     & (Join-Path $PSScriptRoot "build-glide3.ps1") -BuildId $BuildId
 }
 
+# ATI3DCIF.DLL is not packaged yet (docs\plans\ati-3dcif-wrapper.md, Phase
+# 5), so nothing else compiles it; its build audits the imports, both
+# export forms and the _lib pointers' section.
+Invoke-CheckStep "3DCIF DLL" {
+    & (Join-Path $PSScriptRoot "build-cif.ps1") -BuildId $BuildId
+}
+
 # build-all-packages runs each family's builder, which links, audits through
 # audit-family-binary.ps1, generates and asserts the INF, and assembles the
 # floppy from the manifests.

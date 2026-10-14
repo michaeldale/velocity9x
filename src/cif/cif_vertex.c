@@ -2,24 +2,53 @@
  * ATI3DCIF vertices and primitives to render-interface triangles
  * (docs\plans\ati-3dcif-wrapper.md, Phase 2). See cif_vertex.h for the
  * conventions and where each comes from.
+ *
+ * No C runtime in ATI3DCIF.DLL: a float-to-integer cast lowers to
+ * Watcom's __CHP helper, which the DLL cannot link, so the one conversion
+ * here goes through a local fistp as glide_vertex.c's does.
  */
 #include "cif_vertex.h"
+
+#ifdef __WATCOMC__
+static long v9x_cif_to_long(double value);
+#pragma aux v9x_cif_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long v9x_cif_to_long(double value)
+{
+    return (long)value;     /* truncates; the caller corrects to nearest */
+}
+#endif
 
 /* Vertices a primitive takes in a list, and the triangles it makes. */
 #define V9X_CIF_TRI_VERTICES  3ul
 #define V9X_CIF_QUAD_VERTICES 4ul
 #define V9X_CIF_QUAD_TRIANGLES 2ul
 
-/* A colour channel: 0..255, clamped, rounded to the nearest. */
+/* A colour channel: 0..255, clamped, halves rounded up. The x87 store
+ * rounds to nearest-even; the correction makes both compilers agree. */
 static v9x_u32 v9x_cif_channel(float value)
 {
+    long whole;
+    double difference;
+
     if (!(value > 0.0f)) {
         return 0ul;
     }
     if (value >= 255.0f) {
         return 255ul;
     }
-    return (v9x_u32)(value + 0.5f);
+    whole = v9x_cif_to_long((double)value);
+    difference = (double)value - (double)whole;
+    if (difference >= 0.5) {
+        ++whole;
+    } else if (difference < -0.5) {
+        --whole;
+    }
+    return whole < 0l ? 0ul : (whole > 255l ? 255ul : (v9x_u32)whole);
 }
 
 void v9x_cif_vtcf_convert(const V9X_CIF_VERTEX_SETUP *setup, const float *in,
@@ -57,6 +86,10 @@ void v9x_cif_vtcf_convert(const V9X_CIF_VERTEX_SETUP *setup, const float *in,
                      (v9x_cif_channel(in[V9X_C3D_VTCF_R]) << 16) |
                      (v9x_cif_channel(in[V9X_C3D_VTCF_G]) << 8) |
                      v9x_cif_channel(in[V9X_C3D_VTCF_B]);
+    }
+
+    if (setup->white) {
+        out->color |= 0x00fffffful;
     }
 
     /* Fog and alpha blending share the Rage's alpha interpolator, so with

@@ -31,7 +31,8 @@
 #include "cif_api.h"
 
 /* Bits a texel in `format` occupies in the source, 0 for one this module
- * does not convert. VQ is one index byte per 2x2 block: 2 bits a texel. */
+ * does not convert. CI4 is a byte (its index in one nibble); VQ is one
+ * index byte per 2x2 block: 2 bits a texel. */
 v9x_u32 v9x_cif_texfmt_bits(v9x_u32 format);
 
 /* The interface format a conversion produces, 0 when not converted.
@@ -63,6 +64,15 @@ v9x_u16 v9x_cif_texfmt_vq_decode(const v9x_u8 *indices, v9x_u32 index_pitch,
                                  const v9x_u16 *codebook, v9x_u32 width,
                                  v9x_u32 height, v9x_u16 *dst,
                                  v9x_u32 dst_pitch);
+
+/*
+ * Rewrites `count` texels of a V9X_R3D_ABI_FORMAT_* layout in place as
+ * RGB565, dropping alpha: the copy for a draw that does not read the
+ * texture's alpha (cif_state.h's texel_alpha). V9X_FALSE for a layout
+ * this does not know.
+ */
+v9x_u16 v9x_cif_texfmt_to_565(v9x_u32 abi_format, v9x_u16 *texels,
+                              v9x_u32 count);
 
 /*
  * Levels the interface gets for a texture of 2^xlg2 by 2^ylg2: one

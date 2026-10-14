@@ -290,6 +290,8 @@ void v9x_cif_state_map(const V9X_CIF_STATE *state, v9x_u32 width,
     out->textured = (value[V9X_C3D_ERS_TMAP_EN] != 0ul &&
                      value[V9X_C3D_ERS_TMAP_SELECT] != 0ul) ? 1ul : 0ul;
     out->key_texture = 0ul;
+    out->texel_alpha = 0ul;
+    out->white = 0ul;
     out->alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
     out->color_op = V9X_R3D_ABI_COLOROP_REPLACE;
     out->address = V9X_R3D_ABI_ADDRESS_WRAP;
@@ -304,6 +306,25 @@ void v9x_cif_state_map(const V9X_CIF_STATE *state, v9x_u32 width,
             out->recognized = V9X_FALSE;
         }
         v9x_cif_texel_op(value[V9X_C3D_ERS_TMAP_TEXOP], out);
+
+        /* Whether the texture's own alpha is read: the texel ops that
+         * pass it on, and decal, which blends by it. Otherwise the DLL
+         * draws an opaque copy, because the engines take MODULATE with
+         * the fragment's alpha only on a texture without alpha. */
+        out->texel_alpha =
+            (value[V9X_C3D_ERS_TMAP_TEXOP] == V9X_C3D_ETEXOP_ALPHA ||
+             value[V9X_C3D_ERS_TMAP_TEXOP] == V9X_C3D_ETEXOP_ALPHA_MASK ||
+             out->color_op == V9X_R3D_ABI_COLOROP_DECALALPHA) ? 1ul : 0ul;
+
+        /* The texel's colour with an alpha other than the texel's is no
+         * D3D texture op, and the engines implement only those
+         * (d3d_core.c, v9x_r3d_texture_op). MODULATE by a white vertex is
+         * the same colour exactly, and keeps the alpha op. */
+        if (out->color_op == V9X_R3D_ABI_COLOROP_REPLACE &&
+            out->alpha_op != V9X_R3D_ABI_ALPHAOP_REPLACE) {
+            out->color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+            out->white = 1ul;
+        }
 
         /* The interface has one addressing mode for both axes. */
         if (texture != 0 && texture->clamp_s && texture->clamp_t) {

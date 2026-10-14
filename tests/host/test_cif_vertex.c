@@ -37,6 +37,7 @@ static void setup_default(V9X_CIF_VERTEX_SETUP *setup)
     setup->shade = V9X_C3D_ESH_SMOOTH;
     setup->solid_argb = 0ul;
     setup->fog = 0ul;
+    setup->white = 0ul;
 }
 
 static void vtcf(float *in, float x, float y, float z, float s, float t,
@@ -169,6 +170,14 @@ static void test_color(void)
     setup.solid_argb = 0xffffff00ul;
     v9x_cif_vtcf_convert(&setup, in, &out);
     VCHECK(out.color == 0xffffff00ul);
+
+    /* White: the colour forced to white, the alpha kept, for an unlit
+     * texture drawn as MODULATE (cif_state.h). */
+    setup.shade = V9X_C3D_ESH_SMOOTH;
+    setup.white = 1ul;
+    vtcf(in, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 10.0f, 20.0f, 30.0f, 64.0f);
+    v9x_cif_vtcf_convert(&setup, in, &out);
+    VCHECK(out.color == 0x40fffffful);
 }
 
 static void test_fog(void)

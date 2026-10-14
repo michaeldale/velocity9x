@@ -22,7 +22,8 @@ static unsigned int cif_texture_failures;
 
 static void test_bits_and_formats(void)
 {
-    TCHECK(v9x_cif_texfmt_bits(V9X_C3D_ETF_CI4) == 4ul);
+    /* CI4 texels are byte aligned, one index per byte in either nibble. */
+    TCHECK(v9x_cif_texfmt_bits(V9X_C3D_ETF_CI4) == 8ul);
     TCHECK(v9x_cif_texfmt_bits(V9X_C3D_ETF_CI8) == 8ul);
     TCHECK(v9x_cif_texfmt_bits(V9X_C3D_ETF_RGB1555) == 16ul);
     TCHECK(v9x_cif_texfmt_bits(V9X_C3D_ETF_RGB565) == 16ul);
@@ -174,6 +175,33 @@ static void test_vq(void)
     TCHECK(!v9x_cif_texfmt_vq_decode(indices, 2ul, codebook, 4ul, 1ul, &dst[0][0], 8ul));
 }
 
+/* An opaque copy for a texture whose alpha the draw does not use: the
+ * engines take MODULATE with the fragment's alpha only on a texture
+ * without alpha (cif_state.h). */
+static void test_to_565(void)
+{
+    v9x_u16 texels[3];
+
+    texels[0] = 0xfc1fu;
+    texels[1] = 0x83e0u;
+    texels[2] = 0x0000u;
+    TCHECK(v9x_cif_texfmt_to_565(V9X_R3D_ABI_FORMAT_ARGB1555, texels, 3ul));
+    TCHECK(texels[0] == 0xf81fu);
+    TCHECK(texels[1] == 0x07e0u);
+    TCHECK(texels[2] == 0x0000u);
+
+    texels[0] = 0xff0fu;
+    texels[1] = 0x80f0u;
+    TCHECK(v9x_cif_texfmt_to_565(V9X_R3D_ABI_FORMAT_ARGB4444, texels, 2ul));
+    TCHECK(texels[0] == 0xf81fu);
+    TCHECK(texels[1] == 0x07e0u);
+
+    texels[0] = 0x1234u;
+    TCHECK(v9x_cif_texfmt_to_565(V9X_R3D_ABI_FORMAT_RGB565, texels, 1ul));
+    TCHECK(texels[0] == 0x1234u);
+    TCHECK(!v9x_cif_texfmt_to_565(99ul, texels, 1ul));
+}
+
 static void test_levels(void)
 {
     TCHECK(v9x_cif_texfmt_levels(8ul, 8ul, 0ul) == 1ul);
@@ -194,6 +222,7 @@ unsigned int v9x_run_cif_texture_tests(void)
     test_rgb332();
     test_palettes();
     test_vq();
+    test_to_565();
     test_levels();
     return cif_texture_failures;
 }

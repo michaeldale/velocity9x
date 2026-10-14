@@ -39,6 +39,7 @@ typedef struct v9x_cif_vertex_setup {
     v9x_u32 shade;          /* V9X_C3D_ESH_* */
     v9x_u32 solid_argb;     /* C3D_ERS_SOLID_CLR as 0xAARRGGBB */
     v9x_u32 fog;            /* fog on: vertex alpha is the fog factor */
+    v9x_u32 white;          /* colour white, alpha kept (cif_state.h) */
 } V9X_CIF_VERTEX_SETUP;
 
 /* One VTCF vertex (ten floats) to the interface's. Solid shading takes

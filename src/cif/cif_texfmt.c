@@ -15,7 +15,10 @@
 v9x_u32 v9x_cif_texfmt_bits(v9x_u32 format)
 {
     switch (format) {
-    case V9X_C3D_ETF_CI4:     return 4ul;
+    /* A CI4 texel is a byte with its index in one nibble (guide,
+     * "Palettized Textures": "byte aligned"), which is how two CI4
+     * textures share one CI8's storage. */
+    case V9X_C3D_ETF_CI4:     return 8ul;
     case V9X_C3D_ETF_CI8:     return 8ul;
     case V9X_C3D_ETF_RGB332:  return 8ul;
     case V9X_C3D_ETF_RGB1555: return 16ul;
@@ -227,6 +230,43 @@ v9x_u16 v9x_cif_texfmt_vq_decode(const v9x_u8 *indices, v9x_u32 index_pitch,
             lower[block_x * 2ul] = entry[2];
             lower[block_x * 2ul + 1ul] = entry[3];
         }
+    }
+    return V9X_TRUE;
+}
+
+v9x_u16 v9x_cif_texfmt_to_565(v9x_u32 abi_format, v9x_u16 *texels,
+                              v9x_u32 count)
+{
+    v9x_u32 index;
+    v9x_u32 texel;
+    v9x_u32 r;
+    v9x_u32 g;
+    v9x_u32 b;
+
+    if (abi_format == V9X_R3D_ABI_FORMAT_RGB565) {
+        return V9X_TRUE;
+    }
+    if (abi_format != V9X_R3D_ABI_FORMAT_ARGB1555 &&
+        abi_format != V9X_R3D_ABI_FORMAT_ARGB4444) {
+        return V9X_FALSE;
+    }
+    /* Each field widened by repeating its top bits, so full stays full. */
+    for (index = 0ul; index < count; ++index) {
+        texel = texels[index];
+        if (abi_format == V9X_R3D_ABI_FORMAT_ARGB1555) {
+            r = (texel >> 10) & 0x1ful;
+            g = (texel >> 5) & 0x1ful;
+            b = texel & 0x1ful;
+            g = (g << 1) | (g >> 4);
+        } else {
+            r = (texel >> 8) & 0x0ful;
+            g = (texel >> 4) & 0x0ful;
+            b = texel & 0x0ful;
+            r = (r << 1) | (r >> 3);
+            g = (g << 2) | (g >> 2);
+            b = (b << 1) | (b >> 3);
+        }
+        texels[index] = (v9x_u16)((r << 11) | (g << 5) | b);
     }
     return V9X_TRUE;
 }

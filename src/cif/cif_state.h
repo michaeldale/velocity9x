@@ -64,6 +64,9 @@ typedef struct v9x_cif_draw_setup {
     v9x_u32 mip;            /* V9X_R3D_ABI_MIP_* */
     v9x_u32 address;        /* V9X_R3D_ABI_ADDRESS_* */
     v9x_u32 key_texture;    /* convert the texture with the chroma key */
+    v9x_u32 texel_alpha;    /* the draw reads the texture's own alpha */
+    v9x_u32 white;          /* vertex colour white: an unlit texture as
+                               MODULATE (the engines take D3D's ops only) */
     v9x_u32 shade;          /* V9X_C3D_ESH_*, for the vertex setup */
     v9x_u32 solid_argb;
     v9x_u32 fog;

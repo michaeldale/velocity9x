@@ -76,6 +76,25 @@ v9x_u32 v9x_r3d_validate_surface(const V9X_R3D_SURFACE *surface,
     return v9x_r3d_validate_layout(surface, vram_bytes, dimension_max);
 }
 
+v9x_u32 v9x_r3d_validate_raw(const V9X_R3D_ABI_RAW *raw, v9x_u32 address,
+                             v9x_u32 linear_base, v9x_u32 vram_bytes,
+                             V9X_R3D_SURFACE *out)
+{
+    /* Below the mapping wraps on the subtraction and lands above it, so
+     * one comparison bounds both sides. */
+    if (raw == 0 || address == 0ul ||
+        address - linear_base >= vram_bytes) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    out->offset = address - linear_base;
+    out->pitch = raw->pitch;
+    out->width = raw->width;
+    out->height = raw->height;
+    out->format = raw->format;
+    out->object = 0;
+    return V9X_R3D_RESULT_OK;
+}
+
 v9x_u32 v9x_r3d_validate_depth(const V9X_R3D_SURFACE *depth,
                                const V9X_R3D_SURFACE *target,
                                v9x_u32 vram_bytes,
@@ -277,8 +296,14 @@ v9x_u32 v9x_r3d_validate_draw(const V9X_R3D_ABI_DRAW *draw,
     if (draw->generation != generation) {
         return V9X_R3D_RESULT_STALE;
     }
-    if (draw->target.surface == 0 || draw->vertices == 0 ||
-        draw->triangle_count == 0ul ||
+    /* The target named one way, and the depth buffer, if any, the same
+     * way: the HAL resolves a draw's two surfaces through one path. */
+    if ((draw->target.surface == 0) == (draw->raw_target.address == 0) ||
+        (draw->target.surface != 0 && draw->raw_depth.address != 0) ||
+        (draw->raw_target.address != 0 && draw->depth.surface != 0)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (draw->vertices == 0 || draw->triangle_count == 0ul ||
         draw->triangle_count > V9X_R3D_ABI_BATCH_MAX) {
         return V9X_R3D_RESULT_INVALID;
     }

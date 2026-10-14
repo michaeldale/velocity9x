@@ -376,6 +376,116 @@ static void draw_reset(V9X_R3D_ABI_DRAW *d, int *target_surface)
     d->triangle_count = 1ul;
     d->texture1 = d->texture;
     d->texcoords1 = 0;
+    d->raw_target.address = 0;
+    d->raw_target.pitch = 0ul;
+    d->raw_target.width = 0ul;
+    d->raw_target.height = 0ul;
+    d->raw_target.format = 0ul;
+    d->raw_depth = d->raw_target;
+}
+
+/* ABI 5: a target and depth buffer named by address, as ATI3DCIF.DLL
+ * names the application's surfaces. The census's numbers: the frame
+ * buffer mapped at D4000000-ish, 640x480 surfaces 0x96000 apart. */
+#define RAW_BASE 0xd4000000ul
+
+static void raw_reset(V9X_R3D_ABI_RAW *raw, v9x_u32 format)
+{
+    raw->address = (void *)0;
+    raw->pitch = 1280ul;
+    raw->width = 640ul;
+    raw->height = 480ul;
+    raw->format = format;
+}
+
+static void test_raw_surfaces(void)
+{
+    V9X_R3D_ABI_RAW raw;
+    V9X_R3D_SURFACE target;
+    V9X_R3D_SURFACE depth;
+
+    /* Inside the mapping: the offset from its base, the rest copied. */
+    raw_reset(&raw, V9X_R3D_ABI_FORMAT_RGB565);
+    VCHECK(v9x_r3d_validate_raw(&raw, RAW_BASE + 0x40e000ul, RAW_BASE, VRAM,
+                                &target) == V9X_R3D_RESULT_OK);
+    VCHECK(target.offset == 0x40e000ul);
+    VCHECK(target.pitch == 1280ul && target.width == 640ul &&
+           target.height == 480ul);
+    VCHECK(target.format == V9X_R3D_FORMAT_RGB565);
+    VCHECK(target.object == 0);
+    VCHECK(v9x_r3d_validate_surface(&target, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_OK);
+
+    /* The depth buffer 0x96000 above it, as Pixie's was. */
+    raw_reset(&raw, 0ul);
+    VCHECK(v9x_r3d_validate_raw(&raw, RAW_BASE + 0x4a4000ul, RAW_BASE, VRAM,
+                                &depth) == V9X_R3D_RESULT_OK);
+    VCHECK(depth.offset == 0x4a4000ul);
+    VCHECK(v9x_r3d_validate_depth(&depth, &target, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_OK);
+
+    /* Outside the mapping, either side, and a null address. */
+    VCHECK(v9x_r3d_validate_raw(&raw, RAW_BASE - 2ul, RAW_BASE, VRAM,
+                                &depth) == V9X_R3D_RESULT_INVALID);
+    VCHECK(v9x_r3d_validate_raw(&raw, RAW_BASE + VRAM, RAW_BASE, VRAM,
+                                &depth) == V9X_R3D_RESULT_INVALID);
+    VCHECK(v9x_r3d_validate_raw(&raw, 0ul, RAW_BASE, VRAM, &depth) ==
+           V9X_R3D_RESULT_INVALID);
+    VCHECK(v9x_r3d_validate_raw(0, RAW_BASE, RAW_BASE, VRAM, &depth) ==
+           V9X_R3D_RESULT_INVALID);
+
+    /* Inside at its start but running past the end: the layout check
+     * refuses it, as it would a surface. */
+    raw_reset(&raw, V9X_R3D_ABI_FORMAT_RGB565);
+    VCHECK(v9x_r3d_validate_raw(&raw, RAW_BASE + VRAM - 0x1000ul, RAW_BASE,
+                                VRAM, &target) == V9X_R3D_RESULT_OK);
+    VCHECK(v9x_r3d_validate_surface(&target, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_INVALID);
+
+    /* A format the interface does not draw to. */
+    raw_reset(&raw, V9X_R3D_ABI_FORMAT_ARGB4444);
+    VCHECK(v9x_r3d_validate_raw(&raw, RAW_BASE, RAW_BASE, VRAM, &target) ==
+           V9X_R3D_RESULT_OK);
+    VCHECK(v9x_r3d_validate_surface(&target, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_INVALID);
+}
+
+static void test_draw_raw_target(void)
+{
+    V9X_R3D_ABI_DRAW d;
+    int surface;
+    int surface_depth;
+    int memory;
+
+    /* A raw target alone. */
+    draw_reset(&d, 0);
+    d.raw_target.address = &memory;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_OK);
+
+    /* With a raw depth buffer. */
+    d.raw_depth.address = &memory;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_OK);
+
+    /* A raw target with a surface depth buffer, and the reverse. */
+    d.raw_depth.address = 0;
+    d.depth.surface = &surface_depth;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+    draw_reset(&d, &surface);
+    d.raw_depth.address = &memory;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+
+    /* Named both ways, and neither. */
+    draw_reset(&d, &surface);
+    d.raw_target.address = &memory;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+    draw_reset(&d, 0);
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_INVALID);
+
+    /* A surface draw that leaves the raw fields zero, as ABI 4's callers
+     * built them, is unchanged. */
+    draw_reset(&d, &surface);
+    d.depth.surface = &surface_depth;
+    VCHECK(v9x_r3d_validate_draw(&d, 7ul, 512ul) == V9X_R3D_RESULT_OK);
 }
 
 static float draw_texcoords1[2u * 3u * 65u];
@@ -562,6 +672,8 @@ unsigned int v9x_run_r3d_validate_tests(void)
     test_state_ranges();
     test_draw_header();
     test_draw_second_unit();
+    test_raw_surfaces();
+    test_draw_raw_target();
     test_clear_header_and_rects();
     if (validate_failures == 0u) {
         printf("PASS: render interface validators\n");

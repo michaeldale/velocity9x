@@ -453,6 +453,26 @@ primitives through our DLL, locks the back buffer and logs the pixels.
 (port 9878) and the Rage XL, differences listed and explained; the same on
 the netbook's Gen3.
 
+Progress 2026-10-14:
+- **The render interface takes targets by address (ABI 5).** The draw's
+  `raw_target` and `raw_depth` were agreed with Michael. The address
+  check (`v9x_r3d_validate_raw`) was written test-first, and
+  `d3d_core.c`'s `v9x_d3d_set_target_raw` repeats the offscreen
+  branch's refusals. The HAL keeps no list of the surfaces it created:
+  the statement in "Pointers back to surfaces" that it does was wrong.
+- **The DLL is built.** `src/cif/cif_dll.c` and `cif_surface.c`
+  replace the census and keep its logging. Textures are copied at
+  `TextureReg` and converted on first use into one-level surfaces of
+  the DLL's own. `RenderEnd` waits for the engine.
+- **The engines take D3D's texture ops only.** An unlit texture with
+  the fragment's alpha is drawn as MODULATE by a white vertex, and a
+  texture whose alpha the draw does not read as an opaque 565 copy.
+- **Cubes draws on the Rage IIC** (boot 456):
+  [probe README](../probe/a8u4i5-rage-iic-3dcif-phase3-2026-10-14/README.md).
+  Its background shows the 555 problem: it clears with a 555 colour.
+- Not yet: the probe, mipmaps, VQ and tiled textures, 555 targets,
+  meshes, TLVERTEX.
+
 ### 4. The title on the Rage XL
 
 Menus and one level, then a return to the desktop. Evidence: the log,

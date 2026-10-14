@@ -249,21 +249,53 @@ static void test_texture_ops(void)
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
     SCHECK(out.textured == 0ul);
 
-    /* Texture lighting as the colour op. */
+    /*
+     * Texture lighting as the colour op, in the forms the engines take
+     * (the D3D texture ops, d3d_core.c's v9x_r3d_texture_op). No lighting
+     * with the fragment's alpha is no D3D op: it is drawn as MODULATE with
+     * the vertex colour white, which is exactly the texel's colour, and
+     * Cubes refused every textured draw until it was (A8U4I5, boot 456).
+     */
     textured_state(&state);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
     SCHECK(out.textured == 1ul);
-    SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(out.white == 1ul);
+    SCHECK(out.texel_alpha == 0ul);
     set1(&state, V9X_C3D_ERS_TMAP_LIGHT, V9X_C3D_ETL_MODULATE);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
     SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(out.white == 0ul);
+    SCHECK(out.texel_alpha == 0ul);
     set1(&state, V9X_C3D_ERS_TMAP_LIGHT, V9X_C3D_ETL_ALPHA_DECAL);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
     SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_DECALALPHA);
+    SCHECK(out.white == 0ul);
+    /* Decal blends by the texel's alpha, so the texture keeps it. */
+    SCHECK(out.texel_alpha == 1ul);
 
     /* No texel op: alpha from the fragment, no key, no test. */
     SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
     SCHECK(out.key_texture == 0ul && out.state.alpha_test_enable == 0ul);
+
+    /* No lighting with the texel's alpha is D3D's DECAL as it stands. */
+    set1(&state, V9X_C3D_ERS_TMAP_LIGHT, V9X_C3D_ETL_NONE);
+    set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_ALPHA);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    SCHECK(out.white == 0ul);
+    SCHECK(out.texel_alpha == 1ul);
+
+    /* No lighting with the key: MODULATE both, white. */
+    set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_CHROMAKEY);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    SCHECK(out.white == 1ul);
+    SCHECK(out.texel_alpha == 0ul);
+    set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_NONE);
+    set1(&state, V9X_C3D_ERS_TMAP_LIGHT, V9X_C3D_ETL_MODULATE);
 
     /* Pixie's chroma key: keyed texels get alpha 0, which the test drops;
      * the fragment's alpha still scales the rest. */
@@ -281,6 +313,7 @@ static void test_texture_ops(void)
     SCHECK(out.key_texture == 0ul);
     SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
     SCHECK(out.state.alpha_test_enable == 0ul);
+    SCHECK(out.texel_alpha == 1ul);
 
     /* The alpha mask: approximated, and flagged. */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_ALPHA_MASK);
@@ -288,6 +321,7 @@ static void test_texture_ops(void)
     SCHECK(out.state.alpha_test_enable == 1ul);
     SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
     SCHECK(out.recognized == V9X_FALSE);
+    SCHECK(out.texel_alpha == 1ul);
 
     /* An untextured draw ignores the texel op. */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_CHROMAKEY);

@@ -34,8 +34,11 @@
 /* 2: describe states the hardware sampler's texture limits (2026-09-26).
  * 3: and its smallest edge, and names the Mach64 (2026-09-29).
  * 4: a second texture unit - describe's texture_units, the draw's texture1
- *    and texcoords1 (2026-10-05, docs\plans\gen3-sgis-multitexture.md). */
-#define V9X_R3D_ABI_VERSION 4ul
+ *    and texcoords1 (2026-10-05, docs\plans\gen3-sgis-multitexture.md).
+ * 5: a draw may name its target and depth by address - the draw's
+ *    raw_target and raw_depth (2026-10-14, docs\plans\ati-3dcif-wrapper.md,
+ *    Phase 3). */
+#define V9X_R3D_ABI_VERSION 5ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -116,6 +119,25 @@ typedef struct v9x_r3d_abi_vertex {
 typedef struct v9x_r3d_abi_surface {
     void *surface;
 } V9X_R3D_ABI_SURFACE;
+
+/*
+ * A target or depth buffer named by its linear address in video memory,
+ * for a caller that holds a pointer into a surface some other code created
+ * and not the surface itself: ATI3DCIF.DLL, whose applications create
+ * their own DirectDraw chain and hand it SURF_DRAW_PTR and SURF_Z_PTR
+ * (docs\decisions\2026-10-14-3dcif-demo-census.md). The HAL takes the
+ * address as an offset into its frame-buffer mapping and checks the extent
+ * against video memory and the engine's limits, as it does a surface's.
+ * address null: not used. format: the target's V9X_R3D_ABI_FORMAT_RGB565
+ * or _XRGB1555; 0 for a depth buffer.
+ */
+typedef struct v9x_r3d_abi_raw {
+    void *address;
+    v9x_u32 pitch;              /* bytes */
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 format;
+} V9X_R3D_ABI_RAW;
 
 /*
  * One texture level in the ICD's memory, the sampler-ready 16-bit copy the
@@ -264,6 +286,14 @@ typedef struct v9x_r3d_abi_draw {
      */
     V9X_R3D_ABI_TEXTURE texture1;
     const float *texcoords1;
+    /*
+     * The target and depth by address (ABI 5), for a caller without the
+     * surfaces. A draw names its target one way: either target.surface or
+     * raw_target.address, never both. A raw target takes a raw depth
+     * buffer or none, and a surface target a surface depth buffer or none.
+     */
+    V9X_R3D_ABI_RAW raw_target;
+    V9X_R3D_ABI_RAW raw_depth;
 } V9X_R3D_ABI_DRAW;
 
 /* Triangles that reached the engine, meaningful for OK and PARTIAL. */
@@ -331,7 +361,8 @@ typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 80 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 188 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_raw[sizeof(V9X_R3D_ABI_RAW) == 20 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 228 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_interface[sizeof(V9X_R3D_INTERFACE) == 28 ? 1 : -1];
 #endif
