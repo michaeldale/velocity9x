@@ -176,6 +176,7 @@ function New-V9xInfText {
         'glide2x.dll=1'
         'glide3x.dll=1'
     }) + @(
+        'ati3dcif.dll=1'
         'v9xtrace.exe=1'
         'v9xupd.exe=1'
         ''
@@ -301,6 +302,11 @@ function New-V9xInfText {
         # load, under the same rule: a Voodoo3's own is kept while newer.
         'glide3x.dll,,,40'
     }) + @(
+        # ATI3DCIF.DLL (src\cif) under the driver files' rule, overwriting.
+        # Not Glide's 40: ATI's own is versioned 4.x, so "keep the newer"
+        # would always keep it, and ATI's talks to ATI's driver and cannot
+        # run on this one (docs\plans\ati-3dcif-wrapper.md, Phase 5).
+        'ati3dcif.dll,,,12'
         # The tools the Display Properties buttons start: Send report...
         # runs V9XUPD.EXE /REPORT, which runs V9XTRACE.EXE. Installed here,
         # rather than left in the package folder, so the buttons work after
@@ -545,7 +551,8 @@ function Assert-V9xInf {
                "family sets Package.GlideWrappers = `$false.")
     }
     $required = @('v9xdisp.drv', 'v9xmini.vxd', 'v9xhal.dll', 'v9xsetp.dll',
-                  'v9xgl.dll,,,12', 'v9xgl.dll=1') + @(
+                  'v9xgl.dll,,,12', 'v9xgl.dll=1',
+                  'ati3dcif.dll,,,12', 'ati3dcif.dll=1') + @(
         if (Test-V9xFamilyShipsGlide -Family $Family) { $glideEntries }) + @(
                   'v9xtrace.exe,,,12', 'v9xtrace.exe=1',
                   'v9xupd.exe,,,12', 'v9xupd.exe=1',

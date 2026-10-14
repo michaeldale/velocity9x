@@ -220,8 +220,15 @@ struct v9x_cif_palette {
 };
 
 static struct v9x_cif_context v9x_cif_contexts[V9X_CIF_CONTEXTS];
-static struct v9x_cif_texture v9x_cif_textures[V9X_CIF_TEXTURES];
-static struct v9x_cif_palette v9x_cif_palettes[V9X_CIF_PALETTES];
+/*
+ * The texture and palette tables, and the census's seen set, are committed
+ * at attach rather than declared: wlink writes zero-filled statics into the
+ * image, and these made the DLL 288 KB, over the family floppies (as
+ * GLIDE2X.DLL's did, docs\decisions\2026-10-09-glide-packaging-copy-flag.md).
+ * Committed pages are zero, as the statics were.
+ */
+static struct v9x_cif_texture *v9x_cif_textures;
+static struct v9x_cif_palette *v9x_cif_palettes;
 static struct v9x_cif_context *v9x_cif_current;
 
 /* The display as it was at RenderBegin: the default draw surface. */
@@ -234,7 +241,7 @@ static V9X_R3D_ABI_VERTEX v9x_cif_batch[V9X_R3D_ABI_BATCH_MAX * 3ul];
 
 static v9x_u32 v9x_cif_sequence;
 static v9x_u32 v9x_cif_calls[V9X_CIF_EXPORTS];
-static v9x_u32 v9x_cif_seen[V9X_CIF_SEEN_SLOTS];
+static v9x_u32 *v9x_cif_seen;
 static v9x_u32 v9x_cif_seen_full;
 static v9x_u32 v9x_cif_capturing = 1ul;
 static v9x_u32 v9x_cif_capture_lines;
@@ -1701,6 +1708,20 @@ BOOL __stdcall V9xCifEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
+        v9x_cif_textures = (struct v9x_cif_texture *)VirtualAlloc(
+            0, sizeof(struct v9x_cif_texture) * V9X_CIF_TEXTURES, MEM_COMMIT,
+            PAGE_READWRITE);
+        v9x_cif_palettes = (struct v9x_cif_palette *)VirtualAlloc(
+            0, sizeof(struct v9x_cif_palette) * V9X_CIF_PALETTES, MEM_COMMIT,
+            PAGE_READWRITE);
+        v9x_cif_seen = (v9x_u32 *)VirtualAlloc(
+            0, sizeof(v9x_u32) * V9X_CIF_SEEN_SLOTS, MEM_COMMIT,
+            PAGE_READWRITE);
+        if (v9x_cif_textures == 0 || v9x_cif_palettes == 0 ||
+            v9x_cif_seen == 0) {
+            v9x_cif_log("attach refused: no memory for the tables");
+            return FALSE;
+        }
         InitializeCriticalSection(&v9x_cif_lock);
         v9x_cif_summary_tick = GetTickCount();
         path[0] = '\0';

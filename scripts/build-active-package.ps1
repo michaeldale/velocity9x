@@ -161,6 +161,11 @@ if ($shipsGlide) {
     Copy-Item -LiteralPath (Join-Path $repoRoot "build\glide3\glide3x.dll") `
         -Destination (Join-Path $outputDir "GLIDE3X.DLL") -Force
 }
+# ATI3DCIF.DLL, the 3DCIF interface ATI's Rage titles load, over the same
+# render interface (docs\plans\ati-3dcif-wrapper.md, Phase 5). Every family
+# carries it: the interface is not ATI's alone under Velocity9x.
+Copy-Item -LiteralPath (Join-Path $repoRoot "build\cif\ATI3DCIF.DLL") `
+    -Destination (Join-Path $outputDir "ATI3DCIF.DLL") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\gdi-smoke\v9xgdi.exe") `
     -Destination (Join-Path $outputDir "V9XGDI.EXE") -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "build\palette-smoke\v9xpal.exe") `
@@ -259,6 +264,16 @@ $glideLines = if ($shipsGlide) {
         'GLIDE2X.DLL and GLIDE3X.DLL installed for the card.'
     )
 }
+$glideLines += @(
+    ''
+    'ATI3DCIF.DLL is ATI''s 3D Rage interface (3DCIF), which games and demos'
+    'written for ATI Rage cards load, drawing through the same engine. The INF'
+    'copies it to SYSTEM over any ATI3DCIF.DLL already there: ATI''s own talks'
+    'to ATI''s driver and cannot run on this one. A game that carries its own'
+    'copy in its folder loads that first; rename it to use this one. It has'
+    'been run with ATI''s SDK demos on the Rage IIC, the Rage XL and the Intel'
+    'GMA 950.'
+)
 $installLines = Get-Content -LiteralPath $installSource | ForEach-Object {
     switch ($_) {
         '@FAMILY_SUMMARY@' { $familySummaryLines }
@@ -430,6 +445,7 @@ $manifest = @(
 } else {
     "Glide: not included; the card keeps the GLIDE2X.DLL and GLIDE3X.DLL installed for it"
 }) + @(
+    "3DCIF: ATI3DCIF.DLL, ATI's 3D Rage interface over the same engine; replaces ATI's own, which cannot run on this driver",
     "Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)",
     "Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)",
     "DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)",
@@ -455,6 +471,7 @@ Set-Content -LiteralPath (Join-Path $outputDir "SHA256.TXT") `
     -Encoding Ascii -Value $hashLines
 
 $expectedPackageFiles = @(
+    "ATI3DCIF.DLL",
     "FIRSTBOOT.TXT", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
     "V9X16LD.EXE", "V9XCOPY.BAT", "V9XDDP.EXE", "V9XDISP.DRV",
     "V9XFIX.BAT", "V9XHAL.DLL", "V9XGL.DLL",

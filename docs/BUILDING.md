@@ -191,14 +191,20 @@ signatures and none of any other family's.
 ./scripts/build-floppy-package.ps1
 ```
 
-Builds every family that opts into the disk and assembles one floppy per
-family under `build/floppy/<Folder>` — about 810 KB each since the OpenGL
-ICD joined the packages, so each fits one 1.44 MB floppy. Each disk holds
-its family's package in a folder of the same name, `RECOVER.TXT`, and a
-root `README.TXT` written for the real-hardware case (identifying the card,
-the Have Disk flow, recovery, and which `C:\V9X*` files to collect when
-reporting a problem). Which disks are made, and the chip table printed in
-each `README.TXT`, come from the family manifests.
+Builds every family that opts into the disk and assembles two floppies per
+family. Since ATI3DCIF.DLL joined the packages one 1.44 MB disk no longer
+holds a package.
+- **Disk 1, `build/floppy/<Folder>`,** holds everything the install reads:
+  the INF, every file it copies, `V9XCOPY.BAT` and the documents. With
+  them are `RECOVER.TXT` and a root `README.TXT` written for the
+  real-hardware case: identifying the card, the Have Disk flow, recovery,
+  and which `C:\V9X*` files to collect when reporting a problem.
+- **Disk 2, `build/floppy/<Folder>-2`,** holds the test tools nothing
+  installs, `V9XDDP.EXE` among them, in a folder of the same name, so both
+  disks copy into one folder on the hard disk.
+
+Each disk's `SHA256.TXT` lists its own files. Which disks are made, and the
+chip table printed in each `README.TXT`, come from the family manifests.
 
 The output is a plain directory tree on purpose: Windows 98 has no built-in
 extractor, so an offline machine must be able to use the files directly. Pass

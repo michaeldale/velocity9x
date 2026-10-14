@@ -41,6 +41,13 @@ ECHO Copying V9XGL.DLL ...
 COPY V9XGL.DLL %V9XSYS%\V9XGL.DLL
 IF ERRORLEVEL 1 GOTO FAILED
 
+REM ATI3DCIF.DLL over any there: ATI's own cannot run on this driver.
+IF NOT EXIST ATI3DCIF.DLL GOTO NOCIF
+ECHO Copying ATI3DCIF.DLL ...
+COPY ATI3DCIF.DLL %V9XSYS%\ATI3DCIF.DLL
+IF ERRORLEVEL 1 GOTO FAILED
+:NOCIF
+
 REM GLIDE2X.DLL has the name every Glide game loads, so a 3dfx card's own
 REM may be there already. COPY cannot compare versions as the INF does;
 REM only ours carries the text V9XGLIDE.LOG, so a file without it is kept.

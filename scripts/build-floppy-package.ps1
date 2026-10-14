@@ -1,4 +1,5 @@
-# Assemble one 1.44 MB floppy per family that opts in (Floppy.Include).
+# Assemble two 1.44 MB floppies per family that opts in (Floppy.Include):
+# disk 1, everything the install reads; disk 2, the test tools.
 #
 # The families used to share one disk, so an offline machine could pick the
 # matching folder without a second trip. With the OpenGL ICD in every package
@@ -92,16 +93,32 @@ foreach ($family in $floppyFamilies) {
     Copy-Item -LiteralPath $sources[$family.Id] `
         -Destination (Join-Path $diskDir $family.Floppy.Folder) -Recurse -Force
 
-    # GLIDE3X.DLL took the room a disk had left (81 KB against 33 to 45 KB
-    # free), so the DirectDraw probe V9XDDP.EXE, a diagnostic nothing
-    # installs, stays in the zip packages only (Michael, 2026-10-10). Its
-    # line leaves the disk's SHA256.TXT with it.
+    # Two disks a family since ATI3DCIF.DLL joined the packages (the S3 disk
+    # came to 1,483 KB against 1,424 usable; Michael, 2026-10-14). Disk 1
+    # holds everything the install reads: the INF, every file it copies,
+    # V9XCOPY.BAT and the documents. Disk 2 holds the test tools nothing
+    # installs, in a folder of the same name, so both copy into one folder
+    # on the hard disk. The DirectDraw probe V9XDDP.EXE, which no single
+    # disk had room for since GLIDE3X.DLL, rides disk 2. Each disk's
+    # SHA256.TXT lists its own files.
     $diskPackage = Join-Path $diskDir $family.Floppy.Folder
-    Remove-Item -LiteralPath (Join-Path $diskPackage "V9XDDP.EXE") -Force
+    $disk2Dir = Join-Path $outputDir ("{0}-2" -f $family.Floppy.Folder)
+    $disk2Package = Join-Path $disk2Dir $family.Floppy.Folder
+    New-Item -ItemType Directory -Force -Path $disk2Package | Out-Null
+    $toolFiles = @('V9XDDP.EXE', 'V9XGDI.EXE', 'V9XMSW.EXE', 'V9XPAL.EXE',
+                   'V9XPWR.EXE', 'V9XSET.EXE', 'V9XWND.EXE', 'V9XPROBE.VXD',
+                   'V9X16LD.EXE', 'V9XSTAGE.EXE')
+    foreach ($tool in $toolFiles) {
+        Move-Item -LiteralPath (Join-Path $diskPackage $tool) `
+            -Destination (Join-Path $disk2Package $tool) -Force
+    }
     $diskHashes = Join-Path $diskPackage "SHA256.TXT"
+    $hashLines = @(Get-Content -LiteralPath $diskHashes)
+    $toolPattern = '\s(' + (($toolFiles | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
     Set-Content -LiteralPath $diskHashes -Encoding Ascii -Value @(
-        Get-Content -LiteralPath $diskHashes |
-            Where-Object { $_ -notmatch '\sV9XDDP\.EXE$' })
+        $hashLines | Where-Object { $_ -notmatch $toolPattern })
+    Set-Content -LiteralPath (Join-Path $disk2Package "SHA256.TXT") -Encoding Ascii -Value @(
+        $hashLines | Where-Object { $_ -match $toolPattern })
 
     # Recovery instructions belong at the root as well as inside the package:
     # if the machine will not display after the install, the reader needs them
@@ -157,11 +174,14 @@ foreach ($family in $floppyFamilies) {
             "installs no Glide driver: the card keeps the GLIDE2X.DLL and " +
             "GLIDE3X.DLL installed for it.")
     }
+    $glideSentence += "`n" + (Format-V9xParagraph -Text (
+        "It also installs ATI3DCIF.DLL, ATI's 3D Rage interface for games " +
+        "written for ATI Rage cards, over any copy already there."))
 
     $readme = @"
 VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
 Build: $BuildId
-Disk: $familyName (folder $folderName)
+Disk: $familyName (folder $folderName), disk 1 of 2
 
 READ THIS BEFORE INSTALLING.
 
@@ -198,7 +218,9 @@ $hardwareIdSentence
 3. INSTALL
 
 Copy the $folderName folder to the hard disk first - installing from a
-floppy works, but Windows may ask for the disk again later.
+floppy works, but Windows may ask for the disk again later. This disk holds
+everything the install needs. Disk 2 holds the test tools in section 4:
+copy its $folderName folder into the same folder on the hard disk.
 
    1. Control Panel, System, Device Manager.
    2. Expand Display adapters and open your display adapter.
@@ -211,14 +233,13 @@ floppy works, but Windows may ask for the disk again later.
 $glideSentence
 
 Full detail is in INSTALL.TXT inside the folder. FIRSTBOOT.TXT there is
-the step-by-step checklist for the first boot. The DirectDraw probe
-V9XDDP.EXE that MANIFEST.TXT lists is in the download only; it does not
-fit on the disk.
+the step-by-step checklist for the first boot.
 
 
 4. CHECKING IT WORKED
 
-Run these from the copied folder after the desktop appears:
+These are on disk 2. Run them from the copied folder after the desktop
+appears:
 
    V9XGDI.EXE /auto      framebuffer drawing and pixel readback test
    V9XMSW.EXE /set:800x600x16    switch mode and verify
@@ -280,33 +301,52 @@ this on the clipboard in one go.
     Set-Content -LiteralPath (Join-Path $diskDir "README.TXT") -Encoding Ascii `
         -Value ($readme -replace "`r`n", "`n" -replace "`n", "`r`n")
 
-    $files = @(Get-ChildItem -LiteralPath $diskDir -Recurse -File)
-    $total = ($files | Measure-Object -Property Length -Sum).Sum
-    if ($total -gt $floppyCapacity) {
-        throw (("The {0} floppy is {1:N0} bytes, over the {2:N0} usable on a " +
-                "1.44 MB floppy.") -f $family.Floppy.Folder, $total,
-               $floppyCapacity)
-    }
-    $disks += [pscustomobject]@{
-        Family = $family
-        Directory = $diskDir
-        Files = $files.Count
-        Bytes = $total
+    $readme2 = @"
+VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
+Build: $BuildId
+Disk: $familyName (folder $folderName), disk 2 of 2
+
+This disk holds the test tools; nothing on it is installed. Install from
+disk 1 first and read its README.TXT. Then copy this disk's $folderName
+folder into the same folder on the hard disk as disk 1's, and run the
+tools from there as disk 1's README.TXT, section 4, describes.
+
+V9XDDP.EXE is the DirectDraw and Direct3D probe. It writes
+C:\V9XDIAG\V9XDD.INI, which a problem report can include.
+"@
+    Set-Content -LiteralPath (Join-Path $disk2Dir "README.TXT") -Encoding Ascii `
+        -Value ($readme2 -replace "`r`n", "`n" -replace "`n", "`r`n")
+
+    foreach ($pair in @(@($diskDir, 1), @($disk2Dir, 2))) {
+        $files = @(Get-ChildItem -LiteralPath $pair[0] -Recurse -File)
+        $total = ($files | Measure-Object -Property Length -Sum).Sum
+        if ($total -gt $floppyCapacity) {
+            throw (("The {0} floppy, disk {1}, is {2:N0} bytes, over the {3:N0} " +
+                    "usable on a 1.44 MB floppy.") -f $family.Floppy.Folder,
+                   $pair[1], $total, $floppyCapacity)
+        }
+        $disks += [pscustomobject]@{
+            Family = $family
+            Disk = $pair[1]
+            Directory = $pair[0]
+            Files = $files.Count
+            Bytes = $total
+        }
     }
 }
 
 Write-Output "Velocity9x $ProductVersion floppy disks: $outputDir"
 foreach ($disk in $disks) {
-    Write-Output ("  {0}: {1} files, {2:N0} bytes ({3:N0} bytes free on a 1.44 MB floppy)" -f
-        $disk.Family.Floppy.Folder, $disk.Files, $disk.Bytes,
+    Write-Output ("  {0} disk {1}: {2} files, {3:N0} bytes ({4:N0} bytes free on a 1.44 MB floppy)" -f
+        $disk.Family.Floppy.Folder, $disk.Disk, $disk.Files, $disk.Bytes,
         ($floppyCapacity - $disk.Bytes))
 }
 
 if ($Zip) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     foreach ($disk in $disks) {
-        $zipPath = Join-Path $repoRoot ("build\velocity9x-{0}-{1}-{2}-floppy.zip" -f
-            $ProductVersion, $BuildId, $disk.Family.Id)
+        $zipPath = Join-Path $repoRoot ("build\velocity9x-{0}-{1}-{2}-floppy{3}.zip" -f
+            $ProductVersion, $BuildId, $disk.Family.Id, $disk.Disk)
         if (Test-Path -LiteralPath $zipPath) {
             Remove-Item -LiteralPath $zipPath -Force
         }
