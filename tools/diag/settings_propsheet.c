@@ -90,9 +90,13 @@ static int v9x_page_d3d_loaded;
  * The 16-bit colour layout selector's state, on the same terms.
  *
  * Three values and the first is an absence: 0 means the HighColor key is not
- * in SYSTEM.INI and the driver decides - 5:5:5 when Direct3D resolved to the
- * chip's own S3D engine, which writes ZRGB1555 into every 16-bit target and
- * has no other layout to offer, 5:6:5 otherwise. 15 and 16 are S3's own values
+ * in SYSTEM.INI and the driver decides - 5:5:5 when Direct3D resolved to an
+ * engine that wants it, 5:6:5 otherwise. The ViRGE's S3D unit writes ZRGB1555
+ * into every 16-bit target and has no other layout to offer; the Rage IIC
+ * draws either, and 5:5:5 is what ATI's driver ran and what 3DCIF titles
+ * assume (dd16.c, v9x_dd_engine_wants_555). 3DCIF needs hardware Direct3D,
+ * so Automatic gives it 5:5:5 wherever it can run; only an explicit 5:6:5
+ * takes that away, which the label says. 15 and 16 are S3's own values
  * for the same key, so a SYSTEM.INI carried over from their driver reads the
  * same way here. Choosing Automatic deletes the key rather than writing 0, so
  * the file says what the page says.
@@ -103,9 +107,9 @@ static const struct v9x_layout_choice {
     int value;
     const char *label;
 } v9x_page_layout_choices[] = {
-    { 0,  "Automatic (5:5:5 under hardware Direct3D)" },
-    { 16, "5:6:5 - 64 greens, the usual layout" },
-    { 15, "5:5:5 - what the S3D engine draws" }
+    { 0,  "Automatic (the 3D engine's layout)" },
+    { 16, "5:6:5 - 64 greens; ATI 3DCIF games miscolour" },
+    { 15, "5:5:5 - S3 ViRGE 3D and ATI 3DCIF games" }
 };
 #define V9X_PAGE_LAYOUT_CHOICE_COUNT \
     (sizeof(v9x_page_layout_choices) / sizeof(v9x_page_layout_choices[0]))

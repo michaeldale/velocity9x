@@ -24,7 +24,7 @@
  *
  * Not yet: mipmaps (level 0 only, drawn without level selection), VQ and
  * tiled textures (registered, drawn untextured), 555 targets on engines
- * that draw 565 only (the Rage II and Mach64), TLVERTEX vertices, lines,
+ * that draw 565 only (the Mach64 class), TLVERTEX vertices, lines,
  * points and rectangles.
  *
  * Constants and layouts are ATI3DCIF.H (SDK 4.1) and the SDK-C02700 Rev

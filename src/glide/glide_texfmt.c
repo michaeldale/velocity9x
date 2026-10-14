@@ -156,3 +156,31 @@ v9x_u16 v9x_glide_texfmt_convert(v9x_u32 format, const void *src,
     }
     return V9X_FALSE;
 }
+
+void v9x_glide_lfb_565_to_555(const v9x_u8 *src, v9x_u8 *dst,
+                              v9x_u32 pixels)
+{
+    v9x_u32 i;
+    v9x_u32 p;
+
+    for (i = 0ul; i < pixels * 2ul; i += 2ul) {
+        p = (v9x_u32)src[i] | ((v9x_u32)src[i + 1ul] << 8);
+        p = ((p >> 1) & 0x7FE0ul) | (p & 0x001Ful);
+        dst[i] = (v9x_u8)(p & 0xFFul);
+        dst[i + 1ul] = (v9x_u8)(p >> 8);
+    }
+}
+
+void v9x_glide_lfb_555_to_565(const v9x_u8 *src, v9x_u8 *dst,
+                              v9x_u32 pixels)
+{
+    v9x_u32 i;
+    v9x_u32 p;
+
+    for (i = 0ul; i < pixels * 2ul; i += 2ul) {
+        p = (v9x_u32)src[i] | ((v9x_u32)src[i + 1ul] << 8);
+        p = ((p << 1) & 0xFFC0ul) | ((p >> 4) & 0x0020ul) | (p & 0x001Ful);
+        dst[i] = (v9x_u8)(p & 0xFFul);
+        dst[i + 1ul] = (v9x_u8)(p >> 8);
+    }
+}

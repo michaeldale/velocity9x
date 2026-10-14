@@ -1,0 +1,230 @@
+1 pid=FFFA69B7 t=470543 attach instance=00E40000 version=0.17.1 V9XGLIDE build=2ee04d24-dirty time=2026-10-14 12:32:14 uptime-ms=470543 exe=C:\NFS2DEMO\NFS2SEA.EXE
+2 pid=FFFA69B7 t=470623 detach: process exiting=0
+3 pid=FFFA69B7 t=470623 census detach swaps=0
+4 pid=FFFA69B7 t=470623 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+5 pid=FFFA69B7 t=470623 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+6 pid=FFFA69B7 t=470623 census   sources: calls=0 refills=0 new=0
+7 pid=FFFA69B7 t=470623 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+8 pid=FFFA69B7 t=470623 census   batch ends: full=0 texture=0 state=0
+1 pid=FFFA69B7 t=470843 attach instance=01860000 version=0.17.1 V9XGLIDE build=2ee04d24-dirty time=2026-10-14 12:32:14 uptime-ms=470843 exe=C:\NFS2DEMO\NFS2SEA.EXE
+2 pid=FFFA69B7 t=470843 grGlideInit#1 
+3 pid=FFFA69B7 t=470843 grSstQueryHardware#1 config=00560A04 -> voodoo fb=2MiB tmus=1 tmu0=2MiB
+4 pid=FFFA69B7 t=470843 grGlideGetVersion#1 buffer=006FFC54 -> 2.4
+5 pid=FFFA69B7 t=470843 grGlideShutdown#1 
+6 pid=FFFA69B7 t=470843 census shutdown swaps=0
+7 pid=FFFA69B7 t=470843 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+8 pid=FFFA69B7 t=470843 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+9 pid=FFFA69B7 t=470843 census   sources: calls=0 refills=0 new=0
+10 pid=FFFA69B7 t=470843 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+11 pid=FFFA69B7 t=470843 census   batch ends: full=0 texture=0 state=0
+12 pid=FFFA69B7 t=470843 census   grGlideGetVersion calls=1 lines=1
+13 pid=FFFA69B7 t=470843 census   grGlideInit calls=1 lines=1
+14 pid=FFFA69B7 t=470843 census   grGlideShutdown calls=1 lines=1
+15 pid=FFFA69B7 t=470843 census   grSstQueryHardware calls=1 lines=1
+16 pid=FFFA69B7 t=470843 detach: process exiting=0
+17 pid=FFFA69B7 t=470843 census detach swaps=0
+18 pid=FFFA69B7 t=470843 census   draws: drawn=0 refused=0 culled=0 skipped-textured=0
+19 pid=FFFA69B7 t=470848 census   draws: fog-dropped=0 uploads=0 surface-hits=0 evictions=0
+20 pid=FFFA69B7 t=470848 census   sources: calls=0 refills=0 new=0
+21 pid=FFFA69B7 t=470848 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+22 pid=FFFA69B7 t=470848 census   batch ends: full=0 texture=0 state=0
+23 pid=FFFA69B7 t=470848 census   grGlideGetVersion calls=1 lines=1
+24 pid=FFFA69B7 t=470848 census   grGlideInit calls=1 lines=1
+25 pid=FFFA69B7 t=470848 census   grGlideShutdown calls=1 lines=1
+26 pid=FFFA69B7 t=470848 census   grSstQueryHardware calls=1 lines=1
+1 pid=FFFA69B7 t=470943 attach instance=01890000 version=0.17.1 V9XGLIDE build=2ee04d24-dirty time=2026-10-14 12:32:14 uptime-ms=470943 exe=C:\NFS2DEMO\NFS2SEA.EXE
+2 pid=FFFA69B7 t=470943 grGlideInit#1 
+3 pid=FFFA69B7 t=470943 grSstQueryHardware#1 config=00560A04 -> voodoo fb=2MiB tmus=1 tmu0=2MiB
+4 pid=FFFA69B7 t=470943 grSstSelect#1 sst=0
+5 pid=FFFA69B7 t=470958 device: window=00000178 ours=0
+6 pid=FFFA69B7 t=473064 device: describe result=0 engine=5 generation=8
+7 pid=FFFA69B7 t=473064 device: target formats=00000004 texture formats=0000001A hw max=256
+8 pid=FFFA69B7 t=473064 device: open 640x480 buffers=3
+9 pid=FFFA69B7 t=473064 device: target 555=1
+10 pid=FFFA69B7 t=473064 grSstWinOpen#1 hwnd=00000178 res=7 refresh=0 cformat=0 origin=0 colbuf=2 auxbuf=1 -> 1
+11 pid=FFFA69B7 t=473064 grTexMinAddress#1 tmu=0 -> 00000000
+12 pid=FFFA69B7 t=473064 grTexCombineFunction#1 tmu=0 func=1
+13 pid=FFFA69B7 t=473064 grChromakeyValue#1 color=00000000
+14 pid=FFFA69B7 t=473064 grAlphaTestReferenceValue#1 ref=00000010
+15 pid=FFFA69B7 t=473064 grTexFilterMode#1 tmu=0 min=1 mag=1
+16 pid=FFFA69B7 t=473064 grTexMipMapMode#1 tmu=0 mode=0 lodblend=0
+17 pid=FFFA69B7 t=473064 grTexCombine#1 tmu=0 rgb=1,0 alpha=1,0 invert=0,0
+18 pid=FFFA69B7 t=473064 grColorCombine#1 func=1 factor=0 local=0 other=2 invert=0
+19 pid=FFFA69B7 t=473064 grAlphaCombine#1 func=1 factor=0 local=0 other=2 invert=0
+20 pid=FFFA69B7 t=473064 grAlphaBlendFunction#1 rgb=1,5 alpha=0,0
+21 pid=FFFA69B7 t=473064 grCullMode#1 mode=00000001
+22 pid=FFFA69B7 t=473064 grTexFilterMode#2 tmu=0 min=1 mag=1
+23 pid=FFFA69B7 t=473064 grChromakeyMode#1 mode=00000000
+24 pid=FFFA69B7 t=473064 grAlphaTestFunction#1 func=00000004
+25 pid=FFFA69B7 t=473064 grDitherMode#1 mode=00000002
+26 pid=FFFA69B7 t=473064 grDepthBufferMode#1 mode=00000002
+... (trimmed: lock, device and census lines follow) ...
+34 pid=FFFA69B7 t=473064 grLfbLock#1 type=01 buffer=0 wmode=00 origin=0 pipeline=0 info.size=20 -> 01D20000 stride=2048
+35 pid=FFFA69B7 t=473298 grLfbUnlock#1 type=01 buffer=0
+37 pid=FFFA69B7 t=473352 grLfbLock#2 type=01 buffer=1 wmode=00 origin=0 pipeline=0 info.size=20 -> 01D20000 stride=2048
+38 pid=FFFA69B7 t=473583 grLfbUnlock#2 type=01 buffer=1
+9893 pid=FFFA69B7 t=479952 draw refused: result=4 triangles=4 storage/format=0103
+9905 pid=FFFA69B7 t=479954 draw refused: result=4 triangles=2 storage/format=0103
+9916 pid=FFFA69B7 t=479956 draw refused: result=4 triangles=4 storage/format=0103
+9928 pid=FFFA69B7 t=479958 draw refused: result=4 triangles=4 storage/format=0103
+9941 pid=FFFA69B7 t=479963 draw refused: result=4 triangles=6 storage/format=0103
+9952 pid=FFFA69B7 t=479965 draw refused: result=4 triangles=4 storage/format=0103
+9963 pid=FFFA69B7 t=479968 draw refused: result=4 triangles=6 storage/format=0103
+9974 pid=FFFA69B7 t=479969 draw refused: result=4 triangles=4 storage/format=0103
+9986 pid=FFFA69B7 t=479972 draw refused: result=4 triangles=4 storage/format=0103
+9998 pid=FFFA69B7 t=479976 draw refused: result=4 triangles=4 storage/format=0103
+10010 pid=FFFA69B7 t=479977 draw refused: result=4 triangles=4 storage/format=0103
+10021 pid=FFFA69B7 t=479980 draw refused: result=4 triangles=4 storage/format=0103
+10034 pid=FFFA69B7 t=479984 draw refused: result=4 triangles=4 storage/format=0103
+10045 pid=FFFA69B7 t=479985 draw refused: result=4 triangles=4 storage/format=0103
+10056 pid=FFFA69B7 t=479987 draw refused: result=4 triangles=2 storage/format=0103
+10067 pid=FFFA69B7 t=479989 draw refused: result=4 triangles=2 storage/format=0103
+10078 pid=FFFA69B7 t=479991 draw refused: result=4 triangles=8 storage/format=0103
+10118 pid=FFFA69B7 t=480117 draw refused: result=4 triangles=2 storage/format=0203
+10131 pid=FFFA69B7 t=480119 draw refused: result=4 triangles=2 storage/format=0103
+10144 pid=FFFA69B7 t=480122 draw refused: result=4 triangles=2 storage/format=0103
+10157 pid=FFFA69B7 t=480124 draw refused: result=4 triangles=2 storage/format=0103
+10170 pid=FFFA69B7 t=480126 draw refused: result=4 triangles=2 storage/format=0103
+10210 pid=FFFA69B7 t=480142 draw refused: result=4 triangles=2 storage/format=0103
+10222 pid=FFFA69B7 t=480144 draw refused: result=4 triangles=2 storage/format=0103
+10517 pid=FFFA69B7 t=486100 census periodic swaps=53
+10518 pid=FFFA69B7 t=486100 census   draws: drawn=55995 refused=6869 culled=0 skipped-textured=0
+10519 pid=FFFA69B7 t=486100 census   draws: fog-dropped=59178 uploads=1011 surface-hits=2280 evictions=282
+10520 pid=FFFA69B7 t=486100 census   sources: calls=26929 refills=1799 new=291
+10521 pid=FFFA69B7 t=486100 census   cycles(Mc): frame=10079 entry=5440 prepare=482 upload=341 submit=5127 swap=485 clear=235 batches=25876
+10522 pid=FFFA69B7 t=486101 census   batch ends: full=26 texture=23385 state=0
+10523 pid=FFFA69B7 t=486101 census   grAlphaBlendFunction calls=7893 lines=3
+10524 pid=FFFA69B7 t=486101 census   grAlphaCombine calls=210 lines=4
+10525 pid=FFFA69B7 t=486101 census   grAlphaTestFunction calls=1 lines=1
+10526 pid=FFFA69B7 t=486101 census   grAlphaTestReferenceValue calls=1 lines=1
+10527 pid=FFFA69B7 t=486101 census   grBufferClear calls=33 lines=7
+10528 pid=FFFA69B7 t=486102 census   grBufferSwap calls=53 lines=24
+10529 pid=FFFA69B7 t=486102 census   grChromakeyMode calls=304 lines=4
+10530 pid=FFFA69B7 t=486102 census   grChromakeyValue calls=303 lines=3
+10531 pid=FFFA69B7 t=486102 census   grClipWindow calls=104 lines=2
+10532 pid=FFFA69B7 t=486102 census   grColorCombine calls=210 lines=4
+10533 pid=FFFA69B7 t=486102 census   grCullMode calls=80 lines=3
+10534 pid=FFFA69B7 t=486103 census   grDepthBufferFunction calls=54 lines=4
+10535 pid=FFFA69B7 t=486103 census   grDepthBufferMode calls=28 lines=3
+10536 pid=FFFA69B7 t=486103 census   grDepthMask calls=54 lines=4
+10537 pid=FFFA69B7 t=486103 census   grDitherMode calls=1 lines=1
+10538 pid=FFFA69B7 t=486103 census   grDrawLine calls=468 lines=72
+10539 pid=FFFA69B7 t=486103 census   grDrawTriangle calls=61810 lines=7156
+10540 pid=FFFA69B7 t=486103 census   grFogColorValue calls=2 lines=2
+10541 pid=FFFA69B7 t=486104 census   grFogMode calls=2 lines=2
+10542 pid=FFFA69B7 t=486104 census   grFogTable calls=1 lines=2
+10543 pid=FFFA69B7 t=486104 census   grGammaCorrectionValue calls=1 lines=1
+10544 pid=FFFA69B7 t=486104 census   grGlideInit calls=1 lines=1
+10545 pid=FFFA69B7 t=486104 census   grLfbLock calls=2 lines=2
+10546 pid=FFFA69B7 t=486104 census   grLfbUnlock calls=2 lines=2
+10547 pid=FFFA69B7 t=486105 census   grRenderBuffer calls=71 lines=7
+10548 pid=FFFA69B7 t=486105 census   grSstIdle calls=26 lines=24
+10549 pid=FFFA69B7 t=486105 census   grSstQueryHardware calls=1 lines=1
+10550 pid=FFFA69B7 t=486105 census   grSstSelect calls=1 lines=1
+10551 pid=FFFA69B7 t=486105 census   grSstWinOpen calls=1 lines=1
+10552 pid=FFFA69B7 t=486105 census   grTexCalcMemRequired calls=762 lines=18
+10553 pid=FFFA69B7 t=486105 census   grTexClampMode calls=3599 lines=3
+10554 pid=FFFA69B7 t=486106 census   grTexCombine calls=1 lines=1
+10555 pid=FFFA69B7 t=486106 census   grTexCombineFunction calls=1 lines=1
+10556 pid=FFFA69B7 t=486106 census   grTexDownloadMipMap calls=2561 lines=1651
+10557 pid=FFFA69B7 t=486106 census   grTexDownloadTable calls=150 lines=5
+10558 pid=FFFA69B7 t=486106 census   grTexFilterMode calls=2 lines=2
+10559 pid=FFFA69B7 t=486106 census   grTexMaxAddress calls=762 lines=2
+10560 pid=FFFA69B7 t=486107 census   grTexMinAddress calls=2 lines=2
+10561 pid=FFFA69B7 t=486107 census   grTexMipMapMode calls=1 lines=1
+10562 pid=FFFA69B7 t=486107 census   grTexSource calls=26929 lines=1185
+10563 pid=FFFA69B7 t=486107 census   guFogGenerateExp calls=20 lines=20
+10570 pid=FFFA69B7 t=501135 census periodic swaps=106
+10571 pid=FFFA69B7 t=501136 census   draws: drawn=216869 refused=25153 culled=0 skipped-textured=0
+10572 pid=FFFA69B7 t=501136 census   draws: fog-dropped=238230 uploads=1013 surface-hits=4369 evictions=298
+10573 pid=FFFA69B7 t=501136 census   sources: calls=103171 refills=1799 new=297
+10574 pid=FFFA69B7 t=501136 census   cycles(Mc): frame=14369 entry=13004 prepare=206 upload=5 submit=12536 swap=518 clear=382 batches=76085
+10575 pid=FFFA69B7 t=501136 census   batch ends: full=53 texture=75919 state=0
+10576 pid=FFFA69B7 t=501136 census   grAlphaBlendFunction calls=25345 lines=3
+10577 pid=FFFA69B7 t=501137 census   grAlphaCombine calls=634 lines=4
+10578 pid=FFFA69B7 t=501137 census   grAlphaTestFunction calls=1 lines=1
+10579 pid=FFFA69B7 t=501137 census   grAlphaTestReferenceValue calls=1 lines=1
+10580 pid=FFFA69B7 t=501137 census   grBufferClear calls=86 lines=7
+10581 pid=FFFA69B7 t=501137 census   grBufferSwap calls=106 lines=24
+10582 pid=FFFA69B7 t=501137 census   grChromakeyMode calls=1152 lines=4
+10583 pid=FFFA69B7 t=501138 census   grChromakeyValue calls=1151 lines=3
+10584 pid=FFFA69B7 t=501138 census   grClipWindow calls=316 lines=2
+10585 pid=FFFA69B7 t=501138 census   grColorCombine calls=634 lines=4
+10586 pid=FFFA69B7 t=501138 census   grCullMode calls=239 lines=3
+10587 pid=FFFA69B7 t=501138 census   grDepthBufferFunction calls=160 lines=4
+10588 pid=FFFA69B7 t=501138 census   grDepthBufferMode calls=81 lines=3
+10589 pid=FFFA69B7 t=501139 census   grDepthMask calls=160 lines=4
+10590 pid=FFFA69B7 t=501139 census   grDitherMode calls=1 lines=1
+10591 pid=FFFA69B7 t=501139 census   grDrawLine calls=1422 lines=72
+10592 pid=FFFA69B7 t=501139 census   grDrawTriangle calls=238848 lines=7156
+10593 pid=FFFA69B7 t=501139 census   grFogColorValue calls=2 lines=2
+10594 pid=FFFA69B7 t=501139 census   grFogMode calls=2 lines=2
+10595 pid=FFFA69B7 t=501139 census   grFogTable calls=1 lines=2
+10596 pid=FFFA69B7 t=501140 census   grGammaCorrectionValue calls=1 lines=1
+10597 pid=FFFA69B7 t=501140 census   grGlideInit calls=1 lines=1
+10598 pid=FFFA69B7 t=501140 census   grLfbLock calls=2 lines=2
+10599 pid=FFFA69B7 t=501140 census   grLfbUnlock calls=2 lines=2
+10600 pid=FFFA69B7 t=501140 census   grRenderBuffer calls=177 lines=7
+10601 pid=FFFA69B7 t=501140 census   grSstIdle calls=26 lines=24
+10602 pid=FFFA69B7 t=501141 census   grSstQueryHardware calls=1 lines=1
+10603 pid=FFFA69B7 t=501141 census   grSstSelect calls=1 lines=1
+10604 pid=FFFA69B7 t=501141 census   grSstWinOpen calls=1 lines=1
+10605 pid=FFFA69B7 t=501141 census   grTexCalcMemRequired calls=762 lines=18
+10606 pid=FFFA69B7 t=501141 census   grTexClampMode calls=13469 lines=3
+10607 pid=FFFA69B7 t=501141 census   grTexCombine calls=1 lines=1
+10608 pid=FFFA69B7 t=501141 census   grTexCombineFunction calls=1 lines=1
+10609 pid=FFFA69B7 t=501142 census   grTexDownloadMipMap calls=2561 lines=1651
+10610 pid=FFFA69B7 t=501142 census   grTexDownloadTable calls=574 lines=5
+10611 pid=FFFA69B7 t=501142 census   grTexFilterMode calls=2 lines=2
+10612 pid=FFFA69B7 t=501142 census   grTexMaxAddress calls=762 lines=2
+10613 pid=FFFA69B7 t=501142 census   grTexMinAddress calls=2 lines=2
+10614 pid=FFFA69B7 t=501142 census   grTexMipMapMode calls=1 lines=1
+10615 pid=FFFA69B7 t=501143 census   grTexSource calls=103171 lines=1191
+10616 pid=FFFA69B7 t=501143 census   guFogGenerateExp calls=20 lines=20
+10617 pid=FFFA69B7 t=516238 census periodic swaps=161
+10618 pid=FFFA69B7 t=516238 census   draws: drawn=380175 refused=39505 culled=0 skipped-textured=0
+10619 pid=FFFA69B7 t=516238 census   draws: fog-dropped=415778 uploads=1013 surface-hits=4990 evictions=298
+10620 pid=FFFA69B7 t=516238 census   sources: calls=178709 refills=1799 new=297
+10621 pid=FFFA69B7 t=516239 census   cycles(Mc): frame=14433 entry=13217 prepare=191 upload=0 submit=12776 swap=380 clear=392 batches=75483
+10622 pid=FFFA69B7 t=516239 census   batch ends: full=55 texture=75318 state=0
+10623 pid=FFFA69B7 t=516239 census   grAlphaBlendFunction calls=40253 lines=3
+10624 pid=FFFA69B7 t=516239 census   grAlphaCombine calls=1074 lines=4
+10625 pid=FFFA69B7 t=516239 census   grAlphaTestFunction calls=1 lines=1
+10626 pid=FFFA69B7 t=516239 census   grAlphaTestReferenceValue calls=1 lines=1
+10627 pid=FFFA69B7 t=516241 census   grBufferClear calls=141 lines=7
+10628 pid=FFFA69B7 t=516241 census   grBufferSwap calls=161 lines=24
+10629 pid=FFFA69B7 t=516241 census   grChromakeyMode calls=1726 lines=4
+10630 pid=FFFA69B7 t=516241 census   grChromakeyValue calls=1725 lines=3
+10631 pid=FFFA69B7 t=516241 census   grClipWindow calls=536 lines=2
+10632 pid=FFFA69B7 t=516241 census   grColorCombine calls=1074 lines=4
+10633 pid=FFFA69B7 t=516241 census   grCullMode calls=404 lines=3
+10634 pid=FFFA69B7 t=516241 census   grDepthBufferFunction calls=270 lines=4
+10635 pid=FFFA69B7 t=516241 census   grDepthBufferMode calls=136 lines=3
+10636 pid=FFFA69B7 t=516241 census   grDepthMask calls=270 lines=4
+10637 pid=FFFA69B7 t=516241 census   grDitherMode calls=1 lines=1
+10638 pid=FFFA69B7 t=516241 census   grDrawLine calls=2412 lines=72
+10639 pid=FFFA69B7 t=516242 census   grDrawTriangle calls=414306 lines=7156
+10640 pid=FFFA69B7 t=516242 census   grFogColorValue calls=2 lines=2
+10641 pid=FFFA69B7 t=516242 census   grFogMode calls=2 lines=2
+10642 pid=FFFA69B7 t=516242 census   grFogTable calls=1 lines=2
+10643 pid=FFFA69B7 t=516242 census   grGammaCorrectionValue calls=1 lines=1
+10644 pid=FFFA69B7 t=516242 census   grGlideInit calls=1 lines=1
+10645 pid=FFFA69B7 t=516242 census   grLfbLock calls=2 lines=2
+10646 pid=FFFA69B7 t=516243 census   grLfbUnlock calls=2 lines=2
+10647 pid=FFFA69B7 t=516243 census   grRenderBuffer calls=287 lines=7
+10648 pid=FFFA69B7 t=516243 census   grSstIdle calls=26 lines=24
+10649 pid=FFFA69B7 t=516243 census   grSstQueryHardware calls=1 lines=1
+10650 pid=FFFA69B7 t=516243 census   grSstSelect calls=1 lines=1
+10651 pid=FFFA69B7 t=516243 census   grSstWinOpen calls=1 lines=1
+10652 pid=FFFA69B7 t=516244 census   grTexCalcMemRequired calls=762 lines=18
+10653 pid=FFFA69B7 t=516244 census   grTexClampMode calls=20457 lines=3
+10654 pid=FFFA69B7 t=516244 census   grTexCombine calls=1 lines=1
+10655 pid=FFFA69B7 t=516244 census   grTexCombineFunction calls=1 lines=1
+10656 pid=FFFA69B7 t=516244 census   grTexDownloadMipMap calls=2561 lines=1651
+10657 pid=FFFA69B7 t=516244 census   grTexDownloadTable calls=846 lines=5
+10658 pid=FFFA69B7 t=516244 census   grTexFilterMode calls=2 lines=2
+10659 pid=FFFA69B7 t=516245 census   grTexMaxAddress calls=762 lines=2
+10660 pid=FFFA69B7 t=516245 census   grTexMinAddress calls=2 lines=2
+10661 pid=FFFA69B7 t=516245 census   grTexMipMapMode calls=1 lines=1
+10662 pid=FFFA69B7 t=516245 census   grTexSource calls=178709 lines=1191
+10663 pid=FFFA69B7 t=516245 census   guFogGenerateExp calls=20 lines=20

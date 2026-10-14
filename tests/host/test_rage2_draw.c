@@ -149,6 +149,23 @@ static void test_policy(void)
     textured(&r, V9X_M64_TEXTURE_FORMAT_RGB565);
     r.texture_op = 8ul;
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_TEXTURE_OP);
+    /* XRGB1555 - an untagged texture on a 5:5:5 desktop - is the 1555
+     * format sampled without TEX_MAP_AEN: its top bit is not alpha, so
+     * nothing reads it, and DECAL tests its alpha as 255 like 565's. */
+    textured(&r, V9X_M64_TEXTURE_FORMAT_XRGB1555);
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.texture_format == V9X_R2_TEX_FORMAT_1555);
+    CHECK((d.scale_3d_cntl & (V9X_R2_TEX_MAP_AEN | V9X_R2_TEX_AMASK_AEN)) ==
+          0ul);
+    r.texture_op = 3ul;                         /* DECALALPHA: plain decal */
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK((d.scale_3d_cntl & V9X_R2_TEX_LIGHT_DECAL) == 0ul);
+    r.texture_op = 1ul;                         /* DECAL, tested > 254 */
+    r.alpha_test_enable = 1ul;
+    r.alpha_func = 5ul;
+    r.alpha_ref = 254ul;
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.alpha_test_dropped == 1ul);
 
     /* Blending: the six factors each way; ONE/ZERO is no blend. */
     base_request(&r);

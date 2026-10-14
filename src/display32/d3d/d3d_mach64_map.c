@@ -245,7 +245,9 @@ void v9x_d3d_mach64_map_composite(const V9X_R3D_DRAW *draw,
         return;
     }
     request->texture_op = v9x_d3d_mach64_unit0_op(draw,
-        request->texture_format != V9X_M64_TEXTURE_FORMAT_RGB565 ? 1ul : 0ul);
+        request->texture_format == V9X_M64_TEXTURE_FORMAT_ARGB1555 ||
+        request->texture_format == V9X_M64_TEXTURE_FORMAT_ARGB4444
+            ? 1ul : 0ul);
     request->composite = 1ul;
     request->composite_format = V9X_D3D_MACH64_TEXTURE_UNKNOWN;
     if (texture1 != 0 && draw->texture1.object != 0) {

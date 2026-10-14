@@ -171,6 +171,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-14 What ATI's 3DCIF demos ask of ATI3DCIF.DLL: a census on the Rage IIC](2026-10-14-3dcif-demo-census.md)
 - [2026-10-14 The Rage IIC's 15 bpp modes were dropped at ring 0: a 555 desktop needs them kept](2026-10-14-rage-iic-555-desktop.md)
 - [2026-10-14 The Rage IIC draws 1555 targets: Direct3D at 5:5:5 matches 5:6:5 but for one blend step](2026-10-14-rage-iic-draws-1555-targets.md)
+- [2026-10-14 The Rage IIC at 5:5:5: untagged textures draw, and Glide opens and converts the LFB](2026-10-14-rage-iic-555-textures-and-glide.md)
 
 ## Matrox
 

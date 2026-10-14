@@ -365,6 +365,43 @@ static void test_formats(void)
                                      0ul, 0ul, dst, &format));
 }
 
+/* The frame buffer between the game's 565 and a 5:5:5 target: green loses
+ * its low bit going in and has its top bit copied down coming out, so a
+ * 555 pixel read out and written back is unchanged. Bytes, little-endian,
+ * as the buffer holds them. */
+static void test_lfb_pixels(void)
+{
+    static const v9x_u8 p565[8] = { 0x00, 0x00, 0xFF, 0xFF,
+                                    0xE0, 0x07, 0x1F, 0xF8 };
+    static const v9x_u8 p555[8] = { 0x00, 0x00, 0xFF, 0x7F,
+                                    0xE0, 0x03, 0x1F, 0x7C };
+    v9x_u8 out[8];
+    v9x_u8 back[8];
+    v9x_u32 value;
+    unsigned int i;
+
+    v9x_glide_lfb_565_to_555(p565, out, 4ul);
+    for (i = 0u; i < 8u; ++i) {
+        XCHECK(out[i] == p555[i]);
+    }
+    v9x_glide_lfb_555_to_565(p555, out, 4ul);
+    for (i = 0u; i < 8u; ++i) {
+        XCHECK(out[i] == p565[i]);
+    }
+    /* Every 555 value survives the round trip; the unused top bit reads
+     * as 0. */
+    for (value = 0ul; value < 0x8000ul; ++value) {
+        out[0] = (v9x_u8)(value & 0xFFul);
+        out[1] = (v9x_u8)(value >> 8);
+        v9x_glide_lfb_555_to_565(out, back, 1ul);
+        v9x_glide_lfb_565_to_555(back, back + 2, 1ul);
+        if (back[2] != out[0] || back[3] != out[1]) {
+            XCHECK(0);
+            break;
+        }
+    }
+}
+
 unsigned int v9x_run_glide_texture_tests(void)
 {
     glide_texture_failures = 0u;
@@ -377,5 +414,6 @@ unsigned int v9x_run_glide_texture_tests(void)
     test_distinct_slots();
     test_glide3_range();
     test_formats();
+    test_lfb_pixels();
     return glide_texture_failures;
 }

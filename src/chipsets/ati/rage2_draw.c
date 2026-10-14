@@ -140,6 +140,7 @@ static v9x_u32 r2_texture_format(v9x_u32 m64_format)
     switch (m64_format) {
     case V9X_M64_TEXTURE_FORMAT_RGB565:   return V9X_R2_TEX_FORMAT_565;
     case V9X_M64_TEXTURE_FORMAT_ARGB1555: return V9X_R2_TEX_FORMAT_1555;
+    case V9X_M64_TEXTURE_FORMAT_XRGB1555: return V9X_R2_TEX_FORMAT_1555;
     case V9X_M64_TEXTURE_FORMAT_ARGB4444: return V9X_R2_TEX_FORMAT_4444;
     default:                              return 0ul;
     }
@@ -285,8 +286,12 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
         v9x_u32 mag = request->texture_mag_filter;
         v9x_u32 min = r2_base_filter(request->texture_min_filter);
         v9x_u32 format = r2_texture_format(request->texture_format);
-        int has_alpha = format == V9X_R2_TEX_FORMAT_1555 ||
-                        format == V9X_R2_TEX_FORMAT_4444;
+        /* XRGB1555 is the 1555 format with its top bit unread: no
+         * TEX_MAP_AEN or alpha mask, so the bit an untagged texture leaves
+         * at 0 hides nothing, and DECAL reads its alpha as 255. */
+        int has_alpha =
+            request->texture_format == V9X_M64_TEXTURE_FORMAT_ARGB1555 ||
+            request->texture_format == V9X_M64_TEXTURE_FORMAT_ARGB4444;
 
         if (format == 0ul) {
             return V9X_M64_REFUSE_TEXTURE_FORMAT;

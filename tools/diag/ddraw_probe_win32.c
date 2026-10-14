@@ -4596,6 +4596,116 @@ void __stdcall V9xDdrawProbeEntry(void)
                     v9x_surface_pixel16(d3d_target, 16ul, 16ul));
 
                 /*
+                 * A texture created with no pixel format takes the
+                 * display's: XRGB1555 on a 5:5:5 desktop, whose top bit is
+                 * not alpha. Filled with 0x03E0 - the top bit clear, as an
+                 * application writing 555 leaves it - and drawn MODULATE
+                 * under SRCALPHA/INVSRCALPHA with opaque white vertices, it
+                 * must come out as the texel: a texture without alpha
+                 * blends by the vertex's. A driver that samples the top bit
+                 * as alpha draws nothing. The expected colour is the
+                 * texel's own green read in the target's layout, so 565
+                 * and 555 desktops are judged alike.
+                 */
+                {
+                    struct v9x_dds *untagged_surface = 0;
+                    struct v9x_d3d_texture2 *untagged = 0;
+                    DWORD untagged_handle = 0ul;
+                    HRESULT untagged_hr;
+                    WORD untagged_raw;
+
+                    v9x_zero(&desc, sizeof(desc));
+                    desc.dwSize = sizeof(desc);
+                    desc.dwFlags = V9X_DDSD_CAPS | V9X_DDSD_WIDTH |
+                                   V9X_DDSD_HEIGHT;
+                    desc.dwWidth = 64ul;
+                    desc.dwHeight = 64ul;
+                    desc.ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE |
+                                          V9X_DDSCAPS_VIDEOMEMORY;
+                    untagged_hr = ddraw->vtbl->CreateSurface(
+                        ddraw, &desc, &untagged_surface, 0);
+                    if (untagged_hr == 0 && untagged_surface != 0) {
+                        v9x_fill_surface(untagged_surface, 0x03e003e0ul);
+                        untagged_hr = untagged_surface->vtbl->QueryInterface(
+                            untagged_surface, &v9x_iid_d3d_texture2,
+                            (void **)&untagged);
+                    }
+                    if (untagged_hr == 0 && untagged != 0) {
+                        untagged_hr = untagged->vtbl->GetHandle(
+                            untagged, d3d_device, &untagged_handle);
+                    }
+                    v9x_write_hresult("D3DUntaggedTextureHr", untagged_hr);
+                    if (untagged_hr == 0) {
+                        v9x_fill_surface(d3d_target, 0ul);
+                        state_hr = d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                            untagged_handle);
+                        if (state_hr == 0) {
+                            state_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                                V9X_D3DTBLEND_MODULATE);
+                        }
+                        if (state_hr == 0) {
+                            state_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_SRCBLEND,
+                                V9X_D3DBLEND_SRCALPHA);
+                        }
+                        if (state_hr == 0) {
+                            state_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device, V9X_D3DRENDERSTATE_DESTBLEND,
+                                V9X_D3DBLEND_INVSRCALPHA);
+                        }
+                        if (state_hr == 0) {
+                            state_hr = d3d_device->vtbl->SetRenderState(
+                                d3d_device,
+                                V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                        }
+                        begin_hr = state_hr == 0
+                            ? d3d_device->vtbl->BeginScene(d3d_device)
+                            : state_hr;
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        } else {
+                            draw_hr = begin_hr;
+                            end_hr = begin_hr;
+                        }
+                        untagged_raw =
+                            v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                        v9x_write_hresult("D3DUntaggedTextureDrawHr", draw_hr);
+                        v9x_write_uint("D3DUntaggedTextureRaw", untagged_raw);
+                        v9x_write_uint("D3DUntaggedTextureOk",
+                            draw_hr == 0 && end_hr == 0 &&
+                            target_layout.valid != 0ul &&
+                            v9x_layout_red(&target_layout, untagged_raw) <= 8ul &&
+                            v9x_layout_blue(&target_layout, untagged_raw) <= 8ul &&
+                            v9x_layout_green(&target_layout, untagged_raw) + 8ul >=
+                                v9x_layout_green(&target_layout, 0x03e0ul) &&
+                            v9x_layout_green(&target_layout, untagged_raw) <=
+                                v9x_layout_green(&target_layout, 0x03e0ul) + 8ul
+                                ? 1ul : 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_ALPHABLENDENABLE,
+                            0ul);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND,
+                            V9X_D3DTBLEND_COPY);
+                        (void)d3d_device->vtbl->SetRenderState(
+                            d3d_device, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
+                            texture_handle2);
+                    }
+                    if (untagged != 0) {
+                        untagged->vtbl->Release(untagged);
+                    }
+                    if (untagged_surface != 0) {
+                        untagged_surface->vtbl->Release(untagged_surface);
+                    }
+                }
+
+                /*
                  * The same texture, tiled: coordinates from 0 to 2 across
                  * the triangle, then from -0.5 to 0.5. Every texel is green,
                  * so a green pixel anywhere says the sampler wrapped and a

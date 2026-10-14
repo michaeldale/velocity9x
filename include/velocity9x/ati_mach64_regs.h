@@ -265,6 +265,9 @@
 #define V9X_M64_TEXTURE_FORMAT_RGB565   0ul
 #define V9X_M64_TEXTURE_FORMAT_ARGB1555 1ul
 #define V9X_M64_TEXTURE_FORMAT_ARGB4444 2ul
+/* 5:5:5 with the top bit unused: an untagged texture on a 5:5:5 desktop.
+ * The Rage II samples it as 1555 with the texel's alpha unread. */
+#define V9X_M64_TEXTURE_FORMAT_XRGB1555 3ul
 
 #define V9X_M64_DST_X_DIR             0x00000001ul
 #define V9X_M64_DST_Y_DIR             0x00000002ul

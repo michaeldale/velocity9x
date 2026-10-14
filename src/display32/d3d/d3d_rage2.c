@@ -194,7 +194,7 @@ static int v9x_d3d_rage2_refuse(DWORD reason)
     return 0;
 }
 
-/* RGB565, ARGB1555, ARGB4444: the three /texmix sampled. */
+/* RGB565, ARGB1555, ARGB4444: the three /texmix sampled; and XRGB1555. */
 static int v9x_d3d_rage2_texture_format(const V9X_DD_SURFACE_LCL *surface,
                                         DWORD *format_out)
 {
@@ -220,6 +220,14 @@ static int v9x_d3d_rage2_texture_format(const V9X_DD_SURFACE_LCL *surface,
         format->dwGBitMask == 0x000007e0ul &&
         format->dwBBitMask == 0x0000001ful) {
         *format_out = V9X_M64_TEXTURE_FORMAT_RGB565;
+        return 1;
+    }
+    /* A texture with no format of its own on a 5:5:5 desktop. */
+    if ((format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x00007c00ul &&
+        format->dwGBitMask == 0x000003e0ul &&
+        format->dwBBitMask == 0x0000001ful) {
+        *format_out = V9X_M64_TEXTURE_FORMAT_XRGB1555;
         return 1;
     }
     if ((format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul) {

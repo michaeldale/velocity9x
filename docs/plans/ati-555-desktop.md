@@ -5,9 +5,15 @@ Date: 2026-10-14
 Status: Phase 0 done on the Rage IIC. The 555 desktop boots there by
 default, and the Rage II draws 1555 targets:
 [desktop](../decisions/2026-10-14-rage-iic-555-desktop.md),
-[3D](../decisions/2026-10-14-rage-iic-draws-1555-targets.md). Phase 1
-remains for textures, 2D and the blend step; then Phases 2 and 3.
-Chosen by Michael on 2026-10-14 over keeping
+[3D](../decisions/2026-10-14-rage-iic-draws-1555-targets.md). On the Rage
+II, untagged XRGB1555 textures draw, and Glide opens at 555 and converts
+the LFB ([boot 464](../decisions/2026-10-14-rage-iic-555-textures-and-glide.md)).
+The 2D width code is left at 565 on purpose (same record). Remaining:
+- Phase 1's blend step (a SCALE_3D_CNTL sweep).
+- Phase 3, the Mach64 class.
+
+Phase 2 is done on the Rage IIC: Diablo II and the NFS II demo were
+checked on the monitor. Chosen by Michael on 2026-10-14 over keeping
 565 and correcting 555-only titles in ATI3DCIF.DLL.
 
 ## Why

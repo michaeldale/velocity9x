@@ -41,4 +41,16 @@ v9x_u16 v9x_glide_texfmt_convert(v9x_u32 format, const void *src,
                                  v9x_u32 key_enable, v9x_u32 key_rgb,
                                  v9x_u16 *dst, v9x_u32 *abi_format);
 
+/*
+ * Frame-buffer pixels between the 565 a Glide title reads and writes and a
+ * 5:5:5 target (docs\plans\ati-555-desktop.md, Phase 2). Bytes in the
+ * buffer's little-endian order, so neither side need be aligned; `src` and
+ * `dst` may be the same row. 565 to 555 drops green's low bit; 555 to 565
+ * copies green's top bit into it, so a 555 pixel survives the round trip.
+ */
+void v9x_glide_lfb_565_to_555(const v9x_u8 *src, v9x_u8 *dst,
+                              v9x_u32 pixels);
+void v9x_glide_lfb_555_to_565(const v9x_u8 *src, v9x_u8 *dst,
+                              v9x_u32 pixels);
+
 #endif /* VELOCITY9X_GLIDE_TEXFMT_H */

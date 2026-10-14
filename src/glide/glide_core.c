@@ -40,6 +40,8 @@
 /* GrLock_t: GR_LFB_READ_ONLY 0, GR_LFB_WRITE_ONLY 1, GR_LFB_NOIDLE 0x10. */
 #define V9X_GLIDE_LFB_WRITE_ONLY   1ul
 #define V9X_GLIDE_LFB_WRITE_565    0ul
+#define V9X_GLIDE_LFB_WRITE_555    1ul
+#define V9X_GLIDE_LFB_WRITE_1555   2ul
 #define V9X_GLIDE_LFB_WRITE_888    4ul
 #define V9X_GLIDE_LFB_WRITE_8888   5ul
 #define V9X_GLIDE_LFB_WRITE_ANY    0xfful
@@ -107,6 +109,11 @@ static v9x_u32 v9x_glide_render_buffer = V9X_GLIDE_BUFFER_BACK;
 static v9x_u8 v9x_glide_fog[V9X_GLIDE_FOG_TABLE_SIZE];
 /* The buffer grLfbLock locked on the device, plus one; 0 for the shadow. */
 static v9x_u32 v9x_glide_lfb_locked;
+/* A 565 lock of a 5:5:5 buffer: the game has the shadow, converted from
+ * the locked pixels and converted back at unlock. */
+static int v9x_glide_lfb_converted;
+static v9x_u8 *v9x_glide_lfb_pixels;
+static v9x_u32 v9x_glide_lfb_pitch;
 
 /* Draw outcomes, written with the census counts. */
 static v9x_u32 v9x_glide_drawn;
@@ -1251,6 +1258,8 @@ void v9x_glide_close(void)
 {
     v9x_glide_flush();
     v9x_glide_textures_drop_surfaces();
+    /* A lock still held has no buffer left to convert back into. */
+    v9x_glide_lfb_converted = 0;
     v9x_glide_device_close();
 }
 
@@ -1296,6 +1305,7 @@ v9x_u32 v9x_glide_lfb_lock(unsigned int ix, v9x_u32 call, v9x_u32 type,
      * flag is not honoured: writes go straight to memory.
      */
     if (v9x_glide_device_is_open() && v9x_glide_lfb_locked == 0ul &&
+        !v9x_glide_device_is_555() &&
         ((type & V9X_GLIDE_LFB_WRITE_ONLY) == 0ul ||
          mode == V9X_GLIDE_LFB_WRITE_565)) {
         void *pixels;
@@ -1311,6 +1321,63 @@ v9x_u32 v9x_glide_lfb_lock(unsigned int ix, v9x_u32 call, v9x_u32 type,
             info[3] = V9X_GLIDE_LFB_WRITE_565;
             info[4] = origin;
             return V9X_GLIDE_TRUE;
+        }
+    }
+
+    /*
+     * A 5:5:5 buffer. A write in 555, 1555 (whose top bit the display
+     * ignores) or "any" goes to the buffer itself, and "any" reports 555,
+     * which the Voodoo's GrLfbInfo_t.writeMode exists to say. A read, or a
+     * write in 565, gets the shadow holding the buffer converted to 565,
+     * converted back at unlock - a read too, since on the Voodoo a read
+     * lock's pointer is the buffer and a write through it lands. 555
+     * survives the round trip, so pixels the game did not touch come back
+     * as they were.
+     */
+    if (v9x_glide_device_is_open() && v9x_glide_lfb_locked == 0ul &&
+        v9x_glide_device_is_555()) {
+        int write_only = (type & V9X_GLIDE_LFB_WRITE_ONLY) != 0ul;
+        int direct = write_only &&
+                     (write_mode == V9X_GLIDE_LFB_WRITE_ANY ||
+                      mode == V9X_GLIDE_LFB_WRITE_555 ||
+                      mode == V9X_GLIDE_LFB_WRITE_1555);
+        int converted = !write_only || mode == V9X_GLIDE_LFB_WRITE_565;
+        v9x_u32 width = v9x_glide_state.width;
+        v9x_u32 height = v9x_glide_state.height;
+        void *pixels;
+        v9x_u32 pitch;
+        v9x_u32 row;
+
+        if (converted && (shadow == 0 ||
+                          width > V9X_GLIDE_LFB_STRIDE_16 / 2ul ||
+                          height > V9X_GLIDE_LFB_LINES)) {
+            converted = 0;
+        }
+        if (direct || converted) {
+            v9x_glide_flush();
+            if (v9x_glide_device_lock(buffer, 0, &pixels, &pitch)) {
+                v9x_glide_lfb_locked = buffer + 1ul;
+                info[4] = origin;
+                if (direct) {
+                    info[1] = (v9x_u32)pixels;
+                    info[2] = pitch;
+                    info[3] = write_mode == V9X_GLIDE_LFB_WRITE_ANY
+                        ? V9X_GLIDE_LFB_WRITE_555 : mode;
+                    return V9X_GLIDE_TRUE;
+                }
+                for (row = 0ul; row < height; ++row) {
+                    v9x_glide_lfb_555_to_565(
+                        (const v9x_u8 *)pixels + row * pitch,
+                        shadow + row * V9X_GLIDE_LFB_STRIDE_16, width);
+                }
+                v9x_glide_lfb_converted = 1;
+                v9x_glide_lfb_pixels = (v9x_u8 *)pixels;
+                v9x_glide_lfb_pitch = pitch;
+                info[1] = (v9x_u32)shadow;
+                info[2] = V9X_GLIDE_LFB_STRIDE_16;
+                info[3] = V9X_GLIDE_LFB_WRITE_565;
+                return V9X_GLIDE_TRUE;
+            }
         }
     }
     if (shadow == 0) {
@@ -1330,6 +1397,17 @@ v9x_u32 v9x_glide_lfb_unlock(unsigned int ix, v9x_u32 call, v9x_u32 type,
         v9x_glide_logf(ix, call, "type=%02lX buffer=%lu",
                        type, buffer);
     }
+    if (v9x_glide_lfb_converted && v9x_glide_lfb != 0) {
+        v9x_u32 row;
+
+        for (row = 0ul; row < v9x_glide_state.height; ++row) {
+            v9x_glide_lfb_565_to_555(
+                v9x_glide_lfb + row * V9X_GLIDE_LFB_STRIDE_16,
+                v9x_glide_lfb_pixels + row * v9x_glide_lfb_pitch,
+                v9x_glide_state.width);
+        }
+    }
+    v9x_glide_lfb_converted = 0;
     if (v9x_glide_lfb_locked != 0ul) {
         v9x_glide_device_unlock(v9x_glide_lfb_locked - 1ul);
         v9x_glide_lfb_locked = 0ul;
@@ -1367,6 +1445,12 @@ v9x_u32 v9x_glide_lfb_read(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
         }
         pixels = (const v9x_u8 *)base;
         for (row = 0ul; row < height; ++row) {
+            if (v9x_glide_device_is_555()) {
+                v9x_glide_lfb_555_to_565(
+                    pixels + (y + row) * pitch + x * 2ul,
+                    dst + row * dst_stride, width);
+                continue;
+            }
             for (column = 0ul; column < width * 2ul; ++column) {
                 dst[row * dst_stride + column] =
                     pixels[(y + row) * pitch + x * 2ul + column];
@@ -1384,8 +1468,9 @@ v9x_u32 v9x_glide_lfb_read(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
 }
 
 /*
- * grLfbWriteRegion copies 16-bit 565 pixels into a colour buffer; the
- * pixel pipeline is not applied, as on the Voodoo. Carmageddon II draws its
+ * grLfbWriteRegion copies 16-bit 565 pixels into a colour buffer,
+ * converted to 555 on a 5:5:5 one; the pixel pipeline is not applied, as
+ * on the Voodoo. Carmageddon II draws its
  * menu backdrop with one 640x480 write a frame; as a stub the menu showed
  * only what the triangles drew (netbook, 2026-10-11). Other source formats
  * are refused until a title needs one.
@@ -1431,6 +1516,12 @@ v9x_u32 v9x_glide_lfb_write(unsigned int ix, v9x_u32 call, v9x_u32 buffer,
     }
     pixels = (v9x_u8 *)base;
     for (row = 0ul; row < height; ++row) {
+        if (v9x_glide_device_is_555()) {
+            v9x_glide_lfb_565_to_555(src + row * src_stride,
+                                     pixels + (y + row) * pitch + x * 2ul,
+                                     width);
+            continue;
+        }
         for (column = 0ul; column < width * 2ul; ++column) {
             pixels[(y + row) * pitch + x * 2ul + column] =
                 src[row * src_stride + column];

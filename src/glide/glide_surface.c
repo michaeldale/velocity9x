@@ -34,6 +34,8 @@ static int v9x_glide_window_ours;
 static int v9x_glide_open;
 static v9x_u32 v9x_glide_hwtex_failures;
 static int v9x_glide_flip_pending;
+/* The colour buffers are 5:5:5 rather than 565. */
+static int v9x_glide_target_555;
 
 static void v9x_glide_zero(void *block, DWORD bytes)
 {
@@ -133,6 +135,7 @@ int v9x_glide_device_open(void *window, v9x_u32 width, v9x_u32 height,
     V9X_GLIDE_DDRAW_CREATE create;
     V9X_R3D_ENTRY_FN entry;
     DDSURFACEDESC desc;
+    DDSURFACEDESC primary_desc;
     DDSCAPS caps;
     HRESULT hr;
 
@@ -243,15 +246,29 @@ int v9x_glide_device_open(void *window, v9x_u32 width, v9x_u32 height,
         v9x_glide_device_close();
         return 0;
     }
+    /*
+     * 16 bits is 565 or, on a 5:5:5 desktop (the ViRGE's, the Rage IIC's),
+     * 555. Triangles follow the surface's own format; the frame buffer the
+     * game reads and writes is converted (glide_core.c's LFB functions).
+     */
+    v9x_glide_zero(&primary_desc, sizeof(primary_desc));
+    primary_desc.dwSize = sizeof(primary_desc);
+    hr = IDirectDrawSurface_GetSurfaceDesc(v9x_glide_primary, &primary_desc);
+    v9x_glide_target_555 = hr == DD_OK &&
+                           primary_desc.ddpfPixelFormat.dwGBitMask == 0x03E0ul;
     if ((v9x_glide_description.target_formats &
-         (1ul << V9X_R3D_ABI_FORMAT_RGB565)) == 0ul) {
-        v9x_glide_log("device: the engine offers no RGB565 target");
+         (1ul << (v9x_glide_target_555 ? V9X_R3D_ABI_FORMAT_XRGB1555
+                                       : V9X_R3D_ABI_FORMAT_RGB565))) == 0ul) {
+        v9x_glide_log3("device: the engine offers no target in the display's layout (555=%lu)",
+                       (DWORD)v9x_glide_target_555, 0ul, 0ul);
         v9x_glide_device_close();
         return 0;
     }
     v9x_glide_open = 1;
     v9x_glide_log3("device: open %lux%lu buffers=%lu", width, height,
                    desc.dwBackBufferCount + 1ul);
+    v9x_glide_log3("device: target 555=%lu", (DWORD)v9x_glide_target_555,
+                   0ul, 0ul);
     return 1;
 }
 
@@ -289,6 +306,11 @@ void v9x_glide_device_close(void)
 int v9x_glide_device_is_open(void)
 {
     return v9x_glide_open;
+}
+
+int v9x_glide_device_is_555(void)
+{
+    return v9x_glide_open && v9x_glide_target_555;
 }
 
 const V9X_R3D_INTERFACE *v9x_glide_device_interface(void)

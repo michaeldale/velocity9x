@@ -30,6 +30,8 @@ int v9x_glide_device_open(void *window, v9x_u32 width, v9x_u32 height,
                           v9x_u32 color_buffers, v9x_u32 aux_buffers);
 void v9x_glide_device_close(void);
 int v9x_glide_device_is_open(void);
+/* Whether the open device's colour buffers are 5:5:5 rather than 565. */
+int v9x_glide_device_is_555(void);
 
 const V9X_R3D_INTERFACE *v9x_glide_device_interface(void);
 const V9X_R3D_ABI_DESCRIBE *v9x_glide_device_description(void);

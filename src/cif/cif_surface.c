@@ -24,6 +24,7 @@ static const V9X_R3D_INTERFACE *v9x_cif_interface;
 static V9X_R3D_ABI_DESCRIBE v9x_cif_description;
 static int v9x_cif_open;
 static v9x_u32 v9x_cif_hwtex_failures;
+static int v9x_cif_565_logged;
 
 static void v9x_cif_zero(void *block, DWORD bytes)
 {
@@ -156,6 +157,16 @@ int v9x_cif_device_display(v9x_u32 *width, v9x_u32 *height, v9x_u32 *pitch,
     if (desc.ddpfPixelFormat.dwRGBBitCount == V9X_CIF_DISPLAY_BITS) {
         if (desc.ddpfPixelFormat.dwGBitMask == 0x07e0ul) {
             *format = V9X_R3D_ABI_FORMAT_RGB565;
+            /*
+             * Drawn, but colours the title writes as raw pixels - clears,
+             * its own 2D - come out wrong, and the DLL cannot correct what
+             * never passes through it. Said once, for bug reports
+             * (docs\plans\ati-555-desktop.md).
+             */
+            if (!v9x_cif_565_logged) {
+                v9x_cif_565_logged = 1;
+                v9x_cif_log_text("device: the display is 5:6:5; titles written for ATI assume 5:5:5 - check HighColor in SYSTEM.INI [Velocity9x]");
+            }
         } else if (desc.ddpfPixelFormat.dwGBitMask == 0x03e0ul) {
             *format = V9X_R3D_ABI_FORMAT_XRGB1555;
         }

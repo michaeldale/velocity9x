@@ -15,10 +15,15 @@ build identifier so exact guest-tested binaries remain traceable.
     were dropped before, so a 555 mode set failed.
   - The Rage II's Direct3D draws into 1555 targets as well as 565.
 
+  Textures created without a pixel format, which take the desktop's
+  5:5:5, now draw. Glide opens on a 5:5:5 desktop and converts the 565
+  frame buffer a game reads and writes. ATI3DCIF.DLL logs once when the
+  desktop is 5:6:5, since titles written for ATI then show wrong colours.
   The Rage XL, Rage Pro and Mobility stay 5:6:5 until their own
-  measurement. Glide does not yet open on a 5:5:5 desktop.
+  measurement.
   [Desktop](docs/decisions/2026-10-14-rage-iic-555-desktop.md),
-  [3D](docs/decisions/2026-10-14-rage-iic-draws-1555-targets.md).
+  [3D](docs/decisions/2026-10-14-rage-iic-draws-1555-targets.md),
+  [textures and Glide](docs/decisions/2026-10-14-rage-iic-555-textures-and-glide.md).
 
 ## 0.17.0 - 2026-10-13
 
