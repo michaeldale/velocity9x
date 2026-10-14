@@ -23,9 +23,9 @@ computed in the core, per vertex:
     the engine through a copy that carries the table factors;
   - skips the execute-buffer path's CPU fog fold under table fog, since
     the specular alpha is then not a factor.
-- **Caps**: `D3DPRASTERCAPS_FOGTABLE` on every engine that already claims
-  `FOGVERTEX`: Mach64 class, Rage II, ViRGE, SiS 6326, Gen3. One core
-  function serves them all.
+- **Caps**: `D3DPRASTERCAPS_FOGTABLE` on every engine that fogs from the
+  specular alpha: Mach64 class, Rage II, SiS 6326, Gen3. One core
+  function serves them all. Not on the ViRGE (below).
 
 ## Which depth
 
@@ -85,6 +85,23 @@ Whether the fog itself looks right has not been checked. The agent's
 screenshot is too dark to show distant fog, and EXP on Z under-fogs if
 Thief II gives its density in eye units.
 
+## The other engines (2026-10-15)
+
+Evidence: `docs/probe/table-fog-other-engines-2026-10-15/`.
+
+- **GMA 950** (netbook, boots 181-182). All six scenes give the Rage XL's
+  values: red 132, 255, 0, 90, 8 and 66 against 128, 255, 0, 94, 5 and 64.
+  V9XDDP went 202/224 to 203/224, and `D3DTableFogOk` is the only key that
+  changed.
+- **ViRGE/DX** (86Box Win86SE, boots 667-668). Every scene drew unfogged.
+  Its vertex fog does not draw either on this path: `D3DDepthFogOk` and
+  `D3DFogTexOk` read 0 before and after. Its fog is a colour fold done on
+  the execute-buffer path only
+  ([issue](../issues/2026-10-15-virge-claims-vertex-fog-it-does-not-draw.md)).
+  FOGTABLE is no longer claimed there; V9XDDP read 194/224 both times.
+- **Not run:** the SiS 6326 and the Rage II. They claim FOGTABLE because
+  they fog from the specular alpha, as the Rage XL and Gen3 measured do.
+
 ## Limits
 
 - **Blended surfaces get no fog.** Since boot 471 the Mach64 class and
@@ -92,7 +109,7 @@ Thief II gives its density in eye units.
   well as table fog.
 - **The factor is linear between vertices**, not evaluated per pixel. A
   large triangle across an EXP curve fogs differently from a true table.
-- **Not measured on the other engines.** Gen3, the Rage II, SiS 6326 and
-  ViRGE claim the cap through the same core code.
+- **Rage II and SiS 6326 not measured.** They claim the cap through the
+  same core code. Gen3 is measured.
 - **The depth rule is untested on a game.** The plan asks for two
   table-fog titles before the rule is settled.

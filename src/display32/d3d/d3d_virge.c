@@ -1823,9 +1823,12 @@ static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
         V9X_D3DPRASTERCAPS_ZTEST |
         V9X_D3DPRASTERCAPS_SUBPIXEL |
-        V9X_D3DPRASTERCAPS_FOGVERTEX |
-        /* Emulated per vertex in the core (d3d_fog.h). */
-        V9X_D3DPRASTERCAPS_FOGTABLE;
+        V9X_D3DPRASTERCAPS_FOGVERTEX;
+    /* Not FOGTABLE: the core's per-vertex table fog (d3d_fog.h) feeds an
+     * engine that fogs from the specular alpha, and this one does not -
+     * its fog is folded into the colour on the execute-buffer path alone.
+     * Claimed, every table-fog scene drew unfogged (86Box ViRGE/DX, boot
+     * 668, as D3DDepthFogOk and D3DFogTexOk already did). */
     shared->d3d_global.hwCaps.dpcTriCaps.dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |

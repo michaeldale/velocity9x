@@ -79,6 +79,22 @@ then hands the driver a ramp.
   bright Set held three seconds, then restore. `/keep` leaves the ramp
   loaded; `/identity` loads the identity.
 
+## Only where the window exists (2026-10-15)
+
+The ATI family's tier-0 VT2, VT3 and VT4 have no register-window
+descriptor. Claiming gamma there would accept ramps that change nothing,
+so C1_GAMMA_RAMP needs the hook and a device that names its window.
+
+GDI asks for the caps before Enable scans PCI, when the active device is
+still the family's first entry, the VT2. The check therefore makes the
+PCI scan itself; it is BIOS reads only.
+
+On the 86Box Mach64 VT2 (Win98SE-Mach64VT2, boot 122), V9XGAMMA reads
+`DdPrimaryGamma` 0, Get 0 and Set 0, as on the old build (boot 121).
+DirectDraw creates normally.
+
+Not yet re-run on the Rage XL with this check: A8U4I5 was off.
+
 ## Not done
 
 - No other family has a `load_gamma` hook. Each needs its own DAC path

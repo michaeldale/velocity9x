@@ -1083,9 +1083,30 @@ static void v9x_gamma_log(void)
                               line, V9X_DIAG_ESC_INI);
 }
 
+/* A family hook, and a device that names the register window it writes
+ * through: the ATI family's tier-0 VT2, VT3 and VT4 have none, and claiming
+ * gamma there would accept ramps that change nothing. */
+static WORD v9x_gamma_hardware(void)
+{
+    const V9X_HW16_DEVICE *device;
+
+    if (v9x_hw16.load_gamma == 0) {
+        return 0u;
+    }
+    /* GDI asks for the caps before Enable has scanned PCI, when the active
+     * device is still the family's first entry (the ATI family's VT2);
+     * the scan is PCI BIOS reads only, safe to make here. */
+    if (v9x_pci_match == 0xffffu) {
+        (void)V9xHardwarePresent();
+    }
+    device = v9x_hw16_active_device();
+    return device != 0 &&
+           device->fill_engine_descriptor != 0;
+}
+
 static WORD v9x_gamma_available(void)
 {
-    return v9x_hw16.load_gamma != 0 && v9x_palettized == 0u;
+    return v9x_gamma_hardware() && v9x_palettized == 0u;
 }
 
 static void v9x_gamma_identity(void)
@@ -1299,7 +1320,7 @@ static WORD v9x_fill_gdi_info(V9X_GDI_INFO FAR *info,
      * DirectDrawCreate (A8U4I5 boot 472). */
     info->dpCaps1 |= V9X_C1_DIBENGINE | V9X_C1_REINIT_ABLE |
                      V9X_C1_BYTE_PACKED | V9X_C1_COLORCURSOR;
-    if (v9x_hw16.load_gamma != 0 &&
+    if (v9x_gamma_hardware() &&
         v9x_selected_mode->bits_per_pixel > 8u) {
         info->dpCaps1 |= V9X_C1_GAMMA_RAMP;
     }
