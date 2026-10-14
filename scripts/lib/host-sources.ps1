@@ -147,6 +147,9 @@ function Get-V9xHostSourceNames {
         # Direct3D render state to the neutral draw: the identity, asserted.
         'src\display32\d3d\d3d_state.c',
         'tests\host\test_d3d_state.c',
+        # Table fog as a per-vertex factor in the specular alpha.
+        'src\display32\d3d\d3d_fog.c',
+        'tests\host\test_d3d_fog.c',
         # The DrawPrimitives2 command walker: record layouts and bounds.
         'src\display32\d3d\d3d_dp2.c',
         'tests\host\test_d3d_dp2.c',

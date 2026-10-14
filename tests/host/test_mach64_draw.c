@@ -273,6 +273,67 @@ static void test_texture_matches_texture_builder(void)
     CHECK(offsets[18] == ref_offsets[18]);
 }
 
+/*
+ * A texture colour key: CLR_CMP_CNTL compares the texel (SRC_TEXEL) and
+ * keeps the destination where it is EQUAL (xf86-video-mach64 atiregs.h; the
+ * XL/XC register reference, 5-61). The Rage XL compares the raw texel, not
+ * the 24-bit expansion the reference describes: ATIRX /pro /ckey held the
+ * key with F81F under masks FFFF and FFFFFFFF and missed it with every
+ * expanded encoding (A8U4I5 boot 474). Alpha is masked out of the compare,
+ * as the Matrox engine and the ViRGE rewrite leave it.
+ */
+static void test_color_key_words(void)
+{
+    struct v9x_m64_draw_state state;
+    struct v9x_m64_draw_decision decision;
+    v9x_u32 offsets[CAP], values[CAP], written;
+
+    base_state(&state);
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_RGB565);
+    decision.light_fcn = V9X_M64_TEX_LIGHT_FCN_REPLACE;
+    decision.texture_alpha = 0ul;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 19ul && offsets[2] == V9X_M64_CLR_CMP_CNTL &&
+          values[2] == 0ul);
+
+    /* Magenta in 565. */
+    state.color_key_enable = 1ul;
+    state.color_key = 0xf81ful;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 21ul);
+    CHECK(values[2] == 0x02000005ul);
+    CHECK(offsets[19] == V9X_M64_CLR_CMP_CLR && values[19] == 0x0000f81ful);
+    CHECK(offsets[20] == V9X_M64_CLR_CMP_MASK && values[20] == 0x0000fffful);
+
+    /* 1555: the alpha bit is not compared. */
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_ARGB1555);
+    state.color_key = 0xfc1ful;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(values[19] == 0x00007c1ful && values[20] == 0x00007ffful);
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_XRGB1555);
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(values[19] == 0x00007c1ful && values[20] == 0x00007ffful);
+
+    /* 4444: four bits a channel, alpha left out. */
+    texture_fields(&state, V9X_M64_TEXTURE_FORMAT_ARGB4444);
+    state.color_key = 0x7f0ful;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(values[19] == 0x00000f0ful && values[20] == 0x00000ffful);
+
+    /* Untextured: a key has nothing to compare. */
+    base_state(&state);
+    state.color_key_enable = 1ul;
+    state.color_key = 0xf81ful;
+    CHECK(v9x_m64_build_draw_state(&state, &decision, offsets, values, CAP,
+                                   &written) == V9X_STATUS_OK);
+    CHECK(written == 17ul && values[2] == 0ul);
+}
+
 /* A second texture, 32x8 ARGB4444 at 0x205000: wide, so its TEX_SIZE_PITCH
  * fields differ from the first texture's 8x8 in every place. */
 static void composite_fields(struct v9x_m64_draw_state *state)
@@ -756,6 +817,7 @@ unsigned int v9x_run_mach64_draw_tests(void)
     test_fog_matches_item12();
     test_depth_words_match_depth_builder();
     test_texture_matches_texture_builder();
+    test_color_key_words();
     test_composite_state_words();
     test_composite_state_refusals();
     test_state_arguments();

@@ -1841,7 +1841,9 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
      */
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
         V9X_D3DPRASTERCAPS_SUBPIXEL | V9X_D3DPRASTERCAPS_ZTEST |
-        V9X_D3DPRASTERCAPS_FOGVERTEX;
+        V9X_D3DPRASTERCAPS_FOGVERTEX |
+        /* Emulated per vertex in the core (d3d_fog.h). */
+        V9X_D3DPRASTERCAPS_FOGTABLE;
     /*
      * ALPHAGOURAUDBLEND says the device can blend with an alpha interpolated
      * from the vertices, which is what the blend path does: the fragment

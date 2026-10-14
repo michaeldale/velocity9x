@@ -29,6 +29,9 @@ typedef struct v9x_d3d_mach64_texture {
     v9x_u32 offset;
     v9x_u32 pitch_bytes;
     v9x_u32 level_offsets[V9X_M64_TEXTURE_LEVELS_MAX];
+    /* The surface's source colour key (DDCKEY_SRCBLT), in its format. */
+    v9x_u32 has_color_key;
+    v9x_u32 color_key;
 } V9X_D3D_MACH64_TEXTURE;
 
 /*

@@ -6,6 +6,30 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.18.1 - not yet released
 
+- **New: Direct3D table fog.** Games that fog by distance
+  (FOGTABLEMODE) now get fog on every card with hardware fog: the Rage
+  XL and the rest of the Rage Pro class, the Rage IIC, the GMA 950, the
+  SiS 6326 and the ViRGE. No card here has a fog table, so the driver
+  works out the fog at each vertex. Measured on the Rage XL; Thief II's
+  fog uses it.
+- **Fixed: fogged see-through surfaces vanished on ATI cards.** The
+  Rage chips cannot fog and blend in one pass, and such draws were
+  dropped. They are now drawn without the fog. Thief II's lighting
+  pass is one of them, and the game drew unlit without it.
+- **New: transparent (colour-keyed) textures on the Rage XL and the
+  Rage Pro class.** Keyed draws were dropped; they now use the chip's
+  own colour compare. Measured with 16-bit textures with and without
+  alpha.
+- **New: brightness (gamma) on ATI cards.** Games' brightness sliders,
+  and DirectDraw's gamma control, now work on the Rage family. Measured
+  with Thief II on the Rage XL. Other cards do not offer gamma yet.
+- **Known:** in Thief II on the Rage XL a floor can show through the
+  floor
+  ([issue](docs/issues/2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)).
+- **Diagnostics:** `C:\V9XDIAG\V9XESC.INI` lists escapes the driver
+  does not answer, and gamma ramps it was given; `V9XTRACE` reports
+  table-fog and colour-key counts.
+
 ## 0.18.0 - 2026-10-14
 
 0.17.1 was never released; its changes are in this version.

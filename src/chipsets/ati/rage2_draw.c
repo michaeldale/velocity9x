@@ -461,8 +461,11 @@ v9x_u32 v9x_r2_check_draw(const struct v9x_m64_draw_request *request,
         if (src == R2_FACTOR_NONE || dst == R2_FACTOR_NONE) {
             return V9X_M64_REFUSE_BLEND_FACTOR;
         }
+        /* The blend unit is the fog unit: asked for both, the draw is
+         * blended and the fog dropped, as mach64_policy.c does - a
+         * refusal draws nothing, and Thief II fogs its lightmap pass. */
         if (request->fog_enable != 0ul) {
-            return V9X_M64_REFUSE_FOG_WITH_BLEND;
+            decision->fog_dropped = 1ul;
         }
         scale |= V9X_R2_ALPHA_FOG_BLEND |
                  (src << V9X_R2_BLEND_SRC_SHIFT) |

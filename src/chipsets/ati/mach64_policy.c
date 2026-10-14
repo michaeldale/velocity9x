@@ -416,20 +416,32 @@ static v9x_u32 v9x_m64_policy_check(
     /* Fog is the blend unit mixing with DP_FOG_CLR, so it cannot also
      * blend with the framebuffer.  Item 12 measured it untextured; over a
      * texture, as Mesa's driver fogs, the HAL probe's D3DFogTex scene
-     * (2026-09-29). */
+     * (2026-09-29).  Asked for both, the draw is blended and the fog
+     * dropped: this engine has no CPU fallback, and a refusal draws
+     * nothing.  Thief II fogs its lightmap pass, and refusing it lost
+     * every lightmap (A8U4I5, 2026-10-14). */
     if (request->fog_enable != 0ul && request->blend_enable != 0ul) {
-        return V9X_M64_REFUSE_FOG_WITH_BLEND;
+        decision->fog_dropped = 1ul;
     }
 
     /* Specular is ALPHA_TST_CNTL SPECULAR_LIGHT_EN over the specular words'
      * RGB (Mesa's driver); with fog the same words also carry the fog
      * factor, a combination not measured.  Colour key and forced alpha
      * have no scene. */
-    if (request->specular_enable != 0ul && request->fog_enable != 0ul) {
+    if (request->specular_enable != 0ul && request->fog_enable != 0ul &&
+        decision->fog_dropped == 0ul) {
         return V9X_M64_REFUSE_SPECULAR;
     }
-    if (request->color_key_enable != 0ul) {
-        return V9X_M64_REFUSE_COLOR_KEY;
+    /* A colour key is the texel compare, CLR_CMP_SRC_TEXEL with EQUAL
+     * keeping the destination (mach64_draw.c). COLORKEYENABLE keys nothing
+     * without a texture that carries a key, as Direct3D defines it. Over
+     * two textures it is unmeasured. */
+    if (request->color_key_enable != 0ul && request->textured != 0ul &&
+        request->texture_color_key_valid != 0ul) {
+        if (request->composite != 0ul) {
+            return V9X_M64_REFUSE_COLOR_KEY;
+        }
+        decision->color_keyed = 1ul;
     }
     if (request->alpha_force != 0ul) {
         return V9X_M64_REFUSE_ALPHA_FORCE;
@@ -446,6 +458,8 @@ v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
         decision->light_fcn = 0ul;
         decision->texture_alpha = 0ul;
         decision->alpha_test_dropped = 0ul;
+        decision->fog_dropped = 0ul;
+        decision->color_keyed = 0ul;
     }
     if (request == 0 || decision == 0) {
         return V9X_M64_REFUSE_ARGUMENT;
@@ -456,6 +470,8 @@ v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
         decision->light_fcn = 0ul;
         decision->texture_alpha = 0ul;
         decision->alpha_test_dropped = 0ul;
+        decision->fog_dropped = 0ul;
+        decision->color_keyed = 0ul;
     }
     return reason;
 }

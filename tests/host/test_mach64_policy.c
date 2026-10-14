@@ -532,6 +532,7 @@ static void test_alpha_test(void)
 static void test_fog_and_unmeasured_knobs(void)
 {
     struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
 
     base(&request);
     request.fog_enable = 1ul;
@@ -542,13 +543,25 @@ static void test_fog_and_unmeasured_knobs(void)
     request.depth_func = 4ul;
     CHECK(check(&request) == V9X_M64_REFUSE_NONE);
 
-    /* Even the ONE/ZERO pair counts: the blend unit is the fog unit. */
+    /* Even the ONE/ZERO pair counts: the blend unit is the fog unit. The
+     * blend is drawn and the fog dropped: Thief II fogs its lightmap
+     * pass, and refusing it lost every lightmap (A8U4I5, 2026-10-14). */
     base(&request);
     request.fog_enable = 1ul;
     request.blend_enable = 1ul;
     request.src_blend = T_BLEND_ONE;
     request.dst_blend = T_BLEND_ZERO;
-    CHECK(check(&request) == V9X_M64_REFUSE_FOG_WITH_BLEND);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_dropped == 1ul);
+    /* With the fog dropped its words carry only specular. */
+    request.specular_enable = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_dropped == 1ul);
+    /* Fog without a blend is drawn as fog. */
+    base(&request);
+    request.fog_enable = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_dropped == 0ul);
 
     /* Fog over a texture, as Mesa's driver does it (probe D3DFogTex). */
     textured(&request, 0ul);
@@ -562,9 +575,23 @@ static void test_fog_and_unmeasured_knobs(void)
     CHECK(check(&request) == V9X_M64_REFUSE_NONE);
     request.fog_enable = 1ul;
     CHECK(check(&request) == V9X_M64_REFUSE_SPECULAR);
+    /* A colour key is the texel compare (CLR_CMP_SRC_TEXEL): drawn when the
+     * texture carries a key, and without effect when nothing is textured or
+     * the texture has none, as Direct3D defines COLORKEYENABLE. */
     base(&request);
     request.color_key_enable = 1ul;
-    CHECK(check(&request) == V9X_M64_REFUSE_COLOR_KEY);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.color_keyed == 0ul);
+    textured(&request, V9X_M64_TEXTURE_FORMAT_RGB565);
+    request.color_key_enable = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.color_keyed == 0ul);
+    request.texture_color_key_valid = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.color_keyed == 1ul);
+    /* Unmeasured over two textures. */
+    request.composite = 1ul;
+    CHECK(check(&request) != V9X_M64_REFUSE_NONE);
     base(&request);
     request.alpha_force = 1ul;
     CHECK(check(&request) == V9X_M64_REFUSE_ALPHA_FORCE);

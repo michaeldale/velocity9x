@@ -26,6 +26,7 @@
 /* The neutral render core's vertex and draw description, which the ops
  * table's `draw` entry takes. */
 #include "r3d/r3d.h"
+#include "d3d_fog.h"
 
 #define V9X_D3D_CONTEXT_COUNT 16u
 /* Live texture handles across every context. 256 was too few: 3DMark 99's
@@ -117,6 +118,8 @@ typedef struct v9x_d3d_context {
     DWORD specular_enable;
     DWORD fog_enable;
     DWORD fog_color;
+    /* FOGTABLEMODE, START, END and DENSITY; drawn per vertex (d3d_fog.h). */
+    V9X_D3D_FOG_TABLE fog_table;
     DWORD alpha_blend_enable;
     DWORD src_blend;
     DWORD dest_blend;

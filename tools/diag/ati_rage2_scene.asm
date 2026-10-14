@@ -1,8 +1,9 @@
 ; ATI Rage IIC scene mapper VxD.
 ;
-; Loaded dynamically by ATIRX.EXE. It finds PCI 1002:4757, maps the 4 KiB
+; Loaded dynamically by ATIRX.EXE. It finds PCI 1002:4757 (or the device
+; the caller names: ATIRX /pro asks for the Rage XL, 4752), maps the 4 KiB
 ; register window at the Config Manager-assigned BAR2 and, only when
-; CONFIG_CHIP_ID read through it names 4757h, maps the framebuffer aperture
+; CONFIG_CHIP_ID read through it names that device, maps the framebuffer aperture
 ; at BAR0. It returns both linear addresses and writes nothing to the card:
 ; every engine write the scenes make is made by ATIRX.EXE from ring 3,
 ; through these mappings, as V9XHAL.DLL makes its own.
@@ -35,10 +36,14 @@ ATIRX_CHIP_MATCH        equ 00000004h
 ATIRX_FB_MAPPED         equ 00000008h
 ATIRX_BAR_REFUSED       equ 00000010h
 
-; Input: assigned BAR0, assigned BAR2.
+; Input: assigned BAR0, assigned BAR2, and optionally the PCI id to find
+; (device:vendor, as config dword 0 reads); 1002:4757 when it is absent.
+; The register window must name the same device in CONFIG_CHIP_ID.
 ATIRX_IN_BAR0           equ 0
 ATIRX_IN_BAR2           equ 4
 ATIRX_IN_BYTES          equ 8
+ATIRX_IN_DEVICE         equ 8
+ATIRX_IN_DEVICE_BYTES   equ 12
 
 ATIRX_RESULT_DWORDS     equ 8
 
@@ -52,6 +57,7 @@ AtiRxResult label dword
     dd 0                        ; 05 framebuffer linear
     dd 0                        ; 06 framebuffer bytes mapped
     dd 0                        ; 07 reserved
+AtiRxPciId      dd ATIRX_PCI_ID
 AtiRxMmioPhys   dd 0
 AtiRxMmioLinear dd 0
 AtiRxFbPhys     dd 0
@@ -97,7 +103,7 @@ BeginProc AtiRx_Map
 AtiRx_Map_Pci_Next:
     mov     eax, ebx
     call    AtiRx_Pci_Read
-    cmp     eax, ATIRX_PCI_ID
+    cmp     eax, AtiRxPciId
     je      short AtiRx_Map_Pci_Found
     add     ebx, 0800h
     cmp     ebx, 81000000h
@@ -131,7 +137,9 @@ AtiRx_Map_Mmio_Check:
     mov     edx, AtiRxMmioLinear
     mov     eax, [edx+ATIRX_CONFIG_CHIP_ID]
     mov     AtiRxResult[12], eax
-    cmp     ax, ATIRX_CHIP_LOW
+    mov     ecx, AtiRxPciId
+    shr     ecx, 16
+    cmp     ax, cx
     jne     AtiRx_Map_Done
     or      AtiRxResult[4], ATIRX_CHIP_MATCH
     mov     AtiRxResult[16], edx
@@ -196,6 +204,12 @@ BeginProc AtiRx_W32_DeviceIoControl
     cmp     [ebx.cbOutBuffer], ATIRX_RESULT_DWORDS * 4
     jb      short AtiRx_Dioc_Copy_Fail
 
+    mov     AtiRxPciId, ATIRX_PCI_ID
+    cmp     [ebx.cbInBuffer], ATIRX_IN_DEVICE_BYTES
+    jb      short AtiRx_Dioc_Device_Ready
+    mov     eax, [ebp+ATIRX_IN_DEVICE]
+    mov     AtiRxPciId, eax
+AtiRx_Dioc_Device_Ready:
     call    AtiRx_Map
 
     mov     edi, [ebx.lpvOutBuffer]

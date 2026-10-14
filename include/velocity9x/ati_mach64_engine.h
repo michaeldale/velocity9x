@@ -298,6 +298,9 @@ struct v9x_m64_draw_request {
     v9x_u32 fog_enable;
     v9x_u32 specular_enable;
     v9x_u32 color_key_enable;
+    /* Non-zero when the bound texture carries a source colour key; with
+     * color_key_enable the draw is keyed (CLR_CMP_SRC_TEXEL). */
+    v9x_u32 texture_color_key_valid;
     v9x_u32 alpha_force;
     /* Non-zero when every vertex of the batch has alpha 255, so a factor
      * of the vertex alpha is one. Zero when unknown. */
@@ -332,6 +335,11 @@ struct v9x_m64_draw_decision {
     /* Non-zero: the request's alpha test can discard nothing and is not
      * to be sent (no texel alpha, and every vertex alpha passes). */
     v9x_u32 alpha_test_dropped;
+    /* Non-zero: fog and blending were both asked for, and the blend unit
+     * cannot do both, so the draw is blended without fog. */
+    v9x_u32 fog_dropped;
+    /* Non-zero: the texture's colour key is compared (CLR_CMP_CNTL). */
+    v9x_u32 color_keyed;
 };
 
 #define V9X_M64_REFUSE_NONE             0ul
@@ -399,6 +407,11 @@ struct v9x_m64_draw_state {
     v9x_u32 fog_color;
     /* Add the vertex specular colour (ALPHA_TST_CNTL SPECULAR_LIGHT_EN). */
     v9x_u32 specular_enable;
+    /* A source colour key in the texture's own format, compared when the
+     * draw is textured (CLR_CMP_SRC_TEXEL, keeping the destination where
+     * the texel equals it); alpha is not compared. */
+    v9x_u32 color_key_enable;
+    v9x_u32 color_key;
     /*
      * A second texture modulated with the first (TEX_CNTL
      * TEXTURE_COMPOSITE), read only when `composite` is non-zero and the

@@ -34,6 +34,8 @@
 #include "../../src/chipsets/ati/rage2_trap.c"
 #include "../../src/chipsets/ati/rage2_setup.c"
 #include "../../src/chipsets/ati/rage2_draw.c"
+/* The Rage Pro class's draw-state and setup builders, for /pro /pal8. */
+#include "../../src/chipsets/ati/mach64_draw.c"
 /* The host test's reference rasteriser: the card is judged by the same
  * function as the model. */
 #include "../../tests/host/rage2_reference.c"
@@ -95,6 +97,9 @@ struct atirx_scene {
 };
 
 static HANDLE atirx_out = INVALID_HANDLE_VALUE;
+/* The Enum\PCI key prefix of the card: the Rage IIC, or under /pro the
+ * Rage XL PCI (A8U4I5's Rage Pro class card). */
+static const char *atirx_device_key = "VEN_1002&DEV_4757";
 static volatile BYTE *atirx_mmio;
 static volatile WORD *atirx_fb;
 
@@ -405,7 +410,7 @@ static LONG atirx_find_device(char *device_id, DWORD capacity)
             break;
         }
         if (status != ERROR_SUCCESS ||
-            !atirx_starts_with_ci(adapter, "VEN_1002&DEV_4757")) {
+            !atirx_starts_with_ci(adapter, atirx_device_key)) {
             continue;
         }
         if (RegOpenKeyExA(pci_key, adapter, 0, KEY_READ, &adapter_key) !=
@@ -4321,14 +4326,650 @@ static int atirx_run_vramdump(void)
     return 1;
 }
 
+/* ---- /pro /pal8: the Rage Pro class's CI8 texture palette ---------------
+ *
+ * docs\plans\rage-pro-table-fog-and-paletted-textures.md, Step 2. The XL/XC
+ * register reference documents CI8 (DP_PIX_WIDTH SCALE_PIX_WIDTH 2,
+ * "Pseudocolor-to-RGB conversion is done via a read of the texture
+ * palette") but omits the palette registers; xf86-video-mach64 names
+ * TEX_PALETTE_INDEX at MM 0_D0 and TEX_PALETTE at 0_DF and nothing more.
+ * These scenes find out how a palette is loaded and what an entry holds.
+ *
+ * The texture is 8x8 CI8: columns 0-3 index ATIRX_PAL_LEFT, 4-7
+ * ATIRX_PAL_RIGHT.
+ *
+ * The first run (2026-10-14) wrote entries through TEX_PALETTE_INDEX and
+ * TEX_PALETTE as a pair, auto-incrementing or not: the CI8 lookup sampled,
+ * but none of it reached the drawn colour. ATI's own ATI3DCIF.DLL
+ * (4.11.2474, ATI3DCIF.DL_ on A8U4I5) never writes TEX_PALETTE_INDEX for
+ * this class: each TEX_PALETTE dword carries the entry's index in bits
+ * 31:24 and its colour as RGB888 in 23:0, through the FIFO or directly,
+ * and GUI_STAT's busy bit is polled afterwards. That is what is tested:
+ *
+ *   baseline: every entry green (00FF00), through the FIFO;
+ *   method 0: distinct entries through the FIFO (atirx_emit);
+ *   method 1: the same written directly, the engine idle first;
+ *   method 2: the baseline alone, so its green is seen to land;
+ *   method 3: the entries through the DAC, as ATI's DLL loads older chips,
+ *             into the second palette (DAC_CNTL PALETTE_ACCESS_CNTL);
+ *   method 4: the same into the primary palette, every entry saved first
+ *             and restored after the pixels are read.
+ *
+ * Each scene judges both pixels against the entry's RGB888 truncated to
+ * 565, against the baseline green, and against undrawn.
+ */
+#define ATIRX_PAL_TEX_OFFSET 0x00230000ul
+#define ATIRX_PAL_INDEX_REG  0x00000740ul /* TEX_PALETTE_INDEX, MM 0_D0 */
+#define ATIRX_PAL_DATA_REG   0x0000077cul /* TEX_PALETTE, MM 0_DF */
+#define ATIRX_PAL_LEFT       3ul
+#define ATIRX_PAL_RIGHT      200ul
+#define ATIRX_PAL_METHODS    5ul
+#define ATIRX_PAL_GREEN      0x0000ff00ul
+#define ATIRX_PAL_DAC_REGS   0x000004c0ul /* MM 0_30: W_INDEX, DATA, MASK, R_INDEX */
+#define ATIRX_PAL_DAC_CNTL   0x000004c4ul /* MM 0_31 */
+#define ATIRX_PAL_DAC_SECOND 0x00000020ul /* PALETTE_ACCESS_CNTL */
+#define ATIRX_PAL_CI8        0x20000000ul /* SCALE_PIX_WIDTH = 2 */
+#define ATIRX_PRO_CHIP_LOW   0x4752ul
+#define ATIRX_PRO_PCI_ID     0x47521002ul
+
+/* RGB888, distinct in 565 for every pair of entries the scenes read. */
+static DWORD atirx_pal_entry(DWORD index)
+{
+    return (((index * 37ul) & 255ul) << 16) | ((255ul - index) << 8) |
+           ((index * 91ul) & 255ul);
+}
+
+/* An RGB888 colour as the 565 the target stores, truncating. */
+static WORD atirx_pal_888_to_565(DWORD value)
+{
+    return (WORD)((((value >> 19) & 31ul) << 11) |
+                  (((value >> 10) & 63ul) << 5) | ((value >> 3) & 31ul));
+}
+
+static void atirx_pal_write_texture(void)
+{
+    volatile BYTE *texture = (volatile BYTE *)atirx_fb + ATIRX_PAL_TEX_OFFSET;
+    DWORD u;
+    DWORD v;
+
+    for (v = 0ul; v < 8ul; ++v) {
+        for (u = 0ul; u < 8ul; ++u) {
+            texture[v * 8ul + u] =
+                (BYTE)(u < 4ul ? ATIRX_PAL_LEFT : ATIRX_PAL_RIGHT);
+        }
+    }
+}
+
+/* 256 TEX_PALETTE writes, index in 31:24; returns the count. */
+static v9x_u32 atirx_pal_build(int baseline, v9x_u32 *offsets,
+                               v9x_u32 *values)
+{
+    v9x_u32 count = 0ul;
+    DWORD index;
+
+    for (index = 0ul; index < 256ul; ++index) {
+        offsets[count] = ATIRX_PAL_DATA_REG;
+        values[count++] = (index << 24) |
+            (baseline ? ATIRX_PAL_GREEN : atirx_pal_entry(index));
+    }
+    return count;
+}
+
+/* All 256 DAC entries, R G B, through DAC_W_INDEX and DAC_DATA. */
+static void atirx_pal_dac_write(const DWORD *rgb)
+{
+    DWORD index;
+
+    atirx_mmio[ATIRX_PAL_DAC_REGS] = 0u;
+    for (index = 0ul; index < 256ul; ++index) {
+        atirx_mmio[ATIRX_PAL_DAC_REGS + 1ul] = (BYTE)(rgb[index] >> 16);
+        atirx_mmio[ATIRX_PAL_DAC_REGS + 1ul] = (BYTE)(rgb[index] >> 8);
+        atirx_mmio[ATIRX_PAL_DAC_REGS + 1ul] = (BYTE)rgb[index];
+    }
+}
+
+static void atirx_pal_dac_read(DWORD *rgb)
+{
+    DWORD index;
+    DWORD r;
+    DWORD g;
+
+    atirx_mmio[ATIRX_PAL_DAC_REGS + 3ul] = 0u;
+    for (index = 0ul; index < 256ul; ++index) {
+        r = atirx_mmio[ATIRX_PAL_DAC_REGS + 1ul];
+        g = atirx_mmio[ATIRX_PAL_DAC_REGS + 1ul];
+        rgb[index] = (r << 16) | (g << 8) | atirx_mmio[ATIRX_PAL_DAC_REGS + 1ul];
+    }
+}
+
+static void atirx_pal_judge(const char *prefix, const char *side,
+                            DWORD index, WORD pixel)
+{
+    char key[64];
+    DWORD entry = atirx_pal_entry(index);
+    const char *match = "none";
+
+    if (pixel == atirx_pal_888_to_565(entry)) {
+        match = "rgb888";
+    } else if (pixel == atirx_pal_888_to_565(ATIRX_PAL_GREEN)) {
+        match = "baseline";
+    } else if (pixel == ATIRX_SENTINEL) {
+        match = "undrawn";
+    }
+    lstrcpyA(key, prefix);
+    lstrcatA(key, side);
+    lstrcatA(key, "Pixel");
+    atirx_key_hex(key, pixel);
+    lstrcpyA(key, prefix);
+    lstrcatA(key, side);
+    lstrcatA(key, "Entry");
+    atirx_key_hex(key, entry);
+    lstrcpyA(key, prefix);
+    lstrcatA(key, side);
+    lstrcatA(key, "Match");
+    atirx_key(key, match);
+}
+
+static int atirx_run_pal8(struct v9x_m64_engine *engine, DWORD fb_bytes)
+{
+    static v9x_u32 pal_offsets[520];
+    static v9x_u32 pal_values[520];
+    static DWORD dac_saved[256];
+    static DWORD dac_entries[256];
+    DWORD dac_cntl = 0ul;
+    struct v9x_m64_draw_state state;
+    struct v9x_m64_draw_decision decision;
+    struct v9x_m64_setup_vertex vertex[3];
+    v9x_u32 offsets[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 setup_offsets[V9X_M64_SETUP_DWORDS];
+    v9x_u32 setup_values[V9X_M64_SETUP_DWORDS];
+    v9x_u32 written;
+    v9x_u32 count;
+    v9x_u32 slot;
+    v9x_status status;
+    DWORD method;
+    char prefix[24];
+
+    atirx_pal_write_texture();
+    for (method = 0ul; method < ATIRX_PAL_METHODS; ++method) {
+        lstrcpyA(prefix, "Pal8M0");
+        prefix[5] = (char)('0' + method);
+        atirx_key("Scene", prefix);
+        atirx_prepare_block();
+        status = V9X_STATUS_OK;
+
+        /* An RGB565 texture's state, then the texel width made CI8. */
+        atirx_zero(&state, sizeof(state));
+        atirx_zero(&decision, sizeof(decision));
+        state.color.vram_bytes = fb_bytes;
+        state.color.target_offset = ATIRX_BLOCK_OFFSET;
+        state.color.target_pitch_bytes = ATIRX_BLOCK_PITCH;
+        state.color.target_width = ATIRX_BLOCK_SIZE;
+        state.color.target_height = ATIRX_BLOCK_SIZE;
+        state.color.scissor_left = ATIRX_SCISSOR_LO;
+        state.color.scissor_top = ATIRX_SCISSOR_LO;
+        state.color.scissor_right = ATIRX_SCISSOR_HI;
+        state.color.scissor_bottom = ATIRX_SCISSOR_HI;
+        state.textured = 1ul;
+        state.texture_offset = ATIRX_PAL_TEX_OFFSET;
+        /* The builder checks a 16-bit pitch; TEX_SIZE_PITCH carries only
+         * the width's log2, so the engine takes CI8 rows as 8 bytes. */
+        state.texture_pitch_bytes = 16ul;
+        state.texture_width = 8ul;
+        state.texture_height = 8ul;
+        state.texture_format = V9X_M64_TEXTURE_FORMAT_RGB565;
+        state.level_count = 1ul;
+        decision.light_fcn = V9X_M64_TEX_LIGHT_FCN_REPLACE;
+        if (status == V9X_STATUS_OK &&
+            v9x_m64_build_draw_state(&state, &decision, offsets, values,
+                                     V9X_M64_DRAW_STATE_DWORDS,
+                                     &written) != V9X_STATUS_OK) {
+            atirx_key("Result", "STATE-BUILD");
+            return 0;
+        }
+        for (slot = 0ul; slot < written; ++slot) {
+            if (offsets[slot] == V9X_M64_DP_PIX_WIDTH) {
+                values[slot] = (values[slot] & 0x0ffffffful) |
+                               ATIRX_PAL_CI8;
+            }
+        }
+        if (status == V9X_STATUS_OK) {
+            status = atirx_emit(engine, prefix, offsets, values, written);
+        }
+
+        /* The CI8 state first, so the engine is in CI8 mode while the
+         * palette is written (the first two runs wrote it before); then
+         * the baseline palette, the method under test, and the state
+         * again for its TEX_CACHE_FLUSH. */
+        count = atirx_pal_build(1, pal_offsets, pal_values);
+        status = atirx_emit(engine, "palbase", pal_offsets, pal_values,
+                            count);
+        if (status == V9X_STATUS_OK) {
+            status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        }
+        if (status == V9X_STATUS_OK && method >= 3ul) {
+            for (slot = 0ul; slot < 256ul; ++slot) {
+                dac_entries[slot] = atirx_pal_entry(slot);
+            }
+            dac_cntl = atirx_read(0, ATIRX_PAL_DAC_CNTL);
+            atirx_write(0, ATIRX_PAL_DAC_CNTL,
+                        method == 3ul ? dac_cntl | ATIRX_PAL_DAC_SECOND
+                                      : dac_cntl & ~ATIRX_PAL_DAC_SECOND);
+            atirx_pal_dac_read(dac_saved);
+            atirx_pal_dac_write(dac_entries);
+        } else if (status == V9X_STATUS_OK && method != 2ul) {
+            count = atirx_pal_build(0, pal_offsets, pal_values);
+            if (method == 0ul) {
+                status = atirx_emit(engine, prefix, pal_offsets, pal_values,
+                                    count);
+            } else {
+                for (slot = 0ul; slot < count; ++slot) {
+                    atirx_write(0, pal_offsets[slot], pal_values[slot]);
+                }
+            }
+            if (status == V9X_STATUS_OK) {
+                status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+            }
+        }
+
+        if (status == V9X_STATUS_OK) {
+            status = atirx_emit(engine, prefix, offsets, values, written);
+        }
+
+        /* One triangle over the scissor: s 0..1 across x, t down y. */
+        atirx_zero(vertex, sizeof(vertex));
+        vertex[0].x_fixed = 8ul * 4ul;
+        vertex[0].y_fixed = 8ul * 4ul;
+        vertex[1].x_fixed = 56ul * 4ul;
+        vertex[1].y_fixed = 8ul * 4ul;
+        vertex[1].s = 1.0f;
+        vertex[2].x_fixed = 8ul * 4ul;
+        vertex[2].y_fixed = 56ul * 4ul;
+        vertex[2].t = 1.0f;
+        for (slot = 0ul; slot < 3ul; ++slot) {
+            vertex[slot].rhw = 1.0f;
+            vertex[slot].argb = 0xfffffffful;
+        }
+        if (status == V9X_STATUS_OK) {
+            if (v9x_m64_build_setup(vertex, 1ul, 0ul, setup_offsets,
+                                    setup_values, V9X_M64_SETUP_DWORDS,
+                                    &written) != V9X_STATUS_OK) {
+                atirx_key("Result", "SETUP-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, prefix, setup_offsets, setup_values,
+                                written);
+        }
+        if (status == V9X_STATUS_OK) {
+            status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        }
+        if (status != V9X_STATUS_OK) {
+            if (method >= 3ul) {
+                atirx_pal_dac_write(dac_saved);
+                atirx_write(0, ATIRX_PAL_DAC_CNTL, dac_cntl);
+            }
+            atirx_key_hex("FailStatus", (DWORD)status);
+            atirx_key_hex("FailGuiStat", atirx_read(0, V9X_M64_GUI_STAT));
+            atirx_flush();
+            status = v9x_m64_reset_replay(engine, ATIRX_SPINS);
+            atirx_key_hex("ResetStatus", (DWORD)status);
+            atirx_key("Result", "TIMEOUT-STOPPED");
+            return 0;
+        }
+        (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+        if (method >= 3ul) {
+            atirx_pal_dac_write(dac_saved);
+            atirx_write(0, ATIRX_PAL_DAC_CNTL, dac_cntl);
+            atirx_key_hex("DacCntlRestored",
+                          atirx_read(0, ATIRX_PAL_DAC_CNTL));
+        }
+        /* Column 0 at x 12 (s 0.08), column 5 at x 40 (s 0.67). */
+        atirx_pal_judge(prefix, "Left", ATIRX_PAL_LEFT, *atirx_pixel(12, 12));
+        atirx_pal_judge(prefix, "Right", ATIRX_PAL_RIGHT,
+                        *atirx_pixel(40, 12));
+        atirx_key_hex("PaletteIndexRead",
+                      atirx_read(0, ATIRX_PAL_INDEX_REG));
+        atirx_key_hex("PaletteDataRead", atirx_read(0, ATIRX_PAL_DATA_REG));
+        atirx_dump_hex(prefix);
+        atirx_flush();
+    }
+    atirx_key("Result", "SCENES-RUN");
+    return 1;
+}
+
+/*
+ * /pro /palread: where the CI8 lookup's palette lives. /pal8 found that
+ * what TEX_PALETTE was given through the FIFO never reached the sampled
+ * colour, while TEX_PALETTE read back after an index write looked like a
+ * stored entry. This reads every entry that way, then both DAC palettes
+ * (DAC_CNTL PALETTE_ACCESS_CNTL, LT Pro and later, selects the second),
+ * restoring DAC_CNTL; then one direct (not FIFO) write to entry 3 and its
+ * read-back. Nothing visible is written: the desktop is 16 bpp.
+ */
+#define ATIRX_DAC_REGS        0x000004c0ul /* MM 0_30 */
+#define ATIRX_DAC_CNTL        0x000004c4ul /* MM 0_31 */
+#define ATIRX_DAC_PAL_ACCESS  0x00000020ul
+#define ATIRX_DAC_DATA        1ul
+#define ATIRX_DAC_R_INDEX     3ul
+
+static void atirx_palread_line(const char *key, DWORD row, const DWORD *v)
+{
+    char text[12];
+    DWORD index;
+
+    atirx_text(key);
+    atirx_hex(text, row, 2);
+    atirx_text(text);
+    atirx_text("=");
+    for (index = 0ul; index < 16ul; ++index) {
+        atirx_hex(text, v[index], 8);
+        atirx_text(text);
+        atirx_text(" ");
+    }
+    atirx_text("\r\n");
+}
+
+static void atirx_palread_dac(const char *key)
+{
+    DWORD row[16];
+    DWORD index;
+    BYTE r;
+    BYTE g;
+    BYTE b;
+
+    for (index = 0ul; index < 256ul; ++index) {
+        atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_R_INDEX] = (BYTE)index;
+        r = atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA];
+        g = atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA];
+        b = atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA];
+        row[index & 15ul] = ((DWORD)r << 16) | ((DWORD)g << 8) | b;
+        if ((index & 15ul) == 15ul) {
+            atirx_palread_line(key, index & 0xf0ul, row);
+        }
+    }
+}
+
+static int atirx_run_palread(struct v9x_m64_engine *engine)
+{
+    DWORD row[16];
+    DWORD index;
+    DWORD dac_cntl;
+
+    if (v9x_m64_wait_idle(engine, ATIRX_SPINS) != V9X_STATUS_OK) {
+        atirx_key("Result", "BUSY");
+        return 0;
+    }
+    for (index = 0ul; index < 256ul; ++index) {
+        atirx_write(0, ATIRX_PAL_INDEX_REG, index);
+        (void)v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        row[index & 15ul] = atirx_read(0, ATIRX_PAL_DATA_REG);
+        if ((index & 15ul) == 15ul) {
+            atirx_palread_line("TexPal", index & 0xf0ul, row);
+        }
+    }
+    atirx_flush();
+
+    dac_cntl = atirx_read(0, ATIRX_DAC_CNTL);
+    atirx_key_hex("DacCntl", dac_cntl);
+    atirx_write(0, ATIRX_DAC_CNTL, dac_cntl & ~ATIRX_DAC_PAL_ACCESS);
+    atirx_palread_dac("DacPrimary");
+    atirx_write(0, ATIRX_DAC_CNTL, dac_cntl | ATIRX_DAC_PAL_ACCESS);
+    atirx_palread_dac("DacSecondary");
+    atirx_write(0, ATIRX_DAC_CNTL, dac_cntl);
+    atirx_key_hex("DacCntlRestored", atirx_read(0, ATIRX_DAC_CNTL));
+    atirx_flush();
+
+    /* One direct write, then read entries 3 and 4 back. */
+    atirx_write(0, ATIRX_PAL_INDEX_REG, 3ul);
+    (void)v9x_m64_wait_idle(engine, ATIRX_SPINS);
+    atirx_write(0, ATIRX_PAL_DATA_REG, 0x12345678ul);
+    (void)v9x_m64_wait_idle(engine, ATIRX_SPINS);
+    atirx_key_hex("AfterWriteIndex", atirx_read(0, ATIRX_PAL_INDEX_REG));
+    atirx_write(0, ATIRX_PAL_INDEX_REG, 3ul);
+    (void)v9x_m64_wait_idle(engine, ATIRX_SPINS);
+    atirx_key_hex("Entry3After", atirx_read(0, ATIRX_PAL_DATA_REG));
+    atirx_write(0, ATIRX_PAL_INDEX_REG, 4ul);
+    (void)v9x_m64_wait_idle(engine, ATIRX_SPINS);
+    atirx_key_hex("Entry4After", atirx_read(0, ATIRX_PAL_DATA_REG));
+    atirx_key("Result", "SCENES-RUN");
+    return 1;
+}
+
+/*
+ * /pro /ckey: the texel colour compare (2026-10-14). The HAL's keyed draw -
+ * CLR_CMP_CNTL SRC_TEXEL | FN_EQUAL, CLR_CMP_CLR the key expanded to 24
+ * bits and masked to the format's bits - drew the key colour on the Rage
+ * XL (V9XDDP ColorKeyHalves, boot 474). Each scene here draws an 8x8
+ * RGB565 texture, magenta (F81F) left and green right, REPLACE, over a
+ * blue block, with one CLR_CMP encoding; the left pixel says whether the
+ * key held (blue) or not (magenta), the right that the draw happened.
+ */
+struct atirx_ckey_scene {
+    const char *name;
+    DWORD cntl;
+    DWORD color;
+    DWORD mask;
+};
+
+static const struct atirx_ckey_scene atirx_ckey_scenes[] = {
+    { "CkBuilder", 0x02000005ul, 0x00f800f8ul, 0x00f8fcf8ul },
+    { "CkFullRep", 0x02000005ul, 0x00ff00fful, 0xfffffffful },
+    { "CkFullTrunc", 0x02000005ul, 0x00f800f8ul, 0xfffffffful },
+    { "CkRaw565", 0x02000005ul, 0x0000f81ful, 0x0000fffful },
+    { "CkRep24", 0x02000005ul, 0x00ff00fful, 0x00fffffful },
+    { "CkRaw565Full", 0x02000005ul, 0x0000f81ful, 0xfffffffful },
+    { "CkTrue", 0x02000001ul, 0x00000000ul, 0xfffffffful },
+    { "CkNotEqualZero", 0x02000004ul, 0x00000000ul, 0xfffffffful },
+    { "Ck2dSrc", 0x01000005ul, 0x00f800f8ul, 0x00f8fcf8ul }
+};
+
+#define ATIRX_CK_TEX_OFFSET 0x00232000ul
+#define ATIRX_CK_BLUE       0x001fu
+#define ATIRX_CK_MAGENTA    0xf81fu
+#define ATIRX_CK_GREEN      0x07e0u
+
+static int atirx_run_ckey(struct v9x_m64_engine *engine, DWORD fb_bytes)
+{
+    struct v9x_m64_draw_state state;
+    struct v9x_m64_draw_decision decision;
+    struct v9x_m64_setup_vertex vertex[3];
+    v9x_u32 offsets[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 values[V9X_M64_DRAW_STATE_DWORDS];
+    v9x_u32 setup_offsets[V9X_M64_SETUP_DWORDS];
+    v9x_u32 setup_values[V9X_M64_SETUP_DWORDS];
+    v9x_u32 written;
+    v9x_u32 slot;
+    v9x_status status;
+    volatile WORD *texel = atirx_fb + ATIRX_CK_TEX_OFFSET / 2ul;
+    DWORD u;
+    DWORD x;
+    DWORD y;
+    UINT scene;
+    char key[48];
+
+    for (y = 0ul; y < 8ul; ++y) {
+        for (u = 0ul; u < 8ul; ++u) {
+            texel[y * 8ul + u] = u < 4ul ? ATIRX_CK_MAGENTA : ATIRX_CK_GREEN;
+        }
+    }
+    for (scene = 0u; scene < sizeof(atirx_ckey_scenes) /
+                             sizeof(atirx_ckey_scenes[0]); ++scene) {
+        const struct atirx_ckey_scene *current = &atirx_ckey_scenes[scene];
+
+        atirx_key("Scene", current->name);
+        for (y = 0ul; y < ATIRX_BLOCK_SIZE; ++y) {
+            for (x = 0ul; x < ATIRX_BLOCK_SIZE; ++x) {
+                *atirx_pixel(x, y) = ATIRX_CK_BLUE;
+            }
+        }
+        atirx_zero(&state, sizeof(state));
+        atirx_zero(&decision, sizeof(decision));
+        state.color.vram_bytes = fb_bytes;
+        state.color.target_offset = ATIRX_BLOCK_OFFSET;
+        state.color.target_pitch_bytes = ATIRX_BLOCK_PITCH;
+        state.color.target_width = ATIRX_BLOCK_SIZE;
+        state.color.target_height = ATIRX_BLOCK_SIZE;
+        state.color.scissor_left = ATIRX_SCISSOR_LO;
+        state.color.scissor_top = ATIRX_SCISSOR_LO;
+        state.color.scissor_right = ATIRX_SCISSOR_HI;
+        state.color.scissor_bottom = ATIRX_SCISSOR_HI;
+        state.textured = 1ul;
+        state.texture_offset = ATIRX_CK_TEX_OFFSET;
+        state.texture_pitch_bytes = 16ul;
+        state.texture_width = 8ul;
+        state.texture_height = 8ul;
+        state.texture_format = V9X_M64_TEXTURE_FORMAT_RGB565;
+        state.level_count = 1ul;
+        state.color_key_enable = 1ul;
+        state.color_key = ATIRX_CK_MAGENTA;
+        decision.light_fcn = V9X_M64_TEX_LIGHT_FCN_REPLACE;
+        if (v9x_m64_build_draw_state(&state, &decision, offsets, values,
+                                     V9X_M64_DRAW_STATE_DWORDS,
+                                     &written) != V9X_STATUS_OK) {
+            atirx_key("Result", "STATE-BUILD");
+            return 0;
+        }
+        for (slot = 0ul; slot < written; ++slot) {
+            if (offsets[slot] == V9X_M64_CLR_CMP_CNTL) {
+                values[slot] = current->cntl;
+            } else if (offsets[slot] == V9X_M64_CLR_CMP_CLR) {
+                values[slot] = current->color;
+            } else if (offsets[slot] == V9X_M64_CLR_CMP_MASK) {
+                values[slot] = current->mask;
+            }
+        }
+        status = atirx_emit(engine, current->name, offsets, values, written);
+
+        atirx_zero(vertex, sizeof(vertex));
+        vertex[0].x_fixed = 8ul * 4ul;
+        vertex[0].y_fixed = 8ul * 4ul;
+        vertex[1].x_fixed = 56ul * 4ul;
+        vertex[1].y_fixed = 8ul * 4ul;
+        vertex[1].s = 1.0f;
+        vertex[2].x_fixed = 8ul * 4ul;
+        vertex[2].y_fixed = 56ul * 4ul;
+        vertex[2].t = 1.0f;
+        for (slot = 0ul; slot < 3ul; ++slot) {
+            vertex[slot].rhw = 1.0f;
+            vertex[slot].argb = 0xfffffffful;
+        }
+        if (status == V9X_STATUS_OK) {
+            if (v9x_m64_build_setup(vertex, 1ul, 0ul, setup_offsets,
+                                    setup_values, V9X_M64_SETUP_DWORDS,
+                                    &written) != V9X_STATUS_OK) {
+                atirx_key("Result", "SETUP-BUILD");
+                return 0;
+            }
+            status = atirx_emit(engine, current->name, setup_offsets,
+                                setup_values, written);
+        }
+        if (status == V9X_STATUS_OK) {
+            status = v9x_m64_wait_idle(engine, ATIRX_SPINS);
+        }
+        if (status != V9X_STATUS_OK) {
+            atirx_key_hex("FailStatus", (DWORD)status);
+            (void)v9x_m64_reset_replay(engine, ATIRX_SPINS);
+            atirx_key("Result", "TIMEOUT-STOPPED");
+            return 0;
+        }
+        (void)v9x_m64_cpu_read_barrier(engine, ATIRX_SPINS);
+        lstrcpyA(key, current->name);
+        lstrcatA(key, "Left");
+        atirx_key_hex(key, *atirx_pixel(12, 12));
+        lstrcpyA(key, current->name);
+        lstrcatA(key, "Right");
+        atirx_key_hex(key, *atirx_pixel(40, 12));
+        atirx_flush();
+    }
+    /* Leave the compare off for whatever draws next. */
+    {
+        v9x_u32 off_offset = V9X_M64_CLR_CMP_CNTL;
+        v9x_u32 off_value = 0ul;
+
+        (void)atirx_emit(engine, "ckoff", &off_offset, &off_value, 1ul);
+        (void)v9x_m64_wait_idle(engine, ATIRX_SPINS);
+    }
+    atirx_key("Result", "SCENES-RUN");
+    return 1;
+}
+
+/*
+ * /pro /dacport: does a VGA-port DAC write reach the Rage XL's table?
+ * V9XDISP.DRV's gamma ramp, written through 3C8h/3C9h, read back through
+ * DAC_REGS as the identity (A8U4I5 boot 476). Entry 40h is written each
+ * way and read each way, then restored through DAC_REGS.
+ */
+static BYTE atirx_inb(WORD port);
+#pragma aux atirx_inb = "in al,dx" parm [dx] value [al] modify exact [al]
+static void atirx_outb(WORD port, BYTE value);
+#pragma aux atirx_outb = "out dx,al" parm [dx] [al] modify exact []
+
+static DWORD atirx_dac_mmio_read(BYTE index)
+{
+    DWORD r;
+    DWORD g;
+
+    atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_R_INDEX] = index;
+    r = atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA];
+    g = atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA];
+    return (r << 16) | (g << 8) | atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA];
+}
+
+static void atirx_dac_mmio_write(BYTE index, DWORD rgb)
+{
+    atirx_mmio[ATIRX_DAC_REGS] = index;
+    atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA] = (BYTE)(rgb >> 16);
+    atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA] = (BYTE)(rgb >> 8);
+    atirx_mmio[ATIRX_DAC_REGS + ATIRX_DAC_DATA] = (BYTE)rgb;
+}
+
+static DWORD atirx_dac_port_read(BYTE index)
+{
+    DWORD r;
+    DWORD g;
+
+    atirx_outb(0x3c7u, index);
+    r = atirx_inb(0x3c9u);
+    g = atirx_inb(0x3c9u);
+    return (r << 16) | (g << 8) | atirx_inb(0x3c9u);
+}
+
+static int atirx_run_dacport(void)
+{
+    DWORD saved = atirx_dac_mmio_read(0x40u);
+    DWORD dac_cntl = atirx_read(0, ATIRX_DAC_CNTL);
+
+    atirx_key_hex("DacCntl", dac_cntl);
+    atirx_key_hex("SavedMmio", saved);
+    atirx_key_hex("SavedPort", atirx_dac_port_read(0x40u));
+
+    atirx_outb(0x3c8u, 0x40u);
+    atirx_outb(0x3c9u, 0x12u);
+    atirx_outb(0x3c9u, 0x34u);
+    atirx_outb(0x3c9u, 0x56u);
+    atirx_key_hex("PortWriteMmioRead", atirx_dac_mmio_read(0x40u));
+    atirx_key_hex("PortWritePortRead", atirx_dac_port_read(0x40u));
+
+    atirx_dac_mmio_write(0x40u, 0x00654321ul);
+    atirx_key_hex("MmioWriteMmioRead", atirx_dac_mmio_read(0x40u));
+    atirx_key_hex("MmioWritePortRead", atirx_dac_port_read(0x40u));
+
+    atirx_dac_mmio_write(0x40u, saved);
+    atirx_key_hex("RestoredMmio", atirx_dac_mmio_read(0x40u));
+    atirx_key("Result", "SCENES-RUN");
+    return 1;
+}
+
 void WINAPI V9xAtiRage2SceneEntry(void)
 {
     struct atirx_map map;
     struct v9x_m64_engine engine;
     struct v9x_m64_io io;
     struct v9x_r2_target target;
-    DWORD request[2];
+    DWORD request[3];
     DWORD returned = 0u;
+    int pro = atirx_has_switch(GetCommandLineA(), "/pro");
     HANDLE device;
     HDC display;
     DWORD desktop_end = 0u;
@@ -4351,6 +4992,10 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     }
     atirx_text(header);
     atirx_key("Build", V9X_BUILD_ID);
+    if (pro) {
+        atirx_device_key = "VEN_1002&DEV_4752";
+        atirx_key("Card", "RageXL");
+    }
 
     if (atirx_bars(&request[0], &request[1]) != CR_SUCCESS ||
         request[0] == 0u || request[1] == 0u) {
@@ -4360,12 +5005,14 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     }
     atirx_key_hex("Bar0", request[0]);
     atirx_key_hex("Bar2", request[1]);
+    request[2] = ATIRX_PRO_PCI_ID;
 
     /* Not FILE_FLAG_DELETE_ON_CLOSE: the VxD stays loaded, so its cached
      * mappings are reused rather than made again on every run. */
     device = CreateFileA("\\\\.\\ATIRX.VXD", 0, 0, 0, CREATE_NEW, 0, 0);
     if (device == INVALID_HANDLE_VALUE ||
-        !DeviceIoControl(device, 1u, request, sizeof(request), &map,
+        !DeviceIoControl(device, 1u, request,
+                         pro ? sizeof(request) : 2u * sizeof(DWORD), &map,
                          sizeof(map), &returned, 0) ||
         returned != sizeof(map) || map.magic != ATIRX_MAGIC) {
         atirx_key("Result", "NO-VXD");
@@ -4388,7 +5035,11 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     atirx_key_hex("DesktopBytes", desktop_end);
 
     if ((map.status & ATIRX_STATUS_READY) != ATIRX_STATUS_READY ||
-        map.chip_id != ATIRX_CHIP_ID || map.mmio_linear == 0u ||
+        (pro ? (map.chip_id & 0xfffful) != ATIRX_PRO_CHIP_LOW ||
+               v9x_m64_chip_class(map.chip_id) !=
+                   V9X_M64_CHIP_CLASS_RAGE_PRO
+             : map.chip_id != ATIRX_CHIP_ID) ||
+        map.mmio_linear == 0u ||
         map.fb_linear == 0u || map.fb_bytes < 0x00400000ul ||
         desktop_end == 0u ||
         desktop_end > ATIRX_BLOCK_OFFSET - ATIRX_GUARD_BYTES) {
@@ -4422,7 +5073,11 @@ void WINAPI V9xAtiRage2SceneEntry(void)
     io.context = 0;
     io.read = atirx_read;
     io.write = atirx_write;
-    if (v9x_m64_engine_init(&engine, &io, V9X_M64_FIFO_PRE_VTB) !=
+    /* The Rage Pro class takes the FIFO model the HAL gives it
+     * (eng_mach64.c). */
+    if (v9x_m64_engine_init(&engine, &io,
+                            pro ? V9X_M64_FIFO_VTB_PLUS
+                                : V9X_M64_FIFO_PRE_VTB) !=
         V9X_STATUS_OK) {
         atirx_key("Result", "ENGINE-INIT");
         CloseHandle(atirx_out);
@@ -4434,6 +5089,26 @@ void WINAPI V9xAtiRage2SceneEntry(void)
         atirx_key("Result", "BUSY-BEFORE-START");
         CloseHandle(atirx_out);
         ExitProcess(1u);
+    }
+
+    /* The Rage Pro class is initialised by the running driver and has no
+     * Rage II scenes; /pal8 is all it runs. */
+    if (pro) {
+        int completed =
+            atirx_has_switch(GetCommandLineA(), "/dacport")
+                ? atirx_run_dacport()
+            : atirx_has_switch(GetCommandLineA(), "/ckey")
+                ? atirx_run_ckey(&engine, map.fb_bytes)
+            : atirx_has_switch(GetCommandLineA(), "/palread")
+                ? atirx_run_palread(&engine)
+                : atirx_has_switch(GetCommandLineA(), "/pal8") &&
+                  atirx_run_pal8(&engine, map.fb_bytes);
+
+        atirx_key_dec("FifoTimeouts", engine.fifo_timeouts);
+        atirx_key_dec("IdleTimeouts", engine.idle_timeouts);
+        atirx_key_dec("Resets", engine.reset_count);
+        CloseHandle(atirx_out);
+        ExitProcess(completed ? 0u : 1u);
     }
 
     /* The known state, as the HAL writes it at validate. */

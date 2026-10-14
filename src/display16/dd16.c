@@ -1648,6 +1648,90 @@ static LONG v9x_hwc_answer(LPVOID input, LPVOID output)
 }
 #endif
 
+/*
+ * The escapes this driver does not answer, as GDI sends them: one line per
+ * distinct (function, queried escape) pair in C:\V9XDIAG\V9XESC.INI, with
+ * the first four DWORDs of the input. Written to find how Windows 98 GDI
+ * hands SetDeviceGammaRamp to a driver that claims C1_GAMMA_RAMP, which the
+ * DDK does not document; kept because an escape a game sends is otherwise
+ * invisible. The input is read only as far as its selector's limit allows.
+ */
+#define V9X_ESC_PAIRS       32u
+#define V9X_ESC_DWORDS      4u
+
+static WORD v9x_esc_function[V9X_ESC_PAIRS];
+static WORD v9x_esc_queried[V9X_ESC_PAIRS];
+static WORD v9x_esc_used = 0u;
+
+static void v9x_esc_hex(char *text, DWORD value, WORD digits)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    WORD index;
+
+    for (index = 0u; index < digits; ++index) {
+        text[index] = hex[(WORD)(value >> ((digits - 1u - index) * 4u)) & 15u];
+    }
+    text[digits] = '\0';
+}
+
+static void v9x_esc_census(WORD function, LPVOID input, LPVOID output)
+{
+    char line[96];
+    char key[8];
+    WORD queried = 0u;
+    WORD slot;
+    WORD dwords = 0u;
+    WORD index;
+    WORD at;
+    WORD offset;
+    DWORD limit;
+
+    if (function == V9X_QUERYESCSUPPORT && input != 0) {
+        queried = *(WORD FAR *)input;
+    }
+    for (slot = 0u; slot < v9x_esc_used; ++slot) {
+        if (v9x_esc_function[slot] == function &&
+            v9x_esc_queried[slot] == queried) {
+            return;
+        }
+    }
+    if (v9x_esc_used >= V9X_ESC_PAIRS) {
+        return;
+    }
+    slot = v9x_esc_used++;
+    v9x_esc_function[slot] = function;
+    v9x_esc_queried[slot] = queried;
+
+    if (input != 0 && queried == 0u) {
+        offset = (WORD)(DWORD)input;
+        limit = GetSelectorLimit((UINT)((DWORD)input >> 16));
+        if (limit >= (DWORD)offset + 3ul) {
+            dwords = (WORD)((limit - (DWORD)offset + 1ul) / 4ul);
+            if (dwords > V9X_ESC_DWORDS) {
+                dwords = V9X_ESC_DWORDS;
+            }
+        }
+    }
+    lstrcpy(line, "esc=");
+    v9x_esc_hex(line + 4, function, 4u);
+    if (queried != 0u) {
+        lstrcat(line, " q=");
+        v9x_esc_hex(line + lstrlen(line), queried, 4u);
+    }
+    lstrcat(line, output != 0 ? " out=1 in=" : " out=0 in=");
+    at = (WORD)lstrlen(line);
+    for (index = 0u; index < dwords; ++index) {
+        v9x_esc_hex(line + at, ((DWORD FAR *)input)[index], 8u);
+        at += 8u;
+        line[at++] = ' ';
+    }
+    line[at] = '\0';
+    lstrcpy(key, "Esc");
+    v9x_esc_hex(key + 3, slot, 2u);
+    WritePrivateProfileString("Velocity9xEscapes", key, line,
+                              V9X_DIAG_ESC_INI);
+}
+
 LONG __loadds FAR PASCAL Control(LPVOID device,
                                  WORD function,
                                  LPVOID input,
@@ -1700,5 +1784,6 @@ LONG __loadds FAR PASCAL Control(LPVOID device,
         /* Real DCI and unknown versions fall through to the DIB engine
          * (required for correct behavior of the emulated path). */
     }
+    v9x_esc_census(function, input, output);
     return V9xDibControlCall(device, function, input, output);
 }

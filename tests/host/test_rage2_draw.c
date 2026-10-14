@@ -189,8 +189,13 @@ static void test_policy(void)
     CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
     CHECK((d.scale_3d_cntl & V9X_R2_ALPHA_FOG_FOG) != 0ul &&
           d.alpha_from_fog == 1ul);
+    /* A real blend with fog is drawn blended, the fog dropped, as the
+     * Mach64 policy does (Thief II's fogged lightmap pass). */
     r.dst_blend = 6ul;
-    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_FOG_WITH_BLEND);
+    CHECK(v9x_r2_check_draw(&r, 0ul, &d) == V9X_M64_REFUSE_NONE);
+    CHECK(d.fog_dropped == 1ul && d.alpha_from_fog == 0ul &&
+          (d.scale_3d_cntl & V9X_R2_ALPHA_FOG_FOG) == 0ul &&
+          (d.scale_3d_cntl & V9X_R2_ALPHA_FOG_BLEND) != 0ul);
 
     /* Fog: As / 1-As. */
     base_request(&r);

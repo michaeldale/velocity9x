@@ -58,6 +58,8 @@ struct v9x_r2_draw_decision {
     v9x_u32 alpha_mask_key;     /* non-zero: the 4444 texels' alpha LSBs
                                  * must answer this test (below) */
     v9x_u32 alpha_test_dropped; /* a test every alpha passes, not drawn */
+    v9x_u32 fog_dropped;        /* fog asked with a blend: drawn blended,
+                                 * without the fog */
     v9x_u32 dst_pix_width;      /* DP_PIX_WIDTH's destination and host
                                  * fields for the target's layout */
 };

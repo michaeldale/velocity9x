@@ -118,6 +118,9 @@ void v9x_d3d_mach64_map_request(const V9X_R3D_DRAW *draw,
     request->specular_enable =
         draw->specular_enable != 0ul && specular_rgb != 0ul ? 1ul : 0ul;
     request->color_key_enable = draw->color_key_enable;
+    request->texture_color_key_valid =
+        request->textured != 0ul && texture != 0 &&
+        texture->has_color_key != 0ul ? 1ul : 0ul;
     request->alpha_force = draw->alpha_force;
 }
 
@@ -203,6 +206,13 @@ void v9x_d3d_mach64_map_state(const V9X_R3D_DRAW *draw,
         state->fog_color = draw->fog_color;
     }
     state->specular_enable = request->specular_enable != 0ul ? 1ul : 0ul;
+    /* The policy's color_keyed, from the same three facts. */
+    if (request->color_key_enable != 0ul &&
+        request->texture_color_key_valid != 0ul &&
+        state->textured != 0ul && texture != 0) {
+        state->color_key_enable = 1ul;
+        state->color_key = texture->color_key;
+    }
 }
 
 /*

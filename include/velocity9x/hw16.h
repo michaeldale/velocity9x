@@ -385,6 +385,25 @@ typedef struct v9x_hw16_ops {
      * returns 0 when it could not program the chip.
      */
     unsigned long (*place_desktop)(unsigned short pitch_bytes);
+
+    /*
+     * Load a gamma ramp into the DAC table that this family's 15, 16 and
+     * 32 bpp modes are scanned out through. `registers` is the engine's
+     * register window from its device's fill_engine_descriptor, mapped by
+     * ddi.c, `register_bytes` its size, and `table` 3 x 256 bytes, red then
+     * green then blue, eight bits an entry. Returns non-zero when written.
+     * APPENDED 2026-10-14, NULL in every family that does not name it; only
+     * with it does the driver claim C1_GAMMA_RAMP and answer GDI's
+     * DdiGammaRamp.
+     *
+     * A hook and not the VGA ports: on the Rage XL ports 3C8h/3C9h do not
+     * reach the DAC in this mode (reads FFh, writes lost), while DAC_REGS
+     * through the register window does (ATIRX /pro /dacport, A8U4I5 boot
+     * 476).
+     */
+    unsigned short (*load_gamma)(volatile unsigned char *registers,
+                                 unsigned long register_bytes,
+                                 const unsigned char *table);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */

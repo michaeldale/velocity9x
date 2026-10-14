@@ -131,6 +131,9 @@ $sources = @(
     # Direct3D render state to the neutral draw description; pure and
     # host-tested in tests\host\test_d3d_state.c.
     "src\display32\d3d\d3d_state.c",
+    # Table fog as a per-vertex factor; pure and host-tested in
+    # tests\host\test_d3d_fog.c.
+    "src\display32\d3d\d3d_fog.c",
     # The DrawPrimitives2 command walker; pure and host-tested in
     # tests\host\test_d3d_dp2.c.
     "src\display32\d3d\d3d_dp2.c",

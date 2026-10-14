@@ -510,6 +510,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DPRASTERCAPS_ZTEST          0x00000010ul
 #define V9X_D3DPRASTERCAPS_SUBPIXEL       0x00000020ul
 #define V9X_D3DPRASTERCAPS_FOGVERTEX      0x00000080ul
+#define V9X_D3DPRASTERCAPS_FOGTABLE       0x00000100ul
 #define V9X_D3DPCMPCAPS_NEVER             0x00000001ul
 #define V9X_D3DPCMPCAPS_LESS              0x00000002ul
 #define V9X_D3DPCMPCAPS_EQUAL             0x00000004ul
@@ -544,6 +545,11 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_FOGENABLE              28ul
 #define V9X_D3DRENDERSTATE_SPECULARENABLE         29ul
 #define V9X_D3DRENDERSTATE_FOGCOLOR               34ul
+/* d3dtypes.h: table (pixel) fog. START, END and DENSITY carry floats. */
+#define V9X_D3DRENDERSTATE_FOGTABLEMODE           35ul
+#define V9X_D3DRENDERSTATE_FOGTABLESTART          36ul
+#define V9X_D3DRENDERSTATE_FOGTABLEEND            37ul
+#define V9X_D3DRENDERSTATE_FOGTABLEDENSITY        38ul
 #define V9X_D3DBLEND_ZERO                           1ul
 #define V9X_D3DBLEND_ONE                            2ul
 #define V9X_D3DBLEND_SRCALPHA                       5ul
@@ -3598,6 +3604,18 @@ typedef struct v9x_d3d_diagnostics {
     DWORD mga_setup_refused[V9X_D3D_MGA_SETUP_STAGES];
     /* How each program using the HAL ended (V9X_WATCH above). */
     V9X_WATCH watch;
+    /* Table fog (2026-10-14): batches drawn with the per-vertex table
+     * factor (d3d_fog.h), and the D3DFOGMODE of the last. */
+    DWORD fog_table_batches;
+    DWORD fog_table_last_mode;
+    /* Mach64-class draws that asked for fog and blending, drawn blended
+     * without the fog (mach64_policy.c). */
+    DWORD m64_fog_dropped;
+    /* The last table-fog batch's FOGTABLESTART, END and DENSITY, as the
+     * floats' bits (d3d_fog.h): which units a title gives them in. */
+    DWORD fog_table_last_start;
+    DWORD fog_table_last_end;
+    DWORD fog_table_last_density;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

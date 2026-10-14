@@ -26,6 +26,7 @@
 #define M64_SLOT_ALPHA_TST    9ul
 #define M64_SLOT_SCALE_3D     10ul
 #define M64_SLOT_FOG_CLR      11ul
+#define M64_SLOT_CLR_CMP_CNTL 2ul
 /* Texture builder slots the composite adds to. */
 #define M64_SLOT_PIX_WIDTH     13ul
 #define M64_SLOT_TEX_SIZE      15ul
@@ -53,6 +54,31 @@ static v9x_u32 v9x_m64_draw_float_bits(float value)
 static int v9x_m64_draw_finite(float value)
 {
     return (v9x_m64_draw_float_bits(value) & 0x7f800000ul) != 0x7f800000ul;
+}
+
+/*
+ * A texture colour key as CLR_CMP_CLR and CLR_CMP_MSK. The Rage XL compares
+ * the raw texel in the texture's own format: ATIRX /pro /ckey held an RGB565
+ * key of F81F under masks FFFF and FFFFFFFF and missed it with every
+ * 24-bit expansion, which is what the XL/XC register reference (5-59)
+ * describes (A8U4I5 boot 474). The mask keeps the colour bits only: alpha
+ * is not compared, as the Matrox engine and the ViRGE rewrite leave it.
+ */
+static v9x_u32 v9x_m64_draw_key_mask(v9x_u32 format)
+{
+    switch (format) {
+    case V9X_M64_TEXTURE_FORMAT_RGB565:
+        return 0x0000fffful;
+    case V9X_M64_TEXTURE_FORMAT_ARGB4444:
+        return 0x00000ffful;
+    default:
+        return 0x00007ffful;
+    }
+}
+
+static v9x_u32 v9x_m64_draw_key_color(v9x_u32 format, v9x_u32 key)
+{
+    return key & v9x_m64_draw_key_mask(format);
 }
 
 /* The depth builder validates the Z surface against the target; only its
@@ -314,6 +340,17 @@ v9x_status v9x_m64_build_draw_state(
                  V9X_M64_ALPHA_BLEND_DEST_ZERO;
     }
     values[M64_SLOT_SCALE_3D] = scale;
+
+    if (state->color_key_enable != 0ul && state->textured != 0ul) {
+        values[M64_SLOT_CLR_CMP_CNTL] =
+            V9X_M64_CLR_CMP_SRC_TEXEL | V9X_M64_CLR_CMP_FN_EQUAL;
+        offsets[*written] = V9X_M64_CLR_CMP_CLR;
+        values[*written] = v9x_m64_draw_key_color(state->texture_format,
+                                                  state->color_key);
+        offsets[*written + 1ul] = V9X_M64_CLR_CMP_MASK;
+        values[*written + 1ul] = v9x_m64_draw_key_mask(state->texture_format);
+        *written += V9X_M64_COLOR_KEY_DWORDS;
+    }
     return V9X_STATUS_OK;
 }
 

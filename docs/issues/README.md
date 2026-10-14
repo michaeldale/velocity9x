@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-14 Thief II on the Rage XL: a floor shows through the floor (depth handling suspected; DrawPrimitives2 capture is the next step)](2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)
 - [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locks on 3D under 0.17.0 (unreproduced; isolated to the Intel flip, the game runs with it off)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
 - [2026-10-14 The Rage IIC blends one step low into a 5:5:5 target (parked; a SCALE_3D_CNTL sweep is the next step)](2026-10-14-rage-iic-blend-one-step-low-at-555.md)
 - [2026-10-14 3DCIF: Pixie, Fairy and Laputa's blended sprites are refused on both ATI engines (parked; a decision is owed)](2026-10-14-3dcif-blended-sprites-refused.md)

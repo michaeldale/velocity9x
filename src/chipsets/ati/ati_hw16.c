@@ -52,6 +52,55 @@ extern const V9X_HW16_DEVICE v9x_ati_4c52_device;
 extern const V9X_HW16_DEVICE v9x_ati_4c53_device;
 
 /*
+ * A gamma ramp into the DAC table through DAC_REGS (MM 0_30): byte 0 the
+ * write index, byte 1 the data port, red, green, blue per entry. DAC_CNTL
+ * (MM 0_31) PALETTE_ACCESS_CNTL, bit 5 on the LT Pro and later, is cleared
+ * for the write so the primary table - the one the CRTC scans through - is
+ * the one written, and put back after. DAC_8BIT_EN, bit 8, says whether
+ * an entry takes eight bits or six; the Rage XL's read 8601010A, eight.
+ * Offsets are the HAL's: block 0 at 400h of the register window.
+ */
+#define V9X_ATI_DAC_REGS        0x04c0u
+#define V9X_ATI_DAC_DATA        0x04c1u
+#define V9X_ATI_DAC_CNTL        0x04c4u
+#define V9X_ATI_DAC_PAL_SECOND  0x20u
+#define V9X_ATI_DAC_8BIT_HIGH   0x01u   /* bit 8: byte 1 of DAC_CNTL, bit 0 */
+
+static unsigned short v9x_ati_load_gamma(volatile unsigned char *registers,
+                                         unsigned long register_bytes,
+                                         const unsigned char *table)
+{
+    unsigned char access;
+    unsigned short shift;
+    unsigned short index;
+
+    if (registers == 0 || table == 0 ||
+        register_bytes <= (unsigned long)V9X_ATI_DAC_CNTL + 1ul) {
+        return 0u;
+    }
+    access = registers[V9X_ATI_DAC_CNTL];
+    shift = (registers[V9X_ATI_DAC_CNTL + 1u] & V9X_ATI_DAC_8BIT_HIGH) != 0u
+        ? 0u : 2u;
+    if ((access & V9X_ATI_DAC_PAL_SECOND) != 0u) {
+        registers[V9X_ATI_DAC_CNTL] =
+            (unsigned char)(access & ~V9X_ATI_DAC_PAL_SECOND);
+    }
+    registers[V9X_ATI_DAC_REGS] = 0u;
+    for (index = 0u; index < 256u; ++index) {
+        registers[V9X_ATI_DAC_DATA] =
+            (unsigned char)(table[index] >> shift);
+        registers[V9X_ATI_DAC_DATA] =
+            (unsigned char)(table[256u + index] >> shift);
+        registers[V9X_ATI_DAC_DATA] =
+            (unsigned char)(table[512u + index] >> shift);
+    }
+    if ((access & V9X_ATI_DAC_PAL_SECOND) != 0u) {
+        registers[V9X_ATI_DAC_CNTL] = access;
+    }
+    return 1u;
+}
+
+/*
  * The emulated part first, so a run with no -ChipId lands on the target that
  * can actually be booted unattended. V9xFindPciDevice scans this list and
  * records the matched index, so order here is a default, not a restriction.
@@ -229,5 +278,15 @@ const V9X_HW16_OPS v9x_hw16 = {
      * published for a card that is not one. A Rage Pro owner - the id this
      * family deliberately does not claim - installs the vbe package.
      */
-    0u
+    0u,
+    /* identify_without_pci, reserve_video_memory, unalias_pitch,
+     * measure_video_memory, place_desktop: none. */
+    0, 0, 0u, 0, 0,
+    /*
+     * Gamma through the DAC table. ATI's own driver for this family
+     * (MACXW4.DRV 4.11.2474) exports DDIGAMMARAMP and acts only above
+     * 8 bpp; on the Rage XL at 16 bpp the table read back as the identity
+     * ramp (docs\probe\a8u4i5-rage-xl-pal8-2026-10-14\run2-palread).
+     */
+    v9x_ati_load_gamma
 };

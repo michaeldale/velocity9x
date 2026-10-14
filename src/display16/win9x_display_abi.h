@@ -18,6 +18,7 @@
 #define V9X_RC_PALETTE            0x0100u
 #define V9X_RC_DIBTODEV           0x0200u
 #define V9X_C1_DIBENGINE          0x0010u
+#define V9X_C1_GAMMA_RAMP         0x0020u
 #define V9X_C1_REINIT_ABLE        0x0080u
 #define V9X_C1_BYTE_PACKED        0x0400u
 #define V9X_C1_COLORCURSOR        0x0800u

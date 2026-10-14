@@ -55,6 +55,10 @@ extern void FAR PASCAL V9xDibEndAccess(void);
 extern DWORD FAR PASCAL V9xDibSetPaletteCall(WORD, WORD, LPVOID, LPVOID);
 extern DWORD FAR PASCAL V9xDibSetPaletteTranslateCall(LPVOID, LPVOID);
 extern WORD FAR PASCAL V9xHardwarePresent(void);
+/* runtime.asm: the linear aperture, and a selector on an engine register
+ * window (the gamma ramp's DAC registers, as gdi_accel.c's engine). */
+extern DWORD FAR PASCAL V9xLinearBase(void);
+extern WORD FAR PASCAL V9xEngineSelector(DWORD linear_base, WORD limit);
 /* runtime.asm: vendor (low word) and device (high word) of the machine's
  * first display-class PCI device, read straight from config space. Used only
  * to make V9XHW.INI name the actual silicon when the family's own list did
@@ -1030,6 +1034,166 @@ static void v9x_program_palette(WORD start, WORD count)
     }
 }
 
+/*
+ * The gamma ramp, into the DAC table a family's high-colour modes are
+ * scanned out through, by its V9X_HW16_OPS.load_gamma hook.
+ *
+ * GDI hands a ramp of 3 x 256 WORDs, red then green then blue; the DAC
+ * holds 8 bits a channel at most, so the high byte is kept, as ATI's
+ * MACXW4.DRV keeps it, and a read-back returns that byte shifted up.
+ * v9x_gamma_loaded says whether anything but the identity has been set,
+ * so a mode set - after which the BIOS has reloaded the table - restores
+ * only a ramp somebody asked for.
+ */
+static BYTE v9x_gamma_table[3][V9X_PALETTE_ENTRIES];
+static WORD v9x_gamma_loaded = 0u;
+static WORD v9x_gamma_initialised = 0u;
+static WORD v9x_gamma_sets = 0u;
+static WORD v9x_gamma_writes = 0u;
+/* The first sets are recorded in V9XESC.INI's [Velocity9xGamma]: count,
+ * whether the DAC was written, and entries 64 and 128 of the red ramp. */
+#define V9X_GAMMA_LOGGED 16u
+
+static void v9x_gamma_hex(char *text, WORD value)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    WORD index;
+
+    for (index = 0u; index < 4u; ++index) {
+        text[index] = hex[(value >> ((3u - index) * 4u)) & 15u];
+    }
+    text[4] = '\0';
+}
+
+static void v9x_gamma_log(void)
+{
+    char line[40];
+
+    if (v9x_gamma_sets > V9X_GAMMA_LOGGED) {
+        return;
+    }
+    v9x_gamma_hex(line, v9x_gamma_sets);
+    line[4] = ' ';
+    v9x_gamma_hex(line + 5, v9x_gamma_writes);
+    line[9] = ' ';
+    v9x_gamma_hex(line + 10, (WORD)v9x_gamma_table[0][64] << 8);
+    line[14] = ' ';
+    v9x_gamma_hex(line + 15, (WORD)v9x_gamma_table[0][128] << 8);
+    WritePrivateProfileString("Velocity9xGamma", "SetsWritesRed64Red128",
+                              line, V9X_DIAG_ESC_INI);
+}
+
+static WORD v9x_gamma_available(void)
+{
+    return v9x_hw16.load_gamma != 0 && v9x_palettized == 0u;
+}
+
+static void v9x_gamma_identity(void)
+{
+    WORD index;
+
+    for (index = 0u; index < V9X_PALETTE_ENTRIES; ++index) {
+        v9x_gamma_table[0][index] = (BYTE)index;
+        v9x_gamma_table[1][index] = (BYTE)index;
+        v9x_gamma_table[2][index] = (BYTE)index;
+    }
+    v9x_gamma_initialised = 1u;
+}
+
+/*
+ * The ramp into the family's DAC table, through its register window: the
+ * device's engine descriptor names the window and V9xEngineSelector maps
+ * it, as the GDI acceleration does. 0 when the family or device has no
+ * window or the hook declined.
+ */
+static WORD v9x_program_gamma(void)
+{
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+    DWORD control_base = 0ul;
+    DWORD aperture_bytes = 0ul;
+    DWORD engine_type = 0ul;
+    DWORD engine_caps = 0ul;
+    DWORD gtt_base = 0ul;
+    DWORD ring_base = 0ul;
+    DWORD ring_size = 0ul;
+    WORD selector;
+
+    if (v9x_hw16.load_gamma == 0 || device == 0 ||
+        device->fill_engine_descriptor == 0) {
+        return 0u;
+    }
+    device->fill_engine_descriptor(V9xLinearBase(), &control_base,
+                                   &aperture_bytes, &engine_type,
+                                   &engine_caps, &gtt_base, &ring_base,
+                                   &ring_size);
+    if (control_base == 0ul || aperture_bytes == 0ul) {
+        return 0u;
+    }
+    selector = V9xEngineSelector(control_base,
+                                 aperture_bytes > 0x10000ul
+                                     ? 0xffffu
+                                     : (WORD)(aperture_bytes - 1ul));
+    if (selector == 0u) {
+        return 0u;
+    }
+    return v9x_hw16.load_gamma(
+        (volatile unsigned char FAR *)((DWORD)selector << 16),
+        aperture_bytes > 0x10000ul ? 0x10000ul : aperture_bytes,
+        &v9x_gamma_table[0][0]);
+}
+
+/*
+ * GDI's ordinal 32, for SetDeviceGammaRamp (set non-zero) and
+ * GetDeviceGammaRamp. The arguments are those of ATI's DDIGAMMARAMP:
+ * RETF 10, the flag at [bp+0Ah] and the ramp at [bp+6]. Returns 1 when
+ * done, 0 when this mode or family has no gamma.
+ */
+DWORD __loadds FAR PASCAL DdiGammaRamp(LPVOID device,
+                                       WORD set,
+                                       LPVOID ramp)
+{
+    WORD FAR *words = (WORD FAR *)ramp;
+    WORD channel;
+    WORD index;
+
+    (void)device;
+    if (ramp == 0 || !v9x_gamma_available()) {
+        return 0ul;
+    }
+    if (!v9x_gamma_initialised) {
+        v9x_gamma_identity();
+    }
+    if (set == 0u) {
+        for (channel = 0u; channel < 3u; ++channel) {
+            for (index = 0u; index < V9X_PALETTE_ENTRIES; ++index) {
+                words[channel * V9X_PALETTE_ENTRIES + index] =
+                    (WORD)((WORD)v9x_gamma_table[channel][index] << 8);
+            }
+        }
+        return 1ul;
+    }
+    for (channel = 0u; channel < 3u; ++channel) {
+        for (index = 0u; index < V9X_PALETTE_ENTRIES; ++index) {
+            v9x_gamma_table[channel][index] =
+                (BYTE)(words[channel * V9X_PALETTE_ENTRIES + index] >> 8);
+        }
+    }
+    v9x_gamma_loaded = 1u;
+    /*
+     * Written now unless the driver is disabled (a full-screen DOS box),
+     * after which Enable writes it. Not gated on the DIB engine's BUSY
+     * flag as SetPalette is: a DirectDraw game holds BUSY for as long as it
+     * runs, and Thief II's brightness slider was stored and never shown
+     * (A8U4I5 boot 475: ramp 7700/AF00 held, DAC still the identity).
+     */
+    ++v9x_gamma_sets;
+    if (v9x_enabled != 0u && v9x_program_gamma() != 0u) {
+        ++v9x_gamma_writes;
+    }
+    v9x_gamma_log();
+    return 1ul;
+}
+
 static void v9x_set_point(V9X_POINT_TYPE FAR *point, short x, short y)
 {
     point->x = x;
@@ -1127,9 +1291,18 @@ static WORD v9x_fill_gdi_info(V9X_GDI_INFO FAR *info,
      * It was briefly dropped on the theory that it caused DirectDraw to
      * publish DDCAPS_NOHARDWARE; that cause was measured to be an incomplete
      * dwRops table (see dd16.c), so the accurate declaration is restored.
-     * C1_SLOW_CARD stays off now that fills reach the Trio64 engine. */
+     * C1_SLOW_CARD stays off now that fills reach the Trio64 engine.
+     * C1_GAMMA_RAMP, above 8 bpp on a family with a load_gamma hook,
+     * lets GDI accept SetDeviceGammaRamp - DirectDraw's gamma
+     * control and Thief II's brightness - which arrives at ordinal 32,
+     * DdiGammaRamp. Claimed without that export it crashed
+     * DirectDrawCreate (A8U4I5 boot 472). */
     info->dpCaps1 |= V9X_C1_DIBENGINE | V9X_C1_REINIT_ABLE |
                      V9X_C1_BYTE_PACKED | V9X_C1_COLORCURSOR;
+    if (v9x_hw16.load_gamma != 0 &&
+        v9x_selected_mode->bits_per_pixel > 8u) {
+        info->dpCaps1 |= V9X_C1_GAMMA_RAMP;
+    }
     if (v9x_ever_enabled == 0u) {
         v9x_boot_trace("query-ok");
     }
@@ -1358,6 +1531,8 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_trace_vdd_reservation();
     if (v9x_palettized != 0u) {
         v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
+    } else if (v9x_gamma_loaded != 0u && v9x_gamma_available()) {
+        (void)v9x_program_gamma();
     }
     v9x_enabled = 1u;
     v9x_ever_enabled = 1u;
@@ -1561,6 +1736,8 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         device->deFlags &= (WORD)~V9X_DE_BUSY;
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
+        } else if (v9x_gamma_loaded != 0u && v9x_gamma_available()) {
+            (void)v9x_program_gamma();
         }
         v9x_publish_hardware_diagnostics();
         v9x_publish_hardware_event(V9X_HW16_EVENT_MODE_RESTORE,
@@ -1701,6 +1878,8 @@ void __loadds FAR PASCAL ResetHiResMode(void)
         v9x_dosbox_trace("reset-hardware-ok");
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
+        } else if (v9x_gamma_loaded != 0u && v9x_gamma_available()) {
+            (void)v9x_program_gamma();
         }
     }
     v9x_dosbox_trace("reset-exit");

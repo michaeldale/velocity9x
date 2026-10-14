@@ -418,7 +418,9 @@ static void v9x_d3d_sis_describe_caps(V9X_DD_SHARED *shared)
     /* Ties to 1/65536 pixel and the integer sample point: phases 1-2. */
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
                         V9X_D3DPRASTERCAPS_SUBPIXEL |
-                        V9X_D3DPRASTERCAPS_FOGVERTEX;
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        /* Emulated per vertex in the core (d3d_fog.h). */
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |

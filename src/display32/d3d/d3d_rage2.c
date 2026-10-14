@@ -299,8 +299,10 @@ static void v9x_d3d_rage2_describe_caps(V9X_DD_SHARED *shared)
     tri->dwMiscCaps = V9X_D3DPMISCCAPS_MASKZ |
                       V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW;
+    /* FOGTABLE: emulated per vertex in the core (d3d_fog.h). */
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_FOGVERTEX;
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
@@ -730,6 +732,11 @@ static int v9x_d3d_rage2_draw(const V9X_R3D_DRAW *draw,
             ? v9x_d3d_rage2_coords_in_unit(vertices, triangle_count * 3ul)
             : 0ul,
         &decision);
+    if (reason == V9X_M64_REFUSE_NONE && decision.fog_dropped != 0ul) {
+        /* Blended, so drawn without its fog (rage2_draw.c). */
+        request.fog_enable = 0ul;
+        ++v9x_hal->d3d_diagnostics.m64_fog_dropped;
+    }
     if (reason != V9X_M64_REFUSE_NONE) {
         v9x_hal->d3d_diagnostics.m64_policy_last = reason;
         if (reason < 20ul) {

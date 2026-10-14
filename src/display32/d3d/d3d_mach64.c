@@ -179,8 +179,10 @@ static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
     tri->dwSize = sizeof(V9X_D3DPRIMCAPS);
     tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW;
+    /* FOGTABLE: emulated per vertex in the core (d3d_fog.h). */
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_FOGVERTEX;
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
@@ -208,9 +210,12 @@ static void v9x_d3d_mach64_describe_caps(V9X_DD_SHARED *shared)
      * sampled since 2026-10-01 (v9x_d3d_mach64_create_chain), and the
      * leftover bit made Direct3D 8 refuse every non-square CreateTexture
      * with INVALIDCALL, which stopped 3DMark 2001 SE. */
+    /* TRANSPARENCY: source colour keys, by the texel compare
+     * (CLR_CMP_SRC_TEXEL, mach64_draw.c). */
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
-                         V9X_D3DPTEXTURECAPS_ALPHA;
+                         V9X_D3DPTEXTURECAPS_ALPHA |
+                         V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     /* Level selection, nearest (MIPNEAREST) or bilinear (MIPLINEAR) within
      * the level, and trilinear (LINEARMIPLINEAR, measured by the probe's
      * MipTri and TexM trilinear scenes, 2026-09-29). LINEARMIPNEAREST has
@@ -387,6 +392,8 @@ static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_TEXTURE *source,
     texture->levels = 1ul;
     texture->offset = 0ul;
     texture->pitch_bytes = 0ul;
+    texture->has_color_key = 0ul;
+    texture->color_key = 0ul;
 
     surface = (V9X_DD_SURFACE_LCL *)source->object;
     if (surface == 0 || surface->lpGbl == 0) {
@@ -409,6 +416,13 @@ static void v9x_d3d_mach64_resolve_texture(const V9X_R3D_TEXTURE *source,
     texture->level_offsets[0] = offset;
     if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
         texture->levels = v9x_d3d_mach64_chain(surface, texture);
+    }
+    /* DirectDraw keeps a texture's source key in its record and does not
+     * call SetColorKey for it (d3d_virge.c measured that); the Matrox
+     * engine reads it from the same place. */
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
+        texture->has_color_key = 1ul;
+        texture->color_key = surface->ddckCKSrcBltLow;
     }
 }
 
@@ -641,6 +655,14 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
     if (reason == V9X_M64_REFUSE_NONE && decision.alpha_test_dropped != 0ul) {
         /* A test that can discard nothing is not programmed. */
         request.alpha_test_enable = 0ul;
+    }
+    if (reason == V9X_M64_REFUSE_NONE && decision.color_keyed != 0ul) {
+        ++v9x_hal->d3d_diagnostics.color_key_draws;
+    }
+    if (reason == V9X_M64_REFUSE_NONE && decision.fog_dropped != 0ul) {
+        /* Blended, so drawn without its fog (mach64_policy.c). */
+        request.fog_enable = 0ul;
+        ++v9x_hal->d3d_diagnostics.m64_fog_dropped;
     }
     if (reason != V9X_M64_REFUSE_NONE) {
         v9x_hal->d3d_diagnostics.m64_policy_last = reason;

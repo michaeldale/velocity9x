@@ -140,6 +140,10 @@
 #define V9X_M64_DP_CHAIN_MASK         0x000006ccul  /* 0_B3 */
 #define V9X_M64_CLR_CMP_CLR           0x00000700ul  /* 0_C0 */
 #define V9X_M64_CLR_CMP_MASK          0x00000704ul  /* 0_C1 */
+/* CLR_CMP_CNTL fields (xf86-video-mach64 atiregs.h): keep the destination
+ * where the texel equals CLR_CMP_CLR. */
+#define V9X_M64_CLR_CMP_FN_EQUAL      0x00000005ul
+#define V9X_M64_CLR_CMP_SRC_TEXEL     0x02000000ul
 #define V9X_M64_CONTEXT_MASK          0x00000720ul  /* 0_C8 */
 #define V9X_M64_SRC_LINE_X_DIR        0x00000010ul
 #define V9X_M64_HOST_BYTE_ALIGN       0x00000001ul
@@ -164,8 +168,11 @@
 /* A draw's state is the textured state's slots and the mip registers at
  * most; a setup packet is a triangle plus the three specular words fog
  * needs ahead of it. */
+/* CLR_CMP_CLR and CLR_CMP_MSK, after the state of a keyed draw. */
+#define V9X_M64_COLOR_KEY_DWORDS      2ul
 #define V9X_M64_DRAW_STATE_DWORDS \
-    (V9X_M64_TEXTURED_STATE_DWORDS + V9X_M64_TEXTURE_MIP_DWORDS)
+    (V9X_M64_TEXTURED_STATE_DWORDS + V9X_M64_TEXTURE_MIP_DWORDS + \
+     V9X_M64_COLOR_KEY_DWORDS)
 #define V9X_M64_SPECULAR_DWORDS       3ul
 /* A second texture's S, T and W for each of the three vertices. */
 #define V9X_M64_SECONDARY_DWORDS      9ul

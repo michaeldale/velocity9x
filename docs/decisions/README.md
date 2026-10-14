@@ -174,6 +174,10 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-14 The Rage IIC at 5:5:5: untagged textures draw, and Glide opens and converts the LFB](2026-10-14-rage-iic-555-textures-and-glide.md)
 - [2026-10-14 The Rage XL runs a 5:5:5 desktop: its Direct3D draws 1555 as it draws 565](2026-10-14-rage-xl-555-desktop.md)
 - [2026-10-14 3DCIF VQ textures draw: the codebook is RGB565](2026-10-14-3dcif-vq-textures.md)
+- [2026-10-14 Direct3D table fog is drawn per vertex: the Rage XL matches the formula in six scenes](2026-10-14-table-fog-per-vertex.md)
+- [2026-10-14 The Rage XL samples CI8 textures, but no palette load tried so far reaches the colour](2026-10-14-rage-xl-ci8-palette-not-loaded.md)
+- [2026-10-14 Gamma ramps reach the Rage XL: GDI calls display-driver ordinal 32, and the DAC is written through DAC_REGS](2026-10-14-gamma-ramp-ordinal-32.md)
+- [2026-10-14 The Rage XL keys textures by comparing the raw texel, not the 24-bit expansion its register reference describes](2026-10-14-rage-xl-texture-colour-key.md)
 
 ## Matrox
 

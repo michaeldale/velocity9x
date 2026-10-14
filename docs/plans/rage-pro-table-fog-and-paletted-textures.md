@@ -2,7 +2,12 @@
 
 Date: 2026-10-08
 
-Status: proposed; research only, nothing coded or measured. Prompted by a
+Status: Step 1 (table fog) done and measured on the Rage XL
+([record](../decisions/2026-10-14-table-fog-per-vertex.md)); no game run
+yet. Step 0 skipped. Step 2's probe ran: the XL samples CI8, but no
+palette load tried reaches the colour
+([record](../decisions/2026-10-14-rage-xl-ci8-palette-not-loaded.md)).
+Prompted by a
 Vogons user's notes (Rage XL/XC table fog, PAL8 through GLDirect 3.0 and
 dgVoodoo 1.31, XL filtering). This plan separates what source code shows
 from what forum users report, and orders the work so the cheap measurement

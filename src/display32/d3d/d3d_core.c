@@ -584,21 +584,74 @@ static void v9x_d3d_census_untextured(const V9X_D3D_CONTEXT *context,
 }
 
 /* One batch to the engine, by whichever entry it serves. */
-static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
-                                 V9X_D3D_CONTEXT *context,
-                                 const V9X_D3DTLVERTEX *vertices,
-                                 DWORD triangle_count)
+static int v9x_d3d_dispatch_engine(const V9X_D3D_ENGINE_OPS *ops,
+                                   V9X_D3D_CONTEXT *context,
+                                   const V9X_D3DTLVERTEX *vertices,
+                                   DWORD triangle_count)
 {
     V9X_R3D_DRAW draw;
 
-    if (triangle_count != 0ul) {
-        v9x_d3d_census_untextured(context, vertices);
-    }
     if (ops->draw == 0) {
         return ops->draw_triangles(context, vertices, triangle_count);
     }
     v9x_d3d_describe_draw(context, &draw);
     return ops->draw(&draw, (const V9X_R3D_VERTEX *)vertices, triangle_count);
+}
+
+/*
+ * Table fog's copy of a batch. The vertices handed in may be the
+ * application's own buffer, the gather or the list staging, so the factors
+ * go into a buffer of their own; the Win16 mutex serializes the callbacks
+ * that reach here, as for those two.
+ */
+static V9X_D3DTLVERTEX v9x_d3d_fog_scratch[V9X_D3D_INDEXED_BATCH * 3u];
+
+static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
+                                 V9X_D3D_CONTEXT *context,
+                                 const V9X_D3DTLVERTEX *vertices,
+                                 DWORD triangle_count)
+{
+    DWORD chunk;
+    DWORD index;
+
+    if (triangle_count != 0ul) {
+        v9x_d3d_census_untextured(context, vertices);
+    }
+    if (!v9x_d3d_fog_table_active(context->fog_enable, &context->fog_table)) {
+        return v9x_d3d_dispatch_engine(ops, context, vertices,
+                                       triangle_count);
+    }
+
+    /* Table fog: each vertex's specular alpha becomes the table's factor at
+     * its depth, and the engine fogs it as vertex fog (d3d_fog.h). */
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.fog_table_batches;
+        v9x_hal->d3d_diagnostics.fog_table_last_mode =
+            context->fog_table.mode;
+        v9x_hal->d3d_diagnostics.fog_table_last_start =
+            context->fog_table.start;
+        v9x_hal->d3d_diagnostics.fog_table_last_end = context->fog_table.end;
+        v9x_hal->d3d_diagnostics.fog_table_last_density =
+            context->fog_table.density;
+    }
+    while (triangle_count != 0ul) {
+        chunk = triangle_count > (DWORD)V9X_D3D_INDEXED_BATCH
+            ? (DWORD)V9X_D3D_INDEXED_BATCH : triangle_count;
+        /* The HAL links no runtime, so no memcpy. */
+        for (index = 0ul; index < chunk * 3ul; ++index) {
+            v9x_d3d_fog_scratch[index] = vertices[index];
+        }
+        v9x_d3d_fog_table_apply(&context->fog_table,
+                                (V9X_R3D_VERTEX *)v9x_d3d_fog_scratch,
+                                chunk * 3ul);
+        if (!v9x_d3d_dispatch_engine(ops, context, v9x_d3d_fog_scratch,
+                                     chunk)) {
+            return 0;
+        }
+        vertices += chunk * 3ul;
+        triangle_count -= chunk;
+    }
+    return 1;
 }
 
 static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
@@ -1518,6 +1571,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->specular_enable = 0ul;
             context->fog_enable = 0ul;
             context->fog_color = 0ul;
+            v9x_d3d_fog_table_init(&context->fog_table);
             context->alpha_blend_enable = 0ul;
             context->src_blend = V9X_D3DBLEND_SRCALPHA;
             context->dest_blend = V9X_D3DBLEND_INVSRCALPHA;
@@ -1611,6 +1665,7 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->specular_enable = 0ul;
     context->fog_enable = 0ul;
     context->fog_color = 0ul;
+    v9x_d3d_fog_table_init(&context->fog_table);
     context->alpha_blend_enable = 0ul;
     context->src_blend = 0ul;
     context->dest_blend = 0ul;
@@ -1684,6 +1739,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].specular_enable = 0ul;
             v9x_d3d_contexts[index].fog_enable = 0ul;
             v9x_d3d_contexts[index].fog_color = 0ul;
+            v9x_d3d_fog_table_init(&v9x_d3d_contexts[index].fog_table);
             v9x_d3d_contexts[index].alpha_blend_enable = 0ul;
             v9x_d3d_contexts[index].src_blend = 0ul;
             v9x_d3d_contexts[index].dest_blend = 0ul;
@@ -1981,6 +2037,20 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
     case V9X_D3DRENDERSTATE_FOGCOLOR:
         context->fog_color = argument;
         break;
+    /* Table fog, emulated per vertex at dispatch (d3d_fog.h). START, END
+     * and DENSITY are floats' bits, kept as they came. */
+    case V9X_D3DRENDERSTATE_FOGTABLEMODE:
+        context->fog_table.mode = argument;
+        break;
+    case V9X_D3DRENDERSTATE_FOGTABLESTART:
+        context->fog_table.start = argument;
+        break;
+    case V9X_D3DRENDERSTATE_FOGTABLEEND:
+        context->fog_table.end = argument;
+        break;
+    case V9X_D3DRENDERSTATE_FOGTABLEDENSITY:
+        context->fog_table.density = argument;
+        break;
     case V9X_D3DRENDERSTATE_ZENABLE:
         /* DirectX 5 allows D3DZB_USEW (2) here. This driver publishes
          * no W-buffer capability, so anything non-zero is plain Z. */
@@ -2185,7 +2255,10 @@ static void v9x_d3d_apply_vertex_color(const V9X_D3D_CONTEXT *context,
             green, (BYTE)(vertex->specular >> 8));
         blue = v9x_d3d_saturating_add_byte(blue, (BYTE)vertex->specular);
     }
-    if (context->fog_enable != 0ul) {
+    /* Under table fog the specular alpha is not a factor: the table's is
+     * written at dispatch, and the engine fogs with that. */
+    if (context->fog_enable != 0ul &&
+        !v9x_d3d_fog_table_active(context->fog_enable, &context->fog_table)) {
         BYTE factor = (BYTE)(vertex->specular >> 24);
 
         red = v9x_d3d_fog_byte(red, (BYTE)(context->fog_color >> 16),

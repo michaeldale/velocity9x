@@ -221,7 +221,13 @@ $linkLines += @(
     "export GetPaletteTranslate.25", "export UpdateColors.26",
     "export StretchBlt.27", "export StretchDIBits.28",
     "export SelectBitmap.29", "export BitmapBits.30",
-    "export ReEnable.31=REENABLE", "export Inquire.101",
+    "export ReEnable.31=REENABLE",
+    # Ordinal 32: GDI's gamma ramp entry for a driver that claims
+    # C1_GAMMA_RAMP. Not in the DDK's samples or headers; the ordinal and
+    # its (lpDevice, fSet, lpRamp) arguments are ATI's shipped MACXW4.DRV's
+    # DDIGAMMARAMP. Claiming the cap without it crashed DirectDrawCreate
+    # (A8U4I5 boot 472).
+    "export DdiGammaRamp.32=DDIGAMMARAMP", "export Inquire.101",
     "export SetCursor.102", "export MoveCursor.103",
     "export CheckCursor.104",
     # Ordinal 500 is where every Windows 98 DDK display sample exports this

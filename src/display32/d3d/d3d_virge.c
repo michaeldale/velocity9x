@@ -1823,7 +1823,9 @@ static void v9x_d3d_virge_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dpcTriCaps.dwRasterCaps =
         V9X_D3DPRASTERCAPS_ZTEST |
         V9X_D3DPRASTERCAPS_SUBPIXEL |
-        V9X_D3DPRASTERCAPS_FOGVERTEX;
+        V9X_D3DPRASTERCAPS_FOGVERTEX |
+        /* Emulated per vertex in the core (d3d_fog.h). */
+        V9X_D3DPRASTERCAPS_FOGTABLE;
     shared->d3d_global.hwCaps.dpcTriCaps.dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |

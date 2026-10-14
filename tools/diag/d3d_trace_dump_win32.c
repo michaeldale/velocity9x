@@ -1803,6 +1803,13 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("M64DepthDraws", snapshot.d3d.m64_depth_draws);
     v9x_write_uint("M64BlendDraws", snapshot.d3d.m64_blend_draws);
     v9x_write_uint("M64FogDraws", snapshot.d3d.m64_fog_draws);
+    v9x_write_uint("FogTableBatches", snapshot.d3d.fog_table_batches);
+    v9x_write_uint("FogTableLastMode", snapshot.d3d.fog_table_last_mode);
+    v9x_write_uint("M64FogDropped", snapshot.d3d.m64_fog_dropped);
+    v9x_write_hex("FogTableLastStart", snapshot.d3d.fog_table_last_start);
+    v9x_write_hex("FogTableLastEnd", snapshot.d3d.fog_table_last_end);
+    v9x_write_hex("FogTableLastDensity",
+                  snapshot.d3d.fog_table_last_density);
     v9x_write_uint("M64Unrenderable", snapshot.d3d.m64_unrenderable);
     v9x_write_uint("R3dListCalls", snapshot.d3d.r3d_list_calls);
     v9x_write_uint("R3dListTrianglesIn",

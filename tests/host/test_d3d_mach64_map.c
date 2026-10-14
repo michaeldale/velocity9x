@@ -33,6 +33,8 @@ static void texture_8x8(V9X_D3D_MACH64_TEXTURE *texture, v9x_u32 format)
     texture->levels = 1ul;
     texture->offset = 0x00204000ul;
     texture->pitch_bytes = 16ul;
+    texture->has_color_key = 0ul;
+    texture->color_key = 0ul;
 }
 
 static v9x_u32 accept(const struct v9x_m64_draw_request *request)
@@ -141,6 +143,50 @@ static void test_texture_mapping(void)
     CHECK(request.textured == 1ul);
     CHECK(request.texture_format == V9X_D3D_MACH64_TEXTURE_UNKNOWN);
     CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
+}
+
+/* COLORKEYENABLE keys a texture that carries a source key, and nothing
+ * else; the key reaches the state in the texture's own format. */
+static void test_color_key_mapping(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MACH64_TEXTURE texture;
+    struct v9x_m64_draw_request request;
+    struct v9x_m64_draw_decision decision;
+    struct v9x_m64_draw_state state;
+
+    d3d_draw(&draw);
+    draw.texture.object = &surface_token;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.address = V9X_R3D_ADDRESS_CLAMP;
+    draw.texture.op = V9X_R3D_TEXOP_DECAL;
+    draw.color_key_enable = 1ul;
+    texture_8x8(&texture, V9X_M64_TEXTURE_FORMAT_RGB565);
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(request.texture_color_key_valid == 0ul);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.color_keyed == 0ul);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.color_key_enable == 0ul);
+
+    texture.has_color_key = 1ul;
+    texture.color_key = 0xf81ful;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    CHECK(request.texture_color_key_valid == 1ul);
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.color_keyed == 1ul);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.color_key_enable == 1ul && state.color_key == 0xf81ful);
+
+    /* COLORKEYENABLE off: the texture's key is not compared. */
+    draw.color_key_enable = 0ul;
+    v9x_d3d_mach64_map_request(&draw, &texture, 0ul, &request);
+    v9x_d3d_mach64_map_state(&draw, &request, &texture, 0x00400000ul,
+                             &state);
+    CHECK(state.color_key_enable == 0ul);
 }
 
 /*
@@ -511,6 +557,7 @@ unsigned int v9x_run_d3d_mach64_map_tests(void)
     test_direct3d_defaults();
     test_depth_needs_a_bound_surface();
     test_texture_mapping();
+    test_color_key_mapping();
     test_mip_mapping();
     test_vertex_alpha_opaque();
     test_specular_needs_colour();

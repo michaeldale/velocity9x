@@ -326,6 +326,10 @@ typedef struct v9x_d3dtlvertex {
 #define V9X_D3DRENDERSTATE_FOGENABLE        28ul
 #define V9X_D3DRENDERSTATE_SPECULARENABLE   29ul
 #define V9X_D3DRENDERSTATE_FOGCOLOR         34ul
+#define V9X_D3DRENDERSTATE_FOGTABLEMODE     35ul
+#define V9X_D3DRENDERSTATE_FOGTABLESTART    36ul
+#define V9X_D3DRENDERSTATE_FOGTABLEEND      37ul
+#define V9X_D3DRENDERSTATE_FOGTABLEDENSITY  38ul
 #define V9X_D3DRENDERSTATE_ZENABLE            7ul
 #define V9X_D3DRENDERSTATE_ZWRITEENABLE      14ul
 #define V9X_D3DRENDERSTATE_ZFUNC             23ul
@@ -2387,6 +2391,10 @@ static const V9X_PROBE_TEX8 v9x_probe_tex8_1555 = {
 static DWORD v9x_probe_sample_x = 16ul;
 static DWORD v9x_probe_sample_y = 16ul;
 static int v9x_probe_keep_target = 0;
+/* Non-zero: v9x_probe_tex_draw gives its texture this source colour key
+ * (DDCKEY_SRCBLT, low and high equal) and draws with COLORKEYENABLE. */
+static int v9x_probe_color_key_on = 0;
+static DWORD v9x_probe_color_key = 0ul;
 
 static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
                                   struct v9x_d3d_device2 *device,
@@ -2453,8 +2461,23 @@ static HRESULT v9x_probe_tex_draw(struct v9x_dd *ddraw,
     hr = ddraw->vtbl->CreateSurface(ddraw, &desc, &surface, 0);
     if (hr == 0 && surface != 0) {
         v9x_fill_surface_halves(surface, format->left, format->right);
+        if (v9x_probe_color_key_on) {
+            V9X_DDCOLORKEY key;
+
+            key.dwColorSpaceLowValue = v9x_probe_color_key;
+            key.dwColorSpaceHighValue = v9x_probe_color_key;
+            hr = surface->vtbl->SetColorKey(surface, V9X_DDCKEY_SRCBLT,
+                                            &key);
+        }
+    }
+    if (hr == 0 && surface != 0) {
         hr = surface->vtbl->QueryInterface(surface, &v9x_iid_d3d_texture2,
                                            (void **)&texture);
+    }
+    if (hr == 0) {
+        hr = device->vtbl->SetRenderState(
+            device, V9X_D3DRENDERSTATE_COLORKEYENABLE,
+            v9x_probe_color_key_on ? 1ul : 0ul);
     }
     if (hr == 0 && texture != 0) {
         hr = texture->vtbl->GetHandle(texture, device, &handle);
@@ -4480,6 +4503,102 @@ void __stdcall V9xDdrawProbeEntry(void)
                     draw_hr == 0 && end_hr == 0 &&
                     v9x_surface_pixel16_equals(d3d_target, 16ul, 16ul,
                                                expect_blue) ? 1ul : 0ul);
+
+                /*
+                 * Table fog (2026-10-14): a red triangle at one depth, fog
+                 * colour blue, FOGTABLEMODE and its range set, and the
+                 * vertex fog factor 255 - so any fog seen is the table's,
+                 * which the HAL computes per vertex (d3d_fog.h). Expected
+                 * red is 255 * f: LINEAR 0..1 at z 0, 0.5 and 1; EXP and
+                 * EXP2 at density 2; and LINEAR 100..500, eye units, at
+                 * W = 400. Keys D3DTableFog<n>Raw, <n>Red, <n>Blue, and
+                 * D3DTableFogOk when every red is within 16 of expected
+                 * and blue is 255 - red within 16.
+                 */
+                {
+                    static const DWORD tf_mode[6] = { 3ul, 3ul, 3ul, 1ul, 2ul, 3ul };
+                    static const float tf_start[6] = {
+                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 100.0f };
+                    static const float tf_end[6] = {
+                        1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 500.0f };
+                    static const float tf_density[6] = {
+                        1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 1.0f };
+                    static const float tf_z[6] = {
+                        0.5f, 0.0f, 1.0f, 0.5f, 1.0f, 0.5f };
+                    static const float tf_rhw[6] = {
+                        1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0025f };
+                    static const DWORD tf_red[6] = {
+                        128ul, 255ul, 0ul, 94ul, 5ul, 64ul };
+                    static const char *tf_key[6] = {
+                        "D3DTableFog0", "D3DTableFog1", "D3DTableFog2",
+                        "D3DTableFog3", "D3DTableFog4", "D3DTableFog5" };
+                    union { float f; DWORD d; } tf_bits;
+                    char tf_name[32];
+                    WORD tf_raw;
+                    DWORD tf_index;
+                    DWORD tf_v;
+                    DWORD tf_r;
+                    DWORD tf_b;
+                    int tf_ok = target_layout.valid != 0ul;
+
+                    for (tf_index = 0ul; tf_index < 6ul; ++tf_index) {
+                        v9x_fill_surface(d3d_target, 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGTABLEMODE,
+                            tf_mode[tf_index]);
+                        tf_bits.f = tf_start[tf_index];
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGTABLESTART, tf_bits.d);
+                        tf_bits.f = tf_end[tf_index];
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGTABLEEND, tf_bits.d);
+                        tf_bits.f = tf_density[tf_index];
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGTABLEDENSITY, tf_bits.d);
+                        for (tf_v = 0ul; tf_v < 3ul; ++tf_v) {
+                            triangle[tf_v].color = 0xffff0000ul;
+                            triangle[tf_v].specular = 0xff000000ul;
+                            triangle[tf_v].sz = tf_z[tf_index];
+                            triangle[tf_v].rhw = tf_rhw[tf_index];
+                        }
+                        begin_hr = d3d_device->vtbl->BeginScene(d3d_device);
+                        if (begin_hr == 0) {
+                            draw_hr = d3d_device->vtbl->DrawPrimitive(
+                                d3d_device, V9X_D3DPT_TRIANGLELIST,
+                                V9X_D3DVT_TLVERTEX, triangle, 3ul, 0ul);
+                            end_hr = d3d_device->vtbl->EndScene(d3d_device);
+                        } else {
+                            draw_hr = begin_hr;
+                            end_hr = begin_hr;
+                        }
+                        tf_raw = v9x_surface_pixel16(d3d_target, 16ul, 16ul);
+                        tf_r = target_layout.valid != 0ul
+                            ? v9x_layout_red(&target_layout, tf_raw) : 0ul;
+                        tf_b = target_layout.valid != 0ul
+                            ? v9x_layout_blue(&target_layout, tf_raw) : 0ul;
+                        wsprintfA(tf_name, "%sRaw", tf_key[tf_index]);
+                        v9x_write_uint(tf_name, tf_raw);
+                        wsprintfA(tf_name, "%sRed", tf_key[tf_index]);
+                        v9x_write_uint(tf_name, tf_r);
+                        wsprintfA(tf_name, "%sBlue", tf_key[tf_index]);
+                        v9x_write_uint(tf_name, tf_b);
+                        if (draw_hr != 0 || end_hr != 0 ||
+                            tf_r + 16ul < tf_red[tf_index] ||
+                            tf_r > tf_red[tf_index] + 16ul ||
+                            tf_b + 16ul < 255ul - tf_red[tf_index] ||
+                            tf_b > 255ul - tf_red[tf_index] + 16ul) {
+                            tf_ok = 0;
+                        }
+                    }
+                    v9x_write_uint("D3DTableFogOk", tf_ok ? 1ul : 0ul);
+                    (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                        V9X_D3DRENDERSTATE_FOGTABLEMODE, 0ul);
+                    for (tf_v = 0ul; tf_v < 3ul; ++tf_v) {
+                        triangle[tf_v].sz = 0.0f;
+                        triangle[tf_v].rhw = 1.0f;
+                        triangle[tf_v].specular = 0ul;
+                    }
+                }
                 (void)d3d_device->vtbl->SetRenderState(
                     d3d_device, V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
 
@@ -5082,6 +5201,77 @@ void __stdcall V9xDdrawProbeEntry(void)
                     if (keyed != 0) {
                         keyed->vtbl->Release(keyed);
                     }
+                }
+
+                v9x_probe_reset_state(d3d_device, triangle);
+                /*
+                 * A source colour key that can fail (2026-10-14). The scene
+                 * above draws a texture that is all key over a cleared
+                 * target, so a driver that refuses the draw passes it too.
+                 * Here the target is blue and the 8x8 texture is the key
+                 * (magenta) on the left and green on the right; COPY, a
+                 * constant coordinate in each half. Keyed, the left keeps
+                 * the blue and the right draws green; ignored, the left is
+                 * magenta; refused, both stay blue. RGB565, then ARGB1555
+                 * with the alpha bit set and a key without it (the compare
+                 * leaves alpha out). Keys ColorKeyHalves<fmt>Left/Right Raw,
+                 * and ColorKeyHalvesOk when all four hold.
+                 */
+                {
+                    static const V9X_PROBE_TEX8 keyed_formats[2] = {
+                        { 0x40ul, 0xf800ul, 0x07e0ul, 0x001ful, 0ul,
+                          0xf81fu, 0x07e0u },
+                        { 0x41ul, 0x7c00ul, 0x03e0ul, 0x001ful, 0x8000ul,
+                          0xfc1fu, 0x83e0u } };
+                    static const DWORD keyed_keys[2] = { 0xf81ful, 0x7c1ful };
+                    static const char *keyed_names[2][2] = {
+                        { "ColorKeyHalves565LeftRaw",
+                          "ColorKeyHalves565RightRaw" },
+                        { "ColorKeyHalves1555LeftRaw",
+                          "ColorKeyHalves1555RightRaw" } };
+                    WORD halves_raw;
+                    HRESULT halves_hr;
+                    DWORD kf;
+                    DWORD side;
+                    int halves_ok = target_layout.valid != 0ul;
+
+                    v9x_probe_keep_target = 1;
+                    v9x_probe_color_key_on = 1;
+                    for (kf = 0ul; kf < 2ul; ++kf) {
+                        v9x_probe_color_key = keyed_keys[kf];
+                        for (side = 0ul; side < 2ul; ++side) {
+                            v9x_fill_surface(d3d_target,
+                                             ((DWORD)expect_blue << 16) |
+                                             (DWORD)expect_blue);
+                            halves_raw = 0u;
+                            halves_hr = v9x_probe_tex8_draw(ddraw,
+                                d3d_device, d3d_target, triangle,
+                                &keyed_formats[kf], V9X_D3DTBLEND_COPY,
+                                V9X_D3DFILTER_NEAREST,
+                                V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                                side == 0ul ? 0.25f : 0.75f, 0.25f,
+                                &halves_raw);
+                            v9x_write_uint(keyed_names[kf][side],
+                                           halves_raw);
+                            if (halves_hr != 0) {
+                                halves_ok = 0;
+                            } else if (side == 0ul) {
+                                if (halves_raw != expect_blue) {
+                                    halves_ok = 0;
+                                }
+                            } else if (v9x_layout_green(&target_layout,
+                                                        halves_raw) < 197ul ||
+                                       v9x_layout_blue(&target_layout,
+                                                       halves_raw) > 33ul) {
+                                halves_ok = 0;
+                            }
+                        }
+                    }
+                    v9x_probe_color_key_on = 0;
+                    v9x_probe_keep_target = 0;
+                    (void)d3d_device->vtbl->SetRenderState(
+                        d3d_device, V9X_D3DRENDERSTATE_COLORKEYENABLE, 0ul);
+                    v9x_write_uint("ColorKeyHalvesOk", halves_ok ? 1ul : 0ul);
                 }
 
                 v9x_probe_reset_state(d3d_device, triangle);
