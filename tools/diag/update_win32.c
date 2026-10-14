@@ -92,10 +92,13 @@ static BYTE v9x_reply[V9X_REPLY_MAX];
  * server brief lists them. The Glide 2 and Glide 3 logs follow V9XGL.LOG:
  * without them a Glide report carries no record of the game's calls
  * (V9X-VCWHZ1, 2026-10-10, attached only a stale Quake 2 V9XGL.LOG). A
- * server that refuses a name costs that one file, not the report. */
+ * server that refuses a name costs that one file, not the report.
+ * INTELMM.TXT is the Intel boot-time record of the live pipe and plane, and
+ * absent on every other chip: issue 6 (2026-10-14) needed it and no report
+ * carried it, because every snapshot sent was dumped before DirectDraw ran. */
 static const char *const v9x_report_names[] = {
     "V9XTRACE.INI", "V9XBOOT.INI", "V9XHW.INI", "V9XDD.INI", "V9XGL.LOG",
-    "V9XGLIDE.LOG", "V9XGLD3.LOG", "V9XUPD.INI"
+    "V9XGLIDE.LOG", "V9XGLD3.LOG", "INTELMM.TXT", "V9XUPD.INI"
 };
 
 static DWORD v9x_length(const char *text)
