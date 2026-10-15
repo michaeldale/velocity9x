@@ -100,8 +100,17 @@ int v9x_d3d_fog_table_active(v9x_u32 fog_enable,
 float v9x_d3d_fog_table_depth(const V9X_D3D_FOG_TABLE *table, float sz,
                               float rhw)
 {
+    float density = v9x_d3d_fog_float(table->density);
+
+    if (!(rhw > 0.0f)) {
+        return sz;
+    }
     if (table->mode == V9X_D3D_FOG_LINEAR &&
-        v9x_d3d_fog_float(table->end) > 1.0f && rhw > 0.0f) {
+        v9x_d3d_fog_float(table->end) > 1.0f) {
+        return 1.0f / rhw;
+    }
+    if ((table->mode == V9X_D3D_FOG_EXP || table->mode == V9X_D3D_FOG_EXP2) &&
+        density > 0.0f && density < 1.0f) {
         return 1.0f / rhw;
     }
     return sz;

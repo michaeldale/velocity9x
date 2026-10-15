@@ -126,9 +126,22 @@ static void test_depth_rule(void)
     /* Without a usable rhw, Z regardless. */
     FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, 0.0f) == 0.5f);
     FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, -1.0f) == 0.5f);
-    /* EXP and EXP2 are Z: the caps do not claim W fog. */
+    /* EXP and EXP2 at a device-space density are Z. */
     fog_set(&table, V9X_D3D_FOG_EXP, 100.0f, 500.0f, 1.0f);
     FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, 0.01f) == 0.5f);
+    fog_set(&table, V9X_D3D_FOG_EXP2, 0.0f, 1.0f, 4.0f);
+    FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, 0.01f) == 0.5f);
+    /* Thief II's density, 0.0107 (A8U4I5 boot 479): below 1.0 it cannot
+     * fog device Z visibly, so it is eye units and the depth is W. */
+    fog_set(&table, V9X_D3D_FOG_EXP, 0.0f, 1.0f, 0.0107f);
+    FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, 0.01f) == 100.0f);
+    FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, 0.0f) == 0.5f);
+    fog_set(&table, V9X_D3D_FOG_EXP2, 0.0f, 1.0f, 0.0107f);
+    FCHECK(v9x_d3d_fog_table_depth(&table, 0.5f, 0.01f) == 100.0f);
+    /* Density 0 fogs nothing at any depth; Z is as good as W. */
+    fog_set(&table, V9X_D3D_FOG_EXP, 0.0f, 1.0f, 0.0f);
+    FCHECK(v9x_d3d_fog_table_factor(&table,
+               v9x_d3d_fog_table_depth(&table, 0.5f, 0.01f)) == 255ul);
 }
 
 static void test_apply(void)

@@ -29,10 +29,24 @@ The symptom fits depth handling more than missing triangles. Candidates:
 - a W-buffer request (`D3DZB_USEW`), which this driver treats as Z;
 - 16-bit depth precision.
 
+## 2026-10-15
+
+- **No lock-up in two more sessions** (boots 479 and 480, about five
+  minutes in the mission each). The agent log of boot 477 shows nothing
+  after its last command; the lock left no trace.
+- **The DrawPrimitives2 capture cannot see this game.** Thief II draws
+  through the DirectX 5 DrawPrimitive entry points (`Dp2Calls` 0); DDI 6
+  is given only to Direct3D 8 programs by default.
+- **The same build's regression pass on A8U4I5** showed nothing new:
+  - V9XDDP 207/224, unchanged;
+  - Diablo II's town draws, 0.7% of draws refused, as before;
+  - the NFS II SE demo's race draws, 5.5% refused against 6.2% before;
+  - gamma held in the DAC.
+
 ## Next
 
-1. Arm the DrawPrimitives2 capture (`[Velocity9x] Dp2Capture=1`, with
-   `Dp2RingDelayMs` past the menus) for one mission. Read it with
-   `tools\diag\dp2ring.py` for ZENABLE, ZFUNC, ZWRITEENABLE and the
-   clears.
-2. A screenshot of the fault with the in-game brightness raised.
+1. A screenshot of the fault, taken by the agent while Michael stands at
+   it. The agent's screenshot reads the framebuffer, and a gamma-brightened
+   copy shows the dark scene.
+2. A census of the DX5 path's Z state per batch (ZENABLE, ZFUNC,
+   ZWRITEENABLE and the clears). No such counter exists yet.

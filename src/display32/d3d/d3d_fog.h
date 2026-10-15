@@ -45,9 +45,12 @@ int v9x_d3d_fog_table_active(v9x_u32 fog_enable,
 /*
  * The depth the factor is taken at. Device Z, which is what Direct3D
  * defines for a device without D3DPRASTERCAPS_WFOG, and this driver does
- * not claim it. One exception: a LINEAR range that ends past 1.0 cannot be
- * device Z, and is a title passing eye units regardless of the caps, so
- * its depth is eye W, 1/rhw. Without a usable rhw it stays Z.
+ * not claim it. Two exceptions, each a title passing eye units regardless
+ * of the caps, whose depth is then eye W, 1/rhw: a LINEAR range that ends
+ * past 1.0, which device Z never reaches; and an EXP or EXP2 density below
+ * 1.0, which over device Z's 0..1 fogs at most 63 % and in practice not
+ * visibly - Thief II sets EXP at 0.0107 (A8U4I5, boot 479). Without a
+ * usable rhw it stays Z.
  */
 float v9x_d3d_fog_table_depth(const V9X_D3D_FOG_TABLE *table, float sz,
                               float rhw);

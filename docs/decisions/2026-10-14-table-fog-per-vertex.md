@@ -85,6 +85,48 @@ Whether the fog itself looks right has not been checked. The agent's
 screenshot is too dark to show distant fog, and EXP on Z under-fogs if
 Thief II gives its density in eye units.
 
+## Thief II gives its EXP density in eye units (2026-10-15)
+
+At boot 479 the counters showed Thief II's table fog:
+
+| State | Value |
+|---|---|
+| Mode | EXP |
+| Density | `3C2EC33E` (0.0107) |
+| Start / end | 0 / 1 |
+
+Over device Z, 0..1, that density fogs about 1%. So the boot-470 rule
+drew nothing visible: through the demo's first archway the
+sky was black (`boot479-thief2-z-fog*.png`).
+
+**NVIDIA's "Implementing Fog in Direct3D"** (Rogers):
+- For transformed vertices under a perspective projection, Direct3D fogs
+  on W = 1/RHW.
+- Fog start, end and density are then given in world units.
+- Z is only for an affine projection.
+- The RIVA 128 and TNT emulated table fog per vertex, as this driver does.
+
+The rule now takes W for an EXP or EXP2 density below 1.0 as well. Below
+that, a density cannot fog device Z visibly: EXP reaches at most 63% at
+the far plane. Host test first; V9XDDP's EXP scenes, density 2, stay on Z.
+
+**Compared with the reference.** The VOGONS "Table Fog & 8-bit Paletted
+Textures" thread (page 24) has the demo's starting view with and without
+table fog:
+
+| | Sky through the arch | Building beyond |
+|---|---|---|
+| Reference, with table fog | grey haze | hazed, lit windows |
+| Reference, without | black | black |
+| Boot 480 (`boot480-thief2-w-fog*.png`) | grey haze, matching | **black**, lit windows |
+
+The building differs because Thief draws it in two passes: a textured
+base pass, then a lightmap pass that multiplies into it. This engine
+cannot fog a blend, so the lightmap pass is drawn unfogged (see above).
+The fogged grey base is then multiplied by a dark lightmap down to near
+black. A card that fogs both passes keeps it grey. Open: an approximation
+for multiply blends under fog.
+
 ## The other engines (2026-10-15)
 
 Evidence: `docs/probe/table-fog-other-engines-2026-10-15/`.
@@ -111,5 +153,7 @@ Evidence: `docs/probe/table-fog-other-engines-2026-10-15/`.
   large triangle across an EXP curve fogs differently from a true table.
 - **Rage II and SiS 6326 not measured.** They claim the cap through the
   same core code. Gen3 is measured.
-- **The depth rule is untested on a game.** The plan asks for two
-  table-fog titles before the rule is settled.
+- **The depth rule is measured on one game,** Thief II (above). The plan
+  asks for two table-fog titles before the rule is settled.
+- **Fogged multiply blends go dark in the distance** (lightmaps), where
+  fogging hardware stays at the fog colour.
