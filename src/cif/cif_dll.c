@@ -69,7 +69,10 @@
 #define V9X_C3D_EPF_RGB565         4ul
 
 /* C3D_TMAP byte offsets. 72 bytes end at htxpalTexPalette; the Rage PRO
- * header adds bClampS, bClampT, bAlphaBlend and eTexTiling (88). */
+ * header adds bClampS, bClampT, bAlphaBlend and eTexTiling (88). The
+ * earliest form ends at clrTexChromaKey (68), with no palette: Assault
+ * Rigs for 3D Rage 1.0.0.3 registers every texture so (A8U4I5,
+ * 2026-10-16). */
 #define V9X_C3D_TMAP_MIPMAP        4u
 #define V9X_C3D_TMAP_LEVELS        8u
 #define V9X_C3D_TMAP_XLG2          52u
@@ -77,6 +80,7 @@
 #define V9X_C3D_TMAP_FORMAT        60u
 #define V9X_C3D_TMAP_CHROMA        64u
 #define V9X_C3D_TMAP_PALETTE       68u
+#define V9X_C3D_TMAP_EARLY_BYTES   68u
 #define V9X_C3D_TMAP_BASE_BYTES    72u
 #define V9X_C3D_TMAP_CLAMP_S       72u
 #define V9X_C3D_TMAP_CLAMP_T       76u
@@ -251,6 +255,7 @@ static v9x_u32 v9x_cif_triangles_drawn;
 static v9x_u32 v9x_cif_triangles_refused;
 static v9x_u32 v9x_cif_refusals_logged;
 static v9x_u32 v9x_cif_approximations_logged;
+static v9x_u32 v9x_cif_registrations_logged;
 static v9x_u32 v9x_cif_skips[V9X_CIF_SKIPS];
 static int v9x_cif_device_ready;
 static CRITICAL_SECTION v9x_cif_lock;
@@ -836,9 +841,14 @@ v9x_u32 __stdcall ATI3DCIF_TextureReg(v9x_u32 tmap, v9x_u32 handle)
     key[2] = v9x_cif_peek(tmap + V9X_C3D_TMAP_XLG2);
     key[3] = v9x_cif_peek(tmap + V9X_C3D_TMAP_YLG2);
     v9x_cif_call(V9X_CIF_IX_TextureReg, args, 2u, key, 4u);
-    if (size < V9X_C3D_TMAP_BASE_BYTES || handle == 0ul ||
+    if (size < V9X_C3D_TMAP_EARLY_BYTES || handle == 0ul ||
         IsBadWritePtr((void *)handle, 4u) ||
         key[2] > V9X_C3D_TEXTURE_LG2_MAX || key[3] > V9X_C3D_TEXTURE_LG2_MAX) {
+        if (v9x_cif_registrations_logged < V9X_CIF_NOTES_MAX) {
+            ++v9x_cif_registrations_logged;
+            v9x_cif_log3("TextureReg refused BADPARAM: size=%lu format=%lu "
+                         "lg2=%04lX", size, key[1], (key[2] << 8) | key[3]);
+        }
         LeaveCriticalSection(&v9x_cif_lock);
         return V9X_C3D_EC_BADPARAM;
     }
@@ -858,7 +868,9 @@ v9x_u32 __stdcall ATI3DCIF_TextureReg(v9x_u32 tmap, v9x_u32 handle)
     texture->height = 1ul << key[3];
     texture->mipmapped = v9x_cif_peek(tmap + V9X_C3D_TMAP_MIPMAP) != 0ul;
     texture->key = v9x_cif_peek(tmap + V9X_C3D_TMAP_CHROMA);
-    texture->palette = v9x_cif_peek(tmap + V9X_C3D_TMAP_PALETTE);
+    texture->palette = size >= V9X_C3D_TMAP_BASE_BYTES
+                           ? v9x_cif_peek(tmap + V9X_C3D_TMAP_PALETTE)
+                           : 0ul;
     texture->clamp_s = 0ul;
     texture->clamp_t = 0ul;
     texture->drawable = 0ul;
@@ -920,6 +932,17 @@ v9x_u32 __stdcall ATI3DCIF_TextureReg(v9x_u32 tmap, v9x_u32 handle)
         v9x_cif_log3("TextureReg %lux%lu format=%lu not converted: drawn "
                      "untextured", texture->width, texture->height,
                      texture->format);
+    }
+
+    /* What the title registers, which the call census does not show: a
+     * texture that converts but draws wrong (Assault Rigs' white menus,
+     * A8U4I5, 2026-10-16) is otherwise invisible in the log. */
+    if (v9x_cif_registrations_logged < V9X_CIF_NOTES_MAX) {
+        ++v9x_cif_registrations_logged;
+        v9x_cif_log3("  tmap size=%lu format=%lu lg2=%04lX", size,
+                     texture->format, (key[2] << 8) | key[3]);
+        v9x_cif_log3("  level0=%08lX mip=%lu key=%08lX", level0,
+                     (v9x_u32)texture->mipmapped, texture->key);
     }
     texture->live = 1ul;
     *(v9x_u32 *)handle = (v9x_u32)texture;
