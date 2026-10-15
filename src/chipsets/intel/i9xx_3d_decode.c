@@ -1543,6 +1543,30 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             /* Any OTHER form of the packet, including one that enables it. */
             V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
 
+#if V9X_I9XX_TWO_UNITS
+        } else if (command == V9X_I9XX_3DSTATE_STIPPLE) {
+            /*
+             * Polygon stipple, accepted only OFF and only in a runtime
+             * stream: the HAL opens every batch with it so that no draw
+             * inherits a stipple left in the engine (GitHub issue 7). ST1
+             * zero is the disable with an empty pattern, the value both
+             * reference drivers send; an enabled stipple would mask pixels
+             * nobody asked to mask. HAL only, like the two-unit packets:
+             * the 16-bit driver never emits it and its I9XXCODE has no
+             * room for a case it would never take.
+             */
+            if (limits->kind != V9X_I9XX_SCENE_RUNTIME) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, index);
+            }
+            if (dword_count - index < 2ul) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+            }
+            if (stream[index + 1ul] != V9X_I9XX_STIPPLE_OFF) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_LENGTH, index + 1ul);
+            }
+            index += 2ul;
+#endif
+
         } else if (command == V9X_I9XX_MI_NOOP ||
                    command == V9X_I9XX_MI_FLUSH ||
                    command == V9X_I9XX_MI_FLUSH_READ) {

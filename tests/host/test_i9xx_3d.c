@@ -1606,6 +1606,89 @@ static void test_decoder_flush_forms(void)
     stream[flush] = V9X_I9XX_MI_FLUSH;
 }
 
+#if V9X_I9XX_TWO_UNITS
+/*
+ * Polygon stipple, OFF, at the head of a runtime batch - the pair the HAL
+ * now opens every batch with (GitHub issue 7: a GMA 900 left stipple on
+ * and drew six pixels in sixteen). Accepted exactly that way and refused
+ * every other way: enabled, with a pattern, in a scene stream, or cut off.
+ */
+static void test_decoder_stipple(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_limits scene_limits;
+    v9x_u32 stream[200];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+
+    stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    stream[at++] = V9X_I9XX_3DSTATE_STIPPLE;
+    stream[at++] = V9X_I9XX_STIPPLE_OFF;
+    CHECK(v9x_i9xx_build_3d_state(surface, pitch, width, height,
+                                  stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 200ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0x00c0ffeeul;
+    colors[1] = 0xdeadbeeful;
+    colors[2] = 0x12345678ul;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    /* Off, at the head of a runtime batch: accepted. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* Enabled with the GMA 900's six-of-sixteen pattern: refused at ST1. */
+    stream[2] = 0x00012346ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    CHECK(index == 2ul);
+    /* A pattern without the enable bit is not the disable either. */
+    stream[2] = 0x00002346ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    CHECK(index == 2ul);
+    stream[2] = V9X_I9XX_STIPPLE_OFF;
+
+    /* The same pair in a scene stream, which never emits it: refused. */
+    scene_limits = limits;
+    scene_limits.kind = V9X_I9XX_SCENE_ALPHA_TEST;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &scene_limits,
+                                        &index) != V9X_I9XX_P5_OK);
+    CHECK(index == 1ul);
+
+    /* The command as the last dword, its data cut off: refused. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, 2ul, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    CHECK(index == 1ul);
+}
+#endif
+
 /*
  * The breadcrumb store: accepted only where the limits license it, only to
  * that address, and never in a stream with no licence.
@@ -5992,6 +6075,9 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_every_scene_decodes();
     test_decoder_depth_refusals();
     test_decoder_flush_forms();
+#if V9X_I9XX_TWO_UNITS
+    test_decoder_stipple();
+#endif
     test_decoder_breadcrumb();
     test_probe_expectation_names();
     test_scene_combined_crc();

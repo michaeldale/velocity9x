@@ -289,6 +289,19 @@
  * checked in another and the two must not assemble it differently. */
 #define V9X_I9XX_IAB_DISABLE_DWORD       ((v9x_u32)0x6ba008a1ul)
 #define V9X_I9XX_S6_DEPTH_WRITE_ENABLE   ((v9x_u32)0x00000008ul)
+/*
+ * Polygon stipple, OFF: _3DSTATE_STIPPLE = CMD_3D | (0x1d << 24) |
+ * (0x83 << 16), two dwords; ST1 bit 16 enables a 4x4 pattern in bits 15:0.
+ * Both reference drivers emit it with ST1 zero (Mesa i915_state_dynamic.c
+ * upload_STIPPLE, xf86 i915_3d.c), outside the invariant block this driver
+ * copied, so it was never sent. The engine then draws with whatever
+ * stipple the part held: on a GMA 900 that writes six pixels in sixteen
+ * (GitHub issue 7, docs\issues\2026-10-11-3dmark2000-pattern-corruption-
+ * gma900.md). Every runtime batch now opens with this pair; the decoder
+ * accepts it, in a runtime stream, with ST1 exactly zero.
+ */
+#define V9X_I9XX_3DSTATE_STIPPLE         ((v9x_u32)0x7d830000ul)
+#define V9X_I9XX_STIPPLE_OFF             ((v9x_u32)0x00000000ul)
 
 /* ------------------------------------------------------------------ */
 /* Fragment program. Audit section 7.                                  */

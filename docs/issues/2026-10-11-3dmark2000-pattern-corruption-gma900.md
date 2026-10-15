@@ -66,3 +66,91 @@ programs: `3DMARK2001SE.EX` (2 D3D contexts) then `3DMARK2000.EXE`
   free video memory, comparing `MipTreeDeclined` and the image.
 - A report from the current build: its trace ring folds repeats, and it
   sends the Glide logs.
+
+## The screenshots: a 4x4 write mask (2026-10-15, GitHub issue 7)
+
+GitHub [issue 7](https://github.com/michaeldale/velocity9x/issues/7),
+same reporter and laptop, on 0.18.3 ("problem first discovered in
+0.15.0"): "on some instances of Windows 98SE" 3D shows "a pattern on the
+image", and Carmageddon II (Glide) and 3DMark2000 also alternate between
+the pattern and a "bleed through" image of 2D. Quake II (OpenGL) and
+3DMark2001 show the pattern only. Field reports V9X-1QBCF0 (3DMark2000)
+and V9X-VRD4N0 (Carmageddon II, Glide), both 0.18.3 `c6af544e`, desktop
+1024x768x16 at the 2112 pitch, panel on pipe B with plane B
+(`INTELMM.TXT`), carry the same 8 files; their `V9XTRACE.INI` is
+byte-identical, a stale application fault, not these runs.
+
+The three screenshots (two 640x480 Carmageddon II, one 1024x768
+3DMark2000 over the desktop), decoded pixel by pixel:
+
+- The pattern is a fixed **4x4 mask**, the same in all three. In each
+  4x4 cell **6 pixels** carry the current 3D frame and the other 10 hold
+  something else. In the 3DMark2000 capture the 10 are exactly `007F7F`,
+  Windows 98's default desktop colour; in Carmageddon II they are an
+  earlier frame (the title screen over a race HUD).
+- By row (y mod 4, measured from the 3DMark2000 capture at x mod 4):
+  0 -> {2,3}, 1 -> {2}, 2 -> {1}, 3 -> {1}.
+
+A mask that writes some pixels of every primitive and leaves the rest as
+they were is what Gen3's polygon stipple does: `_3DSTATE_STIPPLE`, a 4x4
+pattern in ST1 bits 15:0 enabled by ST1 bit 16. It also explains the
+"bleed through" (pixels never written keep the desktop or an older frame)
+and why every API shows it (Direct3D, Glide and OpenGL all draw through
+the same Gen3 state). Nothing else in the Gen3 pipeline masks individual
+pixels in a repeating pattern: dither changes values, it does not
+preserve old ones, and the colour write mask is per channel.
+
+**This driver never programs stipple.** The state block is the
+intersection of Mesa's and xf86's invariant blocks
+(`i9xx_3d.c`, `v9x_i9xx_emit_invariant`), and the 2026-09-14 packet
+audit left `_3DSTATE_STIPPLE` out with four other packets both drivers
+emit outside that block, on the reasoning that this driver, unlike them,
+starts from a freshly reset engine. Both emit it as `_3DSTATE_STIPPLE`
+then `0` (Mesa `i915_state_dynamic.c`, `upload_STIPPLE`; xf86
+`i915_3d.c:106`), so the value is double-sourced. The stipple state is
+whatever the part held when the driver started. On the netbook's 945 it
+has evidently been off; on this 915 it is on, at least on some boots,
+which would fit "some instances of Windows".
+
+Leading hypothesis, not yet measured. The other four packets the audit
+left out (`_3DSTATE_MODES_4`, `_3DSTATE_INDEPENDENT_ALPHA_BLEND`,
+`_3DSTATE_RASTER_RULES`, `_3DSTATE_BACKFACE_STENCIL_OPS`) are in the same
+position and would show different symptoms.
+
+### Reproduced on the netbook (2026-10-15, boot 203)
+
+Build `issue7-stipple-on`: every runtime batch opened with
+`_3DSTATE_STIPPLE` and ST1 `0x00012346` (enabled, rows 0010 0011 0100
+0110, six bits of sixteen). On MICHAEL-NETBOOK's panel, Carmageddon II
+then showed what the reporter's screenshots show; Michael confirmed
+"same pattern". The netbook's 945 had never shown it with the stipple
+left unprogrammed, so its power-on stipple is off and the 915's is not,
+at least on the reporter's boots.
+
+### Fix
+
+Every runtime batch now opens, after its MI_FLUSH, with
+`_3DSTATE_STIPPLE` and ST1 zero (`d3d_i9xx.c`), the value Mesa and xf86
+both send. The decoder accepts that pair in a runtime stream only, with
+ST1 exactly zero, in the HAL build only (`V9X_I9XX_TWO_UNITS`): the
+16-bit driver never emits it, and its I9XXCODE segment is nearly full.
+`test_decoder_stipple` failed on the decoder before the change (the pair
+refused as an unknown packet) and passes after it.
+
+The four other packets the 2026-09-14 audit left out
+(`_3DSTATE_MODES_4`, `_3DSTATE_INDEPENDENT_ALPHA_BLEND`,
+`_3DSTATE_RASTER_RULES`, `_3DSTATE_BACKFACE_STENCIL_OPS`) are not
+changed here: nothing measured implicates them, and each of their enables
+sits in state this driver does set (S5/S6, and the IAB disable on every
+blended batch).
+
+Build `issue7-fix` on the netbook's panel, boot 204: Carmageddon II and
+Half-Life look as before (Michael). That is a regression check only; the
+netbook never showed the pattern, so the fix itself is measured only
+through the decoder test and the stipple-on reproduction.
+
+### Next
+
+- The reporter's confirmation on the GMA 900.
+- Whether the pattern changed between boots of the same install, and how
+  the screenshots were captured, are no longer needed to fix it.

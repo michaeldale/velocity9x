@@ -2473,6 +2473,21 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     }
     state_begin = at;
     stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    /*
+     * Polygon stipple OFF, in every batch. Neither reference driver's
+     * invariant block carries it, so the state block this driver copied
+     * from their intersection never did either (the 2026-09-14 packet
+     * audit), and a draw then used whatever stipple the engine held. A GMA
+     * 900 held one: six pixels in each 4x4 written, the rest left showing
+     * the desktop or an older frame (GitHub issue 7). Both drivers send
+     * this pair with ST1 zero; sent per batch rather than once, because
+     * nothing else this driver does says the state survives.
+     */
+    if (V9X_I9XX_SUBMIT_DWORDS - at < 2ul) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+    }
+    stream[at++] = V9X_I9XX_3DSTATE_STIPPLE;
+    stream[at++] = V9X_I9XX_STIPPLE_OFF;
 
     if (two_units) {
         /* Fog colour, then each unit's environment colour, as constants;
