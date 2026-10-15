@@ -367,6 +367,21 @@ on the engine `Direct3D=` selects.
    | `tombraider-ati` | `trati.zip` | 354 KB | infania.net/misc/gona/3D/files | `tombati.exe`, five codec and player DLLs, a readme; no `ATI3DCIF.DLL` |
    | `rage3gl` | `ati-rage3gl-win9x.7z` | 29.6 MB | hingetee.ee/library (2026-10-14) | marxveix's OpenGL pack, not 3DCIF: ATI Rage PRO OpenGL drivers `OGL1045` to `OGL1107` (about 33 builds), MCD builds `MGL1005` to `MGL1036`, SciTech GLDirect 3.00 and 5.02, `OpenGL ATIDBG`, a GL demo, a D3D/OGL benchmark, Rage Pro Tweaker; SHA-256 `b53197e0...cd150480`. Listed, not extracted |
 
+   Added 2026-10-16, for the games of
+   [the tester's report](../issues/2026-10-16-3dcif-games-on-a-testers-rage-pro.md):
+
+   | Directory | File | Size | Source | Contents |
+   |---|---|---|---|---|
+   | `formula1-ati` | `FORMULA1.BIN`/`.CUE` | 514.6 MB | archive.org `formula-1_202505` (the tester's source) | Formula 1 OEM, ATI 3D Rage Pro edition: one data track (45,433 sectors, MODE2/2352) and 12 audio tracks. The game is inside `F1SETUP.EXE`, a Wise installer 7-Zip cannot open; `RAGEREAD.TXT` asks for DirectX 5. SHA-256 `287a6f4b...` |
+   | `formula1-ati` | `f1atipro.zip` | 387 KB | archive.org `f1atipro` | Psygnosis's Rage Pro patch (1997-12-24): a replacement `f1ati.exe` for CD part 180-G3D014-100, fixing texture corruption on ATI's 4.35+ drivers and a fatal error from a CD letter past F:. SHA-256 `42d58d54...` |
+   | `assault-rigs-ati` | `ASSAULT_RIGS_3D_RAGE.bin`/`.cue` | 627.6 MB | archive.org `assault-rigs-3-d-rage` | Assault Rigs for 3D Rage 1.0.0.3 (ATI Xpression OEM; Japanese-market disc, English game). `ARIGS\ARIGS.EXE` imports ATI3DCIF (`RenderPrimList`, no strips) and DirectSound. The installer's only effect is three values under `HKLM\SOFTWARE\3D Rage Games\Assault Rigs` (`Game`, `Data`, `Movie Directory`, no trailing backslash). SHA-256 `b8d16371...` |
+
+   Each disc's data track was converted to an ISO and unpacked beside the
+   image. The packages for A8U4I5 are in each directory's `stage`:
+   `ARIGS.ZIP` (the `ARIGS` folder, to `C:\ARIGS`, with `ARIGS.REG`) and
+   `F1CD.ZIP` (the disc tree with the patch as `F1ATIPRO.EXE`). Tomb
+   Raider needs the retail game under the patch; we have none.
+
    The SDK header replaces GLCIF's copy as the source for values, once
    its licence is read. Croc 1.0 needs no patch.
 
