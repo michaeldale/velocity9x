@@ -1,6 +1,6 @@
 # Current status and next work
 
-Reviewed against the checkout and the recorded evidence on 2026-10-14.
+Reviewed against the checkout and the recorded evidence on 2026-10-15.
 Update this page when a default, a validation result or the next step
 changes; the dated decision records and issues are the history.
 [PLAN.md](../PLAN.md) is the original planning baseline, not the current
@@ -8,20 +8,22 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.18.0](../releases/0.18.0/README.md), built from
-`de564208`, published on GitHub and mirrored to the update server
-(stable). Its archives are host-audited; none has had an activation smoke
-test from the archive itself. Builds of the same code ran on the machines
-named below. The checkout is 0.18.1, unreleased, and differs from 0.18.0
-in documents only.
+The latest release is [0.18.1](../releases/0.18.1/README.md), built from
+`2cbf6777`, published on GitHub and mirrored to the update server
+(stable). Its archives are host-audited. The `ati` package reached a
+guest through the updater (below); none has had an activation smoke test
+from a Have Disk install of the archive itself. Builds of the same code
+ran on the machines named below. The checkout is 0.18.2, unreleased.
 
-Owed from the 0.18.0 release:
-- ~~A Have Disk install with the INF line that copies ATI3DCIF.DLL.~~ Done
-  2026-10-15 on the 86Box Mach64 VT2: every file is the release's by hash,
-  and ATI's own ATI3DCIF.DLL was replaced without a prompt
+The 0.18.0 release's two owed checks are done, both on the 86Box Mach64
+VT2 on 2026-10-15:
+- **Have Disk** of the released 0.18.0: every file is the release's by
+  hash, and ATI's own ATI3DCIF.DLL was replaced without a prompt
   ([probe](probe/86box-mach64vt2-have-disk-0.18.0-2026-10-15/README.md)).
-- **A first update through Check for updates.** That guest now runs the
-  released 0.18.0 and is the machine for it once 0.18.1 is published.
+- **Check for updates** from it to 0.18.1: committed after one restart,
+  all eight installed files equal the 0.18.1 package by hash, and the
+  running driver reports `2cbf6777`
+  ([probe](probe/86box-mach64vt2-update-0.18.0-to-0.18.1-2026-10-15/README.md)).
 
 ## Target coverage
 
@@ -56,7 +58,7 @@ Mini 110 (Atom N280, 945GSE).
 | Glide 2 and 3 | Every package but `3dfx`; measured on the GMA 950, Rage XL and Rage IIC | Not measured on the S3, Matrox or SiS cards |
 | ATI 3DCIF | Every package; ATI's eight SDK demos on the Rage IIC, Rage XL and GMA 950 ([plan](plans/ati-3dcif-wrapper.md)) | No game run yet. No mipmaps, tiled textures, meshes or TLVERTEX ([issue](issues/2026-10-14-3dcif-unimplemented-features.md)) |
 | 16-bit colour layout | 5:5:5 by default on the ViRGE and on ATI with hardware Direct3D; 5:6:5 elsewhere; the settings page overrides | The GMA 950's video BIOS has no 5:5:5 modes |
-| Updates and reports | Check for updates and Send report on the settings page, since 0.15.0 | No update has been taken end to end on a released build |
+| Updates and reports | Check for updates and Send report on the settings page, since 0.15.0. One update taken end to end, 0.18.0 to 0.18.1 on the 86Box Mach64 VT2 ([probe](probe/86box-mach64vt2-update-0.18.0-to-0.18.1-2026-10-15/README.md)) | Not run on physical hardware; rollback from the backup not exercised |
 
 No card has a hardware cursor. GDI is accelerated on the S3, Matrox and
 Voodoo4 cards and drawn by the CPU on the rest.
@@ -69,7 +71,6 @@ open record.
 | Priority | Next step | Acceptance evidence |
 |---|---|---|
 | A field hard-lock on the GMA 950 | GitHub issue 6: the reporter's embedded board locks with the Intel flip on and runs with it off. Next is the reporter's `INTELMM.TXT` and a `V9XTRACE` from the session that ran, to name the live pipe and plane | The [issue](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md) names the configuration, and a fix that keeps the flip runs on that board |
-| Close the 0.18.0 release checks | The Have Disk install is done (86Box Mach64 VT2, 2026-10-15). Left: that guest, on the released 0.18.0, taken through Check for updates to 0.18.1 | The updater's own record of the update, and the installed files' hashes |
 | A 3DCIF game | The SDK demos run; no game has. Tomb Raider's ATI patch needs a sound device on the test machine and 5:5:5; Croc needs no patch | A census and a decision record for one game on the Rage XL |
 | 3DCIF follow-ups, parked | The blended-sprite decision ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)), the Phase 3 readback probe ([issue](issues/2026-10-14-3dcif-phase3-probe-not-written.md)), Gen3 flicker and speed ([issue](issues/2026-10-14-3dcif-gen3-flicker-and-speed.md)), Gen3's 1024x256 refusal ([issue](issues/2026-10-14-gen3-refuses-1024x256-texture.md)) | Each issue's own next step |
 | The Rage IIC blend at 5:5:5, parked | A SCALE_3D_CNTL low-nibble sweep in the ATIRX scene tool | The [issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md) names the bit, or rules the nibble out |
