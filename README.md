@@ -24,11 +24,11 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.18.1.** It adds Direct3D table fog (Thief II's
-fog, on the Rage Pro class and the GMA 950), transparent colour-keyed
-textures and game brightness (gamma) on the Rage XL and the rest of the
-Rage Pro class. See the [changelog](CHANGELOG.md), and download it from
-[releases/0.18.1](releases/0.18.1/README.md). Installed copies from
+**Current version: 0.18.2.** It fixes Carmageddon II's in-race HUD
+panels, which drew red in Glide mode. 0.18.1 before it added Direct3D
+table fog, transparent colour-keyed textures and game brightness (gamma)
+on the Rage Pro class. See the [changelog](CHANGELOG.md), and download it
+from [releases/0.18.2](releases/0.18.2/README.md). Installed copies from
 0.15.0 on can update through **Check for updates** on the Velocity9x
 tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
