@@ -2,7 +2,9 @@
 
 Date: 2026-10-14
 
-Status: Open. Reported by Michael from the monitor at A8U4I5 boot 477
+Status: Open, parked 2026-10-15 for 0.18.1 (a known issue in its notes).
+Still seen after the fog fixes of boots 480-481. Reported by Michael
+from the monitor at A8U4I5 boot 477
 (Thief II demo, "The Unwelcome Guest"), after table fog, colour keys and
 gamma were in. Not reproduced by the agent: its screenshots were too dark
 before gamma worked. After this report the machine stopped answering
