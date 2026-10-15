@@ -278,7 +278,13 @@ static void v9x_write_watch(const V9X_WATCH *watch)
  * tool misreads costs a LiveRegError key rather than the process.
  *
  * The list is the HAL's own (i9xx_scanout.c, review H4), so a live capture
- * and a flip-time capture compare register for register.
+ * and a flip-time capture compare register for register. Its last two
+ * slots are the display line and frame counter of a pipe that is ON, chosen
+ * here by PIPECONF's enable bit, and are left out when neither is: reading
+ * them on a disabled pipe hard-locks the 945. This tool read pipe B's
+ * unconditionally and locked GitHub issue 6's board, whose only live pipe is
+ * A, the first time its "Send report..." ran after a game
+ * (docs\decisions\2026-10-15-a-disabled-pipes-counters-hang-the-945.md).
  */
 static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
 {
@@ -295,8 +301,11 @@ static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
         V9X_I9XX_REG_DSPB_SIZE,
         V9X_I9XX_REG_PFIT_CONTROL, V9X_I9XX_REG_PFIT_PGM_RATIOS,
         V9X_I9XX_REG_LVDS, V9X_I9XX_REG_VGACNTRL,
+        /* Replaced below by the live pipe's pair, or not read at all. */
         V9X_I9XX_REG_PIPEB_DSL, V9X_I9XX_REG_PIPEB_FRAMEHIGH
     };
+    DWORD offsets[V9X_I9XX_SCAN_REG_COUNT];
+    DWORD count = V9X_I9XX_SCAN_REG_COUNT;
     DWORD index;
     char key[16];
 
@@ -317,15 +326,35 @@ static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
     }
 
     for (index = 0ul; index < V9X_I9XX_SCAN_REG_COUNT; ++index) {
+        offsets[index] = regs[index];
+    }
+    /* Pipe B first, as the netbook's panel is: the pipe a captured value
+     * has always come from when it is on. */
+    if ((*(volatile DWORD *)(engine->control_linear_base +
+                             V9X_I9XX_REG_PIPEB_CONF) &
+         V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
+        v9x_write_text("LiveCounterPipe", "B");
+    } else if ((*(volatile DWORD *)(engine->control_linear_base +
+                                    V9X_I9XX_REG_PIPEA_CONF) &
+                V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
+        offsets[V9X_I9XX_SCAN_REG_COUNT - 2ul] = V9X_I9XX_REG_PIPEA_DSL;
+        offsets[V9X_I9XX_SCAN_REG_COUNT - 1ul] = V9X_I9XX_REG_PIPEA_FRAMEHIGH;
+        v9x_write_text("LiveCounterPipe", "A");
+    } else {
+        count = V9X_I9XX_SCAN_REG_COUNT - 2ul;
+        v9x_write_text("LiveCounterPipe", "none");
+    }
+
+    for (index = 0ul; index < count; ++index) {
         key[0] = 'L'; key[1] = 'i'; key[2] = 'v'; key[3] = 'e';
         key[4] = 'R'; key[5] = 'e'; key[6] = 'g';
         key[7] = (char)('0' + index / 10ul);
         key[8] = (char)('0' + index % 10ul);
         key[9] = 'O'; key[10] = 'f'; key[11] = 'f'; key[12] = '\0';
-        v9x_write_hex(key, regs[index]);
+        v9x_write_hex(key, offsets[index]);
         key[9] = 'V'; key[10] = 'a'; key[11] = 'l'; key[12] = '\0';
         v9x_write_hex(key, *(volatile DWORD *)(engine->control_linear_base +
-                                               regs[index]));
+                                               offsets[index]));
     }
 }
 

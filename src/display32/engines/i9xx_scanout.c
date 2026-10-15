@@ -300,9 +300,20 @@ static void v9x_i9xx_note_layout(DWORD byte_offset)
     v9x_hal->d3d_diagnostics.flip_pipesrc_last = *v9x_i9xx_scanout_reg(src_reg);
 
     /* The whole layout, both planes and both pipes, the fitter and the
-     * VGA and LVDS controls, at this same instant (review H4). */
+     * VGA and LVDS controls, at this same instant (review H4).
+     *
+     * The last two slots are the LIVE pipe's display line and frame
+     * counter, never a pipe named in advance. Reading those two registers
+     * on a pipe that is off hard-locks the 945: GitHub issue 6's board
+     * scans out on pipe A alone, and this list's fixed PIPEB_DSL and
+     * PIPEB_FRAMEHIGH locked it at the first flip. Reproduced on the
+     * netbook moved to pipe A, and gone with only those two reads removed
+     * (docs\decisions\2026-10-15-a-disabled-pipes-counters-hang-the-945.md).
+     * intel57 and intel58 hung on the same read of the then-disabled pipe
+     * A in September. The timing and control registers of an off pipe are
+     * read at every boot without harm, so only the counters are chosen. */
     {
-        static const DWORD regs[V9X_I9XX_SCAN_REG_COUNT] = {
+        static const DWORD regs[V9X_I9XX_SCAN_REG_COUNT - 2ul] = {
             V9X_I9XX_REG_PIPEA_CONF, V9X_I9XX_REG_PIPEA_HTOTAL,
             V9X_I9XX_REG_PIPEA_VTOTAL, V9X_I9XX_REG_PIPEA_SRC,
             V9X_I9XX_REG_DSPA_CNTR, V9X_I9XX_REG_DSPA_ADDR,
@@ -314,15 +325,26 @@ static void v9x_i9xx_note_layout(DWORD byte_offset)
             V9X_I9XX_REG_DSPB_STRIDE, V9X_I9XX_REG_DSPB_POS,
             V9X_I9XX_REG_DSPB_SIZE,
             V9X_I9XX_REG_PFIT_CONTROL, V9X_I9XX_REG_PFIT_PGM_RATIOS,
-            V9X_I9XX_REG_LVDS, V9X_I9XX_REG_VGACNTRL,
-            V9X_I9XX_REG_PIPEB_DSL, V9X_I9XX_REG_PIPEB_FRAMEHIGH
+            V9X_I9XX_REG_LVDS, V9X_I9XX_REG_VGACNTRL
         };
         DWORD index;
 
-        for (index = 0ul; index < V9X_I9XX_SCAN_REG_COUNT; ++index) {
+        /* note_layout runs only after v9x_i9xx_scanout_pipe resolved
+         * exactly one live pipe, so the index names a pipe that is on. */
+        v9x_hal->d3d_diagnostics.scan_reg_offset[
+            V9X_I9XX_SCAN_REG_COUNT - 2ul] =
+            v9x_i9xx_scanout_pipe_index == 0ul ? V9X_I9XX_REG_PIPEA_DSL
+                                               : V9X_I9XX_REG_PIPEB_DSL;
+        v9x_hal->d3d_diagnostics.scan_reg_offset[
+            V9X_I9XX_SCAN_REG_COUNT - 1ul] =
+            v9x_i9xx_scanout_framehigh_reg;
+        for (index = 0ul; index < V9X_I9XX_SCAN_REG_COUNT - 2ul; ++index) {
             v9x_hal->d3d_diagnostics.scan_reg_offset[index] = regs[index];
+        }
+        for (index = 0ul; index < V9X_I9XX_SCAN_REG_COUNT; ++index) {
             v9x_hal->d3d_diagnostics.scan_reg_value[index] =
-                *v9x_i9xx_scanout_reg(regs[index]);
+                *v9x_i9xx_scanout_reg(
+                    v9x_hal->d3d_diagnostics.scan_reg_offset[index]);
         }
         v9x_hal->d3d_diagnostics.scan_sample_offset = byte_offset;
         v9x_hal->d3d_diagnostics.scan_sample_frame =

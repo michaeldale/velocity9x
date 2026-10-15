@@ -369,6 +369,44 @@ confirmed the monitor shows the desktop and the panel is dark.
 The original `AUTOEXEC.BAT` is kept as `C:\AUTOEXEC.V9B`; restoring it and
 resetting returns the panel.
 
+## Reproduced on the netbook (2026-10-15, boot 186)
+
+With the netbook on pipe A as above, the desktop at 1024x576x16 and
+`INTELARM.TXT` carrying no `IntelFlip` key (the flip on, by default),
+`CARMA2_HW.EXE` was started over the agent (`exec -Detach -ShowWindow`,
+the game folder as working directory). The agent never returned the exec
+reply, and twelve pings over the following two minutes timed out.
+Michael found the monitor black and the machine hard-locked, and
+power-cycled it.
+
+So the reporter's lock reproduces on the netbook with only the display
+pipe changed. Carmageddon II has run on this netbook through its intro
+on the panel, on pipe B (2026-10-12, the Glide test-game record), with
+the same driver family and the flip on. The pipe is the variable.
+
+What the run does not separate: the plain base write from the ring
+flip, both on in this boot.
+
+## Cause found (2026-10-15)
+
+Not the flip. The flip path's layout snapshot read pipe B's display line
+and frame counter unconditionally, and on this board pipe B is off. A
+read of those registers on a disabled pipe hard-locks the 945. Bisected
+on the netbook in eight builds (A to G), every result and the hypotheses
+it killed in
+`docs/decisions/2026-10-15-a-disabled-pipes-counters-hang-the-945.md`.
+`V9XTRACE` carried the same read, which is why the reporter's first
+"Send report..." after a game locked with the flip off.
+
+Fixed by reading those two registers only on the live pipe, in the HAL
+and in `V9XTRACE`. Verified on the netbook on pipe A, boot 201, build
+`issue6-fix`: Carmageddon II ran with the flip on, `V9XTRACE` ran mid-game
+at 63 s and returned in 2.6 s, and the agent answered every ping to 159 s.
+The snapshot reads `FlipHandled=1395`, `FlipDeclined=0`,
+`FlipBaseImmediate=1395`, `DrawsToBack=22239`, `LiveCounterPipe=A` with
+`0x70000` and `0x70040` read, and VGACNTRL `8020008E` (VGA plane
+disabled). Open until the reporter confirms on his board.
+
 ## Local reproduction
 
 None possible yet. The netbook is the same silicon but its VBIOS refuses
