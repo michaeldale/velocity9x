@@ -4,7 +4,23 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.18.3 - not yet released
+## 0.18.3 - 2026-10-15
+
+- **Fixed: GMA 950 boards that display on pipe A hard-locked at the first
+  page flip.** On a 945 with its picture on pipe A and pipe B switched
+  off - an embedded board driving only a VGA monitor - any full-screen
+  program that page-flips (Carmageddon II's intro video was the report)
+  froze the machine at its first flip, and so did "Send report..." after
+  a game. The driver and `V9XTRACE` read the
+  scanline and frame counters of pipe B by name, and reading those on a
+  disabled pipe locks this chip. Both now read only the live pipe.
+  Reproduced and verified on the GMA 950 netbook with its display moved
+  to pipe A: Carmageddon II ran 1,395 flips and a mid-game `V9XTRACE`
+  returned, where every earlier build locked
+  ([issue #6](https://github.com/michaeldale/velocity9x/issues/6),
+  [record](docs/decisions/2026-10-15-a-disabled-pipes-counters-hang-the-945.md)).
+  Laptops on their own panel (pipe B) were not affected. Not yet
+  confirmed on the reporter's board.
 
 ## 0.18.2 - 2026-10-15
 
