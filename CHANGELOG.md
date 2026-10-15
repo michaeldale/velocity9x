@@ -13,6 +13,11 @@ build identifier so exact guest-tested binaries remain traceable.
   textured, nothing refused
   ([record](docs/decisions/2026-10-16-3dcif-early-tmap-68-bytes.md)).
 
+- **3DCIF draws lines.** Line lists and strips are drawn as two triangles
+  a pixel wide, as the Glide wrapper draws them. Assault Rigs draws parts
+  of its scenes with lines; 50,097 were skipped in one session on the
+  Rage XL, and none are now.
+
 - **3DCIF: keyed and masked textures are no longer refused on the Rage
   Pro class.** With blending off, the chroma key and the alpha mask now
   test the texel's alpha alone, since nothing else reads the alpha.

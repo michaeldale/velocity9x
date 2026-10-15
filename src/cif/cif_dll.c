@@ -1582,6 +1582,9 @@ static void v9x_cif_draw(v9x_u32 form, v9x_u32 base, v9x_u32 count,
         if (frame.vertex.shade == V9X_C3D_ESH_FLAT) {
             v9x_cif_triangle_flat(out);
         }
+        if (prim == V9X_C3D_EPRIM_LINE) {
+            v9x_cif_line_widen(out, triangle & 1ul);
+        }
         if (++pending == V9X_R3D_ABI_BATCH_MAX) {
             v9x_cif_submit(&frame, pending);
             pending = 0ul;

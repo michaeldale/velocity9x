@@ -53,6 +53,13 @@ void v9x_cif_vtcf_convert(const V9X_CIF_VERTEX_SETUP *setup, const float *in,
  * "Shading Modes"). Specular, which carries fog, stays per vertex. */
 void v9x_cif_triangle_flat(V9X_R3D_ABI_VERTEX *triangle);
 
+/* One of a line's two triangles, as v9x_cif_prim_vertex lays it out
+ * (a, a, b for the first, `second` 0; a, b, b for the second), widened
+ * one pixel across the line's minor axis toward the next whole pixel:
+ * the copies of the ends move. The Glide wrapper's rule
+ * (glide_vertex.c, v9x_glide_line_triangles), measured on Gen3. */
+void v9x_cif_line_widen(V9X_R3D_ABI_VERTEX *triangle, v9x_u32 second);
+
 /* Whether every colour of `triangles` triangles has alpha 255. Then a
  * texel-times-vertex alpha is the texel's alone, which the Rage IIC can
  * blend by and the product it cannot

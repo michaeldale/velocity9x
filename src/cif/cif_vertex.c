@@ -27,6 +27,8 @@ static long v9x_cif_to_long(double value)
 #define V9X_CIF_TRI_VERTICES  3ul
 #define V9X_CIF_QUAD_VERTICES 4ul
 #define V9X_CIF_QUAD_TRIANGLES 2ul
+#define V9X_CIF_LINE_VERTICES 2ul
+#define V9X_CIF_LINE_TRIANGLES 2ul
 
 /* A colour channel: 0..255, clamped, halves rounded up. The x87 store
  * rounds to nearest-even; the correction makes both compilers agree. */
@@ -102,6 +104,34 @@ void v9x_cif_vtcf_convert(const V9X_CIF_VERTEX_SETUP *setup, const float *in,
     }
 }
 
+void v9x_cif_line_widen(V9X_R3D_ABI_VERTEX *triangle, v9x_u32 second)
+{
+    float dx = triangle[2].sx - triangle[0].sx;
+    float dy = triangle[2].sy - triangle[0].sy;
+    float off_x = 0.0f;
+    float off_y = 0.0f;
+
+    if (dx < 0.0f) {
+        dx = -dx;
+    }
+    if (dy < 0.0f) {
+        dy = -dy;
+    }
+    if (dx >= dy) {
+        off_y = 1.0f;
+    } else {
+        off_x = 1.0f;
+    }
+
+    /* The first triangle is a, a+, b+; the second a, b+, b. */
+    triangle[1].sx += off_x;
+    triangle[1].sy += off_y;
+    if (second == 0ul) {
+        triangle[2].sx += off_x;
+        triangle[2].sy += off_y;
+    }
+}
+
 v9x_u16 v9x_cif_vertices_opaque(const V9X_R3D_ABI_VERTEX *vertices,
                                 v9x_u32 triangles)
 {
@@ -132,6 +162,17 @@ v9x_u32 v9x_cif_prim_triangles(v9x_u32 prim, v9x_u32 form, v9x_u32 count)
     if (prim == V9X_C3D_EPRIM_QUAD && form == V9X_CIF_FORM_LIST) {
         return (count / V9X_CIF_QUAD_VERTICES) * V9X_CIF_QUAD_TRIANGLES;
     }
+
+    /* Lines: a list takes vertex pairs, a strip is a polyline. Each line
+     * is drawn as two triangles (v9x_cif_line_widen). */
+    if (prim == V9X_C3D_EPRIM_LINE) {
+        if (form == V9X_CIF_FORM_LIST) {
+            return (count / V9X_CIF_LINE_VERTICES) * V9X_CIF_LINE_TRIANGLES;
+        }
+        return count >= V9X_CIF_LINE_VERTICES
+                   ? (count - 1ul) * V9X_CIF_LINE_TRIANGLES
+                   : 0ul;
+    }
     return 0ul;
 }
 
@@ -140,6 +181,19 @@ v9x_u32 v9x_cif_prim_vertex(v9x_u32 prim, v9x_u32 form, v9x_u32 triangle,
 {
     v9x_u32 first;
 
+    if (prim == V9X_C3D_EPRIM_LINE) {
+        /* a, a, b then a, b, b: the second end from corner 2 of the first
+         * triangle and corners 1 and 2 of the second. */
+        first = triangle / V9X_CIF_LINE_TRIANGLES;
+        if (form == V9X_CIF_FORM_LIST) {
+            first *= V9X_CIF_LINE_VERTICES;
+        }
+        if (corner == 2ul ||
+            (corner == 1ul && (triangle % V9X_CIF_LINE_TRIANGLES) != 0ul)) {
+            return first + 1ul;
+        }
+        return first;
+    }
     if (prim == V9X_C3D_EPRIM_QUAD) {
         /* The fan 0-1-2, 0-2-3 of quadrangle triangle / 2. */
         first = (triangle / V9X_CIF_QUAD_TRIANGLES) * V9X_CIF_QUAD_VERTICES;

@@ -225,8 +225,27 @@ static void test_primitives(void)
     VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_TRI, V9X_CIF_FORM_STRIP, 2ul) == 0ul);
     VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_QUAD, V9X_CIF_FORM_LIST, 8ul) == 4ul);
     VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_QUAD, V9X_CIF_FORM_STRIP, 8ul) == 0ul);
-    VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 6ul) == 0ul);
     VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_POINT, V9X_CIF_FORM_LIST, 6ul) == 0ul);
+
+    /* Lines: two triangles each. A list takes pairs, a strip a polyline.
+     * Assault Rigs draws its menus' text with line lists (A8U4I5,
+     * 2026-10-16: 50,097 skipped). */
+    VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 6ul) == 6ul);
+    VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 5ul) == 4ul);
+    VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 1ul) == 0ul);
+    VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_STRIP, 4ul) == 6ul);
+    VCHECK(v9x_cif_prim_triangles(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_STRIP, 1ul) == 0ul);
+
+    /* Each line is a, a, b then a, b, b; the widening offsets the second
+     * copies. List line 1 is vertices 2 and 3; strip line 1 is 1 and 2. */
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 2ul, 0ul) == 2ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 2ul, 1ul) == 2ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 2ul, 2ul) == 3ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 3ul, 0ul) == 2ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 3ul, 1ul) == 3ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_LIST, 3ul, 2ul) == 3ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_STRIP, 2ul, 0ul) == 1ul);
+    VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_LINE, V9X_CIF_FORM_STRIP, 3ul, 2ul) == 2ul);
 
     /* A list's second triangle is vertices 3, 4, 5. */
     VCHECK(v9x_cif_prim_vertex(V9X_C3D_EPRIM_TRI, V9X_CIF_FORM_LIST, 1ul, 0ul) == 3ul);
@@ -266,6 +285,46 @@ static void test_opaque(void)
     VCHECK(v9x_cif_vertices_opaque(batch, 1ul) == V9X_TRUE);
 }
 
+/* A line's triangles widened one pixel across the minor axis, toward the
+ * next whole pixel, as the Glide wrapper draws grDrawLine
+ * (glide_vertex.c, v9x_glide_line_triangles). */
+static void set_xy(V9X_R3D_ABI_VERTEX *v, float x, float y)
+{
+    v->sx = x;
+    v->sy = y;
+}
+
+static void test_line_widen(void)
+{
+    V9X_R3D_ABI_VERTEX t[3];
+
+    /* Mostly horizontal, (10,20) to (30,25): y + 1 on the copies. */
+    set_xy(&t[0], 10.0f, 20.0f);
+    set_xy(&t[1], 10.0f, 20.0f);
+    set_xy(&t[2], 30.0f, 25.0f);
+    v9x_cif_line_widen(t, 0ul);
+    VCHECK(approx(t[0].sx, 10.0f) && approx(t[0].sy, 20.0f));
+    VCHECK(approx(t[1].sx, 10.0f) && approx(t[1].sy, 21.0f));
+    VCHECK(approx(t[2].sx, 30.0f) && approx(t[2].sy, 26.0f));
+
+    /* The second triangle, a, b, b: only the middle corner moves. */
+    set_xy(&t[0], 10.0f, 20.0f);
+    set_xy(&t[1], 30.0f, 25.0f);
+    set_xy(&t[2], 30.0f, 25.0f);
+    v9x_cif_line_widen(t, 1ul);
+    VCHECK(approx(t[0].sy, 20.0f));
+    VCHECK(approx(t[1].sx, 30.0f) && approx(t[1].sy, 26.0f));
+    VCHECK(approx(t[2].sy, 25.0f));
+
+    /* Mostly vertical, (5,5) to (3,40): x + 1, from either direction. */
+    set_xy(&t[0], 5.0f, 5.0f);
+    set_xy(&t[1], 5.0f, 5.0f);
+    set_xy(&t[2], 3.0f, 40.0f);
+    v9x_cif_line_widen(t, 0ul);
+    VCHECK(approx(t[1].sx, 6.0f) && approx(t[1].sy, 5.0f));
+    VCHECK(approx(t[2].sx, 4.0f) && approx(t[2].sy, 40.0f));
+}
+
 unsigned int v9x_run_cif_vertex_tests(void)
 {
     cif_vertex_failures = 0u;
@@ -276,6 +335,7 @@ unsigned int v9x_run_cif_vertex_tests(void)
     test_fog();
     test_flat();
     test_primitives();
+    test_line_widen();
     test_opaque();
     return cif_vertex_failures;
 }
