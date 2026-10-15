@@ -129,10 +129,14 @@ void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
         out->tv = 0.0f;
     }
 
+    /* Under delta0 the iterators start at grConstantColorValue4's colour
+     * with no slope, so the vertex's colour is never read (glide_state.h). */
     if (setup->color_source == V9X_GLIDE_SOURCE_CONSTANT) {
         rgb = setup->constant_argb & 0x00FFFFFFul;
     } else if (setup->color_source == V9X_GLIDE_SOURCE_WHITE) {
         rgb = 0x00FFFFFFul;
+    } else if (setup->delta0 != 0ul) {
+        rgb = setup->delta0_argb & 0x00FFFFFFul;
     } else {
         rgb = (v9x_glide_byte(in[V9X_GLIDE_VERTEX_R]) << 16) |
               (v9x_glide_byte(in[V9X_GLIDE_VERTEX_G]) << 8) |
@@ -140,6 +144,8 @@ void v9x_glide_vertex_convert(const V9X_GLIDE_VERTEX_SETUP *setup,
     }
     if (setup->alpha_source == V9X_GLIDE_SOURCE_CONSTANT) {
         alpha = setup->constant_argb >> 24;
+    } else if (setup->delta0 != 0ul) {
+        alpha = setup->delta0_argb >> 24;
     } else {
         alpha = v9x_glide_byte(in[V9X_GLIDE_VERTEX_A]);
     }

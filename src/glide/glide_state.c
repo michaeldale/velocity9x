@@ -59,6 +59,8 @@ void v9x_glide_state_init(V9X_GLIDE_STATE *state, v9x_u32 width,
     state->chroma_mode = V9X_GLIDE_CHROMAKEY_DISABLE;
     state->chroma_value = 0ul;
     state->constant_color = 0ul;
+    state->delta0 = 0ul;
+    state->delta0_argb = 0ul;
     state->clip_min_x = 0ul;
     state->clip_min_y = 0ul;
     state->clip_max_x = width;
@@ -366,6 +368,16 @@ v9x_u16 v9x_glide_gu_color_combine(v9x_u32 preset, V9X_GLIDE_COMBINE *out)
     out->other = row[3];
     out->invert = row[4];
     return V9X_TRUE;
+}
+
+#define V9X_GLIDE_GU_ITRGB_DELTA0               3ul
+#define V9X_GLIDE_GU_TEXTURE_TIMES_ITRGB_DELTA0 7ul
+
+v9x_u16 v9x_glide_gu_color_delta0(v9x_u32 preset)
+{
+    return (preset == V9X_GLIDE_GU_ITRGB_DELTA0 ||
+            preset == V9X_GLIDE_GU_TEXTURE_TIMES_ITRGB_DELTA0) ?
+           V9X_TRUE : V9X_FALSE;
 }
 
 /* Whether a blend factor reads the source alpha. Destination alpha is

@@ -50,7 +50,9 @@ typedef struct v9x_glide_vertex_setup {
     v9x_u32 color_source;   /* V9X_GLIDE_SOURCE_* */
     v9x_u32 alpha_source;
     v9x_u32 constant_argb;  /* grConstantColorValue, ARGB */
-    v9x_u32 fog_mode;       /* V9X_GLIDE_FOG_*, source byte */
+    v9x_u32 delta0;         /* iterated colour and alpha are delta0_argb */
+    v9x_u32 delta0_argb;    /* grConstantColorValue4, ARGB */
+    v9x_u32 fog_mode;      /* V9X_GLIDE_FOG_*, source byte */
     const v9x_u8 *fog_table; /* V9X_GLIDE_FOG_TABLE_SIZE entries, or null */
     v9x_u32 textured;       /* the combine samples a texture */
     v9x_u32 tmu0_w;         /* GR_STWHINT_W_DIFF_TMU0: texture W is TMU 0's */

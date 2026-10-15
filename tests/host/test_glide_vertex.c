@@ -40,6 +40,8 @@ static void setup_default(V9X_GLIDE_VERTEX_SETUP *setup)
     setup->color_source = V9X_GLIDE_SOURCE_ITERATED;
     setup->alpha_source = V9X_GLIDE_SOURCE_ITERATED;
     setup->constant_argb = 0ul;
+    setup->delta0 = 0ul;
+    setup->delta0_argb = 0ul;
     setup->fog_mode = V9X_GLIDE_FOG_DISABLE;
     setup->fog_table = 0;
     setup->textured = 1ul;
@@ -225,9 +227,8 @@ static void test_tmu_w_hint(void)
     VCHECK(approx(out.rhw, 0.5f));
 }
 
-/* grConstantColorValue4's four floats, 0..255 each, as ARGB. Carmageddon
- * II sets its constant colour this way, and the menu text's alpha is that
- * constant times the glyph's (netbook, 2026-10-11). */
+/* grConstantColorValue4's four floats, 0..255 each, as ARGB: the colour
+ * delta0 iterates (test_delta0). */
 static void test_argb_from_floats(void)
 {
     VCHECK(v9x_glide_argb_from_floats(255.0f, 17.0f, 34.0f, 51.0f) ==
@@ -306,6 +307,49 @@ static void test_color(void)
     }
     v9x_glide_vertex_convert(&setup, in, &out);
     VCHECK(out.color == 0x80112233ul);
+}
+
+/*
+ * Delta0: the iterated colour and alpha are grConstantColorValue4's, not
+ * the vertex's. Carmageddon II draws its HUD panels under
+ * GR_COLORCOMBINE_ITRGB_DELTA0 with vertex colours it never writes; read
+ * as vertex colours they came out red where the game's panels are dark
+ * (netbook, 2026-10-15). A constant source still reads
+ * grConstantColorValue's register, which delta0 does not touch.
+ */
+static void test_delta0(void)
+{
+    V9X_GLIDE_VERTEX_SETUP setup;
+    V9X_R3D_ABI_VERTEX out;
+    float in[V9X_GLIDE_VERTEX_FLOATS];
+
+    setup_default(&setup);
+    setup.textured = 0ul;
+    setup.delta0 = 1ul;
+    setup.delta0_argb = 0xB0102030ul;
+    setup.constant_argb = 0x80445566ul;
+    vertex_in(in, 0.0f, 0.0f, 1.0f);
+    in[V9X_GLIDE_VERTEX_R] = 300.0f;    /* garbage the game left */
+    in[V9X_GLIDE_VERTEX_G] = 0.0f;
+    in[V9X_GLIDE_VERTEX_B] = 0.0f;
+    in[V9X_GLIDE_VERTEX_A] = 7.0f;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(out.color == 0xB0102030ul);
+
+    setup.alpha_source = V9X_GLIDE_SOURCE_CONSTANT;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(out.color == 0x80102030ul);
+
+    setup.color_source = V9X_GLIDE_SOURCE_CONSTANT;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(out.color == 0x80445566ul);
+
+    /* Off, the vertex is read again. */
+    setup.delta0 = 0ul;
+    setup.color_source = V9X_GLIDE_SOURCE_ITERATED;
+    setup.alpha_source = V9X_GLIDE_SOURCE_ITERATED;
+    v9x_glide_vertex_convert(&setup, in, &out);
+    VCHECK(out.color == 0x07FF0000ul);
 }
 
 static void test_fog(void)
@@ -494,6 +538,7 @@ unsigned int v9x_run_glide_vertex_tests(void)
     test_argb_from_floats();
     test_texture_coordinates();
     test_color();
+    test_delta0();
     test_fog();
     test_cull();
     test_line();

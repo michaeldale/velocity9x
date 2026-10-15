@@ -374,7 +374,7 @@ void __stdcall grConstantColorValue4(float a, float r, float g, float b)
         v9x_glide_logf(V9X_GLIDE_IX_grConstantColorValue4, call,
                        "argb=%08lX", argb);
     }
-    v9x_glide_set_constant_argb(argb);
+    v9x_glide_state.delta0_argb = argb;
 }
 V9X_GLIDE_STATE1(grFogMode, "mode", v9x_glide_state.fog_mode = value)
 /* Gamma has no render-interface field yet (census, open). */
@@ -425,16 +425,24 @@ void __stdcall grColorCombine(v9x_u32 function, v9x_u32 factor, v9x_u32 local,
     }
     v9x_glide_store_combine(&v9x_glide_state.color, function, factor, local,
                             other, invert);
+    /* The direct call names no delta0 mode; taking it as off is this
+     * DLL's choice, not measured. */
+    v9x_glide_state.delta0 = 0ul;
 }
 
 /* The utility library's colour presets (glide_state.c). Carmageddon II sets
  * its colour combine only this way; as a stub it left the vertex colour in
  * force and the menu drew black (netbook, 2026-10-11). An unknown preset is
- * logged and leaves the combine as it was. */
+ * logged and leaves the combine as it was. A known one also sets delta0,
+ * which Carmageddon II's HUD panels are drawn under (2026-10-15). */
 void __stdcall guColorCombineFunction(v9x_u32 preset)
 {
     v9x_u32 call = v9x_glide_count(V9X_GLIDE_IX_guColorCombineFunction);
     v9x_u16 known = v9x_glide_gu_color_combine(preset, &v9x_glide_state.color);
+
+    if (known) {
+        v9x_glide_state.delta0 = v9x_glide_gu_color_delta0(preset) ? 1ul : 0ul;
+    }
 
     if (v9x_glide_noted(V9X_GLIDE_IX_guColorCombineFunction, preset)) {
         v9x_glide_logf(V9X_GLIDE_IX_guColorCombineFunction, call,

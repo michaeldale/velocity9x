@@ -500,6 +500,15 @@ static void test_gu_color_combine(void)
     SCHECK(s.color.function == V9X_GLIDE_COMBINE_FUNCTION_ZERO &&
            s.color.invert == 1ul);
 
+    /* The two _DELTA0 presets, ITRGB_DELTA0 (3) and
+     * TEXTURE_TIMES_ITRGB_DELTA0 (7), and no other, turn delta0 on. */
+    SCHECK(v9x_glide_gu_color_delta0(3ul));
+    SCHECK(v9x_glide_gu_color_delta0(7ul));
+    SCHECK(!v9x_glide_gu_color_delta0(2ul));
+    SCHECK(!v9x_glide_gu_color_delta0(6ul));
+    SCHECK(!v9x_glide_gu_color_delta0(17ul));
+    SCHECK(s.delta0 == 0ul);
+
     /*
      * DECAL_TEXTURE with a constant alpha, no blend and no alpha test: the
      * alpha goes nowhere, so the texture's own is as good as the vertex's

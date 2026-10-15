@@ -6,6 +6,13 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.18.2 - not yet released
 
+- **Fixed: Carmageddon II's HUD panels drew red in Glide.** The game
+  draws them under the Glide 2 colour preset ITRGB_DELTA0, which takes
+  its colour from `grConstantColorValue4` and not from the vertices. The
+  Glide DLL read the vertices, which the game never fills in. The panels
+  now draw as the dark translucent bars the game intends. Measured on
+  the GMA 950 netbook
+  ([issue #5](https://github.com/michaeldale/velocity9x/issues/5)).
 - **Checked: the updater, end to end.** The 86Box Mach64 VT2, on the
   released 0.18.0, took 0.18.1 through Check for updates; all eight
   installed files equal the package by hash.

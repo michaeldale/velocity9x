@@ -476,3 +476,27 @@ any other chipset, and a C runtime DLL's exit path, which the watch does
 not see (the detach record still says the process ended).
 `message` mode's self-dismissal did not fire under the agent's hidden
 launch; the record was complete, and the box was not on screen afterwards.
+
+## 2026-10-15: the red HUD panels were delta0, fixed
+
+On [#5](https://github.com/michaeldale/velocity9x/issues/5) (2026-10-13,
+0.17.0, Steam build, Glide) the reporter's in-race screenshot shows red
+rectangles behind the top bar's text and a red bottom bar. The Steam
+store's own screenshots of the game show both as dark translucent
+blue-grey. The netbook (boot 182, retail game) drew the same red.
+
+The panels are untextured triangles drawn under
+`guColorCombineFunction(GR_COLORCOMBINE_ITRGB_DELTA0)` with vertex
+colours the game never writes. Under delta0 a Voodoo iterates
+`grConstantColorValue4`'s colour (here `B0000000`) and ignores the
+vertex's; that register is separate from `grConstantColorValue`'s (Dege,
+dgVoodoo, on VOGONS). The DLL read the vertex colour, and also stored
+`grConstantColorValue4` in the CONSTANT register. Both fixed in
+`src/glide/` with host tests written failing first. On the netbook the
+bars now draw dark, as in the reference, with 0 refused draws in 2.2
+million. Evidence:
+[probe](../probe/netbook-carma2-hud-delta0-2026-10-15/README.md).
+
+Not checked: the menus, the bottom bar's stair-step lines, and the
+reporter's machine. The game uses presets 2, 3, 4 and 6 only, so
+TEXTURE_TIMES_ITRGB_DELTA0 (7) is untested in a game.

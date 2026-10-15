@@ -49,6 +49,8 @@ typedef struct v9x_glide_state {
     v9x_u32 chroma_mode;
     v9x_u32 chroma_value;   /* GrColor_t, ARGB */
     v9x_u32 constant_color; /* GrColor_t, ARGB */
+    v9x_u32 delta0;         /* a _DELTA0 colour preset is in force */
+    v9x_u32 delta0_argb;    /* grConstantColorValue4, ARGB */
     v9x_u32 clip_min_x;
     v9x_u32 clip_min_y;
     v9x_u32 clip_max_x;
@@ -122,5 +124,15 @@ v9x_u32 v9x_glide_argb_to_color(v9x_u32 argb, v9x_u32 color_format);
  * combine grColorCombine would set; V9X_FALSE, and `out` untouched, for a
  * preset this does not know. */
 v9x_u16 v9x_glide_gu_color_combine(v9x_u32 preset, V9X_GLIDE_COMBINE *out);
+
+/*
+ * Whether guColorCombineFunction's preset turns delta0 on: the iterated
+ * colour and alpha become grConstantColorValue4's, flat, in place of the
+ * vertex's. That register is not grConstantColorValue's, which the
+ * CONSTANT inputs read; one does not overwrite the other. Taken from Dege
+ * (dgVoodoo) on VOGONS, who replaces every vertex colour with it under
+ * delta0, not from a 3dfx binary.
+ */
+v9x_u16 v9x_glide_gu_color_delta0(v9x_u32 preset);
 
 #endif /* VELOCITY9X_GLIDE_STATE_H */

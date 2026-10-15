@@ -1,0 +1,8 @@
+556 pid=FFFC92CB t=21016846 census   draws: fog-dropped=0 uploads=2433 surface-hits=1786 evictions=2062
+791 pid=FFFC92CB t=21024054 guColorCombineFunction#18415 preset=2 known=1
+1319 pid=FFFC92CB t=21031861 census   draws: drawn=501841 refused=0 culled=0 skipped-textured=0
+1320 pid=FFFC92CB t=21031861 census   draws: fog-dropped=0 uploads=2670 surface-hits=2128 evictions=2228
+1767 pid=FFFC92CB t=21046889 census   draws: drawn=1297034 refused=0 culled=0 skipped-textured=0
+1768 pid=FFFC92CB t=21046889 census   draws: fog-dropped=0 uploads=2849 surface-hits=2568 evictions=2529
+1870 pid=FFFC92CB t=21061923 census   draws: drawn=2196466 refused=0 culled=0 skipped-textured=0
+1871 pid=FFFC92CB t=21061923 census   draws: fog-dropped=0 uploads=2880 surface-hits=2940 evictions=2561

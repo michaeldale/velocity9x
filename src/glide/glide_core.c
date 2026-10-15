@@ -990,6 +990,8 @@ static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
     vs->alpha_source = draw->alpha_source;
     vs->constant_argb = v9x_glide_color_to_argb(v9x_glide_state.constant_color,
                                                 v9x_glide_color_format);
+    vs->delta0 = v9x_glide_state.delta0;
+    vs->delta0_argb = v9x_glide_state.delta0_argb;
     vs->fog_mode = v9x_glide_state.fog_mode & V9X_GLIDE_FOG_SOURCE_MASK;
     vs->fog_table = v9x_glide_fog;
     vs->textured = draw->textured ? 1ul : 0ul;
@@ -1603,14 +1605,6 @@ void v9x_glide_set_render_buffer(v9x_u32 buffer)
         v9x_glide_flush();
         v9x_glide_render_buffer = buffer;
     }
-}
-
-/* grConstantColorValue4's colour, ARGB, kept in the game's colour format as
- * grConstantColorValue's is, so every reader converts it one way. */
-void v9x_glide_set_constant_argb(v9x_u32 argb)
-{
-    v9x_glide_state.constant_color =
-        v9x_glide_argb_to_color(argb, v9x_glide_color_format);
 }
 
 /*
