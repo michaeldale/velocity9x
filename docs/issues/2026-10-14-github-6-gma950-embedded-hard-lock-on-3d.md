@@ -342,6 +342,33 @@ with it on this part is unmeasured.
 which of the two locks is not something the reporter can test with the
 shipped switches.
 
+## The netbook on pipe A (2026-10-15)
+
+With a VGA monitor attached, the netbook's BIOS left the external port
+off: boot 184's `INTELMM.TXT` read PIPEACONF `0`, PIPEBCONF `80000000`,
+plane B live, though pipe A held 640x480 timings. Neither the Fn display
+key, the lid nor BIOS setup changed it.
+
+`V9XDDEV.EXE` (`tools/diag/display_device_dos.c`), run from
+`AUTOEXEC.BAT` before Windows, calls Int 10h AX=5F64h:
+
+| Boot | Call | AX | CX |
+|---|---|---|---|
+| 185 | get | `005F` | `0800`: panel, on pipe B |
+| 186 | get | `005F` | `0800` |
+| 186 | set `0001`, forced | `005F` | |
+| 186 | get | `005F` | `0001`: CRT, on pipe A |
+
+On this BIOS `005Fh` is success, the reverse of the 69030 guide, and CX
+is low byte pipe A, high byte pipe B, bit 0 CRT, bit 3 flat panel. Boot
+186's `INTELMM.TXT` then read PIPEACONF `80000000`, PIPEBCONF `0`,
+DSPACNTR `94000000`, `LivePipe=0`, `LivePlane=0`: the reporter's
+registers, with the desktop at 1024x576 where his was 640x480. Michael
+confirmed the monitor shows the desktop and the panel is dark.
+
+The original `AUTOEXEC.BAT` is kept as `C:\AUTOEXEC.V9B`; restoring it and
+resetting returns the panel.
+
 ## Local reproduction
 
 None possible yet. The netbook is the same silicon but its VBIOS refuses
