@@ -24,11 +24,11 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.18.0.** It adds ATI3DCIF.DLL, ATI's 3D Rage
-interface: ATI's SDK demos run on the Rage IIC, the Rage XL and the GMA
-950. ATI cards with hardware Direct3D now run 16-bit colour as 5:5:5, as
-ATI's own driver does. See the [changelog](CHANGELOG.md), and download it
-from [releases/0.18.0](releases/0.18.0/README.md). Installed copies from
+**Current version: 0.18.1.** It adds Direct3D table fog (Thief II's
+fog, on the Rage Pro class and the GMA 950), transparent colour-keyed
+textures and game brightness (gamma) on the Rage XL and the rest of the
+Rage Pro class. See the [changelog](CHANGELOG.md), and download it from
+[releases/0.18.1](releases/0.18.1/README.md). Installed copies from
 0.15.0 on can update through **Check for updates** on the Velocity9x
 tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
