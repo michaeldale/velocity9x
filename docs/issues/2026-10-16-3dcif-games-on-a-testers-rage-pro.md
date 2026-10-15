@@ -125,3 +125,33 @@ exhaustion. The last DLL calls before it were not isolated.
    refusal counts should fall to near zero.
 2. The files above, for the layout.
 3. Measure quadrangle and rectangle strip order under ATI's driver.
+
+## Formula 1 on A8U4I5 with the fix (2026-10-16)
+
+The tester's source (archive.org `formula-1_202505`, OEM ATI Rage Pro
+disc) installed through its Wise installer to `C:\Program Files\Formula1`,
+Psygnosis's Rage Pro patch beside it as `F1ATI2.EXE`, the disc's data
+track mounted on D: with DAEMON Tools (the game refuses to start without
+it: "Formula 1 CD NOT Found"). Rage XL, boot 482, 5:5:5 desktop, the DLL
+from `7640e11c` in the game folder. Evidence:
+`docs/probe/a8u4i5-rage-xl-formula1-2026-10-16/`.
+
+- The Silverstone demo race draws textured: cars, track, barriers,
+  grandstands and sky (`silverstone-demo-race.png`; the tester's 0.18.0
+  capture of the same race was untextured white and grey).
+- 1,589,684 triangles drawn, 52,143 refused (3%, against the tester's
+  59%). Every remaining refusal logged is a blended draw under the alpha
+  mask (`blend=1 src=1 dst=4`, one `src=5 dst=2`): texel alpha times
+  vertex alpha with blending on, the gap filed for Pixie's sprites
+  ([issue](2026-10-14-3dcif-blended-sprites-refused.md)).
+- The quadrangle and rectangle strips (187,896 skipped) come almost all
+  from the menus and loading screens: the race added about 1,000. The
+  loading screen drew correctly in the agent's capture.
+- The 640x480 race ran at 5:5:5 here: no "display is 5:6:5" line.
+
+Assault Rigs, run the same day, found a second cause of white geometry:
+a 68-byte `C3D_TMAP` the DLL refused
+([record](../decisions/2026-10-16-3dcif-early-tmap-68-bytes.md)). F1
+registers the 88-byte Rage PRO form and was not affected. Assault Rigs' 400x300 menu mode
+has no 15 bpp sibling and runs 5:6:5, which is one way for a title to
+meet a 5:6:5 display on an ATI card set to 5:5:5.
