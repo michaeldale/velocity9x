@@ -3616,6 +3616,9 @@ typedef struct v9x_d3d_diagnostics {
     DWORD fog_table_last_start;
     DWORD fog_table_last_end;
     DWORD fog_table_last_density;
+    /* Mach64-class fogged multiply blends fogged in the texture stage
+     * (mach64_policy.c fog_as_decal). */
+    DWORD m64_fog_decal;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

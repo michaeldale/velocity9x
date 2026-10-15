@@ -307,6 +307,9 @@ struct v9x_m64_draw_request {
     v9x_u32 vertex_alpha_opaque;
     /* The least vertex alpha of the batch, 0..255; zero when unknown. */
     v9x_u32 vertex_alpha_min;
+    /* Non-zero when every vertex of the batch has RGB FFFFFF, so MODULATE
+     * by the vertex colour is the texel. Zero when unknown. */
+    v9x_u32 vertex_rgb_white;
     /*
      * A second texture (the render interface's texture1), read only when
      * `composite` is non-zero. Its filters and address take the numbering
@@ -340,6 +343,11 @@ struct v9x_m64_draw_decision {
     v9x_u32 fog_dropped;
     /* Non-zero: the texture's colour key is compared (CLR_CMP_CNTL). */
     v9x_u32 color_keyed;
+    /* Non-zero: a fogged multiply blend fogged in the texture stage instead
+     * of the blend unit. light_fcn is ALPHA_DECAL and the caller sends
+     * each vertex with the fog colour as its RGB and its fog factor as its
+     * alpha, and the draw without fog (mach64_policy.c). */
+    v9x_u32 fog_as_decal;
 };
 
 #define V9X_M64_REFUSE_NONE             0ul

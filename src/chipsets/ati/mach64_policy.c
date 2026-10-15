@@ -340,6 +340,41 @@ static v9x_u32 v9x_m64_policy_composite(
     return V9X_M64_REFUSE_NONE;
 }
 
+/*
+ * Whether a fogged blend can be fogged in the texture stage instead.
+ *
+ * Direct3D fogs the source before the blend: S' = S f + F (1 - f). For a
+ * multiply (DESTCOLOR/ZERO, or ZERO/SRCCOLOR) the result is D S', and S'
+ * is what ALPHA_DECAL makes - C = Cf (1 - Af) + Ct Af on a texture without
+ * alpha, item 10's measured form - when Cf is the fog colour and Af the
+ * fog factor, so long as S is the texel alone: DECAL or COPY, or MODULATE
+ * by a white vertex. Nothing may read the vertex alpha being replaced: no
+ * alpha test and no specular. An additive or alpha blend keeps the fog
+ * dropped.
+ */
+static int v9x_m64_policy_fog_as_decal(
+    const struct v9x_m64_draw_request *request,
+    const struct v9x_m64_draw_decision *decision)
+{
+    int multiply =
+        (request->src_blend == M64_BLEND_DESTCOLOR &&
+         request->dst_blend == M64_BLEND_ZERO) ||
+        (request->src_blend == M64_BLEND_ZERO &&
+         request->dst_blend == M64_BLEND_SRCCOLOR);
+    int texel_only =
+        request->texture_op == M64_TEXOP_DECAL ||
+        request->texture_op == M64_TEXOP_COPY ||
+        (request->texture_op == M64_TEXOP_MODULATE &&
+         request->vertex_rgb_white != 0ul);
+
+    return multiply && texel_only && request->textured != 0ul &&
+           request->composite == 0ul &&
+           !v9x_m64_policy_format_has_alpha(request->texture_format) &&
+           (request->alpha_test_enable == 0ul ||
+            decision->alpha_test_dropped != 0ul) &&
+           request->specular_enable == 0ul;
+}
+
 static v9x_u32 v9x_m64_policy_check(
                               const struct v9x_m64_draw_request *request,
                               struct v9x_m64_draw_decision *decision)
@@ -419,9 +454,17 @@ static v9x_u32 v9x_m64_policy_check(
      * (2026-09-29).  Asked for both, the draw is blended and the fog
      * dropped: this engine has no CPU fallback, and a refusal draws
      * nothing.  Thief II fogs its lightmap pass, and refusing it lost
-     * every lightmap (A8U4I5, 2026-10-14). */
+     * every lightmap (A8U4I5, 2026-10-14).  A multiply is fogged in the
+     * texture stage where that can be exact (v9x_m64_policy_fog_as_decal);
+     * dropping its fog multiplied the fogged base by an unfogged dark
+     * lightmap and drew Thief's walls black in the fog (boot 480). */
     if (request->fog_enable != 0ul && request->blend_enable != 0ul) {
-        decision->fog_dropped = 1ul;
+        if (v9x_m64_policy_fog_as_decal(request, decision)) {
+            decision->fog_as_decal = 1ul;
+            decision->light_fcn = V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL;
+        } else {
+            decision->fog_dropped = 1ul;
+        }
     }
 
     /* Specular is ALPHA_TST_CNTL SPECULAR_LIGHT_EN over the specular words'
@@ -460,6 +503,7 @@ v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
         decision->alpha_test_dropped = 0ul;
         decision->fog_dropped = 0ul;
         decision->color_keyed = 0ul;
+        decision->fog_as_decal = 0ul;
     }
     if (request == 0 || decision == 0) {
         return V9X_M64_REFUSE_ARGUMENT;
@@ -472,6 +516,7 @@ v9x_u32 v9x_m64_check_draw(const struct v9x_m64_draw_request *request,
         decision->alpha_test_dropped = 0ul;
         decision->fog_dropped = 0ul;
         decision->color_keyed = 0ul;
+        decision->fog_as_decal = 0ul;
     }
     return reason;
 }

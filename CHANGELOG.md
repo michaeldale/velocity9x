@@ -15,7 +15,9 @@ build identifier so exact guest-tested binaries remain traceable.
 - **Fixed: fogged see-through surfaces vanished on ATI cards.** The
   Rage chips cannot fog and blend in one pass, and such draws were
   dropped. They are now drawn without the fog. Thief II's lighting
-  pass is one of them, and the game drew unlit without it.
+  pass is one of them, and the game drew unlit without it. On the
+  Rage Pro class a fogged multiply, such as that lightmap pass, is now
+  fogged correctly through the texture unit instead.
 - **New: transparent (colour-keyed) textures on the Rage XL and the
   Rage Pro class.** Keyed draws were dropped; they now use the chip's
   own colour compare. Measured with 16-bit textures with and without

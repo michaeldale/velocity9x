@@ -1806,6 +1806,7 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("FogTableBatches", snapshot.d3d.fog_table_batches);
     v9x_write_uint("FogTableLastMode", snapshot.d3d.fog_table_last_mode);
     v9x_write_uint("M64FogDropped", snapshot.d3d.m64_fog_dropped);
+    v9x_write_uint("M64FogDecal", snapshot.d3d.m64_fog_decal);
     v9x_write_hex("FogTableLastStart", snapshot.d3d.fog_table_last_start);
     v9x_write_hex("FogTableLastEnd", snapshot.d3d.fog_table_last_end);
     v9x_write_hex("FogTableLastDensity",

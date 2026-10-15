@@ -4457,6 +4457,81 @@ void __stdcall V9xDdrawProbeEntry(void)
                             v9x_layout_green(&target_layout, fog_raw[2]) <= 33ul;
                         v9x_write_uint("D3DFogTexOk", fog_ok ? 1ul : 0ul);
                     }
+                    /*
+                     * A fogged multiply (2026-10-15): the target white, a
+                     * red RGB565 texel, COPY, blend DESTCOLOR/ZERO, fog
+                     * colour blue and the vertex fog factor 255, 128 and 0.
+                     * Over white the multiply is the fogged source, so a
+                     * driver that fogs the blend reads red, a red-blue mix
+                     * and blue; one that drops the fog reads red each time.
+                     * Thief II's lightmap pass is this draw. Keys
+                     * D3DFogMul<a>Raw, and D3DFogMulOk when all three hold.
+                     */
+                    {
+                        static const V9X_PROBE_TEX8 mul_red = {
+                            0x40ul, 0xf800ul, 0x07e0ul, 0x001ful, 0ul,
+                            0xf800u, 0xf800u };
+                        static const DWORD mul_alpha[3] = {
+                            0xff000000ul, 0x80000000ul, 0x00000000ul };
+                        static const char *mul_key[3] = {
+                            "D3DFogMul255Raw", "D3DFogMul128Raw",
+                            "D3DFogMul0Raw" };
+                        WORD mul_raw[3];
+                        HRESULT mul_hr = 0;
+                        DWORD mi;
+                        DWORD mc;
+
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_SPECULARENABLE, 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGCOLOR, 0x000000fful);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGENABLE, 1ul);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_SRCBLEND,
+                            V9X_D3DBLEND_DESTCOLOR);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_DESTBLEND,
+                            V9X_D3DBLEND_ZERO_F);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+                        v9x_probe_keep_target = 1;
+                        for (mi = 0ul; mi < 3ul; ++mi) {
+                            for (mc = 0ul; mc < 3ul; ++mc) {
+                                triangle[mc].specular = mul_alpha[mi];
+                            }
+                            v9x_fill_surface(d3d_target, 0xfffffffful);
+                            mul_raw[mi] = 0u;
+                            if (v9x_probe_tex8_draw(ddraw, d3d_device,
+                                    d3d_target, triangle, &mul_red,
+                                    V9X_D3DTBLEND_COPY,
+                                    V9X_D3DFILTER_NEAREST,
+                                    V9X_D3DTADDRESS_WRAP_R, 0xfffffffful,
+                                    0.25f, 0.25f, &mul_raw[mi]) != 0) {
+                                mul_hr = 1;
+                            }
+                            v9x_write_uint(mul_key[mi], mul_raw[mi]);
+                        }
+                        v9x_probe_keep_target = 0;
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_SRCBLEND,
+                            V9X_D3DBLEND_ONE_F);
+                        (void)d3d_device->vtbl->SetRenderState(d3d_device,
+                            V9X_D3DRENDERSTATE_FOGENABLE, 0ul);
+                        v9x_write_uint("D3DFogMulOk",
+                            mul_hr == 0 && target_layout.valid != 0ul &&
+                            v9x_layout_red(&target_layout, mul_raw[0]) >= 197ul &&
+                            v9x_layout_blue(&target_layout, mul_raw[0]) <= 33ul &&
+                            v9x_layout_red(&target_layout, mul_raw[1]) >= 96ul &&
+                            v9x_layout_red(&target_layout, mul_raw[1]) <= 160ul &&
+                            v9x_layout_blue(&target_layout, mul_raw[1]) >= 96ul &&
+                            v9x_layout_blue(&target_layout, mul_raw[1]) <= 160ul &&
+                            v9x_layout_blue(&target_layout, mul_raw[2]) >= 197ul &&
+                            v9x_layout_red(&target_layout, mul_raw[2]) <= 33ul
+                            ? 1ul : 0ul);
+                    }
                     v9x_write_uint("D3DSpecularTexRaw", spec_raw);
                     v9x_write_uint("D3DSpecularTexOk",
                         spec_hr == 0 && target_layout.valid != 0ul &&

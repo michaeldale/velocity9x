@@ -557,6 +557,53 @@ static void test_fog_and_unmeasured_knobs(void)
     request.specular_enable = 1ul;
     CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
     CHECK(decision.fog_dropped == 1ul);
+    /* A fogged multiply blend over a texture without alpha is fogged in the
+     * texture stage instead: ALPHA_DECAL, C = Cf(1-Af) + Ct Af on RGB565
+     * (item 10), with the fog colour as Cf and the factor as Af, is
+     * Direct3D's fogged source. Thief II's lightmap pass, which drew its
+     * walls black in the fog with the fog dropped (A8U4I5 boot 480). */
+    textured(&request, V9X_M64_TEXTURE_FORMAT_RGB565);
+    request.texture_op = T_TEXOP_MODULATE;
+    request.fog_enable = 1ul;
+    request.blend_enable = 1ul;
+    request.src_blend = T_BLEND_DESTCOLOR;
+    request.dst_blend = T_BLEND_ZERO;
+    request.vertex_rgb_white = 1ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_as_decal == 1ul && decision.fog_dropped == 0ul);
+    CHECK(decision.light_fcn == V9X_M64_TEX_LIGHT_FCN_ALPHA_DECAL);
+    /* The other spelling of the multiply. */
+    request.src_blend = T_BLEND_ZERO;
+    request.dst_blend = T_BLEND_SRCCOLOR;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_as_decal == 1ul);
+    /* MODULATE by a coloured vertex: the stage cannot hold both. */
+    request.vertex_rgb_white = 0ul;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_as_decal == 0ul && decision.fog_dropped == 1ul);
+    /* DECAL ignores the vertex colour. */
+    request.texture_op = T_TEXOP_DECAL;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_as_decal == 1ul);
+    /* Texel alpha is ALPHA_DECAL's weight then, not the vertex's. */
+    textured(&request, V9X_M64_TEXTURE_FORMAT_ARGB1555);
+    request.texture_op = T_TEXOP_DECAL;
+    request.fog_enable = 1ul;
+    request.blend_enable = 1ul;
+    request.src_blend = T_BLEND_DESTCOLOR;
+    request.dst_blend = T_BLEND_ZERO;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_as_decal == 0ul && decision.fog_dropped == 1ul);
+    /* An additive blend is not a multiply. */
+    textured(&request, V9X_M64_TEXTURE_FORMAT_RGB565);
+    request.texture_op = T_TEXOP_DECAL;
+    request.fog_enable = 1ul;
+    request.blend_enable = 1ul;
+    request.src_blend = T_BLEND_ONE;
+    request.dst_blend = T_BLEND_ONE;
+    CHECK(v9x_m64_check_draw(&request, &decision) == V9X_M64_REFUSE_NONE);
+    CHECK(decision.fog_as_decal == 0ul && decision.fog_dropped == 1ul);
+
     /* Fog without a blend is drawn as fog. */
     base(&request);
     request.fog_enable = 1ul;

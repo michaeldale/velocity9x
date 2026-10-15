@@ -145,6 +145,29 @@ static void test_texture_mapping(void)
     CHECK(accept(&request) == V9X_M64_REFUSE_TEXTURE_FORMAT);
 }
 
+/* The fogged multiply's inputs (mach64_policy.c fog_as_decal): whether
+ * every vertex is white, and the vertex word that carries the fog. */
+static void test_fog_decal_vertices(void)
+{
+    V9X_R3D_VERTEX v[3];
+
+    memset(v, 0, sizeof(v));
+    v[0].color = 0xffffffffu;
+    v[1].color = 0x80ffffffu;
+    v[2].color = 0x00ffffffu;
+    CHECK(v9x_d3d_mach64_vertices_white(v, 3ul) == 1ul);
+    v[2].color = 0xfffffffeu;
+    CHECK(v9x_d3d_mach64_vertices_white(v, 3ul) == 0ul);
+    CHECK(v9x_d3d_mach64_vertices_white(0, 3ul) == 0ul);
+    CHECK(v9x_d3d_mach64_vertices_white(v, 0ul) == 0ul);
+
+    /* Alpha from the specular alpha (the fog factor), RGB the fog. */
+    CHECK(v9x_d3d_mach64_fog_decal_argb(0x80123456ul, 0xff404850ul) ==
+          0x80404850ul);
+    CHECK(v9x_d3d_mach64_fog_decal_argb(0x00ffffffu, 0x00000000ul) ==
+          0x00000000ul);
+}
+
 /* COLORKEYENABLE keys a texture that carries a source key, and nothing
  * else; the key reaches the state in the texture's own format. */
 static void test_color_key_mapping(void)
@@ -558,6 +581,7 @@ unsigned int v9x_run_d3d_mach64_map_tests(void)
     test_depth_needs_a_bound_surface();
     test_texture_mapping();
     test_color_key_mapping();
+    test_fog_decal_vertices();
     test_mip_mapping();
     test_vertex_alpha_opaque();
     test_specular_needs_colour();

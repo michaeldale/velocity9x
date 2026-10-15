@@ -651,6 +651,8 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         v9x_d3d_mach64_vertices_opaque(vertices, triangle_count * 3ul);
     request.vertex_alpha_min =
         v9x_d3d_mach64_vertices_alpha_min(vertices, triangle_count * 3ul);
+    request.vertex_rgb_white =
+        v9x_d3d_mach64_vertices_white(vertices, triangle_count * 3ul);
     reason = v9x_m64_check_draw(&request, &decision);
     if (reason == V9X_M64_REFUSE_NONE && decision.alpha_test_dropped != 0ul) {
         /* A test that can discard nothing is not programmed. */
@@ -663,6 +665,12 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
         /* Blended, so drawn without its fog (mach64_policy.c). */
         request.fog_enable = 0ul;
         ++v9x_hal->d3d_diagnostics.m64_fog_dropped;
+    }
+    if (reason == V9X_M64_REFUSE_NONE && decision.fog_as_decal != 0ul) {
+        /* Fogged in the texture stage: the blend unit stays a multiply,
+         * and each vertex below carries the fog (mach64_policy.c). */
+        request.fog_enable = 0ul;
+        ++v9x_hal->d3d_diagnostics.m64_fog_decal;
     }
     if (reason != V9X_M64_REFUSE_NONE) {
         v9x_hal->d3d_diagnostics.m64_policy_last = reason;
@@ -725,6 +733,13 @@ static int v9x_d3d_mach64_draw(const V9X_R3D_DRAW *draw,
             if (!v9x_d3d_mach64_vertex(&triangle[corner], &triangle[0],
                                        flat, &setup[corner])) {
                 return v9x_d3d_mach64_refuse(V9X_D3D_MACH64_REFUSE_VERTEX);
+            }
+            /* ALPHA_DECAL's Cf and Af: the fog colour, and this vertex's
+             * own fog factor, which fog interpolates whatever the shade
+             * mode. */
+            if (decision.fog_as_decal != 0ul) {
+                setup[corner].argb = v9x_d3d_mach64_fog_decal_argb(
+                    triangle[corner].specular, draw->fog_color);
             }
             /* Unit 1's tu1, tv1: two floats a vertex, in vertex order. */
             if (request.composite != 0ul) {

@@ -89,6 +89,15 @@ v9x_u32 v9x_d3d_mach64_specular_rgb(const V9X_R3D_VERTEX *vertices,
 
 /* Non-zero when there are vertices and every one has alpha 255: the
  * request's vertex_alpha_opaque. */
+/* Non-zero when every vertex's RGB is FFFFFF: MODULATE then gives the
+ * texel. Zero for none or no vertices. */
+v9x_u32 v9x_d3d_mach64_vertices_white(const V9X_R3D_VERTEX *vertices,
+                                      v9x_u32 vertex_count);
+
+/* A vertex's colour under fog_as_decal: the fog factor (its specular
+ * alpha) as alpha, the fog colour as RGB. */
+v9x_u32 v9x_d3d_mach64_fog_decal_argb(v9x_u32 specular, v9x_u32 fog_color);
+
 v9x_u32 v9x_d3d_mach64_vertices_opaque(const V9X_R3D_VERTEX *vertices,
                                        v9x_u32 vertex_count);
 

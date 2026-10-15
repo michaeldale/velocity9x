@@ -127,6 +127,47 @@ The fogged grey base is then multiplied by a dark lightmap down to near
 black. A card that fogs both passes keeps it grey. Open: an approximation
 for multiply blends under fog.
 
+## Fogged multiplies, fogged in the texture stage (2026-10-15)
+
+Direct3D fogs the source before the blend: S' = S f + F (1 - f). For a
+multiply (DESTCOLOR/ZERO, or ZERO/SRCCOLOR) the result is D S'. The
+texture stage can make S' itself: Phase 4 item 10 measured ALPHA_DECAL on
+a texture without alpha as C = Cf (1 - Af) + Ct Af. So for such a draw
+`mach64_policy.c` (`fog_as_decal`) does three things:
+- sets ALPHA_DECAL;
+- sends each vertex with the fog colour as RGB and its own fog factor as
+  alpha;
+- turns fog off, leaving the blend unit a multiply.
+
+It applies only where that is exact:
+- the texel alone is the source: DECAL or COPY, or MODULATE by white
+  vertices;
+- the texture has no alpha;
+- there is no alpha test, no specular and no composite.
+
+Every other fogged blend keeps its fog dropped. Host tests first, for the
+policy and the two map helpers.
+
+**V9XDDP's new `D3DFogMul` scene:** a white target, a red RGB565 texel,
+COPY, DESTCOLOR/ZERO, blue fog.
+
+| Factor | Boot 480, dropped | Boot 481 |
+|---|---|---|
+| 255 | `7C00` | `7C00` |
+| 128 | `7C00` | `400F` |
+| 0 | `7C00` | `001F` |
+
+V9XDDP read 207/225 then 208/225; `D3DFogMulOk` was the only key that
+changed.
+
+**Thief II, the demo's first archway (boot 481,
+`boot481-thief2-fog-multiply*.png`).** The building beyond now draws as
+hazed grey with lit windows, as in the VOGONS reference, where at boot
+480 it was black. In the mission, 54,859 multiply draws took the texture
+stage. The fog stayed dropped on 331,640 other blended draws: other
+blends, or multiplies by a coloured vertex. Which they are has not been
+counted.
+
 ## The other engines (2026-10-15)
 
 Evidence: `docs/probe/table-fog-other-engines-2026-10-15/`.
@@ -155,5 +196,7 @@ Evidence: `docs/probe/table-fog-other-engines-2026-10-15/`.
   same core code. Gen3 is measured.
 - **The depth rule is measured on one game,** Thief II (above). The plan
   asks for two table-fog titles before the rule is settled.
-- **Fogged multiply blends go dark in the distance** (lightmaps), where
-  fogging hardware stays at the fog colour.
+- **Fogged blends other than an exact multiply** draw unfogged: additive
+  and alpha blends, and multiplies by a coloured vertex. The Rage II
+  drops the fog on every blend; the texture-stage fog is Mach64 class
+  only.
