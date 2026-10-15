@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.18.4 - not yet released
+
 ## 0.18.3 - 2026-10-15
 
 - **Fixed: GMA 950 boards that display on pipe A hard-locked at the first
