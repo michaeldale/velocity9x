@@ -18,8 +18,8 @@
  */
 #define V9X_VERSION_MAJOR 0u
 #define V9X_VERSION_MINOR 18u
-#define V9X_VERSION_PATCH 4u
-#define V9X_VERSION_STRING "0.18.4"
+#define V9X_VERSION_PATCH 5u
+#define V9X_VERSION_STRING "0.18.5"
 
 struct v9x_build_identity {
     v9x_u16 major;
