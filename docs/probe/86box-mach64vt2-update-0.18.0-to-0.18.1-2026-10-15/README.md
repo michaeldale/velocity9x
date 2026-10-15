@@ -47,3 +47,12 @@ released build.
   version 0.18.1 and mini-VDD `2cbf6777` (`after-0.18.1.png`).
 
 Not checked: Send report, and a rollback from the backup.
+
+## Again, 0.18.1 to 0.18.2 (boots 124-125)
+
+The same route on the same guest the same day, once 0.18.2 was mirrored
+(release 7). The offer named 0.18.1 to 0.18.2 for the ati family, eight
+`[rename]` lines were staged with no `NUL=` line, and after the restart
+`V9XUPD.INI` read `State=committed`, `From=0.18.1`, `To=0.18.2`,
+`RunningBuild=07c31612`. The eight recorded SHA-256s equal the files in
+`releases/0.18.2/velocity9x-0.18.2-ati.zip`; WININIT.INI was consumed.

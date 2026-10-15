@@ -8,12 +8,14 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.18.1](../releases/0.18.1/README.md), built from
-`2cbf6777`, published on GitHub and mirrored to the update server
+The latest release is [0.18.2](../releases/0.18.2/README.md), built from
+`07c31612`, published on GitHub and mirrored to the update server
 (stable). Its archives are host-audited. The `ati` package reached a
-guest through the updater (below); none has had an activation smoke test
-from a Have Disk install of the archive itself. Builds of the same code
-ran on the machines named below. The checkout is 0.18.2, unreleased.
+guest through the updater: the same VT2 went 0.18.1 to 0.18.2, committed
+at boot 125 with all eight files equal to the package. None has had an
+activation smoke test from a Have Disk install of the archive itself.
+Builds of the same code ran on the machines named below. The checkout is
+0.18.3, unreleased.
 
 The 0.18.0 release's two owed checks are done, both on the 86Box Mach64
 VT2 on 2026-10-15:

@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.18.3 - not yet released
+
 ## 0.18.2 - 2026-10-15
 
 - **Fixed: Carmageddon II's HUD panels drew red in Glide.** The game
