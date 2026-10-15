@@ -24,12 +24,11 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.18.3.** It fixes a hard lock at the first page
-flip on GMA 950 boards whose picture is on pipe A, such as embedded
-boards driving only a VGA monitor. 0.18.2 before it fixed Carmageddon
-II's in-race HUD panels in Glide mode. See the [changelog](CHANGELOG.md),
-and download it from [releases/0.18.3](releases/0.18.3/README.md).
-Installed copies from
+**Current version: 0.18.4.** It fixes a dot pattern, with the desktop
+showing through, in 3D on some GMA 900s. 0.18.3 before it fixed a hard
+lock at the first page flip on GMA 950 boards whose picture is on pipe
+A. See the [changelog](CHANGELOG.md), and download it from
+[releases/0.18.4](releases/0.18.4/README.md). Installed copies from
 0.15.0 on can update through **Check for updates** on the Velocity9x
 tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.

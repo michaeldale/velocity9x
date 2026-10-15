@@ -4,7 +4,20 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.18.4 - not yet released
+## 0.18.4 - 2026-10-15
+
+- **Fixed: a dot pattern and "bleed through" in 3D on some GMA 900s.**
+  Every Direct3D, OpenGL and Glide frame could show a fine regular
+  pattern, with the desktop or an earlier frame showing between the
+  dots. In each 4x4 block of pixels only six were drawn. The driver
+  never set the 3D engine's polygon stipple, so it drew with whatever
+  stipple the chip held at power-on; on the reporter's GMA 900 that was
+  switched on. Every batch now turns it off, as Mesa and the X.org
+  driver do. A test build that switched stipple on reproduced the
+  pattern exactly on the GMA 950 netbook, and with the fix Carmageddon
+  II and Half-Life draw as before there
+  ([issue #7](https://github.com/michaeldale/velocity9x/issues/7)).
+  Not yet confirmed on the reporter's GMA 900.
 
 ## 0.18.3 - 2026-10-15
 
