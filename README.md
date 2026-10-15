@@ -27,7 +27,8 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 **Current version: 0.18.4.** It fixes a dot pattern, with the desktop
 showing through, in 3D on some GMA 900s. 0.18.3 before it fixed a hard
 lock at the first page flip on GMA 950 boards whose picture is on pipe
-A. See the [changelog](CHANGELOG.md), and download it from
+A. Both reporters have confirmed their fixes. See the
+[changelog](CHANGELOG.md), and download it from
 [releases/0.18.4](releases/0.18.4/README.md). Installed copies from
 0.15.0 on can update through **Check for updates** on the Velocity9x
 tab. [Current status](docs/STATUS.md) has what is verified where and what
@@ -66,8 +67,8 @@ serves every chip in it and picks the right one by PCI id at boot.
 
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
-| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook |
-| Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Claimed from a user's survey; not run |
+| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
+| Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Not run here. A reporter runs Direct3D on one Lenovo laptop |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
@@ -220,15 +221,17 @@ among them. Every package installs it to SYSTEM over any copy already
 there.
 
 All eight of ATI's SDK 4.1 demos draw on the Rage IIC, the Rage XL and the
-GMA 950, VQ-compressed textures included. No game has been tried yet. Not
-yet done:
+GMA 950, VQ-compressed textures included. A tester has tried Formula 1
+and Tomb Raider on 0.18.0; both need more work. Not yet done:
 - mipmaps;
 - the Rage Pro's tiled texture layout;
 - meshes and TLVERTEX vertices.
 
 On the ATI cards a few blended sprites that need two kinds of
-transparency at once are not drawn. The log is
-`C:\V9XDIAG\V9XCIF.LOG`.
+transparency at once are not drawn. Titles written for ATI cards assume
+a 5:5:5 desktop and show wrong colours on 5:6:5 (see below): ATI's Cubes
+demo clears blue instead of grey. The log is `C:\V9XDIAG\V9XCIF.LOG`,
+and **Send report** includes it from 0.18.5.
 
 ## 16-bit colour: 5:6:5 or 5:5:5
 

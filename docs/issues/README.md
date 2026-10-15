@@ -7,7 +7,6 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-10-15 The GMA 950 draws a colour-keyed texture's key colour (predates 0.18.1; found by the new ColorKeyHalves check)](2026-10-15-gen3-draws-the-colour-key.md)
 - [2026-10-15 The ViRGE claims vertex fog it does not draw on the DrawPrimitive path (predates 0.18.1)](2026-10-15-virge-claims-vertex-fog-it-does-not-draw.md)
 - [2026-10-14 Thief II on the Rage XL: a floor shows through the floor (parked; depth suspected; next is a screenshot at the fault and a DX5-path Z census)](2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)
-- [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locks on 3D under 0.17.0 (unreproduced; isolated to the Intel flip, the game runs with it off)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
 - [2026-10-14 The Rage IIC blends one step low into a 5:5:5 target (parked; a SCALE_3D_CNTL sweep is the next step)](2026-10-14-rage-iic-blend-one-step-low-at-555.md)
 - [2026-10-14 3DCIF: Pixie, Fairy and Laputa's blended sprites are refused on both ATI engines (parked; a decision is owed)](2026-10-14-3dcif-blended-sprites-refused.md)
 - [2026-10-14 3DCIF: the Phase 3 readback probe is not written (parked)](2026-10-14-3dcif-phase3-probe-not-written.md)
@@ -16,7 +15,6 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-10-14 Gen3 refuses a 1024x256 RGB565 texture with DDERR_INVALIDPARAMS (worked around in ATI3DCIF.DLL; cause not looked for)](2026-10-14-gen3-refuses-1024x256-texture.md)
 - [2026-10-11 The Voodoo4 was found in D3 with its BARs cleared under 3dfx's driver (preflight did not reproduce it; monitor power-down untested)](2026-10-11-voodoo4-found-in-d3-under-3dfx-driver.md)
 - [2026-10-11 The Velocity9x settings page shows 4 MB on the 8 MiB Millennium II: it reads the BIOS figure, never VramMeasuredBytes](2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)
-- [2026-10-11 3DMark2000 shows "3D pattern corruption" on a reporter's GMA 900 (not yet seen; mip-tree declines, untextured draws and refused geometry are candidates)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)
 - [2026-10-10 Carmageddon II exits after its intro video on a reporter's GMA 900: D3D draws and then quits, Glide refuses 93 % of its draws](2026-10-10-carmageddon2-exits-after-intro-gma900.md)
 - [2026-10-10 Age of Empires refuses DirectDraw on a Trio VLB under Windows 95 (reproduced on 486VLB: Windows 95's DirectDraw will not set 8 bpp from a 16-bpp desktop, with Microsoft's s3.drv too; an 8-bpp desktop works around it)](2026-10-10-aoe-trial-refuses-directdraw-trio-vlb-win95.md)
 - [2026-10-10 NFS II SE on a reporter's Rage XL AGP: the demo faults in its PowerVR path, the full game ran blind when the render interface was not ready](2026-10-10-nfs2se-field-report-rage-xl-agp.md)
@@ -80,6 +78,8 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locked on 3D (fixed in 0.18.3: the live-counter read of a disabled pipe; confirmed by the reporter 2026-10-15)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
+- [2026-10-11 3DMark2000 showed "3D pattern corruption" on a reporter's GMA 900 (GitHub issue 7; fixed in 0.18.4: polygon stipple turned off; confirmed by the reporter 2026-10-15)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)
 - [2026-10-12 Glide's command FIFO sat inside the desktop, and GDI's CPU drawing jammed it (fixed: the Voodoo4 desktop moved to 15 MiB, above Glide's memory)](2026-10-12-glide-cmdfifo-overlaps-the-desktop.md)
 - [2026-10-10 The MGA-2164W's VBE BIOS reports 4 MiB of its 8: the matrox family now walks its memory; fixed 2026-10-10](2026-10-10-mga2164w-vbe-reports-half-its-memory.md)
 - [2026-10-05 A8U4I5 hard-locks under V9XDDP with the SiS 6326 Direct3D engine: an untextured batch stalls the next textured one, and the freeze was a Lock retry loop; fixed 2026-10-05](2026-10-05-a8u4i5-hard-lock-under-sis-d3d-v9xddp.md)

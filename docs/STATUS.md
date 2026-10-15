@@ -8,14 +8,15 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.18.2](../releases/0.18.2/README.md), built from
-`07c31612`, published on GitHub and mirrored to the update server
-(stable). Its archives are host-audited. The `ati` package reached a
-guest through the updater: the same VT2 went 0.18.1 to 0.18.2, committed
-at boot 125 with all eight files equal to the package. None has had an
-activation smoke test from a Have Disk install of the archive itself.
-Builds of the same code ran on the machines named below. The checkout is
-0.18.3, unreleased.
+The latest release is [0.18.4](../releases/0.18.4/README.md), built from
+`ae1c546f`, published on GitHub and mirrored to the update server
+(stable). Its archives are host-audited. The last update taken through
+the updater on a guest was 0.18.1 to 0.18.2 on the 86Box VT2, committed
+at boot 125 with all eight files equal to the package; 0.18.3 and 0.18.4
+have not been. Neither has had an activation smoke test from a Have Disk
+install of the archive itself. Field confirmation: GitHub issue 6's
+reporter runs 0.18.3 and issue 7's runs 0.18.4. The checkout is 0.18.5,
+unreleased.
 
 The 0.18.0 release's two owed checks are done, both on the 86Box Mach64
 VT2 on 2026-10-15:
@@ -35,8 +36,8 @@ Mini 110 (Atom N280, 945GSE).
 
 | Target | Recorded coverage | Boundary |
 |---|---|---|
-| Intel GMA 950 (`8086:27AE`) | The netbook: Direct3D on Gen3 with asynchronous submission and ring flips, DirectDraw on the blitter, OpenGL with a CPU fallback for refused draws, Glide 2 and 3 (NFS II SE, Carmageddon II, Rollcage), DirectX 8 through DDI 6, and 3DCIF's SDK demos ([GMA 950 3DCIF](probe/netbook-gma950-3dcif-2026-10-14/README.md)) | Modes are the video BIOS's: 640x480 and 1024x576 on the netbook. GDI is drawn by the CPU. No emulator runs the engine. A reporter's embedded board hard-locks with the flip on ([issue 6](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)) |
-| Intel GMA 900 (`8086:2592`, 915GM) | Claimed from a user's survey with the GMA 950's engine ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)); two field reports since | Not run here. Reporters see Carmageddon II exit after its intro and 3DMark 2000 pattern corruption ([issue](issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md), [issue](issues/2026-10-11-3dmark2000-pattern-corruption-gma900.md)) |
+| Intel GMA 950 (`8086:27AE`) | The netbook: Direct3D on Gen3 with asynchronous submission and ring flips, DirectDraw on the blitter, OpenGL with a CPU fallback for refused draws, Glide 2 and 3 (NFS II SE, Carmageddon II, Rollcage), DirectX 8 through DDI 6, and 3DCIF's SDK demos ([GMA 950 3DCIF](probe/netbook-gma950-3dcif-2026-10-14/README.md)) | Modes are the video BIOS's: 640x480 and 1024x576 on the netbook. GDI is drawn by the CPU. No emulator runs the engine. A reporter's embedded board on an external VGA monitor hard-locked with the flip on; fixed in 0.18.3 and confirmed ([issue 6](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)) |
+| Intel GMA 900 (`8086:2592`, 915GM) | Claimed from a user's survey with the GMA 950's engine ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)); a reporter runs Direct3D on it under 0.18.4 | Not run here. A reporter sees Carmageddon II exit after its intro ([issue](issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)). The 3DMark 2000 pattern was the polygon stipple, fixed in 0.18.4 and confirmed ([issue](issues/2026-10-11-3dmark2000-pattern-corruption-gma900.md)) |
 | ATI Rage XL PCI (Rage Pro class) | A8U4I5: Direct3D on the Mach64 engine, page flips, OpenGL with `GL_SGIS_multitexture`, DirectX 8, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([555](decisions/2026-10-14-rage-xl-555-desktop.md), [3DCIF](probe/a8u4i5-rage-xl-3dcif-2026-10-14/README.md)) | No CPU fallback: a refused draw is not drawn. 3DCIF's texel-times-vertex-alpha sprites are refused ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)). GDI is drawn by the CPU |
 | ATI Rage Mobility-M (`4C4D`) | One Gateway Solo 2150: Direct3D and OpenGL on the Mach64 engine (0.9.1, [plan](plans/ati-rage-mobility-hardware-3d.md)) | Not run since the Rage Pro class changed: the 5:5:5 desktop reaches it by design and has not booted on it. Intermittent hard lock under the broad probe ([issue](issues/2026-09-30-gateway-intermittent-black-screen-probe-lock.md)) |
 | ATI Rage IIC (`4757`) | A8U4I5: Direct3D on the Rage II trapezoid engine with CPU setup, page flips, OpenGL, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([desktop](decisions/2026-10-14-rage-iic-555-desktop.md), [Glide](decisions/2026-10-14-rage-iic-555-textures-and-glide.md), [plan](plans/ati-rage-iic-hardware-3d.md)) | Texel times vertex alpha is refused ([issue](issues/2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md)). The blend reads back one step low at 5:5:5 ([issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md)) |
@@ -72,10 +73,10 @@ open record.
 
 | Priority | Next step | Acceptance evidence |
 |---|---|---|
-| A field hard-lock on the GMA 950 | GitHub issue 6: the reporter's embedded board locks with the Intel flip on and runs with it off. Next is the reporter's `INTELMM.TXT` and a `V9XTRACE` from the session that ran, to name the live pipe and plane | The [issue](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md) names the configuration, and a fix that keeps the flip runs on that board |
-| A 3DCIF game | The SDK demos run; no game has. Tomb Raider's ATI patch needs a sound device on the test machine and 5:5:5; Croc needs no patch | A census and a decision record for one game on the Rage XL |
+| A 3DCIF game | The SDK demos run. A tester ran Formula 1 and Tomb Raider on 0.18.0 and offers logs; both need more work. The same tester's Cubes cleared blue, which says that desktop was 5:6:5; the cause is unknown until `V9XCIF.LOG` arrives. Tomb Raider's ATI patch needs a sound device on our test machine; Croc needs no patch | A census and a decision record for one game on the Rage XL |
 | 3DCIF follow-ups, parked | The blended-sprite decision ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)), the Phase 3 readback probe ([issue](issues/2026-10-14-3dcif-phase3-probe-not-written.md)), Gen3 flicker and speed ([issue](issues/2026-10-14-3dcif-gen3-flicker-and-speed.md)), Gen3's 1024x256 refusal ([issue](issues/2026-10-14-gen3-refuses-1024x256-texture.md)) | Each issue's own next step |
 | The Rage IIC blend at 5:5:5, parked | A SCALE_3D_CNTL low-nibble sweep in the ATIRX scene tool | The [issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md) names the bit, or rules the nibble out |
-| The GMA 900 field reports | Carmageddon II's exit and 3DMark 2000's corruption on a reporter's 915GM | Each issue updated from the reporter's next files |
+| The GMA 950 draws a colour-keyed texture's key colour | Found by the ColorKeyHalves check; reproduces on the netbook ([issue](issues/2026-10-15-gen3-draws-the-colour-key.md)) | The check passes on the netbook |
+| The GMA 900 field report | Carmageddon II's exit on a reporter's 915GM, to be re-run on 0.18.4 | The issue updated from the reporter's next files |
 | HAL statics across processes | The HAL's static data is shared by every DirectDraw process ([issue](issues/2026-10-06-hal-statics-shared-across-processes.md)) | A design for per-process state, or a record that the sharing is safe |
 | S3 physical validation | The ViRGE/DX's 3D on silicon; text acceleration and the DOS-box shield on the physical Trio64 | A physical run recorded against the [text issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md) and the [DOS-box issue](issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md) |

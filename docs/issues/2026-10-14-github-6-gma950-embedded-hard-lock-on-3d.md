@@ -1,7 +1,8 @@
 # A reporter's embedded GMA 950 board hard-locks on 3D under 0.17.0 (GitHub issue 6)
 
-Date: 2026-10-14. Status: open, unreproduced. Review of the report only; no
-code changed and nothing run on hardware.
+Date: 2026-10-14. Status: closed 2026-10-15. Reproduced on the netbook on
+pipe A and fixed in 0.18.3; the reporter confirmed it on their board. The
+opening sections are the first review of the report.
 
 Source: https://github.com/michaeldale/velocity9x/issues/6, opened
 2026-10-13 by `interrupt7`. Full text: "I have an embedded system with
@@ -420,3 +421,11 @@ is untested. 86Box has no 945 model.
 None run; this record is a review of the report and the source at
 `c61e09d8`. Not added to `docs/issues/README.md` because another session
 is working in the tree.
+
+## Confirmed on the reporter's board (2026-10-15)
+
+`interrupt7` on GitHub issue 6, 07:40 UTC: the Nexcom NISE 3270 with
+its GMA 950 and an external monitor on VGA runs 3D applications under
+0.18.3. The issue is closed on GitHub. No files came with the
+confirmation. The Local reproduction and Gates sections above predate
+the netbook reproduction (boot 186) and the fix (boot 201).

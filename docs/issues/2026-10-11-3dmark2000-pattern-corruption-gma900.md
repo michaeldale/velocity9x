@@ -1,7 +1,8 @@
 # 3DMark2000 shows "3D pattern corruption" on a reporter's GMA 900
 
-Date: 2026-10-11. Status: open (the corruption has not been seen; the
-reporter's screenshot is promised on GitHub).
+Date: 2026-10-11. Status: closed 2026-10-15. The pattern was Gen3's
+polygon stipple left at its power-on value; fixed in 0.18.4, and the
+reporter confirmed it on the GMA 900 (GitHub issue 7).
 
 Source: field report V9X-WPVJHN, sent 2026-10-11 00:18 server time
 through `V9XUPD.EXE /REPORT` 0.15.0. "3D pattern corruption. In this
@@ -154,3 +155,10 @@ through the decoder test and the stipple-on reproduction.
 - The reporter's confirmation on the GMA 900.
 - Whether the pattern changed between boots of the same install, and how
   the screenshots were captured, are no longer needed to fix it.
+
+## Confirmed on the GMA 900 (2026-10-15)
+
+`interrupt7` on GitHub issue 7, 11:50 UTC, after installing 0.18.4:
+"Installed and working for now. I'll report back if the fault
+reoccurs." The issue is closed on GitHub. No files came with the
+confirmation, so it rests on the reporter's eyes, not on a capture.
