@@ -1,0 +1,15 @@
+TOMBATI caused a stack fault in module TOMBATI.EXE at 0187:00447593.
+Registers:
+EAX=004590b2 CS=0187 EIP=00447593 EFLGS=00010246
+EBX=bfc04733 SS=018f ESP=008c2000 EBP=008c22b4
+ECX=008c2088 DS=018f ESI=00000000 FS=0fdf
+EDX=00000044 ES=018f EDI=00453090 GS=0000
+Bytes at CS:EIP:
+51 8b 55 08 52 0f be 45 d8 50 e8 de 0b 00 00 83 
+Stack dump:
+00453090 00000000 bfc04733 bff713e2 00000187 bff74272 00017ce4 bff7b9c5 00000000 00000000 baacef2f baaec570 00453090 00000000 bfc04733 00000000 
+
+
+Tomb Raider ingame screenshot is just black, camera needed for real picture.
+Ingame all background was black,but Lara shape with stripe lines is visible.
+Tomb Raider menu selection,book frame was bit visible,without any text in it. 

@@ -182,24 +182,37 @@ static void v9x_cif_filter(v9x_u32 filter, v9x_u32 mipmapped,
  * the fragment's alpha for the rest. ALPHA hands the texel's alpha to the
  * blender. ALPHA_MASK ("bit 0: tex not drawn, otherwise alpha
  * interpolated") is approximated by the same test on the texel's alpha
- * times the fragment's, which also drops a fragment alpha of 0. */
+ * times the fragment's, which also drops a fragment alpha of 0.
+ *
+ * With blending off the test is the alpha's only reader, so both test the
+ * texel's alpha alone, and the mask is then exact. The product would drop
+ * texels the Rage keeps wherever the vertex alpha is 0, and the Mach64
+ * refuses it outright: Tomb Raider's keyed draws and Formula 1's masked
+ * ones send vertex alpha below 255 with blending off (a tester's Rage Pro
+ * class card, 0.18.0, 2026-10-16). */
 static void v9x_cif_texel_op(v9x_u32 texop, V9X_CIF_DRAW_SETUP *out)
 {
+    v9x_u32 tested_alpha = out->state.blend_enable != 0ul
+                               ? V9X_R3D_ABI_ALPHAOP_MODULATE
+                               : V9X_R3D_ABI_ALPHAOP_REPLACE;
+
     switch (texop) {
     case V9X_C3D_ETEXOP_NONE:
         break;
     case V9X_C3D_ETEXOP_CHROMAKEY:
         out->key_texture = 1ul;
-        out->alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+        out->alpha_op = tested_alpha;
         out->state.alpha_test_enable = 1ul;
         break;
     case V9X_C3D_ETEXOP_ALPHA:
         out->alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
         break;
     case V9X_C3D_ETEXOP_ALPHA_MASK:
-        out->alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+        out->alpha_op = tested_alpha;
         out->state.alpha_test_enable = 1ul;
-        out->recognized = V9X_FALSE;
+        if (out->state.blend_enable != 0ul) {
+            out->recognized = V9X_FALSE;
+        }
         break;
     default:
         out->recognized = V9X_FALSE;

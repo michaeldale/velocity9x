@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.18.5 - not yet released
 
+- **3DCIF: keyed and masked textures are no longer refused on the Rage
+  Pro class.** With blending off, the chroma key and the alpha mask now
+  test the texel's alpha alone, since nothing else reads the alpha.
+  They tested texel alpha times vertex alpha, which the Mach64 refuses:
+  a tester's Tomb Raider lost 30-65% of its triangles and Formula 1
+  over half. Not yet run on hardware
+  ([issue](docs/issues/2026-10-16-3dcif-games-on-a-testers-rage-pro.md)).
+
 - **Send report includes `V9XCIF.LOG`**, the log of ATI3DCIF.DLL. A
   report of a 3DCIF title, such as the Cubes demo clearing blue rather
   than grey, needs its line saying whether the desktop runs 5:6:5.

@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-16 3DCIF games on a tester's Rage Pro class card: Tomb Raider's and F1's keyed draws refused (fixed in source, untested), F1's quad and rectangle strips skipped, the display layout disagreeing with what is drawn](2026-10-16-3dcif-games-on-a-testers-rage-pro.md)
 - [2026-10-15 The GMA 950 draws a colour-keyed texture's key colour (predates 0.18.1; found by the new ColorKeyHalves check)](2026-10-15-gen3-draws-the-colour-key.md)
 - [2026-10-15 The ViRGE claims vertex fog it does not draw on the DrawPrimitive path (predates 0.18.1)](2026-10-15-virge-claims-vertex-fog-it-does-not-draw.md)
 - [2026-10-14 Thief II on the Rage XL: a floor shows through the floor (parked; depth suspected; next is a screenshot at the fault and a DX5-path Z census)](2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)

@@ -287,25 +287,40 @@ static void test_texture_ops(void)
     SCHECK(out.white == 0ul);
     SCHECK(out.texel_alpha == 1ul);
 
-    /* No lighting with the key: MODULATE both, white. */
+    /* No lighting with the key and no blend: the texel's alpha alone,
+     * which is D3D's DECAL as it stands. */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_CHROMAKEY);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
-    SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
-    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
-    SCHECK(out.white == 1ul);
+    SCHECK(out.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    SCHECK(out.white == 0ul);
     SCHECK(out.texel_alpha == 0ul);
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_NONE);
     set1(&state, V9X_C3D_ERS_TMAP_LIGHT, V9X_C3D_ETL_MODULATE);
 
-    /* Pixie's chroma key: keyed texels get alpha 0, which the test drops;
-     * the fragment's alpha still scales the rest. */
+    /*
+     * The chroma key with no blend: keyed texels get alpha 0, which the
+     * test drops, and nothing else reads the alpha, so the fragment's is
+     * left out. Tomb Raider sends keyed draws with vertex alpha below 255
+     * and blending off; as texel times vertex alpha the Mach64 refused
+     * them all (a tester's Rage Pro class card, 0.18.0, 2026-10-16).
+     */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_CHROMAKEY);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
     SCHECK(out.key_texture == 1ul);
-    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
     SCHECK(out.state.alpha_test_enable == 1ul);
     SCHECK(out.state.alpha_func == D3DCMP_GREATER && out.state.alpha_ref == 0ul);
     SCHECK(out.recognized == V9X_TRUE);
+
+    /* Pixie's keyed, blended draws: the fragment's alpha still scales the
+     * rest, since the blender reads it. */
+    set1(&state, V9X_C3D_ERS_ALPHA_SRC, V9X_C3D_EBLEND_SRCALPHA);
+    set1(&state, V9X_C3D_ERS_ALPHA_DST, V9X_C3D_EBLEND_INVSRCALPHA);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    set1(&state, V9X_C3D_ERS_ALPHA_SRC, V9X_C3D_EBLEND_ONE);
+    set1(&state, V9X_C3D_ERS_ALPHA_DST, V9X_C3D_EBLEND_ZERO);
 
     /*
      * Pixie's keyed, blended sprites: SRCALPHA, INVSRCALPHA leaves the
@@ -337,13 +352,29 @@ static void test_texture_ops(void)
     SCHECK(out.state.alpha_test_enable == 0ul);
     SCHECK(out.texel_alpha == 1ul);
 
-    /* The alpha mask: approximated, and flagged. */
+    /*
+     * The alpha mask with no blend is exact: the test on the texel's alpha
+     * is the mask, and the interpolated alpha goes nowhere. Formula 1 draws
+     * this way, and as texel times vertex alpha the Mach64 refused it (the
+     * same tester, 2026-10-16).
+     */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_ALPHA_MASK);
+    v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
+    SCHECK(out.state.alpha_test_enable == 1ul);
+    SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    SCHECK(out.recognized == V9X_TRUE);
+    SCHECK(out.texel_alpha == 1ul);
+
+    /* Blended, it is approximated by the test on the product, and flagged:
+     * the blender should see the interpolated alpha alone. */
+    set1(&state, V9X_C3D_ERS_ALPHA_SRC, V9X_C3D_EBLEND_SRCALPHA);
+    set1(&state, V9X_C3D_ERS_ALPHA_DST, V9X_C3D_EBLEND_INVSRCALPHA);
     v9x_cif_state_map(&state, 640ul, 480ul, &info, &out);
     SCHECK(out.state.alpha_test_enable == 1ul);
     SCHECK(out.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
     SCHECK(out.recognized == V9X_FALSE);
-    SCHECK(out.texel_alpha == 1ul);
+    set1(&state, V9X_C3D_ERS_ALPHA_SRC, V9X_C3D_EBLEND_ONE);
+    set1(&state, V9X_C3D_ERS_ALPHA_DST, V9X_C3D_EBLEND_ZERO);
 
     /* An untextured draw ignores the texel op. */
     set1(&state, V9X_C3D_ERS_TMAP_TEXOP, V9X_C3D_ETEXOP_CHROMAKEY);
