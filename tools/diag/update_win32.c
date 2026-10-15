@@ -95,10 +95,13 @@ static BYTE v9x_reply[V9X_REPLY_MAX];
  * server that refuses a name costs that one file, not the report.
  * INTELMM.TXT is the Intel boot-time record of the live pipe and plane, and
  * absent on every other chip: issue 6 (2026-10-14) needed it and no report
- * carried it, because every snapshot sent was dumped before DirectDraw ran. */
+ * carried it, because every snapshot sent was dumped before DirectDraw ran.
+ * V9XCIF.LOG is ATI3DCIF.DLL's: a 3DCIF report (Cubes clearing blue,
+ * 2026-10-15) turns on its "display is 5:6:5" line, and no report had it. */
 static const char *const v9x_report_names[] = {
     "V9XTRACE.INI", "V9XBOOT.INI", "V9XHW.INI", "V9XDD.INI", "V9XGL.LOG",
-    "V9XGLIDE.LOG", "V9XGLD3.LOG", "INTELMM.TXT", "V9XUPD.INI"
+    "V9XGLIDE.LOG", "V9XGLD3.LOG", "V9XCIF.LOG", "INTELMM.TXT",
+    "V9XUPD.INI"
 };
 
 static DWORD v9x_length(const char *text)

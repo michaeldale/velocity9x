@@ -6,6 +6,10 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.18.5 - not yet released
 
+- **Send report includes `V9XCIF.LOG`**, the log of ATI3DCIF.DLL. A
+  report of a 3DCIF title, such as the Cubes demo clearing blue rather
+  than grey, needs its line saying whether the desktop runs 5:6:5.
+
 ## 0.18.4 - 2026-10-15
 
 - **Fixed: a dot pattern and "bleed through" in 3D on some GMA 900s.**
