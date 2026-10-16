@@ -85,8 +85,10 @@ is still unknown, and nothing here needs the answer.
 
 ## Not done
 
-- **Assault Rigs on the monitor**: menu and in-game panel. This needs
-  eyes or the OBS capture.
+- **Assault Rigs on the monitor**: Michael looked after this change.
+  The menu still shows "boxes", as before; at 5:6:5 (boot 485) the
+  colours were worse. Filed and parked:
+  [2026-10-16-assault-rigs-menu-boxes](../issues/2026-10-16-assault-rigs-menu-boxes.md).
 - **The tester's report** of DirectDraw saying 5:6:5 while the screen
   showed 5:5:5 at 640x480 (Rage Pro) is a separate case and stays open.
 
