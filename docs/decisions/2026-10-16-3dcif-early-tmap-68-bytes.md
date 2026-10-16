@@ -53,3 +53,28 @@ Same machine, same boot, the rebuilt DLL in `C:\ARIGS`:
 Gates: run-checks. No host test: `TextureReg` reads the application's
 memory through the DLL's own entry point, which the host tests do not
 build.
+
+## Wipeout: the same structure, and report V9X-AQTFNK
+
+Wipeout for 3D Rage (archive.org `All-In-Wonder`, `WIPEOUT_ATI_3DRAGE.BIN`;
+installed from the mounted disc to `C:\3D Rage Games\Wipeout`, which
+holds only a save file; the game runs from D:) registers its textures
+with the same 68-byte `C3D_TMAP` (`tmap size=68 format=3 lg2=0808`).
+Evidence: `docs/probe/a8u4i5-rage-xl-wipeout-2026-10-16/`.
+
+- Report V9X-AQTFNK (0.18.4, a GMA 950) says Wipeout showed a black
+  screen and error boxes that could not be seen, cleared with Enter
+  twice. Its snapshot shows our DLL described the device and nothing was
+  drawn. Wipeout's executable carries "Error registering texture for
+  file %s": with every registration refused, that is the likeliest
+  error. Not confirmed on the reporter's machine.
+- With the DLL from `61c36edf` the intro plays and the title screen
+  draws: three 256x256 textures registered, 11,660 triangles drawn and
+  none refused.
+- With ATI's own ATI3DCIF.DLL, which A8U4I5 still has in SYSTEM, it
+  stops at "5000: Could not initialise CIF". That is ATI's DLL
+  needing ATI's driver, not this defect.
+- Its title runs at 512x384, which has no 15 bpp sibling and is
+  5:6:5; the backdrop, which the game writes as 5:5:5, shows as green
+  and purple noise
+  ([issue](../issues/2026-10-16-ati-16bpp-modes-without-a-555-sibling.md)).
