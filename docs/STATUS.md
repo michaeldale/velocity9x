@@ -8,15 +8,18 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.18.4](../releases/0.18.4/README.md), built from
-`ae1c546f`, published on GitHub and mirrored to the update server
-(stable). Its archives are host-audited. The last update taken through
-the updater on a guest was 0.18.1 to 0.18.2 on the 86Box VT2, committed
-at boot 125 with all eight files equal to the package; 0.18.3 and 0.18.4
-have not been. Neither has had an activation smoke test from a Have Disk
-install of the archive itself. Field confirmation: GitHub issue 6's
-reporter runs 0.18.3 and issue 7's runs 0.18.4. The checkout is 0.18.5,
-unreleased.
+The latest release is [0.18.5](../releases/0.18.5/README.md), built from
+`295bb549`, published on GitHub and mirrored to the update server
+(stable). Its archives are host-audited. **Check for updates** took the
+86Box Mach64 VT2 from 0.18.2 to 0.18.5 (boot 127): committed, all eight
+files equal to the package, the running driver reports `295bb549`
+([probe](probe/86box-mach64vt2-update-0.18.2-to-0.18.5-2026-10-16/README.md)).
+The same code (built from `a233cfad`) ran on the 86Box ViRGE/DX
+([probe](probe/86box-virge-0.18.5-regression-2026-10-16/README.md)) and,
+as development builds, on A8U4I5's Rage XL. None has had an activation
+smoke test from a Have Disk install of the archive itself. Field
+confirmation: GitHub issue 6's reporter runs 0.18.3 and issue 7's runs
+0.18.4. The checkout is 0.18.6, unreleased.
 
 The 0.18.0 release's two owed checks are done, both on the 86Box Mach64
 VT2 on 2026-10-15:
