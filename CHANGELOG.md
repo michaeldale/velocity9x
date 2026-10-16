@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.18.5 - not yet released
+## 0.18.5 - 2026-10-16
 
 - **3DCIF: Assault Rigs and Wipeout draw their textures.** Early 3DCIF
   titles describe a texture in a 68-byte structure without a palette

@@ -24,12 +24,11 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.18.4.** It fixes a dot pattern, with the desktop
-showing through, in 3D on some GMA 900s. 0.18.3 before it fixed a hard
-lock at the first page flip on GMA 950 boards whose picture is on pipe
-A. Both reporters have confirmed their fixes. See the
-[changelog](CHANGELOG.md), and download it from
-[releases/0.18.4](releases/0.18.4/README.md). Installed copies from
+**Current version: 0.18.5.** It makes the first ATI 3DCIF games draw:
+Assault Rigs and Wipeout get their textures, lines are drawn, Formula 1's
+keyed textures are no longer refused on the Rage Pro class, and ATI cards
+run every 16-bit mode as 5:5:5. See the [changelog](CHANGELOG.md), and
+download it from [releases/0.18.5](releases/0.18.5/README.md). Installed copies from
 0.15.0 on can update through **Check for updates** on the Velocity9x
 tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
