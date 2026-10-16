@@ -24,7 +24,9 @@ build identifier so exact guest-tested binaries remain traceable.
   test the texel's alpha alone, since nothing else reads the alpha.
   They tested texel alpha times vertex alpha, which the Mach64 refuses:
   a tester's Tomb Raider lost 30-65% of its triangles and Formula 1
-  over half. Not yet run on hardware
+  over half. Measured on the Rage XL: Formula 1's demo race draws
+  textured, with 3% refused (blended, masked draws, a known gap). Tomb
+  Raider has not been run here
   ([issue](docs/issues/2026-10-16-3dcif-games-on-a-testers-rage-pro.md)).
 
 - **ATI: every 16 bpp mode runs 5:5:5 under hardware Direct3D.** The
