@@ -6,12 +6,12 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.18.5 - not yet released
 
-- **3DCIF: Assault Rigs and Wipeout draw their textures.** Early 3DCIF titles describe
-  a texture in a 68-byte structure without a palette field, and the DLL
-  refused every one, so Assault Rigs for 3D Rage drew plain white and
-  Wipeout stopped with error boxes (report V9X-AQTFNK). Those
-  textures are now accepted. Measured on the Rage XL: menus and levels
-  textured, nothing refused
+- **3DCIF: Assault Rigs and Wipeout draw their textures.** Early 3DCIF
+  titles describe a texture in a 68-byte structure without a palette
+  field, and the DLL refused every one, so Assault Rigs for 3D Rage drew
+  plain white and Wipeout stopped with error boxes (report V9X-AQTFNK).
+  Those textures are now accepted. Measured on the Rage XL: menus and
+  levels textured, nothing refused
   ([record](docs/decisions/2026-10-16-3dcif-early-tmap-68-bytes.md)).
 
 - **3DCIF draws lines.** Line lists and strips are drawn as two triangles
