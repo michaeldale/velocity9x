@@ -28,9 +28,9 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 Assault Rigs and Wipeout get their textures, lines are drawn, Formula 1's
 keyed textures are no longer refused on the Rage Pro class, and ATI cards
 run every 16-bit mode as 5:5:5. See the [changelog](CHANGELOG.md), and
-download it from [releases/0.18.5](releases/0.18.5/README.md). Installed copies from
-0.15.0 on can update through **Check for updates** on the Velocity9x
-tab. [Current status](docs/STATUS.md) has what is verified where and what
+download it from [releases/0.18.5](releases/0.18.5/README.md).
+Installed copies from 0.15.0 on can update through **Check for
+updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
 
 > This is an engineering driver. Each card's results come from **one
