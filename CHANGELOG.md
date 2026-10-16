@@ -27,6 +27,15 @@ build identifier so exact guest-tested binaries remain traceable.
   over half. Not yet run on hardware
   ([issue](docs/issues/2026-10-16-3dcif-games-on-a-testers-rage-pro.md)).
 
+- **ATI: every 16 bpp mode runs 5:5:5 under hardware Direct3D.** The
+  Rage BIOS gives its 400x300, 512x384, 320x240 and 640x350 modes its
+  own numbers, and the driver only knew the 15 bpp twins of the VESA
+  modes. Those modes stayed 5:6:5, which ATI titles do not expect:
+  Wipeout's 512x384 title backdrop was noise. The twin is now taken from
+  the BIOS's own mode list. Measured on the Rage XL: Wipeout's title
+  draws correctly
+  ([record](docs/decisions/2026-10-16-ati-555-siblings-are-in-the-bios-list.md)).
+
 - **Send report includes `V9XCIF.LOG`**, the log of ATI3DCIF.DLL. A
   report of a 3DCIF title, such as the Cubes demo clearing blue rather
   than grey, needs its line saying whether the desktop runs 5:6:5.

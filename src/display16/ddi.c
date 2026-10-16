@@ -20,7 +20,7 @@
 #include "velocity9x/d3dmode.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/hw16.h"
-/* v9x_vbe_mode_555: the 15 bpp sibling of a 16 bpp VESA mode number. */
+/* struct v9x_mode_masks, for the runtime mask table. */
 #include "velocity9x/vbe_modes.h"
 #include "win9x_display_abi.h"
 /* DirectDraw glue accessors. A family with no DirectDraw HAL links the no-op
@@ -121,6 +121,7 @@ extern void v9x_modes16_init(void);
  * here rather than beside their first use because both the diagnostics writer
  * and the mode-set path need them, and the writer comes first in the file. */
 extern WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row);
+extern WORD v9x_modes16_row_555_mode(const V9X_HW16_MODE *row);
 extern WORD v9x_modes16_highcolor(void);
 extern WORD v9x_modes16_highcolor_setting(void);
 extern const char *v9x_modes16_layout_text(void);
@@ -771,17 +772,20 @@ static const V9X_HW16_MODE *v9x_find_mode(WORD width,
 
 static void v9x_apply_mode(const V9X_HW16_MODE *mode)
 {
+    WORD mode_555;
+
     v9x_selected_mode = mode;
     v9x_active_vbe_mode = mode->vbe_mode;
     /*
-     * A 5:5:5 desktop is the same row programmed through its 15 bpp VESA
+     * A 5:5:5 desktop is the same row programmed through its 15 bpp
      * sibling. The row keeps saying 16 bits, because that is what Windows
      * calls both layouts and what the pitch arithmetic needs; only the mode
      * number and the published masks change, and one function decides both so
      * they cannot disagree.
      */
-    if (v9x_modes16_row_is_555(mode) != 0u) {
-        v9x_active_vbe_mode = v9x_vbe_mode_555(mode->vbe_mode);
+    mode_555 = v9x_modes16_row_555_mode(mode);
+    if (mode_555 != 0u) {
+        v9x_active_vbe_mode = mode_555;
     }
     v9x_active_visible_bytes =
         (DWORD)mode->pitch * (DWORD)mode->height;

@@ -1146,6 +1146,70 @@ static void test_555_mode_pairs(void)
     MODECHECK(v9x_vbe_mode_555(0u) == 0u);
 }
 
+/* A 15 bpp mode as an ATI BIOS reports it: BitsPerPixel 15, 5:5:5 masks. */
+static void make_entry_555(struct v9x_vbe_scan_entry *entry, v9x_u16 number,
+                           v9x_u16 width, v9x_u16 height, v9x_u16 stride)
+{
+    make_entry(entry, number, width, height, 16u, stride);
+    entry->summary.bits_per_pixel = 15u;
+    entry->summary.red_field_position = 10u;
+    entry->summary.green_mask_size = 5u;
+}
+
+/*
+ * The 15 bpp sibling found in the scan when the number is the BIOS's own.
+ *
+ * The Rage XL's list (A8U4I5, boot 482, V9XBOOT.INI) pairs every 16 bpp mode
+ * with a 15 bpp one, numbered one below it above 0x11B: 0x0223/0x0224 is
+ * 512x384 and 0x0233/0x0234 is 400x300. The VESA table cannot know these, so
+ * Wipeout's title and Assault Rigs' menus ran 5:6:5 on a 5:5:5 desktop. The
+ * scan's own answer is what pairs them, and only a twin that matches in
+ * geometry, layout, linear framebuffer and stride counts - a mode set onto a
+ * sibling with another stride would shred the picture.
+ */
+static void test_555_sibling_from_scan(void)
+{
+    struct v9x_vbe_scan_entry scanned[8];
+
+    make_entry(&scanned[0], 0x0222u, 512u, 384u, 8u, 512u);
+    make_entry_555(&scanned[1], 0x0223u, 512u, 384u, 1024u);
+    make_entry(&scanned[2], 0x0224u, 512u, 384u, 16u, 1024u);
+    make_entry(&scanned[3], 0x0225u, 512u, 384u, 24u, 1536u);
+    make_entry_555(&scanned[4], 0x0233u, 400u, 300u, 800u);
+    make_entry(&scanned[5], 0x0234u, 400u, 300u, 16u, 800u);
+    make_entry_555(&scanned[6], 0x0110u, 640u, 480u, 1280u);
+    make_entry(&scanned[7], 0x0111u, 640u, 480u, 16u, 1280u);
+
+    MODECHECK(v9x_vbe_sibling_555(0x0224u, scanned, 8u) == 0x0223u);
+    MODECHECK(v9x_vbe_sibling_555(0x0234u, scanned, 8u) == 0x0233u);
+    MODECHECK(v9x_vbe_sibling_555(0x0111u, scanned, 8u) == 0x0110u);
+
+    /* The VESA pairs need no scan; the BIOS's own numbers do. */
+    MODECHECK(v9x_vbe_sibling_555(0x0111u, 0, 0u) == 0x0110u);
+    MODECHECK(v9x_vbe_sibling_555(0x0224u, 0, 0u) == 0u);
+
+    /* A 5:5:5 mode, an 8 bpp one and a mode the scan never listed have no
+     * sibling. */
+    MODECHECK(v9x_vbe_sibling_555(0x0223u, scanned, 8u) == 0u);
+    MODECHECK(v9x_vbe_sibling_555(0x0222u, scanned, 8u) == 0u);
+    MODECHECK(v9x_vbe_sibling_555(0x0244u, scanned, 8u) == 0u);
+
+    /* A twin with another stride, without a linear framebuffer, or with
+     * another height is not one. */
+    scanned[1].summary.bytes_per_scan_line = 1088u;
+    scanned[1].summary.lin_bytes_per_scan_line = 1088u;
+    MODECHECK(v9x_vbe_sibling_555(0x0224u, scanned, 8u) == 0u);
+    make_entry_555(&scanned[1], 0x0223u, 512u, 384u, 1024u);
+    scanned[1].summary.attributes = V9X_VBE_ATTR_SUPPORTED;
+    MODECHECK(v9x_vbe_sibling_555(0x0224u, scanned, 8u) == 0u);
+    make_entry_555(&scanned[1], 0x0223u, 512u, 480u, 1024u);
+    MODECHECK(v9x_vbe_sibling_555(0x0224u, scanned, 8u) == 0u);
+
+    /* A second 5:6:5 mode of the same geometry is not a 5:5:5 sibling. */
+    make_entry(&scanned[1], 0x0223u, 512u, 384u, 16u, 1024u);
+    MODECHECK(v9x_vbe_sibling_555(0x0224u, scanned, 8u) == 0u);
+}
+
 /*
  * Automatic is 5:5:5 under hardware Direct3D and 5:6:5 everywhere else, and
  * an explicit setting is obeyed whatever Direct3D resolved to.
@@ -1381,6 +1445,7 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_publish_fallback_rules();
     test_dd_subset_publication();
     test_555_mode_pairs();
+    test_555_sibling_from_scan();
     test_555_masks();
     test_highcolor_resolve();
     test_pitch_unaliased();

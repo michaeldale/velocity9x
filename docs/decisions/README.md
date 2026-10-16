@@ -173,6 +173,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-14 The Rage IIC draws 1555 targets: Direct3D at 5:5:5 matches 5:6:5 but for one blend step](2026-10-14-rage-iic-draws-1555-targets.md)
 - [2026-10-14 The Rage IIC at 5:5:5: untagged textures draw, and Glide opens and converts the LFB](2026-10-14-rage-iic-555-textures-and-glide.md)
 - [2026-10-14 The Rage XL runs a 5:5:5 desktop: its Direct3D draws 1555 as it draws 565](2026-10-14-rage-xl-555-desktop.md)
+- [2026-10-16 The Rage XL's 16 bpp modes all have 15 bpp twins under the BIOS's own numbers; the driver now finds them in the scan](2026-10-16-ati-555-siblings-are-in-the-bios-list.md)
 - [2026-10-14 3DCIF VQ textures draw: the codebook is RGB565](2026-10-14-3dcif-vq-textures.md)
 - [2026-10-14 Direct3D table fog is drawn per vertex: the Rage XL matches the formula in six scenes](2026-10-14-table-fog-per-vertex.md)
 - [2026-10-14 The Rage XL samples CI8 textures, but no palette load tried so far reaches the colour](2026-10-14-rage-xl-ci8-palette-not-loaded.md)

@@ -151,11 +151,20 @@ static void v9x_modes16_read_highcolor(void)
                                                        V9X_SETTINGS_INI);
 }
 
-/* Non-zero when this row should be published, and programmed, as 5:5:5. Both
- * conditions in one place: the setting asks for it, and the row's mode number
- * has a 15 bpp sibling to switch to. A row with no sibling stays 5:6:5 rather
- * than being described as something the mode set cannot deliver. */
-WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row)
+/* The row's 15 bpp sibling: the VESA pair, or the BIOS's own twin from the
+ * scan cache (the Rage XL numbers 512x384 and 400x300 itself, 2026-10-16). */
+static WORD v9x_modes16_sibling(const V9X_HW16_MODE *row)
+{
+    return v9x_vbe_sibling_555(row->vbe_mode, v9x_scan_entries,
+                               v9x_scan_count);
+}
+
+/* The 15 bpp mode number to program when this row should be published, and
+ * programmed, as 5:5:5; zero otherwise. Both conditions in one place: the
+ * setting asks for it, and the row's mode has a 15 bpp sibling to switch to.
+ * A row with no sibling stays 5:6:5 rather than being described as something
+ * the mode set cannot deliver. */
+WORD v9x_modes16_row_555_mode(const V9X_HW16_MODE *row)
 {
     if (row == 0 || v9x_highcolor != (WORD)V9X_HIGHCOLOR_555) {
         return 0u;
@@ -163,7 +172,13 @@ WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row)
     if (row->bits_per_pixel != 16u) {
         return 0u;
     }
-    return v9x_vbe_mode_555(row->vbe_mode) != 0u ? 1u : 0u;
+    return v9x_modes16_sibling(row);
+}
+
+/* Non-zero when this row is published and programmed as 5:5:5. */
+WORD v9x_modes16_row_is_555(const V9X_HW16_MODE *row)
+{
+    return v9x_modes16_row_555_mode(row) != 0u ? 1u : 0u;
 }
 
 /*
@@ -191,8 +206,7 @@ void v9x_modes16_resolve_layout(WORD d3d_state, WORD engine_wants_555)
     for (index = 0u; index < v9x_runtime_count; ++index) {
         const V9X_HW16_MODE *row = &v9x_runtime_modes[index];
 
-        if (row->bits_per_pixel != 16u ||
-            v9x_vbe_mode_555(row->vbe_mode) == 0u) {
+        if (row->bits_per_pixel != 16u || v9x_modes16_sibling(row) == 0u) {
             continue;
         }
         if (v9x_modes16_row_is_555(row) != 0u) {

@@ -1,7 +1,9 @@
 # ATI: 16 bpp modes with no 15 bpp sibling stay 5:6:5, and ATI titles draw them as 5:5:5
 
-Date: 2026-10-16. Status: open. Measured on A8U4I5's Rage XL (boot 482);
-no fix designed.
+Date: 2026-10-16. Status: fixed (boot 484). Measured on A8U4I5's Rage XL
+(boot 482). The premise was wrong: every one of these modes has a 15 bpp
+twin in the BIOS list, under the BIOS's own number. See
+[the decision](../decisions/2026-10-16-ati-555-siblings-are-in-the-bios-list.md).
 
 ## What was seen
 
@@ -42,3 +44,13 @@ ATI's own driver programs the CRTC itself and runs every 16 bpp mode as
 
 Read the Rage XL's VBE mode list for 15 and 16 bpp rows, then measure
 whether a 16 bpp mode can be switched to 5:5:5 in the CRTC alone.
+
+## 2026-10-16: fixed
+
+The Rage XL's scan cache (boot 483) lists a 15 bpp twin for every 16 bpp
+mode, numbered one below it: 0233/0234 is 400x300 and 0223/0224 is
+512x384. The driver only knew the VESA pairs. It now takes the twin from
+the scan. On boot 484 Wipeout's title draws correctly, and both games'
+3DCIF devices describe a 5:5:5 target. The CRTC pixel-width route was
+not needed and was not measured.
+[Decision record](../decisions/2026-10-16-ati-555-siblings-are-in-the-bios-list.md).

@@ -58,6 +58,79 @@ v9x_u16 v9x_vbe_mode_555(v9x_u16 vbe_mode)
     return 0u;
 }
 
+/* The stride a linear-framebuffer mode set produces: the VBE 3 field when
+ * reported, BytesPerScanLine otherwise (see v9x_vbe_mode_summary). */
+static v9x_u16 v9x_vbe_summary_stride(const struct v9x_vbe_mode_summary *summary)
+{
+    if (summary->lin_bytes_per_scan_line != 0u) {
+        return summary->lin_bytes_per_scan_line;
+    }
+    return summary->bytes_per_scan_line;
+}
+
+/* Two bytes a pixel with 5-bit red, green and blue at 10, 5 and 0 (5:5:5),
+ * or with the 6-bit green of 5:6:5, as the VBE channel fields say. */
+static int v9x_vbe_summary_is_16bit(const struct v9x_vbe_mode_summary *summary,
+                                    v9x_u16 green_bits)
+{
+    return v9x_vbe_storage_bits(summary->bits_per_pixel) == 16u &&
+           summary->red_mask_size == 5u &&
+           summary->red_field_position == 5u + green_bits &&
+           summary->green_mask_size == green_bits &&
+           summary->green_field_position == 5u &&
+           summary->blue_mask_size == 5u &&
+           summary->blue_field_position == 0u;
+}
+
+v9x_u16 v9x_vbe_sibling_555(v9x_u16 vbe_mode,
+                            const struct v9x_vbe_scan_entry *entries,
+                            v9x_u16 count)
+{
+    const struct v9x_vbe_mode_summary *own = 0;
+    v9x_u16 standard;
+    v9x_u16 index;
+
+    standard = v9x_vbe_mode_555(vbe_mode);
+    if (standard != 0u) {
+        return standard;
+    }
+    if (entries == 0) {
+        return 0u;
+    }
+
+    /* The mode itself has to be in the scan, and 5:6:5: the twin is matched
+     * against what the BIOS said about it, not against the driver's row,
+     * whose pitch a family may have widened since. */
+    for (index = 0u; index < count; ++index) {
+        if (entries[index].mode_number == vbe_mode) {
+            own = &entries[index].summary;
+            break;
+        }
+    }
+    if (own == 0 || !v9x_vbe_summary_is_16bit(own, 6u)) {
+        return 0u;
+    }
+
+    for (index = 0u; index < count; ++index) {
+        const struct v9x_vbe_mode_summary *twin = &entries[index].summary;
+
+        if (entries[index].mode_number == vbe_mode) {
+            continue;
+        }
+        if ((twin->attributes & (V9X_VBE_ATTR_SUPPORTED |
+                                 V9X_VBE_ATTR_LINEAR)) !=
+            (V9X_VBE_ATTR_SUPPORTED | V9X_VBE_ATTR_LINEAR)) {
+            continue;
+        }
+        if (twin->width == own->width && twin->height == own->height &&
+            v9x_vbe_summary_stride(twin) == v9x_vbe_summary_stride(own) &&
+            v9x_vbe_summary_is_16bit(twin, 5u)) {
+            return entries[index].mode_number;
+        }
+    }
+    return 0u;
+}
+
 v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state,
                               v9x_u16 engine_wants_555)
 {

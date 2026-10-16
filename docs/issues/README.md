@@ -4,7 +4,6 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
-- [2026-10-16 ATI: 16 bpp modes with no 15 bpp sibling stay 5:6:5, and ATI titles (Wipeout 512x384, Assault Rigs 400x300) draw them as 5:5:5](2026-10-16-ati-16bpp-modes-without-a-555-sibling.md)
 - [2026-10-16 3DCIF games on a tester's Rage Pro class card: Tomb Raider's and F1's keyed draws refused (fixed in source, untested), F1's quad and rectangle strips skipped, the display layout disagreeing with what is drawn](2026-10-16-3dcif-games-on-a-testers-rage-pro.md)
 - [2026-10-15 The GMA 950 draws a colour-keyed texture's key colour (predates 0.18.1; found by the new ColorKeyHalves check)](2026-10-15-gen3-draws-the-colour-key.md)
 - [2026-10-15 The ViRGE claims vertex fog it does not draw on the DrawPrimitive path (predates 0.18.1)](2026-10-15-virge-claims-vertex-fog-it-does-not-draw.md)
@@ -80,6 +79,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-10-16 ATI: 16 bpp modes with no 15 bpp sibling stay 5:6:5 (fixed 2026-10-16: the twins were in the BIOS list under ATI's numbers; Wipeout's title draws, Assault Rigs' screen not yet looked at)](2026-10-16-ati-16bpp-modes-without-a-555-sibling.md)
 - [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locked on 3D (fixed in 0.18.3: the live-counter read of a disabled pipe; confirmed by the reporter 2026-10-15)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
 - [2026-10-11 3DMark2000 showed "3D pattern corruption" on a reporter's GMA 900 (GitHub issue 7; fixed in 0.18.4: polygon stipple turned off; confirmed by the reporter 2026-10-15)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)
 - [2026-10-12 Glide's command FIFO sat inside the desktop, and GDI's CPU drawing jammed it (fixed: the Voodoo4 desktop moved to 15 MiB, above Glide's memory)](2026-10-12-glide-cmdfifo-overlaps-the-desktop.md)

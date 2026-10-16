@@ -99,15 +99,29 @@ v9x_u16 v9x_highcolor_resolve(v9x_u16 setting, v9x_u16 d3d_state,
  */
 v9x_u16 v9x_vbe_mode_555(v9x_u16 vbe_mode);
 
-/* The 5:5:5 masks, for a row whose mode number has a sibling. */
-void v9x_mode_masks_555(struct v9x_mode_masks *out);
-
 /* One entry of the mini-VDD's scanned-mode cache: the BIOS mode number, and
  * what 4F01h said about it. */
 struct v9x_vbe_scan_entry {
     v9x_u16 mode_number;
     struct v9x_vbe_mode_summary summary;
 };
+
+/*
+ * The 15 bpp mode to program for a 5:6:5 one, or zero when there is none.
+ *
+ * The VESA pair when v9x_vbe_mode_555 knows one. Otherwise the scan decides:
+ * a BIOS that numbers its own modes - the Rage XL's 0x0224 is 512x384x16 and
+ * 0x0223 its 5:5:5 twin - lists the sibling, and it is taken when the scan
+ * also lists vbe_mode as 5:6:5 and the twin matches it in width, height and
+ * stride, is 5:5:5 in two bytes a pixel, and has a linear framebuffer. The
+ * same both-or-neither rule as v9x_vbe_mode_555 applies to its answer.
+ */
+v9x_u16 v9x_vbe_sibling_555(v9x_u16 vbe_mode,
+                            const struct v9x_vbe_scan_entry *entries,
+                            v9x_u16 count);
+
+/* The 5:5:5 masks, for a row whose mode number has a sibling. */
+void v9x_mode_masks_555(struct v9x_mode_masks *out);
 
 /*
  * Why a scanned record was refused admission - or that it was not.
