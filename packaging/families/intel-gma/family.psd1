@@ -95,7 +95,8 @@
             Acceleration = 'directdraw-fill-blt'
             Direct3D = 'hardware-gen75'
             EngineType = 'INTEL_GEN75'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
+            # FLIP: plane A's base (Phase F3, measured by V9XHSWMM /flip).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             VideoMemoryBytes = 4194304
             # The family's table; this VBIOS describes neither 1024x576 row
             # and the runtime scan publishes its own modes instead.

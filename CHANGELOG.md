@@ -20,6 +20,11 @@ build identifier so exact guest-tested binaries remain traceable.
   engine. A program that locks a Z buffer reads the chip's tiled layout,
   not rows
   ([record](docs/decisions/2026-10-17-haswell-phase-f2b-depth.md)).
+  Page flips are real. Before, every flip was refused, so a
+  triple-buffered game drew one frame in three straight onto the screen,
+  which flickered. In 3DMark 99, every flip now completes at the
+  display's blank and no frame is drawn on the visible page
+  ([record](docs/decisions/2026-10-17-haswell-phase-f3-flips.md)).
 
 ## 0.18.5 - 2026-10-16
 

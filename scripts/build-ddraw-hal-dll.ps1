@@ -121,6 +121,9 @@ $sources = @(
     "src\display32\engines\eng_hsw.c",
     "src\chipsets\intel\hsw_3d.c",
     "src\chipsets\intel\hsw_eu.c",
+    # Its plane-A flips: mechanics, then the host-tested arithmetic.
+    "src\display32\engines\hsw_scanout.c",
+    "src\chipsets\intel\hsw_display.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",

@@ -138,6 +138,19 @@ breaks, mostly texture changes.
 The next measurement is finer buckets inside the engine draw, and the
 aperture's memory type.
 
-Also seen: 69,958 Flip calls for about 500 frames, all declined. Why
+Also seen: 69,958 Flip calls for about 500 frames, all declined.
+
+## 2026-10-18, boot 17: the flip is fixed in the counters (Phase F3)
+
+The F3 scanout is in
+(`docs/decisions/2026-10-17-haswell-phase-f3-flips.md`). At the same
+default run:
+
+- `FlipHandled` 6,799, `FlipDeclined` 0;
+- `DrawsIntoPresented` 0, against 300,727 before;
+- every flip completed with the live base matching.
+
+Whether the flicker is gone on the monitor is not yet seen. Game 2 is
+unchanged (20.8 fps); its cost is the submission path above. Why
 DirectDraw calls Flip about 140 times a frame when it is declined is not
 established; the scanout (Phase F3) removes the declined path.

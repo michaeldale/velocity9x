@@ -489,6 +489,17 @@ int v9x_sis_set_display_start(DWORD byte_offset);
  * blank. */
 int v9x_mga_scanout_active(void);
 int v9x_mga_set_display_start(DWORD byte_offset);
+/* Haswell's plane A, in engines/hsw_scanout.c: active only for
+ * INTEL_GEN75 stamped with V9X_DD_ENGINE_CAP_FLIP. A flip is written at
+ * any line and pending until DSPASURFLIVE reads the base written. */
+int v9x_hsw_scanout_active(void);
+int v9x_hsw_scanout_live(void);
+int v9x_hsw_in_vblank(void);
+int v9x_hsw_set_display_start(DWORD byte_offset);
+int v9x_hsw_flip_pending(void);
+void v9x_hsw_note_flip_done(void);
+DWORD v9x_hsw_displayed_offset(void);
+void v9x_hsw_scanout_reset(void);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */

@@ -206,6 +206,9 @@ unsigned int v9x_run_intel_hsw_eu_tests(void);
 /* tests\host\test_intel_hsw_3d.c: Gen7.5 3D packets, state, checker. */
 unsigned int v9x_run_intel_hsw_3d_tests(void);
 
+/* tests\host\test_intel_hsw_display.c: Haswell plane base and vblank. */
+unsigned int v9x_run_intel_hsw_display_tests(void);
+
 /* tests\host\test_i9xx_ring.c: Phase 4 sandbox and packet policy. */
 unsigned int v9x_run_i9xx_ring_tests(void);
 
@@ -1313,6 +1316,7 @@ int main(int argc, char **argv)
     failures += v9x_run_intel_hsw_tests();
     failures += v9x_run_intel_hsw_eu_tests();
     failures += v9x_run_intel_hsw_3d_tests();
+    failures += v9x_run_intel_hsw_display_tests();
     failures += v9x_run_i9xx_ring_tests();
     failures += v9x_run_i9xx_blt_tests();
     failures += v9x_run_i9xx_arm_tests();

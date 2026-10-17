@@ -31,7 +31,11 @@ done the same day: Y-tiled D16 Z buffers, filled by a depth-only draw
 whose colour writes are masked. A zero WM and PS hung the render engine
 twice. V9XDDP's Z and private-device Z checks pass; Mixed fails on the
 recorded Lock limit
-(`docs\decisions\2026-10-17-haswell-phase-f2b-depth.md`). G (games) next.
+(`docs\decisions\2026-10-17-haswell-phase-f2b-depth.md`). F3 done
+2026-10-17/18: flips through plane A's double-buffered base. 3DMark 99
+drew nothing into the presented buffer, against a third of its batches
+before; the picture is not yet confirmed by eye
+(`docs\decisions\2026-10-17-haswell-phase-f3-flips.md`). G (games) next.
 The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
@@ -758,6 +762,19 @@ Display-only: the worst outcome is a wrong picture until the restore.
   `DrawsIntoPresented` near 0 with VSync on;
 - no visible flicker;
 - then VSync off, recorded.
+
+*Result (2026-10-18).*
+
+- The probe: both writes latched within the frame they were written in.
+  `PIPEADSL` read vactive - 1 at the latch, so the blank test adds one
+  line, as i915's `scanline_offset` does.
+- 3DMark 99: `FlipHandled` 6,799, `FlipDeclined` 0, `DrawsIntoPresented`
+  0, every flip taken at done.
+- 3DMark's own VSync-off setting never passed `DDFLIP_NOVSYNC` here:
+  flips paced to 59 Hz.
+- Not yet seen by eye.
+
+Record: `docs\decisions\2026-10-17-haswell-phase-f3-flips.md`.
 
 ### G. Games
 

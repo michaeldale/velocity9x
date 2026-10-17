@@ -53,6 +53,8 @@ function Get-V9xHostSourceNames {
         # Haswell EU instruction encoder and 3D packet/state builders.
         'src\chipsets\intel\hsw_eu.c',
         'src\chipsets\intel\hsw_3d.c',
+        # Haswell primary-plane scanout arithmetic (Phase F3).
+        'src\chipsets\intel\hsw_display.c',
         # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
@@ -227,6 +229,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_intel_hsw.c',
         'tests\host\test_intel_hsw_eu.c',
         'tests\host\test_intel_hsw_3d.c',
+        'tests\host\test_intel_hsw_display.c',
         'tests\host\test_i9xx_ring.c',
         'tests\host\test_i9xx_blt.c',
         'tests\host\test_i9xx_arm.c',

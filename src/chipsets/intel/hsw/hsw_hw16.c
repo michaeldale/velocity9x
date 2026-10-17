@@ -118,9 +118,12 @@ static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
     *ring_bytes = V9X_INTEL_HSW_RING_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_INTEL_GEN75;
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
-     * both together, so an open engine has both (Phase F2). */
+     * both together, so an open engine has both (Phase F2). FLIP: plane A's
+     * base, which the HAL writes only while pipe A and plane A are live
+     * (Phase F3, engines\hsw_scanout.c). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY | V9X_DD_ENGINE_CAP_D3D;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY | V9X_DD_ENGINE_CAP_D3D |
+                   V9X_DD_ENGINE_CAP_FLIP;
 }
 
 const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {

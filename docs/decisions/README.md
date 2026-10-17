@@ -244,6 +244,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-17 Haswell Phase F1b: a D32_FLOAT depth buffer, cleared by drawing, resolves three overlapping triangles](2026-10-17-haswell-phase-f1b-depth.md)
 - [2026-10-17 Haswell Phase F2a: Direct3D draws on the render ring through the HAL; pre-transformed vertices need the clipper's perspective divide off](2026-10-17-haswell-phase-f2a-direct3d-engine.md)
 - [2026-10-17 Haswell Phase F2b: Y-tiled D16 Z buffers, filled by a masked draw; a zero WM and PS hangs the render engine](2026-10-17-haswell-phase-f2b-depth.md)
+- [2026-10-17 Haswell Phase F3: flips through plane A's double-buffered base; the line counter reads a line behind](2026-10-17-haswell-phase-f3-flips.md)
 
 ## SiS
 

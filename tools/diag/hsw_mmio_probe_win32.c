@@ -35,6 +35,7 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_hsw.h"
 #include "velocity9x/intel_hsw_3d.h"
+#include "velocity9x/intel_hsw_display.h"
 #include "velocity9x/intel_hsw_eu.h"
 
 #ifndef V9X_BUILD_ID
@@ -429,6 +430,174 @@ static void v9x_bcs_run(void)
     }
     v9x_bcs_publish();
     WritePrivateProfileStringA("Bcs", "Result", "COMPLETE", V9X_HSWMM_PATH);
+}
+
+/*
+ * Phase F3 (/flip:N, N the desktop's bytes per pixel):
+ * docs\plans\intel-haswell-direct3d.md. Three DIOC 4 calls:
+ *   1. read the plane;
+ *   2. move it to row 383 of the desktop, which is not page-aligned, as a
+ *      DSPASURF page and a DSPAOFFSET x from v9x_intel_hsw_plane_split;
+ *      hold V9X_FLIP_HOLD_MS for the eye or the capture;
+ *   3. write back the DSPASURF and DSPAOFFSET read in 1.
+ * Layouts match hsw_mmio_probe.asm's HSW_FLIP_* definitions.
+ */
+#define V9X_FLIP_DIOC        4u
+#define V9X_FLIP_MAGIC       0x4c465348ul
+#define V9X_FLIP_WRITE       0x00000001ul
+#define V9X_FLIP_ROW         383ul
+#define V9X_FLIP_HOLD_MS     5000ul
+#define V9X_FLIP_ST_WRITTEN  0x00000008ul
+#define V9X_FLIP_ST_LATCHED  0x00000010ul
+#define V9X_FLIP_ST_LIVE     0x00000004ul
+
+static struct v9x_flip_in {
+    DWORD base;
+    DWORD flags;
+    DWORD surf;
+    DWORD offset;
+} v9x_flip_in;
+
+static struct v9x_flip_result {
+    DWORD magic;
+    DWORD status;
+    DWORD pipeconf;
+    DWORD dspcntr;
+    DWORD stride;
+    DWORD surf_before;
+    DWORD offset_before;
+    DWORD live_before;
+    DWORD vtotal;
+    DWORD dsl_write;
+    DWORD polls;
+    DWORD dsl_before_latch;
+    DWORD dsl_latch;
+    DWORD surf_after;
+    DWORD offset_after;
+    DWORD live_after;
+    DWORD dsl_min;
+    DWORD dsl_max;
+    DWORD wraps;
+    DWORD flags;
+    DWORD reserved[4];
+} v9x_flip_out;
+
+static void v9x_key(const char *section, const char *key, DWORD value);
+
+/* One DIOC 4 call, published under section `section`; 1 when it ran. */
+static int v9x_flip_call(const char *section, DWORD flags, DWORD surf,
+                         DWORD offset)
+{
+    HANDLE device;
+    DWORD returned = 0ul;
+    BOOL ok;
+
+    WritePrivateProfileStringA(section, 0, 0, V9X_HSWMM_PATH);
+    v9x_flip_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_flip_in.flags = flags;
+    v9x_flip_in.surf = surf;
+    v9x_flip_in.offset = offset;
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA(section, "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return 0;
+    }
+    ok = DeviceIoControl(device, V9X_FLIP_DIOC, &v9x_flip_in,
+                         sizeof(v9x_flip_in), &v9x_flip_out,
+                         sizeof(v9x_flip_out), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_flip_out) ||
+        v9x_flip_out.magic != V9X_FLIP_MAGIC) {
+        WritePrivateProfileStringA(section, "Result", "DIOC-FAILED",
+                                   V9X_HSWMM_PATH);
+        return 0;
+    }
+    v9x_key(section, "Status", v9x_flip_out.status);
+    v9x_key(section, "PipeAConf", v9x_flip_out.pipeconf);
+    v9x_key(section, "DspACntr", v9x_flip_out.dspcntr);
+    v9x_key(section, "DspAStride", v9x_flip_out.stride);
+    v9x_key(section, "DspASurfBefore", v9x_flip_out.surf_before);
+    v9x_key(section, "DspAOffsetBefore", v9x_flip_out.offset_before);
+    v9x_key(section, "DspASurfLiveBefore", v9x_flip_out.live_before);
+    v9x_key(section, "TransVtotalA", v9x_flip_out.vtotal);
+    if ((flags & V9X_FLIP_WRITE) != 0ul) {
+        v9x_key(section, "SurfWritten", surf);
+        v9x_key(section, "OffsetWritten", offset);
+        v9x_key(section, "LineAtWrite", v9x_flip_out.dsl_write);
+        v9x_key(section, "Polls", v9x_flip_out.polls);
+        v9x_key(section, "LineBeforeLatch", v9x_flip_out.dsl_before_latch);
+        v9x_key(section, "LineAtLatch", v9x_flip_out.dsl_latch);
+        v9x_key(section, "FramesBegun", v9x_flip_out.wraps);
+        v9x_key(section, "LineMin", v9x_flip_out.dsl_min);
+        v9x_key(section, "LineMax", v9x_flip_out.dsl_max);
+        v9x_key(section, "DspASurfAfter", v9x_flip_out.surf_after);
+        v9x_key(section, "DspAOffsetAfter", v9x_flip_out.offset_after);
+        v9x_key(section, "DspASurfLiveAfter", v9x_flip_out.live_after);
+        WritePrivateProfileStringA(
+            section, "LatchedInBlank",
+            (v9x_flip_out.status & V9X_FLIP_ST_LATCHED) != 0ul &&
+                    v9x_intel_hsw_in_vblank(v9x_flip_out.dsl_latch,
+                                            v9x_flip_out.vtotal)
+                ? "1" : "0",
+            V9X_HSWMM_PATH);
+    }
+    WritePrivateProfileStringA(section, "Result", "COMPLETE", V9X_HSWMM_PATH);
+    return 1;
+}
+
+static int v9x_flip_latched(void)
+{
+    return (v9x_flip_out.status & (V9X_FLIP_ST_WRITTEN | V9X_FLIP_ST_LATCHED)) ==
+               (V9X_FLIP_ST_WRITTEN | V9X_FLIP_ST_LATCHED) &&
+           v9x_flip_out.wraps <= 1ul;
+}
+
+static void v9x_flip_run(DWORD bytes_per_pixel)
+{
+    DWORD surf_before;
+    DWORD offset_before;
+    v9x_u32 surf = 0ul;
+    v9x_u32 offset = 0ul;
+    int moved;
+
+    if (!v9x_flip_call("FlipRead", 0ul, 0ul, 0ul)) {
+        return;
+    }
+    if ((v9x_flip_out.status & V9X_FLIP_ST_LIVE) == 0ul) {
+        WritePrivateProfileStringA("FlipRead", "Verdict", "plane-not-live",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    surf_before = v9x_flip_out.surf_before;
+    offset_before = v9x_flip_out.offset_before;
+    if (v9x_intel_hsw_plane_split(v9x_flip_out.stride * V9X_FLIP_ROW,
+                                  bytes_per_pixel, &surf, &offset) !=
+        V9X_STATUS_OK) {
+        WritePrivateProfileStringA("FlipRead", "Verdict", "offset-refused",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_key("FlipRead", "Row", V9X_FLIP_ROW);
+    v9x_key("FlipRead", "TargetOffset", v9x_flip_out.stride * V9X_FLIP_ROW);
+
+    if (!v9x_flip_call("Flip", V9X_FLIP_WRITE, surf, offset)) {
+        return;
+    }
+    moved = v9x_flip_latched();
+    WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+    Sleep(V9X_FLIP_HOLD_MS);
+
+    /* Back to what was read, whatever the flip did. */
+    if (!v9x_flip_call("FlipRestore", V9X_FLIP_WRITE, surf_before,
+                       offset_before)) {
+        return;
+    }
+    WritePrivateProfileStringA("Flip", "Verdict",
+                               moved && v9x_flip_latched()
+                                   ? "both-latched" : "not-latched",
+                               V9X_HSWMM_PATH);
 }
 
 /*
@@ -2362,6 +2531,23 @@ void __stdcall V9xHswMmioEntry(void)
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
         ExitProcess(0u);
+    }
+
+    /* /flip:N is Phase F3 alone: N bytes per pixel at the desktop. */
+    for (index = 1ul; index <= 4ul; index *= 2ul) {
+        char option[8];
+
+        lstrcpyA(option, "/flip:1");
+        option[6] = (char)('0' + index);
+        if (v9x_has_switch(option)) {
+            WritePrivateProfileStringA("Report", "Access",
+                                       "plane-flip-phase-f3", V9X_HSWMM_PATH);
+            v9x_flip_run(index);
+            WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                       V9X_HSWMM_PATH);
+            WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+            ExitProcess(0u);
+        }
     }
 
     /* /rcs is Phase C alone, /draw Phase D, /shade:N Phase E, likewise. */

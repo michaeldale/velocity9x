@@ -1258,6 +1258,10 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
 
 void v9x_scanout_note_flip_done(void)
 {
+    if (v9x_hsw_scanout_active()) {
+        v9x_hsw_note_flip_done();
+        return;
+    }
     if (!v9x_i9xx_scanout_active() || !v9x_i9xx_scanout_flip_outstanding ||
         v9x_i9xx_scanout_last_base_reg == 0ul) {
         return;
@@ -1365,6 +1369,7 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset, int use_ring)
  */
 void v9x_scanout_reset(void)
 {
+    v9x_hsw_scanout_reset();
     v9x_i9xx_pipestat_baselined = 0;
     v9x_i9xx_scanout_entry_line = 0ul;
     v9x_i9xx_scanout_flip_outstanding = 0;
@@ -1415,6 +1420,9 @@ void v9x_scanout_reset(void)
 
 int v9x_in_vblank(void)
 {
+    if (v9x_hsw_scanout_active()) {
+        return v9x_hsw_in_vblank();
+    }
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_in_vblank();
     }
@@ -1426,6 +1434,9 @@ int v9x_in_vblank(void)
 
 int v9x_set_display_start(DWORD byte_offset)
 {
+    if (v9x_hsw_scanout_active()) {
+        return v9x_hsw_set_display_start(byte_offset);
+    }
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_set_display_start(byte_offset, 1);
     }
@@ -1445,6 +1456,11 @@ int v9x_set_display_start(DWORD byte_offset)
  * blank wait is what times them, and an unsynced flip skips it. */
 int v9x_set_display_start_now(DWORD byte_offset)
 {
+    /* Haswell's plane has one write, latched at the blank (/flip probe):
+     * an unsynced flip is the same write, and the core arms nothing. */
+    if (v9x_hsw_scanout_active()) {
+        return v9x_hsw_set_display_start(byte_offset);
+    }
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_set_display_start(byte_offset, 0);
     }
@@ -1551,6 +1567,10 @@ int v9x_scanout_flip_window_open(void)
     DWORD line;
     DWORD active;
 
+    /* Haswell latches the base at the blank whenever it is written. */
+    if (v9x_hsw_scanout_active()) {
+        return 1;
+    }
     /* The Rage IIC applies a start written mid-frame at once (ATIRX
      * /crtc), so its window is the blank, short of its end. */
     if (v9x_m64_scanout_active()) {
@@ -1584,6 +1604,9 @@ DWORD v9x_scanout_displayed_offset(void)
     DWORD vtotal;
     DWORD base;
 
+    if (v9x_hsw_scanout_active()) {
+        return v9x_hsw_displayed_offset();
+    }
     if (!v9x_i9xx_scanout_active() ||
         !v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
         return 0xfffffffful;
@@ -1593,7 +1616,7 @@ DWORD v9x_scanout_displayed_offset(void)
 
 int v9x_scanout_hw_flip(void)
 {
-    return v9x_i9xx_scanout_active();
+    return v9x_hsw_scanout_active() || v9x_i9xx_scanout_active();
 }
 
 /*
@@ -1649,6 +1672,9 @@ int v9x_scanout_hw_flip_pending(void)
     DWORD bit;
     DWORD ticks;
 
+    if (v9x_hsw_scanout_active()) {
+        return v9x_hsw_flip_pending();
+    }
     if (!v9x_i9xx_scanout_active()) {
         return 0;
     }
@@ -1674,6 +1700,9 @@ int v9x_scanout_writes_in_blank(void)
      * the latch. intel66 and intel74 to intel77 wrote inside the blank,
      * after the latch, and released a frame early.
      */
+    if (v9x_hsw_scanout_active()) {
+        return 0;
+    }
     if (v9x_m64_scanout_active()) {
         return 1;
     }
@@ -1704,6 +1733,9 @@ int v9x_scanout_vblank_available(void)
     DWORD vtotal;
     DWORD base;
 
+    if (v9x_hsw_scanout_active()) {
+        return v9x_hsw_scanout_live();
+    }
     if (!v9x_i9xx_scanout_active()) {
         return 1;
     }

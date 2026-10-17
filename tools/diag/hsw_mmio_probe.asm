@@ -7,7 +7,9 @@
 ; (GTTMMADR + 2 MB)"), reads every listed offset twice, copies the first
 ; HSW_GTT_COPY GTT entries, and counts the valid entries in the whole table.
 ;
-; Writes: none to the device unless V9XHSWMM.EXE passes HSW_FLAG_FORCEWAKE.
+; Writes: none to the device unless V9XHSWMM.EXE passes HSW_FLAG_FORCEWAKE,
+; or asks for one of the later phases' DIOC codes below (B1, C-F2b's rings,
+; F3's two plane registers).
 ; 0CF8h is saved and restored around the one configuration read (the IGD's
 ; ID, to confirm what the base belongs to). Mapping a physical range with
 ; _MapPhysToLinear changes no device state.
@@ -347,6 +349,74 @@ HswBcsOut     dd HSW_BCS_MAGIC
 HswBcsScratch dd HSW_BCS_SCRATCH_DWORDS dup (0)
 HswBcsIn      dd (HSW_BCS_IN_BYTES / 4) dup (0)
 HswBcsRegion  dd 0
+
+; Phase F3: the plane-A flip (docs\plans\intel-haswell-direct3d.md, approved
+; 2026-10-17). DIOC code 4. Without HSW_FLIP_FLAG_WRITE it only reads the
+; plane. With it, it writes DSPAOFFSET then DSPASURF - those two registers
+; and nothing else - and polls DSPASURFLIVE until it reads the new base.
+; PIPEADSL, a live counter outside HswWindows, is read only after PIPEACONF
+; says pipe A is enabled and running and DSPACNTR that plane A is on: the
+; 945 hung reading a disabled pipe's counters. Offsets are i915_reg.h's.
+HSW_DIOC_FLIP           equ 4
+HSW_FLIP_MAGIC          equ 4c465348h ; "HSFL"
+HSW_FLIP_IN_BASE        equ 0         ; GTTMMADR
+HSW_FLIP_IN_FLAGS       equ 4
+HSW_FLIP_IN_SURF        equ 8         ; DSPASURF to write, 4 KB aligned
+HSW_FLIP_IN_OFFSET      equ 12        ; DSPAOFFSET to write: x, y 0
+HSW_FLIP_IN_BYTES       equ 16
+HSW_FLIP_FLAG_WRITE     equ 00000001h
+HSW_FLIP_SURF_LOW       equ 00000fffh
+HSW_FLIP_OFFSET_HIGH    equ 0ffffe000h
+; Two MMIO reads a poll: seconds at any read rate, many frames.
+HSW_FLIP_POLLS          equ 4000000
+
+HSW_TRANS_VTOTAL_A      equ 06000ch
+HSW_PIPEADSL            equ 070000h
+HSW_PIPEACONF           equ 070008h
+HSW_DSPACNTR            equ 070180h
+HSW_DSPASTRIDE          equ 070188h
+HSW_DSPASURF            equ 07019ch
+HSW_DSPAOFFSET          equ 0701a4h
+HSW_DSPASURFLIVE        equ 0701ach
+HSW_PIPECONF_LIVE       equ 0c0000000h ; enable 31, state 30
+HSW_DSPCNTR_ENABLE      equ 80000000h
+HSW_DSL_MASK            equ 00001fffh
+
+HSW_FLIP_ST_IGD_INTEL   equ 00000001h
+HSW_FLIP_ST_MAPPED      equ 00000002h
+HSW_FLIP_ST_LIVE        equ 00000004h
+HSW_FLIP_ST_WRITTEN     equ 00000008h
+HSW_FLIP_ST_LATCHED     equ 00000010h
+HSW_FLIP_ST_TIMEOUT     equ 00000020h
+HSW_FLIP_ST_BAD_INPUT   equ 00000040h
+HSW_FLIP_ST_NOT_LIVE    equ 00000080h
+
+; Output, byte offsets, matching struct v9x_flip_result in
+; hsw_mmio_probe_win32.c.
+HSW_FLIP_OUT_DWORDS     equ 24
+HSW_FO_STATUS           equ 4
+HSW_FO_PIPECONF         equ 8
+HSW_FO_DSPCNTR          equ 12
+HSW_FO_STRIDE           equ 16
+HSW_FO_SURF_BEFORE      equ 20
+HSW_FO_OFFSET_BEFORE    equ 24
+HSW_FO_LIVE_BEFORE      equ 28
+HSW_FO_VTOTAL           equ 32
+HSW_FO_DSL_WRITE        equ 36
+HSW_FO_POLLS            equ 40
+HSW_FO_DSL_BEFORE_LATCH equ 44        ; the last line read with the old base
+HSW_FO_DSL_LATCH        equ 48        ; the first line read with the new one
+HSW_FO_SURF_AFTER       equ 52
+HSW_FO_OFFSET_AFTER     equ 56
+HSW_FO_LIVE_AFTER       equ 60
+HSW_FO_DSL_MIN          equ 64
+HSW_FO_DSL_MAX          equ 68
+HSW_FO_WRAPS            equ 72        ; frames begun while polling
+HSW_FO_FLAGS            equ 76
+
+HswFlipOut    dd HSW_FLIP_MAGIC
+              dd (HSW_FLIP_OUT_DWORDS - 1) dup (0)
+HswFlipIn     dd (HSW_FLIP_IN_BYTES / 4) dup (0)
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -1396,6 +1466,175 @@ Hsw_Rcs_Dioc_Fail:
     ret
 EndProc Hsw_Rcs_Dioc
 
+; Phase F3 (see the data above). The plane is read before anything else; a
+; write needs the pipe and plane live and a base and offset the registers
+; can hold as given.
+BeginProc Hsw_Flip
+    pushad
+    mov     eax, HSW_IGD_ADDRESS
+    call    Hsw_Pci_Read
+    cmp     ax, HSW_VENDOR_INTEL
+    jne     Hsw_Flip_Bad_Input
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_IGD_INTEL
+    mov     ecx, HswFlipIn[HSW_FLIP_IN_FLAGS]
+    mov     HswFlipOut[HSW_FO_FLAGS], ecx
+    mov     eax, HswFlipIn[HSW_FLIP_IN_BASE]
+    test    eax, eax
+    jz      Hsw_Flip_Bad_Input
+    test    eax, HSW_BASE_ALIGN
+    jnz     Hsw_Flip_Bad_Input
+    test    ecx, HSW_FLIP_FLAG_WRITE
+    jz      short Hsw_Flip_Map
+    test    HswFlipIn[HSW_FLIP_IN_SURF], HSW_FLIP_SURF_LOW
+    jnz     Hsw_Flip_Bad_Input
+    test    HswFlipIn[HSW_FLIP_IN_OFFSET], HSW_FLIP_OFFSET_HIGH
+    jnz     Hsw_Flip_Bad_Input
+
+Hsw_Flip_Map:
+    VMMcall _MapPhysToLinear,<eax,HSW_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Flip_Exit
+    mov     ebp, eax
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_MAPPED
+
+    ; The plane as it is, from registers inside the snapshot's windows.
+    mov     eax, [ebp+HSW_PIPEACONF]
+    mov     HswFlipOut[HSW_FO_PIPECONF], eax
+    mov     eax, [ebp+HSW_DSPACNTR]
+    mov     HswFlipOut[HSW_FO_DSPCNTR], eax
+    mov     eax, [ebp+HSW_DSPASTRIDE]
+    mov     HswFlipOut[HSW_FO_STRIDE], eax
+    mov     eax, [ebp+HSW_DSPASURF]
+    mov     HswFlipOut[HSW_FO_SURF_BEFORE], eax
+    mov     eax, [ebp+HSW_DSPAOFFSET]
+    mov     HswFlipOut[HSW_FO_OFFSET_BEFORE], eax
+    mov     eax, [ebp+HSW_DSPASURFLIVE]
+    mov     HswFlipOut[HSW_FO_LIVE_BEFORE], eax
+    mov     eax, [ebp+HSW_TRANS_VTOTAL_A]
+    mov     HswFlipOut[HSW_FO_VTOTAL], eax
+
+    mov     eax, HswFlipOut[HSW_FO_PIPECONF]
+    and     eax, HSW_PIPECONF_LIVE
+    cmp     eax, HSW_PIPECONF_LIVE
+    jne     Hsw_Flip_Not_Live
+    test    HswFlipOut[HSW_FO_DSPCNTR], HSW_DSPCNTR_ENABLE
+    jz      Hsw_Flip_Not_Live
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_LIVE
+    test    HswFlipIn[HSW_FLIP_IN_FLAGS], HSW_FLIP_FLAG_WRITE
+    jz      Hsw_Flip_Exit
+
+    ; The offset first, then the base, whose write arms the plane's
+    ; double-buffered update; the read back posts it.
+    mov     esi, HswFlipIn[HSW_FLIP_IN_SURF]
+    mov     edi, HswFlipIn[HSW_FLIP_IN_OFFSET]
+    pushfd
+    cli
+    mov     eax, [ebp+HSW_PIPEADSL]
+    and     eax, HSW_DSL_MASK
+    mov     HswFlipOut[HSW_FO_DSL_WRITE], eax
+    mov     [ebp+HSW_DSPAOFFSET], edi
+    mov     [ebp+HSW_DSPASURF], esi
+    mov     eax, [ebp+HSW_DSPASURF]
+    popfd
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_WRITTEN
+
+    ; Until the live base is the one written. EBX is the previous poll's
+    ; line: a line lower than it is a new frame.
+    mov     ebx, HswFlipOut[HSW_FO_DSL_WRITE]
+    mov     HswFlipOut[HSW_FO_DSL_MIN], ebx
+    mov     HswFlipOut[HSW_FO_DSL_MAX], ebx
+    xor     ecx, ecx
+Hsw_Flip_Poll:
+    mov     eax, [ebp+HSW_PIPEADSL]
+    and     eax, HSW_DSL_MASK
+    cmp     eax, ebx
+    jae     short Hsw_Flip_Same_Frame
+    inc     HswFlipOut[HSW_FO_WRAPS]
+Hsw_Flip_Same_Frame:
+    cmp     eax, HswFlipOut[HSW_FO_DSL_MIN]
+    jae     short Hsw_Flip_Not_Min
+    mov     HswFlipOut[HSW_FO_DSL_MIN], eax
+Hsw_Flip_Not_Min:
+    cmp     eax, HswFlipOut[HSW_FO_DSL_MAX]
+    jbe     short Hsw_Flip_Not_Max
+    mov     HswFlipOut[HSW_FO_DSL_MAX], eax
+Hsw_Flip_Not_Max:
+    cmp     [ebp+HSW_DSPASURFLIVE], esi
+    je      short Hsw_Flip_Latched
+    mov     ebx, eax
+    inc     ecx
+    cmp     ecx, HSW_FLIP_POLLS
+    jb      Hsw_Flip_Poll
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_TIMEOUT
+    jmp     short Hsw_Flip_After
+Hsw_Flip_Latched:
+    mov     HswFlipOut[HSW_FO_DSL_BEFORE_LATCH], ebx
+    mov     HswFlipOut[HSW_FO_DSL_LATCH], eax
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_LATCHED
+Hsw_Flip_After:
+    mov     HswFlipOut[HSW_FO_POLLS], ecx
+    mov     eax, [ebp+HSW_DSPASURF]
+    mov     HswFlipOut[HSW_FO_SURF_AFTER], eax
+    mov     eax, [ebp+HSW_DSPAOFFSET]
+    mov     HswFlipOut[HSW_FO_OFFSET_AFTER], eax
+    mov     eax, [ebp+HSW_DSPASURFLIVE]
+    mov     HswFlipOut[HSW_FO_LIVE_AFTER], eax
+    jmp     short Hsw_Flip_Exit
+
+Hsw_Flip_Not_Live:
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_NOT_LIVE
+    jmp     short Hsw_Flip_Exit
+Hsw_Flip_Bad_Input:
+    or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_BAD_INPUT
+Hsw_Flip_Exit:
+    popad
+    ret
+EndProc Hsw_Flip
+
+; ESI = DIOCParams. Copies the input, runs Hsw_Flip, copies the result.
+BeginProc Hsw_Flip_Dioc
+    pushad
+    mov     ebx, esi
+    mov     esi, [ebx.lpvInBuffer]
+    test    esi, esi
+    jz      short Hsw_Flip_Dioc_Fail
+    cmp     [ebx.cbInBuffer], HSW_FLIP_IN_BYTES
+    jb      short Hsw_Flip_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short Hsw_Flip_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], HSW_FLIP_OUT_DWORDS * 4
+    jb      short Hsw_Flip_Dioc_Fail
+
+    cld
+    mov     edi, OFFSET32 HswFlipIn
+    mov     ecx, HSW_FLIP_IN_BYTES / 4
+    rep     movsd
+    mov     edi, OFFSET32 HswFlipOut + 4
+    mov     ecx, HSW_FLIP_OUT_DWORDS - 1
+    xor     eax, eax
+    rep     stosd
+
+    call    Hsw_Flip
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 HswFlipOut
+    mov     ecx, HSW_FLIP_OUT_DWORDS
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short Hsw_Flip_Dioc_Done
+    mov     dword ptr [eax], HSW_FLIP_OUT_DWORDS * 4
+Hsw_Flip_Dioc_Done:
+    popad
+    xor     eax, eax
+    ret
+Hsw_Flip_Dioc_Fail:
+    popad
+    mov     eax, 1
+    ret
+EndProc Hsw_Flip_Dioc
+
 BeginProc Hsw_Reset_Result
     pushad
     mov     edi, OFFSET32 HswResult + 4
@@ -1424,6 +1663,11 @@ Hsw_Dioc_Not_Bcs:
     call    Hsw_Rcs_Dioc
     ret
 Hsw_Dioc_Not_Rcs:
+    cmp     ecx, HSW_DIOC_FLIP
+    jne     short Hsw_Dioc_Not_Flip
+    call    Hsw_Flip_Dioc
+    ret
+Hsw_Dioc_Not_Flip:
     cmp     ecx, HSW_DIOC_CAPTURE
     jne     Hsw_Dioc_Fail
 
