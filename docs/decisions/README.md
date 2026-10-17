@@ -253,6 +253,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-18 HD 4600 mipmaps: chains placed as one Gen7 tree, every level probe reads its level](2026-10-18-haswell-mipmaps.md)
 - [2026-10-18 HD 4600, Glide and 3DCIF: Glide passes; 3DCIF draws only without depth, and Laputa hangs](2026-10-18-haswell-glide-3dcif-probes.md)
 - [2026-10-18 HD 4600: the intel-gma package installs through Have Disk, every file as built](2026-10-18-haswell-package-install.md)
+- [2026-10-18 0.19.0 on an emulated Trio64: installs over 0.18.5, no DirectDraw-probe check lost](2026-10-18-86box-trio64-0.19.0-install.md)
 
 ## SiS
 
