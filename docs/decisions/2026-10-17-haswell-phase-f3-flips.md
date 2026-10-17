@@ -84,10 +84,18 @@ held 5 s, and wrote back what it had read.
   in the whole run. So they do not present every frame they count. How
   3DMark counts those frames is not established.
 
-## Not done
+## Boot 17, watched
 
-- **Whether the flicker is gone is for Michael's eyes**: the counters
-  say no frame is drawn on screen, and nobody has watched.
+Michael watched a second default run (started 00:09:52) on the 4570's
+monitor: "Both game 1 and 2 look good and speed is good". He saw no
+flicker in either game.
+
+The agent's screenshot at Game 1's start now shows a finished frame, sky
+and textured road. So the flat grey ground and sky in boot 15's
+screenshot were a frame under construction on the page at offset 0, not
+missing textures.
+
+## Not done
 - Game 2's slowness is the submission path (see the issue) and is not
   touched here.
 - Modes other than these two were not measured.

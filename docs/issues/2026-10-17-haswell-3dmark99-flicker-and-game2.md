@@ -151,6 +151,16 @@ default run:
 - every flip completed with the live base matching.
 
 Whether the flicker is gone on the monitor is not yet seen. Game 2 is
-unchanged (20.8 fps); its cost is the submission path above. Why
+unchanged (20.8 fps); its cost is the submission path above.
+
+**Seen, same boot:** Michael watched a full run: "Both game 1 and 2 look
+good and speed is good". The flicker is fixed.
+
+Game 1's grey ground and sky (Next, item 3) were a half-drawn frame. A
+screenshot with flips working shows the sky and road textured.
+
+Still open: Game 2's measured 20.8 fps and its 47 us of CPU per batch
+(item 2's split). Michael judges the speed good, so this is an
+efficiency question, not a visible defect. Why
 DirectDraw calls Flip about 140 times a frame when it is declined is not
 established; the scanout (Phase F3) removes the declined path.

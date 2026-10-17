@@ -34,7 +34,7 @@ recorded Lock limit
 (`docs\decisions\2026-10-17-haswell-phase-f2b-depth.md`). F3 done
 2026-10-17/18: flips through plane A's double-buffered base. 3DMark 99
 drew nothing into the presented buffer, against a third of its batches
-before; the picture is not yet confirmed by eye
+before, and Michael saw no flicker in either game
 (`docs\decisions\2026-10-17-haswell-phase-f3-flips.md`). G (games) next.
 The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
@@ -772,7 +772,8 @@ Display-only: the worst outcome is a wrong picture until the restore.
   0, every flip taken at done.
 - 3DMark's own VSync-off setting never passed `DDFLIP_NOVSYNC` here:
   flips paced to 59 Hz.
-- Not yet seen by eye.
+- Watched on the monitor, same boot: both games look right, with no
+  flicker.
 
 Record: `docs\decisions\2026-10-17-haswell-phase-f3-flips.md`.
 
