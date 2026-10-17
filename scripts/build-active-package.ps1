@@ -252,7 +252,7 @@ $glideLines = if ($shipsGlide) {
         'GLIDE2X.DLL is a Glide 2 driver for games written for 3dfx Voodoo cards,'
         'drawing through the same engine. The INF copies it to SYSTEM unless a newer'
         'GLIDE2X.DLL is there already, as a Voodoo card''s own is; that one is kept.'
-        'It has been run on the Intel GMA 950 only.'
+        'It has been run on the Intel GMA 950, and its probe on the HD 4600.'
         'GLIDE3X.DLL is the Glide 3 driver (Diablo II, Rollcage), over the same'
         'engine and copied under the same rule: a newer GLIDE3X.DLL, such as a'
         'Voodoo3''s own, is kept. It has been run on the ATI Rage XL and the Intel'
@@ -272,7 +272,8 @@ $glideLines += @(
     'to ATI''s driver and cannot run on this one. A game that carries its own'
     'copy in its folder loads that first; rename it to use this one. It has'
     'been run with ATI''s SDK demos on the Rage IIC, the Rage XL and the Intel'
-    'GMA 950.'
+    'GMA 950. It is not supported on the Intel HD Graphics 4600: draws with a'
+    'depth buffer are refused there.'
 )
 $installLines = Get-Content -LiteralPath $installSource | ForEach-Object {
     switch ($_) {

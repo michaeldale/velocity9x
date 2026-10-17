@@ -1,8 +1,8 @@
 @{
     SchemaVersion = 1
     Id = 'intel-gma'
-    DisplayName = 'Intel GMA (Gen3)'
-    Description = 'Intel GMA 950 on 945GSE and GMA 900 on 915GM: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. HD Graphics 4600 (Haswell): VBE display and DirectDraw blits on the BCS ring.'
+    DisplayName = 'Intel GMA and HD Graphics'
+    Description = 'Intel GMA 950 on 945GSE and GMA 900 on 915GM: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -199,7 +199,7 @@
 
     Package = @{
         ModesSummary = '640x480 and native 1024x576 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + ring flip, engine blits, Gen3 Direct3D)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flips, engine blits, Gen3 and Haswell Direct3D)'
     }
 
     Floppy = @{

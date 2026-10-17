@@ -7,24 +7,54 @@ build identifier so exact guest-tested binaries remain traceable.
 ## 0.19.0 - not yet released
 
 - **Intel HD Graphics 4600 (Haswell, `8086:0412`) joins the `intel-gma`
-  family, with DirectDraw fills and copies on the chip's blitter.** The
-  driver wakes the GT, runs a ring above 16 MB of stolen memory and
-  submits fills and copies there. Measured on an i5-4570 at 8, 16 and 32
-  bpp: every pixel matches a CPU reference, including across mode
-  switches
-  ([record](docs/decisions/2026-10-17-haswell-phase-b2-directdraw-on-bcs.md)).
-  Direct3D draws on the chip's render engine as well, at 16 bpp, with
-  mipmaps sampled at their top level
-  ([record](docs/decisions/2026-10-17-haswell-phase-f2a-direct3d-engine.md)).
-  It has 16-bit Z buffers with every comparison, cleared by the render
-  engine. A program that locks a Z buffer reads the chip's tiled layout,
-  not rows
-  ([record](docs/decisions/2026-10-17-haswell-phase-f2b-depth.md)).
-  Page flips are real. Before, every flip was refused, so a
-  triple-buffered game drew one frame in three straight onto the screen,
-  which flickered. In 3DMark 99, every flip now completes at the
-  display's blank and no frame is drawn on the visible page
-  ([record](docs/decisions/2026-10-17-haswell-phase-f3-flips.md)).
+  family, with DirectDraw, Direct3D, OpenGL and Glide on the chip's own
+  engines.** Measured on an i5-4570; other Haswell parts are not
+  recognised yet.
+  - **DirectDraw:** fills and copies run on the chip's blitter. Every
+    pixel matches a CPU reference at 8, 16 and 32 bpp, including across
+    mode switches
+    ([record](docs/decisions/2026-10-17-haswell-phase-b2-directdraw-on-bcs.md)).
+  - **Page flips:** a flip takes effect at the display's blank, so a
+    triple-buffered game shows only finished frames. 3DMark 99 runs
+    without flicker
+    ([record](docs/decisions/2026-10-17-haswell-phase-f3-flips.md)).
+  - **Direct3D:** draws run on the render engine at 16 bpp, with 16-bit Z
+    buffers and every comparison
+    ([record](docs/decisions/2026-10-17-haswell-phase-f2a-direct3d-engine.md),
+    [depth](docs/decisions/2026-10-17-haswell-phase-f2b-depth.md)).
+    Half-Life's `timedemo mwd5` at 640x480 runs at 59.2 fps, against
+    41.3 on the GMA 950
+    ([record](docs/decisions/2026-10-18-haswell-batch-cost-uncached-kernel-build.md)).
+  - **OpenGL:** the ICD draws on the same engine:
+    - textures, the write mask and the scissor;
+    - two texture units, so `GL_SGIS_multitexture` is offered and
+      lightmaps take one pass;
+    - mipmaps.
+
+    Half-Life `-gl` runs full screen at 67.5 fps, against 16.8 on the
+    GMA 950 and 61.3 with one texture unit
+    ([step 2](docs/decisions/2026-10-18-haswell-render-interface-step2.md),
+    [two units](docs/decisions/2026-10-18-haswell-render-interface-step4.md),
+    [mipmaps](docs/decisions/2026-10-18-haswell-mipmaps.md)).
+  - **Mipmaps:** Direct3D and OpenGL both sample every level of a mip
+    chain.
+  - **Glide:** the Glide 2 probe passes all its checks on the engine, and
+    a Glide 3 session opens and closes. No Glide game has been run on
+    this chip
+    ([record](docs/decisions/2026-10-18-haswell-glide-3dcif-probes.md)).
+  - **Known limits:**
+    - 3D runs at 16 bpp only.
+    - A program that locks a Z buffer reads the chip's tiled layout, not
+      rows.
+    - Each batch of triangles costs about 65 µs to submit, which limits
+      draw-heavy scenes such as 3DMark 99's Game 2
+      ([issue](docs/issues/2026-10-17-haswell-3dmark99-flicker-and-game2.md)).
+    - Half-Life refused full-screen OpenGL twice before it ran there.
+      This was not investigated.
+  - **3DCIF is not supported on this chip in 0.19.0.** Draws that use a
+    depth buffer are refused, so the SDK demos draw only partly, and
+    Laputa hangs after its first frame
+    ([record](docs/decisions/2026-10-18-haswell-glide-3dcif-probes.md)).
 
 ## 0.18.5 - 2026-10-16
 

@@ -66,6 +66,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
+| Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Not run here. A reporter runs Direct3D on one Lenovo laptop |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
@@ -92,6 +93,43 @@ Color and 1280x1024 on the S3 cards, and 1024x576 on the GMA 950's panel.
 Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
 where the table says otherwise. No card has a hardware cursor.
 
+### What each card runs
+
+The interfaces each card has been measured running on physical hardware,
+from the records the [changelog](CHANGELOG.md) links.
+
+- **Yes:** measured.
+- **Emulator:** measured only on an emulator.
+- **Not run:** installed and expected to work, but nobody has measured
+  it.
+- **No:** not available on that card.
+
+| Card | 2D on the engine | Direct3D | Direct3D 8 | OpenGL | Two texture units | Glide 2 and 3 | 3DCIF |
+|---|---|---|---|---|---|---|---|
+| Intel HD Graphics 4600 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | No (0.19.0) |
+| Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
+| Intel GMA 900 | Not run | Yes, by a reporter | Not run | Not run | Not run | Not run | Not run |
+| ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
+| ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
+| ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |
+| ATI Mach64 VT2 | No | No | No | No | No | No | No |
+| S3 Trio3D/2X, Trio3D | No | Yes, narrow | Not run | Not run | No | Not run | Not run |
+| S3 ViRGE/DX | GDI | Emulator | Not run | Emulator | No | Not run | Not run |
+| S3 Trio32/64 | GDI, DirectDraw | No | No | No | No | No | No |
+| Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Not run | No | Not run | Not run |
+| Matrox Millennium | GDI, DirectDraw, flips | No | No | No | No | No | No |
+| SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
+| 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
+| VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
+
+Measured limits:
+- **Colour depth:** 3D is 16-bit colour with a 16-bit depth buffer on
+  every card.
+- **Two texture units** means one-pass multitexture: OpenGL's
+  `GL_SGIS_multitexture`, and lightmaps in one pass.
+- **When an engine can't draw something:** it refuses the draw rather
+  than drawing it wrong. Only the GMA 950 then draws it on the CPU.
+
 ### Measured frame rates
 
 Recorded on each card as it shipped, at 640x480. They are not a
@@ -99,6 +137,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 
 | Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
 |---|---|---|---|
+| Intel HD Graphics 4600 (i5-4570) | 59.2 fps | not run; Half-Life `-gl` 67.5 fps | 0.19.0 |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
 | ATI Rage XL PCI (P3) | 18.1 fps | 11.6 fps | 0.10.1 |
@@ -184,8 +223,8 @@ run on one card or another.
 Implemented: the matrix stacks, immediate mode, vertex arrays, clipping
 (the scissor included), texture objects and images with the OpenGL 1.1
 environments, fog, attribute stacks, state queries, `glReadPixels`,
-front-buffer drawing, and `GL_SGIS_multitexture` on the Rage Pro and
-Gen3. Not yet: lighting, display lists, evaluators, and feedback and
+front-buffer drawing, and `GL_SGIS_multitexture` on the Rage Pro,
+Gen3 and the HD 4600. Not yet: lighting, display lists, evaluators, and feedback and
 selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
 tracks every entry point. The driver writes `C:\V9XDIAG\V9XGL.LOG`.
 
@@ -205,6 +244,8 @@ Measured:
 - **Diablo II** (shareware demo): to the town on the Rage XL and the
   Rage IIC.
 - **Rollcage** (demo): menus and races on the Rage XL and the GMA 950.
+- **HD 4600:** the Glide 2 probe passes every check, and a Glide 3
+  session opens and closes. No game has been run on it yet.
 
 A game that carries its own Glide DLL in its folder loads that first.
 The logs are `C:\V9XDIAG\V9XGLIDE.LOG` and `V9XGLD3.LOG`.
@@ -220,7 +261,9 @@ among them. Every package installs it to SYSTEM over any copy already
 there.
 
 All eight of ATI's SDK 4.1 demos draw on the Rage IIC, the Rage XL and the
-GMA 950, VQ-compressed textures included. A tester has tried Formula 1
+GMA 950, VQ-compressed textures included. The HD 4600 is not supported in
+0.19.0: it refuses every 3DCIF draw that uses a depth buffer, so most
+demos draw only partly, and Laputa hangs. A tester has tried Formula 1
 and Tomb Raider on 0.18.0; both need more work. Not yet done:
 - mipmaps;
 - the Rage Pro's tiled texture layout;

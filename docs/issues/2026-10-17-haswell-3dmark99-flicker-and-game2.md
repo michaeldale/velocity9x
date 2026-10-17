@@ -1,6 +1,9 @@
 # Haswell, 3DMark 99: every flip is declined, so one frame in three is drawn on screen; Game 2 and the large-texture tests are slow
 
-Date: 2026-10-17. Status: open. Measured on the i5-4570 (`8086:0412`),
+Date: 2026-10-17. Status: the flicker is fixed (Phase F3, boot 17, seen
+on the monitor by Michael). Game 2's per-batch cost is open and parked
+at Michael's word on 2026-10-18; see the last section. Measured on the
+i5-4570 (`8086:0412`),
 boot 15, HAL `4e562dc3-dirty` plus F2b (`bf173a5b`, V9XHAL.DLL by
 WININIT). Evidence: `docs/probe/hsw-4570-3dmark99-2026-10-17/`.
 
