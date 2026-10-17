@@ -19,7 +19,7 @@ The same code (built from `a233cfad`) ran on the 86Box ViRGE/DX
 as development builds, on A8U4I5's Rage XL. None has had an activation
 smoke test from a Have Disk install of the archive itself. Field
 confirmation: GitHub issue 6's reporter runs 0.18.3 and issue 7's runs
-0.18.4. The checkout is 0.18.6, unreleased.
+0.18.4. The checkout is 0.19.0, unreleased.
 
 The 0.18.0 release's two owed checks are done, both on the 86Box Mach64
 VT2 on 2026-10-15:
