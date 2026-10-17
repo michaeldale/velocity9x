@@ -237,6 +237,9 @@ typedef struct v9x_r3d_abi_state {
 #define V9X_R3D_ABI_ENGINE_SIS6326  6ul
 #define V9X_R3D_ABI_ENGINE_MGA      7ul
 #define V9X_R3D_ABI_ENGINE_TDFX     8ul
+/* Haswell's render engine (d3d_hsw.c), 2026-10-18. A new value of an
+ * existing field, so the ABI version stays; front ends only log it. */
+#define V9X_R3D_ABI_ENGINE_GEN75    9ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;

@@ -2,8 +2,12 @@
 
 Date: 2026-10-18
 
-Status: plan, for review. Asked for by Michael on 2026-10-18 while the
-Half-Life install copied. Nothing here is built.
+Status: asked for by Michael on 2026-10-18 while the Half-Life install
+copied; "continue with plan" the same day. Step 1 done on boot 19:
+textures sampled, CPU levels and a partial scissor or mask refused, and
+the tiled clear routed through the engine
+([record](../decisions/2026-10-18-haswell-render-interface-step1.md)).
+Step 2 next.
 
 Target: the i5-4570 (`8086:0412`), on the `intel-gma` family's
 `hd4600-hsw` chip, with the Direct3D engine of

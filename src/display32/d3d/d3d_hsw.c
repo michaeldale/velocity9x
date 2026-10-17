@@ -27,6 +27,7 @@
  * buffer returns the tiled bytes; detiling is not done.
  */
 #include "d3d_internal.h"
+#include "d3d_hsw_map.h"
 #include "d3d_state.h"
 #include "velocity9x/intel_hsw.h"
 #include "velocity9x/intel_hsw_3d.h"
@@ -454,8 +455,16 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
 {
     V9X_DD_SURFACE_LCL *surface;
     DWORD offset;
+    DWORD reason;
     int has_alpha = 0;
     v9x_u32 op;
+
+    /* What the render interface states and this engine cannot draw exactly
+     * (d3d_hsw_map.c): CPU levels, a partial mask or scissor. */
+    reason = v9x_d3d_hsw_explicit_refusal(draw);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+        return reason;
+    }
 
     state->desc.stage0 = V9X_HSW_PS_DIFFUSE;
     state->desc.stage1 = V9X_HSW_PS_STAGE1_NONE;

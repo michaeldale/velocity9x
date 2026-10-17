@@ -164,6 +164,7 @@ $sources = @(
     # neutral draw to them, and the engine that writes them.
     "src\chipsets\tdfx\tdfx_3d.c",
     "src\display32\d3d\d3d_tdfx_map.c",
+    "src\display32\d3d\d3d_hsw_map.c",
     "src\display32\d3d\d3d_tdfx.c",
     "src\display32\d3d\d3d_hsw.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.

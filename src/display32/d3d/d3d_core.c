@@ -5296,6 +5296,51 @@ static DWORD v9x_r3d_drain(void)
                                             : V9X_R3D_RESULT_TIMEOUT;
 }
 
+/*
+ * A clear whose depth buffer is tiled (V9X_D3D_ENGINE_LIMITS.depth_tiled,
+ * Haswell's Y tiles): the CPU writes the colour, which is linear, and each
+ * depth rectangle goes through the DEPTHFILL path to the engine's own fill,
+ * as Direct3D's Clear2 does (v9x_hal_depth_fill). v9x_r3d_clear would write
+ * the depth value as linear words and scatter it across the wrong pixels.
+ * A depth fill the engine refuses fails the clear rather than fall back.
+ * request->depth_value is the 16-bit full scale; the fill scales it.
+ */
+static DWORD v9x_r3d_clear_tiled_depth(const V9X_R3D_ABI_CLEAR *request,
+                                       V9X_R3D_CLEAR *clear)
+{
+    DWORD index;
+
+    if (v9x_r3d_context.zbuffer == 0) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    clear->clear_depth = 0ul;
+    if (clear->clear_color != 0ul && !v9x_r3d_clear(clear)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (request->rect_count == 0ul) {
+        return v9x_hal_depth_fill(v9x_r3d_context.zbuffer, 0l, 0l,
+                                  (LONG)v9x_r3d_context.width,
+                                  (LONG)v9x_r3d_context.height,
+                                  request->depth_value & 0xfffful)
+                   ? V9X_R3D_RESULT_OK
+                   : V9X_R3D_RESULT_INVALID;
+    }
+    for (index = 0ul; index < request->rect_count; ++index) {
+        const V9X_R3D_ABI_RECT *rect = &request->rects[index];
+
+        if (rect->right <= rect->left || rect->bottom <= rect->top) {
+            continue;
+        }
+        if (!v9x_hal_depth_fill(v9x_r3d_context.zbuffer, (LONG)rect->left,
+                                (LONG)rect->top, (LONG)rect->right,
+                                (LONG)rect->bottom,
+                                request->depth_value & 0xfffful)) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+    }
+    return V9X_R3D_RESULT_OK;
+}
+
 static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_r3d_engine();
@@ -5354,6 +5399,10 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.write_depth = request->write_depth;
     clear.rects = (const V9X_R3D_CLEAR_RECT *)request->rects;
     clear.rect_count = request->rect_count;
+    if (clear.clear_depth != 0ul && clear.write_depth != 0ul &&
+        v9x_d3d_depth_tiled()) {
+        return v9x_r3d_clear_tiled_depth(request, &clear);
+    }
     return v9x_r3d_clear(&clear) ? V9X_R3D_RESULT_OK
                                  : V9X_R3D_RESULT_INVALID;
 }
@@ -5627,6 +5676,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_tdfx) {
         out->engine = V9X_R3D_ABI_ENGINE_TDFX;
         name = "Velocity9x VSA-100";
+    } else if (ops == &v9x_d3d_engine_hsw) {
+        out->engine = V9X_R3D_ABI_ENGINE_GEN75;
+        name = "Velocity9x HD 4600";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -5699,6 +5751,16 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          * (tLOD's aspect field); the shape flags cannot say so, and a
          * longer one is refused at draw (docs\decisions\2026-10-13-
          * voodoo4-mipmaps-and-direct3d-pixel-centres.md). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_hsw) {
+        /* Haswell samples DirectDraw's video-memory textures in all three
+         * formats, 1 to 2048 (V9XDDP's texture checks, F2a). Powers of two
+         * until a non-power-of-two edge is measured: Vol 2d allows one on a
+         * linear 2D surface, which is a claim, not a measurement. CPU
+         * levels are refused (d3d_hsw_map.c), so this is the path that
+         * draws. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
