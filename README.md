@@ -24,11 +24,13 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.18.5.** It makes the first ATI 3DCIF games draw:
-Assault Rigs and Wipeout get their textures, lines are drawn, Formula 1's
-keyed textures are no longer refused on the Rage Pro class, and ATI cards
-run every 16-bit mode as 5:5:5. See the [changelog](CHANGELOG.md), and
-download it from [releases/0.18.5](releases/0.18.5/README.md).
+**Current version: 0.19.0.** It adds the Intel HD Graphics 4600
+(Haswell) to the `intel-gma` package, with DirectDraw, page flips,
+Direct3D, and OpenGL with two texture units and mipmaps on the chip's own
+engines. Half-Life runs at 59.2 fps in Direct3D and 67.5 in OpenGL on an
+i5-4570; 3DCIF is not supported on it yet. See the
+[changelog](CHANGELOG.md), and download it from
+[releases/0.19.0](releases/0.19.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.

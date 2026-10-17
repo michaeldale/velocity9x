@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.19.0 - not yet released
+## 0.19.0 - 2026-10-18
 
 - **Intel HD Graphics 4600 (Haswell, `8086:0412`) joins the `intel-gma`
   family, with DirectDraw, Direct3D, OpenGL and Glide on the chip's own
