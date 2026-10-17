@@ -933,21 +933,24 @@ v9x_status v9x_intel_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric)
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_WM, payload, 2ul);
 }
 
-/* DW1 Kernel Start Pointer[0] 31:6; DW2 Binding Table Entry Count 25:18;
- * DW3 no scratch; DW4 threads, sample mask (HSW, matching
- * 3DSTATE_SAMPLE_MASK), attribute enable, 8 Pixel Dispatch Enable; DW5
- * Dispatch GRF Start Register for Constant/Setup Data [0] 22:16. */
+/* DW1 Kernel Start Pointer[0] 31:6; DW2 Sampler Count 29:27 (in fours),
+ * Binding Table Entry Count 25:18; DW3 no scratch; DW4 threads, sample
+ * mask (HSW, matching 3DSTATE_SAMPLE_MASK), attribute enable, 8 Pixel
+ * Dispatch Enable; DW5 Dispatch GRF Start Register for Constant/Setup
+ * Data [0] 22:16. */
 v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
                                   v9x_u32 kernel, v9x_u8 binding_entries,
-                                  v9x_u8 attributes, v9x_u8 grf_start)
+                                  v9x_u8 samplers, v9x_u8 attributes,
+                                  v9x_u8 grf_start)
 {
     v9x_u32 payload[7];
 
-    if ((kernel & 0x3ful) != 0ul || grf_start > 0x7fu) {
+    if ((kernel & 0x3ful) != 0ul || grf_start > 0x7fu || samplers > 4u) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     payload[0] = kernel;
-    payload[1] = (v9x_u32)binding_entries << 18;
+    payload[1] = ((v9x_u32)samplers << 27) |
+                 ((v9x_u32)binding_entries << 18);
     payload[2] = 0ul;
     payload[3] = (V9X_HSW_PS_MAX_THREADS_FIELD << 23) |
                  V9X_HSW_PS_SAMPLE_MASK_ONE | V9X_HSW_PS_SIMD8;
@@ -988,16 +991,89 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
     return V9X_STATUS_OK;
 }
 
-/* The VUE the VF writes with the VS disabled: a header of four zeros,
- * position (x, y, 0, 1.0), colour (Vol 7 VUE layout; the order i915's
- * Gen7 render copy uses). */
-static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
-                                        v9x_u32 vertices)
-{
-    struct v9x_hsw_vertex_element elements[3];
-    v9x_u32 index;
+/* SAMPLER_STATE DW3 TCX 8:6, TCY 5:3, TCZ 2:0 (Vol 2d); TEXCOORDMODE_CLAMP
+ * is 2 (Vol 2a). BLEND_STATE's alpha test function is COMPAREFUNCTION_
+ * GREATER, 5 (Vol 2a 3D_Compare_Function). */
+#define V9X_HSW_TEXCOORD_CLAMP_ALL   ((v9x_u32)((2ul << 6) | (2ul << 3) | 2ul))
+#define V9X_HSW_COMPARE_GREATER      ((v9x_u8)5u)
 
-    for (index = 0ul; index < 3ul; ++index) {
+v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
+                                     v9x_u32 state_base, const v9x_u32 rt[2],
+                                     v9x_u16 width, v9x_u16 height,
+                                     v9x_u32 pitch, v9x_u8 alpha_ref)
+{
+    struct v9x_hsw_sampler sampler;
+    struct v9x_hsw_blend blend;
+    v9x_u32 n;
+
+    if (image == 0 || rt == 0 || dwords < V9X_HSW_SHADE_STATE_BYTES / 4ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (n = 0ul; n < 2ul; ++n) {
+        if (v9x_intel_hsw_surface_2d(
+                image + V9X_HSW_DRAW_RT_SURFACE(n) / 4ul,
+                V9X_HSW_FMT_B8G8R8A8_UNORM, rt[n], width, height, pitch) !=
+                V9X_STATUS_OK ||
+            v9x_intel_hsw_surface_2d(
+                image + V9X_HSW_SHADE_TEX_SURFACE(n) / 4ul,
+                V9X_HSW_FMT_B8G8R8A8_UNORM,
+                state_base + V9X_HSW_SHADE_TEXTURE(n),
+                V9X_HSW_SHADE_TEXTURE_SIDE, V9X_HSW_SHADE_TEXTURE_SIDE,
+                (v9x_u32)V9X_HSW_SHADE_TEXTURE_SIDE * 4ul) !=
+                V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        image[V9X_HSW_SHADE_BINDING_TABLE(n) / 4ul] =
+            V9X_HSW_DRAW_RT_SURFACE(n);
+        image[V9X_HSW_SHADE_BINDING_TABLE(n) / 4ul + 1ul] =
+            V9X_HSW_SHADE_TEX_SURFACE(0);
+        image[V9X_HSW_SHADE_BINDING_TABLE(n) / 4ul + 2ul] =
+            V9X_HSW_SHADE_TEX_SURFACE(1);
+    }
+
+    sampler.mip_filter = 0u;
+    sampler.mag_filter = 0u;
+    sampler.min_filter = 0u;
+    sampler.min_lod = 0u;
+    sampler.max_lod = 0u;
+    sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
+    sampler.dw3 = V9X_HSW_TEXCOORD_CLAMP_ALL;
+    v9x_intel_hsw_sampler(image + V9X_HSW_SHADE_SAMPLER / 4ul, &sampler);
+
+    blend.enable = 0u;
+    blend.color_function = 0u;
+    blend.src_factor = 0u;
+    blend.dst_factor = 0u;
+    blend.independent_alpha = 0u;
+    blend.alpha_function = 0u;
+    blend.src_alpha_factor = 0u;
+    blend.dst_alpha_factor = 0u;
+    blend.write_disable = 0u;
+    blend.alpha_test = 1u;
+    blend.alpha_function_test = V9X_HSW_COMPARE_GREATER;
+    v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul, &blend);
+    return v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul, alpha_ref);
+}
+
+/*
+ * The VUE the VF writes with the VS disabled: a header of four zeros,
+ * position (x, y, 0, 1.0), then the attributes (Vol 7 VUE layout; the
+ * order i915's Gen7 render copy uses). One attribute is D's colour; four
+ * are E's diffuse, specular and two texture coordinate pairs (u, v, 0,
+ * 1.0).
+ */
+static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
+                                        const struct v9x_hsw_draw *draw)
+{
+    struct v9x_hsw_vertex_element elements[6];
+    v9x_u32 index;
+    v9x_u32 count;
+    v9x_u16 stride;
+
+    count = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ? 6ul : 3ul;
+    stride = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ?
+                 V9X_HSW_SHADE_VERTEX_BYTES : V9X_HSW_DRAW_VERTEX_BYTES;
+    for (index = 0ul; index < count; ++index) {
         elements[index].buffer = 0u;
         elements[index].format = V9X_HSW_FMT_R32G32B32A32_FLOAT;
         elements[index].offset = 0u;
@@ -1013,12 +1089,19 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
     elements[1].component[2] = V9X_HSW_VFCOMP_STORE_0;
     elements[1].component[3] = V9X_HSW_VFCOMP_STORE_1_FP;
     elements[2].offset = 8u;
+    if (count == 6ul) {
+        elements[3].offset = 24u;
+        for (index = 4ul; index < 6ul; ++index) {
+            elements[index].format = V9X_HSW_FMT_R32G32_FLOAT;
+            elements[index].offset = (v9x_u16)(40u + 8u * (index - 4ul));
+            elements[index].component[2] = V9X_HSW_VFCOMP_STORE_0;
+            elements[index].component[3] = V9X_HSW_VFCOMP_STORE_1_FP;
+        }
+    }
 
-    v9x_intel_hsw_vertex_buffer(batch, 0u, V9X_HSW_DRAW_VERTEX_BYTES,
-                                vertices,
-                                vertices + 3ul * V9X_HSW_DRAW_VERTEX_BYTES -
-                                    1ul);
-    v9x_intel_hsw_vertex_elements(batch, elements, 3u);
+    v9x_intel_hsw_vertex_buffer(batch, 0u, stride, draw->vertices,
+                                draw->vertices + 3ul * stride - 1ul);
+    v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
     return v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST, 3ul, 0ul);
 }
 
@@ -1046,6 +1129,11 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     v9x_u32 bound;
     v9x_u32 mask;
     v9x_u32 index;
+    v9x_u32 blend;
+    v9x_u32 cc;
+    v9x_u32 sampler;
+    v9x_u16 vue_rows;
+    int shade;
     v9x_status status;
 
     if (batch == 0 || (state_base & V9X_HSW_PAGE_MASK) != 0ul ||
@@ -1056,6 +1144,16 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     }
     bound = state_base + state_bytes;
     status = V9X_STATUS_OK;
+    /* A zero offset in the draw means the init state's. E's four
+     * attributes make a 24-dword VUE, two 512-bit rows (field 1); D's
+     * 12 dwords fit one (field 0). */
+    shade = draw != 0 && draw->attributes == V9X_HSW_SHADE_ATTRIBUTES;
+    blend = draw != 0 && draw->blend != 0ul ? draw->blend :
+                                              V9X_HSW_INIT_BLEND;
+    cc = draw != 0 && draw->cc != 0ul ? draw->cc : V9X_HSW_INIT_CC;
+    sampler = draw != 0 && draw->sampler != 0ul ? draw->sampler :
+                                                  V9X_HSW_INIT_SAMPLER;
+    vue_rows = shade ? 1u : 0u;
 
     v9x_intel_hsw_pipeline_select_3d(batch);
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
@@ -1088,8 +1186,8 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                                       V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_PS,
                                       V9X_HSW_INIT_PUSH_KB,
                                       V9X_HSW_INIT_PUSH_KB);
-    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_VS, V9X_HSW_INIT_URB_START, 0u,
-                      V9X_HSW_INIT_VS_ENTRIES);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_VS, V9X_HSW_INIT_URB_START,
+                      vue_rows, V9X_HSW_INIT_VS_ENTRIES);
     v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_HS, V9X_HSW_INIT_URB_NEXT, 0u,
                       0u);
     v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_DS, V9X_HSW_INIT_URB_NEXT, 0u,
@@ -1106,15 +1204,20 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         }
     } else {
         /* CLIP stays zero: clipping off, so the triangle passes through.
-         * The VUE's colour is the attribute after header and position:
-         * read offset 1, read length 1, in 256-bit units. Setup data
+         * The attributes follow the VUE's header and position: read
+         * offset 1, in 256-bit units, two attributes per unit. Setup data
          * follows r0, r1 and the SIMD8 barycentrics r2-r3. */
         v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
         v9x_intel_hsw_sf_screen(batch);
-        v9x_intel_hsw_sbe(batch, 1u, 1u, 1u);
+        if (shade) {
+            v9x_intel_hsw_sbe(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u, 2u);
+        } else {
+            v9x_intel_hsw_sbe(batch, 1u, 1u, 1u);
+        }
         v9x_intel_hsw_wm(batch, V9X_HSW_BARY_PERSPECTIVE_PIXEL);
-        v9x_intel_hsw_ps_simd8(batch, draw->kernel, 1u, 1u,
-                               V9X_HSW_DRAW_SETUP_GRF);
+        v9x_intel_hsw_ps_simd8(batch, draw->kernel,
+                               shade ? V9X_HSW_SHADE_BINDING_ENTRIES : 1u,
+                               shade ? 1u : 0u, 1u, V9X_HSW_DRAW_SETUP_GRF);
         v9x_hsw_emit_zero(batch, V9X_HSW_CMD_MULTISAMPLE);
         v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CONSTANT_PS);
     }
@@ -1146,25 +1249,25 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                                 V9X_HSW_INIT_SCISSOR);
     /* Bit 0 of these three is printed "MB0" in Vol 2b; Mesa writes 1. */
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BLEND_PTRS,
-                                V9X_HSW_INIT_BLEND | V9X_HSW_POINTER_MBO);
+                                blend | V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_DEPTH_STENCIL_PTRS,
                                 V9X_HSW_INIT_DEPTH_STENCIL |
                                     V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
-                                V9X_HSW_INIT_CC | V9X_HSW_POINTER_MBO);
+                                cc | V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BINDING_TABLE_PTRS_PS,
                                 draw == 0 ? V9X_HSW_INIT_BINDING_TABLE :
                                             draw->binding_table);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_SAMPLER_PTRS_PS,
-                                V9X_HSW_INIT_SAMPLER);
+                                sampler);
     if (draw != 0) {
-        v9x_hsw_draw_vertices(batch, draw->vertices);
+        v9x_hsw_draw_vertices(batch, draw);
     }
 
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
                                V9X_HSW_PC_CS_STALL, 0ul, 0ul);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
-                                V9X_HSW_INIT_CC | V9X_HSW_POINTER_MBO);
+                                cc | V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
                                V9X_HSW_PC_CS_STALL, 0ul, 0ul);
 

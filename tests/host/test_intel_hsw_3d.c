@@ -477,13 +477,13 @@ static void test_phase_d_draw(void)
     CHECK(batch.used == 3ul && dw[0] == 0x78140001ul &&
           dw[1] == 0x20000800ul && dw[2] == 0ul);
     batch.used = 0ul;
-    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x400ul, 1u, 1u, 4u) ==
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x400ul, 1u, 0u, 1u, 4u) ==
           V9X_STATUS_OK);
     CHECK(batch.used == 8ul && dw[0] == 0x78200006ul &&
           dw[1] == 0x400ul && dw[2] == 0x00040000ul && dw[3] == 0ul &&
           dw[4] == 0x1f801401ul && dw[5] == 0x00040000ul &&
           dw[6] == 0ul && dw[7] == 0ul);
-    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x410ul, 1u, 1u, 4u) ==
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x410ul, 1u, 0u, 1u, 4u) ==
           V9X_STATUS_INVALID_ARGUMENT);
 
     /* The state image: two targets, their binding tables, the vertices. */
@@ -525,10 +525,16 @@ static void test_phase_d_draw(void)
     draw.vertices = 0x01824000ul + V9X_HSW_DRAW_VERTICES;
     draw.width = 64u;
     draw.height = 64u;
+    draw.attributes = 1u;
+    draw.blend = 0ul;
+    draw.cc = 0ul;
+    draw.sampler = 0ul;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
           V9X_STATUS_OK);
+    /* What Phase D ran on the 4570: 190 dwords. */
+    CHECK(batch.used == 190ul);
     CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
     /* One TRILIST of three vertices, sequential, one instance. */
     at = v9x_find_command(dw, batch.used, 0x7b000005ul);
@@ -569,9 +575,96 @@ static void test_phase_d_draw(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * Phase E: the shaded draw's state and batch. Worked by hand: SAMPLER_STATE
+ * DW3 TCX/TCY/TCZ CLAMP (2) at 8:6, 5:3, 2:0 = 92h; BLEND_STATE DW1 alpha
+ * test 16, GREATER (5) at 15:13; SBE four outputs, read length 2, offset
+ * 1; the VS URB entry two rows (field 1 at 24:16); PS one sampler group
+ * (29:27) and three binding table entries (25:18).
+ */
+static void test_phase_e_shade(void)
+{
+    v9x_u32 dw[512];
+    v9x_u32 image[V9X_HSW_SHADE_STATE_BYTES / 4ul];
+    v9x_u32 rt[2];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    v9x_u32 at;
+    v9x_u32 index;
+
+    for (index = 0ul; index < V9X_HSW_SHADE_STATE_BYTES / 4ul; ++index) {
+        image[index] = 0ul;
+    }
+    rt[0] = 0x01826000ul;
+    rt[1] = 0x0182a000ul;
+    CHECK(v9x_intel_hsw_shade_state(image, V9X_HSW_SHADE_STATE_BYTES / 4ul,
+                                    0x01824000ul, rt, 64u, 64u, 256ul,
+                                    0x80u) == V9X_STATUS_OK);
+    CHECK(image[V9X_HSW_SHADE_SAMPLER / 4ul] == 0ul &&
+          image[V9X_HSW_SHADE_SAMPLER / 4ul + 2ul] ==
+              V9X_HSW_SHADE_BORDER_COLOR &&
+          image[V9X_HSW_SHADE_SAMPLER / 4ul + 3ul] == 0x92ul);
+    CHECK(image[V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul] == 0ul &&
+          image[V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul + 1ul] == 0x0001a000ul);
+    CHECK(image[V9X_HSW_SHADE_CC / 4ul + 1ul] == 0x80ul);
+    CHECK(image[V9X_HSW_SHADE_TEX_SURFACE(1) / 4ul] == 0x23000000ul &&
+          image[V9X_HSW_SHADE_TEX_SURFACE(1) / 4ul + 1ul] == 0x01825100ul &&
+          image[V9X_HSW_SHADE_TEX_SURFACE(1) / 4ul + 2ul] == 0x00070007ul &&
+          image[V9X_HSW_SHADE_TEX_SURFACE(1) / 4ul + 3ul] == 31ul);
+    CHECK(image[V9X_HSW_SHADE_BINDING_TABLE(1) / 4ul] ==
+              V9X_HSW_DRAW_RT_SURFACE(1) &&
+          image[V9X_HSW_SHADE_BINDING_TABLE(1) / 4ul + 1ul] ==
+              V9X_HSW_SHADE_TEX_SURFACE(0) &&
+          image[V9X_HSW_SHADE_BINDING_TABLE(1) / 4ul + 2ul] ==
+              V9X_HSW_SHADE_TEX_SURFACE(1));
+    CHECK(image[V9X_HSW_DRAW_RT_SURFACE(1) / 4ul + 1ul] == 0x0182a000ul);
+    CHECK(v9x_intel_hsw_shade_state(image, 64ul, 0x01824000ul, rt, 64u, 64u,
+                                    256ul, 0x80u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    draw.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    draw.kernel = V9X_HSW_SHADE_KERNEL(0);
+    draw.vertices = 0x01824000ul + V9X_HSW_SHADE_VERTICES;
+    draw.width = 64u;
+    draw.height = 64u;
+    draw.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    draw.blend = V9X_HSW_SHADE_BLEND_ALPHA_TEST;
+    draw.cc = V9X_HSW_SHADE_CC;
+    draw.sampler = V9X_HSW_SHADE_SAMPLER;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
+                                      0x01821028ul, 0xc0de0041ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x78300000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x04010040ul);
+    at = v9x_find_command(dw, batch.used, 0x781f000cul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x01001010ul);
+    at = v9x_find_command(dw, batch.used, 0x78200006ul);
+    CHECK(at < batch.used && dw[at + 1ul] == V9X_HSW_SHADE_KERNEL(0) &&
+          dw[at + 2ul] == 0x080c0000ul);
+    at = v9x_find_command(dw, batch.used, 0x78240000ul);
+    CHECK(at < batch.used &&
+          dw[at + 1ul] == (V9X_HSW_SHADE_BLEND_ALPHA_TEST | 1ul));
+    at = v9x_find_command(dw, batch.used, 0x780e0000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == (V9X_HSW_SHADE_CC | 1ul));
+    at = v9x_find_command(dw, batch.used, 0x782f0000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == V9X_HSW_SHADE_SAMPLER);
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00004038ul &&
+          dw[at + 3ul] == draw.vertices + 167ul);
+    /* Six elements: header, position, diffuse, specular, two (u, v). */
+    at = v9x_find_command(dw, batch.used, 0x7809000bul);
+    CHECK(at < batch.used && dw[at + 5ul] == 0x02000008ul &&
+          dw[at + 7ul] == 0x02000018ul && dw[at + 9ul] == 0x02850028ul &&
+          dw[at + 10ul] == 0x11230000ul && dw[at + 11ul] == 0x02850030ul);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_phase_e_shade();
     test_phase_c_init();
     test_phase_d_draw();
     test_headers();

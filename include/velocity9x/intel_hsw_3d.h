@@ -410,7 +410,8 @@ v9x_status v9x_intel_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric);
  * GRF of the setup data. 64 threads, sample mask 1. */
 v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
                                   v9x_u32 kernel, v9x_u8 binding_entries,
-                                  v9x_u8 attributes, v9x_u8 grf_start);
+                                  v9x_u8 samplers, v9x_u8 attributes,
+                                  v9x_u8 grf_start);
 
 /* The draw state: both targets' surface states (B8G8R8A8, linear) and
  * binding tables, and the 18 vertex dwords. Writes nothing else. */
@@ -419,12 +420,52 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
                                     v9x_u16 height, v9x_u32 pitch,
                                     const v9x_u32 vertices[18]);
 
+/*
+ * Phase E: the shaded draw's layout, in the same image. The render target
+ * surfaces are D's; then a blend state with alpha test, its CC state, one
+ * sampler with its (zeroed) border colour, two 1 KB kernels, two 8x8
+ * B8G8R8A8 textures, three 56-byte vertices (x, y, diffuse RGBA,
+ * specular RGBA, u0 v0, u1 v1), the textures' surface states, and a
+ * three-entry binding table per target: target, texture 0, texture 1.
+ */
+#define V9X_HSW_SHADE_ATTRIBUTES       ((v9x_u8)4u)
+#define V9X_HSW_SHADE_BINDING_ENTRIES  ((v9x_u8)3u)
+#define V9X_HSW_SHADE_BLEND_ALPHA_TEST ((v9x_u32)0x2c0ul)
+#define V9X_HSW_SHADE_CC               ((v9x_u32)0x300ul)
+#define V9X_HSW_SHADE_SAMPLER          ((v9x_u32)0x340ul)
+#define V9X_HSW_SHADE_BORDER_COLOR     ((v9x_u32)0x360ul)
+#define V9X_HSW_SHADE_KERNEL(n)        ((v9x_u32)(0x400ul + 0x400ul * (n)))
+#define V9X_HSW_SHADE_KERNEL_BYTES     ((v9x_u32)0x400ul)
+#define V9X_HSW_SHADE_TEXTURE(t)       ((v9x_u32)(0x1000ul + 0x100ul * (t)))
+#define V9X_HSW_SHADE_TEXTURE_SIDE     ((v9x_u16)8u)
+#define V9X_HSW_SHADE_VERTICES         ((v9x_u32)0x1200ul)
+#define V9X_HSW_SHADE_VERTEX_BYTES     ((v9x_u16)56u)
+#define V9X_HSW_SHADE_TEX_SURFACE(t)   ((v9x_u32)(0x1300ul + 0x20ul * (t)))
+#define V9X_HSW_SHADE_BINDING_TABLE(n) ((v9x_u32)(0x1340ul + 0x20ul * (n)))
+#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x1380ul)
+
+/* The shaded draw's state: both targets' surface states (D's offsets),
+ * both textures' surface states at state_base + V9X_HSW_SHADE_TEXTURE,
+ * the binding tables, the sampler (NEAREST, no mips, CLAMP), and the
+ * alpha-test blend (GREATER) with alpha_ref in its CC state. Texels,
+ * kernels and vertices are the caller's. */
+v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
+                                     v9x_u32 state_base, const v9x_u32 rt[2],
+                                     v9x_u16 width, v9x_u16 height,
+                                     v9x_u32 pitch, v9x_u8 alpha_ref);
+
+/* A zero blend, cc or sampler offset means the init state's. attributes
+ * is 1 (D: one colour) or V9X_HSW_SHADE_ATTRIBUTES (E). */
 struct v9x_hsw_draw {
     v9x_u32 binding_table; /* offset from the surface state base */
     v9x_u32 kernel;        /* offset from the instruction base */
     v9x_u32 vertices;      /* graphics address of the three vertices */
     v9x_u16 width;
     v9x_u16 height;
+    v9x_u8 attributes;
+    v9x_u32 blend;         /* offsets from the dynamic state base */
+    v9x_u32 cc;
+    v9x_u32 sampler;
 };
 
 /* The init batch's state with the draw's in place of the zeroed stages,

@@ -615,6 +615,9 @@ static const DWORD v9x_d1_rgba[4] = {
  * store; for /draw, each draw then a store. Each piece is built with the
  * host-tested builders and checked before the VxD sees it.
  */
+static int v9x_shade_build(DWORD pair);
+
+/* mode: 0 /rcs, 1 /draw, 2-5 /shade:0-3. */
 static int v9x_rcs_build(int draw)
 {
     struct v9x_hsw_batch batch;
@@ -655,7 +658,10 @@ static int v9x_rcs_build(int draw)
         return 0;
     }
 
-    if (draw) {
+    if (draw >= 2 && !v9x_shade_build((DWORD)(draw - 2))) {
+        return 0;
+    }
+    if (draw == 1) {
         rt[0] = V9X_RCS_RT0;
         rt[1] = V9X_RCS_RT1;
         if (v9x_intel_hsw_draw_state(v9x_rcs_image_at(V9X_RCS_STATE),
@@ -680,6 +686,10 @@ static int v9x_rcs_build(int draw)
             d.vertices = V9X_RCS_STATE + V9X_HSW_DRAW_VERTICES;
             d.width = V9X_RCS_RT_SIDE;
             d.height = V9X_RCS_RT_SIDE;
+            d.attributes = 1u;
+            d.blend = 0ul;
+            d.cc = 0ul;
+            d.sampler = 0ul;
             v9x_intel_hsw_batch_init(
                 &batch,
                 v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 :
@@ -924,6 +934,410 @@ static void v9x_rcs_judge(DWORD target, int interpolated)
         coverage_bad == 0ul ? "coverage-ok-colour-wrong" : "coverage-wrong");
 }
 
+/*
+ * Phase E (/shade:N): two variants per run in D's layout, eight in all.
+ * Same triangle as D. Per vertex, as 0/1 values so the reference stays in
+ * integers: diffuse white / red / blue, all alpha 1; specular alpha (the
+ * fog factor) 1 / 0 / 1; texture coordinates 0 (0,0) / (1,0) / (0,1) and
+ * 1 (0,1) / (0,0) / (1,0).
+ */
+#define V9X_SHADE_VARIANTS   8u
+#define V9X_SHADE_FLOAT_ONE  0x3f800000ul
+#define V9X_SHADE_ALPHA_REF  0x80u
+#define V9X_SHADE_TEX_SIDE   8l
+
+struct v9x_shade_variant {
+    const char *name;
+    v9x_u8 stage0;
+    v9x_u8 stage1;
+    v9x_u8 fog;
+    v9x_u8 alpha_test;
+};
+
+static const struct v9x_shade_variant v9x_shade_variants[V9X_SHADE_VARIANTS] = {
+    { "Texture", V9X_HSW_PS_TEXTURE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u },
+    { "Modulate", V9X_HSW_PS_MODULATE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u },
+    { "Add", V9X_HSW_PS_ADD, V9X_HSW_PS_STAGE1_NONE, 0u, 0u },
+    { "Decal", V9X_HSW_PS_DECAL, V9X_HSW_PS_STAGE1_NONE, 0u, 0u },
+    { "AlphaTest", V9X_HSW_PS_MODULATE, V9X_HSW_PS_STAGE1_NONE, 0u, 1u },
+    { "Fog", V9X_HSW_PS_DIFFUSE, V9X_HSW_PS_STAGE1_NONE, 1u, 0u },
+    { "TwoStage", V9X_HSW_PS_MODULATE, V9X_HSW_PS_MODULATE_TEX1, 0u, 0u },
+    { "Diffuse", V9X_HSW_PS_DIFFUSE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u }
+};
+
+/* Per vertex: diffuse R G B A, specular A, u0 v0, u1 v1, all 0 or 1. */
+static const v9x_u8 v9x_shade_diffuse[3][4] = {
+    { 1u, 1u, 1u, 1u }, { 1u, 0u, 0u, 1u }, { 0u, 0u, 1u, 1u }
+};
+static const v9x_u8 v9x_shade_fog_factor[3] = { 1u, 0u, 1u };
+static const v9x_u8 v9x_shade_uv[2][3][2] = {
+    { { 0u, 0u }, { 1u, 0u }, { 0u, 1u } },
+    { { 0u, 1u }, { 0u, 0u }, { 1u, 0u } }
+};
+/* Fog colour 0.2, 0.4, 0.6: 51, 102, 153 as UNORM8. */
+static const DWORD v9x_shade_fog_rgb[3] = {
+    0x3e4ccccdul, 0x3ecccccdul, 0x3f19999aul
+};
+static const DWORD v9x_shade_fog_255[3] = { 51ul, 102ul, 153ul };
+
+static DWORD v9x_shade_bit(v9x_u8 value)
+{
+    return value != 0u ? V9X_SHADE_FLOAT_ONE : 0ul;
+}
+
+/* Texture 0: B by column, G by row, R falling along the diagonal, alpha
+ * C0h or 40h in a checkerboard so the alpha test passes half. Texture 1:
+ * pale, alpha FFh. */
+static DWORD v9x_shade_texel(DWORD t, long x, long y)
+{
+    if (t == 0ul) {
+        return (((x ^ y) & 1l) != 0l ? 0xc0000000ul : 0x40000000ul) |
+               ((DWORD)(0xff - (x + y) * 16) << 16) |
+               ((DWORD)(y * 32 + 16) << 8) | (DWORD)(x * 32 + 16);
+    }
+    return 0xff000000ul | ((DWORD)(0x80 + x * 16) << 16) | 0x0000ff00ul |
+           (DWORD)(0x80 + y * 16);
+}
+
+static int v9x_shade_build(DWORD pair)
+{
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw d;
+    struct v9x_hsw_ps_desc desc;
+    const struct v9x_shade_variant *v;
+    v9x_u32 rt[2];
+    v9x_u32 used;
+    v9x_u32 *at;
+    DWORD n;
+    DWORD k;
+    long x;
+    long y;
+
+    rt[0] = V9X_RCS_RT0;
+    rt[1] = V9X_RCS_RT1;
+    if (v9x_intel_hsw_shade_state(v9x_rcs_image_at(V9X_RCS_STATE),
+                                  V9X_RCS_STATE_BYTES / 4ul, V9X_RCS_STATE,
+                                  rt, V9X_RCS_RT_SIDE, V9X_RCS_RT_SIDE,
+                                  V9X_RCS_RT_PITCH, V9X_SHADE_ALPHA_REF) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    for (n = 0ul; n < 2ul; ++n) {
+        at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_HSW_SHADE_TEXTURE(n));
+        for (y = 0l; y < V9X_SHADE_TEX_SIDE; ++y) {
+            for (x = 0l; x < V9X_SHADE_TEX_SIDE; ++x) {
+                at[y * V9X_SHADE_TEX_SIDE + x] = v9x_shade_texel(n, x, y);
+            }
+        }
+    }
+    at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_HSW_SHADE_VERTICES);
+    for (k = 0ul; k < 3ul; ++k) {
+        at[0] = v9x_tri_vertices[k * 6ul];
+        at[1] = v9x_tri_vertices[k * 6ul + 1ul];
+        for (n = 0ul; n < 4ul; ++n) {
+            at[2ul + n] = v9x_shade_bit(v9x_shade_diffuse[k][n]);
+        }
+        at[6] = 0ul;
+        at[7] = 0ul;
+        at[8] = 0ul;
+        at[9] = v9x_shade_bit(v9x_shade_fog_factor[k]);
+        at[10] = v9x_shade_bit(v9x_shade_uv[0][k][0]);
+        at[11] = v9x_shade_bit(v9x_shade_uv[0][k][1]);
+        at[12] = v9x_shade_bit(v9x_shade_uv[1][k][0]);
+        at[13] = v9x_shade_bit(v9x_shade_uv[1][k][1]);
+        at += V9X_HSW_SHADE_VERTEX_BYTES / 4u;
+    }
+
+    for (n = 0ul; n < 2ul; ++n) {
+        v = &v9x_shade_variants[pair * 2ul + n];
+        desc.stage0 = v->stage0;
+        desc.stage1 = v->stage1;
+        desc.fog = v->fog;
+        desc.fog_rgb[0] = v9x_shade_fog_rgb[0];
+        desc.fog_rgb[1] = v9x_shade_fog_rgb[1];
+        desc.fog_rgb[2] = v9x_shade_fog_rgb[2];
+        if (v9x_intel_hsw_ps_kernel_build(
+                v9x_rcs_image_at(V9X_RCS_STATE + V9X_HSW_SHADE_KERNEL(n)),
+                V9X_HSW_SHADE_KERNEL_BYTES / 4ul - 32ul, &desc, &used) !=
+            V9X_STATUS_OK) {
+            return 0;
+        }
+        d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(n);
+        d.kernel = V9X_HSW_SHADE_KERNEL(n);
+        d.vertices = V9X_RCS_STATE + V9X_HSW_SHADE_VERTICES;
+        d.width = V9X_RCS_RT_SIDE;
+        d.height = V9X_RCS_RT_SIDE;
+        d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+        d.blend = v->alpha_test ? V9X_HSW_SHADE_BLEND_ALPHA_TEST : 0ul;
+        d.cc = v->alpha_test ? V9X_HSW_SHADE_CC : 0ul;
+        d.sampler = V9X_HSW_SHADE_SAMPLER;
+        v9x_intel_hsw_batch_init(
+            &batch,
+            v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 : V9X_RCS_BATCH_D2),
+            V9X_RCS_BATCH_BYTES / 4ul);
+        if (v9x_intel_hsw_draw_workload(
+                &batch, V9X_RCS_STATE, V9X_RCS_STATE_BYTES, &d,
+                V9X_RCS_STATUS + (n == 0ul ? 32ul : 48ul),
+                n == 0ul ? V9X_RCS_D1_CRUMB : V9X_RCS_D2_CRUMB) !=
+                V9X_STATUS_OK ||
+            v9x_intel_hsw_3d_check(batch.dw, batch.used, &check) !=
+                V9X_STATUS_OK) {
+            return 0;
+        }
+        v9x_rcs_key(n == 0ul ? "Kernel1Dwords" : "Kernel2Dwords", used);
+    }
+    return 1;
+}
+
+/* round(255 * num / den) for 0 <= num <= den. */
+static DWORD v9x_shade_unorm(long num, long den)
+{
+    return (DWORD)((510l * num + den) / (2l * den));
+}
+
+/* A nearest-texel index along one axis, or -1 when the coordinate lies
+ * within 1/64 texel of a boundary (not judged). coord = num / den. */
+static long v9x_shade_texel_index(long num, long den)
+{
+    long scaled = num * V9X_SHADE_TEX_SIDE;
+    long index = scaled / den;
+    long frac = scaled - index * den;
+
+    if (index >= V9X_SHADE_TEX_SIDE) {
+        return V9X_SHADE_TEX_SIDE - 1l;
+    }
+    if (frac * 64l < den || frac * 64l > den * 63l) {
+        return -1l;
+    }
+    return index;
+}
+
+/*
+ * The reference for one variant at one covered pixel centre, weights w[k]
+ * for vertex k over area. Returns 0 if a texel boundary makes it
+ * unjudged; *write is 0 when the alpha test should discard the pixel.
+ */
+static int v9x_shade_expect(const struct v9x_shade_variant *v,
+                            const long w[3], long area, DWORD *want,
+                            int *write)
+{
+    long d[4];
+    long uv[2][2];
+    long tex_index[2][2];
+    DWORD texel[2];
+    DWORD c;
+    DWORD k;
+    DWORD t;
+    DWORD out[4];
+    DWORD tc;
+    DWORD dc;
+    DWORD m;
+    long f;
+    long f256;
+
+    for (c = 0ul; c < 4ul; ++c) {
+        d[c] = 0l;
+        for (k = 0ul; k < 3ul; ++k) {
+            d[c] += w[k] * (long)v9x_shade_diffuse[k][c];
+        }
+    }
+    for (t = 0ul; t < 2ul; ++t) {
+        for (c = 0ul; c < 2ul; ++c) {
+            uv[t][c] = 0l;
+            for (k = 0ul; k < 3ul; ++k) {
+                uv[t][c] += w[k] * (long)v9x_shade_uv[t][k][c];
+            }
+            tex_index[t][c] = v9x_shade_texel_index(uv[t][c], area);
+        }
+        texel[t] = 0ul;
+        if (tex_index[t][0] >= 0l && tex_index[t][1] >= 0l) {
+            texel[t] = v9x_shade_texel(t, tex_index[t][0], tex_index[t][1]);
+        }
+    }
+    if (v->stage0 != V9X_HSW_PS_DIFFUSE &&
+        (tex_index[0][0] < 0l || tex_index[0][1] < 0l)) {
+        return 0;
+    }
+    if (v->stage1 == V9X_HSW_PS_MODULATE_TEX1 &&
+        (tex_index[1][0] < 0l || tex_index[1][1] < 0l)) {
+        return 0;
+    }
+
+    /* Channels in B8G8R8A8 order of significance: c = 0 R, 1 G, 2 B, 3 A;
+     * the texel's R is bits 23:16. */
+    for (c = 0ul; c < 4ul; ++c) {
+        DWORD shift = c == 3ul ? 24ul : 16ul - 8ul * c;
+
+        tc = (texel[0] >> shift) & 0xfful;
+        dc = v9x_shade_unorm(d[c], area);
+        switch (v->stage0) {
+        case V9X_HSW_PS_DIFFUSE:
+            m = dc;
+            break;
+        case V9X_HSW_PS_TEXTURE:
+            m = tc;
+            break;
+        case V9X_HSW_PS_MODULATE:
+            m = (DWORD)(((long)tc * d[c] * 2l + area) / (2l * area));
+            break;
+        case V9X_HSW_PS_ADD:
+            if (c == 3ul) {
+                m = (DWORD)(((long)tc * d[c] * 2l + area) / (2l * area));
+            } else {
+                m = tc + dc > 255ul ? 255ul : tc + dc;
+            }
+            break;
+        default:
+            m = c == 3ul ? dc : tc;
+            break;
+        }
+        if (v->stage1 == V9X_HSW_PS_MODULATE_TEX1) {
+            m = (m * ((texel[1] >> shift) & 0xfful) + 127ul) / 255ul;
+        }
+        if (v->fog && c < 3ul) {
+            f = 0l;
+            for (k = 0ul; k < 3ul; ++k) {
+                f += w[k] * (long)v9x_shade_fog_factor[k];
+            }
+            f256 = (256l * f + area / 2l) / area;
+            m = (DWORD)(((long)m * f256 +
+                         (long)v9x_shade_fog_255[c] * (256l - f256) + 128l) /
+                        256l);
+        }
+        out[c] = m;
+    }
+    *want = (out[3] << 24) | (out[0] << 16) | (out[1] << 8) | out[2];
+    *write = !v->alpha_test || out[3] > (DWORD)V9X_SHADE_ALPHA_REF;
+    return 1;
+}
+
+static void v9x_shade_judge(DWORD target, DWORD variant)
+{
+    const struct v9x_shade_variant *v = &v9x_shade_variants[variant];
+    const DWORD *pixels = v9x_rcs_out.rt[target];
+    char key[40];
+    long area;
+    long len[3];
+    long e[3];
+    long w[3];
+    long px;
+    long py;
+    DWORD x;
+    DWORD y;
+    DWORD i;
+    DWORD got;
+    DWORD want;
+    DWORD inside = 0ul;
+    DWORD outside = 0ul;
+    DWORD unjudged = 0ul;
+    DWORD discarded = 0ul;
+    DWORD bad = 0ul;
+    DWORD max_error = 0ul;
+    DWORD error;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_got = 0ul;
+    DWORD first_want = 0ul;
+    int on_edge;
+    int in;
+    int write;
+
+    area = v9x_edge(0ul, 1ul, v9x_tri_x[2], v9x_tri_y[2]);
+    for (i = 0ul; i < 3ul; ++i) {
+        DWORD j = (i + 1ul) % 3ul;
+        long dx = v9x_tri_x[j] - v9x_tri_x[i];
+        long dy = v9x_tri_y[j] - v9x_tri_y[i];
+
+        len[i] = v9x_isqrt(dx * dx + dy * dy);
+    }
+    for (y = 0ul; y < V9X_RCS_RT_SIDE; ++y) {
+        for (x = 0ul; x < V9X_RCS_RT_SIDE; ++x) {
+            px = (long)x * 4l + 2l;
+            py = (long)y * 4l + 2l;
+            on_edge = 0;
+            in = 1;
+            for (i = 0ul; i < 3ul; ++i) {
+                e[i] = v9x_edge(i, (i + 1ul) % 3ul, px, py);
+                if ((e[i] < 0l ? -e[i] : e[i]) * 16l < len[i]) {
+                    on_edge = 1;
+                }
+                if (e[i] < 0l) {
+                    in = 0;
+                }
+            }
+            got = pixels[y * V9X_RCS_RT_SIDE + x];
+            if (on_edge) {
+                ++unjudged;
+                continue;
+            }
+            want = V9X_RCS_GUARD;
+            write = 0;
+            if (in) {
+                /* The weight of vertex k is the edge opposite it. */
+                w[0] = e[1];
+                w[1] = e[2];
+                w[2] = e[0];
+                if (!v9x_shade_expect(v, w, area, &want, &write)) {
+                    ++unjudged;
+                    continue;
+                }
+                ++inside;
+                if (!write) {
+                    ++discarded;
+                    want = V9X_RCS_GUARD;
+                }
+            } else {
+                ++outside;
+            }
+            error = 0ul;
+            if (want == V9X_RCS_GUARD || got == V9X_RCS_GUARD) {
+                error = want == got ? 0ul : 256ul;
+            } else {
+                for (i = 0ul; i < 32ul; i += 8ul) {
+                    DWORD a = (got >> i) & 0xfful;
+                    DWORD b = (want >> i) & 0xfful;
+                    DWORD diff = a > b ? a - b : b - a;
+
+                    if (diff > error) {
+                        error = diff;
+                    }
+                }
+            }
+            if (error > max_error && error != 256ul) {
+                max_error = error;
+            }
+            if (error > 2ul) {
+                ++bad;
+                if (first_bad == 0xfffffffful) {
+                    first_bad = (y << 16) | x;
+                    first_got = got;
+                    first_want = want;
+                }
+            }
+        }
+    }
+
+#define V9X_SHADE_KEY(suffix, value) \
+    do { lstrcpyA(key, v->name); lstrcatA(key, suffix); \
+         v9x_rcs_key(key, value); } while (0)
+    V9X_SHADE_KEY("Inside", inside);
+    V9X_SHADE_KEY("Outside", outside);
+    V9X_SHADE_KEY("NotJudged", unjudged);
+    V9X_SHADE_KEY("AlphaDiscarded", discarded);
+    V9X_SHADE_KEY("Mismatches", bad);
+    V9X_SHADE_KEY("MaxChannelError", max_error);
+    V9X_SHADE_KEY("FirstBadYX", first_bad);
+    V9X_SHADE_KEY("FirstBadGot", first_got);
+    V9X_SHADE_KEY("FirstBadWant", first_want);
+    V9X_SHADE_KEY("Pixel_12_12", pixels[12ul * V9X_RCS_RT_SIDE + 12ul]);
+    V9X_SHADE_KEY("Pixel_24_24", pixels[24ul * V9X_RCS_RT_SIDE + 24ul]);
+#undef V9X_SHADE_KEY
+    lstrcpyA(key, v->name);
+    lstrcatA(key, "Verdict");
+    v9x_rcs_text(key, inside == 0ul ? "no-pixels-judged" :
+                      bad == 0ul ? "pass" : "mismatch");
+}
+
 static void v9x_rcs_publish(int draw)
 {
     char key[16];
@@ -1024,9 +1438,12 @@ static void v9x_rcs_publish(int draw)
         (seen & 96ul) != 96ul ? "draw1-did-not-complete" :
         (seen & 384ul) != 384ul ? "draw2-did-not-complete" :
                                   "both-draws-completed");
-    if (draw) {
+    if (draw == 1) {
         v9x_rcs_judge(0ul, 0);
         v9x_rcs_judge(1ul, 1);
+    } else if (draw >= 2) {
+        v9x_shade_judge(0ul, (DWORD)(draw - 2) * 2ul);
+        v9x_shade_judge(1ul, (DWORD)(draw - 2) * 2ul + 1ul);
     }
 }
 
@@ -1036,7 +1453,7 @@ static void v9x_rcs_run(int draw)
     DWORD returned;
     BOOL ok;
 
-    v9x_rcs_section = draw ? "Draw" : "Rcs";
+    v9x_rcs_section = draw >= 2 ? "Shade" : draw ? "Draw" : "Rcs";
     WritePrivateProfileStringA(v9x_rcs_section, 0, 0, V9X_HSWMM_PATH);
     v9x_rcs_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
     v9x_rcs_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
@@ -1301,14 +1718,26 @@ void __stdcall V9xHswMmioEntry(void)
         ExitProcess(0u);
     }
 
-    /* /rcs is Phase C alone, /draw Phase D, likewise. */
-    if (v9x_has_switch("/rcs") || v9x_has_switch("/draw")) {
+    /* /rcs is Phase C alone, /draw Phase D, /shade:N Phase E, likewise. */
+    if (v9x_has_switch("/rcs") || v9x_has_switch("/draw") ||
+        v9x_has_switch("/shade:")) {
+        int mode = v9x_has_switch("/draw") ? 1 : 0;
+
+        for (index = 0ul; index < 4ul; ++index) {
+            char option[9];
+
+            lstrcpyA(option, "/shade:0");
+            option[7] = (char)('0' + index);
+            if (v9x_has_switch(option)) {
+                mode = 2 + (int)index;
+            }
+        }
         WritePrivateProfileStringA("Report", "Access",
-                                   v9x_has_switch("/draw") ?
-                                       "rcs-draw-phase-d" :
-                                       "rcs-ring-phase-c",
+                                   mode >= 2 ? "rcs-shade-phase-e" :
+                                   mode == 1 ? "rcs-draw-phase-d" :
+                                               "rcs-ring-phase-c",
                                    V9X_HSWMM_PATH);
-        v9x_rcs_run(v9x_has_switch("/draw"));
+        v9x_rcs_run(mode);
         WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);

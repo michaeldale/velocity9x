@@ -220,4 +220,31 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
                                                 v9x_u8 setup_grf,
                                                 v9x_u32 *used);
 
+/*
+ * Phase E: one generator for the texture-stage combinations. Stage 0
+ * combines texture 0 (binding table entry 1) with the diffuse colour;
+ * stage 1 optionally modulates by texture 1 (entry 2); vertex fog blends
+ * towards fog_rgb (float bit patterns) by the specular alpha, as D3D's
+ * vertex fog does. Attributes: 0 diffuse, 1 specular, 2 and 3 texture
+ * coordinates. Sampler 0, nearest, for both textures.
+ */
+#define V9X_HSW_PS_DIFFUSE       ((v9x_u8)0u) /* SELECTARG diffuse */
+#define V9X_HSW_PS_TEXTURE       ((v9x_u8)1u) /* SELECTARG texture */
+#define V9X_HSW_PS_MODULATE      ((v9x_u8)2u)
+#define V9X_HSW_PS_ADD           ((v9x_u8)3u) /* colour add, alpha modulate */
+#define V9X_HSW_PS_DECAL         ((v9x_u8)4u) /* texture colour, diffuse alpha */
+#define V9X_HSW_PS_STAGE1_NONE   ((v9x_u8)0u)
+#define V9X_HSW_PS_MODULATE_TEX1 ((v9x_u8)1u)
+
+struct v9x_hsw_ps_desc {
+    v9x_u8 stage0;
+    v9x_u8 stage1;
+    v9x_u8 fog;
+    v9x_u32 fog_rgb[3];
+};
+
+v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
+                                         const struct v9x_hsw_ps_desc *desc,
+                                         v9x_u32 *used);
+
 #endif

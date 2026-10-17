@@ -299,9 +299,73 @@ static void test_phase_d_kernels(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* Phase E generator: instruction counts per mode, the sample send, and
+ * the fog's negated immediate. */
+static void test_phase_e_generator(void)
+{
+    struct v9x_hsw_ps_desc desc;
+    struct v9x_hsw_eu_inst back;
+    v9x_u32 out[256];
+    v9x_u32 used;
+
+    desc.stage0 = V9X_HSW_PS_MODULATE;
+    desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
+    desc.fog = 0u;
+    desc.fog_rgb[0] = desc.fog_rgb[1] = desc.fog_rgb[2] = 0ul;
+    /* 4 pln diffuse, 2 pln uv, sample, 4 mul, write. */
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 48ul);
+    /* The sample: SFID 2, dst g32, src g28, mlen 2, rlen 4, SIMD8 (1 at
+     * 18:17), type 0, sampler 0, BTI 1, no EOT. */
+    CHECK(out[24] == 0x02600031ul && out[27] == 0x04420001ul);
+    CHECK(v9x_intel_hsw_eu_decode(out + 24, &back) == V9X_STATUS_OK &&
+          back.dst.nr == 32u && back.src0.nr == 28u && back.eot == 0u);
+    /* The uv planes: attribute 2, registers g8 bytes 0 and 16. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 20, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_PLN && back.dst.nr == 29u &&
+          back.src0.nr == 8u && back.src0.subnr == 16u);
+    CHECK(v9x_intel_hsw_eu_decode(out + 28, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_MUL && back.saturate == 1u &&
+          back.dst.nr == 112u && back.src0.nr == 32u && back.src1.nr == 20u);
+    CHECK(out[47] == 0x88031400ul);
+
+    desc.stage0 = V9X_HSW_PS_TEXTURE;
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 32ul);
+
+    desc.stage0 = V9X_HSW_PS_DIFFUSE;
+    desc.fog = 1u;
+    desc.fog_rgb[0] = 0x3f000000ul; /* 0.5 */
+    /* 4 pln, fog pln, 4 mov, 3 x (add, mul, add), write. */
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 76ul);
+    CHECK(v9x_intel_hsw_eu_decode(out + 16, &back) == V9X_STATUS_OK &&
+          back.dst.nr == 27u && back.src0.nr == 7u &&
+          back.src0.subnr == 16u);
+    CHECK(out[39] == 0xbf000000ul);
+    CHECK(v9x_intel_hsw_eu_decode(out + 44, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_ADD && back.saturate == 1u &&
+          back.src1.file == V9X_HSW_EU_FILE_IMM &&
+          back.src1.imm == 0x3f000000ul);
+
+    desc.stage0 = V9X_HSW_PS_MODULATE;
+    desc.stage1 = V9X_HSW_PS_MODULATE_TEX1;
+    desc.fog = 0u;
+    /* 4 pln, 2 pln, sample, 2 pln, sample, 4 mul, 4 mul, write. */
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 76ul);
+    CHECK(out[39] == 0x04420002ul);
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 40ul, &desc, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    desc.stage0 = 9u;
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_eu_tests(void)
 {
     failures = 0u;
+    test_phase_e_generator();
     test_phase_d_kernels();
     test_mov();
     test_add_immediate();

@@ -595,3 +595,223 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
     *used = 4ul * (V9X_HSW_PS_COMPONENTS + 1u);
     return V9X_STATUS_OK;
 }
+
+/*
+ * Phase E: the kernel generator. Register map, all SIMD8 float:
+ *   g2-g3     perspective pixel barycentrics (payload)
+ *   g4-g11    setup data, two registers per attribute: diffuse, specular,
+ *             texture coordinates 0, texture coordinates 1
+ *   g20-g23   diffuse R G B A          g27      specular alpha (fog)
+ *   g28-g29   u0 v0 (sample payload)   g30-g31  u1 v1
+ *   g32-g35   texture 0 R G B A        g36-g39  texture 1 R G B A
+ *   g40       fog scratch
+ *   g112-g115 the colour written
+ */
+#define V9X_HSW_PSG_SETUP     ((v9x_u8)4u)
+#define V9X_HSW_PSG_DIFFUSE   ((v9x_u8)20u)
+#define V9X_HSW_PSG_FOG       ((v9x_u8)27u)
+#define V9X_HSW_PSG_UV0       ((v9x_u8)28u)
+#define V9X_HSW_PSG_UV1       ((v9x_u8)30u)
+#define V9X_HSW_PSG_TEX0      ((v9x_u8)32u)
+#define V9X_HSW_PSG_TEX1      ((v9x_u8)36u)
+#define V9X_HSW_PSG_SCRATCH   ((v9x_u8)40u)
+#define V9X_HSW_PSG_ATTR_SPEC ((v9x_u8)1u)
+#define V9X_HSW_PSG_ATTR_UV0  ((v9x_u8)2u)
+#define V9X_HSW_PSG_ATTR_UV1  ((v9x_u8)3u)
+#define V9X_HSW_PSG_SIGN      ((v9x_u32)0x80000000ul)
+
+struct v9x_hsw_psg {
+    v9x_u32 *out;
+    v9x_u32 capacity;
+    v9x_u32 used;
+    int failed;
+};
+
+static void v9x_hsw_psg_emit(struct v9x_hsw_psg *g,
+                             const struct v9x_hsw_eu_inst *inst)
+{
+    if (g->failed || g->capacity - g->used < 4ul ||
+        v9x_intel_hsw_eu_encode(inst, g->out + g->used) != V9X_STATUS_OK) {
+        g->failed = 1;
+        return;
+    }
+    g->used += 4ul;
+}
+
+/* pln(8) dst attribute a, component c. */
+static void v9x_hsw_psg_pln(struct v9x_hsw_psg *g, v9x_u8 dst, v9x_u8 a,
+                            v9x_u8 c)
+{
+    struct v9x_hsw_eu_inst inst;
+
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_PLN;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    v9x_hsw_ps_grf(&inst.dst, dst, V9X_HSW_EU_TYPE_F);
+    v9x_hsw_ps_grf(&inst.src0,
+                   (v9x_u8)(V9X_HSW_PSG_SETUP + 2u * a + c / 2u),
+                   V9X_HSW_EU_TYPE_F);
+    inst.src0.subnr = (v9x_u8)((c % 2u) * 16u);
+    inst.src0.vstride = V9X_HSW_EU_VSTRIDE_0;
+    inst.src0.width = V9X_HSW_EU_WIDTH_1;
+    inst.src0.hstride = V9X_HSW_EU_HSTRIDE_0;
+    v9x_hsw_ps_grf(&inst.src1, V9X_HSW_PS_BARY_GRF, V9X_HSW_EU_TYPE_F);
+    v9x_hsw_psg_emit(g, &inst);
+}
+
+/* A two-source float operation; src1 is a register, or an immediate
+ * when imm_file is set. */
+static void v9x_hsw_psg_op(struct v9x_hsw_psg *g, v9x_u8 opcode, v9x_u8 dst,
+                           v9x_u8 src0, v9x_u8 src1, int imm_file,
+                           v9x_u32 imm, v9x_u8 saturate)
+{
+    struct v9x_hsw_eu_inst inst;
+
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = opcode;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.saturate = saturate;
+    v9x_hsw_ps_grf(&inst.dst, dst, V9X_HSW_EU_TYPE_F);
+    v9x_hsw_ps_grf(&inst.src0, src0, V9X_HSW_EU_TYPE_F);
+    if (opcode == V9X_HSW_EU_OP_MOV) {
+        /* One source: the encoder makes src1 null. */
+    } else if (imm_file) {
+        inst.src1.file = V9X_HSW_EU_FILE_IMM;
+        inst.src1.type = V9X_HSW_EU_TYPE_F;
+        inst.src1.imm = imm;
+    } else {
+        v9x_hsw_ps_grf(&inst.src1, src1, V9X_HSW_EU_TYPE_F);
+    }
+    v9x_hsw_psg_emit(g, &inst);
+}
+
+/* send(8) dst..dst+3 the SIMD8 "sample" message (type 0) with u, v from
+ * payload, sampler 0, binding table entry bti; no header (Vol 7). */
+static void v9x_hsw_psg_sample(struct v9x_hsw_psg *g, v9x_u8 dst,
+                               v9x_u8 payload, v9x_u8 bti)
+{
+    struct v9x_hsw_eu_inst inst;
+    v9x_u32 function;
+    v9x_u32 desc;
+
+    if (v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, 0u, bti,
+                                    &function) != V9X_STATUS_OK ||
+        v9x_intel_hsw_eu_send_desc(2u, V9X_HSW_PS_COMPONENTS, 0u, function,
+                                   &desc) != V9X_STATUS_OK) {
+        g->failed = 1;
+        return;
+    }
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_SEND;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.sfid = V9X_HSW_SFID_SAMPLER;
+    inst.desc = desc;
+    v9x_hsw_ps_grf(&inst.dst, dst, V9X_HSW_EU_TYPE_UW);
+    v9x_hsw_ps_grf(&inst.src0, payload, V9X_HSW_EU_TYPE_UD);
+    v9x_hsw_psg_emit(g, &inst);
+}
+
+v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
+                                         const struct v9x_hsw_ps_desc *desc,
+                                         v9x_u32 *used)
+{
+    struct v9x_hsw_psg g;
+    v9x_u8 c;
+    v9x_u8 out_reg;
+    int textured;
+
+    if (out == 0 || desc == 0 || used == 0 ||
+        desc->stage0 > V9X_HSW_PS_DECAL ||
+        desc->stage1 > V9X_HSW_PS_MODULATE_TEX1) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    g.out = out;
+    g.capacity = capacity;
+    g.used = 0ul;
+    g.failed = 0;
+    textured = desc->stage0 != V9X_HSW_PS_DIFFUSE;
+
+    /* Interpolate what the stages read. */
+    if (desc->stage0 != V9X_HSW_PS_TEXTURE) {
+        for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+            v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c), 0u, c);
+        }
+    }
+    if (desc->fog) {
+        v9x_hsw_psg_pln(&g, V9X_HSW_PSG_FOG, V9X_HSW_PSG_ATTR_SPEC, 3u);
+    }
+    if (textured) {
+        v9x_hsw_psg_pln(&g, V9X_HSW_PSG_UV0, V9X_HSW_PSG_ATTR_UV0, 0u);
+        v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_UV0 + 1u),
+                        V9X_HSW_PSG_ATTR_UV0, 1u);
+        v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX0, V9X_HSW_PSG_UV0, 1u);
+    }
+    if (desc->stage1 == V9X_HSW_PS_MODULATE_TEX1) {
+        v9x_hsw_psg_pln(&g, V9X_HSW_PSG_UV1, V9X_HSW_PSG_ATTR_UV1, 0u);
+        v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_UV1 + 1u),
+                        V9X_HSW_PSG_ATTR_UV1, 1u);
+        v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX1, V9X_HSW_PSG_UV1, 2u);
+    }
+
+    /* Stage 0 into g112-g115. */
+    for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+        out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
+        switch (desc->stage0) {
+        case V9X_HSW_PS_DIFFUSE:
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MOV, out_reg,
+                           (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c), 0u, 0, 0ul, 0u);
+            break;
+        case V9X_HSW_PS_TEXTURE:
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MOV, out_reg,
+                           (v9x_u8)(V9X_HSW_PSG_TEX0 + c), 0u, 0, 0ul, 0u);
+            break;
+        case V9X_HSW_PS_MODULATE:
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MUL, out_reg,
+                           (v9x_u8)(V9X_HSW_PSG_TEX0 + c),
+                           (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c), 0, 0ul, 1u);
+            break;
+        case V9X_HSW_PS_ADD:
+            /* D3DTOP_ADD on colour, modulate on alpha. */
+            v9x_hsw_psg_op(&g,
+                           c == 3u ? V9X_HSW_EU_OP_MUL : V9X_HSW_EU_OP_ADD,
+                           out_reg, (v9x_u8)(V9X_HSW_PSG_TEX0 + c),
+                           (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c), 0, 0ul, 1u);
+            break;
+        default:
+            /* Decal: the texture's colour, the diffuse alpha. */
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MOV, out_reg,
+                           (v9x_u8)(c == 3u ? V9X_HSW_PSG_DIFFUSE + c :
+                                              V9X_HSW_PSG_TEX0 + c),
+                           0u, 0, 0ul, 0u);
+            break;
+        }
+    }
+    /* Stage 1: modulate everything by the second texture. */
+    if (desc->stage1 == V9X_HSW_PS_MODULATE_TEX1) {
+        for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+            out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MUL, out_reg, out_reg,
+                           (v9x_u8)(V9X_HSW_PSG_TEX1 + c), 0, 0ul, 1u);
+        }
+    }
+    /* Vertex fog: colour = (colour - fog) * f + fog, f = specular alpha. */
+    if (desc->fog) {
+        for (c = 0u; c < 3u; ++c) {
+            out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_ADD, V9X_HSW_PSG_SCRATCH,
+                           out_reg, 0u, 1,
+                           desc->fog_rgb[c] ^ V9X_HSW_PSG_SIGN, 0u);
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MUL, V9X_HSW_PSG_SCRATCH,
+                           V9X_HSW_PSG_SCRATCH, V9X_HSW_PSG_FOG, 0, 0ul, 0u);
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_ADD, out_reg,
+                           V9X_HSW_PSG_SCRATCH, 0u, 1, desc->fog_rgb[c], 1u);
+        }
+    }
+
+    if (g.failed || g.capacity - g.used < 4ul ||
+        v9x_hsw_ps_rt_write(g.out + g.used) != V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *used = g.used + 4ul;
+    return V9X_STATUS_OK;
+}

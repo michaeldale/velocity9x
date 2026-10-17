@@ -239,6 +239,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-17 Haswell Phase B2: DirectDraw fills and copies run on BCS in the driver at 8, 16 and 32 bpp; copy pitch is bytes; a VBE mode set leaves the ring alone](2026-10-17-haswell-phase-b2-directdraw-on-bcs.md)
 - [2026-10-17 Haswell Phase C: the render ring runs our initialising batch through MI_BATCH_BUFFER_START and returns; the breadcrumb lands, EIR 0](2026-10-17-haswell-phase-c-render-ring-init.md)
 - [2026-10-17 Haswell Phase D: constant and interpolated triangles match the reference; the RT write message type is bits 17:14](2026-10-17-haswell-phase-d-first-triangle.md)
+- [2026-10-17 Haswell Phase E: eight texture-stage combinations (texture, modulate, add, decal, alpha test, fog, two stages) match the reference](2026-10-17-haswell-phase-e-pixel-shader-set.md)
 
 ## SiS
 

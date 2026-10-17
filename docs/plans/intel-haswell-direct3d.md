@@ -15,7 +15,10 @@ Phase C done the same day: the render ring ran the initialising batch through
 done the same day: a constant and an interpolated triangle match the
 reference at every judged pixel, after the render target write's message
 type was moved to bits 17:14
-(`docs\decisions\2026-10-17-haswell-phase-d-first-triangle.md`). E next.
+(`docs\decisions\2026-10-17-haswell-phase-d-first-triangle.md`). Phase E
+done the same day: eight texture-stage combinations, textured, fogged and
+alpha-tested, match the reference within 1/255
+(`docs\decisions\2026-10-17-haswell-phase-e-pixel-shader-set.md`). F next.
 The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
@@ -438,6 +441,40 @@ Kernels for the D3D texture-stage combinations Gen3 already covers
 modulate, decal, add, alpha test, vertex fog, two stages. Each is a short
 EU program; the encoder is host-tested against PRM bit layouts and each
 kernel against a decoder.
+
+**Phase E design (2026-10-17, started on "Phase e go").** Every combination
+but the first samples a texture, so E takes F's minimum along: linear 8x8
+B8G8R8A8 textures, one SAMPLER_STATE (NEAREST, MIPFILTER_NONE, CLAMP;
+Vol 2d/2a), and the SIMD8 `sample` message (Vol 7: SIMD mode 18:17 = 1,
+type 16:12 = 0, sampler 11:8, u and v as the payload, response 4). Filtering
+and wrap modes stay F's.
+
+*One generator, not one kernel per mode.* `v9x_intel_hsw_ps_kernel_build`
+takes a stage-0 operation (diffuse, texture, modulate, add, decal), a
+stage-1 operation (none, or modulate by a second texture) and vertex fog
+with a fog colour. It interpolates only what those need, samples into
+g32 and g36, combines into g112-g115 and writes as in D. The register map
+is fixed: barycentrics g2-g3, setup from g4 with two registers per
+attribute.
+
+*Vertices:* x, y, diffuse RGBA, specular RGBA (fog factor in alpha, as in
+D3D), two texture coordinate pairs, 56 bytes. Four attributes, so SBE reads
+length 2 and the VS URB entry is two rows. D's batch is unchanged by this
+(its draw stays one attribute).
+
+*Alpha test* is not a kernel. It is BLEND_STATE's Alpha Test Enable and
+function (GREATER) with the reference in COLOR_CALC_STATE; the kernel only
+supplies alpha.
+
+*The probe:* `V9XHSWMM /shade:N`, N = 0-3, each run D's layout with two
+targets. 0: texture, modulate. 1: add, decal. 2: modulate with alpha test,
+diffuse with fog. 3: modulate then a second texture. Each target is judged
+against an integer reference: barycentrics at pixel centres, nearest
+texel, UNORM rounding. Pixels within 1/64 of an edge or of a texel
+boundary are not judged. The tolerance is 2/255.
+
+*Writes:* what D wrote, plus the textures' bytes inside the state region.
+*Failure:* as in D. A wedged RCS costs a power cycle, not a `reset`.
 
 ### F. Textures and state
 
