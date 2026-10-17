@@ -161,6 +161,26 @@ screenshot with flips working shows the sky and road textured.
 
 Still open: Game 2's measured 20.8 fps and its 47 us of CPU per batch
 (item 2's split). Michael judges the speed good, so this is an
-efficiency question, not a visible defect. Why
+efficiency question, not a visible defect.
+
+## 2026-10-18, boots 21-22: the split, and the first cut
+
+Measured with Half-Life's mwd5, because Game 2 runs the same engine draw:
+`docs/decisions/2026-10-18-haswell-batch-cost-uncached-kernel-build.md`.
+
+- The aperture is UC (BIOS MTRR).
+- The kernel was rebuilt in it for every batch, through
+  read-modify-write: 16.1 µs a batch.
+- Built in cached memory instead, it costs 3.2 µs. The engine draw went
+  from 75.5 to 65.3 µs a batch, and mwd5 from 52.4 to 59.3 fps.
+
+The rest, by size:
+
+- render-engine waits, 28.7 µs: synchronous submits, full flushes each
+  batch;
+- batch build, about 17 µs;
+- vertex copy, 14.2 µs.
+
+Each needs a design. Why
 DirectDraw calls Flip about 140 times a frame when it is declined is not
 established; the scanout (Phase F3) removes the declined path.

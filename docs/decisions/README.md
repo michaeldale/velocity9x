@@ -248,6 +248,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-18 Half-Life mwd5 on the HD 4600: 52.4 fps Direct3D, drawn whole, against the GMA 950's 41.3](2026-10-18-haswell-half-life-d3d-mwd5.md)
 - [2026-10-18 HD 4600 render interface, step 1: CPU textures refused, textures sampled, the tiled clear through the engine](2026-10-18-haswell-render-interface-step1.md)
 - [2026-10-18 HD 4600 render interface, step 2: the mask drawn, the scissor as the drawing rectangle; Half-Life OpenGL on the engine, windowed](2026-10-18-haswell-render-interface-step2.md)
+- [2026-10-18 HD 4600 per-batch cost: the aperture is uncached, and the kernel was rebuilt in it; built in cached memory, mwd5 52.4 to 59.3 fps](2026-10-18-haswell-batch-cost-uncached-kernel-build.md)
 
 ## SiS
 

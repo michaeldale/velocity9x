@@ -658,23 +658,52 @@ static DWORD v9x_d3d_hsw_kernel_slot(const struct v9x_hsw_ps_desc *desc)
             (DWORD)desc->fog) % V9X_INTEL_HSW_KERNEL_SLOTS;
 }
 
+/* The last 128 bytes of a slot stay clear for the EU's prefetch past a
+ * kernel's end (Vol 7). */
+#define V9X_D3D_HSW_KERNEL_DWORDS \
+    ((V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul)
+
+/*
+ * Where a kernel is assembled before it goes to its slot: ordinary cached
+ * memory. The EU encoder ORs each instruction's fields into its output
+ * (hsw_eu.c), and built in place that is an uncached read and write of the
+ * aperture per field - the aperture is UC by the BIOS's MTRR over
+ * E0000000-FFFFFFFF (V9XBOOT.INI, boot 20). Measured on the 4570 (boot 21):
+ * 16.1 us a batch in place, about 210 ns per dword produced, against 48 ns
+ * per dword for the plain vertex copy. Per process, as the DLL's data is;
+ * HAL callbacks run under the Win16 lock, so one draw at a time.
+ */
+static v9x_u32 v9x_d3d_hsw_kernel_words[V9X_D3D_HSW_KERNEL_DWORDS];
+
 /* The kernel for a description, built into its slot; its offset in the
  * state. */
 static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
                                     DWORD *kernel)
 {
     v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    v9x_u32 *slot_words;
     DWORD slot;
-    v9x_u32 used;
+    DWORD index;
+    v9x_u32 used = 0ul;
+    DWORD started = V9X_TIME_BEGIN();
+    int built;
 
     slot = v9x_d3d_hsw_kernel_slot(desc);
     *kernel = V9X_INTEL_HSW_KERNEL_OFF + slot * V9X_INTEL_HSW_KERNEL_SLOT;
-    /* The last 128 bytes of a slot stay clear for the EU's prefetch past a
-     * kernel's end (Vol 7). */
-    return v9x_intel_hsw_ps_kernel_build(
-               image + *kernel / 4ul,
-               (V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul, desc,
-               &used) == V9X_STATUS_OK;
+    built = v9x_intel_hsw_ps_kernel_build(v9x_d3d_hsw_kernel_words,
+                                          V9X_D3D_HSW_KERNEL_DWORDS, desc,
+                                          &used) == V9X_STATUS_OK;
+    /* Only the words the builder produced, as building in place wrote. */
+    if (built) {
+        slot_words = image + *kernel / 4ul;
+        for (index = 0ul; index < used; ++index) {
+            slot_words[index] = v9x_d3d_hsw_kernel_words[index];
+        }
+    }
+    /* Haswell times the kernel build in the Gen3 decode bucket (TimeDecode
+     * in V9XTRACE): the per-batch cost split of 2026-10-18. */
+    V9X_TIME_END(V9X_TIME_DECODE, started);
+    return built;
 }
 
 /* The draw's state in the reserve: the target and texture surfaces, the
@@ -758,6 +787,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD count;
     DWORD bytes;
     DWORD index;
+    DWORD timed;
     const v9x_u32 *source;
     v9x_u32 *target;
 
@@ -781,9 +811,14 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     if (!v9x_engine32_hsw.wait_idle(1) || !v9x_d3d_hsw_wait_rcs()) {
         return 0;
     }
+    /* The per-batch cost split (2026-10-18), in Gen3 buckets V9XTRACE
+     * names: the whole state write in RingSpaceWait (the kernel inside it
+     * also in Decode), the vertex copy in RingWrite. */
+    timed = V9X_TIME_BEGIN();
     if (!v9x_d3d_hsw_write_state(draw, &state, &kernel)) {
         return 0;
     }
+    V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, timed);
 
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
     d.kernel = kernel;
@@ -822,9 +857,11 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         bytes = count * 3ul * V9X_HSW_TL_VERTEX_BYTES;
         source = (const v9x_u32 *)(vertices + done * 3ul);
         target = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_VERTEX_OFF);
+        timed = V9X_TIME_BEGIN();
         for (index = 0ul; index < bytes / 4ul; ++index) {
             target[index] = source[index];
         }
+        V9X_TIME_END(V9X_TIME_RING_WRITE, timed);
         d.vertex_count = count * 3ul;
         v9x_intel_hsw_batch_init(
             &batch, v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
