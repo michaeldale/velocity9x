@@ -89,3 +89,55 @@ The timing buckets were off, so this run cannot separate the two.
    submission cost.
 3. Whether Game 1's grey ground and sky are real, once the screen shows
    finished frames.
+
+## 2026-10-17, boot 16: Game 2 alone, timed
+
+The HAL now times Haswell (`V9X_TIME_ENABLED` names GEN75):
+
+- `d3d_hsw.c`'s draw entry is in the engine-draw bucket.
+- Its RCS sequence waits are in the render-drain bucket.
+
+3DMark 99 was run at the same settings with only Game 2 selected: 20.7
+fps (`game2-alone-result.png`). Snapshots are `V9XSNA7-game2-before.INI`
+(no Direct3D yet this boot) and `V9XSNA7-game2-after-timed.INI`. The TSC
+is 3.19 GHz: 77.9e9 cycles over 24,405 ms between the first and last
+Flip.
+
+| bucket | calls | ms | per call |
+|---|---|---|---|
+| D3D draw entry points | 105,946 | 19,088 | 180 us |
+| engine draw (`d3d_hsw.c`, whole) | 250,591 | 18,535 | 74 us |
+| of which RCS waits | 501,993 | 6,660 | 13 us |
+| Lock to Unlock (application) | 4,033 | 3,909 | 0.97 ms |
+| Blt fill (Z and colour) | 804 | 250 | 0.31 ms |
+| CreateSurface | 2,695 | 55 | 20 us |
+| Flip | 69,958 | 32 | 0.5 us |
+
+13 triangles a batch on average (3,246,311 over 250,591). 125,846 state
+breaks, mostly texture changes.
+
+**Game 2 is the submission path, not texture churn.**
+
+- Of 24.4 s, the engine draw is 18.5 s.
+- 6.7 s of that waits for the GPU.
+- 11.9 s, 47 us a batch, is CPU work inside the engine: writing the
+  state, rebuilding the kernel, copying the vertices and building the
+  batch, all into the reserve.
+- Texture uploads (Lock held) are 3.9 s: 2,688 textures created and
+  destroyed.
+
+**Why 47 us a batch: hypotheses, none measured.**
+
+- Every word of state, kernel, vertex and batch goes through the GMADR
+  aperture. If that range is uncached rather than write-combined, about
+  600-900 dword writes a batch would cost this. The snapshot carries no
+  MTRR or PAT state.
+- The kernel is regenerated on every batch, although its slot is a fixed
+  function of its description.
+
+The next measurement is finer buckets inside the engine draw, and the
+aperture's memory type.
+
+Also seen: 69,958 Flip calls for about 500 frames, all declined. Why
+DirectDraw calls Flip about 140 times a frame when it is declined is not
+established; the scanout (Phase F3) removes the declined path.

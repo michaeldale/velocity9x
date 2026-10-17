@@ -297,9 +297,13 @@ extern int v9x_hal_tsc;
  * the Rage IIC's always-on cost split already assumes (d3d_rage2.c). */
 /* And on the Millennium since 2026-10-11, only where the CPU has a TSC:
  * the 2064W and 2164W are PCI parts a 486 board can carry. */
+/* And on Haswell since 2026-10-17, to split 3DMark 99's Game 2 between
+ * texture churn and the synchronous render submit (docs\issues\
+ * 2026-10-17-haswell-3dmark99-flicker-and-game2.md). */
 #define V9X_TIME_ENABLED() \
     (v9x_hal != 0 && \
      (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 || \
+      v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN75 || \
       v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 || \
       (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_MGA && \
        v9x_hal_tsc)))

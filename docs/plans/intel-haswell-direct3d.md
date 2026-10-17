@@ -628,6 +628,137 @@ and wrap modes, `BLEND_STATE`, `DEPTH_STENCIL_STATE`, depth buffer. Then
 the `V9X_D3D_ENGINE_OPS` table, and Haswell claims `Direct3D =
 'hardware-gen75'`.
 
+### F3. Flips: a Haswell scanout
+
+**Design, for review (2026-10-17).** Found by 3DMark 99
+(`docs\issues\2026-10-17-haswell-3dmark99-flicker-and-game2.md`):
+
+- `hd4600-hsw` publishes no `ENGINE_CAP_FLIP`, so `v9x_flip_body` declines
+  every flip (77,714 in one run).
+- DirectDraw then rotates the triple-buffer chain's addresses while the
+  scanout stays at offset 0.
+- So one frame in three is drawn on the visible page. That is the
+  flicker, and `DrawsIntoPresented` was a third of the batches.
+
+The fix is a scanout for the core's existing flip state machine, with
+nothing new in the core.
+
+*What the read-only snapshots already show (boot 14, unmeasured as
+writes):*
+
+- Pipe A is the live pipe: `PIPEACONF` (70008h) is `C0000010`, enabled
+  and active.
+- Plane A is the live plane: `DSPACNTR` (70180h) has bit 31 set.
+- `VGA_CONTROL` (41000h) has bit 31 set, so the VGA plane is off and the
+  VBE modes scan through plane A.
+- `DSPASURF` (7019Ch), `DSPAOFFSET` (701A4h) and `DSPASURFLIVE` (701ACh)
+  all read 0 with the desktop at framebuffer offset 0. So a framebuffer
+  byte offset is the graphics address the plane wants, as on Gen3.
+- `TRANS_VTOTAL_A` (6000Ch) reads `020C01DF` at 640x480: vactive - 1 in
+  11:0, vtotal - 1 in 27:16. `PIPEADSL` (70000h) is the line.
+- The 4570's VGA connector is the PCH's DAC, fed from pipe A through FDI,
+  so transcoder A's timing is the one scanned. The timing registers
+  matching the mode say so; no other transcoder is assumed.
+- The HAL's MMIO mapping is 2 MB, so all of these are already reachable
+  through `engine.control_linear_base`.
+
+*The write.* A flip to framebuffer byte offset `o`:
+
+- `DSPAOFFSET` = `(o & FFFh) / bytes per pixel` in x (15:0), 0 in y,
+  written first;
+- then `DSPASURF` = `o & ~FFFh`.
+
+This is i915's Haswell primary-plane path (`intel_gen4_compute_page_offset`
+for a linear surface, then `DSPOFFSET` and `DSPSURF` in
+`ironlake_update_primary_plane`). The x in `DSPAOFFSET` can exceed the
+width; i915 relies on that.
+
+It is needed here because DirectDraw's back buffers are not page-aligned:
+`D3dTargetOffset` was `001D4C00h` at 800x600x16. An offset whose
+remainder is not a whole number of pixels is declined, as the other
+scanouts decline what they cannot express.
+
+*When it is taken.*
+
+- Vol 2c, plane registers: the plane registers are double-buffered, and a
+  `DSPASURF` write arms their update at the next vblank start. It is
+  latched, never applied mid-frame, so no write window is needed:
+  `v9x_scanout_writes_in_blank` is 0 and the window is always open.
+- The flip is a hardware flip (`V9X_FLIP_WAIT_HW`). It is pending until
+  `DSPASURFLIVE` reads the base just written. That register reports the
+  base the plane is scanning now, so equality is "taken", and the old
+  buffer is free from then.
+- This is the Gen3 path's ISR-and-frame-counter rule, replaced by a direct
+  readback that Gen3 does not have.
+- `PIPEADSL` against vactive serves `v9x_in_vblank`.
+- `v9x_scanout_vblank_available` is "pipe A and plane A are both enabled
+  now". Anything else is declined, as Gen3 declines two live pipes.
+
+*Unsynced flips.* A `DDFLIP_NOVSYNC` flip (3DMark 99's VSync Off) uses
+the same write, because this plane has no unlatched write without the
+asynchronous-flip mode, and that mode is not proposed.
+
+The core's rule stands: an unsynced flip arms nothing, so the next Flip
+may overwrite the pending base before the latch, and that frame is never
+shown. With three buffers, the one being drawn after an unsynced flip is
+the one shown two flips ago. So drawing into the visible page needs the
+application to finish two frames inside one refresh. `DrawsIntoPresented`
+is the measure, with VSync off and on.
+
+*Layering.*
+
+- **Arithmetic** in `src\chipsets\intel\hsw_display.c`, host-tested: the
+  offset split, the blank test, and the pipe/plane resolution from the
+  register values.
+- **Mechanics** in `src\display32\engines\hsw_scanout.c`: register reads
+  and writes only, as `m64_scanout.c` is.
+- **Dispatch** through the existing entry points in `i9xx_scanout.c`
+  (`v9x_set_display_start`, `_now`, `v9x_in_vblank`,
+  `v9x_scanout_hw_flip`, `_hw_flip_pending`, `_vblank_available`,
+  `_flip_window_open`, `_displayed_offset`, `_note_flip_done`).
+- **The cap:** `hsw_hw16.c` adds `ENGINE_CAP_FLIP` to an open engine.
+- FlipToGDISurface and SetExclusiveMode already call
+  `v9x_set_display_start(0)`, which writes `DSPAOFFSET` 0 and `DSPASURF`
+  0.
+- A mode set rewrites the plane through the video BIOS. `v9x_scanout_reset`
+  drops the remembered base.
+
+*Step 1, measured before the HAL: `V9XHSWMM /flip`.* At the desktop mode,
+the probe:
+
+1. reads the plane;
+2. writes `DSPAOFFSET` and `DSPASURF` for `o` = pitch x 383. That is not
+   page-aligned at 1024x768x16: pitch 2112 gives `o` = `C57C0h`, so the
+   base is `C5000h` and x is `7C0h` / 2 = 992. Row 384 would be aligned
+   and test nothing;
+3. polls `DSPASURFLIVE` and `PIPEADSL` until the base reads back, and
+   records the polls, the line at the write and at the latch, and
+   `DSPAOFFSET` after;
+4. holds 5 s;
+5. writes 0 back and waits for that to latch.
+
+**Passes if:**
+
+- `DSPASURFLIVE` reaches the new base within one frame, and reaches it at
+  a line at or after vactive;
+- the restore latches the same way;
+- the screen shows the desktop moved up by exactly 383 rows with no
+  horizontal shift for the 5 s, and then the desktop as it was.
+
+GDI screenshots read the page at offset 0, not the scanout, so the
+picture is Michael's eye or the capture card.
+
+Display-only: the worst outcome is a wrong picture until the restore.
+
+*Step 2, the HAL as above.*
+
+**Measured by** 3DMark 99 at the same settings:
+
+- `FlipHandled` should equal the flip count, with `FlipDeclined` and
+  `DrawsIntoPresented` near 0 with VSync on;
+- no visible flicker;
+- then VSync off, recorded.
+
 ### G. Games
 
 The Gen3 test set on this machine: 3DMark 99 scenes, Half-Life D3D, Final

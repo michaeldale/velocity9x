@@ -178,13 +178,17 @@ static int v9x_d3d_hsw_wait_rcs(void)
 {
     volatile DWORD *status = v9x_d3d_hsw_status();
     DWORD spins;
+    DWORD started = V9X_TIME_BEGIN();
 
+    /* Timed as the render drain: the GPU's share of a synchronous draw. */
     for (spins = 0ul; spins < V9X_D3D_HSW_SPINS; ++spins) {
         if (status[V9X_INTEL_HSW_STATUS_RCS_DONE] ==
             status[V9X_INTEL_HSW_STATUS_RCS_SENT]) {
+            V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
             return 1;
         }
     }
+    V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
     v9x_d3d_hsw_quarantine();
     return 0;
 }
@@ -721,9 +725,9 @@ static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
     return v9x_d3d_hsw_map(draw, &state) == V9X_D3D_HSW_REFUSE_NONE;
 }
 
-static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
-                            const V9X_R3D_VERTEX *vertices,
-                            DWORD triangle_count)
+static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
+                                  const V9X_R3D_VERTEX *vertices,
+                                  DWORD triangle_count)
 {
     V9X_D3D_HSW_STATE state;
     struct v9x_hsw_batch batch;
@@ -806,6 +810,19 @@ static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
     }
     v9x_present_note_submission();
     return 1;
+}
+
+/* The whole draw timed, as d3d_mga.c's is; its RCS waits are in the render
+ * drain bucket as well. */
+static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
+                            const V9X_R3D_VERTEX *vertices,
+                            DWORD triangle_count)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    int result = v9x_d3d_hsw_draw_batch(draw, vertices, triangle_count);
+
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return result;
 }
 
 /* One TL vertex (V9X_HSW_TL_VERTEX_BYTES): x, y, z, rhw 1.0, then a black
