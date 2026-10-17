@@ -11,10 +11,10 @@ Step 2 done on boot 20:
 - the mask is drawn, and the scissor is the drawing rectangle;
 - Half-Life `-gl` runs on the engine in a window (332,048 batches, none
   refused or on the CPU);
-- full screen it refuses "the selected OpenGL mode", cause not
-  established
+- full screen it later ran, at 56.9 fps for mwd5 at 640x480 (the
+  netbook: 16.8); two earlier full-screen refusals are set aside
 ([record](../decisions/2026-10-18-haswell-render-interface-step2.md)).
-Next: that refusal, then the rest of step 3.
+Next: the rest of step 3 (Quake 2), then steps 4-6.
 
 Target: the i5-4570 (`8086:0412`), on the `intel-gma` family's
 `hd4600-hsw` chip, with the Direct3D engine of

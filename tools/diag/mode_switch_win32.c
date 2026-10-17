@@ -266,6 +266,74 @@ void __stdcall V9xModeSwitchEntry(void)
         ExitProcess(exit_code);
     }
 
+    /*
+     * /enum: what a Quake-engine game sees (GLQuake's VID_InitFullDIB, which
+     * Half-Life's GL renderer inherits). Every mode EnumDisplaySettings
+     * lists, each tested with CDS_TEST | CDS_FULLSCREEN, which changes
+     * nothing; then a real CDS_FULLSCREEN switch to 640x480x16 built as a
+     * game builds it (width, height, depth only) and back with
+     * ChangeDisplaySettings(0, 0), each verified with GetDeviceCaps.
+     */
+    if (v9x_find_switch(command_line, "/enum") != 0) {
+        DEVMODEA mode;
+        BYTE *bytes = (BYTE *)&mode;
+        DWORD index;
+        DWORD listed = 0ul;
+        UINT now_width;
+        UINT now_height;
+        UINT now_bits;
+        char key[24];
+        char value[96];
+
+        for (index = 0ul; index < 256ul; ++index) {
+            UINT byte;
+
+            for (byte = 0u; byte < sizeof(mode); ++byte) {
+                bytes[byte] = 0u;
+            }
+            mode.dmSize = sizeof(mode);
+            if (!EnumDisplaySettingsA(0, index, &mode)) {
+                break;
+            }
+            ++listed;
+            wsprintfA(key, "Enum%02lu", index);
+            wsprintfA(value, "%lux%lux%lu hz=%lu fields=%08lX test=%ld",
+                      mode.dmPelsWidth, mode.dmPelsHeight, mode.dmBitsPerPel,
+                      mode.dmDisplayFrequency, mode.dmFields,
+                      ChangeDisplaySettingsA(&mode,
+                                             CDS_TEST | CDS_FULLSCREEN));
+            v9x_write_text(key, value);
+        }
+        v9x_write_uint("EnumListed", listed);
+
+        for (index = 0ul; index < sizeof(mode); ++index) {
+            bytes[index] = 0u;
+        }
+        mode.dmSize = sizeof(mode);
+        mode.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
+        mode.dmPelsWidth = 640ul;
+        mode.dmPelsHeight = 480ul;
+        mode.dmBitsPerPel = 16ul;
+        v9x_write_int("Game640x480x16Test",
+                      ChangeDisplaySettingsA(&mode,
+                                             CDS_TEST | CDS_FULLSCREEN));
+        v9x_flush_results();
+        v9x_write_int("Game640x480x16Switch",
+                      ChangeDisplaySettingsA(&mode, CDS_FULLSCREEN));
+        v9x_query_mode(&now_width, &now_height, &now_bits);
+        v9x_write_uint("AfterSwitchW", now_width);
+        v9x_write_uint("AfterSwitchH", now_height);
+        v9x_write_uint("AfterSwitchBpp", now_bits);
+        v9x_write_int("RestoreResult", ChangeDisplaySettingsA(0, 0));
+        v9x_query_mode(&now_width, &now_height, &now_bits);
+        v9x_write_uint("AfterRestoreW", now_width);
+        v9x_write_uint("AfterRestoreH", now_height);
+        v9x_write_uint("AfterRestoreBpp", now_bits);
+        v9x_write_text("Result", "COMPLETE");
+        v9x_flush_results();
+        ExitProcess(0u);
+    }
+
     v9x_cursor_stress = v9x_find_switch(command_line, "/cursor") != 0 ? 1u : 0u;
     v9x_write_uint("CursorStress", v9x_cursor_stress);
 

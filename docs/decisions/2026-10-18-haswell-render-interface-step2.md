@@ -70,10 +70,37 @@ established.
   - The picture was not checked frame by frame. The console overlay was
     readable throughout.
 
+## Later the same boot: full screen draws, 56.9 fps
+
+- **The GDI mode path is not the refusal.** `V9XMSW /enum` (new) walks
+  `EnumDisplaySettings` the way GLQuake's `VID_InitFullDIB` does. It
+  lists ten modes, including 640x480x16, and every one but the 4 bpp mode
+  answers `CDS_TEST | CDS_FULLSCREEN` with 0, successful. A real
+  `CDS_FULLSCREEN` switch to 640x480x16 and the restore both succeed and
+  read back right (`V9XMSW-enum-boot20.INI`).
+- **The same full-screen command then worked.** The command was
+  `-console -gl -w 640 -h 480 -full`, after one windowed `-gl` session.
+  The ICD attached to HL.EXE and drew on the hardware path with nothing
+  refused.
+- **`timedemo mwd5` at 640x480x16 full screen: 54.550, 56.894, 56.508
+  fps, best 56.894.** The netbook's GMA 950 measured 16.8 fps with `-gl`
+  (`2026-10-09-icd-call-census-and-attrib-stacks.md`). The builds, CPUs
+  and DirectX runtime differ, as for the Direct3D comparison.
+- **Why the first two full-screen starts refused** is not established, and
+  is set aside at Michael's word (2026-10-18). What is known:
+  - Half-Life's registry settings differed between the failing and the
+    working start only in `EngineAllowWindowed`, which the windowed
+    session added.
+  - Its saved `config.cfg` holds no video mode.
+  - A Direct3D session in between changed only `EngineType` (2 to 3).
+- **Seen but not investigated:** in the full-screen console, the
+  background is dark from about x = 430 to the right edge
+  (`hl-gl-fullscreen-console.png`).
+
 ## Not done
 
-- Half-Life OpenGL full screen (the refusal above), and so the like-for-
-  like 640x480 number.
+- Why Half-Life refused full-screen OpenGL twice (set aside), and the
+  console background's dark band.
 - Glide (step 5) and 3DCIF (step 6); two texture units (step 4).
 
 Gates: check-tree, build-host (16 failures first, then passing),
