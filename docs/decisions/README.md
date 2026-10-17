@@ -234,6 +234,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-17 Haswell tier-0 reaches enable-ok on the i5-4570; the boot hangs were slow boots cut short](2026-10-17-haswell-tier0-enable-ok.md)
 - [2026-10-17 Haswell read-only MMIO: the display is the VBE mode on pipe A and the DAC; every GT register reads zero](2026-10-17-haswell-phase2-read-only-mmio.md)
 - [2026-10-17 Haswell EU and 3D encoders: the subset encoded, the PRM tables used, and SCS_ZERO as the default trap](2026-10-17-haswell-eu-and-3d-encoders.md)
+- [2026-10-17 Haswell Phase A: forcewake is acknowledged in 493 polls, and the GT reads zero because it is in RC6](2026-10-17-haswell-phase-a-forcewake.md)
 
 ## SiS
 

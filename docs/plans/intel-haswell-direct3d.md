@@ -1,6 +1,8 @@
 # Hardware Direct3D on Haswell (Gen7.5): the ladder from first write to textured triangles
 
-Status: **proposed, 2026-10-17.** Nothing on the GT has been written. The
+Status: **in progress.** Phase A done 2026-10-17: forcewake acknowledged,
+the GT reads zero because it is in RC6 and is otherwise unprogrammed
+(`docs\decisions\2026-10-17-haswell-phase-a-forcewake.md`). Phase B next. The
 machine is the i5-4570 (`8086:0412`), running the `vbe` family at
 640x480x8 (`docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
 read-only MMIO and GTT snapshot in hand

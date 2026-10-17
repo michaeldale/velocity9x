@@ -7,9 +7,22 @@
 ; (GTTMMADR + 2 MB)"), reads every listed offset twice, copies the first
 ; HSW_GTT_COPY GTT entries, and counts the valid entries in the whole table.
 ;
-; Writes: none to the device. 0CF8h is saved and restored around the one
-; configuration read (the IGD's ID, to confirm what the base belongs to).
-; Mapping a physical range with _MapPhysToLinear changes no device state.
+; Writes: none to the device unless V9XHSWMM.EXE passes HSW_FLAG_FORCEWAKE.
+; 0CF8h is saved and restored around the one configuration read (the IGD's
+; ID, to confirm what the base belongs to). Mapping a physical range with
+; _MapPhysToLinear changes no device state.
+;
+; HSW_FLAG_FORCEWAKE is Phase A of docs\plans\intel-haswell-direct3d.md,
+; the first write to this GPU, approved 2026-10-17. With interrupts off:
+; read the forcewake acknowledge (130044h); if bit 0 is already set someone
+; else holds forcewake and nothing is written; otherwise write 00010001h to
+; MULTIFORCEWAKE (A188h, a masked write setting bit 0), poll the acknowledge
+; for bit 0 a bounded number of times, read the offset list (the second
+; snapshot is taken while awake), write 00010000h to release - always, acked
+; or not - and poll for bit 0 clear. Two writes, both to A188h, the second
+; undoing the first. The register and the masked handshake are i915's
+; (FORCEWAKE_MT, FORCEWAKE_ACK_HSW); the public PRM names A188h and
+; documents 130044h 15:0 as the multiple-forcewake status.
 ;
 ; Offsets are accepted only inside HSW_WINDOWS below. Each is a register
 ; block this probe has a reason to read and that sits outside the display
@@ -53,16 +66,33 @@ HSW_ST_GTT_MAPPED       equ 00000008h
 HSW_ST_OFFSETS_REFUSED  equ 00000010h
 HSW_ST_SNAPSHOT_TAKEN   equ 00000020h
 HSW_ST_GTT_READ         equ 00000040h
+HSW_ST_FW_ALREADY_HELD  equ 00000100h
+HSW_ST_FW_REQUESTED     equ 00000200h
+HSW_ST_FW_ACKED         equ 00000400h
+HSW_ST_FW_ACK_TIMEOUT   equ 00000800h
+HSW_ST_FW_RELEASED      equ 00001000h
+HSW_ST_FW_RELEASE_TIMEOUT equ 00002000h
+
+; Forcewake, Phase A (see the header). Polls are MMIO reads of the
+; acknowledge, so the bound is in reads, not time.
+HSW_FW_REQUEST          equ 0a188h
+HSW_FW_ACK              equ 130044h
+HSW_FW_SET              equ 00010001h ; mask bit 16, value bit 0
+HSW_FW_CLEAR            equ 00010000h ; mask bit 16, value 0
+HSW_FW_ACK_BIT          equ 00000001h
+HSW_FW_POLLS            equ 100000
 
 ; Input from V9XHSWMM.EXE.
 HSW_IN_BASE             equ 0
-HSW_IN_COUNT            equ 4
-HSW_IN_OFFSETS          equ 8
-HSW_IN_MIN_BYTES        equ 8
+HSW_IN_FLAGS            equ 4
+HSW_IN_COUNT            equ 8
+HSW_IN_OFFSETS          equ 12
+HSW_IN_MIN_BYTES        equ 12
+HSW_FLAG_FORCEWAKE      equ 00000001h
 
 ; Output layout, in dwords. Must match struct hsw_result in
 ; hsw_mmio_probe_win32.c.
-HSW_HEADER_DWORDS       equ 8
+HSW_HEADER_DWORDS       equ 16
 HSW_RESULT_DWORDS       equ (HSW_HEADER_DWORDS + HSW_OFFSET_MAX * 3 + \
                              HSW_GTT_COPY)
 
@@ -94,11 +124,20 @@ HswResult label dword
     dd 0                        ; 05 valid GTT entries, whole table
     dd 0                        ; 06 0CF8h found and restored
     dd 0                        ; 07 first offset refused, if any
+    dd 0                        ; 08 flags received
+    dd 0                        ; 09 forcewake acknowledge before request
+    dd 0                        ; 10 polls until acknowledged
+    dd 0                        ; 11 acknowledge when acknowledged
+    dd 0                        ; 12 MULTIFORCEWAKE read while awake
+    dd 0                        ; 13 polls until released
+    dd 0                        ; 14 acknowledge after release
+    dd 0                        ; 15 reserved
 HswOffsets   dd HSW_OFFSET_MAX dup (0)
 HswFirst     dd HSW_OFFSET_MAX dup (0)
 HswSecond    dd HSW_OFFSET_MAX dup (0)
 HswGtt       dd HSW_GTT_COPY dup (0)
 HswBase      dd 0
+HswFlags     dd 0
 HswMmio      dd 0
 HswGttLinear dd 0
 VxD_LOCKED_DATA_ENDS
@@ -245,6 +284,74 @@ Hsw_Read_Gtt_Skip:
     ret
 EndProc Hsw_Read_Gtt
 
+; Phase A: request forcewake, take the second snapshot while awake, release.
+; See the header for the sequence and its source. Interrupts are off from
+; the first acknowledge read to the last, so nothing else touches A188h
+; between our two writes.
+BeginProc Hsw_Forcewake
+    pushad
+    pushfd
+    cli
+    mov     esi, HswMmio
+
+    mov     eax, [esi+HSW_FW_ACK]
+    mov     HswResult[36], eax
+    test    eax, HSW_FW_ACK_BIT
+    jz      short Hsw_Fw_Write_Request
+    ; Someone else holds forcewake: write nothing, read as we are.
+    or      HswResult[4], HSW_ST_FW_ALREADY_HELD
+    mov     edi, OFFSET32 HswSecond
+    call    Hsw_Read_Snapshot
+    jmp     Hsw_Fw_Done
+
+Hsw_Fw_Write_Request:
+    mov     dword ptr [esi+HSW_FW_REQUEST], HSW_FW_SET
+    or      HswResult[4], HSW_ST_FW_REQUESTED
+    xor     ecx, ecx
+Hsw_Fw_Poll:
+    mov     eax, [esi+HSW_FW_ACK]
+    test    eax, HSW_FW_ACK_BIT
+    jnz     short Hsw_Fw_Acked
+    inc     ecx
+    cmp     ecx, HSW_FW_POLLS
+    jb      short Hsw_Fw_Poll
+    or      HswResult[4], HSW_ST_FW_ACK_TIMEOUT
+    jmp     short Hsw_Fw_Awake
+Hsw_Fw_Acked:
+    or      HswResult[4], HSW_ST_FW_ACKED
+Hsw_Fw_Awake:
+    mov     HswResult[40], ecx
+    mov     HswResult[44], eax
+    mov     eax, [esi+HSW_FW_REQUEST]
+    mov     HswResult[48], eax
+
+    mov     edi, OFFSET32 HswSecond
+    call    Hsw_Read_Snapshot
+
+    ; Release, whether or not the request was acknowledged.
+    mov     dword ptr [esi+HSW_FW_REQUEST], HSW_FW_CLEAR
+    xor     ecx, ecx
+Hsw_Fw_Release_Poll:
+    mov     eax, [esi+HSW_FW_ACK]
+    test    eax, HSW_FW_ACK_BIT
+    jz      short Hsw_Fw_Released
+    inc     ecx
+    cmp     ecx, HSW_FW_POLLS
+    jb      short Hsw_Fw_Release_Poll
+    or      HswResult[4], HSW_ST_FW_RELEASE_TIMEOUT
+    jmp     short Hsw_Fw_Release_Done
+Hsw_Fw_Released:
+    or      HswResult[4], HSW_ST_FW_RELEASED
+Hsw_Fw_Release_Done:
+    mov     HswResult[52], ecx
+    mov     HswResult[56], eax
+
+Hsw_Fw_Done:
+    popfd
+    popad
+    ret
+EndProc Hsw_Forcewake
+
 BeginProc Hsw_Capture
     pushad
 
@@ -281,8 +388,15 @@ BeginProc Hsw_Capture
 Hsw_Capture_Snapshot:
     mov     edi, OFFSET32 HswFirst
     call    Hsw_Read_Snapshot
+    test    HswFlags, HSW_FLAG_FORCEWAKE
+    jz      short Hsw_Capture_Second
+    ; The second snapshot is taken inside the forcewake window.
+    call    Hsw_Forcewake
+    jmp     short Hsw_Capture_Snapped
+Hsw_Capture_Second:
     mov     edi, OFFSET32 HswSecond
     call    Hsw_Read_Snapshot
+Hsw_Capture_Snapped:
     or      HswResult[4], HSW_ST_SNAPSHOT_TAKEN
 
     cmp     HswGttLinear, 0
@@ -335,6 +449,9 @@ BeginProc Hsw_W32_DeviceIoControl
     call    Hsw_Reset_Result
     mov     eax, [ebp+HSW_IN_BASE]
     mov     HswBase, eax
+    mov     eax, [ebp+HSW_IN_FLAGS]
+    mov     HswFlags, eax
+    mov     HswResult[32], eax
     call    Hsw_Accept_Offsets
     test    HswResult[4], HSW_ST_OFFSETS_REFUSED
     jnz     short Hsw_Dioc_Copy_Out

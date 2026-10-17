@@ -13,9 +13,15 @@
  *             the first entries raw, the run of valid entries from 0 and
  *             whether it maps contiguous stolen memory from BDSM.
  *
- * Nothing on the device is written; see tools\diag\hsw_mmio_probe.asm for
- * the windows the VxD accepts. The only config access here is mechanism #1
- * reads, as in V9XHSW.EXE.
+ * Without arguments nothing on the device is written; see
+ * tools\diag\hsw_mmio_probe.asm for the windows the VxD accepts. The only
+ * config access here is mechanism #1 reads, as in V9XHSW.EXE.
+ *
+ * /forcewake is Phase A of docs\plans\intel-haswell-direct3d.md: the VxD
+ * requests forcewake, takes the second snapshot while it is held, and
+ * releases it (two writes to A188h; the sequence is in the VxD's header).
+ * Each R<offset> is then asleep[,awake if it moved], and [Forcewake] records
+ * the handshake.
  *
  * Names are the ShortNames of HSW PRM Vol 2c where its register list gives
  * an address. A name marked "(i915)" is not in the public PRM's register
@@ -39,7 +45,8 @@
 #define V9X_HSWMM_CAPTURE    1u
 #define V9X_HSWMM_OFFSET_MAX 256u
 #define V9X_HSWMM_GTT_COPY   4096u
-#define V9X_HSWMM_HEADER     8u
+#define V9X_HSWMM_HEADER     16u
+#define V9X_HSWMM_FORCEWAKE  0x00000001ul
 #define V9X_HSWMM_GTT_RAW    16u
 #define V9X_PCI_ADDRESS      ((WORD)0x0cf8u)
 #define V9X_PCI_DATA         ((WORD)0x0cfcu)
@@ -53,6 +60,12 @@
 #define V9X_HSWMM_ST_OFFSETS_REFUSED 0x00000010ul
 #define V9X_HSWMM_ST_SNAPSHOT_TAKEN  0x00000020ul
 #define V9X_HSWMM_ST_GTT_READ        0x00000040ul
+#define V9X_HSWMM_ST_FW_ALREADY_HELD 0x00000100ul
+#define V9X_HSWMM_ST_FW_REQUESTED    0x00000200ul
+#define V9X_HSWMM_ST_FW_ACKED        0x00000400ul
+#define V9X_HSWMM_ST_FW_ACK_TIMEOUT  0x00000800ul
+#define V9X_HSWMM_ST_FW_RELEASED     0x00001000ul
+#define V9X_HSWMM_ST_FW_RELEASE_TIMEOUT 0x00002000ul
 
 static DWORD v9x_inpd(WORD port);
 #pragma aux v9x_inpd = "in eax,dx" parm [dx] value [eax] modify exact [eax]
@@ -116,6 +129,7 @@ static const struct v9x_hswmm_register v9x_named[] = {
 
 struct v9x_hswmm_request {
     DWORD base;
+    DWORD flags;
     DWORD count;
     DWORD offsets[V9X_HSWMM_OFFSET_MAX];
 };
@@ -129,6 +143,14 @@ struct v9x_hswmm_result {
     DWORD gtt_valid;
     DWORD cf8;
     DWORD refused_offset;
+    DWORD flags;
+    DWORD fw_ack_before;
+    DWORD fw_polls_to_ack;
+    DWORD fw_ack_awake;
+    DWORD fw_request_awake;
+    DWORD fw_polls_to_release;
+    DWORD fw_ack_after;
+    DWORD reserved;
     DWORD offsets[V9X_HSWMM_OFFSET_MAX];
     DWORD first[V9X_HSWMM_OFFSET_MAX];
     DWORD second[V9X_HSWMM_OFFSET_MAX];
@@ -267,6 +289,66 @@ static void v9x_publish_gtt(DWORD bdsm)
     v9x_key("Gtt", "Entry0Cache", pte.cache);
 }
 
+/* True if the command line carries the switch, case-insensitively. */
+static int v9x_has_switch(const char *name)
+{
+    const char *line;
+    int length;
+    int at;
+    int index;
+    char a;
+    char b;
+
+    line = GetCommandLineA();
+    length = lstrlenA(name);
+    for (at = 0; line[at] != '\0'; ++at) {
+        for (index = 0; index < length; ++index) {
+            a = line[at + index];
+            b = name[index];
+            if (a >= 'A' && a <= 'Z') {
+                a = (char)(a - 'A' + 'a');
+            }
+            if (a != b) {
+                break;
+            }
+        }
+        if (index == length) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void v9x_publish_forcewake(void)
+{
+    const char *outcome;
+    DWORD status;
+
+    status = v9x_result.status;
+    v9x_key("Forcewake", "AckBefore", v9x_result.fw_ack_before);
+    v9x_key("Forcewake", "PollsToAck", v9x_result.fw_polls_to_ack);
+    v9x_key("Forcewake", "AckAwake", v9x_result.fw_ack_awake);
+    v9x_key("Forcewake", "RequestAwake", v9x_result.fw_request_awake);
+    v9x_key("Forcewake", "PollsToRelease", v9x_result.fw_polls_to_release);
+    v9x_key("Forcewake", "AckAfter", v9x_result.fw_ack_after);
+    if ((status & V9X_HSWMM_ST_FW_ALREADY_HELD) != 0ul) {
+        outcome = "already-held-nothing-written";
+    } else if ((status & V9X_HSWMM_ST_FW_ACK_TIMEOUT) != 0ul) {
+        outcome = "never-acknowledged";
+    } else if ((status & V9X_HSWMM_ST_FW_ACKED) != 0ul) {
+        outcome = "acknowledged";
+    } else {
+        outcome = "not-requested";
+    }
+    WritePrivateProfileStringA("Forcewake", "Request", outcome,
+                               V9X_HSWMM_PATH);
+    if ((status & V9X_HSWMM_ST_FW_REQUESTED) != 0ul) {
+        WritePrivateProfileStringA("Forcewake", "Release",
+            (status & V9X_HSWMM_ST_FW_RELEASED) != 0ul ? "released" :
+            "release-not-acknowledged", V9X_HSWMM_PATH);
+    }
+}
+
 void __stdcall V9xHswMmioEntry(void)
 {
     HANDLE device;
@@ -276,16 +358,21 @@ void __stdcall V9xHswMmioEntry(void)
     DWORD offset;
     DWORD index;
     BOOL ok;
+    int forcewake;
+
+    forcewake = v9x_has_switch("/forcewake");
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA("Report", 0, 0, V9X_HSWMM_PATH);
     WritePrivateProfileStringA("Mmio", 0, 0, V9X_HSWMM_PATH);
     WritePrivateProfileStringA("Gtt", 0, 0, V9X_HSWMM_PATH);
+    WritePrivateProfileStringA("Forcewake", 0, 0, V9X_HSWMM_PATH);
     WritePrivateProfileStringA("Report", "Tool", "V9XHSWMM", V9X_HSWMM_PATH);
     WritePrivateProfileStringA("Report", "Build", V9X_BUILD_ID,
                                V9X_HSWMM_PATH);
-    WritePrivateProfileStringA("Report", "Access", "mmio-read-only",
-                               V9X_HSWMM_PATH);
+    WritePrivateProfileStringA("Report", "Access",
+                               forcewake ? "mmio-read-plus-forcewake" :
+                               "mmio-read-only", V9X_HSWMM_PATH);
     WritePrivateProfileStringA("Report", "Result", "INCOMPLETE",
                                V9X_HSWMM_PATH);
     WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
@@ -299,6 +386,7 @@ void __stdcall V9xHswMmioEntry(void)
     v9x_key("Report", "Bdsm", bdsm);
 
     v9x_request.base = bar0 & V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_request.flags = forcewake ? V9X_HSWMM_FORCEWAKE : 0ul;
     v9x_request.count = 0ul;
     for (offset = V9X_RCS_BLOCK_BASE;
          offset < V9X_RCS_BLOCK_BASE + V9X_RCS_BLOCK_BYTES; offset += 4ul) {
@@ -338,6 +426,9 @@ void __stdcall V9xHswMmioEntry(void)
 
     if ((v9x_result.status & V9X_HSWMM_ST_SNAPSHOT_TAKEN) != 0ul) {
         v9x_publish_mmio();
+    }
+    if (forcewake) {
+        v9x_publish_forcewake();
     }
     if ((v9x_result.status & V9X_HSWMM_ST_GTT_READ) != 0ul) {
         v9x_publish_gtt(bdsm);
