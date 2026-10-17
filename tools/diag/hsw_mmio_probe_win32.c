@@ -699,6 +699,9 @@ static int v9x_rcs_build(int draw)
             d.depth_buffer = 0ul;
             d.depth_clear = 0ul;
             d.depth_test = 0ul;
+            d.tl_vertices = 0u;
+            d.vertex_count = 0ul;
+            d.flat = 0u;
             v9x_intel_hsw_batch_init(
                 &batch,
                 v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 :
@@ -1102,6 +1105,7 @@ static int v9x_shade_build(DWORD pair)
         desc.stage0 = v->stage0;
         desc.stage1 = v->stage1;
         desc.fog = v->fog;
+        desc.specular = 0u;
         desc.fog_rgb[0] = v9x_shade_fog_rgb[0];
         desc.fog_rgb[1] = v9x_shade_fog_rgb[1];
         desc.fog_rgb[2] = v9x_shade_fog_rgb[2];
@@ -1130,6 +1134,9 @@ static int v9x_shade_build(DWORD pair)
         d.depth_buffer = 0ul;
         d.depth_clear = 0ul;
         d.depth_test = 0ul;
+        d.tl_vertices = 0u;
+        d.vertex_count = 0ul;
+        d.flat = 0u;
         v9x_intel_hsw_batch_init(
             &batch,
             v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 : V9X_RCS_BATCH_D2),
@@ -1561,6 +1568,9 @@ static int v9x_depth_build(void)
     d.depth_buffer = V9X_RCS_RT1;
     d.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
     d.depth_test = V9X_HSW_SHADE_DS_LESS;
+    d.tl_vertices = 0u;
+    d.vertex_count = 0ul;
+    d.flat = 0u;
     v9x_intel_hsw_batch_init(&batch, v9x_rcs_image_at(V9X_RCS_BATCH_D1),
                              V9X_RCS_BATCH_BYTES / 4ul);
     if (v9x_intel_hsw_draw_workload(&batch, V9X_RCS_STATE,

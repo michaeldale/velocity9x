@@ -441,26 +441,28 @@ V9XMINI_FN_TDFX_BAR0_MAP    EQU 001Eh
 ; it.
 V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
 
-; Intel Haswell (Gen7.5): open the BCS ring for DirectDraw blits.
+; Intel Haswell (Gen7.5): open the BCS ring for DirectDraw blits and the RCS
+; ring for Direct3D (Phase F2 of docs\plans\intel-haswell-direct3d.md).
 ;
 ; In: EBX = GTTMMADR (BAR0) physical, ECX = GMADR (BAR2) physical, EDX =
 ; BDSM, all freshly read from PCI config by the display driver. Phase B1's
 ; measured sequence (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md):
 ; map the MMIO and GTT halves of GTTMMADR and the reserve at GMADR +
-; 1800000h (ring 4 KB, status 4 KB), check the reserve's PTEs map BDSM +
-; offset, check a CPU write through the aperture reads back, zero both
-; pages, take forcewake, program BCS (HEAD/TAIL 0, START = reserve, CTL =
-; 4 KB + enable) and read it back.
+; 1800000h (128 KB: BCS ring, status, RCS ring at +2000h, render state; see
+; velocity9x\intel_hsw.h), check all 32 PTEs map BDSM + offset, check a CPU
+; write through the aperture reads back, zero the reserve, take forcewake,
+; program BCS (HEAD/TAIL 0, START = reserve, CTL = 4 KB + enable) and RCS the
+; same at reserve + 2000h, and read both back. Reuse needs both rings on.
 ; Out: AX=1, EBX = MMIO linear, ECX = reserve linear (status page at +1000h),
 ; EDX = 0, or 10h when an open ring of ours was found and reused. AX=0 leaves
 ; EBX/ECX zero and EDX the refusal: 1 bad input, 2 map, 3 PTE, 4 CPU path,
 ; 5 forcewake already held, 6 forcewake not acknowledged, 7 ring already on,
-; 8 ring readback. Every refusal after forcewake was taken releases it.
-; Only the intel-gma family image implements it.
+; 8 ring readback (either ring). Every refusal after forcewake was taken
+; releases it. Only the intel-gma family image implements it.
 V9XMINI_FN_HSW_ENGINE_OPEN  EQU 0020h
 
-; Intel Haswell: close what HSW_ENGINE_OPEN opened - BCS CTL 0, HEAD, TAIL,
-; START 0, forcewake released. No input. Out: AX=1 if a ring was open, AX=0
+; Intel Haswell: close what HSW_ENGINE_OPEN opened - BCS and RCS CTL 0, HEAD,
+; TAIL, START 0, forcewake released. No input. Out: AX=1 if a ring was open, AX=0
 ; if there was nothing to close. Only the intel-gma family image implements
 ; it.
 V9XMINI_FN_HSW_ENGINE_CLOSE EQU 0021h

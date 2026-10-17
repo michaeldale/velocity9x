@@ -396,6 +396,11 @@ v9x_status v9x_intel_hsw_init_workload(struct v9x_hsw_batch *batch,
 /* 3DSTATE_WM Barycentric Interpolation Mode bit 0 (Vol 2b). */
 #define V9X_HSW_BARY_PERSPECTIVE_PIXEL ((v9x_u8)1u)
 
+/* 3DSTATE_CLIP for pre-transformed vertices whose w is rhw: the unit on,
+ * CLIPMODE_ACCEPT_ALL, Perspective Divide Disable, which Vol 2b requires
+ * together for screen-space geometry (Phase F2). */
+v9x_status v9x_intel_hsw_clip_screen(struct v9x_hsw_batch *batch);
+
 /* 3DSTATE_SF for screen-space vertices: viewport transform off, solid
  * fill, CULLMODE_NONE (Vol 2b; the all-zero form is CULLMODE_BOTH). */
 v9x_status v9x_intel_hsw_sf_screen(struct v9x_hsw_batch *batch);
@@ -408,6 +413,13 @@ v9x_status v9x_intel_hsw_sf_screen_depth(struct v9x_hsw_batch *batch,
  * in 256-bit units (length 1-16; 0 is undefined, Vol 2b). */
 v9x_status v9x_intel_hsw_sbe(struct v9x_hsw_batch *batch, v9x_u8 outputs,
                              v9x_u8 read_offset, v9x_u8 read_length);
+
+/* The same with DW11 Constant Interpolation Enable, one bit per
+ * attribute (Vol 2b). */
+v9x_status v9x_intel_hsw_sbe_constant(struct v9x_hsw_batch *batch,
+                                      v9x_u8 outputs, v9x_u8 read_offset,
+                                      v9x_u8 read_length,
+                                      v9x_u32 constant_mask);
 
 /* 3DSTATE_WM with thread dispatch enabled and the barycentric bits. */
 v9x_status v9x_intel_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric);
@@ -466,6 +478,8 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_DEPTH_VERTEX_BYTES     ((v9x_u16)28u)
 #define V9X_HSW_DEPTH_CLEAR_VERTICES   ((v9x_u32)3ul)
 #define V9X_HSW_DEPTH_SCENE_VERTICES   ((v9x_u32)9ul)
+/* Phase F2: Direct3D's TL vertex. */
+#define V9X_HSW_TL_VERTEX_BYTES        ((v9x_u16)32u)
 
 /* The shaded draw's state: both targets' surface states (D's offsets),
  * both textures' surface states at state_base + V9X_HSW_SHADE_TEXTURE,
@@ -496,6 +510,16 @@ struct v9x_hsw_draw {
     v9x_u32 depth_buffer;
     v9x_u32 depth_clear;
     v9x_u32 depth_test;
+    /* Phase F2. tl_vertices: Direct3D's 32-byte TL vertices (sx sy sz
+     * rhw, diffuse and specular B8G8R8A8, tu tv) fetched as they are, as
+     * E's four attributes with tu tv twice; attributes must be
+     * V9X_HSW_SHADE_ATTRIBUTES. vertex_count: a TRILIST of that many (a
+     * multiple of 3; 0 means 3). flat: diffuse and specular take the
+     * provoking vertex (SBE constant interpolation), Direct3D's flat
+     * shading. */
+    v9x_u8 tl_vertices;
+    v9x_u32 vertex_count;
+    v9x_u8 flat;
 };
 
 /* The init batch's state with the draw's in place of the zeroed stages,

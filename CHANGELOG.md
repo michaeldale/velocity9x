@@ -13,7 +13,9 @@ build identifier so exact guest-tested binaries remain traceable.
   bpp: every pixel matches a CPU reference, including across mode
   switches
   ([record](docs/decisions/2026-10-17-haswell-phase-b2-directdraw-on-bcs.md)).
-  Direct3D is still the CPU rasterizer on this chip.
+  Direct3D draws on the chip's render engine as well, at 16 bpp, without a
+  Z buffer yet and with mipmaps sampled at their top level
+  ([record](docs/decisions/2026-10-17-haswell-phase-f2a-direct3d-engine.md)).
 
 ## 0.18.5 - 2026-10-16
 

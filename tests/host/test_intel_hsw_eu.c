@@ -311,6 +311,7 @@ static void test_phase_e_generator(void)
     desc.stage0 = V9X_HSW_PS_MODULATE;
     desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
     desc.fog = 0u;
+    desc.specular = 0u;
     desc.fog_rgb[0] = desc.fog_rgb[1] = desc.fog_rgb[2] = 0ul;
     /* 4 pln diffuse, 2 pln uv, sample, 4 mul, write. */
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
@@ -335,6 +336,7 @@ static void test_phase_e_generator(void)
 
     desc.stage0 = V9X_HSW_PS_DIFFUSE;
     desc.fog = 1u;
+    desc.specular = 0u;
     desc.fog_rgb[0] = 0x3f000000ul; /* 0.5 */
     /* 4 pln, fog pln, 4 mov, 3 x (add, mul, add), write. */
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
@@ -351,6 +353,7 @@ static void test_phase_e_generator(void)
     desc.stage0 = V9X_HSW_PS_MODULATE;
     desc.stage1 = V9X_HSW_PS_MODULATE_TEX1;
     desc.fog = 0u;
+    desc.specular = 0u;
     /* 4 pln, 2 pln, sample, 2 pln, sample, 4 mul, 4 mul, write. */
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
           V9X_STATUS_OK && used == 76ul);
@@ -362,9 +365,45 @@ static void test_phase_e_generator(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* Phase F2: modulate with the texture's alpha, and the specular add. */
+static void test_phase_f2_generator(void)
+{
+    struct v9x_hsw_ps_desc desc;
+    struct v9x_hsw_eu_inst back;
+    v9x_u32 out[256];
+    v9x_u32 used;
+
+    desc.stage0 = V9X_HSW_PS_MODULATE_TEXALPHA;
+    desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
+    desc.fog = 0u;
+    desc.fog_rgb[0] = desc.fog_rgb[1] = desc.fog_rgb[2] = 0ul;
+    desc.specular = 1u;
+    /* 4 pln diffuse, 3 pln specular, 2 pln uv, sample, 3 mul + mov,
+     * 3 add, write: 18 instructions. */
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 72ul);
+    /* Specular R from attribute 1, component 0: g6 byte 0, into g24. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 16, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_PLN && back.dst.nr == 24u &&
+          back.src0.nr == 6u && back.src0.subnr == 0u);
+    /* Alpha: a mov from the texture's alpha, g35. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 52, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_MOV && back.dst.nr == 115u &&
+          back.src0.nr == 35u);
+    /* Then g112 += g24, saturated. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 56, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_ADD && back.saturate == 1u &&
+          back.dst.nr == 112u && back.src0.nr == 112u &&
+          back.src1.nr == 24u);
+    desc.stage0 = 6u;
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_eu_tests(void)
 {
     failures = 0u;
+    test_phase_f2_generator();
     test_phase_e_generator();
     test_phase_d_kernels();
     test_mov();

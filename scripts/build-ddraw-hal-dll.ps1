@@ -120,6 +120,7 @@ $sources = @(
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",
     "src\chipsets\intel\hsw_3d.c",
+    "src\chipsets\intel\hsw_eu.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
@@ -161,6 +162,7 @@ $sources = @(
     "src\chipsets\tdfx\tdfx_3d.c",
     "src\display32\d3d\d3d_tdfx_map.c",
     "src\display32\d3d\d3d_tdfx.c",
+    "src\display32\d3d\d3d_hsw.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",

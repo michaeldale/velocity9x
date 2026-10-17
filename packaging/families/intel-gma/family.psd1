@@ -93,9 +93,9 @@
             ClockDetector = 'none'
             ModeSwitching = 'vbe-lfb'
             Acceleration = 'directdraw-fill-blt'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-gen75'
             EngineType = 'INTEL_GEN75'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             VideoMemoryBytes = 4194304
             # The family's table; this VBIOS describes neither 1024x576 row
             # and the runtime scan publishes its own modes instead.

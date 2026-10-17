@@ -227,7 +227,9 @@ static void test_engine_caps_match_engine_type(void)
                         chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2 ||
                         chip->engine_type == V9X_DD_ENGINE_TYPE_SIS_6326 ||
                         chip->engine_type == V9X_DD_ENGINE_TYPE_MGA ||
-                        chip->engine_type == V9X_DD_ENGINE_TYPE_TDFX);
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_TDFX ||
+                        chip->engine_type ==
+                            V9X_DD_ENGINE_TYPE_INTEL_GEN75);
         }
     }
 }

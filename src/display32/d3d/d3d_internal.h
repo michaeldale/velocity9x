@@ -550,6 +550,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga;
 /* 3dfx VSA-100, in d3d_tdfx.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_tdfx;
 
+/* Intel Gen7.5 (Haswell), in d3d_hsw.c. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw;
+
 
 /*
  * The core services an engine may use.

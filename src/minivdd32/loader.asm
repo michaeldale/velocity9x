@@ -196,8 +196,10 @@ V9X_HSW_GTT_OFFSET      equ 00200000h
 V9X_HSW_GTT_BYTES       equ 00200000h
 V9X_HSW_BAR0_ALIGN      equ 003fffffh
 V9X_HSW_RESERVE_OFFSET  equ 01800000h
-V9X_HSW_RESERVE_BYTES   equ 00002000h
-V9X_HSW_RESERVE_PAGES   equ 2
+; Phase F2: 128 KB, the RCS ring at +2000h (intel_hsw.h has the layout).
+V9X_HSW_RESERVE_BYTES   equ 00020000h
+V9X_HSW_RESERVE_PAGES   equ 32
+V9X_HSW_RCS_RING        equ (V9X_HSW_RESERVE_OFFSET + 2000h)
 V9X_HSW_STATUS_OFF      equ 00001000h
 V9X_HSW_STOLEN_MASK     equ 0fff00000h
 V9X_HSW_PTE_MASK        equ 0fffff7f1h
@@ -211,6 +213,10 @@ V9X_HSW_BCS_TAIL        equ 00022030h
 V9X_HSW_BCS_HEAD        equ 00022034h
 V9X_HSW_BCS_START       equ 00022038h
 V9X_HSW_BCS_CTL         equ 0002203ch
+V9X_HSW_RCS_TAIL        equ 00002030h
+V9X_HSW_RCS_HEAD        equ 00002034h
+V9X_HSW_RCS_START       equ 00002038h
+V9X_HSW_RCS_CTL         equ 0000203ch
 V9X_HSW_CTL_ONE_PAGE    equ 00000001h
 V9X_HSW_CTL_CHECK       equ 001ff001h
 V9xHswMmioBase    dd 0
@@ -2619,6 +2625,20 @@ V9xMini_Hsw_Release_Done:
     ret
 EndProc V9xMini_Hsw_Release
 
+; EDI = MMIO linear. Both rings off and cleared, the order Phase C's
+; teardown used: CTL first.
+BeginProc V9xMini_Hsw_Rings_Off
+    mov     dword ptr [edi+V9X_HSW_BCS_CTL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_START], 0
+    mov     dword ptr [edi+V9X_HSW_RCS_CTL], 0
+    mov     dword ptr [edi+V9X_HSW_RCS_HEAD], 0
+    mov     dword ptr [edi+V9X_HSW_RCS_TAIL], 0
+    mov     dword ptr [edi+V9X_HSW_RCS_START], 0
+    ret
+EndProc V9xMini_Hsw_Rings_Off
+
 ; In EBX = GTTMMADR, ECX = GMADR, EDX = BDSM. Out AX = 1 with EBX = MMIO
 ; linear, ECX = reserve linear, EDX = 0 or 10h (reused); or AX = 0, EBX =
 ; ECX = 0, EDX = refusal code. See V9XMINI_FN_HSW_ENGINE_OPEN.
@@ -2638,6 +2658,10 @@ BeginProc V9xMini_Hsw_Engine_Open
     jz      short V9xMini_Hsw_Open_Stale
     cmp     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
     jne     short V9xMini_Hsw_Open_Stale
+    test    dword ptr [edi+V9X_HSW_RCS_CTL], 1
+    jz      short V9xMini_Hsw_Open_Stale
+    cmp     dword ptr [edi+V9X_HSW_RCS_START], V9X_HSW_RCS_RING
+    jne     short V9xMini_Hsw_Open_Stale
     pop     ecx
     mov     ebx, V9xHswMmioLinear
     mov     ecx, V9xHswRegionLinear
@@ -2646,7 +2670,9 @@ BeginProc V9xMini_Hsw_Engine_Open
     jmp     V9xMini_Hsw_Open_Exit
 V9xMini_Hsw_Open_Stale:
     ; Ours on record but not on the hardware: forcewake is still held from
-    ; that open, so drop it before starting again.
+    ; that open, so drop it before starting again. Either ring may still be
+    ; on, and the code-7 check below would refuse it, so both go off.
+    call    V9xMini_Hsw_Rings_Off
     call    V9xMini_Hsw_Release
     mov     V9xHswOpen, 0
 
@@ -2688,7 +2714,7 @@ V9xMini_Hsw_Open_Gtt_Mapped:
     test    eax, eax
     jz      V9xMini_Hsw_Open_Map_Failed
 
-    ; Code 3: both pages' PTEs valid and mapping BDSM + offset.
+    ; Code 3: every page's PTE valid and mapping BDSM + offset.
     mov     edx, 3
     mov     esi, V9xHswGttLinear
     add     esi, (V9X_HSW_RESERVE_OFFSET SHR 12) * 4
@@ -2696,18 +2722,27 @@ V9xMini_Hsw_Open_Gtt_Mapped:
     and     eax, V9X_HSW_STOLEN_MASK
     add     eax, V9X_HSW_RESERVE_OFFSET
     or      eax, 1
+    push    ebx
+    mov     ebx, V9X_HSW_RESERVE_PAGES
+V9xMini_Hsw_Open_Pte_Next:
     mov     ecx, [esi]
     and     ecx, V9X_HSW_PTE_MASK
     cmp     ecx, eax
-    jne     V9xMini_Hsw_Open_Refused_Pop
+    jne     short V9xMini_Hsw_Open_Pte_Bad
     add     eax, 1000h
-    mov     ecx, [esi+4]
-    and     ecx, V9X_HSW_PTE_MASK
-    cmp     ecx, eax
-    jne     V9xMini_Hsw_Open_Refused_Pop
+    add     esi, 4
+    dec     ebx
+    jnz     short V9xMini_Hsw_Open_Pte_Next
+    pop     ebx
+    jmp     short V9xMini_Hsw_Open_Ptes_Ok
+V9xMini_Hsw_Open_Pte_Bad:
+    pop     ebx
+    jmp     V9xMini_Hsw_Open_Refused_Pop
+V9xMini_Hsw_Open_Ptes_Ok:
 
-    ; Code 4: a CPU write reads back through the aperture, then both pages
-    ; are zeroed: a ring of MI_NOOP and a status page whose sequences agree.
+    ; Code 4: a CPU write reads back through the aperture, then the whole
+    ; reserve is zeroed: rings of MI_NOOP and a status page whose sequences
+    ; agree and which holds no render-initialised mark.
     mov     edx, 4
     mov     esi, V9xHswRegionLinear
     mov     dword ptr [esi], V9X_HSW_CPU_PATTERN
@@ -2750,7 +2785,10 @@ V9xMini_Hsw_Open_Fw_Acked:
     ; Code 7: a ring already on is someone else's.
     mov     edx, 7
     test    dword ptr [edi+V9X_HSW_BCS_CTL], 1
+    jnz     short V9xMini_Hsw_Open_Ring_On
+    test    dword ptr [edi+V9X_HSW_RCS_CTL], 1
     jz      short V9xMini_Hsw_Open_Program
+V9xMini_Hsw_Open_Ring_On:
     call    V9xMini_Hsw_Release
     jmp     V9xMini_Hsw_Open_Refused_Pop
 V9xMini_Hsw_Open_Program:
@@ -2758,11 +2796,23 @@ V9xMini_Hsw_Open_Program:
     mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
     mov     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
     mov     dword ptr [edi+V9X_HSW_BCS_CTL], V9X_HSW_CTL_ONE_PAGE
-    ; Code 8: the readback.
+    ; The render ring the same way (Phase C measured it), at +2000h. Its
+    ; initialising batch is the HAL's, on first use (d3d_hsw.c).
+    mov     dword ptr [edi+V9X_HSW_RCS_HEAD], 0
+    mov     dword ptr [edi+V9X_HSW_RCS_TAIL], 0
+    mov     dword ptr [edi+V9X_HSW_RCS_START], V9X_HSW_RCS_RING
+    mov     dword ptr [edi+V9X_HSW_RCS_CTL], V9X_HSW_CTL_ONE_PAGE
+    ; Code 8: the readback, both rings.
     mov     edx, 8
     cmp     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
     jne     short V9xMini_Hsw_Open_Teardown
     mov     eax, [edi+V9X_HSW_BCS_CTL]
+    and     eax, V9X_HSW_CTL_CHECK
+    cmp     eax, V9X_HSW_CTL_ONE_PAGE
+    jne     short V9xMini_Hsw_Open_Teardown
+    cmp     dword ptr [edi+V9X_HSW_RCS_START], V9X_HSW_RCS_RING
+    jne     short V9xMini_Hsw_Open_Teardown
+    mov     eax, [edi+V9X_HSW_RCS_CTL]
     and     eax, V9X_HSW_CTL_CHECK
     cmp     eax, V9X_HSW_CTL_ONE_PAGE
     jne     short V9xMini_Hsw_Open_Teardown
@@ -2776,10 +2826,7 @@ V9xMini_Hsw_Open_Program:
     jmp     short V9xMini_Hsw_Open_Exit
 
 V9xMini_Hsw_Open_Teardown:
-    mov     dword ptr [edi+V9X_HSW_BCS_CTL], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_START], 0
+    call    V9xMini_Hsw_Rings_Off
     call    V9xMini_Hsw_Release
     jmp     short V9xMini_Hsw_Open_Refused_Pop
 V9xMini_Hsw_Open_Map_Failed:
@@ -2803,10 +2850,7 @@ BeginProc V9xMini_Hsw_Engine_Close
     cmp     V9xHswOpen, 0
     je      short V9xMini_Hsw_Close_Done
     mov     edi, V9xHswMmioLinear
-    mov     dword ptr [edi+V9X_HSW_BCS_CTL], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_START], 0
+    call    V9xMini_Hsw_Rings_Off
     call    V9xMini_Hsw_Release
     mov     V9xHswOpen, 0
     mov     ax, 1

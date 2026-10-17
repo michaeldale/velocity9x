@@ -893,6 +893,22 @@ static v9x_status v9x_hsw_emit_zero(struct v9x_hsw_batch *batch,
 #define V9X_HSW_PS_SIMD8             ((v9x_u32)0x00000001ul)
 #define V9X_HSW_DRAW_SETUP_GRF       ((v9x_u8)4u)
 
+/* 3DSTATE_CLIP DW2: Clip Enable 31, Clip Mode 15:13 (ACCEPT_ALL 4),
+ * Perspective Divide Disable 9 (Vol 2b). With the divide on, the unit
+ * divided x and y by the rhw D3D puts in w, even with clipping off: the
+ * 4570 drew V9XDDP's rhw 0.05-8 scenes moved or not at all. */
+#define V9X_HSW_CLIP_SCREEN_DW2 ((v9x_u32)0x80008200ul)
+
+v9x_status v9x_intel_hsw_clip_screen(struct v9x_hsw_batch *batch)
+{
+    v9x_u32 payload[3];
+
+    payload[0] = 0ul;
+    payload[1] = V9X_HSW_CLIP_SCREEN_DW2;
+    payload[2] = 0ul;
+    return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_CLIP, payload, 3ul);
+}
+
 v9x_status v9x_intel_hsw_sf_screen(struct v9x_hsw_batch *batch)
 {
     return v9x_intel_hsw_sf_screen_depth(batch, 0u);
@@ -921,6 +937,15 @@ v9x_status v9x_intel_hsw_sf_screen_depth(struct v9x_hsw_batch *batch,
 v9x_status v9x_intel_hsw_sbe(struct v9x_hsw_batch *batch, v9x_u8 outputs,
                              v9x_u8 read_offset, v9x_u8 read_length)
 {
+    return v9x_intel_hsw_sbe_constant(batch, outputs, read_offset,
+                                      read_length, 0ul);
+}
+
+v9x_status v9x_intel_hsw_sbe_constant(struct v9x_hsw_batch *batch,
+                                      v9x_u8 outputs, v9x_u8 read_offset,
+                                      v9x_u8 read_length,
+                                      v9x_u32 constant_mask)
+{
     v9x_u32 payload[13];
     v9x_u32 index;
 
@@ -933,6 +958,7 @@ v9x_status v9x_intel_hsw_sbe(struct v9x_hsw_batch *batch, v9x_u8 outputs,
     }
     payload[0] = ((v9x_u32)outputs << 22) | ((v9x_u32)read_length << 11) |
                  ((v9x_u32)read_offset << 4);
+    payload[10] = constant_mask;
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_SBE, payload, 13ul);
 }
 
@@ -1129,10 +1155,12 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
     struct v9x_hsw_vertex_element elements[6];
     v9x_u32 index;
     v9x_u32 count;
+    v9x_u32 vertices;
     v9x_u16 stride;
 
     count = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ? 6ul : 3ul;
-    stride = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ?
+    stride = draw->tl_vertices ? V9X_HSW_TL_VERTEX_BYTES :
+             draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ?
                  V9X_HSW_SHADE_VERTEX_BYTES :
              draw->depth_buffer != 0ul ? V9X_HSW_DEPTH_VERTEX_BYTES :
                                          V9X_HSW_DRAW_VERTEX_BYTES;
@@ -1158,7 +1186,24 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
         elements[1].component[2] = V9X_HSW_VFCOMP_STORE_SRC;
         elements[2].offset = 12u;
     }
-    if (count == 6ul) {
+    if (draw->tl_vertices) {
+        /* sx sy sz rhw as the position, so w carries rhw; the colours as
+         * B8G8R8A8_UNORM, D3DCOLOR's byte order; tu tv for both texture
+         * attributes. */
+        elements[1].format = V9X_HSW_FMT_R32G32B32A32_FLOAT;
+        elements[1].component[2] = V9X_HSW_VFCOMP_STORE_SRC;
+        elements[1].component[3] = V9X_HSW_VFCOMP_STORE_SRC;
+        elements[2].format = V9X_HSW_FMT_B8G8R8A8_UNORM;
+        elements[2].offset = 16u;
+        elements[3].format = V9X_HSW_FMT_B8G8R8A8_UNORM;
+        elements[3].offset = 20u;
+        for (index = 4ul; index < 6ul; ++index) {
+            elements[index].format = V9X_HSW_FMT_R32G32_FLOAT;
+            elements[index].offset = 24u;
+            elements[index].component[2] = V9X_HSW_VFCOMP_STORE_0;
+            elements[index].component[3] = V9X_HSW_VFCOMP_STORE_1_FP;
+        }
+    } else if (count == 6ul) {
         elements[3].offset = 24u;
         for (index = 4ul; index < 6ul; ++index) {
             elements[index].format = V9X_HSW_FMT_R32G32_FLOAT;
@@ -1185,10 +1230,12 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
                                          V9X_HSW_DEPTH_SCENE_VERTICES,
                                          V9X_HSW_DEPTH_CLEAR_VERTICES);
     }
+    vertices = draw->vertex_count != 0ul ? draw->vertex_count : 3ul;
     v9x_intel_hsw_vertex_buffer(batch, 0u, stride, draw->vertices,
-                                draw->vertices + 3ul * stride - 1ul);
+                                draw->vertices + vertices * stride - 1ul);
     v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
-    return v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST, 3ul, 0ul);
+    return v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST, vertices,
+                                     0ul);
 }
 
 /*
@@ -1297,12 +1344,18 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
          * The attributes follow the VUE's header and position: read
          * offset 1, in 256-bit units, two attributes per unit. Setup data
          * follows r0, r1 and the SIMD8 barycentrics r2-r3. */
-        v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
+        if (draw->tl_vertices) {
+            v9x_intel_hsw_clip_screen(batch);
+        } else {
+            v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
+        }
         v9x_intel_hsw_sf_screen_depth(
             batch, draw->depth_buffer != 0ul ?
                        (v9x_u8)V9X_HSW_DEPTH_FORMAT_D32_FLOAT : (v9x_u8)0u);
         if (shade) {
-            v9x_intel_hsw_sbe(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u, 2u);
+            /* Flat: diffuse and specular (attributes 0 and 1) constant. */
+            v9x_intel_hsw_sbe_constant(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u,
+                                       2u, draw->flat ? 3ul : 0ul);
         } else {
             v9x_intel_hsw_sbe(batch, 1u, 1u, 1u);
         }
@@ -1426,7 +1479,10 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
     if (draw == 0 || (draw->kernel & 0x3ful) != 0ul ||
         (draw->binding_table & 0x1ful) != 0ul || draw->width == 0u ||
         draw->height == 0u || (draw->vertices & 3ul) != 0ul ||
-        state_bytes < V9X_HSW_DRAW_STATE_BYTES) {
+        state_bytes < V9X_HSW_DRAW_STATE_BYTES ||
+        draw->vertex_count % 3ul != 0ul ||
+        (draw->tl_vertices &&
+         draw->attributes != V9X_HSW_SHADE_ATTRIBUTES)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     return v9x_hsw_workload(batch, state_base, state_bytes, draw,

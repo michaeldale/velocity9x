@@ -233,6 +233,9 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
 #define V9X_HSW_PS_MODULATE      ((v9x_u8)2u)
 #define V9X_HSW_PS_ADD           ((v9x_u8)3u) /* colour add, alpha modulate */
 #define V9X_HSW_PS_DECAL         ((v9x_u8)4u) /* texture colour, diffuse alpha */
+/* Phase F2: D3D's MODULATE on a texture with alpha, colour multiplied and
+ * the texture's alpha. */
+#define V9X_HSW_PS_MODULATE_TEXALPHA ((v9x_u8)5u)
 #define V9X_HSW_PS_STAGE1_NONE   ((v9x_u8)0u)
 #define V9X_HSW_PS_MODULATE_TEX1 ((v9x_u8)1u)
 
@@ -241,6 +244,9 @@ struct v9x_hsw_ps_desc {
     v9x_u8 stage1;
     v9x_u8 fog;
     v9x_u32 fog_rgb[3];
+    /* Phase F2: add the specular colour after the stages, saturated, as
+     * Direct3D's SPECULARENABLE does, before fog. */
+    v9x_u8 specular;
 };
 
 v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,

@@ -1,0 +1,855 @@
+/*
+ * Intel Gen7.5 (Haswell) Direct3D engine.
+ *
+ * Phase F2a of docs\plans\intel-haswell-direct3d.md. Every command and state
+ * word comes from the host-tested builders in src\chipsets\intel\hsw_3d.c
+ * and every pixel shader from the generator in hsw_eu.c; the batches are
+ * the ones Phases C to F1a drew pixel-exact on the i5-4570
+ * (docs\decisions\2026-10-17-haswell-phase-*). This file resolves surfaces,
+ * maps the neutral draw onto that state, and submits.
+ *
+ * The render ring was opened by the mini-VDD at reserve + 2000h beside the
+ * blitter's, under the forcewake it holds (HSW_ENGINE_OPEN). The first
+ * process to find the status page without the render-initialised mark runs
+ * the initialising batch Phase C measured.
+ *
+ * Synchronous: each draw waits for the blitter, writes its state into the
+ * reserve, submits one batch with a sequence store after it, and waits for
+ * the store. So the RCS is idle whenever anything else runs, which is what
+ * lets the blitter, the CPU and other processes ignore it. No state lives
+ * in this DLL across draws: it is mapped into every Direct3D process, and
+ * every batch carries all of its state.
+ *
+ * Depth is F2b's: no Z buffer is advertised, and a draw that asks for one
+ * is refused.
+ */
+#include "d3d_internal.h"
+#include "d3d_state.h"
+#include "velocity9x/intel_hsw.h"
+#include "velocity9x/intel_hsw_3d.h"
+#include "velocity9x/intel_hsw_eu.h"
+
+/* Graphics addresses inside the reserve (velocity9x\intel_hsw.h). */
+#define V9X_D3D_HSW_GFX(offset) (V9X_INTEL_HSW_RESERVE_OFFSET + (offset))
+#define V9X_D3D_HSW_STATE_BASE  V9X_D3D_HSW_GFX(V9X_INTEL_HSW_STATE_OFF)
+#define V9X_D3D_HSW_RCS_RING    V9X_D3D_HSW_GFX(V9X_INTEL_HSW_RCS_RING_OFF)
+#define V9X_D3D_HSW_STATUS_GFX  V9X_D3D_HSW_GFX(V9X_INTEL_HSW_RING_BYTES)
+/* The batch's own PIPE_CONTROL breadcrumb, a qword after the sequences. */
+#define V9X_D3D_HSW_CRUMB_GFX   (V9X_D3D_HSW_STATUS_GFX + 0x30ul)
+
+/* Each draw writes its surfaces, sampler, blend and CC state at E's
+ * offsets (intel_hsw_3d.h); the border colour E's sampler names is the
+ * zeroed run after the CC state. */
+#define V9X_D3D_HSW_BORDER_BYTES 0x40ul
+#define V9X_D3D_HSW_TEXTURE_OFF  V9X_HSW_SHADE_TEX_SURFACE(0)
+
+/* The vertex area holds this many triangles of 96 bytes. */
+#define V9X_D3D_HSW_MAX_TRIANGLES \
+    (V9X_INTEL_HSW_VERTEX_BYTES / (3ul * V9X_HSW_TL_VERTEX_BYTES))
+
+/* Ring submission: MI_BATCH_BUFFER_START and the sequence store. */
+#define V9X_D3D_HSW_SUBMIT_DWORDS 6ul
+
+/* Status reads at about a microsecond, as the blitter's (eng_hsw.c). */
+#define V9X_D3D_HSW_SPINS 0x00400000ul
+
+/* The framebuffer is at aperture offset 0, as eng_hsw.c has it. */
+#define V9X_D3D_HSW_APERTURE_MASK 0x0ffffffful
+
+/* Fault-trace tag: "HSW3". */
+#define V9X_D3D_HSW_FAULT_TAG 0x48535733ul
+
+/* Refusal reasons, in the shared policy counters (V9XTRACE M64PolicyNN). */
+#define V9X_D3D_HSW_REFUSE_NONE      0ul
+#define V9X_D3D_HSW_REFUSE_TARGET    1ul
+#define V9X_D3D_HSW_REFUSE_DEPTH     2ul
+#define V9X_D3D_HSW_REFUSE_TEXTURE   3ul
+#define V9X_D3D_HSW_REFUSE_TEXOP     4ul
+#define V9X_D3D_HSW_REFUSE_BLEND     5ul
+#define V9X_D3D_HSW_REFUSE_ADDRESS   6ul
+#define V9X_D3D_HSW_REFUSE_KEY       7ul
+#define V9X_D3D_HSW_REFUSE_ALPHA     8ul
+
+/* SAMPLER_STATE DW3 address modes for all three axes (Vol 2a/2d). */
+#define V9X_D3D_HSW_TC_WRAP   0ul
+#define V9X_D3D_HSW_TC_MIRROR ((1ul << 6) | (1ul << 3) | 1ul)
+#define V9X_D3D_HSW_TC_CLAMP  ((2ul << 6) | (2ul << 3) | 2ul)
+
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
+    16ul,           /* target_bits_per_pixel */
+    16384ul,        /* target_pitch_max */
+    4ul,            /* target_pitch_align */
+    4096ul,         /* target_dimension_max */
+    1ul,            /* texture_size_min */
+    2048ul,         /* texture_size_max */
+    8192.0f,        /* coordinate_limit */
+    0ul,            /* depth_bits_per_pixel: none until F2b */
+    16ul,           /* texture_align */
+    1ul,            /* clip_in_core: the CLIP stage is off */
+    0ul,            /* depth_pitch_own */
+    0ul,            /* depth_fill_shift */
+    1ul,            /* texture_units */
+    /* 3DSTATE_MULTISAMPLE Pixel Location is the pixel centre (Vol 2b), and
+     * Phase D's coverage matched a reference sampling at x + 0.5. */
+    1ul             /* pixel_centre_half */
+};
+
+/* What the mapping makes of a draw. */
+typedef struct v9x_d3d_hsw_state {
+    struct v9x_hsw_ps_desc desc;
+    struct v9x_hsw_blend blend;
+    struct v9x_hsw_sampler sampler;
+    v9x_u16 target_format;
+    v9x_u16 texture_format;
+    v9x_u32 texture_address;
+    v9x_u16 texture_width;
+    v9x_u16 texture_height;
+    v9x_u32 texture_pitch;
+    v9x_u8 alpha_ref;
+    int textured;
+} V9X_D3D_HSW_STATE;
+
+/* Once per process: the ring was found where the mini-VDD put it. */
+static int v9x_d3d_hsw_ring_checked = 0;
+/* Set on a timeout; nothing is submitted again in this process. */
+static int v9x_d3d_hsw_quarantined = 0;
+
+static DWORD v9x_d3d_hsw_read32(DWORD offset)
+{
+    return *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
+}
+
+static void v9x_d3d_hsw_write32(DWORD offset, DWORD value)
+{
+    *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset) = value;
+}
+
+static v9x_u32 *v9x_d3d_hsw_reserve(DWORD offset)
+{
+    return (v9x_u32 *)(v9x_hal->engine.ring_linear_base + offset);
+}
+
+static volatile DWORD *v9x_d3d_hsw_status(void)
+{
+    return (volatile DWORD *)v9x_d3d_hsw_reserve(V9X_INTEL_HSW_RING_BYTES);
+}
+
+static DWORD v9x_d3d_hsw_vram(DWORD offset)
+{
+    return (v9x_hal->fb.physical_base & V9X_D3D_HSW_APERTURE_MASK) + offset;
+}
+
+static void v9x_d3d_hsw_quarantine(void)
+{
+    if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+        v9x_trace_flush_fault(V9X_D3D_HSW_FAULT_TAG,
+                              v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_HEAD));
+    }
+    v9x_d3d_hsw_quarantined = 1;
+    v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
+}
+
+/* Every submitted render sequence has been stored back. */
+static int v9x_d3d_hsw_wait_rcs(void)
+{
+    volatile DWORD *status = v9x_d3d_hsw_status();
+    DWORD spins;
+
+    for (spins = 0ul; spins < V9X_D3D_HSW_SPINS; ++spins) {
+        if (status[V9X_INTEL_HSW_STATUS_RCS_DONE] ==
+            status[V9X_INTEL_HSW_STATUS_RCS_SENT]) {
+            return 1;
+        }
+    }
+    v9x_d3d_hsw_quarantine();
+    return 0;
+}
+
+/*
+ * The batch at the batch area, then the sequence store, written at the
+ * hardware's tail; a ring too short for them is filled with MI_NOOP and
+ * they start at 0, as eng_hsw.c does. Called idle, so HEAD equals TAIL.
+ */
+static int v9x_d3d_hsw_submit(void)
+{
+    volatile DWORD *ring =
+        (volatile DWORD *)v9x_d3d_hsw_reserve(V9X_INTEL_HSW_RCS_RING_OFF);
+    volatile DWORD *status = v9x_d3d_hsw_status();
+    v9x_u32 dw[V9X_D3D_HSW_SUBMIT_DWORDS];
+    struct v9x_hsw_batch batch;
+    DWORD sequence;
+    DWORD tail;
+    DWORD index;
+
+    sequence = status[V9X_INTEL_HSW_STATUS_RCS_SENT] + 1ul;
+    v9x_intel_hsw_batch_init(&batch, dw, V9X_D3D_HSW_SUBMIT_DWORDS);
+    v9x_intel_hsw_mi_batch_buffer_start(
+        &batch, V9X_D3D_HSW_GFX(V9X_INTEL_HSW_BATCH_OFF));
+    v9x_intel_hsw_mi_store_data_imm(
+        &batch, V9X_D3D_HSW_STATUS_GFX + V9X_INTEL_HSW_STATUS_RCS_DONE * 4ul,
+        sequence);
+    if (batch.overflow != 0u) {
+        return 0;
+    }
+
+    tail = v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_TAIL) &
+           V9X_INTEL_HSW_TAIL_MASK;
+    if (tail + V9X_D3D_HSW_SUBMIT_DWORDS * 4ul > V9X_INTEL_HSW_RING_BYTES) {
+        for (index = tail / 4ul; index < V9X_INTEL_HSW_RING_BYTES / 4ul;
+             ++index) {
+            ring[index] = 0ul;
+        }
+        tail = 0ul;
+    }
+    for (index = 0ul; index < V9X_D3D_HSW_SUBMIT_DWORDS; ++index) {
+        ring[tail / 4ul + index] = dw[index];
+    }
+    status[V9X_INTEL_HSW_STATUS_RCS_SENT] = sequence;
+    tail += V9X_D3D_HSW_SUBMIT_DWORDS * 4ul;
+    if (tail >= V9X_INTEL_HSW_RING_BYTES) {
+        tail = 0ul;
+    }
+    v9x_d3d_hsw_write32(V9X_INTEL_HSW_RCS_TAIL, tail);
+    (void)v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_TAIL);
+    return v9x_d3d_hsw_wait_rcs();
+}
+
+/* The initialising batch (Phase C), once per ring open: the reserve is
+ * zeroed at open, which removes the mark. */
+static int v9x_d3d_hsw_initialise(void)
+{
+    volatile DWORD *status = v9x_d3d_hsw_status();
+    struct v9x_hsw_batch batch;
+
+    if (status[V9X_INTEL_HSW_STATUS_RCS_INIT] ==
+        V9X_INTEL_HSW_RCS_INIT_MARK) {
+        return 1;
+    }
+    if (v9x_intel_hsw_init_state(
+            v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF),
+            V9X_HSW_INIT_STATE_BYTES / 4ul) != V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_intel_hsw_batch_init(&batch,
+                             v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
+                             V9X_INTEL_HSW_BATCH_BYTES / 4ul);
+    if (v9x_intel_hsw_init_workload(&batch, V9X_D3D_HSW_STATE_BASE,
+                                    V9X_INTEL_HSW_STATE_BYTES,
+                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
+            V9X_STATUS_OK ||
+        !v9x_d3d_hsw_submit()) {
+        return 0;
+    }
+    status[V9X_INTEL_HSW_STATUS_RCS_INIT] = V9X_INTEL_HSW_RCS_INIT_MARK;
+    return 1;
+}
+
+/* The blitter's conditions, the render ring the mini-VDD opened (CAP_D3D),
+ * still on where it was put, and initialised. */
+static int v9x_d3d_hsw_ready(void)
+{
+    if (v9x_hal == 0 || v9x_d3d_hsw_quarantined ||
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
+        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_INTEL_GEN75 ||
+        (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul ||
+        v9x_hal->engine.control_linear_base == 0ul ||
+        v9x_hal->engine.ring_linear_base == 0ul) {
+        return 0;
+    }
+    if (!v9x_d3d_hsw_ring_checked) {
+        if ((v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_CTL) &
+             V9X_INTEL_HSW_CTL_ENABLE) == 0ul ||
+            v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_START) !=
+                V9X_D3D_HSW_RCS_RING) {
+            return 0;
+        }
+        v9x_d3d_hsw_ring_checked = 1;
+    }
+    return v9x_d3d_hsw_initialise();
+}
+
+/* The 16-bit formats the sampler takes, by mask, as the 3dfx engine reads
+ * them; the texture's alpha decides MODULATE's alpha. */
+static int v9x_d3d_hsw_texture_format_of(const V9X_DD_SURFACE_LCL *surface,
+                                         v9x_u16 *format, int *has_alpha)
+{
+    const V9X_DDPIXELFORMAT *pf;
+
+    if (surface == 0 || surface->lpGbl == 0) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        pf = &surface->lpGbl->ddpfSurface;
+    } else {
+        pf = &v9x_hal->info.vmiData.ddpfDisplay;
+    }
+    if ((pf->dwFlags & V9X_DDPF_RGB) == 0ul || pf->dwRGBBitCount != 16ul) {
+        return 0;
+    }
+    if ((pf->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul) {
+        if (pf->dwRBitMask == 0x0000f800ul && pf->dwGBitMask == 0x000007e0ul &&
+            pf->dwBBitMask == 0x0000001ful) {
+            *format = V9X_HSW_FMT_B5G6R5_UNORM;
+            *has_alpha = 0;
+            return 1;
+        }
+        return 0;
+    }
+    *has_alpha = 1;
+    if (pf->dwRBitMask == 0x00007c00ul && pf->dwGBitMask == 0x000003e0ul &&
+        pf->dwBBitMask == 0x0000001ful &&
+        pf->dwRGBAlphaBitMask == 0x00008000ul) {
+        *format = V9X_HSW_FMT_B5G5R5A1_UNORM;
+        return 1;
+    }
+    if (pf->dwRBitMask == 0x00000f00ul && pf->dwGBitMask == 0x000000f0ul &&
+        pf->dwBBitMask == 0x0000000ful &&
+        pf->dwRGBAlphaBitMask == 0x0000f000ul) {
+        *format = V9X_HSW_FMT_B4G4R4A4_UNORM;
+        return 1;
+    }
+    return 0;
+}
+
+static int v9x_d3d_hsw_texture_format(const V9X_DD_SURFACE_LCL *surface,
+                                      DWORD *format_out)
+{
+    v9x_u16 format = 0u;
+    int has_alpha = 0;
+
+    if (format_out == 0) {
+        return 0;
+    }
+    *format_out = 0ul;
+    if (v9x_hal == 0 ||
+        !v9x_d3d_hsw_texture_format_of(surface, &format, &has_alpha)) {
+        return 0;
+    }
+    *format_out = format;
+    return 1;
+}
+
+/* Direct3D's blend factors (V9X_R3D_BLEND_*) as Gen's (Vol 2a
+ * 3D_Color_Buffer_Blend_Factor); 0 for one this engine does not take. */
+static v9x_u8 v9x_d3d_hsw_factor(v9x_u32 factor)
+{
+    switch (factor) {
+    case V9X_R3D_BLEND_ZERO:
+        return 0x11u;
+    case V9X_R3D_BLEND_ONE:
+        return 0x01u;
+    case V9X_R3D_BLEND_SRCCOLOR:
+        return 0x02u;
+    case V9X_R3D_BLEND_INVSRCCOLOR:
+        return 0x12u;
+    case V9X_R3D_BLEND_SRCALPHA:
+        return 0x03u;
+    case V9X_R3D_BLEND_INVSRCALPHA:
+        return 0x13u;
+    case V9X_R3D_BLEND_DESTCOLOR:
+        return 0x05u;
+    case V9X_R3D_BLEND_INVDESTCOLOR:
+        return 0x15u;
+    case V9X_R3D_BLEND_SRCALPHASAT:
+        return 0x06u;
+    default:
+        return 0u;
+    }
+}
+
+/* Direct3D's comparisons 1-8 against Gen's (Vol 2a 3D_Compare_Function):
+ * NEVER..GEQUAL keep their numbers, ALWAYS is 0. */
+static v9x_u8 v9x_d3d_hsw_compare(v9x_u32 function)
+{
+    if (function == V9X_R3D_CMP_ALWAYS) {
+        return 0u;
+    }
+    return (v9x_u8)(function & 7ul);
+}
+
+/* MAPFILTER_LINEAR for the filters whose texels blend; the mip part of a
+ * mip filter samples level 0 (plan, F2a). */
+static v9x_u8 v9x_d3d_hsw_filter(v9x_u32 filter)
+{
+    return filter == V9X_R3D_FILTER_LINEAR ||
+                   filter == V9X_R3D_FILTER_MIPLINEAR ||
+                   filter == V9X_R3D_FILTER_LINEARMIPLINEAR
+               ? 1u : 0u;
+}
+
+static v9x_u32 v9x_d3d_hsw_float(v9x_u32 byte)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } convert;
+
+    convert.value = (float)byte / 255.0f;
+    return convert.bits;
+}
+
+/* The draw as this engine's state, or the reason it cannot be. */
+static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
+                             V9X_D3D_HSW_STATE *state)
+{
+    V9X_DD_SURFACE_LCL *surface;
+    DWORD offset;
+    int has_alpha = 0;
+    v9x_u32 op;
+
+    state->desc.stage0 = V9X_HSW_PS_DIFFUSE;
+    state->desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
+    state->desc.fog = 0u;
+    state->desc.fog_rgb[0] = 0ul;
+    state->desc.fog_rgb[1] = 0ul;
+    state->desc.fog_rgb[2] = 0ul;
+    state->desc.specular = 0u;
+    state->textured = 0;
+    state->texture_format = 0u;
+    state->texture_address = 0ul;
+    state->texture_width = 0u;
+    state->texture_height = 0u;
+    state->texture_pitch = 0ul;
+
+    if (draw->target.format == V9X_R3D_FORMAT_RGB565) {
+        state->target_format = V9X_HSW_FMT_B5G6R5_UNORM;
+    } else if (draw->target.format == V9X_R3D_FORMAT_XRGB1555) {
+        /* The A1 form, which renders; the display ignores the top bit. */
+        state->target_format = V9X_HSW_FMT_B5G5R5A1_UNORM;
+    } else {
+        return V9X_D3D_HSW_REFUSE_TARGET;
+    }
+    if (draw->target.pitch == 0ul || draw->target.width == 0ul ||
+        draw->target.height == 0ul ||
+        draw->target.width > v9x_d3d_hsw_limits.target_dimension_max ||
+        draw->target.height > v9x_d3d_hsw_limits.target_dimension_max) {
+        return V9X_D3D_HSW_REFUSE_TARGET;
+    }
+    if (v9x_d3d_state_depth_active(draw->depth_enable,
+                                   draw->depth.object != 0,
+                                   draw->depth.pitch) != 0ul) {
+        return V9X_D3D_HSW_REFUSE_DEPTH;
+    }
+
+    surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
+    if (surface != 0) {
+        if (surface->lpGbl == 0 ||
+            (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+            (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+            surface->lpGbl->lPitch <= 0l ||
+            !v9x_d3d_hsw_texture_format_of(surface, &state->texture_format,
+                                           &has_alpha)) {
+            return V9X_D3D_HSW_REFUSE_TEXTURE;
+        }
+        offset = v9x_surface_offset(surface);
+        if (offset == 0xfffffffful) {
+            return V9X_D3D_HSW_REFUSE_TEXTURE;
+        }
+        if (draw->color_key_enable != 0ul) {
+            return V9X_D3D_HSW_REFUSE_KEY;
+        }
+        op = draw->texture.op;
+        if (op == V9X_R3D_TEXOP_DECAL || op == V9X_R3D_TEXOP_COPY) {
+            state->desc.stage0 = V9X_HSW_PS_TEXTURE;
+        } else if (op == V9X_R3D_TEXOP_MODULATE) {
+            /* D3D's rule: the texture's alpha when it has one. */
+            state->desc.stage0 = has_alpha ? V9X_HSW_PS_MODULATE_TEXALPHA
+                                           : V9X_HSW_PS_MODULATE;
+        } else if (op == V9X_R3D_TEXOP_MODULATEALPHA) {
+            state->desc.stage0 = V9X_HSW_PS_MODULATE;
+        } else if (op == V9X_R3D_TEXOP_ADD && !has_alpha) {
+            state->desc.stage0 = V9X_HSW_PS_ADD;
+        } else {
+            return V9X_D3D_HSW_REFUSE_TEXOP;
+        }
+        if (draw->texture.wrap_u != 0ul || draw->texture.wrap_v != 0ul) {
+            return V9X_D3D_HSW_REFUSE_ADDRESS;
+        }
+        state->sampler.mip_filter = 0u;
+        state->sampler.mag_filter =
+            v9x_d3d_hsw_filter(draw->texture.mag_filter);
+        state->sampler.min_filter =
+            v9x_d3d_hsw_filter(draw->texture.min_filter);
+        state->sampler.min_lod = 0u;
+        state->sampler.max_lod = 0u;
+        state->sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
+        switch (draw->texture.address) {
+        case V9X_R3D_ADDRESS_WRAP:
+            state->sampler.dw3 = V9X_D3D_HSW_TC_WRAP;
+            break;
+        case V9X_R3D_ADDRESS_MIRROR:
+            state->sampler.dw3 = V9X_D3D_HSW_TC_MIRROR;
+            break;
+        case V9X_R3D_ADDRESS_CLAMP:
+            state->sampler.dw3 = V9X_D3D_HSW_TC_CLAMP;
+            break;
+        default:
+            return V9X_D3D_HSW_REFUSE_ADDRESS;
+        }
+        state->textured = 1;
+        state->texture_address = v9x_d3d_hsw_vram(offset);
+        state->texture_width = surface->lpGbl->wWidth;
+        state->texture_height = surface->lpGbl->wHeight;
+        state->texture_pitch = (v9x_u32)surface->lpGbl->lPitch;
+        if (state->texture_width == 0u || state->texture_height == 0u ||
+            state->texture_width > v9x_d3d_hsw_limits.texture_size_max ||
+            state->texture_height > v9x_d3d_hsw_limits.texture_size_max) {
+            return V9X_D3D_HSW_REFUSE_TEXTURE;
+        }
+    }
+
+    state->desc.specular = draw->specular_enable != 0ul ? 1u : 0u;
+    if (draw->fog_enable != 0ul) {
+        state->desc.fog = 1u;
+        state->desc.fog_rgb[0] =
+            v9x_d3d_hsw_float((draw->fog_color >> 16) & 0xfful);
+        state->desc.fog_rgb[1] =
+            v9x_d3d_hsw_float((draw->fog_color >> 8) & 0xfful);
+        state->desc.fog_rgb[2] = v9x_d3d_hsw_float(draw->fog_color & 0xfful);
+    }
+
+    state->blend.enable = 0u;
+    state->blend.color_function = 0u;
+    state->blend.src_factor = 0u;
+    state->blend.dst_factor = 0u;
+    state->blend.independent_alpha = 0u;
+    state->blend.alpha_function = 0u;
+    state->blend.src_alpha_factor = 0u;
+    state->blend.dst_alpha_factor = 0u;
+    state->blend.write_disable = 0u;
+    state->blend.alpha_test = 0u;
+    state->blend.alpha_function_test = 0u;
+    if (draw->blend_enable != 0ul) {
+        state->blend.src_factor = v9x_d3d_hsw_factor(draw->src_blend);
+        state->blend.dst_factor = v9x_d3d_hsw_factor(draw->dst_blend);
+        if (state->blend.src_factor == 0u || state->blend.dst_factor == 0u) {
+            return V9X_D3D_HSW_REFUSE_BLEND;
+        }
+        state->blend.enable = 1u;
+    }
+    state->alpha_ref = 0u;
+    if (draw->alpha_test_enable != 0ul) {
+        if (draw->alpha_func < V9X_R3D_CMP_NEVER ||
+            draw->alpha_func > V9X_R3D_CMP_ALWAYS) {
+            return V9X_D3D_HSW_REFUSE_ALPHA;
+        }
+        state->blend.alpha_test = 1u;
+        state->blend.alpha_function_test =
+            v9x_d3d_hsw_compare(draw->alpha_func);
+        state->alpha_ref = (v9x_u8)(draw->alpha_ref & 0xfful);
+    }
+    return V9X_D3D_HSW_REFUSE_NONE;
+}
+
+static void v9x_d3d_hsw_count_refusal(DWORD reason)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+
+    diagnostics->m64_policy_last = reason;
+    if (reason < 20ul) {
+        ++diagnostics->m64_policy_counts[reason];
+    }
+}
+
+/* A kernel's slot is a fixed function of its description, so every
+ * process writes the same words to the same place. */
+static DWORD v9x_d3d_hsw_kernel_slot(const struct v9x_hsw_ps_desc *desc)
+{
+    return ((DWORD)desc->stage0 * 4ul + (DWORD)desc->specular * 2ul +
+            (DWORD)desc->fog) % V9X_INTEL_HSW_KERNEL_SLOTS;
+}
+
+/* The draw's state in the reserve: the target and texture surfaces, the
+ * binding table, the sampler, blend and CC state, the zeroed border
+ * colour, and the kernel. */
+static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
+                                   const V9X_D3D_HSW_STATE *state,
+                                   DWORD *kernel)
+{
+    v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    v9x_u32 *table;
+    DWORD slot;
+    v9x_u32 used;
+    DWORD index;
+
+    if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
+                                 state->target_format,
+                                 v9x_d3d_hsw_vram(draw->target.offset),
+                                 (v9x_u16)draw->target.width,
+                                 (v9x_u16)draw->target.height,
+                                 draw->target.pitch) != V9X_STATUS_OK) {
+        return 0;
+    }
+    table = image + V9X_HSW_SHADE_BINDING_TABLE(0) / 4ul;
+    table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
+    table[1] = V9X_D3D_HSW_TEXTURE_OFF;
+    table[2] = V9X_D3D_HSW_TEXTURE_OFF;
+    if (state->textured) {
+        if (v9x_intel_hsw_surface_2d(image + V9X_D3D_HSW_TEXTURE_OFF / 4ul,
+                                     state->texture_format,
+                                     state->texture_address,
+                                     state->texture_width,
+                                     state->texture_height,
+                                     state->texture_pitch) != V9X_STATUS_OK ||
+            v9x_intel_hsw_sampler(image + V9X_HSW_SHADE_SAMPLER / 4ul,
+                                  &state->sampler) != V9X_STATUS_OK) {
+            return 0;
+        }
+    } else {
+        /* An untextured kernel samples nothing, but the binding table still
+         * names a surface: the target's. */
+        table[1] = V9X_HSW_DRAW_RT_SURFACE(0);
+        table[2] = V9X_HSW_DRAW_RT_SURFACE(0);
+    }
+    for (index = 0ul; index < V9X_D3D_HSW_BORDER_BYTES / 4ul; ++index) {
+        image[V9X_HSW_SHADE_BORDER_COLOR / 4ul + index] = 0ul;
+    }
+    if (v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul,
+                            &state->blend) != V9X_STATUS_OK ||
+        v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul,
+                               state->alpha_ref) != V9X_STATUS_OK) {
+        return 0;
+    }
+
+    slot = v9x_d3d_hsw_kernel_slot(&state->desc);
+    *kernel = V9X_INTEL_HSW_KERNEL_OFF + slot * V9X_INTEL_HSW_KERNEL_SLOT;
+    /* The last 128 bytes of a slot stay clear for the EU's prefetch past a
+     * kernel's end (Vol 7). */
+    return v9x_intel_hsw_ps_kernel_build(
+               image + *kernel / 4ul,
+               (V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul, &state->desc,
+               &used) == V9X_STATUS_OK;
+}
+
+static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
+{
+    V9X_D3D_HSW_STATE state;
+
+    if (draw == 0 || v9x_hal == 0) {
+        return 0;
+    }
+    return v9x_d3d_hsw_map(draw, &state) == V9X_D3D_HSW_REFUSE_NONE;
+}
+
+static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
+                            const V9X_R3D_VERTEX *vertices,
+                            DWORD triangle_count)
+{
+    V9X_D3D_HSW_STATE state;
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_draw d;
+    DWORD reason;
+    DWORD kernel = 0ul;
+    DWORD done = 0ul;
+    DWORD count;
+    DWORD bytes;
+    DWORD index;
+    const v9x_u32 *source;
+    v9x_u32 *target;
+
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
+        !v9x_d3d_hsw_ready()) {
+        return 0;
+    }
+    reason = v9x_d3d_hsw_map(draw, &state);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+        v9x_d3d_hsw_count_refusal(reason);
+        return 0;
+    }
+
+    /* The blitter may still be writing this draw's texture or target, and
+     * the previous draw must be done before its state is overwritten. */
+    if (!v9x_engine32_hsw.wait_idle(1) || !v9x_d3d_hsw_wait_rcs()) {
+        return 0;
+    }
+    if (!v9x_d3d_hsw_write_state(draw, &state, &kernel)) {
+        return 0;
+    }
+
+    d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    d.kernel = kernel;
+    d.vertices = V9X_D3D_HSW_GFX(V9X_INTEL_HSW_VERTEX_OFF);
+    d.width = (v9x_u16)draw->target.width;
+    d.height = (v9x_u16)draw->target.height;
+    d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    d.blend = V9X_HSW_SHADE_BLEND_ALPHA_TEST;
+    d.cc = V9X_HSW_SHADE_CC;
+    d.sampler = V9X_HSW_SHADE_SAMPLER;
+    d.depth_buffer = 0ul;
+    d.depth_clear = 0ul;
+    d.depth_test = 0ul;
+    d.tl_vertices = 1u;
+    d.flat = 0u;   /* the core copies the provoking vertex */
+
+    while (done < triangle_count) {
+        count = triangle_count - done;
+        if (count > V9X_D3D_HSW_MAX_TRIANGLES) {
+            count = V9X_D3D_HSW_MAX_TRIANGLES;
+        }
+        if (done != 0ul && !v9x_d3d_hsw_wait_rcs()) {
+            return 0;
+        }
+        bytes = count * 3ul * V9X_HSW_TL_VERTEX_BYTES;
+        source = (const v9x_u32 *)(vertices + done * 3ul);
+        target = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_VERTEX_OFF);
+        for (index = 0ul; index < bytes / 4ul; ++index) {
+            target[index] = source[index];
+        }
+        d.vertex_count = count * 3ul;
+        v9x_intel_hsw_batch_init(
+            &batch, v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
+            V9X_INTEL_HSW_BATCH_BYTES / 4ul);
+        if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_STATE_BASE,
+                                        V9X_INTEL_HSW_STATE_BYTES, &d,
+                                        V9X_D3D_HSW_CRUMB_GFX,
+                                        done + count) != V9X_STATUS_OK ||
+            !v9x_d3d_hsw_submit()) {
+            return 0;
+        }
+        done += count;
+    }
+    v9x_present_note_submission();
+    return 1;
+}
+
+/*
+ * What the mapping takes: Gouraud and the core's flat; texture DECAL, COPY,
+ * MODULATE (with Direct3D's alpha rule) and MODULATEALPHA, published, and
+ * ADD and SRCALPHASAT, mapped but not published (the DDK headers this tree
+ * carries define neither caps bit); specular;
+ * vertex fog; every blend factor but the destination alpha ones (a 16-bit
+ * target has no useful alpha); the alpha test with every function; WRAP,
+ * MIRROR, CLAMP. No Z buffer yet (F2b). Mip filters are published and
+ * sample level 0, the honest degradation Gen3's caps describe.
+ */
+static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
+{
+    V9X_D3DPRIMCAPS *tri;
+    DWORD index;
+
+    if (shared == 0) {
+        return;
+    }
+    shared->d3d_global.dwSize = sizeof(V9X_D3DHAL_GLOBALDRIVERDATA);
+    shared->d3d_global.hwCaps.dwSize = sizeof(V9X_D3DDEVICEDESC_V1);
+    shared->d3d_global.hwCaps.dwFlags =
+        V9X_D3DDD_COLORMODEL | V9X_D3DDD_DEVCAPS |
+        V9X_D3DDD_TRICAPS | V9X_D3DDD_DEVICERENDERBITDEPTH |
+        V9X_D3DDD_DEVICEZBUFFERBITDEPTH;
+    shared->d3d_global.hwCaps.dcmColorModel = V9X_D3DCOLOR_RGB;
+    shared->d3d_global.hwCaps.dwDevCaps =
+        V9X_D3DDEVCAPS_FLOATTLVERTEX |
+        V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TEXTUREVIDEOMEMORY |
+        V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX;
+    shared->d3d_global.hwCaps.dtcTransformCaps.dwSize =
+        sizeof(V9X_D3DTRANSFORMCAPS);
+    shared->d3d_global.hwCaps.dlcLightingCaps.dwSize =
+        sizeof(V9X_D3DLIGHTINGCAPS);
+    shared->d3d_global.hwCaps.dpcLineCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
+
+    tri = &shared->d3d_global.hwCaps.dpcTriCaps;
+    tri->dwSize = sizeof(V9X_D3DPRIMCAPS);
+    tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
+                      V9X_D3DPMISCCAPS_CULLCCW;
+    tri->dwRasterCaps = V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
+    tri->dwZCmpCaps = 0ul;
+    tri->dwAlphaCmpCaps =
+        V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
+        V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
+        V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
+        V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
+    tri->dwSrcBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR | V9X_D3DPBLENDCAPS_INVDESTCOLOR;
+    tri->dwDestBlendCaps = tri->dwSrcBlendCaps;
+    tri->dwShadeCaps =
+        V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
+    tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
+                         V9X_D3DPTEXTURECAPS_ALPHA;
+    tri->dwTextureFilterCaps =
+        V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR |
+        V9X_D3DPTFILTERCAPS_MIPNEAREST | V9X_D3DPTFILTERCAPS_MIPLINEAR |
+        V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+        V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
+    tri->dwTextureBlendCaps =
+        V9X_D3DPTBLENDCAPS_DECAL | V9X_D3DPTBLENDCAPS_MODULATE |
+        V9X_D3DPTBLENDCAPS_MODULATEALPHA | V9X_D3DPTBLENDCAPS_COPY;
+    tri->dwTextureAddressCaps = V9X_D3DPTADDRESSCAPS_WRAP |
+                                V9X_D3DPTADDRESSCAPS_MIRROR |
+                                V9X_D3DPTADDRESSCAPS_CLAMP;
+
+    shared->d3d_extended_caps.dwSize = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+    shared->d3d_extended_caps.dwMinTextureWidth =
+        v9x_d3d_hsw_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureWidth =
+        v9x_d3d_hsw_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinTextureHeight =
+        v9x_d3d_hsw_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureHeight =
+        v9x_d3d_hsw_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = 0ul;
+
+    /* RGB565, ARGB1555 and ARGB4444: the shared block has three slots. */
+    for (index = 0ul; index < 3ul; ++index) {
+        shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
+        shared->texture_formats[index].dwFlags =
+            V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+        shared->texture_formats[index].ddpfPixelFormat.dwSize =
+            sizeof(V9X_DDPIXELFORMAT);
+        shared->texture_formats[index].ddpfPixelFormat.dwRGBBitCount = 16ul;
+        shared->texture_formats[index].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+    }
+    shared->texture_formats[0].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[0].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[1].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x00008000ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x0000f000ul;
+    shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
+    shared->d3d_global.dwNumTextureFormats = 3ul;
+    shared->d3d_global.dwNumVertices = 0ul;
+    shared->d3d_global.dwNumClipVertices = 0ul;
+}
+
+/* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
+    &v9x_d3d_hsw_limits,
+    v9x_d3d_hsw_texture_format,
+    v9x_d3d_hsw_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_hsw_ready,
+    0,                                  /* create_surface: DirectDraw's */
+    0,                                  /* destroy_surface */
+    v9x_d3d_hsw_draw,
+    v9x_d3d_hsw_accepts
+};

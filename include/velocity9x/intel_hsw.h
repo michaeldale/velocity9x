@@ -132,8 +132,36 @@
 #define V9X_INTEL_HSW_RESERVE_OFFSET ((v9x_u32)0x01800000ul)
 #define V9X_INTEL_HSW_RING_BYTES     ((v9x_u32)0x00001000ul)
 #define V9X_INTEL_HSW_STATUS_OFFSET  ((v9x_u32)0x01801000ul)
-#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00002000ul)
-#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)2ul)
+/*
+ * Phase F2 (docs\plans\intel-haswell-direct3d.md) grew the reserve to
+ * 128 KB: the BCS ring and status page as before, the RCS ring after them,
+ * then the render engine's state, batch and vertices. The probe region at
+ * 1820000h starts where this ends.
+ */
+#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00020000ul)
+#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)32ul)
+#define V9X_INTEL_HSW_RCS_RING_OFF   ((v9x_u32)0x00002000ul)
+#define V9X_INTEL_HSW_STATE_OFF      ((v9x_u32)0x00004000ul)
+#define V9X_INTEL_HSW_STATE_BYTES    ((v9x_u32)0x0000c000ul)
+#define V9X_INTEL_HSW_KERNEL_OFF     ((v9x_u32)0x00004000ul) /* in state */
+#define V9X_INTEL_HSW_KERNEL_SLOT    ((v9x_u32)0x00000200ul)
+#define V9X_INTEL_HSW_KERNEL_SLOTS   ((v9x_u32)64ul)
+#define V9X_INTEL_HSW_BATCH_OFF      ((v9x_u32)0x00010000ul)
+#define V9X_INTEL_HSW_BATCH_BYTES    ((v9x_u32)0x00002000ul)
+#define V9X_INTEL_HSW_VERTEX_OFF     ((v9x_u32)0x00012000ul)
+#define V9X_INTEL_HSW_VERTEX_BYTES   ((v9x_u32)0x0000e000ul)
+/* Status dwords: BCS stored/submitted 0-1; RCS stored/submitted 8-9; the
+ * mark the init batch ran, 10. */
+#define V9X_INTEL_HSW_STATUS_RCS_DONE   ((v9x_u32)8ul)
+#define V9X_INTEL_HSW_STATUS_RCS_SENT   ((v9x_u32)9ul)
+#define V9X_INTEL_HSW_STATUS_RCS_INIT   ((v9x_u32)10ul)
+#define V9X_INTEL_HSW_RCS_INIT_MARK     ((v9x_u32)0x48535749ul) /* "HSWI" */
+
+/* RCS ring registers (Vol 2c). */
+#define V9X_INTEL_HSW_RCS_TAIL   ((v9x_u32)0x00002030ul)
+#define V9X_INTEL_HSW_RCS_HEAD   ((v9x_u32)0x00002034ul)
+#define V9X_INTEL_HSW_RCS_START  ((v9x_u32)0x00002038ul)
+#define V9X_INTEL_HSW_RCS_CTL    ((v9x_u32)0x0000203cul)
 
 /* BCS ring registers (Vol 2c) and the head/tail offset fields. */
 #define V9X_INTEL_HSW_BCS_TAIL   ((v9x_u32)0x00022030ul)

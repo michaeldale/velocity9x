@@ -117,8 +117,10 @@ static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
     *ring_linear_base = reserve;
     *ring_bytes = V9X_INTEL_HSW_RING_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_INTEL_GEN75;
+    /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
+     * both together, so an open engine has both (Phase F2). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY | V9X_DD_ENGINE_CAP_D3D;
 }
 
 const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
@@ -128,7 +130,7 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
     "none",
     "vbe-lfb",
     "directdraw-fill-blt",
-    "not-advertised",
+    "hardware-gen75",
     0,
     v9x_hsw_fill_engine,
     /* VBE reports the framebuffer in GMADR, BAR2 (offset 18h). */

@@ -24,7 +24,10 @@ cache must be invalidated per batch
 (`docs\decisions\2026-10-17-haswell-phase-f1a-filter-wrap-blend.md`). F1b
 done the same day: a D32_FLOAT depth buffer, cleared by drawing, resolves
 three overlapping triangles (`docs\decisions\2026-10-17-haswell-phase-f1b-depth.md`).
-F2 (the engine table) next.
+F2a done the same day: Direct3D draws on the render ring through the HAL,
+with the clipper's perspective divide off for pre-transformed vertices
+(`docs\decisions\2026-10-17-haswell-phase-f2a-direct3d-engine.md`). F2b
+(depth) next.
 The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
@@ -481,6 +484,62 @@ boundary are not judged. The tolerance is 2/255.
 
 *Writes:* what D wrote, plus the textures' bytes inside the state region.
 *Failure:* as in D. A wedged RCS costs a power cycle, not a `reset`.
+
+**Phase F2 design (2026-10-17, on "Do Phase F ... then the
+V9X_D3D_ENGINE_OPS table").** Direct3D draws through the measured batches,
+in two steps.
+
+*F2a: the engine, without depth.*
+
+- **Mini-VDD.** `HSW_ENGINE_OPEN` maps a 128 KB reserve at aperture
+  `1800000h` (it was 8 KB) and checks all 32 PTEs. It opens the render
+  ring at `+2000h` beside the blitter's: the same ring-off check,
+  programming and readback. Reuse requires both rings, and Close tears
+  down both. The fresh-open zeroing covers the whole reserve.
+- **Reserve layout** (offsets from `1800000h`):
+
+  | Offset | Size | Use |
+  |---|---|---|
+  | `+0000h` | 4 KB | BCS ring |
+  | `+1000h` | 4 KB | status: BCS sequences at dwords 0-1, RCS at 8-9, the render-initialised mark at 10 |
+  | `+2000h` | 4 KB | RCS ring |
+  | `+4000h` | 48 KB | state (all four bases): the init state, then each draw's surfaces, sampler, blend and CC state, and from `+4000h` within it the kernel cache, 64 slots of 512 bytes |
+  | `+10000h` | 8 KB | the draw batch |
+  | `+12000h` | 56 KB | vertices |
+
+  The probe region at `1820000h` stays clear of it.
+- **HAL** `d3d_hsw.c`, on the neutral `draw` entry:
+  - D3D's TL vertices go into the vertex area unconverted. The vertex
+    elements read `sx sy sz rhw` as the position (so w carries rhw for
+    perspective), diffuse and specular as B8G8R8A8_UNORM, and tu tv
+    twice (attributes 2 and 3).
+  - Per draw, the kernel comes from E's generator, extended with a
+    specular add and with a "modulate colour, texture alpha" mode for
+    D3D's MODULATE on an alpha texture. A kernel's slot is a fixed
+    function of its description, so every process writes the same bytes
+    to the same slot.
+  - Each draw is one synchronous batch on RCS, ending with a sequence
+    store, after the BCS is idle. The batch is D/E's, generalised to a
+    vertex count, the TL layout, flat shading (SBE constant
+    interpolation) and per-draw blend, alpha test, sampler and target
+    format (B5G6R5 or B5G5R5X1).
+  - The init batch runs once per ring open, the first time a process
+    finds the mark absent.
+  - A timeout quarantines the engine and traces it, as the blitter does.
+  - Refused: depth (no Z buffer is advertised), colour key, DECALALPHA,
+    DECALMASK, MODULATEMASK, border addressing, ADD on an alpha texture,
+    textures in system memory. Mip filters sample level 0.
+- **Selection.** `INTEL_GEN75` with `CAP_D3D`, which `hsw_hw16.c` sets when
+  the render ring opened, selects this engine. `Direct3D` becomes
+  `hardware-gen75`.
+- **Measured by** V9XDDP's Direct3D checks on the 4570 at 16 bpp, then a
+  game.
+
+*F2b: depth.* Gen7 depth is always Y-tiled, so a Z surface needs a pitch
+in whole tiles (128 bytes), rows in whole tiles (32) and 4 KB alignment.
+`create_surface` places Z buffers so. A depth fill must be the engine
+drawing at the clear depth, as F1b measured, not the blitter's linear
+fill. Its own design after F2a runs.
 
 ### F. Textures and state
 

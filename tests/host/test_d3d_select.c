@@ -80,12 +80,14 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_TDFX, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* Haswell's blitter has no Direct3D engine behind it: none, even
-         * with the bit, and software still wins. */
+        /* Haswell: the blitter alone selects nothing; the render ring's
+         * CAP_D3D selects the Gen7.5 engine; software still wins. */
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_GEN75 },
+        { 0, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },

@@ -532,6 +532,9 @@ static void test_phase_d_draw(void)
     draw.depth_buffer = 0ul;
     draw.depth_clear = 0ul;
     draw.depth_test = 0ul;
+    draw.tl_vertices = 0u;
+    draw.vertex_count = 0ul;
+    draw.flat = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -650,6 +653,9 @@ static void test_phase_e_shade(void)
     draw.depth_buffer = 0ul;
     draw.depth_clear = 0ul;
     draw.depth_test = 0ul;
+    draw.tl_vertices = 0u;
+    draw.vertex_count = 0ul;
+    draw.flat = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -722,6 +728,9 @@ static void test_phase_f1b_depth(void)
     draw.depth_buffer = 0x0182a000ul;
     draw.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
     draw.depth_test = V9X_HSW_SHADE_DS_LESS;
+    draw.tl_vertices = 0u;
+    draw.vertex_count = 0ul;
+    draw.flat = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -755,9 +764,74 @@ static void test_phase_f1b_depth(void)
           dw[at + 12ul] == 3ul);
 }
 
+/*
+ * Phase F2: a draw of Direct3D TL vertices. Worked by hand: position
+ * R32G32B32A32_FLOAT (000h) at 0, all four stored; diffuse and specular
+ * B8G8R8A8_UNORM (0C0h) at 16 and 20; tu tv R32G32_FLOAT (085h) at 24,
+ * twice, (u, v, 0, 1.0); pitch 32; a 12-vertex TRILIST; flat shading sets
+ * SBE DW11 bits 0 and 1.
+ */
+static void test_phase_f2_tl(void)
+{
+    v9x_u32 dw[512];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    v9x_u32 at;
+
+    draw.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    draw.kernel = V9X_HSW_SHADE_KERNEL(0);
+    draw.vertices = 0x01812000ul;
+    draw.width = 640u;
+    draw.height = 480u;
+    draw.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    draw.blend = 0ul;
+    draw.cc = 0ul;
+    draw.sampler = V9X_HSW_SHADE_SAMPLER;
+    draw.depth_buffer = 0ul;
+    draw.depth_clear = 0ul;
+    draw.depth_test = 0ul;
+    draw.tl_vertices = 1u;
+    draw.vertex_count = 12ul;
+    draw.flat = 1u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x7809000bul);
+    CHECK(at < batch.used && dw[at + 3ul] == 0x02000000ul &&
+          dw[at + 4ul] == 0x11110000ul && dw[at + 5ul] == 0x02c00010ul &&
+          dw[at + 6ul] == 0x11110000ul && dw[at + 7ul] == 0x02c00014ul &&
+          dw[at + 9ul] == 0x02850018ul && dw[at + 10ul] == 0x11230000ul &&
+          dw[at + 11ul] == 0x02850018ul);
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00004020ul &&
+          dw[at + 3ul] == 0x01812000ul + 12ul * 32ul - 1ul);
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 12ul);
+    at = v9x_find_command(dw, batch.used, 0x781f000cul);
+    CHECK(at < batch.used && dw[at + 11ul] == 3ul);
+    /* CLIP: enable 31, ACCEPT_ALL (4) at 15:13, divide disable 9. */
+    at = v9x_find_command(dw, batch.used, 0x78120002ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0ul &&
+          dw[at + 2ul] == 0x80008200ul && dw[at + 3ul] == 0ul);
+    /* A count that is not whole triangles, or TL without four
+     * attributes, is refused. */
+    draw.vertex_count = 10ul;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.vertex_count = 12ul;
+    draw.attributes = 1u;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_phase_f2_tl();
     test_phase_f1b_depth();
     test_phase_e_shade();
     test_phase_c_init();

@@ -601,7 +601,8 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
  *   g2-g3     perspective pixel barycentrics (payload)
  *   g4-g11    setup data, two registers per attribute: diffuse, specular,
  *             texture coordinates 0, texture coordinates 1
- *   g20-g23   diffuse R G B A          g27      specular alpha (fog)
+ *   g20-g23   diffuse R G B A          g24-g26  specular R G B
+ *   g27       specular alpha (fog)
  *   g28-g29   u0 v0 (sample payload)   g30-g31  u1 v1
  *   g32-g35   texture 0 R G B A        g36-g39  texture 1 R G B A
  *   g40       fog scratch
@@ -615,6 +616,7 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
 #define V9X_HSW_PSG_TEX0      ((v9x_u8)32u)
 #define V9X_HSW_PSG_TEX1      ((v9x_u8)36u)
 #define V9X_HSW_PSG_SCRATCH   ((v9x_u8)40u)
+#define V9X_HSW_PSG_SPEC      ((v9x_u8)24u) /* g24-g26, specular R G B */
 #define V9X_HSW_PSG_ATTR_SPEC ((v9x_u8)1u)
 #define V9X_HSW_PSG_ATTR_UV0  ((v9x_u8)2u)
 #define V9X_HSW_PSG_ATTR_UV1  ((v9x_u8)3u)
@@ -721,7 +723,7 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
     int textured;
 
     if (out == 0 || desc == 0 || used == 0 ||
-        desc->stage0 > V9X_HSW_PS_DECAL ||
+        desc->stage0 > V9X_HSW_PS_MODULATE_TEXALPHA ||
         desc->stage1 > V9X_HSW_PS_MODULATE_TEX1) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -739,6 +741,12 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
     }
     if (desc->fog) {
         v9x_hsw_psg_pln(&g, V9X_HSW_PSG_FOG, V9X_HSW_PSG_ATTR_SPEC, 3u);
+    }
+    if (desc->specular) {
+        for (c = 0u; c < 3u; ++c) {
+            v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_SPEC + c),
+                            V9X_HSW_PSG_ATTR_SPEC, c);
+        }
     }
     if (textured) {
         v9x_hsw_psg_pln(&g, V9X_HSW_PSG_UV0, V9X_HSW_PSG_ATTR_UV0, 0u);
@@ -770,6 +778,18 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
                            (v9x_u8)(V9X_HSW_PSG_TEX0 + c),
                            (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c), 0, 0ul, 1u);
             break;
+        case V9X_HSW_PS_MODULATE_TEXALPHA:
+            if (c == 3u) {
+                v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MOV, out_reg,
+                               (v9x_u8)(V9X_HSW_PSG_TEX0 + c), 0u, 0, 0ul,
+                               0u);
+            } else {
+                v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MUL, out_reg,
+                               (v9x_u8)(V9X_HSW_PSG_TEX0 + c),
+                               (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c), 0, 0ul,
+                               1u);
+            }
+            break;
         case V9X_HSW_PS_ADD:
             /* D3DTOP_ADD on colour, modulate on alpha. */
             v9x_hsw_psg_op(&g,
@@ -792,6 +812,13 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
             out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
             v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MUL, out_reg, out_reg,
                            (v9x_u8)(V9X_HSW_PSG_TEX1 + c), 0, 0ul, 1u);
+        }
+    }
+    if (desc->specular) {
+        for (c = 0u; c < 3u; ++c) {
+            out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
+            v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_ADD, out_reg, out_reg,
+                           (v9x_u8)(V9X_HSW_PSG_SPEC + c), 0, 0ul, 1u);
         }
     }
     /* Vertex fog: colour = (colour - fog) * f + fog, f = specular alpha. */
