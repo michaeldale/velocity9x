@@ -115,6 +115,67 @@ BCS ring in stolen memory (the GTT already maps it linearly from BDSM),
 own, and BCS has no render context to initialise. Ends with Haswell in
 `intel-gma` at `Acceleration = directdraw-fill-blt`.
 
+**Phase B1 design, for approval (2026-10-17).** One run of the existing
+`HSWMM.VXD` / `V9XHSWMM.EXE` with a new `/bcs` switch, from the desktop, no
+reboot, every stage recorded and each stage gated on the one before. It
+answers "does BCS execute from a ring we place, and does a fill land where
+we computed" in one run; DirectDraw use is B2, after.
+
+*Placement.* Three regions in the aperture above 16 MB, where nothing runs
+on this machine: the `vbe` driver uses the first 16 MB only
+(`V9XMODES.INI` `Vram=reported=33488896 usable=16777216`), stolen is 32 MB.
+
+| Region | Aperture offset | Size |
+|---|---|---|
+| ring | `1F00000h` | 4 KB (one page, CTL length 0) |
+| status | `1F01000h` | 4 KB |
+| scratch | `1F02000h` | 64 KB |
+
+*Stages.*
+
+1. **Check the pages.** Read the GTT entries for all 18 pages. Each must be
+   valid and point at BDSM + offset (the linear stolen mapping measured for
+   the first 4096 entries; these entries, 7936-7953, have not been read).
+   Any other value stops the run with nothing written to the GPU.
+2. **Check the CPU path.** Map GMADR + `1F00000h` (64 KB + 8 KB) and write a
+   pattern through it, then read it back; the 945 taught that stolen memory
+   is reachable only through the aperture
+   (`2026-09-14-cpu-writes-to-stolen-memory-need-the-aperture.md`). Fill the
+   ring with `MI_NOOP`, the status page with `0`, and the scratch with a
+   guard value `A5A5A5A5h`.
+3. **Forcewake**, exactly as Phase A. Held until stage 8.
+4. **Program BCS**: read `BCS_RING_BUFFER_CTL` and require 0 (ring off);
+   write HEAD `0`, TAIL `0`, START `GMADR offset 1F00000h` (a graphics
+   address, Vol 2c 31:12), then CTL `00000001h` (length 0 = 4 KB, enable).
+   Read each back. Any mismatch goes straight to stage 8.
+5. **First command.** Ring dwords 0-3: `MI_STORE_DATA_IMM` (Use Global GTT)
+   to status + 0 with `C0DE0001h`. TAIL = 16. Poll HEAD for 16 and the
+   status dword for the value, bounded.
+6. **Fill.** `XY_COLOR_BLT`, 32 bpp, ROP `F0h`, colour `11223344h`,
+   destination = scratch base, rectangle (0,0)-(16,16), pitch field `256`.
+   Then `MI_STORE_DATA_IMM` of `C0DE0002h`, padded to a qword; advance TAIL.
+   Poll as in stage 5. The PRM calls the pitch "in DWords" next to a note
+   about tiled surfaces; with 256 the fill lands at a 256-byte or a
+   1024-byte stride, and the readback says which. Every guard dword outside
+   both candidate footprints must still read `A5A5A5A5h`.
+7. **Record**: HEAD, TAIL, BCS ACTHD (`22074h`) and EIR (`220B0h`, i915
+   offsets), a checksum and a row-stride verdict over the scratch.
+8. **Tear down, always:** CTL `0`, then HEAD, TAIL, START `0`, read back;
+   release forcewake as Phase A.
+
+*Writes, all of them:* `A188h` twice (stage 3 and 8); the four BCS ring
+registers (set, then returned to 0); memory only inside the three regions
+above, through the aperture. No display register, no GTT entry, no render
+ring.
+
+*Failure.* A poll that runs out is recorded with HEAD, ACTHD and EIR, and
+the run still tears down. No GPU reset is attempted; a blitter left busy
+costs a reboot (`reset`), not the display, which is the VBE mode on pipe A
+and has nothing to do with BCS. The command bytes come from
+`hsw_3d.c`'s MI builders, which the batch checker passes before
+submission; `XY_COLOR_BLT` (client 2, opcode `50h`, length 4, Vol 2b) gets
+its builder and a host test as part of this work.
+
 ### C. The render context
 
 RCS ring, then the dummy context of Vol 7's table submitted once, then a
