@@ -48,6 +48,8 @@ function Get-V9xHostSourceNames {
         'src\common\i9xx_cover.c',
         'src\common\i9xx_depth.c',
         'src\common\i9xx_wm.c',
+        # Haswell config-space decode: stolen, GTT, BARs, aperture, PTE.
+        'src\chipsets\intel\hsw_config.c',
         # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
@@ -219,6 +221,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_wm.c',
         'tests\host\test_i9xx_mmio.c',
         'tests\host\test_i9xx_gtt.c',
+        'tests\host\test_intel_hsw.c',
         'tests\host\test_i9xx_ring.c',
         'tests\host\test_i9xx_blt.c',
         'tests\host\test_i9xx_arm.c',

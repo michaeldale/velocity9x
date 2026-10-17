@@ -197,6 +197,9 @@ unsigned int v9x_run_i9xx_mmio_tests(void);
 /* tests\host\test_i9xx_gtt.c: streaming Gen3 GTT inventory. */
 unsigned int v9x_run_i9xx_gtt_tests(void);
 
+/* tests\host\test_intel_hsw.c: Haswell config-space layout and GTT PTE. */
+unsigned int v9x_run_intel_hsw_tests(void);
+
 /* tests\host\test_i9xx_ring.c: Phase 4 sandbox and packet policy. */
 unsigned int v9x_run_i9xx_ring_tests(void);
 
@@ -1301,6 +1304,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_wm_tests();
     failures += v9x_run_i9xx_mmio_tests();
     failures += v9x_run_i9xx_gtt_tests();
+    failures += v9x_run_intel_hsw_tests();
     failures += v9x_run_i9xx_ring_tests();
     failures += v9x_run_i9xx_blt_tests();
     failures += v9x_run_i9xx_arm_tests();
