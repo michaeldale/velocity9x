@@ -56,6 +56,13 @@ build identifier so exact guest-tested binaries remain traceable.
     Laputa hangs after its first frame
     ([record](docs/decisions/2026-10-18-haswell-glide-3dcif-probes.md)).
 
+- **The GMA 950 is unchanged by the HD 4600 work.** The same `intel-gma`
+  package installs on it through Have Disk, and its probes lose no
+  check. Half-Life's mwd5 runs at 46.0 fps in Direct3D and 20.8 in
+  OpenGL ([record](docs/decisions/2026-10-18-netbook-gma950-0.19.0.md)).
+  An emulated Trio64 also installs 0.19.0 over 0.18.5 without losing a
+  check ([record](docs/decisions/2026-10-18-86box-trio64-0.19.0-install.md)).
+
 ## 0.18.5 - 2026-10-16
 
 - **3DCIF: Assault Rigs and Wipeout draw their textures.** Early 3DCIF
