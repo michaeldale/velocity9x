@@ -539,6 +539,7 @@ static void test_phase_d_draw(void)
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -644,6 +645,24 @@ static void test_phase_e_shade(void)
     /* Phase F2b: blending off, all four channels' write disables 27:24. */
     CHECK(image[V9X_HSW_SHADE_BLEND_NO_COLOUR / 4ul] == 0ul &&
           image[V9X_HSW_SHADE_BLEND_NO_COLOUR / 4ul + 1ul] == 0x0f000000ul);
+    /* Render interface step 4: texture 1 samples with sampler 1, the next
+     * 16 bytes; each sampler set holds sampler 0 twice, so the probe's
+     * two-stage draws sample as they were measured. */
+    {
+        static const v9x_u32 sets[4] = {
+            V9X_HSW_SHADE_SAMPLER, V9X_HSW_SHADE_SAMPLER_LINEAR,
+            V9X_HSW_SHADE_SAMPLER_WRAP, V9X_HSW_SHADE_SAMPLER_MIRROR
+        };
+        v9x_u32 set;
+        v9x_u32 word;
+
+        for (set = 0ul; set < 4ul; ++set) {
+            for (word = 0ul; word < 4ul; ++word) {
+                CHECK(image[(sets[set] + V9X_HSW_SAMPLER_BYTES) / 4ul + word] ==
+                      image[sets[set] / 4ul + word]);
+            }
+        }
+    }
     CHECK(v9x_intel_hsw_shade_state(image, 64ul, 0x01824000ul, rt, 64u, 64u,
                                     256ul, 0x80u) ==
           V9X_STATUS_INVALID_ARGUMENT);
@@ -667,6 +686,7 @@ static void test_phase_e_shade(void)
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -747,6 +767,7 @@ static void test_phase_f1b_depth(void)
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -814,6 +835,7 @@ static void test_phase_f2_tl(void)
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
                                       0x01801020ul, 7ul) == V9X_STATUS_OK);
@@ -864,6 +886,27 @@ static void test_phase_f2_tl(void)
                                       0x01801020ul, 7ul) ==
           V9X_STATUS_INVALID_ARGUMENT);
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
+    /* Two units (render interface step 4): the vertex is 40 bytes, pitch
+     * 28h with Address Modify Enable (14), and the second texture
+     * coordinate attribute reads R32G32_FLOAT at 32 (02850020h); the first
+     * still at 24. tl_uv1 without TL vertices is refused. */
+    draw.tl_uv1 = 1u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x7809000bul);
+    CHECK(at < batch.used && dw[at + 9ul] == 0x02850018ul &&
+          dw[at + 11ul] == 0x02850020ul);
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00004028ul &&
+          dw[at + 3ul] == 0x01812000ul + 12ul * 40ul - 1ul);
+    draw.tl_vertices = 0u;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.tl_vertices = 1u;
+    draw.tl_uv1 = 0u;
     /* A count that is not whole triangles, or TL without four
      * attributes, is refused. */
     draw.vertex_count = 10ul;
@@ -918,6 +961,7 @@ static void test_phase_f2b_depth_only(void)
     draw.depth_pitch = 128ul;
     draw.depth_only = 1u;
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 9ul) == V9X_STATUS_OK);
@@ -931,6 +975,7 @@ static void test_phase_f2b_depth_only(void)
      * fill dispatches the colour draw's shader and masks its writes. */
     draw.depth_only = 0u;
     draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&colour_batch, colour, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&colour_batch, 0x01824000ul, 0x2000ul,
                                       &draw, 0x01821028ul, 9ul) ==

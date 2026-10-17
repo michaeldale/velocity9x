@@ -357,7 +357,10 @@ static void test_phase_e_generator(void)
     /* 4 pln, 2 pln, sample, 2 pln, sample, 4 mul, 4 mul, write. */
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
           V9X_STATUS_OK && used == 76ul);
-    CHECK(out[39] == 0x04420002ul);
+    /* Texture 1: BTI 2 and, since render interface step 4, its own
+     * sampler, 1 at 11:8 - unit 1's filter and addressing are not unit
+     * 0's. */
+    CHECK(out[39] == 0x04420102ul);
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 40ul, &desc, &used) ==
           V9X_STATUS_INVALID_ARGUMENT);
     desc.stage0 = 9u;

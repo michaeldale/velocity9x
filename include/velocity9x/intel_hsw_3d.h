@@ -488,6 +488,11 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_DEPTH_D16_UNORM        ((v9x_u8)5u)
 /* Phase F2: Direct3D's TL vertex. */
 #define V9X_HSW_TL_VERTEX_BYTES        ((v9x_u16)32u)
+/* Render interface step 4: the TL vertex with unit 1's tu1 tv1 after it. */
+#define V9X_HSW_TL2_VERTEX_BYTES       ((v9x_u16)40u)
+/* One SAMPLER_STATE (Vol 2d); a kernel's sampler n is at the pointer plus
+ * n of these. */
+#define V9X_HSW_SAMPLER_BYTES          ((v9x_u32)16ul)
 
 /* The shaded draw's state: both targets' surface states (D's offsets),
  * both textures' surface states at state_base + V9X_HSW_SHADE_TEXTURE,
@@ -547,6 +552,10 @@ struct v9x_hsw_draw {
     v9x_u16 scissor_y0;
     v9x_u16 scissor_x1;
     v9x_u16 scissor_y1;
+    /* Render interface step 4, with tl_vertices only: the vertex is
+     * V9X_HSW_TL2_VERTEX_BYTES and the second texture coordinate attribute
+     * reads tu1 tv1 at 32 instead of tu tv again. */
+    v9x_u8 tl_uv1;
 };
 
 /* The init batch's state with the draw's in place of the zeroed stages,

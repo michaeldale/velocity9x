@@ -226,7 +226,8 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
  * stage 1 optionally modulates by texture 1 (entry 2); vertex fog blends
  * towards fog_rgb (float bit patterns) by the specular alpha, as D3D's
  * vertex fog does. Attributes: 0 diffuse, 1 specular, 2 and 3 texture
- * coordinates. Sampler 0, nearest, for both textures.
+ * coordinates. Sampler 0 for texture 0 and, since render interface step
+ * 4, sampler 1 for texture 1.
  */
 #define V9X_HSW_PS_DIFFUSE       ((v9x_u8)0u) /* SELECTARG diffuse */
 #define V9X_HSW_PS_TEXTURE       ((v9x_u8)1u) /* SELECTARG texture */

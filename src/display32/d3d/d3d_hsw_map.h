@@ -12,11 +12,15 @@
 #define VELOCITY9X_D3D_HSW_MAP_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/intel_hsw_eu.h"
+#include "velocity9x/r3d_abi.h"
 #include "../r3d/r3d.h"
 
 /* Refusal reasons, continuing d3d_hsw.c's V9X_D3D_HSW_REFUSE_* (0-8) in the
  * same counters (V9XTRACE M64PolicyNN). */
 #define V9X_D3D_HSW_REFUSE_CPU_TEXTURE 9ul   /* texture.levels: no sampler */
+#define V9X_D3D_HSW_REFUSE_COMBINE     10ul  /* a two-unit combine with no
+                                                exact kernel stage       */
 
 /* The RGB write mask, V9X_R3D_ABI_WRITE_RED | GREEN | BLUE. */
 #define V9X_D3D_HSW_WRITE_RGB 7ul
@@ -40,5 +44,19 @@ v9x_u8 v9x_d3d_hsw_write_disable(v9x_u32 write_mask);
  * to be drawn. Step 2.
  */
 int v9x_d3d_hsw_scissor(const V9X_R3D_DRAW *draw, v9x_u32 rect[4]);
+
+/*
+ * A two-unit draw's combines (V9X_R3D_ABI_COLOROP_* / _ALPHAOP_*, unit 1's
+ * "fragment" being unit 0's result, OpenGL 1.2.1 table 3.18) as the
+ * kernel generator's stages (intel_hsw_eu.h), exactly or not at all. Step
+ * 4. has_alpha0/1 say whether the texture's format carries alpha: without
+ * it the sampler returns alpha 1, so combines that differ only in what they
+ * do with the texture's alpha agree. Zero, with *stage0 and *stage1 set, or
+ * V9X_D3D_HSW_REFUSE_COMBINE.
+ */
+v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
+                                    int has_alpha0, v9x_u32 color1,
+                                    v9x_u32 alpha1, int has_alpha1,
+                                    v9x_u8 *stage0, v9x_u8 *stage1);
 
 #endif

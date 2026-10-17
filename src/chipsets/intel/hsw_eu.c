@@ -690,13 +690,13 @@ static void v9x_hsw_psg_op(struct v9x_hsw_psg *g, v9x_u8 opcode, v9x_u8 dst,
 /* send(8) dst..dst+3 the SIMD8 "sample" message (type 0) with u, v from
  * payload, sampler 0, binding table entry bti; no header (Vol 7). */
 static void v9x_hsw_psg_sample(struct v9x_hsw_psg *g, v9x_u8 dst,
-                               v9x_u8 payload, v9x_u8 bti)
+                               v9x_u8 payload, v9x_u8 bti, v9x_u8 sampler)
 {
     struct v9x_hsw_eu_inst inst;
     v9x_u32 function;
     v9x_u32 desc;
 
-    if (v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, 0u, bti,
+    if (v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, sampler, bti,
                                     &function) != V9X_STATUS_OK ||
         v9x_intel_hsw_eu_send_desc(2u, V9X_HSW_PS_COMPONENTS, 0u, function,
                                    &desc) != V9X_STATUS_OK) {
@@ -752,13 +752,15 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
         v9x_hsw_psg_pln(&g, V9X_HSW_PSG_UV0, V9X_HSW_PSG_ATTR_UV0, 0u);
         v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_UV0 + 1u),
                         V9X_HSW_PSG_ATTR_UV0, 1u);
-        v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX0, V9X_HSW_PSG_UV0, 1u);
+        v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX0, V9X_HSW_PSG_UV0, 1u, 0u);
     }
     if (desc->stage1 == V9X_HSW_PS_MODULATE_TEX1) {
         v9x_hsw_psg_pln(&g, V9X_HSW_PSG_UV1, V9X_HSW_PSG_ATTR_UV1, 0u);
         v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_UV1 + 1u),
                         V9X_HSW_PSG_ATTR_UV1, 1u);
-        v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX1, V9X_HSW_PSG_UV1, 2u);
+        /* Its own sampler (render interface step 4): unit 1's filter and
+         * addressing, from the sampler after unit 0's. */
+        v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX1, V9X_HSW_PSG_UV1, 2u, 1u);
     }
 
     /* Stage 0 into g112-g115. */

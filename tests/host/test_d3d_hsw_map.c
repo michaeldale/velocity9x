@@ -123,6 +123,87 @@ static void test_scissor(void)
     CHECK(rect[0] == 0ul && rect[2] == 639ul && rect[3] == 479ul);
 }
 
+/*
+ * Two units, step 4. Table 3.18 per unit, Cf the incoming colour (unit 1's
+ * is unit 0's result), against the generator's stages: TEXTURE (Ct, At),
+ * DECAL (Ct, Af), MODULATE (Cf Ct, Af At), MODULATE_TEXALPHA (Cf Ct, At);
+ * stage 1 MODULATE_TEX1 (C0 Ct1, A0 At1).
+ */
+static void test_two_unit_stages(void)
+{
+    v9x_u8 s0 = 0xffu;
+    v9x_u8 s1 = 0xffu;
+
+    /* Half-Life's lightmap pass: base REPLACE, lightmap MODULATE. */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_TEXTURE && s1 == V9X_HSW_PS_MODULATE_TEX1);
+    /* REPLACE keeping the fragment's alpha is DECAL. */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_DECAL);
+    /* MODULATE with modulated alpha, and with the texture's alpha. */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_MODULATE);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_MODULATE_TEXALPHA);
+    /* Without texture alpha (565), At is 1: MODULATE keeping the fragment's
+     * alpha is MODULATE, REPLACE with modulated alpha is DECAL, and unit 1
+     * keeping the fragment's alpha is MODULATE_TEX1. */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 0,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 0,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_MODULATE && s1 == V9X_HSW_PS_MODULATE_TEX1);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_MODULATE, 0,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 0,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_DECAL);
+
+    /* With texture alpha those three are not exact: refused. */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 0,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 0,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 0,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+    /* No stage for DECALALPHA or BLEND on either unit, nor for unit 1
+     * replacing or keeping unit 0's colour. */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_DECALALPHA, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_BLEND, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              0ul, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+}
+
 unsigned int v9x_run_d3d_hsw_map_tests(void)
 {
     failures = 0u;
@@ -130,5 +211,6 @@ unsigned int v9x_run_d3d_hsw_map_tests(void)
     test_refused();
     test_write_disable();
     test_scissor();
+    test_two_unit_stages();
     return failures;
 }

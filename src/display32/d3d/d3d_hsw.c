@@ -63,6 +63,9 @@
 /* The vertex area holds this many triangles of 96 bytes. */
 #define V9X_D3D_HSW_MAX_TRIANGLES \
     (V9X_INTEL_HSW_VERTEX_BYTES / (3ul * V9X_HSW_TL_VERTEX_BYTES))
+/* And this many of 120, with unit 1's coordinates after each vertex. */
+#define V9X_D3D_HSW_MAX_TRIANGLES2 \
+    (V9X_INTEL_HSW_VERTEX_BYTES / (3ul * V9X_HSW_TL2_VERTEX_BYTES))
 
 /* Ring submission: MI_BATCH_BUFFER_START and the sequence store. */
 #define V9X_D3D_HSW_SUBMIT_DWORDS 6ul
@@ -107,25 +110,32 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
      * wider than its row. */
     1ul,            /* depth_pitch_own */
     0ul,            /* depth_fill_shift */
-    1ul,            /* texture_units */
+    2ul,            /* texture_units: step 4, render interface only */
     /* 3DSTATE_MULTISAMPLE Pixel Location is the pixel centre (Vol 2b), and
      * Phase D's coverage matched a reference sampling at x + 0.5. */
     1ul,            /* pixel_centre_half */
     1ul             /* depth_tiled: Y tiles */
 };
 
+/* One texture unit as the sampler reads it. */
+typedef struct v9x_d3d_hsw_texture {
+    struct v9x_hsw_sampler sampler;
+    v9x_u16 format;
+    v9x_u32 address;
+    v9x_u16 width;
+    v9x_u16 height;
+    v9x_u32 pitch;
+} V9X_D3D_HSW_TEXTURE;
+
 /* What the mapping makes of a draw. */
 typedef struct v9x_d3d_hsw_state {
     struct v9x_hsw_ps_desc desc;
     struct v9x_hsw_blend blend;
-    struct v9x_hsw_sampler sampler;
     v9x_u16 target_format;
-    v9x_u16 texture_format;
-    v9x_u32 texture_address;
-    v9x_u16 texture_width;
-    v9x_u16 texture_height;
-    v9x_u32 texture_pitch;
+    V9X_D3D_HSW_TEXTURE texture[2];
     v9x_u8 alpha_ref;
+    /* Texture units sampled: 0, 1, or 2 for a render-interface draw with
+     * texcoords1 (step 4). */
     int textured;
     int depth;
     v9x_u32 depth_address;
@@ -453,6 +463,60 @@ static v9x_u32 v9x_d3d_hsw_float(v9x_u32 byte)
     return convert.bits;
 }
 
+/* A texture surface as this engine samples it, or the reason it cannot be.
+ * has_alpha: whether its format carries alpha. */
+static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
+                                      V9X_D3D_HSW_TEXTURE *unit,
+                                      int *has_alpha)
+{
+    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)texture->object;
+    DWORD offset;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->lPitch <= 0l ||
+        !v9x_d3d_hsw_texture_format_of(surface, &unit->format, has_alpha)) {
+        return V9X_D3D_HSW_REFUSE_TEXTURE;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful) {
+        return V9X_D3D_HSW_REFUSE_TEXTURE;
+    }
+    if (texture->wrap_u != 0ul || texture->wrap_v != 0ul) {
+        return V9X_D3D_HSW_REFUSE_ADDRESS;
+    }
+    unit->sampler.mip_filter = 0u;
+    unit->sampler.mag_filter = v9x_d3d_hsw_filter(texture->mag_filter);
+    unit->sampler.min_filter = v9x_d3d_hsw_filter(texture->min_filter);
+    unit->sampler.min_lod = 0u;
+    unit->sampler.max_lod = 0u;
+    unit->sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
+    switch (texture->address) {
+    case V9X_R3D_ADDRESS_WRAP:
+        unit->sampler.dw3 = V9X_D3D_HSW_TC_WRAP;
+        break;
+    case V9X_R3D_ADDRESS_MIRROR:
+        unit->sampler.dw3 = V9X_D3D_HSW_TC_MIRROR;
+        break;
+    case V9X_R3D_ADDRESS_CLAMP:
+        unit->sampler.dw3 = V9X_D3D_HSW_TC_CLAMP;
+        break;
+    default:
+        return V9X_D3D_HSW_REFUSE_ADDRESS;
+    }
+    unit->address = v9x_d3d_hsw_vram(offset);
+    unit->width = surface->lpGbl->wWidth;
+    unit->height = surface->lpGbl->wHeight;
+    unit->pitch = (v9x_u32)surface->lpGbl->lPitch;
+    if (unit->width == 0u || unit->height == 0u ||
+        unit->width > v9x_d3d_hsw_limits.texture_size_max ||
+        unit->height > v9x_d3d_hsw_limits.texture_size_max) {
+        return V9X_D3D_HSW_REFUSE_TEXTURE;
+    }
+    return V9X_D3D_HSW_REFUSE_NONE;
+}
+
 /* The draw as this engine's state, or the reason it cannot be. */
 static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
                              V9X_D3D_HSW_STATE *state)
@@ -461,6 +525,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     DWORD offset;
     DWORD reason;
     int has_alpha = 0;
+    int has_alpha1 = 0;
     v9x_u32 op;
 
     /* What the render interface states and this engine cannot draw exactly
@@ -478,11 +543,6 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     state->desc.fog_rgb[2] = 0ul;
     state->desc.specular = 0u;
     state->textured = 0;
-    state->texture_format = 0u;
-    state->texture_address = 0ul;
-    state->texture_width = 0u;
-    state->texture_height = 0u;
-    state->texture_pitch = 0ul;
     state->depth = 0;
     state->depth_address = 0ul;
     state->depth_pitch = 0ul;
@@ -523,19 +583,35 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
         state->depth_write = draw->depth_write != 0ul ? 1u : 0u;
     }
 
-    surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
-    if (surface != 0) {
-        if (surface->lpGbl == 0 ||
-            (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
-            (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-            surface->lpGbl->lPitch <= 0l ||
-            !v9x_d3d_hsw_texture_format_of(surface, &state->texture_format,
-                                           &has_alpha)) {
-            return V9X_D3D_HSW_REFUSE_TEXTURE;
+    if (draw->texcoords1 != 0) {
+        /* Two units (render interface step 4): each unit's combine is in
+         * its color_op and alpha_op, `op` is not set (r3d.h). */
+        if (draw->color_key_enable != 0ul) {
+            return V9X_D3D_HSW_REFUSE_KEY;
         }
-        offset = v9x_surface_offset(surface);
-        if (offset == 0xfffffffful) {
-            return V9X_D3D_HSW_REFUSE_TEXTURE;
+        reason = v9x_d3d_hsw_texture_unit(&draw->texture, &state->texture[0],
+                                          &has_alpha);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            return reason;
+        }
+        reason = v9x_d3d_hsw_texture_unit(&draw->texture1,
+                                          &state->texture[1], &has_alpha1);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            return reason;
+        }
+        reason = v9x_d3d_hsw_two_unit_stages(
+            draw->texture.color_op, draw->texture.alpha_op, has_alpha,
+            draw->texture1.color_op, draw->texture1.alpha_op, has_alpha1,
+            &state->desc.stage0, &state->desc.stage1);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            return reason;
+        }
+        state->textured = 2;
+    } else if (draw->texture.object != 0) {
+        reason = v9x_d3d_hsw_texture_unit(&draw->texture, &state->texture[0],
+                                          &has_alpha);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            return reason;
         }
         if (draw->color_key_enable != 0ul) {
             return V9X_D3D_HSW_REFUSE_KEY;
@@ -554,40 +630,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
         } else {
             return V9X_D3D_HSW_REFUSE_TEXOP;
         }
-        if (draw->texture.wrap_u != 0ul || draw->texture.wrap_v != 0ul) {
-            return V9X_D3D_HSW_REFUSE_ADDRESS;
-        }
-        state->sampler.mip_filter = 0u;
-        state->sampler.mag_filter =
-            v9x_d3d_hsw_filter(draw->texture.mag_filter);
-        state->sampler.min_filter =
-            v9x_d3d_hsw_filter(draw->texture.min_filter);
-        state->sampler.min_lod = 0u;
-        state->sampler.max_lod = 0u;
-        state->sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
-        switch (draw->texture.address) {
-        case V9X_R3D_ADDRESS_WRAP:
-            state->sampler.dw3 = V9X_D3D_HSW_TC_WRAP;
-            break;
-        case V9X_R3D_ADDRESS_MIRROR:
-            state->sampler.dw3 = V9X_D3D_HSW_TC_MIRROR;
-            break;
-        case V9X_R3D_ADDRESS_CLAMP:
-            state->sampler.dw3 = V9X_D3D_HSW_TC_CLAMP;
-            break;
-        default:
-            return V9X_D3D_HSW_REFUSE_ADDRESS;
-        }
         state->textured = 1;
-        state->texture_address = v9x_d3d_hsw_vram(offset);
-        state->texture_width = surface->lpGbl->wWidth;
-        state->texture_height = surface->lpGbl->wHeight;
-        state->texture_pitch = (v9x_u32)surface->lpGbl->lPitch;
-        if (state->texture_width == 0u || state->texture_height == 0u ||
-            state->texture_width > v9x_d3d_hsw_limits.texture_size_max ||
-            state->texture_height > v9x_d3d_hsw_limits.texture_size_max) {
-            return V9X_D3D_HSW_REFUSE_TEXTURE;
-        }
     }
 
     state->desc.specular = draw->specular_enable != 0ul ? 1u : 0u;
@@ -651,11 +694,13 @@ static void v9x_d3d_hsw_count_refusal(DWORD reason)
 }
 
 /* A kernel's slot is a fixed function of its description, so every
- * process writes the same words to the same place. */
+ * process writes the same words to the same place: six stage 0s, two stage
+ * 1s, specular and fog are 48 distinct slots of the 64. */
 static DWORD v9x_d3d_hsw_kernel_slot(const struct v9x_hsw_ps_desc *desc)
 {
-    return ((DWORD)desc->stage0 * 4ul + (DWORD)desc->specular * 2ul +
-            (DWORD)desc->fog) % V9X_INTEL_HSW_KERNEL_SLOTS;
+    return ((DWORD)desc->stage0 * 8ul + (DWORD)desc->stage1 * 4ul +
+            (DWORD)desc->specular * 2ul + (DWORD)desc->fog) %
+           V9X_INTEL_HSW_KERNEL_SLOTS;
 }
 
 /* The last 128 bytes of a slot stay clear for the EU's prefetch past a
@@ -715,6 +760,7 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
 {
     v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
     v9x_u32 *table;
+    const V9X_D3D_HSW_TEXTURE *texture;
     DWORD index;
 
     if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
@@ -729,18 +775,25 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
     table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
     table[1] = V9X_D3D_HSW_TEXTURE_OFF;
     table[2] = V9X_D3D_HSW_TEXTURE_OFF;
-    if (state->textured) {
-        if (v9x_intel_hsw_surface_2d(image + V9X_D3D_HSW_TEXTURE_OFF / 4ul,
-                                     state->texture_format,
-                                     state->texture_address,
-                                     state->texture_width,
-                                     state->texture_height,
-                                     state->texture_pitch) != V9X_STATUS_OK ||
-            v9x_intel_hsw_sampler(image + V9X_HSW_SHADE_SAMPLER / 4ul,
-                                  &state->sampler) != V9X_STATUS_OK) {
+    /* Unit n's surface at E's texture n, its sampler n after the first
+     * (the kernel's TEX1 reads binding 2, sampler 1: hsw_eu.c). */
+    for (index = 0ul; index < (DWORD)state->textured; ++index) {
+        texture = &state->texture[index];
+        if (v9x_intel_hsw_surface_2d(
+                image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
+                texture->format, texture->address, texture->width,
+                texture->height, texture->pitch) != V9X_STATUS_OK ||
+            v9x_intel_hsw_sampler(
+                image + (V9X_HSW_SHADE_SAMPLER +
+                         index * V9X_HSW_SAMPLER_BYTES) / 4ul,
+                &texture->sampler) != V9X_STATUS_OK) {
             return 0;
         }
-    } else {
+    }
+    if (state->textured == 2) {
+        table[2] = V9X_HSW_SHADE_TEX_SURFACE(1);
+    }
+    if (!state->textured) {
         /* An untextured kernel samples nothing, but the binding table still
          * names a surface: the target's. */
         table[1] = V9X_HSW_DRAW_RT_SURFACE(0);
@@ -785,10 +838,13 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD kernel = 0ul;
     DWORD done = 0ul;
     DWORD count;
+    DWORD limit;
     DWORD bytes;
     DWORD index;
+    DWORD vertex;
     DWORD timed;
     const v9x_u32 *source;
+    const v9x_u32 *uv1;
     v9x_u32 *target;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
@@ -845,21 +901,36 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     d.scissor_y0 = (v9x_u16)state.scissor[1];
     d.scissor_x1 = (v9x_u16)state.scissor[2];
     d.scissor_y1 = (v9x_u16)state.scissor[3];
+    d.tl_uv1 = state.textured == 2 ? 1u : 0u;
+    limit = d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
 
     while (done < triangle_count) {
         count = triangle_count - done;
-        if (count > V9X_D3D_HSW_MAX_TRIANGLES) {
-            count = V9X_D3D_HSW_MAX_TRIANGLES;
+        if (count > limit) {
+            count = limit;
         }
         if (done != 0ul && !v9x_d3d_hsw_wait_rcs()) {
             return 0;
         }
-        bytes = count * 3ul * V9X_HSW_TL_VERTEX_BYTES;
         source = (const v9x_u32 *)(vertices + done * 3ul);
         target = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_VERTEX_OFF);
         timed = V9X_TIME_BEGIN();
-        for (index = 0ul; index < bytes / 4ul; ++index) {
-            target[index] = source[index];
+        if (d.tl_uv1) {
+            /* Each 32-byte vertex, then its tu1 tv1: the TL2 vertex. */
+            uv1 = (const v9x_u32 *)(draw->texcoords1 + done * 3ul * 2ul);
+            for (vertex = 0ul; vertex < count * 3ul; ++vertex) {
+                for (index = 0ul; index < V9X_HSW_TL_VERTEX_BYTES / 4ul;
+                     ++index) {
+                    *target++ = *source++;
+                }
+                *target++ = *uv1++;
+                *target++ = *uv1++;
+            }
+        } else {
+            bytes = count * 3ul * V9X_HSW_TL_VERTEX_BYTES;
+            for (index = 0ul; index < bytes / 4ul; ++index) {
+                target[index] = source[index];
+            }
         }
         V9X_TIME_END(V9X_TIME_RING_WRITE, timed);
         d.vertex_count = count * 3ul;
@@ -1040,6 +1111,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     d.depth_pitch = pitch;
     d.depth_only = 1u;
     d.scissor = 0u;
+    d.tl_uv1 = 0u;
     v9x_intel_hsw_batch_init(&batch,
                              v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
                              V9X_INTEL_HSW_BATCH_BYTES / 4ul);

@@ -1045,7 +1045,10 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_BLENDFACTOR_SRC_ALPHA ((v9x_u8)0x03u)
 #define V9X_HSW_BLENDFACTOR_INV_SRC_ALPHA ((v9x_u8)0x13u)
 
-/* One SAMPLER_STATE of E's kind: no mips, the shared border colour. */
+/* One SAMPLER_STATE of E's kind - no mips, the shared border colour - as
+ * samplers 0 and 1 of the set at offset: the generator samples texture 1
+ * with sampler 1 since render interface step 4, and the probe's two-stage
+ * draws were measured with one sampler for both. */
 static void v9x_hsw_shade_sampler(v9x_u32 *image, v9x_u32 offset,
                                   v9x_u8 filter, v9x_u32 address)
 {
@@ -1059,6 +1062,8 @@ static void v9x_hsw_shade_sampler(v9x_u32 *image, v9x_u32 offset,
     sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
     sampler.dw3 = address;
     v9x_intel_hsw_sampler(image + offset / 4ul, &sampler);
+    v9x_intel_hsw_sampler(image + (offset + V9X_HSW_SAMPLER_BYTES) / 4ul,
+                          &sampler);
 }
 
 v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
@@ -1066,7 +1071,6 @@ v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
                                      v9x_u16 width, v9x_u16 height,
                                      v9x_u32 pitch, v9x_u8 alpha_ref)
 {
-    struct v9x_hsw_sampler sampler;
     struct v9x_hsw_blend blend;
     v9x_u32 n;
 
@@ -1095,14 +1099,8 @@ v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
             V9X_HSW_SHADE_TEX_SURFACE(1);
     }
 
-    sampler.mip_filter = 0u;
-    sampler.mag_filter = 0u;
-    sampler.min_filter = 0u;
-    sampler.min_lod = 0u;
-    sampler.max_lod = 0u;
-    sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
-    sampler.dw3 = V9X_HSW_TEXCOORD_CLAMP_ALL;
-    v9x_intel_hsw_sampler(image + V9X_HSW_SHADE_SAMPLER / 4ul, &sampler);
+    v9x_hsw_shade_sampler(image, V9X_HSW_SHADE_SAMPLER, 0u,
+                          V9X_HSW_TEXCOORD_CLAMP_ALL);
 
     blend.enable = 0u;
     blend.color_function = 0u;
@@ -1168,7 +1166,8 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
     v9x_u16 stride;
 
     count = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ? 6ul : 3ul;
-    stride = draw->tl_vertices ? V9X_HSW_TL_VERTEX_BYTES :
+    stride = draw->tl_vertices ? (draw->tl_uv1 ? V9X_HSW_TL2_VERTEX_BYTES :
+                                                 V9X_HSW_TL_VERTEX_BYTES) :
              draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ?
                  V9X_HSW_SHADE_VERTEX_BYTES :
              draw->depth_buffer != 0ul ? V9X_HSW_DEPTH_VERTEX_BYTES :
@@ -1211,6 +1210,10 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
             elements[index].offset = 24u;
             elements[index].component[2] = V9X_HSW_VFCOMP_STORE_0;
             elements[index].component[3] = V9X_HSW_VFCOMP_STORE_1_FP;
+        }
+        /* Two units: tu1 tv1 follow the TL vertex. */
+        if (draw->tl_uv1) {
+            elements[5].offset = V9X_HSW_TL_VERTEX_BYTES;
         }
     } else if (count == 6ul) {
         elements[3].offset = 24u;
@@ -1509,7 +1512,8 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
         state_bytes < V9X_HSW_DRAW_STATE_BYTES ||
         draw->vertex_count % 3ul != 0ul ||
         (draw->tl_vertices &&
-         draw->attributes != V9X_HSW_SHADE_ATTRIBUTES)) {
+         draw->attributes != V9X_HSW_SHADE_ATTRIBUTES) ||
+        (draw->tl_uv1 && !draw->tl_vertices)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     /* A scissor inside the target, not inverted: the drawing rectangle

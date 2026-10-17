@@ -14,7 +14,11 @@ Step 2 done on boot 20:
 - full screen it later ran, at 56.9 fps for mwd5 at 640x480 (the
   netbook: 16.8); two earlier full-screen refusals are set aside
 ([record](../decisions/2026-10-18-haswell-render-interface-step2.md)).
-Next: the rest of step 3 (Quake 2), then steps 4-6.
+Step 4 done on boot 23: two units, SGIS advertised and its V9XGLP checks
+passing, Half-Life `-gl` mwd5 61.3 to 67.7 fps against the same source
+with one unit
+([record](../decisions/2026-10-18-haswell-render-interface-step4.md)).
+Next: the rest of step 3 (Quake 2), then steps 5 and 6.
 
 Target: the i5-4570 (`8086:0412`), on the `intel-gma` family's
 `hd4600-hsw` chip, with the Direct3D engine of
@@ -75,6 +79,7 @@ Also:
   no fallback, so the draw is UNSUPPORTED. 3DCIF draws without depth pass.
 - **One texture unit** (`texture_units` 1): the core refuses two-unit
   draws, so the ICD and 3DCIF split them into two passes or decline.
+  (Step 4 made it two.)
 - **No software fallback**: `v9x_r3d_fallback` allows Gen3 only.
 
 ## Steps
