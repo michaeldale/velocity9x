@@ -941,7 +941,13 @@ static void v9x_rcs_judge(DWORD target, int interpolated)
  * fog factor) 1 / 0 / 1; texture coordinates 0 (0,0) / (1,0) / (0,1) and
  * 1 (0,1) / (0,0) / (1,0).
  */
-#define V9X_SHADE_VARIANTS   8u
+#define V9X_SHADE_VARIANTS   12u
+/* Sampler kinds (Phase F1a); 0 is E's nearest CLAMP. */
+#define V9X_SHADE_NEAREST    0u
+#define V9X_SHADE_BILINEAR   1u
+#define V9X_SHADE_WRAP       2u
+#define V9X_SHADE_MIRROR     3u
+#define V9X_SHADE_GUARD_BYTE 0xa5ul
 #define V9X_SHADE_FLOAT_ONE  0x3f800000ul
 #define V9X_SHADE_ALPHA_REF  0x80u
 #define V9X_SHADE_TEX_SIDE   8l
@@ -952,6 +958,9 @@ struct v9x_shade_variant {
     v9x_u8 stage1;
     v9x_u8 fog;
     v9x_u8 alpha_test;
+    v9x_u8 sampler_kind; /* V9X_SHADE_NEAREST.. */
+    v9x_u8 blend_alpha;  /* SRC_ALPHA / INV_SRC_ALPHA over the guard */
+    v9x_u8 uv_scale;     /* texture coordinates 0..uv_scale; 0 means 1 */
 };
 
 static const struct v9x_shade_variant v9x_shade_variants[V9X_SHADE_VARIANTS] = {
@@ -962,8 +971,31 @@ static const struct v9x_shade_variant v9x_shade_variants[V9X_SHADE_VARIANTS] = {
     { "AlphaTest", V9X_HSW_PS_MODULATE, V9X_HSW_PS_STAGE1_NONE, 0u, 1u },
     { "Fog", V9X_HSW_PS_DIFFUSE, V9X_HSW_PS_STAGE1_NONE, 1u, 0u },
     { "TwoStage", V9X_HSW_PS_MODULATE, V9X_HSW_PS_MODULATE_TEX1, 0u, 0u },
-    { "Diffuse", V9X_HSW_PS_DIFFUSE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u }
+    { "Diffuse", V9X_HSW_PS_DIFFUSE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u },
+    /* Phase F1a. Pairs share vertices, so the 0..2 coordinates pair. */
+    { "Wrap", V9X_HSW_PS_TEXTURE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u,
+      V9X_SHADE_WRAP, 0u, 2u },
+    { "Mirror", V9X_HSW_PS_TEXTURE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u,
+      V9X_SHADE_MIRROR, 0u, 2u },
+    { "Bilinear", V9X_HSW_PS_TEXTURE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u,
+      V9X_SHADE_BILINEAR, 0u, 1u },
+    { "Blend", V9X_HSW_PS_TEXTURE, V9X_HSW_PS_STAGE1_NONE, 0u, 0u,
+      V9X_SHADE_NEAREST, 1u, 1u }
 };
+
+static long v9x_shade_scale(const struct v9x_shade_variant *v)
+{
+    return v->uv_scale != 0u ? (long)v->uv_scale : 1l;
+}
+
+/* 0, 1.0 or 2.0 as a float. */
+static DWORD v9x_shade_coord(v9x_u8 bit, long scale)
+{
+    if (bit == 0u) {
+        return 0ul;
+    }
+    return scale == 2l ? 0x40000000ul : 0x3f800000ul;
+}
 
 /* Per vertex: diffuse R G B A, specular A, u0 v0, u1 v1, all 0 or 1. */
 static const v9x_u8 v9x_shade_diffuse[3][4] = {
@@ -1042,12 +1074,16 @@ static int v9x_shade_build(DWORD pair)
         at[7] = 0ul;
         at[8] = 0ul;
         at[9] = v9x_shade_bit(v9x_shade_fog_factor[k]);
-        at[10] = v9x_shade_bit(v9x_shade_uv[0][k][0]);
-        at[11] = v9x_shade_bit(v9x_shade_uv[0][k][1]);
-        at[12] = v9x_shade_bit(v9x_shade_uv[1][k][0]);
-        at[13] = v9x_shade_bit(v9x_shade_uv[1][k][1]);
+        n = (DWORD)v9x_shade_scale(&v9x_shade_variants[pair * 2ul]);
+        at[10] = v9x_shade_coord(v9x_shade_uv[0][k][0], (long)n);
+        at[11] = v9x_shade_coord(v9x_shade_uv[0][k][1], (long)n);
+        at[12] = v9x_shade_coord(v9x_shade_uv[1][k][0], (long)n);
+        at[13] = v9x_shade_coord(v9x_shade_uv[1][k][1], (long)n);
         at += V9X_HSW_SHADE_VERTEX_BYTES / 4u;
     }
+    at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_HSW_SHADE_VERTICES);
+    v9x_rcs_key("Vertex1U0", at[14ul + 10ul]);
+    v9x_rcs_key("Vertex2V0", at[28ul + 11ul]);
 
     for (n = 0ul; n < 2ul; ++n) {
         v = &v9x_shade_variants[pair * 2ul + n];
@@ -1069,9 +1105,16 @@ static int v9x_shade_build(DWORD pair)
         d.width = V9X_RCS_RT_SIDE;
         d.height = V9X_RCS_RT_SIDE;
         d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
-        d.blend = v->alpha_test ? V9X_HSW_SHADE_BLEND_ALPHA_TEST : 0ul;
+        d.blend = v->alpha_test ? V9X_HSW_SHADE_BLEND_ALPHA_TEST :
+                  v->blend_alpha ? V9X_HSW_SHADE_BLEND_ALPHA : 0ul;
         d.cc = v->alpha_test ? V9X_HSW_SHADE_CC : 0ul;
-        d.sampler = V9X_HSW_SHADE_SAMPLER;
+        d.sampler = v->sampler_kind == V9X_SHADE_BILINEAR ?
+                        V9X_HSW_SHADE_SAMPLER_LINEAR :
+                    v->sampler_kind == V9X_SHADE_WRAP ?
+                        V9X_HSW_SHADE_SAMPLER_WRAP :
+                    v->sampler_kind == V9X_SHADE_MIRROR ?
+                        V9X_HSW_SHADE_SAMPLER_MIRROR :
+                        V9X_HSW_SHADE_SAMPLER;
         v9x_intel_hsw_batch_init(
             &batch,
             v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 : V9X_RCS_BATCH_D2),
@@ -1097,20 +1140,78 @@ static DWORD v9x_shade_unorm(long num, long den)
 }
 
 /* A nearest-texel index along one axis, or -1 when the coordinate lies
- * within 1/64 texel of a boundary (not judged). coord = num / den. */
-static long v9x_shade_texel_index(long num, long den)
+ * within 1/64 texel of a boundary (not judged). coord = num / den, at
+ * least 0. CLAMP holds the last texel; WRAP repeats every texture width;
+ * MIRROR reflects every other repeat (Vol 2a Texture Coordinate Mode). */
+static long v9x_shade_texel_index(long num, long den, v9x_u8 kind)
 {
     long scaled = num * V9X_SHADE_TEX_SIDE;
     long index = scaled / den;
     long frac = scaled - index * den;
+    long period;
 
-    if (index >= V9X_SHADE_TEX_SIDE) {
-        return V9X_SHADE_TEX_SIDE - 1l;
-    }
     if (frac * 64l < den || frac * 64l > den * 63l) {
         return -1l;
     }
-    return index;
+    if (kind == V9X_SHADE_WRAP) {
+        return index % V9X_SHADE_TEX_SIDE;
+    }
+    if (kind == V9X_SHADE_MIRROR) {
+        period = index % (2l * V9X_SHADE_TEX_SIDE);
+        return period < V9X_SHADE_TEX_SIDE ? period :
+                                             2l * V9X_SHADE_TEX_SIDE - 1l -
+                                                 period;
+    }
+    return index >= V9X_SHADE_TEX_SIDE ? V9X_SHADE_TEX_SIDE - 1l : index;
+}
+
+static long v9x_shade_clamp_texel(long index)
+{
+    if (index < 0l) {
+        return 0l;
+    }
+    return index >= V9X_SHADE_TEX_SIDE ? V9X_SHADE_TEX_SIDE - 1l : index;
+}
+
+/* Bilinear under CLAMP: sample point coord * 8 - 0.5, weights as 8-bit
+ * fractions, rounded. */
+static DWORD v9x_shade_bilinear(DWORD t, const long uv[2], long den)
+{
+    long i0[2];
+    long f8[2];
+    long s;
+    long fl;
+    DWORD c;
+    DWORD out = 0ul;
+    DWORD t00;
+    DWORD t10;
+    DWORD t01;
+    DWORD t11;
+    long a;
+    DWORD axis;
+
+    for (axis = 0ul; axis < 2ul; ++axis) {
+        s = uv[axis] * V9X_SHADE_TEX_SIDE * 2l - den;  /* 2 * den * point */
+        fl = s >= 0l ? s / (2l * den) : -((-s + 2l * den - 1l) / (2l * den));
+        i0[axis] = fl;
+        f8[axis] = ((s - fl * 2l * den) * 256l + den) / (2l * den);
+    }
+    t00 = v9x_shade_texel(t, v9x_shade_clamp_texel(i0[0]),
+                          v9x_shade_clamp_texel(i0[1]));
+    t10 = v9x_shade_texel(t, v9x_shade_clamp_texel(i0[0] + 1l),
+                          v9x_shade_clamp_texel(i0[1]));
+    t01 = v9x_shade_texel(t, v9x_shade_clamp_texel(i0[0]),
+                          v9x_shade_clamp_texel(i0[1] + 1l));
+    t11 = v9x_shade_texel(t, v9x_shade_clamp_texel(i0[0] + 1l),
+                          v9x_shade_clamp_texel(i0[1] + 1l));
+    for (c = 0ul; c < 32ul; c += 8ul) {
+        a = ((long)((t00 >> c) & 0xfful) * (256l - f8[0]) +
+             (long)((t10 >> c) & 0xfful) * f8[0]) * (256l - f8[1]) +
+            ((long)((t01 >> c) & 0xfful) * (256l - f8[0]) +
+             (long)((t11 >> c) & 0xfful) * f8[0]) * f8[1];
+        out |= (DWORD)((a + 32768l) / 65536l) << c;
+    }
+    return out;
 }
 
 /*
@@ -1146,12 +1247,18 @@ static int v9x_shade_expect(const struct v9x_shade_variant *v,
         for (c = 0ul; c < 2ul; ++c) {
             uv[t][c] = 0l;
             for (k = 0ul; k < 3ul; ++k) {
-                uv[t][c] += w[k] * (long)v9x_shade_uv[t][k][c];
+                uv[t][c] += w[k] * (long)v9x_shade_uv[t][k][c] *
+                            v9x_shade_scale(v);
             }
-            tex_index[t][c] = v9x_shade_texel_index(uv[t][c], area);
+            tex_index[t][c] = v9x_shade_texel_index(uv[t][c], area,
+                                                    v->sampler_kind);
         }
         texel[t] = 0ul;
-        if (tex_index[t][0] >= 0l && tex_index[t][1] >= 0l) {
+        if (t == 0ul && v->sampler_kind == V9X_SHADE_BILINEAR) {
+            tex_index[t][0] = 0l;
+            tex_index[t][1] = 0l;
+            texel[t] = v9x_shade_bilinear(t, uv[t], area);
+        } else if (tex_index[t][0] >= 0l && tex_index[t][1] >= 0l) {
             texel[t] = v9x_shade_texel(t, tex_index[t][0], tex_index[t][1]);
         }
     }
@@ -1206,6 +1313,16 @@ static int v9x_shade_expect(const struct v9x_shade_variant *v,
                         256l);
         }
         out[c] = m;
+    }
+    /* SRC_ALPHA / INV_SRC_ALPHA, ADD, over the guard byte, alpha with the
+     * same factors. The alpha factor is the source alpha before
+     * blending. */
+    if (v->blend_alpha) {
+        m = out[3];
+        for (c = 0ul; c < 4ul; ++c) {
+            out[c] = (out[c] * m + V9X_SHADE_GUARD_BYTE * (255ul - m) +
+                      127ul) / 255ul;
+        }
     }
     *want = (out[3] << 24) | (out[0] << 16) | (out[1] << 8) | out[2];
     *write = !v->alpha_test || out[3] > (DWORD)V9X_SHADE_ALPHA_REF;
@@ -1723,7 +1840,7 @@ void __stdcall V9xHswMmioEntry(void)
         v9x_has_switch("/shade:")) {
         int mode = v9x_has_switch("/draw") ? 1 : 0;
 
-        for (index = 0ul; index < 4ul; ++index) {
+        for (index = 0ul; index < 6ul; ++index) {
             char option[9];
 
             lstrcpyA(option, "/shade:0");

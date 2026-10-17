@@ -995,7 +995,30 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
  * is 2 (Vol 2a). BLEND_STATE's alpha test function is COMPAREFUNCTION_
  * GREATER, 5 (Vol 2a 3D_Compare_Function). */
 #define V9X_HSW_TEXCOORD_CLAMP_ALL   ((v9x_u32)((2ul << 6) | (2ul << 3) | 2ul))
+#define V9X_HSW_TEXCOORD_WRAP_ALL    ((v9x_u32)0ul)
+#define V9X_HSW_TEXCOORD_MIRROR_ALL  ((v9x_u32)((1ul << 6) | (1ul << 3) | 1ul))
 #define V9X_HSW_COMPARE_GREATER      ((v9x_u8)5u)
+/* MAPFILTER_LINEAR (Vol 2d), BLENDFACTOR_SRC_ALPHA and INV_SRC_ALPHA,
+ * BLENDFUNCTION_ADD (Vol 2a). */
+#define V9X_HSW_MAPFILTER_LINEAR     ((v9x_u8)1u)
+#define V9X_HSW_BLENDFACTOR_SRC_ALPHA ((v9x_u8)0x03u)
+#define V9X_HSW_BLENDFACTOR_INV_SRC_ALPHA ((v9x_u8)0x13u)
+
+/* One SAMPLER_STATE of E's kind: no mips, the shared border colour. */
+static void v9x_hsw_shade_sampler(v9x_u32 *image, v9x_u32 offset,
+                                  v9x_u8 filter, v9x_u32 address)
+{
+    struct v9x_hsw_sampler sampler;
+
+    sampler.mip_filter = 0u;
+    sampler.mag_filter = filter;
+    sampler.min_filter = filter;
+    sampler.min_lod = 0u;
+    sampler.max_lod = 0u;
+    sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
+    sampler.dw3 = address;
+    v9x_intel_hsw_sampler(image + offset / 4ul, &sampler);
+}
 
 v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
                                      v9x_u32 state_base, const v9x_u32 rt[2],
@@ -1052,6 +1075,23 @@ v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
     blend.alpha_test = 1u;
     blend.alpha_function_test = V9X_HSW_COMPARE_GREATER;
     v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul, &blend);
+
+    v9x_hsw_shade_sampler(image, V9X_HSW_SHADE_SAMPLER_LINEAR,
+                          V9X_HSW_MAPFILTER_LINEAR,
+                          V9X_HSW_TEXCOORD_CLAMP_ALL);
+    v9x_hsw_shade_sampler(image, V9X_HSW_SHADE_SAMPLER_WRAP, 0u,
+                          V9X_HSW_TEXCOORD_WRAP_ALL);
+    v9x_hsw_shade_sampler(image, V9X_HSW_SHADE_SAMPLER_MIRROR, 0u,
+                          V9X_HSW_TEXCOORD_MIRROR_ALL);
+    /* Alpha uses the colour's factors while Independent Alpha Blend is
+     * off (Vol 2d BLEND_STATE). */
+    blend.alpha_test = 0u;
+    blend.alpha_function_test = 0u;
+    blend.enable = 1u;
+    blend.color_function = 0u;
+    blend.src_factor = V9X_HSW_BLENDFACTOR_SRC_ALPHA;
+    blend.dst_factor = V9X_HSW_BLENDFACTOR_INV_SRC_ALPHA;
+    v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA / 4ul, &blend);
     return v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul, alpha_ref);
 }
 
@@ -1162,10 +1202,14 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                                      state_base, 0ul, state_base,
                                      V9X_HSW_NO_BOUND, bound,
                                      V9X_HSW_NO_BOUND, bound);
+    /* The VF cache too: without it the 4570 fetched the previous run's
+     * vertices from the same address (Phase F1a, docs\decisions\
+     * 2026-10-17-haswell-phase-f1a-filter-wrap-blend.md). */
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
                                V9X_HSW_PC_STALL_AT_SCOREBOARD |
                                V9X_HSW_PC_STATE_CACHE_INVALIDATE |
                                V9X_HSW_PC_CONST_CACHE_INVALIDATE |
+                               V9X_HSW_PC_VF_CACHE_INVALIDATE |
                                V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE |
                                V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE,
                                0ul, 0ul);

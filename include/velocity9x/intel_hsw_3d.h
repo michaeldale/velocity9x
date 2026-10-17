@@ -442,7 +442,14 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_SHADE_VERTEX_BYTES     ((v9x_u16)56u)
 #define V9X_HSW_SHADE_TEX_SURFACE(t)   ((v9x_u32)(0x1300ul + 0x20ul * (t)))
 #define V9X_HSW_SHADE_BINDING_TABLE(n) ((v9x_u32)(0x1340ul + 0x20ul * (n)))
-#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x1380ul)
+/* Phase F1a, after E's state: samplers for bilinear (CLAMP), and nearest
+ * with WRAP and with MIRROR, sharing E's border colour; and a blend state
+ * SRC_ALPHA / INV_SRC_ALPHA, ADD. */
+#define V9X_HSW_SHADE_SAMPLER_LINEAR   ((v9x_u32)0x1380ul)
+#define V9X_HSW_SHADE_SAMPLER_WRAP     ((v9x_u32)0x13a0ul)
+#define V9X_HSW_SHADE_SAMPLER_MIRROR   ((v9x_u32)0x13c0ul)
+#define V9X_HSW_SHADE_BLEND_ALPHA      ((v9x_u32)0x1400ul)
+#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x1440ul)
 
 /* The shaded draw's state: both targets' surface states (D's offsets),
  * both textures' surface states at state_base + V9X_HSW_SHADE_TEXTURE,

@@ -18,7 +18,11 @@ type was moved to bits 17:14
 (`docs\decisions\2026-10-17-haswell-phase-d-first-triangle.md`). Phase E
 done the same day: eight texture-stage combinations, textured, fogged and
 alpha-tested, match the reference within 1/255
-(`docs\decisions\2026-10-17-haswell-phase-e-pixel-shader-set.md`). F next.
+(`docs\decisions\2026-10-17-haswell-phase-e-pixel-shader-set.md`). Phase F1a
+done the same day: bilinear, wrap, mirror and alpha blend match; the VF
+cache must be invalidated per batch
+(`docs\decisions\2026-10-17-haswell-phase-f1a-filter-wrap-blend.md`). F1b
+(depth) next, then F2 (the engine table).
 The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a

@@ -619,6 +619,18 @@ static void test_phase_e_shade(void)
           image[V9X_HSW_SHADE_BINDING_TABLE(1) / 4ul + 2ul] ==
               V9X_HSW_SHADE_TEX_SURFACE(1));
     CHECK(image[V9X_HSW_DRAW_RT_SURFACE(1) / 4ul + 1ul] == 0x0182a000ul);
+    /* F1a: LINEAR mag and min (1 at 19:17 and 16:14); WRAP 0; MIRROR 1 in
+     * each 3-bit field; blend enable 31, SRC_ALPHA (03h) at 9:5,
+     * INV_SRC_ALPHA (13h) at 4:0, ADD. */
+    CHECK(image[V9X_HSW_SHADE_SAMPLER_LINEAR / 4ul] == 0x00024000ul &&
+          image[V9X_HSW_SHADE_SAMPLER_LINEAR / 4ul + 3ul] == 0x92ul);
+    CHECK(image[V9X_HSW_SHADE_SAMPLER_WRAP / 4ul] == 0ul &&
+          image[V9X_HSW_SHADE_SAMPLER_WRAP / 4ul + 2ul] ==
+              V9X_HSW_SHADE_BORDER_COLOR &&
+          image[V9X_HSW_SHADE_SAMPLER_WRAP / 4ul + 3ul] == 0ul);
+    CHECK(image[V9X_HSW_SHADE_SAMPLER_MIRROR / 4ul + 3ul] == 0x49ul);
+    CHECK(image[V9X_HSW_SHADE_BLEND_ALPHA / 4ul] == 0x80000073ul &&
+          image[V9X_HSW_SHADE_BLEND_ALPHA / 4ul + 1ul] == 0ul);
     CHECK(v9x_intel_hsw_shade_state(image, 64ul, 0x01824000ul, rt, 64u, 64u,
                                     256ul, 0x80u) ==
           V9X_STATUS_INVALID_ARGUMENT);
