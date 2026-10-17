@@ -181,6 +181,7 @@ The rest, by size:
 - batch build, about 17 µs;
 - vertex copy, 14.2 µs.
 
-Each needs a design. Why
+Each needs a design. **Parked at Michael's word (2026-10-18): "Performance
+is ok for now."** No design is written for any of the three. Why
 DirectDraw calls Flip about 140 times a frame when it is declined is not
 established; the scanout (Phase F3) removes the declined path.
