@@ -166,3 +166,7 @@ Reality, Thief II.
 
 A, B, C, D, E, F, G. E's encoder and F's state builders are pure C and can
 be written and host-tested while A-C wait on hardware boots.
+
+Progress: the EU encoder and the command/state builders with a batch
+checker exist and are host-tested (`docs\decisions\2026-10-17-haswell-eu-and-3d-encoders.md`);
+CLIP, SF, SBE, WM and PS field builders and the kernels themselves remain.

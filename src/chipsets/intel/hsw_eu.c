@@ -1,0 +1,463 @@
+/*
+ * Haswell (Gen7.5) EU instruction encoder and decoder. See
+ * include\velocity9x\intel_hsw_eu.h for the scope and the PRM sections.
+ * Every shift below is a field position from HSW PRM Vol 7 "Instruction
+ * Machine Formats" unless the comment names another table.
+ */
+#include "velocity9x/intel_hsw_eu.h"
+
+#define V9X_HSW_EU_GRF_COUNT  128u
+#define V9X_HSW_EU_SUBNR_MAX  32u
+#define V9X_HSW_EU_DESC_MASK  ((v9x_u32)0x7ffffffful)
+#define V9X_HSW_EU_EOT        ((v9x_u32)0x80000000ul)
+
+/* Opcodes this encoder accepts, and how many sources each takes. A send
+ * counts as two: src0 is the payload, src1 the immediate descriptor. */
+static v9x_u8 v9x_hsw_eu_sources(v9x_u8 opcode)
+{
+    switch (opcode) {
+    case V9X_HSW_EU_OP_MOV:
+    case V9X_HSW_EU_OP_FRC:
+    case V9X_HSW_EU_OP_RNDD:
+        return 1u;
+    case V9X_HSW_EU_OP_SEL:
+    case V9X_HSW_EU_OP_AND:
+    case V9X_HSW_EU_OP_OR:
+    case V9X_HSW_EU_OP_CMP:
+    case V9X_HSW_EU_OP_SEND:
+    case V9X_HSW_EU_OP_MATH:
+    case V9X_HSW_EU_OP_ADD:
+    case V9X_HSW_EU_OP_MUL:
+    case V9X_HSW_EU_OP_MAC:
+    case V9X_HSW_EU_OP_DP4:
+    case V9X_HSW_EU_OP_DP3:
+    case V9X_HSW_EU_OP_LINE:
+    case V9X_HSW_EU_OP_PLN:
+        return 2u;
+    case V9X_HSW_EU_OP_MAD:
+    case V9X_HSW_EU_OP_LRP:
+        return 3u;
+    case V9X_HSW_EU_OP_NOP:
+        return 0u;
+    default:
+        return 0xffu;
+    }
+}
+
+static int v9x_hsw_eu_file_ok(v9x_u8 file)
+{
+    return file == V9X_HSW_EU_FILE_ARF || file == V9X_HSW_EU_FILE_GRF ||
+           file == V9X_HSW_EU_FILE_IMM;
+}
+
+/* A register operand's number and byte offset must name a GRF byte. */
+static int v9x_hsw_eu_reg_ok(const struct v9x_hsw_eu_operand *op)
+{
+    if (op->file == V9X_HSW_EU_FILE_GRF && op->nr >= V9X_HSW_EU_GRF_COUNT) {
+        return 0;
+    }
+    return op->subnr < V9X_HSW_EU_SUBNR_MAX && op->type <= 7u &&
+           op->mod <= 3u;
+}
+
+/* Align16 addresses 16-byte halves only, and allows only vertical strides
+ * 0, 2 and 4 elements (encodings 0000, 0010, 0011). */
+static int v9x_hsw_eu_align16_ok(const struct v9x_hsw_eu_operand *op,
+                                 int source)
+{
+    if (op->file == V9X_HSW_EU_FILE_IMM) {
+        return 1;
+    }
+    if (op->subnr != 0u && op->subnr != 16u) {
+        return 0;
+    }
+    if (source && op->vstride != V9X_HSW_EU_VSTRIDE_0 &&
+        op->vstride != V9X_HSW_EU_VSTRIDE_2 &&
+        op->vstride != V9X_HSW_EU_VSTRIDE_4) {
+        return 0;
+    }
+    return 1;
+}
+
+/* DW0, shared by every format. CondModifier and SFID share 27:24. */
+static v9x_u32 v9x_hsw_eu_dw0(const struct v9x_hsw_eu_inst *inst)
+{
+    v9x_u32 dw;
+
+    dw = (v9x_u32)inst->opcode & 0x7ful;
+    dw |= ((v9x_u32)(inst->align16 & 1u)) << 8;
+    dw |= ((v9x_u32)(inst->mask_disable & 1u)) << 9;
+    dw |= ((v9x_u32)(inst->pred_ctrl & 0xfu)) << 16;
+    dw |= ((v9x_u32)(inst->pred_inv & 1u)) << 20;
+    dw |= ((v9x_u32)(inst->exec_size & 7u)) << 21;
+    if (inst->opcode == V9X_HSW_EU_OP_SEND) {
+        dw |= ((v9x_u32)(inst->sfid & 0xfu)) << 24;
+    } else {
+        dw |= ((v9x_u32)(inst->cond_mod & 0xfu)) << 24;
+    }
+    dw |= ((v9x_u32)(inst->saturate & 1u)) << 31;
+    return dw;
+}
+
+/* A register source in DW2 (src0) or DW3 (src1) layout; the two agree
+ * from bit 24 down except that only src0 carries AddrMode and the flag
+ * selection, which the caller adds. */
+static v9x_u32 v9x_hsw_eu_src_bits(const struct v9x_hsw_eu_operand *op,
+                                   v9x_u8 align16)
+{
+    v9x_u32 dw;
+
+    dw = ((v9x_u32)(op->vstride & 0xfu)) << 21;
+    dw |= ((v9x_u32)(op->mod & 3u)) << 13;
+    dw |= ((v9x_u32)op->nr) << 5;
+    if (align16) {
+        dw |= ((v9x_u32)(op->chan >> 4)) << 16;
+        dw |= ((v9x_u32)(op->subnr >> 4)) << 4;
+        dw |= (v9x_u32)(op->chan & 0xfu);
+    } else {
+        dw |= ((v9x_u32)(op->width & 7u)) << 18;
+        dw |= ((v9x_u32)(op->hstride & 3u)) << 16;
+        dw |= (v9x_u32)(op->subnr & 0x1fu);
+    }
+    return dw;
+}
+
+static v9x_status v9x_hsw_eu_encode_3src(const struct v9x_hsw_eu_inst *inst,
+                                         v9x_u32 out[4])
+{
+    const struct v9x_hsw_eu_operand *s0 = &inst->src0;
+    const struct v9x_hsw_eu_operand *s1 = &inst->src1;
+    const struct v9x_hsw_eu_operand *s2 = &inst->src2;
+    v9x_u32 sub1;
+
+    /* 3-source instructions are Align16, all-GRF, with 3-bit dword
+     * sub-register numbers (Vol 7 "DW1 3-src", "DW2 and DW3 3-Source"). */
+    if (!inst->align16 || inst->dst.file != V9X_HSW_EU_FILE_GRF ||
+        s0->file != V9X_HSW_EU_FILE_GRF || s1->file != V9X_HSW_EU_FILE_GRF ||
+        s2->file != V9X_HSW_EU_FILE_GRF) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (inst->dst.nr >= V9X_HSW_EU_GRF_COUNT ||
+        s0->nr >= V9X_HSW_EU_GRF_COUNT || s1->nr >= V9X_HSW_EU_GRF_COUNT ||
+        s2->nr >= V9X_HSW_EU_GRF_COUNT) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (((inst->dst.subnr | s0->subnr | s1->subnr | s2->subnr) & 3u) != 0u ||
+        inst->dst.subnr >= V9X_HSW_EU_SUBNR_MAX ||
+        s0->subnr >= V9X_HSW_EU_SUBNR_MAX ||
+        s1->subnr >= V9X_HSW_EU_SUBNR_MAX ||
+        s2->subnr >= V9X_HSW_EU_SUBNR_MAX ||
+        inst->dst.type > 3u || s0->type > 3u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    out[0] = v9x_hsw_eu_dw0(inst);
+    out[1] = ((v9x_u32)inst->dst.nr) << 24;
+    out[1] |= ((v9x_u32)(inst->dst.subnr >> 2)) << 21;
+    out[1] |= ((v9x_u32)(inst->dst.chan & 0xfu)) << 17;
+    out[1] |= ((v9x_u32)inst->dst.type) << 15;
+    out[1] |= ((v9x_u32)s0->type) << 13;
+    out[1] |= ((v9x_u32)(s2->mod & 3u)) << 8;
+    out[1] |= ((v9x_u32)(s1->mod & 3u)) << 6;
+    out[1] |= ((v9x_u32)(s0->mod & 3u)) << 4;
+    out[1] |= ((v9x_u32)(inst->flag_reg & 1u)) << 2;
+    out[1] |= ((v9x_u32)(inst->flag_subreg & 1u)) << 1;
+
+    /* Source 1's sub-register number is split: 1:0 in DW2 31:30, 2 in
+     * DW3 0. */
+    sub1 = (v9x_u32)(s1->subnr >> 2);
+    out[2] = (sub1 & 3ul) << 30;
+    out[2] |= ((v9x_u32)s1->chan) << 22;
+    out[2] |= ((v9x_u32)(s1->rep & 1u)) << 21;
+    out[2] |= ((v9x_u32)s0->nr) << 12;
+    out[2] |= ((v9x_u32)(s0->subnr >> 2)) << 9;
+    out[2] |= ((v9x_u32)s0->chan) << 1;
+    out[2] |= (v9x_u32)(s0->rep & 1u);
+
+    out[3] = ((v9x_u32)s2->nr) << 22;
+    out[3] |= ((v9x_u32)(s2->subnr >> 2)) << 19;
+    out[3] |= ((v9x_u32)s2->chan) << 11;
+    out[3] |= ((v9x_u32)(s2->rep & 1u)) << 10;
+    out[3] |= ((v9x_u32)s1->nr) << 1;
+    out[3] |= (sub1 >> 2) & 1ul;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_eu_encode(const struct v9x_hsw_eu_inst *inst,
+                                   v9x_u32 out[4])
+{
+    struct v9x_hsw_eu_operand src1;
+    v9x_u8 sources;
+
+    if (inst == 0 || out == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    sources = v9x_hsw_eu_sources(inst->opcode);
+    if (sources == 0xffu || inst->exec_size > V9X_HSW_EU_EXEC_16 ||
+        inst->pred_ctrl > 0xdu) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (sources == 3u) {
+        return v9x_hsw_eu_encode_3src(inst, out);
+    }
+
+    if (!v9x_hsw_eu_file_ok(inst->dst.file) ||
+        inst->dst.file == V9X_HSW_EU_FILE_IMM ||
+        !v9x_hsw_eu_reg_ok(&inst->dst)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (sources >= 1u && (!v9x_hsw_eu_file_ok(inst->src0.file) ||
+                          !v9x_hsw_eu_reg_ok(&inst->src0))) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    /*
+     * Source 1. "If an operand is not present ... the second source
+     * operand src1 must be set to null and also with the same type as the
+     * first source operand src0" (Vol 7 "Non-present Operands"): ARF
+     * register 0, which is null. For send, src1 is the immediate message
+     * descriptor (Vol 7 DW3 notes).
+     */
+    src1 = inst->src1;
+    if (sources <= 1u) {
+        src1.file = V9X_HSW_EU_FILE_ARF;
+        src1.type = inst->src0.type;
+        src1.nr = 0u;
+        src1.subnr = 0u;
+        src1.vstride = 0u;
+        src1.width = 0u;
+        src1.hstride = 0u;
+        src1.mod = 0u;
+        src1.chan = 0u;
+    } else if (inst->opcode == V9X_HSW_EU_OP_SEND) {
+        if ((inst->desc & ~V9X_HSW_EU_DESC_MASK) != 0ul) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        src1.file = V9X_HSW_EU_FILE_IMM;
+        src1.type = V9X_HSW_EU_TYPE_UD;
+    } else {
+        if (!v9x_hsw_eu_file_ok(src1.file) || !v9x_hsw_eu_reg_ok(&src1)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        /* Only the last source may be immediate. */
+        if (inst->src0.file == V9X_HSW_EU_FILE_IMM) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+
+    if (inst->align16 &&
+        (!v9x_hsw_eu_align16_ok(&inst->dst, 0) ||
+         !v9x_hsw_eu_align16_ok(&inst->src0, 1) ||
+         !v9x_hsw_eu_align16_ok(&src1, 1))) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    out[0] = v9x_hsw_eu_dw0(inst);
+
+    /* DW1: destination region in 31:16, then the five type/file fields.
+     * "Although Dst.HorzStride is a don't care for Align16, HW needs this
+     * to be programmed as 01." */
+    if (inst->align16) {
+        out[1] = ((v9x_u32)V9X_HSW_EU_HSTRIDE_1) << 29;
+        out[1] |= ((v9x_u32)inst->dst.nr) << 21;
+        out[1] |= ((v9x_u32)(inst->dst.subnr >> 4)) << 20;
+        out[1] |= ((v9x_u32)(inst->dst.chan & 0xfu)) << 16;
+    } else {
+        out[1] = ((v9x_u32)(inst->dst.hstride & 3u)) << 29;
+        out[1] |= ((v9x_u32)inst->dst.nr) << 21;
+        out[1] |= ((v9x_u32)(inst->dst.subnr & 0x1fu)) << 16;
+    }
+    out[1] |= ((v9x_u32)(src1.type & 7u)) << 12;
+    out[1] |= ((v9x_u32)(src1.file & 3u)) << 10;
+    out[1] |= ((v9x_u32)(inst->src0.type & 7u)) << 7;
+    out[1] |= ((v9x_u32)(inst->src0.file & 3u)) << 5;
+    out[1] |= ((v9x_u32)(inst->dst.type & 7u)) << 2;
+    out[1] |= (v9x_u32)(inst->dst.file & 3u);
+
+    /* DW2: source 0, plus the flag register selection (bits 26, 25). An
+     * immediate src0 lives in DW3 and leaves only the flag bits here. */
+    out[2] = ((v9x_u32)(inst->flag_reg & 1u)) << 26;
+    out[2] |= ((v9x_u32)(inst->flag_subreg & 1u)) << 25;
+    if (sources >= 1u && inst->src0.file != V9X_HSW_EU_FILE_IMM) {
+        out[2] |= v9x_hsw_eu_src_bits(&inst->src0, inst->align16);
+    }
+
+    /* DW3: source 1, an immediate, or EOT plus the message descriptor. */
+    if (inst->opcode == V9X_HSW_EU_OP_SEND) {
+        out[3] = inst->desc & V9X_HSW_EU_DESC_MASK;
+        if (inst->eot) {
+            out[3] |= V9X_HSW_EU_EOT;
+        }
+    } else if (sources >= 1u && inst->src0.file == V9X_HSW_EU_FILE_IMM) {
+        out[3] = inst->src0.imm;
+    } else if (src1.file == V9X_HSW_EU_FILE_IMM) {
+        out[3] = src1.imm;
+    } else if (sources == 2u) {
+        out[3] = v9x_hsw_eu_src_bits(&src1, inst->align16);
+    } else {
+        out[3] = 0ul;
+    }
+    return V9X_STATUS_OK;
+}
+
+static void v9x_hsw_eu_clear(struct v9x_hsw_eu_inst *inst)
+{
+    v9x_u8 *bytes;
+    v9x_u32 index;
+
+    bytes = (v9x_u8 *)inst;
+    for (index = 0ul; index < (v9x_u32)sizeof(*inst); ++index) {
+        bytes[index] = 0u;
+    }
+}
+
+static void v9x_hsw_eu_src_decode(v9x_u32 dw, v9x_u8 align16,
+                                  struct v9x_hsw_eu_operand *op)
+{
+    op->vstride = (v9x_u8)((dw >> 21) & 0xful);
+    op->mod = (v9x_u8)((dw >> 13) & 3ul);
+    op->nr = (v9x_u8)((dw >> 5) & 0xfful);
+    if (align16) {
+        op->chan = (v9x_u8)((((dw >> 16) & 0xful) << 4) | (dw & 0xful));
+        op->subnr = (v9x_u8)(((dw >> 4) & 1ul) << 4);
+    } else {
+        op->width = (v9x_u8)((dw >> 18) & 7ul);
+        op->hstride = (v9x_u8)((dw >> 16) & 3ul);
+        op->subnr = (v9x_u8)(dw & 0x1ful);
+    }
+}
+
+v9x_status v9x_intel_hsw_eu_decode(const v9x_u32 in[4],
+                                   struct v9x_hsw_eu_inst *inst)
+{
+    v9x_u32 sub1;
+
+    if (in == 0 || inst == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_hsw_eu_clear(inst);
+
+    inst->opcode = (v9x_u8)(in[0] & 0x7ful);
+    inst->align16 = (v9x_u8)((in[0] >> 8) & 1ul);
+    inst->mask_disable = (v9x_u8)((in[0] >> 9) & 1ul);
+    inst->pred_ctrl = (v9x_u8)((in[0] >> 16) & 0xful);
+    inst->pred_inv = (v9x_u8)((in[0] >> 20) & 1ul);
+    inst->exec_size = (v9x_u8)((in[0] >> 21) & 7ul);
+    inst->saturate = (v9x_u8)((in[0] >> 31) & 1ul);
+    inst->sources = v9x_hsw_eu_sources(inst->opcode);
+    if (inst->sources == 0xffu) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (inst->opcode == V9X_HSW_EU_OP_SEND) {
+        inst->sfid = (v9x_u8)((in[0] >> 24) & 0xful);
+    } else {
+        inst->cond_mod = (v9x_u8)((in[0] >> 24) & 0xful);
+    }
+
+    if (inst->sources == 3u) {
+        inst->dst.file = V9X_HSW_EU_FILE_GRF;
+        inst->src0.file = V9X_HSW_EU_FILE_GRF;
+        inst->src1.file = V9X_HSW_EU_FILE_GRF;
+        inst->src2.file = V9X_HSW_EU_FILE_GRF;
+        inst->dst.nr = (v9x_u8)((in[1] >> 24) & 0xfful);
+        inst->dst.subnr = (v9x_u8)(((in[1] >> 21) & 7ul) << 2);
+        inst->dst.chan = (v9x_u8)((in[1] >> 17) & 0xful);
+        inst->dst.type = (v9x_u8)((in[1] >> 15) & 3ul);
+        inst->src0.type = (v9x_u8)((in[1] >> 13) & 3ul);
+        inst->src1.type = inst->src0.type;
+        inst->src2.type = inst->src0.type;
+        inst->src2.mod = (v9x_u8)((in[1] >> 8) & 3ul);
+        inst->src1.mod = (v9x_u8)((in[1] >> 6) & 3ul);
+        inst->src0.mod = (v9x_u8)((in[1] >> 4) & 3ul);
+        inst->flag_reg = (v9x_u8)((in[1] >> 2) & 1ul);
+        inst->flag_subreg = (v9x_u8)((in[1] >> 1) & 1ul);
+        sub1 = ((in[2] >> 30) & 3ul) | ((in[3] & 1ul) << 2);
+        inst->src1.subnr = (v9x_u8)(sub1 << 2);
+        inst->src1.chan = (v9x_u8)((in[2] >> 22) & 0xfful);
+        inst->src1.rep = (v9x_u8)((in[2] >> 21) & 1ul);
+        inst->src0.nr = (v9x_u8)((in[2] >> 12) & 0xfful);
+        inst->src0.subnr = (v9x_u8)(((in[2] >> 9) & 7ul) << 2);
+        inst->src0.chan = (v9x_u8)((in[2] >> 1) & 0xfful);
+        inst->src0.rep = (v9x_u8)(in[2] & 1ul);
+        inst->src2.nr = (v9x_u8)((in[3] >> 22) & 0xfful);
+        inst->src2.subnr = (v9x_u8)(((in[3] >> 19) & 7ul) << 2);
+        inst->src2.chan = (v9x_u8)((in[3] >> 11) & 0xfful);
+        inst->src2.rep = (v9x_u8)((in[3] >> 10) & 1ul);
+        inst->src1.nr = (v9x_u8)((in[3] >> 1) & 0xfful);
+        return V9X_STATUS_OK;
+    }
+
+    inst->dst.file = (v9x_u8)(in[1] & 3ul);
+    inst->dst.type = (v9x_u8)((in[1] >> 2) & 7ul);
+    inst->src0.file = (v9x_u8)((in[1] >> 5) & 3ul);
+    inst->src0.type = (v9x_u8)((in[1] >> 7) & 7ul);
+    inst->src1.file = (v9x_u8)((in[1] >> 10) & 3ul);
+    inst->src1.type = (v9x_u8)((in[1] >> 12) & 7ul);
+    inst->dst.nr = (v9x_u8)((in[1] >> 21) & 0xfful);
+    inst->dst.hstride = (v9x_u8)((in[1] >> 29) & 3ul);
+    if (inst->align16) {
+        inst->dst.subnr = (v9x_u8)(((in[1] >> 20) & 1ul) << 4);
+        inst->dst.chan = (v9x_u8)((in[1] >> 16) & 0xful);
+    } else {
+        inst->dst.subnr = (v9x_u8)((in[1] >> 16) & 0x1ful);
+    }
+
+    inst->flag_reg = (v9x_u8)((in[2] >> 26) & 1ul);
+    inst->flag_subreg = (v9x_u8)((in[2] >> 25) & 1ul);
+    if (inst->src0.file == V9X_HSW_EU_FILE_IMM) {
+        inst->src0.imm = in[3];
+    } else {
+        v9x_hsw_eu_src_decode(in[2], inst->align16, &inst->src0);
+    }
+
+    if (inst->opcode == V9X_HSW_EU_OP_SEND) {
+        inst->desc = in[3] & V9X_HSW_EU_DESC_MASK;
+        inst->eot = (v9x_u8)((in[3] & V9X_HSW_EU_EOT) != 0ul);
+    } else if (inst->src1.file == V9X_HSW_EU_FILE_IMM) {
+        inst->src1.imm = in[3];
+    } else if (inst->sources == 2u) {
+        v9x_hsw_eu_src_decode(in[3], inst->align16, &inst->src1);
+    }
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_eu_send_desc(v9x_u8 mlen, v9x_u8 rlen,
+                                      v9x_u8 header, v9x_u32 function,
+                                      v9x_u32 *desc)
+{
+    if (desc == 0 || mlen < 1u || mlen > 15u || rlen > 16u ||
+        header > 1u || function > 0x7fffful) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *desc = ((v9x_u32)mlen << 25) | ((v9x_u32)rlen << 20) |
+            ((v9x_u32)header << 19) | function;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_eu_rt_write_fc(v9x_u8 last_rt, v9x_u8 slot_hi,
+                                        v9x_u8 msg_type, v9x_u8 bti,
+                                        v9x_u32 *function)
+{
+    /* Binding table index 255 is stateless, which this message refuses
+     * ("Binding Table Index cannot be 255"). Types 5 and 6 are unlisted. */
+    if (function == 0 || last_rt > 1u || slot_hi > 1u || msg_type > 7u ||
+        msg_type == 5u || msg_type == 6u || bti == 0xffu) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *function = ((v9x_u32)V9X_HSW_DP_RC_RT_WRITE << 13) |
+                ((v9x_u32)last_rt << 12) | ((v9x_u32)slot_hi << 11) |
+                ((v9x_u32)msg_type << 8) | (v9x_u32)bti;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_eu_sampler_fc(v9x_u8 simd, v9x_u8 msg_type,
+                                       v9x_u8 sampler, v9x_u8 bti,
+                                       v9x_u32 *function)
+{
+    if (function == 0 || simd > 3u || msg_type > 0x1fu || sampler > 15u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *function = ((v9x_u32)simd << 17) | ((v9x_u32)msg_type << 12) |
+                ((v9x_u32)sampler << 8) | (v9x_u32)bti;
+    return V9X_STATUS_OK;
+}
