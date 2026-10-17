@@ -125,6 +125,9 @@ typedef struct v9x_d3d_hsw_texture {
     v9x_u16 width;
     v9x_u16 height;
     v9x_u32 pitch;
+    /* Mip levels the sampler may read: 1, or a chain create_surface laid
+     * out (v9x_d3d_hsw_mip_levels). */
+    v9x_u8 levels;
 } V9X_D3D_HSW_TEXTURE;
 
 /* What the mapping makes of a draw. */
@@ -442,14 +445,137 @@ static v9x_u8 v9x_d3d_hsw_compare(v9x_u32 function)
     return (v9x_u8)(function & 7ul);
 }
 
-/* MAPFILTER_LINEAR for the filters whose texels blend; the mip part of a
- * mip filter samples level 0 (plan, F2a). */
+/* MAPFILTER_LINEAR for the filters whose texels blend within a level; the
+ * part between levels is v9x_d3d_hsw_mip_filter's. The DirectX 5 names
+ * read as d3d_i9xx.c's v9x_d3d_i9xx_filter settles them: LINEAR after
+ * MIP is within a level, before it between levels. */
 static v9x_u8 v9x_d3d_hsw_filter(v9x_u32 filter)
 {
     return filter == V9X_R3D_FILTER_LINEAR ||
                    filter == V9X_R3D_FILTER_MIPLINEAR ||
                    filter == V9X_R3D_FILTER_LINEARMIPLINEAR
                ? 1u : 0u;
+}
+
+/* SAMPLER_STATE DW0 21:20, Mip Mode Filter (Vol 2d): MIPFILTER_NONE 0,
+ * _NEAREST 1, _LINEAR 3. */
+#define V9X_D3D_HSW_MIPFILTER_NONE    0u
+#define V9X_D3D_HSW_MIPFILTER_NEAREST 1u
+#define V9X_D3D_HSW_MIPFILTER_LINEAR  3u
+
+static v9x_u8 v9x_d3d_hsw_mip_filter(v9x_u32 filter)
+{
+    if (filter == V9X_R3D_FILTER_MIPNEAREST ||
+        filter == V9X_R3D_FILTER_MIPLINEAR) {
+        return V9X_D3D_HSW_MIPFILTER_NEAREST;
+    }
+    if (filter == V9X_R3D_FILTER_LINEARMIPNEAREST ||
+        filter == V9X_R3D_FILTER_LINEARMIPLINEAR) {
+        return V9X_D3D_HSW_MIPFILTER_LINEAR;
+    }
+    return V9X_D3D_HSW_MIPFILTER_NONE;
+}
+
+/*
+ * How many levels of a texture's chain the sampler may read: one when there
+ * is no chain or its levels are not where v9x_intel_hsw_miptree puts them,
+ * and each level that is, in order, otherwise.
+ *
+ * RENDER_SURFACE_STATE has one base and one pitch for every level, so only
+ * a chain create_surface placed as one tree can be sampled past level 0.
+ * One the heap placed - because create_surface declined it, or an
+ * application attached the levels itself - is sampled at level 0 with no
+ * mip filter, as every texture was before, and is counted in the mip_gap
+ * counters so a capture tells the two apart. Gen3's v9x_d3d_i9xx_mip_levels
+ * makes the same walk for its own layout.
+ */
+static v9x_u8 v9x_d3d_hsw_mip_levels(const V9X_DD_SURFACE_LCL *top)
+{
+    const V9X_DD_SURFACE_LCL *chain[V9X_HSW_MIP_LEVELS_MAX];
+    const V9X_DD_SURFACE_LCL *level = top;
+    struct v9x_hsw_miptree tree;
+    DWORD width = (DWORD)top->lpGbl->wWidth;
+    DWORD height = (DWORD)top->lpGbl->wHeight;
+    DWORD count = 1ul;
+    DWORD verified;
+
+    if ((top->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul) {
+        return 1u;
+    }
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    chain[0] = top;
+
+    /* Down the attachments: the next level is the attached surface that is
+     * itself a mip level, each edge half the one before. */
+    while (count < V9X_HSW_MIP_LEVELS_MAX) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+        DWORD next_width = width >> count;
+        DWORD next_height = height >> count;
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0) {
+            break;
+        }
+        if (next_width == 0ul) {
+            next_width = 1ul;
+        }
+        if (next_height == 0ul) {
+            next_height = 1ul;
+        }
+        if (next->lpGbl == 0 ||
+            (DWORD)next->lpGbl->wWidth != next_width ||
+            (DWORD)next->lpGbl->wHeight != next_height) {
+            ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            break;
+        }
+        chain[count++] = next;
+        level = next;
+    }
+    if (count == 1ul) {
+        return 1u;
+    }
+    if (v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
+                              (v9x_u8)count, 2u, &tree) != V9X_STATUS_OK) {
+        ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+        ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
+        return 1u;
+    }
+
+    /* Every level at the tree's pitch and exactly at its place; the first
+     * that is not ends the usable chain. A shorter chain's levels sit where
+     * the longer tree put them, because each level's place depends only on
+     * the levels above it. */
+    verified = 1ul;
+    if ((DWORD)top->lpGbl->lPitch == tree.pitch) {
+        while (verified < count &&
+               (DWORD)chain[verified]->lpGbl->lPitch == tree.pitch &&
+               chain[verified]->lpGbl->fpVidMem ==
+                   top->lpGbl->fpVidMem + tree.level_offset[verified]) {
+            ++verified;
+        }
+    }
+    if (verified < count) {
+        ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
+        ++v9x_hal->d3d_diagnostics.mip_gap_offset;
+        v9x_hal->d3d_diagnostics.mip_gap_expected =
+            top->lpGbl->fpVidMem + tree.level_offset[verified];
+        v9x_hal->d3d_diagnostics.mip_gap_actual =
+            chain[verified]->lpGbl->fpVidMem;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = verified - 1ul;
+    if (verified - 1ul > v9x_hal->d3d_diagnostics.mip_levels_max) {
+        v9x_hal->d3d_diagnostics.mip_levels_max = verified - 1ul;
+    }
+    return (v9x_u8)verified;
 }
 
 static v9x_u32 v9x_d3d_hsw_float(v9x_u32 byte)
@@ -486,11 +612,19 @@ static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
     if (texture->wrap_u != 0ul || texture->wrap_v != 0ul) {
         return V9X_D3D_HSW_REFUSE_ADDRESS;
     }
-    unit->sampler.mip_filter = 0u;
+    /* MIN's choice between levels is the mip filter only when the chain
+     * has levels; MAX LOD, U4.8, stops at the last (Vol 2d). MAG's has no
+     * meaning, magnification being level 0. */
+    unit->levels = v9x_d3d_hsw_mip_levels(surface);
+    unit->sampler.mip_filter = V9X_D3D_HSW_MIPFILTER_NONE;
     unit->sampler.mag_filter = v9x_d3d_hsw_filter(texture->mag_filter);
     unit->sampler.min_filter = v9x_d3d_hsw_filter(texture->min_filter);
     unit->sampler.min_lod = 0u;
     unit->sampler.max_lod = 0u;
+    if (unit->levels > 1u) {
+        unit->sampler.mip_filter = v9x_d3d_hsw_mip_filter(texture->min_filter);
+        unit->sampler.max_lod = (v9x_u16)((unit->levels - 1u) << 8);
+    }
     unit->sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
     switch (texture->address) {
     case V9X_R3D_ADDRESS_WRAP:
@@ -783,6 +917,10 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                 image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
                 texture->format, texture->address, texture->width,
                 texture->height, texture->pitch) != V9X_STATUS_OK ||
+            (texture->levels > 1u &&
+             v9x_intel_hsw_surface_mips(
+                 image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
+                 texture->levels) != V9X_STATUS_OK) ||
             v9x_intel_hsw_sampler(
                 image + (V9X_HSW_SHADE_SAMPLER +
                          index * V9X_HSW_SAMPLER_BYTES) / 4ul,
@@ -860,6 +998,10 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
      * as nothing. */
     if (state.scissor_empty) {
         return 1;
+    }
+    if ((state.textured >= 1 && state.texture[0].levels > 1u) ||
+        (state.textured == 2 && state.texture[1].levels > 1u)) {
+        ++v9x_hal->d3d_diagnostics.mip_draws;
     }
 
     /* The blitter may still be writing this draw's texture or target, and
@@ -1128,27 +1270,17 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 /*
  * A Z buffer in whole Y tiles: pitch width x 2 rounded up to 128 bytes,
  * rows rounded up to 32, on a 4 KB boundary, so the last row of tiles the
- * engine reaches is the surface's own. Every other surface is DirectDraw's.
+ * engine reaches is the surface's own.
  */
-static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
+static DWORD v9x_d3d_hsw_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
+                                      V9X_DD_SURFACE_LCL *surface)
 {
-    V9X_DD_SURFACE_LCL **list;
-    V9X_DD_SURFACE_LCL *surface;
     v9x_u32 offsets[1];
     DWORD pitch;
     DWORD rows;
     DWORD base;
 
-    if (v9x_hal == 0 || data == 0 || data->dwSCnt != 1ul ||
-        data->lplpSList == 0) {
-        return V9X_DDHAL_DRIVER_NOTHANDLED;
-    }
-    list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
-    surface = list[0];
-    if (surface == 0 || surface->lpGbl == 0 ||
-        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
-        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-        surface->lpGbl->wWidth == 0u || surface->lpGbl->wHeight == 0u ||
+    if (surface->lpGbl->wWidth == 0u || surface->lpGbl->wHeight == 0u ||
         (DWORD)surface->lpGbl->wWidth >
             v9x_d3d_hsw_limits.target_dimension_max ||
         (DWORD)surface->lpGbl->wHeight >
@@ -1172,9 +1304,130 @@ static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * Mip trees. RENDER_SURFACE_STATE has one base and one pitch for a whole
+ * chain, and the sampler finds each level by the layout v9x_intel_hsw_miptree
+ * computes. DirectDraw's heap places each level as a surface of its own,
+ * which is never that layout, so a chain is placed here instead: one block
+ * for the tree (d3d_place.c), on the 4 KB boundary the Z buffers use so
+ * one release rule frees both, and each level's fpVidMem at its place in
+ * it with the tree's pitch. Gen3's create_surface does the same for its
+ * own layout. Declines are counted with Gen3's reasons.
+ */
+#define V9X_D3D_HSW_MIPTREE_SHAPE  1ul  /* not a halving chain */
+#define V9X_D3D_HSW_MIPTREE_FORMAT 2ul  /* not 16 bits per texel */
+
+static DWORD v9x_d3d_hsw_miptree_decline(DWORD reason)
+{
+    ++v9x_hal->d3d_diagnostics.mip_tree_declined;
+    v9x_hal->d3d_diagnostics.mip_tree_declined_last = reason;
+    return V9X_DDHAL_DRIVER_NOTHANDLED;
+}
+
+static DWORD v9x_d3d_hsw_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    V9X_DD_SURFACE_LCL *top = list[0];
+    const V9X_DDPIXELFORMAT *pixel;
+    struct v9x_hsw_miptree tree;
+    DWORD width = (DWORD)top->lpGbl->wWidth;
+    DWORD height = (DWORD)top->lpGbl->wHeight;
+    DWORD index;
+    DWORD edge_w;
+    DWORD edge_h;
+    DWORD base;
+    DWORD reason;
+
+    /* The list is DirectDraw's, top first, each edge half the one before
+     * down to 1; one in any other order is declined rather than sorted. */
+    if (width == 0ul || height == 0ul ||
+        width > v9x_d3d_hsw_limits.texture_size_max ||
+        height > v9x_d3d_hsw_limits.texture_size_max ||
+        data->dwSCnt > V9X_HSW_MIP_LEVELS_MAX) {
+        return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
+    }
+    for (index = 1ul; index < data->dwSCnt; ++index) {
+        const V9X_DD_SURFACE_LCL *level = list[index];
+
+        edge_w = width >> index;
+        edge_h = height >> index;
+        if (edge_w == 0ul) {
+            edge_w = 1ul;
+        }
+        if (edge_h == 0ul) {
+            edge_h = 1ul;
+        }
+        if (level == 0 || level->lpGbl == 0 ||
+            (level->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul ||
+            (DWORD)level->lpGbl->wWidth != edge_w ||
+            (DWORD)level->lpGbl->wHeight != edge_h) {
+            return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
+        }
+    }
+    /* Sixteen bits a texel: every format the sampler takes here (565, 1555,
+     * 4444), and the two bytes the layout is computed in. No format of its
+     * own means the display's. */
+    pixel = (top->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+        ? &top->lpGbl->ddpfSurface
+        : &v9x_hal->info.vmiData.ddpfDisplay;
+    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        pixel->dwRGBBitCount != 16ul) {
+        return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_FORMAT);
+    }
+    if (v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
+                              (v9x_u8)data->dwSCnt, 2u, &tree) !=
+            V9X_STATUS_OK) {
+        return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
+    }
+    reason = v9x_d3d_place_block(data, V9X_D3D_HSW_TILE_BYTES, tree.pitch,
+                                 tree.rows, tree.level_offset, &base);
+    if (reason != 0ul) {
+        return v9x_d3d_hsw_miptree_decline(reason);
+    }
+    ++v9x_hal->d3d_diagnostics.mip_tree_allocs;
+    v9x_hal->d3d_diagnostics.mip_tree_last_offset = base;
+    v9x_hal->d3d_diagnostics.mip_tree_last_shape =
+        (tree.pitch << 16) | (tree.rows & 0xfffful);
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/* A lone video-memory Z buffer, or a video-memory mip chain; every other
+ * surface is DirectDraw's. */
+static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list;
+    V9X_DD_SURFACE_LCL *surface;
+
+    if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
+        data->lplpSList == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    surface = list[0];
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (data->dwSCnt == 1ul &&
+        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        return v9x_d3d_hsw_create_depth(data, surface);
+    }
+    if (data->dwSCnt >= 2ul &&
+        (surface->ddsCaps & (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) ==
+            (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) {
+        return v9x_d3d_hsw_create_miptree(data);
+    }
+    return V9X_DDHAL_DRIVER_NOTHANDLED;
+}
+
+/* The top of a tree or a Z buffer placed above is going: free the block
+ * (d3d_place.c ignores every other surface). */
 static void v9x_d3d_hsw_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
-    (void)v9x_d3d_place_release(data, V9X_D3D_HSW_TILE_BYTES);
+    if (v9x_d3d_place_release(data, V9X_D3D_HSW_TILE_BYTES)) {
+        ++v9x_hal->d3d_diagnostics.mip_tree_frees;
+    }
 }
 
 /*
@@ -1185,8 +1438,8 @@ static void v9x_d3d_hsw_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
  * vertex fog; every blend factor but the destination alpha ones (a 16-bit
  * target has no useful alpha); the alpha test with every function; WRAP,
  * MIRROR, CLAMP; a 16-bit Z buffer with every comparison (F2b). Mip
- * filters are published and
- * sample level 0, the honest degradation Gen3's caps describe.
+ * filters are published; a chain create_surface placed samples its levels,
+ * any other texture level 0.
  */
 static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
 {

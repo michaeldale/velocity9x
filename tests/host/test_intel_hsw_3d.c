@@ -100,6 +100,74 @@ static void test_state(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* The 2D mip layout, worked by hand from Vol 5's rule with HALIGN 4 and
+ * VALIGN 2: level 1 below level 0, level 2 right of level 1, each later
+ * level below the one before. */
+static void test_miptree(void)
+{
+    struct v9x_hsw_miptree tree;
+    v9x_u32 surface[8];
+
+    /* 8x8, four levels: (0,0) (0,8) (4,8) (4,10); 8 texels wide (16
+     * bytes, pitch 64), 12 rows (level 1 ends at 12, level 3 at 12). */
+    CHECK(v9x_intel_hsw_miptree(8u, 8u, 4u, 2u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.rows == 12ul);
+    CHECK(tree.level_offset[0] == 0ul && tree.level_offset[1] == 512ul &&
+          tree.level_offset[2] == 520ul && tree.level_offset[3] == 648ul);
+
+    /* 256x256, nine levels: level 1 at row 256, level 2 at (128,256),
+     * then rows 320, 352, 368, 376, 380, 382; level 8's 1 row aligns to
+     * 2, so 384 rows. Width max(256, 128 + 64) = 256: pitch 512. */
+    CHECK(v9x_intel_hsw_miptree(256u, 256u, 9u, 2u, &tree) ==
+          V9X_STATUS_OK);
+    CHECK(tree.pitch == 512ul && tree.rows == 384ul);
+    CHECK(tree.level_offset[1] == 131072ul);
+    CHECK(tree.level_offset[2] == 131328ul);
+    CHECK(tree.level_offset[3] == 164096ul);
+    CHECK(tree.level_offset[8] == 195840ul);
+
+    /* 4x4, three: level 1's 2 texels align to 4, so level 2 is at x 4
+     * and the tree is 8 texels wide, wider than level 0. */
+    CHECK(v9x_intel_hsw_miptree(4u, 4u, 3u, 2u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.rows == 6ul);
+    CHECK(tree.level_offset[1] == 256ul && tree.level_offset[2] == 264ul);
+
+    /* 8x2, four (8x2 4x1 2x1 1x1): every 1-row level takes 2. */
+    CHECK(v9x_intel_hsw_miptree(8u, 2u, 4u, 2u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.rows == 6ul);
+    CHECK(tree.level_offset[1] == 128ul && tree.level_offset[2] == 136ul &&
+          tree.level_offset[3] == 264ul);
+
+    /* One level is level 0 at its own row. */
+    CHECK(v9x_intel_hsw_miptree(64u, 32u, 1u, 2u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 128ul && tree.rows == 32ul);
+
+    /* More levels than the larger edge halves to, none, a zero edge, or
+     * more than the tree holds. */
+    CHECK(v9x_intel_hsw_miptree(8u, 8u, 5u, 2u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_miptree(8u, 8u, 0u, 2u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_miptree(0u, 8u, 1u, 2u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_miptree(4096u, 4096u, 13u, 2u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* RENDER_SURFACE_STATE DW5 3:0, MIP Count: levels less one. */
+    CHECK(v9x_intel_hsw_surface_2d(surface, V9X_HSW_FMT_B5G6R5_UNORM,
+                                   0x00200000ul, 256u, 256u, 512ul) ==
+          V9X_STATUS_OK);
+    CHECK(surface[5] == 0ul);
+    CHECK(v9x_intel_hsw_surface_mips(surface, 9u) == V9X_STATUS_OK);
+    CHECK(surface[5] == 8ul);
+    /* HALIGN 4 and VALIGN 2 are the zero encodings the layout assumes. */
+    CHECK(surface[0] == 0x24000000ul);
+    CHECK(v9x_intel_hsw_surface_mips(surface, 0u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_surface_mips(surface, 17u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* A whole minimal 3D batch: everything the builders emit must pass the
  * checker, and the checker must catch each kind of damage. */
 static void test_batch_and_check(void)
@@ -1019,6 +1087,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_phase_d_draw();
     test_headers();
     test_state();
+    test_miptree();
     test_batch_and_check();
     test_qword_rule();
     test_phase_b1_stream();

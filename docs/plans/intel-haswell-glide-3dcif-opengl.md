@@ -18,6 +18,9 @@ Step 4 done on boot 23: two units, SGIS advertised and its V9XGLP checks
 passing, Half-Life `-gl` mwd5 61.3 to 67.7 fps against the same source
 with one unit
 ([record](../decisions/2026-10-18-haswell-render-interface-step4.md)).
+Mipmaps on boot 26: chains placed as one Gen7 tree, every V9XGLP level
+key reading its level
+([record](../decisions/2026-10-18-haswell-mipmaps.md)).
 Next: the rest of step 3 (Quake 2), then steps 5 and 6.
 
 Target: the i5-4570 (`8086:0412`), on the `intel-gma` family's

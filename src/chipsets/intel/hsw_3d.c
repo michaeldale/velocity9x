@@ -509,6 +509,94 @@ v9x_status v9x_intel_hsw_surface_2d(v9x_u32 out[8], v9x_u16 format,
     return V9X_STATUS_OK;
 }
 
+/* RENDER_SURFACE_STATE DW5 3:0, MIP Count/LOD (Vol 2d): for a sampled
+ * surface, the levels reachable from Surface Min LOD (0), less one. */
+v9x_status v9x_intel_hsw_surface_mips(v9x_u32 out[8], v9x_u8 levels)
+{
+    if (out == 0 || levels == 0u || levels > 16u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    out[5] = (out[5] & ~0xful) | (v9x_u32)(levels - 1u);
+    return V9X_STATUS_OK;
+}
+
+/* The i and j of Vol 5's 2D layout for the alignments surface_2d encodes
+ * (DW0 15 HALIGN_4, 17:16 VALIGN_2), and the linear pitch granule Mesa's
+ * i965 uses. */
+#define V9X_HSW_MIP_ALIGN_W     4ul
+#define V9X_HSW_MIP_ALIGN_H     2ul
+#define V9X_HSW_MIP_PITCH_ALIGN 64ul
+
+static v9x_u32 v9x_hsw_mip_align(v9x_u32 value, v9x_u32 unit)
+{
+    return (value + unit - 1ul) & ~(unit - 1ul);
+}
+
+v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
+                                 v9x_u8 levels, v9x_u8 bytes_per_texel,
+                                 struct v9x_hsw_miptree *tree)
+{
+    v9x_u32 w = (v9x_u32)width;
+    v9x_u32 h = (v9x_u32)height;
+    v9x_u32 x = 0ul;
+    v9x_u32 y = 0ul;
+    v9x_u32 total_width;
+    v9x_u32 longest;
+    v9x_u32 reachable = 1ul;
+    v9x_u32 image_height;
+    v9x_u32 level;
+
+    if (tree == 0 || width == 0u || height == 0u || levels == 0u ||
+        levels > V9X_HSW_MIP_LEVELS_MAX || bytes_per_texel == 0u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    longest = w > h ? w : h;
+    while ((longest >> reachable) != 0ul) {
+        ++reachable;
+    }
+    if ((v9x_u32)levels > reachable) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    /* Level 1 and level 2 side by side can be wider than level 0. */
+    total_width = w;
+    if (levels > 1u) {
+        v9x_u32 w1 = w > 1ul ? w >> 1 : 1ul;
+        v9x_u32 w2 = w1 > 1ul ? w1 >> 1 : 1ul;
+        v9x_u32 pair = v9x_hsw_mip_align(w1, V9X_HSW_MIP_ALIGN_W);
+
+        if (levels > 2u) {
+            pair += v9x_hsw_mip_align(w2, V9X_HSW_MIP_ALIGN_W);
+        }
+        if (pair > total_width) {
+            total_width = pair;
+        }
+    }
+    tree->pitch = v9x_hsw_mip_align(total_width * bytes_per_texel,
+                                    V9X_HSW_MIP_PITCH_ALIGN);
+    tree->rows = 0ul;
+
+    /* The rule as Mesa's brw_miptree_layout_2d states it: after level 1
+     * step right by its aligned width, after every other level step down
+     * by its aligned height. The last level placed need not be the lowest,
+     * so the rows are the deepest any level reaches. */
+    for (level = 0ul; level < (v9x_u32)levels; ++level) {
+        tree->level_offset[level] = y * tree->pitch + x * bytes_per_texel;
+        image_height = v9x_hsw_mip_align(h, V9X_HSW_MIP_ALIGN_H);
+        if (y + image_height > tree->rows) {
+            tree->rows = y + image_height;
+        }
+        if (level == 1ul) {
+            x += v9x_hsw_mip_align(w, V9X_HSW_MIP_ALIGN_W);
+        } else {
+            y += image_height;
+        }
+        w = w > 1ul ? w >> 1 : 1ul;
+        h = h > 1ul ? h >> 1 : 1ul;
+    }
+    return V9X_STATUS_OK;
+}
+
 /* SAMPLER_STATE (Vol 2d): DW0 mip 21:20, mag 19:17, min 16:14; DW1 min
  * LOD 31:20, max LOD 19:8; DW2 border colour pointer 31:5; DW3 raw. */
 v9x_status v9x_intel_hsw_sampler(v9x_u32 out[4],

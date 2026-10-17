@@ -265,6 +265,33 @@ v9x_status v9x_intel_hsw_surface_2d(v9x_u32 out[8], v9x_u16 format,
                                     v9x_u32 base, v9x_u16 width,
                                     v9x_u16 height, v9x_u32 pitch);
 
+/* A surface state surface_2d built, made to sample `levels` mips (1-16):
+ * DW5 3:0, MIP Count/LOD, levels less one. The levels must be where
+ * v9x_intel_hsw_miptree puts them. */
+v9x_status v9x_intel_hsw_surface_mips(v9x_u32 out[8], v9x_u8 levels);
+
+/*
+ * Where the sampler reads each level of a linear 2D surface (Vol 5, 2D
+ * surface layout, the i and j alignments), with the HALIGN 4 and VALIGN 2
+ * that surface_2d's zero DW0 bits encode: level 1 below level 0, level 2
+ * to the right of level 1, each later level below the one before. Every
+ * level's edge is the one before halved, down to 1. The pitch is the
+ * tree's width in bytes rounded up to 64; level_offset is each level's
+ * first byte from level 0's. levels runs from 1 to one more than log2 of
+ * the larger edge, and at most V9X_HSW_MIP_LEVELS_MAX.
+ */
+#define V9X_HSW_MIP_LEVELS_MAX 12u   /* a 2048 edge to 1 */
+
+struct v9x_hsw_miptree {
+    v9x_u32 pitch;
+    v9x_u32 rows;
+    v9x_u32 level_offset[V9X_HSW_MIP_LEVELS_MAX];
+};
+
+v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
+                                 v9x_u8 levels, v9x_u8 bytes_per_texel,
+                                 struct v9x_hsw_miptree *tree);
+
 struct v9x_hsw_sampler {
     v9x_u8 mip_filter;  /* DW0 21:20 */
     v9x_u8 mag_filter;  /* DW0 19:17 */
