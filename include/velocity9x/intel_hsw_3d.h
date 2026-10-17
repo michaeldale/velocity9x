@@ -538,6 +538,15 @@ struct v9x_hsw_draw {
     v9x_u8 depth_format;
     v9x_u32 depth_pitch;
     v9x_u8 depth_only;
+    /* Render interface step 2. scissor: when set, 3DSTATE_DRAWING_RECTANGLE
+     * is the inclusive rectangle scissor_x0..x1, scissor_y0..y1 instead of
+     * the whole target; the hardware draws no pixel outside it (Vol 2b).
+     * The origin stays 0 and the depth buffer keeps the target's extent. */
+    v9x_u8 scissor;
+    v9x_u16 scissor_x0;
+    v9x_u16 scissor_y0;
+    v9x_u16 scissor_x1;
+    v9x_u16 scissor_y1;
 };
 
 /* The init batch's state with the draw's in place of the zeroed stages,

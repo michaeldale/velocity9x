@@ -879,6 +879,7 @@ static int v9x_rcs_build(int draw)
             d.depth_format = 0u;
             d.depth_pitch = 0ul;
             d.depth_only = 0u;
+            d.scissor = 0u;
             v9x_intel_hsw_batch_init(
                 &batch,
                 v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 :
@@ -1317,6 +1318,7 @@ static int v9x_shade_build(DWORD pair)
         d.depth_format = 0u;
         d.depth_pitch = 0ul;
         d.depth_only = 0u;
+        d.scissor = 0u;
         v9x_intel_hsw_batch_init(
             &batch,
             v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 : V9X_RCS_BATCH_D2),
@@ -1754,6 +1756,7 @@ static int v9x_depth_build(void)
     d.depth_format = 0u;
     d.depth_pitch = 0ul;
     d.depth_only = 0u;
+    d.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch, v9x_rcs_image_at(V9X_RCS_BATCH_D1),
                              V9X_RCS_BATCH_BYTES / 4ul);
     if (v9x_intel_hsw_draw_workload(&batch, V9X_RCS_STATE,
@@ -1967,6 +1970,7 @@ static void v9x_depth16_draw(struct v9x_hsw_draw *d, int fill)
     d->depth_format = V9X_HSW_DEPTH_D16_UNORM;
     d->depth_pitch = V9X_DEPTH16_PITCH;
     d->depth_only = fill ? 1u : 0u;
+    d->scissor = 0u;
 }
 
 static int v9x_depth16_build(void)

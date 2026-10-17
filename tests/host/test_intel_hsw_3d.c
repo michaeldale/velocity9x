@@ -538,6 +538,7 @@ static void test_phase_d_draw(void)
     draw.depth_format = 0u;
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
+    draw.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -665,6 +666,7 @@ static void test_phase_e_shade(void)
     draw.depth_format = 0u;
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
+    draw.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -744,6 +746,7 @@ static void test_phase_f1b_depth(void)
     draw.depth_format = 0u;
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
+    draw.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -810,6 +813,7 @@ static void test_phase_f2_tl(void)
     draw.depth_format = 0u;
     draw.depth_pitch = 0ul;
     draw.depth_only = 0u;
+    draw.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
                                       0x01801020ul, 7ul) == V9X_STATUS_OK);
@@ -831,6 +835,35 @@ static void test_phase_f2_tl(void)
     at = v9x_find_command(dw, batch.used, 0x78120002ul);
     CHECK(at < batch.used && dw[at + 1ul] == 0ul &&
           dw[at + 2ul] == 0x80008200ul && dw[at + 3ul] == 0ul);
+    /* Without a scissor the drawing rectangle is the target, inclusive:
+     * (639, 479). With one it is the scissor, worked by hand: x 16..319,
+     * y 8..239 gives 00080010h and 00EF013Fh; the origin stays 0. A
+     * scissor outside the target, or inverted, is refused. */
+    at = v9x_find_command(dw, batch.used, 0x79000002ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0ul &&
+          dw[at + 2ul] == 0x01df027ful && dw[at + 3ul] == 0ul);
+    draw.scissor = 1u;
+    draw.scissor_x0 = 16u;
+    draw.scissor_y0 = 8u;
+    draw.scissor_x1 = 319u;
+    draw.scissor_y1 = 239u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x79000002ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00080010ul &&
+          dw[at + 2ul] == 0x00ef013ful && dw[at + 3ul] == 0ul);
+    draw.scissor_x1 = 640u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.scissor_x1 = 15u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.scissor = 0u;
     /* A count that is not whole triangles, or TL without four
      * attributes, is refused. */
     draw.vertex_count = 10ul;
@@ -884,6 +917,7 @@ static void test_phase_f2b_depth_only(void)
     draw.depth_format = V9X_HSW_DEPTH_D16_UNORM;
     draw.depth_pitch = 128ul;
     draw.depth_only = 1u;
+    draw.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 9ul) == V9X_STATUS_OK);
@@ -896,6 +930,7 @@ static void test_phase_f2b_depth_only(void)
     /* A zero WM and PS hung the 4570 twice (Phase F2b, runs 1 and 2): the
      * fill dispatches the colour draw's shader and masks its writes. */
     draw.depth_only = 0u;
+    draw.scissor = 0u;
     v9x_intel_hsw_batch_init(&colour_batch, colour, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&colour_batch, 0x01824000ul, 0x2000ul,
                                       &draw, 0x01821028ul, 9ul) ==

@@ -7,7 +7,14 @@ copied; "continue with plan" the same day. Step 1 done on boot 19:
 textures sampled, CPU levels and a partial scissor or mask refused, and
 the tiled clear routed through the engine
 ([record](../decisions/2026-10-18-haswell-render-interface-step1.md)).
-Step 2 next.
+Step 2 done on boot 20:
+- the mask is drawn, and the scissor is the drawing rectangle;
+- Half-Life `-gl` runs on the engine in a window (332,048 batches, none
+  refused or on the CPU);
+- full screen it refuses "the selected OpenGL mode", cause not
+  established
+([record](../decisions/2026-10-18-haswell-render-interface-step2.md)).
+Next: that refusal, then the rest of step 3.
 
 Target: the i5-4570 (`8086:0412`), on the `intel-gma` family's
 `hd4600-hsw` chip, with the Direct3D engine of

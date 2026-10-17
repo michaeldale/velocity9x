@@ -132,6 +132,10 @@ typedef struct v9x_d3d_hsw_state {
     v9x_u32 depth_pitch;
     v9x_u8 depth_function;
     v9x_u8 depth_write;
+    /* Render interface step 2: the drawing rectangle, inclusive, and
+     * whether any pixel of the target is inside it. */
+    v9x_u32 scissor[4];
+    int scissor_empty;
 } V9X_D3D_HSW_STATE;
 
 /* Once per process: the ring was found where the mini-VDD put it. */
@@ -460,7 +464,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     v9x_u32 op;
 
     /* What the render interface states and this engine cannot draw exactly
-     * (d3d_hsw_map.c): CPU levels, a partial mask or scissor. */
+     * (d3d_hsw_map.c): CPU levels. */
     reason = v9x_d3d_hsw_explicit_refusal(draw);
     if (reason != V9X_D3D_HSW_REFUSE_NONE) {
         return reason;
@@ -607,6 +611,13 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     state->blend.write_disable = 0u;
     state->blend.alpha_test = 0u;
     state->blend.alpha_function_test = 0u;
+    /* An explicit draw's mask, as BLEND_STATE's write disables (the depth
+     * fill measured all four, F2b); Direct3D's draws state no mask. */
+    if (draw->explicit_state != 0ul) {
+        state->blend.write_disable =
+            v9x_d3d_hsw_write_disable(draw->write_mask);
+    }
+    state->scissor_empty = !v9x_d3d_hsw_scissor(draw, state->scissor);
     if (draw->blend_enable != 0ul) {
         state->blend.src_factor = v9x_d3d_hsw_factor(draw->src_blend);
         state->blend.dst_factor = v9x_d3d_hsw_factor(draw->dst_blend);
@@ -759,6 +770,11 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         v9x_d3d_hsw_count_refusal(reason);
         return 0;
     }
+    /* A scissor with no pixel of the target in it: every triangle is drawn,
+     * as nothing. */
+    if (state.scissor_empty) {
+        return 1;
+    }
 
     /* The blitter may still be writing this draw's texture or target, and
      * the previous draw must be done before its state is overwritten. */
@@ -789,6 +805,11 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     d.depth_format = state.depth ? V9X_HSW_DEPTH_D16_UNORM : (v9x_u8)0u;
     d.depth_pitch = state.depth_pitch;
     d.depth_only = 0u;
+    d.scissor = 1u;
+    d.scissor_x0 = (v9x_u16)state.scissor[0];
+    d.scissor_y0 = (v9x_u16)state.scissor[1];
+    d.scissor_x1 = (v9x_u16)state.scissor[2];
+    d.scissor_y1 = (v9x_u16)state.scissor[3];
 
     while (done < triangle_count) {
         count = triangle_count - done;
@@ -981,6 +1002,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     d.depth_format = V9X_HSW_DEPTH_D16_UNORM;
     d.depth_pitch = pitch;
     d.depth_only = 1u;
+    d.scissor = 0u;
     v9x_intel_hsw_batch_init(&batch,
                              v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
                              V9X_INTEL_HSW_BATCH_BYTES / 4ul);

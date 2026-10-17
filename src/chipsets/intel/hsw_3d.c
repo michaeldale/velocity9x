@@ -1422,6 +1422,12 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         v9x_intel_hsw_drawing_rectangle(batch, 0u, 0u,
                                         (v9x_u16)(V9X_HSW_INIT_WIDTH - 1u),
                                         (v9x_u16)(V9X_HSW_INIT_HEIGHT - 1u));
+    } else if (draw->scissor) {
+        /* Render interface step 2: the drawing rectangle clips every pixel
+         * (Vol 2b), so the scissor is this rectangle, with the origin 0. */
+        v9x_intel_hsw_drawing_rectangle(batch, draw->scissor_x0,
+                                        draw->scissor_y0, draw->scissor_x1,
+                                        draw->scissor_y1);
     } else {
         v9x_intel_hsw_drawing_rectangle(batch, 0u, 0u,
                                         (v9x_u16)(draw->width - 1u),
@@ -1504,6 +1510,15 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
         draw->vertex_count % 3ul != 0ul ||
         (draw->tl_vertices &&
          draw->attributes != V9X_HSW_SHADE_ATTRIBUTES)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* A scissor inside the target, not inverted: the drawing rectangle
+     * is inclusive. */
+    if (draw->scissor &&
+        (draw->scissor_x1 < draw->scissor_x0 ||
+         draw->scissor_y1 < draw->scissor_y0 ||
+         draw->scissor_x1 >= draw->width ||
+         draw->scissor_y1 >= draw->height)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     return v9x_hsw_workload(batch, state_base, state_bytes, draw,
