@@ -5,7 +5,9 @@ Phase 1's decode accepts the measured config space** (Windows 98 SE boots,
 tier-0 `enable-ok` at 640x480x8:
 `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`; config space in
 `docs\probe\hsw-4570-config-2026-10-17\`). The machine is an i5-4570 desktop
-(HD Graphics 4600, GT2, `8086:0412`). Phase 2 is next.
+(HD Graphics 4600, GT2, `8086:0412`). Phase 2's read-only MMIO snapshot is
+done (`docs\decisions\2026-10-17-haswell-phase2-read-only-mmio.md`); the
+rest continues in `intel-haswell-direct3d.md`.
 
 Why Haswell and not the i7-6700 (Skylake, Gen9) also available: the
 reasoning, with the PRM passages, is in
