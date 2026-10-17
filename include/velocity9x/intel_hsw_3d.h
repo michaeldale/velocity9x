@@ -14,8 +14,11 @@
  *
  * What is NOT here yet: field-level builders for 3DSTATE_CLIP, SF, SBE, WM
  * and PS. They have fixed lengths in the table and can be emitted raw with
- * v9x_intel_hsw_3d_emit; their fields are Phase D's first task. Nothing in
- * this file has been submitted to hardware.
+ * v9x_intel_hsw_3d_emit; their fields are Phase D's first task. Submitted
+ * to hardware on the i5-4570: the MI and blit builders (Phases B1, B2) and
+ * the initialising batch with MI_BATCH_BUFFER_START (Phase C,
+ * docs\decisions\2026-10-17-haswell-phase-c-render-ring-init.md). No
+ * primitive has been drawn.
  */
 #ifndef VELOCITY9X_INTEL_HSW_3D_H
 #define VELOCITY9X_INTEL_HSW_3D_H
@@ -331,6 +334,46 @@ v9x_status v9x_intel_hsw_xy_src_copy_blt(struct v9x_hsw_batch *batch,
                                          v9x_u16 src_pitch,
                                          v9x_u16 sx1, v9x_u16 sy1,
                                          v9x_u32 src_base);
+
+/* MI_BATCH_BUFFER_START (Vol 2b, RenderCS): opcode 31h, DWord Length 0,
+ * first level, privileged, GGTT (every flag bit 0); DW1 the address in
+ * 31:2. */
+v9x_status v9x_intel_hsw_mi_batch_buffer_start(struct v9x_hsw_batch *batch,
+                                               v9x_u32 ggtt_address);
+
+/*
+ * Phase C: the render engine's initialising batch, the "dummy context" of
+ * Vol 2c's RING_BUFFER_CTL note. Every 3D state is programmed, every
+ * indirect pointer points at valid state, and nothing is drawn. The state
+ * image's layout, in bytes from the state base, which is every base of
+ * STATE_BASE_ADDRESS but the indirect one; each offset meets its pointer's
+ * alignment (Vol 2b: 32 bytes, or 64 for SF_CLIP, blend, depth/stencil
+ * and CC).
+ */
+#define V9X_HSW_INIT_CC_VIEWPORT      ((v9x_u32)0x000ul) /* 2 dwords */
+#define V9X_HSW_INIT_SF_CLIP_VIEWPORT ((v9x_u32)0x040ul) /* 16 */
+#define V9X_HSW_INIT_SCISSOR          ((v9x_u32)0x080ul) /* 2 */
+#define V9X_HSW_INIT_BLEND            ((v9x_u32)0x0c0ul) /* 2 */
+#define V9X_HSW_INIT_DEPTH_STENCIL    ((v9x_u32)0x100ul) /* 3 */
+#define V9X_HSW_INIT_CC               ((v9x_u32)0x140ul) /* 6 */
+#define V9X_HSW_INIT_SAMPLER          ((v9x_u32)0x180ul) /* 4 */
+#define V9X_HSW_INIT_BINDING_TABLE    ((v9x_u32)0x1c0ul) /* 1 entry */
+#define V9X_HSW_INIT_NULL_SURFACE     ((v9x_u32)0x200ul) /* 8 */
+#define V9X_HSW_INIT_STATE_BYTES      ((v9x_u32)0x220ul)
+
+/* Writes the state image: everything zero but the CC viewport's maximum
+ * depth (1.0), the NULL surface and the binding table entry naming it. */
+v9x_status v9x_intel_hsw_init_state(v9x_u32 *image, v9x_u32 dwords);
+
+/* The batch, with the image at state_base (page aligned, state_bytes a
+ * whole number of pages covering the image) and the breadcrumb a
+ * post-sync qword write of done_value to done_address (qword aligned).
+ * Ends with MI_BATCH_BUFFER_END, padded to a qword. */
+v9x_status v9x_intel_hsw_init_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value);
 
 /* Walk dwords[0..count) as a batch: every command must be in the table
  * with its fixed length (or a valid variable length), the batch must end

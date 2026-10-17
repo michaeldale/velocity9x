@@ -430,6 +430,334 @@ static void v9x_bcs_run(void)
     WritePrivateProfileStringA("Bcs", "Result", "COMPLETE", V9X_HSWMM_PATH);
 }
 
+/*
+ * Phase C (/rcs): docs\plans\intel-haswell-direct3d.md. Layouts match
+ * hsw_mmio_probe.asm's HSW_RCS_* definitions. The region sits at aperture
+ * 1820000h, clear of the B2 driver's live BCS ring and status page at
+ * 1800000h-1801FFFh.
+ */
+#define V9X_RCS_DIOC         3u
+#define V9X_RCS_MAGIC        0x43525348ul
+#define V9X_RCS_OFFSET       0x01820000ul
+#define V9X_RCS_STATUS       (V9X_RCS_OFFSET + 0x1000ul)
+#define V9X_RCS_IMAGE        (V9X_RCS_OFFSET + 0x2000ul)
+#define V9X_RCS_STATE        (V9X_RCS_OFFSET + 0x4000ul)
+#define V9X_RCS_STATE_BYTES  0x2000ul
+#define V9X_RCS_BATCH_B      (V9X_RCS_IMAGE + 0x40ul)
+#define V9X_RCS_IMAGE_DW     4096ul
+#define V9X_RCS_RING_DW      64ul
+#define V9X_RCS_PAGES        7u
+#define V9X_RCS_STORE_RING   0xc0de0011ul
+#define V9X_RCS_STORE_BATCH  0xc0de0021ul
+#define V9X_RCS_STORE_RETURN 0xc0de0022ul
+#define V9X_RCS_BREADCRUMB   0xc0de0031ul
+#define V9X_RCS_STORE_AFTER  0xc0de0032ul
+
+struct v9x_rcs_request {
+    DWORD base;
+    DWORD aperture;
+    DWORD bdsm;
+    DWORD offset;
+    DWORD segments;
+    DWORD seg_dwords[3];
+    DWORD seg_wait[3];
+    DWORD seg_value[3];
+    DWORD image_dwords;
+    DWORD ring[V9X_RCS_RING_DW];
+    DWORD image[V9X_RCS_IMAGE_DW];
+};
+
+struct v9x_rcs_result {
+    DWORD magic;
+    DWORD status;
+    DWORD stage;
+    DWORD ack_before;
+    DWORD polls_ack;
+    DWORD ack_after;
+    DWORD polls_release;
+    DWORD ctl_before;
+    DWORD gfx_mode;
+    DWORD mi_mode;
+    DWORD instpm;
+    DWORD start_rb;
+    DWORD ctl_rb;
+    DWORD head_rb;
+    DWORD tail_rb;
+    DWORD polls[3];
+    DWORD heads[3];
+    DWORD acthd;
+    DWORD ipeir;
+    DWORD ipehr;
+    DWORD instdone;
+    DWORD bbaddr;
+    DWORD eir;
+    DWORD ctl_after;
+    DWORD start_after;
+    DWORD head_after;
+    DWORD tail_after;
+    DWORD cpu_readback;
+    DWORD bad_pte;
+    DWORD ptes[V9X_RCS_PAGES];
+    DWORD status_page[8];
+    DWORD segs_done;
+    DWORD reserved[64 - 49];
+};
+
+typedef char v9x_rcs_layout_matches[
+    offsetof(struct v9x_rcs_request, ring) == 60u &&
+    offsetof(struct v9x_rcs_request, image) == 316u &&
+    offsetof(struct v9x_rcs_result, polls) == 60u &&
+    offsetof(struct v9x_rcs_result, acthd) == 84u &&
+    offsetof(struct v9x_rcs_result, ptes) == 132u &&
+    offsetof(struct v9x_rcs_result, status_page) == 160u &&
+    offsetof(struct v9x_rcs_result, segs_done) == 192u &&
+    sizeof(struct v9x_rcs_result) == 256u ? 1 : -1];
+
+static struct v9x_rcs_request v9x_rcs_in;
+static struct v9x_rcs_result v9x_rcs_out;
+
+static void v9x_key(const char *section, const char *key, DWORD value);
+
+static void v9x_rcs_key(const char *key, DWORD value)
+{
+    v9x_key("Rcs", key, value);
+}
+
+/* A ring segment passes the checker as a batch once an end is appended. */
+static int v9x_rcs_check_segment(const DWORD *dw, DWORD count)
+{
+    DWORD probe[V9X_RCS_RING_DW + 2u];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    DWORD index;
+
+    for (index = 0ul; index < count; ++index) {
+        probe[index] = dw[index];
+    }
+    v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)probe, V9X_RCS_RING_DW + 2u);
+    batch.used = count;
+    v9x_intel_hsw_mi_batch_buffer_end(&batch);
+    v9x_intel_hsw_mi_noop(&batch);
+    return v9x_intel_hsw_3d_check((v9x_u32 *)probe, batch.used, &check) ==
+           V9X_STATUS_OK;
+}
+
+/*
+ * The image: batch A (one store) at its base, batch B (the initialising
+ * workload) at +40h, the state at +2000h (graphics V9X_RCS_STATE). The
+ * ring: a store; batch A then a store; batch B then a store. Each piece is
+ * built with the host-tested builders and checked before the VxD sees it.
+ */
+static int v9x_rcs_build(void)
+{
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    DWORD at;
+    DWORD seg;
+
+    v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)v9x_rcs_in.image, 16ul);
+    if (v9x_intel_hsw_mi_store_data_imm(&batch, V9X_RCS_STATUS + 8ul,
+                                        V9X_RCS_STORE_BATCH) !=
+            V9X_STATUS_OK ||
+        v9x_intel_hsw_mi_batch_buffer_end(&batch) != V9X_STATUS_OK ||
+        v9x_intel_hsw_mi_noop(&batch) != V9X_STATUS_OK ||
+        v9x_intel_hsw_3d_check((v9x_u32 *)v9x_rcs_in.image, batch.used,
+                               &check) != V9X_STATUS_OK) {
+        return 0;
+    }
+
+    v9x_intel_hsw_batch_init(&batch,
+                             (v9x_u32 *)(v9x_rcs_in.image +
+                                         (V9X_RCS_BATCH_B - V9X_RCS_IMAGE) /
+                                             4ul),
+                             (V9X_RCS_STATE - V9X_RCS_BATCH_B) / 4ul);
+    if (v9x_intel_hsw_init_workload(&batch, V9X_RCS_STATE,
+                                    V9X_RCS_STATE_BYTES,
+                                    V9X_RCS_STATUS + 16ul,
+                                    V9X_RCS_BREADCRUMB) != V9X_STATUS_OK ||
+        v9x_intel_hsw_3d_check(batch.dw, batch.used, &check) !=
+            V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_rcs_key("InitBatchDwords", batch.used);
+
+    if (v9x_intel_hsw_init_state(
+            (v9x_u32 *)(v9x_rcs_in.image +
+                        (V9X_RCS_STATE - V9X_RCS_IMAGE) / 4ul),
+            V9X_RCS_STATE_BYTES / 4ul) != V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_rcs_in.image_dwords = V9X_RCS_IMAGE_DW;
+
+    v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)v9x_rcs_in.ring,
+                             V9X_RCS_RING_DW);
+    v9x_intel_hsw_mi_store_data_imm(&batch, V9X_RCS_STATUS,
+                                    V9X_RCS_STORE_RING);
+    v9x_rcs_in.seg_dwords[0] = batch.used;
+    v9x_rcs_in.seg_wait[0] = 0ul;
+    v9x_rcs_in.seg_value[0] = V9X_RCS_STORE_RING;
+    at = batch.used;
+    v9x_intel_hsw_mi_batch_buffer_start(&batch, V9X_RCS_IMAGE);
+    v9x_intel_hsw_mi_store_data_imm(&batch, V9X_RCS_STATUS + 12ul,
+                                    V9X_RCS_STORE_RETURN);
+    v9x_rcs_in.seg_dwords[1] = batch.used - at;
+    v9x_rcs_in.seg_wait[1] = 12ul;
+    v9x_rcs_in.seg_value[1] = V9X_RCS_STORE_RETURN;
+    at = batch.used;
+    v9x_intel_hsw_mi_batch_buffer_start(&batch, V9X_RCS_BATCH_B);
+    v9x_intel_hsw_mi_store_data_imm(&batch, V9X_RCS_STATUS + 24ul,
+                                    V9X_RCS_STORE_AFTER);
+    v9x_rcs_in.seg_dwords[2] = batch.used - at;
+    v9x_rcs_in.seg_wait[2] = 24ul;
+    v9x_rcs_in.seg_value[2] = V9X_RCS_STORE_AFTER;
+    v9x_rcs_in.segments = 3ul;
+    if (batch.overflow != 0u) {
+        return 0;
+    }
+    at = 0ul;
+    for (seg = 0ul; seg < v9x_rcs_in.segments; ++seg) {
+        if ((v9x_rcs_in.seg_dwords[seg] & 1ul) != 0ul ||
+            !v9x_rcs_check_segment(v9x_rcs_in.ring + at,
+                                   v9x_rcs_in.seg_dwords[seg])) {
+            return 0;
+        }
+        at += v9x_rcs_in.seg_dwords[seg];
+    }
+    return 1;
+}
+
+static void v9x_rcs_publish(void)
+{
+    char key[16];
+    DWORD index;
+    DWORD seen;
+
+    v9x_rcs_key("Status", v9x_rcs_out.status);
+    v9x_rcs_key("Stage", v9x_rcs_out.stage);
+    v9x_rcs_key("BadPte", v9x_rcs_out.bad_pte);
+    v9x_rcs_key("CpuReadback", v9x_rcs_out.cpu_readback);
+    v9x_rcs_key("AckBefore", v9x_rcs_out.ack_before);
+    v9x_rcs_key("PollsToAck", v9x_rcs_out.polls_ack);
+    v9x_rcs_key("GfxMode", v9x_rcs_out.gfx_mode);
+    v9x_rcs_key("MiMode", v9x_rcs_out.mi_mode);
+    v9x_rcs_key("Instpm", v9x_rcs_out.instpm);
+    v9x_rcs_key("CtlBefore", v9x_rcs_out.ctl_before);
+    v9x_rcs_key("StartReadback", v9x_rcs_out.start_rb);
+    v9x_rcs_key("CtlReadback", v9x_rcs_out.ctl_rb);
+    v9x_rcs_key("HeadReadback", v9x_rcs_out.head_rb);
+    v9x_rcs_key("TailReadback", v9x_rcs_out.tail_rb);
+    v9x_rcs_key("SegmentsDone", v9x_rcs_out.segs_done);
+    for (index = 0ul; index < 3ul; ++index) {
+        lstrcpyA(key, "Polls1");
+        key[5] = (char)('1' + index);
+        v9x_rcs_key(key, v9x_rcs_out.polls[index]);
+        lstrcpyA(key, "Head1");
+        key[4] = (char)('1' + index);
+        v9x_rcs_key(key, v9x_rcs_out.heads[index]);
+    }
+    v9x_rcs_key("Acthd", v9x_rcs_out.acthd);
+    v9x_rcs_key("Ipeir", v9x_rcs_out.ipeir);
+    v9x_rcs_key("Ipehr", v9x_rcs_out.ipehr);
+    v9x_rcs_key("Instdone", v9x_rcs_out.instdone);
+    v9x_rcs_key("Bbaddr", v9x_rcs_out.bbaddr);
+    v9x_rcs_key("Eir", v9x_rcs_out.eir);
+    v9x_rcs_key("CtlAfter", v9x_rcs_out.ctl_after);
+    v9x_rcs_key("StartAfter", v9x_rcs_out.start_after);
+    v9x_rcs_key("HeadAfter", v9x_rcs_out.head_after);
+    v9x_rcs_key("TailAfter", v9x_rcs_out.tail_after);
+    v9x_rcs_key("PollsToRelease", v9x_rcs_out.polls_release);
+    v9x_rcs_key("AckAfter", v9x_rcs_out.ack_after);
+    for (index = 0ul; index < V9X_RCS_PAGES; ++index) {
+        lstrcpyA(key, "Pte0");
+        key[3] = (char)('0' + index);
+        v9x_rcs_key(key, v9x_rcs_out.ptes[index]);
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        lstrcpyA(key, "StatusPage0");
+        key[10] = (char)('0' + index);
+        v9x_rcs_key(key, v9x_rcs_out.status_page[index]);
+    }
+
+    /* One verdict per store, in the order the engine meets them. */
+    seen = 0ul;
+    if (v9x_rcs_out.status_page[0] == V9X_RCS_STORE_RING) {
+        seen |= 1ul;
+    }
+    if (v9x_rcs_out.status_page[2] == V9X_RCS_STORE_BATCH) {
+        seen |= 2ul;
+    }
+    if (v9x_rcs_out.status_page[3] == V9X_RCS_STORE_RETURN) {
+        seen |= 4ul;
+    }
+    if (v9x_rcs_out.status_page[4] == V9X_RCS_BREADCRUMB &&
+        v9x_rcs_out.status_page[5] == 0ul) {
+        seen |= 8ul;
+    }
+    if (v9x_rcs_out.status_page[6] == V9X_RCS_STORE_AFTER) {
+        seen |= 16ul;
+    }
+    v9x_rcs_key("StoresSeen", seen);
+    WritePrivateProfileStringA("Rcs", "Forcewake",
+        (v9x_rcs_out.status & 0x400ul) != 0ul ? "borrowed-from-driver" :
+        (v9x_rcs_out.status & 0x8000ul) != 0ul ? "requested" : "none",
+        V9X_HSWMM_PATH);
+    WritePrivateProfileStringA("Rcs", "Verdict",
+        seen == 31ul ? "init-workload-ran" :
+        (seen & 1ul) == 0ul ? "ring-store-missing" :
+        (seen & 6ul) != 6ul ? "batch-not-run" :
+        (seen & 8ul) == 0ul ? "breadcrumb-missing" : "after-store-missing",
+        V9X_HSWMM_PATH);
+}
+
+static void v9x_rcs_run(void)
+{
+    HANDLE device;
+    DWORD returned;
+    BOOL ok;
+
+    WritePrivateProfileStringA("Rcs", 0, 0, V9X_HSWMM_PATH);
+    v9x_rcs_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_rcs_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
+    v9x_rcs_in.bdsm = v9x_config_read(V9X_INTEL_HSW_CFG_BDSM);
+    v9x_rcs_in.offset = V9X_RCS_OFFSET;
+    v9x_rcs_key("Aperture", v9x_rcs_in.aperture);
+    v9x_rcs_key("Offset", v9x_rcs_in.offset);
+    if (!v9x_rcs_build()) {
+        WritePrivateProfileStringA("Rcs", "Result", "COMMANDS-REFUSED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_rcs_key("Segment1Dwords", v9x_rcs_in.seg_dwords[0]);
+    v9x_rcs_key("Segment2Dwords", v9x_rcs_in.seg_dwords[1]);
+    v9x_rcs_key("Segment3Dwords", v9x_rcs_in.seg_dwords[2]);
+
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA("Rcs", "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    ok = DeviceIoControl(device, V9X_RCS_DIOC, &v9x_rcs_in,
+                         sizeof(v9x_rcs_in), &v9x_rcs_out,
+                         sizeof(v9x_rcs_out), &returned, 0);
+    if (!ok) {
+        v9x_rcs_key("DiocError", GetLastError());
+    }
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_rcs_out) ||
+        v9x_rcs_out.magic != V9X_RCS_MAGIC) {
+        v9x_rcs_key("DiocOk", (DWORD)ok);
+        v9x_rcs_key("DiocReturned", returned);
+        v9x_rcs_key("DiocMagic", v9x_rcs_out.magic);
+        WritePrivateProfileStringA("Rcs", "Result", "DIOC-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_rcs_publish();
+    WritePrivateProfileStringA("Rcs", "Result", "COMPLETE", V9X_HSWMM_PATH);
+}
+
 static DWORD v9x_config_read(DWORD offset)
 {
     DWORD saved;
@@ -647,6 +975,17 @@ void __stdcall V9xHswMmioEntry(void)
         WritePrivateProfileStringA("Report", "Access", "bcs-ring-phase-b1",
                                    V9X_HSWMM_PATH);
         v9x_bcs_run();
+        WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                   V9X_HSWMM_PATH);
+        WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+        ExitProcess(0u);
+    }
+
+    /* /rcs is Phase C alone, likewise. */
+    if (v9x_has_switch("/rcs")) {
+        WritePrivateProfileStringA("Report", "Access", "rcs-ring-phase-c",
+                                   V9X_HSWMM_PATH);
+        v9x_rcs_run();
         WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);

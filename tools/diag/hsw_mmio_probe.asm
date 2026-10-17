@@ -232,6 +232,106 @@ HSW_BO_CPU_READBACK     equ 96
 HSW_BO_BAD_PTE          equ 100
 HSW_BO_PTES             equ 104
 
+; Phase C: the render ring (docs\plans\intel-haswell-direct3d.md). DIOC
+; code 3. The ring takes up to three segments, each ending in a store the
+; probe waits for; the image (batches, then the indirect state) is copied
+; to region + 2000h. B1's BCS procedure above is left as it was measured.
+HSW_DIOC_RCS            equ 3
+HSW_RCS_MAGIC           equ 43525348h ; "HSRC"
+HSW_RCS_IN_BASE         equ 0
+HSW_RCS_IN_APERTURE     equ 4
+HSW_RCS_IN_BDSM         equ 8
+HSW_RCS_IN_OFFSET       equ 12
+HSW_RCS_IN_SEGMENTS     equ 16
+HSW_RCS_IN_SEG_DWORDS   equ 20        ; 3 dwords
+HSW_RCS_IN_SEG_WAIT     equ 32        ; 3 status-page byte offsets
+HSW_RCS_IN_SEG_VALUE    equ 44        ; 3 values
+HSW_RCS_IN_IMAGE_DWORDS equ 56
+HSW_RCS_IN_RING         equ 60
+HSW_RCS_IN_IMAGE        equ 316
+HSW_RCS_RING_MAX        equ 64
+HSW_RCS_IMAGE_MAX       equ 4096
+HSW_RCS_SEG_MAX         equ 3
+HSW_RCS_IN_BYTES        equ (HSW_RCS_IN_IMAGE + HSW_RCS_IMAGE_MAX * 4)
+HSW_RCS_PAGES           equ 7         ; ring, status, image 4, over-fetch 1
+HSW_RCS_MAP_BYTES       equ 7000h
+HSW_RCS_STATUS_OFF      equ 1000h
+HSW_RCS_IMAGE_OFF       equ 2000h
+HSW_RCS_POLLS           equ 1000000
+
+; RCS ring registers (Vol 2c), ACTHD, IPEIR, IPEHR, INSTDONE, BBADDR and
+; EIR at i915's offsets; GFX_MODE, MI_MODE and INSTPM are read, not written.
+HSW_RCS_TAIL            equ 02030h
+HSW_RCS_HEAD            equ 02034h
+HSW_RCS_START           equ 02038h
+HSW_RCS_CTL             equ 0203ch
+HSW_RCS_IPEIR           equ 02064h
+HSW_RCS_IPEHR           equ 02068h
+HSW_RCS_INSTDONE        equ 0206ch
+HSW_RCS_ACTHD           equ 02074h
+HSW_RCS_MI_MODE         equ 0209ch
+HSW_RCS_EIR             equ 020b0h
+HSW_RCS_INSTPM          equ 020c0h
+HSW_RCS_BBADDR          equ 02140h
+HSW_RCS_GFX_MODE        equ 0229ch
+
+HSW_RCS_ST_PTES_OK      equ 00000001h
+HSW_RCS_ST_CPU_OK       equ 00000002h
+HSW_RCS_ST_FW_ACKED     equ 00000004h
+HSW_RCS_ST_RING_PROGRAMMED equ 00000008h
+HSW_RCS_ST_SEG1         equ 00000010h ; SEG2 20h, SEG3 40h
+HSW_RCS_ST_TORN_DOWN    equ 00000080h
+HSW_RCS_ST_FW_RELEASED  equ 00000100h
+HSW_RCS_ST_MAP_FAILED   equ 00000200h
+HSW_RCS_ST_FW_BORROWED  equ 00000400h
+HSW_RCS_ST_RING_WAS_ON  equ 00000800h
+HSW_RCS_ST_TIMEOUT      equ 00001000h
+HSW_RCS_ST_BAD_INPUT    equ 00002000h
+HSW_RCS_ST_FW_TIMEOUT   equ 00004000h
+HSW_RCS_ST_FW_REQUESTED equ 00008000h
+
+; Output: 64 dwords, offsets in bytes, matching struct v9x_rcs_result in
+; hsw_mmio_probe_win32.c.
+HSW_RCS_OUT_DWORDS      equ 64
+HSW_RO_STATUS           equ 4
+HSW_RO_STAGE            equ 8
+HSW_RO_ACK_BEFORE       equ 12
+HSW_RO_POLLS_ACK        equ 16
+HSW_RO_ACK_AFTER        equ 20
+HSW_RO_POLLS_RELEASE    equ 24
+HSW_RO_CTL_BEFORE       equ 28
+HSW_RO_GFX_MODE         equ 32
+HSW_RO_MI_MODE          equ 36
+HSW_RO_INSTPM           equ 40
+HSW_RO_START_RB         equ 44
+HSW_RO_CTL_RB           equ 48
+HSW_RO_HEAD_RB          equ 52
+HSW_RO_TAIL_RB          equ 56
+HSW_RO_POLLS            equ 60        ; 3 dwords
+HSW_RO_HEADS            equ 72        ; 3 dwords
+HSW_RO_ACTHD            equ 84
+HSW_RO_IPEIR            equ 88
+HSW_RO_IPEHR            equ 92
+HSW_RO_INSTDONE         equ 96
+HSW_RO_BBADDR           equ 100
+HSW_RO_EIR              equ 104
+HSW_RO_CTL_AFTER        equ 108
+HSW_RO_START_AFTER      equ 112
+HSW_RO_HEAD_AFTER       equ 116
+HSW_RO_TAIL_AFTER       equ 120
+HSW_RO_CPU_READBACK     equ 124
+HSW_RO_BAD_PTE          equ 128
+HSW_RO_PTES             equ 132       ; 7 dwords
+HSW_RO_STATUS_PAGE      equ 160       ; 8 dwords
+HSW_RO_SEGS_DONE        equ 192
+
+HswRcsOut     dd HSW_RCS_MAGIC
+              dd (HSW_RCS_OUT_DWORDS - 1) dup (0)
+HswRcsIn      dd (HSW_RCS_IN_BYTES / 4) dup (0)
+HswRcsRegion  dd 0
+HswRcsSeg     dd 0
+HswRcsTailBytes dd 0
+
 HswBcsOut     dd HSW_BCS_MAGIC
               dd (HSW_BCS_HEADER_DWORDS - 1) dup (0)
 HswBcsScratch dd HSW_BCS_SCRATCH_DWORDS dup (0)
@@ -868,6 +968,394 @@ Hsw_Bcs_Dioc_Fail:
     ret
 EndProc Hsw_Bcs_Dioc
 
+; EBP = MMIO, EBX = target tail, EDX = region offset of the expected
+; store, EAX in = expected value. Polls until RCS HEAD reaches the tail and
+; the store has landed. Returns ECX = polls, CF set on timeout.
+BeginProc Hsw_Rcs_Wait
+    push    esi
+    push    edi
+    mov     edi, eax
+    mov     esi, HswRcsRegion
+    add     esi, edx
+    xor     ecx, ecx
+Hsw_Rcs_Wait_Next:
+    mov     eax, [ebp+HSW_RCS_HEAD]
+    and     eax, HSW_RING_HEAD_MASK
+    cmp     eax, ebx
+    jne     short Hsw_Rcs_Wait_Again
+    cmp     [esi], edi
+    je      short Hsw_Rcs_Wait_Done
+Hsw_Rcs_Wait_Again:
+    inc     ecx
+    cmp     ecx, HSW_RCS_POLLS
+    jb      short Hsw_Rcs_Wait_Next
+    pop     edi
+    pop     esi
+    stc
+    ret
+Hsw_Rcs_Wait_Done:
+    pop     edi
+    pop     esi
+    clc
+    ret
+EndProc Hsw_Rcs_Wait
+
+; Phase C, stages 1-9 as the plan lists them. Stage 9 (tear down) runs
+; whenever the ring was programmed; forcewake is released only if this
+; procedure requested it. A hold found already in place (the B2 driver's)
+; is used and left alone.
+BeginProc Hsw_Rcs
+    pushad
+    mov     HswRcsRegion, 0
+    mov     HswRcsSeg, 0
+    mov     HswRcsTailBytes, 0
+
+    ; Input bounds: 1-3 segments of an even, non-zero dword count within
+    ; the ring copy, status offsets dword-aligned inside the status page,
+    ; an image that fits, a 4 KB-aligned region, a 4 MB-aligned GTTMMADR.
+    mov     ecx, HswRcsIn[HSW_RCS_IN_SEGMENTS]
+    test    ecx, ecx
+    jz      Hsw_Rcs_Bad_Input
+    cmp     ecx, HSW_RCS_SEG_MAX
+    ja      Hsw_Rcs_Bad_Input
+    xor     ebx, ebx
+    xor     edx, edx
+Hsw_Rcs_Check_Seg:
+    mov     eax, HswRcsIn[HSW_RCS_IN_SEG_DWORDS+edx*4]
+    test    eax, eax
+    jz      Hsw_Rcs_Bad_Input
+    test    eax, 1
+    jnz     Hsw_Rcs_Bad_Input
+    add     ebx, eax
+    mov     eax, HswRcsIn[HSW_RCS_IN_SEG_WAIT+edx*4]
+    test    eax, 3
+    jnz     Hsw_Rcs_Bad_Input
+    cmp     eax, HSW_RCS_STATUS_OFF
+    jae     Hsw_Rcs_Bad_Input
+    inc     edx
+    cmp     edx, ecx
+    jb      short Hsw_Rcs_Check_Seg
+    cmp     ebx, HSW_RCS_RING_MAX
+    ja      Hsw_Rcs_Bad_Input
+    cmp     HswRcsIn[HSW_RCS_IN_IMAGE_DWORDS], HSW_RCS_IMAGE_MAX
+    ja      Hsw_Rcs_Bad_Input
+    test    HswRcsIn[HSW_RCS_IN_OFFSET], 0fffh
+    jnz     Hsw_Rcs_Bad_Input
+    mov     eax, HswRcsIn[HSW_RCS_IN_BASE]
+    test    eax, eax
+    jz      Hsw_Rcs_Bad_Input
+    test    eax, HSW_BASE_ALIGN
+    jnz     Hsw_Rcs_Bad_Input
+
+    VMMcall _MapPhysToLinear,<eax,HSW_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Rcs_Map_Failed
+    mov     HswMmio, eax
+    mov     ebp, eax
+    mov     eax, HswRcsIn[HSW_RCS_IN_BASE]
+    add     eax, HSW_GTT_OFFSET
+    VMMcall _MapPhysToLinear,<eax,HSW_GTT_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Rcs_Map_Failed
+    mov     HswGttLinear, eax
+
+    ; Stage 1: every page's PTE is valid and maps BDSM + offset.
+    mov     HswRcsOut[HSW_RO_STAGE], 1
+    mov     HswRcsOut[HSW_RO_BAD_PTE], 0ffffffffh
+    mov     esi, HswGttLinear
+    mov     eax, HswRcsIn[HSW_RCS_IN_OFFSET]
+    shr     eax, 12
+    lea     esi, [esi+eax*4]
+    mov     ebx, HswRcsIn[HSW_RCS_IN_BDSM]
+    and     ebx, HSW_BCS_STOLEN_MASK
+    add     ebx, HswRcsIn[HSW_RCS_IN_OFFSET]
+    or      ebx, 1
+    xor     ecx, ecx
+    xor     edi, edi
+Hsw_Rcs_Pte_Next:
+    mov     eax, [esi+ecx*4]
+    mov     dword ptr HswRcsOut[HSW_RO_PTES+ecx*4], eax
+    and     eax, HSW_BCS_PTE_MASK
+    cmp     eax, ebx
+    je      short Hsw_Rcs_Pte_Ok
+    test    edi, edi
+    jnz     short Hsw_Rcs_Pte_Ok
+    mov     HswRcsOut[HSW_RO_BAD_PTE], ecx
+    inc     edi
+Hsw_Rcs_Pte_Ok:
+    add     ebx, 1000h
+    inc     ecx
+    cmp     ecx, HSW_RCS_PAGES
+    jb      short Hsw_Rcs_Pte_Next
+    test    edi, edi
+    jnz     Hsw_Rcs_Exit
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_PTES_OK
+
+    ; Stage 2: the CPU reaches the region through the aperture; then all
+    ; of it is zeroed (MI_NOOP in the ring, 0 in the status page and the
+    ; over-fetch page) and the image copied in.
+    mov     HswRcsOut[HSW_RO_STAGE], 2
+    mov     eax, HswRcsIn[HSW_RCS_IN_APERTURE]
+    add     eax, HswRcsIn[HSW_RCS_IN_OFFSET]
+    VMMcall _MapPhysToLinear,<eax,HSW_RCS_MAP_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Rcs_Map_Failed
+    mov     HswRcsRegion, eax
+    mov     edi, eax
+    mov     dword ptr [edi], HSW_BCS_CPU_PATTERN
+    mov     dword ptr [edi+HSW_RCS_IMAGE_OFF], HSW_BCS_CPU_PATTERN
+    mov     eax, [edi]
+    mov     HswRcsOut[HSW_RO_CPU_READBACK], eax
+    cmp     eax, HSW_BCS_CPU_PATTERN
+    jne     Hsw_Rcs_Exit
+    cmp     dword ptr [edi+HSW_RCS_IMAGE_OFF], HSW_BCS_CPU_PATTERN
+    jne     Hsw_Rcs_Exit
+    cld
+    xor     eax, eax
+    mov     ecx, (HSW_RCS_MAP_BYTES / 4)
+    rep     stosd
+    mov     esi, OFFSET32 HswRcsIn + HSW_RCS_IN_IMAGE
+    mov     edi, HswRcsRegion
+    add     edi, HSW_RCS_IMAGE_OFF
+    mov     ecx, HswRcsIn[HSW_RCS_IN_IMAGE_DWORDS]
+    rep     movsd
+    mov     edi, HswRcsRegion
+    cmp     dword ptr [edi], 0
+    jne     Hsw_Rcs_Exit
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_CPU_OK
+
+    ; Stage 3: forcewake. Held already: use it, release nothing.
+    mov     HswRcsOut[HSW_RO_STAGE], 3
+    pushfd
+    cli
+    mov     eax, [ebp+HSW_FW_ACK]
+    mov     HswRcsOut[HSW_RO_ACK_BEFORE], eax
+    test    eax, HSW_FW_ACK_BIT
+    jz      short Hsw_Rcs_Fw_Write
+    popfd
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_FW_BORROWED
+    jmp     short Hsw_Rcs_Ring
+Hsw_Rcs_Fw_Write:
+    mov     dword ptr [ebp+HSW_FW_REQUEST], HSW_FW_SET
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_FW_REQUESTED
+    xor     ecx, ecx
+Hsw_Rcs_Fw_Poll:
+    mov     eax, [ebp+HSW_FW_ACK]
+    test    eax, HSW_FW_ACK_BIT
+    jnz     short Hsw_Rcs_Fw_Acked
+    inc     ecx
+    cmp     ecx, HSW_FW_POLLS
+    jb      short Hsw_Rcs_Fw_Poll
+    popfd
+    mov     HswRcsOut[HSW_RO_POLLS_ACK], ecx
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_FW_TIMEOUT
+    jmp     Hsw_Rcs_Release
+Hsw_Rcs_Fw_Acked:
+    popfd
+    mov     HswRcsOut[HSW_RO_POLLS_ACK], ecx
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_FW_ACKED
+
+    ; Stage 4: the render ring must be off; the mode registers are read
+    ; for the record; then HEAD, TAIL, START, CTL, read back.
+Hsw_Rcs_Ring:
+    mov     HswRcsOut[HSW_RO_STAGE], 4
+    mov     eax, [ebp+HSW_RCS_GFX_MODE]
+    mov     HswRcsOut[HSW_RO_GFX_MODE], eax
+    mov     eax, [ebp+HSW_RCS_MI_MODE]
+    mov     HswRcsOut[HSW_RO_MI_MODE], eax
+    mov     eax, [ebp+HSW_RCS_INSTPM]
+    mov     HswRcsOut[HSW_RO_INSTPM], eax
+    mov     eax, [ebp+HSW_RCS_CTL]
+    mov     HswRcsOut[HSW_RO_CTL_BEFORE], eax
+    test    eax, 1
+    jz      short Hsw_Rcs_Program
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_RING_WAS_ON
+    jmp     Hsw_Rcs_Release
+Hsw_Rcs_Program:
+    mov     dword ptr [ebp+HSW_RCS_HEAD], 0
+    mov     dword ptr [ebp+HSW_RCS_TAIL], 0
+    mov     eax, HswRcsIn[HSW_RCS_IN_OFFSET]
+    mov     [ebp+HSW_RCS_START], eax
+    mov     dword ptr [ebp+HSW_RCS_CTL], HSW_RING_CTL_ONE_PAGE
+    mov     eax, [ebp+HSW_RCS_START]
+    mov     HswRcsOut[HSW_RO_START_RB], eax
+    mov     eax, [ebp+HSW_RCS_CTL]
+    mov     HswRcsOut[HSW_RO_CTL_RB], eax
+    mov     eax, [ebp+HSW_RCS_HEAD]
+    mov     HswRcsOut[HSW_RO_HEAD_RB], eax
+    mov     eax, [ebp+HSW_RCS_TAIL]
+    mov     HswRcsOut[HSW_RO_TAIL_RB], eax
+    mov     eax, HswRcsOut[HSW_RO_START_RB]
+    cmp     eax, HswRcsIn[HSW_RCS_IN_OFFSET]
+    jne     Hsw_Rcs_Teardown
+    mov     eax, HswRcsOut[HSW_RO_CTL_RB]
+    and     eax, HSW_RING_CTL_CHECK
+    cmp     eax, HSW_RING_CTL_ONE_PAGE
+    jne     Hsw_Rcs_Teardown
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_RING_PROGRAMMED
+
+    ; Stages 5-7: each segment is copied after the last, the tail moved
+    ; past it, and its store waited for. A timeout stops the rest.
+Hsw_Rcs_Seg_Next:
+    mov     ecx, HswRcsSeg
+    cmp     ecx, HswRcsIn[HSW_RCS_IN_SEGMENTS]
+    jae     Hsw_Rcs_Record
+    lea     eax, [ecx+5]
+    mov     HswRcsOut[HSW_RO_STAGE], eax
+    mov     edx, HswRcsIn[HSW_RCS_IN_SEG_DWORDS+ecx*4]
+    mov     esi, OFFSET32 HswRcsIn + HSW_RCS_IN_RING
+    add     esi, HswRcsTailBytes
+    mov     edi, HswRcsRegion
+    add     edi, HswRcsTailBytes
+    push    ecx
+    mov     ecx, edx
+    cld
+    rep     movsd
+    pop     ecx
+    shl     edx, 2
+    add     edx, HswRcsTailBytes
+    mov     HswRcsTailBytes, edx
+    mov     [ebp+HSW_RCS_TAIL], edx
+    mov     ebx, edx
+    mov     edx, HswRcsIn[HSW_RCS_IN_SEG_WAIT+ecx*4]
+    add     edx, HSW_RCS_STATUS_OFF
+    mov     eax, HswRcsIn[HSW_RCS_IN_SEG_VALUE+ecx*4]
+    push    ecx
+    call    Hsw_Rcs_Wait
+    mov     eax, ecx
+    pop     ecx
+    mov     HswRcsOut[HSW_RO_POLLS+ecx*4], eax
+    mov     eax, [ebp+HSW_RCS_HEAD]
+    mov     HswRcsOut[HSW_RO_HEADS+ecx*4], eax
+    jc      short Hsw_Rcs_Seg_Timeout
+    mov     eax, HSW_RCS_ST_SEG1
+    shl     eax, cl
+    or      HswRcsOut[HSW_RO_STATUS], eax
+    inc     HswRcsSeg
+    jmp     Hsw_Rcs_Seg_Next
+Hsw_Rcs_Seg_Timeout:
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_TIMEOUT
+
+    ; Stage 8: record the engine and the status page, also after a timeout.
+Hsw_Rcs_Record:
+    mov     eax, HswRcsSeg
+    mov     HswRcsOut[HSW_RO_SEGS_DONE], eax
+    mov     HswRcsOut[HSW_RO_STAGE], 8
+    mov     eax, [ebp+HSW_RCS_ACTHD]
+    mov     HswRcsOut[HSW_RO_ACTHD], eax
+    mov     eax, [ebp+HSW_RCS_IPEIR]
+    mov     HswRcsOut[HSW_RO_IPEIR], eax
+    mov     eax, [ebp+HSW_RCS_IPEHR]
+    mov     HswRcsOut[HSW_RO_IPEHR], eax
+    mov     eax, [ebp+HSW_RCS_INSTDONE]
+    mov     HswRcsOut[HSW_RO_INSTDONE], eax
+    mov     eax, [ebp+HSW_RCS_BBADDR]
+    mov     HswRcsOut[HSW_RO_BBADDR], eax
+    mov     eax, [ebp+HSW_RCS_EIR]
+    mov     HswRcsOut[HSW_RO_EIR], eax
+    cld
+    mov     esi, HswRcsRegion
+    add     esi, HSW_RCS_STATUS_OFF
+    mov     edi, OFFSET32 HswRcsOut + HSW_RO_STATUS_PAGE
+    mov     ecx, 8
+    rep     movsd
+
+    ; Stage 9: ring off and cleared, read back.
+Hsw_Rcs_Teardown:
+    mov     HswRcsOut[HSW_RO_STAGE], 9
+    mov     dword ptr [ebp+HSW_RCS_CTL], 0
+    mov     dword ptr [ebp+HSW_RCS_HEAD], 0
+    mov     dword ptr [ebp+HSW_RCS_TAIL], 0
+    mov     dword ptr [ebp+HSW_RCS_START], 0
+    mov     eax, [ebp+HSW_RCS_CTL]
+    mov     HswRcsOut[HSW_RO_CTL_AFTER], eax
+    mov     eax, [ebp+HSW_RCS_START]
+    mov     HswRcsOut[HSW_RO_START_AFTER], eax
+    mov     eax, [ebp+HSW_RCS_HEAD]
+    mov     HswRcsOut[HSW_RO_HEAD_AFTER], eax
+    mov     eax, [ebp+HSW_RCS_TAIL]
+    mov     HswRcsOut[HSW_RO_TAIL_AFTER], eax
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_TORN_DOWN
+
+    ; Forcewake back only if stage 3 asked for it.
+Hsw_Rcs_Release:
+    test    HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_FW_REQUESTED
+    jz      short Hsw_Rcs_Exit
+    pushfd
+    cli
+    mov     dword ptr [ebp+HSW_FW_REQUEST], HSW_FW_CLEAR
+    xor     ecx, ecx
+Hsw_Rcs_Release_Poll:
+    mov     eax, [ebp+HSW_FW_ACK]
+    test    eax, HSW_FW_ACK_BIT
+    jz      short Hsw_Rcs_Released
+    inc     ecx
+    cmp     ecx, HSW_FW_POLLS
+    jb      short Hsw_Rcs_Release_Poll
+    popfd
+    jmp     short Hsw_Rcs_Release_Done
+Hsw_Rcs_Released:
+    popfd
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_FW_RELEASED
+Hsw_Rcs_Release_Done:
+    mov     HswRcsOut[HSW_RO_POLLS_RELEASE], ecx
+    mov     HswRcsOut[HSW_RO_ACK_AFTER], eax
+    jmp     short Hsw_Rcs_Exit
+
+Hsw_Rcs_Bad_Input:
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_BAD_INPUT
+    jmp     short Hsw_Rcs_Exit
+Hsw_Rcs_Map_Failed:
+    or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_MAP_FAILED
+Hsw_Rcs_Exit:
+    popad
+    ret
+EndProc Hsw_Rcs
+
+; ESI = DIOCParams. Copies the input, runs Hsw_Rcs, copies the result.
+BeginProc Hsw_Rcs_Dioc
+    pushad
+    mov     ebx, esi
+    mov     esi, [ebx.lpvInBuffer]
+    test    esi, esi
+    jz      short Hsw_Rcs_Dioc_Fail
+    cmp     [ebx.cbInBuffer], HSW_RCS_IN_BYTES
+    jb      short Hsw_Rcs_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short Hsw_Rcs_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], HSW_RCS_OUT_DWORDS * 4
+    jb      short Hsw_Rcs_Dioc_Fail
+
+    cld
+    mov     edi, OFFSET32 HswRcsIn
+    mov     ecx, HSW_RCS_IN_BYTES / 4
+    rep     movsd
+    mov     edi, OFFSET32 HswRcsOut + 4
+    mov     ecx, HSW_RCS_OUT_DWORDS - 1
+    xor     eax, eax
+    rep     stosd
+
+    call    Hsw_Rcs
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 HswRcsOut
+    mov     ecx, HSW_RCS_OUT_DWORDS
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short Hsw_Rcs_Dioc_Done
+    mov     dword ptr [eax], HSW_RCS_OUT_DWORDS * 4
+Hsw_Rcs_Dioc_Done:
+    popad
+    xor     eax, eax
+    ret
+Hsw_Rcs_Dioc_Fail:
+    popad
+    mov     eax, 1
+    ret
+EndProc Hsw_Rcs_Dioc
+
 BeginProc Hsw_Reset_Result
     pushad
     mov     edi, OFFSET32 HswResult + 4
@@ -891,6 +1379,11 @@ BeginProc Hsw_W32_DeviceIoControl
     call    Hsw_Bcs_Dioc
     ret
 Hsw_Dioc_Not_Bcs:
+    cmp     ecx, HSW_DIOC_RCS
+    jne     short Hsw_Dioc_Not_Rcs
+    call    Hsw_Rcs_Dioc
+    ret
+Hsw_Dioc_Not_Rcs:
     cmp     ecx, HSW_DIOC_CAPTURE
     jne     Hsw_Dioc_Fail
 

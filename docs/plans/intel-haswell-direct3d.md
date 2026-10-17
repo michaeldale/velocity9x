@@ -9,7 +9,9 @@ blit pitch is bytes; the top megabyte of stolen memory is not CPU-writable
 the same day: the driver runs DirectDraw fills and copies on BCS at 8, 16
 and 32 bpp, pixel-exact, through VBE mode sets and a `reset`; Close is not
 yet measured (`docs\decisions\2026-10-17-haswell-phase-b2-directdraw-on-bcs.md`).
-C next. The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
+Phase C done the same day: the render ring ran the initialising batch through
+`MI_BATCH_BUFFER_START`, and its `PIPE_CONTROL` breadcrumb landed with EIR 0
+(`docs\decisions\2026-10-17-haswell-phase-c-render-ring-init.md`). D next. The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
 read-only MMIO and GTT snapshot in hand
@@ -268,6 +270,92 @@ the whole session.
 RCS ring, then the dummy context of Vol 7's table submitted once, then a
 `PIPE_CONTROL` post-sync write as the breadcrumb. No draw yet. Measures
 whether the render engine accepts a complete state and returns.
+
+**Phase C design (2026-10-17, started on "Do phase c").** What Vol 2c asks
+for is narrower than a context image. `RING_BUFFER_CTL`'s programming note
+says the first enable of the render ring must "dispatch workload (dummy
+context) to initialize render engine with default state", with "indirect
+pointers used in 3D states" pointing at valid memory. The Vol 7 table is
+the save layout for `MI_SET_CONTEXT`, which this ladder does not use. Ring
+buffer scheduling without hardware contexts is how i915 ran Gen7 before
+contexts existed. So the deliverable is an initialising batch, built and
+host-tested as pure C, run once from a probe exactly as B1 ran BCS.
+
+*Where.* `HSWMM.VXD` DIOC 3, `V9XHSWMM.EXE /rcs`, from the desktop, with
+the B2 driver running. B1's BCS code is left as measured; the RCS
+procedure is its own.
+
+*Placement.* Aperture `1820000h`, clear of the driver's live BCS ring and
+status page (`1800000h`-`1801FFFh`) and of B1's old scratch:
+
+| Region | Offset | Size |
+|---|---|---|
+| ring | `+0000h` | 4 KB |
+| status | `+1000h` | 4 KB |
+| batches | `+2000h` | 8 KB |
+| indirect state (all four bases) | `+4000h` | 8 KB |
+| over-fetch page (Vol 2b, `MI_BATCH_BUFFER_START`) | `+6000h` | 4 KB |
+
+*Stages,* each gated on the one before:
+
+1. The seven PTEs are valid and linear from BDSM.
+2. The CPU path works through the aperture. Then the ring is filled with
+   `MI_NOOP`, the status page with 0, and the batches and state copied in.
+3. Forcewake. The B2 driver already holds it (`A188h` = 1). The probe
+   uses that hold and releases nothing it did not request. If nobody holds
+   it, the probe requests it as Phase A did and releases it at the end.
+4. Read `RCS CTL` (`203Ch`) and require 0. Read `GFX_MODE` (`229Ch`),
+   `MI_MODE` (`209Ch`) and `INSTPM` (`20C0h`) for the record, writing
+   none of them. Then program HEAD, TAIL, START and CTL as B1 did, and read
+   them back.
+5. **A store from the ring.** `MI_STORE_DATA_IMM` `C0DE0011h` to status
+   + 0. Shows RCS fetches and executes at all.
+6. **A trivial batch.** `MI_BATCH_BUFFER_START` (Vol 2b: opcode `31h`,
+   length 0, first level, privileged, GGTT) to a batch holding one store
+   (`C0DE0021h`, status + 8) and `MI_BATCH_BUFFER_END`; then a ring store
+   of `C0DE0022h` (status + 12). Shows the batch mechanism and the return.
+7. **The initialising batch,** then a ring store of `C0DE0032h` (status +
+   24). The batch, in order:
+   - `PIPELINE_SELECT` 3D, a CS-stall `PIPE_CONTROL`;
+   - `STATE_BASE_ADDRESS`, all bases at the state region, with bounds;
+     then a `PIPE_CONTROL` invalidating the state, constant, texture and
+     instruction caches;
+   - push constants VS 0-8 KB and PS 8-16 KB, with HS, DS and GS at size 0;
+   - URB VS from 16 KB, 64 entries of 64 bytes (GT2's minimum, Vol 2b
+     `3DSTATE_URB_VS`); HS, DS and GS 0 entries;
+   - VS, HS, TE, DS, GS and STREAMOUT disabled; CLIP, SF, SBE, WM and PS
+     all zero. Nothing is dispatched without a primitive, and none is sent;
+   - `3DSTATE_DEPTH_BUFFER` NULL (D32_FLOAT), `3DSTATE_MULTISAMPLE` one
+     sample, `SAMPLE_MASK` 1, `CONSTANT_PS` empty, a drawing rectangle at
+     640x480;
+   - pointers to valid zeroed state: CC and SF/CLIP viewports, scissor,
+     blend, depth/stencil, CC, the PS binding table (one NULL surface) and
+     the PS sampler;
+   - Vol 2b's required end of a 3D batch: `PIPE_CONTROL` RT flush with CS
+     stall, `3DSTATE_CC_STATE_POINTERS`, `PIPE_CONTROL` RT flush with CS
+     stall;
+   - the breadcrumb: a CS-stall and scoreboard `PIPE_CONTROL`, then a
+     `PIPE_CONTROL` with a post-sync write of `C0DE0031h` to status + 16
+     (GGTT, qword);
+   - `MI_BATCH_BUFFER_END`.
+8. Record, also after a timeout: HEAD, ACTHD (`2074h`), IPEIR (`2064h`),
+   IPEHR (`2068h`), INSTDONE (`206Ch`), BBADDR (`2140h`), EIR (`20B0h`),
+   and the status page's first 8 dwords.
+9. Tear down, always: CTL 0, then HEAD, TAIL and START 0, read back.
+   Forcewake is released only if stage 3 requested it.
+
+The CC, blend and depth/stencil pointers set bit 0. Vol 2b prints it as a
+reserved "MB0" bit; Mesa writes `offset | 1` there on Gen7, and that is
+the reading taken.
+
+*Writes:* the four RCS ring registers, set and then returned to 0;
+`A188h` only if nobody held forcewake; memory only inside the region. No
+GFX_MODE, MI_MODE, INSTPM, display or GTT write. The BCS ring is never
+touched.
+
+*Failure* costs a `reset`. A render engine left busy does not touch the
+display (the VBE mode on pipe A) or the BCS ring, which keeps running the
+desktop's DirectDraw blits.
 
 ### D. First triangle
 

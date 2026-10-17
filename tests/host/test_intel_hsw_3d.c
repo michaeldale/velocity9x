@@ -300,9 +300,121 @@ static void test_blits_by_depth(void)
     CHECK(check.commands == 5ul);
 }
 
+/* Each init-state offset meets its pointer's alignment (Vol 2b). */
+typedef char v9x_hsw_init_offsets_aligned[
+    (V9X_HSW_INIT_SF_CLIP_VIEWPORT & 63ul) == 0ul &&
+    (V9X_HSW_INIT_BLEND & 63ul) == 0ul &&
+    (V9X_HSW_INIT_DEPTH_STENCIL & 63ul) == 0ul &&
+    (V9X_HSW_INIT_CC & 63ul) == 0ul &&
+    (V9X_HSW_INIT_CC_VIEWPORT & 31ul) == 0ul &&
+    (V9X_HSW_INIT_SCISSOR & 31ul) == 0ul &&
+    (V9X_HSW_INIT_SAMPLER & 31ul) == 0ul &&
+    (V9X_HSW_INIT_BINDING_TABLE & 31ul) == 0ul &&
+    (V9X_HSW_INIT_NULL_SURFACE & 31ul) == 0ul ? 1 : -1];
+
+/*
+ * Phase C: MI_BATCH_BUFFER_START and the render engine's initialising
+ * batch (docs\plans\intel-haswell-direct3d.md). Expected values worked
+ * from Vol 2b and Vol 2d by hand: the start is opcode 31h with length 0
+ * and no flags; the NULL surface is SURFTYPE_NULL (7) at 31:29 with
+ * B8G8R8A8_UNORM (0C0h) at 26:18.
+ */
+static void test_phase_c_init(void)
+{
+    v9x_u32 dw[512];
+    v9x_u32 image[V9X_HSW_INIT_STATE_BYTES / 4ul];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    v9x_u32 at;
+    v9x_u32 index;
+    v9x_u32 primitives;
+
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_mi_batch_buffer_start(&batch, 0x01822000ul) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 2ul && dw[0] == 0x18800000ul &&
+          dw[1] == 0x01822000ul);
+    CHECK(v9x_intel_hsw_mi_batch_buffer_start(&batch, 0x01822002ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(batch.used == 2ul);
+    CHECK(v9x_intel_hsw_mi_batch_buffer_end(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_noop(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK &&
+          check.commands == 2ul);
+    /* Any flag (PPGTT 8, non-privileged 13, second level 22) is refused. */
+    dw[0] = 0x18800100ul;
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) ==
+              V9X_STATUS_INVALID_STATE &&
+          check.result == V9X_HSW_CHECK_UNKNOWN_COMMAND);
+    dw[0] = 0x18c00000ul;
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) ==
+          V9X_STATUS_INVALID_STATE);
+
+    CHECK(v9x_intel_hsw_init_state(image, V9X_HSW_INIT_STATE_BYTES / 4ul) ==
+          V9X_STATUS_OK);
+    CHECK(image[V9X_HSW_INIT_CC_VIEWPORT / 4ul] == 0ul &&
+          image[V9X_HSW_INIT_CC_VIEWPORT / 4ul + 1ul] == 0x3f800000ul);
+    CHECK(image[V9X_HSW_INIT_NULL_SURFACE / 4ul] == 0xe3000000ul);
+    CHECK(image[V9X_HSW_INIT_BINDING_TABLE / 4ul] ==
+          V9X_HSW_INIT_NULL_SURFACE);
+    CHECK(image[V9X_HSW_INIT_BLEND / 4ul] == 0ul &&
+          image[V9X_HSW_INIT_CC / 4ul] == 0ul);
+    CHECK(v9x_intel_hsw_init_state(image, 8ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x2000ul,
+                                      0x01821010ul, 0xc0de0031ul) ==
+          V9X_STATUS_OK);
+    CHECK(batch.overflow == 0u);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    /* PIPELINE_SELECT 3D, one PIPE_CONTROL, then STATE_BASE_ADDRESS with
+     * the state region as every base but the indirect one. */
+    CHECK(dw[0] == 0x69040000ul);
+    CHECK(dw[1] == 0x7a000003ul);
+    CHECK(dw[6] == 0x61010008ul && dw[7] == 0x01824001ul &&
+          dw[8] == 0x01824001ul && dw[9] == 0x01824001ul &&
+          dw[10] == 0x00000001ul && dw[11] == 0x01824001ul);
+    CHECK(dw[13] == 0x01826001ul && dw[15] == 0x01826001ul);
+    /* It ends: breadcrumb PIPE_CONTROL, MI_BATCH_BUFFER_END, padding. */
+    at = batch.used - 1ul;
+    if (dw[at] == 0ul) {
+        --at;
+    }
+    CHECK(dw[at] == 0x05000000ul);
+    CHECK(at >= 5ul && dw[at - 5ul] == 0x7a000003ul &&
+          dw[at - 4ul] == (V9X_HSW_PC_CS_STALL | V9X_HSW_PC_WRITE_IMMEDIATE |
+                           V9X_HSW_PC_GGTT) &&
+          dw[at - 3ul] == 0x01821010ul && dw[at - 2ul] == 0xc0de0031ul);
+    /* No draw. */
+    primitives = 0ul;
+    for (index = 0ul; index < batch.used; ++index) {
+        if (dw[index] == 0x7b000005ul) {
+            ++primitives;
+        }
+    }
+    CHECK(primitives == 0ul);
+    /* The breadcrumb is a qword write; the bases are page aligned. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x2000ul,
+                                      0x01821014ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824800ul, 0x2000ul,
+                                      0x01821010ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x100ul,
+                                      0x01821010ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_intel_hsw_batch_init(&batch, dw, 32ul);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x2000ul,
+                                      0x01821010ul, 1ul) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_phase_c_init();
     test_headers();
     test_state();
     test_batch_and_check();

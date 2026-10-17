@@ -13,6 +13,7 @@
 #define V9X_HSW_MI_BATCH_BUFFER_END ((v9x_u32)(0x0aul << 23))
 #define V9X_HSW_MI_STORE_DATA_IMM   ((v9x_u32)(0x20ul << 23))
 #define V9X_HSW_MI_LOAD_REGISTER_IMM ((v9x_u32)(0x22ul << 23))
+#define V9X_HSW_MI_BATCH_BUFFER_START ((v9x_u32)(0x31ul << 23))
 #define V9X_HSW_MI_USE_GGTT         ((v9x_u32)0x00400000ul) /* bit 22 */
 
 /* Variable-length commands are 1 + per * n dwords. */
@@ -223,6 +224,22 @@ v9x_status v9x_intel_hsw_mi_load_register_imm(struct v9x_hsw_batch *batch,
     dw[1] = offset;
     dw[2] = value;
     return v9x_hsw_mi(batch, dw, 3ul);
+}
+
+/* Two dwords, every flag clear: first level, privileged, GGTT. A GGTT
+ * batch must be privileged for its MI_STORE_DATA_IMM and post-sync writes
+ * to be allowed (Vol 2b, Non-Privileged bit 13). */
+v9x_status v9x_intel_hsw_mi_batch_buffer_start(struct v9x_hsw_batch *batch,
+                                               v9x_u32 ggtt_address)
+{
+    v9x_u32 dw[2];
+
+    if ((ggtt_address & 3ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    dw[0] = V9X_HSW_MI_BATCH_BUFFER_START;
+    dw[1] = ggtt_address;
+    return v9x_hsw_mi(batch, dw, 2ul);
 }
 
 /* Pipeline Selection 1:0 = 0, the 3D pipeline. */
@@ -738,6 +755,9 @@ v9x_status v9x_intel_hsw_3d_check(const v9x_u32 *dwords, v9x_u32 count,
                 length = 4ul;
             } else if (mi == 0x22ul && (header & 0xfful) == 1ul) {
                 length = 3ul;
+            } else if (header == V9X_HSW_MI_BATCH_BUFFER_START) {
+                /* Only the flag-free form the builder emits. */
+                length = 2ul;
             } else {
                 return v9x_hsw_refuse(check, V9X_HSW_CHECK_UNKNOWN_COMMAND,
                                       at, header);
@@ -791,4 +811,202 @@ v9x_status v9x_intel_hsw_3d_check(const v9x_u32 *dwords, v9x_u32 count,
         ++check->commands;
     }
     return v9x_hsw_refuse(check, V9X_HSW_CHECK_NO_END, at, 0ul);
+}
+
+/* Phase C state values. */
+#define V9X_HSW_FLOAT_ONE            ((v9x_u32)0x3f800000ul)
+#define V9X_HSW_DEPTH_FORMAT_D32_FLOAT ((v9x_u32)1ul) /* Vol 2b 20:18 */
+#define V9X_HSW_POINTER_MBO          ((v9x_u32)1ul)
+#define V9X_HSW_NO_BOUND             ((v9x_u32)0xfffff000ul)
+#define V9X_HSW_PAGE_MASK            ((v9x_u32)0x00000ffful)
+#define V9X_HSW_INIT_WIDTH           ((v9x_u16)640u)
+#define V9X_HSW_INIT_HEIGHT          ((v9x_u16)480u)
+
+/*
+ * GT2's push constant space is 16 KB (Vol 2b 3DSTATE_PUSH_CONSTANT_ALLOC_*:
+ * offset 0-15 KB, size 0-16 KB). VS and PS take 8 KB each, HS, DS and GS
+ * none, Mesa's Gen7 split. The URB starts after it, in 8 KB units, so at
+ * 2. The VS URB takes 64 entries of one 512-bit row: GT2's minimum is 64
+ * ("[64,1664]", divisible by 8 below 9 rows). HS, DS and GS get 0 entries,
+ * valid while they are disabled, starting after VS's 4 KB.
+ */
+#define V9X_HSW_INIT_PUSH_KB         ((v9x_u8)8u)
+#define V9X_HSW_INIT_URB_START       ((v9x_u8)2u)
+#define V9X_HSW_INIT_URB_NEXT        ((v9x_u8)3u)
+#define V9X_HSW_INIT_VS_ENTRIES      ((v9x_u16)64u)
+
+v9x_status v9x_intel_hsw_init_state(v9x_u32 *image, v9x_u32 dwords)
+{
+    v9x_u32 index;
+
+    if (image == 0 || dwords < V9X_HSW_INIT_STATE_BYTES / 4ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (index = 0ul; index < dwords; ++index) {
+        image[index] = 0ul;
+    }
+    /* CC_VIEWPORT (Vol 2d): minimum depth 0.0, maximum depth 1.0. */
+    image[V9X_HSW_INIT_CC_VIEWPORT / 4ul + 1ul] = V9X_HSW_FLOAT_ONE;
+    /* A NULL RENDER_SURFACE_STATE, the format Mesa gives its null
+     * surface; binding table entry 0 is its offset from the surface state
+     * base, which is the state base. */
+    image[V9X_HSW_INIT_NULL_SURFACE / 4ul] =
+        ((v9x_u32)V9X_HSW_SURFTYPE_NULL << 29) |
+        ((v9x_u32)V9X_HSW_FMT_B8G8R8A8_UNORM << 18);
+    image[V9X_HSW_INIT_BINDING_TABLE / 4ul] = V9X_HSW_INIT_NULL_SURFACE;
+    return V9X_STATUS_OK;
+}
+
+/* One table command with an all-zero payload of its fixed length. */
+static v9x_status v9x_hsw_emit_zero(struct v9x_hsw_batch *batch,
+                                    v9x_u16 command)
+{
+    static const v9x_u32 zero[13] = { 0ul };
+
+    return v9x_intel_hsw_3d_emit(batch, command, zero,
+                                 (v9x_u32)v9x_hsw_commands[command].total -
+                                     1ul);
+}
+
+/*
+ * The order is i915's and Mesa's: pipeline, bases, URB, stages, then the
+ * pointers. Every PIPE_CONTROL with CS stall also sets one of the bits
+ * Vol 7 requires beside it (RT flush, scoreboard stall or a post-sync
+ * operation). Vol 2b's MI_BATCH_BUFFER_START note fixes the end of every
+ * 3D batch: CC pointers, then an RT-flush CS-stall PIPE_CONTROL. The
+ * breadcrumb follows a CS-stall scoreboard PIPE_CONTROL, as i915 orders a
+ * Gen7 post-sync write.
+ */
+v9x_status v9x_intel_hsw_init_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value)
+{
+    static const v9x_u16 disabled[6] = {
+        V9X_HSW_CMD_VS, V9X_HSW_CMD_HS, V9X_HSW_CMD_TE,
+        V9X_HSW_CMD_DS, V9X_HSW_CMD_GS, V9X_HSW_CMD_STREAMOUT
+    };
+    static const v9x_u16 zeroed[8] = {
+        V9X_HSW_CMD_CLIP, V9X_HSW_CMD_SF, V9X_HSW_CMD_SBE, V9X_HSW_CMD_WM,
+        V9X_HSW_CMD_PS, V9X_HSW_CMD_MULTISAMPLE, V9X_HSW_CMD_CONSTANT_PS,
+        V9X_HSW_CMD_COUNT
+    };
+    v9x_u32 depth[6];
+    v9x_u32 bound;
+    v9x_u32 mask;
+    v9x_u32 index;
+    v9x_status status;
+
+    if (batch == 0 || (state_base & V9X_HSW_PAGE_MASK) != 0ul ||
+        (state_bytes & V9X_HSW_PAGE_MASK) != 0ul ||
+        state_bytes < V9X_HSW_INIT_STATE_BYTES ||
+        (done_address & 7ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    bound = state_base + state_bytes;
+    status = V9X_STATUS_OK;
+
+    v9x_intel_hsw_pipeline_select_3d(batch);
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);
+    v9x_intel_hsw_state_base_address(batch, state_base, state_base,
+                                     state_base, 0ul, state_base,
+                                     V9X_HSW_NO_BOUND, bound,
+                                     V9X_HSW_NO_BOUND, bound);
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_STALL_AT_SCOREBOARD |
+                               V9X_HSW_PC_STATE_CACHE_INVALIDATE |
+                               V9X_HSW_PC_CONST_CACHE_INVALIDATE |
+                               V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE |
+                               V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE,
+                               0ul, 0ul);
+
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_VS, 0u,
+                                      V9X_HSW_INIT_PUSH_KB);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_HS,
+                                      V9X_HSW_INIT_PUSH_KB, 0u);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_DS,
+                                      V9X_HSW_INIT_PUSH_KB, 0u);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_GS,
+                                      V9X_HSW_INIT_PUSH_KB, 0u);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_PS,
+                                      V9X_HSW_INIT_PUSH_KB,
+                                      V9X_HSW_INIT_PUSH_KB);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_VS, V9X_HSW_INIT_URB_START, 0u,
+                      V9X_HSW_INIT_VS_ENTRIES);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_HS, V9X_HSW_INIT_URB_NEXT, 0u,
+                      0u);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_DS, V9X_HSW_INIT_URB_NEXT, 0u,
+                      0u);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_GS, V9X_HSW_INIT_URB_NEXT, 0u,
+                      0u);
+
+    for (index = 0ul; index < 6ul; ++index) {
+        v9x_intel_hsw_stage_disabled(batch, disabled[index]);
+    }
+    for (index = 0ul; zeroed[index] != V9X_HSW_CMD_COUNT; ++index) {
+        v9x_hsw_emit_zero(batch, zeroed[index]);
+    }
+
+    /* A NULL depth buffer: SURFTYPE_NULL 31:29, D32_FLOAT 20:18. */
+    for (index = 0ul; index < 6ul; ++index) {
+        depth[index] = 0ul;
+    }
+    depth[0] = ((v9x_u32)V9X_HSW_SURFTYPE_NULL << 29) |
+               (V9X_HSW_DEPTH_FORMAT_D32_FLOAT << 18);
+    v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_DEPTH_BUFFER, depth, 6ul);
+    mask = 1ul;
+    v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_SAMPLE_MASK, &mask, 1ul);
+    v9x_intel_hsw_drawing_rectangle(batch, 0u, 0u,
+                                    (v9x_u16)(V9X_HSW_INIT_WIDTH - 1u),
+                                    (v9x_u16)(V9X_HSW_INIT_HEIGHT - 1u));
+
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_VIEWPORT_PTRS_CC,
+                                V9X_HSW_INIT_CC_VIEWPORT);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_VIEWPORT_PTRS_SF_CLIP,
+                                V9X_HSW_INIT_SF_CLIP_VIEWPORT);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_SCISSOR_PTRS,
+                                V9X_HSW_INIT_SCISSOR);
+    /* Bit 0 of these three is printed "MB0" in Vol 2b; Mesa writes 1. */
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BLEND_PTRS,
+                                V9X_HSW_INIT_BLEND | V9X_HSW_POINTER_MBO);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_DEPTH_STENCIL_PTRS,
+                                V9X_HSW_INIT_DEPTH_STENCIL |
+                                    V9X_HSW_POINTER_MBO);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
+                                V9X_HSW_INIT_CC | V9X_HSW_POINTER_MBO);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BINDING_TABLE_PTRS_PS,
+                                V9X_HSW_INIT_BINDING_TABLE);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_SAMPLER_PTRS_PS,
+                                V9X_HSW_INIT_SAMPLER);
+
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
+                               V9X_HSW_PC_CS_STALL, 0ul, 0ul);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
+                                V9X_HSW_INIT_CC | V9X_HSW_POINTER_MBO);
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
+                               V9X_HSW_PC_CS_STALL, 0ul, 0ul);
+
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_WRITE_IMMEDIATE | V9X_HSW_PC_GGTT,
+                               done_address, done_value);
+    v9x_intel_hsw_mi_batch_buffer_end(batch);
+    if ((batch->used & 1ul) != 0ul) {
+        v9x_intel_hsw_mi_noop(batch);
+    }
+
+    /* Each builder above refuses only on overflow with these arguments,
+     * and overflow is sticky, so one test covers them all. */
+    if (batch->overflow != 0u) {
+        status = V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    return status;
 }
