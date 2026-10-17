@@ -183,6 +183,82 @@ and has nothing to do with BCS. The command bytes come from
 submission; `XY_COLOR_BLT` (client 2, opcode `50h`, length 4, Vol 2b) gets
 its builder and a host test as part of this work.
 
+**Phase B2 design, for approval (2026-10-17).** DirectDraw fills and copies
+on BCS inside the driver, built on exactly what B1 measured
+(`docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md`). Software
+Direct3D, no flips through the ring, no async submission: those are later
+and separate.
+
+*Family entry.* `intel-gma` gains one chip, `hd4600-hsw`, `8086:0412`
+exactly (one family per vendor; other Haswell IDs only once one has been
+measured). VBE mode switching as tier-0 today, `Acceleration =
+directdraw-fill-blt`, a new engine type `INTEL_GEN75` (value 9 in
+`engine_abi.h`, with `family.ps1`, `d3d_select.c`, `ddhal_core.c` and
+`test_family_matrix.c` updated together), EngineCaps `SOLID_FILL` and
+`SCREEN_COPY`. Its own hw16 device (`hsw_hw16.c`) beside the Gen3 ones;
+none of the Gen3 engine, arm or ring code is reachable from it, and the
+Gen3 device-id gates are left as they are.
+
+*Ring 0: two new mini-VDD verbs*, Haswell-only and separate from the
+Gen3 ring verbs:
+
+- **Hsw_Engine_Open**, from the hw16 `fill_engine_descriptor`: map
+  GTTMMADR (MMIO and GTT halves) and the reserve through GMADR; then B1's
+  stages 1-4 unchanged - check the reserve's PTEs, check the CPU path,
+  take forcewake, program BCS. Returns the MMIO, ring and status linear
+  addresses, or a numbered refusal naming the stage and the values it
+  compared.
+- **Hsw_Engine_Close**, from Disable: B1's stage 8 - ring off and cleared,
+  forcewake released.
+
+*Reserve*, the B1 region: ring at aperture `1800000h`, 4 KB (the length
+measured; the ring plan already wraps), status page at `1801000h`. Above
+the 16 MB the DirectDraw heap uses, below the top megabyte that refused
+CPU writes. The heap is unchanged.
+
+*Forcewake for the engine's lifetime.* Taken at open, released at close.
+The GT then never enters RC6 while the desktop runs - a power cost on a
+desktop machine, chosen over a forcewake handshake around every TAIL write
+from ring 3. Whether per-submission forcewake is needed or possible is a
+later measurement, not this phase.
+
+*HAL: `eng_hsw.c`*, a `V9X_ENGINE32_OPS` table selected for
+`INTEL_GEN75`, shaped like `eng_i9xx.c`:
+
+- `fill`: `XY_COLOR_BLT` at the surface's depth (BR13 colour depth 00 8
+  bpp, 01 565, 11 32 bpp; byte mask only at 32 bpp), pitch in bytes.
+- `copy`: `XY_SRC_COPY_BLT` (client 2, opcode `53h`, 8 dwords, Vol 2b),
+  overlapping rectangles refused to the CPU path as Gen3 does. Its pitch
+  fields carry the same "in DWords" text the fill disproved; the first
+  boot measures it.
+- Each submission ends with `MI_STORE_DATA_IMM` of a sequence number into
+  the status page (the store B1 measured). `wait_idle` polls that number,
+  bounded; running out marks the engine failed and every later blit takes
+  the CPU path. No reset.
+- Commands from `hsw_3d.c`'s builders; `XY_SRC_COPY_BLT` gets a builder
+  and a host test.
+
+*Failure is tier-0.* Any open refusal leaves the engine unadvertised and
+the desktop exactly as it is today, with the refusal code in `V9XHW.INI`.
+
+*The first boot answers, in order*, all from the desktop:
+
+1. `V9XHW.INI` / `V9XBOOT.INI`: engine open accepted, the refusal code if
+   not.
+2. `V9XDDP.EXE`: DirectDraw fills and copies at 640x480x8 with the HAL's
+   own readback against a CPU reference; `V9XTRACE` snapshot counts engine
+   blits.
+3. The same at 16 and 32 bpp through `V9XMSW.EXE` mode switches, then BCS
+   ring registers read through `V9XHSWMM.EXE` (read-only) after each: does
+   a VBE mode set disturb a live BCS ring? On the 945 it did not
+   (`2026-09-12-intel-phase3-event-matrix.md`); here it is not known. The
+   full-screen DOS box is excluded, as on the netbook.
+4. A restart through `reset`, to see Close and the next Open.
+
+*What this phase writes that B1 did not:* nothing new to the GPU beyond
+more blit commands; the new thing is that it runs at every boot and for
+the whole session.
+
 ### C. The render context
 
 RCS ring, then the dummy context of Vol 7's table submitted once, then a
