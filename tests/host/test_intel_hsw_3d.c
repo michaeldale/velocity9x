@@ -236,7 +236,7 @@ static void test_phase_b1_stream(void)
                                           0xc0de0001ul) == V9X_STATUS_OK);
     CHECK(batch.used == 4ul);
     CHECK(ring[0] == 0x10400002ul && ring[2] == 0x01801000ul);
-    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 256u, 0u, 0u, 16u, 16u,
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 4u, 256u, 0u, 0u, 16u, 16u,
                                      0x01802000ul, 0x11223344ul) ==
           V9X_STATUS_OK);
     CHECK(ring[4] == 0x54300004ul);
@@ -255,9 +255,49 @@ static void test_phase_b1_stream(void)
     CHECK(v9x_intel_hsw_3d_check(ring, batch.used, &check) ==
           V9X_STATUS_OK);
 
-    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 256u, 16u, 0u, 16u, 16u,
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 4u, 256u, 16u, 0u, 16u, 16u,
                                      0ul, 0ul) ==
           V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* Phase B2's blits: fills at each depth, and an 8 bpp copy. */
+static void test_blits_by_depth(void)
+{
+    v9x_u32 ring[32];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+
+    v9x_intel_hsw_batch_init(&batch, ring, 32ul);
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 1u, 640u, 8u, 4u, 24u, 12u,
+                                     0x00000000ul, 0x000000abul) ==
+          V9X_STATUS_OK);
+    /* 8 bpp: no byte mask, depth 00b, ROP F0h. */
+    CHECK(ring[0] == 0x54000004ul && ring[1] == 0x00f00280ul);
+    CHECK(ring[2] == 0x00040008ul && ring[3] == 0x000c0018ul);
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 2u, 1280u, 0u, 0u, 1u, 1u,
+                                     0ul, 0xf800ul) == V9X_STATUS_OK);
+    CHECK(ring[6] == 0x54000004ul && ring[7] == 0x01f00500ul);
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 3u, 1920u, 0u, 0u, 1u, 1u,
+                                     0ul, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Copy 16x8 from (100,50) to (0,0), 8 bpp, both pitches 640. */
+    CHECK(v9x_intel_hsw_xy_src_copy_blt(&batch, 1u, 640u, 0u, 0u, 16u, 8u,
+                                        0x00000000ul, 640u, 100u, 50u,
+                                        0x00000000ul) == V9X_STATUS_OK);
+    CHECK(ring[12] == 0x54c00006ul && ring[13] == 0x00cc0280ul);
+    CHECK(ring[14] == 0ul && ring[15] == 0x00080010ul);
+    CHECK(ring[17] == 0x00320064ul && ring[18] == 0x00000280ul);
+    CHECK(v9x_intel_hsw_xy_src_copy_blt(&batch, 4u, 2560u, 0u, 0u, 1u, 1u,
+                                        0ul, 2560u, 0u, 0u, 0ul) ==
+          V9X_STATUS_OK);
+    CHECK(ring[20] == 0x54f00006ul && ring[21] == 0x03cc0a00ul);
+    CHECK(batch.used == 28ul);
+    CHECK(v9x_intel_hsw_mi_batch_buffer_end(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_noop(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(ring, batch.used, &check) ==
+          V9X_STATUS_OK);
+    CHECK(check.commands == 5ul);
 }
 
 unsigned int v9x_run_intel_hsw_3d_tests(void)
@@ -268,5 +308,6 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_batch_and_check();
     test_qword_rule();
     test_phase_b1_stream();
+    test_blits_by_depth();
     return failures;
 }

@@ -1637,6 +1637,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_mga;
     case V9X_DD_ENGINE_TYPE_TDFX:
         return &v9x_engine32_tdfx;
+    case V9X_DD_ENGINE_TYPE_INTEL_GEN75:
+        return &v9x_engine32_hsw;
     default:
         break;
     }

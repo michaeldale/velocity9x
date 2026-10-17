@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA (Gen3)'
-    Description = 'Intel GMA 950 on 945GSE and GMA 900 on 915GM: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine.'
+    Description = 'Intel GMA 950 on 945GSE and GMA 900 on 915GM: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. HD Graphics 4600 (Haswell): VBE display and DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -77,6 +77,38 @@
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_gma900_device')
         }
+        @{
+            # Haswell GT2 desktop, from 0.19.0. Gen7.5 shares no Gen3 path:
+            # its own hw16 device (hsw_hw16.c), its own mini-VDD verbs
+            # (HSW_ENGINE_OPEN/CLOSE) and engine type, and every family-wide
+            # Gen3 hook asks v9x_intel_is_haswell first. DirectDraw fills and
+            # copies on the BCS ring, measured as B1 on the i5-4570:
+            # docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md.
+            Id = 'hd4600-hsw'
+            Name = 'Intel HD Graphics 4600 (Haswell)'
+            VendorId = '8086'
+            DeviceId = '0412'
+            DeviceDesc = 'Velocity9x Intel HD Graphics 4600 (Haswell)'
+            Adapter = 'Intel HD Graphics 4600 (Haswell)'
+            ClockDetector = 'none'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'not-advertised'
+            EngineType = 'INTEL_GEN75'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            VideoMemoryBytes = 4194304
+            # The family's table; this VBIOS describes neither 1024x576 row
+            # and the runtime scan publishes its own modes instead.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('hsw_hw16')
+            MapSymbols = @('v9x_hsw_hd4600_device')
+        }
     )
 
     Backend = @{
@@ -120,6 +152,7 @@
             @{ Name = 'intel_3d16'; Path = 'src\display16\intel_3d16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'intel_str16'; Path = 'src\display16\intel_str16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
+            @{ Name = 'hsw_hw16'; Path = 'src\chipsets\intel\hsw\hsw_hw16.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
             @{ Name = 'intel_bridge16'; Path = 'src\display16\intel_bridge16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
@@ -175,7 +208,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE or 8086:2592 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592 or 8086:0412 exactly'
     }
 
     Vm = @{

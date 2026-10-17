@@ -116,6 +116,10 @@ $sources = @(
     # The VSA-100 2D engine: fill and copy through the host-tested builder.
     "src\display32\engines\eng_tdfx.c",
     "src\chipsets\tdfx\tdfx_2d.c",
+    # The Haswell blitter: fill and copy on the BCS ring through the
+    # host-tested builders.
+    "src\display32\engines\eng_hsw.c",
+    "src\chipsets\intel\hsw_3d.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",

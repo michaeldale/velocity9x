@@ -4,8 +4,24 @@
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
 extern const V9X_HW16_DEVICE v9x_gma900_device;
+extern const V9X_HW16_DEVICE v9x_hsw_hd4600_device;
 extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
+extern const char *v9x_hsw_engine_status_text(void);
+extern void v9x_hsw_engine_close(void);
+
+/*
+ * Haswell shares this family and none of its Gen3 machinery. Every hook in
+ * this table is family-wide, so each one that would run a Gen3 path asks
+ * this first: the Gen3 MMIO fingerprint reads 945 offsets including pipe B
+ * (the register class that hung the 945 with its pipe off), the GTT
+ * inventory expects BAR3, and the ring plan and sandbox are Gen3's layout.
+ * Inventory of those paths: docs\plans\intel-haswell-direct3d.md, Phase B2.
+ */
+static int v9x_intel_is_haswell(void)
+{
+    return v9x_hw16_active_device() == &v9x_hsw_hd4600_device;
+}
 
 /*
  * The hook tables are near and live in _TEXT, by the four-family convention
@@ -18,13 +34,33 @@ extern unsigned long v9x_gma950_reserve_video_memory(
 static void v9x_intel_publish_event_near(unsigned short kind,
                                          unsigned short context)
 {
+    /* Haswell: no Gen3 event capture; a Disable gives the BCS ring and
+     * forcewake back before the VBIOS or a DOS box has the display. */
+    if (v9x_intel_is_haswell()) {
+        if (kind == V9X_HW16_EVENT_DISABLE) {
+            v9x_hsw_engine_close();
+        }
+        return;
+    }
     v9x_intel_publish_event(kind, context);
 }
 
 static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_gma950_device,
-    &v9x_gma900_device
+    &v9x_gma900_device,
+    &v9x_hsw_hd4600_device
 };
+
+/* The Gen3 sandbox comes out of the heap; Haswell's reserve sits above the
+ * heap at aperture 1800000h, so its heap is the whole usable range. */
+static unsigned long v9x_intel_reserve_video_memory(
+    unsigned long usable_bytes, unsigned long visible_bytes)
+{
+    if (v9x_intel_is_haswell()) {
+        return usable_bytes;
+    }
+    return v9x_gma950_reserve_video_memory(usable_bytes, visible_bytes);
+}
 
 /*
  * Measured on the 1024x576 LVDS target; 0160/0161 are this VBIOS's OEM rows.
@@ -107,12 +143,17 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
      * enabled. The answer that matters is EngineStamp=, written by dd16.c when
      * the shared block is stamped.
      */
-    write("EngineStatusEnable", v9x_gma950_engine_status_text());
+    write("EngineStatusEnable", v9x_intel_is_haswell() ?
+          v9x_hsw_engine_status_text() : v9x_gma950_engine_status_text());
     if (v9x_vbe_vram_reported != 0ul) {
         v9x_intel_format_u32(number, v9x_vbe_vram_reported);
         write("VbeVramBytes", number);
     } else {
         write("VbeVramBytes", "unavailable");
+    }
+    /* The three Gen3 captures below read 945 registers and BAR3. */
+    if (v9x_intel_is_haswell()) {
+        return;
     }
     v9x_intel_publish_mmio_fingerprint();
     v9x_intel_publish_gtt_inventory();
@@ -134,10 +175,11 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     0,
     0,
-    /* Strict PCI identity: only 8086:27AE and 8086:2592 are claimed. */
+    /* Strict PCI identity: only 8086:27AE, 8086:2592 and 8086:0412 are
+     * claimed. */
     0u,
     0,
-    v9x_gma950_reserve_video_memory,
+    v9x_intel_reserve_video_memory,
     /* 1024x576x16 scans out at 2112 bytes, not 2048: see
      * docs\decisions\2026-09-25-padding-the-z-pitch-on-gen3.md. */
     1u

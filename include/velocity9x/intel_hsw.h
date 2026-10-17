@@ -120,6 +120,30 @@
 #define V9X_INTEL_HSW_LAYOUT_BGSM_MISMATCH  ((v9x_u16)0x0100u)
 #define V9X_INTEL_HSW_LAYOUT_UNASSIGNED     ((v9x_u16)0x0200u)
 
+/*
+ * The BCS reserve Phase B1 measured (docs\decisions\2026-10-17-haswell-
+ * phase-b1-bcs-ring.md): a 4 KB ring at aperture offset 1800000h and a 4 KB
+ * status page after it, above the 16 MB DirectDraw heap and below the top
+ * megabyte of stolen memory, which refused CPU writes. The mini-VDD maps
+ * both contiguously; the HAL addresses the status page as ring + ring
+ * bytes. Status dword 0 is the last sequence the blitter stored, dword 1
+ * the last the CPU submitted.
+ */
+#define V9X_INTEL_HSW_RESERVE_OFFSET ((v9x_u32)0x01800000ul)
+#define V9X_INTEL_HSW_RING_BYTES     ((v9x_u32)0x00001000ul)
+#define V9X_INTEL_HSW_STATUS_OFFSET  ((v9x_u32)0x01801000ul)
+#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00002000ul)
+#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)2ul)
+
+/* BCS ring registers (Vol 2c) and the head/tail offset fields. */
+#define V9X_INTEL_HSW_BCS_TAIL   ((v9x_u32)0x00022030ul)
+#define V9X_INTEL_HSW_BCS_HEAD   ((v9x_u32)0x00022034ul)
+#define V9X_INTEL_HSW_BCS_START  ((v9x_u32)0x00022038ul)
+#define V9X_INTEL_HSW_BCS_CTL    ((v9x_u32)0x0002203cul)
+#define V9X_INTEL_HSW_HEAD_MASK  ((v9x_u32)0x001ffffcul)
+#define V9X_INTEL_HSW_TAIL_MASK  ((v9x_u32)0x001ffff8ul)
+#define V9X_INTEL_HSW_CTL_ENABLE ((v9x_u32)0x00000001ul)
+
 struct v9x_intel_hsw_ggc {
     v9x_u32 stolen_bytes;     /* GMS * 32 MB */
     v9x_u32 gtt_stolen_bytes; /* GGMS: 0, 1 or 2 MB */

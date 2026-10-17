@@ -231,7 +231,8 @@ static void v9x_modes16_unalias(void)
 {
     WORD index;
 
-    if (v9x_hw16.unalias_pitch == 0u) {
+    if (v9x_hw16.unalias_pitch == 0u ||
+        v9x_hw16_active_device()->packed_pitch != 0u) {
         return;
     }
     for (index = 0u; index < v9x_runtime_count; ++index) {

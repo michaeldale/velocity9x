@@ -442,6 +442,7 @@ extern const V9X_ENGINE32_OPS v9x_engine32_mach64;
 extern const V9X_ENGINE32_OPS v9x_engine32_sis6326;
 extern const V9X_ENGINE32_OPS v9x_engine32_mga;
 extern const V9X_ENGINE32_OPS v9x_engine32_tdfx;
+extern const V9X_ENGINE32_OPS v9x_engine32_hsw;
 
 /* The Mach64 core eng_mach64.c owns, once the chip is validated, or null:
  * shared with d3d_mach64.c so 2D and 3D keep one FIFO account. */

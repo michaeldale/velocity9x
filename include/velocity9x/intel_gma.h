@@ -13,6 +13,12 @@
  * support.md), with no 915 in the fleet.
  */
 #define V9X_PCI_DEVICE_GMA900_915GM      ((v9x_u16)0x2592u)
+/*
+ * Haswell GT2 desktop, HD Graphics 4600: Gen7.5, none of the Gen3 command
+ * set, register layout or verbs (src\chipsets\intel\hsw\hsw_hw16.c). Measured
+ * on the i5-4570 (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md).
+ */
+#define V9X_PCI_DEVICE_HD4600_HSW        ((v9x_u16)0x0412u)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)

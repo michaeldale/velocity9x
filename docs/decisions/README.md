@@ -236,6 +236,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-17 Haswell EU and 3D encoders: the subset encoded, the PRM tables used, and SCS_ZERO as the default trap](2026-10-17-haswell-eu-and-3d-encoders.md)
 - [2026-10-17 Haswell Phase A: forcewake is acknowledged in 493 polls, and the GT reads zero because it is in RC6](2026-10-17-haswell-phase-a-forcewake.md)
 - [2026-10-17 Haswell Phase B1: the blitter runs a store and a fill from our ring; the blit pitch is bytes; the top megabyte of stolen is not CPU-writable](2026-10-17-haswell-phase-b1-bcs-ring.md)
+- [2026-10-17 Haswell Phase B2: DirectDraw fills and copies run on BCS in the driver at 8, 16 and 32 bpp; copy pitch is bytes; a VBE mode set leaves the ring alone](2026-10-17-haswell-phase-b2-directdraw-on-bcs.md)
 
 ## SiS
 

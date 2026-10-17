@@ -80,7 +80,16 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_TDFX, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        { 1, 9ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
+        /* Haswell's blitter has no Direct3D engine behind it: none, even
+         * with the bit, and software still wins. */
+        { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75,
+          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
+          V9X_D3D_SELECT_SOFTWARE },
+        { 1, 10ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },
 
         /* The publish-time case the old default got wrong: an unstamped

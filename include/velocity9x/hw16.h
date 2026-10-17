@@ -144,6 +144,16 @@ typedef struct v9x_hw16_device {
      * reports PhysBasePtr FD000000h, which is that card's BAR1 base.
      */
     unsigned short framebuffer_bar;
+
+    /*
+     * Non-zero: keep the BIOS's packed pitch even in a family whose
+     * unalias_pitch is set. Appended 2026-10-17, so every initialiser that
+     * stops before it reads zero and keeps the family's behaviour. The
+     * Haswell chip sets it: intel-gma unaliases for Gen3, and Haswell's
+     * tier-0 desktop was measured at the packed pitch with 4F06h never
+     * called (docs\decisions\2026-10-17-haswell-tier0-enable-ok.md).
+     */
+    unsigned short packed_pitch;
 } V9X_HW16_DEVICE;
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the

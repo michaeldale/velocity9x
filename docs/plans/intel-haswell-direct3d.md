@@ -5,9 +5,13 @@ the GT reads zero because it is in RC6 and is otherwise unprogrammed
 (`docs\decisions\2026-10-17-haswell-phase-a-forcewake.md`). Phase B1 done the
 same day: BCS runs a store and a fill from a ring at aperture `1800000h`; the
 blit pitch is bytes; the top megabyte of stolen memory is not CPU-writable
-(`docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md`). B2 next. The
-machine is the i5-4570 (`8086:0412`), running the `vbe` family at
-640x480x8 (`docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
+(`docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md`). Phase B2 done
+the same day: the driver runs DirectDraw fills and copies on BCS at 8, 16
+and 32 bpp, pixel-exact, through VBE mode sets and a `reset`; Close is not
+yet measured (`docs\decisions\2026-10-17-haswell-phase-b2-directdraw-on-bcs.md`).
+C next. The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
+family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
+640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
 read-only MMIO and GTT snapshot in hand
 (`docs\decisions\2026-10-17-haswell-phase2-read-only-mmio.md`).
 

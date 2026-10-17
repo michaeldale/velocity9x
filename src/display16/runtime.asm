@@ -1731,6 +1731,180 @@ V9xMiniI9xxRingDiagDone:
     pop     bp
     retf    2
 V9XMINII9XXRINGDIAG ENDP
+
+; WORD FAR PASCAL V9xPciReadHswConfig(DWORD FAR *bar0, DWORD FAR *gmadr,
+;                                     DWORD FAR *bdsm)
+;
+; Haswell's three config facts for HSW_ENGINE_OPEN, read-only: GTTMMADR (10h)
+; and GMADR (18h) as 64-bit memory BARs whose high dwords (14h, 1Ch) must be
+; zero - Windows 98 cannot reach above 4 GB - and BDSM (5Ch). The Gen3
+; readers refuse these BARs: one wants 16 MB alignment, the other a 32-bit
+; BAR2. Returns 1 with all three written, else 0 with all three zeroed.
+PUBLIC V9XPCIREADHSWCONFIG
+V9XPCIREADHSWCONFIG PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    esi
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      V9xPciReadHswConfigFailed
+    ; High dwords first: a BAR above 4 GB is refused before its low half
+    ; is read as if it were the whole address.
+    mov     di, 0014h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadHswConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadHswConfigFailed
+    or      ecx, ecx
+    jnz     V9xPciReadHswConfigFailed
+    mov     di, 001ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadHswConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadHswConfigFailed
+    or      ecx, ecx
+    jnz     V9xPciReadHswConfigFailed
+    ; GTTMMADR: memory, 64-bit type (bits 2:1 = 10b).
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadHswConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadHswConfigFailed
+    mov     al, cl
+    and     al, 7
+    cmp     al, 4
+    jne     V9xPciReadHswConfigFailed
+    mov     edx, ecx
+    and     edx, 0fffffff0h
+    ; GMADR, the same type rule.
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadHswConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadHswConfigFailed
+    mov     al, cl
+    and     al, 7
+    cmp     al, 4
+    jne     V9xPciReadHswConfigFailed
+    mov     esi, ecx
+    and     esi, 0fffffff0h
+    ; BDSM.
+    mov     di, 005ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadHswConfigFailed
+    or      ah, ah
+    jnz     short V9xPciReadHswConfigFailed
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], edx
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], ecx
+    mov     ax, 1
+    jmp     short V9xPciReadHswConfigDone
+V9xPciReadHswConfigFailed:
+    les     bx, dword ptr [bp+14]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+10]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xPciReadHswConfigDone:
+    pop     es
+    pop     di
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    12
+V9XPCIREADHSWCONFIG ENDP
+
+; WORD FAR PASCAL V9xMiniHswEngineOpen(DWORD bar0, DWORD gmadr, DWORD bdsm,
+;                                      DWORD FAR *mmio, DWORD FAR *reserve,
+;                                      WORD FAR *code)
+;
+; HSW_ENGINE_OPEN (V9XMAPI.INC). Outputs copied out of EBX/ECX/EDX before
+; any `les bx`, which would overwrite BX. With no mini-VDD API the code is
+; FFFFh.
+PUBLIC V9XMINIHSWENGINEOPEN
+V9XMINIHSWENGINEOPEN PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniHswEngineOpenNoApi
+    mov     ebx, dword ptr [bp+26]
+    mov     ecx, dword ptr [bp+22]
+    mov     edx, dword ptr [bp+18]
+    mov     eax, V9XMINI_FN_HSW_ENGINE_OPEN
+    call    dword ptr V9xMiniApiEntry
+    mov     esi, ebx
+    mov     edi, ecx
+    push    ax
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edi
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], dx
+    pop     ax
+    jmp     short V9xMiniHswEngineOpenDone
+V9xMiniHswEngineOpenNoApi:
+    les     bx, dword ptr [bp+14]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+10]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+6]
+    mov     word ptr es:[bx], 0ffffh
+    xor     ax, ax
+V9xMiniHswEngineOpenDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     bp
+    retf    24
+V9XMINIHSWENGINEOPEN ENDP
+
+; WORD FAR PASCAL V9xMiniHswEngineClose(void)
+;
+; HSW_ENGINE_CLOSE. Returns the verb's AX, or 0 with no mini-VDD API.
+PUBLIC V9XMINIHSWENGINECLOSE
+V9XMINIHSWENGINECLOSE PROC FAR
+    push    ebx
+    push    ecx
+    push    edx
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniHswEngineCloseDone
+    mov     eax, V9XMINI_FN_HSW_ENGINE_CLOSE
+    call    dword ptr V9xMiniApiEntry
+V9xMiniHswEngineCloseDone:
+    pop     edx
+    pop     ecx
+    pop     ebx
+    retf
+V9XMINIHSWENGINECLOSE ENDP
 ENDIF
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)

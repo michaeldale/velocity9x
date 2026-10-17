@@ -66,6 +66,14 @@
  * No Direct3D engine yet, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_TDFX         8ul
+/*
+ * Intel Gen7.5 (Haswell) blitter: solid fill and screen copy on the BCS ring
+ * (engines\eng_hsw.c), commands from src\chipsets\intel\hsw_3d.c. The ring,
+ * its placement and the forcewake it runs under were measured in
+ * docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md. No Direct3D
+ * engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_INTEL_GEN75  9ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

@@ -357,7 +357,7 @@ static int v9x_bcs_build(void)
     v9x_bcs_in.n1 = batch.used;
 
     v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)v9x_bcs_in.cmd2, 16ul);
-    if (v9x_intel_hsw_xy_color_blt(&batch, V9X_BCS_PITCH_FIELD, 0u, 0u,
+    if (v9x_intel_hsw_xy_color_blt(&batch, 4u, V9X_BCS_PITCH_FIELD, 0u, 0u,
                                    V9X_BCS_FILL, V9X_BCS_FILL,
                                    V9X_BCS_SCRATCH, V9X_BCS_COLOR) !=
             V9X_STATUS_OK ||

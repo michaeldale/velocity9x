@@ -19,13 +19,31 @@
  *   4 GetBltStatus(CANBLT)   the engine's validate and status read
  *   5 Blt COLORFILL          one engine fill
  *   6 Lock / read / Unlock   the drain and read-cache boundary
+ *   7 Blt COLORFILL rect +   one rectangle fill and one non-overlapping
+ *     Blt copy, same surface copy, read back against a CPU reference
  *
- * /nofill stops after step 4.
+ * /nofill stops after step 4; /nocopy after step 6.
+ *
+ * The surface takes the desktop's depth (normal cooperative level, no mode
+ * change), so a run after a mode switch exercises the engine at that depth:
+ * 8, 16 or 32 bpp. The colours are chosen so every byte of a pixel differs
+ * between them, which catches a wrong byte mask or a wrong depth field.
  */
 #define DDF_TEXT_PATH "C:\\V9XDIAG\\V9XDDF.TXT"
 #define DDF_WIDTH 64ul
 #define DDF_HEIGHT 16ul
+#define DDF_FILL_8 0x5aul
 #define DDF_FILL_565 0x07e0ul
+#define DDF_FILL_32 0x0012a5c3ul
+#define DDF_MARK_8 0xa5ul
+#define DDF_MARK_565 0xf81ful
+#define DDF_MARK_32 0x00ed5a3cul
+/* Step 7: columns [0,16) get the mark, then [0,32) is copied to [32,64),
+ * so the reference row is mark, fill, mark, fill in 16-column quarters. */
+#define DDF_MARK_COLUMNS 16ul
+#define DDF_COPY_COLUMNS 32ul
+/* DDPIXELFORMAT.dwRGBBitCount is its fourth DWORD. */
+#define DDF_PF_RGB_BIT_COUNT 3
 
 #define DDSD_CAPS 0x00000001ul
 #define DDSD_HEIGHT 0x00000002ul
@@ -161,6 +179,18 @@ static void ddf_zero(void *block, unsigned length)
     }
 }
 
+/* One pixel of a locked row at 1, 2 or 4 bytes per pixel. */
+static DWORD ddf_pixel(const BYTE *row, DWORD x, DWORD bytes_per_pixel)
+{
+    if (bytes_per_pixel == 1ul) {
+        return (DWORD)row[x];
+    }
+    if (bytes_per_pixel == 2ul) {
+        return (DWORD)((const WORD *)row)[x];
+    }
+    return ((const DWORD *)row)[x] & 0x00fffffful;
+}
+
 static void ddf_finish(const char *result, UINT code)
 {
     ddf_line("Result", result);
@@ -179,16 +209,45 @@ void WINAPI V9xDdFillStageEntry(void)
     DDF_SURFACE_DESC desc;
     DDF_BLTFX fx;
     HRESULT hr;
-    const WORD *row;
+    HRESULT blt_hr;
+    const BYTE *row;
     DWORD mismatches = 0ul;
+    DWORD copy_mismatches = 0ul;
     DWORD y;
     DWORD x;
+    DWORD bits;
+    DWORD bytes_per_pixel;
+    DWORD fill;
+    DWORD mark;
+    DWORD expect;
+    HDC screen;
+    RECT mark_rect;
+    RECT source_rect;
+    RECT dest_rect;
 
     CreateDirectoryA("C:\\V9XDIAG", 0);
     ddf_file = CreateFileA(DDF_TEXT_PATH, GENERIC_WRITE, FILE_SHARE_READ, 0,
                            CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
     ddf_line("[V9xDdFillStage]Build", V9X_BUILD_ID);
+
+    screen = GetDC(0);
+    bits = (DWORD)GetDeviceCaps(screen, BITSPIXEL);
+    ReleaseDC(0, screen);
+    ddf_hx("DesktopBpp", bits);
+    if (bits == 8ul) {
+        bytes_per_pixel = 1ul;
+        fill = DDF_FILL_8;
+        mark = DDF_MARK_8;
+    } else if (bits == 32ul) {
+        bytes_per_pixel = 4ul;
+        fill = DDF_FILL_32;
+        mark = DDF_MARK_32;
+    } else {
+        bytes_per_pixel = 2ul;
+        fill = DDF_FILL_565;
+        mark = DDF_MARK_565;
+    }
 
     ddf_line("Stage", "1-directdrawcreate");
     ddraw_module = LoadLibraryA("DDRAW.DLL");
@@ -306,7 +365,7 @@ void WINAPI V9xDdFillStageEntry(void)
     ddf_line("Stage", "5-blt-colorfill");
     ddf_zero(&fx, sizeof(fx));
     fx.dwSize = sizeof(fx);
-    fx.dwFillColor = DDF_FILL_565;
+    fx.dwFillColor = fill;
     hr = ((ddf_blt_fn)surface->vtbl[DDS_BLT])(
         surface, 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
     ddf_hx("FillHr", (DWORD)hr);
@@ -319,22 +378,85 @@ void WINAPI V9xDdFillStageEntry(void)
     ddf_hx("LockHr", (DWORD)hr);
     if (hr == 0 && desc.lpSurface != 0) {
         ddf_hx("Pitch", (DWORD)desc.lPitch);
+        ddf_hx("SurfaceBpp", desc.ddpfPixelFormat[DDF_PF_RGB_BIT_COUNT]);
         for (y = 0ul; y < DDF_HEIGHT; ++y) {
-            row = (const WORD *)((const BYTE *)desc.lpSurface +
-                                 y * (DWORD)desc.lPitch);
+            row = (const BYTE *)desc.lpSurface + y * (DWORD)desc.lPitch;
             for (x = 0ul; x < DDF_WIDTH; ++x) {
-                if (row[x] != (WORD)DDF_FILL_565) {
+                if (ddf_pixel(row, x, bytes_per_pixel) != fill) {
                     ++mismatches;
                 }
             }
         }
-        ddf_hx("FirstPixel", *(const WORD *)desc.lpSurface);
+        ddf_hx("FirstPixel", bytes_per_pixel == 4ul
+                   ? *(const DWORD *)desc.lpSurface
+                   : ddf_pixel((const BYTE *)desc.lpSurface, 0ul,
+                               bytes_per_pixel));
         ((ddf_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
     }
     ddf_hx("PixelMismatches", mismatches);
+    if (hr != 0 || mismatches != 0ul || ddf_has_switch("/nocopy")) {
+        ((ddf_release_fn)surface->vtbl[DD_RELEASE])(surface);
+        ((ddf_release_fn)ddraw->vtbl[DD_RELEASE])(ddraw);
+        ddf_finish(hr == 0 && mismatches == 0ul ? "PASS" : "REVIEW",
+                   hr == 0 && mismatches == 0ul ? 0u : 1u);
+    }
+
+    /*
+     * Step 7. The copy's rectangles do not overlap, so a driver that sends
+     * overlapping same-surface copies to the CPU still gives this one to
+     * its engine.
+     */
+    ddf_line("Stage", "7-rect-fill-and-copy");
+    mark_rect.left = 0;
+    mark_rect.top = 0;
+    mark_rect.right = (LONG)DDF_MARK_COLUMNS;
+    mark_rect.bottom = (LONG)DDF_HEIGHT;
+    fx.dwFillColor = mark;
+    hr = ((ddf_blt_fn)surface->vtbl[DDS_BLT])(
+        surface, &mark_rect, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+    ddf_hx("MarkFillHr", (DWORD)hr);
+    blt_hr = hr;
+    source_rect.left = 0;
+    source_rect.top = 0;
+    source_rect.right = (LONG)DDF_COPY_COLUMNS;
+    source_rect.bottom = (LONG)DDF_HEIGHT;
+    dest_rect.left = (LONG)DDF_COPY_COLUMNS;
+    dest_rect.top = 0;
+    dest_rect.right = (LONG)(2ul * DDF_COPY_COLUMNS);
+    dest_rect.bottom = (LONG)DDF_HEIGHT;
+    hr = ((ddf_blt_fn)surface->vtbl[DDS_BLT])(
+        surface, &dest_rect, surface, &source_rect, DDBLT_WAIT, 0);
+    ddf_hx("CopyHr", (DWORD)hr);
+    if (blt_hr == 0) {
+        blt_hr = hr;
+    }
+
+    ddf_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((ddf_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
+                                                DDLOCK_WAIT, 0);
+    ddf_hx("CopyLockHr", (DWORD)hr);
+    if (hr == 0 && desc.lpSurface != 0) {
+        for (y = 0ul; y < DDF_HEIGHT; ++y) {
+            row = (const BYTE *)desc.lpSurface + y * (DWORD)desc.lPitch;
+            for (x = 0ul; x < DDF_WIDTH; ++x) {
+                expect = ((x / DDF_MARK_COLUMNS) & 1ul) == 0ul ? mark : fill;
+                if (ddf_pixel(row, x, bytes_per_pixel) != expect) {
+                    ++copy_mismatches;
+                }
+            }
+        }
+        ddf_hx("CopyPixel32", ddf_pixel((const BYTE *)desc.lpSurface,
+                                        DDF_COPY_COLUMNS, bytes_per_pixel));
+        ((ddf_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    }
+    ddf_hx("CopyMismatches", copy_mismatches);
 
     ((ddf_release_fn)surface->vtbl[DD_RELEASE])(surface);
     ((ddf_release_fn)ddraw->vtbl[DD_RELEASE])(ddraw);
-    ddf_finish(hr == 0 && mismatches == 0ul ? "PASS" : "REVIEW",
-               hr == 0 && mismatches == 0ul ? 0u : 1u);
+    if (hr == 0) {
+        hr = blt_hr;
+    }
+    ddf_finish(hr == 0 && copy_mismatches == 0ul ? "PASS" : "REVIEW",
+               hr == 0 && copy_mismatches == 0ul ? 0u : 1u);
 }

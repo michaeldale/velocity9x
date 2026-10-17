@@ -187,6 +187,39 @@ V9xTdfxBar1Linear dd 0
 ENDIF
 
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; Intel Haswell (Gen7.5) BCS ring, HSW_ENGINE_OPEN/CLOSE. Separate from every
+; Gen3 variable below: none of the Gen3 paths runs on Haswell, and nothing
+; here runs on Gen3. Values are B1's (docs\decisions\2026-10-17-haswell-
+; phase-b1-bcs-ring.md) and must match include\velocity9x\intel_hsw.h.
+V9X_HSW_MMIO_BYTES      equ 00200000h
+V9X_HSW_GTT_OFFSET      equ 00200000h
+V9X_HSW_GTT_BYTES       equ 00200000h
+V9X_HSW_BAR0_ALIGN      equ 003fffffh
+V9X_HSW_RESERVE_OFFSET  equ 01800000h
+V9X_HSW_RESERVE_BYTES   equ 00002000h
+V9X_HSW_RESERVE_PAGES   equ 2
+V9X_HSW_STATUS_OFF      equ 00001000h
+V9X_HSW_STOLEN_MASK     equ 0fff00000h
+V9X_HSW_PTE_MASK        equ 0fffff7f1h
+V9X_HSW_CPU_PATTERN     equ 5a5aa5a5h
+V9X_HSW_FW_REQUEST      equ 0000a188h
+V9X_HSW_FW_ACK          equ 00130044h
+V9X_HSW_FW_SET          equ 00010001h
+V9X_HSW_FW_CLEAR        equ 00010000h
+V9X_HSW_FW_POLLS        equ 100000
+V9X_HSW_BCS_TAIL        equ 00022030h
+V9X_HSW_BCS_HEAD        equ 00022034h
+V9X_HSW_BCS_START       equ 00022038h
+V9X_HSW_BCS_CTL         equ 0002203ch
+V9X_HSW_CTL_ONE_PAGE    equ 00000001h
+V9X_HSW_CTL_CHECK       equ 001ff001h
+V9xHswMmioBase    dd 0
+V9xHswMmioLinear  dd 0
+V9xHswGttLinear   dd 0
+V9xHswRegionBase  dd 0
+V9xHswRegionLinear dd 0
+V9xHswOpen        dd 0
+
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
 ; this layer owns the physical mapping and never writes through it.
@@ -2262,6 +2295,10 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxRingOpen
     cmp     ax, V9XMINI_FN_I9XX_RING_SUBMIT
     je      V9xMini_Api_I9xxRingSubmit
+    cmp     ax, V9XMINI_FN_HSW_ENGINE_OPEN
+    je      V9xMini_Api_HswEngineOpen
+    cmp     ax, V9XMINI_FN_HSW_ENGINE_CLOSE
+    je      V9xMini_Api_HswEngineClose
     cmp     ax, V9XMINI_FN_ATI_MMIO_MAP
     je      V9xMini_Api_AtiMmioMap
     cmp     ax, V9XMINI_FN_SIS_MMIO_MAP
@@ -2530,6 +2567,282 @@ V9xMini_Api_I9xxEngineMap_Missing:
     ; one window and half believing it has an engine.
     mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_ECX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; EAX = physical, ECX = bytes, EDX = address of the cached base, ESI =
+; address of the cached linear. Maps once per physical base: a second call
+; with the same base returns the same window instead of consuming linear
+; space on every DirectDraw session. Returns EAX = linear or 0.
+BeginProc V9xMini_Hsw_Map
+    cmp     dword ptr [esi], 0
+    je      short V9xMini_Hsw_Map_New
+    cmp     [edx], eax
+    jne     short V9xMini_Hsw_Map_New
+    mov     eax, [esi]
+    ret
+V9xMini_Hsw_Map_New:
+    push    edx
+    push    esi
+    mov     [edx], eax
+    VMMcall _MapPhysToLinear,<eax,ecx,0>
+    pop     esi
+    pop     edx
+    cmp     eax, 0ffffffffh
+    jne     short V9xMini_Hsw_Map_Done
+    xor     eax, eax
+    mov     dword ptr [edx], 0
+V9xMini_Hsw_Map_Done:
+    mov     [esi], eax
+    ret
+EndProc V9xMini_Hsw_Map
+
+; EDI = MMIO linear. Writes the forcewake clear and waits for the
+; acknowledge to drop, bounded; the outcome is not a refusal (there is
+; nothing further to undo), so nothing is returned.
+BeginProc V9xMini_Hsw_Release
+    push    eax
+    push    ecx
+    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_CLEAR
+    xor     ecx, ecx
+V9xMini_Hsw_Release_Poll:
+    test    dword ptr [edi+V9X_HSW_FW_ACK], 1
+    jz      short V9xMini_Hsw_Release_Done
+    inc     ecx
+    cmp     ecx, V9X_HSW_FW_POLLS
+    jb      short V9xMini_Hsw_Release_Poll
+V9xMini_Hsw_Release_Done:
+    pop     ecx
+    pop     eax
+    ret
+EndProc V9xMini_Hsw_Release
+
+; In EBX = GTTMMADR, ECX = GMADR, EDX = BDSM. Out AX = 1 with EBX = MMIO
+; linear, ECX = reserve linear, EDX = 0 or 10h (reused); or AX = 0, EBX =
+; ECX = 0, EDX = refusal code. See V9XMINI_FN_HSW_ENGINE_OPEN.
+BeginProc V9xMini_Hsw_Engine_Open
+    push    esi
+    push    edi
+    push    ebp
+    mov     ebp, edx                    ; BDSM
+    push    ecx                         ; GMADR
+
+    ; An open ring of ours, still on at our reserve: hand it back as it is.
+    ; Reprogramming it would drop whatever a DirectDraw session queued.
+    cmp     V9xHswOpen, 0
+    je      short V9xMini_Hsw_Open_Fresh
+    mov     edi, V9xHswMmioLinear
+    test    dword ptr [edi+V9X_HSW_BCS_CTL], 1
+    jz      short V9xMini_Hsw_Open_Stale
+    cmp     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
+    jne     short V9xMini_Hsw_Open_Stale
+    pop     ecx
+    mov     ebx, V9xHswMmioLinear
+    mov     ecx, V9xHswRegionLinear
+    mov     edx, 10h
+    mov     ax, 1
+    jmp     V9xMini_Hsw_Open_Exit
+V9xMini_Hsw_Open_Stale:
+    ; Ours on record but not on the hardware: forcewake is still held from
+    ; that open, so drop it before starting again.
+    call    V9xMini_Hsw_Release
+    mov     V9xHswOpen, 0
+
+V9xMini_Hsw_Open_Fresh:
+    ; Code 1: inputs.
+    mov     edx, 1
+    test    ebx, ebx
+    jz      V9xMini_Hsw_Open_Refused_Pop
+    test    ebx, V9X_HSW_BAR0_ALIGN
+    jnz     V9xMini_Hsw_Open_Refused_Pop
+    cmp     dword ptr [esp], 0
+    je      V9xMini_Hsw_Open_Refused_Pop
+
+    ; Code 2: the three windows.
+    mov     eax, ebx
+    mov     ecx, V9X_HSW_MMIO_BYTES
+    mov     edx, OFFSET32 V9xHswMmioBase
+    mov     esi, OFFSET32 V9xHswMmioLinear
+    call    V9xMini_Hsw_Map
+    test    eax, eax
+    jz      V9xMini_Hsw_Open_Map_Failed
+    mov     edi, eax
+    ; The GTT half sits at a fixed distance from the MMIO half, so it is
+    ; mapped whenever the MMIO is mapped fresh, and cached beside it.
+    cmp     V9xHswGttLinear, 0
+    jne     short V9xMini_Hsw_Open_Gtt_Mapped
+    lea     eax, [ebx+V9X_HSW_GTT_OFFSET]
+    VMMcall _MapPhysToLinear,<eax,V9X_HSW_GTT_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      V9xMini_Hsw_Open_Map_Failed
+    mov     V9xHswGttLinear, eax
+V9xMini_Hsw_Open_Gtt_Mapped:
+    mov     eax, [esp]
+    add     eax, V9X_HSW_RESERVE_OFFSET
+    mov     ecx, V9X_HSW_RESERVE_BYTES
+    mov     edx, OFFSET32 V9xHswRegionBase
+    mov     esi, OFFSET32 V9xHswRegionLinear
+    call    V9xMini_Hsw_Map
+    test    eax, eax
+    jz      V9xMini_Hsw_Open_Map_Failed
+
+    ; Code 3: both pages' PTEs valid and mapping BDSM + offset.
+    mov     edx, 3
+    mov     esi, V9xHswGttLinear
+    add     esi, (V9X_HSW_RESERVE_OFFSET SHR 12) * 4
+    mov     eax, ebp
+    and     eax, V9X_HSW_STOLEN_MASK
+    add     eax, V9X_HSW_RESERVE_OFFSET
+    or      eax, 1
+    mov     ecx, [esi]
+    and     ecx, V9X_HSW_PTE_MASK
+    cmp     ecx, eax
+    jne     V9xMini_Hsw_Open_Refused_Pop
+    add     eax, 1000h
+    mov     ecx, [esi+4]
+    and     ecx, V9X_HSW_PTE_MASK
+    cmp     ecx, eax
+    jne     V9xMini_Hsw_Open_Refused_Pop
+
+    ; Code 4: a CPU write reads back through the aperture, then both pages
+    ; are zeroed: a ring of MI_NOOP and a status page whose sequences agree.
+    mov     edx, 4
+    mov     esi, V9xHswRegionLinear
+    mov     dword ptr [esi], V9X_HSW_CPU_PATTERN
+    cmp     dword ptr [esi], V9X_HSW_CPU_PATTERN
+    jne     V9xMini_Hsw_Open_Refused_Pop
+    push    edi
+    mov     edi, esi
+    xor     eax, eax
+    mov     ecx, V9X_HSW_RESERVE_BYTES / 4
+    cld
+    rep     stosd
+    pop     edi
+    cmp     dword ptr [esi], 0
+    jne     V9xMini_Hsw_Open_Refused_Pop
+
+    ; Codes 5 and 6: forcewake, with interrupts off for the handshake.
+    pushfd
+    cli
+    mov     edx, 5
+    test    dword ptr [edi+V9X_HSW_FW_ACK], 1
+    jnz     short V9xMini_Hsw_Open_Fw_Refused
+    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_SET
+    xor     ecx, ecx
+V9xMini_Hsw_Open_Fw_Poll:
+    test    dword ptr [edi+V9X_HSW_FW_ACK], 1
+    jnz     short V9xMini_Hsw_Open_Fw_Acked
+    inc     ecx
+    cmp     ecx, V9X_HSW_FW_POLLS
+    jb      short V9xMini_Hsw_Open_Fw_Poll
+    popfd
+    mov     edx, 6
+    call    V9xMini_Hsw_Release
+    jmp     V9xMini_Hsw_Open_Refused_Pop
+V9xMini_Hsw_Open_Fw_Refused:
+    popfd
+    jmp     V9xMini_Hsw_Open_Refused_Pop
+V9xMini_Hsw_Open_Fw_Acked:
+    popfd
+
+    ; Code 7: a ring already on is someone else's.
+    mov     edx, 7
+    test    dword ptr [edi+V9X_HSW_BCS_CTL], 1
+    jz      short V9xMini_Hsw_Open_Program
+    call    V9xMini_Hsw_Release
+    jmp     V9xMini_Hsw_Open_Refused_Pop
+V9xMini_Hsw_Open_Program:
+    mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
+    mov     dword ptr [edi+V9X_HSW_BCS_CTL], V9X_HSW_CTL_ONE_PAGE
+    ; Code 8: the readback.
+    mov     edx, 8
+    cmp     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
+    jne     short V9xMini_Hsw_Open_Teardown
+    mov     eax, [edi+V9X_HSW_BCS_CTL]
+    and     eax, V9X_HSW_CTL_CHECK
+    cmp     eax, V9X_HSW_CTL_ONE_PAGE
+    jne     short V9xMini_Hsw_Open_Teardown
+
+    pop     ecx
+    mov     V9xHswOpen, 1
+    mov     ebx, edi
+    mov     ecx, V9xHswRegionLinear
+    xor     edx, edx
+    mov     ax, 1
+    jmp     short V9xMini_Hsw_Open_Exit
+
+V9xMini_Hsw_Open_Teardown:
+    mov     dword ptr [edi+V9X_HSW_BCS_CTL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_START], 0
+    call    V9xMini_Hsw_Release
+    jmp     short V9xMini_Hsw_Open_Refused_Pop
+V9xMini_Hsw_Open_Map_Failed:
+    mov     edx, 2
+V9xMini_Hsw_Open_Refused_Pop:
+    pop     ecx
+    xor     ebx, ebx
+    xor     ecx, ecx
+    xor     ax, ax
+V9xMini_Hsw_Open_Exit:
+    pop     ebp
+    pop     edi
+    pop     esi
+    ret
+EndProc V9xMini_Hsw_Engine_Open
+
+; Out AX = 1 if a ring of ours was closed, 0 if none was open.
+BeginProc V9xMini_Hsw_Engine_Close
+    push    edi
+    xor     ax, ax
+    cmp     V9xHswOpen, 0
+    je      short V9xMini_Hsw_Close_Done
+    mov     edi, V9xHswMmioLinear
+    mov     dword ptr [edi+V9X_HSW_BCS_CTL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
+    mov     dword ptr [edi+V9X_HSW_BCS_START], 0
+    call    V9xMini_Hsw_Release
+    mov     V9xHswOpen, 0
+    mov     ax, 1
+V9xMini_Hsw_Close_Done:
+    pop     edi
+    ret
+EndProc V9xMini_Hsw_Engine_Close
+ENDIF
+
+V9xMini_Api_HswEngineOpen:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    mov     edx, [ebp.Client_EDX]
+    push    ebp
+    call    V9xMini_Hsw_Engine_Open
+    pop     ebp
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_AX], ax
+    ret
+ENDIF
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 1
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_HswEngineClose:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    push    ebp
+    call    V9xMini_Hsw_Engine_Close
+    pop     ebp
+    mov     [ebp.Client_AX], ax
+    ret
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

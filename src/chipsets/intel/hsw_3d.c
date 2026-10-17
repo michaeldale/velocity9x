@@ -571,29 +571,88 @@ v9x_status v9x_intel_hsw_cc_state(v9x_u32 out[6], v9x_u8 alpha_ref)
     return V9X_STATUS_OK;
 }
 
-#define V9X_HSW_XY_COLOR_BLT ((v9x_u32)0x54300004ul) /* 2<<29|50h<<22|3<<20|4 */
+/* 2D client 2 at 31:29, opcode at 28:22; the 32 bpp byte mask is 21:20. */
+#define V9X_HSW_XY_COLOR_BLT ((v9x_u32)0x54000004ul) /* 2<<29|50h<<22|4 */
+#define V9X_HSW_XY_SRC_COPY_BLT ((v9x_u32)0x54c00006ul) /* 2<<29|53h<<22|6 */
+#define V9X_HSW_BLT_BYTE_MASK ((v9x_u32)0x00300000ul)
 #define V9X_HSW_BLT_ROP_PATCOPY ((v9x_u32)0xf0ul)
-#define V9X_HSW_BLT_32BPP    ((v9x_u32)3ul)
+#define V9X_HSW_BLT_ROP_SRCCOPY ((v9x_u32)0xccul)
+
+/* BR13 colour depth for bytes per pixel: 00b 8, 01b 565, 11b 32. */
+static int v9x_hsw_blt_depth(v9x_u8 bytes_per_pixel, v9x_u32 *depth)
+{
+    switch (bytes_per_pixel) {
+    case 1u:
+        *depth = 0ul;
+        return 1;
+    case 2u:
+        *depth = 1ul;
+        return 1;
+    case 4u:
+        *depth = 3ul;
+        return 1;
+    default:
+        return 0;
+    }
+}
 
 v9x_status v9x_intel_hsw_xy_color_blt(struct v9x_hsw_batch *batch,
+                                      v9x_u8 bytes_per_pixel,
                                       v9x_u16 pitch_field,
                                       v9x_u16 x1, v9x_u16 y1,
                                       v9x_u16 x2, v9x_u16 y2,
                                       v9x_u32 base, v9x_u32 color)
 {
     v9x_u32 dw[6];
+    v9x_u32 depth;
 
-    if (x2 <= x1 || y2 <= y1 || pitch_field == 0u || (base & 3ul) != 0ul) {
+    if (x2 <= x1 || y2 <= y1 || pitch_field == 0u ||
+        !v9x_hsw_blt_depth(bytes_per_pixel, &depth)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     dw[0] = V9X_HSW_XY_COLOR_BLT;
-    dw[1] = (V9X_HSW_BLT_32BPP << 24) | (V9X_HSW_BLT_ROP_PATCOPY << 16) |
+    if (bytes_per_pixel == 4u) {
+        dw[0] |= V9X_HSW_BLT_BYTE_MASK;
+    }
+    dw[1] = (depth << 24) | (V9X_HSW_BLT_ROP_PATCOPY << 16) |
             (v9x_u32)pitch_field;
     dw[2] = ((v9x_u32)y1 << 16) | (v9x_u32)x1;
     dw[3] = ((v9x_u32)y2 << 16) | (v9x_u32)x2;
     dw[4] = base;
     dw[5] = color;
     return v9x_hsw_mi(batch, dw, 6ul);
+}
+
+v9x_status v9x_intel_hsw_xy_src_copy_blt(struct v9x_hsw_batch *batch,
+                                         v9x_u8 bytes_per_pixel,
+                                         v9x_u16 dst_pitch,
+                                         v9x_u16 dx1, v9x_u16 dy1,
+                                         v9x_u16 dx2, v9x_u16 dy2,
+                                         v9x_u32 dst_base,
+                                         v9x_u16 src_pitch,
+                                         v9x_u16 sx1, v9x_u16 sy1,
+                                         v9x_u32 src_base)
+{
+    v9x_u32 dw[8];
+    v9x_u32 depth;
+
+    if (dx2 <= dx1 || dy2 <= dy1 || dst_pitch == 0u || src_pitch == 0u ||
+        !v9x_hsw_blt_depth(bytes_per_pixel, &depth)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    dw[0] = V9X_HSW_XY_SRC_COPY_BLT;
+    if (bytes_per_pixel == 4u) {
+        dw[0] |= V9X_HSW_BLT_BYTE_MASK;
+    }
+    dw[1] = (depth << 24) | (V9X_HSW_BLT_ROP_SRCCOPY << 16) |
+            (v9x_u32)dst_pitch;
+    dw[2] = ((v9x_u32)dy1 << 16) | (v9x_u32)dx1;
+    dw[3] = ((v9x_u32)dy2 << 16) | (v9x_u32)dx2;
+    dw[4] = dst_base;
+    dw[5] = ((v9x_u32)sy1 << 16) | (v9x_u32)sx1;
+    dw[6] = (v9x_u32)src_pitch;
+    dw[7] = src_base;
+    return v9x_hsw_mi(batch, dw, 8ul);
 }
 
 /* The table entry whose header this is, or V9X_HSW_CMD_COUNT. */
@@ -711,13 +770,16 @@ v9x_status v9x_intel_hsw_3d_check(const v9x_u32 *dwords, v9x_u32 count,
                 }
             }
         } else if (type == 2ul) {
-            /* 2D client: only XY_COLOR_BLT, at its own length. */
-            if ((header & 0xffc000fful) != (V9X_HSW_XY_COLOR_BLT &
-                                            0xffc000fful)) {
+            /* 2D client: XY_COLOR_BLT and XY_SRC_COPY_BLT, at their own
+             * lengths; the byte mask and tiling bits may vary. */
+            if ((header & 0xffc000fful) == V9X_HSW_XY_COLOR_BLT) {
+                length = 6ul;
+            } else if ((header & 0xffc000fful) == V9X_HSW_XY_SRC_COPY_BLT) {
+                length = 8ul;
+            } else {
                 return v9x_hsw_refuse(check, V9X_HSW_CHECK_UNKNOWN_COMMAND,
                                       at, header);
             }
-            length = 6ul;
         } else {
             return v9x_hsw_refuse(check, V9X_HSW_CHECK_UNKNOWN_COMMAND, at,
                                   header);

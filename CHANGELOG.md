@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.19.0 - not yet released
 
+- **Intel HD Graphics 4600 (Haswell, `8086:0412`) joins the `intel-gma`
+  family, with DirectDraw fills and copies on the chip's blitter.** The
+  driver wakes the GT, runs a ring above 16 MB of stolen memory and
+  submits fills and copies there. Measured on an i5-4570 at 8, 16 and 32
+  bpp: every pixel matches a CPU reference, including across mode
+  switches
+  ([record](docs/decisions/2026-10-17-haswell-phase-b2-directdraw-on-bcs.md)).
+  Direct3D is still the CPU rasterizer on this chip.
+
 ## 0.18.5 - 2026-10-16
 
 - **3DCIF: Assault Rigs and Wipeout draw their textures.** Early 3DCIF
