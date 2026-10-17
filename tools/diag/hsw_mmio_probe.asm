@@ -232,10 +232,12 @@ HSW_BO_CPU_READBACK     equ 96
 HSW_BO_BAD_PTE          equ 100
 HSW_BO_PTES             equ 104
 
-; Phase C: the render ring (docs\plans\intel-haswell-direct3d.md). DIOC
-; code 3. The ring takes up to three segments, each ending in a store the
-; probe waits for; the image (batches, then the indirect state) is copied
-; to region + 2000h. B1's BCS procedure above is left as it was measured.
+; Phases C and D: the render ring (docs\plans\intel-haswell-direct3d.md).
+; DIOC code 3. The ring takes up to four segments, each ending in a store
+; the probe waits for; the image (batches, then the indirect state) is
+; copied to region + 2000h, and the two render targets after it are filled
+; with the guard and copied back. B1's BCS procedure above is left as it
+; was measured.
 HSW_DIOC_RCS            equ 3
 HSW_RCS_MAGIC           equ 43525348h ; "HSRC"
 HSW_RCS_IN_BASE         equ 0
@@ -243,20 +245,22 @@ HSW_RCS_IN_APERTURE     equ 4
 HSW_RCS_IN_BDSM         equ 8
 HSW_RCS_IN_OFFSET       equ 12
 HSW_RCS_IN_SEGMENTS     equ 16
-HSW_RCS_IN_SEG_DWORDS   equ 20        ; 3 dwords
-HSW_RCS_IN_SEG_WAIT     equ 32        ; 3 status-page byte offsets
-HSW_RCS_IN_SEG_VALUE    equ 44        ; 3 values
-HSW_RCS_IN_IMAGE_DWORDS equ 56
-HSW_RCS_IN_RING         equ 60
-HSW_RCS_IN_IMAGE        equ 316
+HSW_RCS_IN_SEG_DWORDS   equ 20        ; 4 dwords
+HSW_RCS_IN_SEG_WAIT     equ 36        ; 4 status-page byte offsets
+HSW_RCS_IN_SEG_VALUE    equ 52        ; 4 values
+HSW_RCS_IN_IMAGE_DWORDS equ 68
+HSW_RCS_IN_RING         equ 72
+HSW_RCS_IN_IMAGE        equ 328
 HSW_RCS_RING_MAX        equ 64
 HSW_RCS_IMAGE_MAX       equ 4096
-HSW_RCS_SEG_MAX         equ 3
+HSW_RCS_SEG_MAX         equ 4
 HSW_RCS_IN_BYTES        equ (HSW_RCS_IN_IMAGE + HSW_RCS_IMAGE_MAX * 4)
-HSW_RCS_PAGES           equ 7         ; ring, status, image 4, over-fetch 1
-HSW_RCS_MAP_BYTES       equ 7000h
+HSW_RCS_PAGES           equ 15        ; ring, status, image 4, RTs 8, over-fetch
+HSW_RCS_MAP_BYTES       equ 0f000h
 HSW_RCS_STATUS_OFF      equ 1000h
 HSW_RCS_IMAGE_OFF       equ 2000h
+HSW_RCS_RT_OFF          equ 6000h     ; two 64x64x4 targets
+HSW_RCS_RT_DWORDS       equ 2000h
 HSW_RCS_POLLS           equ 1000000
 
 ; RCS ring registers (Vol 2c), ACTHD, IPEIR, IPEHR, INSTDONE, BBADDR and
@@ -279,8 +283,8 @@ HSW_RCS_ST_PTES_OK      equ 00000001h
 HSW_RCS_ST_CPU_OK       equ 00000002h
 HSW_RCS_ST_FW_ACKED     equ 00000004h
 HSW_RCS_ST_RING_PROGRAMMED equ 00000008h
-HSW_RCS_ST_SEG1         equ 00000010h ; SEG2 20h, SEG3 40h
-HSW_RCS_ST_TORN_DOWN    equ 00000080h
+HSW_RCS_ST_SEG1         equ 00000010h ; SEG2 20h, SEG3 40h, SEG4 80h
+HSW_RCS_ST_TORN_DOWN    equ 00010000h
 HSW_RCS_ST_FW_RELEASED  equ 00000100h
 HSW_RCS_ST_MAP_FAILED   equ 00000200h
 HSW_RCS_ST_FW_BORROWED  equ 00000400h
@@ -290,9 +294,10 @@ HSW_RCS_ST_BAD_INPUT    equ 00002000h
 HSW_RCS_ST_FW_TIMEOUT   equ 00004000h
 HSW_RCS_ST_FW_REQUESTED equ 00008000h
 
-; Output: 64 dwords, offsets in bytes, matching struct v9x_rcs_result in
-; hsw_mmio_probe_win32.c.
-HSW_RCS_OUT_DWORDS      equ 64
+; Output: a 96-dword header, offsets in bytes, matching struct
+; v9x_rcs_result in hsw_mmio_probe_win32.c, then both targets.
+HSW_RCS_HEADER_DWORDS   equ 96
+HSW_RCS_OUT_DWORDS      equ (HSW_RCS_HEADER_DWORDS + HSW_RCS_RT_DWORDS)
 HSW_RO_STATUS           equ 4
 HSW_RO_STAGE            equ 8
 HSW_RO_ACK_BEFORE       equ 12
@@ -307,23 +312,24 @@ HSW_RO_START_RB         equ 44
 HSW_RO_CTL_RB           equ 48
 HSW_RO_HEAD_RB          equ 52
 HSW_RO_TAIL_RB          equ 56
-HSW_RO_POLLS            equ 60        ; 3 dwords
-HSW_RO_HEADS            equ 72        ; 3 dwords
-HSW_RO_ACTHD            equ 84
-HSW_RO_IPEIR            equ 88
-HSW_RO_IPEHR            equ 92
-HSW_RO_INSTDONE         equ 96
-HSW_RO_BBADDR           equ 100
-HSW_RO_EIR              equ 104
-HSW_RO_CTL_AFTER        equ 108
-HSW_RO_START_AFTER      equ 112
-HSW_RO_HEAD_AFTER       equ 116
-HSW_RO_TAIL_AFTER       equ 120
-HSW_RO_CPU_READBACK     equ 124
-HSW_RO_BAD_PTE          equ 128
-HSW_RO_PTES             equ 132       ; 7 dwords
-HSW_RO_STATUS_PAGE      equ 160       ; 8 dwords
-HSW_RO_SEGS_DONE        equ 192
+HSW_RO_POLLS            equ 60        ; 4 dwords
+HSW_RO_HEADS            equ 76        ; 4 dwords
+HSW_RO_ACTHD            equ 92
+HSW_RO_IPEIR            equ 96
+HSW_RO_IPEHR            equ 100
+HSW_RO_INSTDONE         equ 104
+HSW_RO_BBADDR           equ 108
+HSW_RO_EIR              equ 112
+HSW_RO_CTL_AFTER        equ 116
+HSW_RO_START_AFTER      equ 120
+HSW_RO_HEAD_AFTER       equ 124
+HSW_RO_TAIL_AFTER       equ 128
+HSW_RO_CPU_READBACK     equ 132
+HSW_RO_BAD_PTE          equ 136
+HSW_RO_PTES             equ 140       ; 15 dwords
+HSW_RO_STATUS_PAGE      equ 200       ; 16 dwords
+HSW_RO_SEGS_DONE        equ 264
+HSW_RO_RT               equ (HSW_RCS_HEADER_DWORDS * 4)
 
 HswRcsOut     dd HSW_RCS_MAGIC
               dd (HSW_RCS_OUT_DWORDS - 1) dup (0)
@@ -1120,6 +1126,11 @@ Hsw_Rcs_Pte_Ok:
     mov     ecx, HswRcsIn[HSW_RCS_IN_IMAGE_DWORDS]
     rep     movsd
     mov     edi, HswRcsRegion
+    add     edi, HSW_RCS_RT_OFF
+    mov     eax, HSW_BCS_GUARD
+    mov     ecx, HSW_RCS_RT_DWORDS
+    rep     stosd
+    mov     edi, HswRcsRegion
     cmp     dword ptr [edi], 0
     jne     Hsw_Rcs_Exit
     or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_CPU_OK
@@ -1257,7 +1268,12 @@ Hsw_Rcs_Record:
     mov     esi, HswRcsRegion
     add     esi, HSW_RCS_STATUS_OFF
     mov     edi, OFFSET32 HswRcsOut + HSW_RO_STATUS_PAGE
-    mov     ecx, 8
+    mov     ecx, 16
+    rep     movsd
+    mov     esi, HswRcsRegion
+    add     esi, HSW_RCS_RT_OFF
+    mov     edi, OFFSET32 HswRcsOut + HSW_RO_RT
+    mov     ecx, HSW_RCS_RT_DWORDS
     rep     movsd
 
     ; Stage 9: ring off and cleared, read back.

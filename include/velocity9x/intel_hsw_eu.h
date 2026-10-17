@@ -123,7 +123,7 @@
 #define V9X_HSW_RT_SIMD8_DUAL_LO ((v9x_u8)2u)
 #define V9X_HSW_RT_SIMD8_DUAL_HI ((v9x_u8)3u)
 #define V9X_HSW_RT_SIMD8_LO      ((v9x_u8)4u)
-/* Data port render cache message type 16:13, Vol 7: Render Target Write. */
+/* Data port render cache message type 17:14, Vol 7: Render Target Write. */
 #define V9X_HSW_DP_RC_RT_WRITE   ((v9x_u8)0xcu)
 
 /* Sampler SIMD modes, Vol 7 sampler message descriptor 18:17. */
@@ -187,7 +187,7 @@ v9x_status v9x_intel_hsw_eu_send_desc(v9x_u8 mlen, v9x_u8 rlen,
                                       v9x_u32 *desc);
 
 /* Render target write function control: last RT 12, slot group 11,
- * message type 10:8, data port message type 16:13, binding table 7:0. */
+ * message type 10:8, data port message type 17:14, binding table 7:0. */
 v9x_status v9x_intel_hsw_eu_rt_write_fc(v9x_u8 last_rt, v9x_u8 slot_hi,
                                         v9x_u8 msg_type, v9x_u8 bti,
                                         v9x_u32 *function);
@@ -197,5 +197,27 @@ v9x_status v9x_intel_hsw_eu_rt_write_fc(v9x_u8 last_rt, v9x_u8 slot_hi,
 v9x_status v9x_intel_hsw_eu_sampler_fc(v9x_u8 simd, v9x_u8 msg_type,
                                        v9x_u8 sampler, v9x_u8 bti,
                                        v9x_u32 *function);
+
+/*
+ * Phase D pixel shader kernels, SIMD8, ending in a render target write to
+ * binding table entry 0 with EOT. The colour payload goes in g112-g115,
+ * the range Mesa requires an EOT send's payload to be in on Gen7 (the PRM
+ * text read here does not state it). Each writes whole 4-dword
+ * instructions into out (capacity in dwords) and reports the dwords used.
+ */
+#define V9X_HSW_PS_PAYLOAD_GRF ((v9x_u8)112u)
+
+/* Four movs of rgba (IEEE float bit patterns) and the write. */
+v9x_status v9x_intel_hsw_ps_kernel_constant(v9x_u32 *out, v9x_u32 capacity,
+                                            const v9x_u32 rgba[4],
+                                            v9x_u32 *used);
+
+/* Four plns of attribute 0's planes, two components per register from
+ * setup_grf (component c at register setup_grf + c / 2, byte (c % 2) * 16),
+ * against the perspective pixel barycentrics in g2-g3; then the write. */
+v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
+                                                v9x_u32 capacity,
+                                                v9x_u8 setup_grf,
+                                                v9x_u32 *used);
 
 #endif

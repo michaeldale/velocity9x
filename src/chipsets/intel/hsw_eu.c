@@ -444,7 +444,12 @@ v9x_status v9x_intel_hsw_eu_rt_write_fc(v9x_u8 last_rt, v9x_u8 slot_hi,
         msg_type == 5u || msg_type == 6u || bti == 0xffu) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    *function = ((v9x_u32)V9X_HSW_DP_RC_RT_WRITE << 13) |
+    /* The data port message type is 17:14 on Haswell (Vol 7, "RENDER
+     * CACHE DATA PORT" descriptor). It was first encoded at 16:13, read
+     * from the wrong column of that table; the 4570 then saw 0110b, a
+     * reserved type, and the pixel shader never retired
+     * (docs\decisions\2026-10-17-haswell-phase-d-first-triangle.md). */
+    *function = ((v9x_u32)V9X_HSW_DP_RC_RT_WRITE << 14) |
                 ((v9x_u32)last_rt << 12) | ((v9x_u32)slot_hi << 11) |
                 ((v9x_u32)msg_type << 8) | (v9x_u32)bti;
     return V9X_STATUS_OK;
@@ -459,5 +464,134 @@ v9x_status v9x_intel_hsw_eu_sampler_fc(v9x_u8 simd, v9x_u8 msg_type,
     }
     *function = ((v9x_u32)simd << 17) | ((v9x_u32)msg_type << 12) |
                 ((v9x_u32)sampler << 8) | (v9x_u32)bti;
+    return V9X_STATUS_OK;
+}
+
+/* Phase D kernels. */
+#define V9X_HSW_PS_COMPONENTS ((v9x_u8)4u)
+#define V9X_HSW_PS_BARY_GRF   ((v9x_u8)2u)
+
+static void v9x_hsw_ps_zero(struct v9x_hsw_eu_inst *inst)
+{
+    v9x_u8 *bytes = (v9x_u8 *)inst;
+    v9x_u32 index;
+
+    for (index = 0ul; index < (v9x_u32)sizeof(*inst); ++index) {
+        bytes[index] = 0u;
+    }
+}
+
+/* A SIMD8 float register region: <8;8,1>, or <1> as a destination. */
+static void v9x_hsw_ps_grf(struct v9x_hsw_eu_operand *op, v9x_u8 nr,
+                           v9x_u8 type)
+{
+    op->file = V9X_HSW_EU_FILE_GRF;
+    op->type = type;
+    op->nr = nr;
+    op->subnr = 0u;
+    op->vstride = V9X_HSW_EU_VSTRIDE_8;
+    op->width = V9X_HSW_EU_WIDTH_8;
+    op->hstride = V9X_HSW_EU_HSTRIDE_1;
+}
+
+/* send(8) null g112 RT write: four payload registers (R, G, B, A for
+ * slots 7:0, Vol 7 "Color Payload: SIMD8 Single Source"), no header, no
+ * response, SIMD8 single source, last render target, EOT. */
+static v9x_status v9x_hsw_ps_rt_write(v9x_u32 out[4])
+{
+    struct v9x_hsw_eu_inst inst;
+    v9x_u32 function;
+    v9x_u32 desc;
+
+    if (v9x_intel_hsw_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
+                                     &function) != V9X_STATUS_OK ||
+        v9x_intel_hsw_eu_send_desc(V9X_HSW_PS_COMPONENTS, 0u, 0u, function,
+                                   &desc) != V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_SEND;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.sfid = V9X_HSW_SFID_DP_RC;
+    inst.eot = 1u;
+    inst.desc = desc;
+    inst.dst.file = V9X_HSW_EU_FILE_ARF; /* null */
+    inst.dst.type = V9X_HSW_EU_TYPE_UD;
+    inst.dst.hstride = V9X_HSW_EU_HSTRIDE_1;
+    v9x_hsw_ps_grf(&inst.src0, V9X_HSW_PS_PAYLOAD_GRF, V9X_HSW_EU_TYPE_UD);
+    return v9x_intel_hsw_eu_encode(&inst, out);
+}
+
+v9x_status v9x_intel_hsw_ps_kernel_constant(v9x_u32 *out, v9x_u32 capacity,
+                                            const v9x_u32 rgba[4],
+                                            v9x_u32 *used)
+{
+    struct v9x_hsw_eu_inst inst;
+    v9x_u8 c;
+
+    if (out == 0 || rgba == 0 || used == 0 ||
+        capacity < 4ul * (V9X_HSW_PS_COMPONENTS + 1u)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+        /* mov(8) g(112+c)<1>:F imm:F */
+        v9x_hsw_ps_zero(&inst);
+        inst.opcode = V9X_HSW_EU_OP_MOV;
+        inst.exec_size = V9X_HSW_EU_EXEC_8;
+        v9x_hsw_ps_grf(&inst.dst, (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c),
+                       V9X_HSW_EU_TYPE_F);
+        inst.src0.file = V9X_HSW_EU_FILE_IMM;
+        inst.src0.type = V9X_HSW_EU_TYPE_F;
+        inst.src0.imm = rgba[c];
+        if (v9x_intel_hsw_eu_encode(&inst, out + 4u * c) != V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    if (v9x_hsw_ps_rt_write(out + 4u * V9X_HSW_PS_COMPONENTS) !=
+        V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *used = 4ul * (V9X_HSW_PS_COMPONENTS + 1u);
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
+                                                v9x_u32 capacity,
+                                                v9x_u8 setup_grf,
+                                                v9x_u32 *used)
+{
+    struct v9x_hsw_eu_inst inst;
+    v9x_u8 c;
+
+    if (out == 0 || used == 0 ||
+        capacity < 4ul * (V9X_HSW_PS_COMPONENTS + 1u) ||
+        setup_grf < V9X_HSW_PS_BARY_GRF + 2u || setup_grf > 125u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+        /* pln(8) g(112+c)<1>:F g(setup + c/2).(c%2*4)<0;1,0>:F g2<8;8,1>:F
+         * - the plane's x and y coefficients times the two barycentrics
+         * in g2 and g3, plus its constant (Vol 7 pln). */
+        v9x_hsw_ps_zero(&inst);
+        inst.opcode = V9X_HSW_EU_OP_PLN;
+        inst.exec_size = V9X_HSW_EU_EXEC_8;
+        v9x_hsw_ps_grf(&inst.dst, (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c),
+                       V9X_HSW_EU_TYPE_F);
+        v9x_hsw_ps_grf(&inst.src0, (v9x_u8)(setup_grf + c / 2u),
+                       V9X_HSW_EU_TYPE_F);
+        inst.src0.subnr = (v9x_u8)((c % 2u) * 16u);
+        inst.src0.vstride = V9X_HSW_EU_VSTRIDE_0;
+        inst.src0.width = V9X_HSW_EU_WIDTH_1;
+        inst.src0.hstride = V9X_HSW_EU_HSTRIDE_0;
+        v9x_hsw_ps_grf(&inst.src1, V9X_HSW_PS_BARY_GRF, V9X_HSW_EU_TYPE_F);
+        if (v9x_intel_hsw_eu_encode(&inst, out + 4u * c) != V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    if (v9x_hsw_ps_rt_write(out + 4u * V9X_HSW_PS_COMPONENTS) !=
+        V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *used = 4ul * (V9X_HSW_PS_COMPONENTS + 1u);
     return V9X_STATUS_OK;
 }

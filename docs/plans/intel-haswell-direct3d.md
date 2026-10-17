@@ -11,7 +11,12 @@ and 32 bpp, pixel-exact, through VBE mode sets and a `reset`; Close is not
 yet measured (`docs\decisions\2026-10-17-haswell-phase-b2-directdraw-on-bcs.md`).
 Phase C done the same day: the render ring ran the initialising batch through
 `MI_BATCH_BUFFER_START`, and its `PIPE_CONTROL` breadcrumb landed with EIR 0
-(`docs\decisions\2026-10-17-haswell-phase-c-render-ring-init.md`). D next. The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
+(`docs\decisions\2026-10-17-haswell-phase-c-render-ring-init.md`). Phase D
+done the same day: a constant and an interpolated triangle match the
+reference at every judged pixel, after the render target write's message
+type was moved to bits 17:14
+(`docs\decisions\2026-10-17-haswell-phase-d-first-triangle.md`). E next.
+The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
 read-only MMIO and GTT snapshot in hand
@@ -365,6 +370,66 @@ clip in guard-band or disabled. One PS kernel: interpolated colour to the
 render target write message. One `3DPRIMITIVE` of three vertices into an
 off-screen target, read back through the aperture, compared by CRC - the
 Gen3 Phase 5 method.
+
+**Phase D design (2026-10-17, started on "Start phase d").** Phase C's probe
+and placement, extended to four ring segments: the ring store, the
+initialising batch, then two draws, each a self-contained batch ending in
+its own breadcrumb; the two draws share the VxD's fourth segment. Two draws because a failed interpolation should not be
+confused with a failed dispatch:
+
+- **D1, constant colour.** The kernel is four `mov`s of a colour
+  (R 1.0, G 0.2, B 0.6, A 1.0, which is `FFFF3399h` as B8G8R8A8) into
+  g112-g115 and a `send` render target write with EOT.
+- **D2, interpolated colour.** Four `pln`s of the colour attribute's planes
+  against the perspective pixel barycentrics. Vertices are red, green and
+  blue.
+
+*Region,* at aperture `1820000h` as in C, grown to 15 pages: ring, status,
+16 KB image (batches at `+2000h`, state at `+4000h`), RT1 at `+6000h`, RT2
+at `+A000h` (each 64x64 B8G8R8A8, pitch 256, filled with guard
+`A5A5A5A5h` by the CPU), and an over-fetch page at `+E000h`. The VxD copies
+both targets back after the run.
+
+*The draw batch* is the init batch's prefix, then:
+
+- `3DSTATE_CLIP` zero (clipping off, so the triangle passes through);
+- `3DSTATE_SF`: viewport transform off, because the vertices are already
+  in screen space as D3D's TL vertices are; `CULLMODE_NONE`. The init
+  batch's all-zero SF is `CULLMODE_BOTH` (Vol 2b), which discards every
+  triangle;
+- `3DSTATE_SBE`: one attribute, read offset 1 and read length 1 (256-bit
+  units, past the VUE header and position);
+- `3DSTATE_WM`: thread dispatch enable, perspective pixel barycentric;
+- `3DSTATE_PS`: SIMD8 only, the kernel's offset from the instruction base,
+  1 binding table entry, 64 threads (field 63; GT2 allows 7-203, odd),
+  sample mask 1 (HSW, matching `3DSTATE_SAMPLE_MASK`), attribute enable,
+  setup data from g4 (payload r0, r1, barycentrics r2-r3);
+- the binding table naming the target's `RENDER_SURFACE_STATE`; blend
+  disabled with every channel written; the drawing rectangle at 64x64;
+- one vertex buffer of three vertices (x, y, then RGBA floats, 24 bytes)
+  and three vertex elements: the VUE header as four zeros, position (x, y,
+  0, 1.0), colour. The VS is disabled, so the VF writes the VUE;
+- `3DPRIMITIVE` TRILIST, 3 vertices;
+- the init batch's end and breadcrumb.
+
+*Triangle:* (8.25, 8.25), (55.75, 10.25), (10.25, 55.75). There are no
+integer vertices, so few pixel centres lie on an edge. Centres within 1/64
+pixel of an edge are reported apart and not judged.
+
+*The verdict, per target:* the tool rasterizes the same triangle at pixel
+centres (Vol 2b `3DSTATE_MULTISAMPLE` Pixel Location 0, the pixel centre).
+It counts pixels written inside, guard pixels left outside, mismatches
+either way, and for D2 the largest channel error against linear
+interpolation. D1 passes when every judged pixel matches exactly. D2 passes
+when coverage matches and the error is at most 2/255.
+
+*Writes:* what C wrote, plus the draws' memory writes into RT1 and RT2. No
+register beyond the RCS ring's four.
+
+*Failure:* a hung PS thread leaves RCS short of its tail. The poll times
+out, the record is taken and the ring is torn down. Measured on run 1: the
+`reset` after it hard-locked the machine, so a wedged RCS costs a power
+cycle.
 
 ### E. The pixel shader set
 

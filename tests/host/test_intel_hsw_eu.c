@@ -108,10 +108,10 @@ static void test_send_rt_write(void)
 
     CHECK(v9x_intel_hsw_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
                                        &function) == V9X_STATUS_OK);
-    CHECK(function == 0x00019400ul);
+    CHECK(function == 0x00031400ul);
     CHECK(v9x_intel_hsw_eu_send_desc(5u, 0u, 0u, function, &desc) ==
           V9X_STATUS_OK);
-    CHECK(desc == 0x0a019400ul);
+    CHECK(desc == 0x0a031400ul);
 
     v9x_clear(&inst);
     inst.opcode = V9X_HSW_EU_OP_SEND;
@@ -125,7 +125,7 @@ static void test_send_rt_write(void)
     v9x_grf(&inst.src0, 112u, V9X_HSW_EU_TYPE_UD);
     CHECK(v9x_intel_hsw_eu_encode(&inst, out) == V9X_STATUS_OK);
     CHECK(out[0] == 0x05600031ul);
-    CHECK(out[3] == 0x8a019400ul);
+    CHECK(out[3] == 0x8a031400ul);
     CHECK(v9x_intel_hsw_eu_decode(out, &back) == V9X_STATUS_OK);
     CHECK(back.sfid == V9X_HSW_SFID_DP_RC && back.eot == 1u);
     CHECK(back.desc == desc && back.src0.nr == 112u);
@@ -241,9 +241,68 @@ static void test_pln_and_refusals(void)
     CHECK(v9x_intel_hsw_eu_encode(0, out) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* Phase D kernels: four movs or four plns into g112-g115, then the RT
+ * write with EOT. Checked by decoding each instruction back. */
+static void test_phase_d_kernels(void)
+{
+    static const v9x_u32 rgba[4] = {
+        0x3f800000ul, 0x3e4ccccdul, 0x3f19999aul, 0x3f800000ul
+    };
+    struct v9x_hsw_eu_inst back;
+    v9x_u32 out[20];
+    v9x_u32 used;
+    v9x_u32 c;
+
+    CHECK(v9x_intel_hsw_ps_kernel_constant(out, 20ul, rgba, &used) ==
+          V9X_STATUS_OK && used == 20ul);
+    for (c = 0ul; c < 4ul; ++c) {
+        CHECK(v9x_intel_hsw_eu_decode(out + 4ul * c, &back) ==
+              V9X_STATUS_OK);
+        CHECK(back.opcode == V9X_HSW_EU_OP_MOV &&
+              back.exec_size == V9X_HSW_EU_EXEC_8 &&
+              back.dst.nr == 112ul + c &&
+              back.dst.type == V9X_HSW_EU_TYPE_F &&
+              back.src0.file == V9X_HSW_EU_FILE_IMM &&
+              back.src0.imm == rgba[c]);
+    }
+    CHECK(out[3] == 0x3f800000ul && out[7] == 0x3e4ccccdul);
+    /* The write: SFID 5, src0 g112, mlen 4, rlen 0, no header, SIMD8
+     * single source low (100b), last RT, BTI 0, EOT. */
+    CHECK(out[16] == 0x05600031ul);
+    CHECK(out[19] == 0x88031400ul);
+    CHECK(v9x_intel_hsw_eu_decode(out + 16, &back) == V9X_STATUS_OK &&
+          back.src0.nr == 112u && back.eot == 1u &&
+          back.dst.file == V9X_HSW_EU_FILE_ARF && back.dst.nr == 0u);
+    CHECK(v9x_intel_hsw_ps_kernel_constant(out, 16ul, rgba, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    CHECK(v9x_intel_hsw_ps_kernel_interpolated(out, 20ul, 4u, &used) ==
+          V9X_STATUS_OK && used == 20ul);
+    for (c = 0ul; c < 4ul; ++c) {
+        CHECK(v9x_intel_hsw_eu_decode(out + 4ul * c, &back) ==
+              V9X_STATUS_OK);
+        CHECK(back.opcode == V9X_HSW_EU_OP_PLN &&
+              back.dst.nr == 112ul + c &&
+              back.src0.nr == 4ul + c / 2ul &&
+              back.src0.subnr == (c % 2ul) * 16ul &&
+              back.src0.vstride == V9X_HSW_EU_VSTRIDE_0 &&
+              back.src0.width == V9X_HSW_EU_WIDTH_1 &&
+              back.src1.nr == 2u && back.src1.width == V9X_HSW_EU_WIDTH_8);
+    }
+    /* pln g112 g4.0<0;1,0> g2<8;8,1>: DW2 is src0 at register 4, byte 0,
+     * region <0;1,0>; DW3 src1 at register 2, <8;8,1>. */
+    CHECK(out[0] == 0x0060005aul && out[2] == 0x00000080ul &&
+          out[3] == 0x008d0040ul);
+    CHECK(out[6] == 0x00000090ul);
+    CHECK(out[19] == 0x88031400ul);
+    CHECK(v9x_intel_hsw_ps_kernel_interpolated(out, 20ul, 3u, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_eu_tests(void)
 {
     failures = 0u;
+    test_phase_d_kernels();
     test_mov();
     test_add_immediate();
     test_send_rt_write();

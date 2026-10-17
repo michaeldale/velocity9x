@@ -375,6 +375,67 @@ v9x_status v9x_intel_hsw_init_workload(struct v9x_hsw_batch *batch,
                                        v9x_u32 done_address,
                                        v9x_u32 done_value);
 
+/*
+ * Phase D: the draw state's layout, after the init state in the same
+ * image. Two render targets (n = 0, 1), each with a one-entry binding
+ * table; the PS kernels, 64-byte aligned and 256 bytes apart, which leaves
+ * room for the 128 bytes the EU may prefetch past a kernel's end (Vol 7);
+ * three vertices of x, y, R, G, B, A floats.
+ */
+#define V9X_HSW_DRAW_RT_SURFACE(n)    ((v9x_u32)(0x240ul + 0x40ul * (n)))
+#define V9X_HSW_DRAW_BINDING_TABLE(n) ((v9x_u32)(0x260ul + 0x40ul * (n)))
+#define V9X_HSW_DRAW_KERNEL(n)        ((v9x_u32)(0x400ul + 0x100ul * (n)))
+#define V9X_HSW_DRAW_KERNEL_BYTES     ((v9x_u32)0x100ul)
+#define V9X_HSW_DRAW_VERTICES         ((v9x_u32)0x600ul)
+#define V9X_HSW_DRAW_VERTEX_BYTES     ((v9x_u16)24u)
+#define V9X_HSW_DRAW_STATE_BYTES      ((v9x_u32)0x700ul)
+
+/* 3DSTATE_WM Barycentric Interpolation Mode bit 0 (Vol 2b). */
+#define V9X_HSW_BARY_PERSPECTIVE_PIXEL ((v9x_u8)1u)
+
+/* 3DSTATE_SF for screen-space vertices: viewport transform off, solid
+ * fill, CULLMODE_NONE (Vol 2b; the all-zero form is CULLMODE_BOTH). */
+v9x_status v9x_intel_hsw_sf_screen(struct v9x_hsw_batch *batch);
+
+/* 3DSTATE_SBE: number of attributes, and the VUE read offset and length
+ * in 256-bit units (length 1-16; 0 is undefined, Vol 2b). */
+v9x_status v9x_intel_hsw_sbe(struct v9x_hsw_batch *batch, v9x_u8 outputs,
+                             v9x_u8 read_offset, v9x_u8 read_length);
+
+/* 3DSTATE_WM with thread dispatch enabled and the barycentric bits. */
+v9x_status v9x_intel_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric);
+
+/* 3DSTATE_PS, SIMD8 dispatch only: kernel offset from the instruction
+ * base (64-byte aligned), binding table entries, attribute enable, and the
+ * GRF of the setup data. 64 threads, sample mask 1. */
+v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
+                                  v9x_u32 kernel, v9x_u8 binding_entries,
+                                  v9x_u8 attributes, v9x_u8 grf_start);
+
+/* The draw state: both targets' surface states (B8G8R8A8, linear) and
+ * binding tables, and the 18 vertex dwords. Writes nothing else. */
+v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
+                                    const v9x_u32 rt[2], v9x_u16 width,
+                                    v9x_u16 height, v9x_u32 pitch,
+                                    const v9x_u32 vertices[18]);
+
+struct v9x_hsw_draw {
+    v9x_u32 binding_table; /* offset from the surface state base */
+    v9x_u32 kernel;        /* offset from the instruction base */
+    v9x_u32 vertices;      /* graphics address of the three vertices */
+    v9x_u16 width;
+    v9x_u16 height;
+};
+
+/* The init batch's state with the draw's in place of the zeroed stages,
+ * one TRILIST of three vertices, then the same end and breadcrumb. */
+v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       const struct v9x_hsw_draw *draw,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value);
+
 /* Walk dwords[0..count) as a batch: every command must be in the table
  * with its fixed length (or a valid variable length), the batch must end
  * with MI_BATCH_BUFFER_END, optionally followed by one MI_NOOP, and count

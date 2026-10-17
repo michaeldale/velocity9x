@@ -411,10 +411,169 @@ static void test_phase_c_init(void)
           V9X_STATUS_INSUFFICIENT_MEMORY);
 }
 
+/* The index of the first dword equal to header at a command boundary, as
+ * the checker walks them, or count if there is none. */
+static v9x_u32 v9x_find_command(const v9x_u32 *dw, v9x_u32 count,
+                                v9x_u32 header)
+{
+    v9x_u32 at;
+    v9x_u32 length;
+    v9x_u32 type;
+
+    at = 0ul;
+    while (at < count) {
+        if (dw[at] == header) {
+            return at;
+        }
+        type = dw[at] >> 29;
+        if (type == 3ul) {
+            length = ((dw[at] >> 27) & 3ul) == 1ul ? 1ul :
+                     (dw[at] & 0xfful) + 2ul;
+        } else if (dw[at] == 0ul || dw[at] == 0x05000000ul) {
+            length = 1ul;
+        } else if ((dw[at] >> 23) == 0x31ul) {
+            length = 2ul;
+        } else {
+            length = (dw[at] & 0xfful) + 2ul;
+        }
+        at += length;
+    }
+    return count;
+}
+
+/*
+ * Phase D: the draw-state builders and the draw batch. Field positions
+ * from Vol 2b, worked by hand: SF DW2 cull mode 30:29 (1 = NONE); SBE DW1
+ * outputs 27:22, read length 15:11, read offset 9:4; WM DW1 thread
+ * dispatch 29, barycentric mode 16:11; PS DW2 binding table count 25:18,
+ * DW4 max threads 31:23, sample mask 19:12, attribute enable 10, SIMD8
+ * enable 0, DW5 GRF start 22:16.
+ */
+static void test_phase_d_draw(void)
+{
+    v9x_u32 dw[512];
+    v9x_u32 image[V9X_HSW_DRAW_STATE_BYTES / 4ul];
+    v9x_u32 vertices[18];
+    v9x_u32 rt[2];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    v9x_u32 at;
+    v9x_u32 index;
+
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_sf_screen(&batch) == V9X_STATUS_OK);
+    CHECK(batch.used == 7ul && dw[0] == 0x78130005ul && dw[1] == 0ul &&
+          dw[2] == 0x20000000ul && dw[3] == 0ul);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_sbe(&batch, 1u, 1u, 1u) == V9X_STATUS_OK);
+    CHECK(batch.used == 14ul && dw[0] == 0x781f000cul &&
+          dw[1] == 0x00400810ul && dw[13] == 0ul);
+    CHECK(v9x_intel_hsw_sbe(&batch, 1u, 1u, 0u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_wm(&batch, V9X_HSW_BARY_PERSPECTIVE_PIXEL) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 3ul && dw[0] == 0x78140001ul &&
+          dw[1] == 0x20000800ul && dw[2] == 0ul);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x400ul, 1u, 1u, 4u) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 8ul && dw[0] == 0x78200006ul &&
+          dw[1] == 0x400ul && dw[2] == 0x00040000ul && dw[3] == 0ul &&
+          dw[4] == 0x1f801401ul && dw[5] == 0x00040000ul &&
+          dw[6] == 0ul && dw[7] == 0ul);
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x410ul, 1u, 1u, 4u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* The state image: two targets, their binding tables, the vertices. */
+    for (index = 0ul; index < 18ul; ++index) {
+        vertices[index] = 0x40000000ul + index;
+    }
+    rt[0] = 0x01826000ul;
+    rt[1] = 0x0182a000ul;
+    for (index = 0ul; index < V9X_HSW_DRAW_STATE_BYTES / 4ul; ++index) {
+        image[index] = 0xa5a5a5a5ul;
+    }
+    CHECK(v9x_intel_hsw_draw_state(image, V9X_HSW_DRAW_STATE_BYTES / 4ul,
+                                   rt, 64u, 64u, 256ul, vertices) ==
+          V9X_STATUS_OK);
+    /* Init state untouched by the draw state. */
+    CHECK(image[0] == 0xa5a5a5a5ul);
+    CHECK(image[V9X_HSW_DRAW_RT_SURFACE(0) / 4ul] == 0x23000000ul &&
+          image[V9X_HSW_DRAW_RT_SURFACE(0) / 4ul + 1ul] == 0x01826000ul &&
+          image[V9X_HSW_DRAW_RT_SURFACE(0) / 4ul + 2ul] == 0x003f003ful &&
+          image[V9X_HSW_DRAW_RT_SURFACE(0) / 4ul + 3ul] == 0x000000fful);
+    CHECK(image[V9X_HSW_DRAW_RT_SURFACE(1) / 4ul + 1ul] == 0x0182a000ul);
+    CHECK(image[V9X_HSW_DRAW_BINDING_TABLE(0) / 4ul] ==
+              V9X_HSW_DRAW_RT_SURFACE(0) &&
+          image[V9X_HSW_DRAW_BINDING_TABLE(1) / 4ul] ==
+              V9X_HSW_DRAW_RT_SURFACE(1));
+    CHECK(image[V9X_HSW_DRAW_VERTICES / 4ul] == 0x40000000ul &&
+          image[V9X_HSW_DRAW_VERTICES / 4ul + 17ul] == 0x40000011ul);
+    CHECK(v9x_intel_hsw_draw_state(image, 16ul, rt, 64u, 64u, 256ul,
+                                   vertices) == V9X_STATUS_INVALID_ARGUMENT);
+
+    /* The init batch is what Phase C measured: 172 dwords. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x2000ul,
+                                      0x01821010ul, 0xc0de0031ul) ==
+          V9X_STATUS_OK && batch.used == 172ul);
+
+    draw.binding_table = V9X_HSW_DRAW_BINDING_TABLE(0);
+    draw.kernel = V9X_HSW_DRAW_KERNEL(0);
+    draw.vertices = 0x01824000ul + V9X_HSW_DRAW_VERTICES;
+    draw.width = 64u;
+    draw.height = 64u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
+                                      0x01821028ul, 0xc0de0041ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    /* One TRILIST of three vertices, sequential, one instance. */
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 4ul && dw[at + 2ul] == 3ul &&
+          dw[at + 3ul] == 0ul && dw[at + 4ul] == 1ul);
+    /* SF culls nothing; PS names the kernel; the drawing rectangle is the
+     * target's. */
+    at = v9x_find_command(dw, batch.used, 0x78130005ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x20000000ul);
+    at = v9x_find_command(dw, batch.used, 0x78200006ul);
+    CHECK(at < batch.used && dw[at + 1ul] == V9X_HSW_DRAW_KERNEL(0));
+    at = v9x_find_command(dw, batch.used, 0x79000002ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x003f003ful);
+    /* Binding table pointer and vertex buffer. */
+    at = v9x_find_command(dw, batch.used, 0x782a0000ul);
+    CHECK(at < batch.used &&
+          dw[at + 1ul] == V9X_HSW_DRAW_BINDING_TABLE(0));
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00004018ul &&
+          dw[at + 2ul] == draw.vertices &&
+          dw[at + 3ul] == draw.vertices + 71ul);
+    /* Three vertex elements: header, position, colour. */
+    at = v9x_find_command(dw, batch.used, 0x78090005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x02000000ul &&
+          dw[at + 2ul] == 0x22220000ul &&
+          dw[at + 3ul] == 0x02850000ul && dw[at + 4ul] == 0x11230000ul &&
+          dw[at + 5ul] == 0x02000008ul && dw[at + 6ul] == 0x11110000ul);
+    /* The breadcrumb ends it, after the primitive. */
+    at = batch.used - 1ul;
+    if (dw[at] == 0ul) {
+        --at;
+    }
+    CHECK(dw[at] == 0x05000000ul && dw[at - 3ul] == 0x01821028ul &&
+          dw[at - 2ul] == 0xc0de0041ul);
+    draw.kernel = 0x404ul;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
+                                      0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
     test_phase_c_init();
+    test_phase_d_draw();
     test_headers();
     test_state();
     test_batch_and_check();

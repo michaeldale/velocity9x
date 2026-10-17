@@ -85,3 +85,9 @@ Expected dwords in the tests were worked by hand from the field positions,
 so they pin the code to the tables as read; they cannot show the reading
 is right. Two expectations were broken deliberately to confirm both new
 test files fail when wrong, then restored. Gates: build-host, run-checks.
+
+## Correction (2026-10-17, Phase D)
+
+The render target write's data port message type is bits 17:14, not
+16:13 as encoded here. The 4570 hung on the misplaced field; see
+`2026-10-17-haswell-phase-d-first-triangle.md`.
