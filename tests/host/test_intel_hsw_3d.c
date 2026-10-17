@@ -529,6 +529,9 @@ static void test_phase_d_draw(void)
     draw.blend = 0ul;
     draw.cc = 0ul;
     draw.sampler = 0ul;
+    draw.depth_buffer = 0ul;
+    draw.depth_clear = 0ul;
+    draw.depth_test = 0ul;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -644,6 +647,9 @@ static void test_phase_e_shade(void)
     draw.blend = V9X_HSW_SHADE_BLEND_ALPHA_TEST;
     draw.cc = V9X_HSW_SHADE_CC;
     draw.sampler = V9X_HSW_SHADE_SAMPLER;
+    draw.depth_buffer = 0ul;
+    draw.depth_clear = 0ul;
+    draw.depth_test = 0ul;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -673,9 +679,86 @@ static void test_phase_e_shade(void)
           dw[at + 10ul] == 0x11230000ul && dw[at + 11ul] == 0x02850030ul);
 }
 
+/*
+ * Phase F1b: the depth draw. Worked by hand from Vol 2b: DEPTH_BUFFER DW1
+ * 2D (1) at 31:29, write 28, D32_FLOAT (1) at 20:18, pitch 256 - 1; DW3
+ * height - 1 at 31:18, width - 1 at 17:4; HIER_DEPTH (07h), STENCIL
+ * (06h), CLEAR_PARAMS (04h) three dwords each; SF depth format 14:12;
+ * position R32G32B32_FLOAT (040h); the clear's 3 vertices then the
+ * scene's 9 under the LESS state.
+ */
+static void test_phase_f1b_depth(void)
+{
+    v9x_u32 dw[512];
+    v9x_u32 image[V9X_HSW_SHADE_STATE_BYTES / 4ul];
+    v9x_u32 rt[2];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    v9x_u32 at;
+    v9x_u32 index;
+
+    for (index = 0ul; index < V9X_HSW_SHADE_STATE_BYTES / 4ul; ++index) {
+        image[index] = 0ul;
+    }
+    rt[0] = 0x01826000ul;
+    rt[1] = 0x0182a000ul;
+    CHECK(v9x_intel_hsw_shade_state(image, V9X_HSW_SHADE_STATE_BYTES / 4ul,
+                                    0x01824000ul, rt, 64u, 64u, 256ul,
+                                    0x80u) == V9X_STATUS_OK);
+    /* DEPTH_STENCIL_STATE DW2: test 31, function 29:27, write 26. */
+    CHECK(image[V9X_HSW_SHADE_DS_ALWAYS / 4ul + 2ul] == 0x84000000ul);
+    CHECK(image[V9X_HSW_SHADE_DS_LESS / 4ul + 2ul] == 0x94000000ul);
+
+    draw.binding_table = V9X_HSW_DRAW_BINDING_TABLE(0);
+    draw.kernel = V9X_HSW_DRAW_KERNEL(1);
+    draw.vertices = 0x01824000ul + V9X_HSW_SHADE_VERTICES;
+    draw.width = 64u;
+    draw.height = 64u;
+    draw.attributes = 1u;
+    draw.blend = 0ul;
+    draw.cc = 0ul;
+    draw.sampler = 0ul;
+    draw.depth_buffer = 0x0182a000ul;
+    draw.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
+    draw.depth_test = V9X_HSW_SHADE_DS_LESS;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
+                                      0x01821028ul, 0xc0de0041ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x78050005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x300400fful &&
+          dw[at + 2ul] == 0x0182a000ul && dw[at + 3ul] == 0x00fc03f0ul);
+    /* Preceded by depth stall, depth cache flush, depth stall. */
+    CHECK(at >= 15ul && dw[at - 14ul] == V9X_HSW_PC_DEPTH_STALL &&
+          dw[at - 9ul] == V9X_HSW_PC_DEPTH_CACHE_FLUSH &&
+          dw[at - 4ul] == V9X_HSW_PC_DEPTH_STALL);
+    CHECK(dw[at + 7ul] == 0x78070001ul && dw[at + 10ul] == 0x78060001ul &&
+          dw[at + 13ul] == 0x78040001ul);
+    at = v9x_find_command(dw, batch.used, 0x78130005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00001000ul);
+    at = v9x_find_command(dw, batch.used, 0x78250000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == (V9X_HSW_SHADE_DS_ALWAYS | 1ul));
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x0000401cul &&
+          dw[at + 3ul] == draw.vertices + 12ul * 28ul - 1ul);
+    at = v9x_find_command(dw, batch.used, 0x78090005ul);
+    CHECK(at < batch.used && dw[at + 3ul] == 0x02400000ul &&
+          dw[at + 4ul] == 0x11130000ul && dw[at + 5ul] == 0x0200000cul);
+    /* Clear primitive, the LESS state, the scene. */
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 3ul && dw[at + 3ul] == 0ul);
+    CHECK(dw[at + 7ul] == 0x78250000ul &&
+          dw[at + 8ul] == (V9X_HSW_SHADE_DS_LESS | 1ul) &&
+          dw[at + 9ul] == 0x7b000005ul && dw[at + 11ul] == 9ul &&
+          dw[at + 12ul] == 3ul);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_phase_f1b_depth();
     test_phase_e_shade();
     test_phase_c_init();
     test_phase_d_draw();

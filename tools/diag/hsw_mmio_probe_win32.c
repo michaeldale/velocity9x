@@ -616,8 +616,10 @@ static const DWORD v9x_d1_rgba[4] = {
  * host-tested builders and checked before the VxD sees it.
  */
 static int v9x_shade_build(DWORD pair);
+static int v9x_depth_build(void);
+#define V9X_DEPTH_MODE      8
 
-/* mode: 0 /rcs, 1 /draw, 2-5 /shade:0-3. */
+/* mode: 0 /rcs, 1 /draw, 2-7 /shade:0-5, 8 /depth. */
 static int v9x_rcs_build(int draw)
 {
     struct v9x_hsw_batch batch;
@@ -658,7 +660,11 @@ static int v9x_rcs_build(int draw)
         return 0;
     }
 
-    if (draw >= 2 && !v9x_shade_build((DWORD)(draw - 2))) {
+    if (draw == V9X_DEPTH_MODE && !v9x_depth_build()) {
+        return 0;
+    }
+    if (draw >= 2 && draw < V9X_DEPTH_MODE &&
+        !v9x_shade_build((DWORD)(draw - 2))) {
         return 0;
     }
     if (draw == 1) {
@@ -690,6 +696,9 @@ static int v9x_rcs_build(int draw)
             d.blend = 0ul;
             d.cc = 0ul;
             d.sampler = 0ul;
+            d.depth_buffer = 0ul;
+            d.depth_clear = 0ul;
+            d.depth_test = 0ul;
             v9x_intel_hsw_batch_init(
                 &batch,
                 v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 :
@@ -719,14 +728,17 @@ static int v9x_rcs_build(int draw)
     if (draw) {
         v9x_rcs_segment(&batch, 3ul, V9X_RCS_BATCH_D1, 40ul,
                         V9X_RCS_D1_AFTER);
-        /* D2 rides in the same last segment: the VxD has four. */
+        /* D2 rides in the same last segment: the VxD has four. The depth
+         * run has one draw. */
         at = batch.used;
-        v9x_intel_hsw_mi_batch_buffer_start(&batch, V9X_RCS_BATCH_D2);
-        v9x_intel_hsw_mi_store_data_imm(&batch, V9X_RCS_STATUS + 56ul,
-                                        V9X_RCS_D2_AFTER);
-        v9x_rcs_in.seg_dwords[3] += batch.used - at;
-        v9x_rcs_in.seg_wait[3] = 56ul;
-        v9x_rcs_in.seg_value[3] = V9X_RCS_D2_AFTER;
+        if (draw != V9X_DEPTH_MODE) {
+            v9x_intel_hsw_mi_batch_buffer_start(&batch, V9X_RCS_BATCH_D2);
+            v9x_intel_hsw_mi_store_data_imm(&batch, V9X_RCS_STATUS + 56ul,
+                                            V9X_RCS_D2_AFTER);
+            v9x_rcs_in.seg_dwords[3] += batch.used - at;
+            v9x_rcs_in.seg_wait[3] = 56ul;
+            v9x_rcs_in.seg_value[3] = V9X_RCS_D2_AFTER;
+        }
         v9x_rcs_in.segments = 4ul;
     }
     if (batch.overflow != 0u) {
@@ -1115,6 +1127,9 @@ static int v9x_shade_build(DWORD pair)
                     v->sampler_kind == V9X_SHADE_MIRROR ?
                         V9X_HSW_SHADE_SAMPLER_MIRROR :
                         V9X_HSW_SHADE_SAMPLER;
+        d.depth_buffer = 0ul;
+        d.depth_clear = 0ul;
+        d.depth_test = 0ul;
         v9x_intel_hsw_batch_init(
             &batch,
             v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 : V9X_RCS_BATCH_D2),
@@ -1455,6 +1470,220 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
                       bad == 0ul ? "pass" : "mismatch");
 }
 
+/*
+ * Phase F1b (/depth): one draw into target 0 with a D32_FLOAT depth
+ * buffer in target 1's memory. The clear triangle covers the target at
+ * z = 1.0 in black under ALWAYS; then A (z 0.5, red), B (0.25, green)
+ * and C (0.75, blue) under LESS, in that order, all flat colours through
+ * D's interpolating kernel. Vertices in texture 0's space, unused here.
+ */
+#define V9X_DEPTH_VERTICES  V9X_HSW_SHADE_TEXTURE(0)
+#define V9X_DEPTH_TRIANGLES 4u
+
+/* Quarter-pixel corners, depth as 1/4 steps (1.0 = 4), colour. */
+static const long v9x_depth_x[V9X_DEPTH_TRIANGLES][3] = {
+    { 0l, 512l, 0l }, { 16l, 240l, 16l }, { 80l, 248l, 80l },
+    { 40l, 248l, 248l }
+};
+static const long v9x_depth_y[V9X_DEPTH_TRIANGLES][3] = {
+    { 0l, 0l, 512l }, { 16l, 16l, 240l }, { 80l, 80l, 248l },
+    { 120l, 120l, 248l }
+};
+static const long v9x_depth_z4[V9X_DEPTH_TRIANGLES] = { 4l, 2l, 1l, 3l };
+static const DWORD v9x_depth_colour[V9X_DEPTH_TRIANGLES] = {
+    0xff000000ul, 0xffff0000ul, 0xff00ff00ul, 0xff0000fful
+};
+/* The same as floats: x, y, z per corner. */
+static const DWORD v9x_depth_float_xy[V9X_DEPTH_TRIANGLES][6] = {
+    { 0ul, 0ul, 0x43000000ul, 0ul, 0ul, 0x43000000ul },
+    { 0x40800000ul, 0x40800000ul, 0x42700000ul, 0x40800000ul,
+      0x40800000ul, 0x42700000ul },
+    { 0x41a00000ul, 0x41a00000ul, 0x42780000ul, 0x41a00000ul,
+      0x41a00000ul, 0x42780000ul },
+    { 0x41200000ul, 0x41f00000ul, 0x42780000ul, 0x41f00000ul,
+      0x42780000ul, 0x42780000ul }
+};
+static const DWORD v9x_depth_float_z[V9X_DEPTH_TRIANGLES] = {
+    0x3f800000ul, 0x3f000000ul, 0x3e800000ul, 0x3f400000ul
+};
+static const DWORD v9x_depth_float_rgb[V9X_DEPTH_TRIANGLES][3] = {
+    { 0ul, 0ul, 0ul }, { 0x3f800000ul, 0ul, 0ul },
+    { 0ul, 0x3f800000ul, 0ul }, { 0ul, 0ul, 0x3f800000ul }
+};
+
+static int v9x_depth_build(void)
+{
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw d;
+    v9x_u32 rt[2];
+    v9x_u32 used;
+    v9x_u32 *at;
+    DWORD t;
+    DWORD k;
+
+    rt[0] = V9X_RCS_RT0;
+    rt[1] = V9X_RCS_RT1;
+    if (v9x_intel_hsw_shade_state(v9x_rcs_image_at(V9X_RCS_STATE),
+                                  V9X_RCS_STATE_BYTES / 4ul, V9X_RCS_STATE,
+                                  rt, V9X_RCS_RT_SIDE, V9X_RCS_RT_SIDE,
+                                  V9X_RCS_RT_PITCH, V9X_SHADE_ALPHA_REF) !=
+            V9X_STATUS_OK ||
+        v9x_intel_hsw_ps_kernel_interpolated(
+            v9x_rcs_image_at(V9X_RCS_STATE + V9X_HSW_SHADE_KERNEL(0)),
+            V9X_HSW_SHADE_KERNEL_BYTES / 4ul - 32ul, 4u, &used) !=
+            V9X_STATUS_OK) {
+        return 0;
+    }
+    at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_DEPTH_VERTICES);
+    for (t = 0ul; t < V9X_DEPTH_TRIANGLES; ++t) {
+        for (k = 0ul; k < 3ul; ++k) {
+            at[0] = v9x_depth_float_xy[t][k * 2ul];
+            at[1] = v9x_depth_float_xy[t][k * 2ul + 1ul];
+            at[2] = v9x_depth_float_z[t];
+            at[3] = v9x_depth_float_rgb[t][0];
+            at[4] = v9x_depth_float_rgb[t][1];
+            at[5] = v9x_depth_float_rgb[t][2];
+            at[6] = 0x3f800000ul;
+            at += V9X_HSW_DEPTH_VERTEX_BYTES / 4u;
+        }
+    }
+
+    d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    d.kernel = V9X_HSW_SHADE_KERNEL(0);
+    d.vertices = V9X_RCS_STATE + V9X_DEPTH_VERTICES;
+    d.width = V9X_RCS_RT_SIDE;
+    d.height = V9X_RCS_RT_SIDE;
+    d.attributes = 1u;
+    d.blend = 0ul;
+    d.cc = 0ul;
+    d.sampler = 0ul;
+    d.depth_buffer = V9X_RCS_RT1;
+    d.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
+    d.depth_test = V9X_HSW_SHADE_DS_LESS;
+    v9x_intel_hsw_batch_init(&batch, v9x_rcs_image_at(V9X_RCS_BATCH_D1),
+                             V9X_RCS_BATCH_BYTES / 4ul);
+    if (v9x_intel_hsw_draw_workload(&batch, V9X_RCS_STATE,
+                                    V9X_RCS_STATE_BYTES, &d,
+                                    V9X_RCS_STATUS + 32ul,
+                                    V9X_RCS_D1_CRUMB) != V9X_STATUS_OK ||
+        v9x_intel_hsw_3d_check(batch.dw, batch.used, &check) !=
+            V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_rcs_key("DepthBatchDwords", batch.used);
+    return 1;
+}
+
+static long v9x_depth_edge(DWORD t, DWORD a, DWORD b, long px, long py)
+{
+    return (v9x_depth_x[t][b] - v9x_depth_x[t][a]) *
+               (py - v9x_depth_y[t][a]) -
+           (v9x_depth_y[t][b] - v9x_depth_y[t][a]) *
+               (px - v9x_depth_x[t][a]);
+}
+
+/* The reference: each triangle in order, covered centres pass when nearer
+ * than the stored depth (the clear passes everywhere). A centre within
+ * 1/64 pixel of any edge inside the target is not judged. */
+static void v9x_depth_judge(void)
+{
+    const DWORD *pixels = v9x_rcs_out.rt[0];
+    long area;
+    long len;
+    long dx;
+    long dy;
+    long e;
+    long px;
+    long py;
+    long depth;
+    DWORD want;
+    DWORD got;
+    DWORD x;
+    DWORD y;
+    DWORD t;
+    DWORD i;
+    DWORD judged = 0ul;
+    DWORD unjudged = 0ul;
+    DWORD bad = 0ul;
+    DWORD seen[V9X_DEPTH_TRIANGLES];
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_got = 0ul;
+    DWORD first_want = 0ul;
+    int in;
+    int near_edge;
+    char key[24];
+
+    for (t = 0ul; t < V9X_DEPTH_TRIANGLES; ++t) {
+        seen[t] = 0ul;
+    }
+    for (y = 0ul; y < V9X_RCS_RT_SIDE; ++y) {
+        for (x = 0ul; x < V9X_RCS_RT_SIDE; ++x) {
+            px = (long)x * 4l + 2l;
+            py = (long)y * 4l + 2l;
+            depth = 5l;
+            want = V9X_RCS_GUARD;
+            near_edge = 0;
+            for (t = 0ul; t < V9X_DEPTH_TRIANGLES; ++t) {
+                area = v9x_depth_edge(t, 0ul, 1ul, v9x_depth_x[t][2],
+                                      v9x_depth_y[t][2]);
+                in = 1;
+                for (i = 0ul; i < 3ul; ++i) {
+                    e = v9x_depth_edge(t, i, (i + 1ul) % 3ul, px, py);
+                    dx = v9x_depth_x[t][(i + 1ul) % 3ul] - v9x_depth_x[t][i];
+                    dy = v9x_depth_y[t][(i + 1ul) % 3ul] - v9x_depth_y[t][i];
+                    len = v9x_isqrt(dx * dx + dy * dy);
+                    if ((e < 0l ? -e : e) * 16l < len) {
+                        near_edge = 1;
+                    }
+                    if ((area > 0l && e < 0l) || (area < 0l && e > 0l)) {
+                        in = 0;
+                    }
+                }
+                if (in && v9x_depth_z4[t] < depth) {
+                    depth = v9x_depth_z4[t];
+                    want = v9x_depth_colour[t];
+                }
+            }
+            got = pixels[y * V9X_RCS_RT_SIDE + x];
+            if (near_edge) {
+                ++unjudged;
+                continue;
+            }
+            ++judged;
+            for (t = 0ul; t < V9X_DEPTH_TRIANGLES; ++t) {
+                if (want == v9x_depth_colour[t]) {
+                    ++seen[t];
+                }
+            }
+            if (got != want) {
+                ++bad;
+                if (first_bad == 0xfffffffful) {
+                    first_bad = (y << 16) | x;
+                    first_got = got;
+                    first_want = want;
+                }
+            }
+        }
+    }
+    v9x_rcs_key("DepthJudged", judged);
+    v9x_rcs_key("DepthNotJudged", unjudged);
+    v9x_rcs_key("DepthMismatches", bad);
+    for (t = 0ul; t < V9X_DEPTH_TRIANGLES; ++t) {
+        lstrcpyA(key, "DepthExpectTri0");
+        key[14] = (char)('0' + t);
+        v9x_rcs_key(key, seen[t]);
+    }
+    v9x_rcs_key("DepthFirstBadYX", first_bad);
+    v9x_rcs_key("DepthFirstBadGot", first_got);
+    v9x_rcs_key("DepthFirstBadWant", first_want);
+    v9x_rcs_key("DepthPixel_8_8", pixels[8ul * V9X_RCS_RT_SIDE + 8ul]);
+    v9x_rcs_key("DepthPixel_30_30", pixels[30ul * V9X_RCS_RT_SIDE + 30ul]);
+    v9x_rcs_key("DepthPixel_50_40", pixels[40ul * V9X_RCS_RT_SIDE + 50ul]);
+    v9x_rcs_key("DepthPixel_2_62", pixels[62ul * V9X_RCS_RT_SIDE + 2ul]);
+    v9x_rcs_text("DepthVerdict", bad == 0ul ? "pass" : "mismatch");
+}
+
 static void v9x_rcs_publish(int draw)
 {
     char key[16];
@@ -1553,11 +1782,14 @@ static void v9x_rcs_publish(int draw)
                                    "after-store-missing") :
         !draw ? "init-workload-ran" :
         (seen & 96ul) != 96ul ? "draw1-did-not-complete" :
+        draw == V9X_DEPTH_MODE ? "depth-draw-completed" :
         (seen & 384ul) != 384ul ? "draw2-did-not-complete" :
                                   "both-draws-completed");
     if (draw == 1) {
         v9x_rcs_judge(0ul, 0);
         v9x_rcs_judge(1ul, 1);
+    } else if (draw == V9X_DEPTH_MODE) {
+        v9x_depth_judge();
     } else if (draw >= 2) {
         v9x_shade_judge(0ul, (DWORD)(draw - 2) * 2ul);
         v9x_shade_judge(1ul, (DWORD)(draw - 2) * 2ul + 1ul);
@@ -1570,7 +1802,8 @@ static void v9x_rcs_run(int draw)
     DWORD returned;
     BOOL ok;
 
-    v9x_rcs_section = draw >= 2 ? "Shade" : draw ? "Draw" : "Rcs";
+    v9x_rcs_section = draw == V9X_DEPTH_MODE ? "Depth" :
+                      draw >= 2 ? "Shade" : draw ? "Draw" : "Rcs";
     WritePrivateProfileStringA(v9x_rcs_section, 0, 0, V9X_HSWMM_PATH);
     v9x_rcs_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
     v9x_rcs_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
@@ -1837,8 +2070,9 @@ void __stdcall V9xHswMmioEntry(void)
 
     /* /rcs is Phase C alone, /draw Phase D, /shade:N Phase E, likewise. */
     if (v9x_has_switch("/rcs") || v9x_has_switch("/draw") ||
-        v9x_has_switch("/shade:")) {
-        int mode = v9x_has_switch("/draw") ? 1 : 0;
+        v9x_has_switch("/shade:") || v9x_has_switch("/depth")) {
+        int mode = v9x_has_switch("/draw") ? 1 :
+                   v9x_has_switch("/depth") ? V9X_DEPTH_MODE : 0;
 
         for (index = 0ul; index < 6ul; ++index) {
             char option[9];
@@ -1850,6 +2084,8 @@ void __stdcall V9xHswMmioEntry(void)
             }
         }
         WritePrivateProfileStringA("Report", "Access",
+                                   mode == V9X_DEPTH_MODE ?
+                                       "rcs-depth-phase-f1b" :
                                    mode >= 2 ? "rcs-shade-phase-e" :
                                    mode == 1 ? "rcs-draw-phase-d" :
                                                "rcs-ring-phase-c",

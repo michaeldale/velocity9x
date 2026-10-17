@@ -77,7 +77,10 @@ static const struct v9x_hsw_command v9x_hsw_commands[V9X_HSW_CMD_COUNT] = {
     { 3u, 0u, 0x05u, 7u },   /* 3DSTATE_DEPTH_BUFFER */
     { 3u, 1u, 0x0du, 4u },   /* 3DSTATE_MULTISAMPLE */
     { 3u, 0u, 0x18u, 2u },   /* 3DSTATE_SAMPLE_MASK */
-    { 3u, 0u, 0x17u, 7u }    /* 3DSTATE_CONSTANT_PS */
+    { 3u, 0u, 0x17u, 7u },   /* 3DSTATE_CONSTANT_PS */
+    { 3u, 0u, 0x07u, 3u },   /* 3DSTATE_HIER_DEPTH_BUFFER */
+    { 3u, 0u, 0x06u, 3u },   /* 3DSTATE_STENCIL_BUFFER */
+    { 3u, 0u, 0x04u, 3u }    /* 3DSTATE_CLEAR_PARAMS */
 };
 
 void v9x_intel_hsw_batch_init(struct v9x_hsw_batch *batch, v9x_u32 *dw,
@@ -816,6 +819,7 @@ v9x_status v9x_intel_hsw_3d_check(const v9x_u32 *dwords, v9x_u32 count,
 /* Phase C state values. */
 #define V9X_HSW_FLOAT_ONE            ((v9x_u32)0x3f800000ul)
 #define V9X_HSW_DEPTH_FORMAT_D32_FLOAT ((v9x_u32)1ul) /* Vol 2b 20:18 */
+#define V9X_HSW_DEPTH_WRITE_ENABLE   ((v9x_u32)0x10000000ul) /* DW1 28 */
 #define V9X_HSW_POINTER_MBO          ((v9x_u32)1ul)
 #define V9X_HSW_NO_BOUND             ((v9x_u32)0xfffff000ul)
 #define V9X_HSW_PAGE_MASK            ((v9x_u32)0x00000ffful)
@@ -891,12 +895,23 @@ static v9x_status v9x_hsw_emit_zero(struct v9x_hsw_batch *batch,
 
 v9x_status v9x_intel_hsw_sf_screen(struct v9x_hsw_batch *batch)
 {
+    return v9x_intel_hsw_sf_screen_depth(batch, 0u);
+}
+
+/* DW1 Depth Buffer Surface Format 14:12 matches the depth buffer's. */
+v9x_status v9x_intel_hsw_sf_screen_depth(struct v9x_hsw_batch *batch,
+                                         v9x_u8 depth_format)
+{
     v9x_u32 payload[6];
     v9x_u32 index;
 
+    if (depth_format > 7u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     for (index = 0ul; index < 6ul; ++index) {
         payload[index] = 0ul;
     }
+    payload[0] = (v9x_u32)depth_format << 12;
     payload[1] = V9X_HSW_SF_CULL_NONE;
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_SF, payload, 6ul);
 }
@@ -1092,6 +1107,12 @@ v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
     blend.src_factor = V9X_HSW_BLENDFACTOR_SRC_ALPHA;
     blend.dst_factor = V9X_HSW_BLENDFACTOR_INV_SRC_ALPHA;
     v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA / 4ul, &blend);
+
+    /* COMPAREFUNCTION_ALWAYS 0, LESS 2 (Vol 2a). */
+    v9x_intel_hsw_depth_stencil(image + V9X_HSW_SHADE_DS_ALWAYS / 4ul, 1u,
+                                0u, 1u);
+    v9x_intel_hsw_depth_stencil(image + V9X_HSW_SHADE_DS_LESS / 4ul, 1u,
+                                2u, 1u);
     return v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul, alpha_ref);
 }
 
@@ -1112,7 +1133,9 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
 
     count = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ? 6ul : 3ul;
     stride = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ?
-                 V9X_HSW_SHADE_VERTEX_BYTES : V9X_HSW_DRAW_VERTEX_BYTES;
+                 V9X_HSW_SHADE_VERTEX_BYTES :
+             draw->depth_buffer != 0ul ? V9X_HSW_DEPTH_VERTEX_BYTES :
+                                         V9X_HSW_DRAW_VERTEX_BYTES;
     for (index = 0ul; index < count; ++index) {
         elements[index].buffer = 0u;
         elements[index].format = V9X_HSW_FMT_R32G32B32A32_FLOAT;
@@ -1129,6 +1152,12 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
     elements[1].component[2] = V9X_HSW_VFCOMP_STORE_0;
     elements[1].component[3] = V9X_HSW_VFCOMP_STORE_1_FP;
     elements[2].offset = 8u;
+    if (draw->depth_buffer != 0ul) {
+        /* Position x, y, z, 1.0; colour after it. */
+        elements[1].format = V9X_HSW_FMT_R32G32B32_FLOAT;
+        elements[1].component[2] = V9X_HSW_VFCOMP_STORE_SRC;
+        elements[2].offset = 12u;
+    }
     if (count == 6ul) {
         elements[3].offset = 24u;
         for (index = 4ul; index < 6ul; ++index) {
@@ -1139,6 +1168,23 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
         }
     }
 
+    if (draw->depth_buffer != 0ul) {
+        /* The clear, then the scene under the depth test; a pointer change
+         * between primitives needs no flush. */
+        v9x_intel_hsw_vertex_buffer(
+            batch, 0u, stride, draw->vertices,
+            draw->vertices +
+                (V9X_HSW_DEPTH_CLEAR_VERTICES + V9X_HSW_DEPTH_SCENE_VERTICES) *
+                    stride - 1ul);
+        v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
+        v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST,
+                                  V9X_HSW_DEPTH_CLEAR_VERTICES, 0ul);
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_DEPTH_STENCIL_PTRS,
+                                    draw->depth_test | V9X_HSW_POINTER_MBO);
+        return v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST,
+                                         V9X_HSW_DEPTH_SCENE_VERTICES,
+                                         V9X_HSW_DEPTH_CLEAR_VERTICES);
+    }
     v9x_intel_hsw_vertex_buffer(batch, 0u, stride, draw->vertices,
                                 draw->vertices + 3ul * stride - 1ul);
     v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
@@ -1252,7 +1298,9 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
          * offset 1, in 256-bit units, two attributes per unit. Setup data
          * follows r0, r1 and the SIMD8 barycentrics r2-r3. */
         v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
-        v9x_intel_hsw_sf_screen(batch);
+        v9x_intel_hsw_sf_screen_depth(
+            batch, draw->depth_buffer != 0ul ?
+                       (v9x_u8)V9X_HSW_DEPTH_FORMAT_D32_FLOAT : (v9x_u8)0u);
         if (shade) {
             v9x_intel_hsw_sbe(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u, 2u);
         } else {
@@ -1272,7 +1320,30 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     }
     depth[0] = ((v9x_u32)V9X_HSW_SURFTYPE_NULL << 29) |
                (V9X_HSW_DEPTH_FORMAT_D32_FLOAT << 18);
+    if (draw != 0 && draw->depth_buffer != 0ul) {
+        /* Vol 2b: before changing depth buffer state, a depth stall, a
+         * depth cache flush, another depth stall. Then a 2D D32_FLOAT
+         * buffer with depth write (DW1 31:29, 28, 20:18, pitch - 1 17:0),
+         * its base, height - 1 31:18 and width - 1 17:4; then HiZ,
+         * stencil and clear parameters, all off. */
+        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul, 0ul);
+        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_CACHE_FLUSH, 0ul,
+                                   0ul);
+        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul, 0ul);
+        depth[0] = ((v9x_u32)V9X_HSW_SURFTYPE_2D << 29) |
+                   V9X_HSW_DEPTH_WRITE_ENABLE |
+                   (V9X_HSW_DEPTH_FORMAT_D32_FLOAT << 18) |
+                   ((v9x_u32)draw->width * 4ul - 1ul);
+        depth[1] = draw->depth_buffer;
+        depth[2] = ((v9x_u32)(draw->height - 1u) << 18) |
+                   ((v9x_u32)(draw->width - 1u) << 4);
+    }
     v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_DEPTH_BUFFER, depth, 6ul);
+    if (draw != 0 && draw->depth_buffer != 0ul) {
+        v9x_hsw_emit_zero(batch, V9X_HSW_CMD_HIER_DEPTH_BUFFER);
+        v9x_hsw_emit_zero(batch, V9X_HSW_CMD_STENCIL_BUFFER);
+        v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLEAR_PARAMS);
+    }
     mask = 1ul;
     v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_SAMPLE_MASK, &mask, 1ul);
     if (draw == 0) {
@@ -1295,7 +1366,9 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BLEND_PTRS,
                                 blend | V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_DEPTH_STENCIL_PTRS,
-                                V9X_HSW_INIT_DEPTH_STENCIL |
+                                (draw != 0 && draw->depth_buffer != 0ul ?
+                                     draw->depth_clear :
+                                     V9X_HSW_INIT_DEPTH_STENCIL) |
                                     V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
                                 cc | V9X_HSW_POINTER_MBO);

@@ -75,7 +75,10 @@ struct v9x_hsw_batch {
 #define V9X_HSW_CMD_MULTISAMPLE            ((v9x_u16)37u)
 #define V9X_HSW_CMD_SAMPLE_MASK            ((v9x_u16)38u)
 #define V9X_HSW_CMD_CONSTANT_PS            ((v9x_u16)39u)
-#define V9X_HSW_CMD_COUNT                  ((v9x_u16)40u)
+#define V9X_HSW_CMD_HIER_DEPTH_BUFFER      ((v9x_u16)40u)
+#define V9X_HSW_CMD_STENCIL_BUFFER         ((v9x_u16)41u)
+#define V9X_HSW_CMD_CLEAR_PARAMS           ((v9x_u16)42u)
+#define V9X_HSW_CMD_COUNT                  ((v9x_u16)43u)
 
 /* 3DPRIMITIVE topologies, Vol 2a "3DPRIM_*". */
 #define V9X_HSW_PRIM_POINTLIST ((v9x_u8)0x01u)
@@ -397,6 +400,10 @@ v9x_status v9x_intel_hsw_init_workload(struct v9x_hsw_batch *batch,
  * fill, CULLMODE_NONE (Vol 2b; the all-zero form is CULLMODE_BOTH). */
 v9x_status v9x_intel_hsw_sf_screen(struct v9x_hsw_batch *batch);
 
+/* The same with DW1 Depth Buffer Surface Format 14:12 set (F1b). */
+v9x_status v9x_intel_hsw_sf_screen_depth(struct v9x_hsw_batch *batch,
+                                         v9x_u8 depth_format);
+
 /* 3DSTATE_SBE: number of attributes, and the VUE read offset and length
  * in 256-bit units (length 1-16; 0 is undefined, Vol 2b). */
 v9x_status v9x_intel_hsw_sbe(struct v9x_hsw_batch *batch, v9x_u8 outputs,
@@ -449,7 +456,16 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_SHADE_SAMPLER_WRAP     ((v9x_u32)0x13a0ul)
 #define V9X_HSW_SHADE_SAMPLER_MIRROR   ((v9x_u32)0x13c0ul)
 #define V9X_HSW_SHADE_BLEND_ALPHA      ((v9x_u32)0x1400ul)
-#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x1440ul)
+/* Phase F1b: two DEPTH_STENCIL_STATEs, ALWAYS with write (the clear) and
+ * LESS with write. */
+#define V9X_HSW_SHADE_DS_ALWAYS        ((v9x_u32)0x1440ul)
+#define V9X_HSW_SHADE_DS_LESS          ((v9x_u32)0x1480ul)
+#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x14c0ul)
+/* The depth draw: x, y, z, then RGBA, 28 bytes; 3 vertices of the clear
+ * then 9 of the scene. */
+#define V9X_HSW_DEPTH_VERTEX_BYTES     ((v9x_u16)28u)
+#define V9X_HSW_DEPTH_CLEAR_VERTICES   ((v9x_u32)3ul)
+#define V9X_HSW_DEPTH_SCENE_VERTICES   ((v9x_u32)9ul)
 
 /* The shaded draw's state: both targets' surface states (D's offsets),
  * both textures' surface states at state_base + V9X_HSW_SHADE_TEXTURE,
@@ -473,6 +489,13 @@ struct v9x_hsw_draw {
     v9x_u32 blend;         /* offsets from the dynamic state base */
     v9x_u32 cc;
     v9x_u32 sampler;
+    /* Phase F1b. A non-zero depth buffer (graphics address, D32_FLOAT,
+     * 4 KB aligned, Y-tiled as Gen7 depth always is, pitch width * 4)
+     * makes this a depth draw: the clear primitive under depth_clear,
+     * then the scene under depth_test (offsets, as blend). */
+    v9x_u32 depth_buffer;
+    v9x_u32 depth_clear;
+    v9x_u32 depth_test;
 };
 
 /* The init batch's state with the draw's in place of the zeroed stages,
