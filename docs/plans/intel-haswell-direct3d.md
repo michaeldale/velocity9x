@@ -27,7 +27,11 @@ three overlapping triangles (`docs\decisions\2026-10-17-haswell-phase-f1b-depth.
 F2a done the same day: Direct3D draws on the render ring through the HAL,
 with the clipper's perspective divide off for pre-transformed vertices
 (`docs\decisions\2026-10-17-haswell-phase-f2a-direct3d-engine.md`). F2b
-(depth) next.
+done the same day: Y-tiled D16 Z buffers, filled by a depth-only draw
+whose colour writes are masked. A zero WM and PS hung the render engine
+twice. V9XDDP's Z and private-device Z checks pass; Mixed fails on the
+recorded Lock limit
+(`docs\decisions\2026-10-17-haswell-phase-f2b-depth.md`). G (games) next.
 The machine is the i5-4570 (`8086:0412`), on the `intel-gma`
 family's `hd4600-hsw` chip since B2 (tier-0 was the `vbe` family at
 640x480x8, `docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
@@ -541,7 +545,7 @@ in whole tiles (128 bytes), rows in whole tiles (32) and 4 KB alignment.
 drawing at the clear depth, as F1b measured, not the blitter's linear
 fill.
 
-**Phase F2b design, for review (2026-10-18).** Direct3D Z buffers on the
+**Phase F2b design, for review (2026-10-17).** Direct3D Z buffers on the
 render engine, as D16_UNORM, the format DirectDraw's Z16 surfaces already
 are.
 
@@ -608,6 +612,14 @@ scope for F2b and is recorded as a known limit, not hidden.
 
 *Measured by:* the step-1 probe, then V9XDDP's `D3DZ*`, `D3DZP*` and
 `Mixed*` checks (the 12 that F2a fails for want of Z), then a game.
+
+*Result (2026-10-17).* Step 1's depth-only clear with WM and PS zero
+hung RCS twice, with and without SBE's attribute. The fill now
+dispatches the shader under a blend state that disables every channel,
+and that passed. V9XDDP: `D3DZ*` and `D3DZP*` pass; `Mixed*` fails on
+the tiled Lock, as recorded above. Only 8 of the "12" were F2a's: the
+rest were never reached, because V9XDDP continues in `V9XDD2.INI`. No
+game ran. Record: `docs\decisions\2026-10-17-haswell-phase-f2b-depth.md`.
 
 ### F. Textures and state
 

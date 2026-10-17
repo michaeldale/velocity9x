@@ -361,6 +361,15 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD pixel_centre_half;
     /*
+     * Non-zero when the engine's depth buffers are tiled, so a linear fill
+     * - the blitter's or the CPU's - writes the wrong bytes: the engine's
+     * own fill is then the only one, and a depth fill it declines fails
+     * rather than falling back (v9x_depthfill_body). Haswell's, whose depth
+     * is always Y-tiled (Vol 2b 3DSTATE_DEPTH_BUFFER). Appended 2026-10-17;
+     * an initialiser that stops short leaves it zero.
+     */
+    DWORD depth_tiled;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

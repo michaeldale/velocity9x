@@ -402,6 +402,18 @@ DWORD v9x_d3d_depth_bytes_per_pixel(void)
     return ops->limits->depth_bits_per_pixel >> 3;
 }
 
+/* Whether the fitted engine's depth buffers are tiled (the limits'
+ * depth_tiled); zero on a chip with no D3D engine. */
+int v9x_d3d_depth_tiled(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (ops == 0 || ops->limits == 0) {
+        return 0;
+    }
+    return ops->limits->depth_tiled != 0ul;
+}
+
 /* A DDBLT_DEPTHFILL value as the fitted engine's depth buffer holds it
  * (v9x_d3d_state_depth_fill); unchanged on a chip with no D3D engine. */
 DWORD v9x_d3d_depth_fill_value(DWORD value)

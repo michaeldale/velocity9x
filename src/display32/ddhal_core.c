@@ -1846,6 +1846,13 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         *engine_used = 1;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    /* A tiled depth buffer is not a linear array of words: the CPU fill
+     * would scatter the value across the wrong pixels, so a fill the engine
+     * declined - or a quarantined engine - fails instead. */
+    if (v9x_d3d_depth_tiled()) {
+        data->ddRVal = V9X_DDERR_GENERIC;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
     if (!v9x_blt_drain(wait)) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         return V9X_DDHAL_DRIVER_HANDLED;

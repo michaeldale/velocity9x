@@ -535,6 +535,9 @@ static void test_phase_d_draw(void)
     draw.tl_vertices = 0u;
     draw.vertex_count = 0ul;
     draw.flat = 0u;
+    draw.depth_format = 0u;
+    draw.depth_pitch = 0ul;
+    draw.depth_only = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -637,6 +640,9 @@ static void test_phase_e_shade(void)
     CHECK(image[V9X_HSW_SHADE_SAMPLER_MIRROR / 4ul + 3ul] == 0x49ul);
     CHECK(image[V9X_HSW_SHADE_BLEND_ALPHA / 4ul] == 0x80000073ul &&
           image[V9X_HSW_SHADE_BLEND_ALPHA / 4ul + 1ul] == 0ul);
+    /* Phase F2b: blending off, all four channels' write disables 27:24. */
+    CHECK(image[V9X_HSW_SHADE_BLEND_NO_COLOUR / 4ul] == 0ul &&
+          image[V9X_HSW_SHADE_BLEND_NO_COLOUR / 4ul + 1ul] == 0x0f000000ul);
     CHECK(v9x_intel_hsw_shade_state(image, 64ul, 0x01824000ul, rt, 64u, 64u,
                                     256ul, 0x80u) ==
           V9X_STATUS_INVALID_ARGUMENT);
@@ -656,6 +662,9 @@ static void test_phase_e_shade(void)
     draw.tl_vertices = 0u;
     draw.vertex_count = 0ul;
     draw.flat = 0u;
+    draw.depth_format = 0u;
+    draw.depth_pitch = 0ul;
+    draw.depth_only = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -715,6 +724,7 @@ static void test_phase_f1b_depth(void)
     /* DEPTH_STENCIL_STATE DW2: test 31, function 29:27, write 26. */
     CHECK(image[V9X_HSW_SHADE_DS_ALWAYS / 4ul + 2ul] == 0x84000000ul);
     CHECK(image[V9X_HSW_SHADE_DS_LESS / 4ul + 2ul] == 0x94000000ul);
+    CHECK(image[V9X_HSW_SHADE_DS_LEQUAL / 4ul + 2ul] == 0xa4000000ul);
 
     draw.binding_table = V9X_HSW_DRAW_BINDING_TABLE(0);
     draw.kernel = V9X_HSW_DRAW_KERNEL(1);
@@ -731,6 +741,9 @@ static void test_phase_f1b_depth(void)
     draw.tl_vertices = 0u;
     draw.vertex_count = 0ul;
     draw.flat = 0u;
+    draw.depth_format = 0u;
+    draw.depth_pitch = 0ul;
+    draw.depth_only = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -794,6 +807,9 @@ static void test_phase_f2_tl(void)
     draw.tl_vertices = 1u;
     draw.vertex_count = 12ul;
     draw.flat = 1u;
+    draw.depth_format = 0u;
+    draw.depth_pitch = 0ul;
+    draw.depth_only = 0u;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
                                       0x01801020ul, 7ul) == V9X_STATUS_OK);
@@ -828,9 +844,94 @@ static void test_phase_f2_tl(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * Phase F2b: a D16 depth-only fill. Worked by hand: DEPTH_BUFFER DW1 2D
+ * (1) 31:29, write 28, D16_UNORM (5) 20:18, pitch 128 - 1; SF's depth
+ * format 5 at 14:12; WM, PS and SBE those of the same draw with colour,
+ * the blend pointer on the write-disabled state; one 12-vertex TRILIST
+ * under the depth_test state, no clear primitive.
+ */
+static void test_phase_f2b_depth_only(void)
+{
+    v9x_u32 dw[512];
+    v9x_u32 colour[512];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_batch colour_batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    v9x_u32 at;
+    v9x_u32 colour_at;
+    v9x_u32 primitives;
+    v9x_u32 index;
+    v9x_u32 n;
+    static const v9x_u32 same[3] = { 0x781f000cul, 0x78140001ul, 0x78200006ul };
+
+    draw.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    draw.kernel = V9X_HSW_SHADE_KERNEL(0);
+    draw.vertices = 0x01825000ul;
+    draw.width = 64u;
+    draw.height = 64u;
+    draw.attributes = 1u;
+    draw.blend = 0ul;
+    draw.cc = 0ul;
+    draw.sampler = 0ul;
+    draw.depth_buffer = 0x0182a000ul;
+    draw.depth_clear = 0ul;
+    draw.depth_test = V9X_HSW_SHADE_DS_ALWAYS;
+    draw.tl_vertices = 0u;
+    draw.vertex_count = 12ul;
+    draw.flat = 0u;
+    draw.depth_format = V9X_HSW_DEPTH_D16_UNORM;
+    draw.depth_pitch = 128ul;
+    draw.depth_only = 1u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
+                                      0x01821028ul, 9ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x78050005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x3014007ful &&
+          dw[at + 3ul] == 0x00fc03f0ul);
+    at = v9x_find_command(dw, batch.used, 0x78130005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00005000ul);
+    /* A zero WM and PS hung the 4570 twice (Phase F2b, runs 1 and 2): the
+     * fill dispatches the colour draw's shader and masks its writes. */
+    draw.depth_only = 0u;
+    v9x_intel_hsw_batch_init(&colour_batch, colour, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&colour_batch, 0x01824000ul, 0x2000ul,
+                                      &draw, 0x01821028ul, 9ul) ==
+          V9X_STATUS_OK);
+    for (n = 0ul; n < 3ul; ++n) {
+        at = v9x_find_command(dw, batch.used, same[n]);
+        colour_at = v9x_find_command(colour, colour_batch.used, same[n]);
+        CHECK(at < batch.used && colour_at < colour_batch.used);
+        for (index = 1ul; at < batch.used && colour_at < colour_batch.used &&
+                          index <= (same[n] & 0xfful) + 1ul;
+             ++index) {
+            CHECK(dw[at + index] == colour[colour_at + index]);
+        }
+    }
+    at = v9x_find_command(dw, batch.used, 0x78140001ul);
+    CHECK(at < batch.used && dw[at + 1ul] != 0ul);
+    at = v9x_find_command(dw, batch.used, 0x78240000ul);
+    CHECK(at < batch.used &&
+          dw[at + 1ul] == (V9X_HSW_SHADE_BLEND_NO_COLOUR | 1ul));
+    at = v9x_find_command(dw, batch.used, 0x78250000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == (V9X_HSW_SHADE_DS_ALWAYS | 1ul));
+    primitives = 0ul;
+    for (index = 0ul; index < batch.used; ++index) {
+        if (dw[index] == 0x7b000005ul) {
+            ++primitives;
+        }
+    }
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(primitives == 1ul && at < batch.used && dw[at + 2ul] == 12ul &&
+          dw[at + 3ul] == 0ul);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_phase_f2b_depth_only();
     test_phase_f2_tl();
     test_phase_f1b_depth();
     test_phase_e_shade();

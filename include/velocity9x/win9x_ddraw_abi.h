@@ -107,6 +107,8 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDHAL_DRIVER_HANDLED     0x00000001ul
 #define V9X_DD_OK                    0x00000000ul
 #define V9X_DDERR_WASSTILLDRAWING    0x8876021cul
+/* DDERR_GENERIC is E_FAIL (DDRAW.H). */
+#define V9X_DDERR_GENERIC            0x80004005ul
 
 /* Caps and flag bits used by this driver (DDK values). */
 #define V9X_DDCAPS_BLT               0x00000040ul

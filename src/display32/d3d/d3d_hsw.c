@@ -20,8 +20,11 @@
  * in this DLL across draws: it is mapped into every Direct3D process, and
  * every batch carries all of its state.
  *
- * Depth is F2b's: no Z buffer is advertised, and a draw that asks for one
- * is refused.
+ * Depth is F2b's: D16_UNORM Z buffers, which Gen7 always reads Y-tiled, so
+ * this file places them in whole tiles and fills them by drawing - a
+ * depth-only quad with colour writes masked, the shape the 4570 measured
+ * (docs\decisions\2026-10-17-haswell-phase-f2b-depth.md). A Lock of a Z
+ * buffer returns the tiled bytes; detiling is not done.
  */
 #include "d3d_internal.h"
 #include "d3d_state.h"
@@ -42,6 +45,19 @@
  * zeroed run after the CC state. */
 #define V9X_D3D_HSW_BORDER_BYTES 0x40ul
 #define V9X_D3D_HSW_TEXTURE_OFF  V9X_HSW_SHADE_TEX_SURFACE(0)
+
+/* Each draw's DEPTH_STENCIL_STATE, in the slot E's layout gave the first. */
+#define V9X_D3D_HSW_DS_OFF V9X_HSW_SHADE_DS_ALWAYS
+
+/* A Y tile is 128 bytes by 32 rows in 4 KB (Vol 1c), and the depth buffer
+ * is always Y-tiled on Gen7 (Vol 2b 3DSTATE_DEPTH_BUFFER Tiled Surface):
+ * a Z buffer's pitch, rows and base are whole tiles. */
+#define V9X_D3D_HSW_TILE_PITCH 128ul
+#define V9X_D3D_HSW_TILE_ROWS  32ul
+#define V9X_D3D_HSW_TILE_BYTES 4096ul
+
+/* A depth fill is two triangles. */
+#define V9X_D3D_HSW_FILL_VERTICES 6ul
 
 /* The vertex area holds this many triangles of 96 bytes. */
 #define V9X_D3D_HSW_MAX_TRIANGLES \
@@ -83,15 +99,18 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     1ul,            /* texture_size_min */
     2048ul,         /* texture_size_max */
     8192.0f,        /* coordinate_limit */
-    0ul,            /* depth_bits_per_pixel: none until F2b */
+    16ul,           /* depth_bits_per_pixel: D16_UNORM */
     16ul,           /* texture_align */
     1ul,            /* clip_in_core: the CLIP stage is off */
-    0ul,            /* depth_pitch_own */
+    /* 3DSTATE_DEPTH_BUFFER carries the Z buffer's own pitch, whole tiles
+     * wider than its row. */
+    1ul,            /* depth_pitch_own */
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
     /* 3DSTATE_MULTISAMPLE Pixel Location is the pixel centre (Vol 2b), and
      * Phase D's coverage matched a reference sampling at x + 0.5. */
-    1ul             /* pixel_centre_half */
+    1ul,            /* pixel_centre_half */
+    1ul             /* depth_tiled: Y tiles */
 };
 
 /* What the mapping makes of a draw. */
@@ -107,6 +126,11 @@ typedef struct v9x_d3d_hsw_state {
     v9x_u32 texture_pitch;
     v9x_u8 alpha_ref;
     int textured;
+    int depth;
+    v9x_u32 depth_address;
+    v9x_u32 depth_pitch;
+    v9x_u8 depth_function;
+    v9x_u8 depth_write;
 } V9X_D3D_HSW_STATE;
 
 /* Once per process: the ring was found where the mini-VDD put it. */
@@ -330,6 +354,37 @@ static int v9x_d3d_hsw_texture_format(const V9X_DD_SURFACE_LCL *surface,
     return 1;
 }
 
+/*
+ * A Z buffer this file placed: video memory, a pitch of whole tiles, on a
+ * tile boundary, and carrying the placement's signature (v9x_d3d_place_block
+ * leaves lpVidMemHeap null and the block in dwReserved1). One DirectDraw's
+ * heap placed has none of the padding rows the last row of tiles reaches
+ * into, so the engine would write past it; it is refused.
+ */
+static int v9x_d3d_hsw_depth_surface(const V9X_DD_SURFACE_LCL *surface,
+                                     DWORD *offset)
+{
+    const V9X_DD_SURFACE_GBL *global;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return 0;
+    }
+    global = surface->lpGbl;
+    if (global->lPitch <= 0l ||
+        ((DWORD)global->lPitch & (V9X_D3D_HSW_TILE_PITCH - 1ul)) != 0ul ||
+        global->dwBlockSizeX != 0ul || global->dwReserved1 == 0ul ||
+        global->wWidth == 0u || global->wHeight == 0u ||
+        (DWORD)global->wWidth > v9x_d3d_hsw_limits.target_dimension_max ||
+        (DWORD)global->wHeight > v9x_d3d_hsw_limits.target_dimension_max) {
+        return 0;
+    }
+    *offset = v9x_surface_offset(surface);
+    return *offset != 0xfffffffful &&
+           (*offset & (V9X_D3D_HSW_TILE_BYTES - 1ul)) == 0ul;
+}
+
 /* Direct3D's blend factors (V9X_R3D_BLEND_*) as Gen's (Vol 2a
  * 3D_Color_Buffer_Blend_Factor); 0 for one this engine does not take. */
 static v9x_u8 v9x_d3d_hsw_factor(v9x_u32 factor)
@@ -411,6 +466,11 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     state->texture_width = 0u;
     state->texture_height = 0u;
     state->texture_pitch = 0ul;
+    state->depth = 0;
+    state->depth_address = 0ul;
+    state->depth_pitch = 0ul;
+    state->depth_function = 0u;
+    state->depth_write = 0u;
 
     if (draw->target.format == V9X_R3D_FORMAT_RGB565) {
         state->target_format = V9X_HSW_FMT_B5G6R5_UNORM;
@@ -429,7 +489,21 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     if (v9x_d3d_state_depth_active(draw->depth_enable,
                                    draw->depth.object != 0,
                                    draw->depth.pitch) != 0ul) {
-        return V9X_D3D_HSW_REFUSE_DEPTH;
+        surface = (V9X_DD_SURFACE_LCL *)draw->depth.object;
+        /* The depth buffer is addressed at the target's extent (DW3), so
+         * it must cover the target. */
+        if (!v9x_d3d_hsw_depth_surface(surface, &offset) ||
+            (DWORD)surface->lpGbl->wWidth < draw->target.width ||
+            (DWORD)surface->lpGbl->wHeight < draw->target.height ||
+            draw->depth_func < V9X_R3D_CMP_NEVER ||
+            draw->depth_func > V9X_R3D_CMP_ALWAYS) {
+            return V9X_D3D_HSW_REFUSE_DEPTH;
+        }
+        state->depth = 1;
+        state->depth_address = v9x_d3d_hsw_vram(offset);
+        state->depth_pitch = (v9x_u32)surface->lpGbl->lPitch;
+        state->depth_function = v9x_d3d_hsw_compare(draw->depth_func);
+        state->depth_write = draw->depth_write != 0ul ? 1u : 0u;
     }
 
     surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
@@ -560,17 +634,34 @@ static DWORD v9x_d3d_hsw_kernel_slot(const struct v9x_hsw_ps_desc *desc)
             (DWORD)desc->fog) % V9X_INTEL_HSW_KERNEL_SLOTS;
 }
 
+/* The kernel for a description, built into its slot; its offset in the
+ * state. */
+static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
+                                    DWORD *kernel)
+{
+    v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    DWORD slot;
+    v9x_u32 used;
+
+    slot = v9x_d3d_hsw_kernel_slot(desc);
+    *kernel = V9X_INTEL_HSW_KERNEL_OFF + slot * V9X_INTEL_HSW_KERNEL_SLOT;
+    /* The last 128 bytes of a slot stay clear for the EU's prefetch past a
+     * kernel's end (Vol 7). */
+    return v9x_intel_hsw_ps_kernel_build(
+               image + *kernel / 4ul,
+               (V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul, desc,
+               &used) == V9X_STATUS_OK;
+}
+
 /* The draw's state in the reserve: the target and texture surfaces, the
- * binding table, the sampler, blend and CC state, the zeroed border
- * colour, and the kernel. */
+ * binding table, the sampler, blend, CC and depth-stencil state, the zeroed
+ * border colour, and the kernel. */
 static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                    const V9X_D3D_HSW_STATE *state,
                                    DWORD *kernel)
 {
     v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
     v9x_u32 *table;
-    DWORD slot;
-    v9x_u32 used;
     DWORD index;
 
     if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
@@ -611,15 +702,13 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                state->alpha_ref) != V9X_STATUS_OK) {
         return 0;
     }
-
-    slot = v9x_d3d_hsw_kernel_slot(&state->desc);
-    *kernel = V9X_INTEL_HSW_KERNEL_OFF + slot * V9X_INTEL_HSW_KERNEL_SLOT;
-    /* The last 128 bytes of a slot stay clear for the EU's prefetch past a
-     * kernel's end (Vol 7). */
-    return v9x_intel_hsw_ps_kernel_build(
-               image + *kernel / 4ul,
-               (V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul, &state->desc,
-               &used) == V9X_STATUS_OK;
+    if (state->depth &&
+        v9x_intel_hsw_depth_stencil(image + V9X_D3D_HSW_DS_OFF / 4ul, 1u,
+                                    state->depth_function,
+                                    state->depth_write) != V9X_STATUS_OK) {
+        return 0;
+    }
+    return v9x_d3d_hsw_write_kernel(&state->desc, kernel);
 }
 
 static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
@@ -676,11 +765,17 @@ static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
     d.blend = V9X_HSW_SHADE_BLEND_ALPHA_TEST;
     d.cc = V9X_HSW_SHADE_CC;
     d.sampler = V9X_HSW_SHADE_SAMPLER;
-    d.depth_buffer = 0ul;
+    /* With a depth buffer, the batch emits it after Vol 2b's stall, flush
+     * and stall, and the whole draw runs under the depth-stencil state;
+     * without one the buffer is NULL. */
+    d.depth_buffer = state.depth ? state.depth_address : 0ul;
     d.depth_clear = 0ul;
-    d.depth_test = 0ul;
+    d.depth_test = state.depth ? V9X_D3D_HSW_DS_OFF : 0ul;
     d.tl_vertices = 1u;
     d.flat = 0u;   /* the core copies the provoking vertex */
+    d.depth_format = state.depth ? V9X_HSW_DEPTH_D16_UNORM : (v9x_u8)0u;
+    d.depth_pitch = state.depth_pitch;
+    d.depth_only = 0u;
 
     while (done < triangle_count) {
         count = triangle_count - done;
@@ -713,6 +808,218 @@ static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/* One TL vertex (V9X_HSW_TL_VERTEX_BYTES): x, y, z, rhw 1.0, then a black
+ * diffuse and specular and zero texture coordinates. */
+static v9x_u32 *v9x_d3d_hsw_fill_vertex(v9x_u32 *at, float x, float y,
+                                        float z)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } convert;
+
+    convert.value = x;
+    at[0] = convert.bits;
+    convert.value = y;
+    at[1] = convert.bits;
+    convert.value = z;
+    at[2] = convert.bits;
+    convert.value = 1.0f;
+    at[3] = convert.bits;
+    at[4] = 0ul;
+    at[5] = 0ul;
+    at[6] = 0ul;
+    at[7] = 0ul;
+    return at + V9X_HSW_TL_VERTEX_BYTES / 4u;
+}
+
+/*
+ * A rectangle of a Z buffer at value / 65535: the depth-only draw the
+ * /depth16 probe measured on the 4570 (Phase F2b, run 3). Two triangles
+ * whose edges lie on the rectangle's, so with sampling at pixel centres
+ * they cover exactly its pixels, under DEPTH_STENCIL ALWAYS with write; the
+ * shader runs, and the blend state masks every colour channel. Its colour
+ * target is the Z buffer's own memory, named as B5G6R5 at the same extent,
+ * which nothing writes. Synchronous, after the blitter is idle.
+ */
+int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                           DWORD value, int wait)
+{
+    struct v9x_hsw_ps_desc desc;
+    struct v9x_hsw_blend blend;
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_draw d;
+    v9x_u32 *image;
+    v9x_u32 *table;
+    v9x_u32 *at;
+    DWORD offset = 0ul;
+    DWORD kernel = 0ul;
+    DWORD width;
+    DWORD height;
+    DWORD pitch;
+    float left;
+    float top;
+    float right;
+    float bottom;
+    float z;
+
+    if (surface == 0 || rect == 0 || !v9x_d3d_hsw_ready() ||
+        !v9x_d3d_hsw_depth_surface(surface, &offset)) {
+        return V9X_BLT_DECLINED;
+    }
+    width = (DWORD)surface->lpGbl->wWidth;
+    height = (DWORD)surface->lpGbl->wHeight;
+    pitch = (DWORD)surface->lpGbl->lPitch;
+    if (rect[0] < 0l || rect[1] < 0l || rect[2] <= rect[0] ||
+        rect[3] <= rect[1] || (DWORD)rect[2] > width ||
+        (DWORD)rect[3] > height) {
+        return V9X_BLT_DECLINED;
+    }
+    if (!v9x_engine32_hsw.wait_idle(wait)) {
+        return V9X_BLT_BUSY;
+    }
+    if (!v9x_d3d_hsw_wait_rcs()) {
+        return V9X_BLT_DECLINED;
+    }
+
+    image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
+                                 V9X_HSW_FMT_B5G6R5_UNORM,
+                                 v9x_d3d_hsw_vram(offset), (v9x_u16)width,
+                                 (v9x_u16)height, pitch) != V9X_STATUS_OK) {
+        return V9X_BLT_DECLINED;
+    }
+    table = image + V9X_HSW_SHADE_BINDING_TABLE(0) / 4ul;
+    table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
+    table[1] = V9X_HSW_DRAW_RT_SURFACE(0);
+    table[2] = V9X_HSW_DRAW_RT_SURFACE(0);
+
+    blend.enable = 0u;
+    blend.color_function = 0u;
+    blend.src_factor = 0u;
+    blend.dst_factor = 0u;
+    blend.independent_alpha = 0u;
+    blend.alpha_function = 0u;
+    blend.src_alpha_factor = 0u;
+    blend.dst_alpha_factor = 0u;
+    blend.write_disable = 0xfu;
+    blend.alpha_test = 0u;
+    blend.alpha_function_test = 0u;
+    desc.stage0 = V9X_HSW_PS_DIFFUSE;
+    desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
+    desc.fog = 0u;
+    desc.fog_rgb[0] = 0ul;
+    desc.fog_rgb[1] = 0ul;
+    desc.fog_rgb[2] = 0ul;
+    desc.specular = 0u;
+    /* COMPAREFUNCTION_ALWAYS is 0 (Vol 2a). */
+    if (v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_NO_COLOUR / 4ul,
+                            &blend) != V9X_STATUS_OK ||
+        v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul, 0u) !=
+            V9X_STATUS_OK ||
+        v9x_intel_hsw_depth_stencil(image + V9X_D3D_HSW_DS_OFF / 4ul, 1u,
+                                    0u, 1u) != V9X_STATUS_OK ||
+        !v9x_d3d_hsw_write_kernel(&desc, &kernel)) {
+        return V9X_BLT_DECLINED;
+    }
+
+    /* D16_UNORM stores round(z x 65535). */
+    z = (float)(value & 0xfffful) / 65535.0f;
+    left = (float)rect[0];
+    top = (float)rect[1];
+    right = (float)rect[2];
+    bottom = (float)rect[3];
+    at = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_VERTEX_OFF);
+    at = v9x_d3d_hsw_fill_vertex(at, left, top, z);
+    at = v9x_d3d_hsw_fill_vertex(at, right, top, z);
+    at = v9x_d3d_hsw_fill_vertex(at, left, bottom, z);
+    at = v9x_d3d_hsw_fill_vertex(at, right, top, z);
+    at = v9x_d3d_hsw_fill_vertex(at, right, bottom, z);
+    (void)v9x_d3d_hsw_fill_vertex(at, left, bottom, z);
+
+    d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    d.kernel = kernel;
+    d.vertices = V9X_D3D_HSW_GFX(V9X_INTEL_HSW_VERTEX_OFF);
+    d.width = (v9x_u16)width;
+    d.height = (v9x_u16)height;
+    d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    d.blend = V9X_HSW_SHADE_BLEND_NO_COLOUR;
+    d.cc = V9X_HSW_SHADE_CC;
+    d.sampler = V9X_HSW_SHADE_SAMPLER;
+    d.depth_buffer = v9x_d3d_hsw_vram(offset);
+    d.depth_clear = 0ul;
+    d.depth_test = V9X_D3D_HSW_DS_OFF;
+    d.tl_vertices = 1u;
+    d.vertex_count = V9X_D3D_HSW_FILL_VERTICES;
+    d.flat = 0u;
+    d.depth_format = V9X_HSW_DEPTH_D16_UNORM;
+    d.depth_pitch = pitch;
+    d.depth_only = 1u;
+    v9x_intel_hsw_batch_init(&batch,
+                             v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
+                             V9X_INTEL_HSW_BATCH_BYTES / 4ul);
+    if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_STATE_BASE,
+                                    V9X_INTEL_HSW_STATE_BYTES, &d,
+                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
+            V9X_STATUS_OK ||
+        !v9x_d3d_hsw_submit()) {
+        return V9X_BLT_DECLINED;
+    }
+    return V9X_BLT_DONE;
+}
+
+/*
+ * A Z buffer in whole Y tiles: pitch width x 2 rounded up to 128 bytes,
+ * rows rounded up to 32, on a 4 KB boundary, so the last row of tiles the
+ * engine reaches is the surface's own. Every other surface is DirectDraw's.
+ */
+static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list;
+    V9X_DD_SURFACE_LCL *surface;
+    v9x_u32 offsets[1];
+    DWORD pitch;
+    DWORD rows;
+    DWORD base;
+
+    if (v9x_hal == 0 || data == 0 || data->dwSCnt != 1ul ||
+        data->lplpSList == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    surface = list[0];
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->wWidth == 0u || surface->lpGbl->wHeight == 0u ||
+        (DWORD)surface->lpGbl->wWidth >
+            v9x_d3d_hsw_limits.target_dimension_max ||
+        (DWORD)surface->lpGbl->wHeight >
+            v9x_d3d_hsw_limits.target_dimension_max ||
+        ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
+         surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul)) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    pitch = ((DWORD)surface->lpGbl->wWidth * 2ul + V9X_D3D_HSW_TILE_PITCH -
+             1ul) & ~(V9X_D3D_HSW_TILE_PITCH - 1ul);
+    rows = ((DWORD)surface->lpGbl->wHeight + V9X_D3D_HSW_TILE_ROWS - 1ul) &
+           ~(V9X_D3D_HSW_TILE_ROWS - 1ul);
+    offsets[0] = 0ul;
+    if (v9x_d3d_place_block(data, V9X_D3D_HSW_TILE_BYTES, pitch, rows,
+                            offsets, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    ++v9x_hal->d3d_diagnostics.z_placed;
+    v9x_hal->d3d_diagnostics.z_placed_pitch = pitch;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+static void v9x_d3d_hsw_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
+{
+    (void)v9x_d3d_place_release(data, V9X_D3D_HSW_TILE_BYTES);
+}
+
 /*
  * What the mapping takes: Gouraud and the core's flat; texture DECAL, COPY,
  * MODULATE (with Direct3D's alpha rule) and MODULATEALPHA, published, and
@@ -720,7 +1027,8 @@ static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
  * carries define neither caps bit); specular;
  * vertex fog; every blend factor but the destination alpha ones (a 16-bit
  * target has no useful alpha); the alpha test with every function; WRAP,
- * MIRROR, CLAMP. No Z buffer yet (F2b). Mip filters are published and
+ * MIRROR, CLAMP; a 16-bit Z buffer with every comparison (F2b). Mip
+ * filters are published and
  * sample level 0, the honest degradation Gen3's caps describe.
  */
 static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
@@ -756,13 +1064,14 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
                       V9X_D3DPMISCCAPS_CULLCCW;
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_SUBPIXEL |
                         V9X_D3DPRASTERCAPS_FOGVERTEX |
-                        V9X_D3DPRASTERCAPS_FOGTABLE;
-    tri->dwZCmpCaps = 0ul;
-    tri->dwAlphaCmpCaps =
+                        V9X_D3DPRASTERCAPS_FOGTABLE |
+                        V9X_D3DPRASTERCAPS_ZTEST;
+    tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
+    tri->dwAlphaCmpCaps = tri->dwZCmpCaps;
     tri->dwSrcBlendCaps =
         V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
         V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR |
@@ -804,7 +1113,7 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
-    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = 0ul;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
     /* RGB565, ARGB1555 and ARGB4444: the shared block has three slots. */
     for (index = 0ul; index < 3ul; ++index) {
@@ -848,8 +1157,8 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_describe_caps,
     0,                                  /* draw_triangles: draw serves */
     v9x_d3d_hsw_ready,
-    0,                                  /* create_surface: DirectDraw's */
-    0,                                  /* destroy_surface */
+    v9x_d3d_hsw_create_surface,         /* Z buffers in Y tiles */
+    v9x_d3d_hsw_destroy_surface,
     v9x_d3d_hsw_draw,
     v9x_d3d_hsw_accepts
 };

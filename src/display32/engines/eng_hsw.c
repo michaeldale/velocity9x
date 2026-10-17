@@ -207,6 +207,17 @@ static int v9x_hsw_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     struct v9x_hsw_batch batch;
     DWORD color;
 
+    /* A Z buffer is Y-tiled: the blitter's linear rectangle is not its
+     * pixels, so the render engine draws the fill (Phase F2b). */
+    if (data != 0 && data->lpDDDestSurface != 0 &&
+        (data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        if (!v9x_hsw_validate() || bytes_per_pixel != 2ul) {
+            return V9X_BLT_DECLINED;
+        }
+        return v9x_d3d_hsw_depth_fill(data->lpDDDestSurface, data->rDest,
+                                      data->bltFX.dwFillColor & 0xfffful,
+                                      wait);
+    }
     if (!v9x_hsw_validate() || data == 0 || data->lpDDDestSurface == 0 ||
         data->lpDDDestSurface->lpGbl == 0 ||
         !v9x_hsw_depth_ok(bytes_per_pixel) ||

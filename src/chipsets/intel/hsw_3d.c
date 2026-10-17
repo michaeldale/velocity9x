@@ -1133,12 +1133,21 @@ v9x_status v9x_intel_hsw_shade_state(v9x_u32 *image, v9x_u32 dwords,
     blend.src_factor = V9X_HSW_BLENDFACTOR_SRC_ALPHA;
     blend.dst_factor = V9X_HSW_BLENDFACTOR_INV_SRC_ALPHA;
     v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA / 4ul, &blend);
+    /* Phase F2b: blending off, every channel's write disabled. */
+    blend.enable = 0u;
+    blend.src_factor = 0u;
+    blend.dst_factor = 0u;
+    blend.write_disable = 0xfu;
+    v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_NO_COLOUR / 4ul, &blend);
 
     /* COMPAREFUNCTION_ALWAYS 0, LESS 2 (Vol 2a). */
     v9x_intel_hsw_depth_stencil(image + V9X_HSW_SHADE_DS_ALWAYS / 4ul, 1u,
                                 0u, 1u);
     v9x_intel_hsw_depth_stencil(image + V9X_HSW_SHADE_DS_LESS / 4ul, 1u,
                                 2u, 1u);
+    /* LEQUAL 4 (Vol 2a), Phase F2b. */
+    v9x_intel_hsw_depth_stencil(image + V9X_HSW_SHADE_DS_LEQUAL / 4ul, 1u,
+                                4u, 1u);
     return v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul, alpha_ref);
 }
 
@@ -1213,7 +1222,7 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
         }
     }
 
-    if (draw->depth_buffer != 0ul) {
+    if (draw->depth_buffer != 0ul && draw->depth_clear != 0ul) {
         /* The clear, then the scene under the depth test; a pointer change
          * between primitives needs no flush. */
         v9x_intel_hsw_vertex_buffer(
@@ -1266,6 +1275,7 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     v9x_u32 cc;
     v9x_u32 sampler;
     v9x_u16 vue_rows;
+    v9x_u8 depth_format;
     int shade;
     v9x_status status;
 
@@ -1281,12 +1291,15 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
      * attributes make a 24-dword VUE, two 512-bit rows (field 1); D's
      * 12 dwords fit one (field 0). */
     shade = draw != 0 && draw->attributes == V9X_HSW_SHADE_ATTRIBUTES;
-    blend = draw != 0 && draw->blend != 0ul ? draw->blend :
+    blend = draw != 0 && draw->depth_only ? V9X_HSW_SHADE_BLEND_NO_COLOUR :
+            draw != 0 && draw->blend != 0ul ? draw->blend :
                                               V9X_HSW_INIT_BLEND;
     cc = draw != 0 && draw->cc != 0ul ? draw->cc : V9X_HSW_INIT_CC;
     sampler = draw != 0 && draw->sampler != 0ul ? draw->sampler :
                                                   V9X_HSW_INIT_SAMPLER;
     vue_rows = shade ? 1u : 0u;
+    depth_format = draw != 0 && draw->depth_format != 0u ?
+                       draw->depth_format : V9X_HSW_DEPTH_D32_FLOAT;
 
     v9x_intel_hsw_pipeline_select_3d(batch);
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
@@ -1350,8 +1363,7 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
             v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
         }
         v9x_intel_hsw_sf_screen_depth(
-            batch, draw->depth_buffer != 0ul ?
-                       (v9x_u8)V9X_HSW_DEPTH_FORMAT_D32_FLOAT : (v9x_u8)0u);
+            batch, draw->depth_buffer != 0ul ? depth_format : (v9x_u8)0u);
         if (shade) {
             /* Flat: diffuse and specular (attributes 0 and 1) constant. */
             v9x_intel_hsw_sbe_constant(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u,
@@ -1359,6 +1371,10 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         } else {
             v9x_intel_hsw_sbe(batch, 1u, 1u, 1u);
         }
+        /* A depth-only draw still dispatches the shader; its colour
+         * writes are masked by the blend state below. A zero WM and PS,
+         * with or without SBE's attribute, never retired on the 4570
+         * (Phase F2b, runs 1 and 2). */
         v9x_intel_hsw_wm(batch, V9X_HSW_BARY_PERSPECTIVE_PIXEL);
         v9x_intel_hsw_ps_simd8(batch, draw->kernel,
                                shade ? V9X_HSW_SHADE_BINDING_ENTRIES : 1u,
@@ -1375,8 +1391,9 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                (V9X_HSW_DEPTH_FORMAT_D32_FLOAT << 18);
     if (draw != 0 && draw->depth_buffer != 0ul) {
         /* Vol 2b: before changing depth buffer state, a depth stall, a
-         * depth cache flush, another depth stall. Then a 2D D32_FLOAT
-         * buffer with depth write (DW1 31:29, 28, 20:18, pitch - 1 17:0),
+         * depth cache flush, another depth stall. Then a 2D D32_FLOAT or
+         * D16_UNORM buffer with depth write (DW1 31:29, 28, 20:18, pitch -
+         * 1 17:0),
          * its base, height - 1 31:18 and width - 1 17:4; then HiZ,
          * stencil and clear parameters, all off. */
         v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul, 0ul);
@@ -1385,8 +1402,10 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul, 0ul);
         depth[0] = ((v9x_u32)V9X_HSW_SURFTYPE_2D << 29) |
                    V9X_HSW_DEPTH_WRITE_ENABLE |
-                   (V9X_HSW_DEPTH_FORMAT_D32_FLOAT << 18) |
-                   ((v9x_u32)draw->width * 4ul - 1ul);
+                   ((v9x_u32)depth_format << 18) |
+                   (draw->depth_pitch != 0ul ? draw->depth_pitch - 1ul :
+                                               (v9x_u32)draw->width * 4ul -
+                                                   1ul);
         depth[1] = draw->depth_buffer;
         depth[2] = ((v9x_u32)(draw->height - 1u) << 18) |
                    ((v9x_u32)(draw->width - 1u) << 4);
@@ -1420,7 +1439,9 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                                 blend | V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_DEPTH_STENCIL_PTRS,
                                 (draw != 0 && draw->depth_buffer != 0ul ?
-                                     draw->depth_clear :
+                                     (draw->depth_clear != 0ul ?
+                                          draw->depth_clear :
+                                          draw->depth_test) :
                                      V9X_HSW_INIT_DEPTH_STENCIL) |
                                     V9X_HSW_POINTER_MBO);
     v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,

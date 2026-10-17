@@ -443,6 +443,12 @@ extern const V9X_ENGINE32_OPS v9x_engine32_sis6326;
 extern const V9X_ENGINE32_OPS v9x_engine32_mga;
 extern const V9X_ENGINE32_OPS v9x_engine32_tdfx;
 extern const V9X_ENGINE32_OPS v9x_engine32_hsw;
+/* Haswell's Y-tiled Z buffers are filled by the render engine, not the
+ * blitter: eng_hsw.c's fill hands a depth destination to d3d\d3d_hsw.c.
+ * rect is rDest's left, top, right, bottom; value is on the 16-bit full
+ * scale. Returns a V9X_BLT_* outcome. */
+int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                           DWORD value, int wait);
 
 /* The Mach64 core eng_mach64.c owns, once the chip is validated, or null:
  * shared with d3d_mach64.c so 2D and 3D keep one FIFO account. */
@@ -671,6 +677,9 @@ V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
 DWORD v9x_d3d_depth_bytes_per_pixel(void);
 /* A DDBLT_DEPTHFILL value in the fitted engine's depth scale. */
 DWORD v9x_d3d_depth_fill_value(DWORD value);
+/* Non-zero when the fitted engine's depth buffers are tiled: only the
+ * engine's own depth fill is correct, and there is no CPU fallback. */
+int v9x_d3d_depth_tiled(void);
 /* Draw what DrawPrimitives2 holds between calls (d3d_core.c,
  * v9x_d3d_dp2_run). Called first by every entry point that touches the
  * engine, a surface or a texture; a no-op when nothing is pending. */

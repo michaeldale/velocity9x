@@ -472,12 +472,20 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
  * LESS with write. */
 #define V9X_HSW_SHADE_DS_ALWAYS        ((v9x_u32)0x1440ul)
 #define V9X_HSW_SHADE_DS_LESS          ((v9x_u32)0x1480ul)
-#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x14c0ul)
+/* Phase F2b: LESSEQUAL with write. */
+#define V9X_HSW_SHADE_DS_LEQUAL        ((v9x_u32)0x14c0ul)
+/* Phase F2b: a blend state with every channel's write disabled, for the
+ * engine's depth fills. */
+#define V9X_HSW_SHADE_BLEND_NO_COLOUR  ((v9x_u32)0x1500ul)
+#define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x1540ul)
 /* The depth draw: x, y, z, then RGBA, 28 bytes; 3 vertices of the clear
  * then 9 of the scene. */
 #define V9X_HSW_DEPTH_VERTEX_BYTES     ((v9x_u16)28u)
 #define V9X_HSW_DEPTH_CLEAR_VERTICES   ((v9x_u32)3ul)
 #define V9X_HSW_DEPTH_SCENE_VERTICES   ((v9x_u32)9ul)
+/* 3DSTATE_DEPTH_BUFFER Surface Format (Vol 2b): D32_FLOAT 1, D16_UNORM 5. */
+#define V9X_HSW_DEPTH_D32_FLOAT        ((v9x_u8)1u)
+#define V9X_HSW_DEPTH_D16_UNORM        ((v9x_u8)5u)
 /* Phase F2: Direct3D's TL vertex. */
 #define V9X_HSW_TL_VERTEX_BYTES        ((v9x_u16)32u)
 
@@ -520,6 +528,16 @@ struct v9x_hsw_draw {
     v9x_u8 tl_vertices;
     v9x_u32 vertex_count;
     v9x_u8 flat;
+    /* Phase F2b. depth_format: V9X_HSW_DEPTH_D32_FLOAT (0 means it, F1b's)
+     * or V9X_HSW_DEPTH_D16_UNORM. depth_pitch: bytes, a whole number of
+     * 128-byte Y tiles; 0 means width x 4 (F1b's). depth_only: the kernel
+     * runs but the blend state disables every colour channel's write, so
+     * only depth is written - the engine's depth fill (blend is ignored).
+     * With a depth buffer and depth_clear 0, the
+     * whole draw runs under depth_test. */
+    v9x_u8 depth_format;
+    v9x_u32 depth_pitch;
+    v9x_u8 depth_only;
 };
 
 /* The init batch's state with the draw's in place of the zeroed stages,
