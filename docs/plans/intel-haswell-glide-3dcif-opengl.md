@@ -21,6 +21,10 @@ with one unit
 Mipmaps on boot 26: chains placed as one Gen7 tree, every V9XGLP level
 key reading its level
 ([record](../decisions/2026-10-18-haswell-mipmaps.md)).
+Probes for steps 5 and 6 on boots 26-27: Glide's pass; the 3DCIF demos
+draw only without depth, every refusal a raw depth, and Laputa hangs
+after its first frame
+([record](../decisions/2026-10-18-haswell-glide-3dcif-probes.md)).
 Next: the rest of step 3 (Quake 2), then steps 5 and 6.
 
 Target: the i5-4570 (`8086:0412`), on the `intel-gma` family's
