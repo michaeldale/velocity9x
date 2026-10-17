@@ -90,7 +90,8 @@ if (-not [Text.Encoding]::ASCII.GetString($vxdBytes).Contains('HSWMM_DDB')) {
 # The publisher.
 $sources = @(
     (Join-Path $repoRoot 'tools\diag\hsw_mmio_probe_win32.c'),
-    (Join-Path $repoRoot 'src\chipsets\intel\hsw_config.c')
+    (Join-Path $repoRoot 'src\chipsets\intel\hsw_config.c'),
+    (Join-Path $repoRoot 'src\chipsets\intel\hsw_3d.c')
 )
 $objects = @()
 foreach ($source in $sources) {

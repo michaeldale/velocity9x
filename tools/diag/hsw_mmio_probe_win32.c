@@ -34,6 +34,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/intel_hsw.h"
+#include "velocity9x/intel_hsw_3d.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -164,6 +165,270 @@ typedef char v9x_hswmm_header_matches[
 
 static struct v9x_hswmm_request v9x_request;
 static struct v9x_hswmm_result v9x_result;
+
+/*
+ * Phase B1 (/bcs): docs\plans\intel-haswell-direct3d.md. The ring, status
+ * page and scratch at aperture offset 1800000h; the VxD runs the stages and
+ * this side builds the commands (hsw_3d.c, host-tested) and judges the
+ * scratch. Layouts match hsw_mmio_probe.asm's HSW_BCS_* definitions.
+ *
+ * Not 1F00000h, the first placement: the top megabyte of stolen memory
+ * would not take a CPU write through the aperture (run 1, stage 2;
+ * docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md).
+ */
+#define V9X_BCS_DIOC         2u
+#define V9X_BCS_MAGIC        0x43425348ul
+#define V9X_BCS_OFFSET       0x01800000ul
+#define V9X_BCS_STATUS       (V9X_BCS_OFFSET + 0x1000ul)
+#define V9X_BCS_SCRATCH      (V9X_BCS_OFFSET + 0x2000ul)
+#define V9X_BCS_SCRATCH_DW   0x4000ul
+#define V9X_BCS_GUARD        0xa5a5a5a5ul
+#define V9X_BCS_COLOR        0x11223344ul
+#define V9X_BCS_PITCH_FIELD  256u
+#define V9X_BCS_FILL         16u /* 16x16 pixels */
+#define V9X_BCS_PAGES        18u
+
+struct v9x_bcs_request {
+    DWORD base;
+    DWORD aperture;
+    DWORD bdsm;
+    DWORD offset;
+    DWORD n1;
+    DWORD n2;
+    DWORD cmd1[8];
+    DWORD cmd2[16];
+};
+
+struct v9x_bcs_result {
+    DWORD magic;
+    DWORD status;
+    DWORD stage;
+    DWORD ack_before;
+    DWORD polls_ack;
+    DWORD ack_after;
+    DWORD polls_release;
+    DWORD ctl_before;
+    DWORD start_rb;
+    DWORD ctl_rb;
+    DWORD head_rb;
+    DWORD tail_rb;
+    DWORD polls1;
+    DWORD head1;
+    DWORD status0;
+    DWORD polls2;
+    DWORD head2;
+    DWORD status1;
+    DWORD acthd;
+    DWORD eir;
+    DWORD ctl_after;
+    DWORD start_after;
+    DWORD head_after;
+    DWORD tail_after;
+    DWORD cpu_readback;
+    DWORD bad_pte;
+    DWORD ptes[V9X_BCS_PAGES];
+    DWORD reserved[64 - 26 - V9X_BCS_PAGES];
+    DWORD scratch[V9X_BCS_SCRATCH_DW];
+};
+
+typedef char v9x_bcs_header_matches[
+    offsetof(struct v9x_bcs_result, scratch) == 64u * sizeof(DWORD) &&
+    offsetof(struct v9x_bcs_result, ptes) == 104u &&
+    sizeof(struct v9x_bcs_request) == 120u ? 1 : -1];
+
+static struct v9x_bcs_request v9x_bcs_in;
+static struct v9x_bcs_result v9x_bcs_out;
+
+static DWORD v9x_config_read(DWORD offset);
+static void v9x_hex(char *text, DWORD value, int digits);
+
+/* Does the scratch hold exactly the 16x16 fill at this byte stride, with
+ * every other dword still the guard? */
+static int v9x_bcs_stride_matches(DWORD stride)
+{
+    DWORD index;
+    DWORD row;
+    DWORD column;
+    DWORD expected;
+
+    for (index = 0ul; index < V9X_BCS_SCRATCH_DW; ++index) {
+        row = (index * 4ul) / stride;
+        column = ((index * 4ul) % stride) / 4ul;
+        expected = (row < V9X_BCS_FILL && column < V9X_BCS_FILL) ?
+                   V9X_BCS_COLOR : V9X_BCS_GUARD;
+        if (v9x_bcs_out.scratch[index] != expected) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void v9x_bcs_key(const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_hex(text, value, 8);
+    WritePrivateProfileStringA("Bcs", key, text, V9X_HSWMM_PATH);
+}
+
+static void v9x_bcs_publish(void)
+{
+    char key[16];
+    DWORD index;
+    DWORD filled;
+    DWORD guards;
+    const char *verdict;
+
+    v9x_bcs_key("Status", v9x_bcs_out.status);
+    v9x_bcs_key("Stage", v9x_bcs_out.stage);
+    v9x_bcs_key("BadPte", v9x_bcs_out.bad_pte);
+    v9x_bcs_key("CpuReadback", v9x_bcs_out.cpu_readback);
+    v9x_bcs_key("AckBefore", v9x_bcs_out.ack_before);
+    v9x_bcs_key("PollsToAck", v9x_bcs_out.polls_ack);
+    v9x_bcs_key("CtlBefore", v9x_bcs_out.ctl_before);
+    v9x_bcs_key("StartReadback", v9x_bcs_out.start_rb);
+    v9x_bcs_key("CtlReadback", v9x_bcs_out.ctl_rb);
+    v9x_bcs_key("HeadReadback", v9x_bcs_out.head_rb);
+    v9x_bcs_key("TailReadback", v9x_bcs_out.tail_rb);
+    v9x_bcs_key("Polls1", v9x_bcs_out.polls1);
+    v9x_bcs_key("Head1", v9x_bcs_out.head1);
+    v9x_bcs_key("Status0", v9x_bcs_out.status0);
+    v9x_bcs_key("Polls2", v9x_bcs_out.polls2);
+    v9x_bcs_key("Head2", v9x_bcs_out.head2);
+    v9x_bcs_key("Status1", v9x_bcs_out.status1);
+    v9x_bcs_key("Acthd", v9x_bcs_out.acthd);
+    v9x_bcs_key("Eir", v9x_bcs_out.eir);
+    v9x_bcs_key("CtlAfter", v9x_bcs_out.ctl_after);
+    v9x_bcs_key("StartAfter", v9x_bcs_out.start_after);
+    v9x_bcs_key("HeadAfter", v9x_bcs_out.head_after);
+    v9x_bcs_key("TailAfter", v9x_bcs_out.tail_after);
+    v9x_bcs_key("PollsToRelease", v9x_bcs_out.polls_release);
+    v9x_bcs_key("AckAfter", v9x_bcs_out.ack_after);
+    for (index = 0ul; index < V9X_BCS_PAGES; ++index) {
+        lstrcpyA(key, "Pte");
+        v9x_hex(key + 3, index, 2);
+        v9x_bcs_key(key, v9x_bcs_out.ptes[index]);
+    }
+
+    filled = 0ul;
+    guards = 0ul;
+    for (index = 0ul; index < V9X_BCS_SCRATCH_DW; ++index) {
+        if (v9x_bcs_out.scratch[index] == V9X_BCS_COLOR) {
+            ++filled;
+        } else if (v9x_bcs_out.scratch[index] == V9X_BCS_GUARD) {
+            ++guards;
+        }
+    }
+    v9x_bcs_key("ScratchColourDwords", filled);
+    v9x_bcs_key("ScratchGuardDwords", guards);
+    v9x_bcs_key("ScratchOtherDwords", V9X_BCS_SCRATCH_DW - filled - guards);
+    for (index = 0ul; index < 8ul; ++index) {
+        lstrcpyA(key, "Scratch");
+        v9x_hex(key + 7, index, 2);
+        v9x_bcs_key(key, v9x_bcs_out.scratch[index]);
+    }
+
+    if (v9x_bcs_stride_matches((DWORD)V9X_BCS_PITCH_FIELD)) {
+        verdict = "bytes";
+    } else if (v9x_bcs_stride_matches((DWORD)V9X_BCS_PITCH_FIELD * 4ul)) {
+        verdict = "dwords";
+    } else if (filled == 0ul) {
+        verdict = "no-fill";
+    } else {
+        verdict = "neither";
+    }
+    WritePrivateProfileStringA("Bcs", "PitchUnit", verdict, V9X_HSWMM_PATH);
+}
+
+/* Build both command streams with the host-tested builders and check
+ * them; returns 0 if either fails, which stops the run before the VxD. */
+static int v9x_bcs_build(void)
+{
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    DWORD probe[28];
+    DWORD index;
+
+    v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)v9x_bcs_in.cmd1, 8ul);
+    if (v9x_intel_hsw_mi_store_data_imm(&batch, V9X_BCS_STATUS,
+                                        0xc0de0001ul) != V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_bcs_in.n1 = batch.used;
+
+    v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)v9x_bcs_in.cmd2, 16ul);
+    if (v9x_intel_hsw_xy_color_blt(&batch, V9X_BCS_PITCH_FIELD, 0u, 0u,
+                                   V9X_BCS_FILL, V9X_BCS_FILL,
+                                   V9X_BCS_SCRATCH, V9X_BCS_COLOR) !=
+            V9X_STATUS_OK ||
+        v9x_intel_hsw_mi_store_data_imm(&batch, V9X_BCS_STATUS + 4ul,
+                                        0xc0de0002ul) != V9X_STATUS_OK) {
+        return 0;
+    }
+    while ((batch.used & 1ul) != 0ul) {
+        v9x_intel_hsw_mi_noop(&batch);
+    }
+    v9x_bcs_in.n2 = batch.used;
+    if (batch.overflow != 0u) {
+        return 0;
+    }
+
+    /* The checker sees both streams as one batch with an end appended. */
+    for (index = 0ul; index < v9x_bcs_in.n1; ++index) {
+        probe[index] = v9x_bcs_in.cmd1[index];
+    }
+    for (index = 0ul; index < v9x_bcs_in.n2; ++index) {
+        probe[v9x_bcs_in.n1 + index] = v9x_bcs_in.cmd2[index];
+    }
+    v9x_intel_hsw_batch_init(&batch, (v9x_u32 *)probe, 28ul);
+    batch.used = v9x_bcs_in.n1 + v9x_bcs_in.n2;
+    v9x_intel_hsw_mi_batch_buffer_end(&batch);
+    v9x_intel_hsw_mi_noop(&batch);
+    return v9x_intel_hsw_3d_check((v9x_u32 *)probe, batch.used, &check) ==
+           V9X_STATUS_OK;
+}
+
+static void v9x_bcs_run(void)
+{
+    HANDLE device;
+    DWORD returned;
+    BOOL ok;
+
+    WritePrivateProfileStringA("Bcs", 0, 0, V9X_HSWMM_PATH);
+    v9x_bcs_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_bcs_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
+    v9x_bcs_in.bdsm = v9x_config_read(V9X_INTEL_HSW_CFG_BDSM);
+    v9x_bcs_in.offset = V9X_BCS_OFFSET;
+    v9x_bcs_key("Aperture", v9x_bcs_in.aperture);
+    v9x_bcs_key("Offset", v9x_bcs_in.offset);
+    if (!v9x_bcs_build()) {
+        WritePrivateProfileStringA("Bcs", "Result", "COMMANDS-REFUSED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_bcs_key("Commands1", v9x_bcs_in.n1);
+    v9x_bcs_key("Commands2", v9x_bcs_in.n2);
+
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA("Bcs", "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    ok = DeviceIoControl(device, V9X_BCS_DIOC, &v9x_bcs_in,
+                         sizeof(v9x_bcs_in), &v9x_bcs_out,
+                         sizeof(v9x_bcs_out), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_bcs_out) ||
+        v9x_bcs_out.magic != V9X_BCS_MAGIC) {
+        WritePrivateProfileStringA("Bcs", "Result", "DIOC-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_bcs_publish();
+    WritePrivateProfileStringA("Bcs", "Result", "COMPLETE", V9X_HSWMM_PATH);
+}
 
 static DWORD v9x_config_read(DWORD offset)
 {
@@ -376,6 +641,17 @@ void __stdcall V9xHswMmioEntry(void)
     WritePrivateProfileStringA("Report", "Result", "INCOMPLETE",
                                V9X_HSWMM_PATH);
     WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+
+    /* /bcs is Phase B1 alone: no snapshot around it. */
+    if (v9x_has_switch("/bcs")) {
+        WritePrivateProfileStringA("Report", "Access", "bcs-ring-phase-b1",
+                                   V9X_HSWMM_PATH);
+        v9x_bcs_run();
+        WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                   V9X_HSWMM_PATH);
+        WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+        ExitProcess(0u);
+    }
 
     /* GTTMMADR low dword; the VxD refuses a base above 4 GB by alignment
      * and the high dword is published for the record. */

@@ -571,6 +571,31 @@ v9x_status v9x_intel_hsw_cc_state(v9x_u32 out[6], v9x_u8 alpha_ref)
     return V9X_STATUS_OK;
 }
 
+#define V9X_HSW_XY_COLOR_BLT ((v9x_u32)0x54300004ul) /* 2<<29|50h<<22|3<<20|4 */
+#define V9X_HSW_BLT_ROP_PATCOPY ((v9x_u32)0xf0ul)
+#define V9X_HSW_BLT_32BPP    ((v9x_u32)3ul)
+
+v9x_status v9x_intel_hsw_xy_color_blt(struct v9x_hsw_batch *batch,
+                                      v9x_u16 pitch_field,
+                                      v9x_u16 x1, v9x_u16 y1,
+                                      v9x_u16 x2, v9x_u16 y2,
+                                      v9x_u32 base, v9x_u32 color)
+{
+    v9x_u32 dw[6];
+
+    if (x2 <= x1 || y2 <= y1 || pitch_field == 0u || (base & 3ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    dw[0] = V9X_HSW_XY_COLOR_BLT;
+    dw[1] = (V9X_HSW_BLT_32BPP << 24) | (V9X_HSW_BLT_ROP_PATCOPY << 16) |
+            (v9x_u32)pitch_field;
+    dw[2] = ((v9x_u32)y1 << 16) | (v9x_u32)x1;
+    dw[3] = ((v9x_u32)y2 << 16) | (v9x_u32)x2;
+    dw[4] = base;
+    dw[5] = color;
+    return v9x_hsw_mi(batch, dw, 6ul);
+}
+
 /* The table entry whose header this is, or V9X_HSW_CMD_COUNT. */
 static v9x_u16 v9x_hsw_lookup(v9x_u32 header)
 {
@@ -685,6 +710,14 @@ v9x_status v9x_intel_hsw_3d_check(const v9x_u32 *dwords, v9x_u32 count,
                                           at, header);
                 }
             }
+        } else if (type == 2ul) {
+            /* 2D client: only XY_COLOR_BLT, at its own length. */
+            if ((header & 0xffc000fful) != (V9X_HSW_XY_COLOR_BLT &
+                                            0xffc000fful)) {
+                return v9x_hsw_refuse(check, V9X_HSW_CHECK_UNKNOWN_COMMAND,
+                                      at, header);
+            }
+            length = 6ul;
         } else {
             return v9x_hsw_refuse(check, V9X_HSW_CHECK_UNKNOWN_COMMAND, at,
                                   header);

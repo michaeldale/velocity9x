@@ -222,6 +222,44 @@ static void test_qword_rule(void)
     CHECK(v9x_intel_hsw_3d_check(dw, 4ul, &check) == V9X_STATUS_OK);
 }
 
+/* Phase B1's ring contents (docs\plans\intel-haswell-direct3d.md): a
+ * store, then a 16x16 32 bpp fill at pitch field 256 and a second store,
+ * padded to a qword. */
+static void test_phase_b1_stream(void)
+{
+    v9x_u32 ring[24];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+
+    v9x_intel_hsw_batch_init(&batch, ring, 22ul);
+    CHECK(v9x_intel_hsw_mi_store_data_imm(&batch, 0x01801000ul,
+                                          0xc0de0001ul) == V9X_STATUS_OK);
+    CHECK(batch.used == 4ul);
+    CHECK(ring[0] == 0x10400002ul && ring[2] == 0x01801000ul);
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 256u, 0u, 0u, 16u, 16u,
+                                     0x01802000ul, 0x11223344ul) ==
+          V9X_STATUS_OK);
+    CHECK(ring[4] == 0x54300004ul);
+    CHECK(ring[5] == 0x03f00100ul);
+    CHECK(ring[6] == 0ul && ring[7] == 0x00100010ul);
+    CHECK(ring[8] == 0x01802000ul && ring[9] == 0x11223344ul);
+    CHECK(v9x_intel_hsw_mi_store_data_imm(&batch, 0x01801004ul,
+                                          0xc0de0002ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_noop(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_noop(&batch) == V9X_STATUS_OK);
+    CHECK(batch.used == 16ul && batch.overflow == 0u);
+
+    /* The checker accepts it once terminated. */
+    CHECK(v9x_intel_hsw_mi_batch_buffer_end(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_noop(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(ring, batch.used, &check) ==
+          V9X_STATUS_OK);
+
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 256u, 16u, 0u, 16u, 16u,
+                                     0ul, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
@@ -229,5 +267,6 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_state();
     test_batch_and_check();
     test_qword_rule();
+    test_phase_b1_stream();
     return failures;
 }

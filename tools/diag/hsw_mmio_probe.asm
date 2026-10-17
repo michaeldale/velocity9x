@@ -140,6 +140,103 @@ HswBase      dd 0
 HswFlags     dd 0
 HswMmio      dd 0
 HswGttLinear dd 0
+
+; Phase B1: the BCS ring (docs\plans\intel-haswell-direct3d.md, approved
+; 2026-10-17). DIOC code 2, separate from the snapshot so the read-only
+; and forcewake paths are unchanged.
+HSW_DIOC_BCS            equ 2
+HSW_BCS_MAGIC           equ 43425348h ; "HSBC"
+HSW_BCS_IN_BASE         equ 0         ; GTTMMADR
+HSW_BCS_IN_APERTURE     equ 4         ; GMADR
+HSW_BCS_IN_BDSM         equ 8
+HSW_BCS_IN_OFFSET       equ 12        ; aperture/graphics offset of the ring
+HSW_BCS_IN_N1           equ 16
+HSW_BCS_IN_N2           equ 20
+HSW_BCS_IN_CMD1         equ 24
+HSW_BCS_IN_CMD2         equ 56
+HSW_BCS_IN_BYTES        equ 120
+HSW_BCS_CMD1_MAX        equ 8
+HSW_BCS_CMD2_MAX        equ 16
+HSW_BCS_PAGES           equ 18        ; ring 1 + status 1 + scratch 16
+HSW_BCS_MAP_BYTES       equ 12000h
+HSW_BCS_STATUS_OFF      equ 1000h
+HSW_BCS_SCRATCH_OFF     equ 2000h
+HSW_BCS_SCRATCH_DWORDS  equ 4000h
+HSW_BCS_GUARD           equ 0a5a5a5a5h
+HSW_BCS_CPU_PATTERN     equ 5a5aa5a5h
+HSW_BCS_STORE1          equ 0c0de0001h
+HSW_BCS_STORE2          equ 0c0de0002h
+HSW_BCS_POLLS           equ 1000000
+HSW_BCS_STOLEN_MASK     equ 0fff00000h
+; PTE bits compared: address 31:12, address 38:32 (10:4) and valid (0);
+; the cacheability bits 11 and 3:1 may be anything.
+HSW_BCS_PTE_MASK        equ 0fffff7f1h
+
+; BCS ring registers, HSW Vol 2c; ACTHD and EIR offsets are i915's.
+HSW_BCS_TAIL            equ 22030h
+HSW_BCS_HEAD            equ 22034h
+HSW_BCS_START           equ 22038h
+HSW_BCS_CTL             equ 2203ch
+HSW_BCS_ACTHD           equ 22074h
+HSW_BCS_EIR             equ 220b0h
+HSW_RING_HEAD_MASK      equ 001ffffch ; Head Offset 20:2
+HSW_RING_CTL_ONE_PAGE   equ 00000001h ; Buffer Length 0 (4 KB), enable
+HSW_RING_CTL_CHECK      equ 001ff001h ; length and enable
+
+; B1 status bits.
+HSW_BCS_ST_PTES_OK      equ 00000001h
+HSW_BCS_ST_CPU_OK       equ 00000002h
+HSW_BCS_ST_FW_ACKED     equ 00000004h
+HSW_BCS_ST_RING_PROGRAMMED equ 00000008h
+HSW_BCS_ST_STORE1       equ 00000010h
+HSW_BCS_ST_STORE2       equ 00000020h
+HSW_BCS_ST_TORN_DOWN    equ 00000040h
+HSW_BCS_ST_FW_RELEASED  equ 00000080h
+HSW_BCS_ST_MAP_FAILED   equ 00000100h
+HSW_BCS_ST_FW_HELD      equ 00000200h
+HSW_BCS_ST_RING_WAS_ON  equ 00000400h
+HSW_BCS_ST_POLL1_TIMEOUT equ 00000800h
+HSW_BCS_ST_POLL2_TIMEOUT equ 00001000h
+HSW_BCS_ST_BAD_INPUT    equ 00002000h
+HSW_BCS_ST_FW_TIMEOUT   equ 00004000h
+HSW_BCS_ST_FW_REQUESTED equ 00008000h
+
+; Output: a 64-dword header (offsets in bytes, matching struct
+; hsw_bcs_result in hsw_mmio_probe_win32.c), then the scratch copy.
+HSW_BCS_HEADER_DWORDS   equ 64
+HSW_BCS_OUT_DWORDS      equ (HSW_BCS_HEADER_DWORDS + HSW_BCS_SCRATCH_DWORDS)
+HSW_BO_STATUS           equ 4
+HSW_BO_STAGE            equ 8
+HSW_BO_ACK_BEFORE       equ 12
+HSW_BO_POLLS_ACK        equ 16
+HSW_BO_ACK_AFTER        equ 20
+HSW_BO_POLLS_RELEASE    equ 24
+HSW_BO_CTL_BEFORE       equ 28
+HSW_BO_START_RB         equ 32
+HSW_BO_CTL_RB           equ 36
+HSW_BO_HEAD_RB          equ 40
+HSW_BO_TAIL_RB          equ 44
+HSW_BO_POLLS1           equ 48
+HSW_BO_HEAD1            equ 52
+HSW_BO_STATUS0          equ 56
+HSW_BO_POLLS2           equ 60
+HSW_BO_HEAD2            equ 64
+HSW_BO_STATUS1          equ 68
+HSW_BO_ACTHD            equ 72
+HSW_BO_EIR              equ 76
+HSW_BO_CTL_AFTER        equ 80
+HSW_BO_START_AFTER      equ 84
+HSW_BO_HEAD_AFTER       equ 88
+HSW_BO_TAIL_AFTER       equ 92
+HSW_BO_CPU_READBACK     equ 96
+HSW_BO_BAD_PTE          equ 100
+HSW_BO_PTES             equ 104
+
+HswBcsOut     dd HSW_BCS_MAGIC
+              dd (HSW_BCS_HEADER_DWORDS - 1) dup (0)
+HswBcsScratch dd HSW_BCS_SCRATCH_DWORDS dup (0)
+HswBcsIn      dd (HSW_BCS_IN_BYTES / 4) dup (0)
+HswBcsRegion  dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -411,6 +508,366 @@ Hsw_Capture_Done:
     ret
 EndProc Hsw_Capture
 
+; EBP = MMIO, EBX = target tail, EDX = status page offset of the expected
+; store, EAX in = expected value. Polls until HEAD reaches the tail and the
+; store has landed. Returns ECX = polls, CF set on timeout.
+BeginProc Hsw_Bcs_Wait
+    push    esi
+    push    edi
+    mov     edi, eax
+    mov     esi, HswBcsRegion
+    add     esi, edx
+    xor     ecx, ecx
+Hsw_Bcs_Wait_Next:
+    mov     eax, [ebp+HSW_BCS_HEAD]
+    and     eax, HSW_RING_HEAD_MASK
+    cmp     eax, ebx
+    jne     short Hsw_Bcs_Wait_Again
+    cmp     [esi], edi
+    je      short Hsw_Bcs_Wait_Done
+Hsw_Bcs_Wait_Again:
+    inc     ecx
+    cmp     ecx, HSW_BCS_POLLS
+    jb      short Hsw_Bcs_Wait_Next
+    pop     edi
+    pop     esi
+    stc
+    ret
+Hsw_Bcs_Wait_Done:
+    pop     edi
+    pop     esi
+    clc
+    ret
+EndProc Hsw_Bcs_Wait
+
+; Phase B1, stages 1-8 as the plan lists them. Each stage records how far
+; it got in HSW_BO_STAGE; stage 8 (tear down, release) runs whenever the
+; ring was programmed, and forcewake is released whenever it was requested.
+BeginProc Hsw_Bcs
+    pushad
+    mov     HswBcsRegion, 0
+
+    ; Input bounds: command counts, qword-aligned tails, a 4 KB-aligned
+    ; ring offset, a 4 MB-aligned GTTMMADR.
+    mov     eax, HswBcsIn[HSW_BCS_IN_N1]
+    cmp     eax, HSW_BCS_CMD1_MAX
+    ja      Hsw_Bcs_Bad_Input
+    test    eax, 1
+    jnz     Hsw_Bcs_Bad_Input
+    mov     ebx, HswBcsIn[HSW_BCS_IN_N2]
+    cmp     ebx, HSW_BCS_CMD2_MAX
+    ja      Hsw_Bcs_Bad_Input
+    test    ebx, 1
+    jnz     Hsw_Bcs_Bad_Input
+    test    HswBcsIn[HSW_BCS_IN_OFFSET], 0fffh
+    jnz     Hsw_Bcs_Bad_Input
+    mov     eax, HswBcsIn[HSW_BCS_IN_BASE]
+    test    eax, eax
+    jz      Hsw_Bcs_Bad_Input
+    test    eax, HSW_BASE_ALIGN
+    jnz     Hsw_Bcs_Bad_Input
+
+    VMMcall _MapPhysToLinear,<eax,HSW_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Bcs_Map_Failed
+    mov     HswMmio, eax
+    mov     ebp, eax
+    mov     eax, HswBcsIn[HSW_BCS_IN_BASE]
+    add     eax, HSW_GTT_OFFSET
+    VMMcall _MapPhysToLinear,<eax,HSW_GTT_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Bcs_Map_Failed
+    mov     HswGttLinear, eax
+
+    ; Stage 1: every page's PTE is valid and maps BDSM + offset.
+    mov     HswBcsOut[HSW_BO_STAGE], 1
+    mov     HswBcsOut[HSW_BO_BAD_PTE], 0ffffffffh
+    mov     esi, HswGttLinear
+    mov     eax, HswBcsIn[HSW_BCS_IN_OFFSET]
+    shr     eax, 12
+    lea     esi, [esi+eax*4]
+    mov     ebx, HswBcsIn[HSW_BCS_IN_BDSM]
+    and     ebx, HSW_BCS_STOLEN_MASK
+    add     ebx, HswBcsIn[HSW_BCS_IN_OFFSET]
+    or      ebx, 1
+    xor     ecx, ecx
+    xor     edi, edi
+Hsw_Bcs_Pte_Next:
+    mov     eax, [esi+ecx*4]
+    mov     dword ptr HswBcsOut[HSW_BO_PTES+ecx*4], eax
+    and     eax, HSW_BCS_PTE_MASK
+    cmp     eax, ebx
+    je      short Hsw_Bcs_Pte_Ok
+    test    edi, edi
+    jnz     short Hsw_Bcs_Pte_Ok
+    mov     HswBcsOut[HSW_BO_BAD_PTE], ecx
+    inc     edi
+Hsw_Bcs_Pte_Ok:
+    add     ebx, 1000h
+    inc     ecx
+    cmp     ecx, HSW_BCS_PAGES
+    jb      short Hsw_Bcs_Pte_Next
+    test    edi, edi
+    jnz     Hsw_Bcs_Exit
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_PTES_OK
+
+    ; Stage 2: the CPU reaches the pages through the aperture; then the
+    ; ring is filled with MI_NOOP (0), the status page with 0 and the
+    ; scratch with the guard.
+    mov     HswBcsOut[HSW_BO_STAGE], 2
+    mov     eax, HswBcsIn[HSW_BCS_IN_APERTURE]
+    add     eax, HswBcsIn[HSW_BCS_IN_OFFSET]
+    VMMcall _MapPhysToLinear,<eax,HSW_BCS_MAP_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Bcs_Map_Failed
+    mov     HswBcsRegion, eax
+    mov     edi, eax
+    mov     dword ptr [edi], HSW_BCS_CPU_PATTERN
+    mov     dword ptr [edi+HSW_BCS_SCRATCH_OFF], HSW_BCS_CPU_PATTERN
+    mov     eax, [edi]
+    mov     HswBcsOut[HSW_BO_CPU_READBACK], eax
+    cmp     eax, HSW_BCS_CPU_PATTERN
+    jne     Hsw_Bcs_Exit
+    cmp     dword ptr [edi+HSW_BCS_SCRATCH_OFF], HSW_BCS_CPU_PATTERN
+    jne     Hsw_Bcs_Exit
+    cld
+    xor     eax, eax
+    mov     ecx, (HSW_BCS_SCRATCH_OFF / 4)
+    rep     stosd
+    mov     eax, HSW_BCS_GUARD
+    mov     ecx, HSW_BCS_SCRATCH_DWORDS
+    rep     stosd
+    mov     edi, HswBcsRegion
+    cmp     dword ptr [edi], 0
+    jne     Hsw_Bcs_Exit
+    cmp     dword ptr [edi+HSW_BCS_SCRATCH_OFF], HSW_BCS_GUARD
+    jne     Hsw_Bcs_Exit
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_CPU_OK
+
+    ; Stage 3: forcewake, as Phase A, interrupts off only for the
+    ; handshake itself.
+    mov     HswBcsOut[HSW_BO_STAGE], 3
+    pushfd
+    cli
+    mov     eax, [ebp+HSW_FW_ACK]
+    mov     HswBcsOut[HSW_BO_ACK_BEFORE], eax
+    test    eax, HSW_FW_ACK_BIT
+    jz      short Hsw_Bcs_Fw_Write
+    popfd
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_FW_HELD
+    jmp     Hsw_Bcs_Exit
+Hsw_Bcs_Fw_Write:
+    mov     dword ptr [ebp+HSW_FW_REQUEST], HSW_FW_SET
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_FW_REQUESTED
+    xor     ecx, ecx
+Hsw_Bcs_Fw_Poll:
+    mov     eax, [ebp+HSW_FW_ACK]
+    test    eax, HSW_FW_ACK_BIT
+    jnz     short Hsw_Bcs_Fw_Acked
+    inc     ecx
+    cmp     ecx, HSW_FW_POLLS
+    jb      short Hsw_Bcs_Fw_Poll
+    popfd
+    mov     HswBcsOut[HSW_BO_POLLS_ACK], ecx
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_FW_TIMEOUT
+    jmp     Hsw_Bcs_Release
+Hsw_Bcs_Fw_Acked:
+    popfd
+    mov     HswBcsOut[HSW_BO_POLLS_ACK], ecx
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_FW_ACKED
+
+    ; Stage 4: the ring must be off; then HEAD, TAIL, START, CTL, read
+    ; back. An enabled ring belongs to someone else and is left alone.
+    mov     HswBcsOut[HSW_BO_STAGE], 4
+    mov     eax, [ebp+HSW_BCS_CTL]
+    mov     HswBcsOut[HSW_BO_CTL_BEFORE], eax
+    test    eax, 1
+    jz      short Hsw_Bcs_Program
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_RING_WAS_ON
+    jmp     Hsw_Bcs_Release
+Hsw_Bcs_Program:
+    mov     dword ptr [ebp+HSW_BCS_HEAD], 0
+    mov     dword ptr [ebp+HSW_BCS_TAIL], 0
+    mov     eax, HswBcsIn[HSW_BCS_IN_OFFSET]
+    mov     [ebp+HSW_BCS_START], eax
+    mov     dword ptr [ebp+HSW_BCS_CTL], HSW_RING_CTL_ONE_PAGE
+    mov     eax, [ebp+HSW_BCS_START]
+    mov     HswBcsOut[HSW_BO_START_RB], eax
+    mov     eax, [ebp+HSW_BCS_CTL]
+    mov     HswBcsOut[HSW_BO_CTL_RB], eax
+    mov     eax, [ebp+HSW_BCS_HEAD]
+    mov     HswBcsOut[HSW_BO_HEAD_RB], eax
+    mov     eax, [ebp+HSW_BCS_TAIL]
+    mov     HswBcsOut[HSW_BO_TAIL_RB], eax
+    mov     eax, HswBcsOut[HSW_BO_START_RB]
+    cmp     eax, HswBcsIn[HSW_BCS_IN_OFFSET]
+    jne     Hsw_Bcs_Teardown
+    mov     eax, HswBcsOut[HSW_BO_CTL_RB]
+    and     eax, HSW_RING_CTL_CHECK
+    cmp     eax, HSW_RING_CTL_ONE_PAGE
+    jne     Hsw_Bcs_Teardown
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_RING_PROGRAMMED
+
+    ; Stage 5: the first store.
+    mov     HswBcsOut[HSW_BO_STAGE], 5
+    cld
+    mov     esi, OFFSET32 HswBcsIn + HSW_BCS_IN_CMD1
+    mov     edi, HswBcsRegion
+    mov     ecx, HswBcsIn[HSW_BCS_IN_N1]
+    rep     movsd
+    mov     ebx, HswBcsIn[HSW_BCS_IN_N1]
+    shl     ebx, 2
+    mov     [ebp+HSW_BCS_TAIL], ebx
+    mov     edx, HSW_BCS_STATUS_OFF
+    mov     eax, HSW_BCS_STORE1
+    call    Hsw_Bcs_Wait
+    mov     HswBcsOut[HSW_BO_POLLS1], ecx
+    mov     eax, [ebp+HSW_BCS_HEAD]
+    mov     HswBcsOut[HSW_BO_HEAD1], eax
+    mov     edi, HswBcsRegion
+    mov     eax, [edi+HSW_BCS_STATUS_OFF]
+    mov     HswBcsOut[HSW_BO_STATUS0], eax
+    jnc     short Hsw_Bcs_Store1_Ok
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_POLL1_TIMEOUT
+    jmp     Hsw_Bcs_Record
+Hsw_Bcs_Store1_Ok:
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_STORE1
+
+    ; Stage 6: the fill and the second store, after the first commands.
+    mov     HswBcsOut[HSW_BO_STAGE], 6
+    cld
+    mov     esi, OFFSET32 HswBcsIn + HSW_BCS_IN_CMD2
+    mov     edi, HswBcsRegion
+    mov     eax, HswBcsIn[HSW_BCS_IN_N1]
+    lea     edi, [edi+eax*4]
+    mov     ecx, HswBcsIn[HSW_BCS_IN_N2]
+    rep     movsd
+    mov     ebx, HswBcsIn[HSW_BCS_IN_N1]
+    add     ebx, HswBcsIn[HSW_BCS_IN_N2]
+    shl     ebx, 2
+    mov     [ebp+HSW_BCS_TAIL], ebx
+    mov     edx, HSW_BCS_STATUS_OFF + 4
+    mov     eax, HSW_BCS_STORE2
+    call    Hsw_Bcs_Wait
+    mov     HswBcsOut[HSW_BO_POLLS2], ecx
+    mov     eax, [ebp+HSW_BCS_HEAD]
+    mov     HswBcsOut[HSW_BO_HEAD2], eax
+    mov     edi, HswBcsRegion
+    mov     eax, [edi+HSW_BCS_STATUS_OFF+4]
+    mov     HswBcsOut[HSW_BO_STATUS1], eax
+    jnc     short Hsw_Bcs_Store2_Ok
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_POLL2_TIMEOUT
+    jmp     short Hsw_Bcs_Record
+Hsw_Bcs_Store2_Ok:
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_STORE2
+
+    ; Stage 7: record the engine and copy the scratch, also after a
+    ; timeout, since that is when it matters most.
+Hsw_Bcs_Record:
+    mov     HswBcsOut[HSW_BO_STAGE], 7
+    mov     eax, [ebp+HSW_BCS_ACTHD]
+    mov     HswBcsOut[HSW_BO_ACTHD], eax
+    mov     eax, [ebp+HSW_BCS_EIR]
+    mov     HswBcsOut[HSW_BO_EIR], eax
+    cld
+    mov     esi, HswBcsRegion
+    add     esi, HSW_BCS_SCRATCH_OFF
+    mov     edi, OFFSET32 HswBcsScratch
+    mov     ecx, HSW_BCS_SCRATCH_DWORDS
+    rep     movsd
+
+    ; Stage 8: ring off and cleared, read back; then forcewake released.
+Hsw_Bcs_Teardown:
+    mov     dword ptr [ebp+HSW_BCS_CTL], 0
+    mov     dword ptr [ebp+HSW_BCS_HEAD], 0
+    mov     dword ptr [ebp+HSW_BCS_TAIL], 0
+    mov     dword ptr [ebp+HSW_BCS_START], 0
+    mov     eax, [ebp+HSW_BCS_CTL]
+    mov     HswBcsOut[HSW_BO_CTL_AFTER], eax
+    mov     eax, [ebp+HSW_BCS_START]
+    mov     HswBcsOut[HSW_BO_START_AFTER], eax
+    mov     eax, [ebp+HSW_BCS_HEAD]
+    mov     HswBcsOut[HSW_BO_HEAD_AFTER], eax
+    mov     eax, [ebp+HSW_BCS_TAIL]
+    mov     HswBcsOut[HSW_BO_TAIL_AFTER], eax
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_TORN_DOWN
+
+Hsw_Bcs_Release:
+    pushfd
+    cli
+    mov     dword ptr [ebp+HSW_FW_REQUEST], HSW_FW_CLEAR
+    xor     ecx, ecx
+Hsw_Bcs_Release_Poll:
+    mov     eax, [ebp+HSW_FW_ACK]
+    test    eax, HSW_FW_ACK_BIT
+    jz      short Hsw_Bcs_Released
+    inc     ecx
+    cmp     ecx, HSW_FW_POLLS
+    jb      short Hsw_Bcs_Release_Poll
+    popfd
+    jmp     short Hsw_Bcs_Release_Done
+Hsw_Bcs_Released:
+    popfd
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_FW_RELEASED
+Hsw_Bcs_Release_Done:
+    mov     HswBcsOut[HSW_BO_POLLS_RELEASE], ecx
+    mov     HswBcsOut[HSW_BO_ACK_AFTER], eax
+    jmp     short Hsw_Bcs_Exit
+
+Hsw_Bcs_Bad_Input:
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_BAD_INPUT
+    jmp     short Hsw_Bcs_Exit
+Hsw_Bcs_Map_Failed:
+    or      HswBcsOut[HSW_BO_STATUS], HSW_BCS_ST_MAP_FAILED
+Hsw_Bcs_Exit:
+    popad
+    ret
+EndProc Hsw_Bcs
+
+; ESI = DIOCParams. Copies the input, runs Hsw_Bcs, copies the result.
+BeginProc Hsw_Bcs_Dioc
+    pushad
+    mov     ebx, esi
+    mov     esi, [ebx.lpvInBuffer]
+    test    esi, esi
+    jz      short Hsw_Bcs_Dioc_Fail
+    cmp     [ebx.cbInBuffer], HSW_BCS_IN_BYTES
+    jb      short Hsw_Bcs_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short Hsw_Bcs_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], HSW_BCS_OUT_DWORDS * 4
+    jb      short Hsw_Bcs_Dioc_Fail
+
+    cld
+    mov     edi, OFFSET32 HswBcsIn
+    mov     ecx, HSW_BCS_IN_BYTES / 4
+    rep     movsd
+    mov     edi, OFFSET32 HswBcsOut + 4
+    mov     ecx, HSW_BCS_OUT_DWORDS - 1
+    xor     eax, eax
+    rep     stosd
+
+    call    Hsw_Bcs
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 HswBcsOut
+    mov     ecx, HSW_BCS_OUT_DWORDS
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short Hsw_Bcs_Dioc_Done
+    mov     dword ptr [eax], HSW_BCS_OUT_DWORDS * 4
+Hsw_Bcs_Dioc_Done:
+    popad
+    xor     eax, eax
+    ret
+Hsw_Bcs_Dioc_Fail:
+    popad
+    mov     eax, 1
+    ret
+EndProc Hsw_Bcs_Dioc
+
 BeginProc Hsw_Reset_Result
     pushad
     mov     edi, OFFSET32 HswResult + 4
@@ -426,9 +883,14 @@ EndProc Hsw_Reset_Result
 
 BeginProc Hsw_W32_DeviceIoControl
     cmp     ecx, DIOC_OPEN
-    je      short Hsw_Dioc_Ok
+    je      Hsw_Dioc_Ok
     cmp     ecx, DIOC_CLOSEHANDLE
-    je      short Hsw_Dioc_Ok
+    je      Hsw_Dioc_Ok
+    cmp     ecx, HSW_DIOC_BCS
+    jne     short Hsw_Dioc_Not_Bcs
+    call    Hsw_Bcs_Dioc
+    ret
+Hsw_Dioc_Not_Bcs:
     cmp     ecx, HSW_DIOC_CAPTURE
     jne     Hsw_Dioc_Fail
 

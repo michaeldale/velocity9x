@@ -297,6 +297,21 @@ v9x_status v9x_intel_hsw_depth_stencil(v9x_u32 out[3], v9x_u8 depth_test,
  * constant. */
 v9x_status v9x_intel_hsw_cc_state(v9x_u32 out[6], v9x_u8 alpha_ref);
 
+/*
+ * XY_COLOR_BLT (Vol 2b): client 2 (2D) 31:29, opcode 50h 28:22, 32 bpp
+ * byte mask 21:20 (both alpha and RGB written), length 4. BR13: colour
+ * depth 25:24 (11b = 32 bpp), ROP 23:16, pitch 15:0; BR22 Y1/X1, BR23
+ * Y2/X2 (exclusive), BR09 destination base, BR16 colour. For a linear
+ * surface the pitch field is in bytes, measured on the i5-4570
+ * (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md) although Vol 2b
+ * calls it "in DWords" beside a tiled note. 32 bpp only.
+ */
+v9x_status v9x_intel_hsw_xy_color_blt(struct v9x_hsw_batch *batch,
+                                      v9x_u16 pitch_field,
+                                      v9x_u16 x1, v9x_u16 y1,
+                                      v9x_u16 x2, v9x_u16 y2,
+                                      v9x_u32 base, v9x_u32 color);
+
 /* Walk dwords[0..count) as a batch: every command must be in the table
  * with its fixed length (or a valid variable length), the batch must end
  * with MI_BATCH_BUFFER_END, optionally followed by one MI_NOOP, and count

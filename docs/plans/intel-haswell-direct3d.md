@@ -2,7 +2,10 @@
 
 Status: **in progress.** Phase A done 2026-10-17: forcewake acknowledged,
 the GT reads zero because it is in RC6 and is otherwise unprogrammed
-(`docs\decisions\2026-10-17-haswell-phase-a-forcewake.md`). Phase B next. The
+(`docs\decisions\2026-10-17-haswell-phase-a-forcewake.md`). Phase B1 done the
+same day: BCS runs a store and a fill from a ring at aperture `1800000h`; the
+blit pitch is bytes; the top megabyte of stolen memory is not CPU-writable
+(`docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md`). B2 next. The
 machine is the i5-4570 (`8086:0412`), running the `vbe` family at
 640x480x8 (`docs\decisions\2026-10-17-haswell-tier0-enable-ok.md`), with a
 read-only MMIO and GTT snapshot in hand
@@ -127,17 +130,21 @@ on this machine: the `vbe` driver uses the first 16 MB only
 
 | Region | Aperture offset | Size |
 |---|---|---|
-| ring | `1F00000h` | 4 KB (one page, CTL length 0) |
-| status | `1F01000h` | 4 KB |
-| scratch | `1F02000h` | 64 KB |
+| ring | `1800000h` | 4 KB (one page, CTL length 0) |
+| status | `1801000h` | 4 KB |
+| scratch | `1802000h` | 64 KB |
+
+The first placement, `1F00000h` (the top megabyte of stolen), failed stage
+2 on run 1: the CPU's write through the aperture did not read back. Moved
+down to 24 MB on 2026-10-17 with approval; nothing else changed.
 
 *Stages.*
 
 1. **Check the pages.** Read the GTT entries for all 18 pages. Each must be
    valid and point at BDSM + offset (the linear stolen mapping measured for
-   the first 4096 entries; these entries, 7936-7953, have not been read).
+   the first 4096 entries; these entries, 6144-6161, have not been read).
    Any other value stops the run with nothing written to the GPU.
-2. **Check the CPU path.** Map GMADR + `1F00000h` (64 KB + 8 KB) and write a
+2. **Check the CPU path.** Map GMADR + `1800000h` (64 KB + 8 KB) and write a
    pattern through it, then read it back; the 945 taught that stolen memory
    is reachable only through the aperture
    (`2026-09-14-cpu-writes-to-stolen-memory-need-the-aperture.md`). Fill the
@@ -145,7 +152,7 @@ on this machine: the `vbe` driver uses the first 16 MB only
    guard value `A5A5A5A5h`.
 3. **Forcewake**, exactly as Phase A. Held until stage 8.
 4. **Program BCS**: read `BCS_RING_BUFFER_CTL` and require 0 (ring off);
-   write HEAD `0`, TAIL `0`, START `GMADR offset 1F00000h` (a graphics
+   write HEAD `0`, TAIL `0`, START `GMADR offset 1800000h` (a graphics
    address, Vol 2c 31:12), then CTL `00000001h` (length 0 = 4 KB, enable).
    Read each back. Any mismatch goes straight to stage 8.
 5. **First command.** Ring dwords 0-3: `MI_STORE_DATA_IMM` (Use Global GTT)
