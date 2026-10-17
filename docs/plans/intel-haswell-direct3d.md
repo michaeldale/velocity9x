@@ -539,7 +539,75 @@ in two steps.
 in whole tiles (128 bytes), rows in whole tiles (32) and 4 KB alignment.
 `create_surface` places Z buffers so. A depth fill must be the engine
 drawing at the clear depth, as F1b measured, not the blitter's linear
-fill. Its own design after F2a runs.
+fill.
+
+**Phase F2b design, for review (2026-10-18).** Direct3D Z buffers on the
+render engine, as D16_UNORM, the format DirectDraw's Z16 surfaces already
+are.
+
+*Why it is not just a flag.* Two paths in the HAL assume a Z buffer is a
+linear array of 16-bit words:
+
+- **Depth fills.** Both the DDBLT_DEPTHFILL Blt and Clear2's Z part
+  (`v9x_hal_depth_fill`) go through `v9x_depthfill_body` in ddhal_core.c.
+  It calls the engine32 `fill`, the blitter's linear XY_COLOR_BLT on this
+  chip, and falls back to a CPU fill when the engine declines. On a
+  Y-tiled surface both write the wrong bytes: a rectangle of linear words
+  is not a rectangle of tiled pixels.
+- **Locks.** A runtime or application Lock of the Z surface reads tiled
+  bytes as if they were linear.
+
+The design changes the first and records the second.
+
+*Step 1: measure what F1b did not, in the probe (`V9XHSWMM /depth16`).*
+Phase F1b's batch, with three changes:
+
+- the buffer is D16_UNORM (format 5, Vol 2b `3DSTATE_DEPTH_BUFFER`),
+  pitch 128, 64 rows;
+- the clear is a **depth-only** draw: WM Thread Dispatch Enable off, no
+  kernel, DEPTH_STENCIL ALWAYS with write, one quad (two triangles) over a
+  sub-rectangle at z = value / 65535. This is the HAL's fill, so it is
+  the shape measured;
+- the scene runs under LESSEQUAL, with a triangle drawn twice at the same
+  z, so that equality is tested.
+
+Writes are what F1b wrote. A wedged RCS costs a power cycle.
+
+*Step 2: the HAL.*
+
+- **Placement.** `d3d_hsw.c` gains `create_surface`/`destroy_surface` for
+  `DDSCAPS_ZBUFFER` in video memory. It uses `v9x_d3d_place_each` with
+  4 KB alignment, pitch = width x 2 rounded up to 128, and rows = height
+  rounded up to 32, and so reports that pitch to DirectDraw. Any other
+  surface is left to DirectDraw's heap, as today.
+- **Fills.** A new `int v9x_d3d_hsw_depth_fill(surface, rect, value)` in
+  `d3d_hsw.c` builds the depth-only batch from step 1 and runs it
+  synchronously, after the blitter is idle. `eng_hsw.c`'s `fill`, when its
+  destination is a Z buffer, calls it instead of the blitter (declared in
+  ddhal_internal.h, as the other cross-module helpers are).
+- **No linear fallback.** A new `depth_tiled` field is appended to
+  `V9X_D3D_ENGINE_LIMITS` (append-only, as that struct requires), set to
+  1 here and 0 everywhere else. When it is set, `v9x_depthfill_body`
+  returns the engine's answer and never reaches the CPU fill. A
+  quarantined engine therefore fails the fill (DDERR_GENERIC) rather than
+  corrupting the buffer.
+- **Draws.** `v9x_hsw_draw` gains a depth format and drops the probe-only
+  clear primitive when `depth_clear` is 0.
+  - `d3d_hsw.c` maps the depth state: `depth_enable` on a bound Z
+    surface; D3D's eight functions onto Gen's, as the alpha test's are;
+    `depth_write`.
+  - It writes a per-draw DEPTH_STENCIL_STATE and emits the depth buffer
+    (with Vol 2b's stall, flush, stall before it) in every batch that has
+    one. Batches without one keep the NULL buffer.
+- **Caps.** ZTEST, all eight comparisons, `dwDeviceZBufferBitDepth =
+  DDBD_16`, `depth_bits_per_pixel` 16.
+
+*What a Lock of the Z buffer returns:* the tiled bytes. DirectX 5-6
+titles clear Z by Blt and rarely read it back. Detiling on Lock is out of
+scope for F2b and is recorded as a known limit, not hidden.
+
+*Measured by:* the step-1 probe, then V9XDDP's `D3DZ*`, `D3DZP*` and
+`Mixed*` checks (the 12 that F2a fails for want of Z), then a game.
 
 ### F. Textures and state
 
