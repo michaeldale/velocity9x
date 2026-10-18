@@ -18,8 +18,13 @@ done the same day
 ([record](../decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md)):
 explicit draws go on the engine undithered, with the scissor and the write
 mask; the probes still pass, and 51 of their 219 draws went to the engine
-(filtering and CPU levels send the rest to the CPU). Next: step 6, a title's
-split, which decides decision 2.
+(filtering and CPU levels send the rest to the CPU). Step 6 measured
+Half-Life OpenGL's split the same day
+([record](../decisions/2026-10-18-mga2164w-half-life-gl-split.md)): it draws
+correctly, but all 267,614 of its draws went to the CPU. 50 % carried CPU
+levels and 30 % surface textures the engine refused, 16 % were refused for
+the filter and 4 % for the blend. Next: name the two texture refusals
+before decision 2.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
