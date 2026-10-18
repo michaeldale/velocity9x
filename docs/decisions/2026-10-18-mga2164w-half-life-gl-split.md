@@ -148,6 +148,51 @@ Direct3D looks right because it keeps every pass on the engine: it
 draws the multiply through the half stipple
 (2026-10-10-mga2164w-d3d-engine.md).
 
+## Boot 499: blends on the engine; the Multiplayer menu; lost textures
+
+Boot 499 runs explicit blends as Direct3D's (cb283331). Michael ran
+Half-Life OpenGL. Evidence: `V9XSNA7-boot499-*.ini`, `V9XGL-boot499.LOG`,
+`V9XWND-boot499.INI`.
+
+**"Stuck" was the Multiplayer menu.** The screen froze on a corrupted
+Multiplayer page while the game kept drawing. The readings:
+- **Frames rendered, none shown.** The ICD logged about 116 swaps every
+  10 s. Render-interface draws rose from 29,686 to 130,352 while the
+  HAL's blit copies stayed at 84 and flips at 2, and 116 presents cost
+  6 ms in all.
+- **No errors.** The ICD's present (a DirectDraw Blt to the primary
+  through the window's clipper) logged no `present hr=`. DirectDraw was
+  clipping it to nothing before the HAL.
+- **The window above the game.** V9XWND, given window rectangles,
+  foreground and child controls for this, found a visible, titleless
+  `#32770` dialog of HL.EXE's over the Half-Life window, at
+  0,0-640,480. Its buttons: Quick start, Internet games, Chat rooms, Lan
+  game, Customize, Controls, Spectate Games, Done. It is Half-Life 1.1's
+  WON Multiplayer menu, a Win32 dialog painted by GDI.
+- **Done closed it**, and the game showed again.
+
+The menu's background art was corrupted. GDI paints it, not OpenGL. Not
+investigated. One candidate: explicit draws leave MACCESS's nodither bit
+set, and the 16-bit side writes MACCESS once per mode.
+
+**In the game, before the menu:** about 11.6 fps (116 swaps in 10 s), and
+about 88 % of the render interface's batches on the engine. Michael:
+"it looks a lot better".
+
+**After the menu: about 0.6 fps** (6 or 7 swaps in 10 s, draw 9.7 s of
+every 10).
+- The engine's batch count stopped rising, and the ICD's `hw-refused`
+  rose instead.
+- `MgaTexRefusedPlace` reached 8,543 by the end of the session: surface
+  textures whose `fpVidMem` lies outside VRAM or off 32 bytes. The last
+  was a 64 x 64 565 texture at pitch 128.
+- Nothing ran short: 104 textures placed, and no make-failed or
+  video-memory refusals on 8 MiB.
+- Hypothesis: DirectDraw lost the ICD's surfaces when the menu took the
+  screen, and nothing remade them. Boot 500 records the refused
+  surface's raw `fpVidMem`, local flags and global flags (DDK
+  `DDRAWISURF_INVALID`, `DDRAWISURFGBL_MEMFREE`) to settle it.
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.

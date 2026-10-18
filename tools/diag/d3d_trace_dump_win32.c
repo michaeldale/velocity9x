@@ -1816,6 +1816,13 @@ void __stdcall V9xTraceDumpEntry(void)
                   snapshot.d3d.mga_texture_refused_last_size);
     v9x_write_uint("MgaTexRefusedLastPitch",
                    snapshot.d3d.mga_texture_refused_last_pitch);
+    v9x_write_hex("MgaTexRefusedLastVidMem",
+                  snapshot.d3d.mga_texture_refused_last_vidmem);
+    v9x_write_hex("MgaTexRefusedLastFlags",
+                  snapshot.d3d.mga_texture_refused_last_flags);
+    v9x_write_hex("MgaTexRefusedLastGlobal",
+                  snapshot.d3d.mga_texture_refused_last_global);
+    v9x_write_hex("FbLinearBase", snapshot.fb.linear_base);
     v9x_write_watch(&snapshot.d3d.watch);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);

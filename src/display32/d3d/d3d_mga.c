@@ -418,9 +418,16 @@ static void v9x_d3d_mga_texture_refused(const V9X_DD_SURFACE_LCL *surface,
     const V9X_DDPIXELFORMAT *format;
 
     ++diagnostics->mga_texture_refused[reason];
-    if (surface == 0 || surface->lpGbl == 0) {
+    if (surface == 0) {
         return;
     }
+    diagnostics->mga_texture_refused_last_flags = surface->dwFlags;
+    if (surface->lpGbl == 0) {
+        return;
+    }
+    diagnostics->mga_texture_refused_last_vidmem = surface->lpGbl->fpVidMem;
+    diagnostics->mga_texture_refused_last_global =
+        surface->lpGbl->dwGlobalFlags;
     format = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
                  ? &surface->lpGbl->ddpfSurface
                  : &v9x_hal->info.vmiData.ddpfDisplay;

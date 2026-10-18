@@ -53,6 +53,44 @@ static void v9x_uint_text(char *text, DWORD value)
     *end = '\0';
 }
 
+/* A dialog's controls, their classes and text: what a titleless dialog
+ * over a fullscreen game is saying. One key per control, after its
+ * dialog's. */
+static DWORD v9x_child_count;
+
+static BOOL CALLBACK v9x_enum_child(HWND child, LPARAM context)
+{
+    char key[24];
+    char class_name[64];
+    char text[256];
+    char value[384];
+    char *cursor = value;
+    char *end = value + sizeof(value) - 1;
+
+    if (v9x_child_count >= 32ul) {
+        return FALSE;
+    }
+    class_name[0] = '\0';
+    text[0] = '\0';
+    GetClassNameA(child, class_name, sizeof(class_name));
+    GetWindowTextA(child, text, sizeof(text));
+    cursor = v9x_append_text(cursor, end, "Visible=");
+    cursor = v9x_append_uint(cursor, end, IsWindowVisible(child) ? 1ul : 0ul);
+    cursor = v9x_append_text(cursor, end, ";Class=");
+    cursor = v9x_append_text(cursor, end, class_name);
+    cursor = v9x_append_text(cursor, end, ";Text=");
+    cursor = v9x_append_text(cursor, end, text);
+    *cursor = '\0';
+    lstrcpyA(key, "Window");
+    v9x_append_uint(key + 6, key + 12, (DWORD)context)[0] = '\0';
+    lstrcatA(key, "Child");
+    v9x_append_uint(key + lstrlenA(key), key + 23, v9x_child_count)[0] =
+        '\0';
+    WritePrivateProfileStringA(V9X_SECTION, key, value, V9X_WINDOW_PATH);
+    ++v9x_child_count;
+    return TRUE;
+}
+
 static BOOL CALLBACK v9x_enum_window(HWND window, LPARAM context)
 {
     char key[16];
@@ -62,6 +100,8 @@ static BOOL CALLBACK v9x_enum_window(HWND window, LPARAM context)
     char *cursor = value;
     char *end = value + sizeof(value) - 1;
     DWORD process_id = 0ul;
+    RECT rect;
+    LONG style;
 
     (void)context;
     if (v9x_window_count >= V9X_MAX_WINDOWS) {
@@ -82,6 +122,33 @@ static BOOL CALLBACK v9x_enum_window(HWND window, LPARAM context)
     cursor = v9x_append_text(cursor, end, class_name);
     cursor = v9x_append_text(cursor, end, ";Title=");
     cursor = v9x_append_text(cursor, end, title);
+
+    /* Where it is and whether it is on top: a visible window over a
+     * fullscreen DirectDraw window empties its clipper, and every present
+     * is clipped to nothing (Half-Life OpenGL on A8U4I5, 2026-10-18).
+     * Coordinates are offset by 32768 so they print unsigned. */
+    rect.left = 0l;
+    rect.top = 0l;
+    rect.right = 0l;
+    rect.bottom = 0l;
+    GetWindowRect(window, &rect);
+    style = GetWindowLongA(window, GWL_EXSTYLE);
+    cursor = v9x_append_text(cursor, end, ";Rect+32768=");
+    cursor = v9x_append_uint(cursor, end, (DWORD)(rect.left + 32768l));
+    cursor = v9x_append_text(cursor, end, ",");
+    cursor = v9x_append_uint(cursor, end, (DWORD)(rect.top + 32768l));
+    cursor = v9x_append_text(cursor, end, ",");
+    cursor = v9x_append_uint(cursor, end, (DWORD)(rect.right + 32768l));
+    cursor = v9x_append_text(cursor, end, ",");
+    cursor = v9x_append_uint(cursor, end, (DWORD)(rect.bottom + 32768l));
+    cursor = v9x_append_text(cursor, end, ";Topmost=");
+    cursor = v9x_append_uint(cursor, end,
+                             (style & WS_EX_TOPMOST) != 0l ? 1ul : 0ul);
+    cursor = v9x_append_text(cursor, end, ";Foreground=");
+    cursor = v9x_append_uint(cursor, end,
+                             window == GetForegroundWindow() ? 1ul : 0ul);
+    cursor = v9x_append_text(cursor, end, ";Iconic=");
+    cursor = v9x_append_uint(cursor, end, IsIconic(window) ? 1ul : 0ul);
     *cursor = '\0';
 
     key[0] = 'W';
@@ -92,6 +159,10 @@ static BOOL CALLBACK v9x_enum_window(HWND window, LPARAM context)
     key[5] = 'w';
     v9x_uint_text(key + 6, v9x_window_count);
     WritePrivateProfileStringA(V9X_SECTION, key, value, V9X_WINDOW_PATH);
+    if (IsWindowVisible(window) && lstrcmpA(class_name, "#32770") == 0) {
+        v9x_child_count = 0ul;
+        EnumChildWindows(window, v9x_enum_child, (LPARAM)v9x_window_count);
+    }
     ++v9x_window_count;
     return TRUE;
 }

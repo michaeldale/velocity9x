@@ -3645,6 +3645,17 @@ typedef struct v9x_d3d_diagnostics {
     DWORD mga_texture_refused_last_alpha;
     DWORD mga_texture_refused_last_size;
     DWORD mga_texture_refused_last_pitch;
+    /*
+     * And the last refused one's fpVidMem, its local dwFlags and its
+     * global dwGlobalFlags, raw: whether a texture refused for placement
+     * after Half-Life's Multiplayer menu (A8U4I5 boot 499, 909 of them)
+     * was lost - DDRAWISURF_INVALID 10000000h, "invalidated by mode set",
+     * or DDRAWISURFGBL_MEMFREE 1, "video memory has been freed" (Win98
+     * DDK DDRAWI.H) - or misplaced. Appended 2026-10-18.
+     */
+    DWORD mga_texture_refused_last_vidmem;
+    DWORD mga_texture_refused_last_flags;
+    DWORD mga_texture_refused_last_global;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */
