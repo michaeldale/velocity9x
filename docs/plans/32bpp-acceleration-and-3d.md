@@ -1,6 +1,8 @@
 # 32 bpp on the engines: 2D acceleration, then Direct3D and the render interface
 
-Date: 2026-10-18. Status: proposed; nothing coded. Follows
+Date: 2026-10-18. Status: in progress. Phase 1 Gen3 done (netbook boot 208,
+[2026-10-18-gen3-blits-at-32-bpp.md](../decisions/2026-10-18-gen3-blits-at-32-bpp.md));
+decision 1 taken. Follows
 [high-depth-dynamic-modes.md](high-depth-dynamic-modes.md), which shipped
 32 bpp desktops in 0.6.0 on the CPU and deliberately left the engines out
 ("No hardware acceleration at 24/32 ... D3D stays 16bpp-only").
@@ -17,7 +19,7 @@ What draws in those modes, read from the tree at 663258b4:
 | S3 Trio64 (8514/A) | declined | declined | `eng_s3_trio.c:100,164`; never run above 16 |
 | S3 ViRGE / Trio3D (S3D 2D) | declined | declined | `eng_s3_virge.c:332,390`; format field codes 8/16/24 only (`:365`) |
 | ATI Mach64 / Rage IIC | declined | no GDI path | `eng_mach64.c:212,288` accept 2 bytes only |
-| Intel Gen3 (BLT) | declined | no GDI path | `i9xx_blt.c:48,255` accept 1 and 2 bytes |
+| Intel Gen3 (BLT) | **engine** since 2026-10-18 | no GDI path | measured 8/16/32, [2026-10-18-gen3-blits-at-32-bpp.md](../decisions/2026-10-18-gen3-blits-at-32-bpp.md); was declined at 32 |
 | Intel Gen7.5 (BCS) | **engine** | no GDI path | measured 8/16/32, [2026-10-17-haswell-phase-b2-directdraw-on-bcs.md](../decisions/2026-10-17-haswell-phase-b2-directdraw-on-bcs.md) |
 | Matrox MGA-2064W/2164W | **engine** | **engine** | measured, [2026-10-09-mga2064w-gdi-on-the-engine.md](../decisions/2026-10-09-mga2064w-gdi-on-the-engine.md) |
 | 3dfx VSA-100 | builder accepts 4 bytes (`tdfx_2d.c:26`) | gate 4 declines (`gdi_accel.c:1715`) | measured at 16 only |
@@ -52,17 +54,18 @@ hypothesis for Phase 0, not a fact.
 | VSA-100 (Voodoo4) | format 32BPP in the builder | 32 bpp rendering | 24-bit Z + 8 stencil | VSA-100 docs; unmeasured |
 | SiS 6326 | — | — | — | out of scope: no 32 bpp mode |
 
-## Decisions owed (Michael's)
+## Decisions
 
-1. **Depth buffer with a 32 bpp target.** Offer 24-bit Z (or 32 on the MGA)
-   whenever the engine has it, alongside 16? Recommendation: enumerate both;
-   the app chooses. 3D WinBench's Z accuracy tests are the reason to want it.
-2. **Which DirectDraw format a 32 bpp primary reports.** X8R8G8B8 (alpha
+1. **Depth buffer with a 32 bpp target: decided (Michael, 2026-10-18).**
+   Offer 24-bit Z (32 on the MGA) wherever the engine has it, alongside
+   16; the app chooses. 3D WinBench's Z accuracy tests are the reason to
+   want it.
+2. **Which DirectDraw format a 32 bpp primary reports (owed).** X8R8G8B8 (alpha
    mask 0) is what the stock drivers of this era report and what the CPU
    path already assumes. Recommendation: keep X8R8G8B8 for the primary,
    accept A8R8G8B8 for offscreen render targets only on engines that write
    destination alpha.
-3. **Order of chips.** Recommendation below, by machine availability and how
+3. **Order of chips (owed).** Recommendation below, by machine availability and how
    much is already measured.
 
 No INI key or V9X3D verb gates any of this:
@@ -94,8 +97,9 @@ MGA special case.
    measured on one goes to all): DST_PIX_WIDTH 32 in the fill and copy builders,
    the 32-bit colour path in the 2D mode block; host tests extended to 4
    bytes.
-3. **Intel Gen3**: BR13 depth 3 in `i9xx_blt.c`, the 32-bit fill colour,
-   the WRITE_ALPHA|WRITE_RGB bits the audit lists for 32 bpp blits.
+3. **Intel Gen3**: done 2026-10-18. BR13 depth 3, the whole fill DWORD and
+   the write bits 21:20; fills and copies pixel-exact on the blitter at
+   8, 16 and 32 bpp on the netbook.
 4. **Trio64**: probe the 8514/A engine at 32 bpp on the 86Box Trio64 and the
    486 VLB card. Low priority; keep the decline if either disagrees.
 5. **ViRGE family**: stays CPU at 32 bpp; no 32-bit S3D format exists. Recorded,

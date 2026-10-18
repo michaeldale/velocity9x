@@ -152,6 +152,75 @@ static void test_copy_golden(void)
                                      &rejected) == V9X_TRUE);
 }
 
+/*
+ * 32 bpp: depth code 3 in BR13 and the write-enable bits 21:20 in the command,
+ * the form the Phase 4 breadcrumb has run on the netbook since 2026-09-14.
+ */
+static void test_golden_32(void)
+{
+    struct v9x_i9xx_blt blt;
+    v9x_u32 stream[V9X_I9XX_BLT_STREAM_DWORDS];
+    v9x_u32 written = 0ul;
+    v9x_u32 rejected = 99ul;
+    v9x_u32 at;
+
+    test_blt_defaults(&blt);
+    blt.bytes_per_pixel = 4ul;
+    blt.destination_pitch = 2560ul;
+    blt.source_pitch = 2560ul;
+    blt.source_base = 0x0012c000ul;
+    blt.left = 8ul;
+    blt.top = 4ul;
+    blt.right = 100ul;
+    blt.bottom = 50ul;
+    blt.color = 0xabcdf81ful;
+    CHECK(v9x_i9xx_build_fill_blt(&blt, stream, V9X_I9XX_BLT_STREAM_DWORDS,
+                                  &written) == V9X_STATUS_OK);
+    CHECK(written == 7ul);
+    CHECK(stream[0] == 0x54300004ul);
+    CHECK(stream[1] == 0x03f00a00ul);
+    /* The whole DWORD is the pixel. */
+    CHECK(stream[5] == 0xabcdf81ful);
+    at = test_seal(stream, written, TEST_CRUMB);
+    CHECK(v9x_i9xx_decode_blt_stream(stream, at, 4ul, TEST_VRAM, TEST_CRUMB,
+                                     &rejected) == V9X_TRUE);
+    /* A 32-bpp packet is not a 16-bpp one. */
+    CHECK(v9x_i9xx_decode_blt_stream(stream, at, 2ul, TEST_VRAM, TEST_CRUMB,
+                                     &rejected) == V9X_FALSE);
+    CHECK(rejected == 0ul);
+    /* The breadcrumb shares this command; with none named it is a fill. */
+    at = test_seal(stream, written, 0ul);
+    CHECK(v9x_i9xx_decode_blt_stream(stream, at, 4ul, TEST_VRAM, 0ul,
+                                     &rejected) == V9X_TRUE);
+
+    /* Back buffer to primary at 640x480x32. */
+    blt.left = 0ul;
+    blt.top = 0ul;
+    blt.right = 640ul;
+    blt.bottom = 480ul;
+    CHECK(v9x_i9xx_build_copy_blt(&blt, stream, V9X_I9XX_BLT_STREAM_DWORDS,
+                                  &written) == V9X_STATUS_OK);
+    CHECK(written == 9ul);
+    CHECK(stream[0] == 0x54f00006ul);
+    CHECK(stream[1] == 0x03cc0a00ul);
+    CHECK(stream[6] == 2560ul);
+    CHECK(stream[7] == 0x0012c000ul);
+    at = test_seal(stream, written, TEST_CRUMB);
+    CHECK(v9x_i9xx_decode_blt_stream(stream, at, 4ul, TEST_VRAM, TEST_CRUMB,
+                                     &rejected) == V9X_TRUE);
+
+    /* Without the write-enable bits the blitter writes no channel. */
+    stream[0] = V9X_I9XX_XY_SRC_COPY_BLT;
+    CHECK(v9x_i9xx_decode_blt_stream(stream, at, 4ul, TEST_VRAM, TEST_CRUMB,
+                                     &rejected) == V9X_FALSE);
+    CHECK(rejected == 0ul);
+
+    /* The source reaching past the heap at four bytes a pixel. */
+    blt.source_base = TEST_VRAM - 479ul * 2560ul;
+    CHECK(v9x_i9xx_build_copy_blt(&blt, stream, V9X_I9XX_BLT_STREAM_DWORDS,
+                                  &written) == V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
 static void test_builder_refusals(void)
 {
     struct v9x_i9xx_blt blt;
@@ -167,12 +236,9 @@ static void test_builder_refusals(void)
     CHECK(v9x_i9xx_build_copy_blt(&blt, stream, 8ul, &written) ==
           V9X_STATUS_INVALID_ARGUMENT);
 
-    /* 32 bpp and 24 bpp decline (plan decision 2). */
-    blt.bytes_per_pixel = 4ul;
-    blt.destination_pitch = 2560ul;
-    CHECK(v9x_i9xx_build_fill_blt(&blt, stream, V9X_I9XX_BLT_STREAM_DWORDS,
-                                  &written) == V9X_STATUS_INVALID_ARGUMENT);
+    /* 24 bpp declines: BR13 has no packed 24-bit depth code. */
     blt.bytes_per_pixel = 3ul;
+    blt.destination_pitch = 1920ul;
     CHECK(v9x_i9xx_build_fill_blt(&blt, stream, V9X_I9XX_BLT_STREAM_DWORDS,
                                   &written) == V9X_STATUS_INVALID_ARGUMENT);
 
@@ -300,8 +366,12 @@ static void test_decoder_refusals(void)
                                      TEST_CRUMB, &rejected) == V9X_FALSE);
     CHECK(v9x_i9xx_decode_blt_stream(stream, 0ul, 2ul, TEST_VRAM,
                                      TEST_CRUMB, &rejected) == V9X_FALSE);
+    CHECK(v9x_i9xx_decode_blt_stream(stream, at, 3ul, TEST_VRAM,
+                                     TEST_CRUMB, &rejected) == V9X_FALSE);
+    /* The 16-bpp packet is not a 32-bpp one. */
     CHECK(v9x_i9xx_decode_blt_stream(stream, at, 4ul, TEST_VRAM,
                                      TEST_CRUMB, &rejected) == V9X_FALSE);
+    CHECK(rejected == 0ul);
 
     /* A named breadcrumb is required, and an unnamed one refused. */
     CHECK(v9x_i9xx_decode_blt_stream(stream, at, 2ul, TEST_VRAM,
@@ -404,6 +474,7 @@ unsigned int v9x_run_i9xx_blt_tests(void)
 {
     test_fill_golden();
     test_copy_golden();
+    test_golden_32();
     test_builder_refusals();
     test_copy_overlap();
     test_decoder_refusals();

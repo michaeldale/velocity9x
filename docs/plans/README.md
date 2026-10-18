@@ -1,6 +1,6 @@
 # Plans
 
-- [32 bpp on the engines: 2D acceleration, then Direct3D and the render interface](32bpp-acceleration-and-3d.md) - Proposed 2026-10-18; nothing coded. 32 bpp draws on the engine only on the MGA and Haswell (2D); Direct3D offers no device at 32 bpp on any chip. Three decisions owed.
+- [32 bpp on the engines: 2D acceleration, then Direct3D and the render interface](32bpp-acceleration-and-3d.md) - In progress; Gen3 DirectDraw blits on the engine at 32 bpp (netbook, 2026-10-18), so 2D at 32 bpp now runs on the MGA, Haswell and Gen3; Direct3D still offers no device at 32 bpp. Decision 1 taken (16 and 24-bit Z), two owed.
 - [3dfx Voodoo3 family: tier-0 bring-up](3dfx-voodoo3-family.md) - Open.
 - [3dfx Voodoo3: what the retro-agent work supplies to the 2D and D3D engines](3dfx-voodoo3-prior-work.md) - Open; desk work, nothing coded.
 - [3dfx VSA-100: Voodoo4 first, Voodoo5 5500 and 6000 after](3dfx-vsa100-family.md) - Proposed; retail Voodoo4 4500 on A8U4I5, not yet surveyed. Sibling Mini-Me measurements imported from VelocityNT as predictions.

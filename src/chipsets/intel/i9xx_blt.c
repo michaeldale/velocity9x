@@ -19,7 +19,38 @@ static v9x_u32 v9x_i9xx_blt_depth(v9x_u32 bytes_per_pixel)
     if (bytes_per_pixel == 1ul) {
         return V9X_I9XX_BLT_DEPTH_8;
     }
+    if (bytes_per_pixel == 4ul) {
+        return V9X_I9XX_BLT_DEPTH_32;
+    }
     return V9X_I9XX_BLT_DEPTH_565;
+}
+
+/* A packet's command word: at 32 bpp it must also enable the alpha and RGB
+ * writes, or the blitter writes neither. */
+static v9x_u32 v9x_i9xx_blt_command(v9x_u32 command, v9x_u32 bytes_per_pixel)
+{
+    if (bytes_per_pixel == 4ul) {
+        return command | V9X_I9XX_BLT_WRITE_ARGB;
+    }
+    return command;
+}
+
+/* The pixel's own bits within a fill colour DWORD. */
+static v9x_u32 v9x_i9xx_blt_color_mask(v9x_u32 bytes_per_pixel)
+{
+    if (bytes_per_pixel == 1ul) {
+        return 0x000000fful;
+    }
+    if (bytes_per_pixel == 2ul) {
+        return 0x0000fffful;
+    }
+    return 0xfffffffful;
+}
+
+static v9x_u16 v9x_i9xx_blt_depth_served(v9x_u32 bytes_per_pixel)
+{
+    return bytes_per_pixel == 1ul || bytes_per_pixel == 2ul ||
+           bytes_per_pixel == 4ul;
 }
 
 /*
@@ -45,7 +76,7 @@ static v9x_u16 v9x_i9xx_blt_extent(v9x_u32 bytes_per_pixel,
     *inside = V9X_TRUE;
     *first_out = 0ul;
     *end_out = 0ul;
-    if ((bytes_per_pixel != 1ul && bytes_per_pixel != 2ul) ||
+    if (!v9x_i9xx_blt_depth_served(bytes_per_pixel) ||
         pitch == 0ul || pitch >= V9X_I9XX_BLT_FIELD_LIMIT ||
         (pitch & 3ul) != 0ul || (base & 3ul) != 0ul ||
         left >= right || top >= bottom ||
@@ -58,7 +89,8 @@ static v9x_u16 v9x_i9xx_blt_extent(v9x_u32 bytes_per_pixel,
         return V9X_FALSE;
     }
 
-    /* Both products are below 2^30: pitch and rows are each under 2^15. */
+    /* Both products are below 2^30: pitch and rows are each under 2^15, and
+     * right_bytes is at most the pitch. */
     first_row = top * pitch;
     last_row = (bottom - 1ul) * pitch;
     if (base >= vram_bytes ||
@@ -136,9 +168,9 @@ v9x_status v9x_i9xx_build_fill_blt(const struct v9x_i9xx_blt *blt,
 
     /* Only the pixel's own bits: DirectDraw hands the fill colour over as a
      * DWORD whatever the depth, and bits above the pixel are not colour. */
-    color = blt->bytes_per_pixel == 1ul ? (blt->color & 0x000000fful)
-                                        : (blt->color & 0x0000fffful);
-    stream[0] = V9X_I9XX_XY_COLOR_BLT_2D;
+    color = blt->color & v9x_i9xx_blt_color_mask(blt->bytes_per_pixel);
+    stream[0] = v9x_i9xx_blt_command(V9X_I9XX_XY_COLOR_BLT_2D,
+                                     blt->bytes_per_pixel);
     stream[1] = v9x_i9xx_blt_depth(blt->bytes_per_pixel) |
                 V9X_I9XX_BLT_ROP_PATCOPY | blt->destination_pitch;
     stream[2] = (blt->top << 16) | blt->left;
@@ -198,7 +230,8 @@ v9x_status v9x_i9xx_build_copy_blt(const struct v9x_i9xx_blt *blt,
         return V9X_STATUS_UNSUPPORTED;
     }
 
-    stream[0] = V9X_I9XX_XY_SRC_COPY_BLT;
+    stream[0] = v9x_i9xx_blt_command(V9X_I9XX_XY_SRC_COPY_BLT,
+                                     blt->bytes_per_pixel);
     stream[1] = v9x_i9xx_blt_depth(blt->bytes_per_pixel) |
                 V9X_I9XX_BLT_ROP_SRCCOPY | blt->destination_pitch;
     stream[2] = (blt->top << 16) | blt->left;
@@ -246,15 +279,21 @@ v9x_u16 v9x_i9xx_decode_blt_stream(const v9x_u32 *stream,
                                    v9x_u32 *rejected_index)
 {
     v9x_u32 index = 0ul;
+    v9x_u32 fill_command;
+    v9x_u32 copy_command;
     v9x_u16 saw_breadcrumb = V9X_FALSE;
 
     if (rejected_index != 0) {
         *rejected_index = 0ul;
     }
     if (stream == 0 || dword_count == 0ul || (dword_count & 1ul) != 0ul ||
-        (bytes_per_pixel != 1ul && bytes_per_pixel != 2ul)) {
+        !v9x_i9xx_blt_depth_served(bytes_per_pixel)) {
         return V9X_FALSE;
     }
+    fill_command = v9x_i9xx_blt_command(V9X_I9XX_XY_COLOR_BLT_2D,
+                                        bytes_per_pixel);
+    copy_command = v9x_i9xx_blt_command(V9X_I9XX_XY_SRC_COPY_BLT,
+                                        bytes_per_pixel);
     while (index < dword_count) {
         v9x_u32 command = stream[index];
 
@@ -265,7 +304,17 @@ v9x_u16 v9x_i9xx_decode_blt_stream(const v9x_u32 *stream,
         if (command == V9X_I9XX_MI_NOOP || command == V9X_I9XX_MI_FLUSH) {
             ++index;
 
-        } else if (command == V9X_I9XX_XY_COLOR_BLT_2D) {
+        } else if (command == fill_command &&
+                   !(breadcrumb_offset != 0ul &&
+                     command == V9X_I9XX_XY_COLOR_BLT &&
+                     dword_count - index > 4ul &&
+                     stream[index + 4ul] == breadcrumb_offset)) {
+            /*
+             * At 32 bpp a fill has the breadcrumb's command word, so the
+             * breadcrumb's address is what tells them apart: a packet aimed
+             * there is left to the breadcrumb branch, which refuses anything
+             * not in its exact shape.
+             */
             v9x_u32 first;
             v9x_u32 end;
 
@@ -279,10 +328,8 @@ v9x_u16 v9x_i9xx_decode_blt_stream(const v9x_u32 *stream,
                 V9X_I9XX_BLT_REJECT(index + 1ul);
             }
             /* The colour carries no bits above the pixel. */
-            if ((bytes_per_pixel == 1ul &&
-                 (stream[index + 5ul] & 0xffffff00ul) != 0ul) ||
-                (bytes_per_pixel == 2ul &&
-                 (stream[index + 5ul] & 0xffff0000ul) != 0ul)) {
+            if ((stream[index + 5ul] &
+                 ~v9x_i9xx_blt_color_mask(bytes_per_pixel)) != 0ul) {
                 V9X_I9XX_BLT_REJECT(index + 5ul);
             }
             if (stream[index + 6ul] != V9X_I9XX_MI_FLUSH) {
@@ -290,7 +337,7 @@ v9x_u16 v9x_i9xx_decode_blt_stream(const v9x_u32 *stream,
             }
             index += V9X_I9XX_BLT_COLOR_DWORDS + 1ul;
 
-        } else if (command == V9X_I9XX_XY_SRC_COPY_BLT) {
+        } else if (command == copy_command) {
             const v9x_u32 *packet = stream + index;
             v9x_u32 first;
             v9x_u32 end;

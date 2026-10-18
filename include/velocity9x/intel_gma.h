@@ -566,8 +566,10 @@ v9x_status v9x_i9xx_build_breadcrumb_stream(
  * Neither 2D header carries the write-enable bits 21:20 that
  * V9X_I9XX_XY_COLOR_BLT has: they select the alpha and RGB channels of a
  * 32-bpp destination, and xf86-video-intel's i830_accel.c sets them only
- * when bitsPerPixel is 32. This path serves 8 and 16 bpp only (plan
- * decision 2).
+ * when bitsPerPixel is 32. At 32 bpp the builder adds both
+ * (V9X_I9XX_BLT_WRITE_ARGB), the form the Phase 4 breadcrumb has run on the
+ * netbook since 2026-09-14; at 8 and 16 bpp the decoder refuses them
+ * (docs\plans\32bpp-acceleration-and-3d.md, Phase 1).
  *
  * The 16-bit depth code is RGB565 for every 16-bit surface, including a
  * 1555 texture or a depth buffer: PATCOPY and SRCCOPY do no per-channel
@@ -580,6 +582,7 @@ v9x_status v9x_i9xx_build_breadcrumb_stream(
 #define V9X_I9XX_BLT_ROP_SRCCOPY         ((v9x_u32)0x00cc0000ul)
 #define V9X_I9XX_BLT_DEPTH_8             ((v9x_u32)0x00000000ul)
 #define V9X_I9XX_BLT_DEPTH_565           ((v9x_u32)0x01000000ul)
+#define V9X_I9XX_BLT_WRITE_ARGB          ((v9x_u32)0x00300000ul)
 #define V9X_I9XX_BLT_COLOR_DWORDS        6ul
 #define V9X_I9XX_BLT_COPY_DWORDS         8ul
 /* BR13's pitch and each coordinate are 16-bit fields; the audit bounds the
