@@ -76,6 +76,41 @@ refused surface's bit count, alpha mask, size and pitch). The
 approximations are not worth deciding until those textures reach the
 engine.
 
+## Boot 497: the refused textures are ARGB4444
+
+Michael ran Half-Life OpenGL again on boot 497 (driver `df84d9e4-dirty`,
+the code of b62b2a5f, which counts the reason). The snapshot after
+(`V9XSNA7-boot497-hl.ini`; HL.EXE the only process, `gl-describes=1`,
+builds agree):
+
+| | Count |
+|---|---|
+| Render-interface draws | 5,112 |
+| Refused for the texture's **format** (`MgaTexRefusedFormat`) | 418; no size, pitch, placement or surface refusals |
+| Last refused surface | 16 bits, alpha mask `F000`, 128 x 128, pitch 256: **ARGB4444** |
+| First attempts refused for filter / blend / texture | 1,638 (64 %) / 554 (22 %) / 384 (15 %) |
+| Resends of refused surface textures (`M64AcceptPolicy02`) | 2,536 |
+| Drawn on the engine | 0 |
+
+`MgaTexRefusedFormat` (418) exceeds the 384 texture refusals because the
+texture is resolved before the blend is checked: 34 of the blend refusals
+carried 4444 textures too.
+
+So the texture lever is one format, and it is closed on this chip:
+- The describe offers ARGB4444 surfaces to the ICD for every engine.
+- The 2164W's TW12, the 4444 code in 86Box's model, was probed on
+  2026-10-10 and drew a garbage pattern with a four-pixel period
+  ([2026-10-10-mga2164w-textures.md](2026-10-10-mga2164w-textures.md),
+  finding 3; `mga_3d.c` refuses it).
+- Matrox's own HAL offers no 4444.
+
+A 4444 texture can reach the engine only converted, and 1555 keeps one
+bit of its four of alpha: exact only for alpha that is 0 or 15, which the
+ICD does not know. Not offering 4444 surfaces on the 2164W would save the
+refused attempt, the VRAM surface and the resend, and change no pixel. The proportions differ from
+boot 496 because the session was shorter and played differently. On both,
+the filter refusals are the larger share once the texture is sampled.
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.

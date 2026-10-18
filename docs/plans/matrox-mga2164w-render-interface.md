@@ -23,8 +23,12 @@ Half-Life OpenGL's split the same day
 ([record](../decisions/2026-10-18-mga2164w-half-life-gl-split.md)): it draws
 correctly, but every draw went to the CPU. Counted once per batch, 60 %
 had surface textures the engine would not sample, 32 % were refused for
-the filter and 8 % for the blend. Boot 497 counts why those textures are
-refused; Half-Life again next, then decision 2.
+the filter and 8 % for the blend. Boot 497 named the texture refusals: all
+of them are ARGB4444, which the describe offers and the 2164W cannot
+sample (TW12 drew garbage on 2026-10-10). Next: stop offering 4444
+surfaces on this engine, which saves a refused attempt and changes no
+pixel; then decision 2, since the filter is the larger share (64 % of
+first attempts at boot 497).
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
