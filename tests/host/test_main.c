@@ -242,6 +242,10 @@ unsigned int v9x_run_sis6326_engine_tests(void);
  * against the MGA-1064SG specification's encodings and limits. */
 unsigned int v9x_run_mga_engine_tests(void);
 
+/* tests\host\test_mga_bars.c: which BAR is a Matrox control aperture, on
+ * the BAR values each source recorded. */
+unsigned int v9x_run_mga_bars_tests(void);
+
 /* tests\host\test_vsa100_decode.c: VSA-100 memory, tile-boundary and PLL
  * decodes against the Mini-Me's measured registers. */
 unsigned int v9x_run_vsa100_decode_tests(void);
@@ -1336,6 +1340,7 @@ int main(int argc, char **argv)
     failures += v9x_run_sis6326_engine_tests();
     failures += v9x_run_sis6326_3d_tests();
     failures += v9x_run_mga_engine_tests();
+    failures += v9x_run_mga_bars_tests();
     failures += v9x_run_mga_3d_tests();
     failures += v9x_run_mga_setup_tests();
     failures += v9x_run_vsa100_decode_tests();

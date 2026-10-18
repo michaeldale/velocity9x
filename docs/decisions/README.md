@@ -187,6 +187,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-11 Millennium II Candidate 8 physical activation](2026-08-11-millennium2-physical-candidate8.md)
 - [2026-08-11 Millennium II Candidate 9 physical activation](2026-08-11-millennium2-physical-candidate9.md)
 - [2026-09-09 The Millennium 2064W puts its framebuffer in BAR1, not BAR0](2026-09-09-millennium-2064w-bar-ordering.md)
+- [2026-10-18 The MGA control aperture is the BAR that is not prefetchable, except in 86Box](2026-10-18-mga-control-bar-from-the-prefetch-bit.md)
 - [2026-09-10 A Millennium guest in an hour: an inbox driver, a candidate that loads, and a stage name that lied](2026-09-10-the-2064w-in-a-guest.md)
 - [2026-09-10 The 2064W's own BIOS answers the question, and a guarded candidate now exists](2026-09-10-the-2064w-is-drivable-by-the-vbe-path.md)
 - [2026-09-11 The 2064W's aperture opens with mgamode, and the card has 8 MiB](2026-09-11-the-2064w-aperture-opens-with-mgamode.md)

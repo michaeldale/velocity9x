@@ -7,8 +7,12 @@
  * which BAR holds which aperture. The 2064W puts its 16 KiB control aperture
  * (MGABASE1) in BAR0 and its framebuffer (MGABASE2) in BAR1; the 2164W the
  * other way round (docs\decisions\2026-09-09-millennium-2064w-bar-ordering.md,
- * docs\specifications\matrox-millennium2-bringup.md). The BAR not holding the
- * framebuffer is the control aperture on both.
+ * docs\specifications\matrox-millennium2-bringup.md). The engine hook does
+ * not take that from a per-chip table: the control aperture is the BAR that
+ * is not prefetchable (src\chipsets\matrox\mga_bars.c), which holds on both
+ * chips and on both of the Mystique's revisions, whose orders differ under
+ * one device id (docs\plans\matrox-mystique.md). The per-chip order is only
+ * the fallback for 86Box, which marks neither BAR prefetchable.
  *
  * The VBE sets modes and 4F01h reports the framebuffer. The engine hook has
  * the mini-VDD map the control aperture and claims the drawing engine for
@@ -30,10 +34,11 @@
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
+#include "velocity9x/mga_bars.h"
 
 /* runtime.asm, matrox family only. */
-extern unsigned short __far __pascal V9xPciReadMgaMmioBar(
-    unsigned long __far *base, unsigned short bar_index);
+extern unsigned short __far __pascal V9xPciReadMgaBarRaw(
+    unsigned long __far *value, unsigned short bar_index);
 extern unsigned short __far __pascal V9xMiniMgaMmioMap(
     unsigned long control_bar, unsigned long __far *linear);
 
@@ -60,9 +65,11 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
                                 unsigned long *ring_bytes)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+    unsigned long bar0 = 0ul;
+    unsigned long bar1 = 0ul;
     unsigned long control_bar = 0ul;
     unsigned long linear = 0ul;
-    unsigned short control_index;
+    v9x_u16 control_index = 0u;
 
     (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
@@ -76,8 +83,15 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
     if (device == 0) {
         return;
     }
-    control_index = device->framebuffer_bar == 0u ? 1u : 0u;
-    if (V9xPciReadMgaMmioBar(&control_bar, control_index) == 0u) {
+    if (V9xPciReadMgaBarRaw(&bar0, 0u) == 0u ||
+        V9xPciReadMgaBarRaw(&bar1, 1u) == 0u) {
+        return;
+    }
+    /* The stated order is the fallback for 86Box, which marks neither BAR
+     * prefetchable; silicon never reaches it. */
+    if (v9x_matrox_mga_select_control_bar(
+            bar0, bar1, device->framebuffer_bar == 0u ? 1u : 0u,
+            &control_index, &control_bar) != V9X_TRUE) {
         return;
     }
     if (V9xMiniMgaMmioMap(control_bar, &linear) == 0u || linear == 0ul) {
@@ -101,8 +115,9 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
 }
 
 /* Not static: resolved by name in the link map by the per-object audit.
- * framebuffer_bar is stated for the engine hook, which maps the other one;
- * no hook in this family reads the framebuffer BAR, the BIOS reports it. */
+ * framebuffer_bar is the fallback order: the engine hook decides from the
+ * prefetchable bits and uses it only where neither is set (86Box). No hook
+ * in this family reads the framebuffer BAR; the BIOS reports it. */
 const V9X_HW16_DEVICE v9x_mga2064w_device = {
     0x102bu, 0x0519u,
     "Matrox Millennium MGA-2064W",

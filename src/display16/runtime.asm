@@ -3031,13 +3031,15 @@ V9XTDFXIOWRITE ENDP
 ENDIF
 
 IFDEF V9X_MGA_FAMILY
-; WORD FAR PASCAL V9xPciReadMgaMmioBar(DWORD FAR *base, WORD bar_index)
-; MGABASE1, the 16 KiB control aperture: BAR0 on the MGA-2064W (DC000000h on
-; A8U4I5), BAR1 on the MGA-2164W; the chip module says which. Indexes other
-; than 0 and 1 are refused. A read-only config access; a refusal changes no
-; stage code, because a missing engine must not fail Enable.
-PUBLIC V9XPCIREADMGAMMIOBAR
-V9XPCIREADMGAMMIOBAR PROC FAR
+; WORD FAR PASCAL V9xPciReadMgaBarRaw(DWORD FAR *value, WORD bar_index)
+; The raw dword of BAR0 or BAR1, flag bits included, for
+; src\chipsets\matrox\mga_bars.c to decide which is the control aperture
+; from the prefetchable bit: the order differs by chip and, on 102B:051A, by
+; revision. Interprets nothing. Indexes other than 0 and 1 are refused. A
+; read-only config access; a refusal changes no stage code, because a missing
+; engine must not fail Enable.
+PUBLIC V9XPCIREADMGABARRAW
+V9XPCIREADMGABARRAW PROC FAR
     push    bp
     mov     bp, sp
     push    bx
@@ -3048,35 +3050,25 @@ V9XPCIREADMGAMMIOBAR PROC FAR
     push    es
     ; PASCAL pushes left to right: bar_index is the nearer argument.
     cmp     word ptr [bp+6], 1
-    ja      short V9xPciReadMgaMmioBarFailed
+    ja      short V9xPciReadMgaBarRawFailed
     call    V9xFindPciDevice
     or      ax, ax
-    jz      short V9xPciReadMgaMmioBarFailed
+    jz      short V9xPciReadMgaBarRawFailed
     mov     di, word ptr [bp+6]
     shl     di, 2
     add     di, 0010h
     mov     ax, 0b10ah
     int     1ah
-    jc      short V9xPciReadMgaMmioBarFailed
+    jc      short V9xPciReadMgaBarRawFailed
     or      ah, ah
-    jnz     short V9xPciReadMgaMmioBarFailed
-    test    cl, 1
-    jnz     short V9xPciReadMgaMmioBarFailed
-    mov     eax, ecx
-    and     eax, 0fffffff0h
-    cmp     eax, 01000000h
-    jb      short V9xPciReadMgaMmioBarFailed
-    cmp     eax, 0ffffc000h
-    ja      short V9xPciReadMgaMmioBarFailed
-    test    eax, 00003fffh
-    jnz     short V9xPciReadMgaMmioBarFailed
+    jnz     short V9xPciReadMgaBarRawFailed
     les     bx, dword ptr [bp+8]
-    mov     es:[bx], eax
+    mov     es:[bx], ecx
     mov     ax, 1
-    jmp     short V9xPciReadMgaMmioBarDone
-V9xPciReadMgaMmioBarFailed:
+    jmp     short V9xPciReadMgaBarRawDone
+V9xPciReadMgaBarRawFailed:
     xor     ax, ax
-V9xPciReadMgaMmioBarDone:
+V9xPciReadMgaBarRawDone:
     pop     es
     pop     di
     pop     si
@@ -3085,7 +3077,7 @@ V9xPciReadMgaMmioBarDone:
     pop     bx
     pop     bp
     retf    6
-V9XPCIREADMGAMMIOBAR ENDP
+V9XPCIREADMGABARRAW ENDP
 
 ; WORD FAR PASCAL V9xMiniMgaMmioMap(DWORD control_bar, DWORD FAR *linear)
 ; V9XMINI_FN_MGA_MMIO_MAP: the mini-VDD maps the control aperture, checks it
