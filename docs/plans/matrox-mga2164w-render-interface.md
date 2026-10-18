@@ -1,0 +1,138 @@
+# Millennium II: OpenGL and Glide through the render interface
+
+Date: 2026-10-18
+
+Status: proposed (Michael, 2026-10-18: "plan drawing render-interface
+draws on the MGA-2164W's own engine where it can be exact, with the
+software fallback for the rest"). Nothing is built yet.
+
+Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
+`matrox` family with the Direct3D engine of
+[matrox-mga2164w-hardware-3d.md](matrox-mga2164w-hardware-3d.md). It
+follows the shape of [sis-6326-opengl.md](sis-6326-opengl.md), the last
+engine taken from "draws nothing" to OpenGL on the chip.
+
+## Where it stands
+
+Measured on A8U4I5 at boot 493 with build `13812b70-dirty` (the code of
+49f2c02c), on an 800x600x16 desktop
+([evidence](../probe/a8u4i5-mga2164w-render-interface-2026-10-18/)):
+
+| Probe | Result |
+|---|---|
+| V9XR3DP | describe, target, depth and clear pass; draws A, B and C, the textured scissor and the masked draw all return 4 (UNSUPPORTED), with nothing submitted |
+| V9XGLP | `Result=PASS` and renderer "Velocity9x Millennium II", but the pixel checks read 0: the three polygon offsets, the three fogs, `RectColor3us` and `Vertex2sColor4b` (Haswell passes all of them) |
+| V9XGLIDP (Glide 2) | open, clear, flip and front-buffer checks pass; 14 draw checks fail, and the pixels read the clear colour |
+| V9XGL3P (Glide 3) | the session opens and closes; it draws nothing, so it tests no drawing |
+
+The cause is the one the 2026-10-10 record already gives
+([2026-10-10-mga2164w-d3d-engine.md](../decisions/2026-10-10-mga2164w-d3d-engine.md),
+"Not checked"):
+
+1. `v9x_d3d_mga_map_draw` refuses every draw with `explicit_state`
+   (`V9X_D3D_MGA_REFUSE_EXPLICIT`), and every render-interface draw is
+   explicit (`r3d.h`). The Direct3D path's approximations (stipple for
+   alpha, point sampling, black keyed out for additive) are allowed for
+   Direct3D and not for an explicit draw.
+2. `v9x_r3d_fallback` gives the software engine to Gen3 only, the one
+   engine Phase 0.5 measured to agree with the CPU in a shared frame.
+   Every refused draw is therefore lost.
+
+Also seen: A8U4I5 came up at 800x600x8 after the card swap. No engine
+renders 8 bpp, so the describe offers no target there. OpenGL needs a
+16 or 32 bpp desktop; Glide sets its own mode.
+
+## What an explicit draw asks, and what the 2164W can do exactly
+
+"Exactly" here means that every state field is honoured and the pixels
+fall within the tolerances V9XR3DP, V9XGLP and V9XGLIDP apply against the
+software engine. A row marked *measure* is a hypothesis until step 1
+records it.
+
+| Explicit state | 2164W | Plan |
+|---|---|---|
+| Untextured flat and Gouraud | trapezoids, coverage exact to the sixteenth (`mga_setup.c`, host-tested) | engine |
+| Shading at 16 bpp | dithered (2164W spec 3-70); MGA flat 565 reads `1AB3` where others read `12B3` (V9XD32 T1) | measure MACCESS `nodither` <30>; engine if it turns dithering off, else fallback at 16 bpp |
+| Shading at 32 bpp | no dither (V9XD32 T1 `0013579B`) | engine |
+| Depth test and write, all eight compares, Z16 | measured (depth record); Z16 holds z x 65535, as the software engine does | engine |
+| Z32 | measured, 2026-10-18 | engine; no fallback (the software engine has 16-bit depth only) |
+| Scissor (half-open rows and columns) | CXBNDRY, YTOP, YBOT exist; the Direct3D path opens them fully | measure a sub-rectangle clip on trapezoids |
+| Write mask | PLNWT exists, unused by 3D | measure per-channel masks at 565 and 8888; refuse partial masks until then |
+| Surface texture, 565 or 1555, nearest | measured (textures record); perspective within the texel (host test) | engine |
+| Texture combine DECAL / REPLACE | measured | engine |
+| MODULATE | texel x Gouraud >> 8 (textures record) | measure against the software engine's rounding; engine if within tolerance |
+| Linear, mipmap filters | the chip samples nearest only (Matrox's HAL publishes nearest only too) | fallback |
+| Blending other than ONE/ZERO | no blender; the stipple is not exact | fallback |
+| Alpha test | none; a 1555 texture with opaque vertices is the alpha-bit key | engine for that case; fallback otherwise |
+| Fog, specular | none | fallback |
+| ARGB4444, CPU texture levels, a second unit | not sampled | fallback |
+
+## Decisions
+
+1. **The software fallback is the default for every refused explicit
+   draw (Michael, 2026-10-18).** It needs the Phase 0.5 mixed-frame
+   measurement on this chip first (step 2).
+2. **Approximations stay out of explicit draws (owed, recommendation
+   below).** Most OpenGL titles use linear filtering and alpha blending,
+   so on exact terms Quake 2 and Half-Life's textured world will mostly
+   draw in software. Drawing linear as nearest, or source alpha as the
+   stipple, would put them on the engine, as Direct3D already does.
+   Recommendation: no, so that the probes keep their meaning. Measure the
+   split first (step 6), then decide with numbers. No INI key gates
+   either choice.
+
+## Steps
+
+1. **Probe, no product code.** Extend the MGA2D probe (MGA2D.EXE pattern)
+   with Gouraud trapezoids:
+   - MACCESS `nodither` at 16 bpp, compared with the undithered value;
+   - a clip rectangle that starts inside the target (CXBNDRY, YTOP,
+     YBOT), reading all four edges;
+   - PLNWT channel masks at 565 and 8888;
+   - TEXCTL tmodulate against the software engine's modulate on the same
+     texels.
+
+   Record each result in `docs/decisions/YYYY-MM-DD-mga2164w-<topic>.md`,
+   including the cases that fail.
+2. **Mixed frame.** `V9XDDP /mixed` on A8U4I5 at 16 and 32 bpp: the
+   engine and the CPU in one target and depth buffer, with the drain
+   between them. If all three cells pass, add the MGA to
+   `v9x_r3d_fallback` (Z16 only; a draw with Z32 bound is refused rather
+   than given to an engine that cannot read the buffer). Re-run V9XR3DP,
+   V9XGLP and V9XGLIDP: every refused draw should now be drawn by the
+   CPU.
+3. **Glide's refused hardware texture.** The fallback takes no surface
+   texture (`d3d_core.c`). The ICD answers UNSUPPORTED by resending its
+   CPU copy; `glide_core.c` does not. Give Glide the same retry with its
+   converted CPU level, test-first in the host tests.
+4. **Map explicit draws** in `d3d_mga_map.c` on the terms of the table,
+   test-first:
+   - a refusal per row marked fallback, each with its own reason;
+   - the scissor and the write mask as step 1 found them;
+   - the shading mode as step 1 found it;
+   - flat colour without depth as the flat trapezoid, which is exact at
+     any depth.
+
+   `d3d_mga.c` carries the scissor to the clip registers and restores
+   them for the 2D engine, as `v9x_mga_build_fill` expects.
+5. **Probes on A8U4I5** at 16 and 32 bpp: V9XR3DP, V9XGLP and V9XGLIDP
+   all pass. The trace records how many draws the engine took and how
+   many the fallback took.
+6. **Applications.** Half-Life `-gl` `timedemo mwd5` at 640x480, then a
+   Glide title already on the machine (Diablo II or Rollcage, with the
+   current `glide3x.dll` in the game folder). For each, record the
+   engine/fallback split and the score; scores are recorded, not
+   compared. These numbers settle decision 2.
+
+Gates for every step that changes code: `build-host.ps1` (the failing
+test first), then `run-checks.ps1`, then the deploy by WININIT rename.
+
+## Not in scope
+
+- The MGA-2064W: it has no texture engine and stays on the software
+  engine.
+- Approximate explicit draws, unless decision 2 changes.
+- 8 bpp OpenGL.
+- Two texture units.
+- Performance work, which stays parked
+  ([matrox-mga2164w-performance-parked.md](matrox-mga2164w-performance-parked.md)).
