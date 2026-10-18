@@ -11,8 +11,10 @@ nodither, the clip window and PLNWT all work on 3D trapezoids at 16 and
 Step 2 done the same day
 ([record](../decisions/2026-10-18-mga2164w-software-fallback.md)):
 V9XDDP `/mixed` passes at 16 bpp and the MGA has the software fallback.
-V9XR3DP and V9XGLP pass at 16 bpp; Glide's five textured checks wait for
-step 3.
+V9XR3DP and V9XGLP pass at 16 bpp. Step 3 done the same day
+([record](../decisions/2026-10-18-glide-cpu-copy-retry.md)): Glide resends
+a refused surface texture as its CPU copy, and V9XGLIDP passes. Next:
+step 4, explicit draws on the engine.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of

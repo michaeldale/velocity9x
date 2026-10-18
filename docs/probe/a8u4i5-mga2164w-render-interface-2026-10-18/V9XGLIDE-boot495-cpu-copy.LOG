@@ -1,0 +1,45 @@
+255 pid=FFF8A4AF t=677580 census   grTexCombineFunction calls=1 lines=1
+256 pid=FFF8A4AF t=677580 census   grTexDownloadMipMap calls=3 lines=3
+257 pid=FFF8A4AF t=677580 census   grTexDownloadTable calls=2 lines=2
+258 pid=FFF8A4AF t=677585 census   grTexFilterMode calls=1 lines=1
+259 pid=FFF8A4AF t=677585 census   grTexSource calls=3 lines=3
+260 pid=FFF8A4AF t=677597 detach: process exiting=1
+261 pid=FFF8A4AF t=677597 census detach swaps=2
+262 pid=FFF8A4AF t=677597 census   draws: drawn=29 refused=0 culled=0 skipped-textured=0
+263 pid=FFF8A4AF t=677597 census   draws: fog-dropped=0 cpu-copies=10 uploads=5 surface-hits=0 evictions=0
+264 pid=FFF8A4AF t=677597 census   sources: calls=3 refills=0 new=3
+265 pid=FFF8A4AF t=677597 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+266 pid=FFF8A4AF t=677597 census   batch ends: full=0 texture=0 state=0
+267 pid=FFF8A4AF t=677597 census   grAlphaBlendFunction calls=3 lines=3
+268 pid=FFF8A4AF t=677597 census   grAlphaCombine calls=3 lines=3
+269 pid=FFF8A4AF t=677597 census   grAlphaTestFunction calls=1 lines=1
+270 pid=FFF8A4AF t=677597 census   grBufferClear calls=3 lines=3
+271 pid=FFF8A4AF t=677597 census   grBufferSwap calls=2 lines=2
+272 pid=FFF8A4AF t=677600 census   grChromakeyMode calls=2 lines=2
+273 pid=FFF8A4AF t=677600 census   grChromakeyValue calls=1 lines=1
+274 pid=FFF8A4AF t=677600 census   grClipWindow calls=3 lines=3
+275 pid=FFF8A4AF t=677600 census   grColorCombine calls=3 lines=3
+276 pid=FFF8A4AF t=677600 census   grCullMode calls=1 lines=1
+277 pid=FFF8A4AF t=677600 census   grDepthBufferFunction calls=1 lines=1
+278 pid=FFF8A4AF t=677600 census   grDepthBufferMode calls=3 lines=3
+279 pid=FFF8A4AF t=677600 census   grDepthMask calls=1 lines=1
+280 pid=FFF8A4AF t=677600 census   grDrawLine calls=1 lines=3
+281 pid=FFF8A4AF t=677600 census   grDrawTriangle calls=20 lines=80
+282 pid=FFF8A4AF t=677600 census   grFogColorValue calls=1 lines=1
+283 pid=FFF8A4AF t=677600 census   grFogMode calls=2 lines=2
+284 pid=FFF8A4AF t=677600 census   grFogTable calls=1 lines=2
+285 pid=FFF8A4AF t=677600 census   grGlideInit calls=1 lines=1
+286 pid=FFF8A4AF t=677600 census   grGlideShutdown calls=1 lines=1
+287 pid=FFF8A4AF t=677600 census   grLfbLock calls=20 lines=20
+288 pid=FFF8A4AF t=677600 census   grLfbUnlock calls=20 lines=20
+289 pid=FFF8A4AF t=677600 census   grRenderBuffer calls=1 lines=1
+290 pid=FFF8A4AF t=677600 census   grSstQueryHardware calls=1 lines=1
+291 pid=FFF8A4AF t=677600 census   grSstSelect calls=1 lines=1
+292 pid=FFF8A4AF t=677606 census   grSstWinClose calls=1 lines=1
+293 pid=FFF8A4AF t=677606 census   grSstWinOpen calls=1 lines=1
+294 pid=FFF8A4AF t=677606 census   grTexClampMode calls=1 lines=1
+295 pid=FFF8A4AF t=677606 census   grTexCombineFunction calls=1 lines=1
+296 pid=FFF8A4AF t=677606 census   grTexDownloadMipMap calls=3 lines=3
+297 pid=FFF8A4AF t=677606 census   grTexDownloadTable calls=2 lines=2
+298 pid=FFF8A4AF t=677606 census   grTexFilterMode calls=1 lines=1
+299 pid=FFF8A4AF t=677606 census   grTexSource calls=3 lines=3

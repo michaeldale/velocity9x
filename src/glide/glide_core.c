@@ -128,6 +128,8 @@ static v9x_u32 v9x_glide_source_refills;
 static v9x_u32 v9x_glide_source_news;
 static v9x_u32 v9x_glide_unrecognized_logged;
 static v9x_u32 v9x_glide_fog_dropped;
+/* Refused surface-texture triangles sent again as their CPU copy. */
+static v9x_u32 v9x_glide_cpu_copies;
 static v9x_u32 v9x_glide_uploads;
 static v9x_u32 v9x_glide_refusals_logged;
 static v9x_u32 v9x_glide_surface_hits;
@@ -306,9 +308,9 @@ void v9x_glide_summary(const char *why)
               v9x_glide_drawn, v9x_glide_refused, v9x_glide_culled,
               v9x_glide_skipped_textured);
     v9x_glide_log(text);
-    wsprintfA(text, "census   draws: fog-dropped=%lu uploads=%lu surface-hits=%lu evictions=%lu",
-              v9x_glide_fog_dropped, v9x_glide_uploads, v9x_glide_surface_hits,
-              v9x_glide_surface_evictions);
+    wsprintfA(text, "census   draws: fog-dropped=%lu cpu-copies=%lu uploads=%lu surface-hits=%lu evictions=%lu",
+              v9x_glide_fog_dropped, v9x_glide_cpu_copies, v9x_glide_uploads,
+              v9x_glide_surface_hits, v9x_glide_surface_evictions);
     v9x_glide_log(text);
     wsprintfA(text, "census   sources: calls=%lu refills=%lu new=%lu",
               v9x_glide_source_calls, v9x_glide_source_refills,
@@ -481,6 +483,21 @@ static v9x_u32 v9x_glide_source_aspect = V9X_GLIDE_ASPECT_1X1;
 static v9x_u32 v9x_glide_palette[V9X_GLIDE_PALETTE_ENTRIES];
 static v9x_u32 v9x_glide_palette_sum;
 
+/*
+ * Where a surface texture's CPU copy comes from, should the engine refuse
+ * the surface: the source texture and the conversion it was bound with.
+ * source is -1 for a draw with no surface texture.
+ */
+typedef struct v9x_glide_cpu_source {
+    int source;
+    v9x_u32 variant;
+    v9x_u32 key_enable;
+    v9x_u32 key_rgb;
+} V9X_GLIDE_CPU_SOURCE;
+
+/* What the last v9x_glide_texture_bind bound, for the batch it joins. */
+static V9X_GLIDE_CPU_SOURCE v9x_glide_bound = { -1, 0ul, 0ul, 0ul };
+
 /* Triangles held while nothing they are drawn with changes, as the ICD
  * holds them (gl_icd.c): every batch through the interface costs a lock,
  * a validation and a submission whatever its size. NFS II SE sends about
@@ -490,6 +507,7 @@ static struct {
     V9X_GLIDE_DRAW_SETUP setup;
     V9X_R3D_ABI_TEXTURE texture;
     V9X_R3D_ABI_LEVEL level;
+    V9X_GLIDE_CPU_SOURCE cpu;
     V9X_R3D_ABI_VERTEX vertices[3u * V9X_R3D_ABI_BATCH_MAX];
     v9x_u32 triangles;
 } v9x_glide_pending;
@@ -582,23 +600,33 @@ static void v9x_glide_log_refusal(v9x_u32 result, const V9X_R3D_ABI_DRAW *draw)
     }
 }
 
+static int v9x_glide_cpu_copy(const V9X_GLIDE_CPU_SOURCE *cpu,
+                              V9X_R3D_ABI_TEXTURE *texture,
+                              V9X_R3D_ABI_LEVEL *level);
+
 /*
  * One batch through the render interface, into the buffer grRenderBuffer
  * chose. STALE means a mode change started a new generation: describe
- * again and retry once. A fogged batch the engine refuses is drawn again
- * without fog and counted: whether an engine fogs through this interface
- * is measured per engine, not assumed.
+ * again and retry once. A refusal is retried as v9x_glide_refusal_next
+ * says, the ICD's order: a surface texture as its CPU copy (`cpu`, null
+ * for a draw with none), which an engine's software fallback draws; then
+ * a fogged batch in its first form without fog, counted, since whether an
+ * engine fogs through this interface is measured per engine, not assumed.
  */
 static v9x_u32 v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
                                  const V9X_R3D_ABI_TEXTURE *texture,
+                                 const V9X_GLIDE_CPU_SOURCE *cpu,
                                  const V9X_R3D_ABI_VERTEX *vertices,
                                  v9x_u32 triangles)
 {
     const V9X_R3D_INTERFACE *iface = v9x_glide_device_interface();
     V9X_R3D_ABI_DRAW draw;
     V9X_R3D_ABI_OUTCOME outcome;
+    V9X_R3D_ABI_LEVEL cpu_level;
     v9x_u32 result = V9X_R3D_RESULT_INVALID;
     v9x_u32 start;
+    v9x_u32 cpu_tried = 0ul;
+    v9x_u32 next;
     unsigned int attempt;
 
     if (iface == 0 || triangles == 0ul) {
@@ -616,14 +644,30 @@ static v9x_u32 v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
     v9x_glide_device_wait_flip();
     start = v9x_glide_rdtsc_low();
     ++v9x_glide_prof_batches;
-    for (attempt = 0u; attempt < 3u; ++attempt) {
+    for (attempt = 0u; attempt < 4u; ++attempt) {
         draw.generation = v9x_glide_device_generation();
         v9x_glide_zero(&outcome, sizeof(outcome));
         result = iface->draw(&draw, &outcome);
         if (result == V9X_R3D_RESULT_STALE && v9x_glide_device_redescribe()) {
             continue;
         }
-        if (result == V9X_R3D_RESULT_UNSUPPORTED && draw.state.fog_enable) {
+        next = v9x_glide_refusal_next(result, draw.texture.storage,
+                                      draw.state.fog_enable, cpu_tried);
+        if (next == V9X_GLIDE_RETRY_CPU_COPY) {
+            cpu_tried = 1ul;
+            if (cpu != 0 &&
+                v9x_glide_cpu_copy(cpu, &draw.texture, &cpu_level)) {
+                v9x_glide_cpu_copies += triangles;
+                continue;
+            }
+            /* No copy to send: the next rule decides. */
+            next = v9x_glide_refusal_next(result, draw.texture.storage,
+                                          draw.state.fog_enable, cpu_tried);
+        }
+        if (next == V9X_GLIDE_RETRY_NO_FOG) {
+            /* The first form again: an engine with no fallback refuses
+             * the copy as well. */
+            draw.texture = *texture;
             draw.state.fog_enable = 0ul;
             v9x_glide_fog_dropped += triangles;
             continue;
@@ -646,19 +690,23 @@ static v9x_u32 v9x_glide_submit(V9X_GLIDE_DRAW_SETUP *setup,
 void v9x_glide_flush(void)
 {
     V9X_R3D_ABI_TEXTURE texture;
+    v9x_u32 triangles = v9x_glide_pending.triangles;
 
-    if (v9x_glide_pending.triangles == 0ul) {
+    if (triangles == 0ul) {
         return;
     }
+    /* Off the queue before it is drawn: making a CPU copy converts texels,
+     * which flushes first, and must find nothing held. Nothing queues
+     * while the batch is drawn, so its vertices stay where they are. */
+    v9x_glide_pending.triangles = 0ul;
     texture = v9x_glide_pending.texture;
     if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
         texture.levels = &v9x_glide_pending.level;
         texture.level_count = 1ul;
     }
     (void)v9x_glide_submit(&v9x_glide_pending.setup, &texture,
-                           v9x_glide_pending.vertices,
-                           v9x_glide_pending.triangles);
-    v9x_glide_pending.triangles = 0ul;
+                           &v9x_glide_pending.cpu,
+                           v9x_glide_pending.vertices, triangles);
 }
 
 static void v9x_glide_queue(const V9X_GLIDE_DRAW_SETUP *setup,
@@ -694,6 +742,10 @@ static void v9x_glide_queue(const V9X_GLIDE_DRAW_SETUP *setup,
         v9x_glide_pending.setup = *setup;
         v9x_glide_pending.texture = *texture;
         v9x_glide_pending.level = *level;
+        v9x_glide_pending.cpu = v9x_glide_bound;
+        if (texture->storage != V9X_R3D_ABI_TEXTURE_HW) {
+            v9x_glide_pending.cpu.source = -1;
+        }
     }
     for (i = 0ul; i < triangles * 3ul; ++i) {
         v9x_glide_pending.vertices[v9x_glide_pending.triangles * 3ul + i] =
@@ -941,6 +993,10 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
         out->storage = V9X_R3D_ABI_TEXTURE_HW;
         out->format = entry->abi_format;
         out->surface.surface = entry->surface;
+        v9x_glide_bound.source = v9x_glide_source;
+        v9x_glide_bound.variant = variant;
+        v9x_glide_bound.key_enable = setup->key_texture;
+        v9x_glide_bound.key_rgb = key_rgb;
         return 1;
     }
     if (!v9x_glide_texture_convert(texture, variant, setup->key_texture, key_rgb)) {
@@ -953,6 +1009,41 @@ static int v9x_glide_texture_bind(const V9X_GLIDE_DRAW_SETUP *setup,
     level->pitch = texture->width * 2ul;
     level->width = texture->width;
     level->height = texture->height;
+    return 1;
+}
+
+/*
+ * A refused surface texture's CPU copy: the same source converted the way
+ * it was bound, with the bound texture's sampling. Zero when the source
+ * has gone (its record overwritten) or will not convert.
+ */
+static int v9x_glide_cpu_copy(const V9X_GLIDE_CPU_SOURCE *cpu,
+                              V9X_R3D_ABI_TEXTURE *texture,
+                              V9X_R3D_ABI_LEVEL *level)
+{
+    V9X_GLIDE_TEXTURE *source;
+
+    if (cpu->source < 0 ||
+        !v9x_glide_texmem.records[cpu->source].in_use) {
+        return 0;
+    }
+    source = &v9x_glide_textures[cpu->source];
+    if (source->raw == 0 ||
+        !v9x_glide_texture_convert(source, cpu->variant, cpu->key_enable,
+                                   cpu->key_rgb)) {
+        return 0;
+    }
+    v9x_glide_zero(level, sizeof(*level));
+    level->pixels = source->texels;
+    level->bytes = source->width * source->height * 2ul;
+    level->pitch = source->width * 2ul;
+    level->width = source->width;
+    level->height = source->height;
+    texture->storage = V9X_R3D_ABI_TEXTURE_CPU;
+    texture->format = source->abi_format;
+    texture->surface.surface = 0;
+    texture->levels = level;
+    texture->level_count = 1ul;
     return 1;
 }
 
@@ -1234,7 +1325,7 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     quad[3].sx = right; quad[3].sy = top;
     quad[4].sx = right; quad[4].sy = bottom;
     quad[5].sx = left;  quad[5].sy = bottom;
-    result = v9x_glide_submit(&setup, &none, quad, 2ul);
+    result = v9x_glide_submit(&setup, &none, 0, quad, 2ul);
     if (result == V9X_R3D_RESULT_OK || result == V9X_R3D_RESULT_PARTIAL) {
         v9x_glide_prof_add(V9X_GLIDE_PROF_CLEAR, v9x_glide_rdtsc_low() - start);
         return;

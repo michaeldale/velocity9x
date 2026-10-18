@@ -521,3 +521,18 @@ void v9x_glide_state_map(const V9X_GLIDE_STATE *state,
     out->mag_filter = state->mag_filter == V9X_GLIDE_TEXTURE_POINT ?
                       V9X_R3D_ABI_FILTER_NEAREST : V9X_R3D_ABI_FILTER_LINEAR;
 }
+
+v9x_u32 v9x_glide_refusal_next(v9x_u32 result, v9x_u32 storage,
+                               v9x_u32 fog_enable, v9x_u32 cpu_tried)
+{
+    if (result != V9X_R3D_RESULT_UNSUPPORTED) {
+        return V9X_GLIDE_RETRY_NONE;
+    }
+    if (storage == V9X_R3D_ABI_TEXTURE_HW && cpu_tried == 0ul) {
+        return V9X_GLIDE_RETRY_CPU_COPY;
+    }
+    if (fog_enable != 0ul) {
+        return V9X_GLIDE_RETRY_NO_FOG;
+    }
+    return V9X_GLIDE_RETRY_NONE;
+}

@@ -557,9 +557,55 @@ static void test_gu_color_combine(void)
     SCHECK(s.color.other == V9X_GLIDE_COMBINE_OTHER_TEXTURE);
 }
 
+/*
+ * A refused batch's next try, as the ICD orders it (gl_icd.c): a surface
+ * texture's CPU copy first, which an engine with the software fallback
+ * draws whole, fog and all; then the first form without fog; then nothing.
+ * On the Millennium II every Glide surface-texture draw is refused and
+ * nothing tried the copy (V9XGLIDP, A8U4I5 boot 495, five textured cases).
+ */
+static void test_refusal_next(void)
+{
+    /* Drawn, partly drawn, or stale: nothing to retry here. */
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_OK,
+                                  V9X_R3D_ABI_TEXTURE_HW, 1ul, 0ul) ==
+           V9X_GLIDE_RETRY_NONE);
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_PARTIAL,
+                                  V9X_R3D_ABI_TEXTURE_HW, 0ul, 0ul) ==
+           V9X_GLIDE_RETRY_NONE);
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_INVALID,
+                                  V9X_R3D_ABI_TEXTURE_HW, 1ul, 0ul) ==
+           V9X_GLIDE_RETRY_NONE);
+
+    /* A surface texture refused: the CPU copy, fog or not. */
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_UNSUPPORTED,
+                                  V9X_R3D_ABI_TEXTURE_HW, 0ul, 0ul) ==
+           V9X_GLIDE_RETRY_CPU_COPY);
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_UNSUPPORTED,
+                                  V9X_R3D_ABI_TEXTURE_HW, 1ul, 0ul) ==
+           V9X_GLIDE_RETRY_CPU_COPY);
+
+    /* The copy refused too: fog is dropped, or there is nothing left. */
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_UNSUPPORTED,
+                                  V9X_R3D_ABI_TEXTURE_CPU, 1ul, 1ul) ==
+           V9X_GLIDE_RETRY_NO_FOG);
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_UNSUPPORTED,
+                                  V9X_R3D_ABI_TEXTURE_HW, 0ul, 1ul) ==
+           V9X_GLIDE_RETRY_NONE);
+
+    /* CPU texels or none to begin with: only fog can go. */
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_UNSUPPORTED,
+                                  V9X_R3D_ABI_TEXTURE_CPU, 1ul, 0ul) ==
+           V9X_GLIDE_RETRY_NO_FOG);
+    SCHECK(v9x_glide_refusal_next(V9X_R3D_RESULT_UNSUPPORTED,
+                                  V9X_R3D_ABI_TEXTURE_NONE, 0ul, 0ul) ==
+           V9X_GLIDE_RETRY_NONE);
+}
+
 unsigned int v9x_run_glide_state_tests(void)
 {
     glide_state_failures = 0u;
+    test_refusal_next();
     test_resolution_and_color();
     test_defaults();
     test_depth_and_blend();

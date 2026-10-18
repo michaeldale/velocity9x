@@ -135,4 +135,20 @@ v9x_u16 v9x_glide_gu_color_combine(v9x_u32 preset, V9X_GLIDE_COMBINE *out);
  */
 v9x_u16 v9x_glide_gu_color_delta0(v9x_u32 preset);
 
+/*
+ * What a batch the render interface refused tries next, in the ICD's
+ * order (gl_icd.c). A surface texture first goes again as its CPU copy:
+ * the core gives an engine's software fallback no surface texture, so the
+ * copy is what it can draw, fog and all. Then a fogged batch goes in its
+ * first form without fog, for an engine with neither fog nor a fallback
+ * (the ViRGE). Then nothing. `cpu_tried` is non-zero once the copy was
+ * sent; `storage` is the texture's as it was refused.
+ */
+#define V9X_GLIDE_RETRY_NONE     0ul
+#define V9X_GLIDE_RETRY_CPU_COPY 1ul
+#define V9X_GLIDE_RETRY_NO_FOG   2ul
+
+v9x_u32 v9x_glide_refusal_next(v9x_u32 result, v9x_u32 storage,
+                               v9x_u32 fog_enable, v9x_u32 cpu_tried);
+
 #endif /* VELOCITY9X_GLIDE_STATE_H */
