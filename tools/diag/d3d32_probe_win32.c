@@ -21,8 +21,13 @@
  *   T3 depth: a quad at z 0.5, a triangle behind it that must not draw and
  *      one in front that must;
  *   T4 a flat triangle into a 64x64 offscreen render target of its own;
- *   T5 depth precision: a quad 2e-6 in front of another, which a 16-bit
- *      buffer cannot tell apart and a 24-bit one can.
+ *   T5 depth precision: a quad a tenth of a 16-bit step in front of
+ *      another, which a 16-bit buffer cannot tell apart and a 24-bit one
+ *      can;
+ *   T6 an 8x8 ARGB1555 texture of four full-scale colours, DECAL and
+ *      nearest, each quadrant's centre within 8 of its texel;
+ *   T7 half-alpha red over opaque green, SRCALPHA / INVSRCALPHA, within 8
+ *      of 0x807F00.
  *
  * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
  * that full scale; T5 then expects the nearer quad, and without it the
@@ -69,6 +74,22 @@
 #define D3DRENDERSTATE_CULLMODE 22ul
 #define D3DRENDERSTATE_ZFUNC 23ul
 #define D3DRENDERSTATE_DITHERENABLE 26ul
+#define D3DRENDERSTATE_TEXTUREHANDLE 1ul
+#define D3DRENDERSTATE_TEXTUREMAG 17ul
+#define D3DRENDERSTATE_TEXTUREMIN 18ul
+#define D3DRENDERSTATE_SRCBLEND 19ul
+#define D3DRENDERSTATE_DESTBLEND 20ul
+#define D3DRENDERSTATE_TEXTUREMAPBLEND 21ul
+#define D3DRENDERSTATE_ALPHABLENDENABLE 27ul
+#define D3DFILTER_NEAREST 1ul
+#define D3DTBLEND_DECAL 1ul
+#define D3DBLEND_SRCALPHA 5ul
+#define D3DBLEND_INVSRCALPHA 6ul
+#define DDSD_PIXELFORMAT 0x00001000ul
+#define DDSCAPS_TEXTURE 0x00001000ul
+#define DDPF_RGB 0x00000040ul
+#define DDPF_ALPHAPIXELS 0x00000001ul
+#define D3DTEX2_GET_HANDLE 3
 #define D3DSHADE_GOURAUD 2ul
 #define D3DCULL_NONE 1ul
 #define D3DCMP_LESS 2ul
@@ -198,6 +219,14 @@ static const GUID d32_iid_d3d2 = {
     0x6aae1ec1ul, 0x662a, 0x11d0,
     { 0x88, 0x9d, 0x00, 0xaa, 0x00, 0xbb, 0xb7, 0x6a }
 };
+
+static const GUID d32_iid_d3d_texture2 = {
+    0x93281502ul, 0x8cf8, 0x11d0,
+    { 0x89, 0xab, 0x00, 0xa0, 0xc9, 0x05, 0x41, 0x29 }
+};
+
+typedef HRESULT (WINAPI *d32_texture_handle_fn)(D32_OBJECT *, D32_OBJECT *,
+                                                DWORD *);
 
 static const GUID d32_iid_d3d_hal = {
     0x84e63de0ul, 0x46aa, 0x11cf,
@@ -524,6 +553,88 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
     return mismatches;
 }
 
+/* Within `tolerance` of 0x00RRGGBB on every channel, X byte zero at
+ * 32 bpp: for a sampled or blended colour, whose expansion and rounding
+ * are the engine's. */
+static int d32_near(DWORD pixel, DWORD rgb, DWORD tolerance)
+{
+    DWORD saved = d32_tolerance;
+    int result;
+
+    d32_tolerance = tolerance;
+    result = d32_is_colour(pixel, rgb);
+    d32_tolerance = saved;
+    return result;
+}
+
+/*
+ * The T6 texture: 8x8 ARGB1555, every texel opaque, in four 4x4 quadrants
+ * red, green, blue and white - each channel at full scale or zero, so the
+ * expansion to eight bits cannot be mistaken for a wrong texel. ARGB1555
+ * because both the Gen3 and the software engine sample it. Returns the
+ * handle, or zero.
+ */
+static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
+                         D32_OBJECT **surface_out)
+{
+    static const WORD quadrant[4] = { 0xfc00u, 0x83e0u, 0x801fu, 0xffffu };
+    D32_SURFACE_DESC desc;
+    D32_OBJECT *surface = 0;
+    D32_OBJECT *texture = 0;
+    DWORD handle = 0ul;
+    DWORD x;
+    DWORD y;
+    HRESULT hr;
+
+    *surface_out = 0;
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+    desc.dwWidth = 8ul;
+    desc.dwHeight = 8ul;
+    desc.ddpfPixelFormat[0] = 32ul;
+    desc.ddpfPixelFormat[1] = DDPF_RGB | DDPF_ALPHAPIXELS;
+    desc.ddpfPixelFormat[3] = 16ul;
+    desc.ddpfPixelFormat[4] = 0x00007c00ul;
+    desc.ddpfPixelFormat[5] = 0x000003e0ul;
+    desc.ddpfPixelFormat[6] = 0x0000001ful;
+    desc.ddpfPixelFormat[7] = 0x00008000ul;
+    desc.ddsCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
+    hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+        ddraw, &desc, &surface, 0);
+    d32_hx("T6CreateHr", (DWORD)hr);
+    if (hr != 0 || surface == 0) {
+        return 0ul;
+    }
+    *surface_out = surface;
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
+                                                DDLOCK_WAIT, 0);
+    d32_hx("T6LockHr", (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        return 0ul;
+    }
+    for (y = 0ul; y < 8ul; ++y) {
+        WORD *row = (WORD *)((BYTE *)desc.lpSurface +
+                             y * (DWORD)desc.lPitch);
+        for (x = 0ul; x < 8ul; ++x) {
+            row[x] = quadrant[(y >= 4ul ? 2u : 0u) + (x >= 4ul ? 1u : 0u)];
+        }
+    }
+    ((d32_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    hr = ((d32_query_fn)surface->vtbl[COM_QUERY_INTERFACE])(
+        surface, &d32_iid_d3d_texture2, (void **)&texture);
+    if (hr == 0 && texture != 0) {
+        hr = ((d32_texture_handle_fn)texture->vtbl[D3DTEX2_GET_HANDLE])(
+            texture, device, &handle);
+        ((d32_release_fn)texture->vtbl[COM_RELEASE])(texture);
+    }
+    d32_hx("T6HandleHr", (DWORD)hr);
+    d32_hx("T6Handle", handle);
+    return hr == 0 ? handle : 0ul;
+}
+
 static int d32_dominant(DWORD pixel, int channel)
 {
     DWORD values[3];
@@ -558,6 +669,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_OBJECT *d3d = 0;
     D32_OBJECT *device = 0;
     D32_OBJECT *device2 = 0;
+    D32_OBJECT *texture_surface = 0;
+    DWORD handle = 0ul;
     D32_SURFACE_DESC desc;
     D32_ENUM_RESULT enumerated;
     D32_TLVERTEX v[6];
@@ -773,6 +886,50 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("T5FrontHr", (DWORD)d32_draw(device, v, 6ul));
     d32_state(device, D3DRENDERSTATE_ZENABLE, 0ul);
 
+    /* T6, a texture: the 8x8 quadrant map over a 64x64 quad at (400, 8),
+     * DECAL and nearest, so each quadrant's centre is its texel. */
+    d32_line("Stage", "8c-t6-texture");
+    handle = d32_texture(ddraw, device, &texture_surface);
+    if (handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAG, D3DFILTER_NEAREST);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_NEAREST);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+        d32_vertex(&v[0], 400.0f, 8.0f, 0.5f, 0xfffffffful);
+        d32_vertex(&v[1], 464.0f, 8.0f, 0.5f, 0xfffffffful);
+        d32_vertex(&v[2], 400.0f, 72.0f, 0.5f, 0xfffffffful);
+        v[1].tu = 1.0f;
+        v[2].tv = 1.0f;
+        d32_vertex(&v[3], 464.0f, 8.0f, 0.5f, 0xfffffffful);
+        d32_vertex(&v[4], 464.0f, 72.0f, 0.5f, 0xfffffffful);
+        d32_vertex(&v[5], 400.0f, 72.0f, 0.5f, 0xfffffffful);
+        v[3].tu = 1.0f;
+        v[4].tu = 1.0f;
+        v[4].tv = 1.0f;
+        v[5].tv = 1.0f;
+        d32_hx("T6DrawHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    }
+
+    /* T7, blending: opaque green, then red at alpha 0x80 with SRCALPHA
+     * and INVSRCALPHA over it, at (480, 8). */
+    d32_line("Stage", "8d-t7-blend");
+    d32_vertex(&v[0], 480.0f, 8.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[1], 544.0f, 8.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 480.0f, 72.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[3], 544.0f, 8.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[4], 544.0f, 72.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[5], 480.0f, 72.0f, 0.5f, 0xff00ff00ul);
+    d32_hx("T7BackHr", (DWORD)d32_draw(device, v, 6ul));
+    d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+    d32_state(device, D3DRENDERSTATE_SRCBLEND, D3DBLEND_SRCALPHA);
+    d32_state(device, D3DRENDERSTATE_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    for (judged = 0ul; judged < 6ul; ++judged) {
+        v[judged].color = 0x80ff0000ul;
+    }
+    d32_hx("T7BlendHr", (DWORD)d32_draw(device, v, 6ul));
+    d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+
     d32_line("Stage", "9-read-back");
     d32_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
@@ -813,6 +970,34 @@ void WINAPI V9xD3d32ProbeEntry(void)
                              zbits == 32ul ? 0x00ff0000ul : 0x0000ff00ul)
                    ? 1ul : 0ul;
         d32_hx("T5Ok", caps);
+        failures += caps != 1ul ? 1ul : 0ul;
+
+        /* T6: each quadrant's centre is its texel, within the expansion
+         * of a 5-bit channel to the target's. */
+        if (handle != 0ul) {
+            d32_hx("T6Red", d32_pixel(&desc, 416ul, 24ul));
+            d32_hx("T6Green", d32_pixel(&desc, 448ul, 24ul));
+            d32_hx("T6Blue", d32_pixel(&desc, 416ul, 56ul));
+            d32_hx("T6White", d32_pixel(&desc, 448ul, 56ul));
+            caps = (d32_near(d32_pixel(&desc, 416ul, 24ul), 0x00ff0000ul,
+                             8ul) ? 1ul : 0ul) |
+                   (d32_near(d32_pixel(&desc, 448ul, 24ul), 0x0000ff00ul,
+                             8ul) ? 2ul : 0ul) |
+                   (d32_near(d32_pixel(&desc, 416ul, 56ul), 0x000000fful,
+                             8ul) ? 4ul : 0ul) |
+                   (d32_near(d32_pixel(&desc, 448ul, 56ul), 0x00fffffful,
+                             8ul) ? 8ul : 0ul);
+        } else {
+            caps = 0ul;
+        }
+        d32_hx("T6Ok", caps);
+        failures += caps != 15ul ? 1ul : 0ul;
+
+        /* T7: half red over green, about 0x80 and 0x7F. */
+        d32_hx("T7Pixel", d32_pixel(&desc, 512ul, 40ul));
+        caps = d32_near(d32_pixel(&desc, 512ul, 40ul), 0x00807f00ul, 8ul)
+                   ? 1ul : 0ul;
+        d32_hx("T7Ok", caps);
         failures += caps != 1ul ? 1ul : 0ul;
         ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
     } else {
@@ -866,6 +1051,10 @@ void WINAPI V9xD3d32ProbeEntry(void)
     ((d32_release_fn)device->vtbl[COM_RELEASE])(device);
     if (offscreen != 0) {
         ((d32_release_fn)offscreen->vtbl[COM_RELEASE])(offscreen);
+    }
+    if (texture_surface != 0) {
+        ((d32_release_fn)texture_surface->vtbl[COM_RELEASE])(
+            texture_surface);
     }
     if (zbuffer != 0) {
         ((d32_release_fn)zbuffer->vtbl[COM_RELEASE])(zbuffer);
