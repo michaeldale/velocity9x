@@ -98,16 +98,35 @@ build; the DRV and HAL agree.
 - The Direct3D path agrees with what MGA2D measured at the register level
   on 2026-10-10.
 
-## Found on the way, not fixed
+## Found on the way, fixed after
 
-The new depth-plane host test with depths over the full range found an
-error in the setup that is already there at 16 bits:
-- A trapezoid whose first row is empty starts its plane outside the
-  triangle. When that start is past the field's range it is clamped, and
-  every pixel after it is offset by the clamp.
-- One steep triangle in 300 random ones was 420 units of 16-bit Z off.
-- The test now keeps its depths in the middle half of the range. The fix
-  belongs in the setup, at both widths.
+The new depth-plane host test, with depths over the full range, found an
+error that was already in the setup at 16 bits:
+- A trapezoid whose first row is empty started its planes at that row's
+  left column, outside the triangle.
+- A depth start past the field's range was clamped, which offset every
+  pixel after it. One steep triangle in 300 random ones was 420 units of
+  16-bit Z off.
+- A colour start past ±256 levels refused the whole triangle. Of 3000
+  small triangles with red running 0 to 255, 774 were refused, and 161 of
+  those had every step inside the field.
+
+The first commit kept the test's depths in the middle half of the range.
+The fix that followed it:
+- `v9x_mga_setup_emit` starts a trapezoid at its first row that has a
+  pixel. A trapezoid's width changes linearly, so empty rows can only be
+  at its ends, and they draw nothing.
+- A trapezoid with no pixel is left out.
+- The depth test is back at the full range: 0 pixels off at both widths,
+  worst 0.50 units, with the same 360,641 pixels drawn.
+- The new colour test (`test_steep_colour`) now refuses 329 of the 3000
+  triangles, each with a step outside the field. The other triangles that
+  stopped being refused covered no pixel at all.
+- The texture planes start from the same point. The perspective tests are
+  unchanged: 0 refused, no texel off.
+
+The fix has not been run on the card; it changes only which trapezoids
+are sent and where their planes start.
 
 ## Not measured
 

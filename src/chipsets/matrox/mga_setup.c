@@ -283,7 +283,8 @@ struct v9x_mga_setup_planes {
 
 /*
  * One trapezoid: rows [r0, r1) between edges left_a -> left_b and
- * right_a -> right_b, its planes started at its first row's first pixel.
+ * right_a -> right_b, its planes started at its first drawn row's first
+ * pixel. A length of 0 is a trapezoid with no pixel.
  */
 static v9x_status v9x_mga_setup_emit(
     const struct v9x_mga3d_trap *base, const struct v9x_mga_setup_vertex *v,
@@ -301,10 +302,29 @@ static v9x_status v9x_mga_setup_emit(
     v9x_s32 q[3];
 
     *trap = *base;
+
+    /*
+     * From the first row that has a pixel. A row can be empty only at a
+     * trapezoid's ends, since its width changes linearly. An empty row's
+     * left column lies outside the triangle, so starting the planes there
+     * extrapolates them, and a start past the field's range was clamped
+     * (depth) or refused (colour). The clamp offset every pixel after it:
+     * 420 units of 16-bit Z on one triangle in 300 (test_mga_setup.c,
+     * 2026-10-18). The empty rows draw nothing, so dropping them changes
+     * no pixel.
+     */
+    for (; r0 < r1; ++r0) {
+        v9x_mga_setup_edge(left_a, left_b, r0, &trap->left);
+        v9x_mga_setup_edge(right_a, right_b, r0, &trap->right);
+        if (trap->left.x < trap->right.x) {
+            break;
+        }
+    }
     trap->top = (v9x_u32)r0;
     trap->length = (v9x_u32)(r1 - r0);
-    v9x_mga_setup_edge(left_a, left_b, r0, &trap->left);
-    v9x_mga_setup_edge(right_a, right_b, r0, &trap->right);
+    if (trap->length == 0ul) {
+        return V9X_STATUS_OK;
+    }
     px = (double)trap->left.x + 0.5;
     py = (double)r0 + 0.5;
 
@@ -571,7 +591,7 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
 }
 
 /* The triangle's one or two trapezoids: rows [r0, r1) above the middle
- * vertex, [r1, r2) below. */
+ * vertex, [r1, r2) below; one with no pixel is left out. */
 static v9x_status v9x_mga_setup_emit_both(
     const struct v9x_mga3d_trap *base, const struct v9x_mga_setup_vertex *v,
     const struct v9x_mga_setup_planes *planes, int long_on_left,
@@ -591,7 +611,9 @@ static v9x_status v9x_mga_setup_emit_both(
             *count = 0ul;
             return status;
         }
-        ++*count;
+        if (traps[*count].length != 0ul) {
+            ++*count;
+        }
     }
     if (r2 > r1) {
         status = long_on_left
@@ -603,7 +625,9 @@ static v9x_status v9x_mga_setup_emit_both(
             *count = 0ul;
             return status;
         }
-        ++*count;
+        if (traps[*count].length != 0ul) {
+            ++*count;
+        }
     }
     return V9X_STATUS_OK;
 }

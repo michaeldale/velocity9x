@@ -300,8 +300,64 @@ static void test_gouraud_plane(void)
             }
         }
     }
+    printf("  mga gouraud: %u off, %u refused\n", bad, refused);
     CHECK(bad == 0u);
     CHECK(refused < 15u);
+}
+
+/*
+ * Small triangles whose red runs 0 to 255: the only refusal allowed is a
+ * step past the signed 24-bit field's 256 levels a pixel. A trapezoid
+ * whose first row is empty used to start its planes there, outside the
+ * triangle, and refuse a start past 256: 774 of these 3000 were refused
+ * then, 161 of them with every step inside the field; now 329, all with a
+ * step outside it. The rest of the difference covered no pixel and is no
+ * longer set up at all (2026-10-18).
+ */
+static void test_steep_colour(void)
+{
+    struct v9x_mga_setup_vertex v[3];
+    struct v9x_mga3d_trap base;
+    struct v9x_mga3d_trap traps[V9X_MGA_SETUP_TRAPS];
+    v9x_u32 count;
+    v9x_u32 index;
+    unsigned int trial;
+    unsigned int refused = 0u;
+    unsigned int unexplained = 0u;
+
+    memset(v, 0, sizeof(v));
+    base_flat(&base);
+    base.shade = V9X_MGA3D_SHADE_GOURAUD;
+    base.color = 0ul;
+    for (trial = 0u; trial < 3000u; ++trial) {
+        for (index = 0ul; index < 3ul; ++index) {
+            v[index].x = 800L + random_below(96);
+            v[index].y = 800L + random_below(96);
+            v[index].red = random_below(2) != 0L ? 255.0 : 0.0;
+        }
+        if (v9x_mga_setup_triangle(&base, v, traps, &count) !=
+            V9X_STATUS_OK) {
+            /* The plane's steps in levels a pixel, as the setup takes
+             * them (coordinates in sixteenths). */
+            double x10 = (double)(v[1].x - v[0].x) / 16.0;
+            double y10 = (double)(v[1].y - v[0].y) / 16.0;
+            double x20 = (double)(v[2].x - v[0].x) / 16.0;
+            double y20 = (double)(v[2].y - v[0].y) / 16.0;
+            double det = x10 * y20 - x20 * y10;
+            double ddx = ((v[1].red - v[0].red) * y20 -
+                          (v[2].red - v[0].red) * y10) / det;
+            double ddy = ((v[2].red - v[0].red) * x10 -
+                          (v[1].red - v[0].red) * x20) / det;
+
+            ++refused;
+            if (ddx > -256.0 && ddx < 256.0 && ddy > -256.0 && ddy < 256.0) {
+                ++unexplained;
+            }
+        }
+    }
+    printf("  mga steep colour: %u refused, %u with steps in the field\n",
+           refused, unexplained);
+    CHECK(unexplained == 0u);
 }
 
 /* A 32x32 TW16 texture whose texel (s, t) carries s in red and t in blue. */
@@ -486,12 +542,10 @@ static void z_write(void *context, v9x_s32 x, v9x_u32 row, v9x_u32 value)
  * DR0/DR2/DR3's 17.15, 4294967295 for 32-bit Z in the DRn_Z32 pairs'
  * 33.15. Each stored value is within one unit of the plane.
  *
- * The vertices stay in the middle half of the range. A trapezoid whose
- * first row is empty starts its plane outside the triangle, and a start
- * past the register's range is clamped, which offsets every pixel after
- * it: one triangle in 300 here with depths up to the full scale, 420
- * units of 16-bit Z (2026-10-18). That is the setup's, at both widths,
- * and not what this test measures.
+ * The vertices span the whole range, which is what found a trapezoid
+ * whose first row is empty starting its plane outside the triangle, past
+ * the register's range: the clamped start offset every pixel after it,
+ * one triangle in 300 by 420 units of 16-bit Z (2026-10-18).
  */
 static void run_depth_plane(v9x_u32 depth, double full, const char *name)
 {
@@ -526,8 +580,7 @@ static void run_depth_plane(v9x_u32 depth, double full, const char *name)
         for (index = 0ul; index < 3ul; ++index) {
             v[index].x = random_below(GRID * 16);
             v[index].y = random_below(GRID * 16);
-            v[index].z = full * (0.25 + 0.5 * (double)random_below(10001) /
-                                            10000.0);
+            v[index].z = full * (double)random_below(10001) / 10000.0;
         }
         memset(z_written, 0, sizeof(z_written));
         if (v9x_mga_setup_triangle(&base, v, traps, &count) !=
@@ -627,6 +680,7 @@ unsigned int v9x_run_mga_setup_tests(void)
     test_random_coverage();
     test_shared_edge();
     test_gouraud_plane();
+    test_steep_colour();
     test_perspective();
     test_depth_plane();
     test_refusals();
