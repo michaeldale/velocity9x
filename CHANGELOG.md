@@ -4,7 +4,42 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.19.1 - not yet released
+## 0.20.0 - not yet released
+
+- **Direct3D at 32 bpp, and 24-bit depth buffers.** Until now every
+  Direct3D engine drew only at 16 bpp, so a 32 bpp desktop got no
+  hardware device and games fell back to Microsoft's software renderer
+  ([plan](docs/plans/32bpp-acceleration-and-3d.md)).
+  - **Intel GMA 950/900 (Gen3):** Direct3D renders at 32 bpp on the
+    engine. Flat colour, Gouraud shading, depth, textures and alpha
+    blending match their references on the netbook. A 24-bit depth buffer
+    is offered beside the 16-bit one, at 16 and 32 bpp
+    ([32 bpp](docs/decisions/2026-10-18-gen3-direct3d-at-32-bpp.md),
+    [24-bit depth](docs/decisions/2026-10-18-gen3-24-bit-depth.md),
+    [textures and blending](docs/decisions/2026-10-18-gen3-textured-and-blended-at-32-bpp.md)).
+  - **Intel HD 4600 (Haswell):** the same, with the 24-bit depth buffer in
+    the chip's tiled layout, measured on the i5-4570
+    ([32 bpp](docs/decisions/2026-10-18-haswell-direct3d-at-32-bpp.md),
+    [24-bit depth](docs/decisions/2026-10-18-haswell-24-bit-depth.md)).
+  - **Software Direct3D** (Direct3D set to software on the settings page)
+    renders at 32 bpp, with a 16-bit depth buffer
+    ([record](docs/decisions/2026-10-18-software-direct3d-at-32-bpp.md)).
+  - The other chips' Direct3D engines still draw at 16 bpp only, as before.
+  - **3D WinBench 98** asks for a 16-bit depth buffer even when 32 is
+    offered, so its Z accuracy tests still fail as in 0.19.0. It now runs
+    at 640x480x32 on the GMA 950's hardware
+    ([record](docs/decisions/2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md)).
+- **DirectDraw fills and copies at 32 bpp on two more engines.**
+  - **Intel GMA 950/900:** on the blitter, every pixel matching a CPU
+    reference at 8, 16 and 32 bpp
+    ([record](docs/decisions/2026-10-18-gen3-blits-at-32-bpp.md)).
+  - **S3 Trio64:** done the way S3's own drivers do it. Measured in 86Box
+    only; a real Trio64 has not run it yet
+    ([record](docs/decisions/2026-10-18-trio64-blits-at-32-bpp-on-86box.md)).
+- **Known limits:**
+  - The OpenGL ICD, Glide and 3DCIF still need a 16 bpp mode.
+  - No game has been run that asks for a 32-bit depth buffer.
+  - Desktop (GDI) drawing on the Trio64 still uses the CPU at 32 bpp.
 
 ## 0.19.0 - 2026-10-18
 
