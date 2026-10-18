@@ -47,8 +47,9 @@
 #define V9X_D3D_MGA_TEXTURE_PITCH_MIN 8ul
 #define V9X_D3D_MGA_TEXTURE_LEVELS 11ul
 
-/* Direct3D's 0..1 depth in the 16-bit Z buffer's units. */
-#define V9X_D3D_MGA_Z_SCALE 65535.0f
+/* Direct3D's 0..1 depth in the 16-bit and the 32-bit Z buffer's units. */
+#define V9X_D3D_MGA_Z_SCALE   65535.0f
+#define V9X_D3D_MGA_Z32_SCALE 4294967295.0
 #define V9X_D3D_MGA_SUBPIXEL 16.0f
 
 /* "MG3D": the 3D idle timeout, in V9XTRACE.INI's FaultCode. */
@@ -58,8 +59,8 @@ static struct v9x_mga3d_trap v9x_d3d_mga_traps[V9X_MGA_SETUP_TRAPS];
 static struct v9x_mga3d_writes v9x_d3d_mga_writes;
 
 /*
- * A 16 bpp target with a pitch the linearizer takes (64-byte steps of 32
- * pixels, at most 2048), inside the clip window's 11 bits. Textures are
+ * A 16 bpp or XRGB8888 target with a pitch the linearizer takes (steps of
+ * 32 pixels, at most 2048), inside the clip window's 11 bits. Textures are
  * powers of two; 256 is what is published, though 1024 fits the fields.
  * clip_in_core: the engine's guard band is not measured. depth_pitch_own:
  * the engine reads Z at the target's pitch, which create_surface gives the
@@ -78,7 +79,13 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mga_limits = {
     1ul,            /* clip_in_core */
     1ul,            /* depth_pitch_own */
     0ul,            /* depth_fill_shift */
-    1ul             /* texture_units */
+    1ul,            /* texture_units */
+    0ul,            /* pixel_centre_half: not measured */
+    0ul,            /* depth_tiled */
+    /* XRGB8888 on a 32 bpp desktop at PWIDTH 32, 2048 pixels a row. */
+    8192ul,         /* target_pitch_max_xrgb8888 */
+    /* A 32-bit Z buffer at ZWIDTH 32, all of it depth (depth record). */
+    32ul            /* depth32_bits */
 };
 
 /* Set when the engine fails to drain; nothing 3D is emitted again until
@@ -294,8 +301,10 @@ static void v9x_d3d_mga_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
-    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
-    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
 
     for (index = 0ul; index < 2ul; ++index) {
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -516,14 +525,15 @@ static double v9x_d3d_mga_channel(DWORD argb, unsigned int shift)
 }
 
 /*
- * One vertex to the setup's units: position in sixteenths, Z in the 16-bit
- * buffer's units, the colour (the first vertex's under flat shading), the
- * texture coordinates and 1/w. Zero for a vertex out of the setup's range,
- * which the core's clipping should never produce.
+ * One vertex to the setup's units: position in sixteenths, Z in the Z
+ * buffer's units (32-bit when deep, in double: a float holds 24 bits), the
+ * colour (the first vertex's under flat shading), the texture coordinates
+ * and 1/w. Zero for a vertex out of the setup's range, which the core's
+ * clipping should never produce.
  */
 static int v9x_d3d_mga_vertex(const V9X_R3D_VERTEX *vertex,
                               const V9X_R3D_VERTEX *provoking, int flat,
-                              struct v9x_mga_setup_vertex *out)
+                              int deep, struct v9x_mga_setup_vertex *out)
 {
     LONG x = v9x_float_to_long(vertex->sx * V9X_D3D_MGA_SUBPIXEL);
     LONG y = v9x_float_to_long(vertex->sy * V9X_D3D_MGA_SUBPIXEL);
@@ -535,7 +545,8 @@ static int v9x_d3d_mga_vertex(const V9X_R3D_VERTEX *vertex,
     }
     out->x = (v9x_s32)x;
     out->y = (v9x_s32)y;
-    out->z = (double)(vertex->sz * V9X_D3D_MGA_Z_SCALE);
+    out->z = deep ? (double)vertex->sz * V9X_D3D_MGA_Z32_SCALE
+                  : (double)(vertex->sz * V9X_D3D_MGA_Z_SCALE);
     out->red = v9x_d3d_mga_channel(argb, 16u);
     out->green = v9x_d3d_mga_channel(argb, 8u);
     out->blue = v9x_d3d_mga_channel(argb, 0u);
@@ -576,6 +587,7 @@ static int v9x_d3d_mga_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD corner;
     DWORD alpha;
     DWORD started;
+    int deep;
     int flat;
     int emitted = 0;
 
@@ -616,6 +628,7 @@ static int v9x_d3d_mga_draw_batch(const V9X_R3D_DRAW *draw,
 
     v9x_d3d_mga_batch_begin();
     flat = mapped.flat != 0ul;
+    deep = mapped.base.depth == V9X_MGA3D_DEPTH_32;
     for (index = 0ul; index < triangle_count; ++index) {
         triangle = vertices + index * 3ul;
         base = mapped.base;
@@ -628,7 +641,7 @@ static int v9x_d3d_mga_draw_batch(const V9X_R3D_DRAW *draw,
         }
         for (corner = 0ul; corner < 3ul; ++corner) {
             if (!v9x_d3d_mga_vertex(&triangle[corner], &triangle[0], flat,
-                                    &corners[corner])) {
+                                    deep, &corners[corner])) {
                 break;
             }
         }
@@ -713,9 +726,10 @@ static int v9x_d3d_mga_draw(const V9X_R3D_DRAW *draw,
  * width fits: the engine draws only at those pitches without ylin, which
  * is not measured, and DirectDraw would give a 64-pixel target a 128-byte
  * row (V9XDDP, boot 386: 551 draws refused TARGET_SHAPE). The engine
- * addresses Z at the target's pitch (depth record), so a Z buffer takes
- * the pitch its target of the same width gets; at the display's widths
- * that is the display's pitch. 512-aligned, ZORG's alignment, which also
+ * addresses Z at the target's pitch in pixels (depth record), so a Z
+ * buffer takes the pixel pitch its target of the same width gets, at its
+ * own 2 or 4 bytes a pixel; at the display's widths that is the display's
+ * pixel pitch. 512-aligned, ZORG's alignment, which also
  * puts a target's origin on the 32-pixel grid YDSTORG needs.
  *
  * A texture, or a mip chain level by level, at a power-of-two row of at
@@ -734,6 +748,7 @@ static DWORD v9x_d3d_mga_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD level;
     DWORD base;
     DWORD pitch;
+    DWORD bytes;
 
     if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
         data->lplpSList == 0) {
@@ -749,12 +764,25 @@ static DWORD v9x_d3d_mga_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     if (data->dwSCnt == 1ul &&
         ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul ||
          v9x_d3d_mga_is_target(surface))) {
+        /* A target at the desktop's depth, 16 or 32 bpp; a Z buffer at its
+         * own cell, 2 or 4 bytes, on either. */
+        if (v9x_hal->fb.bits_per_pixel != 16ul &&
+            v9x_hal->fb.bits_per_pixel != 32ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+            bytes = v9x_d3d_depth_bytes_per_pixel(surface);
+        } else if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) !=
+                       0ul &&
+                   surface->lpGbl->ddpfSurface.dwRGBBitCount !=
+                       v9x_hal->fb.bits_per_pixel) {
+            bytes = 0ul;
+        } else {
+            bytes = v9x_hal->fb.bits_per_pixel / 8ul;
+        }
         pitch = v9x_mga_pitch_for_width((DWORD)surface->lpGbl->wWidth) *
-                2ul;
-        if (pitch == 0ul ||
-            ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
-             surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) ||
-            v9x_hal->fb.bits_per_pixel != 16ul) {
+                bytes;
+        if (pitch == 0ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         offsets[0] = 0ul;

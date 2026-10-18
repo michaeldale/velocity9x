@@ -923,16 +923,20 @@ static void v9x_dd_refresh_info(void)
     /*
      * The depths a Z buffer may be made at, which DirectDraw checks before it
      * allocates one. DriverInit set DDBD_16 before the chip was known; a
-     * 32-bit one is added here for an engine that holds it, Gen3's D24X8
-     * and Haswell's D24_UNORM_X8 (depth32_bits in d3d_i9xx.c and
-     * d3d_hsw.c; docs\plans\32bpp-acceleration-and-3d.md).
+     * 32-bit one is added here for an engine that holds it, Gen3's D24X8,
+     * Haswell's D24_UNORM_X8 and the MGA-2164W's 32-bit Z (depth32_bits in
+     * d3d_i9xx.c, d3d_hsw.c and d3d_mga.c;
+     * docs\plans\32bpp-acceleration-and-3d.md). Of the MGA engine type
+     * only the 2164W runs hardware Direct3D, which deep_z requires.
      */
     info->ddCaps.dwZBufferBitDepths = V9X_DDBD_16;
     if (v9x_d3d_mode_deep_z(v9x_dd_d3d_state,
                             v9x_dd_engine_type ==
                                     V9X_DD_ENGINE_TYPE_INTEL_GEN3 ||
                                 v9x_dd_engine_type ==
-                                    V9X_DD_ENGINE_TYPE_INTEL_GEN75
+                                    V9X_DD_ENGINE_TYPE_INTEL_GEN75 ||
+                                v9x_dd_engine_type ==
+                                    V9X_DD_ENGINE_TYPE_MGA
                                 ? V9X_TRUE : V9X_FALSE) != V9X_FALSE) {
         info->ddCaps.dwZBufferBitDepths |= V9X_DDBD_32;
     }

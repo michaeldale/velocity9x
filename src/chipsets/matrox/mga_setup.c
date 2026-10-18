@@ -49,6 +49,12 @@
  * top (depth record), so a start past it is held there. */
 #define V9X_MGA_SETUP_DEPTH_LOW    -65536.0
 #define V9X_MGA_SETUP_DEPTH_HIGH   65535.99
+/* The same for a 33.15 depth in the DRn_Z32 pairs, whose upper words
+ * hold 16 bits (mga_3d.c's V9X_MGA3D_Z48_HI_LIMIT): +-2^47 at the field's
+ * scale, +-2^32 of depth. */
+#define V9X_MGA_SETUP_DEPTH32_LOW  -4294967296.0
+#define V9X_MGA_SETUP_DEPTH32_HIGH 4294967295.99
+#define V9X_MGA_SETUP_Z48_LIMIT    140737488355328.0
 /* The eighth of a texel the engine adds to s and t before its perspective
  * divide (mga_3d.h), taken off their starts. */
 #define V9X_MGA_SETUP_BIAS_PARTS \
@@ -76,6 +82,10 @@ union v9x_mga_setup_double_bits {
 /* The rounding's range: a signed 32-bit result. */
 #define V9X_MGA_SETUP_ROUND_HIGH  2147483647.0
 #define V9X_MGA_SETUP_ROUND_LOW   -2147483648.0
+/* After the magic, the rounded integer is the low 52 mantissa bits less
+ * 2^51: the low word, and the high word's 20 mantissa bits less 80000h. */
+#define V9X_MGA_SETUP_MANTISSA_HIGH 0x000ffffful
+#define V9X_MGA_SETUP_MAGIC_HIGH    0x00080000L
 
 /* floor(n / d) for d > 0, whatever the compiler does with negative
  * division. */
@@ -129,6 +139,25 @@ static int v9x_mga_setup_round(double value, v9x_s32 *out)
     }
     pun.value = value + V9X_MGA_SETUP_ROUND_MAGIC;
     *out = (v9x_s32)pun.word[0];
+    return 1;
+}
+
+/* The same into a 33.15 pair: the integer nearest `value`, if it is finite
+ * and inside the pair's +-2^47. The magic holds any integer below 2^51, so
+ * one addition rounds; there is no 64-bit integer type to do it in. */
+static int v9x_mga_setup_round48(double value, struct v9x_mga3d_z48 *out)
+{
+    union v9x_mga_setup_double_bits pun;
+
+    if (!v9x_mga_setup_finite(value) ||
+        value >= V9X_MGA_SETUP_Z48_LIMIT ||
+        value < -V9X_MGA_SETUP_Z48_LIMIT) {
+        return 0;
+    }
+    pun.value = value + V9X_MGA_SETUP_ROUND_MAGIC;
+    out->lo = pun.word[0];
+    out->hi = (v9x_s32)(pun.word[1] & V9X_MGA_SETUP_MANTISSA_HIGH) -
+        V9X_MGA_SETUP_MAGIC_HIGH;
     return 1;
 }
 
@@ -300,6 +329,25 @@ static v9x_status v9x_mga_setup_emit(
             return V9X_STATUS_UNSUPPORTED;
         }
     }
+    if (base->depth == V9X_MGA3D_DEPTH_32) {
+        double z = v9x_mga_setup_at(&planes->z, v, px, py) +
+            V9X_MGA_SETUP_ROUNDING;
+
+        if (z < V9X_MGA_SETUP_DEPTH32_LOW) {
+            z = V9X_MGA_SETUP_DEPTH32_LOW;
+        }
+        if (z > V9X_MGA_SETUP_DEPTH32_HIGH) {
+            z = V9X_MGA_SETUP_DEPTH32_HIGH;
+        }
+        if (!v9x_mga_setup_round48(z * V9X_MGA_SETUP_LEVEL_ONE,
+                                   &trap->z32[0]) ||
+            !v9x_mga_setup_round48(planes->z.ddx * V9X_MGA_SETUP_LEVEL_ONE,
+                                   &trap->z32[1]) ||
+            !v9x_mga_setup_round48(planes->z.ddy * V9X_MGA_SETUP_LEVEL_ONE,
+                                   &trap->z32[2])) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+    }
     if (base->texture.enabled != 0ul) {
         /* s and t already carry q where perspective is on, and run past the
          * texture by design where it wraps: no clamp, only the field. The
@@ -435,8 +483,7 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
     if (count != 0) {
         *count = 0ul;
     }
-    if (base == 0 || vertices == 0 || traps == 0 || count == 0 ||
-        base->depth == V9X_MGA3D_DEPTH_32) {
+    if (base == 0 || vertices == 0 || traps == 0 || count == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     for (index = 0ul; index < 3ul; ++index) {
@@ -485,7 +532,7 @@ v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
         v9x_mga_setup_plane_of(v, v[0].blue, v[1].blue, v[2].blue,
                                inverse_det, &planes.blue);
     }
-    if (base->depth == V9X_MGA3D_DEPTH_16) {
+    if (base->depth != V9X_MGA3D_DEPTH_NONE) {
         v9x_mga_setup_plane_of(v, v[0].z, v[1].z, v[2].z, inverse_det,
                                &planes.z);
     }

@@ -53,11 +53,11 @@ struct v9x_mga_setup_vertex {
  * The trapezoids for one triangle. Everything in `base` - target, depth,
  * texture, shading, FCOL, stipple - is copied to each; the setup supplies
  * top, length, the two edges, the colour planes (Gouraud), the Z plane
- * (16-bit depth) and TMR0-TMR8 (texture). *count is 0 for a triangle that
+ * (z for 16-bit depth, z32 for 32-bit; a vertex's z is in the buffer's
+ * own units) and TMR0-TMR8 (texture). *count is 0 for a triangle that
  * covers no pixel centre. INVALID_ARGUMENT for a vertex out of range;
  * UNSUPPORTED for one whose planes overflow the engine's fields (a sliver
  * whose depth changes by tens of thousands of units a pixel, for example).
- * 32-bit depth is not set up.
  */
 v9x_status v9x_mga_setup_triangle(const struct v9x_mga3d_trap *base,
                                   const struct v9x_mga_setup_vertex *vertices,

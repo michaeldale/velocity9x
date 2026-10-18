@@ -100,6 +100,71 @@ static void test_plain(void)
                                &mapped) == V9X_D3D_MGA_REFUSE_TARGET_SHAPE);
 }
 
+/*
+ * A 640x480 XRGB8888 back buffer at 2560 bytes (640 pixels, a linearizer
+ * pitch), with a Z buffer of either cell after it. The engine addresses Z
+ * at the target's pixel pitch, so a 16-bit one has half the target's
+ * bytes per row and a 32-bit one the same; ZORG is the Z buffer's address
+ * less the target origin's pixel address times the Z cell.
+ */
+static void test_xrgb8888(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MGA_TEXTURE texture;
+    V9X_D3D_MGA_MAPPED mapped;
+
+    base_draw(&draw, &texture);
+    draw.target.offset = 2560ul * 480ul;
+    draw.target.pitch = 2560ul;
+    draw.target.width = 640ul;
+    draw.target.height = 480ul;
+    draw.target.format = V9X_R3D_FORMAT_XRGB8888;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.bytes_per_pixel == 4ul);
+    CHECK(mapped.base.dither_555 == 0ul);
+    CHECK(mapped.base.pitch_bytes == 2560ul);
+    /* The X byte is FCOL's top byte, which stays zero. */
+    CHECK(mapped.base.color == 0ul);
+
+    /* 16-bit Z: 1280 bytes a row. The target's pitch is refused. */
+    draw.depth_enable = 1ul;
+    draw.depth.offset = 2ul * 2560ul * 480ul;
+    draw.depth.pitch = 1280ul;
+    draw.depth.format = V9X_R3D_DEPTH_Z16;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.depth == V9X_MGA3D_DEPTH_16);
+    CHECK(mapped.base.z_offset == 2ul * 2560ul * 480ul);
+    draw.depth.pitch = 2560ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_DEPTH);
+
+    /* 32-bit Z at the target's pitch. */
+    draw.depth.format = V9X_R3D_DEPTH_Z24X8;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.depth == V9X_MGA3D_DEPTH_32);
+    /* Below the target origin's Z address (640 * 480 * 4), refused. */
+    draw.depth.offset = 2560ul * 480ul - 0x200ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_DEPTH);
+
+    /* 32-bit Z under a 16 bpp target: twice the target's bytes a row. */
+    base_draw(&draw, &texture);
+    draw.depth_enable = 1ul;
+    draw.depth.format = V9X_R3D_DEPTH_Z24X8;
+    draw.depth.pitch = 2ul * 1920ul;
+    draw.depth.offset = 2ul * 1920ul * 600ul + 0x00100000ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.depth == V9X_MGA3D_DEPTH_32);
+    CHECK(mapped.base.bytes_per_pixel == 2ul);
+    draw.depth.pitch = 1920ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_DEPTH);
+}
+
 static void test_blend_fog_specular(void)
 {
     V9X_R3D_DRAW draw;
@@ -374,6 +439,7 @@ unsigned int v9x_run_d3d_mga_map_tests(void)
 {
     failures = 0u;
     test_plain();
+    test_xrgb8888();
     test_blend_fog_specular();
     test_texture();
     test_alpha();

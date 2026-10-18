@@ -164,6 +164,24 @@ static void test_depth_fill_value(void)
     SCHECK(v9x_d3d_state_depth_fill(0x89abcdefu, 32ul, 0ul) == 0x89abcdefu);
 }
 
+/* A depth on one full scale onto a wider one by replicating its top bits,
+ * so the far plane stays the far plane and 0 stays 0. */
+static void test_depth_widen(void)
+{
+    SCHECK(v9x_d3d_state_depth_widen(0xffffu, 16ul, 24ul) == 0x00ffffffu);
+    SCHECK(v9x_d3d_state_depth_widen(0xabcdu, 16ul, 24ul) == 0x00abcdabu);
+    SCHECK(v9x_d3d_state_depth_widen(0xffffu, 16ul, 32ul) == 0xffffffffu);
+    SCHECK(v9x_d3d_state_depth_widen(0xabcdu, 16ul, 32ul) == 0xabcdabcdu);
+    SCHECK(v9x_d3d_state_depth_widen(0x00ffffffu, 24ul, 32ul) ==
+           0xffffffffu);
+    SCHECK(v9x_d3d_state_depth_widen(0x00abcdefu, 24ul, 32ul) ==
+           0xabcdefabu);
+    SCHECK(v9x_d3d_state_depth_widen(0u, 16ul, 32ul) == 0u);
+    /* The same width, unchanged. */
+    SCHECK(v9x_d3d_state_depth_widen(0x00abcdefu, 24ul, 24ul) ==
+           0x00abcdefu);
+}
+
 unsigned int v9x_run_d3d_state_tests(void)
 {
     state_failures = 0u;
@@ -172,6 +190,7 @@ unsigned int v9x_run_d3d_state_tests(void)
     test_undefined_address_is_clamp();
     test_depth_active_needs_all_three();
     test_depth_fill_value();
+    test_depth_widen();
     if (state_failures == 0u) {
         puts("PASS: Direct3D state to neutral draw");
     }

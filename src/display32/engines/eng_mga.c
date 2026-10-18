@@ -167,6 +167,13 @@ static int v9x_mga_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     struct v9x_mga_fill fill;
     struct v9x_mga_writes writes;
 
+    /* The fill draws at the mode's MACCESS pixel width, which validate
+     * set. A cell of another size - a 16-bit Z buffer on a 32 bpp desktop,
+     * or a 32-bit one on a 16 bpp desktop - would be filled at the wrong
+     * width, so it is declined and the CPU fills it. */
+    if (v9x_hal == 0 || bytes_per_pixel * 8ul != v9x_hal->fb.bits_per_pixel) {
+        return V9X_BLT_DECLINED;
+    }
     if (!v9x_mga_validate() || data == 0 || data->lpDDDestSurface == 0 ||
         data->lpDDDestSurface->lpGbl == 0 ||
         data->lpDDDestSurface->lpGbl->lPitch <= 0l ||

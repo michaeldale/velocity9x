@@ -21,6 +21,12 @@ build identifier so exact guest-tested binaries remain traceable.
     the chip's tiled layout, measured on the i5-4570
     ([32 bpp](docs/decisions/2026-10-18-haswell-direct3d-at-32-bpp.md),
     [24-bit depth](docs/decisions/2026-10-18-haswell-24-bit-depth.md)).
+  - **Matrox Millennium II (MGA-2164W):** Direct3D renders at 32 bpp on
+    the engine, and a 32-bit depth buffer is offered beside the 16-bit one,
+    at 16 and 32 bpp. Measured on A8U4I5. A depth buffer whose size differs
+    from the desktop's (16-bit at 32 bpp, or 32-bit at 16 bpp) is cleared
+    by the CPU
+    ([record](docs/decisions/2026-10-18-mga2164w-direct3d-at-32-bpp.md)).
   - **Software Direct3D** (Direct3D set to software on the settings page)
     renders at 32 bpp, with a 16-bit depth buffer
     ([record](docs/decisions/2026-10-18-software-direct3d-at-32-bpp.md)).

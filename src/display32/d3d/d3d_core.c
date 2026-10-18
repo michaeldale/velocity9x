@@ -432,6 +432,18 @@ DWORD v9x_d3d_depth_bytes_per_pixel(const V9X_DD_SURFACE_LCL *surface)
     return v9x_d3d_depth_cell_bytes(ops->limits, surface);
 }
 
+/* The fitted engine's depth32_bits: how many bits of a 32-bit depth cell
+ * hold depth, 0 with no engine or none taking one. */
+static DWORD v9x_d3d_depth32_bits(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (ops == 0 || ops->limits == 0) {
+        return 0ul;
+    }
+    return ops->limits->depth32_bits;
+}
+
 /* Whether the fitted engine's depth buffers are tiled (the limits'
  * depth_tiled); zero on a chip with no D3D engine. */
 int v9x_d3d_depth_tiled(void)
@@ -1532,8 +1544,14 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
                 : depth_pitch != depth_expected) {
             return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
         }
+        /* A 32-bit cell's rows are as wide as an XRGB8888 target's, and
+         * bounded as one where the engine has that bound: the MGA's Z at
+         * 1280 pixels is 5120 bytes, past its 16 bpp 4096. */
         if ((depth_pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
-            depth_pitch > limits->target_pitch_max) {
+            depth_pitch > (depth_bytes == 4ul &&
+                                   limits->target_pitch_max_xrgb8888 != 0ul
+                               ? limits->target_pitch_max_xrgb8888
+                               : limits->target_pitch_max)) {
             return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
         }
         if (depth_offset == 0xfffffffful ||
@@ -5525,13 +5543,13 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.color_value = request->color_value;
     /* As the engine's depth buffer holds it: halved on the SiS, whose Z
      * test compares 15 bits (v9x_d3d_depth_fill_value). The interface's
-     * value is 16-bit; a 32-bit cell gets it at 24 bits, high bits
-     * replicated so that FFFFh stays the far plane. */
+     * value is 16-bit; a 32-bit cell gets it at the engine's depth32_bits,
+     * high bits replicated so that FFFFh stays the far plane. */
     clear.depth_bytes = v9x_r3d_context.depth_bytes;
     clear.depth_value = v9x_d3d_depth_fill_value(
         clear.depth_bytes == 4ul
-            ? ((request->depth_value & 0xfffful) << 8) |
-                  ((request->depth_value >> 8) & 0xfful)
+            ? v9x_d3d_state_depth_widen(request->depth_value & 0xfffful,
+                                        16ul, v9x_d3d_depth32_bits())
             : request->depth_value,
         clear.depth_bytes);
     clear.write_red = (request->write_mask & V9X_R3D_ABI_WRITE_RED) != 0ul;
@@ -5623,7 +5641,8 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
         float depth = data->dvFillDepth;
         DWORD value;
         /* The full scale of the buffer's own cell: 24 bits for a 32-bit
-         * one, 16 otherwise. */
+         * one, widened to the engine's depth32_bits (all 32 on the
+         * MGA-2164W), 16 otherwise. */
         int deep = context->depth_bytes == 4ul;
 
         clear.depth_bytes = context->depth_bytes;
@@ -5634,6 +5653,10 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
         } else {
             value = (DWORD)v9x_d3d_to_long(
                 (double)depth * (deep ? 16777215.0 : 65535.0));
+        }
+        if (deep) {
+            value = v9x_d3d_state_depth_widen(value, 24ul,
+                                              v9x_d3d_depth32_bits());
         }
         clear.depth_value = v9x_d3d_depth_fill_value(value,
                                                      clear.depth_bytes);

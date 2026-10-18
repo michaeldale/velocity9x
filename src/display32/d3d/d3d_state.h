@@ -68,6 +68,15 @@ void v9x_d3d_state_fill(const V9X_D3D_STATE_RAW *raw, V9X_R3D_DRAW *draw);
 v9x_u32 v9x_d3d_state_depth_fill(v9x_u32 value, v9x_u32 depth_bits,
                                  v9x_u32 shift);
 
+/*
+ * A depth on the from_bits full scale onto the wider to_bits one, its top
+ * bits replicated into the new low ones, so the far plane stays the far
+ * plane: FFFFh in 16 bits is FFFFFFh in 24 and FFFFFFFFh in 32. to_bits is
+ * at most 32 and at most twice from_bits.
+ */
+v9x_u32 v9x_d3d_state_depth_widen(v9x_u32 value, v9x_u32 from_bits,
+                                  v9x_u32 to_bits);
+
 v9x_u32 v9x_d3d_state_depth_active(v9x_u32 z_enable, v9x_u32 depth_bound,
                                    v9x_u32 depth_pitch);
 

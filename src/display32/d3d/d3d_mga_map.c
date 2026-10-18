@@ -18,8 +18,12 @@
 /* TEXTRANS's key and mask are 16 bits, one texel. */
 #define V9X_D3D_MGA_ALL_KEY_MASK 0xfffful
 
-/* The Z buffer's units for Direct3D's 0..1 depth. */
-#define V9X_D3D_MGA_TARGET_BYTES 2ul
+/* Bytes a pixel of the 16 bpp targets and of XRGB8888, and of the two Z
+ * cells. */
+#define V9X_D3D_MGA_TARGET_BYTES_16 2ul
+#define V9X_D3D_MGA_TARGET_BYTES_32 4ul
+#define V9X_D3D_MGA_Z_BYTES_16      2ul
+#define V9X_D3D_MGA_Z_BYTES_32      4ul
 
 static v9x_u32 v9x_d3d_mga_zmode(v9x_u32 func, v9x_u32 *skip)
 {
@@ -145,6 +149,8 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     int key_color = 0;
     int key_black = 0;
     v9x_u32 index;
+    v9x_u32 target_bytes;
+    v9x_u32 z_bytes;
     unsigned char *bytes;
 
     if (draw == 0 || texture == 0 || out == 0) {
@@ -161,12 +167,18 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     if (draw->explicit_state != 0ul) {
         return V9X_D3D_MGA_REFUSE_EXPLICIT;
     }
-    if (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
-        draw->target.format != V9X_R3D_FORMAT_XRGB1555) {
+    /* XRGB8888 at PWIDTH 32: the X byte is FCOL's top byte (mga_3d.h),
+     * which the map leaves zero. */
+    if (draw->target.format == V9X_R3D_FORMAT_XRGB8888) {
+        target_bytes = V9X_D3D_MGA_TARGET_BYTES_32;
+    } else if (draw->target.format == V9X_R3D_FORMAT_RGB565 ||
+               draw->target.format == V9X_R3D_FORMAT_XRGB1555) {
+        target_bytes = V9X_D3D_MGA_TARGET_BYTES_16;
+    } else {
         return V9X_D3D_MGA_REFUSE_TARGET;
     }
     if (!v9x_mga_surface_ok(draw->target.pitch, draw->target.offset,
-                            V9X_D3D_MGA_TARGET_BYTES)) {
+                            target_bytes)) {
         return V9X_D3D_MGA_REFUSE_TARGET_SHAPE;
     }
     if (draw->fog_enable != 0ul) {
@@ -179,7 +191,7 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     base->vram_bytes = vram_bytes;
     base->target_offset = draw->target.offset;
     base->pitch_bytes = draw->target.pitch;
-    base->bytes_per_pixel = V9X_D3D_MGA_TARGET_BYTES;
+    base->bytes_per_pixel = target_bytes;
     base->shade = V9X_MGA3D_SHADE_GOURAUD;
     base->dither_555 = draw->target.format == V9X_R3D_FORMAT_XRGB1555
         ? 1ul : 0ul;
@@ -227,20 +239,34 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
         }
     }
 
-    /* Depth: the engine's Z buffer has the target's pitch, and ZORG is the
-     * Z buffer's address less twice the target origin's pixel address. */
+    /*
+     * Depth: the engine's Z buffer has the target's pitch in pixels, 2 or
+     * 4 bytes each by MACCESS.zwidth, and ZORG is the Z buffer's address
+     * less the target origin's pixel address times the Z cell (2164W spec
+     * 3-91; both widths measured in the depth record). The core's 32-bit
+     * cell is Z24X8 by name; here all 32 bits are depth.
+     */
     if (draw->depth_enable != 0ul && draw->depth.object != 0 &&
         draw->depth.pitch != 0ul) {
-        if (draw->depth.pitch != draw->target.pitch ||
-            draw->depth.offset < draw->target.offset) {
+        z_bytes = draw->depth.format == V9X_R3D_DEPTH_Z24X8
+            ? V9X_D3D_MGA_Z_BYTES_32 : V9X_D3D_MGA_Z_BYTES_16;
+        /* target_offset / target_bytes is below 2^22, so the product
+         * fits. */
+        if (draw->depth.pitch / z_bytes !=
+                draw->target.pitch / target_bytes ||
+            (draw->depth.pitch % z_bytes) != 0ul ||
+            draw->depth.offset <
+                draw->target.offset / target_bytes * z_bytes) {
             return V9X_D3D_MGA_REFUSE_DEPTH;
         }
-        zorg = draw->depth.offset - draw->target.offset;
+        zorg = draw->depth.offset -
+            draw->target.offset / target_bytes * z_bytes;
         if ((zorg % V9X_D3D_MGA_ZORG_ALIGN) != 0ul ||
             zorg >= V9X_D3D_MGA_ZORG_LIMIT) {
             return V9X_D3D_MGA_REFUSE_DEPTH;
         }
-        base->depth = V9X_MGA3D_DEPTH_16;
+        base->depth = z_bytes == V9X_D3D_MGA_Z_BYTES_32
+            ? V9X_MGA3D_DEPTH_32 : V9X_MGA3D_DEPTH_16;
         base->zmode = v9x_d3d_mga_zmode(draw->depth_func, &skip);
         base->z_write = draw->depth_write != 0ul ? 1ul : 0ul;
         base->z_offset = draw->depth.offset;

@@ -456,6 +456,149 @@ static void test_perspective(void)
     CHECK(run_perspective(32.0, "1/w 1..32") == 0ul);
 }
 
+/* The Z the model stored, by pixel, for the depth plane test. */
+static double stored_z[GRID][GRID];
+static unsigned char z_written[GRID][GRID];
+static v9x_u32 z_top;
+
+static v9x_u32 z_read(void *context, v9x_s32 x, v9x_u32 row)
+{
+    (void)context;
+    (void)x;
+    (void)row;
+    return 0ul;
+}
+
+static void z_write(void *context, v9x_s32 x, v9x_u32 row, v9x_u32 value)
+{
+    (void)context;
+    row += z_top;
+    if (x < 0L || x >= GRID || row >= (v9x_u32)GRID) {
+        return;
+    }
+    stored_z[row][x] = (double)value;
+    z_written[row][x] = 1u;
+}
+
+/*
+ * Depth against the exact plane at every drawn pixel's centre, for Z
+ * spanning the whole of a buffer of `full` units: 65535 for 16-bit Z in
+ * DR0/DR2/DR3's 17.15, 4294967295 for 32-bit Z in the DRn_Z32 pairs'
+ * 33.15. Each stored value is within one unit of the plane.
+ *
+ * The vertices stay in the middle half of the range. A trapezoid whose
+ * first row is empty starts its plane outside the triangle, and a start
+ * past the register's range is clamped, which offsets every pixel after
+ * it: one triangle in 300 here with depths up to the full scale, 420
+ * units of 16-bit Z (2026-10-18). That is the setup's, at both widths,
+ * and not what this test measures.
+ */
+static void run_depth_plane(v9x_u32 depth, double full, const char *name)
+{
+    struct v9x_mga_setup_vertex v[3];
+    struct v9x_mga3d_trap base;
+    struct v9x_mga3d_trap traps[V9X_MGA_SETUP_TRAPS];
+    struct v9x_mga3d_depth_io io;
+    v9x_u32 count;
+    v9x_u32 index;
+    unsigned int trial;
+    unsigned long pixels = 0ul;
+    unsigned int bad = 0u;
+    unsigned int refused = 0u;
+    double worst = 0.0;
+    int row;
+    int col;
+
+    memset(v, 0, sizeof(v));
+    memset(&io, 0, sizeof(io));
+    io.read = z_read;
+    io.write = z_write;
+    base_flat(&base);
+    base.shade = V9X_MGA3D_SHADE_GOURAUD;
+    base.color = 0ul;
+    base.depth = depth;
+    base.zmode = V9X_MGA3D_ZMODE_NOZCMP;
+    base.z_write = 1ul;
+    base.z_offset = 0x00200000ul;
+    for (trial = 0u; trial < 300u; ++trial) {
+        double det;
+
+        for (index = 0ul; index < 3ul; ++index) {
+            v[index].x = random_below(GRID * 16);
+            v[index].y = random_below(GRID * 16);
+            v[index].z = full * (0.25 + 0.5 * (double)random_below(10001) /
+                                            10000.0);
+        }
+        memset(z_written, 0, sizeof(z_written));
+        if (v9x_mga_setup_triangle(&base, v, traps, &count) !=
+            V9X_STATUS_OK) {
+            ++refused;
+            continue;
+        }
+        for (index = 0ul; index < count; ++index) {
+            z_top = traps[index].top;
+            CHECK(v9x_mga3d_model_trap(&traps[index], V9X_MGA3D_FOLD_EDGE,
+                                       plot, &traps[index].top, &io) ==
+                  V9X_STATUS_OK);
+        }
+        det = (double)(v[1].x - v[0].x) * (v[2].y - v[0].y) -
+              (double)(v[2].x - v[0].x) * (v[1].y - v[0].y);
+        if (det == 0.0) {
+            continue;
+        }
+        for (row = 0; row < GRID; ++row) {
+            for (col = 0; col < GRID; ++col) {
+                double px;
+                double py;
+                double l1;
+                double l2;
+                double z;
+                double error;
+
+                if (z_written[row][col] == 0u) {
+                    continue;
+                }
+                px = 16.0 * col + 8.0;
+                py = 16.0 * row + 8.0;
+                l1 = ((px - v[0].x) * (v[2].y - v[0].y) -
+                      (py - v[0].y) * (v[2].x - v[0].x)) / det;
+                l2 = ((py - v[0].y) * (v[1].x - v[0].x) -
+                      (px - v[0].x) * (v[1].y - v[0].y)) / det;
+                z = v[0].z + l1 * (v[1].z - v[0].z) +
+                    l2 * (v[2].z - v[0].z);
+                if (z < 0.0) {
+                    z = 0.0;
+                }
+                if (z > full) {
+                    z = full;
+                }
+                error = stored_z[row][col] - z;
+                if (error < 0.0) {
+                    error = -error;
+                }
+                ++pixels;
+                if (error > 1.0) {
+                    ++bad;
+                }
+                if (error > worst) {
+                    worst = error;
+                }
+            }
+        }
+    }
+    printf("  mga depth %s: %lu px, %u off, worst %.3f, %u refused\n", name,
+           pixels, bad, worst, refused);
+    CHECK(pixels > 0ul);
+    CHECK(bad == 0u);
+    CHECK(refused < 15u);
+}
+
+static void test_depth_plane(void)
+{
+    run_depth_plane(V9X_MGA3D_DEPTH_16, 65535.0, "16-bit");
+    run_depth_plane(V9X_MGA3D_DEPTH_32, 4294967295.0, "32-bit");
+}
+
 static void test_refusals(void)
 {
     struct v9x_mga_setup_vertex v[3];
@@ -476,11 +619,6 @@ static void test_refusals(void)
     v[2].y = 0L;
     CHECK(v9x_mga_setup_triangle(&base, v, traps, &count) == V9X_STATUS_OK);
     CHECK(count == 0ul);
-    /* 32-bit depth is not set up. */
-    v[2].y = 160L;
-    base.depth = V9X_MGA3D_DEPTH_32;
-    CHECK(v9x_mga_setup_triangle(&base, v, traps, &count) ==
-          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 unsigned int v9x_run_mga_setup_tests(void)
@@ -490,6 +628,7 @@ unsigned int v9x_run_mga_setup_tests(void)
     test_shared_edge();
     test_gouraud_plane();
     test_perspective();
+    test_depth_plane();
     test_refusals();
     return failures;
 }

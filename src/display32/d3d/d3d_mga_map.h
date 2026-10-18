@@ -48,7 +48,7 @@ typedef struct v9x_d3d_mga_mapped {
 } V9X_D3D_MGA_MAPPED;
 
 #define V9X_D3D_MGA_REFUSE_NONE           0ul
-#define V9X_D3D_MGA_REFUSE_TARGET         1ul  /* not 565 or 1555 */
+#define V9X_D3D_MGA_REFUSE_TARGET         1ul  /* not 565, 1555 or 8888 */
 #define V9X_D3D_MGA_REFUSE_EXPLICIT       2ul  /* render-interface draw */
 #define V9X_D3D_MGA_REFUSE_TARGET_SHAPE   3ul  /* pitch or origin */
 #define V9X_D3D_MGA_REFUSE_BLEND          4ul
