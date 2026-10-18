@@ -7,7 +7,9 @@ Source: the Matrox MGA-2164W Developer's Specification, doc 10568-XX-0100,
 Citations are printed page numbers with the PDF page in brackets, e.g. "3-70 [102]".
 Extracted 2026-10-10 with `pdftotext`, figures read from rendered pages.
 Nothing in this file has been measured on a 2164W; section 10 lists the
-emulator's hypotheses for what the document leaves out.
+emulator's hypotheses for what the document leaves out, and section 11
+what the G100 specification, which does document the texture interface,
+says about them.
 
 ## 0. Summary: the texture engine has been removed from this document too
 
@@ -582,3 +584,58 @@ nothing more.
 - **Z:** stored as the 17.15 value's integer part, negative clamped to 0;
   32-bit Z from the 33.15 DRn_Z32 pair when MACCESS.zwidth is set; Z
   address = zorg + linear pixel offset x 2 or x 4.
+
+## 11. What the MGA-G100 specification documents (added 2026-10-18)
+
+Source: Matrox MGA-G100 Developer Specification, February 1998
+(bitsavers `components/matrox/_dataSheets/MGA-G100_199802.pdf`, 485 PDF
+pages; a copy is kept outside this tree at
+`C:\everything\claude\personal\matrox\`, with the other six bitsavers Matrox
+data sheets). Citations as above, printed page then [PDF page]. Read with
+`pdftotext -layout`; the tables' text columns are shifted the same way as
+this document's, so each value below was read from the per-register page
+where one exists.
+
+Unlike the 1064SG and 2164W editions, the G100's texture interface is not
+cut. It is a Matrox document for the chip after the 1064SG ("an improved 3D
+acceleration core over the Matrox MGA-1064SG", 1-2 [14]). It is therefore
+the first primary source for the 2C00h block. It is still evidence about
+the G100, not the 2164W: where the two differ, the 2164W measurement wins.
+
+Where it agrees with what section 10 assumed and the 2026-10-10 probe
+measured:
+
+- **Register map** (3-11 [37]): TMR0-TMR8 at 2C00h-2C20h, TEXORG 2C24h,
+  TEXWIDTH 2C28h, TEXHEIGHT 2C2Ch, TEXCTL 2C30h, TEXTRANS 2C34h. These are
+  the offsets `include/velocity9x/mga_3d.h` uses. TEXFILTER (2C58h) and
+  ALPHASTART/XINC/YINC/CTRL (2C70h-2C7Ch) are listed too; this document
+  shows 2C58h as Reserved.
+- **Opcode** (DWGCTL, 4-63 [103]): TEXTURE_TRAP is `0110`, read in order
+  through the shifted table.
+- **TEXCTL** (4-101 [141]): tpitch <18:16> (pitch = 8 << tpitch), npcen
+  <21>, azeroextend <23>, decalckey <24>, takey <25>, tamask <26>, clampv
+  <27>, clampu <28>, tmodulate <29>, strans and itrans above, palsel for
+  TW4, and the G100's own tpitchlin <8> and tpitchext <19:9>. The bits
+  `src/chipsets/matrox/mga_3d.c` defines match.
+- **TEXWIDTH** (4-109 [149]): tw <5:0>, a signed log2 of the width, and
+  twmask <28:18>, which "will not work properly" unless it is a power of
+  two minus one. rfw <14:9> is G100 filtering.
+- **Texel formats** (4-101 [141]): TW4 `000`, TW8 `001`, TW15 `010`, TW16
+  `011`, TW12 `100`. These are the codes `include/velocity9x/mga_3d.h`
+  defines.
+
+Where it disputes the 2164W:
+
+- **TW12 at code 4 is 4:4:4:4 on the G100** (the format table, 4-101
+  [141]; alpha = texel<15:12> for TW12, 4-103 [143]). On the 2164W, format 4 drew garbage and is
+  not 4444 ([record](../decisions/2026-10-10-mga2164w-textures.md)). Either
+  the 2164W lacks TW12, or its code 4 means something else. The G100
+  document does not say which, so the HAL keeps offering the 2164W 565
+  and 1555 only. For the Mystique, the question stays open: check 4444
+  there before inheriting the 2164W's answer
+  ([plan](../plans/matrox-mystique.md)).
+
+Not settled by it: anything the G100 added (bilinear filtering, TEXCTL2,
+the alpha interpolants, mipmapping) says nothing about whether the 2164W
+or the Mystique has it. The LUT load path (MACCESS.tlutload, section 3)
+is the next thing to read there.

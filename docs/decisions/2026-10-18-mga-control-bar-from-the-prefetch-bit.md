@@ -74,3 +74,24 @@ With that build (boot 54): `EngineCaps=00000007`,
   business, not this change's.
 
 Gates: check-tree, build-host and run-checks pass.
+
+## Addendum, later 2026-10-18: the 2064W's own specification
+
+Appended rather than edited in, per the records' rule. The MGA-2064W
+Developer Specification (February 1996, bitsavers
+`components/matrox/_dataSheets/MGA-2064w_199602.pdf`; a copy is outside
+this tree at `C:\everything\claude\personal\matrox\`) was not on this host
+when the table above was written. The 2064W row rested on the 2026-09-09
+measurement alone. The chip's own document agrees:
+
+- **MGABASE1, the control aperture, at 10h (BAR0)** (4-11 [39]). Reset
+  value all zeros, and of its prefetchable bit: "The hard coded `0'
+  indicates that this space cannot be prefetchable."
+- **MGABASE2, the framebuffer, at 14h (BAR1)** (4-12 [40]). Reset value
+  `...1000b`: prefetchable.
+
+So every chip in the table now has a Matrox document behind it, and the
+2064W has a measurement too. The register map's own table in that
+document (Table 2-1 text, read by `pdftotext`) puts MGABASE1 at 0Ch,
+shifted by one row. The per-register pages are the ones to trust, as with
+the 2164W.
