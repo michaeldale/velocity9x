@@ -125,8 +125,18 @@ The fix that followed it:
 - The texture planes start from the same point. The perspective tests are
   unchanged: 0 refused, no texel off.
 
-The fix has not been run on the card; it changes only which trapezoids
-are sent and where their planes start.
+On the card, boot 493 ran the fix: build `13812b70-dirty`, the code of
+49f2c02c. The guest's V9XHAL.DLL hash matched the package's and differed
+from boot 492's.
+- V9XD32 passed at all four colour and Z combinations.
+- Every line of the four logs matches boot 492 except `T6Handle`, the
+  runtime's texture handle, which follows the order of the runs.
+- The snapshot is the same as boot 492's: 8 contexts, 44 batches, 4 Z
+  surfaces placed and accepted, every refusal counter zero, and no idle
+  timeouts.
+
+V9XD32's triangles are large, so they were not expected to reach the
+case; the run shows that the change does not disturb them.
 
 ## Not measured
 
