@@ -56,6 +56,14 @@ build identifier so exact guest-tested binaries remain traceable.
   - **S3 Trio64:** done the way S3's own drivers do it. Measured in 86Box
     only; a real Trio64 has not run it yet
     ([record](docs/decisions/2026-10-18-trio64-blits-at-32-bpp-on-86box.md)).
+- **Survey: a VBE mode list in RAM is no longer called a TSR.**
+  `parse-vga-survey.ps1` said VBE came from "a TSR or a shadow copy"
+  whenever the mode list was outside the ROM. Most VBE 2.0+ BIOSes build
+  the list in the caller's buffer, so 8 of 10 reports received
+  2026-10-17/18 were misread. V9XSURV now records `InfoBlockPointer`, the
+  buffer's address, and the parser decides from that, then from the
+  INT 10h vector, and otherwise says it cannot tell
+  ([spec](docs/specifications/vga-survey.md)).
 - **Known limits:**
   - The OpenGL ICD, Glide and 3DCIF still need a 16 bpp mode.
   - No game has been run that asks for a 32-bit depth buffer.

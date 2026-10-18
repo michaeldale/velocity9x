@@ -2076,6 +2076,55 @@ foreach ($family in $families) {
     }
 }
 
+# Who answered VBE, as parse-vga-survey.ps1 decides it from archived reports
+# whose answer is known from other evidence. A mode list in RAM is not by
+# itself a TSR: most VBE 2.0+ BIOSes build it inside the 512-byte block the
+# caller passed to 4F00h (tools\diag\vga_survey_dos.c says so), and six
+# different BIOSes returned the identical pointer 0E011A90 on one machine on
+# 2026-10-17. QEMU's SeaVGABIOS report carries InfoBlockPointer and a list at
+# offset 22h of that block; the TSR case with the key is a copy of the G45
+# report with InfoBlockPointer set well away from its list.
+$surveyCheckDir = Join-Path ([IO.Path]::GetTempPath()) ("v9x-survey-check-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $surveyCheckDir | Out-Null
+try {
+    $references = Join-Path $repoRoot "docs\probe\references"
+    $decisions = Join-Path $repoRoot "docs\decisions"
+    $g45 = Join-Path $references "dell-inspiron-560-g45-vgasurv-2026-10-07.ini"
+    $g45Lines = [IO.File]::ReadAllLines($g45)
+    $pointerLine = [array]::IndexOf($g45Lines, "ModeListPointer=1C5329F4")
+    if ($pointerLine -lt 0) {
+        throw "The G45 survey fixture no longer carries ModeListPointer=1C5329F4."
+    }
+    $lines = [Collections.Generic.List[string]]::new([string[]]$g45Lines)
+    $lines.Insert($pointerLine + 1, "InfoBlockPointer=1C5312D2")
+    [IO.File]::WriteAllLines((Join-Path $surveyCheckDir "g45-block-outside.ini"), $lines)
+    $vbeProviderCases = [ordered]@{
+        # VBE 1.02 ROM list in C000, S3VBE absent.
+        (Join-Path $decisions "2026-08-21-vlb-survey-486-trio64-clean.ini") = "True"
+        # INT 10h vector inside the ROM: nothing in front, list in RAM.
+        $g45 = "True"
+        # S3VBE resident, no Int10Vector key: this report alone cannot say.
+        (Join-Path $decisions "2026-08-21-vlb-survey-486-trio64-tier1.ini") = ""
+        # Schema 1, no Int10Vector key: the caller's buffer, not provably.
+        (Join-Path $references "matrox-mystique-pci-vogons-vgasurv-2026-10-17-d746481.ini") = ""
+        # INT 10h hooked in RAM and the list in RAM: undecidable.
+        (Join-Path $references "rtx5060ti-vgasurv-2026-10-18-19d7a18.ini") = ""
+        (Join-Path $references "qemu-std-seavgabios-vgasurv-2026-10-18-450ef269.ini") = "True"
+        (Join-Path $surveyCheckDir "g45-block-outside.ini") = "False"
+    }
+    foreach ($case in $vbeProviderCases.GetEnumerator()) {
+        $csvPath = Join-Path $surveyCheckDir ("case-" + [guid]::NewGuid().ToString("N") + ".csv")
+        & (Join-Path $PSScriptRoot "parse-vga-survey.ps1") -Path $case.Key -Csv $csvPath 3>$null | Out-Null
+        $actual = [string](@(Import-Csv -LiteralPath $csvPath)[0].VbeFromRom)
+        if ($actual -ne $case.Value) {
+            throw ("parse-vga-survey.ps1 says VbeFromRom='$actual' for " +
+                   "$(Split-Path -Leaf $case.Key); expected '$($case.Value)'.")
+        }
+    }
+} finally {
+    Remove-Item -LiteralPath $surveyCheckDir -Recurse -Force
+}
+
 $summaryFormat = "Velocity9x tree check passed ({0} source/header files, " +
                  "{1} families: {2}, {3} contract constants)."
 Write-Output ($summaryFormat -f $sourceFiles.Count, $families.Count,

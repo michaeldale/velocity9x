@@ -347,28 +347,77 @@ function ConvertFrom-S3Cr36 {
 # own option ROM - `C000534F` there. Under the TSR the same key read `0DC62612`,
 # a low-RAM address.
 #
-# So the segment of that pointer says whose VBE this is, and everything the [VBE]
-# and [VBEModes] sections describe belongs to whoever it names - which decides
-# whether a linear-framebuffer attribute is a fact about the card or a promise
-# made by software. `Int10Vector` says the same thing and was added for it, but
-# this works on every schema-2 report including those taken before it existed.
+# Everything the [VBE] and [VBEModes] sections describe belongs to whoever
+# answered, which decides whether a linear-framebuffer attribute is a fact
+# about the card or a promise made by software.
+#
+# A pointer into C000-C7FF names the ROM. A pointer into RAM does not name a
+# TSR, though this function once said so: most VBE 2.0+ BIOSes build the list
+# inside the 512-byte block the caller handed to 4F00h. Six different BIOSes -
+# NVIDIA, STB, ASUS, two ATI and a Matrox - returned the identical `0E011A90`
+# on one machine on 2026-10-17, and five reports whose `Int10Vector` points
+# straight into the ROM carry a RAM pointer too. So a RAM pointer is decided by
+# `InfoBlockPointer`, the block's own address, where a report records it, then
+# by `Int10Vector`; with neither, the answer is unknown and IsRom is $null.
 # ---------------------------------------------------------------------------
+function Get-RealModeLinear {
+    param([int64]$FarPointer)
+
+    return ((($FarPointer -shr 16) -band 0xFFFF) * 16) + ($FarPointer -band 0xFFFF)
+}
+
+function Test-RomSegment {
+    param([int64]$FarPointer)
+
+    $segment = ($FarPointer -shr 16) -band 0xFFFF
+    return ($segment -ge 0xC000 -and $segment -le 0xC7FF)
+}
+
 function Get-VbeProvider {
     param($Ini)
 
     $pointer = Get-HexValue (Get-IniValue $Ini "VBEModes" "ModeListPointer")
     if ($null -eq $pointer -or $pointer -eq 0) { return $null }
-    $segment = ($pointer -shr 16) -band 0xFFFF
-    if ($segment -ge 0xC000 -and $segment -le 0xC7FF) {
+    $segment = "{0:X4}" -f (($pointer -shr 16) -band 0xFFFF)
+    if (Test-RomSegment $pointer) {
         return [pscustomobject]@{
-            Owner = "the card's option ROM"; Segment = "{0:X4}" -f $segment
-            IsRom = $true
+            Owner = "the card's option ROM"; Segment = $segment; IsRom = $true
+        }
+    }
+
+    $block = Get-HexValue (Get-IniValue $Ini "VBEModes" "InfoBlockPointer")
+    $vector = Get-HexValue (Get-IniValue $Ini "BiosData" "Int10Vector")
+    $vectorInRom = ($null -ne $vector -and (Test-RomSegment $vector))
+
+    if ($null -ne $block -and $block -ne 0) {
+        $distance = (Get-RealModeLinear $pointer) - (Get-RealModeLinear $block)
+        if ($distance -lt 0 -or $distance -ge 512) {
+            return [pscustomobject]@{
+                Owner = "a TSR or shadow copy, from its own memory"
+                Segment = $segment; IsRom = $false
+            }
+        }
+    }
+
+    # The list is in the caller's block, or nothing says it is not. Either
+    # way the ROM wrote it if INT 10h reaches the ROM with nothing in front.
+    if ($vectorInRom) {
+        return [pscustomobject]@{
+            Owner = "the card's option ROM (INT 10h vector in the ROM; list built in the caller's buffer)"
+            Segment = $segment; IsRom = $true
+        }
+    }
+    $hook = "no INT 10h vector recorded"
+    if ($null -ne $vector) { $hook = "INT 10h hooked at {0:X8}" -f $vector }
+    if ($null -ne $block -and $block -ne 0) {
+        return [pscustomobject]@{
+            Owner = "whoever answers INT 10h, which may chain to the ROM (list in the caller's buffer; $hook)"
+            Segment = $segment; IsRom = $null
         }
     }
     return [pscustomobject]@{
-        Owner = "something other than the card's ROM (a TSR or a shadow copy)"
-        Segment = "{0:X4}" -f $segment
-        IsRom = $false
+        Owner = "unknown: the caller's buffer filled by the ROM, or a TSR's own list ($hook)"
+        Segment = $segment; IsRom = $null
     }
 }
 
@@ -836,7 +885,7 @@ foreach ($report in $reports) {
     if ($report.VbeProvider) {
         Write-Output ("  VBE from     {0} (mode list at segment {1})" -f
             $report.VbeProvider.Owner, $report.VbeProvider.Segment)
-        if (-not $report.VbeProvider.IsRom) {
+        if ($false -eq $report.VbeProvider.IsRom) {
             Write-Output ("               so everything the VBE section claims - " +
                           "including any linear framebuffer - is that software's")
             Write-Output ("               promise, not a property of the card")

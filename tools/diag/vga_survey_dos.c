@@ -1535,6 +1535,13 @@ static void survey_vbe(void)
 
         wr_status("ok");
         wr_x32("ModeListPointer", mode_pointer);
+        /* The block handed to 4F00h. A ModeListPointer inside it is the
+         * BIOS building the list in the caller's buffer, which most VBE 2.0+
+         * BIOSes do; one outside it and outside the ROM is a TSR's own list.
+         * The parser cannot tell those apart without this address. */
+        wr_x32("InfoBlockPointer",
+               ((unsigned long)FP_SEG((void far *)controller_info) << 16) |
+               (unsigned long)FP_OFF((void far *)controller_info));
         wr_u("Count", count);
         wr_str("Truncated", count >= V9X_MAX_VBE_MODES ? "1" : "0");
         wr_str("Fields",

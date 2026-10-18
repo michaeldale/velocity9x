@@ -159,7 +159,7 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 | `[VideoBios]` | the ROM at `C000`: size, checksum, `PCIR` structure, `$PnP` header, extracted strings, and a `Rom.` blob |
 | `[OptionRom.N]`, `[OptionRomScan]` | secondary adapter ROMs found between `C000` and `E000` |
 | `[VBE]` | `4F00h` controller info with the `VBE2` request, OEM strings, current mode, `4F0Ah`/`4F10h`/`4F11h` capability queries |
-| `[VBEModes]` | the complete mode list walked from `VideoModePtr`, one CSV line per mode, with a `Fields` key, a `Truncated` flag, and the described/undescribed/query-failed tally |
+| `[VBEModes]` | the complete mode list walked from `VideoModePtr` (`ModeListPointer`), the address of the block handed to `4F00h` (`InfoBlockPointer`), one CSV line per mode, with a `Fields` key, a `Truncated` flag, and the described/undescribed/query-failed tally |
 | `[EDID]` | DDC level, then `Block0.`/`Block1.` blobs and `Block1Status` |
 | `[VGARegisters]` | MISC, feature control, DAC state, and `Seq.`/`Crtc.`/`Gdc.`/`Atc.` register banks, plus `Trust` |
 | `[Tier1]` | marks the end of the always-safe capture |
@@ -199,17 +199,28 @@ report in that state carries no CPUID detail and no `E820` map, and says so.
 ### Who is answering VBE
 
 `[VBEModes] ModeListPointer` is the far pointer the controller-info block
-returned, and its **segment names whose VBE this is**. The card's own BIOS
-returns a pointer into its own option ROM: `C000534F` on the 486 VLB Trio64
-measured 2026-08-21. With an S3VBE 3.18 TSR resident, the same machine returned
-`0DC62612` - low RAM.
+returned. A pointer into `C000`-`C7FF` is the card's own BIOS: `C000534F` on the
+486 VLB Trio64 measured 2026-08-21. With an S3VBE 3.18 TSR resident, the same
+machine returned `0DC62612` - low RAM.
+
+A pointer into RAM does **not** by itself name a TSR. Most VBE 2.0+ BIOSes
+build the list inside the 512-byte block the caller handed to `4F00h`. Six
+different BIOSes (NVIDIA, STB, ASUS, two ATI, Matrox) returned the identical
+`0E011A90` on one machine on 2026-10-17, and QEMU's SeaVGABIOS, measured
+2026-10-18, put it at offset 22h of the block. `InfoBlockPointer` records the
+block's own address so the two cases can be told apart: a list within 512 bytes
+of it is the caller's buffer, filled by whoever answered; a list outside both
+it and the ROM is the provider's own memory. Reports taken before the key
+existed fall back on `Int10Vector`: inside the ROM, nothing sat in front of the
+BIOS, so the ROM wrote the list. With neither key the report cannot say.
 
 That matters more than it looks. Everything `[VBE]` and `[VBEModes]` describe
-belongs to whoever that segment names, so a linear-framebuffer attribute from a
+belongs to whoever answered, so a linear-framebuffer attribute from a
 non-ROM provider is a promise made by software, not a property of the card. On
 that machine the ROM offered VBE 1.02 with bit 7 clear on all 18 modes, and the
 TSR offered VBE 2.00 with bit 7 set and a `PhysBasePtr` that disagreed with the
-card's own CR59/CR5A. `parse-vga-survey.ps1` derives and prints this.
+card's own CR59/CR5A. `parse-vga-survey.ps1` derives and prints this, and
+reports "unknown" rather than "TSR" when the evidence does not decide it.
 
 ### Two ROM lengths, and which one the checksum covers
 
