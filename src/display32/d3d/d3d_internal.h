@@ -112,6 +112,9 @@ typedef struct v9x_d3d_context {
      */
     DWORD depth_offset;
     DWORD depth_pitch;
+    /* Bytes a depth cell occupies: 2, or 4 for a 32-bit depth buffer on an
+     * engine with depth32_bits; 0 with none bound. */
+    DWORD depth_bytes;
     DWORD z_enable;
     DWORD z_write;
     DWORD z_func;
@@ -381,6 +384,15 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD target_pitch_max_xrgb8888;
     /*
+     * Nonzero when the engine also takes a 32-bit depth buffer beside the
+     * 16-bit one: how many of its bits hold depth (24 for Gen3's
+     * D24X8), which is the scale a depth fill is masked to. Zero means
+     * depth_bits_per_pixel only, as every engine was. Appended 2026-10-18
+     * (docs\plans\32bpp-acceleration-and-3d.md, decision 1); an initialiser
+     * that stops short leaves it zero.
+     */
+    DWORD depth32_bits;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns
@@ -512,7 +524,7 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void);
  * ViRGE fact in chip-neutral code that check-tree cannot catch, because the
  * rule it enforces forbids chip *names* and a bare constant has none.
  */
-DWORD v9x_d3d_depth_bytes_per_pixel(void);
+DWORD v9x_d3d_depth_bytes_per_pixel(const V9X_DD_SURFACE_LCL *surface);
 
 /*
  * Engine-placed surfaces, in d3d_place.c, for an engine's create_surface and

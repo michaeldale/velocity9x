@@ -13,9 +13,12 @@ static int v9x_r3d_clear_valid(const V9X_R3D_CLEAR *clear)
              clear->format != V9X_R3D_FORMAT_XRGB1555 &&
              clear->format != V9X_R3D_FORMAT_XRGB8888)) return 0;
     }
-    if (clear->clear_depth != 0ul &&
-        (clear->depth == 0 || clear->depth_pitch < clear->width * 2ul))
-        return 0;
+    if (clear->clear_depth != 0ul) {
+        v9x_u32 bytes = clear->depth_bytes == 4ul ? 4ul : 2ul;
+        if (clear->depth == 0 || clear->depth_pitch < clear->width * bytes ||
+            (clear->depth_bytes != 0ul && clear->depth_bytes != 2ul &&
+             clear->depth_bytes != 4ul)) return 0;
+    }
     if (clear->rect_count != 0ul && clear->rects == 0) return 0;
     for (i = 0ul; i < clear->rect_count; ++i) {
         const V9X_R3D_CLEAR_RECT *r = &clear->rects[i];
@@ -63,8 +66,12 @@ int v9x_r3d_clear(const V9X_R3D_CLEAR *clear)
                 clear->format != V9X_R3D_FORMAT_XRGB8888 ? (v9x_u16 *)row : 0;
             v9x_u32 *colors32 = row != 0 &&
                 clear->format == V9X_R3D_FORMAT_XRGB8888 ? (v9x_u32 *)row : 0;
-            v9x_u16 *depths = clear->clear_depth ?
-                (v9x_u16 *)((v9x_u8 *)clear->depth + y * clear->depth_pitch) : 0;
+            v9x_u8 *zrow = clear->clear_depth ?
+                (v9x_u8 *)clear->depth + y * clear->depth_pitch : 0;
+            v9x_u16 *depths = zrow != 0 && clear->depth_bytes != 4ul
+                ? (v9x_u16 *)zrow : 0;
+            v9x_u32 *depths32 = zrow != 0 && clear->depth_bytes == 4ul
+                ? (v9x_u32 *)zrow : 0;
             v9x_u32 x;
             for (x = r->left; x < r->right; ++x) {
                 if (colors != 0) colors[x] =
@@ -73,6 +80,8 @@ int v9x_r3d_clear(const V9X_R3D_CLEAR *clear)
                     (colors32[x] & ~mask) | (packed & mask);
                 if (depths != 0 && clear->write_depth != 0ul)
                     depths[x] = (v9x_u16)clear->depth_value;
+                if (depths32 != 0 && clear->write_depth != 0ul)
+                    depths32[x] = clear->depth_value;
             }
         }
     }

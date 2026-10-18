@@ -920,6 +920,18 @@ static void v9x_dd_refresh_info(void)
     info->ddCaps.dwVidMemTotal =
         shared->fb.vram_bytes - shared->fb.visible_bytes;
     info->ddCaps.dwVidMemFree = info->ddCaps.dwVidMemTotal;
+    /*
+     * The depths a Z buffer may be made at, which DirectDraw checks before it
+     * allocates one. DriverInit set DDBD_16 before the chip was known; a
+     * 32-bit one is added here for an engine that holds it, Gen3's D24X8
+     * (d3d_i9xx.c's depth32_bits; docs\plans\32bpp-acceleration-and-3d.md).
+     */
+    info->ddCaps.dwZBufferBitDepths = V9X_DDBD_16;
+    if (v9x_d3d_mode_deep_z(v9x_dd_d3d_state,
+                            v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3
+                                ? V9X_TRUE : V9X_FALSE) != V9X_FALSE) {
+        info->ddCaps.dwZBufferBitDepths |= V9X_DDBD_32;
+    }
 
     /* 16:16 far aliases DDRAW16 dereferences. */
     info->lpDDCallbacks = &shared->dd_callbacks;

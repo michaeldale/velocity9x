@@ -6165,6 +6165,52 @@ static void test_runtime_xrgb8888_target(void)
     CHECK(v9x_i9xx_retarget_state(stream, state, wide) ==
           V9X_STATUS_INVALID_ARGUMENT);
 
+    /* 24-bit depth in a 32-bit cell, DEPTH_FRMT_24_FIXED_8_OTHER, with
+     * either colour format. Alpha writes are disabled only for ARGB8888:
+     * a 565 target has no alpha channel to protect. */
+    limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    for (index = 0ul; index < at; ++index) {
+        stream[index] = pristine[index];
+    }
+    CHECK(v9x_i9xx_retarget_state(stream, state,
+                                  V9X_I9XX_COLR_BUF_ARGB8888 |
+                                  V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER) ==
+          V9X_STATUS_OK);
+    CHECK(stream[V9X_I9XX_DST_BUF_VARS_AT + 1ul] ==
+          (V9X_I9XX_COLR_BUF_ARGB8888 | V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER |
+           V9X_I9XX_DSTORG_HORT_BIAS_HALF | V9X_I9XX_DSTORG_VERT_BIAS_HALF));
+    limits.target_format = V9X_I9XX_COLR_BUF_ARGB8888 |
+                           V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &vertex) ==
+          V9X_I9XX_P5_OK);
+    limits.target_format = wide;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &vertex) ==
+          V9X_I9XX_P5_FORMAT);
+
+    for (index = 0ul; index < at; ++index) {
+        stream[index] = pristine[index];
+    }
+    CHECK(v9x_i9xx_retarget_state(stream, state,
+                                  V9X_I9XX_COLR_BUF_RGB565 |
+                                  V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER) ==
+          V9X_STATUS_OK);
+    limits.target_format = V9X_I9XX_COLR_BUF_RGB565 |
+                           V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &vertex) ==
+          V9X_I9XX_P5_OK);
+    for (index = 0ul; index < state; ++index) {
+        if (stream[index] == (V9X_I9XX_3DSTATE_LOAD_STATE_IMM1 |
+                              V9X_I9XX_I1_LOAD_S2 | V9X_I9XX_I1_LOAD_S3 |
+                              V9X_I9XX_I1_LOAD_S4 | V9X_I9XX_I1_LOAD_S5 |
+                              V9X_I9XX_I1_LOAD_S6 | 4ul)) {
+            break;
+        }
+    }
+    CHECK(stream[index + 4ul] == V9X_I9XX_S5_PHASE5);
+    stream[index + 4ul] = V9X_I9XX_S5_WRITEDISABLE_ALPHA;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &vertex) ==
+          V9X_I9XX_P5_FORMAT);
+
     /* The target's footprint at four bytes a pixel: the last row is
      * measured at 2560 bytes, and a 16 bpp pitch does not hold it. */
     CHECK(v9x_d3d_i9xx_bind_target_at(aperture - 479ul * pitch - 2560ul,
@@ -6182,6 +6228,18 @@ static void test_runtime_xrgb8888_target(void)
     CHECK(v9x_d3d_i9xx_bind_target_at(0ul, pitch, width, height, 3ul,
                                       aperture, &identity,
                                       &address) == V9X_FALSE);
+
+    /* A 32-bit depth buffer's footprint is measured at four bytes too. */
+    CHECK(v9x_d3d_i9xx_bind_depth_at(aperture - 479ul * pitch - 2560ul,
+                                     pitch, width, height, 4ul, aperture,
+                                     &address) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_bind_depth_at(aperture - 479ul * pitch - 2556ul,
+                                     pitch, width, height, 4ul, aperture,
+                                     &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_depth_at(0x00100000ul, 1280ul, width, height,
+                                     4ul, aperture, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_depth_at(0x00100000ul, 1280ul, width, height,
+                                     2ul, aperture, &address) == V9X_TRUE);
 #endif
 }
 

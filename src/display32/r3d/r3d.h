@@ -138,6 +138,12 @@ int v9x_r3d_triangle_on_target(const V9X_R3D_VERTEX *triangle,
 #define V9X_R3D_FORMAT_XRGB1555 2ul
 #define V9X_R3D_FORMAT_XRGB8888 5ul
 
+/* A draw's depth.format: zero is the engine's 16-bit depth, as every draw
+ * had; Z24X8 a 32-bit cell with 24 bits of depth, which only an engine
+ * with depth32_bits is given (d3d_core.c). */
+#define V9X_R3D_DEPTH_Z16   0ul
+#define V9X_R3D_DEPTH_Z24X8 1ul
+
 /*
  * A surface as a draw names it: where it is in video memory, its shape, and
  * the front end's own object for it (the D3D core's surface LCL), which the
@@ -343,10 +349,12 @@ typedef struct v9x_r3d_clear {
     v9x_u32 width, height, format;
     v9x_u32 clear_color, clear_depth;
     v9x_u32 color_value; /* 0x00RRGGBB */
-    v9x_u32 depth_value; /* low 16 bits */
+    v9x_u32 depth_value; /* low 16 bits; low 24 for a 32-bit cell */
     v9x_u32 write_red, write_green, write_blue, write_depth;
     const V9X_R3D_CLEAR_RECT *rects;
     v9x_u32 rect_count;
+    /* 4 for a 32-bit depth cell, written whole; 0 or 2 for 16-bit. */
+    v9x_u32 depth_bytes;
 } V9X_R3D_CLEAR;
 
 int v9x_r3d_clear(const V9X_R3D_CLEAR *clear);

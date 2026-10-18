@@ -689,9 +689,12 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface);
 DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data);
 void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data);
 V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
-DWORD v9x_d3d_depth_bytes_per_pixel(void);
-/* A DDBLT_DEPTHFILL value in the fitted engine's depth scale. */
-DWORD v9x_d3d_depth_fill_value(DWORD value);
+/* This depth surface's cell: 2, 4 for a 32-bit one the engine takes, 0
+ * when the engine has none or does not take this one. */
+DWORD v9x_d3d_depth_bytes_per_pixel(const V9X_DD_SURFACE_LCL *surface);
+/* A DDBLT_DEPTHFILL value in the fitted engine's depth scale, for a cell
+ * of that many bytes. */
+DWORD v9x_d3d_depth_fill_value(DWORD value, DWORD bytes_per_pixel);
 /* Non-zero when the fitted engine's depth buffers are tiled: only the
  * engine's own depth fill is correct, and there is no CPU fallback. */
 int v9x_d3d_depth_tiled(void);

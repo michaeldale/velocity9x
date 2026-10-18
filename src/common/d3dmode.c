@@ -59,6 +59,14 @@ v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state)
             state == V9X_D3D_STATE_SOFTWARE) ? V9X_TRUE : V9X_FALSE;
 }
 
+v9x_u16 v9x_d3d_mode_deep_z(v9x_u16 state, v9x_u16 chip_has_deep_z)
+{
+    /* The chip's engine is the one that would hold it, so only the state
+     * that runs that engine offers it. */
+    return (state == V9X_D3D_STATE_HARDWARE && chip_has_deep_z != V9X_FALSE)
+               ? V9X_TRUE : V9X_FALSE;
+}
+
 const char *v9x_d3d_mode_text(v9x_u16 state)
 {
     if (state == V9X_D3D_STATE_HARDWARE) {

@@ -392,14 +392,44 @@ const V9X_D3D_ENGINE_OPS *v9x_d3d_engine(void)
  * is what makes DDBLT_DEPTHFILL decline there: a card with no depth buffers
  * can be asked to clear one only by a caller that has gone wrong.
  */
-DWORD v9x_d3d_depth_bytes_per_pixel(void)
+/*
+ * A depth surface's cell, from its own pixel format.
+ *
+ * DirectDraw records the depth a Z surface was made at in ddpfSurface,
+ * DDPF_ZBUFFER with the bit depth in the RGB bit-count slot. A surface
+ * that carries no format of its own is taken as the engine's 16-bit one,
+ * which is what every depth surface was before 32-bit ones existed. 32
+ * bits is 4 bytes only on an engine with depth32_bits; any other size, or
+ * 32 on an engine without, is 0, which refuses it.
+ */
+static DWORD v9x_d3d_depth_cell_bytes(const V9X_D3D_ENGINE_LIMITS *limits,
+                                      const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_DDPIXELFORMAT *format;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul) {
+        return limits->depth_bits_per_pixel >> 3;
+    }
+    format = &surface->lpGbl->ddpfSurface;
+    if ((format->dwFlags & V9X_DDPF_ZBUFFER) == 0ul ||
+        format->dwRGBBitCount == limits->depth_bits_per_pixel) {
+        return limits->depth_bits_per_pixel >> 3;
+    }
+    if (format->dwRGBBitCount == 32ul && limits->depth32_bits != 0ul) {
+        return 4ul;
+    }
+    return 0ul;
+}
+
+DWORD v9x_d3d_depth_bytes_per_pixel(const V9X_DD_SURFACE_LCL *surface)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
 
     if (ops == 0 || ops->limits == 0) {
         return 0ul;
     }
-    return ops->limits->depth_bits_per_pixel >> 3;
+    return v9x_d3d_depth_cell_bytes(ops->limits, surface);
 }
 
 /* Whether the fitted engine's depth buffers are tiled (the limits'
@@ -416,12 +446,19 @@ int v9x_d3d_depth_tiled(void)
 
 /* A DDBLT_DEPTHFILL value as the fitted engine's depth buffer holds it
  * (v9x_d3d_state_depth_fill); unchanged on a chip with no D3D engine. */
-DWORD v9x_d3d_depth_fill_value(DWORD value)
+DWORD v9x_d3d_depth_fill_value(DWORD value, DWORD bytes_per_pixel)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
 
     if (ops == 0 || ops->limits == 0) {
         return value;
+    }
+    /* A 32-bit cell holds depth32_bits of depth; the fill is masked to
+     * them, so the full-scale 0xFFFFFFFF the runtime sends for a 32-bit
+     * Z buffer is the far plane. */
+    if (bytes_per_pixel == 4ul && ops->limits->depth32_bits != 0ul) {
+        return v9x_d3d_state_depth_fill(value, ops->limits->depth32_bits,
+                                        0ul);
     }
     return v9x_d3d_state_depth_fill(value,
                                     ops->limits->depth_bits_per_pixel,
@@ -511,7 +548,8 @@ static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
     draw->depth.pitch = context->depth_pitch;
     draw->depth.width = context->width;
     draw->depth.height = context->height;
-    draw->depth.format = 0ul;
+    draw->depth.format = context->depth_bytes == 4ul ? V9X_R3D_DEPTH_Z24X8
+                                                     : V9X_R3D_DEPTH_Z16;
     draw->depth.object = context->zbuffer;
     draw->texture.object = v9x_d3d_context_texture_surface(context);
     /* Direct3D never states the render interface's explicit fields; zero
@@ -1285,6 +1323,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     DWORD depth_pitch = 0ul;
     DWORD target_format = V9X_D3D_TARGET_FORMAT_RGB565;
     DWORD pixel_bytes;
+    DWORD depth_cell = 0ul;
     int primary;
     int display_layout;
 
@@ -1406,7 +1445,10 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         return 0;
     }
     if (depth != 0) {
-        DWORD depth_bytes = limits->depth_bits_per_pixel >> 3;
+        /* The surface's own cell (v9x_d3d_depth_cell_bytes): 4 for a 32-bit
+         * depth buffer on an engine that takes one, the engine's 16-bit
+         * size otherwise, 0 for a size it does not take. */
+        DWORD depth_bytes = v9x_d3d_depth_cell_bytes(limits, depth);
         DWORD depth_last_byte;
         DWORD depth_expected;
 
@@ -1425,6 +1467,9 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
         }
         if ((depth->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
             return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_SYSTEM_MEMORY);
+        }
+        if (depth_bytes == 0ul) {
+            return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_FORMAT);
         }
         if (depth->lpGbl->lPitch <= 0l) {
             return v9x_d3d_depth_reject(V9X_D3D_ZREJECT_PITCH);
@@ -1500,6 +1545,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
             ++v9x_hal->d3d_diagnostics.depth_accepted;
             v9x_hal->d3d_diagnostics.depth_reject = V9X_D3D_ZREJECT_ACCEPTED;
         }
+        depth_cell = depth_bytes;
     }
     context->target = target;
     context->zbuffer = depth;
@@ -1510,6 +1556,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     context->height = height;
     context->depth_offset = depth_offset;
     context->depth_pitch = depth_pitch;
+    context->depth_bytes = depth_cell;
     /*
      * Attaching a depth surface turns depth testing on; detaching turns it
      * off. That is the DDK's behaviour (D3DCB2.C:57-66), and it is what makes
@@ -1606,6 +1653,10 @@ static int v9x_d3d_set_target_raw(V9X_D3D_CONTEXT *context,
     context->height = target.height;
     context->depth_offset = has_depth ? depth.offset : 0ul;
     context->depth_pitch = has_depth ? depth.pitch : 0ul;
+    /* A raw depth buffer is the engine's 16-bit one: the interface names
+     * no depth format. */
+    context->depth_bytes = has_depth ? limits->depth_bits_per_pixel >> 3
+                                     : 0ul;
     context->z_enable = has_depth ? 1ul : 0ul;
     context->z_write = has_depth ? 1ul : 0ul;
     return 1;
@@ -1762,6 +1813,7 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->wrap_v = 0ul;
     context->depth_offset = 0ul;
     context->depth_pitch = 0ul;
+    context->depth_bytes = 0ul;
     context->z_enable = 0ul;
     context->z_write = 0ul;
     context->z_func = 0ul;
@@ -4466,12 +4518,16 @@ static DWORD v9x_d3d_z_pixel_formats(BYTE *out, DWORD room)
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
     DWORD bits = ops != 0 && ops->limits != 0
                      ? ops->limits->depth_bits_per_pixel : 0ul;
-    DWORD answer[1 + sizeof(V9X_DDPIXELFORMAT) / sizeof(DWORD)];
+    /* And a 32-bit cell holding depth32_bits of depth, no stencil, for an
+     * engine that takes one: D24X8 to Direct3D 8. */
+    DWORD bits32 = ops != 0 && ops->limits != 0
+                       ? ops->limits->depth32_bits : 0ul;
+    DWORD answer[1 + 2ul * (sizeof(V9X_DDPIXELFORMAT) / sizeof(DWORD))];
     V9X_DDPIXELFORMAT *format = (V9X_DDPIXELFORMAT *)&answer[1];
     DWORD bytes;
     DWORD index;
 
-    answer[0] = bits != 0ul ? 1ul : 0ul;
+    answer[0] = bits != 0ul ? (bits32 != 0ul ? 2ul : 1ul) : 0ul;
     format->dwSize = sizeof(V9X_DDPIXELFORMAT);
     format->dwFlags = V9X_DDPF_ZBUFFER;
     format->dwFourCC = 0ul;
@@ -4480,7 +4536,12 @@ static DWORD v9x_d3d_z_pixel_formats(BYTE *out, DWORD room)
     format->dwGBitMask = bits >= 32ul ? 0xfffffffful : (1ul << bits) - 1ul;
     format->dwBBitMask = 0ul;
     format->dwRGBAlphaBitMask = 0ul;
-    bytes = answer[0] != 0ul ? sizeof(answer) : sizeof(DWORD);
+    format[1] = format[0];
+    format[1].dwRGBBitCount = 32ul;
+    format[1].dwGBitMask = bits32 >= 32ul ? 0xfffffffful
+                                          : (1ul << bits32) - 1ul;
+    bytes = sizeof(DWORD) +
+            answer[0] * (DWORD)sizeof(V9X_DDPIXELFORMAT);
     for (index = 0ul; out != 0 && index < bytes && index < room; ++index) {
         out[index] = ((const BYTE *)answer)[index];
     }
@@ -5099,6 +5160,8 @@ static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
     draw->depth.pitch = context->depth_pitch;
     draw->depth.width = context->width;
     draw->depth.height = context->height;
+    draw->depth.format = context->depth_bytes == 4ul ? V9X_R3D_DEPTH_Z24X8
+                                                     : V9X_R3D_DEPTH_Z16;
     draw->depth.object = context->zbuffer;
 
     result = v9x_r3d_describe_texture(&request->texture, two_units,
@@ -5461,8 +5524,16 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.clear_depth = request->clear_depth;
     clear.color_value = request->color_value;
     /* As the engine's depth buffer holds it: halved on the SiS, whose Z
-     * test compares 15 bits (v9x_d3d_depth_fill_value). */
-    clear.depth_value = v9x_d3d_depth_fill_value(request->depth_value);
+     * test compares 15 bits (v9x_d3d_depth_fill_value). The interface's
+     * value is 16-bit; a 32-bit cell gets it at 24 bits, high bits
+     * replicated so that FFFFh stays the far plane. */
+    clear.depth_bytes = v9x_r3d_context.depth_bytes;
+    clear.depth_value = v9x_d3d_depth_fill_value(
+        clear.depth_bytes == 4ul
+            ? ((request->depth_value & 0xfffful) << 8) |
+                  ((request->depth_value >> 8) & 0xfful)
+            : request->depth_value,
+        clear.depth_bytes);
     clear.write_red = (request->write_mask & V9X_R3D_ABI_WRITE_RED) != 0ul;
     clear.write_green = (request->write_mask & V9X_R3D_ABI_WRITE_GREEN) != 0ul;
     clear.write_blue = (request->write_mask & V9X_R3D_ABI_WRITE_BLUE) != 0ul;
@@ -5551,15 +5622,21 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
     {
         float depth = data->dvFillDepth;
         DWORD value;
+        /* The full scale of the buffer's own cell: 24 bits for a 32-bit
+         * one, 16 otherwise. */
+        int deep = context->depth_bytes == 4ul;
 
+        clear.depth_bytes = context->depth_bytes;
         if (!(depth > 0.0f)) {
             value = 0ul;
         } else if (depth >= 1.0f) {
-            value = 0xfffful;
+            value = deep ? 0x00fffffful : 0xfffful;
         } else {
-            value = (DWORD)v9x_d3d_to_long((double)depth * 65535.0);
+            value = (DWORD)v9x_d3d_to_long(
+                (double)depth * (deep ? 16777215.0 : 65535.0));
         }
-        clear.depth_value = v9x_d3d_depth_fill_value(value);
+        clear.depth_value = v9x_d3d_depth_fill_value(value,
+                                                     clear.depth_bytes);
         depth_full_scale = value;
     }
 

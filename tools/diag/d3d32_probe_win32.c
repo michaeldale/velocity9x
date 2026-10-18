@@ -20,7 +20,13 @@
  *   T2 a Gouraud triangle: each corner's pixel dominated by its own channel;
  *   T3 depth: a quad at z 0.5, a triangle behind it that must not draw and
  *      one in front that must;
- *   T4 a flat triangle into a 64x64 offscreen render target of its own.
+ *   T4 a flat triangle into a 64x64 offscreen render target of its own;
+ *   T5 depth precision: a quad 2e-6 in front of another, which a 16-bit
+ *      buffer cannot tell apart and a 24-bit one can.
+ *
+ * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
+ * that full scale; T5 then expects the nearer quad, and without it the
+ * farther one.
  *
  * At 32 bpp the comparisons are exact for flat colour (eight bits a channel
  * and nothing to round); at 16 bpp each channel is compared after expansion
@@ -559,6 +565,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     HWND window;
     HRESULT hr;
     DWORD bpp;
+    DWORD zbits;
     DWORD caps;
     DWORD judged;
     DWORD failures = 0ul;
@@ -570,7 +577,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
     d32_line("[V9xD3d32]Build", V9X_BUILD_ID);
     bpp = d32_has_switch("/bpp16") ? 16ul : 32ul;
+    zbits = d32_has_switch("/z24") ? 32ul : 16ul;
     d32_hx("RequestBpp", bpp);
+    d32_hx("RequestZBits", zbits);
 
     d32_line("Stage", "1-directdrawcreate");
     ddraw_module = LoadLibraryA("DDRAW.DLL");
@@ -643,6 +652,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
             0ul) {
         d32_finish("NO-HAL-AT-DEPTH", 1u);
     }
+    if ((enumerated.z_depth & (zbits == 32ul ? DDBD_32 : DDBD_16)) == 0ul) {
+        d32_finish("NO-Z-AT-DEPTH", 1u);
+    }
 
     d32_line("Stage", "4-surfaces");
     d32_zero(&desc, sizeof(desc));
@@ -667,7 +679,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
                        DDSD_ZBUFFERBITDEPTH;
         desc.dwWidth = D32_WIDTH;
         desc.dwHeight = D32_HEIGHT;
-        desc.dwMipMapCount = 16ul;
+        desc.dwMipMapCount = zbits;
         desc.ddsCaps = DDSCAPS_ZBUFFER | DDSCAPS_VIDEOMEMORY;
         hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
             ddraw, &desc, &zbuffer, 0);
@@ -688,7 +700,11 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_finish("NO-DEVICE", 1u);
     }
     d32_hx("ClearHr", (DWORD)d32_fill(back, DDBLT_COLORFILL, 0ul));
-    d32_hx("ZClearHr", (DWORD)d32_fill(zbuffer, DDBLT_DEPTHFILL, 0xfffful));
+    /* The far plane at the buffer's full scale, as Direct3D's own clear
+     * sends it: 0xFFFF for 16 bits, 0xFFFFFFFF for a 32-bit buffer. */
+    d32_hx("ZClearHr", (DWORD)d32_fill(zbuffer, DDBLT_DEPTHFILL,
+                                       zbits == 32ul ? 0xfffffffful
+                                                     : 0xfffful));
 
     /* T1, flat. */
     d32_line("Stage", "6-t1-flat");
@@ -725,6 +741,36 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_vertex(&v[1], 232.0f, 4.0f, 0.25f, 0xff0000fful);
     d32_vertex(&v[2], 196.0f, 108.0f, 0.25f, 0xff0000fful);
     d32_hx("T3FrontHr", (DWORD)d32_draw(device, v, 3ul));
+
+    /*
+     * T5, depth precision: a green quad at z = 16000.25 / 65535, then a red
+     * one a tenth of a 16-bit step nearer (16000.15 / 65535). A 16-bit
+     * buffer stores the green as step 16000 whether it rounds or truncates,
+     * and the red fragment, still above 16000, fails LESS against it; a
+     * 24-bit buffer stores them about 25 steps apart and draws the red.
+     * Green with a 16-bit buffer and red with a 32-bit one is the test
+     * discriminating.
+     *
+     * The first form put the green at 0.25, three quarters through a
+     * 16-bit step: Gen3 drew the red at 16 bits too (netbook boot 211),
+     * which says the stored value rounds up and the fragment is compared
+     * at more than 16 bits, so a step's lower quarter is the place to test.
+     */
+    d32_line("Stage", "8b-t5-precision");
+    d32_vertex(&v[0], 300.0f, 8.0f, 0.244148165f, 0xff00ff00ul);
+    d32_vertex(&v[1], 364.0f, 8.0f, 0.244148165f, 0xff00ff00ul);
+    d32_vertex(&v[2], 300.0f, 72.0f, 0.244148165f, 0xff00ff00ul);
+    d32_vertex(&v[3], 364.0f, 8.0f, 0.244148165f, 0xff00ff00ul);
+    d32_vertex(&v[4], 364.0f, 72.0f, 0.244148165f, 0xff00ff00ul);
+    d32_vertex(&v[5], 300.0f, 72.0f, 0.244148165f, 0xff00ff00ul);
+    d32_hx("T5BackHr", (DWORD)d32_draw(device, v, 6ul));
+    d32_vertex(&v[0], 300.0f, 8.0f, 0.244146645f, 0xffff0000ul);
+    d32_vertex(&v[1], 364.0f, 8.0f, 0.244146645f, 0xffff0000ul);
+    d32_vertex(&v[2], 300.0f, 72.0f, 0.244146645f, 0xffff0000ul);
+    d32_vertex(&v[3], 364.0f, 8.0f, 0.244146645f, 0xffff0000ul);
+    d32_vertex(&v[4], 364.0f, 72.0f, 0.244146645f, 0xffff0000ul);
+    d32_vertex(&v[5], 300.0f, 72.0f, 0.244146645f, 0xffff0000ul);
+    d32_hx("T5FrontHr", (DWORD)d32_draw(device, v, 6ul));
     d32_state(device, D3DRENDERSTATE_ZENABLE, 0ul);
 
     d32_line("Stage", "9-read-back");
@@ -761,6 +807,13 @@ void WINAPI V9xD3d32ProbeEntry(void)
                     ? 4ul : 0ul);
         d32_hx("T3Ok", caps);
         failures += caps != 7ul ? 1ul : 0ul;
+
+        d32_hx("T5Pixel", d32_pixel(&desc, 332ul, 40ul));
+        caps = d32_is_colour(d32_pixel(&desc, 332ul, 40ul),
+                             zbits == 32ul ? 0x00ff0000ul : 0x0000ff00ul)
+                   ? 1ul : 0ul;
+        d32_hx("T5Ok", caps);
+        failures += caps != 1ul ? 1ul : 0ul;
         ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
     } else {
         ++failures;

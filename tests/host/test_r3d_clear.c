@@ -21,6 +21,7 @@ static void reset(V9X_R3D_CLEAR *c, V9X_R3D_CLEAR_RECT *r)
     c->clear_color=1ul;c->clear_depth=1ul;c->color_value=0x00ff8000ul;
     c->depth_value=0x1234ul;c->write_red=1ul;c->write_green=1ul;
     c->write_blue=1ul;c->write_depth=1ul;c->rects=r;c->rect_count=1ul;
+    c->depth_bytes=0ul;
 }
 
 static void test_partial_color_and_depth(void)
@@ -95,8 +96,33 @@ static void test_xrgb8888(void)
     QC(v9x_r3d_clear(&c)==0); QC(colors32[1u+CP]==0x89abcdeful);
 }
 
+/* A 32-bit depth buffer (24 bits of depth, Gen3's D24X8): the whole cell
+ * is written with the value, and its pitch must hold four bytes a pixel. */
+static v9x_u32 depths32[CP*CH];
+
+static void test_depth32(void)
+{
+    V9X_R3D_CLEAR c; V9X_R3D_CLEAR_RECT r; unsigned int i;
+    reset(&c,&r);
+    for(i=0u;i<CP*CH;++i){depths32[i]=0x77777777ul;}
+    c.depth=depths32;c.depth_pitch=CP*4ul;c.depth_bytes=4ul;
+    c.depth_value=0x00abcdeful;c.clear_color=0ul;c.color=0;
+    QC(v9x_r3d_clear(&c)!=0);
+    QC(depths32[1u+CP]==0x00abcdeful && depths32[2u+2u*CP]==0x00abcdeful);
+    QC(depths32[0]==0x77777777ul && depths32[3u+CP]==0x77777777ul);
+
+    reset(&c,&r);
+    for(i=0u;i<CP*CH;++i){depths32[i]=0x77777777ul;}
+    c.depth=depths32;c.depth_pitch=CW*2ul;c.depth_bytes=4ul;
+    c.clear_color=0ul;c.color=0;
+    QC(v9x_r3d_clear(&c)==0); QC(depths32[1u+CP]==0x77777777ul);
+    c.depth_pitch=CP*4ul;c.depth_bytes=3ul;
+    QC(v9x_r3d_clear(&c)==0); QC(depths32[1u+CP]==0x77777777ul);
+}
+
 unsigned int v9x_run_r3d_clear_tests(void)
 {
     test_partial_color_and_depth();test_masks_and_rect_list();
-    test_refuses_before_writing();test_xrgb8888();return clear_failures;
+    test_refuses_before_writing();test_xrgb8888();test_depth32();
+    return clear_failures;
 }

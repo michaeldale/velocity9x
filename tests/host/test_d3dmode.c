@@ -248,8 +248,30 @@ static void test_the_vbe_default_serves_direct3d_on_a_chip_with_none(void)
     D3CHECK(v9x_d3d_mode_advertises(with_override) == V9X_TRUE);
 }
 
+/*
+ * A 32-bit depth buffer is offered only by a hardware engine that holds one
+ * (docs\plans\32bpp-acceleration-and-3d.md, decision 1): never by the
+ * software engine, whose rasterizer interpolates 16 bits, and never in a
+ * state that advertises no Direct3D at all.
+ */
+static void test_deep_z_follows_the_engine(void)
+{
+    D3CHECK(v9x_d3d_mode_deep_z(V9X_D3D_STATE_HARDWARE, V9X_TRUE) ==
+            V9X_TRUE);
+    D3CHECK(v9x_d3d_mode_deep_z(V9X_D3D_STATE_HARDWARE, V9X_FALSE) ==
+            V9X_FALSE);
+    D3CHECK(v9x_d3d_mode_deep_z(V9X_D3D_STATE_SOFTWARE, V9X_TRUE) ==
+            V9X_FALSE);
+    D3CHECK(v9x_d3d_mode_deep_z(V9X_D3D_STATE_DISABLED, V9X_TRUE) ==
+            V9X_FALSE);
+    D3CHECK(v9x_d3d_mode_deep_z(V9X_D3D_STATE_NONE, V9X_TRUE) == V9X_FALSE);
+    D3CHECK(v9x_d3d_mode_deep_z(V9X_D3D_STATE_UNIMPLEMENTED, V9X_TRUE) ==
+            V9X_FALSE);
+}
+
 unsigned int v9x_run_d3dmode_tests(void)
 {
+    test_deep_z_follows_the_engine();
     test_resolve_on_a_chip_with_3d();
     test_resolve_on_a_chip_without_3d();
     test_unrecognised_requests_change_nothing();

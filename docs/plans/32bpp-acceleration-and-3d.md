@@ -4,9 +4,11 @@ Date: 2026-10-18. Status: in progress. Phase 1 Gen3 done (netbook boot 208,
 [2026-10-18-gen3-blits-at-32-bpp.md](../decisions/2026-10-18-gen3-blits-at-32-bpp.md));
 Phase 2 done for the software engine (86Box Trio64,
 [2026-10-18-software-direct3d-at-32-bpp.md](../decisions/2026-10-18-software-direct3d-at-32-bpp.md));
-Phase 3 Gen3 done with 16-bit depth (netbook boot 210,
+Phase 3 Gen3 done (netbook boot 210,
 [2026-10-18-gen3-direct3d-at-32-bpp.md](../decisions/2026-10-18-gen3-direct3d-at-32-bpp.md)),
-24-bit depth owed; decision 1 taken, decision 4 owed. Follows
+with 24-bit depth beside 16 at both colour depths (boot 211,
+[2026-10-18-gen3-24-bit-depth.md](../decisions/2026-10-18-gen3-24-bit-depth.md));
+decision 1 taken, decision 4 owed. Follows
 [high-depth-dynamic-modes.md](high-depth-dynamic-modes.md), which shipped
 32 bpp desktops in 0.6.0 on the CPU and deliberately left the engines out
 ("No hardware acceleration at 24/32 ... D3D stays 16bpp-only").
@@ -159,7 +161,7 @@ V9XDDP core and one real title at 32 bpp on its machine.
 | Order | Chip | Machine | Notes |
 |---|---|---|---|
 | 1 | MGA-2164W | A8U4I5 (when re-fitted) / 86Box Millennium :9877 | 32 bpp trapezoids and 32-bit Z already probed |
-| 2 | Intel Gen3 | netbook | **ARGB8888 + Z16 done 2026-10-18** (V9XD32 PASS, alpha writes off for X); Z24 next, merging with [intel-24-bit-depth.md](intel-24-bit-depth.md); 8 MiB stolen memory makes 1024x768x32 triple-buffered + Z tight |
+| 2 | Intel Gen3 | netbook | **Done 2026-10-18**: ARGB8888 with alpha writes off, Z16 and Z24 (D24X8) at 16 and 32 bpp, V9XD32 T5 tells the two depths apart; 3D WinBench 98 Z re-run owed ([intel-24-bit-depth.md](intel-24-bit-depth.md)); 8 MiB stolen memory makes 1024x768x32 triple-buffered + Z tight |
 | 3 | Intel Gen7.5 | Haswell 4570 | after its Phase G games |
 | 4 | VSA-100 | A8U4I5 Voodoo4 | 24-bit Z + stencil |
 | 5 | Mach64 3D (Pro/XL, Mobility, IIC) | A8U4I5 Rage XL, Gateway, A8U4I5 IIC | 4 MiB IIC fits 800x600x32 double-buffered with Z16, not 1024x768 |

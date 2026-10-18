@@ -2026,6 +2026,7 @@ typedef struct v9x_dd_cb32 {
 #define V9X_D3D_ZREJECT_OVERLAPS_FB   8ul  /* would write the visible page */
 #define V9X_D3D_ZREJECT_PITCH         9ul  /* disagrees with DDK stride    */
 #define V9X_D3D_ZREJECT_BOUNDS       10ul  /* falls outside VRAM           */
+#define V9X_D3D_ZREJECT_FORMAT       11ul  /* a depth size the engine lacks */
 
 /* Records in the present trace at the end of V9X_D3D_DIAGNOSTICS. Short
  * because the pattern repeats every frame: the last few frames answer the

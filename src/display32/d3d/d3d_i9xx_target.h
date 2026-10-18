@@ -59,6 +59,10 @@ v9x_u16 v9x_d3d_i9xx_bind_map(
 v9x_u16 v9x_d3d_i9xx_bind_depth(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes, v9x_u32 *address_out);
+/* The same at 2 or 4 bytes a cell; bind_depth is this at 2. */
+v9x_u16 v9x_d3d_i9xx_bind_depth_at(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 bytes_per_pixel, v9x_u32 aperture_bytes, v9x_u32 *address_out);
 
 /*
  * Where Gen3's sampler reads each level of a square 16-bit mip chain.

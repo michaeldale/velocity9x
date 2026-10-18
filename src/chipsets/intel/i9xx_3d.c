@@ -781,10 +781,15 @@ v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
 {
     v9x_u32 index;
 
-    /* ARGB8888 with 16-bit depth is the one combination measured. */
+    /* ARGB8888 with 16-bit depth (measured 2026-10-18), and 24-bit depth
+     * with either colour format. 565 with 16-bit is the block as built. */
     if (stream == 0 ||
-        format != (V9X_I9XX_COLR_BUF_ARGB8888 |
-                   V9X_I9XX_DEPTH_FRMT_16_FIXED) ||
+        (format != (V9X_I9XX_COLR_BUF_ARGB8888 |
+                    V9X_I9XX_DEPTH_FRMT_16_FIXED) &&
+         format != (V9X_I9XX_COLR_BUF_ARGB8888 |
+                    V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER) &&
+         format != (V9X_I9XX_COLR_BUF_RGB565 |
+                    V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER)) ||
         written < V9X_I9XX_DST_BUF_VARS_AT + 2ul ||
         stream[V9X_I9XX_DST_BUF_VARS_AT] != V9X_I9XX_3DSTATE_DST_BUF_VARS ||
         stream[V9X_I9XX_DST_BUF_VARS_AT + 1ul] != V9X_I9XX_DST_BUF_VARS_565) {
@@ -807,7 +812,9 @@ v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
     stream[V9X_I9XX_DST_BUF_VARS_AT + 1ul] =
         format | V9X_I9XX_DSTORG_HORT_BIAS_HALF |
         V9X_I9XX_DSTORG_VERT_BIAS_HALF;
-    stream[index + 4ul] = V9X_I9XX_S5_WRITEDISABLE_ALPHA;
+    if ((format & V9X_I9XX_COLR_BUF_MASK) == V9X_I9XX_COLR_BUF_ARGB8888) {
+        stream[index + 4ul] = V9X_I9XX_S5_WRITEDISABLE_ALPHA;
+    }
     return V9X_STATUS_OK;
 }
 #endif /* V9X_I9XX_TWO_UNITS */

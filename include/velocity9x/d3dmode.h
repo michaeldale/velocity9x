@@ -113,6 +113,15 @@ v9x_u16 v9x_d3d_mode_resolve(v9x_u16 requested, v9x_u16 chip_has_d3d);
 v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state);
 
 /*
+ * Whether DirectDraw may be offered a 32-bit depth buffer (DDBD_32 in
+ * dwZBufferBitDepths) beside the 16-bit one: in the hardware state, on a
+ * chip whose engine holds one (chip_has_deep_z). Never for the software
+ * engine, which interpolates 16 bits of depth.
+ * docs\plans\32bpp-acceleration-and-3d.md, decision 1.
+ */
+v9x_u16 v9x_d3d_mode_deep_z(v9x_u16 state, v9x_u16 chip_has_deep_z);
+
+/*
  * The state as the string written to C:\V9XDIAG\V9XHW.INI and read back by
  * the Display Properties page. Stable text, not prose: settings_status.c
  * compares against these spellings.

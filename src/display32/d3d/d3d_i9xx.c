@@ -157,7 +157,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     /* XRGB8888 on a 32 bpp desktop, ARGB8888 with the alpha writes off
      * (v9x_i9xx_retarget_state); BUF_INFO's pitch field bounds it as it
      * does a 16 bpp target. */
-    V9X_I9XX_BUF_3D_PITCH_MASK  /* target_pitch_max_xrgb8888 */
+    V9X_I9XX_BUF_3D_PITCH_MASK, /* target_pitch_max_xrgb8888 */
+    /* A 32-bit depth buffer, DEPTH_FRMT_24_FIXED_8_OTHER: 24 bits of depth
+     * and an unused byte (v9x_i9xx_retarget_state). */
+    24ul                        /* depth32_bits           */
 };
 
 /*
@@ -1131,12 +1134,17 @@ static DWORD v9x_d3d_i9xx_create_depth(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD natural;
     DWORD pitch;
     DWORD base;
+    /* 16-bit depth, or a 32-bit cell (DEPTH_FRMT_24_FIXED_8_OTHER). */
+    DWORD bytes = 2ul;
 
-    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
-        surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
-        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        if (surface->lpGbl->ddpfSurface.dwRGBBitCount == 32ul) {
+            bytes = 4ul;
+        } else if (surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
     }
-    natural = (((DWORD)surface->lpGbl->wWidth * 2ul) + 7ul) & ~7ul;
+    natural = (((DWORD)surface->lpGbl->wWidth * bytes) + 7ul) & ~7ul;
     if (natural == 0ul || (natural & (natural - 1ul)) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
@@ -1711,10 +1719,12 @@ static int v9x_d3d_i9xx_bind_depth_surface(const V9X_R3D_DRAW *draw,
         v9x_hal->d3d_diagnostics.i9xx_depth_last_func = draw->depth_func;
         return 0;
     }
-    if (v9x_d3d_i9xx_bind_depth(draw->depth.offset, draw->depth.pitch,
-                                draw->target.width, draw->target.height,
-                                v9x_hal->fb.vram_bytes,
-                                &address) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_bind_depth_at(draw->depth.offset, draw->depth.pitch,
+                                   draw->target.width, draw->target.height,
+                                   draw->depth.format == V9X_R3D_DEPTH_Z24X8
+                                       ? 4ul : 2ul,
+                                   v9x_hal->fb.vram_bytes,
+                                   &address) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.i9xx_depth_skipped;
         return 0;
     }
@@ -1970,11 +1980,12 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
 
-    /* 16 bpp, and 32 bpp through v9x_i9xx_retarget_state; depth stays
-     * 16-bit at both until 24-bit depth is measured. */
+    /* 16 bpp, and 32 bpp through v9x_i9xx_retarget_state; depth 16-bit, or
+     * a 32-bit cell with 24 bits of it, at either. */
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
         V9X_DDBD_16 | V9X_DDBD_32;
-    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
     /*
      * The three formats MAP_STATE can name at 16 bits: RGB565, the measured
      * one, and ARGB1555 and ARGB4444, which the same field selects and the
@@ -2240,8 +2251,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD *speculars = v9x_d3d_i9xx_speculars;
     /* Vertex fog: FOGENABLE, with the factor in each specular alpha. */
     DWORD fog = draw != 0 && draw->fog_enable != 0ul ? 1ul : 0ul;
-    /* DST_BUF_VARS for an XRGB8888 target, zero for the 16 bpp ones, which
-     * keep the 565 block as built. */
+    /* DST_BUF_VARS for an XRGB8888 target or a 32-bit depth buffer (set
+     * below, once the depth binding is known); zero keeps the 565, 16-bit
+     * depth block as built. */
     DWORD target_format =
         draw != 0 && draw->target.format == V9X_R3D_FORMAT_XRGB8888
             ? (V9X_I9XX_COLR_BUF_ARGB8888 | V9X_I9XX_DEPTH_FRMT_16_FIXED)
@@ -2293,7 +2305,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      */
     if (v9x_d3d_i9xx_bind_target_at(draw->target.offset, draw->target.pitch,
                                     draw->target.width, draw->target.height,
-                                    target_format != 0ul ? 4ul : 2ul,
+                                    draw->target.format ==
+                                            V9X_R3D_FORMAT_XRGB8888
+                                        ? 4ul : 2ul,
                                     v9x_hal->fb.vram_bytes,
                                     &identity, &address) == V9X_FALSE) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
@@ -2394,6 +2408,14 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     depthed = v9x_d3d_i9xx_bind_depth_surface(draw, &depth_offset,
                                               &depth_pitch, &depth_writes,
                                               &depth_compare);
+    /* A bound 32-bit depth buffer: 24-bit depth, with the target's colour
+     * format, 565 or ARGB8888. */
+    if (depthed && draw->depth.format == V9X_R3D_DEPTH_Z24X8) {
+        target_format = (draw->target.format == V9X_R3D_FORMAT_XRGB8888
+                             ? V9X_I9XX_COLR_BUF_ARGB8888
+                             : V9X_I9XX_COLR_BUF_RGB565) |
+                        V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER;
+    }
     v9x_d3d_i9xx_bind_blend(draw, &blend_src, &blend_dst);
     /*
      * ALPHATESTENABLE, ALPHAFUNC and ALPHAREF, as S6's alpha test - the

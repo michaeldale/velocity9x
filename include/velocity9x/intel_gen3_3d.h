@@ -58,6 +58,13 @@
 /* 16-bit fixed depth format. Its encoded value is zero, so this is documented
  * rather than emitted. Audit section 8. */
 #define V9X_I9XX_DEPTH_FRMT_16_FIXED     ((v9x_u32)0x00000000ul)
+/* 24-bit fixed depth in a 32-bit cell, its top byte unused (no stencil is
+ * enabled). Mesa 20.3.5 i915_reg.h:170, (2<<2), chosen from the depth
+ * buffer's cpp alone (i915_vtbl.c:611-616). Emitted only by
+ * v9x_i9xx_retarget_state, in flat builds. */
+#define V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER ((v9x_u32)0x00000008ul)
+/* DST_BUF_VARS's colour format field, bits 8-11. */
+#define V9X_I9XX_COLR_BUF_MASK           ((v9x_u32)0x00000f00ul)
 /*
  * Half-pixel sampling bias, horizontal and vertical. 0x8 in a four-bit field
  * is one half, and it is what puts sampling at pixel centres - the same
@@ -1762,13 +1769,13 @@ v9x_status v9x_i9xx_build_two_unit_state(
  * Rewrites a block v9x_i9xx_build_runtime_state(_fog) or
  * v9x_i9xx_build_two_unit_state has just built, `written` dwords long: its
  * DST_BUF_VARS to `format` (COLR_BUF_* | DEPTH_FRMT_*, the biases kept)
- * and its S5 to disable alpha writes. A rewrite rather than a parameter
- * because a parameter would grow the 16-bit copy of the builders. Both
- * builders put DST_BUF_VARS at the same place, V9X_I9XX_DST_BUF_VARS_AT:
- * after the fifteen invariant dwords and the colour BUF_INFO. Refuses a
- * format not measured (ARGB8888 with 16-bit depth only, 2026-10-18), a
- * block whose packet is not there or is not the 565 one, and a block with
- * no S2..S6 load; nothing is written then.
+ * and, for ARGB8888, its S5 to disable alpha writes. A rewrite rather than
+ * a parameter because a parameter would grow the 16-bit copy of the
+ * builders. Both builders put DST_BUF_VARS at the same place,
+ * V9X_I9XX_DST_BUF_VARS_AT: after the fifteen invariant dwords and the
+ * colour BUF_INFO. Takes ARGB8888 with 16- or 24-bit depth and 565 with
+ * 24-bit; refuses anything else, a block whose packet is not there or is
+ * not the 565 one, and a block with no S2..S6 load, writing nothing.
  */
 #define V9X_I9XX_DST_BUF_VARS_AT          18ul
 v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
@@ -1939,7 +1946,8 @@ struct v9x_i9xx_decode_limits {
      * initialiser - is RGB565 with 16-bit depth and S5 zero, as before.
      * Non-zero is read by the flat decoder alone (V9X_I9XX_TWO_UNITS): it
      * then requires exactly this format, for a runtime stream only, and S5
-     * with the alpha writes disabled. The 16-bit decoder does not read it.
+     * with the alpha writes disabled when the colour is ARGB8888. The
+     * 16-bit decoder does not read it.
      */
     v9x_u32 target_format;
 };

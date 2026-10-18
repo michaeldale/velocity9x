@@ -1101,7 +1101,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * alpha writes disabled, so the X byte is never written. The
              * 16-bit decoder has never checked S5. */
             if (stream[index + 4ul] !=
-                    (limits->target_format != 0ul
+                    ((limits->target_format & V9X_I9XX_COLR_BUF_MASK) ==
+                             V9X_I9XX_COLR_BUF_ARGB8888
                          ? V9X_I9XX_S5_WRITEDISABLE_ALPHA
                          : V9X_I9XX_S5_PHASE5)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 4ul);

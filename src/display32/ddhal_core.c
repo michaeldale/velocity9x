@@ -1813,7 +1813,7 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         (data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    bytes_per_pixel = v9x_d3d_depth_bytes_per_pixel();
+    bytes_per_pixel = v9x_d3d_depth_bytes_per_pixel(data->lpDDDestSurface);
     if (bytes_per_pixel == 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
@@ -1827,7 +1827,7 @@ static DWORD v9x_depthfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     /* The value on the full scale of the format, as the engine's depth
      * buffer holds it; both the engine fill and the CPU fill read it here. */
     data->bltFX.dwFillColor =
-        v9x_d3d_depth_fill_value(data->bltFX.dwFillColor);
+        v9x_d3d_depth_fill_value(data->bltFX.dwFillColor, bytes_per_pixel);
 
     ops = v9x_engine32();
     if (ops != 0 && ops->validate_status()) {

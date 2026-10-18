@@ -2,7 +2,10 @@
 
 Drafted 2026-09-25 after 3D WinBench 98's Z-accuracy tests failed on the
 netbook (`docs\decisions\2026-09-24-3d-winbench-98-quality-on-the-netbook.md`,
-pass 3). Not started; for review.
+pass 3). Status 2026-10-18: steps 1-3 done
+([2026-10-18-gen3-24-bit-depth.md](../decisions/2026-10-18-gen3-24-bit-depth.md)):
+565 + Z24 and ARGB8888 + Z24 measured on the netbook, per-surface depth in
+the core, DDBD_32 published. Step 4, the 3D WinBench 98 re-run, is owed.
 
 ## Diagnosis
 
