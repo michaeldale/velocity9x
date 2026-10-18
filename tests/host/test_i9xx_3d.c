@@ -501,6 +501,7 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->texture_max_lod = 0ul;
     limits->alpha_test = 0ul;
     limits->fog = 0ul;
+    limits->target_format = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -6019,8 +6020,174 @@ static void test_runtime_mip_chain(void)
     }
 }
 
+/*
+ * An XRGB8888 target (docs\plans\32bpp-acceleration-and-3d.md, Phase 3):
+ * a built runtime block retargeted to COLR_BUF_ARGB8888 with the alpha
+ * channel's writes disabled, so the X byte the clear wrote stays. Flat
+ * builds only (V9X_I9XX_TWO_UNITS), as the 16-bit driver's I9XXCODE has
+ * no room for it.
+ */
+static void test_runtime_xrgb8888_target(void)
+{
+#if V9X_I9XX_TWO_UNITS
+    struct v9x_i9xx_decode_limits limits;
+    static v9x_u32 stream[256];
+    static v9x_u32 pristine[256];
+    static v9x_u32 xyzw[3ul * 4ul];
+    static v9x_u32 colors[3ul];
+    v9x_u32 produced = 0ul;
+    v9x_u32 state = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 vertex;
+    v9x_u32 identity = 0ul;
+    v9x_u32 address = 0ul;
+    const v9x_u32 wide = V9X_I9XX_COLR_BUF_ARGB8888 |
+                         V9X_I9XX_DEPTH_FRMT_16_FIXED;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 2560ul;
+    const v9x_u32 width = 640ul;
+    const v9x_u32 height = 480ul;
+    const v9x_u32 aperture = 0x00800000ul;
+
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        xyzw[(vertex * 4ul) + 0ul] = 0x42000000ul;  /* 32.0 */
+        xyzw[(vertex * 4ul) + 1ul] = 0x42000000ul;
+        xyzw[(vertex * 4ul) + 2ul] = 0ul;
+        xyzw[(vertex * 4ul) + 3ul] = 0x3f800000ul;
+        colors[vertex] = 0xff13579bul;
+    }
+    xyzw[4] = 0x42800000ul;                       /* 64.0 */
+    xyzw[9] = 0x42800000ul;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, 0,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, 0ul, stream, 256ul,
+                                       &produced) == V9X_STATUS_OK);
+    state = produced;
+    at = produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 256ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 256ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    for (index = 0ul; index < at; ++index) {
+        pristine[index] = stream[index];
+    }
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+
+    /* The 16 bpp stream, as built, is not an 8888 one. */
+    limits.target_format = wide;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_FORMAT);
+
+    /* Retargeted: DST_BUF_VARS carries ARGB8888 and S5 disables alpha
+     * writes, and nothing else in the block moves. */
+    CHECK(v9x_i9xx_retarget_state(stream, state, wide) == V9X_STATUS_OK);
+    CHECK(stream[V9X_I9XX_DST_BUF_VARS_AT] == V9X_I9XX_3DSTATE_DST_BUF_VARS);
+    CHECK(stream[V9X_I9XX_DST_BUF_VARS_AT + 1ul] ==
+          (V9X_I9XX_COLR_BUF_ARGB8888 | V9X_I9XX_DSTORG_HORT_BIAS_HALF |
+           V9X_I9XX_DSTORG_VERT_BIAS_HALF));
+    produced = 0ul;
+    for (index = 0ul; index < at; ++index) {
+        if (stream[index] != pristine[index]) {
+            ++produced;
+        }
+    }
+    CHECK(produced == 2ul);
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+
+    /* An 8888 stream decoded as a 565 one is refused. */
+    limits.target_format = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_FORMAT);
+    limits.target_format = wide;
+
+    /* S5 is held to the format: alpha writes on into an X byte, refused;
+     * and a 565 stream with them disabled, refused too. */
+    for (index = 0ul; index < state; ++index) {
+        if (stream[index] == (V9X_I9XX_3DSTATE_LOAD_STATE_IMM1 |
+                              V9X_I9XX_I1_LOAD_S2 | V9X_I9XX_I1_LOAD_S3 |
+                              V9X_I9XX_I1_LOAD_S4 | V9X_I9XX_I1_LOAD_S5 |
+                              V9X_I9XX_I1_LOAD_S6 | 4ul)) {
+            break;
+        }
+    }
+    CHECK(index < state);
+    CHECK(stream[index + 4ul] == V9X_I9XX_S5_WRITEDISABLE_ALPHA);
+    stream[index + 4ul] = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &vertex) !=
+          V9X_I9XX_P5_OK);
+    pristine[index + 4ul] = V9X_I9XX_S5_WRITEDISABLE_ALPHA;
+    limits.target_format = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(pristine, at, &limits, &vertex) !=
+          V9X_I9XX_P5_OK);
+    pristine[index + 4ul] = 0ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(pristine, at, &limits, &vertex) ==
+          V9X_I9XX_P5_OK);
+
+    /* A scene never carries a target format. */
+    limits.kind = V9X_I9XX_SCENE_PLAIN;
+    limits.target_format = wide;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &vertex) !=
+          V9X_I9XX_P5_OK);
+
+    /* Formats not measured are refused, and so is a block already
+     * retargeted or one too short to hold the packet; none is touched. */
+    for (index = 0ul; index < at; ++index) {
+        stream[index] = pristine[index];
+    }
+    CHECK(v9x_i9xx_retarget_state(stream, state,
+                                  V9X_I9XX_COLR_BUF_RGB565) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_retarget_state(stream, state, 0x00000100ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_retarget_state(stream, state,
+                                  wide | 0x00000004ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_retarget_state(stream, V9X_I9XX_DST_BUF_VARS_AT + 1ul,
+                                  wide) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_retarget_state(0, state, wide) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    for (index = 0ul; index < at; ++index) {
+        CHECK(stream[index] == pristine[index]);
+    }
+    CHECK(v9x_i9xx_retarget_state(stream, state, wide) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_retarget_state(stream, state, wide) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* The target's footprint at four bytes a pixel: the last row is
+     * measured at 2560 bytes, and a 16 bpp pitch does not hold it. */
+    CHECK(v9x_d3d_i9xx_bind_target_at(aperture - 479ul * pitch - 2560ul,
+                                      pitch, width, height, 4ul, aperture,
+                                      &identity, &address) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_bind_target_at(aperture - 479ul * pitch - 2556ul,
+                                      pitch, width, height, 4ul, aperture,
+                                      &identity, &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target_at(0ul, 1280ul, width, height, 4ul,
+                                      aperture, &identity,
+                                      &address) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_bind_target_at(0ul, 1280ul, width, height, 2ul,
+                                      aperture, &identity,
+                                      &address) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_bind_target_at(0ul, pitch, width, height, 3ul,
+                                      aperture, &identity,
+                                      &address) == V9X_FALSE);
+#endif
+}
+
 unsigned int v9x_run_i9xx_3d_tests(void)
 {
+    test_runtime_xrgb8888_target();
     test_float_round_trip();
     test_float_refusals();
     test_fragment_program();

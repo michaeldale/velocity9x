@@ -152,7 +152,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     /* Samples at x + 0.5: V9XGLP's TexPhase reads OpenGL exactly and
      * V9XDDP's Direct3D half a pixel off without the move (netbook
      * boot 177). */
-    1ul                         /* pixel_centre_half      */
+    1ul,                        /* pixel_centre_half      */
+    0ul,                        /* depth_tiled            */
+    /* XRGB8888 on a 32 bpp desktop, ARGB8888 with the alpha writes off
+     * (v9x_i9xx_retarget_state); BUF_INFO's pitch field bounds it as it
+     * does a 16 bpp target. */
+    V9X_I9XX_BUF_3D_PITCH_MASK  /* target_pitch_max_xrgb8888 */
 };
 
 /*
@@ -1965,7 +1970,10 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
 
-    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    /* 16 bpp, and 32 bpp through v9x_i9xx_retarget_state; depth stays
+     * 16-bit at both until 24-bit depth is measured. */
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
     /*
      * The three formats MAP_STATE can name at 16 bits: RGB565, the measured
@@ -2232,6 +2240,12 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD *speculars = v9x_d3d_i9xx_speculars;
     /* Vertex fog: FOGENABLE, with the factor in each specular alpha. */
     DWORD fog = draw != 0 && draw->fog_enable != 0ul ? 1ul : 0ul;
+    /* DST_BUF_VARS for an XRGB8888 target, zero for the 16 bpp ones, which
+     * keep the 565 block as built. */
+    DWORD target_format =
+        draw != 0 && draw->target.format == V9X_R3D_FORMAT_XRGB8888
+            ? (V9X_I9XX_COLR_BUF_ARGB8888 | V9X_I9XX_DEPTH_FRMT_16_FIXED)
+            : 0ul;
     DWORD identity = 0ul;
     DWORD address = 0ul;
     DWORD at = 0ul;
@@ -2277,10 +2291,11 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      * against what this produced, which cannot catch an engine that was wrong
      * about the surface, and this is what makes sure it was not.
      */
-    if (v9x_d3d_i9xx_bind_target(draw->target.offset, draw->target.pitch,
-                                 draw->target.width, draw->target.height,
-                                 v9x_hal->fb.vram_bytes,
-                                 &identity, &address) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_bind_target_at(draw->target.offset, draw->target.pitch,
+                                    draw->target.width, draw->target.height,
+                                    target_format != 0ul ? 4ul : 2ul,
+                                    v9x_hal->fb.vram_bytes,
+                                    &identity, &address) == V9X_FALSE) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
     }
     /*
@@ -2510,7 +2525,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                 draw->target.height, maps, depth_offset, depth_pitch,
                 depth_writes, depth_compare, blend_src, blend_dst,
                 alpha_test, fog, stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
-                &produced) != V9X_STATUS_OK) {
+                &produced) != V9X_STATUS_OK ||
+            (target_format != 0ul &&
+             v9x_i9xx_retarget_state(stream + at, produced,
+                                     target_format) != V9X_STATUS_OK)) {
             return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
         }
         at += produced;
@@ -2547,7 +2565,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                          blend_src, blend_dst, cylinder,
                                          alpha_test, fog, stream + at,
                                          V9X_I9XX_SUBMIT_DWORDS - at,
-                                         &produced) != V9X_STATUS_OK) {
+                                         &produced) != V9X_STATUS_OK ||
+        (target_format != 0ul &&
+         v9x_i9xx_retarget_state(stream + at, produced,
+                                 target_format) != V9X_STATUS_OK)) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
     }
     at += produced;
@@ -2711,6 +2732,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     limits.depth_compare = depth_compare;
     limits.alpha_test = alpha_test;
     limits.fog = fog;
+    limits.target_format = target_format;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
     limits.texture_cylinder = cylinder;
     limits.texture_mip_filter = textured != 0 ? map.mip_filter : 0ul;
@@ -2862,7 +2884,8 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
 {
     if (draw == 0 ||
         (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
-         draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
+         draw->target.format != V9X_R3D_FORMAT_XRGB1555 &&
+         draw->target.format != V9X_R3D_FORMAT_XRGB8888)) {
         return 0;
     }
     /* An explicit draw's CPU texture, scissor or channel mask: the command

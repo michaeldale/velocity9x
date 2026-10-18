@@ -36,7 +36,7 @@
  */
 static v9x_u16 v9x_d3d_i9xx_footprint_fits(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
-    v9x_u32 aperture_bytes)
+    v9x_u32 bytes_per_pixel, v9x_u32 aperture_bytes)
 {
     v9x_u32 row_bytes;
     v9x_u32 last_row;
@@ -45,9 +45,9 @@ static v9x_u16 v9x_d3d_i9xx_footprint_fits(
         aperture_bytes == 0ul) {
         return V9X_FALSE;
     }
-    /* A row must hold its own pixels: every surface this engine binds is two
-     * bytes a pixel, target, texture and depth alike. */
-    row_bytes = width * 2ul;
+    /* A row must hold its own pixels: two bytes each for every texture and
+     * depth buffer and a 16 bpp target, four for an XRGB8888 target. */
+    row_bytes = width * bytes_per_pixel;
     if (pitch < row_bytes) {
         return V9X_FALSE;
     }
@@ -111,7 +111,7 @@ v9x_u16 v9x_d3d_i9xx_bind_map(
     if ((offset & (V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul)) != 0ul) {
         return V9X_FALSE;
     }
-    if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height,
+    if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height, 2ul,
                                     aperture_bytes) == V9X_FALSE) {
         return V9X_FALSE;
     }
@@ -153,7 +153,7 @@ v9x_u16 v9x_d3d_i9xx_bind_depth(
     if (offset == 0ul) {
         return V9X_FALSE;
     }
-    if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height,
+    if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height, 2ul,
                                     aperture_bytes) == V9X_FALSE) {
         return V9X_FALSE;
     }
@@ -279,6 +279,16 @@ v9x_u16 v9x_d3d_i9xx_bind_target(
     v9x_u32 aperture_bytes,
     v9x_u32 *identity_out, v9x_u32 *address_out)
 {
+    return v9x_d3d_i9xx_bind_target_at(offset, pitch, width, height, 2ul,
+                                       aperture_bytes, identity_out,
+                                       address_out);
+}
+
+v9x_u16 v9x_d3d_i9xx_bind_target_at(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 bytes_per_pixel, v9x_u32 aperture_bytes,
+    v9x_u32 *identity_out, v9x_u32 *address_out)
+{
     if (identity_out == 0 || address_out == 0) {
         return V9X_FALSE;
     }
@@ -286,7 +296,8 @@ v9x_u16 v9x_d3d_i9xx_bind_target(
     *address_out = 0ul;
 
     if (width == 0ul || height == 0ul || pitch == 0ul ||
-        aperture_bytes == 0ul) {
+        aperture_bytes == 0ul ||
+        (bytes_per_pixel != 2ul && bytes_per_pixel != 4ul)) {
         return V9X_FALSE;
     }
     if (width > V9X_I9XX_TARGET_DIMENSION_MAX ||
@@ -307,6 +318,7 @@ v9x_u16 v9x_d3d_i9xx_bind_target(
         return V9X_FALSE;
     }
     if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height,
+                                    bytes_per_pixel,
                                     aperture_bytes) == V9X_FALSE) {
         return V9X_FALSE;
     }

@@ -657,12 +657,28 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
             }
             format = stream[index + 1ul];
+#if V9X_I9XX_TWO_UNITS
+            /* The flat decoder holds a runtime stream to the format its
+             * engine declared (v9x_i9xx_retarget_state); zero is 565 and
+             * 16-bit depth, and a scene declares none. */
+            if ((limits->target_format != 0ul &&
+                 limits->kind != V9X_I9XX_SCENE_RUNTIME) ||
+                format != ((limits->target_format != 0ul
+                                ? limits->target_format
+                                : (V9X_I9XX_COLR_BUF_RGB565 |
+                                   V9X_I9XX_DEPTH_FRMT_16_FIXED)) |
+                           V9X_I9XX_DSTORG_HORT_BIAS_HALF |
+                           V9X_I9XX_DSTORG_VERT_BIAS_HALF)) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 1ul);
+            }
+#else
             if (format != (V9X_I9XX_COLR_BUF_RGB565 |
                            V9X_I9XX_DEPTH_FRMT_16_FIXED |
                            V9X_I9XX_DSTORG_HORT_BIAS_HALF |
                            V9X_I9XX_DSTORG_VERT_BIAS_HALF)) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 1ul);
             }
+#endif
             saw_dst_buf_vars = V9X_TRUE;
             index += 2ul;
 
@@ -1080,6 +1096,17 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                           : 0ul))) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, index + 3ul);
             }
+#if V9X_I9XX_TWO_UNITS
+            /* S5 in the flat decoder: zero, or for an ARGB8888 target the
+             * alpha writes disabled, so the X byte is never written. The
+             * 16-bit decoder has never checked S5. */
+            if (stream[index + 4ul] !=
+                    (limits->target_format != 0ul
+                         ? V9X_I9XX_S5_WRITEDISABLE_ALPHA
+                         : V9X_I9XX_S5_PHASE5)) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_FORMAT, index + 4ul);
+            }
+#endif
             /*
              * S6, pinned to the kind rather than merely screened for
              * forbidden bits.

@@ -769,4 +769,45 @@ v9x_status v9x_i9xx_build_two_unit_state(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+/* The DST_BUF_VARS dword every builder here emits: 565, 16-bit depth, the
+ * half-pixel biases. */
+#define V9X_I9XX_DST_BUF_VARS_565 \
+    (V9X_I9XX_COLR_BUF_RGB565 | V9X_I9XX_DEPTH_FRMT_16_FIXED | \
+     V9X_I9XX_DSTORG_HORT_BIAS_HALF | V9X_I9XX_DSTORG_VERT_BIAS_HALF)
+
+v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
+                                   v9x_u32 format)
+{
+    v9x_u32 index;
+
+    /* ARGB8888 with 16-bit depth is the one combination measured. */
+    if (stream == 0 ||
+        format != (V9X_I9XX_COLR_BUF_ARGB8888 |
+                   V9X_I9XX_DEPTH_FRMT_16_FIXED) ||
+        written < V9X_I9XX_DST_BUF_VARS_AT + 2ul ||
+        stream[V9X_I9XX_DST_BUF_VARS_AT] != V9X_I9XX_3DSTATE_DST_BUF_VARS ||
+        stream[V9X_I9XX_DST_BUF_VARS_AT + 1ul] != V9X_I9XX_DST_BUF_VARS_565) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* The S2..S6 load is the block's last packet, after any depth BUF_INFO
+     * and texture state, so it is found rather than placed: its header and
+     * five dwords end the block. */
+    if (written < 6ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    index = written - 6ul;
+    if (stream[index] != (V9X_I9XX_3DSTATE_LOAD_STATE_IMM1 |
+                          V9X_I9XX_I1_LOAD_S2 | V9X_I9XX_I1_LOAD_S3 |
+                          V9X_I9XX_I1_LOAD_S4 | V9X_I9XX_I1_LOAD_S5 |
+                          V9X_I9XX_I1_LOAD_S6 | 4ul) ||
+        stream[index + 4ul] != V9X_I9XX_S5_PHASE5) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    stream[V9X_I9XX_DST_BUF_VARS_AT + 1ul] =
+        format | V9X_I9XX_DSTORG_HORT_BIAS_HALF |
+        V9X_I9XX_DSTORG_VERT_BIAS_HALF;
+    stream[index + 4ul] = V9X_I9XX_S5_WRITEDISABLE_ALPHA;
+    return V9X_STATUS_OK;
+}
 #endif /* V9X_I9XX_TWO_UNITS */

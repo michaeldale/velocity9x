@@ -48,6 +48,13 @@
 /* RGB565 colour buffer format, dword 1 bits 8-11. Audit section 4, two
  * independent assignments. */
 #define V9X_I9XX_COLR_BUF_RGB565         ((v9x_u32)0x00000200ul)
+/*
+ * ARGB8888, for a 32 bpp desktop's target (docs\plans\32bpp-acceleration-
+ * and-3d.md, Phase 3). Mesa 20.3.5 i915_reg.h:167, (3<<8); xf86-video-intel
+ * 2.99.917 i915_render.c:154 and i915_video.c:155 use it for a 32-bit
+ * destination. Emitted only by v9x_i9xx_retarget_state, in flat builds.
+ */
+#define V9X_I9XX_COLR_BUF_ARGB8888       ((v9x_u32)0x00000300ul)
 /* 16-bit fixed depth format. Its encoded value is zero, so this is documented
  * rather than emitted. Audit section 8. */
 #define V9X_I9XX_DEPTH_FRMT_16_FIXED     ((v9x_u32)0x00000000ul)
@@ -157,6 +164,10 @@
  * zero is the correct value and this name says so deliberately.
  */
 #define V9X_I9XX_S5_PHASE5               ((v9x_u32)0x00000000ul)
+/* Alpha channel writes disabled: an ARGB8888 target's top byte is the
+ * X8R8G8B8 desktop's X and keeps what the clear wrote. Mesa 20.3.5
+ * intel_reg.h:140, (1<<31); i915_state.c:706 sets it from the colour mask. */
+#define V9X_I9XX_S5_WRITEDISABLE_ALPHA   ((v9x_u32)0x80000000ul)
 
 /*
  * S6: colour writes ENABLED, and nothing else.
@@ -1743,6 +1754,25 @@ v9x_status v9x_i9xx_build_two_unit_state(
     v9x_u32 blend_src, v9x_u32 blend_dst,
     v9x_u32 alpha_test, v9x_u32 fog,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+/*
+ * An XRGB8888 target, for the 32-bit HAL alone, for I9XXCODE's reason
+ * above (docs\plans\32bpp-acceleration-and-3d.md, Phase 3).
+ *
+ * Rewrites a block v9x_i9xx_build_runtime_state(_fog) or
+ * v9x_i9xx_build_two_unit_state has just built, `written` dwords long: its
+ * DST_BUF_VARS to `format` (COLR_BUF_* | DEPTH_FRMT_*, the biases kept)
+ * and its S5 to disable alpha writes. A rewrite rather than a parameter
+ * because a parameter would grow the 16-bit copy of the builders. Both
+ * builders put DST_BUF_VARS at the same place, V9X_I9XX_DST_BUF_VARS_AT:
+ * after the fifteen invariant dwords and the colour BUF_INFO. Refuses a
+ * format not measured (ARGB8888 with 16-bit depth only, 2026-10-18), a
+ * block whose packet is not there or is not the 565 one, and a block with
+ * no S2..S6 load; nothing is written then.
+ */
+#define V9X_I9XX_DST_BUF_VARS_AT          18ul
+v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
+                                   v9x_u32 format);
 #endif
 
 /* src\chipsets\intel\i9xx_3d_decode.c */
@@ -1903,6 +1933,15 @@ struct v9x_i9xx_decode_limits {
      * - forbids all four. Append-only, as above.
      */
     v9x_u32 fog;
+    /*
+     * The colour and depth format a runtime stream's DST_BUF_VARS carries,
+     * as COLR_BUF_* | DEPTH_FRMT_*. Zero - every scene, every positional
+     * initialiser - is RGB565 with 16-bit depth and S5 zero, as before.
+     * Non-zero is read by the flat decoder alone (V9X_I9XX_TWO_UNITS): it
+     * then requires exactly this format, for a runtime stream only, and S5
+     * with the alpha writes disabled. The 16-bit decoder does not read it.
+     */
+    v9x_u32 target_format;
 };
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(

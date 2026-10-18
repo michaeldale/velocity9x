@@ -37,6 +37,13 @@ v9x_u16 v9x_d3d_i9xx_bind_target(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes,
     v9x_u32 *identity_out, v9x_u32 *address_out);
+/* The same at 2 or 4 bytes a pixel; bind_target is this at 2. An
+ * XRGB8888 target's last row is four bytes a pixel, and measuring it at
+ * two would let it end past the aperture. */
+v9x_u16 v9x_d3d_i9xx_bind_target_at(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 bytes_per_pixel, v9x_u32 aperture_bytes,
+    v9x_u32 *identity_out, v9x_u32 *address_out);
 
 /*
  * The same question for a texture map and for a depth buffer.
