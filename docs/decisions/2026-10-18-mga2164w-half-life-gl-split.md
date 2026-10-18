@@ -111,6 +111,43 @@ refused attempt, the VRAM surface and the resend, and change no pixel. The propo
 boot 496 because the session was shorter and played differently. On both,
 the filter refusals are the larger share once the texture is sampled.
 
+## Boot 498: half on the engine, and the walls go wrong
+
+Boot 498 runs decision 2 (filters drawn as nearest; no 4444 surfaces;
+5f8da79b). Michael ran Half-Life OpenGL. **It ran a little faster than
+before, with corruption on the walls**, and Direct3D still looked and
+ran better. Snapshot `V9XSNA7-boot498-hl.ini`, and the ICD's lines in
+`V9XGL-boot498-hl.LOG`; the probes' 141 draws are taken off:
+
+| | Batches |
+|---|---|
+| Render-interface draws | 3,531 |
+| Drawn on the engine (ICD `paths hw=1993`) | 1,993 (56 %) |
+| Refused, blend (`M64AcceptPolicy04`) | 598 |
+| Refused, CPU levels (4444 textures, now never surfaces, `02`) | 940 |
+| Triangles refused by the setup (`MgaSetupRefusedSplit`), not drawn | 70 |
+
+The ICD's first draw of each state names the two passes of a wall:
+- **Base texture:** blend off, depth LESSEQUAL with writes on
+  (`blend=00050600 depth=01040102`). Drawn on the engine.
+- **Lightmap:** DESTCOLOR/SRCCOLOR, the 2x multiply, depth LESSEQUAL with
+  writes off (`blend=01090300 depth=01040001`), logged as `refused`.
+  Drawn by the CPU over the engine's pixels.
+
+**Hypothesis, not measured pixel by pixel:**
+- The CPU's depth for a polygon differs by rounding from the depth the
+  engine stored for it, so the lightmap's LESSEQUAL test fails wherever
+  the CPU's value is a step farther.
+- Those pixels keep the unlit base texture: the walls' corruption.
+- The 70 refused triangles leave holes too.
+
+Phase 0.5's mixed-frame probe tests ordering and encodings, not two
+rasterizers agreeing on one surface's depth, so it could not catch this.
+
+Direct3D looks right because it keeps every pass on the engine: it
+draws the multiply through the half stipple
+(2026-10-10-mga2164w-d3d-engine.md).
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.

@@ -26,8 +26,13 @@ had surface textures the engine would not sample, 32 % were refused for
 the filter and 8 % for the blend. Boot 497 named the texture refusals: all
 of them are ARGB4444, which the describe offers and the 2164W cannot
 sample (TW12 drew garbage on 2026-10-10). Decision 2 taken and applied
-at boot 498 (filters as nearest, no 4444 surfaces). Next: Half-Life OpenGL
-on boot 498 for its new split.
+at boot 498 (filters as nearest, no 4444 surfaces). Half-Life OpenGL there:
+56 % of its batches on the engine, slightly faster, and corrupted walls.
+The base pass is drawn on the engine and the lightmap multiply on the CPU,
+whose depth for the same polygon differs, and its LESSEQUAL test fails
+(hypothesis; [record](../decisions/2026-10-18-mga2164w-half-life-gl-split.md)).
+Direct3D, all on the engine with the stipple, looks and runs better.
+Next: Michael's choice of how to keep a wall's passes on one rasterizer.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
