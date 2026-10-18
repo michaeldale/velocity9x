@@ -63,5 +63,8 @@ void *v9x_glide_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 format);
 int v9x_glide_hwtex_upload(void *surface, const v9x_u16 *texels,
                            v9x_u32 width, v9x_u32 height);
 void v9x_glide_hwtex_release(void *surface);
+/* Whether DirectDraw has taken the surface's video memory back
+ * (DDERR_SURFACELOST), so the cached copy must be made again. */
+int v9x_glide_hwtex_lost(void *surface);
 
 #endif /* VELOCITY9X_GLIDE_SURFACE_H */

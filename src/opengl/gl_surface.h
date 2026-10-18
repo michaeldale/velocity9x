@@ -85,6 +85,9 @@ int v9x_gl_hwtex_upload_rects(void *surface, v9x_u32 levels,
                               const V9X_R3D_ABI_LEVEL *source,
                               const V9X_GL_TEXRECT *rects, int to_1555);
 void v9x_gl_hwtex_release(void *surface);
+/* Whether DirectDraw has taken the surface's video memory back
+ * (DDERR_SURFACELOST): its address is gone, so it must be made again. */
+int v9x_gl_hwtex_lost(void *surface);
 /* The drawable for a window if one exists, without making or resizing. */
 V9X_GL_DRAWABLE *v9x_gl_drawable_find(void *window);
 

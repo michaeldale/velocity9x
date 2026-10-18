@@ -134,6 +134,8 @@ static v9x_u32 v9x_glide_uploads;
 static v9x_u32 v9x_glide_refusals_logged;
 static v9x_u32 v9x_glide_surface_hits;
 static v9x_u32 v9x_glide_surface_evictions;
+/* Cached surfaces found lost (v9x_glide_hwtex_lost) and made again. */
+static v9x_u32 v9x_glide_surfaces_lost;
 
 /*
  * Where a frame's time goes, in CPU cycles, as the ICD measures (gl_icd.c):
@@ -311,6 +313,8 @@ void v9x_glide_summary(const char *why)
     wsprintfA(text, "census   draws: fog-dropped=%lu cpu-copies=%lu uploads=%lu surface-hits=%lu evictions=%lu",
               v9x_glide_fog_dropped, v9x_glide_cpu_copies, v9x_glide_uploads,
               v9x_glide_surface_hits, v9x_glide_surface_evictions);
+    v9x_glide_log(text);
+    wsprintfA(text, "census   draws: surfaces-lost=%lu", v9x_glide_surfaces_lost);
     v9x_glide_log(text);
     wsprintfA(text, "census   sources: calls=%lu refills=%lu new=%lu",
               v9x_glide_source_calls, v9x_glide_source_refills,
@@ -832,7 +836,8 @@ static V9X_GLIDE_CACHED_SURFACE *v9x_glide_surface_for(V9X_GLIDE_TEXTURE *textur
     if (texture->surface_slot != 0ul) {
         entry = &v9x_glide_surfaces[texture->surface_slot - 1ul];
         if (entry->in_use && entry->stamp == texture->surface_stamp &&
-            entry->variant == variant) {
+            entry->variant == variant &&
+            !v9x_glide_hwtex_lost(entry->surface)) {
             entry->last_used = ++v9x_glide_use_clock;
             return entry;
         }
@@ -856,6 +861,20 @@ static V9X_GLIDE_CACHED_SURFACE *v9x_glide_surface_for(V9X_GLIDE_TEXTURE *textur
         if (entry->sum == texture->sum && entry->width == texture->width &&
             entry->height == texture->height && entry->format == texture->format &&
             entry->variant == variant) {
+            /* A surface DirectDraw took back has no address: release it
+             * and make the texture again below, as the ICD does (Half-Life
+             * OpenGL's Multiplayer menu lost every one, A8U4I5 boot 500). */
+            if (v9x_glide_hwtex_lost(entry->surface)) {
+                v9x_glide_flush();
+                v9x_glide_hwtex_release(entry->surface);
+                entry->surface = 0;
+                entry->in_use = 0;
+                ++v9x_glide_surfaces_lost;
+                if (slot == V9X_GLIDE_SURFACES) {
+                    slot = i;
+                }
+                continue;
+            }
             entry->last_used = ++v9x_glide_use_clock;
             texture->surface_slot = (v9x_u32)i + 1ul;
             texture->surface_stamp = entry->stamp;

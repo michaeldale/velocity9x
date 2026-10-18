@@ -571,3 +571,10 @@ void v9x_glide_hwtex_release(void *surface)
         IDirectDrawSurface_Release((LPDIRECTDRAWSURFACE)surface);
     }
 }
+
+int v9x_glide_hwtex_lost(void *surface)
+{
+    return surface != 0 &&
+           IDirectDrawSurface_IsLost((LPDIRECTDRAWSURFACE)surface) ==
+               DDERR_SURFACELOST;
+}

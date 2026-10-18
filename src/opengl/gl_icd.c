@@ -1364,6 +1364,8 @@ static V9X_GL_HWTEX *v9x_gl_hwtex_live[V9X_GL_HWTEX_MAX];
 static unsigned int v9x_gl_hwtex_count;
 static v9x_u32 v9x_gl_hwtex_clock;
 static DWORD v9x_gl_hw_evictions;
+/* Copies found lost (v9x_gl_hwtex_lost) and made again. */
+static DWORD v9x_gl_hw_lost;
 
 /* V9X_GL_TEXTURES.hw_release: the surface, the table entry, the record. */
 static void v9x_gl_hwtex_free(void *memory)
@@ -1633,6 +1635,20 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     if (hw->unusable) {
         return v9x_gl_hw_no(V9X_GL_HWNO_UNUSABLE);
     }
+    /*
+     * A surface DirectDraw took back is made again and refilled. Half-Life
+     * OpenGL's Multiplayer menu left every one invalidated (fpVidMem 0,
+     * DDRAWISURF_INVALID, DDRAWISURFGBL_MEMFREE) with no mode change the
+     * interface reports, and drawing them from the CPU from then on took it
+     * from about 11.6 to 0.6 fps (A8U4I5, boots 499-500).
+     */
+    if (hw->surface != 0 && v9x_gl_hwtex_lost(hw->surface)) {
+        v9x_gl_hwtex_release(hw->surface);
+        hw->surface = 0;
+        hw->filled = 0;
+        hw->retry_at = 0ul;
+        ++v9x_gl_hw_lost;
+    }
     if (hw->surface == 0) {
         if (v9x_gl_hwtex_clock < hw->retry_at) {
             return v9x_gl_hw_no(V9X_GL_HWNO_BACKOFF);
@@ -1849,6 +1865,8 @@ static void v9x_gl_counters_log(void)
     char text[400];
 
     v9x_gl_path_log();
+    wsprintfA(text, "counters hwtex lost=%lu", v9x_gl_hw_lost);
+    v9x_gl_log(text);
     wsprintfA(text, "counters hwtex live=%lu creates=%lu create-failed=%lu "
               "evictions=%lu uploads=%lu partial=%lu "
               "upload-kb=%lu squared=%lu alpha-dropped=%lu fog-dropped=%lu "

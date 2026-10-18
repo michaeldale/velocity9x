@@ -193,6 +193,38 @@ every 10).
   surface's raw `fpVidMem`, local flags and global flags (DDK
   `DDRAWISURF_INVALID`, `DDRAWISURFGBL_MEMFREE`) to settle it.
 
+## Boot 500: the textures were lost; boot 501 remakes them
+
+Michael ran Half-Life OpenGL on boot 500, opened and closed the
+Multiplayer menu, and quit (`V9XSNA7-boot500-hl.ini`). The snapshot:
+- 706 surface-texture draws were refused for placement.
+- The last refused surface had `fpVidMem` 0, local flags `10000000h`
+  (DDRAWISURF_INVALID, "surface has been invalidated by mode set") and
+  global flags `1` (DDRAWISURFGBL_MEMFREE, "video memory has been
+  freed").
+- `gl-describes=2`.
+
+**The textures were lost**, not misplaced and not short of memory.
+DirectDraw had freed their video memory, and the ICD kept drawing with the
+dead surfaces. The interface's generation had not changed, so the ICD's
+`STALE` path never ran: it drops every copy and describes again. Each
+batch was refused, resent from the CPU and drawn there.
+
+The change, in the commit with this section:
+- **The ICD** asks `IsLost` before it uses a copy (`v9x_gl_hwtex_lost`).
+  A lost one is released, made again and refilled, and counted
+  (`counters hwtex lost=` in V9XGL.LOG).
+- **Glide** does the same on its surface cache, on both the fast path and
+  the search (`surfaces-lost=` in the census). Its upload already
+  restored a lost surface, but only for a new entry.
+- Answering `STALE` from the core instead was rejected: Glide retries a
+  `STALE` batch with the same surface, so it would have failed four
+  times and dropped the batch.
+
+Boot 501 runs it. V9XR3DP and V9XGLP pass at 16 bpp, and V9XGLIDP fails
+only `BlendHalf`, the stipple, as at boot 499. Half-Life after the menu
+is not yet measured on it.
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.

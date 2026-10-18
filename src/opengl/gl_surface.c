@@ -592,6 +592,13 @@ void v9x_gl_hwtex_release(void *surface)
     }
 }
 
+int v9x_gl_hwtex_lost(void *surface)
+{
+    return surface != 0 &&
+           IDirectDrawSurface_IsLost((LPDIRECTDRAWSURFACE)surface) ==
+               DDERR_SURFACELOST;
+}
+
 int v9x_gl_drawable_lock(V9X_GL_DRAWABLE *drawable, int front,
                          const void **pixels, v9x_u32 *pitch)
 {
