@@ -13,6 +13,7 @@
 
 #include "velocity9x/types.h"
 #include "velocity9x/intel_hsw_eu.h"
+#include "velocity9x/intel_hsw_3d.h"
 #include "velocity9x/r3d_abi.h"
 #include "../r3d/r3d.h"
 
@@ -36,6 +37,18 @@ v9x_u32 v9x_d3d_hsw_explicit_refusal(const V9X_R3D_DRAW *draw);
 /* BLEND_STATE's write-disable nibble (A R G B, 27:24) for the render
  * interface's RGB mask; alpha always written. Step 2. */
 v9x_u8 v9x_d3d_hsw_write_disable(v9x_u32 write_mask);
+
+/*
+ * The render target's SURFACE_STATE format for a render-interface layout,
+ * and the write-disable bits it needs ORed into BLEND_STATE: 565 and 1555
+ * as before, and XRGB8888 (a 32 bpp desktop,
+ * docs\plans\32bpp-acceleration-and-3d.md) as B8G8R8A8_UNORM - the format
+ * the Phase D and E scenes rendered on this chip - with alpha writes off,
+ * so the X byte keeps what the clear wrote, as the Gen3 and software
+ * engines do. 0 for any other layout, nothing written.
+ */
+int v9x_d3d_hsw_target(v9x_u32 r3d_format, v9x_u16 *format,
+                       v9x_u8 *write_disable);
 
 /*
  * The draw's scissor as the inclusive rectangle 3DSTATE_DRAWING_RECTANGLE

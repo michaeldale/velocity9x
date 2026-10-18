@@ -114,7 +114,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     /* 3DSTATE_MULTISAMPLE Pixel Location is the pixel centre (Vol 2b), and
      * Phase D's coverage matched a reference sampling at x + 0.5. */
     1ul,            /* pixel_centre_half */
-    1ul             /* depth_tiled: Y tiles */
+    1ul,            /* depth_tiled: Y tiles */
+    /* XRGB8888 on a 32 bpp desktop as B8G8R8A8 with alpha writes off
+     * (v9x_d3d_hsw_target); the pitch bound is the 16 bpp one. */
+    16384ul         /* target_pitch_max_xrgb8888 */
 };
 
 /* One texture unit as the sampler reads it. */
@@ -661,6 +664,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     int has_alpha = 0;
     int has_alpha1 = 0;
     v9x_u32 op;
+    v9x_u8 target_disable = 0u;
 
     /* What the render interface states and this engine cannot draw exactly
      * (d3d_hsw_map.c): CPU levels. */
@@ -683,12 +687,10 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     state->depth_function = 0u;
     state->depth_write = 0u;
 
-    if (draw->target.format == V9X_R3D_FORMAT_RGB565) {
-        state->target_format = V9X_HSW_FMT_B5G6R5_UNORM;
-    } else if (draw->target.format == V9X_R3D_FORMAT_XRGB1555) {
-        /* The A1 form, which renders; the display ignores the top bit. */
-        state->target_format = V9X_HSW_FMT_B5G5R5A1_UNORM;
-    } else {
+    /* 565, 1555, or XRGB8888 with its alpha writes off (target_disable,
+     * ORed into the blend state below). */
+    if (!v9x_d3d_hsw_target(draw->target.format, &state->target_format,
+                            &target_disable)) {
         return V9X_D3D_HSW_REFUSE_TARGET;
     }
     if (draw->target.pitch == 0ul || draw->target.width == 0ul ||
@@ -794,6 +796,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
         state->blend.write_disable =
             v9x_d3d_hsw_write_disable(draw->write_mask);
     }
+    state->blend.write_disable |= target_disable;
     state->scissor_empty = !v9x_d3d_hsw_scissor(draw, state->scissor);
     if (draw->blend_enable != 0ul) {
         state->blend.src_factor = v9x_d3d_hsw_factor(draw->src_blend);
@@ -1522,7 +1525,9 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
-    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    /* 16 and 32 bpp targets (v9x_d3d_hsw_target); depth D16 at both. */
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
     /* RGB565, ARGB1555 and ARGB4444: the shared block has three slots. */

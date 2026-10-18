@@ -39,6 +39,27 @@ v9x_u8 v9x_d3d_hsw_write_disable(v9x_u32 write_mask)
     return disable;
 }
 
+#define V9X_D3D_HSW_DISABLE_ALPHA 8u
+
+int v9x_d3d_hsw_target(v9x_u32 r3d_format, v9x_u16 *format,
+                       v9x_u8 *write_disable)
+{
+    if (r3d_format == V9X_R3D_FORMAT_RGB565) {
+        *format = V9X_HSW_FMT_B5G6R5_UNORM;
+        *write_disable = 0u;
+    } else if (r3d_format == V9X_R3D_FORMAT_XRGB1555) {
+        /* The A1 form, which renders; the display ignores the top bit. */
+        *format = V9X_HSW_FMT_B5G5R5A1_UNORM;
+        *write_disable = 0u;
+    } else if (r3d_format == V9X_R3D_FORMAT_XRGB8888) {
+        *format = V9X_HSW_FMT_B8G8R8A8_UNORM;
+        *write_disable = V9X_D3D_HSW_DISABLE_ALPHA;
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
 v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
                                     int has_alpha0, v9x_u32 color1,
                                     v9x_u32 alpha1, int has_alpha1,

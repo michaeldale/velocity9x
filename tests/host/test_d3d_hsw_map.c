@@ -204,9 +204,30 @@ static void test_two_unit_stages(void)
               &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
 }
 
+/* The target's SURFACE_STATE format, and the write disables it needs: an
+ * XRGB8888 target renders as B8G8R8A8 with alpha writes off, so the X byte
+ * the clear wrote stays (docs\plans\32bpp-acceleration-and-3d.md). */
+static void test_target(void)
+{
+    v9x_u16 format = 0u;
+    v9x_u8 disable = 0xffu;
+
+    CHECK(v9x_d3d_hsw_target(V9X_R3D_FORMAT_RGB565, &format, &disable));
+    CHECK(format == V9X_HSW_FMT_B5G6R5_UNORM && disable == 0u);
+    CHECK(v9x_d3d_hsw_target(V9X_R3D_FORMAT_XRGB1555, &format, &disable));
+    CHECK(format == V9X_HSW_FMT_B5G5R5A1_UNORM && disable == 0u);
+    CHECK(v9x_d3d_hsw_target(V9X_R3D_FORMAT_XRGB8888, &format, &disable));
+    CHECK(format == V9X_HSW_FMT_B8G8R8A8_UNORM && disable == 8u);
+    format = 0x1234u;
+    CHECK(!v9x_d3d_hsw_target(0ul, &format, &disable));
+    CHECK(!v9x_d3d_hsw_target(3ul, &format, &disable));
+    CHECK(format == 0x1234u);
+}
+
 unsigned int v9x_run_d3d_hsw_map_tests(void)
 {
     failures = 0u;
+    test_target();
     test_accepted();
     test_refused();
     test_write_disable();
