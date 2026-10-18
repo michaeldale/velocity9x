@@ -475,6 +475,7 @@ static const char *v9x_depth_reject_name(DWORD reason)
     case V9X_D3D_ZREJECT_OVERLAPS_FB:   return "overlaps-framebuffer";
     case V9X_D3D_ZREJECT_PITCH:         return "pitch";
     case V9X_D3D_ZREJECT_BOUNDS:        return "bounds";
+    case V9X_D3D_ZREJECT_FORMAT:        return "format";
     default:                            return "unknown";
     }
 }

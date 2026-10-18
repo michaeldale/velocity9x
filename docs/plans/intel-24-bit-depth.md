@@ -5,7 +5,11 @@ netbook (`docs\decisions\2026-09-24-3d-winbench-98-quality-on-the-netbook.md`,
 pass 3). Status 2026-10-18: steps 1-3 done
 ([2026-10-18-gen3-24-bit-depth.md](../decisions/2026-10-18-gen3-24-bit-depth.md)):
 565 + Z24 and ARGB8888 + Z24 measured on the netbook, per-surface depth in
-the core, DDBD_32 published. Step 4, the 3D WinBench 98 re-run, is owed.
+the core, DDBD_32 published. Step 4 run the same day
+([2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md](../decisions/2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md)):
+the benchmark asks for 16-bit Z at both colour depths, so it cannot judge
+the 24-bit format; Narrow and Wide Z still fail at 16. Open: a title that
+asks for 32-bit Z.
 
 ## Diagnosis
 

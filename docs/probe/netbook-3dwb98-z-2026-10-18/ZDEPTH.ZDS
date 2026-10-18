@@ -1,0 +1,10 @@
+[Suite]
+Name=Depth quality
+
+[Config]
+Benchmark=3DWB98
+
+[Contents]
+Quality/ 4/Z-buffer=True
+Quality/38/Narrow Z Accuracy=True
+Quality/39/Wide Z Accuracy=True

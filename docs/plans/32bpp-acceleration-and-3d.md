@@ -161,7 +161,7 @@ V9XDDP core and one real title at 32 bpp on its machine.
 | Order | Chip | Machine | Notes |
 |---|---|---|---|
 | 1 | MGA-2164W | A8U4I5 (when re-fitted) / 86Box Millennium :9877 | 32 bpp trapezoids and 32-bit Z already probed |
-| 2 | Intel Gen3 | netbook | **Done 2026-10-18**: ARGB8888 with alpha writes off, Z16 and Z24 (D24X8) at 16 and 32 bpp, V9XD32 T5 tells the two depths apart; 3D WinBench 98 Z re-run owed ([intel-24-bit-depth.md](intel-24-bit-depth.md)); 8 MiB stolen memory makes 1024x768x32 triple-buffered + Z tight |
+| 2 | Intel Gen3 | netbook | **Done 2026-10-18**: ARGB8888 with alpha writes off, Z16 and Z24 (D24X8) at 16 and 32 bpp, V9XD32 T5 tells the two depths apart; 3D WinBench 98 runs its depth tests at 640x480x32 on the HAL but asks for 16-bit Z, so it cannot judge Z24 ([2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md](../decisions/2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md)); 8 MiB stolen memory makes 1024x768x32 triple-buffered + Z tight |
 | 3 | Intel Gen7.5 | Haswell 4570 | after its Phase G games |
 | 4 | VSA-100 | A8U4I5 Voodoo4 | 24-bit Z + stencil |
 | 5 | Mach64 3D (Pro/XL, Mobility, IIC) | A8U4I5 Rage XL, Gateway, A8U4I5 IIC | 4 MiB IIC fits 800x600x32 double-buffered with Z16, not 1024x768 |
