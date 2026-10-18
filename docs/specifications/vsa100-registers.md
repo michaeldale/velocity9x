@@ -17,7 +17,7 @@ size, tile boundary, straps) are expected to differ.
 | **Napalm** | *Napalm Graphics Engine*, rev 1.13, 6 Oct 1999, `C:\everything\claude\personal\3dfx driver research\sux6000-docs\voodoo45-spec.pdf`, SHA-256 `06b5041d…5315e5e`, 249 pages | "3dfx Confidential". The databook for VSA-100 register writes (plan, 2026-10-11). Facts only; no text or tables copied. |
 | **Glide** | Open Glide h5, `…\artifacts\3dfx_glide\h5\incsrc\`: `h3regs.h` (SHA-256 `c4c702cf…c56bd`), `h3defs.h` (`fb1da053…41aa0`), `h3gdefs.h` (`b901ed43…dcd229`) | 3DFX GLIDE Source Code General Public License. Cross-check of layouts only; no code. Cited `file:line`. |
 | **VNT** | VelocityNT `docs\reference\m5*.md`, `docs\decisions\2026-10-1*-mini-me-*.md` | The author's own driver. Measured values and register semantics only; their citations into other trees were not followed. Cited by record name. |
-| Banshee/Voodoo3 spec | **Not found.** No public Banshee, Voodoo3 or Avenger spec PDF exists under `C:\everything` outside the leaked trees. VNT `m5b-timing.md` cites a bitsavers copy (`Voodoo2_Banshee_Spec_r1.1_199811.pdf`); it is not archived locally. | The second cross-check is absent. Every "Avenger" note below rests on Napalm's own change lists. |
+| Banshee/Voodoo3 spec | **Archived 2026-10-18, not yet read for this sheet.** From bitsavers `components/3dfx/`, in `C:\everything\claude\personal\3dfx driver research\`: *Avenger (a.k.a. Voodoo3) High Performance Graphics Engine* `Voodoo3_Spec_r1.0_199911.pdf` (SHA-256 `f1d5d1b6…68790d5`); *Banshee High Performance Graphics Engine* `Voodoo2_Banshee_Spec_r1.1_199811.pdf` (`4857703a…40b2037`); *Voodoo Banshee Universal Access 2D Databook* `Voodoo2_Banshee-2D_Databook_r1.0_199806.pdf` (`f24f485d…9bca16d`); `Voodoo3_Data_Book_r1.0_199908.pdf` (`4a978226…d9eb3ea`); `Voodoo3_Programming_Guide_r1.4a_199906.pdf` (`d2a51f3f…3db8375`). Also a public *Napalm* databook r1.12, `Voodoo45_Napalm_Databook_r1.12_200003.pdf` (`b0d0eb15…f6d83f7`). | Several are watermarked confidential, as Napalm is: facts only. Until they are read, every "Avenger" note below still rests on Napalm's own change lists. |
 
 Not opened: `C:\everything\3dfx-driver` (standing rule), and
 `C:\everything\retro-3dfx\3dfx Driver Code\`, which the file search showed
@@ -1013,5 +1013,6 @@ code uses.
   below 16 MiB on a 32 MiB card.
 - DDC/I2C through `vidSerialParallelPort`.
 - `strapInfo1` contents and the stateful selector at 0x38 on a live card.
-- Which registers are truly shared with Avenger: no Banshee/Voodoo3 spec is
-  available for the second cross-check.
+- Which registers are truly shared with Avenger: the Avenger (Voodoo3) and
+  Banshee specifications are archived since 2026-10-18 (Sources) but have
+  not been read against this sheet. That cross-check is the next step.

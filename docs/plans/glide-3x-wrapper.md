@@ -44,6 +44,13 @@ As for Glide 2: 3dfx's `glide.h`, `sst1vid.h` and the Glide 3 reference may
 be read for facts (prototypes, constants, struct layouts); nothing is
 copied.
 
+The Glide 3 reference is archived since 2026-10-18 (bitsavers
+`components/3dfx/`, in `C:\everything\claude\personal\3dfx driver research\`):
+`Glide_Reference_Manual_3.0_199806.pdf` (Document Release 020, 23 July
+1998) and `Glide_Programming_Guide_3.0_199806.pdf` (Document Release 021,
+June 1998). Constants already in `src/glide3/` were not checked against
+them when they were archived.
+
 ## Design
 
 ### Module layout: `src/glide3/`

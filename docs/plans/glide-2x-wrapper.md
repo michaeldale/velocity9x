@@ -55,6 +55,13 @@ Glide 2.4 Programming Guide and Reference Manual is the authority each
 API-level constant cites, the way register code cites a databook. Record
 which document and revision in the Phase 0 decision record.
 
+Both are archived since 2026-10-18 (bitsavers `components/3dfx/`, in
+`C:\everything\claude\personal\3dfx driver research\`):
+`Glide_Programming_Guide_2.4_199707.pdf` (Document Release 018, 25 July
+1997) and `Glide_Reference_Manual_2.4_199707.pdf` (Document Release 017,
+25 July 1997). Constants already in `src/glide/` were not checked against
+them when they were archived.
+
 ## Design
 
 ### Module layout: `src/glide/`, mirroring `src/opengl/`

@@ -35,9 +35,21 @@ velocity9x is GPLv3.
 | `C:\everything\3dfx-driver` — the leaked 3dfx tree, including the Win9x display driver in `H5/Win9x/DX/` | None granted | Reading to understand hardware behaviour only. Never copied, paraphrased into code, or cited as licensing a register write. |
 | Published Banshee/Voodoo3 register specification | 3dfx public release | The authority every register write must cite (working agreement, "C"). |
 
-Open item: locate and archive a copy of the published Banshee/Voodoo3 spec
-in the tree, the way the mode-4 plan cites the Voodoo2 spec. The roadmap
-assumes it exists; no path is recorded yet.
+The published specifications were archived on 2026-10-18 from bitsavers
+`components/3dfx/` into `C:\everything\claude\personal\3dfx driver research\`.
+They sit outside this tree, the way the Napalm spec already does:
+
+- `Voodoo3_Spec_r1.0_199911.pdf`, *Avenger (a.k.a. Voodoo3) High
+  Performance Graphics Engine*: the register specification.
+- `Voodoo3_Data_Book_r1.0_199908.pdf` and
+  `Voodoo3_Programming_Guide_r1.4a_199906.pdf` (June 1999).
+- `Voodoo2_Banshee_Spec_r1.1_199811.pdf` and
+  `Voodoo2_Banshee-2D_Databook_r1.0_199806.pdf`, for the 2D core Avenger
+  inherits.
+
+Several are watermarked confidential, so they are cited for facts and
+never copied. None has been read for this plan yet. Each register write
+still has to cite its page.
 
 ## What transfers
 
