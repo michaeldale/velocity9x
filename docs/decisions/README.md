@@ -326,3 +326,4 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-08 GLQuake's single-pass lightmaps reach the split on the Rage XL and draw as its own two passes do, at the same rate](2026-10-08-glquake-blend-lightmaps-split.md)
 - [2026-10-08 The GMA 950 on today's ICD: the split never runs, the level probe is exact, GLQuake uses Gen3's BLEND, and Half-Life OpenGL at 640x480 holds 17.1-17.6 fps](2026-10-08-netbook-multitexture-recheck.md)
 - [2026-10-08 The 915GM's GMA 900 joins the intel-gma family on a DOS survey: same resources as the netbook, one mip layout of its own, and a ring mapping that would have landed on its registers](2026-10-08-intel-915gm-gma900-support.md)
+- [2026-10-19 A second 915GM runs GTA and Deus Ex on 0.19.0 with no fault: the only limit seen is 8 MiB of stolen memory](2026-10-19-gma900-field-reports-gta-deus-ex.md)

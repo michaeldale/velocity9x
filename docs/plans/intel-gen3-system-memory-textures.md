@@ -41,6 +41,16 @@ draws are 73.7% of wall time
 ceiling is a memory argument, not a measurement; raising it comes before
 this pool, and will make memory the limit sooner.
 
+**2026-10-19: the limit appears in the field.** A reporter's 915GM (GMA
+900, also 8 MiB stolen) running Deus Ex on 0.19.0 had four mip trees
+declined for want of heap room, with every draw otherwise accepted
+([record](../decisions/2026-10-19-gma900-field-reports-gta-deus-ex.md)).
+With 8 MiB now limiting a light 1999 game as well as Serious Sam, Michael
+asked (2026-10-19) for this plan to be reviewed soon. The review should
+re-check the proposal against the code as it stands now (Gen3 has gained
+32 bpp Direct3D and 24-bit Z since it was written, both of which take more
+stolen memory) and settle the three decisions below, which are still open.
+
 ## What is proposed
 
 A **texture pool**: N MiB of locked system RAM, its pages written into GTT
