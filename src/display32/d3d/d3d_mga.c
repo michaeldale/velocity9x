@@ -23,6 +23,7 @@
  */
 #include "d3d_internal.h"
 #include "d3d_mga_map.h"
+#include "velocity9x/mga_engine.h"
 #include "velocity9x/mga_setup.h"
 
 /* Bounded waits, as eng_mga.c's. */
@@ -177,6 +178,46 @@ static int v9x_d3d_mga_emit(const struct v9x_mga3d_writes *writes)
     }
     V9X_TIME_END(V9X_TIME_RING_WRITE, started);
     return 1;
+}
+
+/*
+ * An explicit draw's clip window and plane mask, around its batch: the
+ * mapped values before the first trapezoid, and the per-mode setup after
+ * the last, which opens the clip and the mask again for the 2D engine and
+ * GDI (they write them once per mode, mga_engine.h). The FIFO keeps the
+ * order, so the setup takes effect after the batch has drawn.
+ */
+static int v9x_d3d_mga_emit_state(const V9X_D3D_MGA_MAPPED *mapped)
+{
+    struct v9x_mga3d_writes writes;
+
+    writes.count = 4ul;
+    writes.offsets[0] = V9X_MGA_CXBNDRY;
+    writes.values[0] = mapped->cxbndry;
+    writes.offsets[1] = V9X_MGA_YTOP;
+    writes.values[1] = mapped->ytop;
+    writes.offsets[2] = V9X_MGA_YBOT;
+    writes.values[2] = mapped->ybot;
+    writes.offsets[3] = V9X_MGA_PLNWT;
+    writes.values[3] = mapped->plnwt;
+    return v9x_d3d_mga_emit(&writes);
+}
+
+static int v9x_d3d_mga_emit_setup(v9x_u32 bytes_per_pixel)
+{
+    struct v9x_mga_writes setup;
+    struct v9x_mga3d_writes writes;
+    v9x_u32 index;
+
+    if (v9x_mga_build_setup(bytes_per_pixel, &setup) != V9X_STATUS_OK) {
+        return 0;
+    }
+    for (index = 0ul; index < setup.count; ++index) {
+        writes.offsets[index] = setup.offsets[index];
+        writes.values[index] = setup.values[index];
+    }
+    writes.count = setup.count;
+    return v9x_d3d_mga_emit(&writes);
 }
 
 /* The two 16-bit formats the probe measured: 565 and 1555. */
@@ -627,6 +668,9 @@ static int v9x_d3d_mga_draw_batch(const V9X_R3D_DRAW *draw,
     }
 
     v9x_d3d_mga_batch_begin();
+    if (mapped.state_writes != 0ul && !v9x_d3d_mga_emit_state(&mapped)) {
+        return 0;
+    }
     flat = mapped.flat != 0ul;
     deep = mapped.base.depth == V9X_MGA3D_DEPTH_32;
     for (index = 0ul; index < triangle_count; ++index) {
@@ -683,6 +727,10 @@ static int v9x_d3d_mga_draw_batch(const V9X_R3D_DRAW *draw,
             }
             emitted = 1;
         }
+    }
+    if (mapped.state_writes != 0ul &&
+        !v9x_d3d_mga_emit_setup(mapped.base.bytes_per_pixel)) {
+        return 0;
     }
     if (emitted) {
         v9x_present_note_submission();

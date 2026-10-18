@@ -165,6 +165,154 @@ static void test_xrgb8888(void)
                                &mapped) == V9X_D3D_MGA_REFUSE_DEPTH);
 }
 
+/*
+ * Explicit (render-interface) draws, on the terms MGA2D /ri measured
+ * (A8U4I5, 2026-10-18): undithered, the scissor as the clip window with
+ * all four bounds inclusive and YTOP/YBOT linear, the write mask as
+ * PLNWT. Anything the engine would approximate is refused, for the
+ * software fallback to draw.
+ */
+static void explicit_draw(V9X_R3D_DRAW *draw, V9X_D3D_MGA_TEXTURE *texture)
+{
+    base_draw(draw, texture);
+    draw->explicit_state = 1ul;
+    draw->scissor_right = draw->target.width;
+    draw->scissor_bottom = draw->target.height;
+    draw->write_mask = 7ul;
+}
+
+static void test_explicit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_MGA_TEXTURE texture;
+    V9X_D3D_MGA_MAPPED mapped;
+    /* The 565 target's origin and pitch in pixels: 1920 x 600 / 2 and
+     * 1920 / 2. */
+    const v9x_u32 origin = 576000ul;
+    const v9x_u32 pitch = 960ul;
+
+    /* The whole target, every channel: undithered, nothing else to write. */
+    explicit_draw(&draw, &texture);
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.no_dither == 1ul);
+    CHECK(mapped.state_writes == 0ul);
+    CHECK(mapped.skip == 0ul);
+
+    /* A Direct3D draw keeps the dither it was measured with. */
+    base_draw(&draw, &texture);
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.no_dither == 0ul);
+    CHECK(mapped.state_writes == 0ul);
+
+    /* A scissor: half-open in, inclusive out. */
+    explicit_draw(&draw, &texture);
+    draw.scissor_left = 10ul;
+    draw.scissor_top = 20ul;
+    draw.scissor_right = 100ul;
+    draw.scissor_bottom = 50ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.state_writes == 1ul);
+    CHECK(mapped.cxbndry == ((99ul << 16) | 10ul));
+    CHECK(mapped.ytop == origin + 20ul * pitch);
+    CHECK(mapped.ybot == origin + 49ul * pitch);
+    CHECK(mapped.plnwt == 0xfffffffful);
+
+    /* An empty one draws nothing. */
+    draw.scissor_right = 10ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.skip == 1ul);
+
+    /* Write masks: per channel, replicated per 16-bit pixel; the clip
+     * stays open. */
+    explicit_draw(&draw, &texture);
+    draw.write_mask = 2ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.state_writes == 1ul);
+    CHECK(mapped.plnwt == 0x07e007e0ul);
+    CHECK(mapped.cxbndry == ((799ul << 16) | 0ul));
+    CHECK(mapped.ytop == origin);
+    CHECK(mapped.ybot == origin + 599ul * pitch);
+    draw.write_mask = 5ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.plnwt == 0xf81ff81ful);
+    draw.write_mask = 0ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.plnwt == 0ul);
+    draw.target.format = V9X_R3D_FORMAT_XRGB1555;
+    draw.write_mask = 1ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.plnwt == 0x7c007c00ul);
+    draw.target.format = V9X_R3D_FORMAT_XRGB8888;
+    draw.target.pitch = 2560ul;
+    draw.target.offset = 2560ul * 480ul;
+    draw.target.width = 640ul;
+    draw.target.height = 480ul;
+    draw.scissor_right = 640ul;
+    draw.scissor_bottom = 480ul;
+    draw.write_mask = 2ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.plnwt == 0x0000ff00ul);
+
+    /* What the engine would approximate goes to the fallback: the
+     * stipple for source alpha, additive, multiply, linear and mipmapped
+     * filters. */
+    explicit_draw(&draw, &texture);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    draw.blend_enable = 0ul;
+    bind_texture(&draw, &texture, V9X_MGA3D_TEX_TW16);
+    draw.texture.op = V9X_R3D_TEXOP_DECAL;
+    draw.texture.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.texture.enabled == 1ul);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+    draw.blend_enable = 0ul;
+    draw.texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_FILTER);
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_FILTER);
+
+    /* CPU levels and a second unit have no sampler here. */
+    explicit_draw(&draw, &texture);
+    draw.texture.levels = (const struct v9x_r3d_level *)&dummy_object;
+    draw.texture.level_count = 1ul;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_EXPLICIT);
+    explicit_draw(&draw, &texture);
+    draw.texcoords1 = (const float *)&dummy_object;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_EXPLICIT);
+}
+
 static void test_blend_fog_specular(void)
 {
     V9X_R3D_DRAW draw;
@@ -329,12 +477,6 @@ static void test_alpha(void)
     draw.color_key_enable = 1ul;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
                                &mapped) == V9X_D3D_MGA_REFUSE_KEYS);
-
-    /* Explicit draws go to the CPU. */
-    base_draw(&draw, &texture);
-    draw.explicit_state = 1ul;
-    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
-                               &mapped) == V9X_D3D_MGA_REFUSE_EXPLICIT);
 }
 
 /*
@@ -440,6 +582,7 @@ unsigned int v9x_run_d3d_mga_map_tests(void)
     failures = 0u;
     test_plain();
     test_xrgb8888();
+    test_explicit();
     test_blend_fog_specular();
     test_texture();
     test_alpha();

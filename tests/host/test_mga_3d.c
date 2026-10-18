@@ -200,6 +200,13 @@ static void test_gouraud_fold(void)
     CHECK(v9x_mga3d_model_trap(&trap, V9X_MGA3D_FOLD_NONE, plot, 0, 0) ==
           V9X_STATUS_OK);
     CHECK(grid[1][1] == 0x7f0a4000L);
+
+    /* nodither: MACCESS <30> beside the pixel width, measured to make 16
+     * bpp shading plain truncation (MGA2D /ri, A8U4I5 2026-10-18). */
+    CHECK(reg_value(&writes, V9X_MGA_MACCESS) == 0x00000002ul);
+    trap.no_dither = 1ul;
+    CHECK(v9x_mga3d_build_trap(&trap, &writes) == V9X_STATUS_OK);
+    CHECK(reg_value(&writes, V9X_MGA_MACCESS) == 0x40000002ul);
 }
 
 static void test_refusals(void)

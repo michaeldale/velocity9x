@@ -13,6 +13,13 @@
  * as the engine's screen-door stipple, one density a triangle, which is
  * what Matrox's own HAL publishes (ALPHAFLATSTIPPLED); every filter is
  * drawn as the nearest texel of the top level.
+ *
+ * An explicit draw (the render interface: OpenGL, Glide) takes none of
+ * those approximations. It is drawn undithered, with its scissor as the
+ * clip window and its write mask as PLNWT, all measured exact (docs\
+ * decisions\2026-10-18-mga2164w-render-interface-registers.md); what the
+ * engine would approximate is refused, and the core's software fallback
+ * draws it.
  */
 #ifndef VELOCITY9X_D3D_MGA_MAP_H
 #define VELOCITY9X_D3D_MGA_MAP_H
@@ -39,17 +46,29 @@ typedef struct v9x_d3d_mga_texture {
  * set when nothing would pass (a NEVER depth test), stipple when each
  * triangle takes a screen-door density from its alpha, flat when every
  * triangle takes its first vertex's colour.
+ *
+ * state_writes is set when an explicit draw's scissor or write mask
+ * narrows the engine's per-mode state: CXBNDRY, YTOP, YBOT and PLNWT then
+ * take the four values below before the batch, and the per-mode setup
+ * (v9x_mga_build_setup) opens them again after it.
  */
 typedef struct v9x_d3d_mga_mapped {
     struct v9x_mga3d_trap base;
     v9x_u32 skip;
     v9x_u32 stipple;
     v9x_u32 flat;
+    v9x_u32 state_writes;
+    v9x_u32 cxbndry;
+    v9x_u32 ytop;
+    v9x_u32 ybot;
+    v9x_u32 plnwt;
 } V9X_D3D_MGA_MAPPED;
 
 #define V9X_D3D_MGA_REFUSE_NONE           0ul
 #define V9X_D3D_MGA_REFUSE_TARGET         1ul  /* not 565, 1555 or 8888 */
-#define V9X_D3D_MGA_REFUSE_EXPLICIT       2ul  /* render-interface draw */
+#define V9X_D3D_MGA_REFUSE_EXPLICIT       2ul  /* render-interface draw
+                                                  with CPU levels or a
+                                                  second unit */
 #define V9X_D3D_MGA_REFUSE_TARGET_SHAPE   3ul  /* pitch or origin */
 #define V9X_D3D_MGA_REFUSE_BLEND          4ul
 #define V9X_D3D_MGA_REFUSE_ALPHA_TEST     5ul
@@ -64,6 +83,9 @@ typedef struct v9x_d3d_mga_mapped {
 #define V9X_D3D_MGA_REFUSE_SETUP          13ul /* a triangle's planes
                                                   overflow (counted per
                                                   triangle by d3d_mga.c) */
+#define V9X_D3D_MGA_REFUSE_FILTER         14ul /* an explicit draw's
+                                                  linear or mipmapped
+                                                  filter */
 
 /*
  * One draw. specular_rgb is non-zero when some vertex of the batch carries

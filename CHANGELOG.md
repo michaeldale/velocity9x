@@ -40,9 +40,12 @@ build identifier so exact guest-tested binaries remain traceable.
   appeared. They are now drawn by the CPU into the card's surfaces, as on
   the GMA 950, after the two were measured to agree in one frame. The
   OpenGL and Glide probes pass at 16 bpp. Glide now resends a texture
-  the card refuses as a CPU copy, as the OpenGL driver already did.
-  Drawing them on the card's own engine is planned
+  the card refuses as a CPU copy, as the OpenGL driver already did. What
+  the card draws exactly (untextured or point-sampled triangles, with
+  scissor and write masks) it now draws itself; filtered textures and
+  blending still go to the CPU
   ([plan](docs/plans/matrox-mga2164w-render-interface.md),
+  [engine](docs/decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md),
   [fallback](docs/decisions/2026-10-18-mga2164w-software-fallback.md),
   [Glide](docs/decisions/2026-10-18-glide-cpu-copy-retry.md)).
 - **DirectDraw fills and copies at 32 bpp on two more engines.**

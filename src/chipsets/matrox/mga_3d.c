@@ -35,11 +35,13 @@
 #define V9X_MGA3D_ZMODE_SHIFT 8u
 
 /* MACCESS (3-70): pwidth<1:0> 00 8 bpp, 01 16, 10 32; zwidth<3> 32-bit Z;
- * dit555<31> dithers shading for 5:5:5. Written with every shaded
- * trapezoid. */
+ * dit555<31> dithers shading for 5:5:5; nodither<30> truncates it instead
+ * (2064W spec 4-64, measured on the 2164W's trapezoids). Written with every
+ * shaded trapezoid. */
 #define V9X_MGA3D_PWIDTH_16 0x1ul
 #define V9X_MGA3D_PWIDTH_32 0x2ul
 #define V9X_MGA3D_ZWIDTH_32 0x8ul
+#define V9X_MGA3D_NODITHER  0x40000000ul
 #define V9X_MGA3D_DIT555    0x80000000ul
 
 /* DWGCTL trans <23:20> (3-59). */
@@ -563,6 +565,9 @@ v9x_status v9x_mga3d_build_trap(const struct v9x_mga3d_trap *trap,
         }
         if (trap->dither_555 != 0ul) {
             maccess |= V9X_MGA3D_DIT555;
+        }
+        if (trap->no_dither != 0ul) {
+            maccess |= V9X_MGA3D_NODITHER;
         }
         v9x_mga3d_put(writes, V9X_MGA_MACCESS, maccess);
         dwgctl |= trap->trans << V9X_MGA3D_TRANS_SHIFT;

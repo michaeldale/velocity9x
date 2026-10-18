@@ -228,6 +228,9 @@ struct v9x_mga3d_trap {
     /* MACCESS dit555 <31>: dither shading for a 5:5:5 target rather than
      * 5:6:5 (3-70). */
     v9x_u32 dither_555;
+    /* MACCESS nodither <30>: shading truncated, not dithered, at 16 bpp
+     * (measured, MGA2D /ri, A8U4I5 2026-10-18). */
+    v9x_u32 no_dither;
 };
 
 /* The model's view of the Z buffer: read the stored value at (x, row) of

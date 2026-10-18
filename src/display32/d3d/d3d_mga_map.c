@@ -25,6 +25,77 @@
 #define V9X_D3D_MGA_Z_BYTES_16      2ul
 #define V9X_D3D_MGA_Z_BYTES_32      4ul
 
+/* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
+#define V9X_D3D_MGA_WRITE_RED   1ul
+#define V9X_D3D_MGA_WRITE_GREEN 2ul
+#define V9X_D3D_MGA_WRITE_BLUE  4ul
+#define V9X_D3D_MGA_WRITE_RGB   7ul
+
+/* One pixel's bits of a channel, by target layout. */
+static v9x_u32 v9x_d3d_mga_channel_bits(v9x_u32 format, v9x_u32 channel)
+{
+    if (format == V9X_R3D_FORMAT_XRGB8888) {
+        return channel == V9X_D3D_MGA_WRITE_RED ? 0x00ff0000ul
+             : channel == V9X_D3D_MGA_WRITE_GREEN ? 0x0000ff00ul
+             : 0x000000fful;
+    }
+    if (format == V9X_R3D_FORMAT_XRGB1555) {
+        return channel == V9X_D3D_MGA_WRITE_RED ? 0x7c00ul
+             : channel == V9X_D3D_MGA_WRITE_GREEN ? 0x03e0ul
+             : 0x001ful;
+    }
+    return channel == V9X_D3D_MGA_WRITE_RED ? 0xf800ul
+         : channel == V9X_D3D_MGA_WRITE_GREEN ? 0x07e0ul
+         : 0x001ful;
+}
+
+/*
+ * An explicit draw's scissor and write mask as the engine's clip window
+ * and plane mask: CXBNDRY's columns and YTOP/YBOT's linear row addresses
+ * (YDSTORG + row x PITCH) inclusive, PLNWT replicated to every pixel of
+ * the 32-bit word at 16 bpp. All of it measured on 3D trapezoids by MGA2D
+ * /ri. Zero when the scissor is empty: nothing would be drawn.
+ */
+static int v9x_d3d_mga_explicit_state(const V9X_R3D_DRAW *draw,
+                                      v9x_u32 target_bytes,
+                                      V9X_D3D_MGA_MAPPED *out)
+{
+    v9x_u32 origin = draw->target.offset / target_bytes;
+    v9x_u32 pitch = draw->target.pitch / target_bytes;
+    v9x_u32 mask = 0ul;
+    v9x_u32 channel;
+
+    if (draw->scissor_right <= draw->scissor_left ||
+        draw->scissor_bottom <= draw->scissor_top) {
+        return 0;
+    }
+    out->cxbndry = ((draw->scissor_right - 1ul) << 16) | draw->scissor_left;
+    out->ytop = origin + draw->scissor_top * pitch;
+    out->ybot = origin + (draw->scissor_bottom - 1ul) * pitch;
+
+    if ((draw->write_mask & V9X_D3D_MGA_WRITE_RGB) == V9X_D3D_MGA_WRITE_RGB) {
+        mask = 0xfffffffful;
+    } else {
+        for (channel = V9X_D3D_MGA_WRITE_RED;
+             channel <= V9X_D3D_MGA_WRITE_BLUE; channel <<= 1) {
+            if ((draw->write_mask & channel) != 0ul) {
+                mask |= v9x_d3d_mga_channel_bits(draw->target.format,
+                                                 channel);
+            }
+        }
+        if (target_bytes == 2ul) {
+            mask |= mask << 16;
+        }
+    }
+    out->plnwt = mask;
+    out->state_writes =
+        (draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
+         draw->scissor_right != draw->target.width ||
+         draw->scissor_bottom != draw->target.height ||
+         mask != 0xfffffffful) ? 1ul : 0ul;
+    return 1;
+}
+
 static v9x_u32 v9x_d3d_mga_zmode(v9x_u32 func, v9x_u32 *skip)
 {
     *skip = 0ul;
@@ -148,6 +219,7 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     int key_alpha = 0;
     int key_color = 0;
     int key_black = 0;
+    int explicit_draw;
     v9x_u32 index;
     v9x_u32 target_bytes;
     v9x_u32 z_bytes;
@@ -162,9 +234,13 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     }
     base = &out->base;
 
-    /* The render interface states everything exactly; this engine's
-     * stipple and point sampling are approximations it may not make. */
-    if (draw->explicit_state != 0ul) {
+    /* The render interface states everything exactly. CPU levels and a
+     * second unit have no sampler here; the approximations below are
+     * refused one by one. */
+    explicit_draw = draw->explicit_state != 0ul;
+    if (explicit_draw &&
+        (draw->texture.levels != 0 || draw->texture1.object != 0 ||
+         draw->texture1.levels != 0 || draw->texcoords1 != 0)) {
         return V9X_D3D_MGA_REFUSE_EXPLICIT;
     }
     /* XRGB8888 at PWIDTH 32: the X byte is FCOL's top byte (mga_3d.h),
@@ -196,6 +272,23 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
     base->dither_555 = draw->target.format == V9X_R3D_FORMAT_XRGB1555
         ? 1ul : 0ul;
     out->flat = draw->shade_mode == V9X_R3D_SHADE_FLAT ? 1ul : 0ul;
+
+    if (explicit_draw) {
+        /* Undithered, as the software engine draws: dithering moves even
+         * an exact level at 16 bpp (F8 drawn as F0, MGA2D /ri). */
+        base->no_dither = 1ul;
+        if (!v9x_d3d_mga_explicit_state(draw, target_bytes, out)) {
+            out->skip = 1ul;
+            return V9X_D3D_MGA_REFUSE_NONE;
+        }
+        /* No blender: the stipple, the additive key and the multiply
+         * below are Direct3D's approximations. */
+        if (draw->blend_enable != 0ul &&
+            !(draw->src_blend == V9X_R3D_BLEND_ONE &&
+              draw->dst_blend == V9X_R3D_BLEND_ZERO)) {
+            return V9X_D3D_MGA_REFUSE_BLEND;
+        }
+    }
 
     /*
      * Blending: none, ONE/ZERO (the same), source alpha over the
@@ -284,6 +377,12 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
              draw->texture.address != V9X_R3D_ADDRESS_CLAMP) ||
             draw->texture.wrap_either != 0ul) {
             return V9X_D3D_MGA_REFUSE_ADDRESS;
+        }
+        /* The sampler is nearest on the top level only. */
+        if (explicit_draw &&
+            (draw->texture.min_filter != V9X_R3D_FILTER_NEAREST ||
+             draw->texture.mag_filter != V9X_R3D_FILTER_NEAREST)) {
+            return V9X_D3D_MGA_REFUSE_FILTER;
         }
         base->texture.enabled = 1ul;
         base->texture.offset = texture->offset;

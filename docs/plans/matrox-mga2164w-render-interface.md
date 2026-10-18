@@ -13,8 +13,13 @@ Step 2 done the same day
 V9XDDP `/mixed` passes at 16 bpp and the MGA has the software fallback.
 V9XR3DP and V9XGLP pass at 16 bpp. Step 3 done the same day
 ([record](../decisions/2026-10-18-glide-cpu-copy-retry.md)): Glide resends
-a refused surface texture as its CPU copy, and V9XGLIDP passes. Next:
-step 4, explicit draws on the engine.
+a refused surface texture as its CPU copy, and V9XGLIDP passes. Step 4
+done the same day
+([record](../decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md)):
+explicit draws go on the engine undithered, with the scissor and the write
+mask; the probes still pass, and 51 of their 219 draws went to the engine
+(filtering and CPU levels send the rest to the CPU). Next: step 6, a title's
+split, which decides decision 2.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
