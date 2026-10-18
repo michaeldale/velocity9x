@@ -22,7 +22,10 @@
  *   7 Blt COLORFILL rect +   one rectangle fill and one non-overlapping
  *     Blt copy, same surface copy, read back against a CPU reference
  *
- * /nofill stops after step 4; /nocopy after step 6.
+ * /nofill stops after step 4; /nocopy after step 6. /primary runs steps 3
+ * to 7 in the primary surface's top-left 64x16 instead of an off-screen
+ * surface, for an engine that draws only at the display pitch (the
+ * Trio64's); it overwrites that corner of the desktop.
  *
  * The surface takes the desktop's depth (normal cooperative level, no mode
  * change), so a run after a mode switch exercises the engine at that depth:
@@ -224,12 +227,21 @@ void WINAPI V9xDdFillStageEntry(void)
     RECT mark_rect;
     RECT source_rect;
     RECT dest_rect;
+    /* /primary: the steps run in this corner of the primary surface. */
+    RECT area;
+    int primary;
 
     CreateDirectoryA("C:\\V9XDIAG", 0);
     ddf_file = CreateFileA(DDF_TEXT_PATH, GENERIC_WRITE, FILE_SHARE_READ, 0,
                            CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
     ddf_line("[V9xDdFillStage]Build", V9X_BUILD_ID);
+    primary = ddf_has_switch("/primary");
+    area.left = 0;
+    area.top = 0;
+    area.right = (LONG)DDF_WIDTH;
+    area.bottom = (LONG)DDF_HEIGHT;
+    ddf_hx("Primary", primary ? 1ul : 0ul);
 
     screen = GetDC(0);
     bits = (DWORD)GetDeviceCaps(screen, BITSPIXEL);
@@ -337,13 +349,21 @@ void WINAPI V9xDdFillStageEntry(void)
         ddf_finish("ZADDR", 0u);
     }
 
-    ddf_line("Stage", "3-create-offscreen");
     ddf_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
-    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
-    desc.dwWidth = DDF_WIDTH;
-    desc.dwHeight = DDF_HEIGHT;
-    desc.ddsCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_VIDEOMEMORY;
+    if (primary) {
+        /* The screen's top-left 64x16, for an engine that only draws at the
+         * display pitch (the Trio64's 8514/A engine). */
+        ddf_line("Stage", "3-primary");
+        desc.dwFlags = DDSD_CAPS;
+        desc.ddsCaps = DDSCAPS_PRIMARYSURFACE;
+    } else {
+        ddf_line("Stage", "3-create-offscreen");
+        desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+        desc.dwWidth = DDF_WIDTH;
+        desc.dwHeight = DDF_HEIGHT;
+        desc.ddsCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_VIDEOMEMORY;
+    }
     hr = ((ddf_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
         ddraw, &desc, &surface, 0);
     ddf_hx("CreateSurfaceHr", (DWORD)hr);
@@ -367,7 +387,8 @@ void WINAPI V9xDdFillStageEntry(void)
     fx.dwSize = sizeof(fx);
     fx.dwFillColor = fill;
     hr = ((ddf_blt_fn)surface->vtbl[DDS_BLT])(
-        surface, 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT, &fx);
+        surface, primary ? &area : 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT,
+        &fx);
     ddf_hx("FillHr", (DWORD)hr);
 
     ddf_line("Stage", "6-lock-read");

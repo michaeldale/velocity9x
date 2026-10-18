@@ -22,7 +22,7 @@ What draws in those modes, read from the tree at 663258b4:
 
 | Engine | DirectDraw fill/copy at 32 | GDI at 32 | Evidence or gate |
 |---|---|---|---|
-| S3 Trio64 (8514/A) | declined | declined | `eng_s3_trio.c:100,164`; never run above 16 |
+| S3 Trio64 (8514/A) | **engine** since 2026-10-18 (86Box only) | declined | [2026-10-18-trio64-blits-at-32-bpp-on-86box.md](../decisions/2026-10-18-trio64-blits-at-32-bpp-on-86box.md); physical 486 owed; was declined at 32 |
 | S3 ViRGE / Trio3D (S3D 2D) | declined | declined | `eng_s3_virge.c:332,390`; format field codes 8/16/24 only (`:365`) |
 | ATI Mach64 / Rage IIC | declined | no GDI path | `eng_mach64.c:212,288` accept 2 bytes only |
 | Intel Gen3 (BLT) | **engine** since 2026-10-18 | no GDI path | measured 8/16/32, [2026-10-18-gen3-blits-at-32-bpp.md](../decisions/2026-10-18-gen3-blits-at-32-bpp.md); was declined at 32 |
@@ -116,6 +116,10 @@ MGA special case.
    8, 16 and 32 bpp on the netbook.
 4. **Trio64**: probe the 8514/A engine at 32 bpp on the 86Box Trio64 and the
    486 VLB card. Low priority; keep the decline if either disagrees.
+   **86Box done 2026-10-18**: S3's two-word colour and mask sequence,
+   pixel-exact on the engine, enabled
+   ([2026-10-18-trio64-blits-at-32-bpp-on-86box.md](../decisions/2026-10-18-trio64-blits-at-32-bpp-on-86box.md));
+   the 486 is owed and decides whether it stays.
 5. **ViRGE family**: stays CPU at 32 bpp; no 32-bit S3D format exists. Recorded,
    not planned.
 
@@ -161,7 +165,7 @@ V9XDDP core and one real title at 32 bpp on its machine.
 | Order | Chip | Machine | Notes |
 |---|---|---|---|
 | 1 | MGA-2164W | A8U4I5 (when re-fitted) / 86Box Millennium :9877 | 32 bpp trapezoids and 32-bit Z already probed |
-| 2 | Intel Gen3 | netbook | **Done 2026-10-18**: ARGB8888 with alpha writes off, Z16 and Z24 (D24X8) at 16 and 32 bpp, V9XD32 T5 tells the two depths apart; 3D WinBench 98 runs its depth tests at 640x480x32 on the HAL but asks for 16-bit Z, so it cannot judge Z24 ([2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md](../decisions/2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md)); 8 MiB stolen memory makes 1024x768x32 triple-buffered + Z tight |
+| 2 | Intel Gen3 | netbook | **Done 2026-10-18**: ARGB8888 with alpha writes off, Z16 and Z24 (D24X8) at 16 and 32 bpp, V9XD32 T5 tells the two depths apart; textures (DECAL, nearest) and SRCALPHA blending exact at 32 bpp ([2026-10-18-gen3-textured-and-blended-at-32-bpp.md](../decisions/2026-10-18-gen3-textured-and-blended-at-32-bpp.md)); 3D WinBench 98 runs its depth tests at 640x480x32 on the HAL but asks for 16-bit Z, so it cannot judge Z24 ([2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md](../decisions/2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md)); 8 MiB stolen memory makes 1024x768x32 triple-buffered + Z tight |
 | 3 | Intel Gen7.5 | Haswell 4570 | after its Phase G games |
 | 4 | VSA-100 | A8U4I5 Voodoo4 | 24-bit Z + stencil |
 | 5 | Mach64 3D (Pro/XL, Mobility, IIC) | A8U4I5 Rage XL, Gateway, A8U4I5 IIC | 4 MiB IIC fits 800x600x32 double-buffered with Z16, not 1024x768 |

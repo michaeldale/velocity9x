@@ -33,6 +33,33 @@ static void v9x_trio_ensure_enhanced(void)
     }
 }
 
+/*
+ * A 32-bpp operation's register state. The engine already counts in 4-byte
+ * pixels: the BIOS mode set programs CR50 bits 5:4 to 32 bpp (S3's Trio64V+
+ * BIOS, CHIPUTIL.ASM:842-857 in the STB source recovered 2026-09-05). What it
+ * does not have is a 32-bit write mask or colour, because their registers are
+ * 16 bits wide and take a 32-bit value as two writes, low word then high,
+ * MULT_MISC bit 4 (RSF) choosing the half and toggling after each write.
+ * S3's own DirectDraw code writes MULT_MISC E000H to reset RSF, then the
+ * colour's two words (win95 S3_DD32.C:1160-1185), and its Win95 build pairs
+ * 16-bit writes rather than setting bit 9's 32-bit access, which SPR 9499
+ * records as dropping the mask's high word on 764/732 boards
+ * (win31 S3911.ASM:2353-2358). E000H is also the state this driver wants:
+ * no external clip, no colour compare, both bases in the first MByte
+ * (s3_engine_regs.h).
+ *
+ * The mask is set every time because nothing in the 32-bit path set it
+ * before: at 8 and 16 bpp its low word, all ones from power-on or the GDI
+ * path, is all there is. After the two mask writes RSF is back on the low
+ * half, so a colour can follow.
+ */
+static void v9x_trio_wide_setup(void)
+{
+    v9x_outpw(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_MULT_MISC);
+    v9x_outpw(V9X_TRIO_WRT_MASK, V9X_TRIO_WRT_MASK_ALL);
+    v9x_outpw(V9X_TRIO_WRT_MASK, V9X_TRIO_WRT_MASK_ALL);
+}
+
 static int v9x_trio_engine_ready(void)
 {
     return v9x_hal != 0 &&
@@ -92,12 +119,12 @@ static int v9x_trio_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     /*
      * The 8514/A registers this engine drives carry no pixel-depth field: the
      * coordinates it is given are pixels, and the hardware multiplies them by
-     * a depth it was told about at mode-set time and that this path never
-     * establishes. It has only ever been exercised at 8 and 16 bpp. Rather
-     * than assume a 24- or 32-bpp mode programs it correctly, decline and let
-     * the CPU copy serve those depths.
+     * the depth the BIOS mode set put in CR50. 8, 16 and 32 bpp
+     * (v9x_trio_wide_setup); packed 24 bpp is declined and served by the CPU
+     * copy, as S3's own drivers exclude it.
      */
-    if (bytes_per_pixel > 2ul) {
+    if (bytes_per_pixel != 1ul && bytes_per_pixel != 2ul &&
+        bytes_per_pixel != 4ul) {
         return V9X_BLT_DECLINED;
     }
     if (pitch == 0ul ||
@@ -135,6 +162,9 @@ static int v9x_trio_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
         return V9X_BLT_BUSY;
     }
     v9x_trio_ensure_enhanced();
+    if (bytes_per_pixel == 4ul) {
+        v9x_trio_wide_setup();
+    }
     v9x_outpw(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_COPY);
     v9x_outpw(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_PIXEL_CNTL_FRGD_MIX);
     v9x_outpw(V9X_TRIO_CUR_X, (unsigned short)source_x);
@@ -155,13 +185,10 @@ static int v9x_trio_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     DWORD width;
     DWORD height;
 
-    /*
-     * Above 16 bpp, decline for the same reason the copy path does - and here
-     * there is a second one visible in the register write below: the
-     * foreground colour goes out as a single 16-bit word, which cannot carry a
-     * 24- or 32-bpp fill colour at all.
-     */
-    if (bytes_per_pixel > 2ul) {
+    /* The copy path's depths; at 32 bpp the colour is two words
+     * (v9x_trio_wide_setup). */
+    if (bytes_per_pixel != 1ul && bytes_per_pixel != 2ul &&
+        bytes_per_pixel != 4ul) {
         return V9X_BLT_DECLINED;
     }
     /* The engine addresses display memory as one surface at the display
@@ -184,8 +211,16 @@ static int v9x_trio_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
 
     /* S3 Trio32/64 databook section 13.3.3: solid rectangle fill. */
     v9x_outpw(V9X_TRIO_FRGD_MIX, V9X_TRIO_FRGD_MIX_NEW);
-    v9x_outpw(V9X_TRIO_FRGD_COLOR,
-              (unsigned short)data->bltFX.dwFillColor);
+    if (bytes_per_pixel == 4ul) {
+        v9x_trio_wide_setup();
+        v9x_outpw(V9X_TRIO_FRGD_COLOR,
+                  (unsigned short)data->bltFX.dwFillColor);
+        v9x_outpw(V9X_TRIO_FRGD_COLOR,
+                  (unsigned short)(data->bltFX.dwFillColor >> 16));
+    } else {
+        v9x_outpw(V9X_TRIO_FRGD_COLOR,
+                  (unsigned short)data->bltFX.dwFillColor);
+    }
     v9x_outpw(V9X_TRIO_MULTIFUNC_CNTL, V9X_TRIO_PIXEL_CNTL_FRGD_MIX);
     v9x_outpw(V9X_TRIO_CUR_X, (unsigned short)data->rDest[0]);
     v9x_outpw(V9X_TRIO_CUR_Y, (unsigned short)y);
