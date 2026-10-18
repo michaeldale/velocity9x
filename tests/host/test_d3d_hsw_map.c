@@ -224,10 +224,44 @@ static void test_target(void)
     CHECK(format == 0x1234u);
 }
 
+/* The depth buffer's 3DSTATE_DEPTH_BUFFER format for its cell, and a
+ * depth fill's value as the z the depth-only draw writes: D16 is
+ * round(z x 65535), D24_UNORM_X8 round(z x 16777215) in bits 23:0 (Vol 2b
+ * 3DSTATE_CLEAR_PARAMS). */
+static void test_depth(void)
+{
+    v9x_u8 format = 0xffu;
+
+    CHECK(v9x_d3d_hsw_depth_format(2ul, &format));
+    CHECK(format == V9X_HSW_DEPTH_D16_UNORM);
+    CHECK(v9x_d3d_hsw_depth_format(4ul, &format));
+    CHECK(format == V9X_HSW_DEPTH_D24_UNORM_X8);
+    format = 0x55u;
+    CHECK(!v9x_d3d_hsw_depth_format(3ul, &format));
+    CHECK(!v9x_d3d_hsw_depth_format(0ul, &format));
+    CHECK(format == 0x55u);
+
+    CHECK(v9x_d3d_hsw_fill_z(0xfffful, 2ul) == 1.0f);
+    CHECK(v9x_d3d_hsw_fill_z(0ul, 2ul) == 0.0f);
+    CHECK(v9x_d3d_hsw_fill_z(0x00fffffful, 4ul) == 1.0f);
+    CHECK(v9x_d3d_hsw_fill_z(0ul, 4ul) == 0.0f);
+    /* The cell's own bits only: above them is not depth. */
+    CHECK(v9x_d3d_hsw_fill_z(0xfffffffful, 4ul) == 1.0f);
+    CHECK(v9x_d3d_hsw_fill_z(0x0001fffful, 2ul) == 1.0f);
+    /* A 24-bit midpoint is not rounded to a 16-bit one, which would be 128
+     * steps out. Within one step is all a float z can carry here: at 0.5 its
+     * own step is 6e-8, one 24-bit step, and the vertex's z is a float. */
+    CHECK((double)v9x_d3d_hsw_fill_z(0x00800000ul, 4ul) * 16777215.0 >
+          8388606.5);
+    CHECK((double)v9x_d3d_hsw_fill_z(0x00800000ul, 4ul) * 16777215.0 <
+          8388609.5);
+}
+
 unsigned int v9x_run_d3d_hsw_map_tests(void)
 {
     failures = 0u;
     test_target();
+    test_depth();
     test_accepted();
     test_refused();
     test_write_disable();

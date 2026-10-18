@@ -60,6 +60,28 @@ int v9x_d3d_hsw_target(v9x_u32 r3d_format, v9x_u16 *format,
     return 1;
 }
 
+int v9x_d3d_hsw_depth_format(v9x_u32 cell_bytes, v9x_u8 *format)
+{
+    if (cell_bytes == 2ul) {
+        *format = V9X_HSW_DEPTH_D16_UNORM;
+    } else if (cell_bytes == 4ul) {
+        *format = V9X_HSW_DEPTH_D24_UNORM_X8;
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
+float v9x_d3d_hsw_fill_z(v9x_u32 value, v9x_u32 cell_bytes)
+{
+    /* Computed in double: a float's 24-bit mantissa holds the 24-bit
+     * quotient's numerator but not the division's rounding. */
+    if (cell_bytes == 4ul) {
+        return (float)((double)(value & 0x00fffffful) / 16777215.0);
+    }
+    return (float)((double)(value & 0xfffful) / 65535.0);
+}
+
 v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
                                     int has_alpha0, v9x_u32 color1,
                                     v9x_u32 alpha1, int has_alpha1,

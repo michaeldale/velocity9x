@@ -117,7 +117,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     1ul,            /* depth_tiled: Y tiles */
     /* XRGB8888 on a 32 bpp desktop as B8G8R8A8 with alpha writes off
      * (v9x_d3d_hsw_target); the pitch bound is the 16 bpp one. */
-    16384ul         /* target_pitch_max_xrgb8888 */
+    16384ul,        /* target_pitch_max_xrgb8888 */
+    /* A 32-bit Z buffer as D24_UNORM_X8_UINT, Y-tiled like D16
+     * (v9x_d3d_hsw_depth_format). */
+    24ul            /* depth32_bits */
 };
 
 /* One texture unit as the sampler reads it. */
@@ -148,6 +151,9 @@ typedef struct v9x_d3d_hsw_state {
     v9x_u32 depth_pitch;
     v9x_u8 depth_function;
     v9x_u8 depth_write;
+    /* D16_UNORM, or D24_UNORM_X8 for a 32-bit Z buffer
+     * (v9x_d3d_hsw_depth_format). */
+    v9x_u8 depth_format;
     /* Render interface step 2: the drawing rectangle, inclusive, and
      * whether any pixel of the target is inside it. */
     v9x_u32 scissor[4];
@@ -682,6 +688,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
     state->desc.specular = 0u;
     state->textured = 0;
     state->depth = 0;
+    state->depth_format = 0u;
     state->depth_address = 0ul;
     state->depth_pitch = 0ul;
     state->depth_function = 0u;
@@ -709,7 +716,10 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
             (DWORD)surface->lpGbl->wWidth < draw->target.width ||
             (DWORD)surface->lpGbl->wHeight < draw->target.height ||
             draw->depth_func < V9X_R3D_CMP_NEVER ||
-            draw->depth_func > V9X_R3D_CMP_ALWAYS) {
+            draw->depth_func > V9X_R3D_CMP_ALWAYS ||
+            !v9x_d3d_hsw_depth_format(
+                draw->depth.format == V9X_R3D_DEPTH_Z24X8 ? 4ul : 2ul,
+                &state->depth_format)) {
             return V9X_D3D_HSW_REFUSE_DEPTH;
         }
         state->depth = 1;
@@ -1038,7 +1048,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     d.depth_test = state.depth ? V9X_D3D_HSW_DS_OFF : 0ul;
     d.tl_vertices = 1u;
     d.flat = 0u;   /* the core copies the provoking vertex */
-    d.depth_format = state.depth ? V9X_HSW_DEPTH_D16_UNORM : (v9x_u8)0u;
+    d.depth_format = state.depth ? state.depth_format : (v9x_u8)0u;
     d.depth_pitch = state.depth_pitch;
     d.depth_only = 0u;
     d.scissor = 1u;
@@ -1162,9 +1172,17 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     float right;
     float bottom;
     float z;
+    /* The surface's own cell (d3d_core.c): D16, or D24_UNORM_X8 for a
+     * 32-bit Z buffer. */
+    DWORD cell;
+    v9x_u8 format = 0u;
 
     if (surface == 0 || rect == 0 || !v9x_d3d_hsw_ready() ||
         !v9x_d3d_hsw_depth_surface(surface, &offset)) {
+        return V9X_BLT_DECLINED;
+    }
+    cell = v9x_d3d_depth_bytes_per_pixel(surface);
+    if (!v9x_d3d_hsw_depth_format(cell, &format)) {
         return V9X_BLT_DECLINED;
     }
     width = (DWORD)surface->lpGbl->wWidth;
@@ -1223,8 +1241,9 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
         return V9X_BLT_DECLINED;
     }
 
-    /* D16_UNORM stores round(z x 65535). */
-    z = (float)(value & 0xfffful) / 65535.0f;
+    /* D16_UNORM stores round(z x 65535), D24_UNORM_X8 round(z x
+     * 16777215). */
+    z = v9x_d3d_hsw_fill_z(value, cell);
     left = (float)rect[0];
     top = (float)rect[1];
     right = (float)rect[2];
@@ -1252,7 +1271,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     d.tl_vertices = 1u;
     d.vertex_count = V9X_D3D_HSW_FILL_VERTICES;
     d.flat = 0u;
-    d.depth_format = V9X_HSW_DEPTH_D16_UNORM;
+    d.depth_format = format;
     d.depth_pitch = pitch;
     d.depth_only = 1u;
     d.scissor = 0u;
@@ -1271,9 +1290,9 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 }
 
 /*
- * A Z buffer in whole Y tiles: pitch width x 2 rounded up to 128 bytes,
- * rows rounded up to 32, on a 4 KB boundary, so the last row of tiles the
- * engine reaches is the surface's own.
+ * A Z buffer in whole Y tiles: pitch width x 2 (x 4 for a 32-bit one)
+ * rounded up to 128 bytes, rows rounded up to 32, on a 4 KB boundary, so
+ * the last row of tiles the engine reaches is the surface's own.
  */
 static DWORD v9x_d3d_hsw_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
                                       V9X_DD_SURFACE_LCL *surface)
@@ -1282,17 +1301,24 @@ static DWORD v9x_d3d_hsw_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
     DWORD pitch;
     DWORD rows;
     DWORD base;
+    /* A 16-bit Z buffer, or a 32-bit one (D24_UNORM_X8). */
+    DWORD bytes = 2ul;
 
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        if (surface->lpGbl->ddpfSurface.dwRGBBitCount == 32ul) {
+            bytes = 4ul;
+        } else if (surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+    }
     if (surface->lpGbl->wWidth == 0u || surface->lpGbl->wHeight == 0u ||
         (DWORD)surface->lpGbl->wWidth >
             v9x_d3d_hsw_limits.target_dimension_max ||
         (DWORD)surface->lpGbl->wHeight >
-            v9x_d3d_hsw_limits.target_dimension_max ||
-        ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
-         surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul)) {
+            v9x_d3d_hsw_limits.target_dimension_max) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    pitch = ((DWORD)surface->lpGbl->wWidth * 2ul + V9X_D3D_HSW_TILE_PITCH -
+    pitch = ((DWORD)surface->lpGbl->wWidth * bytes + V9X_D3D_HSW_TILE_PITCH -
              1ul) & ~(V9X_D3D_HSW_TILE_PITCH - 1ul);
     rows = ((DWORD)surface->lpGbl->wHeight + V9X_D3D_HSW_TILE_ROWS - 1ul) &
            ~(V9X_D3D_HSW_TILE_ROWS - 1ul);
@@ -1525,10 +1551,12 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
-    /* 16 and 32 bpp targets (v9x_d3d_hsw_target); depth D16 at both. */
+    /* 16 and 32 bpp targets (v9x_d3d_hsw_target); depth D16 or a 32-bit
+     * D24_UNORM_X8 at both. */
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
         V9X_DDBD_16 | V9X_DDBD_32;
-    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
 
     /* RGB565, ARGB1555 and ARGB4444: the shared block has three slots. */
     for (index = 0ul; index < 3ul; ++index) {

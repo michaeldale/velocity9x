@@ -211,12 +211,14 @@ static int v9x_hsw_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
      * pixels, so the render engine draws the fill (Phase F2b). */
     if (data != 0 && data->lpDDDestSurface != 0 &&
         (data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
-        if (!v9x_hsw_validate() || bytes_per_pixel != 2ul) {
+        /* D16, or a 32-bit D24_UNORM_X8; the fill takes the value's low
+         * 16 or 24 bits by the surface's cell (v9x_d3d_hsw_fill_z). */
+        if (!v9x_hsw_validate() ||
+            (bytes_per_pixel != 2ul && bytes_per_pixel != 4ul)) {
             return V9X_BLT_DECLINED;
         }
         return v9x_d3d_hsw_depth_fill(data->lpDDDestSurface, data->rDest,
-                                      data->bltFX.dwFillColor & 0xfffful,
-                                      wait);
+                                      data->bltFX.dwFillColor, wait);
     }
     if (!v9x_hsw_validate() || data == 0 || data->lpDDDestSurface == 0 ||
         data->lpDDDestSurface->lpGbl == 0 ||

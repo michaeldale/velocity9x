@@ -449,8 +449,9 @@ extern const V9X_ENGINE32_OPS v9x_engine32_tdfx;
 extern const V9X_ENGINE32_OPS v9x_engine32_hsw;
 /* Haswell's Y-tiled Z buffers are filled by the render engine, not the
  * blitter: eng_hsw.c's fill hands a depth destination to d3d\d3d_hsw.c.
- * rect is rDest's left, top, right, bottom; value is on the 16-bit full
- * scale. Returns a V9X_BLT_* outcome. */
+ * rect is rDest's left, top, right, bottom; value is on the surface's full
+ * scale, 16 bits or, for a 32-bit Z buffer, 24. Returns a V9X_BLT_*
+ * outcome. */
 int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                            DWORD value, int wait);
 

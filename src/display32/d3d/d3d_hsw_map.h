@@ -51,6 +51,19 @@ int v9x_d3d_hsw_target(v9x_u32 r3d_format, v9x_u16 *format,
                        v9x_u8 *write_disable);
 
 /*
+ * The Z buffer's 3DSTATE_DEPTH_BUFFER (and 3DSTATE_SF) format for its cell:
+ * 2 bytes D16_UNORM, as F2b built it, or 4 bytes D24_UNORM_X8_UINT, 24 bits
+ * of depth beside 16 (docs\plans\32bpp-acceleration-and-3d.md, decision 1).
+ * 0 for any other cell, nothing written.
+ */
+int v9x_d3d_hsw_depth_format(v9x_u32 cell_bytes, v9x_u8 *format);
+
+/* A depth fill's value as the z the depth-only draw writes: the value's
+ * low 16 bits over 65535 for a 2-byte cell, its low 24 over 16777215 for a
+ * 4-byte one, which is what each format stores (round(z x max)). */
+float v9x_d3d_hsw_fill_z(v9x_u32 value, v9x_u32 cell_bytes);
+
+/*
  * The draw's scissor as the inclusive rectangle 3DSTATE_DRAWING_RECTANGLE
  * takes, clamped to the target, in rect[0..3] = x0, y0, x1, y1: the whole
  * target for a draw that states none. 0 when it is empty, and nothing is

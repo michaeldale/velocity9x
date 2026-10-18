@@ -510,8 +510,11 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_DEPTH_VERTEX_BYTES     ((v9x_u16)28u)
 #define V9X_HSW_DEPTH_CLEAR_VERTICES   ((v9x_u32)3ul)
 #define V9X_HSW_DEPTH_SCENE_VERTICES   ((v9x_u32)9ul)
-/* 3DSTATE_DEPTH_BUFFER Surface Format (Vol 2b): D32_FLOAT 1, D16_UNORM 5. */
+/* 3DSTATE_DEPTH_BUFFER Surface Format (Vol 2b): D32_FLOAT 1, D16_UNORM 5,
+ * and D24_UNORM_X8_UINT 3, which the 3DSTATE_SF table marks HSW-only;
+ * depth in bits 23:0 of a 32-bit cell (3DSTATE_CLEAR_PARAMS). */
 #define V9X_HSW_DEPTH_D32_FLOAT        ((v9x_u8)1u)
+#define V9X_HSW_DEPTH_D24_UNORM_X8     ((v9x_u8)3u)
 #define V9X_HSW_DEPTH_D16_UNORM        ((v9x_u8)5u)
 /* Phase F2: Direct3D's TL vertex. */
 #define V9X_HSW_TL_VERTEX_BYTES        ((v9x_u16)32u)
