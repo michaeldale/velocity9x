@@ -1,0 +1,353 @@
+1 pid=FFFF3147 attach instance=0A1A0000 tls=21 version=0.20.0 V9XGL build=50e7eeba-dirty time=2026-10-18 15:28:42 uptime-ms=603627 exe=C:\SIERRA\HALF-LIFE\HL.EXE
+4 pid=FFFF3147 describe result=0 engine=7 formats=00000002
+45 pid=FFFF3147 hwno hwtex-ms=18714710 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+48 pid=FFFF3147 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1/3 two-units=0/0 split=0/0 split-declined=0
+147 pid=FFFF3147 hwno hwtex-ms=112 iface-cpu-ms=0 not-cpu=2 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+150 pid=FFFF3147 paths batches/triangles untextured=2/4 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=150/4491 two-units=0/0 split=0/0 split-declined=0
+155 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+158 pid=FFFF3147 paths batches/triangles untextured=7/14 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=511/14599 two-units=0/0 split=0/0 split-declined=0
+163 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+166 pid=FFFF3147 paths batches/triangles untextured=13/26 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=940/25899 two-units=0/0 split=0/0 split-declined=0
+171 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+174 pid=FFFF3147 paths batches/triangles untextured=19/38 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1367/37208 two-units=0/0 split=0/0 split-declined=0
+179 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+182 pid=FFFF3147 paths batches/triangles untextured=25/50 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=1798/48508 two-units=0/0 split=0/0 split-declined=0
+187 pid=FFFF3147 hwno hwtex-ms=5 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+190 pid=FFFF3147 paths batches/triangles untextured=30/60 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=2169/58244 two-units=0/0 split=0/0 split-declined=0
+195 pid=FFFF3147 hwno hwtex-ms=12 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+198 pid=FFFF3147 paths batches/triangles untextured=36/72 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=2598/69515 two-units=0/0 split=0/0 split-declined=0
+203 pid=FFFF3147 hwno hwtex-ms=18 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+206 pid=FFFF3147 paths batches/triangles untextured=42/84 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=3019/80604 two-units=0/0 split=0/0 split-declined=0
+211 pid=FFFF3147 hwno hwtex-ms=12 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+214 pid=FFFF3147 paths batches/triangles untextured=48/96 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=3432/91583 two-units=0/0 split=0/0 split-declined=0
+219 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+222 pid=FFFF3147 paths batches/triangles untextured=54/108 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=3811/101434 two-units=0/0 split=0/0 split-declined=0
+227 pid=FFFF3147 hwno hwtex-ms=8 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+230 pid=FFFF3147 paths batches/triangles untextured=60/120 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=4135/109471 two-units=0/0 split=0/0 split-declined=0
+235 pid=FFFF3147 hwno hwtex-ms=11 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+238 pid=FFFF3147 paths batches/triangles untextured=66/132 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=4456/117149 two-units=0/0 split=0/0 split-declined=0
+243 pid=FFFF3147 hwno hwtex-ms=4 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+246 pid=FFFF3147 paths batches/triangles untextured=72/144 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=4781/125345 two-units=0/0 split=0/0 split-declined=0
+251 pid=FFFF3147 hwno hwtex-ms=27 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+254 pid=FFFF3147 paths batches/triangles untextured=79/158 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=5199/137065 two-units=0/0 split=0/0 split-declined=0
+259 pid=FFFF3147 hwno hwtex-ms=34 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+262 pid=FFFF3147 paths batches/triangles untextured=85/170 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=5649/150703 two-units=0/0 split=0/0 split-declined=0
+267 pid=FFFF3147 hwno hwtex-ms=27 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+270 pid=FFFF3147 paths batches/triangles untextured=91/182 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=6449/173566 two-units=0/0 split=0/0 split-declined=0
+275 pid=FFFF3147 hwno hwtex-ms=54 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+278 pid=FFFF3147 paths batches/triangles untextured=97/194 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=7481/200502 two-units=0/0 split=0/0 split-declined=0
+283 pid=FFFF3147 hwno hwtex-ms=27 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+286 pid=FFFF3147 paths batches/triangles untextured=103/206 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=8199/218998 two-units=0/0 split=0/0 split-declined=0
+291 pid=FFFF3147 hwno hwtex-ms=42 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+294 pid=FFFF3147 paths batches/triangles untextured=109/218 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=8759/232379 two-units=0/0 split=0/0 split-declined=0
+299 pid=FFFF3147 hwno hwtex-ms=4 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+302 pid=FFFF3147 paths batches/triangles untextured=115/230 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=9032/239481 two-units=0/0 split=0/0 split-declined=0
+307 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+310 pid=FFFF3147 paths batches/triangles untextured=121/242 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=9321/246829 two-units=0/0 split=0/0 split-declined=0
+315 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=9 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+318 pid=FFFF3147 paths batches/triangles untextured=130/260 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=9707/256770 two-units=0/0 split=0/0 split-declined=0
+323 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+326 pid=FFFF3147 paths batches/triangles untextured=136/272 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=10037/265212 two-units=0/0 split=0/0 split-declined=0
+331 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+334 pid=FFFF3147 paths batches/triangles untextured=141/282 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=10308/271805 two-units=0/0 split=0/0 split-declined=0
+339 pid=FFFF3147 hwno hwtex-ms=10 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+342 pid=FFFF3147 paths batches/triangles untextured=148/296 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=10891/287889 two-units=0/0 split=0/0 split-declined=0
+347 pid=FFFF3147 hwno hwtex-ms=9 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+350 pid=FFFF3147 paths batches/triangles untextured=155/310 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=11594/307341 two-units=0/0 split=0/0 split-declined=0
+355 pid=FFFF3147 hwno hwtex-ms=18 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+358 pid=FFFF3147 paths batches/triangles untextured=161/322 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=12294/327965 two-units=0/0 split=0/0 split-declined=0
+363 pid=FFFF3147 hwno hwtex-ms=16 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+366 pid=FFFF3147 paths batches/triangles untextured=167/334 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=12983/347813 two-units=0/0 split=0/0 split-declined=0
+371 pid=FFFF3147 hwno hwtex-ms=3 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+374 pid=FFFF3147 paths batches/triangles untextured=174/348 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=13734/369386 two-units=0/0 split=0/0 split-declined=0
+379 pid=FFFF3147 hwno hwtex-ms=12 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+382 pid=FFFF3147 paths batches/triangles untextured=180/360 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=14746/396591 two-units=0/0 split=0/0 split-declined=0
+387 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+390 pid=FFFF3147 paths batches/triangles untextured=186/372 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=15319/411701 two-units=0/0 split=0/0 split-declined=0
+395 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+398 pid=FFFF3147 paths batches/triangles untextured=192/384 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=15763/424293 two-units=0/0 split=0/0 split-declined=0
+403 pid=FFFF3147 hwno hwtex-ms=12 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+406 pid=FFFF3147 paths batches/triangles untextured=198/396 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=16714/444574 two-units=0/0 split=0/0 split-declined=0
+411 pid=FFFF3147 hwno hwtex-ms=8 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+414 pid=FFFF3147 paths batches/triangles untextured=203/406 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=17856/472655 two-units=0/0 split=0/0 split-declined=0
+419 pid=FFFF3147 hwno hwtex-ms=17 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+422 pid=FFFF3147 paths batches/triangles untextured=210/420 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=18991/500399 two-units=0/0 split=0/0 split-declined=0
+427 pid=FFFF3147 hwno hwtex-ms=4 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+430 pid=FFFF3147 paths batches/triangles untextured=216/432 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=19892/522597 two-units=0/0 split=0/0 split-declined=0
+435 pid=FFFF3147 hwno hwtex-ms=5 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+438 pid=FFFF3147 paths batches/triangles untextured=223/446 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=20545/540001 two-units=0/0 split=0/0 split-declined=0
+443 pid=FFFF3147 hwno hwtex-ms=13 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+446 pid=FFFF3147 paths batches/triangles untextured=230/460 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=21245/558149 two-units=0/0 split=0/0 split-declined=0
+451 pid=FFFF3147 hwno hwtex-ms=7 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+454 pid=FFFF3147 paths batches/triangles untextured=236/472 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=21995/575699 two-units=0/0 split=0/0 split-declined=0
+459 pid=FFFF3147 hwno hwtex-ms=11 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+462 pid=FFFF3147 paths batches/triangles untextured=242/484 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=22954/597974 two-units=0/0 split=0/0 split-declined=0
+467 pid=FFFF3147 hwno hwtex-ms=11 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+470 pid=FFFF3147 paths batches/triangles untextured=247/494 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=23735/615238 two-units=0/0 split=0/0 split-declined=0
+475 pid=FFFF3147 hwno hwtex-ms=3 iface-cpu-ms=0 not-cpu=4 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+478 pid=FFFF3147 paths batches/triangles untextured=251/502 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=24378/629831 two-units=0/0 split=0/0 split-declined=0
+483 pid=FFFF3147 hwno hwtex-ms=11 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+486 pid=FFFF3147 paths batches/triangles untextured=257/514 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=25330/654010 two-units=0/0 split=0/0 split-declined=0
+491 pid=FFFF3147 hwno hwtex-ms=11 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+494 pid=FFFF3147 paths batches/triangles untextured=263/526 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=26409/680710 two-units=0/0 split=0/0 split-declined=0
+499 pid=FFFF3147 hwno hwtex-ms=5 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+502 pid=FFFF3147 paths batches/triangles untextured=269/538 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=27474/704858 two-units=0/0 split=0/0 split-declined=0
+507 pid=FFFF3147 hwno hwtex-ms=14 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+510 pid=FFFF3147 paths batches/triangles untextured=275/550 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=28510/730956 two-units=0/0 split=0/0 split-declined=0
+515 pid=FFFF3147 hwno hwtex-ms=8 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+518 pid=FFFF3147 paths batches/triangles untextured=281/562 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=29602/755680 two-units=0/0 split=0/0 split-declined=0
+523 pid=FFFF3147 hwno hwtex-ms=8 iface-cpu-ms=0 not-cpu=4 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+526 pid=FFFF3147 paths batches/triangles untextured=285/570 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=30555/778992 two-units=0/0 split=0/0 split-declined=0
+531 pid=FFFF3147 hwno hwtex-ms=14 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+534 pid=FFFF3147 paths batches/triangles untextured=291/582 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=31553/803356 two-units=0/0 split=0/0 split-declined=0
+539 pid=FFFF3147 hwno hwtex-ms=22 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+542 pid=FFFF3147 paths batches/triangles untextured=296/592 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=32569/829180 two-units=0/0 split=0/0 split-declined=0
+547 pid=FFFF3147 hwno hwtex-ms=21 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+550 pid=FFFF3147 paths batches/triangles untextured=302/604 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=33924/859784 two-units=0/0 split=0/0 split-declined=0
+555 pid=FFFF3147 hwno hwtex-ms=12 iface-cpu-ms=0 not-cpu=4 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+558 pid=FFFF3147 paths batches/triangles untextured=306/612 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=35150/886723 two-units=0/0 split=0/0 split-declined=0
+563 pid=FFFF3147 hwno hwtex-ms=8 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+566 pid=FFFF3147 paths batches/triangles untextured=311/622 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=36175/909404 two-units=0/0 split=0/0 split-declined=0
+571 pid=FFFF3147 hwno hwtex-ms=33 iface-cpu-ms=0 not-cpu=4 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+574 pid=FFFF3147 paths batches/triangles untextured=315/630 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=37500/938038 two-units=0/0 split=0/0 split-declined=0
+579 pid=FFFF3147 hwno hwtex-ms=30 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+582 pid=FFFF3147 paths batches/triangles untextured=320/640 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=38922/967762 two-units=0/0 split=0/0 split-declined=0
+587 pid=FFFF3147 hwno hwtex-ms=7 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+590 pid=FFFF3147 paths batches/triangles untextured=326/652 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=39836/988973 two-units=0/0 split=0/0 split-declined=0
+595 pid=FFFF3147 hwno hwtex-ms=8 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+598 pid=FFFF3147 paths batches/triangles untextured=332/664 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=40573/1006913 two-units=0/0 split=0/0 split-declined=0
+603 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+606 pid=FFFF3147 paths batches/triangles untextured=339/678 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=41119/1020931 two-units=0/0 split=0/0 split-declined=0
+611 pid=FFFF3147 hwno hwtex-ms=16 iface-cpu-ms=0 not-cpu=5 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+614 pid=FFFF3147 paths batches/triangles untextured=344/688 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=41720/1038602 two-units=0/0 split=0/0 split-declined=0
+619 pid=FFFF3147 hwno hwtex-ms=39 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+622 pid=FFFF3147 paths batches/triangles untextured=350/700 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=42444/1061195 two-units=0/0 split=0/0 split-declined=0
+627 pid=FFFF3147 hwno hwtex-ms=44 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+630 pid=FFFF3147 paths batches/triangles untextured=356/712 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=43399/1086041 two-units=0/0 split=0/0 split-declined=0
+635 pid=FFFF3147 hwno hwtex-ms=32 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+638 pid=FFFF3147 paths batches/triangles untextured=362/724 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=43987/1101027 two-units=0/0 split=0/0 split-declined=0
+643 pid=FFFF3147 hwno hwtex-ms=42 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+646 pid=FFFF3147 paths batches/triangles untextured=368/736 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=44542/1115002 two-units=0/0 split=0/0 split-declined=0
+651 pid=FFFF3147 hwno hwtex-ms=13 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+654 pid=FFFF3147 paths batches/triangles untextured=375/750 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=45157/1130063 two-units=0/0 split=0/0 split-declined=0
+659 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+662 pid=FFFF3147 paths batches/triangles untextured=381/762 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=45699/1143552 two-units=0/0 split=0/0 split-declined=0
+667 pid=FFFF3147 hwno hwtex-ms=3 iface-cpu-ms=0 not-cpu=7 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+670 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=46337/1159862 two-units=0/0 split=0/0 split-declined=0
+675 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+678 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=47189/1209349 two-units=0/0 split=0/0 split-declined=0
+683 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+686 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=48041/1258836 two-units=0/0 split=0/0 split-declined=0
+691 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+694 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=48893/1308323 two-units=0/0 split=0/0 split-declined=0
+699 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+702 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=49745/1357810 two-units=0/0 split=0/0 split-declined=0
+707 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+710 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=50597/1407297 two-units=0/0 split=0/0 split-declined=0
+715 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+718 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=51449/1456784 two-units=0/0 split=0/0 split-declined=0
+723 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+726 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=52301/1506271 two-units=0/0 split=0/0 split-declined=0
+731 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+734 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=53153/1555758 two-units=0/0 split=0/0 split-declined=0
+739 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+742 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=54005/1605245 two-units=0/0 split=0/0 split-declined=0
+747 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+750 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=54857/1654732 two-units=0/0 split=0/0 split-declined=0
+755 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+758 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=55709/1704219 two-units=0/0 split=0/0 split-declined=0
+763 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+766 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=56561/1753706 two-units=0/0 split=0/0 split-declined=0
+771 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+774 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=57413/1803193 two-units=0/0 split=0/0 split-declined=0
+779 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+782 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=58265/1852680 two-units=0/0 split=0/0 split-declined=0
+787 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+790 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=59117/1902167 two-units=0/0 split=0/0 split-declined=0
+795 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+798 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=59969/1951654 two-units=0/0 split=0/0 split-declined=0
+803 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+806 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=60821/2001141 two-units=0/0 split=0/0 split-declined=0
+811 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+814 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=61673/2050628 two-units=0/0 split=0/0 split-declined=0
+819 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+822 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=62525/2100115 two-units=0/0 split=0/0 split-declined=0
+827 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+830 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=63377/2149602 two-units=0/0 split=0/0 split-declined=0
+835 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+838 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=64229/2199089 two-units=0/0 split=0/0 split-declined=0
+843 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+846 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=65081/2248576 two-units=0/0 split=0/0 split-declined=0
+851 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+854 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=65933/2298063 two-units=0/0 split=0/0 split-declined=0
+859 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+862 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=66785/2347550 two-units=0/0 split=0/0 split-declined=0
+867 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+870 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=67637/2397037 two-units=0/0 split=0/0 split-declined=0
+875 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+878 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=68489/2446524 two-units=0/0 split=0/0 split-declined=0
+883 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+886 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=69341/2496011 two-units=0/0 split=0/0 split-declined=0
+891 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+894 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=70193/2545498 two-units=0/0 split=0/0 split-declined=0
+899 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+902 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=71045/2594985 two-units=0/0 split=0/0 split-declined=0
+907 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+910 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=71897/2644472 two-units=0/0 split=0/0 split-declined=0
+915 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+918 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=72749/2693959 two-units=0/0 split=0/0 split-declined=0
+923 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+926 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=73601/2743446 two-units=0/0 split=0/0 split-declined=0
+931 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+934 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=74453/2792933 two-units=0/0 split=0/0 split-declined=0
+939 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+942 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=75305/2842420 two-units=0/0 split=0/0 split-declined=0
+947 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+950 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=76157/2891907 two-units=0/0 split=0/0 split-declined=0
+955 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+958 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=77009/2941394 two-units=0/0 split=0/0 split-declined=0
+963 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+966 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=77861/2990881 two-units=0/0 split=0/0 split-declined=0
+971 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+974 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=78713/3040368 two-units=0/0 split=0/0 split-declined=0
+979 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+982 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=79565/3089855 two-units=0/0 split=0/0 split-declined=0
+987 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+990 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=80417/3139342 two-units=0/0 split=0/0 split-declined=0
+995 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+998 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=81269/3188829 two-units=0/0 split=0/0 split-declined=0
+1003 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1006 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=82121/3238316 two-units=0/0 split=0/0 split-declined=0
+1011 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1014 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=82973/3287803 two-units=0/0 split=0/0 split-declined=0
+1019 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1022 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=83825/3337290 two-units=0/0 split=0/0 split-declined=0
+1027 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1030 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=84677/3386777 two-units=0/0 split=0/0 split-declined=0
+1035 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1038 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=85529/3436264 two-units=0/0 split=0/0 split-declined=0
+1043 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1046 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=86381/3485751 two-units=0/0 split=0/0 split-declined=0
+1051 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1054 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=87233/3535238 two-units=0/0 split=0/0 split-declined=0
+1059 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1062 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=88085/3584725 two-units=0/0 split=0/0 split-declined=0
+1067 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1070 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=88937/3634212 two-units=0/0 split=0/0 split-declined=0
+1075 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1078 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=89789/3683699 two-units=0/0 split=0/0 split-declined=0
+1083 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1086 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=90641/3733186 two-units=0/0 split=0/0 split-declined=0
+1091 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1094 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=91493/3782673 two-units=0/0 split=0/0 split-declined=0
+1099 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1102 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=92345/3832160 two-units=0/0 split=0/0 split-declined=0
+1107 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1110 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=93197/3881647 two-units=0/0 split=0/0 split-declined=0
+1115 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1118 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=94049/3931134 two-units=0/0 split=0/0 split-declined=0
+1123 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1126 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=94901/3980621 two-units=0/0 split=0/0 split-declined=0
+1131 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1134 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=95753/4030108 two-units=0/0 split=0/0 split-declined=0
+1139 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1142 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=96605/4079595 two-units=0/0 split=0/0 split-declined=0
+1147 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1150 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=97457/4129082 two-units=0/0 split=0/0 split-declined=0
+1155 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1158 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=98309/4178569 two-units=0/0 split=0/0 split-declined=0
+1163 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1166 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=99161/4228056 two-units=0/0 split=0/0 split-declined=0
+1171 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1174 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=100013/4277543 two-units=0/0 split=0/0 split-declined=0
+1179 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1182 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=100865/4327030 two-units=0/0 split=0/0 split-declined=0
+1187 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1190 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=101717/4376517 two-units=0/0 split=0/0 split-declined=0
+1195 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1198 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=102569/4426004 two-units=0/0 split=0/0 split-declined=0
+1203 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1206 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=103421/4475491 two-units=0/0 split=0/0 split-declined=0
+1211 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1214 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=104273/4524978 two-units=0/0 split=0/0 split-declined=0
+1219 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1222 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=105125/4574465 two-units=0/0 split=0/0 split-declined=0
+1227 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1230 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=105977/4623952 two-units=0/0 split=0/0 split-declined=0
+1235 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1238 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=106829/4673439 two-units=0/0 split=0/0 split-declined=0
+1243 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1246 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=107681/4722926 two-units=0/0 split=0/0 split-declined=0
+1251 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1254 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=108533/4772413 two-units=0/0 split=0/0 split-declined=0
+1259 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1262 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=109385/4821900 two-units=0/0 split=0/0 split-declined=0
+1267 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1270 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=110237/4871387 two-units=0/0 split=0/0 split-declined=0
+1275 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1278 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=111089/4920874 two-units=0/0 split=0/0 split-declined=0
+1283 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1286 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=111941/4970361 two-units=0/0 split=0/0 split-declined=0
+1291 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1294 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=112793/5019848 two-units=0/0 split=0/0 split-declined=0
+1299 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1302 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=113645/5069335 two-units=0/0 split=0/0 split-declined=0
+1307 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1310 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=114497/5118822 two-units=0/0 split=0/0 split-declined=0
+1315 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1318 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=115349/5168309 two-units=0/0 split=0/0 split-declined=0
+1323 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1326 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=116201/5217796 two-units=0/0 split=0/0 split-declined=0
+1331 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1334 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=117053/5267283 two-units=0/0 split=0/0 split-declined=0
+1339 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1342 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=117905/5316770 two-units=0/0 split=0/0 split-declined=0
+1347 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1350 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=118757/5366257 two-units=0/0 split=0/0 split-declined=0
+1355 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1358 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=119609/5415744 two-units=0/0 split=0/0 split-declined=0
+1363 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1366 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=120461/5465231 two-units=0/0 split=0/0 split-declined=0
+1371 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1374 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=121313/5514718 two-units=0/0 split=0/0 split-declined=0
+1379 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1382 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=122165/5564205 two-units=0/0 split=0/0 split-declined=0
+1387 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1390 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=123017/5613692 two-units=0/0 split=0/0 split-declined=0
+1395 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1398 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=123869/5663179 two-units=0/0 split=0/0 split-declined=0
+1403 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1406 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=124721/5712666 two-units=0/0 split=0/0 split-declined=0
+1411 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1414 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=125573/5762153 two-units=0/0 split=0/0 split-declined=0
+1419 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1422 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=126425/5811640 two-units=0/0 split=0/0 split-declined=0
+1427 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1430 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=127277/5861127 two-units=0/0 split=0/0 split-declined=0
+1435 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1438 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=128129/5910614 two-units=0/0 split=0/0 split-declined=0
+1443 pid=FFFF3147 hwno hwtex-ms=1 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1446 pid=FFFF3147 paths batches/triangles untextured=388/776 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=128994/5960497 two-units=0/0 split=0/0 split-declined=0
+1451 pid=FFFF3147 hwno hwtex-ms=60 iface-cpu-ms=0 not-cpu=3 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1454 pid=FFFF3147 paths batches/triangles untextured=391/782 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=129512/5985018 two-units=0/0 split=0/0 split-declined=0
+1459 pid=FFFF3147 hwno hwtex-ms=2 iface-cpu-ms=0 not-cpu=6 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1462 pid=FFFF3147 paths batches/triangles untextured=397/794 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=129878/5992896 two-units=0/0 split=0/0 split-declined=0
+1465 pid=FFFF3147 paths batches/triangles untextured=400/800 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=130057/5996612 two-units=0/0 split=0/0 split-declined=0
+1506 pid=FFFF3147 hwno hwtex-ms=278 iface-cpu-ms=0 not-cpu=3 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1509 pid=FFFF3147 paths batches/triangles untextured=400/800 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=130058/5996615 two-units=0/0 split=0/0 split-declined=0
+1514 pid=FFFF3147 hwno hwtex-ms=189 iface-cpu-ms=0 not-cpu=2 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1517 pid=FFFF3147 paths batches/triangles untextured=402/804 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=130529/6015212 two-units=0/0 split=0/0 split-declined=0
+1522 pid=FFFF3147 hwno hwtex-ms=21 iface-cpu-ms=0 not-cpu=12 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1525 pid=FFFF3147 paths batches/triangles untextured=414/828 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=131202/6028571 two-units=0/0 split=0/0 split-declined=0
+1530 pid=FFFF3147 hwno hwtex-ms=24 iface-cpu-ms=0 not-cpu=12 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1533 pid=FFFF3147 paths batches/triangles untextured=426/852 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=131811/6041268 two-units=0/0 split=0/0 split-declined=0
+1538 pid=FFFF3147 hwno hwtex-ms=26 iface-cpu-ms=0 not-cpu=12 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1541 pid=FFFF3147 paths batches/triangles untextured=438/876 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=132222/6047846 two-units=0/0 split=0/0 split-declined=0
+1546 pid=FFFF3147 hwno hwtex-ms=21 iface-cpu-ms=0 not-cpu=12 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1549 pid=FFFF3147 paths batches/triangles untextured=450/900 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=132737/6054899 two-units=0/0 split=0/0 split-declined=0
+1554 pid=FFFF3147 hwno hwtex-ms=50 iface-cpu-ms=0 not-cpu=10 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+1557 pid=FFFF3147 paths batches/triangles untextured=460/920 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=133187/6061679 two-units=0/0 split=0/0 split-declined=0
+1560 pid=FFFF3147 paths batches/triangles untextured=470/940 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=133572/6068291 two-units=0/0 split=0/0 split-declined=0
+1564 pid=FFFF3147 census glBegin=3196740 glColor3f=4745 glColor3ubv=37 glColor4f=4985631 glColor4ub=2470 glEnd=3196740 glTexCoord2f=13658234 glVertex2f=10137180 glVertex3f=2320231 glVertex3fv=1202703 glCullFace=7334 glPolygonMode=2 glShadeModel=13141 glTexParameterf=17511 glTexImage2D=3878 glTexEnvf=2554710 glClear=435 glClearColor=2 glDepthMask=29389 glDisable=7693759 glEnable=2695872 glFinish=7389 glFlush=2 glAlphaFunc=2217
+1565 pid=FFFF3147 census glBlendFunc=18988 glDepthFunc=627 glGetFloatv=8245 glGetString=8 glDepthRange=1301 glFrustum=435 glLoadIdentity=74676 glLoadMatrixf=7375 glMatrixMode=148482 glOrtho=36903 glPopMatrix=73721 glPushMatrix=73721 glRotatef=8532 glTranslatef=17304 glViewport=29963 glBindTexture=82304 glPolygonOffset=185 glTexSubImage2D=165
+1566 pid=FFFF3147 census implemented-slots-called=42

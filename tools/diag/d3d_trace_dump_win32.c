@@ -1798,6 +1798,24 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_SPLIT]);
     v9x_write_uint("MgaSetupRefusedBuild",
                    snapshot.d3d.mga_setup_refused[V9X_D3D_MGA_SETUP_BUILD]);
+    v9x_write_uint("MgaTexRefusedSurface",
+                   snapshot.d3d.mga_texture_refused[V9X_D3D_MGA_TEXREF_SURFACE]);
+    v9x_write_uint("MgaTexRefusedFormat",
+                   snapshot.d3d.mga_texture_refused[V9X_D3D_MGA_TEXREF_FORMAT]);
+    v9x_write_uint("MgaTexRefusedPlace",
+                   snapshot.d3d.mga_texture_refused[V9X_D3D_MGA_TEXREF_PLACE]);
+    v9x_write_uint("MgaTexRefusedSize",
+                   snapshot.d3d.mga_texture_refused[V9X_D3D_MGA_TEXREF_SIZE]);
+    v9x_write_uint("MgaTexRefusedPitch",
+                   snapshot.d3d.mga_texture_refused[V9X_D3D_MGA_TEXREF_PITCH]);
+    v9x_write_uint("MgaTexRefusedLastBits",
+                   snapshot.d3d.mga_texture_refused_last_bits);
+    v9x_write_hex("MgaTexRefusedLastAlpha",
+                  snapshot.d3d.mga_texture_refused_last_alpha);
+    v9x_write_hex("MgaTexRefusedLastSize",
+                  snapshot.d3d.mga_texture_refused_last_size);
+    v9x_write_uint("MgaTexRefusedLastPitch",
+                   snapshot.d3d.mga_texture_refused_last_pitch);
     v9x_write_watch(&snapshot.d3d.watch);
     v9x_write_uint("AlphaTestSets", snapshot.d3d.alpha_test_sets);
     v9x_write_hex("AlphaTestFuncSeen", snapshot.d3d.alpha_test_func_seen);

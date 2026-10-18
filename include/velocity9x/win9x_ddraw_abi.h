@@ -2083,6 +2083,14 @@ typedef struct v9x_d3d_blt_flip_record {
 #define V9X_D3D_MGA_SETUP_RHW       1
 #define V9X_D3D_MGA_SETUP_SPLIT     2
 #define V9X_D3D_MGA_SETUP_BUILD     3
+/* Why the MGA-2164W engine would not sample a bound texture surface
+ * (v9x_d3d_mga_resolve_texture). */
+#define V9X_D3D_MGA_TEXREF_REASONS  5
+#define V9X_D3D_MGA_TEXREF_SURFACE  0  /* not a video-memory texture  */
+#define V9X_D3D_MGA_TEXREF_FORMAT   1  /* not 565 or 1555             */
+#define V9X_D3D_MGA_TEXREF_PLACE    2  /* no offset, or off 32 bytes  */
+#define V9X_D3D_MGA_TEXREF_SIZE     3  /* not a power of two, 1-256   */
+#define V9X_D3D_MGA_TEXREF_PITCH    4  /* a row tpitch cannot state   */
 
 /*
  * How each program that loads the HAL ended (src\display32\ddhal_watch.c).
@@ -3624,6 +3632,19 @@ typedef struct v9x_d3d_diagnostics {
     /* Mach64-class fogged multiply blends fogged in the texture stage
      * (mach64_policy.c fog_as_decal). */
     DWORD m64_fog_decal;
+    /*
+     * Bound texture surfaces the MGA-2164W engine would not sample, by
+     * reason (V9X_D3D_MGA_TEXREF_*), and the last one's shape: Half-Life
+     * OpenGL's surface textures were 60 % of its refused batches on
+     * A8U4I5 (2026-10-18) and nothing said why. The last one: its pixel
+     * format's dwRGBBitCount and alpha mask, width | height << 16, and
+     * lPitch. Appended 2026-10-18.
+     */
+    DWORD mga_texture_refused[V9X_D3D_MGA_TEXREF_REASONS];
+    DWORD mga_texture_refused_last_bits;
+    DWORD mga_texture_refused_last_alpha;
+    DWORD mga_texture_refused_last_size;
+    DWORD mga_texture_refused_last_pitch;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

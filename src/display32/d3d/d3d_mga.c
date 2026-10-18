@@ -409,6 +409,32 @@ static DWORD v9x_d3d_mga_texture_pitch(DWORD width)
                 ? V9X_D3D_MGA_TEXTURE_PITCH_MIN : width) * 2ul;
 }
 
+/* A bound surface the sampler cannot read, counted by reason with the
+ * last one's format and shape (V9XTRACE's MgaTexRefused*). */
+static void v9x_d3d_mga_texture_refused(const V9X_DD_SURFACE_LCL *surface,
+                                        unsigned int reason)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+    const V9X_DDPIXELFORMAT *format;
+
+    ++diagnostics->mga_texture_refused[reason];
+    if (surface == 0 || surface->lpGbl == 0) {
+        return;
+    }
+    format = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+                 ? &surface->lpGbl->ddpfSurface
+                 : &v9x_hal->info.vmiData.ddpfDisplay;
+    diagnostics->mga_texture_refused_last_bits = format->dwRGBBitCount;
+    diagnostics->mga_texture_refused_last_alpha =
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul
+            ? format->dwRGBAlphaBitMask : 0ul;
+    diagnostics->mga_texture_refused_last_size =
+        (DWORD)surface->lpGbl->wWidth |
+        ((DWORD)surface->lpGbl->wHeight << 16);
+    diagnostics->mga_texture_refused_last_pitch =
+        (DWORD)surface->lpGbl->lPitch;
+}
+
 /* The bound texture's top level, as the sampler will read it. A mip chain
  * is drawn from its top level: the chip has no mipmapping. */
 static void v9x_d3d_mga_resolve_texture(const V9X_R3D_DRAW *draw,
@@ -425,26 +451,38 @@ static void v9x_d3d_mga_resolve_texture(const V9X_R3D_DRAW *draw,
     texture->has_color_key = 0ul;
     texture->color_key = 0ul;
     surface = (V9X_DD_SURFACE_LCL *)draw->texture.object;
-    if (surface == 0 || surface->lpGbl == 0 ||
+    if (surface == 0) {
+        return;
+    }
+    if (surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
-        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-        !v9x_d3d_mga_texture_format(surface, &format)) {
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        v9x_d3d_mga_texture_refused(surface, V9X_D3D_MGA_TEXREF_SURFACE);
+        return;
+    }
+    if (!v9x_d3d_mga_texture_format(surface, &format)) {
+        v9x_d3d_mga_texture_refused(surface, V9X_D3D_MGA_TEXREF_FORMAT);
         return;
     }
     offset = v9x_surface_offset(surface);
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
-    if (offset == 0xfffffffful || surface->lpGbl->lPitch <= 0l ||
-        (offset % V9X_D3D_MGA_TEXTURE_ALIGN) != 0ul ||
-        !v9x_d3d_mga_pow2(width) || !v9x_d3d_mga_pow2(height) ||
+    if (offset == 0xfffffffful || (offset % V9X_D3D_MGA_TEXTURE_ALIGN) != 0ul) {
+        v9x_d3d_mga_texture_refused(surface, V9X_D3D_MGA_TEXREF_PLACE);
+        return;
+    }
+    if (!v9x_d3d_mga_pow2(width) || !v9x_d3d_mga_pow2(height) ||
         width > v9x_d3d_mga_limits.texture_size_max ||
         height > v9x_d3d_mga_limits.texture_size_max) {
+        v9x_d3d_mga_texture_refused(surface, V9X_D3D_MGA_TEXREF_SIZE);
         return;
     }
     /* The row must be a power of two of at least 8 texels and the width. */
-    pitch = (DWORD)surface->lpGbl->lPitch / 2ul;
+    pitch = surface->lpGbl->lPitch > 0l
+                ? (DWORD)surface->lpGbl->lPitch / 2ul : 0ul;
     if (!v9x_d3d_mga_pow2(pitch) || pitch < V9X_D3D_MGA_TEXTURE_PITCH_MIN ||
         pitch < width || (DWORD)surface->lpGbl->lPitch != pitch * 2ul) {
+        v9x_d3d_mga_texture_refused(surface, V9X_D3D_MGA_TEXREF_PITCH);
         return;
     }
     texture->valid = 1ul;

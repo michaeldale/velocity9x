@@ -5,7 +5,7 @@
 [`../plans/matrox-mga2164w-render-interface.md`](../plans/matrox-mga2164w-render-interface.md),
 for its decision 2. Evidence:
 [`../probe/a8u4i5-mga2164w-render-interface-2026-10-18/`](../probe/a8u4i5-mga2164w-render-interface-2026-10-18/)
-(`V9XSNA7-boot496-before-hl.ini`, `-after-hl.ini`).
+(`V9XSNA7-boot496-before-hl.ini`, `-after-hl.ini`, and the ICD's `paths` and `hwno` lines in `V9XGL-boot496-hl-paths.LOG`).
 
 ## What ran
 
@@ -23,19 +23,31 @@ quit. They cover all three HL.EXE sessions: `d3d-contexts=2`,
 
 ## The split
 
-OpenGL, through the render interface:
+OpenGL sent 267,614 render-interface draws (`R3dDrawCalls`), and the
+engine refused every one, so the software fallback drew the whole frame.
+It drew, as Michael saw.
 
-| | Draws | Share |
+**Correction (the same day).** The first version of this record counted
+133,572 refusals for "CPU texture levels" (`M64AcceptPolicy02`) as textures
+the ICD kept on the CPU. They are not. The ICD's own log (`V9XGL.LOG`,
+`paths ... hw-refused=133572/6068291`) shows those are its resends: a
+batch whose surface texture the engine refused goes again as the CPU copy,
+which the engine refuses as CPU levels before the fallback draws it. The
+ICD's reasons for not making a surface (`hwno`) stayed in single figures:
+it got surfaces for Half-Life's textures.
+
+So each textured batch was counted twice. Taken once, the first attempts
+were:
+
+| First attempts | Batches | Share |
 |---|---|---|
-| Render-interface draws (`R3dDrawCalls`) | 267,614 | |
-| Refused, CPU texture levels (`M64AcceptPolicy02`) | 133,572 | 50 % |
-| Refused, surface texture the engine cannot read (`09`, TEXTURE) | 80,417 | 30 % |
-| Refused, linear or mipmapped filter (`14`) | 42,789 | 16 % |
-| Refused, blend (`04`) | 10,836 | 4 % |
+| Textured, surface texture (`hw-refused`) and untextured (470) | 134,042 | |
+| Refused, surface texture the engine cannot read (`09`, TEXTURE) | 80,417 | 60 % |
+| Refused, linear or mipmapped filter (`14`) | 42,789 | 32 % |
+| Refused, blend (`04`) | 10,836 | 8 % |
 | **Drawn on the engine** | **0** | 0 % |
 
-The four refusals add up to every draw. All of Half-Life's OpenGL frame
-was drawn by the software fallback. It drew, as Michael saw.
+The three refusals add up to the 134,042 first attempts.
 
 Direct3D, which has no fallback:
 - 1,089 batches refused for blend (`M64Policy04`);
@@ -47,31 +59,25 @@ None of these were drawn. No idle timeouts.
 ## What this says about decision 2
 
 Decision 2 asks whether explicit draws may take the Direct3D path's
-approximations: nearest for linear, the stipple for source alpha. On this
-title, allowing both would move at most the 20 % refused for filter and
-blend.
-- The map checks the texture before the filter, so the 16 % refused for
-  filter had textures the engine can read. Nearest for linear would put
-  them on the engine.
-- The blend check comes first of all, so the 4 % refused for blend may
-  also carry textures the engine cannot read.
+approximations: nearest for linear, the stipple for source alpha. The map
+checks the blend, then the texture, then the filter.
+- The 32 % refused for filter had surface textures the engine can read.
+  Nearest for linear would put them on the engine.
+- The 8 % refused for blend are refused before their textures are looked
+  at.
+- The 60 % whose surfaces `v9x_d3d_mga_resolve_texture` will not sample
+  come before either question, and they are the bigger lever. Candidates:
+  ARGB4444, which the describe offers but the 2164W does not sample; a
+  surface DirectDraw placed itself after `v9x_d3d_mga_create_surface`
+  declined it, at a row tpitch cannot state; or a shape outside 1 to 256.
 
-The other 80 % are refused before either question arises, and they are
-the bigger levers:
-
-- **Textures (`09`, 30 %).** The ICD placed a surface texture that
-  `v9x_d3d_mga_resolve_texture` would not accept. Candidates: ARGB4444,
-  which the 2164W does not sample, a row pitch it cannot state, or a
-  shape outside 1 to 256. Which one is not counted.
-- **CPU levels (`02`, 50 %).** The ICD kept these textures on the CPU,
-  for example ones it could not place in video memory or in a format the
-  describe does not offer for surfaces. Why is not counted either.
-
-The first step is a counter or a probe that names those two reasons. The
-approximations are not worth deciding until the textures reach the
+Boot 497 counts that reason (`MgaTexRefused*` in V9XTRACE, with the last
+refused surface's bit count, alpha mask, size and pitch). The
+approximations are not worth deciding until those textures reach the
 engine.
 
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.
-- Which texture formats and shapes Half-Life asked for.
+- Which texture formats and shapes Half-Life asked for (counted from
+  boot 497).

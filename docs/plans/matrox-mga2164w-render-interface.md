@@ -21,10 +21,10 @@ mask; the probes still pass, and 51 of their 219 draws went to the engine
 (filtering and CPU levels send the rest to the CPU). Step 6 measured
 Half-Life OpenGL's split the same day
 ([record](../decisions/2026-10-18-mga2164w-half-life-gl-split.md)): it draws
-correctly, but all 267,614 of its draws went to the CPU. 50 % carried CPU
-levels and 30 % surface textures the engine refused, 16 % were refused for
-the filter and 4 % for the blend. Next: name the two texture refusals
-before decision 2.
+correctly, but every draw went to the CPU. Counted once per batch, 60 %
+had surface textures the engine would not sample, 32 % were refused for
+the filter and 8 % for the blend. Boot 497 counts why those textures are
+refused; Half-Life again next, then decision 2.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
