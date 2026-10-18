@@ -2,9 +2,12 @@
 
 Date: 2026-10-18
 
-Status: proposed (Michael, 2026-10-18: "plan drawing render-interface
+Status: in progress (requested by Michael, 2026-10-18: "plan drawing render-interface
 draws on the MGA-2164W's own engine where it can be exact, with the
-software fallback for the rest"). Nothing is built yet.
+software fallback for the rest"). Step 1 done 2026-10-18
+([record](../decisions/2026-10-18-mga2164w-render-interface-registers.md)):
+nodither, the clip window and PLNWT all work on 3D trapezoids at 16 and
+32 bpp; modulate is up to two levels darker than the software engine's.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
@@ -52,15 +55,15 @@ records it.
 | Explicit state | 2164W | Plan |
 |---|---|---|
 | Untextured flat and Gouraud | trapezoids, coverage exact to the sixteenth (`mga_setup.c`, host-tested) | engine |
-| Shading at 16 bpp | dithered (2164W spec 3-70); MGA flat 565 reads `1AB3` where others read `12B3` (V9XD32 T1) | measure MACCESS `nodither` <30>; engine if it turns dithering off, else fallback at 16 bpp |
+| Shading at 16 bpp | dithered by default; MACCESS `nodither` <30> gives plain truncation, measured | engine, with nodither |
 | Shading at 32 bpp | no dither (V9XD32 T1 `0013579B`) | engine |
 | Depth test and write, all eight compares, Z16 | measured (depth record); Z16 holds z x 65535, as the software engine does | engine |
 | Z32 | measured, 2026-10-18 | engine; no fallback (the software engine has 16-bit depth only) |
-| Scissor (half-open rows and columns) | CXBNDRY, YTOP, YBOT exist; the Direct3D path opens them fully | measure a sub-rectangle clip on trapezoids |
-| Write mask | PLNWT exists, unused by 3D | measure per-channel masks at 565 and 8888; refuse partial masks until then |
+| Scissor (half-open rows and columns) | CXBNDRY, YTOP, YBOT bound trapezoids, all four inclusive, measured | engine: right and bottom less one |
+| Write mask | PLNWT masks trapezoid colour writes per bit, measured at 565 and 8888 | engine |
 | Surface texture, 565 or 1555, nearest | measured (textures record); perspective within the texel (host test) | engine |
 | Texture combine DECAL / REPLACE | measured | engine |
-| MODULATE | texel x Gouraud >> 8 (textures record) | measure against the software engine's rounding; engine if within tolerance |
+| MODULATE | texel x Gouraud >> 8: up to two levels darker than the software engine, one 565 step on 9-18 % of inputs | engine only if V9XGLP and V9XGLIDP pass with it (step 5); else fallback |
 | Linear, mipmap filters | the chip samples nearest only (Matrox's HAL publishes nearest only too) | fallback |
 | Blending other than ONE/ZERO | no blender; the stipple is not exact | fallback |
 | Alpha test | none; a 1555 texture with opaque vertices is the alpha-bit key | engine for that case; fallback otherwise |

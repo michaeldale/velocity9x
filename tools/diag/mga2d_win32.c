@@ -42,8 +42,9 @@
  * Command line: /nosetup skips v9x_mga_build_setup; /vram:N (2-16) sets VRAM
  * to N MiB in place of the BIOS's figure from V9XBOOT.INI, which places the
  * region 1 MiB below N; /tri draws trapezoids instead of fills and copies,
- * /depth Gouraud trapezoids with a Z buffer (32 bpp only), and /tex
- * textured trapezoids (32 bpp, 2164W only).
+ * /depth Gouraud trapezoids with a Z buffer (32 bpp only), /tex
+ * textured trapezoids (32 bpp, 2164W only), and /ri the dither, clip and
+ * plane-mask cases an explicit render-interface draw needs (16 or 32 bpp).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -430,6 +431,7 @@ static LONG mga2d_find_device(char *device_id, DWORD capacity, DWORD wanted)
     HKEY pci_key;
     HKEY adapter_key;
     DWORD adapter_index = 0u;
+    DWORD instance_index;
     DWORD matched = 0u;
     char adapter[160];
     char instance[160];
@@ -453,17 +455,24 @@ static LONG mga2d_find_device(char *device_id, DWORD capacity, DWORD wanted)
              !mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_2164W))) {
             continue;
         }
-        if (matched++ != wanted) {
-            continue;
-        }
         if (RegOpenKeyExA(pci_key, adapter, 0, KEY_READ, &adapter_key) !=
             ERROR_SUCCESS) {
             continue;
         }
-        length = sizeof(instance);
-        status = RegEnumKeyExA(adapter_key, 0, instance, &length, 0, 0, 0, 0);
-        RegCloseKey(adapter_key);
-        if (status == ERROR_SUCCESS) {
+        /* Every instance: a card moved to another slot leaves the old
+         * slot's instance behind, and it may enumerate first (A8U4I5,
+         * 2026-10-18, after several card swaps). */
+        for (instance_index = 0u; ; ++instance_index) {
+            length = sizeof(instance);
+            status = RegEnumKeyExA(adapter_key, instance_index, instance,
+                                   &length, 0, 0, 0, 0);
+            if (status != ERROR_SUCCESS) {
+                break;
+            }
+            if (matched++ != wanted) {
+                continue;
+            }
+            RegCloseKey(adapter_key);
             mga2d_copy_text(device_id, "PCI\\", capacity);
             mga2d_append_text(device_id, adapter, capacity);
             mga2d_append_text(device_id, "\\", capacity);
@@ -471,6 +480,7 @@ static LONG mga2d_find_device(char *device_id, DWORD capacity, DWORD wanted)
             RegCloseKey(pci_key);
             return ERROR_SUCCESS;
         }
+        RegCloseKey(adapter_key);
     }
     RegCloseKey(pci_key);
     return ERROR_FILE_NOT_FOUND;
@@ -2384,6 +2394,304 @@ static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
     }
 }
 
+/*
+ * /ri: what an explicit render-interface draw would need of the engine
+ * (docs\plans\matrox-mga2164w-render-interface.md, step 1), at the
+ * desktop's depth, 16 or 32 bpp. One Gouraud trapezoid per case, built by
+ * mga_3d.c, with one thing changed around it:
+ *
+ *   - RiDither: as the Direct3D path draws it. At 16 bpp shading dithers
+ *     (2164W spec 3-70), so the mismatches against plain truncation are a
+ *     count, not a failure.
+ *   - RiNoDither: MACCESS nodither <30> set (2064W spec 4-64, in
+ *     docs\specifications\mga2064w-2d-engine.md; the 2164W's MACCESS is
+ *     3-70). The hypothesis: every pixel is the model's 8-bit level
+ *     truncated to 565.
+ *   - RiClip* and RiMask* draw with nodither too: dithering moves even an
+ *     exact level (F8 drawn as F0 at 16 bpp, A8U4I5 2026-10-18), and
+ *     explicit draws would be drawn undithered.
+ *   - RiClip*: CXBNDRY, YTOP and YBOT narrowed to a rectangle inside the
+ *     trapezoid. The 2064W spec has all four bounds inclusive, YTOP and
+ *     YBOT as linear line x PITCH + YDSTORG (4-28, 4-83, 4-79); whether
+ *     the 2164W's trapezoids obey them is the question.
+ *   - RiMask*: PLNWT holding one or two channels (2064W 4-69, 2164W 3-75),
+ *     replicated per 16-bit pixel. The hypothesis: bits outside the mask
+ *     keep the prepared pattern.
+ *
+ * The expected image comes from the engine model at 32 bpp (the model
+ * draws Gouraud only there), truncated to 565 at 16 bpp. The desktop is
+ * assumed 565 at 16 bpp, as V9XD32 read this card's 16 bpp mode. After
+ * each case the setup is written again, in its own call once the engine is
+ * idle, so the clip and plane mask are open for the next.
+ */
+#define MGA2D_RI_BAND_ROWS 20ul
+#define MGA2D_RI_LENGTH 12ul
+#define MGA2D_RI_COLS 64ul
+#define MGA2D_RI_NODITHER 0x40000000ul
+/* The model's own VRAM size for its bounds check, large enough for the
+ * region's offsets scaled to 4 bytes a pixel. */
+#define MGA2D_RI_MODEL_VRAM 0x04000000ul
+
+#define MGA2D_RI_KIND_PLAIN    0ul
+#define MGA2D_RI_KIND_NODITHER 1ul
+#define MGA2D_RI_KIND_CLIP     2ul
+#define MGA2D_RI_KIND_MASK     3ul
+
+struct mga2d_ri_case {
+    const char *name;
+    DWORD kind;
+    /* Non-zero: colours that step by fractions of a level. Zero: the
+     * exact levels F8, 7C, 38, which 565 holds without rounding. */
+    DWORD gradient;
+    /* RiClip: columns and rows from the trapezoid's top, inclusive. */
+    DWORD clip_left;
+    DWORD clip_right;
+    DWORD clip_top;
+    DWORD clip_bottom;
+    /* RiMask: PLNWT at 32 bpp, and one 565 pixel's mask at 16 bpp. */
+    DWORD mask32;
+    DWORD mask16;
+};
+
+static const struct mga2d_ri_case mga2d_ri_cases[] = {
+    { "RiDither", MGA2D_RI_KIND_PLAIN, 1ul, 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+    { "RiNoDither", MGA2D_RI_KIND_NODITHER, 1ul,
+      0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+    { "RiClipFlat", MGA2D_RI_KIND_CLIP, 0ul, 12ul, 40ul, 3ul, 8ul,
+      0ul, 0ul },
+    { "RiClipGradient", MGA2D_RI_KIND_CLIP, 1ul, 12ul, 40ul, 3ul, 8ul,
+      0ul, 0ul },
+    { "RiMaskGreen", MGA2D_RI_KIND_MASK, 0ul, 0ul, 0ul, 0ul, 0ul,
+      0x0000ff00ul, 0x07e0ul },
+    { "RiMaskRedBlue", MGA2D_RI_KIND_MASK, 0ul, 0ul, 0ul, 0ul, 0ul,
+      0x00ff00fful, 0xf81ful }
+};
+
+#define MGA2D_RI_CASE_COUNT (sizeof(mga2d_ri_cases) / sizeof(mga2d_ri_cases[0]))
+
+static void mga2d_ri_plot(void *context, v9x_s32 x, v9x_u32 row,
+                          v9x_u32 pixel)
+{
+    struct mga2d_plot_target *target = (struct mga2d_plot_target *)context;
+    DWORD image_row = target->first_row + row - target->window_row0;
+
+    if (x < 0L || (DWORD)x >= MGA2D_RI_COLS ||
+        image_row >= target->window_rows) {
+        return;
+    }
+    if (mga2d_bpp == 2ul) {
+        pixel = ((pixel >> 8) & 0xf800ul) | ((pixel >> 5) & 0x07e0ul) |
+                ((pixel >> 3) & 0x001ful);
+    }
+    mga2d_expected[image_row][x] = pixel & mga2d_pixel_mask;
+}
+
+static void mga2d_ri_test(const struct mga2d_ri_case *test, DWORD band)
+{
+    struct v9x_mga3d_trap trap;
+    struct v9x_mga3d_trap model;
+    struct v9x_mga3d_writes writes;
+    struct mga2d_window window;
+    struct mga2d_plot_target target;
+    char key[64];
+    char text[MGA2D_RI_COLS + 32ul];
+    DWORD destination_row = band * MGA2D_RI_BAND_ROWS + MGA2D_GUARD;
+    DWORD origin_pixels;
+    DWORD mask;
+    DWORD row;
+    DWORD col;
+    DWORD first_row = 0ul;
+    DWORD first_col = 0ul;
+    DWORD mismatches = 0ul;
+    DWORD index;
+    DWORD count;
+    DWORD clip_row;
+    int inside;
+    v9x_u32 offsets[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES + 4ul];
+    v9x_u32 values[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES + 4ul];
+
+    window.row0 = destination_row - MGA2D_GUARD;
+    window.rows = MGA2D_RI_LENGTH + 2ul * MGA2D_GUARD;
+    window.cols = MGA2D_RI_COLS;
+    if ((window.row0 + window.rows) * mga2d_pitch_bytes > MGA2D_REGION_BYTES) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "WINDOW-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+
+    mga2d_zero(&trap, sizeof(trap));
+    trap.vram_bytes = mga2d_vram_bytes;
+    trap.target_offset = mga2d_row_offset(destination_row);
+    trap.pitch_bytes = mga2d_pitch_bytes;
+    trap.bytes_per_pixel = mga2d_bpp;
+    trap.top = 0ul;
+    trap.length = MGA2D_RI_LENGTH;
+    trap.left.x = 4L;
+    trap.left.dx = 0L;
+    trap.left.dy = 8L;
+    trap.right.x = 60L;
+    trap.right.dx = 0L;
+    trap.right.dy = 8L;
+    trap.shade = V9X_MGA3D_SHADE_GOURAUD;
+    trap.color = 0ul;
+    if (test->gradient != 0ul) {
+        /* Fractional steps in all three channels, inside 0..255 over the
+         * trapezoid. */
+        trap.red[0] = MGA2D_LEVEL(0x10) + 0x1234L;
+        trap.red[1] = MGA2D_LEVEL(3) + 0x2345L;
+        trap.red[2] = 0L;
+        trap.green[0] = MGA2D_LEVEL(0x40);
+        trap.green[1] = 0x5000L;
+        trap.green[2] = MGA2D_LEVEL(5);
+        trap.blue[0] = MGA2D_LEVEL(0xc0);
+        trap.blue[1] = -0x3000L;
+        trap.blue[2] = MGA2D_LEVEL(2) + 0x1000L;
+    } else {
+        trap.red[0] = MGA2D_LEVEL(0xf8);
+        trap.green[0] = MGA2D_LEVEL(0x7c);
+        trap.blue[0] = MGA2D_LEVEL(0x38);
+    }
+    if (v9x_mga3d_build_trap(&trap, &writes) != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "BUILD-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+    origin_pixels = trap.target_offset / mga2d_bpp;
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            mga2d_before[row][col] = mga2d_pattern(col, window.row0 + row);
+        }
+    }
+    if (!mga2d_stream_write(&window, mga2d_before)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "PREPARE-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+
+    /* The setup, the case's change, the trapezoid. */
+    count = 0ul;
+    for (index = 0ul; index < mga2d_setup.count; ++index) {
+        offsets[count] = mga2d_setup.offsets[index];
+        values[count] = mga2d_setup.values[index];
+        ++count;
+    }
+    mask = 0xfffffffful;
+    if (test->kind == MGA2D_RI_KIND_CLIP) {
+        offsets[count] = V9X_MGA_CXBNDRY;
+        values[count] = (test->clip_right << 16) | test->clip_left;
+        ++count;
+        offsets[count] = V9X_MGA_YTOP;
+        values[count] = origin_pixels + test->clip_top * MGA2D_PITCH_PIXELS;
+        ++count;
+        offsets[count] = V9X_MGA_YBOT;
+        values[count] = origin_pixels +
+                        test->clip_bottom * MGA2D_PITCH_PIXELS;
+        ++count;
+    } else if (test->kind == MGA2D_RI_KIND_MASK) {
+        mask = mga2d_bpp == 2ul ? test->mask16 | (test->mask16 << 16)
+                                : test->mask32;
+        offsets[count] = V9X_MGA_PLNWT;
+        values[count] = mask;
+        ++count;
+    }
+    for (index = 0ul; index < writes.count; ++index) {
+        offsets[count] = writes.offsets[index];
+        values[count] = writes.values[index];
+        if (test->kind != MGA2D_RI_KIND_PLAIN &&
+            offsets[count] == V9X_MGA_MACCESS) {
+            values[count] |= MGA2D_RI_NODITHER;
+        }
+        ++count;
+    }
+    mga2d_report_list(test->name, offsets, values, count);
+    if (!mga2d_run_list(test->name, offsets, values, count)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, mga2d_engine_dead ? "ENGINE-TIMEOUT" : "RUN-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+    if (!mga2d_run_writes("Restore", &mga2d_setup) ||
+        !mga2d_stream_read(&window, mga2d_actual)) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "READBACK-FAILED");
+        ++mga2d_failures;
+        return;
+    }
+
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            text[col] = mga2d_actual[row][col] != mga2d_before[row][col]
+                ? '#' : '.';
+        }
+        text[window.cols] = '\0';
+        lstrcpyA(key, test->name);
+        lstrcatA(key, "Row");
+        mga2d_signed(key + lstrlenA(key),
+                     (long)(window.row0 + row) - (long)destination_row);
+        mga2d_write(key, text);
+    }
+
+    /* The expected image: the model at 32 bpp, then the case's change. */
+    model = trap;
+    model.bytes_per_pixel = 4ul;
+    model.pitch_bytes = MGA2D_PITCH_PIXELS * 4ul;
+    model.target_offset = origin_pixels * 4ul;
+    model.vram_bytes = MGA2D_RI_MODEL_VRAM;
+    target.first_row = destination_row;
+    target.window_row0 = window.row0;
+    target.window_rows = window.rows;
+    mga2d_bytes(mga2d_expected, mga2d_before, sizeof(mga2d_image));
+    if (v9x_mga3d_model_trap(&model, V9X_MGA3D_FOLD_EDGE, mga2d_ri_plot,
+                             &target, 0) != V9X_STATUS_OK) {
+        mga2d_key(key, test->name, "Result");
+        mga2d_write(key, "MODEL-REFUSED");
+        ++mga2d_failures;
+        return;
+    }
+    for (row = 0ul; row < window.rows; ++row) {
+        for (col = 0ul; col < window.cols; ++col) {
+            clip_row = window.row0 + row - destination_row;
+            inside = test->kind != MGA2D_RI_KIND_CLIP ||
+                (window.row0 + row >= destination_row &&
+                 col >= test->clip_left && col <= test->clip_right &&
+                 clip_row >= test->clip_top && clip_row <= test->clip_bottom);
+            if (!inside) {
+                mga2d_expected[row][col] = mga2d_before[row][col];
+            }
+            if (test->kind == MGA2D_RI_KIND_MASK) {
+                mga2d_expected[row][col] =
+                    ((mga2d_expected[row][col] & mask) |
+                     (mga2d_before[row][col] & ~mask)) & mga2d_pixel_mask;
+            }
+            if (mga2d_actual[row][col] != mga2d_expected[row][col]) {
+                if (mismatches == 0ul) {
+                    first_row = row;
+                    first_col = col;
+                }
+                ++mismatches;
+            }
+        }
+    }
+    mga2d_tri_report_mismatch(test->name, "Mismatches", mismatches,
+                              first_row, first_col, &window,
+                              destination_row);
+
+    mga2d_key(key, test->name, "Result");
+    if (mismatches == 0ul) {
+        mga2d_write(key, "PASS");
+    } else if (test->kind == MGA2D_RI_KIND_PLAIN && mga2d_bpp == 2ul) {
+        /* Dithered shading differs from truncation by design. */
+        mga2d_write(key, "DITHERED");
+    } else {
+        mga2d_write(key, "FAIL");
+        ++mga2d_failures;
+    }
+}
+
 /* FIFOSTATUS and STATUS, read through the VxD's two readable offsets. */
 static int mga2d_report_state(const char *prefix)
 {
@@ -2465,6 +2773,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     int trapezoids;
     int depth;
     int textures;
+    int render_interface;
     int have_option;
     CONFIGRET cm_status;
     static const char header[] = "[Mga2dProbe]\r\n";
@@ -2484,6 +2793,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     trapezoids = mga2d_find(command_line, "/tri") != 0;
     depth = mga2d_find(command_line, "/depth") != 0;
     textures = mga2d_find(command_line, "/tex") != 0;
+    render_interface = mga2d_find(command_line, "/ri") != 0;
     option_mib = mga2d_parse_decimal(mga2d_find(command_line, "/vram:"),
                                      &have_option);
 
@@ -2497,7 +2807,8 @@ void WINAPI V9xMga2dProbeEntry(void)
     WriteFile(mga2d_output, header, (DWORD)lstrlenA(header), &written, 0);
     mga2d_write("Build", V9X_BUILD_ID);
     mga2d_write("NoSetup", no_setup ? "1" : "0");
-    mga2d_write("Mode", textures ? "textures" : depth ? "depth"
+    mga2d_write("Mode", render_interface ? "render-interface"
+                        : textures ? "textures" : depth ? "depth"
                         : trapezoids ? "trapezoids" : "fill-copy");
     if (have_option) {
         mga2d_write_decimal("VramOptionMiB", option_mib);
@@ -2694,7 +3005,18 @@ void WINAPI V9xMga2dProbeEntry(void)
         mga2d_write("Setup", "emitted");
     }
 
-    if (textures) {
+    if (render_interface) {
+        if (mga2d_bpp == 1ul) {
+            mga2d_refuse("render-interface-needs-16-or-32-bpp");
+            goto close;
+        }
+        for (index = 0ul; index < MGA2D_RI_CASE_COUNT; ++index) {
+            mga2d_ri_test(&mga2d_ri_cases[index], index);
+            if (mga2d_engine_dead) {
+                break;
+            }
+        }
+    } else if (textures) {
         for (index = 0ul; index < MGA2D_TEX_CASE_COUNT; ++index) {
             mga2d_tex_test(&mga2d_tex_cases[index], index);
             if (mga2d_engine_dead) {
