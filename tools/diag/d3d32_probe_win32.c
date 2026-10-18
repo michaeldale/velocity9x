@@ -26,8 +26,8 @@
  *      can;
  *   T6 an 8x8 ARGB1555 texture of four full-scale colours, DECAL and
  *      nearest, each quadrant's centre within 8 of its texel;
- *   T7 half-alpha red over opaque green, SRCALPHA / INVSRCALPHA, within 8
- *      of 0x807F00.
+ *   T7 half-alpha red over opaque green, SRCALPHA / INVSRCALPHA, an 8x8
+ *      average within 8 of 0x807F00 (a half stipple averages the same).
  *
  * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
  * that full scale; T5 then expects the nearer quad, and without it the
@@ -993,10 +993,40 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_hx("T6Ok", caps);
         failures += caps != 15ul ? 1ul : 0ul;
 
-        /* T7: half red over green, about 0x80 and 0x7F. */
+        /*
+         * T7: half red over green, about 0x80 and 0x7F - averaged over an
+         * 8x8 block, because an engine with no blender (the MGA-2164W)
+         * draws source alpha as a half stipple, which is every other pixel
+         * red and averages to the same colour a blend gives.
+         */
         d32_hx("T7Pixel", d32_pixel(&desc, 512ul, 40ul));
-        caps = d32_near(d32_pixel(&desc, 512ul, 40ul), 0x00807f00ul, 8ul)
-                   ? 1ul : 0ul;
+        {
+            DWORD sum[3];
+            DWORD x;
+            DWORD y;
+            DWORD pixel;
+
+            sum[0] = 0ul;
+            sum[1] = 0ul;
+            sum[2] = 0ul;
+            for (y = 36ul; y < 44ul; ++y) {
+                for (x = 508ul; x < 516ul; ++x) {
+                    pixel = d32_pixel(&desc, x, y);
+                    sum[0] += d32_channel(pixel, d32_masks[0]);
+                    sum[1] += d32_channel(pixel, d32_masks[1]);
+                    sum[2] += d32_channel(pixel, d32_masks[2]);
+                }
+            }
+            /* Eight bits a channel already, so compared as they are and
+             * not through the mode's masks. */
+            pixel = ((sum[0] / 64ul) << 16) | ((sum[1] / 64ul) << 8) |
+                    (sum[2] / 64ul);
+            d32_hx("T7Average", pixel);
+            caps = d32_difference(sum[0] / 64ul, 0x80ul) <= 8ul &&
+                           d32_difference(sum[1] / 64ul, 0x7ful) <= 8ul &&
+                           sum[2] / 64ul <= 8ul
+                       ? 1ul : 0ul;
+        }
         d32_hx("T7Ok", caps);
         failures += caps != 1ul ? 1ul : 0ul;
         ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
