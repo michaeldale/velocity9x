@@ -130,10 +130,13 @@ int v9x_r3d_triangle_on_target(const V9X_R3D_VERTEX *triangle,
 #define V9X_R3D_SHADE_FLAT    1ul
 #define V9X_R3D_SHADE_GOURAUD 2ul
 
-/* Render-target layouts: the two 16 bpp ones the engines write, numbered as
- * V9X_D3D_TARGET_FORMAT_* and V9X_D3D_RASTER_PIXFMT_* already are. */
+/* Render-target layouts: the two 16 bpp ones the engines write and the
+ * 32 bpp one, numbered as V9X_D3D_TARGET_FORMAT_* and
+ * V9X_D3D_RASTER_PIXFMT_* already are. 3 and 4 are texture layouts in the
+ * ABI's one numbering, so XRGB8888 is 5. */
 #define V9X_R3D_FORMAT_RGB565   1ul
 #define V9X_R3D_FORMAT_XRGB1555 2ul
+#define V9X_R3D_FORMAT_XRGB8888 5ul
 
 /*
  * A surface as a draw names it: where it is in video memory, its shape, and

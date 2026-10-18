@@ -1157,22 +1157,34 @@ static V9X_DD_SURFACE_LCL *v9x_d3d_surface_lcl(void *surface, DWORD site)
 }
 
 /*
- * Which of the two 16 bpp layouts a pixel format describes, or neither.
+ * Which of the three target layouts a pixel format describes, or none: the
+ * two 16 bpp ones, and XRGB8888 for a 32 bpp desktop
+ * (docs\plans\32bpp-acceleration-and-3d.md, Phase 2).
  *
- * Both engines render into 16 bits and nothing else, so a format that is not
- * one of these two is refused by the caller rather than guessed at: a driver
- * that rendered 5:6:5 into a surface described as 5:5:5 would shift every
- * colour by a bit with every HRESULT reporting success - which is exactly what
- * happened on 2026-09-02 when only display-layout targets were classified and
- * an offscreen one fell through to a default.
+ * A format that is not one of these is refused by the caller rather than
+ * guessed at: a driver that rendered 5:6:5 into a surface described as 5:5:5
+ * would shift every colour by a bit with every HRESULT reporting success -
+ * which is exactly what happened on 2026-09-02 when only display-layout
+ * targets were classified and an offscreen one fell through to a default.
+ * Which layouts an engine draws is the engine's answer, asked separately
+ * (v9x_d3d_engine_renders).
  */
 static int v9x_d3d_target_format_of(const V9X_DDPIXELFORMAT *format,
                                     DWORD *format_out)
 {
     if (format == 0 || format_out == 0 ||
         format->dwSize != sizeof(V9X_DDPIXELFORMAT) ||
-        (format->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        format->dwRGBBitCount != 16ul) {
+        (format->dwFlags & V9X_DDPF_RGB) == 0ul) {
+        return 0;
+    }
+    if (format->dwRGBBitCount == 32ul &&
+        format->dwRBitMask == 0x00ff0000ul &&
+        format->dwGBitMask == 0x0000ff00ul &&
+        format->dwBBitMask == 0x000000fful) {
+        *format_out = V9X_D3D_TARGET_FORMAT_XRGB8888;
+        return 1;
+    }
+    if (format->dwRGBBitCount != 16ul) {
         return 0;
     }
     if (format->dwRBitMask == 0x0000f800ul &&
@@ -1188,6 +1200,55 @@ static int v9x_d3d_target_format_of(const V9X_DDPIXELFORMAT *format,
         return 1;
     }
     return 0;
+}
+
+/* Bytes a pixel of a classified target layout occupies. */
+static DWORD v9x_d3d_target_bytes(DWORD format)
+{
+    return format == V9X_D3D_TARGET_FORMAT_XRGB8888 ? 4ul : 2ul;
+}
+
+/*
+ * Whether the engine draws a target of this layout on the current desktop.
+ *
+ * A target's pixel size must be the desktop's. Each engine's draw packs for
+ * the target's format, but the fills a clear falls back to
+ * (v9x_hal_color_fill) and the engine's own setup take their pixel size from
+ * the mode, so a 16 bpp offscreen target on a 32 bpp desktop, or the
+ * reverse, would be filled at the wrong width. Every engine refused that
+ * already, by refusing any mode but 16 bpp.
+ */
+static int v9x_d3d_engine_renders(const V9X_D3D_ENGINE_LIMITS *limits,
+                                  DWORD format)
+{
+    if (v9x_hal == 0 ||
+        v9x_hal->fb.bits_per_pixel != v9x_d3d_target_bytes(format) * 8ul) {
+        return 0;
+    }
+    if (format == V9X_D3D_TARGET_FORMAT_XRGB8888) {
+        return limits->target_pitch_max_xrgb8888 != 0ul;
+    }
+    return limits->target_bits_per_pixel == 16ul;
+}
+
+/* The engine's pitch limit for a target of this layout. */
+static DWORD v9x_d3d_target_pitch_max(const V9X_D3D_ENGINE_LIMITS *limits,
+                                      DWORD format)
+{
+    return format == V9X_D3D_TARGET_FORMAT_XRGB8888
+               ? limits->target_pitch_max_xrgb8888
+               : limits->target_pitch_max;
+}
+
+/* Whether the engine draws on a desktop of this depth at all: the
+ * ContextCreate gate, before there is a target to classify. */
+static int v9x_d3d_engine_renders_bpp(const V9X_D3D_ENGINE_LIMITS *limits,
+                                      DWORD bits_per_pixel)
+{
+    if (bits_per_pixel == 32ul) {
+        return limits->target_pitch_max_xrgb8888 != 0ul;
+    }
+    return bits_per_pixel == limits->target_bits_per_pixel;
 }
 
 /*
@@ -1223,6 +1284,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     DWORD depth_offset = 0ul;
     DWORD depth_pitch = 0ul;
     DWORD target_format = V9X_D3D_TARGET_FORMAT_RGB565;
+    DWORD pixel_bytes;
     int primary;
     int display_layout;
 
@@ -1278,7 +1340,8 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
          * other two. The extent checks below bound it like any target. */
         if ((primary && offset != 0ul &&
              (target->ddsCaps & V9X_DDSCAPS_FLIP) == 0ul) ||
-            v9x_hal->fb.bits_per_pixel != limits->target_bits_per_pixel ||
+            !v9x_d3d_engine_renders_bpp(limits,
+                                        v9x_hal->fb.bits_per_pixel) ||
             v9x_hal->info.vmiData.lDisplayPitch !=
                 (LONG)v9x_hal->fb.pitch) {
             return 0;
@@ -1321,19 +1384,23 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
             return 0;
         }
     }
+    if (!v9x_d3d_engine_renders(limits, target_format)) {
+        return 0;
+    }
+    pixel_bytes = v9x_d3d_target_bytes(target_format);
     v9x_trace_push(V9X_TRACE_D3D_TARGET_LAYOUT,
                    ((pitch & 0xfffful) << 16) |
                    ((v9x_hal->fb.bits_per_pixel & 0xfful) << 8) |
                    (primary ? 1ul : (display_layout ? 2ul : 0ul)));
     if (offset == 0xfffffffful || (!display_layout && global->lPitch <= 0l) ||
         (pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
-        pitch > limits->target_pitch_max ||
-        width == 0ul || width > pitch / 2ul || height == 0ul ||
+        pitch > v9x_d3d_target_pitch_max(limits, target_format) ||
+        width == 0ul || width > pitch / pixel_bytes || height == 0ul ||
         width > limits->target_dimension_max ||
         height > limits->target_dimension_max) {
         return 0;
     }
-    last_byte = (height - 1ul) * pitch + width * 2ul;
+    last_byte = (height - 1ul) * pitch + width * pixel_bytes;
     if (last_byte > v9x_hal->fb.vram_bytes ||
         offset > v9x_hal->fb.vram_bytes - last_byte) {
         return 0;
@@ -1474,7 +1541,7 @@ static V9X_DD_SURFACE_LCL v9x_d3d_raw_depth_object;
  * maximum, and for depth the 8-byte base, the packed pitch and the
  * exclusion of the visible frame buffer, each for the reason given there.
  * There is no surface to read a format from, so the caller's is taken,
- * 565 or 1555 only.
+ * one the engine draws on this desktop.
  */
 static int v9x_d3d_set_target_raw(V9X_D3D_CONTEXT *context,
                                   const V9X_R3D_ABI_RAW *raw_target,
@@ -1504,10 +1571,10 @@ static int v9x_d3d_set_target_raw(V9X_D3D_CONTEXT *context,
             V9X_R3D_RESULT_OK) {
         return 0;
     }
-    /* Both layouts are 16 bits a pixel, and the engine must draw 16. */
-    if (limits->target_bits_per_pixel != 16ul ||
+    /* The engine must draw the caller's layout on this desktop. */
+    if (!v9x_d3d_engine_renders(limits, target.format) ||
         (target.pitch & (limits->target_pitch_align - 1ul)) != 0ul ||
-        target.pitch > limits->target_pitch_max) {
+        target.pitch > v9x_d3d_target_pitch_max(limits, target.format)) {
         return 0;
     }
     if (has_depth) {
@@ -1557,7 +1624,8 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
     v9x_d3d_dp2_forget_probes();
     if (ops == 0 || data == 0 || v9x_hal == 0 || data->lpDDS == 0 ||
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
-        v9x_hal->fb.bits_per_pixel != ops->limits->target_bits_per_pixel) {
+        !v9x_d3d_engine_renders_bpp(ops->limits,
+                                    v9x_hal->fb.bits_per_pixel)) {
         if (data != 0) {
             data->ddrval = 0x80070057ul;
         }
@@ -4786,8 +4854,10 @@ typedef char v9x_d3d_assert_r3d_abi_vertex[
 typedef char v9x_d3d_assert_r3d_abi_numbers[
     (V9X_R3D_ABI_FORMAT_RGB565 == V9X_D3D_TARGET_FORMAT_RGB565 &&
      V9X_R3D_ABI_FORMAT_XRGB1555 == V9X_D3D_TARGET_FORMAT_XRGB1555 &&
+     V9X_R3D_ABI_FORMAT_XRGB8888 == V9X_D3D_TARGET_FORMAT_XRGB8888 &&
      V9X_R3D_ABI_FORMAT_RGB565 == V9X_R3D_FORMAT_RGB565 &&
      V9X_R3D_ABI_FORMAT_XRGB1555 == V9X_R3D_FORMAT_XRGB1555 &&
+     V9X_R3D_ABI_FORMAT_XRGB8888 == V9X_R3D_FORMAT_XRGB8888 &&
      V9X_R3D_ABI_ADDRESS_WRAP == V9X_R3D_ADDRESS_WRAP &&
      V9X_R3D_ABI_ADDRESS_CLAMP == V9X_R3D_ADDRESS_CLAMP &&
      V9X_R3D_ABI_FILTER_NEAREST == V9X_R3D_FILTER_NEAREST &&
@@ -5534,15 +5604,24 @@ DWORD __stdcall V9xD3dClear2(V9X_D3DHAL_CLEAR2DATA *data)
      */
     if (clear.clear_color && context->target != 0 &&
         (context->target_format == V9X_D3D_TARGET_FORMAT_RGB565 ||
-         context->target_format == V9X_D3D_TARGET_FORMAT_XRGB1555)) {
+         context->target_format == V9X_D3D_TARGET_FORMAT_XRGB1555 ||
+         context->target_format == V9X_D3D_TARGET_FORMAT_XRGB8888)) {
         DWORD rgb = clear.color_value;
-        DWORD packed = context->target_format == V9X_D3D_TARGET_FORMAT_RGB565
-            ? (((rgb >> 8) & 0xf800ul) | ((rgb >> 5) & 0x07e0ul) |
-               ((rgb >> 3) & 0x001ful))
-            : (((rgb >> 9) & 0x7c00ul) | ((rgb >> 6) & 0x03e0ul) |
-               ((rgb >> 3) & 0x001ful));
+        DWORD packed;
         DWORD r;
         int filled = 1;
+
+        if (context->target_format == V9X_D3D_TARGET_FORMAT_RGB565) {
+            packed = ((rgb >> 8) & 0xf800ul) | ((rgb >> 5) & 0x07e0ul) |
+                     ((rgb >> 3) & 0x001ful);
+        } else if (context->target_format ==
+                   V9X_D3D_TARGET_FORMAT_XRGB1555) {
+            packed = ((rgb >> 9) & 0x7c00ul) | ((rgb >> 6) & 0x03e0ul) |
+                     ((rgb >> 3) & 0x001ful);
+        } else {
+            /* X8R8G8B8 is D3DCOLOR's own layout; the X byte is cleared. */
+            packed = rgb & 0x00fffffful;
+        }
 
         for (r = 0ul; r < data->dwNumRects && filled; ++r) {
             const V9X_D3DRECT *rect = &data->lpRects[r];
@@ -5688,6 +5767,7 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     out->target_formats = 0ul;
     if (v9x_d3d_target_format_of(&v9x_hal->info.vmiData.ddpfDisplay,
                                  &format) &&
+        v9x_d3d_engine_renders(ops->limits, format) &&
         !(ops == &v9x_d3d_engine_virge &&
           format != V9X_D3D_TARGET_FORMAT_XRGB1555)) {
         out->target_formats = 1ul << format;

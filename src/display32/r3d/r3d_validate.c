@@ -4,8 +4,10 @@
  */
 #include "r3d_validate.h"
 
-/* Bytes per pixel of every layout the interface names. */
+/* Bytes per pixel of the 16-bit layouts - every texture, every depth
+ * buffer and the 16 bpp targets - and of an XRGB8888 target. */
 #define V9X_R3D_VALIDATE_BPP 2ul
+#define V9X_R3D_VALIDATE_BPP_XRGB8888 4ul
 
 /*
  * Whether the bytes a surface or level occupies - from `offset` to the last
@@ -17,9 +19,9 @@
  */
 static int v9x_r3d_validate_extent(v9x_u32 offset, v9x_u32 pitch,
                                    v9x_u32 width, v9x_u32 height,
-                                   v9x_u32 limit)
+                                   v9x_u32 bytes_per_pixel, v9x_u32 limit)
 {
-    v9x_u32 row = width * V9X_R3D_VALIDATE_BPP;
+    v9x_u32 row = width * bytes_per_pixel;
     v9x_u32 span = row;
 
     if (height == 0ul || row > limit) {
@@ -41,6 +43,7 @@ static int v9x_r3d_validate_power_of_two(v9x_u32 value)
 
 /* Common to targets and depth buffers: shape, pitch and extent. */
 static v9x_u32 v9x_r3d_validate_layout(const V9X_R3D_SURFACE *surface,
+                                       v9x_u32 bytes_per_pixel,
                                        v9x_u32 vram_bytes,
                                        v9x_u32 dimension_max)
 {
@@ -48,15 +51,16 @@ static v9x_u32 v9x_r3d_validate_layout(const V9X_R3D_SURFACE *surface,
         surface->width > dimension_max || surface->height > dimension_max) {
         return V9X_R3D_RESULT_INVALID;
     }
-    /* An odd pitch would put every other row's pixels off their 16-bit
-     * alignment; a narrow one would draw into the next row. */
-    if ((surface->pitch & 1ul) != 0ul ||
-        surface->pitch < surface->width * V9X_R3D_VALIDATE_BPP) {
+    /* A pitch that is not a whole number of pixels would put every other
+     * row's pixels off their alignment; a narrow one would draw into the
+     * next row. */
+    if ((surface->pitch & (bytes_per_pixel - 1ul)) != 0ul ||
+        surface->pitch < surface->width * bytes_per_pixel) {
         return V9X_R3D_RESULT_INVALID;
     }
     if (!v9x_r3d_validate_extent(surface->offset, surface->pitch,
                                  surface->width, surface->height,
-                                 vram_bytes)) {
+                                 bytes_per_pixel, vram_bytes)) {
         return V9X_R3D_RESULT_INVALID;
     }
     return V9X_R3D_RESULT_OK;
@@ -69,11 +73,17 @@ v9x_u32 v9x_r3d_validate_surface(const V9X_R3D_SURFACE *surface,
     if (surface == 0) {
         return V9X_R3D_RESULT_INVALID;
     }
+    if (surface->format == V9X_R3D_FORMAT_XRGB8888) {
+        return v9x_r3d_validate_layout(surface,
+                                       V9X_R3D_VALIDATE_BPP_XRGB8888,
+                                       vram_bytes, dimension_max);
+    }
     if (surface->format != V9X_R3D_FORMAT_RGB565 &&
         surface->format != V9X_R3D_FORMAT_XRGB1555) {
         return V9X_R3D_RESULT_INVALID;
     }
-    return v9x_r3d_validate_layout(surface, vram_bytes, dimension_max);
+    return v9x_r3d_validate_layout(surface, V9X_R3D_VALIDATE_BPP,
+                                   vram_bytes, dimension_max);
 }
 
 v9x_u32 v9x_r3d_validate_raw(const V9X_R3D_ABI_RAW *raw, v9x_u32 address,
@@ -107,7 +117,8 @@ v9x_u32 v9x_r3d_validate_depth(const V9X_R3D_SURFACE *depth,
     if (depth->width < target->width || depth->height < target->height) {
         return V9X_R3D_RESULT_INVALID;
     }
-    return v9x_r3d_validate_layout(depth, vram_bytes, dimension_max);
+    return v9x_r3d_validate_layout(depth, V9X_R3D_VALIDATE_BPP, vram_bytes,
+                                   dimension_max);
 }
 
 /* Levels in a full chain from a top of width x height: the larger edge's
@@ -158,7 +169,7 @@ v9x_u32 v9x_r3d_validate_levels(const V9X_R3D_ABI_LEVEL *levels,
          * sampler reads anywhere inside, and this is the only bound it has
          * on memory that is not DirectDraw's. */
         if (!v9x_r3d_validate_extent(0ul, current->pitch, width, height,
-                                     current->bytes)) {
+                                     V9X_R3D_VALIDATE_BPP, current->bytes)) {
             return V9X_R3D_RESULT_INVALID;
         }
         width = width > 1ul ? width / 2ul : 1ul;

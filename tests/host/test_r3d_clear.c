@@ -65,8 +65,38 @@ static void test_refuses_before_writing(void)
     QC(v9x_r3d_clear(&c)!=0 && colors[1u+CP]==0x5aa5u);
 }
 
+/* XRGB8888 (docs\plans\32bpp-acceleration-and-3d.md): D3DCOLOR's own
+ * layout with the X byte cleared; a mask keeps the unwritten bytes and X. */
+static v9x_u32 colors32[CP*CH];
+
+static void reset32(V9X_R3D_CLEAR *c, V9X_R3D_CLEAR_RECT *r)
+{
+    unsigned int i;
+    reset(c,r);
+    for(i=0u;i<CP*CH;++i){colors32[i]=0x89abcdeful;}
+    c->color=colors32;c->color_pitch=CP*4ul;
+    c->format=V9X_R3D_FORMAT_XRGB8888;c->color_value=0xff123456ul;
+}
+
+static void test_xrgb8888(void)
+{
+    V9X_R3D_CLEAR c; V9X_R3D_CLEAR_RECT r; reset32(&c,&r);
+    QC(v9x_r3d_clear(&c)!=0);
+    QC(colors32[1u+CP]==0x00123456ul && colors32[2u+2u*CP]==0x00123456ul);
+    QC(colors32[0]==0x89abcdeful && colors32[3u+CP]==0x89abcdeful);
+    QC(depths[1u+CP]==0x1234u);
+
+    reset32(&c,&r); c.write_green=0ul;
+    QC(v9x_r3d_clear(&c)!=0);
+    QC(colors32[1u+CP]==0x8912cd56ul);
+
+    /* A pitch that holds the row at two bytes a pixel but not at four. */
+    reset32(&c,&r); c.color_pitch=CW*2ul;
+    QC(v9x_r3d_clear(&c)==0); QC(colors32[1u+CP]==0x89abcdeful);
+}
+
 unsigned int v9x_run_r3d_clear_tests(void)
 {
     test_partial_color_and_depth();test_masks_and_rect_list();
-    test_refuses_before_writing();return clear_failures;
+    test_refuses_before_writing();test_xrgb8888();return clear_failures;
 }

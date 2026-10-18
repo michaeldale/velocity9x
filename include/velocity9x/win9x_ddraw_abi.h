@@ -486,6 +486,8 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DDD_DEVICEZBUFFERBITDEPTH  0x00000100ul
 #define V9X_D3DCOLOR_RGB                         2ul
 #define V9X_DDBD_16                      0x00000400ul
+#define V9X_DDBD_24                      0x00000200ul
+#define V9X_DDBD_32                      0x00000100ul
 #define V9X_D3DDEVCAPS_FLOATTLVERTEX      0x00000001ul
 #define V9X_D3DDEVCAPS_SORTEXACT          0x00000008ul
 #define V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY 0x00000010ul

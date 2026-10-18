@@ -133,7 +133,8 @@ typedef char v9x_assert_soft_blend_factor[
  */
 typedef char v9x_assert_soft_target_format[
     (V9X_D3D_TARGET_FORMAT_RGB565 == V9X_D3D_RASTER_PIXFMT_RGB565 &&
-     V9X_D3D_TARGET_FORMAT_XRGB1555 == V9X_D3D_RASTER_PIXFMT_XRGB1555)
+     V9X_D3D_TARGET_FORMAT_XRGB1555 == V9X_D3D_RASTER_PIXFMT_XRGB1555 &&
+     V9X_D3D_TARGET_FORMAT_XRGB8888 == V9X_D3D_RASTER_PIXFMT_XRGB8888)
         ? 1 : -1];
 
 typedef char v9x_assert_soft_compare[
@@ -185,7 +186,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_soft_limits = {
      * render interface's two-unit draws on CPU levels. */
     2ul,                        /* texture_units          */
     /* The CPU rasterizer is the contract: x + 0.5. */
-    1ul                         /* pixel_centre_half      */
+    1ul,                        /* pixel_centre_half      */
+    0ul,                        /* depth_tiled            */
+    /* XRGB8888 on a 32 bpp desktop, at the same widest row in pixels as
+     * the 16 bpp pitch limit above allows. */
+    0x00001ff0ul                /* target_pitch_max_xrgb8888 */
 };
 
 /*
@@ -678,7 +683,11 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
 
-    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth = V9X_DDBD_16;
+    /* 16 and 32 bpp targets; the depth buffer stays 16-bit at both, since
+     * the rasterizer interpolates depth in 16.8 (24-bit depth on the CPU is
+     * not built, docs\plans\32bpp-acceleration-and-3d.md). */
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
@@ -1374,7 +1383,8 @@ static int v9x_d3d_soft_accepts(const V9X_R3D_DRAW *draw)
 {
     if (draw == 0 ||
         (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
-         draw->target.format != V9X_R3D_FORMAT_XRGB1555)) {
+         draw->target.format != V9X_R3D_FORMAT_XRGB1555 &&
+         draw->target.format != V9X_R3D_FORMAT_XRGB8888)) {
         return 0;
     }
     /* An explicit draw is what the rasterizer implements in full - every

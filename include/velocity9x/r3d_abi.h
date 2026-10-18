@@ -87,6 +87,10 @@
 #define V9X_R3D_ABI_FORMAT_XRGB1555 2ul
 #define V9X_R3D_ABI_FORMAT_ARGB1555 3ul
 #define V9X_R3D_ABI_FORMAT_ARGB4444 4ul
+/* A 32 bpp desktop's target, X8R8G8B8 (docs\plans\32bpp-acceleration-and-
+ * 3d.md, Phase 2). A new value of an existing field, published in
+ * target_formats only by an engine that renders it; the version stays. */
+#define V9X_R3D_ABI_FORMAT_XRGB8888 5ul
 
 /*
  * A screen-space vertex, the neutral core's layout (D3DTLVERTEX's), with

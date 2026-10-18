@@ -1966,8 +1966,148 @@ static void test_target_format_refusals(void)
     RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
     target.format = 0ul;
     RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
-    target.format = 3ul;
+    target.format = 4ul;
     RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+}
+
+/*
+ * XRGB8888: a 32 bpp desktop's render target
+ * (docs\plans\32bpp-acceleration-and-3d.md, Phase 2).
+ *
+ * Its own buffer, laid out like the 16-bit one with the same guards, so a
+ * span that wrote two-byte pixels into it - or four-byte pixels past the end
+ * of a row - lands in a cell this file can name.
+ */
+#define RASTER32_BACKGROUND 0x89abcdeful
+
+static v9x_u32 raster32_cells[RASTER_CELLS];
+
+static void raster32_reset(V9X_D3D_RASTER_TARGET *target)
+{
+    unsigned int index;
+
+    raster_reset(target);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster32_cells[index] = RASTER32_BACKGROUND;
+    }
+    target->pixels = &raster32_cells[RASTER_GUARD];
+    target->pitch = RASTER_STRIDE * 4ul;
+    target->format = V9X_D3D_RASTER_PIXFMT_XRGB8888;
+}
+
+static v9x_u32 raster32_pixel(unsigned int x, unsigned int y)
+{
+    return raster32_cells[RASTER_GUARD + y * RASTER_STRIDE + x];
+}
+
+static void raster32_check_untouched_margins(void)
+{
+    unsigned int index;
+    unsigned int y;
+    unsigned int x;
+
+    for (index = 0u; index < RASTER_GUARD; ++index) {
+        RCHECK(raster32_cells[index] == RASTER32_BACKGROUND);
+        RCHECK(raster32_cells[RASTER_CELLS - 1u - index] ==
+               RASTER32_BACKGROUND);
+    }
+    for (y = 0u; y < RASTER_HEIGHT; ++y) {
+        for (x = RASTER_WIDTH; x < RASTER_STRIDE; ++x) {
+            RCHECK(raster32_pixel(x, y) == RASTER32_BACKGROUND);
+        }
+    }
+}
+
+static void test_xrgb8888_packing(void)
+{
+    RCHECK(v9x_d3d_raster_xrgb8888(0l, 0l, 0l) == 0x00000000ul);
+    RCHECK(v9x_d3d_raster_xrgb8888(255l, 255l, 255l) == 0x00fffffful);
+    RCHECK(v9x_d3d_raster_xrgb8888(0x12l, 0x34l, 0x56l) == 0x00123456ul);
+    RCHECK(v9x_d3d_raster_xrgb8888(300l, -1l, 256l) == 0x00ff00fful);
+}
+
+/*
+ * Every channel lands with all eight bits. A flat colour none of whose
+ * channels is a multiple of eight or four would lose its low bits in either
+ * 16-bit layout, so an 8888 target that was packed through one of them fails
+ * here. The top byte is written as zero: X, not alpha.
+ */
+static void test_xrgb8888_flat_is_exact(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+
+    raster32_reset(&target);
+    RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
+    raster_vertex(&triangle[0], PX(2), PX(2), 0x13l, 0x57l, 0x9bl);
+    raster_vertex(&triangle[1], PX(20), PX(2), 0x13l, 0x57l, 0x9bl);
+    raster_vertex(&triangle[2], PX(2), PX(18), 0x13l, 0x57l, 0x9bl);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, 0, 0, triangle) != 0);
+    RCHECK(raster32_pixel(5u, 5u) == 0x0013579bul);
+    RCHECK(raster32_pixel(2u, 2u) == 0x0013579bul);
+    /* Outside the triangle, untouched. */
+    RCHECK(raster32_pixel(19u, 17u) == RASTER32_BACKGROUND);
+    raster32_check_untouched_margins();
+}
+
+/* A 4-byte row has to fit in the pitch: the 16-bit pitch is not enough. */
+static void test_xrgb8888_pitch(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+
+    raster32_reset(&target);
+    target.pitch = RASTER_WIDTH * 4ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) != 0);
+    target.pitch = RASTER_WIDTH * 4ul - 1ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+    target.pitch = RASTER_WIDTH * 2ul;
+    RCHECK(v9x_d3d_raster_target_valid(&target) == 0);
+}
+
+/*
+ * A blend reads the destination as 8888. Half-alpha red over 0x0000FF00: a
+ * blend that unpacked the low sixteen bits as 565 would read green as 7 of
+ * 63 and blue as full, so blue is the tell.
+ */
+static void test_xrgb8888_blend_reads_destination(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_ALPHA alpha;
+    unsigned int index;
+    v9x_u32 value;
+
+    raster32_reset(&target);
+    for (index = 0u; index < RASTER_CELLS; ++index) {
+        raster32_cells[index] = 0x0000ff00ul;
+    }
+    alpha.src = V9X_D3D_RASTER_BLEND_SRC_SRCALPHA;
+    alpha.dst = V9X_D3D_RASTER_BLEND_DST_INVSRCALPHA;
+    RCHECK(raster_blended_quad(&target, &alpha, 255l, 0l, 0l, 128l) != 0);
+
+    value = raster32_pixel(12u, 10u);
+    RCHECK(((value >> 16) & 0xfful) >= 126ul &&
+           ((value >> 16) & 0xfful) <= 130ul);
+    RCHECK(((value >> 8) & 0xfful) >= 125ul &&
+           ((value >> 8) & 0xfful) <= 129ul);
+    RCHECK((value & 0xfful) == 0ul);
+}
+
+/*
+ * The colour mask keeps the unwritten channels' bytes, and the X byte with
+ * them: a masked store changes only what it was asked to.
+ */
+static void test_xrgb8888_write_mask(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_VERTEX triangle[3];
+
+    raster32_reset(&target);
+    target.write_green = 0ul;
+    raster_vertex(&triangle[0], PX(2), PX(2), 0x11l, 0x22l, 0x33l);
+    raster_vertex(&triangle[1], PX(20), PX(2), 0x11l, 0x22l, 0x33l);
+    raster_vertex(&triangle[2], PX(2), PX(18), 0x11l, 0x22l, 0x33l);
+    RCHECK(v9x_d3d_raster_triangle(&target, 0, 0, 0, 0, 0, triangle) != 0);
+    RCHECK(raster32_pixel(5u, 5u) == 0x8911cd33ul);
 }
 
 /*
@@ -3833,6 +3973,11 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_target_format_is_read();
     test_blend_reads_target_format();
     test_target_format_refusals();
+    test_xrgb8888_packing();
+    test_xrgb8888_flat_is_exact();
+    test_xrgb8888_pitch();
+    test_xrgb8888_blend_reads_destination();
+    test_xrgb8888_write_mask();
     test_texture_bilinear_blends();
     test_texture_bilinear_uniform_formats();
     test_texture_blend_modes();

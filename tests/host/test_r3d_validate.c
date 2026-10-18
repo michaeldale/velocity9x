@@ -46,6 +46,25 @@ static void test_surface_layout_and_extent(void)
     VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) ==
            V9X_R3D_RESULT_INVALID);
 
+    /* XRGB8888 rows are four bytes a pixel: the 16 bpp pitch is short, a
+     * pitch that is not a whole number of pixels is refused, and the last
+     * row is measured at four bytes against the end of memory. */
+    surface_reset(&s);
+    s.format = V9X_R3D_FORMAT_XRGB8888;
+    VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_INVALID);
+    s.pitch = 2560ul;
+    VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) == V9X_R3D_RESULT_OK);
+    s.pitch = 2562ul;
+    VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_INVALID);
+    s.pitch = 2560ul;
+    s.offset = VRAM - 479ul * 2560ul - 640ul * 4ul;
+    VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) == V9X_R3D_RESULT_OK);
+    s.offset += 4ul;
+    VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) ==
+           V9X_R3D_RESULT_INVALID);
+
     surface_reset(&s);
     s.width = 0ul;
     VCHECK(v9x_r3d_validate_surface(&s, VRAM, DIM_MAX) ==

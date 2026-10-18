@@ -2,7 +2,9 @@
 
 Date: 2026-10-18. Status: in progress. Phase 1 Gen3 done (netbook boot 208,
 [2026-10-18-gen3-blits-at-32-bpp.md](../decisions/2026-10-18-gen3-blits-at-32-bpp.md));
-decision 1 taken. Follows
+Phase 2 done for the software engine (86Box Trio64,
+[2026-10-18-software-direct3d-at-32-bpp.md](../decisions/2026-10-18-software-direct3d-at-32-bpp.md));
+decision 1 taken, decision 4 owed. Follows
 [high-depth-dynamic-modes.md](high-depth-dynamic-modes.md), which shipped
 32 bpp desktops in 0.6.0 on the CPU and deliberately left the engines out
 ("No hardware acceleration at 24/32 ... D3D stays 16bpp-only").
@@ -32,7 +34,9 @@ whose depth differs from the engine's. On a 32 bpp desktop the HAL offers
 no device at all; titles fall to Microsoft's RGB emulation (seen on the
 ViRGE, [2026-09-19 ViRGE decision](../decisions/2026-09-19-virge-86box-the-flip-chain-rebinds-correctly-and-the-emulator-cannot-answer-the-timing.md)).
 The OpenGL ICD, GLIDE2X/GLIDE3X and ATI3DCIF sit on the same core and
-inherit the 16 bpp limit.
+inherit the 16 bpp limit. (That was the state at 663258b4. Since
+2026-10-18 the software engine renders 32 bpp and the hardware engines
+still refuse it; see Phase 2.)
 
 ## What each chip's silicon is said to do at 32 bpp
 
@@ -67,6 +71,12 @@ hypothesis for Phase 0, not a fact.
    destination alpha.
 3. **Order of chips (owed).** Recommendation below, by machine availability and how
    much is already measured.
+4. **Software fallback at 32 bpp (owed).** On a machine in hardware mode
+   whose engine does not draw 32 bpp, should a 32 bpp title get the
+   software engine instead of no HAL device (and so Microsoft's RGB
+   emulation)? Phase 2 measured the software engine correct at 32 bpp
+   but not its speed against Microsoft's. Recommendation: no fallback
+   until a title has been timed on both.
 
 No INI key or V9X3D verb gates any of this:
 each piece becomes the default in
@@ -109,6 +119,12 @@ Gates: host tests for every builder change; V9XGDI `/accel` and V9XDDP blit
 cases at 32 bpp on the chip's machine.
 
 ## Phase 2 — the Direct3D core accepts a 32 bpp target
+
+Done 2026-10-18 for the software engine, with the differences recorded in
+its decision: the opt-in is one appended limits field,
+`target_pitch_max_xrgb8888`, rather than format masks; the software
+depth buffer stays 16-bit; and no hardware-mode fallback (decision 4).
+`V9XD32.EXE` is the instrument for every chip's Phase 3 row. As planned:
 
 Shared work, host-testable, done once:
 

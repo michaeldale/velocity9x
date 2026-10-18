@@ -176,20 +176,26 @@ typedef char v9x_assert_raster_div255[
  * the same three tests twice. The exported forms below are the same routines
  * with the guard back on.
  */
-static v9x_u16 v9x_d3d_raster_pack565(v9x_s32 red, v9x_s32 green,
+static v9x_u32 v9x_d3d_raster_pack565(v9x_s32 red, v9x_s32 green,
                                       v9x_s32 blue)
 {
-    return (v9x_u16)(((v9x_u16)(red & 0xf8l) << 8) |
+    return (v9x_u32)(((v9x_u16)(red & 0xf8l) << 8) |
                      ((v9x_u16)(green & 0xfcl) << 3) |
                      ((v9x_u16)(blue & 0xf8l) >> 3));
 }
 
-static v9x_u16 v9x_d3d_raster_pack1555(v9x_s32 red, v9x_s32 green,
+static v9x_u32 v9x_d3d_raster_pack1555(v9x_s32 red, v9x_s32 green,
                                        v9x_s32 blue)
 {
-    return (v9x_u16)(((v9x_u16)(red & 0xf8l) << 7) |
+    return (v9x_u32)(((v9x_u16)(red & 0xf8l) << 7) |
                      ((v9x_u16)(green & 0xf8l) << 2) |
                      ((v9x_u16)(blue & 0xf8l) >> 3));
+}
+
+static v9x_u32 v9x_d3d_raster_pack8888(v9x_s32 red, v9x_s32 green,
+                                       v9x_s32 blue)
+{
+    return ((v9x_u32)red << 16) | ((v9x_u32)green << 8) | (v9x_u32)blue;
 }
 
 v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
@@ -200,7 +206,7 @@ v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
     V9X_D3D_RASTER_CLAMP255(red);
     V9X_D3D_RASTER_CLAMP255(green);
     V9X_D3D_RASTER_CLAMP255(blue);
-    return v9x_d3d_raster_pack565(red, green, blue);
+    return (v9x_u16)v9x_d3d_raster_pack565(red, green, blue);
 }
 
 v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
@@ -209,7 +215,17 @@ v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
     V9X_D3D_RASTER_CLAMP255(red);
     V9X_D3D_RASTER_CLAMP255(green);
     V9X_D3D_RASTER_CLAMP255(blue);
-    return v9x_d3d_raster_pack1555(red, green, blue);
+    return (v9x_u16)v9x_d3d_raster_pack1555(red, green, blue);
+}
+
+v9x_u32 v9x_d3d_raster_xrgb8888(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
+{
+    /* Saturating on the same argument again; here an unclamped channel
+     * would not merely wrap but carry into its neighbour. */
+    V9X_D3D_RASTER_CLAMP255(red);
+    V9X_D3D_RASTER_CLAMP255(green);
+    V9X_D3D_RASTER_CLAMP255(blue);
+    return v9x_d3d_raster_pack8888(red, green, blue);
 }
 
 /*
@@ -225,25 +241,33 @@ v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue)
  * replicate high bits into low ones so that a full-scale field reaches 255,
  * which a plain shift does not.
  */
-typedef v9x_u16 (*V9X_D3D_RASTER_PACK)(v9x_s32 red, v9x_s32 green,
+typedef v9x_u32 (*V9X_D3D_RASTER_PACK)(v9x_s32 red, v9x_s32 green,
                                        v9x_s32 blue);
-typedef void (*V9X_D3D_RASTER_UNPACK)(v9x_u16 pixel, v9x_s32 *red,
+typedef void (*V9X_D3D_RASTER_UNPACK)(v9x_u32 pixel, v9x_s32 *red,
                                       v9x_s32 *green, v9x_s32 *blue);
 
-static void v9x_d3d_raster_unpack565(v9x_u16 pixel, v9x_s32 *red,
+static void v9x_d3d_raster_unpack565(v9x_u32 pixel, v9x_s32 *red,
                                      v9x_s32 *green, v9x_s32 *blue)
 {
-    *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 11) & 0x1ful);
-    *green = v9x_d3d_raster_expand6(((v9x_u32)pixel >> 5) & 0x3ful);
-    *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
+    *red = v9x_d3d_raster_expand5((pixel >> 11) & 0x1ful);
+    *green = v9x_d3d_raster_expand6((pixel >> 5) & 0x3ful);
+    *blue = v9x_d3d_raster_expand5(pixel & 0x1ful);
 }
 
-static void v9x_d3d_raster_unpack1555(v9x_u16 pixel, v9x_s32 *red,
+static void v9x_d3d_raster_unpack1555(v9x_u32 pixel, v9x_s32 *red,
                                       v9x_s32 *green, v9x_s32 *blue)
 {
-    *red = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 10) & 0x1ful);
-    *green = v9x_d3d_raster_expand5(((v9x_u32)pixel >> 5) & 0x1ful);
-    *blue = v9x_d3d_raster_expand5((v9x_u32)pixel & 0x1ful);
+    *red = v9x_d3d_raster_expand5((pixel >> 10) & 0x1ful);
+    *green = v9x_d3d_raster_expand5((pixel >> 5) & 0x1ful);
+    *blue = v9x_d3d_raster_expand5(pixel & 0x1ful);
+}
+
+static void v9x_d3d_raster_unpack8888(v9x_u32 pixel, v9x_s32 *red,
+                                      v9x_s32 *green, v9x_s32 *blue)
+{
+    *red = (v9x_s32)((pixel >> 16) & 0xfful);
+    *green = (v9x_s32)((pixel >> 8) & 0xfful);
+    *blue = (v9x_s32)(pixel & 0xfful);
 }
 
 /*
@@ -305,6 +329,13 @@ static v9x_s32 v9x_d3d_raster_depth_mask(v9x_u32 compare)
     return (v9x_s32)(compare - V9X_D3D_RASTER_CMP_NEVER);
 }
 
+/* Bytes a target pixel occupies: four for XRGB8888, two for both 16-bit
+ * layouts. Only called on a format already known to be one of the three. */
+static v9x_u32 v9x_d3d_raster_target_bytes(v9x_u32 format)
+{
+    return format == V9X_D3D_RASTER_PIXFMT_XRGB8888 ? 4ul : 2ul;
+}
+
 int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
 {
     if (target == 0 || target->pixels == 0) {
@@ -317,14 +348,16 @@ int v9x_d3d_raster_target_valid(const V9X_D3D_RASTER_TARGET *target)
         target->height > V9X_D3D_RASTER_DIMENSION_MAX) {
         return 0;
     }
-    /* Two bytes per pixel, and the row has to fit in the pitch. A pitch
-     * narrower than the width is the one target defect that would corrupt the
-     * next row rather than fault. */
-    if (target->pitch < target->width * 2ul) {
+    if (target->format != V9X_D3D_RASTER_PIXFMT_RGB565 &&
+        target->format != V9X_D3D_RASTER_PIXFMT_XRGB1555 &&
+        target->format != V9X_D3D_RASTER_PIXFMT_XRGB8888) {
         return 0;
     }
-    if (target->format != V9X_D3D_RASTER_PIXFMT_RGB565 &&
-        target->format != V9X_D3D_RASTER_PIXFMT_XRGB1555) {
+    /* The row has to fit in the pitch at the format's pixel size. A pitch
+     * narrower than the width is the one target defect that would corrupt the
+     * next row rather than fault. */
+    if (target->pitch < target->width *
+                            v9x_d3d_raster_target_bytes(target->format)) {
         return 0;
     }
     /* The scissor inside the target, and not inverted. An empty rectangle
@@ -1424,15 +1457,23 @@ static void v9x_d3d_raster_fetch(const V9X_D3D_RASTER_SAMPLER *sampler,
  * The span's pixel store under the colour mask. The unmasked case is the
  * plain store it always was; the masked one reads the pixel back and keeps
  * the channels the target does not write. A macro because it sits in the
- * per-pixel loop, and it names the span's own locals.
+ * per-pixel loop, and it names the span's own locals: pixels32 is set for an
+ * XRGB8888 target and pixels for the two 16-bit ones.
  */
 #define V9X_D3D_RASTER_STORE(out_red, out_green, out_blue) do { \
-    if (write_mask == 0xfffful) { \
-        pixels[column] = pack(out_red, out_green, out_blue); \
+    v9x_u32 packed = pack(out_red, out_green, out_blue); \
+    if (pixels32 != 0) { \
+        if (write_mask != full_mask) { \
+            packed = (pixels32[column] & ~write_mask) | \
+                     (packed & write_mask); \
+        } \
+        pixels32[column] = packed; \
     } else { \
-        pixels[column] = (v9x_u16)(((v9x_u32)pixels[column] & ~write_mask) | \
-                                   ((v9x_u32)pack(out_red, out_green, \
-                                                  out_blue) & write_mask)); \
+        if (write_mask != full_mask) { \
+            packed = ((v9x_u32)pixels[column] & ~write_mask) | \
+                     (packed & write_mask); \
+        } \
+        pixels[column] = (v9x_u16)packed; \
     } \
 } while (0)
 
@@ -1500,7 +1541,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 q;
     v9x_s32 offset;
     v9x_s32 column;
-    v9x_u16 *pixels;
+    v9x_u16 *pixels = 0;
+    v9x_u32 *pixels32 = 0;
     v9x_u16 *depths = 0;
     /* Both factors resolved once per span. A source factor of ONE is a
      * constant 256 whatever the fragment's alpha is, so only SRCALPHA has to
@@ -1516,8 +1558,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     v9x_s32 source_weight = 256l;
     v9x_s32 destination_weight = 0l;
     /* The three per-pixel dispatches the loop used to make, made once here.
-     * Target format is validated to one of the two, so 565 is the remaining
-     * case rather than a guess at an unknown one. */
+     * Target format is validated to one of the three, so 565 is the
+     * remaining case rather than a guess at an unknown one. */
     V9X_D3D_RASTER_PACK pack = v9x_d3d_raster_pack565;
     V9X_D3D_RASTER_UNPACK unpack = v9x_d3d_raster_unpack565;
     v9x_s32 depth_mask = 0l;
@@ -1528,8 +1570,11 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     int alpha_used = 0;
     /* The bits of a packed pixel this span may change: all of them unless
      * the target masks a channel, in which case the store below keeps the
-     * rest of what was there. */
+     * rest of what was there. full_mask is "all of them" for the format; an
+     * XRGB8888 store with every channel written clears the X byte, as a
+     * 1555 one clears its top bit. */
     v9x_u32 write_mask = 0xfffful;
+    v9x_u32 full_mask = 0xfffful;
 
     if (first < 0l) {
         first = 0l;
@@ -1649,25 +1694,38 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
     if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555) {
         pack = v9x_d3d_raster_pack1555;
         unpack = v9x_d3d_raster_unpack1555;
+    } else if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB8888) {
+        pack = v9x_d3d_raster_pack8888;
+        unpack = v9x_d3d_raster_unpack8888;
+        write_mask = 0x00fffffful;
+        full_mask = 0x00fffffful;
     }
     if (target->write_red == 0ul || target->write_green == 0ul ||
         target->write_blue == 0ul) {
         int fifteen = target->format == V9X_D3D_RASTER_PIXFMT_XRGB1555;
+        int wide = target->format == V9X_D3D_RASTER_PIXFMT_XRGB8888;
 
         write_mask = 0ul;
         if (target->write_red != 0ul) {
-            write_mask |= fifteen ? 0x7c00ul : 0xf800ul;
+            write_mask |= wide ? 0x00ff0000ul
+                               : (fifteen ? 0x7c00ul : 0xf800ul);
         }
         if (target->write_green != 0ul) {
-            write_mask |= fifteen ? 0x03e0ul : 0x07e0ul;
+            write_mask |= wide ? 0x0000ff00ul
+                               : (fifteen ? 0x03e0ul : 0x07e0ul);
         }
         if (target->write_blue != 0ul) {
-            write_mask |= 0x001ful;
+            write_mask |= wide ? 0x000000fful : 0x001ful;
         }
     }
 
-    pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
-                         (v9x_u32)row * target->pitch);
+    if (target->format == V9X_D3D_RASTER_PIXFMT_XRGB8888) {
+        pixels32 = (v9x_u32 *)((v9x_u8 *)target->pixels +
+                               (v9x_u32)row * target->pitch);
+    } else {
+        pixels = (v9x_u16 *)((v9x_u8 *)target->pixels +
+                             (v9x_u32)row * target->pitch);
+    }
     if (depth != 0) {
         depths = (v9x_u16 *)((v9x_u8 *)depth->pixels +
                              (v9x_u32)row * depth->pitch);
@@ -1923,7 +1981,8 @@ static void v9x_d3d_raster_span(const V9X_D3D_RASTER_TARGET *target,
             }
 
             if (alpha != 0) {
-                v9x_u16 stored = pixels[column];
+                v9x_u32 stored = pixels32 != 0 ? pixels32[column]
+                                               : (v9x_u32)pixels[column];
                 v9x_s32 dst_red;
                 v9x_s32 dst_green;
                 v9x_s32 dst_blue;

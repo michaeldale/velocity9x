@@ -465,10 +465,10 @@ typedef struct v9x_d3d_raster_target {
     v9x_u32 pitch;
     v9x_u32 width;
     v9x_u32 height;
-    /* V9X_D3D_RASTER_PIXFMT_RGB565 or _XRGB1555. Unlike the pitch and the
-     * extent this is not a property of the allocation but of the display mode
-     * the surface was created in, and the caller reads it from the surface
-     * rather than assuming it. */
+    /* V9X_D3D_RASTER_PIXFMT_RGB565, _XRGB1555 or _XRGB8888. Unlike the
+     * pitch and the extent this is not a property of the allocation but of
+     * the display mode the surface was created in, and the caller reads it
+     * from the surface rather than assuming it. */
     v9x_u32 format;
     /*
      * The scissor: a half-open rectangle in pixels, inside the target, and
@@ -512,12 +512,23 @@ typedef struct v9x_d3d_raster_target {
  */
 #define V9X_D3D_RASTER_PIXFMT_RGB565   1ul
 #define V9X_D3D_RASTER_PIXFMT_XRGB1555 2ul
+/*
+ * A 32 bpp desktop's target, four bytes a pixel with blue lowest
+ * (docs\plans\32bpp-acceleration-and-3d.md, Phase 2). X, not alpha, for the
+ * reason 1555 is: a full store writes the top byte as zero, and a masked
+ * store keeps it. 5 and not 3 because the render interface numbers target
+ * and texture layouts in one space, and 3 and 4 are textures there.
+ */
+#define V9X_D3D_RASTER_PIXFMT_XRGB8888 5ul
 
 /* Pack three 0..255 channels into RGB565. Values above 255 saturate. */
 v9x_u16 v9x_d3d_raster_rgb565(v9x_s32 red, v9x_s32 green, v9x_s32 blue);
 
 /* The same into XRGB1555, with the unused top bit left clear. */
 v9x_u16 v9x_d3d_raster_xrgb1555(v9x_s32 red, v9x_s32 green, v9x_s32 blue);
+
+/* The same into XRGB8888, with the top byte clear. */
+v9x_u32 v9x_d3d_raster_xrgb8888(v9x_s32 red, v9x_s32 green, v9x_s32 blue);
 
 /*
  * Whether a target is one this rasterizer will write to: non-null, a non-zero

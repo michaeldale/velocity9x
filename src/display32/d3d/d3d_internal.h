@@ -214,6 +214,7 @@ typedef struct v9x_d3d_context {
  */
 #define V9X_D3D_TARGET_FORMAT_RGB565   1ul
 #define V9X_D3D_TARGET_FORMAT_XRGB1555 2ul
+#define V9X_D3D_TARGET_FORMAT_XRGB8888 5ul
 
 /*
  * A texture handle is the address of one of these, and it is valid for the
@@ -268,7 +269,8 @@ typedef struct v9x_d3d_texture {
  * more function pointers.
  */
 typedef struct v9x_d3d_engine_limits {
-    /* The only framebuffer depth the engine renders to. */
+    /* The 16 bpp framebuffer depth every engine renders to; a 32 bpp one
+     * as well when target_pitch_max_xrgb8888 below is nonzero. */
     DWORD target_bits_per_pixel;
     /* Inclusive maximum render-target pitch in bytes, and its alignment. */
     DWORD target_pitch_max;
@@ -369,6 +371,15 @@ typedef struct v9x_d3d_engine_limits {
      * an initialiser that stops short leaves it zero.
      */
     DWORD depth_tiled;
+    /*
+     * Nonzero when the engine also renders into an XRGB8888 target on a
+     * 32 bpp desktop: the inclusive maximum pitch in bytes for one, which
+     * target_pitch_max states for the 16 bpp layouts. Zero means 16 bpp
+     * only, as every engine was. Alignment is target_pitch_align for both.
+     * Appended 2026-10-18 (docs\plans\32bpp-acceleration-and-3d.md, Phase
+     * 2); an initialiser that stops short leaves it zero.
+     */
+    DWORD target_pitch_max_xrgb8888;
     /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
