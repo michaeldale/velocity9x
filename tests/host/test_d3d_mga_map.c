@@ -262,12 +262,20 @@ static void test_explicit(void)
                                &mapped) == V9X_D3D_MGA_REFUSE_NONE);
     CHECK(mapped.plnwt == 0x0000ff00ul);
 
-    /* What the engine would approximate in a blend goes to the fallback:
-     * the stipple for source alpha, additive, multiply. */
+    /* Blends as Direct3D's, by Michael's choice (2026-10-18): a wall's
+     * lightmap multiply drawn by the CPU over its base pass from the
+     * engine corrupted Half-Life OpenGL's walls (A8U4I5 boot 498).
+     * Source alpha is the per-triangle stipple; untextured additive,
+     * which has nothing to key, still goes to the fallback. */
     explicit_draw(&draw, &texture);
     draw.blend_enable = 1ul;
     draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
     draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.stipple == 1ul);
+    CHECK(mapped.base.no_dither == 1ul);
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
                                &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
     draw.src_blend = V9X_R3D_BLEND_ONE;
@@ -282,15 +290,25 @@ static void test_explicit(void)
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
                                &mapped) == V9X_D3D_MGA_REFUSE_NONE);
     CHECK(mapped.base.texture.enabled == 1ul);
+    /* Textured additive: black keyed out, the rest drawn over. */
     draw.blend_enable = 1ul;
     draw.src_blend = V9X_R3D_BLEND_ONE;
     draw.dst_blend = V9X_R3D_BLEND_ONE;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
-                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.texture.key == 0ul);
+    CHECK(mapped.base.texture.key_mask == 0xfffful);
+    /* Half-Life's lightmap, DESTCOLOR/SRCCOLOR, and a plain multiply:
+     * the half stipple. */
     draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_SRCCOLOR;
+    CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.trans == V9X_D3D_MGA_STIPPLE_HALF);
     draw.dst_blend = V9X_R3D_BLEND_ZERO;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
-                               &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.trans == V9X_D3D_MGA_STIPPLE_HALF);
     /* Filters, by Michael's decision 2 (2026-10-18): linear and mipmapped
      * are drawn as the nearest texel of the top level, as Direct3D's are.
      * Half-Life OpenGL's filter refusals were 64 % of its first attempts

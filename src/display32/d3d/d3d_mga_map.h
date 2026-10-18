@@ -14,14 +14,15 @@
  * what Matrox's own HAL publishes (ALPHAFLATSTIPPLED); every filter is
  * drawn as the nearest texel of the top level.
  *
- * An explicit draw (the render interface: OpenGL, Glide) takes the
- * nearest-texel filter and none of the blend approximations: the filter
- * by Michael's decision 2 of docs\plans\matrox-mga2164w-render-
- * interface.md (2026-10-18). It is drawn undithered, with its scissor as
- * the clip window and its write mask as PLNWT, all measured exact (docs\
- * decisions\2026-10-18-mga2164w-render-interface-registers.md); a blend
- * the engine would approximate is refused, and the core's software
- * fallback draws it.
+ * An explicit draw (the render interface: OpenGL, Glide) takes the same
+ * nearest-texel filter and blend approximations, by Michael's decisions
+ * of 2026-10-18 (docs\plans\matrox-mga2164w-render-interface.md): a
+ * surface's passes split between the engine and the CPU disagreed on
+ * depth. It is drawn undithered, with its scissor as the clip window and
+ * its write mask as PLNWT, all measured exact (docs\decisions\
+ * 2026-10-18-mga2164w-render-interface-registers.md). What remains
+ * refused - CPU levels, a second unit, fog, untextured additive - the
+ * core's software fallback draws.
  */
 #ifndef VELOCITY9X_D3D_MGA_MAP_H
 #define VELOCITY9X_D3D_MGA_MAP_H

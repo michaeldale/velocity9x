@@ -32,7 +32,13 @@ The base pass is drawn on the engine and the lightmap multiply on the CPU,
 whose depth for the same polygon differs, and its LESSEQUAL test fails
 (hypothesis; [record](../decisions/2026-10-18-mga2164w-half-life-gl-split.md)).
 Direct3D, all on the engine with the stipple, looks and runs better.
-Next: Michael's choice of how to keep a wall's passes on one rasterizer.
+Michael chose to keep them on the engine with Direct3D's blend
+approximations (half stipple for the multiply, stipple for source alpha,
+black keyed out of textured additive), applied at boot 499. V9XR3DP and
+V9XGLP pass, and 130 of the probes' 138 draws went to the engine.
+V9XGLIDP's `BlendHalf` now fails, by design: its one pixel reads a
+stippled white `FFFF` where a true blend gives `8410`. Next: Half-Life
+OpenGL on boot 499.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of

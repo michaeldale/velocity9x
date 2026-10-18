@@ -281,13 +281,12 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
             out->skip = 1ul;
             return V9X_D3D_MGA_REFUSE_NONE;
         }
-        /* No blender: the stipple, the additive key and the multiply
-         * below are Direct3D's approximations. */
-        if (draw->blend_enable != 0ul &&
-            !(draw->src_blend == V9X_R3D_BLEND_ONE &&
-              draw->dst_blend == V9X_R3D_BLEND_ZERO)) {
-            return V9X_D3D_MGA_REFUSE_BLEND;
-        }
+        /* Blends take Direct3D's approximations below - the stipple, the
+         * additive key, the half-stippled multiply - by Michael's choice
+         * (2026-10-18): a wall's lightmap multiply drawn by the CPU over
+         * its base pass from the engine fails the depth test where the
+         * two rasterizers' depths differ, and Half-Life OpenGL's walls
+         * were corrupt (A8U4I5 boot 498). On one rasterizer they agree. */
     }
 
     /*
