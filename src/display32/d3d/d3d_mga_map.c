@@ -378,12 +378,11 @@ v9x_u32 v9x_d3d_mga_map_draw(const V9X_R3D_DRAW *draw,
             draw->texture.wrap_either != 0ul) {
             return V9X_D3D_MGA_REFUSE_ADDRESS;
         }
-        /* The sampler is nearest on the top level only. */
-        if (explicit_draw &&
-            (draw->texture.min_filter != V9X_R3D_FILTER_NEAREST ||
-             draw->texture.mag_filter != V9X_R3D_FILTER_NEAREST)) {
-            return V9X_D3D_MGA_REFUSE_FILTER;
-        }
+        /* The sampler is nearest on the top level only. An explicit draw's
+         * linear or mipmapped filter is drawn that way too, as Direct3D's
+         * is: Michael's decision 2 (2026-10-18), since refusing it sent
+         * 64 % of Half-Life OpenGL's batches to the CPU (A8U4I5 boot
+         * 497). */
         base->texture.enabled = 1ul;
         base->texture.offset = texture->offset;
         base->texture.format = texture->format;

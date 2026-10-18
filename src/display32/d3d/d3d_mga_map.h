@@ -14,12 +14,14 @@
  * what Matrox's own HAL publishes (ALPHAFLATSTIPPLED); every filter is
  * drawn as the nearest texel of the top level.
  *
- * An explicit draw (the render interface: OpenGL, Glide) takes none of
- * those approximations. It is drawn undithered, with its scissor as the
- * clip window and its write mask as PLNWT, all measured exact (docs\
- * decisions\2026-10-18-mga2164w-render-interface-registers.md); what the
- * engine would approximate is refused, and the core's software fallback
- * draws it.
+ * An explicit draw (the render interface: OpenGL, Glide) takes the
+ * nearest-texel filter and none of the blend approximations: the filter
+ * by Michael's decision 2 of docs\plans\matrox-mga2164w-render-
+ * interface.md (2026-10-18). It is drawn undithered, with its scissor as
+ * the clip window and its write mask as PLNWT, all measured exact (docs\
+ * decisions\2026-10-18-mga2164w-render-interface-registers.md); a blend
+ * the engine would approximate is refused, and the core's software
+ * fallback draws it.
  */
 #ifndef VELOCITY9X_D3D_MGA_MAP_H
 #define VELOCITY9X_D3D_MGA_MAP_H
@@ -83,9 +85,6 @@ typedef struct v9x_d3d_mga_mapped {
 #define V9X_D3D_MGA_REFUSE_SETUP          13ul /* a triangle's planes
                                                   overflow (counted per
                                                   triangle by d3d_mga.c) */
-#define V9X_D3D_MGA_REFUSE_FILTER         14ul /* an explicit draw's
-                                                  linear or mipmapped
-                                                  filter */
 
 /*
  * One draw. specular_rgb is non-zero when some vertex of the batch carries

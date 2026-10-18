@@ -5927,7 +5927,13 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_mga) {
         /* The 2164W's: power-of-two edges, 1 to 256, 565 and 1555,
          * placed by v9x_d3d_mga_create_surface at a power-of-two row
-         * (docs\decisions\2026-10-10-mga2164w-textures.md). */
+         * (docs\decisions\2026-10-10-mga2164w-textures.md). No 4444: TW12
+         * drew garbage, and every 4444 surface Half-Life OpenGL made was
+         * refused at draw and sent again from the CPU (A8U4I5 boot 497).
+         * Not offered, a 4444 texture goes to the fallback the first
+         * time. */
+        out->texture_formats = (1ul << V9X_R3D_ABI_FORMAT_RGB565) |
+                               (1ul << V9X_R3D_ABI_FORMAT_ARGB1555);
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

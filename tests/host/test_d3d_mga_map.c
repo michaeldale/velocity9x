@@ -262,9 +262,8 @@ static void test_explicit(void)
                                &mapped) == V9X_D3D_MGA_REFUSE_NONE);
     CHECK(mapped.plnwt == 0x0000ff00ul);
 
-    /* What the engine would approximate goes to the fallback: the
-     * stipple for source alpha, additive, multiply, linear and mipmapped
-     * filters. */
+    /* What the engine would approximate in a blend goes to the fallback:
+     * the stipple for source alpha, additive, multiply. */
     explicit_draw(&draw, &texture);
     draw.blend_enable = 1ul;
     draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
@@ -292,14 +291,19 @@ static void test_explicit(void)
     draw.dst_blend = V9X_R3D_BLEND_ZERO;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
                                &mapped) == V9X_D3D_MGA_REFUSE_BLEND);
+    /* Filters, by Michael's decision 2 (2026-10-18): linear and mipmapped
+     * are drawn as the nearest texel of the top level, as Direct3D's are.
+     * Half-Life OpenGL's filter refusals were 64 % of its first attempts
+     * on A8U4I5 (boot 497). */
     draw.blend_enable = 0ul;
     draw.texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
-                               &mapped) == V9X_D3D_MGA_REFUSE_FILTER);
-    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
+    CHECK(mapped.base.texture.enabled == 1ul);
     draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
     CHECK(v9x_d3d_mga_map_draw(&draw, &texture, 0x00800000ul, 0ul,
-                               &mapped) == V9X_D3D_MGA_REFUSE_FILTER);
+                               &mapped) == V9X_D3D_MGA_REFUSE_NONE);
 
     /* CPU levels and a second unit have no sampler here. */
     explicit_draw(&draw, &texture);

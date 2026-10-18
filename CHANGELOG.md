@@ -42,8 +42,9 @@ build identifier so exact guest-tested binaries remain traceable.
   OpenGL and Glide probes pass at 16 bpp. Glide now resends a texture
   the card refuses as a CPU copy, as the OpenGL driver already did. What
   the card draws exactly (untextured or point-sampled triangles, with
-  scissor and write masks) it now draws itself; filtered textures and
-  blending still go to the CPU
+  scissor and write masks) it now draws itself. Filtered textures are
+  drawn point-sampled, as Direct3D already was on this card; blending
+  still goes to the CPU
   ([plan](docs/plans/matrox-mga2164w-render-interface.md),
   [engine](docs/decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md),
   [fallback](docs/decisions/2026-10-18-mga2164w-software-fallback.md),
