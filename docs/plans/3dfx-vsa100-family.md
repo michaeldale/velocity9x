@@ -84,7 +84,7 @@ plan adds the VSA-100 sources.
 |---|---|---|
 | VelocityNT M5 (the author's NT/2000/XP driver, closed for now) | Physical measurements of the Mini-Me v2 on Windows 2000, 2026-10-10/11 | Hardware facts and their evidence, imported by a decision record (Phase 0). No code. |
 | Napalm Graphics Engine spec rev 1.13, 6 Oct 1999 (`3dfx driver research\sux6000-docs\voodoo45-spec.pdf`) | Marked "3dfx Confidential"; circulated with the SUX 6000 documentation | **The databook for VSA-100 register writes** (decided 2026-10-11). Cited by section and page. Where its prose and bit tables disagree, the bit table is followed and the disagreement recorded in the fact sheet (three known cases, below). |
-| Published Banshee/Voodoo3 spec | 3dfx public release | Cross-check for registers the VSA-100 shares with Avenger, and the Voodoo3 chip's authority. Still not archived in the tree (prior-work open item). |
+| Avenger (a.k.a. Voodoo3) spec rev 1.0, Nov 1999, and the Banshee spec and 2D databook (bitsavers copies in `3dfx driver research\`, archived 2026-10-18) | 3dfx release; watermarked confidential | Cross-check for registers the VSA-100 shares with Avenger, and the Voodoo3 chip's authority. Read against the fact sheet 2026-10-18: each Avenger note there is now confirmed or corrected with a page. |
 | Open Glide h5 (`artifacts\3dfx_glide\h5`, Koolsmoky tree) | 3DFX GLIDE Source Code General Public License | Facts only: register layouts (`h5/incsrc/h3regs.h`), the `EXT_HWC` escape protocol (`h5/minihwc/hwcext.h`), SLI setup order. No code. |
 | retro-3dfx project notes (`C:\everything\retro-3dfx\*.md`, `optimized\*.md`; voidsstr, public, no licence file) | Measurements on a Voodoo5 5500 AGP and a 4-chip Voodoo5 6000 under Windows XP, with their rebuild of the leaked driver | Facts only, as hypotheses; see "Prior work: retro-3dfx". No text or code copied. Their `3dfx Driver Code\` folder is the leak and falls under the row below. |
 | Mesa `tdfx` (`artifacts\MesaFx-7.4.4`) | MIT | Compatible; may be adapted with attribution. 3D only. |
@@ -365,10 +365,11 @@ same-box control driver (3dfx's own here, as AmigaMerlin is for them).
    the provenance rule: VelocityNT supplies facts, not code.
 2. **VSA-100 register fact sheet** (`docs/specifications/vsa100-registers.md`).
    Every register this plan names, cited to the Napalm spec by section and
-   page, cross-checked against the Banshee/Voodoo3 spec, open Glide h5 and
-   the measurements. Disagreements are listed, not resolved by majority.
-   Shared Avenger registers are marked as such, so the Voodoo3 plan reuses
-   the sheet.
+   page, cross-checked against the Avenger (Voodoo3) spec, open Glide h5
+   and the measurements. Disagreements are listed, not resolved by
+   majority. Shared Avenger registers are marked as such, so the Voodoo3
+   plan reuses the sheet. The Avenger cross-check was done on 2026-10-18,
+   from the documents only.
 3. **`EXT_HWC` prediction list.** From `hwcext.h`, the sub-functions a
    single-chip Glide 3 session calls, in order, each with what the driver
    must return. This is the Phase 4 spec.

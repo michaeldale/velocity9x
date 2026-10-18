@@ -17,7 +17,7 @@ size, tile boundary, straps) are expected to differ.
 | **Napalm** | *Napalm Graphics Engine*, rev 1.13, 6 Oct 1999, `C:\everything\claude\personal\3dfx driver research\sux6000-docs\voodoo45-spec.pdf`, SHA-256 `06b5041d…5315e5e`, 249 pages | "3dfx Confidential". The databook for VSA-100 register writes (plan, 2026-10-11). Facts only; no text or tables copied. |
 | **Glide** | Open Glide h5, `…\artifacts\3dfx_glide\h5\incsrc\`: `h3regs.h` (SHA-256 `c4c702cf…c56bd`), `h3defs.h` (`fb1da053…41aa0`), `h3gdefs.h` (`b901ed43…dcd229`) | 3DFX GLIDE Source Code General Public License. Cross-check of layouts only; no code. Cited `file:line`. |
 | **VNT** | VelocityNT `docs\reference\m5*.md`, `docs\decisions\2026-10-1*-mini-me-*.md` | The author's own driver. Measured values and register semantics only; their citations into other trees were not followed. Cited by record name. |
-| Banshee/Voodoo3 spec | **Archived 2026-10-18, not yet read for this sheet.** From bitsavers `components/3dfx/`, in `C:\everything\claude\personal\3dfx driver research\`: *Avenger (a.k.a. Voodoo3) High Performance Graphics Engine* `Voodoo3_Spec_r1.0_199911.pdf` (SHA-256 `f1d5d1b6…68790d5`); *Banshee High Performance Graphics Engine* `Voodoo2_Banshee_Spec_r1.1_199811.pdf` (`4857703a…40b2037`); *Voodoo Banshee Universal Access 2D Databook* `Voodoo2_Banshee-2D_Databook_r1.0_199806.pdf` (`f24f485d…9bca16d`); `Voodoo3_Data_Book_r1.0_199908.pdf` (`4a978226…d9eb3ea`); `Voodoo3_Programming_Guide_r1.4a_199906.pdf` (`d2a51f3f…3db8375`). Also a public *Napalm* databook r1.12, `Voodoo45_Napalm_Databook_r1.12_200003.pdf` (`b0d0eb15…f6d83f7`). | Several are watermarked confidential, as Napalm is: facts only. Until they are read, every "Avenger" note below still rests on Napalm's own change lists. |
+| **Avenger** | **Read against this sheet 2026-10-18.** From bitsavers `components/3dfx/`, in `C:\everything\claude\personal\3dfx driver research\`: *Avenger (a.k.a. Voodoo3) High Performance Graphics Engine* `Voodoo3_Spec_r1.0_199911.pdf` (SHA-256 `f1d5d1b6…68790d5`); *Banshee High Performance Graphics Engine* `Voodoo2_Banshee_Spec_r1.1_199811.pdf` (`4857703a…40b2037`); *Voodoo Banshee Universal Access 2D Databook* `Voodoo2_Banshee-2D_Databook_r1.0_199806.pdf` (`f24f485d…9bca16d`); `Voodoo3_Data_Book_r1.0_199908.pdf` (`4a978226…d9eb3ea`); `Voodoo3_Programming_Guide_r1.4a_199906.pdf` (`d2a51f3f…3db8375`). Also a public *Napalm* databook r1.12, `Voodoo45_Napalm_Databook_r1.12_200003.pdf` (`b0d0eb15…f6d83f7`), a pin and electrical book whose only register content is the strap tables. Cited "Avenger §x.y p.N" with the body heading and printed page (which equals the PDF page in this edition); the Avenger spec's tables extract with shifted columns like Napalm's, so each value was read in row order from the per-register page. | Several are watermarked confidential, as Napalm is: facts only. The Banshee documents were not needed: every Avenger note below is settled by the Avenger spec. |
 
 Not opened: `C:\everything\3dfx-driver` (standing rule), and
 `C:\everything\retro-3dfx\3dfx Driver Code\`, which the file search showed
@@ -34,11 +34,12 @@ spec, and was not read).
 - Tables in the PDF were checked against rendered pages where text
   extraction misaligned columns (pp.25–26, 40–41, 53–64, 67–70, 86–87, 157,
   159–162, 185, 195, 200, 210–223).
-- **Avenger** column: "inherited" means the spec's change lists (§3.5–3.7
-  pp.23–24, revision history §28 pp.244–249) name no Napalm change to that
-  register. The spec never marks registers as shared explicitly, so
-  "inherited" is an inference from silence, unchecked against a Banshee
-  spec. "Changed rev x" cites the revision-history entry.
+- **Avenger** column: written 2026-10-11 from Napalm's change lists (§3.5–3.7
+  pp.23–24, revision history §28 pp.244–249) alone. Since 2026-10-18 each
+  note is checked against the Avenger spec and marked **confirmed**
+  (Avenger defines what the note says, cited), **corrected** (the note was
+  wrong; both readings given) or **not covered**. "Changed rev x" still
+  cites Napalm's revision history.
 - **D*n*** refers to the numbered list in [Disagreements](#disagreements).
   Where spec prose and its bit table differ, the plan follows the bit
   table.
@@ -122,7 +123,14 @@ Napalm §16 map pp.192–193; Glide h3regs.h:463–513. Offsets in bytes.
 
 Avenger: `cfgPciDecode`, `cfgVideoCtrl*`, `cfgSli*`, `cfgAa*`, `agpTest*`
 added in rev 1.10; `cfgSliAaMisc` in 1.11; `cfgInitEnable` changed in 1.10
-(§28 pp.247–248). Disagreement: D26 (Glide's SST-1 config constants).
+(§28 pp.247–248). **Confirmed, with one correction** (Avenger §15 map
+p.180): Avenger has nothing at 0x44–0x4B or 0x80–0xAC; `cfgStatus` 0x4C,
+`cfgScratch` 0x50 and the AGP/ACPI capabilities 0x54–0x64 are the same.
+**Corrected:** `cfgInitEnable` is not a changed register. Avenger's 0x40
+is `fabID` 3:0 (1 = TSMC) with 31:4 a read/write scratch pad (Avenger
+§15.22 p.185; Banshee the same), and neither spec documents any init-write
+enable. Napalm's bits 31:8 sit where Avenger had scratch. Disagreement:
+D26 (Glide's SST-1 config constants).
 
 ---
 
@@ -158,6 +166,9 @@ Aliases: 2D `0x100000`, 3D `0x200000`, config `0x4C`.
   at most 256 polls, all-ones = device gone; no NOP issued; last value
   `0x5F` (2026-10-11-mini-me-retained-route; VNT m5c-aperture-transition.md).
 - Avenger: inherited; "cleaned up status bit descriptions" rev 1.08 (§28 p.247).
+  **Corrected:** bits 0–12 and 28–31 are Avenger's, but Avenger reserves
+  27:13, so bits 13 and 14 (TMU 0/1 busy) are new in Napalm (Avenger §16.1
+  p.188).
 - Disagreements: D3, D4.
 
 ### `pciInit0` — 0x04, 32-bit, R/W, default `0x01800040`
@@ -179,6 +190,8 @@ Aliases: 2D `0x100000`, 3D `0x200000`, config `0x4C`.
 - Measured: not read. Velocity9x reads it in Phase 1 to see whether bit 8
   is set by the BIOS; it does not write it.
 - Avenger: watermarks "programmable" since Avenger (§3.5 p.23); snoop note rev 1.10.
+  **Confirmed:** Avenger has every field above at the same bits, and the
+  same default `0x01800040` (Avenger §16.2 p.189).
 
 ### `lfbMemoryConfig` — 0x0C, 32-bit, selector-multiplexed
 
@@ -228,7 +241,10 @@ First tiled byte = page × 4 KiB, page = compare[14:0] if compare[15] else
   saved` worked (VNT m5c-aperture-transition.md;
   2026-10-11-mini-me-upper-memory-sparse, -offscreen-pages, -retained-route).
 - Avenger: TileCompare and the two-register form added rev 1.11 (§28 p.248);
-  128 MiB tiled/linear selection added rev 1.00 (p.245).
+  128 MiB tiled/linear selection added rev 1.00 (p.245). **Confirmed:**
+  Avenger's `lfbMemoryConfig` is one register, 12:0 begin page, 15:13
+  stride, 22:16 tiles in X, default `0xA2200`; no 24:23, no selector bits,
+  no TileCompare (Avenger §16.4 p.190).
 - Disagreements: D6 (known case: prose on bit 30), D29.
 
 ### `miscInit0` — 0x10, 32-bit, R/W
@@ -254,6 +270,9 @@ First tiled byte = page × 4 KiB, page = compare[14:0] if compare[15] else
 - Rule for Velocity9x: read `miscInit0` before reading 0x14; if bit 30 is
   set, 0x14 is not `miscInit1`.
 - Avenger: 3:2 and 31:30 swizzle removed rev 1.09; 30, 31 added rev 1.11 (§28 pp.247–248).
+  **Confirmed:** on Avenger 3:2 are register-write byte/word swizzle and
+  31:30 non-modal LFB byte/word swizzle; resets 7:0, delays 16:8 and the
+  Y-origin value 29:18 are the same, 17 reserved (Avenger §16.5 p.191).
 
 ### `miscInit1` — 0x14 when `miscInit0[30]` = 0, 32-bit, R/W
 
@@ -281,6 +300,10 @@ First tiled byte = page × 4 KiB, page = compare[14:0] if compare[15] else
   27 (AGP) and 28 (device type) clear, bit 29 (pd pin) set. VNT refuses power-down,
   command-stream reset or swizzle enable (m5b-aperture.md).
 - Avenger: 22:20 added rev 1.09, 18 rev 1.08, 31:29 rev 1.11 (§28).
+  **Confirmed:** Avenger reserves 18 and 23:20 and ends at the 28:24 straps;
+  bits 0–17 and 19 are the same (Avenger §16.6 pp.192–193). Avenger's prose
+  says bits 17 and 18 disable the cross-pipe stalls; its table, like
+  Napalm's, says 16 and 17.
 
 ### `dramInit0` — 0x18, 32-bit, R/W
 
@@ -298,6 +321,9 @@ First tiled byte = page × 4 KiB, page = compare[14:0] if compare[15] else
   4 × 128 Mbit = 64 MiB; paired-page sweep verified [1 MiB, 64 MiB)
   (2026-10-11-mini-me-offscreen-pages).
 - Avenger: type/bank fields widened rev 1.00 and 1.09 (§28 pp.245, 247).
+  **Confirmed:** Avenger ends at bit 27, a one-bit part type (0 = 8 Mbit,
+  1 = 16 Mbit); 26 is the chip-set count as here, and 25:0 the same
+  timings (Avenger §16.7 p.194).
 - Disagreements: D8, D9.
 
 ### `dramInit1` — 0x1C, 32-bit, R/W
@@ -312,7 +338,9 @@ First tiled byte = page × 4 KiB, page = compare[14:0] if compare[15] else
 
 - Napalm §17.9 p.219. Glide h3defs.h:1599–1619.
 - Measured: `0x40240031` → bit 30 = 1, SDRAM (2026-10-11-mini-me-offscreen-pages).
-- Avenger: bit 12 reserved rev 1.01.
+- Avenger: bit 12 reserved rev 1.01. **Confirmed:** on Avenger bit 12 is
+  "dither passthrough" and bit 10 video arbitration priority; bit 30
+  `mctl_type_sdram` (rev B0 on) is already Avenger's (Avenger §16.8 p.195).
 - Disagreements: D8.
 
 ### `agpInit0` — 0x20; `tmuGbeInit` — 0x24
@@ -322,7 +350,11 @@ Read only for Phase 1 survey; never written (plan: no AGP setup).
 threshold, 31:27 outstanding requests (RO) (§17.10 p.220). `tmuGbeInit`:
 texture/pixel FIFO watermarks 11:0, TV-out clock delay 19:15, AA clock delay
 24:20, 27:25 memory port config (Napalm2 only) (§17.11 p.220). Glide
-h3defs.h:1621–1642. Not measured.
+h3defs.h:1621–1642. Not measured. Avenger (§16.9–16.10 pp.195–196): same
+offsets; `agpInit0` 3:1 was the maximum AGP request length, reserved in
+Napalm; `tmuGbeInit` (named `textureGRXBackend` in Avenger's map) has the
+watermarks 11:0 and TV-out delay 19:15, so the AA delay and memory-port
+bits are Napalm's.
 
 ### `vgaInit0` — 0x28, 32-bit, R/W
 
@@ -345,6 +377,10 @@ h3defs.h:1621–1642. Not measured.
 - Glide h3defs.h:1644–1675 (bits 0, 1, 2, 6, 8, 9, 10, base agree; bit 12 not defined).
 - Measured: not read. The plan's "~10% on blits" for bit 12 is not in the spec.
 - Avenger: bits 3, 9:8 defaults, 24:23, 26:25 changed rev 1.00/1.10 (§28).
+  **Confirmed, plus one:** Avenger's VGA base is 21:14 only ("anywhere on a
+  64K byte boundary within 16M bytes") and 31:23 are reserved, so 24:23 and
+  26:25 are new; so is bit 7 (VGA memory remap), reserved on Avenger, with
+  5:3 (Avenger §16.11 pp.196–197).
 - Disagreements: D19, D32.
 
 ### `vgaInit1` — 0x2C, 32-bit, R/W
@@ -352,7 +388,8 @@ h3defs.h:1621–1642. Not measured.
 9:0 VBE write aperture, 19:10 VBE read aperture (32 KiB units), 20 chain-4,
 21–28 VGA timing locks, 30:29 write aperture bits 11:10 (§17.13
 pp.222–223). Read only. Glide h3defs.h:1677–1679 defines nothing useful
-here. Not measured.
+here. Not measured. Avenger §16.12 p.199 has 9:0, 19:10, 20 and the 21–28
+locks; 30:29 are Napalm's.
 
 ### `0x30`, `0x34` — 2D command / srcBaseAddr aliases (Glide: `dramCommand`, `dramData`)
 
@@ -366,7 +403,11 @@ Write bit 0 to choose which word later reads return: 0 = `strapInfo0`, 1 =
 `strapInfo1` (§17.16 p.223; bits §23 pp.238–240). **A read after any
 selector write is stateful**; the Phase 0 probe must save and restore the
 selector or not read it. `strapInfo1` 14:10 is the chip ID, 17:15 the PCI
-function number. Glide h3defs.h:1685. Not measured. D1, D27.
+function number. Glide h3defs.h:1685. Not measured. D1, D27. Avenger's map
+gives `strapInfo` as one 12-bit read (Avenger §16 p.188), so the selector
+and `strapInfo1` are Napalm's. The Napalm databook r1.12 (Table 4.2)
+agrees with the `strapInfo1` fields above, read in row order: BAR0, BAR1
+and I/O size straps 3:0, 7:4, 9:8, chip ID 14:10, function 17:15.
 
 ### `iMatchCtrl` — 0x48 (§17.17 pp.223–224)
 
@@ -397,6 +438,9 @@ f_out = 14.31818 MHz × (N + 2) / ((M + 2) × 2^K).
 - Measured: `pllCtrl0` = `0x00000C01` (N = 12, M = 0, K = 1), **not the
   active clock**: misc output `0xE3` selects clock 0 (2026-10-11-mini-me-first-mode-timing).
 - Avenger: PLL programming by device ID is an Avenger note (§3.5, §3.7).
+  **Confirmed:** Avenger §9.1 p.144 has the same K/M/N fields and formula,
+  and the device-ID-4 note is Avenger's own text. Avenger names `pllCtrl2`
+  the AGP PLL and documents it (§9.2 p.145; see D30).
 - Disagreements: D10.
 
 ### Misc output clock select (VGA 0x3CC read / 0x3C2 write)
@@ -413,7 +457,8 @@ Bits 3:2: 0 = 25.175 MHz, 1 = 28.322 MHz, 2 = 50 MHz, 3 = programmable PLL
 | 1, 2 | DPMS on vsync, force vsync value |
 | 3, 4 | DPMS on hsync, force hsync value |
 
-Napalm §10.1 p.159. 2× mode also needs `vidProcCfg[26]` and halved
+Napalm §10.1 p.159; Avenger §10 p.146 is identical, as are `dacAddr` and
+`dacData` below. 2× mode also needs `vidProcCfg[26]` and halved
 horizontal CRTC timing, all horizontal timing divisible by 16 pixels (§5.4
 p.27). Measured `0` (2026-10-11-mini-me-first-mode-timing).
 
@@ -458,6 +503,12 @@ Offsets per §11 table p.160 and §4 p.26; Glide h3regs.h:154–188.
   28, 29 (2026-10-11-mini-me-post-mode-capture). Clearing only bit 7 paused
   desktop fetch; restoring the word worked (VNT m5c-aperture-transition.md).
 - Avenger: bit 3 and formats 4 (desktop) / 0, 2, 3 (overlay) added rev 1.01 (§28 p.245).
+  **Confirmed:** Avenger's desktop formats stop at 3 and overlay formats 0,
+  2, 3 are reserved; its bit 3 is "interlaced video out enable", not
+  supported and to be left 0. Bits 28/29 are the same memory-optimisation
+  disables, 30 reserved, 31 backend deinterlace (Avenger §11.1.3
+  pp.148–149). Every video register in this section sits at the same
+  offset in Avenger's map; its address fields are 23:0 (§11 p.147).
 - Disagreements: D15.
 
 ### `hwCurPatAddr` — 0x60; `hwCurLoc` — 0x64; `hwCurC0` — 0x68; `hwCurC1` — 0x6C
@@ -536,7 +587,11 @@ Register map §7.1 pp.53–54; Glide `SstGRegs` h3regs.h:242–278. All 2D
 registers read back the value the next operation will use (§7.2 p.55).
 Avenger: the 2D core is inherited; Napalm changes are base addresses widened
 to 26 bits (rev 1.00) and `commandExtra[28]` (rev history; highlighted in
-the table).
+the table). **Confirmed** (Avenger §7.1 p.55, §7.2.3 p.59, §7.2.6 p.60,
+§7.2.9 p.64): every offset below is the same; base addresses are 23:0
+plus bit 31 tiled; `commandExtra` defines bits 3:0 only; `srcFormat` and
+`dstFormat` fields and codes are the same; clipping is min-inclusive,
+max-exclusive.
 
 | Offset | Register | Fields used | Napalm |
 |---|---|---|---|
@@ -658,6 +713,10 @@ Constraints from the spec:
 - Two streams, first come first served (§13.1.10 p.184).
 - Not measured on any VSA-100. The plan's ten-store bring-up order is from
   the prior-work plan, not from this spec.
+- Avenger (§13 pp.171–172 map, §14 pp.175–178): every offset in the table
+  is the same, read with the map's name column shifted a row. Its
+  `cmdFifoThresh` is 4:0 fetch threshold and 8:5 high-water mark, Glide's
+  layout (D25). `cmdHoleInt` is the same; `yuvStride` is 12:0.
 
 ### Packet headers (bits 2:0 = type)
 
@@ -672,6 +731,9 @@ Constraints from the spec:
 | 6 | 20:5 byte count; 4:3 space; four further words (AGP source, stride/width, FB offset, dest stride) | AGP → frame buffer; **broken with AGP CMDFIFOs** (§21.8 p.237) | §13.1.9 p.184 |
 
 Glide h3gdefs.h:182–283 agrees on types and field positions. D25, D33.
+Avenger has the same seven types (§12.1.3–12.1.9 pp.166–171); type 0's
+jump address is [24:2] (AGP [35:25] in word 1) and type 1's register base
+is header 14:3 with the 2D/3D select and chip field as here.
 
 ---
 
@@ -697,7 +759,12 @@ h3regs.h:289–458.
 | `0x218` | `leftDesktopBuf` | Desktop swap address (rev 1.10) | §8 map p.84 |
 
 Glide offsets agree (h3regs.h:366, 388–404; `sliCtrl` bits h3defs.h:546–554,
-`aaCtrl` h3defs.h:568–673). Note: the spec prints two 3D maps that differ
+`aaCtrl` h3defs.h:568–673). Avenger's 3D map (Avenger §8 pp.85–86) has
+`nopCMD` 0x120 and `swapbufferCMD` 0x128 as here, reserves 0x1E0–0x1E8
+(so `renderMode` is new, **confirmed**) and 0x208–0x248 (so
+`combineMode`, `sliCtrl`, `aaCtrl`, `chipMask` and `leftDesktopBuf` are
+new too), and gives `colBufferAddr`/`auxBufferAddr` 23:0 and the strides
+15:0 at the same offsets. Note: the spec prints two 3D maps that differ
 for `0x40–0x7C` (pp.83 and 86); the second is the alternate triangle map
 (`miscInit1[5]`).
 
@@ -836,16 +903,26 @@ code uses.
    §17.14–17.16 p.223: 0x30 = 2D `command` alias, 0x34 = 2D `srcBaseAddr`
    alias (not `colorFore` 0x64), 0x38 = `strapInfo`. §11 p.160 and Glide
    h3regs.h:138–141 put `vidTvOutBlankVCount` at 0x3C. Plan follows §17;
-   none of these are written.
+   none of these are written. Avenger sides with §17 and §11: 0x30/0x34
+   are the 2D `command`/`srcBaseAddr` aliases, 0x38 `strapInfo` (Avenger
+   §16 p.188, §16.13–16.14 p.199), 0x3C `vidTvOutBlankVCount` (§11
+   p.147).
 2. **0x48.** §17 table p.210 and §17.17 p.223: `iMatchCtrl`. §4 p.25 and
-   Glide h3regs.h:146: `pllCtrl2`. Unresolved; neither is written.
+   Glide h3regs.h:146: `pllCtrl2`. Unresolved; neither is written. On
+   Avenger 0x48 is `pllCtrl2` (Avenger §9 p.144), and Avenger has no
+   `iMatchCtrl`: the §4 map and Glide carry the inherited name. Which one
+   Napalm decodes there is still not established.
 3. **status FIFO bits (known case).** §8.1 p.87 prose: bits 5:0 free
    space, 64 entries, empty = `0x3F`; bits 27:12 memory FIFO. Bit tables
    (§8.1, §17.1): 4:0 free (`0x1F`), 5 busy, 13/14 TMU busy, 27:15 reserved.
    §17.1 p.211 prose says bits 11:10 for the CMDFIFOs; the table says 11, 12.
    Glide has both `SST_FIFOLEVEL 0x3F` and `SST_PCIFIFO_FREE 0x1F`
    (h3defs.h:98–99). Plan follows the table and uses only bit 9 (VNT
-   measured the same choice).
+   measured the same choice). Inherited: Avenger has the same split, its
+   3D status page saying 5:0, 64 entries, `0x3F` and a memory FIFO in 27:12
+   (Avenger §8.1 p.89) and its init page 4:0, 32 entries, `0x1F`, 27:13
+   reserved (§16.1 p.188), with the same "bits 11:10" slip in the
+   CMDFIFO prose.
 4. **Idle procedure.** §21.2 p.234 asks for a NOP before polling and three
    clear reads; its sample code returns idle only after four. VNT's
    measured procedure uses three reads and no NOP. Whether the NOP matters
@@ -882,7 +959,9 @@ code uses.
     as `0x18` (p.158) and as `0x24` (§3.7 p.24). Napalm IDs are 6–9; whether
     either note applies is not established.
 11. **dacAddr width.** Spec 8:0, 512 entries (§10.2 p.159); Glide
-    `SST_DAC_ADDR` `0xFF` (h3defs.h:1186). Plan follows the spec.
+    `SST_DAC_ADDR` `0xFF` (h3defs.h:1186). Plan follows the spec. Avenger
+    agrees with the spec: 8:0, 512 entries, no auto-increment (Avenger
+    §10.2 p.146).
 12. **Cursor colour order.** Spec `hwCurC0/C1`: blue 7:0, green 15:8, red
     23:16 (§11.1.6–11.1.7 p.164), matching `dacData`. Glide: red shift 8,
     green shift 16 (h3defs.h:1258, 1260). Plan follows the spec; Phase 1 or
@@ -899,7 +978,13 @@ code uses.
     `INTERLACED_EN`, 29 `OVERLAY_EACH_VSYNC`, 30 `OVERLAY_STRIDE_ADJUST`
     (h3defs.h:1204–1205, 1245–1246); §11.3 p.177 says interlaced output is
     not implemented. The Mini-Me BIOS value sets bit 29; its meaning is not
-    established. Plan preserves bits 28–31 as found.
+    established. Plan preserves bits 28–31 as found. Avenger (§11.1.3
+    pp.148–149): bit 3 is "interlaced video out enable", not supported
+    (Glide's `INTERLACED_EN` is this inherited name; Napalm reused the bit),
+    28 and 29 disable desktop and overlay memory optimisation as Napalm's
+    spec says, 30 reserved. Glide's `OVERLAY_EACH_VSYNC` and
+    `OVERLAY_STRIDE_ADJUST` match neither spec. Both specs read the
+    Mini-Me's bits 28/29 as the two optimisation disables.
 16. **vidSerialParallelPort cross-references.** The DDC write rows (19, 20)
     say the line state is "reflected in bit 26/27"; the I2C write rows (24,
     25) say "bit 21/22". The table itself puts DDC state at 21/22 and I2C
@@ -920,9 +1005,12 @@ code uses.
     the table.
 21. **Host swizzle bits.** Prose: `srcFormat` bits 19 and 20 (§7.2.9 p.61);
     table and Glide: 20 and 21 (p.62; h3gdefs.h:92–93). Plan follows the
-    table.
+    table. Inherited: Avenger's prose says 19 and 20 and its table 20 and
+    21 (Avenger §7.2.9 pp.62, 64).
 22. **2D map widths.** §7.1 p.54 lists `dstFormat` as 17:0 and `srcFormat`
     as 18:0; the §7.2.9 tables use 18:16 and 23:16. Plan follows §7.2.9.
+    Inherited: Avenger's map gives the same 17:0 and 18:0 against the same
+    tables (Avenger §7.1 p.55, §7.2.9 p.64).
 23. **commandExtra 31:29.** Spec table: reserved (§7.2.3 p.57); revision
     1.05 (p.246) added SLI there; Glide defines SLI bits 29–31 and an
     `EN_CLUT88` bit 7 (h3gdefs.h:52, 77–79). Not used single-chip.
@@ -936,7 +1024,11 @@ code uses.
     + 8:5 (h3defs.h:1836–1838). The §14 map prints `cmdFifoThresh` as
     "0x080(96)". Glide calls 0x40 `unusedB` where the spec has `cmdStatus0`
     (h3regs.h:205). `cmdFifoDepth1` is "freespace" on p.185 and depth on
-    pp.190–191. Plan follows §15.
+    pp.190–191. Plan follows §15. Avenger explains most of this: its
+    `cmdBaseSize0` size is 7:0, its `cmdFifoThresh` is exactly Glide's 4:0
+    + 8:5 (so Glide describes Avenger, and Napalm widened it), it has
+    `cmdStatus0` at 0x40, and its map carries the same "0x080(96)" typo and
+    "freespace" label (Avenger §13 pp.171–172, §14.2, §14.21 pp.175, 178).
 26. **Config space constants.** Glide h3defs.h:1705–1728 define
     `SST_BUS_SNOOP0` 0x44, `SST_BUS_SNOOP1` 0x48 and init-enable bits 0–11
     (SST-1 layout). Spec: 0x44 ACPI reset, 0x48 `cfgPciDecode`,
@@ -946,7 +1038,12 @@ code uses.
 27. **Device-ID strap.** §16.2 p.193: TV_DATA_6 picks {6,7} or {8,9}. §23
     p.238: `strapInfo0[19]` = TV_DATA_7 = `pci_device_id`, `[18]` = TV_DATA_6
     = force `strapInfo1` to 0; the text below it names TV_DATA_5 for that.
-    Rev 1.11 (p.248) says TV_DATA_6. Read-only; recorded only.
+    Rev 1.11 (p.248) says TV_DATA_6. Read-only; recorded only. The Napalm
+    databook r1.12 (March 2000, later than the spec) adds a third reading:
+    its Table 4.1, read in row order through shifted columns, puts the
+    device-ID pair select at `strapInfo0[18]` = TV_DATA5 and the
+    `strapInfo1` force at `[17]` = TV_DATA4, while its own prose names
+    TV_DATA5 for the force. Still unresolved; Avenger has no `strapInfo1`.
 28. **Stale LFB text.** §8.84 p.155 ("FIX THIS"): LFB at an 8 MiB offset,
     4 MiB long (SST-1). §4 p.25 and Glide (h3defs.h:2099): 3D LFB at
     `0x1000000`, 16 MiB. Plan follows §4.
@@ -957,7 +1054,13 @@ code uses.
 30. **pllCtrl2.** In the §4 map and Glide, absent from §9, which documents
     only the video and GRX PLLs; §3.5 p.23 says the separate memory clock
     domain was removed in Avenger, yet `miscInit1[11]` still powers down a
-    "memory PLL". Its function is not established; never written.
+    "memory PLL". Its function is not established; never written. On
+    Avenger, `pllCtrl2` is the AGP/PCI PLL: bits 1:0 select a test mux, and
+    with the PCI_66MHz and PLL_BYPASS straps they choose between bypass and
+    PLL clocking, only three combinations being allowed (Avenger §9.2
+    p.145). That is likely what Napalm's map name refers to; not
+    established for Napalm, and still never written. Avenger's
+    `miscInit1[11]` also reads "power down memory PLL".
 31. **VNT HDE formula.** VNT m5b-timing.md writes horizontal display as
     `CR01 + CR1a bit2*64`; that is 256 only if bit 2 is taken as its masked
     value (4). The spec says HDE bit 8. Unexercised (CR1A = 0).
@@ -1013,6 +1116,10 @@ code uses.
   below 16 MiB on a 32 MiB card.
 - DDC/I2C through `vidSerialParallelPort`.
 - `strapInfo1` contents and the stateful selector at 0x38 on a live card.
-- Which registers are truly shared with Avenger: the Avenger (Voodoo3) and
-  Banshee specifications are archived since 2026-10-18 (Sources) but have
-  not been read against this sheet. That cross-check is the next step.
+- Which registers are truly shared with Avenger: settled from the
+  documents on 2026-10-18 (the **confirmed**/**corrected** notes above).
+  The init, video, DAC, PLL, 2D, CMDFIFO and packet layouts are Avenger's
+  at the same offsets, with the Napalm additions each note names. Two
+  notes were wrong: `status` bits 13/14 are new, and `cfgInitEnable` has
+  no Avenger ancestor. Whether the silicon matches either document is not
+  established.
