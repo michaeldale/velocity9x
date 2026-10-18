@@ -2,7 +2,7 @@
 
 Date: 2026-10-18
 
-Status: in progress (requested by Michael, 2026-10-18: "plan drawing render-interface
+Status: parked 2026-10-18, see "Parked" below (requested by Michael, 2026-10-18: "plan drawing render-interface
 draws on the MGA-2164W's own engine where it can be exact, with the
 software fallback for the rest"). Step 1 done 2026-10-18
 ([record](../decisions/2026-10-18-mga2164w-render-interface-registers.md)):
@@ -37,8 +37,51 @@ approximations (half stipple for the multiply, stipple for source alpha,
 black keyed out of textured additive), applied at boot 499. V9XR3DP and
 V9XGLP pass, and 130 of the probes' 138 draws went to the engine.
 V9XGLIDP's `BlendHalf` now fails, by design: its one pixel reads a
-stippled white `FFFF` where a true blend gives `8410`. Next: Half-Life
-OpenGL on boot 499.
+stippled white `FFFF` where a true blend gives `8410`. At boot 499,
+Half-Life OpenGL ran at about 11.6 fps with about 88 % on the engine, and
+Michael said it "looks a lot better". Two issues showed:
+- The WON Multiplayer menu, a GDI dialog, has corrupted background art.
+- After the menu, every card texture was lost: about 0.6 fps until the
+  game was restarted.
+
+Boot 501 remakes lost textures in the ICD and in Glide (a6da93e6).
+
+## Parked (Michael, 2026-10-18)
+
+Parked before the boot 501 build was run through Half-Life. A8U4I5 is
+left on boot 501 (`69abf8bc-dirty`, the code of a6da93e6), desktop
+800x600x16. To pick it up:
+
+1. **Half-Life through the menu.** Michael plays Half-Life OpenGL, opens
+   and closes the Multiplayer menu, plays on, then quits.
+2. **Read three things** on A8U4I5:
+   - `C:\V9XTRCN.EXE`, then `C:\V9XDIAG\V9XSNA7.INI`. Check that the
+     process list names HL.EXE: if it does not, the game did not reach the
+     HAL. Take `R3dDrawCalls`, `M64AcceptPolicy*`, `MgaTexRefused*` and
+     `MgaSetupRefusedSplit`.
+   - `C:\V9XDIAG\V9XGL.LOG`, the HL.EXE pid's lines: `time` (swaps per
+     10 s is the frame rate), `paths` (`hw=` batches on the engine,
+     `hw-refused=`) and `counters hwtex lost=`.
+   - The census in `C:\V9XDIAG\V9XGLIDE.LOG` for a Glide title
+     (`surfaces-lost=`).
+3. **Expected:** after the menu, `hwtex lost` counts the remade copies,
+   `MgaTexRefusedPlace` stays near 0, and the frame rate keeps to the
+   pre-menu figure.
+
+Still open after that:
+- The menu's GDI art corruption. One candidate, unexamined: explicit
+  draws leave MACCESS bit 30 (nodither) set, and the 16-bit side writes
+  MACCESS once per mode.
+- 1,000-odd triangles a session refused by the setup
+  (`MgaSetupRefusedSplit`) and not drawn.
+- The untextured additive blends still refused to the CPU (most of
+  `M64AcceptPolicy04`).
+- 32 bpp: the ICD has no 32-bit pixel formats, and V9XR3DP's oracle is
+  16-bit.
+- A timedemo score. `+timedemo mwd5` scripted from the command line
+  needs a clean console log first; my first try read the previous one.
+
+Next: Half-Life through the menu on boot 501 (above).
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of
