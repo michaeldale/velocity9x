@@ -4993,12 +4993,16 @@ static const V9X_D3D_ENGINE_OPS *v9x_r3d_engine(void)
  * (docs\decisions\2026-09-26-phase05-mixed-engine-ordering-and-virge-
  * colour-mismatch.md). The ViRGE is not included. Its S3D writes 1555 into
  * a 565 target, and its 555 target has not been measured, so a mixed frame
- * there could carry two encodings.
+ * there could carry two encodings. The MGA-2164W passed the same probe on
+ * A8U4I5 at 640x480x16 (docs\decisions\2026-10-18-mga2164w-software-
+ * fallback.md): its Z16 holds z x 65535 as the software engine's does.
  */
 static const V9X_D3D_ENGINE_OPS *v9x_r3d_fallback(
     const V9X_D3D_ENGINE_OPS *ops)
 {
-    return ops == &v9x_d3d_engine_i9xx ? &v9x_d3d_engine_soft : 0;
+    return ops == &v9x_d3d_engine_i9xx || ops == &v9x_d3d_engine_mga
+               ? &v9x_d3d_engine_soft
+               : 0;
 }
 
 /* The largest texture a draw may name: the fallback's when there is one,
@@ -5390,8 +5394,10 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
         /* A surface texture stays with its engine: Gen3 places a mip chain
          * as one tree in its own layout, which the software engine's
          * surface sampler (one linear level) would read wrongly. The ICD
-         * answers UNSUPPORTED by sending its CPU copy instead. */
+         * answers UNSUPPORTED by sending its CPU copy instead. The software
+         * engine's depth is 16-bit, so a 32-bit cell stays refused. */
         if (fallback == 0 || draw.texture.object != 0 ||
+            draw.depth.format != V9X_R3D_DEPTH_Z16 ||
             draw.texture1.object != 0 ||
             (draw.texcoords1 != 0 && v9x_r3d_texture_units(fallback) < 2ul) ||
             !fallback->accepts(&draw)) {

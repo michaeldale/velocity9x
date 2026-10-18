@@ -35,6 +35,14 @@ build identifier so exact guest-tested binaries remain traceable.
     offered, so its Z accuracy tests still fail as in 0.19.0. It now runs
     at 640x480x32 on the GMA 950's hardware
     ([record](docs/decisions/2026-10-18-3d-winbench-98-z-accuracy-with-z24-offered.md)).
+- **OpenGL and Glide draw on the Matrox Millennium II.** Before, every
+  OpenGL and Glide triangle was refused on this card and nothing
+  appeared. They are now drawn by the CPU into the card's surfaces, as on
+  the GMA 950, after the two were measured to agree in one frame. The
+  OpenGL probe passes at 16 bpp. Glide's textured triangles still do not
+  draw. Drawing them on the card's own engine is planned
+  ([plan](docs/plans/matrox-mga2164w-render-interface.md),
+  [record](docs/decisions/2026-10-18-mga2164w-software-fallback.md)).
 - **DirectDraw fills and copies at 32 bpp on two more engines.**
   - **Intel GMA 950/900:** on the blitter, every pixel matching a CPU
     reference at 8, 16 and 32 bpp
