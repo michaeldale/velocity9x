@@ -207,7 +207,7 @@ V9XGL3P read as on the 2164W, key for key
 ([record](../decisions/2026-10-19-mystique-opengl-glide.md)).
 
 **Half-Life 2026-10-19**: mwd5 at 6.0-6.5 fps on OpenGL (98 % of draws on
-the engine) and 9.1 fps on Direct3D (99.6 % of batches), no engine
+the engine) and 9.1-9.2 fps on Direct3D (99.6 % of batches), no engine
 timeouts; 4 MiB runs short of texture memory under OpenGL
 ([record](../decisions/2026-10-19-mystique-half-life.md)).
 

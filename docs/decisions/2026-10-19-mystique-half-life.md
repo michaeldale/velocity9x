@@ -31,6 +31,8 @@ snapshot names HL.EXE in its process list, `BuildsAgree=1`.
 | OpenGL | 2 | 61.850 s, 6.354 fps (Michael's photo of the console) |
 | OpenGL | 3 | 60.577 s, 6.488 fps |
 | Direct3D | 1, cold | 43.506 s, **9.056 fps** |
+| Direct3D | 2 | 42.702 s, 9.203 fps (Michael's photo of the console) |
+| Direct3D | 3 | 42.716 s, 9.200 fps |
 
 ## Where the drawing went
 
@@ -59,6 +61,7 @@ a quarter of a million batches on the 32-entry FIFO.
 - How the frames looked. Michael's photo shows the console; nobody judged
   the scenes, and the agent cannot capture flipped output.
 - The Multiplayer menu (the 2164W's OpenGL corruption issue).
-- Direct3D warm runs.
+- The engine share of the two warm Direct3D runs: the snapshot was taken
+  after run 1.
 
 Gates: none; no code changed.
