@@ -262,6 +262,43 @@ Direct3D renderer on this card too. If it does not, the fault is on the
 OpenGL side (the CPU-drawn non-square pictures, or the engine's
 state around a CPU draw). If it does, it is common to both.
 
+### The Direct3D comparison, and the fences
+
+Michael then ran Half-Life's Direct3D renderer through the same menu on
+the same build: **the menu was clean**, and the red railings in Crossfire
+were cut out. Under OpenGL the same railings were solid red panels. So
+both faults are on the OpenGL side.
+
+The fences. Their textures are ARGB4444 in the ICD, a format the 2164W
+cannot sample (boot 497). So the CPU drew the base pass, alpha test
+included, and the engine drew the lightmap pass over it. Measured with
+two new V9XGLP checks (`alpha-glp-16b.ini` in the evidence folder, build `8ae2370e-dirty`): a
+16x16 map, red, alpha 0 on the left half, `GL_GREATER` 0.666 over green,
+then a grey 128 lightmap with ZERO/SRC_COLOR and LEQUAL:
+
+| Pixel | Read | GL's answer |
+|---|---|---|
+| `AlphaHole`, `AlphaHoleNext` | 00FF00, 00FF00 | 00FF00 |
+| `AlphaSolid`, `AlphaSolidNext` | FF0000, FF0000 | FF0000 |
+| `AlphaLitHole`, `AlphaLitHoleNext` | 00FF00, **848284** | 008000 |
+| `AlphaLitSolid`, `AlphaLitSolidNext` | FF0000, **848284** | 800000 |
+
+So the alpha test is right, on the CPU, and the half stipple writes
+lightmap texels into the holes as well as the solid part. That is the
+multiply approximation (boot 499), and Direct3D has it too. What
+Direct3D has differently is the base pass on the engine, keyed in
+1555. This change gives OpenGL the same: an ARGB4444 image whose
+level 0 has only alphas 0 and 15 is uploaded as 1555 for an engine
+without 4444. That is exact for those two alphas (`v9x_gl_tex_alpha_binary`,
+kept per revision; `v9x_gl_tex_4444_to_1555`; host-tested in
+`test_gl_texture.c`). Lower levels round their averaged alpha at 8, and
+the 2164W samples the top level only.
+
+On A8U4I5 with that build (BootId 2026-10-19 16:13), V9XGLP passes with
+the same alpha pixels, and its textured batches drawn from the CPU went
+to the engine (`cpu=3/6` before, `cpu=0/0` now, `alpha-glp-after.ini`).
+Half-Life with it is not yet run.
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.

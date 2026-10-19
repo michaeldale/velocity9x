@@ -823,6 +823,67 @@ static void test_retarget_to_1555(void)
 }
 
 /*
+ * ARGB4444 whose alpha is all or nothing, as ARGB1555 for an engine without
+ * 4444 (the MGA-2164W): colour widened by replicating its top bit, the
+ * alpha bit set from 8 up. Half-Life OpenGL's fences are such images, and
+ * drawn from the CPU under a lightmap pass from the engine they came out
+ * solid (A8U4I5, 2026-10-19).
+ */
+static void test_4444_as_1555(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    V9X_GL_TEXOBJ *object;
+    GLuint name = 0u;
+    /* 2x2: opaque red, clear blue, opaque white, clear black. */
+    static const GLubyte binary[16] = {
+        255, 0, 0, 255,  0, 0, 255, 0,  255, 255, 255, 255,  0, 0, 0, 0
+    };
+    static const GLubyte half[4] = { 255, 255, 255, 136 };
+    static const GLubyte opaque[12] = {
+        255, 0, 0,  0, 255, 0,  0, 0, 255,  255, 255, 255
+    };
+
+    TCHECK(v9x_gl_tex_4444_to_1555(0xFF00u) == 0xFC00u);
+    TCHECK(v9x_gl_tex_4444_to_1555(0x0F0Fu) == 0x7C1Fu);
+    TCHECK(v9x_gl_tex_4444_to_1555(0xFFFFu) == 0xFFFFu);
+    TCHECK(v9x_gl_tex_4444_to_1555(0x0000u) == 0x0000u);
+    /* 4 to 5 bits: 4 -> 8, 2 -> 4, 1 -> 2; alpha 8 sets the bit. */
+    TCHECK(v9x_gl_tex_4444_to_1555(0x8421u) == 0xA082u);
+    TCHECK(v9x_gl_tex_4444_to_1555(0x7FFFu) == 0x7FFFu);
+
+    v9x_gl_state_init(&s);
+    v9x_gl_textures_init(&t, test_alloc, test_free);
+    v9x_gl_tex_gen(&s, &t, 1, &name);
+    v9x_gl_tex_bind(&s, &t, V9X_GL_TEXTURE_2D, name);
+    object = v9x_gl_tex_bound_object(&t);
+    v9x_gl_pixel_store(&s, &t, V9X_GL_UNPACK_ALIGNMENT, 1);
+
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 4, 2, 2, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, binary);
+    TCHECK(object->storage_format == V9X_R3D_ABI_FORMAT_ARGB4444);
+    TCHECK(v9x_gl_tex_alpha_binary(object) == 1);
+    /* Asked again, the same answer from the record. */
+    TCHECK(v9x_gl_tex_alpha_binary(object) == 1);
+
+    /* One texel of alpha 136 makes it partial; the revision says so. */
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 1, 1, 1, 1,
+                            V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, half);
+    TCHECK(v9x_gl_tex_alpha_binary(object) == 0);
+
+    /* Back to all or nothing. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 4, 2, 2, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, binary);
+    TCHECK(v9x_gl_tex_alpha_binary(object) == 1);
+
+    /* Not 4444 at all: no. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 2, 2, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_BYTE, opaque);
+    TCHECK(object->storage_format == V9X_R3D_ABI_FORMAT_RGB565);
+    TCHECK(v9x_gl_tex_alpha_binary(object) == 0);
+}
+
+/*
  * A square-only sampler of at least side_min (the Mach64: 8 to 256) takes
  * a square copy. A wrapped image repeats across it, so with s and t scaled
  * by width/side and height/side it samples the same texels, repeats
@@ -1019,6 +1080,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_dirty_rectangles();
     test_hardware_copy_bookkeeping();
     test_retarget_to_1555();
+    test_4444_as_1555();
     test_square_copy();
     if (gl_texture_failures == 0u) {
         printf("PASS: OpenGL texture objects and images\n");

@@ -1355,6 +1355,46 @@ v9x_u16 v9x_gl_tex_565_to_1555(v9x_u16 texel)
     return (v9x_u16)(0x8000u | (red << 10) | (green << 5) | blue);
 }
 
+v9x_u16 v9x_gl_tex_4444_to_1555(v9x_u16 texel)
+{
+    v9x_u16 red = (v9x_u16)((texel >> 8) & 0x0Fu);
+    v9x_u16 green = (v9x_u16)((texel >> 4) & 0x0Fu);
+    v9x_u16 blue = (v9x_u16)(texel & 0x0Fu);
+    v9x_u16 alpha = (v9x_u16)((texel >> 15) & 1u);
+
+    red = (v9x_u16)((red << 1) | (red >> 3));
+    green = (v9x_u16)((green << 1) | (green >> 3));
+    blue = (v9x_u16)((blue << 1) | (blue >> 3));
+    return (v9x_u16)((alpha << 15) | (red << 10) | (green << 5) | blue);
+}
+
+int v9x_gl_tex_alpha_binary(V9X_GL_TEXOBJ *object)
+{
+    const V9X_GL_TEXLEVEL *level = &object->levels[0];
+    v9x_u32 count;
+    v9x_u32 i;
+    v9x_u16 alpha;
+
+    if (object->storage_format != V9X_R3D_ABI_FORMAT_ARGB4444 ||
+        level->texels == 0) {
+        return 0;
+    }
+    if (object->alpha_binary_for == object->revision + 1ul) {
+        return object->alpha_binary;
+    }
+    object->alpha_binary = 1;
+    count = level->width * level->height;
+    for (i = 0ul; i < count; ++i) {
+        alpha = (v9x_u16)(level->texels[i] & 0xF000u);
+        if (alpha != 0u && alpha != 0xF000u) {
+            object->alpha_binary = 0;
+            break;
+        }
+    }
+    object->alpha_binary_for = object->revision + 1ul;
+    return object->alpha_binary;
+}
+
 v9x_u32 v9x_gl_tex_square_side(v9x_u32 width, v9x_u32 height,
                                v9x_u32 side_min, v9x_u32 side_max)
 {

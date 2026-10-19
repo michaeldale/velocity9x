@@ -68,8 +68,10 @@ void v9x_gl_drawable_unlock(V9X_GL_DRAWABLE *drawable, int front);
  * placement refuses it. Upload copies each level of `source` (level 0
  * first, the interface's CPU description) through a Lock; the Lock's HAL
  * side drains the engine first, so no queued draw reads a half-written
- * texture. With `to_1555` the source is RGB565 and each texel is written
- * as ARGB1555 with alpha one (v9x_gl_tex_565_to_1555). Zero when a level
+ * texture. With `to_1555` each texel is written as ARGB1555: from RGB565
+ * with alpha one (V9X_GL_TO_1555_FROM_565, v9x_gl_tex_565_to_1555), or
+ * from ARGB4444 (V9X_GL_TO_1555_FROM_4444, v9x_gl_tex_4444_to_1555). Zero
+ * when a level
  * cannot be locked.
  */
 void *v9x_gl_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 levels,

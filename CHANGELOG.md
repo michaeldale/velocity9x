@@ -44,7 +44,11 @@ build identifier so exact guest-tested binaries remain traceable.
   the card draws exactly (untextured or point-sampled triangles, with
   scissor and write masks) it now draws itself. Filtered textures are
   drawn point-sampled, and blending as Direct3D draws it on this card (a
-  screen-door pattern), so a surface's passes stay on the card
+  screen-door pattern), so a surface's passes stay on the card.
+  Textures DirectDraw takes back (after Half-Life's Multiplayer menu) are
+  made again. OpenGL textures whose alpha is fully on or off, such as
+  Half-Life's fences, are converted for the card rather than drawn by the
+  CPU, so their holes no longer come out solid
   ([plan](docs/plans/matrox-mga2164w-render-interface.md),
   [engine](docs/decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md),
   [fallback](docs/decisions/2026-10-18-mga2164w-software-fallback.md),

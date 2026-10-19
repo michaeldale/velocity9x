@@ -107,6 +107,10 @@ typedef struct v9x_gl_texobj {
     v9x_u32 reduced_limit;
     v9x_u32 reduced_width;
     v9x_u32 reduced_height;
+    /* v9x_gl_tex_alpha_binary's answer, for revision alpha_binary_for - 1
+     * (0: not asked since the object was made). */
+    v9x_u32 alpha_binary_for;
+    int alpha_binary;
 } V9X_GL_TEXOBJ;
 
 /*
@@ -313,6 +317,28 @@ void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture);
  * bits, green drops its lowest. For an engine that samples no 565 (the
  * ViRGE's S3D takes 1555 and 4444). */
 v9x_u16 v9x_gl_tex_565_to_1555(v9x_u16 texel);
+
+/*
+ * An ARGB4444 texel as ARGB1555: each colour nibble widened to five bits by
+ * repeating its top bit, the alpha bit set where the alpha is 8 or more.
+ * Exact for an alpha of 0 or 15, the only two a one-bit alpha holds; for
+ * an engine with 1555 and no 4444 (the MGA-2164W, whose 4444 draws
+ * garbage, 2026-10-10).
+ */
+v9x_u16 v9x_gl_tex_4444_to_1555(v9x_u16 texel);
+
+/* Which conversion a hardware copy's upload makes (gl_surface.h). */
+#define V9X_GL_TO_1555_NONE 0
+#define V9X_GL_TO_1555_FROM_565 1
+#define V9X_GL_TO_1555_FROM_4444 2
+
+/*
+ * Whether an ARGB4444 object's level 0 has only alphas of 0 and 15, so
+ * that 1555 holds it exactly: Half-Life's alpha-tested fences and grates.
+ * The answer is kept for the object's revision, so a draw does not scan
+ * the image again. Zero for any other storage format.
+ */
+int v9x_gl_tex_alpha_binary(V9X_GL_TEXOBJ *object);
 
 /*
  * The square copy for a sampler that takes only squares of side_min to

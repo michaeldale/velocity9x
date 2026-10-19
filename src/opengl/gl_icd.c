@@ -1581,18 +1581,39 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
                height > description->hw_texture_size_max) {
         return v9x_gl_hw_no(V9X_GL_HWNO_TOO_BIG);
     }
-    /* The layout the engine samples: the image's own, or for an RGB image
-     * on an engine without 565 (the ViRGE), 1555 with alpha one. */
+    /*
+     * The layout the engine samples: the image's own; for an RGB image on
+     * an engine without 565 (the ViRGE), 1555 with alpha one; for a 4444
+     * image on an engine without 4444 (the MGA-2164W), 1555 when level 0's
+     * alpha is all or nothing, which one bit holds exactly. Half-Life
+     * OpenGL's fences are such images: drawn from the CPU with their
+     * lightmap pass from the engine, they came out solid where Direct3D,
+     * which keys them on the engine, cuts them out (A8U4I5, 2026-10-19).
+     * A lower level's averaged alpha rounds at 8; the 2164W samples the
+     * top level only. Not for a level 0 v9x_gl_tex_fit reduced, whose
+     * box filter the check did not see.
+     */
     hw_format = texture->format;
-    to_1555 = 0;
+    to_1555 = V9X_GL_TO_1555_NONE;
     if ((description->texture_formats & (1ul << hw_format)) == 0ul) {
-        if (hw_format != V9X_R3D_ABI_FORMAT_RGB565 ||
-            (description->texture_formats &
+        if ((description->texture_formats &
              (1ul << V9X_R3D_ABI_FORMAT_ARGB1555)) == 0ul) {
             return v9x_gl_hw_no(V9X_GL_HWNO_FORMAT);
         }
+        if (hw_format == V9X_R3D_ABI_FORMAT_RGB565) {
+            to_1555 = V9X_GL_TO_1555_FROM_565;
+        } else if (hw_format == V9X_R3D_ABI_FORMAT_ARGB4444) {
+            object = v9x_gl_tex_object(&context->textures, name);
+            if (object == 0 ||
+                texture->levels[0].pixels != object->levels[0].texels ||
+                !v9x_gl_tex_alpha_binary(object)) {
+                return v9x_gl_hw_no(V9X_GL_HWNO_FORMAT);
+            }
+            to_1555 = V9X_GL_TO_1555_FROM_4444;
+        } else {
+            return v9x_gl_hw_no(V9X_GL_HWNO_FORMAT);
+        }
         hw_format = V9X_R3D_ABI_FORMAT_ARGB1555;
-        to_1555 = 1;
     }
     /* GL 1.1 textures are powers of two already (gl_texture.c refuses any
      * other size), so V9X_R3D_ABI_HWTEX_POW2 always holds here. */
@@ -1732,8 +1753,11 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
         *scale_t = (float)(v9x_s32)height / (float)(v9x_s32)side;
     }
 
-    if (to_1555) {
+    if (to_1555 == V9X_GL_TO_1555_FROM_565) {
         v9x_gl_tex_as_1555(texture, alpha_used);
+    } else if (to_1555 == V9X_GL_TO_1555_FROM_4444) {
+        /* The same alphas, 0 or one, so the same ops. */
+        texture->format = V9X_R3D_ABI_FORMAT_ARGB1555;
     }
     texture->storage = V9X_R3D_ABI_TEXTURE_HW;
     texture->surface.surface = hw->surface;

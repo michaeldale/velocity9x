@@ -1943,6 +1943,114 @@ void __stdcall V9xGlProbeEntry(void)
             glDeleteTextures(1, &texture);
 
             /*
+             * An alpha-tested texture with a lightmap pass over it, as
+             * Half-Life OpenGL draws its fences (2026-10-19: drawn solid
+             * on the MGA-2164W, cut out under Direct3D). A 16x16 RGBA
+             * map, red, alpha 0 in the left half and 255 in the right,
+             * GL_GREATER 0.666 over a green clear on a 64x64 quad with
+             * depth on: AlphaHole (left, expect green) and AlphaSolid
+             * (right, expect red). Then a grey 128 map over the same quad,
+             * ZERO/SRC_COLOR with LEQUAL and no depth write, the lightmap
+             * pass: AlphaLitHole (expect green halved, 008000h) and
+             * AlphaLitSolid (red halved, 800000h). Each with the pixel to
+             * its right (...Next).
+             */
+            {
+                static GLubyte rgba[16 * 16 * 4];
+                GLuint maps[2];
+
+                for (y = 0; y < 16; ++y) {
+                    for (x = 0; x < 16; ++x) {
+                        GLubyte *texel = &rgba[(y * 16 + x) * 4];
+
+                        texel[0] = 255;
+                        texel[1] = 0;
+                        texel[2] = 0;
+                        texel[3] = (GLubyte)(x < 8 ? 0 : 255);
+                    }
+                }
+                glGenTextures(2, maps);
+                glBindTexture(GL_TEXTURE_2D, maps[0]);
+                glTexImage2D(GL_TEXTURE_2D, 0, 4, 16, 16, 0, GL_RGBA,
+                             GL_UNSIGNED_BYTE, rgba);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_NEAREST);
+                for (y = 0; y < 16 * 16; ++y) {
+                    rgba[y * 4 + 0] = 128;
+                    rgba[y * 4 + 1] = 128;
+                    rgba[y * 4 + 2] = 128;
+                    rgba[y * 4 + 3] = 255;
+                }
+                glBindTexture(GL_TEXTURE_2D, maps[1]);
+                glTexImage2D(GL_TEXTURE_2D, 0, 3, 16, 16, 0, GL_RGBA,
+                             GL_UNSIGNED_BYTE, rgba);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                GL_NEAREST);
+
+                glClearColor(0.0f, 1.0f, 0.0f, 1.0f);
+                glClearDepth(1.0);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(GL_LEQUAL);
+                glDepthMask(GL_TRUE);
+                glEnable(GL_TEXTURE_2D);
+                glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+                for (pass = 0; pass < 2; ++pass) {
+                    glBindTexture(GL_TEXTURE_2D, maps[pass]);
+                    if (pass == 0) {
+                        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                                  GL_MODULATE);
+                        glEnable(GL_ALPHA_TEST);
+                        glAlphaFunc(GL_GREATER, 0.666f);
+                    } else {
+                        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE,
+                                  GL_REPLACE);
+                        glDisable(GL_ALPHA_TEST);
+                        glDepthMask(GL_FALSE);
+                        glEnable(GL_BLEND);
+                        glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+                    }
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex3f(200.0f, 20.0f, 0.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex3f(264.0f, 20.0f, 0.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex3f(264.0f, 84.0f, 0.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex3f(200.0f, 84.0f, 0.0f);
+                    glEnd();
+                    glFinish();
+                    v9x_glp_hex(pass == 0 ? "AlphaHole" : "AlphaLitHole",
+                                v9x_glp_read(216, 52));
+                    v9x_glp_hex(pass == 0 ? "AlphaSolid" : "AlphaLitSolid",
+                                v9x_glp_read(248, 52));
+                    /* The neighbours, for an engine that draws the multiply
+                     * as a half stipple. */
+                    v9x_glp_hex(pass == 0 ? "AlphaHoleNext"
+                                          : "AlphaLitHoleNext",
+                                v9x_glp_read(217, 52));
+                    v9x_glp_hex(pass == 0 ? "AlphaSolidNext"
+                                          : "AlphaLitSolidNext",
+                                v9x_glp_read(249, 52));
+                }
+                v9x_glp_hex("ErrorAfterAlpha", (DWORD)glGetError());
+                glDisable(GL_BLEND);
+                glBlendFunc(GL_ONE, GL_ZERO);
+                glDepthMask(GL_TRUE);
+                glDepthFunc(GL_LESS);
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_TEXTURE_2D);
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glDeleteTextures(2, maps);
+            }
+
+            /*
              * Small textures, which Serious Sam draws with (1x1 layers):
              * 1x1 red, 2x2 green, 4x4 blue, 4x1 yellow, 1x4 cyan, each
              * one solid colour, NEAREST, MODULATE with white, on a 16x16

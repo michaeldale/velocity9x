@@ -414,6 +414,16 @@ void *v9x_gl_hwtex_create(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
     return surface;
 }
 
+/* A source texel as ARGB1555, from the layout `to_1555` names
+ * (V9X_GL_TO_1555_FROM_*). */
+static v9x_u16 v9x_gl_hwtex_texel_1555(v9x_u16 texel, int to_1555)
+{
+    if (to_1555 == V9X_GL_TO_1555_FROM_4444) {
+        return v9x_gl_tex_4444_to_1555(texel);
+    }
+    return v9x_gl_tex_565_to_1555(texel);
+}
+
 /* One level's rows into a locked surface. */
 static int v9x_gl_hwtex_fill(LPDIRECTDRAWSURFACE surface,
                              const V9X_R3D_ABI_LEVEL *level, int to_1555)
@@ -451,8 +461,8 @@ static int v9x_gl_hwtex_fill(LPDIRECTDRAWSURFACE surface,
     for (row = 0ul; row < level->height; ++row) {
         if (to_1555) {
             for (i = 0ul; i < level->width; ++i) {
-                ((v9x_u16 *)target)[i] =
-                    v9x_gl_tex_565_to_1555(((const v9x_u16 *)source)[i]);
+                ((v9x_u16 *)target)[i] = v9x_gl_hwtex_texel_1555(
+                    ((const v9x_u16 *)source)[i], to_1555);
             }
         } else {
             for (i = 0ul; i < level->width * 2ul; ++i) {
@@ -534,8 +544,8 @@ static int v9x_gl_hwtex_fill_rect(LPDIRECTDRAWSURFACE surface,
     for (row = rect->top; row < rect->bottom; ++row) {
         if (to_1555) {
             for (i = 0ul; i < rect->right - rect->left; ++i) {
-                ((v9x_u16 *)target)[i] =
-                    v9x_gl_tex_565_to_1555(((const v9x_u16 *)source)[i]);
+                ((v9x_u16 *)target)[i] = v9x_gl_hwtex_texel_1555(
+                    ((const v9x_u16 *)source)[i], to_1555);
             }
         } else {
             for (i = 0ul; i < (rect->right - rect->left) * 2ul; ++i) {
