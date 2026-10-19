@@ -53,6 +53,20 @@ build identifier so exact guest-tested binaries remain traceable.
   [engine](docs/decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md),
   [fallback](docs/decisions/2026-10-18-mga2164w-software-fallback.md),
   [Glide](docs/decisions/2026-10-18-glide-cpu-copy-retry.md)).
+- **Matrox Millennium II: triangles that start on an empty row draw
+  right.** The Direct3D setup started a trapezoid at its first row even
+  when that row had no pixel, so its depth and colour were extrapolated
+  from outside the triangle. That shifted the depth of every pixel after
+  it, or refused the whole triangle. It now starts at the first row that
+  has a pixel
+  ([record](docs/decisions/2026-10-18-mga2164w-direct3d-at-32-bpp.md)).
+- **Matrox: the engine's register window is found by the BAR's
+  prefetchable bit**, not by a fixed order per chip, so that the Mystique
+  and Mystique 220, which order their BARs oppositely, bind with one rule.
+  Measured on a Millennium II and the Mystique. The original Millennium
+  (MGA-2064W) has run it only in 86Box, where its old order is the
+  fallback
+  ([record](docs/decisions/2026-10-18-mga-control-bar-from-the-prefetch-bit.md)).
 - **Matrox Mystique (PCI 102B:051A) joins the matrox family**, with
   DirectDraw, GDI, Direct3D, OpenGL and Glide on the card's engine.
   Measured on a revision 02 card (an MGA-1064SG, 4 MiB) in A8U4I5
@@ -99,6 +113,12 @@ build identifier so exact guest-tested binaries remain traceable.
   - The OpenGL ICD, Glide and 3DCIF still need a 16 bpp mode.
   - No game has been run that asks for a 32-bit depth buffer.
   - Desktop (GDI) drawing on the Trio64 still uses the CPU at 32 bpp.
+  - On the Millennium II, Half-Life's Multiplayer menu draws corrupted
+    while the game runs in OpenGL; Direct3D is clean
+    ([issue](docs/issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)).
+    Not checked on the Mystique.
+  - Some triangles the Matrox setup cannot split are refused and not
+    drawn (a few thousand in a Half-Life timedemo).
 
 ## 0.19.0 - 2026-10-18
 

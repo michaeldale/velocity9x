@@ -69,3 +69,29 @@ Deployed by WININIT rename. Evidence in
 
 Gates: `build-host.ps1` (selector test written first, seen failing, then
 passing) and `run-checks.ps1` pass.
+
+## Addendum, later 2026-10-19: the 2164W on this build
+
+Appended rather than edited in. Michael swapped the Millennium II
+(051B, 8 MiB) back into A8U4I5. Boot 509 ran the same SYSTEM files as
+boot 508 (driver and HAL `d1a6f262-dirty`, the code of eb27ccb4).
+Evidence in
+[`docs/probe/a8u4i5-mga2164w-final-020-2026-10-19/`](../probe/a8u4i5-mga2164w-final-020-2026-10-19/).
+
+- `V9XHW.INI`: `Stage=enable-ok`, `Direct3D=hardware-mga2164w`,
+  `EngineCaps=00010017`, so `MGA_DEPTH32` is stamped.
+  `VramMeasuredBytes=8388608`.
+- **V9XD32**: PASS with `Failures=0` in all four runs, 16 and 32 bpp each
+  with 16- and 32-bit Z. `HalZDepth=0x500`: both depths offered.
+- **V9XDDP `/mixed`** at 800x600x16: COMPLETE, and all 222 `...Ok` cells
+  are identical to the boot 493 run, `MixedOk=1` among them.
+- **V9XR3DP**: identical to boot 501, key for key.
+- **V9XGLP**: PASS. It is identical to `alpha-glp-after.ini` except
+  `TextureFarLeftPixel`, `TexturePerspectivePixel` and `TextureRightPixel`.
+  Those three equal every other 2164W run (boots 495-501,
+  `alpha-glp-16b.ini`) and the Mystique's, so `alpha-glp-after.ini` is
+  the outlier, not this build.
+
+So the chunked FIFO waits and the new capability bit leave the 2164W's
+Direct3D and render-interface results unchanged. Not run on it: games,
+Glide, and 32 bpp V9XDDP.
