@@ -53,6 +53,33 @@ build identifier so exact guest-tested binaries remain traceable.
   [engine](docs/decisions/2026-10-18-mga2164w-explicit-draws-on-the-engine.md),
   [fallback](docs/decisions/2026-10-18-mga2164w-software-fallback.md),
   [Glide](docs/decisions/2026-10-18-glide-cpu-copy-retry.md)).
+- **Matrox Mystique (PCI 102B:051A) joins the matrox family**, with
+  DirectDraw, GDI, Direct3D, OpenGL and Glide on the card's engine.
+  Measured on a revision 02 card (an MGA-1064SG, 4 MiB) in A8U4I5
+  ([plan](docs/plans/matrox-mystique.md)).
+  - Mode setting by the card's BIOS: 14 modes up to 1600x1200 at 16 bpp
+    and 1024x768 at 32 bpp, all switching cleanly
+    ([record](docs/decisions/2026-10-19-mystique-phase1-cpu-only-enable-ok.md)).
+  - The 2D engine draws DirectDraw and GDI fills, copies and text, at
+    8, 16 and 32 bpp. Page flips were watched on the monitor
+    ([record](docs/decisions/2026-10-19-mystique-drawing-engine.md)).
+  - Direct3D on the Millennium II's 3D engine, which this card shares,
+    with a 16-bit depth buffer only: the Mystique has no 32-bit one. The
+    Direct3D probe matches the Millennium II's results check for check
+    ([interface](docs/decisions/2026-10-19-mystique-texture-interface.md),
+    [Direct3D](docs/decisions/2026-10-19-mystique-direct3d.md)).
+  - OpenGL and Glide probes read as on the Millennium II
+    ([record](docs/decisions/2026-10-19-mystique-opengl-glide.md)).
+    Half-Life's mwd5 timedemo runs at about 6.5 fps in OpenGL and 9.2 fps
+    in Direct3D, nearly all of it on the card; under OpenGL its textures
+    outgrow 4 MiB and some frames fall back to the CPU
+    ([record](docs/decisions/2026-10-19-mystique-half-life.md)).
+  - ARGB4444 textures are not supported here either: the format draws
+    garbage, as on the Millennium II.
+  - The Mystique 220 (MGA-1164SG), which shares the PCI id, has its
+    control and framebuffer BARs the other way round. The driver picks
+    them by the prefetchable bit, so it should bind, but no 1164SG has
+    run it.
 - **DirectDraw fills and copies at 32 bpp on two more engines.**
   - **Intel GMA 950/900:** on the blitter, every pixel matching a CPU
     reference at 8, 16 and 32 bpp
