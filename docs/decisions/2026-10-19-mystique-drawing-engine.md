@@ -54,17 +54,24 @@ prefetch bit picks BAR0. Deployed by WININIT rename, boot 507:
   ([record](2026-10-09-mga2064w-page-flips.md)).
 - The desktop screenshot after boot is clean.
 
+**What the monitor shows.** `FlipPixelOk=0`, as on every chip, because
+the probe reads back through GDI, which sees only GDI's page. OBS is
+connected to this session, but its inline screenshots come back
+truncated and its saved files land on the OBS PC. So Michael watched
+`V9XDDP /hold` on A8U4I5's monitor (same boot, `V9XDD-hold.INI`: COMPLETE,
+20 flips in 332 ms): "The whole screen went solid red for about 5
+seconds, then solid blue, then back." The start-address units are right
+at 800x600x16: a wrong unit would have shown part of a page or another
+surface.
+
 The flip units come from the 1064SG specification itself (5-66, in
 `v9x_mga_display_start`), and the chip's CRTCs are its own, not a
 TVP3026's.
 
 ## What this does not establish
 
-- **What the monitor shows on a flip.** `FlipPixelOk=0`, as on every chip:
-  the probe reads back through GDI, which sees only GDI's page. OBS is
-  connected to this session, but its inline screenshots come back
-  truncated and its saved files land on the OBS PC's `Y:` drive. Owed: a
-  person watching `V9XDDP /hold` (a red screen, then a blue one).
+- Tearing at the top of the frame on a flip, as on the 2064W: not
+  looked for.
 - The 1164SG and the 86Box profiles.
 - Direct3D, which is Phase 3 and needs separate approval. ARGB4444 is to
   be checked early there.

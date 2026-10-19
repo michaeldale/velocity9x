@@ -176,11 +176,10 @@ across the modes. The 2064W (86Box and A8U4I5 if it is back in) and the
 Gate: the probe passes on silicon at all three depths; `V9XGDI /accel`
 passes; `V9XDDP` fills and flips with correct pixels.
 
-**Done 2026-10-19 on Michael's card**, except the flip as seen on the
-monitor: MGA2D PASS at 8/16/32, `V9XGDI /accel` PASS, `V9XDDP` fill
-correct and 20 flips paced by the retrace
-([record](../decisions/2026-10-19-mystique-drawing-engine.md)). Owed: a
-person watching `V9XDDP /hold`.
+**Done 2026-10-19 on Michael's card**: MGA2D PASS at 8/16/32,
+`V9XGDI /accel` PASS, `V9XDDP` fill correct and 20 flips paced by the
+retrace, and under `/hold` Michael saw the whole screen red, then blue
+([record](../decisions/2026-10-19-mystique-drawing-engine.md)).
 
 ### Phase 3 - Direct3D (separate approval)
 
