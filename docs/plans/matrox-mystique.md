@@ -8,8 +8,8 @@ profiles are skipped for now. Decision 1 taken
 2026-10-18 (the prefetch bit) and coded for the two Millennium chips, with
 an 86Box fallback
 ([record](../decisions/2026-10-18-mga-control-bar-from-the-prefetch-bit.md)).
-Phase 3's Direct3D is done too (2026-10-19). Next: OpenGL and Glide on
-the render interface, and the 2164W re-run on the shared changes.
+Phase 3's Direct3D, OpenGL and Glide probes are done too (2026-10-19).
+Next: games on the Mystique, and the 2164W re-run on the shared changes.
 
 Target: the Mystique, PCI `102B:051A`, as a third chip in the one `matrox`
 family beside the MGA-2064W and MGA-2164W
@@ -200,7 +200,12 @@ the new `MGA_DEPTH32` bit, so the HAL runs the Z16-only table. V9XDDP
 `/mixed` matches the 2164W cell for cell, V9XD32 passes at 16 and 32 bpp
 with Z16, and Z32 is not offered
 ([record](../decisions/2026-10-19-mystique-direct3d.md)). Owed: the 2164W
-re-run on this build (FIFO waits now chunked), and OpenGL/Glide.
+re-run on this build (FIFO waits now chunked).
+
+**OpenGL and Glide probes 2026-10-19**: V9XR3DP, V9XGLP, V9XGLIDP and
+V9XGL3P read as on the 2164W, key for key
+([record](../decisions/2026-10-19-mystique-opengl-glide.md)). Games not
+run.
 
 ## Decisions wanted
 
