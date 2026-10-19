@@ -46,8 +46,11 @@ Sources:
   86Box, it says this card is a Mystique 220. Its ROM does not say which
   (`MATROX/MYSTIQUE VGA/VBE BIOS (V1.5)`, copyright 1995).
 
-Which one Michael's card is is unknown. It was described as a 1064SG; its
-revision has not been read.
+Michael's card, read on A8U4I5 on 2026-10-19, is **revision 02h** with the
+1064SG order: BAR0 `DC000000` control, BAR1 `DD000008` prefetchable
+framebuffer, ROM V1.6, and Matrox's driver calls it a 1064SG
+([record](../decisions/2026-10-19-mystique-revision-02-bar-order.md)). No
+source above mentions revision 02h.
 
 ### What this does to the family's code
 
@@ -123,7 +126,9 @@ Read from the 1064SG specification. Nothing here was measured on a Mystique.
 ### Phase 0 - identify the cards (no driver code)
 
 1. V9XSURV on Michael's Mystique, in real DOS, with `/rom`: revision, the
-   three BARs and their prefetch bits, the ROM version.
+   three BARs and their prefetch bits, the ROM version. **Done 2026-10-19**
+   with the Win32 `V9XMGAPC.EXE` instead (A8U4I5 takes no DOS programs):
+   revision 02h, 1064SG order, ROM V1.6.
 2. Two 86Box profiles cloned from `Win98SE-Millennium` (port 9877), one
    `mystique`, one `mystique_220`. Both ROMs are present in
    `C:\86Box\roms\video\matrox` (`MYSTIQUE.VBI`, `Myst220_66-99mhz.vbi`).

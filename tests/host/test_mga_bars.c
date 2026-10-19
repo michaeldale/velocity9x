@@ -57,6 +57,9 @@ static void test_measured_orders(void)
     /* MGA-1164SG, Match451's survey 2026-10-17: FB BAR0, control BAR1 - the
      * MGA-2164W's order. */
     CHECK(selects(0xF5000008ul, 0xF4800000ul, 1u, 0xF4800000ul));
+    /* 051A revision 02, Michael's Mystique on A8U4I5 (V9XMGAPC,
+     * 2026-10-19): control BAR0, FB BAR1 - the MGA-2064W's order. */
+    CHECK(selects(0xDC000000ul, 0xDD000008ul, 0u, 0xDC000000ul));
 }
 
 /*
