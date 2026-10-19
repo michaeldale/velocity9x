@@ -92,6 +92,11 @@ Evidence in
   `alpha-glp-16b.ini`) and the Mystique's, so `alpha-glp-after.ini` is
   the outlier, not this build.
 
+- **Half-Life 1.1.1.0, Direct3D**, mwd5 timedemo at 640x480x16, run by
+  Michael from the console (`hl-d3d-console-michael.png`): 393 frames in
+  49.090 s (8.006 fps, cold), 44.870 s (8.759 fps) and 44.859 s
+  (8.761 fps). He reports it works. No trace snapshot was taken.
+
 So the chunked FIFO waits and the new capability bit leave the 2164W's
-Direct3D and render-interface results unchanged. Not run on it: games,
-Glide, and 32 bpp V9XDDP.
+Direct3D and render-interface results unchanged. Not run on it: Glide
+titles, Half-Life OpenGL, and 32 bpp V9XDDP.
