@@ -8,7 +8,7 @@ profiles are skipped for now. Decision 1 taken
 2026-10-18 (the prefetch bit) and coded for the two Millennium chips, with
 an 86Box fallback
 ([record](../decisions/2026-10-18-mga-control-bar-from-the-prefetch-bit.md)).
-Next: Phase 3, Direct3D, which needs separate approval.
+Next: Phase 3 driver work, D3D stamped for 051A with 16-bit Z (its texture interface is measured).
 
 Target: the Mystique, PCI `102B:051A`, as a third chip in the one `matrox`
 family beside the MGA-2064W and MGA-2164W
@@ -188,6 +188,12 @@ Mystique the way it was on the 2164W. D3D is stamped for `051A` with
 16-bit Z only, and the 32-bit depth record is withheld. Check ARGB4444
 textures early: they are garbage on the 2164W. OpenGL and Glide follow the
 render interface as on the 2164W, if Phase 3 lands.
+
+**Texture interface measured 2026-10-19**: MGA2D `/tri`, `/depth` (Z16),
+`/tex` and `/ri` pass on the Mystique as on the 2164W, and format 4 is
+garbage here too, so 4444 stays off the engine
+([record](../decisions/2026-10-19-mystique-texture-interface.md)). Left:
+stamping D3D for `051A` with 16-bit Z only, and a D3D run.
 
 ## Decisions wanted
 

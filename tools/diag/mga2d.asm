@@ -74,6 +74,13 @@ MGA2D_DRAW_FIRST        equ 1c00h
 MGA2D_DRAW_LAST         equ 1dfch
 MGA2D_DRAW1_FIRST       equ 2c00h
 MGA2D_DRAW1_LAST        equ 2dfch
+; Mga2dHasDraw1: 0 no second block (2064W), 1 all of it (2164W), 2 the
+; 1064SG's short one. Its register map decodes 2C00h-2C48h and reserves
+; 2C4Ch-2CFFh, and 2D00h-2DFFh mirrors 2C00h-2CFCh with go (MGA-1064SG
+; spec Table 3-4, part 7), so only offsets whose low byte is at most 48h,
+; in either half, are written.
+MGA2D_DRAW1_SHORT       equ 2
+MGA2D_DRAW1_SHORT_LAST  equ 48h
 MGA2D_FIFOSTATUS        equ 1e10h
 MGA2D_STATUS            equ 1e14h
 MGA2D_FIFO_MASK_2064W   equ 0000003fh
@@ -214,6 +221,9 @@ Mga2d_Map_Order:
     mov     Mga2dLfbBytes, MGA2D_LFB_BYTES_2064W
     mov     Mga2dFifoMask, MGA2D_FIFO_MASK_2064W
     mov     Mga2dHasDraw1, 0
+    cmp     edx, MGA2D_PCI_ID_MYSTIQUE
+    jne     Mga2d_Map_Bars
+    mov     Mga2dHasDraw1, MGA2D_DRAW1_SHORT
     jmp     Mga2d_Map_Bars
 Mga2d_Map_2164w:
     mov     esi, Mga2dResult[12]
@@ -354,6 +364,14 @@ Mga2d_Do_Mmio_Write32:
     cmp     ebx, MGA2D_DRAW1_FIRST
     jb      Mga2d_Do_Refuse
     cmp     ebx, MGA2D_DRAW1_LAST
+    ja      Mga2d_Do_Refuse
+    cmp     Mga2dHasDraw1, MGA2D_DRAW1_SHORT
+    jne     Mga2d_Do_Mmio_Write32_Ok
+    push    eax
+    mov     eax, ebx
+    and     eax, 0ffh
+    cmp     eax, MGA2D_DRAW1_SHORT_LAST
+    pop     eax
     ja      Mga2d_Do_Refuse
 Mga2d_Do_Mmio_Write32_Ok:
     mov     edi, Mga2dMmioLinear

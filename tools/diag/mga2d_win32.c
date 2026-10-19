@@ -45,7 +45,9 @@
  * to N MiB in place of the BIOS's figure from V9XBOOT.INI, which places the
  * region 1 MiB below N; /tri draws trapezoids instead of fills and copies,
  * /depth Gouraud trapezoids with a Z buffer (32 bpp only), /tex
- * textured trapezoids (32 bpp, 2164W only), and /ri the dither, clip and
+ * textured trapezoids (32 bpp, 2164W and Mystique), /texfmt the texture
+ * formats the builder refuses, tried on the card alone, and /ri the
+ * dither, clip and
  * plane-mask cases an explicit render-interface draw needs (16 or 32 bpp).
  */
 #define WIN32_LEAN_AND_MEAN
@@ -207,6 +209,7 @@ static DWORD mga2d_failures = 0ul;
 static int mga2d_engine_dead = 0;
 static int mga2d_refused = 0;
 static int mga2d_is_2164w = 0;
+static int mga2d_is_mystique = 0;
 /* The per-mode state, built once; /tri sends it ahead of every case. */
 static struct v9x_mga_writes mga2d_setup;
 static DWORD mga2d_bpp;
@@ -1911,9 +1914,16 @@ struct mga2d_tex_case {
     DWORD log2_pitch;       /* 0 means the size */
     DWORD org_extra;        /* bytes added to the 8 KiB-aligned TEXORG */
     DWORD known_divergence; /* mismatches reported, not failed */
+    /* Not 0: a format the builder refuses, tried on the card alone. The
+     * texels are uploaded in it and TEXCTL's texformat is patched to it;
+     * the builder and the model see `format`, so the comparison is only
+     * reported, and the raw pixels are the evidence. */
+    DWORD card_format;
 };
 
 #define MGA2D_TEX_NOKEY 0xfffful
+/* TEXCTL texformat<2:0> (include\velocity9x\mga_3d.h). */
+#define MGA2D_TEXCTL_FORMAT_MASK 0x00000007ul
 #define MGA2D_TEX_STEPS(ds, dsdy, s0) \
     { (ds), (dsdy), 0L, MGA2D_TEX_ONE, 0L, 0L, (s0), 0L, MGA2D_TEX_Q_ONE }
 
@@ -2040,7 +2050,21 @@ static const struct mga2d_tex_case mga2d_tex_cases[] = {
     { "TexPerspectiveRampK1024", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
       { 1024L * MGA2D_TEX_ONE, 0L, 0L, 1024L * MGA2D_TEX_ONE,
         64L * MGA2D_TEX_Q_ONE, 0L, 0L, 0L, 1024L * MGA2D_TEX_Q_ONE }, 0ul,
-      1ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul }
+      1ul, 1ul, MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul },
+    /* ARGB4444 (format 4), which drew garbage on the 2164W and which the
+     * 1064SG specification does not list (1-4). Identity under white
+     * modulation: a working 4444 shows red = s, green = t, blue = s + t
+     * as nibbles widened (s * 11h). */
+    { "Tex4444Identity", V9X_MGA3D_TEX_TW16, 16ul, 4ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 1ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 0ul, 0ul, 0ul, 0ul, 0ul, 1ul,
+      V9X_MGA3D_TEX_TW12 },
+    /* The same in decal with tamask and takey set: whether the alpha
+     * nibble (F on every texel) reaches the alpha test. */
+    { "Decal4444Key1", V9X_MGA3D_TEX_TW16, 16ul, 2ul,
+      MGA2D_TEX_STEPS(MGA2D_TEX_ONE, 0L, 0L), 0ul, 0ul, 0ul,
+      MGA2D_TEX_NOKEY, 0xfffful, 1ul, 1ul, 0ul, 0ul, 0ul, 1ul,
+      V9X_MGA3D_TEX_TW12 }
 };
 
 #define MGA2D_TEX_CASE_COUNT \
@@ -2190,6 +2214,8 @@ static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
     DWORD pixel;
     DWORD s;
     DWORD t;
+    DWORD upload_format = test->card_format != 0ul ? test->card_format
+                                                   : test->format;
     v9x_u32 offsets[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
     v9x_u32 values[V9X_MGA_MAX_WRITES + V9X_MGA3D_MAX_WRITES];
     v9x_status status;
@@ -2199,7 +2225,7 @@ static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
         mga2d_write(key, "SKIPPED-DEPTH");
         return;
     }
-    if (!mga2d_is_2164w) {
+    if (!mga2d_is_2164w && !mga2d_is_mystique) {
         mga2d_key(key, test->name, "Result");
         mga2d_write(key, "SKIPPED-CHIP");
         return;
@@ -2260,6 +2286,15 @@ static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
         ++mga2d_failures;
         return;
     }
+    if (test->card_format != 0ul) {
+        for (index = 0ul; index < writes.count; ++index) {
+            if (writes.offsets[index] == V9X_MGA_TEXCTL) {
+                writes.values[index] =
+                    (writes.values[index] & ~MGA2D_TEXCTL_FORMAT_MASK) |
+                    test->card_format;
+            }
+        }
+    }
     mga2d_key(key, test->name, "DestinationRow");
     mga2d_write_decimal(key, destination_row);
     mga2d_report_list(test->name, writes.offsets, writes.values,
@@ -2271,7 +2306,7 @@ static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
         }
     }
     if (!mga2d_stream_write(&window, mga2d_before) ||
-        !mga2d_tex_upload(texture_offset, test->format, 1ul << log2_size,
+        !mga2d_tex_upload(texture_offset, upload_format, 1ul << log2_size,
                           1ul << log2_pitch)) {
         mga2d_key(key, test->name, "Result");
         mga2d_write(key, "PREPARE-FAILED");
@@ -2332,7 +2367,7 @@ static void mga2d_tex_test(const struct mga2d_tex_case *test, DWORD band)
             if (alpha_seen == 0xfffffffful) {
                 alpha_seen = pixel >> 24;
             }
-            if (test->format != V9X_MGA3D_TEX_TW12 &&
+            if (upload_format != V9X_MGA3D_TEX_TW12 &&
                 mga2d_tex_decode(test->format, test->modulate,
                                  1ul << log2_size, pixel & 0x00fffffful,
                                  &s, &t)) {
@@ -2778,6 +2813,8 @@ void WINAPI V9xMga2dProbeEntry(void)
     int trapezoids;
     int depth;
     int textures;
+    int card_formats;
+    DWORD band;
     int render_interface;
     int have_option;
     CONFIGRET cm_status;
@@ -2798,6 +2835,7 @@ void WINAPI V9xMga2dProbeEntry(void)
     trapezoids = mga2d_find(command_line, "/tri") != 0;
     depth = mga2d_find(command_line, "/depth") != 0;
     textures = mga2d_find(command_line, "/tex") != 0;
+    card_formats = mga2d_find(command_line, "/texfmt") != 0;
     render_interface = mga2d_find(command_line, "/ri") != 0;
     option_mib = mga2d_parse_decimal(mga2d_find(command_line, "/vram:"),
                                      &have_option);
@@ -2905,7 +2943,8 @@ void WINAPI V9xMga2dProbeEntry(void)
      * Mystique only in the 2064W's order, checked by the prefetchable
      * bits, so it takes the 2064W's path from here. */
     mga2d_is_2164w = mga2d_result_buffer.pci_id == MGA2D_PCI_ID_2164W;
-    if (mga2d_result_buffer.pci_id == MGA2D_PCI_ID_MYSTIQUE) {
+    mga2d_is_mystique = mga2d_result_buffer.pci_id == MGA2D_PCI_ID_MYSTIQUE;
+    if (mga2d_is_mystique) {
         mga2d_write("Chip", "MGA-1064SG");
     } else {
         mga2d_write("Chip", mga2d_is_2164w ? "MGA-2164W" : "MGA-2064W");
@@ -3028,8 +3067,15 @@ void WINAPI V9xMga2dProbeEntry(void)
             }
         }
     } else if (textures) {
+        /* /texfmt runs the card_format cases alone, /tex the rest: at
+         * 32 bpp the /tex cases already fill the region's colour bands. */
+        band = 0ul;
         for (index = 0ul; index < MGA2D_TEX_CASE_COUNT; ++index) {
-            mga2d_tex_test(&mga2d_tex_cases[index], index);
+            if ((mga2d_tex_cases[index].card_format != 0ul) !=
+                (card_formats != 0)) {
+                continue;
+            }
+            mga2d_tex_test(&mga2d_tex_cases[index], band++);
             if (mga2d_engine_dead) {
                 break;
             }
