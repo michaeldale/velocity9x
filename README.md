@@ -10,7 +10,7 @@ cards**. One driver package per chip family gives the card:
 
 All of them draw through one shared render core. It runs the Intel GMA 950,
 the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
-Trio3D, the Matrox Millennium II, the SiS 6326 and the 3dfx Voodoo4 with
+Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS.
 
@@ -24,13 +24,13 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.19.0.** It adds the Intel HD Graphics 4600
-(Haswell) to the `intel-gma` package, with DirectDraw, page flips,
-Direct3D, and OpenGL with two texture units and mipmaps on the chip's own
-engines. Half-Life runs at 59.2 fps in Direct3D and 67.5 in OpenGL on an
-i5-4570; 3DCIF is not supported on it yet. See the
-[changelog](CHANGELOG.md), and download it from
-[releases/0.19.0](releases/0.19.0/README.md).
+**Current version: 0.20.0.** Direct3D now renders at 32 bpp on the
+Intel GMA 950/900, the HD Graphics 4600 and the Matrox Millennium II,
+with 24- or 32-bit depth buffers beside the 16-bit one. The Matrox
+Mystique joins the `matrox` package with GDI, DirectDraw, Direct3D,
+OpenGL and Glide on its engine, and OpenGL and Glide now draw on the
+Millennium II. See the [changelog](CHANGELOG.md), and download it from
+[releases/0.20.0](releases/0.20.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -76,7 +76,8 @@ serves every chip in it and picks the right one by PCI id at boot.
 | ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
 | S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path). ViRGE/DX: GDI on the engine; its Direct3D and OpenGL on an emulator |
 | S3 Trio32/64 | `s3` | none | GDI and DirectDraw on the 8514/A engine, on PCI and on a VLB 486 under Windows 95 |
-| Matrox Millennium II (MGA-2164W) | `matrox` | MGA | Direct3D; GDI and DirectDraw on the engine |
+| Matrox Millennium II (MGA-2164W) | `matrox` | MGA | Direct3D, OpenGL and Glide (the engine where exact, the CPU otherwise); GDI and DirectDraw on the engine |
+| Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it |
 | Matrox Millennium (MGA-2064W) | `matrox` | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
@@ -118,19 +119,24 @@ from the records the [changelog](CHANGELOG.md) links.
 | S3 Trio3D/2X, Trio3D | No | Yes, narrow | Not run | Not run | No | Not run | Not run |
 | S3 ViRGE/DX | GDI | Emulator | Not run | Emulator | No | Not run | Not run |
 | S3 Trio32/64 | GDI, DirectDraw | No | No | No | No | No | No |
-| Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Not run | No | Not run | Not run |
+| Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
+| Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium | GDI, DirectDraw, flips | No | No | No | No | No | No |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
 
 Measured limits:
-- **Colour depth:** 3D is 16-bit colour with a 16-bit depth buffer on
-  every card.
+- **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
+  depth buffer as well as the 16-bit one, on the GMA 950/900, the HD
+  Graphics 4600 and the Millennium II (the Mystique: 32 bpp, 16-bit depth
+  only). Every other card's 3D, and OpenGL, Glide and 3DCIF everywhere,
+  is 16-bit colour with a 16-bit depth buffer.
 - **Two texture units** means one-pass multitexture: OpenGL's
   `GL_SGIS_multitexture`, and lightmaps in one pass.
 - **When an engine can't draw something:** it refuses the draw rather
-  than drawing it wrong. Only the GMA 950 then draws it on the CPU.
+  than drawing it wrong. The GMA 950 and the two Matrox 3D chips then
+  draw it on the CPU.
 
 ### Measured frame rates
 
@@ -146,6 +152,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 | ATI Rage Mobility-M (P3 laptop) | 12.0 fps | about 8 fps | 0.9.2 |
 | SiS 6326 (P3) | 8.6 fps | 7.8 fps (`timerefresh`) | 0.11.0 |
 | Matrox Millennium II (P3) | 8.49 fps | | 0.16.0 |
+| Matrox Mystique (P3) | 9.06 fps | not run; Half-Life OpenGL 6.03 fps | 0.20.0 |
 | ATI Rage IIC (P3) | 5.57 fps (ATI's driver 6.63) | 4.4 fps | 0.10.0 |
 
 The records behind each number are linked from the

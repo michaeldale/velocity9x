@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.20.0 - not yet released
+## 0.20.0 - 2026-10-19
 
 - **Direct3D at 32 bpp, and 24-bit depth buffers.** Until now every
   Direct3D engine drew only at 16 bpp, so a 32 bpp desktop got no
