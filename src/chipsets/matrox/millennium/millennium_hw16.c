@@ -1,6 +1,7 @@
 /*
  * The Matrox Millennium generations: the MGA-2064W (102B:0519) and the
- * MGA-2164W (102B:051B).
+ * MGA-2164W (102B:051B). And the Mystique (102B:051A), CPU-only for now; see
+ * its entry at the end.
  *
  * One module, the way the Trio64 aliases share theirs: both chips take the
  * same path and the same drawing engine, and differ in their strings and in
@@ -142,4 +143,30 @@ const V9X_HW16_DEVICE v9x_mga2164w_device = {
     0,
     v9x_mga_fill_engine,
     0u
+};
+
+/*
+ * The Mystique (051A), Phase 1 of docs\plans\matrox-mystique.md: VBE modes
+ * and CPU drawing only, so no engine hook. Its drawing core is said to be the
+ * 2064W's (MGA-1064SG specification 1-2), but mga_engine.c has not been
+ * measured on it, and MACCESS differs (memreset, bit 15, must stay clear;
+ * 4-64, 5-21). The engine claim comes with the Phase 2 write probe.
+ *
+ * framebuffer_bar is the measured order of revision 02 on A8U4I5, which is
+ * the 1064SG specification's (docs\decisions\2026-10-19-mystique-revision-
+ * 02-bar-order.md). Nothing reads it while there is no engine hook. The
+ * 1164SG (revision 03) has the other order; the prefetch rule will decide
+ * that when the hook arrives.
+ */
+const V9X_HW16_DEVICE v9x_mystique_device = {
+    0x102bu, 0x051au,
+    "Matrox Mystique",
+    "102B", "051A",
+    "matrox-mystique-unavailable-v1",
+    "vbe-lfb",
+    0,
+    0,
+    0,
+    0,
+    1u
 };

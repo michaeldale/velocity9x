@@ -8,7 +8,12 @@
  *     0000, 8 MiB (docs\decisions\2026-10-09-mga2064w-tier0-first-boot.md);
  *   - the Millennium II's MGA-2164W, PCI 102B:051B. Its physical sample was
  *     subsystem 1200102B with 8 MiB WRAM
- *     (docs\specifications\matrox-millennium2-bringup.md).
+ *     (docs\specifications\matrox-millennium2-bringup.md);
+ *   - the Mystique, PCI 102B:051A, with the same Windows acceleration core
+ *     (MGA-1064SG specification 1-2) and an integrated RAMDAC. The card in
+ *     A8U4I5 since 2026-10-19 is revision 02, 4 MiB
+ *     (docs\decisions\2026-10-19-mystique-revision-02-bar-order.md). The id
+ *     also covers the MGA-1164SG (Mystique 220).
  *
  * The one difference the driver acts on - which BAR holds the framebuffer
  * and which the control aperture - is hw16 data per chip, not policy here.
@@ -24,6 +29,7 @@
 #define V9X_PCI_VENDOR_MATROX_MGA   ((v9x_u16)0x102bu)
 #define V9X_PCI_DEVICE_MGA2064W     ((v9x_u16)0x0519u)
 #define V9X_PCI_DEVICE_MGA2164W     ((v9x_u16)0x051bu)
+#define V9X_PCI_DEVICE_MYSTIQUE     ((v9x_u16)0x051au)
 
 v9x_status v9x_matrox_mga_probe(
     struct v9x_backend_state *state,

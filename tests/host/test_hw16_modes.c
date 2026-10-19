@@ -177,6 +177,9 @@ const V9X_HW16_DEVICE v9x_mga2064w_device = {
 const V9X_HW16_DEVICE v9x_mga2164w_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_mystique_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_vsa100_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

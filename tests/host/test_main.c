@@ -743,7 +743,13 @@ static void test_backend_registry_and_millennium(void)
     CHECK(v9x_matrox_mga_probe(&state, &pci) == V9X_STATUS_OK);
     CHECK(state.pci.device_id == 0x0519u);
 
-    pci.device_id = 0x051au; /* Mystique is a separate future backend. */
+    /* The Mystique joins the same family. */
+    pci.device_id = V9X_PCI_DEVICE_MYSTIQUE;
+    CHECK(v9x_backend_for_pci(&pci) == v9x_matrox_mga_backend());
+    CHECK(v9x_matrox_mga_probe(&state, &pci) == V9X_STATUS_OK);
+    CHECK(state.pci.device_id == 0x051au);
+
+    pci.device_id = 0x0520u; /* G200 PCI: not this family. */
     CHECK(v9x_backend_for_pci(&pci) == 0);
     CHECK(v9x_matrox_mga_probe(&state, &pci) ==
           V9X_STATUS_UNSUPPORTED);

@@ -17,7 +17,7 @@
     SchemaVersion = 1
     Id = 'matrox'
     DisplayName = 'Matrox Millennium'
-    Description = 'Matrox Millennium MGA-2064W and Millennium II MGA-2164W (PCI 102B:0519, 102B:051B): VBE mode set, the drawing engine for DirectDraw and GDI fill and copy, CPU drawing otherwise.'
+    Description = 'Matrox Millennium MGA-2064W, Millennium II MGA-2164W and Mystique (PCI 102B:0519, 102B:051B, 102B:051A): VBE mode set, the drawing engine for DirectDraw and GDI fill and copy on the Millennium chips, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -113,6 +113,45 @@
             }
             MapSymbols = @('v9x_mga2164w_device')
         }
+        @{
+            Id = 'mystique'
+            Name = 'Matrox Mystique'
+            VendorId = '102B'
+            DeviceId = '051A'
+            # No SubsystemId: Michael's card reads 051A102B, and the bare id
+            # also binds the Mystique 220 (MGA-1164SG), which shares it.
+            DeviceDesc = 'Velocity9x Matrox Mystique'
+            Adapter = 'Matrox Mystique'
+            ClockDetector = 'matrox-mystique-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # Phase 1 of docs\plans\matrox-mystique.md: CPU drawing until the
+            # drawing engine is measured on this chip (Phase 2).
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # The smallest Mystique, and the card in A8U4I5 (Matrox's driver
+            # reports 4 MiB). The heap sizes from 4F00h and the memory walk.
+            VideoMemoryBytes = 2097152
+
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            # The chip module, as for the 2164W: no instruction of its own.
+            Objects = @('millennium_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_mystique_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -173,7 +212,7 @@
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
         DispatchSymbol = 'v9x_hw16'
-        BackendSymbols = @('v9x_mga2064w_device', 'v9x_mga2164w_device')
+        BackendSymbols = @('v9x_mga2064w_device', 'v9x_mga2164w_device', 'v9x_mystique_device')
     }
 
     Inf = @{
@@ -195,7 +234,7 @@
         Include = $true
         Folder = 'MATROX'
         Order = 4
-        HardwareIdHint = 'PCI 102B:0519, 102B:051B'
+        HardwareIdHint = 'PCI 102B:0519, 102B:051B, 102B:051A'
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test

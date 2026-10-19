@@ -2,11 +2,12 @@
 
 Date: 2026-10-18
 
-Status: proposed. Decision 1 taken 2026-10-18 (the prefetch bit) and
-coded for the two Millennium chips, with an 86Box fallback
+Status: Phase 0 step 1 and Phase 1 done on Michael's card (2026-10-19),
+CPU drawing only; the 86Box profiles are skipped for now. Decision 1 taken
+2026-10-18 (the prefetch bit) and coded for the two Millennium chips, with
+an 86Box fallback
 ([record](../decisions/2026-10-18-mga-control-bar-from-the-prefetch-bit.md)).
-Nothing Mystique-specific is coded; no Mystique has run any Velocity9x
-code.
+Next: Phase 2, the drawing engine.
 
 Target: the Mystique, PCI `102B:051A`, as a third chip in the one `matrox`
 family beside the MGA-2064W and MGA-2164W
@@ -150,6 +151,12 @@ before the code exists.
   `051A`, a fallback order for 86Box, chosen by revision.
 - The engine hook does **not** claim the MGA engine for `051A` in this
   phase: engine_type NONE, everything on the CPU.
+
+**Done on Michael's card 2026-10-19** (boot 506): enable-ok, 14 merged
+modes, V9XGDI PASS, V9XMSW PASS in all 14
+([record](../decisions/2026-10-19-mystique-phase1-cpu-only-enable-ok.md)).
+The 86Box profiles were skipped, so no revision fallback was coded: with
+no engine hook, nothing reads the BARs yet.
 
 Gate: both 86Box profiles and Michael's card reach `Stage=enable-ok`,
 `V9XMODES.INI` shows the merged list, `V9XGDI` passes, and `V9XMSW` runs
