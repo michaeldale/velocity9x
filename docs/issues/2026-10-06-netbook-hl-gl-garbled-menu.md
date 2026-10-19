@@ -61,3 +61,9 @@ before quitting Half-Life. Note what happened since boot: idle time, lid,
 screensaver, pop-ups, video settings. Then fetch `C:\V9XDIAG\V9XGL.LOG` and
 the newest snapshot. A build with 3ece106 on the netbook would also name
 the programs and builds in the snapshot.
+
+## 2026-10-19: reproduced on the Millennium II
+
+The same picture appears every time on A8U4I5's MGA-2164W under
+Half-Life OpenGL, and not under its Direct3D renderer. Followed up in
+[2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md](2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md).

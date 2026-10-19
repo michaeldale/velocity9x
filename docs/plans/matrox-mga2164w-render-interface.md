@@ -78,9 +78,10 @@ Still open after that:
   clip before every operation (`v9x_gdi_mga_draw`), not once per mode.
   GDI at 640x480x16 alone draws correctly, and under Half-Life's
   Direct3D renderer the menu is clean: an OpenGL-side fault.
-- Fences solid under OpenGL: binary-alpha 4444 textures now go to the
-  engine as 1555 (2026-10-19). Half-Life with it is owed; then the menu
-  again, since some of its pictures may move to the engine too.
+- Fences solid under OpenGL: fixed by giving binary-alpha 4444 textures
+  to the engine as 1555 (bf287927); Michael saw them right in Half-Life
+  on 2026-10-19. The menu stayed corrupt and is filed as
+  [an issue](../issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md).
 - 1,000-odd triangles a session refused by the setup
   (`MgaSetupRefusedSplit`) and not drawn.
 - The untextured additive blends still refused to the CPU (most of
@@ -90,7 +91,7 @@ Still open after that:
 - A timedemo score. `+timedemo mwd5` scripted from the command line
   needs a clean console log first; my first try read the previous one.
 
-Next: Half-Life OpenGL on the 2026-10-19 build (fences, then the menu).
+Next: nothing scheduled; the menu issue is parked.
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of

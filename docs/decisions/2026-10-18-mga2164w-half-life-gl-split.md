@@ -299,6 +299,12 @@ the same alpha pixels, and its textured batches drawn from the CPU went
 to the engine (`cpu=3/6` before, `cpu=0/0` now, `alpha-glp-after.ini`).
 Half-Life with it is not yet run.
 
+Then Michael ran it (2026-10-19): **the fences look right** under OpenGL
+(his look on the monitor; no counters read). The Multiplayer menu is
+still corrupt, filed as
+[2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md](../issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)
+and parked.
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.
