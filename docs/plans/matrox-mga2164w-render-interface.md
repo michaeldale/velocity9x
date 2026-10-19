@@ -68,10 +68,16 @@ left on boot 501 (`69abf8bc-dirty`, the code of a6da93e6), desktop
    `MgaTexRefusedPlace` stays near 0, and the frame rate keeps to the
    pre-menu figure.
 
+Done 2026-10-19: the remade textures hold (`hwtex lost=30`, no refusal
+for placement), recorded in
+[2026-10-18-mga2164w-half-life-gl-split.md](../decisions/2026-10-18-mga2164w-half-life-gl-split.md).
+
 Still open after that:
-- The menu's GDI art corruption. One candidate, unexamined: explicit
-  draws leave MACCESS bit 30 (nodither) set, and the 16-bit side writes
-  MACCESS once per mode.
+- The Multiplayer menu's corruption, still there on 2026-10-19. The
+  nodither candidate is dead: GDI writes MACCESS, the plane mask and the
+  clip before every operation (`v9x_gdi_mga_draw`), not once per mode.
+  GDI at 640x480x16 alone draws correctly. Next: open the menu under
+  Half-Life's Direct3D renderer, to tell OpenGL-only from both.
 - 1,000-odd triangles a session refused by the setup
   (`MgaSetupRefusedSplit`) and not drawn.
 - The untextured additive blends still refused to the CPU (most of
@@ -81,7 +87,7 @@ Still open after that:
 - A timedemo score. `+timedemo mwd5` scripted from the command line
   needs a clean console log first; my first try read the previous one.
 
-Next: Half-Life through the menu on boot 501 (above).
+Next: the Multiplayer menu under Half-Life's Direct3D renderer (above).
 
 Target: A8U4I5 (10.0.1.172), Matrox Millennium II (MGA-2164W, 8 MiB), the
 `matrox` family with the Direct3D engine of

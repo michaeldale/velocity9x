@@ -225,6 +225,43 @@ Boot 501 runs it. V9XR3DP and V9XGLP pass at 16 bpp, and V9XGLIDP fails
 only `BlendHalf`, the stipple, as at boot 499. Half-Life after the menu
 is not yet measured on it.
 
+## 2026-10-19: the remade textures hold; the menu still corrupts
+
+Michael ran Half-Life OpenGL on the boot 501 build again after a reboot
+(trace BootId 2026-10-19 15:48), went through the Multiplayer menu,
+played Crossfire and quit (`V9XSNA7-2026-10-19-hl.ini`, and
+`V9XGL-2026-10-19-hl.log` with the HL.EXE lines). HL.EXE is in the
+trace's process list.
+
+- **The lost textures were remade.** `counters hwtex lost=30` appears in
+  the interval of the menu and stays at 30. Every `MgaTexRefused*` is 0,
+  and `hw-refused=0/0`.
+- **The split.** 55,559 draws (`R3dDrawCalls`), and the ICD's paths add
+  up to the same: 52,060 batches (962,442 triangles) textured on the
+  engine (93.7 %); 2,071 textured from the CPU and 246 non-square from
+  the CPU (`M64AcceptPolicy02` 2,317, the CPU levels the map refuses);
+  1,182 untextured, and `M64AcceptPolicy04` (blend refusals) is 1,182
+  too.
+  `MgaSetupRefusedSplit` 2,350.
+- **Frame rate**, swaps per 10 s from the log: 88 to 90 in the first
+  intervals, 47 to 48 after the menu, with about twice the batches per
+  interval. The scenes differ, so the two are not compared.
+
+Michael's captures:
+- In game, lit surfaces show the half stipple of the lightmap multiply,
+  every other pixel. That is the approximation chosen at boot 499, not a
+  new fault.
+- The Multiplayer menu is corrupt as at boot 499: its art is smeared
+  into horizontal streaks, its text is drawn twice, a few lines apart, and
+  some rows are coloured noise. The other cards do not show it.
+
+One hypothesis killed: GDI at 640x480x16. With A8U4I5's desktop set to
+640x480x16 (`V9XMSW /set:640x480x16`), Notepad and the desktop draw
+correctly. Not yet separated: whether the menu corrupts under Half-Life's
+Direct3D renderer on this card too. If it does not, the fault is on the
+OpenGL side (the CPU-drawn non-square pictures, or the engine's
+state around a CPU draw). If it does, it is common to both.
+
 ## Not measured
 
 - A timedemo score, OpenGL or Direct3D.
