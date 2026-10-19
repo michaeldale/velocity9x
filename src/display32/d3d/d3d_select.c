@@ -35,10 +35,14 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
     case V9X_DD_ENGINE_TYPE_SIS_6326:
         return V9X_D3D_SELECT_SIS6326;
     case V9X_DD_ENGINE_TYPE_MGA:
-        /* One type for both Millenniums; only the 2164W has a texture
-         * engine, and only its hook stamps CAP_D3D. */
+        /* One type for the family. The 2064W has no texture engine and its
+         * hook stamps no CAP_D3D. The 2164W's stamps MGA_DEPTH32 beside it;
+         * the Mystique's, with a 16-bit Z buffer only, does not. */
         if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
             return V9X_D3D_SELECT_NONE;
+        }
+        if ((engine_caps & V9X_DD_ENGINE_CAP_MGA_DEPTH32) == 0ul) {
+            return V9X_D3D_SELECT_MGA16;
         }
         return V9X_D3D_SELECT_MGA;
     case V9X_DD_ENGINE_TYPE_TDFX:

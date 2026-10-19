@@ -9,9 +9,13 @@
  * d3d_mga_map.c, all host-tested. This file resolves DirectDraw surfaces,
  * places Z buffers and textures, and emits.
  *
- * Only the 2164W gets here: its engine hook alone stamps CAP_D3D
- * (millennium_hw16.c), and v9x_d3d_mga_ready checks it again. The 2064W
- * has no texture engine and stays on the software rasterizer.
+ * The 2164W and the Mystique get here: their engine hooks stamp CAP_D3D
+ * (millennium_hw16.c), and v9x_d3d_mga_ready checks it again. The
+ * Mystique's engine measured the same under MGA2D (docs\decisions\
+ * 2026-10-19-mystique-texture-interface.md) but has a 16-bit Z buffer
+ * only, so it runs as v9x_d3d_engine_mga16, without the 32-bit depth
+ * record. The 2064W has no texture engine and stays on the software
+ * rasterizer.
  *
  * A batch returns with its trapezoids still in the FIFO. Everything that
  * touches the engine or a surface after it waits for idle first: the 2D
@@ -36,6 +40,12 @@
  * reading 40h (measured, MGA2D on A8U4I5; the 2164W spec's field table
  * says <5:0>, its text 64). */
 #define V9X_D3D_MGA_FIFO_COUNT_MASK 0x0000007ful
+
+/* The most words one FIFO wait asks for: the MGA-2064W's and 1064SG's bus
+ * FIFO depth (1064SG spec 4-56). A trapezoid can take more (37 with a
+ * texture), which a 32-entry FIFO never shows free at once; on the 2164W's
+ * 64 the credit covers the second chunk without another read. */
+#define V9X_D3D_MGA_FIFO_CHUNK 32ul
 
 /* The core hands no batch over V9X_D3D_INDEXED_BATCH triangles. */
 #define V9X_D3D_MGA_MAX_TRIANGLES 64ul
@@ -87,6 +97,32 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mga_limits = {
     8192ul,         /* target_pitch_max_xrgb8888 */
     /* A 32-bit Z buffer at ZWIDTH 32, all of it depth (depth record). */
     32ul            /* depth32_bits */
+};
+
+/*
+ * The Mystique's: the same engine (MGA2D on A8U4I5, docs\decisions\
+ * 2026-10-19-mystique-texture-interface.md) with a 16-bit Z buffer only
+ * (MGA-1064SG specification 1-4), so no 32-bit depth record. Selected
+ * when the descriptor carries CAP_D3D without CAP_MGA_DEPTH32.
+ */
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_mga16_limits = {
+    16ul,           /* target_bits_per_pixel */
+    4096ul,         /* target_pitch_max */
+    64ul,           /* target_pitch_align */
+    2047ul,         /* target_dimension_max */
+    1ul,            /* texture_size_min */
+    256ul,          /* texture_size_max */
+    2047.0f,        /* coordinate_limit */
+    16ul,           /* depth_bits_per_pixel */
+    V9X_D3D_MGA_TEXTURE_ALIGN, /* texture_align */
+    1ul,            /* clip_in_core */
+    1ul,            /* depth_pitch_own */
+    0ul,            /* depth_fill_shift */
+    1ul,            /* texture_units */
+    0ul,            /* pixel_centre_half: not measured */
+    0ul,            /* depth_tiled */
+    8192ul,         /* target_pitch_max_xrgb8888 */
+    0ul             /* depth32_bits: no 32-bit Z on this chip */
 };
 
 /* Set when the engine fails to drain; nothing 3D is emitted again until
@@ -167,16 +203,24 @@ static void v9x_d3d_mga_batch_begin(void)
 static int v9x_d3d_mga_emit(const struct v9x_mga3d_writes *writes)
 {
     DWORD index;
+    DWORD chunk;
+    DWORD word;
     DWORD started;
 
-    if (!v9x_d3d_mga_wait_fifo(writes->count)) {
-        return 0;
+    for (index = 0ul; index < writes->count; index += chunk) {
+        chunk = writes->count - index;
+        if (chunk > V9X_D3D_MGA_FIFO_CHUNK) {
+            chunk = V9X_D3D_MGA_FIFO_CHUNK;
+        }
+        if (!v9x_d3d_mga_wait_fifo(chunk)) {
+            return 0;
+        }
+        started = V9X_TIME_BEGIN();
+        for (word = index; word < index + chunk; ++word) {
+            v9x_d3d_mga_write(writes->offsets[word], writes->values[word]);
+        }
+        V9X_TIME_END(V9X_TIME_RING_WRITE, started);
     }
-    started = V9X_TIME_BEGIN();
-    for (index = 0ul; index < writes->count; ++index) {
-        v9x_d3d_mga_write(writes->offsets[index], writes->values[index]);
-    }
-    V9X_TIME_END(V9X_TIME_RING_WRITE, started);
     return 1;
 }
 
@@ -344,8 +388,11 @@ static void v9x_d3d_mga_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
         V9X_DDBD_16 | V9X_DDBD_32;
+    /* 32-bit Z on the 2164W only: the descriptor's MGA_DEPTH32. */
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
-        V9X_DDBD_16 | V9X_DDBD_32;
+        (shared->engine.engine_caps & V9X_DD_ENGINE_CAP_MGA_DEPTH32) != 0ul
+            ? V9X_DDBD_16 | V9X_DDBD_32
+            : V9X_DDBD_16;
 
     for (index = 0ul; index < 2ul; ++index) {
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -942,6 +989,19 @@ static void v9x_d3d_mga_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga = {
     &v9x_d3d_mga_limits,
+    v9x_d3d_mga_texture_format,
+    v9x_d3d_mga_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_mga_ready,
+    v9x_d3d_mga_create_surface,
+    v9x_d3d_mga_destroy_surface,
+    v9x_d3d_mga_draw,
+    v9x_d3d_mga_accepts
+};
+
+/* The Mystique's: the same engine, Z16 only (v9x_d3d_mga16_limits). */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga16 = {
+    &v9x_d3d_mga16_limits,
     v9x_d3d_mga_texture_format,
     v9x_d3d_mga_describe_caps,
     0,                                  /* draw_triangles: draw serves */

@@ -26,6 +26,8 @@
 #define V9X_D3D_SELECT_MGA      7ul
 #define V9X_D3D_SELECT_TDFX     8ul
 #define V9X_D3D_SELECT_GEN75    9ul
+/* The MGA engine with a 16-bit Z buffer only: the Mystique. */
+#define V9X_D3D_SELECT_MGA16    10ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

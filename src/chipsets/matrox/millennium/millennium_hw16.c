@@ -116,10 +116,14 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
                    V9X_DD_ENGINE_CAP_FLIP;
 
-    /* The 2164W's texture engine (d3d_mga.c). The 2064W has none, so the
-     * one hook stamps D3D by chip; the HAL selects no MGA 3D engine
-     * without it. */
+    /* The texture engine (d3d_mga.c), on the 2164W and the Mystique. The
+     * 2064W has none, so the one hook stamps D3D by chip; the HAL selects
+     * no MGA 3D engine without it. Only the 2164W has the 32-bit Z
+     * buffer; the Mystique's is 16-bit (MGA-1064SG specification 1-4). */
     if (device->device_id == V9X_MGA2164W_DEVICE_ID) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D |
+                        V9X_DD_ENGINE_CAP_MGA_DEPTH32;
+    } else if (device->device_id == V9X_MYSTIQUE_DEVICE_ID) {
         *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
     }
 }
@@ -160,9 +164,10 @@ const V9X_HW16_DEVICE v9x_mga2164w_device = {
  * A8U4I5 on 2026-10-19: fill, forward copy and every overlap copy pass at
  * 8, 16 and 32 bpp (docs\decisions\2026-10-19-mystique-drawing-engine.md).
  * So it takes the same hook, with DirectDraw and GDI fill and copy and
- * FLIP; no D3D. MACCESS differs from the 2064W's in memreset (bit 15),
- * which must stay clear (4-64, 5-21); the setup builder writes pwidth
- * alone, so it does.
+ * FLIP, and D3D on the 2164W's texture engine with a 16-bit Z buffer only
+ * (docs\decisions\2026-10-19-mystique-texture-interface.md). MACCESS
+ * differs from the 2064W's in memreset (bit 15), which must stay clear
+ * (4-64, 5-21); the setup builder writes pwidth alone, so it does.
  *
  * framebuffer_bar is the measured order of revision 02, the 1064SG
  * specification's (docs\decisions\2026-10-19-mystique-revision-02-bar-
@@ -176,7 +181,7 @@ const V9X_HW16_DEVICE v9x_mystique_device = {
     "matrox-mystique-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-mga1064sg",
     0,
     v9x_mga_fill_engine,
     1u

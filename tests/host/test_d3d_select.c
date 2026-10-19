@@ -54,15 +54,22 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_SIS_6326, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* One MGA type for both Millenniums: the 2064W has a 2D engine and
-         * no 3D one, so the type selects d3d_mga.c only with the D3D cap
-         * the 2164W's hook stamps. */
+        /* One MGA type for the family: the 2064W has a 2D engine and no 3D
+         * one, so the type selects d3d_mga.c only with the D3D cap. The
+         * 2164W's hook stamps MGA_DEPTH32 beside it and gets the 32-bit Z
+         * record; the Mystique's does not and gets Z16 only. */
         { 1, V9X_DD_ENGINE_TYPE_MGA,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_MGA,
-          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_D3D,
+          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_D3D |
+              V9X_DD_ENGINE_CAP_MGA_DEPTH32,
           V9X_D3D_SELECT_MGA },
+        { 1, V9X_DD_ENGINE_TYPE_MGA,
+          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_MGA16 },
+        { 1, V9X_DD_ENGINE_TYPE_MGA, V9X_DD_ENGINE_CAP_MGA_DEPTH32,
+          V9X_D3D_SELECT_NONE },
         { 0, V9X_DD_ENGINE_TYPE_MGA, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_MGA, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,

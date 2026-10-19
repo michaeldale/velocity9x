@@ -576,8 +576,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rage2;
 /* SiS 6326, in d3d_sis6326.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_sis6326;
 
-/* Matrox MGA-2164W, in d3d_mga.c. */
+/* Matrox MGA-2164W, in d3d_mga.c, and the Mystique's Z16-only table. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga;
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga16;
 
 /* 3dfx VSA-100, in d3d_tdfx.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_tdfx;

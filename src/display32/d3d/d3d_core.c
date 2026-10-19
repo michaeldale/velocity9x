@@ -349,6 +349,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_sis6326;
     case V9X_D3D_SELECT_MGA:
         return &v9x_d3d_engine_mga;
+    case V9X_D3D_SELECT_MGA16:
+        return &v9x_d3d_engine_mga16;
     case V9X_D3D_SELECT_TDFX:
         return &v9x_d3d_engine_tdfx;
     case V9X_D3D_SELECT_GEN75:
@@ -5000,7 +5002,10 @@ static const V9X_D3D_ENGINE_OPS *v9x_r3d_engine(void)
 static const V9X_D3D_ENGINE_OPS *v9x_r3d_fallback(
     const V9X_D3D_ENGINE_OPS *ops)
 {
-    return ops == &v9x_d3d_engine_i9xx || ops == &v9x_d3d_engine_mga
+    /* The Mystique's Z16 matched the 2164W's model under MGA2D /depth;
+     * the mixed-engine probe has not run on it. */
+    return ops == &v9x_d3d_engine_i9xx || ops == &v9x_d3d_engine_mga ||
+                   ops == &v9x_d3d_engine_mga16
                ? &v9x_d3d_engine_soft
                : 0;
 }
@@ -5858,6 +5863,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_mga) {
         out->engine = V9X_R3D_ABI_ENGINE_MGA;
         name = "Velocity9x Millennium II";
+    } else if (ops == &v9x_d3d_engine_mga16) {
+        out->engine = V9X_R3D_ABI_ENGINE_MGA;
+        name = "Velocity9x Mystique";
     } else if (ops == &v9x_d3d_engine_tdfx) {
         out->engine = V9X_R3D_ABI_ENGINE_TDFX;
         name = "Velocity9x VSA-100";
@@ -5924,11 +5932,13 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
-    } else if (ops == &v9x_d3d_engine_mga) {
-        /* The 2164W's: power-of-two edges, 1 to 256, 565 and 1555,
-         * placed by v9x_d3d_mga_create_surface at a power-of-two row
-         * (docs\decisions\2026-10-10-mga2164w-textures.md). No 4444: TW12
-         * drew garbage, and every 4444 surface Half-Life OpenGL made was
+    } else if (ops == &v9x_d3d_engine_mga ||
+               ops == &v9x_d3d_engine_mga16) {
+        /* The 2164W's and the Mystique's: power-of-two edges, 1 to 256,
+         * 565 and 1555, placed by v9x_d3d_mga_create_surface at a
+         * power-of-two row (docs\decisions\2026-10-10-mga2164w-textures.md,
+         * 2026-10-19-mystique-texture-interface.md). No 4444: TW12 drew
+         * garbage on both, and every 4444 surface Half-Life OpenGL made was
          * refused at draw and sent again from the CPU (A8U4I5 boot 497).
          * Not offered, a 4444 texture goes to the fallback the first
          * time. */

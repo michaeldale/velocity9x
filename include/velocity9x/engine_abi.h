@@ -211,6 +211,16 @@
  */
 #define V9X_DD_ENGINE_CAP_I9XX_MIP_STACKED 0x00008000ul
 /*
+ * Matrox: this part has the 32-bit Z buffer (ZWIDTH 32, the DRn_Z32
+ * registers at 2C50h on), so the HAL may offer the 32-bit depth record. A
+ * chip capability, stamped by the MGA-2164W's descriptor only. The
+ * Mystique shares the MGA type and texture engine but has a 16-bit Z
+ * buffer (MGA-1064SG specification 1-4), and its register map reserves
+ * 2C4Ch-2CFFh; without this bit the HAL selects the Z16-only engine
+ * (docs\decisions\2026-10-19-mystique-texture-interface.md).
+ */
+#define V9X_DD_ENGINE_CAP_MGA_DEPTH32   0x00010000ul
+/*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
  * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only

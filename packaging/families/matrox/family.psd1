@@ -126,13 +126,14 @@
             ModeSwitching = 'vbe-lfb'
             # The 2064W's drawing core (MGA-1064SG spec 1-2), measured with
             # MGA2D at 8, 16 and 32 bpp on 2026-10-19
-            # (docs\decisions\2026-10-19-mystique-drawing-engine.md). No 3D
-            # yet: its texture
-            # engine is Phase 3 of docs\plans\matrox-mystique.md.
+            # (docs\decisions\2026-10-19-mystique-drawing-engine.md). Its
+            # texture engine is the 2164W's, with a 16-bit Z buffer only
+            # (docs\decisions\2026-10-19-mystique-texture-interface.md):
+            # Direct3D through d3d_mga.c's Z16 table.
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-mga1064sg'
             EngineType = 'MGA'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # The smallest Mystique, and the card in A8U4I5 (Matrox's driver
             # reports 4 MiB). The heap sizes from 4F00h and the memory walk.
             VideoMemoryBytes = 2097152
