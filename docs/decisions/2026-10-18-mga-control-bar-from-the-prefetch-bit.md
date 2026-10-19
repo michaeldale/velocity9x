@@ -67,7 +67,7 @@ With that build (boot 54): `EngineCaps=00000007`,
 
 - The prefetch path on a real card. Owed: the 2164W on A8U4I5 (control in
   BAR1, expected `EngineCaps` with D3D set) and the 2064W if it goes back
-  in.
+  in. The 2164W half is done: see the addendum of 2026-10-19 below.
 - The Mystique. `051A` is still refused by `mga_backend.c`. In 86Box both
   Mystique profiles will take the fallback, and for `051A` there is no
   single stated order to fall back on. That is Phase 1 of the plan's
@@ -95,3 +95,14 @@ So every chip in the table now has a Matrox document behind it, and the
 document (Table 2-1 text, read by `pdftotext`) puts MGABASE1 at 0Ch,
 shifted by one row. The per-register pages are the ones to trust, as with
 the 2164W.
+
+## Addendum, 2026-10-19: the 2164W on silicon
+
+Deployed to A8U4I5 (Millennium II, `DeviceId=051B`) with build
+`8ae2370e-dirty`, which contains this change, by WININIT rename; trace
+BootId 2026-10-19 16:13. `V9XHW.INI` reads `EngineCaps=00000017` and
+`GdiAcceleration=gdi-fill-copy-overlap-text`, the same as boot 501 on
+the build before. The trace's `EngineCaps` is `0x00002017` on both.
+V9XGLP passes and draws its textures on the engine. So the rule found
+the control aperture on a real card, by the prefetch bit, not the
+fallback. The 2064W remains owed if it goes back in.
