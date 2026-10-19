@@ -58,6 +58,8 @@ MGA2D_MAGIC             equ 44324d47h ; "GM2D"
 MGA2D_DIOC_RUN          equ 1
 MGA2D_PCI_ID_2064W      equ 0519102bh
 MGA2D_PCI_ID_2164W      equ 051b102bh
+MGA2D_PCI_ID_MYSTIQUE   equ 051a102bh
+MGA2D_BAR_PREFETCHABLE  equ 00000008h
 MGA2D_OP_MAX            equ 512
 MGA2D_MMIO_BYTES        equ 00004000h
 MGA2D_LFB_BYTES_2064W   equ 00800000h
@@ -170,6 +172,8 @@ Mga2d_Map_Next:
     je      Mga2d_Map_Found
     cmp     eax, MGA2D_PCI_ID_2164W
     je      Mga2d_Map_Found
+    cmp     eax, MGA2D_PCI_ID_MYSTIQUE
+    je      Mga2d_Map_Found
     add     ebx, 0800h
     cmp     ebx, 81000000h
     jb      Mga2d_Map_Next
@@ -186,6 +190,22 @@ Mga2d_Map_Found:
     call    Mga2d_Pci_Read
     mov     Mga2dResult[12], eax
 
+    ; The Mystique (051A) is two chips with opposite BAR orders under one
+    ; id; only the 1064SG's (the 2064W's) is taken, and only when the
+    ; prefetchable bits say so: BAR0 control, not prefetchable, BAR1 the
+    ; framebuffer, prefetchable (docs\decisions\
+    ; 2026-10-19-mystique-revision-02-bar-order.md). Anything else - the
+    ; 1164SG's order, or 86Box marking neither - is refused unmapped.
+    ; Its bus FIFO and STATUS are the 2064W's (MGA-1064SG spec 4-56,
+    ; 4-74), so it takes the 2064W path below.
+    cmp     edx, MGA2D_PCI_ID_MYSTIQUE
+    jne     Mga2d_Map_Order
+    test    dword ptr Mga2dResult[8], MGA2D_BAR_PREFETCHABLE
+    jnz     Mga2d_Map_Done
+    test    dword ptr Mga2dResult[12], MGA2D_BAR_PREFETCHABLE
+    jz      Mga2d_Map_Done
+
+Mga2d_Map_Order:
     ; ESI = the control aperture's BAR, EDI = the framebuffer's, by chip.
     cmp     edx, MGA2D_PCI_ID_2164W
     je      Mga2d_Map_2164w

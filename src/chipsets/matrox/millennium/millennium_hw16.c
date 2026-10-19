@@ -1,7 +1,7 @@
 /*
  * The Matrox Millennium generations: the MGA-2064W (102B:0519) and the
- * MGA-2164W (102B:051B). And the Mystique (102B:051A), CPU-only for now; see
- * its entry at the end.
+ * MGA-2164W (102B:051B). And the Mystique (102B:051A), which shares the
+ * 2064W's drawing core; see its entry at the end.
  *
  * One module, the way the Trio64 aliases share theirs: both chips take the
  * same path and the same drawing engine, and differ in their strings and in
@@ -50,6 +50,7 @@ extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 #define V9X_MGA_MMIO_BYTES 0x00004000ul
 
 #define V9X_MGA2164W_DEVICE_ID 0x051bu
+#define V9X_MYSTIQUE_DEVICE_ID 0x051au
 
 /*
  * The control aperture mapped by the mini-VDD, which withholds a window
@@ -71,6 +72,7 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
     unsigned long control_bar = 0ul;
     unsigned long linear = 0ul;
     v9x_u16 control_index = 0u;
+    v9x_u16 fallback_index;
 
     (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
@@ -89,9 +91,16 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
         return;
     }
     /* The stated order is the fallback for 86Box, which marks neither BAR
-     * prefetchable; silicon never reaches it. */
+     * prefetchable; silicon never reaches it. The Mystique has no single
+     * stated order (its two chips differ), so it has no fallback and stays
+     * on the CPU there. */
+    if (device->device_id == V9X_MYSTIQUE_DEVICE_ID) {
+        fallback_index = V9X_MGA_NO_FALLBACK_BAR;
+    } else {
+        fallback_index = device->framebuffer_bar == 0u ? 1u : 0u;
+    }
     if (v9x_matrox_mga_select_control_bar(
-            bar0, bar1, device->framebuffer_bar == 0u ? 1u : 0u,
+            bar0, bar1, fallback_index,
             &control_index, &control_bar) != V9X_TRUE) {
         return;
     }
@@ -146,27 +155,29 @@ const V9X_HW16_DEVICE v9x_mga2164w_device = {
 };
 
 /*
- * The Mystique (051A), Phase 1 of docs\plans\matrox-mystique.md: VBE modes
- * and CPU drawing only, so no engine hook. Its drawing core is said to be the
- * 2064W's (MGA-1064SG specification 1-2), but mga_engine.c has not been
- * measured on it, and MACCESS differs (memreset, bit 15, must stay clear;
- * 4-64, 5-21). The engine claim comes with the Phase 2 write probe.
+ * The Mystique (051A). The drawing engine is the 2064W's
+ * (MGA-1064SG specification 1-2), measured with MGA2D on revision 02 in
+ * A8U4I5 on 2026-10-19: fill, forward copy and every overlap copy pass at
+ * 8, 16 and 32 bpp (docs\decisions\2026-10-19-mystique-drawing-engine.md).
+ * So it takes the same hook, with DirectDraw and GDI fill and copy and
+ * FLIP; no D3D. MACCESS differs from the 2064W's in memreset (bit 15),
+ * which must stay clear (4-64, 5-21); the setup builder writes pwidth
+ * alone, so it does.
  *
- * framebuffer_bar is the measured order of revision 02 on A8U4I5, which is
- * the 1064SG specification's (docs\decisions\2026-10-19-mystique-revision-
- * 02-bar-order.md). Nothing reads it while there is no engine hook. The
- * 1164SG (revision 03) has the other order; the prefetch rule will decide
- * that when the hook arrives.
+ * framebuffer_bar is the measured order of revision 02, the 1064SG
+ * specification's (docs\decisions\2026-10-19-mystique-revision-02-bar-
+ * order.md). The hook does not fall back to it: the 1164SG (revision 03)
+ * has the other order, and the prefetch bit decides on silicon.
  */
 const V9X_HW16_DEVICE v9x_mystique_device = {
-    0x102bu, 0x051au,
+    0x102bu, V9X_MYSTIQUE_DEVICE_ID,
     "Matrox Mystique",
     "102B", "051A",
     "matrox-mystique-unavailable-v1",
     "vbe-lfb",
+    "directdraw-fill-copy",
     0,
     0,
-    0,
-    0,
+    v9x_mga_fill_engine,
     1u
 };

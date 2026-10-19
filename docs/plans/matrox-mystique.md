@@ -2,12 +2,13 @@
 
 Date: 2026-10-18
 
-Status: Phase 0 step 1 and Phase 1 done on Michael's card (2026-10-19),
-CPU drawing only; the 86Box profiles are skipped for now. Decision 1 taken
+Status: Phase 0 step 1, Phase 1 and Phase 2 done on Michael's card
+(2026-10-19): the drawing engine serves DirectDraw and GDI. The 86Box
+profiles are skipped for now. Decision 1 taken
 2026-10-18 (the prefetch bit) and coded for the two Millennium chips, with
 an 86Box fallback
 ([record](../decisions/2026-10-18-mga-control-bar-from-the-prefetch-bit.md)).
-Next: Phase 2, the drawing engine.
+Next: Phase 3, Direct3D, which needs separate approval.
 
 Target: the Mystique, PCI `102B:051A`, as a third chip in the one `matrox`
 family beside the MGA-2064W and MGA-2164W
@@ -174,6 +175,12 @@ across the modes. The 2064W (86Box and A8U4I5 if it is back in) and the
 
 Gate: the probe passes on silicon at all three depths; `V9XGDI /accel`
 passes; `V9XDDP` fills and flips with correct pixels.
+
+**Done 2026-10-19 on Michael's card**, except the flip as seen on the
+monitor: MGA2D PASS at 8/16/32, `V9XGDI /accel` PASS, `V9XDDP` fill
+correct and 20 flips paced by the retrace
+([record](../decisions/2026-10-19-mystique-drawing-engine.md)). Owed: a
+person watching `V9XDDP /hold`.
 
 ### Phase 3 - Direct3D (separate approval)
 

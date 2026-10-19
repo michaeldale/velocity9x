@@ -17,7 +17,7 @@
     SchemaVersion = 1
     Id = 'matrox'
     DisplayName = 'Matrox Millennium'
-    Description = 'Matrox Millennium MGA-2064W, Millennium II MGA-2164W and Mystique (PCI 102B:0519, 102B:051B, 102B:051A): VBE mode set, the drawing engine for DirectDraw and GDI fill and copy on the Millennium chips, CPU drawing otherwise.'
+    Description = 'Matrox Millennium MGA-2064W, Millennium II MGA-2164W and Mystique (PCI 102B:0519, 102B:051B, 102B:051A): VBE mode set, the drawing engine for DirectDraw and GDI fill and copy, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -124,12 +124,15 @@
             Adapter = 'Matrox Mystique'
             ClockDetector = 'matrox-mystique-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Phase 1 of docs\plans\matrox-mystique.md: CPU drawing until the
-            # drawing engine is measured on this chip (Phase 2).
-            Acceleration = 'none'
+            # The 2064W's drawing core (MGA-1064SG spec 1-2), measured with
+            # MGA2D at 8, 16 and 32 bpp on 2026-10-19
+            # (docs\decisions\2026-10-19-mystique-drawing-engine.md). No 3D
+            # yet: its texture
+            # engine is Phase 3 of docs\plans\matrox-mystique.md.
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'MGA'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # The smallest Mystique, and the card in A8U4I5 (Matrox's driver
             # reports 4 MiB). The heap sizes from 4F00h and the memory walk.
             VideoMemoryBytes = 2097152

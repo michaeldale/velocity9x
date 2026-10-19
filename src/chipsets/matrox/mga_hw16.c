@@ -1,8 +1,8 @@
 /*
  * The matrox family table.
  *
- * Three chips, the Millennium, the Millennium II and the Mystique (CPU
- * drawing only, docs\plans\matrox-mystique.md). The VBE 4F02h mode set
+ * Three chips, the Millennium, the Millennium II and the Mystique
+ * (docs\plans\matrox-mystique.md). The VBE 4F02h mode set
  * programs the card and 4F01h reports where the framebuffer landed. 4F00h's
  * memory size is only a starting point: the one family-wide hook walks the
  * memory once the aperture is mapped, because a 2164W BIOS was measured

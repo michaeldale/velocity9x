@@ -29,9 +29,11 @@
  *     the desktop's. The driver uses the engine too, so the probe's setup
  *     (MACCESS, PLNWT, clip) is what the HAL writes before its own
  *     operations anyway.
- *   - The card must be PCI 102B:0519 or 102B:051B with Configuration
- *     Manager's range for the control aperture exactly 16 KiB (MGABASE1) at
- *     the base the VxD reads: config 10h on the 2064W, 14h on the 2164W.
+ *   - The card must be PCI 102B:0519, 102B:051B or 102B:051A with
+ *     Configuration Manager's range for the control aperture exactly 16 KiB
+ *     (MGABASE1) at the base the VxD reads: config 10h on the 2064W and the
+ *     Mystique (only when its BAR0 is not prefetchable and BAR1 is), 14h on
+ *     the 2164W.
  *   - Engine output and CPU test writes stay in a 1 MiB region starting 1 MiB
  *     below the end of VRAM, which must lie beyond the visible desktop.
  *   - Engine state written by the setup (MACCESS, PLNWT, the clip window) is
@@ -102,7 +104,9 @@ typedef RESOURCEID *PRESOURCEID;
 
 #define MGA2D_PCI_PREFIX_2064W "VEN_102B&DEV_0519"
 #define MGA2D_PCI_PREFIX_2164W "VEN_102B&DEV_051B"
+#define MGA2D_PCI_PREFIX_MYSTIQUE "VEN_102B&DEV_051A"
 #define MGA2D_PCI_ID_2164W 0x051b102bul
+#define MGA2D_PCI_ID_MYSTIQUE 0x051a102bul
 #define MGA2D_RANGE_MAX 16u
 /* MGABASE1 is 16 KiB (MGA-1064SG Table 3-4). The VxD maps the framebuffer
  * as 8 MiB on the 2064W and 16 MiB on the 2164W. */
@@ -421,7 +425,7 @@ static void mga2d_append_text(char *destination, const char *source,
 }
 
 /*
- * The wanted-th Enum\PCI instance of 102B:0519 or 051B, counting from zero. Every
+ * The wanted-th Enum\PCI instance of 102B:0519, 051B or 051A, counting from zero. Every
  * card ever fitted keeps its key, so the first match need not be the card in
  * the slot (sis6326_probe_win32.c, A8U4I5 2026-10-04); the caller tries each
  * until Config Manager locates a present devnode.
@@ -452,7 +456,8 @@ static LONG mga2d_find_device(char *device_id, DWORD capacity, DWORD wanted)
         }
         if (status != ERROR_SUCCESS ||
             (!mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_2064W) &&
-             !mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_2164W))) {
+             !mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_2164W) &&
+             !mga2d_starts_with_ci(adapter, MGA2D_PCI_PREFIX_MYSTIQUE))) {
             continue;
         }
         if (RegOpenKeyExA(pci_key, adapter, 0, KEY_READ, &adapter_key) !=
@@ -2896,9 +2901,15 @@ void WINAPI V9xMga2dProbeEntry(void)
     mga2d_write_hex("Bar1", bar1);
 
     /* The control aperture and the framebuffer by chip: BAR0 and BAR1 on
-     * the 2064W, the other way round on the 2164W. */
+     * the 2064W, the other way round on the 2164W. The VxD maps the
+     * Mystique only in the 2064W's order, checked by the prefetchable
+     * bits, so it takes the 2064W's path from here. */
     mga2d_is_2164w = mga2d_result_buffer.pci_id == MGA2D_PCI_ID_2164W;
-    mga2d_write("Chip", mga2d_is_2164w ? "MGA-2164W" : "MGA-2064W");
+    if (mga2d_result_buffer.pci_id == MGA2D_PCI_ID_MYSTIQUE) {
+        mga2d_write("Chip", "MGA-1064SG");
+    } else {
+        mga2d_write("Chip", mga2d_is_2164w ? "MGA-2164W" : "MGA-2064W");
+    }
     control = mga2d_is_2164w ? bar1 : bar0;
     framebuffer = mga2d_is_2164w ? bar0 : bar1;
     fb_map_bytes = mga2d_is_2164w ? MGA2D_FB_MAP_BYTES_2164W
