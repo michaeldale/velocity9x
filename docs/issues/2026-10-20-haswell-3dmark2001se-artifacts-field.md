@@ -134,3 +134,38 @@ memory is 8 MiB on the machines measured. Mapping more of the aperture
 on the HD 4600 alone would be per-chip hw16 data, and the reserve
 would have to move above whatever is mapped. That is a design
 decision, not taken here.
+
+## 2026-10-20: reproduced on the i5-4570; the refused batches were kernels too big for their slot
+
+3DMark 2001 SE (build 330, default benchmark: 1024x768x32, Z24, 16-bit
+textures, D3D software T&L) installed on the 4570 with DirectX 9.0c
+(Dec 2005), as the tester had. Evidence:
+[`../probe/hsw-4570-3dmark2001se-2026-10-20/`](../probe/hsw-4570-3dmark2001se-2026-10-20/).
+
+- **Boot 46** (build `a3825fa3-dirty`): 5,191 batches refused, the
+  tester's 4,863 again. The per-site reasons added this morning put all
+  of them at reason 13, `REFUSE_STATE`. Score 805. Game 3 (Lobby) draws
+  its walls and floors as a mosaic of wrong texels
+  (`lobby-shot07.png`).
+- **Boot 47** (reason 13 split by block): all 4,979 were the kernel
+  failing to build, not a surface, sampler or colour block.
+- **The cause**, checked on the host for every description: a kernel
+  slot was 512 bytes, 96 dwords after the prefetch margin. Each
+  Direct3D stage with specular and fog needs 112, diffuse with both
+  100, and the largest two-unit kernel 140. So every draw with
+  specular and fog was refused and drew nothing. 0.20.0 has the same
+  slot size.
+- **The fix**: 48 slots of 768 bytes (160 dwords), one per
+  description, with the batch area halved to make room
+  (`intel_hsw.h`). A host test now builds every description at that
+  capacity, and failed first on the same 21 descriptions.
+- **Boot 48** (the fix): **0 refused batches**, no timeouts. Score 795.
+
+Still open:
+- **The Lobby mosaic is unchanged** after the fix (shots 7-10 of
+  boot 48). Dragothic's buildings show it too. So the tester's
+  "artifacts" are at least two faults, and the refusals were only the
+  holes. 53,694 mip chains still have a level out of place
+  (`MipGapOffset`), and 7,038 mip trees were declined for heap room.
+- One scene in the vertex-shader test is cut by a diagonal edge
+  (`shot13-cut.png`), with no refusal behind it.

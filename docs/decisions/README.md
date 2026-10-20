@@ -261,6 +261,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-20 HD 4600: the blitter's idle test covers the render ring; V9XDDP and 3DMark 2000 read as before](2026-10-20-haswell-pipelined-phase2-both-rings-idle.md)
 - [2026-10-20 HD 4600: draws left running, one at a time; 3DMark 2000's batch drops from 157 to 127 µs, and Half-Life gets none of it](2026-10-20-haswell-pipelined-phase3-deferred-wait.md)
 - [2026-10-20 HD 4600: draws wait only while GDI may own the screen; 3DMark 2000 112 µs a batch, Half-Life mwd5 60.5 to 79.3 fps](2026-10-20-haswell-pipelined-gdi-rule.md)
+- [2026-10-20 HD 4600: kernel slots were too small for specular with fog; 768-byte slots end 3DMark 2001 SE's refused batches, and the Lobby mosaic is older than pipelining](2026-10-20-haswell-kernel-slots-768.md)
 
 ## SiS
 

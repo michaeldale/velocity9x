@@ -33,7 +33,7 @@
  * and the vertex area are halved.
  */
 #define V9X_HSW_PIPE_STATE_BLOCK_BYTES  ((v9x_u32)0x00002000ul)
-#define V9X_HSW_PIPE_BATCH_BYTES        ((v9x_u32)0x00001000ul)
+#define V9X_HSW_PIPE_BATCH_BYTES        ((v9x_u32)0x00000800ul)
 #define V9X_HSW_PIPE_VERTEX_BYTES       ((v9x_u32)0x00007000ul)
 
 struct v9x_hsw_pipe_slot {
@@ -84,6 +84,21 @@ v9x_u16 v9x_intel_hsw_pipe_idle(v9x_u32 sent, v9x_u32 done);
 #define V9X_HSW_PIPE_SIG_DWORDS        4ul
 #define V9X_HSW_PIPE_SIG_VALID         ((v9x_u32)0x80000000ul)
 #define V9X_HSW_PIPE_SIG_STATUS_DWORD  ((v9x_u32)0x100ul)
+
+/*
+ * The kernel slot a description's kernel lives in: a fixed function of the
+ * stages, specular and fog, distinct for every description the builder
+ * accepts (6 x 2 x 2 x 2 = 48), so no two descriptions share a slot and only
+ * the fog colour can differ within one.
+ */
+v9x_u32 v9x_intel_hsw_pipe_kernel_slot(const struct v9x_hsw_ps_desc *desc);
+
+/*
+ * Dwords a kernel may occupy in its slot: the slot less the 128 bytes kept
+ * clear for the EU's instruction prefetch past a kernel's end (Vol 7).
+ */
+#define V9X_HSW_PIPE_KERNEL_DWORDS \
+    ((V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul)
 
 void v9x_intel_hsw_pipe_kernel_sig(const struct v9x_hsw_ps_desc *desc,
                                    v9x_u32 *sig);

@@ -142,12 +142,20 @@
 #define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)32ul)
 #define V9X_INTEL_HSW_RCS_RING_OFF   ((v9x_u32)0x00002000ul)
 #define V9X_INTEL_HSW_STATE_OFF      ((v9x_u32)0x00004000ul)
-#define V9X_INTEL_HSW_STATE_BYTES    ((v9x_u32)0x0000c000ul)
+/*
+ * Kernel slots are 768 bytes, 48 of them, one per pixel-shader description
+ * (v9x_intel_hsw_pipe_kernel_slot). Until 2026-10-20 they were 512 bytes,
+ * 64 of them: 96 dwords after the prefetch margin, which every Direct3D
+ * stage with specular and fog (112) and the largest two-unit kernel (140)
+ * overflowed, so those draws were refused. The state area grew by 4 KB to
+ * hold them, taken from the batch area (a draw's batch is under 2 KB).
+ */
+#define V9X_INTEL_HSW_STATE_BYTES    ((v9x_u32)0x0000d000ul)
 #define V9X_INTEL_HSW_KERNEL_OFF     ((v9x_u32)0x00004000ul) /* in state */
-#define V9X_INTEL_HSW_KERNEL_SLOT    ((v9x_u32)0x00000200ul)
-#define V9X_INTEL_HSW_KERNEL_SLOTS   ((v9x_u32)64ul)
-#define V9X_INTEL_HSW_BATCH_OFF      ((v9x_u32)0x00010000ul)
-#define V9X_INTEL_HSW_BATCH_BYTES    ((v9x_u32)0x00002000ul)
+#define V9X_INTEL_HSW_KERNEL_SLOT    ((v9x_u32)0x00000300ul)
+#define V9X_INTEL_HSW_KERNEL_SLOTS   ((v9x_u32)48ul)
+#define V9X_INTEL_HSW_BATCH_OFF      ((v9x_u32)0x00011000ul)
+#define V9X_INTEL_HSW_BATCH_BYTES    ((v9x_u32)0x00001000ul)
 #define V9X_INTEL_HSW_VERTEX_OFF     ((v9x_u32)0x00012000ul)
 #define V9X_INTEL_HSW_VERTEX_BYTES   ((v9x_u32)0x0000e000ul)
 /* Status dwords: BCS stored/submitted 0-1; RCS stored/submitted 8-9; the

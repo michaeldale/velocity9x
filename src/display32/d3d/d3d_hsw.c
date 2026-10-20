@@ -117,6 +117,18 @@
 #define V9X_D3D_HSW_REFUSE_PIECE     14ul  /* render wait between pieces    */
 #define V9X_D3D_HSW_REFUSE_WORKLOAD  15ul  /* the batch would not build     */
 #define V9X_D3D_HSW_REFUSE_SUBMIT    16ul  /* the ring submission failed    */
+/* Reason 13 split by the block that would not encode, after 3DMark 2001 SE
+ * on the 4570 refused 5,203 batches as 13 (2026-10-20); 13 is now the
+ * kernel alone. The last texture refused is recorded in the Matrox texture
+ * fields, which this engine otherwise leaves at zero (V9XTRACE
+ * MgaTexRefusedLast*): Bits the surface format, Size width << 16 | height,
+ * Pitch, VidMem the graphics address, Flags unit << 12 | step << 8 |
+ * levels with step 1 the surface, 2 the mips, 3 the sampler, and Alpha
+ * mip << 16 | mag << 8 | min filter. */
+#define V9X_D3D_HSW_REFUSE_TARGET_STATE  17ul  /* target RENDER_SURFACE_STATE */
+#define V9X_D3D_HSW_REFUSE_TEXTURE_STATE 18ul  /* a texture's surface, mips or
+                                                  sampler state          */
+#define V9X_D3D_HSW_REFUSE_COLOUR_STATE  19ul  /* blend, CC or depth state  */
 
 /* SAMPLER_STATE DW3 address modes for all three axes (Vol 2a/2d). */
 #define V9X_D3D_HSW_TC_WRAP   0ul
@@ -1006,20 +1018,11 @@ static void v9x_d3d_hsw_count_refusal(DWORD reason)
     }
 }
 
-/* A kernel's slot is a fixed function of its description, so every
- * process writes the same words to the same place: six stage 0s, two stage
- * 1s, specular and fog are 48 distinct slots of the 64. */
-static DWORD v9x_d3d_hsw_kernel_slot(const struct v9x_hsw_ps_desc *desc)
-{
-    return ((DWORD)desc->stage0 * 8ul + (DWORD)desc->stage1 * 4ul +
-            (DWORD)desc->specular * 2ul + (DWORD)desc->fog) %
-           V9X_INTEL_HSW_KERNEL_SLOTS;
-}
-
-/* The last 128 bytes of a slot stay clear for the EU's prefetch past a
- * kernel's end (Vol 7). */
-#define V9X_D3D_HSW_KERNEL_DWORDS \
-    ((V9X_INTEL_HSW_KERNEL_SLOT - 128ul) / 4ul)
+/* A kernel's slot is a fixed function of its description
+ * (v9x_intel_hsw_pipe_kernel_slot), so every process writes the same words
+ * to the same place; the last 128 bytes of a slot stay clear for the EU's
+ * prefetch past a kernel's end (V9X_HSW_PIPE_KERNEL_DWORDS). */
+#define V9X_D3D_HSW_KERNEL_DWORDS V9X_HSW_PIPE_KERNEL_DWORDS
 
 /*
  * Where a kernel is assembled before it goes to its slot: ordinary cached
@@ -1059,7 +1062,7 @@ static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
     DWORD started = V9X_TIME_BEGIN();
     int built;
 
-    kernel_slot = v9x_d3d_hsw_kernel_slot(desc);
+    kernel_slot = v9x_intel_hsw_pipe_kernel_slot(desc);
     *kernel = slot->kernel_base + kernel_slot * V9X_INTEL_HSW_KERNEL_SLOT;
     stored = status + V9X_HSW_PIPE_SIG_STATUS_DWORD +
              kernel_slot * V9X_HSW_PIPE_SIG_DWORDS;
@@ -1104,10 +1107,32 @@ static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
 /* The draw's state in its slot: the target and texture surfaces, the
  * binding table, the sampler, blend, CC and depth-stencil state, the zeroed
  * border colour, and the kernel. */
-static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
-                                   const V9X_D3D_HSW_STATE *state,
-                                   const struct v9x_hsw_pipe_slot *slot,
-                                   DWORD *kernel)
+/* The texture a state write refused, and at which step (see the reason
+ * definitions above). */
+static void v9x_d3d_hsw_note_texture(const V9X_D3D_HSW_TEXTURE *texture,
+                                     DWORD unit, DWORD step)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+
+    diagnostics->mga_texture_refused_last_bits = (DWORD)texture->format;
+    diagnostics->mga_texture_refused_last_size =
+        ((DWORD)texture->width << 16) | (DWORD)texture->height;
+    diagnostics->mga_texture_refused_last_pitch = texture->pitch;
+    diagnostics->mga_texture_refused_last_vidmem = texture->address;
+    diagnostics->mga_texture_refused_last_flags =
+        (unit << 12) | (step << 8) | (DWORD)texture->levels;
+    diagnostics->mga_texture_refused_last_alpha =
+        ((DWORD)texture->sampler.mip_filter << 16) |
+        ((DWORD)texture->sampler.mag_filter << 8) |
+        (DWORD)texture->sampler.min_filter;
+}
+
+/* Zero, or the V9X_D3D_HSW_REFUSE_* reason for the block that would not
+ * encode. */
+static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
+                                     const V9X_D3D_HSW_STATE *state,
+                                     const struct v9x_hsw_pipe_slot *slot,
+                                     DWORD *kernel)
 {
     v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off);
     v9x_u32 *table;
@@ -1120,7 +1145,7 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                  (v9x_u16)draw->target.width,
                                  (v9x_u16)draw->target.height,
                                  draw->target.pitch) != V9X_STATUS_OK) {
-        return 0;
+        return V9X_D3D_HSW_REFUSE_TARGET_STATE;
     }
     table = image + V9X_HSW_SHADE_BINDING_TABLE(0) / 4ul;
     table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
@@ -1133,16 +1158,23 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
         if (v9x_intel_hsw_surface_2d(
                 image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
                 texture->format, texture->address, texture->width,
-                texture->height, texture->pitch) != V9X_STATUS_OK ||
-            (texture->levels > 1u &&
-             v9x_intel_hsw_surface_mips(
-                 image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
-                 texture->levels) != V9X_STATUS_OK) ||
-            v9x_intel_hsw_sampler(
+                texture->height, texture->pitch) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_note_texture(texture, index, 1ul);
+            return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
+        }
+        if (texture->levels > 1u &&
+            v9x_intel_hsw_surface_mips(
+                image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
+                texture->levels) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_note_texture(texture, index, 2ul);
+            return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
+        }
+        if (v9x_intel_hsw_sampler(
                 image + (V9X_HSW_SHADE_SAMPLER +
                          index * V9X_HSW_SAMPLER_BYTES) / 4ul,
                 &texture->sampler) != V9X_STATUS_OK) {
-            return 0;
+            v9x_d3d_hsw_note_texture(texture, index, 3ul);
+            return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
         }
     }
     if (state->textured == 2) {
@@ -1161,15 +1193,18 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                             &state->blend) != V9X_STATUS_OK ||
         v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul,
                                state->alpha_ref) != V9X_STATUS_OK) {
-        return 0;
+        return V9X_D3D_HSW_REFUSE_COLOUR_STATE;
     }
     if (state->depth &&
         v9x_intel_hsw_depth_stencil(image + V9X_D3D_HSW_DS_OFF / 4ul, 1u,
                                     state->depth_function,
                                     state->depth_write) != V9X_STATUS_OK) {
-        return 0;
+        return V9X_D3D_HSW_REFUSE_COLOUR_STATE;
     }
-    return v9x_d3d_hsw_write_kernel(&state->desc, slot, kernel);
+    if (!v9x_d3d_hsw_write_kernel(&state->desc, slot, kernel)) {
+        return V9X_D3D_HSW_REFUSE_STATE;
+    }
+    return V9X_D3D_HSW_REFUSE_NONE;
 }
 
 static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
@@ -1280,8 +1315,9 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
          * names: the whole state write in RingSpaceWait (the kernel inside
          * it also in Decode), the vertex copy in RingWrite. */
         timed = V9X_TIME_BEGIN();
-        if (!v9x_d3d_hsw_write_state(draw, &state, &slot, &kernel)) {
-            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
+        reason = v9x_d3d_hsw_write_state(draw, &state, &slot, &kernel);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
             return 0;
         }
         V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, timed);

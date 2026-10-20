@@ -106,7 +106,8 @@ static void test_largest_batch_fits(void)
     base = V9X_INTEL_HSW_RESERVE_OFFSET + slot.state_off;
     memset(&d, 0, sizeof(d));
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
-    d.kernel = slot.kernel_base + 63ul * V9X_INTEL_HSW_KERNEL_SLOT;
+    d.kernel = slot.kernel_base +
+               (V9X_INTEL_HSW_KERNEL_SLOTS - 1ul) * V9X_INTEL_HSW_KERNEL_SLOT;
     d.vertices = V9X_INTEL_HSW_RESERVE_OFFSET + slot.vertex_off;
     d.width = 1024u;
     d.height = 768u;
@@ -313,6 +314,54 @@ static void test_ring_with_one_outstanding(void)
     CHECK(plan.command_tail == 96ul && plan.next_tail == 120ul);
 }
 
+/*
+ * Every pixel-shader description the builder accepts builds within a kernel
+ * slot, and each has a slot of its own. 3DMark 2001 SE on the 4570 refused
+ * 4,979 batches because specular with fog needs 112 dwords and a 512-byte
+ * slot held 96 (2026-10-20); a refused batch draws nothing.
+ */
+static void test_every_kernel_fits(void)
+{
+    static v9x_u32 words[V9X_HSW_PIPE_KERNEL_DWORDS];
+    static int taken[V9X_INTEL_HSW_KERNEL_SLOTS];
+    struct v9x_hsw_ps_desc desc;
+    unsigned int s0;
+    unsigned int s1;
+    unsigned int spec;
+    unsigned int fog;
+    v9x_u32 used;
+    v9x_u32 slot;
+    v9x_u32 index;
+
+    for (index = 0ul; index < V9X_INTEL_HSW_KERNEL_SLOTS; ++index) {
+        taken[index] = 0;
+    }
+    for (s0 = 0u; s0 <= V9X_HSW_PS_MODULATE_TEXALPHA; ++s0) {
+        for (s1 = 0u; s1 <= V9X_HSW_PS_MODULATE_TEX1; ++s1) {
+            for (spec = 0u; spec <= 1u; ++spec) {
+                for (fog = 0u; fog <= 1u; ++fog) {
+                    memset(&desc, 0, sizeof(desc));
+                    desc.stage0 = (v9x_u8)s0;
+                    desc.stage1 = (v9x_u8)s1;
+                    desc.specular = (v9x_u8)spec;
+                    desc.fog = (v9x_u8)fog;
+                    desc.fog_rgb[0] = 0x3f000000ul;
+                    used = 0ul;
+                    CHECK(v9x_intel_hsw_ps_kernel_build(
+                              words, V9X_HSW_PIPE_KERNEL_DWORDS, &desc,
+                              &used) == V9X_STATUS_OK);
+                    slot = v9x_intel_hsw_pipe_kernel_slot(&desc);
+                    CHECK(slot < V9X_INTEL_HSW_KERNEL_SLOTS);
+                    if (slot < V9X_INTEL_HSW_KERNEL_SLOTS) {
+                        CHECK(taken[slot] == 0);
+                        taken[slot] = 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
 unsigned int v9x_run_intel_hsw_pipe_tests(void)
 {
     failures = 0u;
@@ -322,5 +371,6 @@ unsigned int v9x_run_intel_hsw_pipe_tests(void)
     test_two_processes_interleave();
     test_kernel_signature();
     test_ring_with_one_outstanding();
+    test_every_kernel_fits();
     return failures;
 }

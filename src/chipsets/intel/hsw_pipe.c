@@ -57,6 +57,16 @@ v9x_u16 v9x_intel_hsw_pipe_idle(v9x_u32 sent, v9x_u32 done)
     return sent == done ? V9X_TRUE : V9X_FALSE;
 }
 
+v9x_u32 v9x_intel_hsw_pipe_kernel_slot(const struct v9x_hsw_ps_desc *desc)
+{
+    /* Stage 0 (six), stage 1 (two), specular, fog: 48 distinct slots, the
+     * count the builder accepts. Flags count as on when non-zero, as the
+     * builder reads them. */
+    return (v9x_u32)desc->stage0 * 8ul + (v9x_u32)desc->stage1 * 4ul +
+           v9x_hsw_pipe_flag(desc->specular) * 2ul +
+           v9x_hsw_pipe_flag(desc->fog);
+}
+
 void v9x_intel_hsw_pipe_kernel_sig(const struct v9x_hsw_ps_desc *desc,
                                    v9x_u32 *sig)
 {
