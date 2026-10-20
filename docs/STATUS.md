@@ -16,12 +16,12 @@ a Have Disk install of the archive itself. The checkout is 0.21.1,
 unreleased. See the [changelog](../CHANGELOG.md) for what it adds: the HD
 4600 heap and 32-bit textures, and the GMA 3150.
 
-Owed before the next release:
-- **The netbook (945GSE) on the current tree.** Two changes reach every
-  Gen3 part and have run on the GMA 3150 and a GMA 900, but not on it:
-  - the ring now opens at the heap's reserve, and the descriptor refuses
-    while no VBE size is known;
-  - the flip wait before engine clears, measured on the HD 4600.
+Not run before release, by decision (Michael, 2026-10-20): the netbook
+(945GSE) on the current tree. Two changes reach every Gen3 part and have
+run on the GMA 3150 and a GMA 900, but not on the 945:
+- the ring now opens at the heap's reserve, and the descriptor refuses
+  while no VBE size is known;
+- the flip wait before engine clears, measured on the HD 4600.
 
 ## Target coverage
 
