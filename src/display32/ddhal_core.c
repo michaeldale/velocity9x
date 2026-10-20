@@ -1618,6 +1618,38 @@ static int v9x_note_engine_blt_flip_pending(V9X_D3D_BLT_FLIP_RECORD *record,
     return 0;
 }
 
+/*
+ * An engine fill or copy into the buffer the last flip released, while that
+ * flip is pending, writes into what the panel is still scanning. The
+ * counters above only recorded it; on the HD 4600 the boot 54 log showed
+ * 3DMark 2001 SE's clears landing there (destination = retiring), and an
+ * OBS capture showed half-built frames. So it waits for the flip, as a
+ * Direct3D draw does (v9x_flip_wait_done), when the caller lets it wait;
+ * otherwise it answers still drawing, which DDBLT_WAIT callers never see.
+ * A wait that runs out goes ahead, as the draw rule does. 1 to go ahead,
+ * 0 for DDERR_WASSTILLDRAWING. Every other destination is untouched.
+ */
+static int v9x_blt_flip_guard(DWORD destination_offset, int wait)
+{
+    int waited;
+
+    if (v9x_hal == 0 || destination_offset != v9x_present_retiring ||
+        !v9x_flip_pending()) {
+        return 1;
+    }
+    if (!wait) {
+        return 0;
+    }
+    waited = v9x_flip_wait_done();
+    if (waited != V9X_FLIP_WAIT_NONE) {
+        ++v9x_hal->d3d_diagnostics.blt_flip_waited;
+        if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+            ++v9x_hal->d3d_diagnostics.blt_flip_wait_timeouts;
+        }
+    }
+    return 1;
+}
+
 static void v9x_note_engine_blt_result(V9X_D3D_BLT_FLIP_RECORD *record,
                                        int sampled, int outcome)
 {
@@ -1725,6 +1757,10 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         sampled = v9x_note_engine_blt_flip_pending(&record, V9X_D3D_BLT_COPY,
                                                    destination_offset,
                                                    source_offset);
+        if (!v9x_blt_flip_guard(destination_offset, wait)) {
+            data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+            return V9X_DDHAL_DRIVER_HANDLED;
+        }
         outcome = ops->copy(data, source_offset, destination_offset,
                             bytes_per_pixel, wait);
         v9x_note_engine_blt_result(&record, sampled, outcome);
@@ -1789,6 +1825,10 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         int sampled = v9x_note_engine_blt_flip_pending(
             &record, V9X_D3D_BLT_COLOR, offset, 0xfffffffful);
 
+        if (!v9x_blt_flip_guard(offset, wait)) {
+            data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+            return V9X_DDHAL_DRIVER_HANDLED;
+        }
         outcome = ops->fill(data, offset, bytes_per_pixel, wait);
         v9x_note_engine_blt_result(&record, sampled, outcome);
     }

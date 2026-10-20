@@ -34,3 +34,18 @@ flips handled and declined, the GDI-rule waits, and refused batches.
 After the heap plan
 ([plan](../plans/intel-haswell-heap-beyond-16-mib.md)) lands, run it
 again, since the heap is a suspect.
+
+## 2026-10-20: the flip was still pending; fixed
+
+Status: fixed in source and measured on the 4570 (boot 57).
+
+Michael's OBS capture of Lobby (`Y:\MWD\videos\obs\2026-10-20
+19-51-12.mkv`) shows half-built frames without 3DMark's overlay, 20 in
+117 captured frames. None of the three suspects above was the cause.
+Draws and engine clears were landing in the buffer the last flip had
+released while the panel was still scanning it: the Haswell draw path had
+no flip wait (Gen3 and the ViRGE do), and engine blits only counted a
+pending flip. Both now wait. After the fix, a full default run recorded
+by OBS showed 0 such frames in 32,310, with `FlipStillDrawing` 0, 3,337
+clears and 12 draws waiting, and no timeouts
+([record](../decisions/2026-10-20-haswell-32bit-textures-and-flip-wait.md)).

@@ -17,6 +17,19 @@ build identifier so exact guest-tested binaries remain traceable.
   ([plan](docs/plans/intel-haswell-heap-beyond-16-mib.md),
   [stolen memory](docs/decisions/2026-10-20-haswell-stolen-layout.md),
   [result](docs/decisions/2026-10-20-haswell-heap-to-31-mib.md)).
+- **Intel HD 4600: 32-bit textures.** Direct3D textures can be ARGB8888
+  and XRGB8888 as well as 16-bit, so 3DMark 2001 SE now runs with its
+  32-bit textures
+  ([record](docs/decisions/2026-10-20-haswell-32bit-textures-and-flip-wait.md)).
+- **Intel HD 4600: no more half-drawn frames in 3DMark 2001 SE.** A
+  frame could be drawn, or cleared, into the buffer the screen was still
+  showing, because a flip takes effect only at the next vertical blank.
+  Direct3D draws and DirectDraw engine clears now wait for it. In an OBS
+  recording of the whole benchmark, no half-drawn frame was seen, against
+  20 in 2 seconds of Lobby before. The clear's wait is in code every chip
+  shares; it has been measured on the HD 4600 only
+  ([record](docs/decisions/2026-10-20-haswell-32bit-textures-and-flip-wait.md),
+  [issue](docs/issues/2026-10-20-haswell-3dmark2001se-flicker.md)).
 
 ## 0.21.0 - 2026-10-20
 

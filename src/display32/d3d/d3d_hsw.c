@@ -505,10 +505,15 @@ static int v9x_d3d_hsw_ready(void)
 
 /* The 16-bit formats the sampler takes, by mask, as the 3dfx engine reads
  * them; the texture's alpha decides MODULATE's alpha. */
+/* The surface's own layout, or the display's when it carries none, through
+ * v9x_d3d_hsw_texel_format (d3d_hsw_map.c, host-tested). bytes may be
+ * null. */
 static int v9x_d3d_hsw_texture_format_of(const V9X_DD_SURFACE_LCL *surface,
-                                         v9x_u16 *format, int *has_alpha)
+                                         v9x_u16 *format, int *has_alpha,
+                                         v9x_u32 *bytes)
 {
     const V9X_DDPIXELFORMAT *pf;
+    v9x_u32 texel_bytes;
 
     if (surface == 0 || surface->lpGbl == 0) {
         return 0;
@@ -518,32 +523,18 @@ static int v9x_d3d_hsw_texture_format_of(const V9X_DD_SURFACE_LCL *surface,
     } else {
         pf = &v9x_hal->info.vmiData.ddpfDisplay;
     }
-    if ((pf->dwFlags & V9X_DDPF_RGB) == 0ul || pf->dwRGBBitCount != 16ul) {
+    if ((pf->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        !v9x_d3d_hsw_texel_format(pf->dwRGBBitCount,
+                                  (pf->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul,
+                                  pf->dwRBitMask, pf->dwGBitMask,
+                                  pf->dwBBitMask, pf->dwRGBAlphaBitMask,
+                                  format, has_alpha, &texel_bytes)) {
         return 0;
     }
-    if ((pf->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul) {
-        if (pf->dwRBitMask == 0x0000f800ul && pf->dwGBitMask == 0x000007e0ul &&
-            pf->dwBBitMask == 0x0000001ful) {
-            *format = V9X_HSW_FMT_B5G6R5_UNORM;
-            *has_alpha = 0;
-            return 1;
-        }
-        return 0;
+    if (bytes != 0) {
+        *bytes = texel_bytes;
     }
-    *has_alpha = 1;
-    if (pf->dwRBitMask == 0x00007c00ul && pf->dwGBitMask == 0x000003e0ul &&
-        pf->dwBBitMask == 0x0000001ful &&
-        pf->dwRGBAlphaBitMask == 0x00008000ul) {
-        *format = V9X_HSW_FMT_B5G5R5A1_UNORM;
-        return 1;
-    }
-    if (pf->dwRBitMask == 0x00000f00ul && pf->dwGBitMask == 0x000000f0ul &&
-        pf->dwBBitMask == 0x0000000ful &&
-        pf->dwRGBAlphaBitMask == 0x0000f000ul) {
-        *format = V9X_HSW_FMT_B4G4R4A4_UNORM;
-        return 1;
-    }
-    return 0;
+    return 1;
 }
 
 static int v9x_d3d_hsw_texture_format(const V9X_DD_SURFACE_LCL *surface,
@@ -557,7 +548,7 @@ static int v9x_d3d_hsw_texture_format(const V9X_DD_SURFACE_LCL *surface,
     }
     *format_out = 0ul;
     if (v9x_hal == 0 ||
-        !v9x_d3d_hsw_texture_format_of(surface, &format, &has_alpha)) {
+        !v9x_d3d_hsw_texture_format_of(surface, &format, &has_alpha, 0)) {
         return 0;
     }
     *format_out = format;
@@ -686,6 +677,9 @@ static v9x_u8 v9x_d3d_hsw_mip_levels(const V9X_DD_SURFACE_LCL *top)
     DWORD height = (DWORD)top->lpGbl->wHeight;
     DWORD count = 1ul;
     DWORD verified;
+    v9x_u16 format;
+    int has_alpha;
+    v9x_u32 bytes;
 
     if ((top->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul) {
         return 1u;
@@ -731,8 +725,11 @@ static v9x_u8 v9x_d3d_hsw_mip_levels(const V9X_DD_SURFACE_LCL *top)
     if (count == 1ul) {
         return 1u;
     }
-    if (v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
-                              (v9x_u8)count, 2u, &tree) != V9X_STATUS_OK) {
+    /* The tree is laid out in the texel size create_miptree placed it at. */
+    if (!v9x_d3d_hsw_texture_format_of(top, &format, &has_alpha, &bytes) ||
+        v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
+                              (v9x_u8)count, (v9x_u8)bytes, &tree) !=
+            V9X_STATUS_OK) {
         ++v9x_hal->d3d_diagnostics.mip_gap_shape;
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         return 1u;
@@ -790,7 +787,8 @@ static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
         surface->lpGbl->lPitch <= 0l ||
-        !v9x_d3d_hsw_texture_format_of(surface, &unit->format, has_alpha)) {
+        !v9x_d3d_hsw_texture_format_of(surface, &unit->format, has_alpha,
+                                       0)) {
         return V9X_D3D_HSW_REFUSE_TEXTURE;
     }
     offset = v9x_surface_offset(surface);
@@ -1270,6 +1268,27 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         return 0;
     }
+    /*
+     * A flip still pending means the panel is still fetching the buffer
+     * Flip just released, which is where Direct3D draws next: Flip returns
+     * once DSPASURF is written, the plane takes it at the next blank, and
+     * Direct3D does not ask GetFlipStatus before drawing. Without this wait
+     * 3DMark 2001 SE's Lobby showed half-built frames, without its overlay,
+     * every few frames on the i5-4570 (OBS capture, 2026-10-20), with
+     * DrawsFlipWaited at 0. Gen3 has waited here since intel78, and the
+     * rule is Gen3's: a wait that runs out is a dead scanout, and the batch
+     * is drawn anyway.
+     */
+    {
+        int waited = v9x_flip_wait_done();
+
+        if (waited != V9X_FLIP_WAIT_NONE) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+            }
+        }
+    }
     wait_after = v9x_d3d_hsw_draw_waits();
 
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
@@ -1609,7 +1628,7 @@ static DWORD v9x_d3d_hsw_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
  * own layout. Declines are counted with Gen3's reasons.
  */
 #define V9X_D3D_HSW_MIPTREE_SHAPE  1ul  /* not a halving chain */
-#define V9X_D3D_HSW_MIPTREE_FORMAT 2ul  /* not 16 bits per texel */
+#define V9X_D3D_HSW_MIPTREE_FORMAT 2ul  /* not a layout the sampler takes */
 
 static DWORD v9x_d3d_hsw_miptree_decline(DWORD reason)
 {
@@ -1622,8 +1641,10 @@ static DWORD v9x_d3d_hsw_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     V9X_DD_SURFACE_LCL *top = list[0];
-    const V9X_DDPIXELFORMAT *pixel;
     struct v9x_hsw_miptree tree;
+    v9x_u16 format;
+    int has_alpha;
+    v9x_u32 bytes;
     DWORD width = (DWORD)top->lpGbl->wWidth;
     DWORD height = (DWORD)top->lpGbl->wHeight;
     DWORD index;
@@ -1658,18 +1679,14 @@ static DWORD v9x_d3d_hsw_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
             return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
         }
     }
-    /* Sixteen bits a texel: every format the sampler takes here (565, 1555,
-     * 4444), and the two bytes the layout is computed in. No format of its
+    /* A layout the sampler takes (565, 1555, 4444, ARGB8888, XRGB8888),
+     * and its texel size, which the layout is computed in. No format of its
      * own means the display's. */
-    pixel = (top->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
-        ? &top->lpGbl->ddpfSurface
-        : &v9x_hal->info.vmiData.ddpfDisplay;
-    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        pixel->dwRGBBitCount != 16ul) {
+    if (!v9x_d3d_hsw_texture_format_of(top, &format, &has_alpha, &bytes)) {
         return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_FORMAT);
     }
     if (v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
-                              (v9x_u8)data->dwSCnt, 2u, &tree) !=
+                              (v9x_u8)data->dwSCnt, (v9x_u8)bytes, &tree) !=
             V9X_STATUS_OK) {
         return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
     }
@@ -1823,8 +1840,9 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
         V9X_DDBD_16 | V9X_DDBD_32;
 
-    /* RGB565, ARGB1555 and ARGB4444: the shared block has three slots. */
-    for (index = 0ul; index < 3ul; ++index) {
+    /* RGB565, ARGB1555 and ARGB4444, then ARGB8888 and XRGB8888
+     * (v9x_d3d_hsw_texel_format): the shared block's five slots. */
+    for (index = 0ul; index < 5ul; ++index) {
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
         shared->texture_formats[index].dwFlags =
             V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
@@ -1852,8 +1870,22 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
     shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
         0x0000f000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0xff000000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 3ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }

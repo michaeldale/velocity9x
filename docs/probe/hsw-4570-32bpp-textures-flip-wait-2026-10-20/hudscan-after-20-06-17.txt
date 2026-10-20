@@ -1,0 +1,3 @@
+frames 32310, overlay present (>=12) in 29883
+isolated drops 0
+first drops (frame, seconds): 

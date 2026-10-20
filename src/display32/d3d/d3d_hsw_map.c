@@ -60,6 +60,52 @@ int v9x_d3d_hsw_target(v9x_u32 r3d_format, v9x_u16 *format,
     return 1;
 }
 
+int v9x_d3d_hsw_texel_format(v9x_u32 bits, int alpha_pixels, v9x_u32 red,
+                             v9x_u32 green, v9x_u32 blue, v9x_u32 alpha,
+                             v9x_u16 *format, int *has_alpha,
+                             v9x_u32 *bytes)
+{
+    static const struct {
+        v9x_u32 bits;
+        int alpha_pixels;
+        v9x_u32 red;
+        v9x_u32 green;
+        v9x_u32 blue;
+        v9x_u32 alpha;
+        v9x_u16 format;
+    } layouts[] = {
+        { 16ul, 0, 0x0000f800ul, 0x000007e0ul, 0x0000001ful, 0ul,
+          V9X_HSW_FMT_B5G6R5_UNORM },
+        { 16ul, 1, 0x00007c00ul, 0x000003e0ul, 0x0000001ful, 0x00008000ul,
+          V9X_HSW_FMT_B5G5R5A1_UNORM },
+        { 16ul, 1, 0x00000f00ul, 0x000000f0ul, 0x0000000ful, 0x0000f000ul,
+          V9X_HSW_FMT_B4G4R4A4_UNORM },
+        { 32ul, 1, 0x00ff0000ul, 0x0000ff00ul, 0x000000fful, 0xff000000ul,
+          V9X_HSW_FMT_B8G8R8A8_UNORM },
+        { 32ul, 0, 0x00ff0000ul, 0x0000ff00ul, 0x000000fful, 0ul,
+          V9X_HSW_FMT_B8G8R8X8_UNORM }
+    };
+    unsigned int index;
+
+    /* A layout without the alpha flag has no alpha mask to compare: DDRAW
+     * leaves it whatever the caller passed, so it is read as 0. */
+    if (!alpha_pixels) {
+        alpha = 0ul;
+    }
+    for (index = 0u; index < sizeof(layouts) / sizeof(layouts[0]); ++index) {
+        if (layouts[index].bits == bits &&
+            (layouts[index].alpha_pixels != 0) == (alpha_pixels != 0) &&
+            layouts[index].red == red && layouts[index].green == green &&
+            layouts[index].blue == blue && layouts[index].alpha == alpha) {
+            *format = layouts[index].format;
+            *has_alpha = layouts[index].alpha_pixels != 0;
+            *bytes = bits / 8ul;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int v9x_d3d_hsw_depth_format(v9x_u32 cell_bytes, v9x_u8 *format)
 {
     if (cell_bytes == 2ul) {

@@ -257,9 +257,65 @@ static void test_depth(void)
           8388609.5);
 }
 
+/* A texture's layout as the sampler's format, its alpha and its texel
+ * size: the three 16-bit layouts as before, and the two 32-bit ones. */
+static void test_texel_format(void)
+{
+    v9x_u16 format = 0u;
+    int alpha = -1;
+    v9x_u32 bytes = 0ul;
+
+    CHECK(v9x_d3d_hsw_texel_format(16ul, 0, 0xf800ul, 0x07e0ul, 0x001ful,
+                                   0ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_B5G6R5_UNORM && alpha == 0 && bytes == 2ul);
+    CHECK(v9x_d3d_hsw_texel_format(16ul, 1, 0x7c00ul, 0x03e0ul, 0x001ful,
+                                   0x8000ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_B5G5R5A1_UNORM && alpha == 1 &&
+          bytes == 2ul);
+    CHECK(v9x_d3d_hsw_texel_format(16ul, 1, 0x0f00ul, 0x00f0ul, 0x000ful,
+                                   0xf000ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_B4G4R4A4_UNORM && alpha == 1 &&
+          bytes == 2ul);
+    CHECK(v9x_d3d_hsw_texel_format(32ul, 1, 0x00ff0000ul, 0x0000ff00ul,
+                                   0x000000fful, 0xff000000ul, &format,
+                                   &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_B8G8R8A8_UNORM && alpha == 1 &&
+          bytes == 4ul);
+    CHECK(v9x_d3d_hsw_texel_format(32ul, 0, 0x00ff0000ul, 0x0000ff00ul,
+                                   0x000000fful, 0ul, &format, &alpha,
+                                   &bytes));
+    CHECK(format == V9X_HSW_FMT_B8G8R8X8_UNORM && alpha == 0 &&
+          bytes == 4ul);
+
+    /* An alpha mask without the alpha flag is not alpha, as the 565 path
+     * always read it: XRGB8888. */
+    CHECK(v9x_d3d_hsw_texel_format(32ul, 0, 0x00ff0000ul, 0x0000ff00ul,
+                                   0x000000fful, 0xff000000ul, &format,
+                                   &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_B8G8R8X8_UNORM && alpha == 0);
+
+    /* Refused, and nothing written: 1555 with no alpha flag (XRGB1555 is
+     * not offered), ABGR order, 24-bit, and a 565 claiming alpha. */
+    format = 0x1234u;
+    alpha = -1;
+    bytes = 7ul;
+    CHECK(!v9x_d3d_hsw_texel_format(16ul, 0, 0x7c00ul, 0x03e0ul, 0x001ful,
+                                    0ul, &format, &alpha, &bytes));
+    CHECK(!v9x_d3d_hsw_texel_format(32ul, 1, 0x000000fful, 0x0000ff00ul,
+                                    0x00ff0000ul, 0xff000000ul, &format,
+                                    &alpha, &bytes));
+    CHECK(!v9x_d3d_hsw_texel_format(24ul, 0, 0x00ff0000ul, 0x0000ff00ul,
+                                    0x000000fful, 0ul, &format, &alpha,
+                                    &bytes));
+    CHECK(!v9x_d3d_hsw_texel_format(16ul, 1, 0xf800ul, 0x07e0ul, 0x001ful,
+                                    0ul, &format, &alpha, &bytes));
+    CHECK(format == 0x1234u && alpha == -1 && bytes == 7ul);
+}
+
 unsigned int v9x_run_d3d_hsw_map_tests(void)
 {
     failures = 0u;
+    test_texel_format();
     test_target();
     test_depth();
     test_accepted();

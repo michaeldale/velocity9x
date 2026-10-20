@@ -4,7 +4,6 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
-- [2026-10-20 Haswell, 3DMark 2001 SE: Michael sees flicker on the i5-4570 (3DMark 2000 and Quake 2 look right; test and frequency not yet known)](2026-10-20-haswell-3dmark2001se-flicker.md)
 - [2026-10-20 Haswell, a tester's HD 4600 (report V9X-D9VZS6): artifacts in 3DMark 2001 SE; reproduced on the 4570: refused batches (kernel slots, fixed) and the Lobby mosaic (texture coordinate index, fixed); a diagonal cut and one Pro-test stripe open](2026-10-20-haswell-3dmark2001se-artifacts-field.md)
 - [2026-10-19 Half-Life OpenGL's Multiplayer menu is corrupt on the Millennium II every time (parked; Direct3D clean; the netbook's 2026-10-06 picture, now reproducible)](2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)
 - [2026-10-17 Haswell, 3DMark 99: every flip declined, so one frame in three is drawn on screen; Game 2 and the 16/32 MB texture tests slow (flicker fixed by F3, seen 2026-10-18; open for the Game 2 submit cost)](2026-10-17-haswell-3dmark99-flicker-and-game2.md)
@@ -84,6 +83,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-10-20 Haswell, 3DMark 2001 SE flicker on the i5-4570 (fixed 2026-10-20: draws and engine clears now wait for a pending flip; 20 half-built frames in 117 before, 0 in 32,310 after)](2026-10-20-haswell-3dmark2001se-flicker.md)
 - [2026-10-16 ATI: 16 bpp modes with no 15 bpp sibling stay 5:6:5 (fixed 2026-10-16: the twins were in the BIOS list under ATI's numbers; Wipeout's title draws, Assault Rigs' screen not yet looked at)](2026-10-16-ati-16bpp-modes-without-a-555-sibling.md)
 - [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locked on 3D (fixed in 0.18.3: the live-counter read of a disabled pipe; confirmed by the reporter 2026-10-15)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
 - [2026-10-11 3DMark2000 showed "3D pattern corruption" on a reporter's GMA 900 (GitHub issue 7; fixed in 0.18.4: polygon stipple turned off; confirmed by the reporter 2026-10-15)](2026-10-11-3dmark2000-pattern-corruption-gma900.md)

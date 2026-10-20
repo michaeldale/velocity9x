@@ -263,6 +263,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-20 HD 4600: draws wait only while GDI may own the screen; 3DMark 2000 112 µs a batch, Half-Life mwd5 60.5 to 79.3 fps](2026-10-20-haswell-pipelined-gdi-rule.md)
 - [2026-10-20 HD 4600: stolen memory is writable to 31 MiB, and 1082C0h names the protected top megabyte](2026-10-20-haswell-stolen-layout.md)
 - [2026-10-20 HD 4600: the heap runs to 30.8 MiB, and 3DMark 2001 SE declines no mip tree for room (the 8 refusals first seen were V9XDDP's by-design checks)](2026-10-20-haswell-heap-to-31-mib.md)
+- [2026-10-20 HD 4600: 32-bit textures, and draws and clears that wait for a pending flip (3DMark 2001 SE's half-built frames, 20 in 117 to 0 in 32,310)](2026-10-20-haswell-32bit-textures-and-flip-wait.md)
 - [2026-10-20 HD 4600: kernel slots were too small for specular with fog; 768-byte slots end 3DMark 2001 SE's refused batches, and the Lobby mosaic is older than pipelining](2026-10-20-haswell-kernel-slots-768.md)
 - [2026-10-20 HD 4600 on 0.21.0: OpenGL, Glide and 3DCIF read as on 2026-10-18 through the pipelined engine](2026-10-20-haswell-0.21.0-render-probes.md)
 

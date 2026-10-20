@@ -51,6 +51,20 @@ int v9x_d3d_hsw_target(v9x_u32 r3d_format, v9x_u16 *format,
                        v9x_u8 *write_disable);
 
 /*
+ * A texture's pixel layout as the sampler's SURFACE_STATE format, whether
+ * that format carries alpha, and its bytes a texel. Given the
+ * DDPIXELFORMAT's bit count, whether it says it has alpha, and its four
+ * masks. Five layouts: RGB565, ARGB1555 and ARGB4444 as before, and since
+ * 2026-10-20 ARGB8888 as B8G8R8A8_UNORM and XRGB8888 as B8G8R8X8_UNORM,
+ * whose alpha the sampler reads as 1 whatever the X byte holds. 0 for any
+ * other layout, nothing written.
+ */
+int v9x_d3d_hsw_texel_format(v9x_u32 bits, int alpha_pixels, v9x_u32 red,
+                             v9x_u32 green, v9x_u32 blue, v9x_u32 alpha,
+                             v9x_u16 *format, int *has_alpha,
+                             v9x_u32 *bytes);
+
+/*
  * The Z buffer's 3DSTATE_DEPTH_BUFFER (and 3DSTATE_SF) format for its cell:
  * 2 bytes D16_UNORM, as F2b built it, or 4 bytes D24_UNORM_X8_UINT, 24 bits
  * of depth beside 16 (docs\plans\32bpp-acceleration-and-3d.md, decision 1).

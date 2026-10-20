@@ -1721,6 +1721,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026102002: V9X_DD_SHARED's texture_formats grows from three to five,
+ * for the HD 4600's ARGB8888 and XRGB8888 textures. A layout change:
+ * everything after it moves. V9X_D3D_DIAGNOSTICS also gains
+ * blt_flip_waited and blt_flip_wait_timeouts at its end, under the same
+ * stamp: neither change has shipped. */
 /* 2026102001: V9X_DD_ENGINE gains reserve_offset, the graphics address of
  * the Haswell engine reserve, which no longer sits at a fixed offset
  * (docs\plans\intel-haswell-heap-beyond-16-mib.md). A layout change: every
@@ -1858,7 +1863,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026102001ul
+#define V9X_DD_SHARED_ABI   2026102002ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -3670,6 +3675,15 @@ typedef struct v9x_d3d_diagnostics {
     DWORD mga_texture_refused_last_vidmem;
     DWORD mga_texture_refused_last_flags;
     DWORD mga_texture_refused_last_global;
+    /*
+     * Engine fills and copies aimed at the buffer the last flip released
+     * while that flip was still pending, which waited for it, and those
+     * whose wait ran out (and drew anyway). blt_engine_flip_pending only
+     * counted them, and the 4570's boot 54 log showed 3DMark 2001 SE's
+     * clears landing there. Appended 2026-10-20 within ABI 2026102002.
+     */
+    DWORD blt_flip_waited;
+    DWORD blt_flip_wait_timeouts;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */
@@ -4136,12 +4150,17 @@ typedef struct v9x_dd_shared {
      * has no RGB565 mode (build\reference-vid_s3_virge.c:4564-4577), so the
      * two engines legitimately publish different lists into the same array.
      *
+     * Five since ABI 2026102002: the HD 4600 adds ARGB8888 and XRGB8888 to
+     * its three (docs\STATUS.md, HD 4600 32-bit textures). Every other engine
+     * still publishes two or three, and dwNumTextureFormats says how many.
+     *
      * Widening this moves every member after it, so the 16-bit driver and the
      * 32-bit HAL must be built and deployed together. dwSize is stamped from
-     * sizeof(V9X_DD_SHARED) and the block is allocated at 4096, which the
-     * assertion at the end of this header still holds.
+     * sizeof(V9X_DD_SHARED) and the block is allocated at
+     * V9X_DD_SHARED_BYTES, which the assertion at the end of this header
+     * still holds.
      */
-    V9X_DDSURFACEDESC texture_formats[3];
+    V9X_DDSURFACEDESC texture_formats[5];
     V9X_D3DHAL_CALLBACKS d3d_callbacks;
     V9X_D3D_DIAGNOSTICS d3d_diagnostics;
     V9X_VIDMEM heaps[1];
