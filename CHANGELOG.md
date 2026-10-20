@@ -14,14 +14,15 @@ build identifier so exact guest-tested binaries remain traceable.
     of a BAR of its own; the driver now finds it there.
   - Hardware Direct3D runs on a new Gen4 engine: its own pixel and setup
     programs and pipeline state. The Direct3D probe passed every check at
-    16 and 32 bpp, including texturing, depth and blending.
+    16 and 32 bpp, including texturing, depth and blending. 3DMark 2000's
+    default benchmark ran to its score.
+  - Page flips, through Gen4's own plane registers, at the panel's
+    refresh.
 
   Not offered:
   - A 32-bit Z buffer. The one try hung the 3D engine, so only 16-bit Z
     is offered.
   - Mipmap levels beyond the first, and two texture units.
-  - Page flips. Gen4 moved the plane base register; DirectDraw copies
-    each frame instead.
 
 ## 0.22.0 - 2026-10-20
 

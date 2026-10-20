@@ -40,6 +40,45 @@ static volatile DWORD *v9x_i9xx_scanout_reg(DWORD offset)
     return (volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
 }
 
+/* A Gen4 part (the GM965) under the Gen3 engine type. */
+static int v9x_i9xx_scanout_gen4(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) !=
+           0ul;
+}
+
+/* The plane's base as the scanout takes it, from the Gen3 address
+ * register: that register, or on Gen4 SURF plus LINOFF. */
+static DWORD v9x_i9xx_plane_base(DWORD base_reg)
+{
+    if (v9x_i9xx_scanout_gen4()) {
+        return *v9x_i9xx_scanout_reg(base_reg +
+                                     V9X_I9XX_GEN4_SURF_FROM_LINOFF) +
+               *v9x_i9xx_scanout_reg(base_reg);
+    }
+    return *v9x_i9xx_scanout_reg(base_reg);
+}
+
+/*
+ * Move the plane base. Gen3 takes the byte offset in its address register.
+ * Gen4 takes a 128 KiB-aligned SURF and the rest in LINOFF; LINOFF is
+ * written first because the SURF write latches both, and the read back
+ * posts it as i915 does.
+ */
+static void v9x_i9xx_write_plane_base(DWORD base_reg, DWORD byte_offset)
+{
+    DWORD surf;
+
+    if (!v9x_i9xx_scanout_gen4()) {
+        *v9x_i9xx_scanout_reg(base_reg) = byte_offset;
+        return;
+    }
+    surf = byte_offset & ~(V9X_I9XX_GEN4_SURF_ALIGN - 1ul);
+    *v9x_i9xx_scanout_reg(base_reg) = byte_offset - surf;
+    *v9x_i9xx_scanout_reg(base_reg + V9X_I9XX_GEN4_SURF_FROM_LINOFF) = surf;
+    (void)*v9x_i9xx_scanout_reg(base_reg + V9X_I9XX_GEN4_SURF_FROM_LINOFF);
+}
+
 /* Non-zero when the Intel controls own the scanout on this boot. */
 static int v9x_i9xx_scanout_active(void)
 {
@@ -549,7 +588,10 @@ static void v9x_i9xx_note_watermarks(void)
      * the log, so a capture shows what the register held.
      */
     if ((v9x_hal->engine.engine_caps &
-         V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC) != 0ul) {
+         (V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC | V9X_DD_ENGINE_CAP_I9XX_GEN4)) !=
+        0ul) {
+        /* Gen4's watermarks are DSPFW1-3 (i915 i965_update_wm), which the
+         * BIOS programmed for the mode a flip does not change. */
         return;
     }
     if (want != 0ul && want != fw_blc) {
@@ -1257,7 +1299,7 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             }
         }
     }
-    if (*v9x_i9xx_scanout_reg(base_reg) == byte_offset) {
+    if (v9x_i9xx_plane_base(base_reg) == byte_offset) {
         ++v9x_hal->d3d_diagnostics.flip_base_immediate;
     } else {
         ++v9x_hal->d3d_diagnostics.flip_base_deferred;
@@ -1275,7 +1317,7 @@ void v9x_scanout_note_flip_done(void)
         return;
     }
     v9x_i9xx_scanout_flip_outstanding = 0;
-    if (*v9x_i9xx_scanout_reg(v9x_i9xx_scanout_last_base_reg) ==
+    if (v9x_i9xx_plane_base(v9x_i9xx_scanout_last_base_reg) ==
             v9x_i9xx_scanout_last_offset) {
         ++v9x_hal->d3d_diagnostics.flip_taken_at_done;
     } else {
@@ -1347,7 +1389,7 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset, int use_ring)
         v9x_i9xx_note_flip_issued(base, byte_offset);
         return 1;
     }
-    *v9x_i9xx_scanout_reg(base) = byte_offset;
+    v9x_i9xx_write_plane_base(base, byte_offset);
     /* The read back posts the write, as i915 does after every plane-base
      * write on this generation, and now also says what the register holds:
      * the new base at once, or the old one until some later moment. */
@@ -1619,7 +1661,7 @@ DWORD v9x_scanout_displayed_offset(void)
         !v9x_i9xx_scanout_pipe(&dsl, &vtotal, &base)) {
         return 0xfffffffful;
     }
-    return *v9x_i9xx_scanout_reg(base);
+    return v9x_i9xx_plane_base(base);
 }
 
 int v9x_scanout_hw_flip(void)

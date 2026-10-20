@@ -432,6 +432,15 @@
 #define V9X_I9XX_REG_DSPB_ADDR           ((v9x_u32)0x00071184ul)
 #define V9X_I9XX_REG_DSPB_STRIDE         ((v9x_u32)0x00071188ul)
 /*
+ * Gen4 (GM965): the plane base is DSPxSURF, 18h past the Gen3 address
+ * register, which on Gen4 is DSPxLINOFF - a byte offset added to SURF.
+ * Writing SURF is what latches a flip, so LINOFF goes first. A linear
+ * surface's SURF must be 128 KiB aligned on the 965 (965 PRM Vol 3
+ * 2.10.5.8; i915 i965_plane_min_alignment).
+ */
+#define V9X_I9XX_GEN4_SURF_FROM_LINOFF   ((v9x_u32)0x00000018ul)
+#define V9X_I9XX_GEN4_SURF_ALIGN         ((v9x_u32)0x00020000ul)
+/*
  * Read-only instruments, i915 v4.4 i915_reg.h names and offsets.
  *
  * ACTHD (gen2/3 at 0x20c8; gen4+ moved it to 0x2074) is the graphics

@@ -350,13 +350,11 @@ static void v9x_gma3150_fill_engine(unsigned long framebuffer_linear_base,
  * Gen3 3D command set for a URB pipeline with EU kernels. The I9XX_GEN4
  * bit says so to the HAL, which selects by it.
  *
- * What is withheld, and why:
- *  - FLIP and FLIP_RING. The HAL flips by writing the plane base at
- *    70184h/71184h, which on the 965 is DSPxLINOFF, an offset added to
- *    DSPxSURF (7019Ch/7119Ch); the write would not latch (965 PRM Vol 3
- *    2.10.5). The HAL also writes FW_BLC, which i915 does not program this
- *    way on Gen4 (i965_update_wm). Flips wait for a DSPSURF path.
- * ASYNC_SUBMIT stays: it is how blits queue on the ring.
+ * FLIP is the register flip, which the HAL makes through DSPxSURF and
+ * DSPxLINOFF on this bit, without the Gen3 FW_BLC write (i9xx_scanout.c).
+ * FLIP_RING is withheld: Gen4's MI_DISPLAY_FLIP is not the 915 packet
+ * i9xx_flip.c builds. ASYNC_SUBMIT stays: it is how blits queue on the
+ * ring.
  */
 static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *control_linear_base,
@@ -370,7 +368,7 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
-    *engine_caps &= ~(V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_FLIP_RING);
+    *engine_caps &= ~V9X_DD_ENGINE_CAP_FLIP_RING;
     if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN4;
     }
