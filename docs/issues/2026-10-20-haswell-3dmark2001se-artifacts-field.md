@@ -169,3 +169,34 @@ Still open:
   (`MipGapOffset`), and 7,038 mip trees were declined for heap room.
 - One scene in the vertex-shader test is cut by a diagonal edge
   (`shot13-cut.png`), with no refusal behind it.
+
+## 2026-10-20: the mosaic was the wrong texture coordinate set
+
+3DMark 2001 SE's DrawPrimitives2 stream set stage 0's
+`D3DTSS_TEXCOORDINDEX`: bit 11 of `Dp2SettleTss` (`0x12813`), boot 48.
+The driver ignored that state, and `v9x_dp2_fvf_convert` always copied a
+vertex's set 0. The Lobby is lightmapped, and its passes draw from
+vertices that carry two coordinate sets, so the pass asking for the
+other set was sampled with set 0's coordinates instead.
+
+The fix is in the shared core, not the Haswell engine:
+- `d3d_dp2.c`: the layout records every set's offset;
+  `v9x_dp2_fvf_convert_set` takes the stage's set, and reads set 0 for
+  a set the vertex lacks.
+- `d3d_core.c`: stage 0's `TEXCOORDINDEX` (its low word) is kept in the
+  context and used for every converted vertex.
+
+The host test (two-set and one-float-set FVFs) failed first against a
+stub that ignored the set.
+
+**Boot 51** (build `03850501-dirty`): the Lobby's walls, floor and
+lightmap shadows draw correctly (`lobby-boot51-texcoord.png`), and so do
+Dragothic's buildings (`run-frames-boot51-texcoord.png`). 0 refused
+batches, no timeouts; score 796.
+
+Still open:
+- The vertex-shader scene's diagonal cut (shot 13 of boot 51).
+- A column of striped garbage in shot 16 of boot 51. It is one of the
+  four Pro tests that registration added, and which test it is was not
+  read.
+- Other chips' DirectX 8 paths take the same fix. None has run it.

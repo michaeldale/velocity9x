@@ -1762,6 +1762,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->stage_alpha_op = V9X_D3DTOP_SELECTARG1;
             context->stage_min = V9X_D3DTFG_POINT;
             context->stage_mip = V9X_D3DTFP_NONE;
+            context->stage_texcoord = 0ul;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -3828,10 +3829,18 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
         v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMIN,
                             v9x_d3d_dp2_min_filter(context));
         break;
+    case V9X_D3DTSS_TEXCOORDINDEX:
+        /* Which coordinate set stage 0 samples with. Ignored until
+         * 2026-10-20, which drew 3DMark 2001 SE's lightmapped Lobby with
+         * the wrong set in one of its passes, a mosaic of the lightmaps.
+         * The high word's generation flags (camera-space normal and the
+         * like) need transform and lighting, which pre-transformed
+         * vertices have already had. */
+        context->stage_texcoord = (DWORD)value & 0xfffful;
+        break;
     default:
-        /* The alpha arguments, texture coordinate index, LOD bias and the
-         * bump-map states: one unit with the DX5 blends has no use for
-         * them. */
+        /* The alpha arguments, LOD bias and the bump-map states: one unit
+         * with the DX5 blends has no use for them. */
         break;
     }
 }
@@ -3843,7 +3852,8 @@ static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
     if (user->fvf == 0) {
         *vertex = *(const V9X_R3D_VERTEX *)source;
     } else {
-        v9x_dp2_fvf_convert(user->fvf, source, (v9x_u8 *)vertex);
+        v9x_dp2_fvf_convert_set(user->fvf, user->context->stage_texcoord,
+                                source, (v9x_u8 *)vertex);
     }
 }
 

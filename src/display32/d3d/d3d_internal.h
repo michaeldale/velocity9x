@@ -203,6 +203,9 @@ typedef struct v9x_d3d_context {
     DWORD stage_alpha_op;
     DWORD stage_min;
     DWORD stage_mip;
+    /* D3DTSS_TEXCOORDINDEX's low word: which of a flexible vertex's
+     * coordinate sets stage 0 samples with (v9x_dp2_fvf_convert_set). */
+    DWORD stage_texcoord;
 } V9X_D3D_CONTEXT;
 
 /*

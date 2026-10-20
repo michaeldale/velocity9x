@@ -158,10 +158,21 @@ typedef struct v9x_dp2_fvf {
     v9x_u32 specular;
     v9x_u32 tex0;
     v9x_u32 tex0_floats;         /* 1 to 4 when tex0 is present        */
+    /* Every coordinate set, for a stage's TEXCOORDINDEX: tex[i] the byte
+     * offset of set i, tex_floats[i] its float count, tex_sets how many. */
+    v9x_u32 tex_sets;
+    v9x_u32 tex[8];
+    v9x_u32 tex_floats[8];
 } V9X_DP2_FVF;
 
 /* Fill layout for fvf; 0 when this driver cannot draw the format. */
 int v9x_dp2_fvf_layout(v9x_u32 fvf, V9X_DP2_FVF *layout);
+
+/* One vertex of layout as a D3DTLVERTEX, its coordinates taken from set
+ * `set` (a stage's TEXCOORDINDEX); a set the vertex lacks reads set 0.
+ * v9x_dp2_fvf_convert is this with set 0. */
+void v9x_dp2_fvf_convert_set(const V9X_DP2_FVF *layout, v9x_u32 set,
+                             const v9x_u8 *source, v9x_u8 *tlvertex);
 
 /* Whether the layout is D3DTLVERTEX itself, so no copy is needed. */
 int v9x_dp2_fvf_is_tlvertex(const V9X_DP2_FVF *layout);

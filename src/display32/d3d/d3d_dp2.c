@@ -552,6 +552,7 @@ int v9x_dp2_fvf_layout(v9x_u32 fvf, V9X_DP2_FVF *layout)
     layout->specular = V9X_DP2_FVF_ABSENT;
     layout->tex0 = V9X_DP2_FVF_ABSENT;
     layout->tex0_floats = 0ul;
+    layout->tex_sets = sets;
     if ((fvf & V9X_DP2_FVF_DIFFUSE) != 0ul) {
         layout->diffuse = at;
         at += 4ul;
@@ -567,6 +568,8 @@ int v9x_dp2_fvf_layout(v9x_u32 fvf, V9X_DP2_FVF *layout)
             layout->tex0 = at;
             layout->tex0_floats = floats;
         }
+        layout->tex[i] = at;
+        layout->tex_floats[i] = floats;
         at += floats * 4ul;
     }
     layout->stride = at;
@@ -591,8 +594,26 @@ static void v9x_dp2_put(v9x_u8 *p, v9x_u32 value)
 void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
                          v9x_u8 *tlvertex)
 {
-    v9x_u32 i;
+    v9x_dp2_fvf_convert_set(layout, 0ul, source, tlvertex);
+}
 
+void v9x_dp2_fvf_convert_set(const V9X_DP2_FVF *layout, v9x_u32 set,
+                             const v9x_u8 *source, v9x_u8 *tlvertex)
+{
+    v9x_u32 i;
+    v9x_u32 tex = V9X_DP2_FVF_ABSENT;
+    v9x_u32 floats = 0ul;
+
+    /* The stage's set if the vertex has it, else set 0: an index past the
+     * format is the application's error, and reading set 0 keeps the read
+     * inside the vertex. */
+    if (set < layout->tex_sets) {
+        tex = layout->tex[set];
+        floats = layout->tex_floats[set];
+    } else if (layout->tex_sets != 0ul) {
+        tex = layout->tex[0];
+        floats = layout->tex_floats[0];
+    }
     for (i = 0ul; i < 16ul; ++i) {
         tlvertex[i] = source[i];
     }
@@ -603,12 +624,11 @@ void v9x_dp2_fvf_convert(const V9X_DP2_FVF *layout, const v9x_u8 *source,
                                    ? v9x_dp2_dword(source + layout->specular)
                                    : 0xff000000ul);
     /* Float bits are copied, never converted: 0ul is +0.0f. */
-    v9x_dp2_put(tlvertex + 24, layout->tex0 != V9X_DP2_FVF_ABSENT
-                                   ? v9x_dp2_dword(source + layout->tex0)
+    v9x_dp2_put(tlvertex + 24, tex != V9X_DP2_FVF_ABSENT
+                                   ? v9x_dp2_dword(source + tex)
                                    : 0ul);
-    v9x_dp2_put(tlvertex + 28, layout->tex0 != V9X_DP2_FVF_ABSENT &&
-                                       layout->tex0_floats >= 2ul
-                                   ? v9x_dp2_dword(source + layout->tex0 + 4ul)
+    v9x_dp2_put(tlvertex + 28, tex != V9X_DP2_FVF_ABSENT && floats >= 2ul
+                                   ? v9x_dp2_dword(source + tex + 4ul)
                                    : 0ul);
 }
 

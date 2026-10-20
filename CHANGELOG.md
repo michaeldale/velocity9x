@@ -4,7 +4,47 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.20.1 - not yet released
+## 0.21.0 - not yet released
+
+- **Intel HD 4600 (Haswell): Direct3D no longer waits for each draw.**
+  Every draw used to wait for the GPU to finish it before returning,
+  nearly half of each batch's time on the i5-4570. Now one draw is left
+  running while the next is built. A draw still waits while GDI may be
+  drawing on the screen (outside exclusive mode, or after a flip back to
+  GDI). Measured on the i5-4570 with DirectX 7: 3DMark 2000 from 157 to
+  112 µs a batch, and Half-Life's mwd5 timedemo from 60.5 fps to 79.3 fps
+  ([plan](docs/plans/intel-haswell-pipelined-submission.md),
+  [wait split](docs/decisions/2026-10-20-haswell-pipelined-phase0-wait-split.md),
+  [first build](docs/decisions/2026-10-20-haswell-pipelined-phase3-deferred-wait.md),
+  [the GDI rule](docs/decisions/2026-10-20-haswell-pipelined-gdi-rule.md)).
+  - DirectDraw's Flip, Lock and Blt now wait for draws as well as blits.
+  - Turning the engine off at Disable waits, bounded, for the last draw
+    to finish.
+- **Intel HD 4600: draws with both specular and fog are drawn.** Their
+  shader did not fit the space the driver gave it, so every such draw
+  was refused and left a hole. That was the holes in a tester's
+  3DMark 2001 SE run (report V9X-D9VZS6). 3DMark 2001 SE now runs with
+  no refused draw
+  ([record](docs/decisions/2026-10-20-haswell-kernel-slots-768.md),
+  [issue](docs/issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md)).
+- **Direct3D 8 games: the texture coordinate set a stage asks for is
+  used.** The driver always took a vertex's first coordinate set. When a
+  game asked for another one, typically a lightmap pass, textures were
+  sampled with the wrong coordinates. In 3DMark 2001 SE this drew the
+  Lobby's walls and floors and Dragothic's buildings as a mosaic of
+  wrong texels. The fix is in the shared Direct3D core, so it applies to
+  every chip's DirectX 8 path; it has been seen on the HD 4600 only
+  ([issue](docs/issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md)).
+- **Intel HD 4600: refused Direct3D batches say why** in V9XTRACE
+  snapshots (`M64Policy11` to `M64Policy19`, with the failing texture
+  in `MgaTexRefusedLast*`).
+- Known limits on the HD 4600, unchanged:
+  - Direct3D textures are 16-bit only, so 3DMark 2001 SE marks its result
+    as not run at default settings.
+  - Video memory is capped at 16 MiB.
+  - In 3DMark 2001 SE, one vertex-shader scene is cut by a diagonal edge.
+
+  The first two are in [STATUS.md](docs/STATUS.md)'s open work.
 
 ## 0.20.0 - 2026-10-19
 

@@ -730,6 +730,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DTSS_ALPHAOP                 4ul
 #define V9X_D3DTSS_ALPHAARG1               5ul
 #define V9X_D3DTSS_ALPHAARG2               6ul
+#define V9X_D3DTSS_TEXCOORDINDEX          11ul
 #define V9X_D3DTSS_ADDRESS                12ul
 #define V9X_D3DTSS_ADDRESSU               13ul
 #define V9X_D3DTSS_ADDRESSV               14ul

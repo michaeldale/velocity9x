@@ -389,6 +389,34 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         CHECK(out[4] == 0xfffffffful && out[5] == 0xff000000ul &&
               out[6] == 0ul && out[7] == 0ul);
 
+        /*
+         * XYZRHW|DIFFUSE|TEX2, two 2D sets: the stage's TEXCOORDINDEX picks
+         * which one the engine samples with. 3DMark 2001 SE's lightmapped
+         * Lobby draws its passes from such vertices, and taking set 0
+         * whatever the index sampled the base textures with the lightmap
+         * coordinates (2026-10-20, the 4570).
+         */
+        CHECK(v9x_dp2_fvf_layout(0x244ul, &f) && f.stride == 36ul &&
+              f.tex_sets == 2ul && f.tex[0] == 20ul && f.tex[1] == 28ul);
+        in[0] = 1ul; in[1] = 2ul; in[2] = 3ul; in[3] = 4ul;
+        in[4] = 0x11223344ul;
+        in[5] = 0x10ul; in[6] = 0x11ul;   /* set 0 */
+        in[7] = 0x20ul; in[8] = 0x21ul;   /* set 1 */
+        v9x_dp2_fvf_convert_set(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[0] == 1ul && out[3] == 4ul && out[4] == 0x11223344ul &&
+              out[6] == 0x20ul && out[7] == 0x21ul);
+        v9x_dp2_fvf_convert_set(&f, 0ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[6] == 0x10ul && out[7] == 0x11ul);
+        /* An index past the vertex's sets reads set 0, not past the
+         * vertex. */
+        v9x_dp2_fvf_convert_set(&f, 5ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[6] == 0x10ul && out[7] == 0x11ul);
+        /* A one-float set 1 gives v = 0. */
+        CHECK(v9x_dp2_fvf_layout(0x244ul | (3ul << 18), &f) &&
+              f.tex_floats[1] == 1ul && f.stride == 32ul);
+        v9x_dp2_fvf_convert_set(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[6] == 0x20ul && out[7] == 0ul);
+
         /* The optional record callback sees every record consumed. */
         memset(&c, 0, sizeof(c)); used = 0ul;
         command(V9X_DP2OP_RENDERSTATE, 1ul); put32(9ul); put32(2ul);
