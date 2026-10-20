@@ -568,6 +568,9 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
                                        &shared->engine.gtt_linear_base,
                                        &shared->engine.ring_linear_base,
                                        &shared->engine.ring_bytes);
+        shared->engine.reserve_offset =
+            device->engine_reserve_offset != 0 ?
+            device->engine_reserve_offset() : 0ul;
         /*
          * The TYPE, stamped here and not only by the later refresh.
          *
@@ -743,6 +746,9 @@ static void v9x_dd_refresh_framebuffer(void)
                                        &shared->engine.gtt_linear_base,
                                        &shared->engine.ring_linear_base,
                                        &shared->engine.ring_bytes);
+        shared->engine.reserve_offset =
+            device->engine_reserve_offset != 0 ?
+            device->engine_reserve_offset() : 0ul;
         /*
          * The user's Direct3D setting, applied before the stamp rather than
          * after it.
@@ -780,6 +786,7 @@ static void v9x_dd_refresh_framebuffer(void)
         shared->engine.gtt_linear_base = 0ul;
         shared->engine.ring_linear_base = 0ul;
         shared->engine.ring_bytes = 0ul;
+        shared->engine.reserve_offset = 0ul;
         shared->engine.flags = 0ul;
     }
 

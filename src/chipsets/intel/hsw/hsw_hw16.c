@@ -16,11 +16,141 @@
 extern unsigned short __far __pascal V9xPciReadHswConfig(
     unsigned long __far *bar0, unsigned long __far *gmadr,
     unsigned long __far *bdsm);
+extern unsigned short __far __pascal V9xPciReadHswGgc(
+    unsigned short __far *ggc);
+extern unsigned short __far __pascal V9xMiniHswStolenReserved(
+    unsigned long bar0, unsigned long __far *reg);
 extern unsigned short __far __pascal V9xMiniHswEngineOpen(
     unsigned long bar0, unsigned long gmadr, unsigned long bdsm,
-    unsigned long __far *mmio, unsigned long __far *reserve,
-    unsigned short __far *code);
+    unsigned long offset, unsigned long __far *mmio,
+    unsigned long __far *reserve, unsigned short __far *code);
 extern unsigned short __far __pascal V9xMiniHswEngineClose(void);
+
+/*
+ * 64 MiB of GMADR: above the 32 and 64 MiB of stolen memory the two boards
+ * on record carry, and what every non-Intel family maps. The heap never
+ * reaches past the protected base, and the GTT past stolen memory holds junk
+ * with the valid bit set (docs\decisions\2026-10-20-haswell-stolen-
+ * layout.md), so nothing may touch the mapping above the reserve.
+ */
+#define V9X_HSW_MAP_BYTES 0x04000000ul
+
+/* The reserve does not depend on the mode, so the layout is planned against
+ * one page of desktop; the heap hook checks the real mode against it. */
+#define V9X_HSW_LAYOUT_VISIBLE 0x00001000ul
+
+/*
+ * Where the heap ends and the engine reserve sits, decided once a boot
+ * (docs\plans\intel-haswell-heap-beyond-16-mib.md). Every step that cannot
+ * be read or is not understood leaves the fallback, the 16 MiB heap and
+ * 1800000h reserve every release before it ran, and says which step in
+ * source.
+ */
+static unsigned short v9x_hsw_layout_decided;
+static const char *v9x_hsw_layout_source = "undecided";
+static unsigned long v9x_hsw_stolen_bytes;
+static unsigned long v9x_hsw_protected_bytes;
+static unsigned long v9x_hsw_reserved_reg;
+static unsigned long v9x_hsw_reserve_at = V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET;
+static unsigned long v9x_hsw_heap_at = V9X_INTEL_HSW_FALLBACK_HEAP_END;
+
+static void v9x_hsw_decide_layout(void)
+{
+    struct v9x_intel_hsw_ggc ggc;
+    struct v9x_intel_hsw_heap_inputs in;
+    struct v9x_intel_hsw_heap_plan plan;
+    unsigned long bar0 = 0ul;
+    unsigned long gmadr = 0ul;
+    unsigned long bdsm = 0ul;
+    unsigned long reg = 0ul;
+    unsigned long protected_bytes = 0ul;
+    unsigned short ggc_word = 0u;
+
+    if (v9x_hsw_layout_decided != 0u) {
+        return;
+    }
+    v9x_hsw_layout_decided = 1u;
+
+    if (V9xPciReadHswConfig(&bar0, &gmadr, &bdsm) == 0u ||
+        V9xPciReadHswGgc(&ggc_word) == 0u) {
+        v9x_hsw_layout_source = "fallback-config-unread";
+        return;
+    }
+    if (v9x_intel_hsw_decode_ggc(ggc_word, &ggc) != V9X_STATUS_OK) {
+        v9x_hsw_layout_source = "fallback-ggc-undecoded";
+        return;
+    }
+    v9x_hsw_stolen_bytes = ggc.stolen_bytes;
+    if (V9xMiniHswStolenReserved(bar0, &reg) != 1u) {
+        v9x_hsw_layout_source = "fallback-register-unread";
+        return;
+    }
+    v9x_hsw_reserved_reg = reg;
+    if (v9x_intel_hsw_protected_bytes(bdsm, ggc.stolen_bytes, reg,
+                                      &protected_bytes) != V9X_STATUS_OK) {
+        v9x_hsw_layout_source = "fallback-protected-not-understood";
+        return;
+    }
+    v9x_hsw_protected_bytes = protected_bytes;
+
+    in.stolen_bytes = ggc.stolen_bytes;
+    in.protected_bytes = protected_bytes;
+    in.mapped_bytes = V9X_HSW_MAP_BYTES;
+    in.vbe_bytes = 0ul;
+    in.visible_bytes = V9X_HSW_LAYOUT_VISIBLE;
+    if (v9x_intel_hsw_plan_heap(&in, &plan) != V9X_STATUS_OK) {
+        v9x_hsw_layout_source = "fallback-no-room";
+        return;
+    }
+    v9x_hsw_reserve_at = plan.reserve_offset;
+    v9x_hsw_heap_at = plan.heap_end;
+    v9x_hsw_layout_source = "chip";
+}
+
+/* The heap's end for intel_hw16.c's reserve hook, before the mode and
+ * VBE's figure clamp it. */
+unsigned long v9x_hsw_heap_end(void)
+{
+    v9x_hsw_decide_layout();
+    return v9x_hsw_heap_at;
+}
+
+static unsigned long v9x_hsw_reserve_offset(void)
+{
+    v9x_hsw_decide_layout();
+    return v9x_hsw_reserve_at;
+}
+
+static void v9x_hsw_format_hex(char *text, unsigned long value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    unsigned short at;
+
+    for (at = 0u; at < 8u; ++at) {
+        text[at] = digits[(unsigned short)((value >> (28u - at * 4u)) & 0xful)];
+    }
+    text[8] = '\0';
+}
+
+/* The layout's keys for V9XHW.INI, so a field report says which heap a
+ * machine got and why. */
+void v9x_hsw_publish_layout(v9x_hw16_write_fn write)
+{
+    char number[9];
+
+    v9x_hsw_decide_layout();
+    write("HeapLayout", v9x_hsw_layout_source);
+    v9x_hsw_format_hex(number, v9x_hsw_stolen_bytes);
+    write("StolenBytes", number);
+    v9x_hsw_format_hex(number, v9x_hsw_reserved_reg);
+    write("Reg1082C0", number);
+    v9x_hsw_format_hex(number, v9x_hsw_protected_bytes);
+    write("ProtectedBytes", number);
+    v9x_hsw_format_hex(number, v9x_hsw_reserve_at);
+    write("ReserveOffset", number);
+    v9x_hsw_format_hex(number, v9x_hsw_heap_at);
+    write("HeapEnd", number);
+}
 
 /*
  * Why the last descriptor call did or did not open the engine, published as
@@ -112,8 +242,8 @@ static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
     if (V9xPciReadHswConfig(&bar0, &gmadr, &bdsm) == 0u) {
         return;
     }
-    if (V9xMiniHswEngineOpen(bar0, gmadr, bdsm, &mmio, &reserve, &code) ==
-            0u ||
+    if (V9xMiniHswEngineOpen(bar0, gmadr, bdsm, v9x_hsw_reserve_offset(),
+                             &mmio, &reserve, &code) == 0u ||
         mmio == 0ul || reserve == 0ul) {
         v9x_hsw_engine_status = v9x_hsw_refusal_text(code);
         return;
@@ -147,5 +277,7 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
     /* VBE reports the framebuffer in GMADR, BAR2 (offset 18h). */
     2u,
     /* The packed pitch the tier-0 desktop was measured at. */
-    1u
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset
 };

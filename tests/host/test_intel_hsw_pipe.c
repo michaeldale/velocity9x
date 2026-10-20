@@ -103,12 +103,12 @@ static void test_largest_batch_fits(void)
     v9x_u32 base;
 
     CHECK(v9x_intel_hsw_pipe_slot(1ul, &slot) == V9X_STATUS_OK);
-    base = V9X_INTEL_HSW_RESERVE_OFFSET + slot.state_off;
+    base = V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET + slot.state_off;
     memset(&d, 0, sizeof(d));
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
     d.kernel = slot.kernel_base +
                (V9X_INTEL_HSW_KERNEL_SLOTS - 1ul) * V9X_INTEL_HSW_KERNEL_SLOT;
-    d.vertices = V9X_INTEL_HSW_RESERVE_OFFSET + slot.vertex_off;
+    d.vertices = V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET + slot.vertex_off;
     d.width = 1024u;
     d.height = 768u;
     d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
@@ -127,7 +127,8 @@ static void test_largest_batch_fits(void)
     d.tl_uv1 = 1u;
     v9x_intel_hsw_batch_init(&batch, dw, V9X_HSW_PIPE_BATCH_BYTES / 4ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, base, slot.state_span, &d,
-                                      V9X_INTEL_HSW_STATUS_OFFSET + 0x30ul,
+                                      V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET +
+                                      V9X_INTEL_HSW_RING_BYTES + 0x30ul,
                                       1ul) == V9X_STATUS_OK);
     CHECK(batch.overflow == 0u);
     /* Room to spare, not a near miss: under half the area. */

@@ -214,3 +214,86 @@ v9x_status v9x_intel_hsw_encode_pte(v9x_u32 physical, v9x_u8 cache,
     *raw = value;
     return V9X_STATUS_OK;
 }
+
+v9x_status v9x_intel_hsw_plan_heap(
+    const struct v9x_intel_hsw_heap_inputs *in,
+    struct v9x_intel_hsw_heap_plan *out)
+{
+    v9x_u32 top;
+    v9x_u32 carved;
+
+    if (out == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    out->usable_top = 0ul;
+    out->reserve_offset = 0ul;
+    out->probe_offset = 0ul;
+    out->heap_end = 0ul;
+    if (in == 0 || in->stolen_bytes == 0ul || in->mapped_bytes == 0ul ||
+        in->visible_bytes == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (in->protected_bytes >= in->stolen_bytes) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+
+    /*
+     * The lowest of the three ceilings. VBE's figure is last and optional:
+     * on the 4570 it counts the protected megabyte, so it is never the
+     * only bound, but a BIOS that claims less than stolen memory is taken
+     * at its word.
+     */
+    top = in->stolen_bytes - in->protected_bytes;
+    if (in->mapped_bytes < top) {
+        top = in->mapped_bytes;
+    }
+    if (in->vbe_bytes != 0ul && in->vbe_bytes < top) {
+        top = in->vbe_bytes;
+    }
+    top &= ~(V9X_INTEL_HSW_HEAP_ALIGN - 1ul);
+
+    /* The reserve and the probe region come off the top; the heap must
+     * keep at least one block above the desktop. */
+    carved = V9X_INTEL_HSW_RESERVE_BYTES + V9X_INTEL_HSW_PROBE_REGION_BYTES;
+    if (top < carved || top - carved <= in->visible_bytes) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+
+    out->usable_top = top;
+    out->probe_offset = top - V9X_INTEL_HSW_PROBE_REGION_BYTES;
+    out->reserve_offset = top - carved;
+    out->heap_end = out->reserve_offset;
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_protected_bytes(v9x_u32 bdsm, v9x_u32 stolen_bytes,
+                                         v9x_u32 reserved_reg,
+                                         v9x_u32 *protected_bytes)
+{
+    v9x_u32 stolen_base;
+    v9x_u32 stolen_top;
+    v9x_u32 base;
+
+    if (protected_bytes == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *protected_bytes = 0ul;
+    if (stolen_bytes == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((reserved_reg & V9X_INTEL_HSW_STOLEN_RSVD_ENABLE) == 0ul) {
+        return V9X_STATUS_OK;
+    }
+
+    stolen_base = bdsm & V9X_INTEL_HSW_BASE_MASK;
+    stolen_top = stolen_base + stolen_bytes;
+    if (stolen_top < stolen_base) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    base = reserved_reg & V9X_INTEL_HSW_STOLEN_RSVD_BASE_MASK;
+    if (base < stolen_base || base >= stolen_top) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    *protected_bytes = stolen_top - base;
+    return V9X_STATUS_OK;
+}

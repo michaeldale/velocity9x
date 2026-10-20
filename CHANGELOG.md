@@ -6,6 +6,18 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.21.1 - not yet released
 
+- **Intel HD 4600 (Haswell): video memory beyond 16 MiB.** The
+  DirectDraw heap stopped at 16 MiB on every HD 4600. It now runs up to
+  the engine's reserve, which the driver places at the top of the stolen
+  memory the CPU can write. It reads that top from the chip. On the
+  i5-4570 (32 MiB stolen) the heap ends at 30.8 MiB, and 3DMark 2001 SE
+  turned away no mipmapped texture for room, where it had turned away
+  7,366. A board whose layout the driver does not understand keeps the
+  old 16 MiB heap, and `HeapLayout=` in `V9XHW.INI` says why
+  ([plan](docs/plans/intel-haswell-heap-beyond-16-mib.md),
+  [stolen memory](docs/decisions/2026-10-20-haswell-stolen-layout.md),
+  [result](docs/decisions/2026-10-20-haswell-heap-to-31-mib.md)).
+
 ## 0.21.0 - 2026-10-20
 
 - **Intel HD 4600 (Haswell): Direct3D no longer waits for each draw.**

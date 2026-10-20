@@ -973,6 +973,13 @@ WORD FAR PASCAL V9xHardwareEnable(void)
      * uses. */
     device = v9x_hw16_active_device();
 
+    /* A chip's own mapping size, set before the aperture read below clamps
+     * the heap to the mapping. Otherwise the family's, stamped at LibMain. */
+    if (device != 0 && device->map_bytes != 0ul) {
+        v9x_map_pages_hi = (WORD)((device->map_bytes - 1ul) >> 16);
+        v9x_map_pages_lo = (WORD)((device->map_bytes - 1ul) & 0xfffful);
+    }
+
     v9x_hardware_stage_code = 2u;
     if (v9x_vbe_set_mode(v9x_active_vbe_mode, v9x_vbe_mode_flags) == 0u) {
         return 0u;

@@ -193,6 +193,165 @@ static void test_pte(void)
     CHECK(v9x_intel_hsw_decode_pte(0ul, 0) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static v9x_status v9x_heap(v9x_u32 stolen, v9x_u32 protected_bytes,
+                           v9x_u32 mapped, v9x_u32 vbe, v9x_u32 visible,
+                           struct v9x_intel_hsw_heap_plan *plan)
+{
+    struct v9x_intel_hsw_heap_inputs in;
+
+    in.stolen_bytes = stolen;
+    in.protected_bytes = protected_bytes;
+    in.mapped_bytes = mapped;
+    in.vbe_bytes = vbe;
+    in.visible_bytes = visible;
+    return v9x_intel_hsw_plan_heap(&in, plan);
+}
+
+static int v9x_heap_refused(const struct v9x_intel_hsw_heap_plan *plan)
+{
+    return plan->usable_top == 0ul && plan->reserve_offset == 0ul &&
+           plan->probe_offset == 0ul && plan->heap_end == 0ul;
+}
+
+static void test_heap_plan(void)
+{
+    struct v9x_intel_hsw_heap_plan plan;
+
+    /* The i5-4570: 32 MiB stolen, the top megabyte not writable, VBE's
+     * 33,488,896 bytes, a 64 MiB mapping, 1024x768x32. */
+    CHECK(v9x_heap(0x02000000ul, 0x00100000ul, 0x04000000ul, 0x01ff0000ul,
+                   0x00300000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x01f00000ul);
+    CHECK(plan.probe_offset == 0x01ef0000ul);
+    CHECK(plan.reserve_offset == 0x01ed0000ul);
+    CHECK(plan.heap_end == 0x01ed0000ul);
+    CHECK(plan.reserve_offset + V9X_INTEL_HSW_RESERVE_BYTES ==
+          plan.probe_offset);
+    CHECK(plan.probe_offset + V9X_INTEL_HSW_PROBE_REGION_BYTES ==
+          plan.usable_top);
+
+    /* 64 MiB stolen, as the tester's 4F00h figure suggests. */
+    CHECK(v9x_heap(0x04000000ul, 0x00100000ul, 0x04000000ul, 0x03ff0000ul,
+                   0x00300000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x03f00000ul);
+    CHECK(plan.heap_end == 0x03ed0000ul);
+
+    /* A larger protected range moves everything down with it. */
+    CHECK(v9x_heap(0x02000000ul, 0x00400000ul, 0x04000000ul, 0ul,
+                   0x00300000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x01c00000ul);
+    CHECK(plan.heap_end == 0x01bd0000ul);
+
+    /* None protected (the register reports nothing). */
+    CHECK(v9x_heap(0x02000000ul, 0ul, 0x04000000ul, 0ul, 0x00300000ul,
+                   &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x02000000ul);
+
+    /* The mapping is smaller than stolen: it sets the top. */
+    CHECK(v9x_heap(0x08000000ul, 0x00100000ul, 0x04000000ul, 0ul,
+                   0x00300000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x04000000ul);
+    CHECK(plan.heap_end == 0x03fd0000ul);
+
+    /* VBE claims less than either: it sets the top. */
+    CHECK(v9x_heap(0x02000000ul, 0x00100000ul, 0x04000000ul, 0x01000000ul,
+                   0x00300000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x01000000ul);
+
+    /* A protected size off the 64 KB grid rounds the top down. */
+    CHECK(v9x_heap(0x02000000ul, 0x00041000ul, 0x04000000ul, 0ul,
+                   0x00300000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.usable_top == 0x01fb0000ul);
+    CHECK(plan.reserve_offset == 0x01f80000ul);
+
+    /* The desktop: one 64 KB block of heap is accepted, none refused. */
+    CHECK(v9x_heap(0x00400000ul, 0x00100000ul, 0x04000000ul, 0ul,
+                   0x002c0000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.heap_end == 0x002d0000ul);
+    CHECK(v9x_heap(0x00400000ul, 0x00100000ul, 0x04000000ul, 0ul,
+                   0x002d0000ul, &plan) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_heap_refused(&plan));
+
+    /* A top below the reserve and probe region does not wrap. */
+    CHECK(v9x_heap(0x02000000ul, 0ul, 0x04000000ul, 0x00020000ul,
+                   0x00001000ul, &plan) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_heap_refused(&plan));
+
+    /* Protected is all of stolen, or more. */
+    CHECK(v9x_heap(0x02000000ul, 0x02000000ul, 0x04000000ul, 0ul,
+                   0x00300000ul, &plan) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_heap_refused(&plan));
+
+    /* Zero where a size is required, and null pointers. */
+    CHECK(v9x_heap(0ul, 0ul, 0x04000000ul, 0ul, 0x00300000ul, &plan) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_heap_refused(&plan));
+    CHECK(v9x_heap(0x02000000ul, 0ul, 0ul, 0ul, 0x00300000ul, &plan) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_heap(0x02000000ul, 0ul, 0x04000000ul, 0ul, 0ul, &plan) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_heap(0x02000000ul, 0ul, 0x04000000ul, 0ul, 0x00300000ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_plan_heap(0, &plan) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_protected_bytes(void)
+{
+    v9x_u32 bytes;
+
+    /* The i5-4570, 2026-10-20: BDSM DD200001, 32 MiB, 1082C0h DF100017. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdf100017ul, &bytes) ==
+          V9X_STATUS_OK);
+    CHECK(bytes == 0x00100000ul);
+
+    /* The low bits are not read: only the base sets the size. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdf1ffffful, &bytes) ==
+          V9X_STATUS_OK);
+    CHECK(bytes == 0x00100000ul);
+
+    /* Not enabled: nothing protected. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdf100016ul, &bytes) ==
+          V9X_STATUS_OK);
+    CHECK(bytes == 0ul);
+
+    /* 64 MiB stolen with the same megabyte at its top. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xdc000001ul, 0x04000000ul,
+                                        0xdff00001ul, &bytes) ==
+          V9X_STATUS_OK);
+    CHECK(bytes == 0x00100000ul);
+
+    /* A base at the bottom of stolen protects all of it; the heap plan
+     * refuses that, not this decode. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdd200001ul, &bytes) ==
+          V9X_STATUS_OK);
+    CHECK(bytes == 0x02000000ul);
+
+    /* A base below stolen or at its top is not understood. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdd100001ul, &bytes) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(bytes == 0ul);
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdf200001ul, &bytes) ==
+          V9X_STATUS_UNSUPPORTED);
+
+    /* Stolen memory that would wrap past 4 GB. */
+    CHECK(v9x_intel_hsw_protected_bytes(0xfff00001ul, 0x00200000ul,
+                                        0xfff00001ul, &bytes) ==
+          V9X_STATUS_UNSUPPORTED);
+
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0ul, 0xdf100017ul,
+                                        &bytes) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_protected_bytes(0xdd200001ul, 0x02000000ul,
+                                        0xdf100017ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_tests(void)
 {
     failures = 0u;
@@ -200,5 +359,7 @@ unsigned int v9x_run_intel_hsw_tests(void)
     test_aperture();
     test_layout();
     test_pte();
+    test_heap_plan();
+    test_protected_bytes();
     return failures;
 }

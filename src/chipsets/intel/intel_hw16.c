@@ -9,6 +9,8 @@ extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
 extern const char *v9x_hsw_engine_status_text(void);
 extern void v9x_hsw_engine_close(void);
+extern unsigned long v9x_hsw_heap_end(void);
+extern void v9x_hsw_publish_layout(v9x_hw16_write_fn write);
 
 /*
  * Haswell shares this family and none of its Gen3 machinery. Every hook in
@@ -51,13 +53,27 @@ static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_hsw_hd4600_device
 };
 
-/* The Gen3 sandbox comes out of the heap; Haswell's reserve sits above the
- * heap at aperture 1800000h, so its heap is the whole usable range. */
+/*
+ * The Gen3 sandbox comes out of the heap. Haswell's reserve sits above the
+ * heap, at the top of the stolen memory the CPU can write, so its heap ends
+ * where hsw_hw16.c's layout says, or lower if VBE's figure or the mapping
+ * is (docs\plans\intel-haswell-heap-beyond-16-mib.md). A desktop that
+ * reaches the reserve gets no off-screen heap rather than one over it.
+ */
 static unsigned long v9x_intel_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
+    unsigned long heap_end;
+
     if (v9x_intel_is_haswell()) {
-        return usable_bytes;
+        heap_end = v9x_hsw_heap_end();
+        if (usable_bytes < heap_end) {
+            heap_end = usable_bytes;
+        }
+        if (heap_end < visible_bytes) {
+            return visible_bytes;
+        }
+        return heap_end;
     }
     return v9x_gma950_reserve_video_memory(usable_bytes, visible_bytes);
 }
@@ -153,6 +169,7 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     /* The three Gen3 captures below read 945 registers and BAR3. */
     if (v9x_intel_is_haswell()) {
+        v9x_hsw_publish_layout(write);
         return;
     }
     v9x_intel_publish_mmio_fingerprint();
@@ -167,7 +184,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_intel_modes,
     (unsigned short)(sizeof(v9x_intel_modes) / sizeof(v9x_intel_modes[0])),
     V9X_HW16_VBE_LINEAR,
-    /* Map only 16 MiB of GMADR; VBE's usable-memory answer clamps further. */
+    /* Map only 16 MiB of GMADR; VBE's usable-memory answer clamps further.
+     * The HD 4600 maps 64 MiB through its own map_bytes. */
     0x00ffu, 0xffffu,
     v9x_intel_publish_diagnostics,
     v9x_intel_publish_event_near,

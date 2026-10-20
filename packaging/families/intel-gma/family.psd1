@@ -154,6 +154,7 @@
             @{ Name = 'intel_str16'; Path = 'src\display16\intel_str16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'hsw_hw16'; Path = 'src\chipsets\intel\hsw\hsw_hw16.c' }
+            @{ Name = 'hsw_config'; Path = 'src\chipsets\intel\hsw_config.c' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
             @{ Name = 'intel_bridge16'; Path = 'src\display16\intel_bridge16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }

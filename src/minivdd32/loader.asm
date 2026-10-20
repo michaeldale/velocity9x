@@ -195,11 +195,15 @@ V9X_HSW_MMIO_BYTES      equ 00200000h
 V9X_HSW_GTT_OFFSET      equ 00200000h
 V9X_HSW_GTT_BYTES       equ 00200000h
 V9X_HSW_BAR0_ALIGN      equ 003fffffh
-V9X_HSW_RESERVE_OFFSET  equ 01800000h
 ; Phase F2: 128 KB, the RCS ring at +2000h (intel_hsw.h has the layout).
+; Where the reserve sits is the display driver's, passed to HSW_ENGINE_OPEN
+; in ESI since 2026-10-20 (docs\plans\intel-haswell-heap-beyond-16-mib.md);
+; it was a fixed 1800000h.
 V9X_HSW_RESERVE_BYTES   equ 00020000h
 V9X_HSW_RESERVE_PAGES   equ 32
-V9X_HSW_RCS_RING        equ (V9X_HSW_RESERVE_OFFSET + 2000h)
+V9X_HSW_RCS_RING_OFF    equ 2000h
+V9X_HSW_RESERVE_ALIGN   equ 0000ffffh
+V9X_HSW_STOLEN_RSVD     equ 001082c0h
 V9X_HSW_STATUS_OFF      equ 00001000h
 V9X_HSW_STOLEN_MASK     equ 0fff00000h
 V9X_HSW_PTE_MASK        equ 0fffff7f1h
@@ -225,6 +229,9 @@ V9xHswGttLinear   dd 0
 V9xHswRegionBase  dd 0
 V9xHswRegionLinear dd 0
 V9xHswOpen        dd 0
+; The reserve the rings were opened at, and the one the caller asked for.
+V9xHswReserveOffset dd 0
+V9xHswRequestOffset dd 0
 
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
@@ -2305,6 +2312,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_HswEngineOpen
     cmp     ax, V9XMINI_FN_HSW_ENGINE_CLOSE
     je      V9xMini_Api_HswEngineClose
+    cmp     ax, V9XMINI_FN_HSW_STOLEN_RESERVED
+    je      V9xMini_Api_HswStolenReserved
     cmp     ax, V9XMINI_FN_ATI_MMIO_MAP
     je      V9xMini_Api_AtiMmioMap
     cmp     ax, V9XMINI_FN_SIS_MMIO_MAP
@@ -2639,9 +2648,10 @@ BeginProc V9xMini_Hsw_Rings_Off
     ret
 EndProc V9xMini_Hsw_Rings_Off
 
-; In EBX = GTTMMADR, ECX = GMADR, EDX = BDSM. Out AX = 1 with EBX = MMIO
-; linear, ECX = reserve linear, EDX = 0 or 10h (reused); or AX = 0, EBX =
-; ECX = 0, EDX = refusal code. See V9XMINI_FN_HSW_ENGINE_OPEN.
+; In EBX = GTTMMADR, ECX = GMADR, EDX = BDSM, V9xHswRequestOffset = the
+; reserve's aperture offset. Out AX = 1 with EBX = MMIO linear, ECX =
+; reserve linear, EDX = 0 or 10h (reused); or AX = 0, EBX = ECX = 0, EDX =
+; refusal code. See V9XMINI_FN_HSW_ENGINE_OPEN.
 BeginProc V9xMini_Hsw_Engine_Open
     push    esi
     push    edi
@@ -2651,16 +2661,21 @@ BeginProc V9xMini_Hsw_Engine_Open
 
     ; An open ring of ours, still on at our reserve: hand it back as it is.
     ; Reprogramming it would drop whatever a DirectDraw session queued.
+    ; A different reserve asked for is a fresh open there.
     cmp     V9xHswOpen, 0
     je      short V9xMini_Hsw_Open_Fresh
     mov     edi, V9xHswMmioLinear
+    mov     eax, V9xHswReserveOffset
+    cmp     eax, V9xHswRequestOffset
+    jne     short V9xMini_Hsw_Open_Stale
     test    dword ptr [edi+V9X_HSW_BCS_CTL], 1
     jz      short V9xMini_Hsw_Open_Stale
-    cmp     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
+    cmp     [edi+V9X_HSW_BCS_START], eax
     jne     short V9xMini_Hsw_Open_Stale
     test    dword ptr [edi+V9X_HSW_RCS_CTL], 1
     jz      short V9xMini_Hsw_Open_Stale
-    cmp     dword ptr [edi+V9X_HSW_RCS_START], V9X_HSW_RCS_RING
+    add     eax, V9X_HSW_RCS_RING_OFF
+    cmp     [edi+V9X_HSW_RCS_START], eax
     jne     short V9xMini_Hsw_Open_Stale
     pop     ecx
     mov     ebx, V9xHswMmioLinear
@@ -2685,6 +2700,12 @@ V9xMini_Hsw_Open_Fresh:
     jnz     V9xMini_Hsw_Open_Refused_Pop
     cmp     dword ptr [esp], 0
     je      V9xMini_Hsw_Open_Refused_Pop
+    mov     eax, V9xHswRequestOffset
+    test    eax, eax
+    jz      V9xMini_Hsw_Open_Refused_Pop
+    test    eax, V9X_HSW_RESERVE_ALIGN
+    jnz     V9xMini_Hsw_Open_Refused_Pop
+    mov     V9xHswReserveOffset, eax
 
     ; Code 2: the three windows.
     mov     eax, ebx
@@ -2706,7 +2727,7 @@ V9xMini_Hsw_Open_Fresh:
     mov     V9xHswGttLinear, eax
 V9xMini_Hsw_Open_Gtt_Mapped:
     mov     eax, [esp]
-    add     eax, V9X_HSW_RESERVE_OFFSET
+    add     eax, V9xHswReserveOffset
     mov     ecx, V9X_HSW_RESERVE_BYTES
     mov     edx, OFFSET32 V9xHswRegionBase
     mov     esi, OFFSET32 V9xHswRegionLinear
@@ -2716,11 +2737,13 @@ V9xMini_Hsw_Open_Gtt_Mapped:
 
     ; Code 3: every page's PTE valid and mapping BDSM + offset.
     mov     edx, 3
+    mov     eax, V9xHswReserveOffset
+    shr     eax, 12
     mov     esi, V9xHswGttLinear
-    add     esi, (V9X_HSW_RESERVE_OFFSET SHR 12) * 4
+    lea     esi, [esi+eax*4]
     mov     eax, ebp
     and     eax, V9X_HSW_STOLEN_MASK
-    add     eax, V9X_HSW_RESERVE_OFFSET
+    add     eax, V9xHswReserveOffset
     or      eax, 1
     push    ebx
     mov     ebx, V9X_HSW_RESERVE_PAGES
@@ -2794,23 +2817,28 @@ V9xMini_Hsw_Open_Ring_On:
 V9xMini_Hsw_Open_Program:
     mov     dword ptr [edi+V9X_HSW_BCS_HEAD], 0
     mov     dword ptr [edi+V9X_HSW_BCS_TAIL], 0
-    mov     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
+    mov     eax, V9xHswReserveOffset
+    mov     [edi+V9X_HSW_BCS_START], eax
     mov     dword ptr [edi+V9X_HSW_BCS_CTL], V9X_HSW_CTL_ONE_PAGE
     ; The render ring the same way (Phase C measured it), at +2000h. Its
     ; initialising batch is the HAL's, on first use (d3d_hsw.c).
     mov     dword ptr [edi+V9X_HSW_RCS_HEAD], 0
     mov     dword ptr [edi+V9X_HSW_RCS_TAIL], 0
-    mov     dword ptr [edi+V9X_HSW_RCS_START], V9X_HSW_RCS_RING
+    add     eax, V9X_HSW_RCS_RING_OFF
+    mov     [edi+V9X_HSW_RCS_START], eax
     mov     dword ptr [edi+V9X_HSW_RCS_CTL], V9X_HSW_CTL_ONE_PAGE
     ; Code 8: the readback, both rings.
     mov     edx, 8
-    cmp     dword ptr [edi+V9X_HSW_BCS_START], V9X_HSW_RESERVE_OFFSET
+    mov     eax, V9xHswReserveOffset
+    cmp     [edi+V9X_HSW_BCS_START], eax
     jne     short V9xMini_Hsw_Open_Teardown
     mov     eax, [edi+V9X_HSW_BCS_CTL]
     and     eax, V9X_HSW_CTL_CHECK
     cmp     eax, V9X_HSW_CTL_ONE_PAGE
     jne     short V9xMini_Hsw_Open_Teardown
-    cmp     dword ptr [edi+V9X_HSW_RCS_START], V9X_HSW_RCS_RING
+    mov     eax, V9xHswReserveOffset
+    add     eax, V9X_HSW_RCS_RING_OFF
+    cmp     [edi+V9X_HSW_RCS_START], eax
     jne     short V9xMini_Hsw_Open_Teardown
     mov     eax, [edi+V9X_HSW_RCS_CTL]
     and     eax, V9X_HSW_CTL_CHECK
@@ -2892,6 +2920,8 @@ ENDIF
 
 V9xMini_Api_HswEngineOpen:
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, [ebp.Client_ESI]
+    mov     V9xHswRequestOffset, eax
     mov     ebx, [ebp.Client_EBX]
     mov     ecx, [ebp.Client_ECX]
     mov     edx, [ebp.Client_EDX]
@@ -2907,6 +2937,32 @@ ENDIF
     mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_ECX], 0
     mov     [ebp.Client_EDX], 1
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = GTTMMADR. See V9XMINI_FN_HSW_STOLEN_RESERVED in V9XMAPI.INC.
+V9xMini_Api_HswStolenReserved:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     eax, [ebp.Client_EBX]
+    test    eax, eax
+    jz      short V9xMini_Api_HswStolenReserved_Refused
+    test    eax, V9X_HSW_BAR0_ALIGN
+    jnz     short V9xMini_Api_HswStolenReserved_Refused
+    push    ebp
+    mov     ecx, V9X_HSW_MMIO_BYTES
+    mov     edx, OFFSET32 V9xHswMmioBase
+    mov     esi, OFFSET32 V9xHswMmioLinear
+    call    V9xMini_Hsw_Map
+    pop     ebp
+    test    eax, eax
+    jz      short V9xMini_Api_HswStolenReserved_Refused
+    mov     eax, [eax+V9X_HSW_STOLEN_RSVD]
+    mov     [ebp.Client_EBX], eax
+    mov     [ebp.Client_AX], 1
+    ret
+ENDIF
+V9xMini_Api_HswStolenReserved_Refused:
+    mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_AX], 0
     ret
 

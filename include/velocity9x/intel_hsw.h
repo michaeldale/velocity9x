@@ -121,22 +121,26 @@
 #define V9X_INTEL_HSW_LAYOUT_UNASSIGNED     ((v9x_u16)0x0200u)
 
 /*
- * The BCS reserve Phase B1 measured (docs\decisions\2026-10-17-haswell-
- * phase-b1-bcs-ring.md): a 4 KB ring at aperture offset 1800000h and a 4 KB
- * status page after it, above the 16 MB DirectDraw heap and below the top
- * megabyte of stolen memory, which refused CPU writes. The mini-VDD maps
- * both contiguously; the HAL addresses the status page as ring + ring
- * bytes. Status dword 0 is the last sequence the blitter stored, dword 1
- * the last the CPU submitted.
+ * The engine reserve: a 4 KB BCS ring and a 4 KB status page after it, which
+ * the mini-VDD maps contiguously; the HAL addresses the status page as ring +
+ * ring bytes. Status dword 0 is the last sequence the blitter stored, dword
+ * 1 the last the CPU submitted.
+ *
+ * Where it sits is decided once a boot by v9x_intel_hsw_plan_heap, at the
+ * top of the stolen memory the CPU can write, and handed to the mini-VDD and
+ * the HAL (docs\plans\intel-haswell-heap-beyond-16-mib.md). The fallback is
+ * where Phase B1 measured it (docs\decisions\2026-10-17-haswell-phase-b1-
+ * bcs-ring.md), above a 16 MiB heap: used only when the chip's layout is not
+ * understood, which keeps the layout every release before 0.22 ran.
  */
-#define V9X_INTEL_HSW_RESERVE_OFFSET ((v9x_u32)0x01800000ul)
+#define V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET ((v9x_u32)0x01800000ul)
+#define V9X_INTEL_HSW_FALLBACK_HEAP_END       ((v9x_u32)0x01000000ul)
 #define V9X_INTEL_HSW_RING_BYTES     ((v9x_u32)0x00001000ul)
-#define V9X_INTEL_HSW_STATUS_OFFSET  ((v9x_u32)0x01801000ul)
 /*
  * Phase F2 (docs\plans\intel-haswell-direct3d.md) grew the reserve to
  * 128 KB: the BCS ring and status page as before, the RCS ring after them,
- * then the render engine's state, batch and vertices. The probe region at
- * 1820000h starts where this ends.
+ * then the render engine's state, batch and vertices. The probe region
+ * starts where this ends.
  */
 #define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00020000ul)
 #define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)32ul)
@@ -232,6 +236,66 @@ v9x_status v9x_intel_hsw_decode_layout(
 
 v9x_status v9x_intel_hsw_decode_pte(v9x_u32 raw,
                                     struct v9x_intel_hsw_pte *out);
+
+/*
+ * Where the DirectDraw heap ends and the engine reserve sits, from what the
+ * chip says about stolen memory (docs\plans\intel-haswell-heap-beyond-16-
+ * mib.md). The reserve and the probe region go at the top of the memory
+ * the CPU can write, and the heap runs from the desktop up to them:
+ *
+ *   usable_top = min(stolen - protected, mapped, VBE's figure if any),
+ *                rounded down to 64 KB
+ *   reserve    = usable_top - probe region - reserve
+ *   heap_end   = reserve
+ *
+ * protected_bytes is the top of stolen memory the CPU cannot write: the
+ * top megabyte did not read back on the i5-4570 (docs\decisions\2026-10-
+ * 17-haswell-phase-b1-bcs-ring.md). vbe_bytes is 0 when 4F00h said
+ * nothing. Refused, with the outputs 0, when stolen, mapped or visible
+ * bytes are 0, when the protected range is all of stolen memory, and when
+ * the desktop leaves no heap below the reserve.
+ */
+#define V9X_INTEL_HSW_PROBE_REGION_BYTES ((v9x_u32)0x00010000ul)
+#define V9X_INTEL_HSW_HEAP_ALIGN         ((v9x_u32)0x00010000ul)
+
+struct v9x_intel_hsw_heap_inputs {
+    v9x_u32 stolen_bytes;     /* GGC's data-stolen size */
+    v9x_u32 protected_bytes;  /* top of stolen the CPU cannot write */
+    v9x_u32 mapped_bytes;     /* the 16-bit driver's aperture mapping */
+    v9x_u32 vbe_bytes;        /* VBE 4F00h's figure, 0 if none */
+    v9x_u32 visible_bytes;    /* the mode's pitch x height */
+};
+
+struct v9x_intel_hsw_heap_plan {
+    v9x_u32 usable_top;
+    v9x_u32 reserve_offset;   /* V9X_INTEL_HSW_RESERVE_BYTES from here */
+    v9x_u32 probe_offset;     /* the probe region, after the reserve */
+    v9x_u32 heap_end;         /* exclusive */
+};
+
+/*
+ * The protected top of stolen memory, from the register at MMIO 1082C0h
+ * (docs\decisions\2026-10-20-haswell-stolen-layout.md). The Linux i915
+ * driver reads it as GEN6_STOLEN_RESERVED: bit 0 enables it, and on the
+ * i5-4570 bits 31:20 held DF100000h, the start of the megabyte that refused
+ * CPU writes. Only the base is used. The low bits are i915's size and type
+ * fields, which the public PRM does not describe and nothing here measured.
+ *
+ * Bit 0 clear: nothing protected (OK, 0), as i915 reads it. A base outside
+ * stolen memory is not understood: UNSUPPORTED, and the caller keeps the
+ * fallback layout.
+ */
+#define V9X_INTEL_HSW_STOLEN_RSVD_REG       ((v9x_u32)0x001082c0ul)
+#define V9X_INTEL_HSW_STOLEN_RSVD_ENABLE    ((v9x_u32)0x00000001ul)
+#define V9X_INTEL_HSW_STOLEN_RSVD_BASE_MASK ((v9x_u32)0xfff00000ul)
+
+v9x_status v9x_intel_hsw_protected_bytes(v9x_u32 bdsm, v9x_u32 stolen_bytes,
+                                         v9x_u32 reserved_reg,
+                                         v9x_u32 *protected_bytes);
+
+v9x_status v9x_intel_hsw_plan_heap(
+    const struct v9x_intel_hsw_heap_inputs *in,
+    struct v9x_intel_hsw_heap_plan *out);
 
 v9x_status v9x_intel_hsw_encode_pte(v9x_u32 physical, v9x_u8 cache,
                                     v9x_u32 *raw);

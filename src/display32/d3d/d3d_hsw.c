@@ -50,8 +50,9 @@
 #include "velocity9x/intel_hsw_pipe.h"
 #include "velocity9x/intel_gma.h"
 
-/* Graphics addresses inside the reserve (velocity9x\intel_hsw.h). */
-#define V9X_D3D_HSW_GFX(offset) (V9X_INTEL_HSW_RESERVE_OFFSET + (offset))
+/* Graphics addresses inside the reserve (velocity9x\intel_hsw.h), which the
+ * 16-bit side places once a boot and publishes in the engine block. */
+#define V9X_D3D_HSW_GFX(offset) (v9x_hal->engine.reserve_offset + (offset))
 #define V9X_D3D_HSW_RCS_RING    V9X_D3D_HSW_GFX(V9X_INTEL_HSW_RCS_RING_OFF)
 #define V9X_D3D_HSW_STATUS_GFX  V9X_D3D_HSW_GFX(V9X_INTEL_HSW_RING_BYTES)
 /* The batch's own PIPE_CONTROL breadcrumb, a qword after the sequences. */

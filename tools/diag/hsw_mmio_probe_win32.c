@@ -243,6 +243,55 @@ static struct v9x_bcs_result v9x_bcs_out;
 
 static DWORD v9x_config_read(DWORD offset);
 static void v9x_hex(char *text, DWORD value, int digits);
+static void v9x_add(DWORD offset);
+
+/*
+ * The driver's live engine reserve: the BCS ring's START when that ring is
+ * on, which the mini-VDD set to the reserve, else 0. One read-only capture
+ * of the two ring registers. Since 2026-10-20 the reserve's place is decided
+ * per boot (docs\plans\intel-haswell-heap-beyond-16-mib.md), so a probe
+ * that writes stolen memory asks first rather than assume 1800000h.
+ */
+static DWORD v9x_live_reserve(void)
+{
+    HANDLE device;
+    DWORD returned;
+    DWORD index;
+    DWORD start = 0ul;
+    DWORD ctl = 0ul;
+    BOOL ok;
+
+    v9x_request.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_request.flags = 0ul;
+    v9x_request.count = 0ul;
+    v9x_add(V9X_INTEL_HSW_BCS_START);
+    v9x_add(V9X_INTEL_HSW_BCS_CTL);
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        return 0ul;
+    }
+    ok = DeviceIoControl(device, V9X_HSWMM_CAPTURE, &v9x_request,
+                         sizeof(v9x_request), &v9x_result,
+                         sizeof(v9x_result), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_result) ||
+        v9x_result.magic != V9X_HSWMM_MAGIC ||
+        (v9x_result.status & V9X_HSWMM_ST_SNAPSHOT_TAKEN) == 0ul) {
+        return 0ul;
+    }
+    for (index = 0ul; index < v9x_result.accepted; ++index) {
+        if (v9x_result.offsets[index] == V9X_INTEL_HSW_BCS_START) {
+            start = v9x_result.first[index];
+        } else if (v9x_result.offsets[index] == V9X_INTEL_HSW_BCS_CTL) {
+            ctl = v9x_result.first[index];
+        }
+    }
+    if ((ctl & V9X_INTEL_HSW_CTL_ENABLE) == 0ul) {
+        return 0ul;
+    }
+    return start & 0xfffff000ul;
+}
 
 /* Does the scratch hold exactly the 16x16 fill at this byte stride, with
  * every other dword still the guard? */
@@ -397,6 +446,14 @@ static void v9x_bcs_run(void)
     BOOL ok;
 
     WritePrivateProfileStringA("Bcs", 0, 0, V9X_HSWMM_PATH);
+    /* B1 needs the blitter ring off, and its stage 2 writes before the
+     * VxD looks: with the driver's ring on, 1800000h is the driver's heap
+     * or reserve. */
+    if (v9x_live_reserve() != 0ul) {
+        WritePrivateProfileStringA("Bcs", "Result", "ENGINE-OPEN",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
     v9x_bcs_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
     v9x_bcs_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
     v9x_bcs_in.bdsm = v9x_config_read(V9X_INTEL_HSW_CFG_BDSM);
@@ -602,13 +659,18 @@ static void v9x_flip_run(DWORD bytes_per_pixel)
 
 /*
  * Phases C (/rcs) and D (/draw): docs\plans\intel-haswell-direct3d.md.
- * Layouts match hsw_mmio_probe.asm's HSW_RCS_* definitions. The region
- * sits at aperture 1820000h, clear of the B2 driver's live BCS ring and
- * status page at 1800000h-1801FFFh.
+ * Layouts match hsw_mmio_probe.asm's HSW_RCS_* definitions. The region is
+ * the probe region the heap plan keeps after the driver's live reserve
+ * (docs\plans\intel-haswell-heap-beyond-16-mib.md), found from the BCS
+ * ring's START; with that ring off it is 1820000h, after the fallback
+ * reserve, where every run before 2026-10-20 put it.
  */
 #define V9X_RCS_DIOC         3u
 #define V9X_RCS_MAGIC        0x43525348ul
-#define V9X_RCS_OFFSET       0x01820000ul
+#define V9X_RCS_LEGACY       0x01820000ul
+#define V9X_RCS_OFFSET       v9x_rcs_region
+
+static DWORD v9x_rcs_region = V9X_RCS_LEGACY;
 #define V9X_RCS_STATUS       (V9X_RCS_OFFSET + 0x1000ul)
 #define V9X_RCS_IMAGE        (V9X_RCS_OFFSET + 0x2000ul)
 #define V9X_RCS_STATE        (V9X_RCS_OFFSET + 0x4000ul)
@@ -2272,16 +2334,21 @@ static void v9x_rcs_run(int draw)
 {
     HANDLE device;
     DWORD returned;
+    DWORD live;
     BOOL ok;
 
     v9x_rcs_section = draw == V9X_DEPTH16_MODE ? "Depth16" :
                       draw == V9X_DEPTH_MODE ? "Depth" :
                       draw >= 2 ? "Shade" : draw ? "Draw" : "Rcs";
     WritePrivateProfileStringA(v9x_rcs_section, 0, 0, V9X_HSWMM_PATH);
+    live = v9x_live_reserve();
+    v9x_rcs_region = live != 0ul ? live + V9X_INTEL_HSW_RESERVE_BYTES :
+                                   V9X_RCS_LEGACY;
     v9x_rcs_in.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
     v9x_rcs_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
     v9x_rcs_in.bdsm = v9x_config_read(V9X_INTEL_HSW_CFG_BDSM);
     v9x_rcs_in.offset = V9X_RCS_OFFSET;
+    v9x_rcs_key("LiveReserve", live);
     v9x_rcs_key("Aperture", v9x_rcs_in.aperture);
     v9x_rcs_key("Offset", v9x_rcs_in.offset);
     if (!v9x_rcs_build(draw)) {
@@ -2502,6 +2569,176 @@ static void v9x_publish_forcewake(void)
     }
 }
 
+/*
+ * /stolen: Phase 0 of docs\plans\intel-haswell-heap-beyond-16-mib.md. One
+ * DIOC 5 call; the layouts match hsw_mmio_probe.asm's HSW_SL_* definitions.
+ * Stolen memory's size comes from GGC, not from VBE's figure, which counts
+ * the top megabyte the B1 run could not write. The writes run from 16 MiB,
+ * where today's heap ends, to the top of stolen memory, and pass over the
+ * MiB that holds the driver's live reserve.
+ */
+#define V9X_STOLEN_DIOC       5u
+#define V9X_STOLEN_MAGIC      0x4c545348ul
+#define V9X_STOLEN_TESTS_MAX  128u
+#define V9X_STOLEN_TEST_FROM  0x01000000ul
+#define V9X_STOLEN_TEST_SPAN  0x04000000ul
+#define V9X_STOLEN_ST_TESTED  0x00000008ul
+
+static struct v9x_stolen_request {
+    DWORD base;
+    DWORD aperture;
+    DWORD bdsm;
+    DWORD pages;
+    DWORD test_from;
+    DWORD test_to;
+    DWORD skip_from;
+    DWORD skip_to;
+} v9x_stolen_in;
+
+static struct v9x_stolen_result {
+    DWORD magic;
+    DWORD status;
+    DWORD reserved_reg;
+    DWORD walked;
+    DWORD linear;
+    DWORD first_bad;
+    DWORD first_bad_pte;
+    DWORD invalid;
+    DWORD past_stolen;
+    DWORD last_pte;
+    DWORD tests;
+    DWORD passed;
+    DWORD igd_id;
+    DWORD spare[3];
+    DWORD test[V9X_STOLEN_TESTS_MAX][4];
+} v9x_stolen_out;
+
+typedef char v9x_stolen_layout_matches[
+    offsetof(struct v9x_stolen_result, test) == 64u &&
+    sizeof(struct v9x_stolen_request) == 32u ? 1 : -1];
+
+static void v9x_stolen_key(const char *key, DWORD value)
+{
+    v9x_key("Stolen", key, value);
+}
+
+static void v9x_stolen_publish(void)
+{
+    char key[8];
+    char text[40];
+    DWORD index;
+    DWORD part;
+    DWORD first_failed;
+    DWORD *test;
+
+    v9x_stolen_key("Status", v9x_stolen_out.status);
+    v9x_stolen_key("IgdId", v9x_stolen_out.igd_id);
+    v9x_stolen_key("Reg1082C0", v9x_stolen_out.reserved_reg);
+    v9x_stolen_key("PtesWalked", v9x_stolen_out.walked);
+    v9x_stolen_key("PtesLinear", v9x_stolen_out.linear);
+    v9x_stolen_key("PtesInvalid", v9x_stolen_out.invalid);
+    v9x_stolen_key("FirstNonLinear", v9x_stolen_out.first_bad);
+    v9x_stolen_key("FirstNonLinearPte", v9x_stolen_out.first_bad_pte);
+    v9x_stolen_key("LastStolenPte", v9x_stolen_out.last_pte);
+    v9x_stolen_key("PtePastStolen", v9x_stolen_out.past_stolen);
+    if ((v9x_stolen_out.status & V9X_STOLEN_ST_TESTED) == 0ul) {
+        return;
+    }
+    v9x_stolen_key("Tests", v9x_stolen_out.tests);
+    v9x_stolen_key("TestsPassed", v9x_stolen_out.passed);
+
+    /* Each point as offset,old,pattern readback,readback after restore. */
+    first_failed = v9x_stolen_in.test_to;
+    for (index = 0ul; index < v9x_stolen_out.tests &&
+                      index < V9X_STOLEN_TESTS_MAX; ++index) {
+        test = v9x_stolen_out.test[index];
+        for (part = 0ul; part < 4ul; ++part) {
+            v9x_hex(text + part * 9ul, test[part], 8);
+            text[part * 9ul + 8ul] = part == 3ul ? '\0' : ',';
+        }
+        lstrcpyA(key, "T");
+        v9x_hex(key + 1, index, 3);
+        WritePrivateProfileStringA("Stolen", key, text, V9X_HSWMM_PATH);
+        if (first_failed == v9x_stolen_in.test_to &&
+            (test[2] != (0x5a5aa5a5ul ^ test[0]) || test[3] != test[1])) {
+            first_failed = test[0];
+        }
+    }
+    v9x_stolen_key("FirstFailedOffset", first_failed);
+}
+
+static void v9x_stolen_run(void)
+{
+    struct v9x_intel_hsw_ggc ggc;
+    HANDLE device;
+    DWORD returned;
+    DWORD ggc_word;
+    BOOL ok;
+
+    WritePrivateProfileStringA("Stolen", 0, 0, V9X_HSWMM_PATH);
+    ggc_word = v9x_config_read(V9X_INTEL_HSW_CFG_GGC) & 0xfffful;
+    v9x_stolen_key("Ggc", ggc_word);
+    if (v9x_intel_hsw_decode_ggc((v9x_u16)ggc_word, &ggc) != V9X_STATUS_OK) {
+        WritePrivateProfileStringA("Stolen", "Result", "GGC-UNDECODED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_stolen_key("Gms", ggc.gms);
+    v9x_stolen_key("StolenBytes", ggc.stolen_bytes);
+    v9x_stolen_key("GttStolenBytes", ggc.gtt_stolen_bytes);
+
+    v9x_stolen_in.base = v9x_config_read(0x10ul) &
+                         V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_stolen_in.aperture = v9x_config_read(0x18ul) & 0xfffffff0ul;
+    v9x_stolen_in.bdsm = v9x_config_read(V9X_INTEL_HSW_CFG_BDSM);
+    v9x_stolen_in.pages = ggc.stolen_bytes / V9X_INTEL_HSW_PAGE_BYTES;
+    v9x_stolen_in.test_from = V9X_STOLEN_TEST_FROM;
+    v9x_stolen_in.test_to = ggc.stolen_bytes;
+    if (v9x_stolen_in.test_to > V9X_STOLEN_TEST_FROM + V9X_STOLEN_TEST_SPAN) {
+        v9x_stolen_in.test_to = V9X_STOLEN_TEST_FROM + V9X_STOLEN_TEST_SPAN;
+    }
+    if (v9x_stolen_in.test_to < V9X_STOLEN_TEST_FROM) {
+        v9x_stolen_in.test_to = V9X_STOLEN_TEST_FROM;
+    }
+    /* The live reserve and the probe region after it, or the fallback
+     * reserve with its ring off. */
+    v9x_stolen_in.skip_from = v9x_live_reserve();
+    if (v9x_stolen_in.skip_from == 0ul) {
+        v9x_stolen_in.skip_from = V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET;
+    }
+    v9x_stolen_in.skip_to = v9x_stolen_in.skip_from +
+                            V9X_INTEL_HSW_RESERVE_BYTES +
+                            V9X_INTEL_HSW_PROBE_REGION_BYTES;
+    v9x_stolen_key("Base", v9x_stolen_in.base);
+    v9x_stolen_key("Aperture", v9x_stolen_in.aperture);
+    v9x_stolen_key("Bdsm", v9x_stolen_in.bdsm);
+    v9x_stolen_key("TestFrom", v9x_stolen_in.test_from);
+    v9x_stolen_key("TestTo", v9x_stolen_in.test_to);
+    v9x_stolen_key("SkipFrom", v9x_stolen_in.skip_from);
+    v9x_stolen_key("SkipTo", v9x_stolen_in.skip_to);
+
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA("Stolen", "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    ok = DeviceIoControl(device, V9X_STOLEN_DIOC, &v9x_stolen_in,
+                         sizeof(v9x_stolen_in), &v9x_stolen_out,
+                         sizeof(v9x_stolen_out), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_stolen_out) ||
+        v9x_stolen_out.magic != V9X_STOLEN_MAGIC) {
+        WritePrivateProfileStringA("Stolen", "Result", "DIOC-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_stolen_publish();
+    WritePrivateProfileStringA("Stolen", "Result", "COMPLETE",
+                               V9X_HSWMM_PATH);
+}
+
 void __stdcall V9xHswMmioEntry(void)
 {
     HANDLE device;
@@ -2535,6 +2772,18 @@ void __stdcall V9xHswMmioEntry(void)
         WritePrivateProfileStringA("Report", "Access", "bcs-ring-phase-b1",
                                    V9X_HSWMM_PATH);
         v9x_bcs_run();
+        WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                   V9X_HSWMM_PATH);
+        WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+        ExitProcess(0u);
+    }
+
+    /* /stolen is the heap plan's Phase 0 alone. */
+    if (v9x_has_switch("/stolen")) {
+        WritePrivateProfileStringA("Report", "Access",
+                                   "stolen-layout-heap-phase-0",
+                                   V9X_HSWMM_PATH);
+        v9x_stolen_run();
         WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);

@@ -1721,6 +1721,11 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026102001: V9X_DD_ENGINE gains reserve_offset, the graphics address of
+ * the Haswell engine reserve, which no longer sits at a fixed offset
+ * (docs\plans\intel-haswell-heap-beyond-16-mib.md). A layout change: every
+ * field after the engine block in V9X_DD_SHARED and in the trace snapshot
+ * moves by one DWORD. */
 /* 2026101101: V9X_D3D_DIAGNOSTICS gains the process watch (how each
  * program using the HAL ended, ddhal_watch.c). An append. */
 /* 2026101001: V9X_D3D_DIAGNOSTICS gains the refused-blend table and the
@@ -1853,7 +1858,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026101101ul
+#define V9X_DD_SHARED_ABI   2026102001ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -1983,6 +1988,14 @@ typedef struct v9x_dd_engine {
      */
     DWORD ring_linear_base;
     DWORD ring_bytes;
+    /*
+     * The graphics (aperture) address of the engine reserve that
+     * ring_linear_base maps, for an engine whose HAL builds GPU addresses
+     * into it. Haswell's moved from a fixed 1800000h to the top of usable
+     * stolen memory in ABI 2026102001, decided once a boot by the 16-bit
+     * side. Zero for every other engine.
+     */
+    DWORD reserve_offset;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {

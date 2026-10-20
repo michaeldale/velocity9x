@@ -1831,13 +1831,91 @@ V9xPciReadHswConfigDone:
     retf    12
 V9XPCIREADHSWCONFIG ENDP
 
-; WORD FAR PASCAL V9xMiniHswEngineOpen(DWORD bar0, DWORD gmadr, DWORD bdsm,
-;                                      DWORD FAR *mmio, DWORD FAR *reserve,
-;                                      WORD FAR *code)
+; WORD FAR PASCAL V9xPciReadHswGgc(WORD FAR *ggc)
 ;
-; HSW_ENGINE_OPEN (V9XMAPI.INC). Outputs copied out of EBX/ECX/EDX before
-; any `les bx`, which would overwrite BX. With no mini-VDD API the code is
-; FFFFh.
+; Haswell's GGC (50h), read-only, for the stolen-memory size the heap plan
+; needs (docs\plans\intel-haswell-heap-beyond-16-mib.md). Returns 1 with the
+; word written, else 0 with 0 written.
+PUBLIC V9XPCIREADHSWGGC
+V9XPCIREADHSWGGC PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadHswGgcFailed
+    mov     di, 0050h
+    mov     ax, 0b109h
+    int     1ah
+    jc      short V9xPciReadHswGgcFailed
+    or      ah, ah
+    jnz     short V9xPciReadHswGgcFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], cx
+    mov     ax, 1
+    jmp     short V9xPciReadHswGgcDone
+V9xPciReadHswGgcFailed:
+    les     bx, dword ptr [bp+6]
+    mov     word ptr es:[bx], 0
+    xor     ax, ax
+V9xPciReadHswGgcDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADHSWGGC ENDP
+
+; WORD FAR PASCAL V9xMiniHswStolenReserved(DWORD bar0, DWORD FAR *reg)
+;
+; HSW_STOLEN_RESERVED (V9XMAPI.INC): MMIO 1082C0h through the mini-VDD.
+; Returns the verb's AX, or 0 with no mini-VDD API; *reg is 0 unless AX=1.
+PUBLIC V9XMINIHSWSTOLENRESERVED
+V9XMINIHSWSTOLENRESERVED PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    ecx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniHswStolenReservedNoApi
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_HSW_STOLEN_RESERVED
+    call    dword ptr V9xMiniApiEntry
+    mov     ecx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], ecx
+    jmp     short V9xMiniHswStolenReservedDone
+V9xMiniHswStolenReservedNoApi:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniHswStolenReservedDone:
+    pop     es
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     bp
+    retf    8
+V9XMINIHSWSTOLENRESERVED ENDP
+
+; WORD FAR PASCAL V9xMiniHswEngineOpen(DWORD bar0, DWORD gmadr, DWORD bdsm,
+;                                      DWORD offset, DWORD FAR *mmio,
+;                                      DWORD FAR *reserve, WORD FAR *code)
+;
+; HSW_ENGINE_OPEN (V9XMAPI.INC); offset is the reserve's aperture offset, in
+; ESI. Outputs copied out of EBX/ECX/EDX before any `les bx`, which would
+; overwrite BX. With no mini-VDD API the code is FFFFh.
 PUBLIC V9XMINIHSWENGINEOPEN
 V9XMINIHSWENGINEOPEN PROC FAR
     push    bp
@@ -1851,9 +1929,10 @@ V9XMINIHSWENGINEOPEN PROC FAR
     call    V9xMiniApiInitialize
     or      ax, ax
     jz      short V9xMiniHswEngineOpenNoApi
-    mov     ebx, dword ptr [bp+26]
-    mov     ecx, dword ptr [bp+22]
-    mov     edx, dword ptr [bp+18]
+    mov     ebx, dword ptr [bp+30]
+    mov     ecx, dword ptr [bp+26]
+    mov     edx, dword ptr [bp+22]
+    mov     esi, dword ptr [bp+18]
     mov     eax, V9XMINI_FN_HSW_ENGINE_OPEN
     call    dword ptr V9xMiniApiEntry
     mov     esi, ebx
@@ -1883,7 +1962,7 @@ V9xMiniHswEngineOpenDone:
     pop     ecx
     pop     ebx
     pop     bp
-    retf    24
+    retf    28
 V9XMINIHSWENGINEOPEN ENDP
 
 ; WORD FAR PASCAL V9xMiniHswEngineClose(void)

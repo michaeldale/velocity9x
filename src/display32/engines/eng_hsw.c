@@ -4,7 +4,7 @@
  * direct3d.md.
  *
  * The ring and its status page were opened by the mini-VDD at the reserve
- * B1 measured (V9X_INTEL_HSW_RESERVE_OFFSET), under a forcewake it holds
+ * the 16-bit side placed (engine.reserve_offset), under a forcewake it holds
  * for the engine's lifetime, so nothing here touches power management.
  * Commands come from the host-tested builders in src\chipsets\intel\
  * hsw_3d.c; each submission ends with MI_STORE_DATA_IMM of a sequence
@@ -86,10 +86,11 @@ static int v9x_hsw_validate(void)
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul) {
         return 1;
     }
-    if ((v9x_hsw_read32(V9X_INTEL_HSW_BCS_CTL) & V9X_INTEL_HSW_CTL_ENABLE) ==
+    if (v9x_hal->engine.reserve_offset == 0ul ||
+        (v9x_hsw_read32(V9X_INTEL_HSW_BCS_CTL) & V9X_INTEL_HSW_CTL_ENABLE) ==
             0ul ||
         v9x_hsw_read32(V9X_INTEL_HSW_BCS_START) !=
-            V9X_INTEL_HSW_RESERVE_OFFSET) {
+            v9x_hal->engine.reserve_offset) {
         return 0;
     }
     v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
@@ -191,7 +192,9 @@ static void v9x_hsw_submit(const v9x_u32 *dw, DWORD count)
 
     sequence = status[1] + 1ul;
     v9x_intel_hsw_batch_init(&batch, store, V9X_HSW_STORE_DWORDS);
-    v9x_intel_hsw_mi_store_data_imm(&batch, V9X_INTEL_HSW_STATUS_OFFSET,
+    v9x_intel_hsw_mi_store_data_imm(&batch,
+                                    v9x_hal->engine.reserve_offset +
+                                        V9X_INTEL_HSW_RING_BYTES,
                                     sequence);
 
     total = (count + V9X_HSW_STORE_DWORDS) * 4ul;

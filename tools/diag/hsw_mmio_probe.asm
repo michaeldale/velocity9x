@@ -9,7 +9,8 @@
 ;
 ; Writes: none to the device unless V9XHSWMM.EXE passes HSW_FLAG_FORCEWAKE,
 ; or asks for one of the later phases' DIOC codes below (B1, C-F2b's rings,
-; F3's two plane registers).
+; F3's two plane registers, and the heap plan's Phase 0, which writes and
+; restores single dwords of stolen memory but no register).
 ; 0CF8h is saved and restored around the one configuration read (the IGD's
 ; ID, to confirm what the base belongs to). Mapping a physical range with
 ; _MapPhysToLinear changes no device state.
@@ -417,6 +418,71 @@ HSW_FO_FLAGS            equ 76
 HswFlipOut    dd HSW_FLIP_MAGIC
               dd (HSW_FLIP_OUT_DWORDS - 1) dup (0)
 HswFlipIn     dd (HSW_FLIP_IN_BYTES / 4) dup (0)
+
+; Phase 0 of docs\plans\intel-haswell-heap-beyond-16-mib.md: the layout of
+; stolen memory above the 16 MiB heap. DIOC code 5. Three things:
+;
+;   1. Walk the GTT entries covering stolen memory and count how many map
+;      BDSM + offset, recording the first that does not and the entry just
+;      past stolen.
+;   2. Read 1082C0h once. The Linux i915 driver reads its "stolen
+;      reserved" register there on Gen7 (GEN6_STOLEN_RESERVED); the public
+;      PRM's register list does not give it, so its reading is the record's
+;      to interpret. It sits outside HswWindows and the forcewake ranges.
+;   3. At two dwords in each MiB of the requested range (its first and its
+;      last), through the aperture with interrupts off: read the old value,
+;      write a pattern, read it back, write the old value back, read again.
+;      A MiB that meets the skip range (the live driver's reserve) is not
+;      touched. The B1 run already wrote into the top megabyte; doing it
+;      again is how the boundary is found.
+HSW_DIOC_STOLEN         equ 5
+HSW_STOLEN_MAGIC        equ 4c545348h ; "HSTL"
+HSW_SL_IN_BASE          equ 0         ; GTTMMADR
+HSW_SL_IN_APERTURE      equ 4         ; GMADR
+HSW_SL_IN_BDSM          equ 8
+HSW_SL_IN_PAGES         equ 12        ; GTT entries to walk: stolen pages
+HSW_SL_IN_TEST_FROM     equ 16        ; aperture offset, MiB-aligned
+HSW_SL_IN_TEST_TO       equ 20        ; exclusive, MiB-aligned
+HSW_SL_IN_SKIP_FROM     equ 24
+HSW_SL_IN_SKIP_TO       equ 28        ; exclusive
+HSW_SL_IN_BYTES         equ 32
+HSW_SL_MIB              equ 00100000h
+HSW_SL_MIB_LOW          equ 000fffffh
+HSW_SL_TEST_SPAN        equ 04000000h ; 64 MiB of test range at most
+HSW_SL_TESTS_MAX        equ 128       ; two points a MiB
+HSW_SL_LAST_DWORD       equ 000ffffch
+HSW_SL_PATTERN          equ 5a5aa5a5h
+HSW_SL_RESERVED_REG     equ 1082c0h
+
+HSW_SL_ST_IGD_INTEL     equ 00000001h
+HSW_SL_ST_MAPPED        equ 00000002h
+HSW_SL_ST_GTT_WALKED    equ 00000004h
+HSW_SL_ST_TESTED        equ 00000008h
+HSW_SL_ST_BAD_INPUT     equ 00000010h
+HSW_SL_ST_MAP_FAILED    equ 00000020h
+
+; Output, byte offsets, matching struct v9x_stolen_result in
+; hsw_mmio_probe_win32.c: a 16-dword header, then four dwords a test
+; (offset, old value, pattern readback, readback after the restore).
+HSW_SL_HEADER_DWORDS    equ 16
+HSW_SL_OUT_DWORDS       equ (HSW_SL_HEADER_DWORDS + HSW_SL_TESTS_MAX * 4)
+HSW_SO_STATUS           equ 4
+HSW_SO_RESERVED_REG     equ 8
+HSW_SO_WALKED           equ 12
+HSW_SO_LINEAR           equ 16
+HSW_SO_FIRST_BAD        equ 20
+HSW_SO_FIRST_BAD_PTE    equ 24
+HSW_SO_INVALID          equ 28
+HSW_SO_PAST_STOLEN      equ 32
+HSW_SO_LAST_PTE         equ 36
+HSW_SO_TESTS            equ 40
+HSW_SO_PASSED           equ 44
+HSW_SO_IGD_ID           equ 48
+HSW_SO_TEST_BASE        equ (HSW_SL_HEADER_DWORDS * 4)
+
+HswStolenOut  dd HSW_STOLEN_MAGIC
+              dd (HSW_SL_OUT_DWORDS - 1) dup (0)
+HswStolenIn   dd (HSW_SL_IN_BYTES / 4) dup (0)
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -1635,6 +1701,234 @@ Hsw_Flip_Dioc_Fail:
     ret
 EndProc Hsw_Flip_Dioc
 
+; One test point of Hsw_Stolen. EDI = the dword's aperture offset, EBX =
+; the test's index. Maps the page, makes the five accesses with interrupts
+; off, and records the offset, the old value and both readbacks. A pass is
+; the pattern read back and then the old value read back.
+BeginProc Hsw_Stolen_Point
+    pushad
+    mov     esi, ebx
+    shl     esi, 4
+    lea     esi, HswStolenOut[esi+HSW_SO_TEST_BASE]
+    mov     [esi], edi
+    mov     eax, HswStolenIn[HSW_SL_IN_APERTURE]
+    add     eax, edi
+    and     eax, 0fffff000h
+    VMMcall _MapPhysToLinear,<eax,1000h,0>
+    cmp     eax, 0ffffffffh
+    je      short Hsw_Stolen_Point_Fail
+    mov     ecx, edi
+    and     ecx, 0ffch
+    add     eax, ecx
+    mov     edx, HSW_SL_PATTERN
+    xor     edx, edi                  ; a different pattern at each point
+
+    pushfd
+    cli
+    mov     ecx, [eax]
+    mov     [eax], edx
+    mov     ebp, [eax]
+    mov     [eax], ecx
+    mov     ebx, [eax]
+    popfd
+
+    mov     [esi+4], ecx
+    mov     [esi+8], ebp
+    mov     [esi+12], ebx
+    cmp     ebp, edx
+    jne     short Hsw_Stolen_Point_Done
+    cmp     ebx, ecx
+    jne     short Hsw_Stolen_Point_Done
+    inc     HswStolenOut[HSW_SO_PASSED]
+    jmp     short Hsw_Stolen_Point_Done
+Hsw_Stolen_Point_Fail:
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_MAP_FAILED
+Hsw_Stolen_Point_Done:
+    popad
+    ret
+EndProc Hsw_Stolen_Point
+
+; Phase 0 of the heap plan; see HSW_DIOC_STOLEN for what it does.
+BeginProc Hsw_Stolen
+    pushad
+
+    ; Input bounds: a 4 MB-aligned GTTMMADR, a page-aligned GMADR, a walk
+    ; inside the table, and a MiB-aligned test range of 64 MiB at most.
+    mov     eax, HswStolenIn[HSW_SL_IN_BASE]
+    test    eax, eax
+    jz      Hsw_Stolen_Bad_Input
+    test    eax, HSW_BASE_ALIGN
+    jnz     Hsw_Stolen_Bad_Input
+    mov     eax, HswStolenIn[HSW_SL_IN_APERTURE]
+    test    eax, eax
+    jz      Hsw_Stolen_Bad_Input
+    test    eax, 0fffh
+    jnz     Hsw_Stolen_Bad_Input
+    mov     eax, HswStolenIn[HSW_SL_IN_PAGES]
+    test    eax, eax
+    jz      Hsw_Stolen_Bad_Input
+    cmp     eax, HSW_GTT_ENTRIES
+    ja      Hsw_Stolen_Bad_Input
+    mov     eax, HswStolenIn[HSW_SL_IN_TEST_FROM]
+    test    eax, HSW_SL_MIB_LOW
+    jnz     Hsw_Stolen_Bad_Input
+    mov     ecx, HswStolenIn[HSW_SL_IN_TEST_TO]
+    test    ecx, HSW_SL_MIB_LOW
+    jnz     Hsw_Stolen_Bad_Input
+    cmp     ecx, eax
+    jb      Hsw_Stolen_Bad_Input
+    sub     ecx, eax
+    cmp     ecx, HSW_SL_TEST_SPAN
+    ja      Hsw_Stolen_Bad_Input
+
+    mov     eax, HSW_IGD_ADDRESS
+    call    Hsw_Pci_Read
+    mov     HswStolenOut[HSW_SO_IGD_ID], eax
+    cmp     ax, HSW_VENDOR_INTEL
+    jne     Hsw_Stolen_Bad_Input
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_IGD_INTEL
+
+    mov     eax, HswStolenIn[HSW_SL_IN_BASE]
+    VMMcall _MapPhysToLinear,<eax,HSW_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Stolen_Map_Failed
+    mov     ebp, eax
+    mov     eax, HswStolenIn[HSW_SL_IN_BASE]
+    add     eax, HSW_GTT_OFFSET
+    VMMcall _MapPhysToLinear,<eax,HSW_GTT_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Stolen_Map_Failed
+    mov     esi, eax
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_MAPPED
+
+    mov     eax, [ebp+HSW_SL_RESERVED_REG]
+    mov     HswStolenOut[HSW_SO_RESERVED_REG], eax
+
+    ; The walk: EBX the entry expected (BDSM + offset, valid), ECX the
+    ; index, EDX the entries that match, EDI the entries not valid.
+    mov     ebx, HswStolenIn[HSW_SL_IN_BDSM]
+    and     ebx, HSW_BCS_STOLEN_MASK
+    or      ebx, 1
+    mov     HswStolenOut[HSW_SO_FIRST_BAD], 0ffffffffh
+    xor     ecx, ecx
+    xor     edx, edx
+    xor     edi, edi
+Hsw_Stolen_Walk:
+    mov     eax, [esi+ecx*4]
+    test    eax, 1
+    jnz     short Hsw_Stolen_Walk_Valid
+    inc     edi
+Hsw_Stolen_Walk_Valid:
+    and     eax, HSW_BCS_PTE_MASK
+    cmp     eax, ebx
+    jne     short Hsw_Stolen_Walk_Bad
+    inc     edx
+    jmp     short Hsw_Stolen_Walk_Next
+Hsw_Stolen_Walk_Bad:
+    cmp     HswStolenOut[HSW_SO_FIRST_BAD], 0ffffffffh
+    jne     short Hsw_Stolen_Walk_Next
+    mov     HswStolenOut[HSW_SO_FIRST_BAD], ecx
+    mov     eax, [esi+ecx*4]
+    mov     HswStolenOut[HSW_SO_FIRST_BAD_PTE], eax
+Hsw_Stolen_Walk_Next:
+    add     ebx, 1000h
+    inc     ecx
+    cmp     ecx, HswStolenIn[HSW_SL_IN_PAGES]
+    jb      short Hsw_Stolen_Walk
+    mov     HswStolenOut[HSW_SO_WALKED], ecx
+    mov     HswStolenOut[HSW_SO_LINEAR], edx
+    mov     HswStolenOut[HSW_SO_INVALID], edi
+    mov     eax, [esi+ecx*4-4]
+    mov     HswStolenOut[HSW_SO_LAST_PTE], eax
+    cmp     ecx, HSW_GTT_ENTRIES
+    jae     short Hsw_Stolen_Walked
+    mov     eax, [esi+ecx*4]
+    mov     HswStolenOut[HSW_SO_PAST_STOLEN], eax
+Hsw_Stolen_Walked:
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_GTT_WALKED
+
+    ; The writes: EDI the MiB, EBX the next test's index. A MiB that meets
+    ; [skip from, skip to) is passed over whole.
+    mov     edi, HswStolenIn[HSW_SL_IN_TEST_FROM]
+    xor     ebx, ebx
+Hsw_Stolen_Mib:
+    cmp     edi, HswStolenIn[HSW_SL_IN_TEST_TO]
+    jae     short Hsw_Stolen_Tested
+    cmp     edi, HswStolenIn[HSW_SL_IN_SKIP_TO]
+    jae     short Hsw_Stolen_Mib_Test
+    lea     eax, [edi+HSW_SL_MIB]
+    cmp     eax, HswStolenIn[HSW_SL_IN_SKIP_FROM]
+    ja      short Hsw_Stolen_Mib_Next
+Hsw_Stolen_Mib_Test:
+    call    Hsw_Stolen_Point
+    inc     ebx
+    push    edi
+    add     edi, HSW_SL_LAST_DWORD
+    call    Hsw_Stolen_Point
+    pop     edi
+    inc     ebx
+Hsw_Stolen_Mib_Next:
+    add     edi, HSW_SL_MIB
+    jmp     short Hsw_Stolen_Mib
+Hsw_Stolen_Tested:
+    mov     HswStolenOut[HSW_SO_TESTS], ebx
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_TESTED
+    jmp     short Hsw_Stolen_Exit
+
+Hsw_Stolen_Map_Failed:
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_MAP_FAILED
+    jmp     short Hsw_Stolen_Exit
+Hsw_Stolen_Bad_Input:
+    or      HswStolenOut[HSW_SO_STATUS], HSW_SL_ST_BAD_INPUT
+Hsw_Stolen_Exit:
+    popad
+    ret
+EndProc Hsw_Stolen
+
+; ESI = DIOCParams. Copies the input, runs Hsw_Stolen, copies the result.
+BeginProc Hsw_Stolen_Dioc
+    pushad
+    mov     ebx, esi
+    mov     esi, [ebx.lpvInBuffer]
+    test    esi, esi
+    jz      short Hsw_Stolen_Dioc_Fail
+    cmp     [ebx.cbInBuffer], HSW_SL_IN_BYTES
+    jb      short Hsw_Stolen_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short Hsw_Stolen_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], HSW_SL_OUT_DWORDS * 4
+    jb      short Hsw_Stolen_Dioc_Fail
+
+    cld
+    mov     edi, OFFSET32 HswStolenIn
+    mov     ecx, HSW_SL_IN_BYTES / 4
+    rep     movsd
+    mov     edi, OFFSET32 HswStolenOut + 4
+    mov     ecx, HSW_SL_OUT_DWORDS - 1
+    xor     eax, eax
+    rep     stosd
+
+    call    Hsw_Stolen
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 HswStolenOut
+    mov     ecx, HSW_SL_OUT_DWORDS
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short Hsw_Stolen_Dioc_Done
+    mov     dword ptr [eax], HSW_SL_OUT_DWORDS * 4
+Hsw_Stolen_Dioc_Done:
+    popad
+    xor     eax, eax
+    ret
+Hsw_Stolen_Dioc_Fail:
+    popad
+    mov     eax, 1
+    ret
+EndProc Hsw_Stolen_Dioc
+
 BeginProc Hsw_Reset_Result
     pushad
     mov     edi, OFFSET32 HswResult + 4
@@ -1668,6 +1962,11 @@ Hsw_Dioc_Not_Rcs:
     call    Hsw_Flip_Dioc
     ret
 Hsw_Dioc_Not_Flip:
+    cmp     ecx, HSW_DIOC_STOLEN
+    jne     short Hsw_Dioc_Not_Stolen
+    call    Hsw_Stolen_Dioc
+    ret
+Hsw_Dioc_Not_Stolen:
     cmp     ecx, HSW_DIOC_CAPTURE
     jne     Hsw_Dioc_Fail
 

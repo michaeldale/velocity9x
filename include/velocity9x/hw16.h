@@ -154,6 +154,22 @@ typedef struct v9x_hw16_device {
      * called (docs\decisions\2026-10-17-haswell-tier0-enable-ok.md).
      */
     unsigned short packed_pitch;
+
+    /*
+     * Bytes of aperture to map, when this chip needs more or less than its
+     * family's map_pages. Zero keeps the family's. Appended 2026-10-20 for
+     * the HD 4600, whose heap grows past the 16 MiB intel-gma maps for Gen3
+     * (docs\plans\intel-haswell-heap-beyond-16-mib.md).
+     */
+    unsigned long map_bytes;
+
+    /*
+     * The graphics address of the engine reserve the chip's descriptor
+     * opened, for dd16.c to publish as engine.reserve_offset. NULL, or a
+     * return of 0, for a chip without one. Appended 2026-10-20 with
+     * map_bytes.
+     */
+    unsigned long (*engine_reserve_offset)(void);
 } V9X_HW16_DEVICE;
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
@@ -203,7 +219,8 @@ typedef struct v9x_hw16_ops {
     /*
      * Size of the DPMI physical mapping, as the page count DPMI 0800h wants
      * in SI:DI and 0008h wants in CX:DX. Every family maps the whole 64 MiB
-     * PCI aperture today; a card with a smaller BAR sets less.
+     * PCI aperture today; a card with a smaller BAR sets less. A chip's
+     * map_bytes overrides it.
      */
     unsigned short map_pages_hi;
     unsigned short map_pages_lo;

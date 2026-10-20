@@ -445,10 +445,14 @@ V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
 ; ring for Direct3D (Phase F2 of docs\plans\intel-haswell-direct3d.md).
 ;
 ; In: EBX = GTTMMADR (BAR0) physical, ECX = GMADR (BAR2) physical, EDX =
-; BDSM, all freshly read from PCI config by the display driver. Phase B1's
-; measured sequence (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md):
-; map the MMIO and GTT halves of GTTMMADR and the reserve at GMADR +
-; 1800000h (128 KB: BCS ring, status, RCS ring at +2000h, render state; see
+; BDSM, all freshly read from PCI config by the display driver, and ESI =
+; the reserve's aperture offset, 64 KB-aligned and non-zero, which the
+; display driver places (docs\plans\intel-haswell-heap-beyond-16-mib.md; it
+; was a fixed 1800000h). An open ring at another offset is closed and the
+; rings reopened at this one. Phase B1's measured sequence
+; (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md): map the MMIO
+; and GTT halves of GTTMMADR and the reserve at GMADR + ESI (128 KB: BCS
+; ring, status, RCS ring at +2000h, render state; see
 ; velocity9x\intel_hsw.h), check all 32 PTEs map BDSM + offset, check a CPU
 ; write through the aperture reads back, zero the reserve, take forcewake,
 ; program BCS (HEAD/TAIL 0, START = reserve, CTL = 4 KB + enable) and RCS the
@@ -466,6 +470,15 @@ V9XMINI_FN_HSW_ENGINE_OPEN  EQU 0020h
 ; if there was nothing to close. Only the intel-gma family image implements
 ; it.
 V9XMINI_FN_HSW_ENGINE_CLOSE EQU 0021h
+
+; Intel Haswell: read MMIO 1082C0h, the register the Linux i915 driver calls
+; GEN6_STOLEN_RESERVED, which names the protected top of stolen memory
+; (docs\decisions\2026-10-20-haswell-stolen-layout.md). Read-only; maps the
+; MMIO half of GTTMMADR as HSW_ENGINE_OPEN does and shares its mapping.
+; In: EBX = GTTMMADR physical. Out: AX=1, EBX = the register; AX=0, EBX=0
+; for a bad base or a failed mapping. Only the intel-gma family image
+; implements it.
+V9XMINI_FN_HSW_STOLEN_RESERVED EQU 0022h
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
