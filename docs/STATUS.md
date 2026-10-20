@@ -8,12 +8,14 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.21.0](../releases/0.21.0/README.md), built from
-`71ee2e77`. Its downloads are committed (`69852b4c`), and the update
-server lists it as the latest stable and beta build (checked 2026-10-20).
+The latest release is [0.22.0](../releases/0.22.0/README.md), built from
+`275369a1`. Its downloads are committed (`a43bbff1`), it is on GitHub as
+`v0.22.0`, and the update server serves it as release 15, stable. A check
+from 0.21.0 offers it with a `signed=` line, and the served `SIGNED.TXT` and
+intel-gma zip equal the committed ones byte for byte (2026-10-20).
 Its archives are host-audited; none has had an activation smoke test from
-a Have Disk install of the archive itself. The checkout is 0.22.0,
-being released. See the [changelog](../CHANGELOG.md) for what it adds: the HD
+a Have Disk install of the archive itself. The checkout is 0.22.1,
+unreleased. See the [changelog](../CHANGELOG.md) for what it adds: the HD
 4600 heap and 32-bit textures, and the GMA 3150.
 
 Not run before release, by decision (Michael, 2026-10-20): the netbook

@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.22.1 - not yet released
+
 ## 0.22.0 - 2026-10-20
 
 - **Intel GMA 3150 (Pineview, `8086:A011`): new chip.** The `intel-gma`
