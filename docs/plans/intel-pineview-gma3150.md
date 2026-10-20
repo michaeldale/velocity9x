@@ -7,7 +7,9 @@ Gen3 engine claims D3D and runs:
 - the ring is at `0x6F0000`;
 - `FW_BLC` is not written.
 
-Mip chains B, C and Rows sample one level too deep. That is open
+V9XGLP, V9XGLIDP and V9XD32 (at 32 and 16 bpp) pass. V9XDDP fails the
+same checks as the netbook's 945GSE, including mip chains B, C and Rows,
+plus the two 8888 checks no Gen3 part offers
 (`docs\decisions\2026-10-20-pineview-tommo33-gen3-first-run.md`). Phase 2's
 read-only MMIO capture was skipped; the boot fingerprint passed. TOMMO33 is a
 remote-help Lenovo with an Atom N455 (`M-BWCR7F`). Results, in
@@ -183,10 +185,12 @@ programmed for the VBE mode.
 First run, 2026-10-20, boot 12 (`2026-10-20-pineview-tommo33-gen3-first-run.md`):
 
 - The claim and step 1 pass.
-- Step 2's V9XDDP is complete at 1024x600x16. Its only Pineview-specific
-  failure is the mip chain test: level 1 is never sampled, and level 2 comes
-  back where level 1 is expected.
-- V9XGLP, 32 bpp, Z24 and the games have not run.
+- Step 2's V9XDDP is complete at 1024x600x16, failing exactly what the
+  netbook fails. The mip chain result (level 2 where Direct3D's nearest is
+  1) is shared with the 945, not Pineview's.
+- V9XGLP, V9XGLIDP and V9XD32 at 32 and 16 bpp pass.
+- Step 3, the games, has not run.
+- Follow-up: the OpenGL renderer string names the part "GMA 950".
 
 Run the claim with the engine on by default; `IntelRuntime3D=0` stays the off
 switch. Then, in order:

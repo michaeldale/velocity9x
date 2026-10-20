@@ -1,4 +1,4 @@
-# Pineview on TOMMO33: the Gen3 engine runs, and mip levels sample one too deep
+# Pineview on TOMMO33: the Gen3 engine runs; D3D, OpenGL, Glide and 32 bpp probes pass as on the 945
 
 Date: 2026-10-20
 Status: **measured once, one boot.** Phase 3 of
@@ -69,24 +69,46 @@ appear here and not there.
   level 0 red (`63488`), level 1 green (`2016`) and level 2 blue (`31`).
   - On the GMA 900, samples at sweep points 17 to 27 read green, and blue
     from 30.
-  - Here they read blue from 17. Level 1 is never seen; where level 1 is
-    expected, level 2 comes back.
-  - Chains A, D and E, and the linear-filter chain, pass.
-  - Two hypotheses, neither tested:
-    - the level-1 offset the HAL writes differs from where Pineview fetches
-      it;
-    - Pineview selects LOD one level higher for the same derivatives.
-  - Mesa sets `is_i945` for Pineview, which argues against a layout
-    difference but does not rule one out.
-  - A Mesa comment in `i915_texstate.c` (`gen3-source-references`) records
-    that Pineview, "DevBLB derived", sampled wrongly until a layout was
-    aligned to 4. It concerns cube maps.
+  - Here they read blue from 17; level 1 is never seen.
+  - **This is not a Pineview finding.** The netbook's 945GSE reads the same
+    on every run that has the checks:
+    - `netbook-915gm-build-check-2026-10-08`;
+    - `netbook-gma950-0.19.0-2026-10-18`;
+    - `netbook-gen3-d3d-32bpp-2026-10-18`;
+    - `netbook-gen3-z24-2026-10-18`.
+  - Every `Chain*`, `Mip*`, `Lod*` and `PerspW*` key matches the netbook's
+    boot 211 report (`V9XDD-boot211.INI`), with two exceptions:
+    - texture addresses;
+    - three trilinear `MipTri_*_Raw` values a few LSBs apart.
+  - Pineview's `Ok=0` set equals the netbook's plus the two 8888 checks.
+  - So the parts placed in the 945 layout (945GSE, Pineview) read level 2
+    where Direct3D's nearest level is 1. The 915 placed stacked does not.
+    The cause is open on both.
+  - The first version of this record called it Pineview's, with two
+    hypotheses; the netbook comparison disposes of that.
 - `FlipPixelOk=0` in `V9XDD2.INI` fails on the GMA 900 as well.
+
+## OpenGL, Glide and 32 bpp (same boot, later)
+
+Probes built from `d3fb1b2c` and run from `C:\V9XIGMA` on the 1024x600x16
+desktop:
+
+- **V9XGLP** (OpenGL ICD): `Result=PASS`, 30 checks `Ok=1`, none `Ok=0`.
+  The renderer string reads "Velocity9x GMA 950": the name is chosen from
+  the stacked-mip bit alone, so Pineview gets the 945's name. This is
+  cosmetic, and not fixed.
+- **V9XGLIDP** (Glide 2): `Result=PASS failures=0`.
+- **V9XD32**: 640x480x32 `Result=PASS`, `Failures=0`, `T4Mismatches=0`.
+  The `/bpp16` control at 640x480x16 also passes. The desktop came back at
+  1024x600x16.
+- **Snapshot after** (`V9XSNA1-after-probes.INI`, same boot):
+  - 788 draws, 891 breadcrumb submits;
+  - 0 breadcrumb, ring-space or flip-wait timeouts;
+  - `WmWrites=0`.
 
 ## Not done
 
-- No game and no V9XD32 run.
-- No 32 bpp run.
+- No game.
 - No DSPFW capture.
 - The netbook has not run `bce8b693`, so the `vbe-size-unread` change on the
   945 is still unmeasured.
