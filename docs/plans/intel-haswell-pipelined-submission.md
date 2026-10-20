@@ -11,7 +11,12 @@ a stub (172 checks), then passing. The ring needed no new code: Gen3's
 day: both rings in `v9x_hsw_wait_idle`. V9XDDP reads as before and the
 3DMark 2000 counters are unchanged
 (`../decisions/2026-10-20-haswell-pipelined-phase2-both-rings-idle.md`).
-Phase 3 next.
+Phase 3 built and measured the same day
+(`../decisions/2026-10-20-haswell-pipelined-phase3-deferred-wait.md`):
+3DMark 2000 157 to 127 µs a batch. Gates 1-4 passed. Gate 5 passed
+partly, and gates 6 and 7 were not run (gate 7 as written cannot work:
+`reset` skips Disable). Decision 3's rule made Half-Life and a third of
+3DMark synchronous, and is open for review.
 
 ## Why
 

@@ -61,10 +61,18 @@ const char *v9x_hsw_engine_status_text(void)
     return v9x_hsw_engine_status;
 }
 
-/* Disable: give the ring and forcewake back. The next Enable reopens. */
+/* Disable: give the ring and forcewake back. The next Enable reopens. The
+ * close waits, bounded, for the draw the HAL may have left running; 2 says
+ * it closed without seeing that draw finish. */
 void v9x_hsw_engine_close(void)
 {
-    if (V9xMiniHswEngineClose() != 0u) {
+    unsigned short closed = V9xMiniHswEngineClose();
+
+    if (closed == 2u) {
+        v9x_hsw_engine_status = "closed-render-busy";
+        return;
+    }
+    if (closed != 0u) {
         v9x_hsw_engine_status = "closed";
     }
 }

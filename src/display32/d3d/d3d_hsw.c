@@ -13,12 +13,26 @@
  * process to find the status page without the render-initialised mark runs
  * the initialising batch Phase C measured.
  *
- * Synchronous: each draw waits for the blitter, writes its state into the
- * reserve, submits one batch with a sequence store after it, and waits for
- * the store. So the RCS is idle whenever anything else runs, which is what
- * lets the blitter, the CPU and other processes ignore it. No state lives
- * in this DLL across draws: it is mapped into every Direct3D process, and
- * every batch carries all of its state.
+ * Pipelined (docs\plans\intel-haswell-pipelined-submission.md, Phase 3):
+ * the reserve's per-draw state, batch and vertex areas are two slots, and
+ * the next sequence's low bit picks one (hsw_pipe.c). A draw waits until
+ * the batch that last used its slot is stored back - at most one batch is
+ * left running - fills the slot, submits, and returns without waiting for
+ * its own store, so the CPU builds the next draw while the GPU runs this
+ * one. Before 2026-10-20 every draw waited for its store, and the 4570 spent
+ * 75 us of each 158 us batch doing so
+ * (docs\decisions\2026-10-20-haswell-pipelined-phase0-wait-split.md).
+ *
+ * What used to rely on the RCS being idle now waits for it instead: the
+ * blitter's idle test covers both rings (eng_hsw.c), and Flip, Lock, Blt
+ * and every drain go through it. Three things stay synchronous: a draw into
+ * the buffer on screen (the 16-bit driver writes GDI and the cursor there
+ * with no hook this DLL sees), the depth fill, and the initialising batch.
+ *
+ * No state lives in this DLL across draws: it is mapped into every Direct3D
+ * process, and every batch carries all of its state. The sequence, and so
+ * the slot, is the status page's, shared by every process; HAL callbacks
+ * run under the Win16 lock, one at a time.
  *
  * Depth is F2b's: D16_UNORM Z buffers, which Gen7 always reads Y-tiled, so
  * this file places them in whole tiles and fills them by drawing - a
@@ -32,10 +46,11 @@
 #include "velocity9x/intel_hsw.h"
 #include "velocity9x/intel_hsw_3d.h"
 #include "velocity9x/intel_hsw_eu.h"
+#include "velocity9x/intel_hsw_pipe.h"
+#include "velocity9x/intel_gma.h"
 
 /* Graphics addresses inside the reserve (velocity9x\intel_hsw.h). */
 #define V9X_D3D_HSW_GFX(offset) (V9X_INTEL_HSW_RESERVE_OFFSET + (offset))
-#define V9X_D3D_HSW_STATE_BASE  V9X_D3D_HSW_GFX(V9X_INTEL_HSW_STATE_OFF)
 #define V9X_D3D_HSW_RCS_RING    V9X_D3D_HSW_GFX(V9X_INTEL_HSW_RCS_RING_OFF)
 #define V9X_D3D_HSW_STATUS_GFX  V9X_D3D_HSW_GFX(V9X_INTEL_HSW_RING_BYTES)
 /* The batch's own PIPE_CONTROL breadcrumb, a qword after the sequences. */
@@ -60,12 +75,12 @@
 /* A depth fill is two triangles. */
 #define V9X_D3D_HSW_FILL_VERTICES 6ul
 
-/* The vertex area holds this many triangles of 96 bytes. */
+/* A slot's vertex area holds this many triangles of 96 bytes (298). */
 #define V9X_D3D_HSW_MAX_TRIANGLES \
-    (V9X_INTEL_HSW_VERTEX_BYTES / (3ul * V9X_HSW_TL_VERTEX_BYTES))
-/* And this many of 120, with unit 1's coordinates after each vertex. */
+    (V9X_HSW_PIPE_VERTEX_BYTES / (3ul * V9X_HSW_TL_VERTEX_BYTES))
+/* And this many of 120, with unit 1's coordinates after each vertex (238). */
 #define V9X_D3D_HSW_MAX_TRIANGLES2 \
-    (V9X_INTEL_HSW_VERTEX_BYTES / (3ul * V9X_HSW_TL2_VERTEX_BYTES))
+    (V9X_HSW_PIPE_VERTEX_BYTES / (3ul * V9X_HSW_TL2_VERTEX_BYTES))
 
 /* Ring submission: MI_BATCH_BUFFER_START and the sequence store. */
 #define V9X_D3D_HSW_SUBMIT_DWORDS 6ul
@@ -245,42 +260,99 @@ static int v9x_d3d_hsw_wait_rcs(void)
 }
 
 /*
- * The wait before a draw writes the reserve, counted apart from the one
- * after its submit. Phase 0 of docs\plans\intel-haswell-pipelined-
- * submission.md: the plan's ceiling assumes this wait almost never finds
- * the engine busy, because the draw before it already waited, so nearly
- * all of TimeRenderDrain is the wait after the submit. On Haswell, Gen3's
- * counters carry it: RenderDrainWaits these waits, RenderDrainStalls those
- * that found the render engine busy, BreadcrumbLagPollsTotal and -Max the
- * status reads those stalls took.
+ * The slot the next sequence submits from, once the batch that last used
+ * it has been stored back (v9x_intel_hsw_pipe_may_write: at most one batch
+ * outstanding). Phase 0's counters keep their meaning: RenderDrainWaits
+ * these waits, RenderDrainStalls those that found the slot still in use,
+ * BreadcrumbLagPollsTotal and -Max the status reads those stalls took. A
+ * timeout is the render engine's quarantine, before anything is written.
  */
-static int v9x_d3d_hsw_wait_rcs_before_write(void)
+static int v9x_d3d_hsw_wait_slot(struct v9x_hsw_pipe_slot *slot)
 {
     V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
-    DWORD polls = 0ul;
-    int idle = v9x_d3d_hsw_wait_rcs_polled(&polls);
+    volatile DWORD *status = v9x_d3d_hsw_status();
+    DWORD spins;
+    DWORD sent = 0ul;
+    DWORD started = V9X_TIME_BEGIN();
 
     ++diagnostics->render_drain_waits;
-    if (polls != 0ul) {
-        ++diagnostics->render_drain_stalls;
-        diagnostics->breadcrumb_lag_polls_total += polls;
-        if (polls > diagnostics->breadcrumb_lag_polls_max) {
-            diagnostics->breadcrumb_lag_polls_max = polls;
+    for (spins = 0ul; spins < V9X_D3D_HSW_SPINS; ++spins) {
+        sent = status[V9X_INTEL_HSW_STATUS_RCS_SENT];
+        if (v9x_intel_hsw_pipe_may_write(
+                sent, status[V9X_INTEL_HSW_STATUS_RCS_DONE]) == V9X_TRUE) {
+            break;
         }
     }
-    return idle;
+    V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
+    if (spins != 0ul) {
+        ++diagnostics->render_drain_stalls;
+        diagnostics->breadcrumb_lag_polls_total += spins;
+        if (spins > diagnostics->breadcrumb_lag_polls_max) {
+            diagnostics->breadcrumb_lag_polls_max = spins;
+        }
+    }
+    if (spins == V9X_D3D_HSW_SPINS) {
+        v9x_d3d_hsw_quarantine();
+        return 0;
+    }
+    return v9x_intel_hsw_pipe_slot(sent + 1ul, slot) == V9X_STATUS_OK;
 }
 
 /*
- * The batch at the batch area, then the sequence store, written at the
- * hardware's tail; a ring too short for them is filled with MI_NOOP and
- * they start at 0, as eng_hsw.c does. Called idle, so HEAD equals TAIL.
+ * Room in the render ring for one submission, planned against a fresh HEAD
+ * by Gen3's planner (i9xx_ring.c), whose rules this ring shares: the tail
+ * qword-aligned, an eight-byte guard before the head, a dword head while
+ * the parser is busy. At most one six-dword submission is unread, so a 4 KB
+ * ring never waits in practice; it is still planned, because Gen3's first
+ * asynchronous build corrupted its output by planning against a stale head
+ * (docs\decisions\2026-10-01-intel-async-corruption-was-the-dword-head.md).
+ * Nothing has been published when this fails, so the draw is refused.
  */
-static int v9x_d3d_hsw_submit(void)
+static int v9x_d3d_hsw_ring_room(DWORD tail, struct v9x_i9xx_ring_plan *plan)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+    DWORD head;
+    DWORD spins;
+    v9x_status status;
+
+    for (spins = 0ul; spins < V9X_D3D_HSW_SPINS; ++spins) {
+        head = v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_HEAD) &
+               V9X_INTEL_HSW_HEAD_MASK;
+        status = v9x_i9xx_ring_plan(head, tail, V9X_INTEL_HSW_RING_BYTES,
+                                    V9X_D3D_HSW_SUBMIT_DWORDS, plan);
+        if (status == V9X_STATUS_OK) {
+            if (spins != 0ul) {
+                ++diagnostics->ring_space_waits;
+                diagnostics->ring_space_polls_total += spins;
+                if (spins > diagnostics->ring_space_polls_max) {
+                    diagnostics->ring_space_polls_max = spins;
+                }
+            }
+            return 1;
+        }
+        if (status != V9X_STATUS_INSUFFICIENT_MEMORY) {
+            return 0;
+        }
+    }
+    ++diagnostics->ring_space_timeouts;
+    return 0;
+}
+
+/*
+ * The slot's batch, then the sequence store, at the ring's tail. `wait`
+ * waits for the store before returning, as every submission did before
+ * Phase 3; otherwise the batch is the GPU's once TAIL moves, and a later
+ * wait finds out how it ended. A failure after TAIL moved is never a
+ * refused draw (the plan's Gen3 invariant 8): the timeout is the
+ * quarantine at whichever wait sees it.
+ */
+static int v9x_d3d_hsw_submit(const struct v9x_hsw_pipe_slot *slot, int wait)
 {
     volatile DWORD *ring =
         (volatile DWORD *)v9x_d3d_hsw_reserve(V9X_INTEL_HSW_RCS_RING_OFF);
     volatile DWORD *status = v9x_d3d_hsw_status();
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+    struct v9x_i9xx_ring_plan plan;
     v9x_u32 dw[V9X_D3D_HSW_SUBMIT_DWORDS];
     struct v9x_hsw_batch batch;
     DWORD sequence;
@@ -290,7 +362,7 @@ static int v9x_d3d_hsw_submit(void)
     sequence = status[V9X_INTEL_HSW_STATUS_RCS_SENT] + 1ul;
     v9x_intel_hsw_batch_init(&batch, dw, V9X_D3D_HSW_SUBMIT_DWORDS);
     v9x_intel_hsw_mi_batch_buffer_start(
-        &batch, V9X_D3D_HSW_GFX(V9X_INTEL_HSW_BATCH_OFF));
+        &batch, V9X_D3D_HSW_GFX(slot->batch_off));
     v9x_intel_hsw_mi_store_data_imm(
         &batch, V9X_D3D_HSW_STATUS_GFX + V9X_INTEL_HSW_STATUS_RCS_DONE * 4ul,
         sequence);
@@ -300,54 +372,91 @@ static int v9x_d3d_hsw_submit(void)
 
     tail = v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_TAIL) &
            V9X_INTEL_HSW_TAIL_MASK;
-    if (tail + V9X_D3D_HSW_SUBMIT_DWORDS * 4ul > V9X_INTEL_HSW_RING_BYTES) {
-        for (index = tail / 4ul; index < V9X_INTEL_HSW_RING_BYTES / 4ul;
-             ++index) {
-            ring[index] = 0ul;
-        }
-        tail = 0ul;
+    if (!v9x_d3d_hsw_ring_room(tail, &plan)) {
+        return 0;
+    }
+    /* Ring memory first, every word of it, then the one TAIL write. */
+    for (index = 0ul; index < plan.pad_dwords; ++index) {
+        ring[tail / 4ul + index] = 0ul;
     }
     for (index = 0ul; index < V9X_D3D_HSW_SUBMIT_DWORDS; ++index) {
-        ring[tail / 4ul + index] = dw[index];
+        ring[plan.command_tail / 4ul + index] = dw[index];
     }
     status[V9X_INTEL_HSW_STATUS_RCS_SENT] = sequence;
-    tail += V9X_D3D_HSW_SUBMIT_DWORDS * 4ul;
-    if (tail >= V9X_INTEL_HSW_RING_BYTES) {
-        tail = 0ul;
-    }
-    v9x_d3d_hsw_write32(V9X_INTEL_HSW_RCS_TAIL, tail);
+    diagnostics->breadcrumb_issued_last = sequence;
+    v9x_d3d_hsw_write32(V9X_INTEL_HSW_RCS_TAIL, plan.next_tail);
     (void)v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_TAIL);
-    return v9x_d3d_hsw_wait_rcs();
+    if (wait) {
+        ++diagnostics->sync_submits;
+        return v9x_d3d_hsw_wait_rcs();
+    }
+    ++diagnostics->async_submits;
+    diagnostics->async_enabled = 1ul;
+    return 1;
 }
 
-/* The initialising batch (Phase C), once per ring open: the reserve is
- * zeroed at open, which removes the mark. */
+/*
+ * The initialising batch (Phase C), once per ring open: the reserve is
+ * zeroed at open, which removes the mark. Draw batches read the
+ * initialising state too - the viewports, the scissor and the default
+ * depth-stencil state at V9X_HSW_INIT_* from their state base - so it is
+ * written into both slots' blocks; it is fixed, so both copies are the
+ * same words.
+ */
 static int v9x_d3d_hsw_initialise(void)
 {
     volatile DWORD *status = v9x_d3d_hsw_status();
+    struct v9x_hsw_pipe_slot slot;
     struct v9x_hsw_batch batch;
+    DWORD index;
 
     if (status[V9X_INTEL_HSW_STATUS_RCS_INIT] ==
         V9X_INTEL_HSW_RCS_INIT_MARK) {
         return 1;
     }
-    if (v9x_intel_hsw_init_state(
-            v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF),
-            V9X_HSW_INIT_STATE_BYTES / 4ul) != V9X_STATUS_OK) {
+    for (index = 0ul; index < V9X_HSW_PIPE_SLOTS; ++index) {
+        if (v9x_intel_hsw_pipe_slot(index, &slot) != V9X_STATUS_OK ||
+            v9x_intel_hsw_init_state(v9x_d3d_hsw_reserve(slot.state_off),
+                                     V9X_HSW_INIT_STATE_BYTES / 4ul) !=
+                V9X_STATUS_OK) {
+            return 0;
+        }
+    }
+    if (!v9x_d3d_hsw_wait_slot(&slot)) {
         return 0;
     }
-    v9x_intel_hsw_batch_init(&batch,
-                             v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
-                             V9X_INTEL_HSW_BATCH_BYTES / 4ul);
-    if (v9x_intel_hsw_init_workload(&batch, V9X_D3D_HSW_STATE_BASE,
-                                    V9X_INTEL_HSW_STATE_BYTES,
+    v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                             slot.batch_bytes / 4ul);
+    if (v9x_intel_hsw_init_workload(&batch,
+                                    V9X_D3D_HSW_GFX(slot.state_off),
+                                    slot.state_span,
                                     V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
             V9X_STATUS_OK ||
-        !v9x_d3d_hsw_submit()) {
+        !v9x_d3d_hsw_submit(&slot, 1)) {
         return 0;
     }
     status[V9X_INTEL_HSW_STATUS_RCS_INIT] = V9X_INTEL_HSW_RCS_INIT_MARK;
     return 1;
+}
+
+/* The blitter's own pair agrees: no blit is queued that could still be
+ * writing a draw's texture or target. Read here rather than through the
+ * engine's wait_idle, which since Phase 2 also waits for the render ring
+ * and would bring back the wait this file has just removed. */
+static int v9x_d3d_hsw_blitter_idle(void)
+{
+    volatile DWORD *status = v9x_d3d_hsw_status();
+
+    return status[0] == status[1];
+}
+
+/* A draw whose target is on screen, or GDI's primary at offset 0, runs
+ * synchronously: the 16-bit driver draws GDI and the software cursor into
+ * that memory with no hook this DLL sees (plan decision 3). */
+static int v9x_d3d_hsw_target_shown(const V9X_R3D_DRAW *draw)
+{
+    return draw->target.offset == 0ul ||
+           draw->target.offset == v9x_present_flip_offset();
 }
 
 /* The blitter's conditions, the render ring the mini-VDD opened (CAP_D3D),
@@ -918,29 +1027,66 @@ static DWORD v9x_d3d_hsw_kernel_slot(const struct v9x_hsw_ps_desc *desc)
  */
 static v9x_u32 v9x_d3d_hsw_kernel_words[V9X_D3D_HSW_KERNEL_DWORDS];
 
-/* The kernel for a description, built into its slot; its offset in the
- * state. */
+/*
+ * The kernel for a description, in its kernel slot; its offset from the
+ * draw slot's state base.
+ *
+ * Each kernel slot's signature sits in the status page
+ * (v9x_intel_hsw_pipe_kernel_sig). A slot that already holds this
+ * description's words is used as it is, with no build and no copy. One that
+ * holds something else - the slot index does not see the fog colour - may
+ * be executing in the batch still running, so the render engine is drained
+ * before the slot is rewritten.
+ */
 static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
+                                    const struct v9x_hsw_pipe_slot *slot,
                                     DWORD *kernel)
 {
-    v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    volatile DWORD *status = v9x_d3d_hsw_status();
+    volatile DWORD *stored;
+    v9x_u32 wanted[V9X_HSW_PIPE_SIG_DWORDS];
+    v9x_u32 held[V9X_HSW_PIPE_SIG_DWORDS];
     v9x_u32 *slot_words;
-    DWORD slot;
+    DWORD kernel_slot;
     DWORD index;
     v9x_u32 used = 0ul;
     DWORD started = V9X_TIME_BEGIN();
     int built;
 
-    slot = v9x_d3d_hsw_kernel_slot(desc);
-    *kernel = V9X_INTEL_HSW_KERNEL_OFF + slot * V9X_INTEL_HSW_KERNEL_SLOT;
+    kernel_slot = v9x_d3d_hsw_kernel_slot(desc);
+    *kernel = slot->kernel_base + kernel_slot * V9X_INTEL_HSW_KERNEL_SLOT;
+    stored = status + V9X_HSW_PIPE_SIG_STATUS_DWORD +
+             kernel_slot * V9X_HSW_PIPE_SIG_DWORDS;
+    v9x_intel_hsw_pipe_kernel_sig(desc, wanted);
+    for (index = 0ul; index < V9X_HSW_PIPE_SIG_DWORDS; ++index) {
+        held[index] = stored[index];
+    }
+    if (v9x_intel_hsw_pipe_kernel_sig_equal(wanted, held) == V9X_TRUE) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 1;
+    }
+    if (v9x_intel_hsw_pipe_idle(status[V9X_INTEL_HSW_STATUS_RCS_SENT],
+                                status[V9X_INTEL_HSW_STATUS_RCS_DONE]) !=
+            V9X_TRUE &&
+        !v9x_d3d_hsw_wait_rcs()) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
     built = v9x_intel_hsw_ps_kernel_build(v9x_d3d_hsw_kernel_words,
                                           V9X_D3D_HSW_KERNEL_DWORDS, desc,
                                           &used) == V9X_STATUS_OK;
-    /* Only the words the builder produced, as building in place wrote. */
+    /* Only the words the builder produced, as building in place wrote; the
+     * signature after them, so a slot is never marked for words it does not
+     * yet hold. */
     if (built) {
-        slot_words = image + *kernel / 4ul;
+        slot_words = v9x_d3d_hsw_reserve(
+            V9X_INTEL_HSW_STATE_OFF + V9X_INTEL_HSW_KERNEL_OFF +
+            kernel_slot * V9X_INTEL_HSW_KERNEL_SLOT);
         for (index = 0ul; index < used; ++index) {
             slot_words[index] = v9x_d3d_hsw_kernel_words[index];
+        }
+        for (index = 0ul; index < V9X_HSW_PIPE_SIG_DWORDS; ++index) {
+            stored[index] = wanted[index];
         }
     }
     /* Haswell times the kernel build in the Gen3 decode bucket (TimeDecode
@@ -949,14 +1095,15 @@ static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
     return built;
 }
 
-/* The draw's state in the reserve: the target and texture surfaces, the
+/* The draw's state in its slot: the target and texture surfaces, the
  * binding table, the sampler, blend, CC and depth-stencil state, the zeroed
  * border colour, and the kernel. */
 static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                    const V9X_D3D_HSW_STATE *state,
+                                   const struct v9x_hsw_pipe_slot *slot,
                                    DWORD *kernel)
 {
-    v9x_u32 *image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off);
     v9x_u32 *table;
     const V9X_D3D_HSW_TEXTURE *texture;
     DWORD index;
@@ -1016,7 +1163,7 @@ static int v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                     state->depth_write) != V9X_STATUS_OK) {
         return 0;
     }
-    return v9x_d3d_hsw_write_kernel(&state->desc, kernel);
+    return v9x_d3d_hsw_write_kernel(&state->desc, slot, kernel);
 }
 
 static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
@@ -1034,6 +1181,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                                   DWORD triangle_count)
 {
     V9X_D3D_HSW_STATE state;
+    struct v9x_hsw_pipe_slot slot;
     struct v9x_hsw_batch batch;
     struct v9x_hsw_draw d;
     DWORD reason;
@@ -1045,6 +1193,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD index;
     DWORD vertex;
     DWORD timed;
+    int shown;
     const v9x_u32 *source;
     const v9x_u32 *uv1;
     v9x_u32 *target;
@@ -1073,26 +1222,15 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         ++v9x_hal->d3d_diagnostics.mip_draws;
     }
 
-    /* The blitter may still be writing this draw's texture or target, and
-     * the previous draw must be done before its state is overwritten. */
-    if (!v9x_engine32_hsw.wait_idle(1) ||
-        !v9x_d3d_hsw_wait_rcs_before_write()) {
+    /* A blit still queued may be writing this draw's texture or target: wait
+     * for it, through the engine's own wait, only when one is. */
+    if (!v9x_d3d_hsw_blitter_idle() && !v9x_engine32_hsw.wait_idle(1)) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         return 0;
     }
-    /* The per-batch cost split (2026-10-18), in Gen3 buckets V9XTRACE
-     * names: the whole state write in RingSpaceWait (the kernel inside it
-     * also in Decode), the vertex copy in RingWrite. */
-    timed = V9X_TIME_BEGIN();
-    if (!v9x_d3d_hsw_write_state(draw, &state, &kernel)) {
-        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
-        return 0;
-    }
-    V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, timed);
+    shown = v9x_d3d_hsw_target_shown(draw);
 
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
-    d.kernel = kernel;
-    d.vertices = V9X_D3D_HSW_GFX(V9X_INTEL_HSW_VERTEX_OFF);
     d.width = (v9x_u16)draw->target.width;
     d.height = (v9x_u16)draw->target.height;
     d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
@@ -1123,12 +1261,29 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         if (count > limit) {
             count = limit;
         }
-        if (done != 0ul && !v9x_d3d_hsw_wait_rcs_before_write()) {
-            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_PIECE);
+        /* Each piece is one sequence, so it has a slot of its own and
+         * writes its state there; the batch before it may still be reading
+         * the other slot. */
+        if (!v9x_d3d_hsw_wait_slot(&slot)) {
+            v9x_d3d_hsw_count_refusal(done == 0ul ?
+                                      V9X_D3D_HSW_REFUSE_IDLE :
+                                      V9X_D3D_HSW_REFUSE_PIECE);
             return 0;
         }
+        /* The per-batch cost split (2026-10-18), in Gen3 buckets V9XTRACE
+         * names: the whole state write in RingSpaceWait (the kernel inside
+         * it also in Decode), the vertex copy in RingWrite. */
+        timed = V9X_TIME_BEGIN();
+        if (!v9x_d3d_hsw_write_state(draw, &state, &slot, &kernel)) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
+            return 0;
+        }
+        V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, timed);
+        d.kernel = kernel;
+        d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
+
         source = (const v9x_u32 *)(vertices + done * 3ul);
-        target = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_VERTEX_OFF);
+        target = v9x_d3d_hsw_reserve(slot.vertex_off);
         timed = V9X_TIME_BEGIN();
         if (d.tl_uv1) {
             /* Each 32-byte vertex, then its tu1 tv1: the TL2 vertex. */
@@ -1149,17 +1304,17 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         }
         V9X_TIME_END(V9X_TIME_RING_WRITE, timed);
         d.vertex_count = count * 3ul;
-        v9x_intel_hsw_batch_init(
-            &batch, v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
-            V9X_INTEL_HSW_BATCH_BYTES / 4ul);
-        if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_STATE_BASE,
-                                        V9X_INTEL_HSW_STATE_BYTES, &d,
+        v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                                 slot.batch_bytes / 4ul);
+        if (v9x_intel_hsw_draw_workload(&batch,
+                                        V9X_D3D_HSW_GFX(slot.state_off),
+                                        slot.state_span, &d,
                                         V9X_D3D_HSW_CRUMB_GFX,
                                         done + count) != V9X_STATUS_OK) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
             return 0;
         }
-        if (!v9x_d3d_hsw_submit()) {
+        if (!v9x_d3d_hsw_submit(&slot, shown)) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
             return 0;
         }
@@ -1221,6 +1376,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 {
     struct v9x_hsw_ps_desc desc;
     struct v9x_hsw_blend blend;
+    struct v9x_hsw_pipe_slot slot;
     struct v9x_hsw_batch batch;
     struct v9x_hsw_draw d;
     v9x_u32 *image;
@@ -1257,14 +1413,17 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
         (DWORD)rect[3] > height) {
         return V9X_BLT_DECLINED;
     }
+    /* Both rings idle (the engine's wait covers the render ring since
+     * Phase 2), then the slot of this fill's own sequence: a draw after it
+     * takes the other one while the fill may still be reading this. */
     if (!v9x_engine32_hsw.wait_idle(wait)) {
         return V9X_BLT_BUSY;
     }
-    if (!v9x_d3d_hsw_wait_rcs()) {
+    if (!v9x_d3d_hsw_wait_rcs() || !v9x_d3d_hsw_wait_slot(&slot)) {
         return V9X_BLT_DECLINED;
     }
 
-    image = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_STATE_OFF);
+    image = v9x_d3d_hsw_reserve(slot.state_off);
     if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
                                  V9X_HSW_FMT_B5G6R5_UNORM,
                                  v9x_d3d_hsw_vram(offset), (v9x_u16)width,
@@ -1301,7 +1460,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
             V9X_STATUS_OK ||
         v9x_intel_hsw_depth_stencil(image + V9X_D3D_HSW_DS_OFF / 4ul, 1u,
                                     0u, 1u) != V9X_STATUS_OK ||
-        !v9x_d3d_hsw_write_kernel(&desc, &kernel)) {
+        !v9x_d3d_hsw_write_kernel(&desc, &slot, &kernel)) {
         return V9X_BLT_DECLINED;
     }
 
@@ -1312,7 +1471,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     top = (float)rect[1];
     right = (float)rect[2];
     bottom = (float)rect[3];
-    at = v9x_d3d_hsw_reserve(V9X_INTEL_HSW_VERTEX_OFF);
+    at = v9x_d3d_hsw_reserve(slot.vertex_off);
     at = v9x_d3d_hsw_fill_vertex(at, left, top, z);
     at = v9x_d3d_hsw_fill_vertex(at, right, top, z);
     at = v9x_d3d_hsw_fill_vertex(at, left, bottom, z);
@@ -1322,7 +1481,7 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
     d.kernel = kernel;
-    d.vertices = V9X_D3D_HSW_GFX(V9X_INTEL_HSW_VERTEX_OFF);
+    d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
     d.width = (v9x_u16)width;
     d.height = (v9x_u16)height;
     d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
@@ -1340,14 +1499,13 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     d.depth_only = 1u;
     d.scissor = 0u;
     d.tl_uv1 = 0u;
-    v9x_intel_hsw_batch_init(&batch,
-                             v9x_d3d_hsw_reserve(V9X_INTEL_HSW_BATCH_OFF),
-                             V9X_INTEL_HSW_BATCH_BYTES / 4ul);
-    if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_STATE_BASE,
-                                    V9X_INTEL_HSW_STATE_BYTES, &d,
+    v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                             slot.batch_bytes / 4ul);
+    if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
+                                    slot.state_span, &d,
                                     V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
             V9X_STATUS_OK ||
-        !v9x_d3d_hsw_submit()) {
+        !v9x_d3d_hsw_submit(&slot, 1)) {
         return V9X_BLT_DECLINED;
     }
     return V9X_BLT_DONE;

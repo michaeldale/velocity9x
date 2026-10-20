@@ -2843,18 +2843,48 @@ V9xMini_Hsw_Open_Exit:
     ret
 EndProc V9xMini_Hsw_Engine_Open
 
-; Out AX = 1 if a ring of ours was closed, 0 if none was open.
+; Out AX = 1 if a ring of ours was closed, 2 if it was closed after the
+; render ring failed to finish in time, 0 if none was open.
+;
+; Since 2026-10-20 the HAL leaves one draw running when it returns
+; (docs\plans\intel-haswell-pipelined-submission.md, Phase 3), so the
+; render ring can be busy when Disable gets here. Turning a busy ring off is
+; not something the PRM describes the outcome of, so the close first waits,
+; bounded, for the render sequences in the status page (dwords 8 and 9,
+; intel_hsw.h) to agree. It closes either way: Disable cannot be refused.
+V9X_HSW_STATUS_RCS_DONE equ 20h
+V9X_HSW_STATUS_RCS_SENT equ 24h
+V9X_HSW_CLOSE_POLLS     equ 00400000h
 BeginProc V9xMini_Hsw_Engine_Close
     push    edi
+    push    esi
+    push    ecx
+    push    edx
     xor     ax, ax
     cmp     V9xHswOpen, 0
     je      short V9xMini_Hsw_Close_Done
+    mov     esi, V9xHswRegionLinear
+    add     esi, V9X_HSW_STATUS_OFF
+    mov     dx, 1
+    xor     ecx, ecx
+V9xMini_Hsw_Close_Poll:
+    mov     eax, [esi+V9X_HSW_STATUS_RCS_DONE]
+    cmp     eax, [esi+V9X_HSW_STATUS_RCS_SENT]
+    je      short V9xMini_Hsw_Close_Idle
+    inc     ecx
+    cmp     ecx, V9X_HSW_CLOSE_POLLS
+    jb      short V9xMini_Hsw_Close_Poll
+    mov     dx, 2
+V9xMini_Hsw_Close_Idle:
     mov     edi, V9xHswMmioLinear
     call    V9xMini_Hsw_Rings_Off
     call    V9xMini_Hsw_Release
     mov     V9xHswOpen, 0
-    mov     ax, 1
+    mov     ax, dx
 V9xMini_Hsw_Close_Done:
+    pop     edx
+    pop     ecx
+    pop     esi
     pop     edi
     ret
 EndProc V9xMini_Hsw_Engine_Close

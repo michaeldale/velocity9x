@@ -1,0 +1,27 @@
+The sound hardware is in use by another app.
+Sound not available ( 2 ).
+WON initialized.
+Server module initialized.
+World module initialized.
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 7.699 seconds 51.044 fps
+No demos listed with startdemos
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 6.493 seconds 60.522 fps
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 6.503 seconds 60.436 fps
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 6.814 seconds 57.679 fps
+]quit
+World module shutdown.
+WON shutdown.
+Server module shutdown.

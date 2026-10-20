@@ -121,6 +121,8 @@ $sources = @(
     "src\display32\engines\eng_hsw.c",
     "src\chipsets\intel\hsw_3d.c",
     "src\chipsets\intel\hsw_eu.c",
+    # Pipelined render submission's slots, sequences and kernel signatures.
+    "src\chipsets\intel\hsw_pipe.c",
     # Its plane-A flips: mechanics, then the host-tested arithmetic.
     "src\display32\engines\hsw_scanout.c",
     "src\chipsets\intel\hsw_display.c",
