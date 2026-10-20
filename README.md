@@ -29,7 +29,7 @@ longer waits for each draw to finish: 3DMark 2000 from 157 to 112 µs a
 batch, Half-Life from 60.5 to 79.3 fps. Its draws with both specular
 and fog are no longer refused, and Direct3D 8 games now get the texture
 coordinate set a stage asks for, which fixes 3DMark 2001 SE's Lobby and
-Dragothic on every chip. See the [changelog](CHANGELOG.md), and
+Dragothic (seen on the HD 4600 and the GMA 900). See the [changelog](CHANGELOG.md), and
 download it from [releases/0.21.0](releases/0.21.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
