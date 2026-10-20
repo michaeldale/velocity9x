@@ -346,9 +346,11 @@ static void v9x_gma3150_fill_engine(unsigned long framebuffer_linear_base,
  * the 1x1 colour-blit breadcrumb into the status page. The GTT window is
  * found by V9xPciReadIntelGttConfig in BAR0 instead of BAR3.
  *
+ * D3D is the Gen4 engine's (d3d_g4.c), not the Gen3 one: Gen4 deleted the
+ * Gen3 3D command set for a URB pipeline with EU kernels. The I9XX_GEN4
+ * bit says so to the HAL, which selects by it.
+ *
  * What is withheld, and why:
- *  - D3D. Gen4 deleted the Gen3 3D command set; its pipeline is URB-based
- *    with EU kernels (docs\plans\intel-gen4-gen5-bringup.md, Phase 2).
  *  - FLIP and FLIP_RING. The HAL flips by writing the plane base at
  *    70184h/71184h, which on the 965 is DSPxLINOFF, an offset added to
  *    DSPxSURF (7019Ch/7119Ch); the write would not latch (965 PRM Vol 3
@@ -368,10 +370,9 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
-    *engine_caps &= ~(V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP |
-                      V9X_DD_ENGINE_CAP_FLIP_RING);
-    if (*ring_linear_base != 0ul) {
-        v9x_gma950_engine_status = "2d-claimed";
+    *engine_caps &= ~(V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_FLIP_RING);
+    if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN4;
     }
 }
 
@@ -459,10 +460,9 @@ const V9X_HW16_DEVICE v9x_gma3150_device = {
 
 /*
  * The GM965's GMA X3100. Config space, GTT and display measured read-only
- * on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md);
- * this engine has not run on it. No Direct3D word: the silicon has a 3D
- * engine, but not one this driver implements, so the settings page must not
- * offer Hardware.
+ * on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md),
+ * and the ring and blits run (2026-10-20-gm965-ring-and-blits.md). The
+ * Direct3D word names the Gen4 engine (d3d_g4.c).
  */
 const V9X_HW16_DEVICE v9x_gm965_device = {
     0x8086u, 0x2a02u,
@@ -471,7 +471,7 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
     "intel-gen3-mmio-fingerprint-v1",
     "vbe-lfb",
     "directdraw-fill-blt",
-    0,
+    "hardware-gen4",
     0,
     v9x_gm965_fill_engine,
     2u

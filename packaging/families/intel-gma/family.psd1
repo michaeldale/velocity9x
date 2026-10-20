@@ -108,11 +108,11 @@
             MapSymbols = @('v9x_gma3150_device')
         }
         @{
-            # The GM965's GMA X3100 (Gen4), from 0.23.0, for 2D only: the
-            # 945's ring and blits with the GTT found in BAR0, no Direct3D
-            # (Gen4 has no Gen3 3D command set) and no flips yet (the plane
-            # base moved to DSPSURF). Measured read-only on TOMMOHP:
-            # docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md.
+            # The GM965's GMA X3100 (Gen4), from 0.23.0: the 945's ring and
+            # blits with the GTT found in BAR0, Direct3D on the Gen4 engine
+            # (d3d_g4.c; Gen4 has no Gen3 3D command set), no flips yet (the
+            # plane base moved to DSPSURF). TOMMOHP:
+            # docs\decisions\2026-10-20-gm965-ring-and-blits.md.
             Id = 'gma-x3100-gm965'
             Name = 'Intel GMA X3100 (GM965)'
             VendorId = '8086'
@@ -122,9 +122,9 @@
             ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
             ModeSwitching = 'vbe-lfb'
             Acceleration = 'directdraw-fill-blt'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-gen4'
             EngineType = 'INTEL_GEN3'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             VideoMemoryBytes = 4194304
             # The family's table, which the driver's own must equal. TOMMOHP's
             # BIOS describes 0160-0165 as 1024x768; the runtime scan publishes

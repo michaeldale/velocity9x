@@ -1,0 +1,915 @@
+/*
+ * Intel Gen4 (GM965, GMA X3100) Direct3D engine.
+ *
+ * docs\plans\intel-gen4-gen5-bringup.md, Phase 2. Every command and state
+ * word comes from the host-tested builders in src\chipsets\intel\g4_3d.c
+ * and every kernel from g4_eu.c; this file resolves surfaces, maps the
+ * neutral draw onto that state, and submits.
+ *
+ * The ring is the Gen3 engine's: the GM965 keeps the Gen3 engine type for
+ * its ring and blitter (gma950_hw16.c), and the I9XX_GEN4 bit routes
+ * Direct3D here. Each draw is a batch in the reserve, started from the ring
+ * and sealed with the Gen3 breadcrumb by v9x_d3d_i9xx_submit_g4_batch, so
+ * Flip, Lock and Blt wait for 3D work through the drain they already use.
+ *
+ * Synchronous: one state block, one batch and one vertex area, rewritten
+ * by every draw only after the render drain says the GPU has finished with
+ * them, and every draw waits for its own breadcrumb. The Haswell engine's
+ * two-slot pipeline is the model if this proves too slow.
+ *
+ * Mapping policy is Haswell's, through the pure helpers in d3d_hsw_map.c:
+ * Intel's surface format numbers are the same on Gen4 and Gen7.5 (Vol 1
+ * "Surface Format" in each). Depth is linear on Gen4 - 965 PRM Vol 2,
+ * 3DSTATE_DEPTH_BUFFER: tile walk "is ignored when the surface is linear" -
+ * so Z buffers come from DirectDraw's heap and clears are the core's.
+ *
+ * Nothing in this file has executed on hardware.
+ */
+#include "d3d_internal.h"
+#include "d3d_hsw_map.h"
+#include "d3d_state.h"
+#include "velocity9x/intel_g4_3d.h"
+#include "velocity9x/intel_g4_eu.h"
+#include "velocity9x/intel_gma.h"
+
+/* Graphics addresses inside the reserve: the ring starts it, at the end of
+ * DirectDraw's heap (d3d_i9xx.c's breadcrumb offset rests on the same). */
+#define V9X_D3D_G4_GFX(offset) (v9x_hal->fb.vram_bytes + (offset))
+
+/* The framebuffer is at aperture offset 0, as the Gen3 engine has it. */
+#define V9X_D3D_G4_APERTURE_MASK 0x0ffffffful
+
+/* Triangles a draw's vertex area holds. */
+#define V9X_D3D_G4_MAX_TRIANGLES \
+    (V9X_G4_VERTEX_BYTES / (3ul * V9X_G4_VB_PITCH))
+
+/* Kernel build space, in cached memory (see d3d_hsw.c on why). */
+#define V9X_D3D_G4_KERNEL_INSTS (V9X_G4_WM_KERNEL_BYTES / 16ul)
+
+/* Signature words: the SF kernel's mark, then four per WM slot. */
+#define V9X_D3D_G4_SF_MARK  0x47345346ul  /* "G4SF" */
+#define V9X_D3D_G4_SIG_WORDS 4ul
+
+/* Refusal reasons, in the shared policy counters (V9XTRACE M64PolicyNN):
+ * Haswell's numbering where the meaning is the same. */
+#define V9X_D3D_G4_REFUSE_NONE      0ul
+#define V9X_D3D_G4_REFUSE_TARGET    1ul
+#define V9X_D3D_G4_REFUSE_DEPTH     2ul
+#define V9X_D3D_G4_REFUSE_TEXTURE   3ul
+#define V9X_D3D_G4_REFUSE_TEXOP     4ul
+#define V9X_D3D_G4_REFUSE_BLEND     5ul
+#define V9X_D3D_G4_REFUSE_ADDRESS   6ul
+#define V9X_D3D_G4_REFUSE_KEY       7ul
+#define V9X_D3D_G4_REFUSE_ALPHA     8ul
+#define V9X_D3D_G4_REFUSE_NOT_READY 11ul
+#define V9X_D3D_G4_REFUSE_IDLE      12ul
+#define V9X_D3D_G4_REFUSE_STATE     13ul
+#define V9X_D3D_G4_REFUSE_BATCH     15ul
+#define V9X_D3D_G4_REFUSE_SUBMIT    16ul
+
+/* Texture Coordinate Mode for all three axes. */
+#define V9X_D3D_G4_TCM_WRAP   0u
+#define V9X_D3D_G4_TCM_MIRROR 1u
+#define V9X_D3D_G4_TCM_CLAMP  2u
+
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_g4_limits = {
+    16ul,           /* target_bits_per_pixel */
+    16384ul,        /* target_pitch_max */
+    4ul,            /* target_pitch_align */
+    4096ul,         /* target_dimension_max */
+    1ul,            /* texture_size_min */
+    2048ul,         /* texture_size_max */
+    8192.0f,        /* coordinate_limit */
+    16ul,           /* depth_bits_per_pixel: D16_UNORM */
+    16ul,           /* texture_align */
+    1ul,            /* clip_in_core: CLIP is passed through */
+    1ul,            /* depth_pitch_own: 3DSTATE_DEPTH_BUFFER's own pitch */
+    0ul,            /* depth_fill_shift */
+    1ul,            /* texture_units */
+    /* SF origin bias 0.5 (Mesa and xf86 alike): the GL pixel centre. */
+    1ul,            /* pixel_centre_half */
+    0ul,            /* depth_tiled: linear */
+    16384ul,        /* target_pitch_max_xrgb8888 */
+    /* No 32-bit Z buffer: a linear D24_UNORM_X8 one hung the 3D pipe on
+     * TOMMOHP (boot 8, V9XD32 /z24: ACTHD at the batch's closing MI_FLUSH,
+     * HEAD short of TAIL), where linear D16 ran every check clean. */
+    0ul             /* depth32_bits */
+};
+
+typedef struct v9x_d3d_g4_texture {
+    struct v9x_g4_sampler sampler;
+    v9x_u16 format;
+    v9x_u32 address;
+    v9x_u16 width;
+    v9x_u16 height;
+    v9x_u32 pitch;
+} V9X_D3D_G4_TEXTURE;
+
+typedef struct v9x_d3d_g4_state {
+    struct v9x_g4_ps_desc desc;
+    struct v9x_g4_cc cc;
+    v9x_u16 target_format;
+    v9x_u8 write_disable;
+    V9X_D3D_G4_TEXTURE texture;
+    int textured;
+    int depth;
+    v9x_u32 depth_address;
+    v9x_u32 depth_pitch;
+    v9x_u8 depth_format;
+    v9x_u32 scissor[4];
+    int scissor_empty;
+} V9X_D3D_G4_STATE;
+
+/* Set on a timeout; nothing is submitted again in this process. */
+static int v9x_d3d_g4_quarantined = 0;
+
+static struct v9x_g4_inst v9x_d3d_g4_kernel_words[V9X_D3D_G4_KERNEL_INSTS];
+static v9x_u32 v9x_d3d_g4_batch_words[V9X_G4_BATCH_BYTES / 4ul];
+
+static v9x_u32 *v9x_d3d_g4_reserve(DWORD offset)
+{
+    return (v9x_u32 *)(v9x_hal->engine.ring_linear_base + offset);
+}
+
+static DWORD v9x_d3d_g4_vram(DWORD offset)
+{
+    return (v9x_hal->fb.physical_base & V9X_D3D_G4_APERTURE_MASK) + offset;
+}
+
+static void v9x_d3d_g4_count_refusal(DWORD reason)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+
+    diagnostics->m64_policy_last = reason;
+    if (reason < 20ul) {
+        ++diagnostics->m64_policy_counts[reason];
+    }
+}
+
+static int v9x_d3d_g4_ready(void)
+{
+    return v9x_hal != 0 && !v9x_d3d_g4_quarantined &&
+           (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
+           (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
+           v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) !=
+               0ul &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
+           v9x_hal->engine.control_linear_base != 0ul &&
+           v9x_hal->engine.ring_linear_base != 0ul &&
+           v9x_hal->engine.ring_bytes != 0ul &&
+           (v9x_hal->fb.vram_bytes & 0xffful) == 0ul;
+}
+
+/* The surface's own layout, or the display's, through Haswell's pure
+ * mapping (the format numbers are the same). bytes may be null. */
+static int v9x_d3d_g4_texture_format_of(const V9X_DD_SURFACE_LCL *surface,
+                                        v9x_u16 *format, int *has_alpha,
+                                        v9x_u32 *bytes)
+{
+    const V9X_DDPIXELFORMAT *pf;
+    v9x_u32 texel_bytes;
+
+    if (surface == 0 || surface->lpGbl == 0) {
+        return 0;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        pf = &surface->lpGbl->ddpfSurface;
+    } else {
+        pf = &v9x_hal->info.vmiData.ddpfDisplay;
+    }
+    if ((pf->dwFlags & V9X_DDPF_RGB) == 0ul ||
+        !v9x_d3d_hsw_texel_format(pf->dwRGBBitCount,
+                                  (pf->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul,
+                                  pf->dwRBitMask, pf->dwGBitMask,
+                                  pf->dwBBitMask, pf->dwRGBAlphaBitMask,
+                                  format, has_alpha, &texel_bytes)) {
+        return 0;
+    }
+    if (bytes != 0) {
+        *bytes = texel_bytes;
+    }
+    return 1;
+}
+
+static int v9x_d3d_g4_texture_format(const V9X_DD_SURFACE_LCL *surface,
+                                     DWORD *format_out)
+{
+    v9x_u16 format = 0u;
+    int has_alpha = 0;
+
+    if (format_out == 0) {
+        return 0;
+    }
+    *format_out = 0ul;
+    if (v9x_hal == 0 ||
+        !v9x_d3d_g4_texture_format_of(surface, &format, &has_alpha, 0)) {
+        return 0;
+    }
+    *format_out = format;
+    return 1;
+}
+
+/* Direct3D's blend factors as genxml's 3D_Color_Buffer_Blend_Factor; 0 for
+ * one this engine does not take. */
+static v9x_u8 v9x_d3d_g4_factor(v9x_u32 factor)
+{
+    switch (factor) {
+    case V9X_R3D_BLEND_ZERO:
+        return 0x11u;
+    case V9X_R3D_BLEND_ONE:
+        return 0x01u;
+    case V9X_R3D_BLEND_SRCCOLOR:
+        return 0x02u;
+    case V9X_R3D_BLEND_INVSRCCOLOR:
+        return 0x12u;
+    case V9X_R3D_BLEND_SRCALPHA:
+        return 0x03u;
+    case V9X_R3D_BLEND_INVSRCALPHA:
+        return 0x13u;
+    case V9X_R3D_BLEND_DESTCOLOR:
+        return 0x05u;
+    case V9X_R3D_BLEND_INVDESTCOLOR:
+        return 0x15u;
+    case V9X_R3D_BLEND_SRCALPHASAT:
+        return 0x06u;
+    default:
+        return 0u;
+    }
+}
+
+/* Direct3D's comparisons against genxml's 3D_Compare_Function: NEVER to
+ * GEQUAL keep their numbers, ALWAYS is 0. */
+static v9x_u8 v9x_d3d_g4_compare(v9x_u32 function)
+{
+    if (function == V9X_R3D_CMP_ALWAYS) {
+        return 0u;
+    }
+    return (v9x_u8)(function & 7ul);
+}
+
+static v9x_u8 v9x_d3d_g4_filter(v9x_u32 filter)
+{
+    return filter == V9X_R3D_FILTER_LINEAR ||
+                   filter == V9X_R3D_FILTER_MIPLINEAR ||
+                   filter == V9X_R3D_FILTER_LINEARMIPLINEAR
+               ? 1u : 0u;
+}
+
+static float v9x_d3d_g4_unit(v9x_u32 byte)
+{
+    return (float)byte / 255.0f;
+}
+
+/* A texture surface as this engine samples it: level 0, linear, from
+ * DirectDraw's heap. */
+static DWORD v9x_d3d_g4_texture_unit(const V9X_R3D_TEXTURE *texture,
+                                     V9X_D3D_G4_TEXTURE *unit,
+                                     int *has_alpha)
+{
+    V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)texture->object;
+    DWORD offset;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->lPitch <= 0l ||
+        !v9x_d3d_g4_texture_format_of(surface, &unit->format, has_alpha,
+                                      0)) {
+        return V9X_D3D_G4_REFUSE_TEXTURE;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful) {
+        return V9X_D3D_G4_REFUSE_TEXTURE;
+    }
+    if (texture->wrap_u != 0ul || texture->wrap_v != 0ul) {
+        return V9X_D3D_G4_REFUSE_ADDRESS;
+    }
+    unit->sampler.mip_filter = 0u;
+    unit->sampler.max_lod = 0u;
+    unit->sampler.mag_filter = v9x_d3d_g4_filter(texture->mag_filter);
+    unit->sampler.min_filter = v9x_d3d_g4_filter(texture->min_filter);
+    switch (texture->address) {
+    case V9X_R3D_ADDRESS_WRAP:
+        unit->sampler.address = V9X_D3D_G4_TCM_WRAP;
+        break;
+    case V9X_R3D_ADDRESS_MIRROR:
+        unit->sampler.address = V9X_D3D_G4_TCM_MIRROR;
+        break;
+    case V9X_R3D_ADDRESS_CLAMP:
+        unit->sampler.address = V9X_D3D_G4_TCM_CLAMP;
+        break;
+    default:
+        return V9X_D3D_G4_REFUSE_ADDRESS;
+    }
+    unit->address = v9x_d3d_g4_vram(offset);
+    unit->width = surface->lpGbl->wWidth;
+    unit->height = surface->lpGbl->wHeight;
+    unit->pitch = (v9x_u32)surface->lpGbl->lPitch;
+    if (unit->width == 0u || unit->height == 0u ||
+        unit->width > v9x_d3d_g4_limits.texture_size_max ||
+        unit->height > v9x_d3d_g4_limits.texture_size_max) {
+        return V9X_D3D_G4_REFUSE_TEXTURE;
+    }
+    return V9X_D3D_G4_REFUSE_NONE;
+}
+
+/* A Z buffer from DirectDraw's heap, in video memory, covering the target. */
+static int v9x_d3d_g4_depth_surface(const V9X_DD_SURFACE_LCL *surface,
+                                    DWORD *offset)
+{
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->lPitch <= 0l ||
+        ((DWORD)surface->lpGbl->lPitch & 3ul) != 0ul) {
+        return 0;
+    }
+    *offset = v9x_surface_offset(surface);
+    return *offset != 0xfffffffful;
+}
+
+static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
+{
+    V9X_DD_SURFACE_LCL *surface;
+    DWORD offset;
+    DWORD reason;
+    int has_alpha = 0;
+    v9x_u32 op;
+
+    reason = v9x_d3d_hsw_explicit_refusal(draw);
+    if (reason != V9X_D3D_G4_REFUSE_NONE) {
+        return reason;
+    }
+    state->desc.stage0 = V9X_G4_PS_DIFFUSE;
+    state->desc.specular = 0u;
+    state->desc.fog = 0u;
+    state->desc.fog_rgb[0] = 0.0f;
+    state->desc.fog_rgb[1] = 0.0f;
+    state->desc.fog_rgb[2] = 0.0f;
+    state->textured = 0;
+    state->depth = 0;
+    state->depth_address = 0ul;
+    state->depth_pitch = 0ul;
+    state->depth_format = 0u;
+    state->write_disable = 0u;
+
+    if (!v9x_d3d_hsw_target(draw->target.format, &state->target_format,
+                            &state->write_disable)) {
+        return V9X_D3D_G4_REFUSE_TARGET;
+    }
+    if (draw->target.pitch == 0ul || draw->target.width == 0ul ||
+        draw->target.height == 0ul ||
+        draw->target.width > v9x_d3d_g4_limits.target_dimension_max ||
+        draw->target.height > v9x_d3d_g4_limits.target_dimension_max) {
+        return V9X_D3D_G4_REFUSE_TARGET;
+    }
+
+    state->cc.depth_test = 0u;
+    state->cc.depth_write = 0u;
+    state->cc.depth_function = 0u;
+    if (v9x_d3d_state_depth_active(draw->depth_enable,
+                                   draw->depth.object != 0,
+                                   draw->depth.pitch) != 0ul) {
+        surface = (V9X_DD_SURFACE_LCL *)draw->depth.object;
+        /* D16 only (see the limits). */
+        if (!v9x_d3d_g4_depth_surface(surface, &offset) ||
+            draw->depth.format == V9X_R3D_DEPTH_Z24X8 ||
+            (DWORD)surface->lpGbl->wWidth < draw->target.width ||
+            (DWORD)surface->lpGbl->wHeight < draw->target.height ||
+            draw->depth_func < V9X_R3D_CMP_NEVER ||
+            draw->depth_func > V9X_R3D_CMP_ALWAYS ||
+            !v9x_d3d_hsw_depth_format(2ul, &state->depth_format)) {
+            return V9X_D3D_G4_REFUSE_DEPTH;
+        }
+        state->depth = 1;
+        state->depth_address = v9x_d3d_g4_vram(offset);
+        state->depth_pitch = (v9x_u32)surface->lpGbl->lPitch;
+        state->cc.depth_test = 1u;
+        state->cc.depth_function = v9x_d3d_g4_compare(draw->depth_func);
+        state->cc.depth_write = draw->depth_write != 0ul ? 1u : 0u;
+    }
+
+    if (draw->texcoords1 != 0) {
+        /* Two units: the render interface's step 4, not in this engine. */
+        return V9X_D3D_G4_REFUSE_TEXOP;
+    }
+    if (draw->texture.object != 0) {
+        reason = v9x_d3d_g4_texture_unit(&draw->texture, &state->texture,
+                                         &has_alpha);
+        if (reason != V9X_D3D_G4_REFUSE_NONE) {
+            return reason;
+        }
+        if (draw->color_key_enable != 0ul) {
+            return V9X_D3D_G4_REFUSE_KEY;
+        }
+        op = draw->texture.op;
+        if (op == V9X_R3D_TEXOP_DECAL || op == V9X_R3D_TEXOP_COPY) {
+            state->desc.stage0 = V9X_G4_PS_TEXTURE;
+        } else if (op == V9X_R3D_TEXOP_MODULATE) {
+            state->desc.stage0 = has_alpha ? V9X_G4_PS_MODULATE_TEXALPHA
+                                           : V9X_G4_PS_MODULATE;
+        } else if (op == V9X_R3D_TEXOP_MODULATEALPHA) {
+            state->desc.stage0 = V9X_G4_PS_MODULATE;
+        } else if (op == V9X_R3D_TEXOP_ADD && !has_alpha) {
+            state->desc.stage0 = V9X_G4_PS_ADD;
+        } else {
+            return V9X_D3D_G4_REFUSE_TEXOP;
+        }
+        state->textured = 1;
+    }
+
+    state->desc.specular = draw->specular_enable != 0ul ? 1u : 0u;
+    if (draw->fog_enable != 0ul) {
+        state->desc.fog = 1u;
+        state->desc.fog_rgb[0] = v9x_d3d_g4_unit((draw->fog_color >> 16) &
+                                                 0xfful);
+        state->desc.fog_rgb[1] = v9x_d3d_g4_unit((draw->fog_color >> 8) &
+                                                 0xfful);
+        state->desc.fog_rgb[2] = v9x_d3d_g4_unit(draw->fog_color & 0xfful);
+    }
+
+    if (draw->explicit_state != 0ul) {
+        state->write_disable |= v9x_d3d_hsw_write_disable(draw->write_mask);
+    }
+    state->scissor_empty = !v9x_d3d_hsw_scissor(draw, state->scissor);
+    state->cc.blend = 0u;
+    state->cc.src_factor = 0x01u;
+    state->cc.dst_factor = 0x11u;
+    if (draw->blend_enable != 0ul) {
+        state->cc.src_factor = v9x_d3d_g4_factor(draw->src_blend);
+        state->cc.dst_factor = v9x_d3d_g4_factor(draw->dst_blend);
+        if (state->cc.src_factor == 0u || state->cc.dst_factor == 0u) {
+            return V9X_D3D_G4_REFUSE_BLEND;
+        }
+        state->cc.blend = 1u;
+    }
+    state->cc.alpha_test = 0u;
+    state->cc.alpha_function = 0u;
+    state->cc.alpha_ref = 0u;
+    if (draw->alpha_test_enable != 0ul) {
+        if (draw->alpha_func < V9X_R3D_CMP_NEVER ||
+            draw->alpha_func > V9X_R3D_CMP_ALWAYS) {
+            return V9X_D3D_G4_REFUSE_ALPHA;
+        }
+        state->cc.alpha_test = 1u;
+        state->cc.alpha_function = v9x_d3d_g4_compare(draw->alpha_func);
+        state->cc.alpha_ref = (v9x_u8)(draw->alpha_ref & 0xfful);
+    }
+    return V9X_D3D_G4_REFUSE_NONE;
+}
+
+static v9x_u32 v9x_d3d_g4_float_bits(float value)
+{
+    union {
+        float f;
+        v9x_u32 u;
+    } convert;
+
+    convert.f = value;
+    return convert.u;
+}
+
+/* The WM slot a description takes, and the words that say a slot holds
+ * it (the fog colour is in the words, not the slot). */
+static DWORD v9x_d3d_g4_wm_slot(const struct v9x_g4_ps_desc *desc)
+{
+    return (DWORD)desc->stage0 * 4ul + (DWORD)desc->specular * 2ul +
+           (DWORD)desc->fog;
+}
+
+static void v9x_d3d_g4_wm_sig(const struct v9x_g4_ps_desc *desc,
+                              v9x_u32 *sig)
+{
+    sig[0] = 0x47340000ul | ((v9x_u32)desc->stage0 << 8) |
+             ((v9x_u32)desc->specular << 4) | (v9x_u32)desc->fog;
+    sig[1] = v9x_d3d_g4_float_bits(desc->fog_rgb[0]);
+    sig[2] = v9x_d3d_g4_float_bits(desc->fog_rgb[1]);
+    sig[3] = v9x_d3d_g4_float_bits(desc->fog_rgb[2]);
+}
+
+/* Copy a built kernel into the reserve. */
+static void v9x_d3d_g4_copy_kernel(DWORD offset, v9x_u32 count)
+{
+    v9x_u32 *target = v9x_d3d_g4_reserve(offset);
+    v9x_u32 index;
+
+    for (index = 0ul; index < count; ++index) {
+        target[index * 4ul + 0ul] = v9x_d3d_g4_kernel_words[index].dw[0];
+        target[index * 4ul + 1ul] = v9x_d3d_g4_kernel_words[index].dw[1];
+        target[index * 4ul + 2ul] = v9x_d3d_g4_kernel_words[index].dw[2];
+        target[index * 4ul + 3ul] = v9x_d3d_g4_kernel_words[index].dw[3];
+    }
+}
+
+/* The SF kernel, once: its mark is in the signature area. Called with the
+ * render engine drained. */
+static int v9x_d3d_g4_write_sf(v9x_u8 *grf_used)
+{
+    volatile DWORD *sig = (volatile DWORD *)v9x_d3d_g4_reserve(V9X_G4_SIG_OFF);
+    struct v9x_g4_program program;
+
+    v9x_g4_program_init(&program, v9x_d3d_g4_kernel_words,
+                        V9X_D3D_G4_KERNEL_INSTS);
+    if (v9x_g4_sf_kernel(&program, V9X_G4_SETUP_REGS, grf_used) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    if (sig[0] != V9X_D3D_G4_SF_MARK) {
+        v9x_d3d_g4_copy_kernel(V9X_G4_SF_KERNEL_OFF, program.count);
+        sig[0] = V9X_D3D_G4_SF_MARK;
+    }
+    return 1;
+}
+
+static int v9x_d3d_g4_write_wm(const struct v9x_g4_ps_desc *desc,
+                               DWORD *kernel, v9x_u8 *grf_used)
+{
+    volatile DWORD *stored;
+    struct v9x_g4_program program;
+    v9x_u32 wanted[V9X_D3D_G4_SIG_WORDS];
+    DWORD slot = v9x_d3d_g4_wm_slot(desc);
+    DWORD index;
+    int same = 1;
+
+    if (slot >= V9X_G4_WM_KERNEL_SLOTS) {
+        return 0;
+    }
+    *kernel = V9X_G4_WM_KERNEL_OFF + slot * V9X_G4_WM_KERNEL_BYTES;
+    v9x_g4_program_init(&program, v9x_d3d_g4_kernel_words,
+                        V9X_D3D_G4_KERNEL_INSTS);
+    if (v9x_g4_wm_kernel(&program, desc, grf_used) != V9X_STATUS_OK) {
+        return 0;
+    }
+    stored = (volatile DWORD *)v9x_d3d_g4_reserve(V9X_G4_SIG_OFF) +
+             V9X_D3D_G4_SIG_WORDS * (slot + 1ul);
+    v9x_d3d_g4_wm_sig(desc, wanted);
+    for (index = 0ul; index < V9X_D3D_G4_SIG_WORDS; ++index) {
+        if (stored[index] != wanted[index]) {
+            same = 0;
+        }
+    }
+    if (!same) {
+        v9x_d3d_g4_copy_kernel(*kernel, program.count);
+        for (index = 0ul; index < V9X_D3D_G4_SIG_WORDS; ++index) {
+            stored[index] = wanted[index];
+        }
+    }
+    return 1;
+}
+
+/* The draw's state block. Zero, or the reason a block would not encode. */
+static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
+                                    const V9X_D3D_G4_STATE *state)
+{
+    v9x_u32 *image = v9x_d3d_g4_reserve(V9X_G4_STATE_OFF);
+    v9x_u32 *table;
+    DWORD st = V9X_G4_STATE_OFF;
+    DWORD wm_kernel = 0ul;
+    DWORD index;
+    v9x_u8 sf_grf = 0u;
+    v9x_u8 wm_grf = 0u;
+
+    if (!v9x_d3d_g4_write_sf(&sf_grf) ||
+        !v9x_d3d_g4_write_wm(&state->desc, &wm_kernel, &wm_grf)) {
+        return V9X_D3D_G4_REFUSE_STATE;
+    }
+    v9x_g4_sf_viewport(image + V9X_G4_ST_SF_VP / 4ul);
+    /* The scissor in SF_VIEWPORT's rectangle (dwords 6 and 7). */
+    image[V9X_G4_ST_SF_VP / 4ul + 6ul] = state->scissor[0] |
+                                         (state->scissor[1] << 16);
+    image[V9X_G4_ST_SF_VP / 4ul + 7ul] = state->scissor[2] |
+                                         (state->scissor[3] << 16);
+    v9x_g4_cc_viewport(image + V9X_G4_ST_CC_VP / 4ul);
+    for (index = 0ul; index < 16ul; ++index) {
+        image[V9X_G4_ST_BORDER / 4ul + index] = 0ul;
+    }
+    if (v9x_g4_vs_state(image + V9X_G4_ST_VS / 4ul) != V9X_STATUS_OK ||
+        v9x_g4_sf_state(image + V9X_G4_ST_SF / 4ul, V9X_G4_SF_KERNEL_OFF,
+                        sf_grf, st + V9X_G4_ST_SF_VP) != V9X_STATUS_OK ||
+        v9x_g4_wm_state(image + V9X_G4_ST_WM / 4ul, wm_kernel, wm_grf,
+                        st + V9X_G4_ST_SAMPLER,
+                        (v9x_u8)(state->textured ? 1u : 0u), 2u) !=
+            V9X_STATUS_OK ||
+        v9x_g4_cc_state(image + V9X_G4_ST_CC / 4ul, &state->cc,
+                        st + V9X_G4_ST_CC_VP, 0u) != V9X_STATUS_OK) {
+        return V9X_D3D_G4_REFUSE_STATE;
+    }
+    /* Scissor enable, SF_STATE DW6 bit 17. */
+    image[V9X_G4_ST_SF / 4ul + 6ul] |= 1ul << 17;
+
+    if (v9x_g4_surface(image + V9X_G4_ST_RT_SURF / 4ul,
+                       state->target_format,
+                       v9x_d3d_g4_vram(draw->target.offset),
+                       (v9x_u16)draw->target.width,
+                       (v9x_u16)draw->target.height, draw->target.pitch, 1u,
+                       state->write_disable, 1u) != V9X_STATUS_OK) {
+        return V9X_D3D_G4_REFUSE_TARGET;
+    }
+    table = image + V9X_G4_ST_BINDING / 4ul;
+    table[0] = st + V9X_G4_ST_RT_SURF;
+    table[1] = st + V9X_G4_ST_RT_SURF;
+    if (state->textured) {
+        if (v9x_g4_surface(image + V9X_G4_ST_TEX_SURF / 4ul,
+                           state->texture.format, state->texture.address,
+                           state->texture.width, state->texture.height,
+                           state->texture.pitch, 0u, 0u, 1u) !=
+                V9X_STATUS_OK ||
+            v9x_g4_sampler_state(image + V9X_G4_ST_SAMPLER / 4ul,
+                                 &state->texture.sampler,
+                                 st + V9X_G4_ST_BORDER) != V9X_STATUS_OK) {
+            return V9X_D3D_G4_REFUSE_TEXTURE;
+        }
+        table[1] = st + V9X_G4_ST_TEX_SURF;
+    }
+    return V9X_D3D_G4_REFUSE_NONE;
+}
+
+/* One TL vertex into the buffer's layout: x y z, diffuse, specular, then
+ * u, v and 1 multiplied by 1/w for the WM's perspective division. */
+static v9x_u32 *v9x_d3d_g4_vertex(v9x_u32 *at, const V9X_R3D_VERTEX *v)
+{
+    float rhw = v->rhw > 0.0f ? v->rhw : 1.0f;
+
+    at[0] = v9x_d3d_g4_float_bits(v->sx);
+    at[1] = v9x_d3d_g4_float_bits(v->sy);
+    at[2] = v9x_d3d_g4_float_bits(v->sz);
+    at[3] = v->color;
+    at[4] = v->specular;
+    at[5] = v9x_d3d_g4_float_bits(v->tu * rhw);
+    at[6] = v9x_d3d_g4_float_bits(v->tv * rhw);
+    at[7] = v9x_d3d_g4_float_bits(rhw);
+    at[8] = 0ul;
+    return at + V9X_G4_VB_PITCH / 4ul;
+}
+
+static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
+                                 const V9X_R3D_VERTEX *vertices,
+                                 DWORD triangle_count)
+{
+    V9X_D3D_G4_STATE state;
+    struct v9x_g4_batch batch;
+    struct v9x_g4_draw d;
+    DWORD reason;
+    DWORD done = 0ul;
+    DWORD count;
+    DWORD vertex;
+    DWORD index;
+    v9x_u32 *at;
+    v9x_u32 *target;
+
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
+        return 0;
+    }
+    if (!v9x_d3d_g4_ready()) {
+        if (v9x_hal != 0) {
+            v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_NOT_READY);
+        }
+        return 0;
+    }
+    reason = v9x_d3d_g4_map(draw, &state);
+    if (reason != V9X_D3D_G4_REFUSE_NONE) {
+        v9x_d3d_g4_count_refusal(reason);
+        return 0;
+    }
+    if (state.scissor_empty) {
+        return 1;
+    }
+    {
+        int waited = v9x_flip_wait_done();
+
+        if (waited != V9X_FLIP_WAIT_NONE) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+            }
+        }
+    }
+
+    d.state_base = V9X_D3D_G4_GFX(0ul);
+    d.state_offset = V9X_G4_STATE_OFF;
+    d.vertex_address = V9X_D3D_G4_GFX(V9X_G4_VERTEX_OFF);
+    d.width = (v9x_u16)draw->target.width;
+    d.height = (v9x_u16)draw->target.height;
+    d.depth_address = state.depth ? state.depth_address : 0ul;
+    d.depth_pitch = state.depth_pitch;
+    d.depth_format = state.depth_format;
+
+    while (done < triangle_count) {
+        count = triangle_count - done;
+        if (count > V9X_D3D_G4_MAX_TRIANGLES) {
+            count = V9X_D3D_G4_MAX_TRIANGLES;
+        }
+        /* The GPU is finished with the state, batch and vertices of every
+         * earlier draw before any of them is rewritten. */
+        if (v9x_d3d_i9xx_render_drain(1) != V9X_RENDER_DRAIN_DONE) {
+            v9x_d3d_g4_count_refusal(done == 0ul ? V9X_D3D_G4_REFUSE_IDLE
+                                                 : V9X_D3D_G4_REFUSE_SUBMIT);
+            return 0;
+        }
+        reason = v9x_d3d_g4_write_state(draw, &state);
+        if (reason != V9X_D3D_G4_REFUSE_NONE) {
+            v9x_d3d_g4_count_refusal(reason);
+            return 0;
+        }
+        at = v9x_d3d_g4_reserve(V9X_G4_VERTEX_OFF);
+        for (vertex = 0ul; vertex < count * 3ul; ++vertex) {
+            at = v9x_d3d_g4_vertex(at, &vertices[done * 3ul + vertex]);
+        }
+        d.vertex_count = count * 3ul;
+
+        v9x_g4_batch_init(&batch, v9x_d3d_g4_batch_words,
+                          V9X_G4_BATCH_BYTES / 4ul);
+        if (v9x_g4_draw_batch(&batch, &d) != V9X_STATUS_OK ||
+            v9x_g4_batch_check(batch.dw, batch.count) != V9X_TRUE) {
+            v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_BATCH);
+            return 0;
+        }
+        target = v9x_d3d_g4_reserve(V9X_G4_BATCH_OFF);
+        for (index = 0ul; index < batch.count; ++index) {
+            target[index] = batch.dw[index];
+        }
+        if (!v9x_d3d_i9xx_submit_g4_batch(V9X_D3D_G4_GFX(V9X_G4_BATCH_OFF),
+                                          1)) {
+            /* The batch may be running: nothing is submitted again. */
+            v9x_d3d_g4_quarantined = 1;
+            ++v9x_hal->engine.idle_timeouts;
+            v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_SUBMIT);
+            return 0;
+        }
+        done += count;
+    }
+    v9x_present_note_submission();
+    return 1;
+}
+
+static int v9x_d3d_g4_draw(const V9X_R3D_DRAW *draw,
+                           const V9X_R3D_VERTEX *vertices,
+                           DWORD triangle_count)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    int result = v9x_d3d_g4_draw_batch(draw, vertices, triangle_count);
+
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return result;
+}
+
+static int v9x_d3d_g4_accepts(const V9X_R3D_DRAW *draw)
+{
+    V9X_D3D_G4_STATE state;
+
+    if (draw == 0 || v9x_hal == 0) {
+        return 0;
+    }
+    return v9x_d3d_g4_map(draw, &state) == V9X_D3D_G4_REFUSE_NONE;
+}
+
+/* What the mapping takes, as Haswell's minus mipmaps, two units and the
+ * tiled depth placement. */
+static void v9x_d3d_g4_describe_caps(V9X_DD_SHARED *shared)
+{
+    V9X_D3DPRIMCAPS *tri;
+    DWORD index;
+
+    if (shared == 0) {
+        return;
+    }
+    shared->d3d_global.dwSize = sizeof(V9X_D3DHAL_GLOBALDRIVERDATA);
+    shared->d3d_global.hwCaps.dwSize = sizeof(V9X_D3DDEVICEDESC_V1);
+    shared->d3d_global.hwCaps.dwFlags =
+        V9X_D3DDD_COLORMODEL | V9X_D3DDD_DEVCAPS |
+        V9X_D3DDD_TRICAPS | V9X_D3DDD_DEVICERENDERBITDEPTH |
+        V9X_D3DDD_DEVICEZBUFFERBITDEPTH;
+    shared->d3d_global.hwCaps.dcmColorModel = V9X_D3DCOLOR_RGB;
+    shared->d3d_global.hwCaps.dwDevCaps =
+        V9X_D3DDEVCAPS_FLOATTLVERTEX |
+        V9X_D3DDEVCAPS_EXECUTESYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TLVERTEXSYSTEMMEMORY |
+        V9X_D3DDEVCAPS_TEXTUREVIDEOMEMORY |
+        V9X_D3DDEVCAPS_DRAWPRIMTLVERTEX;
+    shared->d3d_global.hwCaps.dtcTransformCaps.dwSize =
+        sizeof(V9X_D3DTRANSFORMCAPS);
+    shared->d3d_global.hwCaps.dlcLightingCaps.dwSize =
+        sizeof(V9X_D3DLIGHTINGCAPS);
+    shared->d3d_global.hwCaps.dpcLineCaps.dwSize = sizeof(V9X_D3DPRIMCAPS);
+
+    tri = &shared->d3d_global.hwCaps.dpcTriCaps;
+    tri->dwSize = sizeof(V9X_D3DPRIMCAPS);
+    tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
+                      V9X_D3DPMISCCAPS_CULLCCW;
+    tri->dwRasterCaps = V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE |
+                        V9X_D3DPRASTERCAPS_ZTEST;
+    tri->dwZCmpCaps =
+        V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
+        V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
+        V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
+        V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
+    tri->dwAlphaCmpCaps = tri->dwZCmpCaps;
+    tri->dwSrcBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR | V9X_D3DPBLENDCAPS_INVDESTCOLOR;
+    tri->dwDestBlendCaps = tri->dwSrcBlendCaps;
+    tri->dwShadeCaps =
+        V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
+    tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
+                         V9X_D3DPTEXTURECAPS_ALPHA;
+    /* Mip filters are published and level 0 is sampled, as Haswell does
+     * for a chain it did not place. */
+    tri->dwTextureFilterCaps =
+        V9X_D3DPTFILTERCAPS_NEAREST | V9X_D3DPTFILTERCAPS_LINEAR |
+        V9X_D3DPTFILTERCAPS_MIPNEAREST | V9X_D3DPTFILTERCAPS_MIPLINEAR |
+        V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+        V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
+    tri->dwTextureBlendCaps =
+        V9X_D3DPTBLENDCAPS_DECAL | V9X_D3DPTBLENDCAPS_MODULATE |
+        V9X_D3DPTBLENDCAPS_MODULATEALPHA | V9X_D3DPTBLENDCAPS_COPY;
+    tri->dwTextureAddressCaps = V9X_D3DPTADDRESSCAPS_WRAP |
+                                V9X_D3DPTADDRESSCAPS_MIRROR |
+                                V9X_D3DPTADDRESSCAPS_CLAMP;
+
+    shared->d3d_extended_caps.dwSize = sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS);
+    shared->d3d_extended_caps.dwMinTextureWidth =
+        v9x_d3d_g4_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureWidth =
+        v9x_d3d_g4_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinTextureHeight =
+        v9x_d3d_g4_limits.texture_size_min;
+    shared->d3d_extended_caps.dwMaxTextureHeight =
+        v9x_d3d_g4_limits.texture_size_max;
+    shared->d3d_extended_caps.dwMinStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
+    shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
+    shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
+    shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+
+    for (index = 0ul; index < 5ul; ++index) {
+        shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
+        shared->texture_formats[index].dwFlags =
+            V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+        shared->texture_formats[index].ddpfPixelFormat.dwSize =
+            sizeof(V9X_DDPIXELFORMAT);
+        shared->texture_formats[index].ddpfPixelFormat.dwRGBBitCount = 16ul;
+        shared->texture_formats[index].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+    }
+    shared->texture_formats[0].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[0].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
+    shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
+    shared->texture_formats[1].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x00008000ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x0000f000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0xff000000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
+    shared->d3d_global.dwNumTextureFormats = 5ul;
+    shared->d3d_global.dwNumVertices = 0ul;
+    shared->d3d_global.dwNumClipVertices = 0ul;
+}
+
+/* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_g4 = {
+    &v9x_d3d_g4_limits,
+    v9x_d3d_g4_texture_format,
+    v9x_d3d_g4_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_g4_ready,
+    0,                                  /* create_surface: DirectDraw's */
+    0,                                  /* destroy_surface */
+    v9x_d3d_g4_draw,
+    v9x_d3d_g4_accepts
+};

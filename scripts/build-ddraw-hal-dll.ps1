@@ -126,6 +126,9 @@ $sources = @(
     # Its plane-A flips: mechanics, then the host-tested arithmetic.
     "src\display32\engines\hsw_scanout.c",
     "src\chipsets\intel\hsw_display.c",
+    # The GM965's Gen4 3D builders and EU kernels, host-tested.
+    "src\chipsets\intel\g4_3d.c",
+    "src\chipsets\intel\g4_eu.c",
     # The D3D core before its engines, matching the 2D order above: the core
     # owns the entry points and the engine selector, an engine owns registers.
     "src\display32\d3d\d3d_core.c",
@@ -169,6 +172,7 @@ $sources = @(
     "src\display32\d3d\d3d_hsw_map.c",
     "src\display32\d3d\d3d_tdfx.c",
     "src\display32\d3d\d3d_hsw.c",
+    "src\display32\d3d\d3d_g4.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.
     "src\display32\d3d\d3d_place.c",
     "src\display32\d3d\d3d_mach64.c",

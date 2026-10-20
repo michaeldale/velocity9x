@@ -230,6 +230,15 @@
  */
 #define V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC 0x00020000ul
 /*
+ * Intel: this part is Gen4 (the GM965's GMA X3100). It shares the Gen3
+ * engine type for the ring and the 2D blitter, whose commands carry over,
+ * and has no Gen3 3D command set: Direct3D selects the Gen4 engine
+ * (d3d_g4.c) and the Gen3 one refuses. A chip identity bit, stamped by the
+ * GM965 descriptor only (docs\decisions\2026-10-20-gm965-ring-and-
+ * blits.md).
+ */
+#define V9X_DD_ENGINE_CAP_I9XX_GEN4     0x00040000ul
+/*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
  * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only

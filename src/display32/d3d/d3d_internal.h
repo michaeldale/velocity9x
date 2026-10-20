@@ -589,6 +589,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_tdfx;
 /* Intel Gen7.5 (Haswell), in d3d_hsw.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw;
 
+/* Intel Gen4 (GM965), in d3d_g4.c. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_g4;
+
 
 /*
  * The core services an engine may use.

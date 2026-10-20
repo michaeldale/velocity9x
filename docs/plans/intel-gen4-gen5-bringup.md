@@ -4,8 +4,10 @@ Status: **Gen4 steps 1-4 done on TOMMOHP (GM965), 2026-10-20, flips
 excepted.** Windows 98 SE runs on a GM965, the `vbe` family reaches
 enable-ok there, and a read-only probe answered Phase 1 for Gen4:
 `docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md`. `intel-gma`
-claims `2A02` for 2D, and DirectDraw fills and copies ran on its ring:
-`docs\decisions\2026-10-20-gm965-ring-and-blits.md`. Gen5 is
+claims `2A02`, DirectDraw fills and copies ran on its ring
+(`docs\decisions\2026-10-20-gm965-ring-and-blits.md`), and Step 5 - Gen4
+3D - passes V9XD32 at 16 and 32 bpp with a 16-bit Z buffer
+(`docs\decisions\2026-10-21-gm965-direct3d.md`). Gen5 is
 unchanged: four DOS surveys, no Windows. The Ironlake evidence is the
 surveys of an Ironlake board
 (`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`) and

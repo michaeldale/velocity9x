@@ -57,6 +57,9 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\hsw_pipe.c',
         # Haswell primary-plane scanout arithmetic (Phase F3).
         'src\chipsets\intel\hsw_display.c',
+        # Gen4 (GM965) 3D state and command builders, EU encoder and kernels.
+        'src\chipsets\intel\g4_3d.c',
+        'src\chipsets\intel\g4_eu.c',
         # PE32 export-by-ordinal walk over a bounded byte range; the HAL's
         # route to KERNEL32's Win16-mutex ordinals.
         'src\common\pe_export.c',
@@ -237,6 +240,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_intel_hsw_3d.c',
         'tests\host\test_intel_hsw_pipe.c',
         'tests\host\test_intel_hsw_display.c',
+        'tests\host\test_intel_g4.c',
         'tests\host\test_i9xx_ring.c',
         'tests\host\test_i9xx_blt.c',
         'tests\host\test_i9xx_arm.c',

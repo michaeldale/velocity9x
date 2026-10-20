@@ -20,6 +20,7 @@
  */
 #include "d3d_internal.h"
 #include "velocity9x/i9xx_depth.h"
+#include "velocity9x/intel_g4_3d.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/intel_gen3_3d.h"
 #include "velocity9x/r3d_abi.h"
@@ -894,6 +895,57 @@ int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
     submitted = v9x_d3d_i9xx_ring_submit(stream, at);
     v9x_d3d_i9xx_breadcrumb_expected = 0ul;
     return submitted;
+}
+
+/*
+ * The Gen4 engine's submission (d3d_g4.c): MI_BATCH_BUFFER_START of a batch
+ * g4_3d.c built and checked, then the breadcrumb submit_blt seals a blit
+ * with, so Flip, Lock and the blitter's drain wait for 3D work the same way.
+ * The batch ends in MI_FLUSH, so the breadcrumb's own MI_FLUSH follows a
+ * flushed render cache. With wait, the submission is synchronous and 1
+ * means the breadcrumb landed; a status page that did not prove itself
+ * refuses, because nothing would then say when the batch is done.
+ */
+int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait)
+{
+    DWORD stream[2ul + V9X_I9XX_BREADCRUMB_STREAM_DWORDS + 2ul];
+    DWORD at = 0ul;
+    DWORD produced = 0ul;
+    DWORD sequence;
+    int submitted;
+
+    if (v9x_hal == 0 || (batch_address & 63ul) != 0ul ||
+        !v9x_d3d_i9xx_hws_open()) {
+        return 0;
+    }
+    (void)v9x_d3d_i9xx_render_drain(0);
+    sequence = v9x_d3d_i9xx_allocate_sequence();
+    if (sequence == 0ul) {
+        return 0;
+    }
+    stream[at++] = v9x_g4_batch_start_header();
+    stream[at++] = batch_address;
+    if (v9x_i9xx_build_breadcrumb_stream(
+            v9x_d3d_i9xx_breadcrumb_offset(), sequence, stream + at,
+            (DWORD)(sizeof(stream) / sizeof(stream[0])) - at, &produced) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    at += produced;
+    if ((at & 1ul) != 0ul) {
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+    v9x_d3d_i9xx_breadcrumb_expected = sequence;
+    submitted = v9x_d3d_i9xx_ring_submit_mode(stream, at, wait);
+    v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    if (!submitted) {
+        return 0;
+    }
+    if (wait) {
+        v9x_d3d_i9xx_note_outstanding(sequence);
+        return v9x_d3d_i9xx_render_drain(1) == V9X_RENDER_DRAIN_DONE;
+    }
+    return 1;
 }
 
 /*
@@ -2844,6 +2896,10 @@ static int v9x_d3d_i9xx_ready(void)
         return 0;
     }
     if (v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        return 0;
+    }
+    /* A Gen4 part shares the type for its ring and blitter only. */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) != 0ul) {
         return 0;
     }
     if (v9x_hal->engine.control_linear_base == 0ul ||

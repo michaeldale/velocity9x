@@ -612,6 +612,11 @@ int v9x_d3d_i9xx_ring_submit(const DWORD *stream, DWORD dwords);
  * submit is: the breadcrumb sequence stays private to d3d_i9xx.c. */
 int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
                             DWORD bytes_per_pixel);
+/* A Gen4 3D batch (d3d\d3d_g4.c) started from the ring and sealed with the
+ * breadcrumb; the batch itself was built and checked by g4_3d.c. 1 when
+ * the ring took it; with wait, 1 only once the breadcrumb landed. EXTERNAL
+ * from 2026-10-21, for the reason submit_blt is. */
+int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,

@@ -6,19 +6,22 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.23.0 - not yet released
 
-- **Intel GMA X3100 (GM965, `8086:2A02`): new chip, 2D only.** The
-  `intel-gma` package now claims the first Gen4 part, using the GMA 950's
-  ring and blitter. Its page table lives in BAR0 instead of a BAR of its
-  own; the driver now finds it there. On one HP laptop (Core 2 Duo T7250)
-  reached through remote help, DirectDraw fills and copies ran on the
-  engine at 640x480x8 and read back correctly. Not offered:
-  - Direct3D. Gen4's 3D pipeline is a different design from the GMA
-    950's.
+- **Intel GMA X3100 (GM965, `8086:2A02`): new chip.** The `intel-gma`
+  package now claims the first Gen4 part. On one HP laptop (Core 2 Duo
+  T7250) reached through remote help:
+  - DirectDraw fills and copies ran on the GMA 950's ring and blitter
+    and read back correctly. Gen4 keeps its page table in BAR0 instead
+    of a BAR of its own; the driver now finds it there.
+  - Hardware Direct3D runs on a new Gen4 engine: its own pixel and setup
+    programs and pipeline state. The Direct3D probe passed every check at
+    16 and 32 bpp, including texturing, depth and blending.
+
+  Not offered:
+  - A 32-bit Z buffer. The one try hung the 3D engine, so only 16-bit Z
+    is offered.
+  - Mipmap levels beyond the first, and two texture units.
   - Page flips. Gen4 moved the plane base register; DirectDraw copies
     each frame instead.
-
-  Anyone with this chip who wants only a desktop can use the `vbe`
-  package, which also reached its desktop on that laptop.
 
 ## 0.22.0 - 2026-10-20
 

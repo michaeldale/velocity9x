@@ -28,6 +28,8 @@
 #define V9X_D3D_SELECT_GEN75    9ul
 /* The MGA engine with a 16-bit Z buffer only: the Mystique. */
 #define V9X_D3D_SELECT_MGA16    10ul
+/* The Gen3 engine type on a Gen4 part: the GM965. */
+#define V9X_D3D_SELECT_GEN4     11ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

@@ -216,6 +216,8 @@ unsigned int v9x_run_intel_hsw_pipe_tests(void);
 
 /* tests\host\test_intel_hsw_display.c: Haswell plane base and vblank. */
 unsigned int v9x_run_intel_hsw_display_tests(void);
+/* tests\host\test_intel_g4.c: GM965 EU encoder, kernels, state, batch. */
+unsigned int v9x_run_intel_g4_tests(void);
 
 /* tests\host\test_i9xx_ring.c: Phase 4 sandbox and packet policy. */
 unsigned int v9x_run_i9xx_ring_tests(void);
@@ -1337,6 +1339,7 @@ int main(int argc, char **argv)
     failures += v9x_run_intel_hsw_3d_tests();
     failures += v9x_run_intel_hsw_pipe_tests();
     failures += v9x_run_intel_hsw_display_tests();
+    failures += v9x_run_intel_g4_tests();
     failures += v9x_run_i9xx_ring_tests();
     failures += v9x_run_i9xx_blt_tests();
     failures += v9x_run_i9xx_arm_tests();
