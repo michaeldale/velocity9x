@@ -359,6 +359,131 @@ static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
 }
 
 /*
+ * The mode-set state the video BIOS left: the live pipe's DPLL and its two
+ * FP divisors, the panel power sequencer and backlight when the LVDS port is
+ * on, and Pineview's DSPFW watermarks. Read-only, like the dump above.
+ *
+ * Only the live pipe's clock registers are read; the other pipe's, as with
+ * its counters, are not touched (2026-10-15-a-disabled-pipes-counters-hang-
+ * the-945.md). DSPFW1-3 are read only on a part whose descriptor says its
+ * watermarks are there (I9XX_NO_FW_BLC, Pineview): on the 945 those offsets
+ * are undocumented. These are the measured inputs a driver mode set would
+ * need (docs\plans\intel-pineview-gma3150.md, Phase 4).
+ */
+static void v9x_write_display_clocks(const V9X_DD_ENGINE *engine)
+{
+    DWORD base = engine->control_linear_base;
+    DWORD dpll;
+    DWORD fp0;
+    DWORD fp1;
+    DWORD lvds;
+
+    if (engine->engine_type != V9X_DD_ENGINE_TYPE_INTEL_GEN3 || base == 0ul ||
+        IsBadReadPtr((const void *)(base + V9X_I9XX_REG_VGACNTRL),
+                     sizeof(DWORD))) {
+        return;
+    }
+
+    /* Pipe B first, as in the dump above. */
+    if ((*(volatile DWORD *)(base + V9X_I9XX_REG_PIPEB_CONF) &
+         V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
+        dpll = V9X_I9XX_REG_DPLL_B;
+        fp0 = V9X_I9XX_REG_FPB0;
+        fp1 = V9X_I9XX_REG_FPB1;
+        v9x_write_text("ClockPipe", "B");
+    } else if ((*(volatile DWORD *)(base + V9X_I9XX_REG_PIPEA_CONF) &
+                V9X_I9XX_PIPECONF_ENABLE) != 0ul) {
+        dpll = V9X_I9XX_REG_DPLL_A;
+        fp0 = V9X_I9XX_REG_FPA0;
+        fp1 = V9X_I9XX_REG_FPA1;
+        v9x_write_text("ClockPipe", "A");
+    } else {
+        v9x_write_text("ClockPipe", "none");
+        dpll = 0ul;
+        fp0 = 0ul;
+        fp1 = 0ul;
+    }
+    if (dpll != 0ul) {
+        v9x_write_hex("ClockDpll", *(volatile DWORD *)(base + dpll));
+        v9x_write_hex("ClockFp0", *(volatile DWORD *)(base + fp0));
+        v9x_write_hex("ClockFp1", *(volatile DWORD *)(base + fp1));
+    }
+
+    lvds = *(volatile DWORD *)(base + V9X_I9XX_REG_LVDS);
+    if ((lvds & V9X_I9XX_LVDS_PORT_EN) != 0ul) {
+        v9x_write_hex("PanelPpStatus",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_PP_STATUS));
+        v9x_write_hex("PanelPpControl",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_PP_CONTROL));
+        v9x_write_hex("PanelPpOnDelays",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_PP_ON_DELAYS));
+        v9x_write_hex("PanelPpOffDelays",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_PP_OFF_DELAYS));
+        v9x_write_hex("PanelPpDivisor",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_PP_DIVISOR));
+        v9x_write_hex("PanelBlcPwmCtl",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_BLC_PWM_CTL));
+    }
+
+    if ((engine->engine_caps & V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC) != 0ul) {
+        v9x_write_hex("WmDspfw1",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_DSPFW1));
+        v9x_write_hex("WmDspfw2",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_DSPFW2));
+        v9x_write_hex("WmDspfw3",
+                      *(volatile DWORD *)(base + V9X_I9XX_REG_DSPFW3));
+    }
+}
+
+/*
+ * "-vbios": the shadowed video BIOS, C0000h for as many 512-byte blocks as
+ * its header's third byte says, to C:\V9XDIAG\V9XVBIOS.BIN. A Win32
+ * process on Windows 98 reads the first megabyte of linear space, which is
+ * the system VM's. Opt-in only: a report should not carry 64 KiB of ROM.
+ * The image holds the mode tables and, on Intel parts, the VBT with the
+ * panel's timing (docs\plans\intel-pineview-gma3150.md, Phase 4).
+ */
+#define V9X_VBIOS_LINEAR    0x000c0000ul
+#define V9X_VBIOS_MAX_BYTES 0x00010000ul
+#define V9X_VBIOS_BLOCK     512ul
+
+static void v9x_write_vbios(void)
+{
+    const unsigned char *rom = (const unsigned char *)V9X_VBIOS_LINEAR;
+    DWORD bytes;
+    DWORD written = 0ul;
+    HANDLE file;
+
+    if (IsBadReadPtr(rom, V9X_VBIOS_MAX_BYTES)) {
+        v9x_write_text("VbiosDump", "unreadable");
+        return;
+    }
+    v9x_write_hex("VbiosSignature", (DWORD)rom[0] | ((DWORD)rom[1] << 8));
+    if (rom[0] != 0x55u || rom[1] != 0xaau) {
+        v9x_write_text("VbiosDump", "no-signature");
+        return;
+    }
+    bytes = (DWORD)rom[2] * V9X_VBIOS_BLOCK;
+    if (bytes == 0ul || bytes > V9X_VBIOS_MAX_BYTES) {
+        bytes = V9X_VBIOS_MAX_BYTES;
+    }
+    v9x_write_hex("VbiosBytes", bytes);
+    file = CreateFileA(V9X_DIAG_PATH("V9XVBIOS.BIN"), GENERIC_WRITE, 0, 0,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        v9x_write_text("VbiosDump", "file-failed");
+        return;
+    }
+    if (!WriteFile(file, rom, bytes, &written, 0) || written != bytes) {
+        CloseHandle(file);
+        v9x_write_text("VbiosDump", "write-failed");
+        return;
+    }
+    CloseHandle(file);
+    v9x_write_text("VbiosDump", "written");
+}
+
+/*
  * "Present<nn><field>" for the present trace, assembled for the same reason
  * the census names are: four fields times thirty-two rows is too many names
  * to spell out in a tool that links no runtime string routines.
@@ -1304,6 +1429,9 @@ void __stdcall V9xTraceDumpEntry(void)
     if (v9x_has_switch("-dd")) {
         dd_object = v9x_dd_hold_open();
     }
+    if (v9x_has_switch("-vbios")) {
+        v9x_write_vbios();
+    }
 
     screen = GetDC(0);
     if (screen == 0) {
@@ -1552,6 +1680,7 @@ void __stdcall V9xTraceDumpEntry(void)
         }
     }
     v9x_write_live_display(&snapshot.engine);
+    v9x_write_display_clocks(&snapshot.engine);
     /* Released only after the live read, so the window is read while the
      * session that published it is still open. */
     v9x_dd_release(dd_object);

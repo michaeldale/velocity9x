@@ -449,6 +449,28 @@
 #define V9X_I9XX_REG_VGACNTRL            ((v9x_u32)0x00071400ul)
 #define V9X_I9XX_SCAN_REG_COUNT          24ul
 /*
+ * The mode-set state the video BIOS leaves, read-only, for V9XTRACE's
+ * clock dump (docs\plans\intel-pineview-gma3150.md, Phase 4 inputs).
+ * Offsets from Linux 6.6 i915_reg.h (_DPLL_A/B, _FPA0.._FPB1, DSPFW1-3)
+ * and igt intel_reg.h (PP_*, BLC_PWM_CTL, LVDS_PORT_EN).
+ */
+#define V9X_I9XX_REG_DPLL_A              ((v9x_u32)0x00006014ul)
+#define V9X_I9XX_REG_DPLL_B              ((v9x_u32)0x00006018ul)
+#define V9X_I9XX_REG_FPA0                ((v9x_u32)0x00006040ul)
+#define V9X_I9XX_REG_FPA1                ((v9x_u32)0x00006044ul)
+#define V9X_I9XX_REG_FPB0                ((v9x_u32)0x00006048ul)
+#define V9X_I9XX_REG_FPB1                ((v9x_u32)0x0000604cul)
+#define V9X_I9XX_REG_DSPFW1              ((v9x_u32)0x00070034ul)
+#define V9X_I9XX_REG_DSPFW2              ((v9x_u32)0x00070038ul)
+#define V9X_I9XX_REG_DSPFW3              ((v9x_u32)0x0007003cul)
+#define V9X_I9XX_REG_PP_STATUS           ((v9x_u32)0x00061200ul)
+#define V9X_I9XX_REG_PP_CONTROL          ((v9x_u32)0x00061204ul)
+#define V9X_I9XX_REG_PP_ON_DELAYS        ((v9x_u32)0x00061208ul)
+#define V9X_I9XX_REG_PP_OFF_DELAYS       ((v9x_u32)0x0006120cul)
+#define V9X_I9XX_REG_PP_DIVISOR          ((v9x_u32)0x00061210ul)
+#define V9X_I9XX_REG_BLC_PWM_CTL         ((v9x_u32)0x00061254ul)
+#define V9X_I9XX_LVDS_PORT_EN            ((v9x_u32)0x80000000ul)
+/*
  * The scanout's position, read-only, per pipe.
  *
  * DSL is the current display line in bits 11:0 (Linux i915_reg.h: _PIPEADSL
