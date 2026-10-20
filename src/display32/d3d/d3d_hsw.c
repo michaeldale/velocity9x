@@ -212,8 +212,9 @@ static void v9x_d3d_hsw_quarantine(void)
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
 }
 
-/* Every submitted render sequence has been stored back. */
-static int v9x_d3d_hsw_wait_rcs(void)
+/* Every submitted render sequence has been stored back. `polls`, when not
+ * null, receives how many status reads found it not yet stored. */
+static int v9x_d3d_hsw_wait_rcs_polled(DWORD *polls)
 {
     volatile DWORD *status = v9x_d3d_hsw_status();
     DWORD spins;
@@ -224,12 +225,50 @@ static int v9x_d3d_hsw_wait_rcs(void)
         if (status[V9X_INTEL_HSW_STATUS_RCS_DONE] ==
             status[V9X_INTEL_HSW_STATUS_RCS_SENT]) {
             V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
+            if (polls != 0) {
+                *polls = spins;
+            }
             return 1;
         }
     }
     V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
+    if (polls != 0) {
+        *polls = spins;
+    }
     v9x_d3d_hsw_quarantine();
     return 0;
+}
+
+static int v9x_d3d_hsw_wait_rcs(void)
+{
+    return v9x_d3d_hsw_wait_rcs_polled(0);
+}
+
+/*
+ * The wait before a draw writes the reserve, counted apart from the one
+ * after its submit. Phase 0 of docs\plans\intel-haswell-pipelined-
+ * submission.md: the plan's ceiling assumes this wait almost never finds
+ * the engine busy, because the draw before it already waited, so nearly
+ * all of TimeRenderDrain is the wait after the submit. On Haswell, Gen3's
+ * counters carry it: RenderDrainWaits these waits, RenderDrainStalls those
+ * that found the render engine busy, BreadcrumbLagPollsTotal and -Max the
+ * status reads those stalls took.
+ */
+static int v9x_d3d_hsw_wait_rcs_before_write(void)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+    DWORD polls = 0ul;
+    int idle = v9x_d3d_hsw_wait_rcs_polled(&polls);
+
+    ++diagnostics->render_drain_waits;
+    if (polls != 0ul) {
+        ++diagnostics->render_drain_stalls;
+        diagnostics->breadcrumb_lag_polls_total += polls;
+        if (polls > diagnostics->breadcrumb_lag_polls_max) {
+            diagnostics->breadcrumb_lag_polls_max = polls;
+        }
+    }
+    return idle;
 }
 
 /*
@@ -1036,7 +1075,8 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
 
     /* The blitter may still be writing this draw's texture or target, and
      * the previous draw must be done before its state is overwritten. */
-    if (!v9x_engine32_hsw.wait_idle(1) || !v9x_d3d_hsw_wait_rcs()) {
+    if (!v9x_engine32_hsw.wait_idle(1) ||
+        !v9x_d3d_hsw_wait_rcs_before_write()) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         return 0;
     }
@@ -1083,7 +1123,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         if (count > limit) {
             count = limit;
         }
-        if (done != 0ul && !v9x_d3d_hsw_wait_rcs()) {
+        if (done != 0ul && !v9x_d3d_hsw_wait_rcs_before_write()) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_PIECE);
             return 0;
         }

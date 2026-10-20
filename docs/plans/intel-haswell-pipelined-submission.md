@@ -1,7 +1,10 @@
 # HD 4600: submit a draw and return, with the next draw built while the render engine runs this one
 
 Date: 2026-10-20. Status: approved 2026-10-20 as written, with the four
-proposed decisions below; Phase 0 started.
+proposed decisions below. Phase 0 done the same day: 0 of 1,534,574
+pre-write waits stalled, and the post-submit wait is 75.1 µs
+(`../decisions/2026-10-20-haswell-pipelined-phase0-wait-split.md`).
+Phase 1 next.
 
 ## Why
 
