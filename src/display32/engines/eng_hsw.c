@@ -102,12 +102,44 @@ static int v9x_hsw_validated(void)
         (v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul;
 }
 
-/* Idle: every submitted sequence has been stored back. */
+/*
+ * Idle: every sequence submitted to either ring has been stored back.
+ *
+ * The render ring's pair is in the same status page (dwords 8 and 9, which
+ * d3d_hsw.c keeps), so this reads nothing new. Including it here is what
+ * makes every caller of this test - Flip, Lock, Blt, GetBltStatus,
+ * v9x_render_drain - wait for draws as well as blits. The two rings are not
+ * ordered against each other, so a blit must not start while the render
+ * engine may still read or write its surfaces, and the CPU must not touch a
+ * surface it is drawing. Phase 2 of docs\plans\intel-haswell-pipelined-
+ * submission.md: d3d_hsw.c still waits for each draw, so today the render
+ * pair always agrees here and this changes nothing observable; it is what
+ * lets later draws be left running. A ring that was never opened leaves
+ * both dwords zero, which agree.
+ */
+static int v9x_hsw_render_idle_now(void)
+{
+    volatile DWORD *status = v9x_hsw_status();
+
+    return status[V9X_INTEL_HSW_STATUS_RCS_DONE] ==
+           status[V9X_INTEL_HSW_STATUS_RCS_SENT];
+}
+
 static int v9x_hsw_idle_now(void)
 {
     volatile DWORD *status = v9x_hsw_status();
 
-    return status[0] == status[1];
+    return status[0] == status[1] && v9x_hsw_render_idle_now();
+}
+
+/* The head a stuck wait is traced with: the render ring's when it is the
+ * one still busy, so a capture names the engine that did not finish. */
+static DWORD v9x_hsw_busy_head(void)
+{
+    if (!v9x_hsw_render_idle_now()) {
+        return v9x_hsw_read32(V9X_INTEL_HSW_RCS_HEAD);
+    }
+    return v9x_hsw_read32(V9X_INTEL_HSW_BCS_HEAD);
 }
 
 static int v9x_hsw_wait_idle(int wait)
@@ -130,15 +162,13 @@ static int v9x_hsw_wait_idle(int wait)
             }
         }
         if (v9x_hal->engine.idle_timeouts++ == 0ul) {
-            v9x_trace_flush_fault(V9X_HSW_FAULT_TAG,
-                                  v9x_hsw_read32(V9X_INTEL_HSW_BCS_HEAD));
+            v9x_trace_flush_fault(V9X_HSW_FAULT_TAG, v9x_hsw_busy_head());
         }
         v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
         return 0;
     }
     ++v9x_hal->engine.idle_timeouts;
-    v9x_trace_flush_fault(V9X_HSW_FAULT_TAG,
-                          v9x_hsw_read32(V9X_INTEL_HSW_BCS_HEAD));
+    v9x_trace_flush_fault(V9X_HSW_FAULT_TAG, v9x_hsw_busy_head());
     return 0;
 }
 

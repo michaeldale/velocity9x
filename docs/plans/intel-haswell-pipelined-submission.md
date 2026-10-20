@@ -7,7 +7,11 @@ pre-write waits stalled, and the post-submit wait is 75.1 µs
 Phase 1 done the same day: `src/chipsets/intel/hsw_pipe.c` and
 `tests/host/test_intel_hsw_pipe.c`. The tests were seen failing against
 a stub (172 checks), then passing. The ring needed no new code: Gen3's
-`v9x_i9xx_ring_plan` is held to the Haswell cases. Phase 2 next.
+`v9x_i9xx_ring_plan` is held to the Haswell cases. Phase 2 done the same
+day: both rings in `v9x_hsw_wait_idle`. V9XDDP reads as before and the
+3DMark 2000 counters are unchanged
+(`../decisions/2026-10-20-haswell-pipelined-phase2-both-rings-idle.md`).
+Phase 3 next.
 
 ## Why
 

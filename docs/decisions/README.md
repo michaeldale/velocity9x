@@ -258,6 +258,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-18 GMA 950 on the 0.19.0 package: installs by Have Disk, no probe check lost, Half-Life 46.0 and 20.8 fps](2026-10-18-netbook-gma950-0.19.0.md)
 - [2026-10-20 HD 4600, 3DMark 2000 default run: 1982 3D marks, no refused batch, and the per-batch cost a tester's machine showed](2026-10-20-haswell-3dmark2000-baseline.md)
 - [2026-10-20 HD 4600: the wait before a draw's state write never stalls; the 75 µs is all the wait after the submit](2026-10-20-haswell-pipelined-phase0-wait-split.md)
+- [2026-10-20 HD 4600: the blitter's idle test covers the render ring; V9XDDP and 3DMark 2000 read as before](2026-10-20-haswell-pipelined-phase2-both-rings-idle.md)
 
 ## SiS
 
