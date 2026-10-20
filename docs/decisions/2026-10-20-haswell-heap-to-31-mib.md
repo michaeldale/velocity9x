@@ -71,6 +71,29 @@ is not at default settings, because textures are 16-bit on this chip.
   Fewer trees freed and remade would fit, but this was not checked.
 - 78 mip chains still have a level out of place.
 
+## Later the same day: the 8 refusals were V9XDDP's, not 3DMark's
+
+The boot 54 snapshot counts everything since boot, and V9XDDP ran
+before 3DMark on that boot. The boot 51 snapshot covered 3DMark alone
+(`Processes=1`). A third snapshot, taken after V9XDDP's second run
+(`V9XSNA7-boot54-after-ddp-run2.INI`), reads `BatchesEngineRefused=16`:
+the second run added exactly 8, with the same split of 1 texture, 2
+texture operation and 5 colour key. 3DMark 2001 SE contributed none.
+
+These are V9XDDP checks that ask for what this engine refuses by
+design: `ColorKeyHalves` (colour key) and `Tex8DecalAlpha*` (DECALALPHA),
+both among the 17 `Ok=0` keys every run of it has had. So the first
+bullet above is withdrawn: this change added no refusal. The table's
+boot 54 column also mixes in V9XDDP's counters, but those are small
+beside 3DMark's.
+
+The same comparison answers the second bullet in part. 3DMark created
+1,196 textures on boot 54 (V9XDDP included) against 23,457 on boot 51,
+and destroyed 7,582 surfaces against 212,010. With room in the heap the
+runtime stopped evicting and remaking textures, which is why
+`MipTreeAllocs` fell with the declines. That reading comes from the
+counters alone. No trace of the runtime's texture manager was taken.
+
 ## Gen3: a tester's GMA 900, same build
 
 The Gen3 build changed too: the new device fields are 0 for Gen3,
