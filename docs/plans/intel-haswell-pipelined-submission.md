@@ -4,7 +4,10 @@ Date: 2026-10-20. Status: approved 2026-10-20 as written, with the four
 proposed decisions below. Phase 0 done the same day: 0 of 1,534,574
 pre-write waits stalled, and the post-submit wait is 75.1 µs
 (`../decisions/2026-10-20-haswell-pipelined-phase0-wait-split.md`).
-Phase 1 next.
+Phase 1 done the same day: `src/chipsets/intel/hsw_pipe.c` and
+`tests/host/test_intel_hsw_pipe.c`. The tests were seen failing against
+a stub (172 checks), then passing. The ring needed no new code: Gen3's
+`v9x_i9xx_ring_plan` is held to the Haswell cases. Phase 2 next.
 
 ## Why
 
@@ -84,8 +87,9 @@ two:
 | batch | `10000h`, 8 KB | `10000h`, 4 KB | `11000h`, 4 KB |
 | vertices | `12000h`, 56 KB | `12000h`, 28 KB | `19000h`, 28 KB |
 
-A slot holds 298 TL triangles (248 with unit 1's coordinates), against
-597 today. The average batch measured is 43, and the pieces loop already
+A slot holds 298 TL triangles (238 with unit 1's coordinates, 40-byte
+vertices), against 597 and 477 today. (Corrected 2026-10-20 in Phase 1:
+this line first said 248, a 32-byte vertex taken for the 40-byte one.) The average batch measured is 43, and the pieces loop already
 splits longer ones. Slot 1's per-draw state is addressed by giving the
 workload a state base `2000h` higher, so every `V9X_HSW_SHADE_*` offset
 stays as it is. The kernel offset handed to the batch is then `2000h`
