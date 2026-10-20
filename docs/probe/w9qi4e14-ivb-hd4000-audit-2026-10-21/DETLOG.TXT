@@ -1,0 +1,170 @@
+[System Detection: 10/20/26 - 18:39:48]
+Parameters "I", InfParams "", Flags=0104a023
+SDMVer=040a.2222, WinVer=070a040a, Build=04.0a.2222, WinFlags=00003c29
+SkipList=
+DetectList=
+LogCrash: crash log not found or invalid
+LogCrash: crash log invalid
+Estimated number of detection functions = 365
+Detected: *PNP0A03\0000 = [1] PCI bus
+Number of verify functions called = 1
+ConfigMG device: HTREE\RESERVED\0
+ConfigMG device: ROOT\SWENUM\0000
+ConfigMG device: ROOT\*PNP0A03\0000
+ConfigMG device: PCI\VEN_8086&DEV_0150&SUBSYS_77981462&REV_09\BUS_00&DEV_00&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_0162&SUBSYS_21111462&REV_09\BUS_00&DEV_02&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_0162&SUBSYS_21111462&REV_09\BUS_00&DEV_02&FUNC_00: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_0162&SUBSYS_21111462&REV_09\0000
+	IO=3b0-3bb(3ff:400:0),3c0-3df(3ff:400:0),f000-f03f(ffff:ffff:0)
+	Mem=a0000-affff(ffffffff:0:1),b0000-bffff(ffffffff:0:1),f7800000-f7bfffff(ffffffff:0:1),e0000000-efffffff(ffffffff:0:5)
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_1E31&SUBSYS_77981462&REV_04\BUS_00&DEV_14&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_1E31&SUBSYS_77981462&REV_04\BUS_00&DEV_14&FUNC_00: Status=8000620, Problem=1c
+RegAvoidRes: VEN_8086&DEV_1E31&SUBSYS_77981462&REV_04\0000
+	Mem=f7c00000-f7c0ffff(ffffffff:0:1)
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_1E3A&SUBSYS_77981462&REV_04\BUS_00&DEV_16&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_1E3A&SUBSYS_77981462&REV_04\BUS_00&DEV_16&FUNC_00: Status=8000620, Problem=1c
+RegAvoidRes: VEN_8086&DEV_1E3A&SUBSYS_77981462&REV_04\0000
+	Mem=f7c1a000-f7c1a00f(ffffffff:0:1)
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_1E2D&SUBSYS_77981462&REV_04\BUS_00&DEV_1A&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_1E2D&SUBSYS_77981462&REV_04\BUS_00&DEV_1A&FUNC_00: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_1E2D&SUBSYS_77981462&REV_04\0000
+	Mem=f7c17000-f7c173ff(ffffffff:0:1)
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_1E20&SUBSYS_D7981462&REV_04\BUS_00&DEV_1B&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_1E20&SUBSYS_D7981462&REV_04\BUS_00&DEV_1B&FUNC_00: Status=88000620, Problem=1c
+RegAvoidRes: VEN_8086&DEV_1E20&SUBSYS_D7981462&REV_04\0000
+	Mem=f7c10000-f7c13fff(ffffffff:0:1)
+	IRQ=3
+ConfigMG device: PCI\VEN_8086&DEV_1E10&SUBSYS_00000000&REV_C4\BUS_00&DEV_1C&FUNC_00
+RegAvoidRes: VEN_8086&DEV_1E10&SUBSYS_00000000&REV_C4\0000
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_1E12&SUBSYS_00000000&REV_C4\BUS_00&DEV_1C&FUNC_01
+RegAvoidRes: VEN_8086&DEV_1E12&SUBSYS_00000000&REV_C4\0000
+	IO=e000-efff(ffff:ffff:0)
+	Mem=f0000000-f00fffff(ffffffff:0:5)
+	IRQ=11
+ConfigMG device: PCI\VEN_10EC&DEV_8168&SUBSYS_77981462&REV_06\00E100
+ConfigMG device: PCI\VEN_10EC&DEV_8168&SUBSYS_77981462&REV_06\00E100: Status=8000620, Problem=1a
+RegAvoidRes: VEN_10EC&DEV_8168&SUBSYS_77981462&REV_06\0000
+	IO=e000-e0ff(ffff:ffff:0)
+	Mem=f0004000-f0004fff(ffffffff:0:5),f0000000-f0003fff(ffffffff:0:5)
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_1E26&SUBSYS_77981462&REV_04\BUS_00&DEV_1D&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_1E26&SUBSYS_77981462&REV_04\BUS_00&DEV_1D&FUNC_00: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_1E26&SUBSYS_77981462&REV_04\0000
+	Mem=f7c16000-f7c163ff(ffffffff:0:1)
+	IRQ=10
+ConfigMG device: PCI\VEN_8086&DEV_244E&SUBSYS_00000000&REV_A4\BUS_00&DEV_1E&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_1E49&SUBSYS_77981462&REV_04\BUS_00&DEV_1F&FUNC_00
+ConfigMG device: ISAPNP\READDATAPORT\0
+ConfigMG device: PCI\VEN_8086&DEV_1E02&SUBSYS_77981462&REV_04\BUS_00&DEV_1F&FUNC_02
+ConfigMG device: PCI\VEN_8086&DEV_1E02&SUBSYS_77981462&REV_04\BUS_00&DEV_1F&FUNC_02: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_1E02&SUBSYS_77981462&REV_04\0000
+	IO=f0b0-f0b7(ffff:ffff:0),f0a0-f0a3(ffff:ffff:0),f090-f097(ffff:ffff:0),f080-f083(ffff:ffff:0),f060-f07f(ffff:ffff:0)
+	Mem=f7c15000-f7c157ff(ffffffff:0:1)
+	IRQ=10
+ConfigMG device: PCI\VEN_8086&DEV_1E22&SUBSYS_77981462&REV_04\BUS_00&DEV_1F&FUNC_03
+ConfigMG device: PCI\VEN_8086&DEV_1E22&SUBSYS_77981462&REV_04\BUS_00&DEV_1F&FUNC_03: Status=88000620, Problem=1c
+RegAvoidRes: VEN_8086&DEV_1E22&SUBSYS_77981462&REV_04\0000
+	IO=f040-f05f(ffff:ffff:0)
+	Mem=f7c14000-f7c140ff(ffffffff:0:1)
+	IRQ=3
+ConfigMG device: ROOT\*PNP0000\0000
+RegAvoidRes: *PNP0000\0000
+	IO=20-21(ffff:0:0),a0-a1(ffff:0:0)
+	IRQ=2
+ConfigMG device: ROOT\*PNP0200\0000
+RegAvoidRes: *PNP0200\0000
+	IO=0-f(ffff:0:0),81-83(ffff:0:0),87-87(ffff:0:0),89-8b(ffff:0:0),8f-8f(ffff:0:0),c0-df(ffff:0:0)
+	DMA=4
+ConfigMG device: ROOT\*PNP0B00\0000
+RegAvoidRes: *PNP0B00\0000
+	IO=70-71(ffff:0:0)
+	IRQ=8
+ConfigMG device: ROOT\*PNP0100\0000
+RegAvoidRes: *PNP0100\0000
+	IO=40-43(ffff:0:0)
+	IRQ=0
+ConfigMG device: ROOT\*PNP0800\0000
+RegAvoidRes: *PNP0800\0000
+	IO=61-61(ffff:0:0)
+ConfigMG device: ROOT\*PNP0C04\0000
+RegAvoidRes: *PNP0C04\0000
+	IO=f0-ff(ffff:0:0)
+	IRQ=13
+ConfigMG device: ROOT\*PNP0C01\0000
+ConfigMG device: skip ForceHWVerify device ROOT\*PNP0C01\0000
+ConfigMG device: ROOT\*PNP0303\0000
+RegAvoidRes: *PNP0303\0000
+	IO=60-60(ffff:0:0),64-64(ffff:0:0)
+	IRQ=1
+ConfigMG device: ROOT\*PNP0C05\0000
+ConfigMG device: skip ForceHWVerify device ROOT\*PNP0C05\0000
+ConfigMG device: ROOT\*PNP0F0E\0000
+RegAvoidRes: *PNP0F0E\0000
+	IRQ=12
+ConfigMG device: ROOT\*PNP0700\0000
+RegAvoidRes: *PNP0700\0000
+	IO=3f2-3f5(3ff:0:0)
+	IRQ=6
+	DMA=2
+ConfigMG device: ROOT\*PNP0500\0000
+RegAvoidRes: *PNP0500\0000
+	IO=3f8-3ff(3ff:0:0)
+	IRQ=4
+ConfigMG device: ROOT\*PNP0500\0001
+RegAvoidRes: *PNP0500\0001
+	IO=2f8-2ff(3ff:0:0)
+	IRQ=3
+ConfigMG device: ROOT\*PNP0401\0000
+RegAvoidRes: *PNP0401\0000
+	IO=378-37a(3ff:400:0)
+	IRQ=7
+	DMA=7
+Estimated number of detection functions = 365
+VerifyHW: manual device SwEnum\0000: Plug and Play Software Device Enumerator
+Detected: *PNP0000\0000 = [1] Programmable interrupt controller
+	IO=20-21,a0-a1
+	IRQ=2
+Detected: *PNP0200\0000 = [2] Direct memory access controller
+	IO=0-f,81-83,87-87,89-8b,8f-8f,c0-df
+	DMA=4
+Detected: *PNP0B00\0000 = [3] System CMOS/real time clock
+	IO=70-71
+	IRQ=8
+Detected: *PNP0100\0000 = [4] System timer
+	IO=40-43
+	IRQ=0
+Detected: *PNP0800\0000 = [5] System speaker
+	IO=61-61
+Detected: *PNP0C04\0000 = [6] Numeric data processor
+	IO=f0-ff
+	IRQ=13
+Checking for: System Board
+Detected: *PNP0C01\0000 = [7] System board
+Detected: *PNP0303\0000 = [8] Standard 101/102-Key or Microsoft Natural Keyboard
+	IO=60-60,64-64
+	IRQ=1
+Checking for: Advanced Power Management Support
+VerifyHWReg: failed verification of *PNP0C05\0000
+Detected: *PNP0F0E\0000 = [9] Standard PS/2 Port Mouse
+	IRQ=12
+Detected: *PNP0700\0000 = [10] Standard Floppy Disk Controller
+	IO=3f2-3f5
+	IRQ=6
+	DMA=2
+Detected: *PNP0500\0000 = [11] Communications Port (COM1)
+	IO=3f8-3ff
+	IRQ=4
+Detected: *PNP0500\0001 = [12] Communications Port (COM2)
+	IO=2f8-2ff
+	IRQ=3
+Detected: *PNP0401\0000 = [13] ECP Printer Port (LPT1)
+	IO=378-37a
+	IRQ=7
+	DMA=7
+Number of verify functions called = 14
+Devices verified: 13

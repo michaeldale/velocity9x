@@ -1,0 +1,84 @@
+[     24928] Windows 9x QuickInstall Post-Install processor
+[     24928] ----------------------------------------------
+[     24928] +setComputerName
+[     24928]     +getRegString (System\CurrentControlSet\Control\ComputerName\ComputerName\ComputerName)
+[     24928]     -getRegString (S4P8K4)
+[     24928]     Current computer name is: 'S4P8K4'
+[     24928]     New computer name: 'W9QI4E14'
+[     24928]     +setRegString (System\CurrentControlSet\Control\ComputerName\ComputerName\ComputerName = W9QI4E14)
+[     24928]     -setRegString (OK)
+[     24928]     +setRegString (System\CurrentControlSet\Services\VxD\VNETSUP\ComputerName = W9QI4E14)
+[     24928]     -setRegString (OK)
+[     24928] -setComputerName (OK)
+[     24928] +setWindowsLogon
+[     24928]     +setRegString (Software\Microsoft\Windows\CurrentVersion\Network\Real Mode Net\preferredredir = )
+[     24928]     -setRegString (OK)
+[     24928]     +regDoForEachSubkey (System\CurrentControlSet\Services\Class\NetClient - returnAfterTrue: yes)
+[     24928]         Processing subkey 0: '0000'
+[     24928]         +ifVredirUnsetDefault (0000)
+[     24928]             +getRegString (0000\DeviceVxDs)
+[     24928]             -getRegString (vredir.vxd)
+[     24928]             +delRegValue (0000\Ndi\Default\)
+[     24928]             -delRegValue (OK)
+[     24928]             +delRegKey (0000\Ndi\Default)
+[     24928]             -delRegKey (Deleted key '0000\Ndi\Default')
+[     24928]         -ifVredirUnsetDefault (Handled VREDIR!)
+[     24928]     -regDoForEachSubkey (Processed 1 subkeys)
+[     24928]     +regKeyExists (Enum\Network\FAMILY)
+[     24928]     -regKeyExists (-> no)
+[     24928]     +regDoForEachSubkey (Enum\Network\VREDIR - returnAfterTrue: no)
+[     24928]         Processing subkey 0: '0000'
+[     24928]         +setNetworkConfigFlags (0000 = 00000010)
+[     24928]             Setting ConfigFlags of '0000' to 00000010
+[     24928]             +setRegBinary (0000\ConfigFlags (4 bytes))
+[     24928]             -setRegBinary (OK)
+[     24928]         -setNetworkConfigFlags (Set config flags)
+[     24928]     -regDoForEachSubkey (Successfully processed 1 subkeys)
+[     24928]     +setRegString (Network\Logon\PrimaryProvider = Windows Logon)
+[     24928]     -setRegString (OK)
+[     24928]     +createRegKey (Security\Provider)
+[     24928]     -createRegKey (Created key 'Security\Provider')
+[     24928]     +setRegBinary (Security\Provider\Platform_Type (4 bytes))
+[     24928]     -setRegBinary (OK)
+[     24928]     +getRegString (System\CurrentcontrolSet\Control\Current User)
+[     24928]     -getRegString (Can't query value (2))
+[     24928]     +getRegString (Network\Logon\username)
+[     24928]     -getRegString (win98user)
+[     24928]     +setRegString (System\CurrentcontrolSet\Control\Current User = win98user)
+[     24928]     -setRegString (OK)
+[     24928]     +createRegKey (Software\Microsoft\Windows\CurrentVersion\Winlogon)
+[     24928]     -createRegKey (Created key 'Software\Microsoft\Windows\CurrentVersion\Winlogon')
+[     24928]     +setRegString (Software\Microsoft\Windows\CurrentVersion\Winlogon\AutoAdminLogon = 1)
+[     24928]     -setRegString (OK)
+[     24928]     +setRegString (Software\Microsoft\Windows\CurrentVersion\Winlogon\DefaultUserName = win98user)
+[     24928]     -setRegString (OK)
+[     24928]     +setRegString (Software\Microsoft\Windows\CurrentVersion\Winlogon\DefaultPassword = )
+[     24928]     -setRegString (OK)
+[     24928]     +setDefaultUser (User 'win98user')
+[     24928]         +assignPwlFileInSystemIni (User 'WIN98USER' PWL File 'C:\WINDOWS\WIN98USE.PWL')
+[     24929]         -assignPwlFileInSystemIni (OK)
+[     24929]         Removing any existing password list 'C:\WINDOWS\WIN98USE.PWL'
+[     24929]         +createBlankPwlViaOs (User 'WIN98USER')
+[     24965]             CreatePasswordCache('WIN98USER') = 0
+[     24965]             ClosePasswordCache(TRUE) = 0
+[     24965]         -createBlankPwlViaOs (true)
+[     24965]         Password list 'C:\WINDOWS\WIN98USE.PWL' is now 688 byte(s)
+[     24965]     -setDefaultUser (true)
+[     24965] -setWindowsLogon (true)
+[     24965] +cleanupRegistry
+[     24965]     +is98Lite
+[     24965]         System directory: 'C:\WINDOWS\SYSTEM'
+[     24965]         +fileExists (C:\WINDOWS\SYSTEM\shell32.w98)
+[     24965]             C:\WINDOWS\SYSTEM\shell32.w98
+[     24965]         -fileExists (exists)
+[     24965]     -is98Lite (System type: 98Lite)
+[     24965]     +delRegValue (Software\Microsoft\Windows\CurrentVersion\Run\LoadPowerProfile)
+[     24965]     -delRegValue (OK)
+[     24965]     +delRegValue (Software\Microsoft\Windows\CurrentVersion\Run\TaskMonitor)
+[     24965]     -delRegValue (OK)
+[     24965]     +delRegValue (Software\Microsoft\Windows\CurrentVersion\RunServices\LoadPowerProfile)
+[     24965]     -delRegValue (OK)
+[     24965]     +setRegBinary (Enum\Root\*PNP0C05\0000\APMMenuSuspend (1 bytes))
+[     24965]     -setRegBinary (OK)
+[     24965] -cleanupRegistry (true)
+[     24965] +doReboot
