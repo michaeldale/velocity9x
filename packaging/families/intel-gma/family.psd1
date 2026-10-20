@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE and GMA 900 on 915GM: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -76,6 +76,36 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_gma900_device')
+        }
+        @{
+            # Pineview's GMA 3150 (Atom N4xx/N5xx). The 945's descriptor and
+            # mip layout, plus I9XX_NO_FW_BLC: its watermarks are DSPFW1/3,
+            # never FW_BLC. Tier-0 measured on TOMMO33, the engine not run:
+            # docs\decisions\2026-10-20-pineview-tommo33-tier0.md.
+            Id = 'gma3150-pineview'
+            Name = 'Intel GMA 3150 (Pineview)'
+            VendorId = '8086'
+            DeviceId = 'A011'
+            DeviceDesc = 'Velocity9x Intel GMA 3150 (Pineview)'
+            Adapter = 'Intel GMA 3150 (Pineview)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-gen3'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('D3D')
+            VideoMemoryBytes = 4194304
+            # The family's table, which the driver's own must equal. TOMMO33's
+            # BIOS describes 0160-0162 as 1024x600, not the netbook's 1024x576.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_gma3150_device')
         }
         @{
             # Haswell GT2 desktop, from 0.19.0. Gen7.5 shares no Gen3 path:
@@ -210,7 +240,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592 or 8086:0412 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011 or 8086:0412 exactly'
     }
 
     Vm = @{

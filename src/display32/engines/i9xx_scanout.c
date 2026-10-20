@@ -543,7 +543,15 @@ static void v9x_i9xx_note_watermarks(void)
      * underrun and the shortfall; that the underrun is what the camera
      * caught is inference from the symptom's shape and its concentration in
      * heavy scenes.
+     *
+     * Not on a part whose descriptor says its watermarks live elsewhere.
+     * On Pineview i915 never writes FW_BLC; the readings above still go to
+     * the log, so a capture shows what the register held.
      */
+    if ((v9x_hal->engine.engine_caps &
+         V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC) != 0ul) {
+        return;
+    }
     if (want != 0ul && want != fw_blc) {
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_FW_BLC) = want;
         /* Posting read, and the record of what the register now holds. */

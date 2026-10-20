@@ -1515,11 +1515,12 @@ V9XMINII9XXRINGHASH ENDP
 ; The two linear windows the mini-VDD has already mapped. Returns 1 with both
 ; written, or 0 with both zeroed - never one of the two, because a caller with
 ; BAR0 and no BAR3 believes it has an engine it cannot inspect.
-; WORD FAR PASCAL V9xMiniI9xxRingOpen(DWORD gmadr, DWORD FAR *base,
-;                                    DWORD FAR *bytes)
+; WORD FAR PASCAL V9xMiniI9xxRingOpen(DWORD gmadr, DWORD reserve,
+;                                    DWORD FAR *base, DWORD FAR *bytes)
 ;
 ; Enable the ring and report where it is. Both outputs written, or both zeroed.
-; gmadr is BAR2's physical base, handed to the mini-VDD in EBX.
+; gmadr is BAR2's physical base, handed to the mini-VDD in EBX; reserve is
+; the reserve's offset into the aperture, the ring's graphics address, in ECX.
 PUBLIC V9XMINII9XXRINGOPEN
 V9XMINII9XXRINGOPEN PROC FAR
     push    bp
@@ -1533,7 +1534,8 @@ V9XMINII9XXRINGOPEN PROC FAR
     or      ax, ax
     jz      short V9xMiniI9xxRingOpenFailed
     ; PASCAL: gmadr was pushed first, so it is the farthest argument.
-    mov     ebx, dword ptr [bp+14]
+    mov     ebx, dword ptr [bp+18]
+    mov     ecx, dword ptr [bp+14]
     mov     eax, V9XMINI_FN_I9XX_RING_OPEN
     call    dword ptr V9xMiniApiEntry
     or      ax, ax
@@ -1562,7 +1564,7 @@ V9xMiniI9xxRingOpenDone:
     pop     cx
     pop     ebx
     pop     bp
-    retf    12
+    retf    16
 V9XMINII9XXRINGOPEN ENDP
 
 PUBLIC V9XMINII9XXENGINEMAP

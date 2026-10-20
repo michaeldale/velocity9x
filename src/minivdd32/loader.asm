@@ -281,6 +281,9 @@ V9xI9xxRingLinear   dd 0
 ; The GMADR base the runtime ring open mapped V9xI9xxRingLinear through.
 ; Zero when an armed path mapped it, which composes the netbook's constant.
 V9xI9xxRingGmadr    dd 0
+; The reserve offset the runtime ring open mapped and started the ring at.
+; Zero when an armed path mapped it, at V9X_I9XX_RESERVE_OFFSET.
+V9xI9xxRingReserve  dd 0
 
 ; The read-only reserve hash (API v7). It keeps its OWN mapping, separate
 ; from the staging one, for two reasons: it must work in a build with no
@@ -2410,6 +2413,13 @@ ENDIF
 ; was composed from V9X_I9XX_GMADR_BASE, the netbook's D0000000, until the
 ; 915GM: its survey has BAR0 - the register file - at D0000000 and GMADR at
 ; A0000000. So the base is checked before the first store, not after.
+;
+; ECX = the reserve's offset into the aperture, which is the ring's graphics
+; address. It was the generated V9X_I9XX_RING_START, 6B0000h, the reserve
+; for a VBE size of 7B0000h, until Pineview reported 7F0000h
+; (docs\decisions\2026-10-20-pineview-tommo33-tier0.md). The display driver
+; passes the reserve its heap boundary was computed from, so the ring and
+; the DirectDraw heap cannot disagree.
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
 BeginProc V9xMini_I9xx_Ring_Open
     push    esi
@@ -2417,6 +2427,17 @@ BeginProc V9xMini_I9xx_Ring_Open
     mov     esi, V9xI9xxMmioLinear
     test    esi, esi
     jz      V9xMini_I9xx_Ring_Open_Fail
+
+    ; RING_START takes a page address, and the whole reserve must lie inside
+    ; the 64 MiB the largest Gen3 stolen-memory setting provides, or the
+    ; mapping below would reach past the memory that backs it.
+    mov     edi, ecx
+    test    edi, edi
+    jz      V9xMini_I9xx_Ring_Open_Fail
+    test    edi, 00000fffh
+    jnz     V9xMini_I9xx_Ring_Open_Fail
+    cmp     edi, 04000000h - V9X_I9XX_RESERVE_BYTES_TOTAL
+    ja      V9xMini_I9xx_Ring_Open_Fail
 
     ; A 256 MiB-aligned memory BAR, the check runtime.asm applies when it
     ; reads BAR2, and neither of the two windows already mapped here.
@@ -2439,11 +2460,20 @@ BeginProc V9xMini_I9xx_Ring_Open
 V9xMini_I9xx_Ring_Open_Same:
     cmp     ebx, eax
     jne     V9xMini_I9xx_Ring_Open_Fail
+    ; And the reserve it names, for the same reason: a reserve that moved
+    ; between calls would start the ring outside the window mapped for it.
+    mov     eax, V9xI9xxRingReserve
+    test    eax, eax
+    jnz     short V9xMini_I9xx_Ring_Open_SameReserve
+    mov     eax, V9X_I9XX_RESERVE_OFFSET
+V9xMini_I9xx_Ring_Open_SameReserve:
+    cmp     edi, eax
+    jne     V9xMini_I9xx_Ring_Open_Fail
 V9xMini_I9xx_Ring_Open_Based:
 
     ; Already up? START matching and CTL enabled is the whole test; HEAD and
     ; TAIL are wherever previous work left them and are not ours to judge.
-    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    cmp     dword ptr [esi+02038h], edi
     jne     short V9xMini_I9xx_Ring_Open_Bring
     mov     eax, [esi+0203ch]
     and     eax, 0fffff7ffh     ; ignore dynamic RING_WAIT status bit 11
@@ -2468,8 +2498,8 @@ V9xMini_I9xx_Ring_Open_Bring:
     mov     dword ptr [esi+02030h], 0
     cmp     dword ptr [esi+02030h], 0
     jne     V9xMini_I9xx_Ring_Open_Fail
-    mov     dword ptr [esi+02038h], V9X_I9XX_RING_START
-    cmp     dword ptr [esi+02038h], V9X_I9XX_RING_START
+    mov     dword ptr [esi+02038h], edi
+    cmp     dword ptr [esi+02038h], edi
     jne     V9xMini_I9xx_Ring_Open_Fail
     mov     dword ptr [esi+0203ch], 0000f001h
     mov     eax, [esi+0203ch]
@@ -2483,14 +2513,15 @@ V9xMini_I9xx_Ring_Open_Ready:
     mov     eax, V9xI9xxRingLinear
     test    eax, eax
     jnz     short V9xMini_I9xx_Ring_Open_Have
-    ; The caller's GMADR plus the generated offset. EBX survives the VMM
-    ; call, which preserves it by the C convention.
-    lea     eax, [ebx+V9X_I9XX_RESERVE_OFFSET]
+    ; The caller's GMADR plus the caller's reserve. EBX and EDI survive the
+    ; VMM call, which preserves them by the C convention.
+    lea     eax, [ebx+edi]
     VMMcall _MapPhysToLinear,<eax,V9X_I9XX_RESERVE_BYTES_TOTAL,0>
     cmp     eax, 0ffffffffh
     je      short V9xMini_I9xx_Ring_Open_Fail
     mov     V9xI9xxRingLinear, eax
     mov     V9xI9xxRingGmadr, ebx
+    mov     V9xI9xxRingReserve, edi
 V9xMini_I9xx_Ring_Open_Have:
     mov     ebx, eax
     mov     ecx, 000010000h
@@ -2511,6 +2542,7 @@ ENDIF
 V9xMini_Api_I9xxRingOpen:
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
     call    V9xMini_I9xx_Ring_Open
     mov     [ebp.Client_EBX], ebx
     mov     [ebp.Client_ECX], ecx

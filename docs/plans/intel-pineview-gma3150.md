@@ -1,8 +1,17 @@
 # Pineview (GMA 3150): the Gen3 engine on a G33-class part, then the panel
 
-Status: **proposed; nothing coded.** No Pineview machine is on the agent
-network yet. The only evidence is a third-party Acer Aspire One NAV50
-(`docs\decisions\2026-08-28-pineview-vbe-mode-list.md`,
+Status: **Phases 0 and 1 done. Phase 1 is coded and gated but has not run
+on Pineview.** TOMMO33 is a
+remote-help Lenovo with an Atom N455 (`M-BWCR7F`). Results, in
+`docs\decisions\2026-10-20-pineview-tommo33-tier0.md`:
+
+- the `vbe` tier-0 driver reaches `enable-ok`;
+- config space matches the Acer's;
+- VBE reports `0x7F0000`, so item 1 below blocks here too;
+- this BIOS describes 1024x600 at 8, 16 and 32 bpp.
+
+The earlier evidence is a third-party Acer
+Aspire One NAV50 (`docs\decisions\2026-08-28-pineview-vbe-mode-list.md`,
 `docs\issues\2026-08-29-pineview-driver-will-not-load-after-survey.md`).
 
 GMA 3150 is the IGD on the Atom N4xx/N5xx (`8086:A011`, mobile) and
@@ -113,16 +122,34 @@ covers it anyway, but the number goes in the record. The DOS-box return
 (`docs\issues\2026-08-28-dos-box-entry-hang-gma950.md`) is a known Gen3 fault.
 Do not open a full-screen DOS box during these runs.
 
-## Phase 1: desk work, host-tested, before the first claim
+## Phase 1: desk work, host-tested, before the first claim (done, untested on hardware)
 
-- A runtime ring offset from the reported VBE size (item 1). The failing host
-  test comes first: `0x7F0000` must give a ring that does not overlap the heap,
-  and `0x7B0000` must still give `0x6B0000`. `check-tree` keeps asserting that
-  the C and assembler sides agree.
-- A per-chip watermark policy that withholds `FW_BLC` on Pineview (item 2).
-- The GGC and GTT decode accept GGMS 1 (item 4), against the Acer's words.
-- A chip entry for `A011`, with `A001` beside it if the desktop part's survey
-  matches.
+- **Item 1, done.** `RING_OPEN` takes the reserve offset in ECX. The
+  descriptor passes `v9x_gma950_ring_reserve(v9x_vbe_vram_bytes)`, which is
+  the same calculation the heap hook uses, so the ring, the heap boundary
+  and the HAL's status page move together. The mini-VDD refuses a reserve
+  that is unaligned, reaches past 64 MiB, or differs from an
+  already-mapped window. `V9X_I9XX_RUNTIME_RING_START` is gone. A check-tree
+  rule now refuses the generated `V9X_I9XX_RING_START` inside the runtime
+  `Ring_Open`, and fails on the old code. The armed Phase 4 and 5 paths
+  keep their netbook constants.
+  - The descriptor now refuses with `vbe-size-unread` while the VBE size is
+    unknown, where it used to open the ring at `0x6B0000`. The first calls
+    run before the windows are mapped, so the netbook should not see a
+    difference. Not yet checked on the netbook.
+  - The host test pins `0x7F0000` to a reserve at `0x6F0000` and a status
+    page at `0x700000`. The arithmetic was already right; the defect was
+    the constant, which no host test reaches.
+- **Item 2, done.** `V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC` (`0x20000`) is
+  stamped by the Pineview descriptor only. `i9xx_scanout.c` still reads and
+  logs `FW_BLC` and `DSPARB` but does not write `FW_BLC` when the bit is set.
+- **Item 4, no change needed.** `intel_gtt16.c` decodes GMS from bits 6:4
+  (3 → 8 MiB). Nothing on the runtime path reads GGMS, and
+  `V9xPciReadIntelGttConfig` does not validate GGC.
+- **The chip entry, done.** `gma3150-pineview` claims `8086:A011`:
+  `V9X_PCI_DEVICE_GMA3150_PNV`, `v9x_gma3150_device`, the backend allowlist
+  and the regenerated registry. `A001` waits for a desktop survey. `A012`
+  is not claimed.
 
 Gates: `check-tree.ps1`, `build-host.ps1`, `run-checks.ps1`.
 
@@ -177,12 +204,17 @@ code.
 
 ## Test hardware
 
-- **Unnamed:** Michael's Pineview machine.
+- **TOMMO33** (`M-BWCR7F`): Tom Rossell's Lenovo, `8086:A011` SUBSYS
+  `17AA:3908`, Atom N455, `CMO1018` 1024x600 panel, Windows 98 SE. It ran
+  VBEMP and has run the Velocity9x `vbe` family since 2026-10-20. Its BIOS
+  describes the panel mode. It is lent over remote help, so DOS work needs
+  Tom at the machine. None has been needed so far.
 - **The Acer NAV50:** a third-party report only, not reachable remotely.
 
 ## Order
 
-1. Name the machine; Windows 98 SE, agent, `vbe` tier-0; V9XSURV from DOS.
+1. Config survey from Windows, then `vbe` tier-0, whose boot report answers
+   the VBE questions without DOS. Done on TOMMO33, 2026-10-20.
 2. Phase 1 desk work and gates.
 3. Read-only MMIO capture; decision doc.
 4. Claim, probes, games.

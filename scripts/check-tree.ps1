@@ -1409,27 +1409,21 @@ if ($loaderRingOffset -ne $headerRingOffset) {
            'and written against the other.') -f $loaderRingOffset, $headerRingOffset
 }
 
-# The runtime ring's start, generated into i9xx3d.inc for the mini-VDD and
-# restated in intel_gma.h for the descriptor's layout check. The check is
-# worth nothing if the two can name different offsets.
-$generatedRingStart = $null
-$i9xx3dText = Get-Content -LiteralPath (
-    Join-Path $repoRoot 'src\minivdd32\i9xx3d.inc') -Raw
-if ($i9xx3dText -match '(?m)^V9X_I9XX_RING_START\s+EQU\s+0([0-9A-Fa-f]+)h') {
-    $generatedRingStart = [Convert]::ToUInt32($Matches[1], 16)
+# The runtime ring starts at the reserve the display driver passes in ECX,
+# the same reserve its heap boundary came from. The generated
+# V9X_I9XX_RING_START (6B0000h) is the reserve for a VBE size of 7B0000h
+# only, and is right for the armed diagnostics alone: a runtime open that
+# used it would put the ring inside the heap on Pineview, which reports
+# 7F0000h (docs\decisions\2026-10-20-pineview-tommo33-tier0.md).
+$loaderSource = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\minivdd32\loader.asm')
+if ($loaderSource -notmatch
+        '(?s)BeginProc V9xMini_I9xx_Ring_Open\r?\n(.*?)EndProc V9xMini_I9xx_Ring_Open') {
+    throw 'loader.asm must define V9xMini_I9xx_Ring_Open.'
 }
-$headerRingStart = $null
-if ($intelGmaText -match '(?m)^#define\s+V9X_I9XX_RUNTIME_RING_START\s+\(\(v9x_u32\)0x([0-9A-Fa-f]+)ul\)') {
-    $headerRingStart = [Convert]::ToUInt32($Matches[1], 16)
-}
-if ($null -eq $generatedRingStart -or $null -eq $headerRingStart) {
-    throw ('V9X_I9XX_RING_START must be in src\minivdd32\i9xx3d.inc and ' +
-           'V9X_I9XX_RUNTIME_RING_START in include\velocity9x\intel_gma.h.')
-}
-if ($generatedRingStart -ne $headerRingStart) {
-    throw ("The mini-VDD starts the ring at 0x{0:X} and intel_gma.h says " +
-           '0x{1:X}. The descriptor would let the heap reach the ring.') -f
-           $generatedRingStart, $headerRingStart
+if ($Matches[1] -match 'V9X_I9XX_RING_START') {
+    throw ('V9xMini_I9xx_Ring_Open must start the ring at the reserve its ' +
+           'caller passes, not the generated V9X_I9XX_RING_START.')
 }
 if (($loaderRingOffset -band 7) -ne 0) {
     throw ('V9X_I9XX_P5_RING_OFFSET is not qword aligned. RING_TAIL holds a ' +

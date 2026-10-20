@@ -4,6 +4,7 @@
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
 extern const V9X_HW16_DEVICE v9x_gma900_device;
+extern const V9X_HW16_DEVICE v9x_gma3150_device;
 extern const V9X_HW16_DEVICE v9x_hsw_hd4600_device;
 extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
@@ -50,6 +51,7 @@ static void v9x_intel_publish_event_near(unsigned short kind,
 static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_gma950_device,
     &v9x_gma900_device,
+    &v9x_gma3150_device,
     &v9x_hsw_hd4600_device
 };
 
@@ -193,8 +195,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     0,
     0,
-    /* Strict PCI identity: only 8086:27AE, 8086:2592 and 8086:0412 are
-     * claimed. */
+    /* Strict PCI identity: only 8086:27AE, 8086:2592, 8086:A011 and
+     * 8086:0412 are claimed. */
     0u,
     0,
     v9x_intel_reserve_video_memory,

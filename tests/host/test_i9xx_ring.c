@@ -46,6 +46,22 @@ static void test_sandbox_layout(void)
      * reserve size, and probes guards at +0x11000 and +0x11ffc. */
     CHECK(layout.scratch_offset - layout.reserve_offset == 0x11000ul);
 
+    /*
+     * Pineview reports 0x7F0000 (TOMMO33 and the Acer NAV50, 2026-10-20).
+     * The runtime ring starts at this reserve, which the mini-VDD now takes
+     * from the descriptor instead of the generated 0x6B0000, and the HAL's
+     * status page follows it: the heap, the ring and the page all move
+     * together, and the whole reserve stays inside the reported size.
+     */
+    CHECK(v9x_i9xx_sandbox_calculate(
+              0x007f0000ul, 0x7f800000ul, &layout) == V9X_STATUS_OK);
+    CHECK(layout.heap_bytes == 0x006f0000ul);
+    CHECK(layout.reserve_offset == 0x006f0000ul);
+    CHECK(layout.ring_offset == layout.reserve_offset);
+    CHECK(layout.hws_offset == 0x00700000ul);
+    CHECK(layout.reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES == 0x007f0000ul);
+    CHECK((layout.reserve_offset & 0xffful) == 0ul);
+
     CHECK(v9x_i9xx_sandbox_calculate(0xffffful, 0ul, &layout) ==
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(layout.heap_bytes == 0ul);

@@ -330,12 +330,16 @@ V9XMINI_FN_I9XX_ENGINE_MAP  EQU 0017h
 ;
 ; In: EBX = GMADR (BAR2) physical base, freshly read from PCI config by the
 ; display driver; 256 MiB aligned and neither mapped register window, or the
-; call is refused before any store. Out: AX=1, EBX=ring linear, ECX=ring
-; bytes. AX=0 leaves both zero.
+; call is refused before any store. ECX = the reserve's offset into the
+; aperture, where the ring starts: page aligned, the reserve below 64 MiB,
+; and equal to the offset of any window already mapped, or refused before
+; any store. Out: AX=1, EBX=ring linear, ECX=ring bytes. AX=0 leaves both
+; zero.
 ;
-; The input was added within v7. A mini-VDD from before it ignores EBX and
-; maps the netbook's D0000000, which is the right answer there and only there;
-; the two binaries ship as one package.
+; Both inputs were added within v7. A mini-VDD from before EBX maps the
+; netbook's D0000000, and one from before ECX starts the ring at the
+; generated 6B0000h; each is the right answer on the netbook and only there.
+; The two binaries ship as one package.
 ;
 ; The ring's ADDRESS lives here and is not derivable by the caller. The 32-bit
 ; HAL tried to compute it from fb.vram_bytes and got it a megabyte low -

@@ -24,14 +24,14 @@ extern unsigned short __far __pascal V9xMiniI9xxEngineMap(
  * D0000000, which on the 915GM survey is BAR0 - the register file.
  */
 extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
-    unsigned long gmadr, unsigned long __far *base,
-    unsigned long __far *bytes);
+    unsigned long gmadr, unsigned long reserve,
+    unsigned long __far *base, unsigned long __far *bytes);
 
 /* Fresh BAR2, BAR3, BSM and GGC reads into the globals below; non-zero when
  * every read validated (runtime.asm). Read-only config access. */
 extern unsigned short __far __pascal V9xPciReadIntelGttConfig(void);
 extern unsigned long v9x_i9xx_gmadr_bar2;
-extern unsigned long v9x_vbe_vram_reported;
+extern unsigned long v9x_vbe_vram_bytes;
 
 /*
  * Whether this boot may touch the ring at all. Data, not a call, so no
@@ -68,20 +68,55 @@ const char *v9x_gma950_engine_status_text(void)
     return v9x_gma950_engine_status;
 }
 
-unsigned long v9x_gma950_reserve_video_memory(
-    unsigned long usable_bytes, unsigned long visible_bytes)
+/*
+ * Whether the last reserve_video_memory call found no room for a reserve and
+ * gave the whole of video memory to the heap. The ring must not open then:
+ * its pages would be the heap's.
+ */
+static unsigned short v9x_gma950_reserve_refused;
+
+/*
+ * Where the reserve starts for this much usable video memory, or 0 when there
+ * is no room for one above the visible surface.
+ *
+ * ONE calculation for both of its consumers: the heap boundary below, which
+ * dd16.c publishes as fb.vram_bytes and from which the HAL places the status
+ * page and every breadcrumb, and the ring the descriptor opens. They were two
+ * until 2026-10-20 - the heap followed the VBE size and the ring sat at a
+ * build-time 0x6B0000 - and agreed only on parts reporting 0x7B0000. Pineview
+ * reports 0x7F0000 (docs\decisions\2026-10-20-pineview-tommo33-tier0.md).
+ *
+ * Physical BSM is irrelevant to the offset, so zero is the honest base. The
+ * first-write path independently checks the measured BSM before it may use
+ * the physical fields.
+ */
+static unsigned long v9x_gma950_ring_reserve(unsigned long usable_bytes,
+                                             unsigned long visible_bytes)
 {
     struct v9x_i9xx_sandbox_layout layout;
 
-    /* Physical BSM is irrelevant to the heap boundary, so zero is the honest
-     * base for this calculation.  The first-write path independently checks
-     * the measured BSM before it may use the physical fields. */
     if (v9x_i9xx_sandbox_calculate(usable_bytes, 0ul, &layout) !=
             V9X_STATUS_OK ||
         layout.heap_bytes < visible_bytes) {
+        return 0ul;
+    }
+    return layout.reserve_offset;
+}
+
+unsigned long v9x_gma950_reserve_video_memory(
+    unsigned long usable_bytes, unsigned long visible_bytes)
+{
+    unsigned long reserve;
+
+    /* The heap ends where the reserve begins (i9xx_ring.c: heap_bytes is
+     * reserve_offset). */
+    reserve = v9x_gma950_ring_reserve(usable_bytes, visible_bytes);
+    if (reserve == 0ul) {
+        v9x_gma950_reserve_refused = 1u;
         return usable_bytes;
     }
-    return layout.heap_bytes;
+    v9x_gma950_reserve_refused = 0u;
+    return reserve;
 }
 
 /*
@@ -121,6 +156,7 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
     unsigned long bar3 = 0ul;
     unsigned long ring = 0ul;
     unsigned long ring_size = 0ul;
+    unsigned long reserve;
 
     (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
@@ -160,25 +196,27 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * rather than submitting to one that is not there.
      */
     /*
-     * The two refusals ahead of RingOpen are about WHERE the ring goes, and
-     * both run before it because RingOpen writes RING_START.
+     * The refusals ahead of RingOpen are about WHERE the ring goes, and all
+     * run before it because RingOpen writes RING_START.
      *
-     * A reported size other than the one the ring offset was generated for
-     * puts the ring inside the DirectDraw heap (V9X_I9XX_RUNTIME_RING_START).
-     * Zero is let through: the earliest descriptor call, at enable-start,
-     * runs before 4F00h is read, and refusing there would decide the netbook's
-     * first answer on a figure nobody has yet.
+     * The ring opens at the reserve the heap boundary was computed from, so
+     * the two cannot disagree. The input is v9x_vbe_vram_bytes, the figure
+     * dd16.c passes the reserve hook. With none yet - the earliest calls run
+     * before 4F00h, when the windows are not mapped either - there is no
+     * reserve to place, and a later call opens the ring. A hook that found no
+     * room for a reserve gave its pages to the heap, so the ring stays shut.
      */
+    reserve = v9x_gma950_ring_reserve(v9x_vbe_vram_bytes, 0ul);
     if (v9x_intel_runtime3d_allowed == 0u) {
         v9x_gma950_engine_status = "runtime3d-not-permitted";
-    } else if (v9x_vbe_vram_reported != 0ul &&
-               v9x_gma950_reserve_video_memory(v9x_vbe_vram_reported, 0ul) !=
-                   V9X_I9XX_RUNTIME_RING_START) {
-        v9x_gma950_engine_status = "ring-layout-mismatch";
+    } else if (v9x_vbe_vram_bytes == 0ul) {
+        v9x_gma950_engine_status = "vbe-size-unread";
+    } else if (reserve == 0ul || v9x_gma950_reserve_refused != 0u) {
+        v9x_gma950_engine_status = "reserve-refused";
     } else if (V9xPciReadIntelGttConfig() == 0u ||
                v9x_i9xx_gmadr_bar2 == 0ul) {
         v9x_gma950_engine_status = "gmadr-unread";
-    } else if (V9xMiniI9xxRingOpen(v9x_i9xx_gmadr_bar2, &ring,
+    } else if (V9xMiniI9xxRingOpen(v9x_i9xx_gmadr_bar2, reserve, &ring,
                                    &ring_size) == 0u) {
         v9x_gma950_engine_status = "ring-refused";
     } else if (ring == 0ul || ring_size == 0ul) {
@@ -274,6 +312,30 @@ static void v9x_gma900_fill_engine(unsigned long framebuffer_linear_base,
     }
 }
 
+/*
+ * Pineview: the 945's descriptor, and the 945's mip layout (gallium sets
+ * is_i945 for both Pineview ids), plus the one display difference the HAL
+ * acts on. Its watermarks are DSPFW1/DSPFW3 self-refresh fields, which i915
+ * programs in pnv_update_wm without ever writing FW_BLC, so the HAL must
+ * leave FW_BLC alone.
+ */
+static void v9x_gma3150_fill_engine(unsigned long framebuffer_linear_base,
+                                    unsigned long *control_linear_base,
+                                    unsigned long *mapped_aperture_bytes,
+                                    unsigned long *engine_type,
+                                    unsigned long *engine_caps,
+                                    unsigned long *gtt_linear_base,
+                                    unsigned long *ring_linear_base,
+                                    unsigned long *ring_bytes)
+{
+    v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
+                           mapped_aperture_bytes, engine_type, engine_caps,
+                           gtt_linear_base, ring_linear_base, ring_bytes);
+    if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC;
+    }
+}
+
 /* Exact physical target. The aperture hook remains absent: this family takes
  * the engine only, and the VBIOS keeps the display. */
 const V9X_HW16_DEVICE v9x_gma950_device = {
@@ -333,5 +395,25 @@ const V9X_HW16_DEVICE v9x_gma900_device = {
     "hardware-gen3",
     0,
     v9x_gma900_fill_engine,
+    2u
+};
+
+/*
+ * Pineview's GMA 3150, mobile (Atom N4xx/N5xx). Config space matches the
+ * 945GSE's in everything this driver reads except addresses, and its BIOS
+ * reports 0x7F0000 where the 945's reports 0x7B0000: two machines, TOMMO33
+ * and the Acer NAV50 (docs\decisions\2026-10-20-pineview-tommo33-tier0.md).
+ * Tier-0 has run on it; this engine has not.
+ */
+const V9X_HW16_DEVICE v9x_gma3150_device = {
+    0x8086u, 0xa011u,
+    "Intel GMA 3150 (Pineview)",
+    "8086", "A011",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen3",
+    0,
+    v9x_gma3150_fill_engine,
     2u
 };

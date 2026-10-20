@@ -221,6 +221,15 @@
  */
 #define V9X_DD_ENGINE_CAP_MGA_DEPTH32   0x00010000ul
 /*
+ * Intel Gen3: this part's display watermarks are not in FW_BLC (20D8h), so
+ * the HAL must not write it. Pineview's are the self-refresh fields of
+ * DSPFW1 and DSPFW3: i915's pnv_update_wm writes those and never FW_BLC,
+ * and no document says what 20D8h is on this part. A chip identity bit,
+ * stamped by the Pineview descriptor only. Desk evidence (Linux 6.6
+ * i9xx_wm.c): docs\plans\intel-pineview-gma3150.md, item 2.
+ */
+#define V9X_DD_ENGINE_CAP_I9XX_NO_FW_BLC 0x00020000ul
+/*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
  * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only
