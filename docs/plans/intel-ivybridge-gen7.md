@@ -86,7 +86,10 @@ Following `intel-haswell-bringup.md`:
 
 1. **Done.** The survey from DOS and the read-only config audit from
    Windows.
-2. **Tier-0 `vbe`** on W9QI4E14. Install the `vbe` package. Record the
+2. **Tier-0 `vbe`** on W9QI4E14. *Installed 2026-10-21 from `1cc25342`;
+   the first restart had not come back after 45 minutes
+   (`docs\decisions\2026-10-21-ivybridge-w9qi4e14-tier0-install.md`).*
+   Install the `vbe` package. Record the
    modes it publishes, the pitch from 4F01h and whether 1920x1080 sets,
    and `enable-ok`. This boot also answers whether Windows' restart path
    works here (the netbook's does not).
