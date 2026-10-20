@@ -71,13 +71,30 @@ is not at default settings, because textures are 16-bit on this chip.
   Fewer trees freed and remade would fit, but this was not checked.
 - 78 mip chains still have a level out of place.
 
+## Gen3: a tester's GMA 900, same build
+
+The Gen3 build changed too: the new device fields are 0 for Gen3,
+`hsw_config` is linked into the 16-bit driver, and the ABI stamp moved.
+It was run on TOMMO33 (915GM, GMA 900, 640x480x16) through remote help
+(`M-NGMX0T`), with the same WININIT rename and a Windows restart.
+Evidence:
+[`../probe/tommo33-gma900-heap-build-2026-10-20/`](../probe/tommo33-gma900-heap-build-2026-10-20/).
+
+- Boot: `Stage=enable-ok`, no Haswell keys in `V9XHW.INI`.
+- V9XDDP: `COMPLETE`, 207 `Ok=1`, and the same 17 `Ok=0` as this
+  machine's 0.21.0 run. `GblHalVidMemTotal=0x0061A000`, unchanged.
+- V9XTRACE: driver, HAL and trace all `e3c647fb-dirty`
+  (`BuildsAgree=1`), Gen3 engine stamped with its ring, 0 timeouts or
+  resets.
+
 ## Not run
 
-- Half-Life mwd5, and a DOS box round trip. The mode switches exercise
-  Enable and the engine's reuse, but not Disable's close and reopen.
-- The netbook (945GSE). Its build changed: the new device fields are 0
-  for Gen3, `hsw_config` is linked into the 16-bit driver, and the ABI
-  stamp moved. It has not booted the new build.
+- Half-Life mwd5, and a DOS box round trip on the HD 4600. The mode
+  switches exercise Enable and the engine's reuse, but not Disable's
+  close and reopen. The GMA 900's Windows restart did run Disable, on
+  the Gen3 path only.
+- The netbook (945GSE). The GMA 900 run covers the Gen3 build, but not
+  this chip.
 - A board where `1082C0h` reads differently. The tester's 64 MiB board
   has not reported back.
 - Michael's 3DMark 2001 SE flicker

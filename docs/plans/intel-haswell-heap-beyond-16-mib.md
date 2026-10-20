@@ -9,8 +9,8 @@ Phase 1 done the same day: `v9x_intel_hsw_plan_heap` in `hsw_config.c`,
 stub, then passing. Phases 2 and 3 done the same day on boot 54
 (`../decisions/2026-10-20-haswell-heap-to-31-mib.md`). The heap ends at
 `1ED0000h`, and 3DMark 2001 SE declined no mip tree for room. Open: 8
-new mapping-policy refusals, and Half-Life, the DOS box round trip and
-the netbook boot not run.
+new mapping-policy refusals, and Half-Life and the DOS box round trip
+not run. The Gen3 build ran unchanged on a tester's GMA 900 (TOMMO33).
 
 ## Why
 
