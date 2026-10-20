@@ -24,13 +24,13 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.20.0.** Direct3D now renders at 32 bpp on the
-Intel GMA 950/900, the HD Graphics 4600 and the Matrox Millennium II,
-with 24- or 32-bit depth buffers beside the 16-bit one. The Matrox
-Mystique joins the `matrox` package with GDI, DirectDraw, Direct3D,
-OpenGL and Glide on its engine, and OpenGL and Glide now draw on the
-Millennium II. See the [changelog](CHANGELOG.md), and download it from
-[releases/0.20.0](releases/0.20.0/README.md).
+**Current version: 0.21.0.** Direct3D on the Intel HD Graphics 4600 no
+longer waits for each draw to finish: 3DMark 2000 from 157 to 112 µs a
+batch, Half-Life from 60.5 to 79.3 fps. Its draws with both specular
+and fog are no longer refused, and Direct3D 8 games now get the texture
+coordinate set a stage asks for, which fixes 3DMark 2001 SE's Lobby and
+Dragothic on every chip. See the [changelog](CHANGELOG.md), and
+download it from [releases/0.21.0](releases/0.21.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.

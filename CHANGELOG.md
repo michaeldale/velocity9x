@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.21.0 - not yet released
+## 0.21.0 - 2026-10-20
 
 - **Intel HD 4600 (Haswell): Direct3D no longer waits for each draw.**
   Every draw used to wait for the GPU to finish it before returning,
@@ -33,8 +33,10 @@ build identifier so exact guest-tested binaries remain traceable.
   sampled with the wrong coordinates. In 3DMark 2001 SE this drew the
   Lobby's walls and floors and Dragothic's buildings as a mosaic of
   wrong texels. The fix is in the shared Direct3D core, so it applies to
-  every chip's DirectX 8 path; it has been seen on the HD 4600 only
-  ([issue](docs/issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md)).
+  every chip's DirectX 8 path. Seen on the HD 4600, and on a tester's
+  GMA 900 (915GM), whose Lobby frame draws correctly
+  ([issue](docs/issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md),
+  [GMA 900 record](docs/decisions/2026-10-20-gma900-tommo33-0.21.0.md)).
 - **Intel HD 4600: refused Direct3D batches say why** in V9XTRACE
   snapshots (`M64Policy11` to `M64Policy19`, with the failing texture
   in `MgaTexRefusedLast*`).
@@ -45,6 +47,19 @@ build identifier so exact guest-tested binaries remain traceable.
   - In 3DMark 2001 SE, one vertex-shader scene is cut by a diagonal edge.
 
   The first two are in [STATUS.md](docs/STATUS.md)'s open work.
+- Known limits on the GMA 900, 950 and other Gen3 chips, found in
+  testing for this release:
+  - With 8 MiB of stolen memory the Direct3D heap is about 6 MB, so
+    3DMark 2001 SE's default 1024x768 at 32-bit colour fails for video
+    memory. It runs at 16-bit colour.
+  - In 3DMark 2001 SE's Car Chase and Lobby, some Direct3D batches are
+    refused for a vertex the draw path does not accept. They are retried
+    one draw at a time, so how much geometry is lost is not known
+    ([record](docs/decisions/2026-10-20-gma900-tommo33-0.21.0.md)).
+- Tested for this release: the HD 4600 (i5-4570), a tester's GMA 900
+  (915GM) and the Millennium II, whose probes match 0.20.0
+  ([record](docs/decisions/2026-10-20-mga2164w-0.21.0.md)). The other
+  families were built and host-tested but not run on hardware.
 
 ## 0.20.0 - 2026-10-19
 
