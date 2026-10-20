@@ -265,6 +265,9 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-20 HD 4600: the heap runs to 30.8 MiB, and 3DMark 2001 SE declines no mip tree for room (the 8 refusals first seen were V9XDDP's by-design checks)](2026-10-20-haswell-heap-to-31-mib.md)
 - [2026-10-20 HD 4600: 32-bit textures, and draws and clears that wait for a pending flip (3DMark 2001 SE's half-built frames, 20 in 117 to 0 in 32,310)](2026-10-20-haswell-32bit-textures-and-flip-wait.md)
 - [2026-10-20 HD 4600: kernel slots were too small for specular with fog; 768-byte slots end 3DMark 2001 SE's refused batches, and the Lobby mosaic is older than pipelining](2026-10-20-haswell-kernel-slots-768.md)
+- [2026-10-20 GMA 3150 on TOMMO33 at tier-0: VBE reports 0x7F0000, the BIOS describes 1024x600, and no DOS was needed](2026-10-20-pineview-tommo33-tier0.md)
+- [2026-10-20 GMA 3150: the Gen3 engine runs at the moved ring reserve; D3D, OpenGL, Glide and 32 bpp probes pass, and the mip-chain result is the 945's](2026-10-20-pineview-tommo33-gen3-first-run.md)
+- [2026-10-20 GMA 900 on 949fc64b: the moved-ring build reads as before, and the boot stall was the boot menu](2026-10-20-gma900-tommo33-949fc64b.md)
 - [2026-10-20 HD 4600 on 0.21.0: OpenGL, Glide and 3DCIF read as on 2026-10-18 through the pipelined engine](2026-10-20-haswell-0.21.0-render-probes.md)
 
 ## SiS

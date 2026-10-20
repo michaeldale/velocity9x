@@ -6,6 +6,35 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.21.1 - not yet released
 
+- **Intel GMA 3150 (Pineview, `8086:A011`): new chip.** The `intel-gma`
+  package now claims the Atom N4xx/N5xx netbook GPU with the GMA 950's
+  Gen3 engine. On one Lenovo (Atom N455) reached through remote help,
+  the following were measured:
+  - DirectDraw on the blitter, with page flips;
+  - Direct3D on the engine at 16 and 32 bpp with 16-bit depth, passing
+    the same probe checks as the GMA 950;
+  - the OpenGL probe, including two texture units, and the Glide 2 probe;
+  - the panel's native 1024x600, through its video BIOS.
+
+  3DMark 2000 runs at 1024x600x16 with no draw refused (755 3DMarks; its
+  default 1024x768x32 needs 16 MB and is refused). Its second PCI function (`A012`) is left
+  alone. Desktop parts (`A001`) are not claimed
+  ([plan](docs/plans/intel-pineview-gma3150.md),
+  [first run](docs/decisions/2026-10-20-pineview-tommo33-gen3-first-run.md),
+  [tier-0](docs/decisions/2026-10-20-pineview-tommo33-tier0.md)).
+  - Two changes were needed. First, the Gen3 command ring now sits where
+    the video-memory heap ends, worked out from what the video BIOS
+    reports. Before, it sat at a fixed place that fit only parts
+    reporting the GMA 950's figure, and the GMA 3150 reports more. This
+    is shared code: every Gen3 chip runs it. It has been measured on the
+    GMA 3150 and on a tester's GMA 900, not yet on the GMA 950
+    ([GMA 900 record](docs/decisions/2026-10-20-gma900-tommo33-949fc64b.md)).
+  - Second, the driver does not write the GMA 950's display watermark
+    register on the GMA 3150, whose watermarks are elsewhere.
+- **Intel Gen3: the OpenGL renderer string names the chip.** It said "GMA
+  950" on every Gen3 part except the GMA 900; the GMA 3150 now reads
+  "Velocity9x GMA 3150".
+
 - **Intel HD 4600 (Haswell): video memory beyond 16 MiB.** The
   DirectDraw heap stopped at 16 MiB on every HD 4600. It now runs up to
   the engine's reserve, which the driver places at the top of the stolen

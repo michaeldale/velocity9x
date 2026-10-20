@@ -1,0 +1,327 @@
+2026-10-20 21:08:31 b4 relay-connected
+2026-10-20 21:08:31 b4 relay-session-open c04b172f1dfca89d8ba4b673d16102c2
+2026-10-20 21:08:32 b4 cmd t=0001 rid=1955312121 len=12
+2026-10-20 21:08:32 b4 cmd t=0020 rid=1955312122 len=24
+2026-10-20 21:08:33 b4 client-disconnected
+2026-10-20 21:08:33 b4 relay-session-closed ended
+2026-10-20 21:08:33 b4 relay-connected
+2026-10-20 21:08:33 b4 relay-session-open dffcaaef7032e1aa8df582db0768e749
+2026-10-20 21:08:33 b4 cmd t=0001 rid=962630159 len=12
+2026-10-20 21:08:33 b4 cmd t=0020 rid=962630160 len=31
+2026-10-20 21:08:34 b4 client-disconnected
+2026-10-20 21:08:34 b4 relay-session-closed ended
+2026-10-20 21:08:34 b4 relay-connected
+2026-10-20 21:08:34 b4 relay-session-open 9199bba9405f33842c717fad931e9154
+2026-10-20 21:08:34 b4 cmd t=0001 rid=1075851835 len=12
+2026-10-20 21:08:34 b4 cmd t=0020 rid=1075851836 len=31
+2026-10-20 21:08:35 b4 client-disconnected
+2026-10-20 21:08:35 b4 relay-session-closed ended
+2026-10-20 21:08:35 b4 relay-connected
+2026-10-20 21:08:35 b4 relay-session-open d15021a8ceec7975a79dee4b55d425f9
+2026-10-20 21:08:35 b4 cmd t=0001 rid=1846812118 len=12
+2026-10-20 21:08:36 b4 cmd t=0020 rid=1846812119 len=30
+2026-10-20 21:08:36 b4 client-disconnected
+2026-10-20 21:08:36 b4 relay-session-closed ended
+2026-10-20 21:08:36 b4 relay-connected
+2026-10-20 21:08:36 b4 relay-session-open 43e683d9397d0de65dc0d3fd810d256d
+2026-10-20 21:08:36 b4 cmd t=0001 rid=1504712964 len=12
+2026-10-20 21:08:37 b4 cmd t=0020 rid=1504712965 len=29
+2026-10-20 21:08:37 b4 client-disconnected
+2026-10-20 21:08:37 b4 relay-session-closed ended
+2026-10-20 21:08:37 b4 relay-connected
+2026-10-20 21:08:37 b4 relay-session-open 993af6f3666b522558f718f6e81849dd
+2026-10-20 21:08:37 b4 cmd t=0001 rid=1535381839 len=12
+2026-10-20 21:08:38 b4 cmd t=0020 rid=1535381840 len=31
+2026-10-20 21:08:38 b4 client-disconnected
+2026-10-20 21:08:38 b4 relay-session-closed ended
+2026-10-20 21:08:38 b4 relay-connected
+2026-10-20 21:08:38 b4 relay-session-open 770b661415f695f3dcf79eea50c02c01
+2026-10-20 21:08:38 b4 cmd t=0001 rid=870293978 len=12
+2026-10-20 21:08:39 b4 cmd t=0021 rid=870293979 len=5
+2026-10-20 21:08:39 b4 client-disconnected
+2026-10-20 21:08:39 b4 relay-session-closed ended
+2026-10-20 21:10:48 b4 relay-connected
+2026-10-20 21:10:48 b4 relay-session-open a20aae6b7f1dae1050401b367b3a1545
+2026-10-20 21:10:49 b4 cmd t=0001 rid=398335438 len=12
+2026-10-20 21:10:49 b4 cmd t=0023 rid=398335439 len=24
+2026-10-20 21:10:49 b4 file-write-open C:\V9XNDRV.BIN
+2026-10-20 21:10:50 b4 cmd t=0024 rid=398335440 len=32772
+2026-10-20 21:10:50 b4 cmd t=0024 rid=398335441 len=32772
+2026-10-20 21:10:50 b4 cmd t=0024 rid=398335442 len=32772
+2026-10-20 21:10:50 b4 cmd t=0024 rid=398335443 len=16690
+2026-10-20 21:10:50 b4 cmd t=0025 rid=398335444 len=0
+2026-10-20 21:10:50 b4 file-write-complete C:\V9XNDRV.BIN sz=114990 crc=3878458749
+2026-10-20 21:10:51 b4 client-disconnected
+2026-10-20 21:10:51 b4 relay-session-closed ended
+2026-10-20 21:10:51 b4 relay-connected
+2026-10-20 21:10:51 b4 relay-session-open f97edb288dca2427541c102cf879a410
+2026-10-20 21:10:51 b4 cmd t=0001 rid=173515814 len=12
+2026-10-20 21:10:51 b4 cmd t=0023 rid=173515815 len=24
+2026-10-20 21:10:51 b4 file-write-open C:\V9XNVXD.BIN
+2026-10-20 21:10:52 b4 cmd t=0024 rid=173515816 len=24132
+2026-10-20 21:10:52 b4 cmd t=0025 rid=173515817 len=0
+2026-10-20 21:10:52 b4 file-write-complete C:\V9XNVXD.BIN sz=24128 crc=1611248128
+2026-10-20 21:10:52 b4 client-disconnected
+2026-10-20 21:10:52 b4 relay-session-closed ended
+2026-10-20 21:10:52 b4 relay-connected
+2026-10-20 21:10:52 b4 relay-session-open 9599619c7e0995f3ca18629bb830fa76
+2026-10-20 21:10:53 b4 cmd t=0001 rid=1036128996 len=12
+2026-10-20 21:10:53 b4 cmd t=0023 rid=1036128997 len=24
+2026-10-20 21:10:53 b4 file-write-open C:\V9XNHAL.BIN
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036128998 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036128999 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129000 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129001 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129002 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129003 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129004 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129005 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129006 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129007 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129008 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129009 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129010 len=32772
+2026-10-20 21:10:55 b4 cmd t=0024 rid=1036129011 len=21508
+2026-10-20 21:10:55 b4 cmd t=0025 rid=1036129012 len=0
+2026-10-20 21:10:55 b4 file-write-complete C:\V9XNHAL.BIN sz=447488 crc=2949606884
+2026-10-20 21:10:55 b4 client-disconnected
+2026-10-20 21:10:55 b4 relay-session-closed ended
+2026-10-20 21:10:55 b4 relay-connected
+2026-10-20 21:10:55 b4 relay-session-open a2927ebf01365f2180b276029298e307
+2026-10-20 21:10:56 b4 cmd t=0001 rid=511166569 len=12
+2026-10-20 21:10:56 b4 cmd t=0023 rid=511166570 len=24
+2026-10-20 21:10:56 b4 file-write-open C:\V9XNSTP.BIN
+2026-10-20 21:10:57 b4 cmd t=0024 rid=511166571 len=32772
+2026-10-20 21:10:57 b4 cmd t=0024 rid=511166572 len=26628
+2026-10-20 21:10:57 b4 cmd t=0025 rid=511166573 len=0
+2026-10-20 21:10:57 b4 file-write-complete C:\V9XNSTP.BIN sz=59392 crc=4178962128
+2026-10-20 21:10:57 b4 client-disconnected
+2026-10-20 21:10:57 b4 relay-session-closed ended
+2026-10-20 21:10:57 b4 relay-connected
+2026-10-20 21:10:57 b4 relay-session-open 0468a98fa87203216253ce2e6f717ce0
+2026-10-20 21:10:58 b4 cmd t=0001 rid=2138815119 len=12
+2026-10-20 21:10:58 b4 cmd t=0023 rid=2138815120 len=23
+2026-10-20 21:10:58 b4 file-write-open C:\V9XNGL.BIN
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815121 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815122 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815123 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815124 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815125 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815126 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815127 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815128 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815129 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815130 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815131 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815132 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815133 len=32772
+2026-10-20 21:10:59 b4 cmd t=0024 rid=2138815134 len=30212
+2026-10-20 21:11:00 b4 cmd t=0025 rid=2138815135 len=0
+2026-10-20 21:11:00 b4 file-write-complete C:\V9XNGL.BIN sz=456192 crc=3589978646
+2026-10-20 21:11:00 b4 client-disconnected
+2026-10-20 21:11:00 b4 relay-session-closed ended
+2026-10-20 21:11:00 b4 relay-connected
+2026-10-20 21:11:00 b4 relay-session-open 5deb0003f3d2004330919296136580a1
+2026-10-20 21:11:00 b4 cmd t=0001 rid=840691449 len=12
+2026-10-20 21:11:01 b4 cmd t=0022 rid=840691450 len=11
+2026-10-20 21:11:01 b4 client-disconnected
+2026-10-20 21:11:01 b4 relay-session-closed ended
+2026-10-20 21:11:03 b4 relay-connected
+2026-10-20 21:11:03 b4 relay-session-open 5881e8f87f06dcf230bb57b5d5d1acf4
+2026-10-20 21:11:04 b4 cmd t=0001 rid=747367355 len=12
+2026-10-20 21:11:04 b4 cmd t=0023 rid=747367356 len=30
+2026-10-20 21:11:04 b4 file-write-open C:\V9XPNV\V9XDDP.EXE
+2026-10-20 21:11:04 b4 cmd t=0024 rid=747367357 len=32772
+2026-10-20 21:11:04 b4 cmd t=0024 rid=747367358 len=32772
+2026-10-20 21:11:04 b4 cmd t=0024 rid=747367359 len=32772
+2026-10-20 21:11:04 b4 cmd t=0024 rid=747367360 len=4612
+2026-10-20 21:11:05 b4 cmd t=0025 rid=747367361 len=0
+2026-10-20 21:11:05 b4 file-write-complete C:\V9XPNV\V9XDDP.EXE sz=102912 crc=209836257
+2026-10-20 21:11:05 b4 client-disconnected
+2026-10-20 21:11:05 b4 relay-session-closed ended
+2026-10-20 21:11:05 b4 relay-connected
+2026-10-20 21:11:05 b4 relay-session-open ac0256732457f5b415f9f00e9d7c19f2
+2026-10-20 21:11:06 b4 cmd t=0001 rid=485545987 len=12
+2026-10-20 21:11:06 b4 cmd t=0023 rid=485545988 len=30
+2026-10-20 21:11:06 b4 file-write-open C:\V9XPNV\V9XGLP.EXE
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545989 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545990 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545991 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545992 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545993 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545994 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545995 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545996 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545997 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545998 len=32772
+2026-10-20 21:11:07 b4 cmd t=0024 rid=485545999 len=22532
+2026-10-20 21:11:07 b4 cmd t=0025 rid=485546000 len=0
+2026-10-20 21:11:07 b4 file-write-complete C:\V9XPNV\V9XGLP.EXE sz=350208 crc=1011261655
+2026-10-20 21:11:08 b4 client-disconnected
+2026-10-20 21:11:08 b4 relay-session-closed ended
+2026-10-20 21:11:08 b4 relay-connected
+2026-10-20 21:11:08 b4 relay-session-open 86791619b620daed70e377ac885a8bfc
+2026-10-20 21:11:08 b4 cmd t=0001 rid=1519427342 len=12
+2026-10-20 21:11:09 b4 cmd t=0023 rid=1519427343 len=32
+2026-10-20 21:11:09 b4 file-write-open C:\V9XPNV\V9XGLIDP.EXE
+2026-10-20 21:11:09 b4 cmd t=0024 rid=1519427344 len=7172
+2026-10-20 21:11:09 b4 cmd t=0025 rid=1519427345 len=0
+2026-10-20 21:11:09 b4 file-write-complete C:\V9XPNV\V9XGLIDP.EXE sz=7168 crc=866139380
+2026-10-20 21:11:10 b4 client-disconnected
+2026-10-20 21:11:10 b4 relay-session-closed ended
+2026-10-20 21:11:10 b4 relay-connected
+2026-10-20 21:11:10 b4 relay-session-open c23bf3936e1cf3603d1ce3a727f6ba8c
+2026-10-20 21:11:10 b4 cmd t=0001 rid=1550796887 len=12
+2026-10-20 21:11:10 b4 cmd t=0023 rid=1550796888 len=30
+2026-10-20 21:11:10 b4 file-write-open C:\V9XPNV\V9XD32.EXE
+2026-10-20 21:11:11 b4 cmd t=0024 rid=1550796889 len=12292
+2026-10-20 21:11:11 b4 cmd t=0025 rid=1550796890 len=0
+2026-10-20 21:11:11 b4 file-write-complete C:\V9XPNV\V9XD32.EXE sz=12288 crc=4121329673
+2026-10-20 21:11:12 b4 client-disconnected
+2026-10-20 21:11:12 b4 relay-session-closed ended
+2026-10-20 21:11:12 b4 relay-connected
+2026-10-20 21:11:12 b4 relay-session-open a3666b8b5b6a771fd2a512c28968eaeb
+2026-10-20 21:11:12 b4 cmd t=0001 rid=74748704 len=12
+2026-10-20 21:11:12 b4 cmd t=0023 rid=74748705 len=32
+2026-10-20 21:11:12 b4 file-write-open C:\V9XPNV\V9XTRACE.EXE
+2026-10-20 21:11:13 b4 cmd t=0024 rid=74748706 len=32772
+2026-10-20 21:11:13 b4 cmd t=0024 rid=74748707 len=3588
+2026-10-20 21:11:13 b4 cmd t=0025 rid=74748708 len=0
+2026-10-20 21:11:13 b4 file-write-complete C:\V9XPNV\V9XTRACE.EXE sz=36352 crc=2118979845
+2026-10-20 21:11:13 b4 client-disconnected
+2026-10-20 21:11:13 b4 relay-session-closed ended
+2026-10-20 21:11:13 b4 relay-connected
+2026-10-20 21:11:13 b4 relay-session-open fa01ae9b5c47f91bb6599b48763b1eed
+2026-10-20 21:11:14 b4 cmd t=0001 rid=752619813 len=12
+2026-10-20 21:11:14 b4 cmd t=0023 rid=752619814 len=32
+2026-10-20 21:11:14 b4 file-write-open C:\WINDOWS\WININIT.INI
+2026-10-20 21:11:15 b4 cmd t=0024 rid=752619815 len=240
+2026-10-20 21:11:15 b4 cmd t=0025 rid=752619816 len=0
+2026-10-20 21:11:15 b4 file-write-complete C:\WINDOWS\WININIT.INI sz=236 crc=2184594507
+2026-10-20 21:11:15 b4 client-disconnected
+2026-10-20 21:11:15 b4 relay-session-closed ended
+2026-10-20 21:11:22 b4 relay-connected
+2026-10-20 21:11:22 b4 relay-session-open 19012530f68b81ce2542bb65c440d0e1
+2026-10-20 21:11:22 b4 cmd t=0001 rid=1415777100 len=12
+2026-10-20 21:11:22 b4 cmd t=0040 rid=1415777101 len=19
+2026-10-20 21:11:22 b4 reboot-accepted gma900-949fc64b-1
+2026-10-20 21:11:23 b4 relay-session-closed ended
+2026-10-20 21:29:29 b5 agent-start
+2026-10-20 21:29:29 b5 dos-vm-disallowed
+2026-10-20 21:29:30 b5 listening
+2026-10-20 21:29:31 b5 remote-start http://michaeldale.com.au
+2026-10-20 21:29:32 b5 tray-icon-added 192.168.0.117
+2026-10-20 21:30:31 b5 update-current
+2026-10-20 21:30:32 b5 relay-connected
+2026-10-20 21:30:32 b5 relay-session-open 595b8470eebf470f65b59ffa44a42547
+2026-10-20 21:30:33 b5 cmd t=0001 rid=1650476780 len=12
+2026-10-20 21:30:33 b5 cmd t=0002 rid=1650476781 len=0
+2026-10-20 21:30:34 b5 client-disconnected
+2026-10-20 21:30:34 b5 relay-session-closed ended
+2026-10-20 21:30:36 b5 relay-connected
+2026-10-20 21:30:36 b5 relay-session-open 18512c52128a5478ee3f8d8cd681682d
+2026-10-20 21:30:36 b5 cmd t=0001 rid=974140628 len=12
+2026-10-20 21:30:37 b5 cmd t=0002 rid=974140629 len=0
+2026-10-20 21:30:37 b5 client-disconnected
+2026-10-20 21:30:37 b5 relay-session-closed ended
+2026-10-20 21:30:48 b5 relay-connected
+2026-10-20 21:30:48 b5 relay-session-open 4a23955af18858558d43e6965e94a2b0
+2026-10-20 21:30:48 b5 cmd t=0001 rid=1399189247 len=12
+2026-10-20 21:30:48 b5 cmd t=0020 rid=1399189248 len=24
+2026-10-20 21:30:48 b5 client-disconnected
+2026-10-20 21:30:48 b5 relay-session-closed ended
+2026-10-20 21:30:51 b5 relay-connected
+2026-10-20 21:30:51 b5 relay-session-open 064458698369276f3a320d426b8ac107
+2026-10-20 21:30:51 b5 cmd t=0001 rid=1159923120 len=12
+2026-10-20 21:30:51 b5 cmd t=0020 rid=1159923121 len=31
+2026-10-20 21:30:52 b5 client-disconnected
+2026-10-20 21:30:52 b5 relay-session-closed ended
+2026-10-20 21:30:52 b5 relay-connected
+2026-10-20 21:30:52 b5 relay-session-open e9d748dca54b669fb77b1f470418f0d6
+2026-10-20 21:30:52 b5 cmd t=0001 rid=1835690097 len=12
+2026-10-20 21:30:52 b5 cmd t=0020 rid=1835690098 len=31
+2026-10-20 21:30:52 b5 client-disconnected
+2026-10-20 21:30:52 b5 relay-session-closed ended
+2026-10-20 21:30:53 b5 relay-connected
+2026-10-20 21:30:53 b5 relay-session-open 05c2aef809af28dd488f437a9415d760
+2026-10-20 21:30:53 b5 cmd t=0001 rid=1598904253 len=12
+2026-10-20 21:30:53 b5 cmd t=0020 rid=1598904254 len=30
+2026-10-20 21:30:54 b5 client-disconnected
+2026-10-20 21:30:54 b5 relay-session-closed ended
+2026-10-20 21:30:54 b5 relay-connected
+2026-10-20 21:30:54 b5 relay-session-open 0667c6884526d5ae9971615943ddbba3
+2026-10-20 21:30:54 b5 cmd t=0001 rid=362135490 len=12
+2026-10-20 21:30:55 b5 cmd t=0020 rid=362135491 len=29
+2026-10-20 21:30:55 b5 client-disconnected
+2026-10-20 21:30:55 b5 relay-session-closed ended
+2026-10-20 21:30:55 b5 relay-connected
+2026-10-20 21:30:55 b5 relay-session-open d38c25bafb973e3de4d011cafc0d0954
+2026-10-20 21:30:55 b5 cmd t=0001 rid=1023152461 len=12
+2026-10-20 21:30:56 b5 cmd t=0020 rid=1023152462 len=31
+2026-10-20 21:30:56 b5 client-disconnected
+2026-10-20 21:30:56 b5 relay-session-closed ended
+2026-10-20 21:30:56 b5 relay-connected
+2026-10-20 21:30:56 b5 relay-session-open 0e4b11ee8d82a8218693af8ead7198d2
+2026-10-20 21:30:56 b5 cmd t=0001 rid=563793074 len=12
+2026-10-20 21:30:57 b5 cmd t=0020 rid=563793075 len=16
+2026-10-20 21:30:57 b5 client-disconnected
+2026-10-20 21:30:57 b5 relay-session-closed ended
+2026-10-20 21:30:57 b5 relay-connected
+2026-10-20 21:30:57 b5 relay-session-open ab26b42817b61d0112390c20288fe774
+2026-10-20 21:30:58 b5 cmd t=0001 rid=1257334843 len=12
+2026-10-20 21:30:58 b5 cmd t=0020 rid=1257334844 len=16
+2026-10-20 21:30:58 b5 client-disconnected
+2026-10-20 21:30:58 b5 relay-session-closed ended
+2026-10-20 21:31:09 b5 relay-connected
+2026-10-20 21:31:09 b5 relay-session-open 26a4575d4a80f2206e59550034bb0e90
+2026-10-20 21:31:09 b5 cmd t=0001 rid=1229695440 len=12
+2026-10-20 21:31:10 b5 cmd t=0030 rid=1229695441 len=0
+2026-10-20 21:31:10 b5 client-disconnected
+2026-10-20 21:31:10 b5 relay-session-closed ended
+2026-10-20 21:31:12 b5 relay-connected
+2026-10-20 21:31:12 b5 relay-session-open 0a10c2d6125e21f4127b821a18e6d949
+2026-10-20 21:31:12 b5 cmd t=0001 rid=1562723223 len=12
+2026-10-20 21:31:13 b5 cmd t=0026 rid=1562723224 len=24
+2026-10-20 21:31:13 b5 file-read-open C:\V9XDIAG\V9XBOOT.INI
+2026-10-20 21:31:13 b5 file-read-complete C:\V9XDIAG\V9XBOOT.INI sz=1927 crc=3719810797
+2026-10-20 21:31:13 b5 client-disconnected
+2026-10-20 21:31:13 b5 relay-session-closed ended
+2026-10-20 21:31:13 b5 relay-connected
+2026-10-20 21:31:13 b5 relay-session-open bb334ec595aeaaf36a2b6604ac06563d
+2026-10-20 21:31:13 b5 cmd t=0001 rid=699388227 len=12
+2026-10-20 21:31:14 b5 cmd t=0026 rid=699388228 len=22
+2026-10-20 21:31:14 b5 file-read-open C:\V9XDIAG\V9XHW.INI
+2026-10-20 21:31:14 b5 file-read-complete C:\V9XDIAG\V9XHW.INI sz=440 crc=3445610170
+2026-10-20 21:31:14 b5 client-disconnected
+2026-10-20 21:31:14 b5 relay-session-closed ended
+2026-10-20 21:31:14 b5 relay-connected
+2026-10-20 21:31:14 b5 relay-session-open 90abe92388381730f41ad984e6fda672
+2026-10-20 21:31:15 b5 cmd t=0001 rid=740979150 len=12
+2026-10-20 21:31:15 b5 cmd t=0026 rid=740979151 len=16
+2026-10-20 21:31:15 b5 file-read-open C:\BOOTLOG.TXT
+2026-10-20 21:31:15 b5 file-read-complete C:\BOOTLOG.TXT sz=62843 crc=3996337213
+2026-10-20 21:31:15 b5 client-disconnected
+2026-10-20 21:31:15 b5 relay-session-closed ended
+2026-10-20 21:31:16 b5 relay-connected
+2026-10-20 21:31:16 b5 relay-session-open 364088c6d663c43dd591e252fec026eb
+2026-10-20 21:31:16 b5 cmd t=0001 rid=1245063831 len=12
+2026-10-20 21:31:16 b5 cmd t=0026 rid=1245063832 len=16
+2026-10-20 21:31:16 b5 file-read-open C:\BOOTLOG.PRV
+2026-10-20 21:31:17 b5 file-read-complete C:\BOOTLOG.PRV sz=63085 crc=3577781783
+2026-10-20 21:31:17 b5 client-disconnected
+2026-10-20 21:31:17 b5 relay-session-closed ended
+2026-10-20 21:31:17 b5 relay-connected
+2026-10-20 21:31:17 b5 relay-session-open 6b30bee550039ab99b5d8e4502aaebce
+2026-10-20 21:31:17 b5 cmd t=0001 rid=1032506435 len=12
+2026-10-20 21:31:18 b5 cmd t=0050 rid=1032506436 len=30
+2026-10-20 21:31:18 b5 screenshot-helper-start
+2026-10-20 21:31:18 b5 screenshot-complete
+2026-10-20 21:31:19 b5 cmd t=0026 rid=1032506437 len=30
+2026-10-20 21:31:19 b5 file-read-open C:\V9XREMOTE\TEMP\SCREEN.BMP
+2026-10-20 21:31:20 b5 file-read-complete C:\V9XREMOTE\TEMP\SCREEN.BMP sz=921654 crc=2664118559
+2026-10-20 21:31:20 b5 client-disconnected
+2026-10-20 21:31:20 b5 relay-session-closed ended
+2026-10-20 21:31:41 b5 relay-connected
+2026-10-20 21:31:42 b5 relay-session-open f586e1c0c4122983cb22b0ae0e74d9d8
+2026-10-20 21:31:42 b5 cmd t=0001 rid=264269042 len=12
+2026-10-20 21:31:43 b5 cmd t=0026 rid=264269043 len=24

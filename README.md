@@ -8,8 +8,8 @@ cards**. One driver package per chip family gives the card:
 - Glide 2 and Glide 3 for games written for 3dfx cards;
 - ATI's 3DCIF for games written for ATI Rage cards.
 
-All of them draw through one shared render core. It runs the Intel GMA 950,
-the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
+All of them draw through one shared render core. It runs the Intel GMA 950
+and GMA 3150, the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS.
@@ -70,7 +70,8 @@ serves every chip in it and picks the right one by PCI id at boot.
 |---|---|---|---|
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
-| Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Not run here. A reporter runs Direct3D on one Lenovo laptop |
+| Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
+| Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
@@ -92,7 +93,7 @@ not as supported. The ids are listed in each family's manifest under
 
 Modes come from each card's video BIOS, merged with the driver's own where
 it sets modes itself: up to 1024x768 at 8 and 16 bpp on most cards, True
-Color and 1280x1024 on the S3 cards, and 1024x576 on the GMA 950's panel.
+Color and 1280x1024 on the S3 cards, 1024x576 on the GMA 950's panel, and 1024x600 on the GMA 3150's.
 Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
 where the table says otherwise. No card has a hardware cursor.
 
@@ -111,7 +112,8 @@ from the records the [changelog](CHANGELOG.md) links.
 |---|---|---|---|---|---|---|---|
 | Intel HD Graphics 4600 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | No (0.19.0) |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
-| Intel GMA 900 | Not run | Yes, by a reporter | Not run | Not run | Not run | Not run | Not run |
+| Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
+| Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
 | ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |
@@ -130,7 +132,8 @@ Measured limits:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900, the HD
   Graphics 4600 and the Millennium II (the Mystique: 32 bpp, 16-bit depth
-  only). Every other card's 3D, and OpenGL, Glide and 3DCIF everywhere,
+  only; the GMA 3150: 32 bpp measured with 16-bit depth, its 24-bit depth
+  not yet). Every other card's 3D, and OpenGL, Glide and 3DCIF everywhere,
   is 16-bit colour with a 16-bit depth buffer.
 - **Two texture units** means one-pass multitexture: OpenGL's
   `GL_SGIS_multitexture`, and lightmaps in one pass.

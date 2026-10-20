@@ -189,7 +189,8 @@ First run, 2026-10-20, boot 12 (`2026-10-20-pineview-tommo33-gen3-first-run.md`)
   netbook fails. The mip chain result (level 2 where Direct3D's nearest is
   1) is shared with the 945, not Pineview's.
 - V9XGLP, V9XGLIDP and V9XD32 at 32 and 16 bpp pass.
-- Step 3, the games, has not run.
+- Step 3: 3DMark 2000 at 1024x600x16, 755 3DMarks, 849,002 draws with none refused
+  and no timeout. No game yet.
 - Follow-up: the OpenGL renderer string names the part "GMA 950".
 
 Run the claim with the engine on by default; `IntelRuntime3D=0` stays the off

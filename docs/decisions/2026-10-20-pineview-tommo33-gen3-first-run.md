@@ -1,4 +1,4 @@
-# Pineview on TOMMO33: the Gen3 engine runs; D3D, OpenGL, Glide and 32 bpp probes pass as on the 945
+# Pineview on TOMMO33: the Gen3 engine runs; probes pass as on the 945, and 3DMark 2000 scores 755 with nothing refused
 
 Date: 2026-10-20
 Status: **measured once, one boot.** Phase 3 of
@@ -106,9 +106,43 @@ desktop:
   - 0 breadcrumb, ring-space or flip-wait timeouts;
   - `WmWrites=0`.
 
+## 3DMark 2000 (same boot, later)
+
+3DMark 2000 v1.1 was installed from Michael's copy, registered Pro, and
+run as a custom benchmark. Its default needs 1024x768x32 and 16 MB and is
+refused here. 3DMark chose 1024x600, 16-bit colour, 16-bit textures and
+Z, triple buffered, all tests, on "Velocity9x Intel GMA 3150 (Pineview)".
+It reports 7,067 KB of video memory, 5,867 KB of texture memory, and one
+texture blending stage. Screens are in `3dmark2000\`.
+
+**755 3DMarks**, CPU 62. Recorded, not compared.
+
+| Test | Result |
+|---|---|
+| Helicopter low / medium / high | 15.2 / 10.3 / 5.3 fps |
+| Adventure low / medium / high | 13.2 / 10.5 / 8.4 fps |
+| Fill rate single / multi | 73.4 / 73.4 MTexels/s |
+| High polygon 1 / 4 / 8 lights | 721 / 658 / 617 KTriangles/s |
+| Texture rendering 8 / 16 / 32 / 64 MB | 42.0 / 21.9 / 11.4 / 5.7 fps |
+| Bump mapping (emboss 1-3 pass, environment) | not supported |
+
+Both game scenes were seen drawing textured and correct in mid-run
+screenshots (`game1-helicopter.png`, `game2-adventure.png`).
+
+The snapshot after the run (`3dmark2000\V9XSNA-after-3dmark.INI`), whole
+boot:
+- 849,002 draws, 854,811 breadcrumb submits;
+- 0 draw refusals of any kind;
+- 0 breadcrumb, ring-space or flip-wait timeouts;
+- `WmWrites=0`.
+
+The texture refusals are the six V9XDDP left before the run. 47,207 mip
+trees were declined for room (reason 4): the 7 MB heap of 8 MiB stolen
+memory, against texture tests sized at 16 to 64 MB.
+
 ## Not done
 
-- No game.
+- No game beyond 3DMark 2000.
 - No DSPFW capture.
 - The netbook has not run `bce8b693`, so the `vbe-size-unread` change on the
   945 is still unmeasured.

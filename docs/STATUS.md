@@ -1,6 +1,6 @@
 # Current status and next work
 
-Reviewed against the checkout and the recorded evidence on 2026-10-15.
+Reviewed against the checkout and the recorded evidence on 2026-10-20.
 Update this page when a default, a validation result or the next step
 changes; the dated decision records and issues are the history.
 [PLAN.md](../PLAN.md) is the original planning baseline, not the current
@@ -8,28 +8,20 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.18.5](../releases/0.18.5/README.md), built from
-`295bb549`, published on GitHub and mirrored to the update server
-(stable). Its archives are host-audited. **Check for updates** took the
-86Box Mach64 VT2 from 0.18.2 to 0.18.5 (boot 127): committed, all eight
-files equal to the package, the running driver reports `295bb549`
-([probe](probe/86box-mach64vt2-update-0.18.2-to-0.18.5-2026-10-16/README.md)).
-The same code (built from `a233cfad`) ran on the 86Box ViRGE/DX
-([probe](probe/86box-virge-0.18.5-regression-2026-10-16/README.md)) and,
-as development builds, on A8U4I5's Rage XL. None has had an activation
-smoke test from a Have Disk install of the archive itself. Field
-confirmation: GitHub issue 6's reporter runs 0.18.3 and issue 7's runs
-0.18.4. The checkout is 0.19.0, unreleased.
+The latest release is [0.21.0](../releases/0.21.0/README.md), built from
+`71ee2e77`. Its downloads are committed (`69852b4c`), and the update
+server lists it as the latest stable and beta build (checked 2026-10-20).
+Its archives are host-audited; none has had an activation smoke test from
+a Have Disk install of the archive itself. The checkout is 0.21.1,
+unreleased. See the [changelog](../CHANGELOG.md) for what it adds: the HD
+4600 heap and 32-bit textures, and the GMA 3150.
 
-The 0.18.0 release's two owed checks are done, both on the 86Box Mach64
-VT2 on 2026-10-15:
-- **Have Disk** of the released 0.18.0: every file is the release's by
-  hash, and ATI's own ATI3DCIF.DLL was replaced without a prompt
-  ([probe](probe/86box-mach64vt2-have-disk-0.18.0-2026-10-15/README.md)).
-- **Check for updates** from it to 0.18.1: committed after one restart,
-  all eight installed files equal the 0.18.1 package by hash, and the
-  running driver reports `2cbf6777`
-  ([probe](probe/86box-mach64vt2-update-0.18.0-to-0.18.1-2026-10-15/README.md)).
+Owed before the next release:
+- **The netbook (945GSE) on the current tree.** Two changes reach every
+  Gen3 part and have run on the GMA 3150 and a GMA 900, but not on it:
+  - the ring now opens at the heap's reserve, and the descriptor refuses
+    while no VBE size is known;
+  - the flip wait before engine clears, measured on the HD 4600.
 
 ## Target coverage
 
@@ -40,7 +32,8 @@ Mini 110 (Atom N280, 945GSE).
 | Target | Recorded coverage | Boundary |
 |---|---|---|
 | Intel GMA 950 (`8086:27AE`) | The netbook: Direct3D on Gen3 with asynchronous submission and ring flips, DirectDraw on the blitter, OpenGL with a CPU fallback for refused draws, Glide 2 and 3 (NFS II SE, Carmageddon II, Rollcage), DirectX 8 through DDI 6, and 3DCIF's SDK demos ([GMA 950 3DCIF](probe/netbook-gma950-3dcif-2026-10-14/README.md)) | Modes are the video BIOS's: 640x480 and 1024x576 on the netbook. GDI is drawn by the CPU. No emulator runs the engine. A reporter's embedded board on an external VGA monitor hard-locked with the flip on; fixed in 0.18.3 and confirmed ([issue 6](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)) |
-| Intel GMA 900 (`8086:2592`, 915GM) | Claimed from a user's survey with the GMA 950's engine ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)); a reporter runs Direct3D on it under 0.18.4 | Not run here. A second 915GM (Acer) runs GTA and Deus Ex on 0.19.0 with no fault; Deus Ex had four mip trees declined for want of memory ([record](decisions/2026-10-19-gma900-field-reports-gta-deus-ex.md)). A reporter sees Carmageddon II exit after its intro ([issue](issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)). The 3DMark 2000 pattern was the polygon stipple, fixed in 0.18.4 and confirmed ([issue](issues/2026-10-11-3dmark2000-pattern-corruption-gma900.md)) |
+| Intel GMA 900 (`8086:2592`, 915GM) | A tester's Acer through remote help (`M-NGMX0T`): V9XDDP and V9XD32 at 16 and 32 bpp with Z16 and Z24, and 3DMark 2001 SE at 16 bpp on 0.21.0 ([record](decisions/2026-10-20-gma900-tommo33-0.21.0.md)); the heap build reads the same. Claimed from a user's survey with the GMA 950's engine ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)) | 1,137 draws refused for reason 6 in 3DMark 2001 SE's Car Chase and Lobby. A second 915GM (Acer) runs GTA and Deus Ex on 0.19.0 with no fault ([record](decisions/2026-10-19-gma900-field-reports-gta-deus-ex.md)). A reporter sees Carmageddon II exit after its intro ([issue](issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)). On `949fc64b` (the moved ring) its probes read as before ([record](decisions/2026-10-20-gma900-tommo33-949fc64b.md)) |
+| Intel GMA 3150 (`8086:A011`, Pineview) | A tester's Lenovo netbook (Atom N455) through remote help (`M-BWCR7F`): Direct3D on the Gen3 engine, with V9XDDP failing only what the netbook fails; V9XD32 at 16 and 32 bpp (Z16); V9XGLP including two texture units; V9XGLIDP; DirectDraw and flips; the panel's native 1024x600 through VBE ([first run](decisions/2026-10-20-pineview-tommo33-gen3-first-run.md), [plan](plans/intel-pineview-gma3150.md)) | Development checkout only. 3DMark 2000 at 1024x600x16: 755, no draw refused ([first run](decisions/2026-10-20-pineview-tommo33-gen3-first-run.md)). No other game, no 24-bit depth run, no DSPFW watermark capture. `A001` (desktop parts) not claimed. An Acer NAV50 whose BIOS describes no 1024x600 mode would stay at 800x600 ([record](decisions/2026-08-28-pineview-vbe-mode-list.md)) |
 | ATI Rage XL PCI (Rage Pro class) | A8U4I5: Direct3D on the Mach64 engine, page flips, OpenGL with `GL_SGIS_multitexture`, DirectX 8, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([555](decisions/2026-10-14-rage-xl-555-desktop.md), [3DCIF](probe/a8u4i5-rage-xl-3dcif-2026-10-14/README.md)) | No CPU fallback: a refused draw is not drawn. 3DCIF's texel-times-vertex-alpha sprites are refused ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)). GDI is drawn by the CPU |
 | ATI Rage Mobility-M (`4C4D`) | One Gateway Solo 2150: Direct3D and OpenGL on the Mach64 engine (0.9.1, [plan](plans/ati-rage-mobility-hardware-3d.md)) | Not run since the Rage Pro class changed: the 5:5:5 desktop reaches it by design and has not booted on it. Intermittent hard lock under the broad probe ([issue](issues/2026-09-30-gateway-intermittent-black-screen-probe-lock.md)) |
 | ATI Rage IIC (`4757`) | A8U4I5: Direct3D on the Rage II trapezoid engine with CPU setup, page flips, OpenGL, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([desktop](decisions/2026-10-14-rage-iic-555-desktop.md), [Glide](decisions/2026-10-14-rage-iic-555-textures-and-glide.md), [plan](plans/ati-rage-iic-hardware-3d.md)) | Texel times vertex alpha is refused ([issue](issues/2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md)). The blend reads back one step low at 5:5:5 ([issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md)) |
@@ -86,6 +79,8 @@ open record.
 | HD 4600 32-bit textures | Done on the 4570, boot 55 ([record](decisions/2026-10-20-haswell-32bit-textures-and-flip-wait.md)): ARGB8888 and XRGB8888 sampled, V9XDDP's two new checks pass, 3DMark 2001 SE selects 32-bit textures. It still says the run was not at default settings, for a reason not read, and the heap refills (1,160 mip trees declined) | What 3DMark 2001 SE's default-settings message compares, read |
 | Probe outputs that say what produced them (next release) | V9XR3DP's and V9XGLP's INIs name no driver build and no time, and V9XD32's `Build=` is only the probe's, so a stale file from an earlier boot reads like a fresh run (A8U4I5, 2026-10-20: told apart only by overwriting each file first). Every probe's output should carry its own file name, the probe build, the driver and HAL build it ran against, and a timestamp | Each probe's output carries the four keys, checked on one guest |
 | Gen3 vertex refusals in 3DMark 2001 SE | Car Chase and Lobby refuse 702 and 408 draws for reason 6 on a 915GM; the failing vertex field is not recorded ([record](decisions/2026-10-20-gma900-tommo33-0.21.0.md)) | A first-refused-vertex recorder names the field, then a fix with no reason-6 refusals in either scene |
+| GMA 3150 beyond 3DMark 2000 | A game, a 24-bit depth run and a DSPFW watermark capture on TOMMO33 (`M-BWCR7F`) ([plan](plans/intel-pineview-gma3150.md), Phase 3) | One game run recorded, and the DSPFW words read |
+| Gen3 mip level selection on the 945 layout | The 945GSE and the GMA 3150 read level 2 where Direct3D's nearest level is 1 (V9XDDP ChainB, ChainC, ChainRows); the 915GM, placed stacked, does not ([record](decisions/2026-10-20-pineview-tommo33-gen3-first-run.md)) | The cause named: level-1 placement or the sampler's LOD rule |
 | The GMA 900 field report | Carmageddon II's exit on a reporter's 915GM, to be re-run on 0.18.4 | The issue updated from the reporter's next files |
 | HAL statics across processes | The HAL's static data is shared by every DirectDraw process ([issue](issues/2026-10-06-hal-statics-shared-across-processes.md)) | A design for per-process state, or a record that the sharing is safe |
 | S3 physical validation | The ViRGE/DX's 3D on silicon; text acceleration and the DOS-box shield on the physical Trio64 | A physical run recorded against the [text issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md) and the [DOS-box issue](issues/2026-09-06-dos-box-doubles-the-desktop-on-physical-trio64.md) |
