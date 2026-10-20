@@ -1,7 +1,15 @@
 # Pineview (GMA 3150): the Gen3 engine on a G33-class part, then the panel
 
-Status: **Phases 0 and 1 done. Phase 1 is coded and gated but has not run
-on Pineview.** TOMMO33 is a
+Status: **Phases 0 and 1 done; Phase 3 started.** On TOMMO33 boot 12 the
+Gen3 engine claims D3D and runs:
+
+- 599 draws, 0 timeouts;
+- the ring is at `0x6F0000`;
+- `FW_BLC` is not written.
+
+Mip chains B, C and Rows sample one level too deep. That is open
+(`docs\decisions\2026-10-20-pineview-tommo33-gen3-first-run.md`). Phase 2's
+read-only MMIO capture was skipped; the boot fingerprint passed. TOMMO33 is a
 remote-help Lenovo with an Atom N455 (`M-BWCR7F`). Results, in
 `docs\decisions\2026-10-20-pineview-tommo33-tier0.md`:
 
@@ -171,6 +179,14 @@ question to answer: whether the BIOS leaves self-refresh on, and what it
 programmed for the VBE mode.
 
 ## Phase 3: the claim
+
+First run, 2026-10-20, boot 12 (`2026-10-20-pineview-tommo33-gen3-first-run.md`):
+
+- The claim and step 1 pass.
+- Step 2's V9XDDP is complete at 1024x600x16. Its only Pineview-specific
+  failure is the mip chain test: level 1 is never sampled, and level 2 comes
+  back where level 1 is expected.
+- V9XGLP, 32 bpp, Z24 and the games have not run.
 
 Run the claim with the engine on by default; `IntelRuntime3D=0` stays the off
 switch. Then, in order:

@@ -74,9 +74,12 @@ Haswell edits. It was pushed to `C:\V9XPKG`. It was installed through Device
 Manager, Update Driver, Have Disk, on the `(VGA)` entry, which is function 0;
 its Resources tab shows the VGA ranges. Windows warned that the existing
 driver (VBEMP) was a closer match, and the warning was accepted. Setup left a
-`WININIT.INI` holding two plain renames: the `glide2x.dll` and `glide3x.dll`
-already in `C:\WINDOWS\SYSTEM` were renamed to `.001`. There was no `NUL=`
-line. One agent reboot followed: `BootCounter` 10 to 11, reconnected, and
+`WININIT.INI` holding two plain `dest=src` renames. Velocity9x's
+`glide2x.dll` and `glide3x.dll` had been staged as `.001` because the copies
+already in `C:\WINDOWS\SYSTEM` were in use, and the renames put them in
+place, so the originals were replaced. (This record first said the
+reverse; corrected in `2026-10-20-pineview-tommo33-gen3-first-run.md`.)
+There was no `NUL=` line. One agent reboot followed: `BootCounter` 10 to 11, reconnected, and
 the desktop was ready.
 
 Captured in this folder: `V9XBOOT.INI`, `V9XMODES.INI`, `V9XHW.INI`,
