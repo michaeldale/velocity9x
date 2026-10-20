@@ -12,10 +12,12 @@
  * and sealed with the Gen3 breadcrumb by v9x_d3d_i9xx_submit_g4_batch, so
  * Flip, Lock and Blt wait for 3D work through the drain they already use.
  *
- * Synchronous: one state block, one batch and one vertex area, rewritten
- * by every draw only after the render drain says the GPU has finished with
- * them, and every draw waits for its own breadcrumb. The Haswell engine's
- * two-slot pipeline is the model if this proves too slow.
+ * Two slots, as on Haswell: each has its own state block, batch and vertex
+ * area, and a draw rewrites a slot only once the breadcrumb of the batch
+ * last submitted from it has landed, so the CPU builds one draw while the
+ * GPU runs the other. The kernels are shared and are rewritten only after
+ * a full drain. A draw waits for its own breadcrumb only while GDI may be
+ * drawing on the screen.
  *
  * Mapping policy is Haswell's, through the pure helpers in d3d_hsw_map.c:
  * Intel's surface format numbers are the same on Gen4 and Gen7.5 (Vol 1
@@ -47,8 +49,16 @@
 #define V9X_D3D_G4_KERNEL_INSTS (V9X_G4_WM_KERNEL_BYTES / 16ul)
 
 /* Signature words: the SF kernel's mark, then four per WM slot. */
-#define V9X_D3D_G4_SF_MARK  0x47345346ul  /* "G4SF" */
+/* The kernels' revision, in every signature: the reserve survives a warm
+ * reset, so a driver whose generator changed must not trust a mark the
+ * last one left. Bump it with any change to g4_eu.c's output. */
+#define V9X_D3D_G4_KERNEL_REV 0x01ul
+#define V9X_D3D_G4_SF_MARK  (0x47345300ul | V9X_D3D_G4_KERNEL_REV)
 #define V9X_D3D_G4_SIG_WORDS 4ul
+
+/* A slot's last sequence is looked for this many status reads, about a
+ * microsecond each, before the draw falls back to draining everything. */
+#define V9X_D3D_G4_SLOT_POLLS 0x00200000ul
 
 /* Refusal reasons, in the shared policy counters (V9XTRACE M64PolicyNN):
  * Haswell's numbering where the meaning is the same. */
@@ -481,7 +491,8 @@ static DWORD v9x_d3d_g4_wm_slot(const struct v9x_g4_ps_desc *desc)
 static void v9x_d3d_g4_wm_sig(const struct v9x_g4_ps_desc *desc,
                               v9x_u32 *sig)
 {
-    sig[0] = 0x47340000ul | ((v9x_u32)desc->stage0 << 8) |
+    sig[0] = 0x47340000ul | (V9X_D3D_G4_KERNEL_REV << 12) |
+             ((v9x_u32)desc->stage0 << 8) |
              ((v9x_u32)desc->specular << 4) | (v9x_u32)desc->fog;
     sig[1] = v9x_d3d_g4_float_bits(desc->fog_rgb[0]);
     sig[2] = v9x_d3d_g4_float_bits(desc->fog_rgb[1]);
@@ -502,8 +513,18 @@ static void v9x_d3d_g4_copy_kernel(DWORD offset, v9x_u32 count)
     }
 }
 
-/* The SF kernel, once: its mark is in the signature area. Called with the
- * render engine drained. */
+/*
+ * Every earlier batch finished, before a kernel either slot's batch may be
+ * running is overwritten. The ring is in order, so the newest breadcrumb
+ * covers them all.
+ */
+static int v9x_d3d_g4_drain_all(void)
+{
+    return v9x_d3d_i9xx_render_drain(1) == V9X_RENDER_DRAIN_DONE;
+}
+
+/* The SF kernel, once per kernel revision: its mark is in the signature
+ * area, which survives a warm reset with the rest of the reserve. */
 static int v9x_d3d_g4_write_sf(v9x_u8 *grf_used)
 {
     volatile DWORD *sig = (volatile DWORD *)v9x_d3d_g4_reserve(V9X_G4_SIG_OFF);
@@ -516,6 +537,9 @@ static int v9x_d3d_g4_write_sf(v9x_u8 *grf_used)
         return 0;
     }
     if (sig[0] != V9X_D3D_G4_SF_MARK) {
+        if (!v9x_d3d_g4_drain_all()) {
+            return 0;
+        }
         v9x_d3d_g4_copy_kernel(V9X_G4_SF_KERNEL_OFF, program.count);
         sig[0] = V9X_D3D_G4_SF_MARK;
     }
@@ -550,6 +574,9 @@ static int v9x_d3d_g4_write_wm(const struct v9x_g4_ps_desc *desc,
         }
     }
     if (!same) {
+        if (!v9x_d3d_g4_drain_all()) {
+            return 0;
+        }
         v9x_d3d_g4_copy_kernel(*kernel, program.count);
         for (index = 0ul; index < V9X_D3D_G4_SIG_WORDS; ++index) {
             stored[index] = wanted[index];
@@ -560,11 +587,10 @@ static int v9x_d3d_g4_write_wm(const struct v9x_g4_ps_desc *desc,
 
 /* The draw's state block. Zero, or the reason a block would not encode. */
 static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
-                                    const V9X_D3D_G4_STATE *state)
+                                    const V9X_D3D_G4_STATE *state, DWORD st)
 {
-    v9x_u32 *image = v9x_d3d_g4_reserve(V9X_G4_STATE_OFF);
+    v9x_u32 *image = v9x_d3d_g4_reserve(st);
     v9x_u32 *table;
-    DWORD st = V9X_G4_STATE_OFF;
     DWORD wm_kernel = 0ul;
     DWORD index;
     v9x_u8 sf_grf = 0u;
@@ -643,6 +669,65 @@ static v9x_u32 *v9x_d3d_g4_vertex(v9x_u32 *at, const V9X_R3D_VERTEX *v)
     return at + V9X_G4_VB_PITCH / 4ul;
 }
 
+/* The pipeline's shared words in the reserve (intel_g4_3d.h). */
+static volatile DWORD *v9x_d3d_g4_pipe(void)
+{
+    return (volatile DWORD *)v9x_d3d_g4_reserve(V9X_G4_PIPE_OFF);
+}
+
+/* The Gen3 status page's breadcrumb dword, as d3d_i9xx.c reads it. */
+static volatile DWORD *v9x_d3d_g4_crumb(void)
+{
+    return (volatile DWORD *)(v9x_hal->engine.ring_linear_base +
+                              V9X_I9XX_RING_BYTES +
+                              V9X_I9XX_HWS_BREADCRUMB_BYTE);
+}
+
+/*
+ * The next slot, free: the batch last submitted from it has stored its
+ * breadcrumb. A sequence not seen within the bound - a stale word the
+ * reserve kept across a warm reset, or a slow batch - falls back to a full
+ * drain, after which nothing can be using either slot.
+ */
+static int v9x_d3d_g4_take_slot(DWORD *slot)
+{
+    volatile DWORD *pipe = v9x_d3d_g4_pipe();
+    volatile DWORD *crumb = v9x_d3d_g4_crumb();
+    DWORD next = (pipe[V9X_G4_PIPE_LAST_SLOT] + 1ul) % V9X_G4_SLOTS;
+    DWORD sequence = pipe[V9X_G4_PIPE_SLOT_SEQ + next];
+    DWORD polls;
+    DWORD started = V9X_TIME_BEGIN();
+
+    *slot = next;
+    ++v9x_hal->d3d_diagnostics.render_drain_waits;
+    if (sequence == 0ul) {
+        return 1;
+    }
+    for (polls = 0ul; polls < V9X_D3D_G4_SLOT_POLLS; ++polls) {
+        if (v9x_i9xx_sequence_reached(*crumb, sequence) != V9X_FALSE) {
+            if (polls != 0ul) {
+                ++v9x_hal->d3d_diagnostics.render_drain_stalls;
+                v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_total += polls;
+                if (polls > v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max) {
+                    v9x_hal->d3d_diagnostics.breadcrumb_lag_polls_max = polls;
+                }
+            }
+            V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
+            return 1;
+        }
+    }
+    V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
+    return v9x_d3d_g4_drain_all();
+}
+
+static void v9x_d3d_g4_note_slot(DWORD slot, DWORD sequence)
+{
+    volatile DWORD *pipe = v9x_d3d_g4_pipe();
+
+    pipe[V9X_G4_PIPE_SLOT_SEQ + slot] = sequence;
+    pipe[V9X_G4_PIPE_LAST_SLOT] = slot;
+}
+
 static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
                                  const V9X_R3D_VERTEX *vertices,
                                  DWORD triangle_count)
@@ -655,6 +740,10 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD count;
     DWORD vertex;
     DWORD index;
+    DWORD slot = 0ul;
+    DWORD batch_off;
+    DWORD sequence = 0ul;
+    int wait_after;
     v9x_u32 *at;
     v9x_u32 *target;
 
@@ -687,32 +776,37 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     }
 
     d.state_base = V9X_D3D_G4_GFX(0ul);
-    d.state_offset = V9X_G4_STATE_OFF;
-    d.vertex_address = V9X_D3D_G4_GFX(V9X_G4_VERTEX_OFF);
     d.width = (v9x_u16)draw->target.width;
     d.height = (v9x_u16)draw->target.height;
     d.depth_address = state.depth ? state.depth_address : 0ul;
     d.depth_pitch = state.depth_pitch;
     d.depth_format = state.depth_format;
+    /* Left running, unless GDI may be drawing on the screen (Haswell's
+     * rule, d3d_hsw.c v9x_d3d_hsw_draw_waits). */
+    wait_after = v9x_present_gdi_may_draw();
 
     while (done < triangle_count) {
         count = triangle_count - done;
         if (count > V9X_D3D_G4_MAX_TRIANGLES) {
             count = V9X_D3D_G4_MAX_TRIANGLES;
         }
-        /* The GPU is finished with the state, batch and vertices of every
-         * earlier draw before any of them is rewritten. */
-        if (v9x_d3d_i9xx_render_drain(1) != V9X_RENDER_DRAIN_DONE) {
+        /* The slot after the last one, once the batch that used it last
+         * is done; the other slot's batch may still be running. */
+        if (!v9x_d3d_g4_take_slot(&slot)) {
             v9x_d3d_g4_count_refusal(done == 0ul ? V9X_D3D_G4_REFUSE_IDLE
                                                  : V9X_D3D_G4_REFUSE_SUBMIT);
             return 0;
         }
-        reason = v9x_d3d_g4_write_state(draw, &state);
+        d.state_offset = V9X_G4_STATE_OFF + slot * V9X_G4_STATE_STRIDE;
+        d.vertex_address = V9X_D3D_G4_GFX(V9X_G4_VERTEX_OFF +
+                                          slot * V9X_G4_VERTEX_STRIDE);
+        reason = v9x_d3d_g4_write_state(draw, &state, d.state_offset);
         if (reason != V9X_D3D_G4_REFUSE_NONE) {
             v9x_d3d_g4_count_refusal(reason);
             return 0;
         }
-        at = v9x_d3d_g4_reserve(V9X_G4_VERTEX_OFF);
+        at = v9x_d3d_g4_reserve(V9X_G4_VERTEX_OFF +
+                                slot * V9X_G4_VERTEX_STRIDE);
         for (vertex = 0ul; vertex < count * 3ul; ++vertex) {
             at = v9x_d3d_g4_vertex(at, &vertices[done * 3ul + vertex]);
         }
@@ -725,18 +819,20 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
             v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_BATCH);
             return 0;
         }
-        target = v9x_d3d_g4_reserve(V9X_G4_BATCH_OFF);
+        batch_off = V9X_G4_BATCH_OFF + slot * V9X_G4_BATCH_STRIDE;
+        target = v9x_d3d_g4_reserve(batch_off);
         for (index = 0ul; index < batch.count; ++index) {
             target[index] = batch.dw[index];
         }
-        if (!v9x_d3d_i9xx_submit_g4_batch(V9X_D3D_G4_GFX(V9X_G4_BATCH_OFF),
-                                          1)) {
+        if (!v9x_d3d_i9xx_submit_g4_batch(V9X_D3D_G4_GFX(batch_off),
+                                          wait_after, &sequence)) {
             /* The batch may be running: nothing is submitted again. */
             v9x_d3d_g4_quarantined = 1;
             ++v9x_hal->engine.idle_timeouts;
             v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_SUBMIT);
             return 0;
         }
+        v9x_d3d_g4_note_slot(slot, sequence);
         done += count;
     }
     v9x_present_note_submission();

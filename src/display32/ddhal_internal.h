@@ -614,9 +614,12 @@ int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
                             DWORD bytes_per_pixel);
 /* A Gen4 3D batch (d3d\d3d_g4.c) started from the ring and sealed with the
  * breadcrumb; the batch itself was built and checked by g4_3d.c. 1 when
- * the ring took it; with wait, 1 only once the breadcrumb landed. EXTERNAL
- * from 2026-10-21, for the reason submit_blt is. */
-int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait);
+ * the ring took it; with wait, 1 only once the breadcrumb landed. sequence,
+ * when not null, receives the breadcrumb value that marks it done, for the
+ * Gen4 engine's slot reuse. EXTERNAL from 2026-10-21, for the reason
+ * submit_blt is. */
+int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait,
+                                 DWORD *sequence);
 
 /* CPU blit fallbacks, in blt_cpu.c. */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,

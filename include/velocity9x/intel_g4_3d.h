@@ -30,11 +30,25 @@
 #define V9X_G4_WM_KERNEL_BYTES  0x00000800ul
 #define V9X_G4_WM_KERNEL_SLOTS  24ul
 #define V9X_G4_SIG_OFF          0x0002f000ul  /* kernel signatures         */
-#define V9X_G4_STATE_OFF        0x00030000ul  /* the draw's state block    */
-#define V9X_G4_BATCH_OFF        0x00032000ul  /* the draw's batch, 4 KiB   */
+/* The pipeline's shared words, after the signatures: the slot the last
+ * draw took, and the sequence each slot was last submitted with. */
+#define V9X_G4_PIPE_OFF         0x0002fc00ul
+#define V9X_G4_PIPE_LAST_SLOT   0ul           /* dword index */
+#define V9X_G4_PIPE_SLOT_SEQ    1ul           /* dwords 1 and 2 */
+/*
+ * Two slots, so the CPU writes one draw while the GPU runs the other
+ * (d3d_g4.c). Slot k's state block, batch and vertices are at the base
+ * plus k times the stride.
+ */
+#define V9X_G4_SLOTS            2ul
+#define V9X_G4_STATE_OFF        0x00030000ul  /* slot 0's state block      */
+#define V9X_G4_STATE_STRIDE     0x00001000ul
+#define V9X_G4_BATCH_OFF        0x00032000ul  /* slot 0's batch, 4 KiB     */
+#define V9X_G4_BATCH_STRIDE     0x00001000ul
 #define V9X_G4_BATCH_BYTES      0x00001000ul
-#define V9X_G4_VERTEX_OFF       0x00040000ul  /* to the reserve's end      */
-#define V9X_G4_VERTEX_BYTES     0x000b0000ul
+#define V9X_G4_VERTEX_OFF       0x00040000ul  /* slot 0's vertices         */
+#define V9X_G4_VERTEX_STRIDE    0x00058000ul
+#define V9X_G4_VERTEX_BYTES     0x00058000ul  /* per slot                  */
 
 /* Offsets inside the state block, aligned as the PRM asks (32 bytes for
  * state, 64 for COLOR_CALC_STATE as xf86 places it). */

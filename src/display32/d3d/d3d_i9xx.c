@@ -906,7 +906,8 @@ int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
  * means the breadcrumb landed; a status page that did not prove itself
  * refuses, because nothing would then say when the batch is done.
  */
-int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait)
+int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait,
+                                 DWORD *sequence_out)
 {
     DWORD stream[2ul + V9X_I9XX_BREADCRUMB_STREAM_DWORDS + 2ul];
     DWORD at = 0ul;
@@ -914,6 +915,9 @@ int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait)
     DWORD sequence;
     int submitted;
 
+    if (sequence_out != 0) {
+        *sequence_out = 0ul;
+    }
     if (v9x_hal == 0 || (batch_address & 63ul) != 0ul ||
         !v9x_d3d_i9xx_hws_open()) {
         return 0;
@@ -940,6 +944,9 @@ int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait)
     v9x_d3d_i9xx_breadcrumb_expected = 0ul;
     if (!submitted) {
         return 0;
+    }
+    if (sequence_out != 0) {
+        *sequence_out = sequence;
     }
     if (wait) {
         v9x_d3d_i9xx_note_outstanding(sequence);

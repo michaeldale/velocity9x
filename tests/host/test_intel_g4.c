@@ -265,6 +265,11 @@ static void test_layout(void)
     volatile v9x_u32 batch_bytes = V9X_G4_BATCH_BYTES;
     volatile v9x_u32 vertex = V9X_G4_VERTEX_OFF;
     volatile v9x_u32 vertex_bytes = V9X_G4_VERTEX_BYTES;
+    volatile v9x_u32 vertex_stride = V9X_G4_VERTEX_STRIDE;
+    volatile v9x_u32 state_stride = V9X_G4_STATE_STRIDE;
+    volatile v9x_u32 batch_stride = V9X_G4_BATCH_STRIDE;
+    volatile v9x_u32 slots = V9X_G4_SLOTS;
+    volatile v9x_u32 pipe = V9X_G4_PIPE_OFF;
     volatile v9x_u32 st[7];
     volatile v9x_u32 urb_vs = V9X_G4_URB_VS_ENTRIES * V9X_G4_URB_VS_SIZE;
     volatile v9x_u32 urb_sf = V9X_G4_URB_SF_ENTRIES * V9X_G4_URB_SF_SIZE;
@@ -282,12 +287,18 @@ static void test_layout(void)
     st[6] = V9X_G4_ST_CC;
 
     CHECK(area >= 0x11000ul);
-    CHECK(vertex + vertex_bytes <= 0x100000ul);
+    CHECK(vertex + (slots - 1ul) * vertex_stride + vertex_bytes <=
+          0x100000ul);
+    CHECK(vertex_bytes <= vertex_stride);
     CHECK(disjoint(sf, 0x1000ul, wm, wm_end - wm));
     CHECK(wm_end <= sig);
-    CHECK(sig + 4ul * 4ul * (wm_slots + 1ul) <= state);
-    CHECK(state + state_bytes <= batch);
-    CHECK(batch + batch_bytes <= vertex);
+    CHECK(sig + 4ul * 4ul * (wm_slots + 1ul) <= pipe);
+    CHECK(pipe + 4ul * (1ul + slots) <= state);
+    CHECK(state_bytes <= state_stride);
+    CHECK(state + (slots - 1ul) * state_stride + state_bytes <= batch);
+    CHECK(batch_bytes <= batch_stride);
+    CHECK(batch + (slots - 1ul) * batch_stride + batch_bytes <= vertex);
+    CHECK((batch_stride & 63ul) == 0ul && (state_stride & 63ul) == 0ul);
     CHECK((batch & 63ul) == 0ul);
     CHECK((sf & 63ul) == 0ul);
     CHECK((wm & 63ul) == 0ul);
