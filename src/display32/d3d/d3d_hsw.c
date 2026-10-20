@@ -89,6 +89,18 @@
 #define V9X_D3D_HSW_REFUSE_ADDRESS   6ul
 #define V9X_D3D_HSW_REFUSE_KEY       7ul
 #define V9X_D3D_HSW_REFUSE_ALPHA     8ul
+/* After the mapping (9 and 10 are d3d_hsw_map.h's): the draw was expressible
+ * but did not reach the engine. Counted in the same table so a capture names
+ * the site; a tester's 3DMark 2001 SE run refused 4,863 batches with every
+ * mapping reason at 0 (docs\issues\2026-10-20-haswell-3dmark2001se-
+ * artifacts-field.md). */
+#define V9X_D3D_HSW_REFUSE_NOT_READY 11ul  /* engine not ready or quarantined */
+#define V9X_D3D_HSW_REFUSE_IDLE      12ul  /* blitter or render wait before
+                                              the state write              */
+#define V9X_D3D_HSW_REFUSE_STATE     13ul  /* a state block would not encode */
+#define V9X_D3D_HSW_REFUSE_PIECE     14ul  /* render wait between pieces    */
+#define V9X_D3D_HSW_REFUSE_WORKLOAD  15ul  /* the batch would not build     */
+#define V9X_D3D_HSW_REFUSE_SUBMIT    16ul  /* the ring submission failed    */
 
 /* SAMPLER_STATE DW3 address modes for all three axes (Vol 2a/2d). */
 #define V9X_D3D_HSW_TC_WRAP   0ul
@@ -998,8 +1010,13 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     const v9x_u32 *uv1;
     v9x_u32 *target;
 
-    if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
-        !v9x_d3d_hsw_ready()) {
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
+        return 0;
+    }
+    if (!v9x_d3d_hsw_ready()) {
+        if (v9x_hal != 0) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_NOT_READY);
+        }
         return 0;
     }
     reason = v9x_d3d_hsw_map(draw, &state);
@@ -1020,6 +1037,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     /* The blitter may still be writing this draw's texture or target, and
      * the previous draw must be done before its state is overwritten. */
     if (!v9x_engine32_hsw.wait_idle(1) || !v9x_d3d_hsw_wait_rcs()) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         return 0;
     }
     /* The per-batch cost split (2026-10-18), in Gen3 buckets V9XTRACE
@@ -1027,6 +1045,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
      * also in Decode), the vertex copy in RingWrite. */
     timed = V9X_TIME_BEGIN();
     if (!v9x_d3d_hsw_write_state(draw, &state, &kernel)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
         return 0;
     }
     V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, timed);
@@ -1065,6 +1084,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
             count = limit;
         }
         if (done != 0ul && !v9x_d3d_hsw_wait_rcs()) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_PIECE);
             return 0;
         }
         source = (const v9x_u32 *)(vertices + done * 3ul);
@@ -1095,8 +1115,12 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_STATE_BASE,
                                         V9X_INTEL_HSW_STATE_BYTES, &d,
                                         V9X_D3D_HSW_CRUMB_GFX,
-                                        done + count) != V9X_STATUS_OK ||
-            !v9x_d3d_hsw_submit()) {
+                                        done + count) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+            return 0;
+        }
+        if (!v9x_d3d_hsw_submit()) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
             return 0;
         }
         done += count;

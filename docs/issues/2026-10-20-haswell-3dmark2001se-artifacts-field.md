@@ -106,3 +106,31 @@ or a screenshot. Two things would let the next report answer it:
 - a 3DMark 2001 SE run on the i5-4570 at 1024x768x32, with a snapshot
   before and after each test, to see which test the refusals and the
   declined trees fall in and what is on screen there.
+
+## 2026-10-20: the heap is 16 MiB on every HD 4600
+
+The declined mip trees' last reason, `V9X_D3D_PLACE_ALLOC`, is
+`DDHAL32_VidMemAlloc` returning nothing: DirectDraw's heap was full
+(`d3d_place.c`, `v9x_d3d_place_block`). The heap is sized by
+`v9x_vbe_vram_bytes`, which `v9x_vram_usable_bytes` (`enable16.c`)
+clamps to the DPMI mapping, and the Intel family maps 16 MiB of GMADR
+(`intel_hw16.c`, `0x00ffu, 0xffffu`). `V9XBOOT.INI` shows it:
+`VddReserve ... vram=16777216` beside `VbeController ... mem=1023`
+(64 MiB from 4F00h). Our i5-4570 reads `vram=16777216` too, against
+32 MiB stolen.
+
+The benchmark ran at 1024x768x16 with three buffers: the flip offsets
+are 0, `0x0018C000` and `0x00318000`, each 2112 x 768 bytes
+(`D3dTargetPitch=2112`), and the Z buffer follows at `0x004A4000`,
+2048 x 768. That is about 6.2 MiB, which leaves about 10 MiB for every
+texture 3DMark 2001 SE loads. So a texture-heavy test running out of heap is
+the expected outcome on this driver, not a fault. Nothing measured says
+whether the heap running out caused what the tester saw.
+
+Not changed. The Haswell engine reserve sits at aperture `1800000h`
+(24 MiB, `docs/plans/intel-haswell-direct3d.md`), above the 16 MiB
+heap. The 945GSE and 915GM share this table entry, and their stolen
+memory is 8 MiB on the machines measured. Mapping more of the aperture
+on the HD 4600 alone would be per-chip hw16 data, and the reserve
+would have to move above whatever is mapped. That is a design
+decision, not taken here.
