@@ -558,6 +558,10 @@ void v9x_present_trace(DWORD kind, DWORD context, DWORD offset);
  * last told to show. A draw aimed at it is a draw into the presented
  * buffer. */
 DWORD v9x_present_flip_offset(void);
+/* Whether GDI may be drawing on the screen: true unless this process holds
+ * exclusive mode and has not flipped back to the GDI surface. A backend
+ * leaves rendering running only while this is false (ddhal_core.c). */
+int v9x_present_gdi_may_draw(void);
 /*
  * Whether this batch is the frame's first draw to record, and consume the
  * marker if so. `submitted` says whether the backend actually launched a

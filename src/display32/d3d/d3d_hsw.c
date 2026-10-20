@@ -25,9 +25,10 @@
  *
  * What used to rely on the RCS being idle now waits for it instead: the
  * blitter's idle test covers both rings (eng_hsw.c), and Flip, Lock, Blt
- * and every drain go through it. Three things stay synchronous: a draw into
- * the buffer on screen (the 16-bit driver writes GDI and the cursor there
- * with no hook this DLL sees), the depth fill, and the initialising batch.
+ * and every drain go through it. Three things stay synchronous: a draw made
+ * while GDI may be drawing on the screen (the 16-bit driver writes GDI and
+ * the cursor with no hook this DLL sees; ddhal_core.c tracks exclusive mode
+ * and FlipToGDISurface), the depth fill, and the initialising batch.
  *
  * No state lives in this DLL across draws: it is mapped into every Direct3D
  * process, and every batch carries all of its state. The sequence, and so
@@ -450,13 +451,18 @@ static int v9x_d3d_hsw_blitter_idle(void)
     return status[0] == status[1];
 }
 
-/* A draw whose target is on screen, or GDI's primary at offset 0, runs
- * synchronously: the 16-bit driver draws GDI and the software cursor into
- * that memory with no hook this DLL sees (plan decision 3). */
-static int v9x_d3d_hsw_target_shown(const V9X_R3D_DRAW *draw)
+/*
+ * A draw runs synchronously while GDI may be drawing on the screen: the
+ * 16-bit driver writes GDI and the software cursor into the framebuffer
+ * with no hook this DLL sees (plan decision 3, narrowed 2026-10-20). While
+ * this process holds exclusive mode with its own buffers shown, GDI is not
+ * drawing, and every draw is left running. The first form of the rule, by
+ * target offset, kept Half-Life entirely and a third of 3DMark 2000
+ * synchronous for buffers GDI was not touching.
+ */
+static int v9x_d3d_hsw_draw_waits(void)
 {
-    return draw->target.offset == 0ul ||
-           draw->target.offset == v9x_present_flip_offset();
+    return v9x_present_gdi_may_draw();
 }
 
 /* The blitter's conditions, the render ring the mini-VDD opened (CAP_D3D),
@@ -1193,7 +1199,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD index;
     DWORD vertex;
     DWORD timed;
-    int shown;
+    int wait_after;
     const v9x_u32 *source;
     const v9x_u32 *uv1;
     v9x_u32 *target;
@@ -1228,7 +1234,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         return 0;
     }
-    shown = v9x_d3d_hsw_target_shown(draw);
+    wait_after = v9x_d3d_hsw_draw_waits();
 
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
     d.width = (v9x_u16)draw->target.width;
@@ -1314,7 +1320,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
             return 0;
         }
-        if (!v9x_d3d_hsw_submit(&slot, shown)) {
+        if (!v9x_d3d_hsw_submit(&slot, wait_after)) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
             return 0;
         }

@@ -561,6 +561,37 @@ DWORD v9x_present_flip_offset(void)
     return v9x_present_offset;
 }
 
+/*
+ * Whether GDI may be drawing on the screen while this process draws.
+ *
+ * GDI - the DIB engine and the software cursor in the 16-bit driver -
+ * writes the visible framebuffer with no hook this DLL sees, so a backend
+ * that leaves rendering running must not do so while GDI owns the screen.
+ * It does not own it from the moment this process takes exclusive mode
+ * until it leaves it, except while the application has flipped back to the
+ * GDI surface (FlipToGDISurface, for a dialog) and has not flipped again.
+ *
+ * One instance for every process, as all of this DLL's data is: its
+ * sections are marked shared (scripts\build-ddraw-hal-dll.ps1). That fits
+ * what is tracked - one process holds exclusive mode at a time, and while it
+ * does no other process's GDI reaches the screen either. A process that dies
+ * holding exclusive mode leaves the flag set until the next SetExclusiveMode
+ * from anyone.
+ *
+ * Before 2026-10-20 the Haswell path used "the target is offset 0 or the
+ * last flip's buffer" instead. Because v9x_present_offset is shared too,
+ * Half-Life's render target matched the buffer V9XDDP had last flipped to
+ * in an earlier process, and every Half-Life draw went synchronous
+ * (docs\decisions\2026-10-20-haswell-pipelined-gdi-rule.md).
+ */
+static int v9x_present_exclusive = 0;
+static int v9x_present_gdi_flipped = 0;
+
+int v9x_present_gdi_may_draw(void)
+{
+    return !v9x_present_exclusive || v9x_present_gdi_flipped;
+}
+
 int v9x_present_draw_record(int submitted)
 {
     return v9x_draw_note_should_record(&v9x_present_draw_note, submitted);
@@ -920,6 +951,8 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         v9x_scanout_note_flip_sequence(v9x_present_seq);
         v9x_present_retiring = v9x_surface_offset(data->lpSurfCurr);
         v9x_present_offset = offset;
+        /* The application's own buffer is on screen again, not GDI's. */
+        v9x_present_gdi_flipped = 0;
         v9x_draw_note_flip(&v9x_present_draw_note);
         v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
                           offset);
@@ -1199,6 +1232,8 @@ DWORD __stdcall V9xHalFlipToGDISurface(V9X_DDHAL_FLIPTOGDIDATA *data)
         if (v9x_can_set_display_start()) {
             v9x_set_display_start(0ul);
         }
+        /* GDI may draw now, until the next accepted flip. */
+        v9x_present_gdi_flipped = 1;
     }
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_FLIPTOGDI, data->ddRVal);
@@ -1233,6 +1268,10 @@ DWORD __stdcall V9xHalSetExclusiveMode(
             v9x_set_display_start(0ul);
         }
     }
+    /* Entering, GDI gives up the screen; leaving, it has it back. Only
+     * after the drain above, so a refused leave keeps the old state. */
+    v9x_present_exclusive = data->dwEnterExcl != 0ul ? 1 : 0;
+    v9x_present_gdi_flipped = 0;
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_SETEXCLUSIVE, data->ddRVal);
     return V9X_DDHAL_DRIVER_HANDLED;

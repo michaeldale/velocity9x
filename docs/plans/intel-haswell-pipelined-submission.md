@@ -15,8 +15,12 @@ Phase 3 built and measured the same day
 (`../decisions/2026-10-20-haswell-pipelined-phase3-deferred-wait.md`):
 3DMark 2000 157 to 127 µs a batch. Gates 1-4 passed. Gate 5 passed
 partly, and gates 6 and 7 were not run (gate 7 as written cannot work:
-`reset` skips Disable). Decision 3's rule made Half-Life and a third of
-3DMark synchronous, and is open for review.
+`reset` skips Disable). Decision 3 was narrowed the same day, at
+Michael's request: a draw now waits only while GDI may own the screen
+(not in exclusive mode, or flipped to the GDI surface). 3DMark 2000
+measured 112 µs a batch and Half-Life mwd5 79.3 fps
+(`../decisions/2026-10-20-haswell-pipelined-gdi-rule.md`). Open: gates
+6 and 7.
 
 ## Why
 
