@@ -14,7 +14,7 @@ The latest release is [0.22.0](../releases/0.22.0/README.md), built from
 from 0.21.0 offers it with a `signed=` line, and the served `SIGNED.TXT` and
 intel-gma zip equal the committed ones byte for byte (2026-10-20).
 Its archives are host-audited; none has had an activation smoke test from
-a Have Disk install of the archive itself. The checkout is 0.22.1,
+a Have Disk install of the archive itself. The checkout is 0.23.0,
 unreleased. See the [changelog](../CHANGELOG.md) for what it adds: the HD
 4600 heap and 32-bit textures, and the GMA 3150.
 
