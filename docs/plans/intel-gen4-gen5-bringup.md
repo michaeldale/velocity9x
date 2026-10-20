@@ -1,10 +1,13 @@
 # Gen4 and Gen5: a free tier-0 desktop, and why the engine does not come with it
 
-Status: **proposed; nothing coded, nothing measured on a Windows guest.** The
-evidence is four DOS surveys - two of an Ironlake board
-(`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`) and the
-X61's GM965 (`thinkpad-x61-vgasurv-2026-09-05.ini`). No machine in the fleet
-runs Windows 98 on either chip.
+Status: **Gen4 steps 1-3 done on TOMMOHP (GM965), 2026-10-20; nothing
+coded for the engine.** Windows 98 SE runs on a GM965, the `vbe` family
+reaches enable-ok there, and a read-only probe answered Phase 1 for Gen4:
+`docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md`. Gen5 is
+unchanged: four DOS surveys, no Windows. The Ironlake evidence is the
+surveys of an Ironlake board
+(`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`) and
+the X61's GM965 (`thinkpad-x61-vgasurv-2026-09-05.ini`).
 
 This started as an Ironlake plan and is not one any more: Gen4 and Gen5 turn
 out to be one architecture, and Gen4 is the half that is documented and that
@@ -214,6 +217,7 @@ chips.
 
 | Machine | State |
 |---|---|
+| TOMMOHP (GM965, Gen4) | Tom Rossell's HP laptop, remote help `M-KYHT4Q`. Windows 98 SE; `vbe` enable-ok and the Gen4 probe, 2026-10-20. The Gen4 test machine. |
 | X61 (GM965, Gen4) | Surveyed 2026-09-05, in the fleet. Same architecture as Ironlake and the only documented one of the two. No Windows install tried, but a 2007 Core 2 ThinkPad is the most plausible Win98 host of the three. |
 | chinaboard (Clarkdale, Gen5) | The only board where an Ironlake IGP is the primary display. No Windows install. |
 | P7H55-M (Clarkdale, Gen5) | Has an Ironlake IGP at 00:02.0, but class `038000` with `Command=0000` and every BAR unassigned - enabled in the BIOS as a secondary and given no resources. A test bed only if the firmware can be made to assign them. |
@@ -230,8 +234,8 @@ runs Windows 98 is not known.
 
 ## Order
 
-1. **Windows 98 SE on any of the three.** Everything is blocked here, and
-   nothing in this plan can answer it. Try the X61 first.
+1. **Windows 98 SE on any of the three.** Done for Gen4 on TOMMOHP, which
+   is outside the three; still open for Gen5.
 2. Install the `vbe` family on whichever boots; confirm the desktop and the
    modes the survey described. No code. If this is all that ever happens, it
    is still the answer for most users of either chip.
