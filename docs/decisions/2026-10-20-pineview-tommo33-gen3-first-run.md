@@ -140,10 +140,73 @@ The texture refusals are the six V9XDDP left before the run. 47,207 mip
 trees were declined for room (reason 4): the 7 MB heap of 8 MiB stolen
 memory, against texture tests sized at 16 to 64 MB.
 
+## 24-bit depth, every mode, and 3DMark 2000 at 32 bpp (same boot)
+
+- **V9XD32 `/z24`**: `PASS` at 640x480x32 and with `/bpp16`, 0 failures
+  (`V9XD32-bpp32-z24.txt`, `V9XD32-bpp16-z24.txt`). The HAL offers 16- and
+  32-bit Z (`HalZDepth=0x500`).
+- **V9XMSW `/set`** through all nine modes the BIOS describes: 640x480,
+  800x600 and 1024x600 at 8, 16 and 32 bpp. Every one ended
+  `Result=PASS`, then back to 1024x600x16 (`modes\`).
+- **3DMark 2000 at 800x600x32**, 16-bit textures and Z, double buffered
+  (`3dmark2000-32bpp\`). 3DMark does not offer 1024x600x32; the likely
+  reason, not checked, is that it sizes the mode for triple buffering.
+  - **851 3DMarks**, recorded and not compared. 3DMark gives no CPU score
+    off 16 bpp.
+  - Helicopter 18.2 / 12.7 / 5.7 fps; Adventure 14.5 / 11.1 / 8.6.
+  - Fill rate 105.1 / 106.3 MTexels/s; high polygon 715 / 653 / 605
+    KTriangles/s.
+  - Texture rendering at 8 / 16 / 32 / 64 MB: 46.1 / 23.8 / 12.1 / 5.7 fps.
+  - Bump mapping not supported.
+- **Snapshot after both runs** (`V9XSNA-clocks-after-32bpp.INI`):
+  - 1,492,355 draws, none refused;
+  - 0 breadcrumb, ring-space or flip-wait timeouts;
+  - `WmWrites=0`;
+  - 77,659 mip trees declined for room.
+
+## Mode-set state and video BIOS
+
+V9XTRACE built from `6377f101` (`-clk`) adds the live pipe's clock and
+panel registers, Pineview's DSPFW words, and an opt-in `-vbios` image of
+`C000:0000`. It was run as `V9XTRC2.EXE -vbios`. Read-only:
+
+| Register | Value |
+|---|---|
+| Live pipe | B |
+| `DPLL_B` | `0x98046000` |
+| `FPB0` / `FPB1` | `0x00100077` / `0x00200074` |
+| `PP_STATUS` / `PP_CONTROL` | `0xC0000008` / `0x00000001` |
+| `PP_ON_DELAYS` / `PP_OFF_DELAYS` / `PP_DIVISOR` | `0x025807D0` / `0x01F407D0` / `0x00209D05` |
+| `BLC_PWM_CTL` | `0x65ED65EC` |
+| `DSPFW1` / `DSPFW2` / `DSPFW3` | `0x3F830F0F` / `0x0000030F` / `0x0F200100` |
+
+The DPLL fits Linux's Pineview formula exactly. The fields
+(i915_reg.h, `pnv_calc_dpll_params`):
+- `FPB0` N field `0x10`, one-hot n = 4; M2 = `0x77`, so m = 121.
+- `DPLL_B` P1 field `0x08`, so p1 = 4.
+- LVDS mode with P2 bit 24 clear, so p2 = 14.
+- Reference input `3 << 13`, spread spectrum, where i915 uses the VBT's
+  SSC frequency.
+
+At 100 MHz that gives vco 3,025 MHz and a 54.0 MHz dot clock. Against the
+pipe's measured 1386x652 totals that is 59.8 Hz. At 96 MHz it would be
+57.4 Hz. 100 MHz is inferred from the fit, not read from the VBT.
+
+Watermarks: `DSPFW1`'s self-refresh field (bits 31:23) is `0x7F`, and
+`DSPFW3` bit 30 (`PINEVIEW_SELF_REFRESH_EN`) is clear. **The BIOS leaves
+CxSR off**, so the self-refresh watermarks are inert at this mode. Writing
+none of them (item 2) loses nothing here. If CxSR is ever turned on,
+`pnv_update_wm`'s arithmetic is the one to apply.
+
+The image is kept outside the tree, since the repository is public and the ROM is Intel's and Lenovo's, in `claude\personal\v9x-testers\tommo33-2026-10-20\vbios\gma3150-lenovo-17AA-3908-V9XVBIOS.BIN`, SHA-256 `dd7509459e79bb2be9f786affd960dd7929ba398f0e72c2ddb5ecd9e8efe6041`. It is 55,808 bytes (header `0xDA00`), signature `AA55`, "PineView
+Graphics Chip Accelerated VGA BIOS", one `$VBT` and `BIOS_DATA_BLOCK`. That
+is the same size as the Acer NAV50's image in its survey; the contents
+have not been compared.
+
 ## Not done
 
 - No game beyond 3DMark 2000.
-- No DSPFW capture.
+- The VBT has not been decoded.
 - The netbook has not run `bce8b693`, so the `vbe-size-unread` change on the
   945 is still unmeasured.
 

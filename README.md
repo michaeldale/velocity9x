@@ -130,10 +130,9 @@ from the records the [changelog](CHANGELOG.md) links.
 
 Measured limits:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
-  depth buffer as well as the 16-bit one, on the GMA 950/900, the HD
+  depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600 and the Millennium II (the Mystique: 32 bpp, 16-bit depth
-  only; the GMA 3150: 32 bpp measured with 16-bit depth, its 24-bit depth
-  not yet). Every other card's 3D, and OpenGL, Glide and 3DCIF everywhere,
+  only). Every other card's 3D, and OpenGL, Glide and 3DCIF everywhere,
   is 16-bit colour with a 16-bit depth buffer.
 - **Two texture units** means one-pass multitexture: OpenGL's
   `GL_SGIS_multitexture`, and lightmaps in one pass.

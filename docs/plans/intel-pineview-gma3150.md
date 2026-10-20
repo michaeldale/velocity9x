@@ -180,6 +180,20 @@ Record it as a decision doc, including the hypotheses it kills. CxSR is the
 question to answer: whether the BIOS leaves self-refresh on, and what it
 programmed for the VBE mode.
 
+**Answered on TOMMO33, 2026-10-20** (`2026-10-20-pineview-tommo33-gen3-first-run.md`):
+- The boot fingerprint passes, and V9XTRACE's live dump covers the pipe,
+  plane and panel fitter.
+- The `-clk` dump adds `DPLL_B`/FP, the panel power sequencer, the
+  backlight and `DSPFW1`-`3`.
+- `DSPFW3` bit 30 is clear: **the BIOS leaves CxSR off**, so not writing
+  watermarks loses nothing at the VBE modes.
+- `DPLL_B` `0x98046000` and `FPB0` `0x00100077` decode by
+  `pnv_calc_dpll_params` to 54.0 MHz on a 100 MHz SSC reference. That is
+  59.8 Hz on the measured totals, the formula Phase 4 would program.
+- The video BIOS image, with its VBT, is captured. It is kept out of the
+  public tree; the decision record gives its path and hash.
+- Not read: `PGTBL_CTL` and the GTT head, beyond what the boot capture holds.
+
 ## Phase 3: the claim
 
 First run, 2026-10-20, boot 12 (`2026-10-20-pineview-tommo33-gen3-first-run.md`):
