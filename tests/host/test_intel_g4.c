@@ -3,6 +3,7 @@
 
 #include "velocity9x/intel_g4_3d.h"
 #include "velocity9x/intel_g4_eu.h"
+#include "velocity9x/intel_hsw_3d.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -384,6 +385,41 @@ static void test_state(void)
     CHECK(out[2] == 0x301c0ul);
 }
 
+/* A mip chain as Gen4 samples it: the tree d3d_g4.c places, by 965 PRM Vol
+ * 1 6.17.3.2's MIPLAYOUT_BELOW equations with i = 4, j = 2 (LOD1 (0, h0),
+ * LOD2 (w1, h0), LOD3 (w1, h0 + h2)); SURFACE_STATE's MIP count in DW2 5:2
+ * with the layout bit (DW0 10) left BELOW; trilinear with Max LOD in U4.6. */
+static void test_mips(void)
+{
+    struct v9x_hsw_miptree tree;
+    struct v9x_g4_sampler s;
+    v9x_u32 out[8];
+
+    CHECK(v9x_intel_hsw_miptree(256u, 256u, 9u, 2u, &tree) ==
+          V9X_STATUS_OK);
+    CHECK(tree.pitch == 512ul);
+    CHECK(tree.level_offset[1] == 256ul * 512ul);
+    CHECK(tree.level_offset[2] == 256ul * 512ul + 128ul * 2ul);
+    CHECK(tree.level_offset[3] == (256ul + 64ul) * 512ul + 128ul * 2ul);
+
+    CHECK(v9x_g4_surface(out, V9X_G4_FMT_B5G6R5_UNORM, 0x00200000ul, 256u,
+                         256u, tree.pitch, 0u, 0u, 9u) == V9X_STATUS_OK);
+    CHECK(((out[2] >> 2) & 0xful) == 8ul);
+    CHECK((out[0] & (1ul << 10)) == 0ul);
+    CHECK(v9x_g4_surface(out, V9X_G4_FMT_B5G6R5_UNORM, 0x00200000ul, 256u,
+                         256u, tree.pitch, 0u, 0u, 13u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    s.min_filter = 1u;
+    s.mag_filter = 1u;
+    s.mip_filter = 3u;
+    s.address = 0u;
+    s.max_lod = 8u;
+    CHECK(v9x_g4_sampler_state(out, &s, 0x301c0ul) == V9X_STATUS_OK);
+    CHECK(((out[0] >> 20) & 3ul) == 3ul);
+    CHECK(((out[1] >> 12) & 0x3fful) == (8ul << 6));
+}
+
 /* The batch: builds, passes its own check with URB_FENCE inside one line
  * wherever the stream starts, and the check refuses a damaged copy. */
 static void test_batch(void)
@@ -453,6 +489,7 @@ unsigned int v9x_run_intel_g4_tests(void)
     test_wm_kernels();
     test_layout();
     test_state();
+    test_mips();
     test_batch();
     return failures;
 }

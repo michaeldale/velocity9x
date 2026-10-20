@@ -16,7 +16,8 @@ build identifier so exact guest-tested binaries remain traceable.
     programs and pipeline state. The Direct3D probe passed every check at
     16 and 32 bpp, including texturing, depth and blending. 3DMark 2000's
     default benchmark ran to its score. Draws are queued two deep, so the
-    CPU builds one while the GPU runs the last.
+    CPU builds one while the GPU runs the last. Mip-mapped textures sample
+    every level, with nearest and trilinear filtering between them.
   - Page flips, through Gen4's own plane registers, at the panel's
     refresh.
 
