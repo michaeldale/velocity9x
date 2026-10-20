@@ -21,6 +21,15 @@
  */
 #define V9X_PCI_DEVICE_GMA3150_PNV       ((v9x_u16)0xa011u)
 /*
+ * The GM965's GMA X3100, function 0: Gen4. The Gen3 2D path's commands
+ * (XY_COLOR_BLT, XY_SRC_COPY_BLT, MI_FLUSH, MI_STORE_DATA_INDEX) carry over;
+ * its GTT lives in BAR0 rather than BAR3, its plane flips through DSPSURF,
+ * and its 3D pipeline is not Gen3's at all, so it is claimed for 2D only.
+ * Measured on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-and-
+ * mmio.md).
+ */
+#define V9X_PCI_DEVICE_GMA_X3100_GM965   ((v9x_u16)0x2a02u)
+/*
  * Haswell GT2 desktop, HD Graphics 4600: Gen7.5, none of the Gen3 command
  * set, register layout or verbs (src\chipsets\intel\hsw\hsw_hw16.c). Measured
  * on the i5-4570 (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md).

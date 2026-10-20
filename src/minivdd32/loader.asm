@@ -267,6 +267,17 @@ V9xI9xxEventOffsets dd 00002020h, 00002030h, 00002034h, 00002038h
                      dd 0000203ch, 00002080h
                      dd 00002000h, 00002004h, 00002008h, 0000200ch
                      dd 00002010h, 00002014h, 00002018h, 0000201ch
+; Gen4 (GM965): the same eight fence slots, FENCE_REG_965 0-3 lo/hi at 3000h
+; (Linux 6.6 i915_reg.h). Neither i915 nor the 965 PRM names 2000h-201Ch on
+; that part, so this journal, which also runs from DPMS calls at ring 0,
+; does not read them there. Chosen when the GTT the display driver hands
+; over is BAR0 + 512 KiB, which is where datasheet 316273 21.1.10 puts the
+; Gen4 GTT; on Gen3 the GTT is BAR3, a BAR of its own.
+V9xI9xxEventOffsetsGen4 dd 00002020h, 00002030h, 00002034h, 00002038h
+                         dd 0000203ch, 00002080h
+                         dd 00003000h, 00003004h, 00003008h, 0000300ch
+                         dd 00003010h, 00003014h, 00003018h, 0000301ch
+V9xI9xxGttInBar0    dw 0
 V9xI9xxEventRecords dd V9X_I9XX_EVENT_MAX * V9X_I9XX_EVENT_DWORDS dup (0)
 V9xI9xxEventCount   dw 0
 V9xI9xxEventDropped dw 0
@@ -1296,6 +1307,15 @@ BeginProc V9xMini_I9xx_Gtt_Capture
     jmp     short V9xMini_I9xx_Gtt_Read
 V9xMini_I9xx_Gtt_Map:
     mov     V9xI9xxGttBase, eax
+    mov     V9xI9xxGttInBar0, 0
+    mov     edx, V9xI9xxMmioBase
+    test    edx, edx
+    jz      short V9xMini_I9xx_Gtt_Map_Window
+    add     edx, V9X_I9XX_MMIO_BYTES
+    cmp     eax, edx
+    jne     short V9xMini_I9xx_Gtt_Map_Window
+    mov     V9xI9xxGttInBar0, 1
+V9xMini_I9xx_Gtt_Map_Window:
     VMMcall _MapPhysToLinear,<eax,V9X_I9XX_GTT_BYTES,0>
     cmp     eax, 0ffffffffh
     je      short V9xMini_I9xx_Gtt_Map_Failed
@@ -1303,6 +1323,7 @@ V9xMini_I9xx_Gtt_Map:
     jmp     short V9xMini_I9xx_Gtt_Read
 V9xMini_I9xx_Gtt_Map_Failed:
     mov     V9xI9xxGttBase, 0
+    mov     V9xI9xxGttInBar0, 0
     jmp     V9xMini_I9xx_Gtt_Done
 
 V9xMini_I9xx_Gtt_Read:
@@ -1334,6 +1355,17 @@ V9xMini_I9xx_Gtt_Done:
     movzx   eax, V9xI9xxGttValid
     ret
 EndProc V9xMini_I9xx_Gtt_Capture
+
+; Returns EDX = the event offset table for this part's layout: Gen3's,
+; or Gen4's when the GTT lies in BAR0 (see V9xI9xxEventOffsetsGen4).
+BeginProc V9xMini_I9xx_Event_Table
+    mov     edx, OFFSET32 V9xI9xxEventOffsets
+    cmp     V9xI9xxGttInBar0, 0
+    je      short V9xMini_I9xx_Event_Table_Done
+    mov     edx, OFFSET32 V9xI9xxEventOffsetsGen4
+V9xMini_I9xx_Event_Table_Done:
+    ret
+EndProc V9xMini_I9xx_Event_Table
 
 ; EAX=event kind, EBX=event context. Capture only after both Phase 1 mappings
 ; exist. Every MMIO field is read twice and the full GTT is hashed twice; no
@@ -1367,7 +1399,7 @@ BeginProc V9xMini_I9xx_Event_Capture
 
     mov     ebp, V9X_I9XX_EVENT_COMPLETE or V9X_I9XX_EVENT_MMIO_STABLE
     mov     esi, V9xI9xxMmioLinear
-    mov     edx, OFFSET32 V9xI9xxEventOffsets
+    call    V9xMini_I9xx_Event_Table
     lea     ebx, [edi+16]
     mov     ecx, 14
 V9xMini_I9xx_Event_Mmio_First:
@@ -1379,7 +1411,7 @@ V9xMini_I9xx_Event_Mmio_First:
     dec     ecx
     jnz     short V9xMini_I9xx_Event_Mmio_First
 
-    mov     edx, OFFSET32 V9xI9xxEventOffsets
+    call    V9xMini_I9xx_Event_Table
     lea     ebx, [edi+16]
     mov     ecx, 14
 V9xMini_I9xx_Event_Mmio_Second:

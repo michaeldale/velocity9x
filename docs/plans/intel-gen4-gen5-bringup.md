@@ -1,9 +1,11 @@
 # Gen4 and Gen5: a free tier-0 desktop, and why the engine does not come with it
 
-Status: **Gen4 steps 1-3 done on TOMMOHP (GM965), 2026-10-20; nothing
-coded for the engine.** Windows 98 SE runs on a GM965, the `vbe` family
-reaches enable-ok there, and a read-only probe answered Phase 1 for Gen4:
-`docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md`. Gen5 is
+Status: **Gen4 steps 1-4 done on TOMMOHP (GM965), 2026-10-20, flips
+excepted.** Windows 98 SE runs on a GM965, the `vbe` family reaches
+enable-ok there, and a read-only probe answered Phase 1 for Gen4:
+`docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md`. `intel-gma`
+claims `2A02` for 2D, and DirectDraw fills and copies ran on its ring:
+`docs\decisions\2026-10-20-gm965-ring-and-blits.md`. Gen5 is
 unchanged: four DOS surveys, no Windows. The Ironlake evidence is the
 surveys of an Ironlake board
 (`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`) and
@@ -243,6 +245,8 @@ runs Windows 98 is not known.
    GGC and BSM location, the stolen-size encoding. One decision doc, with the
    INIs. The answers cover both chips, so it is worth running wherever a
    Windows install lands first.
-4. Identity, GTT, ring, blits - only if (3) comes back clean.
+4. Identity, GTT, ring, blits - only if (3) comes back clean. Done for the
+   GM965 except flips, which need DSPSURF (and a decision on FW_BLC) before
+   the HAL may write the plane on Gen4.
 5. Gen4 3D as its own project, if ever, on the X61 and against the 965 and
    G45 PRMs. Ironlake follows as a delta; it does not lead.

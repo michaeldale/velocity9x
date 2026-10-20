@@ -336,6 +336,45 @@ static void v9x_gma3150_fill_engine(unsigned long framebuffer_linear_base,
     }
 }
 
+/*
+ * The GM965's GMA X3100 (Gen4): the 945's descriptor for the ring and the
+ * blits, and nothing else of the Gen3 engine.
+ *
+ * What carries over, by the 965 PRM: the ring registers at 2030h, and the
+ * commands the 2D path builds - XY_COLOR_BLT and XY_SRC_COPY_BLT on the
+ * render ring (no separate blitter ring before Gen6), MI_FLUSH, MI_NOOP and
+ * the 1x1 colour-blit breadcrumb into the status page. The GTT window is
+ * found by V9xPciReadIntelGttConfig in BAR0 instead of BAR3.
+ *
+ * What is withheld, and why:
+ *  - D3D. Gen4 deleted the Gen3 3D command set; its pipeline is URB-based
+ *    with EU kernels (docs\plans\intel-gen4-gen5-bringup.md, Phase 2).
+ *  - FLIP and FLIP_RING. The HAL flips by writing the plane base at
+ *    70184h/71184h, which on the 965 is DSPxLINOFF, an offset added to
+ *    DSPxSURF (7019Ch/7119Ch); the write would not latch (965 PRM Vol 3
+ *    2.10.5). The HAL also writes FW_BLC, which i915 does not program this
+ *    way on Gen4 (i965_update_wm). Flips wait for a DSPSURF path.
+ * ASYNC_SUBMIT stays: it is how blits queue on the ring.
+ */
+static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
+{
+    v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
+                           mapped_aperture_bytes, engine_type, engine_caps,
+                           gtt_linear_base, ring_linear_base, ring_bytes);
+    *engine_caps &= ~(V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP |
+                      V9X_DD_ENGINE_CAP_FLIP_RING);
+    if (*ring_linear_base != 0ul) {
+        v9x_gma950_engine_status = "2d-claimed";
+    }
+}
+
 /* Exact physical target. The aperture hook remains absent: this family takes
  * the engine only, and the VBIOS keeps the display. */
 const V9X_HW16_DEVICE v9x_gma950_device = {
@@ -415,5 +454,25 @@ const V9X_HW16_DEVICE v9x_gma3150_device = {
     "hardware-gen3",
     0,
     v9x_gma3150_fill_engine,
+    2u
+};
+
+/*
+ * The GM965's GMA X3100. Config space, GTT and display measured read-only
+ * on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md);
+ * this engine has not run on it. No Direct3D word: the silicon has a 3D
+ * engine, but not one this driver implements, so the settings page must not
+ * offer Hardware.
+ */
+const V9X_HW16_DEVICE v9x_gm965_device = {
+    0x8086u, 0x2a02u,
+    "Intel GMA X3100 (GM965)",
+    "8086", "2A02",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    0,
+    0,
+    v9x_gm965_fill_engine,
     2u
 };

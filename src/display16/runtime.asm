@@ -3357,9 +3357,11 @@ V9xPciReadIntelRevisionDone:
 V9XPCIREADINTELREVISION ENDP
 
 ; WORD FAR PASCAL V9xPciReadIntelGttConfig(void)
-; Fresh reads of the exact 27AE function-0 BAR2/3 and BSM, plus host-bridge
-; GGC. No PCI config write is issued. Results land in the Intel diagnostic's
-; DGROUP globals only after the corresponding read validates.
+; Fresh reads of the claimed Gen3 function-0 BAR2/3 and BSM, plus host-bridge
+; GGC. On the Gen4 GM965 there is no BAR3, and v9x_i9xx_gtt_bar3 receives
+; the GTT's physical base inside BAR0 instead (below). No PCI config write is
+; issued. Results land in the Intel diagnostic's DGROUP globals only after
+; the corresponding read validates.
 PUBLIC V9XPCIREADINTELGTTCONFIG
 V9XPCIREADINTELGTTCONFIG PROC FAR
     push    bx
@@ -3374,6 +3376,22 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     call    V9xFindPciDevice
     or      ax, ax
     jz      V9xPciReadIntelGttConfigFailed
+
+    ; Gen4 (GM965 2A02) has no GTTADR BAR: GTTMMADR (10h) and GMADR (18h)
+    ; are 64-bit, so 14h and 1Ch are their high dwords, and the GTT is the
+    ; upper half of GTTMMADR's 1 MiB - datasheet 316273 21.1.10: "The base
+    ; address of Global GTT is located in the Memory Base Address + 512 KB".
+    ; Measured on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-
+    ; and-mmio.md). The rest of this driver reads the first 256 KiB of it,
+    ; which maps the 256 MiB aperture.
+    mov     di, 0002h
+    mov     ax, 0b109h
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    cmp     cx, 2a02h
+    je      V9xPciReadIntelGttConfigGen4
 
     mov     di, 0018h
     mov     ax, 0b10ah
@@ -3390,7 +3408,68 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     test    eax, 0fffffffh
     jnz     V9xPciReadIntelGttConfigFailed
     mov     _v9x_i9xx_gmadr_bar2, eax
+    jmp     V9xPciReadIntelGttConfigBar3
 
+V9xPciReadIntelGttConfigGen4:
+    ; GMADR: memory, 64-bit (bits 2:1 = 10b), below 4 GiB, 256 MiB aligned.
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     al, cl
+    and     al, 7
+    cmp     al, 4
+    jne     V9xPciReadIntelGttConfigFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      V9xPciReadIntelGttConfigFailed
+    test    eax, 0fffffffh
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     _v9x_i9xx_gmadr_bar2, eax
+    mov     di, 001ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    or      ecx, ecx
+    jnz     V9xPciReadIntelGttConfigFailed
+
+    ; GTTMMADR: memory, 64-bit, below 4 GiB, 1 MiB aligned.
+    mov     di, 0014h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    or      ecx, ecx
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadIntelGttConfigFailed
+    or      ah, ah
+    jnz     V9xPciReadIntelGttConfigFailed
+    mov     al, cl
+    and     al, 7
+    cmp     al, 4
+    jne     V9xPciReadIntelGttConfigFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      V9xPciReadIntelGttConfigFailed
+    cmp     eax, 0fff00000h
+    ja      V9xPciReadIntelGttConfigFailed
+    test    eax, 000fffffh
+    jnz     V9xPciReadIntelGttConfigFailed
+    add     eax, 00080000h
+    mov     _v9x_i9xx_gtt_bar3, eax
+    jmp     V9xPciReadIntelGttConfigBsm
+
+V9xPciReadIntelGttConfigBar3:
     mov     di, 001ch
     mov     ax, 0b10ah
     int     1ah
@@ -3409,6 +3488,7 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     jnz     V9xPciReadIntelGttConfigFailed
     mov     _v9x_i9xx_gtt_bar3, eax
 
+V9xPciReadIntelGttConfigBsm:
     mov     di, 005ch
     mov     ax, 0b10ah
     int     1ah
