@@ -12,8 +12,8 @@ The latest release is [0.21.0](../releases/0.21.0/README.md), built from
 `71ee2e77`. Its downloads are committed (`69852b4c`), and the update
 server lists it as the latest stable and beta build (checked 2026-10-20).
 Its archives are host-audited; none has had an activation smoke test from
-a Have Disk install of the archive itself. The checkout is 0.21.1,
-unreleased. See the [changelog](../CHANGELOG.md) for what it adds: the HD
+a Have Disk install of the archive itself. The checkout is 0.22.0,
+being released. See the [changelog](../CHANGELOG.md) for what it adds: the HD
 4600 heap and 32-bit textures, and the GMA 3150.
 
 Not run before release, by decision (Michael, 2026-10-20): the netbook

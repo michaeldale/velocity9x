@@ -24,13 +24,14 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.21.0.** Direct3D on the Intel HD Graphics 4600 no
-longer waits for each draw to finish: 3DMark 2000 from 157 to 112 µs a
-batch, Half-Life from 60.5 to 79.3 fps. Its draws with both specular
-and fog are no longer refused, and Direct3D 8 games now get the texture
-coordinate set a stage asks for, which fixes 3DMark 2001 SE's Lobby and
-Dragothic (seen on the HD 4600 and the GMA 900). See the [changelog](CHANGELOG.md), and
-download it from [releases/0.21.0](releases/0.21.0/README.md).
+**Current version: 0.22.0.** A new chip: the Intel GMA 3150 (Pineview, the
+Atom N4xx/N5xx netbooks) runs Direct3D on its Gen3 engine, 3DMark 2000
+included, at 16 and 32 bpp and at its panel's 1024x600; the OpenGL and
+Glide probes pass on it. On the HD 4600,
+video memory now reaches beyond 16 MiB, Direct3D textures can be 32-bit,
+and 3DMark 2001 SE no longer shows half-drawn frames. See the
+[changelog](CHANGELOG.md), and download it from
+[releases/0.22.0](releases/0.22.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
