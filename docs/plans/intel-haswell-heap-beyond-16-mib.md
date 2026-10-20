@@ -9,8 +9,9 @@ Phase 1 done the same day: `v9x_intel_hsw_plan_heap` in `hsw_config.c`,
 stub, then passing. Phases 2 and 3 done the same day on boot 54
 (`../decisions/2026-10-20-haswell-heap-to-31-mib.md`). The heap ends at
 `1ED0000h`, and 3DMark 2001 SE declined no mip tree for room. The 8
-refusals first read as new were V9XDDP's by-design checks. Open:
-Half-Life and the DOS box round trip, not run. The Gen3 build ran unchanged on a tester's GMA 900 (TOMMO33).
+refusals first read as new were V9XDDP's by-design checks. Half-Life
+mwd5 ran clean (79.3 fps best of three). The DOS box gate is dropped:
+the full-screen DOS box is excluded on this chip, as on the netbook. The Gen3 build ran unchanged on a tester's GMA 900 (TOMMO33).
 
 ## Why
 
@@ -214,7 +215,11 @@ Gates: `check-tree.ps1`, `build-host.ps1`, then `run-checks.ps1`.
    re-Enable and the reserve's reopen at a new offset.
 5. A DOS box round trip and a mode change: the reserve reopens at the
    same offset. It depends on stolen memory, not on the mode, and only
-   the heap's start moves.
+   the heap's start moves. (Dropped 2026-10-20: the full-screen DOS box
+   has been excluded on the HD 4600 since Phase B2, as on the netbook,
+   so it cannot gate this change. See the netbook's
+   [issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md) and
+   [plan](dos-box-vdd-virtualization.md). The mode change ran.)
 
 The 945GSE (netbook) boots once with the new build: its `vram=` and
 `EngineStamp` are unchanged.

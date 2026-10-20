@@ -71,6 +71,32 @@ is not at default settings, because textures are 16-bit on this chip.
   Fewer trees freed and remade would fit, but this was not checked.
 - 78 mip chains still have a level out of place.
 
+## Later the same day: Half-Life mwd5
+
+Boot 54, after 3DMark and both V9XDDP runs: `hl.exe -console -d3d -w
+640 -h 480 -full -condebug +timedemo mwd5`, the menu's Console clicked
+to start it, then `timedemo mwd5` typed twice more
+(`hl-qconsole-mwd5.log`).
+
+| run | frames | seconds | fps |
+|---|---|---|---|
+| 1 | 394 | 5.897 | 66.817 |
+| 2 | 393 | 4.955 | 79.315 |
+| 3 | 393 | 4.984 | 78.849 |
+
+Boot 44 read 66.958, 75.914 and 79.293 on 0.21.0's build. Recorded, not
+compared. Across the session `BatchesEngineRefused` stayed at 16 (all
+V9XDDP's, below), with 0 engine, breadcrumb or ring-space timeouts and 0
+resets. HL.EXE ended normally after `WCLOSE` (`V9XSNA7-boot54-after-
+hl.INI`). No frame was looked at.
+
+The DOS box round trip in "Not run" will not be: the full-screen DOS
+box has been excluded on the HD 4600 since Phase B2, as on the netbook
+([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md),
+[plan](../plans/dos-box-vdd-virtualization.md)). Disable's close and
+reopen is still unexercised on this chip apart from `reset`, which
+skips Disable.
+
 ## Later the same day: the 8 refusals were V9XDDP's, not 3DMark's
 
 The boot 54 snapshot counts everything since boot, and V9XDDP ran
