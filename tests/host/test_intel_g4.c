@@ -202,9 +202,17 @@ static void test_wm_kernels(void)
     v9x_u32 eots;
     v9x_u32 samples;
 
-    for (stage = 0u; stage <= V9X_G4_PS_ADD; ++stage) {
-        for (extra = 0u; extra < 4u; ++extra) {
+    for (stage = 0u; stage <= V9X_G4_PS_DECAL; ++stage) {
+        for (extra = 0u; extra < 8u; ++extra) {
             desc.stage0 = stage;
+            desc.stage1 = (v9x_u8)((extra >> 2) & 1u);
+            if (stage == V9X_G4_PS_DIFFUSE && desc.stage1 != 0u) {
+                /* A second unit needs the first. */
+                v9x_g4_program_init(&p, storage, 128ul);
+                CHECK(v9x_g4_wm_kernel(&p, &desc, &used) ==
+                      V9X_STATUS_INVALID_ARGUMENT);
+                continue;
+            }
             desc.specular = (v9x_u8)(extra & 1u);
             desc.fog = (v9x_u8)((extra >> 1) & 1u);
             desc.fog_rgb[0] = 0.25f;
@@ -215,7 +223,7 @@ static void test_wm_kernels(void)
             CHECK(v9x_g4_wm_kernel(&p, &desc, &used) == V9X_STATUS_OK);
             CHECK(p.overflow == 0u);
             CHECK(p.count * 16ul <= V9X_G4_WM_KERNEL_BYTES);
-            CHECK(used > 0u && used <= 64u);
+            CHECK(used > 0u && used <= 128u);
             eots = 0ul;
             samples = 0ul;
             for (index = 0ul; index < p.count; ++index) {
@@ -232,14 +240,19 @@ static void test_wm_kernels(void)
                 if (((storage[index].dw[3] >> 24) & 0xful) ==
                     V9X_G4_SFID_SAMPLER) {
                     ++samples;
-                    CHECK((storage[index].dw[3] & 0xfful) == 1ul);
+                    /* Entry n + 1 with sampler n, in order. */
+                    CHECK((storage[index].dw[3] & 0xfful) == samples);
+                    CHECK(((storage[index].dw[3] >> 8) & 0xful) ==
+                          samples - 1ul);
                 }
             }
             CHECK(eots == 1ul);
-            CHECK(samples == (stage == V9X_G4_PS_DIFFUSE ? 0ul : 1ul));
+            CHECK(samples == (stage == V9X_G4_PS_DIFFUSE
+                                  ? 0ul : 1ul + desc.stage1));
         }
     }
-    desc.stage0 = (v9x_u8)(V9X_G4_PS_ADD + 1u);
+    desc.stage1 = V9X_G4_PS_STAGE1_NONE;
+    desc.stage0 = (v9x_u8)(V9X_G4_PS_DECAL + 1u);
     v9x_g4_program_init(&p, storage, 128ul);
     CHECK(v9x_g4_wm_kernel(&p, &desc, &used) == V9X_STATUS_INVALID_ARGUMENT);
 }
@@ -276,7 +289,9 @@ static void test_layout(void)
     volatile v9x_u32 urb_sf = V9X_G4_URB_SF_ENTRIES * V9X_G4_URB_SF_SIZE;
     volatile v9x_u32 vs_size = V9X_G4_URB_VS_SIZE;
     volatile v9x_u32 sf_size = V9X_G4_URB_SF_SIZE;
+    volatile v9x_u32 wm2 = V9X_G4_WM_KERNEL2_OFF;
     v9x_u32 wm_end = wm + wm_slots * wm_bytes;
+    v9x_u32 wm2_end = wm2 + wm_slots * wm_bytes;
     v9x_u32 index;
 
     st[0] = V9X_G4_ST_SF;
@@ -293,12 +308,14 @@ static void test_layout(void)
     CHECK(vertex_bytes <= vertex_stride);
     CHECK(disjoint(sf, 0x1000ul, wm, wm_end - wm));
     CHECK(wm_end <= sig);
-    CHECK(sig + 4ul * 4ul * (wm_slots + 1ul) <= pipe);
+    /* Signatures for both sets of slots, the SF mark first. */
+    CHECK(sig + 4ul * 4ul * (2ul * wm_slots + 1ul) <= pipe);
     CHECK(pipe + 4ul * (1ul + slots) <= state);
     CHECK(state_bytes <= state_stride);
     CHECK(state + (slots - 1ul) * state_stride + state_bytes <= batch);
     CHECK(batch_bytes <= batch_stride);
-    CHECK(batch + (slots - 1ul) * batch_stride + batch_bytes <= vertex);
+    CHECK(batch + (slots - 1ul) * batch_stride + batch_bytes <= wm2);
+    CHECK(wm2_end <= vertex && (wm2 & 63ul) == 0ul);
     CHECK((batch_stride & 63ul) == 0ul && (state_stride & 63ul) == 0ul);
     CHECK((batch & 63ul) == 0ul);
     CHECK((sf & 63ul) == 0ul);
@@ -379,6 +396,7 @@ static void test_state(void)
     s.mip_filter = 0u;
     s.address = 2u;
     s.max_lod = 0u;
+    s.chroma_key = 0u;
     CHECK(v9x_g4_sampler_state(out, &s, 0x301c0ul) == V9X_STATUS_OK);
     CHECK(out[0] == ((1ul << 28) | (1ul << 17) | (1ul << 14)));
     CHECK(out[1] == ((2ul << 6) | (2ul << 3) | 2ul));
@@ -415,9 +433,55 @@ static void test_mips(void)
     s.mip_filter = 3u;
     s.address = 0u;
     s.max_lod = 8u;
+    s.chroma_key = 0u;
     CHECK(v9x_g4_sampler_state(out, &s, 0x301c0ul) == V9X_STATUS_OK);
     CHECK(((out[0] >> 20) & 3ul) == 3ul);
     CHECK(((out[1] >> 12) & 0x3fful) == (8ul << 6));
+}
+
+/* Colour keys as 3DSTATE_CHROMA_KEY's ARGB8888 range (965 PRM Vol 4
+ * 4.7.5): channels widened by replicating high bits, alpha the full range,
+ * low and high ordered per channel; and SAMPLER_STATE DW3's key bits. */
+static void test_chroma(void)
+{
+    struct v9x_g4_sampler s;
+    v9x_u32 low = 0ul;
+    v9x_u32 high = 0ul;
+    v9x_u32 out[4];
+
+    /* 565 magenta and 1555 magenta: 1F widens to FF, 0 stays 0. */
+    CHECK(v9x_g4_chroma_key(0xf81ful, 0xf81ful, 0xf800ul, 0x07e0ul,
+                            0x001ful, &low, &high) == V9X_STATUS_OK);
+    CHECK(low == 0x00ff00fful && high == 0xffff00fful);
+    CHECK(v9x_g4_chroma_key(0x7c1ful, 0x7c1ful, 0x7c00ul, 0x03e0ul,
+                            0x001ful, &low, &high) == V9X_STATUS_OK);
+    CHECK(low == 0x00ff00fful && high == 0xffff00fful);
+    /* 565: red 10000b to 84h, green 100000b to 82h, blue 00001b to 08h. */
+    CHECK(v9x_g4_chroma_key(0x8401ul, 0x8401ul, 0xf800ul, 0x07e0ul,
+                            0x001ful, &low, &high) == V9X_STATUS_OK);
+    CHECK(low == 0x00848208ul && high == 0xff848208ul);
+    /* 8888, and a range given high first. */
+    CHECK(v9x_g4_chroma_key(0x00102030ul, 0x00010203ul, 0x00ff0000ul,
+                            0x0000ff00ul, 0x000000fful, &low, &high) ==
+          V9X_STATUS_OK);
+    CHECK(low == 0x00010203ul && high == 0xff102030ul);
+    /* A split or empty mask. */
+    CHECK(v9x_g4_chroma_key(0ul, 0ul, 0xf00ful, 0x07e0ul, 0x001ful, &low,
+                            &high) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_g4_chroma_key(0ul, 0ul, 0ul, 0x07e0ul, 0x001ful, &low,
+                            &high) == V9X_STATUS_INVALID_ARGUMENT);
+
+    s.min_filter = 0u;
+    s.mag_filter = 0u;
+    s.mip_filter = 0u;
+    s.address = 0u;
+    s.max_lod = 0u;
+    s.chroma_key = 0u;
+    CHECK(v9x_g4_sampler_state(out, &s, 0ul) == V9X_STATUS_OK);
+    CHECK(out[3] == 0ul);
+    s.chroma_key = 1u;
+    CHECK(v9x_g4_sampler_state(out, &s, 0ul) == V9X_STATUS_OK);
+    CHECK(out[3] == ((1ul << 25) | (1ul << 22)));
 }
 
 /* The batch: builds, passes its own check with URB_FENCE inside one line
@@ -440,6 +504,9 @@ static void test_batch(void)
     d.depth_address = 0ul;
     d.depth_pitch = 0ul;
     d.depth_format = 0u;
+    d.chroma_key = 0u;
+    d.chroma_low = 0ul;
+    d.chroma_high = 0ul;
     for (pre = 0ul; pre < 16ul; ++pre) {
         v9x_g4_batch_init(&batch, words, 512ul);
         CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
@@ -460,6 +527,23 @@ static void test_batch(void)
         }
         (void)pre;
     }
+    /* With a chroma key: 3DSTATE_CHROMA_KEY, entry 0, the range. */
+    d.chroma_key = 1u;
+    d.chroma_low = 0x00ff00fful;
+    d.chroma_high = 0xffff00fful;
+    v9x_g4_batch_init(&batch, words, 512ul);
+    CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+    saw_end = V9X_FALSE;
+    for (index = 0ul; index + 3ul < batch.count; ++index) {
+        if (words[index] == 0x79040002ul && words[index + 1ul] == 0ul &&
+            words[index + 2ul] == 0x00ff00fful &&
+            words[index + 3ul] == 0xffff00fful) {
+            saw_end = V9X_TRUE;
+        }
+    }
+    CHECK(saw_end == V9X_TRUE);
+    d.chroma_key = 0u;
     /* With depth. */
     d.depth_address = 0x00200000ul;
     d.depth_pitch = 1280ul;
@@ -490,6 +574,7 @@ unsigned int v9x_run_intel_g4_tests(void)
     test_layout();
     test_state();
     test_mips();
+    test_chroma();
     test_batch();
     return failures;
 }

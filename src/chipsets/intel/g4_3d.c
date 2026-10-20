@@ -32,6 +32,11 @@
 #define V9X_G4_VE_COUNT            7u
 #define V9X_G4_VE_DWORDS           (1u + 2u * V9X_G4_VE_COUNT)
 #define V9X_G4_PRIM_DWORDS         6u
+/* 3DSTATE_CHROMA_KEY, 79 04h (965 PRM Vol 4 4.7.5): table index, low, high. */
+#define V9X_G4_CHROMA_KEY_DWORDS   4u
+
+/* SAMPLER_STATE ChromaKey Mode (Vol 4 SAMPLER_STATE DW3 22). */
+#define V9X_G4_KEYFILTER_REPLACE_BLACK 1ul
 
 /* URB_FENCE reallocation requests, DW0 13:8: CS, SF, CLIP, GS, VS. */
 #define V9X_G4_URB_REALLOC         0x00002f00ul
@@ -256,6 +261,74 @@ v9x_status v9x_g4_sampler_state(v9x_u32 *out,
     out[1] = (tcm << 6) | (tcm << 3) | tcm |
              (((v9x_u32)sampler->max_lod & 0xful) << 18);
     out[2] = border_offset;
+    /* ChromaKey Enable 25, Index 23 (entry 0), Mode 22 REPLACE_BLACK. */
+    if (sampler->chroma_key != 0u) {
+        out[3] = (1ul << 25) | (V9X_G4_KEYFILTER_REPLACE_BLACK << 22);
+    }
+    return V9X_STATUS_OK;
+}
+
+/* One channel of a raw pixel widened to 8 bits by replicating its high
+ * bits into the low ones; 0 for a mask that is not 1-8 contiguous bits. */
+static int v9x_g4_chroma_channel(v9x_u32 raw, v9x_u32 mask, v9x_u32 *out)
+{
+    v9x_u32 shift = 0ul;
+    v9x_u32 bits = 0ul;
+    v9x_u32 value;
+    v9x_u32 wide;
+    v9x_u32 filled;
+
+    if (mask == 0ul) {
+        return 0;
+    }
+    while (((mask >> shift) & 1ul) == 0ul) {
+        ++shift;
+    }
+    while (shift + bits < 32ul && ((mask >> (shift + bits)) & 1ul) != 0ul) {
+        ++bits;
+    }
+    if (bits > 8ul || (mask >> shift) != ((1ul << bits) - 1ul)) {
+        return 0;
+    }
+    value = (raw & mask) >> shift;
+    wide = 0ul;
+    filled = 0ul;
+    while (filled < 8ul) {
+        wide = (wide << bits) | value;
+        filled += bits;
+    }
+    *out = (wide >> (filled - 8ul)) & 0xfful;
+    return 1;
+}
+
+v9x_status v9x_g4_chroma_key(v9x_u32 low_raw, v9x_u32 high_raw,
+                             v9x_u32 red_mask, v9x_u32 green_mask,
+                             v9x_u32 blue_mask, v9x_u32 *low,
+                             v9x_u32 *high)
+{
+    v9x_u32 masks[3];
+    v9x_u32 index;
+    v9x_u32 a;
+    v9x_u32 b;
+
+    if (low == 0 || high == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    masks[0] = red_mask;
+    masks[1] = green_mask;
+    masks[2] = blue_mask;
+    /* Alpha 31:24 is the full range: not compared. */
+    *low = 0ul;
+    *high = 0xff000000ul;
+    for (index = 0ul; index < 3ul; ++index) {
+        if (!v9x_g4_chroma_channel(low_raw, masks[index], &a) ||
+            !v9x_g4_chroma_channel(high_raw, masks[index], &b)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        /* High may not be below low in any channel (UNDEFINED). */
+        *low |= (a < b ? a : b) << (16ul - index * 8ul);
+        *high |= (a < b ? b : a) << (16ul - index * 8ul);
+    }
     return V9X_STATUS_OK;
 }
 
@@ -344,6 +417,14 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
     }
     v9x_g4_emit(batch, 0ul);
 
+    /* The key table entry the sampler's ChromaKey Index 0 names. */
+    if (draw->chroma_key != 0u) {
+        v9x_g4_emit(batch, V9X_G4_CMD(3, 1, 4, V9X_G4_CHROMA_KEY_DWORDS));
+        v9x_g4_emit(batch, 0ul);
+        v9x_g4_emit(batch, draw->chroma_low);
+        v9x_g4_emit(batch, draw->chroma_high);
+    }
+
     v9x_g4_emit(batch, V9X_G4_CMD(3, 0, 8, V9X_G4_VB_DWORDS));
     v9x_g4_emit(batch, (v9x_u32)V9X_G4_VB_PITCH);
     v9x_g4_emit(batch, draw->vertex_address);
@@ -372,9 +453,11 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
                           20ul, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_1_FP);
-    v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32A32_FLOAT, 0ul, 24ul,
-                          V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0,
-                          V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0);
+    /* The second unit's u1/w and v1/w at dword 24, zero for one unit. */
+    v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32_FLOAT, V9X_G4_VB_TEX1,
+                          24ul, V9X_G4_VFCOMP_STORE_SRC,
+                          V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_0,
+                          V9X_G4_VFCOMP_STORE_1_FP);
     v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32A32_FLOAT, 0ul, 28ul,
                           V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0,
                           V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0);
@@ -437,6 +520,9 @@ static v9x_u32 v9x_g4_command_length(v9x_u32 header)
     }
     if (header == V9X_G4_CMD(3, 0, 8, V9X_G4_VB_DWORDS)) {
         return V9X_G4_VB_DWORDS;
+    }
+    if (header == V9X_G4_CMD(3, 1, 4, V9X_G4_CHROMA_KEY_DWORDS)) {
+        return V9X_G4_CHROMA_KEY_DWORDS;
     }
     if (header == V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS)) {
         return V9X_G4_VE_DWORDS;

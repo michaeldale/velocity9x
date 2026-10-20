@@ -352,9 +352,10 @@ static void v9x_gma3150_fill_engine(unsigned long framebuffer_linear_base,
  *
  * FLIP is the register flip, which the HAL makes through DSPxSURF and
  * DSPxLINOFF on this bit, without the Gen3 FW_BLC write (i9xx_scanout.c).
- * FLIP_RING is withheld: Gen4's MI_DISPLAY_FLIP is not the 915 packet
- * i9xx_flip.c builds. ASYNC_SUBMIT stays: it is how blits queue on the
- * ring.
+ * FLIP_RING stays: the 915 packet i9xx_flip.c builds is a valid Gen4
+ * synchronous MI_DISPLAY_FLIP without the optional panel fitter dword (965
+ * PRM Vol 1 9.5), and the HAL sends it only when LINOFF needs no change.
+ * ASYNC_SUBMIT stays: it is how blits queue on the ring.
  */
 static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *control_linear_base,
@@ -368,7 +369,6 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
-    *engine_caps &= ~V9X_DD_ENGINE_CAP_FLIP_RING;
     if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN4;
     }

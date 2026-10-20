@@ -53,7 +53,7 @@
 /* The kernels' revision, in every signature: the reserve survives a warm
  * reset, so a driver whose generator changed must not trust a mark the
  * last one left. Bump it with any change to g4_eu.c's output. */
-#define V9X_D3D_G4_KERNEL_REV 0x01ul
+#define V9X_D3D_G4_KERNEL_REV 0x02ul
 #define V9X_D3D_G4_SF_MARK  (0x47345300ul | V9X_D3D_G4_KERNEL_REV)
 #define V9X_D3D_G4_SIG_WORDS 4ul
 
@@ -78,6 +78,12 @@
 #define V9X_D3D_G4_REFUSE_BATCH     15ul
 #define V9X_D3D_G4_REFUSE_SUBMIT    16ul
 
+/* A linear depth buffer's pitch is a multiple of 64 bytes (965 PRM Vol 2,
+ * 3DSTATE_DEPTH_BUFFER); its rows are placed in whole alignment units of
+ * 2 (Vol 1 6.18). See v9x_d3d_g4_create_depth. */
+#define V9X_D3D_G4_DEPTH_PITCH_ALIGN 64ul
+#define V9X_D3D_G4_DEPTH_ROW_ALIGN   2ul
+
 /* Texture Coordinate Mode for all three axes. */
 #define V9X_D3D_G4_TCM_WRAP   0u
 #define V9X_D3D_G4_TCM_MIRROR 1u
@@ -96,7 +102,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_g4_limits = {
     1ul,            /* clip_in_core: CLIP is passed through */
     1ul,            /* depth_pitch_own: 3DSTATE_DEPTH_BUFFER's own pitch */
     0ul,            /* depth_fill_shift */
-    1ul,            /* texture_units */
+    2ul,            /* texture_units: the render interface's step 4 */
     /* SF origin bias 0.5 (Mesa and xf86 alike): the GL pixel centre. */
     1ul,            /* pixel_centre_half */
     0ul,            /* depth_tiled: linear */
@@ -125,7 +131,11 @@ typedef struct v9x_d3d_g4_state {
     v9x_u16 target_format;
     v9x_u8 write_disable;
     V9X_D3D_G4_TEXTURE texture;
-    int textured;
+    V9X_D3D_G4_TEXTURE texture1;
+    int textured;           /* units sampled: 0, 1 or 2 */
+    /* 3DSTATE_CHROMA_KEY's range when unit 0's sampler keys. */
+    v9x_u32 chroma_low;
+    v9x_u32 chroma_high;
     int depth;
     v9x_u32 depth_address;
     v9x_u32 depth_pitch;
@@ -464,7 +474,95 @@ static DWORD v9x_d3d_g4_texture_unit(const V9X_R3D_TEXTURE *texture,
     return V9X_D3D_G4_REFUSE_NONE;
 }
 
-/* A Z buffer from DirectDraw's heap, in video memory, covering the target. */
+/* Haswell's stage 0 (d3d_hsw_map.c's two-unit mapping) as this kernel's;
+ * 0 for one it has no form of. */
+static int v9x_d3d_g4_stage_of_hsw(v9x_u8 hsw, v9x_u8 *stage)
+{
+    switch (hsw) {
+    case V9X_HSW_PS_TEXTURE:
+        *stage = V9X_G4_PS_TEXTURE;
+        return 1;
+    case V9X_HSW_PS_DECAL:
+        *stage = V9X_G4_PS_DECAL;
+        return 1;
+    case V9X_HSW_PS_MODULATE:
+        *stage = V9X_G4_PS_MODULATE;
+        return 1;
+    case V9X_HSW_PS_MODULATE_TEXALPHA:
+        *stage = V9X_G4_PS_MODULATE_TEXALPHA;
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* Does an alpha test with this function and reference reject alpha 0? */
+static int v9x_d3d_g4_test_rejects_zero(v9x_u32 function, v9x_u8 ref)
+{
+    switch (function) {
+    case V9X_R3D_CMP_NEVER:
+    case V9X_R3D_CMP_GREATER:
+        return 1;
+    case V9X_R3D_CMP_LESS:
+    case V9X_R3D_CMP_NOTEQUAL:
+        return ref == 0u;
+    case V9X_R3D_CMP_EQUAL:
+    case V9X_R3D_CMP_GREATEREQUAL:
+        return ref != 0u;
+    default:
+        return 0;
+    }
+}
+
+/*
+ * Direct3D's COLORKEYENABLE on unit 0: the texture's DirectDraw source key
+ * in the sampler's chroma key, KEYFILTER_REPLACE_BLACK.
+ *
+ * KILL_ON_ANY_MATCH would discard the pixel itself, but only through
+ * sample+killpix, which exists in SIMD8 alone (965 PRM Vol 4 4.8.1.4); this
+ * kernel samples SIMD16. REPLACE_BLACK samples a matching texel as
+ * (0,0,0,0) "prior to filtering", and the PRM leaves the rest to "alpha
+ * test, etc." (SAMPLER_STATE ChromaKey Mode), which the caller arranges.
+ * So the stage must carry the texel's alpha to the output: TEXTURE,
+ * MODULATE (diffuse alpha times a texel alpha of 1 or 0) and
+ * MODULATE_TEXALPHA do; ADD and DECAL keep the diffuse alpha and are
+ * refused. A texture with no source key draws unkeyed, as Direct3D does.
+ */
+static DWORD v9x_d3d_g4_color_key(const V9X_DD_SURFACE_LCL *surface,
+                                  V9X_D3D_G4_STATE *state, int *keyed)
+{
+    const V9X_DDPIXELFORMAT *pf;
+
+    *keyed = 0;
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) == 0ul) {
+        return V9X_D3D_G4_REFUSE_NONE;
+    }
+    if (state->desc.stage0 != V9X_G4_PS_TEXTURE &&
+        state->desc.stage0 != V9X_G4_PS_MODULATE &&
+        state->desc.stage0 != V9X_G4_PS_MODULATE_TEXALPHA) {
+        return V9X_D3D_G4_REFUSE_KEY;
+    }
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        pf = &surface->lpGbl->ddpfSurface;
+    } else {
+        pf = &v9x_hal->info.vmiData.ddpfDisplay;
+    }
+    if (v9x_g4_chroma_key(surface->ddckCKSrcBltLow,
+                          surface->ddckCKSrcBltHigh, pf->dwRBitMask,
+                          pf->dwGBitMask, pf->dwBBitMask,
+                          &state->chroma_low, &state->chroma_high) !=
+        V9X_STATUS_OK) {
+        return V9X_D3D_G4_REFUSE_KEY;
+    }
+    state->texture.sampler.chroma_key = 1u;
+    *keyed = 1;
+    return V9X_D3D_G4_REFUSE_NONE;
+}
+
+/* A Z buffer in video memory at a pitch the depth unit takes: one
+ * create_surface placed, or one from DirectDraw's heap that happens to
+ * fit. Any other would hang the 3D pipe, so it is refused. */
 static int v9x_d3d_g4_depth_surface(const V9X_DD_SURFACE_LCL *surface,
                                     DWORD *offset)
 {
@@ -472,7 +570,8 @@ static int v9x_d3d_g4_depth_surface(const V9X_DD_SURFACE_LCL *surface,
         (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
         surface->lpGbl->lPitch <= 0l ||
-        ((DWORD)surface->lpGbl->lPitch & 3ul) != 0ul) {
+        ((DWORD)surface->lpGbl->lPitch &
+         (V9X_D3D_G4_DEPTH_PITCH_ALIGN - 1ul)) != 0ul) {
         return 0;
     }
     *offset = v9x_surface_offset(surface);
@@ -485,6 +584,10 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
     DWORD offset;
     DWORD reason;
     int has_alpha = 0;
+    int has_alpha1 = 0;
+    int keyed = 0;
+    v9x_u8 hsw_stage0 = 0u;
+    v9x_u8 hsw_stage1 = 0u;
     v9x_u32 op;
 
     reason = v9x_d3d_hsw_explicit_refusal(draw);
@@ -492,6 +595,11 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
         return reason;
     }
     state->desc.stage0 = V9X_G4_PS_DIFFUSE;
+    state->desc.stage1 = V9X_G4_PS_STAGE1_NONE;
+    state->texture.sampler.chroma_key = 0u;
+    state->texture1.sampler.chroma_key = 0u;
+    state->chroma_low = 0ul;
+    state->chroma_high = 0ul;
     state->desc.specular = 0u;
     state->desc.fog = 0u;
     state->desc.fog_rgb[0] = 0.0f;
@@ -541,17 +649,36 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
     }
 
     if (draw->texcoords1 != 0) {
-        /* Two units: the render interface's step 4, not in this engine. */
-        return V9X_D3D_G4_REFUSE_TEXOP;
-    }
-    if (draw->texture.object != 0) {
+        /* Two units (render interface step 4): each unit's combine is in
+         * its color_op and alpha_op, `op` is not set (r3d.h). Haswell's
+         * mapping, onto this kernel's stages. */
+        if (draw->color_key_enable != 0ul) {
+            return V9X_D3D_G4_REFUSE_KEY;
+        }
         reason = v9x_d3d_g4_texture_unit(&draw->texture, &state->texture,
                                          &has_alpha);
         if (reason != V9X_D3D_G4_REFUSE_NONE) {
             return reason;
         }
-        if (draw->color_key_enable != 0ul) {
-            return V9X_D3D_G4_REFUSE_KEY;
+        reason = v9x_d3d_g4_texture_unit(&draw->texture1, &state->texture1,
+                                         &has_alpha1);
+        if (reason != V9X_D3D_G4_REFUSE_NONE) {
+            return reason;
+        }
+        if (v9x_d3d_hsw_two_unit_stages(
+                draw->texture.color_op, draw->texture.alpha_op, has_alpha,
+                draw->texture1.color_op, draw->texture1.alpha_op, has_alpha1,
+                &hsw_stage0, &hsw_stage1) != 0ul ||
+            !v9x_d3d_g4_stage_of_hsw(hsw_stage0, &state->desc.stage0)) {
+            return V9X_D3D_G4_REFUSE_TEXOP;
+        }
+        state->desc.stage1 = V9X_G4_PS_MODULATE_TEX1;
+        state->textured = 2;
+    } else if (draw->texture.object != 0) {
+        reason = v9x_d3d_g4_texture_unit(&draw->texture, &state->texture,
+                                         &has_alpha);
+        if (reason != V9X_D3D_G4_REFUSE_NONE) {
+            return reason;
         }
         op = draw->texture.op;
         if (op == V9X_R3D_TEXOP_DECAL || op == V9X_R3D_TEXOP_COPY) {
@@ -567,6 +694,14 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
             return V9X_D3D_G4_REFUSE_TEXOP;
         }
         state->textured = 1;
+        if (draw->color_key_enable != 0ul) {
+            reason = v9x_d3d_g4_color_key(
+                (const V9X_DD_SURFACE_LCL *)draw->texture.object, state,
+                &keyed);
+            if (reason != V9X_D3D_G4_REFUSE_NONE) {
+                return reason;
+            }
+        }
     }
 
     state->desc.specular = draw->specular_enable != 0ul ? 1u : 0u;
@@ -606,6 +741,36 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
         state->cc.alpha_function = v9x_d3d_g4_compare(draw->alpha_func);
         state->cc.alpha_ref = (v9x_u8)(draw->alpha_ref & 0xfful);
     }
+    /* A keyed texel samples with alpha 0, and the alpha test is what
+     * discards it: GREATER 0 of our own, or the application's test when
+     * that already rejects 0. One the application set that passes 0 would
+     * have to be replaced, which would change what it asked for. */
+    if (keyed) {
+        if (state->cc.alpha_test == 0u) {
+            state->cc.alpha_test = 1u;
+            state->cc.alpha_function =
+                v9x_d3d_g4_compare(V9X_R3D_CMP_GREATER);
+            state->cc.alpha_ref = 0u;
+        } else if (!v9x_d3d_g4_test_rejects_zero(draw->alpha_func,
+                                                 state->cc.alpha_ref)) {
+            return V9X_D3D_G4_REFUSE_KEY;
+        }
+    }
+    /*
+     * The alpha test with depth writes. A pixel the alpha test kills must
+     * not write depth, so the depth write moves after the pixel shader: 965
+     * PRM Vol 2 8.4.3 ("Pixel Shader Kill Pixel" must be set for "alphatest"
+     * or a chroma-keyed texture, and the non-promoted and computed cases
+     * carry source depth to the render target). This kernel sends no
+     * source depth, and TOMMOHP boot 16 hung the 3D pipe on the first GL
+     * draw with the alpha test, a depth test and depth writes (V9XGLP;
+     * BreadcrumbAbandoned=1). Until the kernel carries depth, such a draw
+     * is refused and drawn by the fallback. Without depth writes the
+     * depth test stays early and the result is the same.
+     */
+    if (state->cc.alpha_test != 0u && state->cc.depth_write != 0u) {
+        return keyed ? V9X_D3D_G4_REFUSE_KEY : V9X_D3D_G4_REFUSE_ALPHA;
+    }
     return V9X_D3D_G4_REFUSE_NONE;
 }
 
@@ -624,15 +789,26 @@ static v9x_u32 v9x_d3d_g4_float_bits(float value)
  * it (the fog colour is in the words, not the slot). */
 static DWORD v9x_d3d_g4_wm_slot(const struct v9x_g4_ps_desc *desc)
 {
-    return (DWORD)desc->stage0 * 4ul + (DWORD)desc->specular * 2ul +
+    return (DWORD)desc->stage1 * V9X_G4_WM_KERNEL_SLOTS +
+           (DWORD)desc->stage0 * 4ul + (DWORD)desc->specular * 2ul +
            (DWORD)desc->fog;
+}
+
+/* A slot's kernel: the one-unit slots, then the two-unit ones. */
+static DWORD v9x_d3d_g4_wm_offset(DWORD slot)
+{
+    if (slot < V9X_G4_WM_KERNEL_SLOTS) {
+        return V9X_G4_WM_KERNEL_OFF + slot * V9X_G4_WM_KERNEL_BYTES;
+    }
+    return V9X_G4_WM_KERNEL2_OFF +
+           (slot - V9X_G4_WM_KERNEL_SLOTS) * V9X_G4_WM_KERNEL_BYTES;
 }
 
 static void v9x_d3d_g4_wm_sig(const struct v9x_g4_ps_desc *desc,
                               v9x_u32 *sig)
 {
-    sig[0] = 0x47340000ul | (V9X_D3D_G4_KERNEL_REV << 12) |
-             ((v9x_u32)desc->stage0 << 8) |
+    sig[0] = 0x47300000ul | ((v9x_u32)desc->stage1 << 16) |
+             (V9X_D3D_G4_KERNEL_REV << 12) | ((v9x_u32)desc->stage0 << 8) |
              ((v9x_u32)desc->specular << 4) | (v9x_u32)desc->fog;
     sig[1] = v9x_d3d_g4_float_bits(desc->fog_rgb[0]);
     sig[2] = v9x_d3d_g4_float_bits(desc->fog_rgb[1]);
@@ -696,10 +872,10 @@ static int v9x_d3d_g4_write_wm(const struct v9x_g4_ps_desc *desc,
     DWORD index;
     int same = 1;
 
-    if (slot >= V9X_G4_WM_KERNEL_SLOTS) {
+    if (slot >= 2ul * V9X_G4_WM_KERNEL_SLOTS) {
         return 0;
     }
-    *kernel = V9X_G4_WM_KERNEL_OFF + slot * V9X_G4_WM_KERNEL_BYTES;
+    *kernel = v9x_d3d_g4_wm_offset(slot);
     v9x_g4_program_init(&program, v9x_d3d_g4_kernel_words,
                         V9X_D3D_G4_KERNEL_INSTS);
     if (v9x_g4_wm_kernel(&program, desc, grf_used) != V9X_STATUS_OK) {
@@ -754,8 +930,8 @@ static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
         v9x_g4_sf_state(image + V9X_G4_ST_SF / 4ul, V9X_G4_SF_KERNEL_OFF,
                         sf_grf, st + V9X_G4_ST_SF_VP) != V9X_STATUS_OK ||
         v9x_g4_wm_state(image + V9X_G4_ST_WM / 4ul, wm_kernel, wm_grf,
-                        st + V9X_G4_ST_SAMPLER,
-                        (v9x_u8)(state->textured ? 1u : 0u), 2u) !=
+                        st + V9X_G4_ST_SAMPLER, (v9x_u8)state->textured,
+                        3u) !=
             V9X_STATUS_OK ||
         v9x_g4_cc_state(image + V9X_G4_ST_CC / 4ul, &state->cc,
                         st + V9X_G4_ST_CC_VP, 0u) != V9X_STATUS_OK) {
@@ -772,10 +948,27 @@ static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
                        state->write_disable, 1u) != V9X_STATUS_OK) {
         return V9X_D3D_G4_REFUSE_TARGET;
     }
+    /* Entries the kernel does not sample name the target, as entry 1 did
+     * before textures: every entry the WM counts is a valid surface. */
     table = image + V9X_G4_ST_BINDING / 4ul;
     table[0] = st + V9X_G4_ST_RT_SURF;
     table[1] = st + V9X_G4_ST_RT_SURF;
-    if (state->textured) {
+    table[2] = st + V9X_G4_ST_RT_SURF;
+    if (state->textured == 2) {
+        if (v9x_g4_surface(image + V9X_G4_ST_TEX1_SURF / 4ul,
+                           state->texture1.format, state->texture1.address,
+                           state->texture1.width, state->texture1.height,
+                           state->texture1.pitch, 0u, 0u,
+                           state->texture1.levels) != V9X_STATUS_OK ||
+            v9x_g4_sampler_state(image + (V9X_G4_ST_SAMPLER +
+                                          V9X_G4_SAMPLER_BYTES) / 4ul,
+                                 &state->texture1.sampler,
+                                 st + V9X_G4_ST_BORDER) != V9X_STATUS_OK) {
+            return V9X_D3D_G4_REFUSE_TEXTURE;
+        }
+        table[2] = st + V9X_G4_ST_TEX1_SURF;
+    }
+    if (state->textured != 0) {
         if (v9x_g4_surface(image + V9X_G4_ST_TEX_SURF / 4ul,
                            state->texture.format, state->texture.address,
                            state->texture.width, state->texture.height,
@@ -793,8 +986,10 @@ static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
 }
 
 /* One TL vertex into the buffer's layout: x y z, diffuse, specular, then
- * u, v and 1 multiplied by 1/w for the WM's perspective division. */
-static v9x_u32 *v9x_d3d_g4_vertex(v9x_u32 *at, const V9X_R3D_VERTEX *v)
+ * u, v and 1 multiplied by 1/w for the WM's perspective division, then the
+ * second unit's u1 and v1 by the same 1/w (uv1 null: zero). */
+static v9x_u32 *v9x_d3d_g4_vertex(v9x_u32 *at, const V9X_R3D_VERTEX *v,
+                                  const float *uv1)
 {
     float rhw = v->rhw > 0.0f ? v->rhw : 1.0f;
 
@@ -807,6 +1002,12 @@ static v9x_u32 *v9x_d3d_g4_vertex(v9x_u32 *at, const V9X_R3D_VERTEX *v)
     at[6] = v9x_d3d_g4_float_bits(v->tv * rhw);
     at[7] = v9x_d3d_g4_float_bits(rhw);
     at[8] = 0ul;
+    at[9] = 0ul;
+    if (uv1 != 0) {
+        at[8] = v9x_d3d_g4_float_bits(uv1[0] * rhw);
+        at[9] = v9x_d3d_g4_float_bits(uv1[1] * rhw);
+    }
+    at[10] = 0ul;
     return at + V9X_G4_VB_PITCH / 4ul;
 }
 
@@ -922,6 +1123,9 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     d.depth_address = state.depth ? state.depth_address : 0ul;
     d.depth_pitch = state.depth_pitch;
     d.depth_format = state.depth_format;
+    d.chroma_key = state.texture.sampler.chroma_key;
+    d.chroma_low = state.chroma_low;
+    d.chroma_high = state.chroma_high;
     /* Left running, unless GDI may be drawing on the screen (Haswell's
      * rule, d3d_hsw.c v9x_d3d_hsw_draw_waits). */
     wait_after = v9x_present_gdi_may_draw();
@@ -949,7 +1153,12 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
         at = v9x_d3d_g4_reserve(V9X_G4_VERTEX_OFF +
                                 slot * V9X_G4_VERTEX_STRIDE);
         for (vertex = 0ul; vertex < count * 3ul; ++vertex) {
-            at = v9x_d3d_g4_vertex(at, &vertices[done * 3ul + vertex]);
+            /* texcoords1 is in the vertices' order, two floats each. */
+            at = v9x_d3d_g4_vertex(at, &vertices[done * 3ul + vertex],
+                                   draw->texcoords1 != 0
+                                       ? draw->texcoords1 +
+                                             (done * 3ul + vertex) * 2ul
+                                       : 0);
         }
         d.vertex_count = count * 3ul;
 
@@ -974,6 +1183,9 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
             return 0;
         }
         v9x_d3d_g4_note_slot(slot, sequence);
+        if (d.chroma_key != 0u) {
+            ++v9x_hal->d3d_diagnostics.color_key_draws;
+        }
         done += count;
     }
     v9x_present_note_submission();
@@ -1001,8 +1213,8 @@ static int v9x_d3d_g4_accepts(const V9X_R3D_DRAW *draw)
     return v9x_d3d_g4_map(draw, &state) == V9X_D3D_G4_REFUSE_NONE;
 }
 
-/* What the mapping takes, as Haswell's minus two units and the tiled depth
- * placement. */
+/* What the mapping takes: Haswell's, minus the tiled depth placement, plus
+ * the source colour key (v9x_d3d_g4_color_key). */
 static void v9x_d3d_g4_describe_caps(V9X_DD_SHARED *shared)
 {
     V9X_D3DPRIMCAPS *tri;
@@ -1058,7 +1270,8 @@ static void v9x_d3d_g4_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
         V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
-                         V9X_D3DPTEXTURECAPS_ALPHA;
+                         V9X_D3DPTEXTURECAPS_ALPHA |
+                         V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     /* Mip filters are published. A chain create_surface placed samples its
      * levels; any other texture level 0, as on Haswell. */
     tri->dwTextureFilterCaps =
@@ -1148,7 +1361,7 @@ static void v9x_d3d_g4_describe_caps(V9X_DD_SHARED *shared)
  * covers 965 PRM Vol 1 6.18's padding: the sampler reads to the alignment
  * unit past the edge, and every page it can reach is the block's.
  */
-#define V9X_D3D_G4_MIPTREE_ALIGN  4096ul
+#define V9X_D3D_G4_PLACE_ALIGN    4096ul
 #define V9X_D3D_G4_MIPTREE_SHAPE  1ul  /* not a halving chain */
 #define V9X_D3D_G4_MIPTREE_FORMAT 2ul  /* not a layout the sampler takes */
 
@@ -1209,7 +1422,7 @@ static DWORD v9x_d3d_g4_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
             V9X_STATUS_OK) {
         return v9x_d3d_g4_miptree_decline(V9X_D3D_G4_MIPTREE_SHAPE);
     }
-    reason = v9x_d3d_place_block(data, V9X_D3D_G4_MIPTREE_ALIGN, tree.pitch,
+    reason = v9x_d3d_place_block(data, V9X_D3D_G4_PLACE_ALIGN, tree.pitch,
                                  tree.rows, tree.level_offset, &base);
     if (reason != 0ul) {
         return v9x_d3d_g4_miptree_decline(reason);
@@ -1222,33 +1435,84 @@ static DWORD v9x_d3d_g4_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
-/* A video-memory mip chain; every other surface, Z buffers included, is
- * DirectDraw's. */
+/*
+ * A 16-bit Z buffer at a pitch 3DSTATE_DEPTH_BUFFER takes: a linear depth
+ * buffer's pitch "can be any multiple of 64 bytes" (965 PRM Vol 2,
+ * 3DSTATE_DEPTH_BUFFER Surface Pitch), and DirectDraw's heap gives a
+ * 400-wide one 800. TOMMOHP boot 14: the ICD's 400x300 window's first
+ * draw hung the 3D pipe for the engine's whole timeout. Rows are rounded to
+ * the alignment unit's 2 (Vol 1 6.18), in a 4 KB-aligned block.
+ */
+
+static DWORD v9x_d3d_g4_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
+                                     V9X_DD_SURFACE_LCL *surface)
+{
+    v9x_u32 offsets[1];
+    DWORD pitch;
+    DWORD rows;
+    DWORD base;
+
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
+        surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (surface->lpGbl->wWidth == 0u || surface->lpGbl->wHeight == 0u ||
+        (DWORD)surface->lpGbl->wWidth >
+            v9x_d3d_g4_limits.target_dimension_max ||
+        (DWORD)surface->lpGbl->wHeight >
+            v9x_d3d_g4_limits.target_dimension_max) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    pitch = ((DWORD)surface->lpGbl->wWidth * 2ul +
+             V9X_D3D_G4_DEPTH_PITCH_ALIGN - 1ul) &
+            ~(V9X_D3D_G4_DEPTH_PITCH_ALIGN - 1ul);
+    rows = ((DWORD)surface->lpGbl->wHeight + V9X_D3D_G4_DEPTH_ROW_ALIGN -
+            1ul) & ~(V9X_D3D_G4_DEPTH_ROW_ALIGN - 1ul);
+    offsets[0] = 0ul;
+    if (v9x_d3d_place_block(data, V9X_D3D_G4_PLACE_ALIGN, pitch, rows,
+                            offsets, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    ++v9x_hal->d3d_diagnostics.z_placed;
+    v9x_hal->d3d_diagnostics.z_placed_pitch = pitch;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/* A lone video-memory Z buffer, or a video-memory mip chain; every other
+ * surface is DirectDraw's. */
 static DWORD v9x_d3d_g4_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list;
     V9X_DD_SURFACE_LCL *surface;
 
-    if (v9x_hal == 0 || data == 0 || data->dwSCnt < 2ul ||
+    if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
         data->lplpSList == 0) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     surface = list[0];
     if (surface == 0 || surface->lpGbl == 0 ||
-        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-        (surface->ddsCaps & (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) !=
-            (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) {
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    return v9x_d3d_g4_create_miptree(data);
+    if (data->dwSCnt == 1ul &&
+        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        return v9x_d3d_g4_create_depth(data, surface);
+    }
+    if (data->dwSCnt >= 2ul &&
+        (surface->ddsCaps & (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) ==
+            (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) {
+        return v9x_d3d_g4_create_miptree(data);
+    }
+    return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
-/* The top of a tree placed above is going: free the block (d3d_place.c
- * ignores every other surface). */
+/* The top of a tree or a Z buffer placed above is going: free the block
+ * (d3d_place.c ignores every other surface). */
 static void v9x_d3d_g4_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
-    if (v9x_d3d_place_release(data, V9X_D3D_G4_MIPTREE_ALIGN)) {
+    if (v9x_d3d_place_release(data, V9X_D3D_G4_PLACE_ALIGN)) {
         ++v9x_hal->d3d_diagnostics.mip_tree_frees;
     }
 }

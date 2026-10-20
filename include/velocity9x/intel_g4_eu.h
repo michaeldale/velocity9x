@@ -158,9 +158,16 @@ v9x_status v9x_g4_sf_kernel(struct v9x_g4_program *program,
 #define V9X_G4_PS_MODULATE           ((v9x_u8)2u) /* diffuse x texel, a d */
 #define V9X_G4_PS_MODULATE_TEXALPHA  ((v9x_u8)3u) /* rgb modulate, a texel*/
 #define V9X_G4_PS_ADD                ((v9x_u8)4u) /* diffuse + texel rgb  */
+#define V9X_G4_PS_DECAL              ((v9x_u8)5u) /* texel rgb, diffuse a */
+
+/* The second unit's stage: none, or the colour so far multiplied by
+ * texture 1 (binding table entry 2, sampler 1), as Haswell's one stage 1. */
+#define V9X_G4_PS_STAGE1_NONE        ((v9x_u8)0u)
+#define V9X_G4_PS_MODULATE_TEX1      ((v9x_u8)1u)
 
 struct v9x_g4_ps_desc {
     v9x_u8 stage0;
+    v9x_u8 stage1;
     v9x_u8 specular;
     v9x_u8 fog;
     float fog_rgb[3];
@@ -169,8 +176,9 @@ struct v9x_g4_ps_desc {
 /*
  * The WM kernel for a description: SIMD16, setup data from g3 in the
  * attribute order of intel_g4_3d.h (z carrier, diffuse, specular, texture
- * coordinates divided by w on the CPU side), and one render target write
- * with EOT. Texture 0 is binding table entry 1 with sampler 0.
+ * coordinates divided by w on the CPU side, the second unit's after them),
+ * and one render target write with EOT. Texture 0 is binding table entry
+ * 1 with sampler 0; texture 1 entry 2 with sampler 1.
  */
 v9x_status v9x_g4_wm_kernel(struct v9x_g4_program *program,
                             const struct v9x_g4_ps_desc *desc,

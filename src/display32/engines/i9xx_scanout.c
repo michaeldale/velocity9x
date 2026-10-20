@@ -1382,12 +1382,30 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset, int use_ring)
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
     v9x_i9xx_scanout_flip_frame = v9x_i9xx_scanout_frame_now();
     if (use_ring && v9x_i9xx_ring_flip_active()) {
-        if (!v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
-                                v9x_i9xx_scanout_stride_reg, byte_offset)) {
-            return 0;
+        DWORD ring_base = byte_offset;
+        int ring = 1;
+
+        /*
+         * Gen4: MI_DISPLAY_FLIP carries DSPSURF only, and for a linear
+         * buffer the display keeps the dword offset "from the Display
+         * Interface registers" (965 PRM Vol 1 MI_DISPLAY_FLIP, programming
+         * note 5). So the ring flips only between buffers whose remainder
+         * below the 128 KiB SURF alignment is the one LINOFF already holds;
+         * any other flip is the register write below, which sets both.
+         */
+        if (v9x_i9xx_scanout_gen4()) {
+            ring_base = byte_offset & ~(V9X_I9XX_GEN4_SURF_ALIGN - 1ul);
+            ring = *v9x_i9xx_scanout_reg(base) == byte_offset - ring_base;
         }
-        v9x_i9xx_note_flip_issued(base, byte_offset);
-        return 1;
+        if (ring) {
+            if (!v9x_i9xx_ring_flip(v9x_i9xx_scanout_plane,
+                                    v9x_i9xx_scanout_stride_reg,
+                                    ring_base)) {
+                return 0;
+            }
+            v9x_i9xx_note_flip_issued(base, byte_offset);
+            return 1;
+        }
     }
     v9x_i9xx_write_plane_base(base, byte_offset);
     /* The read back posts the write, as i915 does after every plane-base

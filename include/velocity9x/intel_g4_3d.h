@@ -46,6 +46,9 @@
 #define V9X_G4_BATCH_OFF        0x00032000ul  /* slot 0's batch, 4 KiB     */
 #define V9X_G4_BATCH_STRIDE     0x00001000ul
 #define V9X_G4_BATCH_BYTES      0x00001000ul
+/* Kernels with a second texture unit (stage1), in slots of their own: the
+ * one-unit slots above are full. */
+#define V9X_G4_WM_KERNEL2_OFF   0x00034000ul
 #define V9X_G4_VERTEX_OFF       0x00040000ul  /* slot 0's vertices         */
 #define V9X_G4_VERTEX_STRIDE    0x00058000ul
 #define V9X_G4_VERTEX_BYTES     0x00058000ul  /* per slot                  */
@@ -63,7 +66,10 @@
 #define V9X_G4_ST_BINDING   0x200ul
 #define V9X_G4_ST_RT_SURF   0x220ul
 #define V9X_G4_ST_TEX_SURF  0x240ul
-#define V9X_G4_ST_BYTES     0x260ul
+#define V9X_G4_ST_TEX1_SURF 0x260ul
+#define V9X_G4_ST_BYTES     0x280ul
+/* SAMPLER_STATE is four dwords: sampler 1 follows sampler 0. */
+#define V9X_G4_SAMPLER_BYTES 16ul
 
 /*
  * The VUE, written by the vertex fetcher with the VS passed through:
@@ -71,18 +77,20 @@
  * the attributes the SF reads (VERTEX URB ENTRY READ OFFSET 1, in 8-dword
  * units): a copy of the position whose z and w the SF kernel replaces with
  * z and 1/w, diffuse, specular (fog in alpha), texture coordinates (u/w,
- * v/w, 1/w, 1), and two zero slots to fill the third setup register.
+ * v/w, 1/w, 1), the second unit's (u1/w, v1/w, 0, 1; zero for a one-unit
+ * draw), and a zero slot to fill the third setup register.
  */
 #define V9X_G4_VUE_DWORDS      32u
 #define V9X_G4_SETUP_REGS      3u
 #define V9X_G4_WM_SETUP_GRFS   10u   /* five attributes, two GRFs each */
 
 /* The vertex buffer's layout, built by the HAL from a TL vertex. */
-#define V9X_G4_VB_PITCH        36u   /* x y z, diffuse, specular, u v w */
+#define V9X_G4_VB_PITCH        44u   /* x y z, diffuse, specular, u v w, u1 v1 */
 #define V9X_G4_VB_POS          0u
 #define V9X_G4_VB_DIFFUSE      12u
 #define V9X_G4_VB_SPECULAR     16u
 #define V9X_G4_VB_TEX0         20u
+#define V9X_G4_VB_TEX1         32u
 
 /* URB partition, 512-bit rows (965 has 256): VS 32 entries of 2 (a 32-dword
  * VUE), SF 24 of 6 (three setup registers, transposed), none for GS, CLIP
@@ -104,6 +112,7 @@
 #define V9X_G4_FMT_B4G4R4A4_UNORM     0x104u
 #define V9X_G4_FMT_R32G32B32A32_FLOAT 0x000u
 #define V9X_G4_FMT_R32G32B32_FLOAT    0x040u
+#define V9X_G4_FMT_R32G32_FLOAT       0x085u
 
 /* 3DSTATE_DEPTH_BUFFER formats. */
 #define V9X_G4_DEPTH_D32_FLOAT       1u
@@ -125,6 +134,9 @@ struct v9x_g4_sampler {
     v9x_u8 mip_filter;   /* MIPFILTER: 0 none, 1 nearest, 3 linear */
     v9x_u8 address;      /* TCM for all three axes */
     v9x_u8 max_lod;      /* levels - 1 */
+    /* Chroma key table entry 0, KEYFILTER_REPLACE_BLACK (DW3 25, 24:23,
+     * 22): a matching texel samples as (0, 0, 0, 0). */
+    v9x_u8 chroma_key;
 };
 
 /* What COLOR_CALC_STATE carries. Factors and functions are genxml's. */
@@ -152,6 +164,11 @@ struct v9x_g4_draw {
     v9x_u32 depth_address;   /* 0: no depth buffer */
     v9x_u32 depth_pitch;
     v9x_u8 depth_format;
+    /* 3DSTATE_CHROMA_KEY entry 0, when chroma_key is set: ARGB8888 low
+     * and high, as v9x_g4_chroma_key makes them. */
+    v9x_u8 chroma_key;
+    v9x_u32 chroma_low;
+    v9x_u32 chroma_high;
 };
 
 void v9x_g4_batch_init(struct v9x_g4_batch *batch, v9x_u32 *storage,
@@ -175,6 +192,19 @@ v9x_status v9x_g4_surface(v9x_u32 *out, v9x_u16 format, v9x_u32 address,
 v9x_status v9x_g4_sampler_state(v9x_u32 *out,
                                 const struct v9x_g4_sampler *sampler,
                                 v9x_u32 border_offset);
+
+/*
+ * A DirectDraw source colour key - low and high in the texture's own
+ * format, the format's red, green and blue masks - as 3DSTATE_CHROMA_KEY's
+ * ARGB8888 range (965 PRM Vol 4, 3DSTATE_CHROMA_KEY): each channel widened
+ * to 8 bits by replicating its high bits, as the sampler widens the texel
+ * it compares, and alpha the full 00-FF range so it is not compared.
+ * Masks must be contiguous and 1 to 8 bits wide.
+ */
+v9x_status v9x_g4_chroma_key(v9x_u32 low_raw, v9x_u32 high_raw,
+                             v9x_u32 red_mask, v9x_u32 green_mask,
+                             v9x_u32 blue_mask, v9x_u32 *low,
+                             v9x_u32 *high);
 
 /* The whole draw: pipeline, URB, pointers, buffers, the primitive, and
  * MI_BATCH_BUFFER_END, with URB_FENCE kept inside one 64-byte line of the

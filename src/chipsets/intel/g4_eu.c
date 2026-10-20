@@ -400,12 +400,14 @@ v9x_status v9x_g4_sf_kernel(struct v9x_g4_program *program,
 #define V9X_G4_WM_TEX   40u   /* sampler return, r g b a: 40-47 */
 #define V9X_G4_WM_SPEC  48u   /* 48-55 */
 #define V9X_G4_WM_W     56u
-#define V9X_G4_WM_USED  58u
+#define V9X_G4_WM_TEX1  58u   /* second sampler return: 58-65 */
+#define V9X_G4_WM_USED  66u
 
 /* Attribute order in the setup data (intel_g4_3d.h's VUE). */
 #define V9X_G4_ATTR_DIFFUSE  1u
 #define V9X_G4_ATTR_SPECULAR 2u
 #define V9X_G4_ATTR_TEX0     3u
+#define V9X_G4_ATTR_TEX1     4u
 
 static void v9x_g4_alu16(struct v9x_g4_program *program, v9x_u8 opcode,
                          struct v9x_g4_reg dst, struct v9x_g4_reg src0,
@@ -443,6 +445,37 @@ static struct v9x_g4_reg v9x_g4_comp(v9x_u8 base, v9x_u8 c)
     return v9x_g4_f((v9x_u8)(base + c * 2u));
 }
 
+/*
+ * One SIMD16 sample of attribute k's u/w and v/w times the per-pixel w in
+ * V9X_G4_WM_W, from binding table entry `binding` with sampler `sampler`,
+ * r g b a into dst..dst+7: m1 the header, m2-m3 u, m4-m5 v.
+ */
+static void v9x_g4_sample(struct v9x_g4_program *program, v9x_u8 k,
+                          v9x_u8 binding, v9x_u8 sampler, v9x_u8 dst)
+{
+    v9x_g4_interp(program, v9x_g4_f(V9X_G4_WM_T1), k, 0u);
+    v9x_g4_alu16(program, V9X_G4_EU_OP_MUL,
+                 v9x_g4_mrf(2u, V9X_G4_EU_TYPE_F), v9x_g4_f(V9X_G4_WM_T1),
+                 v9x_g4_f(V9X_G4_WM_W));
+    v9x_g4_interp(program, v9x_g4_f(V9X_G4_WM_T1), k, 1u);
+    v9x_g4_alu16(program, V9X_G4_EU_OP_MUL,
+                 v9x_g4_mrf(4u, V9X_G4_EU_TYPE_F), v9x_g4_f(V9X_G4_WM_T1),
+                 v9x_g4_f(V9X_G4_WM_W));
+    /* The header, as exa_wm_src_sample_argb.g4i builds it. */
+    v9x_g4_alu(program, V9X_G4_EU_OP_MOV, V9X_G4_EU_EXEC_1,
+               V9X_G4_EU_QTR_NONE, 1u,
+               v9x_g4_grf(0u, 8u, V9X_G4_EU_TYPE_UD), v9x_g4_imm_ud(0ul),
+               v9x_g4_null(V9X_G4_EU_TYPE_UD));
+    v9x_g4_alu(program, V9X_G4_EU_OP_MOV, V9X_G4_EU_EXEC_8,
+               V9X_G4_EU_QTR_NONE, 0u, v9x_g4_mrf(1u, V9X_G4_EU_TYPE_UD),
+               v9x_g4_grf(0u, 0u, V9X_G4_EU_TYPE_UD),
+               v9x_g4_null(V9X_G4_EU_TYPE_UD));
+    v9x_g4_send(program, V9X_G4_EU_EXEC_16, V9X_G4_EU_QTR_NONE,
+                v9x_g4_grf(dst, 0u, V9X_G4_EU_TYPE_UW),
+                v9x_g4_null(V9X_G4_EU_TYPE_UD), 1u, V9X_G4_SFID_SAMPLER,
+                5u, 8u, v9x_g4_sampler_desc(binding, sampler), 0u);
+}
+
 v9x_status v9x_g4_wm_kernel(struct v9x_g4_program *program,
                             const struct v9x_g4_ps_desc *desc,
                             v9x_u8 *grf_used)
@@ -451,7 +484,10 @@ v9x_status v9x_g4_wm_kernel(struct v9x_g4_program *program,
     int textured;
 
     if (program == 0 || desc == 0 || grf_used == 0 ||
-        desc->stage0 > V9X_G4_PS_ADD) {
+        desc->stage0 > V9X_G4_PS_DECAL ||
+        desc->stage1 > V9X_G4_PS_MODULATE_TEX1 ||
+        (desc->stage1 != V9X_G4_PS_STAGE1_NONE &&
+         desc->stage0 == V9X_G4_PS_DIFFUSE)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     textured = desc->stage0 != V9X_G4_PS_DIFFUSE;
@@ -505,27 +541,12 @@ v9x_status v9x_g4_wm_kernel(struct v9x_g4_program *program,
                     v9x_g4_f((v9x_u8)(V9X_G4_WM_T1 + 1u)), 0u,
                     V9X_G4_SFID_MATH, 1u, 1u,
                     v9x_g4_math_desc(V9X_G4_MATH_INV), 0u);
-        v9x_g4_interp(program, v9x_g4_f(V9X_G4_WM_T1), V9X_G4_ATTR_TEX0, 0u);
-        v9x_g4_alu16(program, V9X_G4_EU_OP_MUL,
-                     v9x_g4_mrf(2u, V9X_G4_EU_TYPE_F), v9x_g4_f(V9X_G4_WM_T1),
-                     v9x_g4_f(V9X_G4_WM_W));
-        v9x_g4_interp(program, v9x_g4_f(V9X_G4_WM_T1), V9X_G4_ATTR_TEX0, 1u);
-        v9x_g4_alu16(program, V9X_G4_EU_OP_MUL,
-                     v9x_g4_mrf(4u, V9X_G4_EU_TYPE_F), v9x_g4_f(V9X_G4_WM_T1),
-                     v9x_g4_f(V9X_G4_WM_W));
-        /* The header, as exa_wm_src_sample_argb.g4i builds it. */
-        v9x_g4_alu(program, V9X_G4_EU_OP_MOV, V9X_G4_EU_EXEC_1,
-                   V9X_G4_EU_QTR_NONE, 1u,
-                   v9x_g4_grf(0u, 8u, V9X_G4_EU_TYPE_UD), v9x_g4_imm_ud(0ul),
-                   v9x_g4_null(V9X_G4_EU_TYPE_UD));
-        v9x_g4_alu(program, V9X_G4_EU_OP_MOV, V9X_G4_EU_EXEC_8,
-                   V9X_G4_EU_QTR_NONE, 0u, v9x_g4_mrf(1u, V9X_G4_EU_TYPE_UD),
-                   v9x_g4_grf(0u, 0u, V9X_G4_EU_TYPE_UD),
-                   v9x_g4_null(V9X_G4_EU_TYPE_UD));
-        v9x_g4_send(program, V9X_G4_EU_EXEC_16, V9X_G4_EU_QTR_NONE,
-                    v9x_g4_grf(V9X_G4_WM_TEX, 0u, V9X_G4_EU_TYPE_UW),
-                    v9x_g4_null(V9X_G4_EU_TYPE_UD), 1u, V9X_G4_SFID_SAMPLER,
-                    5u, 8u, v9x_g4_sampler_desc(1u, 0u), 0u);
+        v9x_g4_sample(program, V9X_G4_ATTR_TEX0, 1u, 0u, V9X_G4_WM_TEX);
+        /* The second unit: its u/w and v/w by the same 1/w (r3d_abi.h:
+         * texcoords1 is interpolated with the vertex's rhw). */
+        if (desc->stage1 != V9X_G4_PS_STAGE1_NONE) {
+            v9x_g4_sample(program, V9X_G4_ATTR_TEX1, 2u, 1u, V9X_G4_WM_TEX1);
+        }
     }
 
     /* The stage's combine into the colour. */
@@ -558,10 +579,24 @@ v9x_status v9x_g4_wm_kernel(struct v9x_g4_program *program,
                 v9x_g4_alu16(program, V9X_G4_EU_OP_ADD, out, d, t);
             }
             break;
+        case V9X_G4_PS_DECAL:
+            v9x_g4_alu16(program, V9X_G4_EU_OP_MOV, out, c == 3u ? d : t,
+                         v9x_g4_null(V9X_G4_EU_TYPE_F));
+            break;
         default:
             v9x_g4_alu16(program, V9X_G4_EU_OP_MOV, out, d,
                          v9x_g4_null(V9X_G4_EU_TYPE_F));
             break;
+        }
+    }
+
+    /* Stage 1: everything so far, alpha included, times texture 1. */
+    if (desc->stage1 == V9X_G4_PS_MODULATE_TEX1) {
+        for (c = 0u; c < 4u; ++c) {
+            v9x_g4_alu16(program, V9X_G4_EU_OP_MUL,
+                         v9x_g4_comp(V9X_G4_WM_COLOR, c),
+                         v9x_g4_comp(V9X_G4_WM_COLOR, c),
+                         v9x_g4_comp(V9X_G4_WM_TEX1, c));
         }
     }
 

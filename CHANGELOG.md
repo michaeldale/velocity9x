@@ -18,13 +18,20 @@ build identifier so exact guest-tested binaries remain traceable.
     default benchmark ran to its score. Draws are queued two deep, so the
     CPU builds one while the GPU runs the last. Mip-mapped textures sample
     every level, with nearest and trilinear filtering between them.
+    Colour-keyed textures draw with the key transparent.
+  - OpenGL draws on the engine, with hardware textures and two texture
+    units (GL_SGIS_multitexture): the OpenGL probe passed every check.
+    Z buffers are now placed at a pitch the engine's depth unit accepts;
+    an odd window width used to hang it.
   - Page flips, through Gen4's own plane registers, at the panel's
-    refresh.
+    refresh, or through the ring when the next buffer sits a multiple of
+    128 KiB from the current one.
 
   Not offered:
   - A 32-bit Z buffer. The one try hung the 3D engine, so only 16-bit Z
     is offered.
-  - Mipmap levels beyond the first, and two texture units.
+  - The alpha test, or a colour key, together with depth writes. That
+    combination hung the 3D engine; such a draw falls back to software.
 
 ## 0.22.0 - 2026-10-20
 
