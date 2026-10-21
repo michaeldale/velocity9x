@@ -25,6 +25,8 @@ build identifier so exact guest-tested binaries remain traceable.
     an odd window width used to hang it.
   - 16-bit and 24-bit Z buffers, both in the tiled layout the depth unit
     expects, cleared by the 3D engine.
+  - Glide runs on the engine: the Glide probe passed all 21 checks, and
+    a Glide 3 session opened, drew and closed.
   - Page flips, through Gen4's own plane registers, at the panel's
     refresh, or through the ring when the next buffer sits a multiple of
     128 KiB from the current one.
