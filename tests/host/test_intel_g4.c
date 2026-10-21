@@ -504,6 +504,7 @@ static void test_batch(void)
     d.depth_address = 0ul;
     d.depth_pitch = 0ul;
     d.depth_format = 0u;
+    d.depth_tiled = 0u;
     d.chroma_key = 0u;
     d.chroma_low = 0ul;
     d.chroma_high = 0ul;
@@ -551,6 +552,26 @@ static void test_batch(void)
     v9x_g4_batch_init(&batch, words, 512ul);
     CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
     CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+    /* Y-tiled D24_UNORM_S8: 3DSTATE_DEPTH_BUFFER DW1 tiled (27) and the Y
+     * walk (26), format 2 at 20:18, pitch less one. */
+    d.depth_pitch = 2560ul;
+    d.depth_format = V9X_G4_DEPTH_D24_UNORM_S8;
+    d.depth_tiled = 1u;
+    v9x_g4_batch_init(&batch, words, 512ul);
+    CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+    saw_end = V9X_FALSE;
+    for (index = 0ul; index + 2ul < batch.count; ++index) {
+        if (words[index] == 0x79050003ul) {
+            CHECK(words[index + 1ul] ==
+                  ((1ul << 29) | (1ul << 27) | (1ul << 26) | (2ul << 18) |
+                   2559ul));
+            CHECK(words[index + 2ul] == 0x00200000ul);
+            saw_end = V9X_TRUE;
+        }
+    }
+    CHECK(saw_end == V9X_TRUE);
+    d.depth_tiled = 0u;
 
     /* An unknown command, a short buffer and a missing end are refused. */
     words[2] ^= 0x00010000ul;

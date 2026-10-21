@@ -42,6 +42,7 @@
 #define V9X_G4_URB_REALLOC         0x00002f00ul
 
 #define V9X_G4_PRIM_TRILIST        4ul
+#define V9X_G4_DEPTH_TILED_Y       ((1ul << 27) | (1ul << 26))
 #define V9X_G4_SURFTYPE_2D         1ul
 #define V9X_G4_SURFTYPE_NULL       7ul
 
@@ -403,7 +404,11 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
 
     v9x_g4_emit(batch, V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS));
     if (draw->depth_address != 0ul) {
+        /* Tiled (27) with the Y-major walk (26) the depth buffer must use
+         * when tiled (965 PRM Vol 2, 3DSTATE_DEPTH_BUFFER). */
         v9x_g4_emit(batch, (V9X_G4_SURFTYPE_2D << 29) |
+                               (draw->depth_tiled != 0u
+                                    ? V9X_G4_DEPTH_TILED_Y : 0ul) |
                                ((v9x_u32)draw->depth_format << 18) |
                                (draw->depth_pitch - 1ul));
         v9x_g4_emit(batch, draw->depth_address);

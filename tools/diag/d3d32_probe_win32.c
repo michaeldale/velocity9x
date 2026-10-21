@@ -574,6 +574,73 @@ static int d32_near(DWORD pixel, DWORD rgb, DWORD tolerance)
  * because both the Gen3 and the software engine sample it. Returns the
  * handle, or zero.
  */
+/*
+ * How much of the Z buffer holds what, recorded and not judged: the share
+ * of cells at the far plane in either form a 32-bit buffer may store it
+ * (00FFFFFF with a zero pad byte, FFFFFFFF with a set one), at the 16-bit
+ * far plane, and anything else, with the first cell and the surface's
+ * address. A clear that reached only part of the buffer shows here.
+ */
+static void d32_zstats(D32_OBJECT *zbuffer, DWORD zbits, const char *prefix)
+{
+    D32_SURFACE_DESC desc;
+    HRESULT hr;
+    DWORD counts[4];
+    DWORD y;
+    DWORD x;
+    DWORD cell = zbits == 32ul ? 4ul : 2ul;
+    char key[40];
+
+    if (zbuffer == 0) {
+        return;
+    }
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)zbuffer->vtbl[DDS_LOCK])(zbuffer, 0, &desc,
+                                                DDLOCK_WAIT, 0);
+    wsprintfA(key, "%sLockHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        return;
+    }
+    counts[0] = 0ul;
+    counts[1] = 0ul;
+    counts[2] = 0ul;
+    counts[3] = 0ul;
+    for (y = 0ul; y < desc.dwHeight; ++y) {
+        const BYTE *row = (const BYTE *)desc.lpSurface + y * (DWORD)desc.lPitch;
+
+        for (x = 0ul; x < desc.dwWidth; ++x) {
+            DWORD value = cell == 4ul ? ((const DWORD *)row)[x]
+                                      : (DWORD)((const WORD *)row)[x];
+
+            if (value == 0x00fffffful) {
+                ++counts[0];
+            } else if (value == 0xfffffffful) {
+                ++counts[1];
+            } else if (value == 0x0000fffful) {
+                ++counts[2];
+            } else {
+                ++counts[3];
+            }
+        }
+    }
+    wsprintfA(key, "%sAddress", prefix);
+    d32_hx(key, (DWORD)desc.lpSurface);
+    wsprintfA(key, "%sFirst", prefix);
+    d32_hx(key, cell == 4ul ? *(const DWORD *)desc.lpSurface
+                            : (DWORD)*(const WORD *)desc.lpSurface);
+    wsprintfA(key, "%sFar24", prefix);
+    d32_hx(key, counts[0]);
+    wsprintfA(key, "%sFar32", prefix);
+    d32_hx(key, counts[1]);
+    wsprintfA(key, "%sFar16", prefix);
+    d32_hx(key, counts[2]);
+    wsprintfA(key, "%sOther", prefix);
+    d32_hx(key, counts[3]);
+    ((d32_unlock_fn)zbuffer->vtbl[DDS_UNLOCK])(zbuffer, desc.lpSurface);
+}
+
 static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
                          D32_OBJECT **surface_out)
 {
@@ -818,6 +885,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("ZClearHr", (DWORD)d32_fill(zbuffer, DDBLT_DEPTHFILL,
                                        zbits == 32ul ? 0xfffffffful
                                                      : 0xfffful));
+    d32_zstats(zbuffer, zbits, "ZClear");
 
     /* T1, flat. */
     d32_line("Stage", "6-t1-flat");
@@ -885,6 +953,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_vertex(&v[5], 300.0f, 72.0f, 0.244146645f, 0xffff0000ul);
     d32_hx("T5FrontHr", (DWORD)d32_draw(device, v, 6ul));
     d32_state(device, D3DRENDERSTATE_ZENABLE, 0ul);
+    d32_zstats(zbuffer, zbits, "ZDepth");
 
     /* T6, a texture: the 8x8 quadrant map over a 64x64 quad at (400, 8),
      * DECAL and nearest, so each quadrant's centre is its texel. */
@@ -1032,6 +1101,53 @@ void WINAPI V9xD3d32ProbeEntry(void)
         ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
     } else {
         ++failures;
+    }
+
+    /*
+     * The Z buffer's own contents, recorded and not judged: whether the clear
+     * and the depth tests wrote what they should can be told apart there. The
+     * cell at each sample point is read twice - at the linear address, and
+     * at the Y-tiled one (tiles of 128 bytes by 32 rows, sixteen-byte columns
+     * of 32 rows inside) - because an engine may place its Z buffer either
+     * way and this probe cannot ask which.
+     */
+    d32_line("Stage", "9b-z-read-back");
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)zbuffer->vtbl[DDS_LOCK])(zbuffer, 0, &desc,
+                                                DDLOCK_WAIT, 0);
+    d32_hx("ZLockHr", (DWORD)hr);
+    if (hr == 0 && desc.lpSurface != 0) {
+        static const char *const names[5] = {
+            "Origin", "T3Front", "T3Kept", "T5", "Untouched" };
+        static const DWORD xs[5] = { 0ul, 204ul, 250ul, 332ul, 600ul };
+        static const DWORD ys[5] = { 0ul, 20ul, 20ul, 40ul, 400ul };
+        DWORD cell = zbits == 32ul ? 4ul : 2ul;
+        DWORD pitch = (DWORD)desc.lPitch;
+        DWORD point;
+
+        d32_hx("ZPitch", pitch);
+        for (point = 0ul; point < 5ul; ++point) {
+            DWORD xb = xs[point] * cell;
+            DWORD y = ys[point];
+            DWORD linear = y * pitch + xb;
+            DWORD tiled = (y / 32ul) * pitch * 32ul + (xb / 128ul) * 4096ul +
+                          ((xb % 128ul) / 16ul) * 512ul + (y % 32ul) * 16ul +
+                          (xb % 16ul);
+            const BYTE *base = (const BYTE *)desc.lpSurface;
+            char key[32];
+            DWORD value;
+
+            value = cell == 4ul ? *(const DWORD *)(base + linear)
+                                : (DWORD)*(const WORD *)(base + linear);
+            wsprintfA(key, "ZLinear%s", names[point]);
+            d32_hx(key, value);
+            value = cell == 4ul ? *(const DWORD *)(base + tiled)
+                                : (DWORD)*(const WORD *)(base + tiled);
+            wsprintfA(key, "ZTiled%s", names[point]);
+            d32_hx(key, value);
+        }
+        ((d32_unlock_fn)zbuffer->vtbl[DDS_UNLOCK])(zbuffer, desc.lpSurface);
     }
 
     /* T4, an offscreen render target with a device of its own. */

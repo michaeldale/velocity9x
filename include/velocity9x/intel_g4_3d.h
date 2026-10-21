@@ -116,6 +116,7 @@
 
 /* 3DSTATE_DEPTH_BUFFER formats. */
 #define V9X_G4_DEPTH_D32_FLOAT       1u
+#define V9X_G4_DEPTH_D24_UNORM_S8    2u
 #define V9X_G4_DEPTH_D24_UNORM_X8    3u
 #define V9X_G4_DEPTH_D16_UNORM       5u
 
@@ -164,6 +165,7 @@ struct v9x_g4_draw {
     v9x_u32 depth_address;   /* 0: no depth buffer */
     v9x_u32 depth_pitch;
     v9x_u8 depth_format;
+    v9x_u8 depth_tiled;      /* Y-major tiles (DW1 27 tiled, 26 walk Y) */
     /* 3DSTATE_CHROMA_KEY entry 0, when chroma_key is set: ARGB8888 low
      * and high, as v9x_g4_chroma_key makes them. */
     v9x_u8 chroma_key;

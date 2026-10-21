@@ -454,6 +454,11 @@ extern const V9X_ENGINE32_OPS v9x_engine32_hsw;
  * outcome. */
 int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                            DWORD value, int wait);
+/* The GM965's Gen4 Z buffers are Y-tiled as Haswell's are, and filled the
+ * same way: eng_i9xx.c's fill hands a depth destination on a Gen4 part to
+ * d3d\d3d_g4.c. Arguments and outcome as v9x_d3d_hsw_depth_fill. */
+int v9x_d3d_g4_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait);
 
 /* The Mach64 core eng_mach64.c owns, once the chip is validated, or null:
  * shared with d3d_mach64.c so 2D and 3D keep one FIFO account. */

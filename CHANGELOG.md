@@ -23,13 +23,13 @@ build identifier so exact guest-tested binaries remain traceable.
     units (GL_SGIS_multitexture): the OpenGL probe passed every check.
     Z buffers are now placed at a pitch the engine's depth unit accepts;
     an odd window width used to hang it.
+  - 16-bit and 24-bit Z buffers, both in the tiled layout the depth unit
+    expects, cleared by the 3D engine.
   - Page flips, through Gen4's own plane registers, at the panel's
     refresh, or through the ring when the next buffer sits a multiple of
     128 KiB from the current one.
 
   Not offered:
-  - A 32-bit Z buffer. The one try hung the 3D engine, so only 16-bit Z
-    is offered.
   - The alpha test, or a colour key, together with depth writes. That
     combination hung the 3D engine; such a draw falls back to software.
 

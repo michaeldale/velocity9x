@@ -81,9 +81,20 @@ static int v9x_i9xx_engine_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     DWORD stream[V9X_I9XX_BLT_STREAM_DWORDS];
     DWORD written = 0ul;
 
-    (void)wait;
     if (!v9x_i9xx_engine_ready()) {
         return V9X_BLT_DECLINED;
+    }
+
+    /* The GM965's Z buffers are Y-tiled: the blitter's linear rectangle is
+     * not their pixels, so the Gen4 engine draws the fill (d3d_g4.c). */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) != 0ul &&
+        data != 0 && data->lpDDDestSurface != 0 &&
+        (data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        if (bytes_per_pixel != 2ul && bytes_per_pixel != 4ul) {
+            return V9X_BLT_DECLINED;
+        }
+        return v9x_d3d_g4_depth_fill(data->lpDDDestSurface, data->rDest,
+                                     data->bltFX.dwFillColor, wait);
     }
 
     /* A depth fill arrives here too, with the depth buffer's two bytes and

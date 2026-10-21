@@ -78,11 +78,14 @@
 #define V9X_D3D_G4_REFUSE_BATCH     15ul
 #define V9X_D3D_G4_REFUSE_SUBMIT    16ul
 
-/* A linear depth buffer's pitch is a multiple of 64 bytes (965 PRM Vol 2,
- * 3DSTATE_DEPTH_BUFFER); its rows are placed in whole alignment units of
- * 2 (Vol 1 6.18). See v9x_d3d_g4_create_depth. */
-#define V9X_D3D_G4_DEPTH_PITCH_ALIGN 64ul
-#define V9X_D3D_G4_DEPTH_ROW_ALIGN   2ul
+/* A Y-major tile is 128 bytes by 32 rows (965 PRM Vol 1, "Tiled Memory");
+ * a depth buffer is placed in whole ones. See v9x_d3d_g4_create_depth. */
+#define V9X_D3D_G4_DEPTH_PITCH_ALIGN 128ul
+#define V9X_D3D_G4_DEPTH_ROW_ALIGN   32ul
+
+/* Blocks this engine places (mip trees, Z buffers) start on a page, which
+ * d3d_place.c's release rule and the tiles both take. */
+#define V9X_D3D_G4_PLACE_ALIGN    4096ul
 
 /* Texture Coordinate Mode for all three axes. */
 #define V9X_D3D_G4_TCM_WRAP   0u
@@ -105,12 +108,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_g4_limits = {
     2ul,            /* texture_units: the render interface's step 4 */
     /* SF origin bias 0.5 (Mesa and xf86 alike): the GL pixel centre. */
     1ul,            /* pixel_centre_half */
-    0ul,            /* depth_tiled: linear */
+    1ul,            /* depth_tiled: Y tiles (v9x_d3d_g4_create_depth) */
     16384ul,        /* target_pitch_max_xrgb8888 */
-    /* No 32-bit Z buffer: a linear D24_UNORM_X8 one hung the 3D pipe on
-     * TOMMOHP (boot 8, V9XD32 /z24: ACTHD at the batch's closing MI_FLUSH,
-     * HEAD short of TAIL), where linear D16 ran every check clean. */
-    0ul             /* depth32_bits */
+    /* A 32-bit Z buffer is D24_UNORM_X8, Y-tiled. A linear one hung the 3D
+     * pipe on TOMMOHP (boot 8, V9XD32 /z24: ACTHD at the batch's closing
+     * MI_FLUSH, HEAD short of TAIL), where linear D16 ran every check. */
+    24ul            /* depth32_bits */
 };
 
 typedef struct v9x_d3d_g4_texture {
@@ -560,18 +563,51 @@ static DWORD v9x_d3d_g4_color_key(const V9X_DD_SURFACE_LCL *surface,
     return V9X_D3D_G4_REFUSE_NONE;
 }
 
-/* A Z buffer in video memory at a pitch the depth unit takes: one
- * create_surface placed, or one from DirectDraw's heap that happens to
- * fit. Any other would hang the 3D pipe, so it is refused. */
+/*
+ * The depth buffer format for a cell: D16_UNORM, or for a 32-bit cell
+ * D24_UNORM_S8_UINT with the stencil test off, the form Mesa's Gen4 path
+ * gives 24-bit depth. D24_UNORM_X8_UINT, tiled, cleared only 63% of
+ * V9XD32's Z buffer on TOMMOHP and took no depth writes at all (boot 31,
+ * ZClearFar32 0x2F70C of 0x4B000, ZDepth counts unchanged), where D16 in
+ * the same placement covered every cell.
+ */
+static int v9x_d3d_g4_depth_format(DWORD cell, v9x_u8 *format)
+{
+    if (cell == 2ul) {
+        *format = (v9x_u8)V9X_G4_DEPTH_D16_UNORM;
+        return 1;
+    }
+    if (cell == 4ul) {
+        *format = (v9x_u8)V9X_G4_DEPTH_D24_UNORM_S8;
+        return 1;
+    }
+    return 0;
+}
+
+/*
+ * A Z buffer create_surface placed in Y tiles. One from DirectDraw's heap
+ * (create_depth declined it) is linear, and the depth unit would read it
+ * as tiled, so it is refused. Placed is d3d_place.c's own signature, the
+ * one v9x_d3d_place_release frees by: the block's start in dwReserved1,
+ * no heap block size, and the surface inside the block's first alignment.
+ */
 static int v9x_d3d_g4_depth_surface(const V9X_DD_SURFACE_LCL *surface,
                                     DWORD *offset)
 {
+    const V9X_DD_SURFACE_GBL *global;
+
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
         surface->lpGbl->lPitch <= 0l ||
         ((DWORD)surface->lpGbl->lPitch &
          (V9X_D3D_G4_DEPTH_PITCH_ALIGN - 1ul)) != 0ul) {
+        return 0;
+    }
+    global = surface->lpGbl;
+    if (global->dwReserved1 == 0ul || global->dwBlockSizeX != 0ul ||
+        global->fpVidMem < global->dwReserved1 ||
+        global->fpVidMem - global->dwReserved1 >= V9X_D3D_G4_PLACE_ALIGN) {
         return 0;
     }
     *offset = v9x_surface_offset(surface);
@@ -630,14 +666,15 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
                                    draw->depth.object != 0,
                                    draw->depth.pitch) != 0ul) {
         surface = (V9X_DD_SURFACE_LCL *)draw->depth.object;
-        /* D16 only (see the limits). */
+        /* D16_UNORM, or D24_UNORM_X8 for a 32-bit cell, both Y-tiled. */
         if (!v9x_d3d_g4_depth_surface(surface, &offset) ||
-            draw->depth.format == V9X_R3D_DEPTH_Z24X8 ||
             (DWORD)surface->lpGbl->wWidth < draw->target.width ||
             (DWORD)surface->lpGbl->wHeight < draw->target.height ||
             draw->depth_func < V9X_R3D_CMP_NEVER ||
             draw->depth_func > V9X_R3D_CMP_ALWAYS ||
-            !v9x_d3d_hsw_depth_format(2ul, &state->depth_format)) {
+            !v9x_d3d_g4_depth_format(
+                draw->depth.format == V9X_R3D_DEPTH_Z24X8 ? 4ul : 2ul,
+                &state->depth_format)) {
             return V9X_D3D_G4_REFUSE_DEPTH;
         }
         state->depth = 1;
@@ -1070,11 +1107,15 @@ static void v9x_d3d_g4_note_slot(DWORD slot, DWORD sequence)
     pipe[V9X_G4_PIPE_LAST_SLOT] = slot;
 }
 
-static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
-                                 const V9X_R3D_VERTEX *vertices,
-                                 DWORD triangle_count)
+/*
+ * Submit a mapped draw: the state block, the vertices and the batch, a
+ * slot at a time. The draw's target sizes the drawing rectangle.
+ */
+static int v9x_d3d_g4_submit(const V9X_R3D_DRAW *draw,
+                             const V9X_D3D_G4_STATE *state,
+                             const V9X_R3D_VERTEX *vertices,
+                             DWORD triangle_count)
 {
-    V9X_D3D_G4_STATE state;
     struct v9x_g4_batch batch;
     struct v9x_g4_draw d;
     DWORD reason;
@@ -1089,23 +1130,6 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     v9x_u32 *at;
     v9x_u32 *target;
 
-    if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
-        return 0;
-    }
-    if (!v9x_d3d_g4_ready()) {
-        if (v9x_hal != 0) {
-            v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_NOT_READY);
-        }
-        return 0;
-    }
-    reason = v9x_d3d_g4_map(draw, &state);
-    if (reason != V9X_D3D_G4_REFUSE_NONE) {
-        v9x_d3d_g4_count_refusal(reason);
-        return 0;
-    }
-    if (state.scissor_empty) {
-        return 1;
-    }
     {
         int waited = v9x_flip_wait_done();
 
@@ -1120,12 +1144,13 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     d.state_base = V9X_D3D_G4_GFX(0ul);
     d.width = (v9x_u16)draw->target.width;
     d.height = (v9x_u16)draw->target.height;
-    d.depth_address = state.depth ? state.depth_address : 0ul;
-    d.depth_pitch = state.depth_pitch;
-    d.depth_format = state.depth_format;
-    d.chroma_key = state.texture.sampler.chroma_key;
-    d.chroma_low = state.chroma_low;
-    d.chroma_high = state.chroma_high;
+    d.depth_address = state->depth ? state->depth_address : 0ul;
+    d.depth_pitch = state->depth_pitch;
+    d.depth_format = state->depth_format;
+    d.depth_tiled = 1u;   /* every Z buffer this engine takes is Y-tiled */
+    d.chroma_key = state->texture.sampler.chroma_key;
+    d.chroma_low = state->chroma_low;
+    d.chroma_high = state->chroma_high;
     /* Left running, unless GDI may be drawing on the screen (Haswell's
      * rule, d3d_hsw.c v9x_d3d_hsw_draw_waits). */
     wait_after = v9x_present_gdi_may_draw();
@@ -1145,7 +1170,7 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
         d.state_offset = V9X_G4_STATE_OFF + slot * V9X_G4_STATE_STRIDE;
         d.vertex_address = V9X_D3D_G4_GFX(V9X_G4_VERTEX_OFF +
                                           slot * V9X_G4_VERTEX_STRIDE);
-        reason = v9x_d3d_g4_write_state(draw, &state, d.state_offset);
+        reason = v9x_d3d_g4_write_state(draw, state, d.state_offset);
         if (reason != V9X_D3D_G4_REFUSE_NONE) {
             v9x_d3d_g4_count_refusal(reason);
             return 0;
@@ -1190,6 +1215,131 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     }
     v9x_present_note_submission();
     return 1;
+}
+
+static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
+                                 const V9X_R3D_VERTEX *vertices,
+                                 DWORD triangle_count)
+{
+    V9X_D3D_G4_STATE state;
+    DWORD reason;
+
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
+        return 0;
+    }
+    if (!v9x_d3d_g4_ready()) {
+        if (v9x_hal != 0) {
+            v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_NOT_READY);
+        }
+        return 0;
+    }
+    reason = v9x_d3d_g4_map(draw, &state);
+    if (reason != V9X_D3D_G4_REFUSE_NONE) {
+        v9x_d3d_g4_count_refusal(reason);
+        return 0;
+    }
+    if (state.scissor_empty) {
+        return 1;
+    }
+    return v9x_d3d_g4_submit(draw, &state, vertices, triangle_count);
+}
+
+/*
+ * A depth fill drawn by the engine: a Y-tiled Z buffer is not the linear
+ * rectangle the blitter or the CPU would write. Two triangles over the
+ * rectangle at depth z, the depth test ALWAYS with writes on, and the
+ * colour target - the Z buffer's own memory as RGB565, which only sizes the
+ * draw - with every channel's write disabled. Haswell's fill the same way
+ * (d3d_hsw.c v9x_d3d_hsw_depth_fill).
+ */
+int v9x_d3d_g4_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_G4_STATE state;
+    V9X_R3D_VERTEX v[6];
+    BYTE *bytes;
+    DWORD offset = 0ul;
+    DWORD cell;
+    DWORD index;
+    float z;
+    float left;
+    float top;
+    float right;
+    float bottom;
+
+    (void)wait;
+    if (surface == 0 || rect == 0 || !v9x_d3d_g4_ready() ||
+        !v9x_d3d_g4_depth_surface(surface, &offset)) {
+        return V9X_BLT_DECLINED;
+    }
+    if (rect[0] < 0l || rect[1] < 0l || rect[2] <= rect[0] ||
+        rect[3] <= rect[1] ||
+        (DWORD)rect[2] > (DWORD)surface->lpGbl->wWidth ||
+        (DWORD)rect[3] > (DWORD)surface->lpGbl->wHeight) {
+        return V9X_BLT_DECLINED;
+    }
+
+    bytes = (BYTE *)&draw;
+    for (index = 0ul; index < sizeof(draw); ++index) {
+        bytes[index] = 0u;
+    }
+    bytes = (BYTE *)&state;
+    for (index = 0ul; index < sizeof(state); ++index) {
+        bytes[index] = 0u;
+    }
+    draw.target.offset = offset;
+    draw.target.pitch = (DWORD)surface->lpGbl->lPitch;
+    draw.target.width = (DWORD)surface->lpGbl->wWidth;
+    draw.target.height = (DWORD)surface->lpGbl->wHeight;
+    draw.target.format = V9X_R3D_FORMAT_RGB565;
+
+    /* The cell sets the format, D16_UNORM or D24_UNORM_X8, and the scale
+     * the value is on (v9x_d3d_hsw_fill_z). */
+    cell = v9x_d3d_depth_bytes_per_pixel(surface);
+    if (!v9x_d3d_g4_depth_format(cell, &state.depth_format) ||
+        !v9x_d3d_hsw_target(V9X_R3D_FORMAT_RGB565, &state.target_format,
+                            &state.write_disable)) {
+        return V9X_BLT_DECLINED;
+    }
+    state.write_disable = 0xfu;
+    state.depth = 1;
+    state.depth_address = v9x_d3d_g4_vram(offset);
+    state.depth_pitch = (v9x_u32)surface->lpGbl->lPitch;
+    state.cc.depth_test = 1u;
+    state.cc.depth_function = v9x_d3d_g4_compare(V9X_R3D_CMP_ALWAYS);
+    state.cc.depth_write = 1u;
+    state.cc.src_factor = 0x01u;
+    state.cc.dst_factor = 0x11u;
+    (void)v9x_d3d_hsw_scissor(&draw, state.scissor);
+
+    z = v9x_d3d_hsw_fill_z(value, cell);
+    left = (float)rect[0];
+    top = (float)rect[1];
+    right = (float)rect[2];
+    bottom = (float)rect[3];
+    for (index = 0ul; index < 6ul; ++index) {
+        v[index].sz = z;
+        v[index].rhw = 1.0f;
+        v[index].color = 0ul;
+        v[index].specular = 0ul;
+        v[index].tu = 0.0f;
+        v[index].tv = 0.0f;
+    }
+    v[0].sx = left;
+    v[0].sy = top;
+    v[1].sx = right;
+    v[1].sy = top;
+    v[2].sx = left;
+    v[2].sy = bottom;
+    v[3].sx = right;
+    v[3].sy = top;
+    v[4].sx = right;
+    v[4].sy = bottom;
+    v[5].sx = left;
+    v[5].sy = bottom;
+    return v9x_d3d_g4_submit(&draw, &state, v, 2ul) ? V9X_BLT_DONE
+                                                     : V9X_BLT_DECLINED;
 }
 
 static int v9x_d3d_g4_draw(const V9X_R3D_DRAW *draw,
@@ -1301,7 +1451,9 @@ static void v9x_d3d_g4_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
         V9X_DDBD_16 | V9X_DDBD_32;
-    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+    /* D16_UNORM, and D24_UNORM_X8 in a 32-bit cell, both Y-tiled. */
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
 
     for (index = 0ul; index < 5ul; ++index) {
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -1361,7 +1513,6 @@ static void v9x_d3d_g4_describe_caps(V9X_DD_SHARED *shared)
  * covers 965 PRM Vol 1 6.18's padding: the sampler reads to the alignment
  * unit past the edge, and every page it can reach is the block's.
  */
-#define V9X_D3D_G4_PLACE_ALIGN    4096ul
 #define V9X_D3D_G4_MIPTREE_SHAPE  1ul  /* not a halving chain */
 #define V9X_D3D_G4_MIPTREE_FORMAT 2ul  /* not a layout the sampler takes */
 
@@ -1436,14 +1587,20 @@ static DWORD v9x_d3d_g4_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
 }
 
 /*
- * A 16-bit Z buffer at a pitch 3DSTATE_DEPTH_BUFFER takes: a linear depth
- * buffer's pitch "can be any multiple of 64 bytes" (965 PRM Vol 2,
- * 3DSTATE_DEPTH_BUFFER Surface Pitch), and DirectDraw's heap gives a
- * 400-wide one 800. TOMMOHP boot 14: the ICD's 400x300 window's first
- * draw hung the 3D pipe for the engine's whole timeout. Rows are rounded to
- * the alignment unit's 2 (Vol 1 6.18), in a 4 KB-aligned block.
+ * A Z buffer in whole Y-major tiles: a 16-bit D16_UNORM, or a 32-bit
+ * D24_UNORM_X8, its pitch rounded up to the tile's 128 bytes and its rows
+ * to the tile's 32, in a 4 KB-aligned block, as Haswell places its own.
+ *
+ * Linear was first. A linear depth buffer's pitch must be a multiple of 64
+ * bytes (965 PRM Vol 2, 3DSTATE_DEPTH_BUFFER Surface Pitch), and before
+ * this placement DirectDraw's heap gave a 400-wide one 800, which hung the
+ * 3D pipe on TOMMOHP boot 14. A linear D24_UNORM_X8 hung it at any pitch
+ * (boot 8), where in the boot 20 diagnostic a Y-tiled D16 drew the ICD's
+ * depth-tested draws without a hang. Tiled, the CPU and the blitter cannot
+ * write it: fills are drawn by the engine (v9x_d3d_g4_depth_fill), and the
+ * limits say depth_tiled so a declined fill fails instead of reaching the
+ * CPU.
  */
-
 static DWORD v9x_d3d_g4_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
                                      V9X_DD_SURFACE_LCL *surface)
 {
@@ -1451,10 +1608,14 @@ static DWORD v9x_d3d_g4_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
     DWORD pitch;
     DWORD rows;
     DWORD base;
+    DWORD bytes = 2ul;
 
-    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
-        surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
-        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        if (surface->lpGbl->ddpfSurface.dwRGBBitCount == 32ul) {
+            bytes = 4ul;
+        } else if (surface->lpGbl->ddpfSurface.dwRGBBitCount != 16ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
     }
     if (surface->lpGbl->wWidth == 0u || surface->lpGbl->wHeight == 0u ||
         (DWORD)surface->lpGbl->wWidth >
@@ -1463,7 +1624,7 @@ static DWORD v9x_d3d_g4_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
             v9x_d3d_g4_limits.target_dimension_max) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    pitch = ((DWORD)surface->lpGbl->wWidth * 2ul +
+    pitch = ((DWORD)surface->lpGbl->wWidth * bytes +
              V9X_D3D_G4_DEPTH_PITCH_ALIGN - 1ul) &
             ~(V9X_D3D_G4_DEPTH_PITCH_ALIGN - 1ul);
     rows = ((DWORD)surface->lpGbl->wHeight + V9X_D3D_G4_DEPTH_ROW_ALIGN -
