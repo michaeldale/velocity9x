@@ -9,16 +9,17 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.22.0](../releases/0.22.0/README.md), built from
-`275369a1`. Its downloads are committed (`a43bbff1`), it is on GitHub as
-`v0.22.0`, and the update server serves it as release 15, stable. A check
-from 0.21.0 offers it with a `signed=` line, and the served `SIGNED.TXT` and
-intel-gma zip equal the committed ones byte for byte (2026-10-20).
+The latest release is [0.23.0](../releases/0.23.0/README.md), built from
+`0de6b49a`: the GMA X3100 (Gen4) and the HD 4000 (Ivy Bridge). Its
+downloads are committed (`6ffce652`), it is on GitHub as `v0.23.0`, and
+the update server serves it as release 16, stable. A check from 0.22.0
+offers it with a `signed=` line, and the served `SIGNED.TXT` and
+intel-gma zip equal the committed ones byte for byte (2026-10-21).
 Its archives are host-audited; none has had an activation smoke test from
-a Have Disk install of the archive itself. The checkout is 0.23.0,
-unreleased. See the [changelog](../CHANGELOG.md) for what it adds: the HD
-4600 heap and 32-bit textures, the GMA 3150, the GMA X3100 (Gen4) and
-the HD 4000 (Ivy Bridge).
+a Have Disk install of the archive itself. The HD 4000 machine runs the
+intel-gma package built from `9882c001`, which has the same code. No
+machine has taken an update to it through **Check for updates**. The
+checkout is 0.24.0, unreleased.
 
 Not run before release, by decision (Michael, 2026-10-20): the netbook
 (945GSE) on the current tree. Two changes reach every Gen3 part and have
