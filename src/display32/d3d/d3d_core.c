@@ -5890,7 +5890,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         name = "Velocity9x VSA-100";
     } else if (ops == &v9x_d3d_engine_hsw) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN75;
-        name = "Velocity9x HD 4600";
+        /* The same engine on Ivy Bridge, named by its identity bit; it
+         * read "HD 4600" until 2026-10-21 (V9XGLP on W9QI4E14). */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul) {
+            name = "Velocity9x HD 4000";
+        } else {
+            name = "Velocity9x HD 4600";
+        }
     } else if (ops == &v9x_d3d_engine_g4) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN4;
         name = "Velocity9x GMA X3100";
