@@ -35,6 +35,13 @@
  * on the i5-4570 (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md).
  */
 #define V9X_PCI_DEVICE_HD4600_HSW        ((v9x_u16)0x0412u)
+/*
+ * Ivy Bridge GT2 desktop, HD Graphics 4000: Gen7, on the Haswell path for
+ * 2D (the same BAR layout, GTT and BCS ring), with Ivy Bridge's forcewake
+ * (docs\decisions\2026-10-21-ivybridge-gt-forcewake.md). Measured on
+ * W9QI4E14 (docs\plans\intel-ivybridge-gen7.md).
+ */
+#define V9X_PCI_DEVICE_HD4000_IVB        ((v9x_u16)0x0162u)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)

@@ -43,6 +43,16 @@ build identifier so exact guest-tested binaries remain traceable.
     128 KiB boundaries made 3DMark 2000 show half-drawn frames; most
     flips stay register writes.
 
+- **Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`): new chip, 2D
+  only.** The `intel-gma` package now claims it. It was tested on one
+  MSI B75MA-P45 desktop with an i5-3570K, reached through remote help.
+  DirectDraw fills and copies run on the blitter ring, the same way as on
+  the HD 4600, and read back correctly at 640x480 in 256 colours. Ivy
+  Bridge wakes its graphics core differently from Haswell, and the
+  driver now does it the Ivy Bridge way. Not yet offered: Direct3D, page
+  flips, and blits measured at 16 or 32-bit colour. Before this, the
+  generic VESA package ran it at up to 1920x1440.
+
 - **V9XTRACE no longer hangs on a reused snapshot.** Once all eight
   snapshot names were taken, a run that reused one whose section had
   grown past 32 KiB never returned, and the file kept its old contents.

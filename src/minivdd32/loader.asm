@@ -223,6 +223,17 @@ V9X_HSW_RCS_START       equ 00002038h
 V9X_HSW_RCS_CTL         equ 0000203ch
 V9X_HSW_CTL_ONE_PAGE    equ 00000001h
 V9X_HSW_CTL_CHECK       equ 001ff001h
+; Ivy Bridge's MT forcewake (V9X_HSW_CHIP_IVYBRIDGE), from i915's Ivy Bridge
+; init (intel_uncore.c) as measured on W9QI4E14
+; (docs\decisions\2026-10-21-ivybridge-gt-forcewake.md): request A188h as
+; on Haswell, acknowledge at 130040h, the legacy request A18Ch cleared and
+; every MT thread bit cleared before bit 0 is asked for.
+V9X_IVB_FW_ACK          equ 00130040h
+V9X_IVB_FW_LEGACY       equ 0000a18ch
+V9X_IVB_ECOBUS          equ 0000a180h
+V9X_IVB_FW_CLEAR_ALL    equ 0ffff0000h
+V9X_IVB_THREAD_STATUS   equ 0013805ch
+V9X_IVB_THREAD_MASK     equ 7
 V9xHswMmioBase    dd 0
 V9xHswMmioLinear  dd 0
 V9xHswGttLinear   dd 0
@@ -232,6 +243,12 @@ V9xHswOpen        dd 0
 ; The reserve the rings were opened at, and the one the caller asked for.
 V9xHswReserveOffset dd 0
 V9xHswRequestOffset dd 0
+; The chip the open was asked for (EDI), its acknowledge register, and
+; whether the acknowledge was set when the open found it (Ivy Bridge only;
+; the release puts it back).
+V9xHswChip        dd 0
+V9xHswFwAck       dd V9X_HSW_FW_ACK
+V9xHswFwEntryHeld dd 0
 
 ; Intel Gen3 Phase 1: one fixed read-only allowlist, captured twice. The BAR is
 ; supplied from a fresh PCI config read by the display driver on each enable;
@@ -2680,19 +2697,29 @@ EndProc V9xMini_Hsw_Map
 
 ; EDI = MMIO linear. Writes the forcewake clear and waits for the
 ; acknowledge to drop, bounded; the outcome is not a refusal (there is
-; nothing further to undo), so nothing is returned.
+; nothing further to undo), so nothing is returned. On Ivy Bridge, an
+; acknowledge the open found set (the BIOS's) is asked for again, so the GT
+; is left as it was found: kept out of RC6, which is how the BIOS hands it
+; over. Not waited for - nothing here depends on it.
 BeginProc V9xMini_Hsw_Release
     push    eax
     push    ecx
+    push    edx
+    mov     edx, V9xHswFwAck
     mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_CLEAR
     xor     ecx, ecx
 V9xMini_Hsw_Release_Poll:
-    test    dword ptr [edi+V9X_HSW_FW_ACK], 1
-    jz      short V9xMini_Hsw_Release_Done
+    test    dword ptr [edi+edx], 1
+    jz      short V9xMini_Hsw_Release_Cleared
     inc     ecx
     cmp     ecx, V9X_HSW_FW_POLLS
     jb      short V9xMini_Hsw_Release_Poll
+V9xMini_Hsw_Release_Cleared:
+    cmp     V9xHswFwEntryHeld, 0
+    je      short V9xMini_Hsw_Release_Done
+    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_SET
 V9xMini_Hsw_Release_Done:
+    pop     edx
     pop     ecx
     pop     eax
     ret
@@ -2770,6 +2797,15 @@ V9xMini_Hsw_Open_Fresh:
     test    eax, V9X_HSW_RESERVE_ALIGN
     jnz     V9xMini_Hsw_Open_Refused_Pop
     mov     V9xHswReserveOffset, eax
+    ; The chip, which picks the acknowledge register.
+    mov     V9xHswFwEntryHeld, 0
+    mov     V9xHswFwAck, V9X_HSW_FW_ACK
+    cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
+    je      short V9xMini_Hsw_Open_Chip_Known
+    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
+    jne     V9xMini_Hsw_Open_Refused_Pop
+    mov     V9xHswFwAck, V9X_IVB_FW_ACK
+V9xMini_Hsw_Open_Chip_Known:
 
     ; Code 2: the three windows.
     mov     eax, ebx
@@ -2849,12 +2885,38 @@ V9xMini_Hsw_Open_Ptes_Ok:
     pushfd
     cli
     mov     edx, 5
+    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
+    je      short V9xMini_Hsw_Open_Fw_Ivb
     test    dword ptr [edi+V9X_HSW_FW_ACK], 1
-    jnz     short V9xMini_Hsw_Open_Fw_Refused
+    jnz     V9xMini_Hsw_Open_Fw_Refused
+    jmp     short V9xMini_Hsw_Open_Fw_Set
+V9xMini_Hsw_Open_Fw_Ivb:
+    ; i915's Ivy Bridge reset, which is what releases the acknowledge the
+    ; BIOS leaves set: the legacy request cleared and posted through ECOBUS,
+    ; every MT thread bit cleared, then the acknowledge awaited clear.
+    mov     eax, [edi+V9X_IVB_FW_ACK]
+    and     eax, 1
+    mov     V9xHswFwEntryHeld, eax
+    mov     dword ptr [edi+V9X_IVB_FW_LEGACY], 0
+    mov     eax, [edi+V9X_IVB_ECOBUS]
+    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_IVB_FW_CLEAR_ALL
+    xor     ecx, ecx
+V9xMini_Hsw_Open_Fw_Ivb_Clear:
+    test    dword ptr [edi+V9X_IVB_FW_ACK], 1
+    jz      short V9xMini_Hsw_Open_Fw_Set
+    inc     ecx
+    cmp     ecx, V9X_HSW_FW_POLLS
+    jb      short V9xMini_Hsw_Open_Fw_Ivb_Clear
+    ; Never cleared: refusal 5, and the release puts the BIOS's bit back.
+    popfd
+    call    V9xMini_Hsw_Release
+    jmp     V9xMini_Hsw_Open_Refused_Pop
+V9xMini_Hsw_Open_Fw_Set:
+    mov     esi, V9xHswFwAck
     mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_SET
     xor     ecx, ecx
 V9xMini_Hsw_Open_Fw_Poll:
-    test    dword ptr [edi+V9X_HSW_FW_ACK], 1
+    test    dword ptr [edi+esi], 1
     jnz     short V9xMini_Hsw_Open_Fw_Acked
     inc     ecx
     cmp     ecx, V9X_HSW_FW_POLLS
@@ -2867,6 +2929,19 @@ V9xMini_Hsw_Open_Fw_Refused:
     popfd
     jmp     V9xMini_Hsw_Open_Refused_Pop
 V9xMini_Hsw_Open_Fw_Acked:
+    ; Ivy Bridge: GT thread status C0 before the first register write
+    ; (i915 WaRsForcewakeWaitTC0). Bounded and not a refusal: i915 only
+    ; warns, and code 8's readback catches a write that did not land.
+    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
+    jne     short V9xMini_Hsw_Open_Fw_Done
+    xor     ecx, ecx
+V9xMini_Hsw_Open_Fw_Thread:
+    test    dword ptr [edi+V9X_IVB_THREAD_STATUS], V9X_IVB_THREAD_MASK
+    jz      short V9xMini_Hsw_Open_Fw_Done
+    inc     ecx
+    cmp     ecx, V9X_HSW_FW_POLLS
+    jb      short V9xMini_Hsw_Open_Fw_Thread
+V9xMini_Hsw_Open_Fw_Done:
     popfd
 
     ; Code 7: a ring already on is someone else's.
@@ -2986,6 +3061,8 @@ V9xMini_Api_HswEngineOpen:
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     eax, [ebp.Client_ESI]
     mov     V9xHswRequestOffset, eax
+    mov     eax, [ebp.Client_EDI]
+    mov     V9xHswChip, eax
     mov     ebx, [ebp.Client_EBX]
     mov     ecx, [ebp.Client_ECX]
     mov     edx, [ebp.Client_EDX]

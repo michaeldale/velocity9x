@@ -1912,12 +1912,14 @@ V9xMiniHswStolenReservedDone:
 V9XMINIHSWSTOLENRESERVED ENDP
 
 ; WORD FAR PASCAL V9xMiniHswEngineOpen(DWORD bar0, DWORD gmadr, DWORD bdsm,
-;                                      DWORD offset, DWORD FAR *mmio,
-;                                      DWORD FAR *reserve, WORD FAR *code)
+;                                      DWORD offset, DWORD chip,
+;                                      DWORD FAR *mmio, DWORD FAR *reserve,
+;                                      WORD FAR *code)
 ;
 ; HSW_ENGINE_OPEN (V9XMAPI.INC); offset is the reserve's aperture offset, in
-; ESI. Outputs copied out of EBX/ECX/EDX before any `les bx`, which would
-; overwrite BX. With no mini-VDD API the code is FFFFh.
+; ESI, and chip which forcewake to take, in EDI. Outputs copied out of
+; EBX/ECX/EDX before any `les bx`, which would overwrite BX. With no mini-VDD
+; API the code is FFFFh.
 PUBLIC V9XMINIHSWENGINEOPEN
 V9XMINIHSWENGINEOPEN PROC FAR
     push    bp
@@ -1931,10 +1933,11 @@ V9XMINIHSWENGINEOPEN PROC FAR
     call    V9xMiniApiInitialize
     or      ax, ax
     jz      short V9xMiniHswEngineOpenNoApi
-    mov     ebx, dword ptr [bp+30]
-    mov     ecx, dword ptr [bp+26]
-    mov     edx, dword ptr [bp+22]
-    mov     esi, dword ptr [bp+18]
+    mov     ebx, dword ptr [bp+34]
+    mov     ecx, dword ptr [bp+30]
+    mov     edx, dword ptr [bp+26]
+    mov     esi, dword ptr [bp+22]
+    mov     edi, dword ptr [bp+18]
     mov     eax, V9XMINI_FN_HSW_ENGINE_OPEN
     call    dword ptr V9xMiniApiEntry
     mov     esi, ebx
@@ -1964,7 +1967,7 @@ V9xMiniHswEngineOpenDone:
     pop     ecx
     pop     ebx
     pop     bp
-    retf    28
+    retf    32
 V9XMINIHSWENGINEOPEN ENDP
 
 ; WORD FAR PASCAL V9xMiniHswEngineClose(void)

@@ -449,10 +449,16 @@ V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
 ; ring for Direct3D (Phase F2 of docs\plans\intel-haswell-direct3d.md).
 ;
 ; In: EBX = GTTMMADR (BAR0) physical, ECX = GMADR (BAR2) physical, EDX =
-; BDSM, all freshly read from PCI config by the display driver, and ESI =
+; BDSM, all freshly read from PCI config by the display driver, ESI =
 ; the reserve's aperture offset, 64 KB-aligned and non-zero, which the
 ; display driver places (docs\plans\intel-haswell-heap-beyond-16-mib.md; it
-; was a fixed 1800000h). An open ring at another offset is closed and the
+; was a fixed 1800000h), and EDI = the chip, V9X_HSW_CHIP_*: 0 Haswell,
+; 1 Ivy Bridge, which takes Ivy Bridge's MT forcewake the way i915 does
+; (docs\decisions\2026-10-21-ivybridge-gt-forcewake.md): FORCEWAKE cleared,
+; every MT thread bit cleared, the acknowledge awaited clear - so an
+; acknowledge the BIOS left set is not refusal 5 there - then bit 0 set and
+; GT thread status awaited C0. Its release sets bit 0 again when it was
+; acknowledged at the open, leaving the GT as the BIOS left it. An open ring at another offset is closed and the
 ; rings reopened at this one. Phase B1's measured sequence
 ; (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md): map the MMIO
 ; and GTT halves of GTTMMADR and the reserve at GMADR + ESI (128 KB: BCS
@@ -464,10 +470,13 @@ V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
 ; Out: AX=1, EBX = MMIO linear, ECX = reserve linear (status page at +1000h),
 ; EDX = 0, or 10h when an open ring of ours was found and reused. AX=0 leaves
 ; EBX/ECX zero and EDX the refusal: 1 bad input, 2 map, 3 PTE, 4 CPU path,
-; 5 forcewake already held, 6 forcewake not acknowledged, 7 ring already on,
+; 5 forcewake already held (Ivy Bridge: its acknowledge never cleared after
+; the reset), 6 forcewake not acknowledged, 7 ring already on,
 ; 8 ring readback (either ring). Every refusal after forcewake was taken
 ; releases it. Only the intel-gma family image implements it.
 V9XMINI_FN_HSW_ENGINE_OPEN  EQU 0020h
+V9X_HSW_CHIP_HASWELL        EQU 0
+V9X_HSW_CHIP_IVYBRIDGE      EQU 1
 
 ; Intel Haswell: close what HSW_ENGINE_OPEN opened - BCS and RCS CTL 0, HEAD,
 ; TAIL, START 0, forcewake released. No input. Out: AX=1 if a ring was open, AX=0

@@ -7,6 +7,7 @@ extern const V9X_HW16_DEVICE v9x_gma900_device;
 extern const V9X_HW16_DEVICE v9x_gma3150_device;
 extern const V9X_HW16_DEVICE v9x_gm965_device;
 extern const V9X_HW16_DEVICE v9x_hsw_hd4600_device;
+extern const V9X_HW16_DEVICE v9x_ivb_hd4000_device;
 extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
 extern const char *v9x_hsw_engine_status_text(void);
@@ -21,10 +22,12 @@ extern void v9x_hsw_publish_layout(v9x_hw16_write_fn write);
  * (the register class that hung the 945 with its pipe off), the GTT
  * inventory expects BAR3, and the ring plan and sandbox are Gen3's layout.
  * Inventory of those paths: docs\plans\intel-haswell-direct3d.md, Phase B2.
+ * Ivy Bridge runs the Haswell path (hsw_hw16.c), so it answers here too.
  */
-static int v9x_intel_is_haswell(void)
+static int v9x_intel_is_gen7(void)
 {
-    return v9x_hw16_active_device() == &v9x_hsw_hd4600_device;
+    return v9x_hw16_active_device() == &v9x_hsw_hd4600_device ||
+           v9x_hw16_active_device() == &v9x_ivb_hd4000_device;
 }
 
 /*
@@ -40,7 +43,7 @@ static void v9x_intel_publish_event_near(unsigned short kind,
 {
     /* Haswell: no Gen3 event capture; a Disable gives the BCS ring and
      * forcewake back before the VBIOS or a DOS box has the display. */
-    if (v9x_intel_is_haswell()) {
+    if (v9x_intel_is_gen7()) {
         if (kind == V9X_HW16_EVENT_DISABLE) {
             v9x_hsw_engine_close();
         }
@@ -54,7 +57,8 @@ static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_gma900_device,
     &v9x_gma3150_device,
     &v9x_gm965_device,
-    &v9x_hsw_hd4600_device
+    &v9x_hsw_hd4600_device,
+    &v9x_ivb_hd4000_device
 };
 
 /*
@@ -69,7 +73,7 @@ static unsigned long v9x_intel_reserve_video_memory(
 {
     unsigned long heap_end;
 
-    if (v9x_intel_is_haswell()) {
+    if (v9x_intel_is_gen7()) {
         heap_end = v9x_hsw_heap_end();
         if (usable_bytes < heap_end) {
             heap_end = usable_bytes;
@@ -163,7 +167,7 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
      * enabled. The answer that matters is EngineStamp=, written by dd16.c when
      * the shared block is stamped.
      */
-    write("EngineStatusEnable", v9x_intel_is_haswell() ?
+    write("EngineStatusEnable", v9x_intel_is_gen7() ?
           v9x_hsw_engine_status_text() : v9x_gma950_engine_status_text());
     if (v9x_vbe_vram_reported != 0ul) {
         v9x_intel_format_u32(number, v9x_vbe_vram_reported);
@@ -173,7 +177,7 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     /* The three Gen3 captures below read 945 registers and BAR3; on the
      * GM965 the GTT window is BAR0 + 512 KiB (V9xPciReadIntelGttConfig). */
-    if (v9x_intel_is_haswell()) {
+    if (v9x_intel_is_gen7()) {
         v9x_hsw_publish_layout(write);
         return;
     }
@@ -198,8 +202,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     0,
     0,
-    /* Strict PCI identity: only 8086:27AE, 8086:2592, 8086:A011, 8086:2A02
-     * and 8086:0412 are claimed. */
+    /* Strict PCI identity: only 8086:27AE, 8086:2592, 8086:A011, 8086:2A02,
+     * 8086:0412 and 8086:0162 are claimed. */
     0u,
     0,
     v9x_intel_reserve_video_memory,

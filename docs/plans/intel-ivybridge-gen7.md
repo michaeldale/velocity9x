@@ -53,7 +53,7 @@ IVB PRM or Mesa genxml and found identical.
 
 | Area | Where | IVB |
 |---|---|---|
-| Identity | `intel_backend.c` strict device list; `intel_hw16.c` `v9x_intel_is_haswell` gate; `hsw/hsw_hw16.c` descriptor; `family.psd1` chip entry; `backend_registry_table.inc`; `check-tree.ps1` Direct3D-word rule; engine type `INTEL_GEN75` | New chip entry, descriptor, Direct3D word and engine type (or a Gen7 variant of GEN75). Every `v9x_intel_is_haswell` caller decides whether IVB takes the same branch |
+| Identity | `intel_backend.c` strict device list; `intel_hw16.c` `v9x_intel_is_haswell` gate (now `v9x_intel_is_gen7`); `hsw/hsw_hw16.c` descriptor; `family.psd1` chip entry; `backend_registry_table.inc`; `check-tree.ps1` Direct3D-word rule; engine type `INTEL_GEN75` | New chip entry, descriptor, Direct3D word and engine type (or a Gen7 variant of GEN75). Every `v9x_intel_is_haswell` caller decides whether IVB takes the same branch |
 | GGC decode | `hsw_config.c`, `V9X_INTEL_HSW_GGC_GMS_MAX` = `10h` | Accepts this machine (GMS 2). IVB adds GMS `11h` = 1 GiB (326765), which the decode refuses |
 | BARs, BDSM/BGSM, MSAC, GTT reach | `hsw_config.c`, `runtime.asm` `V9xPciReadHswConfig` | Same, measured |
 | PTE encode | `hsw_config.c` `v9x_intel_hsw_encode_pte`, `intel_hsw.h` cache values | **Changes.** IVB: 11:4 = addr 39:32, bit 3 GFDT, 2:1 cacheability, `00` reserved. HSW's UC = 0 is reserved on IVB. Measured: the BIOS writes `00` on every stolen entry (`2026-10-21-ivybridge-read-only-mmio.md`), so the choice is the encoder's, against the PRM |
@@ -107,9 +107,19 @@ Following `intel-haswell-bringup.md`:
      the boot-held acknowledge. RC6 and RC6p are enabled by the BIOS but
      have zero residency. RCS and BCS are empty and off. Three of i915's
      four IVB L3 workaround registers differ from the BIOS values.
-4. **Chip entry and 2D:** the identity rows, the decode and PTE changes,
-   forcewake, then BCS ring and blits as on the 4570. Re-measure the
-   reserve placement, the top of stolen memory and the blit pitch unit.
+4. **Chip entry and 2D:**
+   - *Done 2026-10-21* (`docs\decisions\2026-10-21-ivybridge-bcs-blits.md`):
+     - `intel-gma` claims 0162 as `hd4000-ivb` on the Haswell path, GEN75
+       with fill and copy only. HSW_ENGINE_OPEN takes the chip in EDI and
+       does Ivy Bridge's forcewake.
+     - The reserve came out at `3ED0000h` under a 1 MiB protected top,
+       and its PTE and CPU checks passed.
+     - V9XDDF passed at 640x480x8, with 3 of 3 blits on the engine.
+   - *Owed:* 16 and 32 bpp, the engine close (Disable), and GMS `11h`. No
+     IVB PTE encoder is needed until something writes PTEs.
+   - The original step: the identity rows, the decode and PTE changes,
+     forcewake, then BCS ring and blits as on the 4570. Re-measure the
+     reserve placement, the top of stolen memory and the blit pitch unit.
 5. **Flips:** the LINOFF split, measured with the /flip probe.
 6. **3D:** the PS and SURFACE_STATE words and the IVB PIPE_CONTROL rules.
    Then the Phase C-F sequence the 4570 took, with its hang cases

@@ -22,8 +22,13 @@ extern unsigned short __far __pascal V9xMiniHswStolenReserved(
     unsigned long bar0, unsigned long __far *reg);
 extern unsigned short __far __pascal V9xMiniHswEngineOpen(
     unsigned long bar0, unsigned long gmadr, unsigned long bdsm,
-    unsigned long offset, unsigned long __far *mmio,
+    unsigned long offset, unsigned long chip, unsigned long __far *mmio,
     unsigned long __far *reserve, unsigned short __far *code);
+
+/* HSW_ENGINE_OPEN's chip argument (EDI, V9XMAPI.INC): which forcewake the
+ * mini-VDD takes. */
+#define V9X_HSW_OPEN_CHIP_HASWELL 0ul
+#define V9X_HSW_OPEN_CHIP_IVYBRIDGE 1ul
 extern unsigned short __far __pascal V9xMiniHswEngineClose(void);
 
 /*
@@ -212,15 +217,19 @@ void v9x_hsw_engine_close(void)
  * successful open publishes a type and caps. Called on Enable and on every
  * DirectDraw session, so the verb hands back a ring it already has open
  * rather than reprogramming it.
+ *
+ * Ivy Bridge runs the same open with its own forcewake (chip 1) and claims
+ * the blitter alone: its render engine and plane differ from Haswell's
+ * (docs\plans\intel-ivybridge-gen7.md, code audit), and neither has run.
  */
-static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
-                                unsigned long *control_linear_base,
-                                unsigned long *mapped_aperture_bytes,
-                                unsigned long *engine_type,
-                                unsigned long *engine_caps,
-                                unsigned long *gtt_linear_base,
-                                unsigned long *ring_linear_base,
-                                unsigned long *ring_bytes)
+static void v9x_hsw_fill_engine_for(unsigned long chip,
+                                    unsigned long *control_linear_base,
+                                    unsigned long *mapped_aperture_bytes,
+                                    unsigned long *engine_type,
+                                    unsigned long *engine_caps,
+                                    unsigned long *gtt_linear_base,
+                                    unsigned long *ring_linear_base,
+                                    unsigned long *ring_bytes)
 {
     unsigned long bar0 = 0ul;
     unsigned long gmadr = 0ul;
@@ -229,7 +238,6 @@ static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
     unsigned long reserve = 0ul;
     unsigned short code = 0u;
 
-    (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
     *mapped_aperture_bytes = 0ul;
     *gtt_linear_base = 0ul;
@@ -243,7 +251,7 @@ static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
         return;
     }
     if (V9xMiniHswEngineOpen(bar0, gmadr, bdsm, v9x_hsw_reserve_offset(),
-                             &mmio, &reserve, &code) == 0u ||
+                             chip, &mmio, &reserve, &code) == 0u ||
         mmio == 0ul || reserve == 0ul) {
         v9x_hsw_engine_status = v9x_hsw_refusal_text(code);
         return;
@@ -255,13 +263,46 @@ static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
     *ring_linear_base = reserve;
     *ring_bytes = V9X_INTEL_HSW_RING_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_INTEL_GEN75;
+    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+    if (chip != V9X_HSW_OPEN_CHIP_HASWELL) {
+        return;
+    }
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
      * both together, so an open engine has both (Phase F2). FLIP: plane A's
      * base, which the HAL writes only while pipe A and plane A are live
      * (Phase F3, engines\hsw_scanout.c). */
-    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY | V9X_DD_ENGINE_CAP_D3D |
-                   V9X_DD_ENGINE_CAP_FLIP;
+    *engine_caps |= V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP;
+}
+
+static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,
+                                unsigned long *control_linear_base,
+                                unsigned long *mapped_aperture_bytes,
+                                unsigned long *engine_type,
+                                unsigned long *engine_caps,
+                                unsigned long *gtt_linear_base,
+                                unsigned long *ring_linear_base,
+                                unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_hsw_fill_engine_for(V9X_HSW_OPEN_CHIP_HASWELL, control_linear_base,
+                            mapped_aperture_bytes, engine_type, engine_caps,
+                            gtt_linear_base, ring_linear_base, ring_bytes);
+}
+
+static void v9x_ivb_fill_engine(unsigned long framebuffer_linear_base,
+                                unsigned long *control_linear_base,
+                                unsigned long *mapped_aperture_bytes,
+                                unsigned long *engine_type,
+                                unsigned long *engine_caps,
+                                unsigned long *gtt_linear_base,
+                                unsigned long *ring_linear_base,
+                                unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_hsw_fill_engine_for(V9X_HSW_OPEN_CHIP_IVYBRIDGE, control_linear_base,
+                            mapped_aperture_bytes, engine_type, engine_caps,
+                            gtt_linear_base, ring_linear_base, ring_bytes);
 }
 
 const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
@@ -277,6 +318,30 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
     /* VBE reports the framebuffer in GMADR, BAR2 (offset 18h). */
     2u,
     /* The packed pitch the tier-0 desktop was measured at. */
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset
+};
+
+/*
+ * Ivy Bridge GT2 desktop on the same path, for 2D. The heap layout is
+ * Haswell's: i915 decodes 1082C0h the same way on Gen7 and Gen7.5
+ * (gen7_get_stolen_reserved). No Direct3D word: the descriptor claims no
+ * render engine (v9x_ivb_fill_engine).
+ */
+const V9X_HW16_DEVICE v9x_ivb_hd4000_device = {
+    0x8086u, 0x0162u,
+    "Intel HD Graphics 4000 (Ivy Bridge)",
+    "8086", "0162",
+    "none",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    0,
+    0,
+    v9x_ivb_fill_engine,
+    /* VBE reports the framebuffer in GMADR, BAR2: E0000000 on W9QI4E14. */
+    2u,
+    /* Packed pitch: 640 at 640x480x8, measured at tier 0 there. */
     1u,
     V9X_HSW_MAP_BYTES,
     v9x_hsw_reserve_offset

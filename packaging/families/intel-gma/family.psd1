@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -143,7 +143,7 @@
             # Haswell GT2 desktop, from 0.19.0. Gen7.5 shares no Gen3 path:
             # its own hw16 device (hsw_hw16.c), its own mini-VDD verbs
             # (HSW_ENGINE_OPEN/CLOSE) and engine type, and every family-wide
-            # Gen3 hook asks v9x_intel_is_haswell first. DirectDraw fills and
+            # Gen3 hook asks v9x_intel_is_gen7 first. DirectDraw fills and
             # copies on the BCS ring, measured as B1 on the i5-4570:
             # docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md.
             Id = 'hd4600-hsw'
@@ -171,6 +171,39 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('hsw_hw16')
             MapSymbols = @('v9x_hsw_hd4600_device')
+        }
+        @{
+            # Ivy Bridge GT2 desktop, for 2D only: the Haswell path's BCS
+            # ring and blits (the same BAR layout, GTT and ring registers),
+            # with Ivy Bridge's MT forcewake (acknowledge 130040h, i915's
+            # reset-then-wait). No Direct3D (Gen7's surface and PS words
+            # differ from Gen7.5's) and no flips yet (linear panning is
+            # PRI_LINOFF, not Haswell's DSPOFFSET). Measured on W9QI4E14:
+            # docs\decisions\2026-10-21-ivybridge-gt-forcewake.md.
+            Id = 'hd4000-ivb'
+            Name = 'Intel HD Graphics 4000 (Ivy Bridge)'
+            VendorId = '8086'
+            DeviceId = '0162'
+            DeviceDesc = 'Velocity9x Intel HD Graphics 4000 (Ivy Bridge)'
+            Adapter = 'Intel HD Graphics 4000 (Ivy Bridge)'
+            ClockDetector = 'none'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'not-advertised'
+            EngineType = 'INTEL_GEN75'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            VideoMemoryBytes = 4194304
+            # The family's table; this VBIOS describes neither 1024x576 row
+            # and the runtime scan publishes its own modes instead.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('hsw_hw16')
+            MapSymbols = @('v9x_ivb_hd4000_device')
         }
     )
 
@@ -272,7 +305,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02 or 8086:0412 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:0412 or 8086:0162 exactly'
     }
 
     Vm = @{
