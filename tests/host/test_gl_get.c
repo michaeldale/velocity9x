@@ -76,6 +76,19 @@ static void test_initial_values(void)
     /* The pixel format this ICD offers: 565, 16-bit depth, nothing else. */
     GGCHECK(geti(0x0D52u) == 5 && geti(0x0D53u) == 6 && geti(0x0D54u) == 5);
     GGCHECK(geti(0x0D55u) == 0 && geti(0x0D56u) == 16 && geti(0x0D57u) == 0);
+    /* On a 32 bpp desktop: eight bits a channel, still no alpha. */
+    v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_XRGB8888, 0);
+    GGCHECK(geti(0x0D52u) == 8 && geti(0x0D53u) == 8 && geti(0x0D54u) == 8);
+    GGCHECK(geti(0x0D55u) == 0 && geti(0x0D56u) == 16);
+    v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_RGB565, 0);
+    /* The second format's deeper depth buffer: 24 bits on Intel, 32 on
+     * the MGA-2164W. */
+    v9x_gl_state_depth_bits(&s, 24ul);
+    GGCHECK(geti(0x0D56u) == 24);
+    v9x_gl_state_depth_bits(&s, 32ul);
+    GGCHECK(geti(0x0D56u) == 32);
+    v9x_gl_state_depth_bits(&s, 16ul);
+    GGCHECK(geti(0x0D56u) == 16);
     GGCHECK(geti(0x0D50u) == 4);            /* SUBPIXEL_BITS */
     v9x_gl_get(&s, &p, &t, 0x0C32u, V9X_GL_GET_BOOLEAN, b); /* DOUBLEBUFFER */
     GGCHECK(b[0] == 1);

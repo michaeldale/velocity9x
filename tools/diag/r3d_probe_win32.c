@@ -288,7 +288,9 @@ void __stdcall V9xRenderInterfaceProbeEntry(void)
     clear.clear_color = 1ul;
     clear.clear_depth = 1ul;
     clear.color_value = 0x00ff0000ul;
-    clear.depth_value = 0xfffful;
+    /* The far plane on the interface's 24-bit scale (ABI 6); the probe's
+     * 16-bit depth buffer reads it back as FFFFh. */
+    clear.depth_value = 0x00fffffful;
     clear.write_mask = V9X_R3D_ABI_WRITE_RGB;
     clear.write_depth = 1ul;
     clear.rects = &whole;

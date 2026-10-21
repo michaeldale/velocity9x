@@ -30,6 +30,9 @@ struct v9x_gl_drawable {
     LPDIRECTDRAWSURFACE front;
     DWORD width;
     DWORD height;
+    /* The depth cell the window's pixel format asked for: 32 for the
+     * deeper format, 16 (or 0, unset) for the first. */
+    DWORD depth_cell;
 };
 
 static HMODULE v9x_gl_ddraw_module;
@@ -143,6 +146,12 @@ v9x_u32 v9x_gl_device_format(void)
          (1ul << V9X_R3D_ABI_FORMAT_XRGB1555)) != 0ul) {
         return V9X_R3D_ABI_FORMAT_XRGB1555;
     }
+    /* Published only on a 32 bpp desktop, by an engine that renders it
+     * (d3d_core.c's describe). */
+    if ((v9x_gl_description.target_formats &
+         (1ul << V9X_R3D_ABI_FORMAT_XRGB8888)) != 0ul) {
+        return V9X_R3D_ABI_FORMAT_XRGB8888;
+    }
     return 0ul;
 }
 
@@ -255,13 +264,80 @@ V9X_GL_DRAWABLE *v9x_gl_drawable_find(void *window)
     return 0;
 }
 
+/* The window's drawable, a free slot claimed with its clipper when it has
+ * none. Null when the table is full or the clipper cannot be made. */
+static struct v9x_gl_drawable *v9x_gl_drawable_claim(HWND window)
+{
+    struct v9x_gl_drawable *drawable = v9x_gl_drawable_find(window);
+    unsigned int index;
+
+    if (drawable != 0) {
+        return drawable;
+    }
+    for (index = 0u; index < V9X_GL_DRAWABLES_MAX; ++index) {
+        if (v9x_gl_drawables[index].window == 0) {
+            drawable = &v9x_gl_drawables[index];
+            break;
+        }
+    }
+    if (drawable == 0) {
+        v9x_gl_log("drawable: table full");
+        return 0;
+    }
+    v9x_gl_surface_zero(drawable, sizeof(*drawable));
+    drawable->window = window;
+    if (IDirectDraw_CreateClipper(v9x_gl_ddraw, 0ul, &drawable->clipper,
+                                  0) != DD_OK ||
+        IDirectDrawClipper_SetHWnd(drawable->clipper, 0ul, window) != DD_OK) {
+        v9x_gl_log("drawable: clipper failed");
+        drawable->window = 0;
+        return 0;
+    }
+    return drawable;
+}
+
+int v9x_gl_drawable_set_depth(void *window, v9x_u32 depth_cell)
+{
+    struct v9x_gl_drawable *drawable;
+
+    if (v9x_gl_device_state <= 0 || window == 0) {
+        return 0;
+    }
+    drawable = v9x_gl_drawable_claim((HWND)window);
+    if (drawable == 0) {
+        return 0;
+    }
+    if (drawable->depth_cell != depth_cell) {
+        v9x_gl_drawable_release_surfaces(drawable);
+        drawable->depth_cell = depth_cell;
+    }
+    return 1;
+}
+
+/* The cell a drawable's depth surface is made at: 32 only while the
+ * engine still takes one, so a mode change that loses it falls back to the
+ * 16-bit buffer every engine takes rather than to no surfaces at all. */
+static DWORD v9x_gl_drawable_cell(const struct v9x_gl_drawable *drawable)
+{
+    return drawable->depth_cell == 32ul &&
+                   v9x_gl_description.depth32_bits != 0ul
+               ? 32ul
+               : 16ul;
+}
+
+v9x_u32 v9x_gl_drawable_depth_bits(const V9X_GL_DRAWABLE *drawable)
+{
+    return v9x_gl_drawable_cell(drawable) == 32ul
+               ? v9x_gl_description.depth32_bits
+               : 16ul;
+}
+
 V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
 {
     struct v9x_gl_drawable *drawable;
     RECT client;
     DWORD width;
     DWORD height;
-    unsigned int index;
 
     *resized = 0;
     if (v9x_gl_device_state <= 0 || window == 0 ||
@@ -283,28 +359,9 @@ V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
     if (height > (DWORD)GetSystemMetrics(SM_CYSCREEN)) {
         height = (DWORD)GetSystemMetrics(SM_CYSCREEN);
     }
-    drawable = v9x_gl_drawable_find(window);
+    drawable = v9x_gl_drawable_claim((HWND)window);
     if (drawable == 0) {
-        for (index = 0u; index < V9X_GL_DRAWABLES_MAX; ++index) {
-            if (v9x_gl_drawables[index].window == 0) {
-                drawable = &v9x_gl_drawables[index];
-                break;
-            }
-        }
-        if (drawable == 0) {
-            v9x_gl_log("drawable: table full");
-            return 0;
-        }
-        v9x_gl_surface_zero(drawable, sizeof(*drawable));
-        drawable->window = (HWND)window;
-        if (IDirectDraw_CreateClipper(v9x_gl_ddraw, 0ul, &drawable->clipper,
-                                      0) != DD_OK ||
-            IDirectDrawClipper_SetHWnd(drawable->clipper, 0ul,
-                                       (HWND)window) != DD_OK) {
-            v9x_gl_log("drawable: clipper failed");
-            drawable->window = 0;
-            return 0;
-        }
+        return 0;
     }
     if (drawable->back != 0 && drawable->width == width &&
         drawable->height == height &&
@@ -316,9 +373,13 @@ V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
                                          DDSCAPS_VIDEOMEMORY |
                                          DDSCAPS_3DDEVICE,
                                          width, height, 0ul);
+    /* dwZBufferBitDepth 32 is how V9XD32 made the Z24 and 32-bit Z
+     * surfaces the HAL measured (2026-10-18); the HAL reads the cell from
+     * the surface's own pixel format. */
     drawable->depth = v9x_gl_make_surface(DDSCAPS_ZBUFFER |
                                           DDSCAPS_VIDEOMEMORY,
-                                          width, height, 16ul);
+                                          width, height,
+                                          v9x_gl_drawable_cell(drawable));
     if (drawable->back == 0 || drawable->depth == 0) {
         v9x_gl_drawable_release_surfaces(drawable);
         return 0;
@@ -327,6 +388,8 @@ V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
     drawable->height = height;
     *resized = 1;
     v9x_gl_log3("drawable window=%08lX %lux%lu", (DWORD)window, width, height);
+    v9x_gl_log3("  depth cell=%lu bits=%lu", v9x_gl_drawable_cell(drawable),
+                v9x_gl_drawable_depth_bits(drawable), 0ul);
     return drawable;
 }
 

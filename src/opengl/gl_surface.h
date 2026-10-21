@@ -28,9 +28,17 @@ const V9X_R3D_ABI_DESCRIBE *v9x_gl_device_description(void);
 /* describe again - after STALE, a mode change - and drop every drawable's
  * surfaces so they are made again in the new mode. */
 int v9x_gl_device_redescribe(void);
-/* The target layout the pixel format offers: V9X_R3D_ABI_FORMAT_RGB565 or
- * _XRGB1555, or zero for none. */
+/* The target layout the pixel formats offer: V9X_R3D_ABI_FORMAT_RGB565,
+ * _XRGB1555 or _XRGB8888, or zero for none. */
 v9x_u32 v9x_gl_device_format(void);
+
+/* The depth cell a window's pixel format asked for, 16 or 32, recorded
+ * when the format is set and used when its surfaces are next made. Zero
+ * when no drawable can be had for the window. */
+int v9x_gl_drawable_set_depth(void *window, v9x_u32 depth_cell);
+/* The bits of depth a drawable's depth buffer holds: 16, or the describe's
+ * depth32_bits for a 32-bit cell. */
+v9x_u32 v9x_gl_drawable_depth_bits(const V9X_GL_DRAWABLE *drawable);
 
 /* The drawable for a window, made on first use, its surfaces sized to the
  * client area and remade when that has changed. `resized` is set non-zero

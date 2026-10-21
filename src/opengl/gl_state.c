@@ -8,7 +8,7 @@
 /* Round to nearest; halves go up, which is what the host and the target
  * then agree on whatever the FPU's own tie rule is. The x87 store rounds to
  * nearest-even, and the correction below turns an even-rounded half down
- * into a half up. Arguments here are 0..65535. */
+ * into a half up. Arguments here are 0..16777215. */
 #ifdef __WATCOMC__
 static long v9x_gl_to_long(double value);
 #pragma aux v9x_gl_to_long = \
@@ -161,6 +161,7 @@ void v9x_gl_state_init(V9X_GL_STATE *state)
     state->drawable_width = 0ul;
     state->drawable_height = 0ul;
     state->target_format = V9X_GL_TARGET_RGB565;
+    state->depth_bits = 16ul;
     for (index = 0u; index < 4u; ++index) {
         state->clear_color[index] = 0.0f;
         state->viewport[index] = 0;
@@ -357,6 +358,11 @@ void v9x_gl_state_drawable(V9X_GL_STATE *state, v9x_u32 width,
     }
 }
 
+void v9x_gl_state_depth_bits(V9X_GL_STATE *state, v9x_u32 depth_bits)
+{
+    state->depth_bits = depth_bits;
+}
+
 void v9x_gl_state_error(V9X_GL_STATE *state, GLenum error)
 {
     if (state->error == V9X_GL_NO_ERROR) {
@@ -529,6 +535,7 @@ int v9x_gl_state_clear(V9X_GL_STATE *state, GLbitfield mask,
     long right = (long)state->drawable_width;
     long bottom = 0l;           /* window coordinates, y up */
     long top = (long)state->drawable_height;
+    unsigned int red_blue_bits;
     unsigned int green_bits;
 
     if (!v9x_gl_outside_begin(state)) {
@@ -560,12 +567,14 @@ int v9x_gl_state_clear(V9X_GL_STATE *state, GLbitfield mask,
         return 0;
     }
 
-    green_bits = state->target_format == V9X_GL_TARGET_RGB565 ? 6u : 5u;
-    plan->color_value = (v9x_gl_channel(state->clear_color[0], 5u) << 16) |
-                        (v9x_gl_channel(state->clear_color[1], green_bits)
-                            << 8) |
-                        v9x_gl_channel(state->clear_color[2], 5u);
-    plan->depth_value = v9x_gl_round(state->clear_depth * 65535.0);
+    red_blue_bits = state->target_format == V9X_GL_TARGET_XRGB8888 ? 8u : 5u;
+    green_bits = state->target_format == V9X_GL_TARGET_RGB565 ? 6u
+                                                               : red_blue_bits;
+    plan->color_value =
+        (v9x_gl_channel(state->clear_color[0], red_blue_bits) << 16) |
+        (v9x_gl_channel(state->clear_color[1], green_bits) << 8) |
+        v9x_gl_channel(state->clear_color[2], red_blue_bits);
+    plan->depth_value = v9x_gl_round(state->clear_depth * 16777215.0);
 
     /* The scissor box, clipped to the drawable, then flipped to surface
      * rows: window row y is surface row height - 1 - y, so the box's

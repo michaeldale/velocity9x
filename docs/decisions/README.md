@@ -134,6 +134,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 5: Serious Sam on Gen3 - scissor, small textures and video memory](2026-09-26-phase5-serious-sam-on-gen3.md)
 - [2026-09-26 Phase 5: OpenGL textures on the ViRGE - what draws and what cannot](2026-09-26-phase5-virge-hardware-textures-for-opengl.md)
 - [2026-09-26 Phase 3: explicit draws - the software engine takes CPU textures, a scissor and a colour mask through the render interface, and Direct3D draws the same](2026-09-26-phase3-explicit-draws-cpu-textures-scissor-and-masks.md)
+- [2026-10-21 The ICD at 32 bpp and a second pixel format with 24-bit depth (render ABI 6), measured on the HD 4600; ChoosePixelFormat still picks the 16-bit one](2026-10-21-opengl-icd-24-bit-depth-on-haswell.md)
 
 ## Glide
 

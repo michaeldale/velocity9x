@@ -1107,6 +1107,30 @@ static void test_polygon_offset(void)
         PCHECK(d < 0.0000005f && d > -0.0000005f);
     }
 
+    /* A 24-bit depth buffer's step is 1 / (2^24 - 1); a 32-bit one's
+     * is the same, since the vertex carries depth as a float, whose 24-bit
+     * mantissa cannot resolve finer steps near 1. */
+    scene(&s, &p);
+    v9x_gl_state_depth_bits(&s, 24ul);
+    v9x_gl_state_enable(&s, V9X_GL_POLYGON_OFFSET_FILL_CAP, 1);
+    v9x_gl_prim_polygon_offset(&s, &p, 0.0f, -64.0f);
+    offset_triangle(&s, &p, 10.0f, 0.0f);
+    for (i = 0ul; i < 3ul; ++i) {
+        float d = sunk[i].sz - (0.5f - 64.0f / 16777215.0f);
+
+        PCHECK(d < 0.0000001f && d > -0.0000001f);
+    }
+    scene(&s, &p);
+    v9x_gl_state_depth_bits(&s, 32ul);
+    v9x_gl_state_enable(&s, V9X_GL_POLYGON_OFFSET_FILL_CAP, 1);
+    v9x_gl_prim_polygon_offset(&s, &p, 0.0f, -64.0f);
+    offset_triangle(&s, &p, 10.0f, 0.0f);
+    for (i = 0ul; i < 3ul; ++i) {
+        float d = sunk[i].sz - (0.5f - 64.0f / 16777215.0f);
+
+        PCHECK(d < 0.0000001f && d > -0.0000001f);
+    }
+
     /* Clamped to the depth range's ends, the low end as +0.0 (Gen3's
      * stream builder refuses a sign bit). */
     scene(&s, &p);

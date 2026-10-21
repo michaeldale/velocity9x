@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-21 Haswell, OpenGL at 32 bpp: SwapBuffers leaves the right half of the window stale, and the front buffer reads black (found by V9XGLP; cause not looked for)](2026-10-21-haswell-gl-present-at-32-bpp-half-width.md)
 - [2026-10-20 Haswell, a tester's HD 4600 (report V9X-D9VZS6): artifacts in 3DMark 2001 SE; reproduced on the 4570: refused batches (kernel slots, fixed) and the Lobby mosaic (texture coordinate index, fixed); a diagonal cut and one Pro-test stripe open](2026-10-20-haswell-3dmark2001se-artifacts-field.md)
 - [2026-10-19 Half-Life OpenGL's Multiplayer menu is corrupt on the Millennium II every time (parked; Direct3D clean; the netbook's 2026-10-06 picture, now reproducible)](2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)
 - [2026-10-17 Haswell, 3DMark 99: every flip declined, so one frame in three is drawn on screen; Game 2 and the 16/32 MB texture tests slow (flicker fixed by F3, seen 2026-10-18; open for the Game 2 submit cost)](2026-10-17-haswell-3dmark99-flicker-and-game2.md)

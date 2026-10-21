@@ -35,8 +35,8 @@ int v9x_gl_read_plan(V9X_GL_STATE *state, const V9X_GL_TEXTURES *textures,
 /*
  * Convert. `surface` is the colour buffer's first row (surface row 0, the
  * top), `pitch` its stride in bytes, `width`/`height` its extent and
- * `target_format` V9X_GL_TARGET_RGB565 or _XRGB1555. Window row y is
- * surface row height - 1 - y. A pixel outside the buffer leaves its
+ * `target_format` V9X_GL_TARGET_RGB565, _XRGB1555 or _XRGB8888. Window
+ * row y is surface row height - 1 - y. A pixel outside the buffer leaves its
  * destination bytes as they were (the specification leaves its value
  * undefined).
  */

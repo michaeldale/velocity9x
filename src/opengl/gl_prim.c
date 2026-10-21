@@ -6,6 +6,10 @@
  */
 #include "gl_prim.h"
 
+/* Polygon offset's r (3.5.5): one step of a 16- or 24-bit depth buffer. */
+#define V9X_GL_PRIM_STEP_16 (1.0f / 65535.0f)
+#define V9X_GL_PRIM_STEP_24 (1.0f / 16777215.0f)
+
 #ifdef __WATCOMC__
 static long v9x_gl_prim_to_long(double value);
 #pragma aux v9x_gl_prim_to_long = \
@@ -99,6 +103,7 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->depth_far = 1.0;
     pipeline->offset_factor = 0.0f;
     pipeline->offset_units = 0.0f;
+    pipeline->offset_step = V9X_GL_PRIM_STEP_16;
     pipeline->offset_on = 0;
     pipeline->edge_flag = 1u;
     pipeline->index = 1.0f;
@@ -538,6 +543,11 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->count = 0ul;
     pipeline->offset_on =
         v9x_gl_state_cap(state, V9X_GL_POLYGON_OFFSET_FILL) ? 1 : 0;
+    /* A 32-bit buffer steps as a 24-bit one: the vertex carries depth as a
+     * float, whose 24-bit mantissa resolves no finer step near 1, so a
+     * smaller r would move a triangle by nothing at all. */
+    pipeline->offset_step = state->depth_bits >= 24ul ? V9X_GL_PRIM_STEP_24
+                                                      : V9X_GL_PRIM_STEP_16;
     pipeline->fog_on = v9x_gl_state_cap(state, V9X_GL_FOG) ? 1 : 0;
     if (v9x_gl_prim_begin_unchanged(state, pipeline)) {
         return;
@@ -902,12 +912,10 @@ static void v9x_gl_prim_emit(const V9X_GL_STATE *state,
  * factor * m + units * r and is clamped to [0, 1]. m is the larger of
  * |dz/dx| and |dz/dy| over the triangle's plane in window coordinates -
  * the specification's allowed approximation of the gradient's length - and
- * r is one step of the 16-bit depth buffer every engine here has. A
- * triangle with no area has no plane, and is offset by the units alone.
- * The low clamp gives +0.0, never -0.0, which Gen3's stream builder refuses.
+ * r is one step of the drawable's depth buffer (offset_step). A triangle
+ * with no area has no plane, and is offset by the units alone. The low
+ * clamp gives +0.0, never -0.0, which Gen3's stream builder refuses.
  */
-#define V9X_GL_PRIM_DEPTH_STEP (1.0f / 65535.0f)
-
 static GLfloat v9x_gl_prim_abs(GLfloat value)
 {
     return value < 0.0f ? -value : value;
@@ -934,7 +942,7 @@ static void v9x_gl_prim_offset(const V9X_GL_PIPELINE *pipeline,
         slope = dzdx > dzdy ? dzdx : dzdy;
     }
     offset = pipeline->offset_factor * slope +
-             pipeline->offset_units * V9X_GL_PRIM_DEPTH_STEP;
+             pipeline->offset_units * pipeline->offset_step;
     for (i = 0u; i < 3u; ++i) {
         out[i].sz = v9x_gl_prim_clamp(out[i].sz + offset, 0.0f, 1.0f);
     }

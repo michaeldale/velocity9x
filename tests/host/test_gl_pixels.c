@@ -180,12 +180,47 @@ static void test_pack_parameters_and_errors(void)
     v9x_gl_textures_release(&t);
 }
 
+/* A 32 bpp desktop's X8R8G8B8: four bytes a pixel, the channels taken
+ * whole and the pad byte ignored. A 3x2 surface, pitch padded to 16 bytes;
+ * row 0 is the top. */
+static void test_xrgb8888(void)
+{
+    static v9x_u32 wide[4u * 2u];
+    V9X_GL_READ_PLAN plan;
+    GLubyte out[32];
+    unsigned int i;
+
+    fresh();
+    for (i = 0u; i < 4u * 2u; ++i) {
+        wide[i] = 0xFF000000ul;
+    }
+    wide[1u * 4u + 0u] = 0xAA123456ul;  /* bottom row, x 0 */
+    wide[1u * 4u + 2u] = 0x00FF8001ul;  /* bottom row, x 2 */
+    wide[0u * 4u + 1u] = 0x00010203ul;  /* top row, x 1 */
+    for (i = 0u; i < sizeof(out); ++i) {
+        out[i] = 0xAAu;
+    }
+    XCHECK(v9x_gl_read_plan(&s, &t, 0, 0, 3, 2, V9X_GL_RGBA,
+                            V9X_GL_UNSIGNED_BYTE, &plan) != 0);
+    v9x_gl_read_convert(&plan, wide, 16ul, 3ul, 2ul, V9X_GL_TARGET_XRGB8888,
+                        out);
+    XCHECK(out[0] == 0x12u && out[1] == 0x34u && out[2] == 0x56u &&
+           out[3] == 255u);
+    XCHECK(out[4] == 0u && out[5] == 0u && out[6] == 0u);
+    XCHECK(out[8] == 0xFFu && out[9] == 0x80u && out[10] == 0x01u);
+    /* Window row 1, the surface's top: rows are 12 bytes, already a
+     * multiple of the default pack alignment of 4. */
+    XCHECK(out[16] == 0x01u && out[17] == 0x02u && out[18] == 0x03u);
+    v9x_gl_textures_release(&t);
+}
+
 unsigned int v9x_run_gl_pixels_tests(void)
 {
     gl_pixels_failures = 0u;
     test_rgb_and_flip();
     test_formats_and_555();
     test_pack_parameters_and_errors();
+    test_xrgb8888();
     if (gl_pixels_failures == 0u) {
         printf("PASS: OpenGL pixel reads\n");
     }

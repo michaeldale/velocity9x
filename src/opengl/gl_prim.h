@@ -124,6 +124,8 @@ typedef struct v9x_gl_pipeline {
      * triangles while POLYGON_OFFSET_FILL is enabled. */
     GLfloat offset_factor;
     GLfloat offset_units;
+    /* r, one step of the drawable's depth buffer, as it was at Begin. */
+    GLfloat offset_step;
     /* POLYGON_OFFSET_FILL as it was at Begin; it cannot change before
      * End, and the triangles do not look it up each. */
     int offset_on;

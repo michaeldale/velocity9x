@@ -1263,6 +1263,7 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     V9X_R3D_ABI_RECT rect;
     V9X_GLIDE_CLEAR_PLAN plan;
     v9x_u32 result = V9X_R3D_RESULT_INVALID;
+    v9x_u32 depth16 = depth & 0xFFFFul;
     v9x_u32 start;
     float left;
     float top;
@@ -1298,7 +1299,9 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     if (plan.depth) {
         clear.clear_depth = 1ul;
         clear.write_depth = 1ul;
-        clear.depth_value = depth & 0xFFFFul;
+        /* Glide's 16-bit depth onto the interface's 24-bit full scale
+         * (ABI 6), its top byte replicated so FFFFh stays FFFFFFh. */
+        clear.depth_value = (depth16 << 8) | (depth16 >> 8);
     }
     clear.rects = &rect;
     clear.rect_count = 1ul;
@@ -1331,7 +1334,8 @@ void v9x_glide_clear(v9x_u32 color, v9x_u32 depth)
     right = (float)rect.right;
     bottom = (float)rect.bottom;
     for (i = 0u; i < 6u; ++i) {
-        quad[i].sz = (float)clear.depth_value / 65535.0f;
+        quad[i].sz = (float)(clear.clear_depth != 0ul ? depth16 : 0ul) /
+                     65535.0f;
         quad[i].rhw = 1.0f;
         quad[i].color = 0xFF000000ul | clear.color_value;
         quad[i].specular = 0xFF000000ul;

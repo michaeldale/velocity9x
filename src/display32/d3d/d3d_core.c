@@ -5477,10 +5477,13 @@ static DWORD v9x_r3d_drain(void)
  * as Direct3D's Clear2 does (v9x_hal_depth_fill). v9x_r3d_clear would write
  * the depth value as linear words and scatter it across the wrong pixels.
  * A depth fill the engine refuses fails the clear rather than fall back.
- * request->depth_value is the 16-bit full scale; the fill scales it.
+ * full_scale is the depth on the buffer's own full scale, as the fill takes
+ * dwFillDepth; until ABI 6 this passed the interface's 16-bit value, which
+ * a 32-bit cell would have read as a depth near zero.
  */
 static DWORD v9x_r3d_clear_tiled_depth(const V9X_R3D_ABI_CLEAR *request,
-                                       V9X_R3D_CLEAR *clear)
+                                       V9X_R3D_CLEAR *clear,
+                                       DWORD full_scale)
 {
     DWORD index;
 
@@ -5495,7 +5498,7 @@ static DWORD v9x_r3d_clear_tiled_depth(const V9X_R3D_ABI_CLEAR *request,
         return v9x_hal_depth_fill(v9x_r3d_context.zbuffer, 0l, 0l,
                                   (LONG)v9x_r3d_context.width,
                                   (LONG)v9x_r3d_context.height,
-                                  request->depth_value & 0xfffful)
+                                  full_scale)
                    ? V9X_R3D_RESULT_OK
                    : V9X_R3D_RESULT_INVALID;
     }
@@ -5507,8 +5510,7 @@ static DWORD v9x_r3d_clear_tiled_depth(const V9X_R3D_ABI_CLEAR *request,
         }
         if (!v9x_hal_depth_fill(v9x_r3d_context.zbuffer, (LONG)rect->left,
                                 (LONG)rect->top, (LONG)rect->right,
-                                (LONG)rect->bottom,
-                                request->depth_value & 0xfffful)) {
+                                (LONG)rect->bottom, full_scale)) {
             return V9X_R3D_RESULT_INVALID;
         }
     }
@@ -5519,6 +5521,7 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_r3d_engine();
     V9X_R3D_CLEAR clear;
+    DWORD full_scale;
     DWORD result;
 
     if (ops == 0) {
@@ -5564,17 +5567,18 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.clear_color = request->clear_color;
     clear.clear_depth = request->clear_depth;
     clear.color_value = request->color_value;
-    /* As the engine's depth buffer holds it: halved on the SiS, whose Z
-     * test compares 15 bits (v9x_d3d_depth_fill_value). The interface's
-     * value is 16-bit; a 32-bit cell gets it at the engine's depth32_bits,
-     * high bits replicated so that FFFFh stays the far plane. */
+    /* The interface's value is on the 24-bit full scale (ABI 6). Onto the
+     * buffer's own: a 32-bit cell's at the engine's depth32_bits, high bits
+     * replicated so FFFFFFh stays the far plane, a 16-bit buffer's by its
+     * top 16 bits - as Clear2 scales its float. Then as the engine's buffer
+     * holds it: halved on the SiS, whose Z test compares 15 bits
+     * (v9x_d3d_depth_fill_value). */
     clear.depth_bytes = v9x_r3d_context.depth_bytes;
-    clear.depth_value = v9x_d3d_depth_fill_value(
-        clear.depth_bytes == 4ul
-            ? v9x_d3d_state_depth_widen(request->depth_value & 0xfffful,
-                                        16ul, v9x_d3d_depth32_bits())
-            : request->depth_value,
-        clear.depth_bytes);
+    full_scale = v9x_d3d_state_depth_rescale(
+        request->depth_value, 24ul,
+        clear.depth_bytes == 4ul ? v9x_d3d_depth32_bits() : 16ul);
+    clear.depth_value = v9x_d3d_depth_fill_value(full_scale,
+                                                 clear.depth_bytes);
     clear.write_red = (request->write_mask & V9X_R3D_ABI_WRITE_RED) != 0ul;
     clear.write_green = (request->write_mask & V9X_R3D_ABI_WRITE_GREEN) != 0ul;
     clear.write_blue = (request->write_mask & V9X_R3D_ABI_WRITE_BLUE) != 0ul;
@@ -5583,7 +5587,7 @@ static DWORD v9x_r3d_clear_body(const V9X_R3D_ABI_CLEAR *request)
     clear.rect_count = request->rect_count;
     if (clear.clear_depth != 0ul && clear.write_depth != 0ul &&
         v9x_d3d_depth_tiled()) {
-        return v9x_r3d_clear_tiled_depth(request, &clear);
+        return v9x_r3d_clear_tiled_depth(request, &clear, full_scale);
     }
     return v9x_r3d_clear(&clear) ? V9X_R3D_RESULT_OK
                                  : V9X_R3D_RESULT_INVALID;
@@ -6010,6 +6014,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     }
     while (index < sizeof(out->renderer)) {
         out->renderer[index++] = '\0';
+    }
+    /* A 32-bit depth cell where the engine binds one and DirectDraw will
+     * make one: the published Z depths, which on the MGA name 32 only for
+     * the 2164W's MGA_DEPTH32. Nothing without a target format. */
+    out->depth32_bits = 0ul;
+    if (out->target_formats != 0ul &&
+        (v9x_hal->d3d_global.hwCaps.dwDeviceZBufferBitDepth &
+         V9X_DDBD_32) != 0ul) {
+        out->depth32_bits = ops->limits->depth32_bits;
     }
     return V9X_R3D_RESULT_OK;
 }

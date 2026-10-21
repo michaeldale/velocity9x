@@ -37,8 +37,11 @@
  *    and texcoords1 (2026-10-05, docs\plans\gen3-sgis-multitexture.md).
  * 5: a draw may name its target and depth by address - the draw's
  *    raw_target and raw_depth (2026-10-14, docs\plans\ati-3dcif-wrapper.md,
- *    Phase 3). */
-#define V9X_R3D_ABI_VERSION 5ul
+ *    Phase 3).
+ * 6: describe's depth32_bits, and a clear's depth_value on the 24-bit full
+ *    scale (2026-10-21, docs\plans\32bpp-acceleration-and-3d.md, Phase 4):
+ *    the OpenGL ICD's 24-bit depth format. */
+#define V9X_R3D_ABI_VERSION 6ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -266,6 +269,14 @@ typedef struct v9x_r3d_abi_describe {
     /* Textures one draw may combine in one pass: 2 when the engine takes a
      * draw's texture1, 1 otherwise. */
     v9x_u32 texture_units;
+    /*
+     * Depth buffers: every engine with a target format takes a 16-bit one.
+     * Non-zero when it also takes a 32-bit cell - a DirectDraw Z surface
+     * made at dwZBufferBitDepth 32 - holding this many bits of depth: 24
+     * on the Intel engines (D24X8), 32 on the MGA-2164W. Zero otherwise,
+     * and with no target format.
+     */
+    v9x_u32 depth32_bits;
 } V9X_R3D_ABI_DESCRIBE;
 
 #define V9X_R3D_ABI_HWTEX_SQUARE     1ul    /* width equal to height */
@@ -326,7 +337,10 @@ typedef struct v9x_r3d_abi_clear {
     v9x_u32 clear_color;
     v9x_u32 clear_depth;
     v9x_u32 color_value;        /* 0x00RRGGBB */
-    v9x_u32 depth_value;        /* low 16 bits */
+    /* 0..0xFFFFFF, the 24-bit full scale whatever the buffer holds: the HAL
+     * narrows it for a 16-bit buffer and widens it for 32 bits of depth, as
+     * Direct3D's Clear2 does with its float. */
+    v9x_u32 depth_value;
     v9x_u32 write_mask;         /* V9X_R3D_ABI_WRITE_* */
     v9x_u32 write_depth;
     const V9X_R3D_ABI_RECT *rects;  /* drawable and scissor, intersected */
@@ -369,7 +383,7 @@ typedef char v9x_r3d_abi_assert_vertex[sizeof(V9X_R3D_ABI_VERTEX) == 32 ? 1 : -1
 typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 80 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 84 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_raw[sizeof(V9X_R3D_ABI_RAW) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 228 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];

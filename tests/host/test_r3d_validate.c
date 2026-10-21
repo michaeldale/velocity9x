@@ -657,6 +657,14 @@ static void test_clear_header_and_rects(void)
     c.rects = rects;
     c.color_value = 0x01000000ul;
     VCHECK(v9x_r3d_validate_clear(&c, 3ul) == V9X_R3D_RESULT_INVALID);
+    /* Depth on the 24-bit full scale (ABI 6): FFFFFFh is the far plane,
+     * anything wider is malformed. */
+    c.color_value = 0x00102030ul;
+    c.depth_value = 0x00fffffful;
+    VCHECK(v9x_r3d_validate_clear(&c, 3ul) == V9X_R3D_RESULT_OK);
+    c.depth_value = 0x01000000ul;
+    VCHECK(v9x_r3d_validate_clear(&c, 3ul) == V9X_R3D_RESULT_INVALID);
+    c.depth_value = 0ul;
 
     rects[0].left = 0ul;
     rects[0].top = 0ul;

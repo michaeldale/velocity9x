@@ -99,6 +99,15 @@ v9x_u32 v9x_d3d_state_depth_widen(v9x_u32 value, v9x_u32 from_bits,
     return (value << gain) | (value >> (from_bits - gain));
 }
 
+v9x_u32 v9x_d3d_state_depth_rescale(v9x_u32 value, v9x_u32 from_bits,
+                                    v9x_u32 to_bits)
+{
+    if (to_bits < from_bits) {
+        return value >> (from_bits - to_bits);
+    }
+    return v9x_d3d_state_depth_widen(value, from_bits, to_bits);
+}
+
 v9x_u32 v9x_d3d_state_depth_active(v9x_u32 z_enable, v9x_u32 depth_bound,
                                    v9x_u32 depth_pitch)
 {

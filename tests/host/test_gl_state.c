@@ -123,7 +123,7 @@ static void test_clear_plan(void)
                                   V9X_GL_DEPTH_BUFFER_BIT, 1, &p) != 0);
     GCHECK(p.clear_color == 1ul && p.clear_depth == 1ul);
     GCHECK(p.color_value == 0x00ff00fful);
-    GCHECK(p.depth_value == 65535ul);
+    GCHECK(p.depth_value == 16777215ul);
     GCHECK(p.write_mask == 7ul);
     GCHECK(p.rect_left == 0ul && p.rect_top == 0ul &&
            p.rect_right == 320ul && p.rect_bottom == 200ul);
@@ -140,10 +140,21 @@ static void test_clear_plan(void)
     v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_XRGB1555, 0);
     GCHECK(v9x_gl_state_clear(&s, V9X_GL_COLOR_BUFFER_BIT, 1, &p) != 0);
     GCHECK(((p.color_value >> 11) & 31ul) == 16ul);
-    /* 0.25 depth is round(0.25 * 65535) = 16384. */
+    /* X8R8G8B8 takes the channels whole: 0.5 is 128 of 255 in each. */
+    v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_XRGB8888, 0);
+    v9x_gl_state_clear_color(&s, 0.5f, 0.25f, 1.0f, 1.0f);
+    GCHECK(v9x_gl_state_clear(&s, V9X_GL_COLOR_BUFFER_BIT, 1, &p) != 0);
+    GCHECK(p.color_value == 0x008040fful);
+    v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_XRGB1555, 0);
+    /* 0.25 depth is round(0.25 * 16777215) = 4194304, whatever the
+     * depth buffer's own width: the HAL rescales it. */
     v9x_gl_state_clear_depth(&s, 0.25);
     GCHECK(v9x_gl_state_clear(&s, V9X_GL_DEPTH_BUFFER_BIT, 1, &p) != 0);
-    GCHECK(p.depth_value == 16384ul && p.clear_color == 0ul);
+    GCHECK(p.depth_value == 4194304ul && p.clear_color == 0ul);
+    v9x_gl_state_depth_bits(&s, 24ul);
+    GCHECK(v9x_gl_state_clear(&s, V9X_GL_DEPTH_BUFFER_BIT, 1, &p) != 0);
+    GCHECK(p.depth_value == 4194304ul);
+    v9x_gl_state_depth_bits(&s, 16ul);
 
     /* The scissor, in window coordinates with y up: a box 10 across and 20
      * up from (30, 40) is surface rows 200-60 .. 200-40. */

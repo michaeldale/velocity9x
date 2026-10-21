@@ -19,10 +19,12 @@
  * which is the plan's lock order: the ICD's section, then the Win16 mutex
  * inside each render-interface call, never the reverse.
  *
- * One pixel format: the desktop's 16 bits as the HAL's describe offers it
- * (565 or 555), double-buffered, 16-bit depth, no alpha, stencil or
- * accumulation. When the engine offers none - the ViRGE on a 565 desktop -
- * the ICD lists no formats and OPENGL32 serves its generic ones.
+ * Pixel formats: the desktop's layout as the HAL's describe offers it
+ * (565, 555 or X8R8G8B8), double-buffered, no alpha, stencil or
+ * accumulation; format 1 with 16-bit depth, and format 2 with the deeper
+ * depth buffer where the engine takes a 32-bit cell (24 bits on Intel, 32
+ * on the MGA-2164W). When the engine offers no layout - the ViRGE on a 565
+ * desktop - the ICD lists no formats and OPENGL32 serves its generic ones.
  *
  * Every Drv* call and every first call of a stub is appended to
  * C:\V9XDIAG\V9XGL.LOG with its process id. Per process, not shared.
@@ -777,6 +779,8 @@ static V9X_GL_DRAWABLE *v9x_gl_bind_window(V9X_GL_CONTEXT *context,
     v9x_gl_drawable_size(drawable, &width, &height);
     v9x_gl_state_drawable(&context->state, width, height,
                           v9x_gl_device_format(), !context->bound_once);
+    v9x_gl_state_depth_bits(&context->state,
+                            v9x_gl_drawable_depth_bits(drawable));
     context->bound_once = 1;
     context->drawable = drawable;
     return drawable;
@@ -3705,23 +3709,35 @@ static void v9x_gl_install_overrides(void)
 
 /* ---- Pixel formats ------------------------------------------------- */
 
-/* The formats offered: one, when the engine can write the desktop's layout,
- * else none. Opening the device here is deliberate: DescribePixelFormat is
+/* The formats offered: none unless the engine can write the desktop's
+ * layout; then 16-bit depth as format 1, and the deeper depth as format 2
+ * where the engine takes a 32-bit cell. Format 1 stays what it was, so an
+ * application that takes the first format draws as it did before format 2
+ * existed. Opening the device here is deliberate: DescribePixelFormat is
  * the runtime's first question, and the answer depends on the engine. */
 static int v9x_gl_format_count(void)
 {
-    int count;
+    int count = 0;
 
     EnterCriticalSection(&v9x_gl_lock);
-    count = v9x_gl_device_open() && v9x_gl_device_format() != 0ul ? 1 : 0;
+    if (v9x_gl_device_open() && v9x_gl_device_format() != 0ul) {
+        count = v9x_gl_device_description()->depth32_bits != 0ul ? 2 : 1;
+    }
     LeaveCriticalSection(&v9x_gl_lock);
     return count;
 }
 
-static void v9x_gl_describe(PIXELFORMATDESCRIPTOR *pfd)
+/* The depth cell of a format index: 32 for format 2, 16 otherwise. */
+static v9x_u32 v9x_gl_format_cell(LONG index)
+{
+    return index == 2 ? 32ul : 16ul;
+}
+
+static void v9x_gl_describe(PIXELFORMATDESCRIPTOR *pfd, LONG index)
 {
     unsigned int i;
-    int is_565 = v9x_gl_device_format() == V9X_R3D_ABI_FORMAT_RGB565;
+    v9x_u32 format = v9x_gl_device_format();
+    int is_565 = format == V9X_R3D_ABI_FORMAT_RGB565;
 
     for (i = 0u; i < sizeof(*pfd); ++i) {
         ((BYTE *)pfd)[i] = 0u;
@@ -3733,6 +3749,23 @@ static void v9x_gl_describe(PIXELFORMATDESCRIPTOR *pfd)
     pfd->dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER |
                    PFD_SWAP_COPY;
     pfd->iPixelType = PFD_TYPE_RGBA;
+    pfd->cDepthBits = (BYTE)(v9x_gl_format_cell(index) == 32ul
+                                 ? v9x_gl_device_description()->depth32_bits
+                                 : 16ul);
+    pfd->iLayerType = PFD_MAIN_PLANE;
+    /* X8R8G8B8: colour bits are the desktop's 32, as the generic formats
+     * on the same desktop count them; no alpha bits, since the pad byte is
+     * not written as alpha. */
+    if (format == V9X_R3D_ABI_FORMAT_XRGB8888) {
+        pfd->cColorBits = 32;
+        pfd->cRedBits = 8;
+        pfd->cRedShift = 16;
+        pfd->cGreenBits = 8;
+        pfd->cGreenShift = 8;
+        pfd->cBlueBits = 8;
+        pfd->cBlueShift = 0;
+        return;
+    }
     pfd->cColorBits = 16;
     pfd->cRedBits = 5;
     pfd->cRedShift = (BYTE)(is_565 ? 11 : 10);
@@ -3740,8 +3773,6 @@ static void v9x_gl_describe(PIXELFORMATDESCRIPTOR *pfd)
     pfd->cGreenShift = 5;
     pfd->cBlueBits = 5;
     pfd->cBlueShift = 0;
-    pfd->cDepthBits = 16;
-    pfd->iLayerType = PFD_MAIN_PLANE;
 }
 
 /* ---- Contexts ------------------------------------------------------ */
@@ -3819,17 +3850,35 @@ LONG __stdcall DrvDescribePixelFormat(HDC hdc, INT index, ULONG bytes,
     v9x_gl_log3("DrvDescribePixelFormat index=%ld bytes=%lu -> count=%ld",
                 (DWORD)index, bytes, (DWORD)count);
     (void)hdc;
-    if (pfd != 0 && count != 0 && index == 1 && bytes >= sizeof(*pfd)) {
-        v9x_gl_describe(pfd);
+    if (pfd != 0 && index >= 1 && index <= count && bytes >= sizeof(*pfd)) {
+        v9x_gl_describe(pfd, index);
     }
     return count;
 }
 
+/*
+ * The window's depth cell is recorded here, before any context is made on
+ * it: its surfaces are made at the first bind. A window the drawable table
+ * cannot hold still gets the format; its bind fails later, as it would
+ * have before format 2 existed.
+ */
 BOOL __stdcall DrvSetPixelFormat(HDC hdc, LONG index)
 {
-    v9x_gl_log3("DrvSetPixelFormat hdc=%08lX index=%ld", (DWORD)hdc,
-                (DWORD)index, 0ul);
-    return index == 1 && v9x_gl_format_count() == 1 ? TRUE : FALSE;
+    int count = v9x_gl_format_count();
+    int recorded = 0;
+
+    if (index < 1 || index > count) {
+        v9x_gl_log3("DrvSetPixelFormat hdc=%08lX index=%ld refused",
+                    (DWORD)hdc, (DWORD)index, 0ul);
+        return FALSE;
+    }
+    EnterCriticalSection(&v9x_gl_lock);
+    recorded = v9x_gl_drawable_set_depth(WindowFromDC(hdc),
+                                         v9x_gl_format_cell(index));
+    LeaveCriticalSection(&v9x_gl_lock);
+    v9x_gl_log3("DrvSetPixelFormat hdc=%08lX index=%ld recorded=%ld",
+                (DWORD)hdc, (DWORD)index, (DWORD)recorded);
+    return TRUE;
 }
 
 V9X_DHGLRC __stdcall DrvCreateContext(HDC hdc)

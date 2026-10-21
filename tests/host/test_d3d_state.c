@@ -182,6 +182,24 @@ static void test_depth_widen(void)
            0x00abcdefu);
 }
 
+/* The render interface's 24-bit clear depth onto a buffer's own scale:
+ * narrowed by its low bits for a 16-bit cell, kept for 24, widened for 32,
+ * with 0 and the far plane exact at every width. */
+static void test_depth_rescale(void)
+{
+    SCHECK(v9x_d3d_state_depth_rescale(0x00fffffful, 24ul, 16ul) == 0xffffu);
+    SCHECK(v9x_d3d_state_depth_rescale(0x00400000ul, 24ul, 16ul) == 0x4000u);
+    SCHECK(v9x_d3d_state_depth_rescale(0x00abcdeful, 24ul, 16ul) == 0xabcdu);
+    SCHECK(v9x_d3d_state_depth_rescale(0x00abcdeful, 24ul, 24ul) ==
+           0x00abcdefu);
+    SCHECK(v9x_d3d_state_depth_rescale(0x00fffffful, 24ul, 32ul) ==
+           0xffffffffu);
+    SCHECK(v9x_d3d_state_depth_rescale(0x00abcdeful, 24ul, 32ul) ==
+           0xabcdefabu);
+    SCHECK(v9x_d3d_state_depth_rescale(0ul, 24ul, 16ul) == 0u);
+    SCHECK(v9x_d3d_state_depth_rescale(0ul, 24ul, 32ul) == 0u);
+}
+
 unsigned int v9x_run_d3d_state_tests(void)
 {
     state_failures = 0u;
@@ -191,6 +209,7 @@ unsigned int v9x_run_d3d_state_tests(void)
     test_depth_active_needs_all_three();
     test_depth_fill_value();
     test_depth_widen();
+    test_depth_rescale();
     if (state_failures == 0u) {
         puts("PASS: Direct3D state to neutral draw");
     }

@@ -178,6 +178,41 @@ ViRGE, Trio3D and SiS 6326 get the software engine at 32 bpp and nothing more.
   case. Pixel formats offered from the engine masks (32-bit colour, 24-bit
   depth where present); Quake 2 windowed at 32 bpp on the netbook and the
   Rage XL as the gate.
+  - **Step 1, 2026-10-21; measured on the HD 4600, one defect open.** The HAL already
+    published XRGB8888 in `target_formats` for every engine whose limits
+    set `target_pitch_max_xrgb8888` (software, Gen3, Gen4, Gen7.5,
+    MGA-2164W and Mystique); the ICD filtered it out. It now offers one
+    format at 32 bpp: 32 colour bits, 8/8/8 at 16/8/0, 16-bit Z, no
+    alpha. glGet's channel bits, the clear colour packing and
+    glReadPixels take the format; host tests cover all three. V9XGLP
+    passes at 800x600x32 on the HD 4600 (boot 60), but SwapBuffers there
+    leaves the right half of the window stale and the front buffer reads
+    black
+    ([issue](../issues/2026-10-21-haswell-gl-present-at-32-bpp-half-width.md)).
+    Owed: that fix, then V9XGLP on the netbook and Quake 2 windowed. The Rage
+    XL cannot be the gate until Mach64 Direct3D renders 32 bpp (Phase 3
+    row 5); on it the ICD offers nothing at 32 bpp and opengl32 falls to
+    Microsoft's generic formats.
+  - **Step 2, coded 2026-10-21: the deeper depth buffer, render ABI 6.**
+    The describe gains `depth32_bits` (the engine's `depth32_bits` where
+    the published Z depths include 32: 24 on Gen3, Gen4 and Gen7.5, 32 on
+    the MGA-2164W, 0 elsewhere), and a clear's `depth_value` moves to the
+    24-bit full scale, which the HAL narrows for a 16-bit buffer and
+    widens for a 32-bit cell as Clear2 already did. That also fixes the
+    tiled-depth clear (Haswell), which handed a 32-bit cell the 16-bit
+    value. The ICD lists format 2 with `cDepthBits` 24 or 32 beside
+    format 1, which is unchanged; DrvSetPixelFormat records the window's
+    cell, and GL_DEPTH_BITS and polygon offset's r follow it (r stays one
+    24-bit step on a 32-bit buffer: the vertex depth is a float). Glide
+    and the R3D probe send their 16-bit clear depth widened; any copy of
+    GLIDE2X/GLIDE3X/ATI3DCIF built before ABI 6, such as one in a game
+    folder, now gets no interface and must be replaced with the package's.
+    Measured on the HD 4600 at 16 and 32 bpp: format 2 reports 24 depth
+    bits and resolves a 2^-20 depth step that format 1 cannot, and
+    ChoosePixelFormat, asked for 32 depth bits, still picks format 1
+    ([decision](../decisions/2026-10-21-opengl-icd-24-bit-depth-on-haswell.md)).
+    Owed: Gen3 on the netbook, the MGA's 32-bit Z on A8U4I5, and the
+    order of the two formats.
 - **GLIDE2X / GLIDE3X**: Glide titles set their own 16 bpp fullscreen mode;
   no change unless a census finds one that renders into a 32 bpp desktop.
 - **ATI3DCIF**: census first; the demos measured so far run 16 bpp.

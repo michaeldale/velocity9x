@@ -69,6 +69,8 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
 {
     const V9X_GL_MATRICES *matrices = &state->matrices;
     int is_565 = state->target_format == V9X_GL_TARGET_RGB565;
+    double red_blue_bits =
+        state->target_format == V9X_GL_TARGET_XRGB8888 ? 8.0 : 5.0;
 
     switch (pname) {
     /* Transformation state (table 6.4). */
@@ -274,13 +276,18 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
         out->v[1] = 2048.0;
         return 1;
     case 0x0D50u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, 4.0); return 1;
-    /* The pixel format (table 6.21): RGB 16 bits, 16-bit depth, double
-     * buffered, nothing else. */
-    case 0x0D52u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, 5.0); return 1;
-    case 0x0D53u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, is_565 ? 6.0 : 5.0);
+    /* The pixel format (table 6.21): RGB 16 or 24 bits, 16-bit depth or
+     * the deeper format's, double buffered, nothing else. */
+    case 0x0D52u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, red_blue_bits);
         return 1;
-    case 0x0D54u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, 5.0); return 1;
-    case 0x0D56u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, 16.0); return 1;
+    case 0x0D53u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                             is_565 ? 6.0 : red_blue_bits);
+        return 1;
+    case 0x0D54u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER, red_blue_bits);
+        return 1;
+    case 0x0D56u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                             (double)state->depth_bits);
+        return 1;
     case 0x0D51u:
     case 0x0D55u:
     case 0x0D57u:

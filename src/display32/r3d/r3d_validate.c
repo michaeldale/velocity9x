@@ -354,7 +354,7 @@ v9x_u32 v9x_r3d_validate_clear(const V9X_R3D_ABI_CLEAR *clear,
         (clear->rect_count != 0ul && clear->rects == 0)) {
         return V9X_R3D_RESULT_INVALID;
     }
-    if (clear->color_value > 0x00fffffful || clear->depth_value > 0xfffful ||
+    if (clear->color_value > 0x00fffffful || clear->depth_value > 0x00fffffful ||
         clear->write_mask > V9X_R3D_ABI_WRITE_RGB) {
         return V9X_R3D_RESULT_INVALID;
     }

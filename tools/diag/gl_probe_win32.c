@@ -11,6 +11,10 @@
  * registered, an ICD format appears first and is picked; without it, only
  * generic formats appear. Either way the probe reports rather than judges.
  *
+ * /format:N sets format N instead of the one ChoosePixelFormat picks, so a
+ * format GLQuake's request does not reach - the ICD's second, deeper depth
+ * buffer - can be measured too.
+ *
  * Writes C:\V9XDIAG\V9XGLP.INI. Links OPENGL32 statically, as GLQuake does.
  */
 #define WIN32_LEAN_AND_MEAN
@@ -44,6 +48,29 @@ static void v9x_glp_hex(const char *key, DWORD value)
 
     wsprintfA(text, "0x%08lX", value);
     v9x_glp_text(key, text);
+}
+
+/* The N of a /format:N on the command line, 0 when there is none. The
+ * probe links no C runtime, so the scan is by hand. */
+static int v9x_glp_forced_format(void)
+{
+    static const char option[] = "/format:";
+    const char *line = GetCommandLineA();
+    unsigned int i;
+    int value = 0;
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        for (i = 0u; option[i] != '\0' && line[i] == option[i]; ++i) {
+        }
+        if (option[i] != '\0') {
+            continue;
+        }
+        for (line += i; *line >= '0' && *line <= '9'; ++line) {
+            value = value * 10 + (*line - '0');
+        }
+        return value;
+    }
+    return 0;
 }
 
 /* One pixel through glReadPixels as 0xRRGGBB. GL rows count up from the
@@ -1018,6 +1045,10 @@ void __stdcall V9xGlProbeEntry(void)
     chosen = ChoosePixelFormat(hdc, &pfd);
     v9x_glp_uint("ChosenFormat", (DWORD)chosen);
     v9x_glp_hex("ChooseLastError", chosen == 0 ? GetLastError() : 0ul);
+    if (v9x_glp_forced_format() > 0) {
+        chosen = v9x_glp_forced_format();
+        v9x_glp_uint("ForcedFormat", (DWORD)chosen);
+    }
     if (chosen != 0) {
         v9x_glp_zero(&pfd, sizeof(pfd));
         if (DescribePixelFormat(hdc, chosen, sizeof(pfd), &pfd) != 0) {
@@ -1134,6 +1165,45 @@ void __stdcall V9xGlProbeEntry(void)
                         v9x_glp_read(width / 4, height / 2));
             v9x_glp_hex("ReadGeometryRight",
                         v9x_glp_read(3 * width / 4, height / 2));
+
+            /*
+             * Depth precision: green at window depth 0.25 + 2^-20, then
+             * red at 0.25 under LESS. The two are 16 steps apart in a
+             * 24-bit buffer and 0.06 of a step in a 16-bit one, so red
+             * draws only where the buffer resolves them: DepthFineRead
+             * red (FF0000) means more than 16 bits, green 16. Window
+             * depth is (1 - z) / 2 under this ortho.
+             */
+            {
+                GLint depth_bits = -1;
+                const GLfloat near_z = 0.5f;
+                const GLfloat far_z = 0.5f - 2.0f / 1048576.0f;
+
+                glGetIntegerv(GL_DEPTH_BITS, &depth_bits);
+                v9x_glp_uint("DepthBits", (DWORD)depth_bits);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                glBegin(GL_QUADS);
+                glColor3f(0.0f, 1.0f, 0.0f);
+                glVertex3f(0.0f, 0.0f, far_z);
+                glVertex3f((GLfloat)width, 0.0f, far_z);
+                glVertex3f((GLfloat)width, (GLfloat)height, far_z);
+                glVertex3f(0.0f, (GLfloat)height, far_z);
+                glColor3f(1.0f, 0.0f, 0.0f);
+                glVertex3f(0.0f, 0.0f, near_z);
+                glVertex3f((GLfloat)width, 0.0f, near_z);
+                glVertex3f((GLfloat)width, (GLfloat)height, near_z);
+                glVertex3f(0.0f, (GLfloat)height, near_z);
+                glEnd();
+                glFinish();
+                v9x_glp_hex("ErrorAfterDepthFine", (DWORD)glGetError());
+                v9x_glp_hex("DepthFineRead",
+                            v9x_glp_read(width / 2, height / 2));
+                v9x_glp_uint("DepthFineResolved",
+                             v9x_glp_read(width / 2, height / 2) ==
+                                     0x00FF0000ul
+                                 ? 1ul
+                                 : 0ul);
+            }
 
             /*
              * Texturing, perspective-correct. An 8x8 texture, red on the

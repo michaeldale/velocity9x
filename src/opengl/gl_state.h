@@ -58,6 +58,8 @@
  * render interface numbers them. */
 #define V9X_GL_TARGET_RGB565   1ul
 #define V9X_GL_TARGET_XRGB1555 2ul
+/* A 32 bpp desktop's (docs\plans\32bpp-acceleration-and-3d.md, Phase 4). */
+#define V9X_GL_TARGET_XRGB8888 5ul
 
 /*
  * Every capability glEnable accepts in OpenGL 1.1 (table 6.x and the
@@ -78,6 +80,9 @@ typedef struct v9x_gl_state {
     v9x_u32 drawable_width;
     v9x_u32 drawable_height;
     v9x_u32 target_format;
+    /* Bits of depth its depth buffer holds: 16, or the deeper format's 24
+     * or 32 (the describe's depth32_bits). */
+    v9x_u32 depth_bits;
     GLfloat clear_color[4];
     GLdouble clear_depth;
     GLint viewport[4];
@@ -123,7 +128,8 @@ typedef struct v9x_gl_state {
  * A clear the HAL can execute: rectangles already in surface rows (top
  * down), colour packed so that the render interface's truncation to the
  * target's bits lands exactly on the GL conversion (2.13.9: round
- * c * (2^m - 1)), and depth as the 16-bit word.
+ * c * (2^m - 1)), and depth on the interface's 24-bit full scale, which
+ * the HAL narrows or widens to the buffer's own (r3d_abi.h, ABI 6).
  */
 #define V9X_GL_CLEAR_RED   1ul
 #define V9X_GL_CLEAR_GREEN 2ul
@@ -133,7 +139,7 @@ typedef struct v9x_gl_clear_plan {
     v9x_u32 clear_color;
     v9x_u32 clear_depth;
     v9x_u32 color_value;        /* 0x00RRGGBB */
-    v9x_u32 depth_value;        /* 0..65535 */
+    v9x_u32 depth_value;        /* 0..0xFFFFFF */
     v9x_u32 write_mask;         /* V9X_GL_CLEAR_* */
     v9x_u32 rect_left;
     v9x_u32 rect_top;
@@ -151,6 +157,9 @@ void v9x_gl_state_init(V9X_GL_STATE *state);
 void v9x_gl_state_drawable(V9X_GL_STATE *state, v9x_u32 width,
                            v9x_u32 height, v9x_u32 target_format,
                            int first_bind);
+/* The bits of depth the drawable's depth buffer holds, as GL_DEPTH_BITS
+ * reports and polygon offset steps; 16 until set. */
+void v9x_gl_state_depth_bits(V9X_GL_STATE *state, v9x_u32 depth_bits);
 
 /* Record an error, keeping an earlier one (2.5). */
 void v9x_gl_state_error(V9X_GL_STATE *state, GLenum error);

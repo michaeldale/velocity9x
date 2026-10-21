@@ -6,6 +6,22 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.24.0 - not yet released
 
+- **OpenGL on a 32 bpp desktop.** The OpenGL driver now offers pixel
+  formats on a 32 bpp desktop wherever Direct3D draws 32 bpp: the
+  software engine, Intel Gen3, Gen4, Haswell and Ivy Bridge, and the
+  Millennium II and Mystique. Before, those desktops got Microsoft's
+  software OpenGL. On the HD 4600 the OpenGL probe passes at 32 bpp, but
+  the window shows only its left half of each new frame there; that is
+  open.
+- **24-bit depth for OpenGL.** A second pixel format carries a 24-bit Z
+  buffer (32-bit on the Millennium II) beside the 16-bit one, at 16 and
+  32 bpp. It is measured on the HD 4600. Windows' ChoosePixelFormat still
+  hands GLQuake-style requests the 16-bit format; a title that sets the
+  format itself gets the deeper one.
+- **Render interface version 6.** GLIDE2X.DLL, GLIDE3X.DLL and
+  ATI3DCIF.DLL from 0.23.0 or earlier no longer work with this driver.
+  Replace any copy in a game folder with the one from the package.
+
 ## 0.23.0 - 2026-10-21
 
 - **Intel GMA X3100 (GM965, `8086:2A02`): new chip.** The `intel-gma`

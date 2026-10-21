@@ -92,8 +92,9 @@ int v9x_gl_read_plan(V9X_GL_STATE *state, const V9X_GL_TEXTURES *textures,
 
 /* Surface pixel to 8-bit channels. Bit replication maps full scale to
  * 255 and zero to zero, which a shift alone would not. There is no alpha
- * plane in any Velocity9x pixel format, so alpha reads as one (255). */
-static void gl_pixels_expand(v9x_u16 pixel, v9x_u32 target_format,
+ * plane in any Velocity9x pixel format, so alpha reads as one (255); the
+ * pad byte of X8R8G8B8 is ignored. */
+static void gl_pixels_expand(v9x_u32 pixel, v9x_u32 target_format,
                              unsigned int *red, unsigned int *green,
                              unsigned int *blue)
 {
@@ -101,6 +102,12 @@ static void gl_pixels_expand(v9x_u16 pixel, v9x_u32 target_format,
     unsigned int g;
     unsigned int b;
 
+    if (target_format == V9X_GL_TARGET_XRGB8888) {
+        *red = (unsigned int)((pixel >> 16) & 0xFFul);
+        *green = (unsigned int)((pixel >> 8) & 0xFFul);
+        *blue = (unsigned int)(pixel & 0xFFul);
+        return;
+    }
     if (target_format == V9X_GL_TARGET_XRGB1555) {
         r = (pixel >> 10) & 0x1Fu;
         g = (pixel >> 5) & 0x1Fu;
@@ -125,7 +132,9 @@ void v9x_gl_read_convert(const V9X_GL_READ_PLAN *plan, const void *surface,
     const v9x_u8 *rows;
     v9x_u8 *dest_row;
     v9x_u8 *dest;
-    const v9x_u16 *source;
+    const v9x_u8 *source;
+    v9x_u32 pixel;
+    v9x_u32 bytes_per_pixel;
     GLint row;
     GLint column;
     GLint window_x;
@@ -136,6 +145,7 @@ void v9x_gl_read_convert(const V9X_GL_READ_PLAN *plan, const void *surface,
     unsigned int luminance;
 
     rows = (const v9x_u8 *)surface;
+    bytes_per_pixel = target_format == V9X_GL_TARGET_XRGB8888 ? 4ul : 2ul;
 
     /* A caller's buffer for a valid request holds (skip_rows + height)
      * rows of row_bytes, so these offsets cannot wrap for one. */
@@ -148,15 +158,18 @@ void v9x_gl_read_convert(const V9X_GL_READ_PLAN *plan, const void *surface,
         }
 
         /* Window y counts up from the bottom; surface rows count down. */
-        source = (const v9x_u16 *)(rows +
-                 (height - 1ul - (v9x_u32)window_y) * pitch);
+        source = rows + (height - 1ul - (v9x_u32)window_y) * pitch;
         for (column = 0; column < plan->width; ++column) {
             window_x = plan->x + column;
             if (window_x < 0 || (v9x_u32)window_x >= width) {
                 continue;
             }
-            gl_pixels_expand(source[window_x], target_format,
-                             &red, &green, &blue);
+            if (bytes_per_pixel == 4ul) {
+                pixel = ((const v9x_u32 *)source)[window_x];
+            } else {
+                pixel = ((const v9x_u16 *)source)[window_x];
+            }
+            gl_pixels_expand(pixel, target_format, &red, &green, &blue);
             dest = dest_row + (v9x_u32)column * plan->components;
 
             if (plan->format == V9X_GL_RGBA) {
