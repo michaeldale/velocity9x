@@ -209,6 +209,11 @@ v9x_status v9x_intel_hsw_mi_batch_buffer_end(struct v9x_hsw_batch *batch);
 v9x_status v9x_intel_hsw_mi_store_data_imm(struct v9x_hsw_batch *batch,
                                            v9x_u32 ggtt_address,
                                            v9x_u32 value);
+/* The blitter's flush, then `value` written at a qword-aligned
+ * `ggtt_address`: four dwords with the closing no-op. */
+v9x_status v9x_intel_hsw_mi_flush_dw_store(struct v9x_hsw_batch *batch,
+                                           v9x_u32 ggtt_address,
+                                           v9x_u32 value);
 v9x_status v9x_intel_hsw_mi_load_register_imm(struct v9x_hsw_batch *batch,
                                               v9x_u32 offset,
                                               v9x_u32 value);

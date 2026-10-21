@@ -12,6 +12,11 @@
 #define V9X_HSW_MI_NOOP             ((v9x_u32)0x00000000ul)
 #define V9X_HSW_MI_BATCH_BUFFER_END ((v9x_u32)(0x0aul << 23))
 #define V9X_HSW_MI_STORE_DATA_IMM   ((v9x_u32)(0x20ul << 23))
+#define V9X_HSW_MI_FLUSH_DW         ((v9x_u32)(0x26ul << 23))
+/* MI_FLUSH_DW's Post-Sync Operation 1h, write immediate data, in 15:14, and
+ * its Destination Address Type GGTT in DW1 bit 2 (Vol 2b). */
+#define V9X_HSW_MI_FLUSH_DW_WRITE   ((v9x_u32)(1ul << 14))
+#define V9X_HSW_MI_FLUSH_DW_GGTT    ((v9x_u32)(1ul << 2))
 #define V9X_HSW_MI_LOAD_REGISTER_IMM ((v9x_u32)(0x22ul << 23))
 #define V9X_HSW_MI_BATCH_BUFFER_START ((v9x_u32)(0x31ul << 23))
 #define V9X_HSW_MI_USE_GGTT         ((v9x_u32)0x00400000ul) /* bit 22 */
@@ -237,6 +242,30 @@ v9x_status v9x_intel_hsw_mi_store_data_imm(struct v9x_hsw_batch *batch,
     dw[1] = 0ul;
     dw[2] = ggtt_address;
     dw[3] = value;
+    return v9x_hsw_mi(batch, dw, 4ul);
+}
+
+/*
+ * MI_FLUSH_DW with a DWord post-sync write (Vol 2b, BlitterCS): the parser
+ * waits until every drawing engine on the ring has finished and its dirty
+ * data is in memory, then writes `value` at `ggtt_address`. "After this
+ * command is completed with a Store DWord enabled, CPU access to graphics
+ * memory will be coherent." Three dwords, DWord Length 1 for a DWord, and a
+ * no-op to keep the qword. The address can only be qword aligned.
+ */
+v9x_status v9x_intel_hsw_mi_flush_dw_store(struct v9x_hsw_batch *batch,
+                                           v9x_u32 ggtt_address,
+                                           v9x_u32 value)
+{
+    v9x_u32 dw[4];
+
+    if ((ggtt_address & 7ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    dw[0] = V9X_HSW_MI_FLUSH_DW | V9X_HSW_MI_FLUSH_DW_WRITE | 1ul;
+    dw[1] = ggtt_address | V9X_HSW_MI_FLUSH_DW_GGTT;
+    dw[2] = value;
+    dw[3] = V9X_HSW_MI_NOOP;
     return v9x_hsw_mi(batch, dw, 4ul);
 }
 
@@ -899,6 +928,9 @@ v9x_status v9x_intel_hsw_3d_check(const v9x_u32 *dwords, v9x_u32 count,
             } else if (mi == 0x20ul && (header & 0xfful) == 2ul) {
                 length = 4ul;
             } else if (mi == 0x22ul && (header & 0xfful) == 1ul) {
+                length = 3ul;
+            } else if (mi == 0x26ul && (header & 0x3ful) == 1ul) {
+                /* MI_FLUSH_DW with a DWord write. */
                 length = 3ul;
             } else if (header == V9X_HSW_MI_BATCH_BUFFER_START) {
                 /* Only the flag-free form the builder emits. */

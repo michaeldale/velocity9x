@@ -1672,6 +1672,31 @@ static int v9x_blt_drain(int wait)
 }
 
 /*
+ * An engine blit into the displayed buffer finishes before Blt returns
+ * while GDI may draw there: the rule plan decision 3 of
+ * docs\plans\intel-haswell-pipelined-submission.md gives a draw, for the
+ * same reason. The 16-bit driver's GDI reads and writes that buffer from
+ * the CPU through the DIB engine, and its BeginAccess drains only its own
+ * GDI engine work, never a blit this DLL left queued. On the HD 4600 at
+ * 32 bpp, GetPixel straight after an OpenGL SwapBuffers read the right
+ * half of the window from the frame before, and the same read 200 ms
+ * later read the new frame
+ * (docs\issues\2026-10-21-haswell-gl-present-at-32-bpp-half-width.md).
+ * A destination that starts past the visible bytes is off-screen memory,
+ * which GDI does not touch. In exclusive mode with the application's own
+ * buffers shown, blits stay queued. A wait that runs out leaves the engine
+ * to the timeout handling every drain has; the blit was submitted.
+ */
+static void v9x_blt_settle_on_screen(DWORD destination_offset)
+{
+    if (v9x_hal == 0 || destination_offset >= v9x_hal->fb.visible_bytes ||
+        !v9x_present_gdi_may_draw()) {
+        return;
+    }
+    (void)v9x_render_drain(1);
+}
+
+/*
  * Resolve the engine ops lazily.
  *
  * DriverInit runs before the 16-bit side has filled the engine descriptor, so
@@ -1771,6 +1796,7 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         }
         if (outcome == V9X_BLT_DONE) {
             *engine_used = 1;
+            v9x_blt_settle_on_screen(destination_offset);
             return V9X_DDHAL_DRIVER_HANDLED;
         }
     }
@@ -1838,6 +1864,7 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     }
     if (outcome == V9X_BLT_DONE) {
         *engine_used = 1;
+        v9x_blt_settle_on_screen(offset);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     if (!v9x_blt_drain(wait)) {

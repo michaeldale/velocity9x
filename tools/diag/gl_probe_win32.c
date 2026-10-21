@@ -139,6 +139,65 @@ static void v9x_glp_zero(void *block, DWORD bytes)
     }
 }
 
+/*
+ * One pixel of the window as video memory holds it, as 0xRRGGBB: the
+ * primary locked through a DirectDraw object of the probe's own, at the
+ * client point (x, y) in GDI's coordinates. GetPixel answers through GDI
+ * and the display driver; this reads what scan-out reads. 0xFFFFFFFF when
+ * the primary cannot be locked or its depth is not 16 or 32.
+ */
+static DWORD v9x_glp_vram_pixel(HWND window, LONG x, LONG y)
+{
+    HMODULE module = LoadLibraryA("DDRAW.DLL");
+    V9X_GLP_DDCREATE create;
+    LPDIRECTDRAW ddraw = 0;
+    LPDIRECTDRAWSURFACE primary = 0;
+    DDSURFACEDESC desc;
+    POINT point;
+    DWORD value = 0xFFFFFFFFul;
+
+    if (module == 0) {
+        return value;
+    }
+    point.x = x;
+    point.y = y;
+    ClientToScreen(window, &point);
+    create = (V9X_GLP_DDCREATE)GetProcAddress(module, "DirectDrawCreate");
+    if (create != 0 && create(0, &ddraw, 0) == DD_OK) {
+        v9x_glp_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        desc.dwFlags = DDSD_CAPS;
+        desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+        if (IDirectDraw_SetCooperativeLevel(ddraw, 0, DDSCL_NORMAL) == DD_OK &&
+            IDirectDraw_CreateSurface(ddraw, &desc, &primary, 0) == DD_OK) {
+            v9x_glp_zero(&desc, sizeof(desc));
+            desc.dwSize = sizeof(desc);
+            if (IDirectDrawSurface_Lock(primary, 0, &desc,
+                                        DDLOCK_WAIT | DDLOCK_READONLY,
+                                        0) == DD_OK) {
+                const BYTE *row = (const BYTE *)desc.lpSurface +
+                                  point.y * desc.lPitch;
+                DWORD bits = desc.ddpfPixelFormat.dwRGBBitCount;
+
+                if (bits == 32ul) {
+                    value = ((const DWORD *)row)[point.x] & 0x00FFFFFFul;
+                } else if (bits == 16ul) {
+                    DWORD p = ((const WORD *)row)[point.x];
+
+                    value = (((p >> 11) & 0x1Ful) << 19) |
+                            (((p >> 5) & 0x3Ful) << 10) |
+                            ((p & 0x1Ful) << 3);
+                }
+                IDirectDrawSurface_Unlock(primary, 0);
+            }
+            IDirectDrawSurface_Release(primary);
+        }
+        IDirectDraw_Release(ddraw);
+    }
+    FreeLibrary(module);
+    return value;
+}
+
 static void v9x_glp_pump(void)
 {
     MSG message;
@@ -1165,6 +1224,96 @@ void __stdcall V9xGlProbeEntry(void)
                         v9x_glp_read(width / 4, height / 2));
             v9x_glp_hex("ReadGeometryRight",
                         v9x_glp_read(3 * width / 4, height / 2));
+            /* How long GDI takes to see the swap: GetPixel polled until it
+             * reads red, up to 500 ms. A blit's length points at the copy;
+             * a display refresh's at something tied to the retrace. */
+            {
+                DWORD started = GetTickCount();
+                DWORD polls = 0ul;
+                DWORD seen = 0ul;
+
+                while (GetTickCount() - started < 500ul) {
+                    ++polls;
+                    seen = (DWORD)GetPixel(hdc, 3 * width / 4, height / 2);
+                    if (seen == 0x000000FFul) {
+                        break;
+                    }
+                }
+                v9x_glp_uint("GeometryRightSeenMs", GetTickCount() - started);
+                v9x_glp_uint("GeometryRightSeenPolls", polls);
+            }
+            v9x_glp_hex("GeometryRightPixelLate",
+                        (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
+
+            /*
+             * The swap again, read without a message pump: two GetPixels
+             * back to back, timed from SwapBuffers' return in
+             * performance-counter ticks. Then the swap once more, read
+             * first through a DirectDraw lock (which waits for the
+             * engine) and only then through GetPixel.
+             */
+            {
+                LARGE_INTEGER frequency;
+                LARGE_INTEGER t0;
+                LARGE_INTEGER t1;
+                LARGE_INTEGER t2;
+                DWORD first;
+                DWORD second;
+
+                QueryPerformanceFrequency(&frequency);
+                v9x_glp_uint("SeqTicksPerSecondLow", frequency.LowPart);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                SwapBuffers(hdc);
+                v9x_glp_pump();
+                glBegin(GL_QUADS);
+                glColor3f(1.0f, 0.0f, 0.0f);
+                glVertex3f(0.0f, 0.0f, 0.5f);
+                glVertex3f((GLfloat)width, 0.0f, 0.5f);
+                glVertex3f((GLfloat)width, (GLfloat)height, 0.5f);
+                glVertex3f(0.0f, (GLfloat)height, 0.5f);
+                glEnd();
+                glFinish();
+                SwapBuffers(hdc);
+                QueryPerformanceCounter(&t0);
+                first = (DWORD)GetPixel(hdc, 3 * width / 4, height / 2);
+                QueryPerformanceCounter(&t1);
+                second = (DWORD)GetPixel(hdc, 3 * width / 4, height / 2);
+                QueryPerformanceCounter(&t2);
+                v9x_glp_hex("SeqFirstPixel", first);
+                v9x_glp_hex("SeqSecondPixel", second);
+                v9x_glp_uint("SeqFirstTicks", t1.LowPart - t0.LowPart);
+                v9x_glp_uint("SeqSecondTicks", t2.LowPart - t1.LowPart);
+
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                SwapBuffers(hdc);
+                v9x_glp_pump();
+                glBegin(GL_QUADS);
+                glColor3f(1.0f, 0.0f, 0.0f);
+                glVertex3f(0.0f, 0.0f, 0.5f);
+                glVertex3f((GLfloat)width, 0.0f, 0.5f);
+                glVertex3f((GLfloat)width, (GLfloat)height, 0.5f);
+                glVertex3f(0.0f, (GLfloat)height, 0.5f);
+                glEnd();
+                glFinish();
+                SwapBuffers(hdc);
+                v9x_glp_hex("SeqVramFirst", v9x_glp_vram_pixel(
+                    window, 3 * width / 4, height / 2));
+                v9x_glp_hex("SeqPixelAfterVram",
+                            (DWORD)GetPixel(hdc, 3 * width / 4, height / 2));
+            }
+            /* The same frame in video memory, at eighths of the width
+             * along the middle row: left of centre green, right red. */
+            {
+                char key[24];
+                LONG eighth;
+
+                for (eighth = 0; eighth < 8; ++eighth) {
+                    wsprintfA(key, "VramGeometryX%ld", eighth);
+                    v9x_glp_hex(key, v9x_glp_vram_pixel(
+                        window, (width * eighth) / 8 + width / 16,
+                        height / 2));
+                }
+            }
 
             /*
              * Depth precision: green at window depth 0.25 + 2^-20, then
@@ -2257,6 +2406,10 @@ void __stdcall V9xGlProbeEntry(void)
             glReadBuffer(GL_FRONT);
             v9x_glp_hex("FrontReadFront",
                         v9x_glp_read(width / 4, height / 4));
+            v9x_glp_hex("FrontReadFrontAgain",
+                        v9x_glp_read(width / 4, height / 4));
+            v9x_glp_hex("FrontVramScreen", v9x_glp_vram_pixel(
+                window, width / 4, height - height / 4));
             glReadBuffer(GL_BACK);
             v9x_glp_hex("FrontReadBack", v9x_glp_read(width / 4, height / 4));
             glDrawBuffer(GL_NONE);
@@ -2277,6 +2430,29 @@ void __stdcall V9xGlProbeEntry(void)
             glDrawBuffer(GL_BACK);
             glReadBuffer(GL_BACK);
             v9x_glp_hex("ErrorAfterFront", (DWORD)glGetError());
+
+            /* The front draw again with 200 ms between the swap and the
+             * draw. Yellow here and black above means the swap's copy
+             * into the front buffer landed after the draw. */
+            glClear(GL_COLOR_BUFFER_BIT);
+            glFinish();
+            SwapBuffers(hdc);
+            v9x_glp_pump();
+            Sleep(200);
+            glDrawBuffer(GL_FRONT);
+            glColor3f(1.0f, 1.0f, 0.0f);
+            glBegin(GL_QUADS);
+            glVertex2f(0.0f, 0.0f);
+            glVertex2f((GLfloat)(width / 2), 0.0f);
+            glVertex2f((GLfloat)(width / 2), (GLfloat)(height / 2));
+            glVertex2f(0.0f, (GLfloat)(height / 2));
+            glEnd();
+            glFlush();
+            glReadBuffer(GL_FRONT);
+            v9x_glp_hex("FrontReadFrontSettled",
+                        v9x_glp_read(width / 4, height / 4));
+            glDrawBuffer(GL_BACK);
+            glReadBuffer(GL_BACK);
         }
         /*
          * Lifetime: 50 cycles of wglCreateContext, wglMakeCurrent, a 64x64

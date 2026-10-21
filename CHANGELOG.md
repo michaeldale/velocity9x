@@ -10,9 +10,16 @@ build identifier so exact guest-tested binaries remain traceable.
   formats on a 32 bpp desktop wherever Direct3D draws 32 bpp: the
   software engine, Intel Gen3, Gen4, Haswell and Ivy Bridge, and the
   Millennium II and Mystique. Before, those desktops got Microsoft's
-  software OpenGL. On the HD 4600 the OpenGL probe passes at 32 bpp, but
-  the window shows only its left half of each new frame there; that is
-  open.
+  software OpenGL.
+- **HD 4600 and HD 4000: blits now finish before they count as done.**
+  The blitter reported each copy finished before its last pixels reached
+  memory. Drawing that followed could be overwritten by the end of the
+  copy, and Windows could read the frame before. In OpenGL, a front-buffer
+  draw made straight after a swap was lost, and at 32 bpp a window read
+  back half old.
+- **Blits to the visible screen finish before they return while Windows
+  may draw there**, on every chip, as draws there already did on the
+  Intel parts. Full-screen exclusive programs are unaffected.
 - **24-bit depth for OpenGL.** A second pixel format carries a 24-bit Z
   buffer (32-bit on the Millennium II) beside the 16-bit one, at 16 and
   32 bpp. It is measured on the HD 4600. Windows' ChoosePixelFormat still

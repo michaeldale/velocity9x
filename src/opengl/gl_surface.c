@@ -750,9 +750,8 @@ void *v9x_gl_drawable_front(V9X_GL_DRAWABLE *drawable)
     v9x_gl_drawable_screen_rect(drawable, &screen);
     hr = IDirectDrawSurface_Blt(drawable->front, 0, v9x_gl_primary, &screen,
                                 DDBLT_WAIT, 0);
-    if (hr != DD_OK) {
-        v9x_gl_log3("front: copy from screen hr=%08lX", (DWORD)hr, 0ul, 0ul);
-    }
+    v9x_gl_log3("front: made %lux%lu, copy from screen hr=%08lX",
+                drawable->width, drawable->height, (DWORD)hr);
     return drawable->front;
 }
 

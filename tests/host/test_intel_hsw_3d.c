@@ -328,6 +328,42 @@ static void test_phase_b1_stream(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * The blitter's sequence store as MI_FLUSH_DW's post-sync write (Vol 2b,
+ * BlitterCS): opcode 26h in 28:23, post-sync 1h (write immediate) in
+ * 15:14, DWord Length 1 for a DWord; DW1 the address in 31:3 with GGTT in
+ * bit 2, DW2 the data, then a no-op to keep the qword. The address may
+ * only be qword aligned. A store that does not flush first can say a blit
+ * is done before its writes reach memory
+ * (docs\issues\2026-10-21-haswell-gl-present-at-32-bpp-half-width.md).
+ */
+static void test_blitter_flush_store(void)
+{
+    v9x_u32 ring[16];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+
+    v9x_intel_hsw_batch_init(&batch, ring, 16ul);
+    CHECK(v9x_intel_hsw_xy_color_blt(&batch, 4u, 256u, 0u, 0u, 16u, 16u,
+                                     0x01802000ul, 0x11223344ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_flush_dw_store(&batch, 0x01801000ul,
+                                          0xc0de0003ul) == V9X_STATUS_OK);
+    CHECK(batch.used == 10ul);
+    CHECK(ring[6] == 0x13004001ul);
+    CHECK(ring[7] == 0x01801004ul);
+    CHECK(ring[8] == 0xc0de0003ul && ring[9] == 0ul);
+    CHECK(v9x_intel_hsw_mi_batch_buffer_end(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_mi_noop(&batch) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(ring, batch.used, &check) ==
+          V9X_STATUS_OK);
+
+    v9x_intel_hsw_batch_init(&batch, ring, 16ul);
+    CHECK(v9x_intel_hsw_mi_flush_dw_store(&batch, 0x01801004ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(batch.used == 0ul);
+}
+
 /* Phase B2's blits: fills at each depth, and an 8 bpp copy. */
 static void test_blits_by_depth(void)
 {
@@ -1196,6 +1232,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_batch_and_check();
     test_qword_rule();
     test_phase_b1_stream();
+    test_blitter_flush_store();
     test_blits_by_depth();
     return failures;
 }

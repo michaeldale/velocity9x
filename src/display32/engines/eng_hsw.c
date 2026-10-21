@@ -190,9 +190,18 @@ static void v9x_hsw_submit(const v9x_u32 *dw, DWORD count)
     DWORD index;
     DWORD sequence;
 
+    /*
+     * The sequence is stored by MI_FLUSH_DW's post-sync write, not by
+     * MI_STORE_DATA_IMM: only the flush waits for the blit's writes to
+     * reach memory before the store lands. With the plain store the status
+     * pair agreed while a 32 bpp copy was still writing, so the render
+     * engine drew under its tail and GDI read the frame before (the HD 4600,
+     * 2026-10-21, docs\issues\2026-10-21-haswell-gl-present-at-32-bpp-
+     * half-width.md). The status page's first dword is qword aligned.
+     */
     sequence = status[1] + 1ul;
     v9x_intel_hsw_batch_init(&batch, store, V9X_HSW_STORE_DWORDS);
-    v9x_intel_hsw_mi_store_data_imm(&batch,
+    v9x_intel_hsw_mi_flush_dw_store(&batch,
                                     v9x_hal->engine.reserve_offset +
                                         V9X_INTEL_HSW_RING_BYTES,
                                     sequence);

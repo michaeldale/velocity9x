@@ -185,11 +185,11 @@ ViRGE, Trio3D and SiS 6326 get the software engine at 32 bpp and nothing more.
     format at 32 bpp: 32 colour bits, 8/8/8 at 16/8/0, 16-bit Z, no
     alpha. glGet's channel bits, the clear colour packing and
     glReadPixels take the format; host tests cover all three. V9XGLP
-    passes at 800x600x32 on the HD 4600 (boot 60), but SwapBuffers there
-    leaves the right half of the window stale and the front buffer reads
-    black
+    passes at 800x600x32 on the HD 4600 (boot 60). The stale right half
+    and the black front buffer it showed there were the blitter reporting
+    idle before its writes landed, fixed at boot 62
     ([issue](../issues/2026-10-21-haswell-gl-present-at-32-bpp-half-width.md)).
-    Owed: that fix, then V9XGLP on the netbook and Quake 2 windowed. The Rage
+    Owed: V9XGLP on the netbook and Quake 2 windowed. The Rage
     XL cannot be the gate until Mach64 Direct3D renders 32 bpp (Phase 3
     row 5); on it the ICD offers nothing at 32 bpp and opengl32 falls to
     Microsoft's generic formats.
