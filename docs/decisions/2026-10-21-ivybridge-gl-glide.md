@@ -63,3 +63,12 @@ The desktop was put back to 640x480x16 with `V9XMSW /set:640x480x16`.
 - No OpenGL or Glide game, so no load beyond the probes. Whether i915's
   IVB L3 workarounds matter is still open.
 - OpenGL at 32 bpp, for the reason above.
+
+## Boot 10: the package installed whole
+
+The `9882c001` package went in by Have Disk over the boot 9 set, then
+`reset`. `WININIT.INI` held four plain renames (the two Glide DLLs,
+`V9XDISP.DRV`, `V9XHAL.DLL`) and no `NUL=`. V9XTRACE reads
+`DriverBuild=0.23.0 9882c001`, `BuildsAgree=1`. V9XHW.INI keeps
+`hardware-gen7` and EngineCaps `00080017`. V9XGLP passes with renderer
+"Velocity9x HD 4000". The machine is left on this set at 640x480x16.
