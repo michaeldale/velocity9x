@@ -1,10 +1,10 @@
 # Ivy Bridge 2D on W9QI4E14: intel-gma claims 8086:0162, and DirectDraw blits run on the BCS ring
 
 Date: 2026-10-21
-Status: **measured once.** This is step 4 of
+Status: **measured once at each depth.** This is step 4 of
 `docs\plans\intel-ivybridge-gen7.md`, the identity, forcewake and blitter
-part. 16 and 32 bpp are not run. The pitch unit is not measured on its
-own, and Direct3D and flips are not claimed.
+part, at 8, 16 and 32 bpp. The pitch unit is not measured on its own,
+and Direct3D and flips are not claimed.
 
 Captures: `docs\probe\w9qi4e14-ivb-hd4000-igma-2026-10-21\`. Package
 `build\win98se-intel-gma`, build `0eea67e6-dirty`: the commit that carries
@@ -92,12 +92,37 @@ The HAL's snapshot after it (`boot6-after-ddf-V9XSNAP.INI`, from
 So `XY_COLOR_BLT`, `XY_SRC_COPY_BLT` and the `MI_STORE_DATA_IMM`
 sequence run unchanged on Gen7's BCS ring. The machine stayed up.
 
+## 16 and 32 bpp, by a depth change without a restart
+
+Display Properties: colours to High Color, then True Color, each applied
+with "Apply the new color settings without restarting". Windows disables
+and re-enables the driver for that, which runs the Disable hook
+(`v9x_hsw_engine_close`) and then a fresh descriptor.
+
+| Depth | `V9XDDF` | Surface pitch | Fill pixel | Copy pixel | Mismatches | CountBltEngine / CountBlt |
+|---|---|---|---|---|---|---|
+| 8 | PASS | 64 | `5A` | `A5` | 0 / 0 | 3 / 3 |
+| 16 | PASS | 128 | `07E0` | `F81F` | 0 / 0 | 3 / 3 |
+| 32 | PASS | 256 | `0012A5C3` | `00ED5A3C` | 0 / 0 | 3 / 3 |
+
+Files: `boot6-16bpp-*` and `boot6-32bpp-*`. The agent inventory reported
+16 and then 32 bpp, and the desktop draws at 32 bpp
+(`boot6-32bpp-desktop.png`). `EngineCaps=3` after each change, with no
+engine timeouts or resets.
+
+So the blitter's three depth encodings and byte pitches hold on Gen7.
+The machine was left at 640x480x32.
+
+What this does not show: `EngineStatusEnable` read `open-reused` after
+each change, the last of the descriptor's calls. Whether the Disable
+hook's close ran in between, or the reuse path found the ring still open,
+is not distinguishable from these files.
+
 ## Not measured, or not done
 
-- 16 and 32 bpp blits, and an overlapping or larger copy. The pitch unit
-  is exercised only at one pitch (64 bytes).
-- The engine close (Disable) on this machine: a DOS box or a mode change
-  through the VBIOS.
+- An overlapping or larger copy. The pitch unit is exercised only at
+  64x16 surfaces.
+- Whether the engine close runs on Disable (above), and a DOS box.
 - GMS `11h` (1 GiB stolen), which the decode still refuses. This board is
   at 64 MiB.
 - The IVB PTE encoder: nothing in the 2D path writes a PTE.

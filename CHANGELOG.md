@@ -47,10 +47,10 @@ build identifier so exact guest-tested binaries remain traceable.
   only.** The `intel-gma` package now claims it. It was tested on one
   MSI B75MA-P45 desktop with an i5-3570K, reached through remote help.
   DirectDraw fills and copies run on the blitter ring, the same way as on
-  the HD 4600, and read back correctly at 640x480 in 256 colours. Ivy
-  Bridge wakes its graphics core differently from Haswell, and the
-  driver now does it the Ivy Bridge way. Not yet offered: Direct3D, page
-  flips, and blits measured at 16 or 32-bit colour. Before this, the
+  the HD 4600, and read back correctly in 256 colours, 16-bit and
+  32-bit colour. Ivy Bridge wakes its graphics core differently from
+  Haswell, and the driver now does it the Ivy Bridge way. Not yet
+  offered: Direct3D and page flips. Before this, the
   generic VESA package ran it at up to 1920x1440.
 
 - **V9XTRACE no longer hangs on a reused snapshot.** Once all eight

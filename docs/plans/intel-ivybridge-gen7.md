@@ -114,9 +114,11 @@ Following `intel-haswell-bringup.md`:
        does Ivy Bridge's forcewake.
      - The reserve came out at `3ED0000h` under a 1 MiB protected top,
        and its PTE and CPU checks passed.
-     - V9XDDF passed at 640x480x8, with 3 of 3 blits on the engine.
-   - *Owed:* 16 and 32 bpp, the engine close (Disable), and GMS `11h`. No
-     IVB PTE encoder is needed until something writes PTEs.
+     - V9XDDF passed at 640x480 in 8, 16 and 32 bpp, with 3 of 3 blits
+       on the engine at each depth. 16 and 32 were reached by a depth
+       change without a restart.
+   - *Owed:* proof that the engine close runs on Disable, and GMS `11h`.
+     No IVB PTE encoder is needed until something writes PTEs.
    - The original step: the identity rows, the decode and PTE changes,
      forcewake, then BCS ring and blits as on the 4570. Re-measure the
      reserve placement, the top of stolen memory and the blit pitch unit.
