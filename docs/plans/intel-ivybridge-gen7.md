@@ -86,10 +86,11 @@ Following `intel-haswell-bringup.md`:
 
 1. **Done.** The survey from DOS and the read-only config audit from
    Windows.
-2. **Tier-0 `vbe`** on W9QI4E14. *Installed 2026-10-21 from `1cc25342`;
-   the first restart had not come back after 45 minutes
-   (`docs\decisions\2026-10-21-ivybridge-w9qi4e14-tier0-install.md`).*
-   Install the `vbe` package. Record the
+2. **Done 2026-10-21** (`docs\decisions\2026-10-21-ivybridge-w9qi4e14-tier0-install.md`):
+   `enable-ok` at 640x480x8 on a cold boot, 21 modes up to 1920x1440, and
+   1920x1080x8 sets. The agent `reboot` after the install locked the
+   machine: use `reset`. Still open: 16 and 32 bpp. The original step:
+   tier-0 `vbe` on W9QI4E14. Install the `vbe` package. Record the
    modes it publishes, the pitch from 4F01h and whether 1920x1080 sets,
    and `enable-ok`. This boot also answers whether Windows' restart path
    works here (the netbook's does not).
