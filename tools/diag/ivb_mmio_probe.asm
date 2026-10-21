@@ -9,18 +9,35 @@
 ; aperture, the stolen size on the machine this was written for - and
 ; counts the valid entries in the whole table.
 ;
-; Writes: none, to the device or to memory. 0CF8h is saved and restored
-; around the two configuration reads (the IGD's ID, and GGC from the host
-; bridge to size the GTT). Mapping a physical range with _MapPhysToLinear
-; changes no device state.
+; DIOC 1, the display capture, writes nothing to the device or to memory.
+; 0CF8h is saved and restored around the two configuration reads (the
+; IGD's ID, and GGC from the host bridge to size the GTT). Mapping a
+; physical range with _MapPhysToLinear changes no device state.
 ;
-; No forcewake. i915 (intel_uncore.c, NEEDS_FORCE_WAKE) treats every Gen6/7
-; register below 40000h or at 116000h and above as needing the GT awake;
-; the window between is display and PCH, and is what this reads. The one
-; exception is the three forcewake acknowledge registers, which i915 reads
-; raw before it holds forcewake, as it must. So the GT's own state - RC6,
-; ECOBUS, the rings - is not read here; that needs a forcewake handshake
-; and is a later step.
+; DIOC 1 takes no forcewake. i915 (intel_uncore.c, NEEDS_FORCE_WAKE) treats
+; every Gen6/7 register below 40000h or at 116000h and above as needing
+; the GT awake; the window between is display and PCH, and is what DIOC 1
+; reads. The one exception is the three forcewake acknowledge registers,
+; which i915 reads raw before it holds forcewake, as it must.
+;
+; DIOC 2, the GT capture, is the only path that writes, and it writes only
+; the two forcewake request registers, in i915's Ivy Bridge order
+; (intel_uncore.c, the IS_IVYBRIDGE branch of the forcewake init,
+; fw_domain_reset, fw_domains_get_with_thread_status):
+;   FORCEWAKE (A18Ch) = 0, then a posting read of ECOBUS;
+;   FORCEWAKE_MT (A188h) = FFFF0000h, every thread bit cleared
+;     (WaRsClearFWBitsAtReset) - the BIOS leaves bit 0 acknowledged;
+;   wait for FORCEWAKE_MT_ACK (130040h) bit 0 clear, else refuse;
+;   FORCEWAKE_MT = 00010001h, wait for the acknowledge;
+;   wait for GT thread status (13805Ch) bits 2:0 to read 0
+;     (WaRsForcewakeWaitTC0);
+;   read IV_GT_OFFSETS twice;
+;   FORCEWAKE_MT = 00010000h, wait for the acknowledge to clear;
+;   if bit 0 was acknowledged on entry, FORCEWAKE_MT = 00010001h again,
+;     so the GT is left as it was found.
+; Every wait is a bounded poll (IV_POLL_LIMIT reads, about i915's 50 ms
+; budget) with interrupts off for the whole sequence. No other register is
+; written, and no GT register outside IV_GT_OFFSETS is read.
 ;
 ; Offsets are accepted only inside IV_WINDOWS below, each window a named
 ; register or block from the IVB PRM Vol 3 Pt 3/4. Left out on purpose:
@@ -57,6 +74,42 @@ IV_BASE_ALIGN           equ 003fffffh  ; 4 MB, the BAR's own alignment
 ; 326765, GGC).
 IV_GGMS_SHIFT           equ 8
 IV_GGMS_MASK            equ 3
+
+; DIOC 2. Forcewake registers and values are i915's (intel_gt_regs.h;
+; the PRM names none of them). The request registers are masked: the high
+; word selects the bits the low word writes.
+IV_DIOC_GT              equ 2
+IV_GT_MAGIC             equ 54475649h ; "IVGT"
+IV_FW_LEGACY            equ 0a18ch    ; FORCEWAKE
+IV_FW_MT                equ 0a188h    ; FORCEWAKE_MT
+IV_FW_MT_ACK            equ 130040h   ; FORCEWAKE_MT_ACK
+IV_FW_LEGACY_ACK        equ 130090h   ; FORCEWAKE_ACK
+IV_ECOBUS               equ 0a180h
+IV_THREAD_STATUS        equ 13805ch   ; GEN6_GT_THREAD_STATUS_REG
+IV_THREAD_MASK          equ 7
+IV_FW_KERNEL            equ 1         ; FORCEWAKE_KERNEL, bit 0
+IV_FW_CLEAR_ALL         equ 0ffff0000h
+IV_FW_SET_KERNEL        equ 00010001h
+IV_FW_CLEAR_KERNEL      equ 00010000h
+IV_POLL_LIMIT           equ 100000
+IV_GT_COUNT             equ 30
+
+; DIOC 2 status bits.
+IV_GT_ST_IGD_OK         equ 00000001h
+IV_GT_ST_BAD_BASE       equ 00000002h
+IV_GT_ST_NOT_IVB        equ 00000004h
+IV_GT_ST_MAPPED         equ 00000008h
+IV_GT_ST_ACK_STUCK      equ 00000010h ; acknowledge never cleared: refused
+IV_GT_ST_SET_TIMEOUT    equ 00000020h
+IV_GT_ST_THREAD_TIMEOUT equ 00000040h
+IV_GT_ST_READ_DONE      equ 00000080h
+IV_GT_ST_PUT_TIMEOUT    equ 00000100h
+IV_GT_ST_RESTORED       equ 00000200h
+IV_GT_ST_RESTORE_TIMEOUT equ 00000400h
+
+; DIOC 2 output, in dwords. Must match struct v9x_ivgt_result.
+IV_GT_HEADER_DWORDS     equ 24
+IV_GT_RESULT_DWORDS     equ (IV_GT_HEADER_DWORDS + IV_GT_COUNT * 3)
 
 ; Status bits returned to the publisher.
 IV_ST_IGD_INTEL         equ 00000001h
@@ -160,6 +213,59 @@ IVGtt        dd IV_GTT_COPY dup (0)
 IVBase       dd 0
 IVMmio       dd 0
 IVGttLinear  dd 0
+
+; The GT capture's data sits after the display result, never inside it:
+; DIOC 1 copies IVResult through IVGtt as one block.
+; DIOC 2's reads, all under forcewake. Ring offsets are the IVB PRM's
+; (Vol 1 Pt 3 and Pt 4: TAIL 30h, HEAD 34h, START 38h, CTL 3Ch, ACTHD 74h,
+; on the RCS base 2000h and the BCS base 22000h); MI_MODE, INSTPM and
+; GFX_MODE are the PRM's too. The power, ECOBUS, L3 and GT-status offsets
+; are i915's (intel_gt_regs.h), which is the only source naming them.
+IVGtOffsets label dword
+    dd 002030h, 002034h, 002038h, 00203ch ; RCS TAIL, HEAD, START, CTL
+    dd 002074h                            ; RCS ACTHD
+    dd 00209ch, 0020c0h, 00229ch          ; MI_MODE, INSTPM, GFX_MODE
+    dd 022030h, 022034h, 022038h, 02203ch ; BCS TAIL, HEAD, START, CTL
+    dd 022074h                            ; BCS ACTHD
+    dd 004090h                            ; GAM_ECOCHK
+    dd 007010h                            ; GEN7_COMMON_SLICE_CHICKEN1
+    dd 00a01ch, 00a024h                   ; GEN6_RPSTAT1, GEN6_RP_CONTROL
+    dd 00a090h, 00a094h                   ; GEN6_RC_CONTROL, GEN6_RC_STATE
+    dd 00a180h                            ; ECOBUS
+    dd 00b01ch, 00b020h, 00b024h          ; GEN7_L3CNTLREG1-3
+    dd 00b030h, 00b034h                   ; L3 chicken mode, GEN7_L3SQCREG4
+    dd 120000h, 120008h                   ; GTFIFODBG, GTFIFOCTL
+    dd 13805ch, 138060h                   ; GT thread status, GT core status
+    dd 138108h                            ; GEN6_GT_GFX_RC6 residency
+
+IVGtResult label dword
+    dd IV_GT_MAGIC              ; 00 magic
+    dd 0                        ; 01 status
+    dd 0                        ; 02 IGD vendor/device as read
+    dd 0                        ; 03 GTTMMADR base used
+    dd 0                        ; 04 FORCEWAKE_MT_ACK on entry
+    dd 0                        ; 05 FORCEWAKE_ACK on entry
+    dd 0                        ; 06 GT thread status on entry
+    dd 0                        ; 07 ECOBUS posting read, before any wake
+    dd 0                        ; 08 polls: MT ack clear after the reset
+    dd 0                        ; 09 polls: MT ack set
+    dd 0                        ; 10 polls: thread status C0
+    dd 0                        ; 11 polls: MT ack clear after the put
+    dd 0                        ; 12 polls: MT ack set after the restore
+    dd 0                        ; 13 FORCEWAKE_MT_ACK on exit
+    dd 0                        ; 14 FORCEWAKE_ACK on exit
+    dd 0                        ; 15 GT thread status on exit
+    dd 0                        ; 16 registers read
+    dd 0                        ; 17 MT ack value at a timeout, if any
+    dd 0                        ; 18 reserved
+    dd 0                        ; 19 reserved
+    dd 0                        ; 20 reserved
+    dd 0                        ; 21 reserved
+    dd 0                        ; 22 reserved
+    dd 0                        ; 23 reserved
+IVGtCopy     dd IV_GT_COUNT dup (0)
+IVGtFirst    dd IV_GT_COUNT dup (0)
+IVGtSecond   dd IV_GT_COUNT dup (0)
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -405,6 +511,237 @@ IV_Capture_Done:
     ret
 EndProc IV_Capture
 
+; ESI = MMIO mapping, EDX = register offset, EBX = mask, EAX = the value
+; (register AND mask) is waited for. Returns ECX = reads taken and CF set
+; if IV_POLL_LIMIT reads passed without it; EAX = the last value read.
+BeginProc IV_Poll
+    push    edi
+    mov     edi, eax
+    xor     ecx, ecx
+IV_Poll_Next:
+    inc     ecx
+    mov     eax, [esi+edx]
+    push    eax
+    and     eax, ebx
+    cmp     eax, edi
+    pop     eax
+    je      short IV_Poll_Done
+    cmp     ecx, IV_POLL_LIMIT
+    jb      short IV_Poll_Next
+    pop     edi
+    stc
+    ret
+IV_Poll_Done:
+    pop     edi
+    clc
+    ret
+EndProc IV_Poll
+
+; ESI = MMIO mapping, EDI = destination. Reads every IVGtOffsets register.
+BeginProc IV_Gt_Read
+    pushad
+    mov     ebx, OFFSET32 IVGtOffsets
+    mov     ecx, IV_GT_COUNT
+IV_Gt_Read_Next:
+    mov     eax, [ebx]
+    mov     eax, [esi+eax]
+    mov     [edi], eax
+    add     ebx, 4
+    add     edi, 4
+    dec     ecx
+    jnz     short IV_Gt_Read_Next
+    popad
+    ret
+EndProc IV_Gt_Read
+
+; The forcewake handshake and GT reads described in the header. The IGD
+; and base checks are the display capture's.
+BeginProc IV_Gt_Capture
+    pushad
+
+    mov     eax, IV_IGD_ADDRESS
+    call    IV_Pci_Read
+    mov     IVGtResult[8], eax
+    cmp     ax, IV_VENDOR_INTEL
+    jne     IV_Gt_Bad_Base
+    or      IVGtResult[4], IV_GT_ST_IGD_OK
+    shr     eax, 16
+    call    IV_Device_Known
+    jnc     short IV_Gt_Check_Base
+    or      IVGtResult[4], IV_GT_ST_NOT_IVB
+    jmp     IV_Gt_Done
+
+IV_Gt_Check_Base:
+    mov     eax, IVBase
+    test    eax, eax
+    jz      IV_Gt_Bad_Base
+    test    eax, IV_BASE_ALIGN
+    jnz     IV_Gt_Bad_Base
+    mov     IVGtResult[12], eax
+    VMMcall _MapPhysToLinear,<eax,IV_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      IV_Gt_Done
+    mov     esi, eax
+    or      IVGtResult[4], IV_GT_ST_MAPPED
+
+    pushfd
+    cli
+
+    ; State on entry, all three registers i915 reads raw.
+    mov     eax, [esi+IV_FW_MT_ACK]
+    mov     IVGtResult[16], eax
+    mov     eax, [esi+IV_FW_LEGACY_ACK]
+    mov     IVGtResult[20], eax
+    mov     eax, [esi+IV_THREAD_STATUS]
+    mov     IVGtResult[24], eax
+
+    ; i915's IVB init: clear the legacy request, post through ECOBUS, then
+    ; clear every MT thread bit.
+    mov     dword ptr [esi+IV_FW_LEGACY], 0
+    mov     eax, [esi+IV_ECOBUS]
+    mov     IVGtResult[28], eax
+    mov     dword ptr [esi+IV_FW_MT], IV_FW_CLEAR_ALL
+
+    ; The acknowledge must clear before bit 0 is requested. If it does
+    ; not, nothing more is written: the request register is already
+    ; clear, which is the state i915 leaves at reset.
+    mov     edx, IV_FW_MT_ACK
+    mov     ebx, IV_FW_KERNEL
+    xor     eax, eax
+    call    IV_Poll
+    mov     IVGtResult[32], ecx
+    jnc     short IV_Gt_Request
+    mov     IVGtResult[68], eax
+    or      IVGtResult[4], IV_GT_ST_ACK_STUCK
+    jmp     IV_Gt_Exit_State
+
+IV_Gt_Request:
+    mov     dword ptr [esi+IV_FW_MT], IV_FW_SET_KERNEL
+    mov     edx, IV_FW_MT_ACK
+    mov     ebx, IV_FW_KERNEL
+    mov     eax, IV_FW_KERNEL
+    call    IV_Poll
+    mov     IVGtResult[36], ecx
+    jnc     short IV_Gt_Thread
+    mov     IVGtResult[68], eax
+    or      IVGtResult[4], IV_GT_ST_SET_TIMEOUT
+    jmp     short IV_Gt_Put
+
+IV_Gt_Thread:
+    mov     edx, IV_THREAD_STATUS
+    mov     ebx, IV_THREAD_MASK
+    xor     eax, eax
+    call    IV_Poll
+    mov     IVGtResult[40], ecx
+    jnc     short IV_Gt_Reads
+    or      IVGtResult[4], IV_GT_ST_THREAD_TIMEOUT
+    jmp     short IV_Gt_Put
+
+IV_Gt_Reads:
+    mov     edi, OFFSET32 IVGtFirst
+    call    IV_Gt_Read
+    mov     edi, OFFSET32 IVGtSecond
+    call    IV_Gt_Read
+    mov     IVGtResult[64], IV_GT_COUNT
+    or      IVGtResult[4], IV_GT_ST_READ_DONE
+
+IV_Gt_Put:
+    mov     dword ptr [esi+IV_FW_MT], IV_FW_CLEAR_KERNEL
+    mov     edx, IV_FW_MT_ACK
+    mov     ebx, IV_FW_KERNEL
+    xor     eax, eax
+    call    IV_Poll
+    mov     IVGtResult[44], ecx
+    jnc     short IV_Gt_Restore
+    or      IVGtResult[4], IV_GT_ST_PUT_TIMEOUT
+
+IV_Gt_Restore:
+    ; Bit 0 was acknowledged on entry: request it again, so the GT is
+    ; left as the BIOS left it.
+    test    IVGtResult[16], IV_FW_KERNEL
+    jz      short IV_Gt_Exit_State
+    mov     dword ptr [esi+IV_FW_MT], IV_FW_SET_KERNEL
+    mov     edx, IV_FW_MT_ACK
+    mov     ebx, IV_FW_KERNEL
+    mov     eax, IV_FW_KERNEL
+    call    IV_Poll
+    mov     IVGtResult[48], ecx
+    jc      short IV_Gt_Restore_Timeout
+    or      IVGtResult[4], IV_GT_ST_RESTORED
+    jmp     short IV_Gt_Exit_State
+IV_Gt_Restore_Timeout:
+    or      IVGtResult[4], IV_GT_ST_RESTORE_TIMEOUT
+
+IV_Gt_Exit_State:
+    mov     eax, [esi+IV_FW_MT_ACK]
+    mov     IVGtResult[52], eax
+    mov     eax, [esi+IV_FW_LEGACY_ACK]
+    mov     IVGtResult[56], eax
+    mov     eax, [esi+IV_THREAD_STATUS]
+    mov     IVGtResult[60], eax
+    popfd
+    jmp     short IV_Gt_Done
+
+IV_Gt_Bad_Base:
+    or      IVGtResult[4], IV_GT_ST_BAD_BASE
+IV_Gt_Done:
+    popad
+    ret
+EndProc IV_Gt_Capture
+
+BeginProc IV_Gt_Reset_Result
+    pushad
+    mov     edi, OFFSET32 IVGtResult + 4
+    mov     ecx, IV_GT_RESULT_DWORDS - 1
+    xor     eax, eax
+    cld
+    rep     stosd
+    mov     esi, OFFSET32 IVGtOffsets
+    mov     edi, OFFSET32 IVGtCopy
+    mov     ecx, IV_GT_COUNT
+    rep     movsd
+    popad
+    ret
+EndProc IV_Gt_Reset_Result
+
+; EBX = DIOCParams. DIOC 2: input is the base dword alone.
+BeginProc IV_Gt_Dioc
+    pushad
+    mov     ebp, [ebx.lpvInBuffer]
+    test    ebp, ebp
+    jz      short IV_Gt_Dioc_Fail
+    cmp     [ebx.cbInBuffer], 4
+    jb      short IV_Gt_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short IV_Gt_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], IV_GT_RESULT_DWORDS * 4
+    jb      short IV_Gt_Dioc_Fail
+
+    call    IV_Gt_Reset_Result
+    mov     eax, [ebp]
+    mov     IVBase, eax
+    call    IV_Gt_Capture
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 IVGtResult
+    mov     ecx, IV_GT_RESULT_DWORDS
+    cld
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short IV_Gt_Dioc_Ok
+    mov     dword ptr [eax], IV_GT_RESULT_DWORDS * 4
+IV_Gt_Dioc_Ok:
+    popad
+    clc
+    ret
+IV_Gt_Dioc_Fail:
+    popad
+    stc
+    ret
+EndProc IV_Gt_Dioc
+
 BeginProc IV_Reset_Result
     pushad
     mov     edi, OFFSET32 IVResult + 4
@@ -423,6 +760,8 @@ BeginProc IV_W32_DeviceIoControl
     je      IV_Dioc_Ok
     cmp     ecx, DIOC_CLOSEHANDLE
     je      IV_Dioc_Ok
+    cmp     ecx, IV_DIOC_GT
+    je      short IV_Dioc_Route_Gt
     cmp     ecx, IV_DIOC_CAPTURE
     jne     IV_Dioc_Fail
 
@@ -461,6 +800,15 @@ IV_Dioc_Copy_Out:
 IV_Dioc_Copy_Done:
     popad
 IV_Dioc_Ok:
+    xor     eax, eax
+    ret
+
+IV_Dioc_Route_Gt:
+    push    ebx
+    mov     ebx, esi
+    call    IV_Gt_Dioc
+    pop     ebx
+    jc      short IV_Dioc_Fail
     xor     eax, eax
     ret
 

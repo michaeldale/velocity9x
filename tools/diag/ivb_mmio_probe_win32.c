@@ -24,10 +24,19 @@
  * (docs\decisions\2026-10-15-a-disabled-pipes-counters-hang-the-945.md).
  * Scanline and frame counters are outside the VxD's windows altogether.
  *
- * No GT register is read (below 40000h or from 116000h up, except the
- * forcewake acknowledges), so no forcewake is taken: see the VxD's header.
- * Nothing on the device is written. The only config access is mechanism #1
- * reads, CF8h restored after each, as in V9XHSW.EXE.
+ * Without arguments no GT register is read (below 40000h or from 116000h
+ * up, except the forcewake acknowledges), so no forcewake is taken, and
+ * nothing on the device is written: see the VxD's header.
+ *
+ * With /gt on the command line it then runs the VxD's second call: i915's
+ * Ivy Bridge forcewake handshake, a fixed list of GT registers read twice
+ * under it (rings, MI_MODE, INSTPM, GFX_MODE, RC6 and RPS control, ECOBUS,
+ * L3, GT FIFO and status), and the forcewake put - restoring bit 0 if the
+ * BIOS had it acknowledged on entry. Those two request registers are the
+ * only device writes, and only with /gt. Results go in [Gt].
+ *
+ * The only config access is mechanism #1 reads, CF8h restored after each,
+ * as in V9XHSW.EXE.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -95,6 +104,25 @@
 
 #define V9X_ENABLE_BIT       0x80000000ul
 #define V9X_FORCEWAKE_BIT    0x00000001ul
+
+/* The VxD's second call; layout matches IVGtResult in the VxD. */
+#define V9X_IVGT_CAPTURE     2u
+#define V9X_IVGT_MAGIC       0x54475649ul
+#define V9X_IVGT_COUNT       30u
+#define V9X_IVGT_HEADER      24u
+#define V9X_ECOBUS           0xa180ul
+#define V9X_FORCEWAKE_MT_ENABLE 0x00000020ul /* ECOBUS bit 5, i915 */
+#define V9X_RC_CONTROL       0xa090ul
+#define V9X_GT_CORE_STATUS   0x138060ul
+#define V9X_RC_STATE_MASK    0x00000007ul /* GEN6_RCn_MASK, i915 */
+
+#define V9X_GT_ST_ACK_STUCK      0x00000010ul
+#define V9X_GT_ST_SET_TIMEOUT    0x00000020ul
+#define V9X_GT_ST_THREAD_TIMEOUT 0x00000040ul
+#define V9X_GT_ST_READ_DONE      0x00000080ul
+#define V9X_GT_ST_PUT_TIMEOUT    0x00000100ul
+#define V9X_GT_ST_RESTORED       0x00000200ul
+#define V9X_GT_ST_RESTORE_TIMEOUT 0x00000400ul
 
 static DWORD v9x_inpd(WORD port);
 #pragma aux v9x_inpd = "in eax,dx" parm [dx] value [eax] modify exact [eax]
@@ -248,8 +276,52 @@ typedef char v9x_ivmm_header_matches[
     offsetof(struct v9x_ivmm_result, offsets) ==
     sizeof(DWORD) * V9X_IVMM_HEADER ? 1 : -1];
 
+struct v9x_ivgt_result {
+    DWORD magic;
+    DWORD status;
+    DWORD igd_id;
+    DWORD base;
+    DWORD entry_mt_ack;
+    DWORD entry_legacy_ack;
+    DWORD entry_thread;
+    DWORD ecobus_unwoken;
+    DWORD polls_clear;
+    DWORD polls_set;
+    DWORD polls_thread;
+    DWORD polls_put;
+    DWORD polls_restore;
+    DWORD exit_mt_ack;
+    DWORD exit_legacy_ack;
+    DWORD exit_thread;
+    DWORD read_count;
+    DWORD timeout_ack;
+    DWORD reserved[6];
+    DWORD offsets[V9X_IVGT_COUNT];
+    DWORD first[V9X_IVGT_COUNT];
+    DWORD second[V9X_IVGT_COUNT];
+};
+
+typedef char v9x_ivgt_header_matches[
+    offsetof(struct v9x_ivgt_result, offsets) ==
+    sizeof(DWORD) * V9X_IVGT_HEADER ? 1 : -1];
+
+/* Names for the VxD's IVGtOffsets, in its order. */
+static const char *const v9x_gt_names[V9X_IVGT_COUNT] = {
+    "RCS_TAIL", "RCS_HEAD", "RCS_START", "RCS_CTL", "RCS_ACTHD",
+    "MI_MODE", "INSTPM", "GFX_MODE",
+    "BCS_TAIL", "BCS_HEAD", "BCS_START", "BCS_CTL", "BCS_ACTHD",
+    "GAM_ECOCHK", "GEN7_COMMON_SLICE_CHICKEN1",
+    "GEN6_RPSTAT1", "GEN6_RP_CONTROL", "GEN6_RC_CONTROL", "GEN6_RC_STATE",
+    "ECOBUS",
+    "GEN7_L3CNTLREG1", "GEN7_L3CNTLREG2", "GEN7_L3CNTLREG3",
+    "GEN7_L3_CHICKEN_MODE", "GEN7_L3SQCREG4",
+    "GTFIFODBG", "GTFIFOCTL", "GT_THREAD_STATUS", "GT_CORE_STATUS",
+    "GEN6_GT_GFX_RC6"
+};
+
 static struct v9x_ivmm_request v9x_request;
 static struct v9x_ivmm_result v9x_result;
+static struct v9x_ivgt_result v9x_gt;
 
 /* The first capture's words, kept for the decisions the second needs. */
 static DWORD v9x_global_offsets[V9X_IVMM_OFFSET_MAX];
@@ -602,6 +674,121 @@ static int v9x_live_display(DWORD base)
     return 1;
 }
 
+/* The value a GT capture read at an offset, or 0. */
+static DWORD v9x_gt_value(DWORD offset)
+{
+    DWORD index;
+
+    for (index = 0ul; index < v9x_gt.read_count && index < V9X_IVGT_COUNT;
+         ++index) {
+        if (v9x_gt.offsets[index] == offset) {
+            return v9x_gt.first[index];
+        }
+    }
+    return 0ul;
+}
+
+/* The VxD's second call: forcewake, GT reads, put. See the header. */
+static void v9x_gt_capture(DWORD base)
+{
+    char key[40];
+    char text[24];
+    HANDLE device;
+    DWORD returned;
+    DWORD index;
+    BOOL ok;
+
+    v9x_text("Gt", "Requested", "yes");
+    device = CreateFileA(V9X_IVMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        v9x_text("Gt", "Result", "VXD-LOAD-FAILED");
+        return;
+    }
+    returned = 0ul;
+    ok = DeviceIoControl(device, V9X_IVGT_CAPTURE, &base, sizeof(base),
+                         &v9x_gt, sizeof(v9x_gt), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_gt) || v9x_gt.magic != V9X_IVGT_MAGIC) {
+        v9x_text("Gt", "Result", "DIOC-FAILED");
+        v9x_key("Gt", "Returned", returned);
+        return;
+    }
+
+    v9x_key("Gt", "Status", v9x_gt.status);
+    v9x_key("Gt", "EntryMtAck", v9x_gt.entry_mt_ack);
+    v9x_key("Gt", "EntryLegacyAck", v9x_gt.entry_legacy_ack);
+    v9x_key("Gt", "EntryThreadStatus", v9x_gt.entry_thread);
+    v9x_key("Gt", "EcobusBeforeWake", v9x_gt.ecobus_unwoken);
+    v9x_key("Gt", "PollsAckClear", v9x_gt.polls_clear);
+    v9x_key("Gt", "PollsAckSet", v9x_gt.polls_set);
+    v9x_key("Gt", "PollsThreadC0", v9x_gt.polls_thread);
+    v9x_key("Gt", "PollsPutClear", v9x_gt.polls_put);
+    v9x_key("Gt", "PollsRestoreSet", v9x_gt.polls_restore);
+    v9x_key("Gt", "ExitMtAck", v9x_gt.exit_mt_ack);
+    v9x_key("Gt", "ExitLegacyAck", v9x_gt.exit_legacy_ack);
+    v9x_key("Gt", "ExitThreadStatus", v9x_gt.exit_thread);
+    v9x_key("Gt", "AckAtTimeout", v9x_gt.timeout_ack);
+    v9x_key("Gt", "Read", v9x_gt.read_count);
+
+    for (index = 0ul; index < v9x_gt.read_count && index < V9X_IVGT_COUNT;
+         ++index) {
+        v9x_offset_key(key, "R", v9x_gt.offsets[index]);
+        v9x_hex(text, v9x_gt.first[index], 8);
+        if (v9x_gt.second[index] != v9x_gt.first[index]) {
+            text[8] = ',';
+            v9x_hex(text + 9, v9x_gt.second[index], 8);
+        }
+        v9x_text("Gt", key, text);
+        v9x_offset_key(key, "Name.", v9x_gt.offsets[index]);
+        v9x_text("Gt", key, v9x_gt_names[index]);
+    }
+
+    if ((v9x_gt.status & V9X_GT_ST_ACK_STUCK) != 0ul) {
+        v9x_text("Gt", "Result", "ACK-STUCK-REFUSED");
+        return;
+    }
+    if ((v9x_gt.status & V9X_GT_ST_SET_TIMEOUT) != 0ul) {
+        v9x_text("Gt", "Result", "ACK-SET-TIMEOUT");
+        return;
+    }
+    if ((v9x_gt.status & V9X_GT_ST_THREAD_TIMEOUT) != 0ul) {
+        v9x_text("Gt", "Result", "THREAD-C0-TIMEOUT");
+        return;
+    }
+    if ((v9x_gt.status & V9X_GT_ST_READ_DONE) == 0ul) {
+        v9x_text("Gt", "Result", "NOT-READ");
+        return;
+    }
+    v9x_text("Gt", "MtForcewakeEnabled",
+             (v9x_gt_value(V9X_ECOBUS) & V9X_FORCEWAKE_MT_ENABLE) != 0ul ?
+             "yes" : "no");
+    v9x_key("Gt", "RcControl", v9x_gt_value(V9X_RC_CONTROL));
+    v9x_key("Gt", "RcStateNow",
+            v9x_gt_value(V9X_GT_CORE_STATUS) & V9X_RC_STATE_MASK);
+    if ((v9x_gt.status & (V9X_GT_ST_PUT_TIMEOUT |
+                          V9X_GT_ST_RESTORE_TIMEOUT)) != 0ul) {
+        v9x_text("Gt", "Result", "READ-BUT-EXIT-TIMEOUT");
+        return;
+    }
+    v9x_text("Gt", "Result", "COMPLETE");
+}
+
+/* Whether the command line carries /gt (any case). */
+static int v9x_wants_gt(void)
+{
+    const char *line;
+
+    line = GetCommandLineA();
+    for (; line != 0 && *line != '\0'; ++line) {
+        if (line[0] == '/' && (line[1] == 'g' || line[1] == 'G') &&
+            (line[2] == 't' || line[2] == 'T')) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void __stdcall V9xIvbMmioEntry(void)
 {
     DWORD bar0;
@@ -611,7 +798,9 @@ void __stdcall V9xIvbMmioEntry(void)
     DeleteFileA(V9X_IVMM_PATH);
     v9x_text("Report", "Tool", "V9XIVMM");
     v9x_text("Report", "Build", V9X_BUILD_ID);
-    v9x_text("Report", "Access", "mmio-read-only-no-forcewake");
+    v9x_text("Report", "Access",
+             v9x_wants_gt() ? "mmio-read-plus-forcewake-handshake" :
+                              "mmio-read-only-no-forcewake");
 
     bar0 = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR);
     bdsm = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_BDSM);
@@ -658,6 +847,10 @@ void __stdcall V9xIvbMmioEntry(void)
         v9x_text("Report", "Result", "DISPLAY-CAPTURE-FAILED");
         WritePrivateProfileStringA(0, 0, 0, V9X_IVMM_PATH);
         ExitProcess(3u);
+    }
+
+    if (v9x_wants_gt()) {
+        v9x_gt_capture(bar0 & V9X_GTTMMADR_MASK);
     }
 
     v9x_text("Report", "Result", "COMPLETE");
