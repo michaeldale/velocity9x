@@ -500,6 +500,20 @@ static int v9x_d3d_hsw_ready(void)
         }
         v9x_d3d_hsw_ring_checked = 1;
     }
+    /* The words the builders write follow the chip: Ivy Bridge's surface,
+     * PS and PIPE_CONTROL rules, its workaround writes going to a status
+     * dword nothing reads (intel_hsw_3d.h). Before the initialising batch,
+     * which is the first one built. */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul) {
+        if (v9x_intel_hsw_3d_set_chip(
+                V9X_HSW_3D_CHIP_IVYBRIDGE,
+                V9X_D3D_HSW_STATUS_GFX +
+                    V9X_INTEL_HSW_STATUS_IVB_WA * 4ul) != V9X_STATUS_OK) {
+            return 0;
+        }
+    } else {
+        (void)v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_HASWELL, 0ul);
+    }
     return v9x_d3d_hsw_initialise();
 }
 

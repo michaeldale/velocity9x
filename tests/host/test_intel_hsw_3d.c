@@ -1076,9 +1076,114 @@ static void test_phase_f2b_depth_only(void)
           dw[at + 3ul] == 0ul);
 }
 
+/*
+ * Ivy Bridge (Gen7), worked from Mesa genxml gen7.xml against gen75.xml
+ * and from crocus's IVB-only PIPE_CONTROLs. The chip is a static in
+ * hsw_3d.c, so this sets it, checks, and puts Haswell back before any
+ * other test sees it.
+ */
+static void test_ivb_variant(void)
+{
+    static v9x_u32 dw[512];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    v9x_u32 surface[8];
+    v9x_u32 at;
+    v9x_u32 index;
+    v9x_u32 forced;
+    const v9x_u32 wa = 0x01801040ul;
+
+    /* A workaround dword is required, qword-aligned. */
+    CHECK(v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_IVYBRIDGE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_IVYBRIDGE,
+                                    0x01801044ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_3d_set_chip((v9x_u8)2u, wa) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_IVYBRIDGE, wa) ==
+          V9X_STATUS_OK);
+
+    /* RENDER_SURFACE_STATE DW7: no channel selects on Gen7, so 0 where
+     * Haswell writes 09770000h. The rest is Haswell's. */
+    CHECK(v9x_intel_hsw_surface_2d(surface, V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                   0x00100000ul, 64u, 32u, 256ul) ==
+          V9X_STATUS_OK);
+    CHECK(surface[7] == 0ul && surface[1] == 0x00100000ul &&
+          surface[2] == 0x001f003ful && surface[3] == 255ul);
+
+    /* 3DSTATE_PS DW4: 63 threads at 31:24, no sample mask, SIMD8, with the
+     * attribute enable: 3F000401h, where Haswell writes 1F801401h. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x00004000ul, 1u, 0u, 1u, 4u) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 8ul && dw[4] == 0x3f000401ul);
+
+    /* Every fourth PIPE_CONTROL carries CS stall: with an allowed
+     * companion (RT flush) only CS stall is added; with none, stall at
+     * scoreboard too. A CS stall restarts the count. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    for (index = 0ul; index < 4ul; ++index) {
+        v9x_intel_hsw_pipe_control(&batch, V9X_HSW_PC_RT_CACHE_FLUSH, 0ul,
+                                   0ul);
+    }
+    CHECK(dw[1] == 0x00001000ul && dw[11] == 0x00001000ul &&
+          dw[16] == 0x00101000ul);
+    for (index = 0ul; index < 4ul; ++index) {
+        v9x_intel_hsw_pipe_control(&batch,
+                                   V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE, 0ul,
+                                   0ul);
+    }
+    CHECK(dw[21] == 0x00000400ul && dw[36] == 0x00100402ul);
+    v9x_intel_hsw_pipe_control(&batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_intel_hsw_pipe_control(&batch, V9X_HSW_PC_RT_CACHE_FLUSH, 0ul,
+                                   0ul);
+    }
+    CHECK(dw[56] == 0x00001000ul);
+
+    /* The init batch: PIPELINE_SELECT, then the CS stall with its write to
+     * the workaround dword (CS stall 20, post-sync write 15:14 = 1, GGTT
+     * 24) and the zero-vertex point list, then Haswell's sequence with the
+     * CS stall after the push constant allocation and the VS workaround
+     * (depth stall 13 with the same write) before URB_VS and before VS. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x2000ul,
+                                      0x01821010ul, 0xc0de0031ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    CHECK(dw[0] == 0x69040000ul);
+    CHECK(dw[1] == 0x7a000003ul && dw[2] == 0x01104000ul && dw[3] == wa &&
+          dw[4] == 0ul);
+    CHECK(dw[6] == 0x7b000005ul && dw[7] == 1ul && dw[8] == 0ul &&
+          dw[10] == 1ul);
+    forced = 0ul;
+    for (at = 0ul; at + 2ul < batch.used; ++at) {
+        if (dw[at] == 0x7a000003ul && dw[at + 1ul] == 0x01006000ul &&
+            dw[at + 2ul] == wa) {
+            ++forced;
+        }
+    }
+    CHECK(forced == 2ul);
+    /* Phase C's 172 dwords on Haswell; 27 more here (a PIPE_CONTROL and
+     * the primitive after the select, a CS stall after the allocation, two
+     * VS workarounds), less the MI_NOOP that no longer pads the end to a
+     * qword. */
+    CHECK(batch.used == 198ul);
+
+    CHECK(v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_HASWELL, 0ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_surface_2d(surface, V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                   0x00100000ul, 64u, 32u, 256ul) ==
+              V9X_STATUS_OK &&
+          surface[7] == 0x09770000ul);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_ivb_variant();
     test_phase_f2b_depth_only();
     test_phase_f2_tl();
     test_phase_f1b_depth();

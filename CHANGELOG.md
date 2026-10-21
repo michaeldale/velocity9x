@@ -43,9 +43,9 @@ build identifier so exact guest-tested binaries remain traceable.
     128 KiB boundaries made 3DMark 2000 show half-drawn frames; most
     flips stay register writes.
 
-- **Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`): new chip, 2D
-  only.** The `intel-gma` package now claims it. It was tested on one
-  MSI B75MA-P45 desktop with an i5-3570K, reached through remote help.
+- **Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`): new chip.** The
+  `intel-gma` package now claims it. It was tested on one MSI B75MA-P45
+  desktop with an i5-3570K, reached through remote help.
   DirectDraw fills and copies run on the blitter ring, the same way as on
   the HD 4600, and read back correctly in 256 colours, 16-bit and
   32-bit colour. Ivy Bridge wakes its graphics core differently from
@@ -53,8 +53,12 @@ build identifier so exact guest-tested binaries remain traceable.
   page flips move the display at the monitor's refresh. Ivy Bridge pans
   through a different register from Haswell, so a back buffer that does
   not start on a 4 KiB boundary (800x600 in 16-bit colour) needed its own
-  path. Not yet offered: Direct3D. Before this, the generic VESA package
-  ran it at up to 1920x1440.
+  path. Hardware Direct3D runs on the render engine, sharing the HD
+  4600's with Ivy Bridge's own state words and the extra pipeline
+  flushes Ivy Bridge needs. The Direct3D probe passed every check at 16
+  and 32-bit colour and with a 24-bit Z buffer. No game has been run on
+  it yet. Before this, the generic VESA package ran it at up to
+  1920x1440.
 
 - **V9XTRACE no longer hangs on a reused snapshot.** Once all eight
   snapshot names were taken, a run that reused one whose section had

@@ -31,7 +31,34 @@ struct v9x_hsw_batch {
     v9x_u32 capacity;
     v9x_u32 used;
     v9x_u16 overflow;
+    /* Ivy Bridge: PIPE_CONTROLs since the last with CS stall
+     * (WaCsStallAtEveryFourthPipecontrol). */
+    v9x_u16 pc_since_cs_stall;
 };
+
+/*
+ * The chip the 3D builders target. Haswell (Gen7.5) is the default and what
+ * every host test of a Haswell word assumes. Ivy Bridge (Gen7) changes:
+ *   - RENDER_SURFACE_STATE DW7: no shader channel selects (Gen7.5 only),
+ *     so 0;
+ *   - 3DSTATE_PS DW4: Maximum Number of Threads at 31:24 (31:23 on
+ *     Gen7.5) and no Sample Mask field (Mesa genxml gen7.xml, gen75.xml);
+ *   - the IVB-only PIPE_CONTROLs i965 and crocus emit, quoting the IVB
+ *     PRM: a CS stall with a post-sync write and a zero-vertex point list
+ *     after PIPELINE_SELECT(3D); a CS stall after the push constant
+ *     allocation; a depth stall with a post-sync write before
+ *     3DSTATE_URB_VS and 3DSTATE_VS; and a CS stall on every fourth
+ *     PIPE_CONTROL.
+ * The post-sync writes go to workaround_address, a GGTT dword nothing else
+ * uses (V9X_INTEL_HSW_STATUS_IVB_WA in the status page).
+ *
+ * Set once by the HAL from the engine's identity bit; the value is a
+ * property of the machine, so V9XHAL's shared statics hold it safely.
+ */
+#define V9X_HSW_3D_CHIP_HASWELL   ((v9x_u8)0u)
+#define V9X_HSW_3D_CHIP_IVYBRIDGE ((v9x_u8)1u)
+v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
+                                     v9x_u32 workaround_address);
 
 /* Commands the builders and the checker know, by index into the table in
  * hsw_3d.c. */

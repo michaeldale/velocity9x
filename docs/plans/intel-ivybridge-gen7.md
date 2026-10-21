@@ -1,11 +1,14 @@
 # Ivy Bridge (Gen7, HD 4000): bring-up on W9QI4E14
 
-Status: **audit done 2026-10-21; no code.** The machine that produced the
-survey is on remote help as `M-C71087` and runs Windows 98 SE on standard
-VGA. The config-space decode from Windows is accepted by the Haswell code
-unchanged (`docs\decisions\2026-10-21-ivybridge-w9qi4e14-audit.md`).
-Nothing is implemented, and `8086:0162` stays with the `vbe` family until
-a chip entry exists.
+Status: **steps 1-6 done 2026-10-21; games next.** The machine that
+produced the survey is on remote help as `M-C71087`.
+- `intel-gma` claims `8086:0162` as `hd4000-ivb` on the Haswell path.
+- On that path: DirectDraw blits on BCS at 8, 16 and 32 bpp, flips
+  through PRI_LINOFF, and Direct3D passing V9XD32 at 16 and 32 bpp with
+  16 and 24-bit Z.
+- Each step's record is listed under Order below. The audit
+  (`docs\decisions\2026-10-21-ivybridge-w9qi4e14-audit.md`) is where it
+  started.
 
 Parked 2026-10-20 for want of hardware; resumed when the owner lent the
 machine.
@@ -132,9 +135,17 @@ Following `intel-haswell-bringup.md`:
        800x600 back buffer.
    - Not seen on the monitor; 8 and 32 bpp chains not run.
    - The original step: the LINOFF split, measured with the /flip probe.
-6. **3D:** the PS and SURFACE_STATE words and the IVB PIPE_CONTROL rules.
-   Then the Phase C-F sequence the 4570 took, with its hang cases
-   (all-zero WM/PS, the VF cache) checked again here.
+6. **3D:**
+   - *Done 2026-10-21* (`docs\decisions\2026-10-21-ivybridge-direct3d.md`):
+     - Haswell's builders with Gen7's DW7 and PS DW4 and the IVB
+       PIPE_CONTROLs, selected by `v9x_intel_hsw_3d_set_chip`;
+     - V9XD32 passes at 16 and 32 bpp and with a 24-bit Z buffer;
+     - 25 render-ring submissions, no timeouts.
+   - *Owed:* a game or benchmark, OpenGL/Glide/3DCIF through the render
+     interface, and whether i915's IVB L3 workarounds matter.
+   - The original step: the PS and SURFACE_STATE words and the IVB
+     PIPE_CONTROL rules. Then the Phase C-F sequence the 4570 took, with
+     its hang cases (all-zero WM/PS, the VF cache) checked again here.
 
 ## Not to assume
 

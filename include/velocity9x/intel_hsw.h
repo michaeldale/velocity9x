@@ -167,6 +167,9 @@
 #define V9X_INTEL_HSW_STATUS_RCS_DONE   ((v9x_u32)8ul)
 #define V9X_INTEL_HSW_STATUS_RCS_SENT   ((v9x_u32)9ul)
 #define V9X_INTEL_HSW_STATUS_RCS_INIT   ((v9x_u32)10ul)
+/* Ivy Bridge: the dword its workaround PIPE_CONTROLs write (intel_hsw_3d.h);
+ * read by nothing. 12 is the HAL's crumb. */
+#define V9X_INTEL_HSW_STATUS_IVB_WA     ((v9x_u32)16ul)
 #define V9X_INTEL_HSW_RCS_INIT_MARK     ((v9x_u32)0x48535749ul) /* "HSWI" */
 
 /* RCS ring registers (Vol 2c). */

@@ -218,9 +218,10 @@ void v9x_hsw_engine_close(void)
  * DirectDraw session, so the verb hands back a ring it already has open
  * rather than reprogramming it.
  *
- * Ivy Bridge runs the same open with its own forcewake (chip 1) and claims
- * the blitter alone: its render engine and plane differ from Haswell's
- * (docs\plans\intel-ivybridge-gen7.md, code audit), and neither has run.
+ * Ivy Bridge runs the same open with its own forcewake (chip 1) and stamps
+ * V9X_DD_ENGINE_CAP_GEN7_IVB, which the HAL reads for the places its
+ * render engine and plane differ from Haswell's
+ * (docs\plans\intel-ivybridge-gen7.md, code audit).
  */
 static void v9x_hsw_fill_engine_for(unsigned long chip,
                                     unsigned long *control_linear_base,
@@ -266,9 +267,13 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY;
     if (chip != V9X_HSW_OPEN_CHIP_HASWELL) {
-        /* Ivy Bridge: flips through plane A's base and PRI_LINOFF, which
-         * the HAL picks by the identity bit (engines\hsw_scanout.c). */
-        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_GEN7_IVB;
+        /* Ivy Bridge: flips through plane A's base and PRI_LINOFF, and
+         * Direct3D on the render ring the open programmed beside the
+         * blitter's, with Gen7's surface, PS and PIPE_CONTROL rules. The
+         * HAL picks both by the identity bit (engines\hsw_scanout.c,
+         * d3d\d3d_hsw.c). */
+        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_D3D |
+                        V9X_DD_ENGINE_CAP_GEN7_IVB;
         return;
     }
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
@@ -327,10 +332,10 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
 };
 
 /*
- * Ivy Bridge GT2 desktop on the same path, for 2D. The heap layout is
- * Haswell's: i915 decodes 1082C0h the same way on Gen7 and Gen7.5
- * (gen7_get_stolen_reserved). No Direct3D word: the descriptor claims no
- * render engine (v9x_ivb_fill_engine).
+ * Ivy Bridge GT2 desktop on the same path. The heap layout is Haswell's:
+ * i915 decodes 1082C0h the same way on Gen7 and Gen7.5
+ * (gen7_get_stolen_reserved). Its Direct3D word names Gen7 rather than
+ * Haswell's gen75; the engine is the same builders with the Gen7 words.
  */
 const V9X_HW16_DEVICE v9x_ivb_hd4000_device = {
     0x8086u, 0x0162u,
@@ -339,7 +344,7 @@ const V9X_HW16_DEVICE v9x_ivb_hd4000_device = {
     "none",
     "vbe-lfb",
     "directdraw-fill-blt",
-    0,
+    "hardware-gen7",
     0,
     v9x_ivb_fill_engine,
     /* VBE reports the framebuffer in GMADR, BAR2: E0000000 on W9QI4E14. */

@@ -83,6 +83,32 @@ static const struct v9x_hsw_command v9x_hsw_commands[V9X_HSW_CMD_COUNT] = {
     { 3u, 0u, 0x04u, 3u }    /* 3DSTATE_CLEAR_PARAMS */
 };
 
+/* The chip the builders target, and the dword Ivy Bridge's workaround
+ * PIPE_CONTROLs write (intel_hsw_3d.h). */
+static v9x_u8 v9x_hsw_3d_chip = V9X_HSW_3D_CHIP_HASWELL;
+static v9x_u32 v9x_hsw_3d_wa_address = 0ul;
+
+v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
+                                     v9x_u32 workaround_address)
+{
+    if (chip != V9X_HSW_3D_CHIP_HASWELL &&
+        chip != V9X_HSW_3D_CHIP_IVYBRIDGE) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (chip == V9X_HSW_3D_CHIP_IVYBRIDGE &&
+        (workaround_address == 0ul || (workaround_address & 7ul) != 0ul)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_hsw_3d_chip = chip;
+    v9x_hsw_3d_wa_address = workaround_address;
+    return V9X_STATUS_OK;
+}
+
+static int v9x_hsw_3d_is_ivb(void)
+{
+    return v9x_hsw_3d_chip == V9X_HSW_3D_CHIP_IVYBRIDGE;
+}
+
 void v9x_intel_hsw_batch_init(struct v9x_hsw_batch *batch, v9x_u32 *dw,
                               v9x_u32 capacity)
 {
@@ -93,6 +119,7 @@ void v9x_intel_hsw_batch_init(struct v9x_hsw_batch *batch, v9x_u32 *dw,
     batch->capacity = dw != 0 ? capacity : 0ul;
     batch->used = 0ul;
     batch->overflow = 0u;
+    batch->pc_since_cs_stall = 0u;
 }
 
 /* Reserve count dwords; on overflow the batch is marked and left as it
@@ -470,6 +497,28 @@ v9x_status v9x_intel_hsw_pipe_control(struct v9x_hsw_batch *batch,
     if ((address & 3ul) != 0ul || (flags & 0xf0000000ul) != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /*
+     * Ivy Bridge, WaCsStallAtEveryFourthPipecontrol (crocus, i965): every
+     * fourth PIPE_CONTROL carries CS stall. A CS stall needs a companion
+     * bit (Vol 7, as above), so one is added where none of the allowed
+     * ones is set: stall at scoreboard, which every other CS stall here
+     * already uses.
+     */
+    if (v9x_hsw_3d_is_ivb() && batch != 0) {
+        if ((flags & V9X_HSW_PC_CS_STALL) != 0ul) {
+            batch->pc_since_cs_stall = 0u;
+        } else if (++batch->pc_since_cs_stall >= 4u) {
+            flags |= V9X_HSW_PC_CS_STALL;
+            if ((flags & (V9X_HSW_PC_RT_CACHE_FLUSH |
+                          V9X_HSW_PC_DEPTH_CACHE_FLUSH |
+                          V9X_HSW_PC_DEPTH_STALL |
+                          V9X_HSW_PC_STALL_AT_SCOREBOARD |
+                          V9X_HSW_PC_WRITE_IMMEDIATE)) == 0ul) {
+                flags |= V9X_HSW_PC_STALL_AT_SCOREBOARD;
+            }
+            batch->pc_since_cs_stall = 0u;
+        }
+    }
     payload[0] = flags;
     payload[1] = address;
     payload[2] = data;
@@ -502,6 +551,11 @@ v9x_status v9x_intel_hsw_surface_2d(v9x_u32 out[8], v9x_u16 format,
     out[1] = base;
     out[2] = ((v9x_u32)(height - 1u) << 16) | (v9x_u32)(width - 1u);
     out[3] = pitch - 1ul;
+    /* Ivy Bridge has no channel selects: DW7 is its clear colours and min
+     * LOD, all 0. */
+    if (v9x_hsw_3d_is_ivb()) {
+        return V9X_STATUS_OK;
+    }
     out[7] = ((v9x_u32)V9X_HSW_SCS_RED << 25) |
              ((v9x_u32)V9X_HSW_SCS_GREEN << 22) |
              ((v9x_u32)V9X_HSW_SCS_BLUE << 19) |
@@ -1081,8 +1135,13 @@ v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
     payload[1] = ((v9x_u32)samplers << 27) |
                  ((v9x_u32)binding_entries << 18);
     payload[2] = 0ul;
-    payload[3] = (V9X_HSW_PS_MAX_THREADS_FIELD << 23) |
-                 V9X_HSW_PS_SAMPLE_MASK_ONE | V9X_HSW_PS_SIMD8;
+    if (v9x_hsw_3d_is_ivb()) {
+        /* IVB: threads at 31:24 (GT2 has 172, Mesa), no Sample Mask. */
+        payload[3] = (V9X_HSW_PS_MAX_THREADS_FIELD << 24) | V9X_HSW_PS_SIMD8;
+    } else {
+        payload[3] = (V9X_HSW_PS_MAX_THREADS_FIELD << 23) |
+                     V9X_HSW_PS_SAMPLE_MASK_ONE | V9X_HSW_PS_SIMD8;
+    }
     if (attributes != 0u) {
         payload[3] |= V9X_HSW_PS_ATTRIBUTE_ENABLE;
     }
@@ -1338,6 +1397,23 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
                                      0ul);
 }
 
+/* Ivy Bridge's two workaround PIPE_CONTROLs (intel_hsw_3d.h): crocus's
+ * gen7_emit_cs_stall_flush and gen7_emit_vs_workaround_flush, both writing
+ * 0 to the workaround dword. */
+static void v9x_hsw_ivb_cs_stall_flush(struct v9x_hsw_batch *batch)
+{
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_WRITE_IMMEDIATE | V9X_HSW_PC_GGTT,
+                               v9x_hsw_3d_wa_address, 0ul);
+}
+
+static void v9x_hsw_ivb_vs_flush(struct v9x_hsw_batch *batch)
+{
+    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL |
+                               V9X_HSW_PC_WRITE_IMMEDIATE | V9X_HSW_PC_GGTT,
+                               v9x_hsw_3d_wa_address, 0ul);
+}
+
 /*
  * The init batch (draw == 0) and the draw batch share one sequence; the
  * draw replaces the zeroed CLIP-PS block with real state, the drawing
@@ -1393,6 +1469,13 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                        draw->depth_format : V9X_HSW_DEPTH_D32_FLOAT;
 
     v9x_intel_hsw_pipeline_select_3d(batch);
+    if (v9x_hsw_3d_is_ivb()) {
+        /* IVB PRM PIPELINE_SELECT, as i965 quotes it: "a pipe_control with
+         * a CS stall and a post sync operation and then a dummy DRAW ...
+         * after any PIPELINE_SELECT that is enabling 3D mode". */
+        v9x_hsw_ivb_cs_stall_flush(batch);
+        v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_POINTLIST, 0ul, 0ul);
+    }
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
                                V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);
     v9x_intel_hsw_state_base_address(batch, state_base, state_base,
@@ -1427,6 +1510,13 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                                       V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_PS,
                                       V9X_HSW_INIT_PUSH_KB,
                                       V9X_HSW_INIT_PUSH_KB);
+    if (v9x_hsw_3d_is_ivb()) {
+        /* IVB PRM 3DSTATE_PUSH_CONSTANT_ALLOC_PS (crocus): "A PIPE_CONTROL
+         * command with the CS Stall bit set must be programmed in the ring
+         * after this instruction"; then the VS workaround before URB_VS. */
+        v9x_hsw_ivb_cs_stall_flush(batch);
+        v9x_hsw_ivb_vs_flush(batch);
+    }
     v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_VS, V9X_HSW_INIT_URB_START,
                       vue_rows, V9X_HSW_INIT_VS_ENTRIES);
     v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_HS, V9X_HSW_INIT_URB_NEXT, 0u,
@@ -1436,6 +1526,10 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_GS, V9X_HSW_INIT_URB_NEXT, 0u,
                       0u);
 
+    /* IVB: the VS workaround before 3DSTATE_VS too (crocus). */
+    if (v9x_hsw_3d_is_ivb()) {
+        v9x_hsw_ivb_vs_flush(batch);
+    }
     for (index = 0ul; index < 6ul; ++index) {
         v9x_intel_hsw_stage_disabled(batch, disabled[index]);
     }
