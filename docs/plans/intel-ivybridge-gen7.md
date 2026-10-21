@@ -143,8 +143,11 @@ Following `intel-haswell-bringup.md`:
      - 25 render-ring submissions, no timeouts.
      - 3DMark 2000's default benchmark ran to its score (1910): 1.67
        million render submissions, 7,820 flips, no timeouts.
-   - *Owed:* games, OpenGL/Glide/3DCIF through the render interface, and
-     whether i915's IVB L3 workarounds matter.
+     - OpenGL, the render interface and Glide 2/3 probes give the HD
+       4600's results; the renderer name now says HD 4000
+       (`docs\decisions\2026-10-21-ivybridge-gl-glide.md`).
+   - *Owed:* games, 3DCIF (no demos on the machine), and whether i915's
+     IVB L3 workarounds matter.
    - The original step: the PS and SURFACE_STATE words and the IVB
      PIPE_CONTROL rules. Then the Phase C-F sequence the 4570 took, with
      its hang cases (all-zero WM/PS, the VF cache) checked again here.

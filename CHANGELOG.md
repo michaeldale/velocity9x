@@ -57,8 +57,9 @@ build identifier so exact guest-tested binaries remain traceable.
   4600's with Ivy Bridge's own state words and the extra pipeline
   flushes Ivy Bridge needs. The Direct3D probe passed every check at 16
   and 32-bit colour and with a 24-bit Z buffer, and 3DMark 2000's
-  default benchmark ran to its score. Before this, the generic VESA
-  package ran it at up to 1920x1440.
+  default benchmark ran to its score. The OpenGL and Glide probes pass
+  as on the HD 4600. Before this, the generic VESA package ran it at up
+  to 1920x1440.
 
 - **V9XTRACE no longer hangs on a reused snapshot.** Once all eight
   snapshot names were taken, a run that reused one whose section had
