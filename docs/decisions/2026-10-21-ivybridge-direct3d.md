@@ -2,8 +2,9 @@
 
 Date: 2026-10-21
 Status: **measured once per configuration.** V9XD32 passes every check at
-16 and 32 bpp, and with a 24-bit Z buffer. This is step 6 of
-`docs\plans\intel-ivybridge-gen7.md`. No game has run yet.
+16 and 32 bpp, and with a 24-bit Z buffer. 3DMark 2000's default benchmark
+runs to its score (1910). This is step 6 of
+`docs\plans\intel-ivybridge-gen7.md`.
 
 Captures: `docs\probe\w9qi4e14-ivb-hd4000-d3d-2026-10-21\`. Package
 `build\win98se-intel-gma`, build `178201b9-dirty` (`BuildsAgree=1`).
@@ -89,9 +90,56 @@ The snapshot after the first two runs (`boot8-after-d32-V9XSNA5.INI`):
 
 The machine stayed on boot 8 throughout.
 
+## 3DMark 2000 Pro, default benchmark (boot 8)
+
+Installed from the owner's `C:\extras\Tools\3DMARK00.exe` into
+`C:\Program Files\MadOnion.com\3DMark2000`, with the licence accepted and
+the published Futuremark registration entered on Michael's instruction.
+3DMark version 340.
+
+The default benchmark ran to its score: 1024x768, 16-bit colour, triple
+buffer, 16-bit Z, 16-bit textures, 58 Hz. The card is "Velocity9x Intel
+HD Graphics 4000 (Ivy Bridge)", V9XHAL.DLL 0.23.00.0000, 64320 KB video
+memory, one texture blending stage. Captures:
+`docs\probe\w9qi4e14-ivb-hd4000-3dmark2000-2026-10-21\` (`score.png`,
+`details-*.png`, `game1-helicopter-frame.png`).
+
+| | |
+|---|---|
+| 3DMark result | **1910** (CPU speed 177) |
+| Game 1 Helicopter, low / medium / high | 29.8 / 25.7 / 11.2 fps |
+| Game 2 Adventure, low / medium / high | 39.6 / 30.0 / 22.9 fps |
+| Fill rate, single / multi texturing | 111.3 / 111.6 Mtexels/s |
+| High polygon count, 1 / 4 / 8 lights | 1251 / 1233 / 1225 Ktriangles/s |
+| Texture rendering, 8 / 16 / 32 / 64 MB | 59.8 / 59.6 / 59.3 / 58.6 fps |
+| Bump mapping | not supported (one texture stage) |
+
+The score is recorded, not compared.
+
+The one frame captured mid-run (`game1-helicopter-frame.png`, Game 1 at
+1024x768) shows textured terrain, trees, fog, the helicopter and the HUD
+drawn as expected. Screenshots are blind during flips, so that is one
+frame, not an inspection of the run.
+
+HAL snapshot afterwards (`after-3dmark2000-V9XSNA6.INI`, builds agree):
+
+- `AsyncSubmits` 1,667,063 and `SyncSubmits` 7,439 on the render ring;
+- no breadcrumb, flip-wait or engine timeouts, no resets;
+- `FlipHandled` 7,820 and `FlipTakenAtDone` 7,819, none declined or
+  abandoned, the last still pending at the snapshot;
+- `DrawsIntoPresented` 0;
+- `CountBltEngine` 12,992 of `CountBlt` 12,992;
+- 64,483 DrawPrimitives and 1,632 textures created.
+
+The machine was responsive afterwards, on boot 8. The relay server went
+down during the install and the agent was out of reach for about 50
+minutes; the machine itself did not restart.
+
+So the IVB L3 workarounds were not needed for this run either.
+
 ## Not measured
 
-- A game or benchmark: 3DMark 99/2000/2001 are on the machine as
+- Another game or benchmark: 3DMark 99 and 2001 are on the machine as
   installers in `C:\extras\Tools`.
 - OpenGL, Glide and 3DCIF through the render interface, which the
   Haswell path carries. None has been run on Ivy Bridge.

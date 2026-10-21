@@ -141,8 +141,10 @@ Following `intel-haswell-bringup.md`:
        PIPE_CONTROLs, selected by `v9x_intel_hsw_3d_set_chip`;
      - V9XD32 passes at 16 and 32 bpp and with a 24-bit Z buffer;
      - 25 render-ring submissions, no timeouts.
-   - *Owed:* a game or benchmark, OpenGL/Glide/3DCIF through the render
-     interface, and whether i915's IVB L3 workarounds matter.
+     - 3DMark 2000's default benchmark ran to its score (1910): 1.67
+       million render submissions, 7,820 flips, no timeouts.
+   - *Owed:* games, OpenGL/Glide/3DCIF through the render interface, and
+     whether i915's IVB L3 workarounds matter.
    - The original step: the PS and SURFACE_STATE words and the IVB
      PIPE_CONTROL rules. Then the Phase C-F sequence the 4570 took, with
      its hang cases (all-zero WM/PS, the VF cache) checked again here.
