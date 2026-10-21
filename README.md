@@ -8,8 +8,8 @@ cards**. One driver package per chip family gives the card:
 - Glide 2 and Glide 3 for games written for 3dfx cards;
 - ATI's 3DCIF for games written for ATI Rage cards.
 
-All of them draw through one shared render core. It runs the Intel GMA 950
-and GMA 3150, the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
+All of them draw through one shared render core. It runs the Intel GMA 950,
+GMA 3150 and GMA X3100, the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS.
@@ -73,6 +73,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
+| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
@@ -115,6 +116,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
 | Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
+| Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
 | ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
 | ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |

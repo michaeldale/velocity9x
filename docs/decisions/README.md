@@ -269,6 +269,10 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-20 GMA 3150: the Gen3 engine runs at the moved ring reserve; D3D, OpenGL, Glide and 32 bpp probes pass, and the mip-chain result is the 945's](2026-10-20-pineview-tommo33-gen3-first-run.md)
 - [2026-10-20 GMA 900 on 949fc64b: the moved-ring build reads as before, and the boot stall was the boot menu](2026-10-20-gma900-tommo33-949fc64b.md)
 - [2026-10-20 HD 4600 on 0.21.0: OpenGL, Glide and 3DCIF read as on 2026-10-18 through the pipelined engine](2026-10-20-haswell-0.21.0-render-probes.md)
+- [2026-10-20 GM965 on TOMMOHP at tier-0, and the read-only probe: the GTT sits at BAR0 + 512 KiB in the top of stolen](2026-10-20-gm965-tommohp-tier0-and-mmio.md)
+- [2026-10-20 GM965: the ring opens and DirectDraw fills and copies run on the blitter](2026-10-20-gm965-ring-and-blits.md)
+- [2026-10-21 GM965: Direct3D on the Gen4 pipeline, then mips, colour key, two units, 24-bit Z, Glide, 3DMark 2000 and Quake 2; the alpha test with depth writes and 128 KiB flip chains parked](2026-10-21-gm965-direct3d.md)
+- [2026-10-21 V9XTRACE hung rewriting a reused snapshot section over 32 KiB; the reused file is now truncated first](2026-10-21-v9xtrace-snapshot-reuse-hang.md)
 
 ## SiS
 

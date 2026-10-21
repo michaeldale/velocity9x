@@ -1,7 +1,10 @@
 # Gen4 and Gen5: a free tier-0 desktop, and why the engine does not come with it
 
-Status: **Gen4 steps 1-4 done on TOMMOHP (GM965), 2026-10-20, flips
-excepted.** Windows 98 SE runs on a GM965, the `vbe` family reaches
+Status: **Gen4 done on TOMMOHP (GM965), 2026-10-21:** Direct3D, OpenGL
+and Glide on the engine, 16 and 24-bit Z, mip chains, colour key, two
+texture units and flips; 3DMark 2000 and Quake 2 run. Parked: the alpha
+test with depth writes (software fallback) and 128 KiB flip chains (branch
+`park/gen4-flip-chain-128k`). Earlier: Windows 98 SE runs on a GM965, the `vbe` family reaches
 enable-ok there, and a read-only probe answered Phase 1 for Gen4:
 `docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md`. `intel-gma`
 claims `2A02`, DirectDraw fills and copies ran on its ring

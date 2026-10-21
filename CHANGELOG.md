@@ -30,10 +30,23 @@ build identifier so exact guest-tested binaries remain traceable.
   - Page flips, through Gen4's own plane registers, at the panel's
     refresh, or through the ring when the next buffer sits a multiple of
     128 KiB from the current one.
+  - Titles: 3DMark 2000 ran to its score at its default settings and at
+    640x480 in 32-bit colour with a 32-bit Z buffer. Quake 2's OpenGL
+    renderer ran on the ICD, its lightmaps on the second texture unit
+    drawing as the two-pass path does. On the test laptop Quake 2 needs
+    `+set s_initsound 0`, or it stops at DirectSound's start.
 
   Not offered:
   - The alpha test, or a colour key, together with depth writes. That
     combination hung the 3D engine; such a draw falls back to software.
+  - Flips through the ring for every frame. Placing the flip chain on
+    128 KiB boundaries made 3DMark 2000 show half-drawn frames; most
+    flips stay register writes.
+
+- **V9XTRACE no longer hangs on a reused snapshot.** Once all eight
+  snapshot names were taken, a run that reused one whose section had
+  grown past 32 KiB never returned, and the file kept its old contents.
+  The reused file is now emptied first.
 
 ## 0.22.0 - 2026-10-20
 
