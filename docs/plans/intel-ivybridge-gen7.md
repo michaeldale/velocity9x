@@ -56,9 +56,9 @@ IVB PRM or Mesa genxml and found identical.
 | Identity | `intel_backend.c` strict device list; `intel_hw16.c` `v9x_intel_is_haswell` gate; `hsw/hsw_hw16.c` descriptor; `family.psd1` chip entry; `backend_registry_table.inc`; `check-tree.ps1` Direct3D-word rule; engine type `INTEL_GEN75` | New chip entry, descriptor, Direct3D word and engine type (or a Gen7 variant of GEN75). Every `v9x_intel_is_haswell` caller decides whether IVB takes the same branch |
 | GGC decode | `hsw_config.c`, `V9X_INTEL_HSW_GGC_GMS_MAX` = `10h` | Accepts this machine (GMS 2). IVB adds GMS `11h` = 1 GiB (326765), which the decode refuses |
 | BARs, BDSM/BGSM, MSAC, GTT reach | `hsw_config.c`, `runtime.asm` `V9xPciReadHswConfig` | Same, measured |
-| PTE encode | `hsw_config.c` `v9x_intel_hsw_encode_pte`, `intel_hsw.h` cache values | **Changes.** IVB: 11:4 = addr 39:32, bit 3 GFDT, 2:1 cacheability, `00` reserved. HSW's UC = 0 is reserved on IVB |
+| PTE encode | `hsw_config.c` `v9x_intel_hsw_encode_pte`, `intel_hsw.h` cache values | **Changes.** IVB: 11:4 = addr 39:32, bit 3 GFDT, 2:1 cacheability, `00` reserved. HSW's UC = 0 is reserved on IVB. Measured: the BIOS writes `00` on every stolen entry (`2026-10-21-ivybridge-read-only-mmio.md`), so the choice is the encoder's, against the PRM |
 | PTE check at open | `loader.asm`, `V9X_HSW_PTE_MASK` `FFFFF7F1` over entries 6144-6175 | The mask still works (bits 11:4 are zero below 4 GiB, 3:1 masked). Whether the BIOS maps stolen memory linearly there is unmeasured |
-| Forcewake | `loader.asm` `V9X_HSW_FW_REQUEST` `A188h`, `V9X_HSW_FW_ACK` `130044h`; `tools\diag\hsw_mmio_probe.asm` `HSW_FW_ACK` | **Changes.** IVB acks at `130040h`, or uses legacy `A18Ch` / `130090h` when ECOBUS `A180h` bit 5 is clear (i915). The HSW open would time out (refusal 6). The MMIO probe has the same constant, so V9XHSWMM cannot be run on IVB as built |
+| Forcewake | `loader.asm` `V9X_HSW_FW_REQUEST` `A188h`, `V9X_HSW_FW_ACK` `130044h`; `tools\diag\hsw_mmio_probe.asm` `HSW_FW_ACK` | **Changes.** IVB acks at `130040h`, or uses legacy `A18Ch` / `130090h` when ECOBUS `A180h` bit 5 is clear (i915). The HSW open would time out (refusal 6). The MMIO probe has the same constant, so V9XHSWMM cannot be run on IVB as built. Measured: `130040h` already reads 1 at boot (someone holds MT forcewake), `130090h` 0, so the HSW rule "refuse if already acknowledged" would refuse here |
 | Ring registers | `intel_hsw.h` RCS `2030h`-`203Ch`, BCS `22030h`-`2203Ch` | Same |
 | Reserve, status page, slots | `intel_hsw.h` reserve at aperture `1800000h`, 128 KiB | Inside the 64 MiB stolen; the 4570's "top megabyte not CPU-writable" is unmeasured here |
 | Plane flip | `hsw_display.c` page plus x-offset split; `hsw_scanout.c` writes `V9X_INTEL_HSW_DSPAOFFSET` `701A4h` | **Changes.** On IVB `701A4h` is PRI_TILEOFF, ignored for linear; linear panning is PRI_LINOFF `70184h`, in bytes |
@@ -94,11 +94,16 @@ Following `intel-haswell-bringup.md`:
    modes it publishes, the pitch from 4F01h and whether 1920x1080 sets,
    and `enable-ok`. This boot also answers whether Windows' restart path
    works here (the netbook's does not).
-3. **Read-only MMIO.** First an IVB build of the MMIO probe, with the
-   forcewake protocol chosen from ECOBUS. Then from Windows: ECOBUS, which
-   forcewake variant acknowledges, RC6 state (`A090h`), the pipe and
-   plane in use, whether the AOC is on CRT or DVI, and the GTT head
-   against BDSM.
+3. **Read-only MMIO.**
+   - *Display, PCH and GTT half done 2026-10-21*
+     (`docs\decisions\2026-10-21-ivybridge-read-only-mmio.md`, `V9XIVMM.EXE`).
+     The AOC is on the CRT: pipe A, panel fitter 0 at 1:1, FDI A, PCH
+     transcoder A, DPLL A. The BIOS maps stolen memory linearly from GTT
+     entry 0 with cacheability 00b, and the HSW open's GTT check matches
+     32 of 32. The MT forcewake acknowledge is already 1 at boot.
+   - *Still owed:* the GT half. That is ECOBUS, which forcewake variant
+     acknowledges, and RC6 state (`A090h`). It needs a forcewake handshake,
+     and first a decision on the acknowledge that is already held.
 4. **Chip entry and 2D:** the identity rows, the decode and PTE changes,
    forcewake, then BCS ring and blits as on the 4570. Re-measure the
    reserve placement, the top of stolen memory and the blit pitch unit.
