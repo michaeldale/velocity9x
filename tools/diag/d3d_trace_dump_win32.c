@@ -74,10 +74,27 @@ static const char *v9x_result_file(void)
             return v9x_result_path;
         }
     }
-    /* All taken: reuse the last rather than stop recording. */
+    /*
+     * All taken: reuse the last rather than stop recording - emptied first.
+     * Written over through the profile API, it was not: on TOMMOHP every
+     * run after the eighth file stopped inside the first
+     * WritePrivateProfileString on V9XSNA7.INI (1,400 lines; the stage file
+     * said "start" and nothing after), and the cached writes of a process
+     * that never ends never reach the disk, so the file kept its old
+     * DumpTime and looked like a fresh snapshot. A run onto an empty file is
+     * the case that has always worked.
+     */
     v9x_result_reused = 1;
     v9x_result_path[V9X_RESULT_DIGIT] =
         (char)('0' + (V9X_RESULT_MAX_FILES - 1u));
+    {
+        HANDLE file = CreateFileA(v9x_result_path, GENERIC_WRITE, 0, 0,
+                                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+
+        if (file != INVALID_HANDLE_VALUE) {
+            CloseHandle(file);
+        }
+    }
     return v9x_result_path;
 }
 
@@ -1231,6 +1248,29 @@ static void v9x_file_build(const char *path, char *out, DWORD bytes)
 
 /* One line per file matching `pattern` in `directory`: size, local
  * modification time, and with `scan` the build the file carries. */
+/*
+ * Where the dump has got to, in a file of its own written with WriteFile
+ * and closed at once. The INI goes through the profile API, which Windows
+ * 98 caches and flushes when the process ends - so a dump that never ends
+ * leaves the INI as it was, and only this file says how far it came.
+ */
+static void v9x_stage(const char *stage, DWORD count)
+{
+    char text[96];
+    HANDLE file;
+    DWORD written = 0ul;
+
+    wsprintfA(text, "Stage=%s Count=%lu Uptime=%lu\r\n", stage, count,
+              GetTickCount());
+    file = CreateFileA(V9X_DIAG_PATH("V9XTRSTG.TXT"), GENERIC_WRITE, 0, 0,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    WriteFile(file, text, (DWORD)lstrlenA(text), &written, 0);
+    CloseHandle(file);
+}
+
 static void v9x_write_file_list(const char *section, const char *directory,
                                 const char *pattern, int scan)
 {
@@ -1251,6 +1291,7 @@ static void v9x_write_file_list(const char *section, const char *directory,
                 continue;
             }
             ++count;
+            v9x_stage(found.cFileName, count);
             FileTimeToLocalFileTime(&found.ftLastWriteTime, &local);
             FileTimeToSystemTime(&local, &time);
             wsprintfA(line, "size=%lu date=%04u-%02u-%02u %02u:%02u:%02u",
@@ -1323,25 +1364,31 @@ static void v9x_write_machine_identity(void)
 {
     char directory[MAX_PATH];
 
+    v9x_stage("clear-identity", 0ul);
     v9x_clear_identity_sections();
+    v9x_stage("system", 0ul);
     v9x_write_system();
     if (GetSystemDirectoryA(directory, sizeof(directory)) != 0u) {
         v9x_write_in(V9X_SECTION_INSTALLED, "SystemDir", directory);
         v9x_write_file_list(V9X_SECTION_INSTALLED, directory, "V9X*.*", 1);
     }
+    v9x_stage("registry", 0ul);
     if (v9x_reg_load()) {
         v9x_write_display_classes();
         v9x_write_opengl_drivers();
     }
+    v9x_stage("cards", 0ul);
     v9x_write_cards();
     /* What the driver wrote at boot and what the user set: the card's
      * name and memory, and the [Velocity9x] keys from SYSTEM.INI. */
+    v9x_stage("copy-sections", 0ul);
     v9x_copy_section(V9X_SECTION_HARDWARE, "Velocity9xHardware",
                      V9X_DIAG_HW_INI);
     v9x_copy_section(V9X_SECTION_SETTINGS, "Velocity9x", "SYSTEM.INI");
     /* The other files a report should carry, so the reader knows which
      * exist without asking. */
     v9x_write_file_list(V9X_SECTION_FILES, V9X_DIAG_DIR, "*.*", 0);
+    v9x_stage("identity-done", 0ul);
 }
 
 /*
@@ -1420,6 +1467,7 @@ void __stdcall V9xTraceDumpEntry(void)
     void *dd_object = 0;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
+    v9x_stage("start", 0ul);
     WritePrivateProfileStringA(V9X_SECTION, 0, 0, V9X_RESULT_PATH);
     v9x_write_text("Build", "V9XTRACEDUMP build=" V9X_BUILD_ID);
     v9x_write_dump_identity();
@@ -1433,6 +1481,7 @@ void __stdcall V9xTraceDumpEntry(void)
         v9x_write_vbios();
     }
 
+    v9x_stage("escape", 0ul);
     screen = GetDC(0);
     if (screen == 0) {
         v9x_write_uint("Ok", 0ul);
@@ -1489,6 +1538,7 @@ void __stdcall V9xTraceDumpEntry(void)
                        (LPCSTR)&command, sizeof(snapshot),
                        (LPSTR)&snapshot);
     ReleaseDC(0, screen);
+    v9x_stage("snapshot", (DWORD)result);
     if (result <= 0) {
         v9x_write_uint("Ok", 0ul);
         v9x_write_text("Error", "escape-rejected");
@@ -2454,6 +2504,7 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("StageCounters", 1ul);
     v9x_write_ring(&snapshot.trace);
     v9x_write_uint("StageRing", 1ul);
+    v9x_stage("done", 0ul);
     /* Kept despite the fault above: it is the documented way to force the
      * cached tail out, the fault costs only the exit code, and every key is
      * already on disk by the time it runs. */
