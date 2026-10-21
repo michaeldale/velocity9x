@@ -273,6 +273,14 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-20 GM965: the ring opens and DirectDraw fills and copies run on the blitter](2026-10-20-gm965-ring-and-blits.md)
 - [2026-10-21 GM965: Direct3D on the Gen4 pipeline, then mips, colour key, two units, 24-bit Z, Glide, 3DMark 2000 and Quake 2; the alpha test with depth writes and 128 KiB flip chains parked](2026-10-21-gm965-direct3d.md)
 - [2026-10-21 V9XTRACE hung rewriting a reused snapshot section over 32 KiB; the reused file is now truncated first](2026-10-21-v9xtrace-snapshot-reuse-hang.md)
+- [2026-10-21 Ivy Bridge on W9QI4E14: the survey's machine, read-only audit from Windows](2026-10-21-ivybridge-w9qi4e14-audit.md)
+- [2026-10-21 Tier-0 `vbe` on W9QI4E14: enable-ok, 1920x1080 sets; the agent restart locked](2026-10-21-ivybridge-w9qi4e14-tier0-install.md)
+- [2026-10-21 Ivy Bridge read-only MMIO: CRT on pipe A, the BIOS's GTT, MT forcewake already held](2026-10-21-ivybridge-read-only-mmio.md)
+- [2026-10-21 Ivy Bridge GT under forcewake: MT forcewake, RC6 enabled but never entered, rings idle](2026-10-21-ivybridge-gt-forcewake.md)
+- [2026-10-21 Ivy Bridge 2D: intel-gma claims 8086:0162, and DirectDraw blits run on the BCS ring](2026-10-21-ivybridge-bcs-blits.md)
+- [2026-10-21 Ivy Bridge flips: plane A's base and PRI_LINOFF, measured with a sub-page back buffer](2026-10-21-ivybridge-flips.md)
+- [2026-10-21 Ivy Bridge Direct3D: Haswell's engine with Gen7's words and IVB's PIPE_CONTROLs passes V9XD32; 3DMark 2000 runs](2026-10-21-ivybridge-direct3d.md)
+- [2026-10-21 Ivy Bridge OpenGL and Glide: the HD 4600's results, and a renderer name fixed](2026-10-21-ivybridge-gl-glide.md)
 
 ## SiS
 

@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.23.0 - not yet released
+## 0.23.0 - 2026-10-21
 
 - **Intel GMA X3100 (GM965, `8086:2A02`): new chip.** The `intel-gma`
   package now claims the first Gen4 part. On one HP laptop (Core 2 Duo

@@ -9,7 +9,7 @@ cards**. One driver package per chip family gives the card:
 - ATI's 3DCIF for games written for ATI Rage cards.
 
 All of them draw through one shared render core. It runs the Intel GMA 950,
-GMA 3150 and GMA X3100, the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
+GMA 3150, GMA X3100, HD 4600 and HD 4000, the ATI Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS.
@@ -24,14 +24,13 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.22.0.** A new chip: the Intel GMA 3150 (Pineview, the
-Atom N4xx/N5xx netbooks) runs Direct3D on its Gen3 engine, 3DMark 2000
-included, at 16 and 32 bpp and at its panel's 1024x600; the OpenGL and
-Glide probes pass on it. On the HD 4600,
-video memory now reaches beyond 16 MiB, Direct3D textures can be 32-bit,
-and 3DMark 2001 SE no longer shows half-drawn frames. See the
-[changelog](CHANGELOG.md), and download it from
-[releases/0.22.0](releases/0.22.0/README.md).
+**Current version: 0.23.0.** Two new Intel chips. The GMA X3100
+(GM965) runs Direct3D, OpenGL and Glide on a new Gen4 engine, with
+3DMark 2000 and Quake 2. The HD 4000 (Ivy Bridge) runs the HD 4600's
+engine: Direct3D, page flips, 3DMark 2000, and the OpenGL and Glide
+probes. Each was measured on one tester's machine through remote help.
+See the [changelog](CHANGELOG.md), and download it from
+[releases/0.23.0](releases/0.23.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -70,6 +69,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
+| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
@@ -113,6 +113,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Card | 2D on the engine | Direct3D | Direct3D 8 | OpenGL | Two texture units | Glide 2 and 3 | 3DCIF |
 |---|---|---|---|---|---|---|---|
 | Intel HD Graphics 4600 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | No (0.19.0) |
+| Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
 | Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
@@ -238,7 +239,7 @@ Implemented: the matrix stacks, immediate mode, vertex arrays, clipping
 (the scissor included), texture objects and images with the OpenGL 1.1
 environments, fog, attribute stacks, state queries, `glReadPixels`,
 front-buffer drawing, and `GL_SGIS_multitexture` on the Rage Pro,
-Gen3 and the HD 4600. Not yet: lighting, display lists, evaluators, and feedback and
+Gen3, Gen4, the HD 4600 and the HD 4000. Not yet: lighting, display lists, evaluators, and feedback and
 selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
 tracks every entry point. The driver writes `C:\V9XDIAG\V9XGL.LOG`.
 
@@ -258,8 +259,9 @@ Measured:
 - **Diablo II** (shareware demo): to the town on the Rage XL and the
   Rage IIC.
 - **Rollcage** (demo): menus and races on the Rage XL and the GMA 950.
-- **HD 4600:** the Glide 2 probe passes every check, and a Glide 3
-  session opens and closes. No game has been run on it yet.
+- **HD 4600, HD 4000 and GMA X3100:** the Glide 2 probe passes every
+  check, and a Glide 3 session opens and closes. No game has been run
+  on them yet.
 
 A game that carries its own Glide DLL in its folder loads that first.
 The logs are `C:\V9XDIAG\V9XGLIDE.LOG` and `V9XGLD3.LOG`.
@@ -277,7 +279,8 @@ there.
 All eight of ATI's SDK 4.1 demos draw on the Rage IIC, the Rage XL and the
 GMA 950, VQ-compressed textures included. The HD 4600 is not supported in
 0.19.0: it refuses every 3DCIF draw that uses a depth buffer, so most
-demos draw only partly, and Laputa hangs. A tester has tried Formula 1
+demos draw only partly, and Laputa hangs. The HD 4000 takes the same path
+and has not been run. A tester has tried Formula 1
 and Tomb Raider on 0.18.0; both need more work. Not yet done:
 - mipmaps;
 - the Rage Pro's tiled texture layout;
