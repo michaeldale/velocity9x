@@ -49,9 +49,12 @@ build identifier so exact guest-tested binaries remain traceable.
   DirectDraw fills and copies run on the blitter ring, the same way as on
   the HD 4600, and read back correctly in 256 colours, 16-bit and
   32-bit colour. Ivy Bridge wakes its graphics core differently from
-  Haswell, and the driver now does it the Ivy Bridge way. Not yet
-  offered: Direct3D and page flips. Before this, the
-  generic VESA package ran it at up to 1920x1440.
+  Haswell, and the driver now does it the Ivy Bridge way. DirectDraw
+  page flips move the display at the monitor's refresh. Ivy Bridge pans
+  through a different register from Haswell, so a back buffer that does
+  not start on a 4 KiB boundary (800x600 in 16-bit colour) needed its own
+  path. Not yet offered: Direct3D. Before this, the generic VESA package
+  ran it at up to 1920x1440.
 
 - **V9XTRACE no longer hangs on a reused snapshot.** Once all eight
   snapshot names were taken, a run that reused one whose section had

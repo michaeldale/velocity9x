@@ -91,10 +91,60 @@ static void test_in_vblank(void)
     CHECK(!v9x_intel_hsw_in_vblank(0x80000010ul, 0x020c01dful));
 }
 
+/*
+ * Ivy Bridge's split, worked by hand: the same pages as Haswell's, the rest
+ * in bytes for PRI_LINOFF rather than pixels for DSPOFFSET. 3DMark 99's back
+ * buffer at 800x600x16 (001D4C00h): page 001D4000h, LINOFF C00h, where
+ * Haswell writes x 1536. An 800x600x16 back buffer straight after the front
+ * (960000 = EA600h): page EA000h, LINOFF 600h. W9QI4E14's 640x480 back
+ * buffers at 8, 16 and 32 bpp (4B000h, 96000h, 12C000h) are page-aligned:
+ * LINOFF 0, which is the value the BIOS left (boot 6's read-only capture).
+ */
+static void test_ivb_plane_split(void)
+{
+    v9x_u32 surf = 0xfffffffful;
+    v9x_u32 linoff = 0xfffffffful;
+
+    CHECK(v9x_intel_ivb_plane_split(0x001d4c00ul, 2ul, &surf, &linoff) ==
+          V9X_STATUS_OK);
+    CHECK(surf == 0x001d4000ul && linoff == 0x00000c00ul);
+    CHECK(v9x_intel_ivb_plane_split(0x000ea600ul, 2ul, &surf, &linoff) ==
+          V9X_STATUS_OK);
+    CHECK(surf == 0x000ea000ul && linoff == 0x00000600ul);
+    CHECK(v9x_intel_ivb_plane_split(0x0004b000ul, 1ul, &surf, &linoff) ==
+          V9X_STATUS_OK);
+    CHECK(surf == 0x0004b000ul && linoff == 0ul);
+    CHECK(v9x_intel_ivb_plane_split(0x00096000ul, 2ul, &surf, &linoff) ==
+          V9X_STATUS_OK);
+    CHECK(surf == 0x00096000ul && linoff == 0ul);
+    CHECK(v9x_intel_ivb_plane_split(0x0012c000ul, 4ul, &surf, &linoff) ==
+          V9X_STATUS_OK);
+    CHECK(surf == 0x0012c000ul && linoff == 0ul);
+    /* 8 bpp: any byte is a pixel; the rest is up to FFFh, never more. */
+    CHECK(v9x_intel_ivb_plane_split(0x00001ffful, 1ul, &surf, &linoff) ==
+          V9X_STATUS_OK);
+    CHECK(surf == 0x00001000ul && linoff == 0x0ffful);
+
+    /* Not a whole pixel, or not a depth the plane scans: refused, and the
+     * outputs are not written. */
+    surf = 0x12345678ul;
+    linoff = 0x9abcdef0ul;
+    CHECK(v9x_intel_ivb_plane_split(0x00001001ul, 2ul, &surf, &linoff) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_ivb_plane_split(0x00001002ul, 4ul, &surf, &linoff) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_ivb_plane_split(0x00001000ul, 3ul, &surf, &linoff) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(surf == 0x12345678ul && linoff == 0x9abcdef0ul);
+    CHECK(v9x_intel_ivb_plane_split(0ul, 2ul, &surf, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_display_tests(void)
 {
     failures = 0u;
     test_plane_split();
+    test_ivb_plane_split();
     test_scanout_live();
     test_in_vblank();
     return failures;

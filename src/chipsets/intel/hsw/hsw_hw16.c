@@ -266,6 +266,9 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY;
     if (chip != V9X_HSW_OPEN_CHIP_HASWELL) {
+        /* Ivy Bridge: flips through plane A's base and PRI_LINOFF, which
+         * the HAL picks by the identity bit (engines\hsw_scanout.c). */
+        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_GEN7_IVB;
         return;
     }
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses

@@ -3351,7 +3351,15 @@ void __stdcall V9xDdrawProbeEntry(void)
     }
     v9x_write_result("BEFORE-SETMODE");
     v9x_flush_results();
-    hr = ddraw->vtbl->SetDisplayMode(ddraw, 640ul, 480ul, 16ul);
+    /* /800x600: the flip chain at 800x600x16, whose back buffer starts
+     * 960000 bytes in - not on a 4 KB page, unlike every 640x480 depth - so
+     * a plane that pans by a sub-page offset (Ivy Bridge's PRI_LINOFF) is
+     * exercised. The rest of the probe is unchanged. */
+    if (v9x_has_switch("/800x600")) {
+        hr = ddraw->vtbl->SetDisplayMode(ddraw, 800ul, 600ul, 16ul);
+    } else {
+        hr = ddraw->vtbl->SetDisplayMode(ddraw, 640ul, 480ul, 16ul);
+    }
     v9x_write_hresult("SetModeHr", hr);
     v9x_write_result("AFTER-SETMODE");
     v9x_flush_results();

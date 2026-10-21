@@ -61,7 +61,7 @@ IVB PRM or Mesa genxml and found identical.
 | Forcewake | `loader.asm` `V9X_HSW_FW_REQUEST` `A188h`, `V9X_HSW_FW_ACK` `130044h`; `tools\diag\hsw_mmio_probe.asm` `HSW_FW_ACK` | **Changes.** IVB acks at `130040h`, or uses legacy `A18Ch` / `130090h` when ECOBUS `A180h` bit 5 is clear (i915). The HSW open would time out (refusal 6). The MMIO probe has the same constant, so V9XHSWMM cannot be run on IVB as built. Measured (`2026-10-21-ivybridge-gt-forcewake.md`): ECOBUS bit 5 set, so MT; `130040h` already reads 1 at boot; i915's reset (`A188h` = `FFFF0000`) clears it within 4-5 reads, then set and put behave. Use i915's reset-then-wait, not the HSW refusal |
 | Ring registers | `intel_hsw.h` RCS `2030h`-`203Ch`, BCS `22030h`-`2203Ch` | Same |
 | Reserve, status page, slots | `intel_hsw.h` reserve at aperture `1800000h`, 128 KiB | Inside the 64 MiB stolen; the 4570's "top megabyte not CPU-writable" is unmeasured here |
-| Plane flip | `hsw_display.c` page plus x-offset split; `hsw_scanout.c` writes `V9X_INTEL_HSW_DSPAOFFSET` `701A4h` | **Changes.** On IVB `701A4h` is PRI_TILEOFF, ignored for linear; linear panning is PRI_LINOFF `70184h`, in bytes |
+| Plane flip | `hsw_display.c` page plus x-offset split; `hsw_scanout.c` writes `V9X_INTEL_HSW_DSPAOFFSET` `701A4h` | **Changes.** On IVB `701A4h` is PRI_TILEOFF, ignored for linear; linear panning is PRI_LINOFF `70184h`, in bytes. Done: `v9x_intel_ivb_plane_split` and `V9X_DD_ENGINE_CAP_GEN7_IVB` (`2026-10-21-ivybridge-flips.md`) |
 | Plane, pipe, scanline | `intel_hsw_display.h` VTOTAL `6000Ch`, DSPCNTR `70180h`, STRIDE `70188h`, SURF `7019Ch`, SURFLIVE `701ACh`, PIPEADSL `70000h`, PIPEACONF `70008h`; DSL + 1 | Same (both PRMs; i915 `intel_vblank.c`). `6000Ch` is `PIPE_VTOTAL_A` in both PRMs |
 | Blitter | `hsw_3d.c` `XY_COLOR_BLT`, `XY_SRC_COPY_BLT`, BR13 | Same encoding. The byte pitch unit was measured on the 4570 only |
 | MI commands | `hsw_3d.c` NOOP, BATCH_BUFFER_END/START, STORE_DATA_IMM, LOAD_REGISTER_IMM | Same (HSW only adds BB_START fields the code leaves 0) |
@@ -122,7 +122,16 @@ Following `intel-haswell-bringup.md`:
    - The original step: the identity rows, the decode and PTE changes,
      forcewake, then BCS ring and blits as on the 4570. Re-measure the
      reserve placement, the top of stolen memory and the blit pitch unit.
-5. **Flips:** the LINOFF split, measured with the /flip probe.
+5. **Flips:**
+   - *Done 2026-10-21* (`docs\decisions\2026-10-21-ivybridge-flips.md`):
+     - the LINOFF split, host-tested, and the scanout selected by
+       `CAP_GEN7_IVB`;
+     - V9XDDP's flip chains at 640x480x16 and 800x600x16: 46 of 46 flips
+       latched against `DSPASURFLIVE`, none declined;
+     - the plane read mid-hold at `SURF EA000h` + `LINOFF 600h` = the
+       800x600 back buffer.
+   - Not seen on the monitor; 8 and 32 bpp chains not run.
+   - The original step: the LINOFF split, measured with the /flip probe.
 6. **3D:** the PS and SURFACE_STATE words and the IVB PIPE_CONTROL rules.
    Then the Phase C-F sequence the 4570 took, with its hang cases
    (all-zero WM/PS, the VF cache) checked again here.

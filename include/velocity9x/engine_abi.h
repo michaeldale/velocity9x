@@ -239,6 +239,15 @@
  */
 #define V9X_DD_ENGINE_CAP_I9XX_GEN4     0x00040000ul
 /*
+ * Intel: this INTEL_GEN75-type part is Ivy Bridge (Gen7, the HD 4000). It
+ * shares Haswell's BCS ring, blitter and plane registers, but a linear
+ * plane pans through PRI_LINOFF (70184h), a byte offset, where Haswell's
+ * 701A4h is a pixel x and is IVB's tiled offset, ignored for a linear
+ * surface (IVB PRM Vol 3 Pt 3 5.3). A chip identity bit, stamped by the
+ * Ivy Bridge descriptor only (docs\plans\intel-ivybridge-gen7.md).
+ */
+#define V9X_DD_ENGINE_CAP_GEN7_IVB      0x00080000ul
+/*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
  * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only

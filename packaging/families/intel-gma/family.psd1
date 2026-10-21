@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -173,13 +173,14 @@
             MapSymbols = @('v9x_hsw_hd4600_device')
         }
         @{
-            # Ivy Bridge GT2 desktop, for 2D only: the Haswell path's BCS
-            # ring and blits (the same BAR layout, GTT and ring registers),
-            # with Ivy Bridge's MT forcewake (acknowledge 130040h, i915's
-            # reset-then-wait). No Direct3D (Gen7's surface and PS words
-            # differ from Gen7.5's) and no flips yet (linear panning is
-            # PRI_LINOFF, not Haswell's DSPOFFSET). Measured on W9QI4E14:
-            # docs\decisions\2026-10-21-ivybridge-gt-forcewake.md.
+            # Ivy Bridge GT2 desktop, for 2D: the Haswell path's BCS ring
+            # and blits (the same BAR layout, GTT and ring registers), with
+            # Ivy Bridge's MT forcewake (acknowledge 130040h, i915's
+            # reset-then-wait), and flips through plane A with the rest of
+            # the offset in PRI_LINOFF, not Haswell's DSPOFFSET
+            # (CAP_GEN7_IVB tells the HAL). No Direct3D: Gen7's surface and
+            # PS words differ from Gen7.5's. Measured on W9QI4E14:
+            # docs\decisions\2026-10-21-ivybridge-bcs-blits.md.
             Id = 'hd4000-ivb'
             Name = 'Intel HD Graphics 4000 (Ivy Bridge)'
             VendorId = '8086'
@@ -191,7 +192,7 @@
             Acceleration = 'directdraw-fill-blt'
             Direct3D = 'not-advertised'
             EngineType = 'INTEL_GEN75'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             VideoMemoryBytes = 4194304
             # The family's table; this VBIOS describes neither 1024x576 row
             # and the runtime scan publishes its own modes instead.

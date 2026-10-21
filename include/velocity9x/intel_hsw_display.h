@@ -57,6 +57,25 @@
 v9x_status v9x_intel_hsw_plane_split(v9x_u32 offset, v9x_u32 bytes_per_pixel,
                                      v9x_u32 *surf, v9x_u32 *plane_offset);
 
+/*
+ * Ivy Bridge (Gen7): plane A's linear offset, a byte offset added to
+ * DSPASURF for a linear surface; 701A4h is the tiled offset there and is
+ * ignored (IVB PRM Vol 3 Pt 3 5.3, PRI_LINOFF and PRI_TILEOFF). Every
+ * other plane and pipe register above is at the same address on Ivy Bridge
+ * (both PRMs; docs\decisions\2026-10-21-ivybridge-read-only-mmio.md).
+ */
+#define V9X_INTEL_IVB_DSPALINOFF     ((v9x_u32)0x00070184ul)
+
+/*
+ * The DSPASURF and PRI_LINOFF words for Ivy Bridge: the page below
+ * `offset`, and the rest in bytes. The PRM wants the linear offset "at
+ * least pixel aligned for RGB formats", so a rest that is not a whole
+ * number of pixels is INVALID_ARGUMENT, as is bytes_per_pixel other than
+ * 1, 2 or 4.
+ */
+v9x_status v9x_intel_ivb_plane_split(v9x_u32 offset, v9x_u32 bytes_per_pixel,
+                                     v9x_u32 *surf, v9x_u32 *linoff);
+
 /* Non-zero when pipe A is enabled and running and plane A is enabled: the
  * only configuration the scanout serves, and the only one in which
  * PIPEADSL is read. */

@@ -60,20 +60,40 @@ int v9x_hsw_in_vblank(void)
         *v9x_hsw_scanout_reg(V9X_INTEL_HSW_TRANS_VTOTAL_A));
 }
 
+/* Ivy Bridge pans a linear plane through PRI_LINOFF in bytes; Haswell's
+ * DSPOFFSET x is IVB's tiled offset, which a linear plane ignores. */
+static int v9x_hsw_scanout_is_ivb(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul;
+}
+
 /* The offset first, then the base, whose write arms the plane's update at
  * the next blank; the read back posts it. */
 int v9x_hsw_set_display_start(DWORD byte_offset)
 {
     v9x_u32 surf;
     v9x_u32 plane_offset;
+    v9x_status split;
+    DWORD offset_register;
 
-    if (!v9x_hsw_scanout_live() ||
-        v9x_intel_hsw_plane_split(byte_offset,
-                                  v9x_hal->fb.bits_per_pixel / 8ul, &surf,
-                                  &plane_offset) != V9X_STATUS_OK) {
+    if (!v9x_hsw_scanout_live()) {
         return 0;
     }
-    *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPAOFFSET) = plane_offset;
+    if (v9x_hsw_scanout_is_ivb()) {
+        split = v9x_intel_ivb_plane_split(byte_offset,
+                                          v9x_hal->fb.bits_per_pixel / 8ul,
+                                          &surf, &plane_offset);
+        offset_register = V9X_INTEL_IVB_DSPALINOFF;
+    } else {
+        split = v9x_intel_hsw_plane_split(byte_offset,
+                                          v9x_hal->fb.bits_per_pixel / 8ul,
+                                          &surf, &plane_offset);
+        offset_register = V9X_INTEL_HSW_DSPAOFFSET;
+    }
+    if (split != V9X_STATUS_OK) {
+        return 0;
+    }
+    *v9x_hsw_scanout_reg(offset_register) = plane_offset;
     *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPASURF) = surf;
     (void)*v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPASURF);
     v9x_hsw_scanout_surf = surf;
@@ -111,11 +131,15 @@ void v9x_hsw_note_flip_done(void)
 }
 
 /* The byte offset the plane is scanning from: the live base plus the x the
- * last write gave it (y is always 0 here). */
+ * last write gave it (y is always 0 here), or on Ivy Bridge its LINOFF. */
 DWORD v9x_hsw_displayed_offset(void)
 {
     if (!v9x_hsw_scanout_live()) {
         return 0xfffffffful;
+    }
+    if (v9x_hsw_scanout_is_ivb()) {
+        return *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPASURFLIVE) +
+               *v9x_hsw_scanout_reg(V9X_INTEL_IVB_DSPALINOFF);
     }
     return *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPASURFLIVE) +
            (*v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPAOFFSET) &
