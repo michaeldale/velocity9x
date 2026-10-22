@@ -268,6 +268,10 @@ unsigned int v9x_run_tdfx_hwc_tests(void);
  * values against the Napalm section 8 encodings. */
 unsigned int v9x_run_tdfx_3d_tests(void);
 
+/* tests\host\test_r128_2d.c: Rage 128 2D init, fill and copy register
+ * values against xf86-video-r128's encodings. */
+unsigned int v9x_run_r128_2d_tests(void);
+
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
 unsigned int v9x_run_mga_3d_tests(void);
@@ -1361,6 +1365,7 @@ int main(int argc, char **argv)
     failures += v9x_run_tdfx_2d_tests();
     failures += v9x_run_tdfx_hwc_tests();
     failures += v9x_run_tdfx_3d_tests();
+    failures += v9x_run_r128_2d_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {
