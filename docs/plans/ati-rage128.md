@@ -10,7 +10,12 @@ the registers read under both drivers: ATI runs its command engine as a
 bus-master ring even at the desktop, and the engine is idle in NONPM4 after
 POST ([record](../decisions/2026-10-22-rage128-register-probe.md)).
 Decisions 1 and 2 recommendations accepted by Michael (2026-10-22).
-Next: Phase 3, the 2D engine. The focus of 0.26.
+Phase 3 in progress: DirectDraw fill and copy run on the 2D engine
+(ATI_RAGE128), byte-exact at 8/16/32 bpp in the write probe and
+pixel-correct through the HAL at 16 bpp
+([record](../decisions/2026-10-22-rage128-directdraw-on-the-2d-engine.md)).
+Owed in Phase 3: GDI acceleration, the 32 MiB mapping, engine reset.
+The focus of 0.26.
 
 Target: the Rage 128 family as a fourth chip in the one `ati` family
 (`one-family-per-vendor`), beside the Mach64 VT2, the Rage Pro class and
