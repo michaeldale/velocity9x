@@ -37,6 +37,19 @@ released; it was bumped when the previous release went out (step 8).
   last release is listed with its evidence.
 - In `README.md`, update the **Current version** paragraph and its
   `releases/X.Y.Z` link.
+- Review the whole of `README.md` against the changelog, not only that
+  paragraph. It is the first page people read, and it drifts:
+  - **Supported cards** and **What each card runs**: add every chip the
+    release newly claims, with its package, and correct the row of every
+    chip whose support changed (a new API, a lifted limit, a fix).
+  - **Measured limits**, the per-API sections (Direct3D, OpenGL, Glide,
+    ATI 3DCIF) and **Common questions**: the features and extensions
+    listed match what the release offers.
+  - **Measured frame rates**: add a row or update a figure only from a
+    recorded measurement, with its version.
+  - Remove or reword anything the release made untrue, such as "not yet",
+    "untested" or a warning that no longer applies. Keep each claim to
+    what a record in `docs/decisions/` measured.
 
 Commit: `Date the X.Y.Z changelog for release`.
 
