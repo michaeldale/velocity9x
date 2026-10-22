@@ -64,6 +64,7 @@ void v9x_gl_textures_init(V9X_GL_TEXTURES *textures, V9X_GL_ALLOC_FN alloc,
     }
     textures->active = 0ul;
     textures->unpack_alignment = 4;
+    textures->unpack_swap_bytes = 0;
     textures->unpack_row_length = 0;
     textures->unpack_skip_rows = 0;
     textures->unpack_skip_pixels = 0;
@@ -688,7 +689,9 @@ void v9x_gl_pixel_store(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
             textures->pack[pname - 0x0D00u] = value;
         }
         return;
-    case 0x0CF0u:               /* UNPACK_SWAP_BYTES: no multi-byte types */
+    case 0x0CF0u:               /* UNPACK_SWAP_BYTES */
+        textures->unpack_swap_bytes = value != 0 ? 1 : 0;
+        return;
     case 0x0CF1u:               /* UNPACK_LSB_FIRST: bitmaps only */
     case 0x0D00u:
     case 0x0D01u:
@@ -840,19 +843,54 @@ static v9x_u16 v9x_gl_tex_texel(const v9x_u8 *source, GLenum format,
 }
 
 /* The source byte offset of pixel (x, y) under the unpack parameters
- * (3.6.3: row length, skips, alignment). */
+ * (3.6.3: row length, skips, alignment). `pixel_bytes` is the components
+ * times the type's size. Rounding the row in bytes is the spec's rule for
+ * a component smaller than the alignment, and is exact otherwise, since
+ * every legal alignment is then 1 or a multiple of the component. */
 static v9x_u32 v9x_gl_tex_source_offset(const V9X_GL_TEXTURES *textures,
-                                        GLsizei width, unsigned int components,
+                                        GLsizei width, unsigned int pixel_bytes,
                                         GLsizei x, GLsizei y)
 {
     v9x_u32 row_pixels = textures->unpack_row_length > 0
         ? (v9x_u32)textures->unpack_row_length : (v9x_u32)width;
     v9x_u32 alignment = (v9x_u32)textures->unpack_alignment;
-    v9x_u32 row_bytes = row_pixels * components;
+    v9x_u32 row_bytes = row_pixels * pixel_bytes;
 
     row_bytes = (row_bytes + alignment - 1ul) / alignment * alignment;
     return ((v9x_u32)textures->unpack_skip_rows + (v9x_u32)y) * row_bytes +
-           ((v9x_u32)textures->unpack_skip_pixels + (v9x_u32)x) * components;
+           ((v9x_u32)textures->unpack_skip_pixels + (v9x_u32)x) *
+               pixel_bytes;
+}
+
+/* Bytes in one component of a transfer type the uploads convert. */
+static unsigned int v9x_gl_tex_type_bytes(GLenum type)
+{
+    return type == V9X_GL_UNSIGNED_SHORT ? 2u : 1u;
+}
+
+/*
+ * One source pixel's components as bytes, the form v9x_gl_tex_texel
+ * takes. An UNSIGNED_SHORT component c stands for c / 65535 (3.6.4,
+ * table 2.6), rounded here to the nearest of the 256 byte steps; little
+ * endian in memory unless UNPACK_SWAP_BYTES says otherwise.
+ */
+static void v9x_gl_tex_fetch(const V9X_GL_TEXTURES *textures,
+                             const v9x_u8 *source, GLenum type,
+                             unsigned int components, v9x_u8 *bytes)
+{
+    unsigned int i;
+    v9x_u32 value;
+
+    for (i = 0u; i < components; ++i) {
+        if (type != V9X_GL_UNSIGNED_SHORT) {
+            bytes[i] = source[i];
+            continue;
+        }
+        value = textures->unpack_swap_bytes
+            ? ((v9x_u32)source[2u * i] << 8) | source[2u * i + 1u]
+            : ((v9x_u32)source[2u * i + 1u] << 8) | source[2u * i];
+        bytes[i] = (v9x_u8)((value * 255ul + 32767ul) / 65535ul);
+    }
 }
 
 static int v9x_gl_tex_format_checks(V9X_GL_STATE *state, GLenum target,
@@ -862,10 +900,11 @@ static int v9x_gl_tex_format_checks(V9X_GL_STATE *state, GLenum target,
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return 0;
     }
-    /* UNSIGNED_BYTE only in this slice: the other transfer types (3.6.4)
-     * are legal and not yet converted, and are refused rather than read
-     * wrongly. */
-    if (type != V9X_GL_UNSIGNED_BYTE) {
+    /* UNSIGNED_BYTE, and UNSIGNED_SHORT for Windows 98's GLU32.DLL, whose
+     * gluBuild2DMipmaps uploads every level in it. The other transfer
+     * types (3.6.4) are legal and not yet converted, and are refused
+     * rather than read wrongly. */
+    if (type != V9X_GL_UNSIGNED_BYTE && type != V9X_GL_UNSIGNED_SHORT) {
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return 0;
     }
@@ -882,6 +921,8 @@ void v9x_gl_tex_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
     GLenum base;
     v9x_u16 *texels;
     unsigned int components;
+    unsigned int pixel_bytes;
+    v9x_u8 bytes[4];
     GLsizei x;
     GLsizei y;
 
@@ -907,16 +948,18 @@ void v9x_gl_tex_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         return;
     }
     components = v9x_gl_tex_components(format);
+    pixel_bytes = components * v9x_gl_tex_type_bytes(type);
     for (y = 0; y < height; ++y) {
         for (x = 0; x < width; ++x) {
             v9x_u16 value = 0u;
 
             if (pixels != 0) {
-                value = v9x_gl_tex_texel(
-                    (const v9x_u8 *)pixels +
-                        v9x_gl_tex_source_offset(textures, width, components,
-                                                 x, y),
-                    format, base);
+                v9x_gl_tex_fetch(textures,
+                                 (const v9x_u8 *)pixels +
+                                     v9x_gl_tex_source_offset(
+                                         textures, width, pixel_bytes, x, y),
+                                 type, components, bytes);
+                value = v9x_gl_tex_texel(bytes, format, base);
             }
             texels[(v9x_u32)y * (v9x_u32)width + (v9x_u32)x] = value;
         }
@@ -947,6 +990,8 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
     V9X_GL_TEXOBJ *object;
     V9X_GL_TEXLEVEL *slot;
     unsigned int components;
+    unsigned int pixel_bytes;
+    v9x_u8 bytes[4];
     GLsizei x;
     GLsizei y;
 
@@ -972,15 +1017,17 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
         return;
     }
     components = v9x_gl_tex_components(format);
+    pixel_bytes = components * v9x_gl_tex_type_bytes(type);
     for (y = 0; y < height; ++y) {
         for (x = 0; x < width; ++x) {
+            v9x_gl_tex_fetch(textures,
+                             (const v9x_u8 *)pixels +
+                                 v9x_gl_tex_source_offset(
+                                     textures, width, pixel_bytes, x, y),
+                             type, components, bytes);
             slot->texels[((v9x_u32)yoffset + (v9x_u32)y) * slot->width +
                          (v9x_u32)xoffset + (v9x_u32)x] =
-                v9x_gl_tex_texel(
-                    (const v9x_u8 *)pixels +
-                        v9x_gl_tex_source_offset(textures, width, components,
-                                                 x, y),
-                    format, object->base_format);
+                v9x_gl_tex_texel(bytes, format, object->base_format);
         }
     }
     if (width != 0 && height != 0) {

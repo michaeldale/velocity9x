@@ -78,6 +78,10 @@ static void test_initial_values(void)
     GGCHECK(geti(0x0B54u) == (GLint)V9X_GL_SMOOTH);
     GGCHECK(geti(0x8069u) == 0);            /* TEXTURE_BINDING_2D */
     GGCHECK(geti(0x0CF5u) == 4);            /* UNPACK_ALIGNMENT */
+    GGCHECK(geti(0x0CF0u) == 0);            /* UNPACK_SWAP_BYTES */
+    v9x_gl_pixel_store(&s, &t, 0x0CF0u, 7);
+    GGCHECK(geti(0x0CF0u) == 1);
+    v9x_gl_pixel_store(&s, &t, 0x0CF0u, 0);
     GGCHECK(geti(0x0D05u) == 4);            /* PACK_ALIGNMENT */
     GGCHECK(geti(0x0C01u) == (GLint)V9X_GL_BACK_BUFFER); /* DRAW_BUFFER */
     GGCHECK(geti(0x0C50u) == (GLint)V9X_GL_DONT_CARE);

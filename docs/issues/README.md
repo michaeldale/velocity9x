@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-23 Haswell, a tester's HD 4600 (report V9X-WM1C1K): Tux Racer drew every batch untextured (Win98 GLU uploads in UNSIGNED_SHORT, which the ICD refused; fixed and seen on the 4570), Quake 3 spends ~70 % of wall time in synchronous GL flushes (36.3 fps at 1024x768), Re-Volt tyres not run](2026-10-23-haswell-tux-racer-untextured-and-quake3-gl-sync.md)
 - [2026-10-22 Quake 3 demo glitches on Intel (GitHub issue 11): the floor patch was a refused GL_DST_COLOR / GL_ONE_MINUS_DST_ALPHA pass, fixed in the ICD and measured on the HD 4600; the wall emblem, the GMA 900 and the HD 4000 menu are untested](2026-10-22-github-11-quake3-glitches-intel.md)
 - [2026-10-21 Haswell, OpenGL at 32 bpp: SwapBuffers leaves the right half of the window stale, and the front buffer reads black (fixed 2026-10-22, boot 62: the blitter reported idle before its writes landed; its sequence store is now MI_FLUSH_DW's post-sync write)](2026-10-21-haswell-gl-present-at-32-bpp-half-width.md)
 - [2026-10-20 Haswell, a tester's HD 4600 (report V9X-D9VZS6): artifacts in 3DMark 2001 SE; reproduced on the 4570: refused batches (kernel slots, fixed) and the Lobby mosaic (texture coordinate index, fixed); a diagonal cut and one Pro-test stripe open](2026-10-20-haswell-3dmark2001se-artifacts-field.md)

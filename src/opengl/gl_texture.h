@@ -41,6 +41,7 @@
 #define V9X_GL_BLEND_ENV           0x0BE2u   /* GL_BLEND, as an env mode */
 
 #define V9X_GL_UNSIGNED_BYTE       0x1401u
+#define V9X_GL_UNSIGNED_SHORT      0x1403u
 #define V9X_GL_ALPHA               0x1906u
 #define V9X_GL_RGB                 0x1907u
 #define V9X_GL_RGBA                0x1908u
@@ -166,6 +167,8 @@ typedef struct v9x_gl_textures {
     V9X_GL_TEXUNIT units[V9X_GL_TEXTURE_UNITS];
     v9x_u32 active;
     GLint unpack_alignment;
+    /* UNPACK_SWAP_BYTES, as 0 or 1: reverses each 16-bit component. */
+    GLint unpack_swap_bytes;
     GLint unpack_row_length;
     GLint unpack_skip_rows;
     GLint unpack_skip_pixels;

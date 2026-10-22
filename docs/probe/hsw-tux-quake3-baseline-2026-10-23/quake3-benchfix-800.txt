@@ -1,0 +1,254 @@
+...detecting CPU, found Intel Pentium III
+
+------- Input Initialization -------
+Initializing DirectInput...
+Couldn't set DI coop level
+Falling back to Win32 mouse support...
+Joystick is not active.
+------------------------------------
+----- Client Initialization -----
+----- Initializing Renderer ----
+-------------------------------
+----- Client Initialization Complete -----
+--- Common Initialization Complete ---
+Winsock Initialized
+Opening IP socket: localhost:27960
+Hostname: win98user.dalegroup.local
+IP: 10.0.1.254
+Working directory: C:\Q3Ademo
+----- R_Init -----
+Initializing OpenGL subsystem
+...initializing QGL
+...calling LoadLibrary( 'C:\WINDOWS\SYSTEM\opengl32.dll' ): succeeded
+...setting mode 4: 800 600 FS
+...using colorsbits of 32
+...calling CDS: ok
+...registered window class
+...created window@0,0 (800x600)
+Initializing OpenGL driver
+...getting DC: succeeded
+...GLW_ChoosePFD( 32, 24, 0 )
+...25 PFDs found
+...hardware acceleration found
+...PIXELFORMAT 2 selected
+...creating GL context: succeeded
+...making context current: succeeded
+Initializing OpenGL extensions
+...GL_S3_s3tc not found
+...GL_EXT_texture_env_add not found
+...WGL_EXT_swap_control not found
+...using GL_ARB_multitexture
+...GL_EXT_compiled_vertex_array not found
+...WGL_3DFX_gamma_control not found
+
+GL_VENDOR: Velocity9x
+GL_RENDERER: Velocity9x HD 4600
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: GL_ARB_multitexture GL_SGIS_multitexture
+GL_MAX_TEXTURE_SIZE: 512
+GL_MAX_ACTIVE_TEXTURES_ARB: 2
+
+PIXELFORMAT: color(32-bits) Z(24-bit) stencil(0-bits)
+MODE: 4, 800 x 600 fullscreen hz:N/A
+GAMMA: software w/ 0 overbright bits
+CPU: Intel Pentium III
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_LINEAR
+picmip: 1
+texture bits: 32
+multitexture: enabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+Initializing Shaders
+...loading 'scripts/base.shader'
+...loading 'scripts/base_button.shader'
+...loading 'scripts/base_floor.shader'
+...loading 'scripts/base_light.shader'
+...loading 'scripts/base_object.shader'
+...loading 'scripts/base_support.shader'
+...loading 'scripts/base_trim.shader'
+...loading 'scripts/base_wall.shader'
+...loading 'scripts/common.shader'
+...loading 'scripts/ctf.shader'
+...loading 'scripts/eerie.shader'
+...loading 'scripts/gfx.shader'
+...loading 'scripts/gothic_block.shader'
+...loading 'scripts/gothic_floor.shader'
+...loading 'scripts/gothic_light.shader'
+...loading 'scripts/gothic_trim.shader'
+...loading 'scripts/gothic_wall.shader'
+...loading 'scripts/hell.shader'
+...loading 'scripts/liquid.shader'
+...loading 'scripts/menu.shader'
+...loading 'scripts/models.shader'
+...loading 'scripts/organics.shader'
+...loading 'scripts/sfx.shader'
+...loading 'scripts/shrine.shader'
+...loading 'scripts/skin.shader'
+...loading 'scripts/sky.shader'
+...loading 'scripts/test.shader'
+----- finished R_Init -----
+
+------- sound initialization -------
+Initializing DirectSound
+failed
+------------------------------------
+Loading vm file vm/ui.qvm.
+VM file ui compiled to 902363 bytes of code
+4 arenas parsed
+6 bots parsed
+trFMV::play(), playing idlogo.RoQ
+********************
+ERROR: Disconnected from server
+********************
+RE_Shutdown( 0 )
+----- R_Init -----
+
+GL_VENDOR: Velocity9x
+GL_RENDERER: Velocity9x HD 4600
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: GL_ARB_multitexture GL_SGIS_multitexture
+GL_MAX_TEXTURE_SIZE: 512
+GL_MAX_ACTIVE_TEXTURES_ARB: 2
+
+PIXELFORMAT: color(32-bits) Z(24-bit) stencil(0-bits)
+MODE: 4, 800 x 600 fullscreen hz:N/A
+GAMMA: software w/ 0 overbright bits
+CPU: Intel Pentium III
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_LINEAR
+picmip: 1
+texture bits: 32
+multitexture: enabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+Initializing Shaders
+...loading 'scripts/base.shader'
+...loading 'scripts/base_button.shader'
+...loading 'scripts/base_floor.shader'
+...loading 'scripts/base_light.shader'
+...loading 'scripts/base_object.shader'
+...loading 'scripts/base_support.shader'
+...loading 'scripts/base_trim.shader'
+...loading 'scripts/base_wall.shader'
+...loading 'scripts/common.shader'
+...loading 'scripts/ctf.shader'
+...loading 'scripts/eerie.shader'
+...loading 'scripts/gfx.shader'
+...loading 'scripts/gothic_block.shader'
+...loading 'scripts/gothic_floor.shader'
+...loading 'scripts/gothic_light.shader'
+...loading 'scripts/gothic_trim.shader'
+...loading 'scripts/gothic_wall.shader'
+...loading 'scripts/hell.shader'
+...loading 'scripts/liquid.shader'
+...loading 'scripts/menu.shader'
+...loading 'scripts/models.shader'
+...loading 'scripts/organics.shader'
+...loading 'scripts/sfx.shader'
+...loading 'scripts/shrine.shader'
+...loading 'scripts/skin.shader'
+...loading 'scripts/sky.shader'
+...loading 'scripts/test.shader'
+----- finished R_Init -----
+Loading vm file vm/ui.qvm.
+VM file ui compiled to 902363 bytes of code
+4 arenas parsed
+6 bots parsed
+]\timedemo 1
+]\demo demo001
+RE_Shutdown( 0 )
+----- R_Init -----
+
+GL_VENDOR: Velocity9x
+GL_RENDERER: Velocity9x HD 4600
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: GL_ARB_multitexture GL_SGIS_multitexture
+GL_MAX_TEXTURE_SIZE: 512
+GL_MAX_ACTIVE_TEXTURES_ARB: 2
+
+PIXELFORMAT: color(32-bits) Z(24-bit) stencil(0-bits)
+MODE: 4, 800 x 600 fullscreen hz:N/A
+GAMMA: software w/ 0 overbright bits
+CPU: Intel Pentium III
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_LINEAR
+picmip: 1
+texture bits: 32
+multitexture: enabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+Initializing Shaders
+...loading 'scripts/base.shader'
+...loading 'scripts/base_button.shader'
+...loading 'scripts/base_floor.shader'
+...loading 'scripts/base_light.shader'
+...loading 'scripts/base_object.shader'
+...loading 'scripts/base_support.shader'
+...loading 'scripts/base_trim.shader'
+...loading 'scripts/base_wall.shader'
+...loading 'scripts/common.shader'
+...loading 'scripts/ctf.shader'
+...loading 'scripts/eerie.shader'
+...loading 'scripts/gfx.shader'
+...loading 'scripts/gothic_block.shader'
+...loading 'scripts/gothic_floor.shader'
+...loading 'scripts/gothic_light.shader'
+...loading 'scripts/gothic_trim.shader'
+...loading 'scripts/gothic_wall.shader'
+...loading 'scripts/hell.shader'
+...loading 'scripts/liquid.shader'
+...loading 'scripts/menu.shader'
+...loading 'scripts/models.shader'
+...loading 'scripts/organics.shader'
+...loading 'scripts/sfx.shader'
+...loading 'scripts/shrine.shader'
+...loading 'scripts/skin.shader'
+...loading 'scripts/sky.shader'
+...loading 'scripts/test.shader'
+----- finished R_Init -----
+Loading vm file vm/ui.qvm.
+VM file ui compiled to 902363 bytes of code
+4 arenas parsed
+6 bots parsed
+Loading vm file vm/cgame.qvm.
+VM file cgame compiled to 884513 bytes of code
+...loaded 5823 faces, 189 meshes, 49 trisurfs, 37 flares
+Couldn't open music file music\sonic5.wav
+CL_InitCGame:  1.10 seconds
+395 msec to draw all images
+Com_TouchMemory: 1 msec
+Thanatar was railed by foob
+eric ate Willits's rocket
+foob almost dodged Mr Elusive's rocket
+Willits ate Mr Elusive's rocket
+foob almost dodged Mr Elusive's rocket
+Thanatar ate Ares's rocket
+Ares blew herself up.
+eric was machinegunned by Willits
+Willits was railed by TODDH
+Thanatar ate Stryder's rocket
+Stryder was railed by Willits
+foob almost dodged Stryder's rocket
+Thanatar was railed by TODDH
+Ares was railed by TODDH
+Thanatar ate Mr Elusive's rocket
+Stryder was railed by Willits
+foob was machinegunned by Mr Elusive
+Willits was machinegunned by Mr Elusive
+Mr Elusive ate eric's rocket
+eric was railed by Ares
+eric ate Willits's rocket
+foob was machinegunned by Stryder
+Stryder almost dodged TODDH's rocket
+Thanatar almost dodged Willits's rocket
+Willits was machinegunned by foob
+Mr Elusive ate TODDH's rocket
+TODDH almost dodged Mr Elusive's rocket
+1346 frames, 28.5 seconds: 47.2 fps
+]\condump benchfix.txt
+Dumped console text to benchfix.txt.
+

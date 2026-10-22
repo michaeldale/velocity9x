@@ -14,7 +14,7 @@
 #define VELOCITY9X_GL_VARRAY_H
 
 #include "gl_prim.h"
-#include "gl_texture.h"          /* V9X_GL_UNSIGNED_BYTE */
+#include "gl_texture.h"          /* V9X_GL_UNSIGNED_BYTE, _SHORT */
 
 #define V9X_GL_ARRAY_VERTEX     0u
 #define V9X_GL_ARRAY_NORMAL     1u
@@ -34,7 +34,6 @@
 
 #define V9X_GL_BYTE                 0x1400u
 #define V9X_GL_SHORT                0x1402u
-#define V9X_GL_UNSIGNED_SHORT       0x1403u
 #define V9X_GL_INT                  0x1404u
 #define V9X_GL_UNSIGNED_INT         0x1405u
 #define V9X_GL_FLOAT                0x1406u

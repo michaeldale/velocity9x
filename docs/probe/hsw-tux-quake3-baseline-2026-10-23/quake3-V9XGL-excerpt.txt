@@ -1,0 +1,344 @@
+1 pid=FFFC51F3 attach instance=05EE0000 tls=22 version=0.25.0 V9XGL build=8aee07c0 time=2026-10-23 08:48:01 uptime-ms=61364 exe=C:\Q3ADEMO\QUAKE3.EXE
+38 pid=FFFC51F3 DrvSetPixelFormat hdc=0000077E index=1 recorded=1
+42 pid=FFFC51F3 drawable window=00000554 640x480
+43 pid=FFFC51F3   depth cell=16 bits=16
+52 pid=FFFC51F3 time interval-ms=76994 swaps=0 present-ms=0 draw-ms=995514935 upload-ms=17
+53 pid=FFFC51F3 tsc frames=0 wall-ms=76994 vertex-ms=34589 flush-in-vertex-ms=0 flush-other-ms=84031442 bind-ms=8005 iface-ms=12401938 beginend-ms=3233734 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=3229723 sink-prep-ms=3227874 sinks=1
+54 pid=FFFC51F3 sink begin-ms=3614 flush-ms=0 copy-ms=796 prep-texture-ms=3226904 prep-state-ms=831 prep-same-ms=101
+58 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1/3 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+80 pid=FFFC51F3 time interval-ms=10000 swaps=800 present-ms=198 draw-ms=3011 upload-ms=1176
+81 pid=FFFC51F3 tsc frames=800 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=4195 bind-ms=2 iface-ms=3011 beginend-ms=2879 swap-ms=199 vertices=268 flushes=14604 draws=14604 sink-ms=2850 sink-prep-ms=49 sinks=212263
+82 pid=FFFC51F3 sink begin-ms=25 flush-ms=2782 copy-ms=14 prep-texture-ms=22 prep-state-ms=12 prep-same-ms=13
+86 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=14605/473533 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+92 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=17349/546240 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+131 pid=FFFC51F3 DrvSetPixelFormat hdc=00000782 index=1 recorded=1
+135 pid=FFFC51F3 drawable window=0000055C 640x480
+136 pid=FFFC51F3   depth cell=16 bits=16
+142 pid=FFFC51F3 time interval-ms=18431 swaps=143 present-ms=35 draw-ms=4142 upload-ms=32
+143 pid=FFFC51F3 tsc frames=143 wall-ms=18431 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=4426 bind-ms=10 iface-ms=4142 beginend-ms=4171 swap-ms=285 vertices=0 flushes=2745 draws=2745 sink-ms=4133 sink-prep-ms=66 sinks=36118
+144 pid=FFFC51F3 sink begin-ms=34 flush-ms=4042 copy-ms=17 prep-texture-ms=30 prep-state-ms=16 prep-same-ms=17
+148 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=17350/546243 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+153 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=30129/1046570 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+192 pid=FFFC51F3 DrvSetPixelFormat hdc=00000776 index=2 recorded=1
+196 pid=FFFC51F3 drawable window=00000560 800x600
+197 pid=FFFC51F3   depth cell=32 bits=24
+203 pid=FFFC51F3 time interval-ms=24892 swaps=569 present-ms=142 draw-ms=8914 upload-ms=92
+204 pid=FFFC51F3 tsc frames=569 wall-ms=24892 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=9246 bind-ms=8 iface-ms=8914 beginend-ms=8641 swap-ms=477 vertices=0 flushes=12780 draws=12780 sink-ms=8545 sink-prep-ms=162 sinks=211857
+205 pid=FFFC51F3 sink begin-ms=85 flush-ms=8315 copy-ms=48 prep-texture-ms=75 prep-state-ms=39 prep-same-ms=43
+209 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=30130/1046573 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+239 pid=FFFC51F3 time interval-ms=10002 swaps=612 present-ms=461 draw-ms=5905 upload-ms=437
+240 pid=FFFC51F3 tsc frames=612 wall-ms=10002 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=6401 bind-ms=44 iface-ms=5905 beginend-ms=5849 swap-ms=461 vertices=1440 flushes=23107 draws=23107 sink-ms=5776 sink-prep-ms=98 sinks=425600
+241 pid=FFFC51F3 sink begin-ms=51 flush-ms=5637 copy-ms=30 prep-texture-ms=46 prep-state-ms=23 prep-same-ms=26
+245 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=53237/2081904 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=255/5377 split=0/0 split-declined=0
+248 pid=FFFC51F3 time interval-ms=10000 swaps=432 present-ms=324 draw-ms=7389 upload-ms=12
+249 pid=FFFC51F3 tsc frames=432 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7544 bind-ms=115 iface-ms=7389 beginend-ms=7596 swap-ms=325 vertices=0 flushes=49571 draws=49571 sink-ms=7478 sink-prep-ms=203 sinks=533060
+250 pid=FFFC51F3 sink begin-ms=108 flush-ms=7216 copy-ms=43 prep-texture-ms=118 prep-state-ms=31 prep-same-ms=40
+254 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=102808/3348934 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=18053/427597 split=0/0 split-declined=0
+257 pid=FFFC51F3 time interval-ms=10000 swaps=485 present-ms=364 draw-ms=7178 upload-ms=0
+258 pid=FFFC51F3 tsc frames=485 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7315 bind-ms=109 iface-ms=7178 beginend-ms=7380 swap-ms=365 vertices=0 flushes=48788 draws=48788 sink-ms=7230 sink-prep-ms=172 sinks=546161
+259 pid=FFFC51F3 sink begin-ms=124 flush-ms=6999 copy-ms=44 prep-texture-ms=97 prep-state-ms=31 prep-same-ms=39
+263 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=151596/4649478 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=33300/771487 split=0/0 split-declined=0
+266 pid=FFFC51F3 time interval-ms=10000 swaps=532 present-ms=399 draw-ms=7268 upload-ms=8
+267 pid=FFFC51F3 tsc frames=532 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7397 bind-ms=95 iface-ms=7268 beginend-ms=7323 swap-ms=400 vertices=0 flushes=48325 draws=48325 sink-ms=7201 sink-prep-ms=160 sinks=515226
+268 pid=FFFC51F3 sink begin-ms=112 flush-ms=6982 copy-ms=43 prep-texture-ms=89 prep-state-ms=29 prep-same-ms=37
+272 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=199921/5921090 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+275 pid=FFFC51F3 time interval-ms=10000 swaps=976 present-ms=732 draw-ms=7782 upload-ms=0
+276 pid=FFFC51F3 tsc frames=976 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7856 bind-ms=63 iface-ms=7782 beginend-ms=6823 swap-ms=732 vertices=0 flushes=27612 draws=27612 sink-ms=6750 sink-prep-ms=124 sinks=532200
+277 pid=FFFC51F3 sink begin-ms=64 flush-ms=6573 copy-ms=39 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+281 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=227533/7257514 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+284 pid=FFFC51F3 time interval-ms=10000 swaps=987 present-ms=740 draw-ms=7741 upload-ms=0
+285 pid=FFFC51F3 tsc frames=987 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7819 bind-ms=66 iface-ms=7741 beginend-ms=6799 swap-ms=741 vertices=0 flushes=27800 draws=27800 sink-ms=6728 sink-prep-ms=132 sinks=522405
+286 pid=FFFC51F3 sink begin-ms=66 flush-ms=6543 copy-ms=38 prep-texture-ms=65 prep-state-ms=29 prep-same-ms=32
+290 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=255333/8583282 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+293 pid=FFFC51F3 time interval-ms=10000 swaps=978 present-ms=733 draw-ms=7757 upload-ms=0
+294 pid=FFFC51F3 tsc frames=978 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7821 bind-ms=51 iface-ms=7757 beginend-ms=6805 swap-ms=734 vertices=0 flushes=28355 draws=28355 sink-ms=6735 sink-prep-ms=125 sinks=517384
+295 pid=FFFC51F3 sink begin-ms=62 flush-ms=6556 copy-ms=40 prep-texture-ms=60 prep-state-ms=29 prep-same-ms=32
+299 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=283688/9912780 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+302 pid=FFFC51F3 time interval-ms=10000 swaps=990 present-ms=764 draw-ms=7782 upload-ms=0
+303 pid=FFFC51F3 tsc frames=990 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7884 bind-ms=90 iface-ms=7782 beginend-ms=6862 swap-ms=765 vertices=0 flushes=27601 draws=27601 sink-ms=6786 sink-prep-ms=132 sinks=523525
+304 pid=FFFC51F3 sink begin-ms=68 flush-ms=6601 copy-ms=39 prep-texture-ms=67 prep-state-ms=29 prep-same-ms=32
+308 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=311289/11237549 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+311 pid=FFFC51F3 time interval-ms=10000 swaps=989 present-ms=742 draw-ms=7790 upload-ms=0
+312 pid=FFFC51F3 tsc frames=989 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7871 bind-ms=69 iface-ms=7790 beginend-ms=6847 swap-ms=742 vertices=0 flushes=27529 draws=27529 sink-ms=6766 sink-prep-ms=124 sinks=523082
+313 pid=FFFC51F3 sink begin-ms=73 flush-ms=6590 copy-ms=38 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+317 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=338818/12561191 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+320 pid=FFFC51F3 time interval-ms=10000 swaps=979 present-ms=735 draw-ms=7725 upload-ms=0
+321 pid=FFFC51F3 tsc frames=979 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7795 bind-ms=58 iface-ms=7725 beginend-ms=6801 swap-ms=736 vertices=0 flushes=28373 draws=28373 sink-ms=6705 sink-prep-ms=122 sinks=517796
+322 pid=FFFC51F3 sink begin-ms=88 flush-ms=6529 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+326 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=367191/13891818 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+329 pid=FFFC51F3 time interval-ms=10000 swaps=987 present-ms=760 draw-ms=7726 upload-ms=0
+330 pid=FFFC51F3 tsc frames=987 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7833 bind-ms=95 iface-ms=7726 beginend-ms=6801 swap-ms=761 vertices=0 flushes=27732 draws=27732 sink-ms=6730 sink-prep-ms=127 sinks=522502
+331 pid=FFFC51F3 sink begin-ms=63 flush-ms=6551 copy-ms=38 prep-texture-ms=61 prep-state-ms=30 prep-same-ms=32
+335 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=394923/15216726 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+338 pid=FFFC51F3 time interval-ms=10000 swaps=993 present-ms=745 draw-ms=7765 upload-ms=0
+339 pid=FFFC51F3 tsc frames=993 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7863 bind-ms=85 iface-ms=7765 beginend-ms=6833 swap-ms=745 vertices=0 flushes=27418 draws=27418 sink-ms=6762 sink-prep-ms=133 sinks=524769
+340 pid=FFFC51F3 sink begin-ms=63 flush-ms=6575 copy-ms=39 prep-texture-ms=59 prep-state-ms=30 prep-same-ms=41
+344 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=422341/16542128 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+347 pid=FFFC51F3 time interval-ms=10000 swaps=978 present-ms=734 draw-ms=7799 upload-ms=0
+348 pid=FFFC51F3 tsc frames=978 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7894 bind-ms=83 iface-ms=7799 beginend-ms=6893 swap-ms=734 vertices=0 flushes=28330 draws=28330 sink-ms=6822 sink-prep-ms=139 sinks=517417
+349 pid=FFFC51F3 sink begin-ms=63 flush-ms=6629 copy-ms=40 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=49
+353 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=450671/17870636 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+356 pid=FFFC51F3 time interval-ms=10000 swaps=987 present-ms=740 draw-ms=7724 upload-ms=0
+357 pid=FFFC51F3 tsc frames=987 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7789 bind-ms=53 iface-ms=7724 beginend-ms=6763 swap-ms=741 vertices=0 flushes=27941 draws=27941 sink-ms=6692 sink-prep-ms=129 sinks=522389
+358 pid=FFFC51F3 sink begin-ms=63 flush-ms=6510 copy-ms=38 prep-texture-ms=57 prep-state-ms=36 prep-same-ms=32
+362 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=478612/19199606 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+365 pid=FFFC51F3 time interval-ms=10000 swaps=1003 present-ms=766 draw-ms=7787 upload-ms=0
+366 pid=FFFC51F3 tsc frames=1003 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7846 bind-ms=46 iface-ms=7787 beginend-ms=6795 swap-ms=767 vertices=0 flushes=27639 draws=27639 sink-ms=6723 sink-prep-ms=127 sinks=530609
+367 pid=FFFC51F3 sink begin-ms=64 flush-ms=6542 copy-ms=39 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=34
+371 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=506251/20538498 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+374 pid=FFFC51F3 time interval-ms=10000 swaps=991 present-ms=744 draw-ms=7795 upload-ms=0
+375 pid=FFFC51F3 tsc frames=991 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7856 bind-ms=40 iface-ms=7795 beginend-ms=6825 swap-ms=745 vertices=0 flushes=28545 draws=28545 sink-ms=6754 sink-prep-ms=124 sinks=523896
+376 pid=FFFC51F3 sink begin-ms=63 flush-ms=6575 copy-ms=41 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+380 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=534796/21880570 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+383 pid=FFFC51F3 time interval-ms=10000 swaps=993 present-ms=756 draw-ms=7836 upload-ms=0
+384 pid=FFFC51F3 tsc frames=993 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7947 bind-ms=99 iface-ms=7836 beginend-ms=6919 swap-ms=757 vertices=0 flushes=28381 draws=28381 sink-ms=6847 sink-prep-ms=124 sinks=525401
+385 pid=FFFC51F3 sink begin-ms=65 flush-ms=6662 copy-ms=46 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+389 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=563177/23221059 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+392 pid=FFFC51F3 time interval-ms=10002 swaps=1003 present-ms=752 draw-ms=7791 upload-ms=0
+393 pid=FFFC51F3 tsc frames=1003 wall-ms=10002 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7868 bind-ms=65 iface-ms=7791 beginend-ms=6826 swap-ms=753 vertices=0 flushes=27585 draws=27585 sink-ms=6754 sink-prep-ms=130 sinks=530826
+394 pid=FFFC51F3 sink begin-ms=64 flush-ms=6571 copy-ms=39 prep-texture-ms=58 prep-state-ms=35 prep-same-ms=33
+398 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=590762/24559697 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+401 pid=FFFC51F3 time interval-ms=10001 swaps=992 present-ms=749 draw-ms=7788 upload-ms=0
+402 pid=FFFC51F3 tsc frames=992 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7863 bind-ms=63 iface-ms=7788 beginend-ms=6829 swap-ms=750 vertices=0 flushes=28510 draws=28510 sink-ms=6757 sink-prep-ms=124 sinks=524768
+403 pid=FFFC51F3 sink begin-ms=64 flush-ms=6579 copy-ms=39 prep-texture-ms=59 prep-state-ms=30 prep-same-ms=32
+407 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=619272/25902085 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+410 pid=FFFC51F3 time interval-ms=10001 swaps=991 present-ms=743 draw-ms=7795 upload-ms=0
+411 pid=FFFC51F3 tsc frames=991 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7879 bind-ms=72 iface-ms=7795 beginend-ms=6845 swap-ms=744 vertices=0 flushes=28453 draws=28453 sink-ms=6773 sink-prep-ms=124 sinks=524239
+412 pid=FFFC51F3 sink begin-ms=63 flush-ms=6596 copy-ms=39 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=33
+416 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=647725/27242354 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+419 pid=FFFC51F3 time interval-ms=10001 swaps=1003 present-ms=752 draw-ms=7813 upload-ms=0
+420 pid=FFFC51F3 tsc frames=1003 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7885 bind-ms=61 iface-ms=7813 beginend-ms=6845 swap-ms=753 vertices=0 flushes=27540 draws=27540 sink-ms=6769 sink-prep-ms=139 sinks=530514
+421 pid=FFFC51F3 sink begin-ms=68 flush-ms=6576 copy-ms=39 prep-texture-ms=72 prep-state-ms=44 prep-same-ms=33
+425 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=675265/28579636 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+428 pid=FFFC51F3 time interval-ms=10000 swaps=994 present-ms=746 draw-ms=7806 upload-ms=0
+429 pid=FFFC51F3 tsc frames=994 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7922 bind-ms=104 iface-ms=7806 beginend-ms=6885 swap-ms=746 vertices=0 flushes=28385 draws=28385 sink-ms=6813 sink-prep-ms=123 sinks=525704
+430 pid=FFFC51F3 sink begin-ms=63 flush-ms=6637 copy-ms=39 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+434 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=703650/29921297 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+437 pid=FFFC51F3 time interval-ms=10000 swaps=981 present-ms=736 draw-ms=7774 upload-ms=0
+438 pid=FFFC51F3 tsc frames=981 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7852 bind-ms=65 iface-ms=7774 beginend-ms=6825 swap-ms=736 vertices=0 flushes=28287 draws=28287 sink-ms=6755 sink-prep-ms=126 sinks=518999
+439 pid=FFFC51F3 sink begin-ms=63 flush-ms=6575 copy-ms=40 prep-texture-ms=61 prep-state-ms=29 prep-same-ms=32
+443 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=731937/31250526 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+446 pid=FFFC51F3 time interval-ms=10000 swaps=993 present-ms=745 draw-ms=7750 upload-ms=0
+447 pid=FFFC51F3 tsc frames=993 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7887 bind-ms=126 iface-ms=7750 beginend-ms=6855 swap-ms=745 vertices=0 flushes=27310 draws=27310 sink-ms=6779 sink-prep-ms=124 sinks=525271
+448 pid=FFFC51F3 sink begin-ms=64 flush-ms=6603 copy-ms=39 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+452 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=759247/32575374 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+455 pid=FFFC51F3 time interval-ms=10000 swaps=985 present-ms=739 draw-ms=7824 upload-ms=0
+456 pid=FFFC51F3 tsc frames=985 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7914 bind-ms=77 iface-ms=7824 beginend-ms=6878 swap-ms=739 vertices=0 flushes=27955 draws=27955 sink-ms=6806 sink-prep-ms=122 sinks=521112
+457 pid=FFFC51F3 sink begin-ms=63 flush-ms=6631 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+461 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=787202/33901582 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+464 pid=FFFC51F3 time interval-ms=10000 swaps=979 present-ms=734 draw-ms=7830 upload-ms=0
+465 pid=FFFC51F3 tsc frames=979 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7931 bind-ms=88 iface-ms=7830 beginend-ms=6905 swap-ms=734 vertices=0 flushes=28320 draws=28320 sink-ms=6833 sink-prep-ms=122 sinks=517672
+466 pid=FFFC51F3 sink begin-ms=64 flush-ms=6658 copy-ms=38 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=32
+470 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=815522/35230125 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+473 pid=FFFC51F3 time interval-ms=10000 swaps=991 present-ms=744 draw-ms=7755 upload-ms=0
+474 pid=FFFC51F3 tsc frames=991 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7848 bind-ms=81 iface-ms=7755 beginend-ms=6807 swap-ms=744 vertices=0 flushes=27379 draws=27379 sink-ms=6736 sink-prep-ms=128 sinks=524582
+475 pid=FFFC51F3 sink begin-ms=63 flush-ms=6555 copy-ms=38 prep-texture-ms=63 prep-state-ms=30 prep-same-ms=32
+479 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=842901/36554587 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+482 pid=FFFC51F3 time interval-ms=10000 swaps=988 present-ms=741 draw-ms=7827 upload-ms=0
+483 pid=FFFC51F3 tsc frames=988 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7935 bind-ms=96 iface-ms=7827 beginend-ms=6897 swap-ms=742 vertices=0 flushes=27797 draws=27797 sink-ms=6826 sink-prep-ms=122 sinks=522434
+484 pid=FFFC51F3 sink begin-ms=63 flush-ms=6651 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+488 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=870698/37880631 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+491 pid=FFFC51F3 time interval-ms=10000 swaps=977 present-ms=733 draw-ms=7822 upload-ms=0
+492 pid=FFFC51F3 tsc frames=977 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7900 bind-ms=64 iface-ms=7822 beginend-ms=6882 swap-ms=734 vertices=0 flushes=28318 draws=28318 sink-ms=6811 sink-prep-ms=123 sinks=516950
+493 pid=FFFC51F3 sink begin-ms=62 flush-ms=6636 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=33
+497 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=899016/39208612 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+500 pid=FFFC51F3 time interval-ms=10000 swaps=990 present-ms=742 draw-ms=7809 upload-ms=0
+501 pid=FFFC51F3 tsc frames=990 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7882 bind-ms=61 iface-ms=7809 beginend-ms=6851 swap-ms=743 vertices=0 flushes=27549 draws=27549 sink-ms=6779 sink-prep-ms=131 sinks=523788
+502 pid=FFFC51F3 sink begin-ms=63 flush-ms=6595 copy-ms=39 prep-texture-ms=58 prep-state-ms=38 prep-same-ms=32
+506 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=926565/40533664 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+509 pid=FFFC51F3 time interval-ms=10000 swaps=992 present-ms=744 draw-ms=7801 upload-ms=0
+510 pid=FFFC51F3 tsc frames=992 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7868 bind-ms=55 iface-ms=7801 beginend-ms=6826 swap-ms=744 vertices=0 flushes=27665 draws=27665 sink-ms=6755 sink-prep-ms=124 sinks=524485
+511 pid=FFFC51F3 sink begin-ms=63 flush-ms=6576 copy-ms=39 prep-texture-ms=58 prep-state-ms=30 prep-same-ms=32
+515 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=954230/41861264 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+518 pid=FFFC51F3 time interval-ms=10000 swaps=978 present-ms=734 draw-ms=7790 upload-ms=0
+519 pid=FFFC51F3 tsc frames=978 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7874 bind-ms=72 iface-ms=7790 beginend-ms=6852 swap-ms=734 vertices=0 flushes=28352 draws=28352 sink-ms=6782 sink-prep-ms=125 sinks=517362
+520 pid=FFFC51F3 sink begin-ms=62 flush-ms=6603 copy-ms=39 prep-texture-ms=60 prep-state-ms=29 prep-same-ms=32
+524 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=982582/43190984 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+527 pid=FFFC51F3 time interval-ms=10000 swaps=988 present-ms=741 draw-ms=7696 upload-ms=0
+528 pid=FFFC51F3 tsc frames=988 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7771 bind-ms=63 iface-ms=7696 beginend-ms=6740 swap-ms=742 vertices=0 flushes=27739 draws=27739 sink-ms=6668 sink-prep-ms=123 sinks=522982
+529 pid=FFFC51F3 sink begin-ms=64 flush-ms=6493 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+533 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1010321/44517247 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+536 pid=FFFC51F3 time interval-ms=10000 swaps=992 present-ms=745 draw-ms=7784 upload-ms=0
+537 pid=FFFC51F3 tsc frames=992 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7861 bind-ms=65 iface-ms=7784 beginend-ms=6827 swap-ms=745 vertices=0 flushes=27452 draws=27452 sink-ms=6755 sink-prep-ms=124 sinks=524573
+538 pid=FFFC51F3 sink begin-ms=63 flush-ms=6578 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+542 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1037773/45842031 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+545 pid=FFFC51F3 time interval-ms=10000 swaps=978 present-ms=745 draw-ms=7749 upload-ms=0
+546 pid=FFFC51F3 tsc frames=978 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7844 bind-ms=83 iface-ms=7749 beginend-ms=6825 swap-ms=746 vertices=0 flushes=28312 draws=28312 sink-ms=6753 sink-prep-ms=122 sinks=517266
+547 pid=FFFC51F3 sink begin-ms=63 flush-ms=6579 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+551 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1066085/47170326 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+554 pid=FFFC51F3 time interval-ms=10000 swaps=984 present-ms=738 draw-ms=7842 upload-ms=0
+555 pid=FFFC51F3 tsc frames=984 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7920 bind-ms=66 iface-ms=7842 beginend-ms=6906 swap-ms=738 vertices=0 flushes=27845 draws=27845 sink-ms=6820 sink-prep-ms=123 sinks=520756
+556 pid=FFFC51F3 sink begin-ms=63 flush-ms=6643 copy-ms=39 prep-texture-ms=58 prep-state-ms=31 prep-same-ms=32
+560 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1093930/48494912 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+563 pid=FFFC51F3 time interval-ms=10000 swaps=995 present-ms=746 draw-ms=7739 upload-ms=0
+564 pid=FFFC51F3 tsc frames=995 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7842 bind-ms=91 iface-ms=7739 beginend-ms=6802 swap-ms=747 vertices=0 flushes=27361 draws=27361 sink-ms=6730 sink-prep-ms=124 sinks=526256
+565 pid=FFFC51F3 sink begin-ms=64 flush-ms=6554 copy-ms=38 prep-texture-ms=58 prep-state-ms=29 prep-same-ms=32
+569 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1121291/49822142 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+572 pid=FFFC51F3 time interval-ms=10000 swaps=978 present-ms=753 draw-ms=7785 upload-ms=0
+573 pid=FFFC51F3 tsc frames=978 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7893 bind-ms=96 iface-ms=7785 beginend-ms=6871 swap-ms=754 vertices=0 flushes=28220 draws=28220 sink-ms=6801 sink-prep-ms=122 sinks=517165
+574 pid=FFFC51F3 sink begin-ms=62 flush-ms=6627 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+578 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1149511/51147686 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+581 pid=FFFC51F3 time interval-ms=10000 swaps=984 present-ms=738 draw-ms=7783 upload-ms=0
+582 pid=FFFC51F3 tsc frames=984 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7847 bind-ms=52 iface-ms=7782 beginend-ms=6809 swap-ms=739 vertices=0 flushes=28140 draws=28140 sink-ms=6738 sink-prep-ms=122 sinks=520688
+583 pid=FFFC51F3 sink begin-ms=64 flush-ms=6563 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+587 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1177651/52475890 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+590 pid=FFFC51F3 time interval-ms=10000 swaps=995 present-ms=755 draw-ms=7694 upload-ms=0
+591 pid=FFFC51F3 tsc frames=995 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7813 bind-ms=102 iface-ms=7694 beginend-ms=6774 swap-ms=755 vertices=0 flushes=27352 draws=27352 sink-ms=6703 sink-prep-ms=124 sinks=526500
+592 pid=FFFC51F3 sink begin-ms=64 flush-ms=6527 copy-ms=38 prep-texture-ms=58 prep-state-ms=29 prep-same-ms=32
+596 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1205003/53803296 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+599 pid=FFFC51F3 time interval-ms=10000 swaps=981 present-ms=736 draw-ms=7732 upload-ms=0
+600 pid=FFFC51F3 tsc frames=981 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7827 bind-ms=83 iface-ms=7732 beginend-ms=6805 swap-ms=737 vertices=0 flushes=28182 draws=28182 sink-ms=6735 sink-prep-ms=123 sinks=518652
+601 pid=FFFC51F3 sink begin-ms=63 flush-ms=6559 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+605 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1233185/55130230 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+608 pid=FFFC51F3 time interval-ms=10006 swaps=981 present-ms=737 draw-ms=7758 upload-ms=0
+609 pid=FFFC51F3 tsc frames=981 wall-ms=10006 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7843 bind-ms=73 iface-ms=7757 beginend-ms=6808 swap-ms=737 vertices=0 flushes=28163 draws=28163 sink-ms=6738 sink-prep-ms=122 sinks=519270
+610 pid=FFFC51F3 sink begin-ms=63 flush-ms=6564 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+614 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1261348/56457616 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+617 pid=FFFC51F3 time interval-ms=10000 swaps=994 present-ms=745 draw-ms=7786 upload-ms=0
+618 pid=FFFC51F3 tsc frames=994 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7868 bind-ms=70 iface-ms=7786 beginend-ms=6850 swap-ms=746 vertices=0 flushes=27280 draws=27280 sink-ms=6779 sink-prep-ms=129 sinks=525848
+619 pid=FFFC51F3 sink begin-ms=64 flush-ms=6597 copy-ms=38 prep-texture-ms=62 prep-state-ms=30 prep-same-ms=32
+623 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1288628/57783023 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+626 pid=FFFC51F3 time interval-ms=10000 swaps=982 present-ms=737 draw-ms=7776 upload-ms=0
+627 pid=FFFC51F3 tsc frames=982 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7877 bind-ms=89 iface-ms=7776 beginend-ms=6853 swap-ms=737 vertices=0 flushes=28088 draws=28088 sink-ms=6782 sink-prep-ms=122 sinks=519478
+628 pid=FFFC51F3 sink begin-ms=63 flush-ms=6608 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+632 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1316716/59108883 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+635 pid=FFFC51F3 time interval-ms=10004 swaps=980 present-ms=736 draw-ms=7764 upload-ms=0
+636 pid=FFFC51F3 tsc frames=980 wall-ms=10004 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7859 bind-ms=83 iface-ms=7764 beginend-ms=6835 swap-ms=736 vertices=0 flushes=28225 draws=28225 sink-ms=6765 sink-prep-ms=122 sinks=518419
+637 pid=FFFC51F3 sink begin-ms=62 flush-ms=6590 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+641 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1344941/60436360 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+644 pid=FFFC51F3 time interval-ms=10001 swaps=993 present-ms=745 draw-ms=7734 upload-ms=0
+645 pid=FFFC51F3 tsc frames=993 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7804 bind-ms=59 iface-ms=7733 beginend-ms=6761 swap-ms=745 vertices=0 flushes=27346 draws=27346 sink-ms=6689 sink-prep-ms=124 sinks=524955
+646 pid=FFFC51F3 sink begin-ms=64 flush-ms=6512 copy-ms=38 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=32
+650 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1372287/61760540 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+653 pid=FFFC51F3 time interval-ms=10000 swaps=984 present-ms=739 draw-ms=7776 upload-ms=0
+654 pid=FFFC51F3 tsc frames=984 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7852 bind-ms=64 iface-ms=7776 beginend-ms=6835 swap-ms=739 vertices=0 flushes=27964 draws=27964 sink-ms=6763 sink-prep-ms=123 sinks=520879
+655 pid=FFFC51F3 sink begin-ms=64 flush-ms=6577 copy-ms=49 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+659 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1400251/63086717 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+662 pid=FFFC51F3 time interval-ms=10004 swaps=979 present-ms=735 draw-ms=7798 upload-ms=0
+663 pid=FFFC51F3 tsc frames=979 wall-ms=10004 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7902 bind-ms=92 iface-ms=7798 beginend-ms=6882 swap-ms=735 vertices=0 flushes=28311 draws=28311 sink-ms=6810 sink-prep-ms=122 sinks=517891
+664 pid=FFFC51F3 sink begin-ms=62 flush-ms=6636 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+668 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1428562/64415679 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+671 pid=FFFC51F3 time interval-ms=10000 swaps=994 present-ms=745 draw-ms=7759 upload-ms=0
+672 pid=FFFC51F3 tsc frames=994 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7829 bind-ms=58 iface-ms=7759 beginend-ms=6794 swap-ms=746 vertices=0 flushes=27450 draws=27450 sink-ms=6720 sink-prep-ms=124 sinks=525636
+673 pid=FFFC51F3 sink begin-ms=65 flush-ms=6544 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=33
+677 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1456012/65742808 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+680 pid=FFFC51F3 time interval-ms=10000 swaps=987 present-ms=741 draw-ms=7758 upload-ms=0
+681 pid=FFFC51F3 tsc frames=987 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7854 bind-ms=84 iface-ms=7758 beginend-ms=6826 swap-ms=741 vertices=0 flushes=27832 draws=27832 sink-ms=6753 sink-prep-ms=123 sinks=522096
+682 pid=FFFC51F3 sink begin-ms=66 flush-ms=6577 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+686 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1483844/67068250 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+689 pid=FFFC51F3 time interval-ms=10000 swaps=978 present-ms=734 draw-ms=7805 upload-ms=0
+690 pid=FFFC51F3 tsc frames=978 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7870 bind-ms=52 iface-ms=7805 beginend-ms=6805 swap-ms=734 vertices=0 flushes=28345 draws=28345 sink-ms=6735 sink-prep-ms=121 sinks=517338
+691 pid=FFFC51F3 sink begin-ms=62 flush-ms=6560 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+695 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1512189/68397361 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+698 pid=FFFC51F3 time interval-ms=10000 swaps=990 present-ms=743 draw-ms=7756 upload-ms=0
+699 pid=FFFC51F3 tsc frames=990 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7857 bind-ms=89 iface-ms=7756 beginend-ms=6818 swap-ms=743 vertices=0 flushes=27576 draws=27576 sink-ms=6746 sink-prep-ms=123 sinks=523951
+700 pid=FFFC51F3 sink begin-ms=64 flush-ms=6562 copy-ms=47 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=32
+704 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1539765/69722665 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+707 pid=FFFC51F3 time interval-ms=10000 swaps=990 present-ms=749 draw-ms=7742 upload-ms=0
+708 pid=FFFC51F3 tsc frames=990 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7856 bind-ms=102 iface-ms=7742 beginend-ms=6823 swap-ms=749 vertices=0 flushes=27590 draws=27590 sink-ms=6751 sink-prep-ms=123 sinks=523516
+709 pid=FFFC51F3 sink begin-ms=63 flush-ms=6576 copy-ms=39 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+713 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1567355/71047511 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+716 pid=FFFC51F3 time interval-ms=10000 swaps=977 present-ms=733 draw-ms=7878 upload-ms=0
+717 pid=FFFC51F3 tsc frames=977 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7961 bind-ms=71 iface-ms=7878 beginend-ms=6932 swap-ms=734 vertices=0 flushes=28328 draws=28328 sink-ms=6862 sink-prep-ms=122 sinks=517023
+718 pid=FFFC51F3 sink begin-ms=62 flush-ms=6688 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=32
+722 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1595683/72376095 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+725 pid=FFFC51F3 time interval-ms=10000 swaps=988 present-ms=741 draw-ms=7744 upload-ms=0
+726 pid=FFFC51F3 tsc frames=988 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7818 bind-ms=62 iface-ms=7744 beginend-ms=6790 swap-ms=742 vertices=0 flushes=27741 draws=27741 sink-ms=6719 sink-prep-ms=125 sinks=522819
+727 pid=FFFC51F3 sink begin-ms=63 flush-ms=6540 copy-ms=40 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=34
+731 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1623424/73701686 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+734 pid=FFFC51F3 time interval-ms=10000 swaps=992 present-ms=744 draw-ms=7729 upload-ms=0
+735 pid=FFFC51F3 tsc frames=992 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7787 bind-ms=46 iface-ms=7728 beginend-ms=6816 swap-ms=745 vertices=0 flushes=27422 draws=27422 sink-ms=6745 sink-prep-ms=134 sinks=524262
+736 pid=FFFC51F3 sink begin-ms=64 flush-ms=6503 copy-ms=93 prep-texture-ms=68 prep-state-ms=30 prep-same-ms=33
+740 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1650846/75025911 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+743 pid=FFFC51F3 time interval-ms=10071 swaps=971 present-ms=733 draw-ms=7744 upload-ms=0
+744 pid=FFFC51F3 tsc frames=971 wall-ms=10071 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7868 bind-ms=111 iface-ms=7744 beginend-ms=6770 swap-ms=734 vertices=0 flushes=28133 draws=28133 sink-ms=6700 sink-prep-ms=121 sinks=514002
+745 pid=FFFC51F3 sink begin-ms=62 flush-ms=6527 copy-ms=38 prep-texture-ms=56 prep-state-ms=29 prep-same-ms=31
+749 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1678979/76345997 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+752 pid=FFFC51F3 time interval-ms=10000 swaps=963 present-ms=723 draw-ms=7681 upload-ms=0
+753 pid=FFFC51F3 tsc frames=963 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7784 bind-ms=90 iface-ms=7681 beginend-ms=6869 swap-ms=723 vertices=0 flushes=27217 draws=27217 sink-ms=6797 sink-prep-ms=127 sinks=509190
+754 pid=FFFC51F3 sink begin-ms=64 flush-ms=6616 copy-ms=40 prep-texture-ms=59 prep-state-ms=31 prep-same-ms=33
+758 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1706196/77640439 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+761 pid=FFFC51F3 time interval-ms=10004 swaps=993 present-ms=744 draw-ms=7774 upload-ms=0
+762 pid=FFFC51F3 tsc frames=993 wall-ms=10004 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7846 bind-ms=60 iface-ms=7774 beginend-ms=6810 swap-ms=745 vertices=0 flushes=27350 draws=27350 sink-ms=6738 sink-prep-ms=124 sinks=525438
+763 pid=FFFC51F3 sink begin-ms=63 flush-ms=6562 copy-ms=38 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=32
+767 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1733546/78966520 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+770 pid=FFFC51F3 time interval-ms=10000 swaps=979 present-ms=735 draw-ms=7760 upload-ms=0
+771 pid=FFFC51F3 tsc frames=979 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7824 bind-ms=52 iface-ms=7760 beginend-ms=6805 swap-ms=735 vertices=0 flushes=28253 draws=28253 sink-ms=6734 sink-prep-ms=127 sinks=517863
+772 pid=FFFC51F3 sink begin-ms=63 flush-ms=6555 copy-ms=38 prep-texture-ms=61 prep-state-ms=29 prep-same-ms=32
+776 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1761799/80293667 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+779 pid=FFFC51F3 time interval-ms=10000 swaps=983 present-ms=752 draw-ms=7695 upload-ms=0
+780 pid=FFFC51F3 tsc frames=983 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7761 bind-ms=54 iface-ms=7695 beginend-ms=6736 swap-ms=753 vertices=0 flushes=27967 draws=27967 sink-ms=6663 sink-prep-ms=122 sinks=520198
+781 pid=FFFC51F3 sink begin-ms=66 flush-ms=6488 copy-ms=38 prep-texture-ms=57 prep-state-ms=30 prep-same-ms=32
+785 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1789766/81619305 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+788 pid=FFFC51F3 time interval-ms=10000 swaps=969 present-ms=729 draw-ms=7558 upload-ms=0
+789 pid=FFFC51F3 tsc frames=969 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7820 bind-ms=250 iface-ms=7558 beginend-ms=6807 swap-ms=730 vertices=0 flushes=26592 draws=26592 sink-ms=6737 sink-prep-ms=120 sinks=512438
+790 pid=FFFC51F3 sink begin-ms=63 flush-ms=6564 copy-ms=37 prep-texture-ms=56 prep-state-ms=29 prep-same-ms=32
+794 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1816358/82911140 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+797 pid=FFFC51F3 time interval-ms=10000 swaps=947 present-ms=714 draw-ms=7574 upload-ms=0
+798 pid=FFFC51F3 tsc frames=947 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7662 bind-ms=77 iface-ms=7574 beginend-ms=6658 swap-ms=715 vertices=0 flushes=27235 draws=27235 sink-ms=6588 sink-prep-ms=118 sinks=501059
+799 pid=FFFC51F3 sink begin-ms=61 flush-ms=6418 copy-ms=37 prep-texture-ms=55 prep-state-ms=28 prep-same-ms=31
+803 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1843593/84193408 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+806 pid=FFFC51F3 time interval-ms=10000 swaps=966 present-ms=729 draw-ms=7796 upload-ms=0
+807 pid=FFFC51F3 tsc frames=966 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7897 bind-ms=90 iface-ms=7796 beginend-ms=6886 swap-ms=729 vertices=0 flushes=27668 draws=27668 sink-ms=6816 sink-prep-ms=120 sinks=510671
+808 pid=FFFC51F3 sink begin-ms=62 flush-ms=6644 copy-ms=38 prep-texture-ms=56 prep-state-ms=29 prep-same-ms=31
+812 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1871261/85498309 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=47742/1150241 split=0/0 split-declined=0
+815 pid=FFFC51F3 time interval-ms=10000 swaps=676 present-ms=509 draw-ms=6609 upload-ms=419
+816 pid=FFFC51F3 tsc frames=676 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7130 bind-ms=81 iface-ms=6609 beginend-ms=6663 swap-ms=509 vertices=1440 flushes=31091 draws=31091 sink-ms=6569 sink-prep-ms=121 sinks=451176
+817 pid=FFFC51F3 sink begin-ms=67 flush-ms=6400 copy-ms=35 prep-texture-ms=62 prep-state-ms=26 prep-same-ms=30
+821 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1902352/86615990 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=53770/1290337 split=0/0 split-declined=0
+824 pid=FFFC51F3 time interval-ms=10000 swaps=409 present-ms=311 draw-ms=7128 upload-ms=6
+825 pid=FFFC51F3 tsc frames=409 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7440 bind-ms=269 iface-ms=7128 beginend-ms=7468 swap-ms=312 vertices=0 flushes=47907 draws=47907 sink-ms=7345 sink-prep-ms=172 sinks=517181
+826 pid=FFFC51F3 sink begin-ms=112 flush-ms=7116 copy-ms=43 prep-texture-ms=98 prep-state-ms=31 prep-same-ms=39
+830 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1950259/87840301 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=70682/1693115 split=0/0 split-declined=0
+833 pid=FFFC51F3 time interval-ms=10001 swaps=476 present-ms=358 draw-ms=7201 upload-ms=0
+834 pid=FFFC51F3 tsc frames=476 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7330 bind-ms=104 iface-ms=7201 beginend-ms=7392 swap-ms=358 vertices=0 flushes=47515 draws=47515 sink-ms=7259 sink-prep-ms=167 sinks=533355
+835 pid=FFFC51F3 sink begin-ms=122 flush-ms=7034 copy-ms=43 prep-texture-ms=95 prep-state-ms=30 prep-same-ms=38
+839 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=1997774/89115548 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=85746/2047425 split=0/0 split-declined=0
+842 pid=FFFC51F3 time interval-ms=10001 swaps=700 present-ms=527 draw-ms=7406 upload-ms=9
+843 pid=FFFC51F3 tsc frames=700 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7538 bind-ms=100 iface-ms=7406 beginend-ms=7141 swap-ms=528 vertices=0 flushes=43651 draws=43651 sink-ms=7030 sink-prep-ms=152 sinks=533985
+844 pid=FFFC51F3 sink begin-ms=101 flush-ms=6821 copy-ms=42 prep-texture-ms=81 prep-state-ms=30 prep-same-ms=36
+848 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2041425/90435370 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=95484/2300482 split=0/0 split-declined=0
+851 pid=FFFC51F3 time interval-ms=10002 swaps=947 present-ms=715 draw-ms=7554 upload-ms=0
+852 pid=FFFC51F3 tsc frames=947 wall-ms=10002 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7709 bind-ms=142 iface-ms=7554 beginend-ms=6736 swap-ms=715 vertices=0 flushes=26951 draws=26951 sink-ms=6665 sink-prep-ms=131 sinks=500963
+853 pid=FFFC51F3 sink begin-ms=64 flush-ms=6480 copy-ms=39 prep-texture-ms=66 prep-state-ms=29 prep-same-ms=32
+857 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2068376/91711557 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=95484/2300482 split=0/0 split-declined=0
+860 pid=FFFC51F3 time interval-ms=10001 swaps=889 present-ms=813 draw-ms=7585 upload-ms=0
+861 pid=FFFC51F3 tsc frames=889 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7693 bind-ms=96 iface-ms=7585 beginend-ms=6788 swap-ms=814 vertices=0 flushes=27745 draws=27745 sink-ms=6716 sink-prep-ms=127 sinks=520601
+862 pid=FFFC51F3 sink begin-ms=63 flush-ms=6537 copy-ms=38 prep-texture-ms=57 prep-state-ms=29 prep-same-ms=33
+866 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2096121/93021846 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=95484/2300482 split=0/0 split-declined=0
+869 pid=FFFC51F3 time interval-ms=10000 swaps=1001 present-ms=754 draw-ms=7811 upload-ms=0
+870 pid=FFFC51F3 tsc frames=1001 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7908 bind-ms=85 iface-ms=7811 beginend-ms=6879 swap-ms=755 vertices=0 flushes=27659 draws=27659 sink-ms=6807 sink-prep-ms=144 sinks=529767
+871 pid=FFFC51F3 sink begin-ms=64 flush-ms=6610 copy-ms=39 prep-texture-ms=58 prep-state-ms=34 prep-same-ms=33
+875 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2123780/94359323 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=95484/2300482 split=0/0 split-declined=0
+879 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2128382/94586408 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=95484/2300482 split=0/0 split-declined=0
+918 pid=FFFC51F3 DrvSetPixelFormat hdc=00000782 index=2 recorded=1
+922 pid=FFFC51F3 drawable window=000005F4 1024x768
+923 pid=FFFC51F3   depth cell=32 bits=24
+929 pid=FFFC51F3 time interval-ms=19979 swaps=119 present-ms=89 draw-ms=9733 upload-ms=32
+930 pid=FFFC51F3 tsc frames=119 wall-ms=19979 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=10075 bind-ms=72 iface-ms=9733 beginend-ms=8876 swap-ms=706 vertices=0 flushes=4603 draws=4603 sink-ms=8773 sink-prep-ms=182 sinks=96392
+931 pid=FFFC51F3 sink begin-ms=92 flush-ms=8518 copy-ms=53 prep-texture-ms=81 prep-state-ms=43 prep-same-ms=52
+935 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2128383/94586411 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=95484/2300482 split=0/0 split-declined=0
+939 pid=FFFC51F3 time interval-ms=10001 swaps=311 present-ms=374 draw-ms=6717 upload-ms=456
+940 pid=FFFC51F3 tsc frames=311 wall-ms=10001 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7311 bind-ms=117 iface-ms=6717 beginend-ms=7213 swap-ms=375 vertices=1440 flushes=29786 draws=29786 sink-ms=7143 sink-prep-ms=106 sinks=328647
+941 pid=FFFC51F3 sink begin-ms=64 flush-ms=6999 copy-ms=29 prep-texture-ms=60 prep-state-ms=19 prep-same-ms=24
+945 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2158169/95363470 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=106014/2549077 split=0/0 split-declined=0
+948 pid=FFFC51F3 time interval-ms=10002 swaps=367 present-ms=442 draw-ms=7412 upload-ms=6
+949 pid=FFFC51F3 tsc frames=367 wall-ms=10002 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7556 bind-ms=115 iface-ms=7412 beginend-ms=7571 swap-ms=442 vertices=0 flushes=42476 draws=42476 sink-ms=7465 sink-prep-ms=146 sinks=458161
+950 pid=FFFC51F3 sink begin-ms=97 flush-ms=7267 copy-ms=38 prep-texture-ms=83 prep-state-ms=26 prep-same-ms=33
+954 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2200645/96466558 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=120507/2901616 split=0/0 split-declined=0
+957 pid=FFFC51F3 time interval-ms=10003 swaps=332 present-ms=421 draw-ms=7627 upload-ms=0
+958 pid=FFFC51F3 tsc frames=332 wall-ms=10003 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7739 bind-ms=94 iface-ms=7627 beginend-ms=7668 swap-ms=422 vertices=0 flushes=33601 draws=33601 sink-ms=7571 sink-prep-ms=130 sinks=391792
+959 pid=FFFC51F3 sink begin-ms=89 flush-ms=7399 copy-ms=31 prep-texture-ms=77 prep-state-ms=22 prep-same-ms=28
+963 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2234246/97382364 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=130291/3104659 split=0/0 split-declined=0
+966 pid=FFFC51F3 time interval-ms=10000 swaps=430 present-ms=517 draw-ms=7287 upload-ms=9
+967 pid=FFFC51F3 tsc frames=430 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7448 bind-ms=129 iface-ms=7287 beginend-ms=7343 swap-ms=518 vertices=0 flushes=41862 draws=41862 sink-ms=7234 sink-prep-ms=138 sinks=429896
+968 pid=FFFC51F3 sink begin-ms=100 flush-ms=7047 copy-ms=36 prep-texture-ms=79 prep-state-ms=25 prep-same-ms=31
+972 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2276108/98442671 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=143222/3450547 split=0/0 split-declined=0
+975 pid=FFFC51F3 time interval-ms=10000 swaps=698 present-ms=859 draw-ms=7927 upload-ms=0
+976 pid=FFFC51F3 tsc frames=698 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=8030 bind-ms=95 iface-ms=7927 beginend-ms=6763 swap-ms=859 vertices=0 flushes=20025 draws=20025 sink-ms=6713 sink-prep-ms=88 sinks=370892
+977 pid=FFFC51F3 sink begin-ms=44 flush-ms=6587 copy-ms=28 prep-texture-ms=41 prep-state-ms=21 prep-same-ms=23
+981 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2296133/99388474 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=143222/3450547 split=0/0 split-declined=0
+984 pid=FFFC51F3 time interval-ms=10000 swaps=654 present-ms=790 draw-ms=7828 upload-ms=0
+985 pid=FFFC51F3 tsc frames=654 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7904 bind-ms=68 iface-ms=7828 beginend-ms=6745 swap-ms=790 vertices=0 flushes=19583 draws=19583 sink-ms=6682 sink-prep-ms=93 sinks=389677
+986 pid=FFFC51F3 sink begin-ms=47 flush-ms=6550 copy-ms=28 prep-texture-ms=43 prep-state-ms=23 prep-same-ms=24
+990 pid=FFFC51F3 paths batches/triangles untextured=0/0 hw=2315716/100349520 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=143222/3450547 split=0/0 split-declined=0

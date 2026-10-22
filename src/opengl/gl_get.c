@@ -242,7 +242,8 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
                              textures->unpack_skip_rows); return 1;
     case 0x0CF4u: v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
                              textures->unpack_skip_pixels); return 1;
-    case 0x0CF0u:
+    case 0x0CF0u: v9x_gl_one(out, V9X_GL_CLASS_BOOLEAN,
+                             textures->unpack_swap_bytes); return 1;
     case 0x0CF1u:
     case 0x0D00u:
     case 0x0D01u: v9x_gl_one(out, V9X_GL_CLASS_BOOLEAN, 0.0); return 1;

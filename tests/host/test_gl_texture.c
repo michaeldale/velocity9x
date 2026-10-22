@@ -200,6 +200,112 @@ static void test_uploads(void)
     TCHECK(outstanding == 0l);
 }
 
+/*
+ * UNSIGNED_SHORT components (3.6.4: c / 65535). Windows 98's GLU32.DLL
+ * uploads every level gluBuild2DMipmaps makes with this type (its one
+ * glTexImage2D call pushes 0x1403), and Tux Racer builds all its textures
+ * that way: refused, none of them was ever complete (2026-10-23).
+ */
+static void test_unsigned_short_uploads(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_TEXTURES t;
+    const V9X_GL_TEXOBJ *o;
+    V9X_R3D_ABI_TEXTURE d;
+    V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+    /* The bytes of test_uploads' RGBA image, widened as GLU widens them
+     * (b * 257), so each must come back as the byte upload's texel. */
+    static const GLubyte rgba[16] = {
+        255, 0, 0, 255,  0, 255, 0, 136,  0, 0, 255, 0,  255, 255, 255, 17
+    };
+    GLushort wide[16];
+    GLushort chain[4 * 4 * 4];
+    v9x_u16 expected[4];
+    GLsizei edge;
+    GLint level;
+    unsigned int i;
+
+    for (i = 0u; i < 16u; ++i) {
+        wide[i] = (GLushort)(rgba[i] * 257u);
+    }
+    fresh(&s, &t);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 4, 2, 2, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, rgba);
+    o = bound_object(&t);
+    for (i = 0u; i < 4u; ++i) {
+        expected[i] = o->levels[0].texels[i];
+    }
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 4, 2, 2, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_SHORT, wide);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    o = bound_object(&t);
+    TCHECK(o->levels[0].texels[0] == expected[0] &&
+           o->levels[0].texels[1] == expected[1] &&
+           o->levels[0].texels[2] == expected[2] &&
+           o->levels[0].texels[3] == expected[3]);
+
+    /* A component is the whole 16-bit value, most significant byte
+     * first in weight: GLU's b * 257 has equal bytes, so these do not.
+     * Green 0xFF00 is 254 of 255, 63 at 6 bits; 0x00FF is 1, so 0. */
+    wide[0] = 0x0000u; wide[1] = 0xFF00u; wide[2] = 0x0000u;
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 1, 1, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_SHORT, wide);
+    o = bound_object(&t);
+    TCHECK(o->levels[0].texels[0] == 0x07E0u);
+    wide[1] = 0x00FFu;
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 1, 1, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_SHORT, wide);
+    o = bound_object(&t);
+    TCHECK(o->levels[0].texels[0] == 0x0000u);
+
+    /* UNPACK_SWAP_BYTES reverses each component's two bytes (3.6.4):
+     * the 0x00FF just read as 1 / 255 reads as 0xFF00. */
+    v9x_gl_pixel_store(&s, &t, 0x0CF0u, 1);
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 1, 1, 0,
+                        V9X_GL_RGB, V9X_GL_UNSIGNED_SHORT, wide);
+    o = bound_object(&t);
+    TCHECK(o->levels[0].texels[0] == 0x07E0u);
+    v9x_gl_pixel_store(&s, &t, 0x0CF0u, 0);
+
+    /* A sub-image in the same type. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 4, 2, 2, 0,
+                        V9X_GL_RGBA, V9X_GL_UNSIGNED_BYTE, rgba);
+    for (i = 0u; i < 16u; ++i) {
+        wide[i] = (GLushort)(rgba[i] * 257u);
+    }
+    v9x_gl_tex_sub_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 0, 0, 1, 1,
+                            V9X_GL_RGBA, V9X_GL_UNSIGNED_SHORT, wide + 4);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    o = bound_object(&t);
+    TCHECK(o->levels[0].texels[0] == expected[1]);
+
+    /* gluBuild2DMipmaps' sequence: every level in UNSIGNED_SHORT, then a
+     * mipmapped minification filter. The texture is complete. */
+    for (i = 0u; i < sizeof(chain) / sizeof(chain[0]); ++i) {
+        chain[i] = 0xFFFFu;
+    }
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_2D, 1);
+    v9x_gl_pixel_store(&s, &t, V9X_GL_UNPACK_ALIGNMENT, 2);
+    v9x_gl_tex_parameter(&s, &t, V9X_GL_TEXTURE_2D, V9X_GL_TEXTURE_MIN_FILTER,
+                         (GLint)V9X_GL_LINEAR_MIPMAP_NEAREST);
+    for (level = 0, edge = 4; level < 3; ++level, edge /= 2) {
+        v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, level, 3, edge, edge,
+                            0, V9X_GL_RGB, V9X_GL_UNSIGNED_SHORT, chain);
+    }
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    v9x_gl_tex_describe(&s, &t, &d, levels);
+    TCHECK(d.storage == V9X_R3D_ABI_TEXTURE_CPU && d.level_count == 3ul);
+    TCHECK(levels[0].width == 4ul &&
+           ((const v9x_u16 *)levels[0].pixels)[0] == 0xFFFFu);
+
+    /* The types still not converted are refused, not read wrongly. */
+    v9x_gl_tex_image_2d(&s, &t, V9X_GL_TEXTURE_2D, 0, 3, 1, 1, 0,
+                        V9X_GL_RGB, 0x1406u, chain);       /* FLOAT */
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM);
+    v9x_gl_textures_release(&t);
+    TCHECK(outstanding == 0l);
+}
+
 static void upload_chain(V9X_GL_STATE *s, V9X_GL_TEXTURES *t,
                          unsigned int levels)
 {
@@ -1085,6 +1191,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_texture_queries();
     test_names_and_binding();
     test_uploads();
+    test_unsigned_short_uploads();
     test_completeness_and_describe();
     test_fit_to_size_max();
     test_lookup_after_reuse_and_growth();
