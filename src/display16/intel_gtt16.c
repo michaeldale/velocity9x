@@ -32,6 +32,8 @@ DWORD v9x_i9xx_gtt_reserve_count;
 
 extern DWORD v9x_i9xx_first[V9X_I9XX_SNAPSHOT_DWORDS];
 extern unsigned long v9x_vbe_vram_reported;
+/* The BIOS's figure clamped to the GMADR the driver mapped (enable16.c). */
+extern unsigned long v9x_vbe_vram_bytes;
 extern WORD FAR PASCAL V9xPciReadIntelGttConfig(void);
 extern WORD FAR PASCAL V9xMiniI9xxGttCapture(DWORD bar3);
 extern WORD FAR PASCAL V9xMiniI9xxGttChunk(WORD chunk);
@@ -127,12 +129,20 @@ static WORD v9x_run_accepts(struct v9x_gtt_run *run, DWORD raw)
     return 1u;
 }
 
+/*
+ * GGC's GMS field, bits 7:4, in MiB: Linux 6.6 intel-gtt.c decodes it with
+ * I855_GMCH_GMS_MASK (F0h) for the 915 through Ironlake. Values 1-7 are the
+ * 945's table; 8 and up are G33 and later, and Ironlake's BIOS sets 8
+ * (128 MiB) on W9QI2F4F. It was 3 bits wide here, which read that as 0.
+ */
 static DWORD v9x_stolen_bytes(WORD ggc)
 {
-    static const DWORD sizes[8] = {
-        0ul, 1ul, 4ul, 8ul, 16ul, 32ul, 48ul, 64ul
+    /* WORDs, not DWORDs: I9XXCODE has a few dozen bytes to spare. */
+    static const WORD sizes[16] = {
+        0u, 1u, 4u, 8u, 16u, 32u, 48u, 64u,
+        128u, 256u, 96u, 160u, 224u, 352u, 0u, 0u
     };
-    return sizes[(ggc >> 4) & 7u] * 1024ul * 1024ul;
+    return (DWORD)sizes[(ggc >> 4) & 15u] * 1024ul * 1024ul;
 }
 
 void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
@@ -150,6 +160,7 @@ void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
     WORD buffered = 0u;
     HFILE binary = HFILE_ERROR;
     WORD failed = 0u;
+    DWORD window;
 
     V9xEnsureDiagDir();
     WritePrivateProfileString("IntelGtt", 0, 0, V9X_DIAG_INTELGTT_TXT);
@@ -162,12 +173,23 @@ void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
                                   V9X_DIAG_INTELGTT_TXT);
         return;
     }
+    /*
+     * The inventory, its reserve and the two GMADR samples below are bounded
+     * by the window the driver mapped, not by the BIOS's figure. They were the
+     * BIOS's figure until Ironlake, whose BIOS reports 128 MiB while the
+     * family maps 16 MiB: the reserve sample then read GMADR + ~127 MiB
+     * through a 16 MiB selector, and the boot hung after INTELGTT.BIN was
+     * written (docs\decisions\2026-10-22-ironlake-igma-2d.md). Every Gen3 and
+     * Gen4 BIOS measured reports under 16 MiB, where the two are equal. The
+     * runtime ring is placed from this same figure (gma950_hw16.c).
+     */
+    window = v9x_vbe_vram_bytes;
     stolen = v9x_stolen_bytes(v9x_i9xx_ggc);
-    if (stolen == 0ul || v9x_vbe_vram_reported == 0ul ||
+    if (stolen == 0ul || window == 0ul ||
         V9xMiniI9xxGttCapture(v9x_i9xx_gtt_bar3) == 0u ||
         v9x_i9xx_gtt_inventory_begin(
             &inventory, V9X_I9XX_GTT_ENTRY_COUNT, v9x_i9xx_bsm, stolen,
-            v9x_vbe_vram_reported, v9x_i9xx_first[0]) != V9X_STATUS_OK) {
+            window, v9x_i9xx_first[0]) != V9X_STATUS_OK) {
         WritePrivateProfileString("IntelGtt", "Result", "CAPTURE-FAILED",
                                   V9X_DIAG_INTELGTT_TXT);
         return;
@@ -229,6 +251,7 @@ void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
     v9x_write_hex("Ggc", v9x_i9xx_ggc);
     v9x_write_hex("StolenBytes", stolen);
     v9x_write_hex("VbeBytes", v9x_vbe_vram_reported);
+    v9x_write_hex("WindowBytes", window);
     v9x_write_hex("PgtblCtl", v9x_i9xx_first[0]);
     v9x_write_hex("GttStorage", inventory.gtt_storage_physical);
     v9x_write_hex("Entries", inventory.expected_entries);
@@ -262,7 +285,7 @@ void V9X_I9XX_FAR v9x_intel_publish_gtt_inventory(void)
         (reserve_raw & V9X_I9XX_PTE_VALID) == 0ul ||
         (reserve_raw & V9X_I9XX_PTE_ADDRESS_MASK) !=
             inventory.reserve_physical ||
-        inventory.reserve_aperture_offset > v9x_vbe_vram_reported - 4ul) {
+        inventory.reserve_aperture_offset > window - 4ul) {
         v9x_write_hex("SampleCount", 0ul);
         WritePrivateProfileString("IntelGtt", "Result", "SAMPLE-REFUSED",
                                   V9X_DIAG_INTELGTT_TXT);

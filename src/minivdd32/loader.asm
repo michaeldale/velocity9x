@@ -289,7 +289,11 @@ V9xI9xxEventOffsets dd 00002020h, 00002030h, 00002034h, 00002038h
 ; that part, so this journal, which also runs from DPMS calls at ring 0,
 ; does not read them there. Chosen when the GTT the display driver hands
 ; over is BAR0 + 512 KiB, which is where datasheet 316273 21.1.10 puts the
-; Gen4 GTT; on Gen3 the GTT is BAR3, a BAR of its own.
+; Gen4 GTT; on Gen3 the GTT is BAR3, a BAR of its own. Gen5 (Ironlake) is
+; chosen too: i915_reg.h has only FENCE_REG_965 at 3000h before
+; FENCE_REG_GEN6 at 100000h, and the Gen5 GTT is at BAR0 + 2 MiB (Linux 6.6
+; intel-gtt.c, i9xx_setup()).
+V9X_I9XX_GEN5_GTT_OFFSET equ 00200000h
 V9xI9xxEventOffsetsGen4 dd 00002020h, 00002030h, 00002034h, 00002038h
                          dd 0000203ch, 00002080h
                          dd 00003000h, 00003004h, 00003008h, 0000300ch
@@ -1330,7 +1334,12 @@ V9xMini_I9xx_Gtt_Map:
     jz      short V9xMini_I9xx_Gtt_Map_Window
     add     edx, V9X_I9XX_MMIO_BYTES
     cmp     eax, edx
+    je      short V9xMini_I9xx_Gtt_In_Bar0
+    ; Ironlake: the GTT at BAR0 + 2 MiB, and the same 965 fences.
+    add     edx, V9X_I9XX_GEN5_GTT_OFFSET - V9X_I9XX_MMIO_BYTES
+    cmp     eax, edx
     jne     short V9xMini_I9xx_Gtt_Map_Window
+V9xMini_I9xx_Gtt_In_Bar0:
     mov     V9xI9xxGttInBar0, 1
 V9xMini_I9xx_Gtt_Map_Window:
     VMMcall _MapPhysToLinear,<eax,V9X_I9XX_GTT_BYTES,0>

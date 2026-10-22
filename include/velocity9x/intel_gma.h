@@ -30,6 +30,15 @@
  */
 #define V9X_PCI_DEVICE_GMA_X3100_GM965   ((v9x_u16)0x2a02u)
 /*
+ * Ironlake desktop (Clarkdale) HD Graphics, function 0: Gen5. The GM965's
+ * 2D path carries over - blits on the render ring, no blitter ring before
+ * Gen6 - with the GTT at BAR0 + 2 MiB instead of + 512 KiB (Linux 6.6
+ * intel-gtt.c, i9xx_setup() case 5), and the display split across the CPU
+ * and the PCH. Measured read-only on W9QI2F4F
+ * (docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md).
+ */
+#define V9X_PCI_DEVICE_HD_ILK            ((v9x_u16)0x0042u)
+/*
  * Haswell GT2 desktop, HD Graphics 4600: Gen7.5, none of the Gen3 command
  * set, register layout or verbs (src\chipsets\intel\hsw\hsw_hw16.c). Measured
  * on the i5-4570 (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md).

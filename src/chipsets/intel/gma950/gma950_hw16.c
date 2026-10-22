@@ -374,6 +374,42 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
     }
 }
 
+/*
+ * Ironlake's HD Graphics (Gen5): the GM965's start - the 945's descriptor for
+ * the ring and the blits, and nothing else of the Gen3 engine.
+ *
+ * What carries over: the render ring at 2030h (Ironlake PRM Vol 1 Part 3
+ * 1.1.5) and the 2D path's commands on it; Gen5 has no blitter ring either.
+ * The GTT window is found by V9xPciReadIntelGttConfig at BAR0 + 2 MiB.
+ *
+ * What is withheld, and why:
+ *  - D3D. Gen5 keeps Gen4's URB pipeline, and no Gen5 kernel or state has
+ *    been built or run (docs\plans\intel-gen4-gen5-bringup.md, Phase 2).
+ *  - FLIP and FLIP_RING. The Gen3 flip writes the plane address at
+ *    70184h/71184h, which is DSPxLINOFF here as on Gen4, and FW_BLC, which
+ *    Ironlake replaced with the watermarks at 45100h (PRM Vol 3 Part 2 2.8).
+ *    The Gen4 flip is not claimed until it has been measured on this part.
+ * ASYNC_SUBMIT stays: it is how blits queue on the ring.
+ */
+static void v9x_ilk_fill_engine(unsigned long framebuffer_linear_base,
+                                unsigned long *control_linear_base,
+                                unsigned long *mapped_aperture_bytes,
+                                unsigned long *engine_type,
+                                unsigned long *engine_caps,
+                                unsigned long *gtt_linear_base,
+                                unsigned long *ring_linear_base,
+                                unsigned long *ring_bytes)
+{
+    v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
+                           mapped_aperture_bytes, engine_type, engine_caps,
+                           gtt_linear_base, ring_linear_base, ring_bytes);
+    *engine_caps &= ~(V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP |
+                      V9X_DD_ENGINE_CAP_FLIP_RING);
+    if (*ring_linear_base != 0ul) {
+        v9x_gma950_engine_status = "2d-claimed";
+    }
+}
+
 /* Exact physical target. The aperture hook remains absent: this family takes
  * the engine only, and the VBIOS keeps the display. */
 const V9X_HW16_DEVICE v9x_gma950_device = {
@@ -472,5 +508,25 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
     "hardware-gen4",
     0,
     v9x_gm965_fill_engine,
+    2u
+};
+
+/*
+ * Ironlake's HD Graphics, desktop. Config space, GTT and display measured
+ * read-only on W9QI2F4F (docs\decisions\2026-10-22-ironlake-gen5-read-only-
+ * mmio.md); this engine has not run on it. No Direct3D word: the silicon
+ * has a 3D engine, but not one this driver implements, so the settings page
+ * must not offer Hardware.
+ */
+const V9X_HW16_DEVICE v9x_ilk_hd_device = {
+    0x8086u, 0x0042u,
+    "Intel HD Graphics (Ironlake)",
+    "8086", "0042",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    0,
+    0,
+    v9x_ilk_fill_engine,
     2u
 };

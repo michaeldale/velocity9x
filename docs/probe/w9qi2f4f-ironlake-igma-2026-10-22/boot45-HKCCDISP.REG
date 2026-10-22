@@ -1,0 +1,25 @@
+REGEDIT4
+
+[HKEY_CURRENT_CONFIG\Display]
+
+[HKEY_CURRENT_CONFIG\Display\Settings]
+"fonts.fon"="vgasys.fon"
+"fixedfon.fon"="vgafix.fon"
+"oemfonts.fon"="vgaoem.fon"
+"DPILogicalX"="96"
+"DPILogicalY"="96"
+"DPIPhysicalX"="96"
+"DPIPhysicalY"="96"
+"BitsPerPixel"="4"
+"Resolution"="640,480"
+"MouseTrails"="0"
+"AttachToDesktop"="1"
+"DesktopPos"="192,144"
+
+[HKEY_CURRENT_CONFIG\Display\Fonts]
+"MS Serif 8,10,12,14,18,24 (VGA res)"="serife.fon"
+"MS Sans Serif 8,10,12,14,18,24 (VGA res)"="sserife.fon"
+"Courier 10,12,15 (VGA res)"="coure.fon"
+"Symbol 8,10,12,14,18,24 (VGA res)"="symbole.fon"
+"Small Fonts (VGA res)"="smalle.fon"
+

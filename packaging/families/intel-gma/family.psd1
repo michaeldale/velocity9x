@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -138,6 +138,38 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_gm965_device')
+        }
+        @{
+            # Ironlake desktop HD Graphics (Gen5), for 2D only: the GM965's
+            # first step - the 945's ring and blits, with the GTT at BAR0 +
+            # 2 MiB - no Direct3D (no Gen5 kernels exist) and no flips yet.
+            # Measured read-only on W9QI2F4F:
+            # docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md.
+            Id = 'hd-ironlake'
+            Name = 'Intel HD Graphics (Ironlake)'
+            VendorId = '8086'
+            DeviceId = '0042'
+            DeviceDesc = 'Velocity9x Intel HD Graphics (Ironlake)'
+            Adapter = 'Intel HD Graphics (Ironlake)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'not-advertised'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            VideoMemoryBytes = 4194304
+            # The family's table, which the driver's own must equal. This
+            # BIOS describes neither 1024x576 row; the runtime scan publishes
+            # the modes it finds.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_ilk_hd_device')
         }
         @{
             # Haswell GT2 desktop, from 0.19.0. Gen7.5 shares no Gen3 path:
@@ -306,7 +338,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:0412 or 8086:0162 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:0042, 8086:0412 or 8086:0162 exactly'
     }
 
     Vm = @{

@@ -3387,13 +3387,22 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     ; Measured on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-
     ; and-mmio.md). The rest of this driver reads the first 256 KiB of it,
     ; which maps the 256 MiB aperture.
+    ;
+    ; Gen5 (Ironlake 0042) has the same two 64-bit BARs, and its GTT is at
+    ; GTTMMADR + 2 MiB instead: Linux 6.6 intel-gtt.c, i9xx_setup() "case 5:
+    ; gtt_phys_addr = reg_addr + MB(2)". Measured on W9QI2F4F, entries linear
+    ; from BSM (docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md).
+    ; SI keeps the device id for the offset below; no BIOS call here uses it.
     mov     di, 0002h
     mov     ax, 0b109h
     int     1ah
     jc      V9xPciReadIntelGttConfigFailed
     or      ah, ah
     jnz     V9xPciReadIntelGttConfigFailed
+    mov     si, cx
     cmp     cx, 2a02h
+    je      V9xPciReadIntelGttConfigGen4
+    cmp     cx, 0042h
     je      V9xPciReadIntelGttConfigGen4
 
     mov     di, 0018h
@@ -3468,7 +3477,16 @@ V9xPciReadIntelGttConfigGen4:
     ja      V9xPciReadIntelGttConfigFailed
     test    eax, 000fffffh
     jnz     V9xPciReadIntelGttConfigFailed
+    cmp     si, 0042h
+    je      short V9xPciReadIntelGttConfigGen5
     add     eax, 00080000h
+    jmp     short V9xPciReadIntelGttConfigBar0Gtt
+V9xPciReadIntelGttConfigGen5:
+    ; The 4 MiB BAR: 2 MiB of registers, then the GTT.
+    test    eax, 003fffffh
+    jnz     V9xPciReadIntelGttConfigFailed
+    add     eax, 00200000h
+V9xPciReadIntelGttConfigBar0Gtt:
     mov     _v9x_i9xx_gtt_bar3, eax
     jmp     V9xPciReadIntelGttConfigBsm
 

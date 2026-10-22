@@ -1,0 +1,29 @@
+Velocity9x active display bring-up package
+Version: 0.24.0
+Build: af1c60b4-dirty
+Target: Windows 98SE, PCI\VEN_8086&DEV_0042, PCI\VEN_8086&DEV_0162, PCI\VEN_8086&DEV_0412, PCI\VEN_8086&DEV_2592, PCI\VEN_8086&DEV_27AE, PCI\VEN_8086&DEV_2A02, PCI\VEN_8086&DEV_A011 only
+Modes: 640x480 and native 1024x576 at 8/16 bpp and 60 Hz
+Forced diagnostic mode index: -1 (-1 means registry-selected)
+Boot trace: True (writes C:\V9XDIAG\V9XBOOT.INI)
+Rendering: Windows DIB Engine plus DirectDraw HAL
+Mini-VDD callbacks: D0-only caps + guarded VESA DPMS + Win98 power state
+Settings: read-only bring-up status, report, and recovery shortcut
+Display Properties: read-only Velocity9x tab via V9XSETP.DLL
+GDI test: on-screen primitives, blits, and tolerant pixel readback
+Palette test: 8-bit reserved-entry animation and screen readback
+Mode switching: live same-depth via ReEnable; depth change needs restart
+DirectDraw HAL: V9XHAL.DLL (vidmem + flips, engine blits, Gen3 and Haswell Direct3D)
+OpenGL: V9XGL.DLL, an OpenGL 1.1 ICD registered under OpenGLDrivers (16-bit desktops the engine can draw)
+Glide: GLIDE2X.DLL, Glide 2.x over the same engine; never copied over a newer GLIDE2X.DLL, such as a 3dfx card's
+Glide 3: GLIDE3X.DLL, Glide 3.x over the same engine; never copied over a newer GLIDE3X.DLL, such as a Voodoo3's
+3DCIF: ATI3DCIF.DLL, ATI's 3D Rage interface over the same engine; replaces ATI's own, which cannot run on this driver
+Mode-switch test: V9XMSW.EXE (/set:WxHxB, /cycle:N, /depth:N, /cursor)
+Monitor-power test: V9XPWR.EXE (D3 off, then D0 wake)
+DirectDraw probe: V9XDDP.EXE (flip timing and mode honesty)
+HAL trace: driver writes C:\V9XDIAG\V9XTRACE.INI on faults; V9XTRACE.EXE writes live snapshots C:\V9XDIAG\V9XSNAP.INI, V9XSNA1-7.INI, with builds, card, installed files and programs
+Window inventory: V9XWND.EXE writes GDI-free C:\V9XDIAG\V9XWND.INI
+Reports: V9XUPD.EXE /REPORT (Send report... on the Advanced tab) runs V9XTRACE.EXE and sends C:\V9XDIAG files to michaeldale.com.au on request; both are installed in the system directory
+Preflight: V9XSTAGE.EXE (no mode change and no installation)
+Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED
+
+Read FIRSTBOOT.TXT, INSTALL.TXT, and RECOVER.TXT before selecting the INF.
