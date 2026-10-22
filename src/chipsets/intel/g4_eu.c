@@ -134,6 +134,7 @@ void v9x_g4_program_init(struct v9x_g4_program *program,
     program->capacity = capacity;
     program->count = 0ul;
     program->overflow = 0u;
+    program->gen = V9X_G4_GEN4;
 }
 
 static struct v9x_g4_inst *v9x_g4_next(struct v9x_g4_program *program)
@@ -203,6 +204,31 @@ void v9x_g4_alu(struct v9x_g4_program *program, v9x_u8 opcode,
                                                    : v9x_g4_source_word(&src1);
 }
 
+/*
+ * Gen5's send descriptor (intel_g4_eu.h). The URB, sampler and render
+ * target messages carry a header, so header present is set for them;
+ * math takes none (Ironlake PRM Vol 4 Part 1 6.1.1.1). The sampler's SIMD
+ * mode is new at 17:16: 1 SIMD8, 2 SIMD16 (Vol 4 Part 1 4.11.1.1.3).
+ */
+static void v9x_g4_send_desc_gen5(struct v9x_g4_inst *inst, v9x_u8 exec_size,
+                                  v9x_u8 sfid, v9x_u8 mlen, v9x_u8 rlen,
+                                  v9x_u16 function_control, v9x_u8 eot)
+{
+    v9x_u32 control = (v9x_u32)function_control;
+    v9x_u32 header = sfid != V9X_G4_SFID_MATH ? 1ul : 0ul;
+
+    if (sfid == V9X_G4_SFID_SAMPLER) {
+        control |= (exec_size == V9X_G4_EU_EXEC_16 ? 2ul : 1ul) << 16;
+    }
+    inst->dw[2] |= ((v9x_u32)(sfid & 0xfu) << 28) |
+                   ((v9x_u32)(eot != 0u) << 26);
+    inst->dw[3] = control |
+                  (header << 19) |
+                  ((v9x_u32)(rlen & 0x1fu) << 20) |
+                  ((v9x_u32)(mlen & 0xfu) << 25) |
+                  ((v9x_u32)(eot != 0u) << 31);
+}
+
 void v9x_g4_send(struct v9x_g4_program *program, v9x_u8 exec_size,
                  v9x_u8 qtr, struct v9x_g4_reg dst, struct v9x_g4_reg src0,
                  v9x_u8 base_mrf, v9x_u8 sfid, v9x_u8 mlen, v9x_u8 rlen,
@@ -223,6 +249,11 @@ void v9x_g4_send(struct v9x_g4_program *program, v9x_u8 exec_size,
                   ((v9x_u32)V9X_G4_EU_TYPE_D << 12);
     if (src0.file != V9X_G4_EU_FILE_ARF) {
         inst->dw[2] = v9x_g4_source_word(&src0);
+    }
+    if (program->gen == V9X_G4_GEN5) {
+        v9x_g4_send_desc_gen5(inst, exec_size, sfid, mlen, rlen,
+                              function_control, eot);
+        return;
     }
     inst->dw[3] = (v9x_u32)function_control |
                   ((v9x_u32)(rlen & 0xfu) << 16) |

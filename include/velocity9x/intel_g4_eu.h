@@ -99,13 +99,29 @@ struct v9x_g4_inst {
     v9x_u32 dw[4];
 };
 
+/*
+ * The generation a program is encoded for. Gen5 (Ironlake) keeps Gen4's
+ * opcodes, regions and ALU words - xf86's exa_*.g4b.gen5 kernels are the
+ * .g4b ALU words unchanged - and moves send's descriptor:
+ *   DW2 31:28 shared function, DW2 26 end of thread (as well as DW3 31);
+ *   DW3 28:25 message length, 24:20 response length, 19 header present,
+ *   18:0 function control (the sampler's SIMD mode at 17:16).
+ * Mesa 24.0.9 brw_inst.h's Gen5 columns; checked against the .g4b.gen5
+ * words in the host test.
+ */
+#define V9X_G4_GEN4 ((v9x_u8)4u)
+#define V9X_G4_GEN5 ((v9x_u8)5u)
+
 /* An instruction stream being built. overflow is set, not returned, when
- * a write would pass the end, so a builder checks once at the end. */
+ * a write would pass the end, so a builder checks once at the end. gen is
+ * V9X_G4_GEN4 after v9x_g4_program_init; set it to V9X_G4_GEN5 before
+ * building for Ironlake. */
 struct v9x_g4_program {
     struct v9x_g4_inst *inst;
     v9x_u32 capacity;
     v9x_u32 count;
     v9x_u8 overflow;
+    v9x_u8 gen;
 };
 
 /* Operand constructors. */

@@ -383,6 +383,94 @@ static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
 }
 
 /*
+ * The Gen4/Gen5 engine's last commands, as the parser read them: the ring's
+ * dwords, then the batch each MI_BATCH_BUFFER_START in it names, both read
+ * through the aperture the HAL published. Memory reads only, no register.
+ *
+ * Batches are GTT offsets; the LFB is the aperture from GTT offset 0, so a
+ * batch is at linear_base plus its address, and RingGtt (ring_linear_base
+ * less linear_base) says whether that holds - it must equal the ring START
+ * a register snapshot reads. Ironlake's ESR instruction error on the D3D path
+ * (docs\decisions\2026-10-22-ironlake-direct3d.md) is why this exists.
+ */
+#define V9X_RING_DUMP_MAX_DWORDS  256ul
+#define V9X_RING_DUMP_BATCHES     4ul
+#define V9X_RING_DUMP_BATCH_DWORDS 160ul
+#define V9X_RING_MI_BATCH_START   0x18800180ul
+#define V9X_RING_MI_BATCH_END     0x05000000ul
+
+static void v9x_write_dword_key(const char *prefix, DWORD index, DWORD value)
+{
+    char key[24];
+
+    wsprintf(key, "%s%03lu", prefix, (unsigned long)index);
+    v9x_write_hex(key, value);
+}
+
+static void v9x_write_ring_dump(const V9X_DD_ENGINE *engine,
+                                DWORD fb_linear)
+{
+    const volatile DWORD *ring;
+    DWORD ring_dwords;
+    DWORD batches[V9X_RING_DUMP_BATCHES];
+    DWORD batch_count = 0ul;
+    DWORD index;
+    DWORD known;
+    char prefix[8];
+
+    if ((engine->engine_caps & V9X_DD_ENGINE_CAPS_I9XX_G4_3D) == 0ul ||
+        engine->ring_linear_base == 0ul || engine->ring_bytes == 0ul ||
+        fb_linear == 0ul) {
+        return;
+    }
+    v9x_write_hex("RingGtt", engine->ring_linear_base - fb_linear);
+    ring_dwords = engine->ring_bytes / 4ul;
+    if (ring_dwords > V9X_RING_DUMP_MAX_DWORDS) {
+        ring_dwords = V9X_RING_DUMP_MAX_DWORDS;
+    }
+    ring = (const volatile DWORD *)engine->ring_linear_base;
+    if (IsBadReadPtr((const void *)ring, ring_dwords * 4ul)) {
+        v9x_write_text("RingDumpError", "ring-unreadable");
+        return;
+    }
+    for (index = 0ul; index < ring_dwords; ++index) {
+        v9x_write_dword_key("Ring", index, ring[index]);
+        if (ring[index] == V9X_RING_MI_BATCH_START && index + 1ul < ring_dwords &&
+            batch_count < V9X_RING_DUMP_BATCHES) {
+            for (known = 0ul; known < batch_count; ++known) {
+                if (batches[known] == ring[index + 1ul]) {
+                    break;
+                }
+            }
+            if (known == batch_count) {
+                batches[batch_count++] = ring[index + 1ul];
+            }
+        }
+    }
+
+    for (known = 0ul; known < batch_count; ++known) {
+        const volatile DWORD *batch;
+
+        wsprintf(prefix, "B%lu_", (unsigned long)known);
+        v9x_write_dword_key(prefix, 999ul, batches[known]);
+        /* The reserve the ring and batches live in is above fb.vram_bytes,
+         * which ends at the heap; the mapping is checked page by page
+         * instead. */
+        batch = (const volatile DWORD *)(fb_linear + batches[known]);
+        if (IsBadReadPtr((const void *)batch,
+                         V9X_RING_DUMP_BATCH_DWORDS * 4ul)) {
+            continue;
+        }
+        for (index = 0ul; index < V9X_RING_DUMP_BATCH_DWORDS; ++index) {
+            v9x_write_dword_key(prefix, index, batch[index]);
+            if (batch[index] == V9X_RING_MI_BATCH_END) {
+                break;
+            }
+        }
+    }
+}
+
+/*
  * The mode-set state the video BIOS left: the live pipe's DPLL and its two
  * FP divisors, the panel power sequencer and backlight when the LVDS port is
  * on, and Pineview's DSPFW watermarks. Read-only, like the dump above.
@@ -1738,6 +1826,7 @@ void __stdcall V9xTraceDumpEntry(void)
     }
     v9x_write_live_display(&snapshot.engine);
     v9x_write_display_clocks(&snapshot.engine);
+    v9x_write_ring_dump(&snapshot.engine, snapshot.fb.linear_base);
     /* Released only after the live read, so the window is read while the
      * session that published it is still open. */
     v9x_dd_release(dd_object);

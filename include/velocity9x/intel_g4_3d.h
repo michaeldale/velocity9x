@@ -20,6 +20,7 @@
 #ifndef VELOCITY9X_INTEL_G4_3D_H
 #define VELOCITY9X_INTEL_G4_3D_H
 
+#include "velocity9x/intel_g4_eu.h"
 #include "velocity9x/status.h"
 #include "velocity9x/types.h"
 
@@ -171,18 +172,22 @@ struct v9x_g4_draw {
     v9x_u8 chroma_key;
     v9x_u32 chroma_low;
     v9x_u32 chroma_high;
+    /* V9X_G4_GEN4 or V9X_G4_GEN5 (intel_g4_eu.h); anything else is
+     * refused. */
+    v9x_u8 gen;
 };
 
 void v9x_g4_batch_init(struct v9x_g4_batch *batch, v9x_u32 *storage,
                        v9x_u32 capacity);
 
 /* State blocks, each written at its pointer. */
-v9x_status v9x_g4_vs_state(v9x_u32 *out);
+v9x_status v9x_g4_vs_state(v9x_u32 *out, v9x_u8 gen);
 v9x_status v9x_g4_sf_state(v9x_u32 *out, v9x_u32 kernel_offset,
                            v9x_u8 grf_used, v9x_u32 viewport_offset);
 v9x_status v9x_g4_wm_state(v9x_u32 *out, v9x_u32 kernel_offset,
                            v9x_u8 grf_used, v9x_u32 sampler_offset,
-                           v9x_u8 sampler_count, v9x_u8 binding_count);
+                           v9x_u8 sampler_count, v9x_u8 binding_count,
+                           v9x_u8 gen);
 v9x_status v9x_g4_cc_state(v9x_u32 *out, const struct v9x_g4_cc *cc,
                            v9x_u32 viewport_offset, v9x_u8 write_disable);
 void v9x_g4_cc_viewport(v9x_u32 *out);
@@ -222,6 +227,6 @@ v9x_u32 v9x_g4_batch_start_header(void);
 /* Check a batch against the commands this file emits: every header known,
  * every length the one emitted, MI_BATCH_BUFFER_END last. The role
  * i9xx_3d_decode.c plays for Gen3; returns V9X_FALSE on anything else. */
-v9x_u16 v9x_g4_batch_check(const v9x_u32 *dw, v9x_u32 count);
+v9x_u16 v9x_g4_batch_check(const v9x_u32 *dw, v9x_u32 count, v9x_u8 gen);
 
 #endif /* VELOCITY9X_INTEL_G4_3D_H */

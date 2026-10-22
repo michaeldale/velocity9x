@@ -386,9 +386,13 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
  * with the I9XX_GEN5 bit telling the HAL which Gen3 display registers this
  * part does not have (engine_abi.h).
  *
+ * D3D is the Gen4 engine's (d3d_g4.c) with its Gen5 encodings, chosen by
+ * the same I9XX_GEN5 bit: Gen5 keeps Gen4's URB pipeline and EU kernels,
+ * and moves a handful of command lengths and the send descriptor
+ * (docs\decisions\2026-10-22-ironlake-direct3d.md). Claimed, as on every
+ * part here, only with a ring and this boot's IntelRuntime3D.
+ *
  * What is withheld, and why:
- *  - D3D. Gen5 keeps Gen4's URB pipeline, and no Gen5 kernel or state has
- *    been built or run (docs\plans\intel-gen4-gen5-bringup.md, Phase 2).
  *  - FLIP_RING. The HAL's ring flip completes on the Gen3 ISR's pending
  *    bit, and Ironlake's display interrupts are DEISR at 44000h instead.
  * ASYNC_SUBMIT stays: it is how blits queue on the ring.
@@ -405,12 +409,9 @@ static void v9x_ilk_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
-    *engine_caps &= ~(V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP_RING);
+    *engine_caps &= ~V9X_DD_ENGINE_CAP_FLIP_RING;
     if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN5;
-    }
-    if (*ring_linear_base != 0ul) {
-        v9x_gma950_engine_status = "2d-claimed";
     }
 }
 
@@ -518,9 +519,8 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
 /*
  * Ironlake's HD Graphics, desktop. Config space, GTT and display measured
  * read-only on W9QI2F4F (docs\decisions\2026-10-22-ironlake-gen5-read-only-
- * mmio.md); this engine has not run on it. No Direct3D word: the silicon
- * has a 3D engine, but not one this driver implements, so the settings page
- * must not offer Hardware.
+ * mmio.md), the ring, blits and flips run (2026-10-22-ironlake-igma-2d.md,
+ * -flips.md). The Direct3D word names the Gen4 engine's Gen5 encodings.
  */
 const V9X_HW16_DEVICE v9x_ilk_hd_device = {
     0x8086u, 0x0042u,
@@ -529,7 +529,7 @@ const V9X_HW16_DEVICE v9x_ilk_hd_device = {
     "intel-gen3-mmio-fingerprint-v1",
     "vbe-lfb",
     "directdraw-fill-blt",
-    0,
+    "hardware-gen5",
     0,
     v9x_ilk_fill_engine,
     2u

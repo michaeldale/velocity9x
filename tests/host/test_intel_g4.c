@@ -147,6 +147,78 @@ static void test_encoder_against_xf86(void)
     CHECK(p.overflow == 1u && p.count == 1ul);
 }
 
+/*
+ * The same sends encoded for Gen5, against xf86-video-intel 2.99.917's
+ * exa_*.g4b.gen5: the Gen4 sources assembled for Ironlake, which the UXA
+ * path ran there. Only the send words differ from the .g4b; the ALU words
+ * are identical, which the ALU cases above already cover.
+ */
+static void test_encoder_against_xf86_gen5(void)
+{
+    struct v9x_g4_inst storage[4];
+    struct v9x_g4_program p;
+    struct v9x_g4_reg acc0;
+
+    /* exa_sf.g4b.gen5: send (4) 0 g6<1>F g1.12<4,4,1>F math inv mlen 1
+     * rlen 1 - no header for math. */
+    v9x_g4_program_init(&p, storage, 4ul);
+    p.gen = V9X_G4_GEN5;
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_4, V9X_G4_EU_QTR_NONE,
+                v9x_g4_grf(6u, 0u, V9X_G4_EU_TYPE_F),
+                v9x_g4_region(v9x_g4_grf(1u, 12u, V9X_G4_EU_TYPE_F),
+                              V9X_G4_EU_VSTRIDE_4, V9X_G4_EU_WIDTH_4,
+                              V9X_G4_EU_HSTRIDE_1),
+                0u, V9X_G4_SFID_MATH, 1u, 1u,
+                v9x_g4_math_desc(V9X_G4_MATH_INV), 0u);
+    CHECK(same_inst(&storage[0], 0x00400031ul, 0x20c01fbdul, 0x1069002cul,
+                    0x02100001ul));
+
+    /* exa_wm_src_projective.g4b.gen5: send (8) 0 g12<1>F g30<8,8,1>F math
+     * inv mlen 1 rlen 1. */
+    v9x_g4_program_init(&p, storage, 4ul);
+    p.gen = V9X_G4_GEN5;
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_8, V9X_G4_EU_QTR_NONE,
+                v9x_g4_grf(12u, 0u, V9X_G4_EU_TYPE_F),
+                v9x_g4_grf(30u, 0u, V9X_G4_EU_TYPE_F), 0u, V9X_G4_SFID_MATH,
+                1u, 1u, v9x_g4_math_desc(V9X_G4_MATH_INV), 0u);
+    CHECK(same_inst(&storage[0], 0x00600031ul, 0x21801fbdul, 0x108d03c0ul,
+                    0x02100001ul));
+
+    /* exa_sf.g4b.gen5: send (8) 0 null g0<8,8,1>F urb 0 transpose used
+     * complete mlen 4 rlen 0 { EOT } - header present, EOT in DW2 too. */
+    v9x_g4_program_init(&p, storage, 4ul);
+    p.gen = V9X_G4_GEN5;
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_8, V9X_G4_EU_QTR_NONE,
+                v9x_g4_null(V9X_G4_EU_TYPE_F),
+                v9x_g4_grf(0u, 0u, V9X_G4_EU_TYPE_F), 0u, V9X_G4_SFID_URB,
+                4u, 0u, v9x_g4_urb_write_desc(0u, 1u), 1u);
+    CHECK(same_inst(&storage[0], 0x00600031ul, 0x20001fbcul, 0x648d0000ul,
+                    0x8808c800ul));
+
+    /* exa_wm_src_sample_argb.g4b.gen5: send (16) 1 g14<1>UW null sampler
+     * (1,0,F) mlen 5 rlen 8 - header present, SIMD16 mode at 17:16. */
+    v9x_g4_program_init(&p, storage, 4ul);
+    p.gen = V9X_G4_GEN5;
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_16, V9X_G4_EU_QTR_NONE,
+                v9x_g4_grf(14u, 0u, V9X_G4_EU_TYPE_UW),
+                v9x_g4_null(V9X_G4_EU_TYPE_UD), 1u, V9X_G4_SFID_SAMPLER, 5u,
+                8u, v9x_g4_sampler_desc(1u, 0u), 0u);
+    CHECK(same_inst(&storage[0], 0x01800031ul, 0x21c01c09ul, 0x20000000ul,
+                    0x0a8a0001ul));
+
+    /* exa_wm_write.g4b.gen5: send (16) 0 acc0<1>UW g0<8,8,1>UW write
+     * (0, 8, 4, 0) mlen 10 rlen 0 { EOT }. */
+    acc0 = v9x_g4_null(V9X_G4_EU_TYPE_UW);
+    acc0.nr = 0x20u;
+    v9x_g4_program_init(&p, storage, 4ul);
+    p.gen = V9X_G4_GEN5;
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_16, V9X_G4_EU_QTR_NONE, acc0,
+                v9x_g4_grf(0u, 0u, V9X_G4_EU_TYPE_UW), 0u,
+                V9X_G4_SFID_DP_WRITE, 10u, 0u, v9x_g4_rt_write_desc(0u), 1u);
+    CHECK(same_inst(&storage[0], 0x00800031ul, 0x24001d28ul, 0x548d0000ul,
+                    0x94084800ul));
+}
+
 /* The SF kernel: fits its 1 KiB, ends in the URB write with EOT then the
  * prefetch nops, and writes each setup register at its own offset. */
 static void test_sf_kernel(void)
@@ -334,12 +406,27 @@ static void test_layout(void)
 /* State blocks: a few fields by genxml's positions. */
 static void test_state(void)
 {
-    v9x_u32 out[8];
+    v9x_u32 out[16];
     struct v9x_g4_cc cc;
     struct v9x_g4_sampler s;
+    v9x_u32 index;
 
-    CHECK(v9x_g4_wm_state(out, 0x21000ul, 58u, 0x30180ul, 1u, 2u) ==
-          V9X_STATUS_OK);
+    /* Ironlake's WM_STATE is 11 dwords: KSP1-3 and their GRF counts in
+     * 8-10, zero for SIMD16-only dispatch. The binding table and sampler
+     * counts are written 0, as xf86 writes them there ([DevILK-A,B] MBZ). */
+    for (index = 0ul; index < 16ul; ++index) {
+        out[index] = 0xfffffffful;
+    }
+    CHECK(v9x_g4_wm_state(out, 0x21000ul, 58u, 0x30180ul, 1u, 2u,
+                          V9X_G4_GEN5) == V9X_STATUS_OK);
+    CHECK(out[0] == (0x21000ul | (3ul << 1)));
+    CHECK(((out[1] >> 18) & 0xfful) == 0ul);
+    CHECK((out[4] & ~31ul) == 0x30180ul && ((out[4] >> 2) & 7ul) == 0ul);
+    CHECK(out[8] == 0ul && out[9] == 0ul && out[10] == 0ul);
+    CHECK(out[11] == 0xfffffffful);
+
+    CHECK(v9x_g4_wm_state(out, 0x21000ul, 58u, 0x30180ul, 1u, 2u,
+                          V9X_G4_GEN4) == V9X_STATUS_OK);
     CHECK(out[0] == (0x21000ul | (3ul << 1)));
     CHECK(((out[1] >> 18) & 0xfful) == 2ul);
     CHECK(((out[1] >> 8) & 0x3ful) == 1ul);
@@ -349,7 +436,7 @@ static void test_state(void)
     CHECK((out[5] & 3ul) == 2ul);                    /* 16-pixel only */
     CHECK((out[5] & (1ul << 19)) != 0ul);
     CHECK((out[5] >> 25) == V9X_G4_WM_MAX_THREADS - 1u);
-    CHECK(v9x_g4_wm_state(out, 0x21010ul, 58u, 0ul, 0u, 2u) ==
+    CHECK(v9x_g4_wm_state(out, 0x21010ul, 58u, 0ul, 0u, 2u, V9X_G4_GEN4) ==
           V9X_STATUS_INVALID_ARGUMENT);
 
     CHECK(v9x_g4_sf_state(out, 0x20000ul, 21u, 0x30140ul) == V9X_STATUS_OK);
@@ -361,9 +448,15 @@ static void test_state(void)
     CHECK((out[5] & 2ul) == 0ul);                    /* no viewport xform */
     CHECK(((out[6] >> 29) & 3ul) == 1ul);            /* cull none */
 
-    CHECK(v9x_g4_vs_state(out) == V9X_STATUS_OK);
+    CHECK(v9x_g4_vs_state(out, V9X_G4_GEN4) == V9X_STATUS_OK);
     CHECK((out[6] & 1ul) == 0ul && (out[6] & 2ul) != 0ul);
     CHECK(((out[4] >> 11) & 0xfful) == V9X_G4_URB_VS_ENTRIES);
+    /* Ironlake: the entry count is U9 shifted right by 2 (PRM Vol 2 Part 1
+     * VS_STATE, "8=32 entries"). */
+    CHECK(v9x_g4_vs_state(out, V9X_G4_GEN5) == V9X_STATUS_OK);
+    CHECK(((out[4] >> 11) & 0x7ful) == V9X_G4_URB_VS_ENTRIES / 4u);
+    CHECK(((out[4] >> 19) & 0x1ful) == V9X_G4_URB_VS_SIZE - 1u);
+    CHECK(v9x_g4_vs_state(out, 6u) == V9X_STATUS_INVALID_ARGUMENT);
 
     memset(&cc, 0, sizeof(cc));
     cc.depth_test = 1u;
@@ -508,10 +601,12 @@ static void test_batch(void)
     d.chroma_key = 0u;
     d.chroma_low = 0ul;
     d.chroma_high = 0ul;
+    d.gen = V9X_G4_GEN4;
     for (pre = 0ul; pre < 16ul; ++pre) {
         v9x_g4_batch_init(&batch, words, 512ul);
         CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
-        CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+        CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) ==
+              V9X_TRUE);
         CHECK((batch.count & 1ul) == 0ul);
         saw_end = V9X_FALSE;
         for (index = 0ul; index < batch.count; ++index) {
@@ -534,7 +629,7 @@ static void test_batch(void)
     d.chroma_high = 0xffff00fful;
     v9x_g4_batch_init(&batch, words, 512ul);
     CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
-    CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) == V9X_TRUE);
     saw_end = V9X_FALSE;
     for (index = 0ul; index + 3ul < batch.count; ++index) {
         if (words[index] == 0x79040002ul && words[index + 1ul] == 0ul &&
@@ -551,7 +646,7 @@ static void test_batch(void)
     d.depth_format = V9X_G4_DEPTH_D16_UNORM;
     v9x_g4_batch_init(&batch, words, 512ul);
     CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
-    CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) == V9X_TRUE);
     /* Y-tiled D24_UNORM_S8: 3DSTATE_DEPTH_BUFFER DW1 tiled (27) and the Y
      * walk (26), format 2 at 20:18, pitch less one. */
     d.depth_pitch = 2560ul;
@@ -559,7 +654,7 @@ static void test_batch(void)
     d.depth_tiled = 1u;
     v9x_g4_batch_init(&batch, words, 512ul);
     CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
-    CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_TRUE);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) == V9X_TRUE);
     saw_end = V9X_FALSE;
     for (index = 0ul; index + 2ul < batch.count; ++index) {
         if (words[index] == 0x79050003ul) {
@@ -575,10 +670,10 @@ static void test_batch(void)
 
     /* An unknown command, a short buffer and a missing end are refused. */
     words[2] ^= 0x00010000ul;
-    CHECK(v9x_g4_batch_check(batch.dw, batch.count) == V9X_FALSE);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) == V9X_FALSE);
     words[2] ^= 0x00010000ul;
-    CHECK(v9x_g4_batch_check(batch.dw, 5ul) == V9X_FALSE);
-    CHECK(v9x_g4_batch_check(batch.dw, 0ul) == V9X_FALSE);
+    CHECK(v9x_g4_batch_check(batch.dw, 5ul, V9X_G4_GEN4) == V9X_FALSE);
+    CHECK(v9x_g4_batch_check(batch.dw, 0ul, V9X_G4_GEN4) == V9X_FALSE);
 
     /* Too small a buffer overflows rather than writing past it. */
     v9x_g4_batch_init(&batch, words, 8ul);
@@ -586,10 +681,115 @@ static void test_batch(void)
     CHECK(v9x_g4_batch_start_header() == 0x18800180ul);
 }
 
+/* Find the first dword equal to header at or after from; count if none. */
+static v9x_u32 find_header(const v9x_u32 *words, v9x_u32 count,
+                           v9x_u32 header)
+{
+    v9x_u32 index;
+
+    for (index = 0ul; index < count; ++index) {
+        if (words[index] == header) {
+            return index;
+        }
+    }
+    return count;
+}
+
+/*
+ * The Ironlake batch: the commands whose encoding moved between the 965
+ * and Gen5 (Ironlake PRM Vol 1 Part 1 and Vol 2 Part 1; Mesa genxml
+ * gen5.xml; xf86 i965_render.c's IS_GEN5 paths, which ran there).
+ */
+static void test_batch_gen5(void)
+{
+    v9x_u32 words[512];
+    struct v9x_g4_batch batch;
+    struct v9x_g4_draw d;
+    v9x_u32 at;
+    v9x_u32 index;
+
+    d.state_base = 0x00670000ul;
+    d.state_offset = V9X_G4_STATE_OFF;
+    d.vertex_address = 0x00670000ul + V9X_G4_VERTEX_OFF;
+    d.vertex_count = 6ul;
+    d.width = 640u;
+    d.height = 480u;
+    d.depth_address = 0x00200000ul;
+    d.depth_pitch = 2560ul;
+    d.depth_format = V9X_G4_DEPTH_D24_UNORM_S8;
+    d.depth_tiled = 1u;
+    d.chroma_key = 0u;
+    d.chroma_low = 0ul;
+    d.chroma_high = 0ul;
+    d.gen = V9X_G4_GEN5;
+    v9x_g4_batch_init(&batch, words, 512ul);
+    CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN5) == V9X_TRUE);
+    /* A Gen5 batch is not a Gen4 one. */
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) ==
+          V9X_FALSE);
+
+    /* PIPELINE_SELECT, sub-type 1 (Vol 1 Part 1 3.3). */
+    CHECK(find_header(words, batch.count, 0x69040000ul) < batch.count);
+    CHECK(find_header(words, batch.count, 0x61040000ul) == batch.count);
+
+    /* STATE_BASE_ADDRESS, eight dwords: general, surface, indirect and
+     * instruction bases, then the three upper bounds, disabled. */
+    at = find_header(words, batch.count, 0x61010006ul);
+    CHECK(at + 8ul <= batch.count);
+    if (at + 8ul <= batch.count) {
+        CHECK(words[at + 1ul] == (0x00670000ul | 1ul));
+        CHECK(words[at + 2ul] == (0x00670000ul | 1ul));
+        CHECK(words[at + 3ul] == 1ul);
+        CHECK(words[at + 4ul] == (0x00670000ul | 1ul));
+        CHECK(words[at + 5ul] == 1ul && words[at + 6ul] == 1ul &&
+              words[at + 7ul] == 1ul);
+    }
+
+    /* 3DSTATE_DEPTH_BUFFER, six dwords, the last the zero coordinate
+     * offset (Vol 2 Part 1 p330). */
+    at = find_header(words, batch.count, 0x79050004ul);
+    CHECK(at + 6ul <= batch.count);
+    if (at + 6ul <= batch.count) {
+        CHECK(words[at + 1ul] == ((1ul << 29) | (1ul << 27) | (1ul << 26) |
+                                  (2ul << 18) | 2559ul));
+        CHECK(words[at + 2ul] == 0x00200000ul);
+        CHECK(words[at + 5ul] == 0ul);
+    }
+
+    /* VERTEX_BUFFER_STATE DW3: the end address, its last byte. */
+    at = find_header(words, batch.count, 0x78080003ul);
+    CHECK(at + 5ul <= batch.count);
+    if (at + 5ul <= batch.count) {
+        CHECK(words[at + 2ul] == 0x00670000ul + V9X_G4_VERTEX_OFF);
+        CHECK(words[at + 3ul] == 0x00670000ul + V9X_G4_VERTEX_OFF +
+                                     6ul * V9X_G4_VB_PITCH - 1ul);
+    }
+
+    /* VERTEX_ELEMENTS: eight, the first the zero VUE header, and no
+     * destination offsets - elements pack from dword 0 (Vol 2 Part 1
+     * 3.5.1). */
+    at = find_header(words, batch.count, 0x7809000ful);
+    CHECK(at + 17ul <= batch.count);
+    if (at + 17ul <= batch.count) {
+        CHECK(words[at + 2ul] == 0x22220000ul);
+        for (index = 0ul; index < 8ul; ++index) {
+            CHECK((words[at + 1ul + index * 2ul] & (1ul << 26)) != 0ul);
+            CHECK((words[at + 2ul + index * 2ul] & 0xfful) == 0ul);
+        }
+    }
+
+    /* Anything but 4 or 5 is refused. */
+    d.gen = 6u;
+    v9x_g4_batch_init(&batch, words, 512ul);
+    CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_g4_tests(void)
 {
     failures = 0u;
     test_encoder_against_xf86();
+    test_encoder_against_xf86_gen5();
     test_sf_kernel();
     test_wm_kernels();
     test_layout();
@@ -597,5 +797,6 @@ unsigned int v9x_run_intel_g4_tests(void)
     test_mips();
     test_chroma();
     test_batch();
+    test_batch_gen5();
     return failures;
 }

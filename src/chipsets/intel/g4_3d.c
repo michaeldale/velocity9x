@@ -35,6 +35,29 @@
 /* 3DSTATE_CHROMA_KEY, 79 04h (965 PRM Vol 4 4.7.5): table index, low, high. */
 #define V9X_G4_CHROMA_KEY_DWORDS   4u
 
+/*
+ * Gen5 (Ironlake), where the 965's encoding moved (Ironlake PRM; Mesa
+ * genxml gen5.xml; xf86 i965_render.c's IS_GEN5 paths, which ran there):
+ *  - PIPELINE_SELECT's command sub-type is 1 (Vol 1 Part 1 3.3, p26);
+ *  - STATE_BASE_ADDRESS is 8 dwords: an Instruction Base Address in DW4
+ *    that kernel start pointers become offsets from, then the three upper
+ *    bounds (Vol 1 Part 1 3.6.1, p40-45);
+ *  - 3DSTATE_DEPTH_BUFFER is 6 dwords, DW5 the depth coordinate offset
+ *    (Vol 2 Part 1 p326-330);
+ *  - VERTEX_BUFFER_STATE DW3 is the end address, not the maximum index
+ *    (p81-82);
+ *  - VERTEX_ELEMENT_STATE's destination offset is MBZ: elements pack from
+ *    VUE dword 0, so a zero element fills the header (p89, p93; xf86
+ *    gen5 prepends the same one).
+ */
+#define V9X_G4_PIPELINE_SELECT_3D_GEN5 0x69040000ul
+#define V9X_G4_SBA_DWORDS_GEN5     8u
+#define V9X_G4_DEPTH_DWORDS_GEN5   6u
+#define V9X_G4_VE_COUNT_GEN5       (V9X_G4_VE_COUNT + 1u)
+#define V9X_G4_VE_DWORDS_GEN5      (1u + 2u * V9X_G4_VE_COUNT_GEN5)
+/* STATE_BASE_ADDRESS: a field's Modify Enable, bit 0. */
+#define V9X_G4_SBA_MODIFY          1ul
+
 /* SAMPLER_STATE ChromaKey Mode (Vol 4 SAMPLER_STATE DW3 22). */
 #define V9X_G4_KEYFILTER_REPLACE_BLACK 1ul
 
@@ -69,6 +92,11 @@ static v9x_u32 v9x_g4_float(float value)
 
     convert.f = value;
     return convert.u;
+}
+
+static int v9x_g4_gen_valid(v9x_u8 gen)
+{
+    return gen == V9X_G4_GEN4 || gen == V9X_G4_GEN5;
 }
 
 /* GRF Register Count: blocks of 16 registers, less one. */
@@ -106,13 +134,20 @@ static void v9x_g4_zero(v9x_u32 *out, v9x_u32 dwords)
 
 /* The VS passed through: URB entries and size only, the unit disabled and
  * its vertex cache off (xf86 gen4_create_vs_unit_state). */
-v9x_status v9x_g4_vs_state(v9x_u32 *out)
+v9x_status v9x_g4_vs_state(v9x_u32 *out, v9x_u8 gen)
 {
-    if (out == 0) {
+    v9x_u32 entries = (v9x_u32)V9X_G4_URB_VS_ENTRIES;
+
+    if (out == 0 || !v9x_g4_gen_valid(gen)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* Ironlake counts the entries in fours: "U9 shift right by 2",
+     * 8 = 32 entries (Vol 2 Part 1 VS_STATE DW4, p123). */
+    if (gen == V9X_G4_GEN5) {
+        entries /= 4ul;
+    }
     v9x_g4_zero(out, 7ul);
-    out[4] = ((v9x_u32)V9X_G4_URB_VS_ENTRIES << 11) |
+    out[4] = (entries << 11) |
              (((v9x_u32)V9X_G4_URB_VS_SIZE - 1ul) << 19);
     out[6] = 1ul << 1;   /* Enable 0, Vertex Cache Disable 1 */
     return V9X_STATUS_OK;
@@ -148,14 +183,28 @@ v9x_status v9x_g4_sf_state(v9x_u32 *out, v9x_u32 kernel_offset,
 
 v9x_status v9x_g4_wm_state(v9x_u32 *out, v9x_u32 kernel_offset,
                            v9x_u8 grf_used, v9x_u32 sampler_offset,
-                           v9x_u8 sampler_count, v9x_u8 binding_count)
+                           v9x_u8 sampler_count, v9x_u8 binding_count,
+                           v9x_u8 gen)
 {
     if (out == 0 || (kernel_offset & 63ul) != 0ul ||
         (sampler_offset & 31ul) != 0ul || grf_used == 0u ||
-        grf_used > 128u || sampler_count > 4u) {
+        grf_used > 128u || sampler_count > 4u || !v9x_g4_gen_valid(gen)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    v9x_g4_zero(out, 8ul);
+    /*
+     * Ironlake's WM_STATE is 11 dwords: 8-10 hold the kernel pointers and
+     * GRF counts for 8- and 32-pixel dispatch, unused with 16-pixel only
+     * and zero (gen5.xml; Vol 2 Part 1 Table 8-1). Its binding table entry
+     * count is "[DevILK-A,B] MBZ" (p290), and xf86, which drew there,
+     * writes 0 for it and for the sampler count; this does the same.
+     */
+    if (gen == V9X_G4_GEN5) {
+        binding_count = 0u;
+        sampler_count = 0u;
+        v9x_g4_zero(out, 11ul);
+    } else {
+        v9x_g4_zero(out, 8ul);
+    }
     out[0] = (v9x_g4_grf_blocks(grf_used) << 1) | kernel_offset;
     /* Depth coefficients at URB offset 1 (crocus), the binding table
      * entry count. */
@@ -348,24 +397,42 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
     v9x_u32 st;
     v9x_u32 vs_end;
     v9x_u32 sf_end;
+    v9x_u32 dest_step;
+    int gen5;
 
     if (batch == 0 || draw == 0 || draw->vertex_count == 0ul ||
         draw->width == 0u || draw->height == 0u ||
-        (draw->state_base & 0xffful) != 0ul) {
+        (draw->state_base & 0xffful) != 0ul || !v9x_g4_gen_valid(draw->gen)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    gen5 = draw->gen == V9X_G4_GEN5;
     st = draw->state_offset;
 
     v9x_g4_emit(batch, V9X_G4_MI_FLUSH | V9X_G4_MI_FLUSH_EXE);
-    v9x_g4_emit(batch, V9X_G4_PIPELINE_SELECT_3D);
+    v9x_g4_emit(batch, gen5 ? V9X_G4_PIPELINE_SELECT_3D_GEN5
+                            : V9X_G4_PIPELINE_SELECT_3D);
 
-    /* Both state bases at the reserve; upper bounds disabled. */
-    v9x_g4_emit(batch, V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS));
-    v9x_g4_emit(batch, draw->state_base | 1ul);
-    v9x_g4_emit(batch, draw->state_base | 1ul);
-    v9x_g4_emit(batch, 0ul);
-    v9x_g4_emit(batch, 1ul);
-    v9x_g4_emit(batch, 0ul);
+    if (gen5) {
+        /* General, surface and instruction bases at the reserve, so every
+         * state and kernel offset is the one Gen4 uses; the indirect base
+         * and the three upper bounds as xf86 sets them, 0 and disabled. */
+        v9x_g4_emit(batch, V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS_GEN5));
+        v9x_g4_emit(batch, draw->state_base | V9X_G4_SBA_MODIFY);
+        v9x_g4_emit(batch, draw->state_base | V9X_G4_SBA_MODIFY);
+        v9x_g4_emit(batch, V9X_G4_SBA_MODIFY);
+        v9x_g4_emit(batch, draw->state_base | V9X_G4_SBA_MODIFY);
+        v9x_g4_emit(batch, V9X_G4_SBA_MODIFY);
+        v9x_g4_emit(batch, V9X_G4_SBA_MODIFY);
+        v9x_g4_emit(batch, V9X_G4_SBA_MODIFY);
+    } else {
+        /* Both state bases at the reserve; upper bounds disabled. */
+        v9x_g4_emit(batch, V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS));
+        v9x_g4_emit(batch, draw->state_base | 1ul);
+        v9x_g4_emit(batch, draw->state_base | 1ul);
+        v9x_g4_emit(batch, 0ul);
+        v9x_g4_emit(batch, 1ul);
+        v9x_g4_emit(batch, 0ul);
+    }
 
     v9x_g4_emit(batch, V9X_G4_CMD(3, 0, 1, V9X_G4_BINDING_DWORDS));
     v9x_g4_emit(batch, 0ul);
@@ -402,7 +469,8 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
                            ((v9x_u32)draw->width - 1ul));
     v9x_g4_emit(batch, 0ul);
 
-    v9x_g4_emit(batch, V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS));
+    v9x_g4_emit(batch, V9X_G4_CMD(3, 1, 5, gen5 ? V9X_G4_DEPTH_DWORDS_GEN5
+                                                 : V9X_G4_DEPTH_DWORDS));
     if (draw->depth_address != 0ul) {
         /* Tiled (27) with the Y-major walk (26) the depth buffer must use
          * when tiled (965 PRM Vol 2, 3DSTATE_DEPTH_BUFFER). */
@@ -421,6 +489,10 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
         v9x_g4_emit(batch, 0ul);
     }
     v9x_g4_emit(batch, 0ul);
+    if (gen5) {
+        /* Depth Coordinate Offset X and Y. */
+        v9x_g4_emit(batch, 0ul);
+    }
 
     /* The key table entry the sampler's ChromaKey Index 0 names. */
     if (draw->chroma_key != 0u) {
@@ -433,39 +505,58 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
     v9x_g4_emit(batch, V9X_G4_CMD(3, 0, 8, V9X_G4_VB_DWORDS));
     v9x_g4_emit(batch, (v9x_u32)V9X_G4_VB_PITCH);
     v9x_g4_emit(batch, draw->vertex_address);
-    v9x_g4_emit(batch, draw->vertex_count - 1ul);
+    /* Gen4: the maximum index. Gen5: the buffer's last byte. */
+    v9x_g4_emit(batch, gen5 ? draw->vertex_address +
+                                  draw->vertex_count * V9X_G4_VB_PITCH - 1ul
+                            : draw->vertex_count - 1ul);
     v9x_g4_emit(batch, 0ul);
 
-    v9x_g4_emit(batch, V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS));
+    /*
+     * Gen4 names each element's VUE dword. Gen5 packs them in order from
+     * dword 0, so it is given the zero header the Gen4 offsets skip, and
+     * every offset is 0: the VUE comes out the same (dwords 4 to 31 as
+     * below, four to an element).
+     */
+    if (gen5) {
+        v9x_g4_emit(batch, V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS_GEN5));
+        v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32A32_FLOAT, 0ul, 0ul,
+                              V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0,
+                              V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0);
+        dest_step = 0ul;
+    } else {
+        v9x_g4_emit(batch, V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS));
+        dest_step = 1ul;
+    }
     /* Position at dword 4, and again at 8 for the SF's z and 1/w. */
     v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32_FLOAT, V9X_G4_VB_POS,
-                          4ul, V9X_G4_VFCOMP_STORE_SRC,
+                          4ul * dest_step, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_1_FP);
     v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32_FLOAT, V9X_G4_VB_POS,
-                          8ul, V9X_G4_VFCOMP_STORE_SRC,
+                          8ul * dest_step, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_1_FP);
     v9x_g4_vertex_element(batch, V9X_G4_FMT_B8G8R8A8_UNORM,
-                          V9X_G4_VB_DIFFUSE, 12ul, V9X_G4_VFCOMP_STORE_SRC,
+                          V9X_G4_VB_DIFFUSE, 12ul * dest_step,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC,
-                          V9X_G4_VFCOMP_STORE_SRC);
+                          V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC);
     v9x_g4_vertex_element(batch, V9X_G4_FMT_B8G8R8A8_UNORM,
-                          V9X_G4_VB_SPECULAR, 16ul, V9X_G4_VFCOMP_STORE_SRC,
+                          V9X_G4_VB_SPECULAR, 16ul * dest_step,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC,
-                          V9X_G4_VFCOMP_STORE_SRC);
+                          V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC);
     v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32_FLOAT, V9X_G4_VB_TEX0,
-                          20ul, V9X_G4_VFCOMP_STORE_SRC,
+                          20ul * dest_step, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_1_FP);
     /* The second unit's u1/w and v1/w at dword 24, zero for one unit. */
     v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32_FLOAT, V9X_G4_VB_TEX1,
-                          24ul, V9X_G4_VFCOMP_STORE_SRC,
+                          24ul * dest_step, V9X_G4_VFCOMP_STORE_SRC,
                           V9X_G4_VFCOMP_STORE_SRC, V9X_G4_VFCOMP_STORE_0,
                           V9X_G4_VFCOMP_STORE_1_FP);
-    v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32A32_FLOAT, 0ul, 28ul,
+    v9x_g4_vertex_element(batch, V9X_G4_FMT_R32G32B32A32_FLOAT, 0ul,
+                          28ul * dest_step, V9X_G4_VFCOMP_STORE_0,
                           V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0,
-                          V9X_G4_VFCOMP_STORE_0, V9X_G4_VFCOMP_STORE_0);
+                          V9X_G4_VFCOMP_STORE_0);
 
     v9x_g4_emit(batch, V9X_G4_CMD(3, 3, 0, V9X_G4_PRIM_DWORDS) |
                            (V9X_G4_PRIM_TRILIST << 10));
@@ -490,19 +581,25 @@ v9x_u32 v9x_g4_batch_start_header(void)
     return V9X_G4_MI_BATCH_START;
 }
 
-/* The length of a command this file emits, from its header; 0 for one it
- * does not. */
-static v9x_u32 v9x_g4_command_length(v9x_u32 header)
+/* The length of a command this file emits for gen, from its header; 0 for
+ * one it does not, including the other generation's form of one it does. */
+static v9x_u32 v9x_g4_command_length(v9x_u32 header, v9x_u8 gen)
 {
+    int gen5 = gen == V9X_G4_GEN5;
+
     if (header == V9X_G4_MI_NOOP ||
         header == V9X_G4_MI_FLUSH ||
         header == (V9X_G4_MI_FLUSH | V9X_G4_MI_FLUSH_EXE) ||
         header == V9X_G4_MI_BATCH_END ||
-        header == V9X_G4_PIPELINE_SELECT_3D) {
+        header == (gen5 ? V9X_G4_PIPELINE_SELECT_3D_GEN5
+                        : V9X_G4_PIPELINE_SELECT_3D)) {
         return 1ul;
     }
-    if (header == V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS)) {
+    if (!gen5 && header == V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS)) {
         return V9X_G4_SBA_DWORDS;
+    }
+    if (gen5 && header == V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS_GEN5)) {
+        return V9X_G4_SBA_DWORDS_GEN5;
     }
     if (header == (V9X_G4_CMD(0, 0, 0, V9X_G4_URB_FENCE_DWORDS) |
                    V9X_G4_URB_REALLOC)) {
@@ -520,8 +617,11 @@ static v9x_u32 v9x_g4_command_length(v9x_u32 header)
     if (header == V9X_G4_CMD(3, 1, 0, V9X_G4_RECT_DWORDS)) {
         return V9X_G4_RECT_DWORDS;
     }
-    if (header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS)) {
+    if (!gen5 && header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS)) {
         return V9X_G4_DEPTH_DWORDS;
+    }
+    if (gen5 && header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS_GEN5)) {
+        return V9X_G4_DEPTH_DWORDS_GEN5;
     }
     if (header == V9X_G4_CMD(3, 0, 8, V9X_G4_VB_DWORDS)) {
         return V9X_G4_VB_DWORDS;
@@ -529,8 +629,11 @@ static v9x_u32 v9x_g4_command_length(v9x_u32 header)
     if (header == V9X_G4_CMD(3, 1, 4, V9X_G4_CHROMA_KEY_DWORDS)) {
         return V9X_G4_CHROMA_KEY_DWORDS;
     }
-    if (header == V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS)) {
+    if (!gen5 && header == V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS)) {
         return V9X_G4_VE_DWORDS;
+    }
+    if (gen5 && header == V9X_G4_CMD(3, 0, 9, V9X_G4_VE_DWORDS_GEN5)) {
+        return V9X_G4_VE_DWORDS_GEN5;
     }
     if (header == (V9X_G4_CMD(3, 3, 0, V9X_G4_PRIM_DWORDS) |
                    (V9X_G4_PRIM_TRILIST << 10))) {
@@ -539,13 +642,13 @@ static v9x_u32 v9x_g4_command_length(v9x_u32 header)
     return 0ul;
 }
 
-v9x_u16 v9x_g4_batch_check(const v9x_u32 *dw, v9x_u32 count)
+v9x_u16 v9x_g4_batch_check(const v9x_u32 *dw, v9x_u32 count, v9x_u8 gen)
 {
     v9x_u32 at = 0ul;
     v9x_u32 length;
     v9x_u16 ended = V9X_FALSE;
 
-    if (dw == 0 || count == 0ul) {
+    if (dw == 0 || count == 0ul || !v9x_g4_gen_valid(gen)) {
         return V9X_FALSE;
     }
     while (at < count) {
@@ -557,7 +660,7 @@ v9x_u16 v9x_g4_batch_check(const v9x_u32 *dw, v9x_u32 count)
             ++at;
             continue;
         }
-        length = v9x_g4_command_length(dw[at]);
+        length = v9x_g4_command_length(dw[at], gen);
         if (length == 0ul || at + length > count) {
             return V9X_FALSE;
         }

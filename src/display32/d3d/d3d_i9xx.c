@@ -2905,8 +2905,8 @@ static int v9x_d3d_i9xx_ready(void)
     if (v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         return 0;
     }
-    /* A Gen4 part shares the type for its ring and blitter only. */
-    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) != 0ul) {
+    /* A Gen4 or Gen5 part shares the type for its ring and blitter only. */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAPS_I9XX_G4_3D) != 0ul) {
         return 0;
     }
     if (v9x_hal->engine.control_linear_base == 0ul ||

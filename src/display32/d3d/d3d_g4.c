@@ -173,13 +173,22 @@ static void v9x_d3d_g4_count_refusal(DWORD reason)
     }
 }
 
+/* The encodings to build for: Gen5's on Ironlake (I9XX_GEN5), Gen4's
+ * otherwise. Kernels, state and batch all ask this. */
+static v9x_u8 v9x_d3d_g4_gen(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN5) != 0ul
+               ? V9X_G4_GEN5
+               : V9X_G4_GEN4;
+}
+
 static int v9x_d3d_g4_ready(void)
 {
     return v9x_hal != 0 && !v9x_d3d_g4_quarantined &&
            (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
            (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
            v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 &&
-           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) !=
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAPS_I9XX_G4_3D) !=
                0ul &&
            (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
            v9x_hal->engine.control_linear_base != 0ul &&
@@ -885,6 +894,7 @@ static int v9x_d3d_g4_write_sf(v9x_u8 *grf_used)
 
     v9x_g4_program_init(&program, v9x_d3d_g4_kernel_words,
                         V9X_D3D_G4_KERNEL_INSTS);
+    program.gen = v9x_d3d_g4_gen();
     if (v9x_g4_sf_kernel(&program, V9X_G4_SETUP_REGS, grf_used) !=
         V9X_STATUS_OK) {
         return 0;
@@ -915,6 +925,7 @@ static int v9x_d3d_g4_write_wm(const struct v9x_g4_ps_desc *desc,
     *kernel = v9x_d3d_g4_wm_offset(slot);
     v9x_g4_program_init(&program, v9x_d3d_g4_kernel_words,
                         V9X_D3D_G4_KERNEL_INSTS);
+    program.gen = v9x_d3d_g4_gen();
     if (v9x_g4_wm_kernel(&program, desc, grf_used) != V9X_STATUS_OK) {
         return 0;
     }
@@ -963,12 +974,12 @@ static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
     for (index = 0ul; index < 16ul; ++index) {
         image[V9X_G4_ST_BORDER / 4ul + index] = 0ul;
     }
-    if (v9x_g4_vs_state(image + V9X_G4_ST_VS / 4ul) != V9X_STATUS_OK ||
+    if (v9x_g4_vs_state(image + V9X_G4_ST_VS / 4ul, v9x_d3d_g4_gen()) != V9X_STATUS_OK ||
         v9x_g4_sf_state(image + V9X_G4_ST_SF / 4ul, V9X_G4_SF_KERNEL_OFF,
                         sf_grf, st + V9X_G4_ST_SF_VP) != V9X_STATUS_OK ||
         v9x_g4_wm_state(image + V9X_G4_ST_WM / 4ul, wm_kernel, wm_grf,
                         st + V9X_G4_ST_SAMPLER, (v9x_u8)state->textured,
-                        3u) !=
+                        3u, v9x_d3d_g4_gen()) !=
             V9X_STATUS_OK ||
         v9x_g4_cc_state(image + V9X_G4_ST_CC / 4ul, &state->cc,
                         st + V9X_G4_ST_CC_VP, 0u) != V9X_STATUS_OK) {
@@ -1151,6 +1162,7 @@ static int v9x_d3d_g4_submit(const V9X_R3D_DRAW *draw,
     d.chroma_key = state->texture.sampler.chroma_key;
     d.chroma_low = state->chroma_low;
     d.chroma_high = state->chroma_high;
+    d.gen = v9x_d3d_g4_gen();
     /* Left running, unless GDI may be drawing on the screen (Haswell's
      * rule, d3d_hsw.c v9x_d3d_hsw_draw_waits). */
     wait_after = v9x_present_gdi_may_draw();
@@ -1190,7 +1202,7 @@ static int v9x_d3d_g4_submit(const V9X_R3D_DRAW *draw,
         v9x_g4_batch_init(&batch, v9x_d3d_g4_batch_words,
                           V9X_G4_BATCH_BYTES / 4ul);
         if (v9x_g4_draw_batch(&batch, &d) != V9X_STATUS_OK ||
-            v9x_g4_batch_check(batch.dw, batch.count) != V9X_TRUE) {
+            v9x_g4_batch_check(batch.dw, batch.count, d.gen) != V9X_TRUE) {
             v9x_d3d_g4_count_refusal(V9X_D3D_G4_REFUSE_BATCH);
             return 0;
         }

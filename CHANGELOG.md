@@ -6,10 +6,11 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.24.0 - not yet released
 
-- **Intel HD Graphics on Ironlake (Clarkdale, `8086:0042`): new chip, for
-  2D.** The `intel-gma` package claims it: the VBE display, with DirectDraw
-  fills and copies on the render ring and page flips on the plane. No
-  Direct3D yet. Measured on one Clarkdale desktop.
+- **Intel HD Graphics on Ironlake (Clarkdale, `8086:0042`): new chip.**
+  The `intel-gma` package claims it: the VBE display, DirectDraw fills and
+  copies on the render ring, page flips on the plane, and hardware
+  Direct3D on the GMA X3100's engine at 16 and 32 bpp. Measured on one
+  Clarkdale desktop.
 - **Intel GMA and GMA X3100: a BIOS reporting more video memory than the
   driver maps no longer stops the boot.** A start-up diagnostic read memory
   at the BIOS's figure rather than the 16 MiB the driver maps. Every Gen3

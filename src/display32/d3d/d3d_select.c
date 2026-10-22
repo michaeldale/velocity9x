@@ -27,9 +27,10 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
     case V9X_DD_ENGINE_TYPE_S3_VIRGE_DX:
         return V9X_D3D_SELECT_VIRGE;
     case V9X_DD_ENGINE_TYPE_INTEL_GEN3:
-        /* The GM965 shares the type for its ring and blitter; its 3D
-         * engine is Gen4's, and only with CAP_D3D, as Haswell's. */
-        if ((engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN4) != 0ul) {
+        /* The GM965 and Ironlake share the type for their ring and
+         * blitter; their 3D engine is Gen4's, and only with CAP_D3D, as
+         * Haswell's. */
+        if ((engine_caps & V9X_DD_ENGINE_CAPS_I9XX_G4_3D) != 0ul) {
             if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
                 return V9X_D3D_SELECT_NONE;
             }

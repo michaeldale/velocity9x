@@ -260,6 +260,10 @@
  * (docs\decisions\2026-10-22-ironlake-igma-flips.md).
  */
 #define V9X_DD_ENGINE_CAP_I9XX_GEN5     0x00100000ul
+/* The INTEL_GEN3-type parts whose 3D is the Gen4 engine (d3d_g4.c), with
+ * its Gen5 encodings on I9XX_GEN5: the Gen3 3D engine is never theirs. */
+#define V9X_DD_ENGINE_CAPS_I9XX_G4_3D \
+    (V9X_DD_ENGINE_CAP_I9XX_GEN4 | V9X_DD_ENGINE_CAP_I9XX_GEN5)
 /*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,

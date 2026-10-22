@@ -273,4 +273,8 @@ runs Windows 98 is not known.
    from a diagnostic that read GMADR at the BIOS's 128 MiB. Register flips
    followed the same day (`docs\decisions\2026-10-22-ironlake-igma-flips.md`).
 5. Gen4 3D as its own project, if ever, on the X61 and against the 965 and
-   G45 PRMs. Ironlake follows as a delta; it does not lead.
+   G45 PRMs. Ironlake follows as a delta; it does not lead. Done for the
+   GM965 (`docs\decisions\2026-10-21-gm965-direct3d.md`), and Ironlake
+   followed as that delta on 2026-10-22: V9XD32 passes at 16 and 32 bpp.
+   ESR bit 0 after every 3D run is open
+   (`docs\decisions\2026-10-22-ironlake-direct3d.md`).
