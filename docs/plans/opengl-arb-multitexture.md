@@ -5,8 +5,12 @@ looks for `GL_ARB_multitexture` among six extensions and finds none,
 [issue record](../issues/2026-10-22-github-11-quake3-glitches-intel.md));
 the issue's floor glitch turned out to be a blend factor, not the
 two-pass path. Steps 2 and 3 coded and host-tested for 0.25.0
-(`run-checks` green, golden pipeline hash unmoved); no machine has run
-them. Steps 4 and 5 owed. Michael's request, from
+(`run-checks` green, golden pipeline hash unmoved). Step 4 done and run
+on the netbook, and step 5's Quake 3 run there: 14.8 fps with the
+extension, 13.1 without
+([record](../decisions/2026-10-22-netbook-arb-multitexture-quake3.md)).
+Owed: the HD 4600, screenshots of the issue's views, and the Quake 2 and
+Half-Life reruns. Michael's request, from
 [GitHub issue 11](https://github.com/michaeldale/velocity9x/issues/11)
 (Quake 3 demo 1.11 glitches on the GMA 900 and the HD 4000, 0.23.0).
 Follows [gen3-sgis-multitexture.md](gen3-sgis-multitexture.md), which
@@ -76,7 +80,9 @@ units take it: the software engine, Gen3, and others as their
    substrings the renderer string avoids.
 4. **V9XGLP section:** the SGIS section's env-mode quads again through
    the ARB entry points and through two-unit vertex arrays, read back,
-   exact against the software engine.
+   exact against the software engine. Done as `Arb<way><case>` keys
+   (immediate, `glDrawArrays`, `glDrawElements`), checked against the
+   SGIS section's expected colours; not yet run on the software engine.
 5. **Gate:** the Quake 3 demo on the HD 4600 and the netbook, at the
    issue's preset (640x480, 16 bpp), with `r_ext_multitexture 1` and 0.
    Screenshots at issue 11's two views, compared with the issue's.

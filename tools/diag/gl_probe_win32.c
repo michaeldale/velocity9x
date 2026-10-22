@@ -451,6 +451,227 @@ static void v9x_glp_sgis(GLint width, GLint height)
 }
 
 /*
+ * GL_ARB_multitexture (docs\plans\opengl-arb-multitexture.md, step 4): the
+ * SGIS section's cases again through the ARB entry points, each drawn three
+ * ways - immediate mode with glMultiTexCoord2fARB (Imm), and glDrawArrays
+ * (Arrays) and glDrawElements (Elements) from a texture-coordinate array
+ * per unit, chosen with glClientActiveTextureARB, which is how Quake 3
+ * draws. The units, textures and expected colours are the SGIS section's;
+ * keys are Arb<way><case> with an Ok beside each. First the queries:
+ * MAX_TEXTURE_UNITS_ARB, and ACTIVE_TEXTURE_ARB and
+ * CLIENT_ACTIVE_TEXTURE_ARB after each selects unit 1.
+ */
+#define V9X_GLP_TEXTURE0_ARB 0x84C0u
+#define V9X_GLP_TEXTURE1_ARB 0x84C1u
+#define V9X_GLP_ACTIVE_TEXTURE_ARB 0x84E0u
+#define V9X_GLP_CLIENT_ACTIVE_TEXTURE_ARB 0x84E1u
+#define V9X_GLP_MAX_TEXTURE_UNITS_ARB 0x84E2u
+#define V9X_GLP_ARB_WAYS 3
+
+static V9X_GLP_MTEX_FN v9x_glp_arb_coord;
+static V9X_GLP_SELECT_FN v9x_glp_arb_client;
+
+static void v9x_glp_arb_quad(int way, GLfloat width, GLfloat height,
+                             GLfloat s1)
+{
+    static const GLubyte order[4] = { 0u, 1u, 2u, 3u };
+    GLfloat xy[8];
+    GLfloat st0[8];
+    GLfloat st1[8];
+    int i;
+
+    xy[0] = 0.0f;   xy[1] = 0.0f;
+    xy[2] = width;  xy[3] = 0.0f;
+    xy[4] = width;  xy[5] = height;
+    xy[6] = 0.0f;   xy[7] = height;
+    st0[0] = 0.0f;  st0[1] = 0.0f;
+    st0[2] = 1.0f;  st0[3] = 0.0f;
+    st0[4] = 1.0f;  st0[5] = 1.0f;
+    st0[6] = 0.0f;  st0[7] = 1.0f;
+    for (i = 0; i < 4; ++i) {
+        st1[i * 2] = s1;
+        st1[i * 2 + 1] = 0.5f;
+    }
+
+    if (way == 0) {
+        glBegin(GL_QUADS);
+        for (i = 0; i < 4; ++i) {
+            v9x_glp_arb_coord(V9X_GLP_TEXTURE0_ARB, st0[i * 2],
+                              st0[i * 2 + 1]);
+            v9x_glp_arb_coord(V9X_GLP_TEXTURE1_ARB, st1[i * 2],
+                              st1[i * 2 + 1]);
+            glVertex2f(xy[i * 2], xy[i * 2 + 1]);
+        }
+        glEnd();
+        return;
+    }
+
+    glVertexPointer(2, GL_FLOAT, 0, xy);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    v9x_glp_arb_client(V9X_GLP_TEXTURE0_ARB);
+    glTexCoordPointer(2, GL_FLOAT, 0, st0);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    v9x_glp_arb_client(V9X_GLP_TEXTURE1_ARB);
+    glTexCoordPointer(2, GL_FLOAT, 0, st1);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    if (way == 1) {
+        glDrawArrays(GL_QUADS, 0, 4);
+    } else {
+        glDrawElements(GL_QUADS, 4, GL_UNSIGNED_BYTE, order);
+    }
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    v9x_glp_arb_client(V9X_GLP_TEXTURE0_ARB);
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    glDisableClientState(GL_VERTEX_ARRAY);
+}
+
+/* One case drawn each of the three ways. */
+static void v9x_glp_arb_case(const char *key, GLint width, GLint height,
+                             GLfloat s1, DWORD red, DWORD green, DWORD blue)
+{
+    static const char *const ways[V9X_GLP_ARB_WAYS] = {
+        "Imm", "Arrays", "Elements"
+    };
+    char name[48];
+    DWORD rgb;
+    int way;
+
+    for (way = 0; way < V9X_GLP_ARB_WAYS; ++way) {
+        glClear(GL_COLOR_BUFFER_BIT);
+        v9x_glp_arb_quad(way, (GLfloat)width, (GLfloat)height, s1);
+        glFinish();
+        rgb = v9x_glp_read(width / 2, height / 2);
+        wsprintfA(name, "Arb%s%s", ways[way], key);
+        v9x_glp_hex(name, rgb);
+        wsprintfA(name, "Arb%s%sOk", ways[way], key);
+        v9x_glp_uint(name, v9x_glp_near(rgb, red, green, blue) ? 1ul : 0ul);
+    }
+}
+
+static void v9x_glp_arb(GLint width, GLint height)
+{
+    static GLubyte rgb0[4 * 3];
+    static GLubyte rgb1[4 * 3];
+    static GLubyte rgba1[4 * 4];
+    static GLubyte halves[4 * 3];
+    V9X_GLP_SELECT_FN active;
+    GLuint names[4];
+    GLfloat blue_env[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+    GLint units = 0;
+    GLint active_unit = 0;
+    GLint client_unit = 0;
+    int i;
+
+    v9x_glp_uint("ArbAdvertised",
+                 v9x_glp_contains(glGetString(GL_EXTENSIONS),
+                                  "GL_ARB_multitexture ") ? 1ul : 0ul);
+    active = (V9X_GLP_SELECT_FN)wglGetProcAddress("glActiveTextureARB");
+    v9x_glp_arb_client =
+        (V9X_GLP_SELECT_FN)wglGetProcAddress("glClientActiveTextureARB");
+    v9x_glp_arb_coord =
+        (V9X_GLP_MTEX_FN)wglGetProcAddress("glMultiTexCoord2fARB");
+    v9x_glp_uint("ArbEntryPoints", (active != 0 ? 1ul : 0ul) +
+                                   (v9x_glp_arb_client != 0 ? 1ul : 0ul) +
+                                   (v9x_glp_arb_coord != 0 ? 1ul : 0ul));
+    if (active == 0 || v9x_glp_arb_client == 0 || v9x_glp_arb_coord == 0) {
+        return;
+    }
+
+    glGetIntegerv(V9X_GLP_MAX_TEXTURE_UNITS_ARB, &units);
+    active(V9X_GLP_TEXTURE1_ARB);
+    glGetIntegerv(V9X_GLP_ACTIVE_TEXTURE_ARB, &active_unit);
+    active(V9X_GLP_TEXTURE0_ARB);
+    v9x_glp_arb_client(V9X_GLP_TEXTURE1_ARB);
+    glGetIntegerv(V9X_GLP_CLIENT_ACTIVE_TEXTURE_ARB, &client_unit);
+    v9x_glp_arb_client(V9X_GLP_TEXTURE0_ARB);
+    v9x_glp_uint("ArbMaxUnits", (DWORD)units);
+    v9x_glp_hex("ArbActiveTexture", (DWORD)active_unit);
+    v9x_glp_hex("ArbClientActiveTexture", (DWORD)client_unit);
+    v9x_glp_uint("ArbQueriesOk",
+                 units == 2 && active_unit == (GLint)V9X_GLP_TEXTURE1_ARB &&
+                 client_unit == (GLint)V9X_GLP_TEXTURE1_ARB ? 1ul : 0ul);
+
+    for (i = 0; i < 4; ++i) {
+        rgb0[i * 3 + 0] = 200u;
+        rgb0[i * 3 + 1] = 100u;
+        rgb0[i * 3 + 2] = 50u;
+        rgb1[i * 3 + 0] = 128u;
+        rgb1[i * 3 + 1] = 255u;
+        rgb1[i * 3 + 2] = 64u;
+        rgba1[i * 4 + 0] = 128u;
+        rgba1[i * 4 + 1] = 255u;
+        rgba1[i * 4 + 2] = 64u;
+        rgba1[i * 4 + 3] = 128u;
+        halves[i * 3 + 0] = (GLubyte)((i & 1) != 0 ? 255u : 0u);
+        halves[i * 3 + 1] = halves[i * 3 + 0];
+        halves[i * 3 + 2] = halves[i * 3 + 0];
+    }
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glGenTextures(4, names);
+
+    active(V9X_GLP_TEXTURE0_ARB);
+    glBindTexture(GL_TEXTURE_2D, names[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glEnable(GL_TEXTURE_2D);
+
+    active(V9X_GLP_TEXTURE1_ARB);
+    glBindTexture(GL_TEXTURE_2D, names[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvfv(GL_TEXTURE_ENV, GL_TEXTURE_ENV_COLOR, blue_env);
+    glEnable(GL_TEXTURE_2D);
+    v9x_glp_hex("ArbErrorAfterSetup", (DWORD)glGetError());
+
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    v9x_glp_arb_case("Modulate", width, height, 0.5f, 100ul, 100ul, 13ul);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    v9x_glp_arb_case("Replace", width, height, 0.5f, 128ul, 255ul, 64ul);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_BLEND);
+    v9x_glp_arb_case("Blend", width, height, 0.5f, 100ul, 0ul, 101ul);
+    glBindTexture(GL_TEXTURE_2D, names[2]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 4, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 rgba1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+    v9x_glp_arb_case("Decal", width, height, 0.5f, 164ul, 178ul, 57ul);
+
+    glBindTexture(GL_TEXTURE_2D, names[3]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 halves);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    v9x_glp_arb_case("CoordLeft", width, height, 0.25f, 0ul, 0ul, 0ul);
+    v9x_glp_arb_case("CoordRight", width, height, 0.75f, 200ul, 100ul, 50ul);
+
+    glDisable(GL_TEXTURE_2D);
+    v9x_glp_arb_case("Unit1Off", width, height, 0.25f, 200ul, 100ul, 50ul);
+    v9x_glp_hex("ArbErrorAfterDraws", (DWORD)glGetError());
+
+    active(V9X_GLP_TEXTURE0_ARB);
+    glDeleteTextures(4, names);
+    glDisable(GL_TEXTURE_2D);
+}
+
+/*
  * Which mip level unit 0 samples, with unit 1 off and with it on
  * (2026-10-08, docs\decisions\2026-10-08-rage-xl-draw-cost.md): the Rage
  * Pro's composite drew Quake 2's walls from levels far too small. Unit 0
@@ -2538,6 +2759,8 @@ void __stdcall V9xGlProbeEntry(void)
             GetClientRect(window, &client);
             v9x_glp_sgis(client.right - client.left,
                          client.bottom - client.top);
+            v9x_glp_arb(client.right - client.left,
+                        client.bottom - client.top);
             v9x_glp_sgis_mip(client.right - client.left,
                              client.bottom - client.top);
             v9x_glp_polygon_offset(client.right - client.left,

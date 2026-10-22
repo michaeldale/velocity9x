@@ -4,7 +4,9 @@ Date: 2026-10-22. Reported by interrupt7 on the GMA 900 and the HD 4000,
 0.23.0, Quake 3 demo 1.11, "Normal" preset (640x480, 16 bpp):
 [GitHub issue 11](https://github.com/michaeldale/velocity9x/issues/11).
 Status: one cause found and fixed in source on the HD 4600; the
-reporter's two other symptoms are untested. Evidence:
+reporter's two other symptoms are untested. Michael reported on
+2026-10-22 that the issue seems fixed in 0.24.0; which machine and views
+that covers is not recorded here. Evidence:
 [`../probe/hsw-4570-quake3-demo-2026-10-22/`](../probe/hsw-4570-quake3-demo-2026-10-22/).
 
 ## Reported
