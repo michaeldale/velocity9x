@@ -10,8 +10,12 @@ enable-ok there, and a read-only probe answered Phase 1 for Gen4:
 claims `2A02`, DirectDraw fills and copies ran on its ring
 (`docs\decisions\2026-10-20-gm965-ring-and-blits.md`), and Step 5 - Gen4
 3D - passes V9XD32 at 16 and 32 bpp with a 16-bit Z buffer
-(`docs\decisions\2026-10-21-gm965-direct3d.md`). Gen5 is
-unchanged: four DOS surveys, no Windows. The Ironlake evidence is the
+(`docs\decisions\2026-10-21-gm965-direct3d.md`). **Gen5, 2026-10-22:**
+Windows 98 SE runs on the chinaboard (W9QI2F4F, remote help `M-J0F0SJ`),
+and the `vbe` family reaches enable-ok there, with live mode changes up
+to 1920x1440x8 and 1024x768x32
+(`docs\decisions\2026-10-22-ironlake-w9qi2f4f-audit.md`,
+`2026-10-22-ironlake-w9qi2f4f-tier0-install.md`). The DOS evidence is the
 surveys of an Ironlake board
 (`docs\probe\references\chinaboard-ironlake-vgasurv-2026-09-28*.ini`) and
 the X61's GM965 (`thinkpad-x61-vgasurv-2026-09-05.ini`).
@@ -202,9 +206,15 @@ The documentation runs the other way from the hardware.
 `docs\plans\intel-3dmark99-missing-textures.md` settled by Wayback index what
 Intel ever published on `intellinuxgraphics.org`: **965/G35 (`VOL_1` to
 `VOL_4`), G45, Sandy Bridge, Ivy Bridge**. There is no Ironlake PRM in that
-list, and the x.org mirror holds the 965 set. Gen5 is the one generation in
-this neighbourhood documented nowhere; Gen4 either side of it is documented
-fully and reachably.
+list, and the x.org mirror holds the 965 set.
+
+*Correction, 2026-10-22:* Intel does publish an Ironlake PRM, 12 PDFs,
+Vol 1 to 4; a copy is in the private research folder
+`ironlake-2010-core-hd-graphics`. It is thinner than the 965 set where
+this plan needs it. It defines neither the BAR layout, GGC/BSM, the global
+GTT PTE nor PGTBL_CTL, which it says is gone (Vol 1 Part 2 3.6.1, p47).
+Its blitter and BSD ring chapters carry Sandy Bridge offsets. It does
+document the CPU and PCH display registers (Vol 3 Parts 2 and 3).
 
 The hardware runs the same way. The X61 is in the fleet and already
 surveyed; the Ironlake board is a bare Clarkdale with no Windows on it, and
@@ -226,7 +236,7 @@ chips.
 |---|---|
 | TOMMOHP (GM965, Gen4) | Tom Rossell's HP laptop, remote help `M-KYHT4Q`. Windows 98 SE; `vbe` enable-ok and the Gen4 probe, 2026-10-20. The Gen4 test machine. |
 | X61 (GM965, Gen4) | Surveyed 2026-09-05, in the fleet. Same architecture as Ironlake and the only documented one of the two. No Windows install tried, but a 2007 Core 2 ThinkPad is the most plausible Win98 host of the three. |
-| chinaboard (Clarkdale, Gen5) | The only board where an Ironlake IGP is the primary display. No Windows install. |
+| chinaboard (Clarkdale, Gen5) | W9QI2F4F, remote help `M-J0F0SJ`. Windows 98 SE; stolen memory now 128 MiB; `vbe` enable-ok, 2026-10-22. The Gen5 test machine. |
 | P7H55-M (Clarkdale, Gen5) | Has an Ironlake IGP at 00:02.0, but class `038000` with `Command=0000` and every BAR unassigned - enabled in the BIOS as a secondary and given no resources. A test bed only if the firmware can be made to assign them. |
 
 None is a machine anyone is relying on, which is the right shape for this.
@@ -242,7 +252,8 @@ runs Windows 98 is not known.
 ## Order
 
 1. **Windows 98 SE on any of the three.** Done for Gen4 on TOMMOHP, which
-   is outside the three; still open for Gen5.
+   is outside the three; done for Gen5 on the chinaboard, 2026-10-22,
+   with step 2 the same day.
 2. Install the `vbe` family on whichever boots; confirm the desktop and the
    modes the survey described. No code. If this is all that ever happens, it
    is still the answer for most users of either chip.

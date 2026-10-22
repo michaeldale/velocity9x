@@ -1,0 +1,129 @@
+[System Detection: 08/17/18 - 05:04:19]
+Parameters "i", InfParams "", Flags=0104a023
+SDMVer=040a.2222, WinVer=070a040a, Build=04.0a.2222, WinFlags=00003c29
+SkipList=
+DetectList=
+LogCrash: crash log not found or invalid
+LogCrash: crash log invalid
+Estimated number of detection functions = 359
+Detected: *PNP0A03\0000 = [1] PCI bus
+Number of verify functions called = 1
+ConfigMG device: HTREE\RESERVED\0
+ConfigMG device: ROOT\SWENUM\0000
+ConfigMG device: ROOT\*PNP0A03\0000
+ConfigMG device: PCI\VEN_8086&DEV_0040&SUBSYS_00408086&REV_18\BUS_00&DEV_00&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_0042&SUBSYS_00428086&REV_18\BUS_00&DEV_02&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_0042&SUBSYS_00428086&REV_18\BUS_00&DEV_02&FUNC_00: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_0042&SUBSYS_00428086&REV_18\0000
+	IO=3b0-3bb(3ff:400:0),3c0-3df(3ff:400:0),dc00-dc07(ffff:ffff:0)
+	Mem=a0000-affff(ffffffff:0:1),b0000-bffff(ffffffff:0:1),fbc00000-fbffffff(ffffffff:0:1),d0000000-dfffffff(ffffffff:0:5),c0000-ccbff(ffffffff:0:0)
+	IRQ=10
+ConfigMG device: PCI\VEN_8086&DEV_3B56&SUBSYS_3B568086&REV_06\BUS_00&DEV_1B&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_3B56&SUBSYS_3B568086&REV_06\BUS_00&DEV_1B&FUNC_00: Status=8000620, Problem=1c
+RegAvoidRes: VEN_8086&DEV_3B56&SUBSYS_3B568086&REV_06\0000
+	Mem=fbbf8000-fbbfbfff(ffffffff:0:1)
+	IRQ=11
+ConfigMG device: PCI\VEN_8086&DEV_3B42&SUBSYS_00000000&REV_06\BUS_00&DEV_1C&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_3B42&SUBSYS_00000000&REV_06\BUS_00&DEV_1C&FUNC_00: Status=18006ea6, Problem=1a
+RegAvoidRes: VEN_8086&DEV_3B42&SUBSYS_00000000&REV_06\0000
+	IO=e000-efff(ffff:ffff:0)
+	Mem=faf00000-faffffff(ffffffff:0:5)
+	IRQ=5
+ConfigMG device: PCI\VEN_8086&DEV_3B36&SUBSYS_3B368086&REV_06\BUS_00&DEV_1D&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_3B36&SUBSYS_3B368086&REV_06\BUS_00&DEV_1D&FUNC_00: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_3B36&SUBSYS_3B368086&REV_06\0000
+	IO=d880-d89f(ffff:ffff:0)
+	IRQ=3
+ConfigMG device: PCI\VEN_8086&DEV_3B37&SUBSYS_3B378086&REV_06\BUS_00&DEV_1D&FUNC_01
+ConfigMG device: PCI\VEN_8086&DEV_3B37&SUBSYS_3B378086&REV_06\BUS_00&DEV_1D&FUNC_01: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_3B37&SUBSYS_3B378086&REV_06\0000
+	IO=d800-d81f(ffff:ffff:0)
+	IRQ=10
+ConfigMG device: PCI\VEN_8086&DEV_3B38&SUBSYS_3B388086&REV_06\BUS_00&DEV_1D&FUNC_02
+ConfigMG device: PCI\VEN_8086&DEV_3B38&SUBSYS_3B388086&REV_06\BUS_00&DEV_1D&FUNC_02: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_3B38&SUBSYS_3B388086&REV_06\0000
+	IO=d480-d49f(ffff:ffff:0)
+	IRQ=7
+ConfigMG device: PCI\VEN_8086&DEV_3B34&SUBSYS_3B348086&REV_06\BUS_00&DEV_1D&FUNC_07
+ConfigMG device: PCI\VEN_8086&DEV_3B34&SUBSYS_3B348086&REV_06\BUS_00&DEV_1D&FUNC_07: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_3B34&SUBSYS_3B348086&REV_06\0000
+	Mem=fbbf6000-fbbf63ff(ffffffff:0:1)
+	IRQ=4
+ConfigMG device: PCI\VEN_8086&DEV_244E&SUBSYS_00000000&REV_A6\BUS_00&DEV_1E&FUNC_00
+ConfigMG device: PCI\VEN_8086&DEV_244E&SUBSYS_00000000&REV_A6\BUS_00&DEV_1E&FUNC_00: Status=180066a4, Problem=1a
+ConfigMG device: PCI\VEN_8086&DEV_3B06&SUBSYS_3B068086&REV_06\BUS_00&DEV_1F&FUNC_00
+ConfigMG device: ISAPNP\READDATAPORT\0
+ConfigMG device: ISAPNP\READDATAPORT\0: Status=18006e26, Problem=1a
+ConfigMG device: PCI\VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06\BUS_00&DEV_1F&FUNC_02
+ConfigMG device: PCI\VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06\BUS_00&DEV_1F&FUNC_02: Status=8000620, Problem=1a
+RegAvoidRes: VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06\0000
+	IO=1f0-1f7(3ff:400:0),3f6-3f6(3ff:400:0),170-177(3ff:400:0),376-376(3ff:400:0),ff90-ff9f(ffff:ffff:0)
+	IRQ=14,15
+ConfigMG device: PCI\VEN_8086&DEV_3B30&SUBSYS_3B308086&REV_06\BUS_00&DEV_1F&FUNC_03
+ConfigMG device: PCI\VEN_8086&DEV_3B30&SUBSYS_3B308086&REV_06\BUS_00&DEV_1F&FUNC_03: Status=8000620, Problem=1c
+RegAvoidRes: VEN_8086&DEV_3B30&SUBSYS_3B308086&REV_06\0000
+	IO=400-41f(ffff:ffff:0)
+	Mem=fbbf4000-fbbf40ff(ffffffff:0:1)
+	IRQ=7
+ConfigMG device: PCI\VEN_8086&DEV_3B26&SUBSYS_3B268086&REV_06\BUS_00&DEV_1F&FUNC_05
+ConfigMG device: PCI\VEN_8086&DEV_3B26&SUBSYS_3B268086&REV_06\BUS_00&DEV_1F&FUNC_05: Status=8000620, Problem=1a
+SDMErr: Detection error: Invalid IRQ or DMA resource.
+IRQ: 3,3
+RegAvoidRes: VEN_8086&DEV_3B26&SUBSYS_3B268086&REV_06\0000
+	IO=d080-d087(ffff:ffff:0),d000-d003(ffff:ffff:0),cc00-cc07(ffff:ffff:0),c880-c883(ffff:ffff:0),c800-c80f(ffff:ffff:0)
+	IRQ=3,3
+ConfigMG device: ROOT\*PNP0000\0000
+RegAvoidRes: *PNP0000\0000
+	IO=20-21(ffff:0:0),a0-a1(ffff:0:0)
+	IRQ=2
+ConfigMG device: ROOT\*PNP0200\0000
+RegAvoidRes: *PNP0200\0000
+	IO=0-f(ffff:0:0),81-83(ffff:0:0),87-87(ffff:0:0),89-8b(ffff:0:0),8f-8f(ffff:0:0),c0-df(ffff:0:0)
+	DMA=4
+ConfigMG device: ROOT\*PNP0B00\0000
+RegAvoidRes: *PNP0B00\0000
+	IO=70-71(ffff:0:0)
+	IRQ=8
+ConfigMG device: ROOT\*PNP0100\0000
+RegAvoidRes: *PNP0100\0000
+	IO=40-43(ffff:0:0)
+	IRQ=0
+ConfigMG device: ROOT\*PNP0800\0000
+RegAvoidRes: *PNP0800\0000
+	IO=61-61(ffff:0:0)
+ConfigMG device: ROOT\*PNP0C04\0000
+RegAvoidRes: *PNP0C04\0000
+	IO=f0-ff(ffff:0:0)
+	IRQ=13
+ConfigMG device: ROOT\*PNP0C01\0000
+ConfigMG device: skip ForceHWVerify device ROOT\*PNP0C01\0000
+ConfigMG device: ROOT\*PNP030B\0000
+RegAvoidRes: *PNP030B\0000
+	IO=60-60(ffff:0:0),64-64(ffff:0:0)
+	IRQ=1
+Estimated number of detection functions = 359
+VerifyHW: manual device SwEnum\0000: Plug and Play Software Device Enumerator
+Detected: *PNP0000\0000 = [1] Programmable interrupt controller
+	IO=20-21,a0-a1
+	IRQ=2
+Detected: *PNP0200\0000 = [2] Direct memory access controller
+	IO=0-f,81-83,87-87,89-8b,8f-8f,c0-df
+	DMA=4
+Detected: *PNP0B00\0000 = [3] System CMOS/real time clock
+	IO=70-71
+	IRQ=8
+Detected: *PNP0100\0000 = [4] System timer
+	IO=40-43
+	IRQ=0
+Detected: *PNP0800\0000 = [5] System speaker
+	IO=61-61
+Detected: *PNP0C04\0000 = [6] Numeric data processor
+	IO=f0-ff
+	IRQ=13
+Checking for: System Board
+Detected: *PNP0C01\0000 = [7] System board
+Detected: *PNP030B\0000 = [8] PC/AT Enhanced Keyboard (101/102-Key)
+	IO=60-60,64-64
+	IRQ=1
+Number of verify functions called = 8
+Devices verified: 8
