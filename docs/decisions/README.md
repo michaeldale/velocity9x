@@ -136,6 +136,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-26 Phase 3: explicit draws - the software engine takes CPU textures, a scissor and a colour mask through the render interface, and Direct3D draws the same](2026-09-26-phase3-explicit-draws-cpu-textures-scissor-and-masks.md)
 - [2026-10-21 The ICD at 32 bpp and a second pixel format with 24-bit depth (render ABI 6), measured on the HD 4600; ChoosePixelFormat still picks the 16-bit one](2026-10-21-opengl-icd-24-bit-depth-on-haswell.md)
 - [2026-10-22 GL_ARB_multitexture on the GMA 950: the probe matches SGIS exactly, and Quake 3's demo001 runs 14.8 fps with it against 13.1 without](2026-10-22-netbook-arb-multitexture-quake3.md)
+- [2026-10-22 Half-Life on the GMA 950 takes GL_ARB_multitexture when offered, and mwd5 runs as fast as it did on SGIS: 16.2-17.0 fps against 16.0-16.9](2026-10-22-netbook-hl1-arb-vs-sgis.md)
 
 ## Glide
 

@@ -9,8 +9,10 @@ two-pass path. Steps 2 and 3 coded and host-tested for 0.25.0
 on the netbook, and step 5's Quake 3 run there: 14.8 fps with the
 extension, 13.1 without
 ([record](../decisions/2026-10-22-netbook-arb-multitexture-quake3.md)).
-Owed: the HD 4600, screenshots of the issue's views, and the Quake 2 and
-Half-Life reruns. Michael's request, from
+Half-Life on the netbook takes the ARB path and runs mwd5 as fast as on
+SGIS ([record](../decisions/2026-10-22-netbook-hl1-arb-vs-sgis.md)).
+Owed: the HD 4600, screenshots of the issue's views, Quake 2, and
+Half-Life on A8U4I5. Michael's request, from
 [GitHub issue 11](https://github.com/michaeldale/velocity9x/issues/11)
 (Quake 3 demo 1.11 glitches on the GMA 900 and the HD 4000, 0.23.0).
 Follows [gen3-sgis-multitexture.md](gen3-sgis-multitexture.md), which
