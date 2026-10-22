@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.27.0 - not yet released
+
 ## 0.26.0 - 2026-10-23
 
 - **OpenGL: textures built by `gluBuild2DMipmaps` now draw.** Windows
