@@ -335,6 +335,13 @@ static void v9x_write_live_display(const V9X_DD_ENGINE *engine)
         v9x_write_text("LiveRegError", "no-control-window");
         return;
     }
+    /* Ironlake: the list names Gen3 fitter, LVDS and VGACNTRL offsets that
+     * are not this part's registers (engine_abi.h, I9XX_GEN5). Nothing is
+     * read rather than half a list. */
+    if ((engine->engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN5) != 0ul) {
+        v9x_write_text("LiveRegError", "gen5-layout");
+        return;
+    }
     if (IsBadReadPtr((const void *)(engine->control_linear_base +
                                     V9X_I9XX_REG_VGACNTRL),
                      sizeof(DWORD))) {

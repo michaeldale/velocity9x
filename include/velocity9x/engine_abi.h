@@ -248,6 +248,19 @@
  */
 #define V9X_DD_ENGINE_CAP_GEN7_IVB      0x00080000ul
 /*
+ * Intel: this INTEL_GEN3-type part is Gen5 (Ironlake). It runs the Gen3
+ * ring and blits as the GM965 does, and its CPU display keeps the plane,
+ * pipe timing and line registers at the Gen4 offsets, the plane base split
+ * into DSPSURF and DSPLINOFF. What it does not keep: PIPESTAT (70024h),
+ * the Gen3 ISR (20ACh), the 61xxxh panel and fitter block, VGACNTRL at
+ * 71400h and the FW_BLC watermarks; and 70040h is a 32-bit frame counter
+ * rather than a high word over 70044h's low byte (Ironlake PRM Vol 3
+ * Part 2 4.1). The scanout skips or re-reads those on this bit. A chip
+ * identity bit, stamped by the Ironlake descriptor only
+ * (docs\decisions\2026-10-22-ironlake-igma-flips.md).
+ */
+#define V9X_DD_ENGINE_CAP_I9XX_GEN5     0x00100000ul
+/*
  * A DIAGNOSTIC: capture the DrawPrimitives2 calls of the next Direct3D
  * program to C:\V9XDIAG\V9XDP2R.BIN (src\display32\d3d\d3d_dp2_ring.h,
  * read with tools\diag\dp2ring.py). From [Velocity9x] Dp2Capture=1, only

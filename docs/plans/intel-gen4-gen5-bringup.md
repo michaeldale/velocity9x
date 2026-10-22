@@ -267,9 +267,10 @@ runs Windows 98 is not known.
    switches it to the VGA plane, as on the netbook.
 4. Identity, GTT, ring, blits - only if (3) comes back clean. Done for the
    GM965 except flips, which need DSPSURF (and a decision on FW_BLC) before
-   the HAL may write the plane on Gen4. Done for Ironlake, 2026-10-22,
-   without flips: blits on the render ring at 8 and 32 bpp
+   the HAL may write the plane on Gen4. Done for Ironlake, 2026-10-22:
+   blits on the render ring at 8 and 32 bpp
    (`docs\decisions\2026-10-22-ironlake-igma-2d.md`), after one hung boot
-   from a diagnostic that read GMADR at the BIOS's 128 MiB.
+   from a diagnostic that read GMADR at the BIOS's 128 MiB. Register flips
+   followed the same day (`docs\decisions\2026-10-22-ironlake-igma-flips.md`).
 5. Gen4 3D as its own project, if ever, on the X61 and against the 965 and
    G45 PRMs. Ironlake follows as a delta; it does not lead.

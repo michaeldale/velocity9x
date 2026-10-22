@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring and page flips on plane A. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -140,9 +140,10 @@
             MapSymbols = @('v9x_gm965_device')
         }
         @{
-            # Ironlake desktop HD Graphics (Gen5), for 2D only: the GM965's
-            # first step - the 945's ring and blits, with the GTT at BAR0 +
-            # 2 MiB - no Direct3D (no Gen5 kernels exist) and no flips yet.
+            # Ironlake desktop HD Graphics (Gen5): the 945's ring and blits,
+            # with the GTT at BAR0 + 2 MiB, and register flips through DSPSURF
+            # and DSPLINOFF with the Gen3 display registers it lacks skipped
+            # (I9XX_GEN5). No Direct3D (no Gen5 kernels exist), no ring flips.
             # Measured read-only on W9QI2F4F:
             # docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md.
             Id = 'hd-ironlake'
@@ -156,7 +157,7 @@
             Acceleration = 'directdraw-fill-blt'
             Direct3D = 'not-advertised'
             EngineType = 'INTEL_GEN3'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             VideoMemoryBytes = 4194304
             # The family's table, which the driver's own must equal. This
             # BIOS describes neither 1024x576 row; the runtime scan publishes

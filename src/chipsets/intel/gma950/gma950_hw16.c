@@ -382,13 +382,15 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
  * 1.1.5) and the 2D path's commands on it; Gen5 has no blitter ring either.
  * The GTT window is found by V9xPciReadIntelGttConfig at BAR0 + 2 MiB.
  *
+ * FLIP is the register flip through DSPxSURF and DSPxLINOFF, as on Gen4,
+ * with the I9XX_GEN5 bit telling the HAL which Gen3 display registers this
+ * part does not have (engine_abi.h).
+ *
  * What is withheld, and why:
  *  - D3D. Gen5 keeps Gen4's URB pipeline, and no Gen5 kernel or state has
  *    been built or run (docs\plans\intel-gen4-gen5-bringup.md, Phase 2).
- *  - FLIP and FLIP_RING. The Gen3 flip writes the plane address at
- *    70184h/71184h, which is DSPxLINOFF here as on Gen4, and FW_BLC, which
- *    Ironlake replaced with the watermarks at 45100h (PRM Vol 3 Part 2 2.8).
- *    The Gen4 flip is not claimed until it has been measured on this part.
+ *  - FLIP_RING. The HAL's ring flip completes on the Gen3 ISR's pending
+ *    bit, and Ironlake's display interrupts are DEISR at 44000h instead.
  * ASYNC_SUBMIT stays: it is how blits queue on the ring.
  */
 static void v9x_ilk_fill_engine(unsigned long framebuffer_linear_base,
@@ -403,8 +405,10 @@ static void v9x_ilk_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
-    *engine_caps &= ~(V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP |
-                      V9X_DD_ENGINE_CAP_FLIP_RING);
+    *engine_caps &= ~(V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP_RING);
+    if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN5;
+    }
     if (*ring_linear_base != 0ul) {
         v9x_gma950_engine_status = "2d-claimed";
     }

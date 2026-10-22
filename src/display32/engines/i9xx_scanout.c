@@ -47,11 +47,28 @@ static int v9x_i9xx_scanout_gen4(void)
            0ul;
 }
 
+/*
+ * A Gen5 part (Ironlake) under the Gen3 engine type. Its plane base is
+ * Gen4's SURF and LINOFF; the Gen3 registers it lacks are listed with the
+ * bit in engine_abi.h, and every read or write of one here is skipped on it.
+ */
+static int v9x_i9xx_scanout_gen5(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN5) !=
+           0ul;
+}
+
+/* The plane base split into SURF and LINOFF: Gen4 and Gen5. */
+static int v9x_i9xx_scanout_surf(void)
+{
+    return v9x_i9xx_scanout_gen4() || v9x_i9xx_scanout_gen5();
+}
+
 /* The plane's base as the scanout takes it, from the Gen3 address
- * register: that register, or on Gen4 SURF plus LINOFF. */
+ * register: that register, or on Gen4 and Gen5 SURF plus LINOFF. */
 static DWORD v9x_i9xx_plane_base(DWORD base_reg)
 {
-    if (v9x_i9xx_scanout_gen4()) {
+    if (v9x_i9xx_scanout_surf()) {
         return *v9x_i9xx_scanout_reg(base_reg +
                                      V9X_I9XX_GEN4_SURF_FROM_LINOFF) +
                *v9x_i9xx_scanout_reg(base_reg);
@@ -69,7 +86,7 @@ static void v9x_i9xx_write_plane_base(DWORD base_reg, DWORD byte_offset)
 {
     DWORD surf;
 
-    if (!v9x_i9xx_scanout_gen4()) {
+    if (!v9x_i9xx_scanout_surf()) {
         *v9x_i9xx_scanout_reg(base_reg) = byte_offset;
         return;
     }
@@ -172,6 +189,14 @@ static DWORD v9x_i9xx_scanout_frame_now(void)
     v9x_i9xx_scanout_frame_valid = 0;
     if (v9x_i9xx_scanout_framehigh_reg == 0ul) {
         return 0ul;
+    }
+    /* Gen5: the register at the FRAMEHIGH offset is the whole frame count,
+     * 32 bits (Ironlake PRM Vol 3 Part 2 4.1.2.1, PIPEx_FRMCOUNT). One read,
+     * no carry to chase. */
+    if (v9x_i9xx_scanout_gen5()) {
+        v9x_i9xx_scanout_frame_valid = 1;
+        return *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg) &
+               V9X_I9XX_FRAME_COUNT_MASK;
     }
     high_first = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framehigh_reg);
     low = *v9x_i9xx_scanout_reg(v9x_i9xx_scanout_framepixel_reg);
@@ -1167,26 +1192,13 @@ static void v9x_i9xx_note_frame_coverage(DWORD byte_offset)
     }
 }
 
-static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
+/*
+ * The Gen3 status reads at a flip - the ISR, the PIPESTAT underrun
+ * boundary and the watermarks - split out of v9x_i9xx_note_flip_issued so
+ * that a part without those registers can skip them whole.
+ */
+static void v9x_i9xx_note_gen3_status(void)
 {
-    /* Before anything here is overwritten: the buffer sampled at the last
-     * flip is now the one on screen, and has not been reused. */
-    v9x_i9xx_cover_recheck(byte_offset);
-    v9x_i9xx_scanout_last_base_reg = base_reg;
-    v9x_i9xx_scanout_last_offset = byte_offset;
-    v9x_i9xx_scanout_flip_outstanding = 1;
-    /* Only a flip to a buffer other than offset zero is the game's: the
-     * desktop restoration flips to zero, and would otherwise overwrite the
-     * in-game sample on the way out (review of 2347f59). */
-    if (byte_offset != 0ul) {
-        v9x_i9xx_note_layout(byte_offset);
-        /*
-         * The buffer being flipped TO is the one just drawn, which is the
-         * one worth measuring - the application has finished with it and
-         * the scanout has not started on it.
-         */
-        v9x_i9xx_note_frame_coverage(byte_offset);
-    }
     /* Every ISR bit seen right after a flip, for the empirical search. */
     v9x_hal->d3d_diagnostics.isr_after_flip_or |=
         *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
@@ -1238,6 +1250,40 @@ static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_PIPEB_STAT);
     }
     v9x_i9xx_note_watermarks();
+}
+
+static void v9x_i9xx_note_flip_issued(DWORD base_reg, DWORD byte_offset)
+{
+    /* Before anything here is overwritten: the buffer sampled at the last
+     * flip is now the one on screen, and has not been reused. */
+    v9x_i9xx_cover_recheck(byte_offset);
+    v9x_i9xx_scanout_last_base_reg = base_reg;
+    v9x_i9xx_scanout_last_offset = byte_offset;
+    v9x_i9xx_scanout_flip_outstanding = 1;
+    /* Only a flip to a buffer other than offset zero is the game's: the
+     * desktop restoration flips to zero, and would otherwise overwrite the
+     * in-game sample on the way out (review of 2347f59). */
+    if (byte_offset != 0ul) {
+        /* The layout snapshot reads the Gen3 fitter, LVDS and VGACNTRL
+         * offsets, which are not Ironlake's. */
+        if (!v9x_i9xx_scanout_gen5()) {
+            v9x_i9xx_note_layout(byte_offset);
+        }
+        /*
+         * The buffer being flipped TO is the one just drawn, which is the
+         * one worth measuring - the application has finished with it and
+         * the scanout has not started on it.
+         */
+        v9x_i9xx_note_frame_coverage(byte_offset);
+    }
+    /*
+     * Gen5 has no Gen3 ISR, PIPESTAT or FW_BLC, and PIPESTAT is WRITTEN in
+     * there: none of it is done on Ironlake. Its underrun status is DEISR
+     * (44000h), which nothing here reads yet.
+     */
+    if (!v9x_i9xx_scanout_gen5()) {
+        v9x_i9xx_note_gen3_status();
+    }
     /*
      * The scanline at the moment the base is read back, which settles what
      * that readback IS.
@@ -1377,9 +1423,12 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset, int use_ring)
     v9x_i9xx_scanout_entry_line =
         *v9x_i9xx_scanout_reg(dsl) & V9X_I9XX_DSL_LINE_MASK;
     /* ISR with no flip of ours outstanding, and the frame the flip is
-     * issued in: the completion rule below waits for the counter to move. */
-    v9x_hal->d3d_diagnostics.isr_before_flip_or |=
-        *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
+     * issued in: the completion rule below waits for the counter to move.
+     * Gen5 has no Gen3 ISR. */
+    if (!v9x_i9xx_scanout_gen5()) {
+        v9x_hal->d3d_diagnostics.isr_before_flip_or |=
+            *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
+    }
     v9x_i9xx_scanout_flip_frame = v9x_i9xx_scanout_frame_now();
     if (use_ring && v9x_i9xx_ring_flip_active()) {
         DWORD ring_base = byte_offset;
@@ -1746,8 +1795,11 @@ int v9x_scanout_hw_flip_pending(void)
     if (!v9x_i9xx_scanout_active()) {
         return 0;
     }
+    /* The ISR's pending bit is the ring flip's, and Gen5 has neither the
+     * Gen3 ISR nor a ring flip here; the frame counter decides alone. */
     bit = v9x_i9xx_flip_pending_bit(v9x_i9xx_scanout_plane);
-    if ((*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) & bit) != 0ul) {
+    if (!v9x_i9xx_scanout_gen5() &&
+        (*v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR) & bit) != 0ul) {
         return 1;
     }
     ticks = (v9x_i9xx_scanout_frame_now() - v9x_i9xx_scanout_flip_frame) &
