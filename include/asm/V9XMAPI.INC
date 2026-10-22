@@ -493,6 +493,19 @@ V9XMINI_FN_HSW_ENGINE_CLOSE EQU 0021h
 ; implements it.
 V9XMINI_FN_HSW_STOLEN_RESERVED EQU 0022h
 
+; ATI Rage 128: map the 16 KiB register BAR (BAR2) and say where.
+;
+; In: EBX = BAR2's physical base, freshly read from PCI config by the display
+; driver. Out: AX=1, EBX = linear address of the window; AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR, as the other maps do. The window is
+; handed over only when the register file's read-only copy of configuration
+; space at 0F00h names vendor 1002h, which a BAR whose decode is off, or one
+; that belongs to something else, does not. The display driver has matched
+; the chip's PCI identity before it asks. Only the ati family image
+; implements it (docs\decisions\2026-10-22-rage128-register-probe.md).
+V9XMINI_FN_R128_MMIO_MAP    EQU 0023h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

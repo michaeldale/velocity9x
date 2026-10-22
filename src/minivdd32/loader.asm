@@ -142,6 +142,19 @@ V9xAtiMmioBase   dd 0
 V9xAtiMmioLinear dd 0
 ENDIF
 
+IFDEF V9X_R128_MMIO
+; ATI Rage 128: the 16 KiB register BAR (BAR2, two copies of the 8 KiB
+; register file), mapped once for the 2D engine. 0F00h is the register
+; file's read-only copy of configuration space, whose low word is the
+; vendor (Rage 128 PRO RRG Table 2-1; read on A8U4I5,
+; docs\decisions\2026-10-22-rage128-register-probe.md).
+V9X_R128_MMIO_BYTES     equ 00004000h
+V9X_R128_PCI_COPY       equ 00000f00h
+V9X_R128_VENDOR_ATI     equ 1002h
+V9xR128MmioBase   dd 0
+V9xR128MmioLinear dd 0
+ENDIF
+
 IFDEF V9X_SIS_MMIO
 ; SiS 6326: the 64 KiB MMIO register window (BAR1), mapped once for the 2D
 ; engine. 82A8h is the engine's queue-status / command dword
@@ -2387,6 +2400,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_TdfxBar0Map
     cmp     ax, V9XMINI_FN_TDFX_BAR1_MAP
     je      V9xMini_Api_TdfxBar1Map
+    cmp     ax, V9XMINI_FN_R128_MMIO_MAP
+    je      V9xMini_Api_R128MmioMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -3298,6 +3313,48 @@ V9xMini_Api_TdfxMmioMap_Check:
 V9xMini_Api_TdfxMmioMap_Failed:
     mov     V9xTdfxMmioBase, 0
 V9xMini_Api_TdfxMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR2 physical. See V9XMINI_FN_R128_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_R128MmioMap:
+IFDEF V9X_R128_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_R128MmioMap_Refused
+    cmp     eax, 0ffffc000h
+    ja      short V9xMini_Api_R128MmioMap_Refused
+    test    eax, V9X_R128_MMIO_BYTES - 1
+    jnz     short V9xMini_Api_R128MmioMap_Refused
+
+    cmp     V9xR128MmioLinear, 0
+    je      short V9xMini_Api_R128MmioMap_Map
+    cmp     eax, V9xR128MmioBase
+    jne     short V9xMini_Api_R128MmioMap_Refused
+    jmp     short V9xMini_Api_R128MmioMap_Check
+
+V9xMini_Api_R128MmioMap_Map:
+    mov     V9xR128MmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_R128_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_R128MmioMap_Failed
+    mov     V9xR128MmioLinear, eax
+
+    ; A decoding-disabled window reads all ones, and another device's
+    ; registers do not hold ATI's vendor id at 0F00h; either is withheld.
+V9xMini_Api_R128MmioMap_Check:
+    mov     edx, V9xR128MmioLinear
+    mov     eax, [edx+V9X_R128_PCI_COPY]
+    cmp     ax, V9X_R128_VENDOR_ATI
+    jne     short V9xMini_Api_R128MmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_R128MmioMap_Failed:
+    mov     V9xR128MmioBase, 0
+V9xMini_Api_R128MmioMap_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

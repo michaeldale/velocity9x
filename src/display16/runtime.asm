@@ -2655,6 +2655,47 @@ V9xMiniAtiMmioMapDone:
     pop     bp
     retf    8
 V9XMINIATIMMIOMAP ENDP
+
+; WORD FAR PASCAL V9xMiniR128MmioMap(DWORD bar2, DWORD FAR *linear)
+; V9XMINI_FN_R128_MMIO_MAP: the mini-VDD maps the Rage 128's 16 KiB register
+; BAR, checks the vendor in its configuration copy, and returns the linear
+; window. BAR2 comes from V9xPciReadAtiMmioBar, the same config read the
+; Mach64 parts use. On any refusal *linear is 0.
+PUBLIC V9XMINIR128MMIOMAP
+V9XMINIR128MMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniR128MmioMapFailed
+    ; PASCAL pushes left to right: bar2 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_R128_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniR128MmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniR128MmioMapDone
+V9xMiniR128MmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniR128MmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINIR128MMIOMAP ENDP
 ENDIF
 
 IFDEF V9X_SIS_FAMILY

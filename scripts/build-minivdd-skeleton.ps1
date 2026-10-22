@@ -411,7 +411,10 @@ if ($intelMmio) {
     $assemblerArguments = @("-DV9X_I9XX_PHASE5_SUBMIT") + $assemblerArguments
 }
 if ($atiMmio) {
-    $assemblerArguments = @("-DV9X_ATI_MOBILITY_MMIO") + $assemblerArguments
+    # The Rage 128's register BAR map for its 2D engine rides with it: same
+    # family image, a different chip's window.
+    $assemblerArguments = @("-DV9X_ATI_MOBILITY_MMIO", "-DV9X_R128_MMIO") +
+        $assemblerArguments
 }
 if ($sisMmio) {
     $assemblerArguments = @("-DV9X_SIS_MMIO") + $assemblerArguments

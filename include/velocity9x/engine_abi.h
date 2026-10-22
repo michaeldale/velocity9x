@@ -74,6 +74,15 @@
  * engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_INTEL_GEN75  9ul
+/*
+ * ATI Rage 128 2D engine, direct register writes through the 16 KiB register
+ * BAR with the CCE in NONPM4 (engines\eng_r128.c): solid fill and screen
+ * copy, built by src\chipsets\ati\rage128\r128_2d.c and measured byte-exact
+ * at 8, 16 and 32 bpp on a Rage Fury Pro
+ * (docs\decisions\2026-10-22-rage128-2d-write-probe.md). Not a Mach64: never
+ * ATI_MACH64. No Direct3D engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_RAGE128  10ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

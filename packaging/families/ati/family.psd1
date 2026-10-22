@@ -296,13 +296,15 @@
             Adapter = 'ATI Rage 128 Pro'
             ClockDetector = 'ati-rage128-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Tier-0 of docs\plans\ati-rage128.md. Not a Mach64: a new
-            # register file and engine, so none of this family's engine code
-            # applies and the CPU draws until the Rage 128 engine is measured.
-            Acceleration = 'none'
+            # Not a Mach64: a new register file and engine with its own type.
+            # DirectDraw fill and copy on the 2D engine, measured byte-exact
+            # at 8, 16 and 32 bpp
+            # (docs\decisions\2026-10-22-rage128-2d-write-probe.md); the
+            # rest is drawn by the CPU (docs\plans\ati-rage128.md).
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'ATI_RAGE128'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # The smallest Rage 128 board. The heap sizes from 4F00h, clamped
             # to the family's 16 MiB mapping.
             VideoMemoryBytes = 8388608

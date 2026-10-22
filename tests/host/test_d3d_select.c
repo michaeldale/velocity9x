@@ -98,7 +98,16 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        { 1, 10ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
+        /* The Rage 128: a 2D engine and no Direct3D engine yet: none,
+         * whatever caps it carries, and software when that is asked for. */
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128,
+          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
+          V9X_D3D_SELECT_SOFTWARE },
+        { 1, 11ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },
 
         /* The publish-time case the old default got wrong: an unstamped

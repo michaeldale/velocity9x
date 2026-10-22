@@ -119,6 +119,7 @@ $required = @(
     "tests\host\test_tdfx_2d.c",
     "include\velocity9x\r128_2d.h",
     "src\chipsets\ati\rage128\r128_2d.c",
+    "src\display32\engines\eng_r128.c",
     "tests\host\test_r128_2d.c",
     "src\display16\display_component.c",
     "src\display16\loader.c",
