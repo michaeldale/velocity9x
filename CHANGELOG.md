@@ -6,12 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.26.0 - not yet released
 
-- **ATI Rage 128 Pro (`1002:5046`), tier-0.** The ati package now
-  installs on the Rage 128 Pro "PF" (Rage Fury Pro / Xpert 2000 Pro):
-  BIOS modes up to 1280x1024 at 8, 16 and 32 bpp, drawn by the CPU, with
-  DirectDraw on the CPU path. Measured on one card, 32 MiB AGP, of which
-  16 MiB is used for now
+- **ATI Rage 128 Pro (`1002:5046`): installs, and DirectDraw fills and
+  copies run on its 2D engine.** The ati package now installs on the
+  Rage 128 Pro "PF" (Rage Fury Pro / Xpert 2000 Pro), with BIOS modes up
+  to 1280x1024 at 8, 16 and 32 bpp
   ([record](docs/decisions/2026-10-22-rage128-ati-baseline-and-tier0.md)).
+  - DirectDraw fills and copies, including overlapping copies, are drawn
+    by the chip's 2D engine
+    ([record](docs/decisions/2026-10-22-rage128-directdraw-on-the-2d-engine.md)).
+  - GDI and Direct3D are drawn by the CPU for now.
+  - Measured on one card, 32 MiB AGP, of which 16 MiB is used for now.
 
 ## 0.25.0 - 2026-10-22
 

@@ -14,3 +14,4 @@
 - [ViRGE Z-buffer handoff — implemented, host-tested, never exercised on a guest](2026-08-30-d3d-zbuffer-handoff.md) - Historical.
 - [A8U4I5 Trio64 lock: the same card, the same workload, a different host](2026-09-08-a8u4i5-trio64-cross-platform-evidence.md) - Historical.
 
+- [Rage 128 handoff: 2D engine claimed, CCE drawing a triangle, Direct3D next](2026-10-23-rage128-handoff.md) - Open; parked mid-0.26.
