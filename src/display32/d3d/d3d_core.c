@@ -5904,7 +5904,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         }
     } else if (ops == &v9x_d3d_engine_g4) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN4;
-        name = "Velocity9x GMA X3100";
+        /* The same engine on Ironlake; it read "GMA X3100" there until
+         * 2026-10-22 (V9XGLP on W9QI2F4F). */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_I9XX_GEN5) != 0ul) {
+            name = "Velocity9x HD Graphics (ILK)";
+        } else {
+            name = "Velocity9x GMA X3100";
+        }
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers

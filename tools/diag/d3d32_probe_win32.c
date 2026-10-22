@@ -27,7 +27,10 @@
  *   T6 an 8x8 ARGB1555 texture of four full-scale colours, DECAL and
  *      nearest, each quadrant's centre within 8 of its texel;
  *   T7 half-alpha red over opaque green, SRCALPHA / INVSRCALPHA, an 8x8
- *      average within 8 of 0x807F00 (a half stipple averages the same).
+ *      average within 8 of 0x807F00 (a half stipple averages the same);
+ *   T8 sloped depth: two quads whose z runs in opposite directions across
+ *      the same pixels, once along x and once along y, must cross at the
+ *      centre.
  *
  * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
  * that full scale; T5 then expects the nearer quad, and without it the
@@ -952,6 +955,59 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_vertex(&v[4], 364.0f, 72.0f, 0.244146645f, 0xffff0000ul);
     d32_vertex(&v[5], 300.0f, 72.0f, 0.244146645f, 0xffff0000ul);
     d32_hx("T5FrontHr", (DWORD)d32_draw(device, v, 6ul));
+
+    /*
+     * T8, sloped depth: T3 and T5 hold z constant over each quad, which
+     * checks only the constant term of the depth plane. Here a green quad
+     * runs from z 0.2 to 0.8 and a red one from 0.8 to 0.2 over the same
+     * pixels, so with LESS each colour wins on the side where it is nearer
+     * and they cross at the centre. At (560, 8) the slope is along x; at
+     * (560, 80) it is along y. Ironlake drew 3DMark 2000's helicopter
+     * through a hill (2026-10-22); the depth slopes are the suspect.
+     */
+    d32_line("Stage", "8e-t8-sloped-depth");
+    d32_vertex(&v[0], 560.0f, 8.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[1], 624.0f, 8.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[2], 560.0f, 72.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[3], 624.0f, 8.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[4], 624.0f, 72.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[5], 560.0f, 72.0f, 0.2f, 0xff00ff00ul);
+    d32_hx("T8XGreenHr", (DWORD)d32_draw(device, v, 6ul));
+    for (judged = 0ul; judged < 6ul; ++judged) {
+        v[judged].sz = 1.0f - v[judged].sz;
+        v[judged].color = 0xffff0000ul;
+    }
+    d32_hx("T8XRedHr", (DWORD)d32_draw(device, v, 6ul));
+    d32_vertex(&v[0], 560.0f, 80.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[1], 624.0f, 80.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[2], 560.0f, 144.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[3], 624.0f, 80.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[4], 624.0f, 144.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[5], 560.0f, 144.0f, 0.8f, 0xff00ff00ul);
+    d32_hx("T8YGreenHr", (DWORD)d32_draw(device, v, 6ul));
+    for (judged = 0ul; judged < 6ul; ++judged) {
+        v[judged].sz = 1.0f - v[judged].sz;
+        v[judged].color = 0xffff0000ul;
+    }
+    d32_hx("T8YRedHr", (DWORD)d32_draw(device, v, 6ul));
+    /* The x pair again at (560, 152) with rhw 1.0 on the left and 0.2 on
+     * the right, as a perspective scene sends: screen z is still linear,
+     * so the crossing must not move. */
+    d32_vertex(&v[0], 560.0f, 152.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[1], 624.0f, 152.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[2], 560.0f, 216.0f, 0.2f, 0xff00ff00ul);
+    d32_vertex(&v[3], 624.0f, 152.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[4], 624.0f, 216.0f, 0.8f, 0xff00ff00ul);
+    d32_vertex(&v[5], 560.0f, 216.0f, 0.2f, 0xff00ff00ul);
+    v[1].rhw = 0.2f;
+    v[3].rhw = 0.2f;
+    v[4].rhw = 0.2f;
+    d32_hx("T8WGreenHr", (DWORD)d32_draw(device, v, 6ul));
+    for (judged = 0ul; judged < 6ul; ++judged) {
+        v[judged].sz = 1.0f - v[judged].sz;
+        v[judged].color = 0xffff0000ul;
+    }
+    d32_hx("T8WRedHr", (DWORD)d32_draw(device, v, 6ul));
     d32_state(device, D3DRENDERSTATE_ZENABLE, 0ul);
     d32_zstats(zbuffer, zbits, "ZDepth");
 
@@ -1040,6 +1096,54 @@ void WINAPI V9xD3d32ProbeEntry(void)
                    ? 1ul : 0ul;
         d32_hx("T5Ok", caps);
         failures += caps != 1ul ? 1ul : 0ul;
+
+        /* T8: green on the near side of each centre, red past it, and the
+         * first red pixel along the slope - 592 and 112 when the planes
+         * cross where their vertices say they do. */
+        {
+            DWORD at;
+            DWORD cross;
+
+            cross = 0ul;
+            for (at = 560ul; at < 624ul; ++at) {
+                if (d32_is_colour(d32_pixel(&desc, at, 40ul), 0x00ff0000ul)) {
+                    cross = at;
+                    break;
+                }
+            }
+            d32_hx("T8XCross", cross);
+            cross = 0ul;
+            for (at = 80ul; at < 144ul; ++at) {
+                if (d32_is_colour(d32_pixel(&desc, 592ul, at), 0x00ff0000ul)) {
+                    cross = at;
+                    break;
+                }
+            }
+            d32_hx("T8YCross", cross);
+            cross = 0ul;
+            for (at = 560ul; at < 624ul; ++at) {
+                if (d32_is_colour(d32_pixel(&desc, at, 184ul),
+                                  0x00ff0000ul)) {
+                    cross = at;
+                    break;
+                }
+            }
+            d32_hx("T8WCross", cross);
+        }
+        d32_hx("T8XNear", d32_pixel(&desc, 568ul, 40ul));
+        d32_hx("T8XFar", d32_pixel(&desc, 616ul, 40ul));
+        d32_hx("T8YNear", d32_pixel(&desc, 592ul, 88ul));
+        d32_hx("T8YFar", d32_pixel(&desc, 592ul, 136ul));
+        caps = (d32_is_colour(d32_pixel(&desc, 568ul, 40ul), 0x0000ff00ul)
+                    ? 1ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 616ul, 40ul), 0x00ff0000ul)
+                    ? 2ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 592ul, 88ul), 0x0000ff00ul)
+                    ? 4ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 592ul, 136ul), 0x00ff0000ul)
+                    ? 8ul : 0ul);
+        d32_hx("T8Ok", caps);
+        failures += caps != 15ul ? 1ul : 0ul;
 
         /* T6: each quadrant's centre is its texel, within the expansion
          * of a 5-bit channel to the target's. */

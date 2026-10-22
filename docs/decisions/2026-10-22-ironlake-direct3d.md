@@ -43,7 +43,7 @@ by WININIT rename, and the machine was restarted with `reset`.
 | 53 | 32 bpp, Z16 (restored HAL, see below) | PASS | 0 to 280h |
 | 53 | 32 bpp, Z24 | PASS | 280h to 4E0h |
 
-PASS means each of T1 (flat), T2 (Gouraud corners), T3 (depth test),
+T8 (sloped depth, below) was added later and passes too. PASS means each of T1 (flat), T2 (Gouraud corners), T3 (depth test),
 T5 (depth precision), T6 (texture: four texels), T7 (blend), T4 (offscreen
 device) read back as expected. After boot 49: `EngineCaps=00100414`,
 `EngineStatusEnable=d3d-claimed`, `Direct3DMode=hardware`. `T7Average` at
@@ -91,10 +91,84 @@ passing again.
 **Not yet done.** Reading ESR after each batch inside the HAL would name
 the batch. Nothing here says the bit costs anything.
 
+## OpenGL and Glide (boot 54)
+
+The branch's probes, run from `C:\V9XDIAG` against the package's
+V9XGL.DLL, GLIDE2X.DLL and GLIDE3X.DLL:
+
+| Probe | Result |
+|---|---|
+| V9XGLP (OpenGL) | PASS, every check OK, no GL error but the stub's expected 502h |
+| V9XGLIDP (Glide 2) | PASS, 0 failures |
+| V9XR3DP (render interface) | COMPLETE |
+| V9XGL3P (Glide 3 session) | SESSION |
+
+COMPLETE and SESSION are what the HD 4000, HD 4600 and GM965 record. The
+ring moved from E8h to 3838h over the four, with no hang.
+
+V9XGLP reported `Renderer=Velocity9x GMA X3100`: the Gen4 engine's name
+was fixed. It now reads `Velocity9x HD Graphics (ILK)` on the I9XX_GEN5
+bit. The 32-byte GL_RENDERER field ruled out the longer form. That build
+went in at boot 55; GL has not been rerun on it.
+
+## 3DMark 2000 (boot 55)
+
+3DMark 2000 refuses to run on Windows 98 SE's DirectX 6.1, so DirectX
+8.0 (`DX80ENG.EXE`) was installed on Michael's instruction. Its
+WININIT.INI carried `NUL=` lines, and Windows restarted through it
+unaided. The corrected HAL went in by the same WININIT. Then 3DMark 2000
+v1.1 was installed and registered Pro with the published key, as on the
+other testers.
+
+Default benchmark: 1024x768, 16-bit colour, 16-bit textures, 16-bit Z,
+triple buffer, on "Velocity9x Intel HD Graphics (Ironlake)".
+
+| | |
+|---|---|
+| 3DMark result | **1244** (CPU speed 78) |
+| Game 1 Helicopter, low / medium / high | 23.5 / 15.1 / 4.8 fps |
+| Game 2 Adventure, low / medium / high | 28.6 / 19.3 / 12.3 fps |
+| Fill rate, single / multi texturing | 188.1 / 187.2 Mtexels/s |
+| High polygon count, 1 / 4 / 8 lights | 432 / 433 / 425 Ktriangles/s |
+| Texture rendering, 8 / 16 / 32 / 64 MB | 59.7 / 59.3 / 39.3 / 6.5 fps |
+| Bump mapping | not supported |
+
+The score is recorded, not compared. The run completed without a hang.
+The snapshot afterwards shows 1,010,948 asynchronous submits and no draw
+refused.
+
+### One frame in question
+
+The Game 1 frame captured at about the first minute
+(`boot55-3dmark2000-game1-tick01*.png`) shows a band of hillside across
+the helicopter's fuselage. The rotor hub above the band and the stub wing
+and rocket pod below it are drawn. Michael read it as broken.
+
+The two frames captured from a second run (mission time 3.5 s and 9.6 s)
+draw the helicopter whole, and Game 2 and the high-polygon test look
+right. That one frame could be a depth fault, or a banked helicopter
+whose near wing sits in front of a ridge that hides its fuselage. Each
+agent screenshot takes about 70 s during 3D, so the same instant could
+not be caught again. The GM965 tester was offline, so its frame could not
+be compared.
+
+**T8 was added to V9XD32 to test the depth-fault reading.** The 965 is
+pre-CTG; from CTG on, WM_STATE's Depth Coefficient URB Read Offset is read
+in the attribute-major layout (PRM Vol 2 Part 1 7.5.5). A wrong Z slope
+would pass T3 and T5, whose quads hold z constant. T8 draws crossing
+quads with z sloping 0.2 to 0.8 and back:
+
+- along x, crossing at x 593 (592 expected);
+- along y, crossing at y 113 (112 expected);
+- along x with rhw 1.0 to 0.2, crossing at x 593.
+
+So the depth plane's slopes are right, with perspective or without
+(`boot55-V9XD32-t8.TXT`). The frame stays unexplained.
+
 ## Not measured
 
-- A game, 3DMark, or anything beyond V9XD32's seven tests.
-- Hangs under load. The GM965's alpha-test-with-depth-write hang
+- A game. Other 3DMark frames than the four captured.
+- Hangs under heavier load. The GM965's alpha-test-with-depth-write hang
   (`2026-10-21-gm965-*`) has not been tried here. The Gen4 engine still
   refuses that state to software on both parts.
 - What the screen showed during the probe.
