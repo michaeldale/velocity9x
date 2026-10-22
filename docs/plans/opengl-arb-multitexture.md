@@ -11,8 +11,11 @@ extension, 13.1 without
 ([record](../decisions/2026-10-22-netbook-arb-multitexture-quake3.md)).
 Half-Life on the netbook takes the ARB path and runs mwd5 as fast as on
 SGIS ([record](../decisions/2026-10-22-netbook-hl1-arb-vs-sgis.md)).
-Owed: the HD 4600, screenshots of the issue's views, Quake 2, and
-Half-Life on A8U4I5. Michael's request, from
+The software engine and the HD 4600 match SGIS exactly, and Quake 3 on
+the HD 4600 runs 52.8 fps with the extension, 41.4 without
+([record](../decisions/2026-10-22-arb-multitexture-software-engine-and-hd4600.md)).
+Owed: Quake 2, Half-Life on A8U4I5, and screenshots of issue 11's views
+(Michael reports the issue fixed in 0.24.0). Michael's request, from
 [GitHub issue 11](https://github.com/michaeldale/velocity9x/issues/11)
 (Quake 3 demo 1.11 glitches on the GMA 900 and the HD 4000, 0.23.0).
 Follows [gen3-sgis-multitexture.md](gen3-sgis-multitexture.md), which
@@ -83,8 +86,9 @@ units take it: the software engine, Gen3, and others as their
 4. **V9XGLP section:** the SGIS section's env-mode quads again through
    the ARB entry points and through two-unit vertex arrays, read back,
    exact against the software engine. Done as `Arb<way><case>` keys
-   (immediate, `glDrawArrays`, `glDrawElements`), checked against the
-   SGIS section's expected colours; not yet run on the software engine.
+   (immediate, `glDrawArrays`, `glDrawElements`); on the software
+   engine, the GMA 950 and the HD 4600 each ARB colour equals that
+   engine's SGIS colour exactly.
 5. **Gate:** the Quake 3 demo on the HD 4600 and the netbook, at the
    issue's preset (640x480, 16 bpp), with `r_ext_multitexture 1` and 0.
    Screenshots at issue 11's two views, compared with the issue's.
