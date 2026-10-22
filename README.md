@@ -24,14 +24,14 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.24.0.** Intel HD Graphics on Ironlake (Clarkdale)
-is new: DirectDraw, page flips, Direct3D, OpenGL and Glide on the GMA
-X3100's engine, with 3DMark 2000, measured on one tester's machine
-through remote help. OpenGL now runs on 32 bpp desktops and offers a
-24-bit depth buffer. **Glide and 3DCIF DLLs from 0.23.0 or earlier no
-longer work with this driver: replace any copy in a game's folder.** See
-the [changelog](CHANGELOG.md), and download it from
-[releases/0.24.0](releases/0.24.0/README.md).
+**Current version: 0.25.0.** OpenGL offers `GL_ARB_multitexture`, so
+Quake III Arena draws its lightmaps in one pass. Its demo001 runs 52.8
+fps on the HD 4600, up from 41.4, and 14.8 fps on the GMA 950, up from
+13.1. Half-Life now uses the ARB calls too, at the same speed. **Glide
+and 3DCIF DLLs from 0.23.0 or earlier still do not work with this
+driver: replace any copy in a game's folder.** See the
+[changelog](CHANGELOG.md), and download it from
+[releases/0.25.0](releases/0.25.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -140,7 +140,8 @@ Measured limits:
   only). Every other card's 3D, and OpenGL, Glide and 3DCIF everywhere,
   is 16-bit colour with a 16-bit depth buffer.
 - **Two texture units** means one-pass multitexture: OpenGL's
-  `GL_SGIS_multitexture`, and lightmaps in one pass.
+  `GL_ARB_multitexture` and `GL_SGIS_multitexture`, and lightmaps in one
+  pass.
 - **When an engine can't draw something:** it refuses the draw rather
   than drawing it wrong. The GMA 950 and the two Matrox 3D chips then
   draw it on the CPU.
@@ -239,8 +240,9 @@ run on one card or another.
 Implemented: the matrix stacks, immediate mode, vertex arrays, clipping
 (the scissor included), texture objects and images with the OpenGL 1.1
 environments, fog, attribute stacks, state queries, `glReadPixels`,
-front-buffer drawing, and `GL_SGIS_multitexture` on the Rage Pro,
-Gen3, Gen4, the HD 4600 and the HD 4000. Not yet: lighting, display lists, evaluators, and feedback and
+front-buffer drawing, and `GL_ARB_multitexture` and
+`GL_SGIS_multitexture` on the Rage Pro, Gen3, Gen4, the HD 4600 and the
+HD 4000. Not yet: lighting, display lists, evaluators, and feedback and
 selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
 tracks every entry point. The driver writes `C:\V9XDIAG\V9XGL.LOG`.
 

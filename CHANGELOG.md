@@ -4,16 +4,33 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.25.0 - not yet released
+## 0.25.0 - 2026-10-22
 
-- **OpenGL: `GL_ARB_multitexture`.** Where the driver already offered
-  `GL_SGIS_multitexture` (engines that draw two textures at once), it now
-  offers the ARB extension as well: `glActiveTextureARB`,
-  `glClientActiveTextureARB`, the 32 `glMultiTexCoord*ARB` forms, a
-  texture-coordinate array per unit, and the ARB queries. Quake III Arena
-  asks for it and draws lightmaps in a second pass without it. Quake 2
-  prefers it to SGIS when both are offered, so it changes Quake 2's path
-  too. Host-tested only; not yet run on any machine.
+- **OpenGL: `GL_ARB_multitexture`, and Quake 3 draws its lightmaps in one
+  pass.** Wherever the driver offered `GL_SGIS_multitexture` (the
+  software renderer, the Intel GMA 900/950/3150, GMA X3100, Ironlake,
+  HD 4000 and HD 4600, and the ATI Rage Pro), it now offers the ARB
+  extension beside it: `glActiveTextureARB`, `glClientActiveTextureARB`,
+  the 32 `glMultiTexCoord*ARB` forms, a texture-coordinate array per
+  unit, and the ARB queries. Without it, Quake III Arena drew every
+  lightmapped surface twice. Quake 3 demo `demo001` at 640x480 x 16:
+  - HD 4600: 41.4 to **52.8 fps**
+    ([record](docs/decisions/2026-10-22-arb-multitexture-software-engine-and-hd4600.md)).
+  - GMA 950: 13.1 to **14.8 fps**
+    ([record](docs/decisions/2026-10-22-netbook-arb-multitexture-quake3.md)).
+
+  V9XGLP's new section draws each texture environment through the ARB
+  calls, from immediate mode and from both kinds of array draw. On the
+  software renderer, the GMA 950 and the HD 4600, every colour equals
+  what the SGIS calls draw there, bit for bit.
+- **Half-Life now takes the ARB calls** when both extensions are offered,
+  where it used SGIS. On the GMA 950 `mwd5` runs 16.2-17.0 fps through
+  ARB against 16.0-16.9 through SGIS, the same work drawn
+  ([record](docs/decisions/2026-10-22-netbook-hl1-arb-vs-sgis.md)).
+  **Quake 2 may switch too** (id's source prefers ARB); it has not been
+  run on this version. Nor has the Rage Pro, Gen4 or the HD 4000.
+- Unit 1 carries two texture coordinates, s and t, as it did under SGIS.
+  A third or fourth coordinate given for it is dropped.
 
 ## 0.24.0 - 2026-10-22
 
