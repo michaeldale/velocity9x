@@ -2,11 +2,15 @@
 
 Date: 2026-10-22
 
-Status: Phase 0 and Phase 1 done on A8U4I5's Rage Fury Pro (`1002:5046`):
-ATI's driver measured as the reference, and tier-0 enable-ok with GDI,
+Status: Phases 0-2 done on A8U4I5's Rage Fury Pro (`1002:5046`):
+ATI's driver measured as the reference, tier-0 enable-ok with GDI,
 seven live mode switches and DirectDraw on the CPU
-([record](../decisions/2026-10-22-rage128-ati-baseline-and-tier0.md)).
-Next: Phase 2, the read-only register probe. The focus of 0.26.
+([record](../decisions/2026-10-22-rage128-ati-baseline-and-tier0.md)), and
+the registers read under both drivers: ATI runs its command engine as a
+bus-master ring even at the desktop, and the engine is idle in NONPM4 after
+POST ([record](../decisions/2026-10-22-rage128-register-probe.md)).
+Decisions 1 and 2 recommendations accepted by Michael (2026-10-22).
+Next: Phase 3, the 2D engine. The focus of 0.26.
 
 Target: the Rage 128 family as a fourth chip in the one `ati` family
 (`one-family-per-vendor`), beside the Mach64 VT2, the Rage Pro class and
@@ -70,7 +74,7 @@ figures, not targets.
 `rage128_hw16.c` with no hook; the backend accepts `5046` by exact id.
 Enable-ok at 800x600x16 on boot 519.
 
-### Phase 2: read-only register probe
+### Phase 2: read-only register probe (done 2026-10-22)
 
 A Win32 probe (in the ATIRX / V9XMGAPC mould) maps BAR2 and reads, never
 writes: `CONFIG_MEMSIZE`, `CONFIG_APER_SIZE`, `MEM_CNTL`, the PCI copy at
