@@ -1,6 +1,10 @@
 # GL_ARB_multitexture in the ICD
 
-Date: 2026-10-22. Status: not started. Michael's request, from
+Date: 2026-10-22. Status: step 1 done (HD 4600, 2026-10-22: Quake 3
+looks for `GL_ARB_multitexture` among six extensions and finds none,
+[issue record](../issues/2026-10-22-github-11-quake3-glitches-intel.md));
+the issue's floor glitch turned out to be a blend factor, not the
+two-pass path. Michael's request, from
 [GitHub issue 11](https://github.com/michaeldale/velocity9x/issues/11)
 (Quake 3 demo 1.11 glitches on the GMA 900 and the HD 4000, 0.23.0).
 Follows [gen3-sgis-multitexture.md](gen3-sgis-multitexture.md), which

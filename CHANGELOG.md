@@ -25,6 +25,12 @@ build identifier so exact guest-tested binaries remain traceable.
   32 bpp. It is measured on the HD 4600. Windows' ChoosePixelFormat still
   hands GLQuake-style requests the 16-bit format; a title that sets the
   format itself gets the deeper one.
+- **OpenGL: blending by destination alpha now draws.** None of the
+  driver's pixel formats has an alpha channel, so OpenGL treats the
+  screen's alpha as 1. Blend modes that read it are now drawn that way
+  instead of being dropped. In the Quake 3 demo this was a patch of floor
+  on the first map drawn without its blend pass (GitHub issue 11),
+  measured on the HD 4600.
 - **Render interface version 6.** GLIDE2X.DLL, GLIDE3X.DLL and
   ATI3DCIF.DLL from 0.23.0 or earlier no longer work with this driver.
   Replace any copy in a game folder with the one from the package.

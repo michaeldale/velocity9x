@@ -1,0 +1,219 @@
+...detecting CPU, found Intel Pentium III
+
+------- Input Initialization -------
+Initializing DirectInput...
+Couldn't set DI coop level
+Falling back to Win32 mouse support...
+Joystick is not active.
+------------------------------------
+----- Client Initialization -----
+----- Initializing Renderer ----
+-------------------------------
+----- Client Initialization Complete -----
+--- Common Initialization Complete ---
+Winsock Initialized
+Opening IP socket: localhost:27960
+Hostname: win98user.dalegroup.local
+IP: 10.0.1.254
+Working directory: C:\Q3Ademo
+------ Server Initialization ------
+Server: q3dm1
+----- R_Init -----
+Initializing OpenGL subsystem
+...initializing QGL
+...calling LoadLibrary( 'C:\WINDOWS\SYSTEM\opengl32.dll' ): succeeded
+...setting mode 3: 640 480 W
+...registered window class
+...created window@0,0 (646x505)
+Initializing OpenGL driver
+...getting DC: succeeded
+...GLW_ChoosePFD( 16, 16, 0 )
+...23 PFDs found
+...using software emulation
+...PIXELFORMAT 4 selected
+...creating GL context: succeeded
+...making context current: succeeded
+Initializing OpenGL extensions
+...GL_S3_s3tc not found
+...GL_EXT_texture_env_add not found
+...WGL_EXT_swap_control not found
+...GL_ARB_multitexture not found
+...GL_EXT_compiled_vertex_array not found
+...WGL_3DFX_gamma_control not found
+
+GL_VENDOR: Microsoft Corporation
+GL_RENDERER: GDI Generic
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture
+GL_MAX_TEXTURE_SIZE: 1024
+GL_MAX_ACTIVE_TEXTURES_ARB: 0
+
+PIXELFORMAT: color(16-bits) Z(16-bit) stencil(8-bits)
+MODE: 3, 640 x 480 windowed hz:N/A
+GAMMA: software w/ 0 overbright bits
+CPU: Intel Pentium III
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_NEAREST
+picmip: 1
+texture bits: 0
+multitexture: disabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+Initializing Shaders
+...loading 'scripts/base.shader'
+...loading 'scripts/base_button.shader'
+...loading 'scripts/base_floor.shader'
+...loading 'scripts/base_light.shader'
+...loading 'scripts/base_object.shader'
+...loading 'scripts/base_support.shader'
+...loading 'scripts/base_trim.shader'
+...loading 'scripts/base_wall.shader'
+...loading 'scripts/common.shader'
+...loading 'scripts/ctf.shader'
+...loading 'scripts/eerie.shader'
+...loading 'scripts/gfx.shader'
+...loading 'scripts/gothic_block.shader'
+...loading 'scripts/gothic_floor.shader'
+...loading 'scripts/gothic_light.shader'
+...loading 'scripts/gothic_trim.shader'
+...loading 'scripts/gothic_wall.shader'
+...loading 'scripts/hell.shader'
+...loading 'scripts/liquid.shader'
+...loading 'scripts/menu.shader'
+...loading 'scripts/models.shader'
+...loading 'scripts/organics.shader'
+...loading 'scripts/sfx.shader'
+...loading 'scripts/shrine.shader'
+...loading 'scripts/skin.shader'
+...loading 'scripts/sky.shader'
+...loading 'scripts/test.shader'
+----- finished R_Init -----
+
+------- sound initialization -------
+Initializing DirectSound
+failed
+------------------------------------
+Loading vm file vm/ui.qvm.
+VM file ui compiled to 902363 bytes of code
+4 arenas parsed
+6 bots parsed
+RE_Shutdown( 0 )
+Loading vm file vm/qagame.qvm.
+VM file qagame compiled to 1406264 bytes of code
+------- Game Initialization -------
+gamename: baseq3
+gamedate: Nov 29 1999
+0 teams with 0 entities
+12 items registered
+-----------------------------------
+------- BotLib Initialization -------
+loaded weapons.c
+loaded items.c
+loaded syn.c
+loaded rnd.c
+loaded match.c
+loaded rchat.c
+------------ Map Loading ------------
+trying to load maps/q3dm1.aas
+loaded maps/q3dm1.aas
+found 18 level items
+-------------------------------------
+6 bots parsed
+4 arenas parsed
+AAS initialized.
+-----------------------------------
+----- R_Init -----
+
+GL_VENDOR: Microsoft Corporation
+GL_RENDERER: GDI Generic
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture
+GL_MAX_TEXTURE_SIZE: 1024
+GL_MAX_ACTIVE_TEXTURES_ARB: 0
+
+PIXELFORMAT: color(16-bits) Z(16-bit) stencil(8-bits)
+MODE: 3, 640 x 480 windowed hz:N/A
+GAMMA: software w/ 0 overbright bits
+CPU: Intel Pentium III
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_NEAREST
+picmip: 1
+texture bits: 0
+multitexture: disabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+Initializing Shaders
+...loading 'scripts/base.shader'
+...loading 'scripts/base_button.shader'
+...loading 'scripts/base_floor.shader'
+...loading 'scripts/base_light.shader'
+...loading 'scripts/base_object.shader'
+...loading 'scripts/base_support.shader'
+...loading 'scripts/base_trim.shader'
+...loading 'scripts/base_wall.shader'
+...loading 'scripts/common.shader'
+...loading 'scripts/ctf.shader'
+...loading 'scripts/eerie.shader'
+...loading 'scripts/gfx.shader'
+...loading 'scripts/gothic_block.shader'
+...loading 'scripts/gothic_floor.shader'
+...loading 'scripts/gothic_light.shader'
+...loading 'scripts/gothic_trim.shader'
+...loading 'scripts/gothic_wall.shader'
+...loading 'scripts/hell.shader'
+...loading 'scripts/liquid.shader'
+...loading 'scripts/menu.shader'
+...loading 'scripts/models.shader'
+...loading 'scripts/organics.shader'
+...loading 'scripts/sfx.shader'
+...loading 'scripts/shrine.shader'
+...loading 'scripts/skin.shader'
+...loading 'scripts/sky.shader'
+...loading 'scripts/test.shader'
+----- finished R_Init -----
+Loading vm file vm/ui.qvm.
+VM file ui compiled to 902363 bytes of code
+4 arenas parsed
+6 bots parsed
+Loading vm file vm/cgame.qvm.
+VM file cgame compiled to 884513 bytes of code
+...loaded 1942 faces, 113 meshes, 42 trisurfs, 0 flares
+Couldn't open music file music\sonic5.wav
+CL_InitCGame:  2.08 seconds
+35 msec to draw all images
+Com_TouchMemory: 2 msec
+UnnamedPlayer entered the game
+(212 2360 82) : -45
+Dumped console text to viewpos.txt.
+Wrote screenshots/shot0000.tga
+
+GL_VENDOR: Microsoft Corporation
+GL_RENDERER: GDI Generic
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: GL_WIN_swap_hint GL_EXT_bgra GL_EXT_paletted_texture
+GL_MAX_TEXTURE_SIZE: 1024
+GL_MAX_ACTIVE_TEXTURES_ARB: 0
+
+PIXELFORMAT: color(16-bits) Z(16-bit) stencil(8-bits)
+MODE: 3, 640 x 480 windowed hz:N/A
+GAMMA: software w/ 0 overbright bits
+CPU: Intel Pentium III
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_NEAREST
+picmip: 1
+texture bits: 0
+multitexture: disabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+    AL  r_ext_texture_env_add "1"
+    AL  r_ext_compiled_vertex_array "1"
+    AL  r_ext_multitexture "1"
+    AL  r_ext_gamma_control "1"
+    AL  r_ext_compress_textures "1"
+
+405 total cvars
+Dumped console text to condump.txt.
+

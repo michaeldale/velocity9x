@@ -388,9 +388,30 @@ static void test_errors_and_abi_state(void)
     PCHECK(a.blend_enable == 1ul && a.src_blend == 5ul && a.dst_blend == 6ul);
     PCHECK(a.alpha_test_enable == 1ul && a.alpha_func == 5ul &&
            a.alpha_ref == 170ul);
+    /* No pixel format here has alpha bits, so the destination's alpha is
+     * 1 (GL 1.1 4.3.2): DST_ALPHA is ONE, ONE_MINUS_DST_ALPHA is ZERO, and
+     * SRC_ALPHA_SATURATE's min(As, 1 - Ad) is 0, ZERO for the colour. The
+     * engines are never handed a factor that reads alpha the target does
+     * not hold. Quake 3's GL_DST_COLOR / GL_ONE_MINUS_DST_ALPHA pass was
+     * refused for it on the HD 4600 (GitHub issue 11). */
     v9x_gl_prim_blend_func(&s, &p, V9X_GL_SRC_ALPHA_SATURATE, V9X_GL_ZERO);
     v9x_gl_prim_abi_state(&s, &p, &a);
-    PCHECK(a.src_blend == 11ul && a.dst_blend == 1ul);
+    PCHECK(a.src_blend == 1ul && a.dst_blend == 1ul);
+    v9x_gl_prim_blend_func(&s, &p, 0x0306u /* DST_COLOR */,
+                           0x0305u /* ONE_MINUS_DST_ALPHA */);
+    v9x_gl_prim_abi_state(&s, &p, &a);
+    PCHECK(a.src_blend == 9ul && a.dst_blend == 1ul);
+    v9x_gl_prim_blend_func(&s, &p, 0x0304u /* DST_ALPHA */,
+                           0x0304u /* DST_ALPHA */);
+    v9x_gl_prim_abi_state(&s, &p, &a);
+    PCHECK(a.src_blend == 2ul && a.dst_blend == 2ul);
+    v9x_gl_prim_blend_func(&s, &p, 0x0305u /* ONE_MINUS_DST_ALPHA */,
+                           V9X_GL_ONE);
+    v9x_gl_prim_abi_state(&s, &p, &a);
+    PCHECK(a.src_blend == 1ul && a.dst_blend == 2ul);
+    /* The application's factors are kept as it set them: only what the
+     * engine is handed changes. */
+    PCHECK(p.blend_src == 0x0305u && p.blend_dst == V9X_GL_ONE);
     PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
 }
 

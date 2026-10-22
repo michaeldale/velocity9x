@@ -264,6 +264,27 @@ static v9x_u32 v9x_gl_prim_factor(GLenum factor, int source)
     return 0ul;
 }
 
+/*
+ * A D3D blend factor with the destination's alpha taken as 1. No pixel
+ * format the ICD offers has alpha bits, and GL reads the alpha of such a
+ * framebuffer as 1.0 (GL 1.1 4.3.2): DESTALPHA is then ONE, INVDESTALPHA
+ * ZERO, and SRC_ALPHA_SATURATE's min(As, 1 - Ad) is 0, which is ZERO for
+ * the colour this target holds. Handing an engine the alpha factors asks
+ * it for alpha the target does not store: the HD 4600 refused Quake 3's
+ * GL_DST_COLOR / GL_ONE_MINUS_DST_ALPHA pass outright, and its floor patch
+ * drew without it (GitHub issue 11, 2026-10-22).
+ */
+static v9x_u32 v9x_gl_prim_no_dest_alpha(v9x_u32 factor)
+{
+    if (factor == 7ul) {            /* DESTALPHA */
+        return 2ul;                 /* ONE */
+    }
+    if (factor == 8ul || factor == 11ul) {  /* INVDESTALPHA, SATURATE */
+        return 1ul;                 /* ZERO */
+    }
+    return factor;
+}
+
 void v9x_gl_prim_blend_func(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                             GLenum src, GLenum dst)
 {
@@ -1237,8 +1258,10 @@ void v9x_gl_prim_abi_state(V9X_GL_STATE *state,
     out->depth_func = (v9x_u32)(pipeline->depth_func - V9X_GL_NEVER) + 1ul;
     out->blend_enable = v9x_gl_state_cap(state, V9X_GL_BLEND) ? 1ul
                                                                      : 0ul;
-    out->src_blend = v9x_gl_prim_factor(pipeline->blend_src, 1);
-    out->dst_blend = v9x_gl_prim_factor(pipeline->blend_dst, 0);
+    out->src_blend = v9x_gl_prim_no_dest_alpha(
+        v9x_gl_prim_factor(pipeline->blend_src, 1));
+    out->dst_blend = v9x_gl_prim_no_dest_alpha(
+        v9x_gl_prim_factor(pipeline->blend_dst, 0));
     out->alpha_test_enable =
         v9x_gl_state_cap(state, V9X_GL_ALPHA_TEST) ? 1ul : 0ul;
     out->alpha_func = (v9x_u32)(pipeline->alpha_func - V9X_GL_NEVER) + 1ul;
