@@ -35,6 +35,9 @@
 /* 'GW', a Rage II-class 264GT2C: the Mobility's register window and 2D
  * engine, no triangle setup engine; see rage_iic_hw16.c. */
 #define V9X_PCI_DEVICE_RAGE_IIC         ((v9x_u16)0x4757u)
+/* 'PF', a Rage 128 Pro: not a Mach64 at all, tier-0 with no engine; see
+ * rage128_hw16.c. */
+#define V9X_PCI_DEVICE_RAGE128_PF       ((v9x_u16)0x5046u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

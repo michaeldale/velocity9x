@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M and 3D Rage IIC, dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC and Rage 128 Pro (tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -285,6 +285,45 @@
                    DeviceDesc = 'Velocity9x ATI Rage LT-G PCI' }
             )
         }
+        @{
+            Id = 'rage128'
+            Name = 'ATI Rage 128 Pro'
+            VendorId = '1002'
+            DeviceId = '5046'
+            # No SubsystemId: A8U4I5's card reads 0018:1002, and the bare id
+            # binds every board built on the chip.
+            DeviceDesc = 'Velocity9x ATI Rage 128 Pro'
+            Adapter = 'ATI Rage 128 Pro'
+            ClockDetector = 'ati-rage128-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # Tier-0 of docs\plans\ati-rage128.md. Not a Mach64: a new
+            # register file and engine, so none of this family's engine code
+            # applies and the CPU draws until the Rage 128 engine is measured.
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # The smallest Rage 128 board. The heap sizes from 4F00h, clamped
+            # to the family's 16 MiB mapping.
+            VideoMemoryBytes = 8388608
+
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('rage128_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_rage128_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -336,6 +375,7 @@
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
             @{ Name = 'mobility_hw16'; Path = 'src\chipsets\ati\mobility\mobility_hw16.c' }
             @{ Name = 'rage_iic_hw16'; Path = 'src\chipsets\ati\rageiic\rage_iic_hw16.c' }
+            @{ Name = 'rage128_hw16'; Path = 'src\chipsets\ati\rage128\rage128_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -363,7 +403,7 @@
         RequiredMapSymbols = @()
         DispatchSymbol = 'v9x_hw16'
         BackendSymbols = @('v9x_mach64_vt2_device', 'v9x_rage_mobility_device',
-                           'v9x_rage_iic_device')
+                           'v9x_rage_iic_device', 'v9x_rage128_device')
     }
 
     Inf = @{
@@ -385,7 +425,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, and the Rage II, Rage Pro and VT3/VT4 aliases'
     }
 
     Vm = @{
@@ -418,6 +458,10 @@
             }
             @{
                 ChipId = 'rage-iic'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rage128'
                 Emulator = 'none'
             }
         )

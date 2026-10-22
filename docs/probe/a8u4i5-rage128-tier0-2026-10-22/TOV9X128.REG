@@ -1,0 +1,9 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\Enum\PCI\VEN_1002&DEV_5046&SUBSYS_00181002&REV_00\000800]
+"Driver"="Display\\0007"
+
+[HKEY_LOCAL_MACHINE\Config\0001\Display\Settings]
+"BitsPerPixel"="16"
+"Resolution"="800,600"
+

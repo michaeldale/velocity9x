@@ -21,6 +21,7 @@ extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_mach64_vt2_device;
 extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
 extern const V9X_HW16_DEVICE v9x_rage_iic_device;
+extern const V9X_HW16_DEVICE v9x_rage128_device;
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
 extern const V9X_HW16_DEVICE v9x_mach64_vt4_device;
 extern const V9X_HW16_DEVICE v9x_ati_4754_device;
@@ -109,6 +110,8 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_mach64_vt2_device,
     &v9x_rage_mobility_device,
     &v9x_rage_iic_device,
+    /* Not a Mach64: tier-0 with no hook (rage128_hw16.c). */
+    &v9x_rage128_device,
     /* The aliases, each declared in its chip's module: the VT2's, the
      * Rage IIC's (the Rage II class) and the Mobility-M's (the Rage Pro
      * class). A machine has one card, so order among them carries no

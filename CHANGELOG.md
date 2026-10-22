@@ -6,6 +6,13 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.26.0 - not yet released
 
+- **ATI Rage 128 Pro (`1002:5046`), tier-0.** The ati package now
+  installs on the Rage 128 Pro "PF" (Rage Fury Pro / Xpert 2000 Pro):
+  BIOS modes up to 1280x1024 at 8, 16 and 32 bpp, drawn by the CPU, with
+  DirectDraw on the CPU path. Measured on one card, 32 MiB AGP, of which
+  16 MiB is used for now
+  ([record](docs/decisions/2026-10-22-rage128-ati-baseline-and-tier0.md)).
+
 ## 0.25.0 - 2026-10-22
 
 - **OpenGL: `GL_ARB_multitexture`, and Quake 3 draws its lightmaps in one

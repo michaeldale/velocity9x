@@ -4,6 +4,7 @@
 - [3dfx Voodoo3 family: tier-0 bring-up](3dfx-voodoo3-family.md) - Open.
 - [3dfx Voodoo3: what the retro-agent work supplies to the 2D and D3D engines](3dfx-voodoo3-prior-work.md) - Open; desk work, nothing coded.
 - [3dfx VSA-100: Voodoo4 first, Voodoo5 5500 and 6000 after](3dfx-vsa100-family.md) - Proposed; retail Voodoo4 4500 on A8U4I5, not yet surveyed. Sibling Mini-Me measurements imported from VelocityNT as predictions.
+- [ATI Rage 128 in the ati family](ati-rage128.md) - In progress, the focus of 0.26: ATI's 4.13.7192 driver measured as the reference on A8U4I5 (3DMark 2000 2404, Half-Life D3D 59 / GL 70 warm), tier-0 enable-ok on the Rage Fury Pro (5046). Next: the read-only register probe; the 3D submission path (CCE PIO, ring or direct registers) is owed.
 - [ATI Rage Mobility-M hardware Direct3D and OpenGL](ati-rage-mobility-hardware-3d.md) - Proposed; research complete, physical bring-up not started.
 - [ATI Rage Pro class: table fog and 8-bit paletted textures](rage-pro-table-fog-and-paletted-textures.md) - In progress; Step 1 done (table fog per vertex in the core, six probe scenes match on the Rage XL, Thief II fogs with it); Step 2 (PAL8) parked: the XL samples CI8 but no palette load found reaches the colour.
 - [Direct3D gaps: backface culling and line rasterisation](d3d-line-raster-and-backface-cull.md) - Open.

@@ -1,0 +1,209 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018]
+"InfPath"="ATITEC~3.INF"
+"InfSection"="128_DEFAULT"
+"ProviderName"="ATI Tech. - Enhanced"
+"DriverDesc"="Rage Fury Pro/Xpert 2000 Pro  "
+"MatchingDeviceId"="PCI\\VEN_1002&DEV_5046&SUBSYS_00181002"
+"ReleaseVersion"="6.60-010926m-1476C-ATI"
+"Ver"="4.00"
+"DevLoader"="*vdd"
+"EnumPropPages"="ati9diaa.dll,EnumPropPages"
+"DriverDate"="10- 3-2001"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\640,480]
+@="60,72,75,85,90,100,120,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\800,600]
+@="56,60,70,72,75,85,90,100,120,160,200"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\848,480]
+@="60,88"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1024,768]
+@="60,70,72,75,85,90,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1152,864]
+@="60,70,75,85,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1280,1024]
+@="60,70,75,85,90,100"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1600,1200]
+@="60,70,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1792,1344]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1800,1440]
+@="60,70"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1856,1392]
+@="60,72"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1920,1080]
+@="60,70,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1920,1200]
+@="60,72,75,85"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\1920,1440]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\8\2048,1536]
+@="60,70,75"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\848,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1792,1344]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1800,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1856,1392]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1920,1080]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1920,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\1920,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\16\2048,1536]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\800,600]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\848,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1024,768]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1152,864]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1280,1024]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1600,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1792,1344]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1800,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1856,1392]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1920,1080]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1920,1200]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\1920,1440]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\MODES\32\2048,1536]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\INFO]
+"ChipType"="R128"
+"Revision"="0"
+"DacType"="Internal"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\DEFAULT]
+"Mode"="8,640,480"
+"drv"="ATI2DRAA.DRV"
+"drv2"="ATI2DRAA.DRV"
+"vdd"="*vdd,*vflatd"
+"minivdd"="ATI2VXAA.VXD"
+"minivdd2"="ATI2VXAA.VXD"
+"RefreshRate"="-1"
+"DDC"="1"
+"CHIPID"=hex:02,10,46,50,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ATI WDM Configurations]
+"EnableVirtualTables"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ATI WDM Configurations\Hardware Info]
+"Virtual Hardware Table Revision"=dword:00000002
+"Virtual Hardware Table Data"=hex:02,34,01,02
+"Hardware Table Length"=dword:00000004
+"Hardware Table Revision"=dword:00000002
+"Hardware Table Data"=hex:0f,34,01,02
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ATI WDM Configurations\Multimedia Table]
+"Virtual Multimedia Table Revision"=dword:00000001
+"Virtual Multimedia Table Data"=hex:06,18,06,80,29,66,02,01,00,06,00,07
+"Multimedia Table Length"=dword:0000000c
+"Multimedia Table Data"=hex:00,1f,06,00,00,66,02,00,00,02,00,00
+"Multimedia Table Revision"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ATI WDM Configurations\Frequency Table]
+"Virtual Reference Clock"=dword:00002e31
+"Reference Clock"="2E31"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ATI Multimedia Hardware]
+"VIP0 ID"="0x0"
+"VIP1 ID"="0x1002 0x4D54"
+"VIP2 ID"="0x0"
+"VIP3 ID"="0x0"
+"I2C Expander"="0xFF"
+"Tuner ID"="0"
+"Decoder ID"="6"
+"Audio ID"="F"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ENUM]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ENUM\atiwdm5]
+"pnpid"="ATIRTVideo"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0018\ENUM\atiwdm7]
+"pnpid"="MVDCodec"
+

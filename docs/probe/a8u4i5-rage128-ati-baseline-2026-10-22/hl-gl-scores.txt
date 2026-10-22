@@ -1,0 +1,6 @@
+
+394 frames 6.448 seconds 61.105 fps
+393 frames 5.593 seconds 70.261 fps
+393 frames 5.608 seconds 70.082 fps
+
+
