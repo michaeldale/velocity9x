@@ -1,4 +1,4 @@
-# Rage 128: the CCE runs packets fed through its PIO ports, even and odd alternating
+# Rage 128: the CCE runs packets through its PIO ports, and draws a triangle
 
 Date: 2026-10-22
 
@@ -65,11 +65,52 @@ was unaffected.
   could be an older microcode in the BIOS, or partly uninitialised RAM.
   Not established. ATI's driver's microcode was not read back.
 
+## A triangle through 3D_RNDR_GEN_PRIM (2026-10-23, boots 522-523)
+
+The probe then sent one untextured triangle, (4,2), (60,2), (4,30) in opaque
+blue, through PIO. Its state followed X's Render path (`r128_exa_render.c`
+`COMPOSITE_SETUP`): the 2D destination with `GMC_3D_FCN_EN`,
+`SCALE_3D_CNTL`, `SETUP_CNTL` (Gouraud, vertices 1 to 3, 4 sub-pixel
+bits), `PM4_VC_FPU_SETUP` (no culling), `PLANE_3D_MASK_C`,
+`MISC_3D_STATE_CNTL_REG` (blend one, zero) and `TEX_CNTL_C` (shade only).
+The primitive was `3D_RNDR_GEN_PRIM` with `DIFFUSE_ARGB` vertices,
+`TRI_LIST`, three vertices. Evidence: `R128CCE-triangle-boot523.TXT`
+beside the first capture.
+
+| Variant | Changed pixels (area 784) | Pixel at (10,6) | Outside the box | Result |
+|---|---|---|---|---|
+| X's 2D-register state only | 0 | prefill | 0 | Nothing drawn, idle in 4 reads |
+| + the context block's first four: `DST_PITCH_OFFSET_C`, `DP_GUI_MASTER_CNTL_C`, `SC_TOP_LEFT_C` 0, `SC_BOTTOM_RIGHT_C` 1FFF1FFFh (type-0, count 4) | **784** | `001F`, the blue | 0 | **Drawn** |
+| + an RHW of 1.0 in each vertex | **784** | `001F` | 0 | **Drawn** |
+
+The pixel at (58,28), just outside the hypotenuse, kept the prefill in
+both. The 3D path clips to the context scissor, which POST leaves at zero
+(`SC_BOTTOM_RIGHT_C` read 0 in the
+[register probe](2026-10-22-rage128-register-probe.md)). X's Render path
+does not write it because the DRM's context emit has, by then.
+
+**A hang, and what it was not.** The first triangle run (boot 522, only
+the plain variant) finished, then restored `PM4_MICRO_CNTL` to its POST
+free-run value with this microcode loaded. About a minute later, idle at
+the desktop, A8U4I5 stopped answering ping. It needed a power cycle from
+Michael (boot 523). The agent's log ends with that run's completed
+output. The next upload's `.PART` file is whole but was never renamed. So
+the hang was not in the three variants above, which had not yet run. The
+probe now stops the microengine and resets the engine after every
+triangle, and leaves `PM4_MICRO_CNTL` at 0 (as `r128_do_cce_stop` does).
+After the boot 523 run it answered ping for four minutes and V9XGDI
+passed. What exactly hung is not established: the reading most
+consistent with it is a microengine left free-running behind a packet
+it had not finished.
+
 ## What it changes in the plan
 
-Decision 1's recommendation, CCE in PIO mode first, now has silicon
-behind it for type-0 packets. Still owed before Direct3D is built on it:
-a type-3 primitive packet (`3D_RNDR_GEN_PRIM`) with the 3D context set,
-and its rate against the direct 2D path.
+Decision 1 is taken on measurement: **Direct3D goes through the CCE in
+PIO mode**, pairs to EVEN/ODD. Type-0 register writes and a type-3
+primitive both executed. The 3D context block, including the 3D scissor,
+must be written before any primitive. The microengine runs only while the
+driver is submitting, and is stopped with an engine reset before NONPM4
+direct writes resume. Owed: textures, Z, the rate of PIO submission, and
+whether a bus-master ring is needed for speed.
 
 Gates: `run-checks.ps1` passed on the commit carrying the probe.

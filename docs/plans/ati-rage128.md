@@ -15,6 +15,11 @@ Phase 3 in progress: DirectDraw fill and copy run on the 2D engine
 pixel-correct through the HAL at 16 bpp
 ([record](../decisions/2026-10-22-rage128-directdraw-on-the-2d-engine.md)).
 Owed in Phase 3: GDI acceleration, the 32 MiB mapping, engine reset.
+Decision 1 taken on measurement (2026-10-23): the CCE runs Linux's
+microcode in PIO mode, packets to EVEN/ODD in pairs, and drew an
+untextured triangle through `3D_RNDR_GEN_PRIM` once the 3D context
+scissor was opened
+([record](../decisions/2026-10-22-rage128-cce-pio-runs-packets-and-a-triangle.md)).
 The focus of 0.26.
 
 Target: the Rage 128 family as a fourth chip in the one `ati` family

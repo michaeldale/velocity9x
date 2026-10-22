@@ -26,7 +26,7 @@
  *      busy, GUI not active), stop the CCE back to NONPM4, read the
  *      surface and compare. A timeout resets the engine (R128EngineReset)
  *      and moves on.
- *   6. Leave the CCE in NONPM4 with PM4_MICRO_CNTL as found.
+ *   6. Leave the CCE in NONPM4 with the microengine stopped.
  *
  * Runs at a 16-bpp desktop only. Writes nothing outside the VxD's list.
  */
@@ -82,6 +82,71 @@
 
 /* Type-0 packet: one register, CCE_PACKET0(reg, 0) in r128_drv.h. */
 #define RC_PACKET0(reg) ((DWORD)(reg) >> 2)
+/* Type-2 packet, a filler dword; type-3 with n+1 dwords following. */
+#define RC_PACKET2 0x80000000ul
+#define RC_PACKET3(op, n) ((DWORD)(op) | ((DWORD)(n) << 16))
+#define RC_3D_RNDR_GEN_PRIM 0xc0002500ul
+
+/* The 3D state X's Render path sets (r128_exa_render.c COMPOSITE_SETUP and
+ * R128CCEPrepareComposite), less texturing: values from r128_reg.h. */
+#define RC_SCALE_3D_CNTL 0x1a00ul
+#define RC_SETUP_CNTL 0x1bc4ul
+#define RC_WINDOW_XY_OFFSET 0x1bccul
+#define RC_PM4_VC_FPU_SETUP 0x071cul
+#define RC_TEX_CNTL_C 0x1c9cul
+#define RC_MISC_3D_STATE_CNTL_REG 0x1ca0ul
+#define RC_CONSTANT_COLOR_C 0x1d34ul
+#define RC_PLANE_3D_MASK_C 0x1d44ul
+
+/* SCALE_3D_TEXMAP_SHADE (2 << 6) | SCALE_PIX_REPLICATE (1 << 8) |
+ * TEX_CACHE_LINE_SIZE_4QW (1 << 31). */
+#define RC_SCALE_3D_VALUE 0x80000180ul
+/* COLOR_GOURAUD (4 << 3) | PRIM_TYPE_TRI | TEXTURE_ST_MULT_W |
+ * STARTING_VERTEX_1 (1 << 14) | ENDING_VERTEX_3 (3 << 16) |
+ * SUB_PIX_4BITS (1 << 19). */
+#define RC_SETUP_VALUE 0x000b4020ul
+/* FRONT_DIR_CCW | BACKFACE_SOLID (3 << 1) | FRONTFACE_SOLID (3 << 3) |
+ * FPU_COLOR_GOURAUD (2 << 5) | FPU_SUB_PIX_4BITS (1 << 7) | FPU_MODE_3D
+ * (1 << 8) | TRAP_BITS_DISABLE (1 << 9) | FLAT_SHADE_VERTEX_OGL (1 << 14):
+ * nothing culled. */
+#define RC_FPU_SETUP_VALUE 0x000043dful
+/* MISC_SCALE_3D_TEXMAP_SHADE (2 << 8) | MISC_SCALE_PIX_REPLICATE (1 << 10)
+ * | ALPHA_COMB_ADD_CLAMP | blend source ONE (1 << 16), destination ZERO. */
+#define RC_MISC_3D_VALUE 0x00010600ul
+/* Shading only, no texture, Z, alpha or fog; TEX_CACHE_FLUSH (1 << 23). */
+#define RC_TEX_CNTL_VALUE 0x00800000ul
+/* The 2D master control with GMC_3D_FCN_EN (1 << 27) and
+ * GMC_WR_MSK_DIS (1 << 30), as X's Render path sets it. */
+#define RC_GMC_3D_EXTRA 0x48000000ul
+
+/* Vertex format DIFFUSE_ARGB: X, Y, Z as floats, then the packed colour.
+ * VC_CNTL: TRI_LIST (4) | WALK_RING (30h) | 3 vertices. */
+#define RC_VC_FRMT_DIFFUSE_ARGB 0x00000008ul
+#define RC_VC_FRMT_RHW 0x00000001ul
+/* The context block the DRM emits from here (r128_state.c
+ * r128_emit_context): DST_PITCH_OFFSET_C, DP_GUI_MASTER_CNTL_C,
+ * SC_TOP_LEFT_C, SC_BOTTOM_RIGHT_C, ... */
+#define RC_DST_PITCH_OFFSET_C 0x1c80ul
+
+/* Triangle variants, each adding to the one before. */
+#define TRI_PLAIN 0
+#define TRI_CONTEXT 1
+#define TRI_RHW 2
+#define RC_VC_CNTL_TRI_LIST_3 0x00030034ul
+
+/* IEEE single-precision constants, so the probe needs no floating point. */
+#define RC_F_0 0x00000000ul
+#define RC_F_1 0x3f800000ul
+#define RC_F_2 0x40000000ul
+#define RC_F_4 0x40800000ul
+#define RC_F_30 0x41f00000ul
+#define RC_F_60 0x42700000ul
+
+/* The triangle: (4,2), (60,2), (4,30) on the 64x32 surface, opaque blue,
+ * which is 001Fh at 5:6:5. */
+#define RC_TRI_ARGB 0xff0000fful
+#define RC_TRI_565 0x001fu
+#define RC_TRI_AREA 784ul
 
 #define RC_MICROCODE_WORDS 256u
 
@@ -477,6 +542,185 @@ static void rc_pio_fill(const char *name, int order, DWORD micro_found)
              mismatches == 0u ? "PASS" : "MISMATCH");
 }
 
+/* A packet stream to the PIO ports in EVEN/ODD pairs, padded with a type-2
+ * filler to a whole pair. */
+static void rc_add_stream(const DWORD *dwords, DWORD count)
+{
+    DWORD index;
+
+    for (index = 0u; index < count; ++index) {
+        rc_add_write((index & 1u) != 0u ? RC_PM4_FIFO_DATA_ODD :
+                                          RC_PM4_FIFO_DATA_EVEN,
+                     dwords[index]);
+    }
+    if ((count & 1u) != 0u) {
+        rc_add_write(RC_PM4_FIFO_DATA_ODD, RC_PACKET2);
+    }
+}
+
+static DWORD rc_surface_pixel(const unsigned char *bytes, DWORD x, DWORD y)
+{
+    return (DWORD)bytes[y * TEST_PITCH + x * 2u] |
+           ((DWORD)bytes[y * TEST_PITCH + x * 2u + 1u] << 8);
+}
+
+/*
+ * One untextured triangle through 3D_RNDR_GEN_PRIM, on the 2D destination
+ * with GMC_3D_FCN_EN, as X's Render path draws its quads. The rasterizer's
+ * edge rules are not known yet, so this does not demand a byte model: it
+ * publishes how many pixels changed against the triangle's area, the
+ * colour inside, a pixel just outside the hypotenuse, and how many changed
+ * pixels lie outside the triangle's bounding box (which must be none).
+ */
+static void rc_pio_triangle(const char *name, int variant,
+                            DWORD dst_pitch_offset)
+{
+    DWORD stream[80];
+    DWORD count = 0u;
+    DWORD wait_index;
+    DWORD wait_result;
+    DWORD x;
+    DWORD y;
+    DWORD vertex;
+    DWORD changed = 0u;
+    DWORD outside = 0u;
+    DWORD pixel;
+    DWORD gmc;
+    char key[64];
+    const unsigned char *actual;
+    static const DWORD positions[3][2] = {
+        { RC_F_4, RC_F_2 }, { RC_F_60, RC_F_2 }, { RC_F_4, RC_F_30 }
+    };
+
+    gmc = V9X_R128_GMC_DST_PITCH_OFFSET_CNTL |
+          V9X_R128_GMC_BRUSH_SOLID_COLOR |
+          (V9X_R128_DATATYPE_16BPP << V9X_R128_GMC_DST_DATATYPE_SHIFT) |
+          V9X_R128_GMC_SRC_DATATYPE_COLOR |
+          (V9X_R128_ROP3_S << V9X_R128_GMC_ROP3_SHIFT) |
+          V9X_R128_DP_SRC_SOURCE_MEMORY |
+          V9X_R128_GMC_CLR_CMP_CNTL_DIS |
+          V9X_R128_GMC_AUX_CLIP_DIS | RC_GMC_3D_EXTRA;
+    stream[count++] = RC_PACKET0(V9X_R128_DST_PITCH_OFFSET);
+    stream[count++] = dst_pitch_offset;
+    stream[count++] = RC_PACKET0(V9X_R128_DP_GUI_MASTER_CNTL);
+    stream[count++] = gmc;
+    if (variant >= TRI_CONTEXT) {
+        /* The DRM's context block, first four: destination, master
+         * control and the 3D scissor, which POST leaves at zero. */
+        stream[count++] = RC_PACKET0(RC_DST_PITCH_OFFSET_C) |
+                          (3ul << 16);
+        stream[count++] = dst_pitch_offset;
+        stream[count++] = gmc;
+        stream[count++] = 0ul;
+        stream[count++] = V9X_R128_SC_MAX;
+    }
+    stream[count++] = RC_PACKET0(V9X_R128_DP_CNTL);
+    stream[count++] = V9X_R128_DST_X_LEFT_TO_RIGHT |
+                      V9X_R128_DST_Y_TOP_TO_BOTTOM;
+    stream[count++] = RC_PACKET0(RC_SCALE_3D_CNTL);
+    stream[count++] = RC_SCALE_3D_VALUE;
+    stream[count++] = RC_PACKET0(RC_SETUP_CNTL);
+    stream[count++] = RC_SETUP_VALUE;
+    stream[count++] = RC_PACKET0(RC_PM4_VC_FPU_SETUP);
+    stream[count++] = RC_FPU_SETUP_VALUE;
+    stream[count++] = RC_PACKET0(RC_PLANE_3D_MASK_C);
+    stream[count++] = 0xfffffffful;
+    stream[count++] = RC_PACKET0(RC_CONSTANT_COLOR_C);
+    stream[count++] = 0xff000000ul;
+    stream[count++] = RC_PACKET0(RC_WINDOW_XY_OFFSET);
+    stream[count++] = 0ul;
+    stream[count++] = RC_PACKET0(RC_MISC_3D_STATE_CNTL_REG);
+    stream[count++] = RC_MISC_3D_VALUE;
+    stream[count++] = RC_PACKET0(RC_TEX_CNTL_C);
+    stream[count++] = RC_TEX_CNTL_VALUE;
+    /* Format, control and three vertices of four dwords (five with RHW):
+     * n counts the dwords after the header, less one. */
+    stream[count++] = RC_PACKET3(RC_3D_RNDR_GEN_PRIM,
+                                 variant >= TRI_RHW ? 16u : 13u);
+    stream[count++] = RC_VC_FRMT_DIFFUSE_ARGB |
+                      (variant >= TRI_RHW ? RC_VC_FRMT_RHW : 0ul);
+    stream[count++] = RC_VC_CNTL_TRI_LIST_3;
+    for (vertex = 0u; vertex < 3u; ++vertex) {
+        stream[count++] = positions[vertex][0];
+        stream[count++] = positions[vertex][1];
+        stream[count++] = RC_F_0;
+        if (variant >= TRI_RHW) {
+            stream[count++] = RC_F_1;
+        }
+        stream[count++] = RC_TRI_ARGB;
+    }
+
+    rc_begin();
+    rc_add(RC_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_192PIO | RC_PM4_NOUPDATE);
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    rc_add_stream(stream, count);
+    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, RC_PIO_FIFO_ENTRIES, 0u);
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "NOT-RUN");
+        rc_write_decimal(rc_key(key, name, "RefusedOp"), rc_result_buffer.refused);
+        rc_failed = 1u;
+        return;
+    }
+    wait_result = rc_result_buffer.ops[wait_index].result;
+    rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
+    rc_write_hex(rc_key(key, name, "Pm4Stat"),
+                 rc_result_buffer.ops[wait_index + 1u].result);
+
+    /* Stop the microengine first, then reset the engine whatever the wait
+     * said: a primitive that drew nothing may have left the setup engine
+     * part-way through a packet, and A8U4I5 hung idle about a minute after
+     * the first triangle run left it so (boot 522). */
+    rc_begin();
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    /* Put back what the 2D tests and the driver expect of these. */
+    rc_add_write(RC_SCALE_3D_CNTL, 0u);
+    rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rc_add(RC_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "STOP-NOT-RUN");
+        rc_failed = 1u;
+        return;
+    }
+    actual = (const unsigned char *)rc_result_buffer.block;
+    for (y = 0u; y < TEST_BYTES / TEST_PITCH; ++y) {
+        for (x = 0u; x < TEST_PITCH / 2u; ++x) {
+            if (rc_surface_pixel(actual, x, y) == (TEST_PREFILL & 0xffffu)) {
+                continue;
+            }
+            ++changed;
+            if (x < 3u || x > 61u || y < 1u || y > 31u) {
+                ++outside;
+            }
+        }
+    }
+    pixel = rc_surface_pixel(actual, 10u, 6u);
+    rc_write_decimal(rc_key(key, name, "ChangedPixels"), changed);
+    rc_write_decimal(rc_key(key, name, "ExpectedAbout"), RC_TRI_AREA);
+    rc_write_decimal(rc_key(key, name, "ChangedOutsideBox"), outside);
+    rc_write_hex(rc_key(key, name, "PixelAt10x6"), pixel);
+    rc_write_hex(rc_key(key, name, "PixelAt58x28"),
+                 rc_surface_pixel(actual, 58u, 28u));
+    if (wait_result == RC_TIMEOUT) {
+        rc_write(rc_key(key, name, "Result"), "CCE-NOT-IDLE");
+        return;
+    }
+    if (pixel == RC_TRI_565 && outside == 0u &&
+        changed > RC_TRI_AREA - RC_TRI_AREA / 8u &&
+        changed < RC_TRI_AREA + RC_TRI_AREA / 8u) {
+        rc_write(rc_key(key, name, "Result"), "DRAWN");
+    } else if (changed == 0u) {
+        rc_write(rc_key(key, name, "Result"), "NOTHING-DRAWN");
+    } else {
+        rc_write(rc_key(key, name, "Result"), "DRAWN-DIFFERENTLY");
+    }
+}
+
 void WINAPI V9xRage128CceProbeEntry(void)
 {
     static const char header[] = "[Rage128CceProbe]\r\n";
@@ -577,11 +821,23 @@ void WINAPI V9xRage128CceProbeEntry(void)
 
     rc_pio_fill("PioAlternate", ORDER_ALTERNATE, micro_found);
     rc_pio_fill("PioEvenOnly", ORDER_EVEN_ONLY, micro_found);
+    /* The surface's pitch/offset word: 8 units of 8 pixels, 16 MiB / 32. */
+    {
+        DWORD surface = ((TEST_PITCH / 2u / V9X_R128_PITCH_PIXEL_UNIT) <<
+                         V9X_R128_PITCH_SHIFT) |
+                        (TEST_BASE / V9X_R128_OFFSET_ALIGN);
 
-    /* As found: NONPM4, and PM4_MICRO_CNTL's POST value. */
+        rc_pio_triangle("TriPlain", TRI_PLAIN, surface);
+        rc_pio_triangle("TriContext", TRI_CONTEXT, surface);
+        rc_pio_triangle("TriContextRhw", TRI_RHW, surface);
+    }
+
+    /* NONPM4 with the microengine stopped, as r128_do_cce_stop leaves it.
+     * Not POST's free-run value: that let A8U4I5 hang idle after the first
+     * triangle run (boot 522), and NONPM4 needs no microengine. */
     rc_begin();
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
     rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
-    rc_add_write(RC_PM4_MICRO_CNTL, micro_found);
     rc_run();
     rc_write_hex("Pm4BufferCntlAtEnd", rc_read_register(RC_PM4_BUFFER_CNTL));
     rc_write_hex("Pm4MicroCntlAtEnd", rc_read_register(RC_PM4_MICRO_CNTL));
