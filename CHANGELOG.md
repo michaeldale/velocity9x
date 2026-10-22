@@ -4,8 +4,32 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.26.0 - not yet released
+## 0.26.0 - 2026-10-23
 
+- **OpenGL: textures built by `gluBuild2DMipmaps` now draw.** Windows
+  98's GLU uploads every mip level it builds as `GL_UNSIGNED_SHORT`, which
+  the OpenGL driver refused, so no such texture was ever complete. Tux
+  Racer drew its splash and menus as flat colour and white blocks on every
+  card, at 16 bpp all along and at 32 bpp since 0.25.0 let it use the
+  driver there (before, a 32 bpp desktop gave it Microsoft's software
+  OpenGL). Uploads now take `GL_UNSIGNED_SHORT`,
+  and `GL_UNPACK_SWAP_BYTES` is honoured. Tux Racer's splash and menu
+  match Microsoft's renderer on the HD 4600 and on the software renderer;
+  V9XGLP reads as before
+  ([issue record](docs/issues/2026-10-23-haswell-tux-racer-untextured-and-quake3-gl-sync.md)).
+  A race was not run, and lighting and display lists are still not
+  implemented.
+- **HD 4600: OpenGL draws no longer wait for the GPU one by one.** Every
+  draw outside full-screen exclusive mode waited for the render engine to
+  finish it, which only draws onto the visible desktop need; OpenGL never
+  uses exclusive mode. Now only draws onto the desktop wait. Quake 3
+  `demo001` at 1024x768 x 32: 35.7 to **42.6 fps**, and frames slower
+  than 33 ms halved
+  ([record](docs/decisions/2026-10-23-haswell-gl-draws-run-on.md)).
+  Windowed Direct3D benefits the same way; Half-Life's windowed Direct3D
+  was checked by eye. The HD 4000 shares the code and has not run it.
+  The GPU's own cost per draw is now the limit (a
+  [parked plan](docs/plans/intel-haswell-batch-cost.md)).
 - **ATI Rage 128 Pro (`1002:5046`): installs, and DirectDraw fills and
   copies run on its 2D engine.** The ati package now installs on the
   Rage 128 Pro "PF" (Rage Fury Pro / Xpert 2000 Pro), with BIOS modes up
