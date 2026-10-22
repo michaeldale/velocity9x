@@ -165,6 +165,22 @@ quads with z sloping 0.2 to 0.8 and back:
 So the depth plane's slopes are right, with perspective or without
 (`boot55-V9XD32-t8.TXT`). The frame stays unexplained.
 
+## Merged main (boot 56)
+
+`main` fast-forwarded to `cd04a7b8`. The merged build's V9XDISP.DRV,
+V9XHAL.DLL, V9XMINI.VXD, V9XGL.DLL, GLIDE2X.DLL and GLIDE3X.DLL went in
+by WININIT rename, then `reset`. The HAL and DRV read back from the guest
+are byte-identical to the build. Results:
+
+- V9XDDF: PASS.
+- V9XD32: PASS at 32 bpp with Z16 and with Z24, and at 16 bpp, with
+  T8Ok=F each time.
+- V9XGLP: PASS, `Renderer=Velocity9x HD Graphics (ILK)`.
+- V9XGLIDP: PASS.
+- V9XR3DP and V9XGL3P: COMPLETE and SESSION.
+
+ESR went from 0 to 1 at the first V9XD32 run, as before.
+
 ## Not measured
 
 - A game. Other 3DMark frames than the four captured.
