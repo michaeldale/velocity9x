@@ -33,9 +33,11 @@ build identifier so exact guest-tested binaries remain traceable.
   Intel parts. Full-screen exclusive programs are unaffected.
 - **24-bit depth for OpenGL.** A second pixel format carries a 24-bit Z
   buffer (32-bit on the Millennium II) beside the 16-bit one, at 16 and
-  32 bpp. It is measured on the HD 4600. Windows' ChoosePixelFormat still
-  hands GLQuake-style requests the 16-bit format; a title that sets the
-  format itself gets the deeper one.
+  32 bpp. It is measured on the HD 4600, the GMA 950 and the Millennium
+  II. Asked for 32 depth bits, as GLQuake asks, Windows' ChoosePixelFormat
+  gives the Millennium II its 32-bit format but gave the HD 4600 its
+  16-bit one, since the Intel parts' deeper format is 24 bits; a title
+  that sets the format itself gets the deeper one.
 - **OpenGL: blending by destination alpha now draws.** None of the
   driver's pixel formats has an alpha channel, so OpenGL treats the
   screen's alpha as 1. Blend modes that read it are now drawn that way
