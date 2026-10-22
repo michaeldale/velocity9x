@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.24.0 - not yet released
+## 0.24.0 - 2026-10-22
 
 - **Intel HD Graphics on Ironlake (Clarkdale, `8086:0042`): new chip.**
   The `intel-gma` package claims it: the VBE display, DirectDraw fills and

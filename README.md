@@ -24,13 +24,14 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.23.0.** Two new Intel chips. The GMA X3100
-(GM965) runs Direct3D, OpenGL and Glide on a new Gen4 engine, with
-3DMark 2000 and Quake 2. The HD 4000 (Ivy Bridge) runs the HD 4600's
-engine: Direct3D, page flips, 3DMark 2000, and the OpenGL and Glide
-probes. Each was measured on one tester's machine through remote help.
-See the [changelog](CHANGELOG.md), and download it from
-[releases/0.23.0](releases/0.23.0/README.md).
+**Current version: 0.24.0.** Intel HD Graphics on Ironlake (Clarkdale)
+is new: DirectDraw, page flips, Direct3D, OpenGL and Glide on the GMA
+X3100's engine, with 3DMark 2000, measured on one tester's machine
+through remote help. OpenGL now runs on 32 bpp desktops and offers a
+24-bit depth buffer. **Glide and 3DCIF DLLs from 0.23.0 or earlier no
+longer work with this driver: replace any copy in a game's folder.** See
+the [changelog](CHANGELOG.md), and download it from
+[releases/0.24.0](releases/0.24.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
