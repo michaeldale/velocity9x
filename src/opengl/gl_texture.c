@@ -606,15 +606,27 @@ unsigned int v9x_gl_tex_get_env(V9X_GL_STATE *state,
     return 0u;
 }
 
-void v9x_gl_tex_select(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
-                       GLenum target)
+/* The unit `target` names counting from `first`, or INVALID_ENUM. */
+static void gl_tex_select_from(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
+                               GLenum target, GLenum first)
 {
-    if (target < V9X_GL_TEXTURE0_SGIS ||
-        target >= V9X_GL_TEXTURE0_SGIS + V9X_GL_TEXTURE_UNITS) {
+    if (target < first || target >= first + V9X_GL_TEXTURE_UNITS) {
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return;
     }
-    textures->active = (v9x_u32)(target - V9X_GL_TEXTURE0_SGIS);
+    textures->active = (v9x_u32)(target - first);
+}
+
+void v9x_gl_tex_select(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
+                       GLenum target)
+{
+    gl_tex_select_from(state, textures, target, V9X_GL_TEXTURE0_SGIS);
+}
+
+void v9x_gl_tex_active(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
+                       GLenum target)
+{
+    gl_tex_select_from(state, textures, target, V9X_GL_TEXTURE0_ARB);
 }
 
 int v9x_gl_tex_enable_selected(V9X_GL_TEXTURES *textures, GLenum cap,

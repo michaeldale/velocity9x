@@ -4,7 +4,9 @@ Date: 2026-10-22. Status: step 1 done (HD 4600, 2026-10-22: Quake 3
 looks for `GL_ARB_multitexture` among six extensions and finds none,
 [issue record](../issues/2026-10-22-github-11-quake3-glitches-intel.md));
 the issue's floor glitch turned out to be a blend factor, not the
-two-pass path. Michael's request, from
+two-pass path. Steps 2 and 3 coded and host-tested for 0.25.0
+(`run-checks` green, golden pipeline hash unmoved); no machine has run
+them. Steps 4 and 5 owed. Michael's request, from
 [GitHub issue 11](https://github.com/michaeldale/velocity9x/issues/11)
 (Quake 3 demo 1.11 glitches on the GMA 900 and the HD 4000, 0.23.0).
 Follows [gen3-sgis-multitexture.md](gen3-sgis-multitexture.md), which
@@ -79,6 +81,28 @@ units take it: the software engine, Gen3, and others as their
    issue's preset (640x480, 16 bpp), with `r_ext_multitexture 1` and 0.
    Screenshots at issue 11's two views, compared with the issue's.
    Scores recorded, not compared as targets.
+
+## Notes from steps 2 and 3
+
+- `V9X_GL_ARRAYS` gained `texcoord1` and `client_active` beside the six
+  arrays, so `glPushClientAttrib`'s copy of the struct carries them, as
+  the spec puts both in the vertex-array group.
+- Unit 1 still carries s and t only (`V9X_GL_VERTEX.tex1`): r and q from
+  `glMultiTexCoord3/4` or a 3- or 4-component unit 1 array are dropped,
+  and `CURRENT_TEXTURE_COORDS` reads them back as 0 and 1.
+- `glDrawArrays` and `glDrawElements` now set the pipeline's unit count
+  as `glBegin` does. Before, an array draw carried unit 1 only if the
+  last `glBegin` had; with SGIS nothing fed unit 1 from arrays, so it did
+  not matter.
+- `MAX_TEXTURE_UNITS_ARB` answers 2 where the extension is offered and 1
+  elsewhere, rather than INVALID_ENUM.
+- **Risk for step 5:** Quake 2 3.20 takes `GL_ARB_multitexture` over
+  SGIS when both are offered (id's GPL source, `R_Init`; not measured on
+  our ICD). Half-Life's order is not known. Whichever moves to the ARB
+  entry points is no longer covered by its SGIS measurements; the gate
+  must rerun Quake 2 and Half-Life on the netbook and A8U4I5 beside
+  Quake 3, reading V9XGL.LOG's `arb first` lines for which path each
+  took.
 
 ## Not in scope
 

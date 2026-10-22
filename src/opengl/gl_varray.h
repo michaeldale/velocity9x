@@ -48,14 +48,29 @@ typedef struct v9x_gl_array {
     const void *pointer;
 } V9X_GL_ARRAY;
 
+/*
+ * array[V9X_GL_ARRAY_TEXCOORD] is unit 0's texture coordinates and
+ * texcoord1 unit 1's (GL_ARB_multitexture). client_active is the unit
+ * glClientActiveTextureARB chose, which glTexCoordPointer, the
+ * TEXTURE_COORD_ARRAY enable and its queries, and glInterleavedArrays
+ * address. All of it is the client vertex-array group's.
+ */
 typedef struct v9x_gl_arrays {
     V9X_GL_ARRAY array[V9X_GL_ARRAY_COUNT];
+    V9X_GL_ARRAY texcoord1;
+    v9x_u32 client_active;
 } V9X_GL_ARRAYS;
 
 /* Table 6.6's initial values: every array disabled, null, stride 0, size
  * 4 (3 for normals, 1 for indices and edge flags), type FLOAT (BOOLEAN
- * for edge flags, which have no type). */
+ * for edge flags, which have no type); unit 1's as unit 0's, and unit 0
+ * the client's. */
 void v9x_gl_arrays_init(V9X_GL_ARRAYS *arrays);
+
+/* glClientActiveTextureARB: TEXTURE0_ARB or TEXTURE1_ARB, INVALID_ENUM
+ * for anything else. */
+void v9x_gl_arrays_client_active(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
+                                 GLenum target);
 
 /* glEnableClientState / glDisableClientState. INVALID_ENUM for any other
  * name. */

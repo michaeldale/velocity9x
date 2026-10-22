@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.25.0 - not yet released
 
+- **OpenGL: `GL_ARB_multitexture`.** Where the driver already offered
+  `GL_SGIS_multitexture` (engines that draw two textures at once), it now
+  offers the ARB extension as well: `glActiveTextureARB`,
+  `glClientActiveTextureARB`, the 32 `glMultiTexCoord*ARB` forms, a
+  texture-coordinate array per unit, and the ARB queries. Quake III Arena
+  asks for it and draws lightmaps in a second pass without it. Quake 2
+  prefers it to SGIS when both are offered, so it changes Quake 2's path
+  too. Host-tested only; not yet run on any machine.
+
 ## 0.24.0 - 2026-10-22
 
 - **Intel HD Graphics on Ironlake (Clarkdale, `8086:0042`): new chip.**

@@ -292,6 +292,18 @@ static void test_client_bits(void)
     v9x_gl_attrib_pop_client(&s, &t, &a, &stack);
     ACHECK(t.unpack_alignment == 1 && t.pack[2] == 0);
     ACHECK(!a.array[V9X_GL_ARRAY_COLOR].enabled);
+
+    /* GL_ARB_multitexture: the client's unit and unit 1's array are the
+     * vertex-array group's too. */
+    v9x_gl_attrib_push_client(&s, &t, &a, &stack,
+                              V9X_GL_CLIENT_VERTEX_ARRAY_BIT);
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE1_ARB);
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_TEXCOORD, 2, V9X_GL_FLOAT, 0,
+                          vertices);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_TEXTURE_COORD_ARRAY, 1);
+    v9x_gl_attrib_pop_client(&s, &t, &a, &stack);
+    ACHECK(a.client_active == 0ul && !a.texcoord1.enabled &&
+           a.texcoord1.pointer == 0);
     v9x_gl_textures_release(&t);
 }
 

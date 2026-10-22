@@ -607,6 +607,19 @@ static void test_sgis_units(void)
     v9x_gl_tex_describe_unit(&s, &t, V9X_GL_TEXTURE_UNITS, &d0, levels0);
     TCHECK(d0.storage == V9X_R3D_ABI_TEXTURE_NONE);
 
+    /* glActiveTextureARB selects the same units by the ARB tokens, and
+     * refuses the SGIS ones and any unit past the last. */
+    v9x_gl_tex_active(&s, &t, V9X_GL_TEXTURE1_ARB);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR && t.active == 1ul);
+    v9x_gl_tex_active(&s, &t, V9X_GL_TEXTURE0_ARB + V9X_GL_TEXTURE_UNITS);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM &&
+           t.active == 1ul);
+    v9x_gl_tex_active(&s, &t, V9X_GL_TEXTURE0_SGIS);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM &&
+           t.active == 1ul);
+    v9x_gl_tex_active(&s, &t, V9X_GL_TEXTURE0_ARB);
+    TCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR && t.active == 0ul);
+
     /* Deleting a texture unbinds it from whichever unit holds it. */
     name = 2u;
     v9x_gl_tex_delete(&s, &t, 1, &name);

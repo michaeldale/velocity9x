@@ -123,6 +123,14 @@ typedef struct v9x_gl_texobj {
 #define V9X_GL_TEXTURE0_SGIS    0x835Eu
 #define V9X_GL_TEXTURE1_SGIS    0x835Fu
 
+/* GL_ARB_multitexture's names for the same units, and its queries
+ * (docs\plans\opengl-arb-multitexture.md; the ARB's 1998 specification). */
+#define V9X_GL_TEXTURE0_ARB                 0x84C0u
+#define V9X_GL_TEXTURE1_ARB                 0x84C1u
+#define V9X_GL_ACTIVE_TEXTURE_ARB           0x84E0u
+#define V9X_GL_CLIENT_ACTIVE_TEXTURE_ARB    0x84E1u
+#define V9X_GL_MAX_TEXTURE_UNITS_ARB        0x84E2u
+
 /* What each unit has of its own: a binding and an environment, and unit
  * 1's enable. Unit 0's enable is the state's TEXTURE_2D capability, which
  * glIsEnabled and glPushAttrib already keep. */
@@ -243,6 +251,10 @@ void v9x_gl_tex_sub_image_2d(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
 /* glSelectTextureSGIS: TEXTURE0_SGIS or TEXTURE1_SGIS, INVALID_ENUM for
  * anything else. */
 void v9x_gl_tex_select(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
+                       GLenum target);
+/* glActiveTextureARB: the same selection by TEXTURE0_ARB and
+ * TEXTURE1_ARB, INVALID_ENUM for anything else. */
+void v9x_gl_tex_active(V9X_GL_STATE *state, V9X_GL_TEXTURES *textures,
                        GLenum target);
 /*
  * glEnable/glDisable/glIsEnabled of TEXTURE_2D with unit 1 selected, which

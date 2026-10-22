@@ -83,6 +83,35 @@ void v9x_gl_arrays_init(V9X_GL_ARRAYS *arrays)
     arrays->array[V9X_GL_ARRAY_INDEX].size = 1;
     arrays->array[V9X_GL_ARRAY_EDGE_FLAG].size = 1;
     arrays->array[V9X_GL_ARRAY_EDGE_FLAG].type = V9X_GL_UNSIGNED_BYTE;
+    arrays->texcoord1 = arrays->array[V9X_GL_ARRAY_TEXCOORD];
+    arrays->client_active = 0ul;
+}
+
+void v9x_gl_arrays_client_active(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
+                                 GLenum target)
+{
+    if (target < V9X_GL_TEXTURE0_ARB ||
+        target >= V9X_GL_TEXTURE0_ARB + V9X_GL_TEXTURE_UNITS) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
+        return;
+    }
+    arrays->client_active = (v9x_u32)(target - V9X_GL_TEXTURE0_ARB);
+}
+
+/* Array `which`, with the texture coordinates the client's unit's. */
+static V9X_GL_ARRAY *gl_varray_select(V9X_GL_ARRAYS *arrays,
+                                      unsigned int which)
+{
+    if (which == V9X_GL_ARRAY_TEXCOORD && arrays->client_active == 1ul) {
+        return &arrays->texcoord1;
+    }
+    return &arrays->array[which];
+}
+
+static const V9X_GL_ARRAY *gl_varray_select_const(const V9X_GL_ARRAYS *arrays,
+                                                  unsigned int which)
+{
+    return gl_varray_select((V9X_GL_ARRAYS *)arrays, which);
 }
 
 static int gl_varray_cap_index(GLenum cap)
@@ -106,7 +135,7 @@ void v9x_gl_arrays_client_state(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return;
     }
-    arrays->array[index].enabled = enable ? 1 : 0;
+    gl_varray_select(arrays, (unsigned int)index)->enabled = enable ? 1 : 0;
 }
 
 int v9x_gl_arrays_is_enabled(const V9X_GL_ARRAYS *arrays, GLenum cap,
@@ -117,7 +146,8 @@ int v9x_gl_arrays_is_enabled(const V9X_GL_ARRAYS *arrays, GLenum cap,
     if (index < 0) {
         return 0;
     }
-    *enabled = arrays->array[index].enabled ? 1u : 0u;
+    *enabled = gl_varray_select_const(arrays, (unsigned int)index)->enabled
+                   ? 1u : 0u;
     return 1;
 }
 
@@ -190,7 +220,7 @@ void v9x_gl_arrays_pointer(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return;
     }
-    array = &arrays->array[which];
+    array = gl_varray_select(arrays, which);
     array->size = size;
     array->type = type;
     array->stride = stride;
@@ -216,8 +246,10 @@ void v9x_gl_arrays_get_pointer(V9X_GL_STATE *state,
     if (pname >= GL_VARRAY_VERTEX_ARRAY_POINTER &&
         pname <= GL_VARRAY_EDGE_FLAG_POINTER) {
         /* The pointer names run in the array order V9X_GL_ARRAY_*. */
-        *out = (void *)arrays->array[pname -
-                                     GL_VARRAY_VERTEX_ARRAY_POINTER].pointer;
+        *out = (void *)gl_varray_select_const(
+                   arrays, (unsigned int)(pname -
+                                          GL_VARRAY_VERTEX_ARRAY_POINTER))
+                   ->pointer;
         return;
     }
     if (pname == GL_VARRAY_FEEDBACK_POINTER ||
@@ -318,6 +350,17 @@ void v9x_gl_arrays_element(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
         gl_varray_fetch(array, index, 0, v);
         v9x_gl_prim_texcoord(pipeline, v[0], v[1], v[2], v[3]);
     }
+    /* Unit 1 carries s and t only (V9X_GL_VERTEX.tex1): r and q are
+     * fetched and dropped, as glMultiTexCoord's are. */
+    array = &arrays->texcoord1;
+    if (array->enabled) {
+        v[0] = 0.0f;
+        v[1] = 0.0f;
+        v[2] = 0.0f;
+        v[3] = 1.0f;
+        gl_varray_fetch(array, index, 0, v);
+        v9x_gl_prim_texcoord1(pipeline, v[0], v[1]);
+    }
     array = &arrays->array[V9X_GL_ARRAY_COLOR];
     if (array->enabled) {
         v[3] = 1.0f;
@@ -404,9 +447,10 @@ void v9x_gl_arrays_draw_elements(V9X_GL_STATE *state,
 
 /*
  * glInterleavedArrays as 2.8 defines it: the edge-flag and index arrays
- * are disabled, the texture, colour and normal arrays enabled or disabled
- * by the format, the vertex array enabled, and each pointer set into the
- * record with the record's stride, or the caller's when non-zero.
+ * are disabled, the texture (the client unit's), colour and normal arrays
+ * enabled or disabled by the format, the vertex array enabled, and each
+ * pointer set into the record with the record's stride, or the caller's
+ * when non-zero.
  */
 void v9x_gl_arrays_interleaved(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
                                GLenum format, GLsizei stride,
@@ -433,7 +477,7 @@ void v9x_gl_arrays_interleaved(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
     arrays->array[V9X_GL_ARRAY_EDGE_FLAG].enabled = 0;
     arrays->array[V9X_GL_ARRAY_INDEX].enabled = 0;
 
-    array = &arrays->array[V9X_GL_ARRAY_TEXCOORD];
+    array = gl_varray_select(arrays, V9X_GL_ARRAY_TEXCOORD);
     array->enabled = layout->texture;
     if (layout->texture) {
         array->size = layout->texture_size;

@@ -111,7 +111,14 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
                     pipeline->color[1], pipeline->color[2],
                     pipeline->color[3]);
         return 1;
+    /* The active unit's (GL_ARB_multitexture); unit 1 carries s and t,
+     * so its r and q are their initial 0 and 1. */
     case 0x0B03u:
+        if (textures->active == 1ul) {
+            v9x_gl_four(out, V9X_GL_CLASS_FLOAT, pipeline->tex1[0],
+                        pipeline->tex1[1], 0.0, 1.0);
+            return 1;
+        }
         v9x_gl_four(out, V9X_GL_CLASS_FLOAT, pipeline->tex[0],
                     pipeline->tex[1], pipeline->tex[2], pipeline->tex[3]);
         return 1;
@@ -331,6 +338,31 @@ static int v9x_gl_query(const V9X_GL_STATE *state,
     return 0;
 }
 
+/* GL_ARB_multitexture's own queries: the server's and the client's
+ * selected units, and the units the engine draws. */
+static int v9x_gl_query_units(const V9X_GL_TEXTURES *textures,
+                              const V9X_GL_ARRAYS *arrays,
+                              v9x_u32 texture_units, GLenum pname,
+                              V9X_GL_VALUES *out)
+{
+    switch (pname) {
+    case V9X_GL_ACTIVE_TEXTURE_ARB:
+        v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                   (double)(long)(V9X_GL_TEXTURE0_ARB + textures->active));
+        return 1;
+    case V9X_GL_CLIENT_ACTIVE_TEXTURE_ARB:
+        v9x_gl_one(out, V9X_GL_CLASS_INTEGER,
+                   (double)(long)(V9X_GL_TEXTURE0_ARB +
+                                  arrays->client_active));
+        return 1;
+    case V9X_GL_MAX_TEXTURE_UNITS_ARB:
+        v9x_gl_one(out, V9X_GL_CLASS_INTEGER, (double)(long)texture_units);
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 /* A value as an integer by its class (6.1.2). */
 static GLint v9x_gl_as_integer(const V9X_GL_VALUES *values, unsigned int i)
 {
@@ -353,8 +385,8 @@ static GLint v9x_gl_as_integer(const V9X_GL_VALUES *values, unsigned int i)
 }
 
 void v9x_gl_get(V9X_GL_STATE *state, const V9X_GL_PIPELINE *pipeline,
-                const V9X_GL_TEXTURES *textures, GLenum pname, int kind,
-                void *out)
+                const V9X_GL_TEXTURES *textures, const V9X_GL_ARRAYS *arrays,
+                v9x_u32 texture_units, GLenum pname, int kind, void *out)
 {
     V9X_GL_VALUES values;
     unsigned int i;
@@ -363,7 +395,9 @@ void v9x_gl_get(V9X_GL_STATE *state, const V9X_GL_PIPELINE *pipeline,
         v9x_gl_state_error(state, V9X_GL_INVALID_OPERATION);
         return;
     }
-    if (!v9x_gl_query(state, pipeline, textures, pname, &values)) {
+    if (!v9x_gl_query_units(textures, arrays, texture_units, pname,
+                            &values) &&
+        !v9x_gl_query(state, pipeline, textures, pname, &values)) {
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return;
     }

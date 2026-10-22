@@ -24,6 +24,7 @@ static void get_free(void *memory) { free(memory); }
 static V9X_GL_STATE s;
 static V9X_GL_PIPELINE p;
 static V9X_GL_TEXTURES t;
+static V9X_GL_ARRAYS a;
 
 static void fresh(void)
 {
@@ -31,6 +32,13 @@ static void fresh(void)
     v9x_gl_state_drawable(&s, 320ul, 200ul, V9X_GL_TARGET_RGB565, 1);
     v9x_gl_pipeline_init(&p);
     v9x_gl_textures_init(&t, get_alloc, get_free);
+    v9x_gl_arrays_init(&a);
+}
+
+/* A query of the context above, with two texture units. */
+static void get(GLenum pname, int kind, void *out)
+{
+    v9x_gl_get(&s, &p, &t, &a, 2ul, pname, kind, out);
 }
 
 static GLint geti(GLenum pname)
@@ -38,7 +46,7 @@ static GLint geti(GLenum pname)
     GLint value[16];
 
     value[0] = -12345;
-    v9x_gl_get(&s, &p, &t, pname, V9X_GL_GET_INTEGER, value);
+    get(pname, V9X_GL_GET_INTEGER, value);
     return value[0];
 }
 
@@ -90,23 +98,23 @@ static void test_initial_values(void)
     v9x_gl_state_depth_bits(&s, 16ul);
     GGCHECK(geti(0x0D56u) == 16);
     GGCHECK(geti(0x0D50u) == 4);            /* SUBPIXEL_BITS */
-    v9x_gl_get(&s, &p, &t, 0x0C32u, V9X_GL_GET_BOOLEAN, b); /* DOUBLEBUFFER */
+    get(0x0C32u, V9X_GL_GET_BOOLEAN, b); /* DOUBLEBUFFER */
     GGCHECK(b[0] == 1);
-    v9x_gl_get(&s, &p, &t, 0x0BA2u, V9X_GL_GET_INTEGER, v); /* VIEWPORT */
+    get(0x0BA2u, V9X_GL_GET_INTEGER, v); /* VIEWPORT */
     GGCHECK(v[0] == 0 && v[1] == 0 && v[2] == 320 && v[3] == 200);
-    v9x_gl_get(&s, &p, &t, 0x0B40u, V9X_GL_GET_INTEGER, v); /* POLYGON_MODE */
+    get(0x0B40u, V9X_GL_GET_INTEGER, v); /* POLYGON_MODE */
     GGCHECK(v[0] == (GLint)V9X_GL_FILL && v[1] == (GLint)V9X_GL_FILL);
-    v9x_gl_get(&s, &p, &t, 0x0C23u, V9X_GL_GET_BOOLEAN, b); /* WRITEMASK */
+    get(0x0C23u, V9X_GL_GET_BOOLEAN, b); /* WRITEMASK */
     GGCHECK(b[0] == 1 && b[3] == 1);
-    v9x_gl_get(&s, &p, &t, 0x0BA6u, V9X_GL_GET_FLOAT, f);   /* MODELVIEW */
+    get(0x0BA6u, V9X_GL_GET_FLOAT, f);   /* MODELVIEW */
     GGCHECK(f[0] == 1.0f && f[1] == 0.0f && f[15] == 1.0f);
-    v9x_gl_get(&s, &p, &t, 0x0B00u, V9X_GL_GET_FLOAT, f);   /* CURRENT_COLOR */
+    get(0x0B00u, V9X_GL_GET_FLOAT, f);   /* CURRENT_COLOR */
     GGCHECK(f[0] == 1.0f && f[3] == 1.0f);
     GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
     /* Every capability is a Boolean query too. */
-    v9x_gl_get(&s, &p, &t, V9X_GL_DITHER, V9X_GL_GET_BOOLEAN, b);
+    get(V9X_GL_DITHER, V9X_GL_GET_BOOLEAN, b);
     GGCHECK(b[0] == 1);
-    v9x_gl_get(&s, &p, &t, 0x0B71u, V9X_GL_GET_BOOLEAN, b);
+    get(0x0B71u, V9X_GL_GET_BOOLEAN, b);
     GGCHECK(b[0] == 0);
     v9x_gl_textures_release(&t);
 }
@@ -120,21 +128,21 @@ static void test_after_commands(void)
 
     fresh();
     v9x_gl_state_translate(&s, 3.0f, 0.0f, 0.0f);
-    v9x_gl_get(&s, &p, &t, 0x0BA6u, V9X_GL_GET_FLOAT, f);
+    get(0x0BA6u, V9X_GL_GET_FLOAT, f);
     GGCHECK(near_value(f[12], 3.0));
     v9x_gl_state_push_matrix(&s);
     GGCHECK(geti(0x0BA3u) == 2);
     v9x_gl_state_scissor(&s, 1, 2, 3, 4);
-    v9x_gl_get(&s, &p, &t, 0x0C10u, V9X_GL_GET_INTEGER, v);
+    get(0x0C10u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v[0] == 1 && v[1] == 2 && v[2] == 3 && v[3] == 4);
     v9x_gl_prim_depth_range(&s, &p, 0.25, 0.75);
-    v9x_gl_get(&s, &p, &t, 0x0B70u, V9X_GL_GET_DOUBLE, d);
+    get(0x0B70u, V9X_GL_GET_DOUBLE, d);
     GGCHECK(near_value(d[0], 0.25) && near_value(d[1], 0.75));
     /* POLYGON_OFFSET_FACTOR and _UNITS (table 6.9). */
     v9x_gl_prim_polygon_offset(&s, &p, -1.5f, -2.0f);
-    v9x_gl_get(&s, &p, &t, 0x8038u, V9X_GL_GET_FLOAT, f);
+    get(0x8038u, V9X_GL_GET_FLOAT, f);
     GGCHECK(near_value(f[0], -1.5));
-    v9x_gl_get(&s, &p, &t, 0x2A00u, V9X_GL_GET_FLOAT, f);
+    get(0x2A00u, V9X_GL_GET_FLOAT, f);
     GGCHECK(near_value(f[0], -2.0));
     v9x_gl_prim_blend_func(&s, &p, V9X_GL_SRC_ALPHA,
                            V9X_GL_ONE_MINUS_SRC_ALPHA);
@@ -147,12 +155,12 @@ static void test_after_commands(void)
     v9x_gl_state_hint(&s, 0x0C50u, V9X_GL_FASTEST);
     GGCHECK(geti(0x0C50u) == (GLint)V9X_GL_FASTEST);
     v9x_gl_state_polygon_mode(&s, 0x0405u, V9X_GL_LINE);   /* BACK */
-    v9x_gl_get(&s, &p, &t, 0x0B40u, V9X_GL_GET_INTEGER, v);
+    get(0x0B40u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v[0] == (GLint)V9X_GL_FILL && v[1] == (GLint)V9X_GL_LINE);
     v9x_gl_state_draw_buffer(&s, V9X_GL_FRONT_BUFFER);
     GGCHECK(geti(0x0C01u) == (GLint)V9X_GL_FRONT_BUFFER);
     v9x_gl_state_line_width(&s, 2.5f);
-    v9x_gl_get(&s, &p, &t, 0x0B21u, V9X_GL_GET_FLOAT, f);
+    get(0x0B21u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 2.5f);
     v9x_gl_state_point_size(&s, 3.0f);
     GGCHECK(geti(0x0B11u) == 3);
@@ -192,32 +200,32 @@ static void test_conversions(void)
     /* Colours and depths map linearly to the full integer range when read
      * as integers (6.1.2): 1.0 is 2^31 - 1, 0.5 half of it. */
     v9x_gl_state_clear_color(&s, 1.0f, 0.5f, 0.0f, 1.0f);
-    v9x_gl_get(&s, &p, &t, 0x0C22u, V9X_GL_GET_INTEGER, v);
+    get(0x0C22u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v[0] == 2147483647 && v[2] == 0);
     GGCHECK(v[1] >= 1073741823 && v[1] <= 1073741824);
-    v9x_gl_get(&s, &p, &t, 0x0B73u, V9X_GL_GET_INTEGER, v); /* DEPTH_CLEAR */
+    get(0x0B73u, V9X_GL_GET_INTEGER, v); /* DEPTH_CLEAR */
     GGCHECK(v[0] == 2147483647);
     /* Other floats round to nearest: a line width of 2.4 reads as 2 (a
      * half may go either way; 6.1.2 does not fix it). */
     v9x_gl_state_line_width(&s, 2.4f);
     GGCHECK(geti(0x0B21u) == 2);
     /* Booleans: non-zero is true, as a float or an integer. */
-    v9x_gl_get(&s, &p, &t, 0x0C22u, V9X_GL_GET_BOOLEAN, b);
+    get(0x0C22u, V9X_GL_GET_BOOLEAN, b);
     GGCHECK(b[0] == 1 && b[1] == 1 && b[2] == 0);
-    v9x_gl_get(&s, &p, &t, 0x0B74u, V9X_GL_GET_BOOLEAN, b);
+    get(0x0B74u, V9X_GL_GET_BOOLEAN, b);
     GGCHECK(b[0] == 1);
     /* Integers and Booleans to floats and doubles directly. */
-    v9x_gl_get(&s, &p, &t, 0x0D33u, V9X_GL_GET_FLOAT, f);
+    get(0x0D33u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 512.0f);
-    v9x_gl_get(&s, &p, &t, 0x0C32u, V9X_GL_GET_DOUBLE, d);
+    get(0x0C32u, V9X_GL_GET_DOUBLE, d);
     GGCHECK(d[0] == 1.0);
 
     /* Unknown, and inside Begin. */
     v[0] = 77;
-    v9x_gl_get(&s, &p, &t, 0x1234u, V9X_GL_GET_INTEGER, v);
+    get(0x1234u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM && v[0] == 77);
     s.in_begin = 1;
-    v9x_gl_get(&s, &p, &t, 0x0D33u, V9X_GL_GET_INTEGER, v);
+    get(0x0D33u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
     s.in_begin = 0;
     v9x_gl_textures_release(&t);
@@ -234,18 +242,18 @@ static void test_fog_index_and_edge_queries(void)
 
     fresh();
     GGCHECK(geti(0x0B65u) == (GLint)V9X_GL_EXP);        /* FOG_MODE */
-    v9x_gl_get(&s, &p, &t, 0x0B62u, V9X_GL_GET_FLOAT, f);
+    get(0x0B62u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 1.0f);                              /* FOG_DENSITY */
     GGCHECK(geti(0x0B63u) == 0 && geti(0x0B64u) == 1);  /* START, END */
     GGCHECK(geti(0x0B61u) == 0);                        /* FOG_INDEX */
-    v9x_gl_get(&s, &p, &t, 0x0B66u, V9X_GL_GET_FLOAT, f);
+    get(0x0B66u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 0.0f && f[3] == 0.0f);              /* FOG_COLOR */
-    v9x_gl_get(&s, &p, &t, 0x0B43u, V9X_GL_GET_BOOLEAN, b);
+    get(0x0B43u, V9X_GL_GET_BOOLEAN, b);
     GGCHECK(b[0] == 1);                                 /* EDGE_FLAG */
     GGCHECK(geti(0x0B01u) == 1);                        /* CURRENT_INDEX */
     GGCHECK(geti(0x0C20u) == 0);                        /* INDEX_CLEAR_VALUE */
     GGCHECK(geti(0x0C21u) == -1);                       /* INDEX_WRITEMASK */
-    v9x_gl_get(&s, &p, &t, 0x0B02u, V9X_GL_GET_FLOAT, f);
+    get(0x0B02u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 0.0f && f[1] == 0.0f && f[2] == 1.0f); /* NORMAL */
 
     colour[0] = 1.0f;
@@ -253,25 +261,25 @@ static void test_fog_index_and_edge_queries(void)
     colour[2] = 0.0f;
     colour[3] = 1.0f;
     v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_COLOR, colour, 1);
-    v9x_gl_get(&s, &p, &t, 0x0B66u, V9X_GL_GET_INTEGER, v);
+    get(0x0B66u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v[0] == 2147483647 && v[2] == 0);
     colour[0] = 2.5f;
     v9x_gl_prim_fog(&s, &p, V9X_GL_FOG_END, colour, 0);
-    v9x_gl_get(&s, &p, &t, 0x0B64u, V9X_GL_GET_FLOAT, f);
+    get(0x0B64u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 2.5f);
     v9x_gl_prim_edge_flag(&p, 0u);
-    v9x_gl_get(&s, &p, &t, 0x0B43u, V9X_GL_GET_BOOLEAN, b);
+    get(0x0B43u, V9X_GL_GET_BOOLEAN, b);
     GGCHECK(b[0] == 0);
     v9x_gl_prim_index(&p, 9.0f);
     GGCHECK(geti(0x0B01u) == 9);
     v9x_gl_state_index_mask(&s, 0x0Fu);
     GGCHECK(geti(0x0C21u) == 15);
     v9x_gl_state_clear_index(&s, 4.0f);
-    v9x_gl_get(&s, &p, &t, 0x0C20u, V9X_GL_GET_FLOAT, f);
+    get(0x0C20u, V9X_GL_GET_FLOAT, f);
     GGCHECK(f[0] == 4.0f);
     /* A normal reads as a mapped value through the integer query. */
     v9x_gl_prim_normal(&p, 1.0f, 0.0f, -1.0f);
-    v9x_gl_get(&s, &p, &t, 0x0B02u, V9X_GL_GET_INTEGER, v);
+    get(0x0B02u, V9X_GL_GET_INTEGER, v);
     GGCHECK(v[0] == 2147483647 && v[1] == 0 && v[2] == -2147483647 - 1);
     GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
 
@@ -306,6 +314,41 @@ static void test_stack_depth_and_stencil_queries(void)
     v9x_gl_textures_release(&t);
 }
 
+/* GL_ARB_multitexture's queries: the active unit and the client's, the
+ * unit count the engine offers, and the current coordinates of the
+ * active unit (unit 1 carries s and t; r and q read 0 and 1). */
+static void test_multitexture_queries(void)
+{
+    GLfloat f[4];
+    GLint v[4];
+
+    fresh();
+    GGCHECK(geti(V9X_GL_ACTIVE_TEXTURE_ARB) == (GLint)V9X_GL_TEXTURE0_ARB);
+    GGCHECK(geti(V9X_GL_CLIENT_ACTIVE_TEXTURE_ARB) ==
+            (GLint)V9X_GL_TEXTURE0_ARB);
+    GGCHECK(geti(V9X_GL_MAX_TEXTURE_UNITS_ARB) == 2);
+    v9x_gl_get(&s, &p, &t, &a, 1ul, V9X_GL_MAX_TEXTURE_UNITS_ARB,
+               V9X_GL_GET_INTEGER, v);
+    GGCHECK(v[0] == 1);
+
+    v9x_gl_tex_active(&s, &t, V9X_GL_TEXTURE1_ARB);
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE1_ARB);
+    GGCHECK(geti(V9X_GL_ACTIVE_TEXTURE_ARB) == (GLint)V9X_GL_TEXTURE1_ARB);
+    GGCHECK(geti(V9X_GL_CLIENT_ACTIVE_TEXTURE_ARB) ==
+            (GLint)V9X_GL_TEXTURE1_ARB);
+
+    v9x_gl_prim_texcoord(&p, 0.5f, 0.25f, 0.125f, 2.0f);
+    v9x_gl_prim_texcoord1(&p, 3.0f, 4.0f);
+    get(0x0B03u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(near_value(f[0], 3.0) && near_value(f[1], 4.0) &&
+            near_value(f[2], 0.0) && near_value(f[3], 1.0));
+    v9x_gl_tex_active(&s, &t, V9X_GL_TEXTURE0_ARB);
+    get(0x0B03u, V9X_GL_GET_FLOAT, f);
+    GGCHECK(near_value(f[0], 0.5) && near_value(f[1], 0.25) &&
+            near_value(f[2], 0.125) && near_value(f[3], 2.0));
+    GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+}
+
 unsigned int v9x_run_gl_get_tests(void)
 {
     gl_get_failures = 0u;
@@ -314,6 +357,7 @@ unsigned int v9x_run_gl_get_tests(void)
     test_conversions();
     test_fog_index_and_edge_queries();
     test_stack_depth_and_stencil_queries();
+    test_multitexture_queries();
     if (gl_get_failures == 0u) {
         printf("PASS: OpenGL state queries\n");
     }

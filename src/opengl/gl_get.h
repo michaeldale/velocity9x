@@ -11,6 +11,7 @@
 
 #include "gl_prim.h"
 #include "gl_texture.h"
+#include "gl_varray.h"
 
 #define V9X_GL_GET_BOOLEAN 0
 #define V9X_GL_GET_INTEGER 1
@@ -18,11 +19,12 @@
 #define V9X_GL_GET_DOUBLE  3
 
 /* `out` is a GLboolean, GLint, GLfloat or GLdouble array by `kind`, with
- * room for the query's values (16 for a matrix). An unknown pname is
+ * room for the query's values (16 for a matrix). `texture_units` answers
+ * MAX_TEXTURE_UNITS_ARB: the engine's describe. An unknown pname is
  * INVALID_ENUM and writes nothing; inside Begin/End every query is
  * INVALID_OPERATION. */
 void v9x_gl_get(V9X_GL_STATE *state, const V9X_GL_PIPELINE *pipeline,
-                const V9X_GL_TEXTURES *textures, GLenum pname, int kind,
-                void *out);
+                const V9X_GL_TEXTURES *textures, const V9X_GL_ARRAYS *arrays,
+                v9x_u32 texture_units, GLenum pname, int kind, void *out);
 
 #endif /* VELOCITY9X_GL_GET_H */

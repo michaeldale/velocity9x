@@ -155,8 +155,8 @@ static DWORD v9x_gl_stub_total;
  * the second unit's coordinates scaled to its own. */
 static V9X_R3D_ABI_VERTEX v9x_gl_scaled_vertices[3u * V9X_R3D_ABI_BATCH_MAX];
 static GLfloat v9x_gl_scaled_tex1[2u * 3u * V9X_R3D_ABI_BATCH_MAX];
-/* Batches and triangles drawn with two units, and the SGIS entry points'
- * first calls (logged once each). */
+/* Batches and triangles drawn with two units, and the SGIS and ARB entry
+ * points' first calls (logged once each). */
 static DWORD v9x_gl_mtex_batches;
 static DWORD v9x_gl_mtex_triangles;
 /* Two-unit batches drawn in single-unit passes because nothing took them
@@ -166,6 +166,9 @@ static DWORD v9x_gl_split_triangles;
 static DWORD v9x_gl_split_declined;
 static int v9x_gl_mtex_select_seen;
 static int v9x_gl_mtex_coord_seen;
+static int v9x_gl_arb_active_seen;
+static int v9x_gl_arb_client_seen;
+static int v9x_gl_arb_coord_seen;
 #define V9X_GL_RESULT_SLOTS 10u
 static DWORD v9x_gl_draw_failures[V9X_GL_RESULT_SLOTS];
 static DWORD v9x_gl_failures_dumped;
@@ -268,7 +271,8 @@ static long v9x_gl_tsc_to_long(double value);
 #define V9X_GL_TSC_IFACE_CPU       17u
 /* Entry points by kind (2026-10-05, Half-Life under multitexture): each
  * texture command whole, the held batch it draws first, the SGIS calls and
- * glEnable/glDisable/glIsEnabled. Each with a call count (entry line). */
+ * glEnable/glDisable/glIsEnabled. Each with a call count (entry line). The
+ * ARB unit selections and glMultiTexCoord count with the SGIS ones. */
 #define V9X_GL_TSC_TEXSUB          18u
 #define V9X_GL_TSC_TEXIMAGE        19u
 #define V9X_GL_TSC_TEXBIND         20u
@@ -616,7 +620,9 @@ static void v9x_gl_stub_called(unsigned int slot)
 /* ---- GL commands --------------------------------------------------- */
 
 /* Whether the engine combines two textures in a draw, which is when
- * GL_SGIS_multitexture is offered (docs\plans\gen3-sgis-multitexture.md). */
+ * GL_SGIS_multitexture and GL_ARB_multitexture are offered
+ * (docs\plans\gen3-sgis-multitexture.md,
+ * docs\plans\opengl-arb-multitexture.md). */
 static int v9x_gl_two_units(void)
 {
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
@@ -643,7 +649,9 @@ static const GLubyte * V9X_GL_API v9x_gl_get_string(GLenum name)
         /* With the trailing space: GLQuake looks for the name followed by
          * one (gl_vidnt.c:580), so it must not end the string bare. */
         return (const GLubyte *)(v9x_gl_two_units()
-                                     ? "GL_SGIS_multitexture " : "");
+                                     ? "GL_ARB_multitexture "
+                                       "GL_SGIS_multitexture "
+                                     : "");
     default:
         v9x_gl_state_error(&v9x_gl_current()->state, V9X_GL_INVALID_ENUM);
         return 0;
@@ -3017,6 +3025,169 @@ static void V9X_GL_API v9x_gl_mtexcoord2fv_sgis(GLenum target,
     v9x_gl_mtexcoord(target, v[0], v[1]);
 }
 
+/*
+ * GL_ARB_multitexture (docs\plans\opengl-arb-multitexture.md):
+ * glActiveTextureARB selects the unit glSelectTextureSGIS does, and
+ * glClientActiveTextureARB the unit the texture-coordinate array calls
+ * address. glMultiTexCoord's unit 0 is glTexCoord's; unit 1 keeps s and t
+ * only, as glMTexCoord2fSGIS's does (V9X_GL_VERTEX.tex1).
+ */
+static void V9X_GL_API v9x_gl_active_texture_arb(GLenum target)
+{
+    DWORD started = v9x_gl_tsc_begin();
+
+    if (!v9x_gl_arb_active_seen) {
+        v9x_gl_arb_active_seen = 1;
+        v9x_gl_log3("arb first glActiveTextureARB target=%04lX",
+                    (DWORD)target, 0ul, 0ul);
+    }
+    V9X_GL_WITH_CONTEXT(v9x_gl_tex_active(&context_->state,
+                                          &context_->textures, target));
+    ++v9x_gl_tsc_calls[V9X_GL_TSC_SGIS_SELECT];
+    v9x_gl_tsc_end(V9X_GL_TSC_SGIS_SELECT, started);
+}
+
+static void V9X_GL_API v9x_gl_client_active_texture_arb(GLenum target)
+{
+    if (!v9x_gl_arb_client_seen) {
+        v9x_gl_arb_client_seen = 1;
+        v9x_gl_log3("arb first glClientActiveTextureARB target=%04lX",
+                    (DWORD)target, 0ul, 0ul);
+    }
+    V9X_GL_WITH_CONTEXT(v9x_gl_arrays_client_active(&context_->state,
+                                                    &context_->arrays,
+                                                    target));
+}
+
+static void v9x_gl_multitexcoord_body(GLenum target, const void *v,
+                                      GLenum type, unsigned int count)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    GLfloat c[4];
+
+    if (!v9x_gl_arb_coord_seen) {
+        v9x_gl_arb_coord_seen = 1;
+        v9x_gl_log3("arb first glMultiTexCoordARB target=%04lX count=%lu",
+                    (DWORD)target, (DWORD)count, 0ul);
+    }
+    if (context == 0) {
+        return;
+    }
+    c[1] = 0.0f;
+    c[2] = 0.0f;
+    c[3] = 1.0f;
+    v9x_gl_gather(v, type, count, 0, c);
+    if (target == V9X_GL_TEXTURE0_ARB) {
+        v9x_gl_prim_texcoord(&context->pipeline, c[0], c[1], c[2], c[3]);
+    } else if (target == V9X_GL_TEXTURE1_ARB) {
+        v9x_gl_prim_texcoord1(&context->pipeline, c[0], c[1]);
+    } else {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_ENUM);
+    }
+}
+
+static void v9x_gl_multitexcoord_from(GLenum target, const void *v,
+                                      GLenum type, unsigned int count)
+{
+    DWORD started = v9x_gl_tsc_begin();
+
+    v9x_gl_multitexcoord_body(target, v, type, count);
+    ++v9x_gl_tsc_calls[V9X_GL_TSC_SGIS_COORD];
+    v9x_gl_tsc_end(V9X_GL_TSC_SGIS_COORD, started);
+}
+
+/* glMultiTexCoord1..4 for one type, scalar and vector: the 32 forms. */
+#define V9X_GL_MULTITEXCOORD_FORMS(sfx, ctype, type) \
+static void V9X_GL_API v9x_gl_multitexcoord1##sfx(GLenum target, ctype a) \
+{ \
+    v9x_gl_multitexcoord_from(target, &a, type, 1u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord1##sfx##v(GLenum target, \
+                                                     const ctype *v) \
+{ \
+    v9x_gl_multitexcoord_from(target, v, type, 1u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord2##sfx(GLenum target, ctype a, \
+                                                  ctype b) \
+{ \
+    ctype v[2]; \
+    v[0] = a; \
+    v[1] = b; \
+    v9x_gl_multitexcoord_from(target, v, type, 2u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord2##sfx##v(GLenum target, \
+                                                     const ctype *v) \
+{ \
+    v9x_gl_multitexcoord_from(target, v, type, 2u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord3##sfx(GLenum target, ctype a, \
+                                                  ctype b, ctype c) \
+{ \
+    ctype v[3]; \
+    v[0] = a; \
+    v[1] = b; \
+    v[2] = c; \
+    v9x_gl_multitexcoord_from(target, v, type, 3u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord3##sfx##v(GLenum target, \
+                                                     const ctype *v) \
+{ \
+    v9x_gl_multitexcoord_from(target, v, type, 3u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord4##sfx(GLenum target, ctype a, \
+                                                  ctype b, ctype c, \
+                                                  ctype d) \
+{ \
+    ctype v[4]; \
+    v[0] = a; \
+    v[1] = b; \
+    v[2] = c; \
+    v[3] = d; \
+    v9x_gl_multitexcoord_from(target, v, type, 4u); \
+} \
+static void V9X_GL_API v9x_gl_multitexcoord4##sfx##v(GLenum target, \
+                                                     const ctype *v) \
+{ \
+    v9x_gl_multitexcoord_from(target, v, type, 4u); \
+}
+
+V9X_GL_MULTITEXCOORD_FORMS(d, GLdouble, V9X_GL_DOUBLE)
+V9X_GL_MULTITEXCOORD_FORMS(f, GLfloat, V9X_GL_FLOAT)
+V9X_GL_MULTITEXCOORD_FORMS(i, GLint, V9X_GL_INT)
+V9X_GL_MULTITEXCOORD_FORMS(s, GLshort, V9X_GL_SHORT)
+
+/* The extension entry points DrvGetProcAddress answers, when two units
+ * are drawn. */
+typedef struct v9x_gl_extension_proc {
+    const char *name;
+    PROC proc;
+} V9X_GL_EXTENSION_PROC;
+
+#define V9X_GL_MULTITEXCOORD_NAMES(n, sfx) \
+    { "glMultiTexCoord" #n #sfx "ARB", \
+      (PROC)v9x_gl_multitexcoord##n##sfx }, \
+    { "glMultiTexCoord" #n #sfx "vARB", \
+      (PROC)v9x_gl_multitexcoord##n##sfx##v }
+
+static const V9X_GL_EXTENSION_PROC v9x_gl_extension_procs[] = {
+    { "glSelectTextureSGIS", (PROC)v9x_gl_select_texture_sgis },
+    { "glMTexCoord2fSGIS", (PROC)v9x_gl_mtexcoord2f_sgis },
+    { "glMTexCoord2fvSGIS", (PROC)v9x_gl_mtexcoord2fv_sgis },
+    { "glActiveTextureARB", (PROC)v9x_gl_active_texture_arb },
+    { "glClientActiveTextureARB", (PROC)v9x_gl_client_active_texture_arb },
+    V9X_GL_MULTITEXCOORD_NAMES(1, d), V9X_GL_MULTITEXCOORD_NAMES(1, f),
+    V9X_GL_MULTITEXCOORD_NAMES(1, i), V9X_GL_MULTITEXCOORD_NAMES(1, s),
+    V9X_GL_MULTITEXCOORD_NAMES(2, d), V9X_GL_MULTITEXCOORD_NAMES(2, f),
+    V9X_GL_MULTITEXCOORD_NAMES(2, i), V9X_GL_MULTITEXCOORD_NAMES(2, s),
+    V9X_GL_MULTITEXCOORD_NAMES(3, d), V9X_GL_MULTITEXCOORD_NAMES(3, f),
+    V9X_GL_MULTITEXCOORD_NAMES(3, i), V9X_GL_MULTITEXCOORD_NAMES(3, s),
+    V9X_GL_MULTITEXCOORD_NAMES(4, d), V9X_GL_MULTITEXCOORD_NAMES(4, f),
+    V9X_GL_MULTITEXCOORD_NAMES(4, i), V9X_GL_MULTITEXCOORD_NAMES(4, s)
+};
+
+#define V9X_GL_EXTENSION_PROC_COUNT \
+    (sizeof(v9x_gl_extension_procs) / sizeof(v9x_gl_extension_procs[0]))
+
 static void V9X_GL_API v9x_gl_shade_model(GLenum mode)
 {
     V9X_GL_WITH_PIPELINE(v9x_gl_prim_shade_model(&context_->state,
@@ -3172,6 +3343,7 @@ static void V9X_GL_API v9x_gl_array_element(GLint index)
 static void V9X_GL_API v9x_gl_draw_arrays(GLenum mode, GLint first,
                                           GLsizei count)
 {
+    v9x_gl_begin_units(v9x_gl_current());
     V9X_GL_WITH_PIPELINE(v9x_gl_arrays_draw(&context_->state,
                                             &context_->pipeline,
                                             &context_->arrays, mode, first,
@@ -3182,6 +3354,7 @@ static void V9X_GL_API v9x_gl_draw_elements(GLenum mode, GLsizei count,
                                             GLenum type,
                                             const GLvoid *indices)
 {
+    v9x_gl_begin_units(v9x_gl_current());
     V9X_GL_WITH_PIPELINE(v9x_gl_arrays_draw_elements(&context_->state,
                                                      &context_->pipeline,
                                                      &context_->arrays, mode,
@@ -3205,7 +3378,8 @@ static void v9x_gl_get_any(GLenum pname, int kind, void *out)
 
     if (context != 0) {
         v9x_gl_get(&context->state, &context->pipeline, &context->textures,
-                   pname, kind, out);
+                   &context->arrays, v9x_gl_two_units() ? 2ul : 1ul, pname,
+                   kind, out);
     }
 }
 
@@ -4097,14 +4271,14 @@ PROC __stdcall DrvGetProcAddress(LPCSTR name)
 {
     char text[200];
     PROC proc = 0;
+    unsigned int i;
 
     if (name != 0 && v9x_gl_two_units()) {
-        if (lstrcmpA(name, "glSelectTextureSGIS") == 0) {
-            proc = (PROC)v9x_gl_select_texture_sgis;
-        } else if (lstrcmpA(name, "glMTexCoord2fSGIS") == 0) {
-            proc = (PROC)v9x_gl_mtexcoord2f_sgis;
-        } else if (lstrcmpA(name, "glMTexCoord2fvSGIS") == 0) {
-            proc = (PROC)v9x_gl_mtexcoord2fv_sgis;
+        for (i = 0u; i < V9X_GL_EXTENSION_PROC_COUNT; ++i) {
+            if (lstrcmpA(name, v9x_gl_extension_procs[i].name) == 0) {
+                proc = v9x_gl_extension_procs[i].proc;
+                break;
+            }
         }
     }
     wsprintfA(text, "DrvGetProcAddress name=%s -> %s",

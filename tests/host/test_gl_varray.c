@@ -19,18 +19,25 @@ static unsigned int gl_varray_failures;
 
 #define VSINK_MAX 16u
 static V9X_R3D_ABI_VERTEX vsunk[3u * VSINK_MAX];
+/* Unit 1's s and t per sunk vertex, when the batch carried them. */
+static GLfloat vsunk1[2u * 3u * VSINK_MAX];
 static v9x_u32 vsunk_triangles;
 
 static int vsink(void *user, const V9X_R3D_ABI_VERTEX *vertices,
                  const GLfloat *texcoords1, v9x_u32 triangle_count)
 {
     v9x_u32 i;
+    v9x_u32 at;
 
     (void)user;
-    (void)texcoords1;
     for (i = 0ul; i < triangle_count * 3ul &&
                   vsunk_triangles * 3ul + i < 3ul * VSINK_MAX; ++i) {
-        vsunk[vsunk_triangles * 3ul + i] = vertices[i];
+        at = vsunk_triangles * 3ul + i;
+        vsunk[at] = vertices[i];
+        if (texcoords1 != 0) {
+            vsunk1[at * 2ul] = texcoords1[i * 2ul];
+            vsunk1[at * 2ul + 1ul] = texcoords1[i * 2ul + 1ul];
+        }
     }
     vsunk_triangles += triangle_count;
     return 1;
@@ -332,6 +339,101 @@ static void test_interleaved(void)
     VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
 }
 
+/*
+ * GL_ARB_multitexture's per-unit client state: glClientActiveTextureARB
+ * picks the texture-coordinate array that glTexCoordPointer, the
+ * TEXTURE_COORD_ARRAY enable, its query and pointer, and
+ * glInterleavedArrays address, and an element fetches every enabled unit.
+ */
+static void test_client_active_texture(void)
+{
+    static const GLfloat xy[6] = { 0.0f, 0.0f, 320.0f, 0.0f, 0.0f, 200.0f };
+    static const GLfloat st0[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+    static const GLshort st1[6] = { 2, 3, 4, 5, 6, 7 };
+    static const GLfloat s1[3] = { 0.25f, 0.5f, 0.75f };
+    static const GLfloat block[16] = { 0 };
+    GLboolean enabled = 7u;
+    void *pointer = 0;
+
+    vscene();
+    VCHECK(a.client_active == 0ul && a.texcoord1.enabled == 0 &&
+           a.texcoord1.size == 4 && a.texcoord1.type == V9X_GL_FLOAT &&
+           a.texcoord1.pointer == 0);
+
+    /* Unit 1's array, set and enabled through the selected client unit. */
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE1_ARB);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR &&
+           a.client_active == 1ul);
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_TEXCOORD, 2, V9X_GL_SHORT, 0,
+                          st1);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_TEXTURE_COORD_ARRAY, 1);
+    VCHECK(a.texcoord1.enabled == 1 && a.texcoord1.pointer == st1 &&
+           a.texcoord1.type == V9X_GL_SHORT && a.texcoord1.size == 2);
+    VCHECK(a.array[V9X_GL_ARRAY_TEXCOORD].enabled == 0 &&
+           a.array[V9X_GL_ARRAY_TEXCOORD].pointer == 0);
+    VCHECK(v9x_gl_arrays_is_enabled(&a, V9X_GL_TEXTURE_COORD_ARRAY,
+                                    &enabled) && enabled == 1u);
+    v9x_gl_arrays_get_pointer(&s, &a, 0x8092u, &pointer);
+    VCHECK(pointer == (void *)st1);
+
+    /* Unit 0's, through the other selection. */
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE0_ARB);
+    VCHECK(a.client_active == 0ul);
+    VCHECK(v9x_gl_arrays_is_enabled(&a, V9X_GL_TEXTURE_COORD_ARRAY,
+                                    &enabled) && enabled == 0u);
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_TEXCOORD, 2, V9X_GL_FLOAT, 0,
+                          st0);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_TEXTURE_COORD_ARRAY, 1);
+    v9x_gl_arrays_get_pointer(&s, &a, 0x8092u, &pointer);
+    VCHECK(pointer == (void *)st0 && a.texcoord1.pointer == st1);
+
+    /* A draw carrying two units fetches both arrays. */
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_VERTEX, 2, V9X_GL_FLOAT, 0,
+                          xy);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_VERTEX_ARRAY, 1);
+    v9x_gl_pipeline_units(&p, 2ul);
+    v9x_gl_arrays_draw(&s, &p, &a, V9X_GL_TRIANGLES, 0, 3);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    VCHECK(vsunk_triangles == 1ul);
+    VCHECK(vnear(vsunk[1].tu, 1.0f) && vnear(vsunk[2].tv, 1.0f));
+    VCHECK(vnear(vsunk1[0], 2.0f) && vnear(vsunk1[1], 3.0f));
+    VCHECK(vnear(vsunk1[2], 4.0f) && vnear(vsunk1[3], 5.0f));
+    VCHECK(vnear(vsunk1[4], 6.0f) && vnear(vsunk1[5], 7.0f));
+    VCHECK(vnear(p.tex1[0], 6.0f) && vnear(p.tex1[1], 7.0f));
+
+    /* A one-component unit 1 array leaves t at 0. */
+    vsunk_triangles = 0ul;
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE1_ARB);
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_TEXCOORD, 1, V9X_GL_FLOAT, 0,
+                          s1);
+    v9x_gl_arrays_draw_elements(&s, &p, &a, V9X_GL_TRIANGLES, 3,
+                                V9X_GL_UNSIGNED_BYTE, "\002\001\000");
+    VCHECK(vsunk_triangles == 1ul);
+    VCHECK(vnear(vsunk1[0], 0.75f) && vnear(vsunk1[1], 0.0f));
+    VCHECK(vnear(vsunk1[4], 0.25f) && vnear(vsunk1[5], 0.0f));
+
+    /* Disabling unit 1's array leaves unit 0's alone. */
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_TEXTURE_COORD_ARRAY, 0);
+    VCHECK(a.texcoord1.enabled == 0 &&
+           a.array[V9X_GL_ARRAY_TEXCOORD].enabled == 1);
+
+    /* glInterleavedArrays sets the selected unit's coordinates only. */
+    v9x_gl_arrays_interleaved(&s, &a, 0x2A27u, 0, block);  /* T2F_V3F */
+    VCHECK(a.texcoord1.enabled == 1 && a.texcoord1.pointer == block &&
+           a.texcoord1.stride == 20 && a.texcoord1.size == 2);
+    VCHECK(a.array[V9X_GL_ARRAY_TEXCOORD].pointer == st0);
+
+    /* Only the units there are: anything else is INVALID_ENUM and selects
+     * nothing, the SGIS tokens included. */
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE0_ARB +
+                                        V9X_GL_TEXTURE_UNITS);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM &&
+           a.client_active == 1ul);
+    v9x_gl_arrays_client_active(&s, &a, V9X_GL_TEXTURE0_SGIS);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_ENUM &&
+           a.client_active == 1ul);
+}
+
 unsigned int v9x_run_gl_varray_tests(void)
 {
     gl_varray_failures = 0u;
@@ -340,6 +442,7 @@ unsigned int v9x_run_gl_varray_tests(void)
     test_draw_elements_and_strides();
     test_conversions();
     test_interleaved();
+    test_client_active_texture();
     if (gl_varray_failures == 0u) {
         printf("PASS: OpenGL vertex arrays\n");
     }
