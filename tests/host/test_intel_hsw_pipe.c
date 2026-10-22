@@ -161,6 +161,44 @@ static void test_may_write(void)
 }
 
 /*
+ * Which draws wait for their own sequence. The hazard is a draw into the
+ * buffer GDI and the software cursor write with the CPU, which is the GDI
+ * primary from offset 0; only while GDI may draw. A GL back buffer past it
+ * runs on, which is what Quake 3's 70 % of wall time in flush waits was
+ * (the HD 4600, 2026-10-23).
+ */
+static void test_draw_waits(void)
+{
+    /* 1024x768x32: the primary is 4096 * 768 = 0x300000 bytes. */
+    const v9x_u32 primary = 0x300000ul;
+
+    /* GDI may draw: on the primary, or a window on it, waits. */
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, 0ul, 4096ul, 768ul,
+                                        primary) == V9X_TRUE);
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, 4096ul * 100ul + 400ul,
+                                        4096ul, 480ul, primary) == V9X_TRUE);
+    /* Its last row. */
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, primary - 4096ul, 4096ul,
+                                        1ul, primary) == V9X_TRUE);
+    /* A back buffer past the primary runs on: the Quake 3 case (target
+     * 0x300000 in the snapshot of report V9X-WM1C1K). */
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, primary, 4096ul, 768ul,
+                                        primary) == V9X_FALSE);
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, 0x00781000ul, 4096ul,
+                                        768ul, primary) == V9X_FALSE);
+    /* In exclusive mode with its own buffers shown, nothing waits, the
+     * primary included (a flip chain's front is offset 0). */
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_FALSE, 0ul, 4096ul, 768ul,
+                                        primary) == V9X_FALSE);
+    /* A primary of unknown size: every draw waits, as before. */
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, 0x00781000ul, 4096ul,
+                                        768ul, 0ul) == V9X_TRUE);
+    /* An extent that wraps 32 bits cannot be placed: it waits. */
+    CHECK(v9x_intel_hsw_pipe_draw_waits(V9X_TRUE, 0xfff00000ul, 4096ul,
+                                        768ul, primary) == V9X_TRUE);
+}
+
+/*
  * Two processes submitting in turn, from just below the wrap: each submit
  * waits until may_write says yes (a GPU retiring one sequence a step), and
  * no slot is ever written while the sequence last submitted from it is
@@ -369,6 +407,7 @@ unsigned int v9x_run_intel_hsw_pipe_tests(void)
     test_slot_layout();
     test_largest_batch_fits();
     test_may_write();
+    test_draw_waits();
     test_two_processes_interleave();
     test_kernel_signature();
     test_ring_with_one_outstanding();

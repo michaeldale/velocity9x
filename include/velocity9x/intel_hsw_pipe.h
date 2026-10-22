@@ -70,6 +70,22 @@ v9x_u16 v9x_intel_hsw_pipe_may_write(v9x_u32 sent, v9x_u32 done);
 v9x_u16 v9x_intel_hsw_pipe_idle(v9x_u32 sent, v9x_u32 done);
 
 /*
+ * Whether a draw waits for its own sequence before returning (the plan's
+ * decision 3). The 16-bit driver writes GDI and the software cursor into
+ * the GDI primary with the CPU and no drain hook, so a draw into it must be
+ * done before the call returns while GDI may draw. Every other target is
+ * reached by the CPU only through Lock, Blt, the render interface's clear,
+ * fallback and finish, all of which drain. The primary is
+ * `primary_bytes` from offset 0; zero means unknown, and every draw waits.
+ * The target's extent is pitch * height from its offset.
+ */
+v9x_u16 v9x_intel_hsw_pipe_draw_waits(v9x_u16 gdi_may_draw,
+                                      v9x_u32 target_offset,
+                                      v9x_u32 target_pitch,
+                                      v9x_u32 target_height,
+                                      v9x_u32 primary_bytes);
+
+/*
  * Kernel-slot signatures, one per V9X_INTEL_HSW_KERNEL_SLOTS slot, in the
  * status page from dword V9X_HSW_PIPE_SIG_STATUS_DWORD. The slot index is a
  * function of the stages, specular and fog but not of the fog colour

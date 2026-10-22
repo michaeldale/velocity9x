@@ -285,6 +285,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-21 Ivy Bridge flips: plane A's base and PRI_LINOFF, measured with a sub-page back buffer](2026-10-21-ivybridge-flips.md)
 - [2026-10-21 Ivy Bridge Direct3D: Haswell's engine with Gen7's words and IVB's PIPE_CONTROLs passes V9XD32; 3DMark 2000 runs](2026-10-21-ivybridge-direct3d.md)
 - [2026-10-21 Ivy Bridge OpenGL and Glide: the HD 4600's results, and a renderer name fixed](2026-10-21-ivybridge-gl-glide.md)
+- [2026-10-23 HD 4600: draws outside the GDI primary run on; Quake 3 at 1024x768 35.7 to 42.6 fps, and the GPU's cost per batch is now the limit](2026-10-23-haswell-gl-draws-run-on.md)
 
 ## SiS
 

@@ -57,6 +57,33 @@ v9x_u16 v9x_intel_hsw_pipe_idle(v9x_u32 sent, v9x_u32 done)
     return sent == done ? V9X_TRUE : V9X_FALSE;
 }
 
+v9x_u16 v9x_intel_hsw_pipe_draw_waits(v9x_u16 gdi_may_draw,
+                                      v9x_u32 target_offset,
+                                      v9x_u32 target_pitch,
+                                      v9x_u32 target_height,
+                                      v9x_u32 primary_bytes)
+{
+    v9x_u32 extent;
+
+    if (!gdi_may_draw) {
+        return V9X_FALSE;
+    }
+    if (primary_bytes == 0ul) {
+        return V9X_TRUE;
+    }
+    /* An extent past 4 GiB cannot be placed, so it may cover anything. */
+    if (target_height != 0ul && target_pitch > 0xfffffffful / target_height) {
+        return V9X_TRUE;
+    }
+    extent = target_pitch * target_height;
+    if (target_offset > 0xfffffffful - extent) {
+        return V9X_TRUE;
+    }
+    /* The primary is [0, primary_bytes): the target overlaps it when it
+     * starts below its end. */
+    return target_offset < primary_bytes ? V9X_TRUE : V9X_FALSE;
+}
+
 v9x_u32 v9x_intel_hsw_pipe_kernel_slot(const struct v9x_hsw_ps_desc *desc)
 {
     /* Stage 0 (six), stage 1 (two), specular, fog: 48 distinct slots, the

@@ -465,17 +465,25 @@ static int v9x_d3d_hsw_blitter_idle(void)
 }
 
 /*
- * A draw runs synchronously while GDI may be drawing on the screen: the
- * 16-bit driver writes GDI and the software cursor into the framebuffer
- * with no hook this DLL sees (plan decision 3, narrowed 2026-10-20). While
- * this process holds exclusive mode with its own buffers shown, GDI is not
- * drawing, and every draw is left running. The first form of the rule, by
- * target offset, kept Half-Life entirely and a third of 3DMark 2000
- * synchronous for buffers GDI was not touching.
+ * A draw runs synchronously when it targets the GDI primary while GDI may
+ * be drawing on the screen: the 16-bit driver writes GDI and the software
+ * cursor into that buffer with no hook this DLL sees (plan decision 3,
+ * narrowed 2026-10-20 and 2026-10-23). While this process holds exclusive
+ * mode with its own buffers shown, GDI is not drawing, and every draw is
+ * left running. Outside exclusive mode a target past the primary - an
+ * OpenGL back buffer - is reached by the CPU only through paths that
+ * drain, so it runs on too: before, every GL draw waited, and Quake 3 at
+ * 1024x768 spent 70 % of its time there (HD 4600, 2026-10-23). The first
+ * form of the rule, "offset 0 or the last flip's buffer", matched a stale
+ * shared flip offset and kept Half-Life synchronous; the primary's extent
+ * does not move with flips.
  */
-static int v9x_d3d_hsw_draw_waits(void)
+static int v9x_d3d_hsw_draw_waits(const V9X_R3D_DRAW *draw)
 {
-    return v9x_present_gdi_may_draw();
+    return v9x_intel_hsw_pipe_draw_waits(
+               v9x_present_gdi_may_draw() ? V9X_TRUE : V9X_FALSE,
+               draw->target.offset, draw->target.pitch, draw->target.height,
+               v9x_hal->fb.visible_bytes) != V9X_FALSE;
 }
 
 /* The blitter's conditions, the render ring the mini-VDD opened (CAP_D3D),
@@ -1303,7 +1311,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
             }
         }
     }
-    wait_after = v9x_d3d_hsw_draw_waits();
+    wait_after = v9x_d3d_hsw_draw_waits(draw);
 
     d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
     d.width = (v9x_u16)draw->target.width;

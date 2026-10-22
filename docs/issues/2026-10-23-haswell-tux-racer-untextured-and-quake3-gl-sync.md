@@ -78,6 +78,20 @@ pass through the same fetch: `demo001` at 800x600 read 47.2 fps on the
 fixed ICD (`quake3-benchfix-800.txt`), one run, against 46.4 and 46.7
 before.
 
+**On the software engine** (86Box `Win98SE-Fast-D3D`, port 9878, boot
+618, vbe package from 2026-10-22 with only the ICD replaced by
+`3137ed2e-dirty`; the previous one kept as `V9XGL.A8E`):
+- The current tree's V9XGLP (`9878-soft-boot618-V9XGLP-fixed-icd.INI`):
+  `Result=PASS`, 52 Oks, none 0. Every value matches the same machine's
+  run of 2026-10-22 on the `8aee07c0` ICD except two timing ticks
+  (`SeqFirstTicks`, `SeqSecondTicks`). The byte upload path, which every
+  game used before, reads as it did.
+- Tux Racer's splash and main menu draw textured
+  (`9878-soft-tux-fixed-*.png`), every batch on the CPU texture path:
+  `untextured=0/0`, `cpu=471/21010`. Tux ignored the steered clicks on
+  this slow engine and was ended with `WKILL.EXE`; the desktop was reset
+  to 1024x768x16 with `V9XMSW`.
+
 Also seen: Tux calls `glLight*`, `glMaterial*`, `glTexGen*` and the
 display-list entry points, which are stubs. It draws its own cursor from
 relative mouse motion, so the agent's `move` does not steer it; use
@@ -109,6 +123,13 @@ Quake 3 reports `color(16-bits) Z(24-bit)` after asking for 32/24 at
 800x600 and 1024x768, with the screen at 32 bpp. The ICD described its
 formats at attach, when the desktop was 16 bpp (`formats=00000002`).
 Whether it then drew a 16-bit format into a 32 bpp mode is not checked.
+
+**Follow-up, the same day:** per-frame times (`com_speeds`) show no single
+long hitch at 1024x768 (worst 79 ms) but long slow stretches. Draws
+outside the GDI primary no longer wait, which took `demo001` from 35.7 to
+42.6 fps and halved the frames over 33 ms; the GPU's cost per batch is
+now the limit
+([../decisions/2026-10-23-haswell-gl-draws-run-on.md](../decisions/2026-10-23-haswell-gl-draws-run-on.md)).
 
 ## Not run
 
