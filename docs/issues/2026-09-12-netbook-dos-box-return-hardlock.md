@@ -128,6 +128,17 @@ scanning out VGA 720x400, not our framebuffer.
 `shell` verb on this machine for tests that need a correct panel** - use
 `exec` with full paths and `get` for files.
 
+## 2026-10-22: the same switch on Ironlake, under the `vbe` family
+
+W9QI2F4F (Ironlake, `8086:0042`), tier-0 `vbe` at `1cc25342`, which
+carries no Intel code. One hidden `shell VER` turned the VGA plane on and
+plane A off at a 720x400 source through the panel fitter. It stayed so 20
+seconds later; a mode set repaired it. The registers are the netbook's
+pattern, on the Gen5 CPU display
+(`docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md`). So the
+`intel-gma` family is not the writer. That leaves the video BIOS's mode set
+in the new VM, and how the VDD and mini-VDD let it reach the hardware.
+
 ## Next
 
 Reproduce once with the flushing build, after the mode and DPMS rows have

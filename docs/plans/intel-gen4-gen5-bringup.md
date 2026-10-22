@@ -260,7 +260,11 @@ runs Windows 98 is not known.
 3. A `/rom` survey plus a Gen4/Gen5 probe: BAR0 size, GTT offset within it,
    GGC and BSM location, the stolen-size encoding. One decision doc, with the
    INIs. The answers cover both chips, so it is worth running wherever a
-   Windows install lands first.
+   Windows install lands first. Done for Gen5, 2026-10-22, with V9XG5MM:
+   the GTT is at BAR0 + 2 MiB, sized from GGMS, linear from BSM; the
+   display runs CPU pipe A, FDI and PCH transcoder A to the CRT
+   (`docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md`). A DOS VM
+   switches it to the VGA plane, as on the netbook.
 4. Identity, GTT, ring, blits - only if (3) comes back clean. Done for the
    GM965 except flips, which need DSPSURF (and a decision on FW_BLC) before
    the HAL may write the plane on Gen4.
