@@ -513,7 +513,7 @@ V9XMINI_FN_R128_MMIO_MAP    EQU 0023h
 ; mapped behind it for the wrap mirror); AX=0 with all three zero when the
 ; VMM's GART services refuse, as they do with no AGP chipset driver.
 ;
-; Reserves and commits once a boot (_GARTReserve and _GARTCommit, uncached)
+; Reserves and commits once a boot (_GARTReserve write-combined, _GARTCommit)
 ; and returns the same pages after; they are never released, since the card
 ; may hold their address. Interprets nothing: the display side decides
 ; whether the card can use them (include\velocity9x\r128_ring.h,

@@ -654,6 +654,12 @@ static int rc_wrap_mirror;
  * write pointer set to the read pointer found. */
 static int rc_no_reset;
 static DWORD rc_start_rptr;
+/* /time: fill the ring with RC_OP_RING_FILL_TIMED and report its cycles;
+ * /wca: reserve write-combined and commit with flags 0, as ATI's
+ * mini-VDD does. */
+static int rc_time_fill;
+#define RC_OP_RING_FILL_TIMED 21ul
+#define RC_GART_ATI_PAIR 3ul
 #define RC_WRAP_MASK 0x3ffful
 #define RC_WRAP_START 0x3ffcul
 #define RC_PATTERN_GUARD_TAG 0x5b000000ul
@@ -862,6 +868,7 @@ static void rc_ring_locate(void)
     DWORD wb_index = 0u;
     DWORD mm_index_index;
     DWORD target;
+    DWORD fill_index;
     DWORD chunk_index;
     DWORD agp_base_index;
     DWORD offset_index;
@@ -894,7 +901,11 @@ static void rc_ring_locate(void)
         if (rc_no_reset) {
             target = (rc_start_rptr + step * 2u) & RC_WRAP_MASK;
         }
-        if (step == 1u) {
+        fill_index = 0xfffffffful;
+        if (step == 1u && rc_time_fill) {
+            fill_index = rc_add(RC_OP_RING_FILL_TIMED, 0u, 0u, 0u);
+            rc_add_ring_init();
+        } else if (step == 1u) {
             rc_add(RC_OP_RING_PATTERN,
                    rc_wrap ? (rc_wrap_mirror ? 3u : 2u) :
                              (DWORD)rc_pattern_long, 0u, 0u);
@@ -942,6 +953,10 @@ static void rc_ring_locate(void)
         wait_result = rc_result_buffer.ops[wait_index].result;
         scratch = rc_result_buffer.ops[scratch_index].result;
         rc_write_hex(rc_key(key, name, "Scratch"), scratch);
+        if (fill_index != 0xfffffffful) {
+            rc_write_decimal(rc_key(key, name, "RingFillCycles"),
+                             rc_result_buffer.ops[fill_index].result);
+        }
         rc_write_hex(rc_key(key, name, "RptrPoll"), poll_result);
         rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
         rc_write_hex(rc_key(key, name, "Rptr"),
@@ -2095,7 +2110,21 @@ void WINAPI V9xRage128CceProbeEntry(void)
             }
             if (line[0] == '/' && (line[1] == 'w' || line[1] == 'W') &&
                 (line[2] == 'c' || line[2] == 'C')) {
-                rc_gart_flags = RC_PG_WRITECOMBINED;
+                rc_gart_flags = (line[3] == 'a' || line[3] == 'A') ?
+                    RC_GART_ATI_PAIR : RC_PG_WRITECOMBINED;
+            }
+            if (line[0] == '/' && (line[1] == 't' || line[1] == 'T') &&
+                (line[2] == 'i' || line[2] == 'I')) {
+                rc_time_fill = 1;
+            }
+            /* /gfRC: reserve flags R, commit flags C, one hex digit
+             * each (1 PG_UNCACHED, 2 PG_WRITECOMBINED). */
+            if (line[0] == '/' && (line[1] == 'g' || line[1] == 'G') &&
+                (line[2] == 'f' || line[2] == 'F') &&
+                line[3] >= '0' && line[3] <= '3' &&
+                line[4] >= '0' && line[4] <= '3') {
+                rc_gart_flags = 0x100ul | (DWORD)(line[3] - '0') |
+                                ((DWORD)(line[4] - '0') << 4);
             }
             if (line[0] == '/' && (line[1] == 'f' || line[1] == 'F') &&
                 (line[2] == 'l' || line[2] == 'L')) {

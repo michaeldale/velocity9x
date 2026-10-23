@@ -122,6 +122,11 @@ RC_OP_PCI_CFG_READ      equ 19
 ; what the card fetches; the card's writes (the read-pointer write-back) are
 ; snooped, which is why those land.
 RC_OP_CACHE_FLUSH       equ 20
+; The locating pattern again (pairs over the 64 KiB ring), timed: result is
+; the TSC cycles the 16384 stores took, to compare the ring's mapping
+; (uncached against write-combined). Ends with a locked op, as a WC
+; mapping's buffers must be flushed before the card is told.
+RC_OP_RING_FILL_TIMED   equ 21
 
 ; RC_OP_RING_PATTERN: the whole ring as pairs - a type-0 header for
 ; GUI_SCRATCH_REG0 (15E0h >> 2) and 5A000000h | the dword index of that
@@ -198,6 +203,7 @@ RCGartLinear dd 0
 RCGartDev    dd 0
 RCGartCommitted dd 0
 RCGartFlags  dd 0
+RCGartCommitFlags dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -495,7 +501,30 @@ BeginProc RC_Execute_One
     je      RC_Do_Pci_Cfg_Read
     cmp     eax, RC_OP_CACHE_FLUSH
     je      RC_Do_Cache_Flush
+    cmp     eax, RC_OP_RING_FILL_TIMED
+    je      RC_Do_Ring_Fill_Timed
     jmp     RC_Do_Refuse
+
+RC_Do_Ring_Fill_Timed:
+    cmp     RCRingData, 0
+    je      RC_Do_Refuse
+    mov     edi, RCRingData
+    db      0Fh, 31h                ; rdtsc
+    mov     ebp, eax
+    xor     ecx, ecx
+RC_Do_Ring_Fill_Timed_Next:
+    mov     dword ptr [edi+ecx*4], RC_PATTERN_HEADER
+    lea     eax, [ecx+1]
+    or      eax, RC_PATTERN_TAG
+    mov     [edi+ecx*4+4], eax
+    add     ecx, 2
+    cmp     ecx, RC_RING_AREA / 4
+    jb      short RC_Do_Ring_Fill_Timed_Next
+    lock or dword ptr [esp], 0
+    db      0Fh, 31h                ; rdtsc
+    sub     eax, ebp
+    mov     [esi+16], eax
+    jmp     RC_Do_Done
 
 RC_Do_Cache_Flush:
     db      0Fh, 09h                ; wbinvd: the module assembles as .386p
@@ -707,21 +736,39 @@ RC_Do_Ring_Read32:
 ; pages' device (bus) address, or 0 if either service refused.
 RC_Do_Gart_Alloc:
     cmp     RCGartLinear, 0
-    jne     short RC_Do_Gart_Alloc_Have
+    jne     RC_Do_Gart_Alloc_Have
     test    ebx, ebx
     jnz     short RC_Do_Gart_Alloc_Flags
     mov     ebx, PG_UNCACHED
 RC_Do_Gart_Alloc_Flags:
+    ; a = 3 is ATI's mini-VDD's pair: reserve PG_WRITECOMBINED, commit 0.
+    ; a with bit 8 set names the pair itself: reserve flags in bits 3:0,
+    ; commit flags in bits 7:4.
+    mov     RCGartCommitFlags, ebx
+    test    ebx, 100h
+    jz      short RC_Do_Gart_Alloc_Ati
+    mov     eax, ebx
+    shr     eax, 4
+    and     eax, 0fh
+    mov     RCGartCommitFlags, eax
+    and     ebx, 0fh
+    jmp     short RC_Do_Gart_Alloc_Same
+RC_Do_Gart_Alloc_Ati:
+    cmp     ebx, 3
+    jne     short RC_Do_Gart_Alloc_Same
+    mov     ebx, PG_WRITECOMBINED
+    mov     RCGartCommitFlags, 0
+RC_Do_Gart_Alloc_Same:
     mov     RCGartFlags, ebx
     mov     ebx, OFFSET32 RCGartDev
     VMMcall _GARTReserve,<0,RC_VGART_PAGES,0,ebx,RCGartFlags>
     test    eax, eax
-    jz      short RC_Do_Gart_Alloc_Failed
+    jz      RC_Do_Gart_Alloc_Failed
     mov     RCGartLinear, eax
     mov     ebx, OFFSET32 RCGartDev
-    VMMcall _GARTCommit,<RCGartLinear,0,RC_VGART_PAGES,ebx,RCGartFlags>
+    VMMcall _GARTCommit,<RCGartLinear,0,RC_VGART_PAGES,ebx,RCGartCommitFlags>
     test    eax, eax
-    jz      short RC_Do_Gart_Alloc_Failed
+    jz      RC_Do_Gart_Alloc_Failed
     mov     RCGartCommitted, 1
     mov     eax, RCGartLinear
     mov     RCRingData, eax

@@ -491,6 +491,7 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
     DWORD kept = 0ul;
     DWORD index;
     DWORD word;
+    DWORD started;
     v9x_u32 reason;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
@@ -500,10 +501,13 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
     }
 
     /* The mapping and the state first: nothing is written for a draw they
-     * refuse. */
+     * refuse. DECODE times them and the batch's assembly; the submit is
+     * timed in r128_cce.c. */
+    started = V9X_TIME_BEGIN();
     reason = v9x_d3d_r128_map(draw, &state);
     if (reason != V9X_D3D_R128_REFUSE_NONE) {
         v9x_d3d_r128_count_refusal(draw, reason);
+        V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
     }
 
@@ -526,6 +530,7 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
         ++kept;
     }
     if (kept == 0ul) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
         return 1;
     }
     (void)v9x_r128_3d_build_prim(kept, header);
@@ -537,6 +542,7 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
     if ((count & 1ul) != 0ul) {
         v9x_d3d_r128_stream[count++] = V9X_R128_PACKET2;
     }
+    V9X_TIME_END(V9X_TIME_DECODE, started);
 
     /* Left running: whatever needs the drawing drains it (r128_cce.c). */
     if (!v9x_r128_cce_submit(v9x_d3d_r128_stream, count)) {

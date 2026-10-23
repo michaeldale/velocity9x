@@ -300,11 +300,15 @@ extern int v9x_hal_tsc;
 /* And on Haswell since 2026-10-17, to split 3DMark 99's Game 2 between
  * texture churn and the synchronous render submit (docs\issues\
  * 2026-10-17-haswell-3dmark99-flicker-and-game2.md). */
+/* And on the Rage 128 since 2026-10-24, an AGP part, to find where
+ * 3DMark 2000's time goes against ATI's driver (docs\plans\
+ * d3d-core-throughput.md). */
 #define V9X_TIME_ENABLED() \
     (v9x_hal != 0 && \
      (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 || \
       v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN75 || \
       v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64 || \
+      v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE128 || \
       (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_MGA && \
        v9x_hal_tsc)))
 #define V9X_TIME_BEGIN() (V9X_TIME_ENABLED() ? v9x_rdtsc_low() : 0ul)

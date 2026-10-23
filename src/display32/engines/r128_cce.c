@@ -88,6 +88,14 @@ static int v9x_r128_cce_running = 0;
 static int v9x_r128_cce_transport = V9X_R128_CCE_UNDECIDED;
 
 static void v9x_r128_cce_engine_reset(void);
+
+/* `lock or dword ptr [esp], 0`: a locked instruction drains the
+ * write-combining buffers on every P6 (Intel SDM vol. 3, 11.3.1), where
+ * SFENCE exists only from the Pentium III; the probe's write-combined fill
+ * ended with the same. */
+static void v9x_r128_cce_wc_drain(void);
+#pragma aux v9x_r128_cce_wc_drain = 0xf0 0x83 0x0c 0x24 0x00 \
+    modify exact [];
 static v9x_r128_ring_plan v9x_r128_cce_plan;
 static DWORD v9x_r128_cce_wptr = 0ul;
 
@@ -328,8 +336,10 @@ static int v9x_r128_cce_start(void)
 
 /*
  * Into the ring, as much as the CCE has room for each time, then DL_WPTR.
- * The pages are uncached, so every dword is in memory before the pointer
- * write that publishes it. DL_DONE goes with every publish: the probe's
+ * The pages are write-combined, so the CPU's combining buffers are drained
+ * by a locked instruction before the pointer write that publishes them:
+ * the card's AGP reads do not snoop, and a dword still in a buffer is not
+ * one the CCE can fetch. DL_DONE goes with every publish: the probe's
  * kicks all carried it and each continued from the last, and without it
  * the CCE may hold a short tail until more arrives. The ring's first 32
  * dwords are mirrored past its end (Linux's R128_BROKEN_CCE).
@@ -341,6 +351,8 @@ static int v9x_r128_cce_submit_ring(const v9x_u32 *dwords, DWORD count)
     DWORD at = 0ul;
     DWORD spins = 0ul;
     DWORD rptr = 0ul;
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD waited = 0ul;
 
     while (at < count) {
         DWORD room;
@@ -348,11 +360,17 @@ static int v9x_r128_cce_submit_ring(const v9x_u32 *dwords, DWORD count)
         rptr = v9x_r128_cce_read32(V9X_R128_RING_DL_RPTR) & mask;
         room = v9x_r128_ring_free(rptr, v9x_r128_cce_wptr, mask);
         if (room == 0ul) {
+            if (spins == 0ul) {
+                waited = V9X_TIME_BEGIN();
+            }
             if (++spins >= V9X_R128_CCE_SPINS) {
                 v9x_r128_cce_quarantine(rptr);
                 return 0;
             }
             continue;
+        }
+        if (spins != 0ul) {
+            V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, waited);
         }
         spins = 0ul;
         if (room > count - at) {
@@ -367,9 +385,13 @@ static int v9x_r128_cce_submit_ring(const v9x_u32 *dwords, DWORD count)
             ++at;
             --room;
         }
+        v9x_r128_cce_wc_drain();
         v9x_r128_cce_write32(V9X_R128_RING_DL_WPTR,
                              v9x_r128_cce_wptr | V9X_R128_RING_DL_DONE);
     }
+    /* The whole submit, space waits included; RING_SPACE_WAIT is the
+     * waiting part of it. */
+    V9X_TIME_END(V9X_TIME_RING_WRITE, started);
     return 1;
 }
 
@@ -456,19 +478,24 @@ int v9x_r128_cce_drain(int wait)
 {
     DWORD reads = wait ? V9X_R128_CCE_SPINS : V9X_R128_CCE_QUICK_READS;
     DWORD status = 0ul;
+    DWORD started;
 
     if (!v9x_r128_cce_running || v9x_hal == 0 ||
         v9x_hal->engine.control_linear_base == 0ul) {
         return 1;
     }
-    /* Still drawing: a non-blocking caller hears so and asks again. */
+    /* Still drawing: a non-blocking caller hears so and asks again.
+     * RENDER_DRAIN is the CPU's wait for the GPU here, blocking or not. */
+    started = V9X_TIME_BEGIN();
     if (!v9x_r128_cce_poll_drained(reads, &status)) {
+        V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
         if (!wait) {
             return 0;
         }
         v9x_r128_cce_quarantine(status);
         return 0;
     }
+    V9X_TIME_END(V9X_TIME_RENDER_DRAIN, started);
     if (!v9x_r128_cce_poll_cache(V9X_R128_PC_GUI_CTLSTAT,
                                  V9X_R128_CCE_SPINS, &status)) {
         v9x_r128_cce_quarantine(status);
