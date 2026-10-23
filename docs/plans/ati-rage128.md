@@ -142,8 +142,14 @@ frame passes, refused draws fall back to the CPU, explicit draws go on the
 engine with the scissor and write mask, and V9XR3DP, V9XGLP, V9XGLIDP and
 V9XGL3P pass. Half-Life OpenGL then ran at 0.75 fps until the describe
 offered surface textures; with them, 12.0 cold and 14.1 warm, every
-textured batch on the engine. Owed: a Glide title; Half-Life GL watched
-on the monitor.
+textured batch on the engine; Michael watched it working on the monitor.
+Owed: a Glide title.
+
+**Performance parked for this release (Michael, 2026-10-23).** Direct3D
+and OpenGL both work, at about a fifth to a half of ATI's speed (3DMark
+2000 1105 against 2404, Half-Life GL 14 fps against 70). The likely
+next step is the bus-master command ring in place of CPU PIO, which
+Michael will review before it is started.
 
 ## Decisions owed
 

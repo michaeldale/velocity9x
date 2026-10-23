@@ -134,14 +134,15 @@ Boot 535, after the fix:
 - `paths hw=190383/6633295 cpu=0/0 hw-refused=0/0`; `hwtex live=214`,
   `uploads=696` (`partial=456`), none failed.
 - Two mid-demo screenshots look right: Xen terrain, filtered walls,
-  lightmaps, sky, and the HUD (`hlgl-mwd5-b535.png`). Michael has not
-  watched it on the monitor.
+  lightmaps, sky, and the HUD (`hlgl-mwd5-b535.png`).
+- Michael then ran it himself and watched it on the monitor: "hl1
+  working now in opengl". His runs: 13.44 fps, then 14.12.
+- The performance is parked for this release (Michael, 2026-10-23).
 
 ## Not done
 
 - A Glide game has not been run.
-- Watching Half-Life OpenGL on the monitor.
-- The frame rate is recorded, not investigated. The batches still go
+- The frame rate is recorded, not investigated (parked). The batches still go
   through CPU PIO, and every partial texture upload (a lightmap) drains
   the CCE through Lock.
 - 32 bpp under OpenGL, as on the MGA.
