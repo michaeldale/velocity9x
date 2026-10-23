@@ -20,7 +20,8 @@ build identifier so exact guest-tested binaries remain traceable.
   - OpenGL and Glide draw on the Rage 128 too, with what the chip cannot
     draw exactly (textures the OpenGL driver keeps in system memory, for
     one) drawn by the CPU into the same frame. The OpenGL, Glide 2 and
-    Glide 3 probes pass; no game has been run on them yet
+    Glide 3 probes pass, and Half-Life's OpenGL renderer runs its demo
+    at 14 fps with its textures on the card
     ([record](docs/decisions/2026-10-23-rage128-render-interface.md)).
   - Half-Life's frames have not yet been watched on the monitor.
   - Measured on one card. GDI is still drawn by the CPU.

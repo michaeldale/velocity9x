@@ -140,8 +140,10 @@ Probes done 2026-10-23
 ([record](../decisions/2026-10-23-rage128-render-interface.md)): the mixed
 frame passes, refused draws fall back to the CPU, explicit draws go on the
 engine with the scissor and write mask, and V9XR3DP, V9XGLP, V9XGLIDP and
-V9XGL3P pass. Owed: Half-Life OpenGL and a Glide title; the ICD's CPU
-textures on the engine.
+V9XGL3P pass. Half-Life OpenGL then ran at 0.75 fps until the describe
+offered surface textures; with them, 12.0 cold and 14.1 warm, every
+textured batch on the engine. Owed: a Glide title; Half-Life GL watched
+on the monitor.
 
 ## Decisions owed
 

@@ -6022,6 +6022,16 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_r128) {
+        /* The Rage 128's: power-of-two edges, 1 to 1024, square or not,
+         * all three formats, placed by v9x_d3d_r128_create_surface with
+         * packed rows. Without this branch the ICD kept every texture on
+         * the CPU, the engine refused every textured batch, and Half-Life
+         * OpenGL ran at 0.75 fps in the software engine (A8U4I5, boot
+         * 534). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
     }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {

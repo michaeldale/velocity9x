@@ -108,10 +108,41 @@ path, and its 34 are the two V9XD32 runs. So how many explicit draws the
 engine drew is not measured. The probes cannot tell its pixels from the
 CPU's either way.
 
+## 4. Half-Life OpenGL: the describe never offered surface textures
+
+At boot 534, Half-Life OpenGL's mwd5 timedemo ran at **0.75 fps** (394
+frames in 525 s). The frames looked right in a screenshot.
+
+`V9XGL.LOG` showed why:
+
+- `hwtex live=0 creates=0`;
+- `paths ... hw=0/0 cpu=26831/576463`.
+
+The ICD kept every texture on the CPU. The engine refused every textured
+batch (`M64AcceptPolicy02=44,174`), so the software engine drew the game.
+`v9x_r3d_entry_describe` gives each engine with a surface sampler its
+`hw_texture_size_max`. The Rage 128 had no branch there, so it published
+0, which tells the ICD "no surface textures". The branch now offers
+powers of two from 1 to 1024 in all three formats, which is what
+`v9x_d3d_r128_create_surface` places.
+
+Boot 535, after the fix:
+
+- The four probes pass as before.
+- Half-Life OpenGL mwd5 runs at **12.0 fps** cold and **14.1** warm
+  (twice). ATI's driver: 61.1 cold, 70.1 to 70.3 warm.
+- `paths hw=190383/6633295 cpu=0/0 hw-refused=0/0`; `hwtex live=214`,
+  `uploads=696` (`partial=456`), none failed.
+- Two mid-demo screenshots look right: Xen terrain, filtered walls,
+  lightmaps, sky, and the HUD (`hlgl-mwd5-b535.png`). Michael has not
+  watched it on the monitor.
+
 ## Not done
 
-- No title has been run. Half-Life OpenGL and a Glide game are the next
-  checks.
-- The ICD's CPU textures could be uploaded to the engine.
+- A Glide game has not been run.
+- Watching Half-Life OpenGL on the monitor.
+- The frame rate is recorded, not investigated. The batches still go
+  through CPU PIO, and every partial texture upload (a lightmap) drains
+  the CCE through Lock.
 - 32 bpp under OpenGL, as on the MGA.
 - The bus-master ring, which Michael will review later.
