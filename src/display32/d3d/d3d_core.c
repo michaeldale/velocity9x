@@ -5910,10 +5910,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_g4) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN4;
         /* The same engine on Ironlake; it read "GMA X3100" there until
-         * 2026-10-22 (V9XGLP on W9QI2F4F). */
+         * 2026-10-22 (V9XGLP on W9QI2F4F). On the G45 and Q45 it is named
+         * by their identity bit, which both stamp, so one name serves the
+         * GMA X4500 and the GMA 4500. */
         if ((v9x_hal->engine.engine_caps &
              V9X_DD_ENGINE_CAP_I9XX_GEN5) != 0ul) {
             name = "Velocity9x HD Graphics (ILK)";
+        } else if ((v9x_hal->engine.engine_caps &
+                    V9X_DD_ENGINE_CAP_I9XX_G4X) != 0ul) {
+            name = "Velocity9x GMA 4500";
         } else {
             name = "Velocity9x GMA X3100";
         }

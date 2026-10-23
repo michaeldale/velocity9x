@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.28.0 - not yet released
 
+- **Intel GMA X4500 (G45, `8086:2E22`) and GMA 4500 (Q45, `8086:2E12`):
+  a test build, not yet run on either.** The `intel-gma` package now
+  binds both and drives them on the GMA X3100's path, with the
+  differences their manuals and Linux give: the GTT 2 MiB into the
+  register window, and two Direct3D commands in their G4x form. They
+  report themselves to Direct3D and OpenGL as "Velocity9x GMA 4500".
+  Built from the two surveys attached to issue 3; the first boot on one
+  is the first measurement
+  ([record](docs/decisions/2026-10-23-g4x-gma4500-from-surveys.md)).
+
 - **ATI Rage 128 Pro: Direct3D in hardware.** Triangles are sent to the
   chip's command engine (the CCE, running Linux's MIT-licensed microcode)
   at 16 and 32 bpp with a 16-bit Z buffer and one texture unit. Every
