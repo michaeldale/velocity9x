@@ -17,6 +17,11 @@ build identifier so exact guest-tested binaries remain traceable.
   - Page flips are done by the chip at the vertical blank, so full-screen
     games no longer flicker
     ([record](docs/decisions/2026-10-23-rage128-mip-order-flips-and-a-running-cce.md)).
+  - OpenGL and Glide draw on the Rage 128 too, with what the chip cannot
+    draw exactly (textures the OpenGL driver keeps in system memory, for
+    one) drawn by the CPU into the same frame. The OpenGL, Glide 2 and
+    Glide 3 probes pass; no game has been run on them yet
+    ([record](docs/decisions/2026-10-23-rage128-render-interface.md)).
   - Half-Life's frames have not yet been watched on the monitor.
   - Measured on one card. GDI is still drawn by the CPU.
 

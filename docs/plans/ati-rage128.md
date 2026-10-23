@@ -136,6 +136,13 @@ retry.
 The render interface on the new engine, as on the Millennium II. Half-Life
 GL is the game gate.
 
+Probes done 2026-10-23
+([record](../decisions/2026-10-23-rage128-render-interface.md)): the mixed
+frame passes, refused draws fall back to the CPU, explicit draws go on the
+engine with the scissor and write mask, and V9XR3DP, V9XGLP, V9XGLIDP and
+V9XGL3P pass. Owed: Half-Life OpenGL and a Glide title; the ICD's CPU
+textures on the engine.
+
 ## Decisions owed
 
 1. **3D submission: CCE in PIO mode, CCE with a bus-master ring, or the

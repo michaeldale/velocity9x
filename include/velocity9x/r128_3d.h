@@ -147,8 +147,21 @@ struct v9x_r128_3d_state {
     v9x_u32 fog_enable;
     v9x_u32 fog_color;         /* RGB */
     v9x_u32 dither_enable;
+    /* The render interface's scissor, half-open, inside 8192; zero
+     * scissor_enable opens it to the maxima. */
+    v9x_u32 scissor_enable;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
+    v9x_u32 masked_channels;   /* V9X_R128_CHANNEL_*: kept, not written */
     struct v9x_r128_3d_texture texture;
 };
+
+/* Colour channels a draw leaves as they are, through PLANE_3D_MASK_C. */
+#define V9X_R128_CHANNEL_RED            1ul
+#define V9X_R128_CHANNEL_GREEN          2ul
+#define V9X_R128_CHANNEL_BLUE           4ul
 
 /*
  * The 3D engine writes through the GUI pixel cache, which PC_NGUI_CTLSTAT's

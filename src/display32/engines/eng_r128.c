@@ -130,6 +130,14 @@ static int v9x_r128_validate(void)
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul) {
         return 1;
     }
+    /* Direct3D may have started the CCE in a mode the 2D engine has not
+     * yet been used in - Glide's own, say. Refusing here would make
+     * v9x_render_drain answer ABANDONED without ever stopping it, and the
+     * mode set that follows a session ran against a free-running
+     * microengine (A8U4I5 hung in V9XGLIDP, boot 532). */
+    if (!v9x_r128_cce_drain(1)) {
+        return 0;
+    }
     if ((v9x_r128_read32(V9X_R128_PCI_COPY) & 0xfffful) !=
         V9X_R128_VENDOR_ATI) {
         return 0;

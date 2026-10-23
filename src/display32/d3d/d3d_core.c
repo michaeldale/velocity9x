@@ -5012,6 +5012,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_r3d_engine(void)
  * there could carry two encodings. The MGA-2164W passed the same probe on
  * A8U4I5 at 640x480x16 (docs\decisions\2026-10-18-mga2164w-software-
  * fallback.md): its Z16 holds z x 65535 as the software engine's does.
+ * The Rage 128 passed it on A8U4I5 at 640x480x16, boot 530, with the same
+ * readings (docs\decisions\2026-10-23-rage128-render-interface.md).
  */
 static const V9X_D3D_ENGINE_OPS *v9x_r3d_fallback(
     const V9X_D3D_ENGINE_OPS *ops)
@@ -5019,7 +5021,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_r3d_fallback(
     /* The Mystique's Z16 matched the 2164W's model under MGA2D /depth;
      * the mixed-engine probe has not run on it. */
     return ops == &v9x_d3d_engine_i9xx || ops == &v9x_d3d_engine_mga ||
-                   ops == &v9x_d3d_engine_mga16
+                   ops == &v9x_d3d_engine_mga16 ||
+                   ops == &v9x_d3d_engine_r128
                ? &v9x_d3d_engine_soft
                : 0;
 }

@@ -191,6 +191,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-23 Rage 128 3D builder: Gouraud, Z16 and a texture draw right through the CCE](2026-10-23-rage128-3d-builder-gouraud-z-texture.md)
 - [2026-10-23 Rage 128 Direct3D through the CCE: V9XD32 passes, 3DMark 2000 and Half-Life run](2026-10-23-rage128-direct3d-through-the-cce.md)
 - [2026-10-23 Rage 128: mip offsets smallest-first, flips through CRTC_OFFSET, and the CCE left running](2026-10-23-rage128-mip-order-flips-and-a-running-cce.md)
+- [2026-10-23 Rage 128: OpenGL and Glide through the render interface, on the engine where exact](2026-10-23-rage128-render-interface.md)
 
 ## Matrox
 

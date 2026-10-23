@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "velocity9x/r3d_abi.h"
 #include "../../src/display32/d3d/d3d_r128_map.h"
 
 static unsigned int failures = 0u;
@@ -101,9 +102,62 @@ static void test_untextured(void)
     CHECK(state.fog_enable == 1ul && state.fog_color == 0x00336699ul);
     CHECK(state.specular_enable == 1ul);
 
-    /* The render interface's explicit draws are not built yet. */
+    /* A Direct3D draw is never scissored or masked by the map. */
+    CHECK(state.scissor_enable == 0ul && state.masked_channels == 0ul);
+}
+
+/* The render interface's explicit draws: the scissor and write mask as
+ * the builder's, undithered; CPU levels and a second unit go to the
+ * fallback, and so does an empty or out-of-target scissor. */
+static void test_explicit(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_r128_3d_state state;
+    V9X_R3D_LEVEL level;
+    float texcoords[6];
+
     base_draw(&draw);
     draw.explicit_state = 1ul;
+    draw.scissor_left = 10ul;
+    draw.scissor_top = 20ul;
+    draw.scissor_right = 300ul;
+    draw.scissor_bottom = 200ul;
+    draw.write_mask = V9X_R3D_ABI_WRITE_RGB;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.scissor_enable == 1ul);
+    CHECK(state.scissor_left == 10ul && state.scissor_top == 20ul);
+    CHECK(state.scissor_right == 300ul && state.scissor_bottom == 200ul);
+    CHECK(state.masked_channels == 0ul && state.dither_enable == 0ul);
+
+    /* Green and blue written, red kept. */
+    draw.write_mask = V9X_R3D_ABI_WRITE_GREEN | V9X_R3D_ABI_WRITE_BLUE;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.masked_channels == V9X_R128_CHANNEL_RED);
+    draw.write_mask = 0ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.masked_channels == (V9X_R128_CHANNEL_RED |
+                                    V9X_R128_CHANNEL_GREEN |
+                                    V9X_R128_CHANNEL_BLUE));
+    draw.write_mask = V9X_R3D_ABI_WRITE_RGB;
+
+    /* Empty, or past the target: refused. */
+    draw.scissor_right = 10ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_EXPLICIT);
+    draw.scissor_right = 801ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_EXPLICIT);
+    draw.scissor_right = 300ul;
+    draw.scissor_bottom = 601ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_EXPLICIT);
+    draw.scissor_bottom = 200ul;
+
+    /* CPU levels and a second unit stay with the fallback. */
+    memset(&level, 0, sizeof(level));
+    draw.texture.levels = &level;
+    draw.texture.level_count = 1ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_EXPLICIT);
+    draw.texture.levels = 0;
+    draw.texture.level_count = 0ul;
+    draw.texcoords1 = texcoords;
     CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_R128_REFUSE_EXPLICIT);
 }
 
@@ -291,6 +345,7 @@ unsigned int v9x_run_d3d_r128_map_tests(void)
 {
     failures = 0u;
     test_untextured();
+    test_explicit();
     test_depth_and_tests();
     test_blend();
     test_texture();

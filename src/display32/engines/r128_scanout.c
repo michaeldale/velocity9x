@@ -64,6 +64,11 @@ int v9x_r128_set_display_start(DWORD byte_offset)
     if (!v9x_r128_scanout_live()) {
         return 0;
     }
+    /* The frame finished before it is shown: the core's wait before a flip
+     * is the ViRGE's, and Direct3D leaves the CCE running (r128_cce.c). */
+    if (!v9x_r128_cce_drain(1)) {
+        return 0;
+    }
     if (v9x_r128_crtc_start(byte_offset, v9x_hal->fb.vram_bytes,
                             v9x_hal->fb.bits_per_pixel / 8ul, &value) !=
             V9X_STATUS_OK) {

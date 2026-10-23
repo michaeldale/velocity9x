@@ -10,6 +10,40 @@
 #define V9X_D3D_R128_TEXTURE_SIDE_MAX 1024ul
 #define V9X_D3D_R128_ALPHA_REF_MASK   0xfful
 
+/* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
+#define V9X_D3D_R128_WRITE_RED   1ul
+#define V9X_D3D_R128_WRITE_GREEN 2ul
+#define V9X_D3D_R128_WRITE_BLUE  4ul
+
+/* An explicit draw's scissor and write mask, as the builder's. The scissor
+ * must be a non-empty rectangle inside the target; one that is not goes to
+ * the fallback rather than be clamped. */
+static int v9x_d3d_r128_explicit(const V9X_R3D_DRAW *draw,
+                                 struct v9x_r128_3d_state *state)
+{
+    if (draw->scissor_left >= draw->scissor_right ||
+        draw->scissor_top >= draw->scissor_bottom ||
+        draw->scissor_right > draw->target.width ||
+        draw->scissor_bottom > draw->target.height) {
+        return 0;
+    }
+    state->scissor_enable = 1ul;
+    state->scissor_left = draw->scissor_left;
+    state->scissor_top = draw->scissor_top;
+    state->scissor_right = draw->scissor_right;
+    state->scissor_bottom = draw->scissor_bottom;
+    if ((draw->write_mask & V9X_D3D_R128_WRITE_RED) == 0ul) {
+        state->masked_channels |= V9X_R128_CHANNEL_RED;
+    }
+    if ((draw->write_mask & V9X_D3D_R128_WRITE_GREEN) == 0ul) {
+        state->masked_channels |= V9X_R128_CHANNEL_GREEN;
+    }
+    if ((draw->write_mask & V9X_D3D_R128_WRITE_BLUE) == 0ul) {
+        state->masked_channels |= V9X_R128_CHANNEL_BLUE;
+    }
+    return 1;
+}
+
 /* A power of two up to 1024, as its log2; -1 otherwise. */
 static int v9x_d3d_r128_log2(v9x_u32 side)
 {
@@ -240,10 +274,17 @@ v9x_u32 v9x_d3d_r128_map_draw(const V9X_R3D_DRAW *draw,
     for (index = 0ul; index < sizeof(*state); ++index) {
         bytes[index] = 0u;
     }
-    /* The render interface's explicit draws (OpenGL, Glide) need the
-     * scissor, write mask and CPU-resident textures, none built yet: the
-     * render interface draws them on the CPU. */
-    if (draw->explicit_state != 0ul || draw->texture.levels != 0) {
+    /* The render interface's explicit draws (OpenGL, Glide) are drawn here
+     * with their scissor and write mask, undithered as every draw of this
+     * engine is. CPU-resident levels and a second unit are not sampled:
+     * the software fallback draws those (d3d_core.c, measured to agree in
+     * a mixed frame on A8U4I5). */
+    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
+        draw->texture1.object != 0 || draw->texture1.levels != 0) {
+        return V9X_D3D_R128_REFUSE_EXPLICIT;
+    }
+    if (draw->explicit_state != 0ul &&
+        !v9x_d3d_r128_explicit(draw, state)) {
         return V9X_D3D_R128_REFUSE_EXPLICIT;
     }
     switch (draw->target.format) {

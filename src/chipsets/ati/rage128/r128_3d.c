@@ -14,8 +14,22 @@
 #define R128_GMC_WR_MSK_DIS             0x40000000ul
 
 /* SC_TOP_LEFT_C / SC_BOTTOM_RIGHT_C: the 3D scissor, x in 12:0 and y in
- * 28:16, opened to the maxima as Mesa opens it; the render core clips. */
+ * 28:16, both corners inclusive (Mesa's r128UpdateClipping writes
+ * x + width - 1). Opened to the maxima unless a scissor is given; the
+ * render core clips. */
 #define R128_SC_C_MAX                   0x1fff1ffful
+#define R128_SC_LIMIT                   0x2000ul
+#define R128_SC_Y_SHIFT                 16
+
+/* PLANE_3D_MASK_C per channel: RGB565 in each 16-bit half, ARGB8888 with
+ * the alpha byte always kept. */
+#define R128_PLANE_565_RED              0xf800f800ul
+#define R128_PLANE_565_GREEN            0x07e007e0ul
+#define R128_PLANE_565_BLUE             0x001f001ful
+#define R128_PLANE_8888_RED             0x00ff0000ul
+#define R128_PLANE_8888_GREEN           0x0000ff00ul
+#define R128_PLANE_8888_BLUE            0x000000fful
+#define R128_PLANE_8888_ALL             0x00fffffful
 
 /* Z_STEN_CNTL_C: 16-bit Z (2:1 = 0), Z test in 6:4, stencil test always
  * (7 << 12) with every stencil operation KEEP. */
@@ -261,9 +275,46 @@ static v9x_status v9x_r128_3d_texture_block(
     return V9X_STATUS_OK;
 }
 
+/* PLANE_3D_MASK_C: every bit written but the masked channels'. A 32 bpp
+ * target is XRGB8888 to DirectDraw but the engine's only 32-bit datatype is
+ * ARGB8888, which writes alpha into the X byte (V9XD32 read 0xFF13579B on
+ * A8U4I5); the alpha byte is always kept. */
+static v9x_u32 v9x_r128_3d_plane_mask(v9x_u32 bytes_per_pixel,
+                                      v9x_u32 masked_channels)
+{
+    v9x_u32 mask;
+
+    if (bytes_per_pixel == 4ul) {
+        mask = R128_PLANE_8888_ALL;
+        if ((masked_channels & V9X_R128_CHANNEL_RED) != 0ul) {
+            mask &= ~R128_PLANE_8888_RED;
+        }
+        if ((masked_channels & V9X_R128_CHANNEL_GREEN) != 0ul) {
+            mask &= ~R128_PLANE_8888_GREEN;
+        }
+        if ((masked_channels & V9X_R128_CHANNEL_BLUE) != 0ul) {
+            mask &= ~R128_PLANE_8888_BLUE;
+        }
+        return mask;
+    }
+    mask = 0xfffffffful;
+    if ((masked_channels & V9X_R128_CHANNEL_RED) != 0ul) {
+        mask &= ~R128_PLANE_565_RED;
+    }
+    if ((masked_channels & V9X_R128_CHANNEL_GREEN) != 0ul) {
+        mask &= ~R128_PLANE_565_GREEN;
+    }
+    if ((masked_channels & V9X_R128_CHANNEL_BLUE) != 0ul) {
+        mask &= ~R128_PLANE_565_BLUE;
+    }
+    return mask;
+}
+
 v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                                    struct v9x_r128_3d_stream *stream)
 {
+    v9x_u32 scissor_top_left = 0ul;
+    v9x_u32 scissor_bottom_right = R128_SC_C_MAX;
     v9x_u32 datatype;
     v9x_u32 target_units;
     v9x_u32 depth_units = 0ul;
@@ -304,6 +355,19 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
         state->dst_blend > V9X_R128_BLEND_SAT ||
         state->alpha_func > V9X_R128_CMP_ALWAYS) {
         return V9X_STATUS_UNSUPPORTED;
+    }
+    if (state->scissor_enable != 0ul) {
+        if (state->scissor_left >= state->scissor_right ||
+            state->scissor_top >= state->scissor_bottom ||
+            state->scissor_right > R128_SC_LIMIT ||
+            state->scissor_bottom > R128_SC_LIMIT) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        scissor_top_left = state->scissor_left |
+                           (state->scissor_top << R128_SC_Y_SHIFT);
+        scissor_bottom_right = (state->scissor_right - 1ul) |
+                               ((state->scissor_bottom - 1ul) <<
+                                R128_SC_Y_SHIFT);
     }
 
     tex_cntl = R128_TEX_CACHE_FLUSH | R128_LOD_BIAS_DEFAULT;
@@ -358,8 +422,8 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                              V9X_R128_GMC_CLR_CMP_CNTL_DIS |
                              V9X_R128_GMC_AUX_CLIP_DIS |
                              R128_GMC_WR_MSK_DIS);
-    v9x_r128_3d_emit(stream, 0ul);
-    v9x_r128_3d_emit(stream, R128_SC_C_MAX);
+    v9x_r128_3d_emit(stream, scissor_top_left);
+    v9x_r128_3d_emit(stream, scissor_bottom_right);
     v9x_r128_3d_emit(stream, state->depth_enable != 0ul ?
                              state->depth_offset : 0ul);
     v9x_r128_3d_emit(stream, depth_units);
@@ -391,18 +455,16 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                                               0u));
     v9x_r128_3d_emit(stream, 0ul);
     /* CONSTANT_COLOR_C, both border colours, STEN_REF_MASK_C,
-     * PLANE_3D_MASK_C. A 32 bpp target is XRGB8888 to DirectDraw but the
-     * engine's only 32-bit datatype is ARGB8888, which writes alpha into
-     * the X byte (V9XD32 read 0xFF13579B on A8U4I5); the plane mask keeps
-     * it. */
+     * PLANE_3D_MASK_C. */
     v9x_r128_3d_emit(stream, V9X_R128_PACKET0(V9X_R128_CONSTANT_COLOR_C,
                                               4u));
     v9x_r128_3d_emit(stream, R128_CONSTANT_COLOR);
     v9x_r128_3d_emit(stream, 0ul);
     v9x_r128_3d_emit(stream, 0ul);
     v9x_r128_3d_emit(stream, R128_STEN_REF_MASK);
-    v9x_r128_3d_emit(stream, state->target_bytes_per_pixel == 4ul ?
-                             0x00fffffful : 0xfffffffful);
+    v9x_r128_3d_emit(stream,
+                     v9x_r128_3d_plane_mask(state->target_bytes_per_pixel,
+                                            state->masked_channels));
 
     if (state->texture.enable != 0ul) {
         v9x_status status = v9x_r128_3d_texture_block(&state->texture,

@@ -42,8 +42,10 @@ typedef struct v9x_d3d_r128_texture {
 
 #define V9X_D3D_R128_REFUSE_NONE            0ul
 #define V9X_D3D_R128_REFUSE_TARGET          1ul  /* not RGB565/XRGB8888 */
-#define V9X_D3D_R128_REFUSE_EXPLICIT        2ul  /* render-interface draw,
-                                                    not built yet */
+#define V9X_D3D_R128_REFUSE_EXPLICIT        2ul  /* render-interface draw:
+                                                    CPU levels, a second
+                                                    unit, or a scissor
+                                                    outside the target */
 #define V9X_D3D_R128_REFUSE_DEPTH_FUNC      3ul
 #define V9X_D3D_R128_REFUSE_BLEND           4ul
 #define V9X_D3D_R128_REFUSE_ALPHA_FUNC      5ul

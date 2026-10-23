@@ -229,6 +229,48 @@ static void test_target_refusals(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* The scissor, half-open in, inclusive out as Mesa's r128UpdateClipping
+ * writes it; the write mask as PLANE_3D_MASK_C per channel, each 16-bit
+ * pixel's mask in both halves. */
+static void test_scissor_and_mask(void)
+{
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+
+    r3_base(&state);
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1c88ul) == 0ul);
+    CHECK(r3_value(&stream, 0x1c8cul) == 0x1fff1ffful);
+
+    state.scissor_enable = 1ul;
+    state.scissor_left = 10ul;
+    state.scissor_top = 20ul;
+    state.scissor_right = 300ul;
+    state.scissor_bottom = 200ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1c88ul) == ((20ul << 16) | 10ul));
+    CHECK(r3_value(&stream, 0x1c8cul) == ((199ul << 16) | 299ul));
+    state.scissor_right = 10ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.scissor_right = 8193ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.scissor_enable = 0ul;
+
+    state.masked_channels = V9X_R128_CHANNEL_RED;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1d44ul) == 0x07ff07fful);
+    state.masked_channels = V9X_R128_CHANNEL_GREEN | V9X_R128_CHANNEL_BLUE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1d44ul) == 0xf800f800ul);
+    state.target_bytes_per_pixel = 4ul;
+    state.target_pitch_bytes = 4096ul;
+    state.masked_channels = V9X_R128_CHANNEL_BLUE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1d44ul) == 0x00ffff00ul);
+}
+
 /* The primitive header: one triangle is 2 + 24 dwords after the header,
  * so n = 25; the format is every TL bit; the count is the vertices. */
 static void test_prim(void)
@@ -260,6 +302,7 @@ unsigned int v9x_run_r128_3d_tests(void)
     test_depth_blend_flat();
     test_texture();
     test_target_refusals();
+    test_scissor_and_mask();
     test_prim();
     return failures;
 }
