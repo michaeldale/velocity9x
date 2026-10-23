@@ -299,6 +299,48 @@ What the numbers say:
   core's expansion and the list path; the decode and ring-write shares
   there are that path's cost.
 
+## Sampling profile, ours against ATI's (Michael: "You can do sampling profiler", 2026-10-24)
+
+`V9XPROF.EXE` (`tools\diag\profile_win32.c`) starts the program and,
+about once a millisecond, suspends its main thread, reads its context and
+resumes it; `scripts\report-profile.ps1` resolves the samples to modules,
+16-bit selectors, and inside V9XHAL.DLL to object and nearest public
+symbol (statics land on the public before them). 3DMark 2000 draws from
+its main thread, so the profile sees the drawing. Under the profiler ATI
+scored 2354 (2404 without), so it costs about 2%.
+
+**Load time: our 16-bit driver's serial log held each mode change for
+about two seconds.** Boot 557: 2,243 samples in `v9x_serial_write`
+(V9XDISP.DRV `_TEXT:63C0`, a single loop) in three bursts - startup, the
+switch to 3DMark's test mode, and the switch back at exit - and the
+sampler itself was held off to about half its rate there, so the time is
+about twice the samples. It waited on COM1's transmitter for every byte,
+up to 65,535 status reads each; A8U4I5 has a real COM1. ATI's run has no
+such block. It now writes what the transmitter takes at once and drops
+the rest (Michael: "Make it non-blocking"); boot 560: 17 samples in
+V9XDISP.DRV in the whole run, against 2,262, and 3DMark scored 1613.
+
+**The game tests are chip-bound under both drivers.** Helicopter, 25-45 s:
+
+| Driver | Hottest loops | Share of the samples | Frame rate (3DMark) |
+|---|---|---|---|
+| Velocity9x (boot 557) | one, the ring-space wait in `r128_cce.c` | 40.5% | 33 fps |
+| ATI (boot 558) | two, in its 32-bit driver at B00BC5E0 and B00BC2B0 | 38.4% | 42 fps |
+
+Both drivers leave the CPU waiting on the chip for the same share of the
+time, so the game-test gap is in what the chip does per frame, not in CPU
+overhead. Candidates, not measured: the flip wait the ring carries
+(`WAIT_UNTIL`, which stalls the CCE until the previous flip latches), the
+whole state resent with each batch of at most 64 triangles, and vertices
+inline in the ring rather than fetched from AGP.
+
+**Fill and texture tests stop at the vertical blank:** 86-95% of the
+samples polling Flip. ATI ran its texture tests at 121-136 fps on a 59 Hz
+desktop, so it does not wait for the blank there. The Rage 128 keeps
+`CRTC_OFFSET_FLIP_CNTL` clear (latch at the blank) in our driver, which
+`r128_scanout.c` requires; whether 3DMark asks for `DDFLIP_NOVSYNC` is not
+counted.
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that

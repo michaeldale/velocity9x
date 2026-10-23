@@ -35,9 +35,13 @@
 
 #define V9X_COM1_DATA_PORT      0x03f8u
 #define V9X_COM1_LCR_PORT       0x03fbu
+#define V9X_COM1_IIR_PORT       0x03fau
 #define V9X_COM1_LSR_PORT       0x03fdu
 #define V9X_COM1_TX_EMPTY          0x20u
-#define V9X_SERIAL_SPIN_LIMIT   0xffffu
+/* IIR bits 7:6 both set: a 16550's transmit FIFO is enabled, and an empty
+ * transmitter then takes this many bytes at once (PC16550D datasheet). */
+#define V9X_COM1_IIR_FIFO_ON       0xc0u
+#define V9X_COM1_FIFO_BYTES          16u
 #define V9X_HARDWARE_INFO_PATH V9X_DIAG_HW_INI
 
 #define V9X_COLOR_NONSTATIC        0x80u
@@ -680,26 +684,36 @@ static void v9x_publish_hardware_event(WORD kind,
     }
 }
 
+/*
+ * A message to COM1, never waiting for it: only what the transmitter takes
+ * at once - its FIFO's worth when it is empty, one byte without a FIFO -
+ * and the rest dropped. Waiting for each byte held every mode set for about
+ * two seconds on a machine with a real port: 3DMark 2000's switch to its
+ * test mode and back on A8U4I5, inside this function's poll (V9XPROF, boot
+ * 557, 2026-10-24, docs\plans\d3d-core-throughput.md). An emulator's port
+ * is drained at once and still gets most of each message.
+ */
 void v9x_serial_write(const char FAR *message)
 {
     BYTE saved_lcr;
-    WORD spins;
+    WORD room;
 
     if (v9x_port_in(V9X_COM1_LSR_PORT) == 0xffu) {
         return;
     }
+    if ((v9x_port_in(V9X_COM1_LSR_PORT) & V9X_COM1_TX_EMPTY) == 0u) {
+        return;
+    }
+    room = (v9x_port_in(V9X_COM1_IIR_PORT) & V9X_COM1_IIR_FIFO_ON) ==
+                   V9X_COM1_IIR_FIFO_ON
+               ? V9X_COM1_FIFO_BYTES
+               : 1u;
     saved_lcr = v9x_port_in(V9X_COM1_LCR_PORT);
     v9x_port_out(V9X_COM1_LCR_PORT, (BYTE)(saved_lcr & 0x7fu));
 
-    while (*message != '\0') {
-        spins = V9X_SERIAL_SPIN_LIMIT;
-        while ((v9x_port_in(V9X_COM1_LSR_PORT) & V9X_COM1_TX_EMPTY) == 0u) {
-            if (--spins == 0u) {
-                v9x_port_out(V9X_COM1_LCR_PORT, saved_lcr);
-                return;
-            }
-        }
+    while (*message != '\0' && room != 0u) {
         v9x_port_out(V9X_COM1_DATA_PORT, (BYTE)*message++);
+        --room;
     }
     v9x_port_out(V9X_COM1_LCR_PORT, saved_lcr);
 }
