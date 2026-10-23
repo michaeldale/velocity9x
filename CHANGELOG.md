@@ -10,8 +10,13 @@ build identifier so exact guest-tested binaries remain traceable.
   chip's command engine (the CCE, running Linux's MIT-licensed microcode)
   at 16 and 32 bpp with a 16-bit Z buffer and one texture unit. Every
   pixel check in the Direct3D probe passes, 3DMark 2000 runs through
-  (993), and Half-Life's Direct3D renderer runs its demo at 31 fps
+  (1105), and Half-Life's Direct3D renderer runs its demo at 31 fps
   ([record](docs/decisions/2026-10-23-rage128-direct3d-through-the-cce.md)).
+  - Mipmapped textures draw correctly; the first build sampled the
+    wrong level and 3DMark's scenes were garbage.
+  - Page flips are done by the chip at the vertical blank, so full-screen
+    games no longer flicker
+    ([record](docs/decisions/2026-10-23-rage128-mip-order-flips-and-a-running-cce.md)).
   - Half-Life's frames have not yet been watched on the monitor.
   - Measured on one card. GDI is still drawn by the CPU.
 

@@ -307,7 +307,8 @@
             # docs\decisions\2026-10-23-rage128-3d-builder-gouraud-z-texture.md.
             Direct3D = 'hardware-rage128-cce'
             EngineType = 'ATI_RAGE128'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
+            # Flips through CRTC_OFFSET, taken at the blank (r128_scanout.c).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
             # The smallest Rage 128 board. The heap sizes from 4F00h, clamped
             # to the family's 16 MiB mapping.
             VideoMemoryBytes = 8388608

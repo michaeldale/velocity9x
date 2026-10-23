@@ -169,6 +169,12 @@ static int v9x_r128_wait_idle(int wait)
 {
     DWORD reads;
 
+    /* Direct3D's batches first: Flip, Lock and the blit status all come
+     * here, and the CCE is left running between batches (r128_cce.c). */
+    if (!v9x_r128_cce_drain(wait)) {
+        return 0;
+    }
+
     if (!v9x_r128_validate()) {
         return 0;
     }
@@ -211,7 +217,9 @@ static int v9x_r128_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     struct v9x_r128_fill fill;
     struct v9x_r128_blt blt;
 
-    if (!v9x_r128_validate() || data == 0 || data->lpDDDestSurface == 0 ||
+    /* Direct register writes must not meet a running microengine. */
+    if (!v9x_r128_cce_drain(1) ||
+        !v9x_r128_validate() || data == 0 || data->lpDDDestSurface == 0 ||
         data->lpDDDestSurface->lpGbl == 0 ||
         data->lpDDDestSurface->lpGbl->lPitch <= 0l ||
         data->rDest[2] <= data->rDest[0] ||
@@ -245,7 +253,9 @@ static int v9x_r128_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     struct v9x_r128_copy copy;
     struct v9x_r128_blt blt;
 
-    if (!v9x_r128_validate() || data == 0 ||
+    /* Direct register writes must not meet a running microengine. */
+    if (!v9x_r128_cce_drain(1) ||
+        !v9x_r128_validate() || data == 0 ||
         data->lpDDSrcSurface == 0 || data->lpDDSrcSurface->lpGbl == 0 ||
         data->lpDDDestSurface == 0 || data->lpDDDestSurface->lpGbl == 0 ||
         data->lpDDSrcSurface->lpGbl->lPitch <= 0l ||

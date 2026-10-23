@@ -301,6 +301,10 @@ unsigned int v9x_run_sis6326_3d_tests(void);
  * arithmetic, on the Rage IIC's measured timing. */
 unsigned int v9x_run_mach64_crtc_tests(void);
 
+/* tests\host\test_r128_crtc.c: the Rage 128 scanout start, flip status and
+ * blank, on A8U4I5's register reads. */
+unsigned int v9x_run_r128_crtc_tests(void);
+
 /* tests\host\test_rage2_setup.c: triangle setup through the measured edge
  * model, pixel for pixel against an independent reference rasteriser. */
 unsigned int v9x_run_rage2_setup_tests(void);
@@ -1360,6 +1364,7 @@ int main(int argc, char **argv)
     failures += v9x_run_mach64_policy_tests();
     failures += v9x_run_mach64_draw_tests();
     failures += v9x_run_mach64_crtc_tests();
+    failures += v9x_run_r128_crtc_tests();
     failures += v9x_run_rage2_trap_tests();
     failures += v9x_run_rage2_setup_tests();
     failures += v9x_run_rage2_draw_tests();

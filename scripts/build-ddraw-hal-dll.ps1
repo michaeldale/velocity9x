@@ -97,6 +97,9 @@ $sources = @(
     # Phase 1 Mach64 status/wait/recovery wrapper; manifests still publish NONE.
     "src\display32\engines\eng_mach64.c",
     "src\display32\engines\m64_scanout.c",
+    "src\display32\engines\r128_scanout.c",
+    "src\display32\engines\r128_cce.c",
+    "src\chipsets\ati\rage128\r128_crtc.c",
     "src\chipsets\ati\mach64_engine.c",
     "src\chipsets\ati\mach64_policy.c",
     "src\chipsets\ati\mach64_draw.c",

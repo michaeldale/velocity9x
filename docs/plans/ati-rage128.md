@@ -123,9 +123,12 @@ First form done 2026-10-23
 ([record](../decisions/2026-10-23-rage128-direct3d-through-the-cce.md)):
 `d3d_r128.c` over the CCE in PIO mode, one texture unit, Z16, 16 and 32
 bpp. V9XD32 passes at both depths; 3DMark 2000 runs to 993; Half-Life D3D
-mwd5 31.2 fps warm, frames unseen. Owed: V9XDDP; Half-Life watched on the
-monitor; Z24/Z32 and the second unit; keeping the CCE running across
-batches instead of starting it per batch; the power-on "one draw late"
+mwd5 31.2 fps warm, frames unseen. Then the mip offset order fixed, flips
+through `CRTC_OFFSET` (Phase 4's flip, measured in 3DMark) and the CCE
+left running between batches: 3DMark 1105
+([record](../decisions/2026-10-23-rage128-mip-order-flips-and-a-running-cce.md)).
+Owed: V9XDDP; Half-Life watched on the monitor; Z24/Z32 and the second
+unit; a bus-master ring in place of PIO; the power-on "one draw late"
 retry.
 
 ### Phase 6: OpenGL, Glide and 3DCIF through the render interface

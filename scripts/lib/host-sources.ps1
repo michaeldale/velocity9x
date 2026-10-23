@@ -73,6 +73,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\mach64_draw.c',
         # Rage II (264GT2C) trapezoid register encoding: no setup engine.
         'src\chipsets\ati\mach64_crtc.c',
+        # Rage 128 scanout start and flip status.
+        'src\chipsets\ati\rage128\r128_crtc.c',
         'src\chipsets\ati\rage2_trap.c',
         # SiS 6326 2D engine: fill and copy register values, no I/O.
         'src\chipsets\sis\sis6326_engine.c',
@@ -256,6 +258,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_mach64_policy.c',
         'tests\host\test_mach64_draw.c',
         'tests\host\test_mach64_crtc.c',
+        'tests\host\test_r128_crtc.c',
         'tests\host\test_rage2_trap.c',
         'tests\host\rage2_reference.c',
         'tests\host\test_rage2_setup.c',

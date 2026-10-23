@@ -9,15 +9,10 @@
  * texture.md). This file resolves DirectDraw surfaces, places textures and
  * Z buffers, and submits.
  *
- * Submission is the CCE in PIO mode: the microcode loaded once, then for
- * each batch the CCE started (192PIO, microengine free-running), the
- * stream written to PM4_FIFO_DATA_EVEN/ODD in pairs as the FIFO has room,
- * the CCE waited idle, its GUI pixel cache flushed, and the CCE stopped
- * back to NONPM4 - so eng_r128.c's direct 2D writes and the CPU's reads of
- * the target find the engine as they expect, and the microengine never
- * runs unattended (a probe that left it free-running hung A8U4I5 idle,
- * docs\decisions\2026-10-22-rage128-cce-pio-runs-packets-and-a-triangle.md).
- * Starting and stopping per batch is the safe first form, not the fast one.
+ * Submission is the CCE in PIO mode, in engines\r128_cce.c: started for
+ * the first batch and left running, then drained - finished, caches
+ * flushed, stopped back to NONPM4 - by whatever needs the drawing: Flip,
+ * Lock, the blit status and eng_r128.c's own fills and copies.
  *
  * The vertices go as they are: V9X_R3D_VERTEX is the CCE's TL vertex. A
  * triangle with a coordinate that is not finite, or textured with an RHW
@@ -39,31 +34,6 @@
 #define V9X_D3D_R128_MMIO_BYTES 0x00004000ul
 #define V9X_D3D_R128_APERTURE_BYTES 0x02000000ul
 
-/* CCE registers (r128_reg.h). */
-#define V9X_D3D_R128_PM4_BUFFER_CNTL    0x0704ul
-#define V9X_D3D_R128_PM4_STAT           0x07b8ul
-#define V9X_D3D_R128_MICROCODE_ADDR     0x07d4ul
-#define V9X_D3D_R128_MICROCODE_RADDR    0x07d8ul
-#define V9X_D3D_R128_MICROCODE_DATAH    0x07dcul
-#define V9X_D3D_R128_MICROCODE_DATAL    0x07e0ul
-#define V9X_D3D_R128_PM4_BUFFER_ADDR    0x07f0ul
-#define V9X_D3D_R128_PM4_MICRO_CNTL     0x07fcul
-#define V9X_D3D_R128_FIFO_EVEN          0x1000ul
-#define V9X_D3D_R128_FIFO_ODD           0x1004ul
-
-#define V9X_D3D_R128_PM4_192PIO         0x10000000ul
-#define V9X_D3D_R128_PM4_NONPM4         0x00000000ul
-#define V9X_D3D_R128_PM4_NOUPDATE       0x08000000ul
-#define V9X_D3D_R128_MICRO_FREERUN      0x40000000ul
-/* PM4_STAT: free CCE FIFO entries 11:0 (192 in 192PIO), PM4_BUSY 16,
- * GUI_ACTIVE 31. */
-#define V9X_D3D_R128_PM4_FIFO_MASK      0x00000ffful
-#define V9X_D3D_R128_PM4_FIFO_ENTRIES   192ul
-#define V9X_D3D_R128_PM4_BUSY_BITS      0x80010000ul
-
-/* Bounded waits, matching eng_r128.c's. */
-#define V9X_D3D_R128_SPINS 0x00200000ul
-
 /* Texels and Z: textures placed 32-byte aligned (the offset registers count
  * 32-byte units), rows packed (TEX_SIZE_PITCH_C takes the pitch as the
  * width's log2); Z16 32-byte aligned with its pitch a whole number of
@@ -83,12 +53,6 @@
 
 static struct v9x_r128_3d_stream v9x_d3d_r128_state_stream;
 static v9x_u32 v9x_d3d_r128_stream[V9X_D3D_R128_STREAM_DWORDS];
-
-/* One engine, so one of each: V9XHAL's statics are shared by every
- * process, which is what these need. The microcode stays in the chip's RAM
- * until power is removed; a HAL that loads again loads it again. */
-static int v9x_d3d_r128_microcode_loaded = 0;
-static int v9x_d3d_r128_quarantined = 0;
 
 /* 16 and 32 bpp targets; Z16; textures powers of two to 1024; the core
  * clips, because the setup engine has not been measured drawing a vertex
@@ -114,188 +78,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_r128_limits = {
     0ul             /* depth32_bits: Z16 only for now */
 };
 
-static DWORD v9x_d3d_r128_read32(DWORD offset)
-{
-    return *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
-}
-
-static void v9x_d3d_r128_write32(DWORD offset, DWORD value)
-{
-    *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset) = value;
-}
-
 static DWORD v9x_d3d_r128_vram_base(void)
 {
     return v9x_hal->fb.physical_base & (V9X_D3D_R128_APERTURE_BYTES - 1ul);
-}
-
-/* Stop the CCE back to direct register access, whatever state it is in. */
-static void v9x_d3d_r128_cce_stop(void)
-{
-    v9x_d3d_r128_write32(V9X_D3D_R128_PM4_MICRO_CNTL, 0ul);
-    v9x_d3d_r128_write32(V9X_D3D_R128_PM4_BUFFER_CNTL,
-                         V9X_D3D_R128_PM4_NONPM4 | V9X_D3D_R128_PM4_NOUPDATE);
-    v9x_d3d_r128_write32(V9X_R128_SCALE_3D_CNTL, 0ul);
-}
-
-/* A timeout: the CCE stopped, the engine given up until the next boot,
- * V9X_DD_ENGINE_VALID with it, so 2D and Direct3D fall back to the CPU. */
-static void v9x_d3d_r128_quarantine(DWORD status)
-{
-    v9x_d3d_r128_cce_stop();
-    if (v9x_hal->engine.idle_timeouts++ == 0ul) {
-        v9x_trace_flush_fault(V9X_D3D_R128_FAULT_TAG, status);
-    }
-    v9x_d3d_r128_quarantined = 1;
-    v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
-}
-
-/* The 2D engine idle: 64 free FIFO slots, not active (eng_r128.c's). */
-static int v9x_d3d_r128_wait_gui_idle(void)
-{
-    DWORD spins;
-    DWORD status = 0ul;
-
-    for (spins = 0ul; spins < V9X_D3D_R128_SPINS; ++spins) {
-        status = v9x_d3d_r128_read32(V9X_R128_GUI_STAT);
-        if (status == 0xfffffffful) {
-            break;
-        }
-        if (v9x_r128_gui_idle(status) != 0ul) {
-            return 1;
-        }
-    }
-    v9x_d3d_r128_quarantine(status);
-    return 0;
-}
-
-/*
- * The microcode, once: microengine stopped, ADDR 0, the pairs, then the
- * first word read back through RADDR. A mismatch quarantines the engine
- * rather than run a CCE whose program is not the one measured.
- */
-static int v9x_d3d_r128_load_microcode(void)
-{
-    DWORD index;
-
-    v9x_d3d_r128_write32(V9X_D3D_R128_PM4_MICRO_CNTL, 0ul);
-    v9x_d3d_r128_write32(V9X_D3D_R128_MICROCODE_ADDR, 0ul);
-    for (index = 0ul; index < V9X_R128_CCE_MICROCODE_DWORDS; index += 2ul) {
-        v9x_d3d_r128_write32(V9X_D3D_R128_MICROCODE_DATAH,
-                             v9x_r128_cce_microcode[index]);
-        v9x_d3d_r128_write32(V9X_D3D_R128_MICROCODE_DATAL,
-                             v9x_r128_cce_microcode[index + 1ul]);
-    }
-    v9x_d3d_r128_write32(V9X_D3D_R128_MICROCODE_RADDR, 0ul);
-    if (v9x_d3d_r128_read32(V9X_D3D_R128_MICROCODE_DATAH) !=
-            v9x_r128_cce_microcode[0] ||
-        v9x_d3d_r128_read32(V9X_D3D_R128_MICROCODE_DATAL) !=
-            v9x_r128_cce_microcode[1]) {
-        v9x_d3d_r128_quarantine(v9x_r128_cce_microcode[1]);
-        return 0;
-    }
-    v9x_d3d_r128_microcode_loaded = 1;
-    return 1;
-}
-
-/* r128_do_cce_start: mode, the read "as per the sample code", then the
- * microengine. The 2D engine is idle first, so a blit that wrote this
- * batch's texture or target has finished. */
-static int v9x_d3d_r128_cce_start(void)
-{
-    if (!v9x_d3d_r128_wait_gui_idle()) {
-        return 0;
-    }
-    if (!v9x_d3d_r128_microcode_loaded && !v9x_d3d_r128_load_microcode()) {
-        return 0;
-    }
-    v9x_d3d_r128_write32(V9X_D3D_R128_PM4_BUFFER_CNTL,
-                         V9X_D3D_R128_PM4_192PIO | V9X_D3D_R128_PM4_NOUPDATE);
-    (void)v9x_d3d_r128_read32(V9X_D3D_R128_PM4_BUFFER_ADDR);
-    v9x_d3d_r128_write32(V9X_D3D_R128_PM4_MICRO_CNTL,
-                         V9X_D3D_R128_MICRO_FREERUN);
-    return 1;
-}
-
-/* The stream in EVEN/ODD pairs, as many as PM4_STAT says fit each time.
- * count is even. */
-static int v9x_d3d_r128_cce_write(const v9x_u32 *dwords, DWORD count)
-{
-    DWORD at = 0ul;
-    DWORD spins = 0ul;
-    DWORD status = 0ul;
-
-    while (at < count) {
-        DWORD room;
-
-        status = v9x_d3d_r128_read32(V9X_D3D_R128_PM4_STAT);
-        room = (status & V9X_D3D_R128_PM4_FIFO_MASK) & ~1ul;
-        if (room == 0ul) {
-            if (++spins >= V9X_D3D_R128_SPINS) {
-                v9x_d3d_r128_quarantine(status);
-                return 0;
-            }
-            continue;
-        }
-        spins = 0ul;
-        if (room > count - at) {
-            room = count - at;
-        }
-        while (room != 0ul) {
-            v9x_d3d_r128_write32(V9X_D3D_R128_FIFO_EVEN, dwords[at]);
-            v9x_d3d_r128_write32(V9X_D3D_R128_FIFO_ODD, dwords[at + 1ul]);
-            at += 2ul;
-            room -= 2ul;
-        }
-    }
-    return 1;
-}
-
-/*
- * The end of a batch: the CCE drained (the FIFO empty, not busy, the GUI
- * not active, as r128_do_cce_idle), the GUI pixel cache the stream's last
- * packet flushed reported idle, the CCE stopped, and the non-GUI pixel
- * cache flushed, so the CPU reads what was drawn.
- */
-static int v9x_d3d_r128_cce_finish(void)
-{
-    DWORD spins;
-    DWORD status = 0ul;
-
-    for (spins = 0ul; spins < V9X_D3D_R128_SPINS; ++spins) {
-        status = v9x_d3d_r128_read32(V9X_D3D_R128_PM4_STAT);
-        if ((status & V9X_D3D_R128_PM4_FIFO_MASK) >=
-                V9X_D3D_R128_PM4_FIFO_ENTRIES &&
-            (status & V9X_D3D_R128_PM4_BUSY_BITS) == 0ul) {
-            break;
-        }
-    }
-    if (spins == V9X_D3D_R128_SPINS) {
-        v9x_d3d_r128_quarantine(status);
-        return 0;
-    }
-    for (spins = 0ul; spins < V9X_D3D_R128_SPINS; ++spins) {
-        status = v9x_d3d_r128_read32(V9X_R128_PC_GUI_CTLSTAT);
-        if ((status & V9X_R128_PC_BUSY) == 0ul) {
-            break;
-        }
-    }
-    if (spins == V9X_D3D_R128_SPINS) {
-        v9x_d3d_r128_quarantine(status);
-        return 0;
-    }
-    v9x_d3d_r128_cce_stop();
-    v9x_d3d_r128_write32(V9X_R128_PC_NGUI_CTLSTAT,
-                         v9x_d3d_r128_read32(V9X_R128_PC_NGUI_CTLSTAT) |
-                         V9X_R128_PC_FLUSH_ALL);
-    for (spins = 0ul; spins < V9X_D3D_R128_SPINS; ++spins) {
-        status = v9x_d3d_r128_read32(V9X_R128_PC_NGUI_CTLSTAT);
-        if ((status & V9X_R128_PC_BUSY) == 0ul) {
-            return 1;
-        }
-    }
-    v9x_d3d_r128_quarantine(status);
-    return 0;
 }
 
 /* RGB565, ARGB1555 and ARGB4444 at 16 bits, ARGB8888 at 32: the datatype,
@@ -502,7 +287,7 @@ static void v9x_d3d_r128_describe_caps(V9X_DD_SHARED *shared)
 /* eng_r128.c's conditions, CAP_D3D, the window mapped, and no timeout. */
 static int v9x_d3d_r128_ready(void)
 {
-    return v9x_hal != 0 && !v9x_d3d_r128_quarantined &&
+    return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE128 &&
@@ -753,9 +538,8 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
         v9x_d3d_r128_stream[count++] = V9X_R128_PACKET2;
     }
 
-    if (!v9x_d3d_r128_cce_start() ||
-        !v9x_d3d_r128_cce_write(v9x_d3d_r128_stream, count) ||
-        !v9x_d3d_r128_cce_finish()) {
+    /* Left running: whatever needs the drawing drains it (r128_cce.c). */
+    if (!v9x_r128_cce_submit(v9x_d3d_r128_stream, count)) {
         return 0;
     }
     v9x_present_note_submission();

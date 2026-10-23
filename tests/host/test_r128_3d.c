@@ -154,10 +154,12 @@ static void test_texture(void)
     CHECK(r3_value(&stream, 0x1cb0ul) == 0x00041014ul);
     CHECK(r3_value(&stream, 0x1cb4ul) == 0x0418d043ul);
     CHECK(r3_value(&stream, 0x1cb8ul) == 0x00004566ul);
-    CHECK(r3_value(&stream, 0x1cbcul) == 0x00800000ul);
+    /* The offset registers count up from the smallest level, as Mesa's
+     * r128UploadTexImages writes them: the base level goes last. */
+    CHECK(r3_value(&stream, 0x1cbcul) == 0x00801400ul);
     CHECK(r3_value(&stream, 0x1cc0ul) == 0x00801000ul);
-    CHECK(r3_value(&stream, 0x1cc4ul) == 0x00801400ul);
-    CHECK(r3_value(&stream, 0x1ce4ul) == 0x00801400ul);
+    CHECK(r3_value(&stream, 0x1cc4ul) == 0x00800000ul);
+    CHECK(r3_value(&stream, 0x1ce4ul) == 0x00800000ul);
     CHECK((r3_value(&stream, 0x1c9cul) & 0x10ul) != 0ul);
 
     /* One level: mip filtering refused, plain linear accepted with the

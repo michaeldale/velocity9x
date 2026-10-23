@@ -507,6 +507,24 @@ int v9x_hsw_flip_pending(void);
 void v9x_hsw_note_flip_done(void);
 DWORD v9x_hsw_displayed_offset(void);
 void v9x_hsw_scanout_reset(void);
+/* The Rage 128's CRTC, in engines/r128_scanout.c: active only for
+ * ATI_RAGE128 stamped with V9X_DD_ENGINE_CAP_FLIP. A flip is written at
+ * any line, taken at the blank, and pending while CRTC_GUI_TRIG_OFFSET
+ * reads 1. */
+int v9x_r128_scanout_active(void);
+int v9x_r128_scanout_live(void);
+int v9x_r128_in_vblank(void);
+int v9x_r128_set_display_start(DWORD byte_offset);
+int v9x_r128_flip_pending(void);
+void v9x_r128_note_flip_done(void);
+void v9x_r128_scanout_reset(void);
+/* The Rage 128's CCE, in engines/r128_cce.c. submit starts it if needed
+ * and leaves it running; drain stops it, with the drawing finished and the
+ * pixel caches flushed. Non-zero on success; drain(0) answers 0 while the
+ * engine is still busy. A timeout in either clears V9X_DD_ENGINE_VALID.
+ * count is even. */
+int v9x_r128_cce_submit(const v9x_u32 *dwords, DWORD count);
+int v9x_r128_cce_drain(int wait);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */

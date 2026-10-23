@@ -183,9 +183,7 @@ static int v9x_r128_3d_texture_datatype(v9x_u32 datatype)
            datatype == V9X_R128_TEX_ARGB4444;
 }
 
-/* The texture block: control, combine, size and the eleven offsets. Levels
- * past the chain repeat the last one, so the sampler never reads an unset
- * offset. */
+/* The texture block: control, combine, size and the eleven offsets. */
 static v9x_status v9x_r128_3d_texture_block(
     const struct v9x_r128_3d_texture *texture, v9x_u32 vram_bytes,
     struct v9x_r128_3d_stream *stream)
@@ -248,10 +246,15 @@ static v9x_status v9x_r128_3d_texture_block(
                              (size_log2 << R128_TEX_SIZE_SHIFT) |
                              (texture->height_log2 << R128_TEX_HEIGHT_SHIFT) |
                              (min_log2 << R128_TEX_MIN_SIZE_SHIFT));
-    offset = texture->offsets[0];
+    /* The offset registers count up from the smallest level: register k
+     * holds level levels-1-k, as Mesa's r128UploadTexImages writes them.
+     * Written base-first, a chain had the sampler read its 1x1 level as the
+     * base (3DMark 2000's helicopter, OBS, A8U4I5 boot 527). Registers past
+     * the chain hold the base. */
     for (index = 0ul; index < V9X_R128_TEXTURE_LEVELS; ++index) {
+        offset = texture->offsets[0];
         if (index < texture->levels) {
-            offset = texture->offsets[index];
+            offset = texture->offsets[texture->levels - 1ul - index];
         }
         v9x_r128_3d_emit(stream, offset);
     }

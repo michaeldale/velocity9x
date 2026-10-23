@@ -63,6 +63,8 @@ static void v9x_rage128_fill_engine(unsigned long framebuffer_linear_base,
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RAGE128;
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_VBLANK |
                    V9X_DD_ENGINE_CAP_D3D;
 }
 
