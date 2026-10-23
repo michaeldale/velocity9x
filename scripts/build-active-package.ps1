@@ -108,6 +108,7 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
 $installSource = Join-Path $repoRoot "packaging\win98se\INSTALL.TXT"
 $recoverSource = Join-Path $repoRoot "packaging\win98se\RECOVER.TXT"
 $firstBootSource = Join-Path $repoRoot "packaging\win98se\FIRSTBOOT.TXT"
+$noticesSource = Join-Path $repoRoot "packaging\win98se\NOTICES.TXT"
 $normalRepairSource = Join-Path $repoRoot "packaging\win98se\V9XFIX.BAT"
 $deploySource = Join-Path $repoRoot "packaging\win98se\V9XCOPY.BAT"
 
@@ -290,6 +291,10 @@ Copy-Item -LiteralPath $recoverSource `
     -Destination (Join-Path $outputDir "RECOVER.TXT") -Force
 Copy-Item -LiteralPath $firstBootSource `
     -Destination (Join-Path $outputDir "FIRSTBOOT.TXT") -Force
+# The third-party licences whose terms travel with the binaries: the Rage
+# 128 CCE microcode in V9XHAL.DLL is MIT and needs its notice shipped.
+Copy-Item -LiteralPath $noticesSource `
+    -Destination (Join-Path $outputDir "NOTICES.TXT") -Force
 $normalRepairLines = Get-Content -LiteralPath $normalRepairSource
 Set-Content -LiteralPath (Join-Path $outputDir "V9XFIX.BAT") `
     -Value $normalRepairLines -Encoding Ascii
@@ -473,7 +478,8 @@ Set-Content -LiteralPath (Join-Path $outputDir "SHA256.TXT") `
 
 $expectedPackageFiles = @(
     "ATI3DCIF.DLL",
-    "FIRSTBOOT.TXT", "INSTALL.TXT", "MANIFEST.TXT", "RECOVER.TXT", "SHA256.TXT",
+    "FIRSTBOOT.TXT", "INSTALL.TXT", "MANIFEST.TXT", "NOTICES.TXT",
+    "RECOVER.TXT", "SHA256.TXT",
     "V9X16LD.EXE", "V9XCOPY.BAT", "V9XDDP.EXE", "V9XDISP.DRV",
     "V9XFIX.BAT", "V9XHAL.DLL", "V9XGL.DLL",
     "V9XGDI.EXE", "V9XMSW.EXE", "V9XPAL.EXE", "V9XPWR.EXE",

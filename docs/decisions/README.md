@@ -183,6 +183,13 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-14 The Rage XL samples CI8 textures, but no palette load tried so far reaches the colour](2026-10-14-rage-xl-ci8-palette-not-loaded.md)
 - [2026-10-14 Gamma ramps reach the Rage XL: GDI calls display-driver ordinal 32, and the DAC is written through DAC_REGS](2026-10-14-gamma-ramp-ordinal-32.md)
 - [2026-10-14 The Rage XL keys textures by comparing the raw texel, not the 24-bit expansion its register reference describes](2026-10-14-rage-xl-texture-colour-key.md)
+- [2026-10-22 Rage 128 Pro on A8U4I5: ATI's driver as the reference, then tier-0](2026-10-22-rage128-ati-baseline-and-tier0.md)
+- [2026-10-22 Rage 128 Pro registers, read: ATI runs its command engine as an AGP ring](2026-10-22-rage128-register-probe.md)
+- [2026-10-22 Rage 128 2D engine: the builder's fills and copies are byte-exact at 8, 16 and 32 bpp](2026-10-22-rage128-2d-write-probe.md)
+- [2026-10-22 Rage 128: DirectDraw fills and copies run on the 2D engine](2026-10-22-rage128-directdraw-on-the-2d-engine.md)
+- [2026-10-22 Rage 128: the CCE runs packets through its PIO ports, and draws a triangle](2026-10-22-rage128-cce-pio-runs-packets-and-a-triangle.md)
+- [2026-10-23 Rage 128 3D builder: Gouraud, Z16 and a texture draw right through the CCE](2026-10-23-rage128-3d-builder-gouraud-z-texture.md)
+- [2026-10-23 Rage 128 Direct3D through the CCE: V9XD32 passes, 3DMark 2000 and Half-Life run](2026-10-23-rage128-direct3d-through-the-cce.md)
 
 ## Matrox
 

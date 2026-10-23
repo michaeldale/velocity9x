@@ -162,6 +162,10 @@ static v9x_u32 v9x_r128_3d_combine(v9x_u32 combine)
         return R128_COMB_MODULATE | R128_COLOR_FACTOR_TEX |
                R128_COMB_ALPHA_COPY_INP | R128_ALPHA_FACTOR_TEX_ALPHA |
                R128_COMBINE_INPUT_INTERP;
+    case V9X_R128_COMBINE_MODULATE_TEXALPHA:
+        return R128_COMB_MODULATE | R128_COLOR_FACTOR_TEX |
+               R128_COMB_ALPHA_DIS | R128_ALPHA_FACTOR_TEX_ALPHA |
+               R128_COMBINE_INPUT_INTERP;
     case V9X_R128_COMBINE_DECAL_ALPHA:
         return R128_COMB_BLEND_TEXTURE | R128_COLOR_FACTOR_TEX |
                R128_COMB_ALPHA_COPY_INP | R128_ALPHA_FACTOR_TEX_ALPHA |
@@ -384,14 +388,18 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                                               0u));
     v9x_r128_3d_emit(stream, 0ul);
     /* CONSTANT_COLOR_C, both border colours, STEN_REF_MASK_C,
-     * PLANE_3D_MASK_C. */
+     * PLANE_3D_MASK_C. A 32 bpp target is XRGB8888 to DirectDraw but the
+     * engine's only 32-bit datatype is ARGB8888, which writes alpha into
+     * the X byte (V9XD32 read 0xFF13579B on A8U4I5); the plane mask keeps
+     * it. */
     v9x_r128_3d_emit(stream, V9X_R128_PACKET0(V9X_R128_CONSTANT_COLOR_C,
                                               4u));
     v9x_r128_3d_emit(stream, R128_CONSTANT_COLOR);
     v9x_r128_3d_emit(stream, 0ul);
     v9x_r128_3d_emit(stream, 0ul);
     v9x_r128_3d_emit(stream, R128_STEN_REF_MASK);
-    v9x_r128_3d_emit(stream, 0xfffffffful);
+    v9x_r128_3d_emit(stream, state->target_bytes_per_pixel == 4ul ?
+                             0x00fffffful : 0xfffffffful);
 
     if (state->texture.enable != 0ul) {
         v9x_status status = v9x_r128_3d_texture_block(&state->texture,

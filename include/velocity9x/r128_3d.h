@@ -24,6 +24,12 @@
 
 #include "velocity9x/status.h"
 
+/* The CCE microcode, src\chipsets\ati\rage128\r128_cce_microcode.c: 256
+ * instructions, high dword then low, for PM4_MICROCODE_DATAH/DATAL after
+ * PM4_MICROCODE_ADDR = 0. MIT, AMD 2000, notice in that file. */
+#define V9X_R128_CCE_MICROCODE_DWORDS   512u
+extern const v9x_u32 v9x_r128_cce_microcode[V9X_R128_CCE_MICROCODE_DWORDS];
+
 /* Packet headers (r128_reg.h R128_CCE_PACKET*; the DRM's CCE_PACKET0 and
  * CCE_PACKET3 macros): n is the dwords after the header, less one. */
 #define V9X_R128_PACKET0(reg, n)    (((v9x_u32)(n) << 16) | ((v9x_u32)(reg) >> 2))
@@ -97,6 +103,7 @@
 #define V9X_R128_COMBINE_DECAL          2ul  /* C = Ct, A = Af */
 #define V9X_R128_COMBINE_MODULATE_RGB   3ul  /* C = CfCt, A = Af */
 #define V9X_R128_COMBINE_DECAL_ALPHA    4ul  /* C = Cf(1-At)+CtAt, A = Af */
+#define V9X_R128_COMBINE_MODULATE_TEXALPHA 5ul /* C = CfCt, A = At */
 
 /* Primitive packet: header, vertex format, control. */
 #define V9X_R128_PRIM_HEADER_DWORDS     3u

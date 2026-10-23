@@ -62,7 +62,8 @@ static void v9x_rage128_fill_engine(unsigned long framebuffer_linear_base,
     *mapped_aperture_bytes = V9X_RAGE128_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RAGE128;
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_D3D;
 }
 
 /*
@@ -76,7 +77,7 @@ const V9X_HW16_DEVICE v9x_rage128_device = {
     "ati-rage128-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-rage128-cce",
     0,
     v9x_rage128_fill_engine
 };

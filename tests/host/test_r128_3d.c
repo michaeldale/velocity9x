@@ -171,6 +171,15 @@ static void test_texture(void)
     CHECK(r3_value(&stream, 0x1cb0ul) == 0x00041092ul);
     CHECK(r3_value(&stream, 0x1cb4ul) == 0x04181040ul);
     CHECK(r3_value(&stream, 0x1cb8ul) == 0x00006566ul);
+    /* Direct3D's MODULATE on a texture with alpha: colours multiplied,
+     * the texel's alpha. */
+    state.texture.combine = V9X_R128_COMBINE_MODULATE_TEXALPHA;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1cb4ul) == 0x04181043ul);
+    state.texture.combine = 9ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.texture.combine = V9X_R128_COMBINE_REPLACE;
 
     /* More levels than the shape has, an unaligned level, a datatype the
      * builder does not offer. */
@@ -211,6 +220,9 @@ static void test_target_refusals(void)
     CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
     CHECK(r3_value(&stream, 0x1c80ul) == (128ul << 21));
     CHECK((r3_value(&stream, 0x1c84ul) >> 8 & 0xful) == 6ul);
+    /* An XRGB8888 target keeps its X byte: the ARGB8888 datatype writes
+     * alpha there (V9XD32 read 0xFF13579B on A8U4I5, boot 526). */
+    CHECK(r3_value(&stream, 0x1d44ul) == 0x00fffffful);
     CHECK(v9x_r128_3d_build_state(0, &stream) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }

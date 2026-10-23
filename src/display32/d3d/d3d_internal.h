@@ -592,6 +592,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw;
 /* Intel Gen4 (GM965), in d3d_g4.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_g4;
 
+/* ATI Rage 128, through the CCE, in d3d_r128.c. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r128;
+
 
 /*
  * The core services an engine may use.

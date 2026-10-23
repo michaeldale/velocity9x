@@ -119,6 +119,15 @@ Decision 1 below picks the submission path. Then the engine: TLVERTEX in,
 two texture units, 16 and 32 bpp with Z16 and Z24/Z32 per the sources,
 V9XD32, V9XDDP, 3DMark 2000 to its score, then Half-Life D3D.
 
+First form done 2026-10-23
+([record](../decisions/2026-10-23-rage128-direct3d-through-the-cce.md)):
+`d3d_r128.c` over the CCE in PIO mode, one texture unit, Z16, 16 and 32
+bpp. V9XD32 passes at both depths; 3DMark 2000 runs to 993; Half-Life D3D
+mwd5 31.2 fps warm, frames unseen. Owed: V9XDDP; Half-Life watched on the
+monitor; Z24/Z32 and the second unit; keeping the CCE running across
+batches instead of starting it per batch; the power-on "one draw late"
+retry.
+
 ### Phase 6: OpenGL, Glide and 3DCIF through the render interface
 
 The render interface on the new engine, as on the Millennium II. Half-Life

@@ -98,12 +98,14 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* The Rage 128: a 2D engine and no Direct3D engine yet: none,
-         * whatever caps it carries, and software when that is asked for. */
+        /* The Rage 128: the 2D engine alone selects nothing; CAP_D3D
+         * selects the CCE engine; software still wins. */
         { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_R128 },
+        { 0, V9X_DD_ENGINE_TYPE_ATI_RAGE128, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },

@@ -174,6 +174,12 @@ $sources = @(
     "src\display32\d3d\d3d_tdfx_map.c",
     "src\display32\d3d\d3d_hsw_map.c",
     "src\display32\d3d\d3d_tdfx.c",
+    # The Rage 128 3D engine: CCE packet streams, the CCE microcode, the
+    # neutral draw to them, and the engine that submits them by PIO.
+    "src\chipsets\ati\rage128\r128_3d.c",
+    "src\chipsets\ati\rage128\r128_cce_microcode.c",
+    "src\display32\d3d\d3d_r128_map.c",
+    "src\display32\d3d\d3d_r128.c",
     "src\display32\d3d\d3d_hsw.c",
     "src\display32\d3d\d3d_g4.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.

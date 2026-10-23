@@ -35,6 +35,7 @@ $required = @(
     "packaging\win98se\INSTALL.TXT",
     "packaging\win98se\FIRSTBOOT.TXT",
     "packaging\win98se\RECOVER.TXT",
+    "packaging\win98se\NOTICES.TXT",
     "packaging\win98se\V9XCOPY.BAT",
     "packaging\win98se\V9XARM.BAT",
     # Family manifests are deliberately not listed here: they are discovered
@@ -124,6 +125,11 @@ $required = @(
     "include\velocity9x\r128_3d.h",
     "src\chipsets\ati\rage128\r128_3d.c",
     "tests\host\test_r128_3d.c",
+    "src\chipsets\ati\rage128\r128_cce_microcode.c",
+    "src\display32\d3d\d3d_r128_map.h",
+    "src\display32\d3d\d3d_r128_map.c",
+    "src\display32\d3d\d3d_r128.c",
+    "tests\host\test_d3d_r128_map.c",
     "src\display16\display_component.c",
     "src\display16\loader.c",
     "src\display16\ddi.c",
@@ -1065,6 +1071,7 @@ if ($vbeManifestText -notmatch "V9X_D3D_DEFAULT_REQUEST=2") {
 # at packaging time so the repository copy is the readable one too.
 foreach ($packagedText in @("packaging\win98se\INSTALL.TXT",
                             "packaging\win98se\FIRSTBOOT.TXT",
+                            "packaging\win98se\NOTICES.TXT",
                             "packaging\win98se\RECOVER.TXT")) {
     $textPath = Join-Path $repoRoot $packagedText
     $bytes = [System.IO.File]::ReadAllBytes($textPath)

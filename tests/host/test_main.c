@@ -276,6 +276,10 @@ unsigned int v9x_run_r128_2d_tests(void);
  * against Mesa's r128 encodings. */
 unsigned int v9x_run_r128_3d_tests(void);
 
+/* tests\host\test_d3d_r128_map.c: V9X_R3D_DRAW to Rage 128 3D builder
+ * state, and the refusals. */
+unsigned int v9x_run_d3d_r128_map_tests(void);
+
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
 unsigned int v9x_run_mga_3d_tests(void);
@@ -1371,6 +1375,7 @@ int main(int argc, char **argv)
     failures += v9x_run_tdfx_3d_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
+    failures += v9x_run_d3d_r128_map_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {

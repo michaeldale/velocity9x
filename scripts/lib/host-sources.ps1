@@ -183,6 +183,9 @@ function Get-V9xHostSourceNames {
         # The neutral draw to VSA-100 3D builder state and vertices.
         'src\display32\d3d\d3d_tdfx_map.c',
         'tests\host\test_d3d_tdfx_map.c',
+        # The neutral draw to Rage 128 3D builder state.
+        'src\display32\d3d\d3d_r128_map.c',
+        'tests\host\test_d3d_r128_map.c',
         'src\display32\d3d\d3d_hsw_map.c',
         'tests\host\test_d3d_hsw_map.c',
         'src\display32\d3d\d3d_mga_map.c',

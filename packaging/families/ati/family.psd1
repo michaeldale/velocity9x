@@ -302,9 +302,12 @@
             # (docs\decisions\2026-10-22-rage128-2d-write-probe.md); the
             # rest is drawn by the CPU (docs\plans\ati-rage128.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            # Direct3D through the CCE in PIO mode (d3d_r128.c), its streams
+            # measured on silicon in
+            # docs\decisions\2026-10-23-rage128-3d-builder-gouraud-z-texture.md.
+            Direct3D = 'hardware-rage128-cce'
             EngineType = 'ATI_RAGE128'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # The smallest Rage 128 board. The heap sizes from 4F00h, clamped
             # to the family's 16 MiB mapping.
             VideoMemoryBytes = 8388608
