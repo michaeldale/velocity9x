@@ -295,6 +295,64 @@ static void test_prim(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* The indexed primitive: Linux's r128_cce_dispatch_indices header - the
+ * vertex list offset, the walker's vertex limit, the TL format, the
+ * primitive with WALK_IND and the index count - then the indices two to a
+ * dword, the first in the low half, rebased to the first vertex copied. */
+static void test_indexed(void)
+{
+    v9x_u32 header[V9X_R128_INDX_HEADER_DWORDS];
+    v9x_u32 packed[3];
+    static const v9x_u16 list[5] = { 10u, 11u, 12u, 12u, 11u };
+
+    CHECK(v9x_r128_3d_build_indexed(6ul, 0, 0x00011000ul, 4ul, header) ==
+          V9X_STATUS_OK);
+    /* Four body dwords before the indices, three of indices, n one less:
+     * 6, as Linux's dwords - 2 counting the header. */
+    CHECK(header[0] == (0xc0002300ul | (6ul << 16)));
+    CHECK(header[1] == 0x00011000ul);
+    CHECK(header[2] == 4ul);
+    CHECK(header[3] == 0x000000c9ul);
+    CHECK(header[4] == (0x14ul | (6ul << 16)));
+    /* A strip; an odd count rounds the index dwords up. */
+    CHECK(v9x_r128_3d_build_indexed(5ul, 1, 0ul, 3ul, header) ==
+          V9X_STATUS_OK);
+    CHECK(header[0] == (0xc0002300ul | (6ul << 16)));
+    CHECK(header[4] == (0x16ul | (5ul << 16)));
+    CHECK(v9x_r128_3d_build_indexed(2ul, 0, 0ul, 3ul, header) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_r128_3d_build_indexed(V9X_R128_INDX_INDICES_MAX + 3ul, 0,
+                                    0ul, 3ul, header) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_r128_3d_build_indexed(3ul, 0, 0ul, 0ul, header) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    CHECK(v9x_r128_3d_pack_indices(list, 5ul, 10ul, packed) == 3ul);
+    CHECK(packed[0] == 0x00010000ul);
+    CHECK(packed[1] == 0x00020002ul);
+    /* The odd one out pads with zero in the high half. */
+    CHECK(packed[2] == 0x00000001ul);
+}
+
+/* Hardware culling in PM4_VC_FPU_SETUP: none draws both faces as before;
+ * Direct3D's CCW keeps what runs clockwise on the screen. */
+static void test_cull(void)
+{
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+
+    r3_base(&state);
+    state.cull = V9X_R128_CULL_NONE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x071cul) == 0x000003dful);
+    state.cull = V9X_R128_CULL_CCW;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x071cul) == 0x000003d9ul);
+    state.cull = V9X_R128_CULL_CW;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x071cul) == 0x000003d8ul);
+}
+
 unsigned int v9x_run_r128_3d_tests(void)
 {
     failures = 0u;
@@ -304,5 +362,7 @@ unsigned int v9x_run_r128_3d_tests(void)
     test_target_refusals();
     test_scissor_and_mask();
     test_prim();
+    test_indexed();
+    test_cull();
     return failures;
 }

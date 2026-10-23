@@ -26,6 +26,8 @@
 #include "d3d_r128_map.h"
 #include "velocity9x/r128_2d.h"
 #include "velocity9x/r128_3d.h"
+#include "velocity9x/r128_ring.h"
+#include "r3d/r3d_cull.h"
 
 /* The core hands no batch over V9X_D3D_INDEXED_BATCH triangles. */
 #define V9X_D3D_R128_MAX_TRIANGLES 64ul
@@ -414,8 +416,10 @@ static void v9x_d3d_r128_count_refusal(const V9X_R3D_DRAW *draw,
     }
 }
 
+/* cull is V9X_R128_CULL_*: NONE on every path where the core culls. */
 static v9x_u32 v9x_d3d_r128_map(const V9X_R3D_DRAW *draw,
-                                struct v9x_r128_3d_state *state)
+                                struct v9x_r128_3d_state *state,
+                                v9x_u32 cull)
 {
     V9X_D3D_R128_TEXTURE resolved;
     v9x_u32 reason;
@@ -425,6 +429,7 @@ static v9x_u32 v9x_d3d_r128_map(const V9X_R3D_DRAW *draw,
                                    v9x_d3d_r128_vram_base(),
                                    v9x_hal->fb.vram_bytes,
                                    v9x_d3d_r128_depth_bytes(draw), state);
+    state->cull = cull;
     if (reason == V9X_D3D_R128_REFUSE_NONE &&
         v9x_r128_3d_build_state(state, &v9x_d3d_r128_state_stream) !=
             V9X_STATUS_OK) {
@@ -441,7 +446,7 @@ static int v9x_d3d_r128_accepts(const V9X_R3D_DRAW *draw)
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
-    reason = v9x_d3d_r128_map(draw, &state);
+    reason = v9x_d3d_r128_map(draw, &state, V9X_R128_CULL_NONE);
     if (reason != V9X_D3D_R128_REFUSE_NONE && reason < 20ul) {
         ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
     }
@@ -505,7 +510,7 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
      * refuse. DECODE times them and the batch's assembly; the submit is
      * timed in r128_cce.c. */
     started = V9X_TIME_BEGIN();
-    reason = v9x_d3d_r128_map(draw, &state);
+    reason = v9x_d3d_r128_map(draw, &state, V9X_R128_CULL_NONE);
     if (reason != V9X_D3D_R128_REFUSE_NONE) {
         v9x_d3d_r128_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
@@ -563,6 +568,199 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     v9x_present_note_submission();
+    return 1;
+}
+
+/*
+ * The indexed draw's stream: the flip wait, the state, one packet's header
+ * and its indices, a pad. A call longer than one packet is sent as several,
+ * the later ones without the state, which the engine keeps.
+ */
+#define V9X_D3D_R128_INDEXED_STREAM_DWORDS \
+    (V9X_R128_WAIT_DWORDS + V9X_R128_STATE_DWORDS_MAX + \
+     V9X_R128_INDX_HEADER_DWORDS + V9X_R128_INDX_INDICES_MAX / 2ul + 2ul)
+static v9x_u32 v9x_d3d_r128_indexed_stream[V9X_D3D_R128_INDEXED_STREAM_DWORDS];
+
+/* Indices per packet: a whole number of triangles for a list; for a strip
+ * an even count, each packet after the first starting two back, so every
+ * triangle keeps its place - and its winding - in the strip. */
+#define V9X_D3D_R128_LIST_CHUNK  (V9X_R128_INDX_INDICES_MAX / 3ul * 3ul)
+#define V9X_D3D_R128_STRIP_CHUNK V9X_R128_INDX_INDICES_MAX
+
+/* Direct3D's cull modes as the hardware applies them. */
+static v9x_u32 v9x_d3d_r128_cull_of(DWORD cull_mode)
+{
+    if (cull_mode == V9X_R3D_CULL_CW) {
+        return V9X_R128_CULL_CW;
+    }
+    if (cull_mode == V9X_R3D_CULL_CCW) {
+        return V9X_R128_CULL_CCW;
+    }
+    return V9X_R128_CULL_NONE;
+}
+
+/*
+ * A vertex the core's list path would pass to the engine unchanged: what
+ * v9x_d3d_r128_triangle_ok accepts, and on the target once the pixel
+ * centre is applied (v9x_r3d_triangle_on_target). Anything else would be
+ * dropped or clipped there, so the call is declined to it.
+ */
+static int v9x_d3d_r128_vertex_drawable(const V9X_R3D_VERTEX *v, int textured,
+                                        float centre, float width,
+                                        float height)
+{
+    float x;
+    float y;
+
+    if (!v9x_d3d_r128_finite(v->sx) || !v9x_d3d_r128_finite(v->sy) ||
+        !v9x_d3d_r128_finite(v->sz) || !v9x_d3d_r128_finite(v->rhw)) {
+        return 0;
+    }
+    if (textured &&
+        (!(v->rhw > 0.0f) || !v9x_d3d_r128_finite(v->tu) ||
+         !v9x_d3d_r128_finite(v->tv))) {
+        return 0;
+    }
+    x = v->sx + centre;
+    y = v->sy + centre;
+    return x >= 0.0f && x <= width && y >= 0.0f && y <= height;
+}
+
+/*
+ * A DrawOneIndexedPrimitive call whole (d3d_internal.h, draw_indexed): the
+ * vertices it names copied once into the AGP vertex area, with the pixel
+ * centre applied as the list path applies it, then 3D_RNDR_GEN_INDX_PRIM
+ * packets carrying the indices, culled by the hardware. Declined (-1,
+ * nothing submitted) for anything the list path would treat differently.
+ */
+static int v9x_d3d_r128_draw_indexed(const V9X_R3D_DRAW *draw,
+                                     const V9X_R3D_VERTEX *pool,
+                                     DWORD vertex_count,
+                                     const v9x_u16 *indices,
+                                     DWORD index_count,
+                                     int strip,
+                                     DWORD cull_mode)
+{
+    struct v9x_r128_3d_state state;
+    v9x_u32 header[V9X_R128_INDX_HEADER_DWORDS];
+    volatile DWORD *vertex_linear;
+    DWORD vertex_offset;
+    DWORD first = 0xfffffffful;
+    DWORD last = 0ul;
+    DWORD index;
+    DWORD word;
+    DWORD count;
+    DWORD at;
+    DWORD chunk;
+    DWORD started;
+    float centre = v9x_d3d_r128_limits.pixel_centre_half != 0ul ? 0.5f : 0.0f;
+    union {
+        float value;
+        DWORD bits;
+    } moved;
+
+    if (draw == 0 || pool == 0 || indices == 0 || index_count < 3ul ||
+        (!strip && index_count % 3ul != 0ul) || !v9x_d3d_r128_ready()) {
+        return -1;
+    }
+    started = V9X_TIME_BEGIN();
+    for (index = 0ul; index < index_count; ++index) {
+        DWORD vertex = (DWORD)indices[index];
+
+        if (vertex >= vertex_count) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return -1;
+        }
+        if (vertex < first) {
+            first = vertex;
+        }
+        if (vertex > last) {
+            last = vertex;
+        }
+    }
+    count = last - first + 1ul;
+    if (count * sizeof(V9X_R3D_VERTEX) > V9X_R128_VTX_SEGMENT_BYTES) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return -1;
+    }
+    if (v9x_d3d_r128_map(draw, &state, v9x_d3d_r128_cull_of(cull_mode)) !=
+            V9X_D3D_R128_REFUSE_NONE) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return -1;
+    }
+    for (index = first; index <= last; ++index) {
+        if (!v9x_d3d_r128_vertex_drawable(&pool[index],
+                                          state.texture.enable != 0ul,
+                                          centre,
+                                          (float)draw->target.width,
+                                          (float)draw->target.height)) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return -1;
+        }
+    }
+    if (!v9x_r128_cce_vertex_space(count * sizeof(V9X_R3D_VERTEX),
+                                   &vertex_linear, &vertex_offset)) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return -1;
+    }
+
+    /* The vertices, once, into write-combined memory: the pixel centre on
+     * x and y, the rest as given. The ring's publish drains the CPU's
+     * write-combining buffers before the CCE can read them. */
+    for (index = first; index <= last; ++index) {
+        const v9x_u32 *words = (const v9x_u32 *)&pool[index];
+
+        moved.value = pool[index].sx + centre;
+        vertex_linear[0] = moved.bits;
+        moved.value = pool[index].sy + centre;
+        vertex_linear[1] = moved.bits;
+        for (word = 2ul; word < V9X_R128_VERTEX_DWORDS; ++word) {
+            vertex_linear[word] = words[word];
+        }
+        vertex_linear += V9X_R128_VERTEX_DWORDS;
+    }
+
+    /* The first packet carries the flip wait and the state. */
+    word = 0ul;
+    if (draw->target.offset == v9x_present_retiring_offset() &&
+        v9x_flip_pending()) {
+        v9x_d3d_r128_indexed_stream[word++] =
+            V9X_R128_PACKET0(V9X_R128_WAIT_UNTIL, 0u);
+        v9x_d3d_r128_indexed_stream[word++] = V9X_R128_EVENT_CRTC_OFFSET;
+        ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+    }
+    for (at = 0ul; at < v9x_d3d_r128_state_stream.count; ++at) {
+        v9x_d3d_r128_indexed_stream[word++] =
+            v9x_d3d_r128_state_stream.dwords[at];
+    }
+    at = 0ul;
+    while (at + 2ul < index_count) {
+        chunk = index_count - at;
+        if (chunk > (strip ? V9X_D3D_R128_STRIP_CHUNK
+                           : V9X_D3D_R128_LIST_CHUNK)) {
+            chunk = strip ? V9X_D3D_R128_STRIP_CHUNK
+                          : V9X_D3D_R128_LIST_CHUNK;
+        }
+        (void)v9x_r128_3d_build_indexed(chunk, strip, vertex_offset, count,
+                                        header);
+        for (index = 0ul; index < V9X_R128_INDX_HEADER_DWORDS; ++index) {
+            v9x_d3d_r128_indexed_stream[word++] = header[index];
+        }
+        word += v9x_r128_3d_pack_indices(&indices[at], chunk, first,
+                                         &v9x_d3d_r128_indexed_stream[word]);
+        if ((word & 1ul) != 0ul) {
+            v9x_d3d_r128_indexed_stream[word++] = V9X_R128_PACKET2;
+        }
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        if (!v9x_r128_cce_submit(v9x_d3d_r128_indexed_stream, word)) {
+            return 0;
+        }
+        v9x_present_note_submission();
+        started = V9X_TIME_BEGIN();
+        word = 0ul;
+        at += strip ? chunk - 2ul : chunk;
+    }
+    V9X_TIME_END(V9X_TIME_DECODE, started);
     return 1;
 }
 
@@ -668,5 +866,6 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r128 = {
     v9x_d3d_r128_create_surface,
     v9x_d3d_r128_destroy_surface,
     v9x_d3d_r128_draw,
-    v9x_d3d_r128_accepts
+    v9x_d3d_r128_accepts,
+    v9x_d3d_r128_draw_indexed
 };

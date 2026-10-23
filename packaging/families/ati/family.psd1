@@ -432,6 +432,11 @@
         Folder = 'ATI'
         Order = 3
         HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        # Installed files that ride a third disk, which the floppy INF names
+        # as a second source disk: disk 1 went 408 bytes over with the
+        # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
+        # fine"). The update checker, which nothing needs to boot or draw.
+        ThirdDisk = @('V9XUPD.EXE')
     }
 
     Vm = @{

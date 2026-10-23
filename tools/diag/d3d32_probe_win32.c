@@ -95,6 +95,7 @@
 #define D3DTEX2_GET_HANDLE 3
 #define D3DSHADE_GOURAUD 2ul
 #define D3DCULL_NONE 1ul
+#define D3DCULL_CCW 3ul
 #define D3DCMP_LESS 2ul
 
 typedef struct d32_surface_desc {
@@ -175,6 +176,7 @@ typedef struct d32_object { void **vtbl; } D32_OBJECT;
 #define D3DDEV2_SET_CURRENT_VIEWPORT 13
 #define D3DDEV2_SET_RENDER_STATE 23
 #define D3DDEV2_DRAW_PRIMITIVE 29
+#define D3DDEV2_DRAW_INDEXED_PRIMITIVE 30
 #define D3DVP2_SET_VIEWPORT2 17
 
 /* D3DDEVICEDESC as DWORDs: the render and Z depth masks are the 40th and
@@ -215,6 +217,9 @@ typedef HRESULT (WINAPI *d32_scene_fn)(D32_OBJECT *);
 typedef HRESULT (WINAPI *d32_render_state_fn)(D32_OBJECT *, DWORD, DWORD);
 typedef HRESULT (WINAPI *d32_draw_fn)(D32_OBJECT *, DWORD, DWORD, void *,
                                       DWORD, DWORD);
+typedef HRESULT (WINAPI *d32_draw_indexed_fn)(D32_OBJECT *, DWORD, DWORD,
+                                              void *, DWORD, WORD *, DWORD,
+                                              DWORD);
 typedef HRESULT (WINAPI *d32_set_viewport2_fn)(D32_OBJECT *,
                                                D32_VIEWPORT2 *);
 
@@ -439,6 +444,25 @@ static HRESULT d32_draw(D32_OBJECT *device, D32_TLVERTEX *vertices,
     }
     draw_hr = ((d32_draw_fn)device->vtbl[D3DDEV2_DRAW_PRIMITIVE])(
         device, D3DPT_TRIANGLELIST, D3DVT_TLVERTEX, vertices, count, 0ul);
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV2_END_SCENE])(device);
+    return draw_hr != 0 ? draw_hr : hr;
+}
+
+static HRESULT d32_draw_indexed(D32_OBJECT *device, D32_TLVERTEX *vertices,
+                                DWORD vertex_count, WORD *indices,
+                                DWORD index_count)
+{
+    HRESULT hr;
+    HRESULT draw_hr;
+
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV2_BEGIN_SCENE])(device);
+    if (hr != 0) {
+        return hr;
+    }
+    draw_hr = ((d32_draw_indexed_fn)
+               device->vtbl[D3DDEV2_DRAW_INDEXED_PRIMITIVE])(
+        device, D3DPT_TRIANGLELIST, D3DVT_TLVERTEX, vertices, vertex_count,
+        indices, index_count, 0ul);
     hr = ((d32_scene_fn)device->vtbl[D3DDEV2_END_SCENE])(device);
     return draw_hr != 0 ? draw_hr : hr;
 }
@@ -744,6 +768,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_SURFACE_DESC desc;
     D32_ENUM_RESULT enumerated;
     D32_TLVERTEX v[6];
+    WORD indices[6];
     WNDCLASSA window_class;
     HWND window;
     HRESULT hr;
@@ -1055,6 +1080,36 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("T7BlendHr", (DWORD)d32_draw(device, v, 6ul));
     d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
 
+    /* T9: DrawIndexedPrimitive under Direct3D's default culling (CCW).
+     * With screen y down, a triangle whose (v1-v0) x (v2-v0) is positive
+     * runs clockwise on the screen and is kept; a negative one is culled.
+     * Two single triangles, one of each, then a quad of two triangles
+     * sharing an edge through indices: the culling and the index handling,
+     * whichever of the core or the hardware does them. */
+    d32_line("Stage", "8f-t9-indexed-cull");
+    d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_CCW);
+    d32_vertex(&v[0], 8.0f, 300.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[1], 72.0f, 300.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 8.0f, 364.0f, 0.5f, 0xff00ff00ul);
+    indices[0] = 0u;
+    indices[1] = 1u;
+    indices[2] = 2u;
+    d32_hx("T9KeptHr", (DWORD)d32_draw_indexed(device, v, 3ul, indices, 3ul));
+    d32_vertex(&v[0], 100.0f, 300.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[1], 100.0f, 364.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 164.0f, 300.0f, 0.5f, 0xff00ff00ul);
+    d32_hx("T9CulledHr",
+           (DWORD)d32_draw_indexed(device, v, 3ul, indices, 3ul));
+    d32_vertex(&v[0], 200.0f, 300.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[1], 264.0f, 300.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 200.0f, 364.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[3], 264.0f, 364.0f, 0.5f, 0xff00ff00ul);
+    indices[3] = 2u;
+    indices[4] = 1u;
+    indices[5] = 3u;
+    d32_hx("T9QuadHr", (DWORD)d32_draw_indexed(device, v, 4ul, indices, 6ul));
+    d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+
     d32_line("Stage", "9-read-back");
     d32_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
@@ -1089,6 +1144,23 @@ void WINAPI V9xD3d32ProbeEntry(void)
                     ? 4ul : 0ul);
         d32_hx("T3Ok", caps);
         failures += caps != 7ul ? 1ul : 0ul;
+
+        /* T9: the kept triangle drawn, the culled one not, both halves of
+         * the indexed quad drawn. */
+        d32_hx("T9Kept", d32_pixel(&desc, 16ul, 308ul));
+        d32_hx("T9Culled", d32_pixel(&desc, 108ul, 308ul));
+        d32_hx("T9QuadUpper", d32_pixel(&desc, 210ul, 310ul));
+        d32_hx("T9QuadLower", d32_pixel(&desc, 254ul, 354ul));
+        caps = (d32_is_colour(d32_pixel(&desc, 16ul, 308ul), 0x0000ff00ul)
+                    ? 1ul : 0ul) |
+               (!d32_is_colour(d32_pixel(&desc, 108ul, 308ul), 0x0000ff00ul)
+                    ? 2ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 210ul, 310ul), 0x0000ff00ul)
+                    ? 4ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 254ul, 354ul), 0x0000ff00ul)
+                    ? 8ul : 0ul);
+        d32_hx("T9Ok", caps);
+        failures += caps != 15ul ? 1ul : 0ul;
 
         d32_hx("T5Pixel", d32_pixel(&desc, 332ul, 40ul));
         caps = d32_is_colour(d32_pixel(&desc, 332ul, 40ul),

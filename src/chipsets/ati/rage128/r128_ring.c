@@ -70,6 +70,54 @@ v9x_u32 v9x_r128_ring_agp_cntl(v9x_u32 current)
            V9X_R128_RING_AGP_SIZE_32M;
 }
 
+void v9x_r128_vtx_reset(v9x_r128_vtx_area *area)
+{
+    v9x_u32 segment;
+
+    area->segment = 0ul;
+    area->used = 0ul;
+    area->last_age = 0ul;
+    for (segment = 0ul; segment < V9X_R128_VTX_SEGMENTS; ++segment) {
+        area->age[segment] = 0ul;
+    }
+}
+
+void v9x_r128_vtx_all_done(v9x_r128_vtx_area *area)
+{
+    v9x_u32 segment;
+
+    for (segment = 0ul; segment < V9X_R128_VTX_SEGMENTS; ++segment) {
+        area->age[segment] = 0ul;
+    }
+}
+
+int v9x_r128_vtx_reserve(v9x_r128_vtx_area *area, v9x_u32 bytes,
+                         v9x_r128_vtx_grant *grant)
+{
+    grant->offset = 0ul;
+    grant->close_age = 0ul;
+    grant->wait_age = 0ul;
+    if (bytes == 0ul || bytes > V9X_R128_VTX_SEGMENT_BYTES) {
+        return 0;
+    }
+    if (area->used + bytes > V9X_R128_VTX_SEGMENT_BYTES) {
+        grant->close_age = ++area->last_age;
+        area->age[area->segment] = grant->close_age;
+        area->segment = (area->segment + 1ul) % V9X_R128_VTX_SEGMENTS;
+        area->used = 0ul;
+        grant->wait_age = area->age[area->segment];
+        area->age[area->segment] = 0ul;
+    }
+    grant->offset = area->segment * V9X_R128_VTX_SEGMENT_BYTES + area->used;
+    area->used += bytes;
+    return 1;
+}
+
+int v9x_r128_vtx_age_reached(v9x_u32 read_back, v9x_u32 wanted)
+{
+    return read_back >= wanted;
+}
+
 int v9x_r128_ring_agp_enabled(v9x_u32 agp_command)
 {
     if (agp_command == 0xfffffffful) {

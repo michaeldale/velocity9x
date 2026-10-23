@@ -110,6 +110,10 @@ static void v9x_r128_cce_wc_drain(void);
 #pragma aux v9x_r128_cce_wc_drain = 0xf0 0x83 0x0c 0x24 0x00 \
     modify exact [];
 static v9x_r128_ring_plan v9x_r128_cce_plan;
+/* The vertex area behind the ring, for indexed primitives: its segments,
+ * and whether the reservation reaches that far. */
+static v9x_r128_vtx_area v9x_r128_cce_vtx;
+static int v9x_r128_cce_vtx_ready = 0;
 static DWORD v9x_r128_cce_wptr = 0ul;
 
 static DWORD v9x_r128_cce_read32(DWORD offset)
@@ -142,8 +146,10 @@ static void v9x_r128_cce_quarantine(DWORD status)
         v9x_r128_cce_write32(V9X_R128_CCE_PM4_MICRO_CNTL, 0ul);
         v9x_r128_cce_engine_reset();
     }
-    /* A flip the CCE never reached is never coming. */
+    /* A flip the CCE never reached is never coming, and no vertices are
+     * still being read. */
     v9x_r128_cce_flip_queued = 0;
+    v9x_r128_vtx_all_done(&v9x_r128_cce_vtx);
     v9x_r128_cce_stop();
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
         v9x_trace_flush_fault(V9X_R128_CCE_FAULT_TAG, status);
@@ -210,10 +216,12 @@ static int v9x_r128_cce_load_microcode(void)
 static void v9x_r128_cce_choose_transport(void)
 {
     DWORD linear = v9x_hal->engine.ring_linear_base;
-    DWORD bytes = v9x_hal->engine.ring_bytes;
+    /* The reservation's size; the ring is its first 64 KiB (r128_ring.h). */
+    DWORD reserved = v9x_hal->engine.ring_bytes;
+    DWORD bytes = V9X_R128_RING_BYTES;
 
     v9x_r128_cce_transport = V9X_R128_CCE_PIO;
-    if (linear == 0ul || bytes == 0ul ||
+    if (linear == 0ul || reserved < bytes ||
         v9x_hal->engine.reserve_offset == 0ul) {
         return;
     }
@@ -230,6 +238,15 @@ static void v9x_r128_cce_choose_transport(void)
         return;
     }
     v9x_r128_cce_transport = V9X_R128_CCE_RING;
+    /* The vertex area is asked about apart: a mini-VDD that reserved only
+     * the ring still gets the ring, and indexed draws are declined. */
+    v9x_r128_vtx_reset(&v9x_r128_cce_vtx);
+    v9x_r128_cce_vtx_ready =
+        reserved >= V9X_R128_RING_RESERVE_BYTES &&
+        v9x_r128_cce_plan.buffer_offset + V9X_R128_RING_RESERVE_BYTES <=
+            V9X_R128_RING_WINDOW_BYTES &&
+        !IsBadWritePtr((LPVOID)(linear + V9X_R128_RING_VERTEX_OFFSET),
+                       V9X_R128_RING_VERTEX_BYTES);
 }
 
 /*
@@ -336,7 +353,8 @@ static int v9x_r128_cce_start(void)
     }
     if (v9x_r128_cce_transport == V9X_R128_CCE_RING) {
         if (v9x_r128_cce_ring_registers()) {
-            mode = V9X_R128_RING_MODE_192BM | v9x_r128_cce_plan.size_l2qw;
+            mode = V9X_R128_RING_MODE_64BM_VCBM |
+                   v9x_r128_cce_plan.size_l2qw;
         } else {
             v9x_r128_cce_transport = V9X_R128_CCE_PIO;
         }
@@ -468,7 +486,8 @@ static int v9x_r128_cce_poll_drained(DWORD reads, DWORD *status)
         }
         *status = v9x_r128_cce_read32(V9X_R128_CCE_PM4_STAT);
         if ((*status & V9X_R128_CCE_FIFO_MASK) >=
-                V9X_R128_CCE_FIFO_ENTRIES &&
+                (v9x_r128_cce_transport == V9X_R128_CCE_RING ?
+                 V9X_R128_RING_MODE_64_FIFO : V9X_R128_CCE_FIFO_ENTRIES) &&
             (*status & V9X_R128_CCE_BUSY_BITS) == 0ul) {
             return 1;
         }
@@ -517,8 +536,10 @@ int v9x_r128_cce_drain(int wait)
         return 0;
     }
     /* Drained: a queued flip has been executed, whatever the scratch
-     * register says after the next start's reset. */
+     * register says after the next start's reset, and every vertex
+     * segment has been read. */
     v9x_r128_cce_flip_queued = 0;
+    v9x_r128_vtx_all_done(&v9x_r128_cce_vtx);
     v9x_r128_cce_stop();
     v9x_r128_cce_write32(V9X_R128_PC_NGUI_CTLSTAT,
                          v9x_r128_cce_read32(V9X_R128_PC_NGUI_CTLSTAT) |
@@ -528,6 +549,55 @@ int v9x_r128_cce_drain(int wait)
         v9x_r128_cce_quarantine(status);
         return 0;
     }
+    return 1;
+}
+
+/*
+ * Room for `bytes` of vertices in the AGP vertex area, for an indexed
+ * draw: the CPU's linear address to write them at, and the vertex list
+ * offset the packet names (its distance from AGP_BASE, as the ring's).
+ * A segment that fills is closed by writing its age to GUI_SCRATCH_REG2
+ * behind everything already submitted, so the CCE writes it back once it
+ * has read the segment's last vertices; one is written again only once
+ * its age has come back, or the CCE has drained. Zero when there is no
+ * vertex area or the piece is larger than a segment, and the caller draws
+ * another way.
+ */
+int v9x_r128_cce_vertex_space(DWORD bytes, volatile DWORD **linear,
+                              DWORD *card_offset)
+{
+    v9x_r128_vtx_grant grant;
+    v9x_u32 marker[2];
+    DWORD spins;
+    DWORD age = 0ul;
+
+    if (!v9x_r128_cce_vtx_ready ||
+        v9x_r128_cce_transport != V9X_R128_CCE_RING ||
+        !v9x_r128_vtx_reserve(&v9x_r128_cce_vtx, bytes, &grant)) {
+        return 0;
+    }
+    if (grant.close_age != 0ul) {
+        marker[0] = V9X_R128_PACKET0(V9X_R128_RING_GUI_SCRATCH_REG2, 0u);
+        marker[1] = grant.close_age;
+        if (!v9x_r128_cce_submit(marker, 2ul)) {
+            return 0;
+        }
+    }
+    for (spins = 0ul; grant.wait_age != 0ul && v9x_r128_cce_running;
+         ++spins) {
+        age = v9x_r128_cce_read32(V9X_R128_RING_GUI_SCRATCH_REG2);
+        if (v9x_r128_vtx_age_reached(age, grant.wait_age)) {
+            break;
+        }
+        if (spins >= V9X_R128_CCE_SPINS) {
+            v9x_r128_cce_quarantine(age);
+            return 0;
+        }
+    }
+    *linear = (volatile DWORD *)(v9x_hal->engine.ring_linear_base +
+                                 V9X_R128_RING_VERTEX_OFFSET + grant.offset);
+    *card_offset = v9x_r128_cce_plan.buffer_offset +
+                   V9X_R128_RING_VERTEX_OFFSET + grant.offset;
     return 1;
 }
 

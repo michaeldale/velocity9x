@@ -510,6 +510,30 @@ typedef struct v9x_d3d_engine_ops {
      * and therefore does not consume this entry yet.
      */
     int (*accepts)(const V9X_R3D_DRAW *draw);
+
+    /*
+     * A whole indexed call, APPENDED 2026-10-24 (docs\plans\d3d-core-
+     * throughput.md). Null for an engine without it, which the positional
+     * initialisers get by omission. The vertex pool as the application
+     * gave it, its 16-bit indices, a list (strip 0) or a strip, and the
+     * cull mode the core's list path would apply (V9X_R3D_CULL_*, already
+     * gated on the published caps). The engine culls in hardware and draws
+     * the indices against its own copy of the vertices, so the core does
+     * not expand a triangle at a time.
+     *
+     * Anything the engine cannot draw exactly as the list path would - an
+     * index past the pool, a referenced vertex the list path would clip, a
+     * call too large for it - is declined with -1 and nothing submitted,
+     * and the core draws the call through the list path as before. 1 when
+     * drawn, 0 when a submission failed part-way.
+     */
+    int (*draw_indexed)(const V9X_R3D_DRAW *draw,
+                        const V9X_R3D_VERTEX *pool,
+                        DWORD vertex_count,
+                        const v9x_u16 *indices,
+                        DWORD index_count,
+                        int strip,
+                        DWORD cull_mode);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

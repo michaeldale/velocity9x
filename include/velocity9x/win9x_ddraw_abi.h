@@ -3684,6 +3684,14 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD blt_flip_waited;
     DWORD blt_flip_wait_timeouts;
+    /*
+     * DrawOneIndexedPrimitive calls an engine drew whole through its
+     * draw_indexed entry, and those it declined back to the triangle-list
+     * path (docs\plans\d3d-core-throughput.md). Appended 2026-10-24 within
+     * ABI 2026102002.
+     */
+    DWORD indexed_engine_calls;
+    DWORD indexed_engine_declined;
 } V9X_D3D_DIAGNOSTICS;
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */

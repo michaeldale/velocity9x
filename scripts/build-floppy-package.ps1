@@ -1,5 +1,7 @@
 # Assemble two 1.44 MB floppies per family that opts in (Floppy.Include):
-# disk 1, everything the install reads; disk 2, the test tools.
+# disk 1, everything the install reads; disk 2, the test tools. A family
+# whose installed files outgrow disk 1 names some in Floppy.ThirdDisk, and
+# gets a third disk the floppy INF asks for.
 #
 # The families used to share one disk, so an offline machine could pick the
 # matching folder without a second trip. With the OpenGL ICD in every package
@@ -120,6 +122,73 @@ foreach ($family in $floppyFamilies) {
     Set-Content -LiteralPath (Join-Path $disk2Package "SHA256.TXT") -Encoding Ascii -Value @(
         $hashLines | Where-Object { $_ -match $toolPattern })
 
+    # A third disk, for a family whose installed files outgrew disk 1
+    # (Floppy.ThirdDisk; the ATI family since 2026-10-24, Michael: "third
+    # disk is fine"). Those files move to <Folder>-3, in a folder of the same
+    # name, and the INF on disk 1 names a second source disk and maps them
+    # to it, so Windows asks for disk 3 when it reaches them. The package's
+    # own INF, used for Have Disk from a hard disk or the network, is not
+    # touched: there every file is in one folder.
+    $disk3Dir = $null
+    $thirdFiles = @()
+    if ($family.Floppy.ContainsKey('ThirdDisk')) {
+        $thirdFiles = @($family.Floppy.ThirdDisk)
+    }
+    if ($thirdFiles.Count -ne 0) {
+        $disk3Dir = Join-Path $outputDir ("{0}-3" -f $family.Floppy.Folder)
+        $disk3Package = Join-Path $disk3Dir $family.Floppy.Folder
+        New-Item -ItemType Directory -Force -Path $disk3Package | Out-Null
+        foreach ($file in $thirdFiles) {
+            Move-Item -LiteralPath (Join-Path $diskPackage $file) `
+                -Destination (Join-Path $disk3Package $file) -Force
+        }
+
+        $infFiles = @(Get-ChildItem -LiteralPath $diskPackage -Filter '*.INF')
+        if ($infFiles.Count -ne 1) {
+            throw "Expected one INF in $diskPackage for the third disk, found $($infFiles.Count)."
+        }
+        $infPath = $infFiles[0].FullName
+        $inf = [IO.File]::ReadAllText($infPath)
+        $diskName = "Velocity9x $($family.Floppy.Folder) disk 3"
+        # The generated INF's own line ending, whichever it is.
+        $newline = if ($inf.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $withDisk = [regex]::Replace($inf,
+            '(\[SourceDisksNames\]\r?\n1=[^\r\n]*\r?\n)',
+            ('${1}' + "2=""$diskName"",,0$newline"))
+        if ($withDisk -eq $inf) {
+            throw "The floppy INF in $diskPackage has no [SourceDisksNames] disk 1 to follow."
+        }
+        $inf = $withDisk
+        foreach ($file in $thirdFiles) {
+            $pattern = '(?im)^(' + [regex]::Escape($file.ToLowerInvariant()) + ')=1(\r?)$'
+            $mapped = [regex]::Replace($inf, $pattern, '$1=2$2')
+            if ($mapped -eq $inf) {
+                throw "The floppy INF does not list $file on disk 1, so it cannot move to disk 3."
+            }
+            $inf = $mapped
+        }
+        [IO.File]::WriteAllText($infPath, $inf, [Text.Encoding]::ASCII)
+
+        # Each disk's SHA256.TXT lists its own files, and disk 1's INF has
+        # just changed.
+        $thirdPattern = '\s(' + (($thirdFiles | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
+        $infName = $infFiles[0].Name
+        $infHash = (Get-FileHash -LiteralPath $infPath -Algorithm SHA256).Hash
+        $diskOneLines = @(Get-Content -LiteralPath $diskHashes)
+        Set-Content -LiteralPath (Join-Path $disk3Package "SHA256.TXT") -Encoding Ascii -Value @(
+            $diskOneLines | Where-Object { $_ -match $thirdPattern })
+        Set-Content -LiteralPath $diskHashes -Encoding Ascii -Value @(
+            $diskOneLines | Where-Object { $_ -notmatch $thirdPattern } |
+                ForEach-Object {
+                    if ($_ -match ('\s' + [regex]::Escape($infName) + '$')) {
+                        "$infHash  $infName"
+                    } else {
+                        $_
+                    }
+                })
+    }
+    $diskCount = if ($disk3Dir) { 3 } else { 2 }
+
     # Recovery instructions belong at the root as well as inside the package:
     # if the machine will not display after the install, the reader needs them
     # without opening a folder.
@@ -178,10 +247,37 @@ foreach ($family in $floppyFamilies) {
         "It also installs ATI3DCIF.DLL, ATI's 3D Rage interface for games " +
         "written for ATI Rage cards, over any copy already there."))
 
+    $installDisks = if ($disk3Dir) {
+        Format-V9xParagraph -Text (
+            "This disk and disk 3 hold everything the install needs: " +
+            ($thirdFiles -join ", ") + " is on disk 3, so copy its " +
+            "$folderName folder into the same folder on the hard disk as " +
+            "well, or Windows asks for disk 3 while it copies. Disk 2 holds " +
+            "the test tools in section 4: copy its $folderName folder there " +
+            "too.")
+    } else {
+        @(
+            "This disk holds"
+            "everything the install needs. Disk 2 holds the test tools in section 4:"
+            "copy its $folderName folder into the same folder on the hard disk."
+        ) -join "`n"
+    }
+    $installLead = if ($disk3Dir) {
+        Format-V9xParagraph -Text (
+            "Copy the $folderName folder to the hard disk first - installing " +
+            "from a floppy works, but Windows may ask for the disk again " +
+            "later. " + ($installDisks -replace "`n", " "))
+    } else {
+        @(
+            "Copy the $folderName folder to the hard disk first - installing from a"
+            "floppy works, but Windows may ask for the disk again later. $installDisks"
+        ) -join "`n"
+    }
+
     $readme = @"
 VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
 Build: $BuildId
-Disk: $familyName (folder $folderName), disk 1 of 2
+Disk: $familyName (folder $folderName), disk 1 of $diskCount
 
 READ THIS BEFORE INSTALLING.
 
@@ -217,10 +313,7 @@ $hardwareIdSentence
 
 3. INSTALL
 
-Copy the $folderName folder to the hard disk first - installing from a
-floppy works, but Windows may ask for the disk again later. This disk holds
-everything the install needs. Disk 2 holds the test tools in section 4:
-copy its $folderName folder into the same folder on the hard disk.
+$installLead
 
    1. Control Panel, System, Device Manager.
    2. Expand Display adapters and open your display adapter.
@@ -304,7 +397,7 @@ this on the clipboard in one go.
     $readme2 = @"
 VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
 Build: $BuildId
-Disk: $familyName (folder $folderName), disk 2 of 2
+Disk: $familyName (folder $folderName), disk 2 of $diskCount
 
 This disk holds the test tools; nothing on it is installed. Install from
 disk 1 first and read its README.TXT. Then copy this disk's $folderName
@@ -317,7 +410,28 @@ C:\V9XDIAG\V9XDD.INI, which a problem report can include.
     Set-Content -LiteralPath (Join-Path $disk2Dir "README.TXT") -Encoding Ascii `
         -Value ($readme2 -replace "`r`n", "`n" -replace "`n", "`r`n")
 
-    foreach ($pair in @(@($diskDir, 1), @($disk2Dir, 2))) {
+    $diskPairs = @(@($diskDir, 1), @($disk2Dir, 2))
+    if ($disk3Dir) {
+        $thirdList = Format-V9xParagraph -Text (
+            "This disk holds part of the install: " + ($thirdFiles -join ", ") +
+            ". Copy its $folderName folder into the same folder on the hard " +
+            "disk as disk 1's before installing, or keep it to hand: the " +
+            "install from disk 1 asks for disk 3 when it reaches " +
+            ($(if ($thirdFiles.Count -eq 1) { "that file" } else { "those files" })) +
+            ". Read disk 1's README.TXT first.")
+        $readme3 = @"
+VELOCITY9X $ProductVersion - WINDOWS 98 DISPLAY DRIVER
+Build: $BuildId
+Disk: $familyName (folder $folderName), disk 3 of 3
+
+$thirdList
+"@
+        Set-Content -LiteralPath (Join-Path $disk3Dir "README.TXT") -Encoding Ascii `
+            -Value ($readme3 -replace "`r`n", "`n" -replace "`n", "`r`n")
+        $diskPairs += ,@($disk3Dir, 3)
+    }
+
+    foreach ($pair in $diskPairs) {
         $files = @(Get-ChildItem -LiteralPath $pair[0] -Recurse -File)
         $total = ($files | Measure-Object -Property Length -Sum).Sum
         if ($total -gt $floppyCapacity) {

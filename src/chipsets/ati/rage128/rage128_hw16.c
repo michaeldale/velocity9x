@@ -79,7 +79,9 @@ static void v9x_rage128_fill_engine(unsigned long framebuffer_linear_base,
 
     /* The bus-master ring's pages, when the chipset has a GART driver.
      * The HAL decides whether the card can fetch from them (AGP mode) and
-     * otherwise keeps the PIO CCE; here they are only passed on. */
+     * otherwise keeps the PIO CCE; here they are only passed on. ring_bytes
+     * is the whole reservation, the ring at its start and the vertex area
+     * behind it (r128_ring.h). */
     if (V9xMiniR128AgpRing(&ring_linear, &ring_bus, &bytes) != 0u &&
         ring_linear != 0ul && ring_bus != 0ul) {
         *ring_linear_base = ring_linear;

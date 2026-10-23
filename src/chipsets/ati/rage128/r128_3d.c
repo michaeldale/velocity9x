@@ -114,6 +114,21 @@
 #define R128_VC_FRMT_TL                 0x000000c9ul
 #define R128_VC_CNTL_TRI_LIST           0x00000034ul
 #define R128_VC_CNTL_COUNT_SHIFT        16
+/* VC_CNTL for indices (r128_drv.h): TRI_LIST 4 or TRI_STRIP 6, with
+ * PRIM_WALK_IND 0x10. */
+#define R128_VC_CNTL_IND_TRI_LIST       0x00000014ul
+#define R128_VC_CNTL_IND_TRI_STRIP      0x00000016ul
+
+/* PM4_VC_FPU_SETUP's face bits (r128_reg.h): FRONT_DIR 0 (1 = CCW),
+ * BACKFACE 2:1 and FRONTFACE 4:3, 0 cull and 3 solid. Mesa flips y when it
+ * emits, and maps GL's counter-clockwise front to FRONT_DIR_CCW, so the
+ * hardware's CCW is clockwise on the screen: Direct3D's CCW cull keeps
+ * clockwise triangles with FRONT_DIR_CCW and the back face culled. V9XD32
+ * T9 checks it on the card. */
+#define R128_FPU_FACE_MASK              0x0000001ful
+#define R128_FPU_FACE_BOTH              0x0000001ful
+#define R128_FPU_FACE_KEEP_SCREEN_CW    0x00000019ul
+#define R128_FPU_FACE_KEEP_SCREEN_CCW   0x00000018ul
 
 /* Mesa's constant colour, stencil reference/mask and plane mask. */
 #define R128_CONSTANT_COLOR             0x00fffffful
@@ -444,7 +459,12 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                               R128_COLOR_FLAT_VERT_1 : R128_COLOR_GOURAUD));
     v9x_r128_3d_emit(stream, V9X_R128_PACKET0(V9X_R128_PM4_VC_FPU_SETUP,
                                               0u));
-    v9x_r128_3d_emit(stream, R128_FPU_BASE |
+    v9x_r128_3d_emit(stream, (R128_FPU_BASE & ~R128_FPU_FACE_MASK) |
+                             (state->cull == V9X_R128_CULL_CCW ?
+                              R128_FPU_FACE_KEEP_SCREEN_CW :
+                              state->cull == V9X_R128_CULL_CW ?
+                              R128_FPU_FACE_KEEP_SCREEN_CCW :
+                              R128_FPU_FACE_BOTH) |
                              (state->flat_shade != 0ul ?
                               R128_FPU_COLOR_FLAT : R128_FPU_COLOR_GOURAUD));
     scale = R128_SCALE_3D_BASE | blend;
@@ -482,6 +502,46 @@ void v9x_r128_3d_build_flush(v9x_u32 out[V9X_R128_FLUSH_DWORDS])
 {
     out[0] = V9X_R128_PACKET0(V9X_R128_PC_GUI_CTLSTAT, 0u);
     out[1] = V9X_R128_PC_FLUSH_GUI;
+}
+
+v9x_status v9x_r128_3d_build_indexed(v9x_u32 index_count, int strip,
+                                     v9x_u32 vertex_offset,
+                                     v9x_u32 vertex_count,
+                                     v9x_u32 header[V9X_R128_INDX_HEADER_DWORDS])
+{
+    v9x_u32 index_dwords;
+
+    if (header == 0 || index_count < 3ul ||
+        index_count > V9X_R128_INDX_INDICES_MAX || vertex_count == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    index_dwords = (index_count + 1ul) / 2ul;
+    header[0] = V9X_R128_PACKET3(V9X_R128_PACKET3_3D_RNDR_GEN_INDX_PRIM,
+                                 4ul + index_dwords - 1ul);
+    header[1] = vertex_offset;
+    header[2] = vertex_count;
+    header[3] = R128_VC_FRMT_TL;
+    header[4] = (strip ? R128_VC_CNTL_IND_TRI_STRIP :
+                         R128_VC_CNTL_IND_TRI_LIST) |
+                (index_count << R128_VC_CNTL_COUNT_SHIFT);
+    return V9X_STATUS_OK;
+}
+
+v9x_u32 v9x_r128_3d_pack_indices(const v9x_u16 *indices, v9x_u32 count,
+                                 v9x_u32 base, v9x_u32 *out)
+{
+    v9x_u32 at;
+    v9x_u32 written = 0ul;
+
+    for (at = 0ul; at + 1ul < count; at += 2ul) {
+        out[written++] = (((v9x_u32)indices[at] - base) & 0xfffful) |
+                         ((((v9x_u32)indices[at + 1ul] - base) & 0xfffful)
+                          << 16);
+    }
+    if (at < count) {
+        out[written++] = ((v9x_u32)indices[at] - base) & 0xfffful;
+    }
+    return written;
 }
 
 v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count,

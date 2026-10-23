@@ -789,6 +789,49 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
     }
 }
 
+/*
+ * A DrawOneIndexedPrimitive call to an engine that takes indices whole.
+ * -1 when it declines (the caller expands the call as before), otherwise
+ * its answer. What draw_batch records about a submitted batch is recorded
+ * here too, once for the call.
+ */
+static int v9x_d3d_draw_indexed_engine(
+    const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context,
+    const V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
+{
+    V9X_R3D_DRAW draw;
+    DWORD misc = v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps;
+    DWORD cull = v9x_r3d_cull_honoured(
+        context->cull_mode,
+        (misc & V9X_D3DPMISCCAPS_CULLCW) != 0ul,
+        (misc & V9X_D3DPMISCCAPS_CULLCCW) != 0ul);
+    DWORD before = v9x_present_submissions();
+    int result;
+    int submitted;
+
+    v9x_d3d_describe_draw(context, &draw);
+    result = ops->draw_indexed(
+        &draw, (const V9X_R3D_VERTEX *)data->lpvVertices,
+        data->dwNumVertices, (const v9x_u16 *)data->lpwIndices,
+        data->dwNumIndices,
+        data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP ? 1 : 0, cull);
+    if (result < 0) {
+        ++v9x_hal->d3d_diagnostics.indexed_engine_declined;
+        return -1;
+    }
+    ++v9x_hal->d3d_diagnostics.indexed_engine_calls;
+    submitted = v9x_present_submissions() != before ? 1 : 0;
+    if (submitted && context->target_offset == v9x_present_flip_offset()) {
+        ++v9x_hal->d3d_diagnostics.draws_into_presented;
+    }
+    if (v9x_present_draw_record(submitted)) {
+        v9x_present_trace(V9X_PRESENT_TRACE_DRAW,
+                          (DWORD)(context - v9x_d3d_contexts),
+                          context->target_offset);
+    }
+    return result;
+}
+
 /* A handle is an entry's address, so it is checked, not searched for: a
  * scan of the table per draw grew with the table. */
 static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
@@ -3336,6 +3379,8 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
     int ok = 0;
     int served = 0;
     int bad_index = 0;
+    /* The engine's answer for the whole call, or -1 to expand it. */
+    int whole = -1;
 
     v9x_trace_enter(V9X_TRACE_D3D_DRAWONEINDEXED,
                     data != 0
@@ -3383,7 +3428,19 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
         pool = (const V9X_D3DTLVERTEX *)data->lpvVertices;
         ok = 1;
         served = 1;
-        for (index = 0ul; index + 2ul < data->dwNumIndices; index += step) {
+        /* An engine that takes the indices whole gets the call first; the
+         * expansion below is for one that declines it, or has no entry.
+         * Table fog rewrites each vertex, so it stays on the expansion. */
+        if (ops->draw_indexed != 0 && ops->draw != 0 &&
+            !v9x_d3d_fog_table_active(context->fog_enable,
+                                      &context->fog_table)) {
+            whole = v9x_d3d_draw_indexed_engine(ops, context, data);
+            if (whole >= 0) {
+                ok = whole;
+            }
+        }
+        for (index = 0ul; whole < 0 && index + 2ul < data->dwNumIndices;
+             index += step) {
             DWORD swap = step == 1ul && (index & 1ul) != 0ul;
             DWORD first = (DWORD)data->lpwIndices[index + (swap ? 1ul : 0ul)];
             DWORD second = (DWORD)data->lpwIndices[index + (swap ? 0ul : 1ul)];

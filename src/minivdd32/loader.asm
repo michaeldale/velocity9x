@@ -165,8 +165,11 @@ V9xR128MmioLinear dd 0
 ; cost 60 cycles a dword, 27% of a 3DMark 2000 run, and this mapping 5.3
 ; (R128CCE /time, A8U4I5 boot 544). The HAL drains the CPU's
 ; write-combining buffers before it moves the write pointer.
-V9X_R128_RING_BYTES     equ 00010000h
-V9X_R128_RING_PAGES     equ 17
+; Behind the ring and its mirror page, 512 KiB of vertex area for indexed
+; primitives (V9X_R128_RING_RESERVE_BYTES in r128_ring.h, which this size
+; must match): 17 + 128 pages. The size reported is the whole reservation.
+V9X_R128_RING_BYTES     equ 00091000h
+V9X_R128_RING_PAGES     equ 145
 V9xR128RingLinear dd 0
 V9xR128RingBus    dd 0
 ENDIF

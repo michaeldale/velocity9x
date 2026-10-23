@@ -42,6 +42,7 @@ extern const v9x_u32 v9x_r128_cce_microcode[V9X_R128_CCE_MICROCODE_DWORDS];
 #define V9X_R128_WAIT_DWORDS        2u
 #define V9X_R128_PACKET3(op, n)     ((v9x_u32)(op) | ((v9x_u32)(n) << 16))
 #define V9X_R128_PACKET3_3D_RNDR_GEN_PRIM 0xc0002500ul
+#define V9X_R128_PACKET3_3D_RNDR_GEN_INDX_PRIM 0xc0002300ul
 /* The count field of a packet header, bits 29:16. */
 #define V9X_R128_PACKET_COUNT_MAX   0x3ffful
 
@@ -162,7 +163,16 @@ struct v9x_r128_3d_state {
     v9x_u32 scissor_bottom;
     v9x_u32 masked_channels;   /* V9X_R128_CHANNEL_*: kept, not written */
     struct v9x_r128_3d_texture texture;
+    /* V9X_R128_CULL_*: which winding the hardware drops. NONE (0) draws
+     * both, as every path did while the core culled in software. */
+    v9x_u32 cull;
 };
+
+/* Direct3D's cull modes, as the hardware applies them: CCW drops what
+ * runs counter-clockwise on the screen (y down), CW the other way. */
+#define V9X_R128_CULL_NONE              0ul
+#define V9X_R128_CULL_CW                1ul
+#define V9X_R128_CULL_CCW               2ul
 
 /* Colour channels a draw leaves as they are, through PLANE_3D_MASK_C. */
 #define V9X_R128_CHANNEL_RED            1ul
@@ -216,5 +226,25 @@ void v9x_r128_3d_build_flush(v9x_u32 out[V9X_R128_FLUSH_DWORDS]);
  */
 v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count,
                                   v9x_u32 header[V9X_R128_PRIM_HEADER_DWORDS]);
+
+/*
+ * The five header dwords of a 3D_RNDR_GEN_INDX_PRIM: index_count indices
+ * (a list, strip 0, or a strip) into vertex_count TL vertices at
+ * vertex_offset, the vertex list's distance from AGP_BASE; the indices
+ * follow, packed by v9x_r128_3d_pack_indices. As Linux's
+ * r128_cce_dispatch_indices builds it. INVALID_ARGUMENT for fewer than
+ * three indices, more than V9X_R128_INDX_INDICES_MAX, or no vertices.
+ */
+#define V9X_R128_INDX_HEADER_DWORDS     5u
+#define V9X_R128_INDX_INDICES_MAX       4096ul
+v9x_status v9x_r128_3d_build_indexed(v9x_u32 index_count, int strip,
+                                     v9x_u32 vertex_offset,
+                                     v9x_u32 vertex_count,
+                                     v9x_u32 header[V9X_R128_INDX_HEADER_DWORDS]);
+
+/* The indices less `base`, two to a dword, the first in the low half, an
+ * odd last one with a zero high half. Returns the dwords written. */
+v9x_u32 v9x_r128_3d_pack_indices(const v9x_u16 *indices, v9x_u32 count,
+                                 v9x_u32 base, v9x_u32 *out);
 
 #endif

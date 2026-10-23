@@ -143,6 +143,66 @@ Next, in order:
    `BITBLT_MULTI`), so the clear stops draining.
 3. The per-engine batch size.
 
+## Indexed primitives, done (Michael: "yes do indexed", 2026-10-24)
+
+**Core.** A new optional engine op, `draw_indexed`. A whole
+DrawOneIndexedPrimitive call goes to it: the vertex pool, the 16-bit
+indices, a list or a strip, and the honoured cull mode. The engine may
+decline, and the call is then expanded as before. Table fog always
+expands. The new counters are `IndexedEngineCalls` and
+`IndexedEngineDeclined`.
+
+**Rage 128.**
+- **Decline rules:** the engine declines anything the list path would
+  treat differently. That is a vertex that is not finite, a textured one
+  with `rhw <= 0`, one off the target after the +0.5 pixel centre, or a
+  range larger than a 64 KiB segment.
+- **Vertices:** the used ones are copied once into a 512 KiB AGP vertex
+  area behind the ring. The mini-VDD's reservation grows to 145 pages and
+  reports its full size in `ring_bytes`.
+- **Packets:** `3D_RNDR_GEN_INDX_PRIM`, laid out as Linux's
+  `r128_cce_dispatch_indices`, with the indices rebased and packed two to
+  a dword.
+- **Culling:** in `PM4_VC_FPU_SETUP`. D3D CCW is `FRONT_DIR_CCW`, back
+  culled, following Mesa's y flip.
+- **Ring mode:** 64BM_64VCBM_64INDBM, Linux's mode, so the drain waits
+  for 64 FIFO entries.
+- **Vertex reuse:** each segment closes with an age in
+  `GUI_SCRATCH_REG2`, written through the ring. A segment is reused only
+  once its age has come back, or after a drain.
+
+V9XD32 gained T9 (indexed, CCW culling, one kept and one culled triangle,
+a shared-edge quad). It passes on the old path (boot 547) and on this
+build (boot 548). The runtime turns its small calls into DrawPrimitives
+(`IndexedCalls` 0), though, so T9 does not reach the new entry.
+
+3DMark 2000 does reach it. A8U4I5 boot 548 scored **1530**. The engine
+took 259,490 indexed calls whole and declined 150,954; there were no
+timeouts. The helicopter and Adventure scenes draw correctly
+(`3dmark2000-*-b548-indexed.png`).
+
+| Test | ATI | Ring (boot 543) | Indexed (boot 548) |
+|---|---|---|---|
+| CPU speed | 255 | 109 | 166 |
+| Helicopter low / med / high | 42.6 / 32.8 / 16.1 | 23.3 / 18.8 / 7.1 | 32.7 / 24.8 / 9.7 |
+| Adventure low / med / high | 41.0 / 37.9 / 29.9 | 24.1 / 17.5 / 12.3 | 24.6 / 20.5 / 15.3 |
+| High polygon 1 / 4 / 8 lights | 2341 / 2067 / 1864 | 689 / 665 / 640 | 955 / 900 / 864 |
+| Texture rendering 8 / 16 / 32 MB | 136 / 134 / 121 | 59.8 / 59.5 / 58.4 | 59.9 / 59.6 / 58.4 |
+
+What remains:
+- **37% of indexed calls are declined.** The Rage 128 clips in the core
+  because its setup engine "has not been measured drawing a vertex off
+  the target". Measure it within the 2048 guard band, and if it holds,
+  accept those calls.
+- **The texture tests sit at the 59 Hz refresh.** Our flips honour
+  vblank; ATI's evidently do not in this benchmark. That is a policy
+  question for Michael (`[Velocity9x] VSync`), not a speed one.
+- The clear in the ring, and the core's per-call cost.
+
+The ATI floppy's disk 1 went 408 bytes over. `V9XUPD.EXE` now rides a
+third disk (`Floppy.ThirdDisk`; Michael: "third disk is fine"), which the
+floppy INF names as source disk 2.
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that

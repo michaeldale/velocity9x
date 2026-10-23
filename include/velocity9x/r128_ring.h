@@ -42,6 +42,12 @@
 /* PM4_BUFFER_CNTL: 192BM (bits 31:28 = 2), the ring size in bits 5:0 as
  * log2 quadwords. DL_WPTR's DL_DONE (bit 31) ends a stream before a wait. */
 #define V9X_R128_RING_MODE_192BM       0x20000000ul
+/* 64BM_64VCBM_64INDBM (8 << 28): the mode Linux runs, with the vertex
+ * channel 3D_RNDR_GEN_INDX_PRIM reads AGP vertices through. Its command
+ * FIFO holds 64 entries, 192BM's 192. The probe ran the ring in both
+ * (R128CCE /m8, boot 539). */
+#define V9X_R128_RING_MODE_64BM_VCBM   0x80000000ul
+#define V9X_R128_RING_MODE_64_FIFO     64ul
 #define V9X_R128_RING_DL_DONE          0x80000000ul
 /* PM4_BUFFER_WM_CNTL as ATI's driver and the /ati runs set it. */
 #define V9X_R128_RING_WM_CNTL          0x40070707ul
@@ -53,6 +59,54 @@
 
 #define V9X_R128_RING_MIN_BYTES        0x00002000ul
 #define V9X_R128_RING_MAX_BYTES        0x00100000ul
+
+/*
+ * The rest of the reservation: the 64 KiB ring, its mirror page, then a
+ * vertex area for indexed primitives, which the vertex walker reads from
+ * AGP memory as the ring is (3D_RNDR_GEN_INDX_PRIM). The mini-VDD reserves
+ * V9X_R128_RING_RESERVE_BYTES and reports that size, which the 16-bit side
+ * publishes as engine.ring_bytes: the ring is the first 64 KiB of it. A
+ * mini-VDD that reserved only the ring reports 64 KiB, and gets no vertex
+ * area. loader.asm's page count must agree.
+ */
+#define V9X_R128_RING_BYTES            0x00010000ul
+#define V9X_R128_RING_VERTEX_OFFSET    (V9X_R128_RING_BYTES + 0x1000ul)
+#define V9X_R128_RING_VERTEX_BYTES     0x00080000ul
+#define V9X_R128_RING_RESERVE_BYTES \
+    (V9X_R128_RING_VERTEX_OFFSET + V9X_R128_RING_VERTEX_BYTES)
+
+/* The vertex area in segments. A segment is closed with an age the CCE
+ * writes to GUI_SCRATCH_REG2 behind the last packet that read it, and
+ * written again only once that age has come back. */
+#define V9X_R128_VTX_SEGMENTS          8ul
+#define V9X_R128_VTX_SEGMENT_BYTES \
+    (V9X_R128_RING_VERTEX_BYTES / V9X_R128_VTX_SEGMENTS)
+#define V9X_R128_RING_GUI_SCRATCH_REG2 0x15e8ul
+
+typedef struct v9x_r128_vtx_area {
+    v9x_u32 segment;                        /* the one being filled */
+    v9x_u32 used;                           /* its bytes handed out */
+    v9x_u32 age[V9X_R128_VTX_SEGMENTS];     /* 0: free */
+    v9x_u32 last_age;
+} v9x_r128_vtx_area;
+
+typedef struct v9x_r128_vtx_grant {
+    v9x_u32 offset;     /* in the vertex area */
+    v9x_u32 close_age;  /* non-zero: write it behind what is submitted */
+    v9x_u32 wait_age;   /* non-zero: the CCE must reach it first */
+} v9x_r128_vtx_grant;
+
+/* Empty, nothing outstanding. */
+void v9x_r128_vtx_reset(v9x_r128_vtx_area *area);
+/* The CCE has drained: every segment is free again. */
+void v9x_r128_vtx_all_done(v9x_r128_vtx_area *area);
+/* Room for `bytes` in one segment, or zero when it cannot fit in one. A
+ * piece that does not fit in the current segment closes it and moves on;
+ * the grant says what to write and what to wait for. */
+int v9x_r128_vtx_reserve(v9x_r128_vtx_area *area, v9x_u32 bytes,
+                         v9x_r128_vtx_grant *grant);
+/* Non-zero when the age read back covers `wanted`. */
+int v9x_r128_vtx_age_reached(v9x_u32 read_back, v9x_u32 wanted);
 
 typedef struct v9x_r128_ring_plan {
     v9x_u32 agp_base;       /* AGP_BASE */

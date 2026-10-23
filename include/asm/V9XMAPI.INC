@@ -509,9 +509,10 @@ V9XMINI_FN_R128_MMIO_MAP    EQU 0023h
 ; ATI Rage 128: the CCE ring's pages in the chipset's AGP aperture.
 ;
 ; No input. Out: AX=1, EBX = the pages' linear address, ECX = their bus
-; address in the aperture, EDX = the ring's bytes (64 KiB; one more page is
-; mapped behind it for the wrap mirror); AX=0 with all three zero when the
-; VMM's GART services refuse, as they do with no AGP chipset driver.
+; address in the aperture, EDX = the reservation's bytes: the 64 KiB ring,
+; a page behind it for the wrap mirror, then the vertex area
+; (include\velocity9x\r128_ring.h); AX=0 with all three zero when the VMM's
+; GART services refuse, as they do with no AGP chipset driver.
 ;
 ; Reserves and commits once a boot (_GARTReserve write-combined, _GARTCommit)
 ; and returns the same pages after; they are never released, since the card

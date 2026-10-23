@@ -490,6 +490,13 @@ function Test-V9xFamilyManifest {
     if ($Family.Floppy.Include -and -not $Family.Floppy.Folder) {
         throw "Family $Id is on the floppy but names no folder."
     }
+    if ($Family.Floppy.ContainsKey('ThirdDisk') -and
+        (@($Family.Floppy.ThirdDisk).Count -eq 0 -or
+         @($Family.Floppy.ThirdDisk | Where-Object {
+             $_ -isnot [string] -or $_ -notmatch '^[A-Z0-9_]{1,8}\.[A-Z0-9]{1,3}$' }).Count -ne 0)) {
+        throw ("Family $Id Floppy.ThirdDisk must list package files by their " +
+               "8.3 upper-case names.")
+    }
     Assert-V9xFamilyKeys -Table $Family.Vm -Context "Family $Id Vm" -Required @(
         'Emulator', 'Profile', 'Port', 'Modes')
     if ($Family.Vm.Emulator -ne 'none') {

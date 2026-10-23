@@ -537,6 +537,10 @@ int v9x_r128_cce_drain(int wait);
  * submitted (0 if it could not); in_flight is non-zero until the CCE has
  * executed the last one queued. */
 int v9x_r128_cce_flip_queues(void);
+/* AGP vertex space for an indexed draw (r128_cce.c): non-zero with the
+ * linear address and the vertex list offset; zero to draw another way. */
+int v9x_r128_cce_vertex_space(DWORD bytes, volatile DWORD **linear,
+                              DWORD *card_offset);
 int v9x_r128_cce_queue_flip(DWORD crtc_offset);
 int v9x_r128_cce_flip_in_flight(void);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe

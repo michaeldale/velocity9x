@@ -1765,6 +1765,9 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("BltFlipWaited", snapshot.d3d.blt_flip_waited);
     v9x_write_uint("BltFlipWaitTimeouts",
                    snapshot.d3d.blt_flip_wait_timeouts);
+    v9x_write_uint("IndexedEngineCalls", snapshot.d3d.indexed_engine_calls);
+    v9x_write_uint("IndexedEngineDeclined",
+                   snapshot.d3d.indexed_engine_declined);
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);
