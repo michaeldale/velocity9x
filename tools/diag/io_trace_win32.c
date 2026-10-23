@@ -24,11 +24,13 @@
 #define V9X_IOTR_ENTRIES     4096ul
 #define V9X_IOTR_BAR_MAX     6ul
 /* Four trace counters, then the adapter record: config address, BAR count,
- * bases, sizes, the Intel MMIO_INDEX/MMIO_DATA pair, and the INT 10h guard's
- * count of mode sets kept from the BIOS. */
-#define V9X_IOTR_HEADER      (8ul + 2ul * V9X_IOTR_BAR_MAX)
+ * bases, sizes, the Intel MMIO_INDEX/MMIO_DATA pair, the INT 10h guard's
+ * count of mode sets kept from the BIOS, and how many of those ran later
+ * once their VM owned the screen. */
+#define V9X_IOTR_HEADER      (9ul + 2ul * V9X_IOTR_BAR_MAX)
 #define V9X_IOTR_INTEL_PAIR (6ul + 2ul * V9X_IOTR_BAR_MAX)
 #define V9X_IOTR_GUARD_COUNT (V9X_IOTR_INTEL_PAIR + 1ul)
+#define V9X_IOTR_DEFERRED_COUNT (V9X_IOTR_INTEL_PAIR + 2ul)
 /* VMM I/O type bits (VMM.INC): output, and the width field. */
 #define V9X_IOTR_OUTPUT      0x04ul
 #define V9X_IOTR_WIDTH_MASK  0x18ul
@@ -145,6 +147,8 @@ static void v9x_dump(HANDLE file, const DWORD *header, DWORD bytes)
     cursor = v9x_append_hex(cursor, header[V9X_IOTR_INTEL_PAIR], 4u);
     cursor = v9x_append_text(cursor, " Int10Guarded=");
     cursor = v9x_append_uint(cursor, header[V9X_IOTR_GUARD_COUNT]);
+    cursor = v9x_append_text(cursor, " Int10Deferred=");
+    cursor = v9x_append_uint(cursor, header[V9X_IOTR_DEFERRED_COUNT]);
     v9x_write_line(file, cursor);
     v9x_write_text(file, "; seq vm dir width port value [gma register]");
 

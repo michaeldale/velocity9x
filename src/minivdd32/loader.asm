@@ -452,6 +452,12 @@ V9xVramAsked    dw 0
 ; INT 10h mode sets the guard has kept from the video BIOS since boot. Read
 ; out by the -IoTrace readout; nothing else reports it.
 V9xInt10GuardCount dd 0
+; Of those, how many ran later, once their VM owned the CRTC.
+V9xInt10DeferredCount dd 0
+; Each VM's deferred mode set, a word in its control block: the AX to run,
+; 0 for none. _Allocate_Device_CB_Area's offset; 0 = no block, no deferral.
+V9X_INT10_CB_BYTES equ 4
+V9xInt10CbOffset dd 0
 IFDEF V9X_IO_TRACE
 ; -IoTrace also finds the display adapter and traps its I/O BARs: the first
 ; PCI function of class 030000h (VGA-compatible) with I/O decoding on. Bus 0
@@ -465,13 +471,14 @@ IFDEF V9X_IO_TRACE
 ; block after the trace's own four counters.
 V9X_ADAPTER_BUS_MAX equ 16
 V9X_IOBAR_MAX       equ 6
-V9X_ADAPTER_DWORDS  equ 4 + 2 * V9X_IOBAR_MAX
+V9X_ADAPTER_DWORDS  equ 5 + 2 * V9X_IOBAR_MAX
 V9xAdapterPciAddr dd 0         ; config address of the adapter, 0 = none found
 V9xIoBarCount    dd 0          ; I/O BARs recorded below
 V9xIoBarBase     dd V9X_IOBAR_MAX dup (0)
 V9xIoBarSize     dd V9X_IOBAR_MAX dup (0)
 V9xIoBarIntelPair dd 0         ; an Intel IGD's MMIO_INDEX/MMIO_DATA pair, or 0
 V9xIoBarGuardCopy dd 0         ; V9xInt10GuardCount at the readout
+V9xIoBarDeferredCopy dd 0      ; V9xInt10DeferredCount at the readout
 ; -IoTrace: port I/O traps on the 8514/A register file, V86 VMs only.
 ;
 ; Instrument for docs\issues\2026-09-06-dos-box-doubles-the-desktop-on-
@@ -699,6 +706,8 @@ BeginProc MiniVDD_W32_DeviceIoControl
     push    ecx
     mov     eax, V9xInt10GuardCount
     mov     V9xIoBarGuardCopy, eax
+    mov     eax, V9xInt10DeferredCount
+    mov     V9xIoBarDeferredCopy, eax
     cld
     mov     esi, OFFSET32 V9xIoTraceCount
     mov     ecx, V9X_IOTRACE_COUNTER_DWORDS
@@ -949,38 +958,85 @@ IFNDEF V9X_NO_INT10_GUARD
 ; (VBE 3.0, 4.3), so a VBE program in a window is told no rather than
 ; believing it switched.
 ;
+; Deferred, not dropped: a skipped AH=00h is remembered in the VM's control
+; block, with bit 7 set so the BIOS keeps the VM's text. The first INT 10h the
+; VM makes once it owns the CRTC (full screen) runs that mode set first,
+; nested, then its own call. The skipped set is what used to program a
+; chip's own text-mode path - the Intel VGA plane - and the VDD issues no
+; BIOS mode set at the switch to full screen (HD 4600: no INT 10h and no
+; I/O BAR access across Alt+Enter), so without this a full-screen box showed
+; the VM's text memory through the desktop's plane. DOS writes its console
+; through INT 10h, so the deferred set runs at the box's first output.
+;
 ; Not virtualized: what a skipped AH=00h would have done to the VM's own BIOS
 ; data area and virtual registers, such as clearing the window. A DOS program
 ; that sets a graphics mode in a window keeps the text mode it had.
 V9X_INT10_SET_MODE       equ 00h
 V9X_INT10_VBE_SET_MODE   equ 4f02h
 V9X_INT10_VBE_REFUSED    equ 034fh
+V9X_INT10_NO_CLEAR       equ 80h        ; AL bit 7: keep video memory
 
 BeginProc V9xMini_Int10_Hook
-    cmp     [ebp.Client_AH], V9X_INT10_SET_MODE
-    je      short V9xMini_Int10_Mode_Set
-    cmp     [ebp.Client_AX], V9X_INT10_VBE_SET_MODE
-    je      short V9xMini_Int10_Mode_Set
-    stc
-    ret
-
-V9xMini_Int10_Mode_Set:
     push    ebx
     push    esi
     push    edi
     mov     esi, ebx                    ; the caller
     VMMcall Get_Sys_VM_Handle           ; EBX = the System VM
     cmp     esi, ebx
-    je      short V9xMini_Int10_Pass
+    je      V9xMini_Int10_Pass
+    push    esi
     VxDCall VDD_Get_VM_Info             ; EDI = CRTC owner, ESI = MemC owner
+    pop     esi
     cmp     edi, ebx
-    jne     short V9xMini_Int10_Pass
+    je      short V9xMini_Int10_Windowed
+    cmp     edi, esi
+    jne     V9xMini_Int10_Pass
 
-    inc     V9xInt10GuardCount
+    ; The caller owns the CRTC. Run a mode set deferred from its windowed
+    ; life before this call, unless this call is a mode set itself.
+    mov     edi, V9xInt10CbOffset
+    test    edi, edi
+    jz      V9xMini_Int10_Pass
+    movzx   eax, word ptr [esi + edi]
+    test    eax, eax
+    jz      V9xMini_Int10_Pass
+    mov     word ptr [esi + edi], 0
+    cmp     [ebp.Client_AH], V9X_INT10_SET_MODE
+    je      short V9xMini_Int10_Pass
+
+    ; The nested INT 10h re-enters this hook as a mode set from the CRTC
+    ; owner with nothing deferred, and passes.
+    Push_Client_State
+    push    eax
+    VMMcall Begin_Nest_V86_Exec
+    pop     eax
+    mov     [ebp.Client_AX], ax
+    mov     eax, 10h
+    VMMcall Exec_Int
+    VMMcall End_Nest_Exec
+    Pop_Client_State
+    inc     V9xInt10DeferredCount
+    jmp     short V9xMini_Int10_Pass
+
+V9xMini_Int10_Windowed:
+    cmp     [ebp.Client_AH], V9X_INT10_SET_MODE
+    je      short V9xMini_Int10_Defer
     cmp     [ebp.Client_AX], V9X_INT10_VBE_SET_MODE
-    jne     short V9xMini_Int10_Serviced
+    jne     short V9xMini_Int10_Pass
     mov     [ebp.Client_AX], V9X_INT10_VBE_REFUSED
+    jmp     short V9xMini_Int10_Serviced
+
+    ; AH=00h, so AX is the mode in AL; bit 7 also makes it non-zero.
+V9xMini_Int10_Defer:
+    mov     edi, V9xInt10CbOffset
+    test    edi, edi
+    jz      short V9xMini_Int10_Serviced
+    movzx   eax, [ebp.Client_AL]
+    or      eax, V9X_INT10_NO_CLEAR
+    mov     word ptr [esi + edi], ax
+
 V9xMini_Int10_Serviced:
+    inc     V9xInt10GuardCount
     pop     edi
     pop     esi
     pop     ebx
@@ -5429,6 +5485,11 @@ IFDEF V9X_IO_TRACE
     call    V9xMini_IoTrace_Bars
 ENDIF
 IFNDEF V9X_NO_INT10_GUARD
+    ; Each VM's deferred mode set lives in its control block, which VMM
+    ; zeroes when the VM is created. Without one the guard still skips,
+    ; and defers nothing.
+    VMMcall _Allocate_Device_CB_Area, <V9X_INT10_CB_BYTES, 0>
+    mov     V9xInt10CbOffset, eax
     ; The serial line is written only when the hook took, so its absence
     ; from a boot log is the report of a failure.
     mov     eax, 10h

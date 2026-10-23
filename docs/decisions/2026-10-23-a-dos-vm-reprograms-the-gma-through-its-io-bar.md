@@ -126,6 +126,42 @@ written only when the hook took, and asserted in the image by the build.
 8000298E, `PRI_CTL_A` 94000000, `PIPE_SRCSZ_A` 031F0257 - the desktop's own
 values, read with the boxes open.
 
+### Full screen: the skipped mode set is deferred, not dropped
+
+Michael tried Alt+Enter on the netbook under the guard: the panel went
+blue with a single cursor dash instead of a DOS prompt. Measured with the
+trace build:
+
+- **The VDD runs no BIOS mode set at the switch to full screen.** HD 4600,
+  boot 72: no INT 10h and no I/O BAR access across Alt+Enter. On the netbook
+  (boot 229) also none.
+- So on the netbook nothing turned the VGA plane on: before the guard, the
+  VM-creation mode set had done it, as the side effect that broke windowed
+  boxes. The HD 4600 reached text mode at the switch anyway (`VGA_CONTROL`
+  0000298E, 720x400, read in full screen before any output) - through the
+  System VM, which the guard passes; which call does it was not traced.
+
+The guard now keeps a skipped AH=00h per VM (a word in its control block,
+`_Allocate_Device_CB_Area`, AL with bit 7 set so the BIOS keeps the text).
+The VM's first INT 10h once it owns the CRTC runs that mode set first,
+nested, then its own call; DOS writes its console through INT 10h. Netbook,
+boot 229: after Alt+Enter and `ver`, `Int10Deferred=1`, 403 I/O BAR
+accesses (the BIOS's mode set), and the panel showed the DOS prompt with
+`ver`'s output (Michael, by eye; its blue tint is the panel). Between
+Alt+Enter and the box's first output the panel still shows the blue
+picture. HD 4600, boot 73: `Int10Deferred=1` at `ver`, display state
+unchanged (already text).
+
+Shipping build with the deferral, netbook boot 232 and HD 4600 boot 74: the
+windowed test above repeated - two boxes together, both closed - with every
+register at the desktop's values and the windows' text correct.
+
+**Alt+Enter back to the window is unchanged and still broken:** with the
+original mini-VDD on the HD 4600 (boot 71) the desktop comes back frozen
+with a striped band along the top, GDI reads black, and the display driver
+is never re-entered - the open part of this issue, independent of the
+guard.
+
 The shadow code is not in the tree. The adapter discovery and I/O BAR
 trapping stay, in `-IoTrace` builds only, so shipping builds do not walk or
 size PCI configuration space.
@@ -140,10 +176,8 @@ size PCI configuration space.
 - **What a skipped mode set costs inside the VM.** The VM keeps the text mode
   the VDD gave it. A DOS program that sets a graphics mode, or clears the
   screen with a mode set, in a window will not get it; not tried.
-- **Full-screen DOS.** The VM owns the CRTC and its mode sets run, as before.
-  Alt+Enter from a window, where the VDD runs the mode set during the switch,
-  was not tried: if the VDD issues it before ownership moves, the guard would
-  skip it. Its return path is the open part of the issue anyway.
+- **Full-screen DOS.** Entry shows text after the box's first output; the
+  return to a window freezes as it did before this change.
 - **Win95.** Measured on Win98 SE only.
 
 ## Gates

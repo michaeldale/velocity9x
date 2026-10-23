@@ -17,7 +17,9 @@ build identifier so exact guest-tested binaries remain traceable.
   ([decision record](docs/decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)).
   Every package carries it; other cards were not measured. A DOS program
   that switches to a graphics mode in a window no longer gets that mode.
-  Full-screen DOS is unchanged.
+  Switching a DOS window to full screen still shows text: the skipped mode
+  set runs then, at the session's first output. Returning from full screen
+  to the desktop still freezes, as before.
 - **`intel-gma` binds the HD Graphics 4400 (`8086:041E`)** as an alias
   of the HD 4600: the same Haswell GT2 path. A DOS survey of one such
   desktop shows the HD 4600's BAR layout and VBE framebuffer, with 128 MiB
