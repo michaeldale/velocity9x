@@ -197,6 +197,42 @@ v9x_u16 v9x_mode_pitch_unaliased(v9x_u16 bits_per_pixel, v9x_u16 pitch)
     return (v9x_u16)(pitch + V9X_MODE_UNALIAS_PAD_BYTES);
 }
 
+/* DPMI 0800h maps whole pages, and the map sizes the families carry are all
+ * 64 KiB multiples; the retry ladder stays on the same granule. */
+#define V9X_VBE_MAP_GRANULE 0x00010000ul
+
+v9x_u32 v9x_vbe_map_floor_bytes(const V9X_HW16_MODE *table, v9x_u16 count)
+{
+    v9x_u32 largest = 0ul;
+    v9x_u16 index;
+
+    for (index = 0u; index < count; ++index) {
+        v9x_u32 bytes = (v9x_u32)table[index].pitch *
+                        (v9x_u32)table[index].height;
+
+        if (bytes > largest) {
+            largest = bytes;
+        }
+    }
+    return (largest + (V9X_VBE_MAP_GRANULE - 1ul)) &
+           ~(V9X_VBE_MAP_GRANULE - 1ul);
+}
+
+v9x_u32 v9x_vbe_map_retry_bytes(v9x_u32 tried_bytes, v9x_u32 floor_bytes)
+{
+    v9x_u32 half = (tried_bytes / 2ul) & ~(V9X_VBE_MAP_GRANULE - 1ul);
+
+    /* No floor means no table to size from, and a guess could leave the
+     * active mode outside its own mapping. */
+    if (floor_bytes == 0ul || floor_bytes >= tried_bytes) {
+        return 0ul;
+    }
+    if (half >= floor_bytes) {
+        return half;
+    }
+    return floor_bytes;
+}
+
 /* The stride a mode set with the linear bit actually produces. */
 static v9x_u16 v9x_effective_stride(const struct v9x_vbe_mode_summary *summary)
 {

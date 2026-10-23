@@ -118,6 +118,47 @@ static void test_pitch_unaliased(void)
               v9x_mode_pitch_unaliased(16u, 2048u)) == 2112u);
 }
 
+/*
+ * The mapping floor and retry ladder (issue 13). The table is the HD 3000
+ * laptop's 1366x768 rows from its boot record: 1366x768x32 at a 5504-byte
+ * pitch is 4227072 bytes, which rounds up to 0x410000.
+ */
+static void test_map_retry(void)
+{
+    static const V9X_HW16_MODE hd3000_rows[] = {
+        {  640u, 480u,  8u,  640u, 0x0101u, 254, 127 },
+        { 1366u, 768u,  8u, 1408u, 0x017du, 542, 271 },
+        { 1366u, 768u, 32u, 5504u, 0x017fu, 542, 271 },
+        { 1024u, 768u, 32u, 4096u, 0x0118u, 407, 203 }
+    };
+    v9x_u32 floor_bytes;
+
+    floor_bytes = v9x_vbe_map_floor_bytes(hd3000_rows, 4u);
+    MODECHECK(floor_bytes == 0x00410000ul);
+    /* Already on the granule stays put. */
+    MODECHECK(v9x_vbe_map_floor_bytes(baseline_seven, BASELINE_SEVEN_COUNT) ==
+              0x00180000ul);
+    MODECHECK(v9x_vbe_map_floor_bytes(hd3000_rows, 0u) == 0ul);
+
+    /* 16 MiB, 8 MiB, then the floor, then nothing. */
+    MODECHECK(v9x_vbe_map_retry_bytes(0x01000000ul, floor_bytes) ==
+              0x00800000ul);
+    MODECHECK(v9x_vbe_map_retry_bytes(0x00800000ul, floor_bytes) ==
+              0x00410000ul);
+    MODECHECK(v9x_vbe_map_retry_bytes(0x00410000ul, floor_bytes) == 0ul);
+    /* Halving lands exactly on the floor. */
+    MODECHECK(v9x_vbe_map_retry_bytes(0x00800000ul, 0x00400000ul) ==
+              0x00400000ul);
+    /* A halved odd size is rounded down to the granule, never below the
+     * floor. */
+    MODECHECK(v9x_vbe_map_retry_bytes(0x00230000ul, 0x00010000ul) ==
+              0x00110000ul);
+    /* A refused size already below the floor has nothing smaller to try. */
+    MODECHECK(v9x_vbe_map_retry_bytes(0x00200000ul, 0x00410000ul) == 0ul);
+    /* No table: nothing is known to fit, so do not guess. */
+    MODECHECK(v9x_vbe_map_retry_bytes(0x01000000ul, 0ul) == 0ul);
+}
+
 static void test_accept_admits_a_good_mode(void)
 {
     struct v9x_vbe_scan_entry entry;
@@ -1449,5 +1490,6 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_555_masks();
     test_highcolor_resolve();
     test_pitch_unaliased();
+    test_map_retry();
     return modes_failures;
 }

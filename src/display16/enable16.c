@@ -32,12 +32,18 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/vbe16.h"
 #include "velocity9x/vbe_cache.h"
+#include "velocity9x/vbe_modes.h"
 #include "velocity9x/mtrr.h"
 
 extern WORD v9x_active_vbe_mode;
 extern WORD v9x_vbe_mode_flags;
 extern WORD v9x_map_pages_hi;
 extern WORD v9x_map_pages_lo;
+
+/* modes16.c: the committed mode table, which sizes the smallest mapping the
+ * tier-0 retry may fall back to. */
+extern V9X_HW16_MODE v9x_runtime_modes[];
+extern WORD v9x_runtime_count;
 
 /* ddi.c. The mode row being enabled, valid before the PDEVICE exists. */
 extern WORD v9x_selected_mode_geometry(WORD FAR *width, WORD FAR *height,
@@ -66,6 +72,14 @@ extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
  */
 WORD v9x_hardware_stage_code = 0u;
 DWORD v9x_map_physical_base = 0ul;
+
+/*
+ * AX as the DPMI host left it after refusing the 0800h physical map, written
+ * by the mapping helper. Shared for the same reason as the stage code: stage 5
+ * alone cannot tell "no linear space left" from "address refused", and that
+ * difference is the whole of issue 13's open question.
+ */
+WORD v9x_dpmi_map_error = 0u;
 
 /*
  * VRAM as the BIOS reported it, or 0 when nothing asked.
@@ -935,6 +949,97 @@ static DWORD v9x_vbe_default_aperture(void)
     return mode.phys_base;
 }
 
+/* The family's current mapping size in bytes. */
+static DWORD v9x_map_bytes(void)
+{
+    return (((DWORD)v9x_map_pages_hi << 16) | (DWORD)v9x_map_pages_lo) + 1ul;
+}
+
+/* One "size:result" entry of the DpmiMap key: the error AX, or "ok". */
+static WORD v9x_append_map_attempt(char *text, WORD at, DWORD bytes,
+                                   WORD mapped)
+{
+    if (at != 0u) {
+        text[at++] = ' ';
+    }
+    at = v9x_append_hex32(text, at, bytes);
+    text[at++] = ':';
+    if (mapped != 0u) {
+        text[at++] = 'o'; text[at++] = 'k';
+        return at;
+    }
+    return v9x_append_hex16(text, at, v9x_dpmi_map_error);
+}
+
+/*
+ * Map again, smaller, after the DPMI host refused the family's mapping.
+ *
+ * Tier-0 only. A native family's mapping size is a fact about its chip - the
+ * registers or the GTT can sit past the framebuffer inside it - so shrinking
+ * it would trade a clean refusal for a fault. A tier-0 mapping is only the
+ * framebuffer and the DirectDraw heap after it, and the heap is the part that
+ * gives: v9x_vbe_map_retry_bytes halves the request down to the size of the
+ * largest mode, and the heap is clamped to whatever was granted.
+ *
+ * Every attempt goes to the boot record as DpmiMap, refused ones with the
+ * host's AX, so a refusal at the floor still says why. Issue 13: an HD 3000
+ * laptop's host refused the 16 MiB request at 0xB0000000 with no reason
+ * recorded.
+ */
+static WORD v9x_vbe_map_smaller(void)
+{
+    static char text[160];
+    DWORD floor_bytes;
+    DWORD tried = v9x_map_bytes();
+    DWORD next;
+    WORD width;
+    WORD height;
+    WORD bpp;
+    WORD pitch;
+    WORD mapped = 0u;
+    WORD at = 0u;
+
+    at = v9x_append_map_attempt(text, at, tried, 0u);
+    if (v9x_hw16.read_aperture != 0 || v9x_hardware_stage_code != 5u) {
+        text[at] = '\0';
+        v9x_write_ini_key("DpmiMap", text);
+        return 0u;
+    }
+
+    floor_bytes = v9x_vbe_map_floor_bytes(v9x_runtime_modes,
+                                          v9x_runtime_count);
+    /* Each entry is at most 14 characters; stop while one more still fits. */
+    while (mapped == 0u && v9x_hardware_stage_code == 5u &&
+           at + 15u < (WORD)sizeof(text)) {
+        next = v9x_vbe_map_retry_bytes(tried, floor_bytes);
+        if (next == 0ul) {
+            break;
+        }
+        tried = next;
+        v9x_map_pages_hi = (WORD)((tried - 1ul) >> 16);
+        v9x_map_pages_lo = (WORD)((tried - 1ul) & 0xfffful);
+        v9x_dpmi_map_error = 0u;
+        v9x_hardware_stage_code = 4u;
+        mapped = V9xMapAperture();
+        at = v9x_append_map_attempt(text, at, tried, mapped);
+    }
+    text[at] = '\0';
+    v9x_write_ini_key("DpmiMap", text);
+
+    if (mapped == 0u) {
+        return 0u;
+    }
+    /* The heap was sized against the request that failed. The literal dd16.c
+     * falls back to on a zero is 4 MiB, which can also exceed what was
+     * granted, so a zero is replaced with the mapping itself. */
+    if (v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) != 0u) {
+        v9x_vbe_vram_bytes = v9x_vram_usable_bytes(
+            v9x_vbe_vram_reported != 0ul ? v9x_vbe_vram_reported : tried,
+            pitch, height);
+    }
+    return mapped;
+}
+
 /*
  * Set the family's mode and hand back a mapped framebuffer selector, or 0.
  *
@@ -1068,7 +1173,19 @@ WORD FAR PASCAL V9xHardwareEnable(void)
      * the mapping helper; it advances the stage code itself. */
     v9x_hardware_stage_code = 4u;
     v9x_map_physical_base = base;
+    v9x_dpmi_map_error = 0u;
     mapped = V9xMapAperture();
+    if (mapped == 0u && v9x_hardware_stage_code == 5u) {
+        mapped = v9x_vbe_map_smaller();
+    } else if (mapped != 0u) {
+        /* Written on success too, so a refusal recorded on an earlier boot
+         * is not read as this one's. */
+        char text[16];
+        WORD at = v9x_append_map_attempt(text, 0u, v9x_map_bytes(), mapped);
+
+        text[at] = '\0';
+        v9x_write_ini_key("DpmiMap", text);
+    }
     if (mapped != 0u) {
         v9x_apply_measured_video_memory();
         /* After the mapping, and only on success: the aperture handed to the

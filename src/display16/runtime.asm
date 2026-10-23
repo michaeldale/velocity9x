@@ -36,6 +36,8 @@ EXTRN _v9x_map_pages_lo:WORD
 ; 4-7, so the numbered sequence stays one variable.
 EXTRN _v9x_hardware_stage_code:WORD
 EXTRN _v9x_map_physical_base:DWORD
+; AX from a refused DPMI 0800h, for the boot record. Defined in enable16.c.
+EXTRN _v9x_dpmi_map_error:WORD
 ; What the mini-VDD's cached BIOS answers said, written by the API callers
 ; below and read by enable16.c. Defined in C, like the stage code above.
 EXTRN _v9x_minivdd_base:DWORD
@@ -3807,7 +3809,12 @@ V9xMapSelectorAllocated:
     mov     di, _v9x_map_pages_lo
     mov     ax, 0800h
     int     31h
-    jc      short V9xMapFreeSelector
+    jnc     short V9xMapPhysicalMapped
+    ; DPMI 1.0 hosts return an 80xxh error code in AX; a 0.9 host may leave
+    ; 0800h there, which then reads as "no reason given", not as a code.
+    mov     _v9x_dpmi_map_error, ax
+    jmp     short V9xMapFreeSelector
+V9xMapPhysicalMapped:
     mov     word ptr V9xLinearAddress, cx
     mov     word ptr V9xLinearAddress+2, bx
     mov     _v9x_hardware_stage_code, 6

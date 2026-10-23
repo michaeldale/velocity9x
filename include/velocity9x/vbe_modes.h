@@ -207,6 +207,29 @@ void v9x_mode_english(v9x_u16 width, short *low, short *high);
 v9x_u16 v9x_mode_pitch_unaliased(v9x_u16 bits_per_pixel, v9x_u16 pitch);
 
 /*
+ * The smallest framebuffer mapping that every row of a mode table fits in:
+ * the largest pitch * height, rounded up to the 64 KiB DPMI page granule.
+ * 0 for an empty table.
+ *
+ * Every row, not the active one: the screen selector outlives a mode switch
+ * (enable16.c keeps and reuses it), so a mapping sized for 640x480x8 would be
+ * reused unchanged for 1024x768x32 and fault.
+ */
+v9x_u32 v9x_vbe_map_floor_bytes(const V9X_HW16_MODE *table, v9x_u16 count);
+
+/*
+ * The next, smaller framebuffer mapping to ask the DPMI host for after it
+ * refused tried_bytes: half of it, or floor_bytes once half would no longer
+ * cover the floor, or 0 when nothing smaller than tried_bytes covers it.
+ *
+ * Halving rather than going straight to the floor keeps as much off-screen
+ * heap as the host will allow; the floor keeps every mode reachable. Issue 13
+ * (HD 3000 laptop, 2026-10-22): the host refused the tier-0 family's 16 MiB
+ * mapping, and no mode on that machine needs more than about 4 MiB.
+ */
+v9x_u32 v9x_vbe_map_retry_bytes(v9x_u32 tried_bytes, v9x_u32 floor_bytes);
+
+/*
  * Is this scanned mode one the driver can put in its table?
  *
  * Stricter than v9x_vbe_mode_summary_is_drivable, which asks only whether a
