@@ -24,15 +24,16 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.26.0.** OpenGL draws textures that games build
-with `gluBuild2DMipmaps`, which Tux Racer's menus were missing on every
-card. On the HD 4600, OpenGL draws no longer wait for the GPU one at a
-time: Quake III Arena's demo001 at 1024x768 runs 42.6 fps, up from 35.7.
-The ATI Rage 128 Pro installs, with DirectDraw on its 2D engine. **Glide
+**Current version: 0.26.1.** A fix for the `vbe` package: when Windows
+refuses its 16 MB framebuffer window, as on a reporter's HD 3000 laptop,
+it now asks for a smaller one, and `V9XBOOT.INI` records why a mapping
+failed. Untested on any machine. 0.26.0 made OpenGL draw textures built
+with `gluBuild2DMipmaps`, sped up OpenGL on the HD 4600, and added the
+ATI Rage 128 Pro. **Glide
 and 3DCIF DLLs from 0.23.0 or earlier still do not work with this
 driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.26.0](releases/0.26.0/README.md).
+[releases/0.26.1](releases/0.26.1/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.

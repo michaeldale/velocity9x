@@ -4,7 +4,22 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.27.0 - not yet released
+## 0.26.1 - 2026-10-23
+
+- **`vbe` package: a framebuffer mapping Windows refuses is retried
+  smaller.** On a reporter's HD 3000 laptop the driver stopped at
+  `fail-hardware-dpmi-map`: Windows refused to map the package's 16 MB
+  framebuffer window, although no mode there needs more than about 4 MB.
+  The package now asks again for 8 MB, then for what its largest mode
+  needs, and shrinks the DirectDraw memory to match. The other packages
+  are unchanged; their mappings cover chip registers and are not shrunk
+  ([issue record](docs/issues/2026-10-22-github-13-hd3000-vbe-dpmi-map.md),
+  [GitHub issue 13](https://github.com/michaeldale/velocity9x/issues/13)).
+  Not tested on any machine: whether the smaller mapping is granted on
+  that laptop is unknown.
+- **`V9XBOOT.INI` records why a framebuffer mapping failed.** A new
+  `DpmiMap=` line gives each size asked for and Windows' error code, or
+  `ok`, on every package.
 
 ## 0.26.0 - 2026-10-23
 
