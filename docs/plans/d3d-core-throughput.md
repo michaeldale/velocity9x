@@ -84,6 +84,47 @@ Two causes, one shared and one the Rage 128's:
   engine, 1.33 M times in one run. Linux's r128 flushes at clears and
   swaps, not per primitive.
 
+**Tried and dropped: no pixel-cache flush per batch** (boot 546). The
+drain issued one flush through the ring instead. V9XD32 and the four
+render probes passed. 3DMark 2000 scored 1454 against 1444, and the CPU's
+wait for ring space was 42.3 s against 42.6 s. That is within run-to-run
+noise, so the per-batch flush is not what holds the GPU, and the change
+was reverted unmerged.
+
+## Proposal for Michael's review: flips queued behind the drawing
+
+This changes flip behaviour in the shared core for every engine that
+takes it.
+
+1. **An engine hook that queues a flip in the command stream.** The
+   Rage 128 writes `CRTC_OFFSET` with a type-0 packet after the frame's
+   last batch, as Linux's `r128_cce_dispatch_flip` does. Intel's ring
+   flip (`MI_DISPLAY_FLIP`, `CAP_FLIP_RING`) is the existing case. With
+   the hook, `v9x_flip_body` skips `v9x_wait_idle` and
+   `v9x_render_drain`, queues the flip, and returns. The CPU builds the
+   next frame while the GPU draws this one.
+2. **The GPU, not the CPU, waits before drawing into a buffer still on
+   screen.** The first batch after a queued flip starts with the
+   engine's wait for the flip to latch: the Rage 128's `WAIT_UNTIL`
+   page-flip event, as Linux emits it, or `MI_WAIT_FOR_EVENT` on Intel.
+   The GM965's ring flips tore 3DMark frames when they were tried
+   (parked, branch `park/gen4-flip-chain-128k`). Drawing into the
+   still-displayed buffer without that wait fits the symptom; that is
+   unverified.
+3. **Bounded depth:** Flip answers WASSTILLDRAWING only while the
+   chain's last flip has not latched, so with triple buffering the
+   CPU runs one frame ahead at most. Lock, a blit or GetFlipStatus on a
+   surface in a queued flip drains first, as now.
+4. **Engines without the hook keep today's path unchanged.**
+
+Measured on A8U4I5 first, then on the netbook's Gen3, where a ring flip
+already exists, before any default changes elsewhere.
+
+Next, separately: a per-engine batch size in place of the core's fixed
+64 triangles (`V9X_D3D_INDEXED_BATCH`, sized to Gen3). The Rage 128's
+packet takes 256, and the ring would grow with it. Then the core's own
+per-call cost, about 40 s of the run outside the engine.
+
 ## Steps
 
 1. Time the Rage 128 (`V9X_TIME_ENABLED` on `ATI_RAGE128`). Use the
