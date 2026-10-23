@@ -169,9 +169,28 @@ static V9X_D3DTLVERTEX v9x_d3d_gather[V9X_D3D_INDEXED_BATCH * 3u];
  */
 #define V9X_D3D_PIXEL_CENTRE 0.5f
 
-/* The move for ops' engine: half a pixel, or none. */
+/*
+ * The move ops' engine makes itself as it copies each vertex
+ * (V9X_D3D_ENGINE_LIMITS.centre_in_engine): half a pixel, or none. Only an
+ * engine the core does not clip for, so nothing is cut before the move;
+ * RenderPrimitive's own clip still cuts at the target's edge, and that
+ * engine's scissor at the same edge keeps the pixels it would have.
+ */
+static float v9x_d3d_engine_centre(const V9X_D3D_ENGINE_OPS *ops)
+{
+    return ops->limits->pixel_centre_half != 0ul &&
+                   ops->limits->centre_in_engine != 0ul &&
+                   ops->limits->clip_in_core == 0ul
+               ? V9X_D3D_PIXEL_CENTRE
+               : 0.0f;
+}
+
+/* The move the core makes for ops' engine: half a pixel, or none. */
 static float v9x_d3d_centre_offset(const V9X_D3D_ENGINE_OPS *ops)
 {
+    if (v9x_d3d_engine_centre(ops) != 0.0f) {
+        return 0.0f;
+    }
     return ops->limits->pixel_centre_half != 0ul ? V9X_D3D_PIXEL_CENTRE
                                                  : 0.0f;
 }
@@ -552,7 +571,9 @@ static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
  * draws_no_handle and draws_handle_unresolved counters count batches from
  * here on (docs\plans\opengl-1.1-icd.md, Phase 1b).
  */
-static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
+static void v9x_d3d_describe_draw(const V9X_D3D_ENGINE_OPS *ops,
+                                  V9X_D3D_CONTEXT *context,
+                                  V9X_R3D_DRAW *draw)
 {
     V9X_D3D_STATE_RAW raw;
 
@@ -576,6 +597,7 @@ static void v9x_d3d_describe_draw(V9X_D3D_CONTEXT *context, V9X_R3D_DRAW *draw)
     draw->texture.level_count = 0ul;
     draw->explicit_state = 0ul;
     draw->vertex_alpha_opaque = 0ul;
+    draw->centre_offset = v9x_d3d_engine_centre(ops);
     draw->texture1.object = 0;
     draw->texture1.levels = 0;
     draw->texture1.level_count = 0ul;
@@ -664,7 +686,7 @@ static int v9x_d3d_dispatch_engine(const V9X_D3D_ENGINE_OPS *ops,
     if (ops->draw == 0) {
         return ops->draw_triangles(context, vertices, triangle_count);
     }
-    v9x_d3d_describe_draw(context, &draw);
+    v9x_d3d_describe_draw(ops, context, &draw);
     return ops->draw(&draw, (const V9X_R3D_VERTEX *)vertices, triangle_count);
 }
 
@@ -809,7 +831,7 @@ static int v9x_d3d_draw_indexed_engine(
     int result;
     int submitted;
 
-    v9x_d3d_describe_draw(context, &draw);
+    v9x_d3d_describe_draw(ops, context, &draw);
     result = ops->draw_indexed(
         &draw, (const V9X_R3D_VERTEX *)data->lpvVertices,
         data->dwNumVertices, (const v9x_u16 *)data->lpwIndices,
@@ -1119,15 +1141,20 @@ static int v9x_d3d_clip_triangle(const V9X_D3D_CONTEXT *context,
  * winding, and after the strip builders, which swap every odd triangle so
  * that a strip arrives here with one consistent winding.
  */
-static int v9x_d3d_triangle_culled(const V9X_D3D_CONTEXT *context,
-                                   const V9X_D3DTLVERTEX *triangle)
+static unsigned long v9x_d3d_cull_mode(const V9X_D3D_CONTEXT *context)
 {
     DWORD misc = v9x_hal != 0
         ? v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps : 0ul;
-    unsigned long mode = v9x_r3d_cull_honoured(
-        context->cull_mode,
-        (misc & V9X_D3DPMISCCAPS_CULLCW) != 0ul,
-        (misc & V9X_D3DPMISCCAPS_CULLCCW) != 0ul);
+
+    return v9x_r3d_cull_honoured(context->cull_mode,
+                                 (misc & V9X_D3DPMISCCAPS_CULLCW) != 0ul,
+                                 (misc & V9X_D3DPMISCCAPS_CULLCCW) != 0ul);
+}
+
+static int v9x_d3d_triangle_culled(const V9X_D3D_CONTEXT *context,
+                                   const V9X_D3DTLVERTEX *triangle)
+{
+    unsigned long mode = v9x_d3d_cull_mode(context);
 
     return v9x_r3d_cull_triangle(mode,
                                  triangle[0].sx, triangle[0].sy,
@@ -1140,6 +1167,7 @@ static int v9x_d3d_triangle_culled(const V9X_D3D_CONTEXT *context,
 typedef struct v9x_d3d_list_sink {
     const V9X_D3D_ENGINE_OPS *ops;
     V9X_D3D_CONTEXT *context;
+    unsigned long cull_mode;    /* once per list, not per triangle */
 } V9X_D3D_LIST_SINK;
 
 static int v9x_d3d_list_batch(void *user, const V9X_R3D_VERTEX *vertices,
@@ -1156,8 +1184,13 @@ static int v9x_d3d_list_culled(void *user, const V9X_R3D_VERTEX *triangle)
 {
     V9X_D3D_LIST_SINK *sink = (V9X_D3D_LIST_SINK *)user;
 
-    return v9x_d3d_triangle_culled(sink->context,
-                                   (const V9X_D3DTLVERTEX *)triangle);
+    if (sink->cull_mode == V9X_R3D_CULL_NONE) {
+        return 0;
+    }
+    return v9x_r3d_cull_triangle(sink->cull_mode,
+                                 triangle[0].sx, triangle[0].sy,
+                                 triangle[1].sx, triangle[1].sy,
+                                 triangle[2].sx, triangle[2].sy);
 }
 
 /*
@@ -1176,6 +1209,7 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
 
     sink.ops = ops;
     sink.context = context;
+    sink.cull_mode = v9x_d3d_cull_mode(context);
     list.guard_limit = ops->limits->coordinate_limit;
     list.width = (float)context->width;
     list.height = (float)context->height;
@@ -5287,6 +5321,8 @@ static DWORD v9x_r3d_describe(const V9X_R3D_ABI_DRAW *request,
      * refuses what it cannot draw exactly (the software engine draws all of
      * it; the hardware engines refuse CPU levels, a scissor and a mask). */
     draw->explicit_state = 1ul;
+    /* The render interface's vertices are on the contract's centres. */
+    draw->centre_offset = 0.0f;
     draw->scissor_left = state->scissor_left;
     draw->scissor_top = state->scissor_top;
     draw->scissor_right = state->scissor_right;

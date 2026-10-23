@@ -327,6 +327,23 @@ static void test_indexed(void)
     CHECK(v9x_r128_3d_build_indexed(3ul, 0, 0ul, 0ul, header) ==
           V9X_STATUS_INVALID_ARGUMENT);
 
+    /* A list walked from the vertex buffer, no indices: as Linux's
+     * r128_cce_dispatch_vertex, 3D_RNDR_GEN_INDX_PRIM with n 3 and
+     * PRIM_WALK_LIST (20h) on TRI_LIST. */
+    CHECK(v9x_r128_3d_build_list(6ul, 0x00012000ul, header) ==
+          V9X_STATUS_OK);
+    CHECK(header[0] == (0xc0002300ul | (3ul << 16)));
+    CHECK(header[1] == 0x00012000ul);
+    CHECK(header[2] == 6ul);
+    CHECK(header[3] == 0x000000c9ul);
+    CHECK(header[4] == (0x24ul | (6ul << 16)));
+    CHECK(v9x_r128_3d_build_list(4ul, 0ul, header) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_r128_3d_build_list(0ul, 0ul, header) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_r128_3d_build_list(V9X_R128_LIST_VERTICES_MAX + 3ul, 0ul,
+                                 header) == V9X_STATUS_INVALID_ARGUMENT);
+
     CHECK(v9x_r128_3d_pack_indices(list, 5ul, 10ul, packed) == 3ul);
     CHECK(packed[0] == 0x00010000ul);
     CHECK(packed[1] == 0x00020002ul);

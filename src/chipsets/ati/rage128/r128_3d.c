@@ -118,6 +118,9 @@
  * PRIM_WALK_IND 0x10. */
 #define R128_VC_CNTL_IND_TRI_LIST       0x00000014ul
 #define R128_VC_CNTL_IND_TRI_STRIP      0x00000016ul
+/* And for a vertex buffer walked in order: TRI_LIST with PRIM_WALK_LIST
+ * 0x20 (r128_drv.h). */
+#define R128_VC_CNTL_LIST_TRI_LIST      0x00000024ul
 
 /* PM4_VC_FPU_SETUP's face bits (r128_reg.h): FRONT_DIR 0 (1 = CCW),
  * BACKFACE 2:1 and FRONTFACE 4:3, 0 cull and 3 solid. Mesa flips y when it
@@ -542,6 +545,24 @@ v9x_u32 v9x_r128_3d_pack_indices(const v9x_u16 *indices, v9x_u32 count,
         out[written++] = ((v9x_u32)indices[at] - base) & 0xfffful;
     }
     return written;
+}
+
+v9x_status v9x_r128_3d_build_list(v9x_u32 vertex_count,
+                                  v9x_u32 vertex_offset,
+                                  v9x_u32 header[V9X_R128_LIST_HEADER_DWORDS])
+{
+    if (header == 0 || vertex_count == 0ul || vertex_count % 3ul != 0ul ||
+        vertex_count > V9X_R128_LIST_VERTICES_MAX) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Four body dwords and no indices: n is 3. */
+    header[0] = V9X_R128_PACKET3(V9X_R128_PACKET3_3D_RNDR_GEN_INDX_PRIM, 3ul);
+    header[1] = vertex_offset;
+    header[2] = vertex_count;
+    header[3] = R128_VC_FRMT_TL;
+    header[4] = R128_VC_CNTL_LIST_TRI_LIST |
+                (vertex_count << R128_VC_CNTL_COUNT_SHIFT);
+    return V9X_STATUS_OK;
 }
 
 v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count,

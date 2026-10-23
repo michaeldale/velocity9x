@@ -247,9 +247,12 @@ foreach ($relative in $sources) {
     # optimised; it runs per register write under Quake 2 (2026-09-29).
     # So is the Rage II's, whose CPU triangle setup is most of a Quake 2
     # frame (2026-10-03). Everything else keeps the code generation its
-    # hardware measured.
+    # hardware measured. The Direct3D core and its list, clip and cull, and
+    # the Rage 128's draw path, are optimised too: unoptimised, 3DMark 2000
+    # on A8U4I5 spent half the CPU in them at 2% ring wait (2026-10-24,
+    # docs\plans\d3d-core-throughput.md).
     $optimise = @()
-    if ($name -match 'mach64|rage2') {
+    if ($name -match 'mach64|rage2|^d3d_core$|^r3d_(clip|cull)$|^d3d_r128(_map)?$|^r128_(3d|cce|ring)$') {
         $optimise = @('-ox')
     }
     & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-we" "-zl" "-s" @optimise `

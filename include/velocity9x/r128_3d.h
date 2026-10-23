@@ -242,6 +242,20 @@ v9x_status v9x_r128_3d_build_indexed(v9x_u32 index_count, int strip,
                                      v9x_u32 vertex_count,
                                      v9x_u32 header[V9X_R128_INDX_HEADER_DWORDS]);
 
+/*
+ * The five dwords of a triangle list of vertex_count TL vertices that the
+ * engine walks from the vertex buffer at vertex_offset (the distance from
+ * AGP_BASE, as for indices) rather than reading them from the ring: as
+ * Linux's r128_cce_dispatch_vertex builds it, 3D_RNDR_GEN_INDX_PRIM with
+ * PRIM_WALK_LIST and no indices. INVALID_ARGUMENT for none, a count that
+ * is not whole triangles, or more than the count field holds.
+ */
+#define V9X_R128_LIST_HEADER_DWORDS     5u
+#define V9X_R128_LIST_VERTICES_MAX      65535ul
+v9x_status v9x_r128_3d_build_list(v9x_u32 vertex_count,
+                                  v9x_u32 vertex_offset,
+                                  v9x_u32 header[V9X_R128_LIST_HEADER_DWORDS]);
+
 /* The indices less `base`, two to a dword, the first in the low half, an
  * odd last one with a zero high half. Returns the dwords written. */
 v9x_u32 v9x_r128_3d_pack_indices(const v9x_u16 *indices, v9x_u32 count,

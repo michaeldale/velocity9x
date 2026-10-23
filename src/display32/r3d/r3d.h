@@ -251,6 +251,13 @@ typedef struct v9x_r3d_draw {
      * so this is how one that must know (the Mach64's MODULATEALPHA) can. */
     v9x_u32 vertex_alpha_opaque;
     /*
+     * What the engine adds to every vertex's sx and sy as it copies it:
+     * half a pixel for a Direct3D draw on an engine whose limits say
+     * centre_in_engine (d3d_core.c, v9x_d3d_centre), zero from every other
+     * caller, whose vertices are already where they are drawn.
+     */
+    float centre_offset;
+    /*
      * A second texture unit, from the render interface only: texcoords1 is
      * non-null exactly when there is one, and then holds two floats a
      * vertex - tu1, tv1 - in the order of the vertices ops->draw receives.

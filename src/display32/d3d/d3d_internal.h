@@ -396,6 +396,18 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD depth32_bits;
     /*
+     * Nonzero when the engine applies pixel_centre_half's move itself, to
+     * each vertex as it copies it (V9X_R3D_DRAW.centre_offset), so the
+     * Direct3D core hands over the application's vertices unmoved and
+     * unstaged: the move cost a copy of every triangle into the list
+     * staging, with the Rage 128 already copying each into its stream and
+     * again into its ring (3DMark 2000 on A8U4I5, 2026-10-24,
+     * docs\plans\d3d-core-throughput.md). Honoured only with clip_in_core
+     * zero, since the move must come before a clip. Appended 2026-10-24;
+     * an initialiser that stops short leaves it zero.
+     */
+    DWORD centre_in_engine;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

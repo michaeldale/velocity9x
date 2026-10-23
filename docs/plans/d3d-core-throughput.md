@@ -299,6 +299,26 @@ What the numbers say:
   core's expansion and the list path; the decode and ring-write shares
   there are that path's cost.
 
+## Fewer copies, and an optimised core (Michael: "commit and do item 1", 2026-10-24)
+
+Timing `map` and the core's `describe_draw` apart (boot 555, measurement
+only) put the Decode bucket's cost in the per-triangle loop, not the
+state: map 2-3% of the CPU, describe 0.2%. Each list triangle was copied
+four times: the core's half-pixel move, its staging, the Rage 128's
+stream, the ring. Now an engine may take the move itself
+(`centre_in_engine`, honoured only with `clip_in_core` zero, and
+`V9X_R3D_DRAW.centre_offset`), so the core hands the application's runs
+over unstaged; the Rage 128 checks vertices on their float bits and takes
+runs of any length; the cull mode is decided once per list. Boot 556:
+1607 against 1604, the cost moved rather than shrank.
+
+The cause was the build: `build-ddraw-hal-dll.ps1` optimised only the
+Mach64 and Rage II objects. The Direct3D core, its list, clip and cull,
+and the Rage 128's draw, state and ring code are now built `-ox` too.
+Boot 557: 1636, decode down a quarter in high polygon and CPU speed. The
+Intel netbook (boot 236) gives V9XD32 results identical to its previous
+build's; it cannot run 3DMark 2000's default 1024x768 benchmark.
+
 ## Sampling profile, ours against ATI's (Michael: "You can do sampling profiler", 2026-10-24)
 
 `V9XPROF.EXE` (`tools\diag\profile_win32.c`) starts the program and,
@@ -340,6 +360,36 @@ desktop, so it does not wait for the blank there. The Rage 128 keeps
 `CRTC_OFFSET_FLIP_CNTL` clear (latch at the blank) in our driver, which
 `r128_scanout.c` requires; whether 3DMark asks for `DDFLIP_NOVSYNC` is not
 counted.
+
+## The chip-side hypotheses, tested (Michael: "Test the hypotheses", 2026-10-24)
+
+A8U4I5, 3DMark 2000 default run, one change at a time against the same
+baseline, each build passing V9XD32 first:
+
+| Build | 3DMarks | Helicopter l/m/h fps | Adventure l/m/h fps | High polygon 1/4/8 KTri/s | CPU speed |
+|---|---|---|---|---|---|
+| Baseline, boot 560 | 1645 | 37.1 / 25.6 / 10.8 | 25.8 / 21.4 / 16.4 | 1154 / 1080 / 1032 | 186 |
+| H2 state kept, boot 561 | 1638 | 36.9 / 25.4 / 10.7 | 25.8 / 21.3 / 16.3 | 1126 / 1057 / 999 | 182 |
+| H3 AGP vertices, boot 562 | 1697 | 37.3 / 26.4 / 11.0 | 26.2 / 22.4 / 18.1 | 1466 / 1344 / 1257 | 198 |
+| ATI 4.13.7192 | 2404 | 42.6 / 32.8 / 16.1 | 41.0 / 37.9 / 29.9 | 2341 / 2067 / 1864 | 255 |
+
+- **H1, the flip wait in the ring: refuted by the counters.**
+  `DrawsFlipWaited` was 0 across a whole run (boot 560), and Flip was
+  0.1-0.2% of the CPU in the game tests.
+- **H2, the state resent with every batch: refuted.** Skipping a state
+  identical to the last one sent in the same run of the engine changed
+  nothing, high polygon included, where runs share one state. Not kept.
+- **H3, vertices inline in the ring: confirmed, kept.** List batches now
+  put their vertices in the AGP vertex area and send a five-dword
+  3D_RNDR_GEN_INDX_PRIM walking them (`v9x_r128_3d_build_list`, as
+  Linux's r128_cce_dispatch_vertex): high polygon +27%, CPU speed +6%.
+
+With H3 the CPU no longer waits for ring space in the game tests; the
+same time moved into render drains (41% of the CPU in Helicopter low, 60%
+in Adventure low, V9XCPU boot 562), each frame's clear being a 2D fill
+that drains the chip first. So the game tests still wait on the chip, and
+once a frame each side now idles while the other works. Next to test:
+the clear in the ring (H4).
 
 ## Proposal for Michael's review: flips queued behind the drawing
 

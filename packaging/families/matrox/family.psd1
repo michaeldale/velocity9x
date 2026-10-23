@@ -239,6 +239,11 @@
         Folder = 'MATROX'
         Order = 4
         HardwareIdHint = 'PCI 102B:0519, 102B:051B, 102B:051A'
+        # Installed files that ride a third disk, as ATI's do: disk 1 went
+        # 553 bytes over when the shared Direct3D core was optimised
+        # (Michael, 2026-10-24: "Matrox extra floppy ok"). The update
+        # checker, which nothing needs to boot or draw.
+        ThirdDisk = @('V9XUPD.EXE')
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test
