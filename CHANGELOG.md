@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.29.0 - not yet released
+
 ## 0.28.0 - 2026-10-23
 
 - **ATI Rage 128 Pro: Direct3D, OpenGL and Glide in hardware.** Triangles
