@@ -258,6 +258,47 @@ That build was not kept: the range check stays. More engine-drawn calls
 did not move the score, so the CPU side's submission is not what limits
 it; the chip is (the ring-space waits measured above).
 
+## CPU use per test (Michael: "Do logger", 2026-10-24)
+
+`V9XCPU.EXE` (`tools\diag\cpu_usage_win32.c`) samples once a second, at
+time-critical priority, Windows 98's `KERNEL\CPUUsage` and the HAL's
+timing buckets through `V9X_DDGETTRACE`, each bucket as a share of the
+second's TSC cycles. A8U4I5 boot 554, committed build `c4d9778a`,
+default run: **1604**, so the logger costs nothing measurable.
+
+`CPUUsage` read 100% from 3DMark's start to its score window, loading
+screens included: 3DMark spins, and so does every busy-wait. It cannot
+separate work from waiting, so the buckets carry the answer. Shares of
+the CPU's time, typical seconds of each test:
+
+| Test | In D3D calls | of which decode | ring write (of it waiting) | drain | flip | outside the HAL |
+|---|---|---|---|---|---|---|
+| Helicopter low | 51% | 14% | 30% (24%) | 1% | 0% | 48% |
+| Helicopter medium | 48% | 20% | 19% (12%) | 0% | 0% | 52% |
+| Helicopter high | 51% | 27% | 18% (13%) | 0% | 0% | 49% |
+| Adventure low | 73% | 7% | 62% (57%) | 0% | 0% | 27% |
+| CPU speed (Game 1) | 42% | 31% | 5% (0%) | 0% | 0% | 58% |
+| Fill rate | 0% | 0% | 0% | 0% | 97% | 3% |
+| High polygon | 54% | 18% | 19% (2%) | 0% | 0% | 46% |
+| Texture rendering | 4-7% | 1-4% | 0% | 1-13% | 35-80% | |
+
+What the numbers say:
+- **The driver's own CPU work is large where the GPU is not the limit.**
+  In high polygon the ring hardly waits (2%), yet the D3D calls take 54%:
+  about 52% of the CPU is the driver working, at about 200 calls and 6
+  flips a second. In CPU speed, decode alone is 31% at about 4,600 calls
+  a second: about 67,000 cycles a call.
+- **The game tests split three ways:** about a quarter waiting for the
+  GPU, a quarter of driver work, half outside the HAL (the runtime's
+  transform and lighting, 3DMark, and the 16-bit side, which this does
+  not see).
+- **The fill rate test spends 97% polling Flip** (about 330,000 Flip calls
+  a second), the texture tests 35-80%: the vertical-blank cap.
+- High polygon draws indexed calls whose vertex ranges exceed a segment
+  (the Range declines, up to 5,894 vertices), so they go through the
+  core's expansion and the list path; the decode and ring-write shares
+  there are that path's cost.
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that
