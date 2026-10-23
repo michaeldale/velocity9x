@@ -139,6 +139,22 @@ pattern, on the Gen5 CPU display
 `intel-gma` family is not the writer. That leaves the video BIOS's mode set
 in the new VM, and how the VDD and mini-VDD let it reach the hardware.
 
+## 2026-10-23: the writer is the DOS VM's video BIOS, through the I/O BAR; windowed boxes fixed
+
+Full record:
+[`2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md`](../decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md).
+
+An `-IoTrace` mini-VDD that traps the adapter's I/O BAR logged the new DOS
+VM making 534 accesses to the GMA's `MMIO_INDEX`/`MMIO_DATA` pair on one
+windowed `command`, and its 44 writes are the 2026-09-24 corrupt state
+register for register; the HD 4600 does the same. Virtualizing the pair
+worked on the GMA 950 and hung the HD 4600, whose BIOS polls hardware state.
+What ships instead: the mini-VDD keeps a mode set (INT 10h AH=00h, 4F02h)
+from any VM that does not own the CRTC from reaching the BIOS. GMA 950 boot
+228 and HD 4600 boot 70: two windowed boxes at once leave every live display
+register at the desktop's values, and the windows' contents are correct.
+Full-screen DOS unchanged.
+
 ## Next
 
 Reproduce once with the flushing build, after the mode and DPMS rows have

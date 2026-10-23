@@ -43,6 +43,14 @@ param(
     # With -IoTrace the shield is a branch of the trace handler, so this
     # switch works in both builds.
     [switch]$NoShieldAdvFunc,
+    # -NoInt10Guard removes the INT 10h mode-set guard, which every build
+    # otherwise carries, trace builds included: a mode set (AH=00h, or
+    # AX=4F02h) from a DOS VM that does not own the screen is not run,
+    # because the video BIOS's mode set at DOS VM creation reprograms the
+    # Windows display through ports the main VDD does not trap
+    # (docs\decisions\2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md).
+    # Differential build for the A/B; not for shipping.
+    [switch]$NoInt10Guard,
     # -NoScreenSwitch refuses the full-screen DOS box outright, through
     # CHECK_SCREEN_SWITCH_OK. The DDK's own XGA mini-VDD does this for a
     # driver in a VESA mode, for the reason that applies to tier-0: the
@@ -204,6 +212,12 @@ if ($shieldStandalone) {
     $buildIncludeLines += @(
         "V9xMiniShieldLine db `"V9X-MINI advfunc-shield on build=$BuildId`", 13, 10",
         "V9xMiniShieldLineLength equ `$ - V9xMiniShieldLine"
+    )
+}
+if (-not $NoInt10Guard) {
+    $buildIncludeLines += @(
+        "V9xMiniInt10GuardLine db `"V9X-MINI int10-guard on build=$BuildId`", 13, 10",
+        "V9xMiniInt10GuardLineLength equ `$ - V9xMiniInt10GuardLine"
     )
 }
 if (-not $s3Dpms) {
@@ -434,6 +448,9 @@ if ($IoTrace) {
 if ($NoShieldAdvFunc) {
     $assemblerArguments = @("-DV9X_NO_IO_SHIELD") + $assemblerArguments
 }
+if ($NoInt10Guard) {
+    $assemblerArguments = @("-DV9X_NO_INT10_GUARD") + $assemblerArguments
+}
 if ($NoScreenSwitch) {
     $assemblerArguments = @("-DV9X_NO_SCREEN_SWITCH") + $assemblerArguments
 }
@@ -510,6 +527,14 @@ if ($shieldStandalone) {
     }
 } elseif ($imageText.Contains($shieldMarker)) {
     throw "A -NoShieldAdvFunc or -IoTrace mini-VDD must not carry the shield marker."
+}
+$int10GuardMarker = "V9X-MINI int10-guard on"
+if (-not $NoInt10Guard) {
+    if (-not $imageText.Contains($int10GuardMarker)) {
+        throw "The mini-VDD is missing its INT 10h guard marker."
+    }
+} elseif ($imageText.Contains($int10GuardMarker)) {
+    throw "A -NoInt10Guard mini-VDD must not carry the INT 10h guard marker."
 }
 $sourceText = Get-Content -LiteralPath $sourcePath -Raw
 # Every dispatch the source declares, paired with the IFDEF it sits inside.

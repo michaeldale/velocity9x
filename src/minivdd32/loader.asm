@@ -38,6 +38,9 @@ IFNDEF V9X_IO_TRACE
 V9X_ADVFUNC_SHIELD equ 1
 ENDIF
 ENDIF
+; The INT 10h mode-set guard (a windowed DOS VM's video BIOS mode set is not
+; run; see V9xMini_Int10_Hook) is in every build, trace builds included, and
+; -NoInt10Guard takes it out for an A/B.
 
 ; Stage 1 deliberately makes fewer no-timeout BIOS calls than the frozen ABI
 ; maximum permits. QEMU's measured 93-entry list still fits; later rollout can
@@ -445,7 +448,30 @@ V9xVbeEntryMode dw 0
 V9xTotalVramBytes dd 0
 ; One-shot latch for the size query's trace line.
 V9xVramAsked    dw 0
+
+; INT 10h mode sets the guard has kept from the video BIOS since boot. Read
+; out by the -IoTrace readout; nothing else reports it.
+V9xInt10GuardCount dd 0
 IFDEF V9X_IO_TRACE
+; -IoTrace also finds the display adapter and traps its I/O BARs: the first
+; PCI function of class 030000h (VGA-compatible) with I/O decoding on. Bus 0
+; to 15 covers an IGD, an AGP card behind its bridge, and a PCIe card a few
+; bridges down; six BARs per PCI 2.1 type-0 header. That is how a DOS VM's
+; video BIOS was caught reprogramming an Intel display through its I/O BAR
+; (docs\decisions\2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-
+; bar.md), and how the same is looked for on another chip.
+;
+; Keep these contiguous and in this order: the readout copies them as one
+; block after the trace's own four counters.
+V9X_ADAPTER_BUS_MAX equ 16
+V9X_IOBAR_MAX       equ 6
+V9X_ADAPTER_DWORDS  equ 4 + 2 * V9X_IOBAR_MAX
+V9xAdapterPciAddr dd 0         ; config address of the adapter, 0 = none found
+V9xIoBarCount    dd 0          ; I/O BARs recorded below
+V9xIoBarBase     dd V9X_IOBAR_MAX dup (0)
+V9xIoBarSize     dd V9X_IOBAR_MAX dup (0)
+V9xIoBarIntelPair dd 0         ; an Intel IGD's MMIO_INDEX/MMIO_DATA pair, or 0
+V9xIoBarGuardCopy dd 0         ; V9xInt10GuardCount at the readout
 ; -IoTrace: port I/O traps on the 8514/A register file, V86 VMs only.
 ;
 ; Instrument for docs\issues\2026-09-06-dos-box-doubles-the-desktop-on-
@@ -462,8 +488,16 @@ IFDEF V9X_IO_TRACE
 ; The System VM is exempted with Disable_Local_Trapping at Sys_VM_Init, so the
 ; display driver's own port I/O never enters the handler. Ring-0 I/O is never
 ; trapped by the VMM at all, which is why an empty log is informative.
-V9X_IOTRACE_ENTRIES equ 512
+;
+; Every port of the display adapter's I/O BARs is trapped as well (see the
+; adapter record above), for the DOS-VM display fault on Intel GMA. 4096
+; entries: one BIOS mode set is hundreds of index/data pairs.
+V9X_IOTRACE_ENTRIES equ 4096
 V9X_IOTRACE_PORTS   equ 21
+; Ports trapped per I/O BAR at most. GMA's is 8, Mach64 and Rage 128's 256.
+V9X_IOTRACE_BAR_PORTS_MAX equ 256
+; The readout header: these four, then the adapter record.
+V9X_IOTRACE_COUNTER_DWORDS equ 4
 V9xIoTraceCount  dd 0          ; accesses seen, including those not logged
 V9xIoTraceNext   dd 0          ; next log slot, saturates at ENTRIES
 V9xIoTraceInstalled dd 0       ; ports whose handler installed
@@ -510,7 +544,7 @@ V9xMini_IoTrace_Single:
     pop     eax
     pop     ebx
     cmp     edi, ebx
-    je      short V9xMini_IoTrace_Passthrough
+    je      V9xMini_IoTrace_Passthrough
 IFNDEF V9X_NO_IO_SHIELD
     ; The ADVFUNC shield, trace form: a V86 VM's write to ADVFUNC_CNTL (4AE8H)
     ; is swallowed. -NoShieldAdvFunc restores the pass-through for an A/B.
@@ -524,10 +558,11 @@ IFNDEF V9X_NO_IO_SHIELD
     ; real register. Logged like everything else, so the count says how often
     ; the shield fired.
     cmp     dx, 04ae8h
-    jne     short V9xMini_IoTrace_Perform
+    jne     short V9xMini_IoTrace_Not_AdvFunc
     test    ecx, OUTPUT
     jz      short V9xMini_IoTrace_Perform
     jmp     short V9xMini_IoTrace_Log
+V9xMini_IoTrace_Not_AdvFunc:
 ENDIF
 V9xMini_IoTrace_Perform:
     mov     edi, ecx
@@ -657,21 +692,23 @@ BeginProc MiniVDD_W32_DeviceIoControl
     xor     edx, edx                    ; bytes returned
     test    edi, edi
     jz      short V9xMini_Dioc_Read_Done
-    ; Header: count, logged, installed, sys-vm-off. Then the log, as many
-    ; whole bytes of it as the buffer has room for.
-    cmp     ecx, 16
+    ; Header: count, logged, installed, sys-vm-off, then the adapter record.
+    ; Then the log, as many whole bytes of it as the buffer has room for.
+    cmp     ecx, (V9X_IOTRACE_COUNTER_DWORDS + V9X_ADAPTER_DWORDS) * 4
     jb      short V9xMini_Dioc_Read_Done
-    mov     eax, V9xIoTraceCount
-    mov     [edi], eax
-    mov     eax, V9xIoTraceNext
-    mov     [edi + 4], eax
-    mov     eax, V9xIoTraceInstalled
-    mov     [edi + 8], eax
-    mov     eax, V9xIoTraceSysVmOff
-    mov     [edi + 12], eax
-    sub     ecx, 16
-    add     edi, 16
-    mov     edx, 16
+    push    ecx
+    mov     eax, V9xInt10GuardCount
+    mov     V9xIoBarGuardCopy, eax
+    cld
+    mov     esi, OFFSET32 V9xIoTraceCount
+    mov     ecx, V9X_IOTRACE_COUNTER_DWORDS
+    rep     movsd
+    mov     esi, OFFSET32 V9xAdapterPciAddr
+    mov     ecx, V9X_ADAPTER_DWORDS
+    rep     movsd
+    pop     ecx
+    sub     ecx, (V9X_IOTRACE_COUNTER_DWORDS + V9X_ADAPTER_DWORDS) * 4
+    mov     edx, (V9X_IOTRACE_COUNTER_DWORDS + V9X_ADAPTER_DWORDS) * 4
     mov     eax, V9xIoTraceNext
     lea     eax, [eax + eax * 2]
     shl     eax, 2                      ; bytes of log in use
@@ -705,6 +742,258 @@ V9xMini_Dioc_Fail:
     mov     eax, 1
     ret
 EndProc MiniVDD_W32_DeviceIoControl
+
+; Trap every port of the adapter's I/O BARs with the trace handler, up to
+; V9X_IOTRACE_BAR_PORTS_MAX per BAR. After V9xMini_Find_Adapter.
+BeginProc V9xMini_IoTrace_Bars
+    pushad
+    xor     ebx, ebx                    ; BAR index
+
+V9xMini_IoTrace_Bar:
+    cmp     ebx, V9xIoBarCount
+    jae     short V9xMini_IoTrace_Bars_Done
+    mov     edx, V9xIoBarBase[ebx * 4]
+    mov     ecx, V9xIoBarSize[ebx * 4]
+    cmp     ecx, V9X_IOTRACE_BAR_PORTS_MAX
+    jbe     short V9xMini_IoTrace_Port
+    mov     ecx, V9X_IOTRACE_BAR_PORTS_MAX
+
+V9xMini_IoTrace_Port:
+    mov     esi, OFFSET32 V9xMini_IoTrace_Handler
+    VMMcall Install_IO_Handler
+    jc      short V9xMini_IoTrace_Port_Skip
+    inc     V9xIoTraceInstalled
+V9xMini_IoTrace_Port_Skip:
+    inc     edx
+    dec     ecx
+    jnz     short V9xMini_IoTrace_Port
+    inc     ebx
+    jmp     short V9xMini_IoTrace_Bar
+
+V9xMini_IoTrace_Bars_Done:
+    popad
+    ret
+EndProc V9xMini_IoTrace_Bars
+
+; PCI configuration mechanism 1 (PCI Local Bus 2.1, 3.7.4.1). Ring 0 at
+; Device_Init, before anything else on the machine is walking config space.
+V9X_PCI_CONFIG_ADDRESS equ 0cf8h
+V9X_PCI_CONFIG_DATA    equ 0cfch
+V9X_PCI_ENABLE         equ 80000000h
+V9X_PCI_REG_COMMAND    equ 04h
+V9X_PCI_REG_CLASS      equ 08h
+V9X_PCI_REG_BAR0       equ 10h
+V9X_PCI_CMD_IO         equ 1
+V9X_PCI_CLASS_VGA      equ 030000h      ; display, VGA-compatible, prog-if 0
+V9X_PCI_BAR_IO         equ 1
+V9X_PCI_BAR_TYPE_MASK  equ 6
+V9X_PCI_BAR_MEM64      equ 4            ; memory BAR type bits 2:1 = 10b
+V9X_PCI_VENDOR_INTEL   equ 8086h
+
+; An Intel IGD's I/O BAR: MMIO_INDEX at +0, MMIO_DATA at +4. "All
+; graphics device registers are ... indirectly accessible via the MMIO_INDEX
+; and MMIO_DATA I/O registers" (G45 PRM vol. 1a, 5.1.3); the 945G's is at D2:F0
+; 14h (945G datasheet 307502). The offsets are the ones the GMA 950's own
+; video BIOS was measured using.
+V9X_INTEL_MMIO_PAIR_PORTS equ 8
+
+; EAX = config address. Returns EAX = the dword there.
+BeginProc V9xMini_Pci_Read
+    push    edx
+    mov     dx, V9X_PCI_CONFIG_ADDRESS
+    out     dx, eax
+    mov     dx, V9X_PCI_CONFIG_DATA
+    in      eax, dx
+    pop     edx
+    ret
+EndProc V9xMini_Pci_Read
+
+; EAX = config address, ECX = the dword to write.
+BeginProc V9xMini_Pci_Write
+    push    edx
+    mov     dx, V9X_PCI_CONFIG_ADDRESS
+    out     dx, eax
+    mov     eax, ecx
+    mov     dx, V9X_PCI_CONFIG_DATA
+    out     dx, eax
+    pop     edx
+    ret
+EndProc V9xMini_Pci_Write
+
+; Find the display adapter and record its I/O BARs (see the record's data
+; comment). Device_Init only: BAR sizing moves the range for two config
+; cycles, which is safe only while nothing is using the card. Sets
+; V9xIoBarIntelPair when the adapter is an Intel IGD.
+BeginProc V9xMini_Find_Adapter
+    pushad
+    mov     ebx, V9X_PCI_ENABLE
+
+V9xMini_Adapter_Scan:
+    mov     eax, ebx
+    call    V9xMini_Pci_Read
+    cmp     ax, 0ffffh
+    je      short V9xMini_Adapter_Scan_Next
+    lea     eax, [ebx + V9X_PCI_REG_CLASS]
+    call    V9xMini_Pci_Read
+    shr     eax, 8
+    cmp     eax, V9X_PCI_CLASS_VGA
+    jne     short V9xMini_Adapter_Scan_Next
+    lea     eax, [ebx + V9X_PCI_REG_COMMAND]
+    call    V9xMini_Pci_Read
+    test    al, V9X_PCI_CMD_IO
+    jnz     short V9xMini_Adapter_Found
+
+    ; Every function of every device: an absent one reads FFFFh.
+V9xMini_Adapter_Scan_Next:
+    add     ebx, 100h
+    cmp     ebx, V9X_PCI_ENABLE + (V9X_ADAPTER_BUS_MAX shl 16)
+    jb      short V9xMini_Adapter_Scan
+    jmp     V9xMini_Adapter_Done
+
+V9xMini_Adapter_Found:
+    mov     V9xAdapterPciAddr, ebx
+    xor     esi, esi                    ; BAR index
+
+V9xMini_Adapter_Bar:
+    lea     eax, [ebx + esi * 4 + V9X_PCI_REG_BAR0]
+    call    V9xMini_Pci_Read
+    test    al, V9X_PCI_BAR_IO
+    jnz     short V9xMini_Adapter_Bar_Io
+    ; A 64-bit memory BAR's high dword is the next slot, not a BAR.
+    and     al, V9X_PCI_BAR_TYPE_MASK
+    cmp     al, V9X_PCI_BAR_MEM64
+    jne     V9xMini_Adapter_Bar_Next
+    inc     esi
+    jmp     V9xMini_Adapter_Bar_Next
+
+    ; Size it the standard way: all ones, read the mask back, restore. I/O
+    ; decode is 16 bits on x86, so only the low word is used.
+V9xMini_Adapter_Bar_Io:
+    mov     edi, eax                    ; the BAR as programmed
+    pushfd
+    cli
+    lea     eax, [ebx + esi * 4 + V9X_PCI_REG_BAR0]
+    mov     ecx, 0ffffffffh
+    call    V9xMini_Pci_Write
+    lea     eax, [ebx + esi * 4 + V9X_PCI_REG_BAR0]
+    call    V9xMini_Pci_Read
+    mov     edx, eax
+    lea     eax, [ebx + esi * 4 + V9X_PCI_REG_BAR0]
+    mov     ecx, edi
+    call    V9xMini_Pci_Write
+    popfd
+    not     edx
+    and     edx, 0fffch
+    add     edx, 4                      ; size in ports
+    and     edi, 0fffch                 ; base port
+    jz      short V9xMini_Adapter_Bar_Next
+
+    mov     ecx, V9xIoBarCount
+    mov     V9xIoBarBase[ecx * 4], edi
+    mov     V9xIoBarSize[ecx * 4], edx
+    inc     V9xIoBarCount
+
+    ; Intel's index/data pair, so the readout can name the register behind
+    ; each data access: the vendor id is the low word of dword 0, and the
+    ; pair is the start of the first I/O BAR of at least 8 ports (the
+    ; HD 4600's is 64).
+    cmp     V9xIoBarIntelPair, 0
+    jne     short V9xMini_Adapter_Bar_Next
+    cmp     edx, V9X_INTEL_MMIO_PAIR_PORTS
+    jb      short V9xMini_Adapter_Bar_Next
+    mov     eax, ebx
+    call    V9xMini_Pci_Read
+    cmp     ax, V9X_PCI_VENDOR_INTEL
+    jne     short V9xMini_Adapter_Bar_Next
+    mov     V9xIoBarIntelPair, edi
+
+V9xMini_Adapter_Bar_Next:
+    inc     esi
+    cmp     esi, V9X_IOBAR_MAX
+    jb      V9xMini_Adapter_Bar
+
+V9xMini_Adapter_Done:
+    popad
+    ret
+EndProc V9xMini_Find_Adapter
+
+ENDIF
+
+IFNDEF V9X_NO_INT10_GUARD
+; The INT 10h mode-set guard. Hook_V86_Int_Chain procedure: EAX = 10h, EBX =
+; the current VM, EBP -> its client registers. Carry set: not serviced, pass
+; it on; carry clear: serviced here, and the VM resumes after its INT.
+;
+; Why: when Windows creates a DOS VM, windowed or not, the main VDD runs the
+; video BIOS's mode set (INT 10h AX=0003h) inside it (the Win3.1 DDK VDD's
+; VDD_State_VM_Init does exactly this, through Exec_Int, and Exec_Int goes
+; through this chain: "the system calls the hook procedure whenever ... a
+; virtual device calls the Simulate_Int service", DDK Hook_V86_Int_Chain).
+; The VDD virtualizes the standard VGA ports for that VM and nothing else, so
+; a BIOS that reaches its chip through anything else reprograms the display
+; Windows is showing. Measured on Intel GMA 950 and HD 4600: the VGA plane
+; on, the desktop plane off, the pipe at 720x400
+; (docs\decisions\2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-
+; bar.md). Virtualizing those ports instead was tried and does not
+; generalize: the HD 4600's BIOS waits on state bits and sideband handshakes
+; that only the hardware answers, and hung the machine.
+;
+; What: an AH=00h mode set or AX=4F02h VBE mode set from a VM other than the
+; System VM, while the System VM owns the CRTC, is not passed to the BIOS.
+; The VM's virtual VGA is the VDD's, which starts in text mode, so a windowed
+; DOS prompt does not need the BIOS to have run. The approach is vmdisp9x's
+; (JHRobotics), which blocks the same calls from windowed VMs. A full-screen
+; VM owns the CRTC, so its mode sets run as before, and the System VM's -
+; this driver's own, and the VBE collection above - always do. 4F02h answers
+; AX=034Fh, "function not supported in the current hardware configuration"
+; (VBE 3.0, 4.3), so a VBE program in a window is told no rather than
+; believing it switched.
+;
+; Not virtualized: what a skipped AH=00h would have done to the VM's own BIOS
+; data area and virtual registers, such as clearing the window. A DOS program
+; that sets a graphics mode in a window keeps the text mode it had.
+V9X_INT10_SET_MODE       equ 00h
+V9X_INT10_VBE_SET_MODE   equ 4f02h
+V9X_INT10_VBE_REFUSED    equ 034fh
+
+BeginProc V9xMini_Int10_Hook
+    cmp     [ebp.Client_AH], V9X_INT10_SET_MODE
+    je      short V9xMini_Int10_Mode_Set
+    cmp     [ebp.Client_AX], V9X_INT10_VBE_SET_MODE
+    je      short V9xMini_Int10_Mode_Set
+    stc
+    ret
+
+V9xMini_Int10_Mode_Set:
+    push    ebx
+    push    esi
+    push    edi
+    mov     esi, ebx                    ; the caller
+    VMMcall Get_Sys_VM_Handle           ; EBX = the System VM
+    cmp     esi, ebx
+    je      short V9xMini_Int10_Pass
+    VxDCall VDD_Get_VM_Info             ; EDI = CRTC owner, ESI = MemC owner
+    cmp     edi, ebx
+    jne     short V9xMini_Int10_Pass
+
+    inc     V9xInt10GuardCount
+    cmp     [ebp.Client_AX], V9X_INT10_VBE_SET_MODE
+    jne     short V9xMini_Int10_Serviced
+    mov     [ebp.Client_AX], V9X_INT10_VBE_REFUSED
+V9xMini_Int10_Serviced:
+    pop     edi
+    pop     esi
+    pop     ebx
+    clc
+    ret
+
+V9xMini_Int10_Pass:
+    pop     edi
+    pop     esi
+    pop     ebx
+    stc
+    ret
+EndProc V9xMini_Int10_Hook
 ENDIF
 
 IFDEF V9X_ADVFUNC_SHIELD
@@ -5132,6 +5421,24 @@ V9xMini_AdvFunc_Install_Skip:
     pop     edx
     pop     ecx
     pop     esi
+ENDIF
+IFDEF V9X_IO_TRACE
+    ; The adapter and its I/O BARs. Cannot fail the init: an adapter it does
+    ; not find is recorded as none.
+    call    V9xMini_Find_Adapter
+    call    V9xMini_IoTrace_Bars
+ENDIF
+IFNDEF V9X_NO_INT10_GUARD
+    ; The serial line is written only when the hook took, so its absence
+    ; from a boot log is the report of a failure.
+    mov     eax, 10h
+    mov     esi, OFFSET32 V9xMini_Int10_Hook
+    VMMcall Hook_V86_Int_Chain
+    jc      short V9xMini_Int10_Hook_Skip
+    mov     esi, OFFSET32 V9xMiniInt10GuardLine
+    mov     ecx, V9xMiniInt10GuardLineLength
+    call    V9xMini_Serial_Write
+V9xMini_Int10_Hook_Skip:
 ENDIF
     ; Read-only, and no BIOS call, so it runs for every family and cannot fail
     ; the init any more than the collection below can.

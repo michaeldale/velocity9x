@@ -6,6 +6,23 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.27.0 - not yet released
 
+- **Opening a DOS window no longer replaces the desktop on the screen with
+  a striped text-mode picture.** When Windows creates a DOS window it runs
+  the video BIOS's text-mode set inside it, and on Intel graphics that BIOS
+  reaches the real display through a port Windows does not intercept. The
+  mini-VDD now stops a DOS session that is not full screen from running a
+  video mode set at all; the window shows text as before. Measured on the
+  GMA 950 netbook and the HD 4600: two DOS windows at once leave the display
+  on the desktop and the windows' text correct
+  ([decision record](docs/decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)).
+  Every package carries it; other cards were not measured. A DOS program
+  that switches to a graphics mode in a window no longer gets that mode.
+  Full-screen DOS is unchanged.
+- **`-IoTrace` mini-VDD and `V9XIOTR.EXE`** trap and read out the display
+  adapter's own I/O ports as well as the 8514/A file, for the same
+  measurement on other chips. `-NoInt10Guard` builds a mini-VDD without the
+  guard, for comparison.
+
 ## 0.26.1 - 2026-10-23
 
 - **`vbe` package: a framebuffer mapping Windows refuses is retried

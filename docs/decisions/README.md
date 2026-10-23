@@ -329,6 +329,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-29 The VDD never asks about banking, so the virtualization hypothesis has no support](2026-08-29-dos-box-banking-not-asked.md)
 - [2026-08-29 Tier-0 breaks the same way, on a different chip, and the stock driver does not](2026-08-29-dos-box-exit-tier0.md)
 - [2026-08-29 The VDD reserves no off-screen memory, and telling it the truth does not change that](2026-08-29-dos-box-vdd-reservation.md)
+- [2026-10-23 A DOS VM's video BIOS reprograms the Intel display, so the mini-VDD no longer lets a windowed VM run a mode set](2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)
 
 ## Test infrastructure and VMs
 
