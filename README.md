@@ -26,19 +26,18 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.27.0.** Opening a DOS window no longer replaces
-the desktop with a striped text-mode picture on Intel graphics: the
-DOS session's video BIOS is kept from reprogramming the display, measured
-on the GMA 950 and the HD 4600. Returning from a full-screen DOS session
-still freezes the desktop, as in every earlier version, so keep DOS
-windowed. The HD Graphics 4400 binds as an alias of the HD 4600, untested.
-0.26.1 made the `vbe` package retry a refused framebuffer mapping
-smaller, and 0.26.0 made OpenGL draw textures built with
-`gluBuild2DMipmaps` and added the ATI Rage 128 Pro. **Glide
+**Current version: 0.28.0.** The ATI Rage 128 Pro gets hardware 3D:
+Direct3D, OpenGL and Glide on its command engine, with page flips. On one
+Rage Fury Pro, 3DMark 2000 runs through and Half-Life runs in Direct3D and
+OpenGL, at a fifth to a half of ATI's own driver's speed for now. The
+Intel GMA X4500 and GMA 4500 (G45, Q45) are added as a test build that
+has not run on either. 0.27.0 stopped a DOS window replacing the desktop
+with a striped picture on Intel graphics; returning from a full-screen
+DOS session still freezes the desktop, so keep DOS windowed. **Glide
 and 3DCIF DLLs from 0.23.0 or earlier still do not work with this
 driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.27.0](releases/0.27.0/README.md).
+[releases/0.28.0](releases/0.28.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -157,8 +156,8 @@ Measured limits:
   `GL_ARB_multitexture` and `GL_SGIS_multitexture`, and lightmaps in one
   pass.
 - **When an engine can't draw something:** it refuses the draw rather
-  than drawing it wrong. The GMA 950 and the two Matrox 3D chips then
-  draw it on the CPU.
+  than drawing it wrong. The GMA 950, the two Matrox 3D chips and the
+  Rage 128 Pro then draw it on the CPU.
 
 ### Measured frame rates
 
@@ -169,6 +168,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 |---|---|---|---|
 | Intel HD Graphics 4600 (i5-4570) | 59.2 fps | not run; Half-Life `-gl` 67.5 fps | 0.19.0 |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
+| ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
 | ATI Rage XL PCI (P3) | 18.1 fps | 11.6 fps | 0.10.1 |
 | ATI Rage Mobility-M (P3 laptop) | 12.0 fps | about 8 fps | 0.9.2 |
@@ -274,8 +274,8 @@ Measured:
 - **Need for Speed II SE:** races on the GMA 950.
 - **Carmageddon II:** its Glide option runs, menus and races, on the
   GMA 950.
-- **Diablo II** (shareware demo): to the town on the Rage XL and the
-  Rage IIC.
+- **Diablo II** (shareware demo): to the town on the Rage XL, the
+  Rage IIC and the Rage 128 Pro.
 - **Rollcage** (demo): menus and races on the Rage XL and the GMA 950.
 - **HD 4600, HD 4000 and GMA X3100:** the Glide 2 probe passes every
   check, and a Glide 3 session opens and closes. No game has been run

@@ -4,8 +4,31 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.28.0 - not yet released
+## 0.28.0 - 2026-10-23
 
+- **ATI Rage 128 Pro: Direct3D, OpenGL and Glide in hardware.** Triangles
+  are sent to the chip's command engine (the CCE, running Linux's
+  MIT-licensed microcode) at 16 and 32 bpp with a 16-bit Z buffer and one
+  texture unit, and page flips are done by the chip at the vertical
+  blank. On one Rage Fury Pro
+  ([Direct3D](docs/decisions/2026-10-23-rage128-direct3d-through-the-cce.md),
+  [flips and mipmaps](docs/decisions/2026-10-23-rage128-mip-order-flips-and-a-running-cce.md),
+  [OpenGL and Glide](docs/decisions/2026-10-23-rage128-render-interface.md),
+  [release checks](docs/decisions/2026-10-23-0.28.0-release-checks-a8u4i5-netbook.md)):
+  - every pixel check in the Direct3D probe passes, at 16 and 32 bpp;
+  - 3DMark 2000 runs through, scoring 1105 (ATI's own driver: 2404);
+  - Half-Life runs its demo at 34 fps in Direct3D and 14 fps in OpenGL
+    (ATI's: about 59 and 70), its OpenGL frames watched on the monitor;
+  - Diablo II draws through Glide 3 from the title to the town and
+    returns to the desktop; the OpenGL, Glide 2 and Glide 3 probes pass.
+
+  What the chip cannot draw exactly (textures the OpenGL driver keeps in
+  system memory, for one) is drawn by the CPU into the same frame. GDI is
+  still drawn by the CPU, and only 16 of the card's 32 MiB is used. Speed
+  is recorded, not yet worked on: every command still goes to the card
+  through the CPU.
+- **Every package now carries `NOTICES.TXT`**, with the MIT licence of
+  the Rage 128 microcode built into `V9XHAL.DLL`.
 - **Intel GMA X4500 (G45, `8086:2E22`) and GMA 4500 (Q45, `8086:2E12`):
   a test build, not yet run on either.** The `intel-gma` package now
   binds both and drives them on the GMA X3100's path, with the
@@ -15,26 +38,6 @@ build identifier so exact guest-tested binaries remain traceable.
   Built from the two surveys attached to issue 3; the first boot on one
   is the first measurement
   ([record](docs/decisions/2026-10-23-g4x-gma4500-from-surveys.md)).
-
-- **ATI Rage 128 Pro: Direct3D in hardware.** Triangles are sent to the
-  chip's command engine (the CCE, running Linux's MIT-licensed microcode)
-  at 16 and 32 bpp with a 16-bit Z buffer and one texture unit. Every
-  pixel check in the Direct3D probe passes, 3DMark 2000 runs through
-  (1105), and Half-Life's Direct3D renderer runs its demo at 31 fps
-  ([record](docs/decisions/2026-10-23-rage128-direct3d-through-the-cce.md)).
-  - Mipmapped textures draw correctly; the first build sampled the
-    wrong level and 3DMark's scenes were garbage.
-  - Page flips are done by the chip at the vertical blank, so full-screen
-    games no longer flicker
-    ([record](docs/decisions/2026-10-23-rage128-mip-order-flips-and-a-running-cce.md)).
-  - OpenGL and Glide draw on the Rage 128 too, with what the chip cannot
-    draw exactly (textures the OpenGL driver keeps in system memory, for
-    one) drawn by the CPU into the same frame. The OpenGL, Glide 2 and
-    Glide 3 probes pass, and Half-Life's OpenGL renderer runs its demo
-    at 14 fps with its textures on the card
-    ([record](docs/decisions/2026-10-23-rage128-render-interface.md)).
-  - Half-Life's frames have not yet been watched on the monitor.
-  - Measured on one card. GDI is still drawn by the CPU.
 
 ## 0.27.0 - 2026-10-23
 
