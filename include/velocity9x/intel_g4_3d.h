@@ -172,8 +172,8 @@ struct v9x_g4_draw {
     v9x_u8 chroma_key;
     v9x_u32 chroma_low;
     v9x_u32 chroma_high;
-    /* V9X_G4_GEN4 or V9X_G4_GEN5 (intel_g4_eu.h); anything else is
-     * refused. */
+    /* V9X_G4_GEN4, V9X_G4_GEN45 or V9X_G4_GEN5 (intel_g4_eu.h); anything
+     * else is refused. */
     v9x_u8 gen;
 };
 

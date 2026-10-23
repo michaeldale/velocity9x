@@ -30,6 +30,14 @@
  */
 #define V9X_PCI_DEVICE_GMA_X3100_GM965   ((v9x_u16)0x2a02u)
 /*
+ * G4x, function 0: the G45's GMA X4500 and the Q45's GMA 4500. The GM965's
+ * path with the GTT at BAR0 + 2 MiB, as Ironlake's (Linux 6.6 intel-gtt.c
+ * takes IS_G4X down i9xx_setup()'s case 5). From two DOS surveys only; not
+ * run (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
+ */
+#define V9X_PCI_DEVICE_GMA_X4500_G45     ((v9x_u16)0x2e22u)
+#define V9X_PCI_DEVICE_GMA4500_Q45       ((v9x_u16)0x2e12u)
+/*
  * Ironlake desktop (Clarkdale) HD Graphics, function 0: Gen5. The GM965's
  * 2D path carries over - blits on the render ring, no blitter ring before
  * Gen6 - with the GTT at BAR0 + 2 MiB instead of + 512 KiB (Linux 6.6

@@ -375,6 +375,35 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
 }
 
 /*
+ * The G45's GMA X4500 and the Q45's GMA 4500 (G4x, Gen4.5): the GM965's
+ * engine, from two DOS surveys and the G45 PRM, with nothing run on either
+ * (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
+ *
+ * What differs from the GM965 lives outside this hook: the GTT at BAR0 +
+ * 2 MiB (V9xPciReadIntelGttConfig), and two 3D encodings g4_3d.c builds for
+ * V9X_G4_GEN45, which the HAL chooses on the I9XX_G4X bit. The display is
+ * the 965's, with no PCH, so I9XX_GEN4 stays and so do FLIP_RING and the
+ * FW_BLC omission; I9XX_GEN5's register omissions are Ironlake's and do not
+ * apply.
+ */
+static void v9x_g4x_fill_engine(unsigned long framebuffer_linear_base,
+                                unsigned long *control_linear_base,
+                                unsigned long *mapped_aperture_bytes,
+                                unsigned long *engine_type,
+                                unsigned long *engine_caps,
+                                unsigned long *gtt_linear_base,
+                                unsigned long *ring_linear_base,
+                                unsigned long *ring_bytes)
+{
+    v9x_gm965_fill_engine(framebuffer_linear_base, control_linear_base,
+                          mapped_aperture_bytes, engine_type, engine_caps,
+                          gtt_linear_base, ring_linear_base, ring_bytes);
+    if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_G4X;
+    }
+}
+
+/*
  * Ironlake's HD Graphics (Gen5): the GM965's start - the 945's descriptor for
  * the ring and the blits, and nothing else of the Gen3 engine.
  *
@@ -532,5 +561,37 @@ const V9X_HW16_DEVICE v9x_ilk_hd_device = {
     "hardware-gen5",
     0,
     v9x_ilk_fill_engine,
+    2u
+};
+
+/*
+ * The G45's GMA X4500 and the Q45's GMA 4500. Config space and VBE from the
+ * issue 3 surveys (docs\probe\references\dell-inspiron-560-g45-vgasurv-
+ * 2026-10-07.ini, hp-8000-elite-sff-q45-vgasurv-2026-10-07.ini); nothing
+ * here has run on either. The Direct3D word is the GM965's: the same engine.
+ */
+const V9X_HW16_DEVICE v9x_g45_x4500_device = {
+    0x8086u, 0x2e22u,
+    "Intel GMA X4500 (G45)",
+    "8086", "2E22",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen4",
+    0,
+    v9x_g4x_fill_engine,
+    2u
+};
+
+const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
+    0x8086u, 0x2e12u,
+    "Intel GMA 4500 (Q45)",
+    "8086", "2E12",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen4",
+    0,
+    v9x_g4x_fill_engine,
     2u
 };

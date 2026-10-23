@@ -173,13 +173,18 @@ static void v9x_d3d_g4_count_refusal(DWORD reason)
     }
 }
 
-/* The encodings to build for: Gen5's on Ironlake (I9XX_GEN5), Gen4's
- * otherwise. Kernels, state and batch all ask this. */
+/* The encodings to build for: Gen5's on Ironlake (I9XX_GEN5), G4x's on the
+ * G45 and Q45 (I9XX_G4X), Gen4's otherwise. Kernels, state and batch all
+ * ask this. */
 static v9x_u8 v9x_d3d_g4_gen(void)
 {
-    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN5) != 0ul
-               ? V9X_G4_GEN5
-               : V9X_G4_GEN4;
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_GEN5) != 0ul) {
+        return V9X_G4_GEN5;
+    }
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_I9XX_G4X) != 0ul) {
+        return V9X_G4_GEN45;
+    }
+    return V9X_G4_GEN4;
 }
 
 static int v9x_d3d_g4_ready(void)
