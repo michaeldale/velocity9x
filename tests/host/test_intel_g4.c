@@ -779,10 +779,127 @@ static void test_batch_gen5(void)
         }
     }
 
-    /* Anything but 4 or 5 is refused. */
+    /* Anything but 4, 4.5 or 5 is refused. */
     d.gen = 6u;
     v9x_g4_batch_init(&batch, words, 512ul);
     CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/*
+ * The G4x batch (G45, Q45): the 965's encodings except PIPELINE_SELECT,
+ * which is Gen5's (Mesa i965 and xf86 on G4x; the G45 PRM's table says
+ * otherwise, docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md), and
+ * 3DSTATE_DEPTH_BUFFER, six dwords with the [DevCTG+] Depth Coordinate
+ * Offset (G45 PRM Vol 2 8.4.4.1).
+ */
+static void test_batch_gen45(void)
+{
+    v9x_u32 words[512];
+    v9x_u32 out[16];
+    struct v9x_g4_batch batch;
+    struct v9x_g4_draw d;
+    struct v9x_g4_inst storage[2];
+    struct v9x_g4_program p;
+    v9x_u32 at;
+    v9x_u32 index;
+
+    d.state_base = 0x00670000ul;
+    d.state_offset = V9X_G4_STATE_OFF;
+    d.vertex_address = 0x00670000ul + V9X_G4_VERTEX_OFF;
+    d.vertex_count = 6ul;
+    d.width = 640u;
+    d.height = 480u;
+    d.depth_address = 0x00200000ul;
+    d.depth_pitch = 2560ul;
+    d.depth_format = V9X_G4_DEPTH_D24_UNORM_S8;
+    d.depth_tiled = 1u;
+    d.chroma_key = 0u;
+    d.chroma_low = 0ul;
+    d.chroma_high = 0ul;
+    d.gen = V9X_G4_GEN45;
+    v9x_g4_batch_init(&batch, words, 512ul);
+    CHECK(v9x_g4_draw_batch(&batch, &d) == V9X_STATUS_OK);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN45) ==
+          V9X_TRUE);
+    /* Neither the 965's batch nor Ironlake's. */
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN4) ==
+          V9X_FALSE);
+    CHECK(v9x_g4_batch_check(batch.dw, batch.count, V9X_G4_GEN5) ==
+          V9X_FALSE);
+
+    CHECK(find_header(words, batch.count, 0x69040000ul) < batch.count);
+    CHECK(find_header(words, batch.count, 0x61040000ul) == batch.count);
+
+    /* STATE_BASE_ADDRESS, the 965's six dwords: no Instruction Base
+     * Address before Gen5 (G45 PRM Vol 1a 3.6.1). */
+    CHECK(find_header(words, batch.count, 0x61010006ul) == batch.count);
+    at = find_header(words, batch.count, 0x61010004ul);
+    CHECK(at + 6ul <= batch.count);
+    if (at + 6ul <= batch.count) {
+        CHECK(words[at + 1ul] == (0x00670000ul | 1ul));
+        CHECK(words[at + 2ul] == (0x00670000ul | 1ul));
+        CHECK(words[at + 3ul] == 0ul && words[at + 4ul] == 1ul &&
+              words[at + 5ul] == 0ul);
+    }
+
+    /* 3DSTATE_DEPTH_BUFFER, six dwords, the coordinate offset zero. */
+    CHECK(find_header(words, batch.count, 0x79050003ul) == batch.count);
+    at = find_header(words, batch.count, 0x79050004ul);
+    CHECK(at + 6ul <= batch.count);
+    if (at + 6ul <= batch.count) {
+        CHECK(words[at + 1ul] == ((1ul << 29) | (1ul << 27) | (1ul << 26) |
+                                  (2ul << 18) | 2559ul));
+        CHECK(words[at + 2ul] == 0x00200000ul);
+        CHECK(words[at + 5ul] == 0ul);
+    }
+
+    /* VERTEX_BUFFER_STATE DW3: the maximum index (Vol 2 3.4.2). */
+    at = find_header(words, batch.count, 0x78080003ul);
+    CHECK(at + 5ul <= batch.count);
+    if (at + 5ul <= batch.count) {
+        CHECK(words[at + 3ul] == 5ul);
+    }
+
+    /* VERTEX_ELEMENTS: seven, each at its own VUE dword from 4 (Vol 2
+     * 3.5.2's Destination Element Offset). */
+    CHECK(find_header(words, batch.count, 0x7809000ful) == batch.count);
+    at = find_header(words, batch.count, 0x7809000dul);
+    CHECK(at + 15ul <= batch.count);
+    if (at + 15ul <= batch.count) {
+        for (index = 0ul; index < 7ul; ++index) {
+            CHECK((words[at + 2ul + index * 2ul] & 0xfful) ==
+                  4ul * (index + 1ul));
+        }
+    }
+
+    /* The unit states are the 965's. */
+    CHECK(v9x_g4_vs_state(out, V9X_G4_GEN45) == V9X_STATUS_OK);
+    CHECK(((out[4] >> 11) & 0xfful) == V9X_G4_URB_VS_ENTRIES);
+    for (index = 0ul; index < 16ul; ++index) {
+        out[index] = 0xfffffffful;
+    }
+    CHECK(v9x_g4_wm_state(out, 0x21000ul, 58u, 0x30180ul, 1u, 2u,
+                          V9X_G4_GEN45) == V9X_STATUS_OK);
+    CHECK(((out[1] >> 18) & 0xfful) == 2ul);
+    CHECK((out[4] & ~31ul) == 0x30180ul && ((out[4] >> 2) & 7ul) == 1ul);
+    CHECK(out[8] == 0xfffffffful);
+
+    /* The send descriptor is the 965's (Mesa brw_inst.h's 4.5 column);
+     * the sampler's message type 0 with FLOAT32 return is 15:12 = 0 in
+     * the G4x layout too (G45 PRM Vol 4 4.8.1.1.2). The xf86 .g4b word. */
+    v9x_g4_program_init(&p, storage, 2ul);
+    p.gen = V9X_G4_GEN45;
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_16, V9X_G4_EU_QTR_NONE,
+                v9x_g4_grf(14u, 0u, V9X_G4_EU_TYPE_UW),
+                v9x_g4_null(V9X_G4_EU_TYPE_UD), 1u, V9X_G4_SFID_SAMPLER, 5u,
+                8u, v9x_g4_sampler_desc(1u, 0u), 0u);
+    v9x_g4_program_init(&p, storage + 1, 1ul);
+    v9x_g4_send(&p, V9X_G4_EU_EXEC_16, V9X_G4_EU_QTR_NONE,
+                v9x_g4_grf(14u, 0u, V9X_G4_EU_TYPE_UW),
+                v9x_g4_null(V9X_G4_EU_TYPE_UD), 1u, V9X_G4_SFID_SAMPLER, 5u,
+                8u, v9x_g4_sampler_desc(1u, 0u), 0u);
+    CHECK(same_inst(&storage[0], storage[1].dw[0], storage[1].dw[1],
+                    storage[1].dw[2], storage[1].dw[3]));
 }
 
 unsigned int v9x_run_intel_g4_tests(void)
@@ -798,5 +915,6 @@ unsigned int v9x_run_intel_g4_tests(void)
     test_chroma();
     test_batch();
     test_batch_gen5();
+    test_batch_gen45();
     return failures;
 }

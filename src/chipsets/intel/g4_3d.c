@@ -49,6 +49,12 @@
  *  - VERTEX_ELEMENT_STATE's destination offset is MBZ: elements pack from
  *    VUE dword 0, so a zero element fills the header (p89, p93; xf86
  *    gen5 prepends the same one).
+ *
+ * G4x (G45, Q45) took the first and third already and none of the rest:
+ * 3DSTATE_DEPTH_BUFFER's DW5 is [DevCTG+] in the G45 PRM (Vol 2 8.4.4.1),
+ * and PIPELINE_SELECT is sub-type 1 there in Mesa i965 and xf86, against
+ * the PRM's own table (docs\decisions\2026-10-23-g4x-gma4500-from-
+ * surveys.md). Everything else is the 965's.
  */
 #define V9X_G4_PIPELINE_SELECT_3D_GEN5 0x69040000ul
 #define V9X_G4_SBA_DWORDS_GEN5     8u
@@ -96,7 +102,7 @@ static v9x_u32 v9x_g4_float(float value)
 
 static int v9x_g4_gen_valid(v9x_u8 gen)
 {
-    return gen == V9X_G4_GEN4 || gen == V9X_G4_GEN5;
+    return gen == V9X_G4_GEN4 || gen == V9X_G4_GEN45 || gen == V9X_G4_GEN5;
 }
 
 /* GRF Register Count: blocks of 16 registers, less one. */
@@ -399,6 +405,7 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
     v9x_u32 sf_end;
     v9x_u32 dest_step;
     int gen5;
+    int ctg_plus;
 
     if (batch == 0 || draw == 0 || draw->vertex_count == 0ul ||
         draw->width == 0u || draw->height == 0u ||
@@ -406,11 +413,14 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     gen5 = draw->gen == V9X_G4_GEN5;
+    /* G4x and Gen5 share two encodings the 965 lacks: the G45 PRM's
+     * [DevCTG+] (top of this file). */
+    ctg_plus = draw->gen != V9X_G4_GEN4;
     st = draw->state_offset;
 
     v9x_g4_emit(batch, V9X_G4_MI_FLUSH | V9X_G4_MI_FLUSH_EXE);
-    v9x_g4_emit(batch, gen5 ? V9X_G4_PIPELINE_SELECT_3D_GEN5
-                            : V9X_G4_PIPELINE_SELECT_3D);
+    v9x_g4_emit(batch, ctg_plus ? V9X_G4_PIPELINE_SELECT_3D_GEN5
+                                : V9X_G4_PIPELINE_SELECT_3D);
 
     if (gen5) {
         /* General, surface and instruction bases at the reserve, so every
@@ -469,8 +479,9 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
                            ((v9x_u32)draw->width - 1ul));
     v9x_g4_emit(batch, 0ul);
 
-    v9x_g4_emit(batch, V9X_G4_CMD(3, 1, 5, gen5 ? V9X_G4_DEPTH_DWORDS_GEN5
-                                                 : V9X_G4_DEPTH_DWORDS));
+    v9x_g4_emit(batch, V9X_G4_CMD(3, 1, 5, ctg_plus
+                                               ? V9X_G4_DEPTH_DWORDS_GEN5
+                                               : V9X_G4_DEPTH_DWORDS));
     if (draw->depth_address != 0ul) {
         /* Tiled (27) with the Y-major walk (26) the depth buffer must use
          * when tiled (965 PRM Vol 2, 3DSTATE_DEPTH_BUFFER). */
@@ -489,7 +500,7 @@ v9x_status v9x_g4_draw_batch(struct v9x_g4_batch *batch,
         v9x_g4_emit(batch, 0ul);
     }
     v9x_g4_emit(batch, 0ul);
-    if (gen5) {
+    if (ctg_plus) {
         /* Depth Coordinate Offset X and Y. */
         v9x_g4_emit(batch, 0ul);
     }
@@ -586,13 +597,14 @@ v9x_u32 v9x_g4_batch_start_header(void)
 static v9x_u32 v9x_g4_command_length(v9x_u32 header, v9x_u8 gen)
 {
     int gen5 = gen == V9X_G4_GEN5;
+    int ctg_plus = gen != V9X_G4_GEN4;
 
     if (header == V9X_G4_MI_NOOP ||
         header == V9X_G4_MI_FLUSH ||
         header == (V9X_G4_MI_FLUSH | V9X_G4_MI_FLUSH_EXE) ||
         header == V9X_G4_MI_BATCH_END ||
-        header == (gen5 ? V9X_G4_PIPELINE_SELECT_3D_GEN5
-                        : V9X_G4_PIPELINE_SELECT_3D)) {
+        header == (ctg_plus ? V9X_G4_PIPELINE_SELECT_3D_GEN5
+                            : V9X_G4_PIPELINE_SELECT_3D)) {
         return 1ul;
     }
     if (!gen5 && header == V9X_G4_CMD(0, 1, 1, V9X_G4_SBA_DWORDS)) {
@@ -617,10 +629,11 @@ static v9x_u32 v9x_g4_command_length(v9x_u32 header, v9x_u8 gen)
     if (header == V9X_G4_CMD(3, 1, 0, V9X_G4_RECT_DWORDS)) {
         return V9X_G4_RECT_DWORDS;
     }
-    if (!gen5 && header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS)) {
+    if (!ctg_plus && header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS)) {
         return V9X_G4_DEPTH_DWORDS;
     }
-    if (gen5 && header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS_GEN5)) {
+    if (ctg_plus &&
+        header == V9X_G4_CMD(3, 1, 5, V9X_G4_DEPTH_DWORDS_GEN5)) {
         return V9X_G4_DEPTH_DWORDS_GEN5;
     }
     if (header == V9X_G4_CMD(3, 0, 8, V9X_G4_VB_DWORDS)) {

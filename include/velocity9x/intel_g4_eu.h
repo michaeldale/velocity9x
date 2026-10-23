@@ -111,11 +111,16 @@ struct v9x_g4_inst {
  */
 #define V9X_G4_GEN4 ((v9x_u8)4u)
 #define V9X_G4_GEN5 ((v9x_u8)5u)
+/* G4x (G45, Q45: Gen4.5). Its EU sends are the 965's; only g4_3d.c's
+ * command encodings tell it from Gen4
+ * (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md). Not ordered
+ * against the other two: compare for equality only. */
+#define V9X_G4_GEN45 ((v9x_u8)45u)
 
 /* An instruction stream being built. overflow is set, not returned, when
  * a write would pass the end, so a builder checks once at the end. gen is
  * V9X_G4_GEN4 after v9x_g4_program_init; set it to V9X_G4_GEN5 before
- * building for Ironlake. */
+ * building for Ironlake. V9X_G4_GEN45 builds the 965's sends. */
 struct v9x_g4_program {
     struct v9x_g4_inst *inst;
     v9x_u32 capacity;

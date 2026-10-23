@@ -283,5 +283,14 @@
  * measured.
  */
 #define V9X_DD_ENGINE_CAP_DP2_CAPTURE   0x00200000ul
+/*
+ * Intel: this I9XX_GEN4 part is G4x (the G45's GMA X4500, the Q45's GMA
+ * 4500). Its display and most of its 3D are the GM965's, so I9XX_GEN4 stays
+ * beside it; Direct3D builds g4_3d.c's G4x encodings on it (PIPELINE_SELECT
+ * sub-type 1, a 6-dword 3DSTATE_DEPTH_BUFFER). A chip identity bit, stamped
+ * by the G4x descriptors only, from two DOS surveys and nothing run
+ * (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
+ */
+#define V9X_DD_ENGINE_CAP_I9XX_G4X      0x00400000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

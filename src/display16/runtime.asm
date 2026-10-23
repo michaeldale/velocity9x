@@ -3435,6 +3435,11 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     ; GTTMMADR + 2 MiB instead: Linux 6.6 intel-gtt.c, i9xx_setup() "case 5:
     ; gtt_phys_addr = reg_addr + MB(2)". Measured on W9QI2F4F, entries linear
     ; from BSM (docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md).
+    ;
+    ; G4x (G45 2E22, Q45 2E12) has the same two 64-bit BARs, a 4 MiB BAR0,
+    ; and its GTT at + 2 MiB as Ironlake's: intel-gtt.c i9xx_setup() takes
+    ; IS_G4X down the "case 5" arm. From two DOS surveys only; nothing here
+    ; has run on one (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
     ; SI keeps the device id for the offset below; no BIOS call here uses it.
     mov     di, 0002h
     mov     ax, 0b109h
@@ -3446,6 +3451,10 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     cmp     cx, 2a02h
     je      V9xPciReadIntelGttConfigGen4
     cmp     cx, 0042h
+    je      V9xPciReadIntelGttConfigGen4
+    cmp     cx, 2e22h
+    je      V9xPciReadIntelGttConfigGen4
+    cmp     cx, 2e12h
     je      V9xPciReadIntelGttConfigGen4
 
     mov     di, 0018h
@@ -3521,6 +3530,10 @@ V9xPciReadIntelGttConfigGen4:
     test    eax, 000fffffh
     jnz     V9xPciReadIntelGttConfigFailed
     cmp     si, 0042h
+    je      short V9xPciReadIntelGttConfigGen5
+    cmp     si, 2e22h
+    je      short V9xPciReadIntelGttConfigGen5
+    cmp     si, 2e12h
     je      short V9xPciReadIntelGttConfigGen5
     add     eax, 00080000h
     jmp     short V9xPciReadIntelGttConfigBar0Gtt

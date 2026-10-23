@@ -140,6 +140,62 @@
             MapSymbols = @('v9x_gm965_device')
         }
         @{
+            # The G45's GMA X4500 (G4x), unmeasured: the GM965's path with
+            # the GTT at BAR0 + 2 MiB and G4x's two 3D encodings. From the
+            # issue 3 DOS surveys; nothing has run on one:
+            # docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md.
+            Id = 'gma-x4500-g45'
+            Name = 'Intel GMA X4500 (G45)'
+            VendorId = '8086'
+            DeviceId = '2E22'
+            DeviceDesc = 'Velocity9x Intel GMA X4500 (G45)'
+            Adapter = 'Intel GMA X4500 (G45)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-gen4'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            VideoMemoryBytes = 4194304
+            # The family's table, which the driver's own must equal. The
+            # surveyed BIOS describes neither 1024x576 row; the runtime scan
+            # publishes the modes it finds.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_g45_x4500_device')
+        }
+        @{
+            # The Q45's GMA 4500 (G4x), unmeasured, as the G45 above.
+            Id = 'gma-4500-q45'
+            Name = 'Intel GMA 4500 (Q45)'
+            VendorId = '8086'
+            DeviceId = '2E12'
+            DeviceDesc = 'Velocity9x Intel GMA 4500 (Q45)'
+            Adapter = 'Intel GMA 4500 (Q45)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-gen4'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            VideoMemoryBytes = 4194304
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_q45_gma4500_device')
+        }
+        @{
             # Ironlake desktop HD Graphics (Gen5): the 945's ring and blits,
             # with the GTT at BAR0 + 2 MiB, and register flips through DSPSURF
             # and DSPLINOFF with the Gen3 display registers it lacks skipped
@@ -350,7 +406,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:2E22, 8086:2E12, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
     }
 
     Vm = @{
