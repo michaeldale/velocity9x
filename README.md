@@ -24,16 +24,19 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.26.1.** A fix for the `vbe` package: when Windows
-refuses its 16 MB framebuffer window, as on a reporter's HD 3000 laptop,
-it now asks for a smaller one, and `V9XBOOT.INI` records why a mapping
-failed. Untested on any machine. 0.26.0 made OpenGL draw textures built
-with `gluBuild2DMipmaps`, sped up OpenGL on the HD 4600, and added the
-ATI Rage 128 Pro. **Glide
+**Current version: 0.27.0.** Opening a DOS window no longer replaces
+the desktop with a striped text-mode picture on Intel graphics: the
+DOS session's video BIOS is kept from reprogramming the display, measured
+on the GMA 950 and the HD 4600. Returning from a full-screen DOS session
+still freezes the desktop, as in every earlier version, so keep DOS
+windowed. The HD Graphics 4400 binds as an alias of the HD 4600, untested.
+0.26.1 made the `vbe` package retry a refused framebuffer mapping
+smaller, and 0.26.0 made OpenGL draw textures built with
+`gluBuild2DMipmaps` and added the ATI Rage 128 Pro. **Glide
 and 3DCIF DLLs from 0.23.0 or earlier still do not work with this
 driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.26.1](releases/0.26.1/README.md).
+[releases/0.27.0](releases/0.27.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
