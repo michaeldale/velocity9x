@@ -57,6 +57,11 @@ int v9x_r128_in_vblank(void)
         *v9x_r128_scanout_reg(V9X_R128_CRTC_STATUS));
 }
 
+int v9x_r128_flip_queues(void)
+{
+    return v9x_r128_scanout_live() && v9x_r128_cce_flip_queues();
+}
+
 int v9x_r128_set_display_start(DWORD byte_offset)
 {
     v9x_u32 value;
@@ -64,14 +69,23 @@ int v9x_r128_set_display_start(DWORD byte_offset)
     if (!v9x_r128_scanout_live()) {
         return 0;
     }
-    /* The frame finished before it is shown: the core's wait before a flip
-     * is the ViRGE's, and Direct3D leaves the CCE running (r128_cce.c). */
-    if (!v9x_r128_cce_drain(1)) {
-        return 0;
-    }
     if (v9x_r128_crtc_start(byte_offset, v9x_hal->fb.vram_bytes,
                             v9x_hal->fb.bits_per_pixel / 8ul, &value) !=
             V9X_STATUS_OK) {
+        return 0;
+    }
+    /* On the ring the flip goes in behind the frame, and the CCE writes
+     * CRTC_OFFSET once it has reached it (r128_cce.c). */
+    if (v9x_r128_cce_flip_queues()) {
+        if (!v9x_r128_cce_queue_flip(value)) {
+            return 0;
+        }
+        v9x_r128_scanout_pending = 1;
+        return 1;
+    }
+    /* Otherwise the frame is finished before it is shown: the core's wait
+     * before a flip is the ViRGE's, and Direct3D leaves the CCE running. */
+    if (!v9x_r128_cce_drain(1)) {
         return 0;
     }
     *v9x_r128_scanout_reg(V9X_R128_CRTC_OFFSET) = value;
@@ -79,10 +93,15 @@ int v9x_r128_set_display_start(DWORD byte_offset)
     return 1;
 }
 
+/* Pending while a queued flip is still ahead of the CCE, then while the
+ * CRTC has the offset but has not started displaying it. */
 int v9x_r128_flip_pending(void)
 {
     if (!v9x_r128_scanout_pending || !v9x_r128_scanout_live()) {
         return 0;
+    }
+    if (v9x_r128_cce_flip_in_flight()) {
+        return 1;
     }
     return v9x_r128_crtc_flip_pending(
         *v9x_r128_scanout_reg(V9X_R128_CRTC_OFFSET));

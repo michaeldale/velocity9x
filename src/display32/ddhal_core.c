@@ -561,6 +561,14 @@ DWORD v9x_present_flip_offset(void)
     return v9x_present_offset;
 }
 
+/* The surface the last accepted flip took off the screen, which stays on
+ * it until that flip completes: an engine that queues flips makes its own
+ * draws into it wait in the command stream. */
+DWORD v9x_present_retiring_offset(void)
+{
+    return v9x_present_retiring;
+}
+
 /*
  * Whether GDI may be drawing on the screen while this process draws.
  *
@@ -841,6 +849,12 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
     v9x_u16 application_novsync =
         (data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul ? V9X_TRUE : V9X_FALSE;
     v9x_u16 novsync;
+    /* An engine that queues the flip in its command stream, behind the
+     * frame's drawing, needs no wait for that drawing here: the CPU goes
+     * on to the next frame while the GPU finishes this one
+     * (docs\plans\d3d-core-throughput.md). Every other engine drains as
+     * before. */
+    int queued = v9x_scanout_flip_queued();
 
     if (offset == 0xfffffffful) {
         data->ddRVal = V9X_DD_OK;
@@ -855,7 +869,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         ++v9x_hal->d3d_diagnostics.flip_declined;
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    if (v9x_engine_status_validated() &&
+    if (!queued && v9x_engine_status_validated() &&
         !v9x_wait_idle((data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul)) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
         return V9X_DDHAL_DRIVER_HANDLED;
@@ -873,7 +887,8 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
      */
     /* And the frame about to be shown has to be DRAWN: rendering the GPU
      * has not finished is the one thing the flip must not present. */
-    if (v9x_render_drain(
+    if (!queued &&
+        v9x_render_drain(
             (data->dwFlags & V9X_DDFLIP_DONOTWAIT) == 0ul) !=
         V9X_RENDER_DRAIN_DONE) {
         data->ddRVal = V9X_DDERR_WASSTILLDRAWING;

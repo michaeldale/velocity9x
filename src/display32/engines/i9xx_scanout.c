@@ -1743,6 +1743,14 @@ DWORD v9x_scanout_displayed_offset(void)
     return v9x_i9xx_plane_base(base);
 }
 
+int v9x_scanout_flip_queued(void)
+{
+    if (v9x_r128_scanout_active()) {
+        return v9x_r128_flip_queues();
+    }
+    return 0;
+}
+
 int v9x_scanout_hw_flip(void)
 {
     return v9x_hsw_scanout_active() || v9x_r128_scanout_active() ||

@@ -91,6 +91,58 @@ wait for ring space was 42.3 s against 42.6 s. That is within run-to-run
 noise, so the per-batch flush is not what holds the GPU, and the change
 was reverted unmerged.
 
+## Queued flips, done (Michael: "yes do queued flips", 2026-10-24)
+
+- **Core:** `v9x_scanout_flip_queued()`. When it says yes, Flip skips the
+  idle wait and the render drain.
+- **Rage 128 flip:** on the CCE ring, the flip goes in as a pixel-cache
+  flush, `WAIT_UNTIL` `EVENT_CRTC_OFFSET`, `CRTC_OFFSET`, and the flip's
+  number to `GUI_SCRATCH_REG1`. The flip is pending until the scratch
+  register holds that number and `CRTC_GUI_TRIG_OFFSET` is clear.
+- **Rage 128 draws:** a draw into the retiring buffer while the flip is
+  pending starts with a `WAIT_UNTIL`. The register guide says that bit
+  stalls until the display shows the last offset written and does not
+  stall when nothing is pending (RRG p. 3-238). It has no engine-idle
+  triggers, so as in Linux, the offset write can pass a primitive still
+  rasterising. The CRTC takes the offset only at the next blank.
+
+A8U4I5 boot 547:
+- V9XD32 passes.
+- The render probes give their usual results.
+- 3DMark 2000 scores **1496**:
+
+| Bucket | Boot 545 (1444) | Boot 547 (1496) |
+|---|---|---|
+| Render drain | 45 s | 17 s |
+| Flip | 52 s | 32 s |
+| BltFill (the clear) | 2.8 s | 19 s |
+| Ring space wait | 43 s | 44 s |
+
+`DrawsFlipWaited` reads 0 (3DMark triple-buffers). There were no
+timeouts, declines or forced flips.
+
+**What this shows.** The per-frame clear is a 2D fill, and it now carries
+the drain. More important, the CPU is waiting on the GPU in every bucket,
+about 112 s of 419: the CCE is the limit.
+
+Every triangle is three full 8-dword vertices, 24 dwords. High polygon
+peaks at 689 K tri/s, about 16.5 M dwords/s through the microcode, against
+ATI's 2.3 M tri/s. 3DMark makes 422 K indexed draw calls, and the core
+expands every one into full triangle lists. ATI most likely sends indexed
+primitives instead: `3D_RNDR_GEN_INDX_PRIM`, with the vertices in AGP
+memory fetched by the vertex walker (mode 8's VCBM channel) and only
+indices in the ring. That cost is the core's indexed path and the Rage
+128's vertex submission, not the flip.
+
+Next, in order:
+1. Indexed primitives: the core hands an engine the index list and the
+   vertex range instead of expanded triangles, where the engine says it
+   can take them. On the Rage 128 that means the vertices go into AGP
+   memory, as ATI's driver keeps them.
+2. 2D fill and copy as CCE packets while the ring runs (`PAINT_MULTI`,
+   `BITBLT_MULTI`), so the clear stops draining.
+3. The per-engine batch size.
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that

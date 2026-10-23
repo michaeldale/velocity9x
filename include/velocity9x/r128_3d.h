@@ -34,6 +34,12 @@ extern const v9x_u32 v9x_r128_cce_microcode[V9X_R128_CCE_MICROCODE_DWORDS];
  * CCE_PACKET3 macros): n is the dwords after the header, less one. */
 #define V9X_R128_PACKET0(reg, n)    (((v9x_u32)(n) << 16) | ((v9x_u32)(reg) >> 2))
 #define V9X_R128_PACKET2            0x80000000ul
+/* WAIT_UNTIL: EVENT_CRTC_OFFSET stalls the command FIFO until
+ * CRTC_GUI_TRIG_OFFSET is 0, the display showing the last CRTC_OFFSET
+ * written; no stall when nothing is pending (RRG-G04500 p. 3-238). */
+#define V9X_R128_WAIT_UNTIL         0x1720ul
+#define V9X_R128_EVENT_CRTC_OFFSET  0x00000001ul
+#define V9X_R128_WAIT_DWORDS        2u
 #define V9X_R128_PACKET3(op, n)     ((v9x_u32)(op) | ((v9x_u32)(n) << 16))
 #define V9X_R128_PACKET3_3D_RNDR_GEN_PRIM 0xc0002500ul
 /* The count field of a packet header, bits 29:16. */

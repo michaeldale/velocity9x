@@ -34,6 +34,7 @@
 #include "velocity9x/r128_2d.h"
 #include "velocity9x/r128_3d.h"
 #include "velocity9x/r128_ring.h"
+#include "velocity9x/r128_crtc.h"
 
 /* CCE registers (r128_reg.h). */
 #define V9X_R128_CCE_PM4_BUFFER_CNTL    0x0704ul
@@ -87,6 +88,18 @@ static int v9x_r128_cce_running = 0;
 #define V9X_R128_CCE_RING      2
 static int v9x_r128_cce_transport = V9X_R128_CCE_UNDECIDED;
 
+/*
+ * A flip queued in the ring. WAIT_UNTIL's EVENT_CRTC_OFFSET (r128_3d.h)
+ * goes ahead of each CRTC_OFFSET write, as in Linux's
+ * r128_cce_dispatch_flip. The flip number goes to GUI_SCRATCH_REG1 behind
+ * the write, so the CPU can tell a flip the CCE has not reached from one
+ * the CRTC has not taken.
+ */
+#define V9X_R128_CCE_GUI_SCRATCH_REG1   0x15e4ul
+#define V9X_R128_CCE_FLIP_DWORDS        8ul
+static DWORD v9x_r128_cce_flip_seq = 0ul;
+static int v9x_r128_cce_flip_queued = 0;
+
 static void v9x_r128_cce_engine_reset(void);
 
 /* `lock or dword ptr [esp], 0`: a locked instruction drains the
@@ -129,6 +142,8 @@ static void v9x_r128_cce_quarantine(DWORD status)
         v9x_r128_cce_write32(V9X_R128_CCE_PM4_MICRO_CNTL, 0ul);
         v9x_r128_cce_engine_reset();
     }
+    /* A flip the CCE never reached is never coming. */
+    v9x_r128_cce_flip_queued = 0;
     v9x_r128_cce_stop();
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
         v9x_trace_flush_fault(V9X_R128_CCE_FAULT_TAG, status);
@@ -501,6 +516,9 @@ int v9x_r128_cce_drain(int wait)
         v9x_r128_cce_quarantine(status);
         return 0;
     }
+    /* Drained: a queued flip has been executed, whatever the scratch
+     * register says after the next start's reset. */
+    v9x_r128_cce_flip_queued = 0;
     v9x_r128_cce_stop();
     v9x_r128_cce_write32(V9X_R128_PC_NGUI_CTLSTAT,
                          v9x_r128_cce_read32(V9X_R128_PC_NGUI_CTLSTAT) |
@@ -508,6 +526,62 @@ int v9x_r128_cce_drain(int wait)
     if (!v9x_r128_cce_poll_cache(V9X_R128_PC_NGUI_CTLSTAT,
                                  V9X_R128_CCE_SPINS, &status)) {
         v9x_r128_cce_quarantine(status);
+        return 0;
+    }
+    return 1;
+}
+
+/* Only on the ring, once this boot has chosen it, and while the engine is
+ * still trusted: PIO flips keep the drain and the direct write. */
+int v9x_r128_cce_flip_queues(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul) {
+        return 0;
+    }
+    return v9x_r128_cce_transport == V9X_R128_CCE_RING;
+}
+
+/*
+ * The flip, behind everything submitted: the GUI pixel cache flushed, so
+ * the frame's last pixels are in memory before the CRTC can fetch them;
+ * the previous flip taken (the core has already seen it complete, so this
+ * normally passes at once); the new CRTC_OFFSET; then the flip's number.
+ * The 3D engine may still be finishing the last primitive when the CCE
+ * writes CRTC_OFFSET - WAIT_UNTIL has no engine-idle trigger on this chip
+ * - but the CRTC takes the offset only at the next blank, as with
+ * Linux's flip, which does the same.
+ */
+int v9x_r128_cce_queue_flip(DWORD crtc_offset)
+{
+    v9x_u32 stream[V9X_R128_CCE_FLIP_DWORDS];
+
+    stream[0] = V9X_R128_PACKET0(V9X_R128_PC_GUI_CTLSTAT, 0u);
+    stream[1] = V9X_R128_PC_FLUSH_GUI;
+    stream[2] = V9X_R128_PACKET0(V9X_R128_WAIT_UNTIL, 0u);
+    stream[3] = V9X_R128_EVENT_CRTC_OFFSET;
+    stream[4] = V9X_R128_PACKET0(V9X_R128_CRTC_OFFSET, 0u);
+    stream[5] = crtc_offset;
+    stream[6] = V9X_R128_PACKET0(V9X_R128_CCE_GUI_SCRATCH_REG1, 0u);
+    stream[7] = v9x_r128_cce_flip_seq + 1ul;
+    if (!v9x_r128_cce_submit(stream, V9X_R128_CCE_FLIP_DWORDS)) {
+        return 0;
+    }
+    ++v9x_r128_cce_flip_seq;
+    v9x_r128_cce_flip_queued = 1;
+    return 1;
+}
+
+/* Until GUI_SCRATCH_REG1 holds the last flip's number, the CCE has not
+ * written that flip's CRTC_OFFSET. */
+int v9x_r128_cce_flip_in_flight(void)
+{
+    if (!v9x_r128_cce_flip_queued) {
+        return 0;
+    }
+    if (v9x_r128_cce_read32(V9X_R128_CCE_GUI_SCRATCH_REG1) ==
+        v9x_r128_cce_flip_seq) {
+        v9x_r128_cce_flip_queued = 0;
         return 0;
     }
     return 1;

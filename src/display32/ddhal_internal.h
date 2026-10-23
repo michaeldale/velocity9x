@@ -522,6 +522,9 @@ int v9x_r128_set_display_start(DWORD byte_offset);
 int v9x_r128_flip_pending(void);
 void v9x_r128_note_flip_done(void);
 void v9x_r128_scanout_reset(void);
+/* Non-zero when this Rage 128's flips go into the CCE ring behind the
+ * frame instead of waiting for it. */
+int v9x_r128_flip_queues(void);
 /* The Rage 128's CCE, in engines/r128_cce.c. submit starts it if needed
  * and leaves it running; drain stops it, with the drawing finished and the
  * pixel caches flushed. Non-zero on success; drain(0) answers 0 while the
@@ -529,6 +532,13 @@ void v9x_r128_scanout_reset(void);
  * count is even. */
 int v9x_r128_cce_submit(const v9x_u32 *dwords, DWORD count);
 int v9x_r128_cce_drain(int wait);
+/* Flips through the ring: queues reports whether this boot's CCE runs a
+ * ring; queue_flip puts a CRTC_OFFSET value in it behind everything
+ * submitted (0 if it could not); in_flight is non-zero until the CCE has
+ * executed the last one queued. */
+int v9x_r128_cce_flip_queues(void);
+int v9x_r128_cce_queue_flip(DWORD crtc_offset);
+int v9x_r128_cce_flip_in_flight(void);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */
@@ -586,6 +596,9 @@ void v9x_present_trace(DWORD kind, DWORD context, DWORD offset);
  * last told to show. A draw aimed at it is a draw into the presented
  * buffer. */
 DWORD v9x_present_flip_offset(void);
+/* The surface the last accepted flip took off the screen; it is still on
+ * it while that flip is pending. */
+DWORD v9x_present_retiring_offset(void);
 /* Whether GDI may be drawing on the screen: true unless this process holds
  * exclusive mode and has not flipped back to the GDI surface. A backend
  * leaves rendering running only while this is false (ddhal_core.c). */
@@ -626,6 +639,10 @@ void v9x_d3d_i9xx_reset(void);
  * takes it at the retrace and reports it pending meanwhile. */
 int v9x_scanout_hw_flip(void);
 int v9x_scanout_hw_flip_pending(void);
+/* Non-zero when the active scanout's flip is queued in the engine's
+ * command stream behind the frame, so Flip need not wait for the drawing
+ * (only the Rage 128 on its CCE ring, today). */
+int v9x_scanout_flip_queued(void);
 /* The flip state machine has just declared a flip done: read the plane base
  * back and count whether it holds the offset that was flipped to. A no-op
  * on the VGA path. */

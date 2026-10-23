@@ -44,7 +44,8 @@
 /* Format, control, header: the stream a whole batch can make, rounded up
  * to a pair. */
 #define V9X_D3D_R128_STREAM_DWORDS \
-    (V9X_R128_STATE_DWORDS_MAX + V9X_R128_PRIM_HEADER_DWORDS + \
+    (V9X_R128_WAIT_DWORDS + \
+     V9X_R128_STATE_DWORDS_MAX + V9X_R128_PRIM_HEADER_DWORDS + \
      V9X_D3D_R128_MAX_TRIANGLES * 3ul * V9X_R128_VERTEX_DWORDS + \
      V9X_R128_FLUSH_DWORDS + 2ul)
 
@@ -509,6 +510,19 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
         v9x_d3d_r128_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
+    }
+
+    /* A draw into the buffer the last flip is taking off the screen, while
+     * that flip is pending, waits for it in the command stream: with flips
+     * queued in the ring (r128_cce.c) the CPU no longer waits for the
+     * frame, so the GPU waits for the display instead of drawing into what
+     * it is still showing. */
+    if (draw->target.offset == v9x_present_retiring_offset() &&
+        v9x_flip_pending()) {
+        v9x_d3d_r128_stream[count++] =
+            V9X_R128_PACKET0(V9X_R128_WAIT_UNTIL, 0u);
+        v9x_d3d_r128_stream[count++] = V9X_R128_EVENT_CRTC_OFFSET;
+        ++v9x_hal->d3d_diagnostics.draws_flip_waited;
     }
 
     /* The whole batch, assembled: state, one primitive packet, flush. */
