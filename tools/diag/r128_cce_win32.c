@@ -74,6 +74,11 @@ static const char *rc_microcode_path = RC_MICROCODE_PATH;
 #define RC_OP_BLOCK_READ32 16ul
 #define RC_OP_RING_PATTERN 17ul
 #define RC_OP_PHYS_READ32 18ul
+#define RC_OP_PCI_CFG_READ 19ul
+#define RC_OP_CACHE_FLUSH 20ul
+#define RC_MM_INDEX 0x0000ul
+#define RC_MM_INDEX_CANARY 0x00000f00ul
+#define RC_PG_WRITECOMBINED 2ul
 #define RC_PATTERN_TAG 0x5a000000ul
 #define RC_PATTERN_TAG_MASK 0xff000000ul
 #define RC_PATTERN_INDEX_MASK 0x00fffffful
@@ -145,6 +150,11 @@ static const char *rc_microcode_path = RC_MICROCODE_PATH;
 #define RC_PACKET0(reg) ((DWORD)(reg) >> 2)
 /* Type-2 packet, a filler dword; type-3 with n+1 dwords following. */
 #define RC_PACKET2 0x80000000ul
+/* Type-0 dword count - 1 in bits 29:16; ONE_REG_WR (bit 15) sends every
+ * dword to the one register (Linux R128_CCE_PACKET0_ONE_REG_WR's bit; the
+ * PIO control PioScratchOneReg checks this chip honours it). */
+#define RC_PACKET0_COUNT(n) ((((DWORD)(n) - 1ul) & 0x3ffful) << 16)
+#define RC_PACKET0_ONE_REG_WR 0x00008000ul
 #define RC_PACKET3(op, n) ((DWORD)(op) | ((DWORD)(n) << 16))
 #define RC_3D_RNDR_GEN_PRIM 0xc0002500ul
 
@@ -630,6 +640,23 @@ static DWORD rc_agp_cntl_found;
 static int rc_offset_from_agp_base;
 /* /loc: run rc_ring_locate in place of the scratch and fill tests. */
 static int rc_locate;
+/* /long: the locating pattern's long form (see RC_Do_Ring_Pattern). */
+static int rc_pattern_long;
+/* /atis: ATI's start-up extras, read from ati2i9aa.dll's CCE start
+ * (Ghidra, 1008:6B90-6F4A): PM4_MICRO_CNTL 401F0000 rather than Linux's
+ * 40000000 (bits 20:16 undocumented; ATI's live value too, boot 538),
+ * AGP_CNTL_B |= 10h on its AGP path, PM4_VC_DEBUG_CONFIG |= 8. */
+static DWORD rc_micro_freerun = RC_MICRO_FREERUN;
+static int rc_ati_start;
+/* /flush: WBINVD after filling the ring, before the kick. /wc: reserve the
+ * aperture pages write-combined, as ATI's mini-VDD does. */
+static int rc_cache_flush;
+static DWORD rc_gart_flags;
+static DWORD rc_agp_cntl_b_found;
+static DWORD rc_vc_debug_found;
+#define RC_ATI_MICRO_FREERUN 0x401f0000ul
+#define RC_AGP_CNTL_B 0x0b44ul
+#define RC_PM4_VC_DEBUG_CONFIG 0x07a4ul
 /* /dump: read everything and exit (rc_dump). */
 static int rc_dump_only;
 #define RC_AGP_CNTL 0x0174ul
@@ -697,6 +724,10 @@ static void rc_add_ring_init(void)
         rc_add_write(RC_AGP_CNTL, RC_ATI_AGP_CNTL);
         rc_add_write(RC_BUS_CNTL, RC_ATI_BUS_CNTL);
     }
+    if (rc_ati_start) {
+        rc_add_write(RC_AGP_CNTL_B, rc_agp_cntl_b_found | 0x10ul);
+        rc_add_write(RC_PM4_VC_DEBUG_CONFIG, rc_vc_debug_found | 0x8ul);
+    }
     if (rc_bm_noupdate == 0u) {
         rc_add_write(RC_PM4_BUFFER_DL_RPTR_ADDR, rc_rptr_writeback);
     }
@@ -734,7 +765,7 @@ static DWORD rc_ring_scratch(const char *name, DWORD start, DWORD magic)
     rc_add_write(RC_PM4_BUFFER_CNTL,
                  rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
     rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
-    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    rc_add_write(RC_PM4_MICRO_CNTL, rc_micro_freerun);
     rc_add_write(RC_PM4_BUFFER_DL_WPTR, at | RC_PM4_BUFFER_DL_DONE);
     poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR, 0xfffffffful,
                         at);
@@ -805,6 +836,9 @@ static void rc_ring_locate(void)
     DWORD rptr_index;
     DWORD stat_index;
     DWORD wb_index = 0u;
+    DWORD mm_index_index;
+    DWORD mm_index_saved_index;
+    DWORD mm_index_saved = 0u;
     DWORD poll_result;
     DWORD wait_result;
     DWORD scratch;
@@ -813,14 +847,19 @@ static void rc_ring_locate(void)
         lstrcpyA(name, step == 1u ? "LocateFirst" : "LocateSecond");
         rc_begin();
         rc_add_write(RC_GUI_SCRATCH_REG0, 0u);
+        mm_index_saved_index = rc_add(RC_OP_MMIO_READ32, RC_MM_INDEX, 0u, 0u);
+        rc_add_write(RC_MM_INDEX, RC_MM_INDEX_CANARY);
         if (step == 1u) {
-            rc_add(RC_OP_RING_PATTERN, 0u, 0u, 0u);
+            rc_add(RC_OP_RING_PATTERN, (DWORD)rc_pattern_long, 0u, 0u);
             rc_add_ring_init();
+        }
+        if (rc_cache_flush) {
+            rc_add(RC_OP_CACHE_FLUSH, 0u, 0u, 0u);
         }
         rc_add_write(RC_PM4_BUFFER_CNTL,
                      rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
         rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
-        rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+        rc_add_write(RC_PM4_MICRO_CNTL, rc_micro_freerun);
         rc_add_write(RC_PM4_BUFFER_DL_WPTR,
                      (step * 2u) | RC_PM4_BUFFER_DL_DONE);
         poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR,
@@ -830,6 +869,7 @@ static void rc_ring_locate(void)
                                0u);
         rptr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_DL_RPTR, 0u, 0u);
         stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
+        mm_index_index = rc_add(RC_OP_MMIO_READ32, RC_MM_INDEX, 0u, 0u);
         if (rc_bm_noupdate == 0u) {
             wb_index = rc_add(RC_OP_BLOCK_READ32, 0u, 0u, 0u);
         }
@@ -850,6 +890,12 @@ static void rc_ring_locate(void)
                      rc_result_buffer.ops[rptr_index].result);
         rc_write_hex(rc_key(key, name, "Pm4Stat"),
                      rc_result_buffer.ops[stat_index].result);
+        if (step == 1u) {
+            mm_index_saved =
+                rc_result_buffer.ops[mm_index_saved_index].result;
+        }
+        rc_write_hex(rc_key(key, name, "MmIndexAfter"),
+                     rc_result_buffer.ops[mm_index_index].result);
         if (rc_bm_noupdate == 0u) {
             rc_write_hex(rc_key(key, name, "Writeback"),
                          rc_result_buffer.ops[wb_index].result);
@@ -874,6 +920,7 @@ static void rc_ring_locate(void)
     }
     rc_add_write(RC_PM4_MICRO_CNTL, 0u);
     rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    rc_add_write(RC_MM_INDEX, mm_index_saved);
     rc_run();
 }
 
@@ -881,7 +928,8 @@ static void rc_ring_locate(void)
  * The control for rc_ring_scratch: the same packet through the PIO ports,
  * with or without the engine soft-reset the ring set-up now starts with.
  */
-static void rc_pio_scratch(const char *name, DWORD magic, int reset)
+static void rc_pio_scratch(const char *name, DWORD magic, int reset,
+                           int one_reg)
 {
     char key[64];
     DWORD wait_index;
@@ -899,8 +947,20 @@ static void rc_pio_scratch(const char *name, DWORD magic, int reset)
     rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_192PIO | RC_PM4_NOUPDATE);
     rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
     rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
-    rc_add_write(RC_PM4_FIFO_DATA_EVEN, RC_PACKET0(RC_GUI_SCRATCH_REG0));
-    rc_add_write(RC_PM4_FIFO_DATA_ODD, magic);
+    if (one_reg) {
+        /* Two writes to the one register, then a type-2 pad for the pair:
+         * if ONE_REG_WR is ignored, the second lands in GUI_SCRATCH_REG1
+         * and REG0 keeps the complement. */
+        rc_add_write(RC_PM4_FIFO_DATA_EVEN,
+                     RC_PACKET0(RC_GUI_SCRATCH_REG0) | RC_PACKET0_COUNT(2u) |
+                     RC_PACKET0_ONE_REG_WR);
+        rc_add_write(RC_PM4_FIFO_DATA_ODD, ~magic);
+        rc_add_write(RC_PM4_FIFO_DATA_EVEN, magic);
+        rc_add_write(RC_PM4_FIFO_DATA_ODD, RC_PACKET2);
+    } else {
+        rc_add_write(RC_PM4_FIFO_DATA_EVEN, RC_PACKET0(RC_GUI_SCRATCH_REG0));
+        rc_add_write(RC_PM4_FIFO_DATA_ODD, magic);
+    }
     wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, RC_PIO_FIFO_ENTRIES, 0u);
     scratch_index = rc_add(RC_OP_MMIO_READ32, RC_GUI_SCRATCH_REG0, 0u, 0u);
     stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
@@ -1003,7 +1063,7 @@ static DWORD rc_ring_fill(const char *name, DWORD start, DWORD color)
     rc_add_write(RC_PM4_BUFFER_CNTL,
                  rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
     rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
-    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    rc_add_write(RC_PM4_MICRO_CNTL, rc_micro_freerun);
     rc_add_write(RC_PM4_BUFFER_DL_WPTR, at | RC_PM4_BUFFER_DL_DONE);
     poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR, 0xfffffffful,
                         at);
@@ -1784,6 +1844,30 @@ static void rc_dump_range(DWORD low, DWORD high)
     }
 }
 
+/* One device's configuration space, `dwords` of it, as <prefix>xx=value:
+ * the host bridge's AGP capability says whether the chipset end of AGP is
+ * enabled, at what rate, and where its aperture and GART are. */
+static void rc_dump_config(const char *prefix, DWORD device_address,
+                           DWORD dwords)
+{
+    char key[8];
+    DWORD index;
+
+    rc_begin();
+    for (index = 0u; index < dwords; ++index) {
+        rc_add(RC_OP_PCI_CFG_READ, device_address | (index * 4u), 0u, 0u);
+    }
+    if (!rc_run()) {
+        rc_write(prefix, "NOT-RUN");
+        return;
+    }
+    for (index = 0u; index < dwords; ++index) {
+        lstrcpyA(key, prefix);
+        rc_hex(key + 1, index * 4u, 2);
+        rc_write_hex(key, rc_result_buffer.ops[index].result);
+    }
+}
+
 /* One physical dword, written as `name`. */
 static DWORD rc_dump_phys(const char *name, DWORD address)
 {
@@ -1827,6 +1911,9 @@ static void rc_dump(void)
     rc_dump_range(0x07b8ul, 0x07b8ul);
     rc_dump_range(0x07f0ul, 0x07fcul);
     rc_dump_range(0x0f00ul, 0x0f5cul);
+    /* H: the host bridge, 0:0.0. B: the AGP-to-PCI bridge, 0:1.0. */
+    rc_dump_config("H", 0x80000000ul, 64u);
+    rc_dump_config("B", 0x80000800ul, 16u);
     offset = rc_read_register(RC_PM4_BUFFER_OFFSET);
     agp_base = rc_read_register(RC_AGP_BASE);
     aper = rc_read_register(RC_AGP_APER_OFFSET);
@@ -1936,6 +2023,19 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 (line[2] == 'b' || line[2] == 'B')) {
                 rc_bm_noupdate = 0u;
             }
+            if (line[0] == '/' && (line[1] == 'w' || line[1] == 'W') &&
+                (line[2] == 'c' || line[2] == 'C')) {
+                rc_gart_flags = RC_PG_WRITECOMBINED;
+            }
+            if (line[0] == '/' && (line[1] == 'f' || line[1] == 'F') &&
+                (line[2] == 'l' || line[2] == 'L')) {
+                rc_cache_flush = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'l' || line[1] == 'L') &&
+                (line[2] == 'o' || line[2] == 'O') &&
+                (line[3] == 'n' || line[3] == 'N')) {
+                rc_pattern_long = 1;
+            }
             if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
                 (line[2] == 't' || line[2] == 'T') &&
                 (line[3] == 'i' || line[3] == 'I')) {
@@ -1962,6 +2062,13 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 (line[3] == 'r' || line[3] == 'R')) {
                 rc_offset_from_agp_base = 1;
             }
+            if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
+                (line[2] == 't' || line[2] == 'T') &&
+                (line[3] == 'i' || line[3] == 'I') &&
+                (line[4] == 's' || line[4] == 'S')) {
+                rc_ati_start = 1;
+                rc_micro_freerun = RC_ATI_MICRO_FREERUN;
+            }
             if (line[0] == '/' && (line[1] == 'm' || line[1] == 'M') &&
                 line[2] == '8') {
                 rc_bm_mode = RC_PM4_64BM_64VCBM_64INDBM;
@@ -1979,6 +2086,10 @@ void WINAPI V9xRage128CceProbeEntry(void)
     }
     rc_write("CpuSideGuiFlush", rc_no_cpu_flush ? "off" : "on");
     rc_write("MicrocodeFile", rc_microcode_path);
+    rc_write("AtiStartExtras", rc_ati_start ? "on" : "off");
+    rc_write("CacheFlushBeforeKick", rc_cache_flush ? "on" : "off");
+    rc_write_hex("GartFlags", rc_gart_flags);
+    rc_write_hex("MicroCntlFreeRun", rc_micro_freerun);
 
     display = GetDC(0);
     if (display != 0) {
@@ -2062,8 +2173,9 @@ void WINAPI V9xRage128CceProbeEntry(void)
 
     rc_pio_fill("PioAlternate", ORDER_ALTERNATE, micro_found);
     if (rc_gart || rc_ring) {
-        rc_pio_scratch("PioScratch", 0x11223344ul, 0);
-        rc_pio_scratch("PioScratchAfterReset", 0x55667788ul, 1);
+        rc_pio_scratch("PioScratch", 0x11223344ul, 0, 0);
+        rc_pio_scratch("PioScratchAfterReset", 0x55667788ul, 1, 0);
+        rc_pio_scratch("PioScratchOneReg", 0x99aabbccul, 0, 1);
     }
     if (rc_gart) {
         DWORD wptr;
@@ -2073,6 +2185,10 @@ void WINAPI V9xRage128CceProbeEntry(void)
         rc_bus_cntl_found = rc_read_register(RC_BUS_CNTL);
         rc_gart_page_found = rc_read_register(RC_PCI_GART_PAGE);
         rc_agp_cntl_found = rc_read_register(RC_AGP_CNTL);
+        rc_agp_cntl_b_found = rc_read_register(RC_AGP_CNTL_B);
+        rc_vc_debug_found = rc_read_register(RC_PM4_VC_DEBUG_CONFIG);
+        rc_write_hex("AgpCntlBAtStart", rc_agp_cntl_b_found);
+        rc_write_hex("Pm4VcDebugConfigAtStart", rc_vc_debug_found);
         /* AGP_STATUS and AGP_COMMAND through BAR2's image of configuration
          * space: AGP_EN (command bit 8) clear is "PCI mode", where the PCI
          * GART applies (RRG 3-185, 3-207). */
@@ -2092,7 +2208,7 @@ void WINAPI V9xRage128CceProbeEntry(void)
                  * first so the aperture stays the ring. */
                 wb_index = rc_add(RC_OP_RING_ALLOC, 0u, 0u, 0u);
             }
-            alloc_index = rc_add(RC_OP_GART_ALLOC, 0u, 0u, 0u);
+            alloc_index = rc_add(RC_OP_GART_ALLOC, rc_gart_flags, 0u, 0u);
         } else {
             alloc_index = rc_add(RC_OP_RING_ALLOC,
                                  rc_gart_page_numbers ? 1u : 0u, 0u, 0u);
@@ -2130,6 +2246,38 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 rc_write_hex("AgpAperOffset", aper);
                 rc_write_hex("AgpBase", rc_agp_base);
                 rc_write_hex("RingCardOffset", rc_ring_offset);
+                if (rc_vgart) {
+                    /* The 440BX's GART while our pages are held:
+                     * aperture base (10h), AGPCTRL (B0h), APSIZE (B4h),
+                     * ATTBASE (B8h), and the table entry for the ring's
+                     * first page, one dword per 4 KiB of aperture. */
+                    DWORD aperture;
+                    DWORD attbase;
+
+                    rc_begin();
+                    rc_add(RC_OP_PCI_CFG_READ, 0x80000010ul, 0u, 0u);
+                    rc_add(RC_OP_PCI_CFG_READ, 0x800000b0ul, 0u, 0u);
+                    rc_add(RC_OP_PCI_CFG_READ, 0x800000b4ul, 0u, 0u);
+                    rc_add(RC_OP_PCI_CFG_READ, 0x800000b8ul, 0u, 0u);
+                    if (rc_run()) {
+                        aperture = rc_result_buffer.ops[0].result &
+                                   0xfffffff0ul;
+                        attbase = rc_result_buffer.ops[3].result &
+                                  0xfffff000ul;
+                        rc_write_hex("HostAperture", aperture);
+                        rc_write_hex("HostAgpCtrl",
+                                     rc_result_buffer.ops[1].result);
+                        rc_write_hex("HostApSize",
+                                     rc_result_buffer.ops[2].result);
+                        rc_write_hex("HostAttBase", attbase);
+                        if (attbase != 0u && ring_phys >= aperture) {
+                            (void)rc_dump_phys("GartEntryForRing",
+                                               attbase +
+                                               ((ring_phys - aperture) >>
+                                                12) * 4u);
+                        }
+                    }
+                }
             }
             if (rc_locate) {
                 rc_ring_locate();
@@ -2154,6 +2302,10 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 rc_add_write(RC_AGP_BASE, rc_agp_base_found);
             }
             rc_add_write(RC_AGP_CNTL, rc_agp_cntl_found);
+            if (rc_ati_start) {
+                rc_add_write(RC_AGP_CNTL_B, rc_agp_cntl_b_found);
+                rc_add_write(RC_PM4_VC_DEBUG_CONFIG, rc_vc_debug_found);
+            }
             rc_run();
             rc_write_hex("BusCntlAtEnd", rc_read_register(RC_BUS_CNTL));
             rc_write_hex("PciGartPageAtEnd",

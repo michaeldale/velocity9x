@@ -116,12 +116,20 @@ RC_OP_GART_ALLOC        equ 15
 RC_OP_BLOCK_READ32      equ 16
 RC_OP_RING_PATTERN      equ 17
 RC_OP_PHYS_READ32       equ 18
+RC_OP_PCI_CFG_READ      equ 19
+; WBINVD: write back and invalidate the CPU caches. The 440BX does not snoop
+; the card's AGP reads, so a ring dword still in a write-back line is not
+; what the card fetches; the card's writes (the read-pointer write-back) are
+; snooped, which is why those land.
+RC_OP_CACHE_FLUSH       equ 20
 
 ; RC_OP_RING_PATTERN: the whole ring as pairs - a type-0 header for
 ; GUI_SCRATCH_REG0 (15E0h >> 2) and 5A000000h | the dword index of that
 ; value - so the register says which pair the CCE executed.
 RC_PATTERN_HEADER       equ 00000578h
 RC_PATTERN_TAG          equ 5A000000h
+; Type 0, count - 1 = 15 (bits 29:16), ONE_REG_WR (bit 15), 15E0h >> 2.
+RC_PATTERN_LONG_HEADER  equ 000F8578h
 
 ; /vgart: 16 pages of the chipset's AGP aperture through the VMM's GART
 ; services (_GARTReserve, _GARTCommit; VMM.INC), as ATI's driver keeps its
@@ -184,6 +192,7 @@ RCRingData   dd 0
 RCGartLinear dd 0
 RCGartDev    dd 0
 RCGartCommitted dd 0
+RCGartFlags  dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -349,12 +358,22 @@ BeginProc RC_Write_Allowed
     jnz     RC_Write_Refused
     cmp     ebx, RC_PC_NGUI_CTLSTAT
     je     RC_Write_Ok
+    ; /loc: MM_INDEX as a canary. A ring of zeros is type-0 writes of 0 to
+    ; register 0, so a seeded MM_INDEX reading 0 after the kick means the
+    ; CCE fetched zeros. Restored after.
+    cmp     ebx, 0000h
+    je     RC_Write_Ok
     ; /gart and /agp: BUS_CNTL (bus mastering), AGP_BASE, PCI_GART_PAGE.
     cmp     ebx, 0030h
     je     RC_Write_Ok
     cmp     ebx, 0170h
     je     RC_Write_Ok
     cmp     ebx, 0174h
+    je     RC_Write_Ok
+    ; /atis: AGP_CNTL_B and PM4_VC_DEBUG_CONFIG, as ATI's start-up sets.
+    cmp     ebx, 0b44h
+    je     RC_Write_Ok
+    cmp     ebx, 07a4h
     je     RC_Write_Ok
     cmp     ebx, 017ch
     je     RC_Write_Ok
@@ -396,6 +415,9 @@ EndProc RC_Write_Allowed
 BeginProc RC_Read_Allowed
     test    ebx, 3
     jnz     short RC_Read_Refused
+    ; MM_INDEX, for the /loc canary; MM_DATA (4) stays refused.
+    test    ebx, ebx
+    jz      short RC_Read_Ok
     cmp     ebx, 000ch
     je      short RC_Read_Refused
     cmp     ebx, 00b4h
@@ -464,7 +486,40 @@ BeginProc RC_Execute_One
     je      RC_Do_Ring_Pattern
     cmp     eax, RC_OP_PHYS_READ32
     je      RC_Do_Phys_Read32
+    cmp     eax, RC_OP_PCI_CFG_READ
+    je      RC_Do_Pci_Cfg_Read
+    cmp     eax, RC_OP_CACHE_FLUSH
+    je      RC_Do_Cache_Flush
     jmp     RC_Do_Refuse
+
+RC_Do_Cache_Flush:
+    db      0Fh, 09h                ; wbinvd: the module assembles as .386p
+
+    jmp     RC_Do_Done
+
+; a = a configuration mechanism 1 address (80000000h | bus << 16 | device
+; << 11 | function << 8 | register), dword-aligned. Read only: the host
+; bridge's AGP capability, beside the card's. Result: the dword.
+RC_Do_Pci_Cfg_Read:
+    test    ebx, 3
+    jnz     RC_Do_Refuse
+    test    ebx, 80000000h
+    jz      RC_Do_Refuse
+    pushfd
+    cli
+    mov     dx, 0cf8h
+    in      eax, dx
+    mov     ecx, eax
+    mov     eax, ebx
+    out     dx, eax
+    mov     dx, 0cfch
+    in      eax, dx
+    mov     [esi+16], eax
+    mov     dx, 0cf8h
+    mov     eax, ecx
+    out     dx, eax
+    popfd
+    jmp     RC_Do_Done
 
 ; /dump under ATI's driver: a = a dword-aligned physical address (ATI's
 ; ring through the AGP aperture, its read-pointer write-back in RAM).
@@ -498,12 +553,18 @@ RC_Do_Block_Read32:
     mov     [esi+16], eax
     jmp     RC_Do_Done
 
-; Fill the ring with the locating pattern. Result: dwords written.
+; Fill the ring with the locating pattern. a = 1 for the long form: every
+; dword 5A000000h | its index, and every 17th a type-0 header for sixteen
+; writes to GUI_SCRATCH_REG0 alone (ONE_REG_WR). A CCE that reads one of
+; those headers writes a tagged value, or waits for the rest of the packet;
+; it cannot go idle with the register untouched. Result: dwords written.
 RC_Do_Ring_Pattern:
     cmp     RCRingData, 0
     je      RC_Do_Refuse
     mov     edi, RCRingData
     xor     ecx, ecx
+    cmp     ebx, 1
+    je      short RC_Do_Ring_Pattern_Long
 RC_Do_Ring_Pattern_Next:
     mov     dword ptr [edi+ecx*4], RC_PATTERN_HEADER
     lea     eax, [ecx+1]
@@ -512,6 +573,26 @@ RC_Do_Ring_Pattern_Next:
     add     ecx, 2
     cmp     ecx, RC_RING_AREA / 4
     jb      short RC_Do_Ring_Pattern_Next
+    mov     [esi+16], ecx
+    jmp     RC_Do_Done
+RC_Do_Ring_Pattern_Long:
+    xor     edx, edx                ; dwords since the last header
+RC_Do_Ring_Pattern_Long_Next:
+    mov     eax, ecx
+    or      eax, RC_PATTERN_TAG
+    test    edx, edx
+    jnz     short RC_Do_Ring_Pattern_Long_Store
+    mov     eax, RC_PATTERN_LONG_HEADER
+RC_Do_Ring_Pattern_Long_Store:
+    mov     [edi+ecx*4], eax
+    inc     edx
+    cmp     edx, 17
+    jb      short RC_Do_Ring_Pattern_Long_Count
+    xor     edx, edx
+RC_Do_Ring_Pattern_Long_Count:
+    inc     ecx
+    cmp     ecx, RC_RING_AREA / 4
+    jb      short RC_Do_Ring_Pattern_Long_Next
     mov     [esi+16], ecx
     jmp     RC_Do_Done
 
@@ -580,19 +661,25 @@ RC_Do_Ring_Read32:
     mov     [esi+16], eax
     jmp     RC_Do_Done
 
-; /vgart: reserve and commit RC_VGART_PAGES of the AGP aperture, uncached;
-; the ring ops then write through the reserve's linear address. Result:
-; the pages' device (bus) address, or 0 if either service refused.
+; /vgart: reserve and commit RC_VGART_PAGES of the AGP aperture; the ring
+; ops then write through the reserve's linear address. a = the GART flags,
+; 0 for PG_UNCACHED (ATI's mini-VDD passes PG_WRITECOMBINED). Result: the
+; pages' device (bus) address, or 0 if either service refused.
 RC_Do_Gart_Alloc:
     cmp     RCGartLinear, 0
     jne     short RC_Do_Gart_Alloc_Have
+    test    ebx, ebx
+    jnz     short RC_Do_Gart_Alloc_Flags
+    mov     ebx, PG_UNCACHED
+RC_Do_Gart_Alloc_Flags:
+    mov     RCGartFlags, ebx
     mov     ebx, OFFSET32 RCGartDev
-    VMMcall _GARTReserve,<0,RC_VGART_PAGES,0,ebx,PG_UNCACHED>
+    VMMcall _GARTReserve,<0,RC_VGART_PAGES,0,ebx,RCGartFlags>
     test    eax, eax
     jz      short RC_Do_Gart_Alloc_Failed
     mov     RCGartLinear, eax
     mov     ebx, OFFSET32 RCGartDev
-    VMMcall _GARTCommit,<RCGartLinear,0,RC_VGART_PAGES,ebx,PG_UNCACHED>
+    VMMcall _GARTCommit,<RCGartLinear,0,RC_VGART_PAGES,ebx,RCGartFlags>
     test    eax, eax
     jz      short RC_Do_Gart_Alloc_Failed
     mov     RCGartCommitted, 1

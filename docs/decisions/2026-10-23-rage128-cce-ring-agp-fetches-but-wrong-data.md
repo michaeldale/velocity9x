@@ -3,7 +3,7 @@
 Date: 2026-10-23
 
 Status: **measured, one card; not working yet.** A8U4I5's Rage Fury Pro,
-boot 535 throughout. The machine stayed up for every run. This follows
+boots 535 to 539. The machine stayed up for every run. This follows
 [the ring-not-in-VRAM record](2026-10-23-rage128-cce-ring-not-in-vram.md),
 for the bus-master ring Michael asked for after 0.28.0. Evidence: every
 run's `R128CCE.TXT` in
@@ -149,27 +149,129 @@ machine only; it is ATI's code and is not in the repository. With it:
 So ATI's table is not a drop-in. Either it is cut at the wrong boundary,
 or it speaks ATI's own packet protocol.
 
+It was the boundary. The table is NE segment 32 of `ati2i9aa.dll`, file
+offset `65CA0h`, `800h` bytes, each instruction stored low dword first;
+the cut above started at `65DE0h`. ATI's code is Linux's with 40
+instructions inserted, so the later jump targets shift by `28h`. Cut at
+the segment, ATI's microcode passes all three PIO controls
+(`R128CCE-seg32_*.TXT`), and the ring still stalls.
+
 The probe then reloaded linux-firmware's microcode (256 of 256 words
 read back). V9XD32 `/bpp16` passed on the driver (boot 539), and
 A8U4I5 is on Velocity9x again.
 
+## Offline: ATI's start-up and mini-VDD, boot 539
+
+Michael: "do offline". Ghidra's listing of `ati2i9aa.dll` (the CCE
+start, `1008:6B90`-`6F4A`) and a capstone listing of the mini-VDD
+`ati2vxaa.vxd` (LE objects relocated, `int 20h` service dwords decoded),
+both kept outside the repository.
+
+**ATI's CCE start**, in order:
+
+1. `PM4_VC_DEBUG_CONFIG |= 8`.
+2. `PM4_MICRO_CNTL` = `401F0000`. Bits 20:16 are undocumented; the live
+   value under ATI's driver is the same.
+3. The microcode, then `DL_RPTR_ADDR`.
+4. `PM4_BUFFER_OFFSET` = 0, `DL_WPTR` = the current `DL_RPTR`,
+   `WM_CNTL` = `40070707`.
+5. A call into the VDD's protected-mode API (`INT 2Fh 1684h`, VxD
+   `0Ah`), EAX `83h`, ECX 7.
+6. From its results:
+   - `AGP_BASE`;
+   - `AGP_CNTL`'s size code (`38h` for 32 MiB);
+   - `AGP_CNTL_B |= 10h` on the AGP path;
+   - `BUS_CNTL`;
+   - `PM4_BUFFER_CNTL`.
+
+**The VDD call holds nothing hidden.** EAX `83h` is
+`VDD_REGISTER_DISPLAY_DRIVER_INFO` (`MINIVDD.INC`: `80h` + 3). It reaches
+the mini-VDD's `REGISTER_DISPLAY_DRIVER` handler, which dispatches on
+ECX. Entry 7 only returns fields of ATI's device record: the aperture
+base, its size, and AGP (1) or PCI GART (2). Those fields are filled at
+start-up:
+
+- `_GARTReserve(0, pages, 0, &dev, PG_WRITECOMBINED)`;
+- a check that the address lies inside the chipset aperture;
+- `_GARTCommit(lin, 0, pages, &dev, 0)`.
+
+The mini-VDD calls no `_GARTMemAttributes`. On that path it writes no
+configuration space, of the card or of the 440BX.
+
+**The host bridge, read on our driver** (`R128CCE-dumpcfg-v9x-b539.TXT`,
+`R128CCE-gartcheck.TXT`):
+
+- `APBASE` `D8000000`, `APSIZE` `30h` (64 MiB).
+- `AGPCTRL` `80h`: the GTLB is enabled.
+- `AGPCMD` `302h`: AGP enabled at 2x, with SBA.
+- `ATTBASE` is valid while VGARTD holds pages.
+- The ring page's GART entry is `0FD98001`: bit 0 set, so the entry is
+  valid.
+
+The AGP bridge has bus mastering and the card's ranges enabled.
+
+## On the card, boot 539
+
+New probe switches:
+
+- `/atis`: ATI's start-up extras (steps 1, 2 and 6 above);
+- `/flush`: `WBINVD` between filling the ring and the kick;
+- `/wc`: reserve the aperture pages write-combined, as ATI does;
+- `/long`: a stricter locating pattern (below).
+
+`/loc` now also seeds `MM_INDEX` with `F00h` and reads it after the
+kick. A ring of zeros is type-0 writes of 0 to register 0, so zeros
+would clear it.
+
+| Run | Outcome |
+|---|---|
+| `/vgart /m8 /wb /atiuc /atis` (with and without `/zero`) | `MICRO_BUSY` stall, as before |
+| `/vgart ... /flush` | the same |
+| `/vgart ... /wc` | `_GARTReserve` refused (16 pages, null device object) |
+| `/agp`, any of mode 8 or 192BM, write-back on or off, `/zero` or not, `/flush` or not, `/atis` | `DL_RPTR` 2, then 4; PM4 idle; scratch and `MM_INDEX` untouched |
+
+The RAM path's "fetch and idle" is new: the step-2 runs above stalled.
+The flush is not the cause; runs without it fetch and idle the same way.
+
+**`/long` settles what the RAM path reads.** The ring is filled with
+`5A000000h` | the index, with a header every 17 dwords: type 0, 16
+writes, `ONE_REG_WR`, all to `GUI_SCRATCH_REG0`. The PIO control
+(`PioScratchOneReg`: two writes to the one register) passes, so the chip
+honours `ONE_REG_WR`.
+
+A CCE that read one of those headers would:
+
+- write a tagged value at once; or
+- wait for the rest of the packet.
+
+On the RAM path it consumed two dwords, went idle, and left scratch at
+0. **The card's bus-master reads return data that is not the ring's,**
+even though its writes land (the write-back). On the aperture path, the
+read never completes.
+
 ## Where it stands
 
+Measured:
+
 - The card's bus-master writes reach system memory.
-- Its ring reads deliver nothing, whatever the placement.
-- ATI's register state is reproduced exactly, so the remaining difference
-  is outside the registers read: most likely the microcode, possibly the
-  chipset's side of AGP (ATI's driver owns its aperture pages through
-  VGARTD for its whole session).
+- **RAM path:** its reads complete with data that is not ours.
+- **Aperture path:** its reads never complete.
+- ATI's register state, start-up extras and microcode are all
+  reproduced, and none of them changes either outcome.
+- ATI's mini-VDD does nothing to the chipset that VGARTD does not.
 
-Two leads, neither tried:
+Not established:
 
-- **Work out the boundary and format of ATI's table**, from how
-  `ati2i9aa.dll` loads it: the code that writes `PM4_MICROCODE_ADDR`
-  and `DATAH`/`DATAL`.
-- **Read the live microcode RAM under ATI's driver.** `RADDR`, `DATAH`,
-  `DATAL` were deliberately left out of the dump. Reading them while
-  ATI's CCE runs moves its read address and may disturb it, and the
-  machine has already crashed twice on ATI's driver this session.
+- The address the card actually reads.
+- Why ATI's identical-looking set-up works.
+
+Untried differences:
+
+- ATI reserves its aperture once at boot and write-combined. Ours is
+  per run, uncached, and the write-combined reserve was refused.
+- ATI's ring starts at `AGP_BASE` + 0 with `AGP_BASE` at a 32 MiB
+  boundary inside the aperture. Ours sits at the reserve's address,
+  which is 4 MiB aligned.
+- ATI sets `DL_WPTR` from the live `DL_RPTR` instead of writing 0.
 
 Nothing in the driver has changed. The PIO CCE from 0.28.0 stays.
