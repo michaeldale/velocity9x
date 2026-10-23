@@ -134,7 +134,12 @@ RC_PATTERN_LONG_HEADER  equ 000F8578h
 ; /vgart: 16 pages of the chipset's AGP aperture through the VMM's GART
 ; services (_GARTReserve, _GARTCommit; VMM.INC), as ATI's driver keeps its
 ; ring behind AGP_BASE. pDevObj is passed as 0 first.
-RC_VGART_PAGES          equ 16
+RC_VGART_PAGES          equ 17
+; The 17th page sits behind the 64 KiB ring, as the driver's does: /wrap
+; tags it (RC_PATTERN_GUARD_TAG) or mirrors the ring's first 32 dwords into
+; it, to see where the CCE reads when it passes the ring's end.
+RC_GUARD_BYTES          equ 1000h
+RC_PATTERN_GUARD_TAG    equ 5B000000h
 
 RC_RING_PAGES           equ 24
 RC_GART_ENTRIES         equ 8192
@@ -564,7 +569,9 @@ RC_Do_Ring_Pattern:
     mov     edi, RCRingData
     xor     ecx, ecx
     cmp     ebx, 1
-    je      short RC_Do_Ring_Pattern_Long
+    je      RC_Do_Ring_Pattern_Long
+    cmp     ebx, 2
+    jae     RC_Do_Ring_Pattern_Guard
 RC_Do_Ring_Pattern_Next:
     mov     dword ptr [edi+ecx*4], RC_PATTERN_HEADER
     lea     eax, [ecx+1]
@@ -573,6 +580,39 @@ RC_Do_Ring_Pattern_Next:
     add     ecx, 2
     cmp     ecx, RC_RING_AREA / 4
     jb      short RC_Do_Ring_Pattern_Next
+    mov     [esi+16], ecx
+    jmp     RC_Do_Done
+; a = 2: the pairs over the ring, and pairs tagged 5Bxxxxxx over the guard
+; page behind it; a = 3: the same, then the ring's first 32 dwords copied
+; over the guard's (Linux's R128_BROKEN_CCE mirror). /vgart only.
+RC_Do_Ring_Pattern_Guard:
+    cmp     RCGartLinear, 0
+    je      RC_Do_Refuse
+RC_Do_Ring_Pattern_Guard_Next:
+    mov     dword ptr [edi+ecx*4], RC_PATTERN_HEADER
+    lea     eax, [ecx+1]
+    cmp     ecx, RC_RING_AREA / 4
+    jb      short RC_Do_Ring_Pattern_Guard_Ring
+    and     eax, 00ffffffh
+    or      eax, RC_PATTERN_GUARD_TAG
+    jmp     short RC_Do_Ring_Pattern_Guard_Store
+RC_Do_Ring_Pattern_Guard_Ring:
+    or      eax, RC_PATTERN_TAG
+RC_Do_Ring_Pattern_Guard_Store:
+    mov     [edi+ecx*4+4], eax
+    add     ecx, 2
+    cmp     ecx, (RC_RING_AREA + RC_GUARD_BYTES) / 4
+    jb      short RC_Do_Ring_Pattern_Guard_Next
+    cmp     ebx, 3
+    jne     short RC_Do_Ring_Pattern_Guard_Done
+    xor     ecx, ecx
+RC_Do_Ring_Pattern_Guard_Mirror:
+    mov     eax, [edi+ecx*4]
+    mov     [edi+ecx*4+RC_RING_AREA], eax
+    inc     ecx
+    cmp     ecx, 32
+    jb      short RC_Do_Ring_Pattern_Guard_Mirror
+RC_Do_Ring_Pattern_Guard_Done:
     mov     [esi+16], ecx
     jmp     RC_Do_Done
 RC_Do_Ring_Pattern_Long:

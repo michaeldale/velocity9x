@@ -27,9 +27,16 @@ extern unsigned short __far __pascal V9xPciReadAtiMmioBar(
     unsigned long __far *base);
 extern unsigned short __far __pascal V9xMiniR128MmioMap(
     unsigned long bar2, unsigned long __far *linear);
+extern unsigned short __far __pascal V9xMiniR128AgpRing(
+    unsigned long __far *linear, unsigned long __far *bus,
+    unsigned long __far *bytes);
 
 /* V9X_R128_MMIO_BYTES in the mini-VDD: the register BAR. */
 #define V9X_RAGE128_MMIO_BYTES 0x00004000ul
+
+/* The CCE ring's bus address in the AGP aperture, for
+ * v9x_rage128_ring_bus; 0 without one. */
+static unsigned long v9x_rage128_ring_bus_address = 0ul;
 
 static void v9x_rage128_fill_engine(unsigned long framebuffer_linear_base,
                                     unsigned long *control_linear_base,
@@ -42,6 +49,9 @@ static void v9x_rage128_fill_engine(unsigned long framebuffer_linear_base,
 {
     unsigned long bar2 = 0ul;
     unsigned long linear = 0ul;
+    unsigned long ring_linear = 0ul;
+    unsigned long ring_bus = 0ul;
+    unsigned long bytes = 0ul;
 
     (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
@@ -66,6 +76,23 @@ static void v9x_rage128_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_VBLANK |
                    V9X_DD_ENGINE_CAP_D3D;
+
+    /* The bus-master ring's pages, when the chipset has a GART driver.
+     * The HAL decides whether the card can fetch from them (AGP mode) and
+     * otherwise keeps the PIO CCE; here they are only passed on. */
+    if (V9xMiniR128AgpRing(&ring_linear, &ring_bus, &bytes) != 0u &&
+        ring_linear != 0ul && ring_bus != 0ul) {
+        *ring_linear_base = ring_linear;
+        *ring_bytes = bytes;
+        v9x_rage128_ring_bus_address = ring_bus;
+    }
+}
+
+/* engine.reserve_offset: the ring's bus address, from which the HAL
+ * derives AGP_BASE and PM4_BUFFER_OFFSET. */
+static unsigned long v9x_rage128_ring_bus(void)
+{
+    return v9x_rage128_ring_bus_address;
 }
 
 /*
@@ -81,5 +108,9 @@ const V9X_HW16_DEVICE v9x_rage128_device = {
     "directdraw-fill-copy",
     "hardware-rage128-cce",
     0,
-    v9x_rage128_fill_engine
+    v9x_rage128_fill_engine,
+    0u,
+    0u,
+    0ul,
+    v9x_rage128_ring_bus
 };

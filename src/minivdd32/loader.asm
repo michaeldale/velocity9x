@@ -156,6 +156,16 @@ V9X_R128_PCI_COPY       equ 00000f00h
 V9X_R128_VENDOR_ATI     equ 1002h
 V9xR128MmioBase   dd 0
 V9xR128MmioLinear dd 0
+; The CCE ring's pages in the chipset's AGP aperture, reserved and
+; committed once a boot through the VMM's GART services and never released:
+; the card may still hold the address. 64 KiB of ring and one page behind it
+; for the wrap mirror (include\velocity9x\r128_ring.h). Uncached, so the
+; ring's dwords reach memory, which the card's AGP reads do not snoop,
+; before the write pointer does.
+V9X_R128_RING_BYTES     equ 00010000h
+V9X_R128_RING_PAGES     equ 17
+V9xR128RingLinear dd 0
+V9xR128RingBus    dd 0
 ENDIF
 
 IFDEF V9X_SIS_MMIO
@@ -2747,6 +2757,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_TdfxBar1Map
     cmp     ax, V9XMINI_FN_R128_MMIO_MAP
     je      V9xMini_Api_R128MmioMap
+    cmp     ax, V9XMINI_FN_R128_AGP_RING
+    je      V9xMini_Api_R128AgpRing
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -3701,6 +3713,43 @@ V9xMini_Api_R128MmioMap_Failed:
     mov     V9xR128MmioBase, 0
 V9xMini_Api_R128MmioMap_Refused:
     mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; No input. See V9XMINI_FN_R128_AGP_RING in V9XMAPI.INC.
+V9xMini_Api_R128AgpRing:
+IFDEF V9X_R128_MMIO
+    cmp     V9xR128RingLinear, 0
+    jne     short V9xMini_Api_R128AgpRing_Have
+    mov     ebx, OFFSET32 V9xR128RingBus
+    VMMcall _GARTReserve,<0,V9X_R128_RING_PAGES,0,ebx,PG_UNCACHED>
+    test    eax, eax
+    jz      short V9xMini_Api_R128AgpRing_Refused
+    mov     ecx, eax
+    mov     ebx, OFFSET32 V9xR128RingBus
+    push    ecx
+    VMMcall _GARTCommit,<ecx,0,V9X_R128_RING_PAGES,ebx,PG_UNCACHED>
+    pop     ecx
+    test    eax, eax
+    jnz     short V9xMini_Api_R128AgpRing_Committed
+    VMMcall _GARTFree,<ecx>
+    mov     V9xR128RingBus, 0
+    jmp     short V9xMini_Api_R128AgpRing_Refused
+V9xMini_Api_R128AgpRing_Committed:
+    mov     V9xR128RingLinear, ecx
+V9xMini_Api_R128AgpRing_Have:
+    mov     eax, V9xR128RingLinear
+    mov     [ebp.Client_EBX], eax
+    mov     eax, V9xR128RingBus
+    mov     [ebp.Client_ECX], eax
+    mov     [ebp.Client_EDX], V9X_R128_RING_BYTES
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_R128AgpRing_Refused:
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 0
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

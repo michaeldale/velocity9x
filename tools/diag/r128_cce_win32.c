@@ -645,6 +645,18 @@ static int rc_pattern_long;
 /* /hbase: AGP_BASE from the host aperture base rather than the ring's
  * address rounded to 4 MiB (report section 14.7). */
 static int rc_host_base;
+/* /wrap: start 4 dwords before the 64 KiB ring's end, so the kick crosses
+ * it; /mirror adds Linux's 32-dword copy behind the end. Each executed pair
+ * names its index; one from the page behind the ring is tagged 5B. */
+static int rc_wrap;
+static int rc_wrap_mirror;
+/* /noreset: the driver's ring start (r128_cce.c) - no engine reset, the
+ * write pointer set to the read pointer found. */
+static int rc_no_reset;
+static DWORD rc_start_rptr;
+#define RC_WRAP_MASK 0x3ffful
+#define RC_WRAP_START 0x3ffcul
+#define RC_PATTERN_GUARD_TAG 0x5b000000ul
 #define RC_BM_CHUNK_0_VAL 0x0a18ul
 /* /atis: ATI's start-up extras, read from ati2i9aa.dll's CCE start
  * (Ghidra, 1008:6B90-6F4A): PM4_MICRO_CNTL 401F0000 rather than Linux's
@@ -708,7 +720,9 @@ static DWORD rc_add_ring_read(DWORD at)
 static void rc_add_ring_init(void)
 {
     rc_add_write(RC_PM4_MICRO_CNTL, 0u);
-    rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    if (!rc_no_reset) {
+        rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    }
     if (rc_agp_base != 0u) {
         rc_add_write(RC_AGP_BASE, rc_agp_base);
         rc_add_write(RC_BUS_CNTL, rc_bus_cntl_found & ~RC_BUS_MASTER_DIS);
@@ -720,8 +734,14 @@ static void rc_add_ring_init(void)
     } else {
         rc_add_write(RC_PM4_BUFFER_OFFSET, RC_RING_BASE);
     }
-    rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
-    rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
+    if (rc_no_reset) {
+        /* The driver's start: no reset, so DL_RPTR is not written; the
+         * write pointer is set to where the read pointer already is. */
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR, rc_start_rptr);
+    } else {
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
+        rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
+    }
     rc_add_write(RC_PM4_BUFFER_WM_CNTL,
                  rc_ati_values ? RC_ATI_WM_CNTL : RC_RING_WM);
     if (rc_ati_values) {
@@ -841,6 +861,7 @@ static void rc_ring_locate(void)
     DWORD stat_index;
     DWORD wb_index = 0u;
     DWORD mm_index_index;
+    DWORD target;
     DWORD chunk_index;
     DWORD agp_base_index;
     DWORD offset_index;
@@ -850,15 +871,40 @@ static void rc_ring_locate(void)
     DWORD wait_result;
     DWORD scratch;
 
+    if (rc_no_reset) {
+        /* The pairs sit at even indices, so an odd read pointer would
+         * start mid-pair. */
+        rc_start_rptr = rc_read_register(RC_PM4_BUFFER_DL_RPTR) &
+                        RC_WRAP_MASK;
+        rc_write_hex("NoResetStartRptr", rc_start_rptr);
+        if ((rc_start_rptr & 1u) != 0u) {
+            rc_write("LocateFirstResult", "ODD-RPTR");
+            rc_failed = 1u;
+            return;
+        }
+    }
     for (step = 1u; step <= 2u; ++step) {
         lstrcpyA(name, step == 1u ? "LocateFirst" : "LocateSecond");
         rc_begin();
         rc_add_write(RC_GUI_SCRATCH_REG0, 0u);
         mm_index_saved_index = rc_add(RC_OP_MMIO_READ32, RC_MM_INDEX, 0u, 0u);
         rc_add_write(RC_MM_INDEX, RC_MM_INDEX_CANARY);
+        target = rc_wrap ?
+            (RC_WRAP_START + 4u + step * 2u) & RC_WRAP_MASK : step * 2u;
+        if (rc_no_reset) {
+            target = (rc_start_rptr + step * 2u) & RC_WRAP_MASK;
+        }
         if (step == 1u) {
-            rc_add(RC_OP_RING_PATTERN, (DWORD)rc_pattern_long, 0u, 0u);
+            rc_add(RC_OP_RING_PATTERN,
+                   rc_wrap ? (rc_wrap_mirror ? 3u : 2u) :
+                             (DWORD)rc_pattern_long, 0u, 0u);
             rc_add_ring_init();
+            if (rc_wrap) {
+                /* Both pointers 4 dwords short of the end, after the
+                 * reset that lets DL_RPTR take a write. */
+                rc_add_write(RC_PM4_BUFFER_DL_WPTR, RC_WRAP_START);
+                rc_add_write(RC_PM4_BUFFER_DL_RPTR, RC_WRAP_START);
+            }
         }
         if (rc_cache_flush) {
             rc_add(RC_OP_CACHE_FLUSH, 0u, 0u, 0u);
@@ -867,10 +913,9 @@ static void rc_ring_locate(void)
                      rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
         rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
         rc_add_write(RC_PM4_MICRO_CNTL, rc_micro_freerun);
-        rc_add_write(RC_PM4_BUFFER_DL_WPTR,
-                     (step * 2u) | RC_PM4_BUFFER_DL_DONE);
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR, target | RC_PM4_BUFFER_DL_DONE);
         poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR,
-                            0xfffffffful, step * 2u);
+                            0xfffffffful, target);
         wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, rc_bm_fifo, 0u);
         scratch_index = rc_add(RC_OP_MMIO_READ32, RC_GUI_SCRATCH_REG0, 0u,
                                0u);
@@ -923,6 +968,12 @@ static void rc_ring_locate(void)
             rc_write_decimal(rc_key(key, name, "ExecutedIndex"),
                              scratch & RC_PATTERN_INDEX_MASK);
             rc_write(rc_key(key, name, "Result"), "IN-OUR-PAGES");
+        } else if ((scratch & RC_PATTERN_TAG_MASK) == RC_PATTERN_GUARD_TAG) {
+            /* The page behind the ring: the CCE read past the end. */
+            rc_write_decimal(rc_key(key, name, "ExecutedIndex"),
+                             scratch & RC_PATTERN_INDEX_MASK);
+            rc_write(rc_key(key, name, "Result"), "PAST-THE-END");
+            rc_failed = 1u;
         } else {
             rc_write(rc_key(key, name, "Result"),
                      scratch == 0u ? "OUTSIDE-OUR-PAGES" : "OTHER");
@@ -2058,6 +2109,20 @@ void WINAPI V9xRage128CceProbeEntry(void)
             if (line[0] == '/' && (line[1] == 'h' || line[1] == 'H') &&
                 (line[2] == 'b' || line[2] == 'B')) {
                 rc_host_base = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'w' || line[1] == 'W') &&
+                (line[2] == 'r' || line[2] == 'R')) {
+                rc_wrap = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'n' || line[1] == 'N') &&
+                (line[2] == 'o' || line[2] == 'O') &&
+                (line[3] == 'r' || line[3] == 'R')) {
+                rc_no_reset = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'm' || line[1] == 'M') &&
+                (line[2] == 'i' || line[2] == 'I')) {
+                rc_wrap = 1;
+                rc_wrap_mirror = 1;
             }
             if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
                 (line[2] == 't' || line[2] == 'T') &&

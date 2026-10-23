@@ -506,6 +506,21 @@ V9XMINI_FN_HSW_STOLEN_RESERVED EQU 0022h
 ; implements it (docs\decisions\2026-10-22-rage128-register-probe.md).
 V9XMINI_FN_R128_MMIO_MAP    EQU 0023h
 
+; ATI Rage 128: the CCE ring's pages in the chipset's AGP aperture.
+;
+; No input. Out: AX=1, EBX = the pages' linear address, ECX = their bus
+; address in the aperture, EDX = the ring's bytes (64 KiB; one more page is
+; mapped behind it for the wrap mirror); AX=0 with all three zero when the
+; VMM's GART services refuse, as they do with no AGP chipset driver.
+;
+; Reserves and commits once a boot (_GARTReserve and _GARTCommit, uncached)
+; and returns the same pages after; they are never released, since the card
+; may hold their address. Interprets nothing: the display side decides
+; whether the card can use them (include\velocity9x\r128_ring.h,
+; docs\decisions\2026-10-23-rage128-cce-ring-agp-fetches-but-wrong-
+; data.md). Only the ati family image implements it.
+V9XMINI_FN_R128_AGP_RING    EQU 0024h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

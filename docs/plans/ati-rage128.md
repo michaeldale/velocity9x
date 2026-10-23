@@ -157,7 +157,23 @@ aperture pages with ATI's mode 8, read-pointer write-back and
 but the packet it executes is not ours. Next: read the write-back, probe
 candidate offsets, capture more of ATI's state. Then the mini-VDD
 allocation and the driver's submission, measured against V9XD32, 3DMark
-2000 and Half-Life.
+2000 and Half-Life. Done the same day: `AGP_BASE` is the 32 MiB window
+holding the ring, and every ring start needs an engine reset; the driver
+submits through the ring on A8U4I5, with V9XD32, the render probes and
+Half-Life (D3D and GL) passing
+([record](../decisions/2026-10-23-rage128-driver-runs-the-cce-ring.md)).
+Owed: 3DMark 2000 and a Glide game on it.
+
+**Todo: a GUI soft reset in the driver (Michael, 2026-10-23).** The
+driver had no `SOFT_RESET_GUI` path; the probe's (`r128_do_engine_reset`:
+MCLK forced, the reset pulse, clocks restored) is what made every ring
+start and every stall recoverable there. The ring build after boot 542
+adds it to `r128_cce.c`, at each ring start and before stopping a stuck
+ring, and has eng_r128.c rewrite its per-mode registers after. Still
+owed: using it as recovery elsewhere - a PIO CCE timeout and a 2D engine
+timeout (eng_r128.c's `wait_idle`) still give the engine up for the mode
+instead of resetting and carrying on - and measuring that the 2D state
+the init list does not cover survives the reset.
 
 **Performance parked for 0.28.0 (Michael, 2026-10-23).** Direct3D
 and OpenGL both work, at about a fifth to a half of ATI's speed (3DMark

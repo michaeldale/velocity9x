@@ -2698,6 +2698,56 @@ V9xMiniR128MmioMapDone:
     pop     bp
     retf    8
 V9XMINIR128MMIOMAP ENDP
+
+; WORD FAR PASCAL V9xMiniR128AgpRing(DWORD FAR *linear, DWORD FAR *bus,
+;                                    DWORD FAR *bytes)
+; V9XMINI_FN_R128_AGP_RING: the Rage 128's CCE ring pages in the AGP
+; aperture, reserved by the mini-VDD once a boot. On a refusal all three
+; are 0.
+PUBLIC V9XMINIR128AGPRING
+V9XMINIR128AGPRING PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    esi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniR128AgpRingFailed
+    mov     eax, V9XMINI_FN_R128_AGP_RING
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniR128AgpRingFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     esi, ebx
+    ; PASCAL pushes left to right: bytes is the nearest argument.
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], ecx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniR128AgpRingDone
+V9xMiniR128AgpRingFailed:
+    les     bx, dword ptr [bp+14]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+10]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniR128AgpRingDone:
+    pop     es
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    12
+V9XMINIR128AGPRING ENDP
 ENDIF
 
 IFDEF V9X_SIS_FAMILY
