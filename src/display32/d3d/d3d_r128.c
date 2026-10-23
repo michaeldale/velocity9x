@@ -611,37 +611,49 @@ static v9x_u32 v9x_d3d_r128_cull_of(DWORD cull_mode)
 }
 
 /*
- * A vertex the core's list path would pass to the engine unchanged: what
- * v9x_d3d_r128_triangle_ok accepts, and on the target once the pixel
- * centre is applied (v9x_r3d_triangle_on_target). Anything else would be
- * dropped or clipped there, so the call is declined to it.
+ * A vertex the list path would hand the engine as it is: what
+ * v9x_d3d_r128_triangle_ok accepts, inside the guard band once the pixel
+ * centre is applied. V9X_D3D_R128_VERTEX_OK, or the decline reason for a
+ * vertex that path would drop.
  */
-static int v9x_d3d_r128_vertex_drawable(const V9X_R3D_VERTEX *v, int textured,
-                                        float centre, float width,
-                                        float height)
+#define V9X_D3D_R128_VERTEX_OK 0xfffffffful
+
+static DWORD v9x_d3d_r128_vertex_drawable(const V9X_R3D_VERTEX *v,
+                                          int textured, float centre)
 {
     float x;
     float y;
 
     if (!v9x_d3d_r128_finite(v->sx) || !v9x_d3d_r128_finite(v->sy) ||
         !v9x_d3d_r128_finite(v->sz) || !v9x_d3d_r128_finite(v->rhw)) {
-        return 0;
+        return V9X_D3D_INDEXED_DECLINE_VERTEX;
     }
     if (textured &&
         (!(v->rhw > 0.0f) || !v9x_d3d_r128_finite(v->tu) ||
          !v9x_d3d_r128_finite(v->tv))) {
-        return 0;
+        return V9X_D3D_INDEXED_DECLINE_VERTEX;
     }
     /* Inside the guard band, as v9x_d3d_r128_triangle_ok takes it: the
      * scissor keeps the target's edges. */
     x = v->sx + centre;
     y = v->sy + centre;
-    (void)width;
-    (void)height;
-    return x >= -v9x_d3d_r128_limits.coordinate_limit &&
-           x < v9x_d3d_r128_limits.coordinate_limit &&
-           y >= -v9x_d3d_r128_limits.coordinate_limit &&
-           y < v9x_d3d_r128_limits.coordinate_limit;
+    if (!(x >= -v9x_d3d_r128_limits.coordinate_limit &&
+          x < v9x_d3d_r128_limits.coordinate_limit &&
+          y >= -v9x_d3d_r128_limits.coordinate_limit &&
+          y < v9x_d3d_r128_limits.coordinate_limit)) {
+        return V9X_D3D_INDEXED_DECLINE_GUARD;
+    }
+    return V9X_D3D_R128_VERTEX_OK;
+}
+
+/* A declined indexed call, counted by why (win9x_ddraw_abi.h). */
+static int v9x_d3d_r128_decline(DWORD reason, DWORD started)
+{
+    if (reason < V9X_D3D_INDEXED_DECLINE_REASONS) {
+        ++v9x_hal->d3d_diagnostics.indexed_decline[reason];
+    }
+    V9X_TIME_END(V9X_TIME_DECODE, started);
+    return -1;
 }
 
 /*
@@ -677,17 +689,17 @@ static int v9x_d3d_r128_draw_indexed(const V9X_R3D_DRAW *draw,
         DWORD bits;
     } moved;
 
+    started = V9X_TIME_BEGIN();
     if (draw == 0 || pool == 0 || indices == 0 || index_count < 3ul ||
         (!strip && index_count % 3ul != 0ul) || !v9x_d3d_r128_ready()) {
-        return -1;
+        return v9x_d3d_r128_decline(V9X_D3D_INDEXED_DECLINE_SHAPE, started);
     }
-    started = V9X_TIME_BEGIN();
     for (index = 0ul; index < index_count; ++index) {
         DWORD vertex = (DWORD)indices[index];
 
         if (vertex >= vertex_count) {
-            V9X_TIME_END(V9X_TIME_DECODE, started);
-            return -1;
+            return v9x_d3d_r128_decline(V9X_D3D_INDEXED_DECLINE_INDEX,
+                                        started);
         }
         if (vertex < first) {
             first = vertex;
@@ -698,28 +710,33 @@ static int v9x_d3d_r128_draw_indexed(const V9X_R3D_DRAW *draw,
     }
     count = last - first + 1ul;
     if (count * sizeof(V9X_R3D_VERTEX) > V9X_R128_VTX_SEGMENT_BYTES) {
-        V9X_TIME_END(V9X_TIME_DECODE, started);
-        return -1;
+        if (count > v9x_hal->d3d_diagnostics.indexed_decline_range_max) {
+            v9x_hal->d3d_diagnostics.indexed_decline_range_max = count;
+        }
+        return v9x_d3d_r128_decline(V9X_D3D_INDEXED_DECLINE_RANGE, started);
     }
     if (v9x_d3d_r128_map(draw, &state, v9x_d3d_r128_cull_of(cull_mode)) !=
             V9X_D3D_R128_REFUSE_NONE) {
-        V9X_TIME_END(V9X_TIME_DECODE, started);
-        return -1;
+        return v9x_d3d_r128_decline(V9X_D3D_INDEXED_DECLINE_STATE, started);
     }
+    /* Every vertex in the range. Checking only the ones the indices name
+     * sent 65 times as many calls to the engine for no score (A8U4I5 boots
+     * 551-552, docs\plans\d3d-core-throughput.md), and one of its two
+     * 3DMark 2000 runs locked the machine, so it is not taken. */
     for (index = first; index <= last; ++index) {
-        if (!v9x_d3d_r128_vertex_drawable(&pool[index],
-                                          state.texture.enable != 0ul,
-                                          centre,
-                                          (float)draw->target.width,
-                                          (float)draw->target.height)) {
-            V9X_TIME_END(V9X_TIME_DECODE, started);
-            return -1;
+        DWORD reason = v9x_d3d_r128_vertex_drawable(
+            &pool[index], state.texture.enable != 0ul, centre);
+
+        if (reason != V9X_D3D_R128_VERTEX_OK) {
+            return v9x_d3d_r128_decline(reason, started);
         }
     }
     if (!v9x_r128_cce_vertex_space(count * sizeof(V9X_R3D_VERTEX),
                                    &vertex_linear, &vertex_offset)) {
-        V9X_TIME_END(V9X_TIME_DECODE, started);
-        return -1;
+        return v9x_d3d_r128_decline(V9X_D3D_INDEXED_DECLINE_SPACE, started);
+    }
+    if (count > v9x_hal->d3d_diagnostics.indexed_drawn_range_max) {
+        v9x_hal->d3d_diagnostics.indexed_drawn_range_max = count;
     }
 
     /* The vertices, once, into write-combined memory: the pixel centre on

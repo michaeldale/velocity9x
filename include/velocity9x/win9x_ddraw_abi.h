@@ -2051,6 +2051,8 @@ typedef struct v9x_dd_cb32 {
  * because the pattern repeats every frame: the last few frames answer the
  * question, and a longer ring costs shared-block bytes for nothing. */
 #define V9X_D3D_PRESENT_TRACE 32u
+/* Slots for V9X_D3D_INDEXED_DECLINE_* (defined after the diagnostics). */
+#define V9X_D3D_INDEXED_DECLINE_REASONS 8u
 
 /* Watermark log entries: one per mode within a boot. A run passes through
  * the desktop mode, the game's, and back, so four is room to spare. */
@@ -3692,7 +3694,26 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD indexed_engine_calls;
     DWORD indexed_engine_declined;
+    /*
+     * Why: V9X_D3D_INDEXED_DECLINE_* counts, and the largest vertex range
+     * a call declined for its range named, and the most vertices a call
+     * drawn whole used. Appended 2026-10-24 within ABI 2026102002.
+     */
+    DWORD indexed_decline[V9X_D3D_INDEXED_DECLINE_REASONS];
+    DWORD indexed_decline_range_max;
+    DWORD indexed_drawn_range_max;
 } V9X_D3D_DIAGNOSTICS;
+
+/* Why an indexed call went to the triangle expansion instead of the
+ * engine's draw_indexed (docs\plans\d3d-core-throughput.md). */
+#define V9X_D3D_INDEXED_DECLINE_SHAPE   0u  /* list count, not ready  */
+#define V9X_D3D_INDEXED_DECLINE_INDEX   1u  /* an index past the pool */
+#define V9X_D3D_INDEXED_DECLINE_RANGE   2u  /* too many vertices      */
+#define V9X_D3D_INDEXED_DECLINE_STATE   3u  /* the state is refused   */
+#define V9X_D3D_INDEXED_DECLINE_VERTEX  4u  /* not finite, or rhw <= 0 */
+#define V9X_D3D_INDEXED_DECLINE_SPACE   5u  /* no vertex space        */
+#define V9X_D3D_INDEXED_DECLINE_FOG     6u  /* table fog (the core)   */
+#define V9X_D3D_INDEXED_DECLINE_GUARD   7u  /* past the guard band    */
 
 /* func | ref << 8 | texture format << 16 | texture op << 24 */
 #define V9X_R2_ALPHA_LAST_TEST       0u

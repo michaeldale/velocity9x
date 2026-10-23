@@ -1768,6 +1768,23 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("IndexedEngineCalls", snapshot.d3d.indexed_engine_calls);
     v9x_write_uint("IndexedEngineDeclined",
                    snapshot.d3d.indexed_engine_declined);
+    {
+        static const char *decline_names[V9X_D3D_INDEXED_DECLINE_REASONS] = {
+            "Shape", "Index", "Range", "State", "Vertex", "Space", "Fog",
+            "Guard" };
+        char key[48];
+        DWORD reason;
+
+        for (reason = 0ul; reason < V9X_D3D_INDEXED_DECLINE_REASONS;
+             ++reason) {
+            wsprintf(key, "IndexedDecline%s", decline_names[reason]);
+            v9x_write_uint(key, snapshot.d3d.indexed_decline[reason]);
+        }
+    }
+    v9x_write_uint("IndexedDeclineRangeMax",
+                   snapshot.d3d.indexed_decline_range_max);
+    v9x_write_uint("IndexedDrawnRangeMax",
+                   snapshot.d3d.indexed_drawn_range_max);
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

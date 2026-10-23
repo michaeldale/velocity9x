@@ -3431,12 +3431,16 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
         /* An engine that takes the indices whole gets the call first; the
          * expansion below is for one that declines it, or has no entry.
          * Table fog rewrites each vertex, so it stays on the expansion. */
-        if (ops->draw_indexed != 0 && ops->draw != 0 &&
-            !v9x_d3d_fog_table_active(context->fog_enable,
-                                      &context->fog_table)) {
-            whole = v9x_d3d_draw_indexed_engine(ops, context, data);
-            if (whole >= 0) {
-                ok = whole;
+        if (ops->draw_indexed != 0 && ops->draw != 0) {
+            if (v9x_d3d_fog_table_active(context->fog_enable,
+                                         &context->fog_table)) {
+                ++v9x_hal->d3d_diagnostics.indexed_decline[
+                    V9X_D3D_INDEXED_DECLINE_FOG];
+            } else {
+                whole = v9x_d3d_draw_indexed_engine(ops, context, data);
+                if (whole >= 0) {
+                    ok = whole;
+                }
             }
         }
         for (index = 0ul; whole < 0 && index + 2ul < data->dwNumIndices;

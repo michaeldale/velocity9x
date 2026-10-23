@@ -236,6 +236,28 @@ Still declined: 27% of indexed calls. The reason is not counted. Likely
 candidates are a vertex range over a 64 KiB segment (2048 vertices) and
 textured vertices with `rhw <= 0`.
 
+## Declines counted (Michael: "count decline", 2026-10-24)
+
+`IndexedDecline*` in the trace dump counts each declined indexed call by
+reason, with the largest range declined and drawn. A8U4I5 boot 550, a
+3DMark 2000 run with these counters (1606): Vertex 101,309, Range 13,217
+(largest 5,894 vertices), Space 1, every other reason 0.
+
+The Vertex declines come from the check covering every vertex from the
+lowest index to the highest, including vertices no triangle names. A build
+that checked only the referenced vertices (boots 551-552) declined none
+for Vertex: 392,609 of 405,165 indexed calls went whole, about 65 times
+as many as before. It did not change the score: **1529**. Its first run
+(boot 551) locked the whole machine 35 s in, with no fault trace and the
+agent log simply ending; the second completed. The cause is not known.
+One unproven candidate: the vertex area ends exactly where the AGP
+reservation ends, and the vertex walker may read past a segment's end as
+the CCE reads past the ring's.
+
+That build was not kept: the range check stays. More engine-drawn calls
+did not move the score, so the CPU side's submission is not what limits
+it; the chip is (the ring-space waits measured above).
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that
