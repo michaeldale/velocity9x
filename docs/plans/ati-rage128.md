@@ -162,7 +162,8 @@ holding the ring, and every ring start needs an engine reset; the driver
 submits through the ring on A8U4I5, with V9XD32, the render probes and
 Half-Life (D3D and GL) passing
 ([record](../decisions/2026-10-23-rage128-driver-runs-the-cce-ring.md)).
-Owed: 3DMark 2000 and a Glide game on it.
+3DMark 2000 then ran to the end on it (1335, boot 543). Owed: a Glide
+game on it.
 
 **Todo: a GUI soft reset in the driver (Michael, 2026-10-23).** The
 driver had no `SOFT_RESET_GUI` path; the probe's (`r128_do_engine_reset`:

@@ -96,6 +96,30 @@ No hang across the Half-Life runs, which wrap the ring many times and
 start it at every flip. The scores are recorded as measured; they were
 not compared or chased.
 
+## 3DMark 2000, boot 543
+
+The default benchmark (1024x768x16, Z16, triple buffered) ran to the
+end with no hang: **1335 3DMarks** (`3dmark2000-score-b543-ring.png`).
+
+Michael questioned one Game 1 frame with no helicopter in view
+(`3dmark2000-heli-b543-distant.png`). A second run, captured through
+Game 1, shows the helicopter close up (`3dmark2000-heli-b543-a.png`,
+`-b.png`), with the blended rotor blur, the HUD overlays, fog, the
+tanks and the turret all drawn. The first frame was a distant camera
+shot.
+
+The snapshot after the first run (`V9XSNA7-b543-3dm.INI`):
+- every Rage 128 refusal counter (`M64Policy*`) is zero, so nothing was
+  refused to the CPU;
+- `DrawsIntoPresented` is 970952. The count accumulates from the boot,
+  and that boot also ran Half-Life and V9XD32. Which run it comes from
+  was not separated.
+
+3DMark's display panel names the adapter "Velocity9x ATI Rage XL PCI".
+The Direct3D device reports "Velocity9x Rage 128". The adapter string is
+most likely the display key's description, left from the Rage XL's
+install on this machine. That was not checked.
+
 ## Not established
 
 - Any other chipset or card. The 32 MiB window base is measured only on
@@ -104,5 +128,5 @@ not compared or chased.
   plan and falls back to PIO.
 - Whether 2D state outside eng_r128.c's init list survives the reset
   (owed: [plan](../plans/ati-rage128.md), "Todo: a GUI soft reset").
-- 3DMark 2000 and a Glide game on the ring build.
+- A Glide game on the ring build.
 - A packet straddling the ring's end.
