@@ -46,6 +46,12 @@
 
 #define RC_PATH V9X_DIAG_PATH("R128CCE.TXT")
 #define RC_MICROCODE_PATH V9X_DIAG_PATH("R128CCE.BIN")
+/* /atiuc: the microcode ATI's 4.13.7192 driver carries (ati2i9aa.dll,
+ * 116 of 256 instructions unlike linux-firmware's), converted to the same
+ * big-endian form on the host and copied to the test machine only - never
+ * into the repository. */
+#define RC_ATI_MICROCODE_PATH V9X_DIAG_PATH("R128ATI.BIN")
+static const char *rc_microcode_path = RC_MICROCODE_PATH;
 #define RC_MAGIC 0x45434352ul
 #define RC_OP_MAX 512u
 #define RC_BLOCK_DWORDS 1024u
@@ -65,6 +71,12 @@
 #define RC_OP_RING_WRITE32 13ul
 #define RC_OP_RING_READ32 14ul
 #define RC_OP_GART_ALLOC 15ul
+#define RC_OP_BLOCK_READ32 16ul
+#define RC_OP_RING_PATTERN 17ul
+#define RC_OP_PHYS_READ32 18ul
+#define RC_PATTERN_TAG 0x5a000000ul
+#define RC_PATTERN_TAG_MASK 0xff000000ul
+#define RC_PATTERN_INDEX_MASK 0x00fffffful
 
 /* /gart: the ring in locked system memory through the Rage 128's own PCI
  * GART, as Linux's is_pci path: PCI_GART_PAGE holds the table's physical
@@ -382,7 +394,7 @@ static int rc_load_file(void)
     unsigned char bytes[RC_MICROCODE_WORDS * 8u];
     DWORD index;
 
-    file = CreateFileA(RC_MICROCODE_PATH, GENERIC_READ, FILE_SHARE_READ, 0,
+    file = CreateFileA(rc_microcode_path, GENERIC_READ, FILE_SHARE_READ, 0,
                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return 0;
@@ -616,6 +628,10 @@ static DWORD rc_agp_cntl_found;
 /* /zero: PM4_BUFFER_OFFSET as the ring's distance from AGP_BASE, without
  * AGP_APER_OFFSET, as ATI's own 00000000 reads. */
 static int rc_offset_from_agp_base;
+/* /loc: run rc_ring_locate in place of the scratch and fill tests. */
+static int rc_locate;
+/* /dump: read everything and exit (rc_dump). */
+static int rc_dump_only;
 #define RC_AGP_CNTL 0x0174ul
 #define RC_ATI_AGP_CNTL 0x00000038ul
 #define RC_ATI_BUS_CNTL 0x5033a300ul
@@ -768,6 +784,97 @@ static DWORD rc_ring_scratch(const char *name, DWORD start, DWORD magic)
     }
     rc_write(rc_key(key, name, "Result"), "PASS");
     return at;
+}
+
+/*
+ * Where does the CCE read? The ring is filled with pairs that each write
+ * 5A000000h | their own dword index to GUI_SCRATCH_REG0, so after each
+ * step the register names the pair executed: an index means the read
+ * landed in our pages at that place; 0 means it landed outside them. With
+ * /wb, the write-back dword in the locked block is read too. Two steps of
+ * one pair each.
+ */
+static void rc_ring_locate(void)
+{
+    char key[64];
+    char name[16];
+    DWORD step;
+    DWORD poll_index;
+    DWORD wait_index;
+    DWORD scratch_index;
+    DWORD rptr_index;
+    DWORD stat_index;
+    DWORD wb_index = 0u;
+    DWORD poll_result;
+    DWORD wait_result;
+    DWORD scratch;
+
+    for (step = 1u; step <= 2u; ++step) {
+        lstrcpyA(name, step == 1u ? "LocateFirst" : "LocateSecond");
+        rc_begin();
+        rc_add_write(RC_GUI_SCRATCH_REG0, 0u);
+        if (step == 1u) {
+            rc_add(RC_OP_RING_PATTERN, 0u, 0u, 0u);
+            rc_add_ring_init();
+        }
+        rc_add_write(RC_PM4_BUFFER_CNTL,
+                     rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
+        rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+        rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR,
+                     (step * 2u) | RC_PM4_BUFFER_DL_DONE);
+        poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR,
+                            0xfffffffful, step * 2u);
+        wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, rc_bm_fifo, 0u);
+        scratch_index = rc_add(RC_OP_MMIO_READ32, RC_GUI_SCRATCH_REG0, 0u,
+                               0u);
+        rptr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_DL_RPTR, 0u, 0u);
+        stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
+        if (rc_bm_noupdate == 0u) {
+            wb_index = rc_add(RC_OP_BLOCK_READ32, 0u, 0u, 0u);
+        }
+        if (!rc_run()) {
+            rc_write(rc_key(key, name, "Result"), "NOT-RUN");
+            rc_write_decimal(rc_key(key, name, "RefusedOp"),
+                             rc_result_buffer.refused);
+            rc_failed = 1u;
+            return;
+        }
+        poll_result = rc_result_buffer.ops[poll_index].result;
+        wait_result = rc_result_buffer.ops[wait_index].result;
+        scratch = rc_result_buffer.ops[scratch_index].result;
+        rc_write_hex(rc_key(key, name, "Scratch"), scratch);
+        rc_write_hex(rc_key(key, name, "RptrPoll"), poll_result);
+        rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
+        rc_write_hex(rc_key(key, name, "Rptr"),
+                     rc_result_buffer.ops[rptr_index].result);
+        rc_write_hex(rc_key(key, name, "Pm4Stat"),
+                     rc_result_buffer.ops[stat_index].result);
+        if (rc_bm_noupdate == 0u) {
+            rc_write_hex(rc_key(key, name, "Writeback"),
+                         rc_result_buffer.ops[wb_index].result);
+        }
+        if ((scratch & RC_PATTERN_TAG_MASK) == RC_PATTERN_TAG) {
+            rc_write_decimal(rc_key(key, name, "ExecutedIndex"),
+                             scratch & RC_PATTERN_INDEX_MASK);
+            rc_write(rc_key(key, name, "Result"), "IN-OUR-PAGES");
+        } else {
+            rc_write(rc_key(key, name, "Result"),
+                     scratch == 0u ? "OUTSIDE-OUR-PAGES" : "OTHER");
+            rc_failed = 1u;
+        }
+        if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+            break;
+        }
+    }
+
+    rc_begin();
+    if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+        rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    }
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    rc_run();
 }
 
 /*
@@ -1631,6 +1738,122 @@ static void rc_test_texture(void)
     }
 }
 
+/* Registers a dump leaves alone: the VxD refuses 0Ch and B4h, and the
+ * microcode ports (7D4h-7E0h) move the microengine's address when read,
+ * which under a running CCE is not ours to do. */
+static int rc_dump_skip(DWORD offset)
+{
+    return offset == 0x000cul || offset == 0x00b4ul ||
+           (offset >= 0x07d4ul && offset <= 0x07e0ul);
+}
+
+/* One range of registers, as Rxxxx=value, in batches the request holds. */
+static void rc_dump_range(DWORD low, DWORD high)
+{
+    char key[8];
+    DWORD at = low;
+    DWORD index;
+    DWORD count;
+
+    while (at <= high) {
+        rc_begin();
+        count = 0u;
+        for (index = at; index <= high && count < RC_OP_MAX; index += 4u) {
+            if (rc_dump_skip(index)) {
+                continue;
+            }
+            rc_add(RC_OP_MMIO_READ32, index, 0u, 0u);
+            ++count;
+        }
+        if (!rc_run()) {
+            rc_write("DumpResult", "NOT-RUN");
+            return;
+        }
+        count = 0u;
+        for (index = at; index <= high && count < RC_OP_MAX; index += 4u) {
+            if (rc_dump_skip(index)) {
+                continue;
+            }
+            key[0] = 'R';
+            rc_hex(key + 1, index, 4);
+            key[5] = '\0';
+            rc_write_hex(key, rc_result_buffer.ops[count].result);
+            ++count;
+        }
+        at = index;
+    }
+}
+
+/* One physical dword, written as `name`. */
+static DWORD rc_dump_phys(const char *name, DWORD address)
+{
+    rc_begin();
+    rc_add(RC_OP_PHYS_READ32, address, 0u, 0u);
+    if (!rc_run()) {
+        rc_write(name, "NOT-RUN");
+        return 0u;
+    }
+    rc_write_hex(name, rc_result_buffer.ops[0].result);
+    return rc_result_buffer.ops[0].result;
+}
+
+/*
+ * /dump: every readable register, then ATI's ring and read-pointer
+ * write-back, touching nothing. For ATI's own driver with its CCE running,
+ * so it runs before the probe's "CCE running" refusal and exits. The ring's
+ * bus address is taken both ways the registers allow: AGP_BASE plus
+ * PM4_BUFFER_OFFSET, and AGP_BASE plus (offset - AGP_APER_OFFSET).
+ */
+static void rc_dump(void)
+{
+    char key[24];
+    DWORD offset;
+    DWORD agp_base;
+    DWORD aper;
+    DWORD rptr;
+    DWORD size_dwords;
+    DWORD base;
+    DWORD way;
+    DWORD word;
+    long delta;
+
+    /* The registers that matter, not a sweep: A8U4I5 went down twice
+     * around the full one under ATI's driver (boots 536, 537). Bus
+     * control, the AGP and memory-controller block, the PM4 ring
+     * registers and status, and the configuration-space image. */
+    rc_dump_range(0x0030ul, 0x0030ul);
+    rc_dump_range(0x0140ul, 0x019cul);
+    rc_dump_range(0x0700ul, 0x071cul);
+    rc_dump_range(0x07b8ul, 0x07b8ul);
+    rc_dump_range(0x07f0ul, 0x07fcul);
+    rc_dump_range(0x0f00ul, 0x0f5cul);
+    offset = rc_read_register(RC_PM4_BUFFER_OFFSET);
+    agp_base = rc_read_register(RC_AGP_BASE);
+    aper = rc_read_register(RC_AGP_APER_OFFSET);
+    rptr = rc_read_register(RC_PM4_BUFFER_DL_RPTR) & 0x7ffffffful;
+    size_dwords = 2ul << (rc_read_register(RC_PM4_BUFFER_CNTL) & 0x1ful);
+    rc_write_decimal("DumpRingSizeDwords", size_dwords);
+    (void)rc_dump_phys("DumpRptrWriteback",
+                       rc_read_register(RC_PM4_BUFFER_DL_RPTR_ADDR) &
+                       ~3ul);
+    for (way = 0u; way < 2u; ++way) {
+        if (way == 1u && offset < aper) {
+            break;
+        }
+        base = agp_base + (way == 0u ? offset : offset - aper);
+        rc_write_hex(way == 0u ? "DumpRingBusA" : "DumpRingBusB", base);
+        for (delta = -8; delta < 8; ++delta) {
+            word = (DWORD)((long)rptr + delta) & (size_dwords - 1ul);
+            lstrcpyA(key, way == 0u ? "DumpRingA" : "DumpRingB");
+            rc_hex(key + 9, word, 6);
+            key[15] = '\0';
+            (void)rc_dump_phys(key, base + word * 4ul);
+        }
+    }
+    rc_write("Result", "DUMPED");
+    rc_close(0u);
+}
+
 /* The PIO tests that follow the first fill when /ring is not given. */
 static void rc_pio_tests(DWORD micro_found)
 {
@@ -1718,6 +1941,22 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 (line[3] == 'i' || line[3] == 'I')) {
                 rc_ati_values = 1;
             }
+            if (line[0] == '/' && (line[1] == 'l' || line[1] == 'L') &&
+                (line[2] == 'o' || line[2] == 'O') &&
+                (line[3] == 'c' || line[3] == 'C')) {
+                rc_locate = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'd' || line[1] == 'D') &&
+                (line[2] == 'u' || line[2] == 'U') &&
+                (line[3] == 'm' || line[3] == 'M')) {
+                rc_dump_only = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
+                (line[2] == 't' || line[2] == 'T') &&
+                (line[3] == 'i' || line[3] == 'I') &&
+                (line[4] == 'u' || line[4] == 'U')) {
+                rc_microcode_path = RC_ATI_MICROCODE_PATH;
+            }
             if (line[0] == '/' && (line[1] == 'z' || line[1] == 'Z') &&
                 (line[2] == 'e' || line[2] == 'E') &&
                 (line[3] == 'r' || line[3] == 'R')) {
@@ -1739,6 +1978,7 @@ void WINAPI V9xRage128CceProbeEntry(void)
         }
     }
     rc_write("CpuSideGuiFlush", rc_no_cpu_flush ? "off" : "on");
+    rc_write("MicrocodeFile", rc_microcode_path);
 
     display = GetDC(0);
     if (display != 0) {
@@ -1769,6 +2009,9 @@ void WINAPI V9xRage128CceProbeEntry(void)
     if ((rc_result_buffer.status & RC_MAPPED) == 0ul) {
         rc_write("Result", "NOT-MAPPED");
         rc_close(3u);
+    }
+    if (rc_dump_only) {
+        rc_dump();
     }
     micro_found = rc_read_register(RC_PM4_MICRO_CNTL);
     rc_write_hex("Pm4BufferCntlAtStart", pm4);
@@ -1862,7 +2105,13 @@ void WINAPI V9xRage128CceProbeEntry(void)
         } else {
             rc_gart_table = rc_result_buffer.ops[alloc_index].result;
             if (rc_bm_noupdate == 0u) {
-                rc_rptr_writeback = rc_result_buffer.ops[wb_index].result;
+                /* /vgart allocated a locked block for this; otherwise the
+                 * block is the ring's own, and its first page (the GART
+                 * table, unused by /agp) takes the write-back. Never 0:
+                 * the card would write physical address 0. */
+                rc_rptr_writeback = rc_vgart ?
+                    rc_result_buffer.ops[wb_index].result :
+                    rc_result_buffer.ops[alloc_index].result;
                 rc_write_hex("RptrWriteback", rc_rptr_writeback);
             }
             rc_write_hex("GartTablePhys", rc_gart_table);
@@ -1882,12 +2131,17 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 rc_write_hex("AgpBase", rc_agp_base);
                 rc_write_hex("RingCardOffset", rc_ring_offset);
             }
-            wptr = rc_ring_scratch("ScratchFirst", 0u, 0x5eed1234ul);
-            if (wptr != 0u) {
-                wptr = rc_ring_scratch("ScratchSecond", wptr, 0xc0ffee42ul);
-            }
-            if (wptr != 0u) {
-                (void)rc_ring_fill("GartFill", wptr, 0x9abcu);
+            if (rc_locate) {
+                rc_ring_locate();
+            } else {
+                wptr = rc_ring_scratch("ScratchFirst", 0u, 0x5eed1234ul);
+                if (wptr != 0u) {
+                    wptr = rc_ring_scratch("ScratchSecond", wptr,
+                                           0xc0ffee42ul);
+                }
+                if (wptr != 0u) {
+                    (void)rc_ring_fill("GartFill", wptr, 0x9abcu);
+                }
             }
             /* Bus mastering off and the GART as found, before the VxD
              * frees the block on close. */

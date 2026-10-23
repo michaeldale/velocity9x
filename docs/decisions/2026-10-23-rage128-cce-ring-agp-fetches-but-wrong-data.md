@@ -95,18 +95,81 @@ ring dword back correctly through the aperture's linear address
   list. It does not include the memory controller's view of the AGP
   space, or anything ATI writes only while its CCE runs.
 
-## Next
+## The three follow-ups (Michael: "do all 3"), boots 535 to 539
 
-1. Read the write-back dword. If it holds the read pointer, the card's
-   bus-master writes reach system memory, and the fault is in the read
-   path's address.
-2. Put the same scratch packet at several candidate offsets in the
-   aperture block: page 0, and the pages that `AGP_APER_OFFSET` or
-   `AGP_BASE` misalignment would select. See which one the CCE executes.
-3. Capture more of ATI's state on its own driver (the `TOATI128.REG`
-   swap). Include the AGP and memory-controller registers beside the PM4
-   block, and read ATI's ring and read-pointer write-back through
-   `PM4_BUFFER_DL_RPTR_ADDR`'s physical page.
+**1. The write-back lands.** `PM4_BUFFER_DL_RPTR_ADDR` pointed into the
+locked block, and that dword read `00000002`, the read pointer, in every
+`/wb` run. The card's bus-master writes reach system memory.
 
-Until the scratch packet lands, nothing in the driver changes. The PIO
-CCE from 0.28.0 stays.
+**2. The reads land nowhere we wrote.** `/loc` fills the whole ring with
+pairs, each writing `5A000000h` | its own dword index into
+`GUI_SCRATCH_REG0`, so any pair the CCE executed would name itself.
+Through the aperture (`/vgart`) and through `AGP_BASE` straight at the
+locked block (`/agp`), each with mode 8, write-back and ATI's values, the
+register stayed 0. The CCE sat in `MICRO_BUSY` with its FIFO empty. Not
+one dword of the 64 KiB ring reached the microengine. The "fetches and
+idles" outcome above did not repeat: the later runs stall, as the rest
+of the table does.
+
+**3. ATI's own state, captured.** The first boot onto ATI's driver
+(boot 536) crashed at the desktop before any probe ran. So did boot 537,
+around a full register sweep, with no way to separate the two. Boot
+538 stayed up on its own for five minutes. A narrow `/dump` (bus
+control, the AGP and memory-controller block, the PM4 registers,
+configuration space) then ran cleanly
+(`R128CCE-dump-ati-b538.TXT`):
+
+- ATI's ring runs at bus address `DA000000` = `AGP_BASE` +
+  `PM4_BUFFER_OFFSET` (0). The words around its read pointer are live
+  command data, an image upload's rows (`F800F800`, `BDF7BDF7`), so the
+  offset is the plain distance from `AGP_BASE`, not
+  `AGP_APER_OFFSET` + distance.
+- Its write-back dword equals its read pointer (`0002C625`).
+- Against our driver's dump (`R128CCE-dump-v9x-b535.TXT`), the only
+  differences are:
+  - the ring registers;
+  - the values `/ati` already copies (`BUS_CNTL`, `AGP_BASE`,
+    `AGP_CNTL`);
+  - `PC_NGUI_CTLSTAT`'s dirty bit;
+  - the PCI latency timer (`FF` against `40`).
+- So with `/ati /zero` the probe reproduced ATI's register state, and its
+  ring still stalled.
+
+The one thing no register shows is the **microcode**. ATI's
+`ati2i9aa.dll` carries one table, expanded from the driver package. Only
+140 of its 256 instructions match linux-firmware's, in place.
+
+`/atiuc` loads that table, converted on the host and copied to the test
+machine only; it is ATI's code and is not in the repository. With it:
+
+- the PIO control fill and both PIO scratch controls stall;
+- the RAM read back differs in 3 words;
+- the ring stalls as before.
+
+So ATI's table is not a drop-in. Either it is cut at the wrong boundary,
+or it speaks ATI's own packet protocol.
+
+The probe then reloaded linux-firmware's microcode (256 of 256 words
+read back). V9XD32 `/bpp16` passed on the driver (boot 539), and
+A8U4I5 is on Velocity9x again.
+
+## Where it stands
+
+- The card's bus-master writes reach system memory.
+- Its ring reads deliver nothing, whatever the placement.
+- ATI's register state is reproduced exactly, so the remaining difference
+  is outside the registers read: most likely the microcode, possibly the
+  chipset's side of AGP (ATI's driver owns its aperture pages through
+  VGARTD for its whole session).
+
+Two leads, neither tried:
+
+- **Work out the boundary and format of ATI's table**, from how
+  `ati2i9aa.dll` loads it: the code that writes `PM4_MICROCODE_ADDR`
+  and `DATAH`/`DATAL`.
+- **Read the live microcode RAM under ATI's driver.** `RADDR`, `DATAH`,
+  `DATAL` were deliberately left out of the dump. Reading them while
+  ATI's CCE runs moves its read address and may disturb it, and the
+  machine has already crashed twice on ATI's driver this session.
+
+Nothing in the driver has changed. The PIO CCE from 0.28.0 stays.

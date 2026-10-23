@@ -113,6 +113,15 @@ RC_OP_RING_READ32       equ 14
 ; (NOUPDATE). Entries hold the page's bus address, as Linux's
 ; drm_ati_pcigart writes them for a PCI GART.
 RC_OP_GART_ALLOC        equ 15
+RC_OP_BLOCK_READ32      equ 16
+RC_OP_RING_PATTERN      equ 17
+RC_OP_PHYS_READ32       equ 18
+
+; RC_OP_RING_PATTERN: the whole ring as pairs - a type-0 header for
+; GUI_SCRATCH_REG0 (15E0h >> 2) and 5A000000h | the dword index of that
+; value - so the register says which pair the CCE executed.
+RC_PATTERN_HEADER       equ 00000578h
+RC_PATTERN_TAG          equ 5A000000h
 
 ; /vgart: 16 pages of the chipset's AGP aperture through the VMM's GART
 ; services (_GARTReserve, _GARTCommit; VMM.INC), as ATI's driver keeps its
@@ -449,7 +458,62 @@ BeginProc RC_Execute_One
     je      RC_Do_Ring_Read32
     cmp     eax, RC_OP_GART_ALLOC
     je      RC_Do_Gart_Alloc
+    cmp     eax, RC_OP_BLOCK_READ32
+    je      RC_Do_Block_Read32
+    cmp     eax, RC_OP_RING_PATTERN
+    je      RC_Do_Ring_Pattern
+    cmp     eax, RC_OP_PHYS_READ32
+    je      RC_Do_Phys_Read32
     jmp     RC_Do_Refuse
+
+; /dump under ATI's driver: a = a dword-aligned physical address (ATI's
+; ring through the AGP aperture, its read-pointer write-back in RAM).
+; Mapped a page at a time and not unmapped: a handful of reads per run.
+; Result: the dword.
+RC_Do_Phys_Read32:
+    test    ebx, 3
+    jnz     RC_Do_Refuse
+    mov     eax, ebx
+    and     eax, 0fffff000h
+    VMMcall _MapPhysToLinear,<eax,1000h,0>
+    cmp     eax, 0ffffffffh
+    je      RC_Do_Refuse
+    mov     ecx, [esi+4]
+    and     ecx, 0fffh
+    mov     eax, [eax+ecx]
+    mov     [esi+16], eax
+    jmp     RC_Do_Done
+
+; a = byte offset in the locked block (the write-back target). Result:
+; the dword.
+RC_Do_Block_Read32:
+    cmp     RCRingLinear, 0
+    je      RC_Do_Refuse
+    test    ebx, 3
+    jnz     RC_Do_Refuse
+    cmp     ebx, RC_GART_BYTES
+    jae     RC_Do_Refuse
+    mov     edi, RCRingLinear
+    mov     eax, [edi+ebx]
+    mov     [esi+16], eax
+    jmp     RC_Do_Done
+
+; Fill the ring with the locating pattern. Result: dwords written.
+RC_Do_Ring_Pattern:
+    cmp     RCRingData, 0
+    je      RC_Do_Refuse
+    mov     edi, RCRingData
+    xor     ecx, ecx
+RC_Do_Ring_Pattern_Next:
+    mov     dword ptr [edi+ecx*4], RC_PATTERN_HEADER
+    lea     eax, [ecx+1]
+    or      eax, RC_PATTERN_TAG
+    mov     [edi+ecx*4+4], eax
+    add     ecx, 2
+    cmp     ecx, RC_RING_AREA / 4
+    jb      short RC_Do_Ring_Pattern_Next
+    mov     [esi+16], ecx
+    jmp     RC_Do_Done
 
 ; The table and ring block, once per load. a = entry form: 0 the page's bus
 ; address (Linux), 1 its page number (RRG 3-207, PhysAddr[31:12] <-
