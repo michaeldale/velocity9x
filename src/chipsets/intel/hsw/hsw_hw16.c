@@ -332,6 +332,29 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
 };
 
 /*
+ * The HD 4600's alias: Haswell GT2 desktop sold as HD Graphics 4400. An entry
+ * of its own because the PCI scan matches one per id and V9XHW.INI names the
+ * part the machine has. Its DOS survey shows the 0412's BAR layout, GGC
+ * encoding and VBE framebuffer in BAR2; it has not run this driver
+ * (docs\decisions\2026-10-23-haswell-hd4400-041e-alias.md).
+ */
+const V9X_HW16_DEVICE v9x_hsw_hd4400_device = {
+    0x8086u, 0x041Eu,
+    "Intel HD Graphics 4400 (Haswell)",
+    "8086", "041E",
+    "none",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen75",
+    0,
+    v9x_hsw_fill_engine,
+    2u,
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset
+};
+
+/*
  * Ivy Bridge GT2 desktop on the same path. The heap layout is Haswell's:
  * i915 decodes 1082C0h the same way on Gen7 and Gen7.5
  * (gen7_get_stolen_reserved). Its Direct3D word names Gen7 rather than

@@ -205,6 +205,16 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('hsw_hw16')
             MapSymbols = @('v9x_hsw_hd4600_device')
+
+            # Haswell GT2 desktop as HD Graphics 4400: the 0412's silicon
+            # family and the same BAR layout, GGC encoding and VBE layout
+            # on its DOS survey. Not run anywhere:
+            # docs\decisions\2026-10-23-haswell-hd4400-041e-alias.md.
+            Aliases = @(
+                @{ DeviceId = '041E'
+                   Name = 'Intel HD Graphics 4400 (Haswell)'
+                   DeviceDesc = 'Velocity9x Intel HD Graphics 4400 (Haswell)' }
+            )
         }
         @{
             # Ivy Bridge GT2 desktop on the Haswell path: its BCS ring and
@@ -340,7 +350,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:0042, 8086:0412 or 8086:0162 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
     }
 
     Vm = @{

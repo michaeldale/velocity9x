@@ -18,6 +18,11 @@ build identifier so exact guest-tested binaries remain traceable.
   Every package carries it; other cards were not measured. A DOS program
   that switches to a graphics mode in a window no longer gets that mode.
   Full-screen DOS is unchanged.
+- **`intel-gma` binds the HD Graphics 4400 (`8086:041E`)** as an alias
+  of the HD 4600: the same Haswell GT2 path. A DOS survey of one such
+  desktop shows the HD 4600's BAR layout and VBE framebuffer, with 128 MiB
+  of stolen memory. Not run on any machine
+  ([decision record](docs/decisions/2026-10-23-haswell-hd4400-041e-alias.md)).
 - **`-IoTrace` mini-VDD and `V9XIOTR.EXE`** trap and read out the display
   adapter's own I/O ports as well as the 8514/A file, for the same
   measurement on other chips. `-NoInt10Guard` builds a mini-VDD without the

@@ -61,6 +61,7 @@ v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
          pci->device_id != V9X_PCI_DEVICE_GMA_X3100_GM965 &&
          pci->device_id != V9X_PCI_DEVICE_HD_ILK &&
          pci->device_id != V9X_PCI_DEVICE_HD4600_HSW &&
+         pci->device_id != V9X_PCI_DEVICE_HD4400_HSW &&
          pci->device_id != V9X_PCI_DEVICE_HD4000_IVB)) {
         return V9X_STATUS_UNSUPPORTED;
     }

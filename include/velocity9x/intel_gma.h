@@ -44,6 +44,9 @@
  * on the i5-4570 (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md).
  */
 #define V9X_PCI_DEVICE_HD4600_HSW        ((v9x_u16)0x0412u)
+/* Its alias, Haswell GT2 desktop as HD Graphics 4400: bound on a DOS survey,
+ * not run (docs\decisions\2026-10-23-haswell-hd4400-041e-alias.md). */
+#define V9X_PCI_DEVICE_HD4400_HSW        ((v9x_u16)0x041Eu)
 /*
  * Ivy Bridge GT2 desktop, HD Graphics 4000: Gen7, on the Haswell path for
  * 2D (the same BAR layout, GTT and BCS ring), with Ivy Bridge's forcewake

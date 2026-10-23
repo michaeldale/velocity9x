@@ -91,8 +91,9 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk |
 
 Unvalidated **aliases** bind to the measured chip of the same design: the
-other S3 Trio ids, the rest of the Rage II and Rage Pro lines, and the
-Voodoo5, which would run on one chip. Treat them as "it should come up",
+other S3 Trio ids, the rest of the Rage II and Rage Pro lines, the
+Voodoo5, which would run on one chip, and the Intel HD Graphics 4400
+(`8086:041E`) on the HD 4600's path. Treat them as "it should come up",
 not as supported. The ids are listed in each family's manifest under
 [packaging/families/](packaging/families/), and why each was bound in
 [docs/specifications/family-manifest.md](docs/specifications/family-manifest.md).
