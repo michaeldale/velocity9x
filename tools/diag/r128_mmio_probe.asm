@@ -92,7 +92,7 @@ R1Windows label dword
     dd 0130h, 0134h     ; HOST_PATH_CNTL
     dd 0140h, 015ch     ; MEM_CNTL .. MEM_SDRAM_MODE_REG
     dd 0170h, 017ch     ; AGP_BASE, AGP_CNTL, AGP_APER_OFFSET
-    dd 0184h, 0188h     ; PC_NGUI_CTLSTAT
+    dd 0180h, 018ch     ; PC_NGUI_MODE, PC_NGUI_CTLSTAT, PC_MISC_CNTL
     dd 0200h, 0230h     ; CRTC timings, VLINE, frame, OFFSET, OFFSET_CNTL, PITCH
     dd 0250h, 0258h     ; FP_CRTC totals
     dd 0260h, 0274h     ; cursor
@@ -114,8 +114,8 @@ R1Windows label dword
     dd 1660h, 1664h     ; AUX_SC_CNTL
     dd 16c0h, 16d0h     ; DP_CNTL, DP_DATATYPE, DP_MIX, DP_WRITE_MASK
     dd 16e0h, 16f4h     ; DEFAULT_OFFSET/PITCH/SC_BOTTOM_RIGHT, SC_TOP_LEFT/BOTTOM_RIGHT
-    dd 1740h, 1744h     ; GUI_STAT
-    dd 1748h, 174ch     ; PC_GUI_CTLSTAT
+    dd 1740h, 174ch     ; GUI_STAT, PC_GUI_MODE, PC_GUI_CTLSTAT
+    dd 1760h, 1764h     ; PC_DEBUG_MODE
     dd 1a00h, 1a04h     ; SCALE_3D_CNTL
     dd 1bc4h, 1bc8h     ; SETUP_CNTL
     dd 1bcch, 1bd0h     ; WINDOW_XY_OFFSET

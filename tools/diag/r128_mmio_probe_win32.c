@@ -141,7 +141,9 @@ static const struct v9x_r1mm_register v9x_global[] = {
     { 0x0170ul, "AGP_BASE" },
     { 0x0174ul, "AGP_CNTL" },
     { 0x0178ul, "AGP_APER_OFFSET" },
+    { 0x0180ul, "PC_NGUI_MODE" },
     { 0x0184ul, "PC_NGUI_CTLSTAT" },
+    { 0x0188ul, "PC_MISC_CNTL" },
     { 0x0200ul, "CRTC_H_TOTAL_DISP" },
     { 0x0204ul, "CRTC_H_SYNC_STRT_WID" },
     { 0x0208ul, "CRTC_V_TOTAL_DISP" },
@@ -184,7 +186,11 @@ static const struct v9x_r1mm_register v9x_global[] = {
     { 0x0f2cul, "PCI_SUBSYS_COPY" },
     { 0x0f54ul, "AGP_STATUS" },
     { 0x0f58ul, "AGP_COMMAND" },
-    { 0x1740ul, "GUI_STAT" }
+    { 0x1740ul, "GUI_STAT" },
+    /* The pixel caches' modes: read once a power-on and a CF9h reset were
+     * seen to draw differently through the CCE (boots 524 and 525). */
+    { 0x1744ul, "PC_GUI_MODE" },
+    { 0x1760ul, "PC_DEBUG_MODE" }
 };
 
 /* Second capture: the FIFOed engine state. */

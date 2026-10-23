@@ -14,7 +14,8 @@
 ;   MMIO write32      - PC_NGUI_CTLSTAT (0184h); the PM4 block 0700h-071Fh
 ;                       (buffer control, pointers, FPU setup); the microcode
 ;                       address and data ports 07D4h-07E3h; PM4_MICRO_CNTL
-;                       (07FCh); the PIO FIFO ports 1000h and 1004h; the 2D
+;                       (07FCh); the PIO FIFO ports 1000h and 1004h;
+;                       PC_GUI_CTLSTAT (1748h), the GUI pixel cache; the 2D
 ;                       engine registers 1400h-16FCh; SCALE_3D_CNTL (1A00h);
 ;                       the 3D context registers 1C80h-1D47h. Aligned.
 ;   MMIO read32       - 0008h-0F5Fh less CLOCK_CNTL_DATA (000Ch) and
@@ -31,7 +32,9 @@
 ;                       R128WaitForIdle. At most RC_WAIT_LIMIT reads each.
 ;   PM4 wait idle     - PM4_STAT: at least b free CCE FIFO entries, PM4_BUSY
 ;                       and GUI_ACTIVE clear, then the pixel cache flushed,
-;                       as the Linux DRM's r128_do_cce_idle.
+;                       as the Linux DRM's r128_do_cce_idle; then the GUI
+;                       pixel cache's busy bit (PC_GUI_CTLSTAT bit 31)
+;                       clear, after the flush the stream ends with.
 ;   engine reset      - r128_accel.c's R128EngineReset, fixed: flush the
 ;                       pixel cache; save CLOCK_CNTL_INDEX; force the GUI
 ;                       and 3D clocks on through MCLK_CNTL (PLL 0Fh); pulse
@@ -76,6 +79,7 @@ RC_PC_NGUI_CTLSTAT      equ 0184h
 RC_PC_FLUSH_ALL         equ 000000ffh
 RC_PC_BUSY              equ 80000000h
 RC_PM4_STAT             equ 07b8h
+RC_PC_GUI_CTLSTAT       equ 1748h
 RC_PM4_FIFO_MASK        equ 00000fffh
 RC_PM4_BUSY_BITS        equ 80010000h ; GUI_ACTIVE | PM4_BUSY
 RC_CLOCK_CNTL_INDEX     equ 0008h
@@ -306,6 +310,8 @@ BeginProc RC_Write_Allowed
     je      short RC_Write_Ok
     cmp     ebx, 1a00h
     je      short RC_Write_Ok
+    cmp     ebx, RC_PC_GUI_CTLSTAT
+    je      short RC_Write_Ok
     cmp     ebx, 07fch
     je      short RC_Write_Ok
     cmp     ebx, 1000h
@@ -421,9 +427,19 @@ RC_Do_Pm4_Wait_Cache:
     inc     ecx
     mov     eax, [edi+RC_PC_NGUI_CTLSTAT]
     test    eax, RC_PC_BUSY
-    jz      short RC_Do_Pm4_Wait_Done
+    jz      short RC_Do_Pm4_Wait_Gui_Cache
     cmp     ecx, RC_WAIT_LIMIT
     jb      short RC_Do_Pm4_Wait_Cache
+    jmp     short RC_Do_Pm4_Wait_Timeout
+    ; And the GUI pixel cache, which the stream's own flush packet emptied:
+    ; its busy bit (PC_GUI_CTLSTAT bit 31) says when that finished.
+RC_Do_Pm4_Wait_Gui_Cache:
+    inc     ecx
+    mov     eax, [edi+RC_PC_GUI_CTLSTAT]
+    test    eax, RC_PC_BUSY
+    jz      short RC_Do_Pm4_Wait_Done
+    cmp     ecx, RC_WAIT_LIMIT
+    jb      short RC_Do_Pm4_Wait_Gui_Cache
 RC_Do_Pm4_Wait_Timeout:
     mov     edx, RC_TIMEOUT
     jmp     short RC_Do_Pm4_Wait_Store

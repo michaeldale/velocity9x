@@ -37,6 +37,8 @@
 #include "velocity9x/r128_2d.h"
 
 #include "../../src/chipsets/ati/rage128/r128_2d.c"
+#include "velocity9x/r128_3d.h"
+#include "../../src/chipsets/ati/rage128/r128_3d.c"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -51,6 +53,8 @@
 
 #define RC_OP_MMIO_WRITE32 1ul
 #define RC_OP_MMIO_READ32 2ul
+#define RC_OP_LFB_WRITE32 3ul
+#define RC_OP_LFB_READ32 4ul
 #define RC_OP_LFB_FILL32 5ul
 #define RC_OP_LFB_READ_BLOCK 7ul
 #define RC_OP_WAIT_IDLE 8ul
@@ -123,6 +127,7 @@
  * VC_CNTL: TRI_LIST (4) | WALK_RING (30h) | 3 vertices. */
 #define RC_VC_FRMT_DIFFUSE_ARGB 0x00000008ul
 #define RC_VC_FRMT_RHW 0x00000001ul
+#define RC_VC_FRMT_SPEC_FRGB 0x00000040ul
 /* The context block the DRM emits from here (r128_state.c
  * r128_emit_context): DST_PITCH_OFFSET_C, DP_GUI_MASTER_CNTL_C,
  * SC_TOP_LEFT_C, SC_BOTTOM_RIGHT_C, ... */
@@ -132,6 +137,12 @@
 #define TRI_PLAIN 0
 #define TRI_CONTEXT 1
 #define TRI_RHW 2
+
+/* What follows a Gouraud test's primitive. */
+#define TAIL_NONE 0
+#define TAIL_STATE 1
+#define TAIL_DEGENERATE 2
+#define TAIL_DONT_START 3
 #define RC_VC_CNTL_TRI_LIST_3 0x00030034ul
 
 /* IEEE single-precision constants, so the probe needs no floating point. */
@@ -721,6 +732,473 @@ static void rc_pio_triangle(const char *name, int variant,
     }
 }
 
+/*
+ * The builder's tests (src\chipsets\ati\rage128\r128_3d.c): Gouraud colour,
+ * Z, and a texture, each a state stream and full TL vertices as the HAL
+ * will send them. Surfaces beside the 4 KiB target at 16 MiB: the Z buffer
+ * 64 KiB on, the texture 128 KiB on, both 64-pixel/16-texel rows of 16 bpp.
+ */
+#define RC_Z_BASE (TEST_BASE + 0x00010000ul)
+#define RC_TEX_BASE (TEST_BASE + 0x00020000ul)
+#define RC_TEX_SIZE 16ul
+#define RC_TEX_PITCH (RC_TEX_SIZE * 2ul)
+
+struct rc_vertex {
+    float x;
+    float y;
+    float z;
+    float rhw;
+    DWORD color;
+    DWORD specular;
+    float s;
+    float t;
+};
+
+typedef char rc_vertex_is_8_dwords[sizeof(struct rc_vertex) == 32u ? 1 : -1];
+
+static DWORD rc_stream[640];
+/* Pixel (6,4) of the target, read after the prefill and the idle wait,
+ * just before the CCE starts. */
+static DWORD rc_pre_stream_pixel;
+/* /noflush: leave out the CPU-side GUI cache flush, to show it is the
+ * flush that makes each draw visible. */
+static int rc_no_cpu_flush;
+static DWORD rc_stream_count;
+
+static void rc_stream_state(const struct v9x_r128_3d_stream *state)
+{
+    DWORD index;
+
+    for (index = 0u; index < state->count; ++index) {
+        rc_stream[rc_stream_count++] = state->dwords[index];
+    }
+}
+
+/* One 3D_RNDR_GEN_PRIM of `count` triangles, vertices as they are. */
+static int rc_stream_prim(const struct rc_vertex *vertices, DWORD count)
+{
+    v9x_u32 header[V9X_R128_PRIM_HEADER_DWORDS];
+    const DWORD *words = (const DWORD *)vertices;
+    DWORD index;
+
+    if (v9x_r128_3d_build_prim(count, header) != V9X_STATUS_OK) {
+        return 0;
+    }
+    for (index = 0u; index < V9X_R128_PRIM_HEADER_DWORDS; ++index) {
+        rc_stream[rc_stream_count++] = header[index];
+    }
+    for (index = 0u; index < count * 3u * V9X_R128_VERTEX_DWORDS; ++index) {
+        rc_stream[rc_stream_count++] = words[index];
+    }
+    return 1;
+}
+
+/* A screen-aligned rectangle as two triangles. */
+static void rc_quad(struct rc_vertex *out, float left, float top,
+                    float right, float bottom, float z, DWORD color)
+{
+    static const float corners[6][2] = {
+        { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f },
+        { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f }
+    };
+    DWORD index;
+
+    for (index = 0u; index < 6u; ++index) {
+        out[index].x = corners[index][0] != 0.0f ? right : left;
+        out[index].y = corners[index][1] != 0.0f ? bottom : top;
+        out[index].z = z;
+        out[index].rhw = 1.0f;
+        out[index].color = color;
+        out[index].specular = 0u;
+        out[index].s = corners[index][0];
+        out[index].t = corners[index][1];
+    }
+}
+
+static void rc_base_state(struct v9x_r128_3d_state *state)
+{
+    DWORD index;
+    BYTE *bytes = (BYTE *)state;
+
+    for (index = 0u; index < sizeof(*state); ++index) {
+        bytes[index] = 0u;
+    }
+    state->vram_bytes = TEST_VRAM;
+    state->target_offset = TEST_BASE;
+    state->target_pitch_bytes = TEST_PITCH;
+    state->target_bytes_per_pixel = 2u;
+    state->src_blend = V9X_R128_BLEND_ONE;
+    state->dst_blend = V9X_R128_BLEND_ZERO;
+    state->alpha_func = V9X_R128_CMP_ALWAYS;
+}
+
+/*
+ * Run rc_stream after the ops the caller has already added (prefills), then
+ * stop the microengine, reset the engine, return to NONPM4 and read
+ * read_base's 4 KiB. Publishes <name>Pm4Wait. Non-zero when it all ran and
+ * the CCE went idle.
+ */
+static int rc_run_stream(const char *name, DWORD read_base)
+{
+    char key[64];
+    DWORD pre_index;
+    DWORD gui_flush_index;
+    DWORD wait_index;
+    DWORD wait_result;
+
+    rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    pre_index = rc_add(RC_OP_LFB_READ32,
+                       read_base + 4u * TEST_PITCH + 6u * 2u, 0u, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_192PIO | RC_PM4_NOUPDATE);
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    /* The batch ends by flushing the GUI pixel cache, as the HAL will. */
+    v9x_r128_3d_build_flush(&rc_stream[rc_stream_count]);
+    rc_stream_count += V9X_R128_FLUSH_DWORDS;
+    rc_add_stream(rc_stream, rc_stream_count);
+    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, RC_PIO_FIFO_ENTRIES, 0u);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "NOT-RUN");
+        rc_write_decimal(rc_key(key, name, "RefusedOp"),
+                         rc_result_buffer.refused);
+        rc_failed = 1u;
+        return 0;
+    }
+    wait_result = rc_result_buffer.ops[wait_index].result;
+    rc_pre_stream_pixel = rc_result_buffer.ops[pre_index].result & 0xfffful;
+    rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
+
+    rc_begin();
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    /* The GUI pixel cache flushed from the CPU side too, before the reset
+     * and the read: the stream's own flush packet did not change what the
+     * read saw (boot 524). */
+    if (!rc_no_cpu_flush) {
+        rc_add_write(V9X_R128_PC_GUI_CTLSTAT, V9X_R128_PC_FLUSH_GUI);
+    }
+    gui_flush_index = rc_add(RC_OP_MMIO_READ32, V9X_R128_PC_GUI_CTLSTAT,
+                             0u, 0u);
+    rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rc_add(RC_OP_MMIO_READ32, V9X_R128_PC_GUI_CTLSTAT, 0u, 0u);
+    rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    rc_add_write(RC_SCALE_3D_CNTL, 0u);
+    rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rc_add(RC_OP_LFB_READ_BLOCK, read_base, 0u, TEST_DWORDS);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "STOP-NOT-RUN");
+        rc_failed = 1u;
+        return 0;
+    }
+    rc_write_hex(rc_key(key, name, "PcGuiAfterFlush"),
+                 rc_result_buffer.ops[gui_flush_index].result);
+    rc_write_hex(rc_key(key, name, "PcGuiAfterIdle"),
+                 rc_result_buffer.ops[gui_flush_index + 2u].result);
+    if (wait_result == RC_TIMEOUT) {
+        rc_write(rc_key(key, name, "Result"), "CCE-NOT-IDLE");
+        rc_failed = 1u;
+        return 0;
+    }
+    return 1;
+}
+
+static DWORD rc_block_pixel(DWORD x, DWORD y)
+{
+    return rc_surface_pixel((const unsigned char *)rc_result_buffer.block,
+                            x, y);
+}
+
+/*
+ * One triangle, (4,2), (60,2), (4,30), with the three vertex colours
+ * given; near each corner the corner's channel must lead the other two
+ * (only meaningful for distinct colours). vertex_words picks the format:
+ * 8 is the builder's TL vertex; 6 is X, Y, Z, RHW, diffuse, specular; 5
+ * drops the specular, as the earlier triangle tests drew.
+ */
+static void rc_test_gouraud(const char *name, DWORD c0, DWORD c1, DWORD c2,
+                            DWORD vertex_words, float z, int use_depth,
+                            int tail)
+{
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+    struct rc_vertex triangle[3];
+    char key[64];
+    DWORD colours[3];
+    DWORD vertex;
+    DWORD red;
+    DWORD green;
+    DWORD blue;
+    int ok;
+
+    colours[0] = c0;
+    colours[1] = c1;
+    colours[2] = c2;
+    rc_base_state(&state);
+    if (use_depth) {
+        state.depth_enable = 1u;
+        state.depth_write = 1u;
+        state.depth_func = V9X_R128_CMP_ALWAYS;
+        state.depth_offset = RC_Z_BASE;
+        state.depth_pitch_bytes = TEST_PITCH;
+        state.depth_bytes_per_pixel = 2u;
+    }
+    if (v9x_r128_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
+        rc_write(rc_key(key, name, "Result"), "BUILDER-REFUSED");
+        rc_failed = 1u;
+        return;
+    }
+    for (vertex = 0u; vertex < 3u; ++vertex) {
+        triangle[vertex].x = vertex == 1u ? 60.0f : 4.0f;
+        triangle[vertex].y = vertex == 2u ? 30.0f : 2.0f;
+        triangle[vertex].z = z;
+        triangle[vertex].rhw = 1.0f;
+        triangle[vertex].color = colours[vertex];
+        triangle[vertex].specular = 0u;
+        triangle[vertex].s = 0.0f;
+        triangle[vertex].t = 0.0f;
+    }
+    rc_stream_count = 0u;
+    rc_stream_state(&stream);
+    if (tail == TAIL_DONT_START) {
+        /* SETUP_CNTL is the third burst's value: find it and set
+         * DONT_START_TRIANGLE (bit 0). */
+        DWORD at;
+
+        for (at = 0u; at + 1u < rc_stream_count; ++at) {
+            if (rc_stream[at] == RC_PACKET0(RC_SETUP_CNTL)) {
+                rc_stream[at + 1u] |= 1ul;
+            }
+        }
+    }
+    if (vertex_words == V9X_R128_VERTEX_DWORDS) {
+        rc_stream_prim(triangle, 1u);
+    } else {
+        /* RHW | DIFFUSE_ARGB, with SPEC_FRGB for six dwords: n is the
+         * dwords after the header, less one. */
+        rc_stream[rc_stream_count++] =
+            RC_PACKET3(RC_3D_RNDR_GEN_PRIM, 2u + 3u * vertex_words - 1u);
+        rc_stream[rc_stream_count++] = RC_VC_FRMT_DIFFUSE_ARGB |
+                                       RC_VC_FRMT_RHW |
+                                       (vertex_words == 6u ?
+                                        RC_VC_FRMT_SPEC_FRGB : 0ul);
+        rc_stream[rc_stream_count++] = RC_VC_CNTL_TRI_LIST_3;
+        for (vertex = 0u; vertex < 3u; ++vertex) {
+            const DWORD *words = (const DWORD *)&triangle[vertex];
+            DWORD word;
+
+            for (word = 0u; word < vertex_words; ++word) {
+                rc_stream[rc_stream_count++] = words[word];
+            }
+        }
+    }
+
+    if (tail == TAIL_STATE) {
+        rc_stream_state(&stream);
+    } else if (tail == TAIL_DEGENERATE) {
+        struct rc_vertex dot[3];
+
+        for (vertex = 0u; vertex < 3u; ++vertex) {
+            dot[vertex] = triangle[0];
+            dot[vertex].x = 0.0f;
+            dot[vertex].y = 0.0f;
+        }
+        rc_stream_prim(dot, 1u);
+    }
+
+    rc_begin();
+    rc_add(RC_OP_LFB_FILL32, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rc_run_stream(name, TEST_BASE)) {
+        return;
+    }
+    red = rc_block_pixel(6u, 4u);
+    green = rc_block_pixel(52u, 4u);
+    blue = rc_block_pixel(6u, 26u);
+    rc_write_hex(rc_key(key, name, "PixelBeforeStream"), rc_pre_stream_pixel);
+    rc_write_hex(rc_key(key, name, "NearV0"), red);
+    rc_write_hex(rc_key(key, name, "NearV1"), green);
+    rc_write_hex(rc_key(key, name, "NearV2"), blue);
+    rc_write_hex(rc_key(key, name, "Centre"), rc_block_pixel(20u, 10u));
+    /* 5:6:5 channels scaled to five bits for the comparison. */
+    ok = (red >> 11) > ((red >> 6) & 31u) && (red >> 11) > (red & 31u) &&
+         ((green >> 6) & 31u) > (green >> 11) &&
+         ((green >> 6) & 31u) > (green & 31u) &&
+         (blue & 31u) > (blue >> 11) && (blue & 31u) > ((blue >> 6) & 31u);
+    rc_write(rc_key(key, name, "Result"), ok ? "PASS" : "MISMATCH");
+}
+
+/* Z cleared to all ones; a near blue rectangle, then a far red one over the
+ * whole surface: red must not cover the blue. Then the Z buffer itself,
+ * read linearly: the blue's Z inside it, the red's outside. */
+static void rc_test_depth(void)
+{
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+    struct rc_vertex quads[12];
+    DWORD inside;
+    DWORD outside;
+    DWORD z_inside;
+    DWORD z_outside;
+    int ok;
+
+    rc_base_state(&state);
+    state.depth_enable = 1u;
+    state.depth_write = 1u;
+    state.depth_func = V9X_R128_CMP_LESS;
+    state.depth_offset = RC_Z_BASE;
+    state.depth_pitch_bytes = TEST_PITCH;
+    state.depth_bytes_per_pixel = 2u;
+    if (v9x_r128_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
+        rc_write("DepthResult", "BUILDER-REFUSED");
+        rc_failed = 1u;
+        return;
+    }
+    rc_quad(&quads[0], 8.0f, 4.0f, 40.0f, 20.0f, 0.25f, 0xff0000fful);
+    rc_quad(&quads[6], 0.0f, 0.0f, 64.0f, 32.0f, 0.5f, 0xffff0000ul);
+    rc_stream_count = 0u;
+    rc_stream_state(&stream);
+    rc_stream_prim(&quads[0], 2u);
+    rc_stream_prim(&quads[6], 2u);
+
+    rc_begin();
+    rc_add(RC_OP_LFB_FILL32, TEST_BASE, 0u, TEST_DWORDS);
+    rc_add(RC_OP_LFB_FILL32, RC_Z_BASE, 0xfffffffful, TEST_DWORDS);
+    if (!rc_run_stream("Depth", TEST_BASE)) {
+        return;
+    }
+    inside = rc_block_pixel(20u, 10u);
+    outside = rc_block_pixel(50u, 25u);
+    rc_write_hex("DepthColourInside", inside);
+    rc_write_hex("DepthColourOutside", outside);
+
+    rc_begin();
+    rc_add(RC_OP_LFB_READ_BLOCK, RC_Z_BASE, 0u, TEST_DWORDS);
+    if (!rc_run()) {
+        rc_write("DepthResult", "Z-READ-NOT-RUN");
+        rc_failed = 1u;
+        return;
+    }
+    z_inside = rc_block_pixel(20u, 10u);
+    z_outside = rc_block_pixel(50u, 25u);
+    rc_write_hex("DepthZInside", z_inside);
+    rc_write_hex("DepthZOutside", z_outside);
+    rc_write_hex("DepthZCorner63x31", rc_block_pixel(63u, 31u));
+    ok = inside == 0x001fu && outside == 0xf800u;
+    rc_write("DepthResult", ok ? "PASS" : "MISMATCH");
+    /* Linear Z holds about 4000h and 8000h where the two rectangles are. */
+    rc_write("DepthZLayout",
+             z_inside >= 0x3f00u && z_inside <= 0x4100u &&
+             z_outside >= 0x7f00u && z_outside <= 0x8100u ?
+             "linear" : "not-linear-as-read");
+    if (!ok) {
+        rc_failed = 1u;
+    }
+}
+
+static DWORD rc_texel(DWORD x, DWORD y)
+{
+    return ((y & 15u) << 11) | ((x & 15u) << 5) | ((x ^ y) & 31u);
+}
+
+/* A 16x16 RGB565 texture, every texel distinct, on a 16x16 quad at
+ * (8,8), nearest, replace: pixel (8+i, 8+j) against texel (i, j), and
+ * against the eight neighbours, so an off-by-one shows as a shift. */
+static void rc_test_texture(void)
+{
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+    struct rc_vertex quad[6];
+    DWORD x;
+    DWORD y;
+    DWORD dx;
+    DWORD dy;
+    DWORD matches[3][3];
+    DWORD best = 0u;
+    DWORD best_dx = 1u;
+    DWORD best_dy = 1u;
+    char key[64];
+    char text[8];
+
+    rc_base_state(&state);
+    state.texture.enable = 1u;
+    state.texture.datatype = V9X_R128_TEX_RGB565;
+    state.texture.width_log2 = 4u;
+    state.texture.height_log2 = 4u;
+    state.texture.levels = 1u;
+    state.texture.offsets[0] = RC_TEX_BASE;
+    state.texture.min_filter = V9X_R128_FILTER_NEAREST;
+    state.texture.mag_filter = V9X_R128_FILTER_NEAREST;
+    state.texture.clamp_s = 1u;
+    state.texture.clamp_t = 1u;
+    state.texture.combine = V9X_R128_COMBINE_REPLACE;
+    if (v9x_r128_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
+        rc_write("TextureResult", "BUILDER-REFUSED");
+        rc_failed = 1u;
+        return;
+    }
+    rc_quad(quad, 8.0f, 8.0f, 24.0f, 24.0f, 0.0f, 0xfffffffful);
+    rc_stream_count = 0u;
+    rc_stream_state(&stream);
+    rc_stream_prim(quad, 2u);
+
+    rc_begin();
+    rc_add(RC_OP_LFB_FILL32, TEST_BASE, 0u, TEST_DWORDS);
+    for (y = 0u; y < RC_TEX_SIZE; ++y) {
+        for (x = 0u; x < RC_TEX_SIZE; x += 2u) {
+            rc_add(RC_OP_LFB_WRITE32, RC_TEX_BASE + y * RC_TEX_PITCH + x * 2u,
+                   rc_texel(x, y) | (rc_texel(x + 1u, y) << 16), 0u);
+        }
+    }
+    if (!rc_run_stream("Texture", TEST_BASE)) {
+        return;
+    }
+    for (dy = 0u; dy < 3u; ++dy) {
+        for (dx = 0u; dx < 3u; ++dx) {
+            matches[dy][dx] = 0u;
+        }
+    }
+    for (y = 0u; y < RC_TEX_SIZE; ++y) {
+        for (x = 0u; x < RC_TEX_SIZE; ++x) {
+            DWORD pixel = rc_block_pixel(8u + x, 8u + y);
+
+            for (dy = 0u; dy < 3u; ++dy) {
+                for (dx = 0u; dx < 3u; ++dx) {
+                    if (x + dx >= 1u && y + dy >= 1u &&
+                        x + dx - 1u < RC_TEX_SIZE &&
+                        y + dy - 1u < RC_TEX_SIZE &&
+                        pixel == rc_texel(x + dx - 1u, y + dy - 1u)) {
+                        ++matches[dy][dx];
+                    }
+                }
+            }
+        }
+    }
+    for (dy = 0u; dy < 3u; ++dy) {
+        for (dx = 0u; dx < 3u; ++dx) {
+            if (matches[dy][dx] > best) {
+                best = matches[dy][dx];
+                best_dx = dx;
+                best_dy = dy;
+            }
+        }
+    }
+    rc_write_decimal("TextureExactMatches", matches[1][1]);
+    rc_write_decimal("TextureBestMatches", best);
+    text[0] = (char)('0' + best_dx);
+    text[1] = ',';
+    text[2] = (char)('0' + best_dy);
+    text[3] = '\0';
+    rc_write("TextureBestShiftPlusOne", text);
+    rc_write_hex("TexturePixelAt8x8", rc_block_pixel(8u, 8u));
+    rc_write_hex("TexturePixelAt23x23", rc_block_pixel(23u, 23u));
+    rc_write_hex("TexturePixelAt7x7", rc_block_pixel(7u, 7u));
+    rc_write(rc_key(key, "Texture", "Result"),
+             matches[1][1] == RC_TEX_SIZE * RC_TEX_SIZE ? "PASS" :
+             best == 0u ? "NOT-SAMPLED" : "SHIFTED-OR-PARTIAL");
+    if (matches[1][1] != RC_TEX_SIZE * RC_TEX_SIZE) {
+        rc_failed = 1u;
+    }
+}
+
 void WINAPI V9xRage128CceProbeEntry(void)
 {
     static const char header[] = "[Rage128CceProbe]\r\n";
@@ -741,6 +1219,19 @@ void WINAPI V9xRage128CceProbeEntry(void)
     }
     WriteFile(rc_output, header, (DWORD)lstrlenA(header), &returned, 0);
     rc_write("Build", V9X_BUILD_ID);
+    {
+        const char *line = GetCommandLineA();
+
+        while (*line != '\0') {
+            if (line[0] == '/' && (line[1] == 'n' || line[1] == 'N') &&
+                (line[2] == 'o' || line[2] == 'O') &&
+                (line[3] == 'f' || line[3] == 'F')) {
+                rc_no_cpu_flush = 1;
+            }
+            ++line;
+        }
+    }
+    rc_write("CpuSideGuiFlush", rc_no_cpu_flush ? "off" : "on");
 
     display = GetDC(0);
     if (display != 0) {
@@ -831,6 +1322,19 @@ void WINAPI V9xRage128CceProbeEntry(void)
         rc_pio_triangle("TriContext", TRI_CONTEXT, surface);
         rc_pio_triangle("TriContextRhw", TRI_RHW, surface);
     }
+    rc_test_gouraud("RedPlain", 0xffff0000ul, 0xffff0000ul, 0xffff0000ul,
+                    8u, 0.5f, 0, TAIL_NONE);
+    rc_test_gouraud("GreenTailState", 0xff00ff00ul, 0xff00ff00ul,
+                    0xff00ff00ul, 8u, 0.5f, 0, TAIL_STATE);
+    rc_test_gouraud("BlueTailDegenerate", 0xff0000fful, 0xff0000fful,
+                    0xff0000fful, 8u, 0.5f, 0, TAIL_DEGENERATE);
+    /* TAIL_DONT_START jammed the CCE on boot 524: not run again. */
+    rc_test_gouraud("RedPlainAgain", 0xffff0000ul, 0xffff0000ul,
+                    0xffff0000ul, 8u, 0.5f, 0, TAIL_NONE);
+    rc_test_gouraud("GouraudTailState", 0xffff0000ul, 0xff00ff00ul,
+                    0xff0000fful, 8u, 0.5f, 0, TAIL_STATE);
+    rc_test_depth();
+    rc_test_texture();
 
     /* NONPM4 with the microengine stopped, as r128_do_cce_stop leaves it.
      * Not POST's free-run value: that let A8U4I5 hang idle after the first
