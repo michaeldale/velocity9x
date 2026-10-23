@@ -1,9 +1,11 @@
-# Rage 128: a CCE ring in the AGP aperture fetches and idles, but not our packets
+# Rage 128: a CCE ring in the AGP aperture, and the AGP_BASE it needs
 
 Date: 2026-10-23
 
-Status: **measured, one card; not working yet.** A8U4I5's Rage Fury Pro,
-boots 535 to 539. The machine stayed up for every run. This follows
+Status: **measured, one card; the ring works** (last section).
+A8U4I5's Rage Fury Pro, boots 535 to 539. The cause was `AGP_BASE`:
+it must be the host aperture base, not the ring's address rounded to
+4 MiB. The machine stayed up for every run. This follows
 [the ring-not-in-VRAM record](2026-10-23-rage128-cce-ring-not-in-vram.md),
 for the bus-master ring Michael asked for after 0.28.0. Evidence: every
 run's `R128CCE.TXT` in
@@ -275,3 +277,54 @@ Untried differences:
 - ATI sets `DL_WPTR` from the live `DL_RPTR` instead of writing 0.
 
 Nothing in the driver has changed. The PIO CCE from 0.28.0 stays.
+
+## The ring runs: `AGP_BASE` = the host aperture base, boot 539
+
+Michael's research review (section 14, from the bus-master supplement
+and X.Org's `R128DRIAgpInit`) pointed at the one difference left. X.Org
+programs `AGP_BASE` with the host aperture base (`drmAgpBase()`). The
+probe used the ring's own bus address rounded down to 4 MiB:
+`D9C00000`, which is not aligned to the 32 MiB window that `AGP_CNTL`
+`38h` selects. ATI's `DA000000` is 32 MiB aligned.
+
+The new `/hbase` switch reads the 440BX `APBASE` (`D8000000`) into
+`AGP_BASE`. The ring stays at aperture offset `01C00000`.
+
+| Run (`/vgart`, `/hbase`) | Outcome |
+|---|---|
+| `/m8 /wb /ati /loc /long`, image offset or `/zero` | scratch `5A000001`: the first payload dword of our first header; then busy, waiting for the header's other 15 dwords, as designed |
+| `/m8 /wb /ati /loc` and 192BM `/wb /ati /loc` | pair 1, then pair 3 when `DL_WPTR` moves to 4; PM4 idle |
+| `/wb /ati` (scratch and fill tests) | both scratch packets PASS; the GART fill draws and compares PASS; `Result=COMPLETE` |
+| `/ati` (no write-back, `NOUPDATE`) | `COMPLETE` |
+| `/wb` or nothing (no `/ati`) | `NOT-FETCHED`, fill `MISMATCH` |
+
+Readbacks during the kick:
+- `AGP_BASE` reads `D8000000`.
+- `BM_CHUNK_0_VAL` (`A18h`) reads `000000FF`, so the force-to-PCI bits
+  23:21 are clear and PM4 reads take the AGP route.
+- `PM4_BUFFER_OFFSET` reads `01C00000` whether the probe wrote
+  `03C00000` or `01C00000`. The register drops bit 25, so `/zero` and
+  the image form (`AGP_APER_OFFSET` + distance) are the same setting.
+  That is why ATI's offset 0 put its ring at `AGP_BASE` itself.
+
+What the driver needs, measured:
+- `AGP_BASE` = the host aperture base;
+- `PM4_BUFFER_OFFSET` = the ring's distance into the aperture;
+- `/ati`'s `AGP_CNTL` `38h` and `BUS_CNTL` (`5033A300`: bus mastering
+  on, bit 29 clear).
+
+Without the `/ati` values the CCE fetches nothing. Which of the two
+writes matters was not split. Mode 8 and 192BM both work. The
+read-pointer write-back is optional.
+
+What this disputes:
+- The earlier "fetch and idle" outcomes were the CCE reading somewhere
+  else in a misplaced window.
+- The `/agp` placement (`AGP_BASE` at a locked RAM block outside the
+  aperture) is not a valid configuration, not a coherency problem.
+- ATI's microcode, its start-up extras and the cache flush were not
+  needed. Linux's microcode runs the ring.
+
+V9XD32 `/bpp16` passes afterwards. The driver still uses the PIO CCE.
+Moving it to the ring is the next step: a GART reservation at start-up,
+then `AGP_BASE`/`AGP_CNTL`/`BUS_CNTL` as above.

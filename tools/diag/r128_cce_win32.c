@@ -642,6 +642,10 @@ static int rc_offset_from_agp_base;
 static int rc_locate;
 /* /long: the locating pattern's long form (see RC_Do_Ring_Pattern). */
 static int rc_pattern_long;
+/* /hbase: AGP_BASE from the host aperture base rather than the ring's
+ * address rounded to 4 MiB (report section 14.7). */
+static int rc_host_base;
+#define RC_BM_CHUNK_0_VAL 0x0a18ul
 /* /atis: ATI's start-up extras, read from ati2i9aa.dll's CCE start
  * (Ghidra, 1008:6B90-6F4A): PM4_MICRO_CNTL 401F0000 rather than Linux's
  * 40000000 (bits 20:16 undocumented; ATI's live value too, boot 538),
@@ -837,6 +841,9 @@ static void rc_ring_locate(void)
     DWORD stat_index;
     DWORD wb_index = 0u;
     DWORD mm_index_index;
+    DWORD chunk_index;
+    DWORD agp_base_index;
+    DWORD offset_index;
     DWORD mm_index_saved_index;
     DWORD mm_index_saved = 0u;
     DWORD poll_result;
@@ -870,6 +877,12 @@ static void rc_ring_locate(void)
         rptr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_DL_RPTR, 0u, 0u);
         stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
         mm_index_index = rc_add(RC_OP_MMIO_READ32, RC_MM_INDEX, 0u, 0u);
+        /* BM_CHUNK_0_VAL bits 23:21 force PM4 reads, pointer transfers or
+         * everything to PCI (bus-master supplement BM-3); clear = AGP. */
+        chunk_index = rc_add(RC_OP_MMIO_READ32, RC_BM_CHUNK_0_VAL, 0u, 0u);
+        agp_base_index = rc_add(RC_OP_MMIO_READ32, RC_AGP_BASE, 0u, 0u);
+        offset_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_OFFSET, 0u,
+                              0u);
         if (rc_bm_noupdate == 0u) {
             wb_index = rc_add(RC_OP_BLOCK_READ32, 0u, 0u, 0u);
         }
@@ -896,6 +909,12 @@ static void rc_ring_locate(void)
         }
         rc_write_hex(rc_key(key, name, "MmIndexAfter"),
                      rc_result_buffer.ops[mm_index_index].result);
+        rc_write_hex(rc_key(key, name, "BmChunk0Val"),
+                     rc_result_buffer.ops[chunk_index].result);
+        rc_write_hex(rc_key(key, name, "AgpBaseReadback"),
+                     rc_result_buffer.ops[agp_base_index].result);
+        rc_write_hex(rc_key(key, name, "Pm4BufferOffsetReadback"),
+                     rc_result_buffer.ops[offset_index].result);
         if (rc_bm_noupdate == 0u) {
             rc_write_hex(rc_key(key, name, "Writeback"),
                          rc_result_buffer.ops[wb_index].result);
@@ -2036,6 +2055,10 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 (line[3] == 'n' || line[3] == 'N')) {
                 rc_pattern_long = 1;
             }
+            if (line[0] == '/' && (line[1] == 'h' || line[1] == 'H') &&
+                (line[2] == 'b' || line[2] == 'B')) {
+                rc_host_base = 1;
+            }
             if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
                 (line[2] == 't' || line[2] == 'T') &&
                 (line[3] == 'i' || line[3] == 'I')) {
@@ -2240,6 +2263,17 @@ void WINAPI V9xRage128CceProbeEntry(void)
 
                 rc_agp_base_found = rc_read_register(RC_AGP_BASE);
                 rc_agp_base = ring_phys & ~(RC_AGP_BASE_ALIGN - 1ul);
+                if (rc_host_base && rc_vgart) {
+                    /* X.Org's R128DRIAgpInit: AGP_BASE is the host
+                     * aperture base (440BX APBASE), and the ring is its
+                     * distance into the aperture. */
+                    rc_begin();
+                    rc_add(RC_OP_PCI_CFG_READ, 0x80000010ul, 0u, 0u);
+                    if (rc_run()) {
+                        rc_agp_base = rc_result_buffer.ops[0].result &
+                                      0xfffffff0ul;
+                    }
+                }
                 rc_ring_offset = (rc_offset_from_agp_base ? 0ul : aper) +
                                  (ring_phys - rc_agp_base);
                 rc_write_hex("AgpBaseAtStart", rc_agp_base_found);
