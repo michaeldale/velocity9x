@@ -102,6 +102,28 @@ RC_OP_WAIT_IDLE         equ 8
 RC_OP_PM4_WAIT_IDLE     equ 9
 RC_OP_ENGINE_RESET      equ 10
 RC_OP_MMIO_POLL         equ 11
+RC_OP_RING_ALLOC        equ 12
+RC_OP_RING_WRITE32      equ 13
+RC_OP_RING_READ32       equ 14
+
+; /gart: one locked, physically contiguous block - the Rage 128's 32 KiB
+; PCI GART table (PCI_GART_PAGE, RRG 3-207: one dword a page, 8192 of
+; them) and a 64 KiB ring after it. Every table entry points into the ring,
+; so no CCE address can reach memory that is not ours; it only reads
+; (NOUPDATE). Entries hold the page's bus address, as Linux's
+; drm_ati_pcigart writes them for a PCI GART.
+RC_OP_GART_ALLOC        equ 15
+
+; /vgart: 16 pages of the chipset's AGP aperture through the VMM's GART
+; services (_GARTReserve, _GARTCommit; VMM.INC), as ATI's driver keeps its
+; ring behind AGP_BASE. pDevObj is passed as 0 first.
+RC_VGART_PAGES          equ 16
+
+RC_RING_PAGES           equ 24
+RC_GART_ENTRIES         equ 8192
+RC_GART_BYTES           equ 8000h
+RC_RING_AREA            equ 10000h
+RC_RING_PAGE_MASK       equ 15
 
 ; Status bits.
 RC_PCI_FOUND            equ 00000001h
@@ -144,6 +166,15 @@ RCMmioLinear dd 0
 RCLfbPhys    dd 0
 RCMmioPhys   dd 0
 RCCount      dd 0
+RCRingHandle dd 0
+RCRingLinear dd 0
+RCRingPhys   dd 0
+; Where the ring's dwords are: RCRingLinear + 8000h for the locked block,
+; the reserved aperture for /vgart.
+RCRingData   dd 0
+RCGartLinear dd 0
+RCGartDev    dd 0
+RCGartCommitted dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -306,35 +337,44 @@ EndProc RC_Check_Lfb_Run
 ; EBX = register offset. CF clear if a write is allowed.
 BeginProc RC_Write_Allowed
     test    ebx, 3
-    jnz     short RC_Write_Refused
+    jnz     RC_Write_Refused
     cmp     ebx, RC_PC_NGUI_CTLSTAT
-    je      short RC_Write_Ok
+    je     RC_Write_Ok
+    ; /gart and /agp: BUS_CNTL (bus mastering), AGP_BASE, PCI_GART_PAGE.
+    cmp     ebx, 0030h
+    je     RC_Write_Ok
+    cmp     ebx, 0170h
+    je     RC_Write_Ok
+    cmp     ebx, 0174h
+    je     RC_Write_Ok
+    cmp     ebx, 017ch
+    je     RC_Write_Ok
     cmp     ebx, 1a00h
-    je      short RC_Write_Ok
+    je     RC_Write_Ok
     cmp     ebx, RC_PC_GUI_CTLSTAT
-    je      short RC_Write_Ok
+    je     RC_Write_Ok
     cmp     ebx, 07fch
-    je      short RC_Write_Ok
+    je     RC_Write_Ok
     cmp     ebx, 1000h
-    je      short RC_Write_Ok
+    je     RC_Write_Ok
     cmp     ebx, 1004h
-    je      short RC_Write_Ok
+    je     RC_Write_Ok
     cmp     ebx, 0700h
-    jb      short RC_Write_Refused
+    jb     RC_Write_Refused
     cmp     ebx, 0720h
-    jb      short RC_Write_Ok
+    jb     RC_Write_Ok
     cmp     ebx, 07d4h
-    jb      short RC_Write_Refused
+    jb     RC_Write_Refused
     cmp     ebx, 07e4h
-    jb      short RC_Write_Ok
+    jb     RC_Write_Ok
     cmp     ebx, 1400h
-    jb      short RC_Write_Refused
+    jb     RC_Write_Refused
     cmp     ebx, 1700h
-    jb      short RC_Write_Ok
+    jb     RC_Write_Ok
     cmp     ebx, 1c80h
-    jb      short RC_Write_Refused
+    jb     RC_Write_Refused
     cmp     ebx, 1d48h
-    jae     short RC_Write_Refused
+    jae     RC_Write_Refused
 RC_Write_Ok:
     clc
     ret
@@ -401,7 +441,106 @@ BeginProc RC_Execute_One
     je      RC_Do_Engine_Reset
     cmp     eax, RC_OP_MMIO_POLL
     je      RC_Do_Mmio_Poll
+    cmp     eax, RC_OP_RING_ALLOC
+    je      RC_Do_Ring_Alloc
+    cmp     eax, RC_OP_RING_WRITE32
+    je      RC_Do_Ring_Write32
+    cmp     eax, RC_OP_RING_READ32
+    je      RC_Do_Ring_Read32
+    cmp     eax, RC_OP_GART_ALLOC
+    je      RC_Do_Gart_Alloc
     jmp     RC_Do_Refuse
+
+; The table and ring block, once per load. a = entry form: 0 the page's bus
+; address (Linux), 1 its page number (RRG 3-207, PhysAddr[31:12] <-
+; PhysPageNo). Result: the table's physical address (the ring follows at
+; +8000h), or 0 if _PageAllocate refused.
+RC_Do_Ring_Alloc:
+    cmp     RCRingLinear, 0
+    jne     short RC_Do_Ring_Alloc_Have
+    mov     ebx, OFFSET32 RCRingPhys
+    VMMcall _PageAllocate,<RC_RING_PAGES,PG_SYS,0,0,0,0FFFFFh,ebx,PAGEFIXED+PAGEUSEALIGN+PAGECONTIG+PAGEZEROINIT>
+    test    eax, eax
+    jz      short RC_Do_Ring_Alloc_Failed
+    mov     RCRingHandle, eax
+    mov     RCRingLinear, edx
+    lea     eax, [edx+RC_GART_BYTES]
+    mov     RCRingData, eax
+    mov     edi, edx
+    mov     ebx, [esi+4]
+    xor     ecx, ecx
+RC_Do_Ring_Alloc_Entry:
+    mov     eax, ecx
+    and     eax, RC_RING_PAGE_MASK
+    shl     eax, 12
+    add     eax, RCRingPhys
+    add     eax, RC_GART_BYTES
+    test    ebx, ebx
+    jz      short RC_Do_Ring_Alloc_Store
+    shr     eax, 12
+RC_Do_Ring_Alloc_Store:
+    mov     [edi+ecx*4], eax
+    inc     ecx
+    cmp     ecx, RC_GART_ENTRIES
+    jb      short RC_Do_Ring_Alloc_Entry
+RC_Do_Ring_Alloc_Have:
+    mov     eax, RCRingPhys
+    mov     [esi+16], eax
+    jmp     RC_Do_Done
+RC_Do_Ring_Alloc_Failed:
+    mov     dword ptr [esi+16], 0
+    jmp     RC_Do_Done
+
+; a = byte offset in the ring, b = value.
+RC_Do_Ring_Write32:
+    cmp     RCRingData, 0
+    je      RC_Do_Refuse
+    test    ebx, 3
+    jnz     RC_Do_Refuse
+    cmp     ebx, RC_RING_AREA
+    jae     RC_Do_Refuse
+    mov     edi, RCRingData
+    mov     [edi+ebx], ecx
+    jmp     RC_Do_Done
+
+; a = byte offset in the ring. Result: the dword.
+RC_Do_Ring_Read32:
+    cmp     RCRingData, 0
+    je      RC_Do_Refuse
+    test    ebx, 3
+    jnz     RC_Do_Refuse
+    cmp     ebx, RC_RING_AREA
+    jae     RC_Do_Refuse
+    mov     edi, RCRingData
+    mov     eax, [edi+ebx]
+    mov     [esi+16], eax
+    jmp     RC_Do_Done
+
+; /vgart: reserve and commit RC_VGART_PAGES of the AGP aperture, uncached;
+; the ring ops then write through the reserve's linear address. Result:
+; the pages' device (bus) address, or 0 if either service refused.
+RC_Do_Gart_Alloc:
+    cmp     RCGartLinear, 0
+    jne     short RC_Do_Gart_Alloc_Have
+    mov     ebx, OFFSET32 RCGartDev
+    VMMcall _GARTReserve,<0,RC_VGART_PAGES,0,ebx,PG_UNCACHED>
+    test    eax, eax
+    jz      short RC_Do_Gart_Alloc_Failed
+    mov     RCGartLinear, eax
+    mov     ebx, OFFSET32 RCGartDev
+    VMMcall _GARTCommit,<RCGartLinear,0,RC_VGART_PAGES,ebx,PG_UNCACHED>
+    test    eax, eax
+    jz      short RC_Do_Gart_Alloc_Failed
+    mov     RCGartCommitted, 1
+    mov     eax, RCGartLinear
+    mov     RCRingData, eax
+RC_Do_Gart_Alloc_Have:
+    mov     eax, RCGartDev
+    mov     [esi+16], eax
+    jmp     RC_Do_Done
+RC_Do_Gart_Alloc_Failed:
+    mov     dword ptr [esi+16], 0
+    jmp     RC_Do_Done
 
 ; a = register offset, b = mask, c = value. Polls until (reg & mask) ==
 ; value, at most RC_WAIT_LIMIT reads: the ring test's wait for
@@ -761,7 +900,25 @@ BeginProc RC_Dynamic_Init
     ret
 EndProc RC_Dynamic_Init
 
+; The program has stopped the CCE and put BUS_CNTL and PCI_GART_PAGE back
+; before it closes the device, so nothing reads the block when it goes.
 BeginProc RC_Dynamic_Exit
+    cmp     RCRingHandle, 0
+    je      short RC_Dynamic_Exit_Gart
+    VMMcall _PageFree,<RCRingHandle,0>
+    mov     RCRingHandle, 0
+    mov     RCRingLinear, 0
+RC_Dynamic_Exit_Gart:
+    cmp     RCGartLinear, 0
+    je      short RC_Dynamic_Exit_Done
+    cmp     RCGartCommitted, 0
+    je      short RC_Dynamic_Exit_Free
+    VMMcall _GARTUnCommit,<RCGartLinear,0,RC_VGART_PAGES>
+RC_Dynamic_Exit_Free:
+    VMMcall _GARTFree,<RCGartLinear>
+    mov     RCGartLinear, 0
+RC_Dynamic_Exit_Done:
+    mov     RCRingData, 0
     clc
     ret
 EndProc RC_Dynamic_Exit

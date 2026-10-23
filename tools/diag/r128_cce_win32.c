@@ -61,6 +61,30 @@
 #define RC_OP_PM4_WAIT_IDLE 9ul
 #define RC_OP_ENGINE_RESET 10ul
 #define RC_OP_MMIO_POLL 11ul
+#define RC_OP_RING_ALLOC 12ul
+#define RC_OP_RING_WRITE32 13ul
+#define RC_OP_RING_READ32 14ul
+#define RC_OP_GART_ALLOC 15ul
+
+/* /gart: the ring in locked system memory through the Rage 128's own PCI
+ * GART, as Linux's is_pci path: PCI_GART_PAGE holds the table's physical
+ * address (bit 0, PCI_GART_DIS, clear), the ring is GART page 0, and
+ * PM4_BUFFER_OFFSET carries R128_AGP_OFFSET as Linux writes it; bus
+ * mastering is on (BUS_CNTL bit 6 clear) only while the test runs. */
+#define RC_BUS_CNTL 0x0030ul
+#define RC_BUS_MASTER_DIS 0x00000040ul
+#define RC_PCI_GART_PAGE 0x017cul
+#define RC_AGP_OFFSET 0x02000000ul
+
+/* /agp: no table. The card's address space holds the frame buffer below
+ * AGP_APER_OFFSET and an image of system memory from AGP_BASE above it
+ * (RRG 2-3, figure 2-1); the PCI GART is for "PCI mode", and this card is
+ * AGP. AGP_BASE takes 4 MiB alignment (bits 21:0 hardwired zero), so it is
+ * set at or below the locked block and the ring's offset carries the
+ * difference. */
+#define RC_AGP_BASE 0x0170ul
+#define RC_AGP_APER_OFFSET 0x0178ul
+#define RC_AGP_BASE_ALIGN 0x00400000ul
 
 /* /ring: the CCE fetching its packets from a ring in the card's own memory
  * (192BM), in the half of VRAM the driver does not use, beside the test
@@ -71,6 +95,10 @@
 #define RC_PM4_BUFFER_WM_CNTL 0x0708ul
 #define RC_PM4_BUFFER_DL_RPTR 0x0710ul
 #define RC_PM4_BUFFER_DL_WPTR 0x0714ul
+/* "Informs the engine that the command stream is ending" (Linux's
+ * r128_do_cce_flush; the SDK's R128_CCEEnd): without it the CCE holds a
+ * fetch shorter than its watermark. */
+#define RC_PM4_BUFFER_DL_DONE 0x80000000ul
 #define RC_PM4_192BM 0x20000000ul
 #define RC_RING_BASE 0x01100000ul
 #define RC_RING_BYTES 0x00010000ul
@@ -570,13 +598,240 @@ static void rc_pio_fill(const char *name, int order, DWORD micro_found)
              mismatches == 0u ? "PASS" : "MISMATCH");
 }
 
+/* The bus-master mode and its CCE FIFO: 192BM (Linux's default) unless
+ * /m8 asks for mode 8, 64BM_64VCBM_64INDBM, which ATI's driver runs
+ * (PM4_BUFFER_CNTL 80000011, boot 520) and X's r128 defaults to. */
+static DWORD rc_bm_mode = RC_PM4_192BM;
+static DWORD rc_bm_fifo = RC_PIO_FIFO_ENTRIES;
+/* /wb: let the CCE write its read pointer back, as ATI's driver does
+ * (PM4_BUFFER_DL_RPTR_ADDR 0D6B6030, NOUPDATE clear), to the start of the
+ * probe's own locked block, which /vgart does not otherwise use. */
+static DWORD rc_bm_noupdate = RC_PM4_NOUPDATE;
+static DWORD rc_rptr_writeback;
+/* /ati: ATI's own values around the ring (boot 520): AGP_CNTL 00000038
+ * (a 32 MiB aperture, bits 22:20 clear), BUS_CNTL 5033A300 (bus mastering
+ * on, bit 29 clear), PM4_BUFFER_WM_CNTL 40070707. */
+static int rc_ati_values;
+static DWORD rc_agp_cntl_found;
+/* /zero: PM4_BUFFER_OFFSET as the ring's distance from AGP_BASE, without
+ * AGP_APER_OFFSET, as ATI's own 00000000 reads. */
+static int rc_offset_from_agp_base;
+#define RC_AGP_CNTL 0x0174ul
+#define RC_ATI_AGP_CNTL 0x00000038ul
+#define RC_ATI_BUS_CNTL 0x5033a300ul
+#define RC_ATI_WM_CNTL 0x40070707ul
+#define RC_PM4_BUFFER_DL_RPTR_ADDR 0x070cul
+#define RC_PM4_64BM_64VCBM_64INDBM 0x80000000ul
+#define RC_PM4_64_FIFO_ENTRIES 64ul
+
+/* The /gart test's table, and the registers it puts back. With /agp,
+ * rc_agp_base is non-zero and rc_ring_offset is the ring's place in the
+ * card's address space. */
+static DWORD rc_gart_table;
+static DWORD rc_bus_cntl_found;
+static DWORD rc_gart_page_found;
+static DWORD rc_agp_base;
+static DWORD rc_agp_base_found;
+static DWORD rc_ring_offset;
+
+/* One ring dword, at dword index `at`: the VxD's locked block for /gart and
+ * /agp, the framebuffer for /ring. */
+static void rc_add_ring_dword(DWORD at, DWORD value)
+{
+    if (rc_gart_table != 0u) {
+        rc_add(RC_OP_RING_WRITE32, at * 4u, value, 0u);
+    } else {
+        rc_add(RC_OP_LFB_WRITE32, RC_RING_BASE + at * 4u, value, 0u);
+    }
+}
+
+static DWORD rc_add_ring_read(DWORD at)
+{
+    if (rc_gart_table != 0u) {
+        return rc_add(RC_OP_RING_READ32, at * 4u, 0u, 0u);
+    }
+    return rc_add(RC_OP_LFB_READ32, RC_RING_BASE + at * 4u, 0u, 0u);
+}
+
+/* The SDK's R128_CCEInit and CCESetupBusMaster (5.2): the microengine
+ * stopped and the engine soft-reset first, then the ring's address, both
+ * pointers, the watermarks; for /agp and /gart, the window to the block and
+ * bus mastering. Without the reset first, writes of 0 to DL_RPTR did not
+ * take: it kept the previous run's 12 (boot 535). */
+static void rc_add_ring_init(void)
+{
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    if (rc_agp_base != 0u) {
+        rc_add_write(RC_AGP_BASE, rc_agp_base);
+        rc_add_write(RC_BUS_CNTL, rc_bus_cntl_found & ~RC_BUS_MASTER_DIS);
+        rc_add_write(RC_PM4_BUFFER_OFFSET, rc_ring_offset);
+    } else if (rc_gart_table != 0u) {
+        rc_add_write(RC_PCI_GART_PAGE, rc_gart_table);
+        rc_add_write(RC_BUS_CNTL, rc_bus_cntl_found & ~RC_BUS_MASTER_DIS);
+        rc_add_write(RC_PM4_BUFFER_OFFSET, RC_AGP_OFFSET);
+    } else {
+        rc_add_write(RC_PM4_BUFFER_OFFSET, RC_RING_BASE);
+    }
+    rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
+    rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
+    rc_add_write(RC_PM4_BUFFER_WM_CNTL,
+                 rc_ati_values ? RC_ATI_WM_CNTL : RC_RING_WM);
+    if (rc_ati_values) {
+        rc_add_write(RC_AGP_CNTL, RC_ATI_AGP_CNTL);
+        rc_add_write(RC_BUS_CNTL, RC_ATI_BUS_CNTL);
+    }
+    if (rc_bm_noupdate == 0u) {
+        rc_add_write(RC_PM4_BUFFER_DL_RPTR_ADDR, rc_rptr_writeback);
+    }
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+}
+
 /*
- * One fill through a ring in video memory. The packets are rc_pio_fill's,
- * written to the ring at `start` dwords through the framebuffer; the CCE is
- * set up as r128_cce_init_ring_buffer and r128_do_cce_start do, less the
- * AGP bit and bus mastering; WPTR moves to the end of the packets, and the
- * test waits for DL_RPTR to reach it, then for PM4 idle. Returns the write
- * pointer the next call starts from.
+ * Did the CCE fetch the ring at all? One packet writing `magic` into
+ * GUI_SCRATCH_REG0, and a type-2 pad: no drawing, nothing to flush. The
+ * register is cleared by MMIO first and read back after RPTR reaches the
+ * write pointer. Returns the next write pointer, 0 on a timeout.
+ */
+#define RC_GUI_SCRATCH_REG0 0x15e0ul
+
+static DWORD rc_ring_scratch(const char *name, DWORD start, DWORD magic)
+{
+    char key[64];
+    DWORD at = start;
+    DWORD poll_index;
+    DWORD wait_index;
+    DWORD scratch_index;
+    DWORD rptr_index;
+    DWORD stat_index;
+    DWORD poll_result;
+    DWORD wait_result;
+    DWORD scratch;
+
+    rc_begin();
+    rc_add_write(RC_GUI_SCRATCH_REG0, 0u);
+    rc_add_ring_dword(at++, RC_PACKET0(RC_GUI_SCRATCH_REG0));
+    rc_add_ring_dword(at++, magic);
+    if (start == 0u) {
+        rc_add_ring_init();
+    }
+    rc_add_write(RC_PM4_BUFFER_CNTL,
+                 rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    rc_add_write(RC_PM4_BUFFER_DL_WPTR, at | RC_PM4_BUFFER_DL_DONE);
+    poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR, 0xfffffffful,
+                        at);
+    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, rc_bm_fifo, 0u);
+    scratch_index = rc_add(RC_OP_MMIO_READ32, RC_GUI_SCRATCH_REG0, 0u, 0u);
+    rptr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_DL_RPTR, 0u, 0u);
+    stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "NOT-RUN");
+        rc_write_decimal(rc_key(key, name, "RefusedOp"),
+                         rc_result_buffer.refused);
+        rc_failed = 1u;
+        return 0u;
+    }
+    poll_result = rc_result_buffer.ops[poll_index].result;
+    wait_result = rc_result_buffer.ops[wait_index].result;
+    scratch = rc_result_buffer.ops[scratch_index].result;
+    rc_write_hex(rc_key(key, name, "Magic"), magic);
+    rc_write_hex(rc_key(key, name, "Scratch"), scratch);
+    rc_write_hex(rc_key(key, name, "RptrPoll"), poll_result);
+    rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
+    rc_write_hex(rc_key(key, name, "Rptr"),
+                 rc_result_buffer.ops[rptr_index].result);
+    rc_write_hex(rc_key(key, name, "Pm4Stat"),
+                 rc_result_buffer.ops[stat_index].result);
+
+    rc_begin();
+    if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+        rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    }
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
+        rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
+    }
+    rc_run();
+    if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+        rc_write(rc_key(key, name, "Result"), "TIMEOUT");
+        rc_failed = 1u;
+        return 0u;
+    }
+    if (scratch != magic) {
+        rc_write(rc_key(key, name, "Result"), "NOT-FETCHED");
+        rc_failed = 1u;
+        return at;
+    }
+    rc_write(rc_key(key, name, "Result"), "PASS");
+    return at;
+}
+
+/*
+ * The control for rc_ring_scratch: the same packet through the PIO ports,
+ * with or without the engine soft-reset the ring set-up now starts with.
+ */
+static void rc_pio_scratch(const char *name, DWORD magic, int reset)
+{
+    char key[64];
+    DWORD wait_index;
+    DWORD scratch_index;
+    DWORD stat_index;
+    DWORD wait_result;
+    DWORD scratch;
+
+    rc_begin();
+    rc_add_write(RC_GUI_SCRATCH_REG0, 0u);
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    if (reset) {
+        rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    }
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_192PIO | RC_PM4_NOUPDATE);
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    rc_add_write(RC_PM4_FIFO_DATA_EVEN, RC_PACKET0(RC_GUI_SCRATCH_REG0));
+    rc_add_write(RC_PM4_FIFO_DATA_ODD, magic);
+    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, RC_PIO_FIFO_ENTRIES, 0u);
+    scratch_index = rc_add(RC_OP_MMIO_READ32, RC_GUI_SCRATCH_REG0, 0u, 0u);
+    stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "NOT-RUN");
+        rc_failed = 1u;
+        return;
+    }
+    wait_result = rc_result_buffer.ops[wait_index].result;
+    scratch = rc_result_buffer.ops[scratch_index].result;
+    rc_write_hex(rc_key(key, name, "Scratch"), scratch);
+    rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
+    rc_write_hex(rc_key(key, name, "Pm4Stat"),
+                 rc_result_buffer.ops[stat_index].result);
+    rc_begin();
+    if (wait_result == RC_TIMEOUT) {
+        rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    }
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    rc_run();
+    if (wait_result == RC_TIMEOUT || scratch != magic) {
+        rc_failed = 1u;
+    }
+    rc_write(rc_key(key, name, "Result"),
+             wait_result == RC_TIMEOUT ? "TIMEOUT" :
+             scratch == magic ? "PASS" : "NOT-WRITTEN");
+}
+
+/*
+ * One fill through a ring. The packets are rc_pio_fill's, written to the
+ * ring at `start` dwords; the CCE is set up as r128_cce_init_ring_buffer
+ * and r128_do_cce_start do; WPTR moves to the end of the packets, and the
+ * test waits for DL_RPTR to reach it, then for PM4 idle. With rc_gart_table
+ * zero the ring is in video memory at RC_RING_BASE, with no AGP bit and bus
+ * mastering off (the hypothesis 2026-10-23 killed); otherwise it is the
+ * VxD's locked block through the PCI GART. Returns the write pointer the
+ * next call starts from.
  */
 static DWORD rc_ring_fill(const char *name, DWORD start, DWORD color)
 {
@@ -630,33 +885,22 @@ static DWORD rc_ring_fill(const char *name, DWORD start, DWORD color)
      * value: an even count, so no type-2 pad is needed. */
     at = start;
     for (index = 0u; index < blt.count; ++index) {
-        rc_add(RC_OP_LFB_WRITE32, RC_RING_BASE + at * 4u,
-               RC_PACKET0(blt.offsets[index]), 0u);
-        ++at;
-        rc_add(RC_OP_LFB_WRITE32, RC_RING_BASE + at * 4u,
-               blt.values[index], 0u);
-        ++at;
+        rc_add_ring_dword(at++, RC_PACKET0(blt.offsets[index]));
+        rc_add_ring_dword(at++, blt.values[index]);
     }
-    ring_index = rc_add(RC_OP_LFB_READ32, RC_RING_BASE + start * 4u, 0u, 0u);
-    /* r128_cce_init_ring_buffer on the first call: the ring, both
-     * pointers, the watermarks. */
+    ring_index = rc_add_ring_read(start);
     if (start == 0u) {
-        rc_add_write(RC_PM4_MICRO_CNTL, 0u);
-        rc_add_write(RC_PM4_BUFFER_OFFSET, RC_RING_BASE);
-        rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
-        rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
-        rc_add_write(RC_PM4_BUFFER_WM_CNTL, RC_RING_WM);
-        rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+        rc_add_ring_init();
     }
     /* r128_do_cce_start in bus-master mode. */
     rc_add_write(RC_PM4_BUFFER_CNTL,
-                 RC_PM4_192BM | RC_RING_L2QW | RC_PM4_NOUPDATE);
+                 rc_bm_mode | RC_RING_L2QW | rc_bm_noupdate);
     rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
     rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
-    rc_add_write(RC_PM4_BUFFER_DL_WPTR, at);
+    rc_add_write(RC_PM4_BUFFER_DL_WPTR, at | RC_PM4_BUFFER_DL_DONE);
     poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR, 0xfffffffful,
                         at);
-    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, RC_PIO_FIFO_ENTRIES, 0u);
+    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, rc_bm_fifo, 0u);
     rptr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_DL_RPTR, 0u, 0u);
     stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
     addr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
@@ -942,6 +1186,15 @@ static DWORD rc_pre_stream_pixel;
 static int rc_no_cpu_flush;
 /* /ring: run the ring tests in place of the triangle tests. */
 static int rc_ring;
+/* /gart: the same, with the ring in system memory through the PCI GART.
+ * /gpn: the same, the table holding page numbers rather than addresses. */
+static int rc_gart;
+static int rc_gart_page_numbers;
+/* /agp: the locked block through AGP_BASE, no table. */
+static int rc_agp;
+/* /vgart: pages of the chipset's AGP aperture from the VMM's GART
+ * services, behind AGP_BASE as ATI's driver keeps its ring. */
+static int rc_vgart;
 static DWORD rc_stream_count;
 
 static void rc_stream_state(const struct v9x_r128_3d_stream *state)
@@ -1439,6 +1692,49 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 (line[3] == 'n' || line[3] == 'N')) {
                 rc_ring = 1;
             }
+            if (line[0] == '/' && (line[1] == 'g' || line[1] == 'G') &&
+                (line[2] == 'a' || line[2] == 'A') &&
+                (line[3] == 'r' || line[3] == 'R')) {
+                rc_gart = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'g' || line[1] == 'G') &&
+                (line[2] == 'p' || line[2] == 'P') &&
+                (line[3] == 'n' || line[3] == 'N')) {
+                rc_gart = 1;
+                rc_gart_page_numbers = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
+                (line[2] == 'g' || line[2] == 'G') &&
+                (line[3] == 'p' || line[3] == 'P')) {
+                rc_gart = 1;
+                rc_agp = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'w' || line[1] == 'W') &&
+                (line[2] == 'b' || line[2] == 'B')) {
+                rc_bm_noupdate = 0u;
+            }
+            if (line[0] == '/' && (line[1] == 'a' || line[1] == 'A') &&
+                (line[2] == 't' || line[2] == 'T') &&
+                (line[3] == 'i' || line[3] == 'I')) {
+                rc_ati_values = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'z' || line[1] == 'Z') &&
+                (line[2] == 'e' || line[2] == 'E') &&
+                (line[3] == 'r' || line[3] == 'R')) {
+                rc_offset_from_agp_base = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'm' || line[1] == 'M') &&
+                line[2] == '8') {
+                rc_bm_mode = RC_PM4_64BM_64VCBM_64INDBM;
+                rc_bm_fifo = RC_PM4_64_FIFO_ENTRIES;
+            }
+            if (line[0] == '/' && (line[1] == 'v' || line[1] == 'V') &&
+                (line[2] == 'g' || line[2] == 'G') &&
+                (line[3] == 'a' || line[3] == 'A')) {
+                rc_gart = 1;
+                rc_agp = 1;
+                rc_vgart = 1;
+            }
             ++line;
         }
     }
@@ -1522,15 +1818,102 @@ void WINAPI V9xRage128CceProbeEntry(void)
     }
 
     rc_pio_fill("PioAlternate", ORDER_ALTERNATE, micro_found);
-    if (rc_ring) {
+    if (rc_gart || rc_ring) {
+        rc_pio_scratch("PioScratch", 0x11223344ul, 0);
+        rc_pio_scratch("PioScratchAfterReset", 0x55667788ul, 1);
+    }
+    if (rc_gart) {
+        DWORD wptr;
+        DWORD alloc_index;
+        DWORD wb_index = 0u;
+
+        rc_bus_cntl_found = rc_read_register(RC_BUS_CNTL);
+        rc_gart_page_found = rc_read_register(RC_PCI_GART_PAGE);
+        rc_agp_cntl_found = rc_read_register(RC_AGP_CNTL);
+        /* AGP_STATUS and AGP_COMMAND through BAR2's image of configuration
+         * space: AGP_EN (command bit 8) clear is "PCI mode", where the PCI
+         * GART applies (RRG 3-185, 3-207). */
+        rc_write_hex("AgpStatus", rc_read_register(0x0f54ul));
+        rc_write_hex("AgpCommand", rc_read_register(0x0f58ul));
+        rc_write_hex("AgpCntl", rc_read_register(0x0174ul));
+        rc_write_hex("AgpAperOffsetAtStart",
+                     rc_read_register(RC_AGP_APER_OFFSET));
+        rc_write_hex("BusCntlAtStart", rc_bus_cntl_found);
+        rc_write_hex("PciGartPageAtStart", rc_gart_page_found);
+        rc_begin();
+        rc_write("GartEntries", rc_gart_page_numbers ? "page-numbers" :
+                                                      "addresses");
+        if (rc_vgart) {
+            if (rc_bm_noupdate == 0u) {
+                /* The write-back target: the locked block, allocated
+                 * first so the aperture stays the ring. */
+                wb_index = rc_add(RC_OP_RING_ALLOC, 0u, 0u, 0u);
+            }
+            alloc_index = rc_add(RC_OP_GART_ALLOC, 0u, 0u, 0u);
+        } else {
+            alloc_index = rc_add(RC_OP_RING_ALLOC,
+                                 rc_gart_page_numbers ? 1u : 0u, 0u, 0u);
+        }
+        if (!rc_run() || rc_result_buffer.ops[alloc_index].result == 0u ||
+            (rc_bm_noupdate == 0u &&
+             rc_result_buffer.ops[wb_index].result == 0u)) {
+            rc_write("GartResult", "ALLOC-REFUSED");
+            rc_failed = 1u;
+        } else {
+            rc_gart_table = rc_result_buffer.ops[alloc_index].result;
+            if (rc_bm_noupdate == 0u) {
+                rc_rptr_writeback = rc_result_buffer.ops[wb_index].result;
+                rc_write_hex("RptrWriteback", rc_rptr_writeback);
+            }
+            rc_write_hex("GartTablePhys", rc_gart_table);
+            if (rc_agp) {
+                /* /vgart's result is the ring's own device address; the
+                 * locked block's ring follows its table. */
+                DWORD ring_phys = rc_vgart ? rc_gart_table :
+                                             rc_gart_table + 0x8000ul;
+                DWORD aper = rc_read_register(RC_AGP_APER_OFFSET);
+
+                rc_agp_base_found = rc_read_register(RC_AGP_BASE);
+                rc_agp_base = ring_phys & ~(RC_AGP_BASE_ALIGN - 1ul);
+                rc_ring_offset = (rc_offset_from_agp_base ? 0ul : aper) +
+                                 (ring_phys - rc_agp_base);
+                rc_write_hex("AgpBaseAtStart", rc_agp_base_found);
+                rc_write_hex("AgpAperOffset", aper);
+                rc_write_hex("AgpBase", rc_agp_base);
+                rc_write_hex("RingCardOffset", rc_ring_offset);
+            }
+            wptr = rc_ring_scratch("ScratchFirst", 0u, 0x5eed1234ul);
+            if (wptr != 0u) {
+                wptr = rc_ring_scratch("ScratchSecond", wptr, 0xc0ffee42ul);
+            }
+            if (wptr != 0u) {
+                (void)rc_ring_fill("GartFill", wptr, 0x9abcu);
+            }
+            /* Bus mastering off and the GART as found, before the VxD
+             * frees the block on close. */
+            rc_begin();
+            rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+            rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+            rc_add_write(RC_BUS_CNTL, rc_bus_cntl_found);
+            rc_add_write(RC_PCI_GART_PAGE, rc_gart_page_found);
+            if (rc_agp) {
+                rc_add_write(RC_AGP_BASE, rc_agp_base_found);
+            }
+            rc_add_write(RC_AGP_CNTL, rc_agp_cntl_found);
+            rc_run();
+            rc_write_hex("BusCntlAtEnd", rc_read_register(RC_BUS_CNTL));
+            rc_write_hex("PciGartPageAtEnd",
+                         rc_read_register(RC_PCI_GART_PAGE));
+        }
+    } else if (rc_ring) {
         DWORD wptr;
 
         /* The PIO fill above is the control; then two fills through the
          * ring, the second continuing from the first's pointers. */
         rc_write("Ring", "on");
-        wptr = rc_ring_fill("RingFirst", 0u, 0x9abcu);
+        wptr = rc_ring_scratch("ScratchFirst", 0u, 0x5eed1234ul);
         if (wptr != 0u) {
-            (void)rc_ring_fill("RingSecond", wptr, 0x5e37u);
+            (void)rc_ring_fill("RingFill", wptr, 0x9abcu);
         }
     } else {
         rc_pio_tests(micro_found);
