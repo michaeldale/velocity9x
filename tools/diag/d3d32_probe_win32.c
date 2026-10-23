@@ -1110,6 +1110,27 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("T9QuadHr", (DWORD)d32_draw_indexed(device, v, 4ul, indices, 6ul));
     d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
 
+    /* T10: triangles reaching off the target, inside a 2048 guard band.
+     * Whether the core clips them or the engine draws them under its
+     * scissor, the visible pixels must be the same: a band y 400-439
+     * filled whole by one huge flat triangle, a Gouraud triangle crossing
+     * three edges into y 440-479, and nothing above the band, nor in the
+     * next row where a triangle past the right edge would wrap. */
+    d32_line("Stage", "8g-t10-guard-band");
+    d32_vertex(&v[0], -1500.0f, 400.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[1], 2000.0f, 400.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 320.0f, 1800.0f, 0.5f, 0xff00ff00ul);
+    d32_hx("T10FlatHr", (DWORD)d32_draw(device, v, 3ul));
+    d32_vertex(&v[0], -800.0f, 440.0f, 0.5f, 0xffff0000ul);
+    d32_vertex(&v[1], 1400.0f, 440.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 300.0f, 1600.0f, 0.5f, 0xff0000fful);
+    d32_hx("T10GouraudHr", (DWORD)d32_draw(device, v, 3ul));
+    /* Off the right edge only, rows 380-388, the row above the band. */
+    d32_vertex(&v[0], 600.0f, 380.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[1], 760.0f, 380.0f, 0.5f, 0xff00ff00ul);
+    d32_vertex(&v[2], 600.0f, 388.0f, 0.5f, 0xff00ff00ul);
+    d32_hx("T10RightHr", (DWORD)d32_draw(device, v, 3ul));
+
     d32_line("Stage", "9-read-back");
     d32_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
@@ -1161,6 +1182,34 @@ void WINAPI V9xD3d32ProbeEntry(void)
                     ? 8ul : 0ul);
         d32_hx("T9Ok", caps);
         failures += caps != 15ul ? 1ul : 0ul;
+
+        /* T10: the band whole, its edges; the Gouraud samples, recorded so
+         * two builds can be compared pixel for pixel; the right-edge piece
+         * drawn, and nothing wrapped into the left of its rows or drawn
+         * between it and the band. */
+        d32_hx("T10BandLeft", d32_pixel(&desc, 0ul, 402ul));
+        d32_hx("T10BandMiddle", d32_pixel(&desc, 320ul, 420ul));
+        d32_hx("T10BandRight", d32_pixel(&desc, 639ul, 438ul));
+        d32_hx("T10AboveBand", d32_pixel(&desc, 320ul, 396ul));
+        d32_hx("T10Gouraud0", d32_pixel(&desc, 0ul, 445ul));
+        d32_hx("T10Gouraud1", d32_pixel(&desc, 320ul, 460ul));
+        d32_hx("T10Gouraud2", d32_pixel(&desc, 639ul, 478ul));
+        d32_hx("T10RightPiece", d32_pixel(&desc, 630ul, 381ul));
+        d32_hx("T10WrapRow", d32_pixel(&desc, 2ul, 382ul));
+        caps = (d32_is_colour(d32_pixel(&desc, 0ul, 402ul), 0x0000ff00ul)
+                    ? 1ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 320ul, 420ul), 0x0000ff00ul)
+                    ? 2ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 639ul, 438ul), 0x0000ff00ul)
+                    ? 4ul : 0ul) |
+               (!d32_is_colour(d32_pixel(&desc, 320ul, 396ul), 0x0000ff00ul)
+                    ? 8ul : 0ul) |
+               (d32_is_colour(d32_pixel(&desc, 630ul, 381ul), 0x0000ff00ul)
+                    ? 16ul : 0ul) |
+               (!d32_is_colour(d32_pixel(&desc, 2ul, 382ul), 0x0000ff00ul)
+                    ? 32ul : 0ul);
+        d32_hx("T10Ok", caps);
+        failures += caps != 63ul ? 1ul : 0ul;
 
         d32_hx("T5Pixel", d32_pixel(&desc, 332ul, 40ul));
         caps = d32_is_colour(d32_pixel(&desc, 332ul, 40ul),

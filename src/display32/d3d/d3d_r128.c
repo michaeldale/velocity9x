@@ -57,10 +57,13 @@
 static struct v9x_r128_3d_stream v9x_d3d_r128_state_stream;
 static v9x_u32 v9x_d3d_r128_stream[V9X_D3D_R128_STREAM_DWORDS];
 
-/* 16 and 32 bpp targets; Z16; textures powers of two to 1024; the core
- * clips, because the setup engine has not been measured drawing a vertex
- * off the target; pixel centres at +0.5, as the probe's texture mapped
- * texel for texel from whole-pixel edges. */
+/* 16 and 32 bpp targets; Z16; textures powers of two to 1024; the setup
+ * engine draws vertices off the target inside a 2048 guard band, under a
+ * scissor at the target's edges, so the core does not clip - V9XD32 T10
+ * drew the same pixels as the core's clipping, every other test with it,
+ * on A8U4I5 (boots 548 and 549, docs\plans\d3d-core-throughput.md); pixel
+ * centres at +0.5, as the probe's texture mapped texel for texel from
+ * whole-pixel edges. */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_r128_limits = {
     16ul,           /* target_bits_per_pixel */
     16368ul,        /* target_pitch_max: 2047 units of 8 pixels */
@@ -71,7 +74,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_r128_limits = {
     2048.0f,        /* coordinate_limit */
     16ul,           /* depth_bits_per_pixel */
     V9X_D3D_R128_SURFACE_ALIGN, /* texture_align */
-    1ul,            /* clip_in_core */
+    0ul,            /* clip_in_core */
     1ul,            /* depth_pitch_own: Z_PITCH_C takes the pitch */
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
@@ -482,6 +485,14 @@ static int v9x_d3d_r128_triangle_ok(const V9X_R3D_VERTEX *triangle,
              !v9x_d3d_r128_finite(v->tv))) {
             return 0;
         }
+        /* The guard band: the core hands over unclipped triangles, and a
+         * vertex past it is the one the core's clipper would refuse. */
+        if (!(v->sx >= -v9x_d3d_r128_limits.coordinate_limit &&
+              v->sx < v9x_d3d_r128_limits.coordinate_limit &&
+              v->sy >= -v9x_d3d_r128_limits.coordinate_limit &&
+              v->sy < v9x_d3d_r128_limits.coordinate_limit)) {
+            return 0;
+        }
     }
     return 1;
 }
@@ -621,9 +632,16 @@ static int v9x_d3d_r128_vertex_drawable(const V9X_R3D_VERTEX *v, int textured,
          !v9x_d3d_r128_finite(v->tv))) {
         return 0;
     }
+    /* Inside the guard band, as v9x_d3d_r128_triangle_ok takes it: the
+     * scissor keeps the target's edges. */
     x = v->sx + centre;
     y = v->sy + centre;
-    return x >= 0.0f && x <= width && y >= 0.0f && y <= height;
+    (void)width;
+    (void)height;
+    return x >= -v9x_d3d_r128_limits.coordinate_limit &&
+           x < v9x_d3d_r128_limits.coordinate_limit &&
+           y >= -v9x_d3d_r128_limits.coordinate_limit &&
+           y < v9x_d3d_r128_limits.coordinate_limit;
 }
 
 /*

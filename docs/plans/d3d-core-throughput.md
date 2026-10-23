@@ -203,6 +203,39 @@ The ATI floppy's disk 1 went 408 bytes over. `V9XUPD.EXE` now rides a
 third disk (`Floppy.ThirdDisk`; Michael: "third disk is fine"), which the
 floppy INF names as source disk 2.
 
+## Guard band, measured (Michael: "do guard measure", 2026-10-24)
+
+V9XD32 gained T10, which draws three triangles that reach past the
+target:
+- a flat triangle with vertices at -1500 and +2000, which must fill the
+  band at y 400-439 to both edges and leave nothing above it;
+- a Gouraud triangle crossing three edges, sampled at three pixels;
+- a triangle off the right edge, which must be drawn without wrapping
+  into the left of the next row.
+
+It ran on the core-clipping build (boot 548, reference), then on a build
+where the Rage 128 draws them itself:
+- `clip_in_core` 0;
+- every Direct3D draw scissored to its target, where before it was
+  opened to 8191, since the core had clipped;
+- vertices accepted anywhere in the 2048 guard band on both draw paths;
+- anything past the band dropped, as the core's clipper would.
+
+On boot 549 every V9XD32 value matched the reference except a texture
+handle. T10 passed, with the Gouraud samples equal (`A2E0`, `7BE0`,
+`5500`), and `R3dListClipped` was 0.
+
+3DMark 2000 scored **1568** (1530), with 0 triangles clipped in the core,
+no timeouts and the frames correct:
+- indexed calls declined: 150,954 to 114,337;
+- indexed calls drawn whole: 306,060;
+- high polygon 955 / 900 / 864 to 1004 / 945 / 901 KTri/s;
+- Game 1 low 33.3 fps, Game 2 low 25.6 fps.
+
+Still declined: 27% of indexed calls. The reason is not counted. Likely
+candidates are a vertex range over a 64 KiB segment (2048 vertices) and
+textured vertices with `rhw <= 0`.
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that

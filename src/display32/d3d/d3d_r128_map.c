@@ -287,6 +287,17 @@ v9x_u32 v9x_d3d_r128_map_draw(const V9X_R3D_DRAW *draw,
         !v9x_d3d_r128_explicit(draw, state)) {
         return V9X_D3D_R128_REFUSE_EXPLICIT;
     }
+    /* Every other draw is scissored to its target: the core no longer
+     * clips for this engine, so a triangle reaching off the target is
+     * drawn by the setup engine inside its guard band, and the scissor is
+     * what keeps it off the memory past the target's edges. */
+    if (draw->explicit_state == 0ul) {
+        state->scissor_enable = 1ul;
+        state->scissor_left = 0ul;
+        state->scissor_top = 0ul;
+        state->scissor_right = draw->target.width;
+        state->scissor_bottom = draw->target.height;
+    }
     switch (draw->target.format) {
     case V9X_R3D_FORMAT_RGB565:
         state->target_bytes_per_pixel = 2ul;

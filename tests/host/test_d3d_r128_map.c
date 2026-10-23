@@ -102,8 +102,12 @@ static void test_untextured(void)
     CHECK(state.fog_enable == 1ul && state.fog_color == 0x00336699ul);
     CHECK(state.specular_enable == 1ul);
 
-    /* A Direct3D draw is never scissored or masked by the map. */
-    CHECK(state.scissor_enable == 0ul && state.masked_channels == 0ul);
+    /* A Direct3D draw is scissored to its whole target, since the core
+     * hands over triangles reaching past it, and never masked. */
+    CHECK(state.scissor_enable == 1ul && state.scissor_left == 0ul &&
+          state.scissor_top == 0ul && state.scissor_right == 800ul &&
+          state.scissor_bottom == 600ul);
+    CHECK(state.masked_channels == 0ul);
 }
 
 /* The render interface's explicit draws: the scissor and write mask as
