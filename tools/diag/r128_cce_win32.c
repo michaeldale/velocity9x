@@ -60,6 +60,23 @@
 #define RC_OP_WAIT_IDLE 8ul
 #define RC_OP_PM4_WAIT_IDLE 9ul
 #define RC_OP_ENGINE_RESET 10ul
+#define RC_OP_MMIO_POLL 11ul
+
+/* /ring: the CCE fetching its packets from a ring in the card's own memory
+ * (192BM), in the half of VRAM the driver does not use, beside the test
+ * surface. PM4_BUFFER_OFFSET without R128_AGP_OFFSET (bit 25), which is how
+ * Linux marks a ring in AGP space; no read-pointer write-back (NOUPDATE), so
+ * the card writes nothing to system memory; BUS_CNTL is not touched. */
+#define RC_PM4_BUFFER_OFFSET 0x0700ul
+#define RC_PM4_BUFFER_WM_CNTL 0x0708ul
+#define RC_PM4_BUFFER_DL_RPTR 0x0710ul
+#define RC_PM4_BUFFER_DL_WPTR 0x0714ul
+#define RC_PM4_192BM 0x20000000ul
+#define RC_RING_BASE 0x01100000ul
+#define RC_RING_BYTES 0x00010000ul
+#define RC_RING_L2QW 13ul
+/* Linux's watermarks: L 16, M 8, N 8 dwords, K 128 (r128_cce.c). */
+#define RC_RING_WM 0x02020204ul
 
 #define RC_MAPPED 0x00000002ul
 #define RC_RAN 0x00000004ul
@@ -553,6 +570,166 @@ static void rc_pio_fill(const char *name, int order, DWORD micro_found)
              mismatches == 0u ? "PASS" : "MISMATCH");
 }
 
+/*
+ * One fill through a ring in video memory. The packets are rc_pio_fill's,
+ * written to the ring at `start` dwords through the framebuffer; the CCE is
+ * set up as r128_cce_init_ring_buffer and r128_do_cce_start do, less the
+ * AGP bit and bus mastering; WPTR moves to the end of the packets, and the
+ * test waits for DL_RPTR to reach it, then for PM4 idle. Returns the write
+ * pointer the next call starts from.
+ */
+static DWORD rc_ring_fill(const char *name, DWORD start, DWORD color)
+{
+    struct v9x_r128_fill fill;
+    struct v9x_r128_blt blt;
+    char key[64];
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD at;
+    DWORD mismatches = 0u;
+    DWORD poll_index;
+    DWORD wait_index;
+    DWORD rptr_index;
+    DWORD stat_index;
+    DWORD addr_index;
+    DWORD ring_index;
+    DWORD poll_result;
+    DWORD wait_result;
+    const unsigned char *actual;
+
+    fill.vram_bytes = TEST_VRAM;
+    fill.target_offset = TEST_BASE;
+    fill.pitch_bytes = TEST_PITCH;
+    fill.bytes_per_pixel = 2u;
+    fill.left = 7u;
+    fill.top = 4u;
+    fill.width = 20u;
+    fill.height = 9u;
+    fill.color = color;
+    if (v9x_r128_build_fill(&fill, &blt) != V9X_STATUS_OK) {
+        rc_write(rc_key(key, name, "Result"), "BUILDER-REFUSED");
+        rc_failed = 1u;
+        return start;
+    }
+    for (index = 0u; index < TEST_BYTES; ++index) {
+        rc_model[index] = 0xa5u;
+    }
+    for (y = fill.top; y < fill.top + fill.height; ++y) {
+        for (x = fill.left; x < fill.left + fill.width; ++x) {
+            rc_model[y * TEST_PITCH + x * 2u] = (unsigned char)fill.color;
+            rc_model[y * TEST_PITCH + x * 2u + 1u] =
+                (unsigned char)(fill.color >> 8);
+        }
+    }
+
+    rc_begin();
+    rc_add(RC_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    /* The packets into the ring, each register a type-0 header and its
+     * value: an even count, so no type-2 pad is needed. */
+    at = start;
+    for (index = 0u; index < blt.count; ++index) {
+        rc_add(RC_OP_LFB_WRITE32, RC_RING_BASE + at * 4u,
+               RC_PACKET0(blt.offsets[index]), 0u);
+        ++at;
+        rc_add(RC_OP_LFB_WRITE32, RC_RING_BASE + at * 4u,
+               blt.values[index], 0u);
+        ++at;
+    }
+    ring_index = rc_add(RC_OP_LFB_READ32, RC_RING_BASE + start * 4u, 0u, 0u);
+    /* r128_cce_init_ring_buffer on the first call: the ring, both
+     * pointers, the watermarks. */
+    if (start == 0u) {
+        rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+        rc_add_write(RC_PM4_BUFFER_OFFSET, RC_RING_BASE);
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
+        rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
+        rc_add_write(RC_PM4_BUFFER_WM_CNTL, RC_RING_WM);
+        rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    }
+    /* r128_do_cce_start in bus-master mode. */
+    rc_add_write(RC_PM4_BUFFER_CNTL,
+                 RC_PM4_192BM | RC_RING_L2QW | RC_PM4_NOUPDATE);
+    rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    rc_add_write(RC_PM4_MICRO_CNTL, RC_MICRO_FREERUN);
+    rc_add_write(RC_PM4_BUFFER_DL_WPTR, at);
+    poll_index = rc_add(RC_OP_MMIO_POLL, RC_PM4_BUFFER_DL_RPTR, 0xfffffffful,
+                        at);
+    wait_index = rc_add(RC_OP_PM4_WAIT_IDLE, 0u, RC_PIO_FIFO_ENTRIES, 0u);
+    rptr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_DL_RPTR, 0u, 0u);
+    stat_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_STAT, 0u, 0u);
+    addr_index = rc_add(RC_OP_MMIO_READ32, RC_PM4_BUFFER_ADDR, 0u, 0u);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "NOT-RUN");
+        rc_write_decimal(rc_key(key, name, "RefusedOp"),
+                         rc_result_buffer.refused);
+        rc_failed = 1u;
+        return start;
+    }
+    poll_result = rc_result_buffer.ops[poll_index].result;
+    wait_result = rc_result_buffer.ops[wait_index].result;
+    rc_write_decimal(rc_key(key, name, "Start"), start);
+    rc_write_decimal(rc_key(key, name, "Wptr"), at);
+    rc_write_hex(rc_key(key, name, "RingFirstDword"),
+                 rc_result_buffer.ops[ring_index].result);
+    rc_write_hex(rc_key(key, name, "RptrPoll"), poll_result);
+    rc_write_hex(rc_key(key, name, "Pm4Wait"), wait_result);
+    rc_write_hex(rc_key(key, name, "Rptr"),
+                 rc_result_buffer.ops[rptr_index].result);
+    rc_write_hex(rc_key(key, name, "Pm4Stat"),
+                 rc_result_buffer.ops[stat_index].result);
+    rc_write_hex(rc_key(key, name, "Pm4BufferAddr"),
+                 rc_result_buffer.ops[addr_index].result);
+
+    /* r128_do_cce_stop, then the surface on an idle engine; a timeout
+     * resets the engine first and puts both pointers back to 0. */
+    rc_begin();
+    if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+        rc_add(RC_OP_ENGINE_RESET, 0u, 0u, 0u);
+    }
+    rc_add_write(RC_PM4_MICRO_CNTL, 0u);
+    rc_add_write(RC_PM4_BUFFER_CNTL, RC_PM4_NONPM4 | RC_PM4_NOUPDATE);
+    if (poll_result == RC_TIMEOUT || wait_result == RC_TIMEOUT) {
+        rc_add_write(RC_PM4_BUFFER_DL_WPTR, 0u);
+        rc_add_write(RC_PM4_BUFFER_DL_RPTR, 0u);
+    }
+    wait_index = rc_add(RC_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rc_add(RC_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rc_run()) {
+        rc_write(rc_key(key, name, "Result"), "STOP-NOT-RUN");
+        rc_failed = 1u;
+        return start;
+    }
+    rc_write_hex(rc_key(key, name, "WaitAfterStop"),
+                 rc_result_buffer.ops[wait_index].result);
+    actual = (const unsigned char *)rc_result_buffer.block;
+    for (index = 0u; index < TEST_BYTES; ++index) {
+        if (actual[index] != rc_model[index]) {
+            ++mismatches;
+        }
+    }
+    rc_write_decimal(rc_key(key, name, "MismatchBytes"), mismatches);
+    rc_write_hex(rc_key(key, name, "PixelAt7x4"),
+                 rc_result_buffer.block[(4u * TEST_PITCH + 7u * 2u) / 4u]);
+    if (poll_result == RC_TIMEOUT) {
+        rc_write(rc_key(key, name, "Result"), "RPTR-NOT-REACHED");
+        rc_failed = 1u;
+        return 0u;
+    }
+    if (wait_result == RC_TIMEOUT) {
+        rc_write(rc_key(key, name, "Result"), "CCE-NOT-IDLE");
+        rc_failed = 1u;
+        return 0u;
+    }
+    if (mismatches != 0u) {
+        rc_failed = 1u;
+    }
+    rc_write(rc_key(key, name, "Result"),
+             mismatches == 0u ? "PASS" : "MISMATCH");
+    return at;
+}
+
 /* A packet stream to the PIO ports in EVEN/ODD pairs, padded with a type-2
  * filler to a whole pair. */
 static void rc_add_stream(const DWORD *dwords, DWORD count)
@@ -763,6 +940,8 @@ static DWORD rc_pre_stream_pixel;
 /* /noflush: leave out the CPU-side GUI cache flush, to show it is the
  * flush that makes each draw visible. */
 static int rc_no_cpu_flush;
+/* /ring: run the ring tests in place of the triangle tests. */
+static int rc_ring;
 static DWORD rc_stream_count;
 
 static void rc_stream_state(const struct v9x_r128_3d_stream *state)
@@ -1199,6 +1378,33 @@ static void rc_test_texture(void)
     }
 }
 
+/* The PIO tests that follow the first fill when /ring is not given. */
+static void rc_pio_tests(DWORD micro_found)
+{
+    /* The surface's pitch/offset word: 8 units of 8 pixels, 16 MiB / 32. */
+    DWORD surface = ((TEST_PITCH / 2u / V9X_R128_PITCH_PIXEL_UNIT) <<
+                     V9X_R128_PITCH_SHIFT) |
+                    (TEST_BASE / V9X_R128_OFFSET_ALIGN);
+
+    rc_pio_fill("PioEvenOnly", ORDER_EVEN_ONLY, micro_found);
+    rc_pio_triangle("TriPlain", TRI_PLAIN, surface);
+    rc_pio_triangle("TriContext", TRI_CONTEXT, surface);
+    rc_pio_triangle("TriContextRhw", TRI_RHW, surface);
+    rc_test_gouraud("RedPlain", 0xffff0000ul, 0xffff0000ul, 0xffff0000ul,
+                    8u, 0.5f, 0, TAIL_NONE);
+    rc_test_gouraud("GreenTailState", 0xff00ff00ul, 0xff00ff00ul,
+                    0xff00ff00ul, 8u, 0.5f, 0, TAIL_STATE);
+    rc_test_gouraud("BlueTailDegenerate", 0xff0000fful, 0xff0000fful,
+                    0xff0000fful, 8u, 0.5f, 0, TAIL_DEGENERATE);
+    /* TAIL_DONT_START jammed the CCE on boot 524: not run again. */
+    rc_test_gouraud("RedPlainAgain", 0xffff0000ul, 0xffff0000ul,
+                    0xffff0000ul, 8u, 0.5f, 0, TAIL_NONE);
+    rc_test_gouraud("GouraudTailState", 0xffff0000ul, 0xff00ff00ul,
+                    0xff0000fful, 8u, 0.5f, 0, TAIL_STATE);
+    rc_test_depth();
+    rc_test_texture();
+}
+
 void WINAPI V9xRage128CceProbeEntry(void)
 {
     static const char header[] = "[Rage128CceProbe]\r\n";
@@ -1227,6 +1433,11 @@ void WINAPI V9xRage128CceProbeEntry(void)
                 (line[2] == 'o' || line[2] == 'O') &&
                 (line[3] == 'f' || line[3] == 'F')) {
                 rc_no_cpu_flush = 1;
+            }
+            if (line[0] == '/' && (line[1] == 'r' || line[1] == 'R') &&
+                (line[2] == 'i' || line[2] == 'I') &&
+                (line[3] == 'n' || line[3] == 'N')) {
+                rc_ring = 1;
             }
             ++line;
         }
@@ -1311,30 +1522,19 @@ void WINAPI V9xRage128CceProbeEntry(void)
     }
 
     rc_pio_fill("PioAlternate", ORDER_ALTERNATE, micro_found);
-    rc_pio_fill("PioEvenOnly", ORDER_EVEN_ONLY, micro_found);
-    /* The surface's pitch/offset word: 8 units of 8 pixels, 16 MiB / 32. */
-    {
-        DWORD surface = ((TEST_PITCH / 2u / V9X_R128_PITCH_PIXEL_UNIT) <<
-                         V9X_R128_PITCH_SHIFT) |
-                        (TEST_BASE / V9X_R128_OFFSET_ALIGN);
+    if (rc_ring) {
+        DWORD wptr;
 
-        rc_pio_triangle("TriPlain", TRI_PLAIN, surface);
-        rc_pio_triangle("TriContext", TRI_CONTEXT, surface);
-        rc_pio_triangle("TriContextRhw", TRI_RHW, surface);
+        /* The PIO fill above is the control; then two fills through the
+         * ring, the second continuing from the first's pointers. */
+        rc_write("Ring", "on");
+        wptr = rc_ring_fill("RingFirst", 0u, 0x9abcu);
+        if (wptr != 0u) {
+            (void)rc_ring_fill("RingSecond", wptr, 0x5e37u);
+        }
+    } else {
+        rc_pio_tests(micro_found);
     }
-    rc_test_gouraud("RedPlain", 0xffff0000ul, 0xffff0000ul, 0xffff0000ul,
-                    8u, 0.5f, 0, TAIL_NONE);
-    rc_test_gouraud("GreenTailState", 0xff00ff00ul, 0xff00ff00ul,
-                    0xff00ff00ul, 8u, 0.5f, 0, TAIL_STATE);
-    rc_test_gouraud("BlueTailDegenerate", 0xff0000fful, 0xff0000fful,
-                    0xff0000fful, 8u, 0.5f, 0, TAIL_DEGENERATE);
-    /* TAIL_DONT_START jammed the CCE on boot 524: not run again. */
-    rc_test_gouraud("RedPlainAgain", 0xffff0000ul, 0xffff0000ul,
-                    0xffff0000ul, 8u, 0.5f, 0, TAIL_NONE);
-    rc_test_gouraud("GouraudTailState", 0xffff0000ul, 0xff00ff00ul,
-                    0xff0000fful, 8u, 0.5f, 0, TAIL_STATE);
-    rc_test_depth();
-    rc_test_texture();
 
     /* NONPM4 with the microengine stopped, as r128_do_cce_stop leaves it.
      * Not POST's free-run value: that let A8U4I5 hang idle after the first

@@ -145,7 +145,16 @@ offered surface textures; with them, 12.0 cold and 14.1 warm, every
 textured batch on the engine; Michael watched it working on the monitor.
 Owed: a Glide title.
 
-**Performance parked for this release (Michael, 2026-10-23).** Direct3D
+**The bus-master ring, for the Rage 128 alone (Michael, 2026-10-23,
+after 0.28.0).** Step 1 killed the ring in video memory:
+`PM4_BUFFER_OFFSET` is a bus-master address, and ATI's own ring sits at 0
+through AGP ([record](../decisions/2026-10-23-rage128-cce-ring-not-in-vram.md)).
+Next: the PCI GART route in the probe's VxD (locked pages, a 32 KiB table
+in `PCI_GART_PAGE`, bus mastering on), then the mini-VDD allocation and
+the driver's submission, measured against V9XD32, 3DMark 2000 and
+Half-Life.
+
+**Performance parked for 0.28.0 (Michael, 2026-10-23).** Direct3D
 and OpenGL both work, at about a fifth to a half of ATI's speed (3DMark
 2000 1105 against 2404, Half-Life GL 14 fps against 70). The likely
 next step is the bus-master command ring in place of CPU PIO, which

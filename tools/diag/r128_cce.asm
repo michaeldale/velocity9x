@@ -101,6 +101,7 @@ RC_OP_LFB_READ_BLOCK    equ 7
 RC_OP_WAIT_IDLE         equ 8
 RC_OP_PM4_WAIT_IDLE     equ 9
 RC_OP_ENGINE_RESET      equ 10
+RC_OP_MMIO_POLL         equ 11
 
 ; Status bits.
 RC_PCI_FOUND            equ 00000001h
@@ -398,7 +399,31 @@ BeginProc RC_Execute_One
     je      RC_Do_Pm4_Wait_Idle
     cmp     eax, RC_OP_ENGINE_RESET
     je      RC_Do_Engine_Reset
+    cmp     eax, RC_OP_MMIO_POLL
+    je      RC_Do_Mmio_Poll
     jmp     RC_Do_Refuse
+
+; a = register offset, b = mask, c = value. Polls until (reg & mask) ==
+; value, at most RC_WAIT_LIMIT reads: the ring test's wait for
+; PM4_BUFFER_DL_RPTR to reach the write pointer. Result: reads taken, or
+; RC_TIMEOUT; the last value read is not kept.
+RC_Do_Mmio_Poll:
+    call    RC_Read_Allowed
+    jc      RC_Do_Refuse
+    mov     edi, RCMmioLinear
+    xor     ebp, ebp
+RC_Do_Mmio_Poll_Next:
+    inc     ebp
+    mov     eax, [edi+ebx]
+    and     eax, ecx
+    cmp     eax, edx
+    je      short RC_Do_Mmio_Poll_Done
+    cmp     ebp, RC_WAIT_LIMIT
+    jb      short RC_Do_Mmio_Poll_Next
+    mov     ebp, RC_TIMEOUT
+RC_Do_Mmio_Poll_Done:
+    mov     [esi+16], ebp
+    jmp     RC_Do_Done
 
 ; b = free CCE FIFO entries required. Result: reads taken, or RC_TIMEOUT.
 RC_Do_Pm4_Wait_Idle:

@@ -192,6 +192,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-23 Rage 128 Direct3D through the CCE: V9XD32 passes, 3DMark 2000 and Half-Life run](2026-10-23-rage128-direct3d-through-the-cce.md)
 - [2026-10-23 Rage 128: mip offsets smallest-first, flips through CRTC_OFFSET, and the CCE left running](2026-10-23-rage128-mip-order-flips-and-a-running-cce.md)
 - [2026-10-23 Rage 128: OpenGL and Glide through the render interface, on the engine where exact](2026-10-23-rage128-render-interface.md)
+- [2026-10-23 Rage 128: the CCE's ring is a bus-master address, not video memory](2026-10-23-rage128-cce-ring-not-in-vram.md)
 - [2026-10-23 0.28.0 release checks: Rage 128 games, and the GMA 950 against 0.24.0's set](2026-10-23-0.28.0-release-checks-a8u4i5-netbook.md)
 
 ## Matrox
