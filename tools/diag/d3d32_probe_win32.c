@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "velocity9x/win9x_ddraw_abi.h"
+
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
 #endif
@@ -31,6 +33,23 @@
  *   T8 sloped depth: two quads whose z runs in opposite directions across
  *      the same pixels, once along x and once along y, must cross at the
  *      centre.
+ *   T11 culling by every submit form the DX5 device has - a triangle list,
+ *      an indexed list, a strip (its odd triangle's swap), a fan, an
+ *      indexed strip and an indexed list over 260 vertices - each under
+ *      no culling, CW and CCW, with a clockwise and a counter-clockwise
+ *      quad: present where Direct3D keeps it, absent where it culls.
+ *
+ * T9 and each T11 form also record which path drew them, from the HAL's
+ * own counters read through the V9X_DDGETTRACE escape before and after:
+ * DrawPrimitives2 calls (DDI 6), the engine's whole indexed path and the
+ * core's triangle list. A check is only as good as the path it reached:
+ * T9 passed for weeks through the core's culling while the Rage 128's
+ * hardware cull was inverted (2026-10-24), and nothing said which path
+ * had answered.
+ *
+ * /ddi5 and /ddi6 set this program's [Velocity9x.Direct3DDdi] entry in
+ * SYSTEM.INI for the run and restore it after, so one probe covers both
+ * interfaces; without either the driver's own choice stands.
  *
  * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
  * that full scale; T5 then expects the nearer quad, and without it the
@@ -70,6 +89,8 @@
 #define DDBD_32 0x00000100ul
 
 #define D3DPT_TRIANGLELIST 4ul
+#define D3DPT_TRIANGLESTRIP 5ul
+#define D3DPT_TRIANGLEFAN 6ul
 #define D3DVT_TLVERTEX 3ul
 #define D3DRENDERSTATE_ZENABLE 7ul
 #define D3DRENDERSTATE_SHADEMODE 9ul
@@ -95,6 +116,7 @@
 #define D3DTEX2_GET_HANDLE 3
 #define D3DSHADE_GOURAUD 2ul
 #define D3DCULL_NONE 1ul
+#define D3DCULL_CW 2ul
 #define D3DCULL_CCW 3ul
 #define D3DCMP_LESS 2ul
 
@@ -410,8 +432,11 @@ static DWORD d32_pixel(const D32_SURFACE_DESC *desc, DWORD x, DWORD y)
     return (DWORD)((const WORD *)row)[x];
 }
 
+static void d32_ddi_restore(void);
+
 static void d32_finish(const char *result, UINT code)
 {
+    d32_ddi_restore();
     d32_line("Result", result);
     if (d32_file != INVALID_HANDLE_VALUE) {
         CloseHandle(d32_file);
@@ -471,6 +496,181 @@ static void d32_state(D32_OBJECT *device, DWORD state, DWORD value)
 {
     ((d32_render_state_fn)device->vtbl[D3DDEV2_SET_RENDER_STATE])(
         device, state, value);
+}
+
+/* One primitive of any type, in its own scene. */
+static HRESULT d32_draw_type(D32_OBJECT *device, DWORD type,
+                             D32_TLVERTEX *vertices, DWORD count)
+{
+    HRESULT hr;
+    HRESULT draw_hr;
+
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV2_BEGIN_SCENE])(device);
+    if (hr != 0) {
+        return hr;
+    }
+    draw_hr = ((d32_draw_fn)device->vtbl[D3DDEV2_DRAW_PRIMITIVE])(
+        device, type, D3DVT_TLVERTEX, vertices, count, 0ul);
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV2_END_SCENE])(device);
+    return draw_hr != 0 ? draw_hr : hr;
+}
+
+static HRESULT d32_draw_indexed_type(D32_OBJECT *device, DWORD type,
+                                     D32_TLVERTEX *vertices,
+                                     DWORD vertex_count, WORD *indices,
+                                     DWORD index_count)
+{
+    HRESULT hr;
+    HRESULT draw_hr;
+
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV2_BEGIN_SCENE])(device);
+    if (hr != 0) {
+        return hr;
+    }
+    draw_hr = ((d32_draw_indexed_fn)
+               device->vtbl[D3DDEV2_DRAW_INDEXED_PRIMITIVE])(
+        device, type, D3DVT_TLVERTEX, vertices, vertex_count, indices,
+        index_count, 0ul);
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV2_END_SCENE])(device);
+    return draw_hr != 0 ? draw_hr : hr;
+}
+
+/*
+ * /ddi5 and /ddi6: this program's [Velocity9x.Direct3DDdi] entry, which
+ * the HAL reads when the runtime negotiates (d3d_core.c,
+ * v9x_d3d_dp2_for_process), set before DirectDraw is created. Whatever was
+ * there is put back by d32_finish, on every way out.
+ */
+#define D32_DDI_SECTION "Velocity9x.Direct3DDdi"
+#define D32_DDI_KEY "V9XD32.EXE"
+
+static int d32_ddi_set;
+static char d32_ddi_previous[16];
+
+static void d32_ddi_apply(const char *value)
+{
+    GetPrivateProfileStringA(D32_DDI_SECTION, D32_DDI_KEY, "",
+                             d32_ddi_previous, sizeof(d32_ddi_previous),
+                             "SYSTEM.INI");
+    d32_ddi_set = 1;
+    WritePrivateProfileStringA(D32_DDI_SECTION, D32_DDI_KEY, value,
+                               "SYSTEM.INI");
+    d32_line("DdiRequested", value);
+    d32_line("DdiPrevious", d32_ddi_previous[0] != '\0'
+                                ? d32_ddi_previous : "(none)");
+}
+
+static void d32_ddi_restore(void)
+{
+    if (!d32_ddi_set) {
+        return;
+    }
+    d32_ddi_set = 0;
+    WritePrivateProfileStringA(D32_DDI_SECTION, D32_DDI_KEY,
+                               d32_ddi_previous[0] != '\0'
+                                   ? d32_ddi_previous : 0,
+                               "SYSTEM.INI");
+}
+
+/*
+ * Which path drew: the HAL's Direct3D counters through V9X_DDGETTRACE, as
+ * V9XTRACE reads them. GDI32 is reached through GetProcAddress, so the
+ * probe still imports only KERNEL32 and USER32. The 16-bit escape copies
+ * the snapshot without a length check, so the buffer carries slack (an
+ * undersized one crashed V9XCPU, a19476c9).
+ */
+typedef int (WINAPI *d32_ext_escape_fn)(HDC, int, int, LPCSTR, int, LPSTR);
+
+typedef struct d32_path {
+    DWORD ok;
+    DWORD dp2_calls;
+    DWORD indexed_engine;
+    DWORD core_list;
+    DWORD core_culled;
+    DWORD two_unit;
+} D32_PATH;
+
+static union {
+    V9X_DD_TRACE_SNAPSHOT snapshot;
+    BYTE slack[sizeof(V9X_DD_TRACE_SNAPSHOT) + 65536u];
+} d32_trace;
+
+static void d32_path_read(D32_PATH *path)
+{
+    static d32_ext_escape_fn escape;
+    V9X_DCICMD command;
+    HDC screen;
+    int result;
+
+    d32_zero(path, sizeof(*path));
+    if (escape == 0) {
+        HMODULE gdi = LoadLibraryA("GDI32.DLL");
+
+        escape = gdi != 0 ? (d32_ext_escape_fn)GetProcAddress(gdi,
+                                                              "ExtEscape")
+                          : 0;
+        if (escape == 0) {
+            return;
+        }
+    }
+    screen = GetDC(0);
+    if (screen == 0) {
+        return;
+    }
+    d32_zero(&d32_trace, sizeof(d32_trace));
+    command.dwCommand = V9X_DDGETTRACE;
+    command.dwParam1 = 0ul;
+    command.dwParam2 = 0ul;
+    command.dwVersion = V9X_DD_VERSION;
+    command.dwReserved = 0ul;
+    result = escape(screen, V9X_DCICOMMAND, sizeof(command),
+                    (LPCSTR)&command, sizeof(d32_trace.snapshot),
+                    (LPSTR)&d32_trace.snapshot);
+    ReleaseDC(0, screen);
+    if (result <= 0 ||
+        d32_trace.snapshot.dwSize != sizeof(V9X_DD_TRACE_SNAPSHOT) ||
+        d32_trace.snapshot.abi != V9X_DD_SHARED_ABI) {
+        return;
+    }
+    path->ok = 1ul;
+    path->dp2_calls = d32_trace.snapshot.d3d.dp2_calls;
+    path->indexed_engine = d32_trace.snapshot.d3d.indexed_engine_calls;
+    path->core_list = d32_trace.snapshot.d3d.r3d_list_triangles_in;
+    path->core_culled = d32_trace.snapshot.d3d.r3d_list_culled;
+    path->two_unit = d32_trace.snapshot.d3d.two_unit_batches;
+}
+
+/*
+ * What happened between two reads, as <prefix>Path=: "engine-indexed"
+ * when the engine took indexed triangles whole, "core-list" when the core's
+ * list builder had them, "none" when neither moved, "unknown" without the
+ * escape; and the counts, with Dp2 saying the interface was DDI 6.
+ */
+static void d32_path_write(const char *prefix, const D32_PATH *before,
+                           const D32_PATH *after)
+{
+    char key[48];
+    const char *path;
+
+    if (!before->ok || !after->ok) {
+        path = "unknown";
+    } else if (after->indexed_engine != before->indexed_engine) {
+        path = "engine-indexed";
+    } else if (after->core_list != before->core_list) {
+        path = "core-list";
+    } else {
+        path = "none";
+    }
+    wsprintfA(key, "%sPath", prefix);
+    d32_line(key, path);
+    wsprintfA(key, "%sDp2Calls", prefix);
+    d32_hx(key, after->dp2_calls - before->dp2_calls);
+    wsprintfA(key, "%sEngineIndexed", prefix);
+    d32_hx(key, after->indexed_engine - before->indexed_engine);
+    wsprintfA(key, "%sCoreTriangles", prefix);
+    d32_hx(key, after->core_list - before->core_list);
+    wsprintfA(key, "%sCoreCulled", prefix);
+    d32_hx(key, after->core_culled - before->core_culled);
 }
 
 static HRESULT d32_fill(D32_OBJECT *surface, DWORD flags, DWORD value)
@@ -751,6 +951,198 @@ static int d32_dominant(DWORD pixel, int channel)
     return 1;
 }
 
+/*
+ * T11, culling by submit form. Each form draws a 24x24 quad clockwise on
+ * the screen (y down) or counter-clockwise, as two triangles of that
+ * winding however the form builds them: a strip's second triangle is the
+ * odd one Direct3D swaps back, a fan's share the first vertex, and the
+ * wide form indexes a 260-vertex pool, past the ranges an engine may copy
+ * whole (the Rage 128's DrawPrimitives2 path declines past 192 converted
+ * vertices). Every unreferenced vertex of the pool is a copy of the
+ * quad's first, so all of them are valid.
+ */
+#define D32_FORMS 6ul
+#define D32_QUAD 24.0f
+#define D32_WIDE_POOL 260ul
+
+static const char *const d32_form_names[D32_FORMS] = {
+    "List", "Indexed", "Strip", "Fan", "IndexedStrip", "IndexedWide"
+};
+
+static D32_TLVERTEX d32_wide[D32_WIDE_POOL];
+
+static HRESULT d32_cull_quad(D32_OBJECT *device, DWORD form, float x,
+                             float y, int clockwise)
+{
+    D32_TLVERTEX v[6];
+    WORD indices[6];
+    float r = x + D32_QUAD;
+    float b = y + D32_QUAD;
+    DWORD i;
+
+    switch (form) {
+    case 0ul:
+        /* (TL TR BL) (TR BR BL) clockwise; their mirror otherwise. */
+        d32_vertex(&v[0], x, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[1], clockwise ? r : x, clockwise ? y : b, 0.5f,
+                   0xff00ff00ul);
+        d32_vertex(&v[2], clockwise ? x : r, clockwise ? b : y, 0.5f,
+                   0xff00ff00ul);
+        d32_vertex(&v[3], r, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[4], clockwise ? r : x, b, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[5], clockwise ? x : r, b, 0.5f, 0xff00ff00ul);
+        return d32_draw_type(device, D3DPT_TRIANGLELIST, v, 6ul);
+    case 1ul:
+    case 4ul:
+        /* TL TR BL BR, indexed as a list or a strip. */
+        d32_vertex(&v[0], x, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[1], r, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[2], x, b, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[3], r, b, 0.5f, 0xff00ff00ul);
+        if (form == 4ul) {
+            indices[0] = 0u;
+            indices[1] = (WORD)(clockwise ? 1u : 2u);
+            indices[2] = (WORD)(clockwise ? 2u : 1u);
+            indices[3] = 3u;
+            return d32_draw_indexed_type(device, D3DPT_TRIANGLESTRIP, v, 4ul,
+                                         indices, 4ul);
+        }
+        indices[0] = 0u;
+        indices[1] = (WORD)(clockwise ? 1u : 2u);
+        indices[2] = (WORD)(clockwise ? 2u : 1u);
+        indices[3] = 1u;
+        indices[4] = (WORD)(clockwise ? 3u : 2u);
+        indices[5] = (WORD)(clockwise ? 2u : 3u);
+        return d32_draw_indexed_type(device, D3DPT_TRIANGLELIST, v, 4ul,
+                                     indices, 6ul);
+    case 2ul:
+        /* TL TR BL BR clockwise, TL BL TR BR not. */
+        d32_vertex(&v[0], x, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[1], clockwise ? r : x, clockwise ? y : b, 0.5f,
+                   0xff00ff00ul);
+        d32_vertex(&v[2], clockwise ? x : r, clockwise ? b : y, 0.5f,
+                   0xff00ff00ul);
+        d32_vertex(&v[3], r, b, 0.5f, 0xff00ff00ul);
+        return d32_draw_type(device, D3DPT_TRIANGLESTRIP, v, 4ul);
+    case 3ul:
+        /* Around the quad from TL: TR BR BL clockwise, BL BR TR not. */
+        d32_vertex(&v[0], x, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[1], clockwise ? r : x, clockwise ? y : b, 0.5f,
+                   0xff00ff00ul);
+        d32_vertex(&v[2], r, b, 0.5f, 0xff00ff00ul);
+        d32_vertex(&v[3], clockwise ? x : r, clockwise ? b : y, 0.5f,
+                   0xff00ff00ul);
+        return d32_draw_type(device, D3DPT_TRIANGLEFAN, v, 4ul);
+    default:
+        /* TL at 0, TR at 255, BL at 129, BR at 259 of the pool. */
+        for (i = 0ul; i < D32_WIDE_POOL; ++i) {
+            d32_vertex(&d32_wide[i], x, y, 0.5f, 0xff00ff00ul);
+        }
+        d32_vertex(&d32_wide[255], r, y, 0.5f, 0xff00ff00ul);
+        d32_vertex(&d32_wide[129], x, b, 0.5f, 0xff00ff00ul);
+        d32_vertex(&d32_wide[259], r, b, 0.5f, 0xff00ff00ul);
+        indices[0] = 0u;
+        indices[1] = (WORD)(clockwise ? 255u : 129u);
+        indices[2] = (WORD)(clockwise ? 129u : 255u);
+        indices[3] = 255u;
+        indices[4] = (WORD)(clockwise ? 259u : 129u);
+        indices[5] = (WORD)(clockwise ? 129u : 259u);
+        return d32_draw_indexed_type(device, D3DPT_TRIANGLELIST, d32_wide,
+                                     D32_WIDE_POOL, indices, 6ul);
+    }
+}
+
+/*
+ * The whole matrix on a cleared target: row by form, then six cells - no
+ * culling, CW, CCW, each with the clockwise quad and then the other - each
+ * judged at four points, one in each corner, so both triangles count
+ * whichever diagonal splits the quad. Direct3D's CW culls what runs
+ * clockwise on the screen and CCW what runs counter-clockwise. Returns the
+ * failures.
+ */
+static DWORD d32_cull_matrix(D32_OBJECT *device, D32_OBJECT *back)
+{
+    static const DWORD culls[3] = { D3DCULL_NONE, D3DCULL_CW, D3DCULL_CCW };
+    static const DWORD offsets[4][2] = {
+        { 5ul, 5ul }, { 19ul, 5ul }, { 5ul, 19ul }, { 19ul, 19ul }
+    };
+    D32_SURFACE_DESC desc;
+    D32_PATH before;
+    D32_PATH after;
+    DWORD failures = 0ul;
+    DWORD form;
+    DWORD cell;
+    DWORD point;
+    HRESULT hr;
+    HRESULT first_hr;
+    char key[48];
+
+    d32_line("Stage", "10a-t11-cull-matrix");
+    d32_hx("T11ClearHr", (DWORD)d32_fill(back, DDBLT_COLORFILL, 0ul));
+    for (form = 0ul; form < D32_FORMS; ++form) {
+        d32_path_read(&before);
+        first_hr = 0;
+        for (cell = 0ul; cell < 6ul; ++cell) {
+            d32_state(device, D3DRENDERSTATE_CULLMODE, culls[cell / 2ul]);
+            hr = d32_cull_quad(device, form, 16.0f + (float)(cell * 40ul),
+                               16.0f + (float)(form * 40ul),
+                               (cell & 1ul) == 0ul);
+            if (first_hr == 0) {
+                first_hr = hr;
+            }
+        }
+        d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+        d32_path_read(&after);
+        wsprintfA(key, "T11%sHr", d32_form_names[form]);
+        d32_hx(key, (DWORD)first_hr);
+        wsprintfA(key, "T11%s", d32_form_names[form]);
+        d32_path_write(key, &before, &after);
+    }
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)back->vtbl[DDS_LOCK])(back, 0, &desc, DDLOCK_WAIT, 0);
+    d32_hx("T11LockHr", (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        return 1ul;
+    }
+    for (form = 0ul; form < D32_FORMS; ++form) {
+        DWORD present = 0ul;
+        DWORD ok = 0ul;
+
+        for (cell = 0ul; cell < 6ul; ++cell) {
+            DWORD cull = culls[cell / 2ul];
+            int clockwise = (cell & 1ul) == 0ul;
+            int kept = cull == D3DCULL_NONE ||
+                       (cull == D3DCULL_CW && !clockwise) ||
+                       (cull == D3DCULL_CCW && clockwise);
+            DWORD seen = 0ul;
+
+            for (point = 0ul; point < 4ul; ++point) {
+                if (d32_is_colour(
+                        d32_pixel(&desc,
+                                  16ul + cell * 40ul + offsets[point][0],
+                                  16ul + form * 40ul + offsets[point][1]),
+                        0x0000ff00ul)) {
+                    ++seen;
+                }
+            }
+            present |= seen << (cell * 4ul);
+            if ((kept && seen == 4ul) || (!kept && seen == 0ul)) {
+                ok |= 1ul << cell;
+            }
+        }
+        /* Four bits a cell, cell 0 lowest: how many points were drawn. */
+        wsprintfA(key, "T11%sPresent", d32_form_names[form]);
+        d32_hx(key, present);
+        wsprintfA(key, "T11%sOk", d32_form_names[form]);
+        d32_hx(key, ok);
+        failures += ok != 0x3ful ? 1ul : 0ul;
+    }
+    ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
+    return failures;
+}
+
 void WINAPI V9xD3d32ProbeEntry(void)
 {
     HMODULE ddraw_module;
@@ -778,6 +1170,10 @@ void WINAPI V9xD3d32ProbeEntry(void)
     DWORD judged;
     DWORD failures = 0ul;
     DWORD mismatches;
+    D32_PATH run_before;
+    D32_PATH run_after;
+    D32_PATH t9_before;
+    D32_PATH t9_after;
 
     CreateDirectoryA("C:\\V9XDIAG", 0);
     d32_file = CreateFileA(D32_TEXT_PATH, GENERIC_WRITE, FILE_SHARE_READ, 0,
@@ -788,6 +1184,13 @@ void WINAPI V9xD3d32ProbeEntry(void)
     zbits = d32_has_switch("/z24") ? 32ul : 16ul;
     d32_hx("RequestBpp", bpp);
     d32_hx("RequestZBits", zbits);
+    if (d32_has_switch("/ddi5")) {
+        d32_ddi_apply("5");
+    } else if (d32_has_switch("/ddi6")) {
+        d32_ddi_apply("6");
+    }
+    d32_path_read(&run_before);
+    d32_hx("TraceReadable", run_before.ok);
 
     d32_line("Stage", "1-directdrawcreate");
     ddraw_module = LoadLibraryA("DDRAW.DLL");
@@ -1087,6 +1490,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
      * sharing an edge through indices: the culling and the index handling,
      * whichever of the core or the hardware does them. */
     d32_line("Stage", "8f-t9-indexed-cull");
+    d32_path_read(&t9_before);
     d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_CCW);
     d32_vertex(&v[0], 8.0f, 300.0f, 0.5f, 0xff00ff00ul);
     d32_vertex(&v[1], 72.0f, 300.0f, 0.5f, 0xff00ff00ul);
@@ -1109,6 +1513,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     indices[5] = 3u;
     d32_hx("T9QuadHr", (DWORD)d32_draw_indexed(device, v, 4ul, indices, 6ul));
     d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    d32_path_read(&t9_after);
+    d32_path_write("T9", &t9_before, &t9_after);
 
     /* T10: triangles reaching off the target, inside a 2048 guard band.
      * Whether the core clips them or the engine draws them under its
@@ -1375,6 +1781,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
         ((d32_unlock_fn)zbuffer->vtbl[DDS_UNLOCK])(zbuffer, desc.lpSurface);
     }
 
+    failures += d32_cull_matrix(device, back);
+
     /* T4, an offscreen render target with a device of its own. */
     d32_line("Stage", "10-t4-offscreen");
     d32_zero(&desc, sizeof(desc));
@@ -1435,6 +1843,12 @@ void WINAPI V9xD3d32ProbeEntry(void)
     ((d32_restore_fn)ddraw->vtbl[DD_RESTORE_DISPLAY_MODE])(ddraw);
     ((d32_release_fn)ddraw->vtbl[COM_RELEASE])(ddraw);
     DestroyWindow(window);
+    /* The run's interface, by what it did: DrawPrimitives2 calls are DDI 6. */
+    d32_path_read(&run_after);
+    d32_hx("RunDp2Calls", run_after.dp2_calls - run_before.dp2_calls);
+    d32_line("RunDdi", !run_before.ok || !run_after.ok ? "unknown"
+                       : run_after.dp2_calls != run_before.dp2_calls ? "6"
+                                                                     : "5");
     d32_hx("Failures", failures);
     d32_finish(failures == 0ul ? "PASS" : "FAIL", failures == 0ul ? 0u : 1u);
 }
