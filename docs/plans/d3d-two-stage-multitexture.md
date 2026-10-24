@@ -1,9 +1,15 @@
 # Direct3D two-stage multitexture on engines with two texture units
 
-Date: 2026-10-08. Status: not started. Written for a later session; no
-code exists. Engines it would serve: the Rage Pro class's Mach64 (the
-composite) and Gen3, both of which already draw two textures for
-OpenGL.
+Date: 2026-10-08. Status (2026-10-24): steps 1-5 done for the Rage 128,
+which went first instead of the engines below
+([`../decisions/2026-10-24-rage128-two-texture-stages.md`](../decisions/2026-10-24-rage128-two-texture-stages.md)).
+The census (step 0) was skipped: an application sets stage 1 only when
+told it has one, so the census could not be taken under one-stage caps.
+3DMark 2000 then sent 253,191 two-unit batches in one run. The Mach64
+and Gen3 still report one stage. Each needs `texture_stages`, plus core
+clipping that keeps a vertex's pair, before it can. Engines it would
+serve: the Rage Pro class's Mach64 (the composite) and Gen3, both of
+which already draw two textures for OpenGL.
 
 ## Where things stand
 

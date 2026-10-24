@@ -675,7 +675,113 @@ static void v9x_d3d_census_untextured(const V9X_D3D_CONTEXT *context,
     diag->no_handle_last_color = vertices[0].color;
 }
 
-/* One batch to the engine, by whichever entry it serves. */
+static V9X_D3D_TEXTURE *v9x_d3d_texture_from_handle(DWORD handle,
+                                                     DWORD context);
+
+/* D3DTSS_MINFILTER and MIPFILTER folded into the one DX5 value. Anything
+ * past LINEAR (anisotropic) is drawn linear, which is what this caps claim. */
+static DWORD v9x_d3d_min_filter_fold(DWORD min, DWORD mip)
+{
+    int linear = min >= V9X_D3DTFG_LINEAR;
+
+    if (mip <= V9X_D3DTFP_NONE) {
+        return linear ? V9X_D3DFILTER_LINEAR : V9X_D3DFILTER_NEAREST;
+    }
+    if (mip == V9X_D3DTFP_POINT) {
+        return linear ? V9X_D3DFILTER_MIPLINEAR : V9X_D3DFILTER_MIPNEAREST;
+    }
+    return linear ? V9X_D3DFILTER_LINEARMIPLINEAR
+                  : V9X_D3DFILTER_LINEARMIPNEAREST;
+}
+
+/* Stages 0 and 1 as v9x_d3d_state_stages reads them; unit0 and unit1
+ * receive the combines on TWO. */
+static DWORD v9x_d3d_stage_pair(const V9X_D3D_CONTEXT *context,
+                                V9X_R3D_TEXTURE *unit0,
+                                V9X_R3D_TEXTURE *unit1)
+{
+    V9X_D3D_STATE_STAGE stage0;
+    V9X_D3D_STATE_STAGE stage1;
+
+    stage0.color_op = context->stage_color_op;
+    stage0.color_arg1 = context->stage_color_arg1;
+    stage0.color_arg2 = context->stage_color_arg2;
+    stage0.alpha_op = context->stage_alpha_op;
+    stage0.alpha_arg1 = context->stage_alpha_arg1;
+    stage0.alpha_arg2 = context->stage_alpha_arg2;
+    stage1.color_op = context->stage1_color_op;
+    stage1.color_arg1 = context->stage1_color_arg1;
+    stage1.color_arg2 = context->stage1_color_arg2;
+    stage1.alpha_op = context->stage1_alpha_op;
+    stage1.alpha_arg1 = context->stage1_alpha_arg1;
+    stage1.alpha_arg2 = context->stage1_alpha_arg2;
+    return v9x_d3d_state_stages(&stage0, &stage1, unit0, unit1);
+}
+
+/*
+ * Stage 1 as the draw's second unit, over a draw describe_draw filled:
+ * both units' combines, unit 1's texture, filters and address. 0 - with
+ * texture1 left unbound - when the engine draws one stage, stage 0 binds
+ * no texture, the pair is not one pass, stage 1's handle names no texture,
+ * or its U and V address modes differ, which the draw has one field for.
+ * An address d3dtypes.h does not define is CLAMP, as for stage 0
+ * (v9x_d3d_state_fill).
+ */
+static int v9x_d3d_describe_unit1(const V9X_D3D_ENGINE_OPS *ops,
+                                  V9X_D3D_CONTEXT *context,
+                                  V9X_R3D_DRAW *draw)
+{
+    V9X_R3D_TEXTURE unit0 = draw->texture;
+    V9X_R3D_TEXTURE *unit1 = &draw->texture1;
+    V9X_D3D_TEXTURE *texture1;
+    DWORD address = context->stage1_address_u;
+
+    if (ops->limits->texture_stages < 2ul || draw->texture.object == 0 ||
+        address != context->stage1_address_v ||
+        v9x_d3d_stage_pair(context, &unit0, unit1) != V9X_D3D_STAGES_TWO) {
+        return 0;
+    }
+    texture1 = v9x_d3d_texture_from_handle(context->stage1_texture,
+                                           (DWORD)context);
+    if (texture1 == 0 || texture1->lcl == 0) {
+        return 0;
+    }
+    draw->texture.color_op = unit0.color_op;
+    draw->texture.alpha_op = unit0.alpha_op;
+    unit1->object = texture1->lcl;
+    unit1->min_filter = v9x_d3d_min_filter_fold(context->stage1_min,
+                                                context->stage1_mip);
+    unit1->mag_filter = context->stage1_mag;
+    unit1->op = 0ul;
+    unit1->address = address >= V9X_R3D_ADDRESS_WRAP &&
+                     address <= V9X_R3D_ADDRESS_BORDER
+                         ? address : V9X_R3D_ADDRESS_CLAMP;
+    unit1->border = context->texture_border;
+    unit1->wrap_u = 0ul;
+    unit1->wrap_v = 0ul;
+    unit1->wrap_either = 0ul;
+    unit1->levels = 0;
+    unit1->level_count = 0ul;
+    unit1->format = 0ul;
+    unit1->mip = 0ul;
+    unit1->env_color = 0ul;
+    return 1;
+}
+
+/*
+ * The second-unit pairs of the DrawPrimitives2 batch being drawn, two
+ * floats a vertex beside the vertices draw_batch is given; null for every
+ * other batch (v9x_d3d_draw_two_units). The Win16 lock serialises every
+ * path here, as it does for the gather and the fog scratch.
+ */
+static const float *v9x_d3d_batch_uv1;
+
+/*
+ * One batch to the engine, by whichever entry it serves. A batch with
+ * pairs goes on two units when the engine accepts that draw; otherwise
+ * it is drawn as stage 0 alone, which is what every build before this
+ * one drew, and counted.
+ */
 static int v9x_d3d_dispatch_engine(const V9X_D3D_ENGINE_OPS *ops,
                                    V9X_D3D_CONTEXT *context,
                                    const V9X_D3DTLVERTEX *vertices,
@@ -687,6 +793,19 @@ static int v9x_d3d_dispatch_engine(const V9X_D3D_ENGINE_OPS *ops,
         return ops->draw_triangles(context, vertices, triangle_count);
     }
     v9x_d3d_describe_draw(ops, context, &draw);
+    if (v9x_d3d_batch_uv1 != 0) {
+        if (v9x_d3d_describe_unit1(ops, context, &draw)) {
+            draw.texcoords1 = v9x_d3d_batch_uv1;
+            if (ops->accepts == 0 || ops->accepts(&draw)) {
+                ++v9x_hal->d3d_diagnostics.two_unit_batches;
+                return ops->draw(&draw, (const V9X_R3D_VERTEX *)vertices,
+                                 triangle_count);
+            }
+            draw.texcoords1 = 0;
+            draw.texture1.object = 0;
+        }
+        ++v9x_hal->d3d_diagnostics.two_unit_declined;
+    }
     return ops->draw(&draw, (const V9X_R3D_VERTEX *)vertices, triangle_count);
 }
 
@@ -742,6 +861,11 @@ static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
         }
         vertices += chunk * 3ul;
         triangle_count -= chunk;
+        /* The pairs, when there are any, keep their place beside the
+         * vertices; the caller restores the pointer. */
+        if (v9x_d3d_batch_uv1 != 0) {
+            v9x_d3d_batch_uv1 += chunk * 3ul * 2ul;
+        }
     }
     return 1;
 }
@@ -1168,6 +1292,11 @@ typedef struct v9x_d3d_list_sink {
     const V9X_D3D_ENGINE_OPS *ops;
     V9X_D3D_CONTEXT *context;
     unsigned long cull_mode;    /* once per list, not per triangle */
+    /* A records run's second-unit pairs (V9X_R3D_RECORDS.texcoords1) and
+     * the storage they sit beside: a batch's pairs are at its offset from
+     * uv1_base. Null for every sink but the DrawPrimitives2 run's. */
+    const V9X_R3D_VERTEX *uv1_base;
+    const float *uv1;
 } V9X_D3D_LIST_SINK;
 
 static int v9x_d3d_list_batch(void *user, const V9X_R3D_VERTEX *vertices,
@@ -1210,6 +1339,8 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     sink.ops = ops;
     sink.context = context;
     sink.cull_mode = v9x_d3d_cull_mode(context);
+    sink.uv1_base = 0;
+    sink.uv1 = 0;
     list.guard_limit = ops->limits->coordinate_limit;
     list.width = (float)context->width;
     list.height = (float)context->height;
@@ -1844,6 +1975,23 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->stage_min = V9X_D3DTFG_POINT;
             context->stage_mip = V9X_D3DTFP_NONE;
             context->stage_texcoord = 0ul;
+            context->stage_alpha_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage_alpha_arg2 = V9X_D3DTA_CURRENT;
+            /* And stage 1's: disabled, on coordinate set 1. */
+            context->stage1_texture = 0ul;
+            context->stage1_color_op = V9X_D3DTOP_DISABLE;
+            context->stage1_color_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage1_color_arg2 = V9X_D3DTA_CURRENT;
+            context->stage1_alpha_op = V9X_D3DTOP_DISABLE;
+            context->stage1_alpha_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage1_alpha_arg2 = V9X_D3DTA_CURRENT;
+            context->stage1_min = V9X_D3DTFG_POINT;
+            context->stage1_mip = V9X_D3DTFP_NONE;
+            context->stage1_mag = V9X_D3DFILTER_NEAREST;
+            context->stage1_address_u = V9X_D3DTADDRESS_WRAP;
+            context->stage1_address_v = V9X_D3DTADDRESS_WRAP;
+            context->stage1_texcoord = 1ul;
+            context->stage_two = V9X_D3D_STAGES_ONE;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -2945,6 +3093,8 @@ static DWORD v9x_d3d_draw_one_primitive_body(
 
         sink.ops = ops;
         sink.context = context;
+        sink.uv1_base = 0;
+        sink.uv1 = 0;
         run.vertices = (V9X_R3D_VERTEX *)v9x_d3d_gather;
         run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
         run.pending = 0ul;
@@ -3017,6 +3167,63 @@ static DWORD v9x_d3d_draw_one_primitive_body(
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * A DrawPrimitives2 batch with its second-unit pairs, uv1 two floats a
+ * vertex: back faces removed with their pairs, then drawn with the pairs
+ * beside the vertices. Not the list builder, which would clip and stage
+ * and part a vertex from its pair; an engine with two stages needs
+ * neither (d3d_internal.h, texture_stages). At most V9X_D3D_INDEXED_BATCH
+ * triangles: the run's capacity. The kept triangles go to the list
+ * builder's staging, which this path does not otherwise use.
+ */
+static float v9x_d3d_two_units_uv1[V9X_D3D_INDEXED_BATCH * 3u * 2u];
+
+static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
+                                  V9X_D3D_CONTEXT *context,
+                                  const V9X_R3D_VERTEX *vertices,
+                                  const float *uv1, v9x_u32 triangles)
+{
+    unsigned long mode = v9x_d3d_cull_mode(context);
+    DWORD kept = 0ul;
+    DWORD index;
+    DWORD word;
+    int ok;
+
+    if (triangles > (v9x_u32)V9X_D3D_INDEXED_BATCH) {
+        return 0;
+    }
+    if (mode != V9X_R3D_CULL_NONE) {
+        for (index = 0ul; index < triangles; ++index) {
+            const V9X_R3D_VERTEX *triangle = &vertices[index * 3ul];
+
+            if (v9x_r3d_cull_triangle(mode, triangle[0].sx, triangle[0].sy,
+                                      triangle[1].sx, triangle[1].sy,
+                                      triangle[2].sx, triangle[2].sy)) {
+                continue;
+            }
+            for (word = 0ul; word < 3ul; ++word) {
+                v9x_d3d_list_staging[kept * 3ul + word] = triangle[word];
+            }
+            for (word = 0ul; word < 6ul; ++word) {
+                v9x_d3d_two_units_uv1[kept * 6ul + word] =
+                    uv1[index * 6ul + word];
+            }
+            ++kept;
+        }
+        if (kept == 0ul) {
+            return 1;
+        }
+        vertices = v9x_d3d_list_staging;
+        uv1 = v9x_d3d_two_units_uv1;
+        triangles = kept;
+    }
+    v9x_d3d_batch_uv1 = uv1;
+    ok = v9x_d3d_draw_batch(ops, context, (const V9X_D3DTLVERTEX *)vertices,
+                            triangles);
+    v9x_d3d_batch_uv1 = 0;
+    return ok;
+}
+
 /* Count refusal once per submitted record run and keep parsing records. */
 static int v9x_d3d_records_batch(void *user,
                                  const V9X_R3D_VERTEX *vertices,
@@ -3027,9 +3234,17 @@ static int v9x_d3d_records_batch(void *user,
         v9x_hal->d3d_diagnostics.i9xx_draws_submitted : 0ul;
     DWORD refused_before = v9x_hal != 0 ?
         v9x_hal->d3d_diagnostics.i9xx_draws_refused : 0ul;
-    int accepted = v9x_d3d_draw_list(sink->ops, sink->context,
-                                    (const V9X_D3DTLVERTEX *)vertices,
-                                    triangles);
+    /* The run carries pairs exactly while its context's stages are two
+     * (v9x_d3d_dp2_two), and it is drawn under the context it was
+     * recorded with. */
+    int accepted = sink->uv1 != 0 &&
+                   sink->context->stage_two == V9X_D3D_STAGES_TWO
+        ? v9x_d3d_draw_two_units(sink->ops, sink->context, vertices,
+                                 sink->uv1 + (vertices - sink->uv1_base) *
+                                                 2ul,
+                                 triangles)
+        : v9x_d3d_draw_list(sink->ops, sink->context,
+                            (const V9X_D3DTLVERTEX *)vertices, triangles);
     if (!accepted && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.batches_engine_refused;
         /* Gen3 reason 6 rejects the CPU vertex stream before ring submission.
@@ -3122,6 +3337,8 @@ static DWORD v9x_d3d_draw_primitives_body(
         cursor = (BYTE *)data->lpvData;
         sink.ops = ops;
         sink.context = context;
+        sink.uv1_base = 0;
+        sink.uv1 = 0;
         run.vertices = (V9X_R3D_VERTEX *)v9x_d3d_gather;
         run.capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
         run.pending = 0ul;
@@ -3665,6 +3882,20 @@ static int v9x_d3d_dp2_for_process(void)
         0ul) {
         return 1;
     }
+    /* An engine that draws two texture stages gives every program DDI 6,
+     * the only interface that has stages: 3DMark 2000's multi-texture fill
+     * went from 131 to 189 Mtexels/s on the Rage 128 (A8U4I5 boot 577),
+     * at the price of the DDI 6 path's per-triangle cost in single-texture
+     * work (Michael, 2026-10-24: "DDI 6 for all on R128"). A program
+     * listed =5 above still gets DDI 5. */
+    {
+        const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+
+        if (ops != 0 && ops->limits != 0 &&
+            ops->limits->texture_stages >= 2ul) {
+            return 1;
+        }
+    }
     return GetModuleHandleA("D3D8.DLL") != 0;
 }
 
@@ -3731,6 +3962,11 @@ typedef struct v9x_d3d_dp2_user {
     /* The call's vertex format, or null when it is D3DTLVERTEX and the
      * pool's vertices are used as they are. */
     const V9X_DP2_FVF *fvf;
+    /* The call's vertex format whatever it is, for stage 1's pairs. */
+    const V9X_DP2_FVF *layout;
+    /* Non-zero when the engine draws two stages (limits->texture_stages):
+     * only then are stage 1's states kept and its pairs recorded. */
+    int two_stages;
 } V9X_D3D_DP2_USER;
 
 /*
@@ -3798,20 +4034,10 @@ static void v9x_d3d_dp2_render_state(void *opaque, v9x_u32 state,
     }
 }
 
-/* D3DTSS_MINFILTER and MIPFILTER folded into the one DX5 value. Anything
- * past LINEAR (anisotropic) is drawn linear, which is what this caps claim. */
+/* Stage 0's minification and mip filters as the one DX5 value. */
 static DWORD v9x_d3d_dp2_min_filter(const V9X_D3D_CONTEXT *context)
 {
-    int linear = context->stage_min >= V9X_D3DTFG_LINEAR;
-
-    if (context->stage_mip <= V9X_D3DTFP_NONE) {
-        return linear ? V9X_D3DFILTER_LINEAR : V9X_D3DFILTER_NEAREST;
-    }
-    if (context->stage_mip == V9X_D3DTFP_POINT) {
-        return linear ? V9X_D3DFILTER_MIPLINEAR : V9X_D3DFILTER_MIPNEAREST;
-    }
-    return linear ? V9X_D3DFILTER_LINEARMIPLINEAR
-                  : V9X_D3DFILTER_LINEARMIPNEAREST;
+    return v9x_d3d_min_filter_fold(context->stage_min, context->stage_mip);
 }
 
 /*
@@ -3860,21 +4086,84 @@ static void v9x_d3d_dp2_express_stage(V9X_D3D_CONTEXT *context)
                         textured ? context->stage_texture : 0ul);
 }
 
+/* Stage 1's states, raw, for v9x_d3d_stage_pair and describe_unit1. */
+static void v9x_d3d_dp2_stage1_state(V9X_D3D_CONTEXT *context,
+                                     v9x_u32 state, v9x_u32 value)
+{
+    switch (state) {
+    case V9X_D3DTSS_TEXTUREMAP:
+        context->stage1_texture = (DWORD)value;
+        break;
+    case V9X_D3DTSS_COLOROP:
+        context->stage1_color_op = (DWORD)value;
+        break;
+    case V9X_D3DTSS_COLORARG1:
+        context->stage1_color_arg1 = (DWORD)value;
+        break;
+    case V9X_D3DTSS_COLORARG2:
+        context->stage1_color_arg2 = (DWORD)value;
+        break;
+    case V9X_D3DTSS_ALPHAOP:
+        context->stage1_alpha_op = (DWORD)value;
+        break;
+    case V9X_D3DTSS_ALPHAARG1:
+        context->stage1_alpha_arg1 = (DWORD)value;
+        break;
+    case V9X_D3DTSS_ALPHAARG2:
+        context->stage1_alpha_arg2 = (DWORD)value;
+        break;
+    case V9X_D3DTSS_ADDRESS:
+        context->stage1_address_u = (DWORD)value;
+        context->stage1_address_v = (DWORD)value;
+        break;
+    case V9X_D3DTSS_ADDRESSU:
+        context->stage1_address_u = (DWORD)value;
+        break;
+    case V9X_D3DTSS_ADDRESSV:
+        context->stage1_address_v = (DWORD)value;
+        break;
+    case V9X_D3DTSS_MAGFILTER:
+        context->stage1_mag = value >= V9X_D3DTFG_LINEAR
+                                  ? V9X_D3DFILTER_LINEAR
+                                  : V9X_D3DFILTER_NEAREST;
+        break;
+    case V9X_D3DTSS_MINFILTER:
+        context->stage1_min = (DWORD)value;
+        break;
+    case V9X_D3DTSS_MIPFILTER:
+        context->stage1_mip = (DWORD)value;
+        break;
+    case V9X_D3DTSS_TEXCOORDINDEX:
+        context->stage1_texcoord = (DWORD)value & 0xfffful;
+        break;
+    default:
+        break;
+    }
+}
+
 static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
                                     v9x_u32 state, v9x_u32 value)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_D3D_CONTEXT *context = user->context;
+    V9X_R3D_TEXTURE unit0;
+    V9X_R3D_TEXTURE unit1;
 
-    /* One texture unit, reported as one blend stage: a later stage has
-     * nothing to configure, and counting it says whether anyone tried. */
-    if (stage != 0ul) {
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.dp2_stage1_states;
-        }
+    /* Counting a later stage says whether anyone tried one. Stage 1 is
+     * configured only on an engine that draws two stages; any other later
+     * stage has nothing to configure. */
+    if (stage != 0ul && v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.dp2_stage1_states;
+    }
+    if (stage > 1ul || (stage == 1ul && !user->two_stages)) {
         return;
     }
     v9x_d3d_dp2_note_state(user, (DWORD)stage, (DWORD)state);
+    if (stage == 1ul) {
+        v9x_d3d_dp2_stage1_state(context, state, value);
+        context->stage_two = v9x_d3d_stage_pair(context, &unit0, &unit1);
+        return;
+    }
     switch (state) {
     case V9X_D3DTSS_TEXTUREMAP:
         context->stage_texture = (DWORD)value;
@@ -3937,11 +4226,43 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
          * vertices have already had. */
         context->stage_texcoord = (DWORD)value & 0xfffful;
         break;
+    case V9X_D3DTSS_ALPHAARG1:
+        /* Read only by the two-stage pairing: a one-stage engine's DX5
+         * blends have no use for them, and keeping them there would make
+         * contexts differ, and runs end, where they did not before. */
+        if (user->two_stages) {
+            context->stage_alpha_arg1 = (DWORD)value;
+        }
+        break;
+    case V9X_D3DTSS_ALPHAARG2:
+        if (user->two_stages) {
+            context->stage_alpha_arg2 = (DWORD)value;
+        }
+        break;
     default:
-        /* The alpha arguments, LOD bias and the bump-map states: one unit
-         * with the DX5 blends has no use for them. */
+        /* LOD bias and the bump-map states: no engine here has a use for
+         * them. */
         break;
     }
+    if (user->two_stages) {
+        context->stage_two = v9x_d3d_stage_pair(context, &unit0, &unit1);
+    }
+}
+
+/* Whether the primitive being recorded carries stage 1's pairs: the
+ * engine draws two stages and the context's pair is one pass. */
+static int v9x_d3d_dp2_two(const V9X_D3D_DP2_USER *user)
+{
+    return user->two_stages &&
+           user->context->stage_two == V9X_D3D_STAGES_TWO;
+}
+
+/* One vertex's stage-1 pair: its TEXCOORDINDEX set, as two floats. */
+static void v9x_d3d_dp2_pair(const V9X_D3D_DP2_USER *user,
+                             const v9x_u8 *source, float *pair)
+{
+    v9x_dp2_fvf_texcoords(user->layout, user->context->stage1_texcoord,
+                          source, (v9x_u8 *)pair);
 }
 
 /* One vertex of the call's format as the engines' vertex. */
@@ -3959,14 +4280,31 @@ static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
 /* Converted triangles go to the run this many at a time. */
 #define V9X_D3D_DP2_CONVERT 16ul
 
+/* A list, a fan or a quad into the run, with stage 1's pairs when there
+ * are any. */
+static void v9x_d3d_dp2_append_list(V9X_D3D_DP2_USER *user,
+                                    const V9X_R3D_VERTEX *vertices,
+                                    const float *pairs, v9x_u32 triangles)
+{
+    if (pairs != 0) {
+        (void)v9x_r3d_records_append_list_uv1(user->run, vertices, pairs,
+                                              triangles);
+    } else {
+        (void)v9x_r3d_records_append_list(user->run, vertices, triangles);
+    }
+}
+
 static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
                              v9x_u32 triangles)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_R3D_VERTEX converted[V9X_D3D_DP2_CONVERT * 3ul];
+    float pairs[V9X_D3D_DP2_CONVERT * 3ul * 2ul];
+    int two;
 
     v9x_d3d_dp2_settle(user);
-    if (user->fvf == 0) {
+    two = v9x_d3d_dp2_two(user);
+    if (user->fvf == 0 && !two) {
         (void)v9x_r3d_records_append_list(user->run,
                                           (const V9X_R3D_VERTEX *)first,
                                           triangles);
@@ -3979,9 +4317,12 @@ static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
 
         for (i = 0ul; i < n * 3ul; ++i) {
             v9x_d3d_dp2_vertex(user, first, &converted[i]);
-            first += user->fvf->stride;
+            if (two) {
+                v9x_d3d_dp2_pair(user, first, &pairs[i * 2ul]);
+            }
+            first += user->layout->stride;
         }
-        (void)v9x_r3d_records_append_list(user->run, converted, n);
+        v9x_d3d_dp2_append_list(user, converted, two ? pairs : 0, n);
         triangles -= n;
     }
 }
@@ -3991,10 +4332,13 @@ static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_R3D_VERTEX converted[V9X_D3D_DP2_CONVERT + 2ul];
+    float pairs[(V9X_D3D_DP2_CONVERT + 2ul) * 2ul];
     v9x_u32 done;
+    int two;
 
     v9x_d3d_dp2_settle(user);
-    if (user->fvf == 0) {
+    two = v9x_d3d_dp2_two(user);
+    if (user->fvf == 0 && !two) {
         (void)v9x_r3d_records_append_fan(user->run,
                                          (const V9X_R3D_VERTEX *)first,
                                          vertices);
@@ -4006,6 +4350,9 @@ static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
     /* Pieces of the fan that each restart at its hub and overlap the
      * previous piece by one edge vertex. */
     v9x_d3d_dp2_vertex(user, first, &converted[0]);
+    if (two) {
+        v9x_d3d_dp2_pair(user, first, &pairs[0]);
+    }
     done = 1ul;
     while (done + 1ul < vertices) {
         v9x_u32 n = vertices - done;
@@ -4015,10 +4362,19 @@ static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
             n = V9X_D3D_DP2_CONVERT + 1ul;
         }
         for (i = 0ul; i < n; ++i) {
-            v9x_d3d_dp2_vertex(user, first + (done + i) * user->fvf->stride,
-                               &converted[1ul + i]);
+            const v9x_u8 *source = first + (done + i) * user->layout->stride;
+
+            v9x_d3d_dp2_vertex(user, source, &converted[1ul + i]);
+            if (two) {
+                v9x_d3d_dp2_pair(user, source, &pairs[(1ul + i) * 2ul]);
+            }
         }
-        (void)v9x_r3d_records_append_fan(user->run, converted, n + 1ul);
+        if (two) {
+            (void)v9x_r3d_records_append_fan_uv1(user->run, converted, pairs,
+                                                 n + 1ul);
+        } else {
+            (void)v9x_r3d_records_append_fan(user->run, converted, n + 1ul);
+        }
         done += n - 1ul;
     }
 }
@@ -4028,12 +4384,20 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_R3D_VERTEX triangle[3];
+    float pairs[6];
+    int two;
 
     v9x_d3d_dp2_settle(user);
+    two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, a, &triangle[0]);
     v9x_d3d_dp2_vertex(user, b, &triangle[1]);
     v9x_d3d_dp2_vertex(user, c, &triangle[2]);
-    (void)v9x_r3d_records_append_list(user->run, triangle, 1ul);
+    if (two) {
+        v9x_d3d_dp2_pair(user, a, &pairs[0]);
+        v9x_d3d_dp2_pair(user, b, &pairs[2]);
+        v9x_d3d_dp2_pair(user, c, &pairs[4]);
+    }
+    v9x_d3d_dp2_append_list(user, triangle, two ? pairs : 0, 1ul);
 }
 
 /*
@@ -4042,9 +4406,11 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
  * that is sent them. A line has no back, so a quad triangle the context's
  * cull mode would remove is turned round instead: two of its vertices
  * swap, and the first, the one flat shading reads, stays where it is.
+ * pairs, when there are any, are the quad's stage-1 pairs and swap with
+ * their vertices.
  */
 static void v9x_d3d_dp2_quad(V9X_D3D_DP2_USER *user, V9X_R3D_VERTEX *quad,
-                             v9x_u32 triangles)
+                             float *pairs, v9x_u32 triangles)
 {
     v9x_u32 t;
 
@@ -4057,23 +4423,51 @@ static void v9x_d3d_dp2_quad(V9X_D3D_DP2_USER *user, V9X_R3D_VERTEX *quad,
 
             tri[1] = tri[2];
             tri[2] = swap;
+            if (pairs != 0) {
+                float *pair = pairs + t * 6ul;
+                float u = pair[2];
+                float v = pair[3];
+
+                pair[2] = pair[4];
+                pair[3] = pair[5];
+                pair[4] = u;
+                pair[5] = v;
+            }
         }
     }
     if (triangles != 0ul) {
-        (void)v9x_r3d_records_append_list(user->run, quad, triangles);
+        v9x_d3d_dp2_append_list(user, quad, pairs, triangles);
     }
 }
+
+/* v9x_dp2_line_quad's corners come from the ends as A A B A B B. */
+static const v9x_u8 v9x_d3d_dp2_line_corner[6] = { 0u, 0u, 1u, 0u, 1u, 1u };
 
 static void v9x_d3d_dp2_line(void *opaque, const v9x_u8 *a, const v9x_u8 *b)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_R3D_VERTEX ends[2];
     V9X_R3D_VERTEX quad[6];
+    float end_pairs[4];
+    float pairs[12];
+    DWORD corner;
+    int two;
 
     v9x_d3d_dp2_settle(user);
+    two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, a, &ends[0]);
     v9x_d3d_dp2_vertex(user, b, &ends[1]);
-    v9x_d3d_dp2_quad(user, quad,
+    if (two) {
+        v9x_d3d_dp2_pair(user, a, &end_pairs[0]);
+        v9x_d3d_dp2_pair(user, b, &end_pairs[2]);
+        for (corner = 0ul; corner < 6ul; ++corner) {
+            pairs[corner * 2ul] =
+                end_pairs[v9x_d3d_dp2_line_corner[corner] * 2u];
+            pairs[corner * 2ul + 1ul] =
+                end_pairs[v9x_d3d_dp2_line_corner[corner] * 2u + 1u];
+        }
+    }
+    v9x_d3d_dp2_quad(user, quad, two ? pairs : 0,
                      v9x_dp2_line_quad((const v9x_u8 *)&ends[0],
                                        (const v9x_u8 *)&ends[1],
                                        (v9x_u8 *)quad));
@@ -4084,10 +4478,21 @@ static void v9x_d3d_dp2_point(void *opaque, const v9x_u8 *v)
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
     V9X_R3D_VERTEX centre;
     V9X_R3D_VERTEX quad[6];
+    float pairs[12];
+    DWORD corner;
+    int two;
 
     v9x_d3d_dp2_settle(user);
+    two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, v, &centre);
-    v9x_d3d_dp2_quad(user, quad,
+    if (two) {
+        v9x_d3d_dp2_pair(user, v, &pairs[0]);
+        for (corner = 1ul; corner < 6ul; ++corner) {
+            pairs[corner * 2ul] = pairs[0];
+            pairs[corner * 2ul + 1ul] = pairs[1];
+        }
+    }
+    v9x_d3d_dp2_quad(user, quad, two ? pairs : 0,
                      v9x_dp2_point_quad((const v9x_u8 *)&centre,
                                         (v9x_u8 *)quad));
 }
@@ -4216,6 +4621,8 @@ static int v9x_d3d_dp2_readable(DWORD slot, const BYTE *start, DWORD bytes)
  * within one call and would overwrite triangles held between calls.
  */
 static V9X_R3D_VERTEX v9x_d3d_dp2_storage[V9X_D3D_INDEXED_BATCH * 3u];
+/* Stage 1's pairs beside it, for an engine that draws two stages. */
+static float v9x_d3d_dp2_storage_uv1[V9X_D3D_INDEXED_BATCH * 3u * 2u];
 static V9X_D3D_LIST_SINK v9x_d3d_dp2_batch_sink;
 static V9X_R3D_RECORDS v9x_d3d_dp2_run;
 
@@ -4396,7 +4803,10 @@ static DWORD v9x_d3d_draw_primitives2_body(
     }
     v9x_d3d_dp2_batch_sink.ops = ops;
     v9x_d3d_dp2_batch_sink.context = context;
+    v9x_d3d_dp2_batch_sink.uv1_base = v9x_d3d_dp2_storage;
+    v9x_d3d_dp2_batch_sink.uv1 = v9x_d3d_dp2_storage_uv1;
     run->vertices = v9x_d3d_dp2_storage;
+    run->texcoords1 = v9x_d3d_dp2_storage_uv1;
     run->capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
     run->batch = v9x_d3d_records_batch;
     run->user = &v9x_d3d_dp2_batch_sink;
@@ -4408,6 +4818,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     user.run = run;
     user.rstates = data->lpdwRStates;
     user.fvf = v9x_dp2_fvf_is_tlvertex(&fvf) ? 0 : &fvf;
+    user.layout = &fvf;
+    user.two_stages = ops->limits->texture_stages >= 2ul;
     if (!v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_converted_calls;
         v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -4551,6 +4963,23 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         data->ddrval = 0x80070057ul;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    /* With two stages the pair is answered whole: one pass when the
+     * engine's two units draw it exactly, refused otherwise; and when
+     * stage 1 changes nothing, stage 0 is answered as before. stage_two
+     * is kept only on an engine that draws two stages. */
+    if (context->stage_two == V9X_D3D_STAGES_TWO) {
+        data->dwNumPasses = 1ul;
+        data->ddrval = V9X_DD_OK;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (context->stage_two == V9X_D3D_STAGES_REFUSE) {
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.two_unit_validate_refused;
+        }
+        data->dwNumPasses = 0ul;
+        data->ddrval = 0x88760819ul;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
     op = context->stage_color_op;
     if (op == V9X_D3DTOP_DISABLE || op == V9X_D3DTOP_SELECTARG1 ||
         op == V9X_D3DTOP_SELECTARG2 || op == V9X_D3DTOP_MODULATE ||
@@ -4632,6 +5061,24 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
                             V9X_D3DTEXOPCAPS_BLENDTEXTUREALPHA;
     caps->wMaxTextureBlendStages = 1u;
     caps->wMaxSimultaneousTextures = 1u;
+    /*
+     * Two stages, two textures and two coordinate sets on an engine that
+     * draws them in one pass (limits->texture_stages), with ADD, which a
+     * second stage takes (v9x_d3d_state_stages). What one pass cannot draw
+     * exactly, ValidateTextureStageState refuses, and an application then
+     * draws its own passes as it did when told one stage.
+     */
+    {
+        const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+
+        if (ops != 0 && ops->limits != 0 &&
+            ops->limits->texture_stages >= 2ul) {
+            caps->dwFVFCaps = 2ul;
+            caps->dwTextureOpCaps |= V9X_D3DTEXOPCAPS_ADD;
+            caps->wMaxTextureBlendStages = 2u;
+            caps->wMaxSimultaneousTextures = 2u;
+        }
+    }
     caps->dvMaxVertexW = 1.0e10f;
 }
 

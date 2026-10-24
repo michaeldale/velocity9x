@@ -206,6 +206,31 @@ typedef struct v9x_d3d_context {
     /* D3DTSS_TEXCOORDINDEX's low word: which of a flexible vertex's
      * coordinate sets stage 0 samples with (v9x_dp2_fvf_convert_set). */
     DWORD stage_texcoord;
+    /*
+     * Stage 0's alpha arguments, and stage 1 whole, for an engine that
+     * draws two stages in one pass (limits->texture_stages): kept raw as
+     * the runtime sends them, so v9x_d3d_state_stages can read the pair.
+     * stage1_min and stage1_mip are folded as stage 0's are; stage1_mag is
+     * already a DX5 filter. stage_two is that function's last answer for
+     * the pair (V9X_D3D_STAGES_*). ContextCreate sets Direct3D's defaults:
+     * stage 1 disabled, sampling coordinate set 1.
+     */
+    DWORD stage_alpha_arg1;
+    DWORD stage_alpha_arg2;
+    DWORD stage1_texture;
+    DWORD stage1_color_op;
+    DWORD stage1_color_arg1;
+    DWORD stage1_color_arg2;
+    DWORD stage1_alpha_op;
+    DWORD stage1_alpha_arg1;
+    DWORD stage1_alpha_arg2;
+    DWORD stage1_min;
+    DWORD stage1_mip;
+    DWORD stage1_mag;
+    DWORD stage1_address_u;
+    DWORD stage1_address_v;
+    DWORD stage1_texcoord;
+    DWORD stage_two;
 } V9X_D3D_CONTEXT;
 
 /*
@@ -407,6 +432,18 @@ typedef struct v9x_d3d_engine_limits {
      * an initialiser that stops short leaves it zero.
      */
     DWORD centre_in_engine;
+    /*
+     * Direct3D texture blend stages the engine draws in one pass: 2 for an
+     * engine whose draw takes texture1 and texcoords1 from a Direct3D draw,
+     * zero or 1 for one stage, which every engine reported until
+     * 2026-10-24. A two-unit Direct3D run is neither clipped nor staged in
+     * the core (a clip or a pixel-centre move would part a vertex from its
+     * texcoords1 pair), so 2 is only for an engine with clip_in_core zero
+     * and centre_in_engine set: the Rage 128
+     * (docs\plans\d3d-two-stage-multitexture.md). Appended 2026-10-24; an
+     * initialiser that stops short leaves it zero.
+     */
+    DWORD texture_stages;
     /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an

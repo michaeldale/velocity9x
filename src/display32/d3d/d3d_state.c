@@ -6,6 +6,7 @@
  * holds them to d3dtypes.h; the assertions hold r3d.h to them.
  */
 #include "d3d_state.h"
+#include "velocity9x/r3d_abi.h"
 
 #define V9X_D3D_STATE_CMP_NEVER      1ul
 #define V9X_D3D_STATE_CMP_ALWAYS     8ul
@@ -115,4 +116,145 @@ v9x_u32 v9x_d3d_state_depth_active(v9x_u32 z_enable, v9x_u32 depth_bound,
         return 0ul;
     }
     return 1ul;
+}
+
+/* d3dtypes.h's D3DTEXTUREOP and D3DTA_* values the two-stage rule reads;
+ * a modifier (COMPLEMENT, ALPHAREPLICATE) is any bit above the selector. */
+#define V9X_D3D_STATE_TOP_DISABLE    1ul
+#define V9X_D3D_STATE_TOP_SELECTARG1 2ul
+#define V9X_D3D_STATE_TOP_SELECTARG2 3ul
+#define V9X_D3D_STATE_TOP_MODULATE   4ul
+#define V9X_D3D_STATE_TOP_ADD        7ul
+#define V9X_D3D_STATE_TOP_BLENDTEXTUREALPHA 13ul
+#define V9X_D3D_STATE_TA_SELECTMASK  0x0000000ful
+#define V9X_D3D_STATE_TA_DIFFUSE     0ul
+#define V9X_D3D_STATE_TA_CURRENT     1ul
+#define V9X_D3D_STATE_TA_TEXTURE     2ul
+
+/* A stage's colour that hands its input on unchanged; no unit op says
+ * that, so it is only ever an answer about the stage. */
+#define V9X_D3D_STATE_COLOR_PASS     0xfffffffeul
+#define V9X_D3D_STATE_NONE           0xfffffffful
+
+static int v9x_d3d_state_arg_texture(v9x_u32 arg)
+{
+    return arg == V9X_D3D_STATE_TA_TEXTURE;
+}
+
+/* The stage's input: CURRENT, which at stage 0 is the vertex colour, so
+ * DIFFUSE is the input there too. A modified argument is neither. */
+static int v9x_d3d_state_arg_input(v9x_u32 arg, int stage)
+{
+    return arg == V9X_D3D_STATE_TA_CURRENT ||
+           (stage == 0 && arg == V9X_D3D_STATE_TA_DIFFUSE);
+}
+
+/* The texel with the input, either way round. */
+static int v9x_d3d_state_args_texture_input(v9x_u32 arg1, v9x_u32 arg2,
+                                            int stage)
+{
+    return (v9x_d3d_state_arg_texture(arg1) &&
+            v9x_d3d_state_arg_input(arg2, stage)) ||
+           (v9x_d3d_state_arg_input(arg1, stage) &&
+            v9x_d3d_state_arg_texture(arg2));
+}
+
+/* A stage's colour as a unit's colour op, COLOR_PASS, or NONE. */
+static v9x_u32 v9x_d3d_state_stage_color(const V9X_D3D_STATE_STAGE *stage,
+                                         int index)
+{
+    v9x_u32 arg1 = stage->color_arg1;
+    v9x_u32 arg2 = stage->color_arg2;
+    v9x_u32 selected;
+
+    switch (stage->color_op) {
+    case V9X_D3D_STATE_TOP_SELECTARG1:
+    case V9X_D3D_STATE_TOP_SELECTARG2:
+        selected = stage->color_op == V9X_D3D_STATE_TOP_SELECTARG1 ? arg1
+                                                                    : arg2;
+        if (v9x_d3d_state_arg_texture(selected)) {
+            return V9X_R3D_ABI_COLOROP_REPLACE;
+        }
+        return v9x_d3d_state_arg_input(selected, index)
+            ? V9X_D3D_STATE_COLOR_PASS : V9X_D3D_STATE_NONE;
+    case V9X_D3D_STATE_TOP_MODULATE:
+        return v9x_d3d_state_args_texture_input(arg1, arg2, index)
+            ? V9X_R3D_ABI_COLOROP_MODULATE : V9X_D3D_STATE_NONE;
+    case V9X_D3D_STATE_TOP_ADD:
+        return v9x_d3d_state_args_texture_input(arg1, arg2, index)
+            ? V9X_R3D_COLOROP_ADD : V9X_D3D_STATE_NONE;
+    case V9X_D3D_STATE_TOP_BLENDTEXTUREALPHA:
+        /* Arg1 At + Arg2 (1 - At): the unit's DECALALPHA only with the
+         * texel as Arg1. */
+        return v9x_d3d_state_arg_texture(arg1) &&
+               v9x_d3d_state_arg_input(arg2, index)
+            ? V9X_R3D_ABI_COLOROP_DECALALPHA : V9X_D3D_STATE_NONE;
+    default:
+        return V9X_D3D_STATE_NONE;
+    }
+}
+
+/* A stage's alpha as a unit's alpha op, or NONE. DISABLE under an enabled
+ * colour is taken as the input passed on. */
+static v9x_u32 v9x_d3d_state_stage_alpha(const V9X_D3D_STATE_STAGE *stage,
+                                         int index)
+{
+    v9x_u32 selected;
+
+    switch (stage->alpha_op) {
+    case V9X_D3D_STATE_TOP_DISABLE:
+        return V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    case V9X_D3D_STATE_TOP_SELECTARG1:
+    case V9X_D3D_STATE_TOP_SELECTARG2:
+        selected = stage->alpha_op == V9X_D3D_STATE_TOP_SELECTARG1
+            ? stage->alpha_arg1 : stage->alpha_arg2;
+        if (v9x_d3d_state_arg_texture(selected)) {
+            return V9X_R3D_ABI_ALPHAOP_REPLACE;
+        }
+        return v9x_d3d_state_arg_input(selected, index)
+            ? V9X_R3D_ABI_ALPHAOP_FRAGMENT : V9X_D3D_STATE_NONE;
+    case V9X_D3D_STATE_TOP_MODULATE:
+        return v9x_d3d_state_args_texture_input(stage->alpha_arg1,
+                                                stage->alpha_arg2, index)
+            ? V9X_R3D_ABI_ALPHAOP_MODULATE : V9X_D3D_STATE_NONE;
+    default:
+        return V9X_D3D_STATE_NONE;
+    }
+}
+
+v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
+                             const V9X_D3D_STATE_STAGE *stage1,
+                             V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1)
+{
+    v9x_u32 color0;
+    v9x_u32 alpha0;
+    v9x_u32 color1;
+    v9x_u32 alpha1;
+
+    /* A disabled stage ends the cascade there. */
+    if (stage0->color_op == V9X_D3D_STATE_TOP_DISABLE ||
+        stage1->color_op == V9X_D3D_STATE_TOP_DISABLE) {
+        return V9X_D3D_STAGES_ONE;
+    }
+    color1 = v9x_d3d_state_stage_color(stage1, 1);
+    alpha1 = v9x_d3d_state_stage_alpha(stage1, 1);
+    if (color1 == V9X_D3D_STATE_COLOR_PASS &&
+        alpha1 == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+        return V9X_D3D_STAGES_ONE;
+    }
+    /* A passed colour under a changed alpha has no unit op; nor does a
+     * stage 0 that samples nothing under a stage 1 that does - the
+     * hardware runs unit 1 only behind unit 0. */
+    color0 = v9x_d3d_state_stage_color(stage0, 0);
+    alpha0 = v9x_d3d_state_stage_alpha(stage0, 0);
+    if (color1 == V9X_D3D_STATE_NONE || color1 == V9X_D3D_STATE_COLOR_PASS ||
+        alpha1 == V9X_D3D_STATE_NONE || color0 == V9X_D3D_STATE_NONE ||
+        color0 == V9X_D3D_STATE_COLOR_PASS || alpha0 == V9X_D3D_STATE_NONE) {
+        return V9X_D3D_STAGES_REFUSE;
+    }
+    unit0->color_op = color0;
+    unit0->alpha_op = alpha0;
+    unit1->color_op = color1;
+    unit1->alpha_op = alpha1;
+    return V9X_D3D_STAGES_TWO;
 }

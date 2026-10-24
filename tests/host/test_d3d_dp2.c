@@ -417,6 +417,22 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         v9x_dp2_fvf_convert_set(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
         CHECK(out[6] == 0x20ul && out[7] == 0ul);
 
+        /* A second stage's pair, on its own, by the same rule: the set
+         * named, set 0 past the vertex's sets, v = 0 for a one-float set,
+         * zeros with no set at all. */
+        CHECK(v9x_dp2_fvf_layout(0x244ul, &f));
+        out[0] = out[1] = 0xfffffffful;
+        v9x_dp2_fvf_texcoords(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[0] == 0x20ul && out[1] == 0x21ul);
+        v9x_dp2_fvf_texcoords(&f, 4ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[0] == 0x10ul && out[1] == 0x11ul);
+        CHECK(v9x_dp2_fvf_layout(0x244ul | (3ul << 18), &f));
+        v9x_dp2_fvf_texcoords(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[0] == 0x20ul && out[1] == 0ul);
+        CHECK(v9x_dp2_fvf_layout(0x044ul, &f));
+        v9x_dp2_fvf_texcoords(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
+        CHECK(out[0] == 0ul && out[1] == 0ul);
+
         /* The optional record callback sees every record consumed. */
         memset(&c, 0, sizeof(c)); used = 0ul;
         command(V9X_DP2OP_RENDERSTATE, 1ul); put32(9ul); put32(2ul);

@@ -25,9 +25,22 @@ int v9x_r3d_records_flush(V9X_R3D_RECORDS *run)
     return accepted > 0;
 }
 
-int v9x_r3d_records_append_list(V9X_R3D_RECORDS *run,
-                               const V9X_R3D_VERTEX *vertices,
-                               v9x_u32 triangles)
+/* One vertex, and its second-unit pair when there is one, into slot `at`
+ * of the run's storage. */
+static void v9x_r3d_records_put(V9X_R3D_RECORDS *run, v9x_u32 at,
+                                const V9X_R3D_VERTEX *vertex,
+                                const float *uv1)
+{
+    run->vertices[at] = *vertex;
+    if (uv1 != 0) {
+        run->texcoords1[at * 2ul] = uv1[0];
+        run->texcoords1[at * 2ul + 1ul] = uv1[1];
+    }
+}
+
+static int v9x_r3d_records_list(V9X_R3D_RECORDS *run,
+                                const V9X_R3D_VERTEX *vertices,
+                                const float *uv1, v9x_u32 triangles)
 {
     v9x_u32 i;
     int ok = 1;
@@ -35,15 +48,31 @@ int v9x_r3d_records_append_list(V9X_R3D_RECORDS *run,
     if (triangles > run->capacity - run->pending) {
         ok = v9x_r3d_records_flush(run);
     }
-    /* An oversized record stands alone; the list sink handles its bound. */
+    /* An oversized record stands alone; the list sink handles its bound.
+     * With pairs it cannot: the sink finds them only beside the storage,
+     * so the list goes through it a run at a time, each piece a record. */
     if (triangles > run->capacity) {
+        if (uv1 != 0) {
+            while (triangles != 0ul) {
+                v9x_u32 piece = triangles > run->capacity ? run->capacity
+                                                          : triangles;
+                if (!v9x_r3d_records_list(run, vertices, uv1, piece)) {
+                    ok = 0;
+                }
+                vertices += piece * 3ul;
+                uv1 += piece * 3ul * 2ul;
+                triangles -= piece;
+            }
+            return ok;
+        }
         if (run->batch(run->user, vertices, triangles) <= 0) {
             ok = 0;
         }
         return ok;
     }
     for (i = 0ul; i < triangles * 3ul; ++i) {
-        run->vertices[run->pending * 3ul + i] = vertices[i];
+        v9x_r3d_records_put(run, run->pending * 3ul + i, &vertices[i],
+                            uv1 != 0 ? uv1 + i * 2ul : 0);
     }
     run->pending += triangles;
     if (triangles != 0ul) {
@@ -52,12 +81,13 @@ int v9x_r3d_records_append_list(V9X_R3D_RECORDS *run,
     return ok;
 }
 
-int v9x_r3d_records_append_fan(V9X_R3D_RECORDS *run,
-                              const V9X_R3D_VERTEX *vertices,
-                              v9x_u32 count)
+static int v9x_r3d_records_fan(V9X_R3D_RECORDS *run,
+                               const V9X_R3D_VERTEX *vertices,
+                               const float *uv1, v9x_u32 count)
 {
     v9x_u32 apex;
     v9x_u32 triangles;
+    v9x_u32 at;
     int ok = 1;
     if (count < 3ul || run->capacity == 0ul) {
         return 0;
@@ -76,9 +106,12 @@ int v9x_r3d_records_append_fan(V9X_R3D_RECORDS *run,
                 return 0;
             }
         }
-        run->vertices[run->pending * 3ul] = vertices[0];
-        run->vertices[run->pending * 3ul + 1ul] = vertices[apex];
-        run->vertices[run->pending * 3ul + 2ul] = vertices[apex + 1ul];
+        at = run->pending * 3ul;
+        v9x_r3d_records_put(run, at, &vertices[0], uv1);
+        v9x_r3d_records_put(run, at + 1ul, &vertices[apex],
+                            uv1 != 0 ? uv1 + apex * 2ul : 0);
+        v9x_r3d_records_put(run, at + 2ul, &vertices[apex + 1ul],
+                            uv1 != 0 ? uv1 + (apex + 1ul) * 2ul : 0);
         ++run->pending;
     }
     run->record_ends[run->record_count++] = run->pending;
@@ -87,4 +120,32 @@ int v9x_r3d_records_append_fan(V9X_R3D_RECORDS *run,
         ok = 0;
     }
     return ok;
+}
+
+int v9x_r3d_records_append_list(V9X_R3D_RECORDS *run,
+                               const V9X_R3D_VERTEX *vertices,
+                               v9x_u32 triangles)
+{
+    return v9x_r3d_records_list(run, vertices, 0, triangles);
+}
+
+int v9x_r3d_records_append_fan(V9X_R3D_RECORDS *run,
+                              const V9X_R3D_VERTEX *vertices,
+                              v9x_u32 count)
+{
+    return v9x_r3d_records_fan(run, vertices, 0, count);
+}
+
+int v9x_r3d_records_append_list_uv1(V9X_R3D_RECORDS *run,
+                                    const V9X_R3D_VERTEX *vertices,
+                                    const float *uv1, v9x_u32 triangles)
+{
+    return v9x_r3d_records_list(run, vertices, uv1, triangles);
+}
+
+int v9x_r3d_records_append_fan_uv1(V9X_R3D_RECORDS *run,
+                                   const V9X_R3D_VERTEX *vertices,
+                                   const float *uv1, v9x_u32 count)
+{
+    return v9x_r3d_records_fan(run, vertices, uv1, count);
 }

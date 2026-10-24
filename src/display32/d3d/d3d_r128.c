@@ -48,7 +48,7 @@
 #define V9X_D3D_R128_STREAM_DWORDS \
     (V9X_R128_WAIT_DWORDS + \
      V9X_R128_STATE_DWORDS_MAX + V9X_R128_PRIM_HEADER_DWORDS + \
-     V9X_D3D_R128_MAX_TRIANGLES * 3ul * V9X_R128_VERTEX_DWORDS + \
+     V9X_D3D_R128_MAX_TRIANGLES * 3ul * V9X_R128_VERTEX2_DWORDS + \
      V9X_R128_FLUSH_DWORDS + 2ul)
 
 /* Fault-trace tag: "R13D". */
@@ -77,12 +77,13 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_r128_limits = {
     0ul,            /* clip_in_core */
     1ul,            /* depth_pitch_own: Z_PITCH_C takes the pitch */
     0ul,            /* depth_fill_shift */
-    1ul,            /* texture_units */
+    2ul,            /* texture_units: SEC_TEX_*, S2/T2 in the vertex */
     1ul,            /* pixel_centre_half */
     0ul,            /* depth_tiled: linear, read back so */
     32752ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits: Z16 only for now */
-    1ul             /* centre_in_engine: draw and draw_indexed move */
+    1ul,            /* centre_in_engine: draw and draw_indexed move */
+    2ul             /* texture_stages: unit 1 behind unit 0 */
 };
 
 static DWORD v9x_d3d_r128_vram_base(void)
@@ -303,10 +304,11 @@ static int v9x_d3d_r128_ready(void)
         v9x_hal->engine.mapped_aperture_bytes >= V9X_D3D_R128_MMIO_BYTES;
 }
 
-/* The bound texture's format, shape and the offset of each level of its
- * chain: each attached mip level whose sides halve and whose rows are
- * packed, as create_surface places them. The first that is not ends it. */
-static void v9x_d3d_r128_resolve_texture(const V9X_R3D_DRAW *draw,
+/* A unit's bound texture: its format, shape and the offset of each level
+ * of its chain - each attached mip level whose sides halve and whose rows
+ * are packed, as create_surface places them. The first that is not ends
+ * it. */
+static void v9x_d3d_r128_resolve_texture(const V9X_R3D_TEXTURE *sampler,
                                          V9X_D3D_R128_TEXTURE *texture)
 {
     const V9X_DD_SURFACE_LCL *surface;
@@ -324,7 +326,7 @@ static void v9x_d3d_r128_resolve_texture(const V9X_R3D_DRAW *draw,
     texture->pitch_bytes = 0ul;
     texture->levels = 0ul;
 
-    surface = (const V9X_DD_SURFACE_LCL *)draw->texture.object;
+    surface = (const V9X_DD_SURFACE_LCL *)sampler->object;
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
@@ -426,10 +428,15 @@ static v9x_u32 v9x_d3d_r128_map(const V9X_R3D_DRAW *draw,
                                 v9x_u32 cull)
 {
     V9X_D3D_R128_TEXTURE resolved;
+    V9X_D3D_R128_TEXTURE resolved1;
     v9x_u32 reason;
 
-    v9x_d3d_r128_resolve_texture(draw, &resolved);
+    v9x_d3d_r128_resolve_texture(&draw->texture, &resolved);
+    if (draw->texcoords1 != 0) {
+        v9x_d3d_r128_resolve_texture(&draw->texture1, &resolved1);
+    }
     reason = v9x_d3d_r128_map_draw(draw, &resolved,
+                                   draw->texcoords1 != 0 ? &resolved1 : 0,
                                    v9x_d3d_r128_vram_base(),
                                    v9x_hal->fb.vram_bytes,
                                    v9x_d3d_r128_depth_bytes(draw), state);
@@ -529,9 +536,12 @@ static DWORD v9x_d3d_r128_vertex_check(const V9X_R3D_VERTEX *v,
 /*
  * A triangle into the stream at `at`, moved by centre as it is copied:
  * 1 when all three vertices pass, 0 when one does not, and then what was
- * written there is overwritten by the next.
+ * written there is overwritten by the next. With uv1 - the triangle's
+ * texcoords1 entries, two floats a vertex - each vertex is the two-unit
+ * one, S2 and T2 after T, and they must be finite too.
  */
 static int v9x_d3d_r128_put_triangle(const V9X_R3D_VERTEX *triangle,
+                                     const float *uv1,
                                      float centre, int textured,
                                      DWORD limit_bits, v9x_u32 *at)
 {
@@ -553,14 +563,36 @@ static int v9x_d3d_r128_put_triangle(const V9X_R3D_VERTEX *triangle,
         for (word = 2ul; word < V9X_R128_VERTEX_DWORDS; ++word) {
             at[word] = words[word];
         }
-        at += V9X_R128_VERTEX_DWORDS;
+        if (uv1 == 0) {
+            at += V9X_R128_VERTEX_DWORDS;
+            continue;
+        }
+        at[V9X_R128_VERTEX_DWORDS] = v9x_d3d_r128_bits(uv1[corner * 2ul]);
+        at[V9X_R128_VERTEX_DWORDS + 1ul] =
+            v9x_d3d_r128_bits(uv1[corner * 2ul + 1ul]);
+        if (!v9x_d3d_r128_bits_finite(at[V9X_R128_VERTEX_DWORDS]) ||
+            !v9x_d3d_r128_bits_finite(at[V9X_R128_VERTEX_DWORDS + 1ul])) {
+            return 0;
+        }
+        at += V9X_R128_VERTEX2_DWORDS;
     }
     return 1;
 }
 
-/* Triangles a list packet walks from one vertex segment. */
-#define V9X_D3D_R128_LIST_TRIANGLES \
-    (V9X_R128_VTX_SEGMENT_BYTES / (3ul * sizeof(V9X_R3D_VERTEX)))
+/* A draw's vertex as the engine takes it, in dwords: the TL vertex, with
+ * the second S/T pair when the draw has two units. */
+static DWORD v9x_d3d_r128_vertex_dwords(const V9X_R3D_DRAW *draw)
+{
+    return draw->texcoords1 != 0 ? V9X_R128_VERTEX2_DWORDS
+                                 : V9X_R128_VERTEX_DWORDS;
+}
+
+/* The triangle's texcoords1 entries, or null for one unit. */
+static const float *v9x_d3d_r128_uv1(const V9X_R3D_DRAW *draw,
+                                     DWORD triangle)
+{
+    return draw->texcoords1 != 0 ? draw->texcoords1 + triangle * 6ul : 0;
+}
 
 /*
  * A run of triangles with its vertices in the AGP vertex area, walked by
@@ -578,6 +610,10 @@ static int v9x_d3d_r128_draw_buffered(const V9X_R3D_DRAW *draw,
     volatile DWORD *vertex_linear;
     DWORD vertex_offset;
     DWORD limit_bits = v9x_d3d_r128_bits(v9x_d3d_r128_limits.coordinate_limit);
+    DWORD vertex_dwords = v9x_d3d_r128_vertex_dwords(draw);
+    DWORD segment_triangles = V9X_R128_VTX_SEGMENT_BYTES /
+                              (3ul * vertex_dwords * 4ul);
+    DWORD done = 0ul;
     DWORD count;
     DWORD chunk;
     DWORD kept;
@@ -589,9 +625,9 @@ static int v9x_d3d_r128_draw_buffered(const V9X_R3D_DRAW *draw,
                     v9x_flip_pending();
 
     while (triangle_count != 0ul) {
-        chunk = triangle_count > V9X_D3D_R128_LIST_TRIANGLES
-            ? V9X_D3D_R128_LIST_TRIANGLES : triangle_count;
-        if (!v9x_r128_cce_vertex_space(chunk * 3ul * sizeof(V9X_R3D_VERTEX),
+        chunk = triangle_count > segment_triangles
+            ? segment_triangles : triangle_count;
+        if (!v9x_r128_cce_vertex_space(chunk * 3ul * vertex_dwords * 4ul,
                                        &vertex_linear, &vertex_offset)) {
             if (first) {
                 return -1;
@@ -604,14 +640,16 @@ static int v9x_d3d_r128_draw_buffered(const V9X_R3D_DRAW *draw,
         kept = 0ul;
         for (index = 0ul; index < chunk; ++index) {
             if (v9x_d3d_r128_put_triangle(
-                    vertices + index * 3ul, draw->centre_offset, textured,
-                    limit_bits,
+                    vertices + index * 3ul,
+                    v9x_d3d_r128_uv1(draw, done + index),
+                    draw->centre_offset, textured, limit_bits,
                     (v9x_u32 *)(vertex_linear +
-                                kept * 3ul * V9X_R128_VERTEX_DWORDS))) {
+                                kept * 3ul * vertex_dwords))) {
                 ++kept;
             }
         }
         vertices += chunk * 3ul;
+        done += chunk;
         triangle_count -= chunk;
 
         if (kept == 0ul) {
@@ -631,7 +669,8 @@ static int v9x_d3d_r128_draw_buffered(const V9X_R3D_DRAW *draw,
                     v9x_d3d_r128_state_stream.dwords[word];
             }
         }
-        (void)v9x_r128_3d_build_list(kept * 3ul, vertex_offset, header);
+        (void)v9x_r128_3d_build_list(kept * 3ul, vertex_offset,
+                                     draw->texcoords1 != 0, header);
         for (word = 0ul; word < V9X_R128_LIST_HEADER_DWORDS; ++word) {
             v9x_d3d_r128_stream[count++] = header[word];
         }
@@ -676,6 +715,8 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
     DWORD chunk;
     DWORD started;
     DWORD limit_bits;
+    DWORD vertex_dwords;
+    DWORD done = 0ul;
     v9x_u32 reason;
     int textured;
     int buffered;
@@ -723,6 +764,7 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
      * flush. A triangle that fails is dropped alone, as the core's clipper
      * would refuse it. */
     limit_bits = v9x_d3d_r128_bits(v9x_d3d_r128_limits.coordinate_limit);
+    vertex_dwords = v9x_d3d_r128_vertex_dwords(draw);
     while (triangle_count != 0ul) {
         chunk = triangle_count > V9X_D3D_R128_MAX_TRIANGLES
             ? V9X_D3D_R128_MAX_TRIANGLES : triangle_count;
@@ -731,20 +773,23 @@ static int v9x_d3d_r128_draw(const V9X_R3D_DRAW *draw,
         kept = 0ul;
         for (index = 0ul; index < chunk; ++index) {
             if (v9x_d3d_r128_put_triangle(vertices + index * 3ul,
+                                          v9x_d3d_r128_uv1(draw,
+                                                           done + index),
                                           draw->centre_offset, textured,
                                           limit_bits,
                                           &v9x_d3d_r128_stream[count])) {
-                count += 3ul * V9X_R128_VERTEX_DWORDS;
+                count += 3ul * vertex_dwords;
                 ++kept;
             }
         }
         vertices += chunk * 3ul;
+        done += chunk;
         triangle_count -= chunk;
         if (kept == 0ul) {
             count = header_at;
             continue;
         }
-        (void)v9x_r128_3d_build_prim(kept, header);
+        (void)v9x_r128_3d_build_prim(kept, draw->texcoords1 != 0, header);
         for (word = 0ul; word < V9X_R128_PRIM_HEADER_DWORDS; ++word) {
             v9x_d3d_r128_stream[header_at + word] = header[word];
         }
@@ -841,7 +886,10 @@ static int v9x_d3d_r128_draw_indexed(const V9X_R3D_DRAW *draw,
     } moved;
 
     started = V9X_TIME_BEGIN();
+    /* A second unit's coordinates follow the list's vertex order, which
+     * an indexed call does not have: the core sends those as lists. */
     if (draw == 0 || pool == 0 || indices == 0 || index_count < 3ul ||
+        draw->texcoords1 != 0 ||
         (!strip && index_count % 3ul != 0ul) || !v9x_d3d_r128_ready()) {
         return v9x_d3d_r128_decline(V9X_D3D_INDEXED_DECLINE_SHAPE, started);
     }

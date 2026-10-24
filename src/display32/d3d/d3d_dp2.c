@@ -632,6 +632,25 @@ void v9x_dp2_fvf_convert_set(const V9X_DP2_FVF *layout, v9x_u32 set,
                                    : 0ul);
 }
 
+void v9x_dp2_fvf_texcoords(const V9X_DP2_FVF *layout, v9x_u32 set,
+                           const v9x_u8 *source, v9x_u8 *pair)
+{
+    v9x_u32 tex = V9X_DP2_FVF_ABSENT;
+    v9x_u32 floats = 0ul;
+
+    if (set < layout->tex_sets) {
+        tex = layout->tex[set];
+        floats = layout->tex_floats[set];
+    } else if (layout->tex_sets != 0ul) {
+        tex = layout->tex[0];
+        floats = layout->tex_floats[0];
+    }
+    v9x_dp2_put(pair, tex != V9X_DP2_FVF_ABSENT
+                          ? v9x_dp2_dword(source + tex) : 0ul);
+    v9x_dp2_put(pair + 4, tex != V9X_DP2_FVF_ABSENT && floats >= 2ul
+                              ? v9x_dp2_dword(source + tex + 4ul) : 0ul);
+}
+
 /* Floats through the bytes, so the walker stays free of aliasing casts. */
 typedef union v9x_dp2_float_bits {
     float f;

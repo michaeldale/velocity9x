@@ -192,6 +192,12 @@ typedef struct v9x_r3d_texture {
     v9x_u32 env_color;
 } V9X_R3D_TEXTURE;
 
+/* A colour combine past the render interface's, which only the Direct3D
+ * front end states: C = Cin + Ct (D3DTOP_ADD). The interface's validation
+ * stops at V9X_R3D_ABI_COLOROP_BLEND, so no ICD draw carries it, and an
+ * engine that does not know it refuses the draw. */
+#define V9X_R3D_COLOROP_ADD 5ul
+
 /* One CPU texture level: storage the front end owns for the call. */
 typedef struct v9x_r3d_level {
     const void *pixels;

@@ -139,6 +139,11 @@
         Folder = 'SIS'
         Order = 5
         HardwareIdHint = 'PCI 1039:6326'
+        # Installed files that ride a third disk, as the other families' do:
+        # disk 1 went 4,408 bytes over when the shared Direct3D core gained
+        # two texture stages (Michael, 2026-10-24: third SiS disk). The
+        # update checker, which nothing needs to boot or draw.
+        ThirdDisk = @('V9XUPD.EXE')
     }
 
     # No emulator models this chip, so the VM runner must refuse rather than

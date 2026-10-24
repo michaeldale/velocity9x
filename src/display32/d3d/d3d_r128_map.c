@@ -5,6 +5,7 @@
  * Mesa 7.11's r128_tex.c and r128_texstate.c.
  */
 #include "d3d_r128_map.h"
+#include "velocity9x/r3d_abi.h"
 
 /* 1024 texels a side: the builder's limit (TEX_SIZE_PITCH_C's fields). */
 #define V9X_D3D_R128_TEXTURE_SIDE_MAX 1024ul
@@ -175,18 +176,62 @@ static int v9x_d3d_r128_combine(v9x_u32 op, int has_alpha, v9x_u32 *combine)
     return 0;
 }
 
+/*
+ * A two-unit draw's combine for one unit, from the render interface's
+ * colour and alpha ops (and the Direct3D front end's ADD) to the builder's
+ * COMBINE_OPS, which applies them to the unit's input: the interpolated
+ * colour for unit 0, unit 0's result for unit 1, which is what GL's table
+ * 3.18 and Direct3D's CURRENT both mean. BLEND (GL's constant colour) is
+ * not built.
+ */
+static int v9x_d3d_r128_ops(const V9X_R3D_TEXTURE *sampler,
+                            struct v9x_r128_3d_texture *texture)
+{
+    switch (sampler->color_op) {
+    case V9X_R3D_ABI_COLOROP_REPLACE:
+        texture->color_op = V9X_R128_COLOROP_REPLACE;
+        break;
+    case V9X_R3D_ABI_COLOROP_MODULATE:
+        texture->color_op = V9X_R128_COLOROP_MODULATE;
+        break;
+    case V9X_R3D_ABI_COLOROP_DECALALPHA:
+        texture->color_op = V9X_R128_COLOROP_DECAL_ALPHA;
+        break;
+    case V9X_R3D_COLOROP_ADD:
+        texture->color_op = V9X_R128_COLOROP_ADD;
+        break;
+    default:
+        return 0;
+    }
+    switch (sampler->alpha_op) {
+    case V9X_R3D_ABI_ALPHAOP_FRAGMENT:
+        texture->alpha_op = V9X_R128_ALPHAOP_INPUT;
+        break;
+    case V9X_R3D_ABI_ALPHAOP_REPLACE:
+        texture->alpha_op = V9X_R128_ALPHAOP_REPLACE;
+        break;
+    case V9X_R3D_ABI_ALPHAOP_MODULATE:
+        texture->alpha_op = V9X_R128_ALPHAOP_MODULATE;
+        break;
+    default:
+        return 0;
+    }
+    texture->combine = V9X_R128_COMBINE_OPS;
+    return 1;
+}
+
 static int v9x_d3d_r128_mip_filter(v9x_u32 code)
 {
     return code >= V9X_R128_FILTER_MIPNEAREST;
 }
 
-static v9x_u32 v9x_d3d_r128_map_texture(const V9X_R3D_DRAW *draw,
+/* One unit's texture: the draw's sampler for it, the surface as the engine
+ * resolved it. The combine is the caller's. */
+static v9x_u32 v9x_d3d_r128_map_texture(const V9X_R3D_TEXTURE *sampler,
                                         const V9X_D3D_R128_TEXTURE *resolved,
                                         v9x_u32 vram_base,
-                                        struct v9x_r128_3d_state *state)
+                                        struct v9x_r128_3d_texture *texture)
 {
-    const V9X_R3D_TEXTURE *sampler = &draw->texture;
-    struct v9x_r128_3d_texture *texture = &state->texture;
     int log2_width;
     int log2_height;
     v9x_u32 index;
@@ -204,13 +249,6 @@ static v9x_u32 v9x_d3d_r128_map_texture(const V9X_R3D_DRAW *draw,
         resolved->levels == 0ul ||
         resolved->levels > V9X_R128_TEXTURE_LEVELS) {
         return V9X_D3D_R128_REFUSE_TEXTURE_SHAPE;
-    }
-    if (draw->color_key_enable != 0ul) {
-        return V9X_D3D_R128_REFUSE_COLOR_KEY;
-    }
-    if (!v9x_d3d_r128_combine(sampler->op, resolved->has_alpha,
-                              &texture->combine)) {
-        return V9X_D3D_R128_REFUSE_TEXTURE_OP;
     }
     /* The cylindrical WRAPU/WRAPV states have no chip function. */
     if (sampler->wrap_u != 0ul || sampler->wrap_v != 0ul) {
@@ -262,25 +300,31 @@ static v9x_u32 v9x_d3d_r128_map_texture(const V9X_R3D_DRAW *draw,
 
 v9x_u32 v9x_d3d_r128_map_draw(const V9X_R3D_DRAW *draw,
                               const V9X_D3D_R128_TEXTURE *resolved,
+                              const V9X_D3D_R128_TEXTURE *resolved1,
                               v9x_u32 vram_base,
                               v9x_u32 vram_bytes,
                               v9x_u32 depth_bytes,
                               struct v9x_r128_3d_state *state)
 {
     v9x_u32 code;
+    v9x_u32 reason;
     unsigned char *bytes = (unsigned char *)state;
     v9x_u32 index;
+    int two_units = draw->texcoords1 != 0;
 
     for (index = 0ul; index < sizeof(*state); ++index) {
         bytes[index] = 0u;
     }
     /* The render interface's explicit draws (OpenGL, Glide) are drawn here
      * with their scissor and write mask, undithered as every draw of this
-     * engine is. CPU-resident levels and a second unit are not sampled:
-     * the software fallback draws those (d3d_core.c, measured to agree in
-     * a mixed frame on A8U4I5). */
-    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
-        draw->texture1.object != 0 || draw->texture1.levels != 0) {
+     * engine is. CPU-resident levels are not sampled: the software
+     * fallback draws those (d3d_core.c, measured to agree in a mixed frame
+     * on A8U4I5). A second unit is drawn when both units' textures are
+     * surfaces; the chip runs unit 1 only behind unit 0. */
+    if (draw->texture.levels != 0 || draw->texture1.levels != 0 ||
+        (two_units && (draw->texture.object == 0 ||
+                       draw->texture1.object == 0)) ||
+        (!two_units && draw->texture1.object != 0)) {
         return V9X_D3D_R128_REFUSE_EXPLICIT;
     }
     if (draw->explicit_state != 0ul &&
@@ -360,5 +404,27 @@ v9x_u32 v9x_d3d_r128_map_draw(const V9X_R3D_DRAW *draw,
     if (draw->texture.object == 0) {
         return V9X_D3D_R128_REFUSE_NONE;
     }
-    return v9x_d3d_r128_map_texture(draw, resolved, vram_base, state);
+    if (draw->color_key_enable != 0ul) {
+        return V9X_D3D_R128_REFUSE_COLOR_KEY;
+    }
+    reason = v9x_d3d_r128_map_texture(&draw->texture, resolved, vram_base,
+                                      &state->texture);
+    if (reason != V9X_D3D_R128_REFUSE_NONE) {
+        return reason;
+    }
+    if (!two_units) {
+        return v9x_d3d_r128_combine(draw->texture.op, resolved->has_alpha,
+                                    &state->texture.combine)
+            ? V9X_D3D_R128_REFUSE_NONE : V9X_D3D_R128_REFUSE_TEXTURE_OP;
+    }
+    reason = v9x_d3d_r128_map_texture(&draw->texture1, resolved1, vram_base,
+                                      &state->texture1);
+    if (reason != V9X_D3D_R128_REFUSE_NONE) {
+        return reason;
+    }
+    if (!v9x_d3d_r128_ops(&draw->texture, &state->texture) ||
+        !v9x_d3d_r128_ops(&draw->texture1, &state->texture1)) {
+        return V9X_D3D_R128_REFUSE_TEXTURE_OP;
+    }
+    return V9X_D3D_R128_REFUSE_NONE;
 }

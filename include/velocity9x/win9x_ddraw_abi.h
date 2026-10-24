@@ -743,6 +743,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DTOP_SELECTARG1              2ul
 #define V9X_D3DTOP_SELECTARG2              3ul
 #define V9X_D3DTOP_MODULATE                4ul
+#define V9X_D3DTOP_ADD                     7ul
 #define V9X_D3DTOP_BLENDTEXTUREALPHA      13ul
 /* d3dtypes.h: D3DTA_*, the argument selectors. */
 #define V9X_D3DTA_SELECTMASK      0x0000000ful
@@ -761,6 +762,7 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DTEXOPCAPS_SELECTARG1       0x00000002ul
 #define V9X_D3DTEXOPCAPS_SELECTARG2       0x00000004ul
 #define V9X_D3DTEXOPCAPS_MODULATE         0x00000008ul
+#define V9X_D3DTEXOPCAPS_ADD              0x00000040ul
 #define V9X_D3DTEXOPCAPS_BLENDTEXTUREALPHA 0x00001000ul
 
 typedef struct v9x_d3dtransformcaps {
@@ -3711,6 +3713,16 @@ typedef struct v9x_d3d_diagnostics {
      * within ABI 2026102002.
      */
     DWORD lock_kind[V9X_D3D_LOCK_KINDS];
+    /*
+     * Two texture stages in one pass (docs\plans\d3d-two-stage-
+     * multitexture.md): DrawPrimitives2 batches drawn on two units; those
+     * whose stages mapped but whose engine or textures declined, drawn as
+     * stage 0 alone; and ValidateTextureStageState answers that refused a
+     * stage pair. Appended 2026-10-24 within ABI 2026102002.
+     */
+    DWORD two_unit_batches;
+    DWORD two_unit_declined;
+    DWORD two_unit_validate_refused;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

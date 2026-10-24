@@ -40,6 +40,7 @@
 #define R128_Z_ENABLE                   0x00000001ul
 #define R128_Z_WRITE_ENABLE             0x00000002ul
 #define R128_TEXMAP_ENABLE              0x00000010ul
+#define R128_SEC_TEXMAP_ENABLE          0x00000020ul
 #define R128_FOG_ENABLE                 0x00000080ul
 #define R128_DITHER_ENABLE              0x00000100ul
 #define R128_ALPHA_ENABLE               0x00000200ul
@@ -62,6 +63,9 @@
  * TEXMAP_SHADE (2 << 6), PIX_REPLICATE (1 << 8), texture alpha from the
  * texture (1 << 30), 4-quadword cache lines (1 << 31). */
 #define R128_SCALE_3D_BASE              0xc000018aul
+/* TEX_CACHE_SPLIT (1 << 9): the texture cache shared between the units,
+ * which Mesa sets whenever unit 1 is on. */
+#define R128_TEX_CACHE_SPLIT            0x00000200ul
 
 /* SETUP_CNTL: the colour mode in 5:3, triangles, S/T multiplied by W,
  * vertices 1 to 3 (1 << 14, 3 << 16), POLY_LINE_NOT_LAST (1 << 18), four
@@ -87,9 +91,11 @@
 
 /* PRIM_TEXTURE_COMBINE_CNTL_C (r128_texstate.c): colour op 3:0, colour
  * factor 7:4, input factor 13:10, alpha op 17:14, alpha factor 21:18,
- * alpha input factor 27:25. Unit 0 interpolates from the vertex. */
+ * alpha input factor 27:25. Unit 0 interpolates from the vertex; unit 1's
+ * SEC_TEX_COMBINE_CNTL_C takes unit 0's result (Mesa's INPUT_PREVIOUS). */
 #define R128_COMB_DIS                   0x00000000ul
 #define R128_COMB_MODULATE              0x00000003ul
+#define R128_COMB_ADD                   0x00000006ul
 #define R128_COMB_BLEND_TEXTURE         0x00000009ul
 #define R128_COLOR_FACTOR_TEX           0x00000040ul
 #define R128_INPUT_FACTOR_INT_COLOR     0x00001000ul
@@ -100,6 +106,18 @@
 #define R128_INP_FACTOR_A_INT_ALPHA     0x04000000ul
 #define R128_COMBINE_INPUT_INTERP       (R128_INPUT_FACTOR_INT_COLOR | \
                                          R128_INP_FACTOR_A_INT_ALPHA)
+#define R128_INPUT_FACTOR_PREV_COLOR    0x00002000ul
+#define R128_INP_FACTOR_A_PREV_ALPHA    0x08000000ul
+#define R128_COMBINE_INPUT_PREVIOUS     (R128_INPUT_FACTOR_PREV_COLOR | \
+                                         R128_INP_FACTOR_A_PREV_ALPHA)
+
+/* SEC_TEX_CNTL_C is PRIM_TEX_CNTL_C's layout with SEC_SELECT_SEC_ST in bit
+ * 0: sample with the vertex's second S/T pair. The block runs to
+ * SEC_TEX_10_OFFSET_C, as r128_emit_tex1 writes it. */
+#define R128_SEC_TEX_CNTL_C             0x1d00ul
+#define R128_SEC_SELECT_SEC_ST          0x00000001ul
+#define R128_SEC_TEXTURE_REGS           13u
+#define R128_SEC_TEX_SIZE_PITCH_SHIFT   16
 
 /* TEX_SIZE_PITCH_C: log2 pitch 3:0, log2 size 7:4, log2 height 11:8,
  * log2 smallest level 15:12. */
@@ -109,9 +127,11 @@
 /* 1024 texels a side (the log2 fields hold 4 bits; Mesa offers 1024). */
 #define R128_TEX_LOG2_MAX               10ul
 
-/* Vertex format: RHW, DIFFUSE_ARGB, SPEC_FRGB, S_T. VC_CNTL: TRI_LIST (4)
- * walking the vertices that follow (WALK_RING, 30h), count in 31:16. */
+/* Vertex format: RHW, DIFFUSE_ARGB, SPEC_FRGB, S_T, and S2_T2 (100h) with
+ * two units. VC_CNTL: TRI_LIST (4) walking the vertices that follow
+ * (WALK_RING, 30h), count in 31:16. */
 #define R128_VC_FRMT_TL                 0x000000c9ul
+#define R128_VC_FRMT_S2_T2              0x00000100ul
 #define R128_VC_CNTL_TRI_LIST           0x00000034ul
 #define R128_VC_CNTL_COUNT_SHIFT        16
 /* VC_CNTL for indices (r128_drv.h): TRI_LIST 4 or TRI_STRIP 6, with
@@ -175,9 +195,58 @@ static v9x_u32 v9x_r128_3d_surface_units(v9x_u32 vram_bytes, v9x_u32 offset,
     return pitch_bytes / unit;
 }
 
-static v9x_u32 v9x_r128_3d_combine(v9x_u32 combine)
+/* COMBINE_OPS: the stated colour and alpha ops on the unit's input, the
+ * texel as factor; 0xFFFFFFFF for an op past the tables. */
+static v9x_u32 v9x_r128_3d_ops_combine(v9x_u32 color_op, v9x_u32 alpha_op,
+                                       v9x_u32 input)
 {
-    switch (combine) {
+    v9x_u32 combine = R128_COLOR_FACTOR_TEX | R128_ALPHA_FACTOR_TEX_ALPHA |
+                      input;
+
+    switch (color_op) {
+    case V9X_R128_COLOROP_REPLACE:
+        combine |= R128_COMB_DIS;
+        break;
+    case V9X_R128_COLOROP_MODULATE:
+        combine |= R128_COMB_MODULATE;
+        break;
+    case V9X_R128_COLOROP_DECAL_ALPHA:
+        combine |= R128_COMB_BLEND_TEXTURE;
+        break;
+    case V9X_R128_COLOROP_ADD:
+        combine |= R128_COMB_ADD;
+        break;
+    default:
+        return 0xfffffffful;
+    }
+    switch (alpha_op) {
+    case V9X_R128_ALPHAOP_INPUT:
+        return combine | R128_COMB_ALPHA_COPY_INP;
+    case V9X_R128_ALPHAOP_REPLACE:
+        return combine | R128_COMB_ALPHA_DIS;
+    case V9X_R128_ALPHAOP_MODULATE:
+        return combine | R128_COMB_ALPHA_MODULATE;
+    default:
+        return 0xfffffffful;
+    }
+}
+
+/* A unit's combine register. Unit 1 takes stated ops only: every other
+ * code is written in terms of the interpolated colour, which unit 1's
+ * input is not. */
+static v9x_u32 v9x_r128_3d_combine(const struct v9x_r128_3d_texture *texture,
+                                   v9x_u32 unit)
+{
+    if (texture->combine == V9X_R128_COMBINE_OPS) {
+        return v9x_r128_3d_ops_combine(texture->color_op, texture->alpha_op,
+                                       unit == 0ul
+                                           ? R128_COMBINE_INPUT_INTERP
+                                           : R128_COMBINE_INPUT_PREVIOUS);
+    }
+    if (unit != 0ul) {
+        return 0xfffffffful;
+    }
+    switch (texture->combine) {
     case V9X_R128_COMBINE_REPLACE:
         return R128_COMB_DIS | R128_COLOR_FACTOR_TEX |
                R128_COMB_ALPHA_DIS | R128_ALPHA_FACTOR_TEX_ALPHA |
@@ -215,17 +284,24 @@ static int v9x_r128_3d_texture_datatype(v9x_u32 datatype)
            datatype == V9X_R128_TEX_ARGB4444;
 }
 
-/* The texture block: control, combine, size and the eleven offsets. */
-static v9x_status v9x_r128_3d_texture_block(
-    const struct v9x_r128_3d_texture *texture, v9x_u32 vram_bytes,
-    struct v9x_r128_3d_stream *stream)
+/* One unit's registers: its control, combine, its half of
+ * TEX_SIZE_PITCH_C, and the eleven level offsets in register order. */
+struct v9x_r128_3d_unit_words {
+    v9x_u32 control;
+    v9x_u32 combine;
+    v9x_u32 size_pitch;
+    v9x_u32 offsets[V9X_R128_TEXTURE_LEVELS];
+};
+
+static v9x_status v9x_r128_3d_unit_words(
+    const struct v9x_r128_3d_texture *texture, v9x_u32 unit,
+    v9x_u32 vram_bytes, struct v9x_r128_3d_unit_words *words)
 {
     v9x_u32 size_log2;
     v9x_u32 min_log2;
     v9x_u32 control;
     v9x_u32 combine;
     v9x_u32 index;
-    v9x_u32 offset;
 
     if (!v9x_r128_3d_texture_datatype(texture->datatype) ||
         texture->width_log2 > R128_TEX_LOG2_MAX ||
@@ -245,7 +321,7 @@ static v9x_status v9x_r128_3d_texture_block(
         texture->min_filter > V9X_R128_FILTER_LINEAR) {
         return V9X_STATUS_UNSUPPORTED;
     }
-    combine = v9x_r128_3d_combine(texture->combine);
+    combine = v9x_r128_3d_combine(texture, unit);
     if (combine == 0xfffffffful) {
         return V9X_STATUS_UNSUPPORTED;
     }
@@ -269,28 +345,62 @@ static v9x_status v9x_r128_3d_texture_block(
     if (texture->clamp_t != 0ul) {
         control |= R128_TEX_CLAMP_T_CLAMP;
     }
+    if (unit != 0ul) {
+        control |= R128_SEC_SELECT_SEC_ST;
+    }
 
-    v9x_r128_3d_emit(stream, V9X_R128_PACKET0(V9X_R128_PRIM_TEX_CNTL_C,
-                                              V9X_R128_TEXTURE_REGS - 1u));
-    v9x_r128_3d_emit(stream, control);
-    v9x_r128_3d_emit(stream, combine);
-    v9x_r128_3d_emit(stream, texture->width_log2 |
-                             (size_log2 << R128_TEX_SIZE_SHIFT) |
-                             (texture->height_log2 << R128_TEX_HEIGHT_SHIFT) |
-                             (min_log2 << R128_TEX_MIN_SIZE_SHIFT));
+    words->control = control;
+    words->combine = combine;
+    words->size_pitch = texture->width_log2 |
+                        (size_log2 << R128_TEX_SIZE_SHIFT) |
+                        (texture->height_log2 << R128_TEX_HEIGHT_SHIFT) |
+                        (min_log2 << R128_TEX_MIN_SIZE_SHIFT);
     /* The offset registers count up from the smallest level: register k
      * holds level levels-1-k, as Mesa's r128UploadTexImages writes them.
      * Written base-first, a chain had the sampler read its 1x1 level as the
      * base (3DMark 2000's helicopter, OBS, A8U4I5 boot 527). Registers past
      * the chain hold the base. */
     for (index = 0ul; index < V9X_R128_TEXTURE_LEVELS; ++index) {
-        offset = texture->offsets[0];
+        words->offsets[index] = texture->offsets[0];
         if (index < texture->levels) {
-            offset = texture->offsets[texture->levels - 1ul - index];
+            words->offsets[index] =
+                texture->offsets[texture->levels - 1ul - index];
         }
-        v9x_r128_3d_emit(stream, offset);
     }
     return V9X_STATUS_OK;
+}
+
+/* The texture blocks: unit 0's control, combine, both units' sizes and
+ * its offsets; then unit 1's control, combine and offsets, as
+ * r128_emit_tex0 and r128_emit_tex1 write them. */
+static void v9x_r128_3d_texture_blocks(
+    const struct v9x_r128_3d_unit_words *unit0,
+    const struct v9x_r128_3d_unit_words *unit1,
+    struct v9x_r128_3d_stream *stream)
+{
+    v9x_u32 index;
+
+    v9x_r128_3d_emit(stream, V9X_R128_PACKET0(V9X_R128_PRIM_TEX_CNTL_C,
+                                              V9X_R128_TEXTURE_REGS - 1u));
+    v9x_r128_3d_emit(stream, unit0->control);
+    v9x_r128_3d_emit(stream, unit0->combine);
+    v9x_r128_3d_emit(stream, unit0->size_pitch |
+                             (unit1 != 0 ? unit1->size_pitch <<
+                                           R128_SEC_TEX_SIZE_PITCH_SHIFT
+                                         : 0ul));
+    for (index = 0ul; index < V9X_R128_TEXTURE_LEVELS; ++index) {
+        v9x_r128_3d_emit(stream, unit0->offsets[index]);
+    }
+    if (unit1 == 0) {
+        return;
+    }
+    v9x_r128_3d_emit(stream, V9X_R128_PACKET0(R128_SEC_TEX_CNTL_C,
+                                              R128_SEC_TEXTURE_REGS - 1u));
+    v9x_r128_3d_emit(stream, unit1->control);
+    v9x_r128_3d_emit(stream, unit1->combine);
+    for (index = 0ul; index < V9X_R128_TEXTURE_LEVELS; ++index) {
+        v9x_r128_3d_emit(stream, unit1->offsets[index]);
+    }
 }
 
 /* PLANE_3D_MASK_C: every bit written but the masked channels'. A 32 bpp
@@ -339,6 +449,10 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
     v9x_u32 tex_cntl;
     v9x_u32 blend;
     v9x_u32 scale;
+    struct v9x_r128_3d_unit_words unit0;
+    struct v9x_r128_3d_unit_words unit1;
+    int two_units;
+    v9x_status status;
 
     if (state == 0 || stream == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -388,6 +502,27 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                                 R128_SC_Y_SHIFT);
     }
 
+    /* The texture units before anything is written: the second only runs
+     * behind the first (Mesa moves a lone GL_TEXTURE1 onto unit 0). */
+    two_units = state->texture1.enable != 0ul;
+    if (two_units && state->texture.enable == 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (state->texture.enable != 0ul) {
+        status = v9x_r128_3d_unit_words(&state->texture, 0ul,
+                                        state->vram_bytes, &unit0);
+        if (status != V9X_STATUS_OK) {
+            return status;
+        }
+    }
+    if (two_units) {
+        status = v9x_r128_3d_unit_words(&state->texture1, 1ul,
+                                        state->vram_bytes, &unit1);
+        if (status != V9X_STATUS_OK) {
+            return status;
+        }
+    }
+
     tex_cntl = R128_TEX_CACHE_FLUSH | R128_LOD_BIAS_DEFAULT;
     if (state->depth_enable != 0ul) {
         tex_cntl |= R128_Z_ENABLE;
@@ -397,6 +532,9 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
     }
     if (state->texture.enable != 0ul) {
         tex_cntl |= R128_TEXMAP_ENABLE;
+    }
+    if (two_units) {
+        tex_cntl |= R128_SEC_TEXMAP_ENABLE;
     }
     if (state->fog_enable != 0ul) {
         tex_cntl |= R128_FOG_ENABLE;
@@ -471,6 +609,9 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                              (state->flat_shade != 0ul ?
                               R128_FPU_COLOR_FLAT : R128_FPU_COLOR_GOURAUD));
     scale = R128_SCALE_3D_BASE | blend;
+    if (two_units) {
+        scale |= R128_TEX_CACHE_SPLIT;
+    }
     v9x_r128_3d_emit(stream, V9X_R128_PACKET0(V9X_R128_SCALE_3D_CNTL_REG,
                                               0u));
     v9x_r128_3d_emit(stream, scale);
@@ -490,13 +631,7 @@ v9x_status v9x_r128_3d_build_state(const struct v9x_r128_3d_state *state,
                                             state->masked_channels));
 
     if (state->texture.enable != 0ul) {
-        v9x_status status = v9x_r128_3d_texture_block(&state->texture,
-                                                      state->vram_bytes,
-                                                      stream);
-        if (status != V9X_STATUS_OK) {
-            stream->count = 0u;
-            return status;
-        }
+        v9x_r128_3d_texture_blocks(&unit0, two_units ? &unit1 : 0, stream);
     }
     return V9X_STATUS_OK;
 }
@@ -548,7 +683,7 @@ v9x_u32 v9x_r128_3d_pack_indices(const v9x_u16 *indices, v9x_u32 count,
 }
 
 v9x_status v9x_r128_3d_build_list(v9x_u32 vertex_count,
-                                  v9x_u32 vertex_offset,
+                                  v9x_u32 vertex_offset, int two_units,
                                   v9x_u32 header[V9X_R128_LIST_HEADER_DWORDS])
 {
     if (header == 0 || vertex_count == 0ul || vertex_count % 3ul != 0ul ||
@@ -559,13 +694,13 @@ v9x_status v9x_r128_3d_build_list(v9x_u32 vertex_count,
     header[0] = V9X_R128_PACKET3(V9X_R128_PACKET3_3D_RNDR_GEN_INDX_PRIM, 3ul);
     header[1] = vertex_offset;
     header[2] = vertex_count;
-    header[3] = R128_VC_FRMT_TL;
+    header[3] = R128_VC_FRMT_TL | (two_units ? R128_VC_FRMT_S2_T2 : 0ul);
     header[4] = R128_VC_CNTL_LIST_TRI_LIST |
                 (vertex_count << R128_VC_CNTL_COUNT_SHIFT);
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count,
+v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count, int two_units,
                                   v9x_u32 header[V9X_R128_PRIM_HEADER_DWORDS])
 {
     v9x_u32 vertices;
@@ -577,9 +712,11 @@ v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count,
     vertices = triangle_count * 3ul;
     /* Format and control, then the vertices: n counts them less one. */
     header[0] = V9X_R128_PACKET3(V9X_R128_PACKET3_3D_RNDR_GEN_PRIM,
-                                 2ul + vertices * V9X_R128_VERTEX_DWORDS -
+                                 2ul + vertices *
+                                       (two_units ? V9X_R128_VERTEX2_DWORDS
+                                                  : V9X_R128_VERTEX_DWORDS) -
                                  1ul);
-    header[1] = R128_VC_FRMT_TL;
+    header[1] = R128_VC_FRMT_TL | (two_units ? R128_VC_FRMT_S2_T2 : 0ul);
     header[2] = R128_VC_CNTL_TRI_LIST |
                 (vertices << R128_VC_CNTL_COUNT_SHIFT);
     return V9X_STATUS_OK;

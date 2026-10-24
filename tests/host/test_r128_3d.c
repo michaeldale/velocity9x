@@ -198,6 +198,106 @@ static void test_texture(void)
           V9X_STATUS_UNSUPPORTED);
 }
 
+/* Two units, as Mesa's r128 driver sets them for GL_TEXTURE1 and the
+ * DRM's r128_emit_tex1 writes them: unit 0 combined from the stated ops
+ * with the interpolated colour, unit 1 from the previous unit's result
+ * through SEC_TEX_CNTL_C, which selects the vertex's second S/T pair; the
+ * second unit's size in TEX_SIZE_PITCH_C's high half, SEC_TEXMAP_ENABLE,
+ * and the texture cache split between the units. */
+static void test_two_units(void)
+{
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+    int at;
+
+    r3_base(&state);
+    state.texture.enable = 1ul;
+    state.texture.datatype = V9X_R128_TEX_RGB565;
+    state.texture.width_log2 = 6ul;
+    state.texture.height_log2 = 5ul;
+    state.texture.levels = 3ul;
+    state.texture.offsets[0] = 0x00800000ul;
+    state.texture.offsets[1] = 0x00801000ul;
+    state.texture.offsets[2] = 0x00801400ul;
+    state.texture.min_filter = V9X_R128_FILTER_MIPNEAREST;
+    state.texture.mag_filter = V9X_R128_FILTER_LINEAR;
+    state.texture.combine = V9X_R128_COMBINE_OPS;
+    state.texture.color_op = V9X_R128_COLOROP_MODULATE;
+    state.texture.alpha_op = V9X_R128_ALPHAOP_MODULATE;
+    state.texture1.enable = 1ul;
+    state.texture1.datatype = V9X_R128_TEX_ARGB4444;
+    state.texture1.width_log2 = 5ul;
+    state.texture1.height_log2 = 5ul;
+    state.texture1.levels = 1ul;
+    state.texture1.offsets[0] = 0x00900000ul;
+    state.texture1.min_filter = V9X_R128_FILTER_LINEAR;
+    state.texture1.mag_filter = V9X_R128_FILTER_LINEAR;
+    state.texture1.combine = V9X_R128_COMBINE_OPS;
+    state.texture1.color_op = V9X_R128_COLOROP_MODULATE;
+    state.texture1.alpha_op = V9X_R128_ALPHAOP_MODULATE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(stream.count == 2u + 13u + 2u * 4u + 6u + 15u + 14u);
+    CHECK(stream.count <= V9X_R128_STATE_DWORDS_MAX);
+    CHECK(r3_value(&stream, 0x1c9cul) == 0x3f800030ul);
+    CHECK(r3_value(&stream, 0x1a00ul) == 0xc701038aul);
+    /* The stated ops give unit 0 what COMBINE_MODULATE gives it. */
+    CHECK(r3_value(&stream, 0x1cb4ul) == 0x0418d043ul);
+    CHECK(r3_value(&stream, 0x1cb8ul) == 0x55554566ul);
+    at = r3_find(&stream, 0x1d00ul);
+    CHECK(at > 0 && stream.dwords[at - 1] == ((12ul << 16) | (0x1d00ul >> 2)));
+    CHECK(r3_value(&stream, 0x1d00ul) == 0x000f0093ul);
+    CHECK(r3_value(&stream, 0x1d04ul) == 0x0818e043ul);
+    CHECK(r3_value(&stream, 0x1d08ul) == 0x00900000ul);
+    CHECK(r3_value(&stream, 0x1d30ul) == 0x00900000ul);
+
+    /* Unit 1's other ops, each on the previous unit's result. */
+    state.texture1.color_op = V9X_R128_COLOROP_ADD;
+    state.texture1.alpha_op = V9X_R128_ALPHAOP_INPUT;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1d04ul) == 0x0818a046ul);
+    state.texture1.color_op = V9X_R128_COLOROP_DECAL_ALPHA;
+    state.texture1.alpha_op = V9X_R128_ALPHAOP_REPLACE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1d04ul) == 0x08182049ul);
+    state.texture1.color_op = V9X_R128_COLOROP_REPLACE;
+    state.texture1.alpha_op = V9X_R128_ALPHAOP_MODULATE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(r3_value(&stream, 0x1d04ul) == 0x0818e040ul);
+
+    /* An op past the table, on either unit. */
+    state.texture1.color_op = 9ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.texture1.color_op = V9X_R128_COLOROP_MODULATE;
+    state.texture1.alpha_op = 9ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.texture1.alpha_op = V9X_R128_ALPHAOP_MODULATE;
+    state.texture.color_op = 9ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.texture.color_op = V9X_R128_COLOROP_MODULATE;
+
+    /* Unit 1 takes only stated ops: the DX5 codes mean the interpolated
+     * colour, which unit 1 does not see. */
+    state.texture1.combine = V9X_R128_COMBINE_MODULATE;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.texture1.combine = V9X_R128_COMBINE_OPS;
+
+    /* The hardware's second unit only runs behind the first (Mesa's
+     * r128UpdateTextureState swaps a lone GL_TEXTURE1 onto unit 0). */
+    state.texture.enable = 0ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_UNSUPPORTED);
+    state.texture.enable = 1ul;
+
+    /* Unit 1's level checked as unit 0's. */
+    state.texture1.offsets[0] = 0x00900004ul;
+    CHECK(v9x_r128_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_target_refusals(void)
 {
     struct v9x_r128_3d_state state;
@@ -282,17 +382,22 @@ static void test_prim(void)
     CHECK(flush[0] == (0x1748ul >> 2));
     CHECK(flush[1] == 0x00000003ul);
 
-    CHECK(v9x_r128_3d_build_prim(1ul, header) == V9X_STATUS_OK);
+    CHECK(v9x_r128_3d_build_prim(1ul, 0, header) == V9X_STATUS_OK);
     CHECK(header[0] == 0xc0192500ul);
     CHECK(header[1] == 0x000000c9ul);
     CHECK(header[2] == 0x00030034ul);
-    CHECK(v9x_r128_3d_build_prim(64ul, header) == V9X_STATUS_OK);
+    CHECK(v9x_r128_3d_build_prim(64ul, 0, header) == V9X_STATUS_OK);
     CHECK(header[0] == (0xc0002500ul | ((2ul + 192ul * 8ul - 1ul) << 16)));
     CHECK(header[2] == (0x34ul | (192ul << 16)));
-    CHECK(v9x_r128_3d_build_prim(0ul, header) ==
+    CHECK(v9x_r128_3d_build_prim(0ul, 0, header) ==
           V9X_STATUS_INVALID_ARGUMENT);
-    CHECK(v9x_r128_3d_build_prim(65ul, header) ==
+    CHECK(v9x_r128_3d_build_prim(65ul, 0, header) ==
           V9X_STATUS_INVALID_ARGUMENT);
+    /* Two units: S2_T2 (100h) in the format, ten dwords a vertex. */
+    CHECK(v9x_r128_3d_build_prim(1ul, 1, header) == V9X_STATUS_OK);
+    CHECK(header[0] == 0xc01f2500ul);
+    CHECK(header[1] == 0x000001c9ul);
+    CHECK(header[2] == 0x00030034ul);
 }
 
 /* The indexed primitive: Linux's r128_cce_dispatch_indices header - the
@@ -330,18 +435,21 @@ static void test_indexed(void)
     /* A list walked from the vertex buffer, no indices: as Linux's
      * r128_cce_dispatch_vertex, 3D_RNDR_GEN_INDX_PRIM with n 3 and
      * PRIM_WALK_LIST (20h) on TRI_LIST. */
-    CHECK(v9x_r128_3d_build_list(6ul, 0x00012000ul, header) ==
+    CHECK(v9x_r128_3d_build_list(6ul, 0x00012000ul, 0, header) ==
           V9X_STATUS_OK);
     CHECK(header[0] == (0xc0002300ul | (3ul << 16)));
     CHECK(header[1] == 0x00012000ul);
     CHECK(header[2] == 6ul);
     CHECK(header[3] == 0x000000c9ul);
     CHECK(header[4] == (0x24ul | (6ul << 16)));
-    CHECK(v9x_r128_3d_build_list(4ul, 0ul, header) ==
+    CHECK(v9x_r128_3d_build_list(6ul, 0x00012000ul, 1, header) ==
+          V9X_STATUS_OK);
+    CHECK(header[3] == 0x000001c9ul);
+    CHECK(v9x_r128_3d_build_list(4ul, 0ul, 0, header) ==
           V9X_STATUS_INVALID_ARGUMENT);
-    CHECK(v9x_r128_3d_build_list(0ul, 0ul, header) ==
+    CHECK(v9x_r128_3d_build_list(0ul, 0ul, 0, header) ==
           V9X_STATUS_INVALID_ARGUMENT);
-    CHECK(v9x_r128_3d_build_list(V9X_R128_LIST_VERTICES_MAX + 3ul, 0ul,
+    CHECK(v9x_r128_3d_build_list(V9X_R128_LIST_VERTICES_MAX + 3ul, 0ul, 0,
                                  header) == V9X_STATUS_INVALID_ARGUMENT);
 
     CHECK(v9x_r128_3d_pack_indices(list, 5ul, 10ul, packed) == 3ul);
@@ -376,6 +484,7 @@ unsigned int v9x_run_r128_3d_tests(void)
     test_plain();
     test_depth_blend_flat();
     test_texture();
+    test_two_units();
     test_target_refusals();
     test_scissor_and_mask();
     test_prim();

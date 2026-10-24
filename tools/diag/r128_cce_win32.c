@@ -1465,7 +1465,7 @@ static int rc_stream_prim(const struct rc_vertex *vertices, DWORD count)
     const DWORD *words = (const DWORD *)vertices;
     DWORD index;
 
-    if (v9x_r128_3d_build_prim(count, header) != V9X_STATUS_OK) {
+    if (v9x_r128_3d_build_prim(count, 0, header) != V9X_STATUS_OK) {
         return 0;
     }
     for (index = 0u; index < V9X_R128_PRIM_HEADER_DWORDS; ++index) {

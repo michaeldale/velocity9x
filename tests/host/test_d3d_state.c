@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "velocity9x/r3d_abi.h"
 #include "../../src/display32/d3d/d3d_state.h"
 
 static unsigned int state_failures = 0u;
@@ -200,9 +201,151 @@ static void test_depth_rescale(void)
     SCHECK(v9x_d3d_state_depth_rescale(0ul, 24ul, 32ul) == 0u);
 }
 
+/* d3dtypes.h's D3DTEXTUREOP and D3DTA_* values, written out. */
+#define T_DISABLE    1ul
+#define T_SELECT1    2ul
+#define T_SELECT2    3ul
+#define T_MODULATE   4ul
+#define T_MODULATE2X 5ul
+#define T_ADD        7ul
+#define T_BLENDTEX   13ul
+#define A_DIFFUSE    0x00ul
+#define A_CURRENT    0x01ul
+#define A_TEXTURE    0x02ul
+#define A_TFACTOR    0x03ul
+#define A_COMPLEMENT 0x10ul
+
+static void stage_set(V9X_D3D_STATE_STAGE *stage, unsigned long color_op,
+                      unsigned long color1, unsigned long color2,
+                      unsigned long alpha_op, unsigned long alpha1,
+                      unsigned long alpha2)
+{
+    stage->color_op = color_op;
+    stage->color_arg1 = color1;
+    stage->color_arg2 = color2;
+    stage->alpha_op = alpha_op;
+    stage->alpha_arg1 = alpha1;
+    stage->alpha_arg2 = alpha2;
+}
+
+static unsigned long stages(const V9X_D3D_STATE_STAGE *stage0,
+                            const V9X_D3D_STATE_STAGE *stage1,
+                            V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1)
+{
+    memset(unit0, 0xa5, sizeof(*unit0));
+    memset(unit1, 0xa5, sizeof(*unit1));
+    return v9x_d3d_state_stages(stage0, stage1, unit0, unit1);
+}
+
+/*
+ * Two blend stages as one two-unit draw: only the combinations whose
+ * arithmetic is exactly the units' - unit 0 on the vertex colour (stage
+ * 0's DIFFUSE and CURRENT), unit 1 on unit 0's result (stage 1's CURRENT),
+ * the texel the factor - and ONE whenever stage 1 changes nothing, so a
+ * single-stage draw is drawn as it always was.
+ */
+static void test_two_stages(void)
+{
+    V9X_D3D_STATE_STAGE stage0;
+    V9X_D3D_STATE_STAGE stage1;
+    V9X_R3D_TEXTURE unit0;
+    V9X_R3D_TEXTURE unit1;
+
+    /* dispbench DB3D's FillMultiTex: both stages modulate both channels. */
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_DIFFUSE,
+              T_MODULATE, A_TEXTURE, A_DIFFUSE);
+    stage_set(&stage1, T_MODULATE, A_TEXTURE, A_CURRENT,
+              T_MODULATE, A_TEXTURE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_TWO);
+    SCHECK(unit0.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(unit0.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+    SCHECK(unit1.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(unit1.alpha_op == V9X_R3D_ABI_ALPHAOP_MODULATE);
+
+    /* A lightmap: the base texture's colour and alpha, the lightmap
+     * multiplying the colour only, its arguments either way round. */
+    stage_set(&stage0, T_SELECT1, A_TEXTURE, A_DIFFUSE,
+              T_SELECT1, A_TEXTURE, A_DIFFUSE);
+    stage_set(&stage1, T_MODULATE, A_CURRENT, A_TEXTURE,
+              T_SELECT2, A_TEXTURE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_TWO);
+    SCHECK(unit0.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    SCHECK(unit0.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    SCHECK(unit1.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(unit1.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    /* Stage 1's alpha disabled under an enabled colour: passed through. */
+    stage1.alpha_op = T_DISABLE;
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_TWO);
+    SCHECK(unit1.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+
+    /* ADD and BLENDTEXTUREALPHA, which is Arg1 At + Arg2 (1 - At): the
+     * texture must be Arg1. */
+    stage_set(&stage1, T_ADD, A_CURRENT, A_TEXTURE,
+              T_SELECT1, A_CURRENT, A_TEXTURE);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_TWO);
+    SCHECK(unit1.color_op == V9X_R3D_COLOROP_ADD);
+    SCHECK(unit1.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    stage_set(&stage1, T_BLENDTEX, A_TEXTURE, A_CURRENT,
+              T_SELECT1, A_TEXTURE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_TWO);
+    SCHECK(unit1.color_op == V9X_R3D_ABI_COLOROP_DECALALPHA);
+    SCHECK(unit1.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
+    stage1.color_arg1 = A_CURRENT;
+    stage1.color_arg2 = A_TEXTURE;
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) ==
+           V9X_D3D_STAGES_REFUSE);
+
+    /* Stage 1 doing nothing, or stage 0 disabling everything: one unit. */
+    stage_set(&stage1, T_DISABLE, A_TEXTURE, A_CURRENT,
+              T_DISABLE, A_TEXTURE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_ONE);
+    stage_set(&stage1, T_SELECT2, A_TEXTURE, A_CURRENT,
+              T_SELECT1, A_CURRENT, A_TEXTURE);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_ONE);
+    stage_set(&stage1, T_MODULATE, A_TEXTURE, A_CURRENT,
+              T_MODULATE, A_TEXTURE, A_CURRENT);
+    stage0.color_op = T_DISABLE;
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_ONE);
+    stage0.color_op = T_SELECT1;
+
+    /* What one pass cannot draw exactly: a doubled modulate, a constant
+     * factor, a complemented argument, a colour passed through under an
+     * alpha that is not, and an untextured stage 0 under a textured
+     * stage 1 (the second unit only runs behind the first). */
+    stage1.color_op = T_MODULATE2X;
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) ==
+           V9X_D3D_STAGES_REFUSE);
+    stage1.color_op = T_MODULATE;
+    stage1.color_arg2 = A_TFACTOR;
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) ==
+           V9X_D3D_STAGES_REFUSE);
+    stage1.color_arg2 = A_CURRENT;
+    stage1.color_arg1 = A_TEXTURE | A_COMPLEMENT;
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) ==
+           V9X_D3D_STAGES_REFUSE);
+    stage1.color_arg1 = A_TEXTURE;
+    stage_set(&stage1, T_SELECT2, A_TEXTURE, A_CURRENT,
+              T_MODULATE, A_TEXTURE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) ==
+           V9X_D3D_STAGES_REFUSE);
+    stage_set(&stage1, T_MODULATE, A_TEXTURE, A_CURRENT,
+              T_SELECT2, A_TEXTURE, A_CURRENT);
+    stage_set(&stage0, T_SELECT1, A_DIFFUSE, A_CURRENT,
+              T_SELECT1, A_DIFFUSE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) ==
+           V9X_D3D_STAGES_REFUSE);
+    /* Stage 0's CURRENT is the vertex colour, as DIFFUSE. */
+    stage_set(&stage0, T_MODULATE, A_CURRENT, A_TEXTURE,
+              T_SELECT2, A_TEXTURE, A_CURRENT);
+    SCHECK(stages(&stage0, &stage1, &unit0, &unit1) == V9X_D3D_STAGES_TWO);
+    SCHECK(unit0.color_op == V9X_R3D_ABI_COLOROP_MODULATE);
+    SCHECK(unit0.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+}
+
 unsigned int v9x_run_d3d_state_tests(void)
 {
     state_failures = 0u;
+    test_two_stages();
     test_values_match_d3dtypes();
     test_every_field_routes();
     test_undefined_address_is_clamp();

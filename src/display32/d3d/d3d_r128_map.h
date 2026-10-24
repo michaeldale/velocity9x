@@ -65,11 +65,13 @@ typedef struct v9x_d3d_r128_texture {
  * because the engine addresses video memory from its first byte.
  * vram_bytes is the memory the draw may reach from vram_base. depth_bytes
  * is the bound depth surface's bytes per pixel, 0 when none is bound.
+ * resolved1 is the second unit's texture, for a draw with texcoords1.
  * Returns a V9X_D3D_R128_REFUSE_* reason; on NONE, state is ready for
  * v9x_r128_3d_build_state, which makes the remaining range checks.
  */
 v9x_u32 v9x_d3d_r128_map_draw(const V9X_R3D_DRAW *draw,
                               const V9X_D3D_R128_TEXTURE *resolved,
+                              const V9X_D3D_R128_TEXTURE *resolved1,
                               v9x_u32 vram_base,
                               v9x_u32 vram_bytes,
                               v9x_u32 depth_bytes,

@@ -111,10 +111,31 @@ extern const v9x_u32 v9x_r128_cce_microcode[V9X_R128_CCE_MICROCODE_DWORDS];
 #define V9X_R128_COMBINE_MODULATE_RGB   3ul  /* C = CfCt, A = Af */
 #define V9X_R128_COMBINE_DECAL_ALPHA    4ul  /* C = Cf(1-At)+CtAt, A = Af */
 #define V9X_R128_COMBINE_MODULATE_TEXALPHA 5ul /* C = CfCt, A = At */
+/* The colour and alpha from color_op and alpha_op below, on the unit's
+ * input: the interpolated colour on unit 0, unit 0's result on unit 1. The
+ * only code unit 1 takes. */
+#define V9X_R128_COMBINE_OPS            6ul
+
+/* COMBINE_OPS's colour: C = Ct, C = Cin Ct, C = Cin (1 - At) + Ct At,
+ * C = Cin + Ct (PRIM/SEC_TEXTURE_COMBINE_CNTL_C 3:0 DIS, MODULATE,
+ * BLEND_TEXTURE, ADD with the texel as factor, as Mesa's GL_REPLACE,
+ * GL_MODULATE, GL_DECAL and GL_ADD). */
+#define V9X_R128_COLOROP_REPLACE        0ul
+#define V9X_R128_COLOROP_MODULATE       1ul
+#define V9X_R128_COLOROP_DECAL_ALPHA    2ul
+#define V9X_R128_COLOROP_ADD            3ul
+/* And its alpha: A = Ain, A = At, A = Ain At (17:14 COPY_INP, DIS,
+ * MODULATE). */
+#define V9X_R128_ALPHAOP_INPUT          0ul
+#define V9X_R128_ALPHAOP_REPLACE        1ul
+#define V9X_R128_ALPHAOP_MODULATE       2ul
 
 /* Primitive packet: header, vertex format, control. */
 #define V9X_R128_PRIM_HEADER_DWORDS     3u
 #define V9X_R128_VERTEX_DWORDS          8u
+/* With a second texture unit the vertex carries S2 and T2 after T
+ * (VC_FRMT_S2_T2), multiplied by W as S and T are. */
+#define V9X_R128_VERTEX2_DWORDS         10u
 /* VC_CNTL's count, 31:16; kept well inside one packet's count field. */
 #define V9X_R128_PRIM_TRIANGLES_MAX     64u
 
@@ -130,6 +151,8 @@ struct v9x_r128_3d_texture {
     v9x_u32 clamp_s;           /* non-zero clamps, zero wraps */
     v9x_u32 clamp_t;
     v9x_u32 combine;           /* V9X_R128_COMBINE_* */
+    v9x_u32 color_op;          /* V9X_R128_COLOROP_*, for COMBINE_OPS */
+    v9x_u32 alpha_op;          /* V9X_R128_ALPHAOP_*, for COMBINE_OPS */
 };
 
 struct v9x_r128_3d_state {
@@ -166,6 +189,10 @@ struct v9x_r128_3d_state {
     /* V9X_R128_CULL_*: which winding the hardware drops. NONE (0) draws
      * both, as every path did while the core culled in software. */
     v9x_u32 cull;
+    /* The second unit, sampled with the vertex's second S/T pair and
+     * combined with unit 0's result; only with unit 0 enabled. The
+     * primitives then take V9X_R128_VERTEX2_DWORDS a vertex. */
+    struct v9x_r128_3d_texture texture1;
 };
 
 /* Direct3D's cull modes, as the hardware applies them: CCW drops what
@@ -194,8 +221,8 @@ struct v9x_r128_3d_state {
 #define V9X_R128_FLUSH_DWORDS           2u
 
 /* The state stream's length: the cache flush, the context block, the setup
- * registers, and the texture block. */
-#define V9X_R128_STATE_DWORDS_MAX       50u
+ * registers, and the two texture blocks. */
+#define V9X_R128_STATE_DWORDS_MAX       64u
 
 struct v9x_r128_3d_stream {
     v9x_u32 dwords[V9X_R128_STATE_DWORDS_MAX];
@@ -220,11 +247,11 @@ void v9x_r128_3d_build_flush(v9x_u32 out[V9X_R128_FLUSH_DWORDS]);
 
 /*
  * The three header dwords of a 3D_RNDR_GEN_PRIM triangle list of
- * triangle_count full TL vertices (V9X_R128_VERTEX_DWORDS each), which
- * follow it as they are. INVALID_ARGUMENT for none or more than
- * V9X_R128_PRIM_TRIANGLES_MAX.
+ * triangle_count full TL vertices (V9X_R128_VERTEX_DWORDS each, or
+ * V9X_R128_VERTEX2_DWORDS with two_units), which follow it as they are.
+ * INVALID_ARGUMENT for none or more than V9X_R128_PRIM_TRIANGLES_MAX.
  */
-v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count,
+v9x_status v9x_r128_3d_build_prim(v9x_u32 triangle_count, int two_units,
                                   v9x_u32 header[V9X_R128_PRIM_HEADER_DWORDS]);
 
 /*
@@ -247,13 +274,14 @@ v9x_status v9x_r128_3d_build_indexed(v9x_u32 index_count, int strip,
  * engine walks from the vertex buffer at vertex_offset (the distance from
  * AGP_BASE, as for indices) rather than reading them from the ring: as
  * Linux's r128_cce_dispatch_vertex builds it, 3D_RNDR_GEN_INDX_PRIM with
- * PRIM_WALK_LIST and no indices. INVALID_ARGUMENT for none, a count that
- * is not whole triangles, or more than the count field holds.
+ * PRIM_WALK_LIST and no indices; two_units as for build_prim.
+ * INVALID_ARGUMENT for none, a count that is not whole triangles, or more
+ * than the count field holds.
  */
 #define V9X_R128_LIST_HEADER_DWORDS     5u
 #define V9X_R128_LIST_VERTICES_MAX      65535ul
 v9x_status v9x_r128_3d_build_list(v9x_u32 vertex_count,
-                                  v9x_u32 vertex_offset,
+                                  v9x_u32 vertex_offset, int two_units,
                                   v9x_u32 header[V9X_R128_LIST_HEADER_DWORDS]);
 
 /* The indices less `base`, two to a dword, the first in the low half, an

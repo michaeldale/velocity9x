@@ -174,6 +174,12 @@ int v9x_dp2_fvf_layout(v9x_u32 fvf, V9X_DP2_FVF *layout);
 void v9x_dp2_fvf_convert_set(const V9X_DP2_FVF *layout, v9x_u32 set,
                              const v9x_u8 *source, v9x_u8 *tlvertex);
 
+/* Set `set`'s u and v alone, as the 8 bytes of two floats, by the same
+ * rule: a set the vertex lacks reads set 0, a one-float set has v 0, and
+ * a vertex with no set gives both 0. A second texture stage's pair. */
+void v9x_dp2_fvf_texcoords(const V9X_DP2_FVF *layout, v9x_u32 set,
+                           const v9x_u8 *source, v9x_u8 *pair);
+
 /* Whether the layout is D3DTLVERTEX itself, so no copy is needed. */
 int v9x_dp2_fvf_is_tlvertex(const V9X_DP2_FVF *layout);
 

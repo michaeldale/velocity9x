@@ -56,7 +56,16 @@ static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_R128_TEXTURE *resolved, v9x_u32 depth_bytes,
                    struct v9x_r128_3d_state *state)
 {
-    return v9x_d3d_r128_map_draw(draw, resolved, BASE, VRAM, depth_bytes,
+    return v9x_d3d_r128_map_draw(draw, resolved, 0, BASE, VRAM, depth_bytes,
+                                 state);
+}
+
+static v9x_u32 map2(const V9X_R3D_DRAW *draw,
+                    const V9X_D3D_R128_TEXTURE *resolved,
+                    const V9X_D3D_R128_TEXTURE *resolved1,
+                    struct v9x_r128_3d_state *state)
+{
+    return v9x_d3d_r128_map_draw(draw, resolved, resolved1, BASE, VRAM, 0ul,
                                  state);
 }
 
@@ -345,6 +354,123 @@ static void test_texture(void)
           V9X_D3D_R128_REFUSE_COLOR_KEY);
 }
 
+/* A second unit (texcoords1): both units' combines from color_op and
+ * alpha_op, whatever op says, unit 1 on unit 0's result; each unit's own
+ * sampler, shape and levels; both bound to surfaces. */
+static void test_two_units(void)
+{
+    static int texture1_object;
+    V9X_R3D_DRAW draw;
+    V9X_D3D_R128_TEXTURE resolved;
+    V9X_D3D_R128_TEXTURE resolved1;
+    struct v9x_r128_3d_state state;
+    struct v9x_r128_3d_stream stream;
+    V9X_R3D_LEVEL level;
+    float texcoords[6];
+
+    base_draw(&draw);
+    base_texture(&draw, &resolved);
+    draw.texture.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    draw.texture1.object = &texture1_object;
+    draw.texture1.min_filter = V9X_R3D_FILTER_LINEAR;
+    draw.texture1.mag_filter = V9X_R3D_FILTER_LINEAR;
+    draw.texture1.address = V9X_R3D_ADDRESS_CLAMP;
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+    draw.texcoords1 = texcoords;
+    memset(&resolved1, 0, sizeof(resolved1));
+    resolved1.datatype = V9X_R128_TEX_ARGB4444;
+    resolved1.has_alpha = 1;
+    resolved1.width = 32ul;
+    resolved1.height = 32ul;
+    resolved1.bytes_per_texel = 2ul;
+    resolved1.pitch_bytes = 64ul;
+    resolved1.levels = 1ul;
+    resolved1.offsets[0] = 0x00300000ul;
+
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.texture.enable == 1ul && state.texture1.enable == 1ul);
+    CHECK(state.texture.combine == V9X_R128_COMBINE_OPS);
+    CHECK(state.texture.color_op == V9X_R128_COLOROP_MODULATE);
+    CHECK(state.texture.alpha_op == V9X_R128_ALPHAOP_INPUT);
+    CHECK(state.texture1.combine == V9X_R128_COMBINE_OPS);
+    CHECK(state.texture1.color_op == V9X_R128_COLOROP_MODULATE);
+    CHECK(state.texture1.alpha_op == V9X_R128_ALPHAOP_MODULATE);
+    CHECK(state.texture1.datatype == V9X_R128_TEX_ARGB4444);
+    CHECK(state.texture1.width_log2 == 5ul &&
+          state.texture1.height_log2 == 5ul);
+    CHECK(state.texture1.levels == 1ul);
+    CHECK(state.texture1.offsets[0] == BASE + 0x00300000ul);
+    CHECK(state.texture1.min_filter == V9X_R128_FILTER_LINEAR);
+    CHECK(state.texture1.clamp_s == 1ul && state.texture1.clamp_t == 1ul);
+    CHECK(state.texture.clamp_s == 0ul);
+    CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+
+    /* The other ops each unit takes, the Direct3D front end's ADD among
+     * them; the render interface's BLEND (a constant colour) it does not. */
+    draw.texture1.color_op = V9X_R3D_COLOROP_ADD;
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.texture1.color_op == V9X_R128_COLOROP_ADD);
+    CHECK(state.texture1.alpha_op == V9X_R128_ALPHAOP_INPUT);
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_DECALALPHA;
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.texture1.color_op == V9X_R128_COLOROP_DECAL_ALPHA);
+    CHECK(state.texture1.alpha_op == V9X_R128_ALPHAOP_REPLACE);
+    draw.texture.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_NONE);
+    CHECK(state.texture.color_op == V9X_R128_COLOROP_REPLACE);
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_BLEND;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_TEXTURE_OP);
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture.color_op = 0ul;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_TEXTURE_OP);
+    draw.texture.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture1.alpha_op = 7ul;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_TEXTURE_OP);
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+
+    /* Unit 1's own sampler and texture are checked as unit 0's. */
+    draw.texture1.address = V9X_R3D_ADDRESS_MIRROR;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_TEXTURE_ADDRESS);
+    draw.texture1.address = V9X_R3D_ADDRESS_WRAP;
+    resolved1.datatype = V9X_D3D_R128_TEXTURE_UNKNOWN;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_TEXTURE_FORMAT);
+    CHECK(map2(&draw, &resolved, 0, &state) ==
+          V9X_D3D_R128_REFUSE_TEXTURE_FORMAT);
+    resolved1.datatype = V9X_R128_TEX_ARGB4444;
+    draw.color_key_enable = 1ul;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_COLOR_KEY);
+    draw.color_key_enable = 0ul;
+
+    /* Both units bound to surfaces, neither with CPU levels. */
+    draw.texture1.object = 0;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_EXPLICIT);
+    draw.texture1.object = &texture1_object;
+    memset(&level, 0, sizeof(level));
+    draw.texture1.levels = &level;
+    draw.texture1.level_count = 1ul;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_EXPLICIT);
+    draw.texture1.levels = 0;
+    draw.texture1.level_count = 0ul;
+    CHECK(map2(&draw, &resolved, &resolved1, &state) ==
+          V9X_D3D_R128_REFUSE_NONE);
+}
+
 unsigned int v9x_run_d3d_r128_map_tests(void)
 {
     failures = 0u;
@@ -353,5 +479,6 @@ unsigned int v9x_run_d3d_r128_map_tests(void)
     test_depth_and_tests();
     test_blend();
     test_texture();
+    test_two_units();
     return failures;
 }

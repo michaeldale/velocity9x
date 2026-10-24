@@ -1796,6 +1796,10 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_uint(key, snapshot.d3d.lock_kind[kind]);
         }
     }
+    v9x_write_uint("TwoUnitBatches", snapshot.d3d.two_unit_batches);
+    v9x_write_uint("TwoUnitDeclined", snapshot.d3d.two_unit_declined);
+    v9x_write_uint("TwoUnitValidateRefused",
+                   snapshot.d3d.two_unit_validate_refused);
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

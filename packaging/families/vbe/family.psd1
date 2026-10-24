@@ -242,6 +242,11 @@
         # refused at stage 1 on any card the family did not name, whatever the
         # INF said. See docs\issues\2026-08-16-tier0-defects-deferred.md D3.
         HardwareIdHint = 'PCI 1234:1111 exactly; any VGA-class adapter via PCI\CC_0300'
+        # Installed files that ride a third disk, as ATI's, Matrox's and
+        # S3's do: disk 1 went 11,655 bytes over when the shared Direct3D
+        # core gained two texture stages (Michael, 2026-10-24: third VBE
+        # disk). The update checker, which nothing needs to boot or draw.
+        ThirdDisk = @('V9XUPD.EXE')
     }
 
     Vm = @{

@@ -51,6 +51,35 @@ typedef struct v9x_d3d_state_raw {
 /* Fill every state field of draw from raw; the surfaces are left alone. */
 void v9x_d3d_state_fill(const V9X_D3D_STATE_RAW *raw, V9X_R3D_DRAW *draw);
 
+/* One texture blend stage's combine as DrawPrimitives2 states it: the
+ * D3DTSS_COLOROP, COLORARG1/2, ALPHAOP and ALPHAARG1/2 values, raw. */
+typedef struct v9x_d3d_state_stage {
+    v9x_u32 color_op;
+    v9x_u32 color_arg1;
+    v9x_u32 color_arg2;
+    v9x_u32 alpha_op;
+    v9x_u32 alpha_arg1;
+    v9x_u32 alpha_arg2;
+} V9X_D3D_STATE_STAGE;
+
+#define V9X_D3D_STAGES_ONE    0ul  /* stage 1 changes nothing          */
+#define V9X_D3D_STAGES_TWO    1ul  /* one pass on two units            */
+#define V9X_D3D_STAGES_REFUSE 2ul  /* stage 1 needs what no unit does */
+
+/*
+ * Stages 0 and 1 as a two-unit draw's combines: on TWO, the color_op and
+ * alpha_op of unit0 and unit1 (V9X_R3D_ABI_COLOROP_* or
+ * V9X_R3D_COLOROP_ADD, V9X_R3D_ABI_ALPHAOP_*), in the render interface's
+ * sense - unit 0 on the vertex colour, unit 1 on unit 0's result, each
+ * texel the factor. Nothing else of either unit is written. Only the
+ * combinations whose arithmetic is exactly that are TWO: Direct3D asks
+ * ValidateTextureStageState first, and an application told no draws its
+ * own passes.
+ */
+v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
+                             const V9X_D3D_STATE_STAGE *stage1,
+                             V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1);
+
 /*
  * Whether the depth unit is engaged: ZENABLE set, a depth surface bound,
  * and that surface with a pitch. The same three-part test every engine
