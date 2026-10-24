@@ -6,6 +6,66 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.29.0 - not yet released
 
+- **Switching between 3D programs no longer leaves the next one broken
+  until a reboot.** On the Rage 128, a program that ended - Half-Life's
+  Direct3D renderer before its OpenGL one, 3DMark 2000 before 3DMark 2001
+  SE - left the card's command engine running into the display mode
+  change that followed, and the next program crashed, drew wrongly or
+  hung the machine. The driver now finishes all drawing and stops the
+  engine when a program's Direct3D or OpenGL context goes, and a page flip
+  no longer restarts it. On one Rage Fury Pro: 3DMark 2001 SE twice in a
+  row without a hang, and Half-Life in Direct3D then OpenGL, full screen
+  and windowed, every game frame checked right
+  ([issue](docs/issues/2026-10-25-rage128-32mib-map-corrupts.md)).
+  The change is in code every card shares; other cards were not run.
+- **Rage 128: the CPU writes the frame buffer write-combined**, as ATI's
+  driver does: 49.9 to 241 MB/s, within 1% of ATI's, and DIB drawing,
+  blits from system memory and texture uploads with it
+  ([record](docs/decisions/2026-10-24-rage128-write-combining.md)). It is
+  the first processor memory-type setting this driver makes; `V9X3D OFF`,
+  which creates `C:\V9XDIAG\NOWC.TXT`, turns it off. Only the Rage 128
+  asks for it.
+- **Rage 128: two Direct3D texture stages**, drawn by the card's second
+  texture unit in one pass where the two stages' arithmetic is exactly
+  the units'. 3DMark 2000's multi-texture fill went from 131 to 189
+  Mtexels/s and its emboss bump-mapping test runs, measured with the
+  parked AGP path below
+  ([record](docs/decisions/2026-10-24-rage128-two-texture-stages.md)).
+  Texture stages need Direct3D's newer driver interface, so on a Rage 128
+  every program now gets it; a program can be held to the older one in
+  `SYSTEM.INI`.
+- **Rage 128: triangles crossing the screen's edge are drawn by the card**
+  inside its guard band and cut at the target's edges, instead of being
+  clipped by the CPU first.
+- **Direct3D's DrawPrimitives2 path is faster on every card**: whole
+  indexed lists handed to engines that take them, vertices converted a
+  dword at a time, and the code built optimised. On the Rage 128, with
+  the parked AGP path, the DirectX 7 and 8 triangle tests gained about a
+  third.
+- **Indexed triangle strips, fans and line strips sent through
+  DrawPrimitives2 are read correctly.** Their start vertex was read as
+  the first index, so such a strip failed at the end of the scene or drew
+  from the wrong vertices. Found by the Direct3D probe's new culling
+  test.
+- **Haswell (HD 4600): Tux Racer's sky and its fogged, blended textures
+  are drawn** (tester report V9X-YP59WN). OpenGL's `GL_REPLACE` on an RGB
+  texture was refused before reaching the chip
+  ([issue](docs/issues/2026-10-24-haswell-tux-racer-sky-replace-rgb.md)).
+- **Display mode changes no longer stall for about two seconds each on a
+  machine with a real serial port**: the driver's serial log waited for
+  every byte to be sent.
+- **The Rage 128's commands still go to the card through the CPU.** A
+  faster path that has the card fetch them from AGP memory was built and
+  measured during this release, then parked: with it, 3DMark 2001 SE
+  read its own data files back corrupt, and without it it did not. The
+  cause is not known
+  ([issue](docs/issues/2026-10-25-rage128-32mib-map-corrupts.md)). Half-
+  Life's demo runs at 24 to 33 fps in Direct3D and 20 to 21 in OpenGL on
+  the Rage Fury Pro (0.28.0: 34 and 14).
+- **The S3, VBE and SiS floppy packages have a third disk**, carrying the
+  update checker (`V9XUPD.EXE`), as the ATI and Matrox packages do: the
+  shared driver code no longer fits two.
+
 ## 0.28.0 - 2026-10-23
 
 - **ATI Rage 128 Pro: Direct3D, OpenGL and Glide in hardware.** Triangles
