@@ -1785,6 +1785,17 @@ void __stdcall V9xTraceDumpEntry(void)
                    snapshot.d3d.indexed_decline_range_max);
     v9x_write_uint("IndexedDrawnRangeMax",
                    snapshot.d3d.indexed_drawn_range_max);
+    {
+        static const char *lock_names[V9X_D3D_LOCK_KINDS] = {
+            "Primary", "Back", "Texture", "Depth", "Video", "System" };
+        char key[48];
+        DWORD kind;
+
+        for (kind = 0ul; kind < V9X_D3D_LOCK_KINDS; ++kind) {
+            wsprintf(key, "LockKind%s", lock_names[kind]);
+            v9x_write_uint(key, snapshot.d3d.lock_kind[kind]);
+        }
+    }
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

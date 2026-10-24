@@ -58,7 +58,18 @@ static V9X_CPU_REG_OPEN v9x_cpu_reg_open;
 static V9X_CPU_REG_QUERY v9x_cpu_reg_query;
 static V9X_CPU_REG_CLOSE v9x_cpu_reg_close;
 
-static V9X_DD_TRACE_SNAPSHOT v9x_cpu_snapshot;
+/* The 16-bit side copies its whole current snapshot into the buffer an
+ * escape names - Control() is not told the buffer's size - so a driver
+ * whose diagnostics grew writes past one sized for this build's header:
+ * V9XCPU built before 2026-10-24's lock counters died with an illegal
+ * operation under a driver with them. The slack takes such a copy; the
+ * dwSize check then reads it as no buckets. */
+#define V9X_CPU_SNAPSHOT_SLACK 0x10000ul
+static union {
+    V9X_DD_TRACE_SNAPSHOT snapshot;
+    BYTE bytes[sizeof(V9X_DD_TRACE_SNAPSHOT) + V9X_CPU_SNAPSHOT_SLACK];
+} v9x_cpu_buffer;
+#define v9x_cpu_snapshot (v9x_cpu_buffer.snapshot)
 static DWORD v9x_cpu_cycles[V9X_CPU_BUCKETS];
 static DWORD v9x_cpu_calls[V9X_CPU_BUCKETS];
 
@@ -121,7 +132,7 @@ static int v9x_cpu_read_hal(void)
         return 0;
     }
     result = ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
-                       (LPCSTR)&command, sizeof(v9x_cpu_snapshot),
+                       (LPCSTR)&command, sizeof(v9x_cpu_buffer),
                        (LPSTR)&v9x_cpu_snapshot);
     ReleaseDC(0, screen);
     return result > 0 &&

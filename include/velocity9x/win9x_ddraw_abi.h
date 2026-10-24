@@ -2053,6 +2053,8 @@ typedef struct v9x_dd_cb32 {
 #define V9X_D3D_PRESENT_TRACE 32u
 /* Slots for V9X_D3D_INDEXED_DECLINE_* (defined after the diagnostics). */
 #define V9X_D3D_INDEXED_DECLINE_REASONS 8u
+/* Slots for V9X_D3D_LOCK_KIND_* (defined after the diagnostics). */
+#define V9X_D3D_LOCK_KINDS 6u
 
 /* Watermark log entries: one per mode within a boot. A run passes through
  * the desktop mode, the game's, and back, so four is room to spare. */
@@ -3702,7 +3704,21 @@ typedef struct v9x_d3d_diagnostics {
     DWORD indexed_decline[V9X_D3D_INDEXED_DECLINE_REASONS];
     DWORD indexed_decline_range_max;
     DWORD indexed_drawn_range_max;
+    /*
+     * Locks by the kind of surface locked (V9X_D3D_LOCK_KIND_*): each one
+     * drains the engine, and in 3DMark 2000's game tests those drains held
+     * 40-60% of the CPU once the ring stopped filling. Appended 2026-10-24
+     * within ABI 2026102002.
+     */
+    DWORD lock_kind[V9X_D3D_LOCK_KINDS];
 } V9X_D3D_DIAGNOSTICS;
+
+#define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */
+#define V9X_D3D_LOCK_KIND_BACK     1u  /* a flipping back buffer         */
+#define V9X_D3D_LOCK_KIND_TEXTURE  2u  /* a texture in video memory      */
+#define V9X_D3D_LOCK_KIND_DEPTH    3u  /* a depth buffer                 */
+#define V9X_D3D_LOCK_KIND_VIDEO    4u  /* any other video-memory surface */
+#define V9X_D3D_LOCK_KIND_SYSTEM   5u  /* system memory                  */
 
 /* Why an indexed call went to the triangle expansion instead of the
  * engine's draw_indexed (docs\plans\d3d-core-throughput.md). */

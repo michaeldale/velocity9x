@@ -1319,9 +1319,36 @@ DWORD __stdcall V9xHalLock(V9X_DDHAL_LOCKDATA *data)
     return result;
 }
 
+/* Which V9X_D3D_LOCK_KIND_* a locked surface is, for the counters. */
+static DWORD v9x_lock_kind(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD caps = surface != 0 ? surface->ddsCaps : 0ul;
+
+    if ((caps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return V9X_D3D_LOCK_KIND_SYSTEM;
+    }
+    if ((caps & V9X_DDSCAPS_PRIMARYSURFACE) != 0ul) {
+        return V9X_D3D_LOCK_KIND_PRIMARY;
+    }
+    if ((caps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        return V9X_D3D_LOCK_KIND_DEPTH;
+    }
+    if ((caps & V9X_DDSCAPS_TEXTURE) != 0ul) {
+        return V9X_D3D_LOCK_KIND_TEXTURE;
+    }
+    if ((caps & (V9X_DDSCAPS_BACKBUFFER | V9X_DDSCAPS_FLIP)) != 0ul) {
+        return V9X_D3D_LOCK_KIND_BACK;
+    }
+    return V9X_D3D_LOCK_KIND_VIDEO;
+}
+
 static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_LOCK, data->dwFlags);
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.lock_kind[
+            v9x_lock_kind((const V9X_DD_SURFACE_LCL *)data->lpDDSurface)];
+    }
     /*
      * Sampled HERE as well as in v9x_blt_drain, because this path does not
      * go through it: Lock calls the engine and render waits directly. The

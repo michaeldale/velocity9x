@@ -391,6 +391,32 @@ that drains the chip first. So the game tests still wait on the chip, and
 once a frame each side now idles while the other works. Next to test:
 the clear in the ring (H4).
 
+## H4, the clear in the ring: refuted, reverted (Michael: "Revert h4", 2026-10-24)
+
+`LockKind*` (V9XTRACE) counts Locks by surface kind. Midway through
+Helicopter low (boot 566): 649 texture Locks, nearly all the scene's
+load, and one render drain per frame, matching the fills - 3DMark's one
+clear a frame, of the depth buffer. Every engine fill drained first, and
+the engine reset at each ring start cleared the 2D validation, so the
+core's check before each fill drained again.
+
+- The 2D engine's CNTL_PAINT_MULTI in the ring, and a 3D quad drawing
+  the depth buffer as a 16-bit colour target, each locked A8U4I5 in
+  V9XD32 just after its depth clears (boots 567, 570); no fault trace.
+- A 3D quad writing depth (compare always, z the fill value, colour
+  masked) was exact (V9XD32 `ZClearFar16` all 640x480 at FFFF) and left
+  9 drains for 604 fills (boot 573) - and scored 1652, Helicopter
+  35.9/25.7/11.3, Adventure 23.6/22.0/19.2, against 1697 with 26.2/22.3
+  /18.1 for Adventure. The CPU's wait moved into Flip (32-45% in the low
+  detail tests) and the vertex-space waits.
+
+So the chip is busy for the whole frame in the game tests: the drain was
+where the CPU waited, not what the chip waited for. ATI's driver leaves
+the CPU waiting as long (the profile above), so the gap is the chip's
+work per frame. Next to compare: what each driver asks of it per pixel -
+the texture formats 3DMark creates, the filtering, the depth and texture
+cache settings.
+
 ## Proposal for Michael's review: flips queued behind the drawing
 
 This changes flip behaviour in the shared core for every engine that
