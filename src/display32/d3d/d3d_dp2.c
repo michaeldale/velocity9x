@@ -232,9 +232,13 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             break;
 
         case V9X_DP2OP_INDEXEDLINESTRIP:
-            need = count != 0ul ? (count + 1ul) * 2ul : 0ul;
+            /* The start vertex, then count + 1 indices relative to it, as
+             * the indexed strip and fan below (the DDK's d3ddx6.c). */
+            need = count != 0ul ? 2ul + (count + 1ul) * 2ul : 0ul;
             if (need > left ||
-                !v9x_dp2_indices(stream, data, need / 2ul, 2ul, 0ul)) {
+                (count != 0ul &&
+                 !v9x_dp2_indices(stream, data + 2, count + 1ul, 2ul,
+                                  v9x_dp2_word(data)))) {
                 goto malformed;
             }
             if (sink->line == 0) {
@@ -242,10 +246,15 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                 break;
             }
             for (i = 0ul; i < count; ++i) {
+                v9x_u32 base = v9x_dp2_word(data);
+
                 sink->line(sink->user,
-                           v9x_dp2_vertex(stream, v9x_dp2_word(data + i * 2ul)),
                            v9x_dp2_vertex(stream,
-                                          v9x_dp2_word(data + i * 2ul + 2ul)));
+                                          base + v9x_dp2_word(data + 2ul +
+                                                              i * 2ul)),
+                           v9x_dp2_vertex(stream,
+                                          base + v9x_dp2_word(data + 4ul +
+                                                              i * 2ul)));
             }
             result->lines += count;
             break;
@@ -286,22 +295,34 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             break;
 
         case V9X_DP2OP_INDEXEDTRIANGLESTRIP:
-            need = count != 0ul ? (count + 2ul) * 2ul : 0ul;
+            /* D3DHAL_DP2STARTVERTEX, then count + 2 indices relative to it
+             * (the DDK's d3ddx6.c). Read without the start vertex, every
+             * DX5 indexed strip at DDI 6 was malformed or drawn from the
+             * wrong vertices (V9XD32 T11, A8U4I5, 2026-10-24). */
+            need = count != 0ul ? 2ul + (count + 2ul) * 2ul : 0ul;
             if (need > left ||
-                !v9x_dp2_indices(stream, data, need / 2ul, 2ul, 0ul)) {
+                (count != 0ul &&
+                 !v9x_dp2_indices(stream, data + 2, count + 2ul, 2ul,
+                                  v9x_dp2_word(data)))) {
                 goto malformed;
             }
             for (i = 0ul; i < count; ++i) {
                 v9x_u32 swap = i & 1ul;
+                v9x_u32 base = v9x_dp2_word(data);
+                const v9x_u8 *words = data + 2;
 
                 sink->triangle(
                     sink->user,
                     v9x_dp2_vertex(stream,
-                                   v9x_dp2_word(data + (i + swap) * 2ul)),
+                                   base + v9x_dp2_word(words +
+                                                       (i + swap) * 2ul)),
                     v9x_dp2_vertex(stream,
-                                   v9x_dp2_word(data + (i + 1ul - swap) * 2ul)),
+                                   base + v9x_dp2_word(words +
+                                                       (i + 1ul - swap) *
+                                                           2ul)),
                     v9x_dp2_vertex(stream,
-                                   v9x_dp2_word(data + (i + 2ul) * 2ul)));
+                                   base + v9x_dp2_word(words +
+                                                       (i + 2ul) * 2ul)));
             }
             result->triangles += count;
             break;
@@ -322,19 +343,28 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             break;
 
         case V9X_DP2OP_INDEXEDTRIANGLEFAN:
-            need = count != 0ul ? (count + 2ul) * 2ul : 0ul;
+            /* The start vertex, then count + 2 indices relative to it, as
+             * the indexed strip above. */
+            need = count != 0ul ? 2ul + (count + 2ul) * 2ul : 0ul;
             if (need > left ||
-                !v9x_dp2_indices(stream, data, need / 2ul, 2ul, 0ul)) {
+                (count != 0ul &&
+                 !v9x_dp2_indices(stream, data + 2, count + 2ul, 2ul,
+                                  v9x_dp2_word(data)))) {
                 goto malformed;
             }
             for (i = 0ul; i < count; ++i) {
+                v9x_u32 base = v9x_dp2_word(data);
+                const v9x_u8 *words = data + 2;
+
                 sink->triangle(
                     sink->user,
-                    v9x_dp2_vertex(stream, v9x_dp2_word(data)),
+                    v9x_dp2_vertex(stream, base + v9x_dp2_word(words)),
                     v9x_dp2_vertex(stream,
-                                   v9x_dp2_word(data + (i + 1ul) * 2ul)),
+                                   base + v9x_dp2_word(words +
+                                                       (i + 1ul) * 2ul)),
                     v9x_dp2_vertex(stream,
-                                   v9x_dp2_word(data + (i + 2ul) * 2ul)));
+                                   base + v9x_dp2_word(words +
+                                                       (i + 2ul) * 2ul)));
             }
             result->triangles += count;
             break;

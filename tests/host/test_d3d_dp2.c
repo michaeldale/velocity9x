@@ -252,13 +252,16 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     CHECK(tri_is(&c, 0, 0, 1, 2) && tri_is(&c, 1, 2, 1, 3) &&
           tri_is(&c, 2, 2, 3, 4));
 
-    /* An indexed strip of one triangle is three WORDs, so the next record
-     * starts two bytes off a DWORD boundary and must still parse. */
+    /* An indexed strip is its start vertex (the DDK's D3DHAL_DP2STARTVERTEX,
+     * d3ddx6.c), then count + 2 WORDs relative to it; read without the
+     * start vertex every DX5 indexed strip at DDI 6 was malformed (V9XD32
+     * T11, A8U4I5, 2026-10-24). Two triangles make seven WORDs, so the next
+     * record starts two bytes off a DWORD boundary and must still parse. */
     memset(&c, 0, sizeof(c)); used = 0ul;
     command(V9X_DP2OP_INDEXEDTRIANGLESTRIP, 2ul);
-    put16(5ul); put16(6ul); put16(7ul); put16(8ul);
+    put16(4ul); put16(1ul); put16(2ul); put16(3ul); put16(4ul);
     command(V9X_DP2OP_INDEXEDTRIANGLESTRIP, 1ul);
-    put16(1ul); put16(2ul); put16(3ul);
+    put16(0ul); put16(1ul); put16(2ul); put16(3ul);
     command(V9X_DP2OP_RENDERSTATE, 1ul); put32(9ul); put32(2ul);
     walk(&c, &r);
     CHECK(r.status == V9X_DP2_OK && r.records == 3ul);
@@ -267,10 +270,11 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     CHECK(c.state_count == 1ul && c.states[0][0] == 9ul &&
           c.states[0][1] == 2ul);
 
-    /* Fans, indexed and not, keep the first vertex as every apex. */
+    /* Fans, indexed and not, keep the first vertex as every apex; an
+     * indexed fan's indices are relative to its start vertex. */
     memset(&c, 0, sizeof(c)); used = 0ul;
     command(V9X_DP2OP_INDEXEDTRIANGLEFAN, 2ul);
-    put16(9ul); put16(1ul); put16(2ul); put16(3ul);
+    put16(1ul); put16(8ul); put16(0ul); put16(1ul); put16(2ul);
     command(V9X_DP2OP_TRIANGLEFAN, 1ul); put16(10ul);
     walk(&c, &r);
     CHECK(r.status == V9X_DP2_OK && c.tri_count == 3ul);
@@ -312,16 +316,16 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     indexed_take = -1;
 
     /* A fan's inline vertices start at the next DWORD boundary. The record
-     * here begins at offset 10, its edge flags end at 18, so two bytes of
-     * padding put the vertices at 20 - and the record after them parses. */
+     * here begins at offset 6, its edge flags end at 14, so two bytes of
+     * padding put the vertices at 16 - and the record after them parses. */
     memset(&c, 0, sizeof(c)); used = 0ul;
-    command(V9X_DP2OP_INDEXEDTRIANGLESTRIP, 1ul);
-    put16(1ul); put16(2ul); put16(3ul);
-    CHECK(used == 10ul);
+    command(V9X_DP2OP_TRIANGLESTRIP, 1ul);
+    put16(1ul);
+    CHECK(used == 6ul);
     command(V9X_DP2OP_TRIANGLEFAN_IMM, 1ul); put32(0ul);
     put16(0ul);
     c.imm_base = COMMANDS + used;
-    CHECK(used == 20ul);
+    CHECK(used == 16ul);
     for (i = 0ul; i < 3ul * STRIDE; ++i) {
         put8(0ul);
     }
@@ -347,7 +351,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     command(V9X_DP2OP_POINTS, 1ul); put16(2ul); put16(4ul);
     command(V9X_DP2OP_LINELIST, 2ul); put16(0ul);
     command(V9X_DP2OP_INDEXEDLINESTRIP, 2ul);
-    put16(1ul); put16(2ul); put16(3ul);
+    put16(0ul); put16(1ul); put16(2ul); put16(3ul);
     command(V9X_DP2OP_UPDATEPALETTE, 1ul);
     put32(5ul); put16(0ul); put16(2ul); put32(0ul); put32(0ul);
     command(V9X_DP2OP_VIEWPORTINFO, 1ul);
@@ -372,7 +376,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     memset(&c, 0, sizeof(c)); used = 0ul;
     command(V9X_DP2OP_TRIANGLELIST, 1ul); put16(0ul);
     command(V9X_DP2OP_INDEXEDTRIANGLESTRIP, 2ul);
-    put16(1ul); put16(2ul); put16(3ul); put16(POOL);
+    put16(0ul); put16(1ul); put16(2ul); put16(3ul); put16(POOL);
     walk(&c, &r);
     CHECK(r.status == V9X_DP2_MALFORMED && r.stop_offset == 6ul);
     CHECK(c.tri_count == 1ul);
