@@ -121,6 +121,21 @@ V9xMtrrDefType  dd 0
 V9xMtrrBase     dd V9X_MTRR_RANGE_MAX dup (0)
 V9xMtrrMask     dd V9X_MTRR_RANGE_MAX dup (0)
 
+; What the MTRR_WRITE sequence saves and restores around the write
+; (V9xMini_Mtrr_Write), and the mask's high half it computed.
+V9xMtrrSaveCr0      dd 0
+V9xMtrrSaveCr4      dd 0
+V9xMtrrSaveDefLo    dd 0
+V9xMtrrSaveDefHi    dd 0
+V9xMtrrMaskHigh     dd 0
+; The request as the client passed it, and the answer handed back.
+V9xMtrrReqIndex     dd 0
+V9xMtrrReqBase      dd 0
+V9xMtrrReqMask      dd 0
+V9xMtrrWhy          dd 0
+V9xMtrrBackBase     dd 0
+V9xMtrrBackMask     dd 0
+
 IFDEF V9X_ATI_MOBILITY_MMIO
 ; ATI Rage Mobility-M and Rage IIC: the 4 KiB MMIO register BAR, mapped once
 ; for the engine. CONFIG_CHIP_ID is block 0 +0E0h, and the low word names
@@ -2709,6 +2724,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_MtrrInfo
     cmp     ax, V9XMINI_FN_MTRR_RANGE
     je      V9xMini_Api_MtrrRange
+    cmp     ax, V9XMINI_FN_MTRR_WRITE
+    je      V9xMini_Api_MtrrWrite
     cmp     ax, V9XMINI_FN_I9XX_CAPTURE
     je      V9xMini_Api_I9xxCapture
     cmp     ax, V9XMINI_FN_I9XX_DWORD
@@ -4149,6 +4166,32 @@ V9xMini_Api_MtrrRange_Missing:
     pop     ecx
     ret
 
+; Stage B's one write. In: client CX = pair, EBX = PHYSBASE low half, EDX =
+; PHYSMASK low half. See V9XMINI_FN_MTRR_WRITE in V9XMAPI.INC.
+V9xMini_Api_MtrrWrite:
+    pushad
+    movzx   eax, [ebp.Client_CX]
+    mov     V9xMtrrReqIndex, eax
+    mov     eax, [ebp.Client_EBX]
+    mov     V9xMtrrReqBase, eax
+    mov     eax, [ebp.Client_EDX]
+    mov     V9xMtrrReqMask, eax
+    call    V9xMini_Mtrr_Write
+    mov     eax, V9xMtrrBackBase
+    mov     [ebp.Client_EBX], eax
+    mov     eax, V9xMtrrBackMask
+    mov     [ebp.Client_ECX], eax
+    mov     eax, V9xMtrrWhy
+    mov     [ebp.Client_EDX], eax
+    xor     ecx, ecx
+    test    eax, eax
+    jnz     short V9xMini_Api_MtrrWrite_Refused
+    inc     ecx
+V9xMini_Api_MtrrWrite_Refused:
+    mov     [ebp.Client_AX], cx
+    popad
+    ret
+
 ; What the init-time collection actually managed, so a failure can be diagnosed
 ; from the guest instead of guessed at from the host.
 ;
@@ -4376,6 +4419,186 @@ V9xMini_Api_NoData:
     mov     [ebp.Client_AX], 0
     ret
 EndProc MiniVDD_PM_API
+
+; The mask's bits above 4 GiB for this CPU's physical address width:
+; CPUID 80000008h where it exists, else 36 bits with PAE or PSE-36, else 32.
+; Without them the range would repeat at every 4 GiB above its base on a
+; CPU with more than 32 address bits, as a P6 with PAE has.
+BeginProc V9xMini_Mtrr_Phys_High
+    pushad
+    mov     V9xMtrrMaskHigh, 0
+    mov     eax, 80000000h
+    cpuid
+    cmp     eax, 80000008h
+    jb      short V9xMini_Mtrr_Phys_Legacy
+    cmp     eax, 8000FFFFh              ; a P6 answers with basic-leaf data
+    ja      short V9xMini_Mtrr_Phys_Legacy
+    mov     eax, 80000008h
+    cpuid
+    and     eax, 0FFh                   ; MAXPHYADDR
+    jmp     short V9xMini_Mtrr_Phys_Bits
+V9xMini_Mtrr_Phys_Legacy:
+    mov     eax, 1
+    cpuid
+    mov     eax, 32
+    test    edx, 40h                    ; PAE
+    jnz     short V9xMini_Mtrr_Phys_36
+    test    edx, 20000h                 ; PSE-36
+    jz      short V9xMini_Mtrr_Phys_Bits
+V9xMini_Mtrr_Phys_36:
+    mov     eax, 36
+V9xMini_Mtrr_Phys_Bits:
+    cmp     eax, 32
+    jbe     short V9xMini_Mtrr_Phys_Done
+    cmp     eax, 52
+    jbe     short V9xMini_Mtrr_Phys_Shift
+    mov     eax, 52
+V9xMini_Mtrr_Phys_Shift:
+    lea     ecx, [eax-32]
+    mov     eax, 1
+    shl     eax, cl
+    dec     eax
+    mov     V9xMtrrMaskHigh, eax
+V9xMini_Mtrr_Phys_Done:
+    popad
+    ret
+EndProc V9xMini_Mtrr_Phys_High
+
+; Install the requested pair, or refuse with MSRs untouched. Inputs in
+; V9xMtrrReq*, outputs in V9xMtrrWhy and V9xMtrrBack*. The checks are the
+; ones ring 0 can make without interpreting anything: the CPU has the
+; registers, the pair exists and is free now (read live, not from the init
+; cache), the values are a write-combining base and a valid mask, and the
+; MTRRs are on with an uncached default - the rule src\common\mtrr.c's plan
+; rests on, re-read here because ring 0 is what acts on it.
+;
+; The write is the SDM's sequence (vol. 3, 11.11.7.2) for one processor.
+; CR0.CD with NW clear and the WBINVD stop the caches holding lines whose
+; type is about to change; PGE is cleared so the TLB flush reaches global
+; pages; DEF_TYPE.E is cleared so no access sees a half-written pair. WBINVD
+; is emitted as bytes, as the assembler here does not take it.
+BeginProc V9xMini_Mtrr_Write
+    pushad
+    mov     V9xMtrrBackBase, 0
+    mov     V9xMtrrBackMask, 0
+
+    mov     V9xMtrrWhy, 1
+    mov     ax, V9xMtrrFlags
+    and     ax, V9X_MTRR_CPU_MSR OR V9X_MTRR_CPU_MTRR
+    cmp     ax, V9X_MTRR_CPU_MSR OR V9X_MTRR_CPU_MTRR
+    jne     V9xMini_Mtrr_Write_Done
+
+    mov     V9xMtrrWhy, 2
+    mov     esi, V9xMtrrReqIndex
+    movzx   eax, V9xMtrrCount
+    cmp     esi, eax
+    jae     V9xMini_Mtrr_Write_Done
+
+    mov     ecx, 200h                   ; IA32_MTRR_PHYSBASEn
+    lea     ecx, [ecx+esi*2]
+    rdmsr
+    mov     V9xMtrrBackBase, eax
+    mov     ecx, 201h                   ; IA32_MTRR_PHYSMASKn
+    lea     ecx, [ecx+esi*2]
+    rdmsr
+    mov     V9xMtrrBackMask, eax
+    mov     V9xMtrrWhy, 3
+    test    eax, 800h                   ; valid: somebody's range
+    jnz     V9xMini_Mtrr_Write_Done
+
+    mov     V9xMtrrWhy, 4
+    mov     eax, V9xMtrrReqBase
+    and     eax, 0FFFh
+    cmp     eax, 001h                   ; type WC, nothing else
+    jne     V9xMini_Mtrr_Write_Done
+    mov     eax, V9xMtrrReqMask
+    and     eax, 0FFFh
+    cmp     eax, 800h                   ; valid, nothing else
+    jne     V9xMini_Mtrr_Write_Done
+
+    mov     ecx, 2FFh                   ; IA32_MTRR_DEF_TYPE
+    rdmsr
+    mov     V9xMtrrSaveDefLo, eax
+    mov     V9xMtrrSaveDefHi, edx
+    mov     V9xMtrrWhy, 5
+    and     eax, 8FFh                   ; E and the default type
+    cmp     eax, 800h                   ; enabled, default UC
+    jne     V9xMini_Mtrr_Write_Done
+
+    call    V9xMini_Mtrr_Phys_High
+
+    pushfd
+    cli
+    mov     eax, cr0
+    mov     V9xMtrrSaveCr0, eax
+    and     eax, NOT 20000000h          ; NW off
+    or      eax, 40000000h              ; CD on: no-fill cache mode
+    mov     cr0, eax
+    db      0Fh, 09h                    ; WBINVD
+    mov     eax, cr4
+    mov     V9xMtrrSaveCr4, eax
+    test    V9xMtrrFlags, V9X_MTRR_CPU_PGE
+    jz      short V9xMini_Mtrr_Write_Cr3
+    and     eax, NOT 80h                ; PGE off flushes the global pages too
+    mov     cr4, eax
+    jmp     short V9xMini_Mtrr_Write_Off
+V9xMini_Mtrr_Write_Cr3:
+    mov     eax, cr3
+    mov     cr3, eax
+V9xMini_Mtrr_Write_Off:
+    mov     ecx, 2FFh
+    mov     eax, V9xMtrrSaveDefLo
+    and     eax, NOT 800h               ; every MTRR off for the write
+    mov     edx, V9xMtrrSaveDefHi
+    wrmsr
+    mov     ecx, 200h
+    lea     ecx, [ecx+esi*2]
+    mov     eax, V9xMtrrReqBase
+    xor     edx, edx                    ; the aperture is below 4 GiB
+    wrmsr
+    mov     ecx, 201h
+    lea     ecx, [ecx+esi*2]
+    mov     eax, V9xMtrrReqMask
+    mov     edx, V9xMtrrMaskHigh
+    wrmsr
+    mov     ecx, 2FFh
+    mov     eax, V9xMtrrSaveDefLo
+    mov     edx, V9xMtrrSaveDefHi
+    wrmsr
+    db      0Fh, 09h                    ; WBINVD
+    mov     eax, cr3
+    mov     cr3, eax
+    mov     eax, V9xMtrrSaveCr0
+    mov     cr0, eax
+    mov     eax, V9xMtrrSaveCr4
+    mov     cr4, eax
+    popfd
+
+    ; Read back, and let MTRR_RANGE report the pair as it now is.
+    mov     ecx, 200h
+    lea     ecx, [ecx+esi*2]
+    rdmsr
+    mov     V9xMtrrBackBase, eax
+    mov     V9xMtrrBase[esi*4], eax
+    btr     word ptr V9xMtrrHigh, si
+    mov     ecx, 201h
+    lea     ecx, [ecx+esi*2]
+    rdmsr
+    mov     V9xMtrrBackMask, eax
+    mov     V9xMtrrMask[esi*4], eax
+    mov     V9xMtrrWhy, 0
+    mov     eax, V9xMtrrBackBase
+    cmp     eax, V9xMtrrReqBase
+    jne     short V9xMini_Mtrr_Write_Differs
+    mov     eax, V9xMtrrBackMask
+    cmp     eax, V9xMtrrReqMask
+    je      short V9xMini_Mtrr_Write_Done
+V9xMini_Mtrr_Write_Differs:
+    mov     V9xMtrrWhy, 6
+V9xMini_Mtrr_Write_Done:
+    popad
+    ret
+EndProc V9xMini_Mtrr_Write
 
 VxD_LOCKED_CODE_ENDS
 

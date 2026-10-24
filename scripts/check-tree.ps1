@@ -617,16 +617,33 @@ if ($alphaForceValues['V9X_D3D_ALPHAFORCE_MAGIC'] -ne
            "ordinary stipple pattern and force nothing.")
 }
 
-# Stage A writes no MTRR, and that is a property worth holding rather than
-# trusting to review: the write instructions must not appear in the mini-VDD
-# at all. WRMSR is the one that matters; CR0/CR4 handling would arrive with it.
-$mtrrSource = Get-Content -LiteralPath `
-    (Join-Path $repoRoot "src\minivdd32\loader.asm") -Raw
-if ($mtrrSource -match '(?im)^\s*wrmsr\b') {
-    throw ("src\minivdd32\loader.asm contains WRMSR. Stage A of " +
-           "docs\plans\tier0-quality.md reads the memory-type registers and " +
-           "writes none; adding the write is a staged change that updates " +
-           "this check with it.")
+# An MSR write is global CPU state, so where one may happen is held here
+# rather than trusted to review: every WRMSR in the mini-VDD sits inside
+# V9xMini_Mtrr_Write, Stage B's one write sequence
+# (docs\plans\write-combining-stage-b.md), and there is at least one.
+$mtrrLines = Get-Content -LiteralPath `
+    (Join-Path $repoRoot "src\minivdd32\loader.asm")
+$mtrrInWrite = $false
+$mtrrWrites = 0
+foreach ($line in $mtrrLines) {
+    if ($line -match '^\s*BeginProc\s+V9xMini_Mtrr_Write\s*$') {
+        $mtrrInWrite = $true
+    } elseif ($line -match '^\s*EndProc\s+V9xMini_Mtrr_Write\s*$') {
+        $mtrrInWrite = $false
+    }
+    if ($line -match '(?i)^\s*wrmsr\b') {
+        if (-not $mtrrInWrite) {
+            throw ("src\minivdd32\loader.asm has a WRMSR outside " +
+                   "V9xMini_Mtrr_Write. MSR writes are Stage B's one " +
+                   "sequence (docs\plans\write-combining-stage-b.md); a new " +
+                   "one is a design change that updates this check with it.")
+        }
+        ++$mtrrWrites
+    }
+}
+if ($mtrrWrites -eq 0) {
+    throw ("src\minivdd32\loader.asm has no WRMSR in V9xMini_Mtrr_Write: " +
+           "the Stage B write is missing or this check no longer finds it.")
 }
 
 # A renamed or deleted constant would otherwise shrink the checked set to

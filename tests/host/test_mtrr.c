@@ -260,6 +260,67 @@ static void test_existing_ranges(void)
     MTCHECK(plan.slot == 2u);
 }
 
+/* A8U4I5's readout (V9XBOOT.INI, 2026-10-22): RAM write-back, the BIOS's
+ * own uncached and write-combined AGP ranges beside the Rage 128's aperture
+ * at DC000000, pairs 3-7 free. Mapping the card's whole 32 MiB gets all of
+ * it in one pair. */
+static void test_a8u4i5_rage128(void)
+{
+    struct v9x_mtrr_state state;
+    struct v9x_mtrr_plan plan;
+
+    fixture_typical(&state);
+    state.base[0] = 0x00000000ul | TYPE_WB;
+    state.mask[0] = 0xF0000000ul | V9X_MTRR_PHYSMASK_VALID;
+    state.base[1] = 0xD8000000ul | V9X_MTRR_TYPE_UC;
+    state.mask[1] = 0xFE000000ul | V9X_MTRR_PHYSMASK_VALID;
+    state.base[2] = 0xDA000000ul | V9X_MTRR_TYPE_WC;
+    state.mask[2] = 0xFE000000ul | V9X_MTRR_PHYSMASK_VALID;
+    MTCHECK(v9x_mtrr_plan_wc(&state, 0xDC000000ul, 0x02000000ul, &plan));
+    MTCHECK(plan.reason == V9X_MTRR_OK);
+    MTCHECK(plan.slot == 3u);
+    MTCHECK(plan.base == 0xDC000000ul);
+    MTCHECK(plan.size == 0x02000000ul);
+    MTCHECK(v9x_mtrr_physmask(plan.size) ==
+            (0xFE000000ul | V9X_MTRR_PHYSMASK_VALID));
+    /* Today's 16 MiB mapping plans half of it, as the boot log recorded. */
+    MTCHECK(v9x_mtrr_plan_wc(&state, 0xDC000000ul, 0x01000000ul, &plan));
+    MTCHECK(plan.size == 0x01000000ul);
+}
+
+/* The range this driver installs, found again after a restart of Windows
+ * that kept the CPU's MTRRs: exactly the window, write-combining, valid. */
+static void test_wc_present(void)
+{
+    struct v9x_mtrr_state state;
+    struct v9x_mtrr_plan plan;
+
+    fixture_typical(&state);
+    MTCHECK(!v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+    state.base[3] = 0xDC000000ul | V9X_MTRR_TYPE_WC;
+    state.mask[3] = 0xFE000000ul | V9X_MTRR_PHYSMASK_VALID;
+    MTCHECK(v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+    /* It still refuses a second write, as it must. */
+    MTCHECK(!v9x_mtrr_plan_wc(&state, 0xDC000000ul, 0x02000000ul, &plan));
+    MTCHECK(plan.reason == V9X_MTRR_ALREADY_COVERED);
+    /* Not ours: another type, another size, or not valid. */
+    state.base[3] = 0xDC000000ul | V9X_MTRR_TYPE_UC;
+    MTCHECK(!v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+    state.base[3] = 0xDC000000ul | V9X_MTRR_TYPE_WC;
+    state.mask[3] = 0xFF000000ul | V9X_MTRR_PHYSMASK_VALID;
+    MTCHECK(!v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+    state.mask[3] = 0xFE000000ul;
+    MTCHECK(!v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+    /* A range above 4 GiB is never the aperture. */
+    state.mask[3] = 0xFE000000ul | V9X_MTRR_PHYSMASK_VALID;
+    state.high_bits = (v9x_u16)0x0008u;
+    MTCHECK(!v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+    /* Nor is a pair beyond the count read. */
+    state.high_bits = 0u;
+    state.range_count = 3u;
+    MTCHECK(!v9x_mtrr_wc_present(&state, 0xDC000000ul, 0x02000000ul));
+}
+
 static void test_slot_exhaustion(void)
 {
     struct v9x_mtrr_state state;
@@ -406,6 +467,8 @@ unsigned int v9x_run_mtrr_tests(void)
     test_default_type_is_the_safety_rule();
     test_aperture_gates();
     test_existing_ranges();
+    test_a8u4i5_rage128();
+    test_wc_present();
     test_slot_exhaustion();
     test_plan_properties();
     return mtrr_failures;

@@ -170,6 +170,16 @@ typedef struct v9x_hw16_device {
      * map_bytes.
      */
     unsigned long (*engine_reserve_offset)(void);
+
+    /*
+     * Non-zero: install the write-combining range src\common\mtrr.c plans
+     * over this chip's mapped aperture (Stage B,
+     * docs\plans\write-combining-stage-b.md). Zero keeps Stage A, the plan
+     * reported and nothing written, which is every chip but the ones that
+     * opt in after being measured. Appended 2026-10-24, so every
+     * initialiser that stops before it reads zero.
+     */
+    unsigned short write_combine;
 } V9X_HW16_DEVICE;
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the

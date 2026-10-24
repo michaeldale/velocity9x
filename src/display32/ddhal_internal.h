@@ -254,6 +254,18 @@ static void v9x_rdtsc_pair(DWORD *pair);
     parm [ecx] modify exact [eax edx];
 
 /*
+ * `lock or dword ptr [esp], 0`: drains the CPU's write-combining buffers
+ * (Intel SDM vol. 3, 11.3.1; every P6, where SFENCE exists only from the
+ * Pentium III). Where the frame buffer is write-combined (Stage B,
+ * docs\plans\write-combining-stage-b.md), CPU stores to it can sit in
+ * those buffers; this goes between the CPU's writes and anything that
+ * makes the engine read them. A few cycles; harmless where nothing is
+ * write-combined.
+ */
+static void v9x_wc_drain(void);
+#pragma aux v9x_wc_drain = 0xf0 0x83 0x0c 0x24 0x00 modify exact [];
+
+/*
  * Whether this CPU has a TSC: CPUID exists when EFLAGS.ID (bit 21) can be
  * toggled, and leaf 1 reports the TSC in EDX bit 4. Opcode bytes, as the
  * RDTSC above: PUSHFD/POP EAX, PUSH EAX/POPFD, and MOV EAX,n with CPUID

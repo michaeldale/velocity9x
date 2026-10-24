@@ -152,7 +152,8 @@ WORD v9x_minivdd_status = 0u;
 
 /*
  * The memory-type registers the mini-VDD read at init, one call's worth at a
- * time. Filled by the runtime.asm helpers below; nothing here writes an MTRR.
+ * time. Filled by the runtime.asm helpers below; V9xMiniMtrrWrite is the one
+ * call that changes them (v9x_mtrr_install).
  */
 WORD v9x_minivdd_mtrr_flags = 0u;
 WORD v9x_minivdd_mtrr_count = 0u;
@@ -161,6 +162,8 @@ DWORD v9x_minivdd_mtrr_deftype = 0ul;
 DWORD v9x_minivdd_mtrr_base = 0ul;
 DWORD v9x_minivdd_mtrr_mask = 0ul;
 WORD v9x_minivdd_mtrr_high = 0u;
+/* Why V9xMiniMtrrWrite refused, V9XMINI_FN_MTRR_WRITE's codes. */
+WORD v9x_minivdd_mtrr_why = 0u;
 /* One 16-byte EDID chunk, as the four dwords the API hands back. */
 DWORD v9x_minivdd_edid0 = 0ul;
 DWORD v9x_minivdd_edid1 = 0ul;
@@ -177,6 +180,7 @@ extern WORD FAR PASCAL V9xMiniVbeModeAt(WORD index);
 extern WORD FAR PASCAL V9xMiniVbeModeMasks(WORD index);
 extern WORD FAR PASCAL V9xMiniMtrrInfo(void);
 extern WORD FAR PASCAL V9xMiniMtrrRange(WORD index);
+extern WORD FAR PASCAL V9xMiniMtrrWrite(WORD index, DWORD base, DWORD mask);
 
 /*
  * Establish that figure before the driver's first call into the VDD.
@@ -604,16 +608,79 @@ static void v9x_vbe_trace_cache(void)
 }
 
 /*
+ * Stage B: write the pair the policy planned, for a chip that opts in
+ * (V9X_HW16_DEVICE.write_combine), and record what the CPU now holds as
+ * MtrrWrite= in the boot INI.
+ *
+ * Every chip that does not opt in stays at Stage A: the plan recorded,
+ * nothing written. The opted-in chip's range is written once a boot, when
+ * the aperture is first mapped; the mini-VDD re-checks what it can and reads
+ * the pair back. Skipped, with the reason recorded, when the range is
+ * already there (Windows restarted without a reset kept the CPU's MTRRs),
+ * when the policy refused, or when the recovery marker exists
+ * (docs\plans\write-combining-stage-b.md, decision 1).
+ */
+static void v9x_mtrr_install(const struct v9x_mtrr_state *state,
+                             const struct v9x_mtrr_plan *plan)
+{
+    static char text[64];
+    static OFSTRUCT marker;
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+    DWORD window;
+    DWORD mask;
+    WORD written;
+    WORD at = 0u;
+
+    if (device == 0 || device->write_combine == 0u) {
+        return;
+    }
+    window = v9x_mtrr_window(v9x_map_physical_base, v9x_vbe_vram_bytes);
+    if (v9x_mtrr_wc_present(state, v9x_map_physical_base, window)) {
+        v9x_write_ini_key("MtrrWrite", "present");
+        return;
+    }
+    if (plan->reason != V9X_MTRR_OK) {
+        v9x_write_ini_key("MtrrWrite", "refused");
+        return;
+    }
+    if (OpenFile(V9X_DIAG_NOWC_TXT, &marker, OF_EXIST) != HFILE_ERROR) {
+        v9x_write_ini_key("MtrrWrite", "off-marker");
+        return;
+    }
+
+    mask = v9x_mtrr_physmask(plan->size);
+    written = V9xMiniMtrrWrite(plan->slot, plan->base | V9X_MTRR_TYPE_WC,
+                               mask);
+
+    /* ok or the mini-VDD's reason, then the pair as read back. */
+    if (written != 0u) {
+        text[at++] = 'o'; text[at++] = 'k';
+    } else {
+        text[at++] = 'w'; text[at++] = 'h'; text[at++] = 'y';
+        text[at++] = '=';
+        at = v9x_append_decimal(text, at, v9x_minivdd_mtrr_why);
+    }
+    text[at++] = ' '; text[at++] = 's'; text[at++] = '=';
+    at = v9x_append_decimal(text, at, plan->slot);
+    text[at++] = ' '; text[at++] = 'b'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, v9x_minivdd_mtrr_base);
+    text[at++] = ' '; text[at++] = 'm'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, v9x_minivdd_mtrr_mask);
+    text[at] = '\0';
+    v9x_write_ini_key("MtrrWrite", text);
+}
+
+/*
  * Record whether the framebuffer aperture could be made write-combining, and
  * what would be written if it were.
  *
- * Nothing is written. This is Stage A of docs\plans\tier0-quality.md: the
- * mini-VDD reads the memory-type registers, the host-tested policy in
- * src\common\mtrr.c decides from them, and the answer goes in the boot INI so
- * that what the rules conclude on every machine this project can reach is
- * known before any of them acts. An MTRR is global CPU state and a wrong range
- * corrupts memory that has nothing to do with this driver, so the evidence
- * comes first.
+ * This is Stage A of docs\plans\tier0-quality.md: the mini-VDD reads the
+ * memory-type registers, the host-tested policy in src\common\mtrr.c decides
+ * from them, and the answer goes in the boot INI so that what the rules
+ * conclude on every machine this project can reach is known before any of
+ * them acts. An MTRR is global CPU state and a wrong range corrupts memory
+ * that has nothing to do with this driver, so the evidence comes first. Only
+ * a chip that opts in goes on to Stage B's write (v9x_mtrr_install).
  *
  * The aperture handed to the policy is the one the driver actually mapped and
  * draws through, not the BIOS's claim about some mode: v9x_map_physical_base
@@ -709,6 +776,8 @@ static void v9x_mtrr_trace(void)
         text[at] = '\0';
         WritePrivateProfileString("Velocity9x", key, text, V9X_DIAG_BOOT_INI);
     }
+
+    v9x_mtrr_install(&state, &plan);
 }
 
 /*
@@ -1190,7 +1259,8 @@ WORD FAR PASCAL V9xHardwareEnable(void)
         v9x_apply_measured_video_memory();
         /* After the mapping, and only on success: the aperture handed to the
          * write-combining policy has to be the one the driver actually draws
-         * through, which is not known until here. Diagnostic only. */
+         * through, which is not known until here. Written only for a chip
+         * that opts in (v9x_mtrr_install). */
         v9x_mtrr_trace();
     }
     return mapped;

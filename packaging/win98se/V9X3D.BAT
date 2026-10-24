@@ -149,9 +149,13 @@ ECHO IntelRuntime3D=0>>%V9XARMFILE%
 ECHO IntelFlip=0>>%V9XARMFILE%
 ECHO IntelAsyncSubmit=0>>%V9XARMFILE%
 IF NOT EXIST %V9XARMFILE% GOTO FAILED
+REM And no write-combining MTRR (docs\plans\write-combining-stage-b.md,
+REM decision 1): the driver reads this file's existence, nothing in it.
+ECHO OFF>C:\V9XDIAG\NOWC.TXT
 ECHO Runtime Direct3D and the Intel flip are now REFUSED. The driver will
 ECHO map the engine's windows, write no ring register, claim no Direct3D
-ECHO capability and decline every Flip.
+ECHO capability and decline every Flip, and will not write-combine the
+ECHO frame buffer (delete C:\V9XDIAG\NOWC.TXT to allow it again).
 ECHO.
 ECHO Cold boot on AC power. If the machine still hangs, the cause is not the
 ECHO runtime 3D path and RECOVER.TXT describes how to remove the driver.

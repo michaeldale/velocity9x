@@ -96,6 +96,31 @@ static v9x_u16 v9x_mtrr_range_overlaps(const struct v9x_mtrr_state *state,
     return V9X_FALSE;
 }
 
+v9x_u16 v9x_mtrr_wc_present(const struct v9x_mtrr_state *state,
+                            v9x_u32 base, v9x_u32 size)
+{
+    v9x_u32 mask = v9x_mtrr_physmask(size);
+    v9x_u16 count;
+    v9x_u16 index;
+
+    if (state == 0 || mask == 0ul) {
+        return V9X_FALSE;
+    }
+    count = state->range_count > V9X_MTRR_RANGE_MAX
+                ? V9X_MTRR_RANGE_MAX : state->range_count;
+    for (index = 0u; index < count; ++index) {
+        if ((state->high_bits & (v9x_u16)(1u << index)) != 0u) {
+            continue;
+        }
+        if (state->base[index] == (base | V9X_MTRR_TYPE_WC) &&
+            (state->mask[index] & (V9X_MTRR_ADDR_MASK |
+                                   V9X_MTRR_PHYSMASK_VALID)) == mask) {
+            return V9X_TRUE;
+        }
+    }
+    return V9X_FALSE;
+}
+
 v9x_u16 v9x_mtrr_plan_wc(const struct v9x_mtrr_state *state,
                          v9x_u32 aperture_base,
                          v9x_u32 aperture_bytes,

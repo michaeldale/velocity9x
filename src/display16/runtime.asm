@@ -66,7 +66,8 @@ EXTRN _v9x_minivdd_cached:WORD
 EXTRN _v9x_minivdd_probed:WORD
 EXTRN _v9x_minivdd_status:WORD
 ; The memory-type registers the mini-VDD read at init. Diagnostic in this
-; build; nothing here writes an MTRR. See include\velocity9x\mtrr.h.
+; build; V9xMiniMtrrWrite below asks the mini-VDD for Stage B's one write,
+; for a chip that opts in. See include\velocity9x\mtrr.h.
 EXTRN _v9x_minivdd_mtrr_flags:WORD
 EXTRN _v9x_minivdd_mtrr_count:WORD
 EXTRN _v9x_minivdd_mtrr_cap:DWORD
@@ -74,6 +75,7 @@ EXTRN _v9x_minivdd_mtrr_deftype:DWORD
 EXTRN _v9x_minivdd_mtrr_base:DWORD
 EXTRN _v9x_minivdd_mtrr_mask:DWORD
 EXTRN _v9x_minivdd_mtrr_high:WORD
+EXTRN _v9x_minivdd_mtrr_why:WORD
 ; One 16-byte EDID chunk, as the four dwords the API hands back.
 EXTRN _v9x_minivdd_edid0:DWORD
 EXTRN _v9x_minivdd_edid1:DWORD
@@ -986,11 +988,10 @@ V9XMINIVBESTATUS ENDP
 ; What the CPU admits to and what the two global memory-type registers hold.
 ; Returns 1 and fills the globals, or 0 when there is no usable API.
 ;
-; Diagnostic in this build. The registers say whether the framebuffer aperture
-; is uncached and whether a write-combining range could be installed over it;
-; the rules that read them are host-tested C in src\common\mtrr.c, and nothing
-; in this driver or the mini-VDD writes an MTRR yet. See
-; docs\plans\tier0-quality.md.
+; The registers say whether the framebuffer aperture is uncached and whether
+; a write-combining range could be installed over it; the rules that read
+; them are host-tested C in src\common\mtrr.c. See
+; docs\plans\write-combining-stage-b.md for the one write that follows.
 PUBLIC V9XMINIMTRRINFO
 V9XMINIMTRRINFO PROC FAR
     push    bx
@@ -1073,6 +1074,55 @@ V9xMiniMtrrRangeDone:
     pop     bp
     retf    2
 V9XMINIMTRRRANGE ENDP
+
+; WORD FAR PASCAL V9xMiniMtrrWrite(WORD index, DWORD base, DWORD mask)
+;
+; Stage B's one write: the pair the C policy planned, base and mask as
+; PHYSBASEn/PHYSMASKn low halves (docs\plans\write-combining-stage-b.md).
+; Returns 1 when written and read back equal, else 0. Either way the pair as
+; read back is left in _v9x_minivdd_mtrr_base/_mask and the reason in
+; _v9x_minivdd_mtrr_why (V9XMINI_FN_MTRR_WRITE in V9XMAPI.INC); with no API
+; at all the reason is 0FFFFh.
+PUBLIC V9XMINIMTRRWRITE
+V9XMINIMTRRWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    mov     _v9x_minivdd_mtrr_why, 0FFFFh
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniMtrrWriteFailed
+
+    movzx   ecx, word ptr [bp+14]       ; the pair index
+    mov     ebx, dword ptr [bp+10]      ; PHYSBASE low half
+    mov     edx, dword ptr [bp+6]       ; PHYSMASK low half
+    mov     eax, V9XMINI_FN_MTRR_WRITE
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_minivdd_mtrr_base, ebx
+    mov     _v9x_minivdd_mtrr_mask, ecx
+    mov     _v9x_minivdd_mtrr_why, dx
+    or      ax, ax
+    jz      short V9xMiniMtrrWriteFailed
+    mov     ax, 1
+    jmp     short V9xMiniMtrrWriteDone
+V9xMiniMtrrWriteFailed:
+    xor     ax, ax
+V9xMiniMtrrWriteDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    10
+V9XMINIMTRRWRITE ENDP
 
 IFDEF V9X_INTEL_GMA_FAMILY
 ; WORD FAR PASCAL V9xMiniI9xxCapture(DWORD bar0)

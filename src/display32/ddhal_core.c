@@ -1375,6 +1375,9 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
 DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_UNLOCK, 0ul);
+    /* The CPU's writes to the surface out of the write-combining buffers
+     * before the engine can be told to read it. */
+    v9x_wc_drain();
     V9X_DP2_RING_EVENT(V9X_DP2R_UNLOCK, data != 0 ? data->lpDDSurface : 0ul, 0ul);
     if (v9x_lock_held_started != 0ul) {
         V9X_TIME_END(V9X_TIME_LOCK_HELD, v9x_lock_held_started);

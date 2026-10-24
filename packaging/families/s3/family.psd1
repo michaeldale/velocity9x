@@ -415,6 +415,11 @@
         # table at column 35 - keep it inside 38 characters (see the 73-column
         # wrap at build-floppy-package.ps1:75).
         HardwareIdHint = 'PCI 5333 ViRGE/DX or Trio, VLB by hand'
+        # Installed files that ride a third disk, as ATI's and Matrox's do:
+        # disk 1 went 506 bytes over when the 16-bit driver gained the
+        # write-combining MTRR write (Michael, 2026-10-24: third S3 disk).
+        # The update checker, which nothing needs to boot or draw.
+        ThirdDisk = @('V9XUPD.EXE')
     }
 
     Vm = @{

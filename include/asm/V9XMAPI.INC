@@ -167,6 +167,34 @@ V9XMINI_FN_EDID_CHUNK EQU 0006h
 V9XMINI_FN_MTRR_INFO  EQU 0007h
 V9XMINI_FN_MTRR_RANGE EQU 0008h
 
+; Stage B: install one write-combining pair the C policy planned
+; (docs\plans\write-combining-stage-b.md). Ring 0 still decides nothing of
+; where or how large; it refuses only what it can check without
+; interpreting - and every refusal leaves the MSRs untouched.
+;
+;   MTRR_WRITE  in:  CX  = pair index
+;                    EBX = PHYSBASEn low half: the range's base with type WC
+;                          (01h) in bits 7:0, bits 11:8 clear
+;                    EDX = PHYSMASKn low half: the mask with the valid bit
+;                          (800h), bits 10:0 otherwise clear
+;               out: AX=1 when written and read back equal; 0 when refused
+;                    EBX = PHYSBASEn low half as read back (or as found)
+;                    ECX = PHYSMASKn low half as read back (or as found)
+;                    EDX = why, V9X_MTRR_WRITE_*: 0 written, 1 no MSR or
+;                          MTRR, 2 index beyond the pairs read, 3 the pair
+;                          is valid already, 4 not a WC base or a valid
+;                          mask, 5 MTRRs off or the default not UC, 6 read
+;                          back differs
+;
+; The high half of PHYSMASKn is the mask's bits above 4 GiB, set from the
+; CPU's physical address width (CPUID 80000008h, else 36 bits with PAE or
+; PSE-36, else 32) so the range does not repeat above 4 GiB. The sequence
+; is the SDM's (vol. 3, 11.11.7.2), uniprocessor: interrupts off, CR0.CD
+; on, WBINVD, CR4.PGE off (or CR3 reloaded), DEF_TYPE.E off, the pair,
+; DEF_TYPE restored, WBINVD and CR3, CR0 and CR4 restored. The cached
+; pair MTRR_RANGE reports is replaced by the read-back.
+V9XMINI_FN_MTRR_WRITE EQU 0025h
+
 ; v3: Intel builds alone capture a fixed, read-only MMIO allowlist.
 ; I9XX_CAPTURE in: EBX = current PCI BAR0 physical base; out AX=1 on success.
 ; I9XX_DWORD in: CX = index; out EBX=first, ECX=second, EDX=offset,

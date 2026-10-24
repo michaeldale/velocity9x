@@ -1,7 +1,12 @@
 # Write-combining the aperture, Stage B: write one MTRR, on two machines
 
-Date: 2026-10-01. Status: proposed, not started. No code is written and
-no MSR has been written by this driver. Two decisions below are Michael's.
+Date: 2026-10-01. Status (2026-10-24): the write, the drain and the kill
+switch are implemented, but the first device to opt in is the Rage 128 on
+A8U4I5, not the netbook. Decision 1 is B; decision 2 became "Rage 128
+first". Measured in
+[`../decisions/2026-10-24-rage128-write-combining.md`](../decisions/2026-10-24-rage128-write-combining.md).
+The write runs from the 16-bit driver through the mini-VDD's PM API, not
+at `Device_Init`. Phases 3 and 4 below (netbook, Gateway) are not started.
 Stage A: [`../decisions/2026-08-28-mtrr-stage-a-inspect-only.md`](../decisions/2026-08-28-mtrr-stage-a-inspect-only.md)
 
 ## Why now

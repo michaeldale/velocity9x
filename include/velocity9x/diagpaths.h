@@ -51,6 +51,14 @@
  */
 #define V9X_DIAG_INTELARM_TXT V9X_DIAG_PATH("INTELARM.TXT") /* intel_boot16.c, intel_exec16.c */
 #define V9X_DIAG_INTEL3D0_TXT V9X_DIAG_PATH("INTEL3D0.TXT") /* intel_3d16.c */
+/*
+ * Write-combining's recovery switch: present, with any content, it stops
+ * the MTRR write (Stage B, docs\plans\write-combining-stage-b.md decision
+ * 1, option B). Written from DOS by V9X3D OFF or by RECOVER.TXT's one
+ * line; nothing in the driver writes it. Here for the reason INTELARM.TXT
+ * is: the driver reads this directory at every load and never SYSTEM.INI.
+ */
+#define V9X_DIAG_NOWC_TXT    V9X_DIAG_PATH("NOWC.TXT")      /* enable16.c */
 
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */

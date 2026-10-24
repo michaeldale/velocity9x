@@ -113,6 +113,15 @@ const V9X_HW16_DEVICE v9x_rage128_device = {
     v9x_rage128_fill_engine,
     0u,
     0u,
-    0ul,
-    v9x_rage128_ring_bus
+    /* The card's whole 32 MiB, not the family's 16: the first of the two
+     * 32 MiB views in BAR0's 64 MiB window (the second is for big-endian
+     * hosts, src\display32\engines\eng_r128.c). Half the memory was
+     * unusable, and 1024x1024 textures did not fit beside the flip chain
+     * (docs\plans\rage128-dispbench-review.md). */
+    0x02000000ul,
+    v9x_rage128_ring_bus,
+    /* Write-combined: the CPU wrote this frame buffer at 49.9 MB/s uncached
+     * against 242 under ATI's driver, which runs it write-combined on the
+     * same 440BX (dispbench FbWrite, A8U4I5, 2026-10-24). */
+    1u
 };
