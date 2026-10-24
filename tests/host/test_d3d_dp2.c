@@ -456,6 +456,21 @@ unsigned int v9x_run_d3d_dp2_tests(void)
               out[6] == 0x20ul && out[7] == 0x21ul);
         v9x_dp2_fvf_convert_set(&f, 0ul, (const v9x_u8 *)in, (v9x_u8 *)out);
         CHECK(out[6] == 0x10ul && out[7] == 0x11ul);
+        /* The same vertex one byte off a dword boundary converts the same:
+         * the dword copy is for aligned vertices only. */
+        {
+            v9x_u8 shifted[64];
+            v9x_u32 aligned_out[8];
+
+            memcpy(shifted + 1, in, 36u);
+            memset(out, 0, 32u);
+            v9x_dp2_fvf_convert_set(&f, 1ul, shifted + 1,
+                                    (v9x_u8 *)aligned_out);
+            CHECK(aligned_out[0] == 1ul && aligned_out[3] == 4ul &&
+                  aligned_out[4] == 0x11223344ul &&
+                  aligned_out[5] == 0xff000000ul &&
+                  aligned_out[6] == 0x20ul && aligned_out[7] == 0x21ul);
+        }
         /* An index past the vertex's sets reads set 0, not past the
          * vertex. */
         v9x_dp2_fvf_convert_set(&f, 5ul, (const v9x_u8 *)in, (v9x_u8 *)out);

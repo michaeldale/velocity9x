@@ -621,6 +621,31 @@ void v9x_dp2_fvf_convert_set(const V9X_DP2_FVF *layout, v9x_u32 set,
         tex = layout->tex[0];
         floats = layout->tex_floats[0];
     }
+    /*
+     * Both on a dword boundary - every vertex buffer the runtime hands
+     * over, its strides being whole dwords - a dword at a time: built a
+     * byte at a time, this was over half the HAL's time in DB3D's
+     * TriBatch at DDI 6 (A8U4I5, 2026-10-24). Every layout offset is a
+     * whole number of dwords (v9x_dp2_fvf_layout), so no field straddles.
+     */
+    if (((unsigned long)source & 3ul) == 0ul &&
+        ((unsigned long)tlvertex & 3ul) == 0ul) {
+        const v9x_u32 *from = (const v9x_u32 *)source;
+        v9x_u32 *to = (v9x_u32 *)tlvertex;
+
+        to[0] = from[0];
+        to[1] = from[1];
+        to[2] = from[2];
+        to[3] = from[3];
+        to[4] = layout->diffuse != V9X_DP2_FVF_ABSENT
+                    ? from[layout->diffuse / 4ul] : 0xfffffffful;
+        to[5] = layout->specular != V9X_DP2_FVF_ABSENT
+                    ? from[layout->specular / 4ul] : 0xff000000ul;
+        to[6] = tex != V9X_DP2_FVF_ABSENT ? from[tex / 4ul] : 0ul;
+        to[7] = tex != V9X_DP2_FVF_ABSENT && floats >= 2ul
+                    ? from[tex / 4ul + 1ul] : 0ul;
+        return;
+    }
     for (i = 0ul; i < 16ul; ++i) {
         tlvertex[i] = source[i];
     }
