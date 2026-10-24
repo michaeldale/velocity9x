@@ -221,6 +221,15 @@ static void v9x_r128_cce_choose_transport(void)
     DWORD bytes = V9X_R128_RING_BYTES;
 
     v9x_r128_cce_transport = V9X_R128_CCE_PIO;
+    /* Parked: with the ring, 3DMark 2001 SE read its own data files back
+     * corrupt on A8U4I5, both runs of a pair, and with PIO it did not
+     * (boots 605 and 606). The mechanism is not known; the GART pages
+     * behind the ring are the suspect
+     * (docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). The ring
+     * code stays for the investigation. */
+    if (v9x_r128_cce_transport == V9X_R128_CCE_PIO) {
+        return;
+    }
     if (linear == 0ul || reserved < bytes ||
         v9x_hal->engine.reserve_offset == 0ul) {
         return;
@@ -602,14 +611,20 @@ int v9x_r128_cce_vertex_space(DWORD bytes, volatile DWORD **linear,
 }
 
 /* Only on the ring, once this boot has chosen it, and while the engine is
- * still trusted: PIO flips keep the drain and the direct write. */
+ * still trusted: PIO flips keep the drain and the direct write. Only while
+ * the CCE runs, too: a stopped CCE has nothing in flight for the flip to
+ * go behind, and queuing it would start the microengine and leave it
+ * free-running after a program's last flip - DirectDraw's flip back to the
+ * GDI surface at exit, ahead of the mode set
+ * (docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). */
 int v9x_r128_cce_flip_queues(void)
 {
     if (v9x_hal == 0 ||
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul) {
         return 0;
     }
-    return v9x_r128_cce_transport == V9X_R128_CCE_RING;
+    return v9x_r128_cce_transport == V9X_R128_CCE_RING &&
+        v9x_r128_cce_running;
 }
 
 /*

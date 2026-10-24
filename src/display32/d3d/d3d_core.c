@@ -2017,11 +2017,32 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * Everything submitted finished, and the engine left as a 2D caller would
+ * find it, before a context goes. The Rage 128's CCE otherwise stays
+ * free-running after the program's last batch until the next drain, and
+ * the runtime's next step at exit is often a mode set from the 16-bit
+ * side, which never drains it: a mode set against a free-running
+ * microengine hung A8U4I5 (boot 532), and a second 3D program after the
+ * first hung it again (boot 602,
+ * docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). A wait that runs
+ * out is the drain's own timeout handling; the context goes regardless.
+ */
+static void v9x_d3d_context_drain(void)
+{
+    int drained = v9x_render_drain(1);
+
+    while (drained == V9X_RENDER_DRAIN_BUSY) {
+        drained = v9x_render_drain(1);
+    }
+}
+
 DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
 {
     V9X_D3D_CONTEXT *context;
 
     v9x_d3d_dp2_flush_pending();
+    v9x_d3d_context_drain();
     v9x_d3d_dp2_forget_probes();
     V9X_DP2_RING_EVENT(V9X_DP2R_CONTEXT_DESTROY,
                        data != 0 ? data->dwhContext : 0ul, 0ul);
@@ -2110,6 +2131,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
     DWORD index;
 
     v9x_d3d_dp2_flush_pending();
+    v9x_d3d_context_drain();
     v9x_d3d_dp2_forget_probes();
     V9X_DP2_RING_EVENT(V9X_DP2R_CONTEXT_DESTROY, 0ul, 1ul);
     v9x_dp2_ring_flush();

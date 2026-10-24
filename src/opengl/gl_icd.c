@@ -4091,6 +4091,8 @@ V9X_DHGLRC __stdcall DrvCreateLayerContext(HDC hdc, INT layer)
 
 BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
 {
+    const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_CONTEXT *context;
     BOOL ok = FALSE;
 
@@ -4102,6 +4104,13 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
         (context->owner == 0ul || context->owner == GetCurrentThreadId())) {
         if (context->owner == GetCurrentThreadId()) {
             v9x_gl_pending_flush(context);
+        }
+        /* The engine drained and stopped before the context goes, as the
+         * HAL does for a Direct3D context: the Rage 128's CCE otherwise
+         * stays free-running into whatever the program does next
+         * (docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). */
+        if (iface != 0 && description != 0) {
+            (void)iface->finish(description->generation);
         }
         context->pending.triangles = 0ul;
         if (v9x_gl_current() == context) {

@@ -113,11 +113,10 @@ const V9X_HW16_DEVICE v9x_rage128_device = {
     v9x_rage128_fill_engine,
     0u,
     0u,
-    /* The family's 16 MiB, not the card's whole 32. Mapping all 32 MiB
-     * made 3DMark 2001 SE report its data files corrupt on A8U4I5, and hung
-     * the machine with the heap still held to 16 MiB, so it is the mapping,
-     * not what was drawn above 16 MiB; the mechanism is not known
-     * (docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). */
+    /* The family's 16 MiB, not the card's whole 32. The 32 MiB map was
+     * blamed for 3DMark 2001 SE's corrupt data files on A8U4I5, wrongly:
+     * the AGP ring was the difference, and it is parked. 32 MiB has not
+     * been run since (docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). */
     0ul,
     v9x_rage128_ring_bus,
     /* Write-combined: the CPU wrote this frame buffer at 49.9 MB/s uncached
