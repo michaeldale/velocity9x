@@ -38,6 +38,10 @@
  *      indexed strip and an indexed list over 260 vertices - each under
  *      no culling, CW and CCW, with a clockwise and a counter-clockwise
  *      quad: present where Direct3D keeps it, absent where it culls.
+ *   T12 two texture stages through a DirectX 6 device: a quadrant texture
+ *      on stage 0 and a lightmap on stage 1 with its own coordinates,
+ *      MODULATE and ADD, each quadrant against its expected colour; skipped
+ *      when the device's caps offer one stage.
  *
  * T9 and each T11 form also record which path drew them, from the HAL's
  * own counters read through the V9X_DDGETTRACE escape before and after:
@@ -641,7 +645,8 @@ static void d32_path_read(D32_PATH *path)
 }
 
 /*
- * What happened between two reads, as <prefix>Path=: "engine-indexed"
+ * What happened between two reads, as <prefix>Path=: "engine-two-unit"
+ * when batches went on two texture units, "engine-indexed"
  * when the engine took indexed triangles whole, "core-list" when the core's
  * list builder had them, "none" when neither moved, "unknown" without the
  * escape; and the counts, with Dp2 saying the interface was DDI 6.
@@ -654,6 +659,8 @@ static void d32_path_write(const char *prefix, const D32_PATH *before,
 
     if (!before->ok || !after->ok) {
         path = "unknown";
+    } else if (after->two_unit != before->two_unit) {
+        path = "engine-two-unit";
     } else if (after->indexed_engine != before->indexed_engine) {
         path = "engine-indexed";
     } else if (after->core_list != before->core_list) {
@@ -671,6 +678,8 @@ static void d32_path_write(const char *prefix, const D32_PATH *before,
     d32_hx(key, after->core_list - before->core_list);
     wsprintfA(key, "%sCoreCulled", prefix);
     d32_hx(key, after->core_culled - before->core_culled);
+    wsprintfA(key, "%sTwoUnit", prefix);
+    d32_hx(key, after->two_unit - before->two_unit);
 }
 
 static HRESULT d32_fill(D32_OBJECT *surface, DWORD flags, DWORD value)
@@ -868,19 +877,20 @@ static void d32_zstats(D32_OBJECT *zbuffer, DWORD zbits, const char *prefix)
     ((d32_unlock_fn)zbuffer->vtbl[DDS_UNLOCK])(zbuffer, desc.lpSurface);
 }
 
-static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
-                         D32_OBJECT **surface_out)
+/* An 8x8 ARGB1555 texture in video memory, its four 4x4 quadrants the
+ * given texels (top left, top right, bottom left, bottom right); null when
+ * it could not be made. <prefix>CreateHr and LockHr are recorded. */
+static D32_OBJECT *d32_texture_surface(D32_OBJECT *ddraw,
+                                       const WORD quadrant[4],
+                                       const char *prefix)
 {
-    static const WORD quadrant[4] = { 0xfc00u, 0x83e0u, 0x801fu, 0xffffu };
     D32_SURFACE_DESC desc;
     D32_OBJECT *surface = 0;
-    D32_OBJECT *texture = 0;
-    DWORD handle = 0ul;
     DWORD x;
     DWORD y;
     HRESULT hr;
+    char key[32];
 
-    *surface_out = 0;
     d32_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
     desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
@@ -896,18 +906,20 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
     desc.ddsCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
     hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
         ddraw, &desc, &surface, 0);
-    d32_hx("T6CreateHr", (DWORD)hr);
+    wsprintfA(key, "%sCreateHr", prefix);
+    d32_hx(key, (DWORD)hr);
     if (hr != 0 || surface == 0) {
-        return 0ul;
+        return 0;
     }
-    *surface_out = surface;
     d32_zero(&desc, sizeof(desc));
     desc.dwSize = sizeof(desc);
     hr = ((d32_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
                                                 DDLOCK_WAIT, 0);
-    d32_hx("T6LockHr", (DWORD)hr);
+    wsprintfA(key, "%sLockHr", prefix);
+    d32_hx(key, (DWORD)hr);
     if (hr != 0 || desc.lpSurface == 0) {
-        return 0ul;
+        ((d32_release_fn)surface->vtbl[COM_RELEASE])(surface);
+        return 0;
     }
     for (y = 0ul; y < 8ul; ++y) {
         WORD *row = (WORD *)((BYTE *)desc.lpSurface +
@@ -917,6 +929,26 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
         }
     }
     ((d32_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    return surface;
+}
+
+/* T6's texture: red, green, blue and white quadrants, and its DX5 handle
+ * for device. */
+static const WORD d32_quadrants[4] = { 0xfc00u, 0x83e0u, 0x801fu, 0xffffu };
+
+static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
+                         D32_OBJECT **surface_out)
+{
+    D32_OBJECT *surface;
+    D32_OBJECT *texture = 0;
+    DWORD handle = 0ul;
+    HRESULT hr;
+
+    surface = d32_texture_surface(ddraw, d32_quadrants, "T6");
+    *surface_out = surface;
+    if (surface == 0) {
+        return 0ul;
+    }
     hr = ((d32_query_fn)surface->vtbl[COM_QUERY_INTERFACE])(
         surface, &d32_iid_d3d_texture2, (void **)&texture);
     if (hr == 0 && texture != 0) {
@@ -1140,6 +1172,364 @@ static DWORD d32_cull_matrix(D32_OBJECT *device, D32_OBJECT *back)
         failures += ok != 0x3ful ? 1ul : 0ul;
     }
     ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
+    return failures;
+}
+
+/*
+ * T12, two texture stages through a DirectX 6 device (IDirect3D3,
+ * IDirect3DDevice3; slots from d3d.h's declaration order), on the same
+ * back buffer through its DirectDrawSurface4 interface. T6's quadrant
+ * texture on stage 0, SELECTARG1; on stage 1 a lightmap - dark grey on
+ * the left, mid grey on the right - with its own coordinate set, MODULATE
+ * over one 64x64 quad and ADD over another. ValidateDevice is recorded;
+ * a device that does not take two stages in one pass is recorded as
+ * skipped, not failed, since the application then draws its own passes.
+ * One that does, and whose HAL counters say no batch went on two units,
+ * fails as not exercised: the colours could have come from anywhere.
+ */
+#define D3D3_CREATE_VIEWPORT 6
+#define D3D3_CREATE_DEVICE 8
+#define D3DDEV3_GET_CAPS 3
+/* DirectX 6's D3DDEVICEDESC is 252 bytes; its last DWORD holds
+ * wMaxTextureBlendStages (low) and wMaxSimultaneousTextures (high). */
+#define D3DDESC_DX6_DWORDS 63
+#define D3DDESC_STAGES 62
+#define D3DDEV3_ADD_VIEWPORT 5
+#define D3DDEV3_BEGIN_SCENE 9
+#define D3DDEV3_END_SCENE 10
+#define D3DDEV3_SET_CURRENT_VIEWPORT 12
+#define D3DDEV3_SET_RENDER_STATE 22
+#define D3DDEV3_DRAW_PRIMITIVE 28
+#define D3DDEV3_SET_TEXTURE 38
+#define D3DDEV3_SET_TEXTURE_STAGE_STATE 40
+#define D3DDEV3_VALIDATE_DEVICE 41
+/* XYZRHW | DIFFUSE | SPECULAR | TEX2. */
+#define D32_FVF_TL2 0x000002c4ul
+#define D32_TSS_COLOROP 1ul
+#define D32_TSS_COLORARG1 2ul
+#define D32_TSS_COLORARG2 3ul
+#define D32_TSS_ALPHAOP 4ul
+#define D32_TSS_ALPHAARG1 5ul
+#define D32_TSS_ALPHAARG2 6ul
+#define D32_TSS_TEXCOORDINDEX 11ul
+#define D32_TSS_MAGFILTER 16ul
+#define D32_TSS_MINFILTER 17ul
+#define D32_TSS_MIPFILTER 18ul
+#define D32_TOP_DISABLE 1ul
+#define D32_TOP_SELECTARG1 2ul
+#define D32_TOP_SELECTARG2 3ul
+#define D32_TOP_MODULATE 4ul
+#define D32_TOP_ADD 7ul
+#define D32_TA_CURRENT 1ul
+#define D32_TA_TEXTURE 2ul
+#define D32_TFG_POINT 1ul
+#define D32_TFP_NONE 1ul
+
+typedef struct d32_tl2vertex {
+    float sx;
+    float sy;
+    float sz;
+    float rhw;
+    DWORD color;
+    DWORD specular;
+    float tu0;
+    float tv0;
+    float tu1;
+    float tv1;
+} D32_TL2VERTEX;
+
+typedef HRESULT (WINAPI *d32_create_device3_fn)(D32_OBJECT *, const GUID *,
+                                                D32_OBJECT *, D32_OBJECT **,
+                                                void *);
+typedef HRESULT (WINAPI *d32_set_texture_fn)(D32_OBJECT *, DWORD,
+                                             D32_OBJECT *);
+typedef HRESULT (WINAPI *d32_stage_state_fn)(D32_OBJECT *, DWORD, DWORD,
+                                             DWORD);
+typedef HRESULT (WINAPI *d32_validate_fn)(D32_OBJECT *, DWORD *);
+typedef HRESULT (WINAPI *d32_caps3_fn)(D32_OBJECT *, DWORD *, DWORD *);
+
+static const GUID d32_iid_d3d3 = {
+    0xbb223240ul, 0xe72b, 0x11d0,
+    { 0xa9, 0xb4, 0x00, 0xaa, 0x00, 0xc0, 0x99, 0x3e }
+};
+
+static const GUID d32_iid_surface4 = {
+    0x0b2b8630ul, 0xad35, 0x11d0,
+    { 0x8e, 0xa6, 0x00, 0x60, 0x97, 0x97, 0xea, 0x5b }
+};
+
+/* The lightmap: 8 of 31 on the left, 16 of 31 on the right, opaque. */
+static const WORD d32_lightmap[4] = { 0xa108u, 0xc210u, 0xa108u, 0xc210u };
+
+static void d32_tss(D32_OBJECT *device, DWORD stage, DWORD state,
+                    DWORD value)
+{
+    ((d32_stage_state_fn)device->vtbl[D3DDEV3_SET_TEXTURE_STAGE_STATE])(
+        device, stage, state, value);
+}
+
+/* A 64x64 quad at (x, y), both coordinate sets 0 to 1 across it. */
+static HRESULT d32_draw_two_set_quad(D32_OBJECT *device, float x, float y)
+{
+    static const float corners[6][2] = {
+        { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f },
+        { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f }
+    };
+    D32_TL2VERTEX v[6];
+    DWORD i;
+    HRESULT hr;
+    HRESULT draw_hr;
+
+    for (i = 0ul; i < 6ul; ++i) {
+        v[i].sx = x + corners[i][0] * 64.0f;
+        v[i].sy = y + corners[i][1] * 64.0f;
+        v[i].sz = 0.5f;
+        v[i].rhw = 1.0f;
+        v[i].color = 0xfffffffful;
+        v[i].specular = 0xff000000ul;
+        v[i].tu0 = corners[i][0];
+        v[i].tv0 = corners[i][1];
+        v[i].tu1 = corners[i][0];
+        v[i].tv1 = corners[i][1];
+    }
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV3_BEGIN_SCENE])(device);
+    if (hr != 0) {
+        return hr;
+    }
+    draw_hr = ((d32_draw_fn)device->vtbl[D3DDEV3_DRAW_PRIMITIVE])(
+        device, D3DPT_TRIANGLELIST, D32_FVF_TL2, v, 6ul, 0ul);
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV3_END_SCENE])(device);
+    return draw_hr != 0 ? draw_hr : hr;
+}
+
+/* Each quadrant's centre of the quad at (x, y) against rgb[4], within
+ * tolerance: a bit a quadrant. */
+static DWORD d32_quadrants_near(const D32_SURFACE_DESC *desc, DWORD x,
+                                DWORD y, const DWORD rgb[4],
+                                const char *prefix)
+{
+    static const DWORD offsets[4][2] = {
+        { 16ul, 16ul }, { 48ul, 16ul }, { 16ul, 48ul }, { 48ul, 48ul }
+    };
+    DWORD point;
+    DWORD ok = 0ul;
+    char key[48];
+
+    for (point = 0ul; point < 4ul; ++point) {
+        DWORD pixel = d32_pixel(desc, x + offsets[point][0],
+                                y + offsets[point][1]);
+
+        wsprintfA(key, "%sPixel%lu", prefix, point);
+        d32_hx(key, pixel);
+        if (d32_near(pixel, rgb[point], 16ul)) {
+            ok |= 1ul << point;
+        }
+    }
+    return ok;
+}
+
+static DWORD d32_two_stage(D32_OBJECT *ddraw, D32_OBJECT *back,
+                           D32_OBJECT *base_surface)
+{
+    /* SELECTARG1 of the quadrants, then the lightmap: 0x42 on the left
+     * and 0x84 on the right, multiplied or added. */
+    static const DWORD modulated[4] = {
+        0x00420000ul, 0x00008400ul, 0x00000042ul, 0x00848484ul
+    };
+    static const DWORD added[4] = {
+        0x00ff4242ul, 0x0084ff84ul, 0x004242fful, 0x00fffffful
+    };
+    D32_OBJECT *d3d3 = 0;
+    D32_OBJECT *back4 = 0;
+    D32_OBJECT *device3 = 0;
+    D32_OBJECT *viewport3 = 0;
+    D32_OBJECT *lightmap = 0;
+    D32_OBJECT *texture0 = 0;
+    D32_OBJECT *texture1 = 0;
+    D32_VIEWPORT2 view;
+    D32_SURFACE_DESC desc;
+    D32_PATH before;
+    D32_PATH after;
+    DWORD hal_caps[D3DDESC_DX6_DWORDS];
+    DWORD hel_caps[D3DDESC_DX6_DWORDS];
+    DWORD passes = 0ul;
+    DWORD failures = 0ul;
+    DWORD ok;
+    HRESULT hr;
+
+    d32_line("Stage", "10b-t12-two-stages");
+    lightmap = d32_texture_surface(ddraw, d32_lightmap, "T12Lightmap");
+    hr = ((d32_query_fn)ddraw->vtbl[COM_QUERY_INTERFACE])(
+        ddraw, &d32_iid_d3d3, (void **)&d3d3);
+    d32_hx("T12D3D3Hr", (DWORD)hr);
+    if (hr == 0) {
+        hr = ((d32_query_fn)back->vtbl[COM_QUERY_INTERFACE])(
+            back, &d32_iid_surface4, (void **)&back4);
+        d32_hx("T12Surface4Hr", (DWORD)hr);
+    }
+    if (hr == 0) {
+        hr = ((d32_create_device3_fn)d3d3->vtbl[D3D3_CREATE_DEVICE])(
+            d3d3, &d32_iid_d3d_hal, back4, &device3, 0);
+        d32_hx("T12CreateDeviceHr", (DWORD)hr);
+    }
+    if (hr == 0) {
+        hr = ((d32_create_viewport_fn)d3d3->vtbl[D3D3_CREATE_VIEWPORT])(
+            d3d3, &viewport3, 0);
+    }
+    if (hr == 0) {
+        hr = ((d32_device_viewport_fn)device3->vtbl[D3DDEV3_ADD_VIEWPORT])(
+            device3, viewport3);
+    }
+    if (hr == 0) {
+        d32_zero(&view, sizeof(view));
+        view.dwSize = sizeof(view);
+        view.dwWidth = D32_WIDTH;
+        view.dwHeight = D32_HEIGHT;
+        view.dvClipX = -1.0f;
+        view.dvClipY = 1.0f;
+        view.dvClipWidth = 2.0f;
+        view.dvClipHeight = 2.0f;
+        view.dvMinZ = 0.0f;
+        view.dvMaxZ = 1.0f;
+        hr = ((d32_set_viewport2_fn)viewport3->vtbl[D3DVP2_SET_VIEWPORT2])(
+            viewport3, &view);
+    }
+    if (hr == 0) {
+        hr = ((d32_device_viewport_fn)
+                  device3->vtbl[D3DDEV3_SET_CURRENT_VIEWPORT])(device3,
+                                                               viewport3);
+    }
+    d32_hx("T12ViewportHr", (DWORD)hr);
+    if (hr == 0 && base_surface != 0 && lightmap != 0) {
+        hr = ((d32_query_fn)base_surface->vtbl[COM_QUERY_INTERFACE])(
+            base_surface, &d32_iid_d3d_texture2, (void **)&texture0);
+        if (hr == 0) {
+            hr = ((d32_query_fn)lightmap->vtbl[COM_QUERY_INTERFACE])(
+                lightmap, &d32_iid_d3d_texture2, (void **)&texture1);
+        }
+        d32_hx("T12TextureHr", (DWORD)hr);
+    } else if (hr == 0) {
+        hr = (HRESULT)0x80004005ul;
+    }
+    if (hr != 0) {
+        d32_line("T12Result", "NO-DEVICE3");
+        ++failures;
+        goto release;
+    }
+
+    ((d32_render_state_fn)device3->vtbl[D3DDEV3_SET_RENDER_STATE])(
+        device3, D3DRENDERSTATE_ZENABLE, 0ul);
+    ((d32_render_state_fn)device3->vtbl[D3DDEV3_SET_RENDER_STATE])(
+        device3, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    ((d32_render_state_fn)device3->vtbl[D3DDEV3_SET_RENDER_STATE])(
+        device3, D3DRENDERSTATE_DITHERENABLE, 0ul);
+    d32_hx("T12SetTexture0Hr",
+           (DWORD)((d32_set_texture_fn)device3->vtbl[D3DDEV3_SET_TEXTURE])(
+               device3, 0ul, texture0));
+    d32_hx("T12SetTexture1Hr",
+           (DWORD)((d32_set_texture_fn)device3->vtbl[D3DDEV3_SET_TEXTURE])(
+               device3, 1ul, texture1));
+    d32_tss(device3, 0ul, D32_TSS_COLOROP, D32_TOP_SELECTARG1);
+    d32_tss(device3, 0ul, D32_TSS_COLORARG1, D32_TA_TEXTURE);
+    d32_tss(device3, 0ul, D32_TSS_ALPHAOP, D32_TOP_SELECTARG1);
+    d32_tss(device3, 0ul, D32_TSS_ALPHAARG1, D32_TA_TEXTURE);
+    d32_tss(device3, 0ul, D32_TSS_TEXCOORDINDEX, 0ul);
+    d32_tss(device3, 0ul, D32_TSS_MAGFILTER, D32_TFG_POINT);
+    d32_tss(device3, 0ul, D32_TSS_MINFILTER, D32_TFG_POINT);
+    d32_tss(device3, 0ul, D32_TSS_MIPFILTER, D32_TFP_NONE);
+    d32_tss(device3, 1ul, D32_TSS_COLOROP, D32_TOP_MODULATE);
+    d32_tss(device3, 1ul, D32_TSS_COLORARG1, D32_TA_TEXTURE);
+    d32_tss(device3, 1ul, D32_TSS_COLORARG2, D32_TA_CURRENT);
+    d32_tss(device3, 1ul, D32_TSS_ALPHAOP, D32_TOP_SELECTARG2);
+    d32_tss(device3, 1ul, D32_TSS_ALPHAARG2, D32_TA_CURRENT);
+    d32_tss(device3, 1ul, D32_TSS_TEXCOORDINDEX, 1ul);
+    d32_tss(device3, 1ul, D32_TSS_MAGFILTER, D32_TFG_POINT);
+    d32_tss(device3, 1ul, D32_TSS_MINFILTER, D32_TFG_POINT);
+    d32_tss(device3, 1ul, D32_TSS_MIPFILTER, D32_TFP_NONE);
+    d32_tss(device3, 2ul, D32_TSS_COLOROP, D32_TOP_DISABLE);
+    hr = ((d32_validate_fn)device3->vtbl[D3DDEV3_VALIDATE_DEVICE])(device3,
+                                                                  &passes);
+    d32_hx("T12ValidateHr", (DWORD)hr);
+    d32_hx("T12ValidatePasses", passes);
+    /*
+     * The device's own stage counts decide, not ValidateDevice alone: at
+     * DDI 5 the DX6 runtime answered one pass for these two stages and
+     * then drew stage 0 only (A8U4I5, 2026-10-24), since a DX5 driver is
+     * never told of stage 1. An application that reads the caps sees one
+     * stage there and draws its own passes.
+     */
+    d32_zero(hal_caps, sizeof(hal_caps));
+    d32_zero(hel_caps, sizeof(hel_caps));
+    hal_caps[0] = sizeof(hal_caps);
+    hel_caps[0] = sizeof(hel_caps);
+    d32_hx("T12CapsHr",
+           (DWORD)((d32_caps3_fn)device3->vtbl[D3DDEV3_GET_CAPS])(
+               device3, hal_caps, hel_caps));
+    d32_hx("T12BlendStages", hal_caps[D3DDESC_STAGES] & 0xfffful);
+    d32_hx("T12SimultaneousTextures", hal_caps[D3DDESC_STAGES] >> 16);
+    if ((hal_caps[D3DDESC_STAGES] & 0xfffful) < 2ul ||
+        (hal_caps[D3DDESC_STAGES] >> 16) < 2ul) {
+        d32_line("T12Result", "SKIPPED-ONE-STAGE");
+        goto release;
+    }
+    if (hr != 0 || passes != 1ul) {
+        d32_line("T12Result", "SKIPPED-NOT-ONE-PASS");
+        goto release;
+    }
+
+    d32_hx("T12ClearHr", (DWORD)d32_fill(back, DDBLT_COLORFILL, 0ul));
+    d32_path_read(&before);
+    d32_hx("T12ModulateHr", (DWORD)d32_draw_two_set_quad(device3, 16.0f,
+                                                         16.0f));
+    d32_tss(device3, 1ul, D32_TSS_COLOROP, D32_TOP_ADD);
+    d32_hx("T12AddHr", (DWORD)d32_draw_two_set_quad(device3, 96.0f, 16.0f));
+    d32_path_read(&after);
+    d32_path_write("T12", &before, &after);
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)back->vtbl[DDS_LOCK])(back, 0, &desc, DDLOCK_WAIT, 0);
+    d32_hx("T12LockHr", (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        ++failures;
+        goto release;
+    }
+    ok = d32_quadrants_near(&desc, 16ul, 16ul, modulated, "T12Modulate") |
+         (d32_quadrants_near(&desc, 96ul, 16ul, added, "T12Add") << 4);
+    ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
+    d32_hx("T12Ok", ok);
+    failures += ok != 0xfful ? 1ul : 0ul;
+    /* One pass promised and the trace readable: a pass that never touched
+     * the second unit proves nothing about it. */
+    if (before.ok && after.ok && after.two_unit == before.two_unit) {
+        d32_line("T12Result", "NOT-EXERCISED");
+        ++failures;
+    } else {
+        d32_line("T12Result", ok == 0xfful ? "PASS" : "FAIL");
+    }
+
+release:
+    if (texture1 != 0) {
+        ((d32_release_fn)texture1->vtbl[COM_RELEASE])(texture1);
+    }
+    if (texture0 != 0) {
+        ((d32_release_fn)texture0->vtbl[COM_RELEASE])(texture0);
+    }
+    if (viewport3 != 0) {
+        ((d32_release_fn)viewport3->vtbl[COM_RELEASE])(viewport3);
+    }
+    if (device3 != 0) {
+        ((d32_release_fn)device3->vtbl[COM_RELEASE])(device3);
+    }
+    if (back4 != 0) {
+        ((d32_release_fn)back4->vtbl[COM_RELEASE])(back4);
+    }
+    if (d3d3 != 0) {
+        ((d32_release_fn)d3d3->vtbl[COM_RELEASE])(d3d3);
+    }
+    if (lightmap != 0) {
+        ((d32_release_fn)lightmap->vtbl[COM_RELEASE])(lightmap);
+    }
     return failures;
 }
 
@@ -1828,6 +2218,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
 
     d32_line("Stage", "11-release");
     ((d32_release_fn)device->vtbl[COM_RELEASE])(device);
+    /* T12 after the DX5 device is gone, on the same back buffer. */
+    failures += d32_two_stage(ddraw, back, texture_surface);
     if (offscreen != 0) {
         ((d32_release_fn)offscreen->vtbl[COM_RELEASE])(offscreen);
     }
