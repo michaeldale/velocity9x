@@ -165,6 +165,31 @@ static void command(v9x_u32 op, v9x_u32 count)
     put8(op); put8(0ul); put16(count);
 }
 
+/* The indexed-list sink: -1 leaves it unset, 0 declines, 1 takes. */
+static int indexed_take = -1;
+static v9x_u32 indexed_calls;
+static v9x_u32 indexed_base;
+static v9x_u32 indexed_triangles;
+static const v9x_u8 *indexed_first;
+static v9x_u16 indexed_words[6];
+
+static int on_indexed(void *user, const v9x_u8 *first, v9x_u32 base,
+                      const v9x_u8 *indices, v9x_u32 triangles)
+{
+    v9x_u32 i;
+
+    (void)user;
+    ++indexed_calls;
+    indexed_base = base;
+    indexed_first = first;
+    indexed_triangles = triangles;
+    for (i = 0ul; i < 6ul && i < triangles * 3ul; ++i) {
+        indexed_words[i] = (v9x_u16)(indices[i * 2ul] |
+                                     (indices[i * 2ul + 1ul] << 8));
+    }
+    return indexed_take;
+}
+
 static void walk(CAPTURE *c, V9X_DP2_RESULT *r)
 {
     V9X_DP2_STREAM s;
@@ -184,6 +209,7 @@ static void walk(CAPTURE *c, V9X_DP2_RESULT *r)
     k.record = 0;
     k.point = 0;
     k.line = 0;
+    k.indexed_list = indexed_take >= 0 ? on_indexed : 0;
     v9x_dp2_walk(&s, &k, r);
 }
 
@@ -261,6 +287,29 @@ unsigned int v9x_run_d3d_dp2_tests(void)
     walk(&c, &r);
     CHECK(r.status == V9X_DP2_OK && c.tri_count == 2ul);
     CHECK(tri_is(&c, 0, 4, 0, 15) && tri_is(&c, 1, 10, 11, 12));
+
+    /* An INDEXEDTRIANGLELIST2 the sink takes whole is not expanded: it is
+     * handed the start vertex, its pool address and the index words. One
+     * the sink declines is expanded triangle by triangle as before. */
+    memset(&c, 0, sizeof(c)); used = 0ul;
+    command(V9X_DP2OP_INDEXEDTRIANGLELIST2, 2ul);
+    put16(10ul); put16(0ul); put16(1ul); put16(2ul);
+    put16(2ul); put16(1ul); put16(3ul);
+    indexed_take = 1;
+    indexed_calls = 0ul;
+    walk(&c, &r);
+    CHECK(r.status == V9X_DP2_OK && r.triangles == 2ul);
+    CHECK(c.tri_count == 0ul && indexed_calls == 1ul);
+    CHECK(indexed_base == 10ul && indexed_triangles == 2ul);
+    CHECK(indexed_first == pool + 10ul * STRIDE);
+    CHECK(indexed_words[0] == 0u && indexed_words[3] == 2u &&
+          indexed_words[5] == 3u);
+    memset(&c, 0, sizeof(c));
+    indexed_take = 0;
+    walk(&c, &r);
+    CHECK(indexed_calls == 2ul && c.tri_count == 2ul);
+    CHECK(tri_is(&c, 0, 10, 11, 12) && tri_is(&c, 1, 12, 11, 13));
+    indexed_take = -1;
 
     /* A fan's inline vertices start at the next DWORD boundary. The record
      * here begins at offset 10, its edge flags end at 18, so two bytes of
@@ -446,7 +495,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = on_record;
-            k.point = 0; k.line = 0;
+            k.point = 0; k.line = 0; k.indexed_list = 0;
             records_seen = 0ul; record_bytes = 0ul;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && records_seen == 2ul &&
@@ -466,7 +515,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = 0;
-            k.point = 0; k.line = 0;
+            k.point = 0; k.line = 0; k.indexed_list = 0;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && r.triangles == 1ul);
             /* Vertices 1 to 3 need a pool of four. */
@@ -493,6 +542,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
         k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
         k.record = 0; k.point = on_point; k.line = on_line;
+        k.indexed_list = 0;
         line_count = 0ul; point_count = 0ul;
         v9x_dp2_walk(&s, &k, &r);
         CHECK(r.status == V9X_DP2_OK && r.lines == 3ul && r.points == 2ul &&

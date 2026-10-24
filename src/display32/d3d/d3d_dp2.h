@@ -100,6 +100,14 @@ typedef struct v9x_dp2_sink {
      * above, with its payload and payload length. For instruments. */
     void (*record)(void *user, v9x_u32 op, v9x_u32 count,
                    const v9x_u8 *payload, v9x_u32 bytes);
+    /* Optional, may be null: an INDEXEDTRIANGLELIST2 whole - its start
+     * vertex `base`, the pool address of that vertex, and `triangles`
+     * triples of little-endian index words relative to it, every one
+     * already checked inside the pool. Non-zero when the sink drew it;
+     * zero and the walker expands it into triangle calls as it would with
+     * no such sink. */
+    int (*indexed_list)(void *user, const v9x_u8 *first, v9x_u32 base,
+                        const v9x_u8 *indices, v9x_u32 triangles);
 } V9X_DP2_SINK;
 
 typedef struct v9x_dp2_stream {

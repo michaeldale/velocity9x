@@ -413,6 +413,13 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             {
                 v9x_u32 base = v9x_dp2_word(data);
 
+                if (count != 0ul && sink->indexed_list != 0 &&
+                    sink->indexed_list(sink->user,
+                                       v9x_dp2_vertex(stream, base), base,
+                                       data + 2, count)) {
+                    result->triangles += count;
+                    break;
+                }
                 for (i = 0ul; i < count; ++i) {
                     const v9x_u8 *t = data + 2ul + i * 6ul;
 

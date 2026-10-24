@@ -936,14 +936,16 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
 }
 
 /*
- * A DrawOneIndexedPrimitive call to an engine that takes indices whole.
- * -1 when it declines (the caller expands the call as before), otherwise
- * its answer. What draw_batch records about a submitted batch is recorded
- * here too, once for the call.
+ * Indexed triangles to an engine that takes indices whole: index_count
+ * indices into vertex_count vertices of pool, a list or a strip. -1 when
+ * it declines (the caller expands them as before), otherwise its answer.
+ * What draw_batch records about a submitted batch is recorded here too,
+ * once for the call.
  */
-static int v9x_d3d_draw_indexed_engine(
+static int v9x_d3d_draw_indexed_whole(
     const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context,
-    const V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
+    const V9X_R3D_VERTEX *pool, DWORD vertex_count,
+    const v9x_u16 *indices, DWORD index_count, int strip)
 {
     V9X_R3D_DRAW draw;
     DWORD misc = v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps;
@@ -956,11 +958,8 @@ static int v9x_d3d_draw_indexed_engine(
     int submitted;
 
     v9x_d3d_describe_draw(ops, context, &draw);
-    result = ops->draw_indexed(
-        &draw, (const V9X_R3D_VERTEX *)data->lpvVertices,
-        data->dwNumVertices, (const v9x_u16 *)data->lpwIndices,
-        data->dwNumIndices,
-        data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP ? 1 : 0, cull);
+    result = ops->draw_indexed(&draw, pool, vertex_count, indices,
+                               index_count, strip, cull);
     if (result < 0) {
         ++v9x_hal->d3d_diagnostics.indexed_engine_declined;
         return -1;
@@ -976,6 +975,18 @@ static int v9x_d3d_draw_indexed_engine(
                           context->target_offset);
     }
     return result;
+}
+
+/* A DrawOneIndexedPrimitive call, whole (v9x_d3d_draw_indexed_whole). */
+static int v9x_d3d_draw_indexed_engine(
+    const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context,
+    const V9X_D3DHAL_DRAWONEINDEXEDPRIMITIVEDATA *data)
+{
+    return v9x_d3d_draw_indexed_whole(
+        ops, context, (const V9X_R3D_VERTEX *)data->lpvVertices,
+        data->dwNumVertices, (const v9x_u16 *)data->lpwIndices,
+        data->dwNumIndices,
+        data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP ? 1 : 0);
 }
 
 /* A handle is an entry's address, so it is checked, not searched for: a
@@ -3967,6 +3978,8 @@ typedef struct v9x_d3d_dp2_user {
     /* Non-zero when the engine draws two stages (limits->texture_stages):
      * only then are stage 1's states kept and its pairs recorded. */
     int two_stages;
+    /* The engine the call draws on. */
+    const V9X_D3D_ENGINE_OPS *ops;
 } V9X_D3D_DP2_USER;
 
 /*
@@ -4401,6 +4414,71 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
 }
 
 /*
+ * An INDEXEDTRIANGLELIST2 whole, to an engine that takes indices
+ * (ops->draw_indexed): the Rage 128 copies the vertices once into its AGP
+ * area and walks the indices in the ring, where the expansion settled,
+ * converted and appended each triangle on its own (3DMark 2000 at DDI 6:
+ * 1.2M such records carrying 52.6M triangles on A8U4I5, 2026-10-24).
+ * The pending run is drawn first, so the order of the stream is kept.
+ * Declined, with nothing drawn, for two stages, table fog (which rewrites
+ * each vertex), a converted record past the gather's vertices, and
+ * whatever the engine declines; the walker then expands it as before.
+ *
+ * A converted record's vertices go to v9x_d3d_gather, the DX5 paths'
+ * scratch: free here, since no DX5 entry runs inside a DrawPrimitives2
+ * call and the run being drawn reads its own storage.
+ */
+#define V9X_D3D_DP2_GATHER_VERTICES (V9X_D3D_INDEXED_BATCH * 3ul)
+
+static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
+                                    v9x_u32 base, const v9x_u8 *indices,
+                                    v9x_u32 triangles)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    const V9X_D3D_ENGINE_OPS *ops = user->ops;
+    V9X_D3D_CONTEXT *context = user->context;
+    const v9x_u16 *words = (const v9x_u16 *)indices;
+    const V9X_R3D_VERTEX *pool;
+    DWORD count = triangles * 3ul;
+    DWORD last = 0ul;
+    DWORD index;
+
+    (void)base;
+    if (first == 0 || ops == 0 || ops->draw_indexed == 0 || ops->draw == 0) {
+        return 0;
+    }
+    v9x_d3d_dp2_settle(user);
+    if (v9x_d3d_dp2_two(user) ||
+        v9x_d3d_fog_table_active(context->fog_enable, &context->fog_table)) {
+        return 0;
+    }
+    for (index = 0ul; index < count; ++index) {
+        if ((DWORD)words[index] > last) {
+            last = (DWORD)words[index];
+        }
+    }
+    if (user->fvf == 0) {
+        pool = (const V9X_R3D_VERTEX *)first;
+    } else {
+        if (last >= V9X_D3D_DP2_GATHER_VERTICES) {
+            ++v9x_hal->d3d_diagnostics.indexed_decline[
+                V9X_D3D_INDEXED_DECLINE_RANGE];
+            return 0;
+        }
+        for (index = 0ul; index <= last; ++index) {
+            v9x_d3d_dp2_vertex(user, first + index * user->layout->stride,
+                               (V9X_R3D_VERTEX *)&v9x_d3d_gather[index]);
+        }
+        pool = (const V9X_R3D_VERTEX *)v9x_d3d_gather;
+    }
+    if (user->run->pending != 0ul) {
+        v9x_d3d_dp2_draw_run();
+    }
+    return v9x_d3d_draw_indexed_whole(ops, context, pool, last + 1ul, words,
+                                      count, 0) >= 0;
+}
+
+/*
  * Points and lines, as one-pixel quads (v9x_dp2_line_quad says how): no
  * engine here has a line primitive, and DrawPrimitives2 is the first path
  * that is sent them. A line has no back, so a quad triangle the context's
@@ -4820,6 +4898,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     user.fvf = v9x_dp2_fvf_is_tlvertex(&fvf) ? 0 : &fvf;
     user.layout = &fvf;
     user.two_stages = ops->limits->texture_stages >= 2ul;
+    user.ops = ops;
     if (!v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_converted_calls;
         v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -4841,6 +4920,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     sink.triangle = v9x_d3d_dp2_triangle;
     sink.point = v9x_d3d_dp2_point;
     sink.line = v9x_d3d_dp2_line;
+    sink.indexed_list = v9x_d3d_dp2_indexed_list;
     sink.record = v9x_d3d_dp2_ring_entry != 0 ? v9x_d3d_dp2_ring_record : 0;
 
     v9x_dp2_walk(&stream, &sink, &walked);

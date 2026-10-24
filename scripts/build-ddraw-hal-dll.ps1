@@ -250,9 +250,12 @@ foreach ($relative in $sources) {
     # hardware measured. The Direct3D core and its list, clip and cull, and
     # the Rage 128's draw path, are optimised too: unoptimised, 3DMark 2000
     # on A8U4I5 spent half the CPU in them at 2% ring wait (2026-10-24,
-    # docs\plans\d3d-core-throughput.md).
+    # docs\plans\d3d-core-throughput.md). So are the DrawPrimitives2 walker
+    # and FVF conversion, the record run and the state translation, which
+    # every DDI 6 triangle passes through once the Rage 128 gives every
+    # program DDI 6 (2026-10-24, review item 4).
     $optimise = @()
-    if ($name -match 'mach64|rage2|^d3d_core$|^r3d_(clip|cull)$|^d3d_r128(_map)?$|^r128_(3d|cce|ring)$') {
+    if ($name -match 'mach64|rage2|^d3d_core$|^d3d_(dp2|state)$|^r3d_(clip|cull|records)$|^d3d_r128(_map)?$|^r128_(3d|cce|ring)$') {
         $optimise = @('-ox')
     }
     & $compiler "-bt=nt" "-bd" "-zq" "-wx" "-we" "-zl" "-s" @optimise `
