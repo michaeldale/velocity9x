@@ -1,0 +1,7 @@
+Build=a19476c9-dirty
+Result=PASS
+ReplaceRgbBlend=0x00008200
+ReplaceRgbBlendOk=1
+ReplaceRgbFogBlend=0x00394100
+ReplaceRgbFogBlendOk=1
+ErrorAfterReplaceRgb=0x00000000

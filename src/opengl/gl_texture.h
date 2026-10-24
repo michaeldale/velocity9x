@@ -327,6 +327,17 @@ void v9x_gl_textures_drop_hw(V9X_GL_TEXTURES *textures);
  * instead of the product. The pixels written are identical.
  */
 void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture);
+/*
+ * REPLACE on a texture without alpha keeps the fragment's alpha (table
+ * 3.18), which is no Direct3D texture op, so a one-unit engine refuses it.
+ * MODULATE by a white vertex is the same pixel: the texel's colour, the
+ * fragment's alpha. Returns 1 with the op rewritten and `count` vertices
+ * copied to `out` (which may be `in`) with their colour white and their
+ * alpha kept; 0, with nothing written, for any other combination.
+ */
+int v9x_gl_tex_replace_as_modulate(V9X_R3D_ABI_TEXTURE *texture,
+                                   const V9X_R3D_ABI_VERTEX *in,
+                                   V9X_R3D_ABI_VERTEX *out, v9x_u32 count);
 
 /* An RGB565 texel as ARGB1555 with alpha one: red and blue keep their five
  * bits, green drops its lowest. For an engine that samples no 565 (the

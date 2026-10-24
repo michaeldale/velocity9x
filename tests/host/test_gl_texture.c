@@ -902,6 +902,67 @@ static void test_hardware_copy_bookkeeping(void)
     TCHECK(d.alpha_op == V9X_R3D_ABI_ALPHAOP_REPLACE);
 }
 
+/*
+ * REPLACE on RGB565 beside the fragment's alpha, which is no Direct3D
+ * texture op: rewritten as MODULATE by white vertices that keep their
+ * alpha. Tux Racer's fogged, blended sky was refused as this on the
+ * HD 4600 (V9X-YP59WN).
+ */
+static void test_replace_as_modulate(void)
+{
+    V9X_R3D_ABI_TEXTURE d;
+    V9X_R3D_ABI_VERTEX in[3];
+    V9X_R3D_ABI_VERTEX out[3];
+    unsigned int i;
+
+    for (i = 0u; i < 3u; ++i) {
+        in[i].sx = (float)i;
+        in[i].sy = 2.0f;
+        in[i].sz = 0.5f;
+        in[i].rhw = 1.0f;
+        in[i].color = 0x80123456ul + i;
+        in[i].specular = 0x40ABCDEFul;
+        in[i].tu = 0.25f;
+        in[i].tv = 0.75f;
+        out[i].color = 0ul;
+    }
+    d.format = V9X_R3D_ABI_FORMAT_RGB565;
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    TCHECK(v9x_gl_tex_replace_as_modulate(&d, in, out, 3ul) == 1);
+    TCHECK(d.color_op == V9X_R3D_ABI_COLOROP_MODULATE &&
+           d.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
+    for (i = 0u; i < 3u; ++i) {
+        TCHECK(out[i].color == 0x80FFFFFFul);
+        TCHECK(out[i].specular == 0x40ABCDEFul);
+        TCHECK(out[i].sx == (float)i && out[i].tu == 0.25f &&
+               out[i].tv == 0.75f && out[i].rhw == 1.0f);
+        TCHECK(in[i].color == 0x80123456ul + i);
+    }
+
+    /* In place, as the ICD's scaled-coordinate copy is rewritten. */
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    TCHECK(v9x_gl_tex_replace_as_modulate(&d, in, in, 3ul) == 1);
+    TCHECK(in[2].color == 0x80FFFFFFul);
+
+    /* Every other combination is a texture op already, or not this one,
+     * and is left alone with the vertices unread. */
+    out[0].color = 0x11223344ul;
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    TCHECK(v9x_gl_tex_replace_as_modulate(&d, in, out, 3ul) == 0);
+    TCHECK(d.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    d.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    TCHECK(v9x_gl_tex_replace_as_modulate(&d, in, out, 3ul) == 0);
+    d.format = V9X_R3D_ABI_FORMAT_ARGB4444;
+    d.color_op = V9X_R3D_ABI_COLOROP_REPLACE;
+    d.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    TCHECK(v9x_gl_tex_replace_as_modulate(&d, in, out, 3ul) == 0);
+    TCHECK(d.color_op == V9X_R3D_ABI_COLOROP_REPLACE);
+    TCHECK(out[0].color == 0x11223344ul);
+}
+
 /* RGB565 retargeted to ARGB1555 for an engine without 565. */
 static void test_retarget_to_1555(void)
 {
@@ -1199,6 +1260,7 @@ unsigned int v9x_run_gl_texture_tests(void)
     test_sgis_units();
     test_dirty_rectangles();
     test_hardware_copy_bookkeeping();
+    test_replace_as_modulate();
     test_retarget_to_1555();
     test_4444_as_1555();
     test_square_copy();

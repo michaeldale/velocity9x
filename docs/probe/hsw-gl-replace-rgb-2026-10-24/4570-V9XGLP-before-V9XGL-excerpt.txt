@@ -1,0 +1,9 @@
+1 pid=FFFC0FE5 attach instance=00610000 tls=2 version=0.26.0 V9XGL build=b09a5d77-dirty time=2026-10-24 15:09:00 uptime-ms=191139 exe=C:\V9XGLRGB.EXE
+556 pid=FFFC0FE5 paths batches/triangles untextured=8/26 hw=77/114 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+558 pid=FFFC0FE5 counters hwtex live=0 creates=68 create-failed=0 evictions=0 uploads=71 partial=2 upload-kb=692 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+599 pid=FFFC0FE5 state tex=26 size=00040004 tex=01010100 blend=01050600 depth=00020101 colour=800000FF mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+600 pid=FFFC0FE5 refused tex=26 size=00040004 tex=02010100 blend=01050600 depth=00020101 colour=800000FF mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+601 pid=FFFC0FE5 draw result=4 triangles=2 submitted=0
+605 pid=FFFC0FE5 draw result=4 triangles=2 submitted=0
+611 pid=FFFC0FE5 paths batches/triangles untextured=15/44 hw=176/312 cpu=0/0 cpu-nonsquare=0/0 hw-refused=14/28 two-units=54/108 split=12/24 split-declined=0
+613 pid=FFFC0FE5 counters hwtex live=0 creates=81 create-failed=0 evictions=0 uploads=84 partial=2 upload-kb=710 squared=0 alpha-dropped=0 fog-dropped=2 stubs=1 failed r4=2 r7=0 r8=0 other=0

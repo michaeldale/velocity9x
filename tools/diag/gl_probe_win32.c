@@ -1095,6 +1095,79 @@ static void v9x_glp_fog(GLint width, GLint height)
 }
 
 /*
+ * GL_REPLACE on an RGB texture keeps the fragment's alpha (table 3.18):
+ * Tux Racer's sky, blended and fogged, which every path refused on the
+ * HD 4600 (report V9X-YP59WN). A green texture under a blue vertex of
+ * alpha one half, SRC_ALPHA blended over black: green 128 unfogged, and
+ * with LINEAR red fog at f = 0.5, red 64 and green 64. A blue cast says
+ * the vertex colour leaked in; full green says the texel's alpha was used.
+ */
+static void v9x_glp_replace_rgb(GLint width, GLint height)
+{
+    GLubyte texels[4 * 4 * 3];
+    GLuint name = 0u;
+    unsigned int i;
+    DWORD rgb;
+
+    for (i = 0u; i < 4u * 4u; ++i) {
+        texels[i * 3u] = 0u;
+        texels[i * 3u + 1u] = 255u;
+        texels[i * 3u + 2u] = 0u;
+    }
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glGenTextures(1, &name);
+    glBindTexture(GL_TEXTURE_2D, name);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 4, 4, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 texels);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glEnable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor4f(0.0f, 0.0f, 1.0f, 0.5f);
+    v9x_glp_fog_quad(width, height, -0.5f);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("ReplaceRgbBlend", rgb);
+    v9x_glp_uint("ReplaceRgbBlendOk",
+                 v9x_glp_near(rgb, 0ul, 128ul, 0ul) ? 1ul : 0ul);
+
+    glEnable(GL_FOG);
+    glFogi(GL_FOG_MODE, GL_LINEAR);
+    glFogf(GL_FOG_START, 0.0f);
+    glFogf(GL_FOG_END, 1.0f);
+    {
+        static const GLfloat red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+
+        glFogfv(GL_FOG_COLOR, red);
+    }
+    glClear(GL_COLOR_BUFFER_BIT);
+    v9x_glp_fog_quad(width, height, -0.5f);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+    v9x_glp_hex("ReplaceRgbFogBlend", rgb);
+    v9x_glp_uint("ReplaceRgbFogBlendOk",
+                 v9x_glp_near(rgb, 64ul, 64ul, 0ul) ? 1ul : 0ul);
+
+    glDisable(GL_FOG);
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+    glDeleteTextures(1, &name);
+    v9x_glp_hex("ErrorAfterReplaceRgb", (DWORD)glGetError());
+}
+
+/*
  * Which texel each pixel of a 1:1 GL_NEAREST draw reads (2026-10-13), the
  * OpenGL twin of V9XDDP's TexPhase. Half-Life's OpenGL console font lost
  * single-pixel strokes on the Voodoo4 engine (A8U4I5 boot 442). A 16x16
@@ -2767,6 +2840,8 @@ void __stdcall V9xGlProbeEntry(void)
                                    client.bottom - client.top);
             v9x_glp_fog(client.right - client.left,
                         client.bottom - client.top);
+            v9x_glp_replace_rgb(client.right - client.left,
+                                client.bottom - client.top);
             v9x_glp_texel_phase(client.right - client.left,
                                 client.bottom - client.top);
             v9x_glp_attrib(client.right - client.left,

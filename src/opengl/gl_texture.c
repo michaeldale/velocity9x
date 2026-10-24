@@ -1400,6 +1400,28 @@ void v9x_gl_tex_fragment_alpha_unused(V9X_R3D_ABI_TEXTURE *texture)
     }
 }
 
+int v9x_gl_tex_replace_as_modulate(V9X_R3D_ABI_TEXTURE *texture,
+                                   const V9X_R3D_ABI_VERTEX *in,
+                                   V9X_R3D_ABI_VERTEX *out, v9x_u32 count)
+{
+    v9x_u32 i;
+
+    /* Only RGB565 is a texture without alpha to the engines: the Direct3D
+     * core maps MODULATE beside the fragment's alpha to a texture op on it
+     * alone (d3d_core.c, v9x_r3d_texture_op). */
+    if (texture->format != V9X_R3D_ABI_FORMAT_RGB565 ||
+        texture->color_op != V9X_R3D_ABI_COLOROP_REPLACE ||
+        texture->alpha_op != V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+        return 0;
+    }
+    texture->color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    for (i = 0ul; i < count; ++i) {
+        out[i] = in[i];
+        out[i].color |= 0x00FFFFFFul;
+    }
+    return 1;
+}
+
 V9X_GL_TEXOBJ *v9x_gl_tex_object(V9X_GL_TEXTURES *textures, GLuint name)
 {
     return v9x_gl_texobj_find(textures, name);

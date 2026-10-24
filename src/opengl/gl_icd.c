@@ -2140,6 +2140,17 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context,
             v9x_gl_tex_fragment_alpha_unused(&draw.texture);
         }
     }
+    /* A surface texture's ops reach a one-unit engine as a Direct3D
+     * texture op, and REPLACE beside the fragment's alpha is none: Tux
+     * Racer's fogged, blended sky was refused as it on the HD 4600, and
+     * neither retry below could draw it (V9X-YP59WN). MODULATE by white
+     * vertices is the same pixel, the rewrite the CIF wrapper makes. */
+    if (hardware && !two_units &&
+        v9x_gl_tex_replace_as_modulate(&draw.texture, draw.vertices,
+                                       v9x_gl_scaled_vertices,
+                                       pending->triangles * 3ul)) {
+        draw.vertices = v9x_gl_scaled_vertices;
+    }
     first = draw;
     draw_start = v9x_gl_tsc_begin();
     result = iface->draw(&draw, outcome);
