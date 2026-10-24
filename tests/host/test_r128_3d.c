@@ -460,7 +460,9 @@ static void test_indexed(void)
 }
 
 /* Hardware culling in PM4_VC_FPU_SETUP: none draws both faces as before;
- * Direct3D's CCW keeps what runs clockwise on the screen. */
+ * Direct3D's CCW keeps what runs clockwise on the screen, which on the
+ * card is face bits 18h, not the 19h a reading of Mesa gave (A8U4I5,
+ * 2026-10-24: V9XD32 T9 through the hardware path, and Half-Life). */
 static void test_cull(void)
 {
     struct v9x_r128_3d_state state;
@@ -472,10 +474,10 @@ static void test_cull(void)
     CHECK(r3_value(&stream, 0x071cul) == 0x000003dful);
     state.cull = V9X_R128_CULL_CCW;
     CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
-    CHECK(r3_value(&stream, 0x071cul) == 0x000003d9ul);
+    CHECK(r3_value(&stream, 0x071cul) == 0x000003d8ul);
     state.cull = V9X_R128_CULL_CW;
     CHECK(v9x_r128_3d_build_state(&state, &stream) == V9X_STATUS_OK);
-    CHECK(r3_value(&stream, 0x071cul) == 0x000003d8ul);
+    CHECK(r3_value(&stream, 0x071cul) == 0x000003d9ul);
 }
 
 unsigned int v9x_run_r128_3d_tests(void)

@@ -143,15 +143,17 @@
 #define R128_VC_CNTL_LIST_TRI_LIST      0x00000024ul
 
 /* PM4_VC_FPU_SETUP's face bits (r128_reg.h): FRONT_DIR 0 (1 = CCW),
- * BACKFACE 2:1 and FRONTFACE 4:3, 0 cull and 3 solid. Mesa flips y when it
- * emits, and maps GL's counter-clockwise front to FRONT_DIR_CCW, so the
- * hardware's CCW is clockwise on the screen: Direct3D's CCW cull keeps
- * clockwise triangles with FRONT_DIR_CCW and the back face culled. V9XD32
- * T9 checks it on the card. */
+ * BACKFACE 2:1 and FRONTFACE 4:3, 0 cull and 3 solid. FRONT_DIR_CCW is
+ * counter-clockwise on the screen, y down: Direct3D's CCW cull, which keeps
+ * clockwise triangles, is FRONT_DIR clear with the back face culled (18h).
+ * The opposite, read from Mesa's y-flipped emit, culled the faces Direct3D
+ * keeps: Half-Life's walls went missing, and V9XD32 T9 failed once its
+ * indexed draws reached this path at DDI 6 (A8U4I5 boots 583-585,
+ * 2026-10-24); it had passed only through the core's culling. */
 #define R128_FPU_FACE_MASK              0x0000001ful
 #define R128_FPU_FACE_BOTH              0x0000001ful
-#define R128_FPU_FACE_KEEP_SCREEN_CW    0x00000019ul
-#define R128_FPU_FACE_KEEP_SCREEN_CCW   0x00000018ul
+#define R128_FPU_FACE_KEEP_SCREEN_CW    0x00000018ul
+#define R128_FPU_FACE_KEEP_SCREEN_CCW   0x00000019ul
 
 /* Mesa's constant colour, stencil reference/mask and plane mask. */
 #define R128_CONSTANT_COLOR             0x00fffffful
