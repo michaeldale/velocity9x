@@ -3932,6 +3932,36 @@ static int v9x_d3d_dp2_for_process(void)
     return GetModuleHandleA("D3D8.DLL") != 0;
 }
 
+/*
+ * The DDI level of the driver object DirectDraw is describing: 1 for DDI 6,
+ * 0 for DDI 5, -1 until the first object is made. A static on purpose:
+ * every section of this DLL is shared, and the object is shared too.
+ *
+ * Windows 98 SE's DDRAW.DLL (4.07.00.0700) asks for GUID_D3DCallbacks3 only
+ * while it makes a driver object (RVA 1B9B5, in the routine called at RVA
+ * 1BDAE when there is no object to reset), and stores the answer at
+ * DDRAWI_DIRECTDRAW_GBL+638h. It asks for GUID_D3DExtendedCaps again on
+ * every reset, from whatever process causes it (RVA 1C316), and if the
+ * object holds a DrawPrimitives2 callback (+638h, +14h) refuses an answer
+ * shorter than 54h bytes (RVA 1C37B). A refused reset has already freed the
+ * object's heaps (RVA 1BF12); DirectDraw then faults freeing them again and
+ * leaves a dead program's DirectDraw object on its list for the next
+ * program to reuse
+ * (docs\issues\2026-10-25-next-program-crashes-after-one-dies-holding-
+ * surfaces.md). DDHELP restores the mode after a program dies, and DDHELP
+ * gets DDI 5 from v9x_d3d_dp2_for_process, so the level is decided once,
+ * by the process the object is made for, and every later answer uses it.
+ */
+static int v9x_d3d_object_ddi6 = -1;
+
+static int v9x_d3d_ddi_for_object(void)
+{
+    if (v9x_d3d_object_ddi6 < 0) {
+        return v9x_d3d_dp2_for_process();
+    }
+    return v9x_d3d_object_ddi6 != 0 && v9x_d3d_dp2_available();
+}
+
 /* Whether the capture diagnostic is asked for (engine_abi.h). */
 static int v9x_d3d_dp2_capture_armed(void)
 {
@@ -5306,13 +5336,16 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
     }
 
     /*
-     * The DDI 6 answers, when this process gets them
-     * (v9x_d3d_dp2_for_process). The device caps' DrawPrimitives2 bit moves
+     * The DDI 6 answers, when the driver object gets them
+     * (v9x_d3d_ddi_for_object). The device caps' DrawPrimitives2 bit moves
      * with the same decision on every call, so a runtime never sees the bit
      * without the callbacks or the reverse: the setting is read per driver
      * object on the 16-bit side, and the runtime asks for these after that.
      */
-    ddi6 = v9x_d3d_dp2_for_process();
+    if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_callbacks3)) {
+        v9x_d3d_object_ddi6 = v9x_d3d_dp2_for_process();
+    }
+    ddi6 = v9x_d3d_ddi_for_object();
     v9x_d3d_apply_ddi_level(ddi6);
     if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_callbacks3)) {
@@ -5557,7 +5590,7 @@ void v9x_d3d_publish(V9X_DD_SHARED *shared)
         (V9X_DD_CODE_PTR)V9xD3dValidateTextureStageState;
     v9x_d3d_callbacks3.DrawPrimitives2 =
         (V9X_DD_CODE_PTR)V9xD3dDrawPrimitives2;
-    v9x_d3d_apply_ddi_level(v9x_d3d_dp2_for_process());
+    v9x_d3d_apply_ddi_level(v9x_d3d_ddi_for_object());
 }
 
 /*
