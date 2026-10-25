@@ -1,0 +1,19 @@
+ConfigId=w9qi2f4f-ilk-v9x
+Environment=metal
+Endpoint=relay:M-J0F0SJ
+Guest=W9QI2F4F
+GuestUptimeMs=327254
+GuestBootCounter=71
+Agent=0.13.1 v0.13.1
+Build=0af3316
+Mode=
+Arguments=/env:metal /config:w9qi2f4f-ilk-v9x
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=
+Tool.DBCAPS ok 15.6s 20261025-220043\DBCAPS.INI
+Tool.DBTIME ok 21.3s 20261025-220043\DBTIME.INI
+Tool.DBGDI ok 51.4s 20261025-220043\DBGDI.INI
+Tool.DBDD ok 48.1s 20261025-220043\DBDD.INI
+Tool.DB3D ok 36.1s 20261025-220043\DB3D.INI

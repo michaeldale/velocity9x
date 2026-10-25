@@ -12,7 +12,10 @@ build identifier so exact guest-tested binaries remain traceable.
   drawing 4 times, texture uploads 7.5 times; Half-Life 37.4 to 40.1 fps
   in Direct3D and 18.8 to 23.4 in OpenGL
   ([record](docs/decisions/2026-10-25-intel-gen3-write-combining.md)).
-  `V9X3D OFF` turns it off as before. The HD 4600's BIOS leaves no
+  `V9X3D OFF` turns it off as before. The Ironlake HD Graphics too: on
+  one board 32 to 3,992 MB/s, and 3DMark 2000 from 1246 to 2909
+  ([record](docs/decisions/2026-10-25-ironlake-write-combining.md)).
+  The HD 4600's BIOS leaves no
   processor memory-type range free, so it stays as it was.
 - **HD 4600: indexed Direct3D calls are drawn whole by the card**, which
   also does the back-face culling, instead of being expanded triangle by

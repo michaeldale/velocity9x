@@ -583,7 +583,16 @@ const V9X_HW16_DEVICE v9x_ilk_hd_device = {
     "hardware-gen5",
     0,
     v9x_ilk_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GMA 950: the family's 16 MiB of the 256 MiB
+     * GMADR at D0000000, under the UC default with pairs 5-7 free on
+     * W9QI2F4F; ring, batch and vertex writes drain before RING_TAIL in the
+     * shared Gen3/Gen4 submit (docs\decisions\2026-10-25-ironlake-write-
+     * combining.md). */
+    1u
 };
 
 /*

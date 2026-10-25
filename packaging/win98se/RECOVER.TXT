@@ -34,7 +34,8 @@ update restart:
 IF THE DESKTOP IS CORRUPTED OR HANGS AFTER WRITE-COMBINING WAS ENABLED
 
 On a card that write-combines its frame buffer (the Rage 128 from 0.29.0,
-the GMA 950, GMA 900 and GMA 3150 from 0.30.0; C:\V9XDIAG\V9XBOOT.INI
+the GMA 950, GMA 900, GMA 3150 and Ironlake HD Graphics from 0.30.0;
+C:\V9XDIAG\V9XBOOT.INI
 then has a line starting MtrrWrite=ok), the driver
 can be told not to:
 

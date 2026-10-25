@@ -304,6 +304,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-25 The HD 4600 draws inside its guard band; the core publishes the band for engines that draw it](2026-10-25-haswell-guard-band.md)
 - [2026-10-25 The HD 4600 draws two Direct3D texture stages and makes the pixel-centre move itself](2026-10-25-haswell-two-texture-stages.md)
 - [2026-10-25 The Rage 128 is not told of its guard band at DDI 6: told, 3DMark 2001 SE corrupted or hung A8U4I5](2026-10-25-rage128-ddi6-guard-band-withdrawn.md)
+- [2026-10-25 Write-combining the Ironlake's aperture: FbWrite 32 to 3,992 MB/s, 3DMark 2000 1246 to 2909](2026-10-25-ironlake-write-combining.md)
 
 ## SiS
 
