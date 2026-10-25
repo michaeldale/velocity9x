@@ -2182,11 +2182,38 @@ static void d32_child(HWND window, DWORD bpp)
                (DWORD)((d32_flip_fn)session.primary->vtbl[DDS_FLIP])(
                    session.primary, 0, DDFLIP_WAIT));
     }
-    /* /clean, the control: everything released and the mode restored. */
+    /* /clean, the control: everything released and the mode restored. The
+     * others leave less behind than the default does, to find which part
+     * of what a dead program leaves breaks the next one: /endscene closes
+     * its scene first, /release3d releases the device and IDirect3D2 too,
+     * /nomode everything but the display mode. */
     if (d32_has_switch("/clean")) {
         d32_line("Stage", "child-exit-clean");
         d32_session_close(&session);
         d32_line("Result", "CHILD-EXITED-CLEAN");
+        ExitProcess(D32_CHILD_EXIT_CODE);
+    }
+    if (d32_has_switch("/nomode")) {
+        d32_line("Stage", "child-exit-no-mode-restore");
+        ((d32_release_fn)session.device->vtbl[COM_RELEASE])(session.device);
+        ((d32_release_fn)session.d3d->vtbl[COM_RELEASE])(session.d3d);
+        ((d32_release_fn)session.primary->vtbl[COM_RELEASE])(
+            session.primary);
+        ((d32_release_fn)session.ddraw->vtbl[COM_RELEASE])(session.ddraw);
+        d32_line("Result", "CHILD-EXITED-NO-MODE");
+        ExitProcess(D32_CHILD_EXIT_CODE);
+    }
+    if (d32_has_switch("/release3d")) {
+        d32_line("Stage", "child-exit-surfaces-left");
+        ((d32_release_fn)session.device->vtbl[COM_RELEASE])(session.device);
+        ((d32_release_fn)session.d3d->vtbl[COM_RELEASE])(session.d3d);
+        d32_line("Result", "CHILD-EXITED-SURFACES-LEFT");
+        ExitProcess(D32_CHILD_EXIT_CODE);
+    }
+    if (d32_has_switch("/endscene")) {
+        d32_line("Stage", "child-exit-after-scene");
+        d32_draw(session.device, d32_volume_vertices, D32_VOLUME_VERTICES);
+        d32_line("Result", "CHILD-EXITED-AFTER-SCENE");
         ExitProcess(D32_CHILD_EXIT_CODE);
     }
     /* A scene left open, a batch in it, and out: no EndScene, no Release,
@@ -2227,7 +2254,10 @@ static DWORD d32_child_and_after(HWND window, DWORD bpp)
      * driver fault from DirectDraw still cleaning up after the child. */
     wsprintfA(command, "\"%s\" /child%s%s", path,
               bpp == 16ul ? " /bpp16" : "",
-              d32_has_switch("/t14clean") ? " /clean" : "");
+              d32_has_switch("/t14clean") ? " /clean"
+              : d32_has_switch("/t14nomode") ? " /nomode"
+              : d32_has_switch("/t14release3d") ? " /release3d"
+              : d32_has_switch("/t14endscene") ? " /endscene" : "");
     d32_zero(&startup, sizeof(startup));
     startup.cb = sizeof(startup);
     if (!CreateProcessA(0, command, 0, 0, FALSE, 0ul, 0, 0, &startup,
@@ -2249,6 +2279,26 @@ static DWORD d32_child_and_after(HWND window, DWORD bpp)
 
     if (d32_has_switch("/t14wait")) {
         Sleep(D32_CHILD_SETTLE_MS);
+    }
+    /* What the HAL's process watch saw while DirectDraw cleaned up after
+     * the child, before this process's own calls can overwrite it: the
+     * cleanup runs in DDHELP, which has been seen to exit there. */
+    {
+        D32_PATH watch_read;
+
+        d32_path_read(&watch_read);
+        if (watch_read.ok) {
+            const V9X_WATCH *watch = &d32_trace.snapshot.d3d.watch;
+
+            d32_hx("T14WatchFaultPid", watch->fault_pid);
+            d32_hx("T14WatchFaultCode", watch->fault_code);
+            d32_hx("T14WatchFaultAddress", watch->fault_address);
+            d32_hx("T14WatchFaultModule", watch->fault_module);
+            d32_hx("T14WatchExitPid", watch->exit_pid);
+            d32_hx("T14WatchExitCode", watch->exit_code);
+            d32_hx("T14WatchExitCaller", watch->exit_caller);
+            d32_hx("T14WatchExitCallerModule", watch->exit_caller_module);
+        }
     }
     d32_line("Stage", "12b-t14-after-child");
     if (!d32_session_open(&session, window, bpp, "T14")) {
