@@ -5,8 +5,9 @@ after Michael reported that switching between 3D programs - HL1
 Direct3D to OpenGL, or 3DMark 2000 then 3DMark 2001 SE - crashes or
 draws wrongly until a reboot. 3DMark 2001 SE's error.log read "File
 \DATA\GS1\KF\OBJECTS\TEXTURES\GAS_WALLSDOORS.JPG is corrupted".
-Status: parked. The CCE runs by PIO again, as in 0.28.0; the ring code
-stays, unused. The engine is drained and the CCE stopped when a Direct3D
+Status: parked. The CCE runs by PIO again, as in 0.28.0, with one texture
+unit (two-unit triangles need the ring, below); the ring code stays,
+unused. The engine is drained and the CCE stopped when a Direct3D
 or OpenGL context goes. Neither cause is known.
 
 The file name is from the first, wrong conclusion that the 32 MiB map
@@ -89,6 +90,27 @@ after the destroy - DirectDraw's flip back to the GDI surface at exit -
 queued through the ring and started the CCE again. With flips queued
 only while the CCE already runs, it reads `08000000` and `00003FFF`
 after both V9XD32 runs (boot 605), which pass at DDI 5 and 6.
+
+## Two texture units need the ring
+
+With PIO, 3DMark 2000 at DDI 6 hard-locked A8U4I5 at the start of its
+benchmark three times (boots 607, 608, 611; 611 with the flip's
+`WAIT_UNTIL` left out, which did not matter). The ring build with the
+drain completed it (610, score 1649). The same PIO build with the Rage
+128 reporting one texture stage completed it at DDI 6 (613, 1015) and
+at DDI 5, the default with one stage (614 build, 1122).
+
+Under the ring, every two-unit batch went through the AGP vertex area
+(`3D_RNDR_GEN_INDX_PRIM`); under PIO they go inline as
+`3D_RNDR_GEN_PRIM` with `VC_FRMT_S2_T2`, which only V9XD32 T12's two
+triangles had sent. Neither Linux nor Mesa sends two-unit vertices
+inline. Whether the microcode takes them inline at all is not known.
+The Rage 128 reports one unit and one stage until the ring returns.
+
+One DDI 5 run on the two-stage PIO build (609) drew Game 1 and then
+3DMark stopped with a C++ exception (`E06D7363` in MSVCRT), with no
+engine timeout or refused call in the HAL's counters. It did not recur
+on the one-stage build.
 
 ## Suspect, not measured
 

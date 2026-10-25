@@ -25,15 +25,6 @@ build identifier so exact guest-tested binaries remain traceable.
   the first processor memory-type setting this driver makes; `V9X3D OFF`,
   which creates `C:\V9XDIAG\NOWC.TXT`, turns it off. Only the Rage 128
   asks for it.
-- **Rage 128: two Direct3D texture stages**, drawn by the card's second
-  texture unit in one pass where the two stages' arithmetic is exactly
-  the units'. 3DMark 2000's multi-texture fill went from 131 to 189
-  Mtexels/s and its emboss bump-mapping test runs, measured with the
-  parked AGP path below
-  ([record](docs/decisions/2026-10-24-rage128-two-texture-stages.md)).
-  Texture stages need Direct3D's newer driver interface, so on a Rage 128
-  every program now gets it; a program can be held to the older one in
-  `SYSTEM.INI`.
 - **Rage 128: triangles crossing the screen's edge are drawn by the card**
   inside its guard band and cut at the target's edges, instead of being
   clipped by the CPU first.
@@ -54,14 +45,18 @@ build identifier so exact guest-tested binaries remain traceable.
 - **Display mode changes no longer stall for about two seconds each on a
   machine with a real serial port**: the driver's serial log waited for
   every byte to be sent.
-- **The Rage 128's commands still go to the card through the CPU.** A
-  faster path that has the card fetch them from AGP memory was built and
-  measured during this release, then parked: with it, 3DMark 2001 SE
-  read its own data files back corrupt, and without it it did not. The
-  cause is not known
-  ([issue](docs/issues/2026-10-25-rage128-32mib-map-corrupts.md)). Half-
-  Life's demo runs at 24 to 33 fps in Direct3D and 20 to 21 in OpenGL on
-  the Rage Fury Pro (0.28.0: 34 and 14).
+- **The Rage 128's commands still go to the card through the CPU, and it
+  still draws one texture unit.** A faster path that has the card fetch
+  commands and vertices from AGP memory, and the card's second texture
+  unit with it, were built and measured during this release, then
+  parked: with that path 3DMark 2001 SE read its own data files back
+  corrupt, and without it two-unit triangles hard-locked the machine.
+  The cause of the corruption is not known
+  ([issue](docs/issues/2026-10-25-rage128-32mib-map-corrupts.md),
+  [two units](docs/decisions/2026-10-24-rage128-two-texture-stages.md)).
+  On the Rage Fury Pro 3DMark 2000 scores 1122 (0.28.0: 1105), and
+  Half-Life's demo runs at 25 to 35 fps in Direct3D and 19 in OpenGL
+  (0.28.0: 34 and 14).
 - **The S3, VBE and SiS floppy packages have a third disk**, carrying the
   update checker (`V9XUPD.EXE`), as the ATI and Matrox packages do: the
   shared driver code no longer fits two.

@@ -77,13 +77,18 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_r128_limits = {
     0ul,            /* clip_in_core */
     1ul,            /* depth_pitch_own: Z_PITCH_C takes the pitch */
     0ul,            /* depth_fill_shift */
-    2ul,            /* texture_units: SEC_TEX_*, S2/T2 in the vertex */
+    /* texture_units: one while the AGP ring is parked. Two-unit vertices
+     * (SEC_TEX_*, S2/T2) sent inline through PIO hard-lock A8U4I5 at
+     * 3DMark 2000's start, at DDI 6, boots 607, 608 and 611; with one unit
+     * it runs (613). They only ever ran through the vertex area, which needs
+     * the ring (docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). */
+    1ul,
     1ul,            /* pixel_centre_half */
     0ul,            /* depth_tiled: linear, read back so */
     32752ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits: Z16 only for now */
     1ul,            /* centre_in_engine: draw and draw_indexed move */
-    2ul             /* texture_stages: unit 1 behind unit 0 */
+    1ul             /* texture_stages: one, as texture_units; two with the ring */
 };
 
 static DWORD v9x_d3d_r128_vram_base(void)
