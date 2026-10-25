@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-10-25 A8U4I5: V9XD32 T15's bad words are bit 23 of RAM at 15C0h modulo 32 KiB in one 6.6 MiB physical window, under ATI's driver too; not the driver (DRAM inferred, unconfirmed); `MaxPhysPage=0A000` keeps Windows out of it](2026-10-25-rage128-t15-sentinel-corruption.md)
 - [2026-10-24 Haswell, a tester's HD 4600 (report V9X-YP59WN): Tux Racer's fogged, blended sky refused as GL_REPLACE on RGB565 (no Direct3D texture op); the ICD rewrites it as MODULATE by white vertices, seen fixed on the 4570](2026-10-24-haswell-tux-racer-sky-replace-rgb.md)
 - [2026-10-23 Haswell, a tester's HD 4600 (report V9X-WM1C1K): Tux Racer drew every batch untextured (Win98 GLU uploads in UNSIGNED_SHORT, which the ICD refused; fixed and seen on the 4570), Quake 3 spends ~70 % of wall time in synchronous GL flushes (36.3 fps at 1024x768), Re-Volt tyres not run](2026-10-23-haswell-tux-racer-untextured-and-quake3-gl-sync.md)
 - [2026-10-22 The VBE family's 16 MiB framebuffer mapping is refused on a reporter's HD 3000 laptop (GitHub issue 13): DPMI error now recorded and a smaller-mapping retry added in source, both untested; cause unknown](2026-10-22-github-13-hd3000-vbe-dpmi-map.md)
