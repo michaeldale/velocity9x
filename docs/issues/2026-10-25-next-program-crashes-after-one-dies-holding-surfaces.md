@@ -182,12 +182,25 @@ three times, T14 PASS every time. The first `/ddi5` run failed T15
 (`T15HeapBad=1`, first bad word at offset D685C0h of the 32 MiB heap
 pattern, so `Result=FAIL`); the next two passed it. T15 checks memory the
 driver does not own and was never reached on A8U4I5 before, because T14
-died first, so whether that corruption predates the fix is not known. It
-is not explained here.
+died first.
 
-Not done: the `/t14*` control variants with the fix, ATI's driver, and a
-T15 control on A8U4I5 without the fix (`/t14nomode` reaches T15 on an
-unfixed build). Why ATI's driver survives is still not checked; the mechanism
+T15 control, `/ddi5 /t14nomode` three times in a row on each build
+(`/t14nomode` reaches T15 without the fix too):
+
+| Build | Boot | Run 1 | Runs 2, 3 |
+|---|---|---|---|
+| with the fix | 617 | FAIL: heap, offset A295C0h | PASS |
+| without (`6bcfac9a`) | 618 | FAIL: shared mapping, offset 785C0h | PASS |
+
+So the T15 corruption predates the fix and is not this issue. Every
+failure so far is the first run of a batch, and every first bad word is
+at page offset 5C0h (D685C0h, A295C0h, 785C0h): one writer, landing in
+whatever page it is handed. Not investigated further here; it wants its
+own issue.
+
+A8U4I5 left on `5dcbdb32`'s `ati` package from boot 619.
+
+Not done: the `/t14*` control variants with the fix, and ATI's driver. Why ATI's driver survives is still not checked; the mechanism
 above predicts that any driver whose `GUID_D3DExtendedCaps` answer does
 not depend on the calling process does, and makes the earlier guess
 (ATI places surfaces itself) unnecessary.
