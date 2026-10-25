@@ -42,6 +42,19 @@
  *      on stage 0 and a lightmap on stage 1 with its own coordinates,
  *      MODULATE and ADD, each quadrant against its expected colour; skipped
  *      when the device's caps offer one stage.
+ *   T13 volume: a list, an indexed list and a strip at DirectX 5's 1024
+ *      vertices a call, 48 times each, and T12's two stages over 340
+ *      triangles a call: the centres drawn and nothing stray in the band.
+ *   T14 a second copy of this program (/child) that draws, flips and exits
+ *      inside a scene without releasing anything; then this one sets the
+ *      mode again and draws T1's triangle.
+ *   T15 a pattern in process memory, a shared mapping and a file read
+ *      back through the disk cache, laid before the first draw and checked
+ *      after the last.
+ *
+ * Every run also fails if the engine gave up on a wait (RunIdleTimeouts,
+ * RunFifoTimeouts): a driver that times out draws the rest on the CPU, and
+ * the pixels come out right.
  *
  * T9 and each T11 form also record which path drew them, from the HAL's
  * own counters read through the V9X_DDGETTRACE escape before and after:
@@ -592,6 +605,11 @@ typedef struct d32_path {
     DWORD core_list;
     DWORD core_culled;
     DWORD two_unit;
+    /* The engine's own: a wait it gave up on, and whether it is still
+     * trusted. */
+    DWORD idle_timeouts;
+    DWORD fifo_timeouts;
+    DWORD engine_flags;
 } D32_PATH;
 
 static union {
@@ -642,6 +660,9 @@ static void d32_path_read(D32_PATH *path)
     path->core_list = d32_trace.snapshot.d3d.r3d_list_triangles_in;
     path->core_culled = d32_trace.snapshot.d3d.r3d_list_culled;
     path->two_unit = d32_trace.snapshot.d3d.two_unit_batches;
+    path->idle_timeouts = d32_trace.snapshot.engine.idle_timeouts;
+    path->fifo_timeouts = d32_trace.snapshot.engine.fifo_timeouts;
+    path->engine_flags = d32_trace.snapshot.engine.flags;
 }
 
 /*
@@ -1176,6 +1197,251 @@ static DWORD d32_cull_matrix(D32_OBJECT *device, D32_OBJECT *back)
 }
 
 /*
+ * T13, volume: every test above draws a handful of triangles, and an
+ * engine splits its work into packets far larger than that. Under PIO the
+ * Rage 128 hard-locked A8U4I5 on 3DMark 2000's two-unit batches while
+ * T12's two triangles passed (2026-10-25,
+ * docs\issues\2026-10-25-rage128-32mib-map-corrupts.md). So each submit
+ * form is drawn at DirectX 5's limit of 1024 vertices a call - 340
+ * triangles, many packets on any engine - and again D32_VOLUME_REPS
+ * times: a list of 170 quads, the same quads indexed, and one strip of
+ * 1018 triangles. Each has a band of its own; the quads' centres must be
+ * its colour, and no pixel in the band may be anything but its colour or
+ * the clear, which is what a malformed packet leaves.
+ */
+#define D32_VOLUME_QUADS 170ul
+#define D32_VOLUME_VERTICES 1020ul
+#define D32_VOLUME_REPS 48ul
+#define D32_VOLUME_COLUMNS 34ul
+#define D32_VOLUME_LIST_TOP 0ul
+#define D32_VOLUME_INDEXED_TOP 96ul
+#define D32_VOLUME_STRIP_TOP 192ul
+#define D32_VOLUME_STRIP_HEIGHT 24ul
+#define D32_VOLUME_ROWS_HEIGHT 80ul
+
+static D32_TLVERTEX d32_volume_vertices[D32_VOLUME_VERTICES];
+static WORD d32_volume_indices[D32_VOLUME_VERTICES];
+
+/* Quad n of the grid: 12x12 on a 16-pixel pitch, 34 to a row. */
+static void d32_volume_corner(DWORD quad, DWORD top, float *x, float *y)
+{
+    *x = (float)((quad % D32_VOLUME_COLUMNS) * 16ul + 2ul);
+    *y = (float)(top + (quad / D32_VOLUME_COLUMNS) * 16ul + 2ul);
+}
+
+/* The six corners of every quad, as a list. */
+static void d32_volume_list(DWORD top, DWORD colour)
+{
+    DWORD quad;
+    float x;
+    float y;
+    D32_TLVERTEX *v;
+
+    for (quad = 0ul; quad < D32_VOLUME_QUADS; ++quad) {
+        d32_volume_corner(quad, top, &x, &y);
+        v = &d32_volume_vertices[quad * 6ul];
+        d32_vertex(&v[0], x, y, 0.5f, colour);
+        d32_vertex(&v[1], x + 12.0f, y, 0.5f, colour);
+        d32_vertex(&v[2], x, y + 12.0f, 0.5f, colour);
+        d32_vertex(&v[3], x + 12.0f, y, 0.5f, colour);
+        d32_vertex(&v[4], x + 12.0f, y + 12.0f, 0.5f, colour);
+        d32_vertex(&v[5], x, y + 12.0f, 0.5f, colour);
+    }
+}
+
+/* Four corners a quad and six indices into them: 680 vertices. */
+static void d32_volume_indexed(DWORD top, DWORD colour)
+{
+    DWORD quad;
+    float x;
+    float y;
+    D32_TLVERTEX *v;
+    WORD *index;
+    WORD base;
+
+    for (quad = 0ul; quad < D32_VOLUME_QUADS; ++quad) {
+        d32_volume_corner(quad, top, &x, &y);
+        v = &d32_volume_vertices[quad * 4ul];
+        d32_vertex(&v[0], x, y, 0.5f, colour);
+        d32_vertex(&v[1], x + 12.0f, y, 0.5f, colour);
+        d32_vertex(&v[2], x, y + 12.0f, 0.5f, colour);
+        d32_vertex(&v[3], x + 12.0f, y + 12.0f, 0.5f, colour);
+        base = (WORD)(quad * 4ul);
+        index = &d32_volume_indices[quad * 6ul];
+        index[0] = base;
+        index[1] = (WORD)(base + 1u);
+        index[2] = (WORD)(base + 2u);
+        index[3] = (WORD)(base + 1u);
+        index[4] = (WORD)(base + 3u);
+        index[5] = (WORD)(base + 2u);
+    }
+}
+
+/* One strip zigzagging along a band from x 2 to 600. */
+static void d32_volume_strip(DWORD top, DWORD colour)
+{
+    DWORD i;
+    float step = 598.0f / (float)(D32_VOLUME_VERTICES / 2ul - 1ul);
+
+    for (i = 0ul; i < D32_VOLUME_VERTICES; ++i) {
+        d32_vertex(&d32_volume_vertices[i], 2.0f + (float)(i / 2ul) * step,
+                   (float)(top + ((i & 1ul) != 0ul
+                                      ? D32_VOLUME_STRIP_HEIGHT : 0ul)),
+                   0.5f, colour);
+    }
+}
+
+/* Pixels in rows top to bottom that are neither colour nor the clear. */
+static DWORD d32_stray(const D32_SURFACE_DESC *desc, DWORD top,
+                       DWORD bottom, DWORD rgb, DWORD tolerance)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD stray = 0ul;
+
+    for (y = top; y < bottom; ++y) {
+        for (x = 0ul; x < D32_WIDTH; ++x) {
+            pixel = d32_pixel(desc, x, y);
+            if (pixel != 0ul && !d32_near(pixel, rgb, tolerance)) {
+                ++stray;
+            }
+        }
+    }
+    return stray;
+}
+
+/* Centres of the first, a middle and the last quad of a grid band. */
+static DWORD d32_volume_centres(const D32_SURFACE_DESC *desc, DWORD top,
+                                DWORD rgb, DWORD tolerance)
+{
+    static const DWORD quads[4] = { 0ul, 33ul, 85ul, 169ul };
+    DWORD point;
+    DWORD ok = 0ul;
+    DWORD x;
+    DWORD y;
+
+    /* d32_volume_corner's arithmetic in integers: no float conversion in
+     * this freestanding build. */
+    for (point = 0ul; point < 4ul; ++point) {
+        x = (quads[point] % D32_VOLUME_COLUMNS) * 16ul + 2ul;
+        y = top + (quads[point] / D32_VOLUME_COLUMNS) * 16ul + 2ul;
+        if (d32_near(d32_pixel(desc, x + 6ul, y + 6ul), rgb, tolerance)) {
+            ok |= 1ul << point;
+        }
+    }
+    return ok;
+}
+
+static DWORD d32_volume(D32_OBJECT *device, D32_OBJECT *back)
+{
+    static const DWORD list_rgb = 0x0000ff00ul;
+    static const DWORD indexed_rgb = 0x000000fful;
+    static const DWORD strip_rgb = 0x00ff0000ul;
+    D32_SURFACE_DESC desc;
+    D32_PATH before;
+    D32_PATH after;
+    DWORD failures = 0ul;
+    DWORD rep;
+    DWORD stray;
+    DWORD ok;
+    HRESULT hr;
+    HRESULT first_hr = 0;
+
+    d32_line("Stage", "10c-t13-volume");
+    d32_state(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    d32_state(device, D3DRENDERSTATE_ZENABLE, 0ul);
+    d32_hx("T13ClearHr", (DWORD)d32_fill(back, DDBLT_COLORFILL, 0ul));
+
+    d32_volume_list(D32_VOLUME_LIST_TOP, 0xff000000ul | list_rgb);
+    d32_path_read(&before);
+    for (rep = 0ul; rep < D32_VOLUME_REPS; ++rep) {
+        hr = d32_draw(device, d32_volume_vertices, D32_VOLUME_VERTICES);
+        if (hr != 0 && first_hr == 0) {
+            first_hr = hr;
+        }
+    }
+    d32_path_read(&after);
+    d32_hx("T13ListHr", (DWORD)first_hr);
+    d32_path_write("T13List", &before, &after);
+
+    d32_line("Stage", "10d-t13-volume-indexed");
+    first_hr = 0;
+    d32_volume_indexed(D32_VOLUME_INDEXED_TOP, 0xff000000ul | indexed_rgb);
+    d32_path_read(&before);
+    for (rep = 0ul; rep < D32_VOLUME_REPS; ++rep) {
+        hr = d32_draw_indexed(device, d32_volume_vertices,
+                              D32_VOLUME_QUADS * 4ul, d32_volume_indices,
+                              D32_VOLUME_VERTICES);
+        if (hr != 0 && first_hr == 0) {
+            first_hr = hr;
+        }
+    }
+    d32_path_read(&after);
+    d32_hx("T13IndexedHr", (DWORD)first_hr);
+    d32_path_write("T13Indexed", &before, &after);
+
+    d32_line("Stage", "10e-t13-volume-strip");
+    first_hr = 0;
+    d32_volume_strip(D32_VOLUME_STRIP_TOP, 0xff000000ul | strip_rgb);
+    d32_path_read(&before);
+    for (rep = 0ul; rep < D32_VOLUME_REPS; ++rep) {
+        hr = d32_draw_type(device, D3DPT_TRIANGLESTRIP, d32_volume_vertices,
+                           D32_VOLUME_VERTICES);
+        if (hr != 0 && first_hr == 0) {
+            first_hr = hr;
+        }
+    }
+    d32_path_read(&after);
+    d32_hx("T13StripHr", (DWORD)first_hr);
+    d32_path_write("T13Strip", &before, &after);
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)back->vtbl[DDS_LOCK])(back, 0, &desc, DDLOCK_WAIT, 0);
+    d32_hx("T13LockHr", (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        return failures + 1ul;
+    }
+    ok = d32_volume_centres(&desc, D32_VOLUME_LIST_TOP, list_rgb,
+                            d32_tolerance);
+    d32_hx("T13ListCentres", ok);
+    failures += ok != 15ul ? 1ul : 0ul;
+    stray = d32_stray(&desc, D32_VOLUME_LIST_TOP,
+                      D32_VOLUME_LIST_TOP + D32_VOLUME_ROWS_HEIGHT, list_rgb,
+                      d32_tolerance);
+    d32_hx("T13ListStray", stray);
+    failures += stray != 0ul ? 1ul : 0ul;
+
+    ok = d32_volume_centres(&desc, D32_VOLUME_INDEXED_TOP, indexed_rgb,
+                            d32_tolerance);
+    d32_hx("T13IndexedCentres", ok);
+    failures += ok != 15ul ? 1ul : 0ul;
+    stray = d32_stray(&desc, D32_VOLUME_INDEXED_TOP,
+                      D32_VOLUME_INDEXED_TOP + D32_VOLUME_ROWS_HEIGHT,
+                      indexed_rgb, d32_tolerance);
+    d32_hx("T13IndexedStray", stray);
+    failures += stray != 0ul ? 1ul : 0ul;
+
+    ok = (d32_near(d32_pixel(&desc, 8ul, D32_VOLUME_STRIP_TOP + 12ul),
+                   strip_rgb, d32_tolerance) ? 1ul : 0ul) |
+         (d32_near(d32_pixel(&desc, 300ul, D32_VOLUME_STRIP_TOP + 12ul),
+                   strip_rgb, d32_tolerance) ? 2ul : 0ul) |
+         (d32_near(d32_pixel(&desc, 594ul, D32_VOLUME_STRIP_TOP + 12ul),
+                   strip_rgb, d32_tolerance) ? 4ul : 0ul);
+    d32_hx("T13StripSamples", ok);
+    failures += ok != 7ul ? 1ul : 0ul;
+    stray = d32_stray(&desc, D32_VOLUME_STRIP_TOP,
+                      D32_VOLUME_STRIP_TOP + D32_VOLUME_STRIP_HEIGHT + 8ul,
+                      strip_rgb, d32_tolerance);
+    d32_hx("T13StripStray", stray);
+    failures += stray != 0ul ? 1ul : 0ul;
+    ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
+    d32_line("T13Result", failures == 0ul ? "PASS" : "FAIL");
+    return failures;
+}
+
+/*
  * T12, two texture stages through a DirectX 6 device (IDirect3D3,
  * IDirect3DDevice3; slots from d3d.h's declaration order), on the same
  * back buffer through its DirectDrawSurface4 interface. T6's quadrant
@@ -1326,6 +1592,90 @@ static DWORD d32_quadrants_near(const D32_SURFACE_DESC *desc, DWORD x,
         }
     }
     return ok;
+}
+
+/*
+ * T13's two-unit form, on T12's device with T12's textures bound: the 170
+ * quads as one list of 1020 two-coordinate vertices, D32_VOLUME_REPS
+ * times, MODULATE of the red quadrant by the dark lightmap - 0x420000 -
+ * in rows 300 to 380. Two-unit vertices sent inline through PIO are what
+ * locked the Rage 128; T12's quads never filled a packet.
+ */
+static D32_TL2VERTEX d32_volume2_vertices[D32_VOLUME_VERTICES];
+
+static DWORD d32_two_stage_volume(D32_OBJECT *device3, D32_OBJECT *back)
+{
+    static const float corners[6][2] = {
+        { 0.0f, 0.0f }, { 12.0f, 0.0f }, { 0.0f, 12.0f },
+        { 12.0f, 0.0f }, { 12.0f, 12.0f }, { 0.0f, 12.0f }
+    };
+    D32_SURFACE_DESC desc;
+    D32_PATH before;
+    D32_PATH after;
+    D32_TL2VERTEX *v;
+    DWORD quad;
+    DWORD corner;
+    DWORD rep;
+    DWORD ok;
+    DWORD stray;
+    DWORD failures = 0ul;
+    float x;
+    float y;
+    HRESULT hr;
+    HRESULT first_hr = 0;
+
+    d32_line("Stage", "10f-t13-volume-two-unit");
+    d32_tss(device3, 1ul, D32_TSS_COLOROP, D32_TOP_MODULATE);
+    for (quad = 0ul; quad < D32_VOLUME_QUADS; ++quad) {
+        d32_volume_corner(quad, 300ul, &x, &y);
+        for (corner = 0ul; corner < 6ul; ++corner) {
+            v = &d32_volume2_vertices[quad * 6ul + corner];
+            v->sx = x + corners[corner][0];
+            v->sy = y + corners[corner][1];
+            v->sz = 0.5f;
+            v->rhw = 1.0f;
+            v->color = 0xfffffffful;
+            v->specular = 0xff000000ul;
+            /* The red quadrant and the lightmap's dark left half. */
+            v->tu0 = 0.25f;
+            v->tv0 = 0.25f;
+            v->tu1 = 0.25f;
+            v->tv1 = 0.25f;
+        }
+    }
+    d32_path_read(&before);
+    for (rep = 0ul; rep < D32_VOLUME_REPS; ++rep) {
+        hr = ((d32_scene_fn)device3->vtbl[D3DDEV3_BEGIN_SCENE])(device3);
+        if (hr == 0) {
+            hr = ((d32_draw_fn)device3->vtbl[D3DDEV3_DRAW_PRIMITIVE])(
+                device3, D3DPT_TRIANGLELIST, D32_FVF_TL2,
+                d32_volume2_vertices, D32_VOLUME_VERTICES, 0ul);
+            ((d32_scene_fn)device3->vtbl[D3DDEV3_END_SCENE])(device3);
+        }
+        if (hr != 0 && first_hr == 0) {
+            first_hr = hr;
+        }
+    }
+    d32_path_read(&after);
+    d32_hx("T13TwoUnitHr", (DWORD)first_hr);
+    d32_path_write("T13TwoUnit", &before, &after);
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)back->vtbl[DDS_LOCK])(back, 0, &desc, DDLOCK_WAIT, 0);
+    if (hr != 0 || desc.lpSurface == 0) {
+        d32_hx("T13TwoUnitLockHr", (DWORD)hr);
+        return 1ul;
+    }
+    ok = d32_volume_centres(&desc, 300ul, 0x00420000ul, 16ul);
+    d32_hx("T13TwoUnitCentres", ok);
+    failures += ok != 15ul ? 1ul : 0ul;
+    stray = d32_stray(&desc, 300ul, 380ul, 0x00420000ul, 16ul);
+    d32_hx("T13TwoUnitStray", stray);
+    failures += stray != 0ul ? 1ul : 0ul;
+    ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
+    d32_line("T13TwoUnitResult", failures == 0ul ? "PASS" : "FAIL");
+    return failures;
 }
 
 static DWORD d32_two_stage(D32_OBJECT *ddraw, D32_OBJECT *back,
@@ -1507,6 +1857,7 @@ static DWORD d32_two_stage(D32_OBJECT *ddraw, D32_OBJECT *back,
     } else {
         d32_line("T12Result", ok == 0xfful ? "PASS" : "FAIL");
     }
+    failures += d32_two_stage_volume(device3, back);
 
 release:
     if (texture1 != 0) {
@@ -1531,6 +1882,403 @@ release:
         ((d32_release_fn)lightmap->vtbl[COM_RELEASE])(lightmap);
     }
     return failures;
+}
+
+/*
+ * T15, memory outside the driver: a pattern in this process's own memory,
+ * in a shared mapping (the shared arena, where Windows 9x also maps AGP
+ * pages and file views) and in a file read back through the disk cache,
+ * laid down before the first draw and checked after the last, the child's
+ * included. With the Rage 128's AGP ring, 3DMark 2001 SE read its own data
+ * files back corrupt within a minute while every pixel test passed
+ * (2026-10-25); nothing here looked at memory the driver does not own.
+ */
+#define D32_SENTINEL_HEAP_BYTES 0x02000000ul
+#define D32_SENTINEL_MAP_BYTES 0x00800000ul
+#define D32_SENTINEL_FILE_BYTES 0x00400000ul
+#define D32_SENTINEL_CHUNK_BYTES 0x00010000ul
+#define D32_SENTINEL_PATH "C:\\V9XDIAG\\V9XD32.SEN"
+#define D32_SENTINEL_HEAP_SEED 0xa5a5a5a5ul
+#define D32_SENTINEL_MAP_SEED 0x5a5a5a5aul
+#define D32_SENTINEL_FILE_SEED 0x3c3c3c3cul
+
+static DWORD *d32_sentinel_heap;
+static DWORD *d32_sentinel_map;
+static int d32_sentinel_file;
+static DWORD d32_sentinel_chunk[D32_SENTINEL_CHUNK_BYTES / 4ul];
+
+static DWORD d32_sentinel_word(DWORD index, DWORD seed)
+{
+    return (index * 0x9e3779b1ul) ^ seed;
+}
+
+static void d32_sentinel_pattern(DWORD *words, DWORD first, DWORD count,
+                                 DWORD seed)
+{
+    DWORD i;
+
+    for (i = 0ul; i < count; ++i) {
+        words[i] = d32_sentinel_word(first + i, seed);
+    }
+}
+
+static void d32_sentinel_fill(void)
+{
+    HANDLE mapping;
+    HANDLE file;
+    DWORD at;
+    DWORD written;
+
+    d32_line("Stage", "3b-t15-sentinel-fill");
+    d32_sentinel_heap = (DWORD *)VirtualAlloc(0, D32_SENTINEL_HEAP_BYTES,
+                                              MEM_COMMIT, PAGE_READWRITE);
+    if (d32_sentinel_heap != 0) {
+        d32_sentinel_pattern(d32_sentinel_heap, 0ul,
+                             D32_SENTINEL_HEAP_BYTES / 4ul,
+                             D32_SENTINEL_HEAP_SEED);
+    }
+    mapping = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0ul,
+                                 D32_SENTINEL_MAP_BYTES, 0);
+    if (mapping != 0) {
+        d32_sentinel_map = (DWORD *)MapViewOfFile(mapping, FILE_MAP_WRITE,
+                                                  0ul, 0ul, 0ul);
+    }
+    if (d32_sentinel_map != 0) {
+        d32_sentinel_pattern(d32_sentinel_map, 0ul,
+                             D32_SENTINEL_MAP_BYTES / 4ul,
+                             D32_SENTINEL_MAP_SEED);
+    }
+    file = CreateFileA(D32_SENTINEL_PATH, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file != INVALID_HANDLE_VALUE) {
+        d32_sentinel_file = 1;
+        for (at = 0ul; at < D32_SENTINEL_FILE_BYTES;
+             at += D32_SENTINEL_CHUNK_BYTES) {
+            d32_sentinel_pattern(d32_sentinel_chunk, at / 4ul,
+                                 D32_SENTINEL_CHUNK_BYTES / 4ul,
+                                 D32_SENTINEL_FILE_SEED);
+            if (!WriteFile(file, d32_sentinel_chunk,
+                           D32_SENTINEL_CHUNK_BYTES, &written, 0) ||
+                written != D32_SENTINEL_CHUNK_BYTES) {
+                d32_sentinel_file = 0;
+                break;
+            }
+        }
+        CloseHandle(file);
+    }
+    d32_hx("T15HeapReady", d32_sentinel_heap != 0 ? 1ul : 0ul);
+    d32_hx("T15MapReady", d32_sentinel_map != 0 ? 1ul : 0ul);
+    d32_hx("T15FileReady", (DWORD)d32_sentinel_file);
+}
+
+/* Words that differ from the pattern; the first one's byte offset goes to
+ * first_bad unless an earlier call already set it. */
+static DWORD d32_sentinel_compare(const DWORD *words, DWORD first,
+                                  DWORD count, DWORD seed, DWORD *first_bad)
+{
+    DWORD i;
+    DWORD bad = 0ul;
+
+    for (i = 0ul; i < count; ++i) {
+        if (words[i] != d32_sentinel_word(first + i, seed)) {
+            if (bad == 0ul && *first_bad == 0xfffffffful) {
+                *first_bad = (first + i) * 4ul;
+            }
+            ++bad;
+        }
+    }
+    return bad;
+}
+
+static DWORD d32_sentinel_verify(void)
+{
+    HANDLE file;
+    DWORD at;
+    DWORD got;
+    DWORD bad;
+    DWORD first_bad;
+    DWORD failures = 0ul;
+
+    d32_line("Stage", "13-t15-sentinel-verify");
+    if (d32_sentinel_heap != 0) {
+        first_bad = 0xfffffffful;
+        bad = d32_sentinel_compare(d32_sentinel_heap, 0ul,
+                                   D32_SENTINEL_HEAP_BYTES / 4ul,
+                                   D32_SENTINEL_HEAP_SEED, &first_bad);
+        d32_hx("T15HeapBad", bad);
+        d32_hx("T15HeapFirst", first_bad);
+        failures += bad != 0ul ? 1ul : 0ul;
+    }
+    if (d32_sentinel_map != 0) {
+        first_bad = 0xfffffffful;
+        bad = d32_sentinel_compare(d32_sentinel_map, 0ul,
+                                   D32_SENTINEL_MAP_BYTES / 4ul,
+                                   D32_SENTINEL_MAP_SEED, &first_bad);
+        d32_hx("T15MapBad", bad);
+        d32_hx("T15MapFirst", first_bad);
+        failures += bad != 0ul ? 1ul : 0ul;
+    }
+    if (d32_sentinel_file) {
+        file = CreateFileA(D32_SENTINEL_PATH, GENERIC_READ, FILE_SHARE_READ,
+                           0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+        bad = file == INVALID_HANDLE_VALUE ? 1ul : 0ul;
+        first_bad = 0xfffffffful;
+        for (at = 0ul; file != INVALID_HANDLE_VALUE &&
+                       at < D32_SENTINEL_FILE_BYTES;
+             at += D32_SENTINEL_CHUNK_BYTES) {
+            if (!ReadFile(file, d32_sentinel_chunk, D32_SENTINEL_CHUNK_BYTES,
+                          &got, 0) || got != D32_SENTINEL_CHUNK_BYTES) {
+                ++bad;
+                break;
+            }
+            bad += d32_sentinel_compare(d32_sentinel_chunk, at / 4ul,
+                                        D32_SENTINEL_CHUNK_BYTES / 4ul,
+                                        D32_SENTINEL_FILE_SEED, &first_bad);
+        }
+        if (file != INVALID_HANDLE_VALUE) {
+            CloseHandle(file);
+        }
+        d32_hx("T15FileBad", bad);
+        d32_hx("T15FileFirst", first_bad);
+        failures += bad != 0ul ? 1ul : 0ul;
+    }
+    d32_line("T15Result", failures == 0ul ? "PASS" : "FAIL");
+    return failures;
+}
+
+/*
+ * T14, a program that ends without cleaning up, then the next one. The
+ * Rage 128's command engine was left running after a program's last
+ * batch, into the mode change at its exit, and the next 3D program
+ * crashed, drew wrongly or hung the machine (2026-10-25); V9XD32 always
+ * released everything in order and never saw it. /child is this program
+ * again: it sets the mode, draws T13's list, flips, opens a scene and
+ * exits there without releasing anything. Then this process sets the mode
+ * itself, draws T1's triangle and reads it back. A child that does not
+ * end within D32_CHILD_WAIT_MS is a failure, and is left running.
+ */
+#define D32_CHILD_TEXT_PATH "C:\\V9XDIAG\\V9XD32C.TXT"
+#define D32_CHILD_WAIT_MS 90000ul
+#define D32_CHILD_SETTLE_MS 5000ul
+#define D32_CHILD_EXIT_CODE 7u
+#define D32_CHILD_FLIPS 4ul
+#define DDS_FLIP 11
+#define DDFLIP_WAIT 0x00000001ul
+
+typedef HRESULT (WINAPI *d32_flip_fn)(D32_OBJECT *, D32_OBJECT *, DWORD);
+
+/* DirectDraw, exclusive at 640x480 and bpp, a flip chain and a DX5 device
+ * on its back buffer; zero where a step fails, which is recorded. */
+typedef struct d32_session {
+    D32_OBJECT *ddraw;
+    D32_OBJECT *primary;
+    D32_OBJECT *back;
+    D32_OBJECT *d3d;
+    D32_OBJECT *device;
+} D32_SESSION;
+
+static int d32_session_open(D32_SESSION *session, HWND window, DWORD bpp,
+                            const char *prefix)
+{
+    d32_create_fn create;
+    D32_SURFACE_DESC desc;
+    DWORD caps;
+    HRESULT hr;
+    char key[48];
+    char step[48];
+
+    /* Each call is named before it is made: the reopen after a child that
+     * died mid-scene is where a process has been seen to die. */
+    wsprintfA(step, "%sStep", prefix);
+    d32_zero(session, sizeof(*session));
+    d32_line(step, "create");
+    create = (d32_create_fn)GetProcAddress(LoadLibraryA("DDRAW.DLL"),
+                                           "DirectDrawCreate");
+    if (create == 0 || create(0, &session->ddraw, 0) != 0) {
+        return 0;
+    }
+    d32_line(step, "cooperative");
+    ((d32_coop_fn)session->ddraw->vtbl[DD_SET_COOPERATIVE_LEVEL])(
+        session->ddraw, window, DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
+    d32_line(step, "set-mode");
+    hr = ((d32_set_mode_fn)session->ddraw->vtbl[DD_SET_DISPLAY_MODE])(
+        session->ddraw, D32_WIDTH, D32_HEIGHT, bpp);
+    wsprintfA(key, "%sSetModeHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    if (hr != 0) {
+        return 0;
+    }
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
+    desc.dwBackBufferCount = 1ul;
+    desc.ddsCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_FLIP | DDSCAPS_COMPLEX |
+                   DDSCAPS_3DDEVICE;
+    d32_line(step, "create-surface");
+    hr = ((d32_create_surface_fn)session->ddraw->vtbl[DD_CREATE_SURFACE])(
+        session->ddraw, &desc, &session->primary, 0);
+    if (hr == 0) {
+        d32_line(step, "get-attached");
+        caps = DDSCAPS_BACKBUFFER;
+        hr = ((d32_get_attached_fn)
+                  session->primary->vtbl[DDS_GET_ATTACHED_SURFACE])(
+            session->primary, &caps, &session->back);
+    }
+    if (hr == 0) {
+        d32_line(step, "query-d3d");
+        hr = ((d32_query_fn)session->ddraw->vtbl[COM_QUERY_INTERFACE])(
+            session->ddraw, &d32_iid_d3d2, (void **)&session->d3d);
+    }
+    wsprintfA(key, "%sSurfacesHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    if (hr != 0) {
+        return 0;
+    }
+    d32_line(step, "device");
+    session->device = d32_device(session->d3d, session->back, D32_WIDTH,
+                                 D32_HEIGHT, prefix);
+    return session->device != 0;
+}
+
+static void d32_session_close(D32_SESSION *session)
+{
+    if (session->device != 0) {
+        ((d32_release_fn)session->device->vtbl[COM_RELEASE])(session->device);
+    }
+    if (session->d3d != 0) {
+        ((d32_release_fn)session->d3d->vtbl[COM_RELEASE])(session->d3d);
+    }
+    if (session->primary != 0) {
+        ((d32_release_fn)session->primary->vtbl[COM_RELEASE])(
+            session->primary);
+    }
+    if (session->ddraw != 0) {
+        ((d32_restore_fn)session->ddraw->vtbl[DD_RESTORE_DISPLAY_MODE])(
+            session->ddraw);
+        ((d32_release_fn)session->ddraw->vtbl[COM_RELEASE])(session->ddraw);
+    }
+}
+
+/* The child's whole run; never returns. */
+static void d32_child(HWND window, DWORD bpp)
+{
+    D32_SESSION session;
+    DWORD flip;
+    DWORD rep;
+
+    d32_line("Stage", "child-open");
+    if (!d32_session_open(&session, window, bpp, "Child")) {
+        d32_finish("CHILD-NO-DEVICE", 2u);
+    }
+    d32_volume_list(D32_VOLUME_LIST_TOP, 0xff00ff00ul);
+    d32_line("Stage", "child-draw-and-flip");
+    for (flip = 0ul; flip < D32_CHILD_FLIPS; ++flip) {
+        d32_fill(session.back, DDBLT_COLORFILL, 0ul);
+        for (rep = 0ul; rep < 8ul; ++rep) {
+            d32_draw(session.device, d32_volume_vertices,
+                     D32_VOLUME_VERTICES);
+        }
+        d32_hx("ChildFlipHr",
+               (DWORD)((d32_flip_fn)session.primary->vtbl[DDS_FLIP])(
+                   session.primary, 0, DDFLIP_WAIT));
+    }
+    /* /clean, the control: everything released and the mode restored. */
+    if (d32_has_switch("/clean")) {
+        d32_line("Stage", "child-exit-clean");
+        d32_session_close(&session);
+        d32_line("Result", "CHILD-EXITED-CLEAN");
+        ExitProcess(D32_CHILD_EXIT_CODE);
+    }
+    /* A scene left open, a batch in it, and out: no EndScene, no Release,
+     * no mode restored - what a crashed or killed program leaves. */
+    d32_line("Stage", "child-exit-mid-scene");
+    ((d32_scene_fn)session.device->vtbl[D3DDEV2_BEGIN_SCENE])(session.device);
+    ((d32_draw_fn)session.device->vtbl[D3DDEV2_DRAW_PRIMITIVE])(
+        session.device, D3DPT_TRIANGLELIST, D3DVT_TLVERTEX,
+        d32_volume_vertices, D32_VOLUME_VERTICES, 0ul);
+    d32_ddi_restore();
+    d32_line("Result", "CHILD-EXITED");
+    ExitProcess(D32_CHILD_EXIT_CODE);
+}
+
+static DWORD d32_child_and_after(HWND window, DWORD bpp)
+{
+    char path[MAX_PATH];
+    char command[MAX_PATH + 32];
+    STARTUPINFOA startup;
+    PROCESS_INFORMATION process;
+    D32_SESSION session;
+    D32_SURFACE_DESC desc;
+    D32_TLVERTEX v[3];
+    DWORD wait;
+    DWORD code = 0xfffffffful;
+    DWORD judged = 0ul;
+    DWORD mismatches;
+    HRESULT hr;
+
+    d32_line("Stage", "12-t14-child");
+    if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
+        d32_line("T14Result", "NO-PATH");
+        return 1ul;
+    }
+    path[sizeof(path) - 1u] = '\0';
+    /* /t14clean has the child exit cleanly, and /t14wait waits
+     * D32_CHILD_SETTLE_MS before the reopen: the controls that tell a
+     * driver fault from DirectDraw still cleaning up after the child. */
+    wsprintfA(command, "\"%s\" /child%s%s", path,
+              bpp == 16ul ? " /bpp16" : "",
+              d32_has_switch("/t14clean") ? " /clean" : "");
+    d32_zero(&startup, sizeof(startup));
+    startup.cb = sizeof(startup);
+    if (!CreateProcessA(0, command, 0, 0, FALSE, 0ul, 0, 0, &startup,
+                        &process)) {
+        d32_hx("T14CreateError", GetLastError());
+        d32_line("T14Result", "NO-CHILD");
+        return 1ul;
+    }
+    wait = WaitForSingleObject(process.hProcess, D32_CHILD_WAIT_MS);
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    d32_hx("T14ChildWait", wait);
+    d32_hx("T14ChildExit", code);
+    if (wait != WAIT_OBJECT_0) {
+        d32_line("T14Result", "CHILD-HUNG");
+        return 1ul;
+    }
+
+    if (d32_has_switch("/t14wait")) {
+        Sleep(D32_CHILD_SETTLE_MS);
+    }
+    d32_line("Stage", "12b-t14-after-child");
+    if (!d32_session_open(&session, window, bpp, "T14")) {
+        d32_session_close(&session);
+        d32_line("T14Result", "NO-DEVICE-AFTER");
+        return 1ul;
+    }
+    d32_hx("T14ClearHr", (DWORD)d32_fill(session.back, DDBLT_COLORFILL, 0ul));
+    d32_vertex(&v[0], 8.0f, 8.0f, 0.5f, 0xff13579bul);
+    d32_vertex(&v[1], 56.0f, 8.0f, 0.5f, 0xff13579bul);
+    d32_vertex(&v[2], 8.0f, 56.0f, 0.5f, 0xff13579bul);
+    d32_hx("T14DrawHr", (DWORD)d32_draw(session.device, v, 3ul));
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)session.back->vtbl[DDS_LOCK])(session.back, 0, &desc,
+                                                     DDLOCK_WAIT, 0);
+    d32_hx("T14LockHr", (DWORD)hr);
+    mismatches = 1ul;
+    if (hr == 0 && desc.lpSurface != 0) {
+        mismatches = d32_flat_mismatches(&desc, 8ul, 8ul, 0x0013579bul,
+                                         &judged);
+        d32_hx("T14Pixel", d32_pixel(&desc, 16ul, 16ul));
+        ((d32_unlock_fn)session.back->vtbl[DDS_UNLOCK])(session.back,
+                                                        desc.lpSurface);
+    }
+    d32_hx("T14Judged", judged);
+    d32_hx("T14Mismatches", mismatches);
+    d32_session_close(&session);
+    d32_line("T14Result", mismatches == 0ul ? "PASS" : "FAIL");
+    return mismatches != 0ul ? 1ul : 0ul;
 }
 
 void WINAPI V9xD3d32ProbeEntry(void)
@@ -1566,8 +2314,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_PATH t9_after;
 
     CreateDirectoryA("C:\\V9XDIAG", 0);
-    d32_file = CreateFileA(D32_TEXT_PATH, GENERIC_WRITE, FILE_SHARE_READ, 0,
-                           CREATE_ALWAYS,
+    d32_file = CreateFileA(d32_has_switch("/child") ? D32_CHILD_TEXT_PATH
+                                                    : D32_TEXT_PATH,
+                           GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
     d32_line("[V9xD3d32]Build", V9X_BUILD_ID);
     bpp = d32_has_switch("/bpp16") ? 16ul : 32ul;
@@ -1602,6 +2351,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
     }
     ShowWindow(window, SW_SHOWNORMAL);
     SetForegroundWindow(window);
+    if (d32_has_switch("/child")) {
+        d32_child(window, bpp);
+    }
     hr = create(0, &ddraw, 0);
     d32_hx("DirectDrawCreateHr", (DWORD)hr);
     if (hr != 0 || ddraw == 0) {
@@ -1656,6 +2408,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     if ((enumerated.z_depth & (zbits == 32ul ? DDBD_32 : DDBD_16)) == 0ul) {
         d32_finish("NO-Z-AT-DEPTH", 1u);
     }
+
+    d32_sentinel_fill();
 
     d32_line("Stage", "4-surfaces");
     d32_zero(&desc, sizeof(desc));
@@ -2172,6 +2926,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     }
 
     failures += d32_cull_matrix(device, back);
+    failures += d32_volume(device, back);
 
     /* T4, an offscreen render target with a device of its own. */
     d32_line("Stage", "10-t4-offscreen");
@@ -2234,6 +2989,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     ((d32_release_fn)d3d->vtbl[COM_RELEASE])(d3d);
     ((d32_restore_fn)ddraw->vtbl[DD_RESTORE_DISPLAY_MODE])(ddraw);
     ((d32_release_fn)ddraw->vtbl[COM_RELEASE])(ddraw);
+    failures += d32_child_and_after(window, bpp);
+    failures += d32_sentinel_verify();
     DestroyWindow(window);
     /* The run's interface, by what it did: DrawPrimitives2 calls are DDI 6. */
     d32_path_read(&run_after);
@@ -2241,6 +2998,18 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_line("RunDdi", !run_before.ok || !run_after.ok ? "unknown"
                        : run_after.dp2_calls != run_before.dp2_calls ? "6"
                                                                      : "5");
+    /* A wait the engine gave up on is a failure whatever the pixels say:
+     * the driver drew the rest on the CPU and hid it. */
+    if (run_before.ok && run_after.ok) {
+        d32_hx("RunIdleTimeouts",
+               run_after.idle_timeouts - run_before.idle_timeouts);
+        d32_hx("RunFifoTimeouts",
+               run_after.fifo_timeouts - run_before.fifo_timeouts);
+        d32_hx("RunEngineFlags", run_after.engine_flags);
+        failures += run_after.idle_timeouts != run_before.idle_timeouts ||
+                    run_after.fifo_timeouts != run_before.fifo_timeouts
+                        ? 1ul : 0ul;
+    }
     d32_hx("Failures", failures);
     d32_finish(failures == 0ul ? "PASS" : "FAIL", failures == 0ul ? 0u : 1u);
 }
