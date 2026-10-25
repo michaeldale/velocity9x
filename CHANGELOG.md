@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.30.0 - not yet released
+
 ## 0.29.0 - 2026-10-25
 
 - **A 3D program that ends no longer leaves the Rage 128's command engine
