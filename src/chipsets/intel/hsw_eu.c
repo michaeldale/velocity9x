@@ -713,6 +713,62 @@ static void v9x_hsw_psg_sample(struct v9x_hsw_psg *g, v9x_u8 dst,
     v9x_hsw_psg_emit(g, &inst);
 }
 
+/* -1.0f, for DECALALPHA's C (1 - At) as (Ct - C) At + C without a source
+ * negate the operation helper does not take. */
+#define V9X_HSW_PSG_MINUS_ONE ((v9x_u32)0xbf800000ul)
+
+/*
+ * One component of a general combine (V9X_HSW_PS_OP_*, _AOP_*) into
+ * g112 + c: input is the stage's input register for component c, tex the
+ * texel's register base. Stage 1 combines in place, input being g112 + c;
+ * every op reads its input before or in the instruction that writes it.
+ */
+static void v9x_hsw_psg_combine(struct v9x_hsw_psg *g, v9x_u8 c,
+                                v9x_u8 color_op, v9x_u8 alpha_op,
+                                v9x_u8 input, v9x_u8 tex)
+{
+    v9x_u8 out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
+    v9x_u8 texel = (v9x_u8)(tex + c);
+
+    if (c == 3u) {
+        if (alpha_op == V9X_HSW_PS_AOP_REPLACE) {
+            v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MOV, out_reg, texel, 0u, 0, 0ul,
+                           0u);
+        } else if (alpha_op == V9X_HSW_PS_AOP_MODULATE) {
+            v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MUL, out_reg, texel, input, 0,
+                           0ul, 1u);
+        } else if (input != out_reg) {
+            v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MOV, out_reg, input, 0u, 0, 0ul,
+                           0u);
+        }
+        return;
+    }
+    switch (color_op) {
+    case V9X_HSW_PS_OP_REPLACE:
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MOV, out_reg, texel, 0u, 0, 0ul, 0u);
+        break;
+    case V9X_HSW_PS_OP_MODULATE:
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MUL, out_reg, texel, input, 0, 0ul,
+                       1u);
+        break;
+    case V9X_HSW_PS_OP_ADD:
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_ADD, out_reg, texel, input, 0, 0ul,
+                       1u);
+        break;
+    default:
+        /* DECALALPHA: (Ct - C) At + C. */
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MUL, V9X_HSW_PSG_SCRATCH, input, 0u,
+                       1, V9X_HSW_PSG_MINUS_ONE, 0u);
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_ADD, V9X_HSW_PSG_SCRATCH,
+                       V9X_HSW_PSG_SCRATCH, texel, 0, 0ul, 0u);
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MUL, V9X_HSW_PSG_SCRATCH,
+                       V9X_HSW_PSG_SCRATCH, (v9x_u8)(tex + 3u), 0, 0ul, 0u);
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_ADD, out_reg, V9X_HSW_PSG_SCRATCH,
+                       input, 0, 0ul, 1u);
+        break;
+    }
+}
+
 v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
                                          const struct v9x_hsw_ps_desc *desc,
                                          v9x_u32 *used)
@@ -723,8 +779,8 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
     int textured;
 
     if (out == 0 || desc == 0 || used == 0 ||
-        desc->stage0 > V9X_HSW_PS_MODULATE_TEXALPHA ||
-        desc->stage1 > V9X_HSW_PS_MODULATE_TEX1) {
+        desc->stage0 > V9X_HSW_PS_STAGE0_LAST ||
+        desc->stage1 > V9X_HSW_PS_STAGE1_LAST) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     g.out = out;
@@ -754,7 +810,7 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
                         V9X_HSW_PSG_ATTR_UV0, 1u);
         v9x_hsw_psg_sample(&g, V9X_HSW_PSG_TEX0, V9X_HSW_PSG_UV0, 1u, 0u);
     }
-    if (desc->stage1 == V9X_HSW_PS_MODULATE_TEX1) {
+    if (desc->stage1 != V9X_HSW_PS_STAGE1_NONE) {
         v9x_hsw_psg_pln(&g, V9X_HSW_PSG_UV1, V9X_HSW_PSG_ATTR_UV1, 0u);
         v9x_hsw_psg_pln(&g, (v9x_u8)(V9X_HSW_PSG_UV1 + 1u),
                         V9X_HSW_PSG_ATTR_UV1, 1u);
@@ -766,6 +822,15 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
     /* Stage 0 into g112-g115. */
     for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
         out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
+        if (desc->stage0 >= V9X_HSW_PS_OPS_FIRST0) {
+            v9x_u8 ops = (v9x_u8)(desc->stage0 - V9X_HSW_PS_OPS_FIRST0);
+
+            v9x_hsw_psg_combine(&g, c, (v9x_u8)(ops / 3u),
+                                (v9x_u8)(ops % 3u),
+                                (v9x_u8)(V9X_HSW_PSG_DIFFUSE + c),
+                                V9X_HSW_PSG_TEX0);
+            continue;
+        }
         switch (desc->stage0) {
         case V9X_HSW_PS_DIFFUSE:
             v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MOV, out_reg,
@@ -808,12 +873,22 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
             break;
         }
     }
-    /* Stage 1: modulate everything by the second texture. */
+    /* Stage 1: modulate everything by the second texture, or a general
+     * combine of stage 0's result with it. */
     if (desc->stage1 == V9X_HSW_PS_MODULATE_TEX1) {
         for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
             out_reg = (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c);
             v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MUL, out_reg, out_reg,
                            (v9x_u8)(V9X_HSW_PSG_TEX1 + c), 0, 0ul, 1u);
+        }
+    } else if (desc->stage1 >= V9X_HSW_PS_OPS_FIRST1) {
+        v9x_u8 ops = (v9x_u8)(desc->stage1 - V9X_HSW_PS_OPS_FIRST1);
+
+        for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+            v9x_hsw_psg_combine(&g, c, (v9x_u8)(ops / 3u),
+                                (v9x_u8)(ops % 3u),
+                                (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c),
+                                V9X_HSW_PSG_TEX1);
         }
     }
     if (desc->specular) {

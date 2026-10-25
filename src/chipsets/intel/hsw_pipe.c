@@ -86,10 +86,14 @@ v9x_u16 v9x_intel_hsw_pipe_draw_waits(v9x_u16 gdi_may_draw,
 
 v9x_u32 v9x_intel_hsw_pipe_kernel_slot(const struct v9x_hsw_ps_desc *desc)
 {
-    /* Stage 0 (six), stage 1 (two), specular, fog: 48 distinct slots, the
-     * count the builder accepts. Flags count as on when non-zero, as the
-     * builder reads them. */
-    return (v9x_u32)desc->stage0 * 8ul + (v9x_u32)desc->stage1 * 4ul +
+    /* Stage 0 (six named), stage 1 (on or off), specular, fog: 48 slots.
+     * The general combines of the second Direct3D stage
+     * (V9X_HSW_PS_STAGE0_OPS, _STAGE1_OPS) fold onto them - stage 0 modulo
+     * six, any stage 1 as on - and the slot's signature, which carries
+     * both codes whole, tells them apart. Flags count as on when non-zero,
+     * as the builder reads them. */
+    return ((v9x_u32)desc->stage0 % 6ul) * 8ul +
+           (desc->stage1 != V9X_HSW_PS_STAGE1_NONE ? 4ul : 0ul) +
            v9x_hsw_pipe_flag(desc->specular) * 2ul +
            v9x_hsw_pipe_flag(desc->fog);
 }

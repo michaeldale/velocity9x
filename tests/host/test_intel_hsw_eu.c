@@ -363,7 +363,7 @@ static void test_phase_e_generator(void)
     CHECK(out[39] == 0x04420102ul);
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 40ul, &desc, &used) ==
           V9X_STATUS_INVALID_ARGUMENT);
-    desc.stage0 = 9u;
+    desc.stage0 = (v9x_u8)(V9X_HSW_PS_STAGE0_LAST + 1u);
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }
@@ -398,7 +398,7 @@ static void test_phase_f2_generator(void)
           back.opcode == V9X_HSW_EU_OP_ADD && back.saturate == 1u &&
           back.dst.nr == 112u && back.src0.nr == 112u &&
           back.src1.nr == 24u);
-    desc.stage0 = 6u;
+    desc.stage0 = (v9x_u8)(V9X_HSW_PS_STAGE0_LAST + 1u);
     CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }

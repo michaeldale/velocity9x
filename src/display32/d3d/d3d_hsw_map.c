@@ -128,11 +128,48 @@ float v9x_d3d_hsw_fill_z(v9x_u32 value, v9x_u32 cell_bytes)
     return (float)((double)(value & 0xfffful) / 65535.0);
 }
 
+/* A unit's colour combine as the generator's general op; zero for the
+ * render interface's BLEND, which needs the environment colour the
+ * generator does not take. */
+static int v9x_d3d_hsw_color_op(v9x_u32 op, v9x_u8 *colour)
+{
+    if (op == V9X_R3D_ABI_COLOROP_REPLACE) {
+        *colour = V9X_HSW_PS_OP_REPLACE;
+    } else if (op == V9X_R3D_ABI_COLOROP_MODULATE) {
+        *colour = V9X_HSW_PS_OP_MODULATE;
+    } else if (op == V9X_R3D_COLOROP_ADD) {
+        *colour = V9X_HSW_PS_OP_ADD;
+    } else if (op == V9X_R3D_ABI_COLOROP_DECALALPHA) {
+        *colour = V9X_HSW_PS_OP_DECALALPHA;
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
+/* A unit's alpha combine as the generator's general op. */
+static int v9x_d3d_hsw_alpha_op(v9x_u32 op, v9x_u8 *alpha)
+{
+    if (op == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
+        *alpha = V9X_HSW_PS_AOP_INPUT;
+    } else if (op == V9X_R3D_ABI_ALPHAOP_REPLACE) {
+        *alpha = V9X_HSW_PS_AOP_REPLACE;
+    } else if (op == V9X_R3D_ABI_ALPHAOP_MODULATE) {
+        *alpha = V9X_HSW_PS_AOP_MODULATE;
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
 v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
                                     int has_alpha0, v9x_u32 color1,
                                     v9x_u32 alpha1, int has_alpha1,
                                     v9x_u8 *stage0, v9x_u8 *stage1)
 {
+    v9x_u8 colour;
+    v9x_u8 alpha;
+
     /* Without texture alpha the sampler returns At = 1, so "keep the
      * fragment's alpha" and "multiply by the texture's" are the same, and
      * REPLACE and MODULATE of alpha coincide only when Af = 1, which is not
@@ -144,8 +181,13 @@ v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
         alpha1 = V9X_R3D_ABI_ALPHAOP_MODULATE;
     }
 
-    /* Unit 0, against the generator's stage 0 (intel_hsw_eu.h). */
-    if (color0 == V9X_R3D_ABI_COLOROP_REPLACE &&
+    /* Unit 0, against the generator's stage 0 (intel_hsw_eu.h): a named
+     * code where there is one, so the render interface's kernels and their
+     * slots are what they were, else a general combine. */
+    if (color0 == V9X_R3D_COLOROP_ADD &&
+        alpha0 == V9X_R3D_ABI_ALPHAOP_MODULATE) {
+        *stage0 = V9X_HSW_PS_ADD;                /* Cf + Ct, Af At */
+    } else if (color0 == V9X_R3D_ABI_COLOROP_REPLACE &&
         alpha0 == V9X_R3D_ABI_ALPHAOP_REPLACE) {
         *stage0 = V9X_HSW_PS_TEXTURE;            /* Ct, At */
     } else if (color0 == V9X_R3D_ABI_COLOROP_REPLACE &&
@@ -160,16 +202,25 @@ v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
     } else if (color0 == V9X_R3D_ABI_COLOROP_MODULATE &&
                alpha0 == V9X_R3D_ABI_ALPHAOP_FRAGMENT && !has_alpha0) {
         *stage0 = V9X_HSW_PS_MODULATE;           /* At = 1 */
+    } else if (v9x_d3d_hsw_color_op(color0, &colour) &&
+               v9x_d3d_hsw_alpha_op(alpha0, &alpha)) {
+        *stage0 = V9X_HSW_PS_STAGE0_OPS(colour, alpha);
     } else {
         return V9X_D3D_HSW_REFUSE_COMBINE;
     }
 
-    /* Unit 1: the generator's one second stage multiplies everything. */
-    if (color1 != V9X_R3D_ABI_COLOROP_MODULATE ||
-        alpha1 != V9X_R3D_ABI_ALPHAOP_MODULATE) {
+    /* Unit 1: multiply everything, the render interface's one second
+     * stage, or a general combine with stage 0's result - every pair the
+     * Direct3D core makes of two stages (d3d_state.c). */
+    if (color1 == V9X_R3D_ABI_COLOROP_MODULATE &&
+        alpha1 == V9X_R3D_ABI_ALPHAOP_MODULATE) {
+        *stage1 = V9X_HSW_PS_MODULATE_TEX1;      /* C0 Ct1, A0 At1 */
+    } else if (v9x_d3d_hsw_color_op(color1, &colour) &&
+               v9x_d3d_hsw_alpha_op(alpha1, &alpha)) {
+        *stage1 = V9X_HSW_PS_STAGE1_OPS(colour, alpha);
+    } else {
         return V9X_D3D_HSW_REFUSE_COMBINE;
     }
-    *stage1 = V9X_HSW_PS_MODULATE_TEX1;          /* C0 Ct1, A0 At1 */
     return 0ul;
 }
 

@@ -405,9 +405,76 @@ static void test_every_kernel_fits(void)
     }
 }
 
+/* Whether a stage code is a general combine with DECALALPHA's colour, the
+ * one op that takes four instructions a component. */
+static int v9x_test_decal(unsigned int code, unsigned int first)
+{
+    return code >= first && (code - first) / 3u == V9X_HSW_PS_OP_DECALALPHA;
+}
+
+/*
+ * The general combines of the second Direct3D stage: every pair of a
+ * stage-0 code (named or general) and a general stage-1 code builds inside
+ * a kernel slot, lands in one of the 48 slots, and has a signature of its
+ * own, since several now share a slot - except DECALALPHA beside fog or
+ * specular, which overflows the slot's 160 dwords and is refused (the
+ * core then draws that batch's stage 0 alone, counted): DECALALPHA in
+ * both stages with either, or in one with both unless stage 0 is TEXTURE,
+ * which reads no diffuse colour and so interpolates four fewer values.
+ */
+static void test_general_kernels_fit(void)
+{
+    struct v9x_hsw_ps_desc desc;
+    struct v9x_hsw_ps_desc other;
+    v9x_u32 words[V9X_HSW_PIPE_KERNEL_DWORDS];
+    v9x_u32 sig[V9X_HSW_PIPE_SIG_DWORDS];
+    v9x_u32 sig_other[V9X_HSW_PIPE_SIG_DWORDS];
+    v9x_u32 used;
+    unsigned int s0;
+    unsigned int s1;
+    unsigned int flags;
+    int decals;
+    int overflows;
+
+    for (s0 = 1u; s0 <= V9X_HSW_PS_STAGE0_LAST; ++s0) {
+        for (s1 = V9X_HSW_PS_OPS_FIRST1; s1 <= V9X_HSW_PS_STAGE1_LAST;
+             ++s1) {
+            for (flags = 0u; flags < 4u; ++flags) {
+                memset(&desc, 0, sizeof(desc));
+                desc.stage0 = (v9x_u8)s0;
+                desc.stage1 = (v9x_u8)s1;
+                desc.specular = (v9x_u8)(flags & 1u);
+                desc.fog = (v9x_u8)(flags >> 1);
+                desc.fog_rgb[0] = 0x3f000000ul;
+                used = 0ul;
+                decals = v9x_test_decal(s0, V9X_HSW_PS_OPS_FIRST0) +
+                         v9x_test_decal(s1, V9X_HSW_PS_OPS_FIRST1);
+                overflows = (decals == 2 && flags != 0u) ||
+                            (decals == 1 && flags == 3u &&
+                             s0 != V9X_HSW_PS_TEXTURE);
+                CHECK(v9x_intel_hsw_ps_kernel_build(
+                          words, V9X_HSW_PIPE_KERNEL_DWORDS, &desc, &used) ==
+                      (overflows ? V9X_STATUS_INVALID_ARGUMENT
+                                 : V9X_STATUS_OK));
+                CHECK(v9x_intel_hsw_pipe_kernel_slot(&desc) <
+                      V9X_INTEL_HSW_KERNEL_SLOTS);
+                other = desc;
+                other.stage1 = (v9x_u8)(s1 == V9X_HSW_PS_OPS_FIRST1
+                                            ? s1 + 1u : V9X_HSW_PS_OPS_FIRST1);
+                v9x_intel_hsw_pipe_kernel_sig(&desc, sig);
+                v9x_intel_hsw_pipe_kernel_sig(&other, sig_other);
+                CHECK(v9x_intel_hsw_pipe_kernel_slot(&desc) ==
+                      v9x_intel_hsw_pipe_kernel_slot(&other));
+                CHECK(!v9x_intel_hsw_pipe_kernel_sig_equal(sig, sig_other));
+            }
+        }
+    }
+}
+
 unsigned int v9x_run_intel_hsw_pipe_tests(void)
 {
     failures = 0u;
+    test_general_kernels_fit();
     test_slot_layout();
     test_largest_batch_fits();
     test_may_write();

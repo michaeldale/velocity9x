@@ -240,6 +240,33 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
 #define V9X_HSW_PS_STAGE1_NONE   ((v9x_u8)0u)
 #define V9X_HSW_PS_MODULATE_TEX1 ((v9x_u8)1u)
 
+/*
+ * General combines, for the second Direct3D texture stage (appended
+ * 2026-10-25): a colour op and an alpha op, each against the stage's
+ * input - the diffuse colour for stage 0, stage 0's result for stage 1 -
+ * and the stage's texel. V9X_HSW_PS_STAGE0_OPS(c, a) is a stage0 code and
+ * V9X_HSW_PS_STAGE1_OPS(c, a) a stage1 code, for the combinations the
+ * codes above do not name.
+ *   colour: REPLACE Ct; MODULATE C Ct; ADD C + Ct, saturated; DECALALPHA
+ *           Ct At + C (1 - At)
+ *   alpha:  INPUT A; REPLACE At; MODULATE A At
+ */
+#define V9X_HSW_PS_OP_REPLACE    ((v9x_u8)0u)
+#define V9X_HSW_PS_OP_MODULATE   ((v9x_u8)1u)
+#define V9X_HSW_PS_OP_ADD        ((v9x_u8)2u)
+#define V9X_HSW_PS_OP_DECALALPHA ((v9x_u8)3u)
+#define V9X_HSW_PS_AOP_INPUT     ((v9x_u8)0u)
+#define V9X_HSW_PS_AOP_REPLACE   ((v9x_u8)1u)
+#define V9X_HSW_PS_AOP_MODULATE  ((v9x_u8)2u)
+#define V9X_HSW_PS_OPS_FIRST0    ((v9x_u8)6u)
+#define V9X_HSW_PS_OPS_FIRST1    ((v9x_u8)2u)
+#define V9X_HSW_PS_STAGE0_OPS(c, a) \
+    ((v9x_u8)(V9X_HSW_PS_OPS_FIRST0 + (c) * 3u + (a)))
+#define V9X_HSW_PS_STAGE1_OPS(c, a) \
+    ((v9x_u8)(V9X_HSW_PS_OPS_FIRST1 + (c) * 3u + (a)))
+#define V9X_HSW_PS_STAGE0_LAST V9X_HSW_PS_STAGE0_OPS(3u, 2u)
+#define V9X_HSW_PS_STAGE1_LAST V9X_HSW_PS_STAGE1_OPS(3u, 2u)
+
 struct v9x_hsw_ps_desc {
     v9x_u8 stage0;
     v9x_u8 stage1;

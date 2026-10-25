@@ -88,11 +88,6 @@
 /* Ring submission: MI_BATCH_BUFFER_START and the sequence store. */
 #define V9X_D3D_HSW_SUBMIT_DWORDS 6ul
 
-/* The pixel-centre move the core's list path makes for this engine
- * (pixel_centre_half, d3d_core.c), which the indexed path, handed the
- * application's vertices, makes itself. */
-#define V9X_D3D_HSW_CENTRE 0.5f
-
 /* Status reads at about a microsecond, as the blitter's (eng_hsw.c). */
 #define V9X_D3D_HSW_SPINS 0x00400000ul
 
@@ -170,7 +165,16 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     16384ul,        /* target_pitch_max_xrgb8888 */
     /* A 32-bit Z buffer as D24_UNORM_X8_UINT, Y-tiled like D16
      * (v9x_d3d_hsw_depth_format). */
-    24ul            /* depth32_bits */
+    24ul,           /* depth32_bits */
+    /* The draw applies the half-pixel move as it copies each vertex
+     * (draw->centre_offset), so the core does not stage every triangle to
+     * make it; possible since the core stopped clipping for this engine. */
+    1ul,            /* centre_in_engine */
+    /* Two Direct3D texture stages in one pass, on the two samplers the
+     * render interface already drew with: every pairing the core makes of
+     * stages 0 and 1 (d3d_state.c) as a kernel (v9x_d3d_hsw_two_unit_stages),
+     * a kernel that will not fit declined by accepts. */
+    2ul             /* texture_stages */
 };
 
 /* One texture unit as the sampler reads it. */
@@ -1240,14 +1244,48 @@ static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
     return V9X_D3D_HSW_REFUSE_NONE;
 }
 
+/*
+ * Whether a description's kernel fits a kernel slot. A two-stage
+ * DECALALPHA beside fog or specular does not (test_intel_hsw_pipe.c), and
+ * is better declined by accepts - the core then draws stage 0 alone and
+ * counts it - than refused by the draw it was accepted for. Built once per
+ * signature change into the same cached scratch write_state assembles in;
+ * the Win16 lock serialises both.
+ */
+static int v9x_d3d_hsw_kernel_fits(const struct v9x_hsw_ps_desc *desc)
+{
+    static v9x_u32 checked[V9X_HSW_PIPE_SIG_DWORDS];
+    static int checked_valid;
+    static int checked_fits;
+    v9x_u32 wanted[V9X_HSW_PIPE_SIG_DWORDS];
+    v9x_u32 used = 0ul;
+    DWORD index;
+
+    v9x_intel_hsw_pipe_kernel_sig(desc, wanted);
+    if (checked_valid &&
+        v9x_intel_hsw_pipe_kernel_sig_equal(wanted, checked) == V9X_TRUE) {
+        return checked_fits;
+    }
+    checked_fits = v9x_intel_hsw_ps_kernel_build(v9x_d3d_hsw_kernel_words,
+                                                 V9X_D3D_HSW_KERNEL_DWORDS,
+                                                 desc, &used) ==
+                   V9X_STATUS_OK;
+    for (index = 0ul; index < V9X_HSW_PIPE_SIG_DWORDS; ++index) {
+        checked[index] = wanted[index];
+    }
+    checked_valid = 1;
+    return checked_fits;
+}
+
 static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
 {
     V9X_D3D_HSW_STATE state;
 
-    if (draw == 0 || v9x_hal == 0) {
+    if (draw == 0 || v9x_hal == 0 ||
+        v9x_d3d_hsw_map(draw, &state) != V9X_D3D_HSW_REFUSE_NONE) {
         return 0;
     }
-    return v9x_d3d_hsw_map(draw, &state) == V9X_D3D_HSW_REFUSE_NONE;
+    return state.textured != 2 || v9x_d3d_hsw_kernel_fits(&state.desc);
 }
 
 /* The batch's description of a mapped Direct3D draw of TL triangles:
@@ -1386,11 +1424,13 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD timed;
     float width;
     float height;
+    float centre;
     int wait_after;
     const v9x_u32 *source;
     const v9x_u32 *uv1;
     v9x_u32 *target;
     V9X_R3D_VERTEX clipped[V9X_R3D_CLIP_MAX_VERTICES];
+    V9X_R3D_VERTEX moved[3];
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return 0;
@@ -1449,6 +1489,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     limit = d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
     width = (float)draw->target.width;
     height = (float)draw->target.height;
+    centre = draw->centre_offset;
 
     while (done < triangle_count) {
         /* Each piece is one sequence, so it has a slot of its own and
@@ -1487,7 +1528,20 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         while (done < triangle_count &&
                count + V9X_R3D_MAX_FAN_TRIANGLES <= limit) {
             const V9X_R3D_VERTEX *triangle = vertices + done * 3ul;
-            int kind = v9x_d3d_hsw_guard(triangle);
+            int kind;
+
+            /* The pixel-centre move the core leaves to this engine
+             * (centre_in_engine): half a pixel on x and y, before the
+             * guard band and any cut, as the core made it. */
+            if (centre != 0.0f) {
+                for (vertex = 0ul; vertex < 3ul; ++vertex) {
+                    moved[vertex] = triangle[vertex];
+                    moved[vertex].sx += centre;
+                    moved[vertex].sy += centre;
+                }
+                triangle = moved;
+            }
+            kind = v9x_d3d_hsw_guard(triangle);
 
             if (kind == V9X_D3D_HSW_GUARD_DRAW) {
                 source = (const v9x_u32 *)triangle;
@@ -1678,8 +1732,8 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
     /* Every vertex of the range finite and inside +/- 4096 after the
      * move. */
     for (index = first; index <= last; ++index) {
-        float x = pool[index].sx + V9X_D3D_HSW_CENTRE;
-        float y = pool[index].sy + V9X_D3D_HSW_CENTRE;
+        float x = pool[index].sx + draw->centre_offset;
+        float y = pool[index].sy + draw->centre_offset;
 
         if (!v9x_d3d_hsw_finite(x) || !v9x_d3d_hsw_finite(y)) {
             return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_VERTEX,
@@ -1743,9 +1797,9 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
     for (index = first; index <= last; ++index) {
         const v9x_u32 *words = (const v9x_u32 *)&pool[index];
 
-        moved.value = pool[index].sx + V9X_D3D_HSW_CENTRE;
+        moved.value = pool[index].sx + draw->centre_offset;
         *target++ = moved.bits;
-        moved.value = pool[index].sy + V9X_D3D_HSW_CENTRE;
+        moved.value = pool[index].sy + draw->centre_offset;
         *target++ = moved.bits;
         for (word = 2ul; word < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++word) {
             *target++ = words[word];

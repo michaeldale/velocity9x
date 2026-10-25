@@ -171,32 +171,51 @@ static void test_two_unit_stages(void)
               &s0, &s1) == 0ul);
     CHECK(s0 == V9X_HSW_PS_DECAL);
 
-    /* With texture alpha those three are not exact: refused. */
+    /* With texture alpha those three have no named stage: they become the
+     * general combines (since the second Direct3D stage, 2026-10-25),
+     * worked by hand from intel_hsw_eu.h: stage 0 codes 6 + 3 c + a,
+     * stage 1 codes 2 + 3 c + a. */
     CHECK(v9x_d3d_hsw_two_unit_stages(
               V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
               V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 0,
-              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+              &s0, &s1) == 0ul);
+    CHECK(s0 == 9u && s1 == V9X_HSW_PS_MODULATE_TEX1);
     CHECK(v9x_d3d_hsw_two_unit_stages(
               V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
               V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 0,
-              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+              &s0, &s1) == 0ul);
+    CHECK(s0 == 8u);
     CHECK(v9x_d3d_hsw_two_unit_stages(
               V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 0,
               V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
-              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
-    /* No stage for DECALALPHA or BLEND on either unit, nor for unit 1
-     * replacing or keeping unit 0's colour. */
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_TEXTURE && s1 == 5u);
+    /* DECALALPHA on unit 0, unit 1 replacing, and Direct3D's ADD on either
+     * unit: general combines too. */
     CHECK(v9x_d3d_hsw_two_unit_stages(
               V9X_R3D_ABI_COLOROP_DECALALPHA, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
               V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
-              &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+              &s0, &s1) == 0ul);
+    CHECK(s0 == 15u);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s1 == 3u);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_COLOROP_ADD, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              V9X_R3D_COLOROP_ADD, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_ADD && s1 == 10u);
+    /* The render interface's BLEND needs the environment colour: refused
+     * on either unit. */
     CHECK(v9x_d3d_hsw_two_unit_stages(
               V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
               V9X_R3D_ABI_COLOROP_BLEND, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
               &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
     CHECK(v9x_d3d_hsw_two_unit_stages(
-              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
-              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_BLEND, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
               &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
     CHECK(v9x_d3d_hsw_two_unit_stages(
               0ul, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,

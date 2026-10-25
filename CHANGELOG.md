@@ -23,6 +23,12 @@ build identifier so exact guest-tested binaries remain traceable.
   inside its guard band** instead of being clipped by the CPU first;
   with it 87% of 3DMark 2000's indexed calls go to the card whole
   ([record](docs/decisions/2026-10-25-haswell-guard-band.md)).
+- **HD 4600: two Direct3D texture stages in one pass**, as on the Rage
+  128: lightmaps and other two-texture effects are drawn by the card
+  instead of in two passes by the program. Like the Rage 128, the HD
+  4600 now gives every Direct3D program the DrawPrimitives2 interface;
+  3DMark 2000 went from 2009 to 2355 with both
+  ([record](docs/decisions/2026-10-25-haswell-two-texture-stages.md)).
 - **Rage 128 and HD 4600: programs on the DrawPrimitives2 interface
   (DirectX 8, and any program set to it) are told the card's guard band**,
   so Direct3D stops clipping their triangles on the CPU before the driver
