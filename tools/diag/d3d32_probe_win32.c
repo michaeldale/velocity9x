@@ -50,7 +50,13 @@
  *      mode again and draws T1's triangle.
  *   T15 a pattern in process memory, a shared mapping and a file read
  *      back through the disk cache, laid before the first draw and checked
- *      after the last.
+ *      after the last; the memory is scanned again at every stage line,
+ *      and each bad word is written out with its address and value.
+ *      /t15early lays it before DirectDraw loads; /t15only draws nothing
+ *      and watches it for 30 s instead; /t15bare does that without loading
+ *      DirectDraw; /t15small lays 4 MiB and 1 MiB instead of 32 and 8.
+ *      Each page's page-table entry is kept, to tell a page the pager
+ *      wrote out and read back from one that stayed.
  *
  * Every run also fails if the engine gave up on a wait (RunIdleTimeouts,
  * RunFifoTimeouts): a driver that times out draws the rest on the CPU, and
@@ -299,12 +305,18 @@ static void d32_hex(char *text, DWORD value)
     text[10] = '\0';
 }
 
-/* One line, written through and flushed before the caller goes on. */
+static void d32_sentinel_check(const char *stage);
+
+/* One line, written through and flushed before the caller goes on. A
+ * stage line first scans T15's pattern (d32_sentinel_check). */
 static void d32_line(const char *key, const char *value)
 {
     DWORD written;
     if (d32_file == INVALID_HANDLE_VALUE) {
         return;
+    }
+    if (lstrcmpA(key, "Stage") == 0) {
+        d32_sentinel_check(value);
     }
     WriteFile(d32_file, key, (DWORD)lstrlenA(key), &written, 0);
     WriteFile(d32_file, "=", 1ul, &written, 0);
@@ -1898,17 +1910,138 @@ release:
 #define D32_SENTINEL_FILE_BYTES 0x00400000ul
 #define D32_SENTINEL_CHUNK_BYTES 0x00010000ul
 #define D32_SENTINEL_PATH "C:\\V9XDIAG\\V9XD32.SEN"
+#define D32_SENTINEL_BARE_PATH "C:\\V9XDIAG\\V9XD32W.SEN"
 #define D32_SENTINEL_HEAP_SEED 0xa5a5a5a5ul
 #define D32_SENTINEL_MAP_SEED 0x5a5a5a5aul
 #define D32_SENTINEL_FILE_SEED 0x3c3c3c3cul
+/* /t15only's watch: about as long as a full run takes on A8U4I5. */
+#define D32_SENTINEL_WATCH_MS 30000ul
+#define D32_SENTINEL_WATCH_STEP_MS 1000ul
 
+static const char *d32_sentinel_path = D32_SENTINEL_PATH;
 static DWORD *d32_sentinel_heap;
 static DWORD *d32_sentinel_map;
+/* /t15small: 4 MiB and 1 MiB, which a 64 MiB machine keeps resident. */
+#define D32_SENTINEL_SMALL_HEAP_BYTES 0x00400000ul
+#define D32_SENTINEL_SMALL_MAP_BYTES 0x00100000ul
+static DWORD d32_sentinel_heap_bytes = D32_SENTINEL_HEAP_BYTES;
+static DWORD d32_sentinel_map_bytes = D32_SENTINEL_MAP_BYTES;
+
+/*
+ * The page-table entry behind each pattern page, as laid and as found,
+ * so a bad word is named by its physical frame and not only its linear
+ * address. Ring 3 cannot read Windows 98's page tables (a guarded read at
+ * FF800000h failed on A8U4I5), so PFRM.VXD copies them with
+ * _CopyPageTable (tools\diag\page_frames.asm); without it every entry
+ * reads FFFFFFFFh. A frame that changed, or an entry not present, is a
+ * page the pager wrote out: T15 commits 40 MiB, and A8U4I5 has 64 MiB.
+ */
+#define D32_PFRM_VXD "\\\\.\\PFRM.VXD"
+#define D32_PFRM_COPY 1ul
+#define D32_PFRM_PAGES_MAX 8192ul
+#define D32_PAGE_PRESENT 0x00000001ul
+#define D32_PAGE_FRAME 0xfffff000ul
+#define D32_SENTINEL_HEAP_PAGES (0x02000000ul / 4096ul)
+#define D32_SENTINEL_MAP_PAGES (0x00800000ul / 4096ul)
+
+static DWORD d32_sentinel_heap_pte[D32_SENTINEL_HEAP_PAGES];
+static DWORD d32_sentinel_map_pte[D32_SENTINEL_MAP_PAGES];
+static DWORD d32_pte_now[D32_SENTINEL_HEAP_PAGES];
+static HANDLE d32_pfrm = INVALID_HANDLE_VALUE;
+static int d32_pfrm_tried;
+
+/* Entries for pages pages from linear, each FFFFFFFFh when they cannot
+ * be read. */
+static void d32_pte_copy(const void *linear, DWORD pages, DWORD *out)
+{
+    DWORD request[2];
+    DWORD returned = 0ul;
+    DWORD page;
+
+    if (!d32_pfrm_tried) {
+        d32_pfrm_tried = 1;
+        d32_pfrm = CreateFileA(D32_PFRM_VXD, 0, 0, 0, CREATE_NEW,
+                               FILE_FLAG_DELETE_ON_CLOSE, 0);
+    }
+    /* PFRM.VXD copies at most D32_PFRM_PAGES_MAX entries a call. */
+    for (page = 0ul; page < pages; page += request[1]) {
+        request[0] = ((DWORD)linear >> 12) + page;
+        request[1] = pages - page < D32_PFRM_PAGES_MAX ? pages - page
+                                                       : D32_PFRM_PAGES_MAX;
+        returned = 0ul;
+        if (d32_pfrm == INVALID_HANDLE_VALUE ||
+            !DeviceIoControl(d32_pfrm, D32_PFRM_COPY, request,
+                             sizeof(request), out + page, request[1] * 4ul,
+                             &returned, 0) ||
+            returned != request[1] * 4ul) {
+            for (returned = 0ul; returned < request[1]; ++returned) {
+                out[page + returned] = 0xfffffffful;
+            }
+        }
+    }
+}
+
+static DWORD d32_pte(const void *linear)
+{
+    DWORD entry;
+
+    d32_pte_copy(linear, 1ul, &entry);
+    return entry;
+}
+
+/* The entry as laid, for a word in the heap or the mapping. */
+static DWORD d32_pte_laid(const DWORD *word)
+{
+    DWORD at = (DWORD)word;
+
+    if (d32_sentinel_heap != 0 && at >= (DWORD)d32_sentinel_heap &&
+        at - (DWORD)d32_sentinel_heap < d32_sentinel_heap_bytes) {
+        return d32_sentinel_heap_pte[(at - (DWORD)d32_sentinel_heap) >> 12];
+    }
+    if (d32_sentinel_map != 0 && at >= (DWORD)d32_sentinel_map &&
+        at - (DWORD)d32_sentinel_map < d32_sentinel_map_bytes) {
+        return d32_sentinel_map_pte[(at - (DWORD)d32_sentinel_map) >> 12];
+    }
+    return 0xfffffffful;
+}
+
+/* Pages whose entry is no longer the one laid: not present now, or
+ * present in another frame. */
+static DWORD d32_pte_moved(const DWORD *words, DWORD pages,
+                           const DWORD *ptes, DWORD *absent)
+{
+    DWORD page;
+    DWORD now;
+    DWORD moved = 0ul;
+
+    *absent = 0ul;
+    d32_pte_copy(words, pages, d32_pte_now);
+    for (page = 0ul; page < pages; ++page) {
+        now = d32_pte_now[page];
+        if ((now & D32_PAGE_PRESENT) == 0ul || now == 0xfffffffful) {
+            ++*absent;
+            ++moved;
+        } else if ((now & D32_PAGE_FRAME) != (ptes[page] & D32_PAGE_FRAME)) {
+            ++moved;
+        }
+    }
+    return moved;
+}
 static int d32_sentinel_file;
 static DWORD d32_sentinel_chunk[D32_SENTINEL_CHUNK_BYTES / 4ul];
 
+/* /t15ones lays every bit set, so a writer that only clears bits shows
+ * wherever it lands; the bad words found so far each had one bit cleared. */
+static int d32_sentinel_ones = -1;
+
 static DWORD d32_sentinel_word(DWORD index, DWORD seed)
 {
+    if (d32_sentinel_ones < 0) {
+        d32_sentinel_ones = d32_has_switch("/t15ones");
+    }
+    if (d32_sentinel_ones) {
+        return 0xfffffffful;
+    }
     return (index * 0x9e3779b1ul) ^ seed;
 }
 
@@ -1922,6 +2055,256 @@ static void d32_sentinel_pattern(DWORD *words, DWORD first, DWORD count,
     }
 }
 
+/*
+ * /t15frame=XXXXXXXX names a physical frame (hex); the fill says whether
+ * the pattern holds it, where, and which word of it the pattern puts at
+ * page offset 5C0h. A bad word that keeps its physical address across
+ * runs is either one cell or one writer at a fixed address.
+ */
+static DWORD d32_switch_number(const char *option, DWORD base)
+{
+    const char *line = GetCommandLineA();
+    DWORD value = 0ul;
+    DWORD digit;
+    unsigned length = (unsigned)lstrlenA(option);
+    unsigned offset;
+    unsigned index;
+    char c;
+
+    for (offset = 0u; line[offset] != '\0'; ++offset) {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE,
+                           line + offset, (int)length, option,
+                           (int)length) != CSTR_EQUAL) {
+            continue;
+        }
+        for (index = offset + length; line[index] != '\0'; ++index) {
+            c = line[index];
+            if (c >= '0' && c <= '9') {
+                digit = (DWORD)(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                digit = (DWORD)(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                digit = (DWORD)(c - 'A' + 10);
+            } else {
+                break;
+            }
+            if (digit >= base) {
+                break;
+            }
+            value = value * base + digit;
+        }
+        return value;
+    }
+    return 0ul;
+}
+
+/*
+ * /t15bare's watch with /t15watch=<seconds>: every D32_SENTINEL_HIT_STEP_MS
+ * the heap and the mapping are scanned, each bad word is written out with
+ * the time, its linear address, its page-table entry and its value, and
+ * put back, so the next hit on the same word shows too. How often the
+ * writer comes, and whether its physical target stays put, is what this
+ * measures.
+ */
+#define D32_SENTINEL_HIT_STEP_MS 250ul
+#define D32_SENTINEL_HIT_LINES 200ul
+static DWORD d32_sentinel_hits;
+
+static void d32_sentinel_repair(DWORD *words, DWORD count, DWORD seed,
+                                const char *name)
+{
+    char text[96];
+    DWORD i;
+    DWORD expected;
+
+    for (i = 0ul; i < count; ++i) {
+        expected = d32_sentinel_word(i, seed);
+        if (words[i] == expected) {
+            continue;
+        }
+        if (d32_sentinel_hits < D32_SENTINEL_HIT_LINES) {
+            wsprintfA(text, "%lu %s %08lX %08lX pte %08lX %08lX",
+                      GetTickCount(), name, (DWORD)&words[i],
+                      d32_pte(&words[i]), words[i], expected);
+            d32_line("T15Hit", text);
+        }
+        ++d32_sentinel_hits;
+        words[i] = expected;
+    }
+}
+
+/*
+ * /t15bare /t15hunt=<cycles> [/t15mb=<MiB>]: the address map of the bad
+ * bits, apart from anything else T15 does. One block (96 MiB unless
+ * /t15mb says otherwise) is committed; each cycle writes it all ones or
+ * all zeros by turns, waits D32_HUNT_WAIT_MS and reads it back, and every
+ * word that changed is written out with its physical address and the bits
+ * that flipped. Then the block's frames are summarised, so a rate per
+ * address class can be worked out: every hit through boot 621 was at a
+ * physical address of 15C0h modulo 8000h, bit 23, 1 to 0.
+ */
+#define D32_HUNT_MB_DEFAULT 96ul
+#define D32_HUNT_MB_MAX 128ul
+#define D32_HUNT_WAIT_MS 2000ul
+#define D32_HUNT_LINES 400ul
+#define D32_HUNT_CLASS_STRIDE 0x8000ul
+#define D32_HUNT_CLASS_OFFSET 0x15c0ul
+
+static DWORD d32_hunt_pte[D32_HUNT_MB_MAX * 256ul];
+
+static void d32_hunt(DWORD cycles)
+{
+    char text[96];
+    DWORD mb = d32_switch_number("/t15mb=", 10ul);
+    DWORD pages;
+    DWORD words;
+    DWORD *block;
+    DWORD cycle;
+    DWORD i;
+    DWORD fill;
+    DWORD frame;
+    DWORD lines = 0ul;
+    DWORD hits = 0ul;
+    DWORD class_pages = 0ul;
+    DWORD frame_low = 0xfffffffful;
+    DWORD frame_high = 0ul;
+    int fresh = d32_has_switch("/t15fresh");
+
+    if (mb == 0ul || mb > D32_HUNT_MB_MAX) {
+        mb = D32_HUNT_MB_DEFAULT;
+    }
+    pages = mb * 256ul;
+    words = pages * 1024ul;
+    block = (DWORD *)VirtualAlloc(0, pages * 4096ul, MEM_COMMIT,
+                                  PAGE_READWRITE);
+    d32_hx("HuntBase", (DWORD)block);
+    d32_hx("HuntPages", pages);
+    if (block == 0) {
+        return;
+    }
+    for (cycle = 0ul; cycle < cycles; ++cycle) {
+        fill = (cycle & 1ul) == 0ul ? 0xfffffffful : 0ul;
+        /* /t15fresh: every cycle on newly committed pages, all ones; the
+         * boot-621 hunt failed almost only on its first cycle. */
+        if (fresh) {
+            fill = 0xfffffffful;
+            if (cycle != 0ul) {
+                VirtualFree(block, 0ul, MEM_RELEASE);
+                block = (DWORD *)VirtualAlloc(0, pages * 4096ul, MEM_COMMIT,
+                                              PAGE_READWRITE);
+                if (block == 0) {
+                    d32_line("HuntRealloc", "failed");
+                    break;
+                }
+            }
+        }
+        for (i = 0ul; i < words; ++i) {
+            block[i] = fill;
+        }
+        if (cycle == 0ul || fresh) {
+            d32_pte_copy(block, pages, d32_hunt_pte);
+        }
+        Sleep(D32_HUNT_WAIT_MS);
+        for (i = 0ul; i < words; ++i) {
+            if (block[i] == fill) {
+                continue;
+            }
+            ++hits;
+            if (lines < D32_HUNT_LINES) {
+                frame = d32_hunt_pte[i >> 10] & D32_PAGE_FRAME;
+                wsprintfA(text, "%lu %08lX %08lX %08lX", cycle,
+                          (DWORD)&block[i], frame + (i & 1023ul) * 4ul,
+                          block[i] ^ fill);
+                d32_line("HuntHit", text);
+                ++lines;
+            }
+        }
+    }
+    /* The frames the block had, and how many sit in the suspect class. */
+    for (i = 0ul; i < pages; ++i) {
+        frame = d32_hunt_pte[i] & D32_PAGE_FRAME;
+        if ((d32_hunt_pte[i] & D32_PAGE_PRESENT) == 0ul) {
+            continue;
+        }
+        if (frame < frame_low) {
+            frame_low = frame;
+        }
+        if (frame > frame_high) {
+            frame_high = frame;
+        }
+        if (((frame + 0x5c0ul) & (D32_HUNT_CLASS_STRIDE - 1ul)) ==
+            D32_HUNT_CLASS_OFFSET) {
+            ++class_pages;
+        }
+    }
+    d32_hx("HuntFrameLow", frame_low);
+    d32_hx("HuntFrameHigh", frame_high);
+    d32_hx("HuntClassPages", class_pages);
+    d32_hx("HuntHits", hits);
+    /* Every frame, eight to a line, for working out which rows were held. */
+    for (i = 0ul; i < pages && d32_has_switch("/t15frames"); i += 8ul) {
+        wsprintfA(text, "%05lX %05lX %05lX %05lX %05lX %05lX %05lX %05lX",
+                  d32_hunt_pte[i] >> 12, d32_hunt_pte[i + 1ul] >> 12,
+                  d32_hunt_pte[i + 2ul] >> 12, d32_hunt_pte[i + 3ul] >> 12,
+                  d32_hunt_pte[i + 4ul] >> 12, d32_hunt_pte[i + 5ul] >> 12,
+                  d32_hunt_pte[i + 6ul] >> 12, d32_hunt_pte[i + 7ul] >> 12);
+        d32_line("HuntFrames", text);
+    }
+}
+
+static void d32_sentinel_watch_hits(DWORD seconds)
+{
+    DWORD started = GetTickCount();
+
+    while (GetTickCount() - started < seconds * 1000ul) {
+        Sleep(D32_SENTINEL_HIT_STEP_MS);
+        d32_sentinel_repair(d32_sentinel_heap, d32_sentinel_heap_bytes / 4ul,
+                            D32_SENTINEL_HEAP_SEED, "heap");
+        d32_sentinel_repair(d32_sentinel_map, d32_sentinel_map_bytes / 4ul,
+                            D32_SENTINEL_MAP_SEED, "map");
+    }
+    d32_hx("T15Hits", d32_sentinel_hits);
+}
+
+static void d32_sentinel_find_frame(void)
+{
+    char text[64];
+    DWORD frame = d32_switch_number("/t15frame=", 16ul) & D32_PAGE_FRAME;
+    DWORD page;
+
+    if (frame == 0ul) {
+        return;
+    }
+    for (page = 0ul; page < (d32_sentinel_heap_bytes >> 12); ++page) {
+        if ((d32_sentinel_heap_pte[page] & D32_PAGE_FRAME) == frame) {
+            wsprintfA(text, "heap %08lX %08lX", page << 12,
+                      d32_sentinel_heap[page * 1024ul + 0x5c0ul / 4ul]);
+            d32_line("T15FrameAt", text);
+            return;
+        }
+    }
+    for (page = 0ul; page < (d32_sentinel_map_bytes >> 12); ++page) {
+        if ((d32_sentinel_map_pte[page] & D32_PAGE_FRAME) == frame) {
+            wsprintfA(text, "map %08lX %08lX", page << 12,
+                      d32_sentinel_map[page * 1024ul + 0x5c0ul / 4ul]);
+            d32_line("T15FrameAt", text);
+            return;
+        }
+    }
+    /* The file's read buffer, where the boot-619 file word went bad. */
+    for (page = 0ul; page <= D32_SENTINEL_CHUNK_BYTES >> 12; ++page) {
+        DWORD linear = ((DWORD)d32_sentinel_chunk & D32_PAGE_FRAME) +
+                       (page << 12);
+
+        if ((d32_pte((const void *)linear) & D32_PAGE_FRAME) == frame) {
+            wsprintfA(text, "chunk %08lX", linear);
+            d32_line("T15FrameAt", text);
+            return;
+        }
+    }
+    d32_line("T15FrameAt", "none");
+}
+
 static void d32_sentinel_fill(void)
 {
     HANDLE mapping;
@@ -1930,25 +2313,36 @@ static void d32_sentinel_fill(void)
     DWORD written;
 
     d32_line("Stage", "3b-t15-sentinel-fill");
-    d32_sentinel_heap = (DWORD *)VirtualAlloc(0, D32_SENTINEL_HEAP_BYTES,
+    if (d32_has_switch("/t15small")) {
+        d32_sentinel_heap_bytes = D32_SENTINEL_SMALL_HEAP_BYTES;
+        d32_sentinel_map_bytes = D32_SENTINEL_SMALL_MAP_BYTES;
+    }
+    d32_sentinel_heap = (DWORD *)VirtualAlloc(0, d32_sentinel_heap_bytes,
                                               MEM_COMMIT, PAGE_READWRITE);
-    if (d32_sentinel_heap != 0) {
-        d32_sentinel_pattern(d32_sentinel_heap, 0ul,
-                             D32_SENTINEL_HEAP_BYTES / 4ul,
+    /* A page at a time, its entry read while it is surely resident. */
+    for (at = 0ul; d32_sentinel_heap != 0 && at < d32_sentinel_heap_bytes;
+         at += 4096ul) {
+        d32_sentinel_pattern(d32_sentinel_heap + at / 4ul, at / 4ul, 1024ul,
                              D32_SENTINEL_HEAP_SEED);
+        d32_sentinel_heap_pte[at >> 12] =
+            d32_pte(d32_sentinel_heap + at / 4ul);
     }
     mapping = CreateFileMappingA(INVALID_HANDLE_VALUE, 0, PAGE_READWRITE, 0ul,
-                                 D32_SENTINEL_MAP_BYTES, 0);
+                                 d32_sentinel_map_bytes, 0);
     if (mapping != 0) {
         d32_sentinel_map = (DWORD *)MapViewOfFile(mapping, FILE_MAP_WRITE,
                                                   0ul, 0ul, 0ul);
     }
-    if (d32_sentinel_map != 0) {
-        d32_sentinel_pattern(d32_sentinel_map, 0ul,
-                             D32_SENTINEL_MAP_BYTES / 4ul,
+    for (at = 0ul; d32_sentinel_map != 0 && at < d32_sentinel_map_bytes;
+         at += 4096ul) {
+        d32_sentinel_pattern(d32_sentinel_map + at / 4ul, at / 4ul, 1024ul,
                              D32_SENTINEL_MAP_SEED);
+        d32_sentinel_map_pte[at >> 12] = d32_pte(d32_sentinel_map + at / 4ul);
     }
-    file = CreateFileA(D32_SENTINEL_PATH, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+    /* Scanned again before and after the file, the fill's slowest part:
+     * the hits so far all came before the next stage. */
+    d32_sentinel_check("3c-t15-before-file");
+    file = CreateFileA(d32_sentinel_path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL, 0);
     if (file != INVALID_HANDLE_VALUE) {
         d32_sentinel_file = 1;
@@ -1966,28 +2360,133 @@ static void d32_sentinel_fill(void)
         }
         CloseHandle(file);
     }
+    d32_sentinel_check("3d-t15-after-file");
     d32_hx("T15HeapReady", d32_sentinel_heap != 0 ? 1ul : 0ul);
+    d32_hx("T15HeapBase", (DWORD)d32_sentinel_heap);
     d32_hx("T15MapReady", d32_sentinel_map != 0 ? 1ul : 0ul);
+    d32_hx("T15MapBase", (DWORD)d32_sentinel_map);
+    d32_hx("T15HeapBytes", d32_sentinel_heap_bytes);
+    d32_hx("T15FramesReadable", d32_pfrm != INVALID_HANDLE_VALUE ? 1ul : 0ul);
+    d32_sentinel_find_frame();
+    d32_hx("T15FillTick", GetTickCount());
     d32_hx("T15FileReady", (DWORD)d32_sentinel_file);
 }
 
 /* Words that differ from the pattern; the first one's byte offset goes to
- * first_bad unless an earlier call already set it. */
+ * first_bad unless an earlier call already set it. With a name, the first
+ * D32_SENTINEL_LISTED are written out as "offset linear found expected",
+ * and the spread as the last offset: one writer at one page offset reads
+ * differently from a run of words or a whole page. */
+#define D32_SENTINEL_LISTED 8ul
+
 static DWORD d32_sentinel_compare(const DWORD *words, DWORD first,
-                                  DWORD count, DWORD seed, DWORD *first_bad)
+                                  DWORD count, DWORD seed, DWORD *first_bad,
+                                  const char *name)
 {
+    char key[32];
+    char text[80];
     DWORD i;
+    DWORD expected;
     DWORD bad = 0ul;
+    DWORD last = 0ul;
 
     for (i = 0ul; i < count; ++i) {
-        if (words[i] != d32_sentinel_word(first + i, seed)) {
-            if (bad == 0ul && *first_bad == 0xfffffffful) {
-                *first_bad = (first + i) * 4ul;
-            }
-            ++bad;
+        expected = d32_sentinel_word(first + i, seed);
+        if (words[i] == expected) {
+            continue;
         }
+        if (bad == 0ul && *first_bad == 0xfffffffful) {
+            *first_bad = (first + i) * 4ul;
+        }
+        if (name != 0 && bad < D32_SENTINEL_LISTED) {
+            wsprintfA(key, "%sWord%lu", name, bad);
+            wsprintfA(text, "%08lX %08lX %08lX %08lX pte %08lX %08lX",
+                      (first + i) * 4ul, (DWORD)&words[i], words[i],
+                      expected, d32_pte_laid(&words[i]), d32_pte(&words[i]));
+            d32_line(key, text);
+        }
+        last = (first + i) * 4ul;
+        ++bad;
+    }
+    if (name != 0 && bad != 0ul) {
+        wsprintfA(key, "%sLast", name);
+        d32_hx(key, last);
     }
     return bad;
+}
+
+/*
+ * The heap and the mapping scanned again at every stage line, so a bad
+ * word is placed between two stages, not only somewhere in the run. A
+ * line is written only when a count changes. The file is left to the end:
+ * reading it back goes through the disk cache the run is also using.
+ */
+static DWORD d32_sentinel_seen_heap;
+static DWORD d32_sentinel_seen_map;
+static int d32_sentinel_scanning;
+
+static void d32_sentinel_check(const char *stage)
+{
+    char text[64];
+    DWORD first_bad = 0xfffffffful;
+    DWORD heap = 0ul;
+    DWORD map = 0ul;
+
+    if (d32_sentinel_scanning) {
+        return;
+    }
+    /* The page tables first, since the scan pages everything back in. */
+    if (d32_sentinel_heap != 0 && d32_sentinel_map != 0) {
+        DWORD heap_absent;
+        DWORD map_absent;
+        DWORD heap_moved = d32_pte_moved(d32_sentinel_heap,
+                                         d32_sentinel_heap_bytes >> 12,
+                                         d32_sentinel_heap_pte, &heap_absent);
+        DWORD map_moved = d32_pte_moved(d32_sentinel_map,
+                                        d32_sentinel_map_bytes >> 12,
+                                        d32_sentinel_map_pte, &map_absent);
+
+        wsprintfA(text, "%s heap %lu/%lu map %lu/%lu", stage, heap_moved,
+                  heap_absent, map_moved, map_absent);
+        d32_sentinel_scanning = 1;
+        d32_line("T15Paged", text);
+        d32_sentinel_scanning = 0;
+    }
+    if (d32_sentinel_heap != 0) {
+        heap = d32_sentinel_compare(d32_sentinel_heap, 0ul,
+                                    d32_sentinel_heap_bytes / 4ul,
+                                    D32_SENTINEL_HEAP_SEED, &first_bad, 0);
+    }
+    if (d32_sentinel_map != 0) {
+        map = d32_sentinel_compare(d32_sentinel_map, 0ul,
+                                   d32_sentinel_map_bytes / 4ul,
+                                   D32_SENTINEL_MAP_SEED, &first_bad, 0);
+    }
+    if (heap == d32_sentinel_seen_heap && map == d32_sentinel_seen_map) {
+        return;
+    }
+    wsprintfA(text, "%s heap %lu map %lu tick %lu", stage, heap, map,
+              GetTickCount());
+    d32_sentinel_scanning = 1;
+    d32_line("T15Seen", text);
+    /* The words themselves, the first time a region's count moves: the
+     * run may not live to the verify. */
+    if (heap != d32_sentinel_seen_heap) {
+        first_bad = 0xfffffffful;
+        d32_sentinel_compare(d32_sentinel_heap, 0ul,
+                             d32_sentinel_heap_bytes / 4ul,
+                             D32_SENTINEL_HEAP_SEED, &first_bad,
+                             "T15SeenHeap");
+    }
+    if (map != d32_sentinel_seen_map) {
+        first_bad = 0xfffffffful;
+        d32_sentinel_compare(d32_sentinel_map, 0ul,
+                             d32_sentinel_map_bytes / 4ul,
+                             D32_SENTINEL_MAP_SEED, &first_bad, "T15SeenMap");
+    }
+    d32_sentinel_scanning = 0;
+    d32_sentinel_seen_heap = heap;
+    d32_sentinel_seen_map = map;
 }
 
 static DWORD d32_sentinel_verify(void)
@@ -2000,11 +2499,13 @@ static DWORD d32_sentinel_verify(void)
     DWORD failures = 0ul;
 
     d32_line("Stage", "13-t15-sentinel-verify");
+    d32_sentinel_scanning = 1;
     if (d32_sentinel_heap != 0) {
         first_bad = 0xfffffffful;
         bad = d32_sentinel_compare(d32_sentinel_heap, 0ul,
-                                   D32_SENTINEL_HEAP_BYTES / 4ul,
-                                   D32_SENTINEL_HEAP_SEED, &first_bad);
+                                   d32_sentinel_heap_bytes / 4ul,
+                                   D32_SENTINEL_HEAP_SEED, &first_bad,
+                                   "T15Heap");
         d32_hx("T15HeapBad", bad);
         d32_hx("T15HeapFirst", first_bad);
         failures += bad != 0ul ? 1ul : 0ul;
@@ -2012,14 +2513,15 @@ static DWORD d32_sentinel_verify(void)
     if (d32_sentinel_map != 0) {
         first_bad = 0xfffffffful;
         bad = d32_sentinel_compare(d32_sentinel_map, 0ul,
-                                   D32_SENTINEL_MAP_BYTES / 4ul,
-                                   D32_SENTINEL_MAP_SEED, &first_bad);
+                                   d32_sentinel_map_bytes / 4ul,
+                                   D32_SENTINEL_MAP_SEED, &first_bad,
+                                   "T15Map");
         d32_hx("T15MapBad", bad);
         d32_hx("T15MapFirst", first_bad);
         failures += bad != 0ul ? 1ul : 0ul;
     }
     if (d32_sentinel_file) {
-        file = CreateFileA(D32_SENTINEL_PATH, GENERIC_READ, FILE_SHARE_READ,
+        file = CreateFileA(d32_sentinel_path, GENERIC_READ, FILE_SHARE_READ,
                            0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
         bad = file == INVALID_HANDLE_VALUE ? 1ul : 0ul;
         first_bad = 0xfffffffful;
@@ -2033,7 +2535,8 @@ static DWORD d32_sentinel_verify(void)
             }
             bad += d32_sentinel_compare(d32_sentinel_chunk, at / 4ul,
                                         D32_SENTINEL_CHUNK_BYTES / 4ul,
-                                        D32_SENTINEL_FILE_SEED, &first_bad);
+                                        D32_SENTINEL_FILE_SEED, &first_bad,
+                                        bad == 0ul ? "T15File" : 0);
         }
         if (file != INVALID_HANDLE_VALUE) {
             CloseHandle(file);
@@ -2058,6 +2561,7 @@ static DWORD d32_sentinel_verify(void)
  * end within D32_CHILD_WAIT_MS is a failure, and is left running.
  */
 #define D32_CHILD_TEXT_PATH "C:\\V9XDIAG\\V9XD32C.TXT"
+#define D32_BARE_TEXT_PATH "C:\\V9XDIAG\\V9XD32W.TXT"
 #define D32_CHILD_WAIT_MS 90000ul
 #define D32_CHILD_SETTLE_MS 5000ul
 #define D32_CHILD_EXIT_CODE 7u
@@ -2364,8 +2868,13 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_PATH t9_after;
 
     CreateDirectoryA("C:\\V9XDIAG", 0);
+    /* /t15bare has files of its own, so it can watch beside a full run. */
+    if (d32_has_switch("/t15bare")) {
+        d32_sentinel_path = D32_SENTINEL_BARE_PATH;
+    }
     d32_file = CreateFileA(d32_has_switch("/child") ? D32_CHILD_TEXT_PATH
-                                                    : D32_TEXT_PATH,
+                           : d32_has_switch("/t15bare") ? D32_BARE_TEXT_PATH
+                                                        : D32_TEXT_PATH,
                            GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
     d32_line("[V9xD3d32]Build", V9X_BUILD_ID);
@@ -2380,6 +2889,34 @@ void WINAPI V9xD3d32ProbeEntry(void)
     }
     d32_path_read(&run_before);
     d32_hx("TraceReadable", run_before.ok);
+    /* /t15early lays T15's pattern before DirectDraw is loaded, so the
+     * mode set and the enumeration are inside it too. */
+    if (d32_has_switch("/t15early") && !d32_has_switch("/child")) {
+        d32_sentinel_fill();
+    }
+    /* /t15bare, the control below /t15only: no DirectDraw at all, the
+     * pattern laid, watched and checked. */
+    if (d32_has_switch("/t15bare")) {
+        DWORD started;
+
+        if (d32_switch_number("/t15hunt=", 10ul) != 0ul) {
+            d32_hunt(d32_switch_number("/t15hunt=", 10ul));
+            d32_finish("HUNTED", 0u);
+        }
+        d32_sentinel_fill();
+        if (d32_switch_number("/t15watch=", 10ul) != 0ul) {
+            d32_sentinel_watch_hits(d32_switch_number("/t15watch=", 10ul));
+        }
+        started = GetTickCount();
+        while (GetTickCount() - started < D32_SENTINEL_WATCH_MS) {
+            Sleep(D32_SENTINEL_WATCH_STEP_MS);
+            d32_line("Stage", "t15-bare-watch");
+        }
+        failures = d32_sentinel_verify();
+        d32_hx("Failures", failures);
+        d32_finish(failures == 0ul ? "PASS" : "FAIL",
+                   failures == 0ul ? 0u : 1u);
+    }
 
     d32_line("Stage", "1-directdrawcreate");
     ddraw_module = LoadLibraryA("DDRAW.DLL");
@@ -2459,7 +2996,29 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_finish("NO-Z-AT-DEPTH", 1u);
     }
 
-    d32_sentinel_fill();
+    if (!d32_has_switch("/t15early")) {
+        d32_sentinel_fill();
+    }
+    /* /t15only, T15's control: the mode set and Direct3D enumerated as
+     * always, then no surface and no draw, the pattern watched for
+     * D32_SENTINEL_WATCH_MS and checked. A writer that still lands is not
+     * reached through anything this program draws. */
+    if (d32_has_switch("/t15only")) {
+        DWORD started = GetTickCount();
+
+        while (GetTickCount() - started < D32_SENTINEL_WATCH_MS) {
+            Sleep(D32_SENTINEL_WATCH_STEP_MS);
+            d32_sentinel_check("t15-watch");
+        }
+        failures = d32_sentinel_verify();
+        ((d32_release_fn)d3d->vtbl[COM_RELEASE])(d3d);
+        ((d32_restore_fn)ddraw->vtbl[DD_RESTORE_DISPLAY_MODE])(ddraw);
+        ((d32_release_fn)ddraw->vtbl[COM_RELEASE])(ddraw);
+        DestroyWindow(window);
+        d32_hx("Failures", failures);
+        d32_finish(failures == 0ul ? "PASS" : "FAIL",
+                   failures == 0ul ? 0u : 1u);
+    }
 
     d32_line("Stage", "4-surfaces");
     d32_zero(&desc, sizeof(desc));
