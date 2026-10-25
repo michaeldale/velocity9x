@@ -4,20 +4,35 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.29.0 - not yet released
+## 0.29.0 - 2026-10-25
 
-- **Switching between 3D programs no longer leaves the next one broken
-  until a reboot.** On the Rage 128, a program that ended - Half-Life's
-  Direct3D renderer before its OpenGL one, 3DMark 2000 before 3DMark 2001
-  SE - left the card's command engine running into the display mode
-  change that followed, and the next program crashed, drew wrongly or
-  hung the machine. The driver now finishes all drawing and stops the
-  engine when a program's Direct3D or OpenGL context goes, and a page flip
-  no longer restarts it. On one Rage Fury Pro: 3DMark 2001 SE twice in a
-  row without a hang, and Half-Life in Direct3D then OpenGL, full screen
-  and windowed, every game frame checked right
+- **A 3D program that ends no longer leaves the Rage 128's command engine
+  running into the next.** A program that ended - Half-Life's Direct3D
+  renderer before its OpenGL one, 3DMark 2000 before 3DMark 2001 SE -
+  left the card's command engine running into the display mode change
+  that followed, and the next program crashed, drew wrongly or hung the
+  machine. The driver now finishes all drawing and stops the engine when
+  a program's Direct3D or OpenGL context goes, and a page flip no longer
+  restarts it. On one Rage Fury Pro: 3DMark 2001 SE twice in a row
+  without a hang, and Half-Life in Direct3D then OpenGL, full screen and
+  windowed, every game frame checked right
   ([issue](docs/issues/2026-10-25-rage128-32mib-map-corrupts.md)).
-  The change is in code every card shares; other cards were not run.
+  The change is in code every card shares; the GMA 950 netbook also ran
+  Half-Life in Direct3D then OpenGL.
+- **Known issue, every card: after a program crashes or is killed while
+  it has DirectDraw surfaces, the next DirectDraw or Direct3D program
+  crashes when it creates its own. Restart Windows before starting
+  another.** A program that exits normally is not affected. DirectDraw
+  hands the next program the dead program's driver object, then frees it
+  under it; ATI's own driver survives the same sequence and this one does
+  not, for a reason not yet found. 0.28.0 does the same
+  ([issue](docs/issues/2026-10-25-next-program-crashes-after-one-dies-holding-surfaces.md)).
+- **The Direct3D probe (V9XD32) checks more of what went wrong this
+  release**: triangles in volume through every submit form (T13), the
+  program after one that died mid-scene (T14, which fails until the issue
+  above is fixed), and memory outside the driver for corruption (T15).
+  A fault's dump in `V9XTRACE.INI` now carries the faulting thread's
+  registers and stack.
 - **Rage 128: the CPU writes the frame buffer write-combined**, as ATI's
   driver does: 49.9 to 241 MB/s, within 1% of ATI's, and DIB drawing,
   blits from system memory and texture uploads with it

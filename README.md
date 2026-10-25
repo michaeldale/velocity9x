@@ -26,18 +26,20 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.28.0.** The ATI Rage 128 Pro gets hardware 3D:
-Direct3D, OpenGL and Glide on its command engine, with page flips. On one
-Rage Fury Pro, 3DMark 2000 runs through and Half-Life runs in Direct3D and
-OpenGL, at a fifth to a half of ATI's own driver's speed for now. The
-Intel GMA X4500 and GMA 4500 (G45, Q45) are added as a test build that
-has not run on either. 0.27.0 stopped a DOS window replacing the desktop
-with a striped picture on Intel graphics; returning from a full-screen
-DOS session still freezes the desktop, so keep DOS windowed. **Glide
-and 3DCIF DLLs from 0.23.0 or earlier still do not work with this
-driver: replace any copy in a game's folder.** See the
+**Current version: 0.29.0.** A 3D program that ends no longer leaves the
+Rage 128 Pro's command engine running into the next, which crashed, drew
+wrongly or hung the machine; the Rage 128's CPU writes to the screen are
+about five times faster; Direct3D's newer interface is faster on every card;
+and Tux Racer's sky draws on the HD 4600. **Known issue, every card: if a
+DirectDraw or Direct3D program crashes or is killed, restart Windows
+before starting another, or the next one crashes.** A program that exits
+normally is not affected. 0.27.0 stopped a DOS window replacing the
+desktop with a striped picture on Intel graphics; returning from a
+full-screen DOS session still freezes the desktop, so keep DOS
+windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
+work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.28.0](releases/0.28.0/README.md).
+[releases/0.29.0](releases/0.29.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
