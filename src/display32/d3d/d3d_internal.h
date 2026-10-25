@@ -445,6 +445,18 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD texture_stages;
     /*
+     * Nonzero when an engine with clip_in_core zero has been measured
+     * drawing a DrawPrimitives2 program's off-target vertices inside its
+     * guard band, so DDI 6 programs are told of it (v9x_d3d_extended_caps7)
+     * and the runtime stops clipping their triangles on the CPU. An engine
+     * the core clips for is told of the band regardless. The Rage 128 is
+     * not: told of it, 3DMark 2001 SE corrupted its data files or hung
+     * A8U4I5 in four runs of four (2026-10-25,
+     * docs\decisions\2026-10-25-haswell-guard-band.md and its successor).
+     * Appended 2026-10-25; an initialiser that stops short leaves it zero.
+     */
+    DWORD guard_band_ddi6;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

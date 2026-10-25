@@ -29,11 +29,12 @@ build identifier so exact guest-tested binaries remain traceable.
   4600 now gives every Direct3D program the DrawPrimitives2 interface;
   3DMark 2000 went from 2009 to 2355 with both
   ([record](docs/decisions/2026-10-25-haswell-two-texture-stages.md)).
-- **Rage 128 and HD 4600: programs on the DrawPrimitives2 interface
-  (DirectX 8, and any program set to it) are told the card's guard band**,
-  so Direct3D stops clipping their triangles on the CPU before the driver
-  sees them. The Rage 128 had published none since 0.29.0's guard band;
-  not yet re-measured on the Rage 128.
+- **HD 4600: programs on the DrawPrimitives2 interface (DirectX 8, and
+  any program set to it) are told the card's guard band**, so Direct3D
+  stops clipping their triangles on the CPU before the driver sees them.
+  The Rage 128 is not: told of it, 3DMark 2001 SE corrupted its data or
+  hung the machine in four runs of four
+  ([record](docs/decisions/2026-10-25-rage128-ddi6-guard-band-withdrawn.md)).
 
 ## 0.29.0 - 2026-10-25
 

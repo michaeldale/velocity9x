@@ -5166,19 +5166,20 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
      */
     /*
      * For an engine the core clips for, and for one that draws inside its
-     * own guard band (clip_in_core 0: the Rage 128 and the HD 4600), whose
-     * coordinate_limit is that band. Until 2026-10-25 only the first got
-     * it, so the Rage 128, unclipped in the core since 2026-10-24, told
-     * every DDI 6 program it had no guard band and the runtime clipped all
-     * of their triangles on the CPU (Michael chose to publish it). What
-     * the rule must never do again is what Gen3 did on 2026-10-06: a band
-     * published for an engine with neither a core clip nor a band of its
-     * own sent Half-Life's off-screen vertices to builders that refused
-     * them, 298,000 batches a run. Gen3 is clipped in the core.
+     * own guard band (clip_in_core 0) where that was measured at DDI 6
+     * (guard_band_ddi6: the HD 4600). Gen3 on 2026-10-06 showed what a
+     * band published for an engine with neither does: Half-Life's
+     * off-screen vertices reached builders that refused them, 298,000
+     * batches a run. The Rage 128 draws its own band at DDI 5, but told of
+     * it at DDI 6, 3DMark 2001 SE corrupted its data or hung A8U4I5 in
+     * four runs of four, where the same build without it completed three
+     * of three (2026-10-25); it is not told, and the runtime clips for it.
      */
     {
         const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
         float band = ops != 0 && ops->limits != 0 &&
+                             (ops->limits->clip_in_core != 0ul ||
+                              ops->limits->guard_band_ddi6 != 0ul) &&
                              ops->limits->coordinate_limit > 1.0f
                          ? ops->limits->coordinate_limit - 1.0f
                          : 0.0f;

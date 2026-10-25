@@ -174,7 +174,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
      * render interface already drew with: every pairing the core makes of
      * stages 0 and 1 (d3d_state.c) as a kernel (v9x_d3d_hsw_two_unit_stages),
      * a kernel that will not fit declined by accepts. */
-    2ul             /* texture_stages */
+    2ul,            /* texture_stages */
+    /* DDI 6 programs are told of the guard band: V9XD32 T10, 3DMark 2000
+     * and Half-Life ran on the 4570 with it (boots 81-82). */
+    1ul             /* guard_band_ddi6 */
 };
 
 /* One texture unit as the sampler reads it. */
