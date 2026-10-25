@@ -373,6 +373,84 @@ void v9x_trace_flush_fault(DWORD code, DWORD address)
 }
 
 /*
+ * The faulting thread's registers, the top of its stack and its EBP chain,
+ * appended to the dump v9x_trace_flush_fault has just written. The address
+ * alone does not say who called: a program that died in DDRAW.DLL after a
+ * program before it had died holding surfaces (V9XD32 T14, 2026-10-25)
+ * faulted where the image holds no code, after every HAL call had
+ * returned. Return addresses among the words are read against module
+ * bases offline. Fixed storage and KERNEL32 only, as above; every stack
+ * read is checked first.
+ */
+#define V9X_FAULT_STACK_DWORDS 96ul
+#define V9X_FAULT_FRAMES 24ul
+
+static void v9x_fault_key(HANDLE file, const char *key, DWORD index,
+                          int indexed, DWORD value)
+{
+    char line[64];
+    char *at;
+
+    at = v9x_text_append(line, key);
+    if (indexed) {
+        at = v9x_hex_append(at, index);
+    }
+    at = v9x_text_append(at, "=");
+    at = v9x_hex_append(at, value);
+    at = v9x_text_append(at, "\r\n");
+    *at = '\0';
+    v9x_file_text(file, line);
+}
+
+void v9x_trace_flush_context(const CONTEXT *context)
+{
+    HANDLE file;
+    const DWORD *stack;
+    const DWORD *frame;
+    DWORD index;
+
+    if (context == 0) {
+        return;
+    }
+    file = CreateFileA(V9X_TRACE_PATH, GENERIC_WRITE,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    SetFilePointer(file, 0l, 0, FILE_END);
+    v9x_file_text(file, "[Velocity9xFaultContext]\r\n");
+    v9x_fault_key(file, "Eip", 0ul, 0, context->Eip);
+    v9x_fault_key(file, "Esp", 0ul, 0, context->Esp);
+    v9x_fault_key(file, "Ebp", 0ul, 0, context->Ebp);
+    v9x_fault_key(file, "Eax", 0ul, 0, context->Eax);
+    v9x_fault_key(file, "Ebx", 0ul, 0, context->Ebx);
+    v9x_fault_key(file, "Ecx", 0ul, 0, context->Ecx);
+    v9x_fault_key(file, "Edx", 0ul, 0, context->Edx);
+    v9x_fault_key(file, "Esi", 0ul, 0, context->Esi);
+    v9x_fault_key(file, "Edi", 0ul, 0, context->Edi);
+
+    stack = (const DWORD *)context->Esp;
+    for (index = 0ul; index < V9X_FAULT_STACK_DWORDS; ++index) {
+        if (IsBadReadPtr(stack + index, sizeof(DWORD))) {
+            break;
+        }
+        v9x_fault_key(file, "Stack", index * 4ul, 1, stack[index]);
+    }
+    /* Frame n is the return address saved at [EBP + 4] n links up. */
+    frame = (const DWORD *)context->Ebp;
+    for (index = 0ul; index < V9X_FAULT_FRAMES; ++index) {
+        if (frame == 0 || IsBadReadPtr(frame, 2ul * sizeof(DWORD))) {
+            break;
+        }
+        v9x_fault_key(file, "Frame", index, 1, frame[1]);
+        frame = (const DWORD *)frame[0];
+    }
+    FlushFileBuffers(file);
+    CloseHandle(file);
+}
+
+/*
  * Consume one armed fault injection, if any.
  *
  * Callers gate this on the wait actually being a blocking one, so a

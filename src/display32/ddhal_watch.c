@@ -276,6 +276,7 @@ static LONG WINAPI v9x_watch_filter(struct _EXCEPTION_POINTERS *exception)
         watch->fault_tick = GetTickCount();
     }
     v9x_trace_flush_fault(code, address);
+    v9x_trace_flush_context(exception != 0 ? exception->ContextRecord : 0);
     if (local != 0 && local->chained != 0) {
         return local->chained(exception);
     }

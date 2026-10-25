@@ -364,6 +364,8 @@ void v9x_trace_count(WORD id, DWORD detail);
 void v9x_trace_enter(WORD id, DWORD detail);
 void v9x_trace_exit(WORD id, DWORD result);
 void v9x_trace_flush_fault(DWORD code, DWORD address);
+/* Registers, stack words and EBP frames of a fault, after the dump above. */
+void v9x_trace_flush_context(const CONTEXT *context);
 
 /*
  * How each program using the HAL ends, in ddhal_watch.c (V9X_WATCH in
