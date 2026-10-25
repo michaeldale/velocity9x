@@ -169,3 +169,27 @@ Gates: `scripts\run-checks.ps1` passed with the probe change.
 - Results measured on A8U4I5 before this date that touched memory in
   quantity carry this fault; T14's next-program crash was reproduced on
   the netbook, so that fix does not rest on A8U4I5.
+
+## The stick moved to another slot (boots 628-630)
+
+Michael moved the memory stick to another slot and rebooted (boot 627).
+`MaxPhysPage=0A000` was then taken out again (SYSTEM.INI back to the
+original, 2131 bytes) and A8U4I5 reset.
+
+| Boot | Run | Result |
+|---|---|---|
+| 628 | `/ddi5 /t14nomode` 1st | PASS |
+| 628 | `/t15hunt=12 /t15mb=128` | 0 hits; frames 01000-0E3AF |
+| 628 | `/ddi6 /t14nomode` | PASS |
+| 628 | `/t15hunt=12 /t15mb=128 /t15fresh /t15frames` | 0 hits; the last cycle alone held 1792 frames in 0A800-0AEFF, 224 of them in the old 15C0h class |
+| 629 | `/ddi6` 1st, `/ddi5` 2nd | PASS, PASS |
+| 630 | `/ddi5` 1st, `/ddi6` 2nd | PASS, PASS |
+
+Uncapped, every first run of a boot and every hunt hit before the move
+(boots 617-621); after it, three first runs, six runs and two hunts over
+the old window found nothing. The fault went with the slot change, so
+the cause was in the stick's contact or the slot, or a fault the reseat
+cleared; which is not known, and it may return. The cap is off. If T15
+fails on A8U4I5 again, run `/t15bare /t15hunt=12 /t15mb=128 /t15fresh`
+first: a hit at a fixed physical address class is this fault, and
+Michael has a 128 MiB stick to swap in.
