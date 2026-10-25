@@ -85,7 +85,8 @@ static const struct v9x_hsw_command v9x_hsw_commands[V9X_HSW_CMD_COUNT] = {
     { 3u, 0u, 0x17u, 7u },   /* 3DSTATE_CONSTANT_PS */
     { 3u, 0u, 0x07u, 3u },   /* 3DSTATE_HIER_DEPTH_BUFFER */
     { 3u, 0u, 0x06u, 3u },   /* 3DSTATE_STENCIL_BUFFER */
-    { 3u, 0u, 0x04u, 3u }    /* 3DSTATE_CLEAR_PARAMS */
+    { 3u, 0u, 0x04u, 3u },   /* 3DSTATE_CLEAR_PARAMS */
+    { 3u, 0u, 0x0au, 3u }    /* 3DSTATE_INDEX_BUFFER */
 };
 
 /* The chip the builders target, and the dword Ivy Bridge's workaround
@@ -514,6 +515,66 @@ v9x_status v9x_intel_hsw_3dprimitive(struct v9x_hsw_batch *batch,
     payload[5] = 0ul;
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_3DPRIMITIVE,
                                  payload, 6ul);
+}
+
+/* 3DPRIMITIVE DW1 Vertex Access Type, bit 8: RANDOM fetches each vertex
+ * through the index buffer (Vol 2b). */
+#define V9X_HSW_PRIM_ACCESS_RANDOM ((v9x_u32)0x00000100ul)
+
+/* The same command with Vertex Access Type RANDOM: DW2 the index count,
+ * DW3 the first index, 0, and DW6 the base vertex added to each. */
+v9x_status v9x_intel_hsw_3dprimitive_indexed(struct v9x_hsw_batch *batch,
+                                             v9x_u8 topology,
+                                             v9x_u32 indices,
+                                             v9x_u32 base_vertex)
+{
+    v9x_u32 payload[6];
+
+    if (topology == 0u || topology > 0x3fu || indices == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    payload[0] = V9X_HSW_PRIM_ACCESS_RANDOM | (v9x_u32)topology;
+    payload[1] = indices;
+    payload[2] = 0ul;
+    payload[3] = 1ul;
+    payload[4] = 0ul;
+    payload[5] = base_vertex;
+    return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_3DPRIMITIVE,
+                                 payload, 6ul);
+}
+
+/* 3DSTATE_INDEX_BUFFER DW0 Index Format 9:8, INDEX_WORD = 1 (Vol 2b). */
+#define V9X_HSW_INDEX_WORD ((v9x_u32)0x00000100ul)
+
+/*
+ * DW0 Memory Object Control State 15:12 left 0 as the vertex buffer's is,
+ * the format WORD; DW1 the first index's address, DW2 the last valid
+ * byte. Vol 2b's Haswell note: the ending address must be the last byte
+ * of a cache line, the bytes past the last index zero - the caller pads,
+ * this refuses an end that is not so placed, and a start that is not word
+ * aligned.
+ */
+v9x_status v9x_intel_hsw_index_buffer(struct v9x_hsw_batch *batch,
+                                      v9x_u32 start, v9x_u32 end)
+{
+    v9x_u32 header;
+    v9x_u32 *at;
+
+    if ((start & 1ul) != 0ul || end <= start || (end & 0x3ful) != 0x3ful) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (v9x_intel_hsw_3d_header(V9X_HSW_CMD_INDEX_BUFFER, 3ul, &header) !=
+        V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    at = v9x_hsw_reserve(batch, 3ul);
+    if (at == 0) {
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    at[0] = header | V9X_HSW_INDEX_WORD;
+    at[1] = start;
+    at[2] = end;
+    return V9X_STATUS_OK;
 }
 
 /* DW1 flags, DW2 address 31:2, DW3/DW4 immediate data. */
@@ -1092,10 +1153,29 @@ v9x_status v9x_intel_hsw_sf_screen(struct v9x_hsw_batch *batch)
 v9x_status v9x_intel_hsw_sf_screen_depth(struct v9x_hsw_batch *batch,
                                          v9x_u8 depth_format)
 {
+    return v9x_intel_hsw_sf_screen_cull(batch, depth_format,
+                                        V9X_HSW_DRAW_CULL_NONE);
+}
+
+/* 3DSTATE_SF DW2 CULLMODE_BACK = 3, and DW1 Front Winding, bit 0:
+ * FRONTWINDING_CW = 0, CCW = 1 (Vol 2b). */
+#define V9X_HSW_SF_CULL_BACK         ((v9x_u32)0x60000000ul)
+#define V9X_HSW_SF_FRONT_CCW         ((v9x_u32)0x00000001ul)
+
+/*
+ * The cull as a back-face cull: the winding Direct3D discards is made the
+ * back face. Screen-space winding, the same space the core's list path
+ * judges it in (v9x_d3d_triangle_culled); V9XD32 T11's cull matrix checks
+ * the direction on the chip, which is where the Rage 128's was found
+ * reversed (c696d43a).
+ */
+v9x_status v9x_intel_hsw_sf_screen_cull(struct v9x_hsw_batch *batch,
+                                        v9x_u8 depth_format, v9x_u8 cull)
+{
     v9x_u32 payload[6];
     v9x_u32 index;
 
-    if (depth_format > 7u) {
+    if (depth_format > 7u || cull > V9X_HSW_DRAW_CULL_CCW) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     for (index = 0ul; index < 6ul; ++index) {
@@ -1103,6 +1183,12 @@ v9x_status v9x_intel_hsw_sf_screen_depth(struct v9x_hsw_batch *batch,
     }
     payload[0] = (v9x_u32)depth_format << 12;
     payload[1] = V9X_HSW_SF_CULL_NONE;
+    if (cull == V9X_HSW_DRAW_CULL_CW) {
+        payload[0] |= V9X_HSW_SF_FRONT_CCW;
+        payload[1] = V9X_HSW_SF_CULL_BACK;
+    } else if (cull == V9X_HSW_DRAW_CULL_CCW) {
+        payload[1] = V9X_HSW_SF_CULL_BACK;
+    }
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_SF, payload, 6ul);
 }
 
@@ -1425,6 +1511,17 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
     v9x_intel_hsw_vertex_buffer(batch, 0u, stride, draw->vertices,
                                 draw->vertices + vertices * stride - 1ul);
     v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
+    if (draw->indices != 0ul) {
+        /* The index buffer to the end of the cache line holding its last
+         * index, which the caller has zeroed (Vol 2b's Haswell note). */
+        v9x_intel_hsw_index_buffer(
+            batch, draw->indices,
+            ((draw->indices + draw->index_count * 2ul + 0x3ful) &
+             ~(v9x_u32)0x3ful) - 1ul);
+        return v9x_intel_hsw_3dprimitive_indexed(
+            batch, draw->strip ? V9X_HSW_PRIM_TRISTRIP : V9X_HSW_PRIM_TRILIST,
+            draw->index_count, 0ul);
+    }
     return v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST, vertices,
                                      0ul);
 }
@@ -1579,8 +1676,9 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         } else {
             v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
         }
-        v9x_intel_hsw_sf_screen_depth(
-            batch, draw->depth_buffer != 0ul ? depth_format : (v9x_u8)0u);
+        v9x_intel_hsw_sf_screen_cull(
+            batch, draw->depth_buffer != 0ul ? depth_format : (v9x_u8)0u,
+            draw->cull);
         if (shade) {
             /* Flat: diffuse and specular (attributes 0 and 1) constant. */
             v9x_intel_hsw_sbe_constant(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u,
@@ -1724,10 +1822,20 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
         (draw->binding_table & 0x1ful) != 0ul || draw->width == 0u ||
         draw->height == 0u || (draw->vertices & 3ul) != 0ul ||
         state_bytes < V9X_HSW_DRAW_STATE_BYTES ||
-        draw->vertex_count % 3ul != 0ul ||
+        (draw->indices == 0ul && draw->vertex_count % 3ul != 0ul) ||
         (draw->tl_vertices &&
          draw->attributes != V9X_HSW_SHADE_ATTRIBUTES) ||
-        (draw->tl_uv1 && !draw->tl_vertices)) {
+        (draw->tl_uv1 && !draw->tl_vertices) ||
+        draw->cull > V9X_HSW_DRAW_CULL_CCW) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Indexed: TL vertices only, outside the depth-clear form, word
+     * aligned, at least one triangle, and a list a whole number of them. */
+    if (draw->indices != 0ul &&
+        (!draw->tl_vertices || draw->vertex_count == 0ul ||
+         (draw->depth_buffer != 0ul && draw->depth_clear != 0ul) ||
+         (draw->indices & 1ul) != 0ul || draw->index_count < 3ul ||
+         (!draw->strip && draw->index_count % 3ul != 0ul))) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     /* A scissor inside the target, not inverted: the drawing rectangle

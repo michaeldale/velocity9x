@@ -6,6 +6,20 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.30.0 - not yet released
 
+- **GMA 950, GMA 900 and GMA 3150: the CPU writes video memory
+  write-combined**, as the Rage 128 has since 0.29.0. On the GMA 950
+  netbook: 105 to 2,814 MB/s, solid GDI fills 17 times faster, DIB
+  drawing 4 times, texture uploads 7.5 times; Half-Life 37.4 to 40.1 fps
+  in Direct3D and 18.8 to 23.4 in OpenGL
+  ([record](docs/decisions/2026-10-25-intel-gen3-write-combining.md)).
+  `V9X3D OFF` turns it off as before. The HD 4600's BIOS leaves no
+  processor memory-type range free, so it stays as it was.
+- **HD 4600: indexed Direct3D calls are drawn whole by the card**, which
+  also does the back-face culling, instead of being expanded triangle by
+  triangle on the CPU. 3DMark 2000 took 72% of its indexed calls this
+  way, 1959 to 2032. The HD 4000 runs the same code, untested
+  ([record](docs/decisions/2026-10-25-intel-indexed-draws-and-hardware-cull.md)).
+
 ## 0.29.0 - 2026-10-25
 
 - **A 3D program that ends no longer leaves the Rage 128's command engine

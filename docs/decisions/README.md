@@ -299,6 +299,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-21 Ivy Bridge OpenGL and Glide: the HD 4600's results, and a renderer name fixed](2026-10-21-ivybridge-gl-glide.md)
 - [2026-10-23 HD 4600: draws outside the GDI primary run on; Quake 3 at 1024x768 35.7 to 42.6 fps, and the GPU's cost per batch is now the limit](2026-10-23-haswell-gl-draws-run-on.md)
 - [2026-10-23 The G45 and Q45 (GMA X4500, GMA 4500) join intel-gma on two DOS surveys: the GM965's path with Ironlake's GTT offset and two G4x 3D encodings](2026-10-23-g4x-gma4500-from-surveys.md)
+- [2026-10-25 Write-combining the GMA 950's aperture: FbWrite 105 to 2,814 MB/s; the HD 4600's BIOS leaves no MTRR pair](2026-10-25-intel-gen3-write-combining.md)
+- [2026-10-25 Haswell draws indexed calls whole with the hardware's cull; Gen3 takes neither the guard band nor an indexed path](2026-10-25-intel-indexed-draws-and-hardware-cull.md)
 
 ## SiS
 

@@ -226,6 +226,9 @@ static void v9x_hsw_submit(const v9x_u32 *dw, DWORD count)
     if (tail >= v9x_hal->engine.ring_bytes) {
         tail = 0ul;
     }
+    /* The ring words and the surfaces out of any write-combining buffers
+     * before TAIL tells the blitter to read them (d3d_i9xx.c, same rule). */
+    v9x_wc_drain();
     v9x_hsw_write32(V9X_INTEL_HSW_BCS_TAIL, tail);
     (void)v9x_hsw_read32(V9X_INTEL_HSW_BCS_TAIL);
     v9x_present_note_submission();

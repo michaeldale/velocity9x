@@ -125,6 +125,10 @@ static void test_largest_batch_fits(void)
     d.scissor_x1 = 1023u;
     d.scissor_y1 = 767u;
     d.tl_uv1 = 1u;
+    d.indices = 0ul;
+    d.index_count = 0ul;
+    d.strip = 0u;
+    d.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, dw, V9X_HSW_PIPE_BATCH_BYTES / 4ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, base, slot.state_span, &d,
                                       V9X_INTEL_HSW_FALLBACK_RESERVE_OFFSET +

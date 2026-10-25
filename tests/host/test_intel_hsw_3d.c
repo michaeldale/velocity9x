@@ -644,6 +644,10 @@ static void test_phase_d_draw(void)
     draw.depth_only = 0u;
     draw.scissor = 0u;
     draw.tl_uv1 = 0u;
+    draw.indices = 0ul;
+    draw.index_count = 0ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -791,6 +795,10 @@ static void test_phase_e_shade(void)
     draw.depth_only = 0u;
     draw.scissor = 0u;
     draw.tl_uv1 = 0u;
+    draw.indices = 0ul;
+    draw.index_count = 0ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -872,6 +880,10 @@ static void test_phase_f1b_depth(void)
     draw.depth_only = 0u;
     draw.scissor = 0u;
     draw.tl_uv1 = 0u;
+    draw.indices = 0ul;
+    draw.index_count = 0ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
@@ -940,6 +952,10 @@ static void test_phase_f2_tl(void)
     draw.depth_only = 0u;
     draw.scissor = 0u;
     draw.tl_uv1 = 0u;
+    draw.indices = 0ul;
+    draw.index_count = 0ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
                                       0x01801020ul, 7ul) == V9X_STATUS_OK);
@@ -1025,6 +1041,132 @@ static void test_phase_f2_tl(void)
 }
 
 /*
+ * Indexed TL draws with the hardware's cull. Worked by hand from Vol 2b:
+ * 3DSTATE_INDEX_BUFFER is 780A0001h with INDEX_WORD (1) at 9:8, its end
+ * the last byte of a cache line; a RANDOM 3DPRIMITIVE sets bit 8 of DW1
+ * beside the topology and carries the base vertex in DW6; 3DSTATE_SF
+ * culls the back face (3 at DW2 30:29) with the front winding at DW1 bit
+ * 0 - CCW (1) to discard clockwise triangles, CW (0) to discard
+ * counter-clockwise ones.
+ */
+static void test_indexed_cull(void)
+{
+    v9x_u32 dw[512];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    v9x_u32 at;
+
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_index_buffer(&batch, 0x01813000ul, 0x0181303ful) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 3ul && dw[0] == 0x780a0101ul &&
+          dw[1] == 0x01813000ul && dw[2] == 0x0181303ful);
+    CHECK(v9x_intel_hsw_index_buffer(&batch, 0x01813000ul, 0x0181303eul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_index_buffer(&batch, 0x01813001ul, 0x0181303ful) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_3dprimitive_indexed(&batch, V9X_HSW_PRIM_TRISTRIP,
+                                            9ul, 4ul) == V9X_STATUS_OK);
+    CHECK(batch.used == 7ul && dw[0] == 0x7b000005ul &&
+          dw[1] == 0x00000105ul && dw[2] == 9ul && dw[3] == 0ul &&
+          dw[4] == 1ul && dw[5] == 0ul && dw[6] == 4ul);
+    CHECK(v9x_intel_hsw_3dprimitive_indexed(&batch, V9X_HSW_PRIM_TRILIST,
+                                            0ul, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_sf_screen_cull(&batch, 5u, V9X_HSW_DRAW_CULL_CW) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 7ul && dw[0] == 0x78130005ul &&
+          dw[1] == 0x00005001ul && dw[2] == 0x60000000ul);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_sf_screen_cull(&batch, 0u, V9X_HSW_DRAW_CULL_CCW) ==
+          V9X_STATUS_OK);
+    CHECK(dw[1] == 0ul && dw[2] == 0x60000000ul);
+    batch.used = 0ul;
+    CHECK(v9x_intel_hsw_sf_screen_cull(&batch, 0u, V9X_HSW_DRAW_CULL_NONE) ==
+          V9X_STATUS_OK);
+    CHECK(dw[1] == 0ul && dw[2] == 0x20000000ul);
+    CHECK(v9x_intel_hsw_sf_screen_cull(&batch, 0u, 3u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* A whole draw: ten vertices, 21 indices at 01813000h, a list culling
+     * counter-clockwise. The index buffer ends at 0181303Fh, the line
+     * holding the 42nd byte; the vertex buffer covers the ten vertices;
+     * the batch passes the checker. */
+    draw.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    draw.kernel = V9X_HSW_SHADE_KERNEL(0);
+    draw.vertices = 0x01812000ul;
+    draw.width = 640u;
+    draw.height = 480u;
+    draw.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    draw.blend = 0ul;
+    draw.cc = 0ul;
+    draw.sampler = V9X_HSW_SHADE_SAMPLER;
+    draw.depth_buffer = 0ul;
+    draw.depth_clear = 0ul;
+    draw.depth_test = 0ul;
+    draw.tl_vertices = 1u;
+    draw.vertex_count = 10ul;
+    draw.flat = 0u;
+    draw.depth_format = 0u;
+    draw.depth_pitch = 0ul;
+    draw.depth_only = 0u;
+    draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
+    draw.indices = 0x01813000ul;
+    draw.index_count = 21ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_CCW;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x780a0101ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x01813000ul &&
+          dw[at + 2ul] == 0x0181303ful);
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 3ul] == 0x01812000ul + 10ul * 32ul - 1ul);
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00000104ul &&
+          dw[at + 2ul] == 21ul && dw[at + 6ul] == 0ul);
+    at = v9x_find_command(dw, batch.used, 0x78130005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0ul &&
+          dw[at + 2ul] == 0x60000000ul);
+    /* A strip may be any length of three or more; a list must be whole
+     * triangles; an odd address, no TL vertices or no vertex count is
+     * refused. */
+    draw.strip = 1u;
+    draw.index_count = 5ul;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00000105ul &&
+          dw[at + 2ul] == 5ul);
+    draw.strip = 0u;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.index_count = 21ul;
+    draw.indices = 0x01813001ul;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.indices = 0x01813000ul;
+    draw.vertex_count = 0ul;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.vertex_count = 10ul;
+    draw.tl_vertices = 0u;
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/*
  * Phase F2b: a D16 depth-only fill. Worked by hand: DEPTH_BUFFER DW1 2D
  * (1) 31:29, write 28, D16_UNORM (5) 20:18, pitch 128 - 1; SF's depth
  * format 5 at 14:12; WM, PS and SBE those of the same draw with colour,
@@ -1066,6 +1208,10 @@ static void test_phase_f2b_depth_only(void)
     draw.depth_only = 1u;
     draw.scissor = 0u;
     draw.tl_uv1 = 0u;
+    draw.indices = 0ul;
+    draw.index_count = 0ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, dw, 512ul);
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 9ul) == V9X_STATUS_OK);
@@ -1222,6 +1368,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_ivb_variant();
     test_phase_f2b_depth_only();
     test_phase_f2_tl();
+    test_indexed_cull();
     test_phase_f1b_depth();
     test_phase_e_shade();
     test_phase_c_init();
