@@ -49,6 +49,7 @@
 #include "velocity9x/intel_hsw_eu.h"
 #include "velocity9x/intel_hsw_pipe.h"
 #include "velocity9x/intel_gma.h"
+#include "r3d/r3d_cull.h"
 
 /* Graphics addresses inside the reserve (velocity9x\intel_hsw.h), which the
  * 16-bit side places once a boot and publishes in the engine block. */
@@ -86,6 +87,11 @@
 
 /* Ring submission: MI_BATCH_BUFFER_START and the sequence store. */
 #define V9X_D3D_HSW_SUBMIT_DWORDS 6ul
+
+/* The pixel-centre move the core's list path makes for this engine
+ * (pixel_centre_half, d3d_core.c), which the indexed path, handed the
+ * application's vertices, makes itself. */
+#define V9X_D3D_HSW_CENTRE 0.5f
 
 /* Status reads at about a microsecond, as the blitter's (eng_hsw.c). */
 #define V9X_D3D_HSW_SPINS 0x00400000ul
@@ -1241,6 +1247,42 @@ static int v9x_d3d_hsw_accepts(const V9X_R3D_DRAW *draw)
     return v9x_d3d_hsw_map(draw, &state) == V9X_D3D_HSW_REFUSE_NONE;
 }
 
+/* The batch's description of a mapped Direct3D draw of TL triangles:
+ * sequential, unculled; the indexed path fills in its own fields. */
+static void v9x_d3d_hsw_draw_desc(const V9X_R3D_DRAW *draw,
+                                  const V9X_D3D_HSW_STATE *state,
+                                  struct v9x_hsw_draw *d)
+{
+    d->binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    d->width = (v9x_u16)draw->target.width;
+    d->height = (v9x_u16)draw->target.height;
+    d->attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    d->blend = V9X_HSW_SHADE_BLEND_ALPHA_TEST;
+    d->cc = V9X_HSW_SHADE_CC;
+    d->sampler = V9X_HSW_SHADE_SAMPLER;
+    /* With a depth buffer, the batch emits it after Vol 2b's stall, flush
+     * and stall, and the whole draw runs under the depth-stencil state;
+     * without one the buffer is NULL. */
+    d->depth_buffer = state->depth ? state->depth_address : 0ul;
+    d->depth_clear = 0ul;
+    d->depth_test = state->depth ? V9X_D3D_HSW_DS_OFF : 0ul;
+    d->tl_vertices = 1u;
+    d->flat = 0u;   /* the core copies the provoking vertex */
+    d->depth_format = state->depth ? state->depth_format : (v9x_u8)0u;
+    d->depth_pitch = state->depth_pitch;
+    d->depth_only = 0u;
+    d->scissor = 1u;
+    d->scissor_x0 = (v9x_u16)state->scissor[0];
+    d->scissor_y0 = (v9x_u16)state->scissor[1];
+    d->scissor_x1 = (v9x_u16)state->scissor[2];
+    d->scissor_y1 = (v9x_u16)state->scissor[3];
+    d->tl_uv1 = state->textured == 2 ? 1u : 0u;
+    d->indices = 0ul;
+    d->index_count = 0ul;
+    d->strip = 0u;
+    d->cull = V9X_HSW_DRAW_CULL_NONE;
+}
+
 static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                                   const V9X_R3D_VERTEX *vertices,
                                   DWORD triangle_count)
@@ -1316,31 +1358,8 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     }
     wait_after = v9x_d3d_hsw_draw_waits(draw);
 
-    d.binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
-    d.width = (v9x_u16)draw->target.width;
-    d.height = (v9x_u16)draw->target.height;
-    d.attributes = V9X_HSW_SHADE_ATTRIBUTES;
-    d.blend = V9X_HSW_SHADE_BLEND_ALPHA_TEST;
-    d.cc = V9X_HSW_SHADE_CC;
-    d.sampler = V9X_HSW_SHADE_SAMPLER;
-    /* With a depth buffer, the batch emits it after Vol 2b's stall, flush
-     * and stall, and the whole draw runs under the depth-stencil state;
-     * without one the buffer is NULL. */
-    d.depth_buffer = state.depth ? state.depth_address : 0ul;
-    d.depth_clear = 0ul;
-    d.depth_test = state.depth ? V9X_D3D_HSW_DS_OFF : 0ul;
-    d.tl_vertices = 1u;
-    d.flat = 0u;   /* the core copies the provoking vertex */
-    d.depth_format = state.depth ? state.depth_format : (v9x_u8)0u;
-    d.depth_pitch = state.depth_pitch;
-    d.depth_only = 0u;
-    d.scissor = 1u;
-    d.scissor_x0 = (v9x_u16)state.scissor[0];
-    d.scissor_y0 = (v9x_u16)state.scissor[1];
-    d.scissor_x1 = (v9x_u16)state.scissor[2];
-    d.scissor_y1 = (v9x_u16)state.scissor[3];
-    d.tl_uv1 = state.textured == 2 ? 1u : 0u;
-    limit = d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
+    v9x_d3d_hsw_draw_desc(draw, &state, &d);
+    limit =d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
 
     while (done < triangle_count) {
         count = triangle_count - done;
@@ -1422,6 +1441,220 @@ static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
 
     V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
     return result;
+}
+
+/* A declined indexed call, counted by why (win9x_ddraw_abi.h). */
+static int v9x_d3d_hsw_decline(DWORD reason, DWORD started)
+{
+    if (reason < V9X_D3D_INDEXED_DECLINE_REASONS) {
+        ++v9x_hal->d3d_diagnostics.indexed_decline[reason];
+    }
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return -1;
+}
+
+/* 3DSTATE_SF's cull for the core's honoured cull mode (r3d_cull.h). */
+static v9x_u8 v9x_d3d_hsw_cull_of(DWORD cull_mode)
+{
+    if (cull_mode == V9X_R3D_CULL_CW) {
+        return V9X_HSW_DRAW_CULL_CW;
+    }
+    if (cull_mode == V9X_R3D_CULL_CCW) {
+        return V9X_HSW_DRAW_CULL_CCW;
+    }
+    return V9X_HSW_DRAW_CULL_NONE;
+}
+
+/* The index buffer's cache line (Vol 2b's Haswell index-buffer note). */
+#define V9X_D3D_HSW_INDEX_LINE 64ul
+
+/*
+ * A DrawOneIndexedPrimitive call, or a DrawPrimitives2 indexed list, whole
+ * (d3d_internal.h, draw_indexed): the vertices it names copied once into
+ * the slot's vertex area with the pixel centre the list path applies, the
+ * indices rebased after them, one RANDOM 3DPRIMITIVE, and the back face
+ * culled by 3DSTATE_SF rather than by the core.
+ *
+ * Declined (-1, nothing submitted) for anything the list path would treat
+ * differently: a second unit's coordinates (which follow list order), flat
+ * shading (the list path copies the provoking vertex's colours into the
+ * other two, which a shared vertex cannot take), an index past the pool,
+ * and any vertex of the range the core would clip - off the target after
+ * the move, or not finite - since this engine is clipped in the core. A
+ * range or index count larger than one slot's vertex area is declined too,
+ * and the list path splits it.
+ */
+static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
+                                    const V9X_R3D_VERTEX *pool,
+                                    DWORD vertex_count,
+                                    const v9x_u16 *indices,
+                                    DWORD index_count,
+                                    int strip,
+                                    DWORD cull_mode)
+{
+    V9X_D3D_HSW_STATE state;
+    struct v9x_hsw_pipe_slot slot;
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_draw d;
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD first = 0xfffffffful;
+    DWORD last = 0ul;
+    DWORD count;
+    DWORD vertex_bytes;
+    DWORD index_bytes;
+    DWORD reason;
+    DWORD kernel = 0ul;
+    DWORD index;
+    DWORD word;
+    float width;
+    float height;
+    int wait_after;
+    v9x_u32 *target;
+    volatile v9x_u16 *index_at;
+    union {
+        float value;
+        v9x_u32 bits;
+    } moved;
+
+    if (draw == 0 || pool == 0 || indices == 0 || index_count < 3ul ||
+        draw->texcoords1 != 0 ||
+        (!strip && index_count % 3ul != 0ul) || !v9x_d3d_hsw_ready()) {
+        return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_SHAPE, started);
+    }
+    if (draw->shade_mode == V9X_R3D_SHADE_FLAT) {
+        return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_STATE, started);
+    }
+    for (index = 0ul; index < index_count; ++index) {
+        DWORD vertex = (DWORD)indices[index];
+
+        if (vertex >= vertex_count) {
+            return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_INDEX,
+                                       started);
+        }
+        if (vertex < first) {
+            first = vertex;
+        }
+        if (vertex > last) {
+            last = vertex;
+        }
+    }
+    count = last - first + 1ul;
+    vertex_bytes = (count * V9X_HSW_TL_VERTEX_BYTES + V9X_D3D_HSW_INDEX_LINE -
+                    1ul) & ~(V9X_D3D_HSW_INDEX_LINE - 1ul);
+    index_bytes = (index_count * 2ul + V9X_D3D_HSW_INDEX_LINE - 1ul) &
+                  ~(V9X_D3D_HSW_INDEX_LINE - 1ul);
+    if (vertex_bytes + index_bytes > V9X_HSW_PIPE_VERTEX_BYTES) {
+        if (count > v9x_hal->d3d_diagnostics.indexed_decline_range_max) {
+            v9x_hal->d3d_diagnostics.indexed_decline_range_max = count;
+        }
+        return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_RANGE, started);
+    }
+    /* Every vertex of the range on the target after the move, as
+     * v9x_r3d_triangle_on_target takes it; a NaN fails both compares. */
+    width = (float)draw->target.width;
+    height = (float)draw->target.height;
+    for (index = first; index <= last; ++index) {
+        float x = pool[index].sx + V9X_D3D_HSW_CENTRE;
+        float y = pool[index].sy + V9X_D3D_HSW_CENTRE;
+
+        if (!(x >= 0.0f && x <= width && y >= 0.0f && y <= height)) {
+            return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_VERTEX,
+                                       started);
+        }
+    }
+    reason = v9x_d3d_hsw_map(draw, &state);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE || state.textured == 2) {
+        return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_STATE, started);
+    }
+    if (state.scissor_empty) {
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return 1;
+    }
+    if (state.textured >= 1 && state.texture[0].levels > 1u) {
+        ++v9x_hal->d3d_diagnostics.mip_draws;
+    }
+    /* The waits draw_batch makes, for the same reasons. */
+    if (!v9x_d3d_hsw_blitter_idle() && !v9x_engine32_hsw.wait_idle(1)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return 0;
+    }
+    {
+        int waited = v9x_flip_wait_done();
+
+        if (waited != V9X_FLIP_WAIT_NONE) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+            }
+        }
+    }
+    wait_after = v9x_d3d_hsw_draw_waits(draw);
+    if (!v9x_d3d_hsw_wait_slot(&slot)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return 0;
+    }
+    reason = v9x_d3d_hsw_write_state(draw, &state, &slot, &kernel);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+        v9x_d3d_hsw_count_refusal(reason);
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return 0;
+    }
+    if (count > v9x_hal->d3d_diagnostics.indexed_drawn_range_max) {
+        v9x_hal->d3d_diagnostics.indexed_drawn_range_max = count;
+    }
+
+    /* The range's vertices, the pixel centre on x and y and the rest as
+     * given; then the indices rebased to the range and the rest of their
+     * cache line zeroed. TAIL's drain publishes both. */
+    target = v9x_d3d_hsw_reserve(slot.vertex_off);
+    for (index = first; index <= last; ++index) {
+        const v9x_u32 *words = (const v9x_u32 *)&pool[index];
+
+        moved.value = pool[index].sx + V9X_D3D_HSW_CENTRE;
+        *target++ = moved.bits;
+        moved.value = pool[index].sy + V9X_D3D_HSW_CENTRE;
+        *target++ = moved.bits;
+        for (word = 2ul; word < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++word) {
+            *target++ = words[word];
+        }
+    }
+    index_at = (volatile v9x_u16 *)v9x_d3d_hsw_reserve(slot.vertex_off +
+                                                       vertex_bytes);
+    for (index = 0ul; index < index_count; ++index) {
+        index_at[index] = (v9x_u16)((DWORD)indices[index] - first);
+    }
+    for (index = index_count; index < index_bytes / 2ul; ++index) {
+        index_at[index] = 0u;
+    }
+
+    v9x_d3d_hsw_draw_desc(draw, &state, &d);
+    d.kernel = kernel;
+    d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
+    d.vertex_count = count;
+    d.indices = V9X_D3D_HSW_GFX(slot.vertex_off + vertex_bytes);
+    d.index_count = index_count;
+    d.strip = strip ? 1u : 0u;
+    d.cull = v9x_d3d_hsw_cull_of(cull_mode);
+    v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                             slot.batch_bytes / 4ul);
+    if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
+                                    slot.state_span, &d,
+                                    V9X_D3D_HSW_CRUMB_GFX,
+                                    index_count) != V9X_STATUS_OK) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return 0;
+    }
+    if (!v9x_d3d_hsw_submit(&slot, wait_after)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return 0;
+    }
+    v9x_present_note_submission();
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return 1;
 }
 
 /* One TL vertex (V9X_HSW_TL_VERTEX_BYTES): x, y, z, rhw 1.0, then a black
@@ -1586,6 +1819,10 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     d.depth_only = 1u;
     d.scissor = 0u;
     d.tl_uv1 = 0u;
+    d.indices = 0ul;
+    d.index_count = 0ul;
+    d.strip = 0u;
+    d.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
     if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
@@ -1925,5 +2162,6 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_create_surface,         /* Z buffers in Y tiles */
     v9x_d3d_hsw_destroy_surface,
     v9x_d3d_hsw_draw,
-    v9x_d3d_hsw_accepts
+    v9x_d3d_hsw_accepts,
+    v9x_d3d_hsw_draw_indexed
 };

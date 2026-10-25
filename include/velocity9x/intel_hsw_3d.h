@@ -105,7 +105,8 @@ v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
 #define V9X_HSW_CMD_HIER_DEPTH_BUFFER      ((v9x_u16)40u)
 #define V9X_HSW_CMD_STENCIL_BUFFER         ((v9x_u16)41u)
 #define V9X_HSW_CMD_CLEAR_PARAMS           ((v9x_u16)42u)
-#define V9X_HSW_CMD_COUNT                  ((v9x_u16)43u)
+#define V9X_HSW_CMD_INDEX_BUFFER           ((v9x_u16)43u)
+#define V9X_HSW_CMD_COUNT                  ((v9x_u16)44u)
 
 /* 3DPRIMITIVE topologies, Vol 2a "3DPRIM_*". */
 #define V9X_HSW_PRIM_POINTLIST ((v9x_u8)0x01u)
@@ -618,7 +619,40 @@ struct v9x_hsw_draw {
      * V9X_HSW_TL2_VERTEX_BYTES and the second texture coordinate attribute
      * reads tu1 tv1 at 32 instead of tu tv again. */
     v9x_u8 tl_uv1;
+    /* Indexed draws, with tl_vertices only (appended 2026-10-25). indices:
+     * the graphics address of index_count 16-bit indices into the
+     * vertex_count vertices at `vertices`, fetched through
+     * 3DSTATE_INDEX_BUFFER by a RANDOM 3DPRIMITIVE; 0 keeps the
+     * sequential TRILIST. strip: the indices are a TRISTRIP rather than a
+     * TRILIST. cull: V9X_HSW_DRAW_CULL_*, 3DSTATE_SF's cull mode and front
+     * winding; zero is no culling, for every draw that leaves it so. */
+    v9x_u32 indices;
+    v9x_u32 index_count;
+    v9x_u8 strip;
+    v9x_u8 cull;
 };
+
+/* struct v9x_hsw_draw cull: which screen-space winding is discarded. */
+#define V9X_HSW_DRAW_CULL_NONE ((v9x_u8)0u)
+#define V9X_HSW_DRAW_CULL_CW   ((v9x_u8)1u)
+#define V9X_HSW_DRAW_CULL_CCW  ((v9x_u8)2u)
+
+/* 3DSTATE_INDEX_BUFFER for 16-bit indices from start to end inclusive
+ * (Vol 2b): end must be the last byte of a 64-byte cache line. */
+v9x_status v9x_intel_hsw_index_buffer(struct v9x_hsw_batch *batch,
+                                      v9x_u32 start, v9x_u32 end);
+
+/* A RANDOM 3DPRIMITIVE: `indices` indices from the index buffer's start,
+ * each added to base_vertex before the vertex fetch. */
+v9x_status v9x_intel_hsw_3dprimitive_indexed(struct v9x_hsw_batch *batch,
+                                             v9x_u8 topology,
+                                             v9x_u32 indices,
+                                             v9x_u32 base_vertex);
+
+/* 3DSTATE_SF as v9x_intel_hsw_sf_screen_depth, with a cull
+ * (V9X_HSW_DRAW_CULL_*). */
+v9x_status v9x_intel_hsw_sf_screen_cull(struct v9x_hsw_batch *batch,
+                                        v9x_u8 depth_format, v9x_u8 cull);
 
 /* The init batch's state with the draw's in place of the zeroed stages,
  * one TRILIST of three vertices, then the same end and breadcrumb. */

@@ -1,0 +1,16 @@
+ConfigId=w9qi5a83-hd4600-v9x
+Environment=metal
+Endpoint=10.0.1.254:9869
+Guest=W9QI5A83
+GuestUptimeMs=148710
+GuestBootCounter=80
+Agent=0.13.1 v0.13.1
+Build=31b28a4
+Mode=
+Arguments=/env:metal /config:w9qi5a83-hd4600-v9x
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=
+Tool.DB3D ok 21.4s 20261025-155315\DB3D.INI
+Tool.DB3D8 ok 3.4s 20261025-155315\DB3D8.INI
