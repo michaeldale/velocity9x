@@ -1175,6 +1175,47 @@ static void survey_display_device(unsigned index)
     wr_hex_block("Config", config_space, sizeof(config_space));
 }
 
+/*
+ * A VIA IGP's frame buffer size is not in its own config space. Linux viafb
+ * (via-core.c, viafb_get_fb_size_from_pci) reads it from the host bridge's
+ * function 3: dword A0h bits 14:12 on the CN400 and later, E0h on the
+ * CLE266/KM400. The whole 256 bytes go in the report so either offset can be
+ * read host-side; this is a config read like the rest of Tier 1.
+ */
+static void survey_via_host_function3(void)
+{
+    unsigned index;
+    unsigned char devfn = (unsigned char)((0u << 3) | 3u);
+
+    for (index = 0u; index < display_device_count; ++index) {
+        if (display_devices[index].vendor_id == 0x1106u) break;
+    }
+    if (index == display_device_count) return;
+
+    wr_section("ViaHostFunction3");
+    if (!pci_read_config(0u, devfn)) {
+        wr_status("error");
+        wr_str("Reason", "config-read-failed");
+        return;
+    }
+    if (v9x_u16(config_space + 0x00) != 0x1106u) {
+        wr_status("unavailable");
+        wr_str("Reason", "no-via-function-at-00-00-3");
+        wr_x16("VendorId", v9x_u16(config_space + 0x00));
+        return;
+    }
+
+    wr_status("ok");
+    wr_x8("Bus", 0u);
+    wr_x8("Device", 0u);
+    wr_x8("Function", 3u);
+    wr_x16("VendorId", v9x_u16(config_space + 0x00));
+    wr_x16("DeviceId", v9x_u16(config_space + 0x02));
+    wr_x32("RegA0", v9x_u32(config_space + 0xa0));
+    wr_x32("RegE0", v9x_u32(config_space + 0xe0));
+    wr_hex_block("Config", config_space, sizeof(config_space));
+}
+
 /* ------------------------------------------------------------------ */
 /* [VideoBios]                                                         */
 /* ------------------------------------------------------------------ */
@@ -2803,6 +2844,7 @@ int main(int argc, char **argv)
     for (index = 0; index < (int)display_device_count; ++index) {
         survey_display_device((unsigned)index);
     }
+    survey_via_host_function3();
     survey_rom_image("VideoBios", 0xc000u, 1);
     survey_secondary_roms();
     survey_vbe();

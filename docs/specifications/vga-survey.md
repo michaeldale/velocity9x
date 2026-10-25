@@ -156,6 +156,7 @@ Sections carrying anything other than `ok` also carry a `Reason`.
 | `[PciBios]` | INT 1Ah `B101h` presence, version, hardware mechanism, last bus |
 | `[PciInventory]` | every PCI function found, one CSV line each, with a `Fields` key naming the columns |
 | `[PciDevice.N]` | one per display-class device: decoded header fields plus the full 256-byte `Config.` blob |
+| `[ViaHostFunction3]` | only when a display device is VIA (`1106`): the full config space of `00:00.3`, where the frame buffer size lives (`RegA0`, or `RegE0` on the CLE266/KM400) |
 | `[VideoBios]` | the ROM at `C000`: size, checksum, `PCIR` structure, `$PnP` header, extracted strings, and a `Rom.` blob |
 | `[OptionRom.N]`, `[OptionRomScan]` | secondary adapter ROMs found between `C000` and `E000` |
 | `[VBE]` | `4F00h` controller info with the `VBE2` request, OEM strings, current mode, `4F0Ah`/`4F10h`/`4F11h` capability queries |
