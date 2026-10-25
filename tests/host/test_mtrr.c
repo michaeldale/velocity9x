@@ -288,6 +288,31 @@ static void test_a8u4i5_rage128(void)
     MTCHECK(plan.size == 0x01000000ul);
 }
 
+/* The netbook's readout (V9XBOOT.INI, boot 251, 2026-10-25): RAM
+ * write-back to 2 GiB, the stolen memory's uncached 8 MiB at 7F800000,
+ * pairs 2-7 free. The 16 MiB GMADR mapping plans one 16 MiB pair; the
+ * 7.69 MiB VBE reports would have planned 4. */
+static void test_netbook_gma950(void)
+{
+    struct v9x_mtrr_state state;
+    struct v9x_mtrr_plan plan;
+
+    fixture_typical(&state);
+    state.base[0] = 0x00000000ul | TYPE_WB;
+    state.mask[0] = 0x80000000ul | V9X_MTRR_PHYSMASK_VALID;
+    state.base[1] = 0x7F800000ul | V9X_MTRR_TYPE_UC;
+    state.mask[1] = 0xFF800000ul | V9X_MTRR_PHYSMASK_VALID;
+    MTCHECK(v9x_mtrr_plan_wc(&state, 0xD0000000ul, 0x01000000ul, &plan));
+    MTCHECK(plan.reason == V9X_MTRR_OK);
+    MTCHECK(plan.slot == 2u);
+    MTCHECK(plan.base == 0xD0000000ul);
+    MTCHECK(plan.size == 0x01000000ul);
+    MTCHECK(v9x_mtrr_physmask(plan.size) ==
+            (0xFF000000ul | V9X_MTRR_PHYSMASK_VALID));
+    MTCHECK(v9x_mtrr_plan_wc(&state, 0xD0000000ul, 0x007B0000ul, &plan));
+    MTCHECK(plan.size == 0x00400000ul);
+}
+
 /* The range this driver installs, found again after a restart of Windows
  * that kept the CPU's MTRRs: exactly the window, write-combining, valid. */
 static void test_wc_present(void)
@@ -468,6 +493,7 @@ unsigned int v9x_run_mtrr_tests(void)
     test_aperture_gates();
     test_existing_ranges();
     test_a8u4i5_rage128();
+    test_netbook_gma950();
     test_wc_present();
     test_slot_exhaustion();
     test_plan_properties();

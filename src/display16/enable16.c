@@ -607,6 +607,34 @@ static void v9x_vbe_trace_cache(void)
     }
 }
 
+static DWORD v9x_map_bytes(void);
+
+/*
+ * The aperture bytes the write-combining policy plans over.
+ *
+ * For a chip that opts in, the whole mapping: every CPU store this driver
+ * makes to the card goes through it, and the chip's maintainer has checked
+ * that the mapping lies inside the card's own BAR before opting in. On the
+ * Rage 128 that is the card's 32 MiB, which is also its VRAM. On Intel Gen3
+ * the usable size VBE reports, 7.69 MiB on the netbook, rounds down to a
+ * 4 MiB window and would leave the engine reserve above it (the ring at
+ * 0x6B0000 and up) uncached; the 16 MiB mapping inside the 256 MiB GMADR
+ * covers all of stolen memory, and its upper half reaches only the GTT's
+ * fill page (docs\decisions\2026-10-25-intel-gen3-write-combining.md).
+ *
+ * Every other chip keeps Stage A's report as it was: VRAM, rounded down,
+ * since a family's mapping is not known to stop inside its BAR.
+ */
+static DWORD v9x_mtrr_aperture_bytes(void)
+{
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+
+    if (device != 0 && device->write_combine != 0u) {
+        return v9x_map_bytes();
+    }
+    return v9x_vbe_vram_bytes;
+}
+
 /*
  * Stage B: write the pair the policy planned, for a chip that opts in
  * (V9X_HW16_DEVICE.write_combine), and record what the CPU now holds as
@@ -634,7 +662,8 @@ static void v9x_mtrr_install(const struct v9x_mtrr_state *state,
     if (device == 0 || device->write_combine == 0u) {
         return;
     }
-    window = v9x_mtrr_window(v9x_map_physical_base, v9x_vbe_vram_bytes);
+    window = v9x_mtrr_window(v9x_map_physical_base,
+                             v9x_mtrr_aperture_bytes());
     if (v9x_mtrr_wc_present(state, v9x_map_physical_base, window)) {
         v9x_write_ini_key("MtrrWrite", "present");
         return;
@@ -684,7 +713,8 @@ static void v9x_mtrr_install(const struct v9x_mtrr_state *state,
  *
  * The aperture handed to the policy is the one the driver actually mapped and
  * draws through, not the BIOS's claim about some mode: v9x_map_physical_base
- * is what stage 4 mapped, and v9x_vbe_vram_bytes is what dd16.c hands out.
+ * is what stage 4 mapped, and the size is what dd16.c hands out, or the
+ * whole mapping for a chip that opts in (v9x_mtrr_aperture_bytes).
  */
 static void v9x_mtrr_trace(void)
 {
@@ -730,8 +760,8 @@ static void v9x_mtrr_trace(void)
         }
     }
 
-    (void)v9x_mtrr_plan_wc(&state, v9x_map_physical_base, v9x_vbe_vram_bytes,
-                           &plan);
+    (void)v9x_mtrr_plan_wc(&state, v9x_map_physical_base,
+                           v9x_mtrr_aperture_bytes(), &plan);
 
     /* cpu flags, MTRRCAP, DEF_TYPE, pairs read, then the decision. */
     text[at++] = 'c'; text[at++] = 'p'; text[at++] = 'u'; text[at++] = '=';

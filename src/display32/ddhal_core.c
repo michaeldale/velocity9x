@@ -1028,7 +1028,10 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * hardware queues to the retrace (Intel's MI_DISPLAY_FLIP) would
          * hold the next Flip for a frame, and the netbook measured exactly
          * that, 324 ms for 20 flips under Always off
-         * (docs\decisions\2026-10-04-vsync-setting.md). */
+         * (docs\decisions\2026-10-04-vsync-setting.md). The new front
+         * buffer's CPU writes out of the write-combining buffers first: a
+         * plane-base flip is an MMIO write with no ring TAIL behind it. */
+        v9x_wc_drain();
         if (!(novsync != V9X_FALSE ? v9x_set_display_start_now(offset)
                                    : v9x_set_display_start(offset))) {
             data->ddRVal = V9X_DD_OK;

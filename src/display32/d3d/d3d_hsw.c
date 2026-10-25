@@ -398,6 +398,9 @@ static int v9x_d3d_hsw_submit(const struct v9x_hsw_pipe_slot *slot, int wait)
     }
     status[V9X_INTEL_HSW_STATUS_RCS_SENT] = sequence;
     diagnostics->breadcrumb_issued_last = sequence;
+    /* Ring, batch, vertices and state out of any write-combining buffers
+     * before TAIL tells the render engine to read them (d3d_i9xx.c). */
+    v9x_wc_drain();
     v9x_d3d_hsw_write32(V9X_INTEL_HSW_RCS_TAIL, plan.next_tail);
     (void)v9x_d3d_hsw_read32(V9X_INTEL_HSW_RCS_TAIL);
     if (wait) {

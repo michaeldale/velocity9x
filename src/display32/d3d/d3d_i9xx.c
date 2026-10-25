@@ -396,7 +396,9 @@ static void v9x_d3d_i9xx_note_outstanding(DWORD sequence)
 /* The breadcrumb dword as the CPU reads it: the status page is the page
  * after the ring in the reserve, which the mini-VDD's ring mapping covers
  * whole, and the MTRRs hold stolen memory uncached (intel82 V9XBOOT.INI:
- * 7F800000 type 0), so a poll here sees the GPU's write when it lands. */
+ * 7F800000 type 0), so a poll here sees the GPU's write when it lands.
+ * Write-combining the GMADR does not change that: WC reads are not cached
+ * (Intel SDM vol. 3, 11.3). */
 static volatile DWORD *v9x_d3d_i9xx_breadcrumb_linear(void)
 {
     return (volatile DWORD *)(v9x_hal->engine.ring_linear_base +
@@ -746,7 +748,12 @@ static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
      * The tail, last and once. Everything the GPU will fetch is in memory
      * before the register that tells it to fetch moves - the same ordering
      * the texture paint and the depth clear needed for the same reason.
+     * With the GMADR write-combined the ring words, and whatever the CPU
+     * drew or zeroed before this submission, can still sit in the CPU's
+     * write-combining buffers: an uncached store to TAIL is not promised
+     * to flush them first, so they are drained explicitly.
      */
+    v9x_wc_drain();
     *v9x_d3d_i9xx_reg(V9X_I9XX_REG_RING_TAIL) = plan.next_tail;
     V9X_TIME_END(V9X_TIME_RING_WRITE, phase_started);
     v9x_hal->d3d_diagnostics.tail_last = plan.next_tail;

@@ -484,7 +484,19 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
     0,
     v9x_gma950_fill_engine,
     /* VBE reports the framebuffer in GMADR BAR2. */
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /*
+     * Write-combined: the 16 MiB mapping of the 256 MiB GMADR, through
+     * which the CPU writes every surface, the ring and its inline vertices.
+     * Uncached, the netbook wrote it at 105.5 MB/s (dispbench FbWrite,
+     * 2026-10-25); the drains before each RING_TAIL and display flip are in
+     * the HAL (docs\decisions\2026-10-25-intel-gen3-write-combining.md).
+     * The GMA 900 and GMA 3150 below are the same design and take it too.
+     */
+    1u
 };
 
 /*
@@ -503,7 +515,12 @@ const V9X_HW16_DEVICE v9x_gma900_device = {
     "hardware-gen3",
     0,
     v9x_gma900_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GMA 950. */
+    1u
 };
 
 /*
@@ -523,7 +540,12 @@ const V9X_HW16_DEVICE v9x_gma3150_device = {
     "hardware-gen3",
     0,
     v9x_gma3150_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GMA 950. */
+    1u
 };
 
 /*

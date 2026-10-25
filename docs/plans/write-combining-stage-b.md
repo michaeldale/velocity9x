@@ -6,7 +6,10 @@ A8U4I5, not the netbook. Decision 1 is B; decision 2 became "Rage 128
 first". Measured in
 [`../decisions/2026-10-24-rage128-write-combining.md`](../decisions/2026-10-24-rage128-write-combining.md).
 The write runs from the 16-bit driver through the mini-VDD's PM API, not
-at `Device_Init`. Phases 3 and 4 below (netbook, Gateway) are not started.
+at `Device_Init`. Phase 3 (netbook) done 2026-10-25 with a 16 MiB window
+over the whole GMADR mapping, the rounding-up of finding 1 by another
+route: [`../decisions/2026-10-25-intel-gen3-write-combining.md`](../decisions/2026-10-25-intel-gen3-write-combining.md).
+Phase 4 (Gateway) is not started.
 Stage A: [`../decisions/2026-08-28-mtrr-stage-a-inspect-only.md`](../decisions/2026-08-28-mtrr-stage-a-inspect-only.md)
 
 ## Why now
