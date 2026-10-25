@@ -341,6 +341,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 
 - [2026-09-11 The GD5430 reads its own memory size, and its BIOS mode table needs reading carefully](2026-09-11-cirrus-gd5430-memory-and-mode-table.md)
 - [2026-09-11 Two NVIDIA cards baselined, and what the VGA ports are not hiding](2026-09-11-nvidia-nv4-and-nv5-baselines.md)
+- [2026-10-26 NeoMagic MagicGraph 128ZV (NM2093) from a VOGONS survey: tier 0 is plain VBE, the blitter sits at BAR0 + 2 MiB, and the BIOS hides 64 KiB](2026-10-26-neomagic-128zv-from-a-vogons-survey.md)
+- [2026-10-26 VIA VX855 Chrome9 HCM from a DOS survey: framebuffer BAR0, engine BAR1, VBE 3.0 to 1920x1200, and the M1 2D engine Linux already drives](2026-10-26-via-vx855-chrome9-hcm-from-a-survey.md)
 
 ## DOS box and mini-VDD
 
