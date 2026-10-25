@@ -152,7 +152,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     8192.0f,        /* coordinate_limit */
     16ul,           /* depth_bits_per_pixel: D16_UNORM */
     16ul,           /* texture_align */
-    1ul,            /* clip_in_core: the CLIP stage is off */
+    /* The CLIP stage is off, and the core does not clip either: the
+     * engine draws inside its guard band and clips only what Vol 7's 8K
+     * span rule requires (v9x_d3d_hsw_guard). */
+    0ul,            /* clip_in_core */
     /* 3DSTATE_DEPTH_BUFFER carries the Z buffer's own pitch, whole tiles
      * wider than its row. */
     1ul,            /* depth_pitch_own */
@@ -1283,6 +1286,88 @@ static void v9x_d3d_hsw_draw_desc(const V9X_R3D_DRAW *draw,
     d->cull = V9X_HSW_DRAW_CULL_NONE;
 }
 
+/*
+ * The guard band (HSW PRM Vol 7, "Vertex XY Clamping and Quantization"):
+ * screen-space vertices are clamped to [-32K, 32K-1], and an object whose
+ * bounding box exceeds 8K in x or y is not rendered as intended, so
+ * software must clip it. Pixels outside the drawing rectangle, which is
+ * the target or the explicit scissor, are not drawn ("Drawing Rectangle
+ * Clipping"). So a triangle inside +/- coordinate_limit (8192, well inside
+ * the clamp) whose span is under 8K is drawn as it is; one whose span
+ * reaches 8K is clipped; one past the band is refused, as the core's
+ * clipper refuses it.
+ */
+#define V9X_D3D_HSW_SPAN_LIMIT 8192.0f
+#define V9X_D3D_HSW_GUARD_DRAW 0
+#define V9X_D3D_HSW_GUARD_CLIP 1
+#define V9X_D3D_HSW_GUARD_DROP 2
+
+/* Finite, from the bits: Open Watcom's x87 compares do not see NaN
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). */
+#define V9X_D3D_HSW_EXPONENT_MASK 0x7f800000ul
+
+static int v9x_d3d_hsw_finite(float value)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } convert;
+
+    convert.value = value;
+    return (convert.bits & V9X_D3D_HSW_EXPONENT_MASK) !=
+           V9X_D3D_HSW_EXPONENT_MASK;
+}
+
+static int v9x_d3d_hsw_guard(const V9X_R3D_VERTEX *triangle)
+{
+    float limit = v9x_d3d_hsw_limits.coordinate_limit;
+    float left = triangle[0].sx;
+    float right = triangle[0].sx;
+    float top = triangle[0].sy;
+    float bottom = triangle[0].sy;
+    DWORD index;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        float x = triangle[index].sx;
+        float y = triangle[index].sy;
+
+        if (!v9x_d3d_hsw_finite(x) || !v9x_d3d_hsw_finite(y) ||
+            !(x >= -limit && x < limit && y >= -limit && y < limit)) {
+            return V9X_D3D_HSW_GUARD_DROP;
+        }
+        if (x < left) {
+            left = x;
+        }
+        if (x > right) {
+            right = x;
+        }
+        if (y < top) {
+            top = y;
+        }
+        if (y > bottom) {
+            bottom = y;
+        }
+    }
+    if (right - left < V9X_D3D_HSW_SPAN_LIMIT &&
+        bottom - top < V9X_D3D_HSW_SPAN_LIMIT) {
+        return V9X_D3D_HSW_GUARD_DRAW;
+    }
+    return V9X_D3D_HSW_GUARD_CLIP;
+}
+
+/* One 32-byte TL vertex into the vertex area. */
+static v9x_u32 *v9x_d3d_hsw_put_vertex(v9x_u32 *target,
+                                       const V9X_R3D_VERTEX *vertex)
+{
+    const v9x_u32 *words = (const v9x_u32 *)vertex;
+    DWORD index;
+
+    for (index = 0ul; index < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++index) {
+        *target++ = words[index];
+    }
+    return target;
+}
+
 static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                                   const V9X_R3D_VERTEX *vertices,
                                   DWORD triangle_count)
@@ -1296,14 +1381,16 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     DWORD done = 0ul;
     DWORD count;
     DWORD limit;
-    DWORD bytes;
     DWORD index;
     DWORD vertex;
     DWORD timed;
+    float width;
+    float height;
     int wait_after;
     const v9x_u32 *source;
     const v9x_u32 *uv1;
     v9x_u32 *target;
+    V9X_R3D_VERTEX clipped[V9X_R3D_CLIP_MAX_VERTICES];
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return 0;
@@ -1359,13 +1446,11 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
     wait_after = v9x_d3d_hsw_draw_waits(draw);
 
     v9x_d3d_hsw_draw_desc(draw, &state, &d);
-    limit =d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
+    limit = d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
+    width = (float)draw->target.width;
+    height = (float)draw->target.height;
 
     while (done < triangle_count) {
-        count = triangle_count - done;
-        if (count > limit) {
-            count = limit;
-        }
         /* Each piece is one sequence, so it has a slot of its own and
          * writes its state there; the batch before it may still be reading
          * the other slot. */
@@ -1388,27 +1473,68 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         d.kernel = kernel;
         d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
 
-        source = (const v9x_u32 *)(vertices + done * 3ul);
+        /*
+         * The triangles, as the core hands them over unclipped: each one
+         * inside the guard band and under the 8K span goes as it is; one
+         * whose span reaches 8K is cut to the target by the core's own
+         * clipper and goes as its fan; one with a vertex past the band or
+         * not finite is dropped, as the core's clipper refuses it
+         * (v9x_d3d_hsw_guard). A piece stops while a whole fan still fits.
+         */
         target = v9x_d3d_hsw_reserve(slot.vertex_off);
+        count = 0ul;
         timed = V9X_TIME_BEGIN();
-        if (d.tl_uv1) {
-            /* Each 32-byte vertex, then its tu1 tv1: the TL2 vertex. */
-            uv1 = (const v9x_u32 *)(draw->texcoords1 + done * 3ul * 2ul);
-            for (vertex = 0ul; vertex < count * 3ul; ++vertex) {
-                for (index = 0ul; index < V9X_HSW_TL_VERTEX_BYTES / 4ul;
-                     ++index) {
-                    *target++ = *source++;
+        while (done < triangle_count &&
+               count + V9X_R3D_MAX_FAN_TRIANGLES <= limit) {
+            const V9X_R3D_VERTEX *triangle = vertices + done * 3ul;
+            int kind = v9x_d3d_hsw_guard(triangle);
+
+            if (kind == V9X_D3D_HSW_GUARD_DRAW) {
+                source = (const v9x_u32 *)triangle;
+                if (d.tl_uv1) {
+                    /* Each 32-byte vertex, then its tu1 tv1: the TL2
+                     * vertex. */
+                    uv1 = (const v9x_u32 *)(draw->texcoords1 +
+                                            done * 3ul * 2ul);
+                    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+                        for (index = 0ul;
+                             index < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++index) {
+                            *target++ = *source++;
+                        }
+                        *target++ = *uv1++;
+                        *target++ = *uv1++;
+                    }
+                } else {
+                    for (index = 0ul;
+                         index < 3ul * V9X_HSW_TL_VERTEX_BYTES / 4ul;
+                         ++index) {
+                        *target++ = source[index];
+                    }
                 }
-                *target++ = *uv1++;
-                *target++ = *uv1++;
+                ++count;
+            } else if (kind == V9X_D3D_HSW_GUARD_CLIP && !d.tl_uv1) {
+                /* A second unit's coordinates cannot follow a cut, and the
+                 * render interface clips its two-unit draws before they
+                 * come here, so only the one-unit fan is built. */
+                int corners = v9x_r3d_clip_triangle(
+                    triangle, v9x_d3d_hsw_limits.coordinate_limit, width,
+                    height, clipped);
+                int fan;
+
+                for (fan = 1; fan + 1 < corners; ++fan) {
+                    target = v9x_d3d_hsw_put_vertex(target, &clipped[0]);
+                    target = v9x_d3d_hsw_put_vertex(target, &clipped[fan]);
+                    target = v9x_d3d_hsw_put_vertex(target,
+                                                    &clipped[fan + 1]);
+                    ++count;
+                }
             }
-        } else {
-            bytes = count * 3ul * V9X_HSW_TL_VERTEX_BYTES;
-            for (index = 0ul; index < bytes / 4ul; ++index) {
-                target[index] = source[index];
-            }
+            ++done;
         }
         V9X_TIME_END(V9X_TIME_RING_WRITE, timed);
+        if (count == 0ul) {
+            continue;
+        }
         d.vertex_count = count * 3ul;
         v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                                  slot.batch_bytes / 4ul);
@@ -1416,7 +1542,7 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                                         V9X_D3D_HSW_GFX(slot.state_off),
                                         slot.state_span, &d,
                                         V9X_D3D_HSW_CRUMB_GFX,
-                                        done + count) != V9X_STATUS_OK) {
+                                        done) != V9X_STATUS_OK) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
             return 0;
         }
@@ -1424,7 +1550,6 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
             return 0;
         }
-        done += count;
     }
     v9x_present_note_submission();
     return 1;
@@ -1479,11 +1604,14 @@ static v9x_u8 v9x_d3d_hsw_cull_of(DWORD cull_mode)
  * differently: a second unit's coordinates (which follow list order), flat
  * shading (the list path copies the provoking vertex's colours into the
  * other two, which a shared vertex cannot take), an index past the pool,
- * and any vertex of the range the core would clip - off the target after
- * the move, or not finite - since this engine is clipped in the core. A
- * range or index count larger than one slot's vertex area is declined too,
- * and the list path splits it.
+ * a vertex of the range that is not finite, and one past half the guard
+ * band after the move: inside +/- 4096 no triangle of the call can span
+ * 8K, so none needs the clip the list path would give it
+ * (v9x_d3d_hsw_guard). A range or index count larger than one slot's
+ * vertex area is declined too, and the list path splits it.
  */
+#define V9X_D3D_HSW_INDEXED_LIMIT (V9X_D3D_HSW_SPAN_LIMIT / 2.0f)
+
 static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
                                     const V9X_R3D_VERTEX *pool,
                                     DWORD vertex_count,
@@ -1506,8 +1634,6 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
     DWORD kernel = 0ul;
     DWORD index;
     DWORD word;
-    float width;
-    float height;
     int wait_after;
     v9x_u32 *target;
     volatile v9x_u16 *index_at;
@@ -1549,16 +1675,21 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
         }
         return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_RANGE, started);
     }
-    /* Every vertex of the range on the target after the move, as
-     * v9x_r3d_triangle_on_target takes it; a NaN fails both compares. */
-    width = (float)draw->target.width;
-    height = (float)draw->target.height;
+    /* Every vertex of the range finite and inside +/- 4096 after the
+     * move. */
     for (index = first; index <= last; ++index) {
         float x = pool[index].sx + V9X_D3D_HSW_CENTRE;
         float y = pool[index].sy + V9X_D3D_HSW_CENTRE;
 
-        if (!(x >= 0.0f && x <= width && y >= 0.0f && y <= height)) {
+        if (!v9x_d3d_hsw_finite(x) || !v9x_d3d_hsw_finite(y)) {
             return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_VERTEX,
+                                       started);
+        }
+        if (!(x >= -V9X_D3D_HSW_INDEXED_LIMIT &&
+              x < V9X_D3D_HSW_INDEXED_LIMIT &&
+              y >= -V9X_D3D_HSW_INDEXED_LIMIT &&
+              y < V9X_D3D_HSW_INDEXED_LIMIT)) {
+            return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_GUARD,
                                        started);
         }
     }

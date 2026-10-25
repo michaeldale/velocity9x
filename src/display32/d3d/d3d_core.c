@@ -5165,17 +5165,20 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
      * exactly what the runtime is now told it may send.
      */
     /*
-     * Only for an engine the core clips for. Gen3 was not one until
-     * 2026-10-07: its builders take a vertex inside the target and nothing
-     * else, and given a guard band with no core clip, Half-Life's
-     * off-screen vertices reached them and 298,000 batches a run were
-     * refused as bad vertex streams and replayed record by record
-     * (netbook, 2026-10-06). It is clipped in the core now, like the rest.
+     * For an engine the core clips for, and for one that draws inside its
+     * own guard band (clip_in_core 0: the Rage 128 and the HD 4600), whose
+     * coordinate_limit is that band. Until 2026-10-25 only the first got
+     * it, so the Rage 128, unclipped in the core since 2026-10-24, told
+     * every DDI 6 program it had no guard band and the runtime clipped all
+     * of their triangles on the CPU (Michael chose to publish it). What
+     * the rule must never do again is what Gen3 did on 2026-10-06: a band
+     * published for an engine with neither a core clip nor a band of its
+     * own sent Half-Life's off-screen vertices to builders that refused
+     * them, 298,000 batches a run. Gen3 is clipped in the core.
      */
     {
         const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
         float band = ops != 0 && ops->limits != 0 &&
-                             ops->limits->clip_in_core != 0ul &&
                              ops->limits->coordinate_limit > 1.0f
                          ? ops->limits->coordinate_limit - 1.0f
                          : 0.0f;

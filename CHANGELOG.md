@@ -19,6 +19,15 @@ build identifier so exact guest-tested binaries remain traceable.
   triangle on the CPU. 3DMark 2000 took 72% of its indexed calls this
   way, 1959 to 2032. The HD 4000 runs the same code, untested
   ([record](docs/decisions/2026-10-25-intel-indexed-draws-and-hardware-cull.md)).
+- **HD 4600: triangles crossing the screen's edge are drawn by the card
+  inside its guard band** instead of being clipped by the CPU first;
+  with it 87% of 3DMark 2000's indexed calls go to the card whole
+  ([record](docs/decisions/2026-10-25-haswell-guard-band.md)).
+- **Rage 128 and HD 4600: programs on the DrawPrimitives2 interface
+  (DirectX 8, and any program set to it) are told the card's guard band**,
+  so Direct3D stops clipping their triangles on the CPU before the driver
+  sees them. The Rage 128 had published none since 0.29.0's guard band;
+  not yet re-measured on the Rage 128.
 
 ## 0.29.0 - 2026-10-25
 
