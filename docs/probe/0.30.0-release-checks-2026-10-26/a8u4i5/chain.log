@@ -1,0 +1,8 @@
+V9XD32 /ddi6 /t14nomode : done=True Result=PASS
+V9XD32 /ddi5 /t14nomode : done=True Result=PASS
+a8-glp Result=PASS fails=0 
+a8-glidp Result=PENDING Result=PASS failures=0 fails=0 
+a8-r3dp Result=COMPLETE fails=0 
+rel-a8-d3d d3d : 394 frames 16.135 seconds 24.419 fps
+rel-a8-gl gl : 394 frames 24.986 seconds 15.769 fps
+a8 3dmark2000 state=score

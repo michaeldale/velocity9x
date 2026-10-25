@@ -1,0 +1,8 @@
+V9XD32 /ddi6 : done=True Result=PASS
+V9XD32 /ddi5 : done=True Result=PASS
+hsw-glp Result=PASS fails=0 
+hsw-glidp Result=PENDING Result=FAIL open fails=2 Result=FAIL open Open=FAIL
+hsw-r3dp Result=COMPLETE fails=0 
+rel-hsw-d3d d3d : 394 frames 5.909 seconds 66.675 fps
+rel-hsw-gl gl : 394 frames 5.055 seconds 77.947 fps
+hsw 3dmark2000 state=score

@@ -1,0 +1,17 @@
+V9XD32 /ddi6 : done=True Result=PASS
+V9XD32 /ddi5 : done=True Result=PASS
+nb-glp Result=PASS fails=0 
+nb-glidp Result=PENDING Result=PASS failures=0 fails=0 
+nb-r3dp Result=COMPLETE fails=0 
+rel-nb-d3d d3d : 394 frames 9.833 seconds 40.069 fps
+rel-nb-gl gl : 394 frames 16.985 seconds 23.197 fps
+
+Title                    Class                     X   Y Width Height Foreground Minimized        Pid
+-----                    -----                     -   - ----- ------ ---------- ---------        ---
+                         Shell_TrayWnd            -2 548  1028     30      False     False 4294911579
+3DMark2000 Overall Score #32770                  259  89   506    370       True     False 4294705663
+3DMark2000 - Untitled    3DMark2000:400000:b:0:6  -4  -4  1032    556      False     False 4294705663
+Program Manager          Progman                   0   0  1024    576      False     False 4294911579
+
+
+
