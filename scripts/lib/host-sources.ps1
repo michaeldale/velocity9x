@@ -105,6 +105,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rage128\r128_2d.c',
         # Rage 128 3D: CCE state and primitive packet streams, no I/O.
         'src\chipsets\ati\rage128\r128_3d.c',
+        # Evergreen async DMA: fill and copy packets, no I/O.
+        'src\chipsets\ati\evergreen\eg_dma.c',
         'tests\host\test_pe_export.c',
         'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
@@ -283,6 +285,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_tdfx_3d.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
+        'tests\host\test_eg_dma.c',
         'tests\host\test_main.c'
     )
 

@@ -341,13 +341,15 @@
             Adapter = 'AMD Radeon HD 5450 (Cedar)'
             ClockDetector = 'ati-evergreen-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Tier-0 of docs\plans\ati-evergreen-cedar.md. Evergreen has no
-            # fixed-function 2D engine; the CPU draws until the DMA engine
-            # is measured on this card.
-            Acceleration = 'none'
+            # Evergreen has no fixed-function 2D engine. DirectDraw fill and
+            # copy go to the async DMA engine as linear runs, its packets
+            # measured byte-exact on this card
+            # (docs\decisions\2026-10-26-cedar-dma-write-probe.md); the
+            # rest is drawn by the CPU (docs\plans\ati-evergreen-cedar.md).
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'ATI_EVERGREEN'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # What M-BXMFA8's VBE 4F00h reports; the boards carry more. The
             # heap sizes from 4F00h, clamped to the family's 16 MiB mapping.
             VideoMemoryBytes = 16777216

@@ -83,6 +83,15 @@
  * ATI_MACH64. No Direct3D engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_RAGE128  10ul
+/*
+ * AMD Evergreen async DMA engine (engines\eng_eg.c): solid fill and screen
+ * copy as linear VRAM runs, one packet a row, through a ring in VRAM behind
+ * the 128 KiB register BAR. Evergreen has no fixed-function 2D engine; the
+ * packets are built by src\chipsets\ati\evergreen\eg_dma.c and ran
+ * byte-exact on an HD 5450 (docs\decisions\2026-10-26-cedar-dma-write-
+ * probe.md). No Direct3D engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_EVERGREEN 11ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

@@ -18,7 +18,7 @@ $script:V9xFamilySchemaVersion = 1
 $script:V9xEngineTypes = @('NONE', 'S3_VIRGE_DX', 'S3_TRIO64',
                            'INTEL_GEN3', 'ATI_MACH64', 'ATI_RAGE2',
                            'SIS_6326', 'MGA', 'TDFX', 'INTEL_GEN75',
-                           'ATI_RAGE128')
+                           'ATI_RAGE128', 'ATI_EVERGREEN')
 $script:V9xEngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'VBLANK', 'D3D')
 
 function Get-V9xFamilyRoot {

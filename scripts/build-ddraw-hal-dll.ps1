@@ -123,6 +123,10 @@ $sources = @(
     # The Rage 128 2D engine: fill and copy through the host-tested builder.
     "src\display32\engines\eng_r128.c",
     "src\chipsets\ati\rage128\r128_2d.c",
+    # The Evergreen async DMA engine: fill and copy packets through the
+    # host-tested builder, in a ring in VRAM.
+    "src\display32\engines\eng_eg.c",
+    "src\chipsets\ati\evergreen\eg_dma.c",
     # The Haswell blitter: fill and copy on the BCS ring through the
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",

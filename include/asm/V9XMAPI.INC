@@ -550,6 +550,23 @@ V9XMINI_FN_R128_MMIO_MAP    EQU 0023h
 ; data.md). Only the ati family image implements it.
 V9XMINI_FN_R128_AGP_RING    EQU 0024h
 
+; AMD Evergreen (Radeon HD 5450, Cedar): map the 128 KiB register BAR
+; (BAR2) and the async DMA engine's ring window, and say where.
+;
+; In: EBX = BAR2's physical base, ECX = BAR0's, both freshly read from PCI
+; config by the display driver with their high halves checked zero. Out:
+; AX=1, EBX = linear address of the register window, ECX = linear address
+; of the ring window, EDX = its bytes; AX=0 leaves all three zero.
+;
+; The ring window is BAR0 + 0F000000h, 64 KiB: VRAM 240 MiB in, past the
+; 16 MiB the driver maps for the heap, where the DMA write probe ran
+; (docs\decisions\2026-10-26-cedar-dma-write-probe.md). It is mapped only
+; when BAR0 is 256 MiB aligned and CONFIG_MEMSIZE (5428h, MiB) reads
+; between 256 and 4096 through the register window, so the window is VRAM
+; behind this card's BAR. Maps once and refuses moved BARs. Interprets
+; nothing else; only the ati family image implements it.
+V9XMINI_FN_EG_MAP           EQU 0025h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

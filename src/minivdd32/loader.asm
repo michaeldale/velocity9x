@@ -187,6 +187,22 @@ V9X_R128_RING_BYTES     equ 00091000h
 V9X_R128_RING_PAGES     equ 145
 V9xR128RingLinear dd 0
 V9xR128RingBus    dd 0
+
+; AMD Evergreen (Cedar): the 128 KiB register BAR and the DMA ring window,
+; BAR0 + 240 MiB, 64 KiB (V9XMINI_FN_EG_MAP in V9XMAPI.INC). CONFIG_MEMSIZE
+; is in MiB on Evergreen (Linux evergreen_mc_init); 1024 on M-BXMFA8
+; (docs\decisions\2026-10-26-cedar-register-probe.md).
+V9X_EG_MMIO_BYTES       equ 00020000h
+V9X_EG_RING_OFFSET      equ 0f000000h
+V9X_EG_RING_BYTES       equ 00010000h
+V9X_EG_BAR0_ALIGN       equ 0fffffffh
+V9X_EG_CONFIG_MEMSIZE   equ 00005428h
+V9X_EG_MEMSIZE_MIN_MIB  equ 256
+V9X_EG_MEMSIZE_MAX_MIB  equ 4096
+V9xEgMmioBase   dd 0
+V9xEgMmioLinear dd 0
+V9xEgBar0       dd 0
+V9xEgRingLinear dd 0
 ENDIF
 
 IFDEF V9X_SIS_MMIO
@@ -2782,6 +2798,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_R128MmioMap
     cmp     ax, V9XMINI_FN_R128_AGP_RING
     je      V9xMini_Api_R128AgpRing
+    cmp     ax, V9XMINI_FN_EG_MAP
+    je      V9xMini_Api_EgMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -3770,6 +3788,75 @@ V9xMini_Api_R128AgpRing_Have:
     mov     [ebp.Client_AX], 1
     ret
 V9xMini_Api_R128AgpRing_Refused:
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR2 physical, ECX = BAR0 physical. See V9XMINI_FN_EG_MAP in
+; V9XMAPI.INC.
+V9xMini_Api_EgMap:
+IFDEF V9X_R128_MMIO
+    mov     eax, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    cmp     eax, 01000000h
+    jb      V9xMini_Api_EgMap_Refused
+    cmp     eax, 0fffe0000h
+    ja      V9xMini_Api_EgMap_Refused
+    test    eax, V9X_EG_MMIO_BYTES - 1
+    jnz     V9xMini_Api_EgMap_Refused
+    test    ecx, ecx
+    jz      V9xMini_Api_EgMap_Refused
+    test    ecx, V9X_EG_BAR0_ALIGN
+    jnz     V9xMini_Api_EgMap_Refused
+
+    cmp     V9xEgMmioLinear, 0
+    je      short V9xMini_Api_EgMap_Map
+    cmp     eax, V9xEgMmioBase
+    jne     V9xMini_Api_EgMap_Refused
+    cmp     ecx, V9xEgBar0
+    jne     V9xMini_Api_EgMap_Refused
+    jmp     short V9xMini_Api_EgMap_Done
+
+V9xMini_Api_EgMap_Map:
+    mov     V9xEgMmioBase, eax
+    mov     V9xEgBar0, ecx
+    VMMcall _MapPhysToLinear,<eax,V9X_EG_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_EgMap_Failed
+
+    ; A decoding-disabled window reads all ones; anything outside the
+    ; Evergreen range here means the window is not this card's registers,
+    ; and the ring window behind BAR0 is not mapped on its word.
+    mov     edx, [eax+V9X_EG_CONFIG_MEMSIZE]
+    cmp     edx, V9X_EG_MEMSIZE_MIN_MIB
+    jb      short V9xMini_Api_EgMap_Failed
+    cmp     edx, V9X_EG_MEMSIZE_MAX_MIB
+    ja      short V9xMini_Api_EgMap_Failed
+    push    eax
+    mov     edx, V9xEgBar0
+    add     edx, V9X_EG_RING_OFFSET
+    VMMcall _MapPhysToLinear,<edx,V9X_EG_RING_BYTES,0>
+    pop     edx
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_EgMap_Failed
+    mov     V9xEgRingLinear, eax
+    mov     V9xEgMmioLinear, edx
+
+V9xMini_Api_EgMap_Done:
+    mov     eax, V9xEgMmioLinear
+    mov     [ebp.Client_EBX], eax
+    mov     eax, V9xEgRingLinear
+    mov     [ebp.Client_ECX], eax
+    mov     [ebp.Client_EDX], V9X_EG_RING_BYTES
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_EgMap_Failed:
+    mov     V9xEgMmioBase, 0
+    mov     V9xEgBar0, 0
+V9xMini_Api_EgMap_Refused:
     mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_ECX], 0
     mov     [ebp.Client_EDX], 0

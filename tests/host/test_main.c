@@ -274,6 +274,11 @@ unsigned int v9x_run_tdfx_3d_tests(void);
  * values against xf86-video-r128's encodings. */
 unsigned int v9x_run_r128_2d_tests(void);
 
+/* tests\host\test_eg_dma.c: Evergreen DMA fill and copy packets, run
+ * through a model of the engine the write probe measured and compared
+ * with a CPU rectangle operation. */
+unsigned int v9x_run_eg_dma_tests(void);
+
 /* tests\host\test_r128_3d.c: Rage 128 CCE state and primitive streams
  * against Mesa's r128 encodings. */
 unsigned int v9x_run_r128_3d_tests(void);
@@ -1388,6 +1393,7 @@ int main(int argc, char **argv)
     failures += v9x_run_tdfx_3d_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
+    failures += v9x_run_eg_dma_tests();
     failures += v9x_run_d3d_r128_map_tests();
     failures += v9x_run_vram_probe_tests();
 

@@ -231,7 +231,9 @@ static void test_engine_caps_match_engine_type(void)
                         chip->engine_type ==
                             V9X_DD_ENGINE_TYPE_INTEL_GEN75 ||
                         chip->engine_type ==
-                            V9X_DD_ENGINE_TYPE_ATI_RAGE128);
+                            V9X_DD_ENGINE_TYPE_ATI_RAGE128 ||
+                        chip->engine_type ==
+                            V9X_DD_ENGINE_TYPE_ATI_EVERGREEN);
         }
     }
 }

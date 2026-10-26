@@ -1863,6 +1863,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_hsw;
     case V9X_DD_ENGINE_TYPE_ATI_RAGE128:
         return &v9x_engine32_r128;
+    case V9X_DD_ENGINE_TYPE_ATI_EVERGREEN:
+        return &v9x_engine32_eg;
     default:
         break;
     }
