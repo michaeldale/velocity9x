@@ -13,9 +13,11 @@
  * the framebuffer. The engine hook claims the async DMA engine for
  * DirectDraw fill and copy, whose packets ran byte-exact on this card
  * (docs\decisions\2026-10-26-cedar-dma-write-probe.md): the mini-VDD maps
- * the register window and a 64 KiB ring window at BAR0 + 240 MiB, past the
+ * the register window and a 4 MiB window at BAR0 + 240 MiB, past the
  * 16 MiB this family maps for the heap, and eng_eg.c starts the ring once
- * per mode. Without either window the chip stays tier-0.
+ * per mode. The same window holds the command processor's ring, shaders
+ * and vertices, so with it mapped Direct3D is offered through the CP
+ * (d3d_eg.c, eg_cp.c). Without either window the chip stays tier-0.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -29,6 +31,10 @@ extern unsigned short __far __pascal V9xMiniEgMap(
 
 /* V9X_EG_MMIO_BYTES in eg_dma.h and the mini-VDD: the register BAR. */
 #define V9X_CEDAR_MMIO_BYTES 0x00020000ul
+/* V9X_EG_WINDOW_BYTES in eg_3d.h: a window this large holds the CP's
+ * ring, shaders and vertex arena beside the DMA ring, and Direct3D is
+ * offered (d3d_eg.c). A smaller one is the DMA ring's alone. */
+#define V9X_CEDAR_3D_WINDOW_BYTES 0x00400000ul
 
 /* How far the engine hook got, and the BARs it read, for
  * v9x_cedar_publish_diagnostics: neither refusal leaves any other trace,
@@ -84,6 +90,9 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_EVERGREEN;
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY;
+    if (bytes >= V9X_CEDAR_3D_WINDOW_BYTES) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+    }
     *ring_linear_base = ring;
     *ring_bytes = bytes;
 }
@@ -131,7 +140,7 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     "ati-evergreen-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-evergreen-cp",
     0,
     v9x_cedar_fill_engine
 };

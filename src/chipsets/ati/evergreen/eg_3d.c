@@ -217,6 +217,7 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_SPI_VS_OUT_CONFIG        0x286c4ul
 #define EG_SPI_PS_IN_CONTROL_0      0x286ccul
 #define EG_SPI_BARYC_CNTL           0x286e0ul
+#define EG_CB_TARGET_MASK           0x28238ul
 #define EG_CB_BLEND0_CONTROL        0x28780ul
 #define EG_DB_DEPTH_CONTROL         0x28800ul
 #define EG_PA_CL_VTE_CNTL           0x28818ul
@@ -231,6 +232,10 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_CB_SOURCE_FORMAT_NORM    0x01000000ul /* SOURCE_FORMAT(1) << 24 */
 #define EG_CB_NON_DISP_TILING_ORDER 0x00000010ul
 #define EG_CB_COLOR0_DWORDS         15ul
+/* CB_TARGET_MASK's target-0 nibble: x, y, z and w are B, G, R and A in
+ * the memory order the PS exports (eg_shader.c). */
+#define EG_CB_WRITE_RGBA            0x0000000ful
+#define EG_CB_WRITE_RGB             0x00000007ul
 #define EG_DB_Z_INFO_DWORDS         8ul
 #define EG_DB_FORMAT_Z_16           1ul
 #define EG_PS_EXPORTS_COLOR         2ul
@@ -500,14 +505,14 @@ v9x_u32 v9x_eg_3d_alpha_test(v9x_u32 enable, v9x_u32 func)
 }
 
 /* No mip filter and CLAMP_Z at the last texel, Linux's choice for a 2D
- * texture. */
-v9x_u32 v9x_eg_3d_sampler(v9x_u32 bilinear, v9x_u32 clamp_u, v9x_u32 clamp_v)
+ * texture. A nonzero filter argument is bilinear, zero point. */
+v9x_u32 v9x_eg_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
+                          v9x_u32 clamp_u, v9x_u32 clamp_v)
 {
-    v9x_u32 filter = bilinear != 0ul ? 1ul : 0ul;
-
     return (clamp_u & 7ul) | ((clamp_v & 7ul) << 3) |
            (V9X_EG_TEX_CLAMP_LAST_TEXEL << EG_SAMPLER_CLAMP_Z_SHIFT) |
-           (filter << EG_SAMPLER_MAG_SHIFT) | (filter << EG_SAMPLER_MIN_SHIFT);
+           ((mag_bilinear != 0ul ? 1ul : 0ul) << EG_SAMPLER_MAG_SHIFT) |
+           ((min_bilinear != 0ul ? 1ul : 0ul) << EG_SAMPLER_MIN_SHIFT);
 }
 
 static int v9x_eg_3d_aligned(v9x_u32 gpu)
@@ -517,7 +522,7 @@ static int v9x_eg_3d_aligned(v9x_u32 gpu)
 
 static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
 {
-    if (state->target_gpu == 0ul || !v9x_eg_3d_aligned(state->target_gpu) ||
+    if (!v9x_eg_3d_aligned(state->target_gpu) ||
         state->target_pitch == 0ul || (state->target_pitch & 7ul) != 0ul ||
         state->target_height == 0ul ||
         state->target_pitch > EG_SCISSOR_MAX ||
@@ -532,7 +537,7 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
         state->scissor_bottom > state->target_height) {
         return 0;
     }
-    if (state->depth_gpu != 0ul &&
+    if (state->has_depth != 0ul &&
         (!v9x_eg_3d_aligned(state->depth_gpu) || state->depth_pitch == 0ul ||
          (state->depth_pitch & 7ul) != 0ul || state->depth_height == 0ul ||
          (state->depth_height & 7ul) != 0ul ||
@@ -540,13 +545,13 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
          state->depth_height < state->scissor_bottom)) {
         return 0;
     }
-    if (state->vs_gpu == 0ul || !v9x_eg_3d_aligned(state->vs_gpu) ||
-        state->ps_gpu == 0ul || !v9x_eg_3d_aligned(state->ps_gpu) ||
+    if (!v9x_eg_3d_aligned(state->vs_gpu) ||
+        !v9x_eg_3d_aligned(state->ps_gpu) ||
         state->vs_gprs == 0ul || state->ps_gprs == 0ul ||
         state->interpolants == 0ul || state->interpolants > 2ul) {
         return 0;
     }
-    if (state->texture_gpu != 0ul &&
+    if (state->has_texture != 0ul &&
         (!v9x_eg_3d_aligned(state->texture_gpu) ||
          state->texture_width == 0ul || state->texture_height == 0ul ||
          state->texture_pitch < state->texture_width ||
@@ -557,7 +562,7 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
           state->texture_format != V9X_EG_COLOR_8_8_8_8))) {
         return 0;
     }
-    return state->vertex_gpu != 0ul && state->vertex_stride != 0ul &&
+    return state->vertex_stride != 0ul &&
            state->vertex_bytes >= state->vertex_stride;
 }
 
@@ -626,7 +631,7 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     /* set_tex_resource and sampler 0, the texture linear general: pitch a
      * multiple of 8 texels, swizzle XYZW, one level. The texture cache is
      * invalidated first: the CPU may have written the texels. */
-    if (state->texture_gpu != 0ul) {
+    if (state->has_texture != 0ul) {
         v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_TC_ACTION, EG_SYNC_ALL,
                                 0ul);
         v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_SET_RESOURCE, 9ul));
@@ -669,13 +674,16 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     }
     v9x_eg_pm4_set_context(stream, EG_CB_COLOR0_BASE, words,
                            EG_CB_COLOR0_DWORDS);
+    v9x_eg_pm4_set_context1(stream, EG_CB_TARGET_MASK,
+                            state->write_alpha != 0ul ? EG_CB_WRITE_RGBA
+                                                      : EG_CB_WRITE_RGB);
     v9x_eg_pm4_set_context1(stream, EG_CB_BLEND0_CONTROL,
                             state->blend_control);
 
     /* The depth buffer: Z16 1D tiled, no stencil, the stencil bases on
      * the Z base. Without one, DB_Z_INFO keeps the default state's
      * INVALID format and the test is off. */
-    if (state->depth_gpu != 0ul) {
+    if (state->has_depth != 0ul) {
         words[0] = EG_DB_FORMAT_Z_16 | (V9X_EG_ARRAY_1D_TILED_THIN1 << 4);
         words[1] = 0ul;
         words[2] = state->depth_gpu >> 8;
@@ -689,7 +697,7 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
                                EG_DB_Z_INFO_DWORDS);
     }
     v9x_eg_pm4_set_context1(stream, EG_DB_DEPTH_CONTROL,
-                            state->depth_gpu != 0ul ?
+                            state->has_depth != 0ul ?
                             state->depth_control : 0ul);
     v9x_eg_pm4_set_context1(stream, EG_SX_ALPHA_TEST_CONTROL,
                             state->alpha_test_control);

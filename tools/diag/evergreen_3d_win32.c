@@ -268,6 +268,8 @@ static DWORD v9x_centre_half = 1ul;
  * builder's. */
 #define V9X_EG_PA_CL_VTE_CNTL       0x28818ul
 static DWORD v9x_vte_override = 0xfffffffful;
+/* /batches: how many whole Direct3D batches the draw sends (hex). */
+static DWORD v9x_batches = 1ul;
 
 #define V9X_D3D_VERTEX_DWORDS       8ul
 /* D3DCOLORs, 0xAARRGGBB, stored as they are: B, G, R, A in memory. */
@@ -834,8 +836,8 @@ static void v9x_ring_draw_d3d(DWORD g)
     struct v9x_eg_pm4 *stream = v9x_stage_begin();
     DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
                      v9x_mode == V9X_MODE_D3D_PERSP;
+    DWORD batch;
 
-    v9x_eg_3d_default_state(stream);
     state = v9x_zero_state;
     state.target_gpu = g + V9X_DST_OFFSET;
     state.target_pitch = V9X_DRAW_WIDTH;
@@ -844,7 +846,10 @@ static void v9x_ring_draw_d3d(DWORD g)
                           V9X_EG_COLOR_5_6_5 : V9X_EG_COLOR_8_8_8_8;
     state.scissor_right = V9X_DRAW_WIDTH;
     state.scissor_bottom = V9X_DRAW_HEIGHT;
+    /* The checks read every byte, alpha included. */
+    state.write_alpha = 1ul;
     if (v9x_mode == V9X_MODE_D3D_Z) {
+        state.has_depth = 1ul;
         state.depth_gpu = g + V9X_DEPTH_OFFSET;
         state.depth_pitch = V9X_DRAW_WIDTH;
         state.depth_height = V9X_DRAW_HEIGHT;
@@ -861,27 +866,34 @@ static void v9x_ring_draw_d3d(DWORD g)
     state.ps_gprs = textured ? 2ul : 1ul;
     state.interpolants = textured ? 2ul : 1ul;
     if (textured) {
+        state.has_texture = 1ul;
         state.texture_gpu = g + V9X_SRC_OFFSET;
         state.texture_width = V9X_DRAW_WIDTH;
         state.texture_height = V9X_DRAW_HEIGHT;
         state.texture_pitch = V9X_DRAW_WIDTH;
         state.texture_format = V9X_EG_COLOR_8_8_8_8;
         state.sampler_word0 = v9x_eg_3d_sampler(
-            0ul, V9X_EG_TEX_CLAMP_LAST_TEXEL, V9X_EG_TEX_CLAMP_LAST_TEXEL);
+            0ul, 0ul, V9X_EG_TEX_CLAMP_LAST_TEXEL,
+            V9X_EG_TEX_CLAMP_LAST_TEXEL);
     }
     state.vertex_gpu = g + V9X_VB_OFFSET;
     state.vertex_stride = V9X_EG_D3D_STRIDE;
     state.vertex_bytes = v9x_vertex_dwords * 4ul;
-    if (v9x_eg_3d_build_state(&state, stream) != V9X_STATUS_OK) {
-        stream->overflow = 1ul;
+    /* /batches: the whole batch more than once, back to back, as the HAL
+     * sends one batch after another without waiting. */
+    for (batch = 0ul; batch < v9x_batches; ++batch) {
+        v9x_eg_3d_default_state(stream);
+        if (v9x_eg_3d_build_state(&state, stream) != V9X_STATUS_OK) {
+            stream->overflow = 1ul;
+        }
+        /* /vte: overrides PA_CL_VTE_CNTL after the builder has set it. */
+        if (v9x_vte_override != 0xfffffffful) {
+            v9x_eg_pm4_set_context1(stream, V9X_EG_PA_CL_VTE_CNTL,
+                                    v9x_vte_override);
+        }
+        v9x_eg_3d_draw(stream, v9x_vertex_count);
+        v9x_eg_3d_flush(stream);
     }
-    /* /vte: overrides PA_CL_VTE_CNTL after the builder has set it. */
-    if (v9x_vte_override != 0xfffffffful) {
-        v9x_eg_pm4_set_context1(stream, V9X_EG_PA_CL_VTE_CNTL,
-                                v9x_vte_override);
-    }
-    v9x_eg_3d_draw(stream, v9x_vertex_count);
-    v9x_eg_3d_flush(stream);
     v9x_eg_3d_fence(stream, V9X_SCRATCH_DRAWN);
     v9x_stage_end();
 }
@@ -1809,6 +1821,11 @@ void __stdcall V9xEvergreen3dEntry(void)
     v9x_key("Run", "CentreHalf", v9x_centre_half);
     v9x_vte_override = v9x_switch_hex("/vte:", 0xfffffffful);
     v9x_key("Run", "VteOverride", v9x_vte_override);
+    v9x_batches = v9x_switch_hex("/batches:", 1ul);
+    if (v9x_batches == 0ul) {
+        v9x_batches = 1ul;
+    }
+    v9x_key("Run", "Batches", v9x_batches);
     v9x_cb_mode = v9x_switch_hex("/cbmode:", v9x_array_mode);
     v9x_tex_mode = v9x_switch_hex("/texmode:", v9x_array_mode);
     v9x_scissor_right = v9x_switch_hex("/scissor:", V9X_DRAW_WIDTH);

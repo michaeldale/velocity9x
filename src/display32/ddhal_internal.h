@@ -558,6 +558,25 @@ int v9x_r128_cce_vertex_space(DWORD bytes, volatile DWORD **linear,
                               DWORD *card_offset);
 int v9x_r128_cce_queue_flip(DWORD crtc_offset);
 int v9x_r128_cce_flip_in_flight(void);
+/* The Evergreen CP, in engines/eg_cp.c. ready: the 3D window is mapped
+ * and the CP has not failed. submit starts it if needed (once per HAL),
+ * waits for queued DMA work, and puts a padded stream in the ring; drain
+ * waits for it to finish and flushes HDP, drain(0) answering 0 while it
+ * is still busy. vertex_space gives room in the vertex arena, draining
+ * first when it wraps. A timeout in any of them gives the CP up. */
+int v9x_eg_cp_ready(void);
+int v9x_eg_cp_submit(const v9x_u32 *dwords, DWORD count);
+int v9x_eg_cp_drain(int wait);
+int v9x_eg_cp_vertex_space(DWORD bytes, volatile DWORD **linear, DWORD *gpu);
+/* Where the framebuffer mapping starts in the GPU's address space, read
+ * from the chip without starting the CP; zero when it cannot be. After it
+ * has answered, a shader slot's GPU address (eg_shader.h, V9X_EG_SLOT_*). */
+int v9x_eg_cp_addresses(DWORD *heap_gpu);
+DWORD v9x_eg_cp_shader_gpu(DWORD which);
+/* engines/eng_eg.c: waits for DMA work queued since the engine was last
+ * idle, so a 3D batch never reads what a fill or copy has yet to write.
+ * Non-zero when idle, or when the DMA engine is not running. */
+int v9x_eg_dma_settle(void);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */

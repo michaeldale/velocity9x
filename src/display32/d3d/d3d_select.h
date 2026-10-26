@@ -32,6 +32,8 @@
 #define V9X_D3D_SELECT_GEN4     11ul
 /* The Rage 128's 3D engine through the CCE. */
 #define V9X_D3D_SELECT_R128     12ul
+/* The Evergreen 3D engine through its command processor. */
+#define V9X_D3D_SELECT_EVERGREEN 13ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

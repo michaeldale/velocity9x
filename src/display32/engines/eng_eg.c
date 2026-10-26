@@ -287,7 +287,7 @@ static int v9x_eg_validate(void)
  * than answering WASSTILLDRAWING for ever. The fault trace is written on the
  * first timeout only.
  */
-static int v9x_eg_wait_idle(int wait)
+static int v9x_eg_dma_idle(int wait)
 {
     DWORD reads;
 
@@ -315,6 +315,30 @@ static int v9x_eg_wait_idle(int wait)
     }
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
     return 0;
+}
+
+/* Idle for whatever needs the drawing: the DMA engine's work, and the
+ * CP's (eg_cp.c), which shares the same VRAM. */
+static int v9x_eg_wait_idle(int wait)
+{
+    return v9x_eg_dma_idle(wait) && v9x_eg_cp_drain(wait);
+}
+
+int v9x_eg_dma_settle(void)
+{
+    if (!v9x_eg_validated() || !v9x_eg_dirty) {
+        return 1;
+    }
+    return v9x_eg_dma_idle(1);
+}
+
+/* Before a fill or copy, the CP's drawing finished: the DMA engine must
+ * not read a surface the CP is still writing, or write one it still reads.
+ * A CP that times out here is given up by eg_cp.c and its work dropped, so
+ * the DMA operation goes ahead either way. */
+static void v9x_eg_after_cp(void)
+{
+    (void)v9x_eg_cp_drain(1);
 }
 
 /* Every row of a plan into the ring, a stage at a time. */
@@ -356,6 +380,36 @@ static int v9x_eg_emit_or_give_up(const struct v9x_eg_dma_plan *plan)
     return V9X_BLT_BUSY;
 }
 
+/*
+ * A Z buffer the Direct3D engine draws is 1D tiled (d3d_eg.c), so a linear
+ * rectangle of it is the wrong pixels. A constant over all of it is the
+ * same value in every pixel whatever the tiling, so the whole surface is
+ * filled - its rows padded to the tile as d3d_eg.c placed them - and only
+ * a fill of the whole surface is taken; the core fails a declined one
+ * rather than fill linearly (v9x_depthfill_body). Zero to decline.
+ */
+#define V9X_EG_DEPTH_TILE_ROWS 8ul
+
+static int v9x_eg_tiled_depth_fill(const V9X_DDHAL_BLTDATA *data,
+                                   struct v9x_eg_dma_fill *fill)
+{
+    const V9X_DD_SURFACE_LCL *surface = data->lpDDDestSurface;
+
+    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        !v9x_d3d_depth_tiled()) {
+        return 1;
+    }
+    if (fill->left != 0ul || fill->top != 0ul ||
+        fill->width != (DWORD)surface->lpGbl->wWidth ||
+        fill->height != (DWORD)surface->lpGbl->wHeight) {
+        return 0;
+    }
+    fill->width = fill->pitch_bytes / fill->bytes_per_pixel;
+    fill->height = (fill->height + V9X_EG_DEPTH_TILE_ROWS - 1ul) &
+                   ~(V9X_EG_DEPTH_TILE_ROWS - 1ul);
+    return 1;
+}
+
 static int v9x_eg_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                        DWORD bytes_per_pixel, int wait)
 {
@@ -381,9 +435,13 @@ static int v9x_eg_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     fill.width = (DWORD)(data->rDest[2] - data->rDest[0]);
     fill.height = (DWORD)(data->rDest[3] - data->rDest[1]);
     fill.color = data->bltFX.dwFillColor;
+    if (!v9x_eg_tiled_depth_fill(data, &fill)) {
+        return V9X_BLT_DECLINED;
+    }
     if (v9x_eg_dma_plan_fill(&fill, &plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
+    v9x_eg_after_cp();
     return v9x_eg_emit_or_give_up(&plan);
 }
 
@@ -422,6 +480,7 @@ static int v9x_eg_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     if (v9x_eg_dma_plan_copy(&copy, &plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
+    v9x_eg_after_cp();
     return v9x_eg_emit_or_give_up(&plan);
 }
 

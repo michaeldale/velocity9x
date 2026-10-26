@@ -213,19 +213,24 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream);
 /*
  * One batch's state. GPU addresses are 256-byte aligned; pitches are in
  * elements and multiples of 8; the scissor's right and bottom are
- * exclusive. Zero depth_gpu draws without a depth buffer; zero
- * texture_gpu without a texture. The vertex buffer is resource 0 of the
- * fetch shader slots.
+ * exclusive. has_depth and has_texture say whether there is a depth buffer
+ * and a texture: zero is a valid GPU address, where the heap starts on
+ * M-BXMFA8, so it cannot mean "none". The vertex buffer is resource 0 of
+ * the fetch shader slots.
  */
 struct v9x_eg_3d_state {
     v9x_u32 target_gpu;
     v9x_u32 target_pitch;
     v9x_u32 target_height;
     v9x_u32 target_format;       /* V9X_EG_COLOR_5_6_5 or _8_8_8_8 */
+    /* Nonzero writes the target's alpha (its fourth channel); zero leaves
+     * it, which an XRGB8888 target's X byte needs. */
+    v9x_u32 write_alpha;
     v9x_u32 scissor_left;
     v9x_u32 scissor_top;
     v9x_u32 scissor_right;
     v9x_u32 scissor_bottom;
+    v9x_u32 has_depth;
     v9x_u32 depth_gpu;           /* Z16, 1D tiled */
     v9x_u32 depth_pitch;
     v9x_u32 depth_height;        /* a multiple of 8 */
@@ -240,6 +245,7 @@ struct v9x_eg_3d_state {
     v9x_u32 ps_gpu;
     v9x_u32 ps_gprs;
     v9x_u32 interpolants;        /* 1 or 2 */
+    v9x_u32 has_texture;
     v9x_u32 texture_gpu;
     v9x_u32 texture_width;
     v9x_u32 texture_height;
@@ -256,8 +262,8 @@ v9x_u32 v9x_eg_3d_depth_control(v9x_u32 enable, v9x_u32 write,
                                 v9x_u32 func);
 v9x_u32 v9x_eg_3d_blend(v9x_u32 enable, v9x_u32 src, v9x_u32 dst);
 v9x_u32 v9x_eg_3d_alpha_test(v9x_u32 enable, v9x_u32 func);
-v9x_u32 v9x_eg_3d_sampler(v9x_u32 bilinear, v9x_u32 clamp_u,
-                          v9x_u32 clamp_v);
+v9x_u32 v9x_eg_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
+                          v9x_u32 clamp_u, v9x_u32 clamp_v);
 
 /* The batch's state after v9x_eg_3d_default_state. INVALID_ARGUMENT for a
  * state the hardware cannot take as given, with nothing written. */

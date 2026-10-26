@@ -188,13 +188,15 @@ V9X_R128_RING_PAGES     equ 145
 V9xR128RingLinear dd 0
 V9xR128RingBus    dd 0
 
-; AMD Evergreen (Cedar): the 128 KiB register BAR and the DMA ring window,
-; BAR0 + 240 MiB, 64 KiB (V9XMINI_FN_EG_MAP in V9XMAPI.INC). CONFIG_MEMSIZE
-; is in MiB on Evergreen (Linux evergreen_mc_init); 1024 on M-BXMFA8
-; (docs\decisions\2026-10-26-cedar-register-probe.md).
+; AMD Evergreen (Cedar): the 128 KiB register BAR and the driver's VRAM
+; window, BAR0 + 240 MiB, 4 MiB (V9XMINI_FN_EG_MAP in V9XMAPI.INC): the DMA
+; ring, then the CP's ring, shaders and vertex arena (eg_3d.h,
+; V9X_EG_WINDOW_*). It ends at 244 MiB, inside the 256 MiB minimum below.
+; CONFIG_MEMSIZE is in MiB on Evergreen (Linux evergreen_mc_init); 1024 on
+; M-BXMFA8 (docs\decisions\2026-10-26-cedar-register-probe.md).
 V9X_EG_MMIO_BYTES       equ 00020000h
 V9X_EG_RING_OFFSET      equ 0f000000h
-V9X_EG_RING_BYTES       equ 00010000h
+V9X_EG_RING_BYTES       equ 00400000h
 V9X_EG_BAR0_ALIGN       equ 0fffffffh
 V9X_EG_CONFIG_MEMSIZE   equ 00005428h
 V9X_EG_MEMSIZE_MIN_MIB  equ 256

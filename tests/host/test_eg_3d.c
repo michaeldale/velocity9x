@@ -213,10 +213,13 @@ static void test_words(void)
     CHECK(v9x_eg_3d_alpha_test(1ul, 4ul) == 0x0cul);
     CHECK(v9x_eg_3d_alpha_test(0ul, 7ul) == 0x07ul);
     /* Linux's sampler 0 is CLAMP_X and _Y at the last texel, point. */
-    CHECK((v9x_eg_3d_sampler(0ul, V9X_EG_TEX_CLAMP_LAST_TEXEL,
+    CHECK((v9x_eg_3d_sampler(0ul, 0ul, V9X_EG_TEX_CLAMP_LAST_TEXEL,
                              V9X_EG_TEX_CLAMP_LAST_TEXEL) & 0x3ful) == 0x12ul);
-    CHECK(v9x_eg_3d_sampler(1ul, V9X_EG_TEX_WRAP, V9X_EG_TEX_WRAP) ==
+    CHECK(v9x_eg_3d_sampler(1ul, 1ul, V9X_EG_TEX_WRAP, V9X_EG_TEX_WRAP) ==
           ((2ul << 6) | (1ul << 9) | (1ul << 11)));
+    /* Magnification and minification apart. */
+    CHECK(v9x_eg_3d_sampler(1ul, 0ul, V9X_EG_TEX_MIRROR, V9X_EG_TEX_WRAP) ==
+          (1ul | (2ul << 6) | (1ul << 9)));
 }
 
 static void fill_state(struct v9x_eg_3d_state *state)
@@ -228,6 +231,7 @@ static void fill_state(struct v9x_eg_3d_state *state)
     state->target_format = V9X_EG_COLOR_5_6_5;
     state->scissor_right = 640ul;
     state->scissor_bottom = 480ul;
+    state->has_depth = 1ul;
     state->depth_gpu = 0x00200000ul;
     state->depth_pitch = 640ul;
     state->depth_height = 480ul;
@@ -239,12 +243,13 @@ static void fill_state(struct v9x_eg_3d_state *state)
     state->ps_gpu = 0x0f010100ul;
     state->ps_gprs = 2ul;
     state->interpolants = 2ul;
+    state->has_texture = 1ul;
     state->texture_gpu = 0x00300000ul;
     state->texture_width = 60ul;
     state->texture_height = 30ul;
     state->texture_pitch = 64ul;
     state->texture_format = V9X_EG_COLOR_8_8_8_8;
-    state->sampler_word0 = v9x_eg_3d_sampler(1ul, 0ul, 0ul);
+    state->sampler_word0 = v9x_eg_3d_sampler(1ul, 1ul, 0ul, 0ul);
     state->vertex_gpu = 0x0f200000ul;
     state->vertex_stride = 32ul;
     state->vertex_bytes = 96ul;
@@ -321,8 +326,8 @@ static void test_state(void)
     /* Without depth or texture: no DB block, DB_DEPTH_CONTROL 0, no
      * texture resource; one interpolant, linear. */
     fill_state(&state);
-    state.depth_gpu = 0ul;
-    state.texture_gpu = 0ul;
+    state.has_depth = 0ul;
+    state.has_texture = 0ul;
     state.interpolants = 1ul;
     state.perspective = 0ul;
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
@@ -335,6 +340,36 @@ static void test_state(void)
     CHECK(reg_value(buffer, count, 0x286ccul) == 0x20000001ul);
     CHECK(reg_value(buffer, count, 0x286e0ul) == 0x10000ul);
     CHECK(reg_value(buffer, count, 0x28818ul) == 0x300ul);
+
+    /* The CB's channel mask: all four with write_alpha, B, G and R alone
+     * without, so an XRGB8888 target's X byte keeps what it held (V9XD32
+     * at 32 bpp read FF13579B for 0013579B, boot 15). */
+    fill_state(&state);
+    state.target_format = V9X_EG_COLOR_8_8_8_8;
+    state.write_alpha = 0ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(reg_value(buffer, stream.count, 0x28238ul) == 7ul);
+    state.write_alpha = 1ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(reg_value(buffer, stream.count, 0x28238ul) == 0xful);
+
+    /* GPU address 0 is memory like any other: on M-BXMFA8 the heap starts
+     * there, and after a flip the back buffer is the surface at offset 0
+     * (V9XD32 at 32 bpp, boot 14). Depth and texture are switched by their
+     * flags, not by a zero address. */
+    fill_state(&state);
+    state.target_gpu = 0ul;
+    state.depth_gpu = 0ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    count = stream.count;
+    at = find_reg(buffer, count, 0x28c60ul);
+    CHECK(at != count && buffer[at + 2ul] == 0ul);
+    at = find_reg(buffer, count, 0x28040ul);
+    CHECK(at != count && buffer[at + 2ul] == 0x21ul &&
+          buffer[at + 4ul] == 0ul);
 
     /* Refusals write nothing. */
     fill_state(&state);

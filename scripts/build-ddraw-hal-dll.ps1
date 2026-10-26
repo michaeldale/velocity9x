@@ -127,6 +127,15 @@ $sources = @(
     # host-tested builder, in a ring in VRAM.
     "src\display32\engines\eng_eg.c",
     "src\chipsets\ati\evergreen\eg_dma.c",
+    # The Evergreen 3D engine: the CP and its microcode (licence in
+    # NOTICES.TXT), the PM4 streams and shaders, the neutral draw to them,
+    # and the engine that submits them.
+    "src\display32\engines\eg_cp.c",
+    "src\chipsets\ati\evergreen\eg_cp_microcode.c",
+    "src\chipsets\ati\evergreen\eg_3d.c",
+    "src\chipsets\ati\evergreen\eg_shader.c",
+    "src\display32\d3d\d3d_eg_map.c",
+    "src\display32\d3d\d3d_eg.c",
     # The Haswell blitter: fill and copy on the BCS ring through the
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",

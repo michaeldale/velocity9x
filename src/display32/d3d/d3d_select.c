@@ -75,6 +75,14 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
             return V9X_D3D_SELECT_NONE;
         }
         return V9X_D3D_SELECT_R128;
+    case V9X_DD_ENGINE_TYPE_ATI_EVERGREEN:
+        /* The HD 5450: cedar_hw16.c stamps CAP_D3D only when the
+         * mini-VDD mapped the window the CP's ring, shaders and vertices
+         * live in; without it the DMA engine serves DirectDraw alone. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+            return V9X_D3D_SELECT_NONE;
+        }
+        return V9X_D3D_SELECT_EVERGREEN;
     default:
         return V9X_D3D_SELECT_NONE;
     }

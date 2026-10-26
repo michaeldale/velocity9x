@@ -119,4 +119,12 @@ v9x_u32 v9x_eg_shader_modulate_ps(v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
 
+/* The HAL's shader slots in its VRAM window (eg_3d.h,
+ * V9X_EG_WINDOW_SHADERS, one V9X_EG_WINDOW_SHADER_BYTES each): the two
+ * Direct3D VSs, then the PS for each op in V9X_EG_D3D_OP_* order. */
+#define V9X_EG_SLOT_VS           0ul
+#define V9X_EG_SLOT_VS_TEXTURED  1ul
+#define V9X_EG_SLOT_PS_FIRST     2ul /* + V9X_EG_D3D_OP_* */
+#define V9X_EG_SLOT_COUNT        5ul
+
 #endif
