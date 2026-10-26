@@ -1422,6 +1422,57 @@ static void test_vs_segments(void)
 }
 
 /*
+ * The most segments, every one with state of its own, fit the 4 KB the
+ * HAL builds an indexed T&L batch in (d3d_hsw.c, V9X_D3D_HSW_TNL_BATCH):
+ * the draw alone is 212 dwords and each segment adds 39, 797 for 16.
+ */
+static void test_vs_segments_fit(void)
+{
+    v9x_u32 dw[2048];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    struct v9x_hsw_vs_draw vs;
+    struct v9x_hsw_vs_segment seg[V9X_HSW_VS_SEGMENTS_MAX];
+    v9x_u32 alone;
+    unsigned int i;
+
+    v9x_vs_test_draw(&draw, &vs);
+    draw.indices = 0x01813000ul;
+    draw.index_count = 3ul;
+    draw.vertex_count = 3ul;
+    for (i = 0u; i < V9X_HSW_VS_SEGMENTS_MAX; ++i) {
+        seg[i].kernel = 0x8400ul + 0x300ul * i;
+        seg[i].binding_table = 0x17c0ul + 0x20ul * i;
+        seg[i].sampler = 0x13000ul + 0x180ul * i;
+        seg[i].blend = 0x13080ul + 0x180ul * i;
+        seg[i].cc = 0x130c0ul + 0x180ul * i;
+        seg[i].depth_test = 0x13100ul + 0x180ul * i;
+        seg[i].constants = 0x01817140ul + 0x180ul * i;
+        seg[i].first_index = 3ul + 3ul * i;
+        seg[i].index_count = 3ul;
+    }
+    v9x_intel_hsw_batch_init(&batch, dw, 2048ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    alone = batch.used;
+    CHECK(alone <= 212ul);
+
+    vs.segments = seg;
+    vs.segment_count = (v9x_u8)V9X_HSW_VS_SEGMENTS_MAX;
+    v9x_intel_hsw_batch_init(&batch, dw, 2048ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    CHECK(batch.used - alone <= 39ul * V9X_HSW_VS_SEGMENTS_MAX);
+    CHECK(batch.used <= 0x1000ul / 4ul);
+    CHECK(v9x_nth_draw(dw, batch.used, V9X_HSW_VS_SEGMENTS_MAX) <
+          batch.used);
+}
+
+/*
  * A whole draw with the vertex stage on: it passes the checker; VS is on
  * with the step 3 read length; the dummy primitive sits right before
  * CONSTANT_VS, which follows the VS push-constant allocation; CLIP clips
@@ -1749,6 +1800,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_vs_builders();
     test_vs_workload();
     test_vs_segments();
+    test_vs_segments_fit();
     test_ivb_variant();
     test_phase_f2b_depth_only();
     test_phase_f2_tl();

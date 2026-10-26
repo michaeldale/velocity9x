@@ -226,6 +226,16 @@ Progress:
     Engine draws in Quake 3 fell by 41%.
   - The A/B scene is unchanged within rounding, with segments exercised.
   - The three pieces stay open. Dropping the CPU twin is the next saving.
+- **Step 3c done (2026-10-26, boot 88):**
+  [`2026-10-26-haswell-tnl-step3c-no-cpu-twin.md`](../decisions/2026-10-26-haswell-tnl-step3c-no-cpu-twin.md).
+  - **What changed:** no CPU twin; a per-triangle frustum and facing cull
+    in its place; a fallback from the held object vertices; 16 segments
+    a batch; an element cache for `glDrawElements`; captured batches
+    scissored to the draw rectangle.
+  - **Speed:** Half-Life about 95 against 85, and Quake 3 61.1 against
+    57.2. Through `glDrawElements` Quake 3 runs 69.1 against 56.1.
+  - **Follow-up:** `EXT_compiled_vertex_array` would put Quake 3 on that
+    path by default.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

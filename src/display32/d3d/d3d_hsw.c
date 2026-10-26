@@ -1825,48 +1825,61 @@ static int v9x_d3d_hsw_write_vs_state(const struct v9x_hsw_pipe_slot *slot,
 #define V9X_D3D_HSW_TNL_INDEX_LINE 64ul
 
 /*
- * Step 3b: where a T&L batch's later segments keep their state.
+ * Where an indexed T&L draw keeps what does not fit its slot's state block
+ * and batch area: the tail of the slot's vertex area, V9X_D3D_HSW_TNL_TAIL
+ * bytes the draw's vertices and indices never reach.
  *
- * - Push constants: each segment's at V9X_HSW_SHADE_VS_CONSTANTS + 40h n,
- *   in the space the full constant block was given; step 3's kernels
- *   read two GRFs (64 bytes).
- * - Binding tables: 20h each from 17A0h, after the constants, inside the
- *   slot's state block - BINDING_TABLE_POINTERS_PS takes a 16-bit offset
- *   from the surface state base, and the vertex area of slot 1 is past
- *   that from its base.
- * - The rest - two texture surfaces, samplers, blend, CC and depth-stencil
- *   state, 200h a segment - in the last 4 KB of the slot's vertex area,
- *   which indexed T&L draws leave free. Those are 32-bit offsets, and the
+ * - The later segments' state (step 3b), 180h a segment: two texture
+ *   surfaces, samplers, blend, CC and depth-stencil state, then the
+ *   segment's push constants at +140h (step 3's kernels read two GRFs, 64
+ *   bytes). These are 32-bit offsets and an absolute address, and the
  *   batch's state bounds are widened to reach them.
+ * - Their binding tables stay in the state block, 20h each from 17A0h, in
+ *   the space the full constant block was given:
+ *   BINDING_TABLE_POINTERS_PS takes a 16-bit offset from the surface state
+ *   base, and the vertex area of slot 1 is past that from its base.
+ * - The batch itself, the last 4 KB. Sixteen segments do not fit the
+ *   slot's 2 KB batch area: the draw's own commands are 212 dwords and a
+ *   segment's 39 (test_vs_segments_fit), 797 for sixteen.
  */
-#define V9X_D3D_HSW_SEGMENT_TAIL   0x1000ul
-#define V9X_D3D_HSW_SEGMENT_STRIDE 0x200ul
-#define V9X_D3D_HSW_SEG_CONSTANTS(n) \
-    (V9X_HSW_SHADE_VS_CONSTANTS + 0x40ul * (n))
+#define V9X_D3D_HSW_TNL_TAIL       0x2800ul
+#define V9X_D3D_HSW_TNL_BATCH      0x1000ul
+#define V9X_D3D_HSW_SEGMENT_STRIDE 0x180ul
+#define V9X_D3D_HSW_SEG_CONSTANTS  0x140ul
 #define V9X_D3D_HSW_SEG_BT(n)      (0x17a0ul + 0x20ul * (n))
 
 typedef char v9x_d3d_hsw_assert_seg_constants[
-    V9X_HSW_VS_CONSTANT_GRFS * 32u <= 0x40u &&
-    V9X_D3D_HSW_SEG_CONSTANTS(V9X_HSW_VS_SEGMENTS_MAX + 1u) <=
-        V9X_D3D_HSW_SEG_BT(0) ? 1 : -1];
+    V9X_HSW_VS_CONSTANT_GRFS * 32u <=
+        V9X_D3D_HSW_SEGMENT_STRIDE - V9X_D3D_HSW_SEG_CONSTANTS ? 1 : -1];
 typedef char v9x_d3d_hsw_assert_seg_bt[
     V9X_D3D_HSW_SEG_BT(V9X_HSW_VS_SEGMENTS_MAX + 1u) <=
         V9X_HSW_SHADE_VS_KERNEL ? 1 : -1];
 typedef char v9x_d3d_hsw_assert_seg_tail[
-    V9X_D3D_HSW_SEGMENT_STRIDE * (V9X_HSW_VS_SEGMENTS_MAX + 1u) <=
-        V9X_D3D_HSW_SEGMENT_TAIL ? 1 : -1];
+    V9X_D3D_HSW_SEGMENT_STRIDE * (V9X_HSW_VS_SEGMENTS_MAX + 1u) +
+        V9X_D3D_HSW_TNL_BATCH <= V9X_D3D_HSW_TNL_TAIL ? 1 : -1];
+/* The most vertices and indices the ABI allows fit beside the tail. */
+typedef char v9x_d3d_hsw_assert_tnl_room[
+    V9X_R3D_ABI_TNL_VERTICES_MAX * V9X_HSW_TL_VERTEX_BYTES +
+        V9X_R3D_ABI_TNL_INDICES_MAX * 2ul <=
+        V9X_HSW_PIPE_VERTEX_BYTES - V9X_D3D_HSW_TNL_TAIL ? 1 : -1];
 
 /* The segments' mapped state and batch records; static, as the kernel
  * scratch is, since HAL calls run one at a time under the Win16 lock. */
 static V9X_D3D_HSW_STATE v9x_d3d_hsw_seg_state[V9X_HSW_VS_SEGMENTS_MAX + 1u];
 static struct v9x_hsw_vs_segment v9x_d3d_hsw_segs[V9X_HSW_VS_SEGMENTS_MAX];
 
+/* Segment n's state in the tail, as offsets from the state base. */
+static DWORD v9x_d3d_hsw_segment_base(const struct v9x_hsw_pipe_slot *slot,
+                                      DWORD n)
+{
+    return slot->vertex_off + slot->vertex_bytes - V9X_D3D_HSW_TNL_TAIL -
+           slot->state_off + n * V9X_D3D_HSW_SEGMENT_STRIDE;
+}
+
 static void v9x_d3d_hsw_segment_layout(const struct v9x_hsw_pipe_slot *slot,
                                        DWORD n, V9X_D3D_HSW_LAYOUT *layout)
 {
-    DWORD base = slot->vertex_off + slot->vertex_bytes -
-                 V9X_D3D_HSW_SEGMENT_TAIL - slot->state_off +
-                 n * V9X_D3D_HSW_SEGMENT_STRIDE;
+    DWORD base = v9x_d3d_hsw_segment_base(slot, n);
 
     layout->binding_table = V9X_D3D_HSW_SEG_BT(n);
     layout->tex_surface[0] = base;
@@ -1933,7 +1946,7 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
     index_end = (index_off + tnl->index_count * 2ul +
                  V9X_D3D_HSW_TNL_INDEX_LINE - 1ul) &
                 ~(V9X_D3D_HSW_TNL_INDEX_LINE - 1ul);
-    if (index_end > V9X_HSW_PIPE_VERTEX_BYTES - V9X_D3D_HSW_SEGMENT_TAIL) {
+    if (index_end > V9X_HSW_PIPE_VERTEX_BYTES - V9X_D3D_HSW_TNL_TAIL) {
         return -1;
     }
     /* Each later segment's fragment state, mapped as the first's was, and
@@ -1992,7 +2005,8 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
             return -1;
         }
         v9x_d3d_hsw_write_constants(&slot, tnl->segments[seg].constants,
-                                    V9X_D3D_HSW_SEG_CONSTANTS(seg));
+                                    v9x_d3d_hsw_segment_base(&slot, seg) +
+                                        V9X_D3D_HSW_SEG_CONSTANTS);
         out->kernel = seg_kernel;
         out->binding_table = layout.binding_table;
         out->sampler = layout.sampler;
@@ -2000,7 +2014,9 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
         out->cc = layout.cc;
         out->depth_test = layout.ds;
         out->constants = V9X_D3D_HSW_GFX(slot.state_off +
-                                         V9X_D3D_HSW_SEG_CONSTANTS(seg));
+                                         v9x_d3d_hsw_segment_base(&slot,
+                                                                  seg) +
+                                         V9X_D3D_HSW_SEG_CONSTANTS);
         out->first_index = tnl->segments[seg].first_index;
         out->index_count = tnl->segments[seg].index_count;
     }
@@ -2056,6 +2072,12 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
     vs->segments = v9x_d3d_hsw_segs;
     vs->segment_count = tnl->segment_count > 1ul ?
                             (v9x_u8)(tnl->segment_count - 1ul) : (v9x_u8)0u;
+    /* The batch in the vertex area's last 4 KB, which the submission
+     * starts from in place of the slot's batch area (the tail's layout
+     * above). */
+    slot.batch_off = slot.vertex_off + slot.vertex_bytes -
+                     V9X_D3D_HSW_TNL_BATCH;
+    slot.batch_bytes = V9X_D3D_HSW_TNL_BATCH;
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
     /* The state span reaches the end of the slot's vertex area, where the

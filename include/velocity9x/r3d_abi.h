@@ -359,7 +359,10 @@ typedef struct v9x_r3d_abi_draw {
 #define V9X_R3D_ABI_CULL_NONE 0ul
 #define V9X_R3D_ABI_CULL_CW   1ul
 #define V9X_R3D_ABI_CULL_CCW  2ul
-#define V9X_R3D_ABI_TNL_VERTICES_MAX 512ul
+/* 480 vertices of 32 bytes and 1536 indices fill what Haswell's slot
+ * vertex area has left beside 16 segments' state and their batch
+ * (d3d_hsw.c). */
+#define V9X_R3D_ABI_TNL_VERTICES_MAX 480ul
 #define V9X_R3D_ABI_TNL_INDICES_MAX  1536ul
 
 /*
@@ -373,7 +376,7 @@ typedef struct v9x_r3d_abi_draw {
  * read. The request's own draw then supplies the target, depth and
  * vertices, and its texture, state and constants are not used.
  */
-#define V9X_R3D_ABI_TNL_SEGMENTS_MAX 8ul
+#define V9X_R3D_ABI_TNL_SEGMENTS_MAX 16ul
 
 typedef struct v9x_r3d_abi_tnl_segment {
     const struct v9x_r3d_abi_draw *draw;

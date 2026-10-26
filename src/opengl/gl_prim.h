@@ -89,32 +89,57 @@ typedef struct v9x_gl_vertex {
      * where sx sy sz rhw are, the packed colour, specular 0xFF000000 (no
      * fog), s and t - and where it went: its index in the T&L batch whose
      * serial it carries. A triangle names its corners by that index while
-     * the serial is the batch's; one from a batch already flushed is sent
-     * again. */
+     * the serial is the batch's; one from a batch already flushed, or not
+     * yet sent (serial 0), is sent then. A captured vertex has only clip
+     * among the CPU path's fields, for the cull below, and outcode: bit k
+     * set when it is outside frustum plane k (v9x_gl_prim_plane's 0 to 5).
+     * tnl_element: the vertex array element it came from, plus one, in
+     * the element cache (V9X_GL_TNL_ELEMENT); zero for any other. */
     V9X_R3D_ABI_VERTEX object;
     v9x_u32 tnl_serial;
     v9x_u32 tnl_index;
+    v9x_u32 outcode;
+    v9x_u32 tnl_element;
 } V9X_GL_VERTEX;
 
 /*
  * The T&L sink: a batch of untransformed triangles, indexed - each vertex
- * once, then a list of indices into them - and beside it the screen batch
- * of the same triangles, transformed and clipped by the CPU. Non-zero when
- * the sink took both - the front end holds them, and draws the screen
- * batch itself if the engine later refuses the other - and the pipeline
- * then drops its screen batch; zero sends the screen batch to the ordinary
- * sink instead, so a decline loses nothing and keeps the order.
+ * once, then a list of indices into them. Non-zero when the sink took it;
+ * the front end holds it, and draws it through v9x_gl_prim_tnl_screen if
+ * the engine later refuses it. Zero loses the batch, counted as a refused
+ * screen batch is (sink_failures): the CPU transformed none of it (step
+ * 3b), and a sink declines only when there is no device to draw with.
  */
 typedef int (*V9X_GL_TNL_SINK_FN)(void *user, const V9X_R3D_ABI_VERTEX *object,
                                   v9x_u32 vertex_count,
                                   const v9x_u16 *indices,
-                                  v9x_u32 index_count,
-                                  const V9X_R3D_ABI_VERTEX *screen,
-                                  v9x_u32 screen_count);
+                                  v9x_u32 index_count);
 
 /* One captured batch's room: vertices, and indices (three a triangle). */
 #define V9X_GL_TNL_VERTICES 256u
 #define V9X_GL_TNL_INDICES  384u
+
+/*
+ * The element cache (step 3b): glDrawElements and glDrawArrays name a
+ * vertex by its array element, and within one call an element always
+ * fetches the same attributes, so a captured element is fetched and
+ * transformed once a call however many indices name it. Slot e mod
+ * V9X_GL_TNL_ELEMENTS holds the last element there: its clip position
+ * and outcode, its object vertex, and the batch serial and index it was
+ * sent at (serial 0: not yet). A slot from another call, or another
+ * element, misses, and the element is fetched again.
+ */
+#define V9X_GL_TNL_ELEMENTS 512u
+
+typedef struct v9x_gl_tnl_element {
+    v9x_u32 element;            /* the element plus one; 0: empty */
+    v9x_u32 call;
+    v9x_u32 serial;
+    v9x_u32 index;
+    GLfloat clip[4];
+    v9x_u32 outcode;
+    V9X_R3D_ABI_VERTEX object;
+} V9X_GL_TNL_ELEMENT;
 
 /* Where a full batch goes, and the state the batch was made with. The sink
  * answers non-zero when it took the batch; the pipeline then empties it.
@@ -225,29 +250,47 @@ typedef struct v9x_gl_pipeline {
      * the engine runs T&L and nothing turns it off. tnl_capture: this
      * primitive is captured - a filled primitive with no fog, polygon
      * offset, flat shading, second unit or FRONT_AND_BACK cull, all of
-     * which the step 3 kernel and key leave to the CPU. tnl_ok: no vertex
-     * of the batch had q other than 1, which the kernel does not divide.
-     * The batch is the object-space twin of `batch`; both are flushed
-     * together.
+     * which the step 3 kernel and key leave to the CPU, and q 1 at Begin.
+     * A vertex with q other than 1, which the kernel does not divide,
+     * ends the capture for the rest of the primitive (v9x_gl_prim_vertex).
+     *
+     * Step 3b: the CPU no longer transforms a captured primitive for the
+     * screen. It takes each vertex to clip space through tnl_mvp, P x MV
+     * as tnl_mvp_from[0..15] (MV) and [16..31] (P) gave it, to cull: a
+     * triangle every corner of which is outside one frustum plane, or
+     * facing away under CULL_FACE, is not sent. Only the triangles left
+     * name vertices, and only the vertices they name are sent.
      */
     V9X_GL_TNL_SINK_FN tnl_sink;
     int tnl_allowed;
     int tnl_capture;
-    int tnl_ok;
     v9x_u32 tnl_serial;
     v9x_u32 tnl_vertex_count;
     v9x_u32 tnl_index_count;
+    GLfloat tnl_mvp[16];
+    GLfloat tnl_mvp_from[32];
+    int tnl_mvp_valid;
     /* The front end's storage for one captured batch, V9X_GL_TNL_VERTICES
-     * and V9X_GL_TNL_INDICES long; null captures nothing. Not arrays here:
-     * the ICD's contexts are static, and 9 KB each in the DLL's file put
-     * the S3 floppy's first disk over its size. */
+     * and V9X_GL_TNL_INDICES long, and the element cache,
+     * V9X_GL_TNL_ELEMENTS long; null captures nothing (the element cache:
+     * no caching). Not arrays here: the ICD's contexts are static, and
+     * 9 KB each in the DLL's file put the S3 floppy's first disk over its
+     * size. */
     V9X_R3D_ABI_VERTEX *tnl_vertices;
     v9x_u16 *tnl_indices;
-    /* Batches the engine took, ones it or tnl_ok turned back, and ones
-     * nothing of which survived the CPU's cull and clip, not sent. */
+    V9X_GL_TNL_ELEMENT *tnl_elements;
+    /* The vertex array call the cache is filled under, and the element
+     * the next v9x_gl_prim_vertex is (plus one; 0: none). */
+    v9x_u32 tnl_call;
+    v9x_u32 tnl_element_next;
+    /* Batches the engine took and ones the sink turned back; triangles
+     * the cull above kept from it; primitives whose capture a q other
+     * than 1 ended; vertex array elements taken from the cache. */
     v9x_u32 tnl_taken;
     v9x_u32 tnl_declined;
-    v9x_u32 tnl_empty;
+    v9x_u32 tnl_culled;
+    v9x_u32 tnl_abandoned;
+    v9x_u32 tnl_cached;
     /*
      * Where a vertex's time goes (2026-10-01), when the front end supplies
      * the array - null, the initial value, measures nothing: TSC cycles as
@@ -279,10 +322,24 @@ void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
                           void *user);
 /* The T&L sink beside it (same user), whether captures may be made, and
  * the capture's storage (V9X_GL_TNL_VERTICES and V9X_GL_TNL_INDICES long;
- * either null allows nothing). */
+ * either null allows nothing) and element cache (V9X_GL_TNL_ELEMENTS
+ * long; null caches nothing). */
 void v9x_gl_pipeline_tnl(V9X_GL_PIPELINE *pipeline, V9X_GL_TNL_SINK_FN sink,
                          int allowed, V9X_R3D_ABI_VERTEX *vertices,
-                         v9x_u16 *indices);
+                         v9x_u16 *indices, V9X_GL_TNL_ELEMENT *elements);
+
+/*
+ * Vertex array elements through the element cache (V9X_GL_TNL_ELEMENT).
+ * v9x_gl_prim_tnl_call starts a glDrawElements or glDrawArrays call: no
+ * element cached before it is used after. v9x_gl_prim_element, inside
+ * Begin/End, issues element `element` from the cache and answers non-zero
+ * when it is there; zero, the caller fetches the element and issues it
+ * with v9x_gl_prim_vertex, which caches it. Outside a capture it answers
+ * zero and caches nothing.
+ */
+void v9x_gl_prim_tnl_call(V9X_GL_PIPELINE *pipeline);
+int v9x_gl_prim_element(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                        v9x_u32 element);
 
 /*
  * What a captured batch is drawn under (render interface ABI 7), from the
@@ -315,6 +372,38 @@ void v9x_gl_prim_tnl_viewport(const V9X_GL_STATE *state,
                               V9X_R3D_ABI_TNL_DRAW *tnl);
 v9x_u32 v9x_gl_prim_tnl_cull(const V9X_GL_STATE *state,
                              const V9X_GL_PIPELINE *pipeline);
+
+/*
+ * v9x_gl_prim_tnl_scissor: the state's scissor as a captured batch needs
+ * it. The CPU path cuts its geometry to the draw rectangle (the drawable,
+ * and the scissor box when the test is on) and asks the engine for the
+ * whole drawable; the engine's own clipper cuts only to the viewport, so a
+ * captured batch carries the draw rectangle, on the target, as its
+ * scissor. Left and top inclusive, right and bottom exclusive.
+ */
+void v9x_gl_prim_tnl_scissor(const V9X_GL_STATE *state,
+                             V9X_R3D_ABI_STATE *out);
+
+/*
+ * The CPU's draw of a captured batch the engine refused (step 3b): the
+ * triangles index[*next], index[*next + 1], ... of `indices` taken through
+ * the constants' model-view-projection to clip space, clipped to the view
+ * volume and to the scissor rectangle of `scissor`, windowed by `frame`'s
+ * viewport and depth range, culled by its cull, and written to `out` as a
+ * list of screen triangles, as the CPU path emits them. Stops when the
+ * indices end or `room` triangles could not take the next one's pieces
+ * (V9X_GL_PRIM_TNL_PIECES); *next is then the first index not done.
+ * Returns the triangles written.
+ */
+#define V9X_GL_PRIM_TNL_PIECES 11u
+
+v9x_u32 v9x_gl_prim_tnl_screen(const V9X_R3D_TNL_CONSTANTS *constants,
+                               const V9X_R3D_ABI_TNL_DRAW *frame,
+                               const V9X_R3D_ABI_STATE *scissor,
+                               const V9X_R3D_ABI_VERTEX *object,
+                               const v9x_u16 *indices, v9x_u32 index_count,
+                               v9x_u32 *next, V9X_R3D_ABI_VERTEX *out,
+                               v9x_u32 room);
 /* 1 or 2: whether the next primitives carry unit 1's coordinate. Outside
  * Begin/End only; the batch is empty then (glEnd flushes it). */
 void v9x_gl_pipeline_units(V9X_GL_PIPELINE *pipeline, v9x_u32 units);

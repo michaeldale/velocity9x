@@ -423,6 +423,7 @@ void v9x_gl_arrays_draw_elements(V9X_GL_STATE *state,
 {
     GLsizei i;
     GLint index;
+    int cached;
 
     if (type != V9X_GL_UNSIGNED_BYTE && type != V9X_GL_UNSIGNED_SHORT &&
         type != V9X_GL_UNSIGNED_INT) {
@@ -432,6 +433,13 @@ void v9x_gl_arrays_draw_elements(V9X_GL_STATE *state,
     if (!gl_varray_begin(state, pipeline, mode, count)) {
         return;
     }
+    /* Within this call an element fetches the same attributes each time
+     * it is named, so a captured one comes from the element cache after
+     * its first (gl_prim.h, V9X_GL_TNL_ELEMENT): Quake 3's lists name each
+     * vertex about six times. Without the vertex array no vertex is
+     * issued, and nothing is cached. */
+    cached = arrays->array[V9X_GL_ARRAY_VERTEX].enabled;
+    v9x_gl_prim_tnl_call(pipeline);
     for (i = 0; i < count; ++i) {
         if (type == V9X_GL_UNSIGNED_BYTE) {
             index = (GLint)((const GLubyte *)indices)[i];
@@ -439,6 +447,10 @@ void v9x_gl_arrays_draw_elements(V9X_GL_STATE *state,
             index = (GLint)((const GLushort *)indices)[i];
         } else {
             index = (GLint)((const GLuint *)indices)[i];
+        }
+        if (cached &&
+            v9x_gl_prim_element(state, pipeline, (v9x_u32)index)) {
+            continue;
         }
         v9x_gl_arrays_element(state, pipeline, arrays, index);
     }

@@ -756,9 +756,11 @@ struct v9x_hsw_vs_segment {
     v9x_u32 index_count;
 };
 
-/* The most further draws one batch takes: each is about 40 dwords, and a
- * slot's batch area is 2 KB beside the draw's own 190. */
-#define V9X_HSW_VS_SEGMENTS_MAX 7u
+/* The most further draws one batch takes: each is 39 dwords, and an
+ * indexed T&L batch is built in 4 KB of its slot's vertex area
+ * (d3d_hsw.c), which holds the draw's own 212 and 15 more
+ * (test_vs_segments_fit). The slot's 2 KB batch area held 7. */
+#define V9X_HSW_VS_SEGMENTS_MAX 15u
 
 /* struct v9x_hsw_draw cull: which screen-space winding is discarded. */
 #define V9X_HSW_DRAW_CULL_NONE ((v9x_u8)0u)

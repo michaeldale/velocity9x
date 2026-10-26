@@ -134,13 +134,18 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->tnl_indices = 0;
     pipeline->tnl_allowed = 0;
     pipeline->tnl_capture = 0;
-    pipeline->tnl_ok = 1;
     pipeline->tnl_serial = 1ul;
     pipeline->tnl_vertex_count = 0ul;
     pipeline->tnl_index_count = 0ul;
+    pipeline->tnl_mvp_valid = 0;
+    pipeline->tnl_elements = 0;
+    pipeline->tnl_call = 0ul;
+    pipeline->tnl_element_next = 0ul;
     pipeline->tnl_taken = 0ul;
     pipeline->tnl_declined = 0ul;
-    pipeline->tnl_empty = 0ul;
+    pipeline->tnl_culled = 0ul;
+    pipeline->tnl_abandoned = 0ul;
+    pipeline->tnl_cached = 0ul;
 }
 
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
@@ -152,11 +157,19 @@ void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
 
 void v9x_gl_pipeline_tnl(V9X_GL_PIPELINE *pipeline, V9X_GL_TNL_SINK_FN sink,
                          int allowed, V9X_R3D_ABI_VERTEX *vertices,
-                         v9x_u16 *indices)
+                         v9x_u16 *indices, V9X_GL_TNL_ELEMENT *elements)
 {
+    unsigned int i;
+
     pipeline->tnl_sink = sink;
     pipeline->tnl_vertices = vertices;
     pipeline->tnl_indices = indices;
+    pipeline->tnl_elements = elements;
+    if (elements != 0) {
+        for (i = 0u; i < V9X_GL_TNL_ELEMENTS; ++i) {
+            elements[i].element = 0ul;
+        }
+    }
     pipeline->tnl_allowed = allowed != 0 && sink != 0 && vertices != 0 &&
                             indices != 0;
 }
@@ -509,38 +522,25 @@ void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
 {
     v9x_u32 vertices = pipeline->tnl_vertex_count;
     v9x_u32 indices = pipeline->tnl_index_count;
-    int ok = pipeline->tnl_ok;
 
-    /* The object-space twin first: taken, the screen batch holds the same
-     * triangles and is dropped. Every piece of a captured triangle is in
-     * this screen batch (the room v9x_gl_prim_triangle keeps), so nothing
-     * is drawn twice or not at all whichever way it goes. The serial moves
-     * on, so no later triangle names a vertex of this batch. */
+    /* The captured batch, then any screen batch; a primitive is one or the
+     * other, and End flushes between them. The serial moves on, so no
+     * later triangle names a vertex of this batch. A batch the cull left
+     * empty has no indices, and is not sent: Half-Life sent a draw for
+     * every primitive of a back-facing or off-screen model otherwise, 58%
+     * of its captured triangles (the 4570, boot 85). */
     pipeline->tnl_vertex_count = 0ul;
     pipeline->tnl_index_count = 0ul;
-    pipeline->tnl_ok = 1;
     ++pipeline->tnl_serial;
-    /* A batch whose every triangle the CPU culled or clipped away draws
-     * nothing either way, and is not sent: without this Half-Life sent a
-     * draw for every primitive of a back-facing or off-screen model, 58%
-     * of its captured triangles, and the batch count, not the cost of a
-     * batch, made its timedemo slower than the CPU path (the 4570, boot
-     * 85). */
-    if (indices != 0ul && pipeline->batch_triangles == 0ul) {
-        ++pipeline->tnl_empty;
-        return;
-    }
     if (indices != 0ul) {
-        if (ok && pipeline->tnl_sink != 0 &&
+        if (pipeline->tnl_sink != 0 &&
             pipeline->tnl_sink(pipeline->sink_user, pipeline->tnl_vertices,
-                               vertices, pipeline->tnl_indices, indices,
-                               pipeline->batch,
-                               pipeline->batch_triangles)) {
+                               vertices, pipeline->tnl_indices, indices)) {
             ++pipeline->tnl_taken;
-            pipeline->batch_triangles = 0ul;
-            return;
+        } else {
+            ++pipeline->tnl_declined;
+            ++pipeline->sink_failures;
         }
-        ++pipeline->tnl_declined;
     }
     if (pipeline->batch_triangles == 0ul) {
         return;
@@ -606,6 +606,53 @@ static void v9x_gl_prim_begin_record(const V9X_GL_STATE *state,
     pipeline->begin_valid = 1;
 }
 
+/*
+ * The capture's clip transform, P x MV (step 3b), made again only when
+ * either matrix differs from what it was made from: Half-Life begins a
+ * primitive per polygon under one model-view, and the product is 64
+ * multiplies against 32 compares.
+ */
+static void v9x_gl_prim_tnl_mvp(const V9X_GL_STATE *state,
+                                V9X_GL_PIPELINE *pipeline)
+{
+    const V9X_GL_MATRIX *mv;
+    const V9X_GL_MATRIX *p;
+    unsigned int i;
+    unsigned int row;
+    unsigned int column;
+
+    mv = v9x_gl_matrix_top(&state->matrices, V9X_GL_MODELVIEW);
+    p = v9x_gl_matrix_top(&state->matrices, V9X_GL_PROJECTION);
+    if (pipeline->tnl_mvp_valid) {
+        for (i = 0u; i < 16u; ++i) {
+            if (pipeline->tnl_mvp_from[i] != mv->m[i] ||
+                pipeline->tnl_mvp_from[16u + i] != p->m[i]) {
+                break;
+            }
+        }
+        if (i == 16u) {
+            return;
+        }
+    }
+    /* Column-major, as the matrices are: element (row, column) is
+     * m[column * 4 + row]. */
+    for (column = 0u; column < 4u; ++column) {
+        for (row = 0u; row < 4u; ++row) {
+            GLfloat sum = 0.0f;
+
+            for (i = 0u; i < 4u; ++i) {
+                sum += p->m[i * 4u + row] * mv->m[column * 4u + i];
+            }
+            pipeline->tnl_mvp[column * 4u + row] = sum;
+        }
+    }
+    for (i = 0u; i < 16u; ++i) {
+        pipeline->tnl_mvp_from[i] = mv->m[i];
+        pipeline->tnl_mvp_from[16u + i] = p->m[i];
+    }
+    pipeline->tnl_mvp_valid = 1;
+}
+
 void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                        GLenum mode)
 {
@@ -635,8 +682,12 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
         pipeline->tnl_allowed && mode >= V9X_GL_TRIANGLES &&
         !pipeline->offset_on && !pipeline->fog_on &&
         pipeline->shade_model == V9X_GL_SMOOTH && pipeline->units <= 1ul &&
+        pipeline->tex[3] == 1.0f &&
         !(v9x_gl_state_cap(state, V9X_GL_CULL_FACE) &&
           pipeline->cull_face == V9X_GL_FRONT_AND_BACK);
+    if (pipeline->tnl_capture) {
+        v9x_gl_prim_tnl_mvp(state, pipeline);
+    }
     if (v9x_gl_prim_begin_unchanged(state, pipeline)) {
         return;
     }
@@ -658,6 +709,7 @@ void v9x_gl_prim_end(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline)
         return;
     }
     state->in_begin = 0;
+    pipeline->tnl_element_next = 0ul;
     /* A primitive the vertices did not complete draws nothing more; what
      * is batched goes now, so the next state change finds the batch
      * empty. */
@@ -1051,8 +1103,90 @@ static int v9x_gl_prim_culled(const V9X_GL_STATE *state,
            (pipeline->cull_face == V9X_GL_BACK && !front);
 }
 
+/*
+ * A captured triangle (step 3b): culled here only where the answer is
+ * certain without clipping, and otherwise left whole to the engine, which
+ * clips, culls and cuts to the scissor itself.
+ *
+ * - Every corner outside one frustum plane: the triangle is outside the
+ *   half-space, and the view volume, whatever w's signs.
+ * - Facing away under CULL_FACE, all three w positive: the window area's
+ *   sign is then the sign of the determinant of the corners' (x, y, w)
+ *   rows - the area of (x/w, y/w) is that determinant over w0 w1 w2, and
+ *   the viewport scales x and y by positive amounts - which
+ *   v9x_gl_prim_culled reads as it reads the CPU path's area. A corner
+ *   with w not positive leaves the facing to the engine's clipper.
+ *
+ * A triangle left names its corners by index. A corner not yet in this
+ * batch is sent now, once, and takes its index here; one cached from a
+ * vertex array element records it in the cache too.
+ */
+static void v9x_gl_prim_tnl_triangle(V9X_GL_STATE *state,
+                                     V9X_GL_PIPELINE *pipeline,
+                                     V9X_GL_VERTEX *a,
+                                     V9X_GL_VERTEX *b,
+                                     V9X_GL_VERTEX *c)
+{
+    V9X_GL_VERTEX *corner[3];
+    unsigned int i;
+
+    if ((a->outcode & b->outcode & c->outcode) != 0ul ||
+        !pipeline->clip_ready) {
+        ++pipeline->tnl_culled;
+        return;
+    }
+    if (v9x_gl_state_cap(state, V9X_GL_CULL_FACE) && a->clip[3] > 0.0f &&
+        b->clip[3] > 0.0f && c->clip[3] > 0.0f) {
+        double det =
+            (double)a->clip[0] * ((double)b->clip[1] * c->clip[3] -
+                                  (double)c->clip[1] * b->clip[3]) -
+            (double)a->clip[1] * ((double)b->clip[0] * c->clip[3] -
+                                  (double)c->clip[0] * b->clip[3]) +
+            (double)a->clip[3] * ((double)b->clip[0] * c->clip[1] -
+                                  (double)c->clip[0] * b->clip[1]);
+
+        if (v9x_gl_prim_culled(state, pipeline,
+                               det > 0.0 ? 1.0f : det < 0.0 ? -1.0f
+                                                            : 0.0f)) {
+            ++pipeline->tnl_culled;
+            return;
+        }
+    }
+
+    if (pipeline->tnl_index_count + 3u > V9X_GL_TNL_INDICES ||
+        pipeline->tnl_vertex_count + 3u > V9X_GL_TNL_VERTICES) {
+        v9x_gl_prim_flush(pipeline);
+    }
+    corner[0] = a;
+    corner[1] = b;
+    corner[2] = c;
+    for (i = 0u; i < 3u; ++i) {
+        v9x_u32 index = corner[i]->tnl_index;
+
+        if (corner[i]->tnl_serial != pipeline->tnl_serial) {
+            index = pipeline->tnl_vertex_count;
+            pipeline->tnl_vertices[pipeline->tnl_vertex_count++] =
+                corner[i]->object;
+            corner[i]->tnl_serial = pipeline->tnl_serial;
+            corner[i]->tnl_index = index;
+            if (corner[i]->tnl_element != 0ul) {
+                V9X_GL_TNL_ELEMENT *entry =
+                    &pipeline->tnl_elements[(corner[i]->tnl_element - 1ul) &
+                                            (V9X_GL_TNL_ELEMENTS - 1u)];
+
+                if (entry->element == corner[i]->tnl_element &&
+                    entry->call == pipeline->tnl_call) {
+                    entry->serial = pipeline->tnl_serial;
+                    entry->index = index;
+                }
+            }
+        }
+        pipeline->tnl_indices[pipeline->tnl_index_count++] = (v9x_u16)index;
+    }
+}
+
 /* The corners are the pipeline's own vertices (ring and first), not
- * const: a corner re-sent to a new T&L batch takes its new index there. */
+ * const: a corner sent to a T&L batch takes its index there. */
 static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
                                  V9X_GL_PIPELINE *pipeline,
                                  V9X_GL_VERTEX *a,
@@ -1066,37 +1200,9 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
     unsigned int i;
     GLfloat area = 0.0f;
 
-    /* A captured triangle's twin, uncut and unculled - the engine does
-     * both - as three indices, after making room for every piece the CPU
-     * may cut it into, so they all go in the flush its twin goes in
-     * (v9x_gl_prim_flush). A corner whose vertex went in a batch already
-     * flushed is sent again, once, and takes its index in this batch;
-     * there is room kept for all three. */
     if (pipeline->tnl_capture) {
-        V9X_GL_VERTEX *corner[3];
-
-        if (pipeline->tnl_index_count + 3u > V9X_GL_TNL_INDICES ||
-            pipeline->tnl_vertex_count + 3u > V9X_GL_TNL_VERTICES ||
-            pipeline->batch_triangles + (V9X_GL_PRIM_CLIP_MAX - 2u) >
-                V9X_R3D_ABI_BATCH_MAX) {
-            v9x_gl_prim_flush(pipeline);
-        }
-        corner[0] = a;
-        corner[1] = b;
-        corner[2] = c;
-        for (i = 0u; i < 3u; ++i) {
-            v9x_u32 index = corner[i]->tnl_index;
-
-            if (corner[i]->tnl_serial != pipeline->tnl_serial) {
-                index = pipeline->tnl_vertex_count;
-                pipeline->tnl_vertices[pipeline->tnl_vertex_count++] =
-                    corner[i]->object;
-                corner[i]->tnl_serial = pipeline->tnl_serial;
-                corner[i]->tnl_index = index;
-            }
-            pipeline->tnl_indices[pipeline->tnl_index_count++] =
-                (v9x_u16)index;
-        }
+        v9x_gl_prim_tnl_triangle(state, pipeline, a, b, c);
+        return;
     }
 
     /* All three inside every plane: Sutherland-Hodgman would return them
@@ -1215,43 +1321,24 @@ static void v9x_gl_prim_triangle(V9X_GL_STATE *state,
 
 /* ---- Assembly ------------------------------------------------------- */
 
-void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
-                        GLfloat x, GLfloat y, GLfloat z, GLfloat w)
+/*
+ * The CPU path's vertex: object coordinates and attributes through both
+ * matrices to clip space, then, inside every plane, to its window position
+ * and emitted vertex (V9X_GL_VERTEX.inside).
+ */
+static void v9x_gl_prim_cpu_vertex(V9X_GL_STATE *state,
+                                   V9X_GL_PIPELINE *pipeline,
+                                   V9X_GL_VERTEX *vp, const GLfloat *object,
+                                   const GLfloat *color, const GLfloat *tex,
+                                   const GLfloat *tex1, v9x_u32 *mark)
 {
     const V9X_GL_MATRIX *modelview;
     const V9X_GL_MATRIX *projection;
-    V9X_GL_VERTEX *p0;
-    V9X_GL_VERTEX *p1;
-    V9X_GL_VERTEX *p2;
-    V9X_GL_VERTEX *vp;
     GLfloat eye[4];
-    GLfloat object[4];
     unsigned int row;
-    v9x_u32 n;
-    v9x_u32 mark = 0ul;
 
-    if (!state->in_begin) {
-        return;
-    }
-    /*
-     * The last three vertices and this one live in a four-slot ring
-     * (V9X_GL_PIPELINE.ring): previous[k] is slot head + k and this vertex
-     * is built in slot head + 3, which the shift below makes previous[2].
-     * The plain form copied three ~100-byte vertices per call to do that.
-     */
-    p0 = &pipeline->ring[pipeline->ring_head & 3u];
-    p1 = &pipeline->ring[(pipeline->ring_head + 1u) & 3u];
-    p2 = &pipeline->ring[(pipeline->ring_head + 2u) & 3u];
-    vp = &pipeline->ring[(pipeline->ring_head + 3u) & 3u];
-    if (pipeline->profile != 0) {
-        mark = v9x_gl_prim_rdtsc_low();
-    }
     modelview = v9x_gl_matrix_top(&state->matrices, V9X_GL_MODELVIEW);
     projection = v9x_gl_matrix_top(&state->matrices, V9X_GL_PROJECTION);
-    object[0] = x;
-    object[1] = y;
-    object[2] = z;
-    object[3] = w;
     for (row = 0u; row < 4u; ++row) {
         eye[row] = modelview->m[row] * object[0] +
                    modelview->m[4u + row] * object[1] +
@@ -1263,47 +1350,21 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
                       projection->m[4u + row] * eye[1] +
                       projection->m[8u + row] * eye[2] +
                       projection->m[12u + row] * eye[3];
-        vp->color[row] = pipeline->color[row];
-        vp->tex[row] = pipeline->tex[row];
+        vp->color[row] = color[row];
+        vp->tex[row] = tex[row];
     }
-    vp->tex1[0] = pipeline->tex1[0];
-    vp->tex1[1] = pipeline->tex1[1];
+    vp->tex1[0] = tex1[0];
+    vp->tex1[1] = tex1[1];
     vp->fog_c = v9x_gl_prim_abs(eye[2]);
-    /* The engine's copy: object position, colour, s and t. It does not
-     * divide by q, so a projective coordinate turns the batch back. */
-    if (pipeline->tnl_capture) {
-        vp->object.sx = x;
-        vp->object.sy = y;
-        vp->object.sz = z;
-        vp->object.rhw = w;
-        vp->object.color = v9x_gl_prim_argb_cached(pipeline, vp->color);
-        vp->object.specular = 0xff000000ul;
-        vp->object.tu = vp->tex[0];
-        vp->object.tv = vp->tex[1];
-        if (vp->tex[3] != 1.0f) {
-            pipeline->tnl_ok = 0;
-        }
-        /* Into the batch once, here; triangles name it by index. The room
-         * a triangle needs is made now, before the vertex goes in, so the
-         * flush v9x_gl_prim_triangle would otherwise make does not leave
-         * it in the batch going out. */
-        if (pipeline->tnl_vertex_count + 3u > V9X_GL_TNL_VERTICES ||
-            pipeline->tnl_index_count + 3u > V9X_GL_TNL_INDICES ||
-            pipeline->batch_triangles + (V9X_GL_PRIM_CLIP_MAX - 2u) >
-                V9X_R3D_ABI_BATCH_MAX) {
-            v9x_gl_prim_flush(pipeline);
-        }
-        vp->tnl_serial = pipeline->tnl_serial;
-        vp->tnl_index = pipeline->tnl_vertex_count;
-        pipeline->tnl_vertices[pipeline->tnl_vertex_count++] = vp->object;
-    }
+    vp->tnl_serial = 0ul;
+    vp->tnl_element = 0ul;
     /* Inside by the clipper's own test, plane by plane (v9x_gl_prim_clip):
      * then its window position and emitted vertex are what any triangle
      * it is a corner of would compute (V9X_GL_VERTEX.inside). */
-    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_TRANSFORM, &mark);
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_TRANSFORM, mark);
     vp->inside = pipeline->clip_ready &&
                  v9x_gl_prim_inside(vp, pipeline->clip_edge);
-    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_INSIDE, &mark);
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_INSIDE, mark);
     if (vp->inside) {
         V9X_GL_WINDOW w;
 
@@ -1314,7 +1375,227 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
         vp->window[3] = w.rhw;
         v9x_gl_prim_emit(state, pipeline, &vp->abi, vp, &w);
     }
-    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_WINDOW, &mark);
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_WINDOW, mark);
+}
+
+/* The six frustum planes' outcode of a clip position: bit k set when
+ * v9x_gl_prim_plane's plane k is negative, or not a number. */
+static v9x_u32 v9x_gl_prim_outcode(const GLfloat *clip)
+{
+    GLfloat w = clip[3];
+    v9x_u32 code = 0ul;
+
+    if (!(w + clip[0] >= 0.0f)) {
+        code |= 0x01ul;
+    }
+    if (!(w - clip[0] >= 0.0f)) {
+        code |= 0x02ul;
+    }
+    if (!(w + clip[1] >= 0.0f)) {
+        code |= 0x04ul;
+    }
+    if (!(w - clip[1] >= 0.0f)) {
+        code |= 0x08ul;
+    }
+    if (!(w + clip[2] >= 0.0f)) {
+        code |= 0x10ul;
+    }
+    if (!(w - clip[2] >= 0.0f)) {
+        code |= 0x20ul;
+    }
+    return code;
+}
+
+/*
+ * A captured vertex (step 3b): the engine's copy - object position, the
+ * packed colour, an unfogged specular, s and t - and, for the cull, its
+ * clip position through tnl_mvp and outcode. Nothing of the CPU path's
+ * screen vertex is made. It goes in the batch only when a triangle that
+ * survives the cull names it (v9x_gl_prim_tnl_triangle).
+ */
+static void v9x_gl_prim_tnl_vertex(V9X_GL_PIPELINE *pipeline,
+                                   V9X_GL_VERTEX *vp, GLfloat x, GLfloat y,
+                                   GLfloat z, GLfloat w)
+{
+    const GLfloat *m = pipeline->tnl_mvp;
+    unsigned int row;
+
+    for (row = 0u; row < 4u; ++row) {
+        vp->clip[row] = m[row] * x + m[4u + row] * y + m[8u + row] * z +
+                        m[12u + row] * w;
+    }
+    vp->outcode = v9x_gl_prim_outcode(vp->clip);
+    vp->object.sx = x;
+    vp->object.sy = y;
+    vp->object.sz = z;
+    vp->object.rhw = w;
+    vp->object.color = v9x_gl_prim_argb_cached(pipeline, pipeline->color);
+    vp->object.specular = 0xff000000ul;
+    vp->object.tu = pipeline->tex[0];
+    vp->object.tv = pipeline->tex[1];
+    vp->tnl_serial = 0ul;
+    vp->tnl_element = 0ul;
+}
+
+/*
+ * A q other than 1 inside a captured primitive: the kernel does not divide
+ * by q, so the capture ends here. What is captured is flushed, and the
+ * primitive's kept vertices - the first and the last three, as many as it
+ * has - are made again as the CPU path makes them, from their object
+ * copies: the packed colour unpacks to the bytes it packs back to, s and
+ * t are as given, and a captured vertex's r is not drawn and its q was 1.
+ */
+static void v9x_gl_prim_tnl_abandon(V9X_GL_STATE *state,
+                                    V9X_GL_PIPELINE *pipeline)
+{
+    V9X_GL_VERTEX *kept[4];
+    unsigned int count = 0u;
+    unsigned int i;
+    v9x_u32 mark = 0ul;
+
+    v9x_gl_prim_flush(pipeline);
+    pipeline->tnl_capture = 0;
+    ++pipeline->tnl_abandoned;
+    if (pipeline->count >= 1ul) {
+        kept[count++] = &pipeline->first;
+        kept[count++] = &pipeline->ring[(pipeline->ring_head + 2u) & 3u];
+    }
+    if (pipeline->count >= 2ul) {
+        kept[count++] = &pipeline->ring[(pipeline->ring_head + 1u) & 3u];
+    }
+    if (pipeline->count >= 3ul) {
+        kept[count++] = &pipeline->ring[pipeline->ring_head & 3u];
+    }
+    for (i = 0u; i < count; ++i) {
+        V9X_GL_VERTEX *v = kept[i];
+        GLfloat object[4];
+        GLfloat color[4];
+        GLfloat tex[4];
+
+        object[0] = v->object.sx;
+        object[1] = v->object.sy;
+        object[2] = v->object.sz;
+        object[3] = v->object.rhw;
+        color[0] = (GLfloat)((v->object.color >> 16) & 0xfful) / 255.0f;
+        color[1] = (GLfloat)((v->object.color >> 8) & 0xfful) / 255.0f;
+        color[2] = (GLfloat)(v->object.color & 0xfful) / 255.0f;
+        color[3] = (GLfloat)((v->object.color >> 24) & 0xfful) / 255.0f;
+        tex[0] = v->object.tu;
+        tex[1] = v->object.tv;
+        tex[2] = 0.0f;
+        tex[3] = 1.0f;
+        v9x_gl_prim_cpu_vertex(state, pipeline, v, object, color, tex,
+                               pipeline->tex1, &mark);
+    }
+}
+
+static void v9x_gl_prim_assemble(V9X_GL_STATE *state,
+                                 V9X_GL_PIPELINE *pipeline, v9x_u32 *mark);
+
+void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                        GLfloat x, GLfloat y, GLfloat z, GLfloat w)
+{
+    V9X_GL_VERTEX *vp;
+    GLfloat object[4];
+    v9x_u32 mark = 0ul;
+
+    if (!state->in_begin) {
+        return;
+    }
+    /*
+     * The last three vertices and this one live in a four-slot ring
+     * (V9X_GL_PIPELINE.ring): previous[k] is slot head + k and this vertex
+     * is built in slot head + 3, which the shift in v9x_gl_prim_assemble
+     * makes previous[2]. The plain form copied three ~100-byte vertices
+     * per call to do that.
+     */
+    vp = &pipeline->ring[(pipeline->ring_head + 3u) & 3u];
+    if (pipeline->profile != 0) {
+        mark = v9x_gl_prim_rdtsc_low();
+    }
+    if (pipeline->tnl_capture && pipeline->tex[3] != 1.0f) {
+        v9x_gl_prim_tnl_abandon(state, pipeline);
+    }
+    if (pipeline->tnl_capture) {
+        v9x_gl_prim_tnl_vertex(pipeline, vp, x, y, z, w);
+        if (pipeline->tnl_element_next != 0ul &&
+            pipeline->tnl_elements != 0) {
+            V9X_GL_TNL_ELEMENT *entry =
+                &pipeline->tnl_elements[(pipeline->tnl_element_next - 1ul) &
+                                        (V9X_GL_TNL_ELEMENTS - 1u)];
+
+            entry->element = pipeline->tnl_element_next;
+            entry->call = pipeline->tnl_call;
+            entry->serial = 0ul;
+            entry->index = 0ul;
+            entry->clip[0] = vp->clip[0];
+            entry->clip[1] = vp->clip[1];
+            entry->clip[2] = vp->clip[2];
+            entry->clip[3] = vp->clip[3];
+            entry->outcode = vp->outcode;
+            entry->object = vp->object;
+            vp->tnl_element = pipeline->tnl_element_next;
+        }
+    } else {
+        object[0] = x;
+        object[1] = y;
+        object[2] = z;
+        object[3] = w;
+        v9x_gl_prim_cpu_vertex(state, pipeline, vp, object, pipeline->color,
+                               pipeline->tex, pipeline->tex1, &mark);
+    }
+    pipeline->tnl_element_next = 0ul;
+    v9x_gl_prim_assemble(state, pipeline, &mark);
+}
+
+void v9x_gl_prim_tnl_call(V9X_GL_PIPELINE *pipeline)
+{
+    ++pipeline->tnl_call;
+}
+
+int v9x_gl_prim_element(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
+                        v9x_u32 element)
+{
+    const V9X_GL_TNL_ELEMENT *entry;
+    V9X_GL_VERTEX *vp;
+    v9x_u32 mark = 0ul;
+
+    pipeline->tnl_element_next = 0ul;
+    if (!state->in_begin || !pipeline->tnl_capture ||
+        pipeline->tnl_elements == 0) {
+        return 0;
+    }
+    entry = &pipeline->tnl_elements[element & (V9X_GL_TNL_ELEMENTS - 1u)];
+    if (entry->element != element + 1ul ||
+        entry->call != pipeline->tnl_call) {
+        pipeline->tnl_element_next = element + 1ul;
+        return 0;
+    }
+    vp = &pipeline->ring[(pipeline->ring_head + 3u) & 3u];
+    vp->clip[0] = entry->clip[0];
+    vp->clip[1] = entry->clip[1];
+    vp->clip[2] = entry->clip[2];
+    vp->clip[3] = entry->clip[3];
+    vp->outcode = entry->outcode;
+    vp->object = entry->object;
+    vp->tnl_serial = entry->serial;
+    vp->tnl_index = entry->index;
+    vp->tnl_element = element + 1ul;
+    ++pipeline->tnl_cached;
+    v9x_gl_prim_assemble(state, pipeline, &mark);
+    return 1;
+}
+
+/* The vertex just built in the ring's fourth slot into the primitive: the
+ * triangles it completes, then the ring's shift. */
+static void v9x_gl_prim_assemble(V9X_GL_STATE *state,
+                                 V9X_GL_PIPELINE *pipeline, v9x_u32 *mark)
+{
+    V9X_GL_VERTEX *p0 = &pipeline->ring[pipeline->ring_head & 3u];
+    V9X_GL_VERTEX *p1 = &pipeline->ring[(pipeline->ring_head + 1u) & 3u];
+    V9X_GL_VERTEX *p2 = &pipeline->ring[(pipeline->ring_head + 2u) & 3u];
+    V9X_GL_VERTEX *vp = &pipeline->ring[(pipeline->ring_head + 3u) & 3u];
+    v9x_u32 n;
 
     n = pipeline->count++;
     switch (pipeline->mode) {
@@ -1368,13 +1649,13 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
          * (r3d_line.c's coverage comes with the plan's Phase 4 lines). */
         break;
     }
-    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_ASSEMBLE, &mark);
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_ASSEMBLE, mark);
 
     if (n == 0ul) {
         pipeline->first = *vp;
     }
     pipeline->ring_head = (pipeline->ring_head + 1u) & 3u;
-    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_HISTORY, &mark);
+    v9x_gl_prim_prof_mark(pipeline, V9X_GL_PRIM_PROF_HISTORY, mark);
 }
 
 void v9x_gl_prim_abi_state(V9X_GL_STATE *state,
@@ -1777,4 +2058,243 @@ v9x_u32 v9x_gl_prim_tnl_cull(const V9X_GL_STATE *state,
         return front_ccw ? V9X_R3D_ABI_CULL_CCW : V9X_R3D_ABI_CULL_CW;
     }
     return V9X_R3D_ABI_CULL_NONE;
+}
+
+void v9x_gl_prim_tnl_scissor(const V9X_GL_STATE *state,
+                             V9X_R3D_ABI_STATE *out)
+{
+    GLfloat rect[4];
+    long height = (long)state->drawable_height;
+
+    /* The draw rectangle's sides are whole pixels: the drawable's size and
+     * the scissor box are integers. An empty one is an empty scissor. */
+    if (!v9x_gl_prim_draw_rect(state, rect)) {
+        out->scissor_left = 0ul;
+        out->scissor_top = 0ul;
+        out->scissor_right = 0ul;
+        out->scissor_bottom = 0ul;
+        return;
+    }
+    out->scissor_left = (v9x_u32)v9x_gl_prim_to_long(rect[0]);
+    out->scissor_right = (v9x_u32)v9x_gl_prim_to_long(rect[2]);
+    out->scissor_top = (v9x_u32)(height - v9x_gl_prim_to_long(rect[3]));
+    out->scissor_bottom = (v9x_u32)(height - v9x_gl_prim_to_long(rect[1]));
+}
+
+/* ---- Hardware T&L: the CPU's draw of a refused batch ---------------- */
+
+/* A corner as the fallback clips it: clip position in the engine's space
+ * (z' = (z + w) / 2, kept 0 <= z' <= w), colour channels 0 to 1, s, t. */
+typedef struct v9x_gl_tnl_corner {
+    GLfloat clip[4];
+    GLfloat color[4];
+    GLfloat tex[2];
+} V9X_GL_TNL_CORNER;
+
+/*
+ * The fallback's ten planes, as v9x_gl_prim_plane's are, in the engine's
+ * clip space: 0 to 3 the frustum's sides, 4 and 5 z' >= 0 and z' <= w,
+ * and 6 to 9 the scissor rectangle carried back through the viewport:
+ * x_t >= left is x - a w >= 0 with a = 2 (left - vx) / vw - 1, and as the
+ * target's y runs down, y_t >= top is c w - y >= 0 with
+ * c = 1 - 2 (top - vy) / vh.
+ */
+static GLfloat v9x_gl_prim_tnl_plane(const V9X_GL_TNL_CORNER *v,
+                                     unsigned int plane, const GLfloat *edge)
+{
+    GLfloat w = v->clip[3];
+
+    switch (plane) {
+    case 0u: return w + v->clip[0];
+    case 1u: return w - v->clip[0];
+    case 2u: return w + v->clip[1];
+    case 3u: return w - v->clip[1];
+    case 4u: return v->clip[2];
+    case 5u: return w - v->clip[2];
+    case 6u: return v->clip[0] - edge[0] * w;
+    case 7u: return edge[2] * w - v->clip[0];
+    case 8u: return edge[1] * w - v->clip[1];
+    default: return v->clip[1] - edge[3] * w;
+    }
+}
+
+static void v9x_gl_prim_tnl_lerp(V9X_GL_TNL_CORNER *out,
+                                 const V9X_GL_TNL_CORNER *a,
+                                 const V9X_GL_TNL_CORNER *b, GLfloat t)
+{
+    unsigned int i;
+
+    for (i = 0u; i < 4u; ++i) {
+        out->clip[i] = a->clip[i] + (b->clip[i] - a->clip[i]) * t;
+        out->color[i] = a->color[i] + (b->color[i] - a->color[i]) * t;
+    }
+    out->tex[0] = a->tex[0] + (b->tex[0] - a->tex[0]) * t;
+    out->tex[1] = a->tex[1] + (b->tex[1] - a->tex[1]) * t;
+}
+
+/* Sutherland-Hodgman over the ten planes, as v9x_gl_prim_clip does it. */
+static unsigned int v9x_gl_prim_tnl_clip(V9X_GL_TNL_CORNER *polygon,
+                                         unsigned int count,
+                                         const GLfloat *edge)
+{
+    V9X_GL_TNL_CORNER scratch[V9X_GL_PRIM_CLIP_MAX];
+    GLfloat distance[V9X_GL_PRIM_CLIP_MAX];
+    V9X_GL_TNL_CORNER *in = polygon;
+    V9X_GL_TNL_CORNER *out = scratch;
+    unsigned int plane;
+    unsigned int i;
+
+    for (plane = 0u; plane < V9X_GL_PRIM_CLIP_PLANES && count != 0u;
+         ++plane) {
+        V9X_GL_TNL_CORNER *swap;
+        unsigned int written = 0u;
+        int all_inside = 1;
+
+        for (i = 0u; i < count; ++i) {
+            distance[i] = v9x_gl_prim_tnl_plane(&in[i], plane, edge);
+            if (!(distance[i] >= 0.0f)) {
+                all_inside = 0;
+            }
+        }
+        if (all_inside) {
+            continue;
+        }
+        for (i = 0u; i < count; ++i) {
+            unsigned int before = i == 0u ? count - 1u : i - 1u;
+            GLfloat dc = distance[i];
+            GLfloat dp = distance[before];
+
+            if ((dc >= 0.0f) != (dp >= 0.0f) &&
+                written < V9X_GL_PRIM_CLIP_MAX) {
+                v9x_gl_prim_tnl_lerp(&out[written++], &in[before], &in[i],
+                                     dp / (dp - dc));
+            }
+            if (dc >= 0.0f && written < V9X_GL_PRIM_CLIP_MAX) {
+                out[written++] = in[i];
+            }
+        }
+        swap = in;
+        in = out;
+        out = swap;
+        count = written;
+    }
+    if (in != polygon) {
+        for (i = 0u; i < count; ++i) {
+            polygon[i] = in[i];
+        }
+    }
+    return count;
+}
+
+v9x_u32 v9x_gl_prim_tnl_screen(const V9X_R3D_TNL_CONSTANTS *constants,
+                               const V9X_R3D_ABI_TNL_DRAW *frame,
+                               const V9X_R3D_ABI_STATE *scissor,
+                               const V9X_R3D_ABI_VERTEX *object,
+                               const v9x_u16 *indices, v9x_u32 index_count,
+                               v9x_u32 *next, V9X_R3D_ABI_VERTEX *out,
+                               v9x_u32 room)
+{
+    V9X_GL_TNL_CORNER polygon[V9X_GL_PRIM_CLIP_MAX];
+    V9X_R3D_ABI_VERTEX window[V9X_GL_PRIM_CLIP_MAX];
+    GLfloat edge[4];
+    GLfloat rect[4];
+    GLfloat vx = frame->viewport_x;
+    GLfloat vy = frame->viewport_y;
+    GLfloat vw = frame->viewport_width;
+    GLfloat vh = frame->viewport_height;
+    GLfloat z_low = frame->depth_near;
+    GLfloat z_high = frame->depth_far;
+    v9x_u32 written = 0ul;
+
+    rect[0] = (GLfloat)scissor->scissor_left;
+    rect[1] = (GLfloat)scissor->scissor_top;
+    rect[2] = (GLfloat)scissor->scissor_right;
+    rect[3] = (GLfloat)scissor->scissor_bottom;
+    if (!(vw > 0.0f) || !(vh > 0.0f) || !(rect[2] > rect[0]) ||
+        !(rect[3] > rect[1])) {
+        *next = index_count;
+        return 0ul;
+    }
+    edge[0] = 2.0f * (rect[0] - vx) / vw - 1.0f;
+    edge[1] = 1.0f - 2.0f * (rect[1] - vy) / vh;
+    edge[2] = 2.0f * (rect[2] - vx) / vw - 1.0f;
+    edge[3] = 1.0f - 2.0f * (rect[3] - vy) / vh;
+    if (z_low > z_high) {
+        z_low = frame->depth_far;
+        z_high = frame->depth_near;
+    }
+
+    while (*next + 3ul <= index_count &&
+           written + V9X_GL_PRIM_TNL_PIECES <= room) {
+        unsigned int count;
+        unsigned int i;
+        unsigned int row;
+        GLfloat area = 0.0f;
+
+        for (i = 0u; i < 3u; ++i) {
+            const V9X_R3D_ABI_VERTEX *v = &object[indices[*next + i]];
+            V9X_GL_TNL_CORNER *c = &polygon[i];
+
+            for (row = 0u; row < 4u; ++row) {
+                c->clip[row] =
+                    constants->model_view_projection[row][0] * v->sx +
+                    constants->model_view_projection[row][1] * v->sy +
+                    constants->model_view_projection[row][2] * v->sz +
+                    constants->model_view_projection[row][3] * v->rhw;
+            }
+            c->color[0] = (GLfloat)((v->color >> 16) & 0xfful) / 255.0f;
+            c->color[1] = (GLfloat)((v->color >> 8) & 0xfful) / 255.0f;
+            c->color[2] = (GLfloat)(v->color & 0xfful) / 255.0f;
+            c->color[3] = (GLfloat)((v->color >> 24) & 0xfful) / 255.0f;
+            c->tex[0] = v->tu;
+            c->tex[1] = v->tv;
+        }
+        *next += 3ul;
+
+        count = v9x_gl_prim_tnl_clip(polygon, 3u, edge);
+        if (count < 3u) {
+            continue;
+        }
+        /* The render interface's viewport mapping (r3d_abi.h), each
+         * position clamped to the bounds the clip already keeps it in, as
+         * v9x_gl_prim_window clamps the CPU path's. */
+        for (i = 0u; i < count; ++i) {
+            const V9X_GL_TNL_CORNER *c = &polygon[i];
+            GLfloat rhw = 1.0f / c->clip[3];
+
+            window[i].sx = v9x_gl_prim_clamp(
+                vx + (c->clip[0] * rhw + 1.0f) * 0.5f * vw, rect[0],
+                rect[2]);
+            window[i].sy = v9x_gl_prim_clamp(
+                vy + (1.0f - c->clip[1] * rhw) * 0.5f * vh, rect[1],
+                rect[3]);
+            window[i].sz = v9x_gl_prim_clamp(
+                frame->depth_near + c->clip[2] * rhw *
+                    (frame->depth_far - frame->depth_near),
+                z_low, z_high);
+            window[i].rhw = rhw;
+            window[i].color = v9x_gl_prim_argb(c->color);
+            window[i].specular = 0xff000000ul;
+            window[i].tu = c->tex[0];
+            window[i].tv = c->tex[1];
+        }
+        /* The cull on the target, y down: a winding clockwise there has a
+         * positive signed area. No area is culled either way. */
+        for (i = 0u; i < count; ++i) {
+            unsigned int j = i + 1u == count ? 0u : i + 1u;
+
+            area += window[i].sx * window[j].sy - window[j].sx * window[i].sy;
+        }
+        if ((frame->cull == V9X_R3D_ABI_CULL_CW && !(area < 0.0f)) ||
+            (frame->cull == V9X_R3D_ABI_CULL_CCW && !(area > 0.0f))) {
+            continue;
+        }
+        for (i = 1u; i + 1u < count; ++i) {
+            out[written * 3ul] = window[0];
+            out[written * 3ul + 1ul] = window[i];
+            out[written * 3ul + 2ul] = window[i + 1u];
+            ++written;
+        }
+    }
+    return written;
 }
