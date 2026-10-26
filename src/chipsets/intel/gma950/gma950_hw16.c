@@ -549,6 +549,31 @@ const V9X_HW16_DEVICE v9x_gma3150_device = {
 };
 
 /*
+ * The G33/G31's GMA 3100. The 945's descriptor unchanged: is_i945 mip
+ * layout, FW_BLC watermarks, GMADR in BAR2 and the GTT in BAR3. One survey
+ * (docs\probe\references\g31-ich7-gma3100-vgasurv-2026-10-26-8804962d.ini):
+ * 8 MiB stolen and a VBE size of 0x7F0000, as Pineview's. Nothing here has
+ * run on one.
+ */
+const V9X_HW16_DEVICE v9x_g33_gma3100_device = {
+    0x8086u, 0x29c2u,
+    "Intel GMA 3100 (G33/G31)",
+    "8086", "29C2",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen3",
+    0,
+    v9x_gma950_fill_engine,
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GMA 950. */
+    1u
+};
+
+/*
  * The GM965's GMA X3100. Config space, GTT and display measured read-only
  * on TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md),
  * and the ring and blits run (2026-10-20-gm965-ring-and-blits.md). The

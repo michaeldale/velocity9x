@@ -58,6 +58,7 @@ v9x_status v9x_intel_gma_probe(struct v9x_backend_state *state,
         (pci->device_id != V9X_PCI_DEVICE_GMA950_945GSE &&
          pci->device_id != V9X_PCI_DEVICE_GMA900_915GM &&
          pci->device_id != V9X_PCI_DEVICE_GMA3150_PNV &&
+         pci->device_id != V9X_PCI_DEVICE_GMA3100_G33 &&
          pci->device_id != V9X_PCI_DEVICE_GMA_X3100_GM965 &&
          pci->device_id != V9X_PCI_DEVICE_GMA_X4500_G45 &&
          pci->device_id != V9X_PCI_DEVICE_GMA4500_Q45 &&

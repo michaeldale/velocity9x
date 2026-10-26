@@ -21,6 +21,14 @@
  */
 #define V9X_PCI_DEVICE_GMA3150_PNV       ((v9x_u16)0xa011u)
 /*
+ * The G33/G31's GMA 3100, function 0: Gen3, the 945's command set and mip
+ * layout (gallium sets is_i945 for G33_G), FW_BLC watermarks as the 945's
+ * (i915 runs i9xx_update_wm for it, not Pineview's). BAR2/BAR3 as the 945's.
+ * From one DOS survey only; not run (docs\decisions\2026-10-26-g33-gma3100-
+ * from-a-survey.md).
+ */
+#define V9X_PCI_DEVICE_GMA3100_G33       ((v9x_u16)0x29c2u)
+/*
  * The GM965's GMA X3100, function 0: Gen4. The Gen3 2D path's commands
  * (XY_COLOR_BLT, XY_SRC_COPY_BLT, MI_FLUSH, MI_STORE_DATA_INDEX) carry over;
  * its GTT lives in BAR0 rather than BAR3, its plane flips through DSPSURF,

@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring, page flips on plane A, Direct3D on the Gen4 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM, GMA 3100 on G33/G31 and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring, page flips on plane A, Direct3D on the Gen4 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -106,6 +106,37 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_gma3150_device')
+        }
+        @{
+            # The G33/G31's GMA 3100 (Gen3), unmeasured: the 945's
+            # descriptor unchanged. From one DOS survey (a G31 + ICH7 board);
+            # nothing has run on one:
+            # docs\decisions\2026-10-26-g33-gma3100-from-a-survey.md.
+            Id = 'gma3100-g33'
+            Name = 'Intel GMA 3100 (G33/G31)'
+            VendorId = '8086'
+            DeviceId = '29C2'
+            DeviceDesc = 'Velocity9x Intel GMA 3100 (G33/G31)'
+            Adapter = 'Intel GMA 3100 (G33/G31)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-gen3'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('D3D')
+            VideoMemoryBytes = 4194304
+            # The family's table, which the driver's own must equal. The
+            # surveyed BIOS lists 0160-0168 undescribed; the runtime scan
+            # publishes the modes it finds.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_g33_gma3100_device')
         }
         @{
             # The GM965's GMA X3100 (Gen4), from 0.23.0: the 945's ring and
@@ -406,7 +437,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:2A02, 8086:2E22, 8086:2E12, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
     }
 
     Vm = @{
