@@ -192,6 +192,14 @@ Progress:
     names textures and render targets by surface handle. That is
     recalled from the DDK documentation, not read in a header, and step
     5 confirms it on the guest first.
+- **Step 2 done (2026-10-26):** `include/velocity9x/r3d_tnl.h` (64-byte key,
+  1440-byte constant block = 45 GRFs), `src/display32/r3d/r3d_tnl.c` (the
+  key rule), `r3d_tnl_ref.c` (the host-only evaluator) and
+  `tests/host/test_r3d_tnl.c` (15 groups, hand-worked; Direct3D cases
+  encode the recalled equations). Each front end's state-to-key function
+  moved to its own step: GL with step 4, which also has to add the light,
+  material and light-model state the ICD does not keep today; Direct3D
+  with step 6.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.
