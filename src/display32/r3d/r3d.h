@@ -300,7 +300,19 @@ typedef struct v9x_r3d_tnl {
     const v9x_u16 *indices;
     v9x_u32 index_count;
     v9x_u32 vertex_count;
+    /* Segments (ABI 7, step 3b): each a described draw for its fragment
+     * state, its constants and its index range, partitioning the indices
+     * in order from 0. Null and 0 for one draw under `constants`. */
+    const struct v9x_r3d_tnl_segment *segments;
+    v9x_u32 segment_count;
 } V9X_R3D_TNL;
+
+typedef struct v9x_r3d_tnl_segment {
+    V9X_R3D_DRAW draw;
+    const V9X_R3D_TNL_CONSTANTS *constants;
+    v9x_u32 first_index;
+    v9x_u32 index_count;
+} V9X_R3D_TNL_SEGMENT;
 
 /*
  * The batch sink and cull decision a list builder needs, supplied by the

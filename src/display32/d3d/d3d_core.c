@@ -6155,6 +6155,58 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
  * so nothing that reads them as pixels - the list builder, the opacity
  * scan's neighbours, the two-unit bounds check - may see them.
  */
+/*
+ * A segmented request's segments, each described as a draw is (step 3b).
+ * Every segment must name the request's own target and depth buffer -
+ * the batch has one of each - and carry no second unit and no CPU
+ * texture, whose levels describe keeps in one static set. Kept static:
+ * the render interface runs one call at a time under the Win16 mutex.
+ */
+static V9X_R3D_TNL_SEGMENT v9x_r3d_tnl_segments[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
+
+static DWORD v9x_r3d_describe_segments(const V9X_R3D_ABI_TNL_DRAW *request,
+                                       const V9X_R3D_ABI_DRAW *inner)
+{
+    DWORD index;
+    DWORD result;
+
+    if (IsBadReadPtr(request->segments,
+                     request->segment_count *
+                         sizeof(V9X_R3D_ABI_TNL_SEGMENT))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    for (index = 0ul; index < request->segment_count; ++index) {
+        const V9X_R3D_ABI_TNL_SEGMENT *source = &request->segments[index];
+        const V9X_R3D_ABI_DRAW *draw = source->draw;
+
+        if (IsBadReadPtr(draw, sizeof(V9X_R3D_ABI_DRAW)) ||
+            draw->struct_bytes != (v9x_u32)sizeof(V9X_R3D_ABI_DRAW) ||
+            IsBadReadPtr(source->constants, sizeof(V9X_R3D_TNL_CONSTANTS))) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+        if (draw->target.surface != inner->target.surface ||
+            draw->depth.surface != inner->depth.surface ||
+            draw->raw_target.address != 0 || draw->texcoords1 != 0 ||
+            draw->texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+            return V9X_R3D_RESULT_UNSUPPORTED;
+        }
+        result = v9x_r3d_validate_state(&draw->state, v9x_r3d_context.width,
+                                        v9x_r3d_context.height);
+        if (result != V9X_R3D_RESULT_OK) {
+            return result;
+        }
+        result = v9x_r3d_describe(draw, &v9x_r3d_tnl_segments[index].draw);
+        if (result != V9X_R3D_RESULT_OK) {
+            return result;
+        }
+        v9x_r3d_tnl_segments[index].draw.vertex_alpha_opaque = 0ul;
+        v9x_r3d_tnl_segments[index].constants = source->constants;
+        v9x_r3d_tnl_segments[index].first_index = source->first_index;
+        v9x_r3d_tnl_segments[index].index_count = source->index_count;
+    }
+    return V9X_R3D_RESULT_OK;
+}
+
 static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
                                    V9X_R3D_ABI_OUTCOME *outcome)
 {
@@ -6248,6 +6300,16 @@ static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
     tnl.indices = request->indices;
     tnl.index_count = request->index_count;
     tnl.vertex_count = request->vertex_count;
+    tnl.segments = 0;
+    tnl.segment_count = 0ul;
+    if (request->segment_count != 0ul) {
+        result = v9x_r3d_describe_segments(request, inner);
+        if (result != V9X_R3D_RESULT_OK) {
+            return result;
+        }
+        tnl.segments = v9x_r3d_tnl_segments;
+        tnl.segment_count = request->segment_count;
+    }
 
     outcome->submitted = 0ul;
     drawn = ops->draw_tnl(&draw, (const V9X_R3D_VERTEX *)inner->vertices,

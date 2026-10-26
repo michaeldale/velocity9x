@@ -1287,6 +1287,138 @@ static void v9x_vs_test_draw(struct v9x_hsw_draw *draw,
     vs->sf_clip_viewport = 0x1540ul;
     vs->cc_viewport = 0x1580ul;
     vs->provoking = 0u;
+    vs->segments = 0;
+    vs->segment_count = 0u;
+}
+
+/* The first index of the n-th RANDOM primitive with a non-zero count, or
+ * the batch's length when there is none. */
+static v9x_u32 v9x_nth_draw(const v9x_u32 *dw, v9x_u32 used, unsigned int n)
+{
+    v9x_u32 at = 0ul;
+
+    while (at + 7ul <= used) {
+        if (dw[at] == 0x7b000005ul && (dw[at + 1ul] & 0x100ul) != 0ul &&
+            dw[at + 2ul] != 0ul) {
+            if (n == 0u) {
+                return at;
+            }
+            --n;
+        }
+        ++at;
+    }
+    return used;
+}
+
+/* How many times DW0 occurs at a command start: each search resumes past
+ * the command found (a 3D command's length is its DW0 7:0 plus 2), so the
+ * walk stays on command boundaries as v9x_find_command needs. */
+static unsigned int v9x_count_command(const v9x_u32 *dw, v9x_u32 used,
+                                      v9x_u32 header)
+{
+    unsigned int count = 0u;
+    v9x_u32 at = 0ul;
+
+    while (at < used) {
+        at = at + v9x_find_command(dw + at, used - at, header);
+        if (at >= used) {
+            break;
+        }
+        ++count;
+        at += (header & 0xfful) + 2ul;
+    }
+    return count;
+}
+
+/*
+ * Step 3b: one batch, three draws. The draw's own (6 indices from 0) and
+ * two segments (9 from 6, 3 from 15), each with its own PS kernel,
+ * binding table, sampler, blend, CC and depth state and push constants;
+ * the index buffer runs to the cache line holding the 18th index.
+ */
+static void test_vs_segments(void)
+{
+    v9x_u32 dw[1024];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    struct v9x_hsw_vs_draw vs;
+    struct v9x_hsw_vs_segment seg[V9X_HSW_VS_SEGMENTS_MAX + 1u];
+    unsigned int i;
+    v9x_u32 at;
+
+    v9x_vs_test_draw(&draw, &vs);
+    draw.indices = 0x01813000ul;
+    draw.index_count = 6ul;
+    draw.vertex_count = 12ul;
+    for (i = 0u; i <= V9X_HSW_VS_SEGMENTS_MAX; ++i) {
+        seg[i].kernel = 0x8400ul + 0x300ul * i;
+        seg[i].binding_table = 0x17c0ul + 0x20ul * i;
+        seg[i].sampler = 0x13000ul + 0x100ul * i;
+        seg[i].blend = 0x13040ul + 0x100ul * i;
+        seg[i].cc = 0x13080ul + 0x100ul * i;
+        seg[i].depth_test = 0x130c0ul + 0x100ul * i;
+        seg[i].constants = 0x018055e0ul + 0x40ul * i;
+        seg[i].first_index = 6ul + 3ul * i;
+        seg[i].index_count = 3ul;
+    }
+    seg[0].index_count = 9ul;
+    seg[1].first_index = 15ul;
+    vs.segments = seg;
+    vs.segment_count = 2u;
+    v9x_intel_hsw_batch_init(&batch, dw, 1024ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+
+    at = v9x_nth_draw(dw, batch.used, 0u);
+    CHECK(at < batch.used && dw[at + 2ul] == 6ul && dw[at + 3ul] == 0ul);
+    at = v9x_nth_draw(dw, batch.used, 1u);
+    CHECK(at < batch.used && dw[at + 2ul] == 9ul && dw[at + 3ul] == 6ul);
+    at = v9x_nth_draw(dw, batch.used, 2u);
+    CHECK(at < batch.used && dw[at + 2ul] == 3ul && dw[at + 3ul] == 15ul);
+    CHECK(v9x_nth_draw(dw, batch.used, 3u) == batch.used);
+
+    /* Three CONSTANT_VS loads, the segments' after the draw's. */
+    CHECK(v9x_count_command(dw, batch.used, 0x78150005ul) == 3u);
+    at = v9x_nth_draw(dw, batch.used, 0u);
+    at = at + v9x_find_command(dw + at, batch.used - at, 0x78150005ul);
+    CHECK(at < batch.used && dw[at + 6ul] == 0x018055e0ul);
+    /* Each segment's PS kernel and binding table. */
+    CHECK(v9x_count_command(dw, batch.used, 0x78200006ul) == 3u);
+    at = v9x_nth_draw(dw, batch.used, 0u);
+    at = at + v9x_find_command(dw + at, batch.used - at, 0x78200006ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x8400ul);
+    at = v9x_nth_draw(dw, batch.used, 0u);
+    at = at + v9x_find_command(dw + at, batch.used - at, 0x782a0000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x17c0ul);
+    /* The index buffer covers all 18 indices: 36 bytes, one line. */
+    at = v9x_find_command(dw, batch.used, 0x780a0101ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x0181303ful);
+
+    /* Refused: too many, a misaligned kernel, a partial triangle, and
+     * segments without an index buffer. */
+    vs.segment_count = (v9x_u8)(V9X_HSW_VS_SEGMENTS_MAX + 1u);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vs.segment_count = 2u;
+    seg[1].kernel = 0x8410ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    seg[1].kernel = 0x8700ul;
+    seg[1].index_count = 4ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    seg[1].index_count = 3ul;
+    draw.indices = 0ul;
+    draw.vertex_count = 6ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 /*
@@ -1616,6 +1748,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     failures = 0u;
     test_vs_builders();
     test_vs_workload();
+    test_vs_segments();
     test_ivb_variant();
     test_phase_f2b_depth_only();
     test_phase_f2_tl();

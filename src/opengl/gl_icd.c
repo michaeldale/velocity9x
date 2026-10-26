@@ -125,10 +125,33 @@ typedef struct v9x_gl_pending {
  */
 #define V9X_GL_TNL_SCREEN_MAX 512u
 
+/*
+ * Step 3b: a held batch is up to V9X_R3D_ABI_TNL_SEGMENTS_MAX segments,
+ * each a run of batches drawn the same way - texture, fragment state and
+ * constants - over its own ranges of the indices, vertices and CPU twin.
+ * The engine draws them in one submission: Quake 3's T&L batches broke on
+ * texture or state 54,943 times in one timedemo, each a batch of its own.
+ */
+typedef struct v9x_gl_tnl_segment {
+    V9X_R3D_ABI_TEXTURE texture;
+    V9X_R3D_ABI_LEVEL levels[V9X_GL_TEXTURE_LEVELS];
+    GLuint texture_name;
+    V9X_R3D_ABI_STATE state;
+    int alpha_used;
+    V9X_R3D_TNL_CONSTANTS constants;
+    v9x_u32 first_index;
+    v9x_u32 index_count;
+    v9x_u32 first_vertex;
+    v9x_u32 vertex_count;
+    v9x_u32 first_screen;
+    v9x_u32 screen_count;
+} V9X_GL_TNL_SEGMENT;
+
 typedef struct v9x_gl_tnl_hold {
     V9X_R3D_TNL_KEY key;
-    V9X_R3D_TNL_CONSTANTS constants;
     V9X_R3D_ABI_TNL_DRAW frame;
+    V9X_GL_TNL_SEGMENT segment[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
+    v9x_u32 segment_count;
     v9x_u32 vertex_count;
     v9x_u32 index_count;
     v9x_u32 screen_triangles;
@@ -841,6 +864,10 @@ static int v9x_gl_redescribe_all(void);
 /* Draw the context's held batch, if any. */
 static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context);
 static int v9x_gl_flush_tnl(V9X_GL_CONTEXT *context, V9X_GL_PENDING *pending);
+/* A held T&L batch's draws, one per segment, and the request's segment
+ * records: built at flush, under the lock, one flush at a time. */
+static V9X_R3D_ABI_DRAW v9x_gl_tnl_draws[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
+static V9X_R3D_ABI_TNL_SEGMENT v9x_gl_tnl_segments[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
 /* The surface a colour buffer (V9X_GL_DRAW_*) is drawn in. */
 static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
                                     unsigned int which);
@@ -1963,10 +1990,10 @@ static void v9x_gl_counters_log(void)
               "failed=%lu", v9x_gl_tnl_batches, v9x_gl_tnl_triangles,
               v9x_gl_tnl_refused, v9x_gl_tnl_failed);
     v9x_gl_log(text);
-    wsprintfA(text, "counters tnl-break screen=%lu state=%lu frame=%lu "
-              "constants=%lu room=%lu", v9x_gl_tnl_break[0],
-              v9x_gl_tnl_break[1], v9x_gl_tnl_break[2], v9x_gl_tnl_break[3],
-              v9x_gl_tnl_break[4]);
+    wsprintfA(text, "counters tnl-hold flush-for-screen=%lu new-segment=%lu "
+              "flush-for-frame=%lu joined=%lu flush-segments-full=%lu",
+              v9x_gl_tnl_break[0], v9x_gl_tnl_break[1], v9x_gl_tnl_break[2],
+              v9x_gl_tnl_break[3], v9x_gl_tnl_break[4]);
     v9x_gl_log(text);
     wsprintfA(text, "counters hwtex live=%lu creates=%lu create-failed=%lu "
               "evictions=%lu uploads=%lu partial=%lu "
@@ -2396,24 +2423,38 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
      */
     if (pending->tnl) {
         const V9X_GL_TNL_HOLD *hold = context->tnl_hold;
-        v9x_u32 start = 0ul;
+        v9x_u32 n;
 
         pending->tnl = 0;
         pending->triangles = 0ul;
         if (!v9x_gl_flush_tnl(context, pending)) {
-            while (start < hold->screen_triangles) {
-                v9x_u32 count = hold->screen_triangles - start;
-                v9x_u32 i;
+            /* Each segment's CPU triangles under its own texture and
+             * state, a batch at a time. */
+            for (n = 0ul; n < hold->segment_count; ++n) {
+                const V9X_GL_TNL_SEGMENT *seg = &hold->segment[n];
+                v9x_u32 start = seg->first_screen;
+                v9x_u32 end = seg->first_screen + seg->screen_count;
 
-                if (count > V9X_R3D_ABI_BATCH_MAX) {
-                    count = V9X_R3D_ABI_BATCH_MAX;
+                pending->texture = seg->texture;
+                pending->texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
+                pending->texture_name = seg->texture_name;
+                pending->texture1_name = 0u;
+                pending->state = seg->state;
+                pending->alpha_used = seg->alpha_used;
+                while (start < end) {
+                    v9x_u32 count = end - start;
+                    v9x_u32 i;
+
+                    if (count > V9X_R3D_ABI_BATCH_MAX) {
+                        count = V9X_R3D_ABI_BATCH_MAX;
+                    }
+                    for (i = 0ul; i < count * 3ul; ++i) {
+                        pending->vertices[i] = hold->screen[start * 3ul + i];
+                    }
+                    pending->triangles = count;
+                    v9x_gl_pending_passes(context, pending);
+                    start += count;
                 }
-                for (i = 0ul; i < count * 3ul; ++i) {
-                    pending->vertices[i] = hold->screen[start * 3ul + i];
-                }
-                pending->triangles = count;
-                v9x_gl_pending_passes(context, pending);
-                start += count;
             }
             pending->triangles = 0ul;
         }
@@ -2615,69 +2656,87 @@ static v9x_u32 v9x_gl_draw_tnl_into(V9X_GL_CONTEXT *context,
     const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
     const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
     V9X_GL_DRAWABLE *drawable;
-    V9X_R3D_ABI_DRAW draw;
     V9X_R3D_ABI_TNL_DRAW tnl;
     v9x_u32 result;
     unsigned int i;
-    int hardware;
-    float scale_s = 1.0f;
-    float scale_t = 1.0f;
+    v9x_u32 n;
 
+    (void)pending;
     drawable = v9x_gl_bind_window(context, v9x_gl_context_window(context));
     if (drawable == 0) {
         return V9X_R3D_RESULT_NO_MEMORY;
     }
-    for (i = 0u; i < sizeof(draw); ++i) {
-        ((BYTE *)&draw)[i] = 0u;
+    /* Every segment's vertices from the copy the scale and REPLACE rewrite
+     * may change; untouched where neither applies. */
+    for (i = 0u; i < hold->vertex_count; ++i) {
+        hold->scaled[i] = hold->vertices[i];
     }
-    draw.struct_bytes = sizeof(draw);
-    draw.generation = description->generation;
-    draw.target.surface = v9x_gl_drawable_target(drawable, which);
-    draw.depth.surface = v9x_gl_drawable_depth(drawable);
-    if (draw.target.surface == 0) {
-        return V9X_R3D_RESULT_NO_MEMORY;
-    }
-    /* An indexed draw: the inner draw's triangle count is 1 (r3d_abi.h). */
-    draw.texture = pending->texture;
-    draw.state = pending->state;
-    draw.vertices = hold->vertices;
-    draw.triangle_count = 1ul;
-    hardware = v9x_gl_hw_texture(context, pending->texture_name,
-                                 pending->alpha_used, &draw.texture,
-                                 &scale_s, &scale_t);
-    if (pending->texture.storage != V9X_R3D_ABI_TEXTURE_NONE && !hardware) {
-        return V9X_R3D_RESULT_UNSUPPORTED;
-    }
-    if (hardware && (scale_s != 1.0f || scale_t != 1.0f)) {
-        for (i = 0u; i < hold->vertex_count; ++i) {
-            hold->scaled[i] = hold->vertices[i];
-            hold->scaled[i].tu *= scale_s;
-            hold->scaled[i].tv *= scale_t;
+    for (n = 0ul; n < hold->segment_count; ++n) {
+        V9X_GL_TNL_SEGMENT *seg = &hold->segment[n];
+        V9X_R3D_ABI_DRAW *draw = &v9x_gl_tnl_draws[n];
+        V9X_R3D_ABI_VERTEX *vertices = hold->scaled + seg->first_vertex;
+        int hardware;
+        float scale_s = 1.0f;
+        float scale_t = 1.0f;
+
+        for (i = 0u; i < sizeof(*draw); ++i) {
+            ((BYTE *)draw)[i] = 0u;
         }
-        draw.vertices = hold->scaled;
-    }
-    if (v9x_gl_prim_alpha_test_passes(&draw.state, &draw.texture,
-                                      draw.vertices, hold->vertex_count)) {
-        draw.state.alpha_test_enable = 0ul;
-        ++v9x_gl_alpha_tests_dropped;
-        if (!v9x_gl_prim_blend_reads_alpha(&draw.state)) {
-            v9x_gl_tex_fragment_alpha_unused(&draw.texture);
+        draw->struct_bytes = sizeof(*draw);
+        draw->generation = description->generation;
+        draw->target.surface = v9x_gl_drawable_target(drawable, which);
+        draw->depth.surface = v9x_gl_drawable_depth(drawable);
+        if (draw->target.surface == 0) {
+            return V9X_R3D_RESULT_NO_MEMORY;
         }
-    }
-    if (hardware &&
-        v9x_gl_tex_replace_as_modulate(&draw.texture, draw.vertices,
-                                       hold->scaled, hold->vertex_count)) {
-        draw.vertices = hold->scaled;
+        /* An indexed draw: the inner draw's triangle count is 1
+         * (r3d_abi.h). */
+        draw->texture = seg->texture;
+        draw->state = seg->state;
+        draw->vertices = hold->scaled;
+        draw->triangle_count = 1ul;
+        hardware = v9x_gl_hw_texture(context, seg->texture_name,
+                                     seg->alpha_used, &draw->texture,
+                                     &scale_s, &scale_t);
+        if (seg->texture.storage != V9X_R3D_ABI_TEXTURE_NONE && !hardware) {
+            return V9X_R3D_RESULT_UNSUPPORTED;
+        }
+        if (hardware && (scale_s != 1.0f || scale_t != 1.0f)) {
+            for (i = 0u; i < seg->vertex_count; ++i) {
+                vertices[i].tu *= scale_s;
+                vertices[i].tv *= scale_t;
+            }
+        }
+        if (v9x_gl_prim_alpha_test_passes(&draw->state, &draw->texture,
+                                          vertices, seg->vertex_count)) {
+            draw->state.alpha_test_enable = 0ul;
+            ++v9x_gl_alpha_tests_dropped;
+            if (!v9x_gl_prim_blend_reads_alpha(&draw->state)) {
+                v9x_gl_tex_fragment_alpha_unused(&draw->texture);
+            }
+        }
+        if (hardware) {
+            (void)v9x_gl_tex_replace_as_modulate(&draw->texture, vertices,
+                                                 vertices,
+                                                 seg->vertex_count);
+        }
+        v9x_gl_tnl_segments[n].draw = draw;
+        v9x_gl_tnl_segments[n].constants = &seg->constants;
+        v9x_gl_tnl_segments[n].first_index = seg->first_index;
+        v9x_gl_tnl_segments[n].index_count = seg->index_count;
     }
 
-    /* The frame as the batch was captured under, not the state now. */
+    /* The frame as the batch was captured under, not the state now. One
+     * segment goes as a plain draw under its constants. */
     tnl = hold->frame;
-    tnl.draw = &draw;
+    tnl.draw = &v9x_gl_tnl_draws[0];
     tnl.key = &hold->key;
-    tnl.constants = &hold->constants;
+    tnl.constants = &hold->segment[0].constants;
     tnl.indices = hold->indices;
     tnl.index_count = hold->index_count;
     tnl.vertex_count = hold->vertex_count;
+    tnl.segments = hold->segment_count > 1ul ? v9x_gl_tnl_segments : 0;
+    tnl.segment_count = hold->segment_count > 1ul ? hold->segment_count : 0ul;
     result = iface->draw_tnl(&tnl, outcome);
     ++v9x_gl_count_draws;
     if (result == V9X_R3D_RESULT_STALE) {
@@ -2760,14 +2819,15 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
     V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
     V9X_GL_PENDING *pending = &context->pending;
     V9X_GL_TNL_HOLD *hold;
+    V9X_GL_TNL_SEGMENT *last;
     V9X_R3D_ABI_TEXTURE texture;
     V9X_R3D_ABI_STATE state;
     V9X_R3D_ABI_TNL_DRAW frame;
     V9X_R3D_TNL_KEY key;
     unsigned int targets;
     v9x_u32 i;
-    v9x_u32 level;
     int same;
+    int extend;
 
     if (v9x_gl_device_interface() == 0 || index_count == 0ul ||
         vertex_count > V9X_R3D_ABI_TNL_VERTICES_MAX ||
@@ -2799,62 +2859,98 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
      * are smooth, so it is stated rather than used. */
     frame.provoking = 2ul;
 
+    /* Into the held batch when it is a T&L batch of the same frame - the
+     * buffers, key, viewport and cull - with room, and its scissor and
+     * depth enable, which the batch has one of. Then the last segment
+     * grows if this batch is drawn as it is, and a new segment starts
+     * otherwise, while there is one to start. */
     same = pending->triangles == 0ul ||
            (pending->tnl && pending->targets == targets &&
             hold->vertex_count + vertex_count <=
                 V9X_R3D_ABI_TNL_VERTICES_MAX &&
             hold->index_count + index_count <= V9X_R3D_ABI_TNL_INDICES_MAX &&
             hold->screen_triangles + screen_count <= V9X_GL_TNL_SCREEN_MAX &&
-            v9x_gl_prim_same_draw(&pending->texture, &pending->state,
-                                  &texture, &state) &&
             v9x_gl_same_bytes(&hold->key, &key, sizeof(key)) &&
             v9x_gl_same_bytes(&hold->frame, &frame, sizeof(frame)) &&
-            v9x_gl_same_bytes(&hold->constants,
-                              &v9x_gl_tnl_constants_scratch,
-                              sizeof(hold->constants)));
-    if (!same) {
-        if (!pending->tnl) {
-            ++v9x_gl_tnl_break[0];
-        } else if (pending->targets != targets ||
-                   !v9x_gl_prim_same_draw(&pending->texture, &pending->state,
-                                          &texture, &state)) {
-            ++v9x_gl_tnl_break[1];
-        } else if (!v9x_gl_same_bytes(&hold->key, &key, sizeof(key)) ||
-                   !v9x_gl_same_bytes(&hold->frame, &frame, sizeof(frame))) {
-            ++v9x_gl_tnl_break[2];
-        } else if (!v9x_gl_same_bytes(&hold->constants,
-                                      &v9x_gl_tnl_constants_scratch,
-                                      sizeof(hold->constants))) {
-            ++v9x_gl_tnl_break[3];
-        } else {
-            ++v9x_gl_tnl_break[4];
-        }
+            state.depth_enable == hold->segment[0].state.depth_enable &&
+            state.scissor_left == hold->segment[0].state.scissor_left &&
+            state.scissor_top == hold->segment[0].state.scissor_top &&
+            state.scissor_right == hold->segment[0].state.scissor_right &&
+            state.scissor_bottom == hold->segment[0].state.scissor_bottom);
+    last = pending->triangles != 0ul && pending->tnl
+        ? &hold->segment[hold->segment_count - 1ul] : 0;
+    extend = same && last != 0 &&
+             last->texture_name == context->textures.units[0].bound &&
+             v9x_gl_prim_same_draw(&last->texture, &last->state, &texture,
+                                   &state) &&
+             v9x_gl_same_bytes(&last->constants,
+                               &v9x_gl_tnl_constants_scratch,
+                               sizeof(last->constants));
+    if (same && last != 0 && !extend &&
+        hold->segment_count >= V9X_R3D_ABI_TNL_SEGMENTS_MAX) {
+        ++v9x_gl_tnl_break[4];
         v9x_gl_pending_flush(context);
+        last = 0;
+    }
+    if (!same) {
+        /* Held was a screen batch, or a T&L batch of another frame, scissor
+         * or depth enable, or one with no room. */
+        ++v9x_gl_tnl_break[pending->tnl ? 2u : 0u];
+        v9x_gl_pending_flush(context);
+        last = 0;
+        extend = 0;
     }
     if (pending->triangles == 0ul) {
         pending->tnl = 1;
-        pending->texture = texture;
-        if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
-            for (level = 0ul; level < texture.level_count; ++level) {
-                pending->levels[level] = texture.levels[level];
-            }
-            pending->texture.levels = pending->levels;
-        }
-        pending->texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
-        pending->texture_name = context->textures.units[0].bound;
-        pending->texture1_name = 0u;
-        pending->state = state;
         pending->targets = targets;
-        pending->alpha_used =
-            v9x_gl_prim_fragment_alpha_used(&context->state,
-                                            &context->pipeline);
         hold->key = key;
-        hold->constants = v9x_gl_tnl_constants_scratch;
         hold->frame = frame;
+        hold->segment_count = 0ul;
         hold->vertex_count = 0ul;
         hold->index_count = 0ul;
         hold->screen_triangles = 0ul;
     }
+    if (!extend) {
+        V9X_GL_TNL_SEGMENT *seg;
+
+        if (hold->segment_count != 0ul) {
+            ++v9x_gl_tnl_break[1];
+        }
+        seg = &hold->segment[hold->segment_count++];
+
+        /* The texture as described here is the CPU copy; whether it is
+         * drawn from a surface is decided at the flush
+         * (v9x_gl_draw_tnl_into). Its level table is kept with the
+         * segment, as a held screen batch keeps its own, so the CPU twin
+         * can still be drawn from it after context->levels is reused. */
+        seg->texture = texture;
+        if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
+            v9x_u32 level;
+
+            for (level = 0ul; level < texture.level_count; ++level) {
+                seg->levels[level] = texture.levels[level];
+            }
+            seg->texture.levels = seg->levels;
+        }
+        seg->texture_name = context->textures.units[0].bound;
+        seg->state = state;
+        seg->alpha_used =
+            v9x_gl_prim_fragment_alpha_used(&context->state,
+                                            &context->pipeline);
+        seg->constants = v9x_gl_tnl_constants_scratch;
+        seg->first_index = hold->index_count;
+        seg->index_count = 0ul;
+        seg->first_vertex = hold->vertex_count;
+        seg->vertex_count = 0ul;
+        seg->first_screen = hold->screen_triangles;
+        seg->screen_count = 0ul;
+        last = seg;
+    } else {
+        ++v9x_gl_tnl_break[3];
+    }
+    last->index_count += index_count;
+    last->vertex_count += vertex_count;
+    last->screen_count += screen_count;
     /* This batch's indices rebased past the vertices already held. */
     for (i = 0ul; i < vertex_count; ++i) {
         hold->vertices[hold->vertex_count + i] = object[i];

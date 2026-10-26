@@ -362,6 +362,26 @@ typedef struct v9x_r3d_abi_draw {
 #define V9X_R3D_ABI_TNL_VERTICES_MAX 512ul
 #define V9X_R3D_ABI_TNL_INDICES_MAX  1536ul
 
+/*
+ * Segments (indexed draws only): several draws in one request, so the
+ * engine can put them in one batch (docs\plans\hardware-tnl.md, step 3b).
+ * They partition the index list in order - the first from index 0, each
+ * after the one before, the last ending at index_count - and each draws
+ * its range with its own draw's textures and fragment state and its own
+ * constants. Every segment's draw names the request's target and depth
+ * buffer and the same scissor; its vertices and triangle count are not
+ * read. The request's own draw then supplies the target, depth and
+ * vertices, and its texture, state and constants are not used.
+ */
+#define V9X_R3D_ABI_TNL_SEGMENTS_MAX 8ul
+
+typedef struct v9x_r3d_abi_tnl_segment {
+    const struct v9x_r3d_abi_draw *draw;
+    const V9X_R3D_TNL_CONSTANTS *constants;
+    v9x_u32 first_index;
+    v9x_u32 index_count;
+} V9X_R3D_ABI_TNL_SEGMENT;
+
 typedef struct v9x_r3d_abi_tnl_draw {
     v9x_u32 struct_bytes;
     const V9X_R3D_ABI_DRAW *draw;
@@ -378,6 +398,8 @@ typedef struct v9x_r3d_abi_tnl_draw {
     const v9x_u16 *indices;
     v9x_u32 index_count;
     v9x_u32 vertex_count;
+    const V9X_R3D_ABI_TNL_SEGMENT *segments;   /* null: one draw */
+    v9x_u32 segment_count;
 } V9X_R3D_ABI_TNL_DRAW;
 
 /* Triangles that reached the engine, meaningful for OK and PARTIAL. */
@@ -453,7 +475,8 @@ typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 88 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_tnl_draw[sizeof(V9X_R3D_ABI_TNL_DRAW) == 60 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_tnl_draw[sizeof(V9X_R3D_ABI_TNL_DRAW) == 68 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_tnl_segment[sizeof(V9X_R3D_ABI_TNL_SEGMENT) == 16 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_raw[sizeof(V9X_R3D_ABI_RAW) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 228 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];

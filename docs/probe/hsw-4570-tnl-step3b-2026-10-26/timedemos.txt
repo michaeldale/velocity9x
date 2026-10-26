@@ -1,0 +1,12 @@
+hl-3b2-on: 394 frames 4.479 seconds 87.961 fps
+209 pid=FFE34CBD counters tnl batches=4048 triangles=669349 refused=0 failed=0
+210 pid=FFE34CBD counters tnl-hold flush-for-screen=1210 new-segment=20209 flush-for-frame=404 joined=124417 flush-segments-full=2427
+hl-3b2-off: 394 frames 4.627 seconds 85.152 fps
+209 pid=FFE38025 counters tnl batches=0 triangles=0 refused=0 failed=0
+210 pid=FFE38025 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+trace3b2-on: 1346 frames, 23.0 seconds: 58.6 fps
+136 pid=FFE34A19 counters tnl batches=31894 triangles=2814117 refused=0 failed=0
+137 pid=FFE34A19 counters tnl-hold flush-for-screen=12674 new-segment=55904 flush-for-frame=12152 joined=930851 flush-segments-full=1758
+trace3b2-off: 1346 frames, 23.6 seconds: 57.1 fps
+136 pid=FFE34B15 counters tnl batches=0 triangles=0 refused=0 failed=0
+137 pid=FFE34B15 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0

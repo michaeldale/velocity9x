@@ -716,6 +716,8 @@ struct v9x_hsw_draw {
  * cc_viewport (32-byte aligned): offsets from the dynamic state base.
  * provoking: the flat-shading vertex, 0-2.
  */
+struct v9x_hsw_vs_segment;
+
 struct v9x_hsw_vs_draw {
     v9x_u32 kernel;
     v9x_u32 constants;
@@ -723,7 +725,40 @@ struct v9x_hsw_vs_draw {
     v9x_u32 sf_clip_viewport;
     v9x_u32 cc_viewport;
     v9x_u8 provoking;
+    /* Hardware T&L step 3b: more draws in the same batch, after the
+     * draw's own (which is segment 0 and must be indexed from index 0).
+     * Null and 0 for one draw. */
+    const struct v9x_hsw_vs_segment *segments;
+    v9x_u8 segment_count;
 };
+
+/*
+ * One further draw of a batch with the vertex stage on (step 3b): the
+ * same target, depth buffer, vertices, index buffer, viewport and VS
+ * kernel, its own pixel-shader kernel and fragment state - binding table
+ * (surface state base offset), sampler, blend, CC and depth-stencil state
+ * (dynamic state base offsets) - and push constants (a graphics address),
+ * drawing index_count indices from first_index. Between draws the batch
+ * changes only these pointers, 3DSTATE_PS and CONSTANT_VS, as Mesa does
+ * per draw; the pipeline flushes, the URB, the VS and the rest are the
+ * batch's, once. That is what a segment saves: the 2026-10-18 record
+ * measured about 29 us of render-engine latency a batch, mostly fixed.
+ */
+struct v9x_hsw_vs_segment {
+    v9x_u32 kernel;
+    v9x_u32 binding_table;
+    v9x_u32 sampler;
+    v9x_u32 blend;
+    v9x_u32 cc;
+    v9x_u32 depth_test;
+    v9x_u32 constants;
+    v9x_u32 first_index;
+    v9x_u32 index_count;
+};
+
+/* The most further draws one batch takes: each is about 40 dwords, and a
+ * slot's batch area is 2 KB beside the draw's own 190. */
+#define V9X_HSW_VS_SEGMENTS_MAX 7u
 
 /* struct v9x_hsw_draw cull: which screen-space winding is discarded. */
 #define V9X_HSW_DRAW_CULL_NONE ((v9x_u8)0u)
@@ -741,6 +776,14 @@ v9x_status v9x_intel_hsw_3dprimitive_indexed(struct v9x_hsw_batch *batch,
                                              v9x_u8 topology,
                                              v9x_u32 indices,
                                              v9x_u32 base_vertex);
+
+/* The same from index `start` of the index buffer (DW3 Start Vertex
+ * Location, which a RANDOM primitive reads as the first index). */
+v9x_status v9x_intel_hsw_3dprimitive_indexed_at(struct v9x_hsw_batch *batch,
+                                                v9x_u8 topology,
+                                                v9x_u32 indices,
+                                                v9x_u32 start,
+                                                v9x_u32 base_vertex);
 
 /* 3DSTATE_SF as v9x_intel_hsw_sf_screen_depth, with a cull
  * (V9X_HSW_DRAW_CULL_*). */

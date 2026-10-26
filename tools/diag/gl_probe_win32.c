@@ -1296,8 +1296,10 @@ static void v9x_glp_tnl_cube_face(const GLfloat *a, const GLfloat *b,
     glVertex3fv(d);
 }
 
-static void v9x_glp_tnl_draw(GLint width, GLint height, GLuint texture)
+static void v9x_glp_tnl_draw(GLint width, GLint height, GLuint texture,
+                             GLuint texture2)
 {
+    int quad;
     static const GLfloat v[8][3] = {
         { -1.0f, -1.0f, -1.0f }, { 1.0f, -1.0f, -1.0f },
         { 1.0f, 1.0f, -1.0f }, { -1.0f, 1.0f, -1.0f },
@@ -1377,6 +1379,28 @@ static void v9x_glp_tnl_draw(GLint width, GLint height, GLuint texture)
     glTexCoord2f(0.0f, 2.0f);
     glVertex3f(-2.6f, 1.9f, -3.5f);
     glEnd();
+
+    /* Six small quads along the bottom, alternating two textures, each
+     * under its own translation and colour, with nothing between them
+     * that changes the frame: the ICD holds them as one T&L batch of six
+     * segments (step 3b), which the engine draws in one submission. */
+    for (quad = 0; quad < 6; ++quad) {
+        glPushMatrix();
+        glTranslatef(-2.2f + 0.8f * (GLfloat)quad, -2.1f, -4.0f);
+        glBindTexture(GL_TEXTURE_2D, (quad & 1) != 0 ? texture2 : texture);
+        glBegin(GL_QUADS);
+        glColor3f(1.0f, 0.5f + 0.1f * (GLfloat)quad, 1.0f);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(-0.3f, -0.3f, 0.0f);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(0.3f, -0.3f, 0.0f);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(0.3f, 0.3f, 0.0f);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(-0.3f, 0.3f, 0.0f);
+        glEnd();
+        glPopMatrix();
+    }
     glDisable(GL_TEXTURE_2D);
     glDisable(GL_DEPTH_TEST);
     glDepthRange(0.0, 1.0);
@@ -1462,6 +1486,7 @@ static void v9x_glp_tnl(HDC hdc, HGLRC context, GLint width, GLint height)
     int worst = 0;
     int pass;
     GLuint texture = 0u;
+    GLuint texture2 = 0u;
     GLint x;
     GLint y;
 
@@ -1493,17 +1518,33 @@ static void v9x_glp_tnl(HDC hdc, HGLRC context, GLint width, GLint height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 8, 8, 0, GL_RGB,
                  GL_UNSIGNED_BYTE, texels);
+    /* The second: the same checker, red on green. */
+    for (index = 0ul; index < 8ul * 8ul; ++index) {
+        GLubyte *t = &texels[index * 3ul];
+        int on = (((index % 8ul) ^ (index / 8ul)) & 1ul) != 0ul;
+
+        t[0] = on ? 220u : 20u;
+        t[1] = on ? 30u : 180u;
+        t[2] = 30u;
+    }
+    glGenTextures(1, &texture2);
+    glBindTexture(GL_TEXTURE_2D, texture2);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 8, 8, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, texels);
 
     /* Pass 0 with T&L (the variable unset), pass 1 without it. */
     for (pass = 0; pass < 2; ++pass) {
         v9x_glp_tnl_switch(hdc, context, pass == 0 ? 0 : "0");
-        v9x_glp_tnl_draw(width, height, texture);
+        v9x_glp_tnl_draw(width, height, texture, texture2);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
                      frame[pass]);
     }
     v9x_glp_tnl_switch(hdc, context, 0);
     glDeleteTextures(1, &texture);
+    glDeleteTextures(1, &texture2);
 
     for (index = 0ul; index < (DWORD)width * (DWORD)height; ++index) {
         const GLubyte *a = &frame[0][index * 4ul];

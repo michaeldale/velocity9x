@@ -217,6 +217,15 @@ Progress:
     object vertices.
 
   The decision record says why each is needed.
+- **Step 3b done (2026-10-26, boot 87):**
+  [`2026-10-26-haswell-tnl-step3b-segmented-batches.md`](../decisions/2026-10-26-haswell-tnl-step3b-segmented-batches.md).
+  - The lever was batch count, not the three pieces above. A held T&L
+    batch now carries up to 8 state segments that share vertices and
+    constants.
+  - Half-Life 88.0 vs 85.2, and Quake 3 58.6 vs 57.1, with T&L on vs off.
+    Engine draws in Quake 3 fell by 41%.
+  - The A/B scene is unchanged within rounding, with segments exercised.
+  - The three pieces stay open. Dropping the CPU twin is the next saving.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

@@ -405,6 +405,36 @@ static int v9x_r3d_validate_within(float value, float low, float high)
     return v9x_r3d_validate_finite(value) && value >= low && value <= high;
 }
 
+/* Segments, when present: 1..max of them partitioning the index list in
+ * order from 0, whole triangles each, each naming a draw and constants. */
+static v9x_u32 v9x_r3d_validate_tnl_segments(const V9X_R3D_ABI_TNL_DRAW *tnl)
+{
+    v9x_u32 next = 0ul;
+    v9x_u32 index;
+
+    if (tnl->segments == 0) {
+        return tnl->segment_count == 0ul ? V9X_R3D_RESULT_OK
+                                         : V9X_R3D_RESULT_INVALID;
+    }
+    if (tnl->segment_count == 0ul ||
+        tnl->segment_count > V9X_R3D_ABI_TNL_SEGMENTS_MAX) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    for (index = 0ul; index < tnl->segment_count; ++index) {
+        const V9X_R3D_ABI_TNL_SEGMENT *seg = &tnl->segments[index];
+
+        if (seg->draw == 0 || seg->constants == 0 ||
+            seg->first_index != next || seg->index_count == 0ul ||
+            seg->index_count % 3ul != 0ul ||
+            seg->index_count > tnl->index_count - next) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+        next += seg->index_count;
+    }
+    return next == tnl->index_count ? V9X_R3D_RESULT_OK
+                                    : V9X_R3D_RESULT_INVALID;
+}
+
 v9x_u32 v9x_r3d_validate_tnl(const V9X_R3D_ABI_TNL_DRAW *tnl)
 {
     float limit = V9X_R3D_TNL_VIEWPORT_LIMIT;
@@ -440,9 +470,10 @@ v9x_u32 v9x_r3d_validate_tnl(const V9X_R3D_ABI_TNL_DRAW *tnl)
         return V9X_R3D_RESULT_INVALID;
     }
     /* Indexed: a list of whole triangles over 1..max vertices; otherwise
-     * both counts zero. */
+     * both counts zero, and no segments. */
     if (tnl->indices == 0) {
-        return tnl->index_count == 0ul && tnl->vertex_count == 0ul
+        return tnl->index_count == 0ul && tnl->vertex_count == 0ul &&
+               tnl->segments == 0 && tnl->segment_count == 0ul
             ? V9X_R3D_RESULT_OK : V9X_R3D_RESULT_INVALID;
     }
     if (tnl->index_count == 0ul || tnl->index_count % 3ul != 0ul ||
@@ -451,5 +482,5 @@ v9x_u32 v9x_r3d_validate_tnl(const V9X_R3D_ABI_TNL_DRAW *tnl)
         tnl->vertex_count > V9X_R3D_ABI_TNL_VERTICES_MAX) {
         return V9X_R3D_RESULT_INVALID;
     }
-    return V9X_R3D_RESULT_OK;
+    return v9x_r3d_validate_tnl_segments(tnl);
 }

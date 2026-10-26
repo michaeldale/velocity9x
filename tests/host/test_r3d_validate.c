@@ -715,6 +715,8 @@ static void tnl_reset(V9X_R3D_ABI_TNL_DRAW *tnl, const V9X_R3D_ABI_DRAW *draw,
     tnl->indices = 0;
     tnl->index_count = 0ul;
     tnl->vertex_count = 0ul;
+    tnl->segments = 0;
+    tnl->segment_count = 0ul;
 }
 
 /* ABI 7's T&L request, field by field, each refusal beside an acceptance. */
@@ -812,6 +814,48 @@ static void test_tnl_header(void)
         tnl.indices = 0;
         tnl.vertex_count = 4ul;
         VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+        /* Segments partition the indices in order from 0, whole
+         * triangles each, each with a draw and constants. */
+        {
+            V9X_R3D_ABI_TNL_SEGMENT seg[2];
+
+            tnl_reset(&tnl, &draw, &key, &constants);
+            tnl.indices = indices;
+            tnl.index_count = 6ul;
+            tnl.vertex_count = 4ul;
+            seg[0].draw = &draw;
+            seg[0].constants = &constants;
+            seg[0].first_index = 0ul;
+            seg[0].index_count = 3ul;
+            seg[1] = seg[0];
+            seg[1].first_index = 3ul;
+            tnl.segments = seg;
+            tnl.segment_count = 2ul;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+            seg[1].first_index = 2ul;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+            seg[1].first_index = 3ul;
+            seg[1].index_count = 6ul;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+            seg[1].index_count = 3ul;
+            seg[1].constants = 0;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+            seg[1].constants = &constants;
+            seg[0].draw = 0;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+            seg[0].draw = &draw;
+            tnl.segment_count = V9X_R3D_ABI_TNL_SEGMENTS_MAX + 1ul;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+            tnl.segment_count = 0ul;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+            /* Segments need indices. */
+            tnl.segment_count = 2ul;
+            tnl.indices = 0;
+            tnl.index_count = 0ul;
+            tnl.vertex_count = 0ul;
+            VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+        }
     }
 }
 

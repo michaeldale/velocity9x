@@ -1169,10 +1169,50 @@ static void v9x_d3d_hsw_note_texture(const V9X_D3D_HSW_TEXTURE *texture,
 
 /* Zero, or the V9X_D3D_HSW_REFUSE_* reason for the block that would not
  * encode. */
+/*
+ * Where a draw's fragment state goes, as offsets from the slot's state
+ * base. Every draw but a T&L batch's later segments uses the fixed layout
+ * E's offsets give (v9x_d3d_hsw_layout_shade); those segments get their
+ * own (v9x_d3d_hsw_segment_layout, step 3b).
+ */
+typedef struct v9x_d3d_hsw_layout {
+    DWORD binding_table;
+    DWORD tex_surface[2];
+    DWORD sampler;
+    DWORD blend;
+    DWORD cc;
+    DWORD ds;
+} V9X_D3D_HSW_LAYOUT;
+
+static const V9X_D3D_HSW_LAYOUT v9x_d3d_hsw_layout_shade = {
+    V9X_HSW_SHADE_BINDING_TABLE(0),
+    { V9X_HSW_SHADE_TEX_SURFACE(0), V9X_HSW_SHADE_TEX_SURFACE(1) },
+    V9X_HSW_SHADE_SAMPLER,
+    V9X_HSW_SHADE_BLEND_ALPHA_TEST,
+    V9X_HSW_SHADE_CC,
+    V9X_D3D_HSW_DS_OFF
+};
+
+static DWORD v9x_d3d_hsw_write_state_at(const V9X_R3D_DRAW *draw,
+                                        const V9X_D3D_HSW_STATE *state,
+                                        const struct v9x_hsw_pipe_slot *slot,
+                                        const V9X_D3D_HSW_LAYOUT *layout,
+                                        DWORD *kernel);
+
 static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                      const V9X_D3D_HSW_STATE *state,
                                      const struct v9x_hsw_pipe_slot *slot,
                                      DWORD *kernel)
+{
+    return v9x_d3d_hsw_write_state_at(draw, state, slot,
+                                      &v9x_d3d_hsw_layout_shade, kernel);
+}
+
+static DWORD v9x_d3d_hsw_write_state_at(const V9X_R3D_DRAW *draw,
+                                        const V9X_D3D_HSW_STATE *state,
+                                        const struct v9x_hsw_pipe_slot *slot,
+                                        const V9X_D3D_HSW_LAYOUT *layout,
+                                        DWORD *kernel)
 {
     v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off);
     v9x_u32 *table;
@@ -1187,16 +1227,16 @@ static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
                                  draw->target.pitch) != V9X_STATUS_OK) {
         return V9X_D3D_HSW_REFUSE_TARGET_STATE;
     }
-    table = image + V9X_HSW_SHADE_BINDING_TABLE(0) / 4ul;
+    table = image + layout->binding_table / 4ul;
     table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
-    table[1] = V9X_D3D_HSW_TEXTURE_OFF;
-    table[2] = V9X_D3D_HSW_TEXTURE_OFF;
+    table[1] = layout->tex_surface[0];
+    table[2] = layout->tex_surface[0];
     /* Unit n's surface at E's texture n, its sampler n after the first
      * (the kernel's TEX1 reads binding 2, sampler 1: hsw_eu.c). */
     for (index = 0ul; index < (DWORD)state->textured; ++index) {
         texture = &state->texture[index];
         if (v9x_intel_hsw_surface_2d(
-                image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
+                image + layout->tex_surface[index] / 4ul,
                 texture->format, texture->address, texture->width,
                 texture->height, texture->pitch) != V9X_STATUS_OK) {
             v9x_d3d_hsw_note_texture(texture, index, 1ul);
@@ -1204,13 +1244,13 @@ static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
         }
         if (texture->levels > 1u &&
             v9x_intel_hsw_surface_mips(
-                image + V9X_HSW_SHADE_TEX_SURFACE(index) / 4ul,
+                image + layout->tex_surface[index] / 4ul,
                 texture->levels) != V9X_STATUS_OK) {
             v9x_d3d_hsw_note_texture(texture, index, 2ul);
             return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
         }
         if (v9x_intel_hsw_sampler(
-                image + (V9X_HSW_SHADE_SAMPLER +
+                image + (layout->sampler +
                          index * V9X_HSW_SAMPLER_BYTES) / 4ul,
                 &texture->sampler) != V9X_STATUS_OK) {
             v9x_d3d_hsw_note_texture(texture, index, 3ul);
@@ -1218,7 +1258,7 @@ static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
         }
     }
     if (state->textured == 2) {
-        table[2] = V9X_HSW_SHADE_TEX_SURFACE(1);
+        table[2] = layout->tex_surface[1];
     }
     if (!state->textured) {
         /* An untextured kernel samples nothing, but the binding table still
@@ -1229,14 +1269,14 @@ static DWORD v9x_d3d_hsw_write_state(const V9X_R3D_DRAW *draw,
     for (index = 0ul; index < V9X_D3D_HSW_BORDER_BYTES / 4ul; ++index) {
         image[V9X_HSW_SHADE_BORDER_COLOR / 4ul + index] = 0ul;
     }
-    if (v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul,
+    if (v9x_intel_hsw_blend(image + layout->blend / 4ul,
                             &state->blend) != V9X_STATUS_OK ||
-        v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul,
+        v9x_intel_hsw_cc_state(image + layout->cc / 4ul,
                                state->alpha_ref) != V9X_STATUS_OK) {
         return V9X_D3D_HSW_REFUSE_COLOUR_STATE;
     }
     if (state->depth &&
-        v9x_intel_hsw_depth_stencil(image + V9X_D3D_HSW_DS_OFF / 4ul, 1u,
+        v9x_intel_hsw_depth_stencil(image + layout->ds / 4ul, 1u,
                                     state->depth_function,
                                     state->depth_write) != V9X_STATUS_OK) {
         return V9X_D3D_HSW_REFUSE_COLOUR_STATE;
@@ -1722,10 +1762,11 @@ static float v9x_d3d_hsw_guard_ndc(float half_extent)
 /* The VS state in the slot's block: both viewports, the pushed constants,
  * and the kernel unless the slot already holds it. */
 static int v9x_d3d_hsw_write_vs_state(const struct v9x_hsw_pipe_slot *slot,
-                                      const V9X_R3D_TNL *tnl)
+                                      const V9X_R3D_TNL *tnl,
+                                      const V9X_R3D_TNL_CONSTANTS *block)
 {
     v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off);
-    const v9x_u32 *constants = (const v9x_u32 *)tnl->constants;
+    const v9x_u32 *constants = (const v9x_u32 *)block;
     float half_width = tnl->viewport_width * 0.5f;
     float half_height = tnl->viewport_height * 0.5f;
     float low = tnl->depth_near;
@@ -1784,6 +1825,74 @@ static int v9x_d3d_hsw_write_vs_state(const struct v9x_hsw_pipe_slot *slot,
 #define V9X_D3D_HSW_TNL_INDEX_LINE 64ul
 
 /*
+ * Step 3b: where a T&L batch's later segments keep their state.
+ *
+ * - Push constants: each segment's at V9X_HSW_SHADE_VS_CONSTANTS + 40h n,
+ *   in the space the full constant block was given; step 3's kernels
+ *   read two GRFs (64 bytes).
+ * - Binding tables: 20h each from 17A0h, after the constants, inside the
+ *   slot's state block - BINDING_TABLE_POINTERS_PS takes a 16-bit offset
+ *   from the surface state base, and the vertex area of slot 1 is past
+ *   that from its base.
+ * - The rest - two texture surfaces, samplers, blend, CC and depth-stencil
+ *   state, 200h a segment - in the last 4 KB of the slot's vertex area,
+ *   which indexed T&L draws leave free. Those are 32-bit offsets, and the
+ *   batch's state bounds are widened to reach them.
+ */
+#define V9X_D3D_HSW_SEGMENT_TAIL   0x1000ul
+#define V9X_D3D_HSW_SEGMENT_STRIDE 0x200ul
+#define V9X_D3D_HSW_SEG_CONSTANTS(n) \
+    (V9X_HSW_SHADE_VS_CONSTANTS + 0x40ul * (n))
+#define V9X_D3D_HSW_SEG_BT(n)      (0x17a0ul + 0x20ul * (n))
+
+typedef char v9x_d3d_hsw_assert_seg_constants[
+    V9X_HSW_VS_CONSTANT_GRFS * 32u <= 0x40u &&
+    V9X_D3D_HSW_SEG_CONSTANTS(V9X_HSW_VS_SEGMENTS_MAX + 1u) <=
+        V9X_D3D_HSW_SEG_BT(0) ? 1 : -1];
+typedef char v9x_d3d_hsw_assert_seg_bt[
+    V9X_D3D_HSW_SEG_BT(V9X_HSW_VS_SEGMENTS_MAX + 1u) <=
+        V9X_HSW_SHADE_VS_KERNEL ? 1 : -1];
+typedef char v9x_d3d_hsw_assert_seg_tail[
+    V9X_D3D_HSW_SEGMENT_STRIDE * (V9X_HSW_VS_SEGMENTS_MAX + 1u) <=
+        V9X_D3D_HSW_SEGMENT_TAIL ? 1 : -1];
+
+/* The segments' mapped state and batch records; static, as the kernel
+ * scratch is, since HAL calls run one at a time under the Win16 lock. */
+static V9X_D3D_HSW_STATE v9x_d3d_hsw_seg_state[V9X_HSW_VS_SEGMENTS_MAX + 1u];
+static struct v9x_hsw_vs_segment v9x_d3d_hsw_segs[V9X_HSW_VS_SEGMENTS_MAX];
+
+static void v9x_d3d_hsw_segment_layout(const struct v9x_hsw_pipe_slot *slot,
+                                       DWORD n, V9X_D3D_HSW_LAYOUT *layout)
+{
+    DWORD base = slot->vertex_off + slot->vertex_bytes -
+                 V9X_D3D_HSW_SEGMENT_TAIL - slot->state_off +
+                 n * V9X_D3D_HSW_SEGMENT_STRIDE;
+
+    layout->binding_table = V9X_D3D_HSW_SEG_BT(n);
+    layout->tex_surface[0] = base;
+    layout->tex_surface[1] = base + 0x20ul;
+    layout->sampler = base + 0x40ul;
+    layout->blend = base + 0x80ul;
+    layout->cc = base + 0xc0ul;
+    layout->ds = base + 0x100ul;
+}
+
+/* A segment's push constants: the GRFs the kernel reads. */
+static void v9x_d3d_hsw_write_constants(const struct v9x_hsw_pipe_slot *slot,
+                                        const V9X_R3D_TNL_CONSTANTS *block,
+                                        DWORD offset)
+{
+    v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off + offset);
+    const v9x_u32 *source = (const v9x_u32 *)block;
+    DWORD index;
+
+    for (index = 0ul; index < (DWORD)V9X_HSW_VS_CONSTANT_GRFS * 8ul;
+         ++index) {
+        image[index] = source[index];
+    }
+}
+
+/*
  * An indexed T&L draw, one piece: the vertices once, in their order (with
  * unit 1's coordinates after each, as the TL2 vertex has them), then the
  * indices from the next cache line, zero to the end of the line the last
@@ -1808,6 +1917,7 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
     DWORD index_end;
     DWORD index;
     DWORD word;
+    DWORD seg;
     const v9x_u32 *source;
     const v9x_u32 *uv1;
     v9x_u32 *target;
@@ -1823,22 +1933,78 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
     index_end = (index_off + tnl->index_count * 2ul +
                  V9X_D3D_HSW_TNL_INDEX_LINE - 1ul) &
                 ~(V9X_D3D_HSW_TNL_INDEX_LINE - 1ul);
-    if (index_end > V9X_HSW_PIPE_VERTEX_BYTES) {
+    if (index_end > V9X_HSW_PIPE_VERTEX_BYTES - V9X_D3D_HSW_SEGMENT_TAIL) {
         return -1;
+    }
+    /* Each later segment's fragment state, mapped as the first's was, and
+     * drawable in the same batch: the same depth buffer and the same
+     * scissor, since the batch has one of each. */
+    for (seg = 1ul; seg < tnl->segment_count; ++seg) {
+        V9X_D3D_HSW_STATE *other = &v9x_d3d_hsw_seg_state[seg];
+
+        reason = v9x_d3d_hsw_map(&tnl->segments[seg].draw, other);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
+            return -1;
+        }
+        if (other->depth != state->depth ||
+            (state->depth &&
+             (other->depth_address != state->depth_address ||
+              other->depth_format != state->depth_format)) ||
+            other->scissor_empty != state->scissor_empty ||
+            other->scissor[0] != state->scissor[0] ||
+            other->scissor[1] != state->scissor[1] ||
+            other->scissor[2] != state->scissor[2] ||
+            other->scissor[3] != state->scissor[3] ||
+            other->textured == 2 || state->textured == 2) {
+            return -1;
+        }
     }
     if (!v9x_d3d_hsw_wait_slot(&slot)) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         return -1;
     }
+    /* The state write in RingWait, as the TL path times it. */
+    timed = V9X_TIME_BEGIN();
     reason = v9x_d3d_hsw_write_state(draw, state, &slot, &kernel);
     if (reason != V9X_D3D_HSW_REFUSE_NONE) {
         v9x_d3d_hsw_count_refusal(reason);
         return -1;
     }
-    if (!v9x_d3d_hsw_write_vs_state(&slot, tnl)) {
+    if (!v9x_d3d_hsw_write_vs_state(&slot, tnl,
+                                    tnl->segment_count != 0ul ?
+                                        tnl->segments[0].constants :
+                                        tnl->constants)) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
         return -1;
     }
+    for (seg = 1ul; seg < tnl->segment_count; ++seg) {
+        V9X_D3D_HSW_LAYOUT layout;
+        struct v9x_hsw_vs_segment *out = &v9x_d3d_hsw_segs[seg - 1ul];
+        DWORD seg_kernel = 0ul;
+
+        v9x_d3d_hsw_segment_layout(&slot, seg, &layout);
+        reason = v9x_d3d_hsw_write_state_at(&tnl->segments[seg].draw,
+                                            &v9x_d3d_hsw_seg_state[seg],
+                                            &slot, &layout, &seg_kernel);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
+            return -1;
+        }
+        v9x_d3d_hsw_write_constants(&slot, tnl->segments[seg].constants,
+                                    V9X_D3D_HSW_SEG_CONSTANTS(seg));
+        out->kernel = seg_kernel;
+        out->binding_table = layout.binding_table;
+        out->sampler = layout.sampler;
+        out->blend = layout.blend;
+        out->cc = layout.cc;
+        out->depth_test = layout.ds;
+        out->constants = V9X_D3D_HSW_GFX(slot.state_off +
+                                         V9X_D3D_HSW_SEG_CONSTANTS(seg));
+        out->first_index = tnl->segments[seg].first_index;
+        out->index_count = tnl->segments[seg].index_count;
+    }
+    V9X_TIME_END(V9X_TIME_RING_SPACE_WAIT, timed);
 
     /* The copy into the uncached aperture is most of a T&L draw's CPU
      * time; timed as the TL path's vertex copy is (RingWrite). */
@@ -1882,16 +2048,23 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
     d->vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
     d->vertex_count = tnl->vertex_count;
     d->indices = V9X_D3D_HSW_GFX(slot.vertex_off + index_off);
-    d->index_count = tnl->index_count;
+    d->index_count = tnl->segment_count != 0ul ?
+                         tnl->segments[0].index_count : tnl->index_count;
     d->strip = 0u;
     vs->constants = V9X_D3D_HSW_GFX(slot.state_off +
                                     V9X_HSW_SHADE_VS_CONSTANTS);
+    vs->segments = v9x_d3d_hsw_segs;
+    vs->segment_count = tnl->segment_count > 1ul ?
+                            (v9x_u8)(tnl->segment_count - 1ul) : (v9x_u8)0u;
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
+    /* The state span reaches the end of the slot's vertex area, where the
+     * later segments' state is (v9x_d3d_hsw_segment_layout). */
     if (v9x_intel_hsw_draw_workload_vs(&batch,
                                        V9X_D3D_HSW_GFX(slot.state_off),
-                                       slot.state_span, d, vs,
-                                       V9X_D3D_HSW_CRUMB_GFX,
+                                       slot.vertex_off + slot.vertex_bytes -
+                                           slot.state_off,
+                                       d, vs, V9X_D3D_HSW_CRUMB_GFX,
                                        tnl->index_count / 3ul) !=
         V9X_STATUS_OK) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
@@ -1905,10 +2078,30 @@ static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+static int v9x_d3d_hsw_draw_tnl_body(const V9X_R3D_DRAW *draw,
+                                     const V9X_R3D_VERTEX *vertices,
+                                     DWORD triangle_count,
+                                     const V9X_R3D_TNL *tnl);
+
+/* The whole T&L draw timed as the TL draw is (EngineDraw), so V9XTRACE's
+ * per-batch split covers both paths. */
 static int v9x_d3d_hsw_draw_tnl(const V9X_R3D_DRAW *draw,
                                 const V9X_R3D_VERTEX *vertices,
                                 DWORD triangle_count,
                                 const V9X_R3D_TNL *tnl)
+{
+    DWORD started = V9X_TIME_BEGIN();
+    int result = v9x_d3d_hsw_draw_tnl_body(draw, vertices, triangle_count,
+                                           tnl);
+
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return result;
+}
+
+static int v9x_d3d_hsw_draw_tnl_body(const V9X_R3D_DRAW *draw,
+                                     const V9X_R3D_VERTEX *vertices,
+                                     DWORD triangle_count,
+                                     const V9X_R3D_TNL *tnl)
 {
     V9X_D3D_HSW_STATE state;
     struct v9x_hsw_pipe_slot slot;
@@ -1935,12 +2128,20 @@ static int v9x_d3d_hsw_draw_tnl(const V9X_R3D_DRAW *draw,
         !v9x_d3d_hsw_tnl_available() ||
         !v9x_d3d_hsw_tnl_key_runs(tnl->key) ||
         tnl->viewport_width > 2.0f * V9X_D3D_HSW_GUARD_HALF ||
-        tnl->viewport_height > 2.0f * V9X_D3D_HSW_GUARD_HALF) {
+        tnl->viewport_height > 2.0f * V9X_D3D_HSW_GUARD_HALF ||
+        tnl->segment_count > V9X_HSW_VS_SEGMENTS_MAX + 1ul ||
+        (tnl->segment_count != 0ul &&
+         (tnl->indices == 0 || tnl->segments[0].first_index != 0ul))) {
         return -1;
     }
     if (!v9x_d3d_hsw_ready()) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_NOT_READY);
         return -1;
+    }
+    /* Segmented (step 3b): the first segment is the batch's own draw, and
+     * the request's draw supplied only what every segment shares. */
+    if (tnl->segment_count != 0ul) {
+        draw = &tnl->segments[0].draw;
     }
     reason = v9x_d3d_hsw_map(draw, &state);
     if (reason != V9X_D3D_HSW_REFUSE_NONE) {
@@ -1993,6 +2194,8 @@ static int v9x_d3d_hsw_draw_tnl(const V9X_R3D_DRAW *draw,
     vs.sf_clip_viewport = V9X_HSW_SHADE_VS_SF_CLIP_VIEWPORT;
     vs.cc_viewport = V9X_HSW_SHADE_VS_CC_VIEWPORT;
     vs.provoking = (v9x_u8)tnl->provoking;
+    vs.segments = 0;
+    vs.segment_count = 0u;
     limit = d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
     if (tnl->indices != 0) {
         return v9x_d3d_hsw_draw_tnl_indexed(draw, vertices, tnl, &state, &d,
@@ -2010,7 +2213,7 @@ static int v9x_d3d_hsw_draw_tnl(const V9X_R3D_DRAW *draw,
             v9x_d3d_hsw_count_refusal(reason);
             return done == 0ul ? -1 : 0;
         }
-        if (!v9x_d3d_hsw_write_vs_state(&slot, tnl)) {
+        if (!v9x_d3d_hsw_write_vs_state(&slot, tnl, tnl->constants)) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
             return done == 0ul ? -1 : 0;
         }

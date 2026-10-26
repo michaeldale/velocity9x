@@ -530,6 +530,16 @@ v9x_status v9x_intel_hsw_3dprimitive_indexed(struct v9x_hsw_batch *batch,
                                              v9x_u32 indices,
                                              v9x_u32 base_vertex)
 {
+    return v9x_intel_hsw_3dprimitive_indexed_at(batch, topology, indices,
+                                                0ul, base_vertex);
+}
+
+v9x_status v9x_intel_hsw_3dprimitive_indexed_at(struct v9x_hsw_batch *batch,
+                                                v9x_u8 topology,
+                                                v9x_u32 indices,
+                                                v9x_u32 start,
+                                                v9x_u32 base_vertex)
+{
     v9x_u32 payload[6];
 
     if (topology == 0u || topology > 0x3fu || indices == 0ul) {
@@ -537,7 +547,7 @@ v9x_status v9x_intel_hsw_3dprimitive_indexed(struct v9x_hsw_batch *batch,
     }
     payload[0] = V9X_HSW_PRIM_ACCESS_RANDOM | (v9x_u32)topology;
     payload[1] = indices;
-    payload[2] = 0ul;
+    payload[2] = start;
     payload[3] = 1ul;
     payload[4] = 0ul;
     payload[5] = base_vertex;
@@ -1459,6 +1469,49 @@ static void v9x_hsw_vs_elements(const struct v9x_hsw_draw *draw,
     }
 }
 
+/* The setup GRF and binding count the shaded draw's PS takes, defined with
+ * the workload below. */
+#define V9X_HSW_DRAW_SETUP_GRF_SEG ((v9x_u8)4u)
+
+/*
+ * Step 3b: each further draw of the batch, after the first. Its fragment
+ * state pointers, its PS kernel (the shaded draw's binding and sampler
+ * counts), its push constants behind the PRM's dummy primitive, then its
+ * indices. Nothing between them flushes: these are the commands Mesa
+ * changes between draws.
+ */
+static void v9x_hsw_vs_segments(struct v9x_hsw_batch *batch,
+                                const struct v9x_hsw_draw *draw,
+                                const struct v9x_hsw_vs_draw *vs)
+{
+    const struct v9x_hsw_vs_segment *seg;
+    v9x_u32 index;
+
+    for (index = 0ul; index < (v9x_u32)vs->segment_count; ++index) {
+        seg = &vs->segments[index];
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BINDING_TABLE_PTRS_PS,
+                                    seg->binding_table);
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_SAMPLER_PTRS_PS,
+                                    seg->sampler);
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_BLEND_PTRS,
+                                    seg->blend | V9X_HSW_POINTER_MBO);
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_DEPTH_STENCIL_PTRS,
+                                    (draw->depth_buffer != 0ul ?
+                                         seg->depth_test :
+                                         V9X_HSW_INIT_DEPTH_STENCIL) |
+                                        V9X_HSW_POINTER_MBO);
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
+                                    seg->cc | V9X_HSW_POINTER_MBO);
+        v9x_intel_hsw_ps_simd8(batch, seg->kernel,
+                               V9X_HSW_SHADE_BINDING_ENTRIES, 1u, 1u,
+                               V9X_HSW_DRAW_SETUP_GRF_SEG);
+        v9x_intel_hsw_constant_vs(batch, vs->constant_grfs, seg->constants);
+        v9x_intel_hsw_3dprimitive_indexed_at(batch, V9X_HSW_PRIM_TRILIST,
+                                             seg->index_count,
+                                             seg->first_index, 0ul);
+    }
+}
+
 static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
                                         const struct v9x_hsw_draw *draw,
                                         const struct v9x_hsw_vs_draw *vs)
@@ -1555,15 +1608,33 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
                                 draw->vertices + vertices * stride - 1ul);
     v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
     if (draw->indices != 0ul) {
+        v9x_u32 last = draw->index_count;
+
+        /* Every segment's indices are in the same buffer (step 3b). */
+        if (vs != 0) {
+            for (index = 0ul; index < (v9x_u32)vs->segment_count; ++index) {
+                v9x_u32 end = vs->segments[index].first_index +
+                              vs->segments[index].index_count;
+
+                if (end > last) {
+                    last = end;
+                }
+            }
+        }
         /* The index buffer to the end of the cache line holding its last
          * index, which the caller has zeroed (Vol 2b's Haswell note). */
         v9x_intel_hsw_index_buffer(
             batch, draw->indices,
-            ((draw->indices + draw->index_count * 2ul + 0x3ful) &
-             ~(v9x_u32)0x3ful) - 1ul);
-        return v9x_intel_hsw_3dprimitive_indexed(
+            ((draw->indices + last * 2ul + 0x3ful) & ~(v9x_u32)0x3ful) -
+                1ul);
+        v9x_intel_hsw_3dprimitive_indexed(
             batch, draw->strip ? V9X_HSW_PRIM_TRISTRIP : V9X_HSW_PRIM_TRILIST,
             draw->index_count, 0ul);
+        if (vs != 0) {
+            v9x_hsw_vs_segments(batch, draw, vs);
+        }
+        return batch->overflow != 0u ? V9X_STATUS_INSUFFICIENT_MEMORY
+                                     : V9X_STATUS_OK;
     }
     return v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_TRILIST, vertices,
                                      0ul);
@@ -2101,6 +2172,26 @@ v9x_status v9x_intel_hsw_draw_workload_vs(struct v9x_hsw_batch *batch,
          draw->index_count < 3ul ||
          (!draw->strip && draw->index_count % 3ul != 0ul))) {
         return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Further draws (step 3b): indexed, a list, each aligned as the draw's
+     * own state is and whole triangles. */
+    if (vs->segment_count != 0u) {
+        v9x_u32 index;
+
+        if (vs->segment_count > V9X_HSW_VS_SEGMENTS_MAX ||
+            vs->segments == 0 || draw->indices == 0ul || draw->strip) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        for (index = 0ul; index < (v9x_u32)vs->segment_count; ++index) {
+            const struct v9x_hsw_vs_segment *seg = &vs->segments[index];
+
+            if ((seg->kernel & 0x3ful) != 0ul ||
+                (seg->binding_table & 0x1ful) != 0ul ||
+                (seg->constants & 0x1ful) != 0ul ||
+                seg->index_count < 3ul || seg->index_count % 3ul != 0ul) {
+                return V9X_STATUS_INVALID_ARGUMENT;
+            }
+        }
     }
     if (draw->scissor &&
         (draw->scissor_x1 < draw->scissor_x0 ||
