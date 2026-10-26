@@ -38,6 +38,9 @@
 /* 'PF', a Rage 128 Pro: not a Mach64 at all, tier-0 with no engine; see
  * rage128_hw16.c. */
 #define V9X_PCI_DEVICE_RAGE128_PF       ((v9x_u16)0x5046u)
+/* A Radeon HD 5450 (Evergreen "Cedar"): no 2D engine, tier-0 with no hook;
+ * see cedar_hw16.c. */
+#define V9X_PCI_DEVICE_CEDAR_68F9       ((v9x_u16)0x68F9u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

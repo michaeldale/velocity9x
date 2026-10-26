@@ -171,6 +171,9 @@ const V9X_HW16_DEVICE v9x_ati_4c53_device = {
 const V9X_HW16_DEVICE v9x_rage128_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_sis6326_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

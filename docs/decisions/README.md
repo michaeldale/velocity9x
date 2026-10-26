@@ -346,6 +346,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-11 Two NVIDIA cards baselined, and what the VGA ports are not hiding](2026-09-11-nvidia-nv4-and-nv5-baselines.md)
 - [2026-10-26 NeoMagic MagicGraph 128ZV (NM2093) from a VOGONS survey: tier 0 is plain VBE, the blitter sits at BAR0 + 2 MiB, and the BIOS hides 64 KiB](2026-10-26-neomagic-128zv-from-a-vogons-survey.md)
 - [2026-10-26 VIA VX855 Chrome9 HCM from a DOS survey: framebuffer BAR0, engine BAR1, VBE 3.0 to 1920x1200, and the M1 2D engine Linux already drives](2026-10-26-via-vx855-chrome9-hcm-from-a-survey.md)
+- [2026-10-26 Tier-0 `vbe` on a Radeon HD 5450 (Cedar, 1002:68F9): enable-ok, every mode and GDI test passes](2026-10-26-m-bxmfa8-radeon-68f9-first-look.md)
+- [2026-10-26 Radeon HD 5450 registers, read: 1 GiB at GPU address 0, the DMA engine idle and out of reset](2026-10-26-cedar-register-probe.md)
 
 ## DOS box and mini-VDD
 
