@@ -2803,7 +2803,9 @@ V9XPCIREADEGBARS ENDP
 ; WORD FAR PASCAL V9xMiniEgMap(DWORD bar2, DWORD bar0, DWORD FAR *mmio,
 ;                              DWORD FAR *ring, DWORD FAR *ring_bytes)
 ; V9XMINI_FN_EG_MAP: the mini-VDD maps the Evergreen register window and the
-; DMA ring window behind BAR0. On a refusal all three outputs are 0.
+; DMA ring window behind BAR0. On a refusal *mmio is 0, *ring_bytes holds the
+; mini-VDD's reason (FFFFFFFFh when the API itself was unreachable) and
+; *ring the value it refused, for the diagnostics.
 PUBLIC V9XMINIEGMAP
 V9XMINIEGMAP PROC FAR
     push    bp
@@ -2813,6 +2815,8 @@ V9XMINIEGMAP PROC FAR
     push    edx
     push    esi
     push    es
+    xor     ecx, ecx
+    mov     edx, 0ffffffffh
     call    V9xMiniApiInitialize
     or      ax, ax
     jz      short V9xMiniEgMapFailed
@@ -2838,9 +2842,9 @@ V9xMiniEgMapFailed:
     les     bx, dword ptr [bp+14]
     mov     dword ptr es:[bx], 0
     les     bx, dword ptr [bp+10]
-    mov     dword ptr es:[bx], 0
+    mov     es:[bx], ecx
     les     bx, dword ptr [bp+6]
-    mov     dword ptr es:[bx], 0
+    mov     es:[bx], edx
     xor     ax, ax
 V9xMiniEgMapDone:
     pop     es

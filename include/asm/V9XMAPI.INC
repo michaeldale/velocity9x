@@ -565,7 +565,17 @@ V9XMINI_FN_R128_AGP_RING    EQU 0024h
 ; between 256 and 4096 through the register window, so the window is VRAM
 ; behind this card's BAR. Maps once and refuses moved BARs. Interprets
 ; nothing else; only the ati family image implements it.
-V9XMINI_FN_EG_MAP           EQU 0025h
+;
+; On a refusal, EDX says which check refused (1 BAR2's range or alignment,
+; 2 BAR0's, 3 a BAR moved since the first map, 4 the register map failed,
+; 5 CONFIG_MEMSIZE out of range, 6 the ring map failed) and ECX holds the
+; value it refused.
+;
+; 0026h, not 0025h: MTRR_WRITE, defined near the top of this file, holds
+; 0025h, and the dispatcher tests it first. The first build of this call
+; used 0025h and every call landed in MTRR_WRITE, which refused it (pair 0
+; already valid) and wrote no MSR (M-BXMFA8 boots 4-6, 2026-10-26).
+V9XMINI_FN_EG_MAP           EQU 0026h
 
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and

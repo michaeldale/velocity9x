@@ -352,6 +352,24 @@ foreach ($family in $families) {
     }
 }
 
+# Every mini-VDD API function number is unique. The dispatcher tests them in
+# order, so a duplicate silently routes one service's calls to another:
+# V9XMINI_FN_EG_MAP first took MTRR_WRITE's 0025h and every Evergreen map
+# request reached the MTRR write (M-BXMFA8, 2026-10-26).
+$mapiPath = Join-Path $repoRoot "include\asm\V9XMAPI.INC"
+$mapiNumbers = @{}
+foreach ($line in Get-Content -LiteralPath $mapiPath) {
+    if ($line -match '^\s*(V9XMINI_FN_\w+)\s+EQU\s+([0-9A-Fa-f]+)h') {
+        $number = [Convert]::ToInt32($Matches[2], 16)
+        if ($mapiNumbers.ContainsKey($number)) {
+            throw (("include\asm\V9XMAPI.INC gives {0} and {1} the same " +
+                    "function number {2:X4}h.") -f $mapiNumbers[$number],
+                   $Matches[1], $number)
+        }
+        $mapiNumbers[$number] = $Matches[1]
+    }
+}
+
 # The backend registry's PCI dispatch table is generated from the manifests
 # and checked in. Regenerate and compare, so a manifest edit that forgot
 # scripts\update-backend-registry.ps1 fails here instead of shipping a

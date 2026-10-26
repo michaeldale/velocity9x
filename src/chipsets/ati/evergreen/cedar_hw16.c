@@ -30,6 +30,15 @@ extern unsigned short __far __pascal V9xMiniEgMap(
 /* V9X_EG_MMIO_BYTES in eg_dma.h and the mini-VDD: the register BAR. */
 #define V9X_CEDAR_MMIO_BYTES 0x00020000ul
 
+/* How far the engine hook got, and the BARs it read, for
+ * v9x_cedar_publish_diagnostics: neither refusal leaves any other trace,
+ * and the first boot with the hook (M-BXMFA8 boot 4) claimed nothing. */
+static const char *v9x_cedar_engine_state = "not-run";
+static unsigned long v9x_cedar_bar0;
+static unsigned long v9x_cedar_bar2;
+static unsigned long v9x_cedar_map_reason;
+static unsigned long v9x_cedar_map_value;
+
 static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *control_linear_base,
                                   unsigned long *mapped_aperture_bytes,
@@ -55,12 +64,21 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
     *ring_bytes = 0ul;
 
     if (V9xPciReadEgBars(&bar0, &bar2) == 0u) {
+        v9x_cedar_engine_state = "bars-refused";
         return;
     }
+    v9x_cedar_bar0 = bar0;
+    v9x_cedar_bar2 = bar2;
     if (V9xMiniEgMap(bar2, bar0, &mmio, &ring, &bytes) == 0u ||
         mmio == 0ul || ring == 0ul || bytes == 0ul) {
+        /* On a refusal the wrapper leaves the mini-VDD's reason in bytes
+         * and the value it refused in ring. */
+        v9x_cedar_engine_state = "map-refused";
+        v9x_cedar_map_reason = bytes;
+        v9x_cedar_map_value = ring;
         return;
     }
+    v9x_cedar_engine_state = "claimed";
     *control_linear_base = mmio;
     *mapped_aperture_bytes = V9X_CEDAR_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_EVERGREEN;
@@ -68,6 +86,38 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_SCREEN_COPY;
     *ring_linear_base = ring;
     *ring_bytes = bytes;
+}
+
+static void v9x_cedar_hex(char *text, unsigned long value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    unsigned short index;
+
+    for (index = 0u; index < 8u; ++index) {
+        text[index] = digits[(unsigned short)((value >>
+                                               ((7u - index) * 4u)) & 0xful)];
+    }
+    text[8] = '\0';
+}
+
+/*
+ * The engine hook's outcome, for the family's V9XHW.INI publisher, which
+ * runs after the hook. External because ati_hw16.c calls it for this chip;
+ * a family-internal symbol, not an export.
+ */
+void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write)
+{
+    char text[9];
+
+    write("EvergreenEngine", v9x_cedar_engine_state);
+    v9x_cedar_hex(text, v9x_cedar_bar0);
+    write("EvergreenBar0", text);
+    v9x_cedar_hex(text, v9x_cedar_bar2);
+    write("EvergreenBar2", text);
+    v9x_cedar_hex(text, v9x_cedar_map_reason);
+    write("EvergreenMapReason", text);
+    v9x_cedar_hex(text, v9x_cedar_map_value);
+    write("EvergreenMapValue", text);
 }
 
 /*

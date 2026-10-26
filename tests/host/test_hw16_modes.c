@@ -174,6 +174,10 @@ const V9X_HW16_DEVICE v9x_rage128_device = {
 const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write)
+{
+    (void)write;
+}
 const V9X_HW16_DEVICE v9x_sis6326_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

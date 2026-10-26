@@ -3799,14 +3799,19 @@ ENDIF
 ; V9XMAPI.INC.
 V9xMini_Api_EgMap:
 IFDEF V9X_R128_MMIO
+    ; On a refusal EDX says which check refused (V9X_EG_REFUSED_* below)
+    ; and ECX holds the value it refused, for the display driver's
+    ; diagnostics: no refusal here leaves any other trace.
     mov     eax, [ebp.Client_EBX]
     mov     ecx, [ebp.Client_ECX]
+    mov     edx, 1
     cmp     eax, 01000000h
-    jb      V9xMini_Api_EgMap_Refused
+    jb      V9xMini_Api_EgMap_Refused_Bar2
     cmp     eax, 0fffe0000h
-    ja      V9xMini_Api_EgMap_Refused
+    ja      V9xMini_Api_EgMap_Refused_Bar2
     test    eax, V9X_EG_MMIO_BYTES - 1
-    jnz     V9xMini_Api_EgMap_Refused
+    jnz     V9xMini_Api_EgMap_Refused_Bar2
+    mov     edx, 2
     test    ecx, ecx
     jz      V9xMini_Api_EgMap_Refused
     test    ecx, V9X_EG_BAR0_ALIGN
@@ -3814,34 +3819,42 @@ IFDEF V9X_R128_MMIO
 
     cmp     V9xEgMmioLinear, 0
     je      short V9xMini_Api_EgMap_Map
+    mov     edx, 3
     cmp     eax, V9xEgMmioBase
-    jne     V9xMini_Api_EgMap_Refused
+    jne     V9xMini_Api_EgMap_Refused_Bar2
     cmp     ecx, V9xEgBar0
     jne     V9xMini_Api_EgMap_Refused
-    jmp     short V9xMini_Api_EgMap_Done
+    jmp     V9xMini_Api_EgMap_Done
 
 V9xMini_Api_EgMap_Map:
     mov     V9xEgMmioBase, eax
     mov     V9xEgBar0, ecx
     VMMcall _MapPhysToLinear,<eax,V9X_EG_MMIO_BYTES,0>
+    mov     edx, 4
+    mov     ecx, eax
     cmp     eax, 0ffffffffh
-    je      short V9xMini_Api_EgMap_Failed
+    je      V9xMini_Api_EgMap_Failed
 
     ; A decoding-disabled window reads all ones; anything outside the
     ; Evergreen range here means the window is not this card's registers,
     ; and the ring window behind BAR0 is not mapped on its word.
-    mov     edx, [eax+V9X_EG_CONFIG_MEMSIZE]
-    cmp     edx, V9X_EG_MEMSIZE_MIN_MIB
-    jb      short V9xMini_Api_EgMap_Failed
-    cmp     edx, V9X_EG_MEMSIZE_MAX_MIB
-    ja      short V9xMini_Api_EgMap_Failed
+    mov     ecx, [eax+V9X_EG_CONFIG_MEMSIZE]
+    mov     edx, 5
+    cmp     ecx, V9X_EG_MEMSIZE_MIN_MIB
+    jb      V9xMini_Api_EgMap_Failed
+    cmp     ecx, V9X_EG_MEMSIZE_MAX_MIB
+    ja      V9xMini_Api_EgMap_Failed
     push    eax
     mov     edx, V9xEgBar0
     add     edx, V9X_EG_RING_OFFSET
     VMMcall _MapPhysToLinear,<edx,V9X_EG_RING_BYTES,0>
     pop     edx
+    mov     ecx, eax
     cmp     eax, 0ffffffffh
-    je      short V9xMini_Api_EgMap_Failed
+    jne     short V9xMini_Api_EgMap_Ring_Ok
+    mov     edx, 6
+    jmp     V9xMini_Api_EgMap_Failed
+V9xMini_Api_EgMap_Ring_Ok:
     mov     V9xEgRingLinear, eax
     mov     V9xEgMmioLinear, edx
 
@@ -3856,10 +3869,13 @@ V9xMini_Api_EgMap_Done:
 V9xMini_Api_EgMap_Failed:
     mov     V9xEgMmioBase, 0
     mov     V9xEgBar0, 0
+    jmp     short V9xMini_Api_EgMap_Refused
+V9xMini_Api_EgMap_Refused_Bar2:
+    mov     ecx, eax
 V9xMini_Api_EgMap_Refused:
     mov     [ebp.Client_EBX], 0
-    mov     [ebp.Client_ECX], 0
-    mov     [ebp.Client_EDX], 0
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
 ENDIF
     mov     [ebp.Client_AX], 0
     ret

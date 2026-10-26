@@ -23,6 +23,8 @@ extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
 extern const V9X_HW16_DEVICE v9x_rage_iic_device;
 extern const V9X_HW16_DEVICE v9x_rage128_device;
 extern const V9X_HW16_DEVICE v9x_evergreen_cedar_device;
+/* cedar_hw16.c: the Evergreen engine hook's outcome. */
+void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
 extern const V9X_HW16_DEVICE v9x_mach64_vt4_device;
 extern const V9X_HW16_DEVICE v9x_ati_4754_device;
@@ -241,6 +243,9 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
         write("VbeVramBytes", number);
     } else {
         write("VbeVramBytes", "unavailable");
+    }
+    if (device == &v9x_evergreen_cedar_device) {
+        v9x_cedar_publish_diagnostics(write);
     }
 }
 

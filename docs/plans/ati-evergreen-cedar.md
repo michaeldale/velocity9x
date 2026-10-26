@@ -11,8 +11,11 @@ out of reset, the CP halted. Phase 3's write probe passed
 ([record](../decisions/2026-10-26-cedar-dma-write-probe.md)): dword and
 byte copies, overlapping copies (memmove) and constant fills, byte-exact,
 five runs in a row once each ring session starts and ends with a DMA soft
-reset. Register facts in the table below come from Linux `radeon` source;
-the records say which ones the card has confirmed.
+reset. DirectDraw fill and copy now run on the DMA engine, pixel-correct
+through the HAL at 16 bpp and across mode switches
+([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)). Next:
+flips (Phase 4). Register facts in the table below come from Linux
+`radeon` source; the records say which ones the card has confirmed.
 
 Target: Cedar (`1002:68F9`, HD 5450 class) as a fifth chip generation in
 the one `ati` family (`one-family-per-vendor`), with its own module tree
