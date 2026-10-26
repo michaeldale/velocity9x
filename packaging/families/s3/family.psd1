@@ -419,7 +419,9 @@
         # disk 1 went 506 bytes over when the 16-bit driver gained the
         # write-combining MTRR write (Michael, 2026-10-24: third S3 disk).
         # The update checker, which nothing needs to boot or draw.
-        ThirdDisk = @('V9XUPD.EXE')
+        # GLIDE3X.DLL joined it with hardware T&L step 4, which left disk 1
+        # 3,335 bytes free with step 6's HAL still to come (2026-10-27).
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL')
     }
 
     Vm = @{

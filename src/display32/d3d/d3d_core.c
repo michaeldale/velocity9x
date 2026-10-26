@@ -6962,6 +6962,10 @@ static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
             return V9X_R3D_RESULT_INVALID;
         }
     }
+    if (request->normals != 0 &&
+        IsBadReadPtr(request->normals, vertex_count * 3ul * sizeof(float))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
     result = inner->raw_target.address != 0
         ? v9x_r3d_bind_raw(&inner->raw_target, &inner->raw_depth)
         : v9x_r3d_bind(inner->target.surface, inner->depth.surface);
@@ -7002,6 +7006,7 @@ static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
     tnl.vertex_count = request->vertex_count;
     tnl.segments = 0;
     tnl.segment_count = 0ul;
+    tnl.normals = request->normals;
     if (request->segment_count != 0ul) {
         result = v9x_r3d_describe_segments(request, inner);
         if (result != V9X_R3D_RESULT_OK) {

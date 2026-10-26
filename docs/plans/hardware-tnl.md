@@ -249,6 +249,17 @@ Progress:
     at par with DDI 6. DirectX 8 and 9 see a HAL device either way.
   - **Not run:** the DX7 SDK samples, which are not on the machine.
   - **Next:** step 6.
+- **Step 4 done (2026-10-27, boot 98):**
+  [`2026-10-27-haswell-tnl-step4-lighting.md`](../decisions/2026-10-27-haswell-tnl-step4-lighting.md).
+  - **Kernels:** one generated per key (`hsw_vs.c`) for both light
+    models, run on the host in an EU model against the reference
+    evaluator.
+  - **Hardware:** cached in a reserve grown to 256 KB, with packed
+    constants and a normals stream (render ABI 8).
+  - **OpenGL:** lighting state, and lit and fogged capture.
+  - **Measured:** the lit GL probe matches GL 1.1 in 40 of 40 samples;
+    the A/B scene is unchanged; Half-Life 96.7.
+  - **Not done:** two-sided lighting (SBE facing).
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

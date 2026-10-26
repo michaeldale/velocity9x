@@ -128,6 +128,8 @@ $sources = @(
     "src\display32\engines\eng_hsw.c",
     "src\chipsets\intel\hsw_3d.c",
     "src\chipsets\intel\hsw_eu.c",
+    # Vertex kernels generated from a T&L key (hardware T&L, step 4).
+    "src\chipsets\intel\hsw_vs.c",
     # Pipelined render submission's slots, sequences and kernel signatures.
     "src\chipsets\intel\hsw_pipe.c",
     # Its plane-A flips: mechanics, then the host-tested arithmetic.

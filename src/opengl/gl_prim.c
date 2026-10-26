@@ -146,6 +146,8 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->tnl_culled = 0ul;
     pipeline->tnl_abandoned = 0ul;
     pipeline->tnl_cached = 0ul;
+    pipeline->tnl_normals = 0;
+    pipeline->lighting = 0;
 }
 
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
@@ -157,7 +159,8 @@ void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
 
 void v9x_gl_pipeline_tnl(V9X_GL_PIPELINE *pipeline, V9X_GL_TNL_SINK_FN sink,
                          int allowed, V9X_R3D_ABI_VERTEX *vertices,
-                         v9x_u16 *indices, V9X_GL_TNL_ELEMENT *elements)
+                         v9x_u16 *indices, V9X_GL_TNL_ELEMENT *elements,
+                         GLfloat *normals)
 {
     unsigned int i;
 
@@ -165,6 +168,7 @@ void v9x_gl_pipeline_tnl(V9X_GL_PIPELINE *pipeline, V9X_GL_TNL_SINK_FN sink,
     pipeline->tnl_vertices = vertices;
     pipeline->tnl_indices = indices;
     pipeline->tnl_elements = elements;
+    pipeline->tnl_normals = normals;
     if (elements != 0) {
         for (i = 0u; i < V9X_GL_TNL_ELEMENTS; ++i) {
             elements[i].element = 0ul;
@@ -535,7 +539,8 @@ void v9x_gl_prim_flush(V9X_GL_PIPELINE *pipeline)
     if (indices != 0ul) {
         if (pipeline->tnl_sink != 0 &&
             pipeline->tnl_sink(pipeline->sink_user, pipeline->tnl_vertices,
-                               vertices, pipeline->tnl_indices, indices)) {
+                               pipeline->tnl_normals, vertices,
+                               pipeline->tnl_indices, indices)) {
             ++pipeline->tnl_taken;
         } else {
             ++pipeline->tnl_declined;
@@ -675,16 +680,22 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->offset_step = state->depth_bits >= 24ul ? V9X_GL_PRIM_STEP_24
                                                       : V9X_GL_PRIM_STEP_16;
     pipeline->fog_on = v9x_gl_state_cap(state, V9X_GL_FOG) ? 1 : 0;
-    /* Hardware T&L, step 3: filled primitives whose every effect the
-     * position-only kernel reproduces (gl_prim.h, tnl_capture). A
-     * FRONT_AND_BACK cull draws nothing either way and is left alone. */
+    /* Hardware T&L: filled primitives whose every effect the generated
+     * kernel reproduces (gl_prim.h, tnl_capture). Step 4 added fog and
+     * lighting the key can express, lit ones only with somewhere to keep
+     * their normals. A FRONT_AND_BACK cull draws nothing either way and is
+     * left alone. */
     pipeline->tnl_capture =
         pipeline->tnl_allowed && mode >= V9X_GL_TRIANGLES &&
-        !pipeline->offset_on && !pipeline->fog_on &&
+        !pipeline->offset_on &&
         pipeline->shade_model == V9X_GL_SMOOTH && pipeline->units <= 1ul &&
         pipeline->tex[3] == 1.0f &&
         !(v9x_gl_state_cap(state, V9X_GL_CULL_FACE) &&
-          pipeline->cull_face == V9X_GL_FRONT_AND_BACK);
+          pipeline->cull_face == V9X_GL_FRONT_AND_BACK) &&
+        (!v9x_gl_state_cap(state, V9X_GL_LIGHTING_CAP) ||
+         (pipeline->tnl_normals != 0 &&
+          (pipeline->lighting == 0 ||
+           v9x_gl_lighting_expressible(state, pipeline->lighting))));
     if (pipeline->tnl_capture) {
         v9x_gl_prim_tnl_mvp(state, pipeline);
     }
@@ -1167,6 +1178,13 @@ static void v9x_gl_prim_tnl_triangle(V9X_GL_STATE *state,
             index = pipeline->tnl_vertex_count;
             pipeline->tnl_vertices[pipeline->tnl_vertex_count++] =
                 corner[i]->object;
+            if (pipeline->tnl_normals != 0) {
+                GLfloat *normal = &pipeline->tnl_normals[index * 3ul];
+
+                normal[0] = corner[i]->object_normal[0];
+                normal[1] = corner[i]->object_normal[1];
+                normal[2] = corner[i]->object_normal[2];
+            }
             corner[i]->tnl_serial = pipeline->tnl_serial;
             corner[i]->tnl_index = index;
             if (corner[i]->tnl_element != 0ul) {
@@ -1433,6 +1451,9 @@ static void v9x_gl_prim_tnl_vertex(V9X_GL_PIPELINE *pipeline,
     vp->object.specular = 0xff000000ul;
     vp->object.tu = pipeline->tex[0];
     vp->object.tv = pipeline->tex[1];
+    vp->object_normal[0] = pipeline->normal[0];
+    vp->object_normal[1] = pipeline->normal[1];
+    vp->object_normal[2] = pipeline->normal[2];
     vp->tnl_serial = 0ul;
     vp->tnl_element = 0ul;
 }
@@ -1534,6 +1555,9 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
             entry->clip[3] = vp->clip[3];
             entry->outcode = vp->outcode;
             entry->object = vp->object;
+            entry->normal[0] = vp->object_normal[0];
+            entry->normal[1] = vp->object_normal[1];
+            entry->normal[2] = vp->object_normal[2];
             vp->tnl_element = pipeline->tnl_element_next;
         }
     } else {
@@ -1578,6 +1602,9 @@ int v9x_gl_prim_element(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     vp->clip[3] = entry->clip[3];
     vp->outcode = entry->outcode;
     vp->object = entry->object;
+    vp->object_normal[0] = entry->normal[0];
+    vp->object_normal[1] = entry->normal[1];
+    vp->object_normal[2] = entry->normal[2];
     vp->tnl_serial = entry->serial;
     vp->tnl_index = entry->index;
     vp->tnl_element = element + 1ul;
@@ -2024,6 +2051,40 @@ void v9x_gl_prim_tnl_constants(const V9X_GL_STATE *state,
     constants->viewer[2] = 1.0f;
     for (i = 0u; i < 4u; ++i) {
         constants->default_color[0][i] = 1.0f;
+    }
+
+    /* Step 4: fog over |z_e|, the distance the CPU path's fog_c is. A
+     * linear fog with start equal to end is one everywhere (3.9's
+     * v9x_gl_prim_fog_factor), which no fog gives: the unlit colour 1's
+     * alpha is the captured specular's, 1. */
+    if (pipeline->fog_on) {
+        if (pipeline->fog_mode == V9X_GL_LINEAR) {
+            if (pipeline->fog_end != pipeline->fog_start) {
+                key->fog_mode = V9X_R3D_TNL_FOG_LINEAR;
+                constants->fog[3] =
+                    1.0f / (pipeline->fog_end - pipeline->fog_start);
+            }
+        } else {
+            key->fog_mode = pipeline->fog_mode == V9X_GL_EXP2
+                                ? V9X_R3D_TNL_FOG_EXP2
+                                : V9X_R3D_TNL_FOG_EXP;
+        }
+        key->fog_distance = V9X_R3D_TNL_FOG_DEPTH;
+        constants->fog[0] = pipeline->fog_start;
+        constants->fog[1] = pipeline->fog_end;
+        constants->fog[2] = pipeline->fog_density;
+    }
+
+    /* Step 4: lighting, from the context's state or the initial one. */
+    if (v9x_gl_state_cap(state, V9X_GL_LIGHTING_CAP)) {
+        V9X_GL_LIGHTING initial;
+        const V9X_GL_LIGHTING *lighting = pipeline->lighting;
+
+        if (lighting == 0) {
+            v9x_gl_lighting_init(&initial);
+            lighting = &initial;
+        }
+        v9x_gl_lighting_tnl(state, lighting, key, constants);
     }
 }
 

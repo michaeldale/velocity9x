@@ -165,12 +165,47 @@ typedef struct v9x_r3d_tnl_constants {
     float default_color[2][4];
 } V9X_R3D_TNL_CONSTANTS;
 
+/*
+ * The block as an array of vec4s (16 bytes each), for an engine that pushes
+ * only the vec4s its program reads (hsw_vs.c). Light i's field k is
+ * V9X_R3D_TNL_VEC4_LIGHT(i) + k, k one of the V9X_R3D_TNL_LF_* below;
+ * material face f's is V9X_R3D_TNL_VEC4_MATERIAL(f) + V9X_R3D_TNL_MF_*.
+ * tests\host\test_intel_hsw_vs.c holds these to the structure's offsets.
+ */
+#define V9X_R3D_TNL_VEC4_MVP           0u
+#define V9X_R3D_TNL_VEC4_MODEL_VIEW    4u
+#define V9X_R3D_TNL_VEC4_NORMAL        8u
+#define V9X_R3D_TNL_VEC4_TEXTURE(u)    (11u + 4u * (u))
+#define V9X_R3D_TNL_VEC4_SCENE_AMBIENT 19u
+#define V9X_R3D_TNL_VEC4_VIEWER        20u
+#define V9X_R3D_TNL_VEC4_MATERIAL(f)   (21u + 5u * (f))
+#define V9X_R3D_TNL_VEC4_LIGHT(i)      (31u + 7u * (i))
+#define V9X_R3D_TNL_VEC4_FOG           87u
+#define V9X_R3D_TNL_VEC4_DEFAULT(c)    (88u + (c))
+#define V9X_R3D_TNL_VEC4S              90u
+
+#define V9X_R3D_TNL_MF_AMBIENT  0u
+#define V9X_R3D_TNL_MF_DIFFUSE  1u
+#define V9X_R3D_TNL_MF_SPECULAR 2u
+#define V9X_R3D_TNL_MF_EMISSIVE 3u
+#define V9X_R3D_TNL_MF_POWER    4u
+
+#define V9X_R3D_TNL_LF_POSITION    0u
+#define V9X_R3D_TNL_LF_DIRECTION   1u
+#define V9X_R3D_TNL_LF_AMBIENT     2u
+#define V9X_R3D_TNL_LF_DIFFUSE     3u
+#define V9X_R3D_TNL_LF_SPECULAR    4u
+#define V9X_R3D_TNL_LF_ATTENUATION 5u
+#define V9X_R3D_TNL_LF_SPOT        6u
+
 /* 64 bytes of key; the block in whole GRFs (32 bytes), and within the 64
  * GRFs 3DSTATE_CONSTANT_VS can read (spec note, "Push constants"). */
 typedef char v9x_r3d_tnl_assert_key[sizeof(V9X_R3D_TNL_KEY) == 64 ? 1 : -1];
 typedef char v9x_r3d_tnl_assert_constants[
     (sizeof(V9X_R3D_TNL_CONSTANTS) % 32u) == 0u &&
     sizeof(V9X_R3D_TNL_CONSTANTS) <= 64u * 32u ? 1 : -1];
+typedef char v9x_r3d_tnl_assert_vec4s[
+    sizeof(V9X_R3D_TNL_CONSTANTS) == V9X_R3D_TNL_VEC4S * 16u ? 1 : -1];
 
 /*
  * Whether a key is well formed: a known model, no unknown bit, counts in

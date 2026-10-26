@@ -126,6 +126,9 @@ unsigned int v9x_run_gl_pixels_tests(void);
 unsigned int v9x_run_gl_varray_tests(void);
 /* tests\host\test_gl_attrib.c: the attribute stacks. */
 unsigned int v9x_run_gl_attrib_tests(void);
+
+/* tests\host\test_gl_light.c: OpenGL lighting state and its T&L key. */
+unsigned int v9x_run_gl_light_tests(void);
 /* tests\host\test_glide_vertex.c: Glide vertices to the render interface's. */
 unsigned int v9x_run_glide_vertex_tests(void);
 /* tests\host\test_glide_texture.c: Glide texture memory and texel formats. */
@@ -211,6 +214,10 @@ unsigned int v9x_run_intel_hsw_tests(void);
 
 /* tests\host\test_intel_hsw_eu.c: Gen7.5 EU instruction encoding. */
 unsigned int v9x_run_intel_hsw_eu_tests(void);
+
+/* tests\host\test_intel_hsw_vs.c: vertex kernels from a T&L key, run in
+ * the host EU model (hsw_eu_sim.c) against the reference evaluator. */
+unsigned int v9x_run_intel_hsw_vs_tests(void);
 
 /* tests\host\test_intel_hsw_3d.c: Gen7.5 3D packets, state, checker. */
 unsigned int v9x_run_intel_hsw_3d_tests(void);
@@ -1335,6 +1342,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_pixels_tests();
     failures += v9x_run_gl_varray_tests();
     failures += v9x_run_gl_attrib_tests();
+    failures += v9x_run_gl_light_tests();
     failures += v9x_run_glide_vertex_tests();
     failures += v9x_run_glide_texture_tests();
     failures += v9x_run_glide_state_tests();
@@ -1363,6 +1371,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_gtt_tests();
     failures += v9x_run_intel_hsw_tests();
     failures += v9x_run_intel_hsw_eu_tests();
+    failures += v9x_run_intel_hsw_vs_tests();
     failures += v9x_run_intel_hsw_3d_tests();
     failures += v9x_run_intel_hsw_pipe_tests();
     failures += v9x_run_intel_hsw_display_tests();

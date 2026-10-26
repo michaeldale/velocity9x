@@ -142,8 +142,24 @@
  * then the render engine's state, batch and vertices. The probe region
  * starts where this ends.
  */
-#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00020000ul)
-#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)32ul)
+/*
+ * Hardware T&L, step 4 (docs\plans\hardware-tnl.md), grew it to 256 KB,
+ * leaving the first 128 KB as it was and adding:
+ *   - 20000h: the vertex-kernel cache, 8 slots of 8 KB, one T&L key's
+ *     kernel each. The largest key builds to 7264 bytes
+ *     (test_intel_hsw_vs.c), under a slot less the EU's 128-byte prefetch
+ *     margin.
+ *   - 30000h: per draw slot, 32 KB of T&L data (intel_hsw_pipe.h): the
+ *     normals stream, then every segment's packed push constants.
+ * The mini-VDD's V9X_HSW_RESERVE_BYTES and _PAGES (loader.asm) must match.
+ */
+#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00040000ul)
+#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)64ul)
+#define V9X_INTEL_HSW_VS_KERNEL_OFF   ((v9x_u32)0x00020000ul)
+#define V9X_INTEL_HSW_VS_KERNEL_SLOT  ((v9x_u32)0x00002000ul)
+#define V9X_INTEL_HSW_VS_KERNEL_SLOTS ((v9x_u32)8ul)
+#define V9X_INTEL_HSW_TNL_OFF         ((v9x_u32)0x00030000ul)
+#define V9X_INTEL_HSW_TNL_BYTES       ((v9x_u32)0x00010000ul)
 #define V9X_INTEL_HSW_RCS_RING_OFF   ((v9x_u32)0x00002000ul)
 #define V9X_INTEL_HSW_STATE_OFF      ((v9x_u32)0x00004000ul)
 /*

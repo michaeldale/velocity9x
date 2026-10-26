@@ -1289,6 +1289,7 @@ static void v9x_vs_test_draw(struct v9x_hsw_draw *draw,
     vs->provoking = 0u;
     vs->segments = 0;
     vs->segment_count = 0u;
+    vs->normals = 0ul;
 }
 
 /* The first index of the n-th RANDOM primitive with a non-zero count, or
@@ -1470,6 +1471,61 @@ static void test_vs_segments_fit(void)
     CHECK(batch.used <= 0x1000ul / 4ul);
     CHECK(v9x_nth_draw(dw, batch.used, V9X_HSW_VS_SEGMENTS_MAX) <
           batch.used);
+
+    /* Step 4's normals add a vertex buffer and an element, seven dwords,
+     * and the batch still fits. */
+    vs.normals = 0x01832000ul;
+    v9x_intel_hsw_batch_init(&batch, dw, 2048ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used - alone <= 39ul * V9X_HSW_VS_SEGMENTS_MAX + 7ul);
+    CHECK(batch.used <= 0x1000ul / 4ul);
+}
+
+/*
+ * Step 4: a kernel that reads a normal gets a sixth element,
+ * R32G32B32_FLOAT from buffer 1 with w stored as 0, and buffer 1 is the
+ * normals at 12 bytes a vertex. A misaligned normals address is refused.
+ */
+static void test_vs_normals(void)
+{
+    v9x_u32 dw[512];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    struct v9x_hsw_vs_draw vs;
+    v9x_u32 at;
+
+    v9x_vs_test_draw(&draw, &vs);
+    vs.normals = 0x01832000ul;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+
+    /* Six elements: DW0 length 11; the sixth's first dword is buffer 1,
+     * valid, R32G32B32_FLOAT (40h), offset 0; its components SRC SRC SRC
+     * and STORE_0 (2). */
+    at = v9x_find_command(dw, batch.used, 0x7809000bul);
+    CHECK(at < batch.used &&
+          dw[at + 11ul] == ((1ul << 26) | (1ul << 25) | (0x40ul << 16)) &&
+          dw[at + 12ul] == 0x11120000ul);
+    /* Buffer 1: pitch 12, from the normals to the sixth vertex's end. */
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used);
+    at = at + 5ul + v9x_find_command(dw + at + 5ul, batch.used - at - 5ul,
+                                     0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == ((1ul << 26) | 0x4000ul | 12ul) &&
+          dw[at + 2ul] == 0x01832000ul &&
+          dw[at + 3ul] == 0x01832000ul + 6ul * 12ul - 1ul);
+
+    vs.normals = 0x01832002ul;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 /*
@@ -1801,6 +1857,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_vs_workload();
     test_vs_segments();
     test_vs_segments_fit();
+    test_vs_normals();
     test_ivb_variant();
     test_phase_f2b_depth_only();
     test_phase_f2_tl();

@@ -42,6 +42,8 @@ v9x_status v9x_intel_hsw_pipe_slot(v9x_u32 sequence,
     slot->vertex_off = V9X_INTEL_HSW_VERTEX_OFF +
                        index * V9X_HSW_PIPE_VERTEX_BYTES;
     slot->vertex_bytes = V9X_HSW_PIPE_VERTEX_BYTES;
+    slot->tnl_off = V9X_INTEL_HSW_TNL_OFF + index * V9X_HSW_PIPE_TNL_BYTES;
+    slot->tnl_bytes = V9X_HSW_PIPE_TNL_BYTES;
     return V9X_STATUS_OK;
 }
 

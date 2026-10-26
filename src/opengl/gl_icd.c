@@ -162,6 +162,10 @@ typedef struct v9x_gl_tnl_hold {
     V9X_R3D_ABI_VERTEX capture[V9X_GL_TNL_VERTICES];
     v9x_u16 capture_indices[V9X_GL_TNL_INDICES];
     V9X_GL_TNL_ELEMENT elements[V9X_GL_TNL_ELEMENTS];
+    /* Step 4: the normals beside capture and beside vertices, three floats
+     * a vertex; the held ones are sent when the key is lit. */
+    GLfloat capture_normals[V9X_GL_TNL_VERTICES * 3u];
+    GLfloat normals[V9X_R3D_ABI_TNL_VERTICES_MAX * 3u];
 } V9X_GL_TNL_HOLD;
 
 typedef struct v9x_gl_context {
@@ -178,6 +182,10 @@ typedef struct v9x_gl_context {
     /* The held T&L batch's storage (V9X_GL_TNL_HOLD), or null before the
      * context's first captured batch. */
     V9X_GL_TNL_HOLD *tnl_hold;
+    /* Lighting state (gl_light.h), from the heap at the first glLight,
+     * glLightModel, glMaterial or glColorMaterial; null is the initial
+     * state. About 1 KB, kept out of the static contexts as the hold is. */
+    V9X_GL_LIGHTING *lighting;
     /* glPushAttrib's and glPushClientAttrib's stacks, about 10 KB, from the
      * heap at the first push: in the context table they would be zeros in
      * the DLL's image, sixteen times over (the linker writes _BSS out;
@@ -2739,6 +2747,8 @@ static v9x_u32 v9x_gl_draw_tnl_into(V9X_GL_CONTEXT *context,
     tnl.vertex_count = hold->vertex_count;
     tnl.segments = hold->segment_count > 1ul ? hold->requests : 0;
     tnl.segment_count = hold->segment_count > 1ul ? hold->segment_count : 0ul;
+    tnl.normals = (hold->key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul
+        ? hold->normals : 0;
     result = iface->draw_tnl(&tnl, outcome);
     ++v9x_gl_count_draws;
     if (result == V9X_R3D_RESULT_STALE) {
@@ -2812,6 +2822,7 @@ static int v9x_gl_same_bytes(const void *a, const void *b, unsigned int bytes)
  * CPU path's 85 (the 4570, boot 84).
  */
 static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
+                                 const GLfloat *normals,
                                  v9x_u32 vertex_count,
                                  const v9x_u16 *indices,
                                  v9x_u32 index_count)
@@ -2851,6 +2862,12 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
     v9x_gl_prim_tnl_scissor(&context->state, &state);
     v9x_gl_prim_tnl_constants(&context->state, &context->pipeline, &key,
                               &v9x_gl_tnl_constants_scratch);
+    /* A lit key reads normals; a capture made without them is not drawn
+     * by the engine (gl_prim.c keeps lit primitives from being captured
+     * then). */
+    if ((key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul && normals == 0) {
+        return 0;
+    }
     for (i = 0ul; i < sizeof(frame); ++i) {
         ((BYTE *)&frame)[i] = 0u;
     }
@@ -2952,6 +2969,11 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
     /* This batch's indices rebased past the vertices already held. */
     for (i = 0ul; i < vertex_count; ++i) {
         hold->vertices[hold->vertex_count + i] = object[i];
+    }
+    if ((key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul) {
+        for (i = 0ul; i < vertex_count * 3ul; ++i) {
+            hold->normals[hold->vertex_count * 3ul + i] = normals[i];
+        }
     }
     for (i = 0ul; i < index_count; ++i) {
         hold->indices[hold->index_count + i] =
@@ -4084,6 +4106,287 @@ static void V9X_GL_API v9x_gl_get_tex_enviv(GLenum target, GLenum pname,
     v9x_gl_query_ints(values, count, colour, params);
 }
 
+/* ---- Lighting (2.13), gl_light.c ------------------------------------- */
+
+/* The context's lighting state, made at its first use. Null when the heap
+ * refuses, and the call is then dropped. */
+static V9X_GL_LIGHTING *v9x_gl_lighting(V9X_GL_CONTEXT *context)
+{
+    if (context->lighting == 0) {
+        context->lighting = (V9X_GL_LIGHTING *)v9x_gl_heap_alloc(
+            sizeof(V9X_GL_LIGHTING));
+        if (context->lighting == 0) {
+            return 0;
+        }
+        v9x_gl_lighting_init(context->lighting);
+        context->pipeline.lighting = context->lighting;
+    }
+    return context->lighting;
+}
+
+/* glLight, glLightModel and glColorMaterial are not allowed between Begin
+ * and End (2.6.3); glMaterial is, and what is captured so far goes under
+ * the material it was given with first. */
+static void v9x_gl_light_call(GLenum light, GLenum pname,
+                              const GLfloat *params, int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting != 0) {
+        v9x_gl_light(&context->state, lighting, light, pname, params, vector,
+                     v9x_gl_matrix_top(&context->state.matrices,
+                                       V9X_GL_MODELVIEW)->m);
+    }
+}
+
+static void V9X_GL_API v9x_gl_lightf(GLenum light, GLenum pname,
+                                     GLfloat param)
+{
+    v9x_gl_light_call(light, pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_lightfv(GLenum light, GLenum pname,
+                                      const GLfloat *params)
+{
+    v9x_gl_light_call(light, pname, params, 1);
+}
+
+static void V9X_GL_API v9x_gl_lighti(GLenum light, GLenum pname, GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_light_call(light, pname, &value, 0);
+}
+
+/* Colours by table 2.6, as glColor4iv converts; the rest directly. */
+static void V9X_GL_API v9x_gl_lightiv(GLenum light, GLenum pname,
+                                      const GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = 1u;
+    unsigned int i;
+
+    values[1] = 0.0f;
+    values[2] = 0.0f;
+    values[3] = 0.0f;
+    if (pname == V9X_GL_AMBIENT || pname == V9X_GL_DIFFUSE ||
+        pname == V9X_GL_SPECULAR) {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+        count = 0u;
+    } else if (pname == V9X_GL_POSITION) {
+        count = 4u;
+    } else if (pname == V9X_GL_SPOT_DIRECTION) {
+        count = 3u;
+    }
+    for (i = 0u; i < count; ++i) {
+        values[i] = (GLfloat)params[i];
+    }
+    v9x_gl_light_call(light, pname, values, 1);
+}
+
+static void v9x_gl_light_model_call(GLenum pname, const GLfloat *params,
+                                    int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting != 0) {
+        v9x_gl_light_model(&context->state, lighting, pname, params, vector);
+    }
+}
+
+static void V9X_GL_API v9x_gl_light_modelf(GLenum pname, GLfloat param)
+{
+    v9x_gl_light_model_call(pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_light_modelfv(GLenum pname,
+                                            const GLfloat *params)
+{
+    v9x_gl_light_model_call(pname, params, 1);
+}
+
+static void V9X_GL_API v9x_gl_light_modeli(GLenum pname, GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_light_model_call(pname, &value, 0);
+}
+
+static void V9X_GL_API v9x_gl_light_modeliv(GLenum pname,
+                                            const GLint *params)
+{
+    GLfloat values[4];
+
+    if (pname == V9X_GL_LIGHT_MODEL_AMBIENT) {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+    } else {
+        values[0] = (GLfloat)params[0];
+    }
+    v9x_gl_light_model_call(pname, values, 1);
+}
+
+static void v9x_gl_material_call(GLenum face, GLenum pname,
+                                 const GLfloat *params, int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_prim_flush(&context->pipeline);
+    }
+    v9x_gl_material(&context->state, lighting, face, pname, params, vector);
+}
+
+static void V9X_GL_API v9x_gl_materialf(GLenum face, GLenum pname,
+                                        GLfloat param)
+{
+    v9x_gl_material_call(face, pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_materialfv(GLenum face, GLenum pname,
+                                         const GLfloat *params)
+{
+    v9x_gl_material_call(face, pname, params, 1);
+}
+
+static void V9X_GL_API v9x_gl_materiali(GLenum face, GLenum pname,
+                                        GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_material_call(face, pname, &value, 0);
+}
+
+static void V9X_GL_API v9x_gl_materialiv(GLenum face, GLenum pname,
+                                         const GLint *params)
+{
+    GLfloat values[4];
+
+    if (pname == V9X_GL_SHININESS || pname == V9X_GL_COLOR_INDEXES) {
+        values[0] = (GLfloat)params[0];
+        values[1] = pname == V9X_GL_COLOR_INDEXES ? (GLfloat)params[1] : 0.0f;
+        values[2] = pname == V9X_GL_COLOR_INDEXES ? (GLfloat)params[2] : 0.0f;
+        values[3] = 0.0f;
+    } else {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+    }
+    v9x_gl_material_call(face, pname, values, 1);
+}
+
+static void V9X_GL_API v9x_gl_color_material_entry(GLenum face, GLenum mode)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting != 0) {
+        v9x_gl_color_material(&context->state, lighting, face, mode);
+    }
+}
+
+/* The queries read the initial state until the first lighting call. */
+static unsigned int v9x_gl_get_lighting(GLenum light_or_face, GLenum pname,
+                                        GLfloat *values, int material)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING initial;
+    const V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return 0u;
+    }
+    lighting = context->lighting;
+    if (lighting == 0) {
+        v9x_gl_lighting_init(&initial);
+        lighting = &initial;
+    }
+    return material
+        ? v9x_gl_get_material(&context->state, lighting, light_or_face,
+                              pname, values)
+        : v9x_gl_get_light(&context->state, lighting, light_or_face, pname,
+                           values);
+}
+
+static int v9x_gl_lighting_colour(GLenum pname)
+{
+    return pname == V9X_GL_AMBIENT || pname == V9X_GL_DIFFUSE ||
+           pname == V9X_GL_SPECULAR || pname == V9X_GL_EMISSION;
+}
+
+static void V9X_GL_API v9x_gl_get_lightfv(GLenum light, GLenum pname,
+                                          GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(light, pname, values, 0);
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_lightiv(GLenum light, GLenum pname,
+                                          GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(light, pname, values, 0);
+
+    v9x_gl_query_ints(values, count, v9x_gl_lighting_colour(pname), params);
+}
+
+static void V9X_GL_API v9x_gl_get_materialfv(GLenum face, GLenum pname,
+                                             GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(face, pname, values, 1);
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_materialiv(GLenum face, GLenum pname,
+                                             GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(face, pname, values, 1);
+
+    v9x_gl_query_ints(values, count, v9x_gl_lighting_colour(pname), params);
+}
+
 static void V9X_GL_API v9x_gl_clear_stencil(GLint s)
 {
     V9X_GL_WITH_CONTEXT(v9x_gl_state_clear_stencil(&context_->state, s));
@@ -4340,6 +4643,23 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glFogfv, v9x_gl_fogfv);
     V9X_GL_OVERRIDE(glFogi, v9x_gl_fogi);
     V9X_GL_OVERRIDE(glFogiv, v9x_gl_fogiv);
+    V9X_GL_OVERRIDE(glLightf, v9x_gl_lightf);
+    V9X_GL_OVERRIDE(glLightfv, v9x_gl_lightfv);
+    V9X_GL_OVERRIDE(glLighti, v9x_gl_lighti);
+    V9X_GL_OVERRIDE(glLightiv, v9x_gl_lightiv);
+    V9X_GL_OVERRIDE(glLightModelf, v9x_gl_light_modelf);
+    V9X_GL_OVERRIDE(glLightModelfv, v9x_gl_light_modelfv);
+    V9X_GL_OVERRIDE(glLightModeli, v9x_gl_light_modeli);
+    V9X_GL_OVERRIDE(glLightModeliv, v9x_gl_light_modeliv);
+    V9X_GL_OVERRIDE(glMaterialf, v9x_gl_materialf);
+    V9X_GL_OVERRIDE(glMaterialfv, v9x_gl_materialfv);
+    V9X_GL_OVERRIDE(glMateriali, v9x_gl_materiali);
+    V9X_GL_OVERRIDE(glMaterialiv, v9x_gl_materialiv);
+    V9X_GL_OVERRIDE(glColorMaterial, v9x_gl_color_material_entry);
+    V9X_GL_OVERRIDE(glGetLightfv, v9x_gl_get_lightfv);
+    V9X_GL_OVERRIDE(glGetLightiv, v9x_gl_get_lightiv);
+    V9X_GL_OVERRIDE(glGetMaterialfv, v9x_gl_get_materialfv);
+    V9X_GL_OVERRIDE(glGetMaterialiv, v9x_gl_get_materialiv);
     V9X_GL_OVERRIDE(glPushAttrib, v9x_gl_push_attrib);
     V9X_GL_OVERRIDE(glPopAttrib, v9x_gl_pop_attrib);
     V9X_GL_OVERRIDE(glPushClientAttrib, v9x_gl_push_client_attrib);
@@ -4496,6 +4816,7 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 v9x_gl_arrays_init(&context->arrays);
                 context->attribs = 0;
                 context->tnl_hold = 0;
+                context->lighting = 0;
                 context->pending.tnl = 0;
                 v9x_gl_textures_init(&context->textures, v9x_gl_heap_alloc,
                                      v9x_gl_heap_free);
@@ -4626,6 +4947,11 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
             v9x_gl_heap_free(context->tnl_hold);
             context->tnl_hold = 0;
         }
+        if (context->lighting != 0) {
+            v9x_gl_heap_free(context->lighting);
+            context->lighting = 0;
+            context->pipeline.lighting = 0;
+        }
         context->in_use = 0;
         context->owner = 0ul;
         context->drawable = 0;
@@ -4675,9 +5001,10 @@ V9X_GLCLTPROCTABLE * __stdcall DrvSetContext(HDC hdc, V9X_DHGLRC handle,
                                     v9x_gl_tnl_wanted(),
                                     context->tnl_hold->capture,
                                     context->tnl_hold->capture_indices,
-                                    context->tnl_hold->elements);
+                                    context->tnl_hold->elements,
+                                    context->tnl_hold->capture_normals);
             } else {
-                v9x_gl_pipeline_tnl(&context->pipeline, 0, 0, 0, 0, 0);
+                v9x_gl_pipeline_tnl(&context->pipeline, 0, 0, 0, 0, 0, 0);
             }
             table = &v9x_gl_table;
         }

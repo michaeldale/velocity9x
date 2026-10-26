@@ -1,0 +1,6 @@
+Boot 98, the 4570. Half-Life GL timedemo mwd5 windowed, new HAL with the step 3c ICD:
+hl-4-b98-r1 (first after the boot): 394 frames 4.902 seconds 80.381 fps
+hl-4-b98-r2: 394 frames 4.075 seconds 96.679 fps
+Quake 3 demo001 timedemo, new HAL with the lighting ICD:
+q3-4-b98-on: 1346 frames, 22.1 seconds: 61.0 fps
+139 pid=FFE36DE3 counters tnl batches=30800 triangles=2314462 refused=0 failed=0

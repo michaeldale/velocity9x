@@ -221,12 +221,13 @@ static v9x_u32 vtnl_vertex_count;
 static v9x_u32 vtnl_index_count;
 
 static int vtnl_sink(void *user, const V9X_R3D_ABI_VERTEX *object,
-                     v9x_u32 vertex_count, const v9x_u16 *indices,
-                     v9x_u32 index_count)
+                     const GLfloat *normals, v9x_u32 vertex_count,
+                     const v9x_u16 *indices, v9x_u32 index_count)
 {
     v9x_u32 i;
 
     (void)user;
+    (void)normals;
     for (i = 0ul; i < vertex_count && i < 8ul; ++i) {
         vtnl_sunk[i] = object[i];
     }
@@ -257,7 +258,7 @@ static void test_draw_elements_captured(void)
 
     vscene();
     v9x_gl_pipeline_tnl(&p, vtnl_sink, 1, vtnl_vertices, vtnl_indices,
-                        vtnl_elements);
+                        vtnl_elements, 0);
     vtnl_vertex_count = 0ul;
     vtnl_index_count = 0ul;
     v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_VERTEX, 2, V9X_GL_FLOAT, 0,

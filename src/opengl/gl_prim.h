@@ -15,6 +15,7 @@
 
 #include "velocity9x/r3d_abi.h"
 #include "gl_state.h"
+#include "gl_light.h"
 
 #define V9X_GL_POINTS         0x0000u
 #define V9X_GL_LINES          0x0001u
@@ -100,6 +101,9 @@ typedef struct v9x_gl_vertex {
     v9x_u32 tnl_index;
     v9x_u32 outcode;
     v9x_u32 tnl_element;
+    /* Step 4: the current normal when the vertex was captured, sent beside
+     * object when the draw is lit. */
+    GLfloat object_normal[3];
 } V9X_GL_VERTEX;
 
 /*
@@ -111,6 +115,7 @@ typedef struct v9x_gl_vertex {
  * 3b), and a sink declines only when there is no device to draw with.
  */
 typedef int (*V9X_GL_TNL_SINK_FN)(void *user, const V9X_R3D_ABI_VERTEX *object,
+                                  const GLfloat *normals,
                                   v9x_u32 vertex_count,
                                   const v9x_u16 *indices,
                                   v9x_u32 index_count);
@@ -139,6 +144,7 @@ typedef struct v9x_gl_tnl_element {
     GLfloat clip[4];
     v9x_u32 outcode;
     V9X_R3D_ABI_VERTEX object;
+    GLfloat normal[3];
 } V9X_GL_TNL_ELEMENT;
 
 /* Where a full batch goes, and the state the batch was made with. The sink
@@ -279,6 +285,14 @@ typedef struct v9x_gl_pipeline {
     V9X_R3D_ABI_VERTEX *tnl_vertices;
     v9x_u16 *tnl_indices;
     V9X_GL_TNL_ELEMENT *tnl_elements;
+    /* Step 4: the captured vertices' normals, three floats each beside
+     * tnl_vertices (V9X_GL_TNL_VERTICES of them); null sends none, and lit
+     * primitives are then not captured. */
+    GLfloat *tnl_normals;
+    /* The context's lighting state, which a lit capture's key and constants
+     * come from; null is the initial state (gl_light.h). The front end's,
+     * on the heap, for the floppy's sake as the capture storage is. */
+    const V9X_GL_LIGHTING *lighting;
     /* The vertex array call the cache is filled under, and the element
      * the next v9x_gl_prim_vertex is (plus one; 0: none). */
     v9x_u32 tnl_call;
@@ -326,7 +340,8 @@ void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
  * long; null caches nothing). */
 void v9x_gl_pipeline_tnl(V9X_GL_PIPELINE *pipeline, V9X_GL_TNL_SINK_FN sink,
                          int allowed, V9X_R3D_ABI_VERTEX *vertices,
-                         v9x_u16 *indices, V9X_GL_TNL_ELEMENT *elements);
+                         v9x_u16 *indices, V9X_GL_TNL_ELEMENT *elements,
+                         GLfloat *normals);
 
 /*
  * Vertex array elements through the element cache (V9X_GL_TNL_ELEMENT).

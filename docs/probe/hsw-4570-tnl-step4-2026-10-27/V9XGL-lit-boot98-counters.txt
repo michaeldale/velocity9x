@@ -1,0 +1,8 @@
+25974:686 pid=FFE34C1F counters tnl batches=85 triangles=134 refused=0 failed=0
+25975:687 pid=FFE34C1F counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=4 flush-segments-full=0
+25978:690 pid=FFE34C1F DrvSetContext hdc=00000782 context=1 -> 1
+26011:723 pid=FFE34C1F DrvSetContext hdc=00000782 context=1 -> 1
+26014:726 pid=FFE34C1F DrvSetContext hdc=00000782 context=1 -> 1
+26020:732 pid=FFE34C1F DrvSetContext hdc=00000782 context=1 -> 1
+26025:737 pid=FFE34C1F counters tnl batches=129 triangles=313 refused=0 failed=0
+26026:738 pid=FFE34C1F counters tnl-hold flush-for-screen=0 new-segment=6 flush-for-frame=2 joined=7 flush-segments-full=0

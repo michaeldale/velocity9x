@@ -51,7 +51,17 @@ struct v9x_hsw_pipe_slot {
     v9x_u32 batch_bytes;
     v9x_u32 vertex_off;
     v9x_u32 vertex_bytes;
+    /* Hardware T&L step 4: the slot's half of V9X_INTEL_HSW_TNL_OFF, a
+     * reserve offset - the normals stream from tnl_off, the segments' push
+     * constants from tnl_off + V9X_HSW_PIPE_TNL_NORMAL_BYTES. */
+    v9x_u32 tnl_off;
+    v9x_u32 tnl_bytes;
 };
+
+#define V9X_HSW_PIPE_TNL_BYTES        ((v9x_u32)0x00008000ul)
+/* 480 normals of three floats (r3d_abi.h's vertex limit), whole pages'
+ * worth of cache lines. */
+#define V9X_HSW_PIPE_TNL_NORMAL_BYTES ((v9x_u32)0x00001800ul)
 
 /* The slot sequence `sequence` is submitted from: its low bit. */
 v9x_status v9x_intel_hsw_pipe_slot(v9x_u32 sequence,
