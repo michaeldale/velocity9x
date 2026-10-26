@@ -147,6 +147,10 @@ function Get-V9xHostSourceNames {
         'src\display32\r3d\r3d_line.c',
         'src\display32\r3d\r3d_clear.c',
         'src\display32\r3d\r3d_validate.c',
+        # Fixed-function T&L: the key rule, and the reference evaluator
+        # (host only; docs\plans\hardware-tnl.md, step 2).
+        'src\display32\r3d\r3d_tnl.c',
+        'src\display32\r3d\r3d_tnl_ref.c',
         'src\opengl\gl_state.c',
         'src\opengl\gl_matrix.c',
         'src\opengl\gl_prim.c',
@@ -222,6 +226,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_r3d_runs.c',
         'tests\host\test_r3d_records.c',
         'tests\host\test_r3d_validate.c',
+        'tests\host\test_r3d_tnl.c',
         'tests\host\test_gl_state.c',
         'tests\host\test_gl_matrix.c',
         'tests\host\test_gl_prim.c',

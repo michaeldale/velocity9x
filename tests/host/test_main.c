@@ -108,6 +108,8 @@ unsigned int v9x_run_r3d_runs_tests(void);
 unsigned int v9x_run_r3d_records_tests(void);
 /* tests\host\test_r3d_validate.c: the render interface's validators. */
 unsigned int v9x_run_r3d_validate_tests(void);
+/* tests\host\test_r3d_tnl.c: the T&L key rule and reference evaluator. */
+unsigned int v9x_run_r3d_tnl_tests(void);
 /* tests\host\test_gl_state.c: the ICD's OpenGL context state. */
 unsigned int v9x_run_gl_state_tests(void);
 /* tests\host\test_gl_matrix.c: the ICD's matrix stacks. */
@@ -1321,6 +1323,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r3d_runs_tests();
     failures += v9x_run_r3d_records_tests();
     failures += v9x_run_r3d_validate_tests();
+    failures += v9x_run_r3d_tnl_tests();
     failures += v9x_run_gl_state_tests();
     failures += v9x_run_gl_matrix_tests();
     failures += v9x_run_gl_prim_tests();
