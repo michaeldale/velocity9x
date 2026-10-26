@@ -73,6 +73,24 @@ Wanted, not yet fetched:
    microcode on this card.
 2. **GPU init and clear state**: `evergreen_gpu_init`'s writes for Cedar,
    the preamble, and a `SURFACE_SYNC`. Read back with V9XEGMM.
+   What the source shows it needs beyond Phase 1's tools:
+   - Some registers lie past the 128 KiB window: the shader
+     constant-buffer sizes at `28140h`-`28200h` and `28F80h`-`29000h`.
+     Linux reaches them through `MM_INDEX`/`MM_DATA` (offsets 0 and 4).
+     The probe VxD needs an indirect write op limited to those ranges.
+   - The render-backend disable mask comes from the RCU's fuse straps
+     (`RREG32_RCU(0x203/0x204)`), an indirect read. Read it before any
+     write, and record it.
+   - `GB_ADDR_CONFIG` takes Cedar's golden value `02010001`; the same
+     value goes to `DMIF_`, `HDP_` and `DMA_TILING_CONFIG`.
+     `DMA_TILING_CONFIG` already reads `02011203` from the BIOS and is
+     used by the running DMA engine, so the probe must leave it alone or
+     measure the difference.
+   - Linux 3.9's blit state (`set_default_state`) repeats the SQ
+     resource splits as `SET_CONFIG_REG` packets with Cedar's numbers
+     (93 PS / 46 VS GPRs, 96 PS / 16 VS threads, 42 stack entries each),
+     so the MMIO writes may matter less than the packets. That is the
+     first thing to measure: Phase 3's draw with the packet state alone.
 3. **A solid rectangle through the 3D engine**: Linux v3.9's blit state
    with a constant-colour pixel shader, into the scratch window, checked
    byte for byte. This is the first triangle.
