@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.31.0 - not yet released
+
 ## 0.30.1 - 2026-10-26
 
 - **Intel GMA 3100 (G33/G31, `8086:29C2`) is claimed by the `intel-gma`
