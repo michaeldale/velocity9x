@@ -308,6 +308,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-26 0.30.0 release checks: the merged Intel work on the netbook, the HD 4600 and A8U4I5](2026-10-26-0.30.0-release-checks.md)
 - [2026-10-26 The G33/G31's GMA 3100 (8086:29C2) joins intel-gma on one DOS survey: the 945's descriptor unchanged](2026-10-26-g33-gma3100-from-a-survey.md)
 - [2026-10-26 0.30.1 release check: the package on the GMA 950 netbook, V9XD32 PASS at DDI 5 and 6](2026-10-26-0.30.1-release-check.md)
+- [2026-10-26 Bay Trail's Valleyview graphics (8086:0F31) from one DOS survey: Ivy Bridge's layout with 32-bit BARs, so the Haswell decode would refuse it](2026-10-26-baytrail-valleyview-from-a-survey.md)
 
 ## SiS
 
