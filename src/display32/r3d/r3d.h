@@ -19,6 +19,7 @@
 #define VELOCITY9X_R3D_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/r3d_tnl.h"
 
 /*
  * A screen-space vertex: D3DTLVERTEX's layout, which is also what the
@@ -276,6 +277,30 @@ typedef struct v9x_r3d_draw {
     V9X_R3D_TEXTURE texture1;
     const float *texcoords1;
 } V9X_R3D_DRAW;
+
+/*
+ * What a draw the engine transforms adds to V9X_R3D_DRAW (render interface
+ * ABI 7, r3d_abi.h's V9X_R3D_ABI_TNL_DRAW, validated): the key and constant
+ * block, the viewport in target pixels, the depth range, the cull as the
+ * core numbers it (V9X_R3D_CULL_*, r3d_cull.h) and the provoking vertex.
+ */
+typedef struct v9x_r3d_tnl {
+    const V9X_R3D_TNL_KEY *key;
+    const V9X_R3D_TNL_CONSTANTS *constants;
+    float viewport_x;
+    float viewport_y;
+    float viewport_width;
+    float viewport_height;
+    float depth_near;
+    float depth_far;
+    v9x_u32 cull;
+    v9x_u32 provoking;
+    /* Indexed (non-null): vertex_count vertices, index_count indices, a
+     * list; the draw's triangle count means nothing then. */
+    const v9x_u16 *indices;
+    v9x_u32 index_count;
+    v9x_u32 vertex_count;
+} V9X_R3D_TNL;
 
 /*
  * The batch sink and cull decision a list builder needs, supplied by the

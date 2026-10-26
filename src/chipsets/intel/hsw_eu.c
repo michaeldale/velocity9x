@@ -30,6 +30,7 @@ static v9x_u8 v9x_hsw_eu_sources(v9x_u8 opcode)
     case V9X_HSW_EU_OP_MUL:
     case V9X_HSW_EU_OP_MAC:
     case V9X_HSW_EU_OP_DP4:
+    case V9X_HSW_EU_OP_DPH:
     case V9X_HSW_EU_OP_DP3:
     case V9X_HSW_EU_OP_LINE:
     case V9X_HSW_EU_OP_PLN:
@@ -917,5 +918,162 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     *used = g.used + 4ul;
+    return V9X_STATUS_OK;
+}
+
+/* URB write fields, Vol 7 p316-323 (intel_hsw_eu.h). */
+#define V9X_HSW_URB_GLOBAL_OFFSET_MAX ((v9x_u32)0x7fful)
+#define V9X_HSW_URB_SWIZZLE_INTERLEAVE ((v9x_u32)0x00004000ul)
+#define V9X_HSW_URB_COMPLETE           ((v9x_u32)0x00008000ul)
+
+v9x_status v9x_intel_hsw_eu_urb_write_fc(v9x_u32 global_offset,
+                                         v9x_u8 interleave, v9x_u8 complete,
+                                         v9x_u32 *function)
+{
+    if (function == 0 || global_offset > V9X_HSW_URB_GLOBAL_OFFSET_MAX ||
+        interleave > 1u || complete > 1u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Opcode 2:0 WRITE_HWORD is 0; per-slot offset 16 stays off. */
+    *function = global_offset << 3;
+    if (interleave) {
+        *function |= V9X_HSW_URB_SWIZZLE_INTERLEAVE;
+    }
+    if (complete) {
+        *function |= V9X_HSW_URB_COMPLETE;
+    }
+    return V9X_STATUS_OK;
+}
+
+/* Step 3's vertex kernel registers (intel_hsw_eu.h). */
+#define V9X_HSW_VSK_INPUT_POSITION ((v9x_u8)(V9X_HSW_VS_DISPATCH_GRF + \
+                                             V9X_HSW_VS_CONSTANT_GRFS))
+#define V9X_HSW_VSK_VUE_HEADER     ((v9x_u8)(V9X_HSW_VS_URB_HEADER_GRF + 1u))
+#define V9X_HSW_VSK_POSITION       ((v9x_u8)(V9X_HSW_VS_URB_HEADER_GRF + 2u))
+#define V9X_HSW_VSK_ATTRIBUTES     ((v9x_u8)(V9X_HSW_VS_URB_HEADER_GRF + 3u))
+/* g0 dword 5, where the URB write header's channel masks live. */
+#define V9X_HSW_VSK_MASK_BYTE      ((v9x_u8)20u)
+#define V9X_HSW_VSK_CHANNEL_MASKS  ((v9x_u32)0x0000ff00ul)
+
+/* An Align16 float source: a vertex's vec4, <4;4,1> across the two halves
+ * of a SIMD4x2 register, or with vstride 0 the same vec4 for both - which
+ * is how a push constant row is read. */
+static void v9x_hsw_vsk_vec4(struct v9x_hsw_eu_operand *op, v9x_u8 nr,
+                             v9x_u8 subnr, v9x_u8 vstride)
+{
+    op->file = V9X_HSW_EU_FILE_GRF;
+    op->type = V9X_HSW_EU_TYPE_F;
+    op->nr = nr;
+    op->subnr = subnr;
+    op->vstride = vstride;
+    op->chan = V9X_HSW_EU_SWIZZLE_XYZW;
+}
+
+v9x_status v9x_intel_hsw_vs_kernel_position(v9x_u32 *out, v9x_u32 capacity,
+                                            v9x_u32 *used)
+{
+    struct v9x_hsw_psg g;
+    struct v9x_hsw_eu_inst inst;
+    v9x_u32 function;
+    v9x_u32 desc;
+    v9x_u8 row;
+    v9x_u8 index;
+
+    if (out == 0 || used == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    g.out = out;
+    g.capacity = capacity;
+    g.used = 0ul;
+    g.failed = 0;
+
+    /* The URB write header: g0 whole, NoMask, so a thread carrying one
+     * vertex still copies both handles (Mesa's implied move of g0). */
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_MOV;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.mask_disable = 1u;
+    v9x_hsw_ps_grf(&inst.dst, V9X_HSW_VS_URB_HEADER_GRF, V9X_HSW_EU_TYPE_UD);
+    v9x_hsw_ps_grf(&inst.src0, 0u, V9X_HSW_EU_TYPE_UD);
+    v9x_hsw_psg_emit(&g, &inst);
+
+    /* Dword 5's channel masks all on: or(1) g112.5 g0.5 0xff00, the one
+     * scalar instruction Mesa emits before every Gen7 URB write
+     * (brw_urb_WRITE). */
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_OR;
+    inst.exec_size = V9X_HSW_EU_EXEC_1;
+    inst.mask_disable = 1u;
+    v9x_hsw_ps_grf(&inst.dst, V9X_HSW_VS_URB_HEADER_GRF, V9X_HSW_EU_TYPE_UD);
+    inst.dst.subnr = V9X_HSW_VSK_MASK_BYTE;
+    v9x_hsw_ps_grf(&inst.src0, 0u, V9X_HSW_EU_TYPE_UD);
+    inst.src0.subnr = V9X_HSW_VSK_MASK_BYTE;
+    inst.src0.vstride = V9X_HSW_EU_VSTRIDE_0;
+    inst.src0.width = V9X_HSW_EU_WIDTH_1;
+    inst.src0.hstride = V9X_HSW_EU_HSTRIDE_0;
+    inst.src1.file = V9X_HSW_EU_FILE_IMM;
+    inst.src1.type = V9X_HSW_EU_TYPE_UD;
+    inst.src1.imm = V9X_HSW_VSK_CHANNEL_MASKS;
+    v9x_hsw_psg_emit(&g, &inst);
+
+    /* The VUE header slot: render target index, viewport index and point
+     * width all zero, for both vertices (Vol 7 p451). */
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_MOV;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    v9x_hsw_ps_grf(&inst.dst, V9X_HSW_VSK_VUE_HEADER, V9X_HSW_EU_TYPE_F);
+    inst.src0.file = V9X_HSW_EU_FILE_IMM;
+    inst.src0.type = V9X_HSW_EU_TYPE_F;
+    inst.src0.imm = 0ul;
+    v9x_hsw_psg_emit(&g, &inst);
+
+    /* Clip position, component r = the object position . MVP row r. */
+    for (row = 0u; row < 4u; ++row) {
+        v9x_hsw_ps_zero(&inst);
+        inst.opcode = V9X_HSW_EU_OP_DP4;
+        inst.exec_size = V9X_HSW_EU_EXEC_8;
+        inst.align16 = 1u;
+        v9x_hsw_ps_grf(&inst.dst, V9X_HSW_VSK_POSITION, V9X_HSW_EU_TYPE_F);
+        inst.dst.chan = (v9x_u8)(V9X_HSW_EU_MASK_X << row);
+        v9x_hsw_vsk_vec4(&inst.src0, V9X_HSW_VSK_INPUT_POSITION, 0u,
+                         V9X_HSW_EU_VSTRIDE_4);
+        v9x_hsw_vsk_vec4(&inst.src1,
+                         (v9x_u8)(V9X_HSW_VS_DISPATCH_GRF + row / 2u),
+                         (v9x_u8)((row % 2u) * 16u), V9X_HSW_EU_VSTRIDE_0);
+        v9x_hsw_psg_emit(&g, &inst);
+    }
+
+    /* The attributes as the VF wrote them, both vertices at once. */
+    for (index = 1u; index < V9X_HSW_VS_INPUTS; ++index) {
+        v9x_hsw_psg_op(&g, V9X_HSW_EU_OP_MOV,
+                       (v9x_u8)(V9X_HSW_VSK_ATTRIBUTES + index - 1u),
+                       (v9x_u8)(V9X_HSW_VSK_INPUT_POSITION + index), 0u, 0,
+                       0ul, 0u);
+    }
+
+    /* One interleaved write of the six data registers, and the end. */
+    if (v9x_intel_hsw_eu_urb_write_fc(0ul, 1u, 1u, &function) !=
+            V9X_STATUS_OK ||
+        v9x_intel_hsw_eu_send_desc((v9x_u8)(1u + V9X_HSW_VS_URB_DATA_GRFS),
+                                   0u, 1u, function, &desc) !=
+            V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_SEND;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.sfid = V9X_HSW_SFID_URB;
+    inst.eot = 1u;
+    inst.desc = desc;
+    inst.dst.file = V9X_HSW_EU_FILE_ARF; /* null */
+    inst.dst.type = V9X_HSW_EU_TYPE_UD;
+    inst.dst.hstride = V9X_HSW_EU_HSTRIDE_1;
+    v9x_hsw_ps_grf(&inst.src0, V9X_HSW_VS_URB_HEADER_GRF, V9X_HSW_EU_TYPE_UD);
+    v9x_hsw_psg_emit(&g, &inst);
+
+    if (g.failed) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *used = g.used;
     return V9X_STATUS_OK;
 }

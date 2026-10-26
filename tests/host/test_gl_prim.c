@@ -1558,8 +1558,393 @@ static void test_split_into_passes(void)
     PCHECK(v9x_gl_prim_split(&state, &texture1, passes) == 0ul);
 }
 
+/* ---- Hardware T&L capture (docs\plans\hardware-tnl.md, step 3) ------ */
+
+static V9X_R3D_ABI_VERTEX tnl_sunk[3u * SINK_MAX];
+static v9x_u32 tnl_sunk_triangles;
+static v9x_u32 tnl_sunk_batches;
+static int tnl_take;
+
+static v9x_u32 tnl_screen_triangles;
+static v9x_u32 tnl_sunk_vertices;
+static V9X_R3D_ABI_VERTEX tnl_capture_vertices[V9X_GL_TNL_VERTICES];
+static v9x_u16 tnl_capture_indices[V9X_GL_TNL_INDICES];
+static int tnl_index_out_of_range;
+
+/* The indexed batch expanded back into a list, so the checks below read
+ * triangles as the engine draws them; the vertices sent are counted. */
+static int tnl_sink(void *user, const V9X_R3D_ABI_VERTEX *object,
+                    v9x_u32 vertex_count, const v9x_u16 *indices,
+                    v9x_u32 index_count, const V9X_R3D_ABI_VERTEX *screen,
+                    v9x_u32 screen_count)
+{
+    v9x_u32 i;
+
+    (void)user;
+    (void)screen;
+    tnl_screen_triangles += screen_count;
+    tnl_sunk_vertices += vertex_count;
+    for (i = 0ul; i < index_count &&
+                  tnl_sunk_triangles * 3ul + i < 3ul * SINK_MAX; ++i) {
+        if (indices[i] >= vertex_count) {
+            tnl_index_out_of_range = 1;
+            continue;
+        }
+        tnl_sunk[tnl_sunk_triangles * 3ul + i] = object[indices[i]];
+    }
+    tnl_sunk_triangles += index_count / 3ul;
+    ++tnl_sunk_batches;
+    return tnl_take;
+}
+
+static void tnl_scene(V9X_GL_STATE *s, V9X_GL_PIPELINE *p, int take)
+{
+    scene(s, p);
+    v9x_gl_pipeline_tnl(p, tnl_sink, 1, tnl_capture_vertices,
+                        tnl_capture_indices);
+    tnl_take = take;
+    tnl_sunk_triangles = 0ul;
+    tnl_sunk_batches = 0ul;
+    tnl_screen_triangles = 0ul;
+    tnl_sunk_vertices = 0ul;
+    tnl_index_out_of_range = 0;
+}
+
+static void tnl_triangle(V9X_GL_STATE *s, V9X_GL_PIPELINE *p)
+{
+    v9x_gl_prim_begin(s, p, V9X_GL_TRIANGLES);
+    vertex(s, p, 10.0f, 10.0f);
+    vertex(s, p, 100.0f, 10.0f);
+    vertex(s, p, 10.0f, 100.0f);
+    v9x_gl_prim_end(s, p);
+}
+
+/*
+ * A captured triangle reaches the T&L sink in object space; taken, the
+ * screen batch is dropped; declined, the screen batch is drawn instead and
+ * counted. The object vertex carries x y z w, the packed colour, an
+ * unfogged specular and s t.
+ */
+static void test_tnl_capture_and_decline(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_prim_color(&p, 0.0f, 1.0f, 0.0f, 1.0f);
+    v9x_gl_prim_texcoord(&p, 0.25f, 0.75f, 0.0f, 1.0f);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 1ul && tnl_sunk_triangles == 1ul);
+    PCHECK(sunk_triangles == 0ul);
+    PCHECK(near_value(tnl_sunk[1].sx, 100.0f) &&
+           near_value(tnl_sunk[1].sy, 10.0f) &&
+           near_value(tnl_sunk[1].sz, 0.0f) &&
+           near_value(tnl_sunk[1].rhw, 1.0f));
+    PCHECK(tnl_sunk[0].color == 0xff00ff00ul &&
+           tnl_sunk[0].specular == 0xff000000ul);
+    PCHECK(near_value(tnl_sunk[2].tu, 0.25f) &&
+           near_value(tnl_sunk[2].tv, 0.75f));
+    PCHECK(p.tnl_taken == 1ul && p.tnl_declined == 0ul);
+
+    tnl_scene(&s, &p, 0);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 1ul && sunk_triangles == 1ul);
+    PCHECK(near_value(sunk[1].sx, 100.0f) && near_value(sunk[1].sy, 190.0f));
+    PCHECK(p.tnl_taken == 0ul && p.tnl_declined == 1ul);
+
+    /* Not allowed: the screen path only, the T&L sink never called. */
+    tnl_scene(&s, &p, 1);
+    v9x_gl_pipeline_tnl(&p, tnl_sink, 0, tnl_capture_vertices,
+                        tnl_capture_indices);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 1ul);
+}
+
+/*
+ * Indexed capture: a fan of six vertices is four triangles over the six
+ * vertices sent once, the shared first vertex named by every triangle;
+ * a fan of 300 vertices crosses the 256-vertex batch, and the first vertex
+ * is sent again in the second batch rather than named across it.
+ */
+static void test_tnl_indexed_fan(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    unsigned int i;
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLE_FAN);
+    vertex(&s, &p, 100.0f, 100.0f);
+    vertex(&s, &p, 150.0f, 100.0f);
+    vertex(&s, &p, 140.0f, 130.0f);
+    vertex(&s, &p, 110.0f, 150.0f);
+    vertex(&s, &p, 80.0f, 140.0f);
+    vertex(&s, &p, 60.0f, 110.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(tnl_sunk_batches == 1ul && tnl_sunk_triangles == 4ul);
+    PCHECK(tnl_sunk_vertices == 6ul && !tnl_index_out_of_range);
+    for (i = 0u; i < 4u; ++i) {
+        PCHECK(near_value(tnl_sunk[i * 3u].sx, 100.0f) &&
+               near_value(tnl_sunk[i * 3u].sy, 100.0f));
+    }
+    PCHECK(near_value(tnl_sunk[3u * 3u + 2u].sx, 60.0f));
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLE_FAN);
+    vertex(&s, &p, 160.0f, 100.0f);
+    for (i = 0u; i < 299u; ++i) {
+        vertex(&s, &p, 160.0f + 50.0f * (float)(i % 2u),
+               100.0f + 0.1f * (float)i);
+    }
+    v9x_gl_prim_end(&s, &p);
+    /* Each later batch sends the first vertex once more, and its two
+     * other corners when the cut fell between them: at most two extra a
+     * batch. */
+    PCHECK(tnl_sunk_triangles == 298ul && !tnl_index_out_of_range);
+    PCHECK(tnl_sunk_batches >= 2ul && tnl_sunk_vertices <= 300ul + 2ul *
+                                                         tnl_sunk_batches);
+    for (i = 0u; i < SINK_MAX; ++i) {
+        PCHECK(near_value(tnl_sunk[i * 3u].sx, 160.0f) &&
+               near_value(tnl_sunk[i * 3u].sy, 100.0f));
+    }
+}
+
+/* A captured batch nothing of which survives the CPU's cull is not sent:
+ * it would draw nothing, and cost a draw. */
+static void test_tnl_empty_not_sent(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 10.0f, 10.0f);      /* clockwise: a back face */
+    vertex(&s, &p, 10.0f, 100.0f);
+    vertex(&s, &p, 100.0f, 10.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 0ul);
+    PCHECK(p.tnl_empty == 1ul);
+
+    /* The same with a front face beside it: sent, both triangles, the
+     * back one for the engine to cull. */
+    tnl_scene(&s, &p, 1);
+    v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 10.0f, 10.0f);
+    vertex(&s, &p, 10.0f, 100.0f);
+    vertex(&s, &p, 100.0f, 10.0f);
+    vertex(&s, &p, 10.0f, 10.0f);
+    vertex(&s, &p, 100.0f, 10.0f);
+    vertex(&s, &p, 10.0f, 100.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(tnl_sunk_batches == 1ul && tnl_sunk_triangles == 2ul);
+    PCHECK(tnl_screen_triangles == 1ul && p.tnl_empty == 0ul);
+}
+
+/* What step 3 leaves to the CPU is not captured, and a q other than 1
+ * declines the batch it is in. */
+static void test_tnl_not_captured(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_state_enable(&s, V9X_GL_FOG, 1);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 1ul);
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_state_enable(&s, V9X_GL_POLYGON_OFFSET_FILL, 1);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 1ul);
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_prim_shade_model(&s, &p, V9X_GL_FLAT);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 1ul);
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+    v9x_gl_prim_cull_face(&s, &p, V9X_GL_FRONT_AND_BACK);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 0ul);
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_prim_texcoord(&p, 0.5f, 0.5f, 0.0f, 2.0f);
+    tnl_triangle(&s, &p);
+    PCHECK(tnl_sunk_batches == 0ul && sunk_triangles == 1ul);
+    PCHECK(p.tnl_declined == 1ul);
+}
+
+/*
+ * A triangle the CPU clips into several stays one triangle for the
+ * engine, and every piece of it lands in the same flush as its twin. Each
+ * of these 70 is cut by the near plane into two pieces; with room kept for
+ * the 11 pieces a triangle can become, a flush comes once 54 pieces (27
+ * triangles) are batched, so the 70 go as 27, 27 and 16.
+ */
+static void test_tnl_clipped_and_batches(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    unsigned int i;
+
+    tnl_scene(&s, &p, 1);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    for (i = 0u; i < 70u; ++i) {
+        v9x_gl_prim_vertex(&s, &p, 10.0f, 10.0f, -2.0f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, 100.0f, 10.0f, 0.0f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, 10.0f, 100.0f, 0.0f, 1.0f);
+    }
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(tnl_sunk_triangles == 70ul && tnl_sunk_batches == 3ul);
+    PCHECK(sunk_triangles == 0ul);
+    /* The sink was handed the CPU's 140 pieces beside them, to hold. */
+    PCHECK(tnl_screen_triangles == 140ul);
+
+    /* Declined, the CPU's pieces - more than 70 - go in their place. */
+    tnl_scene(&s, &p, 0);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    for (i = 0u; i < 70u; ++i) {
+        v9x_gl_prim_vertex(&s, &p, 10.0f, 10.0f, -2.0f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, 100.0f, 10.0f, 0.0f, 1.0f);
+        v9x_gl_prim_vertex(&s, &p, 10.0f, 100.0f, 0.0f, 1.0f);
+    }
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 140ul);
+}
+
+/*
+ * The engine's window position from the key's constants and the viewport,
+ * by the render interface's formula, against the CPU path's for the same
+ * vertices under a perspective projection, a rotated model-view, an offset
+ * viewport and a narrowed depth range.
+ */
+static void test_tnl_window_matches_cpu(void)
+{
+    static const GLfloat object[4][3] = {
+        { 0.0f, 0.0f, 0.0f }, { 0.5f, -0.25f, 0.3f },
+        { -0.4f, 0.6f, -0.2f }, { 0.1f, 0.2f, 0.45f }
+    };
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    V9X_R3D_TNL_KEY key;
+    V9X_R3D_TNL_CONSTANTS c;
+    V9X_R3D_ABI_TNL_DRAW tnl;
+    unsigned int v;
+    unsigned int row;
+
+    scene(&s, &p);
+    v9x_gl_state_viewport(&s, 10, 20, 200, 100);
+    v9x_gl_prim_depth_range(&s, &p, 0.25, 0.75);
+    v9x_gl_state_matrix_mode(&s, V9X_GL_PROJECTION);
+    v9x_gl_state_load_identity(&s);
+    v9x_gl_state_frustum(&s, -1.0, 1.0, -0.75, 0.75, 1.0, 10.0);
+    v9x_gl_state_matrix_mode(&s, V9X_GL_MODELVIEW);
+    v9x_gl_state_translate(&s, 0.1f, -0.2f, -3.0f);
+    v9x_gl_state_rotate(&s, 30.0f, 0.3f, 1.0f, 0.2f);
+
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    for (v = 0u; v < 3u; ++v) {
+        v9x_gl_prim_vertex(&s, &p, object[v][0], object[v][1], object[v][2],
+                           1.0f);
+    }
+    v9x_gl_prim_vertex(&s, &p, object[3][0], object[3][1], object[3][2],
+                       1.0f);
+    v9x_gl_prim_vertex(&s, &p, object[1][0], object[1][1], object[1][2],
+                       1.0f);
+    v9x_gl_prim_vertex(&s, &p, object[2][0], object[2][1], object[2][2],
+                       1.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 2ul);
+
+    v9x_gl_prim_tnl_constants(&s, &p, &key, &c);
+    v9x_gl_prim_tnl_viewport(&s, &p, &tnl);
+    PCHECK(key.model == V9X_R3D_TNL_MODEL_GL11 &&
+           v9x_r3d_tnl_key_check(&key) == V9X_STATUS_OK);
+    PCHECK(near_value(tnl.viewport_x, 10.0f) &&
+           near_value(tnl.viewport_y, 200.0f - 20.0f - 100.0f) &&
+           near_value(tnl.viewport_width, 200.0f) &&
+           near_value(tnl.viewport_height, 100.0f) &&
+           near_value(tnl.depth_near, 0.25f) &&
+           near_value(tnl.depth_far, 0.75f));
+
+    for (v = 0u; v < 4u; ++v) {
+        const V9X_R3D_ABI_VERTEX *cpu = &sunk[v == 3u ? 3u : v];
+        float in[4];
+        float clip[4];
+        float x;
+        float y;
+        float z;
+
+        in[0] = object[v][0];
+        in[1] = object[v][1];
+        in[2] = object[v][2];
+        in[3] = 1.0f;
+        for (row = 0u; row < 4u; ++row) {
+            clip[row] = c.model_view_projection[row][0] * in[0] +
+                        c.model_view_projection[row][1] * in[1] +
+                        c.model_view_projection[row][2] * in[2] +
+                        c.model_view_projection[row][3] * in[3];
+        }
+        /* Inside Direct3D's z: 0 <= z' <= w. */
+        PCHECK(clip[2] >= 0.0f && clip[2] <= clip[3]);
+        x = tnl.viewport_x +
+            (clip[0] / clip[3] + 1.0f) * tnl.viewport_width * 0.5f;
+        y = tnl.viewport_y +
+            (1.0f - clip[1] / clip[3]) * tnl.viewport_height * 0.5f;
+        z = tnl.depth_near + clip[2] / clip[3] *
+                                 (tnl.depth_far - tnl.depth_near);
+        PCHECK(near_value(x, cpu->sx) && near_value(y, cpu->sy) &&
+               near_value(z, cpu->sz) &&
+               near_value(1.0f / clip[3], cpu->rhw));
+    }
+}
+
+/* Facing on the target (gl_prim.h): the same winding as in the window, so
+ * a back cull of the counter-clockwise front discards CW. */
+static void test_tnl_cull(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+
+    scene(&s, &p);
+    PCHECK(v9x_gl_prim_tnl_cull(&s, &p) == V9X_R3D_ABI_CULL_NONE);
+    v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+    PCHECK(v9x_gl_prim_tnl_cull(&s, &p) == V9X_R3D_ABI_CULL_CW);
+    v9x_gl_prim_front_face(&s, &p, V9X_GL_CW);
+    PCHECK(v9x_gl_prim_tnl_cull(&s, &p) == V9X_R3D_ABI_CULL_CCW);
+    v9x_gl_prim_cull_face(&s, &p, V9X_GL_FRONT);
+    PCHECK(v9x_gl_prim_tnl_cull(&s, &p) == V9X_R3D_ABI_CULL_CW);
+    v9x_gl_prim_front_face(&s, &p, V9X_GL_CCW);
+    PCHECK(v9x_gl_prim_tnl_cull(&s, &p) == V9X_R3D_ABI_CULL_CCW);
+
+    /* The CPU's own cull agrees: a triangle counter-clockwise in window
+     * coordinates is the front and survives a back cull, and on the
+     * target its corners have a negative signed area (y down), which is
+     * counter-clockwise as Direct3D counts it. */
+    scene(&s, &p);
+    v9x_gl_state_enable(&s, V9X_GL_CULL_FACE, 1);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 10.0f, 10.0f);
+    vertex(&s, &p, 100.0f, 10.0f);
+    vertex(&s, &p, 10.0f, 100.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 1ul);
+    PCHECK((sunk[1].sx - sunk[0].sx) * (sunk[2].sy - sunk[0].sy) -
+           (sunk[2].sx - sunk[0].sx) * (sunk[1].sy - sunk[0].sy) < 0.0f);
+}
+
 unsigned int v9x_run_gl_prim_tests(void)
 {
+    test_tnl_capture_and_decline();
+    test_tnl_indexed_fan();
+    test_tnl_empty_not_sent();
+    test_tnl_not_captured();
+    test_tnl_clipped_and_batches();
+    test_tnl_window_matches_cpu();
+    test_tnl_cull();
     gl_prim_failures = 0u;
     test_split_into_passes();
     test_alpha_test_that_cannot_fail();

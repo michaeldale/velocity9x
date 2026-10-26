@@ -595,6 +595,28 @@ typedef struct v9x_d3d_engine_ops {
                         DWORD index_count,
                         int strip,
                         DWORD cull_mode);
+
+    /*
+     * Hardware T&L, APPENDED 2026-10-26 under the same rule (docs\plans\
+     * hardware-tnl.md, step 3). Null for an engine without a vertex stage,
+     * which the positional initialisers get by omission.
+     *
+     * draw_tnl: triangle_count * 3 untransformed vertices in the TL layout
+     * (x y z w where sx sy sz rhw are), transformed, clipped, culled and set
+     * up by the engine under the key, constants and viewport in tnl. -1
+     * declines with nothing submitted - a key or state this engine does not
+     * run yet - and the caller draws the batch another way; 1 when drawn; 0
+     * when a submission failed part-way.
+     *
+     * tnl_available: whether draw_tnl may be offered anything on the chip
+     * this HAL drives now (the Haswell engine also drives Ivy Bridge, which
+     * the plan leaves for later). The render interface's describe asks it.
+     */
+    int (*draw_tnl)(const V9X_R3D_DRAW *draw,
+                    const V9X_R3D_VERTEX *vertices,
+                    DWORD triangle_count,
+                    const V9X_R3D_TNL *tnl);
+    int (*tnl_available)(void);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

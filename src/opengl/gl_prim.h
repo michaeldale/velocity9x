@@ -84,7 +84,37 @@ typedef struct v9x_gl_vertex {
     int inside;
     GLfloat window[4];
     V9X_R3D_ABI_VERTEX abi;
+    /* Hardware T&L (docs\plans\hardware-tnl.md, step 3): the vertex as
+     * draw_tnl takes it, when the primitive is captured - object x y z w
+     * where sx sy sz rhw are, the packed colour, specular 0xFF000000 (no
+     * fog), s and t - and where it went: its index in the T&L batch whose
+     * serial it carries. A triangle names its corners by that index while
+     * the serial is the batch's; one from a batch already flushed is sent
+     * again. */
+    V9X_R3D_ABI_VERTEX object;
+    v9x_u32 tnl_serial;
+    v9x_u32 tnl_index;
 } V9X_GL_VERTEX;
+
+/*
+ * The T&L sink: a batch of untransformed triangles, indexed - each vertex
+ * once, then a list of indices into them - and beside it the screen batch
+ * of the same triangles, transformed and clipped by the CPU. Non-zero when
+ * the sink took both - the front end holds them, and draws the screen
+ * batch itself if the engine later refuses the other - and the pipeline
+ * then drops its screen batch; zero sends the screen batch to the ordinary
+ * sink instead, so a decline loses nothing and keeps the order.
+ */
+typedef int (*V9X_GL_TNL_SINK_FN)(void *user, const V9X_R3D_ABI_VERTEX *object,
+                                  v9x_u32 vertex_count,
+                                  const v9x_u16 *indices,
+                                  v9x_u32 index_count,
+                                  const V9X_R3D_ABI_VERTEX *screen,
+                                  v9x_u32 screen_count);
+
+/* One captured batch's room: vertices, and indices (three a triangle). */
+#define V9X_GL_TNL_VERTICES 256u
+#define V9X_GL_TNL_INDICES  384u
 
 /* Where a full batch goes, and the state the batch was made with. The sink
  * answers non-zero when it took the batch; the pipeline then empties it.
@@ -191,6 +221,34 @@ typedef struct v9x_gl_pipeline {
     /* Batches the sink refused; the triangles in them are lost. */
     v9x_u32 sink_failures;
     /*
+     * Hardware T&L capture (step 3). tnl_allowed: set by the front end when
+     * the engine runs T&L and nothing turns it off. tnl_capture: this
+     * primitive is captured - a filled primitive with no fog, polygon
+     * offset, flat shading, second unit or FRONT_AND_BACK cull, all of
+     * which the step 3 kernel and key leave to the CPU. tnl_ok: no vertex
+     * of the batch had q other than 1, which the kernel does not divide.
+     * The batch is the object-space twin of `batch`; both are flushed
+     * together.
+     */
+    V9X_GL_TNL_SINK_FN tnl_sink;
+    int tnl_allowed;
+    int tnl_capture;
+    int tnl_ok;
+    v9x_u32 tnl_serial;
+    v9x_u32 tnl_vertex_count;
+    v9x_u32 tnl_index_count;
+    /* The front end's storage for one captured batch, V9X_GL_TNL_VERTICES
+     * and V9X_GL_TNL_INDICES long; null captures nothing. Not arrays here:
+     * the ICD's contexts are static, and 9 KB each in the DLL's file put
+     * the S3 floppy's first disk over its size. */
+    V9X_R3D_ABI_VERTEX *tnl_vertices;
+    v9x_u16 *tnl_indices;
+    /* Batches the engine took, ones it or tnl_ok turned back, and ones
+     * nothing of which survived the CPU's cull and clip, not sent. */
+    v9x_u32 tnl_taken;
+    v9x_u32 tnl_declined;
+    v9x_u32 tnl_empty;
+    /*
      * Where a vertex's time goes (2026-10-01), when the front end supplies
      * the array - null, the initial value, measures nothing: TSC cycles as
      * lo/hi pairs per V9X_GL_PRIM_PROF_* stage, then the triangle counts
@@ -219,6 +277,44 @@ typedef struct v9x_gl_pipeline {
 void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline);
 void v9x_gl_pipeline_sink(V9X_GL_PIPELINE *pipeline, V9X_GL_SINK_FN sink,
                           void *user);
+/* The T&L sink beside it (same user), whether captures may be made, and
+ * the capture's storage (V9X_GL_TNL_VERTICES and V9X_GL_TNL_INDICES long;
+ * either null allows nothing). */
+void v9x_gl_pipeline_tnl(V9X_GL_PIPELINE *pipeline, V9X_GL_TNL_SINK_FN sink,
+                         int allowed, V9X_R3D_ABI_VERTEX *vertices,
+                         v9x_u16 *indices);
+
+/*
+ * What a captured batch is drawn under (render interface ABI 7), from the
+ * state it was captured in. Pure, and host-tested against the CPU path's
+ * own window positions.
+ *
+ * v9x_gl_prim_tnl_constants: the key for an unlit OpenGL draw and the
+ * constant block whose model-view-projection is projection x model-view
+ * with OpenGL's clip z folded into Direct3D's: z' = (z + w) / 2, so the
+ * engine's clipper, which keeps 0 <= z' <= w, keeps -w <= z <= w.
+ *
+ * v9x_gl_prim_tnl_viewport: the viewport on the target (y down from the
+ * drawable's top) and the depth range, so the engine's window position is
+ * the CPU path's: x as 2.10.1 maps it, y the drawable's height less it.
+ *
+ * v9x_gl_prim_tnl_cull: the winding on the target to discard
+ * (V9X_R3D_ABI_CULL_*). The window and the target are the same picture
+ * with y counted the other way, and both windings are the one seen: a
+ * triangle counter-clockwise in window coordinates (y up) is
+ * counter-clockwise on the target too, though its signed area there (y
+ * down) is negative. So OpenGL's default front, CCW, culled BACK, discards
+ * what is clockwise on the target, Direct3D's own CW.
+ */
+void v9x_gl_prim_tnl_constants(const V9X_GL_STATE *state,
+                               const V9X_GL_PIPELINE *pipeline,
+                               V9X_R3D_TNL_KEY *key,
+                               V9X_R3D_TNL_CONSTANTS *constants);
+void v9x_gl_prim_tnl_viewport(const V9X_GL_STATE *state,
+                              const V9X_GL_PIPELINE *pipeline,
+                              V9X_R3D_ABI_TNL_DRAW *tnl);
+v9x_u32 v9x_gl_prim_tnl_cull(const V9X_GL_STATE *state,
+                             const V9X_GL_PIPELINE *pipeline);
 /* 1 or 2: whether the next primitives carry unit 1's coordinate. Outside
  * Begin/End only; the batch is empty then (glEnd flushes it). */
 void v9x_gl_pipeline_units(V9X_GL_PIPELINE *pipeline, v9x_u32 units);

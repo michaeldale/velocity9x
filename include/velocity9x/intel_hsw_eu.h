@@ -281,4 +281,74 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
                                          const struct v9x_hsw_ps_desc *desc,
                                          v9x_u32 *used);
 
+/*
+ * The vertex shader (docs\plans\hardware-tnl.md, step 3; every field below
+ * is licensed by docs\specifications\haswell-vertex-stage-tnl.md, section 1).
+ *
+ * DPH: a 4-component dot product with src0's w taken as 1.0 (Vol 2b p28).
+ * The math function codes share DW0 27:24 with the conditional modifier
+ * (Vol 2a p22) and go in the instruction's cond_mod; the conditional
+ * modifiers are Vol 2a p15's. sel with .ge against an immediate is max().
+ */
+#define V9X_HSW_EU_OP_DPH  ((v9x_u8)0x55u)
+
+#define V9X_HSW_EU_MATH_INV  ((v9x_u8)0x1u)
+#define V9X_HSW_EU_MATH_LOG  ((v9x_u8)0x2u)
+#define V9X_HSW_EU_MATH_EXP  ((v9x_u8)0x3u)
+#define V9X_HSW_EU_MATH_SQRT ((v9x_u8)0x4u)
+#define V9X_HSW_EU_MATH_RSQ  ((v9x_u8)0x5u)
+#define V9X_HSW_EU_MATH_FDIV ((v9x_u8)0x9u)
+#define V9X_HSW_EU_MATH_POW  ((v9x_u8)0xau)
+
+#define V9X_HSW_EU_COND_Z  ((v9x_u8)0x1u)
+#define V9X_HSW_EU_COND_NZ ((v9x_u8)0x2u)
+#define V9X_HSW_EU_COND_G  ((v9x_u8)0x3u)
+#define V9X_HSW_EU_COND_GE ((v9x_u8)0x4u)
+#define V9X_HSW_EU_COND_L  ((v9x_u8)0x5u)
+#define V9X_HSW_EU_COND_LE ((v9x_u8)0x6u)
+
+/* Destination channel enables (Align16 writemask). */
+#define V9X_HSW_EU_MASK_X    ((v9x_u8)0x1u)
+#define V9X_HSW_EU_MASK_XYZW ((v9x_u8)0xfu)
+
+/*
+ * URB write function control (Vol 7 p316-323): opcode 2:0 WRITE_HWORD (0),
+ * global offset 13:3 in 256-bit units, swizzle 14 (1 = interleaved: one
+ * message carries both SIMD4x2 vertices), complete 15, per-slot offset 16
+ * off. Mesa sets complete on the write that ends a vec4 thread
+ * (brw_eu_emit.c brw_set_urb_message), and so does this driver.
+ */
+v9x_status v9x_intel_hsw_eu_urb_write_fc(v9x_u32 global_offset,
+                                         v9x_u8 interleave, v9x_u8 complete,
+                                         v9x_u32 *function);
+
+/*
+ * Step 3's vertex kernel: position only, SIMD4x2. Register map, fixed:
+ *
+ *   g0        the thread payload header (URB handles for both vertices)
+ *   g1-g2     push constants: the model-view-projection rows 0-3, two per
+ *             register (row r at g(1 + r/2), byte (r % 2) * 16); the first
+ *             two GRFs of V9X_R3D_TNL_CONSTANTS
+ *   g3-g7     the five inputs the VF writes: object position (x y z w),
+ *             diffuse, specular, texture coordinates 0 and 1
+ *   g112      the URB write header: g0, with dword 5's channel masks set
+ *   g113      the VUE header slot, zero
+ *   g114      the clip-space position: four DP4s, one per row
+ *   g115-g118 diffuse, specular, texture coordinates 0 and 1, copied
+ *
+ * One interleaved URB write of the six data registers at offset 0 ends the
+ * thread, so the VUE is header, position, then the four attributes in the
+ * order SBE already reads them (read offset 1).
+ */
+#define V9X_HSW_VS_DISPATCH_GRF   ((v9x_u8)1u)
+#define V9X_HSW_VS_CONSTANT_GRFS  ((v9x_u8)2u)
+#define V9X_HSW_VS_INPUTS         ((v9x_u8)5u)
+/* Vertex URB Entry Read Length counts pairs of elements (Vol 2b p728). */
+#define V9X_HSW_VS_READ_LENGTH    ((v9x_u8)3u)
+#define V9X_HSW_VS_URB_HEADER_GRF ((v9x_u8)112u)
+#define V9X_HSW_VS_URB_DATA_GRFS  ((v9x_u8)6u)
+
+v9x_status v9x_intel_hsw_vs_kernel_position(v9x_u32 *out, v9x_u32 capacity,
+                                            v9x_u32 *used);
+
 #endif

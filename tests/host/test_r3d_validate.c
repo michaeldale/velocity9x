@@ -689,9 +689,136 @@ static void test_clear_header_and_rects(void)
            V9X_R3D_RESULT_OK);
 }
 
+static void tnl_reset(V9X_R3D_ABI_TNL_DRAW *tnl, const V9X_R3D_ABI_DRAW *draw,
+                      V9X_R3D_TNL_KEY *key,
+                      const V9X_R3D_TNL_CONSTANTS *constants)
+{
+    unsigned int index;
+    unsigned char *bytes = (unsigned char *)key;
+
+    for (index = 0u; index < sizeof(*key); ++index) {
+        bytes[index] = 0u;
+    }
+    key->model = V9X_R3D_TNL_MODEL_GL11;
+    tnl->struct_bytes = (v9x_u32)sizeof(*tnl);
+    tnl->draw = draw;
+    tnl->key = key;
+    tnl->constants = constants;
+    tnl->viewport_x = 0.0f;
+    tnl->viewport_y = 0.0f;
+    tnl->viewport_width = 640.0f;
+    tnl->viewport_height = 480.0f;
+    tnl->depth_near = 0.0f;
+    tnl->depth_far = 1.0f;
+    tnl->cull = V9X_R3D_ABI_CULL_NONE;
+    tnl->provoking = 2ul;
+    tnl->indices = 0;
+    tnl->index_count = 0ul;
+    tnl->vertex_count = 0ul;
+}
+
+/* ABI 7's T&L request, field by field, each refusal beside an acceptance. */
+static void test_tnl_header(void)
+{
+    V9X_R3D_ABI_TNL_DRAW tnl;
+    V9X_R3D_ABI_DRAW draw;
+    V9X_R3D_TNL_KEY key;
+    V9X_R3D_TNL_CONSTANTS constants;
+    float zero = 0.0f;
+
+    tnl_reset(&tnl, &draw, &key, &constants);
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+    VCHECK(v9x_r3d_validate_tnl(0) == V9X_R3D_RESULT_INVALID);
+    tnl.struct_bytes = 44ul;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_ABI);
+
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.draw = 0;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.key = 0;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.constants = 0;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+    /* A key with a stray bit. */
+    tnl_reset(&tnl, &draw, &key, &constants);
+    key.reserved[0] = 1ul;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+    /* The viewport: a negative origin and one past the target are allowed
+     * (OpenGL permits both); no extent, a corner past the limit or a NaN is
+     * not. */
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.viewport_x = -100.0f;
+    tnl.viewport_y = -50.0f;
+    tnl.viewport_width = 2000.0f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+    tnl.viewport_width = 0.0f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.viewport_height = -1.0f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.viewport_x = 16000.0f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.viewport_y = zero / zero;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+    /* Depth range inside [0, 1], either order (glDepthRange(1, 0)). */
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.depth_near = 1.0f;
+    tnl.depth_far = 0.0f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+    tnl.depth_far = 1.5f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.depth_near = -0.25f;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.cull = 3ul;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.provoking = 0ul;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+    tnl.provoking = 1ul;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+    /* Indexed: whole triangles, both counts inside their limits, and no
+     * counts without indices. Whether every index is below vertex_count is
+     * the engine's to check as it copies them. */
+    {
+        static const v9x_u16 indices[6] = { 0u, 1u, 2u, 2u, 1u, 3u };
+
+        tnl_reset(&tnl, &draw, &key, &constants);
+        tnl.indices = indices;
+        tnl.index_count = 6ul;
+        tnl.vertex_count = 4ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+        tnl.index_count = 5ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+        tnl.index_count = 0ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+        tnl.index_count = V9X_R3D_ABI_TNL_INDICES_MAX + 3ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+        tnl.index_count = 6ul;
+        tnl.vertex_count = 0ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+        tnl.vertex_count = V9X_R3D_ABI_TNL_VERTICES_MAX + 1ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+        tnl.indices = 0;
+        tnl.vertex_count = 4ul;
+        VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    }
+}
+
 unsigned int v9x_run_r3d_validate_tests(void)
 {
     validate_failures = 0u;
+    test_tnl_header();
     test_surface_layout_and_extent();
     test_depth_against_target();
     test_cpu_levels();

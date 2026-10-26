@@ -30,6 +30,7 @@
 #define VELOCITY9X_R3D_ABI_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/r3d_tnl.h"
 
 /* 2: describe states the hardware sampler's texture limits (2026-09-26).
  * 3: and its smallest edge, and names the Mach64 (2026-09-29).
@@ -40,8 +41,10 @@
  *    Phase 3).
  * 6: describe's depth32_bits, and a clear's depth_value on the 24-bit full
  *    scale (2026-10-21, docs\plans\32bpp-acceleration-and-3d.md, Phase 4):
- *    the OpenGL ICD's 24-bit depth format. */
-#define V9X_R3D_ABI_VERSION 6ul
+ *    the OpenGL ICD's 24-bit depth format.
+ * 7: describe's tnl, and draw_tnl: untransformed vertices with a T&L key
+ *    and constant block (2026-10-26, docs\plans\hardware-tnl.md, step 3). */
+#define V9X_R3D_ABI_VERSION 7ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -279,6 +282,11 @@ typedef struct v9x_r3d_abi_describe {
      * and with no target format.
      */
     v9x_u32 depth32_bits;
+    /* ABI 7: non-zero when draw_tnl may be offered draws - the engine runs
+     * T&L keys on its own vertex stage. Zero everywhere but Haswell. Each
+     * draw_tnl may still be UNSUPPORTED for a key the engine cannot run
+     * yet, and the ICD then draws that batch through draw. */
+    v9x_u32 tnl;
 } V9X_R3D_ABI_DESCRIBE;
 
 #define V9X_R3D_ABI_HWTEX_SQUARE     1ul    /* width equal to height */
@@ -317,6 +325,60 @@ typedef struct v9x_r3d_abi_draw {
     V9X_R3D_ABI_RAW raw_target;
     V9X_R3D_ABI_RAW raw_depth;
 } V9X_R3D_ABI_DRAW;
+
+/*
+ * ABI 7: a draw the engine transforms (docs\plans\hardware-tnl.md).
+ *
+ * `draw` is an ordinary draw - target, depth, textures, fragment state,
+ * triangle_count, texcoords1 - whose vertices are untransformed: each
+ * vertex's sx sy sz rhw hold the object position x y z w, colour and
+ * specular are the vertex's colours 0 and 1 as packed ARGB, and tu tv (and
+ * texcoords1) its texture coordinates. Nothing is clipped, culled or
+ * flipped by the caller; the engine's clipper and setup do all three.
+ *
+ * key and constants: include\velocity9x\r3d_tnl.h. The viewport maps
+ * normalised device coordinates to the target, origin top-left, +y in NDC
+ * up the target: x = viewport_x + (ndc_x + 1) * viewport_width / 2,
+ * y = viewport_y + (1 - ndc_y) * viewport_height / 2, and depth
+ * depth_near + ndc_z * (depth_far - depth_near) with ndc_z in [0, 1] - the
+ * caller folds OpenGL's [-1, 1] into the projection. The state's scissor is
+ * applied on top of the viewport. cull: the winding, on the target, that is
+ * discarded (V9X_R3D_ABI_CULL_*). provoking: the vertex of each triangle
+ * whose colour a flat-shaded triangle takes, 0 or 2.
+ *
+ * Indexed (indices non-null): draw->vertices holds vertex_count vertices,
+ * each sent once, and the triangles are a list of index_count 16-bit
+ * indices into them - a multiple of 3, every index below vertex_count.
+ * draw->triangle_count is then 1 and means nothing; texcoords1, when
+ * present, holds two floats per vertex in the vertices' order. This is
+ * the form the ICD sends: a strip or fan shares its vertices, and on a
+ * chip whose aperture is uncached each vertex copied once instead of up
+ * to three times is most of what a T&L draw costs the CPU. Without
+ * indices the draw is a list of 3 * triangle_count vertices, as draw's.
+ */
+#define V9X_R3D_ABI_CULL_NONE 0ul
+#define V9X_R3D_ABI_CULL_CW   1ul
+#define V9X_R3D_ABI_CULL_CCW  2ul
+#define V9X_R3D_ABI_TNL_VERTICES_MAX 512ul
+#define V9X_R3D_ABI_TNL_INDICES_MAX  1536ul
+
+typedef struct v9x_r3d_abi_tnl_draw {
+    v9x_u32 struct_bytes;
+    const V9X_R3D_ABI_DRAW *draw;
+    const V9X_R3D_TNL_KEY *key;
+    const V9X_R3D_TNL_CONSTANTS *constants;
+    float viewport_x;
+    float viewport_y;
+    float viewport_width;
+    float viewport_height;
+    float depth_near;
+    float depth_far;
+    v9x_u32 cull;
+    v9x_u32 provoking;
+    const v9x_u16 *indices;
+    v9x_u32 index_count;
+    v9x_u32 vertex_count;
+} V9X_R3D_ABI_TNL_DRAW;
 
 /* Triangles that reached the engine, meaningful for OK and PARTIAL. */
 typedef struct v9x_r3d_abi_outcome {
@@ -360,6 +422,10 @@ typedef v9x_u32 (V9X_R3D_CALL *V9X_R3D_FLUSH_FN)(v9x_u32 generation);
 /* Completion and CPU visibility of everything submitted before it: OK only
  * when observed, TIMEOUT or INDETERMINATE otherwise. */
 typedef v9x_u32 (V9X_R3D_CALL *V9X_R3D_FINISH_FN)(v9x_u32 generation);
+/* ABI 7. UNSUPPORTED means nothing was emitted: the caller may draw the
+ * same triangles through draw, transformed itself. */
+typedef v9x_u32 (V9X_R3D_CALL *V9X_R3D_DRAW_TNL_FN)(
+    const V9X_R3D_ABI_TNL_DRAW *draw, V9X_R3D_ABI_OUTCOME *outcome);
 
 typedef struct v9x_r3d_interface {
     v9x_u32 abi_version;
@@ -369,6 +435,7 @@ typedef struct v9x_r3d_interface {
     V9X_R3D_CLEAR_FN clear;
     V9X_R3D_FLUSH_FN flush;
     V9X_R3D_FINISH_FN finish;
+    V9X_R3D_DRAW_TNL_FN draw_tnl;
 } V9X_R3D_INTERFACE;
 
 /* The export: null unless `abi_version` and `struct_bytes` are exactly
@@ -385,11 +452,12 @@ typedef char v9x_r3d_abi_assert_vertex[sizeof(V9X_R3D_ABI_VERTEX) == 32 ? 1 : -1
 typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 84 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 88 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_tnl_draw[sizeof(V9X_R3D_ABI_TNL_DRAW) == 60 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_raw[sizeof(V9X_R3D_ABI_RAW) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 228 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_clear[sizeof(V9X_R3D_ABI_CLEAR) == 48 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_interface[sizeof(V9X_R3D_INTERFACE) == 28 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_interface[sizeof(V9X_R3D_INTERFACE) == 32 ? 1 : -1];
 #endif
 
 #endif /* VELOCITY9X_R3D_ABI_H */

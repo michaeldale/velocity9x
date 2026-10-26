@@ -1,0 +1,15 @@
+hl-td-on: 394 frames 16.381 seconds 24.052 fps
+hl-td-off: 394 frames 4.652 seconds 84.694 fps
+hl-td-on2: 394 frames 7.756 seconds 50.800 fps
+hl-td-off2: 394 frames 4.656 seconds 84.618 fps
+hl-td-on3: 394 frames 7.533 seconds 52.306 fps
+hl-td-off3: 394 frames 4.635 seconds 85.008 fps
+hl-td-on4: 394 frames 6.720 seconds 58.632 fps
+hl-td-on5-1: 394 frames 4.981 seconds 79.093 fps
+hl-td-off5-1: 394 frames 4.617 seconds 85.335 fps
+hl-td-on5-2: 394 frames 4.993 seconds 78.910 fps
+hl-td-off5-2: 394 frames 4.647 seconds 84.792 fps
+q3-on1: 1346 frames, 23.8 seconds: 56.6 fps
+q3-off1: 1346 frames, 23.6 seconds: 57.0 fps
+hl-td-final-on (ICD 471552): 394 frames 4.968 seconds 79.302 fps
+hl-td-final-off: 394 frames 4.629 seconds 85.121 fps

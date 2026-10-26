@@ -91,4 +91,17 @@ v9x_u32 v9x_r3d_validate_rects(const V9X_R3D_ABI_RECT *rects,
                                v9x_u32 rect_count,
                                v9x_u32 width, v9x_u32 height);
 
+/*
+ * A T&L draw's own fields (ABI 7), before its inner draw goes through
+ * v9x_r3d_validate_draw: the struct size, the three pointers, a key
+ * v9x_r3d_tnl_key_check accepts, a finite viewport with a positive extent
+ * whose corners lie within +/- V9X_R3D_TNL_VIEWPORT_LIMIT pixels, a depth
+ * range inside [0, 1], a known cull and a provoking vertex of 0 or 2. The
+ * constants are not checked: any float pattern draws something, and a
+ * non-finite one only what the hardware makes of it.
+ */
+#define V9X_R3D_TNL_VIEWPORT_LIMIT 16384.0f
+
+v9x_u32 v9x_r3d_validate_tnl(const V9X_R3D_ABI_TNL_DRAW *tnl);
+
 #endif /* VELOCITY9X_R3D_VALIDATE_H */

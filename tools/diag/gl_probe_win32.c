@@ -1268,6 +1268,319 @@ static void v9x_glp_texel_phase(GLint width, GLint height)
  * changed in between and not pushed, must stay as changed. Then a 4x2
  * texture's level size and environment through the integer queries.
  */
+/*
+ * Hardware T&L, step 3 (docs\plans\hardware-tnl.md): one scene drawn with
+ * the ICD's T&L on, then with V9XGL_TNL=0, which leaves the vertices to the
+ * CPU path, and the two frames compared pixel by pixel. The scene is what
+ * the vertex stage must get right: a viewport offset into the window and a
+ * narrowed depth range, a perspective cube under the depth test with back
+ * faces culled, a triangle cut by the near plane, a quad far wider than the
+ * viewport (the guard band, then the viewport's own edge), and a textured
+ * quad. The window's border outside the viewport must stay the clear
+ * colour in both. The probe reports; V9XGL.LOG's "tnl allowed=... batches="
+ * lines say whether the first frame really went through the engine.
+ */
+#define V9X_GLP_TNL_TOLERANCE 3
+
+static void v9x_glp_tnl_cube_face(const GLfloat *a, const GLfloat *b,
+                                  const GLfloat *c, const GLfloat *d,
+                                  GLfloat red, GLfloat green, GLfloat blue)
+{
+    glColor3f(red, green, blue);
+    glVertex3fv(a);
+    glColor3f(green, blue, red);
+    glVertex3fv(b);
+    glColor3f(blue, red, green);
+    glVertex3fv(c);
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glVertex3fv(d);
+}
+
+static void v9x_glp_tnl_draw(GLint width, GLint height, GLuint texture)
+{
+    static const GLfloat v[8][3] = {
+        { -1.0f, -1.0f, -1.0f }, { 1.0f, -1.0f, -1.0f },
+        { 1.0f, 1.0f, -1.0f }, { -1.0f, 1.0f, -1.0f },
+        { -1.0f, -1.0f, 1.0f }, { 1.0f, -1.0f, 1.0f },
+        { 1.0f, 1.0f, 1.0f }, { -1.0f, 1.0f, 1.0f }
+    };
+
+    glViewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
+    glDepthRange(0.1, 0.9);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearDepth(1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+    glShadeModel(GL_SMOOTH);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glFrustum(-1.0, 1.0, -0.75, 0.75, 1.0, 20.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    /* A quad far wider than the viewport, behind everything. */
+    glBegin(GL_QUADS);
+    glColor3f(0.2f, 0.2f, 0.6f);
+    glVertex3f(-60.0f, -3.0f, -15.0f);
+    glColor3f(0.6f, 0.2f, 0.2f);
+    glVertex3f(60.0f, -3.0f, -15.0f);
+    glColor3f(0.2f, 0.6f, 0.2f);
+    glVertex3f(60.0f, 3.0f, -15.0f);
+    glColor3f(0.6f, 0.6f, 0.2f);
+    glVertex3f(-60.0f, 3.0f, -15.0f);
+    glEnd();
+
+    /* A triangle from in front of the eye to behind the far side of the
+     * cube: the near plane cuts it. */
+    glBegin(GL_TRIANGLES);
+    glColor3f(1.0f, 0.5f, 0.0f);
+    glVertex3f(-2.0f, -1.5f, 0.5f);
+    glColor3f(0.0f, 0.5f, 1.0f);
+    glVertex3f(2.5f, -1.0f, -9.0f);
+    glColor3f(0.5f, 1.0f, 0.5f);
+    glVertex3f(-1.5f, 2.0f, -9.0f);
+    glEnd();
+
+    /* The cube, back faces culled. */
+    glPushMatrix();
+    glTranslatef(0.3f, 0.0f, -5.0f);
+    glRotatef(25.0f, 1.0f, 1.0f, 0.0f);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+    glBegin(GL_QUADS);
+    v9x_glp_tnl_cube_face(v[0], v[3], v[2], v[1], 1.0f, 0.0f, 0.0f);
+    v9x_glp_tnl_cube_face(v[4], v[5], v[6], v[7], 0.0f, 1.0f, 0.0f);
+    v9x_glp_tnl_cube_face(v[0], v[1], v[5], v[4], 0.0f, 0.0f, 1.0f);
+    v9x_glp_tnl_cube_face(v[3], v[7], v[6], v[2], 1.0f, 1.0f, 0.0f);
+    v9x_glp_tnl_cube_face(v[0], v[4], v[7], v[3], 0.0f, 1.0f, 1.0f);
+    v9x_glp_tnl_cube_face(v[1], v[2], v[6], v[5], 1.0f, 0.0f, 1.0f);
+    glEnd();
+    glDisable(GL_CULL_FACE);
+    glPopMatrix();
+
+    /* A textured quad, upper left, in front. */
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glBegin(GL_QUADS);
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(-2.6f, 0.6f, -3.5f);
+    glTexCoord2f(2.0f, 0.0f);
+    glVertex3f(-1.2f, 0.6f, -3.0f);
+    glTexCoord2f(2.0f, 2.0f);
+    glVertex3f(-1.2f, 1.9f, -3.0f);
+    glTexCoord2f(0.0f, 2.0f);
+    glVertex3f(-2.6f, 1.9f, -3.5f);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_DEPTH_TEST);
+    glDepthRange(0.0, 1.0);
+    glFinish();
+}
+
+/*
+ * A frame as a 24-bit bottom-up BMP, rows as glReadPixels returns them
+ * (bottom first), so the file needs no flip. `scale` multiplies every
+ * channel, clamped, for the difference image.
+ */
+static void v9x_glp_tnl_bmp(const char *path, const GLubyte *rgba,
+                            GLint width, GLint height, int scale)
+{
+    BITMAPFILEHEADER file;
+    BITMAPINFOHEADER info;
+    HANDLE out;
+    DWORD row_bytes = ((DWORD)width * 3ul + 3ul) & ~3ul;
+    DWORD written;
+    GLubyte row[4096 * 3];
+    GLint x;
+    GLint y;
+
+    if (width > 4096) {
+        return;
+    }
+    out = CreateFileA(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+                      FILE_ATTRIBUTE_NORMAL, 0);
+    if (out == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    v9x_glp_zero(&file, sizeof(file));
+    v9x_glp_zero(&info, sizeof(info));
+    file.bfType = 0x4d42u;
+    file.bfOffBits = sizeof(file) + sizeof(info);
+    file.bfSize = file.bfOffBits + row_bytes * (DWORD)height;
+    info.biSize = sizeof(info);
+    info.biWidth = width;
+    info.biHeight = height;
+    info.biPlanes = 1u;
+    info.biBitCount = 24u;
+    WriteFile(out, &file, sizeof(file), &written, 0);
+    WriteFile(out, &info, sizeof(info), &written, 0);
+    for (y = 0; y < height; ++y) {
+        for (x = 0; x < width; ++x) {
+            const GLubyte *p = &rgba[((DWORD)y * (DWORD)width + (DWORD)x) * 4ul];
+            int channel;
+
+            for (channel = 0; channel < 3; ++channel) {
+                int value = (int)p[2 - channel] * scale;
+
+                row[x * 3 + channel] = (GLubyte)(value > 255 ? 255 : value);
+            }
+        }
+        for (x = width * 3; (DWORD)x < row_bytes; ++x) {
+            row[x] = 0u;
+        }
+        WriteFile(out, row, row_bytes, &written, 0);
+    }
+    CloseHandle(out);
+}
+
+/* Make the context current again, so the ICD reads V9XGL_TNL anew. */
+static void v9x_glp_tnl_switch(HDC hdc, HGLRC context, const char *value)
+{
+    SetEnvironmentVariableA("V9XGL_TNL", value);
+    wglMakeCurrent(0, 0);
+    wglMakeCurrent(hdc, context);
+}
+
+static void v9x_glp_tnl(HDC hdc, HGLRC context, GLint width, GLint height)
+{
+    static GLubyte texels[8 * 8 * 3];
+    HANDLE heap = GetProcessHeap();
+    GLubyte *frame[2];
+    DWORD bytes;
+    DWORD index;
+    DWORD differ = 0ul;
+    DWORD over[3] = { 0ul, 0ul, 0ul };
+    DWORD drawn = 0ul;
+    DWORD border = 0ul;
+    DWORD first = 0xfffffffful;
+    int worst = 0;
+    int pass;
+    GLuint texture = 0u;
+    GLint x;
+    GLint y;
+
+    if (width < 16 || height < 16) {
+        v9x_glp_text("TnlResult", "skipped: small window");
+        return;
+    }
+    bytes = (DWORD)width * (DWORD)height * 4ul;
+    frame[0] = (GLubyte *)HeapAlloc(heap, 0, bytes);
+    frame[1] = (GLubyte *)HeapAlloc(heap, 0, bytes);
+    if (frame[0] == 0 || frame[1] == 0) {
+        v9x_glp_text("TnlResult", "skipped: no memory");
+        return;
+    }
+    /* An 8x8 checker of two colours. */
+    for (y = 0; y < 8; ++y) {
+        for (x = 0; x < 8; ++x) {
+            GLubyte *t = &texels[(y * 8 + x) * 3];
+            int on = ((x ^ y) & 1) != 0;
+
+            t[0] = on ? 255u : 40u;
+            t[1] = on ? 200u : 40u;
+            t[2] = on ? 0u : 160u;
+        }
+    }
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 8, 8, 0, GL_RGB,
+                 GL_UNSIGNED_BYTE, texels);
+
+    /* Pass 0 with T&L (the variable unset), pass 1 without it. */
+    for (pass = 0; pass < 2; ++pass) {
+        v9x_glp_tnl_switch(hdc, context, pass == 0 ? 0 : "0");
+        v9x_glp_tnl_draw(width, height, texture);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE,
+                     frame[pass]);
+    }
+    v9x_glp_tnl_switch(hdc, context, 0);
+    glDeleteTextures(1, &texture);
+
+    for (index = 0ul; index < (DWORD)width * (DWORD)height; ++index) {
+        const GLubyte *a = &frame[0][index * 4ul];
+        const GLubyte *b = &frame[1][index * 4ul];
+        int channel;
+        int largest = 0;
+
+        for (channel = 0; channel < 3; ++channel) {
+            int d = (int)a[channel] - (int)b[channel];
+
+            if (d < 0) {
+                d = -d;
+            }
+            if (d > largest) {
+                largest = d;
+            }
+        }
+        if (largest > worst) {
+            worst = largest;
+        }
+        /* Past one 565 step (8), two, and four. */
+        if (largest > 8) {
+            ++over[0];
+        }
+        if (largest > 16) {
+            ++over[1];
+        }
+        if (largest > 32) {
+            ++over[2];
+        }
+        if (largest > V9X_GLP_TNL_TOLERANCE) {
+            ++differ;
+            if (first == 0xfffffffful) {
+                first = index;
+            }
+        }
+        if ((a[0] | a[1] | a[2]) != 0u) {
+            ++drawn;
+            x = (GLint)(index % (DWORD)width);
+            y = (GLint)(index / (DWORD)width);
+            /* Outside the viewport: nothing may be drawn there. */
+            if (x < width / 8 || y < height / 8 ||
+                x >= width / 8 + width * 3 / 4 ||
+                y >= height / 8 + height * 3 / 4) {
+                ++border;
+            }
+        }
+    }
+    v9x_glp_uint("TnlPixels", (DWORD)width * (DWORD)height);
+    v9x_glp_uint("TnlDrawnPixels", drawn);
+    v9x_glp_uint("TnlDifferPixels", differ);
+    v9x_glp_uint("TnlWorstChannel", (DWORD)worst);
+    v9x_glp_uint("TnlDifferOver8", over[0]);
+    v9x_glp_uint("TnlDifferOver16", over[1]);
+    v9x_glp_uint("TnlDifferOver32", over[2]);
+    /* Both frames and their difference, x16, for the eye. */
+    v9x_glp_tnl_bmp(V9X_DIAG_PATH("V9XTNLA.BMP"), frame[0], width, height, 1);
+    v9x_glp_tnl_bmp(V9X_DIAG_PATH("V9XTNLB.BMP"), frame[1], width, height, 1);
+    for (index = 0ul; index < (DWORD)width * (DWORD)height * 4ul; ++index) {
+        int d = (int)frame[0][index] - (int)frame[1][index];
+
+        frame[0][index] = (GLubyte)(d < 0 ? -d : d);
+    }
+    v9x_glp_tnl_bmp(V9X_DIAG_PATH("V9XTNLD.BMP"), frame[0], width, height,
+                    16);
+    v9x_glp_uint("TnlOutsideViewport", border);
+    if (first != 0xfffffffful) {
+        v9x_glp_uint("TnlFirstDifferX", first % (DWORD)width);
+        v9x_glp_uint("TnlFirstDifferY", first / (DWORD)width);
+    }
+    v9x_glp_text("TnlResult",
+                 differ == 0ul && border == 0ul && drawn != 0ul ? "match"
+                                                                : "differ");
+    HeapFree(heap, 0, frame[0]);
+    HeapFree(heap, 0, frame[1]);
+}
+
 static void v9x_glp_attrib(GLint width, GLint height)
 {
     static const GLubyte texels[4 * 2 * 3] = { 0 };
@@ -2846,6 +3159,8 @@ void __stdcall V9xGlProbeEntry(void)
                                 client.bottom - client.top);
             v9x_glp_attrib(client.right - client.left,
                            client.bottom - client.top);
+            v9x_glp_tnl(hdc, context, client.right - client.left,
+                        client.bottom - client.top);
         }
         {
             DWORD started = GetTickCount();

@@ -1625,6 +1625,446 @@ static int v9x_d3d_hsw_draw(const V9X_R3D_DRAW *draw,
     return result;
 }
 
+/*
+ * Hardware T&L, step 3 (docs\plans\hardware-tnl.md): the vertex stage on.
+ *
+ * The constant block must fit between its offset and the VS kernel's
+ * (intel_hsw_3d.h), and the kernel area must end inside the slot's block.
+ */
+typedef char v9x_d3d_hsw_assert_tnl_constants[
+    V9X_HSW_SHADE_VS_CONSTANTS + sizeof(V9X_R3D_TNL_CONSTANTS) <=
+            V9X_HSW_SHADE_VS_KERNEL ? 1 : -1];
+typedef char v9x_d3d_hsw_assert_tnl_end[
+    V9X_HSW_SHADE_VS_END <= V9X_HSW_PIPE_STATE_BLOCK_BYTES ? 1 : -1];
+
+/* The VS kernel's words are fixed for step 3, so a slot that holds them is
+ * not rewritten: this marks it, and changes whenever the kernel does. */
+#define V9X_D3D_HSW_VS_KERNEL_MARK ((v9x_u32)0x56530301ul)
+
+/* Half the 8K span SF allows an object (Vol 7 p578, the rule
+ * v9x_d3d_hsw_guard applies on the CPU): the guard band reaches this many
+ * pixels either side of the viewport's centre, so nothing the clipper
+ * passes untouched spans more. A viewport wider than the span is declined. */
+#define V9X_D3D_HSW_GUARD_HALF 4096.0f
+/* SF_CLIP_VIEWPORT's guard-band fields stop at +/- 16K (Vol 2d p292). */
+#define V9X_D3D_HSW_GUARD_NDC_MAX 16000.0f
+
+static v9x_u8 v9x_d3d_hsw_cull_of(DWORD cull_mode);
+
+static int v9x_d3d_hsw_tnl_available(void)
+{
+    return v9x_hal != 0 &&
+           v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN75 &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) == 0ul;
+}
+
+/* What step 3's position-only kernel runs: no lighting, fog or texture
+ * matrix, both colours carried in the vertex and passed through. */
+static int v9x_d3d_hsw_tnl_key_runs(const V9X_R3D_TNL_KEY *key)
+{
+    v9x_u32 colours = V9X_R3D_TNL_IN_COLOR0 | V9X_R3D_TNL_IN_COLOR1;
+
+    return key->flags == 0ul && key->light_count == 0ul &&
+           key->texture_matrix == 0ul &&
+           key->fog_mode == V9X_R3D_TNL_FOG_NONE &&
+           (key->inputs & colours) == colours;
+}
+
+static v9x_u32 v9x_d3d_hsw_bits(float value)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } convert;
+
+    convert.value = value;
+    return convert.bits;
+}
+
+/*
+ * Float to long through fistp, as d3d_fog.c converts: the HAL links no
+ * runtime, and a cast would call Watcom's __CHP helper.
+ */
+#ifdef __WATCOMC__
+static long v9x_d3d_hsw_to_long(float value);
+#pragma aux v9x_d3d_hsw_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long v9x_d3d_hsw_to_long(float value)
+{
+    return (long)value;
+}
+#endif
+
+/* The largest whole number not above value, whatever the conversion's
+ * rounding: corrected by one when it rounded up. |value| is under 16K. */
+static long v9x_d3d_hsw_floor(float value)
+{
+    long whole = v9x_d3d_hsw_to_long(value);
+
+    return (float)whole > value ? whole - 1l : whole;
+}
+
+static float v9x_d3d_hsw_guard_ndc(float half_extent)
+{
+    float guard = V9X_D3D_HSW_GUARD_HALF / half_extent;
+
+    if (guard < 1.0f) {
+        return 1.0f;
+    }
+    return guard > V9X_D3D_HSW_GUARD_NDC_MAX ? V9X_D3D_HSW_GUARD_NDC_MAX
+                                              : guard;
+}
+
+/* The VS state in the slot's block: both viewports, the pushed constants,
+ * and the kernel unless the slot already holds it. */
+static int v9x_d3d_hsw_write_vs_state(const struct v9x_hsw_pipe_slot *slot,
+                                      const V9X_R3D_TNL *tnl)
+{
+    v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off);
+    const v9x_u32 *constants = (const v9x_u32 *)tnl->constants;
+    float half_width = tnl->viewport_width * 0.5f;
+    float half_height = tnl->viewport_height * 0.5f;
+    float low = tnl->depth_near;
+    float high = tnl->depth_far;
+    v9x_u32 used = 0ul;
+    DWORD index;
+
+    if (v9x_intel_hsw_sf_clip_viewport(
+            image + V9X_HSW_SHADE_VS_SF_CLIP_VIEWPORT / 4ul,
+            v9x_d3d_hsw_bits(half_width), v9x_d3d_hsw_bits(-half_height),
+            v9x_d3d_hsw_bits(tnl->depth_far - tnl->depth_near),
+            v9x_d3d_hsw_bits(tnl->viewport_x + half_width),
+            v9x_d3d_hsw_bits(tnl->viewport_y + half_height),
+            v9x_d3d_hsw_bits(tnl->depth_near),
+            v9x_d3d_hsw_bits(v9x_d3d_hsw_guard_ndc(half_width)),
+            v9x_d3d_hsw_bits(v9x_d3d_hsw_guard_ndc(half_height))) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    /* CC_VIEWPORT clamps depth to the range, either order (Vol 2d p64). */
+    if (low > high) {
+        low = tnl->depth_far;
+        high = tnl->depth_near;
+    }
+    image[V9X_HSW_SHADE_VS_CC_VIEWPORT / 4ul] = v9x_d3d_hsw_bits(low);
+    image[V9X_HSW_SHADE_VS_CC_VIEWPORT / 4ul + 1ul] = v9x_d3d_hsw_bits(high);
+
+    /* Only what the kernel reads: its constant GRFs, eight dwords each. */
+    for (index = 0ul; index < (DWORD)V9X_HSW_VS_CONSTANT_GRFS * 8ul;
+         ++index) {
+        image[V9X_HSW_SHADE_VS_CONSTANTS / 4ul + index] = constants[index];
+    }
+
+    if (image[V9X_HSW_SHADE_VS_KERNEL_MARK / 4ul] ==
+        V9X_D3D_HSW_VS_KERNEL_MARK) {
+        return 1;
+    }
+    /* Built in cached memory and copied, as the PS kernels are
+     * (v9x_d3d_hsw_kernel_words says why). */
+    if (v9x_intel_hsw_vs_kernel_position(v9x_d3d_hsw_kernel_words,
+                                         V9X_D3D_HSW_KERNEL_DWORDS,
+                                         &used) != V9X_STATUS_OK ||
+        used * 4ul + 128ul > V9X_HSW_SHADE_VS_KERNEL_BYTES) {
+        return 0;
+    }
+    for (index = 0ul; index < used; ++index) {
+        image[V9X_HSW_SHADE_VS_KERNEL / 4ul + index] =
+            v9x_d3d_hsw_kernel_words[index];
+    }
+    image[V9X_HSW_SHADE_VS_KERNEL_MARK / 4ul] = V9X_D3D_HSW_VS_KERNEL_MARK;
+    return 1;
+}
+
+/* The index buffer's cache line (Vol 2b's Haswell index-buffer note),
+ * defined again below for the TL indexed path. */
+#define V9X_D3D_HSW_TNL_INDEX_LINE 64ul
+
+/*
+ * An indexed T&L draw, one piece: the vertices once, in their order (with
+ * unit 1's coordinates after each, as the TL2 vertex has them), then the
+ * indices from the next cache line, zero to the end of the line the last
+ * one is in. An index past the vertices, or a draw too large for a slot's
+ * vertex area, is declined before anything is written to the engine.
+ */
+static int v9x_d3d_hsw_draw_tnl_indexed(const V9X_R3D_DRAW *draw,
+                                        const V9X_R3D_VERTEX *vertices,
+                                        const V9X_R3D_TNL *tnl,
+                                        const V9X_D3D_HSW_STATE *state,
+                                        struct v9x_hsw_draw *d,
+                                        struct v9x_hsw_vs_draw *vs,
+                                        int wait_after)
+{
+    struct v9x_hsw_pipe_slot slot;
+    struct v9x_hsw_batch batch;
+    DWORD reason;
+    DWORD kernel = 0ul;
+    DWORD stride = d->tl_uv1 ? V9X_HSW_TL2_VERTEX_BYTES
+                             : V9X_HSW_TL_VERTEX_BYTES;
+    DWORD index_off;
+    DWORD index_end;
+    DWORD index;
+    DWORD word;
+    const v9x_u32 *source;
+    const v9x_u32 *uv1;
+    v9x_u32 *target;
+    DWORD timed;
+
+    for (index = 0ul; index < tnl->index_count; ++index) {
+        if ((DWORD)tnl->indices[index] >= tnl->vertex_count) {
+            return -1;
+        }
+    }
+    index_off = (tnl->vertex_count * stride + V9X_D3D_HSW_TNL_INDEX_LINE -
+                 1ul) & ~(V9X_D3D_HSW_TNL_INDEX_LINE - 1ul);
+    index_end = (index_off + tnl->index_count * 2ul +
+                 V9X_D3D_HSW_TNL_INDEX_LINE - 1ul) &
+                ~(V9X_D3D_HSW_TNL_INDEX_LINE - 1ul);
+    if (index_end > V9X_HSW_PIPE_VERTEX_BYTES) {
+        return -1;
+    }
+    if (!v9x_d3d_hsw_wait_slot(&slot)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
+        return -1;
+    }
+    reason = v9x_d3d_hsw_write_state(draw, state, &slot, &kernel);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+        v9x_d3d_hsw_count_refusal(reason);
+        return -1;
+    }
+    if (!v9x_d3d_hsw_write_vs_state(&slot, tnl)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
+        return -1;
+    }
+
+    /* The copy into the uncached aperture is most of a T&L draw's CPU
+     * time; timed as the TL path's vertex copy is (RingWrite). */
+    timed = V9X_TIME_BEGIN();
+    target = v9x_d3d_hsw_reserve(slot.vertex_off);
+    source = (const v9x_u32 *)vertices;
+    if (d->tl_uv1) {
+        uv1 = (const v9x_u32 *)draw->texcoords1;
+        for (index = 0ul; index < tnl->vertex_count; ++index) {
+            for (word = 0ul; word < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++word) {
+                *target++ = *source++;
+            }
+            *target++ = *uv1++;
+            *target++ = *uv1++;
+        }
+    } else {
+        for (word = 0ul;
+             word < tnl->vertex_count * V9X_HSW_TL_VERTEX_BYTES / 4ul;
+             ++word) {
+            *target++ = source[word];
+        }
+    }
+    /* Two indices a dword, as Haswell reads 16-bit indices little-endian;
+     * the last dword and the rest of its line zero. */
+    target = v9x_d3d_hsw_reserve(slot.vertex_off + index_off);
+    for (index = 0ul; index < (index_end - index_off) / 4ul; ++index) {
+        DWORD low = index * 2ul;
+        v9x_u32 value = 0ul;
+
+        if (low < tnl->index_count) {
+            value = (v9x_u32)tnl->indices[low];
+        }
+        if (low + 1ul < tnl->index_count) {
+            value |= (v9x_u32)tnl->indices[low + 1ul] << 16;
+        }
+        target[index] = value;
+    }
+    V9X_TIME_END(V9X_TIME_RING_WRITE, timed);
+
+    d->kernel = kernel;
+    d->vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
+    d->vertex_count = tnl->vertex_count;
+    d->indices = V9X_D3D_HSW_GFX(slot.vertex_off + index_off);
+    d->index_count = tnl->index_count;
+    d->strip = 0u;
+    vs->constants = V9X_D3D_HSW_GFX(slot.state_off +
+                                    V9X_HSW_SHADE_VS_CONSTANTS);
+    v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                             slot.batch_bytes / 4ul);
+    if (v9x_intel_hsw_draw_workload_vs(&batch,
+                                       V9X_D3D_HSW_GFX(slot.state_off),
+                                       slot.state_span, d, vs,
+                                       V9X_D3D_HSW_CRUMB_GFX,
+                                       tnl->index_count / 3ul) !=
+        V9X_STATUS_OK) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+        return -1;
+    }
+    if (!v9x_d3d_hsw_submit(&slot, wait_after)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
+        return 0;
+    }
+    v9x_present_note_submission();
+    return 1;
+}
+
+static int v9x_d3d_hsw_draw_tnl(const V9X_R3D_DRAW *draw,
+                                const V9X_R3D_VERTEX *vertices,
+                                DWORD triangle_count,
+                                const V9X_R3D_TNL *tnl)
+{
+    V9X_D3D_HSW_STATE state;
+    struct v9x_hsw_pipe_slot slot;
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_draw d;
+    struct v9x_hsw_vs_draw vs;
+    DWORD reason;
+    DWORD kernel = 0ul;
+    DWORD done = 0ul;
+    DWORD count;
+    DWORD limit;
+    DWORD index;
+    DWORD vertex;
+    long x0;
+    long y0;
+    long x1;
+    long y1;
+    int wait_after;
+    const v9x_u32 *source;
+    const v9x_u32 *uv1;
+    v9x_u32 *target;
+
+    if (draw == 0 || vertices == 0 || tnl == 0 || triangle_count == 0ul ||
+        !v9x_d3d_hsw_tnl_available() ||
+        !v9x_d3d_hsw_tnl_key_runs(tnl->key) ||
+        tnl->viewport_width > 2.0f * V9X_D3D_HSW_GUARD_HALF ||
+        tnl->viewport_height > 2.0f * V9X_D3D_HSW_GUARD_HALF) {
+        return -1;
+    }
+    if (!v9x_d3d_hsw_ready()) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_NOT_READY);
+        return -1;
+    }
+    reason = v9x_d3d_hsw_map(draw, &state);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+        v9x_d3d_hsw_count_refusal(reason);
+        return -1;
+    }
+
+    /* The pixels the triangles may reach: the state's scissor and the
+     * viewport, both inclusive here. Triangles the guard band passes
+     * untouched reach past the viewport, and OpenGL and Direct3D both clip
+     * to it. */
+    x0 = v9x_d3d_hsw_floor(tnl->viewport_x);
+    y0 = v9x_d3d_hsw_floor(tnl->viewport_y);
+    x1 = v9x_d3d_hsw_floor(tnl->viewport_x + tnl->viewport_width) - 1l;
+    y1 = v9x_d3d_hsw_floor(tnl->viewport_y + tnl->viewport_height) - 1l;
+    if (state.scissor_empty || x1 < (long)state.scissor[0] ||
+        y1 < (long)state.scissor[1] || x0 > (long)state.scissor[2] ||
+        y0 > (long)state.scissor[3]) {
+        return 1;
+    }
+    if (x0 < (long)state.scissor[0]) {
+        x0 = (long)state.scissor[0];
+    }
+    if (y0 < (long)state.scissor[1]) {
+        y0 = (long)state.scissor[1];
+    }
+    if (x1 > (long)state.scissor[2]) {
+        x1 = (long)state.scissor[2];
+    }
+    if (y1 > (long)state.scissor[3]) {
+        y1 = (long)state.scissor[3];
+    }
+
+    if (!v9x_d3d_hsw_blitter_idle() && !v9x_engine32_hsw.wait_idle(1)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
+        return -1;
+    }
+    (void)v9x_flip_wait_done();
+    wait_after = v9x_d3d_hsw_draw_waits(draw);
+
+    v9x_d3d_hsw_draw_desc(draw, &state, &d);
+    d.scissor = 1u;
+    d.scissor_x0 = (v9x_u16)x0;
+    d.scissor_y0 = (v9x_u16)y0;
+    d.scissor_x1 = (v9x_u16)x1;
+    d.scissor_y1 = (v9x_u16)y1;
+    d.cull = v9x_d3d_hsw_cull_of(tnl->cull);
+    vs.kernel = V9X_HSW_SHADE_VS_KERNEL;
+    vs.constant_grfs = V9X_HSW_VS_CONSTANT_GRFS;
+    vs.sf_clip_viewport = V9X_HSW_SHADE_VS_SF_CLIP_VIEWPORT;
+    vs.cc_viewport = V9X_HSW_SHADE_VS_CC_VIEWPORT;
+    vs.provoking = (v9x_u8)tnl->provoking;
+    limit = d.tl_uv1 ? V9X_D3D_HSW_MAX_TRIANGLES2 : V9X_D3D_HSW_MAX_TRIANGLES;
+    if (tnl->indices != 0) {
+        return v9x_d3d_hsw_draw_tnl_indexed(draw, vertices, tnl, &state, &d,
+                                            &vs, wait_after);
+    }
+
+    while (done < triangle_count) {
+        if (!v9x_d3d_hsw_wait_slot(&slot)) {
+            v9x_d3d_hsw_count_refusal(done == 0ul ? V9X_D3D_HSW_REFUSE_IDLE :
+                                                    V9X_D3D_HSW_REFUSE_PIECE);
+            return done == 0ul ? -1 : 0;
+        }
+        reason = v9x_d3d_hsw_write_state(draw, &state, &slot, &kernel);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
+            return done == 0ul ? -1 : 0;
+        }
+        if (!v9x_d3d_hsw_write_vs_state(&slot, tnl)) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
+            return done == 0ul ? -1 : 0;
+        }
+        d.kernel = kernel;
+        d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
+        vs.constants = V9X_D3D_HSW_GFX(slot.state_off +
+                                       V9X_HSW_SHADE_VS_CONSTANTS);
+
+        /* The vertices as they came: object space, nothing to guard or
+         * cut on the CPU - the clipper does both. */
+        target = v9x_d3d_hsw_reserve(slot.vertex_off);
+        count = triangle_count - done;
+        if (count > limit) {
+            count = limit;
+        }
+        source = (const v9x_u32 *)(vertices + done * 3ul);
+        if (d.tl_uv1) {
+            uv1 = (const v9x_u32 *)(draw->texcoords1 + done * 3ul * 2ul);
+            for (vertex = 0ul; vertex < count * 3ul; ++vertex) {
+                for (index = 0ul; index < V9X_HSW_TL_VERTEX_BYTES / 4ul;
+                     ++index) {
+                    *target++ = *source++;
+                }
+                *target++ = *uv1++;
+                *target++ = *uv1++;
+            }
+        } else {
+            for (index = 0ul;
+                 index < count * 3ul * V9X_HSW_TL_VERTEX_BYTES / 4ul;
+                 ++index) {
+                *target++ = source[index];
+            }
+        }
+        done += count;
+        d.vertex_count = count * 3ul;
+        v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                                 slot.batch_bytes / 4ul);
+        if (v9x_intel_hsw_draw_workload_vs(&batch,
+                                           V9X_D3D_HSW_GFX(slot.state_off),
+                                           slot.state_span, &d, &vs,
+                                           V9X_D3D_HSW_CRUMB_GFX,
+                                           done) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+            return done == count ? -1 : 0;
+        }
+        if (!v9x_d3d_hsw_submit(&slot, wait_after)) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
+            return 0;
+        }
+    }
+    v9x_present_note_submission();
+    return 1;
+}
+
 /* A declined indexed call, counted by why (win9x_ddraw_abi.h). */
 static int v9x_d3d_hsw_decline(DWORD reason, DWORD started)
 {
@@ -2351,5 +2791,7 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_destroy_surface,
     v9x_d3d_hsw_draw,
     v9x_d3d_hsw_accepts,
-    v9x_d3d_hsw_draw_indexed
+    v9x_d3d_hsw_draw_indexed,
+    v9x_d3d_hsw_draw_tnl,
+    v9x_d3d_hsw_tnl_available
 };

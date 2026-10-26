@@ -106,7 +106,9 @@ v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
 #define V9X_HSW_CMD_STENCIL_BUFFER         ((v9x_u16)41u)
 #define V9X_HSW_CMD_CLEAR_PARAMS           ((v9x_u16)42u)
 #define V9X_HSW_CMD_INDEX_BUFFER           ((v9x_u16)43u)
-#define V9X_HSW_CMD_COUNT                  ((v9x_u16)44u)
+/* Hardware T&L, step 3 (docs\plans\hardware-tnl.md). */
+#define V9X_HSW_CMD_CONSTANT_VS            ((v9x_u16)44u)
+#define V9X_HSW_CMD_COUNT                  ((v9x_u16)45u)
 
 /* 3DPRIMITIVE topologies, Vol 2a "3DPRIM_*". */
 #define V9X_HSW_PRIM_POINTLIST ((v9x_u8)0x01u)
@@ -252,6 +254,58 @@ v9x_status v9x_intel_hsw_urb(struct v9x_hsw_batch *batch, v9x_u16 stage,
  * Vol 2b). */
 v9x_status v9x_intel_hsw_stage_disabled(struct v9x_hsw_batch *batch,
                                         v9x_u16 stage);
+
+/*
+ * The vertex stage on (docs\specifications\haswell-vertex-stage-tnl.md,
+ * section 1; Vol 2b p724-730): the kernel at `kernel` from the instruction
+ * base, SIMD4x2 dual dispatch, IEEE float, no samplers or binding table,
+ * URB data from GRF V9X_HSW_VS_DISPATCH_GRF, `read_length` pairs of input
+ * elements from offset 0, the GT2 maximum of 280 threads, statistics on.
+ */
+v9x_status v9x_intel_hsw_vs(struct v9x_hsw_batch *batch, v9x_u32 kernel,
+                            v9x_u8 read_length);
+
+/*
+ * The VS push constants (Vol 2b p766-767, Vol 2d p9-11): `grfs` 256-bit
+ * units from the graphics address `address` (32-byte aligned), as
+ * constant buffer 3 - an absolute address, as crocus places a single
+ * buffer on Haswell, so INSTPM's offset-disable bit does not matter - and
+ * buffers 0-2 off with their pointers zero. Preceded by the zero-vertex
+ * 3DPRIMITIVE the PRM requires before any 3DSTATE_CONSTANT_* ("A dummy
+ * 3DPRIMTIVE (zero vertices) command must be executed prior to any
+ * 3DSTATE_CONSTANT_* command"), which crocus does not emit.
+ */
+v9x_status v9x_intel_hsw_constant_vs(struct v9x_hsw_batch *batch,
+                                     v9x_u8 grfs, v9x_u32 address);
+
+/*
+ * 3DSTATE_CLIP for clip-space vertices from a VS (Vol 2b p741-747): clip
+ * enabled in NORMAL mode, API mode D3D (z clipped to [0, w]; genxml's
+ * APIMODE_D3D 1, which crocus selects for half-z), viewport XY, Z and
+ * guard-band tests, the perspective divide on, `provoking` (0-2) for
+ * triangle lists and fans, point widths 0.125 to 255.875, render target
+ * array index forced to zero.
+ */
+v9x_status v9x_intel_hsw_clip_vertex(struct v9x_hsw_batch *batch,
+                                     v9x_u8 provoking);
+
+/* 3DSTATE_SF as v9x_intel_hsw_sf_screen_cull, with the viewport transform
+ * on (DW1 bit 1; with clip-space vertices it must be) and `provoking` for
+ * triangle lists and fans (DW3 30:29 and 26:25). */
+v9x_status v9x_intel_hsw_sf_vertex(struct v9x_hsw_batch *batch,
+                                   v9x_u8 depth_format, v9x_u8 cull,
+                                   v9x_u8 provoking);
+
+/*
+ * SF_CLIP_VIEWPORT (Vol 2d p292-293), 16 dwords: x' = m00 x + m30 and so
+ * on, then the guard band in NDC. Every argument is an IEEE float's bit
+ * pattern, as the rest of this file passes floats.
+ */
+v9x_status v9x_intel_hsw_sf_clip_viewport(v9x_u32 out[16], v9x_u32 m00,
+                                          v9x_u32 m11, v9x_u32 m22,
+                                          v9x_u32 m30, v9x_u32 m31,
+                                          v9x_u32 m32, v9x_u32 guard_x,
+                                          v9x_u32 guard_y);
 
 /* One of the 2-dword state pointer commands (viewport, scissor, blend,
  * depth/stencil, CC, binding table, sampler); value is DW1 as the caller
@@ -538,6 +592,22 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
  * engine's depth fills. */
 #define V9X_HSW_SHADE_BLEND_NO_COLOUR  ((v9x_u32)0x1500ul)
 #define V9X_HSW_SHADE_STATE_BYTES      ((v9x_u32)0x1540ul)
+/*
+ * Hardware T&L, step 3: what a draw with the vertex stage on adds after
+ * the shaded state, inside the pipelined slot's 8 KB block
+ * (intel_hsw_pipe.h): the SF_CLIP_VIEWPORT (64-byte aligned, 16 dwords),
+ * the CC_VIEWPORT (32-byte aligned, 2 dwords), a dword marking the VS
+ * kernel as written, the whole constant block (32-byte aligned, 1440
+ * bytes), and the VS kernel (64-byte aligned) with the EU's 128-byte
+ * prefetch clearance after it, all below V9X_HSW_SHADE_VS_END.
+ */
+#define V9X_HSW_SHADE_VS_SF_CLIP_VIEWPORT ((v9x_u32)0x1540ul)
+#define V9X_HSW_SHADE_VS_CC_VIEWPORT      ((v9x_u32)0x1580ul)
+#define V9X_HSW_SHADE_VS_KERNEL_MARK      ((v9x_u32)0x1590ul)
+#define V9X_HSW_SHADE_VS_CONSTANTS        ((v9x_u32)0x15a0ul)
+#define V9X_HSW_SHADE_VS_KERNEL           ((v9x_u32)0x1b40ul)
+#define V9X_HSW_SHADE_VS_KERNEL_BYTES     ((v9x_u32)0x0400ul)
+#define V9X_HSW_SHADE_VS_END              ((v9x_u32)0x1f40ul)
 /* The depth draw: x, y, z, then RGBA, 28 bytes; 3 vertices of the clear
  * then 9 of the scene. */
 #define V9X_HSW_DEPTH_VERTEX_BYTES     ((v9x_u16)28u)
@@ -632,6 +702,29 @@ struct v9x_hsw_draw {
     v9x_u8 cull;
 };
 
+/*
+ * Hardware T&L, step 3 (docs\plans\hardware-tnl.md): what a draw with the
+ * vertex stage on adds. A separate structure, not fields appended to
+ * struct v9x_hsw_draw, because that one is filled field by field at most
+ * of its call sites and an unset kernel would turn the stage on.
+ *
+ * The draw's vertices are object-space in the TL layout - x y z w where sx
+ * sy sz rhw were - and the VF writes them to the VS without the STORE_0
+ * header element. kernel: offset from the instruction base, 64-byte
+ * aligned. constants: the graphics address of constant_grfs GRFs of push
+ * constants, 32-byte aligned. sf_clip_viewport (64-byte aligned) and
+ * cc_viewport (32-byte aligned): offsets from the dynamic state base.
+ * provoking: the flat-shading vertex, 0-2.
+ */
+struct v9x_hsw_vs_draw {
+    v9x_u32 kernel;
+    v9x_u32 constants;
+    v9x_u8 constant_grfs;
+    v9x_u32 sf_clip_viewport;
+    v9x_u32 cc_viewport;
+    v9x_u8 provoking;
+};
+
 /* struct v9x_hsw_draw cull: which screen-space winding is discarded. */
 #define V9X_HSW_DRAW_CULL_NONE ((v9x_u8)0u)
 #define V9X_HSW_DRAW_CULL_CW   ((v9x_u8)1u)
@@ -662,6 +755,19 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
                                        const struct v9x_hsw_draw *draw,
                                        v9x_u32 done_address,
                                        v9x_u32 done_value);
+
+/*
+ * The draw workload with the vertex stage on (struct v9x_hsw_vs_draw).
+ * The draw must have tl_vertices, no depth clear and no indices; the rest
+ * of it is read as v9x_intel_hsw_draw_workload reads it.
+ */
+v9x_status v9x_intel_hsw_draw_workload_vs(struct v9x_hsw_batch *batch,
+                                          v9x_u32 state_base,
+                                          v9x_u32 state_bytes,
+                                          const struct v9x_hsw_draw *draw,
+                                          const struct v9x_hsw_vs_draw *vs,
+                                          v9x_u32 done_address,
+                                          v9x_u32 done_value);
 
 /* Walk dwords[0..count) as a batch: every command must be in the table
  * with its fixed length (or a valid variable length), the batch must end

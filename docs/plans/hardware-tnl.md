@@ -200,6 +200,23 @@ Progress:
   moved to its own step: GL with step 4, which also has to add the light,
   material and light-model state the ICD does not keep today; Direct3D
   with step 6.
+- **Step 3 done for correctness (2026-10-26, boots 84-85):**
+  [`2026-10-26-haswell-tnl-step3-vertex-stage.md`](../decisions/2026-10-26-haswell-tnl-step3-vertex-stage.md).
+  - Render interface ABI 7: `draw_tnl`, indexed.
+  - The VS on through CONSTANT_VS, CLIP and the SF viewport.
+  - The ICD captures primitives and keeps the CPU's batch as the fallback.
+  - The V9XGLP A/B scene matches within 565 rounding. Half-Life GL and
+    Quake 3 draw correctly, with 0 refused.
+  - Speed: Half-Life's timedemo is 7% behind the CPU path and Quake 3 at
+    par. That is the ceiling while the CPU still transforms underneath.
+- **Step 3b (new): beat the CPU path.** Three pieces:
+  - capture vertex arrays as arrays, vertices once and indices as given;
+  - a visibility test per batch, not per vertex, to skip empty draws
+    without the full transform;
+  - drop the CPU twin, with a host-tested CPU fallback from the held
+    object vertices.
+
+  The decision record says why each is needed.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

@@ -6146,6 +6146,122 @@ static DWORD v9x_r3d_draw_body(const V9X_R3D_ABI_DRAW *request,
     return V9X_R3D_RESULT_INDETERMINATE;
 }
 
+/*
+ * ABI 7: a draw the engine transforms. Validated as a draw is, plus its own
+ * fields; resolved and described as a draw is; then handed whole to the
+ * engine's draw_tnl. There is no fallback here: an engine that declines
+ * has emitted nothing, and UNSUPPORTED sends the ICD to its own transform
+ * and the ordinary draw. The vertices' sx and sy are object coordinates,
+ * so nothing that reads them as pixels - the list builder, the opacity
+ * scan's neighbours, the two-unit bounds check - may see them.
+ */
+static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
+                                   V9X_R3D_ABI_OUTCOME *outcome)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_r3d_engine();
+    const V9X_R3D_ABI_DRAW *inner;
+    V9X_R3D_DRAW draw;
+    V9X_R3D_TNL tnl;
+    DWORD result;
+    DWORD vertex_count;
+    int drawn;
+
+    if (ops == 0) {
+        return V9X_R3D_RESULT_NOT_READY;
+    }
+    if (ops->draw_tnl == 0 || ops->tnl_available == 0 ||
+        !ops->tnl_available()) {
+        return V9X_R3D_RESULT_UNSUPPORTED;
+    }
+    result = v9x_r3d_validate_tnl(request);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    inner = request->draw;
+    if (IsBadReadPtr(inner, sizeof(v9x_u32)) ||
+        (inner->struct_bytes == (v9x_u32)sizeof(V9X_R3D_ABI_DRAW) &&
+         IsBadReadPtr(inner, sizeof(V9X_R3D_ABI_DRAW))) ||
+        IsBadReadPtr(request->key, sizeof(V9X_R3D_TNL_KEY)) ||
+        IsBadReadPtr(request->constants, sizeof(V9X_R3D_TNL_CONSTANTS))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    result = v9x_r3d_validate_draw(inner, v9x_r3d_generation,
+                                   v9x_r3d_texture_size_max(ops));
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    /* The vertices the draw names: vertex_count of them when indexed,
+     * three a triangle otherwise; and the indices. */
+    vertex_count = request->indices != 0 ? request->vertex_count
+                                         : inner->triangle_count * 3ul;
+    if (IsBadReadPtr(inner->vertices,
+                     vertex_count * sizeof(V9X_R3D_ABI_VERTEX)) ||
+        (request->indices != 0 &&
+         IsBadReadPtr(request->indices,
+                      request->index_count * sizeof(v9x_u16)))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (inner->texcoords1 != 0) {
+        if (v9x_r3d_texture_units(ops) < 2ul) {
+            return V9X_R3D_RESULT_UNSUPPORTED;
+        }
+        if (IsBadReadPtr(inner->texcoords1,
+                         vertex_count * 2ul * sizeof(float))) {
+            return V9X_R3D_RESULT_INVALID;
+        }
+    }
+    result = inner->raw_target.address != 0
+        ? v9x_r3d_bind_raw(&inner->raw_target, &inner->raw_depth)
+        : v9x_r3d_bind(inner->target.surface, inner->depth.surface);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    result = v9x_r3d_validate_state(&inner->state, v9x_r3d_context.width,
+                                    v9x_r3d_context.height);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    result = v9x_r3d_describe(inner, &draw);
+    if (result != V9X_R3D_RESULT_OK) {
+        return result;
+    }
+    /* Every vertex opaque: the scan counts triangles, so a vertex count
+     * that is not whole triangles is scanned as list and remainder. */
+    draw.vertex_alpha_opaque =
+        vertex_count >= 3ul &&
+        v9x_r3d_vertices_opaque(inner->vertices, vertex_count / 3ul) &&
+        v9x_r3d_vertices_opaque(inner->vertices + vertex_count - 3ul, 1ul)
+            ? 1ul : 0ul;
+
+    tnl.key = request->key;
+    tnl.constants = request->constants;
+    tnl.viewport_x = request->viewport_x;
+    tnl.viewport_y = request->viewport_y;
+    tnl.viewport_width = request->viewport_width;
+    tnl.viewport_height = request->viewport_height;
+    tnl.depth_near = request->depth_near;
+    tnl.depth_far = request->depth_far;
+    tnl.cull = request->cull == V9X_R3D_ABI_CULL_CW ? V9X_R3D_CULL_CW :
+               request->cull == V9X_R3D_ABI_CULL_CCW ? V9X_R3D_CULL_CCW :
+                                                       V9X_R3D_CULL_NONE;
+    tnl.provoking = request->provoking;
+    tnl.indices = request->indices;
+    tnl.index_count = request->index_count;
+    tnl.vertex_count = request->vertex_count;
+
+    outcome->submitted = 0ul;
+    drawn = ops->draw_tnl(&draw, (const V9X_R3D_VERTEX *)inner->vertices,
+                          inner->triangle_count, &tnl);
+    if (drawn < 0) {
+        return V9X_R3D_RESULT_UNSUPPORTED;
+    }
+    if (drawn == 0) {
+        return V9X_R3D_RESULT_INDETERMINATE;
+    }
+    outcome->submitted = inner->triangle_count;
+    return V9X_R3D_RESULT_OK;
+}
+
 /* The shared drain to completion: DONE, or the one failure it can end in. */
 static DWORD v9x_r3d_drain(void)
 {
@@ -6737,6 +6853,10 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          V9X_DDBD_32) != 0ul) {
         out->depth32_bits = ops->limits->depth32_bits;
     }
+    /* ABI 7: draw_tnl is worth calling only where the engine has a vertex
+     * stage it drives on this chip (docs\plans\hardware-tnl.md). */
+    out->tnl = ops->draw_tnl != 0 && ops->tnl_available != 0 &&
+               ops->tnl_available() ? 1ul : 0ul;
     return V9X_R3D_RESULT_OK;
 }
 
@@ -6820,6 +6940,39 @@ static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw(const V9X_R3D_ABI_DRAW *draw,
     return result;
 }
 
+/* ABI 7, under the same mutex and FPU discipline as draw. */
+static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_draw_tnl(
+    const V9X_R3D_ABI_TNL_DRAW *draw, V9X_R3D_ABI_OUTCOME *outcome)
+{
+    V9X_FPU_AREA fpu;
+    DWORD result;
+
+    if (outcome == 0 || IsBadWritePtr(outcome, sizeof(*outcome))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    outcome->submitted = 0ul;
+    if (draw == 0 || IsBadReadPtr(draw, sizeof(v9x_u32))) {
+        outcome->result = V9X_R3D_RESULT_INVALID;
+        return outcome->result;
+    }
+    if (draw->struct_bytes == (v9x_u32)sizeof(V9X_R3D_ABI_TNL_DRAW) &&
+        IsBadReadPtr(draw, sizeof(V9X_R3D_ABI_TNL_DRAW))) {
+        outcome->result = V9X_R3D_RESULT_INVALID;
+        return outcome->result;
+    }
+    if (!v9x_win16_enter()) {
+        outcome->result = V9X_R3D_RESULT_NOT_READY;
+        return outcome->result;
+    }
+    v9x_fpu_save(&fpu);
+    v9x_d3d_dp2_flush_pending();
+    result = v9x_r3d_draw_tnl_body(draw, outcome);
+    v9x_fpu_restore(&fpu);
+    v9x_win16_leave();
+    outcome->result = result;
+    return result;
+}
+
 static v9x_u32 V9X_R3D_CALL v9x_r3d_entry_clear(const V9X_R3D_ABI_CLEAR *clear)
 {
     DWORD result;
@@ -6885,7 +7038,8 @@ static const V9X_R3D_INTERFACE v9x_r3d_interface = {
     v9x_r3d_entry_draw,
     v9x_r3d_entry_clear,
     v9x_r3d_entry_flush,
-    v9x_r3d_entry_finish
+    v9x_r3d_entry_finish,
+    v9x_r3d_entry_draw_tnl
 };
 
 /* The export (build-ddraw-hal-dll.ps1 names it). Exact negotiation: the

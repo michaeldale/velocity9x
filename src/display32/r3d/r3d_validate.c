@@ -380,3 +380,76 @@ v9x_u32 v9x_r3d_validate_rects(const V9X_R3D_ABI_RECT *rects,
     }
     return V9X_R3D_RESULT_OK;
 }
+
+/*
+ * ABI 7's T&L request. Finiteness from the bits, as the clipper tests it
+ * (r3d_clip.c): Open Watcom's x87 compares do not see a NaN.
+ */
+#define V9X_R3D_VALIDATE_EXPONENT 0x7f800000ul
+
+static int v9x_r3d_validate_finite(float value)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } stored;
+
+    stored.value = value;
+    return (stored.bits & V9X_R3D_VALIDATE_EXPONENT) !=
+           V9X_R3D_VALIDATE_EXPONENT;
+}
+
+/* Inside [low, high], finite; written so a NaN fails. */
+static int v9x_r3d_validate_within(float value, float low, float high)
+{
+    return v9x_r3d_validate_finite(value) && value >= low && value <= high;
+}
+
+v9x_u32 v9x_r3d_validate_tnl(const V9X_R3D_ABI_TNL_DRAW *tnl)
+{
+    float limit = V9X_R3D_TNL_VIEWPORT_LIMIT;
+
+    if (tnl == 0) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (tnl->struct_bytes != (v9x_u32)sizeof(V9X_R3D_ABI_TNL_DRAW)) {
+        return V9X_R3D_RESULT_ABI;
+    }
+    if (tnl->draw == 0 || tnl->key == 0 || tnl->constants == 0 ||
+        v9x_r3d_tnl_key_check(tnl->key) != V9X_STATUS_OK) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    /* Both corners inside the limit, and a positive extent. */
+    if (!v9x_r3d_validate_within(tnl->viewport_x, -limit, limit) ||
+        !v9x_r3d_validate_within(tnl->viewport_y, -limit, limit) ||
+        !v9x_r3d_validate_within(tnl->viewport_width, 0.0f, limit) ||
+        !v9x_r3d_validate_within(tnl->viewport_height, 0.0f, limit) ||
+        !(tnl->viewport_width > 0.0f) || !(tnl->viewport_height > 0.0f) ||
+        !v9x_r3d_validate_within(tnl->viewport_x + tnl->viewport_width,
+                                 -limit, limit) ||
+        !v9x_r3d_validate_within(tnl->viewport_y + tnl->viewport_height,
+                                 -limit, limit)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (!v9x_r3d_validate_within(tnl->depth_near, 0.0f, 1.0f) ||
+        !v9x_r3d_validate_within(tnl->depth_far, 0.0f, 1.0f)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    if (tnl->cull > V9X_R3D_ABI_CULL_CCW ||
+        (tnl->provoking != 0ul && tnl->provoking != 2ul)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    /* Indexed: a list of whole triangles over 1..max vertices; otherwise
+     * both counts zero. */
+    if (tnl->indices == 0) {
+        return tnl->index_count == 0ul && tnl->vertex_count == 0ul
+            ? V9X_R3D_RESULT_OK : V9X_R3D_RESULT_INVALID;
+    }
+    if (tnl->index_count == 0ul || tnl->index_count % 3ul != 0ul ||
+        tnl->index_count > V9X_R3D_ABI_TNL_INDICES_MAX ||
+        tnl->vertex_count == 0ul ||
+        tnl->vertex_count > V9X_R3D_ABI_TNL_VERTICES_MAX) {
+        return V9X_R3D_RESULT_INVALID;
+    }
+    return V9X_R3D_RESULT_OK;
+}

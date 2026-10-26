@@ -403,9 +403,142 @@ static void test_phase_f2_generator(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * The URB write's function control (Vol 7 p316-323): WRITE_HWORD 0 in 2:0,
+ * offset 13:3, interleaved 14, complete 15.
+ */
+static void test_urb_write_fc(void)
+{
+    v9x_u32 function = 0ul;
+
+    CHECK(v9x_intel_hsw_eu_urb_write_fc(0ul, 1u, 1u, &function) ==
+          V9X_STATUS_OK && function == 0x0000c000ul);
+    CHECK(v9x_intel_hsw_eu_urb_write_fc(2ul, 1u, 0u, &function) ==
+          V9X_STATUS_OK && function == 0x00004010ul);
+    CHECK(v9x_intel_hsw_eu_urb_write_fc(0x7fful, 0u, 0u, &function) ==
+          V9X_STATUS_OK && function == 0x00003ff8ul);
+    CHECK(v9x_intel_hsw_eu_urb_write_fc(0x800ul, 0u, 0u, &function) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_eu_urb_write_fc(0ul, 2u, 0u, &function) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_eu_urb_write_fc(0ul, 0u, 0u, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* dph(8) g20.x:F g3.xyzw:F g1.xyzw<0>:F, Align16: a two-source opcode the
+ * encoder now accepts, and which decodes back. */
+static void test_dph(void)
+{
+    struct v9x_hsw_eu_inst inst;
+    struct v9x_hsw_eu_inst back;
+    v9x_u32 out[4];
+
+    v9x_clear(&inst);
+    inst.opcode = V9X_HSW_EU_OP_DPH;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.align16 = 1u;
+    v9x_grf(&inst.dst, 20u, V9X_HSW_EU_TYPE_F);
+    inst.dst.chan = V9X_HSW_EU_MASK_X;
+    v9x_grf(&inst.src0, 3u, V9X_HSW_EU_TYPE_F);
+    inst.src0.vstride = V9X_HSW_EU_VSTRIDE_4;
+    inst.src0.chan = V9X_HSW_EU_SWIZZLE_XYZW;
+    v9x_grf(&inst.src1, 1u, V9X_HSW_EU_TYPE_F);
+    inst.src1.vstride = V9X_HSW_EU_VSTRIDE_0;
+    inst.src1.chan = V9X_HSW_EU_SWIZZLE_XYZW;
+    CHECK(v9x_intel_hsw_eu_encode(&inst, out) == V9X_STATUS_OK);
+    CHECK(out[0] == 0x00600155ul);
+    CHECK(v9x_intel_hsw_eu_decode(out, &back) == V9X_STATUS_OK);
+    CHECK(back.opcode == V9X_HSW_EU_OP_DPH && back.sources == 2u);
+    CHECK(back.dst.nr == 20u && back.dst.chan == V9X_HSW_EU_MASK_X);
+    CHECK(back.src0.vstride == V9X_HSW_EU_VSTRIDE_4 &&
+          back.src0.chan == V9X_HSW_EU_SWIZZLE_XYZW);
+    CHECK(back.src1.nr == 1u && back.src1.vstride == V9X_HSW_EU_VSTRIDE_0);
+}
+
+/*
+ * Step 3's vertex kernel, instruction by instruction against the register
+ * map in intel_hsw_eu.h: header, VUE header slot, four DP4s, four copies,
+ * one URB write. Twelve instructions.
+ */
+static void test_vs_kernel_position(void)
+{
+    struct v9x_hsw_eu_inst back;
+    v9x_u32 out[64];
+    v9x_u32 used = 0ul;
+    unsigned int row;
+    unsigned int index;
+
+    CHECK(v9x_intel_hsw_vs_kernel_position(out, 64ul, &used) ==
+          V9X_STATUS_OK);
+    CHECK(used == 48ul);
+
+    /* mov(8) g112<1>:UD g0<8,8,1>:UD, NoMask. */
+    CHECK(v9x_intel_hsw_eu_decode(out, &back) == V9X_STATUS_OK);
+    CHECK(back.opcode == V9X_HSW_EU_OP_MOV && back.align16 == 0u &&
+          back.mask_disable == 1u && back.exec_size == V9X_HSW_EU_EXEC_8 &&
+          back.dst.nr == 112u && back.dst.type == V9X_HSW_EU_TYPE_UD &&
+          back.src0.nr == 0u);
+
+    /* or(1) g112.5<1>:UD g0.5<0,1,0>:UD 0xff00:UD, NoMask. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 4, &back) == V9X_STATUS_OK);
+    CHECK(back.opcode == V9X_HSW_EU_OP_OR && back.align16 == 0u &&
+          back.mask_disable == 1u && back.exec_size == V9X_HSW_EU_EXEC_1 &&
+          back.dst.nr == 112u && back.dst.subnr == 20u &&
+          back.src0.nr == 0u && back.src0.subnr == 20u &&
+          back.src0.vstride == V9X_HSW_EU_VSTRIDE_0 &&
+          back.src1.file == V9X_HSW_EU_FILE_IMM && back.src1.imm == 0xff00ul);
+
+    /* mov(8) g113<1>:F 0.0F: the VUE header slot for both vertices. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 8, &back) == V9X_STATUS_OK);
+    CHECK(back.opcode == V9X_HSW_EU_OP_MOV && back.dst.nr == 113u &&
+          back.src0.file == V9X_HSW_EU_FILE_IMM && back.src0.imm == 0ul);
+
+    /* dp4(8) g114.<r>:F g3.xyzw<4>:F g(1 + r/2).((r%2)*16).xyzw<0>:F. */
+    for (row = 0u; row < 4u; ++row) {
+        CHECK(v9x_intel_hsw_eu_decode(out + 12 + 4 * row, &back) ==
+              V9X_STATUS_OK);
+        CHECK(back.opcode == V9X_HSW_EU_OP_DP4 && back.align16 == 1u &&
+              back.exec_size == V9X_HSW_EU_EXEC_8);
+        CHECK(back.dst.nr == 114u && back.dst.chan == (v9x_u8)(1u << row));
+        CHECK(back.src0.nr == 3u && back.src0.vstride == V9X_HSW_EU_VSTRIDE_4 &&
+              back.src0.chan == V9X_HSW_EU_SWIZZLE_XYZW);
+        CHECK(back.src1.nr == (v9x_u8)(1u + row / 2u) &&
+              back.src1.subnr == (v9x_u8)((row % 2u) * 16u) &&
+              back.src1.vstride == V9X_HSW_EU_VSTRIDE_0 &&
+              back.src1.chan == V9X_HSW_EU_SWIZZLE_XYZW);
+    }
+
+    /* mov(8) g(115 + i) g(4 + i): the four attributes, whole registers. */
+    for (index = 0u; index < 4u; ++index) {
+        CHECK(v9x_intel_hsw_eu_decode(out + 28 + 4 * index, &back) ==
+              V9X_STATUS_OK);
+        CHECK(back.opcode == V9X_HSW_EU_OP_MOV && back.align16 == 0u &&
+              back.dst.nr == (v9x_u8)(115u + index) &&
+              back.src0.nr == (v9x_u8)(4u + index) &&
+              back.src0.vstride == V9X_HSW_EU_VSTRIDE_8);
+    }
+
+    /* send(8) null g112 URB write: mlen 7, header, complete, interleaved,
+     * offset 0, EOT. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 44, &back) == V9X_STATUS_OK);
+    CHECK(back.opcode == V9X_HSW_EU_OP_SEND && back.sfid == V9X_HSW_SFID_URB &&
+          back.eot == 1u && back.src0.nr == 112u &&
+          back.dst.file == V9X_HSW_EU_FILE_ARF);
+    CHECK(back.desc == 0x0e08c000ul);
+
+    /* Too little room is refused, not truncated. */
+    CHECK(v9x_intel_hsw_vs_kernel_position(out, 47ul, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_vs_kernel_position(0, 64ul, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_eu_tests(void)
 {
     failures = 0u;
+    test_urb_write_fc();
+    test_dph();
+    test_vs_kernel_position();
     test_phase_f2_generator();
     test_phase_e_generator();
     test_phase_d_kernels();

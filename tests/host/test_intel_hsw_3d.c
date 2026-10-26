@@ -1167,6 +1167,255 @@ static void test_indexed_cull(void)
 }
 
 /*
+ * Hardware T&L step 3: the vertex stage on. Every dword worked by hand from
+ * docs\specifications\haswell-vertex-stage-tnl.md, section 1 and 2.
+ */
+static void test_vs_builders(void)
+{
+    v9x_u32 dw[64];
+    v9x_u32 viewport[16];
+    struct v9x_hsw_batch batch;
+    unsigned int index;
+
+    /* 3DSTATE_VS: kernel 1B40h; DW4 dispatch GRF 1 at 24:20, read length
+     * 3 at 16:11; DW5 279 threads-1 at 31:23, statistics 10, enable 0. */
+    v9x_intel_hsw_batch_init(&batch, dw, 64ul);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b40ul, 3u) == V9X_STATUS_OK);
+    CHECK(batch.used == 6ul && dw[0] == 0x78100004ul && dw[1] == 0x1b40ul &&
+          dw[2] == 0ul && dw[3] == 0ul && dw[4] == 0x00101800ul &&
+          dw[5] == 0x8b800401ul);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b48ul, 3u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b40ul, 0u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b40ul, 64u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* The dummy POINTLIST of zero vertices and zero instances, as the PRM
+     * spells it, then CONSTANT_VS with buffer 3 only: two GRFs at
+     * 018045A0h, buffers 0-2 zero. */
+    v9x_intel_hsw_batch_init(&batch, dw, 64ul);
+    CHECK(v9x_intel_hsw_constant_vs(&batch, 2u, 0x018045a0ul) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 14ul);
+    CHECK(dw[0] == 0x7b000005ul && dw[1] == 0x00000001ul && dw[2] == 0ul &&
+          dw[3] == 0ul && dw[4] == 0ul && dw[5] == 0ul && dw[6] == 0ul);
+    CHECK(dw[7] == 0x78150005ul && dw[8] == 0ul && dw[9] == 0x00020000ul &&
+          dw[10] == 0ul && dw[11] == 0ul && dw[12] == 0ul &&
+          dw[13] == 0x018045a0ul);
+    CHECK(v9x_intel_hsw_constant_vs(&batch, 2u, 0x018045b0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_constant_vs(&batch, 0u, 0x018045a0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_constant_vs(&batch, 65u, 0x018045a0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* CLIP: enable 31, D3D 30, XY 28, Z 27, guard band 26, NORMAL, divide
+     * on, provoking 2 for lists (5:4) and fans (1:0); DW3 min width 1
+     * (0.125) at 27:17, max 7FFh at 16:6, force zero RTA 5. */
+    v9x_intel_hsw_batch_init(&batch, dw, 64ul);
+    CHECK(v9x_intel_hsw_clip_vertex(&batch, 2u) == V9X_STATUS_OK);
+    CHECK(batch.used == 4ul && dw[0] == 0x78120002ul && dw[1] == 0ul &&
+          dw[2] == 0xdc000022ul && dw[3] == 0x0003ffe0ul);
+    CHECK(v9x_intel_hsw_clip_vertex(&batch, 3u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* SF: as the screen form, plus viewport transform (DW1 1) and the
+     * provoking vertex in DW3 30:29 and 26:25. */
+    v9x_intel_hsw_batch_init(&batch, dw, 64ul);
+    CHECK(v9x_intel_hsw_sf_vertex(&batch, 5u, V9X_HSW_DRAW_CULL_CW, 2u) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 7ul && dw[0] == 0x78130005ul &&
+          dw[1] == 0x00005003ul && dw[2] == 0x60000000ul &&
+          dw[3] == 0x44000000ul);
+    CHECK(v9x_intel_hsw_sf_vertex(&batch, 0u, V9X_HSW_DRAW_CULL_NONE, 3u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* SF_CLIP_VIEWPORT: the six matrix words in order, two zero, the
+     * guard band as -x, +x, -y, +y, four zero. */
+    for (index = 0u; index < 16u; ++index) {
+        viewport[index] = 0xfffffffful;
+    }
+    CHECK(v9x_intel_hsw_sf_clip_viewport(viewport, 1ul, 2ul, 3ul, 4ul, 5ul,
+                                         6ul, 0x41000000ul, 0x41100000ul) ==
+          V9X_STATUS_OK);
+    CHECK(viewport[0] == 1ul && viewport[1] == 2ul && viewport[2] == 3ul &&
+          viewport[3] == 4ul && viewport[4] == 5ul && viewport[5] == 6ul &&
+          viewport[6] == 0ul && viewport[7] == 0ul);
+    CHECK(viewport[8] == 0xc1000000ul && viewport[9] == 0x41000000ul &&
+          viewport[10] == 0xc1100000ul && viewport[11] == 0x41100000ul);
+    CHECK(viewport[12] == 0ul && viewport[15] == 0ul);
+    /* A negative or non-finite guard band is refused. */
+    CHECK(v9x_intel_hsw_sf_clip_viewport(viewport, 1ul, 2ul, 3ul, 4ul, 5ul,
+                                         6ul, 0xc1000000ul, 0x41100000ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_sf_clip_viewport(viewport, 1ul, 2ul, 3ul, 4ul, 5ul,
+                                         6ul, 0x41000000ul, 0x7f800000ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void v9x_vs_test_draw(struct v9x_hsw_draw *draw,
+                             struct v9x_hsw_vs_draw *vs)
+{
+    draw->binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    draw->kernel = V9X_HSW_SHADE_KERNEL(0);
+    draw->vertices = 0x01812000ul;
+    draw->width = 640u;
+    draw->height = 480u;
+    draw->attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    draw->blend = 0ul;
+    draw->cc = 0ul;
+    draw->sampler = V9X_HSW_SHADE_SAMPLER;
+    draw->depth_buffer = 0ul;
+    draw->depth_clear = 0ul;
+    draw->depth_test = 0ul;
+    draw->tl_vertices = 1u;
+    draw->vertex_count = 6ul;
+    draw->flat = 0u;
+    draw->depth_format = 0u;
+    draw->depth_pitch = 0ul;
+    draw->depth_only = 0u;
+    draw->scissor = 0u;
+    draw->tl_uv1 = 0u;
+    draw->indices = 0ul;
+    draw->index_count = 0ul;
+    draw->strip = 0u;
+    draw->cull = V9X_HSW_DRAW_CULL_NONE;
+    vs->kernel = 0x1b40ul;
+    vs->constants = 0x018055a0ul;
+    vs->constant_grfs = 2u;
+    vs->sf_clip_viewport = 0x1540ul;
+    vs->cc_viewport = 0x1580ul;
+    vs->provoking = 0u;
+}
+
+/*
+ * A whole draw with the vertex stage on: it passes the checker; VS is on
+ * with the step 3 read length; the dummy primitive sits right before
+ * CONSTANT_VS, which follows the VS push-constant allocation; CLIP clips
+ * and SF transforms; the viewport pointers name the draw's state; the VF
+ * writes five elements with no STORE_0 header; and the TL form of the same
+ * draw is untouched by any of it.
+ */
+static void test_vs_workload(void)
+{
+    v9x_u32 dw[512];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    struct v9x_hsw_vs_draw vs;
+    v9x_u32 at;
+    v9x_u32 alloc;
+
+    v9x_vs_test_draw(&draw, &vs);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+
+    at = v9x_find_command(dw, batch.used, 0x78100004ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x1b40ul &&
+          dw[at + 4ul] == 0x00101800ul && dw[at + 5ul] == 0x8b800401ul);
+
+    alloc = v9x_find_command(dw, batch.used, 0x79120000ul);
+    at = v9x_find_command(dw, batch.used, 0x78150005ul);
+    CHECK(alloc < at && at < batch.used && at >= 7ul);
+    CHECK(dw[at - 7ul] == 0x7b000005ul && dw[at - 5ul] == 0ul);
+    CHECK(dw[at + 2ul] == 0x00020000ul && dw[at + 6ul] == 0x018055a0ul);
+
+    at = v9x_find_command(dw, batch.used, 0x78120002ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0xdc000000ul);
+    at = v9x_find_command(dw, batch.used, 0x78130005ul);
+    CHECK(at < batch.used && (dw[at + 1ul] & 2ul) == 2ul &&
+          dw[at + 3ul] == 0ul);
+    at = v9x_find_command(dw, batch.used, 0x78210000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x1540ul);
+    at = v9x_find_command(dw, batch.used, 0x78230000ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x1580ul);
+    /* URB_VS: two 64-byte rows (field 1) hold the five inputs and the six
+     * outputs. */
+    at = v9x_find_command(dw, batch.used, 0x78300000ul);
+    CHECK(at < batch.used && ((dw[at + 1ul] >> 16) & 0x1fful) == 1ul);
+    /* Five elements, two dwords each: DW0 length 9; the first is the
+     * position, every component stored from the source (STORE_SRC 1 at
+     * 30:28, 26:24, 22:20, 18:16 of its second dword). */
+    at = v9x_find_command(dw, batch.used, 0x78090009ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x11110000ul);
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    CHECK(at < batch.used);
+
+    /* The same draw through the TL entry still disables the VS and sends no
+     * CONSTANT_VS. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01804000ul, 0xc000ul, &draw,
+                                      0x01801020ul, 7ul) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x78100004ul);
+    CHECK(at < batch.used && dw[at + 5ul] == 0ul);
+    CHECK(v9x_find_command(dw, batch.used, 0x78150005ul) >= batch.used);
+
+    /* Refused: no vs, a misaligned kernel, constants or viewport, indices,
+     * a depth clear, no TL vertices. */
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, 0, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vs.kernel = 0x1b44ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_vs_test_draw(&draw, &vs);
+    vs.constants = 0x018055b0ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_vs_test_draw(&draw, &vs);
+    vs.sf_clip_viewport = 0x1560ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* Indexed: accepted, a RANDOM TRILIST of the six indices; a partial
+     * triangle or an odd address is refused. */
+    v9x_vs_test_draw(&draw, &vs);
+    draw.indices = 0x01813000ul;
+    draw.index_count = 6ul;
+    draw.vertex_count = 4ul;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    while (at < batch.used && dw[at + 2ul] == 0ul) {
+        /* Past the dummy primitive before CONSTANT_VS. */
+        at = at + 7ul + v9x_find_command(dw + at + 7ul, batch.used - at - 7ul,
+                                         0x7b000005ul);
+    }
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00000104ul &&
+          dw[at + 2ul] == 6ul);
+    draw.index_count = 5ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.index_count = 6ul;
+    draw.indices = 0x01813001ul;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_vs_test_draw(&draw, &vs);
+    draw.depth_buffer = 0x01900000ul;
+    draw.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_vs_test_draw(&draw, &vs);
+    draw.tl_vertices = 0u;
+    CHECK(v9x_intel_hsw_draw_workload_vs(&batch, 0x01804000ul, 0xc000ul,
+                                         &draw, &vs, 0x01801020ul, 7ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/*
  * Phase F2b: a D16 depth-only fill. Worked by hand: DEPTH_BUFFER DW1 2D
  * (1) 31:29, write 28, D16_UNORM (5) 20:18, pitch 128 - 1; SF's depth
  * format 5 at 14:12; WM, PS and SBE those of the same draw with colour,
@@ -1365,6 +1614,8 @@ static void test_ivb_variant(void)
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_vs_builders();
+    test_vs_workload();
     test_ivb_variant();
     test_phase_f2b_depth_only();
     test_phase_f2_tl();
