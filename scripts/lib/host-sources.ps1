@@ -107,6 +107,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rage128\r128_3d.c',
         # Evergreen async DMA: fill and copy packets, no I/O.
         'src\chipsets\ati\evergreen\eg_dma.c',
+        # Evergreen CP microcode (generated from linux-firmware), data only.
+        'src\chipsets\ati\evergreen\eg_cp_microcode.c',
         'tests\host\test_pe_export.c',
         'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the

@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "velocity9x/eg_dma.h"
+#include "velocity9x/eg_cp_microcode.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -399,9 +400,24 @@ static void test_probe_headers(void)
     CHECK(v9x_eg_dma_plan_row(&plan, 1ul, packet) == 0ul);
 }
 
+/* The generated microcode: radeon_ucode.h's sizes, and the first and last
+ * dwords of linux-firmware's images converted from big-endian, the first
+ * as V9XEGCP read it from the files on M-BXMFA8 (PfpFirst, MeFirst). */
+typedef char v9x_eg_pfp_size_matches[
+    sizeof(v9x_eg_pfp_microcode) == 1120u * sizeof(v9x_u32) ? 1 : -1];
+typedef char v9x_eg_me_size_matches[
+    sizeof(v9x_eg_me_microcode) == 1376u * sizeof(v9x_u32) ? 1 : -1];
+
+static void test_cp_microcode(void)
+{
+    CHECK(v9x_eg_pfp_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_me_microcode[0] == 0x7c408000ul);
+}
+
 unsigned int v9x_run_eg_dma_tests(void)
 {
     failures = 0u;
+    test_cp_microcode();
     test_fill();
     test_fill_refusals();
     test_copy();
