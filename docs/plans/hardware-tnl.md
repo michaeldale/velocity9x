@@ -178,6 +178,21 @@ what produced it.
 
 ## Work order
 
+Progress:
+
+- **Step 1 done (2026-10-26):**
+  [`haswell-vertex-stage-tnl.md`](../specifications/haswell-vertex-stage-tnl.md).
+  It confirms that Gen7.5 can select the back colour by facing (SBE
+  INPUTATTR_FACING), so GL two-sided lighting is in scope. It also adds
+  work to two steps:
+  - **Step 3:** turning the VS on needs CONSTANT_VS (preceded by a
+    zero-vertex 3DPRIMITIVE), CLIP out of ACCEPT_ALL, the SF viewport
+    transform, and the scissor.
+  - **Step 5:** DDI 7 very likely needs CreateSurfaceEx, because DX7
+    names textures and render targets by surface handle. That is
+    recalled from the DDK documentation, not read in a header, and step
+    5 confirms it on the guest first.
+
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.
    - HSW PRM Vol 7: VS dispatch (SIMD4x2 is recalled from Mesa), the
