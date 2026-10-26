@@ -2083,6 +2083,54 @@ release:
     return failures;
 }
 
+/*
+ * T17, recorded and not judged: whether the Direct3D 8 and 9 runtimes see
+ * a hardware device on this driver at this DDI level (the plan's step 5
+ * asks it of DDI 7). Each runtime is loaded, made (SDK versions 220 and
+ * 32) and asked for the HAL device's caps on adapter 0; the answer and
+ * DevCaps (the eighth DWORD of D3DCAPS8 and D3DCAPS9) are written.
+ * IDirect3D8::GetDeviceCaps is slot 13; IDirect3D9 inserts
+ * CheckDeviceFormatConversion before it, slot 14.
+ */
+#define D32_D3DDEVTYPE_HAL 1ul
+
+typedef void *(WINAPI *d32_create_d3dx_fn)(UINT);
+typedef HRESULT (WINAPI *d32_device_caps_fn)(D32_OBJECT *, UINT, DWORD,
+                                             DWORD *);
+
+static void d32_d3dx_caps(const char *dll, const char *entry, UINT sdk,
+                          DWORD slot, const char *prefix)
+{
+    static DWORD caps[512];
+    HMODULE module = LoadLibraryA(dll);
+    d32_create_d3dx_fn create = module != 0
+        ? (d32_create_d3dx_fn)GetProcAddress(module, entry) : 0;
+    D32_OBJECT *d3d = create != 0 ? (D32_OBJECT *)create(sdk) : 0;
+    HRESULT hr;
+    char key[48];
+
+    wsprintfA(key, "%sCreated", prefix);
+    d32_hx(key, d3d != 0);
+    if (d3d == 0) {
+        return;
+    }
+    d32_zero(caps, sizeof(caps));
+    hr = ((d32_device_caps_fn)d3d->vtbl[slot])(d3d, 0u, D32_D3DDEVTYPE_HAL,
+                                              caps);
+    wsprintfA(key, "%sHalCapsHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    wsprintfA(key, "%sHalDevCaps", prefix);
+    d32_hx(key, caps[7]);
+    ((d32_release_fn)d3d->vtbl[COM_RELEASE])(d3d);
+}
+
+static void d32_d3d89(void)
+{
+    d32_line("Stage", "10h-t17-d3d8-d3d9");
+    d32_d3dx_caps("D3D8.DLL", "Direct3DCreate8", 220u, 13ul, "T17D3D8");
+    d32_d3dx_caps("D3D9.DLL", "Direct3DCreate9", 32u, 14ul, "T17D3D9");
+}
+
 static DWORD d32_two_stage(D32_OBJECT *ddraw, D32_OBJECT *back,
                            D32_OBJECT *base_surface)
 {
@@ -3980,6 +4028,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     /* T12 after the DX5 device is gone, on the same back buffer. */
     failures += d32_two_stage(ddraw, back, texture_surface);
     failures += d32_dx7(ddraw, back);
+    d32_d3d89();
     if (offscreen != 0) {
         ((d32_release_fn)offscreen->vtbl[COM_RELEASE])(offscreen);
     }

@@ -127,6 +127,9 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDSCAPS_PRIMARYSURFACE   0x00000200ul
 #define V9X_DDSCAPS_TEXTURE          0x00001000ul
 #define V9X_DDSCAPS_MIPMAP           0x00400000ul
+/* ddraw.h: an execute buffer - what a DX7 or DX8 vertex, index or command
+ * buffer is to the driver. */
+#define V9X_DDSCAPS_EXECUTEBUFFER    0x00800000ul
 #define V9X_DDSCAPS_SYSTEMMEMORY     0x00000800ul
 #define V9X_DDSCAPS_FLIP             0x00000010ul
 #define V9X_DDSCAPS_VIDEOMEMORY      0x00004000ul

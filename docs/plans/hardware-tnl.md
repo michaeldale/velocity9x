@@ -243,6 +243,12 @@ Progress:
   - **Measured:** V9XD32 `/ddi7` passes T1-T16, including a DX7 device.
   - **Owed:** the SDK samples, DirectX 9's HAL device and one DX7 title.
     Then the default, then step 6.
+- **Step 5 done, DDI 7 the Haswell default (2026-10-27, boots 92-97):**
+  [`2026-10-27-haswell-ddi7-default.md`](../decisions/2026-10-27-haswell-ddi7-default.md).
+  - **Passed:** V9XD32, 3DMark 2000 and 2001 SE, and Half-Life Direct3D,
+    at par with DDI 6. DirectX 8 and 9 see a HAL device either way.
+  - **Not run:** the DX7 SDK samples, which are not on the machine.
+  - **Next:** step 6.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

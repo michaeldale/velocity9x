@@ -114,9 +114,92 @@ static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
 /* Where TextureCreate looks for a free slot first. */
 static DWORD v9x_d3d_texture_next;
-/* The CreateSurfaceEx handles every DDI 7 local object has announced
- * (d3d_handles.h; the DDI 7 block below). */
-static V9X_D3D_HANDLES v9x_d3d_surface_handles;
+/*
+ * The CreateSurfaceEx handles every DDI 7 local object has announced
+ * (d3d_handles.h; the DDI 7 block below), one table per process: a local
+ * object is a process's own, and so are the handles in it. Each table is
+ * the process's own memory, found by process ID here. A static table is
+ * paid for in the DLL's file, and the 512 entries that fit the ATI floppy
+ * were full in Half-Life's Direct3D mode, whose handles passed 1,600 (the
+ * 4570, boot 95). A slot whose process has gone is taken in turn when
+ * none is free; its memory went with the process.
+ *
+ * A process ID is not proof: Windows 9x gave 3DMark 2001 SE the ID of a
+ * V9XD32 that had just exited, and the HAL faulted reading V9XD32's table
+ * at an address 3DMark did not have (boot 96). So each table carries a
+ * mark and the stamp of the slot that made it, both checked in this
+ * process before the slot's table is used; a slot that fails is the old
+ * process's, and is replaced.
+ */
+#define V9X_D3D_HANDLE_PROCESSES 8u
+#define V9X_D3D_HANDLE_MARK      0x48443756ul   /* "V7DH" */
+
+typedef struct v9x_d3d_handle_block {
+    DWORD mark;
+    DWORD stamp;
+    V9X_D3D_HANDLES handles;
+} V9X_D3D_HANDLE_BLOCK;
+
+static struct {
+    DWORD pid;
+    DWORD stamp;
+    V9X_D3D_HANDLE_BLOCK *block;
+} v9x_d3d_handle_tables[V9X_D3D_HANDLE_PROCESSES];
+static DWORD v9x_d3d_handle_table_next;
+static DWORD v9x_d3d_handle_stamp;
+
+/* Whether a slot's table is this process's own. */
+static int v9x_d3d_handle_slot_ours(DWORD slot, DWORD pid)
+{
+    const V9X_D3D_HANDLE_BLOCK *block = v9x_d3d_handle_tables[slot].block;
+
+    return v9x_d3d_handle_tables[slot].pid == pid && block != 0 &&
+           !IsBadWritePtr((void *)block, sizeof(*block)) &&
+           block->mark == V9X_D3D_HANDLE_MARK &&
+           block->stamp == v9x_d3d_handle_tables[slot].stamp;
+}
+
+/* This process's table; made when `make` and it has none. Null when there
+ * is none, or no memory for one. */
+static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
+{
+    DWORD pid = GetCurrentProcessId();
+    V9X_D3D_HANDLE_BLOCK *block;
+    DWORD slot;
+
+    for (slot = 0ul; slot < V9X_D3D_HANDLE_PROCESSES; ++slot) {
+        if (v9x_d3d_handle_slot_ours(slot, pid)) {
+            return &v9x_d3d_handle_tables[slot].block->handles;
+        }
+    }
+    if (!make) {
+        return 0;
+    }
+    block = (V9X_D3D_HANDLE_BLOCK *)VirtualAlloc(
+        0, sizeof(V9X_D3D_HANDLE_BLOCK), MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE);
+    if (block == 0) {
+        return 0;
+    }
+    v9x_d3d_handles_init(&block->handles);
+    block->mark = V9X_D3D_HANDLE_MARK;
+    block->stamp = ++v9x_d3d_handle_stamp;
+    /* A free slot, else one this process ID held before, else the next in
+     * turn. */
+    for (slot = 0ul; slot < V9X_D3D_HANDLE_PROCESSES; ++slot) {
+        if (v9x_d3d_handle_tables[slot].block == 0 ||
+            v9x_d3d_handle_tables[slot].pid == pid) {
+            break;
+        }
+    }
+    if (slot == V9X_D3D_HANDLE_PROCESSES) {
+        slot = v9x_d3d_handle_table_next++ % V9X_D3D_HANDLE_PROCESSES;
+    }
+    v9x_d3d_handle_tables[slot].pid = pid;
+    v9x_d3d_handle_tables[slot].stamp = block->stamp;
+    v9x_d3d_handle_tables[slot].block = block;
+    return &block->handles;
+}
 
 /* The DDI levels v9x_d3d_dp2_for_process answers: zero is DDI 5, and any
  * non-zero level has DrawPrimitives2. */
@@ -1170,7 +1253,9 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
         return;
     }
     /* A DDI 7 handle naming it names nothing now. */
-    (void)v9x_d3d_handles_drop_surface(&v9x_d3d_surface_handles, surface);
+    if (v9x_d3d_handles_here(0) != 0) {
+        (void)v9x_d3d_handles_drop_surface(v9x_d3d_handles_here(0), surface);
+    }
     /* Compared as the value resolved at creation. Reading the wrapper here
      * is what intel55 measured (site 1, twice in one boot): a wrapper freed
      * earlier answers "no surface", compares unequal, and the entry is never
@@ -1972,21 +2057,14 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             /*
              * A DDI 7 driver object is handed the DirectDraw local object
              * and the surfaces' local halves here, not the global object
-             * and the interface wrappers (recalled from the DX7 DDK;
-             * logged, with the wrapper reading beside it, until the probe
-             * says so).
+             * and the interface wrappers: the local object is the one
+             * CreateSurfaceEx names, and V9XD32's T1-T11 draw right with
+             * the surfaces read as LCLs (the 4570, boots 89-92).
              */
             int ddi7 = v9x_d3d_ddi_for_object() == V9X_D3D_DDI7;
             int targeted;
 
             if (ddi7) {
-                const V9X_DD_SURFACE_INT *as_int =
-                    (const V9X_DD_SURFACE_INT *)data->lpDDS;
-
-                v9x_d3d_ddi7_log("ctx", (DWORD)data->lpDDGbl,
-                                 (DWORD)data->lpDDS, (DWORD)data->lpDDSZ,
-                                 IsBadReadPtr(as_int, sizeof(*as_int))
-                                     ? 0ul : (DWORD)as_int->lpLcl);
                 targeted = v9x_d3d_set_target_lcl(
                     context, (V9X_DD_SURFACE_LCL *)data->lpDDS,
                     (V9X_DD_SURFACE_LCL *)data->lpDDSZ, data->lpDDSZ != 0);
@@ -3947,10 +4025,12 @@ static int v9x_d3d_dp2_available(void)
  * program is named by its file name alone, as SYSTEM.INI keys are, with no
  * path.
  *
- * =7 is DDI 7 (docs\plans\hardware-tnl.md step 5), only on an engine that
- * runs T&L (tnl_available), and DDI 6 elsewhere. Named programs only while
- * step 5 is measured; the plan's decision 1 makes it the Haswell default
- * once its gate passes.
+ * On an engine that runs T&L (tnl_available, Haswell) every DrawPrimitives2
+ * answer below is DDI 7 (docs\plans\hardware-tnl.md step 5), and =7 is
+ * DDI 6 elsewhere. Default since its gate passed, as the plan's decision 1
+ * says: V9XD32 T1-T17, 3DMark 2000 and 3DMark 2001 SE at DDI 7 on the 4570
+ * (docs\decisions\2026-10-26-haswell-ddi7-step5-first-light.md). A program
+ * listed =6 keeps DDI 6.
  */
 #define V9X_D3D_DDI_PROGRAMS "Velocity9x.Direct3DDdi"
 
@@ -3959,11 +4039,17 @@ static int v9x_d3d_dp2_for_process(void)
     char path[MAX_PATH];
     const char *name = path;
     const char *at;
+    const V9X_D3D_ENGINE_OPS *engine;
     UINT listed;
+    int dp2;
 
     if (!v9x_d3d_dp2_available()) {
         return 0;
     }
+    engine = v9x_d3d_publish_engine();
+    dp2 = engine != 0 && engine->tnl_available != 0 &&
+                  engine->tnl_available()
+              ? V9X_D3D_DDI7 : V9X_D3D_DDI6;
     path[0] = '\0';
     if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
         path[0] = '\0';
@@ -3984,16 +4070,12 @@ static int v9x_d3d_dp2_for_process(void)
             return V9X_D3D_DDI6;
         }
         if (listed == 7u) {
-            const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
-
-            return ops != 0 && ops->tnl_available != 0 &&
-                           ops->tnl_available()
-                       ? V9X_D3D_DDI7 : V9X_D3D_DDI6;
+            return dp2;
         }
     }
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D_DP2_ALL) !=
         0ul) {
-        return 1;
+        return dp2;
     }
     /* An engine that draws two texture stages gives every program DDI 6,
      * the only interface that has stages: 3DMark 2000's multi-texture fill
@@ -4006,10 +4088,10 @@ static int v9x_d3d_dp2_for_process(void)
 
         if (ops != 0 && ops->limits != 0 &&
             ops->limits->texture_stages >= 2ul) {
-            return 1;
+            return dp2;
         }
     }
-    return GetModuleHandleA("D3D8.DLL") != 0;
+    return GetModuleHandleA("D3D8.DLL") != 0 ? dp2 : V9X_D3D_DDI5;
 }
 
 /*
@@ -4911,14 +4993,17 @@ void v9x_d3d_dp2_flush_pending(void)
 /* ---- DDI 7 (docs\plans\hardware-tnl.md, step 5) ---------------------- */
 
 /*
- * What a DirectX 7 runtime does with this driver, line by line, while step
- * 5 is measured: CreateSurfaceEx, GetDriverState and DestroyDDLocal calls,
- * each DX7 record's first sighting, and handles that resolve to nothing.
- * The HAL may import from KERNEL32 alone, so no wsprintf: a tag and four
- * hex words. Capped per boot, since the count is shared by every process.
+ * What goes wrong at DDI 7, line by line: handles that resolve to
+ * nothing, a full handle table, refused targets and TEXBLTs, records
+ * handed back, GetDriverState queries, and each DX7 record's first
+ * sighting. Every surface and query was logged while step 5 was measured
+ * (docs\decisions\2026-10-26-haswell-ddi7-step5-first-light.md); a
+ * 3DMark 2001 SE run wrote 2,764 lines of surfaces alone. The HAL may
+ * import from KERNEL32 alone, so no wsprintf: a tag and four hex words.
+ * Capped per boot, since the count is shared by every process.
  */
 #define V9X_D3D_DDI7_LOG       "C:\\V9XDIAG\\V9XD7.LOG"
-#define V9X_D3D_DDI7_LOG_LINES 3000ul
+#define V9X_D3D_DDI7_LOG_LINES 1000ul
 
 static DWORD v9x_d3d_ddi7_log_lines;
 static DWORD v9x_d3d_ddi7_ops_logged[2];
@@ -4991,10 +5076,8 @@ static DWORD v9x_d3d_surface_handle_of(const V9X_DD_SURFACE_LCL *lcl)
  * only through it: a flip chain's back buffer was handle 2 to the
  * runtime's SETRENDERTARGET while CreateSurfaceEx named only the primary
  * (the 4570, boot 89). So everything attached is entered, breadth first,
- * each surface once, except the levels below a mip chain's top:
- * TEXTUREMAP, TEXBLT and SETRENDERTARGET name the top, and the table's
- * size is paid for in the DLL's file, which the ATI floppy's first disk
- * had no room for at 1024 entries.
+ * each surface once, except the levels below a mip chain's top, which
+ * TEXTUREMAP, TEXBLT and SETRENDERTARGET never name.
  */
 #define V9X_D3D_CSEX_SURFACES 16u
 
@@ -5002,6 +5085,7 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
     V9X_DDHAL_CREATESURFACEEXDATA *data)
 {
     V9X_DD_SURFACE_LCL *queue[V9X_D3D_CSEX_SURFACES];
+    V9X_D3D_HANDLES *table;
     unsigned int queued = 0u;
     unsigned int links;
     unsigned int at;
@@ -5010,6 +5094,10 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     data->ddRVal = V9X_DD_OK;
+    table = v9x_d3d_handles_here(1);
+    if (table == 0) {
+        v9x_d3d_ddi7_log("csex-no-table", 0ul, 0ul, 0ul, 0ul);
+    }
     if (data->lpDDSLcl != 0) {
         queue[queued++] = data->lpDDSLcl;
     }
@@ -5022,16 +5110,19 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
         if (handle == 0ul && at != 0u) {
             continue;
         }
+        /* Vertex, index and command buffers have handles too, and no
+         * record names them by it: DP2 passes their LCLs. 3DMark 2001 SE
+         * filled the 512 entries with them and lost textures after
+         * (226 refused, boot 93), so they are not entered. */
+        if ((lcl->ddsCaps & V9X_DDSCAPS_EXECUTEBUFFER) != 0ul) {
+            continue;
+        }
         memory = lcl->lpGbl != 0 && !IsBadReadPtr(lcl->lpGbl, 8ul)
                      ? lcl->lpGbl->fpVidMem : 0ul;
-        v9x_d3d_ddi7_log("csex", (DWORD)data->lpDDLcl, (DWORD)lcl, handle,
-                         lcl->ddsCaps);
-        if (handle != 0ul) {
+        if (handle != 0ul && table != 0) {
             if (memory == 0ul) {
-                (void)v9x_d3d_handles_drop(&v9x_d3d_surface_handles,
-                                           data->lpDDLcl, handle);
-            } else if (v9x_d3d_handles_set(&v9x_d3d_surface_handles,
-                                           data->lpDDLcl, handle,
+                (void)v9x_d3d_handles_drop(table, data->lpDDLcl, handle);
+            } else if (v9x_d3d_handles_set(table, data->lpDDLcl, handle,
                                            lcl) == 0) {
                 v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
             }
@@ -5085,12 +5176,12 @@ static DWORD __stdcall V9xDdGetDriverState(
 static DWORD __stdcall V9xDdDestroyDDLocal(
     V9X_DDHAL_DESTROYDDLOCALDATA *data)
 {
-    DWORD freed;
+    V9X_D3D_HANDLES *table = v9x_d3d_handles_here(0);
 
     if (data != 0) {
-        freed = v9x_d3d_handles_drop_local(&v9x_d3d_surface_handles,
-                                           data->pDDLcl);
-        v9x_d3d_ddi7_log("ddl", (DWORD)data->pDDLcl, freed, 0ul, 0ul);
+        if (table != 0) {
+            (void)v9x_d3d_handles_drop_local(table, data->pDDLcl);
+        }
         data->ddRVal = V9X_DD_OK;
     }
     return V9X_DDHAL_DRIVER_HANDLED;
@@ -5115,8 +5206,10 @@ static V9X_D3D_SURFACE_HANDLE *v9x_d3d_ddi7_surface(
     if (handle == 0ul) {
         return 0;
     }
-    entry = v9x_d3d_handles_find(&v9x_d3d_surface_handles,
-                                 context->dd_local, handle);
+    entry = v9x_d3d_handles_here(0) != 0
+        ? v9x_d3d_handles_find(v9x_d3d_handles_here(0), context->dd_local,
+                               handle)
+        : 0;
     if (entry == 0) {
         v9x_d3d_ddi7_log("unknown-handle", (DWORD)context->dd_local, handle,
                          0ul, 0ul);
@@ -5331,8 +5424,12 @@ static int v9x_d3d_dp2_dx7(void *opaque, v9x_u32 op, v9x_u32 count,
                       context, (V9X_DD_SURFACE_LCL *)target->surface,
                       depth != 0 ? (V9X_DD_SURFACE_LCL *)depth->surface : 0,
                       words[i * 2ul + 1ul] != 0ul);
-            v9x_d3d_ddi7_log("setrt", words[i * 2ul], words[i * 2ul + 1ul],
-                             (DWORD)set, 0ul);
+            /* Every frame of a flip chain sets one: logged only when it
+             * fails (3DMark 2000 filled the log with 2,800 that did). */
+            if (!set) {
+                v9x_d3d_ddi7_log("setrt-refused", words[i * 2ul],
+                                 words[i * 2ul + 1ul], 0ul, 0ul);
+            }
         }
         return 1;
 
@@ -5918,13 +6015,6 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
     }
     ddi6 = v9x_d3d_ddi_for_object();
     v9x_d3d_apply_ddi_level(ddi6);
-    if (ddi6 == V9X_D3D_DDI7) {
-        v9x_d3d_ddi7_log("gdi", ((DWORD)data->guidInfo[3] << 24) |
-                                    ((DWORD)data->guidInfo[2] << 16) |
-                                    ((DWORD)data->guidInfo[1] << 8) |
-                                    (DWORD)data->guidInfo[0],
-                         data->dwExpectedSize, 0ul, 0ul);
-    }
     if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_d3d_callbacks3)) {
         DWORD copy = sizeof(v9x_d3d_callbacks3);
@@ -5963,13 +6053,15 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
      * 89: refused there under the previous process's level, the object
      * then had no CreateSurfaceEx and named every surface by a handle the
      * driver was never told). So this answer latches the object's level
-     * too, as Callbacks3 does, when the process making it gets DDI 7; a
-     * later process asking keeps an object already latched at DDI 7.
+     * too, whatever it is, as Callbacks3 does: like Callbacks3 it is asked
+     * only while an object is made, never on a reset (boots 89-92). An
+     * answer under the last object's level instead gave a DDI 6 process
+     * after a DDI 7 one the DX7 callbacks with DDI 6's caps, and its DX7
+     * device failed (V9XD32 /ddi6 T16, boot 92).
      */
-    if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_misc2_callbacks) &&
-        v9x_d3d_dp2_for_process() == V9X_D3D_DDI7) {
-        v9x_d3d_object_ddi6 = V9X_D3D_DDI7;
-        ddi6 = V9X_D3D_DDI7;
+    if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_misc2_callbacks)) {
+        v9x_d3d_object_ddi6 = v9x_d3d_dp2_for_process();
+        ddi6 = v9x_d3d_ddi_for_object();
         v9x_d3d_apply_ddi_level(ddi6);
     }
     if (ddi6 == V9X_D3D_DDI7 &&
@@ -5988,8 +6080,6 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
             }
             data->ddRVal = V9X_DD_OK;
         }
-        v9x_d3d_ddi7_log("misc2", data->dwExpectedSize, data->ddRVal, 0ul,
-                         0ul);
         v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
     }

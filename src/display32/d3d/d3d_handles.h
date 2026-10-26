@@ -11,7 +11,7 @@
  *
  * Pure: no DDHAL header and no HAL state, so scripts\build-host.ps1
  * compiles it and tests\host\test_d3d_handles.c holds it. d3d_core.c owns
- * the one table and applies the answers.
+ * the tables, one per process, and applies the answers.
  *
  * Open addressing from handle mod V9X_D3D_SURFACE_HANDLES, a slot ever used
  * keeping the probe going after it is freed, so a lookup stops at the first
@@ -23,7 +23,7 @@
 
 #include "velocity9x/types.h"
 
-#define V9X_D3D_SURFACE_HANDLES 512u
+#define V9X_D3D_SURFACE_HANDLES 4096u
 
 typedef struct v9x_d3d_surface_handle {
     v9x_u32 handle;         /* 0: free                               */
