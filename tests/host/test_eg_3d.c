@@ -393,6 +393,57 @@ static void test_state(void)
     state.texture_format = 0x05ul;
     CHECK(v9x_eg_3d_build_state(&state, &stream) ==
           V9X_STATUS_INVALID_ARGUMENT);
+    /* A texture row is a whole number of 64 bytes, measured on M-BXMFA8
+     * (V9XEG3D /d3d1555, boot 20): 32, 48, 80 and 96 bytes read odd rows
+     * wrong; 64, 128 and 192 were exact in 1555 and in 8888. So 16
+     * texels of 1555 are refused and 32 taken; 16 of 8888 taken. */
+    fill_state(&state);
+    state.texture_format = V9X_EG_COLOR_1_5_5_5;
+    state.texture_width = 16ul;
+    state.texture_pitch = 16ul;
+    CHECK(v9x_eg_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.texture_pitch = 32ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    state.texture_pitch = 24ul;
+    state.texture_format = V9X_EG_COLOR_8_8_8_8;
+    CHECK(v9x_eg_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.texture_pitch = 16ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(v9x_eg_3d_texture_pitch(V9X_EG_COLOR_5_6_5, 16ul) == 32ul);
+    CHECK(v9x_eg_3d_texture_pitch(V9X_EG_COLOR_8_8_8_8, 1ul) == 16ul);
+    CHECK(v9x_eg_3d_texture_pitch(V9X_EG_COLOR_4_4_4_4, 33ul) == 64ul);
+
+    /* A 565 texture has no alpha: its W reads 1 (DST_SEL_W 5), not the
+     * missing fourth component, which read 0 and blended a texture away
+     * under SRCALPHA (V9XDDP's untagged texture, boot 21). Formats with
+     * alpha keep W. */
+    fill_state(&state);
+    state.texture_format = V9X_EG_COLOR_5_6_5;
+    state.texture_pitch = 64ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == 0xc0086d00ul && buffer[at + 1ul] == 0ul) {
+            break;
+        }
+    }
+    CHECK(at < stream.count &&
+          buffer[at + 6ul] == ((0ul << 16) | (1ul << 19) | (2ul << 22) |
+                               (5ul << 25)));
+    fill_state(&state);
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == 0xc0086d00ul && buffer[at + 1ul] == 0ul) {
+            break;
+        }
+    }
+    CHECK(at < stream.count && ((buffer[at + 6ul] >> 25) & 7ul) == 3ul);
+
     /* 1555 and 4444 are taken, with their format in word 7. */
     fill_state(&state);
     state.texture_format = V9X_EG_COLOR_1_5_5_5;

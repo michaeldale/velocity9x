@@ -161,7 +161,8 @@ static v9x_u32 v9x_d3d_eg_map_texture(const V9X_R3D_DRAW *draw,
         texture->width > V9X_D3D_EG_TEXTURE_SIDE_MAX ||
         texture->height > V9X_D3D_EG_TEXTURE_SIDE_MAX ||
         texture->pitch_texels < texture->width ||
-        (texture->pitch_texels & 7ul) != 0ul ||
+        v9x_eg_3d_texture_pitch(texture->format, texture->pitch_texels) !=
+            texture->pitch_texels ||
         ((heap_gpu + texture->offset) &
          (V9X_D3D_EG_SURFACE_ALIGN - 1ul)) != 0ul) {
         return V9X_D3D_EG_REFUSE_TEXTURE_SHAPE;

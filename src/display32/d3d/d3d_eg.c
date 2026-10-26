@@ -460,8 +460,9 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
  * pixels, 256-aligned. A Z16 buffer gets its pitch rounded to 8 pixels
  * and its rows to 8, the DB's 1D tile, 256-aligned. A video-memory
  * texture of a format this engine samples gets each level in a block of
- * its own, 256-aligned, its pitch rounded to 8 texels, which the
- * resource's PITCH field counts.
+ * its own, 256-aligned, its rows whole multiples of 64 bytes, which the
+ * sampler needs (eg_3d.h, v9x_eg_3d_texture_pitch): V9XDDP's 16x16 1555
+ * TexPhase texture at 32 bytes a row read every odd row wrong.
  */
 static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
@@ -471,6 +472,7 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_u32 rows[V9X_D3D_EG_LEVELS_MAX];
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
+    DWORD format;
     DWORD width;
     DWORD height;
     DWORD level;
@@ -522,11 +524,11 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         rows[0] = (height + V9X_D3D_EG_DEPTH_TILE_ROWS - 1ul) &
                   ~(V9X_D3D_EG_DEPTH_TILE_ROWS - 1ul);
     } else {
+        format = v9x_d3d_eg_format_of(surface, &bytes, &has_alpha);
         if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
             width > v9x_d3d_eg_limits.texture_size_max ||
             height > v9x_d3d_eg_limits.texture_size_max ||
-            v9x_d3d_eg_format_of(surface, &bytes, &has_alpha) ==
-                V9X_D3D_EG_TEXTURE_UNKNOWN) {
+            format == V9X_D3D_EG_TEXTURE_UNKNOWN) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         for (level = 0ul; level < data->dwSCnt; ++level) {
@@ -542,7 +544,7 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 (DWORD)member->lpGbl->wHeight != height) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
-            pitches[level] = ((width + 7ul) & ~7ul) * bytes;
+            pitches[level] = v9x_eg_3d_texture_pitch(format, width) * bytes;
             rows[level] = height;
         }
     }

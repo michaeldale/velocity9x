@@ -268,6 +268,16 @@ v9x_u32 v9x_eg_3d_alpha_test(v9x_u32 enable, v9x_u32 func);
 v9x_u32 v9x_eg_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
                           v9x_u32 clamp_u, v9x_u32 clamp_v);
 
+/*
+ * A texture row is a whole number of 64 bytes: measured on M-BXMFA8
+ * (V9XEG3D /d3d1555, boot 20), rows of 32, 48, 80 and 96 bytes read
+ * every odd row wrong, while 64, 128 and 192 bytes were exact, in 1555
+ * and in 8888 alike. The pitch, in texels, of a texture `width` texels
+ * wide in a V9X_EG_COLOR_* format; 0 for a format not sampled here.
+ */
+#define V9X_EG_TEXTURE_ROW_ALIGN 64ul
+v9x_u32 v9x_eg_3d_texture_pitch(v9x_u32 format, v9x_u32 width);
+
 /* The batch's state after v9x_eg_3d_default_state. INVALID_ARGUMENT for a
  * state the hardware cannot take as given, with nothing written. */
 v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,

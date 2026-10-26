@@ -260,6 +260,36 @@ static DWORD v9x_cb_attrib;
 #define V9X_MODE_D3D_COLOUR         6ul
 #define V9X_MODE_D3D_Z              7ul
 #define V9X_MODE_D3D_565            8ul
+/* /d3d1555: /d3dtex with the source read as a 64x8 ARGB1555 texture
+ * (its first 128 bytes a row), each pixel against the word it samples,
+ * channel by channel. */
+#define V9X_MODE_D3D_1555           9ul
+/* /texw: and /texpitch: (hex, texels): the 1555 texture's width and pitch,
+ * 64 and 64 by default; the draw still spans 64 pixels, so a narrower
+ * texture is stretched across it. */
+static DWORD v9x_tex_width = 64ul;
+static DWORD v9x_tex_pitch = 64ul;
+/* /tex8888: the same draw with 32-bit texels, the pattern's dwords. */
+static int v9x_tex_8888;
+
+/*
+ * /d3dmip:K: a 32x32 8888 texture with a full chain (6 levels), laid out
+ * linear aligned as Linux's evergreen_cs.c sizes it - every level's pitch
+ * 64 texels (MAX(64, 256 / 4)), its rows unpadded, the levels one after
+ * another from MIP_ADDRESS - over a pattern in the window's free space.
+ * The sampler's LOD clamp holds the draw at level K with point mip
+ * filtering, and each pixel is checked against the dword the model puts
+ * there. Where a pixel holds another dword of the area, its index is
+ * reported, to show the layout the sampler used instead.
+ */
+#define V9X_MODE_D3D_MIP            10ul
+#define V9X_MIP_OFFSET              0x9000ul
+#define V9X_MIP_DWORDS              0x1000ul
+#define V9X_MIP_SEED                0x11223344ul
+#define V9X_MIP_EDGE                32ul
+#define V9X_MIP_LEVELS              6ul
+#define V9X_MIP_PITCH_TEXELS        64ul
+static DWORD v9x_mip_level;
 static DWORD v9x_mode = V9X_MODE_BLIT;
 /* PA_SU_VTX_CNTL's PIX_CENTER_HALF for the Direct3D draws; /centre0
  * clears it. */
@@ -830,12 +860,64 @@ static void v9x_ring_draw(DWORD g)
  * the batch's state, the draw, the caches flushed, then the mark. */
 static const struct v9x_eg_3d_state v9x_zero_state;
 
+/* The model's byte offset of level `level` from the chain's base. */
+static DWORD v9x_mip_level_offset(DWORD level)
+{
+    DWORD offset = 0ul;
+    DWORD index;
+    DWORD edge;
+
+    for (index = 0ul; index < level; ++index) {
+        edge = V9X_MIP_EDGE >> index;
+        offset += V9X_MIP_PITCH_TEXELS * 4ul * (edge != 0ul ? edge : 1ul);
+    }
+    return offset;
+}
+
+/*
+ * The chain's resource and sampler, after the builder's (later packets
+ * win): linear aligned, levels 0 to 5, MIP_ADDRESS at level 1; point
+ * filters, point mip filtering, the LOD clamped to v9x_mip_level (4.8
+ * fixed point: with 4.6, LOD 1 read level 0 and LOD 2 to 5 level 1, boot
+ * 23 - a quarter of the asked LOD, rounded).
+ */
+#define V9X_MIP_FILTER_POINT 0x00008000ul /* MIP_FILTER(1) << 15 */
+
+static void v9x_mip_resource(struct v9x_eg_pm4 *stream, DWORD g)
+{
+    DWORD base = g + V9X_MIP_OFFSET;
+    DWORD lod = v9x_mip_level * 256ul;
+
+    v9x_eg_pm4_put(stream, 0xc0086d00ul);
+    v9x_eg_pm4_put(stream, 0ul);
+    v9x_eg_pm4_put(stream, V9X_SQ_TEX_DIM_2D |
+                   (((V9X_MIP_PITCH_TEXELS >> 3) - 1ul) << 6) |
+                   ((V9X_MIP_EDGE - 1ul) << 18));
+    v9x_eg_pm4_put(stream, (V9X_MIP_EDGE - 1ul) |
+                   (V9X_ARRAY_LINEAR_ALIGNED << 28));
+    v9x_eg_pm4_put(stream, base >> 8);
+    v9x_eg_pm4_put(stream, (base + v9x_mip_level_offset(1ul)) >> 8);
+    v9x_eg_pm4_put(stream, (0ul << 16) | (1ul << 19) | (2ul << 22) |
+                           (3ul << 25));
+    v9x_eg_pm4_put(stream, V9X_MIP_LEVELS - 1ul);
+    v9x_eg_pm4_put(stream, 0ul);
+    v9x_eg_pm4_put(stream, V9X_FORMAT_8_8_8_8 |
+                           (V9X_SQ_TEX_VALID_TEXTURE << 30));
+    v9x_eg_pm4_put(stream, 0xc0036e00ul);
+    v9x_eg_pm4_put(stream, 0ul);
+    v9x_eg_pm4_put(stream, 0x12ul | V9X_MIP_FILTER_POINT);
+    v9x_eg_pm4_put(stream, lod | (lod << 12));
+    v9x_eg_pm4_put(stream, 0ul);
+}
+
 static void v9x_ring_draw_d3d(DWORD g)
 {
     struct v9x_eg_3d_state state;
     struct v9x_eg_pm4 *stream = v9x_stage_begin();
     DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
-                     v9x_mode == V9X_MODE_D3D_PERSP;
+                     v9x_mode == V9X_MODE_D3D_PERSP ||
+                     v9x_mode == V9X_MODE_D3D_1555 ||
+                     v9x_mode == V9X_MODE_D3D_MIP;
     DWORD batch;
 
     state = v9x_zero_state;
@@ -871,7 +953,21 @@ static void v9x_ring_draw_d3d(DWORD g)
         state.texture_width = V9X_DRAW_WIDTH;
         state.texture_height = V9X_DRAW_HEIGHT;
         state.texture_pitch = V9X_DRAW_WIDTH;
-        state.texture_format = V9X_EG_COLOR_8_8_8_8;
+        state.texture_format = v9x_mode == V9X_MODE_D3D_1555 ?
+                               V9X_EG_COLOR_1_5_5_5 : V9X_EG_COLOR_8_8_8_8;
+        if (v9x_mode == V9X_MODE_D3D_MIP) {
+            state.texture_gpu = g + V9X_MIP_OFFSET;
+            state.texture_width = V9X_MIP_EDGE;
+            state.texture_height = V9X_MIP_EDGE;
+            state.texture_pitch = V9X_MIP_PITCH_TEXELS;
+        }
+        if (v9x_mode == V9X_MODE_D3D_1555) {
+            state.texture_width = v9x_tex_width;
+            state.texture_pitch = v9x_tex_pitch;
+            if (v9x_tex_8888) {
+                state.texture_format = V9X_EG_COLOR_8_8_8_8;
+            }
+        }
         state.sampler_word0 = v9x_eg_3d_sampler(
             0ul, 0ul, V9X_EG_TEX_CLAMP_LAST_TEXEL,
             V9X_EG_TEX_CLAMP_LAST_TEXEL);
@@ -885,6 +981,9 @@ static void v9x_ring_draw_d3d(DWORD g)
         v9x_eg_3d_default_state(stream);
         if (v9x_eg_3d_build_state(&state, stream) != V9X_STATUS_OK) {
             stream->overflow = 1ul;
+        }
+        if (v9x_mode == V9X_MODE_D3D_MIP) {
+            v9x_mip_resource(stream, g);
         }
         /* /vte: overrides PA_CL_VTE_CNTL after the builder has set it. */
         if (v9x_vte_override != 0xfffffffful) {
@@ -1017,13 +1116,16 @@ static void v9x_d3d_rect(DWORD x0, DWORD x1, DWORD z, DWORD colour,
 static void v9x_build_d3d(void)
 {
     DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
-                     v9x_mode == V9X_MODE_D3D_PERSP;
+                     v9x_mode == V9X_MODE_D3D_PERSP ||
+                     v9x_mode == V9X_MODE_D3D_1555 ||
+                     v9x_mode == V9X_MODE_D3D_MIP;
 
     v9x_vs_dwords = v9x_eg_shader_d3d_vs(textured, v9x_vs);
     v9x_ps_dwords = v9x_eg_shader_d3d_ps(textured ? V9X_EG_D3D_OP_MODULATE :
                                          V9X_EG_D3D_OP_NONE, v9x_ps);
     v9x_vertex_stride = V9X_EG_D3D_STRIDE;
-    if (v9x_mode == V9X_MODE_D3D_TEX) {
+    if (v9x_mode == V9X_MODE_D3D_TEX || v9x_mode == V9X_MODE_D3D_1555 ||
+        v9x_mode == V9X_MODE_D3D_MIP) {
         v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5,
                      V9X_D3D_WHITE, V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0,
                      V9X_FLOAT_1);
@@ -1167,6 +1269,10 @@ static void v9x_build_run(DWORD g)
     if (v9x_mode == V9X_MODE_DEPTH || v9x_mode == V9X_MODE_D3D_Z) {
         v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH_OFFSET, V9X_DEPTH_DWORDS,
                V9X_DEPTH_CLEAR);
+    }
+    if (v9x_mode == V9X_MODE_D3D_MIP) {
+        v9x_op(V9X_OP_VRAM_PATTERN, V9X_MIP_OFFSET, V9X_MIP_DWORDS,
+               V9X_MIP_SEED);
     }
     v9x_op(V9X_OP_VRAM_DATA, 0ul, V9X_DATA_RING, v9x_ring_count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_VS_OFFSET, V9X_DATA_RING + v9x_ring_count,
@@ -1635,6 +1741,155 @@ static void v9x_verify_persp(void)
     v9x_map(got);
 }
 
+/* The mip area's dword `index`, as EGCP.VXD's VRAM_PATTERN lays it. */
+static DWORD v9x_mip_pattern(DWORD index)
+{
+    return V9X_MIP_SEED + index * V9X_PATTERN_STEP;
+}
+
+/* The mip area's index holding `value`, or V9X_MIP_DWORDS. */
+static DWORD v9x_mip_find(DWORD value)
+{
+    DWORD index;
+
+    for (index = 0ul; index < V9X_MIP_DWORDS; ++index) {
+        if (v9x_mip_pattern(index) == value) {
+            break;
+        }
+    }
+    return index;
+}
+
+/*
+ * /d3dmip:K: pixel (x, y) at its centre samples level K's texel
+ * ((2x + 1) * w / 128, (2y + 1) * h / 16), w and h level K's edges; the
+ * model puts it at level K's offset + row * 256 + column * 4.
+ */
+static void v9x_verify_mip(void)
+{
+    const DWORD *got = v9x_result.block;
+    DWORD edge = V9X_MIP_EDGE >> v9x_mip_level;
+    DWORD bad = 0ul;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD expected;
+    char text[12];
+
+    if (edge == 0ul) {
+        edge = 1ul;
+    }
+    for (index = 0ul; index < V9X_DRAW_DWORDS; ++index) {
+        x = ((2ul * (index % V9X_DRAW_WIDTH) + 1ul) * edge) /
+            (2ul * V9X_DRAW_WIDTH);
+        y = ((2ul * (index / V9X_DRAW_WIDTH) + 1ul) * edge) /
+            (2ul * V9X_DRAW_HEIGHT);
+        expected = v9x_mip_pattern((v9x_mip_level_offset(v9x_mip_level) +
+                                    y * V9X_MIP_PITCH_TEXELS * 4ul +
+                                    x * 4ul) / 4ul);
+        if (got[index] != expected) {
+            ++bad;
+        }
+    }
+    v9x_key("Result", "MipLevel", v9x_mip_level);
+    v9x_key("Result", "ModelOffset", v9x_mip_level_offset(v9x_mip_level));
+    v9x_decimal(text, bad);
+    v9x_text("Result", "DrawMismatches", text);
+    v9x_text("Result", "Draw", bad == 0ul ? "PASS" : "FAIL");
+    v9x_key("Result", "Pixel0", got[0]);
+    v9x_key("Result", "Pixel0Index", v9x_mip_find(got[0]));
+    v9x_key("Result", "PixelLastIndex",
+            v9x_mip_find(got[V9X_DRAW_DWORDS - 1ul]));
+}
+
+/* A 5-bit channel as the CB's 8-bit unorm holds it: v / 31, rounded. */
+static DWORD v9x_expand5(DWORD v)
+{
+    return (v * 255ul + 15ul) / 31ul;
+}
+
+/*
+ * /d3d1555: pixel (x, y) samples texel (x, y) of a 64-texel-pitch ARGB1555
+ * texture over the source pattern, the 16-bit word at byte y * 128 + x * 2.
+ * Its fields - blue 4:0, green 9:5, red 14:10, alpha 15 - should arrive in
+ * the 8888 target's bytes 0 to 3, each within 1 of v / 31. Mismatches are
+ * counted per channel, so a field read from the wrong bits shows which.
+ */
+static void v9x_verify_1555(void)
+{
+    static const char *keys[4] = {
+        "BlueMismatches", "GreenMismatches", "RedMismatches",
+        "AlphaMismatches" };
+    const DWORD *got = v9x_result.block;
+    DWORD channel_bad[4];
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_word = 0ul;
+    DWORD index;
+    DWORD channel;
+    DWORD byte;
+    DWORD texel_bytes;
+    DWORD word;
+    DWORD expected[4];
+    DWORD value;
+    DWORD diff;
+    int pixel_bad;
+    char text[12];
+
+    for (channel = 0ul; channel < 4ul; ++channel) {
+        channel_bad[channel] = 0ul;
+    }
+    for (index = 0ul; index < V9X_DRAW_DWORDS; ++index) {
+        /* Pixel centres at + 0.5 sample texel x * width / 64. */
+        texel_bytes = v9x_tex_8888 ? 4ul : 2ul;
+        byte = (index / V9X_DRAW_WIDTH) * v9x_tex_pitch * texel_bytes +
+               ((index % V9X_DRAW_WIDTH) * v9x_tex_width / V9X_DRAW_WIDTH) *
+               texel_bytes;
+        if (v9x_tex_8888) {
+            word = v9x_pattern(byte / 4ul);
+            for (channel = 0ul; channel < 4ul; ++channel) {
+                expected[channel] = (word >> (channel * 8ul)) & 0xfful;
+            }
+        } else {
+            word = (v9x_pattern(byte / 4ul) >> ((byte & 2ul) * 8ul)) &
+                   0xfffful;
+            expected[0] = v9x_expand5(word & 31ul);
+            expected[1] = v9x_expand5((word >> 5) & 31ul);
+            expected[2] = v9x_expand5((word >> 10) & 31ul);
+            expected[3] = (word & 0x8000ul) != 0ul ? 255ul : 0ul;
+        }
+        pixel_bad = 0;
+        for (channel = 0ul; channel < 4ul; ++channel) {
+            value = (got[index] >> (channel * 8ul)) & 0xfful;
+            diff = value > expected[channel] ? value - expected[channel]
+                                             : expected[channel] - value;
+            if (diff > 1ul) {
+                ++channel_bad[channel];
+                pixel_bad = 1;
+            }
+        }
+        if (pixel_bad) {
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+                first_word = word;
+            }
+            ++bad;
+        }
+    }
+    v9x_decimal(text, bad);
+    v9x_text("Result", "DrawMismatches", text);
+    for (channel = 0ul; channel < 4ul; ++channel) {
+        v9x_decimal(text, channel_bad[channel]);
+        v9x_text("Result", keys[channel], text);
+    }
+    v9x_text("Result", "Draw", bad == 0ul ? "PASS" : "FAIL");
+    if (first_bad != 0xfffffffful) {
+        v9x_key("Result", "FirstBadIndex", first_bad);
+        v9x_key("Result", "FirstBadWord", first_word);
+        v9x_key("Result", "FirstBadGot", got[first_bad]);
+    }
+}
+
 /* /d3d565: every 16-bit pixel 8408h, two to a dword, the guard after. */
 static void v9x_verify_565(void)
 {
@@ -1815,6 +2070,18 @@ void __stdcall V9xEvergreen3dEntry(void)
     if (v9x_switch_given("/d3d565")) {
         v9x_mode = V9X_MODE_D3D_565;
     }
+    if (v9x_switch_given("/d3d1555")) {
+        v9x_mode = V9X_MODE_D3D_1555;
+    }
+    v9x_tex_width = v9x_switch_hex("/texw:", 64ul);
+    v9x_tex_pitch = v9x_switch_hex("/texpitch:", 64ul);
+    v9x_tex_8888 = v9x_switch_given("/tex8888");
+    if (v9x_switch_given("/d3dmip")) {
+        v9x_mode = V9X_MODE_D3D_MIP;
+        v9x_mip_level = v9x_switch_hex("/d3dmip:", 0ul);
+    }
+    v9x_key("Run", "TexWidth", v9x_tex_width);
+    v9x_key("Run", "TexPitch", v9x_tex_pitch);
     if (v9x_switch_given("/centre0")) {
         v9x_centre_half = 0ul;
     }
@@ -1889,6 +2156,10 @@ void __stdcall V9xEvergreen3dEntry(void)
         v9x_verify_persp();
     } else if (v9x_mode == V9X_MODE_D3D_565) {
         v9x_verify_565();
+    } else if (v9x_mode == V9X_MODE_D3D_1555) {
+        v9x_verify_1555();
+    } else if (v9x_mode == V9X_MODE_D3D_MIP) {
+        v9x_verify_mip();
     } else {
         v9x_verify_colour();
     }

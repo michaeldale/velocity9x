@@ -259,6 +259,8 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_TEX_WIDTH_SHIFT          18
 #define EG_TEX_ARRAY_MODE_SHIFT     28
 #define EG_TEX_SWIZZLE_XYZW         ((0ul << 16) | (1ul << 19) | (2ul << 22) | (3ul << 25))
+/* DST_SEL_W 5: the constant 1 (SQ_SEL_1). */
+#define EG_TEX_SWIZZLE_XYZ1         ((0ul << 16) | (1ul << 19) | (2ul << 22) | (5ul << 25))
 #define EG_TEX_VALID_TEXTURE        0x80000000ul /* TYPE(2) << 30 */
 #define EG_VTX_VALID_BUFFER         0xc0000000ul /* TYPE(3) << 30 */
 #define EG_VTX_SWIZZLE_XYZW         ((0ul << 3) | (1ul << 6) | (2ul << 9) | (3ul << 12))
@@ -515,6 +517,29 @@ v9x_u32 v9x_eg_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
            ((min_bilinear != 0ul ? 1ul : 0ul) << EG_SAMPLER_MIN_SHIFT);
 }
 
+/* Bytes a texel of a sampled format takes, or 0. */
+static v9x_u32 v9x_eg_3d_texel_bytes(v9x_u32 format)
+{
+    if (format == V9X_EG_COLOR_5_6_5 || format == V9X_EG_COLOR_1_5_5_5 ||
+        format == V9X_EG_COLOR_4_4_4_4) {
+        return 2ul;
+    }
+    return format == V9X_EG_COLOR_8_8_8_8 ? 4ul : 0ul;
+}
+
+v9x_u32 v9x_eg_3d_texture_pitch(v9x_u32 format, v9x_u32 width)
+{
+    v9x_u32 bytes = v9x_eg_3d_texel_bytes(format);
+    v9x_u32 row;
+
+    if (bytes == 0ul) {
+        return 0ul;
+    }
+    row = (width * bytes + V9X_EG_TEXTURE_ROW_ALIGN - 1ul) &
+          ~(V9X_EG_TEXTURE_ROW_ALIGN - 1ul);
+    return row / bytes;
+}
+
 static int v9x_eg_3d_aligned(v9x_u32 gpu)
 {
     return (gpu & EG_ALIGN_256) == 0ul;
@@ -555,7 +580,9 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
         (!v9x_eg_3d_aligned(state->texture_gpu) ||
          state->texture_width == 0ul || state->texture_height == 0ul ||
          state->texture_pitch < state->texture_width ||
-         (state->texture_pitch & 7ul) != 0ul ||
+         ((state->texture_pitch *
+           v9x_eg_3d_texel_bytes(state->texture_format)) %
+          V9X_EG_TEXTURE_ROW_ALIGN) != 0ul ||
          state->texture_width > EG_SCISSOR_MAX ||
          state->texture_height > EG_SCISSOR_MAX ||
          (state->texture_format != V9X_EG_COLOR_5_6_5 &&
@@ -647,7 +674,12 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
                         EG_TEX_ARRAY_MODE_SHIFT));
         v9x_eg_pm4_put(stream, state->texture_gpu >> 8);
         v9x_eg_pm4_put(stream, state->texture_gpu >> 8);
-        v9x_eg_pm4_put(stream, EG_TEX_SWIZZLE_XYZW);
+        /* A 565 texture has no fourth component, which samples as 0: its
+         * W is the constant 1, so it is opaque, as Direct3D reads a
+         * texture without alpha (V9XDDP's untagged texture blended away
+         * under SRCALPHA, boot 21). */
+        v9x_eg_pm4_put(stream, state->texture_format == V9X_EG_COLOR_5_6_5 ?
+                               EG_TEX_SWIZZLE_XYZ1 : EG_TEX_SWIZZLE_XYZW);
         v9x_eg_pm4_put(stream, 0ul);
         v9x_eg_pm4_put(stream, 0ul);
         v9x_eg_pm4_put(stream, state->texture_format | EG_TEX_VALID_TEXTURE);
