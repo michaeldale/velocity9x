@@ -15,7 +15,13 @@ linear fault was `CB_COLOR0_ATTRIB`'s `NON_DISP_TILING_ORDER`, which Mesa
 sets on every linear colour buffer: with it the copy is byte-exact on
 linear surfaces too
 ([record](../decisions/2026-10-27-cedar-linear-colour-buffer.md)).
-Next: Phase 3. Parent plan:
+Phase 3 done (2026-10-27): a host-tested shader encoder (`eg_shader.c`,
+which rebuilds Linux's blit shaders word for word) drives Gouraud, Z16
+depth-tested and texture-modulated draws, three runs of three each
+([record](../decisions/2026-10-27-cedar-gouraud-depth-modulate.md)).
+Next: item 5 below, the HAL (`d3d_eg.c`): the shader-variant scheme of
+item 4 against Direct3D's fixed-function state, and host-tested PM4 stream
+builders, whose `PACKET3` counts a test must check. Parent plan:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md); 2D runs on the DMA
 engine ([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)).
 Michael asked for Direct3D next (2026-10-26).

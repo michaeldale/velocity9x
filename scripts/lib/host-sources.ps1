@@ -109,6 +109,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\evergreen\eg_dma.c',
         # Evergreen CP microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\evergreen\eg_cp_microcode.c',
+        # Evergreen shader words and the bring-up shaders, no I/O.
+        'src\chipsets\ati\evergreen\eg_shader.c',
         'tests\host\test_pe_export.c',
         'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
@@ -288,6 +290,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
         'tests\host\test_eg_dma.c',
+        'tests\host\test_eg_shader.c',
         'tests\host\test_main.c'
     )
 

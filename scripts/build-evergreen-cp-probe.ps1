@@ -92,18 +92,25 @@ if (-not [Text.Encoding]::ASCII.GetString($vxdBytes).Contains('EGCP_DDB')) {
 # The publishers: the CP bring-up and the first draw.
 $publishers = @(
     @{ Source = 'evergreen_cp_win32.c'; Name = 'v9xegcp'; Entry = '_V9xEvergreenCpEntry@0'
-       Description = 'Velocity9x Evergreen CP bring-up probe' }
+       Description = 'Velocity9x Evergreen CP bring-up probe'; Extra = @() }
+    # V9XEG3D's shaders come from the host-tested encoder.
     @{ Source = 'evergreen_3d_win32.c'; Name = 'v9xeg3d'; Entry = '_V9xEvergreen3dEntry@0'
-       Description = 'Velocity9x Evergreen first 3D draw probe' }
+       Description = 'Velocity9x Evergreen first 3D draw probe'
+       Extra = @('src\chipsets\ati\evergreen\eg_shader.c') }
 )
 foreach ($publisher in $publishers) {
-    $source = Join-Path $repoRoot ('tools\diag\' + $publisher.Source)
-    $object = Join-Path $outputDir ([IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
-    & $compiler '-bt=nt' '-zq' '-wx' '-we' '-zl' '-s' `
-        "-i=$(Join-Path $repoRoot 'include')" `
-        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
-    if ($LASTEXITCODE -ne 0) {
-        throw "Open Watcom failed to compile $source."
+    $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))
+    $sources += $publisher.Extra | ForEach-Object { Join-Path $repoRoot $_ }
+    $objects = @()
+    foreach ($source in $sources) {
+        $object = Join-Path $outputDir ([IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
+        & $compiler '-bt=nt' '-zq' '-wx' '-we' '-zl' '-s' `
+            "-i=$(Join-Path $repoRoot 'include')" `
+            "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+        if ($LASTEXITCODE -ne 0) {
+            throw "Open Watcom failed to compile $source."
+        }
+        $objects += $object
     }
     $executable = Join-Path $outputDir ($publisher.Name + '.exe')
     $mapFile = Join-Path $outputDir ($publisher.Name + '.map')
@@ -116,9 +123,9 @@ foreach ($publisher in $publishers) {
         "option start='$($publisher.Entry)'",
         'option stack=65536',
         "option map='$mapFile'",
-        "name '$executable'",
-        "file '$object'"
+        "name '$executable'"
     )
+    $linkLines += $objects | ForEach-Object { "file '$_'" }
     $linkLines += $libraries | ForEach-Object { "library '$_'" }
     Set-Content -LiteralPath $linkFile -Encoding Ascii -Value $linkLines
     & $linker "@$linkFile"

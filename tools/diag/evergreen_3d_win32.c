@@ -25,6 +25,22 @@
  * mode 1 in both the colour buffer and the texture), 64 pixels wide so the
  * pitch meets that mode's 64-element alignment.
  *
+ * The shaders come from src\chipsets\ati\evergreen\eg_shader.c, whose host
+ * test holds the blit pair to Linux's words. Phase 3 adds two draws in
+ * place of the copy:
+ *   /gouraud  two triangles over the 64x8 target, red rising from 0 at the
+ *             left edge to 1 at the right, green 0.5, blue 0.25, alpha 1;
+ *             each pixel checked against the interpolated value, +-2;
+ *   /depth    a 1D-tiled Z16 buffer filled with FFFFh, LESS with writes:
+ *             the whole target red at z 0.5, the left half green at 0.75
+ *             (rejected), the right half blue at 0.25 (passes). Expected:
+ *             red left, blue right; the depth buffer's eight tiles
+ *             reported;
+ *   /modulate the source pattern sampled at unnormalised texel
+ *             coordinates and multiplied by a colour (red rising 0 to 1,
+ *             green 1, blue 0.5, alpha 1): Direct3D's default stage,
+ *             with two interpolants, checked per pixel, +-2.
+ *
  * Call 1 is read-only: the CP's registers and every gpu_init register.
  * The run goes ahead only if the CP is halted, as POST leaves it. /readonly
  * stops there.
@@ -57,6 +73,7 @@
 #include <stddef.h>
 
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/eg_shader.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -239,7 +256,10 @@
 #define V9X_SYNC_CB0_DEST_BASE      0x00000040ul /* 1 << 6 */
 #define V9X_SYNC_TC_ACTION          0x00800000ul /* 1 << 23 */
 #define V9X_SYNC_SH_ACTION          0x08000000ul /* 1 << 27 */
+#define V9X_SYNC_DB_ACTION          0x04000000ul /* 1 << 26 */
+#define V9X_SYNC_DB_DEST_BASE       0x00004000ul /* 1 << 14 */
 #define V9X_SYNC_POLL_INTERVAL      10ul
+#define V9X_DI_PT_TRILIST           0x04ul
 #define V9X_DI_PT_RECTLIST          0x11ul
 #define V9X_DI_INDEX_SIZE_16_BIT    0x0ul
 #define V9X_DI_SRC_SEL_AUTO_INDEX   0x2ul
@@ -252,6 +272,15 @@
 #define V9X_EG_SQ_PGM_START_PS       0x28840ul
 #define V9X_EG_SQ_PGM_START_VS       0x2885cul
 #define V9X_EG_CB_COLOR0_BASE        0x28c60ul
+/* The depth block (evergreend.h): DB_Z_INFO, DB_STENCIL_INFO, the Z and
+ * stencil read and write bases, DB_DEPTH_SIZE and DB_DEPTH_SLICE are the
+ * eight registers from 0x28040; DB_DEPTH_CONTROL is apart. */
+#define V9X_EG_DB_Z_INFO             0x28040ul
+#define V9X_EG_DB_DEPTH_CONTROL      0x28800ul
+#define V9X_DB_FORMAT_Z_16           1ul
+#define V9X_DB_Z_ENABLE              0x00000002ul
+#define V9X_DB_Z_WRITE_ENABLE        0x00000004ul
+#define V9X_DB_ZFUNC_LESS            0x00000010ul /* 1 << 4 */
 
 /* The draw: 64x8 pixels of COLOR_8_8_8_8, linear aligned. */
 #define V9X_DRAW_WIDTH              64ul
@@ -282,9 +311,58 @@ static DWORD v9x_cb_attrib;
 #define V9X_SQ_TEX_DIM_2D           1ul
 #define V9X_SQ_TEX_VALID_TEXTURE    0x2ul
 #define V9X_SQ_TEX_VALID_BUFFER     0x3ul
-/* Float bit patterns of 8.0 and 64.0, the rectangle's corners. */
+/* Float bit patterns: the rectangle's corners, the depths and colours. */
+#define V9X_FLOAT_0                 0x00000000ul
+#define V9X_FLOAT_0_25              0x3e800000ul
+#define V9X_FLOAT_0_5               0x3f000000ul
+#define V9X_FLOAT_0_75              0x3f400000ul
+#define V9X_FLOAT_1                 0x3f800000ul
 #define V9X_FLOAT_8                 0x41000000ul
+#define V9X_FLOAT_32                0x42000000ul
 #define V9X_FLOAT_64                0x42800000ul
+
+/* The draw: the blit copy, or Phase 3's Gouraud or depth test. */
+#define V9X_MODE_BLIT               0ul
+#define V9X_MODE_GOURAUD            1ul
+#define V9X_MODE_DEPTH              2ul
+#define V9X_MODE_MODULATE           3ul
+static DWORD v9x_mode = V9X_MODE_BLIT;
+
+/* /modulate's second interpolant (evergreend.h): the VS exports two
+ * parameters, semantics 0 and 1, and the PS reads both. */
+#define V9X_EG_SPI_VS_OUT_ID_0       0x2861cul
+#define V9X_EG_SPI_PS_INPUT_CNTL_1   0x28648ul
+#define V9X_EG_SPI_VS_OUT_CONFIG     0x286c4ul
+#define V9X_EG_SPI_PS_IN_CONTROL_0   0x286ccul
+#define V9X_SPI_SEMANTIC_1_IN_ID_0   0x00000100ul /* SEMANTIC_1(1) */
+/* SEMANTIC(1) | DEFAULT_VAL(1), as the default state's CNTL_0 (100h). */
+#define V9X_SPI_PS_INPUT_1_VALUE     0x00000101ul
+#define V9X_SPI_VS_EXPORT_COUNT_2    0x00000002ul /* VS_EXPORT_COUNT(1) */
+/* The default state's 20000001h with NUM_INTERP(2). */
+#define V9X_SPI_PS_IN_CONTROL_2      0x20000002ul
+#define V9X_MODULATE_VERTEX_DWORDS   (V9X_EG_MODULATE_STRIDE / 4ul)
+
+/* The vertices: the blit's three (16 bytes each), or up to three
+ * rectangles of two triangles at {x, y, z, w, r, g, b, a}. */
+#define V9X_BLIT_STRIDE             16ul
+#define V9X_COLOUR_STRIDE           32ul
+#define V9X_COLOUR_VERTEX_DWORDS    8ul
+#define V9X_VERTEX_DWORDS_MAX       144ul
+static DWORD v9x_vertices[V9X_VERTEX_DWORDS_MAX];
+static DWORD v9x_vertex_dwords;
+static DWORD v9x_vertex_stride;
+static DWORD v9x_vertex_count;
+
+static v9x_u32 v9x_vs[V9X_EG_SHADER_DWORDS_MAX];
+static v9x_u32 v9x_ps[V9X_EG_SHADER_DWORDS_MAX];
+static DWORD v9x_vs_dwords;
+static DWORD v9x_ps_dwords;
+
+/* Expected 8-bit channels and the tolerance of an interpolated one. */
+#define V9X_CHANNEL_TOLERANCE       2ul
+#define V9X_PIXEL_RED               0xff0000fful
+#define V9X_PIXEL_BLUE              0xffff0000ul
+#define V9X_PIXEL_GREEN             0xff00ff00ul
 
 /* The window's layout. */
 #define V9X_RING_BYTES              0x4000ul
@@ -298,6 +376,13 @@ static DWORD v9x_cb_attrib;
 #define V9X_SRC_OFFSET              0x6000ul
 #define V9X_DST_OFFSET              0x7000ul
 #define V9X_DST_GUARD_DWORDS        1024ul
+/* The Z16 depth buffer, 64x8 1D tiled: eight 8x8 tiles of 128 bytes,
+ * read back with the destination. */
+#define V9X_DEPTH_OFFSET            0x8000ul
+#define V9X_DEPTH_DWORDS            256ul
+#define V9X_DEPTH_TILE_DWORDS       32ul
+#define V9X_DEPTH_CLEAR             0xfffffffful
+#define V9X_READBACK_DWORDS         (V9X_DST_GUARD_DWORDS + V9X_DEPTH_DWORDS)
 #define V9X_GUARD_VALUE             0x5a5a5a5aul
 #define V9X_SRC_SEED                0x01020304ul
 #define V9X_SCRATCH_GPU_OFFSET      0x0f100000ul
@@ -352,7 +437,8 @@ typedef char v9x_egcp_header_matches[
 
 /* evergreen_blit_shaders.c (Linux v3.9; Copyright 2010 Advanced Micro
  * Devices, Inc.; MIT licence, reproduced in that file): the default
- * context state, and the VS and PS of the blit, little-endian. */
+ * context state, little-endian. The blit's VS and PS are rebuilt by
+ * eg_shader.c. */
 static const DWORD v9x_eg_default_state[] = {
     0xc0016900ul, 0x0000023bul, 0x00000000ul,
     0xc0066900ul, 0x00000240ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
@@ -416,23 +502,6 @@ static const DWORD v9x_eg_default_state[] = {
 };
 #define V9X_EG_DEFAULT_DWORDS \
     (sizeof(v9x_eg_default_state) / sizeof(v9x_eg_default_state[0]))
-
-static const DWORD v9x_eg_vs[] = {
-    0x00000004ul, 0x80800400ul, 0x0000a03cul, 0x95000688ul,
-    0x00004000ul, 0x15200688ul, 0x00000000ul, 0x00000000ul,
-    0x3c000000ul, 0x67961001ul, 0x00080000ul, 0x00000000ul,
-    0x1c000000ul, 0x67961000ul, 0x00000008ul, 0x00000000ul
-};
-
-static const DWORD v9x_eg_ps[] = {
-    0x00000003ul, 0xa00c0000ul, 0x00000008ul, 0x80400000ul,
-    0x00000000ul, 0x95200688ul, 0x00380400ul, 0x00146b10ul,
-    0x00380000ul, 0x20146b10ul, 0x00380400ul, 0x40146b00ul,
-    0x80380000ul, 0x60146b00ul, 0x00000000ul, 0x00000000ul,
-    0x00000010ul, 0x000d1000ul, 0xb0800000ul, 0x00000000ul
-};
-#define V9X_EG_VS_DWORDS (sizeof(v9x_eg_vs) / sizeof(v9x_eg_vs[0]))
-#define V9X_EG_PS_DWORDS (sizeof(v9x_eg_ps) / sizeof(v9x_eg_ps[0]))
 
 /* Every register call 1 reads. The first V9X_CP_SAVED are the CP's, put
  * back as V9XEGCP puts them back; the rest are gpu_init's, put back after
@@ -674,6 +743,13 @@ static void v9x_set_config(DWORD offset, DWORD value)
     v9x_ring_put(value);
 }
 
+static void v9x_set_context(DWORD offset, DWORD value)
+{
+    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 1ul));
+    v9x_ring_put((offset - V9X_SET_CONTEXT_START) >> 2);
+    v9x_ring_put(value);
+}
+
 /* cp_set_surface_sync, Evergreen form (no CP_COHER_CNTL2 before Cayman). */
 static void v9x_surface_sync(DWORD sync_type, DWORD size, DWORD address)
 {
@@ -760,40 +836,77 @@ static void v9x_ring_draw(DWORD g)
     DWORD vb = g + V9X_VB_OFFSET;
     DWORD src = g + V9X_SRC_OFFSET;
     DWORD dst = g + V9X_DST_OFFSET;
+    DWORD depth = g + V9X_DEPTH_OFFSET;
+    DWORD vb_bytes = v9x_vertex_dwords * 4ul;
     DWORD extent = v9x_scissor_right | (V9X_DRAW_HEIGHT << 16);
     DWORD index;
 
     v9x_ring_default_state();
 
-    /* set_shaders */
+    /* set_shaders: NUM_GPRS. The VS uses R0 and R1 (and R2 to modulate),
+     * the PS R0 (and R1 to modulate). */
     v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 3ul));
     v9x_ring_put((V9X_EG_SQ_PGM_START_VS - V9X_SET_CONTEXT_START) >> 2);
     v9x_ring_put(vs >> 8);
-    v9x_ring_put(2ul);
+    v9x_ring_put(v9x_mode == V9X_MODE_MODULATE ? 3ul : 2ul);
     v9x_ring_put(0ul);
     v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 4ul));
     v9x_ring_put((V9X_EG_SQ_PGM_START_PS - V9X_SET_CONTEXT_START) >> 2);
     v9x_ring_put(ps >> 8);
-    v9x_ring_put(1ul);
+    v9x_ring_put(v9x_mode == V9X_MODE_MODULATE ? 2ul : 1ul);
     v9x_ring_put(0ul);
     v9x_ring_put(2ul);
     v9x_surface_sync(V9X_SYNC_SH_ACTION, 512ul, vs);
+    if (v9x_mode == V9X_MODE_MODULATE) {
+        v9x_set_context(V9X_EG_SPI_VS_OUT_ID_0, V9X_SPI_SEMANTIC_1_IN_ID_0);
+        v9x_set_context(V9X_EG_SPI_PS_INPUT_CNTL_1, V9X_SPI_PS_INPUT_1_VALUE);
+        v9x_set_context(V9X_EG_SPI_VS_OUT_CONFIG, V9X_SPI_VS_EXPORT_COUNT_2);
+        v9x_set_context(V9X_EG_SPI_PS_IN_CONTROL_0, V9X_SPI_PS_IN_CONTROL_2);
+    }
 
     /* set_tex_resource: FMT_8_8_8_8, 64 wide, pitch 64, 8 high, linear
-     * aligned, swizzle XYZW, a valid texture. */
-    v9x_surface_sync(V9X_SYNC_TC_ACTION, V9X_DRAW_BYTES, src);
-    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_RESOURCE, 8ul));
-    v9x_ring_put(0ul);
-    v9x_ring_put(V9X_SQ_TEX_DIM_2D |
-                 (((V9X_DRAW_WIDTH >> 3) - 1ul) << 6) |
-                 ((V9X_DRAW_WIDTH - 1ul) << 18));
-    v9x_ring_put((V9X_DRAW_HEIGHT - 1ul) | (v9x_tex_mode << 28));
-    v9x_ring_put(src >> 8);
-    v9x_ring_put(src >> 8);
-    v9x_ring_put((0ul << 16) | (1ul << 19) | (2ul << 22) | (3ul << 25));
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(V9X_FORMAT_8_8_8_8 | (V9X_SQ_TEX_VALID_TEXTURE << 30));
+     * aligned, swizzle XYZW, a valid texture. The blit and modulate
+     * sample it. */
+    if (v9x_mode == V9X_MODE_BLIT || v9x_mode == V9X_MODE_MODULATE) {
+        v9x_surface_sync(V9X_SYNC_TC_ACTION, V9X_DRAW_BYTES, src);
+        v9x_ring_put(V9X_PACKET3(V9X_P3_SET_RESOURCE, 8ul));
+        v9x_ring_put(0ul);
+        v9x_ring_put(V9X_SQ_TEX_DIM_2D |
+                     (((V9X_DRAW_WIDTH >> 3) - 1ul) << 6) |
+                     ((V9X_DRAW_WIDTH - 1ul) << 18));
+        v9x_ring_put((V9X_DRAW_HEIGHT - 1ul) | (v9x_tex_mode << 28));
+        v9x_ring_put(src >> 8);
+        v9x_ring_put(src >> 8);
+        v9x_ring_put((0ul << 16) | (1ul << 19) | (2ul << 22) | (3ul << 25));
+        v9x_ring_put(0ul);
+        v9x_ring_put(0ul);
+        v9x_ring_put(V9X_FORMAT_8_8_8_8 | (V9X_SQ_TEX_VALID_TEXTURE << 30));
+    }
+
+    /* The depth buffer: Z16, 1D tiled (the DB has no linear mode), no
+     * stencil, so the stencil bases repeat the Z base as Mesa's r600
+     * leaves them. PITCH_TILE_MAX and HEIGHT_TILE_MAX count 8-pixel
+     * tiles less one; SLICE_TILE_MAX counts 64-pixel tiles less one. The
+     * default state leaves HiZ forced off (DB_RENDER_OVERRIDE 2Ah) and
+     * compression disabled (DB_RENDER_CONTROL 60h), so no HTILE is
+     * needed. */
+    if (v9x_mode == V9X_MODE_DEPTH) {
+        v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 8ul));
+        v9x_ring_put((V9X_EG_DB_Z_INFO - V9X_SET_CONTEXT_START) >> 2);
+        v9x_ring_put(V9X_DB_FORMAT_Z_16 | (V9X_ARRAY_1D_TILED_THIN1 << 4));
+        v9x_ring_put(0ul);
+        v9x_ring_put(depth >> 8);
+        v9x_ring_put(depth >> 8);
+        v9x_ring_put(depth >> 8);
+        v9x_ring_put(depth >> 8);
+        v9x_ring_put(((V9X_DRAW_WIDTH / 8ul) - 1ul) |
+                     (((V9X_DRAW_HEIGHT / 8ul) - 1ul) << 11));
+        v9x_ring_put(((V9X_DRAW_WIDTH * V9X_DRAW_HEIGHT) / 64ul) - 1ul);
+        v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 1ul));
+        v9x_ring_put((V9X_EG_DB_DEPTH_CONTROL - V9X_SET_CONTEXT_START) >> 2);
+        v9x_ring_put(V9X_DB_Z_ENABLE | V9X_DB_Z_WRITE_ENABLE |
+                     V9X_DB_ZFUNC_LESS);
+    }
 
     /* set_render_target: COLOR_8_8_8_8, export norm, linear aligned. */
     v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 15ul));
@@ -824,33 +937,41 @@ static void v9x_ring_draw(DWORD g)
     v9x_ring_put(0x80000000ul);
     v9x_ring_put(extent);
 
-    /* set_vtx_resource: stride 16, swizzle XYZW, 48 bytes, a valid buffer;
-     * Cedar syncs the texture cache, having no vertex cache. */
+    /* set_vtx_resource: the mode's stride and size, swizzle XYZW, a valid
+     * buffer; Cedar syncs the texture cache, having no vertex cache. */
     v9x_ring_put(V9X_PACKET3(V9X_P3_SET_RESOURCE, 8ul));
     v9x_ring_put(0x580ul);
     v9x_ring_put(vb);
-    v9x_ring_put(48ul - 1ul);
-    v9x_ring_put(16ul << 8);
+    v9x_ring_put(vb_bytes - 1ul);
+    v9x_ring_put(v9x_vertex_stride << 8);
     v9x_ring_put((0ul << 3) | (1ul << 6) | (2ul << 9) | (3ul << 12));
     v9x_ring_put(0ul);
     v9x_ring_put(0ul);
     v9x_ring_put(0ul);
     v9x_ring_put(V9X_SQ_TEX_VALID_BUFFER << 30);
-    v9x_surface_sync(V9X_SYNC_TC_ACTION, 48ul, vb);
+    v9x_surface_sync(V9X_SYNC_TC_ACTION, vb_bytes, vb);
 
-    /* draw_auto: one RECTLIST of three vertices. */
-    v9x_set_config(V9X_EG_VGT_PRIMITIVE_TYPE, V9X_DI_PT_RECTLIST);
+    /* draw_auto: the blit's RECTLIST of three vertices, or a TRILIST.
+     * Primitives of one draw reach the DB in order, so the depth test's
+     * three rectangles go in one. */
+    v9x_set_config(V9X_EG_VGT_PRIMITIVE_TYPE,
+                   v9x_mode == V9X_MODE_BLIT ? V9X_DI_PT_RECTLIST :
+                   V9X_DI_PT_TRILIST);
     v9x_ring_put(V9X_PACKET3(V9X_P3_INDEX_TYPE, 0ul));
     v9x_ring_put(V9X_DI_INDEX_SIZE_16_BIT);
     v9x_ring_put(V9X_PACKET3(V9X_P3_NUM_INSTANCES, 0ul));
     v9x_ring_put(1ul);
     v9x_ring_put(V9X_PACKET3(V9X_P3_DRAW_INDEX_AUTO, 1ul));
-    v9x_ring_put(3ul);
+    v9x_ring_put(v9x_vertex_count);
     v9x_ring_put(V9X_DI_SRC_SEL_AUTO_INDEX);
 
-    /* The colour buffer flushed to memory, then the mark. */
+    /* The colour and depth buffers flushed to memory, then the mark. */
     v9x_surface_sync(V9X_SYNC_CB_ACTION | V9X_SYNC_CB0_DEST_BASE,
                      V9X_DRAW_BYTES, dst);
+    if (v9x_mode == V9X_MODE_DEPTH) {
+        v9x_surface_sync(V9X_SYNC_DB_ACTION | V9X_SYNC_DB_DEST_BASE,
+                         V9X_DEPTH_DWORDS * 4ul, depth);
+    }
     v9x_set_config(V9X_EG_SCRATCH_REG0, V9X_SCRATCH_DRAWN);
 }
 
@@ -909,10 +1030,126 @@ static void v9x_gpu_init(void)
     v9x_write(V9X_EG_PA_CL_ENHANCE, V9X_EG_PA_CL_ENHANCE_VALUE);
 }
 
+static void v9x_vertex(DWORD x, DWORD y, DWORD z, DWORD r, DWORD gr,
+                       DWORD b)
+{
+    DWORD *at = v9x_vertices + v9x_vertex_dwords;
+
+    if (v9x_vertex_dwords + V9X_COLOUR_VERTEX_DWORDS > V9X_VERTEX_DWORDS_MAX) {
+        return;
+    }
+    at[0] = x;
+    at[1] = y;
+    at[2] = z;
+    at[3] = V9X_FLOAT_1;
+    at[4] = r;
+    at[5] = gr;
+    at[6] = b;
+    at[7] = V9X_FLOAT_1;
+    v9x_vertex_dwords += V9X_COLOUR_VERTEX_DWORDS;
+    ++v9x_vertex_count;
+}
+
+/* A full-height rectangle from x0 to x1 at depth z as two triangles, red
+ * r0 at its left edge and r1 at its right. */
+static void v9x_rect(DWORD x0, DWORD x1, DWORD z, DWORD r0, DWORD r1,
+                     DWORD gr, DWORD b)
+{
+    v9x_vertex(x0, V9X_FLOAT_0, z, r0, gr, b);
+    v9x_vertex(x1, V9X_FLOAT_0, z, r1, gr, b);
+    v9x_vertex(x0, V9X_FLOAT_8, z, r0, gr, b);
+    v9x_vertex(x1, V9X_FLOAT_0, z, r1, gr, b);
+    v9x_vertex(x1, V9X_FLOAT_8, z, r1, gr, b);
+    v9x_vertex(x0, V9X_FLOAT_8, z, r0, gr, b);
+}
+
+/* A /modulate vertex at (x, y): red r, green 1, blue 0.5, alpha 1, and
+ * the texel coordinate (x, y), unnormalised as the blit's. Each channel
+ * differs so a swapped one shows. */
+static void v9x_modulate_vertex(DWORD x, DWORD y, DWORD r)
+{
+    DWORD *at = v9x_vertices + v9x_vertex_dwords;
+
+    if (v9x_vertex_dwords + V9X_MODULATE_VERTEX_DWORDS >
+        V9X_VERTEX_DWORDS_MAX) {
+        return;
+    }
+    at[0] = x;
+    at[1] = y;
+    at[2] = V9X_FLOAT_0_5;
+    at[3] = V9X_FLOAT_1;
+    at[4] = r;
+    at[5] = V9X_FLOAT_1;
+    at[6] = V9X_FLOAT_0_5;
+    at[7] = V9X_FLOAT_1;
+    at[8] = x;
+    at[9] = y;
+    v9x_vertex_dwords += V9X_MODULATE_VERTEX_DWORDS;
+    ++v9x_vertex_count;
+}
+
+/* The mode's shaders and vertices. */
+static void v9x_build_draw(void)
+{
+    v9x_vertex_dwords = 0ul;
+    v9x_vertex_count = 0ul;
+    if (v9x_mode == V9X_MODE_BLIT) {
+        v9x_vs_dwords = v9x_eg_shader_blit_vs(v9x_vs);
+        v9x_ps_dwords = v9x_eg_shader_blit_ps(v9x_ps);
+        /* r600_kms_blit_copy's vertices: (dst x, dst y, src x, src y). */
+        v9x_vertices[0] = 0ul;
+        v9x_vertices[1] = 0ul;
+        v9x_vertices[2] = 0ul;
+        v9x_vertices[3] = 0ul;
+        v9x_vertices[4] = 0ul;
+        v9x_vertices[5] = V9X_FLOAT_8;
+        v9x_vertices[6] = 0ul;
+        v9x_vertices[7] = V9X_FLOAT_8;
+        v9x_vertices[8] = V9X_FLOAT_64;
+        v9x_vertices[9] = V9X_FLOAT_8;
+        v9x_vertices[10] = V9X_FLOAT_64;
+        v9x_vertices[11] = V9X_FLOAT_8;
+        v9x_vertex_dwords = 12ul;
+        v9x_vertex_count = 3ul;
+        v9x_vertex_stride = V9X_BLIT_STRIDE;
+        return;
+    }
+
+    if (v9x_mode == V9X_MODE_MODULATE) {
+        v9x_vs_dwords = v9x_eg_shader_modulate_vs(v9x_vs);
+        v9x_ps_dwords = v9x_eg_shader_modulate_ps(v9x_ps);
+        v9x_vertex_stride = V9X_EG_MODULATE_STRIDE;
+        v9x_modulate_vertex(V9X_FLOAT_0, V9X_FLOAT_0, V9X_FLOAT_0);
+        v9x_modulate_vertex(V9X_FLOAT_64, V9X_FLOAT_0, V9X_FLOAT_1);
+        v9x_modulate_vertex(V9X_FLOAT_0, V9X_FLOAT_8, V9X_FLOAT_0);
+        v9x_modulate_vertex(V9X_FLOAT_64, V9X_FLOAT_0, V9X_FLOAT_1);
+        v9x_modulate_vertex(V9X_FLOAT_64, V9X_FLOAT_8, V9X_FLOAT_1);
+        v9x_modulate_vertex(V9X_FLOAT_0, V9X_FLOAT_8, V9X_FLOAT_0);
+        return;
+    }
+
+    v9x_vs_dwords = v9x_eg_shader_gouraud_vs(v9x_vs);
+    v9x_ps_dwords = v9x_eg_shader_gouraud_ps(v9x_ps);
+    v9x_vertex_stride = V9X_COLOUR_STRIDE;
+    if (v9x_mode == V9X_MODE_GOURAUD) {
+        v9x_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5, V9X_FLOAT_0,
+                 V9X_FLOAT_1, V9X_FLOAT_0_5, V9X_FLOAT_0_25);
+        return;
+    }
+    v9x_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5, V9X_FLOAT_1,
+             V9X_FLOAT_1, V9X_FLOAT_0, V9X_FLOAT_0);
+    v9x_rect(V9X_FLOAT_0, V9X_FLOAT_32, V9X_FLOAT_0_75, V9X_FLOAT_0,
+             V9X_FLOAT_0, V9X_FLOAT_1, V9X_FLOAT_0);
+    v9x_rect(V9X_FLOAT_32, V9X_FLOAT_64, V9X_FLOAT_0_25, V9X_FLOAT_0,
+             V9X_FLOAT_0, V9X_FLOAT_0, V9X_FLOAT_1);
+}
+
 static void v9x_build_run(DWORD g)
 {
     DWORD index;
     DWORD data;
+
+    v9x_build_draw();
 
     /* The ring: four submissions, each closed to 16 dwords. */
     v9x_ring_count = 0ul;
@@ -937,28 +1174,18 @@ static void v9x_build_run(DWORD g)
         v9x_request.data[data + index] = v9x_ring[index];
     }
     data += v9x_ring_count;
-    for (index = 0ul; index < V9X_EG_VS_DWORDS; ++index) {
-        v9x_request.data[data + index] = v9x_eg_vs[index];
+    for (index = 0ul; index < v9x_vs_dwords; ++index) {
+        v9x_request.data[data + index] = v9x_vs[index];
     }
-    data += V9X_EG_VS_DWORDS;
-    for (index = 0ul; index < V9X_EG_PS_DWORDS; ++index) {
-        v9x_request.data[data + index] = v9x_eg_ps[index];
+    data += v9x_vs_dwords;
+    for (index = 0ul; index < v9x_ps_dwords; ++index) {
+        v9x_request.data[data + index] = v9x_ps[index];
     }
-    data += V9X_EG_PS_DWORDS;
-    /* r600_kms_blit_copy's vertices: (dst x, dst y, src x, src y). */
-    v9x_request.data[data + 0ul] = 0ul;
-    v9x_request.data[data + 1ul] = 0ul;
-    v9x_request.data[data + 2ul] = 0ul;
-    v9x_request.data[data + 3ul] = 0ul;
-    v9x_request.data[data + 4ul] = 0ul;
-    v9x_request.data[data + 5ul] = V9X_FLOAT_8;
-    v9x_request.data[data + 6ul] = 0ul;
-    v9x_request.data[data + 7ul] = V9X_FLOAT_8;
-    v9x_request.data[data + 8ul] = V9X_FLOAT_64;
-    v9x_request.data[data + 9ul] = V9X_FLOAT_8;
-    v9x_request.data[data + 10ul] = V9X_FLOAT_64;
-    v9x_request.data[data + 11ul] = V9X_FLOAT_8;
-    v9x_request.data_count = data + 12ul;
+    data += v9x_ps_dwords;
+    for (index = 0ul; index < v9x_vertex_dwords; ++index) {
+        v9x_request.data[data + index] = v9x_vertices[index];
+    }
+    v9x_request.data_count = data + v9x_vertex_dwords;
 
     v9x_request.count = 0ul;
     v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
@@ -967,15 +1194,18 @@ static void v9x_build_run(DWORD g)
            V9X_SRC_SEED);
     v9x_op(V9X_OP_VRAM_FILL, V9X_DST_OFFSET, V9X_DST_GUARD_DWORDS,
            V9X_GUARD_VALUE);
+    if (v9x_mode == V9X_MODE_DEPTH) {
+        v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH_OFFSET, V9X_DEPTH_DWORDS,
+               V9X_DEPTH_CLEAR);
+    }
     v9x_op(V9X_OP_VRAM_DATA, 0ul, V9X_DATA_RING, v9x_ring_count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_VS_OFFSET, V9X_DATA_RING + v9x_ring_count,
-           V9X_EG_VS_DWORDS);
+           v9x_vs_dwords);
     v9x_op(V9X_OP_VRAM_DATA, V9X_PS_OFFSET,
-           V9X_DATA_RING + v9x_ring_count + V9X_EG_VS_DWORDS,
-           V9X_EG_PS_DWORDS);
+           V9X_DATA_RING + v9x_ring_count + v9x_vs_dwords, v9x_ps_dwords);
     v9x_op(V9X_OP_VRAM_DATA, V9X_VB_OFFSET,
-           V9X_DATA_RING + v9x_ring_count + V9X_EG_VS_DWORDS +
-           V9X_EG_PS_DWORDS, 12ul);
+           V9X_DATA_RING + v9x_ring_count + v9x_vs_dwords + v9x_ps_dwords,
+           v9x_vertex_dwords);
 
     v9x_at_config_first = v9x_request.count;
     v9x_gpu_init();
@@ -1058,7 +1288,7 @@ static void v9x_build_run(DWORD g)
     v9x_at_after_grbm = v9x_read(V9X_EG_GRBM_STATUS);
     v9x_write(V9X_EG_HDP_MEM_FLUSH, 1ul);
     v9x_at_block = v9x_op(V9X_OP_VRAM_BLOCK, V9X_DST_OFFSET,
-                          V9X_DST_GUARD_DWORDS, 0ul);
+                          V9X_READBACK_DWORDS, 0ul);
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
     v9x_key("Run", "RingDwords", v9x_ring_count);
@@ -1066,6 +1296,10 @@ static void v9x_build_run(DWORD g)
     v9x_key("Run", "WptrPreamble", v9x_wptr_preamble);
     v9x_key("Run", "WptrTest", v9x_wptr_test);
     v9x_key("Run", "WptrDraw", v9x_wptr_draw);
+    v9x_key("Run", "Mode", v9x_mode);
+    v9x_key("Run", "VsDwords", v9x_vs_dwords);
+    v9x_key("Run", "PsDwords", v9x_ps_dwords);
+    v9x_key("Run", "Vertices", v9x_vertex_count);
     v9x_key("Run", "DataDwords", v9x_request.data_count);
     v9x_key("Run", "Ops", v9x_request.count);
 }
@@ -1160,6 +1394,175 @@ static void v9x_verify(void)
     v9x_key("Result", "DstLast", got[V9X_DRAW_DWORDS - 1ul]);
     v9x_key("Result", "DstAfter", got[V9X_DRAW_DWORDS]);
     v9x_map(got);
+}
+
+/* The pixel the Gouraud, depth or modulate draw should leave at index:
+ * bytes R, G, B, A from low to high, as COLOR_8_8_8_8 with SWAP_STD
+ * stores them. Red's ramp is sampled at pixel centres, (x + 0.5) / 64,
+ * rounded; modulate scales the source texel's bytes by red's ramp, 1,
+ * 0.5 and 1. */
+static DWORD v9x_expected_pixel(DWORD index)
+{
+    DWORD x = index % V9X_DRAW_WIDTH;
+    DWORD texel;
+    DWORD red;
+
+    if (v9x_mode == V9X_MODE_DEPTH) {
+        return x < V9X_DRAW_WIDTH / 2ul ? V9X_PIXEL_RED : V9X_PIXEL_BLUE;
+    }
+    if (v9x_mode == V9X_MODE_MODULATE) {
+        texel = v9x_pattern(index);
+        red = ((texel & 0xfful) * (2ul * x + 1ul) + V9X_DRAW_WIDTH) /
+              (2ul * V9X_DRAW_WIDTH);
+        return red | (texel & 0xff00ul) |
+               ((((texel >> 16) & 0xfful) / 2ul) << 16) |
+               (texel & 0xff000000ul);
+    }
+    red = ((2ul * x + 1ul) * 255ul + V9X_DRAW_WIDTH) / (2ul * V9X_DRAW_WIDTH);
+    return red | (128ul << 8) | (64ul << 16) | (255ul << 24);
+}
+
+static int v9x_pixel_close(DWORD got, DWORD expected)
+{
+    DWORD shift;
+    DWORD a;
+    DWORD b;
+
+    for (shift = 0ul; shift < 32ul; shift += 8ul) {
+        a = (got >> shift) & 0xfful;
+        b = (expected >> shift) & 0xfful;
+        if ((a > b ? a - b : b - a) > V9X_CHANNEL_TOLERANCE) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* One key per row: Gouraud's red byte in hex for each pixel; depth's
+ * colour as a letter (R, G, B, "-" for the guard, "?" otherwise);
+ * modulate's "." for a pixel within tolerance, "X" for one outside. */
+static void v9x_colour_map(const DWORD *got)
+{
+    char key[8];
+    char line[V9X_DRAW_WIDTH * 3ul + 1ul];
+    DWORD row;
+    DWORD column;
+    DWORD value;
+    char *at;
+
+    for (row = 0ul; row < V9X_DRAW_HEIGHT; ++row) {
+        at = line;
+        for (column = 0ul; column < V9X_DRAW_WIDTH; ++column) {
+            value = got[row * V9X_DRAW_WIDTH + column];
+            if (v9x_mode == V9X_MODE_GOURAUD) {
+                v9x_hex(at, value & 0xfful, 2);
+                at[2] = ' ';
+                at += 3;
+                continue;
+            }
+            if (v9x_mode == V9X_MODE_MODULATE) {
+                *at++ = v9x_pixel_close(value, v9x_expected_pixel(
+                    row * V9X_DRAW_WIDTH + column)) ? '.' : 'X';
+                continue;
+            }
+            if (v9x_pixel_close(value, V9X_PIXEL_RED)) {
+                *at = 'R';
+            } else if (v9x_pixel_close(value, V9X_PIXEL_GREEN)) {
+                *at = 'G';
+            } else if (v9x_pixel_close(value, V9X_PIXEL_BLUE)) {
+                *at = 'B';
+            } else if (value == V9X_GUARD_VALUE) {
+                *at = '-';
+            } else {
+                *at = '?';
+            }
+            ++at;
+        }
+        if (v9x_mode == V9X_MODE_GOURAUD) {
+            --at;
+        }
+        *at = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, row);
+        v9x_text("Map", key, line);
+    }
+}
+
+/* The depth buffer's eight 8x8 tiles: each tile lies wholly in one half,
+ * so each should hold one value, z 0.5 (8000h) on the left and 0.25
+ * (4000h) on the right, within the rounding of a 16-bit unorm. */
+static void v9x_depth_report(const DWORD *depth)
+{
+    char key[12];
+    DWORD tile;
+    DWORD index;
+    DWORD first;
+    DWORD expected;
+    DWORD z;
+    DWORD bad = 0ul;
+
+    for (tile = 0ul; tile < V9X_DRAW_WIDTH / 8ul; ++tile) {
+        first = depth[tile * V9X_DEPTH_TILE_DWORDS];
+        lstrcpyA(key, "DepthTile");
+        v9x_decimal(key + 9, tile);
+        v9x_key("Result", key, first);
+        expected = tile < V9X_DRAW_WIDTH / 16ul ? 0x8000ul : 0x4000ul;
+        for (index = 0ul; index < V9X_DEPTH_TILE_DWORDS; ++index) {
+            if (depth[tile * V9X_DEPTH_TILE_DWORDS + index] != first) {
+                ++bad;
+                break;
+            }
+        }
+        z = first & 0xfffful;
+        if ((first >> 16) != z || z + 2ul < expected || z > expected + 2ul) {
+            ++bad;
+        }
+    }
+    v9x_text("Result", "DepthBuffer", bad == 0ul ? "PASS" : "FAIL");
+}
+
+/* The Gouraud or depth draw against v9x_expected_pixel, then the guard. */
+static void v9x_verify_colour(void)
+{
+    const DWORD *got = v9x_result.block;
+    DWORD bad = 0ul;
+    DWORD guard_bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD index;
+    char text[12];
+
+    for (index = 0ul; index < V9X_DRAW_DWORDS; ++index) {
+        if (!v9x_pixel_close(got[index], v9x_expected_pixel(index))) {
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+            }
+            ++bad;
+        }
+    }
+    for (index = V9X_DRAW_DWORDS; index < V9X_DST_GUARD_DWORDS; ++index) {
+        if (got[index] != V9X_GUARD_VALUE) {
+            ++guard_bad;
+        }
+    }
+    v9x_decimal(text, bad);
+    v9x_text("Result", "DrawMismatches", text);
+    v9x_decimal(text, guard_bad);
+    v9x_text("Result", "GuardMismatches", text);
+    v9x_text("Result", "Draw", bad == 0ul && guard_bad == 0ul ? "PASS" :
+             "FAIL");
+    if (first_bad != 0xfffffffful) {
+        v9x_key("Result", "FirstBadIndex", first_bad);
+        v9x_key("Result", "FirstBadGot", got[first_bad]);
+        v9x_key("Result", "FirstBadExpected", v9x_expected_pixel(first_bad));
+    }
+    v9x_key("Result", "Pixel0", got[0]);
+    v9x_key("Result", "Pixel31", got[31]);
+    v9x_key("Result", "Pixel32", got[32]);
+    v9x_key("Result", "Pixel63", got[63]);
+    v9x_colour_map(got);
+    if (v9x_mode == V9X_MODE_DEPTH) {
+        v9x_depth_report(got + V9X_DST_GUARD_DWORDS);
+    }
 }
 
 /* The hex value after a switch such as "/cbmode:", or fallback when the
@@ -1287,6 +1690,15 @@ void __stdcall V9xEvergreen3dEntry(void)
     if (v9x_switch_given("/tiled")) {
         v9x_array_mode = V9X_ARRAY_1D_TILED_THIN1;
     }
+    if (v9x_switch_given("/gouraud")) {
+        v9x_mode = V9X_MODE_GOURAUD;
+    }
+    if (v9x_switch_given("/depth")) {
+        v9x_mode = V9X_MODE_DEPTH;
+    }
+    if (v9x_switch_given("/modulate")) {
+        v9x_mode = V9X_MODE_MODULATE;
+    }
     v9x_cb_mode = v9x_switch_hex("/cbmode:", v9x_array_mode);
     v9x_tex_mode = v9x_switch_hex("/texmode:", v9x_array_mode);
     v9x_scissor_right = v9x_switch_hex("/scissor:", V9X_DRAW_WIDTH);
@@ -1344,6 +1756,10 @@ void __stdcall V9xEvergreen3dEntry(void)
              r[v9x_at_test_value] == V9X_SCRATCH_TEST ? "PASS" : "FAIL");
     v9x_text("Result", "DrawFence",
              r[v9x_at_wait_draw] != V9X_EGCP_TIMEOUT ? "PASS" : "FAIL");
-    v9x_verify();
+    if (v9x_mode == V9X_MODE_BLIT) {
+        v9x_verify();
+    } else {
+        v9x_verify_colour();
+    }
     v9x_finish("COMPLETE", 0u);
 }
