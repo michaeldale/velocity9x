@@ -7,8 +7,12 @@ Status: Phase 0 done (tier-0 `vbe` on M-BXMFA8,
 Phase 1 coded and gated, not installed. Phase 2 read on the card
 ([record](../decisions/2026-10-26-cedar-register-probe.md)): 1 GiB of
 VRAM at GPU address 0, the VBE scanout at GPU 0, the DMA engine idle and
-out of reset, the CP halted. Register facts in the table below come from
-Linux `radeon` source; the record says which ones the card has confirmed.
+out of reset, the CP halted. Phase 3's write probe passed
+([record](../decisions/2026-10-26-cedar-dma-write-probe.md)): dword and
+byte copies, overlapping copies (memmove) and constant fills, byte-exact,
+five runs in a row once each ring session starts and ends with a DMA soft
+reset. Register facts in the table below come from Linux `radeon` source;
+the records say which ones the card has confirmed.
 
 Target: Cedar (`1002:68F9`, HD 5450 class) as a fifth chip generation in
 the one `ati` family (`one-family-per-vendor`), with its own module tree

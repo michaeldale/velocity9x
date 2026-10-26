@@ -348,6 +348,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-26 VIA VX855 Chrome9 HCM from a DOS survey: framebuffer BAR0, engine BAR1, VBE 3.0 to 1920x1200, and the M1 2D engine Linux already drives](2026-10-26-via-vx855-chrome9-hcm-from-a-survey.md)
 - [2026-10-26 Tier-0 `vbe` on a Radeon HD 5450 (Cedar, 1002:68F9): enable-ok, every mode and GDI test passes](2026-10-26-m-bxmfa8-radeon-68f9-first-look.md)
 - [2026-10-26 Radeon HD 5450 registers, read: 1 GiB at GPU address 0, the DMA engine idle and out of reset](2026-10-26-cedar-register-probe.md)
+- [2026-10-26 The HD 5450's DMA engine copies and fills byte-exact; each ring session needs a DMA soft reset](2026-10-26-cedar-dma-write-probe.md)
 
 ## DOS box and mini-VDD
 
