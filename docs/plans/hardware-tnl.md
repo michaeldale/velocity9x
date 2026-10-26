@@ -236,6 +236,13 @@ Progress:
     57.2. Through `glDrawElements` Quake 3 runs 69.1 against 56.1.
   - **Follow-up:** `EXT_compiled_vertex_array` would put Quake 3 on that
     path by default.
+- **Step 5 started (2026-10-26, boots 89-92):**
+  [`2026-10-26-haswell-ddi7-step5-first-light.md`](../decisions/2026-10-26-haswell-ddi7-step5-first-light.md).
+  - **Built:** DDI 7 for programs listed `=7`; CreateSurfaceEx handles;
+    the DX7 records walked.
+  - **Measured:** V9XD32 `/ddi7` passes T1-T16, including a DX7 device.
+  - **Owed:** the SDK samples, DirectX 9's HAL device and one DX7 title.
+    Then the default, then step 6.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

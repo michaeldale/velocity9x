@@ -160,6 +160,9 @@ $sources = @(
     # The DrawPrimitives2 command walker; pure and host-tested in
     # tests\host\test_d3d_dp2.c.
     "src\display32\d3d\d3d_dp2.c",
+    # DDI 7's CreateSurfaceEx handle table; pure and host-tested in
+    # tests\host\test_d3d_handles.c.
+    "src\display32\d3d\d3d_handles.c",
     # A temporary instrument, d3d_dp2_ring.h.
     "src\display32\d3d\d3d_dp2_ring.c",
     "src\display32\d3d\d3d_select.c",

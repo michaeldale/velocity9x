@@ -19,7 +19,7 @@
 - [Final Reality 1.01 hardware Direct3D](final-reality-101-hardware.md) - Historical.
 - [GDI acceleration, build 000: a provably free decline path and the harness that can judge it](gdi-accel-000-and-harness.md) - Shipped in 0.5.0.
 - [Conservative GDI acceleration (PLAN.md Phase 5)](gdi-acceleration.md) - In progress.
-- [Hardware T&L on Haswell, for OpenGL and Direct3D](hardware-tnl.md) - In progress; steps 1-3c done 2026-10-26: the HD 4600's vertex stage draws OpenGL through render interface ABI 7 (A/B scene within 565 rounding; Half-Life GL and Quake 3 correct), with no CPU twin, 16 segments a batch and an element cache (Half-Life ~95 vs 85, Quake 3 61.1 vs 57.2, 69.1 vs 56.1 through glDrawElements); next DDI 7 and the Direct3D T&L device, and GL lighting.
+- [Hardware T&L on Haswell, for OpenGL and Direct3D](hardware-tnl.md) - In progress; steps 1-3c done 2026-10-26: the HD 4600's vertex stage draws OpenGL through render interface ABI 7 (A/B scene within 565 rounding; Half-Life GL and Quake 3 correct), with no CPU twin, 16 segments a batch and an element cache (Half-Life ~95 vs 85, Quake 3 61.1 vs 57.2, 69.1 vs 56.1 through glDrawElements); step 5 (DDI 7) under way: V9XD32 passes at DDI 7 for listed programs; next its remaining gate, the Direct3D T&L device, and GL lighting.
 - [Hellbender hardware Direct3D compatibility plan](hellbender-hardware-d3d.md) - Historical.
 - [Hellbender pre-ContextCreate wedge: diagnosis plan](hellbender-pre-context-wedge.md) - Historical.
 - [Velocity9x: 24/32-bit colour + dynamic mode discovery (widescreen included)](high-depth-dynamic-modes.md) - Shipped in 0.6.0.

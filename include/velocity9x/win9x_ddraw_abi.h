@@ -709,6 +709,61 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DDEVCAPS_DRAWPRIMITIVES2    0x00002000ul
 /* d3dhal.h: D3DHAL_CALLBACKS3.dwFlags. */
 #define V9X_D3DHAL3_CB32_DRAWPRIMITIVES2  0x00000008ul
+/*
+ * The DirectX 7 driver interface (DDI 7, docs\plans\hardware-tnl.md step
+ * 5), from the same SDK headers (docs\specifications\
+ * haswell-vertex-stage-tnl.md section 3). DRAWPRIMITIVES2EX says the driver
+ * takes the DX7 records and names surfaces by CreateSurfaceEx handle; it
+ * comes with GUID_Miscellaneous2Callbacks' three entry points.
+ */
+#define V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX  0x00008000ul
+/* ddrawi.h (di:857-859): DDHAL_DDMISCELLANEOUS2CALLBACKS.dwFlags. */
+#define V9X_DDHAL_MISC2CB32_CREATESURFACEEX 0x00000002ul
+#define V9X_DDHAL_MISC2CB32_GETDRIVERSTATE  0x00000004ul
+#define V9X_DDHAL_MISC2CB32_DESTROYDDLOCAL  0x00000008ul
+/*
+ * DDRAWI_DDRAWSURFACE_MORE.dwSurfaceHandle (di:1468): offset 64h in the
+ * Windows 9x layout, where DISPLAYMODEINFO dmiDDrawReserved7 is absent
+ * (#ifndef WIN95) - counted from the declarations, not yet read on a
+ * machine (step 5's probe records what it finds there).
+ */
+#define V9X_DD_SURFACE_MORE_HANDLE        0x64ul
+
+typedef struct v9x_ddhal_createsurfaceexdata {
+    DWORD dwFlags;
+    void *lpDDLcl;
+    struct v9x_dd_surface_lcl *lpDDSLcl;
+    DWORD ddRVal;
+} V9X_DDHAL_CREATESURFACEEXDATA;
+
+typedef struct v9x_ddhal_getdriverstatedata {
+    DWORD dwFlags;
+    DWORD dwhContext;
+    DWORD *lpdwStates;
+    DWORD dwLength;
+    DWORD ddRVal;
+} V9X_DDHAL_GETDRIVERSTATEDATA;
+
+typedef struct v9x_ddhal_destroyddlocaldata {
+    DWORD dwFlags;
+    void *pDDLcl;
+    DWORD ddRVal;
+} V9X_DDHAL_DESTROYDDLOCALDATA;
+
+/* The Windows 9x DDHAL_DDMISCELLANEOUS2CALLBACKS (di:848-855), 24 bytes:
+ * NT puts AlphaBlt where Reserved is. */
+typedef struct v9x_ddhal_ddmiscellaneous2callbacks {
+    DWORD dwSize;
+    DWORD dwFlags;
+    DWORD Reserved;
+    V9X_DD_CODE_PTR CreateSurfaceEx;
+    V9X_DD_CODE_PTR GetDriverState;
+    V9X_DD_CODE_PTR DestroyDDLocal;
+} V9X_DDHAL_DDMISCELLANEOUS2CALLBACKS;
+
+typedef char v9x_assert_misc2_size[
+    sizeof(V9X_DDHAL_DDMISCELLANEOUS2CALLBACKS) == 24u ? 1 : -1];
+
 /* d3dhal.h: D3DHAL_DRAWPRIMITIVES2DATA.dwFlags - lpVertices is a user
  * pointer rather than lpDDVertex a surface. */
 #define V9X_D3DHALDP2_USERMEMVERTICES     0x00000001ul
@@ -1121,15 +1176,23 @@ typedef struct v9x_dd_surface_lcl {
 #define V9X_DDRAWISURF_HASCKEYSRCBLT 0x00080000ul
 
 /*
- * One node of a surface's attachment list - DDRAWI's DBLNODE (DDRAWI.H),
+ * One node of a surface's attachment list - DDRAWI's ATTACHLIST (ddrawi.h),
  * mirrored here as an ABI shape the same way the surface structs above are.
  * lpAttachList on an LCL points at the first of these; `object` is the
- * attached surface and `next` the following node. Only the mip-chain walk
- * reads it, and only `next` and `object`.
+ * attached surface and `next` the following node. The engines' mip-chain
+ * walks and DDI 7's CreateSurfaceEx read it, `next` and `object` only.
  */
 typedef struct v9x_dd_attach_node {
+    /*
+     * ddrawi.h's ATTACHLIST (dwFlags, lpLink, lpAttached, lpIAttached).
+     * Until 2026-10-26 the first two were named next and prev, so a walk
+     * that went past the first node followed the flags word: a mip chain
+     * never does, its levels each having one attachment, but a flip
+     * chain's primary carries DDAL_IMPLICIT there, and DDI 7's
+     * CreateSurfaceEx walk faulted on it (the 4570, boot 90).
+     */
+    DWORD flags;
     struct v9x_dd_attach_node *next;
-    struct v9x_dd_attach_node *prev;
     V9X_DD_SURFACE_LCL *object;
     DWORD object_int;
 } V9X_DD_ATTACH_NODE;
