@@ -261,12 +261,24 @@
 #define V9X_FORMAT_8_8_8_8          0x1aul
 #define V9X_ARRAY_LINEAR_ALIGNED    1ul
 #define V9X_ARRAY_1D_TILED_THIN1    2ul
+/* CB_COLOR0_ATTRIB bit 4, evergreend.h S_028C74_NON_DISP_TILING_ORDER. */
+#define V9X_CB_NON_DISP_TILING_ORDER 0x00000010ul
 
 /* The array mode of both surfaces: linear aligned, or with /tiled the
  * 1D-tiled mode Linux 3.9's blit drew. A tiled copy of a tiled image
  * reproduces the source bytes whatever the tiling, so it tests the
  * pipeline apart from the linear layout. */
 static DWORD v9x_array_mode = V9X_ARRAY_LINEAR_ALIGNED;
+
+/* Experiment switches, each overriding one value (hex): /cbmode: and
+ * /texmode: the colour buffer's and the texture's array mode apart,
+ * /scissor: the scissor's right edge (draw only that many pixels of each
+ * row), /gbaddr: GB_ADDR_CONFIG, /attrib: CB_COLOR0_ATTRIB. */
+static DWORD v9x_cb_mode;
+static DWORD v9x_tex_mode;
+static DWORD v9x_scissor_right = V9X_DRAW_WIDTH;
+static DWORD v9x_gb_addr_config = V9X_EG_CEDAR_GB_ADDR_CONFIG;
+static DWORD v9x_cb_attrib;
 #define V9X_SQ_TEX_DIM_2D           1ul
 #define V9X_SQ_TEX_VALID_TEXTURE    0x2ul
 #define V9X_SQ_TEX_VALID_BUFFER     0x3ul
@@ -748,7 +760,7 @@ static void v9x_ring_draw(DWORD g)
     DWORD vb = g + V9X_VB_OFFSET;
     DWORD src = g + V9X_SRC_OFFSET;
     DWORD dst = g + V9X_DST_OFFSET;
-    DWORD extent = (V9X_DRAW_WIDTH) | (V9X_DRAW_HEIGHT << 16);
+    DWORD extent = v9x_scissor_right | (V9X_DRAW_HEIGHT << 16);
     DWORD index;
 
     v9x_ring_default_state();
@@ -775,7 +787,7 @@ static void v9x_ring_draw(DWORD g)
     v9x_ring_put(V9X_SQ_TEX_DIM_2D |
                  (((V9X_DRAW_WIDTH >> 3) - 1ul) << 6) |
                  ((V9X_DRAW_WIDTH - 1ul) << 18));
-    v9x_ring_put((V9X_DRAW_HEIGHT - 1ul) | (v9x_array_mode << 28));
+    v9x_ring_put((V9X_DRAW_HEIGHT - 1ul) | (v9x_tex_mode << 28));
     v9x_ring_put(src >> 8);
     v9x_ring_put(src >> 8);
     v9x_ring_put((0ul << 16) | (1ul << 19) | (2ul << 22) | (3ul << 25));
@@ -791,8 +803,8 @@ static void v9x_ring_draw(DWORD g)
     v9x_ring_put(((V9X_DRAW_WIDTH * V9X_DRAW_HEIGHT) / 64ul) - 1ul);
     v9x_ring_put(0ul);
     v9x_ring_put((V9X_FORMAT_8_8_8_8 << 2) | (1ul << 24) |
-                 (v9x_array_mode << 8));
-    v9x_ring_put(0ul);
+                 (v9x_cb_mode << 8));
+    v9x_ring_put(v9x_cb_attrib);
     v9x_ring_put((V9X_DRAW_WIDTH - 1ul) | ((V9X_DRAW_HEIGHT - 1ul) << 16));
     for (index = 0ul; index < 8ul; ++index) {
         v9x_ring_put(0ul);
@@ -849,7 +861,7 @@ static void v9x_gpu_init(void)
     DWORD index;
 
     v9x_write(V9X_EG_GRBM_CNTL, V9X_EG_GRBM_CNTL_VALUE);
-    v9x_write(V9X_EG_GB_ADDR_CONFIG, V9X_EG_CEDAR_GB_ADDR_CONFIG);
+    v9x_write(V9X_EG_GB_ADDR_CONFIG, v9x_gb_addr_config);
     v9x_write(V9X_EG_GB_BACKEND_MAP, 0ul);
     v9x_write(V9X_EG_CGTS_SYS_TCC_DISABLE, 0ul);
     v9x_write(V9X_EG_CGTS_TCC_DISABLE, 0ul);
@@ -1150,6 +1162,41 @@ static void v9x_verify(void)
     v9x_map(got);
 }
 
+/* The hex value after a switch such as "/cbmode:", or fallback when the
+ * switch is absent. */
+static DWORD v9x_switch_hex(const char *switch_text, DWORD fallback)
+{
+    const char *line;
+    int length;
+    DWORD value;
+    char c;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            value = 0ul;
+            line += length;
+            for (;;) {
+                c = *line++;
+                if (c >= '0' && c <= '9') {
+                    value = (value << 4) | (DWORD)(c - '0');
+                } else if (c >= 'a' && c <= 'f') {
+                    value = (value << 4) | (DWORD)(c - 'a' + 10);
+                } else if (c >= 'A' && c <= 'F') {
+                    value = (value << 4) | (DWORD)(c - 'A' + 10);
+                } else {
+                    break;
+                }
+            }
+            return value;
+        }
+        ++line;
+    }
+    return fallback;
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -1240,7 +1287,25 @@ void __stdcall V9xEvergreen3dEntry(void)
     if (v9x_switch_given("/tiled")) {
         v9x_array_mode = V9X_ARRAY_1D_TILED_THIN1;
     }
+    v9x_cb_mode = v9x_switch_hex("/cbmode:", v9x_array_mode);
+    v9x_tex_mode = v9x_switch_hex("/texmode:", v9x_array_mode);
+    v9x_scissor_right = v9x_switch_hex("/scissor:", V9X_DRAW_WIDTH);
+    v9x_gb_addr_config = v9x_switch_hex("/gbaddr:",
+                                        V9X_EG_CEDAR_GB_ADDR_CONFIG);
+    /* A linear colour buffer needs CB_COLOR0_ATTRIB's NON_DISP_TILING_ORDER
+     * (bit 4), as Mesa's r600 evergreen_set_color_surface_common forces it:
+     * without it the CB put pixel x of each 8 at byte 4*x0 + 24*x1 and
+     * dropped x2 (M-BXMFA8, 2026-10-27). Linux 3.9's tiled blit left it
+     * clear. */
+    v9x_cb_attrib = v9x_switch_hex(
+        "/attrib:", v9x_cb_mode <= V9X_ARRAY_LINEAR_ALIGNED ?
+        V9X_CB_NON_DISP_TILING_ORDER : 0ul);
     v9x_key("Run", "ArrayMode", v9x_array_mode);
+    v9x_key("Run", "CbMode", v9x_cb_mode);
+    v9x_key("Run", "TexMode", v9x_tex_mode);
+    v9x_key("Run", "ScissorRight", v9x_scissor_right);
+    v9x_key("Run", "GbAddrConfig", v9x_gb_addr_config);
+    v9x_key("Run", "CbAttrib", v9x_cb_attrib);
 
     /* Call 2: the run. */
     v9x_build_run(g);

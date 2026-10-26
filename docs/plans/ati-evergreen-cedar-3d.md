@@ -10,8 +10,12 @@ Phase 2 done (2026-10-27): with `evergreen_gpu_init`'s configuration and
 the clear-state preamble, Linux 3.9's textured copy is byte-exact on
 1D-tiled surfaces, three runs of three; on linear-aligned surfaces the
 colour buffer writes a quarter of the pixels to the wrong places, every
-time ([record](../decisions/2026-10-27-cedar-first-3d-draw.md)). Next:
-the linear colour buffer, then Phase 3. Parent plan:
+time ([record](../decisions/2026-10-27-cedar-first-3d-draw.md)). The
+linear fault was `CB_COLOR0_ATTRIB`'s `NON_DISP_TILING_ORDER`, which Mesa
+sets on every linear colour buffer: with it the copy is byte-exact on
+linear surfaces too
+([record](../decisions/2026-10-27-cedar-linear-colour-buffer.md)).
+Next: Phase 3. Parent plan:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md); 2D runs on the DMA
 engine ([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)).
 Michael asked for Direct3D next (2026-10-26).

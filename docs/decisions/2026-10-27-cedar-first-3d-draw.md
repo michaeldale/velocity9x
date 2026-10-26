@@ -61,6 +61,11 @@ colour buffer and the CB flush.
 
 ## The linear failure
 
+Since solved: `CB_COLOR0_ATTRIB`'s `NON_DISP_TILING_ORDER`
+([record](2026-10-27-cedar-linear-colour-buffer.md)). The hypotheses below
+are kept as they were written; the pipe configuration is among those that
+record ruled out.
+
 In every 8-pixel group of every row, destination dwords 0 and 1 hold
 source dwords 4 and 5, dwords 6 and 7 hold source 6 and 7 (correct), and
 dwords 2 to 5 are never written. The same in all three linear runs (the
