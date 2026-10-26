@@ -26,11 +26,17 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.29.0.** A 3D program that ends no longer leaves the
-Rage 128 Pro's command engine running into the next, which crashed, drew
-wrongly or hung the machine; the Rage 128's CPU writes to the screen are
-about five times faster; Direct3D's newer interface is faster on every card;
-and Tux Racer's sky draws on the HD 4600. **Known issue, every card: if a
+**Current version: 0.30.0.** The GMA 950, GMA 900, GMA 3150 and the
+Ironlake HD Graphics write video memory write-combined, as the Rage 128
+does: on the GMA 950 netbook CPU writes to the screen are 27 times faster
+and Half-Life's OpenGL renderer about a quarter. The HD 4600 draws
+indexed calls whole with its own back-face culling, draws triangles that
+cross the screen's edge in its guard band, and draws two Direct3D texture
+stages in one pass. **Known issue, GMA 950: starting a Half-Life
+multiplayer game in OpenGL can leave the screen stuck or corrupt; press
+Escape and resume
+([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).**
+**Known issue, every card: if a
 DirectDraw or Direct3D program crashes or is killed, restart Windows
 before starting another, or the next one crashes.** A program that exits
 normally is not affected. 0.27.0 stopped a DOS window replacing the
@@ -39,7 +45,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.29.0](releases/0.29.0/README.md).
+[releases/0.30.0](releases/0.30.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -77,9 +83,10 @@ serves every chip in it and picks the right one by PCI id at boot.
 
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
-| Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
+| Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band; OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
+| Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
@@ -127,6 +134,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel HD Graphics 4600 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | No (0.19.0) |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
+| Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
 | Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
@@ -157,6 +165,9 @@ Measured limits:
 - **Two texture units** means one-pass multitexture: OpenGL's
   `GL_ARB_multitexture` and `GL_SGIS_multitexture`, and lightmaps in one
   pass.
+- **Write-combining:** the CPU writes video memory write-combined on the
+  Rage 128 Pro, the GMA 950/900/3150 and the Ironlake. The HD 4600's BIOS
+  leaves no memory-type range free for it. `V9X3D OFF` turns it off.
 - **When an engine can't draw something:** it refuses the draw rather
   than drawing it wrong. The GMA 950, the two Matrox 3D chips and the
   Rage 128 Pro then draw it on the CPU.
@@ -168,7 +179,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 
 | Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
 |---|---|---|---|
-| Intel HD Graphics 4600 (i5-4570) | 59.2 fps | not run; Half-Life `-gl` 67.5 fps | 0.19.0 |
+| Intel HD Graphics 4600 (i5-4570) | 66.7 fps (windowed) | not run; Half-Life `-gl` 77.9 fps (windowed); Quake 3 `demo001` 57.3 fps | 0.30.0 |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
@@ -217,7 +228,9 @@ The **DDI 6** selector on the Velocity9x Advanced tab sets this, and takes
 effect the next time a program starts, with no restart:
 
 - **Automatic** (the default): DDI 6 for any program that uses Direct3D 8,
-  the older interface for everything else.
+  the older interface for everything else. On the Rage 128 Pro and the HD
+  4600, whose two texture stages are offered through DDI 6, every program
+  gets DDI 6.
 - **Never**: the older interface for every program. Direct3D 8 games then
   get no hardware device.
 - **Always**: DDI 6 for every Direct3D program.

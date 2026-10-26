@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.30.0 - not yet released
+## 0.30.0 - 2026-10-26
 
 - **GMA 950, GMA 900 and GMA 3150: the CPU writes video memory
   write-combined**, as the Rage 128 has since 0.29.0. On the GMA 950
@@ -38,6 +38,13 @@ build identifier so exact guest-tested binaries remain traceable.
   The Rage 128 is not: told of it, 3DMark 2001 SE corrupted its data or
   hung the machine in four runs of four
   ([record](docs/decisions/2026-10-25-rage128-ddi6-guard-band-withdrawn.md)).
+- **Known issue, GMA 950: starting a Half-Life multiplayer game with the
+  OpenGL renderer can leave the screen stuck or corrupt.** Escape to the
+  menu and resume, and it draws correctly. Reported on the netbook, not
+  yet reproduced; whether 0.29.0 does the same is not known
+  ([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).
+- Release checks on the GMA 950 netbook, the HD 4600 and the Rage 128
+  ([record](docs/decisions/2026-10-26-0.30.0-release-checks.md)).
 
 ## 0.29.0 - 2026-10-25
 
