@@ -23,6 +23,10 @@
 ;   stream         - a run of the request's data area into
 ;                    CP_PFP_UCODE_DATA or CP_ME_RAM_DATA, the microcode
 ;                    ports. No other register takes a stream.
+;   VRAM data      - a run of the data area into the scratch window: the
+;                    ring, shaders and vertices V9XEG3D lays out.
+;   (V9XEG3D adds Linux evergreen_gpu_init's configuration registers for
+;   Cedar to both allow-lists; see the lists below.)
 ;   delay          - a count of SRBM_STATUS reads, at most EC_DELAY_MAX.
 ;   VRAM ops       - write, read, fill, pattern, read block, all at aligned
 ;                    offsets inside the scratch window.
@@ -88,6 +92,7 @@ EC_OP_RESTORE           equ 10
 EC_OP_VRAM_PATTERN      equ 11  ; a offset, b dwords, c seed
 EC_OP_DELAY             equ 12  ; a SRBM_STATUS reads
 EC_OP_STREAM            equ 13  ; a port, b first data dword, c dwords
+EC_OP_VRAM_DATA         equ 14  ; a window offset, b first data dword, c dwords
 EC_DELAY_MAX            equ 100000
 EC_SRBM_STATUS          equ 0e50h
 EC_GRBM_SOFT_RESET      equ 8020h
@@ -143,7 +148,38 @@ ECReadWindows label dword
     dd 0c150h, 0c154h   ; CP_PFP_UCODE_ADDR
     dd 0c158h, 0c160h   ; CP_ME_RAM_RADDR, CP_ME_RAM_WADDR
     dd 0c1fch, 0c200h   ; CP_DEBUG
-EC_READ_WINDOW_COUNT    equ 18
+    ; evergreen_gpu_init's registers (V9XEG3D), and what it reads.
+    dd 2f48h, 2f50h     ; HDP_ADDR_CONFIG, HDP_MISC_CNTL
+    dd 3f90h, 3f98h     ; CGTS_SYS_TCC_DISABLE, CGTS_USER_SYS_TCC_DISABLE
+    dd 8000h, 8004h     ; GRBM_CNTL
+    dd 8760h, 8768h     ; CP_QUEUE_THRESHOLDS, CP_MEQ_THRESHOLDS
+    dd 87fch, 8800h     ; CP_PERFMON_CNTL
+    dd 88c4h, 88c8h     ; VGT_CACHE_INVALIDATION
+    dd 88d4h, 88d8h     ; VGT_GS_VERTEX_REUSE
+    dd 8950h, 8954h     ; CC_GC_SHADER_PIPE_CONFIG
+    dd 8958h, 895ch     ; VGT_PRIMITIVE_TYPE
+    dd 8974h, 8978h     ; VGT_NUM_INSTANCES
+    dd 8a14h, 8a18h     ; PA_CL_ENHANCE
+    dd 8a60h, 8a64h     ; PA_SU_LINE_STIPPLE_VALUE
+    dd 8b10h, 8b14h     ; PA_SC_LINE_STIPPLE_STATE
+    dd 8b24h, 8b28h     ; PA_SC_FORCE_EOV_MAX_CNTS
+    dd 8bcch, 8bd0h     ; PA_SC_FIFO_SIZE
+    dd 8c00h, 8c10h     ; SQ_CONFIG, SQ_GPR_RESOURCE_MGMT_1-3
+    dd 8c18h, 8c2ch     ; SQ_THREAD_RESOURCE_MGMT(_2), SQ_STACK_RESOURCE_MGMT_1-3
+    dd 8cf0h, 8cf4h     ; SQ_MS_FIFO_SIZES
+    dd 8d8ch, 8d90h     ; SQ_DYN_GPR_CNTL_PS_FLUSH_REQ
+    dd 8e2ch, 8e30h     ; SQ_LDS_RESOURCE_MGMT
+    dd 900ch, 9010h     ; SX_EXPORT_BUFFER_SIZES
+    dd 9058h, 905ch     ; SX_DEBUG_1
+    dd 9100h, 9104h     ; SPI_CONFIG_CNTL
+    dd 913ch, 9140h     ; SPI_CONFIG_CNTL_1
+    dd 9148h, 9150h     ; CGTS_TCC_DISABLE, CGTS_USER_TCC_DISABLE
+    dd 9508h, 950ch     ; TA_CNTL_AUX
+    dd 98f4h, 9900h     ; CC_RB_BACKEND_DISABLE, GB_ADDR_CONFIG, GB_BACKEND_MAP
+    dd 9a20h, 9a40h     ; CB_PERF_CTR0-3_SEL_0/1
+    dd 0a008h, 0a00ch   ; SMX_SAR_CTL0
+    dd 0a020h, 0a024h   ; SMX_DC_CTL0
+EC_READ_WINDOW_COUNT    equ 48
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.
@@ -167,7 +203,60 @@ ECWriteOffsets label dword
     dd 0c158h           ; CP_ME_RAM_RADDR
     dd 0c15ch           ; CP_ME_RAM_WADDR
     dd 0c1fch           ; CP_DEBUG
-EC_WRITE_OFFSET_COUNT   equ 19
+    ; evergreen_gpu_init's writes for Cedar (V9XEG3D). The context
+    ; registers it also writes (28000h and up) are left to CLEAR_STATE and
+    ; packets, and the address-config copies that the display, host path
+    ; and DMA engine use (DMIF_, HDP_, DMA_TILING_CONFIG) are not taken.
+    dd 2f4ch            ; HDP_MISC_CNTL
+    dd 3f90h            ; CGTS_SYS_TCC_DISABLE
+    dd 3f94h            ; CGTS_USER_SYS_TCC_DISABLE
+    dd 8000h            ; GRBM_CNTL
+    dd 8760h            ; CP_QUEUE_THRESHOLDS
+    dd 8764h            ; CP_MEQ_THRESHOLDS
+    dd 87fch            ; CP_PERFMON_CNTL
+    dd 88c4h            ; VGT_CACHE_INVALIDATION
+    dd 88d4h            ; VGT_GS_VERTEX_REUSE
+    dd 8974h            ; VGT_NUM_INSTANCES
+    dd 8a14h            ; PA_CL_ENHANCE
+    dd 8a60h            ; PA_SU_LINE_STIPPLE_VALUE
+    dd 8b10h            ; PA_SC_LINE_STIPPLE_STATE
+    dd 8b24h            ; PA_SC_FORCE_EOV_MAX_CNTS
+    dd 8bcch            ; PA_SC_FIFO_SIZE
+    dd 8c00h            ; SQ_CONFIG
+    dd 8c04h            ; SQ_GPR_RESOURCE_MGMT_1
+    dd 8c08h            ; SQ_GPR_RESOURCE_MGMT_2
+    dd 8c0ch            ; SQ_GPR_RESOURCE_MGMT_3
+    dd 8c18h            ; SQ_THREAD_RESOURCE_MGMT
+    dd 8c1ch            ; SQ_THREAD_RESOURCE_MGMT_2
+    dd 8c20h            ; SQ_STACK_RESOURCE_MGMT_1
+    dd 8c24h            ; SQ_STACK_RESOURCE_MGMT_2
+    dd 8c28h            ; SQ_STACK_RESOURCE_MGMT_3
+    dd 8cf0h            ; SQ_MS_FIFO_SIZES
+    dd 8d8ch            ; SQ_DYN_GPR_CNTL_PS_FLUSH_REQ
+    dd 900ch            ; SX_EXPORT_BUFFER_SIZES
+    dd 9058h            ; SX_DEBUG_1
+    dd 9100h            ; SPI_CONFIG_CNTL
+    dd 913ch            ; SPI_CONFIG_CNTL_1
+    dd 9148h            ; CGTS_TCC_DISABLE
+    dd 914ch            ; CGTS_USER_TCC_DISABLE
+    dd 9508h            ; TA_CNTL_AUX
+    dd 98f8h            ; GB_ADDR_CONFIG
+    dd 98fch            ; GB_BACKEND_MAP
+    dd 9a20h            ; CB_PERF_CTR0_SEL_0
+    dd 9a24h            ; CB_PERF_CTR0_SEL_1
+    dd 9a28h            ; CB_PERF_CTR1_SEL_0
+    dd 9a2ch            ; CB_PERF_CTR1_SEL_1
+    dd 9a30h            ; CB_PERF_CTR2_SEL_0
+    dd 9a34h            ; CB_PERF_CTR2_SEL_1
+    dd 9a38h            ; CB_PERF_CTR3_SEL_0
+    dd 9a3ch            ; CB_PERF_CTR3_SEL_1
+    dd 0a008h           ; SMX_SAR_CTL0
+    dd 0a020h           ; SMX_DC_CTL0
+    ; Config registers the CP writes from V9XEG3D's ring, put back by MMIO
+    ; afterwards.
+    dd 8958h            ; VGT_PRIMITIVE_TYPE
+    dd 8e2ch            ; SQ_LDS_RESOURCE_MGMT
+EC_WRITE_OFFSET_COUNT   equ 66
 
 ECResult label dword
     dd EC_MAGIC                 ; 00 magic
@@ -628,6 +717,32 @@ EC_Exec_Stream_Next:
     xor     eax, eax
     jmp     EC_Exec_Done
 EC_Exec_Not_Stream:
+
+    ; A run of the data area into the scratch window: a = the window
+    ; offset, b = the first data dword, c = the count.
+    cmp     eax, EC_OP_VRAM_DATA
+    jne     short EC_Exec_Not_Vram_Data
+    mov     ecx, [esi+12]
+    call    EC_Vram_Allowed
+    jc      EC_Exec_Refused
+    mov     ebx, [esi+8]
+    cmp     ebx, ECDataCount
+    jae     EC_Exec_Refused
+    mov     eax, ECDataCount
+    sub     eax, ebx
+    cmp     ecx, eax
+    ja      EC_Exec_Refused
+    push    esi
+    mov     esi, ECData
+    lea     esi, [esi+ebx*4]
+    mov     edi, ECScratch
+    add     edi, edx
+    cld
+    rep     movsd
+    pop     esi
+    xor     eax, eax
+    jmp     EC_Exec_Done
+EC_Exec_Not_Vram_Data:
 
     cmp     eax, EC_OP_SAVE
     jne     short EC_Exec_Not_Save

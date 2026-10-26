@@ -351,6 +351,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-26 The HD 5450's DMA engine copies and fills byte-exact; each ring session needs a DMA soft reset](2026-10-26-cedar-dma-write-probe.md)
 - [2026-10-26 DirectDraw fill and copy run on the HD 5450's DMA engine, pixel-correct through the HAL](2026-10-26-cedar-directdraw-on-dma.md)
 - [2026-10-26 The HD 5450's command processor runs AMD's microcode: ME_INITIALIZE and Linux's ring test pass](2026-10-26-cedar-cp-runs-amd-microcode.md)
+- [2026-10-27 The HD 5450 draws: Linux 3.9's textured copy is byte-exact on 1D-tiled surfaces, and wrong on linear ones](2026-10-27-cedar-first-3d-draw.md)
 
 ## DOS box and mini-VDD
 

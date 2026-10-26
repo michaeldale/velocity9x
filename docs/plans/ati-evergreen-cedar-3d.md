@@ -6,7 +6,12 @@ Status: in progress. Decision 1 taken (Michael, 2026-10-26): the
 microcode goes in the tree. Phase 1 done: the CP runs AMD's microcode on
 M-BXMFA8, `ME_INITIALIZE` and Linux's ring test pass three runs in three
 ([record](../decisions/2026-10-26-cedar-cp-runs-amd-microcode.md)).
-Next: Phase 2, GPU init and clear state. Parent plan:
+Phase 2 done (2026-10-27): with `evergreen_gpu_init`'s configuration and
+the clear-state preamble, Linux 3.9's textured copy is byte-exact on
+1D-tiled surfaces, three runs of three; on linear-aligned surfaces the
+colour buffer writes a quarter of the pixels to the wrong places, every
+time ([record](../decisions/2026-10-27-cedar-first-3d-draw.md)). Next:
+the linear colour buffer, then Phase 3. Parent plan:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md); 2D runs on the DMA
 engine ([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)).
 Michael asked for Direct3D next (2026-10-26).
