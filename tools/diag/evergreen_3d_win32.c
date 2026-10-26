@@ -74,6 +74,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/eg_shader.h"
+#include "velocity9x/eg_3d.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -106,40 +107,24 @@
 /* EGCP.VXD's EC_PATTERN_STEP. */
 #define V9X_PATTERN_STEP    0x9e3779b9ul
 
-#define V9X_EG_PFP_DWORDS   1120ul
-#define V9X_EG_ME_DWORDS    1376ul
-
-/* Registers, evergreend.h. */
+/* Registers, evergreend.h; the CP's and those eg_3d.c's streams use are
+ * in eg_3d.h. */
 #define V9X_EG_MC_VM_FB_LOCATION    0x2024ul
 #define V9X_EG_HDP_MISC_CNTL        0x2f4cul
 #define V9X_EG_HDP_MEM_FLUSH        0x5480ul
 #define V9X_EG_CGTS_SYS_TCC_DISABLE 0x3f90ul
 #define V9X_EG_CGTS_USER_SYS_TCC    0x3f94ul
-#define V9X_EG_GRBM_CNTL            0x8000ul
-#define V9X_EG_GRBM_STATUS          0x8010ul
-#define V9X_EG_GRBM_SOFT_RESET      0x8020ul
-#define V9X_EG_SCRATCH_REG0         0x8500ul
-#define V9X_EG_SCRATCH_UMSK         0x8540ul
-#define V9X_EG_SCRATCH_ADDR         0x8544ul
-#define V9X_EG_CP_SEM_WAIT_TIMER    0x85bcul
-#define V9X_EG_CP_SEM_INCOMPLETE    0x85c8ul
-#define V9X_EG_CP_STAT              0x8680ul
-#define V9X_EG_CP_ME_CNTL           0x86d8ul
-#define V9X_EG_CP_RB_RPTR           0x8700ul
-#define V9X_EG_CP_RB_WPTR_DELAY     0x8704ul
 #define V9X_EG_CP_QUEUE_THRESHOLDS  0x8760ul
 #define V9X_EG_CP_MEQ_THRESHOLDS    0x8764ul
 #define V9X_EG_CP_PERFMON_CNTL      0x87fcul
 #define V9X_EG_VGT_CACHE_INVALIDATE 0x88c4ul
 #define V9X_EG_VGT_GS_VERTEX_REUSE  0x88d4ul
-#define V9X_EG_VGT_PRIMITIVE_TYPE   0x8958ul
 #define V9X_EG_VGT_NUM_INSTANCES    0x8974ul
 #define V9X_EG_PA_CL_ENHANCE        0x8a14ul
 #define V9X_EG_PA_SU_LINE_STIPPLE   0x8a60ul
 #define V9X_EG_PA_SC_LINE_STIPPLE   0x8b10ul
 #define V9X_EG_PA_SC_FORCE_EOV      0x8b24ul
 #define V9X_EG_PA_SC_FIFO_SIZE      0x8bccul
-#define V9X_EG_SQ_CONFIG            0x8c00ul
 #define V9X_EG_SQ_GPR_MGMT_1        0x8c04ul
 #define V9X_EG_SQ_GPR_MGMT_2        0x8c08ul
 #define V9X_EG_SQ_GPR_MGMT_3        0x8c0cul
@@ -149,8 +134,6 @@
 #define V9X_EG_SQ_STACK_MGMT_2      0x8c24ul
 #define V9X_EG_SQ_STACK_MGMT_3      0x8c28ul
 #define V9X_EG_SQ_MS_FIFO_SIZES     0x8cf0ul
-#define V9X_EG_SQ_DYN_GPR_FLUSH     0x8d8cul
-#define V9X_EG_SQ_LDS_RESOURCE_MGMT 0x8e2cul
 #define V9X_EG_SX_EXPORT_SIZES      0x900cul
 #define V9X_EG_SX_DEBUG_1           0x9058ul
 #define V9X_EG_SPI_CONFIG_CNTL      0x9100ul
@@ -164,72 +147,10 @@
 #define V9X_EG_CB_PERF_CTR0_SEL_0   0x9a20ul
 #define V9X_EG_SMX_SAR_CTL0         0xa008ul
 #define V9X_EG_SMX_DC_CTL0          0xa020ul
-#define V9X_EG_CP_RB_BASE           0xc100ul
-#define V9X_EG_CP_RB_CNTL           0xc104ul
-#define V9X_EG_CP_RB_RPTR_WR        0xc108ul
-#define V9X_EG_CP_RB_RPTR_ADDR      0xc10cul
-#define V9X_EG_CP_RB_RPTR_ADDR_HI   0xc110ul
-#define V9X_EG_CP_RB_WPTR           0xc114ul
-#define V9X_EG_CP_PFP_UCODE_ADDR    0xc150ul
-#define V9X_EG_CP_PFP_UCODE_DATA    0xc154ul
-#define V9X_EG_CP_ME_RAM_RADDR      0xc158ul
-#define V9X_EG_CP_ME_RAM_WADDR      0xc15cul
-#define V9X_EG_CP_ME_RAM_DATA       0xc160ul
-#define V9X_EG_CP_DEBUG             0xc1fcul
 
-/* evergreen_gpu_init for Cedar (radeon evergreen.c and evergreend.h's
- * field macros, worked through for Cedar's numbers: 1 SE, 2 pipes, 2
- * SIMDs, 1 backend, 256 GPRs, 192 threads, 256 stack entries, 4 SX sets,
- * export sizes 128/32/96, FIFOs 40h/30h/130h, 1 CF instruction slot). */
+/* evergreen_gpu_init's writes for Cedar are eg_3d.c's table; /gbaddr:
+ * overrides its GB_ADDR_CONFIG. */
 #define V9X_EG_CEDAR_GB_ADDR_CONFIG 0x02010001ul /* CEDAR_GB_ADDR_CONFIG_GOLDEN */
-#define V9X_EG_GRBM_CNTL_VALUE      0x000000fful /* GRBM_READ_TIMEOUT(0xff) */
-#define V9X_EG_CP_QUEUE_VALUE       0x00002b16ul /* ROQ_IB1_START(16h) | ROQ_IB2_START(2Bh) */
-#define V9X_EG_CP_MEQ_VALUE         0x00000030ul /* STQ_SPLIT(30h) */
-/* DISABLE_CUBE_ANISO | SYNC_GRADIENT | SYNC_WALKER | SYNC_ALIGNER */
-#define V9X_EG_TA_CNTL_AUX_VALUE    0x07000002ul
-#define V9X_EG_ENABLE_NEW_SMX       0x00010000ul
-#define V9X_EG_SMX_SETS_MASK        0x000003feul /* NUMBER_OF_SETS(1FFh) */
-#define V9X_EG_SMX_SETS_CEDAR       0x00000008ul /* NUMBER_OF_SETS(4) */
-#define V9X_EG_SMX_SAR_VALUE        0x00010000ul
-/* COLOR (128/4-1) | POSITION (32/4-1) << 8 | SMX (96/4-1) << 16 */
-#define V9X_EG_SX_EXPORT_VALUE      0x0017071ful
-/* SC_PRIM 40h | SC_HIZ_TILE 30h << 12 | SC_EARLYZ_TILE 130h << 20 */
-#define V9X_EG_PA_SC_FIFO_VALUE     0x13030040ul
-#define V9X_EG_SPI_CNTL_1_VALUE     0x00000004ul /* VTX_DONE_DELAY(4) */
-/* CACHE_FIFO_SIZE(16) | FETCH_FIFO_HIWATER(4) | DONE_FIFO_HIWATER(E0h) |
- * ALU_UPDATE_FIFO_HIWATER(8) */
-#define V9X_EG_SQ_MS_FIFO_VALUE     0x08e00410ul
-/* SQ_CONFIG: the priorities and VC_ENABLE cleared (Cedar has no vertex
- * cache), EXPORT_SRC_C | VS_PRIO(1) | GS_PRIO(2) | ES_PRIO(3) set. */
-#define V9X_EG_SQ_CONFIG_KEEP       0x00fffffeul
-#define V9X_EG_SQ_CONFIG_SET        0xe4000002ul
-/* (256 - 8) * 12/32 = 93 PS, * 6/32 = 46 VS, 4 clause temporaries; * 4/32
- * = 31 GS and ES; * 3/32 = 23 HS and LS. */
-#define V9X_EG_SQ_GPR_1_VALUE       0x402e005dul
-#define V9X_EG_SQ_GPR_2_VALUE       0x001f001ful
-#define V9X_EG_SQ_GPR_3_VALUE       0x00170017ul
-/* 96 PS threads; ((192 - 96) / 6 / 8) * 8 = 16 for each other stage. */
-#define V9X_EG_SQ_THREAD_VALUE      0x10101060ul
-#define V9X_EG_SQ_THREAD_2_VALUE    0x00001010ul
-/* 256 / 6 = 42 stack entries for every stage. */
-#define V9X_EG_SQ_STACK_VALUE       0x002a002aul
-/* FORCE_EOV_MAX_CLK_CNT(4095) | FORCE_EOV_MAX_REZ_CNT(255) */
-#define V9X_EG_PA_SC_EOV_VALUE      0x00ff0ffful
-/* CACHE_INVALIDATION(TC_ONLY) | AUTO_INVLD_EN(ES_AND_GS_AUTO) */
-#define V9X_EG_VGT_CACHE_VALUE      0x000000c1ul
-#define V9X_EG_HDP_FLUSH_INVALIDATE 0x00000001ul
-/* CLIP_VTX_REORDER_ENA | NUM_CLIP_SEQ(3) */
-#define V9X_EG_PA_CL_ENHANCE_VALUE  0x00000007ul
-
-/* CP control, as V9XEGCP. */
-#define V9X_EG_CP_HALT              0x14000000ul
-#define V9X_EG_CP_RUN               0x000000fful
-#define V9X_EG_RB_NO_UPDATE         0x08000000ul
-#define V9X_EG_RB_RPTR_WR_ENA       0x80000000ul
-#define V9X_EG_GRBM_RESET_CP_BLOCKS 0x00004721ul
-#define V9X_EG_CP_DEBUG_VALUE       0x18000000ul
-#define V9X_EG_RB_CNTL_LOADING      0x08000f03ul
-#define V9X_EG_GUI_ACTIVE           0x80000000ul
 #define V9X_EG_FB_START_MASK        0x0000fffful
 
 /* PM4 packets (evergreend.h, radeon_blit_common.h). */
@@ -326,7 +247,39 @@ static DWORD v9x_cb_attrib;
 #define V9X_MODE_GOURAUD            1ul
 #define V9X_MODE_DEPTH              2ul
 #define V9X_MODE_MODULATE           3ul
+/* The HAL's draws, through eg_3d.c's state and eg_shader.c's Direct3D
+ * shaders, the vertices in the render core's TL layout:
+ *   /d3dtex    textured, white, rhw 1, u 0 to 1 across: the source copied;
+ *   /d3dpersp  the same with rhw 1 at the left and 0.25 at the right;
+ *   /d3dcolour untextured, one D3DCOLOR, which every pixel should hold;
+ *   /d3dz      /depth's three rectangles, depth through eg_3d.c;
+ *   /d3d565    untextured into a 565 target. */
+#define V9X_MODE_D3D_FIRST          4ul
+#define V9X_MODE_D3D_TEX            4ul
+#define V9X_MODE_D3D_PERSP          5ul
+#define V9X_MODE_D3D_COLOUR         6ul
+#define V9X_MODE_D3D_Z              7ul
+#define V9X_MODE_D3D_565            8ul
 static DWORD v9x_mode = V9X_MODE_BLIT;
+/* PA_SU_VTX_CNTL's PIX_CENTER_HALF for the Direct3D draws; /centre0
+ * clears it. */
+static DWORD v9x_centre_half = 1ul;
+/* /vte: PA_CL_VTE_CNTL for the Direct3D draws, all ones for the
+ * builder's. */
+#define V9X_EG_PA_CL_VTE_CNTL       0x28818ul
+static DWORD v9x_vte_override = 0xfffffffful;
+
+#define V9X_D3D_VERTEX_DWORDS       8ul
+/* D3DCOLORs, 0xAARRGGBB, stored as they are: B, G, R, A in memory. */
+#define V9X_D3D_WHITE               0xfffffffful
+#define V9X_D3D_RED                 0xffff0000ul
+#define V9X_D3D_GREEN               0xff00ff00ul
+#define V9X_D3D_BLUE                0xff0000fful
+#define V9X_D3D_COLOUR_VALUE        0x80402010ul
+/* R 84h, G 82h, B 42h are 16, 32 and 8 to within 0.1 in 5:6:5, so the
+ * pixel is 8408h whichever way the CB rounds. */
+#define V9X_D3D_565_COLOUR          0xff848242ul
+#define V9X_D3D_565_PIXELS          0x84088408ul
 
 /* /modulate's second interpolant (evergreend.h): the VS exports two
  * parameters, semantics 0 and 1, and the PS reads both. */
@@ -434,74 +387,6 @@ struct v9x_egcp_result {
 typedef char v9x_egcp_header_matches[
     offsetof(struct v9x_egcp_result, op_results) ==
     sizeof(DWORD) * V9X_EGCP_HEADER ? 1 : -1];
-
-/* evergreen_blit_shaders.c (Linux v3.9; Copyright 2010 Advanced Micro
- * Devices, Inc.; MIT licence, reproduced in that file): the default
- * context state, little-endian. The blit's VS and PS are rebuilt by
- * eg_shader.c. */
-static const DWORD v9x_eg_default_state[] = {
-    0xc0016900ul, 0x0000023bul, 0x00000000ul,
-    0xc0066900ul, 0x00000240ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0xc0046900ul, 0x00000247ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul,
-    0xc0026900ul, 0x00000010ul, 0x00000000ul, 0x00000000ul,
-    0xc0016900ul, 0x00000200ul, 0x00000000ul,
-    0xc0066900ul, 0x00000000ul, 0x00000060ul, 0x00000000ul, 0x00000000ul,
-    0x0000002aul, 0x00000000ul, 0x00000000ul,
-    0xc0026900ul, 0x0000000aul, 0x00000000ul, 0x00000000ul,
-    0xc0016900ul, 0x000002dcul, 0x0000aa00ul,
-    0xc0016900ul, 0x00000080ul, 0x00000000ul,
-    0xc00d6900ul, 0x00000083ul, 0x0000fffful, 0x00000000ul, 0x20002000ul,
-    0x00000000ul, 0x20002000ul, 0x00000000ul, 0x20002000ul, 0x00000000ul,
-    0x20002000ul, 0xaaaaaaaaul, 0x00000000ul, 0x0000000ful, 0x0000000ful,
-    0xc0226900ul, 0x00000094ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x80000000ul, 0x20002000ul, 0x80000000ul, 0x20002000ul,
-    0x00000000ul, 0x3f800000ul,
-    0xc0016900ul, 0x000000d4ul, 0x00000000ul,
-    0xc0026900ul, 0x00000292ul, 0x00000000ul, 0x00000000ul,
-    0xc0106900ul, 0x00000300ul, 0x00000000ul, 0x00000000ul, 0x00000005ul,
-    0x3f800000ul, 0x3f800000ul, 0x3f800000ul, 0x3f800000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0xfffffffful,
-    0xc00d6900ul, 0x00000202ul, 0x00cc0010ul, 0x00000210ul, 0x00010000ul,
-    0x00000004ul, 0x00000100ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0xc0066900ul, 0x000002deul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0xc0016900ul, 0x00000229ul, 0x00000000ul,
-    0xc0016900ul, 0x0000022aul, 0x00000000ul,
-    0xc0096900ul, 0x00000100ul, 0x00fffffful, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul,
-    0xc0026900ul, 0x000002a8ul, 0x00000000ul, 0x00000000ul,
-    0xc0026900ul, 0x000002adul, 0x00000000ul, 0x00000000ul,
-    0xc0116900ul, 0x00000280ul, 0x00000000ul, 0x00000000ul, 0x00000008ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0xc0016900ul, 0x000002a1ul, 0x00000000ul,
-    0xc0016900ul, 0x000002a5ul, 0x00000000ul,
-    0xc0016900ul, 0x000002d5ul, 0x00000000ul,
-    0xc0026900ul, 0x000002e5ul, 0x00000000ul, 0x00000000ul,
-    0xc0016900ul, 0x000001e0ul, 0x00000000ul,
-    0xc0016900ul, 0x000001b1ul, 0x00000000ul,
-    0xc0016900ul, 0x00000187ul, 0x00000000ul,
-    0xc0016900ul, 0x00000191ul, 0x00000100ul,
-    0xc00b6900ul, 0x000001b3ul, 0x20000001ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00100000ul, 0x00000000ul, 0x00000000ul,
-    0x00000000ul, 0x00000000ul, 0x00000000ul,
-    0xc0026900ul, 0x00000316ul, 0x0000000eul, 0x00000010ul
-};
-#define V9X_EG_DEFAULT_DWORDS \
-    (sizeof(v9x_eg_default_state) / sizeof(v9x_eg_default_state[0]))
 
 /* Every register call 1 reads. The first V9X_CP_SAVED are the CP's, put
  * back as V9XEGCP puts them back; the rest are gpu_init's, put back after
@@ -760,73 +645,37 @@ static void v9x_surface_sync(DWORD sync_type, DWORD size, DWORD address)
     v9x_ring_put(V9X_SYNC_POLL_INTERVAL);
 }
 
+/* eg_3d.c's streams, staged and then put into the ring. */
+static v9x_u32 v9x_stage[V9X_RING_MAX];
+static struct v9x_eg_pm4 v9x_stage_stream;
+
+static struct v9x_eg_pm4 *v9x_stage_begin(void)
+{
+    v9x_eg_pm4_begin(&v9x_stage_stream, v9x_stage, V9X_RING_MAX);
+    return &v9x_stage_stream;
+}
+
+/* Into the ring; an overflowed stage makes the ring too long to run. */
+static void v9x_stage_end(void)
+{
+    v9x_ring_list(v9x_stage, v9x_stage_stream.count);
+    if (v9x_stage_stream.overflow != 0ul) {
+        v9x_ring_count = V9X_RING_MAX + 1ul;
+    }
+}
+
 /* evergreen_cp_start after ME_INITIALIZE: the clear-state preamble. */
 static void v9x_ring_preamble(void)
 {
-    v9x_ring_put(V9X_PACKET3(V9X_P3_PREAMBLE_CNTL, 0ul));
-    v9x_ring_put(V9X_PREAMBLE_BEGIN_CLEAR);
-    v9x_ring_list(v9x_eg_default_state, V9X_EG_DEFAULT_DWORDS);
-    v9x_ring_put(V9X_PACKET3(V9X_P3_PREAMBLE_CNTL, 0ul));
-    v9x_ring_put(V9X_PREAMBLE_END_CLEAR);
-    v9x_ring_put(V9X_PACKET3(V9X_P3_CLEAR_STATE, 0ul));
-    v9x_ring_put(0ul);
-    /* SQ_VTX_BASE_VTX_LOC */
-    v9x_ring_put(0xc0026f00ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    /* Clear consts */
-    v9x_ring_put(0xc0036f00ul);
-    v9x_ring_put(0x00000bc4ul);
-    v9x_ring_put(0xfffffffful);
-    v9x_ring_put(0xfffffffful);
-    v9x_ring_put(0xfffffffful);
-    /* VGT_VERTEX_REUSE_BLOCK_CNTL, VGT_OUT_DEALLOC_CNTL */
-    v9x_ring_put(0xc0026900ul);
-    v9x_ring_put(0x00000316ul);
-    v9x_ring_put(0x0000000eul);
-    v9x_ring_put(0x00000010ul);
+    v9x_eg_3d_preamble(v9x_stage_begin());
+    v9x_stage_end();
 }
 
 /* Linux 3.9 set_default_state for Cedar, the default state inline. */
 static void v9x_ring_default_state(void)
 {
-    v9x_ring_put(V9X_PACKET3(V9X_P3_CLEAR_STATE, 0ul));
-    v9x_ring_put(0ul);
-    v9x_set_config(V9X_EG_SQ_DYN_GPR_FLUSH, 0ul);
-    v9x_set_config(V9X_EG_SQ_LDS_RESOURCE_MGMT, 0x10001000ul);
-    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONFIG_REG, 11ul));
-    v9x_ring_put((V9X_EG_SQ_CONFIG - V9X_SET_CONFIG_START) >> 2);
-    v9x_ring_put(V9X_EG_SQ_CONFIG_SET);
-    v9x_ring_put(V9X_EG_SQ_GPR_1_VALUE);
-    v9x_ring_put(V9X_EG_SQ_GPR_2_VALUE);
-    v9x_ring_put(V9X_EG_SQ_GPR_3_VALUE);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(V9X_EG_SQ_THREAD_VALUE);
-    v9x_ring_put(V9X_EG_SQ_THREAD_2_VALUE);
-    v9x_ring_put(V9X_EG_SQ_STACK_VALUE);
-    v9x_ring_put(V9X_EG_SQ_STACK_VALUE);
-    v9x_ring_put(V9X_EG_SQ_STACK_VALUE);
-    /* CONTEXT_CONTROL */
-    v9x_ring_put(0xc0012800ul);
-    v9x_ring_put(0x80000000ul);
-    v9x_ring_put(0x80000000ul);
-    /* SQ_VTX_BASE_VTX_LOC */
-    v9x_ring_put(0xc0026f00ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    /* SET_SAMPLER */
-    v9x_ring_put(0xc0036e00ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0x00000012ul);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
-    /* DX10/11 mode */
-    v9x_ring_put(V9X_PACKET3(V9X_P3_MODE_CONTROL, 0ul));
-    v9x_ring_put(1ul);
-    v9x_ring_list(v9x_eg_default_state, V9X_EG_DEFAULT_DWORDS);
+    v9x_eg_3d_default_state(v9x_stage_begin());
+    v9x_stage_end();
 }
 
 static void v9x_ring_draw(DWORD g)
@@ -975,59 +824,87 @@ static void v9x_ring_draw(DWORD g)
     v9x_set_config(V9X_EG_SCRATCH_REG0, V9X_SCRATCH_DRAWN);
 }
 
-/* evergreen_gpu_init's writes for Cedar, from call 1's reads where Linux
- * reads first. */
+/* The Direct3D draws' stream, all of it eg_3d.c's: the default state,
+ * the batch's state, the draw, the caches flushed, then the mark. */
+static const struct v9x_eg_3d_state v9x_zero_state;
+
+static void v9x_ring_draw_d3d(DWORD g)
+{
+    struct v9x_eg_3d_state state;
+    struct v9x_eg_pm4 *stream = v9x_stage_begin();
+    DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
+                     v9x_mode == V9X_MODE_D3D_PERSP;
+
+    v9x_eg_3d_default_state(stream);
+    state = v9x_zero_state;
+    state.target_gpu = g + V9X_DST_OFFSET;
+    state.target_pitch = V9X_DRAW_WIDTH;
+    state.target_height = V9X_DRAW_HEIGHT;
+    state.target_format = v9x_mode == V9X_MODE_D3D_565 ?
+                          V9X_EG_COLOR_5_6_5 : V9X_EG_COLOR_8_8_8_8;
+    state.scissor_right = V9X_DRAW_WIDTH;
+    state.scissor_bottom = V9X_DRAW_HEIGHT;
+    if (v9x_mode == V9X_MODE_D3D_Z) {
+        state.depth_gpu = g + V9X_DEPTH_OFFSET;
+        state.depth_pitch = V9X_DRAW_WIDTH;
+        state.depth_height = V9X_DRAW_HEIGHT;
+        state.depth_control = v9x_eg_3d_depth_control(1ul, 1ul,
+                                                      V9X_EG_FUNC_LESS);
+    }
+    state.blend_control = v9x_eg_3d_blend(0ul, 0ul, 0ul);
+    state.alpha_test_control = v9x_eg_3d_alpha_test(0ul, V9X_EG_FUNC_ALWAYS);
+    state.perspective = 1ul;
+    state.pixel_centre_half = v9x_centre_half;
+    state.vs_gpu = g + V9X_VS_OFFSET;
+    state.vs_gprs = textured ? 3ul : 2ul;
+    state.ps_gpu = g + V9X_PS_OFFSET;
+    state.ps_gprs = textured ? 2ul : 1ul;
+    state.interpolants = textured ? 2ul : 1ul;
+    if (textured) {
+        state.texture_gpu = g + V9X_SRC_OFFSET;
+        state.texture_width = V9X_DRAW_WIDTH;
+        state.texture_height = V9X_DRAW_HEIGHT;
+        state.texture_pitch = V9X_DRAW_WIDTH;
+        state.texture_format = V9X_EG_COLOR_8_8_8_8;
+        state.sampler_word0 = v9x_eg_3d_sampler(
+            0ul, V9X_EG_TEX_CLAMP_LAST_TEXEL, V9X_EG_TEX_CLAMP_LAST_TEXEL);
+    }
+    state.vertex_gpu = g + V9X_VB_OFFSET;
+    state.vertex_stride = V9X_EG_D3D_STRIDE;
+    state.vertex_bytes = v9x_vertex_dwords * 4ul;
+    if (v9x_eg_3d_build_state(&state, stream) != V9X_STATUS_OK) {
+        stream->overflow = 1ul;
+    }
+    /* /vte: overrides PA_CL_VTE_CNTL after the builder has set it. */
+    if (v9x_vte_override != 0xfffffffful) {
+        v9x_eg_pm4_set_context1(stream, V9X_EG_PA_CL_VTE_CNTL,
+                                v9x_vte_override);
+    }
+    v9x_eg_3d_draw(stream, v9x_vertex_count);
+    v9x_eg_3d_flush(stream);
+    v9x_eg_3d_fence(stream, V9X_SCRATCH_DRAWN);
+    v9x_stage_end();
+}
+
+/* evergreen_gpu_init's writes for Cedar (eg_3d.c's table), from call 1's
+ * reads where Linux reads first; GB_ADDR_CONFIG as /gbaddr: gives it. */
 static void v9x_gpu_init(void)
 {
+    const struct v9x_eg_reg_update *update;
     DWORD index;
+    DWORD value;
 
-    v9x_write(V9X_EG_GRBM_CNTL, V9X_EG_GRBM_CNTL_VALUE);
-    v9x_write(V9X_EG_GB_ADDR_CONFIG, v9x_gb_addr_config);
-    v9x_write(V9X_EG_GB_BACKEND_MAP, 0ul);
-    v9x_write(V9X_EG_CGTS_SYS_TCC_DISABLE, 0ul);
-    v9x_write(V9X_EG_CGTS_TCC_DISABLE, 0ul);
-    v9x_write(V9X_EG_CGTS_USER_SYS_TCC, 0ul);
-    v9x_write(V9X_EG_CGTS_USER_TCC, 0ul);
-    v9x_write(V9X_EG_CP_QUEUE_THRESHOLDS, V9X_EG_CP_QUEUE_VALUE);
-    v9x_write(V9X_EG_CP_MEQ_THRESHOLDS, V9X_EG_CP_MEQ_VALUE);
-    v9x_write(V9X_EG_TA_CNTL_AUX, V9X_EG_TA_CNTL_AUX_VALUE);
-    v9x_write(V9X_EG_SX_DEBUG_1,
-              v9x_saved_value(V9X_EG_SX_DEBUG_1) | V9X_EG_ENABLE_NEW_SMX);
-    v9x_write(V9X_EG_SMX_DC_CTL0,
-              (v9x_saved_value(V9X_EG_SMX_DC_CTL0) & ~V9X_EG_SMX_SETS_MASK) |
-              V9X_EG_SMX_SETS_CEDAR);
-    v9x_write(V9X_EG_SMX_SAR_CTL0, V9X_EG_SMX_SAR_VALUE);
-    v9x_write(V9X_EG_SX_EXPORT_SIZES, V9X_EG_SX_EXPORT_VALUE);
-    v9x_write(V9X_EG_PA_SC_FIFO_SIZE, V9X_EG_PA_SC_FIFO_VALUE);
-    v9x_write(V9X_EG_VGT_NUM_INSTANCES, 1ul);
-    v9x_write(V9X_EG_SPI_CONFIG_CNTL, 0ul);
-    v9x_write(V9X_EG_SPI_CONFIG_CNTL_1, V9X_EG_SPI_CNTL_1_VALUE);
-    v9x_write(V9X_EG_CP_PERFMON_CNTL, 0ul);
-    v9x_write(V9X_EG_SQ_MS_FIFO_SIZES, V9X_EG_SQ_MS_FIFO_VALUE);
-    v9x_write(V9X_EG_SQ_CONFIG,
-              (v9x_saved_value(V9X_EG_SQ_CONFIG) & V9X_EG_SQ_CONFIG_KEEP) |
-              V9X_EG_SQ_CONFIG_SET);
-    v9x_write(V9X_EG_SQ_GPR_MGMT_1, V9X_EG_SQ_GPR_1_VALUE);
-    v9x_write(V9X_EG_SQ_GPR_MGMT_2, V9X_EG_SQ_GPR_2_VALUE);
-    v9x_write(V9X_EG_SQ_GPR_MGMT_3, V9X_EG_SQ_GPR_3_VALUE);
-    v9x_write(V9X_EG_SQ_THREAD_MGMT, V9X_EG_SQ_THREAD_VALUE);
-    v9x_write(V9X_EG_SQ_THREAD_MGMT_2, V9X_EG_SQ_THREAD_2_VALUE);
-    v9x_write(V9X_EG_SQ_STACK_MGMT_1, V9X_EG_SQ_STACK_VALUE);
-    v9x_write(V9X_EG_SQ_STACK_MGMT_2, V9X_EG_SQ_STACK_VALUE);
-    v9x_write(V9X_EG_SQ_STACK_MGMT_3, V9X_EG_SQ_STACK_VALUE);
-    v9x_write(V9X_EG_SQ_DYN_GPR_FLUSH, 0ul);
-    v9x_write(V9X_EG_PA_SC_FORCE_EOV, V9X_EG_PA_SC_EOV_VALUE);
-    v9x_write(V9X_EG_VGT_CACHE_INVALIDATE, V9X_EG_VGT_CACHE_VALUE);
-    v9x_write(V9X_EG_VGT_GS_VERTEX_REUSE, 16ul);
-    v9x_write(V9X_EG_PA_SU_LINE_STIPPLE, 0ul);
-    v9x_write(V9X_EG_PA_SC_LINE_STIPPLE, 0ul);
-    for (index = 0ul; index < 8ul; ++index) {
-        v9x_write(V9X_EG_CB_PERF_CTR0_SEL_0 + index * 4ul, 0ul);
+    for (index = 0ul; index < V9X_EG_CEDAR_GPU_INIT_COUNT; ++index) {
+        update = &v9x_eg_cedar_gpu_init[index];
+        value = update->set;
+        if (update->keep != 0ul) {
+            value |= v9x_saved_value(update->offset) & update->keep;
+        }
+        if (update->offset == V9X_EG_GB_ADDR_CONFIG) {
+            value = v9x_gb_addr_config;
+        }
+        v9x_write(update->offset, value);
     }
-    v9x_write(V9X_EG_HDP_MISC_CNTL,
-              v9x_saved_value(V9X_EG_HDP_MISC_CNTL) |
-              V9X_EG_HDP_FLUSH_INVALIDATE);
-    v9x_write(V9X_EG_PA_CL_ENHANCE, V9X_EG_PA_CL_ENHANCE_VALUE);
 }
 
 static void v9x_vertex(DWORD x, DWORD y, DWORD z, DWORD r, DWORD gr,
@@ -1088,11 +965,93 @@ static void v9x_modulate_vertex(DWORD x, DWORD y, DWORD r)
     ++v9x_vertex_count;
 }
 
+/* A Direct3D TL vertex as the render core hands it over (V9X_R3D_VERTEX):
+ * sx, sy, sz, rhw, the D3DCOLOR, specular, tu, tv. */
+static void v9x_d3d_vertex(DWORD x, DWORD y, DWORD z, DWORD rhw,
+                           DWORD colour, DWORD u, DWORD v)
+{
+    DWORD *at = v9x_vertices + v9x_vertex_dwords;
+
+    if (v9x_vertex_dwords + V9X_D3D_VERTEX_DWORDS > V9X_VERTEX_DWORDS_MAX) {
+        return;
+    }
+    at[0] = x;
+    at[1] = y;
+    at[2] = z;
+    at[3] = rhw;
+    at[4] = colour;
+    at[5] = 0ul;
+    at[6] = u;
+    at[7] = v;
+    v9x_vertex_dwords += V9X_D3D_VERTEX_DWORDS;
+    ++v9x_vertex_count;
+}
+
+/* A full-height rectangle from x0 to x1 as two triangles: depth z, one
+ * colour, rhw and u at each edge, v 0 at the top and 1 at the bottom. */
+static void v9x_d3d_rect(DWORD x0, DWORD x1, DWORD z, DWORD colour,
+                         DWORD rhw0, DWORD rhw1, DWORD u0, DWORD u1)
+{
+    v9x_d3d_vertex(x0, V9X_FLOAT_0, z, rhw0, colour, u0, V9X_FLOAT_0);
+    v9x_d3d_vertex(x1, V9X_FLOAT_0, z, rhw1, colour, u1, V9X_FLOAT_0);
+    v9x_d3d_vertex(x0, V9X_FLOAT_8, z, rhw0, colour, u0, V9X_FLOAT_1);
+    v9x_d3d_vertex(x1, V9X_FLOAT_0, z, rhw1, colour, u1, V9X_FLOAT_0);
+    v9x_d3d_vertex(x1, V9X_FLOAT_8, z, rhw1, colour, u1, V9X_FLOAT_1);
+    v9x_d3d_vertex(x0, V9X_FLOAT_8, z, rhw0, colour, u0, V9X_FLOAT_1);
+}
+
+/* The Direct3D draws: the HAL's shaders, vertices in the render core's
+ * layout. */
+static void v9x_build_d3d(void)
+{
+    DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
+                     v9x_mode == V9X_MODE_D3D_PERSP;
+
+    v9x_vs_dwords = v9x_eg_shader_d3d_vs(textured, v9x_vs);
+    v9x_ps_dwords = v9x_eg_shader_d3d_ps(textured ? V9X_EG_D3D_OP_MODULATE :
+                                         V9X_EG_D3D_OP_NONE, v9x_ps);
+    v9x_vertex_stride = V9X_EG_D3D_STRIDE;
+    if (v9x_mode == V9X_MODE_D3D_TEX) {
+        v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5,
+                     V9X_D3D_WHITE, V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0,
+                     V9X_FLOAT_1);
+        return;
+    }
+    if (v9x_mode == V9X_MODE_D3D_PERSP) {
+        v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5,
+                     V9X_D3D_WHITE, V9X_FLOAT_1, V9X_FLOAT_0_25, V9X_FLOAT_0,
+                     V9X_FLOAT_1);
+        return;
+    }
+    if (v9x_mode == V9X_MODE_D3D_COLOUR) {
+        v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5,
+                     V9X_D3D_COLOUR_VALUE, V9X_FLOAT_1, V9X_FLOAT_1,
+                     V9X_FLOAT_0, V9X_FLOAT_0);
+        return;
+    }
+    if (v9x_mode == V9X_MODE_D3D_565) {
+        v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5,
+                     V9X_D3D_565_COLOUR, V9X_FLOAT_1, V9X_FLOAT_1,
+                     V9X_FLOAT_0, V9X_FLOAT_0);
+        return;
+    }
+    v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5, V9X_D3D_RED,
+                 V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0, V9X_FLOAT_0);
+    v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_32, V9X_FLOAT_0_75, V9X_D3D_GREEN,
+                 V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0, V9X_FLOAT_0);
+    v9x_d3d_rect(V9X_FLOAT_32, V9X_FLOAT_64, V9X_FLOAT_0_25, V9X_D3D_BLUE,
+                 V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0, V9X_FLOAT_0);
+}
+
 /* The mode's shaders and vertices. */
 static void v9x_build_draw(void)
 {
     v9x_vertex_dwords = 0ul;
     v9x_vertex_count = 0ul;
+    if (v9x_mode >= V9X_MODE_D3D_FIRST) {
+        v9x_build_d3d();
+        return;
+    }
     if (v9x_mode == V9X_MODE_BLIT) {
         v9x_vs_dwords = v9x_eg_shader_blit_vs(v9x_vs);
         v9x_ps_dwords = v9x_eg_shader_blit_ps(v9x_ps);
@@ -1153,19 +1112,18 @@ static void v9x_build_run(DWORD g)
 
     /* The ring: four submissions, each closed to 16 dwords. */
     v9x_ring_count = 0ul;
-    v9x_ring_put(V9X_PACKET3(V9X_P3_ME_INITIALIZE, 5ul));
-    v9x_ring_put(0x1ul);
-    v9x_ring_put(0x0ul);
-    v9x_ring_put(V9X_EG_MAX_HW_CONTEXTS - 1ul);
-    v9x_ring_put(1ul << 16);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
+    v9x_eg_3d_me_initialize(v9x_stage_begin());
+    v9x_stage_end();
     v9x_wptr_init = v9x_ring_close();
     v9x_ring_preamble();
     v9x_wptr_preamble = v9x_ring_close();
     v9x_set_config(V9X_EG_SCRATCH_REG0, V9X_SCRATCH_TEST);
     v9x_wptr_test = v9x_ring_close();
-    v9x_ring_draw(g);
+    if (v9x_mode >= V9X_MODE_D3D_FIRST) {
+        v9x_ring_draw_d3d(g);
+    } else {
+        v9x_ring_draw(g);
+    }
     v9x_wptr_draw = v9x_ring_close();
 
     /* The data area after the microcode: ring, VS, PS, vertices. */
@@ -1194,7 +1152,7 @@ static void v9x_build_run(DWORD g)
            V9X_SRC_SEED);
     v9x_op(V9X_OP_VRAM_FILL, V9X_DST_OFFSET, V9X_DST_GUARD_DWORDS,
            V9X_GUARD_VALUE);
-    if (v9x_mode == V9X_MODE_DEPTH) {
+    if (v9x_mode == V9X_MODE_DEPTH || v9x_mode == V9X_MODE_D3D_Z) {
         v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH_OFFSET, V9X_DEPTH_DWORDS,
                V9X_DEPTH_CLEAR);
     }
@@ -1407,6 +1365,12 @@ static DWORD v9x_expected_pixel(DWORD index)
     DWORD texel;
     DWORD red;
 
+    if (v9x_mode == V9X_MODE_D3D_COLOUR) {
+        return V9X_D3D_COLOUR_VALUE;
+    }
+    if (v9x_mode == V9X_MODE_D3D_Z) {
+        return x < V9X_DRAW_WIDTH / 2ul ? V9X_D3D_RED : V9X_D3D_BLUE;
+    }
     if (v9x_mode == V9X_MODE_DEPTH) {
         return x < V9X_DRAW_WIDTH / 2ul ? V9X_PIXEL_RED : V9X_PIXEL_BLUE;
     }
@@ -1460,7 +1424,8 @@ static void v9x_colour_map(const DWORD *got)
                 at += 3;
                 continue;
             }
-            if (v9x_mode == V9X_MODE_MODULATE) {
+            if (v9x_mode == V9X_MODE_MODULATE ||
+                v9x_mode >= V9X_MODE_D3D_FIRST) {
                 *at++ = v9x_pixel_close(value, v9x_expected_pixel(
                     row * V9X_DRAW_WIDTH + column)) ? '.' : 'X';
                 continue;
@@ -1563,6 +1528,130 @@ static void v9x_verify_colour(void)
     if (v9x_mode == V9X_MODE_DEPTH) {
         v9x_depth_report(got + V9X_DST_GUARD_DWORDS);
     }
+}
+
+/*
+ * /d3dpersp's expected texel, perspective-correct, in integers. Triangle 1
+ * is (0,0) (64,0) (0,8), triangle 2 (64,0) (64,8) (0,8); rhw is 1 at x = 0
+ * and 0.25 at x = 64, scaled here to 4 and 1; u = x / 64 and v = y / 8 at
+ * the corners. With xs = 2x + 1 and ys = 8(2y + 1), the screen
+ * barycentrics times 128 are integers (x + 0.5 over 64 is xs / 128, y +
+ * 0.5 over 8 is ys / 128), and u and v are their rhw-weighted ratios. The first model (u depending on x alone) was wrong:
+ * v varies along a row too when rhw does.
+ */
+static DWORD v9x_persp_texel(DWORD x, DWORD y)
+{
+    long xs = (long)(2ul * x + 1ul);
+    long ys = 8l * (long)(2ul * y + 1ul);
+    long den;
+    long u_num;
+    long v_num;
+    long column;
+    long row;
+
+    if (xs + ys < 128l) {
+        /* l1 = 128 - xs - ys (rhw 4), l2 = xs (rhw 1, u 1), l3 = ys (rhw
+         * 4, v 1). */
+        den = 4l * (128l - xs - ys) + xs + 4l * ys;
+        u_num = xs;
+        v_num = 4l * ys;
+    } else {
+        /* la = 128 - ys (rhw 1, u 1), lb = ys - 128 + xs (rhw 1, u and v
+         * 1), lc = 128 - xs (rhw 4, v 1). */
+        den = (128l - ys) + (ys - 128l + xs) + 4l * (128l - xs);
+        u_num = (128l - ys) + (ys - 128l + xs);
+        v_num = (ys - 128l + xs) + 4l * (128l - xs);
+    }
+    column = (64l * u_num) / den;
+    row = (8l * v_num) / den;
+    if (column > 63l) {
+        column = 63l;
+    }
+    if (row > 7l) {
+        row = 7l;
+    }
+    return (DWORD)row * V9X_DRAW_WIDTH + (DWORD)column;
+}
+
+/* /d3dpersp: each pixel against v9x_persp_texel's texel; a pixel holding a
+ * neighbouring texel instead (the sampler's rounding at an edge) counts
+ * against ExactMismatches only. The map shows the texel each pixel took. */
+static void v9x_verify_persp(void)
+{
+    const DWORD *got = v9x_result.block;
+    DWORD exact_bad = 0ul;
+    DWORD bad = 0ul;
+    DWORD guard_bad = 0ul;
+    DWORD index;
+    DWORD expected;
+    DWORD source;
+    char text[12];
+
+    for (index = 0ul; index < V9X_DRAW_DWORDS; ++index) {
+        expected = v9x_persp_texel(index % V9X_DRAW_WIDTH,
+                                   index / V9X_DRAW_WIDTH);
+        if (got[index] == v9x_pattern(expected)) {
+            continue;
+        }
+        ++exact_bad;
+        for (source = 0ul; source < V9X_DRAW_DWORDS; ++source) {
+            if (got[index] == v9x_pattern(source)) {
+                break;
+            }
+        }
+        if (source == V9X_DRAW_DWORDS ||
+            (source % V9X_DRAW_WIDTH) + 1ul < expected % V9X_DRAW_WIDTH ||
+            (source % V9X_DRAW_WIDTH) > expected % V9X_DRAW_WIDTH + 1ul ||
+            source / V9X_DRAW_WIDTH + 1ul < expected / V9X_DRAW_WIDTH ||
+            source / V9X_DRAW_WIDTH > expected / V9X_DRAW_WIDTH + 1ul) {
+            ++bad;
+        }
+    }
+    for (index = V9X_DRAW_DWORDS; index < V9X_DST_GUARD_DWORDS; ++index) {
+        if (got[index] != V9X_GUARD_VALUE) {
+            ++guard_bad;
+        }
+    }
+    v9x_decimal(text, exact_bad);
+    v9x_text("Result", "ExactMismatches", text);
+    v9x_decimal(text, bad);
+    v9x_text("Result", "DrawMismatches", text);
+    v9x_decimal(text, guard_bad);
+    v9x_text("Result", "GuardMismatches", text);
+    v9x_text("Result", "Draw", bad == 0ul && guard_bad == 0ul ? "PASS" :
+             "FAIL");
+    v9x_map(got);
+}
+
+/* /d3d565: every 16-bit pixel 8408h, two to a dword, the guard after. */
+static void v9x_verify_565(void)
+{
+    const DWORD *got = v9x_result.block;
+    DWORD pixel_dwords = V9X_DRAW_DWORDS / 2ul;
+    DWORD bad = 0ul;
+    DWORD guard_bad = 0ul;
+    DWORD index;
+    char text[12];
+
+    for (index = 0ul; index < pixel_dwords; ++index) {
+        if (got[index] != V9X_D3D_565_PIXELS) {
+            ++bad;
+        }
+    }
+    for (index = pixel_dwords; index < V9X_DST_GUARD_DWORDS; ++index) {
+        if (got[index] != V9X_GUARD_VALUE) {
+            ++guard_bad;
+        }
+    }
+    v9x_decimal(text, bad);
+    v9x_text("Result", "DrawMismatches", text);
+    v9x_decimal(text, guard_bad);
+    v9x_text("Result", "GuardMismatches", text);
+    v9x_text("Result", "Draw", bad == 0ul && guard_bad == 0ul ? "PASS" :
+             "FAIL");
+    v9x_key("Result", "Pixel0", got[0]);
+    v9x_key("Result", "PixelLast", got[pixel_dwords - 1ul]);
+    v9x_key("Result", "PixelAfter", got[pixel_dwords]);
 }
 
 /* The hex value after a switch such as "/cbmode:", or fallback when the
@@ -1699,6 +1788,27 @@ void __stdcall V9xEvergreen3dEntry(void)
     if (v9x_switch_given("/modulate")) {
         v9x_mode = V9X_MODE_MODULATE;
     }
+    if (v9x_switch_given("/d3dtex")) {
+        v9x_mode = V9X_MODE_D3D_TEX;
+    }
+    if (v9x_switch_given("/d3dpersp")) {
+        v9x_mode = V9X_MODE_D3D_PERSP;
+    }
+    if (v9x_switch_given("/d3dcolour")) {
+        v9x_mode = V9X_MODE_D3D_COLOUR;
+    }
+    if (v9x_switch_given("/d3dz")) {
+        v9x_mode = V9X_MODE_D3D_Z;
+    }
+    if (v9x_switch_given("/d3d565")) {
+        v9x_mode = V9X_MODE_D3D_565;
+    }
+    if (v9x_switch_given("/centre0")) {
+        v9x_centre_half = 0ul;
+    }
+    v9x_key("Run", "CentreHalf", v9x_centre_half);
+    v9x_vte_override = v9x_switch_hex("/vte:", 0xfffffffful);
+    v9x_key("Run", "VteOverride", v9x_vte_override);
     v9x_cb_mode = v9x_switch_hex("/cbmode:", v9x_array_mode);
     v9x_tex_mode = v9x_switch_hex("/texmode:", v9x_array_mode);
     v9x_scissor_right = v9x_switch_hex("/scissor:", V9X_DRAW_WIDTH);
@@ -1756,8 +1866,12 @@ void __stdcall V9xEvergreen3dEntry(void)
              r[v9x_at_test_value] == V9X_SCRATCH_TEST ? "PASS" : "FAIL");
     v9x_text("Result", "DrawFence",
              r[v9x_at_wait_draw] != V9X_EGCP_TIMEOUT ? "PASS" : "FAIL");
-    if (v9x_mode == V9X_MODE_BLIT) {
+    if (v9x_mode == V9X_MODE_BLIT || v9x_mode == V9X_MODE_D3D_TEX) {
         v9x_verify();
+    } else if (v9x_mode == V9X_MODE_D3D_PERSP) {
+        v9x_verify_persp();
+    } else if (v9x_mode == V9X_MODE_D3D_565) {
+        v9x_verify_565();
     } else {
         v9x_verify_colour();
     }

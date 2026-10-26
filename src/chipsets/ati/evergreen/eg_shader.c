@@ -80,23 +80,37 @@ v9x_u32 v9x_eg_cf_export(v9x_u32 type, v9x_u32 array_base, v9x_u32 gpr,
 
 /* A fetch's MEGA_FETCH_COUNT is its byte count less one; the first fetch
  * of a vertex also sets MEGA_FETCH and counts the whole stride, as Linux's
- * blit does. */
-static v9x_u32 v9x_eg_vtx(v9x_u32 dst_gpr, v9x_u32 offset,
-                          v9x_u32 count_bytes, v9x_u32 mega,
-                          v9x_u32 data_format, v9x_u32 sel_x, v9x_u32 sel_y,
-                          v9x_u32 sel_z, v9x_u32 sel_w, v9x_u32 *out)
+ * blit does. A float fetch keeps the blit's scaled, signed form; a
+ * normalised one (a D3DCOLOR's bytes to 0..1) is NUM_FORMAT_ALL 0 and
+ * unsigned. */
+static v9x_u32 v9x_eg_vtx_form(v9x_u32 dst_gpr, v9x_u32 offset,
+                               v9x_u32 count_bytes, v9x_u32 mega,
+                               v9x_u32 data_format, v9x_u32 normalised,
+                               v9x_u32 sel_x, v9x_u32 sel_y, v9x_u32 sel_z,
+                               v9x_u32 sel_w, v9x_u32 *out)
 {
     out[0] = V9X_EG_VTX_FETCH |
              ((count_bytes - 1ul) << EG_VTX_MEGA_COUNT_SHIFT);
     out[1] = dst_gpr | (sel_x << EG_VTX_SEL_X_SHIFT) |
              (sel_y << EG_VTX_SEL_Y_SHIFT) | (sel_z << EG_VTX_SEL_Z_SHIFT) |
              (sel_w << EG_VTX_SEL_W_SHIFT) |
-             (data_format << EG_VTX_FORMAT_SHIFT) |
-             (EG_VTX_NUM_FORMAT_SCALED << EG_VTX_NUM_FORMAT_SHIFT) |
-             EG_VTX_FORMAT_COMP_SIGNED;
+             (data_format << EG_VTX_FORMAT_SHIFT);
+    if (normalised == 0ul) {
+        out[1] |= (EG_VTX_NUM_FORMAT_SCALED << EG_VTX_NUM_FORMAT_SHIFT) |
+                  EG_VTX_FORMAT_COMP_SIGNED;
+    }
     out[2] = offset | (mega != 0ul ? EG_VTX_MEGA_FETCH : 0ul);
     out[3] = 0ul;
     return 4ul;
+}
+
+static v9x_u32 v9x_eg_vtx(v9x_u32 dst_gpr, v9x_u32 offset,
+                          v9x_u32 count_bytes, v9x_u32 mega,
+                          v9x_u32 data_format, v9x_u32 sel_x, v9x_u32 sel_y,
+                          v9x_u32 sel_z, v9x_u32 sel_w, v9x_u32 *out)
+{
+    return v9x_eg_vtx_form(dst_gpr, offset, count_bytes, mega, data_format,
+                           0ul, sel_x, sel_y, sel_z, sel_w, out);
 }
 
 v9x_u32 v9x_eg_vtx_fetch(v9x_u32 dst_gpr, v9x_u32 offset,
@@ -155,6 +169,20 @@ v9x_u32 v9x_eg_tex_sample(v9x_u32 src_gpr, v9x_u32 dst_gpr, v9x_u32 *out)
              (V9X_EG_SEL_1 << EG_TEX_SRC_SEL_W_SHIFT);
     out[3] = 0ul;
     return 4ul;
+}
+
+/* COORD_TYPE_X and _Y (TEX_WORD1 bits 28 and 29, eg_sq.h): 1 takes the
+ * coordinate as normalised, 0 to 1 across the texture, as Direct3D's are;
+ * the blit's are texels. */
+#define EG_TEX_COORD_NORMALISED_XY 0x30000000ul
+
+v9x_u32 v9x_eg_tex_sample_normalised(v9x_u32 src_gpr, v9x_u32 dst_gpr,
+                                     v9x_u32 *out)
+{
+    v9x_u32 count = v9x_eg_tex_sample(src_gpr, dst_gpr, out);
+
+    out[1] |= EG_TEX_COORD_NORMALISED_XY;
+    return count;
 }
 
 /* Pads to a 16-byte boundary: fetch clauses start on one. */
@@ -314,5 +342,85 @@ v9x_u32 v9x_eg_shader_modulate_ps(v9x_u32 *out)
                              slot, slot == 3ul, out + at);
     }
     at += v9x_eg_tex_sample(1ul, 1ul, out + at);
+    return at;
+}
+
+/*
+ * The Direct3D VS: the render core's TL vertex as it is (r3d.h,
+ * V9X_R3D_VERTEX, 32 bytes): sx, sy, sz and rhw as four floats into R1,
+ * exported as the position (PA_CL_VTE_CNTL then takes x, y and z as
+ * already divided and w as 1/w); the D3DCOLOR at 16 as four normalised
+ * bytes into R0, in memory order - B, G, R, A - which the colour buffer's
+ * SWAP_STD writes back in the same order; textured, tu and tv at 24 into
+ * R2, z and w filled 0 and 1. The specular dword at 20 is not fetched.
+ */
+#define EG_D3D_COLOUR_OFFSET 16ul
+#define EG_D3D_UV_OFFSET     24ul
+
+v9x_u32 v9x_eg_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out)
+{
+    v9x_u32 at = 0ul;
+
+    at += v9x_eg_cf_clause(V9X_EG_CF_VC, EG_VS_FETCH_DWORD / 2ul,
+                           textured != 0ul ? 3ul : 2ul, out + at);
+    at += v9x_eg_cf_export(V9X_EG_EXPORT_POS, V9X_EG_EXPORT_POS0, 1ul, 1ul,
+                           0ul, 1ul, out + at);
+    at += v9x_eg_cf_export(V9X_EG_EXPORT_PARAM, 0ul, 0ul, textured == 0ul,
+                           textured == 0ul, 0ul, out + at);
+    if (textured != 0ul) {
+        at += v9x_eg_cf_export(V9X_EG_EXPORT_PARAM, 1ul, 2ul, 1ul, 1ul, 0ul,
+                               out + at);
+    }
+    while (at < EG_VS_FETCH_DWORD) {
+        out[at++] = 0ul;
+    }
+    at += v9x_eg_vtx(1ul, 0ul, V9X_EG_D3D_STRIDE, 1ul,
+                     V9X_EG_FMT_32_32_32_32_FLOAT, V9X_EG_SEL_X,
+                     V9X_EG_SEL_Y, V9X_EG_SEL_Z, V9X_EG_SEL_W, out + at);
+    at += v9x_eg_vtx_form(0ul, EG_D3D_COLOUR_OFFSET, 4ul, 0ul,
+                          V9X_EG_FMT_8_8_8_8, 1ul, V9X_EG_SEL_X,
+                          V9X_EG_SEL_Y, V9X_EG_SEL_Z, V9X_EG_SEL_W, out + at);
+    if (textured != 0ul) {
+        at += v9x_eg_vtx(2ul, EG_D3D_UV_OFFSET, 8ul, 0ul,
+                         V9X_EG_FMT_32_32_FLOAT, V9X_EG_SEL_X, V9X_EG_SEL_Y,
+                         V9X_EG_SEL_0, V9X_EG_SEL_1, out + at);
+    }
+    return at;
+}
+
+/*
+ * The Direct3D PS for one texture op: NONE exports the interpolated
+ * colour (the Gouraud PS); REPLACE samples at the interpolated, normalised
+ * coordinate and exports the texel; MODULATE is the modulate PS with
+ * normalised coordinates, colour times texel in all four channels.
+ */
+#define EG_D3D_REPLACE_TEX_DWORD 16ul
+
+v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 slot;
+
+    if (op == V9X_EG_D3D_OP_MODULATE) {
+        at = v9x_eg_shader_modulate_ps(out);
+        out[EG_MOD_TEX_DWORD + 1ul] |= EG_TEX_COORD_NORMALISED_XY;
+        return at;
+    }
+    if (op != V9X_EG_D3D_OP_REPLACE) {
+        return v9x_eg_shader_gouraud_ps(out);
+    }
+    at += v9x_eg_cf_alu(EG_VS_FETCH_DWORD / 2ul, 4ul, out + at);
+    at += v9x_eg_cf_clause(V9X_EG_CF_TC, EG_D3D_REPLACE_TEX_DWORD / 2ul, 1ul,
+                           out + at);
+    at += v9x_eg_cf_export(V9X_EG_EXPORT_PIXEL, 0ul, 0ul, 1ul, 1ul, 1ul,
+                           out + at);
+    while (at < EG_VS_FETCH_DWORD) {
+        out[at++] = 0ul;
+    }
+    for (slot = 0ul; slot < 4ul; ++slot) {
+        at += v9x_eg_alu_interp(V9X_EG_ALU_INTERP_XY, slot, 1ul, 1ul,
+                                slot < 2ul, slot == 3ul, out + at);
+    }
+    at += v9x_eg_tex_sample_normalised(1ul, 0ul, out + at);
     return at;
 }

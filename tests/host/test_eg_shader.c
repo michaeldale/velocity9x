@@ -196,6 +196,71 @@ static void test_modulate_ps(void)
     CHECK((shader[41] & 0x7ful) == 1ul);
 }
 
+static void test_d3d(void)
+{
+    v9x_u32 other[V9X_EG_SHADER_DWORDS_MAX];
+    v9x_u32 count;
+    v9x_u32 index;
+
+    /* Untextured VS: VC of two, POS0 from R1, PARAM0 from R0 done and the
+     * end of the program, then the fetches at dword 8. */
+    reset();
+    count = v9x_eg_shader_d3d_vs(0ul, shader);
+    CHECK(count == 16ul);
+    CHECK(shader[1] == 0x80800400ul && shader[3] == 0x95000688ul);
+    CHECK(shader[5] == 0x15200688ul && shader[6] == 0ul && shader[7] == 0ul);
+    /* Position: the whole 32-byte vertex, four floats. */
+    CHECK((shader[8] >> 26) == 31ul && shader[10] == 0x00080000ul);
+    /* Colour: 4 bytes at 16, FMT_8_8_8_8, normalised (NUM_FORMAT_ALL 0)
+     * and unsigned, selects XYZW, into R0. */
+    CHECK((shader[12] >> 26) == 3ul && shader[14] == 16ul);
+    CHECK(shader[13] == (0ul | (0x688ul << 9) | (0x1aul << 22)));
+
+    /* Textured VS: three fetches, PARAM0 an EXPORT, PARAM1 from R2. */
+    reset();
+    count = v9x_eg_shader_d3d_vs(1ul, shader);
+    CHECK(count == 20ul);
+    CHECK(shader[1] == 0x80800800ul);
+    CHECK(shader[5] == 0x14c00688ul && shader[6] == 0x00014001ul &&
+          shader[7] == 0x15200688ul);
+    CHECK((shader[16] >> 26) == 7ul && shader[18] == 24ul &&
+          (shader[17] & 0x7ful) == 2ul);
+
+    /* NONE is the Gouraud PS; MODULATE the modulate PS with normalised
+     * coordinates and nothing else changed. */
+    reset();
+    count = v9x_eg_shader_d3d_ps(V9X_EG_D3D_OP_NONE, shader);
+    v9x_eg_shader_gouraud_ps(other);
+    CHECK(count == 20ul);
+    for (index = 0ul; index < count; ++index) {
+        CHECK(shader[index] == other[index]);
+    }
+    reset();
+    count = v9x_eg_shader_d3d_ps(V9X_EG_D3D_OP_MODULATE, shader);
+    v9x_eg_shader_modulate_ps(other);
+    CHECK(count == 44ul);
+    for (index = 0ul; index < count; ++index) {
+        CHECK(shader[index] ==
+              (index == 41ul ? other[index] | 0x30000000ul : other[index]));
+    }
+
+    /* REPLACE: ALU (4 slots at dword 8), TC at 16, export R0; the
+     * coordinate from PARAM1 into R1.xy, sampled normalised into R0. */
+    reset();
+    count = v9x_eg_shader_d3d_ps(V9X_EG_D3D_OP_REPLACE, shader);
+    CHECK(count == 20ul);
+    CHECK(shader[0] == 4ul &&
+          shader[1] == (0x80000000ul | (8ul << 26) | (3ul << 18)));
+    CHECK(shader[2] == 8ul && shader[3] == 0x80400000ul);
+    CHECK(shader[4] == 0ul && shader[5] == 0x95200688ul);
+    CHECK(shader[6] == 0ul && shader[7] == 0ul);
+    CHECK(((shader[8] >> 13) & 0x1fful) == V9X_EG_ALU_SRC_PARAM + 1ul);
+    CHECK(((shader[9] >> 21) & 0x7ful) == 1ul);
+    CHECK(shader[16] == (V9X_EG_TEX_SAMPLE | (1ul << 16)));
+    CHECK((shader[17] & 0x7ful) == 0ul &&
+          (shader[17] & 0x30000000ul) == 0x30000000ul);
+}
+
 unsigned int v9x_run_eg_shader_tests(void)
 {
     failures = 0u;
@@ -204,5 +269,6 @@ unsigned int v9x_run_eg_shader_tests(void)
     test_gouraud_ps();
     test_modulate_vs();
     test_modulate_ps();
+    test_d3d();
     return failures;
 }

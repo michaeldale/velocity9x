@@ -39,6 +39,7 @@
 /* Fetches. */
 #define V9X_EG_VTX_FETCH        0x00ul
 #define V9X_EG_TEX_SAMPLE       0x10ul
+#define V9X_EG_FMT_8_8_8_8      0x1aul
 #define V9X_EG_FMT_32_32_FLOAT  0x1eul
 #define V9X_EG_FMT_32_32_32_32_FLOAT 0x23ul
 
@@ -79,6 +80,9 @@ v9x_u32 v9x_eg_alu_op2(v9x_u32 alu_inst, v9x_u32 src0_gpr,
 /* SAMPLE from resource and sampler 0 at unnormalised R(src).xy into
  * R(dst).xyzw. */
 v9x_u32 v9x_eg_tex_sample(v9x_u32 src_gpr, v9x_u32 dst_gpr, v9x_u32 *out);
+/* The same at a normalised R(src).xy, 0 to 1 across the texture. */
+v9x_u32 v9x_eg_tex_sample_normalised(v9x_u32 src_gpr, v9x_u32 dst_gpr,
+                                     v9x_u32 *out);
 
 /* The shaders. Each writes up to V9X_EG_SHADER_DWORDS_MAX dwords and
  * returns the count. */
@@ -104,5 +108,15 @@ v9x_u32 v9x_eg_shader_gouraud_ps(v9x_u32 *out);
 #define V9X_EG_MODULATE_STRIDE  40ul
 v9x_u32 v9x_eg_shader_modulate_vs(v9x_u32 *out);
 v9x_u32 v9x_eg_shader_modulate_ps(v9x_u32 *out);
+
+/* Direct3D: the VS fetches the render core's 32-byte TL vertex (position
+ * R1, colour R0 as normalised bytes in memory order, and textured, tu/tv
+ * R2), 3 GPRs textured and 2 not; the PS for one texture op takes 2. */
+#define V9X_EG_D3D_STRIDE       32ul
+#define V9X_EG_D3D_OP_NONE      0ul
+#define V9X_EG_D3D_OP_REPLACE   1ul
+#define V9X_EG_D3D_OP_MODULATE  2ul
+v9x_u32 v9x_eg_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out);
+v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
 
 #endif

@@ -96,7 +96,8 @@ $publishers = @(
     # V9XEG3D's shaders come from the host-tested encoder.
     @{ Source = 'evergreen_3d_win32.c'; Name = 'v9xeg3d'; Entry = '_V9xEvergreen3dEntry@0'
        Description = 'Velocity9x Evergreen first 3D draw probe'
-       Extra = @('src\chipsets\ati\evergreen\eg_shader.c') }
+       Extra = @('src\chipsets\ati\evergreen\eg_shader.c',
+                 'src\chipsets\ati\evergreen\eg_3d.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))
