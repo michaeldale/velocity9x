@@ -559,6 +559,8 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
          state->texture_width > EG_SCISSOR_MAX ||
          state->texture_height > EG_SCISSOR_MAX ||
          (state->texture_format != V9X_EG_COLOR_5_6_5 &&
+          state->texture_format != V9X_EG_COLOR_1_5_5_5 &&
+          state->texture_format != V9X_EG_COLOR_4_4_4_4 &&
           state->texture_format != V9X_EG_COLOR_8_8_8_8))) {
         return 0;
     }

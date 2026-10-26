@@ -122,6 +122,8 @@
 /* Colour buffer and texture formats (V_028C70_COLOR_*; the texture's
  * FMT_ numbers are the same). */
 #define V9X_EG_COLOR_5_6_5          0x08ul
+#define V9X_EG_COLOR_1_5_5_5        0x0aul
+#define V9X_EG_COLOR_4_4_4_4        0x0bul
 #define V9X_EG_COLOR_8_8_8_8        0x1aul
 
 /* Array modes. */
@@ -250,7 +252,8 @@ struct v9x_eg_3d_state {
     v9x_u32 texture_width;
     v9x_u32 texture_height;
     v9x_u32 texture_pitch;
-    v9x_u32 texture_format;      /* V9X_EG_COLOR_5_6_5 or _8_8_8_8 */
+    v9x_u32 texture_format;      /* V9X_EG_COLOR_5_6_5, _1_5_5_5, _4_4_4_4
+                                    or _8_8_8_8 */
     v9x_u32 sampler_word0;       /* v9x_eg_3d_sampler */
     v9x_u32 vertex_gpu;
     v9x_u32 vertex_stride;

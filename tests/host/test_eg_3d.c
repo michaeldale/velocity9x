@@ -390,9 +390,24 @@ static void test_state(void)
     CHECK(v9x_eg_3d_build_state(&state, &stream) ==
           V9X_STATUS_INVALID_ARGUMENT);
     fill_state(&state);
-    state.texture_format = 0x0aul;
+    state.texture_format = 0x05ul;
     CHECK(v9x_eg_3d_build_state(&state, &stream) ==
           V9X_STATUS_INVALID_ARGUMENT);
+    /* 1555 and 4444 are taken, with their format in word 7. */
+    fill_state(&state);
+    state.texture_format = V9X_EG_COLOR_1_5_5_5;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == 0xc0086d00ul && buffer[at + 1ul] == 0ul) {
+            break;
+        }
+    }
+    CHECK(at < stream.count && buffer[at + 9ul] == 0x8000000aul);
+    fill_state(&state);
+    state.texture_format = V9X_EG_COLOR_4_4_4_4;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
     /* Too small a buffer: overflow reported, not an overrun. */
     fill_state(&state);
     v9x_eg_pm4_begin(&stream, buffer, 40ul);

@@ -1,4 +1,4 @@
-# Direct3D through the HAL on the HD 5450: V9XD32 passes at 16 and 32 bpp, bar the 1555 texture
+# Direct3D through the HAL on the HD 5450: V9XD32 passes at 16 and 32 bpp
 
 Date: 2026-10-27
 
@@ -12,9 +12,10 @@ Item 5 of [the 3D plan](../plans/ati-evergreen-cedar-3d.md). The streams
 are the ones V9XEG3D ran first
 ([record](2026-10-27-cedar-d3d-streams.md)).
 
-## The result
+## The first result
 
-Boot 16, both depths, no engine timeouts:
+Boot 16, both depths, no engine timeouts (the final result, boot 19, is
+below):
 
 | Test | 16 bpp | 32 bpp |
 |---|---|---|
@@ -74,6 +75,27 @@ byte. `CB_TARGET_MASK` is now `7` (B, G, R) unless the state asks for
 alpha writes, as Gen3's alpha writes are off. The host test was written
 first and failed to build until the field existed.
 
+## Then: 1555 and 4444 textures, and T4 placed (boots 18 and 19)
+
+ARGB1555 and ARGB4444 are now offered and sampled as `FMT_1_5_5_5` and
+`FMT_4_4_4_4`, with no swizzle. T6, an 8x8 ARGB1555 texture of four
+colours, passed at both depths on boot 18, every quadrant exact: red
+`F800` / `FF0000`, green, blue and white. That settles the field order:
+the sampler's x is the low field, blue, as the shaders take it. 4444 has
+no test yet.
+
+The same boot broke T4, the 64x64 offscreen render target, at both
+depths: two `TARGET` refusals. Now that T6's texture was placed on 256
+bytes, DirectDraw's 8-byte placement put T4's target off the CB's 256-byte
+base alignment. Until then the alignment had held only by luck. The engine
+now places an offscreen render target itself, pitch to 8 pixels and
+256-aligned. It leaves a flip chain's back buffers to the heap, which puts
+them after the primary on whole screens.
+
+Boot 19, two runs at each depth: **V9XD32 `Result=PASS`** at 640x480x32
+and x16, T1 to T11 and T13 to T15 all passing, T12 skipped (one stage), no
+engine timeouts.
+
 ## Also in this step
 
 - The mini-VDD maps 4 MiB at BAR0 + 240 MiB. The DMA ring keeps the first
@@ -100,7 +122,8 @@ first and failed to build until the field existed.
 
 ## Not measured
 
-- ARGB1555 and ARGB4444 textures: not offered, so T6 fails.
+- ARGB4444 textures: offered, sampled the way 1555 measured, not drawn by
+  any test.
 - Mip chains (the sampler reads level 0), specular, fog and colour keys:
   not offered or refused.
 - Texel phase against Direct3D's convention (V9XDDP TexPhase); the PA is

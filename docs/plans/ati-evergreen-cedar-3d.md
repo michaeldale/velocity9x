@@ -21,11 +21,10 @@ depth-tested and texture-modulated draws, three runs of three each
 ([record](../decisions/2026-10-27-cedar-gouraud-depth-modulate.md)).
 Item 5 under way (2026-10-27): the HAL's own streams ran in V9XEG3D first
 ([record](../decisions/2026-10-27-cedar-d3d-streams.md)), then the HAL:
-`d3d_eg.c` through the CP passes V9XD32 at 16 and 32 bpp except T6, the
-ARGB1555 texture it does not offer yet
+`d3d_eg.c` through the CP passes V9XD32 at 16 and 32 bpp, two runs each
 ([record](../decisions/2026-10-27-cedar-d3d-hal-first-light.md)). Next:
-ARGB1555 and ARGB4444 textures, then V9XDDP's 3D checks (TexPhase among
-them), then 3DMark 2000. Parent plan:
+V9XDDP's 3D checks (TexPhase among them), then 3DMark 2000; mip chains,
+specular, fog and colour keys are not drawn yet. Parent plan:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md); 2D runs on the DMA
 engine ([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)).
 Michael asked for Direct3D next (2026-10-26).

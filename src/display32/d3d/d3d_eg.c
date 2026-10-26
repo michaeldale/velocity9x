@@ -90,6 +90,28 @@ static DWORD v9x_d3d_eg_format_of(const V9X_DD_SURFACE_LCL *surface,
         *has_alpha = 0ul;
         return V9X_EG_COLOR_5_6_5;
     }
+    /* ARGB1555 and ARGB4444, blue in the low bits like every format here:
+     * the sampler's x is the low field, which the shaders take as blue. */
+    if (format->dwRGBBitCount == 16ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+        format->dwRBitMask == 0x00007c00ul &&
+        format->dwGBitMask == 0x000003e0ul &&
+        format->dwBBitMask == 0x0000001ful &&
+        format->dwRGBAlphaBitMask == 0x00008000ul) {
+        *bytes_out = 2ul;
+        *has_alpha = 1ul;
+        return V9X_EG_COLOR_1_5_5_5;
+    }
+    if (format->dwRGBBitCount == 16ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+        format->dwRBitMask == 0x00000f00ul &&
+        format->dwGBitMask == 0x000000f0ul &&
+        format->dwBBitMask == 0x0000000ful &&
+        format->dwRGBAlphaBitMask == 0x0000f000ul) {
+        *bytes_out = 2ul;
+        *has_alpha = 1ul;
+        return V9X_EG_COLOR_4_4_4_4;
+    }
     if (format->dwRGBBitCount == 32ul &&
         (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
         format->dwRBitMask == 0x00ff0000ul &&
@@ -202,8 +224,8 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB8888. */
-    for (index = 0ul; index < 2ul; ++index) {
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888. */
+    for (index = 0ul; index < 4ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -211,23 +233,32 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
             V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
         shared->texture_formats[index].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
         pf->dwSize = sizeof(V9X_DDPIXELFORMAT);
+        pf->dwFlags = V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+        pf->dwRGBBitCount = 16ul;
     }
     shared->texture_formats[0].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
-    shared->texture_formats[0].ddpfPixelFormat.dwRGBBitCount = 16ul;
     shared->texture_formats[0].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
     shared->texture_formats[0].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
     shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
     shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwFlags =
-        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
-    shared->texture_formats[1].ddpfPixelFormat.dwRGBBitCount = 32ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
     shared->texture_formats[1].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x00008000ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x0000f000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 2ul;
+    shared->d3d_global.dwNumTextureFormats = 4ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }
@@ -425,10 +456,12 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
 }
 
 /*
- * Placement. A Z16 buffer gets its pitch rounded to 8 pixels and its rows
- * to 8, the DB's 1D tile, 256-aligned. A video-memory texture of a format
- * this engine samples gets each level in a block of its own, 256-aligned,
- * its pitch rounded to 8 texels, which the resource's PITCH field counts.
+ * Placement. An offscreen render target gets its pitch rounded to 8
+ * pixels, 256-aligned. A Z16 buffer gets its pitch rounded to 8 pixels
+ * and its rows to 8, the DB's 1D tile, 256-aligned. A video-memory
+ * texture of a format this engine samples gets each level in a block of
+ * its own, 256-aligned, its pitch rounded to 8 texels, which the
+ * resource's PITCH field counts.
  */
 static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
@@ -458,7 +491,28 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
 
-    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+    if ((surface->ddsCaps & V9X_DDSCAPS_3DDEVICE) != 0ul &&
+        (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
+                             V9X_DDSCAPS_FLIP)) == 0ul) {
+        /* An offscreen render target alone: its pitch whole 8-pixel
+         * tiles and its base on 256 bytes, which CB_COLOR0_PITCH and
+         * _BASE need and DirectDraw's 8-byte placement does not give.
+         * V9XD32's T4 target was refused for it once the textures before
+         * it were placed (boot 18). A flip chain's back buffers come with
+         * the primary, which this does not place; the heap puts them
+         * after it, on whole screens. */
+        if (data->dwSCnt != 1ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        bytes = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul ?
+                surface->lpGbl->ddpfSurface.dwRGBBitCount / 8ul :
+                v9x_hal->info.vmiData.ddpfDisplay.dwRGBBitCount / 8ul;
+        if (bytes != 2ul && bytes != 4ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        pitches[0] = ((width + 7ul) & ~7ul) * bytes;
+        rows[0] = height;
+    } else if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (data->dwSCnt != 1ul ||
             v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
