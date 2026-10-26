@@ -19,6 +19,7 @@
 - [Final Reality 1.01 hardware Direct3D](final-reality-101-hardware.md) - Historical.
 - [GDI acceleration, build 000: a provably free decline path and the harness that can judge it](gdi-accel-000-and-harness.md) - Shipped in 0.5.0.
 - [Conservative GDI acceleration (PLAN.md Phase 5)](gdi-acceleration.md) - In progress.
+- [Hardware T&L on Haswell, for OpenGL and Direct3D](hardware-tnl.md) - Proposed 2026-10-26; desk plan only. A VS kernel per fixed-function state key on the HD 4600: the ICD through render interface v7 first (GL lighting for the first time), then DDI 7 and a Direct3D T&L device; CPU/second-core back end, Ivy Bridge and Gen4/5 parked.
 - [Hellbender hardware Direct3D compatibility plan](hellbender-hardware-d3d.md) - Historical.
 - [Hellbender pre-ContextCreate wedge: diagnosis plan](hellbender-pre-context-wedge.md) - Historical.
 - [Velocity9x: 24/32-bit colour + dynamic mode discovery (widescreen included)](high-depth-dynamic-modes.md) - Shipped in 0.6.0.
