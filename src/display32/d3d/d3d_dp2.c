@@ -512,11 +512,16 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             break;
 
         case V9X_DP2OP_VIEWPORTINFO:
-            /* The runtime clips to the viewport for a driver that reports
-             * no guard band, so the rectangle is consumed and not used. */
+            /* The runtime clips to the viewport for pre-transformed
+             * vertices, so only a T&L device reads the rectangle: a dx7
+             * sink is shown it (hardware T&L step 6), and it is consumed
+             * whatever the sink answers. */
             need = count * 16ul;
             if (need > left) {
                 goto malformed;
+            }
+            if (sink->dx7 != 0) {
+                (void)sink->dx7(sink->user, op, count, data, need);
             }
             break;
 
@@ -525,6 +530,9 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             need = count * 8ul;
             if (need > left) {
                 goto malformed;
+            }
+            if (op == V9X_DP2OP_ZRANGE && sink->dx7 != 0) {
+                (void)sink->dx7(sink->user, op, count, data, need);
             }
             break;
 

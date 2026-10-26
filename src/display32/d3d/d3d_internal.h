@@ -237,6 +237,10 @@ typedef struct v9x_d3d_context {
      * ContextCreate named (d3d_handles.h). */
     DWORD ddi7;
     void *dd_local;
+    /* Hardware T&L step 6: the T&L device's state and batch
+     * (d3d_core.c's V9X_D3D_TNL_BLOCK), in the creating process's memory,
+     * for a DDI 7 context on an engine that runs T&L; null otherwise. */
+    void *tnl;
 } V9X_D3D_CONTEXT;
 
 /*

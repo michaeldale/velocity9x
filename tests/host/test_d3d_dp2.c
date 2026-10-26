@@ -674,6 +674,27 @@ unsigned int v9x_run_d3d_dp2_tests(void)
               r.stop_offset == transform_at &&
               r.stop_op == V9X_DP2OP_SETTRANSFORM);
 
+        /* Hardware T&L step 6: VIEWPORTINFO and ZRANGE reach a dx7 sink
+         * too, and are consumed whatever it answers; without one they are
+         * consumed unseen, as before. */
+        used = 0ul;
+        command(V9X_DP2OP_VIEWPORTINFO, 1ul);
+        put32(1ul); put32(2ul); put32(300ul); put32(200ul);
+        command(V9X_DP2OP_ZRANGE, 1ul);
+        put32(0ul); put32(0x3f800000ul);
+        s.command_bytes = used;
+        dx7_calls = 0ul;
+        k.dx7 = on_dx7;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_OK && r.records == 2ul &&
+              dx7_calls == 2ul && dx7_ops[0] == V9X_DP2OP_VIEWPORTINFO &&
+              dx7_ops[1] == V9X_DP2OP_ZRANGE && dx7_lengths[0] == 16ul &&
+              dx7_lengths[1] == 8ul);
+        k.dx7 = 0;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_OK && r.records == 2ul);
+        k.dx7 = on_dx7;
+
         /* The light's data cut to 50 bytes. */
         used = 0ul;
         command(V9X_DP2OP_SETLIGHT, 1ul);

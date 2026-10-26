@@ -720,6 +720,18 @@ typedef struct v9x_ddhalinfo {
  * comes with GUID_Miscellaneous2Callbacks' three entry points.
  */
 #define V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX  0x00008000ul
+/*
+ * Hardware T&L step 6 (dc:486, dc:495-505): the T&L device, which requires
+ * DRAWPRIMITIVES2EX, and the D3DVTXPCAPS this driver claims - everything
+ * but TEXGEN - with eight active lights.
+ */
+#define V9X_D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000ul
+#define V9X_D3DVTXPCAPS_MATERIALSOURCE7    0x00000002ul
+#define V9X_D3DVTXPCAPS_VERTEXFOG          0x00000004ul
+#define V9X_D3DVTXPCAPS_DIRECTIONALLIGHTS  0x00000008ul
+#define V9X_D3DVTXPCAPS_POSITIONALLIGHTS   0x00000010ul
+#define V9X_D3DVTXPCAPS_LOCALVIEWER        0x00000020ul
+#define V9X_D3D_TNL_MAX_ACTIVE_LIGHTS      8ul
 /* ddrawi.h (di:857-859): DDHAL_DDMISCELLANEOUS2CALLBACKS.dwFlags. */
 #define V9X_DDHAL_MISC2CB32_CREATESURFACEEX 0x00000002ul
 #define V9X_DDHAL_MISC2CB32_GETDRIVERSTATE  0x00000004ul

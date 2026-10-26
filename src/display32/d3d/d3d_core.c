@@ -36,6 +36,7 @@
 #include "d3d_dp2.h"
 #include "d3d_dp2_ring.h"
 #include "d3d_handles.h"
+#include "d3d_tnl.h"
 #include "velocity9x/diag_identity.h"
 
 
@@ -206,6 +207,17 @@ static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
 #define V9X_D3D_DDI5 0
 #define V9X_D3D_DDI6 1
 #define V9X_D3D_DDI7 2
+
+/*
+ * Whether a DDI 7 process is told about the T&L device (hardware T&L
+ * step 6). Not yet: the device draws correctly (V9XD32 T18 on the 4570,
+ * boot 99) but is slower than the runtime transforming on the CPU -
+ * 3DMark 2000 1558 against 2322, 3DMark 2001 SE 722 against 1120 - so
+ * programs keep the HAL device. The code behind it stays built and
+ * host-tested; setting this to 1 offers the device again.
+ * docs/decisions/2026-10-27-haswell-tnl-step6-d3d-device.md.
+ */
+#define V9X_D3D_TNL_DEVICE_OFFERED 0
 
 static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
                              DWORD d);
@@ -2027,6 +2039,62 @@ static int v9x_d3d_set_target_raw(V9X_D3D_CONTEXT *context,
     return 1;
 }
 
+/*
+ * The T&L device's per-context block (hardware T&L step 6): the state the
+ * DX7 records and render states set (d3d_tnl.h), and the batch of
+ * untransformed vertices being gathered for the engine's draw_tnl - each
+ * vertex once, with its normal and stage 1's pair, then the triangles'
+ * indices. In the creating process's own memory, as the handle tables are
+ * (VirtualAlloc): this DLL's data is shared by every process, and about
+ * 34 KB a context would be in its file otherwise.
+ *
+ * 400 vertices and 1,200 indices: with stage 1's pairs that is 16,000
+ * and 2,400 bytes, inside the 18,432 the Haswell slot's vertex area keeps
+ * for an indexed T&L draw (d3d_hsw.c), and 4,800 bytes of normals inside
+ * its 6,144.
+ */
+#define V9X_D3D_TNL_BATCH_VERTICES 400ul
+#define V9X_D3D_TNL_BATCH_INDICES  1200ul
+#define V9X_D3D_TNL_CACHE          64ul
+
+typedef struct v9x_d3d_tnl_block {
+    V9X_D3D_TNL_STATE state;
+    /* The batch's vertex format, and whether it carries stage 1. */
+    V9X_D3D_TNL_LAYOUT layout;
+    int two;
+    const V9X_D3D_ENGINE_OPS *ops;
+    V9X_R3D_TNL_KEY key;
+    V9X_R3D_TNL_CONSTANTS constants;
+    DWORD vertex_count;
+    DWORD index_count;
+    V9X_R3D_VERTEX vertices[V9X_D3D_TNL_BATCH_VERTICES];
+    float normals[V9X_D3D_TNL_BATCH_VERTICES * 3ul];
+    float uv1[V9X_D3D_TNL_BATCH_VERTICES * 2ul];
+    v9x_u16 indices[V9X_D3D_TNL_BATCH_INDICES];
+    /* The pool vertices already in the batch, by address: a strip or an
+     * indexed list names each several times, and is converted once. */
+    const v9x_u8 *cache_source[V9X_D3D_TNL_CACHE];
+    v9x_u16 cache_index[V9X_D3D_TNL_CACHE];
+    /* For the context's summary line (V9XD7.LOG): batches and triangles
+     * drawn, batches the engine declined, primitives the T&L path does not
+     * draw (points and lines). */
+    DWORD batches;
+    DWORD triangles;
+    DWORD declined;
+    DWORD undrawn;
+} V9X_D3D_TNL_BLOCK;
+
+static V9X_D3D_TNL_BLOCK *v9x_d3d_tnl_block_new(void)
+{
+    V9X_D3D_TNL_BLOCK *block = (V9X_D3D_TNL_BLOCK *)VirtualAlloc(
+        0, sizeof(V9X_D3D_TNL_BLOCK), MEM_COMMIT, PAGE_READWRITE);
+
+    if (block != 0) {
+        v9x_d3d_tnl_init(&block->state);
+    }
+    return block;
+}
+
 DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
@@ -2074,6 +2142,15 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             }
             context->ddi7 = ddi7 ? 1ul : 0ul;
             context->dd_local = ddi7 ? data->lpDDGbl : 0;
+            /* The T&L device: DDI 7 on an engine that draws T&L. Made
+             * fresh, so a slot another process left holds nothing of its
+             * memory. Without it the context draws pre-transformed
+             * vertices only, as at DDI 6. */
+            context->tnl = 0;
+            if (ddi7 && targeted && ops->draw_tnl != 0 &&
+                ops->tnl_available != 0 && ops->tnl_available()) {
+                context->tnl = v9x_d3d_tnl_block_new();
+            }
             if (!targeted) {
                 data->ddrval = 0x80070057ul;
                 ++v9x_hal->d3d_diagnostics.context_rejects;
@@ -2210,6 +2287,19 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
      * (docs\issues\2026-09-10-a-target-switch-loses-every-texture.md).
      */
     v9x_d3d_textures_destroy_context(data->dwhContext);
+    /* The T&L block's summary, then the block, but only in the process
+     * that made it: from another (DDHELP cleaning up after a dead
+     * process) the address names nothing, and the block went with the
+     * process. */
+    if (context->tnl != 0 && context->pid == GetCurrentProcessId()) {
+        V9X_D3D_TNL_BLOCK *block = (V9X_D3D_TNL_BLOCK *)context->tnl;
+
+        v9x_d3d_ddi7_log("tnl-summary", block->batches, block->triangles,
+                         block->declined,
+                         block->undrawn | (block->state.ignored << 16));
+        (void)VirtualFree(block, 0ul, MEM_RELEASE);
+    }
+    context->tnl = 0;
     context->active = 0ul;
     context->pid = 0ul;
     context->ddi7 = 0ul;
@@ -2291,6 +2381,9 @@ DWORD __stdcall V9xD3dContextDestroyAll(
                 (DWORD)&v9x_d3d_contexts[index]);
             v9x_d3d_contexts[index].active = 0ul;
             v9x_d3d_contexts[index].pid = 0ul;
+            /* Its T&L block was in the dead process's memory, gone with
+             * it; not freed from here, which may be another process. */
+            v9x_d3d_contexts[index].tnl = 0;
             v9x_d3d_contexts[index].target = 0;
             v9x_d3d_contexts[index].zbuffer = 0;
             v9x_d3d_contexts[index].target_offset = 0ul;
@@ -4154,13 +4247,21 @@ static void v9x_d3d_apply_ddi_level(int ddi6)
         return;
     }
     /* DDI 7 adds DRAWPRIMITIVES2EX to DDI 6, and goes with the
-     * Miscellaneous2 callbacks (V9xHalGetDriverInfo). */
+     * Miscellaneous2 callbacks (V9xHalGetDriverInfo). It is offered only
+     * on an engine that runs T&L (v9x_d3d_dp2_for_process), so it can
+     * carry the T&L device too (hardware T&L step 6) - once that device
+     * beats the runtime's own transform (V9X_D3D_TNL_DEVICE_OFFERED). */
     if (ddi6 == V9X_D3D_DDI7) {
         v9x_hal->d3d_global.hwCaps.dwDevCaps |=
             V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX;
+#if V9X_D3D_TNL_DEVICE_OFFERED
+        v9x_hal->d3d_global.hwCaps.dwDevCaps |=
+            V9X_D3DDEVCAPS_HWTRANSFORMANDLIGHT;
+#endif
     } else {
         v9x_hal->d3d_global.hwCaps.dwDevCaps &=
-            ~V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX;
+            ~(V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX |
+              V9X_D3DDEVCAPS_HWTRANSFORMANDLIGHT);
     }
     lines = &v9x_hal->d3d_global.hwCaps.dpcLineCaps;
     if (ddi6) {
@@ -4203,7 +4304,16 @@ typedef struct v9x_d3d_dp2_user {
     int two_stages;
     /* The engine the call draws on. */
     const V9X_D3D_ENGINE_OPS *ops;
+    /* Hardware T&L step 6: the call's untransformed vertex format, when
+     * its vertices are object-space and the context has a T&L block; null
+     * for pre-transformed vertices. */
+    const V9X_D3D_TNL_LAYOUT *tnl_layout;
 } V9X_D3D_DP2_USER;
+
+/* The T&L batch (V9X_D3D_TNL_BLOCK, below): whether a context's holds
+ * triangles, and its draw, which v9x_d3d_dp2_draw_run calls. */
+static int v9x_d3d_tnl_pending(const V9X_D3D_CONTEXT *context);
+static void v9x_d3d_tnl_flush(V9X_D3D_CONTEXT *context);
 
 /* A DDI 7 texture handle as a texture record (the DDI 7 block below). */
 static DWORD v9x_d3d_ddi7_texture(V9X_D3D_CONTEXT *context, DWORD handle);
@@ -4222,7 +4332,9 @@ static DWORD v9x_d3d_ddi7_texture(V9X_D3D_CONTEXT *context, DWORD handle);
 static void v9x_d3d_dp2_note_state(V9X_D3D_DP2_USER *user, DWORD stage,
                                    DWORD state)
 {
-    if (user->run->pending == 0ul || v9x_d3d_dp2_snapshot_valid) {
+    if ((user->run->pending == 0ul &&
+         !v9x_d3d_tnl_pending(user->context)) ||
+        v9x_d3d_dp2_snapshot_valid) {
         return;
     }
     v9x_d3d_dp2_snapshot = *user->context;
@@ -4248,7 +4360,7 @@ static void v9x_d3d_dp2_settle(V9X_D3D_DP2_USER *user)
     if (!v9x_d3d_dp2_snapshot_valid) {
         return;
     }
-    if (user->run->pending != 0ul &&
+    if ((user->run->pending != 0ul || v9x_d3d_tnl_pending(user->context)) &&
         !v9x_d3d_context_same(&v9x_d3d_dp2_snapshot, user->context)) {
         v9x_d3d_dp2_draw_run();
         if (v9x_hal != 0) {
@@ -4265,6 +4377,19 @@ static void v9x_d3d_dp2_render_state(void *opaque, v9x_u32 state,
     DWORD applied = (DWORD)value;
 
     v9x_d3d_dp2_note_state(user, 0xfffffffful, (DWORD)state);
+    /* The T&L device's own states (lighting, material sources, vertex
+     * fog): a change draws the batch gathered under the old value first,
+     * since they are not in the context the snapshot compares. */
+    if (user->context->tnl != 0) {
+        V9X_D3D_TNL_STATE *tnl =
+            &((V9X_D3D_TNL_BLOCK *)user->context->tnl)->state;
+
+        if (v9x_d3d_tnl_render_state(tnl, state, value, 0) &&
+            v9x_d3d_tnl_pending(user->context)) {
+            v9x_d3d_dp2_draw_run();
+        }
+        (void)v9x_d3d_tnl_render_state(tnl, state, value, 1);
+    }
     /* At DDI 7 a DX5 program's TEXTUREHANDLE arrives as a CreateSurfaceEx
      * handle too (V9XD32's T6 drew white from handle 8, the 4570 boot
      * 91), and is turned into a texture record as TEXTUREMAP is. */
@@ -4527,6 +4652,150 @@ static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
     }
 }
 
+/* ---- The T&L device's batch (hardware T&L step 6) -------------------- */
+
+/*
+ * Whether a context's T&L batch holds triangles. The block is in the
+ * process that made the context, so another process cannot even look:
+ * DDHELP reaches v9x_d3d_dp2_draw_run through a DirectDraw call's flush
+ * and faulted reading V9XD32's block (the 4570, boots 101 and 102). A
+ * batch is drawn before each DrawPrimitives2 call returns, so none is
+ * left for another process to find.
+ */
+static int v9x_d3d_tnl_pending(const V9X_D3D_CONTEXT *context)
+{
+    return context != 0 && context->tnl != 0 &&
+           context->pid == GetCurrentProcessId() &&
+           ((const V9X_D3D_TNL_BLOCK *)context->tnl)->index_count != 0ul;
+}
+
+/*
+ * The batch to the engine's draw_tnl, under the context's state now: the
+ * caller draws it before any state it was gathered under changes. The key
+ * and constants are built here, once a batch. The viewport is
+ * VIEWPORTINFO's, or the whole target before one arrives; the cull is the
+ * context's, whose numbers are the core's (r3d_cull.h); Direct3D's flat
+ * shading takes the first vertex. A batch the engine declines has emitted
+ * nothing and is dropped, logged the first times (V9XD7.LOG): no CPU path
+ * transforms object-space vertices yet.
+ */
+static void v9x_d3d_tnl_flush(V9X_D3D_CONTEXT *context)
+{
+    V9X_D3D_TNL_BLOCK *block;
+    const V9X_D3D_ENGINE_OPS *ops;
+    V9X_R3D_DRAW draw;
+    V9X_R3D_TNL tnl;
+    DWORD index;
+    int result;
+
+    if (!v9x_d3d_tnl_pending(context)) {
+        return;
+    }
+    block = (V9X_D3D_TNL_BLOCK *)context->tnl;
+    ops = block->ops;
+    v9x_d3d_tnl_key(&block->state, &block->layout, &block->key,
+                    &block->constants);
+    v9x_d3d_describe_draw(ops, context, &draw);
+    if (block->two && v9x_d3d_describe_unit1(ops, context, &draw)) {
+        draw.texcoords1 = block->uv1;
+    } else {
+        draw.texcoords1 = 0;
+        draw.texture1.object = 0;
+    }
+    tnl.key = &block->key;
+    tnl.constants = &block->constants;
+    if (block->state.viewport_set != 0ul) {
+        tnl.viewport_x = (float)(long)block->state.viewport[0];
+        tnl.viewport_y = (float)(long)block->state.viewport[1];
+        tnl.viewport_width = (float)(long)block->state.viewport[2];
+        tnl.viewport_height = (float)(long)block->state.viewport[3];
+    } else {
+        tnl.viewport_x = 0.0f;
+        tnl.viewport_y = 0.0f;
+        tnl.viewport_width = (float)(long)context->width;
+        tnl.viewport_height = (float)(long)context->height;
+    }
+    tnl.depth_near = block->state.min_z;
+    tnl.depth_far = block->state.max_z;
+    tnl.cull = context->cull_mode;
+    tnl.provoking = 0ul;
+    tnl.indices = block->indices;
+    tnl.index_count = block->index_count;
+    tnl.vertex_count = block->vertex_count;
+    tnl.segments = 0;
+    tnl.segment_count = 0ul;
+    tnl.normals = (block->key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul
+                      ? block->normals : 0;
+    result = ops->draw_tnl(&draw, block->vertices, 1ul, &tnl);
+    if (result < 0) {
+        ++block->declined;
+        if (block->declined <= 8ul) {
+            v9x_d3d_ddi7_log("tnl-declined", block->key.flags,
+                             block->key.light_count, block->vertex_count,
+                             block->index_count);
+        }
+    } else {
+        ++block->batches;
+        block->triangles += block->index_count / 3ul;
+    }
+    block->vertex_count = 0ul;
+    block->index_count = 0ul;
+    for (index = 0ul; index < V9X_D3D_TNL_CACHE; ++index) {
+        block->cache_source[index] = 0;
+    }
+}
+
+/*
+ * One triangle of object-space vertices into the batch. A pending run of
+ * pre-transformed triangles is drawn first, so the stream's order is kept;
+ * a full batch is drawn and a new one begun. Each pool vertex the cache
+ * still holds is named again rather than converted again.
+ */
+static void v9x_d3d_tnl_triangle(V9X_D3D_DP2_USER *user, const v9x_u8 *a,
+                                 const v9x_u8 *b, const v9x_u8 *c)
+{
+    V9X_D3D_CONTEXT *context = user->context;
+    V9X_D3D_TNL_BLOCK *block = (V9X_D3D_TNL_BLOCK *)context->tnl;
+    const v9x_u8 *corner[3];
+    DWORD i;
+
+    v9x_d3d_dp2_settle(user);
+    if (user->run->pending != 0ul) {
+        v9x_d3d_dp2_draw_run();
+    }
+    if (block->index_count != 0ul &&
+        (block->vertex_count + 3ul > V9X_D3D_TNL_BATCH_VERTICES ||
+         block->index_count + 3ul > V9X_D3D_TNL_BATCH_INDICES)) {
+        v9x_d3d_tnl_flush(context);
+    }
+    if (block->index_count == 0ul) {
+        block->layout = *user->tnl_layout;
+        block->two = v9x_d3d_dp2_two(user);
+        block->ops = user->ops;
+    }
+    corner[0] = a;
+    corner[1] = b;
+    corner[2] = c;
+    for (i = 0ul; i < 3ul; ++i) {
+        DWORD slot = ((DWORD)corner[i] >> 2) % V9X_D3D_TNL_CACHE;
+        DWORD index;
+
+        if (block->cache_source[slot] == corner[i]) {
+            index = block->cache_index[slot];
+        } else {
+            index = block->vertex_count++;
+            v9x_d3d_tnl_vertex(&block->layout, context->stage_texcoord,
+                               context->stage1_texcoord, corner[i],
+                               (v9x_u8 *)&block->vertices[index],
+                               &block->normals[index * 3ul],
+                               block->two ? &block->uv1[index * 2ul] : 0);
+            block->cache_source[slot] = corner[i];
+            block->cache_index[slot] = (v9x_u16)index;
+        }
+        block->indices[block->index_count++] = (v9x_u16)index;
+    }
+}
+
 /* Converted triangles go to the run this many at a time. */
 #define V9X_D3D_DP2_CONVERT 16ul
 
@@ -4552,6 +4821,15 @@ static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
     float pairs[V9X_D3D_DP2_CONVERT * 3ul * 2ul];
     int two;
 
+    if (user->tnl_layout != 0) {
+        v9x_u32 stride = user->tnl_layout->stride;
+
+        for (; triangles != 0ul; --triangles, first += 3ul * stride) {
+            v9x_d3d_tnl_triangle(user, first, first + stride,
+                                 first + 2ul * stride);
+        }
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     if (user->fvf == 0 && !two) {
@@ -4586,6 +4864,15 @@ static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
     v9x_u32 done;
     int two;
 
+    if (user->tnl_layout != 0) {
+        v9x_u32 stride = user->tnl_layout->stride;
+
+        for (done = 1ul; done + 1ul < vertices; ++done) {
+            v9x_d3d_tnl_triangle(user, first, first + done * stride,
+                                 first + (done + 1ul) * stride);
+        }
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     if (user->fvf == 0 && !two) {
@@ -4637,6 +4924,10 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
     float pairs[6];
     int two;
 
+    if (user->tnl_layout != 0) {
+        v9x_d3d_tnl_triangle(user, a, b, c);
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, a, &triangle[0]);
@@ -4681,7 +4972,10 @@ static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
     DWORD index;
 
     (void)base;
-    if (first == 0 || ops == 0 || ops->draw_indexed == 0 || ops->draw == 0) {
+    /* Object-space vertices: the walker's triangle calls, which the T&L
+     * batch takes with its vertex cache. */
+    if (first == 0 || ops == 0 || ops->draw_indexed == 0 || ops->draw == 0 ||
+        user->tnl_layout != 0) {
         return 0;
     }
     v9x_d3d_dp2_settle(user);
@@ -4768,6 +5062,12 @@ static void v9x_d3d_dp2_line(void *opaque, const v9x_u8 *a, const v9x_u8 *b)
     DWORD corner;
     int two;
 
+    /* Object-space lines are not drawn: their one-pixel quads are built
+     * in pixels, after a transform the T&L path leaves to the engine. */
+    if (user->tnl_layout != 0) {
+        ++((V9X_D3D_TNL_BLOCK *)user->context->tnl)->undrawn;
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, a, &ends[0]);
@@ -4797,6 +5097,11 @@ static void v9x_d3d_dp2_point(void *opaque, const v9x_u8 *v)
     DWORD corner;
     int two;
 
+    /* Object-space points, as lines are: not drawn, counted. */
+    if (user->tnl_layout != 0) {
+        ++((V9X_D3D_TNL_BLOCK *)user->context->tnl)->undrawn;
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, v, &centre);
@@ -4958,16 +5263,20 @@ static void v9x_d3d_dp2_draw_run(void)
 {
     V9X_D3D_CONTEXT *context = v9x_d3d_dp2_batch_sink.context;
 
-    if (v9x_d3d_dp2_run.pending != 0ul && context != 0 &&
-        v9x_d3d_dp2_snapshot_valid &&
+    /* The T&L batch too (step 6), under the same snapshot: only one of
+     * the two is ever pending, since each draws the other first. */
+    if ((v9x_d3d_dp2_run.pending != 0ul || v9x_d3d_tnl_pending(context)) &&
+        context != 0 && v9x_d3d_dp2_snapshot_valid &&
         !v9x_d3d_context_same(&v9x_d3d_dp2_snapshot, context)) {
         V9X_D3D_CONTEXT live = *context;
 
         *context = v9x_d3d_dp2_snapshot;
         (void)v9x_r3d_records_flush(&v9x_d3d_dp2_run);
+        v9x_d3d_tnl_flush(context);
         *context = live;
     } else {
         (void)v9x_r3d_records_flush(&v9x_d3d_dp2_run);
+        v9x_d3d_tnl_flush(context);
     }
     v9x_d3d_dp2_snapshot_valid = 0;
 }
@@ -5384,11 +5693,11 @@ static int v9x_d3d_ddi7_texblt(V9X_D3D_CONTEXT *context,
 }
 
 /*
- * The DirectX 7 records (the walker's dx7 sink). Material, light,
- * transform and clip-plane records are consumed and not yet used: without
- * D3DDEVCAPS_HWTRANSFORMANDLIGHT the runtime transforms and lights the
- * vertices itself (step 6 keeps them). STATESET goes back to the runtime's
- * parser until the log says what it sends.
+ * The DirectX 7 records (the walker's dx7 sink), and VIEWPORTINFO and
+ * ZRANGE, which it is shown too. Material, light, transform and viewport
+ * records go to the context's T&L state (step 6) when it has one; clip
+ * planes are consumed unused, none being claimed. STATESET goes back to
+ * the runtime's parser until the log says what it sends.
  */
 static int v9x_d3d_dp2_dx7(void *opaque, v9x_u32 op, v9x_u32 count,
                            const v9x_u8 *payload, v9x_u32 bytes)
@@ -5456,6 +5765,24 @@ static int v9x_d3d_dp2_dx7(void *opaque, v9x_u32 op, v9x_u32 count,
         v9x_d3d_dp2_draw_run();
         for (i = 0ul; i < count; ++i) {
             (void)v9x_d3d_ddi7_texblt(context, payload + i * 36ul);
+        }
+        return 1;
+
+    /* The T&L device's records (step 6): what was gathered under the old
+     * transform, light, material or viewport is drawn first. */
+    case V9X_DP2OP_SETTRANSFORM:
+    case V9X_DP2OP_SETLIGHT:
+    case V9X_DP2OP_CREATELIGHT:
+    case V9X_DP2OP_SETMATERIAL:
+    case V9X_DP2OP_VIEWPORTINFO:
+    case V9X_DP2OP_ZRANGE:
+        if (context->tnl != 0) {
+            if (v9x_d3d_tnl_pending(context)) {
+                v9x_d3d_dp2_draw_run();
+            }
+            (void)v9x_d3d_tnl_record(
+                &((V9X_D3D_TNL_BLOCK *)context->tnl)->state, op, count,
+                payload, bytes);
         }
         return 1;
 
@@ -5530,6 +5857,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     V9X_DP2_RESULT walked;
     V9X_D3D_DP2_USER user;
     V9X_DP2_FVF fvf;
+    V9X_D3D_TNL_LAYOUT tnl_layout;
+    int tnl = 0;
     V9X_R3D_RECORDS *run = &v9x_d3d_dp2_run;
 
     if (data == 0) {
@@ -5543,11 +5872,28 @@ static DWORD v9x_d3d_draw_primitives2_body(
     context = v9x_d3d_context_from_handle(data->dwhContext);
 
     /*
+     * Object-space vertices, for a context with the T&L device (step 6):
+     * the pre-transformed layout is left empty but for its stride, and
+     * the callbacks take the T&L path before they read it.
+     */
+    if (!v9x_dp2_fvf_layout(data->dwVertexType, &fvf) && context != 0 &&
+        context->tnl != 0 &&
+        v9x_d3d_tnl_layout(data->dwVertexType, &tnl_layout)) {
+        tnl = 1;
+        fvf.stride = tnl_layout.stride;
+        fvf.diffuse = V9X_DP2_FVF_ABSENT;
+        fvf.specular = V9X_DP2_FVF_ABSENT;
+        fvf.tex0 = V9X_DP2_FVF_ABSENT;
+        fvf.tex0_floats = 0ul;
+        fvf.tex_sets = 0ul;
+    }
+
+    /*
      * Nothing to draw with, or nothing to draw from. Answered DD_OK with
      * nothing drawn, which is what the DX5 entry points do for the same
      * conditions; an error here would stop an application over a frame.
      */
-    if (!v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
+    if (!tnl && !v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_refused_fvf;
             v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -5610,7 +5956,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     user.layout = &fvf;
     user.two_stages = ops->limits->texture_stages >= 2ul;
     user.ops = ops;
-    if (!v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
+    user.tnl_layout = tnl ? &tnl_layout : 0;
+    if (!tnl && !v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_converted_calls;
         v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
     }
@@ -5688,7 +6035,12 @@ static DWORD v9x_d3d_draw_primitives2_body(
         }
     }
     /* No flush here: what is pending waits for the next call, a state
-     * change or v9x_d3d_dp2_flush_pending (see v9x_d3d_dp2_run). */
+     * change or v9x_d3d_dp2_flush_pending (see v9x_d3d_dp2_run). A T&L
+     * batch is the exception: it is drawn before the call returns, since
+     * nothing outside DrawPrimitives2 knows to draw it. */
+    if (v9x_d3d_tnl_pending(context)) {
+        v9x_d3d_dp2_draw_run();
+    }
 
     if (v9x_hal != 0) {
         V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
@@ -5880,6 +6232,19 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
         }
     }
     caps->dvMaxVertexW = 1.0e10f;
+    /* The T&L device's lights and vertex processing, for a DDI 7 process
+     * (hardware T&L step 6): no clip planes, no blend matrices, no
+     * texture generation. */
+#if V9X_D3D_TNL_DEVICE_OFFERED
+    if (v9x_d3d_dp2_for_process() == V9X_D3D_DDI7) {
+        caps->dwMaxActiveLights = V9X_D3D_TNL_MAX_ACTIVE_LIGHTS;
+        caps->dwVertexProcessingCaps = V9X_D3DVTXPCAPS_MATERIALSOURCE7 |
+                                       V9X_D3DVTXPCAPS_VERTEXFOG |
+                                       V9X_D3DVTXPCAPS_DIRECTIONALLIGHTS |
+                                       V9X_D3DVTXPCAPS_POSITIONALLIGHTS |
+                                       V9X_D3DVTXPCAPS_LOCALVIEWER;
+    }
+#endif
 }
 
 /*

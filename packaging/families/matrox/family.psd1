@@ -242,8 +242,10 @@
         # Installed files that ride a third disk, as ATI's do: disk 1 went
         # 553 bytes over when the shared Direct3D core was optimised
         # (Michael, 2026-10-24: "Matrox extra floppy ok"). The update
-        # checker, which nothing needs to boot or draw.
-        ThirdDisk = @('V9XUPD.EXE')
+        # checker, which nothing needs to boot or draw. GLIDE3X.DLL joined
+        # it when hardware T&L step 6's HAL put disk 1 5,556 bytes over
+        # (2026-10-27): no Glide 3 title needs it to start.
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL')
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test

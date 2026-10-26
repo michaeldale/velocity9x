@@ -185,6 +185,9 @@ function Get-V9xHostSourceNames {
         # DDI 7's CreateSurfaceEx handle table.
         'src\display32\d3d\d3d_handles.c',
         'tests\host\test_d3d_handles.c',
+        # The Direct3D 7 T&L device's front end.
+        'src\display32\d3d\d3d_tnl.c',
+        'tests\host\test_d3d_tnl.c',
         # Which D3D engine serves the chip, at publish time and every call.
         'src\display32\d3d\d3d_select.c',
         'tests\host\test_d3d_select.c',

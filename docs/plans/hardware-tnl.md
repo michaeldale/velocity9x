@@ -260,6 +260,17 @@ Progress:
   - **Measured:** the lit GL probe matches GL 1.1 in 40 of 40 samples;
     the A/B scene is unchanged; Half-Life 96.7.
   - **Not done:** two-sided lighting (SBE facing).
+- **Step 6 built, not offered (2026-10-27, boots 99-103):**
+  [`2026-10-27-haswell-tnl-step6-d3d-device.md`](../decisions/2026-10-27-haswell-tnl-step6-d3d-device.md).
+  - **Correct:** V9XD32 T18 compares the T&L device with the HAL device
+    on lit scenes, worst channel 2; 3DMark 2000 and 2001 SE complete on
+    it.
+  - **Slower:** 3DMark 2000 1558 against 2322 with the runtime's T&L,
+    2001 SE 722 against 1120. A segmented batch made it worse.
+  - **So:** `V9X_D3D_TNL_DEVICE_OFFERED` is 0 and programs keep the HAL
+    device (Michael, 2026-10-27), an exception to Decision 1 until the
+    device is faster.
+  - **Next:** measure where a batch's time goes before another design.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

@@ -131,7 +131,8 @@ typedef struct v9x_dp2_sink {
      * V9X_DP2OP_SETCLIPPLANE) whole, its length checked inside the
      * buffer. Non-zero when the sink consumed it; zero, or no sink, and
      * the walk stops with V9X_DP2_UNPARSED there, as for any opcode it
-     * does not know. */
+     * does not know. VIEWPORTINFO and ZRANGE are shown to it too (for the
+     * T&L device), and are consumed whatever it answers. */
     int (*dx7)(void *user, v9x_u32 op, v9x_u32 count, const v9x_u8 *payload,
                v9x_u32 bytes);
 } V9X_DP2_SINK;

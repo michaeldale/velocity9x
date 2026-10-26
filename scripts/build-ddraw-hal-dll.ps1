@@ -165,6 +165,9 @@ $sources = @(
     # DDI 7's CreateSurfaceEx handle table; pure and host-tested in
     # tests\host\test_d3d_handles.c.
     "src\display32\d3d\d3d_handles.c",
+    # The Direct3D 7 T&L device's front end; pure and host-tested in
+    # tests\host\test_d3d_tnl.c.
+    "src\display32\d3d\d3d_tnl.c",
     # A temporary instrument, d3d_dp2_ring.h.
     "src\display32\d3d\d3d_dp2_ring.c",
     "src\display32\d3d\d3d_select.c",
