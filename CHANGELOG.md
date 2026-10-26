@@ -4,7 +4,14 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.31.0 - not yet released
+## 0.30.1 - 2026-10-26
+
+- **Intel GMA 3100 (G33/G31, `8086:29C2`) is claimed by the `intel-gma`
+  package**, on the GMA 950's Gen3 path unchanged: Direct3D, DirectDraw
+  blits and page flips. Built from one DOS survey of a G31 board; nothing
+  has run on one
+  ([record](docs/decisions/2026-10-26-g33-gma3100-from-a-survey.md)).
+  The Q35 and Q33 (`29B2`, `29D2`) share the core and are not claimed.
 
 ## 0.30.0 - 2026-10-26
 

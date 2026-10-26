@@ -26,7 +26,9 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.30.0.** The GMA 950, GMA 900, GMA 3150 and the
+**Current version: 0.30.1.** It adds the GMA 3100 (G33/G31,
+`8086:29C2`), claimed from one survey and not yet run on one. From
+0.30.0: the GMA 950, GMA 900, GMA 3150 and the
 Ironlake HD Graphics write video memory write-combined, as the Rage 128
 does: on the GMA 950 netbook CPU writes to the screen are 27 times faster
 and Half-Life's OpenGL renderer about a quarter. The HD 4600 draws
@@ -45,7 +47,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.30.0](releases/0.30.0/README.md).
+[releases/0.30.1](releases/0.30.1/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -89,6 +91,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
+| Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Claimed: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | Claimed: the GM965's path with G4x's encodings, built from two reporters' surveys. Nothing has run on one |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
