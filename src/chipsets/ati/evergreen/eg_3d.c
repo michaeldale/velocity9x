@@ -270,6 +270,9 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_SAMPLER_CLAMP_Z_SHIFT    6
 #define EG_SAMPLER_MAG_SHIFT        9
 #define EG_SAMPLER_MIN_SHIFT        11
+#define EG_SAMPLER_MIP_SHIFT        15
+#define EG_SAMPLER_MAX_LOD_SHIFT    12
+#define EG_LOD_ONE                  256ul /* 4.8 fixed point */
 #define EG_BLEND_ENABLE             0x40000000ul
 #define EG_DEPTH_Z_ENABLE           0x00000002ul
 #define EG_DEPTH_Z_WRITE            0x00000004ul
@@ -540,6 +543,53 @@ v9x_u32 v9x_eg_3d_texture_pitch(v9x_u32 format, v9x_u32 width)
     return row / bytes;
 }
 
+/* A chain's pitch alignment in texels: MAX(64, 256 / bytes per texel). */
+#define EG_MIP_PITCH_BYTES 256ul
+#define EG_MIP_PITCH_MIN   64ul
+
+static v9x_u32 v9x_eg_3d_mip_palign(v9x_u32 bytes)
+{
+    v9x_u32 palign = EG_MIP_PITCH_BYTES / bytes;
+
+    return palign > EG_MIP_PITCH_MIN ? palign : EG_MIP_PITCH_MIN;
+}
+
+int v9x_eg_3d_mip_layout(v9x_u32 format, v9x_u32 width, v9x_u32 height,
+                         v9x_u32 levels, v9x_u32 *offsets,
+                         v9x_u32 *pitches, v9x_u32 *total_bytes)
+{
+    v9x_u32 bytes = v9x_eg_3d_texel_bytes(format);
+    v9x_u32 palign;
+    v9x_u32 offset = 0ul;
+    v9x_u32 level;
+    v9x_u32 w = width;
+    v9x_u32 h = height;
+    v9x_u32 longest = width > height ? width : height;
+    v9x_u32 possible = 1ul;
+
+    if (bytes == 0ul || width == 0ul || height == 0ul || levels == 0ul ||
+        levels > V9X_EG_MIP_LEVELS_MAX) {
+        return 0;
+    }
+    while (longest > 1ul) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (levels > possible) {
+        return 0;
+    }
+    palign = v9x_eg_3d_mip_palign(bytes);
+    for (level = 0ul; level < levels; ++level) {
+        offsets[level] = offset;
+        pitches[level] = (w + palign - 1ul) & ~(palign - 1ul);
+        offset += pitches[level] * bytes * h;
+        w = w > 1ul ? w >> 1 : 1ul;
+        h = h > 1ul ? h >> 1 : 1ul;
+    }
+    *total_bytes = offset;
+    return 1;
+}
+
 static int v9x_eg_3d_aligned(v9x_u32 gpu)
 {
     return (gpu & EG_ALIGN_256) == 0ul;
@@ -580,9 +630,18 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
         (!v9x_eg_3d_aligned(state->texture_gpu) ||
          state->texture_width == 0ul || state->texture_height == 0ul ||
          state->texture_pitch < state->texture_width ||
-         ((state->texture_pitch *
-           v9x_eg_3d_texel_bytes(state->texture_format)) %
-          V9X_EG_TEXTURE_ROW_ALIGN) != 0ul ||
+         state->texture_levels == 0ul ||
+         state->texture_levels > V9X_EG_MIP_LEVELS_MAX ||
+         (state->texture_levels == 1ul &&
+          ((state->texture_pitch *
+            v9x_eg_3d_texel_bytes(state->texture_format)) %
+           V9X_EG_TEXTURE_ROW_ALIGN) != 0ul) ||
+         (state->texture_levels > 1ul &&
+          (!v9x_eg_3d_aligned(state->texture_mip_gpu) ||
+           v9x_eg_3d_texel_bytes(state->texture_format) == 0ul ||
+           (state->texture_pitch %
+            v9x_eg_3d_mip_palign(
+                v9x_eg_3d_texel_bytes(state->texture_format))) != 0ul)) ||
          state->texture_width > EG_SCISSOR_MAX ||
          state->texture_height > EG_SCISSOR_MAX ||
          (state->texture_format != V9X_EG_COLOR_5_6_5 &&
@@ -669,24 +728,39 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
                        (((state->texture_pitch >> 3) - 1ul) <<
                         EG_TEX_PITCH_SHIFT) |
                        ((state->texture_width - 1ul) << EG_TEX_WIDTH_SHIFT));
+        /* A chain is linear aligned, its levels where
+         * v9x_eg_3d_mip_layout puts them; one level stays linear
+         * general, whose 64-byte rows were measured. */
         v9x_eg_pm4_put(stream, (state->texture_height - 1ul) |
-                       (V9X_EG_ARRAY_LINEAR_GENERAL <<
+                       ((state->texture_levels > 1ul ?
+                         V9X_EG_ARRAY_LINEAR_ALIGNED :
+                         V9X_EG_ARRAY_LINEAR_GENERAL) <<
                         EG_TEX_ARRAY_MODE_SHIFT));
         v9x_eg_pm4_put(stream, state->texture_gpu >> 8);
-        v9x_eg_pm4_put(stream, state->texture_gpu >> 8);
+        v9x_eg_pm4_put(stream, (state->texture_levels > 1ul ?
+                                state->texture_mip_gpu :
+                                state->texture_gpu) >> 8);
         /* A 565 texture has no fourth component, which samples as 0: its
          * W is the constant 1, so it is opaque, as Direct3D reads a
          * texture without alpha (V9XDDP's untagged texture blended away
          * under SRCALPHA, boot 21). */
         v9x_eg_pm4_put(stream, state->texture_format == V9X_EG_COLOR_5_6_5 ?
                                EG_TEX_SWIZZLE_XYZ1 : EG_TEX_SWIZZLE_XYZW);
-        v9x_eg_pm4_put(stream, 0ul);
+        /* LAST_LEVEL, the chain's last; BASE_LEVEL 0. */
+        v9x_eg_pm4_put(stream, state->texture_levels - 1ul);
         v9x_eg_pm4_put(stream, 0ul);
         v9x_eg_pm4_put(stream, state->texture_format | EG_TEX_VALID_TEXTURE);
+        /* The sampler, its mip filter and its LOD range: MIN_LOD 0 and
+         * MAX_LOD the last level, 4.8 fixed point (with 4.6 the sampler
+         * read a quarter of the LOD, V9XEG3D /d3dmip, boot 23). */
         v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_SET_SAMPLER, 4ul));
         v9x_eg_pm4_put(stream, 0ul);
-        v9x_eg_pm4_put(stream, state->sampler_word0);
-        v9x_eg_pm4_put(stream, 0ul);
+        v9x_eg_pm4_put(stream, state->sampler_word0 |
+                               (state->texture_levels > 1ul ?
+                                (state->mip_filter & 3ul) <<
+                                EG_SAMPLER_MIP_SHIFT : 0ul));
+        v9x_eg_pm4_put(stream, ((state->texture_levels - 1ul) *
+                                EG_LOD_ONE) << EG_SAMPLER_MAX_LOD_SHIFT);
         v9x_eg_pm4_put(stream, 0ul);
     }
 

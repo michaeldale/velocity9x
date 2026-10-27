@@ -255,6 +255,12 @@ struct v9x_eg_3d_state {
     v9x_u32 texture_format;      /* V9X_EG_COLOR_5_6_5, _1_5_5_5, _4_4_4_4
                                     or _8_8_8_8 */
     v9x_u32 sampler_word0;       /* v9x_eg_3d_sampler */
+    /* 1 for a single level (linear general, 64-byte rows); more for a
+     * chain laid out by v9x_eg_3d_mip_layout, level 1 at mip_gpu, sampled
+     * with mip_filter (V9X_EG_MIP_*) over LODs 0 to levels - 1. */
+    v9x_u32 texture_levels;
+    v9x_u32 texture_mip_gpu;
+    v9x_u32 mip_filter;
     v9x_u32 vertex_gpu;
     v9x_u32 vertex_stride;
     v9x_u32 vertex_bytes;
@@ -277,6 +283,28 @@ v9x_u32 v9x_eg_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
  */
 #define V9X_EG_TEXTURE_ROW_ALIGN 64ul
 v9x_u32 v9x_eg_3d_texture_pitch(v9x_u32 format, v9x_u32 width);
+
+/*
+ * A mip chain as the sampler addresses it: linear aligned, every level's
+ * pitch its width rounded up to MAX(64, 256 / bytes per texel) texels, its
+ * rows unpadded, the levels one after another, level 0 at the base and
+ * level 1 at MIP_ADDRESS. That is Linux evergreen_cs.c's sizing, and
+ * V9XEG3D /d3dmip read every level of a 32x32 8888 chain exactly at it on
+ * M-BXMFA8 (boot 23, docs\decisions\2026-10-27-cedar-texture-pitch-and-
+ * 565-alpha.md). levels counts level 0, and each level halves to 1. Fills
+ * offsets (bytes from the base) and pitches (texels) for each level and
+ * the chain's bytes; 1, or 0 for a format not sampled here, more levels
+ * than the edges allow, or more than V9X_EG_MIP_LEVELS_MAX.
+ */
+#define V9X_EG_MIP_LEVELS_MAX 12u
+int v9x_eg_3d_mip_layout(v9x_u32 format, v9x_u32 width, v9x_u32 height,
+                         v9x_u32 levels, v9x_u32 *offsets,
+                         v9x_u32 *pitches, v9x_u32 *total_bytes);
+
+/* SQ_TEX_SAMPLER_WORD0's MIP_FILTER (bits 16:15). */
+#define V9X_EG_MIP_NONE   0ul
+#define V9X_EG_MIP_POINT  1ul
+#define V9X_EG_MIP_LINEAR 2ul
 
 /* The batch's state after v9x_eg_3d_default_state. INVALID_ARGUMENT for a
  * state the hardware cannot take as given, with nothing written. */

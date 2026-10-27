@@ -85,17 +85,32 @@ exactly where the model says, and the n runs confirm every level. Only
 8888 has been measured. The 16-bit pitch (128 texels, 256 bytes) is the
 same formula's answer, not a measurement.
 
+## Mip chains in the HAL (boot 24)
+
+`create_surface` now places a mip chain in one block by
+`v9x_eg_3d_mip_layout`. `d3d_eg.c` recognises a bound chain when every
+level sits where the layout puts it. The builder then sends it linear
+aligned with `MIP_ADDRESS`, `LAST_LEVEL`, the mip filter and `MAX_LOD` in
+4.8. Direct3D's four mip filters map to a within-level filter and a mip
+filter, as the Rage 128 engine reads them. The caps now offer them.
+
+V9XDDP on boot 24, against the GMA 950: every mip and trilinear check
+the GMA 950 passes now passes here too (`ChainA/D/EOk`, `MipLadderOk`,
+`MipTriOk`, `D3DMipmapLevelSelectOk`, `D3DTrilinearBlendOk`). `ChainBOk`,
+`ChainCOk` and `ChainRowsOk` pass here and fail there. V9XD32 still passes
+at 16 and 32 bpp. So the 16-bit chains V9XDDP draws confirm the 16-bit
+pitch the formula gave.
+
 ## What V9XDDP still shows
 
-Against the GMA 950, boot 22, the `_Ok` keys that differ:
+Against the GMA 950, boot 24, the `_Ok` keys that differ:
 
 | Feature | Keys | Why |
 |---|---|---|
-| Mip chains | `ChainA/D/EOk`, `MipLadderOk`, `MipTriOk`, `D3DMipmapLevelSelectOk`, `D3DTrilinearBlendOk` | level 0 only, by design so far |
 | Fog | `D3DFogMulOk`, `D3DFogTexOk`, `D3DTableFogOk`, `D3DDepthFogOk` | not drawn |
 | Colour key | `ColorKeyOk` 1 here, 0 on the GMA 950 | |
 | 8888 halves | `Tex8A8888HalvesOk` 1 here, 0 there | |
+| Chains | `ChainBOk`, `ChainCOk`, `ChainRowsOk` 1 here, 0 there | |
 
-The rest of the 151 differing keys are those tests' raw readings,
-addresses and placement deltas. The GMA 950's report has 4444 mip-chain
-keys this one lacks, and this one has a fourth texture format.
+The rest of the 106 differing keys are those tests' raw readings,
+addresses and placement deltas.

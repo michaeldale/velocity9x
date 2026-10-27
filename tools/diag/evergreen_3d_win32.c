@@ -949,6 +949,7 @@ static void v9x_ring_draw_d3d(DWORD g)
     state.interpolants = textured ? 2ul : 1ul;
     if (textured) {
         state.has_texture = 1ul;
+        state.texture_levels = 1ul;
         state.texture_gpu = g + V9X_SRC_OFFSET;
         state.texture_width = V9X_DRAW_WIDTH;
         state.texture_height = V9X_DRAW_HEIGHT;

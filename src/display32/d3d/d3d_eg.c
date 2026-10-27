@@ -142,9 +142,9 @@ static int v9x_d3d_eg_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * What d3d_eg_map.c accepts: Z and alpha tests with every function, the
  * blend factors without destination alpha, flat and Gouraud colour and
  * alpha, textures in RGB565 and ARGB8888 with point and bilinear filters,
- * wrap, mirror and clamp, DECAL, COPY, MODULATE and MODULATEALPHA. No
- * specular, fog or mip chains: the shaders do not draw them, so they are
- * not offered.
+ * wrap, mirror and clamp, DECAL, COPY, MODULATE and MODULATEALPHA, and mip
+ * chains with every Direct3D mip filter. No specular or fog: the shaders
+ * do not draw them, so they are not offered.
  */
 static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -198,7 +198,11 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_ALPHA;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEAR;
+                               V9X_D3DPTFILTERCAPS_LINEAR |
+                               V9X_D3DPTFILTERCAPS_MIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
@@ -268,6 +272,67 @@ static int v9x_d3d_eg_ready(void)
     return v9x_eg_cp_ready();
 }
 
+/*
+ * A mip chain's levels, counted as far as each sits where
+ * v9x_eg_3d_mip_layout puts it - create_surface placed it there in one
+ * block - with level 0's pitch the layout's. The first attached level that
+ * is not ends the chain; a chain of one is no chain. The diagnostics count
+ * as the Rage 128's do.
+ */
+static void v9x_d3d_eg_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
+                                     DWORD bytes, V9X_D3D_EG_TEXTURE *texture)
+{
+    v9x_u32 offsets[V9X_D3D_EG_LEVELS_MAX];
+    v9x_u32 pitches[V9X_D3D_EG_LEVELS_MAX];
+    v9x_u32 total;
+    const V9X_DD_SURFACE_LCL *level = surface;
+    DWORD longest = texture->width > texture->height ? texture->width
+                                                     : texture->height;
+    DWORD possible = 1ul;
+    DWORD found = 1ul;
+
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    while (longest > 1ul && possible < V9X_D3D_EG_LEVELS_MAX) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (!v9x_eg_3d_mip_layout(texture->format, texture->width,
+                              texture->height, possible, offsets, pitches,
+                              &total) ||
+        texture->pitch_texels != pitches[0]) {
+        return;
+    }
+    while (found < possible) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next->lpGbl == 0 ||
+            v9x_surface_offset(next) != texture->offset + offsets[found] ||
+            (DWORD)next->lpGbl->lPitch != pitches[found] * bytes) {
+            if (next != 0) {
+                ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            }
+            break;
+        }
+        ++found;
+        level = next;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = found;
+    if (found > 1ul) {
+        texture->levels = found;
+        texture->mip_offset = texture->offset + offsets[1];
+    }
+}
+
 /* The bound texture's level 0 as the map takes it. */
 static void v9x_d3d_eg_resolve_texture(const V9X_R3D_TEXTURE *sampler,
                                        V9X_D3D_EG_TEXTURE *texture)
@@ -298,6 +363,11 @@ static void v9x_d3d_eg_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->pitch_texels = (DWORD)surface->lpGbl->lPitch / bytes;
     texture->offset = offset;
+    texture->levels = 1ul;
+    texture->mip_offset = offset;
+    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+        v9x_d3d_eg_resolve_chain(surface, bytes, texture);
+    }
 }
 
 static DWORD v9x_d3d_eg_depth_bytes(const V9X_R3D_DRAW *draw)
@@ -470,9 +540,12 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     V9X_DD_SURFACE_LCL *surface;
     v9x_u32 pitches[V9X_D3D_EG_LEVELS_MAX];
     v9x_u32 rows[V9X_D3D_EG_LEVELS_MAX];
+    v9x_u32 offsets[V9X_D3D_EG_LEVELS_MAX];
+    v9x_u32 total = 0ul;
+    DWORD base = 0ul;
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
-    DWORD format;
+    DWORD format = V9X_D3D_EG_TEXTURE_UNKNOWN;
     DWORD width;
     DWORD height;
     DWORD level;
@@ -546,6 +619,27 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             }
             pitches[level] = v9x_eg_3d_texture_pitch(format, width) * bytes;
             rows[level] = height;
+        }
+        /* A chain in one block, where the sampler finds its levels from
+         * the base and MIP_ADDRESS (eg_3d.h, v9x_eg_3d_mip_layout). */
+        if (data->dwSCnt > 1ul) {
+            if (!v9x_eg_3d_mip_layout(format,
+                                      (DWORD)surface->lpGbl->wWidth,
+                                      (DWORD)surface->lpGbl->wHeight,
+                                      data->dwSCnt, offsets, pitches,
+                                      &total)) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            for (level = 0ul; level < data->dwSCnt; ++level) {
+                pitches[level] *= bytes;
+            }
+            if (v9x_d3d_place_chain(data, V9X_D3D_EG_SURFACE_ALIGN, total,
+                                    offsets, pitches, &base) != 0ul) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            ++v9x_hal->d3d_diagnostics.texture_placed;
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
         }
     }
     if (v9x_d3d_place_each(data, V9X_D3D_EG_SURFACE_ALIGN, pitches,

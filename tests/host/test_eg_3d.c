@@ -244,6 +244,7 @@ static void fill_state(struct v9x_eg_3d_state *state)
     state->ps_gprs = 2ul;
     state->interpolants = 2ul;
     state->has_texture = 1ul;
+    state->texture_levels = 1ul;
     state->texture_gpu = 0x00300000ul;
     state->texture_width = 60ul;
     state->texture_height = 30ul;
@@ -466,6 +467,76 @@ static void test_state(void)
           V9X_STATUS_INSUFFICIENT_MEMORY && stream.count <= 40ul);
 }
 
+static void test_mip(void)
+{
+    struct v9x_eg_pm4 stream;
+    struct v9x_eg_3d_state state;
+    v9x_u32 offsets[V9X_EG_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_EG_MIP_LEVELS_MAX];
+    v9x_u32 total = 0ul;
+    v9x_u32 at;
+
+    /* The chain V9XEG3D /d3dmip measured on M-BXMFA8 (boot 23): 32x32
+     * 8888, every level at 64 texels a row, back to back. */
+    CHECK(v9x_eg_3d_mip_layout(V9X_EG_COLOR_8_8_8_8, 32ul, 32ul, 6ul,
+                               offsets, pitches, &total) == 1);
+    CHECK(offsets[0] == 0ul && offsets[1] == 0x2000ul &&
+          offsets[2] == 0x3000ul && offsets[3] == 0x3800ul &&
+          offsets[4] == 0x3c00ul && offsets[5] == 0x3e00ul);
+    CHECK(pitches[0] == 64ul && pitches[5] == 64ul && total == 0x3f00ul);
+    /* 16-bit texels: MAX(64, 256 / 2) = 128 a row; a 256-wide level is
+     * its own width. A non-square chain runs to 1x1. */
+    CHECK(v9x_eg_3d_mip_layout(V9X_EG_COLOR_1_5_5_5, 256ul, 16ul, 9ul,
+                               offsets, pitches, &total) == 1);
+    CHECK(pitches[0] == 256ul && pitches[1] == 128ul && pitches[8] == 128ul);
+    CHECK(offsets[1] == 256ul * 2ul * 16ul &&
+          offsets[2] == offsets[1] + 128ul * 2ul * 8ul &&
+          offsets[5] == offsets[4] + 256ul * 1ul);
+    /* Too many levels for the edges, or an unsampled format: refused. */
+    CHECK(v9x_eg_3d_mip_layout(V9X_EG_COLOR_8_8_8_8, 32ul, 32ul, 7ul,
+                               offsets, pitches, &total) == 0);
+    CHECK(v9x_eg_3d_mip_layout(0x05ul, 32ul, 32ul, 2ul, offsets, pitches,
+                               &total) == 0);
+
+    /* A chained texture: linear aligned, MIP_ADDRESS, LAST_LEVEL, the mip
+     * filter in the sampler and MAX_LOD 4.8. */
+    fill_state(&state);
+    state.texture_width = 32ul;
+    state.texture_height = 32ul;
+    state.texture_pitch = 64ul;
+    state.texture_levels = 6ul;
+    state.texture_mip_gpu = 0x00302000ul;
+    state.mip_filter = V9X_EG_MIP_LINEAR;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == 0xc0086d00ul && buffer[at + 1ul] == 0ul) {
+            break;
+        }
+    }
+    CHECK(at < stream.count);
+    CHECK((buffer[at + 3ul] >> 28) == V9X_EG_ARRAY_LINEAR_ALIGNED);
+    CHECK(buffer[at + 5ul] == 0x3020ul && buffer[at + 7ul] == 5ul);
+    CHECK(buffer[at + 10ul] == 0xc0036e00ul);
+    CHECK((buffer[at + 12ul] >> 15 & 3ul) == V9X_EG_MIP_LINEAR &&
+          buffer[at + 13ul] == (5ul * 256ul) << 12);
+    /* A chain whose pitch is not the layout's is refused. */
+    state.texture_pitch = 32ul;
+    CHECK(v9x_eg_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* One level: linear general, no MIP_ADDRESS, no LOD range. */
+    fill_state(&state);
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == 0xc0086d00ul && buffer[at + 1ul] == 0ul) {
+            break;
+        }
+    }
+    CHECK((buffer[at + 3ul] >> 28) == V9X_EG_ARRAY_LINEAR_GENERAL &&
+          buffer[at + 7ul] == 0ul && buffer[at + 13ul] == 0ul);
+}
+
 static void test_draw(void)
 {
     struct v9x_eg_pm4 stream;
@@ -492,6 +563,7 @@ unsigned int v9x_run_eg_3d_tests(void)
     test_gpu_init();
     test_words();
     test_state();
+    test_mip();
     test_draw();
     return failures;
 }

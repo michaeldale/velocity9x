@@ -26,9 +26,10 @@
 #define V9X_D3D_EG_TEXTURE_UNKNOWN 0xfffffffful
 
 /* The bound texture as the engine resolved it: format V9X_EG_COLOR_* or
- * UNKNOWN, has_alpha for a format whose texels carry it, the pitch in
- * texels, and the offset from the framebuffer mapping, as every surface
- * offset in a draw is. Level 0 only: the sampler reads no chain. */
+ * UNKNOWN, has_alpha for a format whose texels carry it, level 0's pitch
+ * in texels, and its offset from the framebuffer mapping, as every
+ * surface offset in a draw is. levels is 1, or the levels of a chain
+ * d3d_eg.c placed by v9x_eg_3d_mip_layout, level 1 at mip_offset. */
 typedef struct v9x_d3d_eg_texture {
     v9x_u32 format;
     v9x_u32 has_alpha;
@@ -36,6 +37,8 @@ typedef struct v9x_d3d_eg_texture {
     v9x_u32 height;
     v9x_u32 pitch_texels;
     v9x_u32 offset;
+    v9x_u32 levels;
+    v9x_u32 mip_offset;
 } V9X_D3D_EG_TEXTURE;
 
 #define V9X_D3D_EG_REFUSE_NONE            0ul

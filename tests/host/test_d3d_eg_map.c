@@ -50,6 +50,59 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_EG_TEXTURE *texture)
     texture->height = 32ul;
     texture->pitch_texels = 64ul;
     texture->offset = 0x00200000ul;
+    texture->levels = 1ul;
+    texture->mip_offset = 0ul;
+}
+
+static v9x_u32 map(const V9X_R3D_DRAW *draw,
+                   const V9X_D3D_EG_TEXTURE *texture, v9x_u32 depth_bytes,
+                   struct v9x_eg_3d_state *state, v9x_u32 *vs, v9x_u32 *ps);
+
+static void test_mip_chain(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_EG_TEXTURE texture;
+    struct v9x_eg_3d_state state;
+    v9x_u32 vs;
+    v9x_u32 ps;
+
+    /* A chain of 6 levels: its count, level 1's address, and Direct3D's
+     * mip filters as within-level filter and mip filter. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    texture.width = 32ul;
+    texture.height = 32ul;
+    texture.levels = 6ul;
+    texture.mip_offset = 0x00202000ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPLINEAR;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(state.texture_levels == 6ul &&
+          state.texture_mip_gpu == HEAP_GPU + 0x00202000ul &&
+          state.mip_filter == V9X_EG_MIP_POINT);
+    CHECK(state.sampler_word0 ==
+          v9x_eg_3d_sampler(1ul, 1ul, V9X_EG_TEX_WRAP, V9X_EG_TEX_WRAP));
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.mip_filter == V9X_EG_MIP_LINEAR);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPNEAREST;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.mip_filter == V9X_EG_MIP_LINEAR &&
+          state.sampler_word0 ==
+          v9x_eg_3d_sampler(1ul, 0ul, V9X_EG_TEX_WRAP, V9X_EG_TEX_WRAP));
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.mip_filter == V9X_EG_MIP_POINT);
+    /* A plain filter reads level 0 only, whatever is attached. */
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.mip_filter == V9X_EG_MIP_NONE);
+    /* One level: no chain, whatever the filter. */
+    texture.levels = 1ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.texture_levels == 1ul &&
+          state.mip_filter == V9X_EG_MIP_NONE);
 }
 
 static v9x_u32 map(const V9X_R3D_DRAW *draw,
@@ -292,7 +345,9 @@ static void test_texture(void)
     CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
           V9X_D3D_EG_REFUSE_TEXTURE_ADDRESS);
 
-    /* Filters within level 0; a mip filter on magnification refused. */
+    /* Without a chain, a mip filter is its filter within level 0
+     * (LINEARMIPLINEAR bilinear, MIPNEAREST point); a mip filter on
+     * magnification refused. */
     base_texture(&draw, &texture);
     draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
     draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
@@ -340,5 +395,6 @@ unsigned int v9x_run_d3d_eg_map_tests(void)
     test_depth();
     test_blend_and_alpha();
     test_texture();
+    test_mip_chain();
     return failures;
 }
