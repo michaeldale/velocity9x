@@ -155,6 +155,13 @@ v9x_u32 v9x_eg_dma_fence(v9x_u32 gpu_address, v9x_u32 value, v9x_u32 *out);
  * V9X_EG_DMA_ALIGN_DWORDS boundary. */
 v9x_u32 v9x_eg_dma_pad(v9x_u32 position);
 
+/* The write position, in dwords, after count dwords are put at wptr and
+ * padded to the boundary, the caller having already wrapped to 0 a
+ * submission that would pass the ring's end. DMA_RB_WPTR takes offsets
+ * inside the ring only, so a submission that ends exactly at the end
+ * leaves the position at 0. */
+v9x_u32 v9x_eg_dma_ring_advance(v9x_u32 wptr, v9x_u32 count);
+
 /* The GPU address of VRAM's first byte, from MC_VM_FB_LOCATION; 0 with
  * *ok clear when it lies at or above 4 GiB. */
 v9x_u32 v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *ok);

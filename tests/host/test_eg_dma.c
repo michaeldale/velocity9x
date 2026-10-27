@@ -363,6 +363,17 @@ static void test_ring_helpers(void)
     CHECK(v9x_eg_dma_pad(16ul) == 0ul);
     CHECK(v9x_eg_dma_pad(31ul) == 1ul);
 
+    /* The position after a submission: padded, and back to 0 when it ends
+     * exactly at the ring's end. M-BXMFA8 wrote DMA_RB_WPTR 8000h, the
+     * ring's size, in 3DMark 2000 (boot 28); the engine stopped at 6E90h
+     * and the idle wait never saw its read pointer reach 8000h. */
+    CHECK(v9x_eg_dma_ring_advance(0ul, 4ul) == 16ul);
+    CHECK(v9x_eg_dma_ring_advance(32ul, 16ul) == 48ul);
+    CHECK(v9x_eg_dma_ring_advance(V9X_EG_RING_DWORDS - 32ul, 5ul) ==
+          V9X_EG_RING_DWORDS - 16ul);
+    CHECK(v9x_eg_dma_ring_advance(V9X_EG_RING_DWORDS - 16ul, 16ul) == 0ul);
+    CHECK(v9x_eg_dma_ring_advance(V9X_EG_RING_DWORDS - 16ul, 3ul) == 0ul);
+
     /* The write probe's fence, byte for byte. */
     CHECK(v9x_eg_dma_fence(0x0f001000ul, 0x11111111ul, packet) == 4ul);
     CHECK(packet[0] == 0x60000000ul);

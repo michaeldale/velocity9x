@@ -27,8 +27,10 @@ rows, 565 alpha and mip chains followed
 ([record](../decisions/2026-10-27-cedar-texture-pitch-and-565-alpha.md)),
 then specular and fog
 ([record](../decisions/2026-10-27-cedar-specular-and-fog.md)): V9XDDP's
-failing checks are now a subset of the GMA 950's. Next: 3DMark 2000;
-colour keys are not drawn yet. Parent plan:
+failing checks are now a subset of the GMA 950's. 3DMark 2000's default
+benchmark completes (5267) after a DMA ring-wrap fix
+([record](../decisions/2026-10-27-cedar-3dmark2000.md)). Next: colour
+keys; the heap is still the VBE's 16 MiB. Parent plan:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md); 2D runs on the DMA
 engine ([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)).
 Michael asked for Direct3D next (2026-10-26).

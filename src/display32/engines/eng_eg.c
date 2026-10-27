@@ -36,7 +36,9 @@
  * engine up for the rest of the mode and declines the operation to the CPU.
  */
 #include "ddhal_internal.h"
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/eg_dma.h"
+#include "velocity9x/eg_3d.h"
 
 /* Bounded busy-wait. The probe's fences landed within 3 polls; this bound
  * only has to tell slow from stuck. */
@@ -164,12 +166,21 @@ static int v9x_eg_submit(const v9x_u32 *dwords, DWORD count)
         }
     }
     for (index = 0ul; index < count; ++index) {
-        ring[v9x_eg_wptr++] = dwords[index];
+        ring[v9x_eg_wptr + index] = dwords[index];
     }
-    while ((v9x_eg_wptr % V9X_EG_DMA_ALIGN_DWORDS) != 0ul) {
-        ring[v9x_eg_wptr++] = V9X_EG_DMA_NOP;
+    for (index = v9x_eg_wptr + count;
+         (index % V9X_EG_DMA_ALIGN_DWORDS) != 0ul; ++index) {
+        ring[index] = V9X_EG_DMA_NOP;
     }
+    /* A submission ending exactly at the ring's end leaves the position
+     * at 0, not at the ring's size, which the register cannot hold. Then,
+     * as after the wrap above, the engine must finish the lap before the
+     * next submission writes over its start: nothing else checks space. */
+    v9x_eg_wptr = v9x_eg_dma_ring_advance(v9x_eg_wptr, count);
     v9x_eg_kick();
+    if (v9x_eg_wptr == 0ul && !v9x_eg_poll_idle(V9X_EG_WAIT_SPINS)) {
+        return 0;
+    }
     return 1;
 }
 
@@ -281,11 +292,86 @@ static int v9x_eg_validate(void)
 }
 
 /*
+ * The first timeout's state, beside the fault trace, which names the
+ * timeout but not why the engine stopped: the DMA block's registers, the
+ * CP's pointers (the two engines share VRAM), and the whole ring.
+ * M-BXMFA8 timed out once in 3DMark 2000's Game 1, on the depth fill
+ * before a draw (boot 27), and left nothing else to read.
+ * DMA_STATUS_REG is evergreend.h's.
+ */
+#define V9X_EG_DMA_LOG_PATH      V9X_DIAG_PATH("V9XEGDMA.TXT")
+#define V9X_EG_DMA_STATUS_REG    0xd034ul
+
+static void v9x_eg_log_text(HANDLE file, const char *text)
+{
+    DWORD written;
+    DWORD length = 0ul;
+
+    while (text[length] != '\0') {
+        ++length;
+    }
+    (void)WriteFile(file, text, length, &written, 0);
+}
+
+static void v9x_eg_log_hex(HANDLE file, const char *key, DWORD value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[12];
+    DWORD index;
+
+    v9x_eg_log_text(file, key);
+    for (index = 0ul; index < 8ul; ++index) {
+        text[index] = digits[(value >> ((7ul - index) * 4ul)) & 0xful];
+    }
+    text[8] = '\r';
+    text[9] = '\n';
+    text[10] = '\0';
+    v9x_eg_log_text(file, text);
+}
+
+static void v9x_eg_write_record(void)
+{
+    volatile DWORD *ring = v9x_eg_ring();
+    HANDLE file;
+    DWORD index;
+
+    file = CreateFileA(V9X_EG_DMA_LOG_PATH, GENERIC_WRITE, FILE_SHARE_READ,
+                       0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    v9x_eg_log_text(file, "[EvergreenDma]\r\n");
+    v9x_eg_log_hex(file, "WptrBytes=", v9x_eg_wptr * 4ul);
+    v9x_eg_log_hex(file, "DMA_RB_RPTR=", v9x_eg_read32(V9X_EG_DMA_RB_RPTR));
+    v9x_eg_log_hex(file, "DMA_RB_WPTR=", v9x_eg_read32(V9X_EG_DMA_RB_WPTR));
+    v9x_eg_log_hex(file, "DMA_RB_CNTL=", v9x_eg_read32(V9X_EG_DMA_RB_CNTL));
+    v9x_eg_log_hex(file, "DMA_RB_BASE=", v9x_eg_read32(V9X_EG_DMA_RB_BASE));
+    v9x_eg_log_hex(file, "DMA_CNTL=", v9x_eg_read32(V9X_EG_DMA_CNTL));
+    v9x_eg_log_hex(file, "DMA_STATUS_REG=",
+                   v9x_eg_read32(V9X_EG_DMA_STATUS_REG));
+    v9x_eg_log_hex(file, "DMA_SEM_INCOMPLETE=",
+                   v9x_eg_read32(V9X_EG_DMA_SEM_INCOMPLETE));
+    v9x_eg_log_hex(file, "DMA_SEM_WAIT_FAIL=",
+                   v9x_eg_read32(V9X_EG_DMA_SEM_WAIT_FAIL));
+    v9x_eg_log_hex(file, "SRBM_STATUS2=", v9x_eg_read32(V9X_EG_SRBM_STATUS2));
+    v9x_eg_log_hex(file, "GRBM_STATUS=", v9x_eg_read32(V9X_EG_GRBM_STATUS));
+    v9x_eg_log_hex(file, "CP_RB_RPTR=", v9x_eg_read32(V9X_EG_CP_RB_RPTR));
+    v9x_eg_log_hex(file, "CP_RB_WPTR=", v9x_eg_read32(V9X_EG_CP_RB_WPTR));
+    v9x_eg_log_hex(file, "HeapGpu=", v9x_eg_heap_gpu);
+    v9x_eg_log_hex(file, "RingGpu=", v9x_eg_ring_gpu);
+    v9x_eg_log_text(file, "[Ring]\r\n");
+    for (index = 0ul; index < V9X_EG_RING_DWORDS; ++index) {
+        v9x_eg_log_hex(file, "", ring[index]);
+    }
+    CloseHandle(file);
+}
+
+/*
  * A real timeout gives up on the engine for the rest of the mode, as the
  * Rage 128's does: the descriptor is invalidated, so v9x_engine32() answers
  * none, blits and fills fall to the CPU, and Lock's drain completes rather
- * than answering WASSTILLDRAWING for ever. The fault trace is written on the
- * first timeout only.
+ * than answering WASSTILLDRAWING for ever. The fault trace and the record
+ * are written on the first timeout only.
  */
 static int v9x_eg_dma_idle(int wait)
 {
@@ -311,6 +397,7 @@ static int v9x_eg_dma_idle(int wait)
         return 0;
     }
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+        v9x_eg_write_record();
         v9x_trace_flush_fault(V9X_EG_FAULT_TAG, V9X_EG_DMA_RB_RPTR);
     }
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
@@ -374,6 +461,7 @@ static int v9x_eg_emit_or_give_up(const struct v9x_eg_dma_plan *plan)
         return V9X_BLT_DONE;
     }
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+        v9x_eg_write_record();
         v9x_trace_flush_fault(V9X_EG_FAULT_TAG, V9X_EG_DMA_RB_RPTR);
     }
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;

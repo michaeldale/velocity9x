@@ -282,6 +282,12 @@ v9x_u32 v9x_eg_dma_pad(v9x_u32 position)
     return tail == 0ul ? 0ul : V9X_EG_DMA_ALIGN_DWORDS - tail;
 }
 
+v9x_u32 v9x_eg_dma_ring_advance(v9x_u32 wptr, v9x_u32 count)
+{
+    return (wptr + count + v9x_eg_dma_pad(wptr + count)) &
+           (V9X_EG_RING_DWORDS - 1ul);
+}
+
 v9x_u32 v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *ok)
 {
     v9x_u32 field = fb_location & V9X_EG_FB_START_MASK;
