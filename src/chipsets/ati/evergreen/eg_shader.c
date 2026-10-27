@@ -150,9 +150,12 @@ v9x_u32 v9x_eg_alu_op2(v9x_u32 alu_inst, v9x_u32 src0_gpr,
                              src1_chan, 0ul, dst_gpr, dst_chan, last, out);
 }
 
-/* ALU_WORD0's SRC1_NEG (bit 25) and ALU_WORD1_OP2's CLAMP (bit 31). */
+/* ALU_WORD0's SRC1_NEG (bit 25); ALU_WORD1_OP2's CLAMP (bit 31) and
+ * SRC0_ABS and SRC1_ABS (bits 0 and 1, eg_sq.h). */
 #define EG_ALU_SRC1_NEG_BIT 0x02000000ul
 #define EG_ALU_CLAMP_BIT    0x80000000ul
+#define EG_ALU_SRC0_ABS_BIT 0x00000001ul
+#define EG_ALU_SRC1_ABS_BIT 0x00000002ul
 
 v9x_u32 v9x_eg_alu_op2_ex(v9x_u32 alu_inst, v9x_u32 src0_sel,
                           v9x_u32 src0_chan, v9x_u32 src1_sel,
@@ -165,10 +168,16 @@ v9x_u32 v9x_eg_alu_op2_ex(v9x_u32 alu_inst, v9x_u32 src0_sel,
              ((flags & V9X_EG_ALU_NEG_SRC1) != 0ul ? EG_ALU_SRC1_NEG_BIT
                                                    : 0ul) |
              (last != 0ul ? EG_ALU_LAST : 0ul);
-    out[1] = EG_ALU_WRITE_MASK | (alu_inst << EG_ALU_INST_SHIFT) |
+    out[1] = ((flags & V9X_EG_ALU_NO_WRITE) != 0ul ? 0ul
+                                                   : EG_ALU_WRITE_MASK) |
+             (alu_inst << EG_ALU_INST_SHIFT) |
              (dst_gpr << EG_ALU_DST_GPR_SHIFT) |
              (dst_chan << EG_ALU_DST_CHAN_SHIFT) |
-             ((flags & V9X_EG_ALU_CLAMP) != 0ul ? EG_ALU_CLAMP_BIT : 0ul);
+             ((flags & V9X_EG_ALU_CLAMP) != 0ul ? EG_ALU_CLAMP_BIT : 0ul) |
+             ((flags & V9X_EG_ALU_ABS_SRC0) != 0ul ? EG_ALU_SRC0_ABS_BIT
+                                                   : 0ul) |
+             ((flags & V9X_EG_ALU_ABS_SRC1) != 0ul ? EG_ALU_SRC1_ABS_BIT
+                                                   : 0ul);
     return 2ul;
 }
 
@@ -485,24 +494,44 @@ v9x_u32 v9x_eg_shader_d3d_vs_lit(v9x_u32 textured, v9x_u32 *out)
     return at;
 }
 
-/* An unsigned byte as the float v / 255, rounded to nearest, as IEEE
- * single bits: the fog colour's literals, without floating point. */
-static v9x_u32 v9x_eg_unorm8_bits(v9x_u32 value)
+/* The 24 significant bits of a single: the leading one and 23 more. */
+#define EG_FLOAT_SIGNIFICAND_BITS 24ul
+#define EG_FLOAT_EXPONENT_BIAS    127ul
+
+v9x_u32 v9x_eg_unorm_float_bits(v9x_u32 value, v9x_u32 max)
 {
     v9x_u32 scaled = value;
     v9x_u32 shift = 0ul;
-    v9x_u32 mantissa;
+    v9x_u32 quotient = 0ul;
+    v9x_u32 bit;
 
-    if (value == 0ul) {
+    if (value == 0ul || max == 0ul) {
         return 0ul;
     }
-    /* Scale into [255, 510): the quotient into [1, 2). */
-    while (scaled < 255ul) {
+    /* Scale into [max, 2 max): the quotient into [1, 2). */
+    while (scaled < max) {
         scaled <<= 1;
         ++shift;
     }
-    mantissa = ((scaled << 23) + 127ul) / 255ul;
-    return ((127ul - shift) << 23) | (mantissa & 0x007ffffful);
+    /* Long division, a bit at a time, so nothing overflows 32 bits; the
+     * remainder then rounds the last bit, ties up. */
+    for (bit = 0ul; bit < EG_FLOAT_SIGNIFICAND_BITS; ++bit) {
+        quotient <<= 1;
+        if (scaled >= max) {
+            quotient |= 1ul;
+            scaled -= max;
+        }
+        scaled <<= 1;
+    }
+    if (scaled >= max) {
+        ++quotient;
+    }
+    if (quotient >> EG_FLOAT_SIGNIFICAND_BITS != 0ul) {
+        quotient >>= 1;
+        --shift;
+    }
+    return ((EG_FLOAT_EXPONENT_BIAS - shift) << 23) |
+           (quotient & 0x007ffffful);
 }
 
 /* Three slots R(dst).c = R(src).c + L.c (or - L.c) for c in x, y, z, the
@@ -536,11 +565,64 @@ static v9x_u32 v9x_eg_literal_group(v9x_u32 src_gpr, v9x_u32 dst_gpr,
  */
 #define EG_LIT_ALU_DWORD 8ul
 
+/* The key test's temporary: the GPR past the lit PS's three. */
+#define EG_KEY_GPR 3ul
+
+/*
+ * The colour key test on the texel in R(texel): R3 = texel - key, R3.x =
+ * max(|R3.x|, |R3.y|), R3.x = max(R3.x, |R3.z|), then KILLGT kills the
+ * pixel where the tolerance exceeds that largest difference. The groups
+ * read GPRs the group before wrote, as the fog's do (measured, V9XEG3D
+ * /d3dfog).
+ */
+static v9x_u32 v9x_eg_key_test(v9x_u32 texel_gpr, const v9x_u32 *key,
+                               v9x_u32 tolerance, v9x_u32 *out)
+{
+    v9x_u32 at = 0ul;
+
+    at += v9x_eg_literal_group(texel_gpr, EG_KEY_GPR, 1ul, key, out + at);
+    at += v9x_eg_alu_op2_ex(V9X_EG_ALU_MAX, EG_KEY_GPR, V9X_EG_SEL_X,
+                            EG_KEY_GPR, V9X_EG_SEL_Y,
+                            V9X_EG_ALU_ABS_SRC0 | V9X_EG_ALU_ABS_SRC1,
+                            EG_KEY_GPR, V9X_EG_SEL_X, 1ul, out + at);
+    at += v9x_eg_alu_op2_ex(V9X_EG_ALU_MAX, EG_KEY_GPR, V9X_EG_SEL_X,
+                            EG_KEY_GPR, V9X_EG_SEL_Z, V9X_EG_ALU_ABS_SRC1,
+                            EG_KEY_GPR, V9X_EG_SEL_X, 1ul, out + at);
+    at += v9x_eg_alu_op2_ex(V9X_EG_ALU_KILLGT, V9X_EG_ALU_SRC_LITERAL,
+                            V9X_EG_SEL_X, EG_KEY_GPR, V9X_EG_SEL_X,
+                            V9X_EG_ALU_NO_WRITE, 0ul, V9X_EG_SEL_X, 1ul,
+                            out + at);
+    out[at++] = tolerance;
+    out[at++] = 0ul;
+    return at;
+}
+
 v9x_u32 v9x_eg_shader_d3d_ps_lit(v9x_u32 op, v9x_u32 specular, v9x_u32 fog,
                                  v9x_u32 fog_color, v9x_u32 *out)
 {
+    struct v9x_eg_d3d_ps ps;
+
+    ps.op = op;
+    ps.specular = specular;
+    ps.fog = fog;
+    ps.fog_color = fog_color;
+    ps.color_key = 0ul;
+    ps.key[0] = 0ul;
+    ps.key[1] = 0ul;
+    ps.key[2] = 0ul;
+    ps.key_tolerance = 0ul;
+    return v9x_eg_shader_d3d_ps_built(&ps, out);
+}
+
+v9x_u32 v9x_eg_shader_d3d_ps_built(const struct v9x_eg_d3d_ps *ps,
+                                   v9x_u32 *out)
+{
     v9x_u32 at = EG_LIT_ALU_DWORD;
     v9x_u32 cf = 0ul;
+    v9x_u32 op = ps->op;
+    v9x_u32 specular = ps->specular;
+    v9x_u32 fog = ps->fog;
+    v9x_u32 fog_color = ps->fog_color;
     v9x_u32 textured = op != V9X_EG_D3D_OP_NONE;
     v9x_u32 interp_slots;
     v9x_u32 combine_at;
@@ -561,6 +643,11 @@ v9x_u32 v9x_eg_shader_d3d_ps_lit(v9x_u32 op, v9x_u32 specular, v9x_u32 fog,
     interp_slots = (at - EG_LIT_ALU_DWORD) / 2ul;
 
     combine_at = at;
+    /* The key on the texel as sampled, before the op changes it. */
+    if (ps->color_key != 0ul && textured) {
+        at += v9x_eg_key_test(op == V9X_EG_D3D_OP_REPLACE ? 0ul : 1ul,
+                              ps->key, ps->key_tolerance, out + at);
+    }
     if (op == V9X_EG_D3D_OP_MODULATE) {
         for (slot = 0ul; slot < 4ul; ++slot) {
             at += v9x_eg_alu_op2(V9X_EG_ALU_MUL, 0ul, slot, 1ul, slot, 0ul,
@@ -578,9 +665,11 @@ v9x_u32 v9x_eg_shader_d3d_ps_lit(v9x_u32 op, v9x_u32 specular, v9x_u32 fog,
     /* Fog: R1 = R0 - fog, R1 *= f (R2.w), R0 = R1 + fog. The colour's
      * channels are in memory order, so x is blue. */
     if (fog != 0ul) {
-        literal[0] = v9x_eg_unorm8_bits(fog_color & 0xfful);
-        literal[1] = v9x_eg_unorm8_bits((fog_color >> 8) & 0xfful);
-        literal[2] = v9x_eg_unorm8_bits((fog_color >> 16) & 0xfful);
+        literal[0] = v9x_eg_unorm_float_bits(fog_color & 0xfful, 255ul);
+        literal[1] = v9x_eg_unorm_float_bits((fog_color >> 8) & 0xfful,
+                                             255ul);
+        literal[2] = v9x_eg_unorm_float_bits((fog_color >> 16) & 0xfful,
+                                             255ul);
         at += v9x_eg_literal_group(0ul, 1ul, 1ul, literal, out + at);
         for (slot = 0ul; slot < 3ul; ++slot) {
             at += v9x_eg_alu_op2(V9X_EG_ALU_MUL, 1ul, slot, 2ul,

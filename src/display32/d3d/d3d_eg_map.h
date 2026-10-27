@@ -20,6 +20,7 @@
 
 #include "velocity9x/types.h"
 #include "velocity9x/eg_3d.h"
+#include "velocity9x/eg_shader.h"
 #include "../r3d/r3d.h"
 
 /* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
@@ -44,6 +45,10 @@ typedef struct v9x_d3d_eg_texture {
     v9x_u32 offset;
     v9x_u32 levels;
     v9x_u32 mip_offset;
+    /* The surface's source colour key, in its own format, when it has
+     * one (DDRAWISURF_HASCKEYSRCBLT). */
+    v9x_u32 has_key;
+    v9x_u32 key;
 } V9X_D3D_EG_TEXTURE;
 
 #define V9X_D3D_EG_REFUSE_NONE            0ul
@@ -63,17 +68,12 @@ typedef struct v9x_d3d_eg_texture {
 #define V9X_D3D_EG_REFUSE_ADDRESS         16ul /* the heap not located */
 #define V9X_D3D_EG_REFUSE_OVERFLOW        17ul /* the stream outgrew its buffer */
 
-/* A draw with specular or fog takes the lit shaders (eg_shader.h,
- * v9x_eg_shader_d3d_ps_lit): ps_slot is then V9X_D3D_EG_PS_LIT, and the
- * engine builds the PS from this and sends it with the batch, as the fog
- * colour is in its code. */
+/* A draw with specular, fog or a colour key takes the lit shaders
+ * (eg_shader.h, v9x_eg_shader_d3d_ps_built): ps_slot is then
+ * V9X_D3D_EG_PS_LIT, and the engine builds the PS from this and sends it
+ * with the batch, as the fog colour and the key are in its code. */
 #define V9X_D3D_EG_PS_LIT 0xfffffffful
-typedef struct v9x_d3d_eg_lit {
-    v9x_u32 op;         /* V9X_EG_D3D_OP_* */
-    v9x_u32 specular;
-    v9x_u32 fog;
-    v9x_u32 fog_color;  /* D3DCOLOR, 0x00RRGGBB */
-} V9X_D3D_EG_LIT;
+typedef struct v9x_eg_d3d_ps V9X_D3D_EG_LIT;
 
 /*
  * One draw's batch state, without the GPU addresses the engine alone

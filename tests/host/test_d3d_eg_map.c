@@ -52,6 +52,8 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_EG_TEXTURE *texture)
     texture->offset = 0x00200000ul;
     texture->levels = 1ul;
     texture->mip_offset = 0ul;
+    texture->has_key = 0ul;
+    texture->key = 0ul;
 }
 
 static v9x_u32 map(const V9X_R3D_DRAW *draw,
@@ -469,11 +471,73 @@ static void test_texture(void)
     CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) ==
           V9X_D3D_EG_REFUSE_TEXTURE_FORMAT);
 
-    /* A colour key with a texture needs the kill shader. */
+    /* A colour key on a texture without one keys nothing. */
     base_texture(&draw, &texture);
     draw.color_key_enable = 1ul;
     CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
-          V9X_D3D_EG_REFUSE_COLOR_KEY);
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(state.kill == 0ul &&
+          ps == V9X_EG_SLOT_PS_FIRST + V9X_EG_D3D_OP_MODULATE);
+}
+
+static void test_color_key(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_EG_TEXTURE texture;
+    struct v9x_eg_3d_state state;
+    v9x_u32 vs;
+    v9x_u32 ps;
+
+    /* A 565 texture keyed on magenta, F81Fh: blue and red full, green 0,
+     * within half a 6-bit step. The built PS kills, with one more GPR. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    texture.format = V9X_EG_COLOR_5_6_5;
+    texture.has_alpha = 0ul;
+    texture.has_key = 1ul;
+    texture.key = 0x0000f81ful;
+    draw.color_key_enable = 1ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_EG_PS_LIT && vs == V9X_EG_SLOT_VS_LIT_TEXTURED);
+    CHECK(lit.color_key == 1ul && lit.op == V9X_EG_D3D_OP_MODULATE);
+    CHECK(lit.key[0] == 0x3f800000ul && lit.key[1] == 0ul &&
+          lit.key[2] == 0x3f800000ul);
+    CHECK(lit.key_tolerance == v9x_eg_unorm_float_bits(1ul, 126ul));
+    CHECK(state.kill == 1ul && state.ps_gprs == 4ul &&
+          state.interpolants == 3ul);
+
+    /* 1555: three 5-bit fields, the alpha bit not compared. */
+    texture.format = V9X_EG_COLOR_1_5_5_5;
+    texture.has_alpha = 1ul;
+    texture.key = 0x0000801ful;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(lit.key[0] == 0x3f800000ul && lit.key[1] == 0ul &&
+          lit.key[2] == 0ul);
+    CHECK(lit.key_tolerance == v9x_eg_unorm_float_bits(1ul, 62ul));
+
+    /* 4444 and 8888. */
+    texture.format = V9X_EG_COLOR_4_4_4_4;
+    texture.key = 0x00000f00ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(lit.key[0] == 0ul && lit.key[1] == 0ul &&
+          lit.key[2] == 0x3f800000ul);
+    CHECK(lit.key_tolerance == v9x_eg_unorm_float_bits(1ul, 30ul));
+    texture.format = V9X_EG_COLOR_8_8_8_8;
+    texture.key = 0x00008000ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(lit.key[0] == 0ul && lit.key[1] == 0x3f008081ul &&
+          lit.key[2] == 0ul);
+    CHECK(lit.key_tolerance == v9x_eg_unorm_float_bits(1ul, 510ul));
+
+    /* COLORKEYENABLE off: the key is ignored. */
+    draw.color_key_enable = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(state.kill == 0ul && lit.color_key == 0ul);
 }
 
 unsigned int v9x_run_d3d_eg_map_tests(void)
@@ -487,5 +551,6 @@ unsigned int v9x_run_d3d_eg_map_tests(void)
     test_mip_chain();
     test_lit();
     test_explicit();
+    test_color_key();
     return failures;
 }

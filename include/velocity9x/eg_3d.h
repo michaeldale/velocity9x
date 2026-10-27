@@ -256,6 +256,7 @@ struct v9x_eg_3d_state {
     v9x_u32 ps_gpu;
     v9x_u32 ps_gprs;
     v9x_u32 interpolants;        /* 1 to V9X_EG_INTERPOLANTS_MAX */
+    v9x_u32 kill;                /* nonzero: the PS may kill pixels */
     v9x_u32 has_texture;
     v9x_u32 texture_gpu;
     v9x_u32 texture_width;

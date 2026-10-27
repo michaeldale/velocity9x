@@ -81,9 +81,14 @@ v9x_u32 v9x_eg_alu_op2(v9x_u32 alu_inst, v9x_u32 src0_gpr,
  * V9X_EG_ALU_SRC_LITERAL (its chan then picks literal x, y, z or w), with
  * flags V9X_EG_ALU_*. */
 #define V9X_EG_ALU_ADD          0x00ul
+#define V9X_EG_ALU_MAX          0x03ul
+#define V9X_EG_ALU_KILLGT       0x2dul  /* kill where src0 > src1 */
 #define V9X_EG_ALU_SRC_LITERAL  0xfdul
 #define V9X_EG_ALU_NEG_SRC1     0x1ul
 #define V9X_EG_ALU_CLAMP        0x2ul
+#define V9X_EG_ALU_ABS_SRC0     0x4ul
+#define V9X_EG_ALU_ABS_SRC1     0x8ul
+#define V9X_EG_ALU_NO_WRITE     0x10ul
 v9x_u32 v9x_eg_alu_op2_ex(v9x_u32 alu_inst, v9x_u32 src0_sel,
                           v9x_u32 src0_chan, v9x_u32 src1_sel,
                           v9x_u32 src1_chan, v9x_u32 flags, v9x_u32 dst_gpr,
@@ -148,6 +153,32 @@ v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_vs_lit(v9x_u32 textured, v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_ps_lit(v9x_u32 op, v9x_u32 specular, v9x_u32 fog,
                                  v9x_u32 fog_color, v9x_u32 *out);
+
+/*
+ * The lit PS with a source colour key: before the op, a texel whose B, G
+ * and R each lie within key_tolerance of key (floats' bits, in memory
+ * order) is killed. The texel is compared as sampled, so a filtered
+ * texel that blends the key with another colour is not. A keyed PS uses
+ * one more GPR, V9X_EG_D3D_PS_GPRS of them, and its draw needs
+ * DB_SHADER_CONTROL's KILL_ENABLE (eg_3d.h, state kill).
+ */
+struct v9x_eg_d3d_ps {
+    v9x_u32 op;              /* V9X_EG_D3D_OP_* */
+    v9x_u32 specular;
+    v9x_u32 fog;
+    v9x_u32 fog_color;       /* D3DCOLOR, 0x00RRGGBB */
+    v9x_u32 color_key;
+    v9x_u32 key[3];          /* B, G, R */
+    v9x_u32 key_tolerance;
+};
+#define V9X_EG_D3D_PS_GPRS(color_key) ((color_key) != 0ul ? 4ul : 3ul)
+v9x_u32 v9x_eg_shader_d3d_ps_built(const struct v9x_eg_d3d_ps *ps,
+                                   v9x_u32 *out);
+
+/* value / max as an IEEE single's bits, rounded to nearest, without
+ * floating point: a unorm channel as the sampler reads it. max is 1 to
+ * 65535, value at most max. */
+v9x_u32 v9x_eg_unorm_float_bits(v9x_u32 value, v9x_u32 max);
 
 /* The HAL's shader slots in its VRAM window (eg_3d.h,
  * V9X_EG_WINDOW_SHADERS, one V9X_EG_WINDOW_SHADER_BYTES each): the two

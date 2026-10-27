@@ -353,6 +353,80 @@ static void test_d3d_lit(void)
     CHECK(shader[38] == 0x3b808081ul);
 }
 
+static void test_d3d_color_key(void)
+{
+    struct v9x_eg_d3d_ps ps;
+    v9x_u32 count;
+
+    /* Unorm channels as floats: exact ends, rounded between. */
+    CHECK(v9x_eg_unorm_float_bits(0ul, 31ul) == 0ul);
+    CHECK(v9x_eg_unorm_float_bits(31ul, 31ul) == 0x3f800000ul);
+    CHECK(v9x_eg_unorm_float_bits(16ul, 31ul) == 0x3f042108ul);
+    CHECK(v9x_eg_unorm_float_bits(128ul, 255ul) == 0x3f008081ul);
+    CHECK(v9x_eg_unorm_float_bits(1ul, 510ul) == 0x3b008081ul);
+
+    /* MODULATE with a key: the interpolation as the lit PS's (40 dwords at
+     * 8), then at 48 R3 = texel - key, R3.x = max |R3.xyz|, kill where the
+     * tolerance exceeds it; then the multiply; the texture clause at 76. */
+    ps.op = V9X_EG_D3D_OP_MODULATE;
+    ps.specular = 0ul;
+    ps.fog = 0ul;
+    ps.fog_color = 0ul;
+    ps.color_key = 1ul;
+    ps.key[0] = 0x11111111ul;
+    ps.key[1] = 0x22222222ul;
+    ps.key[2] = 0x33333333ul;
+    ps.key_tolerance = 0x3c000000ul;
+    reset();
+    count = v9x_eg_shader_d3d_ps_built(&ps, shader);
+    CHECK(count == 80ul);
+    CHECK(shader[2] == 38ul && shader[3] == 0x80400000ul);
+    CHECK(shader[4] == 24ul &&
+          shader[5] == (0x80000000ul | (8ul << 26) | (12ul << 18)));
+    CHECK(shader[48] == (1ul | (0xfdul << 13) | 0x02000000ul));
+    CHECK(shader[49] == (0x10ul | (3ul << 21)));
+    CHECK(shader[54] == 0x11111111ul && shader[55] == 0x22222222ul &&
+          shader[56] == 0x33333333ul && shader[57] == 0ul);
+    CHECK(shader[58] == (3ul | (3ul << 13) | (1ul << 23) | 0x80000000ul));
+    CHECK(shader[59] == (0x13ul | (3ul << 7) | (3ul << 21)));
+    CHECK(shader[60] == (3ul | (3ul << 13) | (2ul << 23) | 0x80000000ul));
+    CHECK(shader[61] == (0x12ul | (3ul << 7) | (3ul << 21)));
+    /* KILLGT tolerance, R3.x: no write. */
+    CHECK(shader[62] == (0xfdul | (3ul << 13) | 0x80000000ul));
+    CHECK(shader[63] == (0x2dul << 7));
+    CHECK(shader[64] == 0x3c000000ul && shader[65] == 0ul);
+    /* The multiply follows. */
+    CHECK(((shader[67] >> 7) & 0x7fful) == V9X_EG_ALU_MUL);
+    CHECK(shader[76] == (V9X_EG_TEX_SAMPLE | (1ul << 16)));
+
+    /* REPLACE samples into R0, so the key test reads R0. */
+    ps.op = V9X_EG_D3D_OP_REPLACE;
+    reset();
+    count = v9x_eg_shader_d3d_ps_built(&ps, shader);
+    CHECK(shader[32] == (0ul | (0xfdul << 13) | 0x02000000ul));
+
+    /* No key: the lit PS, word for word. */
+    {
+        v9x_u32 lit[V9X_EG_SHADER_DWORDS_MAX];
+        v9x_u32 index;
+        v9x_u32 lit_count;
+
+        ps.op = V9X_EG_D3D_OP_MODULATE;
+        ps.specular = 1ul;
+        ps.fog = 1ul;
+        ps.fog_color = 0x00ff8000ul;
+        ps.color_key = 0ul;
+        reset();
+        count = v9x_eg_shader_d3d_ps_built(&ps, shader);
+        lit_count = v9x_eg_shader_d3d_ps_lit(V9X_EG_D3D_OP_MODULATE, 1ul, 1ul,
+                                             0x00ff8000ul, lit);
+        CHECK(count == lit_count);
+        for (index = 0ul; index < count; ++index) {
+            CHECK(shader[index] == lit[index]);
+        }
+    }
+}
+
 unsigned int v9x_run_eg_shader_tests(void)
 {
     failures = 0u;
@@ -363,5 +437,6 @@ unsigned int v9x_run_eg_shader_tests(void)
     test_modulate_ps();
     test_d3d();
     test_d3d_lit();
+    test_d3d_color_key();
     return failures;
 }

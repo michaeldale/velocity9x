@@ -218,6 +218,11 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_SPI_PS_IN_CONTROL_0      0x286ccul
 #define EG_SPI_BARYC_CNTL           0x286e0ul
 #define EG_CB_TARGET_MASK           0x28238ul
+#define EG_DB_SHADER_CONTROL        0x2880cul
+/* The default state's 210h (Z_ORDER early then late, bit 9 as Linux's);
+ * with KILL_ENABLE (bit 6) Z_ORDER is LATE_Z (0). */
+#define EG_DB_SHADER_DEFAULT        0x00000210ul
+#define EG_DB_SHADER_KILL           0x00000240ul
 #define EG_CB_BLEND0_CONTROL        0x28780ul
 #define EG_DB_DEPTH_CONTROL         0x28800ul
 #define EG_PA_CL_VTE_CNTL           0x28818ul
@@ -791,6 +796,12 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
                             ~state->masked_channels);
     v9x_eg_pm4_set_context1(stream, EG_CB_BLEND0_CONTROL,
                             state->blend_control);
+    /* A PS that kills needs KILL_ENABLE, and Z after the shader, as Mesa's
+     * evergreen_update_db_shader_control sets them; otherwise the default
+     * state's value, early Z then late. */
+    v9x_eg_pm4_set_context1(stream, EG_DB_SHADER_CONTROL,
+                            state->kill != 0ul ? EG_DB_SHADER_KILL
+                                               : EG_DB_SHADER_DEFAULT);
 
     /* The depth buffer: Z16 1D tiled, no stencil, the stencil bases on
      * the Z base. Without one, DB_Z_INFO keeps the default state's

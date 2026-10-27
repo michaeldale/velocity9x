@@ -32,8 +32,10 @@ benchmark completes (5267) after a DMA ring-wrap fix
 ([record](../decisions/2026-10-27-cedar-3dmark2000.md)). OpenGL's
 explicit draws run on the engine: the Quake 3 demo timedemo is 68.8 fps
 with every batch on the hardware
-([record](../decisions/2026-10-27-cedar-opengl-quake3.md)). Next: colour
-keys; the heap is still the VBE's 16 MiB. Parent plan:
+([record](../decisions/2026-10-27-cedar-opengl-quake3.md)). Colour keys
+are drawn by a kill in the pixel shader
+([record](../decisions/2026-10-27-cedar-colour-keys.md)). Open: the heap
+is still the VBE's 16 MiB; flips. Parent plan:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md); 2D runs on the DMA
 engine ([record](../decisions/2026-10-26-cedar-directdraw-on-dma.md)).
 Michael asked for Direct3D next (2026-10-26).

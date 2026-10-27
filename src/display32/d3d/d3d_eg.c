@@ -201,7 +201,8 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
         V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
-                         V9X_D3DPTEXTURECAPS_ALPHA;
+                         V9X_D3DPTEXTURECAPS_ALPHA |
+                         V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
                                V9X_D3DPTFILTERCAPS_LINEAR |
                                V9X_D3DPTFILTERCAPS_MIPNEAREST |
@@ -349,6 +350,8 @@ static void v9x_d3d_eg_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     DWORD offset;
 
     texture->format = V9X_D3D_EG_TEXTURE_UNKNOWN;
+    texture->has_key = 0ul;
+    texture->key = 0ul;
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
@@ -370,6 +373,11 @@ static void v9x_d3d_eg_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->offset = offset;
     texture->levels = 1ul;
     texture->mip_offset = offset;
+    /* The key is level 0's: DirectDraw keeps it on the chain's top. */
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
+        texture->has_key = 1ul;
+        texture->key = surface->ddckCKSrcBltLow;
+    }
     if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
         v9x_d3d_eg_resolve_chain(surface, bytes, texture);
     }
@@ -488,9 +496,7 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
     }
     state.vs_gpu = v9x_eg_cp_shader_gpu(vs_slot);
     if (ps_slot == V9X_D3D_EG_PS_LIT) {
-        ps_dwords = v9x_eg_shader_d3d_ps_lit(lit.op, lit.specular, lit.fog,
-                                             lit.fog_color,
-                                             v9x_d3d_eg_lit_ps);
+        ps_dwords = v9x_eg_shader_d3d_ps_built(&lit, v9x_d3d_eg_lit_ps);
     } else {
         state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
     }

@@ -365,6 +365,17 @@ static void test_state(void)
     CHECK(reg_value(buffer, stream.count, 0x28238ul) == 2ul);
     state.masked_channels = 0ul;
 
+    /* DB_SHADER_CONTROL: the default state's 210h, and for a PS that
+     * kills, KILL_ENABLE with Z late, after the shader (evergreend.h). */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(reg_value(buffer, stream.count, 0x2880cul) == 0x210ul);
+    state.kill = 1ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(reg_value(buffer, stream.count, 0x2880cul) == 0x240ul);
+    state.kill = 0ul;
+
     /* GPU address 0 is memory like any other: on M-BXMFA8 the heap starts
      * there, and after a flip the back buffer is the surface at offset 0
      * (V9XD32 at 32 bpp, boot 14). Depth and texture are switched by their

@@ -143,6 +143,60 @@ static int v9x_d3d_eg_op(v9x_u32 op, v9x_u32 *shader_op)
     return 0;
 }
 
+/*
+ * A colour key in its texture's format as the floats the sampler returns
+ * for B, G and R: each field's value over its maximum. The tolerance is
+ * half a step of the finest of the three, so a texel the sampler read
+ * point-for-point matches exactly one key. A 1555 or 4444 key's alpha is
+ * not compared: Direct3D keys on colour.
+ */
+static void v9x_d3d_eg_key(v9x_u32 format, v9x_u32 key, V9X_D3D_EG_LIT *lit)
+{
+    v9x_u32 shift_g;
+    v9x_u32 shift_r;
+    v9x_u32 max_b;
+    v9x_u32 max_g;
+    v9x_u32 max_r;
+
+    switch (format) {
+    case V9X_EG_COLOR_5_6_5:
+        shift_g = 5ul;
+        shift_r = 11ul;
+        max_b = 31ul;
+        max_g = 63ul;
+        max_r = 31ul;
+        break;
+    case V9X_EG_COLOR_1_5_5_5:
+        shift_g = 5ul;
+        shift_r = 10ul;
+        max_b = 31ul;
+        max_g = 31ul;
+        max_r = 31ul;
+        break;
+    case V9X_EG_COLOR_4_4_4_4:
+        shift_g = 4ul;
+        shift_r = 8ul;
+        max_b = 15ul;
+        max_g = 15ul;
+        max_r = 15ul;
+        break;
+    case V9X_EG_COLOR_8_8_8_8:
+        shift_g = 8ul;
+        shift_r = 16ul;
+        max_b = 255ul;
+        max_g = 255ul;
+        max_r = 255ul;
+        break;
+    default:
+        return;
+    }
+    lit->color_key = 1ul;
+    lit->key[0] = v9x_eg_unorm_float_bits(key & max_b, max_b);
+    lit->key[1] = v9x_eg_unorm_float_bits((key >> shift_g) & max_g, max_g);
+    lit->key[2] = v9x_eg_unorm_float_bits((key >> shift_r) & max_r, max_r);
+    lit->key_tolerance = v9x_eg_unorm_float_bits(1ul, 2ul * max_g);
+}
+
 /* A float's bits for ref / 255, the SX's alpha reference. */
 static v9x_u32 v9x_d3d_eg_alpha_ref(v9x_u32 ref)
 {
@@ -342,10 +396,6 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
         state->alpha_test_control =
             v9x_eg_3d_alpha_test(0ul, V9X_EG_FUNC_ALWAYS);
     }
-    /* A colour key needs a kill in the pixel shader, not built yet. */
-    if (draw->color_key_enable != 0ul && draw->texture.object != 0) {
-        return V9X_D3D_EG_REFUSE_COLOR_KEY;
-    }
 
     /* rhw in w, perspective-correct; pixel centres at whole coordinates,
      * Direct3D's. */
@@ -374,9 +424,20 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
     lit->fog = draw->fog_enable != 0ul ? 1ul : 0ul;
     lit->fog_color = draw->fog_color;
     lit->op = *ps_slot - V9X_EG_SLOT_PS_FIRST;
-    if (lit->specular != 0ul || lit->fog != 0ul) {
+    lit->color_key = 0ul;
+    lit->key[0] = 0ul;
+    lit->key[1] = 0ul;
+    lit->key[2] = 0ul;
+    lit->key_tolerance = 0ul;
+    /* A source colour key, when enabled and the texture has one: the PS
+     * kills texels that match it. */
+    if (textured && draw->color_key_enable != 0ul && texture->has_key) {
+        v9x_d3d_eg_key(texture->format, texture->key, lit);
+        state->kill = 1ul;
+    }
+    if (lit->specular != 0ul || lit->fog != 0ul || lit->color_key != 0ul) {
         state->vs_gprs = 4ul;
-        state->ps_gprs = 3ul;
+        state->ps_gprs = V9X_EG_D3D_PS_GPRS(lit->color_key);
         state->interpolants = V9X_EG_D3D_INTERPOLANTS(textured);
         *vs_slot = textured ? V9X_EG_SLOT_VS_LIT_TEXTURED : V9X_EG_SLOT_VS_LIT;
         *ps_slot = V9X_D3D_EG_PS_LIT;
