@@ -22,6 +22,7 @@
 #include <windows.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
+#include "probe_lock.h"
 
 #define V9X_GLIDP_SECTION "GlideProbe"
 
@@ -259,6 +260,11 @@ void __stdcall V9xGlideProbeEntry(void)
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     WritePrivateProfileStringA(V9X_GLIDP_SECTION, 0, 0, V9X_DIAG_GLIDP_INI);
     glidp_text("Build", V9X_BUILD_ID);
+    if (!v9x_probe_lock_take()) {
+        glidp_text("Result", "BUSY");
+        WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_GLIDP_INI);
+        ExitProcess(3u);
+    }
     glidp_text("Result", "INCOMPLETE");
     glidp_dll = LoadLibraryA("GLIDE2X.DLL");
     if (glidp_dll == 0) {

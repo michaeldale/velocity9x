@@ -17,6 +17,7 @@
 #include <windows.h>
 
 #include "velocity9x/diagpaths.h"
+#include "probe_lock.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -156,6 +157,10 @@ void WINAPI V9xGlide3SessionEntry(void)
     DeleteFileA(V9X_DIAG_GL3P_INI);
     v9x_gl3p_write("Build", V9X_BUILD_ID);
     v9x_gl3p_write("Dll", dll);
+    if (!v9x_probe_lock_take()) {
+        v9x_gl3p_write("Result", "BUSY");
+        ExitProcess(3u);
+    }
     v9x_gl3p_write("Result", "INCOMPLETE");
 
     v9x_gl3p_write("Step", "load");

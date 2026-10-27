@@ -70,6 +70,9 @@ $sources = @(
     "src\common\i9xx_cover.c",
     "src\common\i9xx_depth.c",
     "src\common\i9xx_wm.c",
+    # The flip-path frame grab's arithmetic: pure, and host-tested in
+    # tests\host\test_frame_grab.c.
+    "src\common\frame_grab.c",
     # PE32 export-by-ordinal walk, as arithmetic over a bounded byte range:
     # pure, and host-tested in tests\host\test_pe_export.c. The HAL uses it
     # to reach KERNEL32's Win16-mutex ordinals, which GetProcAddress refuses.

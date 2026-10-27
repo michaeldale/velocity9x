@@ -67,11 +67,15 @@
 #define V9X_DIAG_DD_INI      V9X_DIAG_PATH("V9XDD.INI")     /* ddraw_probe_win32.c */
 #define V9X_DIAG_SOFTBENCH_INI V9X_DIAG_PATH("V9XSOFT.INI") /* software_bench_win32.c */
 #define V9X_DIAG_SNAP_INI    V9X_DIAG_PATH("V9XSNAP.INI")   /* d3d_trace_dump_win32.c */
+/* One line: the snapshot file the last V9XTRACE run wrote. */
+#define V9X_DIAG_SNAP_LATEST V9X_DIAG_PATH("V9XSNAL.TXT")   /* d3d_trace_dump_win32.c */
 /* One presented frame, as a binary PPM, written by the 32-bit HAL itself -
  * the dump tool cannot read video memory. Once per session: the counters
  * beside it are colour differences and only the image says what the scene
  * actually looks like. See i9xx_scanout.c. */
 #define V9X_DIAG_FRAME_PPM   V9X_DIAG_PATH("V9XFRAME.PPM")  /* i9xx_scanout.c */
+/* V9XGRAB0.BMP to V9XGRAB9.BMP; the digit is the character before ".BMP". */
+#define V9X_DIAG_GRAB_BMP    V9X_DIAG_PATH("V9XGRAB0.BMP")  /* ddhal_core.c */
 /* The replacement is built here and moved over the one above only once it is
  * complete. Opening the real file with CREATE_ALWAYS truncated a good image
  * before the new one was known to be writable, so a failure part-way through

@@ -100,6 +100,28 @@ static const char *v9x_result_file(void)
 
 #define V9X_RESULT_PATH  v9x_result_file()
 
+/*
+ * V9XSNAL.TXT: the name of the file this run writes, on one line. The
+ * rollover above means a reader cannot know which of eight names the run
+ * took; on the Ironlake (0.32.0 checks) that took eight stat calls over
+ * the relay to find. Written before the snapshot, so a run that dies
+ * part-way still points at its own partial file.
+ */
+static void v9x_write_latest(void)
+{
+    const char *path = V9X_RESULT_PATH;
+    HANDLE file = CreateFileA(V9X_DIAG_SNAP_LATEST, GENERIC_WRITE, 0, 0,
+                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    DWORD written = 0ul;
+
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    WriteFile(file, path, (DWORD)lstrlenA(path), &written, 0);
+    WriteFile(file, "\r\n", 2ul, &written, 0);
+    CloseHandle(file);
+}
+
 static void v9x_uint_text(char *text, DWORD value)
 {
     char reverse[12];
@@ -883,6 +905,54 @@ static DWORD v9x_parse_inject(void)
 }
 
 /*
+ * "-grab:<interval>x<count>": arm the flip-path frame grab (frame_grab.h),
+ * every interval-th flip, count times. 1 and the switch's numbers, or 0
+ * when the switch is absent. "-grab" alone is every flip, ten times.
+ */
+static int v9x_parse_grab(DWORD *interval, DWORD *count)
+{
+    const char *cmd = GetCommandLineA();
+    const char *match = "-grab";
+    int index;
+
+    *interval = 1ul;
+    *count = (DWORD)V9X_D3D_FRAME_GRAB_FILES;
+    if (cmd == 0) {
+        return 0;
+    }
+    for (; *cmd != '\0'; ++cmd) {
+        for (index = 0; match[index] != '\0'; ++index) {
+            if (cmd[index] != match[index]) {
+                break;
+            }
+        }
+        if (match[index] != '\0') {
+            continue;
+        }
+        cmd += index;
+        if (*cmd != ':') {
+            return 1;
+        }
+        ++cmd;
+        *interval = 0ul;
+        while (*cmd >= '0' && *cmd <= '9') {
+            *interval = *interval * 10ul + (DWORD)(*cmd - '0');
+            ++cmd;
+        }
+        if (*cmd == 'x' || *cmd == 'X') {
+            ++cmd;
+            *count = 0ul;
+            while (*cmd >= '0' && *cmd <= '9') {
+                *count = *count * 10ul + (DWORD)(*cmd - '0');
+                ++cmd;
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/*
  * "-dd": hold a DirectDraw object open across the snapshot.
  *
  * The engine descriptor - and with it the BAR0 window the live display
@@ -1567,6 +1637,7 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_text("Build", "V9XTRACEDUMP build=" V9X_BUILD_ID);
     v9x_write_dump_identity();
     v9x_write_text("SnapshotFile", V9X_RESULT_PATH);
+    v9x_write_latest();
     v9x_write_uint("SnapshotReused", (DWORD)v9x_result_reused);
     v9x_write_machine_identity();
     if (v9x_has_switch("-dd")) {
@@ -1618,6 +1689,26 @@ void __stdcall V9xTraceDumpEntry(void)
                            (LPCSTR)&command, 0, 0);
         v9x_write_uint("FrameArmRequested", 1ul);
         v9x_write_uint("FrameArmAccepted", result > 0 ? 1ul : 0ul);
+    }
+
+    /* "-grab:<interval>x<count>": the next flips' frames, whole, as
+     * C:\V9XDIAG\V9XGRAB<n>.BMP. Run it, then start the program. */
+    {
+        DWORD grab_interval;
+        DWORD grab_count;
+
+        if (v9x_parse_grab(&grab_interval, &grab_count)) {
+            command.dwCommand = V9X_DDGRABFRAMES;
+            command.dwParam1 = grab_interval;
+            command.dwParam2 = grab_count;
+            command.dwVersion = V9X_DD_VERSION;
+            command.dwReserved = 0ul;
+            result = ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                               (LPCSTR)&command, 0, 0);
+            v9x_write_uint("GrabRequestedInterval", grab_interval);
+            v9x_write_uint("GrabRequestedCount", grab_count);
+            v9x_write_uint("GrabArmAccepted", result > 0 ? 1ul : 0ul);
+        }
     }
 
     bytes = (unsigned char *)&snapshot;
@@ -2453,6 +2544,22 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("TrianglesDeclined", snapshot.d3d.triangles_declined);
     v9x_write_uint("BatchesEngineRefused",
                    snapshot.d3d.batches_engine_refused);
+    /* The flip-path frame grab: GrabStatus is V9X_D3D_IMAGE_* of the last
+     * grab (1 written), and GrabSeq<n> and GrabOffset<n> say which flip
+     * V9XGRAB<n>.BMP holds. */
+    v9x_write_uint("GrabInterval", snapshot.d3d.frame_grab_interval);
+    v9x_write_uint("GrabRemaining", snapshot.d3d.frame_grab_remaining);
+    v9x_write_uint("GrabWritten", snapshot.d3d.frame_grab_written);
+    v9x_write_uint("GrabStatus", snapshot.d3d.frame_grab_status);
+    for (index = 0u; index < snapshot.d3d.frame_grab_written &&
+                     index < V9X_D3D_FRAME_GRAB_FILES; ++index) {
+        char key[24];
+
+        wsprintfA(key, "GrabSeq%u", index);
+        v9x_write_uint(key, snapshot.d3d.frame_grab_sequence[index]);
+        wsprintfA(key, "GrabOffset%u", index);
+        v9x_write_hex(key, snapshot.d3d.frame_grab_offset[index]);
+    }
     v9x_write_uint("FrameCoverFrames", snapshot.d3d.frame_cover_frames);
     v9x_write_uint("FrameCoverRecords", snapshot.d3d.frame_cover_records);
     /* Anything but 1 (WRITTEN) means V9XFRAME.PPM is absent, stale or

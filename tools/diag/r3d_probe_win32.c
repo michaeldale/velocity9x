@@ -28,6 +28,7 @@
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/r3d_abi.h"
+#include "probe_lock.h"
 
 #define V9X_R3DP_SECTION "RenderInterfaceProbe"
 #define V9X_R3DP_EDGE    64ul
@@ -191,6 +192,11 @@ void __stdcall V9xRenderInterfaceProbeEntry(void)
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     DeleteFileA(V9X_DIAG_R3DP_INI);
     v9x_r3dp_text("Build", V9X_BUILD_ID);
+    if (!v9x_probe_lock_take()) {
+        v9x_r3dp_text("Result", "BUSY");
+        WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_R3DP_INI);
+        ExitProcess(3u);
+    }
     v9x_r3dp_text("Result", "RUNNING");
     v9x_r3dp_uint("SchemaVersion", 1ul);
 

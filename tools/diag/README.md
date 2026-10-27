@@ -5,6 +5,35 @@ Guest-side probes and tools, one source per program, built by the matching
 [docs/specifications/hardware-diagnostics.md](../../docs/specifications/hardware-diagnostics.md)
 and [docs/BUILDING.md](../../docs/BUILDING.md).
 
+## Release probes and V9XTRACE
+
+The release checks run V9XD32, V9XGLP, V9XGLIDP, V9XR3DP and V9XGL3P.
+Only one runs at a time: each takes the named mutex in `probe_lock.h`,
+and one started while another holds it writes `Result=BUSY` and does
+nothing else. V9XD32's T14 child runs under its parent's lock.
+
+V9XD32 takes its switches as `/name` or `-name`, in any case. Its report
+records `CommandLine=` and lists each `UnknownSwitch=` that changed
+nothing.
+
+`V9XTRACE.EXE` (`d3d_trace_dump_win32.c`) writes a snapshot to the first
+free name among `V9XSNAP.INI` and `V9XSNA1.INI` to `V9XSNA7.INI`, and the
+name it used to `C:\V9XDIAG\V9XSNAL.TXT`. Fetch that first. Its switches:
+
+- `-grab:<interval>x<count>` arms the frame grab: every interval-th page
+  flip after this, up to ten times, the presented buffer is written whole
+  as `C:\V9XDIAG\V9XGRAB0.BMP` to `V9XGRAB9.BMP` (24-bit, at the mode's
+  size; 16 and 32 bpp). The engine drains first, so the frame is
+  finished. Any engine with page flips. Run it, then start the program.
+  The next snapshot's `GrabSeq<n>` and `GrabOffset<n>` name the flip
+  each file holds, and `GrabStatus=1` means the last one was written.
+  Each grab stalls its flip for the read, so a benchmark's score with a
+  grab armed is not comparable.
+- `-arm` asks Intel's frame cover for its next sampled frame
+  (`V9XFRAME.PPM`, downsampled).
+- `-inject=<n>` arms the engine fault injector; `-dd` holds a DirectDraw
+  object open across the snapshot; `-vbios` saves the video BIOS.
+
 Four sources are kept without a build script. Each answered one question on
 one machine and is retained because the record that cites it needs the source
 to be readable; build one with the shared helper in `scripts/lib/diag-tool.ps1`

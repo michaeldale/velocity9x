@@ -25,6 +25,7 @@
  * V9X_VERSION_STRING. */
 #include "velocity9x/build.h"
 #include "velocity9x/diag_identity.h"
+#include "velocity9x/frame_grab.h"
 
 static const char v9x_hal_build_id[] = "V9XHAL build=" V9X_BUILD_ID;
 
@@ -921,6 +922,101 @@ static v9x_u16 v9x_flip_vsync_state(void)
     return V9X_VSYNC_STATE_APPLICATION;
 }
 
+/* The pure half's file count and the shared block's must agree. */
+typedef char v9x_frame_grab_files_match[
+    V9X_FRAME_GRAB_FILES == V9X_D3D_FRAME_GRAB_FILES ? 1 : -1];
+
+/* One grab to V9XGRAB<index>.BMP: V9X_D3D_IMAGE_* as the frame cover
+ * records it. Rows are written bottom-up, as a positive-height BMP is. The
+ * row buffer is allocated per grab: a static one put 6 KB into V9XHAL.DLL's
+ * file and the SiS floppy's first disk over its 1.44 MB. */
+static DWORD v9x_frame_grab_write(const struct v9x_frame_grab_plan *plan,
+                                  DWORD index)
+{
+    char path[] = V9X_DIAG_GRAB_BMP;
+    BYTE header[V9X_FRAME_GRAB_BMP_HEADER_BYTES];
+    const BYTE *base = (const BYTE *)(v9x_hal->fb.linear_base + plan->offset);
+    BYTE *line;
+    HANDLE file;
+    DWORD written = 0ul;
+    DWORD status = V9X_D3D_IMAGE_WRITTEN;
+    DWORD y;
+
+    line = (BYTE *)LocalAlloc(LMEM_FIXED, plan->row_bytes);
+    if (line == 0) {
+        return V9X_D3D_IMAGE_OPEN_FAILED;
+    }
+    path[sizeof(path) - 6u] = (char)('0' + index);
+    file = CreateFileA(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE || file == 0) {
+        LocalFree(line);
+        return V9X_D3D_IMAGE_OPEN_FAILED;
+    }
+    v9x_frame_grab_bmp_header(plan, header);
+    if (!WriteFile(file, header, sizeof(header), &written, 0) ||
+        written != sizeof(header)) {
+        status = V9X_D3D_IMAGE_WRITE_FAILED;
+    }
+    for (y = plan->height; y != 0ul && status == V9X_D3D_IMAGE_WRITTEN;
+         --y) {
+        v9x_frame_grab_row(plan, base + (y - 1ul) * plan->pitch, line);
+        if (!WriteFile(file, line, plan->row_bytes, &written, 0) ||
+            written != plan->row_bytes) {
+            status = V9X_D3D_IMAGE_WRITE_FAILED;
+        }
+    }
+    if (!CloseHandle(file)) {
+        status = V9X_D3D_IMAGE_WRITE_FAILED;
+    }
+    LocalFree(line);
+    return status;
+}
+
+/*
+ * The frame grab (frame_grab.h), at an accepted flip: when this is the
+ * interval-th flip since the last, the buffer just made the front is
+ * written whole. The engine is drained first, so an engine that queues its
+ * flip behind the drawing has finished the frame before it is read. The
+ * grab stalls this one flip for the length of the read; that is the price
+ * of seeing the frame, and only an armed grab pays it.
+ */
+static void v9x_frame_grab_flip(DWORD offset)
+{
+    V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
+    struct v9x_frame_grab_plan plan;
+    const V9X_DDPIXELFORMAT *pf = &v9x_hal->info.vmiData.ddpfDisplay;
+    DWORD index = d->frame_grab_written;
+    DWORD status;
+
+    if (d->frame_grab_remaining == 0ul ||
+        index >= (DWORD)V9X_D3D_FRAME_GRAB_FILES) {
+        return;
+    }
+    if (v9x_frame_grab_due(&d->frame_grab_countdown, d->frame_grab_interval,
+                           d->frame_grab_remaining) != V9X_TRUE) {
+        return;
+    }
+    --d->frame_grab_remaining;
+    ++d->frame_grab_written;
+    d->frame_grab_sequence[index] = v9x_present_seq;
+    d->frame_grab_offset[index] = offset;
+    if (v9x_frame_grab_plan(offset, v9x_hal->fb.width, v9x_hal->fb.height,
+                            v9x_hal->fb.pitch, v9x_hal->fb.bits_per_pixel,
+                            v9x_hal->fb.vram_bytes, pf->dwRBitMask,
+                            pf->dwGBitMask, pf->dwBBitMask, &plan) !=
+        V9X_TRUE) {
+        d->frame_grab_status = V9X_D3D_IMAGE_FORMAT;
+        return;
+    }
+    if (v9x_render_drain(1) != V9X_RENDER_DRAIN_DONE) {
+        d->frame_grab_status = V9X_D3D_IMAGE_WRITE_FAILED;
+        return;
+    }
+    status = v9x_frame_grab_write(&plan, index);
+    d->frame_grab_status = status;
+}
+
 static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
 {
     DWORD offset = v9x_surface_offset(data->lpSurfTarg);
@@ -1045,6 +1141,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         /* The coverage sample taken inside v9x_set_display_start belongs to
          * THIS flip, which only now exists. */
         v9x_scanout_note_flip_sequence(v9x_present_seq);
+        v9x_frame_grab_flip(offset);
         v9x_present_retiring = v9x_surface_offset(data->lpSurfCurr);
         v9x_present_offset = offset;
         /* The application's own buffer is on screen again, not GDI's. */

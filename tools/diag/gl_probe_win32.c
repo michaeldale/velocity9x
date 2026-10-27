@@ -24,6 +24,7 @@
 #include <GL/gl.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
+#include "probe_lock.h"
 
 #define V9X_GLP_SECTION "GlProbe"
 #define V9X_GLP_FORMAT_MAX 32
@@ -2177,6 +2178,11 @@ void __stdcall V9xGlProbeEntry(void)
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     DeleteFileA(V9X_DIAG_GLP_INI);
     v9x_glp_text("Build", V9X_BUILD_ID);
+    if (!v9x_probe_lock_take()) {
+        v9x_glp_text("Result", "BUSY");
+        WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_GLP_INI);
+        ExitProcess(3u);
+    }
     v9x_glp_text("Result", "RUNNING");
     v9x_glp_uint("SchemaVersion", 1ul);
     v9x_glp_hex("ProcessId", GetCurrentProcessId());

@@ -48,6 +48,8 @@ function Get-V9xHostSourceNames {
         'src\common\i9xx_cover.c',
         'src\common\i9xx_depth.c',
         'src\common\i9xx_wm.c',
+        # The flip-path frame grab: read plan, pixel decode, BMP, schedule.
+        'src\common\frame_grab.c',
         # Haswell config-space decode: stolen, GTT, BARs, aperture, PTE.
         'src\chipsets\intel\hsw_config.c',
         # Haswell EU instruction encoder and 3D packet/state builders.
@@ -269,6 +271,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_cover.c',
         'tests\host\test_i9xx_depth.c',
         'tests\host\test_i9xx_wm.c',
+        'tests\host\test_frame_grab.c',
         'tests\host\test_i9xx_mmio.c',
         'tests\host\test_i9xx_gtt.c',
         'tests\host\test_intel_hsw.c',

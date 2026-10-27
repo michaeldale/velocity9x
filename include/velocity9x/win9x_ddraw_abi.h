@@ -75,6 +75,12 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * a later scene in a benchmark that never changes mode. */
 #define V9X_DDARMFRAME           0x56394652ul /* 'V9FR' */
 
+/* Project-private DCICOMMAND: grab every dwParam1-th accepted flip's
+ * presented buffer, dwParam2 times (at most V9X_D3D_FRAME_GRAB_FILES), as
+ * C:\V9XDIAG\V9XGRAB<n>.BMP. Any engine with page flips (frame_grab.h). A
+ * count of 0 disarms. */
+#define V9X_DDGRABFRAMES         0x56394742ul /* 'V9GB' */
+
 /*
  * Project-private DCICOMMANDs for the 16-bit GDI acceleration path
  * (docs\plans\gdi-acceleration.md). They are answered by src\display16, not by
@@ -1074,6 +1080,10 @@ typedef struct v9x_d3d_frame_cover {
 /* Four is enough to see whether a run is steady or a single odd frame, and
  * small enough to leave the shared block's headroom alone. */
 #define V9X_D3D_FRAME_COVER_SLOTS 4u
+
+/* Frame grabs, V9XGRAB0.BMP to V9XGRAB9.BMP: V9X_FRAME_GRAB_FILES in
+ * frame_grab.h, which the HAL asserts equal. */
+#define V9X_D3D_FRAME_GRAB_FILES 10u
 
 /* How the one image write went. Anything but WRITTEN means V9XFRAME.PPM is
  * absent, stale or truncated, and the statistics stand alone. */
@@ -3801,6 +3811,20 @@ typedef struct v9x_d3d_diagnostics {
     DWORD two_unit_batches;
     DWORD two_unit_declined;
     DWORD two_unit_validate_refused;
+    /*
+     * Frame grabs (frame_grab.h). The V9X_DDGRABFRAMES escape sets the
+     * interval, the countdown to it and the grabs remaining, and zeroes the
+     * rest; the core's flip path counts down, writes, and records per file
+     * the flip sequence and offset it grabbed and the V9X_D3D_IMAGE_*
+     * result. Appended 2026-10-27 within ABI 2026102002.
+     */
+    DWORD frame_grab_interval;
+    DWORD frame_grab_countdown;
+    DWORD frame_grab_remaining;
+    DWORD frame_grab_written;
+    DWORD frame_grab_status;
+    DWORD frame_grab_sequence[V9X_D3D_FRAME_GRAB_FILES];
+    DWORD frame_grab_offset[V9X_D3D_FRAME_GRAB_FILES];
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

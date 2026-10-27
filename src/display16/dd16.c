@@ -1147,6 +1147,37 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
         }
         ++v9x_dd_shared->d3d_diagnostics.frame_cover_request;
         return 1;
+    case V9X_DDGRABFRAMES:
+        /* Arm the flip-path frame grab (frame_grab.h): every dwParam1-th
+         * flip, dwParam2 times. Plain stores; the 32-bit flip path counts
+         * down and writes the files. The results of the last arming are
+         * cleared so a reader never pairs them with this one. */
+        if (v9x_dd_block() == 0) {
+            return 0;
+        }
+        {
+            V9X_D3D_DIAGNOSTICS FAR *d =
+                &v9x_dd_shared->d3d_diagnostics;
+            DWORD interval = command->dwParam1 != 0ul
+                ? command->dwParam1 : 1ul;
+            DWORD count = command->dwParam2;
+            WORD index;
+
+            if (count > (DWORD)V9X_D3D_FRAME_GRAB_FILES) {
+                count = (DWORD)V9X_D3D_FRAME_GRAB_FILES;
+            }
+            d->frame_grab_remaining = 0ul;
+            d->frame_grab_written = 0ul;
+            d->frame_grab_status = 0ul;
+            for (index = 0u; index < V9X_D3D_FRAME_GRAB_FILES; ++index) {
+                d->frame_grab_sequence[index] = 0ul;
+                d->frame_grab_offset[index] = 0ul;
+            }
+            d->frame_grab_interval = interval;
+            d->frame_grab_countdown = interval;
+            d->frame_grab_remaining = count;
+        }
+        return 1;
     case V9X_DDGETTRACE:
         /* Copy a snapshot of the trace state for the diagnostics tool.
          * Byte copy keeps the 16-bit build free of runtime helpers. */

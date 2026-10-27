@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include "velocity9x/win9x_ddraw_abi.h"
+#include "probe_lock.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -332,6 +333,14 @@ static void d32_hx(const char *key, DWORD value)
     d32_line(key, text);
 }
 
+/*
+ * A switch is written /name or -name, in any case. The dash form used to
+ * match nothing and say nothing: A8U4I5's 0.32.0 checks ran
+ * "-t14nomode", and T14 quietly ran its default child
+ * (docs\decisions\2026-10-27-0.32.0-release-checks-ati-ironlake.md).
+ * Switches the probe does not know are listed in the report
+ * (d32_report_switches).
+ */
 static int d32_has_switch(const char *option)
 {
     const char *line = GetCommandLineA();
@@ -343,6 +352,9 @@ static int d32_has_switch(const char *option)
             if (c >= 'A' && c <= 'Z') {
                 c = (char)(c + ('a' - 'A'));
             }
+            if (index == 0u && c == '-' && option[0] == '/') {
+                continue;
+            }
             if (c != option[index]) {
                 break;
             }
@@ -352,6 +364,95 @@ static int d32_has_switch(const char *option)
         }
     }
     return 0;
+}
+
+/* Every switch the probe reads; a name ending in '=' takes a value. */
+static const char *const d32_known_switches[] = {
+    "/bpp16", "/z24", "/ddi5", "/ddi6", "/ddi7", "/child",
+    "/clean", "/endscene", "/nomode", "/release3d",
+    "/t14clean", "/t14endscene", "/t14nomode", "/t14release3d", "/t14wait",
+    "/t15bare", "/t15early", "/t15frames", "/t15fresh", "/t15ones",
+    "/t15only", "/t15small", "/t15mb=", "/t15frame=", "/t15hunt=",
+    "/t15watch="
+};
+
+/* Whether one command-line word, of length bytes and starting with / or -,
+ * is a switch the probe reads. */
+static int d32_switch_known(const char *word, unsigned length)
+{
+    unsigned entry;
+    unsigned index;
+
+    for (entry = 0u;
+         entry < sizeof(d32_known_switches) / sizeof(d32_known_switches[0]);
+         ++entry) {
+        const char *name = d32_known_switches[entry];
+
+        for (index = 1u; name[index] != '\0' && index < length; ++index) {
+            char c = word[index];
+
+            if (c >= 'A' && c <= 'Z') {
+                c = (char)(c + ('a' - 'A'));
+            }
+            if (c != name[index]) {
+                break;
+            }
+        }
+        if (name[index] == '\0' &&
+            (index == length || name[index - 1u] == '=')) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * The command line as given, and each word after the program's name that
+ * starts with / or - and names no switch the probe reads: those changed
+ * nothing, and a run that looks like it tested something it did not
+ * should say so in its own report.
+ */
+static void d32_report_switches(void)
+{
+    const char *line = GetCommandLineA();
+    char word[64];
+    unsigned at = 0u;
+    unsigned length;
+    unsigned unknown = 0u;
+    int quoted = 0;
+
+    d32_line("CommandLine", line);
+    /* Past the program's name, quoted or not. */
+    while (line[at] != '\0' && (quoted || line[at] != ' ')) {
+        if (line[at] == '"') {
+            quoted = !quoted;
+        }
+        ++at;
+    }
+    while (line[at] != '\0') {
+        while (line[at] == ' ') {
+            ++at;
+        }
+        length = 0u;
+        while (line[at + length] != '\0' && line[at + length] != ' ') {
+            ++length;
+        }
+        if (length != 0u && (line[at] == '/' || line[at] == '-') &&
+            !d32_switch_known(line + at, length)) {
+            unsigned copy = length < sizeof(word) - 1u
+                ? length : (unsigned)sizeof(word) - 1u;
+            unsigned index;
+
+            for (index = 0u; index < copy; ++index) {
+                word[index] = line[at + index];
+            }
+            word[copy] = '\0';
+            d32_line("UnknownSwitch", word);
+            ++unknown;
+        }
+        at += length;
+    }
+    d32_hx("UnknownSwitches", (DWORD)unknown);
 }
 
 static void d32_zero(void *block, unsigned length)
@@ -2923,9 +3024,18 @@ static DWORD d32_switch_number(const char *option, DWORD base)
     char c;
 
     for (offset = 0u; line[offset] != '\0'; ++offset) {
-        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE,
-                           line + offset, (int)length, option,
-                           (int)length) != CSTR_EQUAL) {
+        /* /name= or -name=, as d32_has_switch takes them. */
+        if (option[0] == '/' && line[offset] == '-') {
+            if (length < 2u ||
+                CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE,
+                               line + offset + 1, (int)(length - 1u),
+                               option + 1, (int)(length - 1u)) !=
+                    CSTR_EQUAL) {
+                continue;
+            }
+        } else if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE,
+                                  line + offset, (int)length, option,
+                                  (int)length) != CSTR_EQUAL) {
             continue;
         }
         for (index = offset + length; line[index] != '\0'; ++index) {
@@ -3729,6 +3839,11 @@ void WINAPI V9xD3d32ProbeEntry(void)
                            GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
     d32_line("[V9xD3d32]Build", V9X_BUILD_ID);
+    d32_report_switches();
+    /* T14's child runs under its parent's lock, so it does not take one. */
+    if (!d32_has_switch("/child") && !v9x_probe_lock_take()) {
+        d32_finish("BUSY", 3u);
+    }
     bpp = d32_has_switch("/bpp16") ? 16ul : 32ul;
     zbits = d32_has_switch("/z24") ? 32ul : 16ul;
     d32_hx("RequestBpp", bpp);

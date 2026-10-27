@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.33.0 - not yet released
 
+- **Frame grabs on any engine with page flips.** `V9XTRACE
+  -grab:<interval>x<count>` writes every interval-th flip's presented
+  frame, whole, as `C:\V9XDIAG\V9XGRAB0.BMP` to `V9XGRAB9.BMP`, so a
+  frame that is wrong for a moment can be caught, and what was presented
+  can be told from what was drawn. Ten 3DMark 2000 frames on the Ironlake
+  ([record](docs/decisions/2026-10-27-frame-grab-and-probe-fixes.md)).
+- Probes: V9XD32 takes `-name` as well as `/name` and lists switches it
+  does not know; the release probes refuse to run beside each other
+  (`Result=BUSY`); V9XTRACE names its snapshot file in `V9XSNAL.TXT`.
+
 ## 0.32.0 - 2026-10-27
 
 0.31.0 was opened after 0.30.1 and never released; its work is here.
