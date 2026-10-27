@@ -134,6 +134,31 @@ void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write)
 }
 
 /*
+ * The DirectDraw heap's mapping: 128 MiB of BAR0, not the 16 MiB the ati
+ * family maps for its older chips. The VBE reports 16 MiB on M-BXMFA8's
+ * 1 GiB card, and at Quake 3's maximum texture detail 801 textures did not
+ * fit in that (docs\decisions\2026-10-27-cedar-page-flips.md). 128 MiB lies
+ * inside the 256 MiB BAR0 this chip has, below the engine window at BAR0 +
+ * 240 MiB, and inside the 256 MiB of VRAM the mini-VDD requires before it
+ * maps that window (CONFIG_MEMSIZE, loader.asm). A host that refuses the
+ * mapping is asked again for less (enable16.c, v9x_vbe_map_smaller).
+ */
+#define V9X_CEDAR_MAP_BYTES 0x08000000ul
+
+/*
+ * The heap is the whole mapping: the card holds at least the 256 MiB the
+ * mini-VDD checks for, so every byte mapped is memory, whatever 4F00h
+ * said. External for ati_hw16.c's measure_video_memory hook, which asks it
+ * only for this chip; a family-internal symbol, not an export.
+ */
+unsigned long v9x_cedar_measure_video_memory(unsigned long mapped_bytes,
+                                             unsigned long reported_bytes)
+{
+    (void)reported_bytes;
+    return mapped_bytes;
+}
+
+/*
  * Not static: the per-object audit resolves this symbol by name out of the
  * link map to prove this chip's module is actually in the family image.
  */
@@ -146,5 +171,8 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     "directdraw-fill-copy",
     "hardware-evergreen-cp",
     0,
-    v9x_cedar_fill_engine
+    v9x_cedar_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    V9X_CEDAR_MAP_BYTES
 };

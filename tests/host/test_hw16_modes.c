@@ -178,6 +178,17 @@ void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write)
 {
     (void)write;
 }
+unsigned long v9x_cedar_measure_video_memory(unsigned long mapped_bytes,
+                                             unsigned long reported_bytes)
+{
+    (void)reported_bytes;
+    return mapped_bytes;
+}
+/* The active chip, as enable16.c's PCI scan names it; none here. */
+const V9X_HW16_DEVICE *v9x_hw16_active_device(void)
+{
+    return 0;
+}
 const V9X_HW16_DEVICE v9x_sis6326_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

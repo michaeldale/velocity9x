@@ -23,8 +23,10 @@ extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
 extern const V9X_HW16_DEVICE v9x_rage_iic_device;
 extern const V9X_HW16_DEVICE v9x_rage128_device;
 extern const V9X_HW16_DEVICE v9x_evergreen_cedar_device;
-/* cedar_hw16.c: the Evergreen engine hook's outcome. */
+/* cedar_hw16.c: the Evergreen engine hook's outcome, and its heap. */
 void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write);
+unsigned long v9x_cedar_measure_video_memory(unsigned long mapped_bytes,
+                                             unsigned long reported_bytes);
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
 extern const V9X_HW16_DEVICE v9x_mach64_vt4_device;
 extern const V9X_HW16_DEVICE v9x_ati_4754_device;
@@ -249,6 +251,17 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
 }
 
+/* Only the HD 5450 answers: every other chip of the family keeps the
+ * VBE's figure, which a zero leaves in place (enable16.c). */
+static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
+                                                  unsigned long reported_bytes)
+{
+    if (v9x_hw16_active_device() == &v9x_evergreen_cedar_device) {
+        return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
+    }
+    return 0ul;
+}
+
 const V9X_HW16_OPS v9x_hw16 = {
     "ati",
     v9x_ati_devices,
@@ -290,9 +303,9 @@ const V9X_HW16_OPS v9x_hw16 = {
      * family deliberately does not claim - installs the vbe package.
      */
     0u,
-    /* identify_without_pci, reserve_video_memory, unalias_pitch,
-     * measure_video_memory, place_desktop: none. */
-    0, 0, 0u, 0, 0,
+    /* identify_without_pci, reserve_video_memory, unalias_pitch: none.
+     * measure_video_memory for the HD 5450's heap. place_desktop: none. */
+    0, 0, 0u, v9x_ati_measure_video_memory, 0,
     /*
      * Gamma through the DAC table. ATI's own driver for this family
      * (MACXW4.DRV 4.11.2474) exports DDIGAMMARAMP and acts only above

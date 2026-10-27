@@ -32,9 +32,11 @@ build identifier so exact guest-tested binaries remain traceable.
     3DMark 2000, 19,949 flips were handled and none declined
     ([record](docs/decisions/2026-10-27-cedar-page-flips.md)). Whether
     the flicker is gone on the monitor is not yet confirmed.
-  - Known limits: video memory is the VBE's 16 MiB of the card's 1 GiB,
-    so Quake 3 at maximum texture detail runs out of room and draws some
-    surfaces without their textures; one texture stage.
+  - DirectDraw's heap is 128 MiB, not the 16 MiB the VBE reports. With
+    16 MiB, Quake 3 at maximum texture detail failed 801 texture
+    creations and drew some surfaces without them; at 128 MiB none fail
+    ([record](docs/decisions/2026-10-27-cedar-heap-128-mib.md)).
+  - Known limit: one texture stage.
 - **HD 4600: OpenGL transform and lighting run on the card.** A vertex
   kernel is built per fixed-function state: lights, materials, fog and
   texture matrices. The ICD gains OpenGL lighting (`glLight`,
