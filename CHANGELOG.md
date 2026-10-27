@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.32.0 - not yet released
+## 0.32.0 - 2026-10-27
 
 0.31.0 was opened after 0.30.1 and never released; its work is here.
 
@@ -30,13 +30,16 @@ build identifier so exact guest-tested binaries remain traceable.
     blank. Without them DirectDraw's emulated flips drew into the visible
     buffer, and the owner saw 3DMark 2000 corrupt every second frame. In
     3DMark 2000, 19,949 flips were handled and none declined
-    ([record](docs/decisions/2026-10-27-cedar-page-flips.md)). Whether
-    the flicker is gone on the monitor is not yet confirmed.
+    ([record](docs/decisions/2026-10-27-cedar-page-flips.md)). The owner
+    reports the flicker gone.
   - DirectDraw's heap is 128 MiB, not the 16 MiB the VBE reports. With
     16 MiB, Quake 3 at maximum texture detail failed 801 texture
     creations and drew some surfaces without them; at 128 MiB none fail
     ([record](docs/decisions/2026-10-27-cedar-heap-128-mib.md)).
   - Known limit: one texture stage.
+  - Known issue: on the build before the larger heap, the owner saw sets
+    of trees vanish and reappear in 3DMark 2000's Helicopter test. Not
+    yet checked on this release.
 - **HD 4600: OpenGL transform and lighting run on the card.** A vertex
   kernel is built per fixed-function state: lights, materials, fog and
   texture matrices. The ICD gains OpenGL lighting (`glLight`,
@@ -57,6 +60,16 @@ build identifier so exact guest-tested binaries remain traceable.
   256 KB, and its DirectDraw heap shrinks to match.
 - Floppy sets: GLIDE3X.DLL moves to the third disk for ATI, Matrox, S3
   and VBE, and V9XTRACE.EXE for ATI, Matrox, S3 and SiS.
+- **Known issue, Rage 128: 3DMark 2000 hung the machine once in two
+  runs** on the release build; the second completed. No Rage 128 code
+  changed since 0.30.0; not yet reproduced.
+- **Known issue, Ironlake: one early frame of 3DMark 2000's first game
+  test drew a piece of hillside over the helicopter**, as it did before
+  0.28.0; later frames draw correctly.
+- Release checks on the HD 4600, the GMA 950 netbook, the Rage 128, the
+  HD 5450 and the Ironlake
+  ([record](docs/decisions/2026-10-27-0.32.0-release-checks-intel.md),
+  [record](docs/decisions/2026-10-27-0.32.0-release-checks-ati-ironlake.md)).
 
 ## 0.30.1 - 2026-10-26
 

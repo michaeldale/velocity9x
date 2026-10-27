@@ -2,8 +2,8 @@
 
 Date: 2026-10-27
 
-Status: **measured by counters on one card; the picture is not yet
-confirmed.** M-BXMFA8's HD 5450 (`1002:68F9`, Cedar), boot 36. Captures:
+Status: **measured by counters on one card; the owner reports the
+flicker gone** (chat, after boot 36). M-BXMFA8's HD 5450 (`1002:68F9`, Cedar), boot 36. Captures:
 `V9XSNA7-b36-flip*.INI` and `b36-flip-score.png` in
 [`../probe/m-bxmfa8-cedar-3dmark2000-2026-10-27/`](../probe/m-bxmfa8-cedar-3dmark2000-2026-10-27/),
 `V9XD32-b36-flip-*` in
@@ -60,8 +60,14 @@ The emulated-flip run scored 5267 (boot 31). Flips now wait for the
 vertical blank, and DirectDraw is told to retry until the previous one is
 taken (`FlipStillDrawing` 8,333,764). Recorded, not compared.
 
+## What the owner saw after
+
+On this build the owner reported the 3DMark 2000 flicker gone. They also
+reported something new in the Helicopter test: "sets of trees randomly
+disappear and reappear, even those close to the helicopter." Quake 3's
+rendering issue turned out to be the 16 MiB heap
+([128 MiB heap](2026-10-27-cedar-heap-128-mib.md)).
+
 ## Not checked
 
-- What the monitor shows. Only the owner can see it.
-- Quake 3's rendering issues: not yet described, and not necessarily
-  related to flips.
+- Whether the disappearing trees are another symptom of the 16 MiB heap.
