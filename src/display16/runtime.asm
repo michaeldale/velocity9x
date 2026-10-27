@@ -2041,6 +2041,99 @@ V9xMiniHswEngineCloseDone:
     pop     ebx
     retf
 V9XMINIHSWENGINECLOSE ENDP
+
+; WORD FAR PASCAL V9xMiniPatInfo(DWORD FAR *low, DWORD FAR *high,
+;                                WORD FAR *flags)
+;
+; PAT_INFO (V9XMAPI.INC): IA32_PAT and the V9X_PAT_CPU_* flags. Returns the
+; verb's AX; with no mini-VDD API everything is 0.
+PUBLIC V9XMINIPATINFO
+V9XMINIPATINFO PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    push    es
+    xor     ebx, ebx
+    xor     ecx, ecx
+    xor     edx, edx
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniPatInfoOut
+    mov     eax, V9XMINI_FN_PAT_INFO
+    call    dword ptr V9xMiniApiEntry
+V9xMiniPatInfoOut:
+    mov     esi, ebx
+    mov     edi, ecx
+    push    ax
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edi
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], dx
+    pop     ax
+    pop     es
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     bp
+    retf    12
+V9XMINIPATINFO ENDP
+
+; WORD FAR PASCAL V9xMiniPatCover(DWORD linear, DWORD bytes, DWORD old_high,
+;                                 DWORD new_high, DWORD FAR *pages,
+;                                 DWORD FAR *back, WORD FAR *why)
+;
+; PAT_COVER (V9XMAPI.INC). Returns the verb's AX; with no mini-VDD API the
+; reason is FFFFh.
+PUBLIC V9XMINIPATCOVER
+V9XMINIPATCOVER PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    push    es
+    xor     ebx, ebx
+    xor     ecx, ecx
+    mov     edx, 0ffffh
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniPatCoverOut
+    mov     ebx, dword ptr [bp+30]
+    mov     ecx, dword ptr [bp+26]
+    mov     esi, dword ptr [bp+22]
+    mov     edi, dword ptr [bp+18]
+    mov     eax, V9XMINI_FN_PAT_COVER
+    call    dword ptr V9xMiniApiEntry
+V9xMiniPatCoverOut:
+    mov     esi, ebx
+    mov     edi, ecx
+    push    ax
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edi
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], dx
+    pop     ax
+    pop     es
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     bp
+    retf    28
+V9XMINIPATCOVER ENDP
 ENDIF
 
 ; WORD FAR PASCAL V9xMiniVbeModeAt(WORD index)

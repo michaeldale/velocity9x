@@ -136,6 +136,24 @@ V9xMtrrWhy          dd 0
 V9xMtrrBackBase     dd 0
 V9xMtrrBackMask     dd 0
 
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; PAT_COVER (V9xMini_Pat_Cover): the request, the answer, the page directory
+; as mapped once, and where its self-reference puts the page tables.
+V9xPatReqLinear     dd 0
+V9xPatReqBytes      dd 0
+V9xPatReqOld        dd 0
+V9xPatReqNew        dd 0
+V9xPatWhy           dd 0
+V9xPatPages         dd 0
+V9xPatBackHigh      dd 0
+V9xPatPdPhys        dd 0
+V9xPatPdLinear      dd 0
+V9xPatWindow        dd 0
+V9xPatCopy          dd 0
+V9xPatSaveCr0       dd 0
+V9xPatSaveCr4       dd 0
+ENDIF
+
 IFDEF V9X_ATI_MOBILITY_MMIO
 ; ATI Rage Mobility-M and Rage IIC: the 4 KiB MMIO register BAR, mapped once
 ; for the engine. CONFIG_CHIP_ID is block 0 +0E0h, and the low word names
@@ -2803,6 +2821,10 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_R128AgpRing
     cmp     ax, V9XMINI_FN_EG_MAP
     je      V9xMini_Api_EgMap
+    cmp     ax, V9XMINI_FN_PAT_INFO
+    je      V9xMini_Api_PatInfo
+    cmp     ax, V9XMINI_FN_PAT_COVER
+    je      V9xMini_Api_PatCover
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -3540,6 +3562,72 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     [ebp.Client_AX], ax
     ret
 ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; The PAT facts, reported and not interpreted. See V9XMINI_FN_PAT_INFO in
+; V9XMAPI.INC.
+V9xMini_Api_PatInfo:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    pushad
+    call    V9xMini_Pat_Cpu
+    mov     [ebp.Client_EDX], eax
+    xor     ebx, ebx
+    xor     esi, esi
+    xor     edi, edi
+    and     eax, V9X_PAT_CPU_CPUID OR V9X_PAT_CPU_MSR OR V9X_PAT_CPU_PAT
+    cmp     eax, V9X_PAT_CPU_CPUID OR V9X_PAT_CPU_MSR OR V9X_PAT_CPU_PAT
+    jne     short V9xMini_Api_PatInfo_Out
+    mov     ecx, 277h                   ; IA32_PAT
+    rdmsr
+    mov     ebx, eax
+    mov     edi, edx
+    inc     esi
+V9xMini_Api_PatInfo_Out:
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], edi
+    mov     [ebp.Client_AX], si
+    popad
+    ret
+ENDIF
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 0
+    mov     [ebp.Client_AX], 0
+    ret
+
+; Type a linear range write-combining through PAT entry 4. See
+; V9XMINI_FN_PAT_COVER in V9XMAPI.INC.
+V9xMini_Api_PatCover:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    pushad
+    mov     eax, [ebp.Client_EBX]
+    mov     V9xPatReqLinear, eax
+    mov     eax, [ebp.Client_ECX]
+    mov     V9xPatReqBytes, eax
+    mov     eax, [ebp.Client_ESI]
+    mov     V9xPatReqOld, eax
+    mov     eax, [ebp.Client_EDI]
+    mov     V9xPatReqNew, eax
+    call    V9xMini_Pat_Cover
+    mov     eax, V9xPatPages
+    mov     [ebp.Client_EBX], eax
+    mov     eax, V9xPatBackHigh
+    mov     [ebp.Client_ECX], eax
+    mov     eax, V9xPatWhy
+    mov     [ebp.Client_EDX], eax
+    xor     ecx, ecx
+    test    eax, eax
+    jnz     short V9xMini_Api_PatCover_Refused
+    inc     ecx
+V9xMini_Api_PatCover_Refused:
+    mov     [ebp.Client_AX], cx
+    popad
+    ret
+ENDIF
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 1
     mov     [ebp.Client_AX], 0
     ret
 
@@ -4705,6 +4793,270 @@ V9xMini_Mtrr_Write_Done:
     popad
     ret
 EndProc V9xMini_Mtrr_Write
+
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; What the CPU admits to for the PAT, as V9X_PAT_CPU_* flags in EAX. CPUID
+; is used only when the init-time inspection found it (V9X_MTRR_CPU_CPUID).
+BeginProc V9xMini_Pat_Cpu
+    push    ebx
+    push    ecx
+    push    edx
+    push    edi
+    xor     edi, edi
+    test    V9xMtrrFlags, V9X_MTRR_CPU_CPUID
+    jz      short V9xMini_Pat_Cpu_Done
+    or      edi, V9X_PAT_CPU_CPUID
+    xor     eax, eax
+    cpuid
+    test    eax, eax
+    jz      short V9xMini_Pat_Cpu_Done  ; leaf 1 does not exist
+    mov     eax, 1
+    cpuid
+    test    edx, 20h                    ; MSR
+    jz      short V9xMini_Pat_Cpu_Done
+    or      edi, V9X_PAT_CPU_MSR
+    test    edx, 10000h                 ; PAT
+    jz      short V9xMini_Pat_Cpu_Done
+    or      edi, V9X_PAT_CPU_PAT
+V9xMini_Pat_Cpu_Done:
+    mov     eax, edi
+    pop     edi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_Pat_Cpu
+
+; Flush the whole TLB, global pages included: CR4.PGE off and back on when
+; the CPU has it, and CR3 reloaded either way. Interrupts are off.
+BeginProc V9xMini_Pat_Flush_Tlb
+    mov     eax, cr4
+    mov     V9xPatSaveCr4, eax
+    test    V9xMtrrFlags, V9X_MTRR_CPU_PGE
+    jz      short V9xMini_Pat_Flush_Cr3
+    and     eax, NOT 80h
+    mov     cr4, eax
+    mov     eax, V9xPatSaveCr4
+    mov     cr4, eax
+V9xMini_Pat_Flush_Cr3:
+    mov     eax, cr3
+    mov     cr3, eax
+    ret
+EndProc V9xMini_Pat_Flush_Tlb
+
+; Set IA32_PAT's high dword to V9xPatReqNew, the low dword kept as read.
+; Interrupts are off. The sequence is the one the SDM asks of a PAT change
+; (vol. 3, 11.12.4, which points to 11.11.8): no-fill cache mode, WBINVD,
+; TLB flushed, the write, WBINVD and TLB again, CR0 restored. Entry 4 is
+; selected by no page yet, so nothing is cached under the type it loses.
+BeginProc V9xMini_Pat_Write
+    mov     eax, cr0
+    mov     V9xPatSaveCr0, eax
+    and     eax, NOT 20000000h          ; NW off
+    or      eax, 40000000h              ; CD on: no-fill cache mode
+    mov     cr0, eax
+    db      0Fh, 09h                    ; WBINVD
+    call    V9xMini_Pat_Flush_Tlb
+    mov     ecx, 277h                   ; IA32_PAT
+    rdmsr
+    mov     edx, V9xPatReqNew
+    wrmsr
+    db      0Fh, 09h                    ; WBINVD
+    call    V9xMini_Pat_Flush_Tlb
+    mov     eax, V9xPatSaveCr0
+    mov     cr0, eax
+    ret
+EndProc V9xMini_Pat_Write
+
+; Select PAT entry 4, write-combining, for every page of the requested
+; range, or refuse with nothing changed. Inputs in V9xPatReq*, outputs in
+; V9xPatWhy, V9xPatPages and V9xPatBackHigh.
+;
+; Ring 0 checks what it can without interpreting: the CPU has the PAT, the
+; request changes entry 4 to WC and nothing else, the range is whole pages in
+; the shared arena, entry 4 still reads what the plan was made from (or is
+; already WC), and every page is present and 4 KiB. The page tables are found
+; through the page directory's own entry for itself, located by mapping CR3's
+; page and searching it rather than assumed at FF800000h, and that window is
+; checked against the VMM's _CopyPageTable for the first page before anything
+; is edited. Every page is checked before any is changed.
+BeginProc V9xMini_Pat_Cover
+    pushad
+    mov     V9xPatPages, 0
+    mov     V9xPatBackHigh, 0
+
+    ; Code 1: the CPU.
+    mov     V9xPatWhy, 1
+    call    V9xMini_Pat_Cpu
+    and     eax, V9X_PAT_CPU_CPUID OR V9X_PAT_CPU_MSR OR V9X_PAT_CPU_PAT
+    cmp     eax, V9X_PAT_CPU_CPUID OR V9X_PAT_CPU_MSR OR V9X_PAT_CPU_PAT
+    jne     V9xMini_Pat_Cover_Done
+
+    ; Code 9: entry 4 to WC, entries 5-7 as they were.
+    mov     V9xPatWhy, 9
+    mov     eax, V9xPatReqNew
+    mov     ecx, eax
+    and     ecx, 0FFh
+    cmp     ecx, 01h
+    jne     V9xMini_Pat_Cover_Done
+    xor     eax, V9xPatReqOld
+    test    eax, 0FFFFFF00h
+    jnz     V9xMini_Pat_Cover_Done
+
+    ; Code 2: whole pages, at or above 2 GiB, not past 4 GiB.
+    mov     V9xPatWhy, 2
+    mov     esi, V9xPatReqLinear
+    mov     ecx, V9xPatReqBytes
+    test    ecx, ecx
+    jz      V9xMini_Pat_Cover_Done
+    test    esi, 0FFFh
+    jnz     V9xMini_Pat_Cover_Done
+    test    ecx, 0FFFh
+    jnz     V9xMini_Pat_Cover_Done
+    cmp     esi, 80000000h
+    jb      V9xMini_Pat_Cover_Done
+    mov     eax, esi
+    add     eax, ecx
+    jc      V9xMini_Pat_Cover_Done
+
+    ; Code 3: entry 4 as the plan saw it, or already ours.
+    mov     V9xPatWhy, 3
+    mov     ecx, 277h                   ; IA32_PAT
+    rdmsr
+    mov     V9xPatBackHigh, edx
+    cmp     edx, V9xPatReqNew
+    je      short V9xMini_Pat_Cover_Entry_Ok
+    cmp     edx, V9xPatReqOld
+    jne     V9xMini_Pat_Cover_Done
+V9xMini_Pat_Cover_Entry_Ok:
+
+    ; Code 4: the page directory, mapped once per CR3.
+    mov     V9xPatWhy, 4
+    mov     eax, cr3
+    and     eax, 0FFFFF000h
+    cmp     V9xPatPdLinear, 0
+    je      short V9xMini_Pat_Cover_Pd_Map
+    cmp     eax, V9xPatPdPhys
+    je      short V9xMini_Pat_Cover_Pd_Mapped
+V9xMini_Pat_Cover_Pd_Map:
+    mov     V9xPatPdPhys, eax
+    VMMcall _MapPhysToLinear,<eax,1000h,0>
+    cmp     eax, 0ffffffffh
+    je      V9xMini_Pat_Cover_Done
+    mov     V9xPatPdLinear, eax
+V9xMini_Pat_Cover_Pd_Mapped:
+
+    ; Code 5: the directory's entry for itself, which makes the page tables
+    ; a 4 MiB window at that entry's address.
+    mov     V9xPatWhy, 5
+    mov     esi, V9xPatPdLinear
+    mov     edx, V9xPatPdPhys
+    or      edx, 1                      ; present
+    xor     ebx, ebx
+V9xMini_Pat_Cover_Self_Next:
+    mov     eax, [esi+ebx*4]
+    and     eax, 0FFFFF001h
+    cmp     eax, edx
+    je      short V9xMini_Pat_Cover_Self_Found
+    inc     ebx
+    cmp     ebx, 1024
+    jb      short V9xMini_Pat_Cover_Self_Next
+    jmp     V9xMini_Pat_Cover_Done
+V9xMini_Pat_Cover_Self_Found:
+    shl     ebx, 22
+    mov     V9xPatWindow, ebx
+
+    ; Codes 6 and 7: every page's directory entry present and not a 4 MiB
+    ; page, and its table entry present.
+    mov     edi, V9xPatReqLinear
+    mov     ecx, V9xPatReqBytes
+    shr     ecx, 12
+V9xMini_Pat_Cover_Check_Next:
+    mov     V9xPatWhy, 6
+    mov     eax, edi
+    shr     eax, 22
+    mov     edx, [esi+eax*4]
+    test    edx, 1
+    jz      V9xMini_Pat_Cover_Done
+    mov     V9xPatWhy, 7
+    test    edx, 80h                    ; PS
+    jnz     V9xMini_Pat_Cover_Done
+    mov     V9xPatWhy, 6
+    mov     eax, edi
+    shr     eax, 12
+    mov     edx, V9xPatWindow
+    mov     edx, [edx+eax*4]
+    test    edx, 1
+    jz      V9xMini_Pat_Cover_Done
+    add     edi, 1000h
+    dec     ecx
+    jnz     short V9xMini_Pat_Cover_Check_Next
+
+    ; Code 5 again: the window agrees with the VMM's own copy of the first
+    ; page's entry. Accessed and dirty may move between the two reads.
+    mov     V9xPatWhy, 5
+    mov     V9xPatCopy, 0
+    mov     ebx, V9xPatReqLinear
+    shr     ebx, 12
+    mov     eax, OFFSET32 V9xPatCopy
+    VMMcall _CopyPageTable,<ebx,1,eax,0>
+    test    eax, eax
+    jz      V9xMini_Pat_Cover_Done
+    mov     eax, V9xPatWindow
+    mov     eax, [eax+ebx*4]
+    xor     eax, V9xPatCopy
+    test    eax, NOT 60h
+    jnz     V9xMini_Pat_Cover_Done
+
+    pushfd
+    cli
+    ; Code 8: the MSR, when entry 4 is not WC yet, read back before any page
+    ; selects it.
+    mov     ecx, 277h
+    rdmsr
+    cmp     edx, V9xPatReqNew
+    je      short V9xMini_Pat_Cover_Msr_Done
+    call    V9xMini_Pat_Write
+    mov     ecx, 277h
+    rdmsr
+V9xMini_Pat_Cover_Msr_Done:
+    mov     V9xPatBackHigh, edx
+    cmp     edx, V9xPatReqNew
+    je      short V9xMini_Pat_Cover_Edit
+    popfd
+    mov     V9xPatWhy, 8
+    jmp     short V9xMini_Pat_Cover_Done
+
+    ; The edit: PAT set, PCD and PWT clear (v9x_pat_pte_wc), counted only
+    ; where it changes the entry, then one flush for the lot.
+V9xMini_Pat_Cover_Edit:
+    mov     esi, V9xPatWindow
+    mov     edi, V9xPatReqLinear
+    shr     edi, 12
+    mov     ecx, V9xPatReqBytes
+    shr     ecx, 12
+V9xMini_Pat_Cover_Edit_Next:
+    mov     eax, [esi+edi*4]
+    mov     edx, eax
+    or      edx, 80h
+    and     edx, NOT 18h
+    cmp     edx, eax
+    je      short V9xMini_Pat_Cover_Edit_Same
+    mov     [esi+edi*4], edx
+    inc     V9xPatPages
+V9xMini_Pat_Cover_Edit_Same:
+    inc     edi
+    dec     ecx
+    jnz     short V9xMini_Pat_Cover_Edit_Next
+    call    V9xMini_Pat_Flush_Tlb
+    popfd
+    mov     V9xPatWhy, 0
+
+V9xMini_Pat_Cover_Done:
+    popad
+    ret
+EndProc V9xMini_Pat_Cover
+ENDIF
 
 VxD_LOCKED_CODE_ENDS
 

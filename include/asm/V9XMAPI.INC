@@ -577,6 +577,45 @@ V9XMINI_FN_R128_AGP_RING    EQU 0024h
 ; already valid) and wrote no MSR (M-BXMFA8 boots 4-6, 2026-10-26).
 V9XMINI_FN_EG_MAP           EQU 0026h
 
+; Write-combining through the page attribute table, for a machine whose BIOS
+; leaves no MTRR pair to give (include\velocity9x\pat.h,
+; docs\decisions\2026-10-28-haswell-pat-write-combining.md). The C policy
+; decides; ring 0 reports, re-checks what it can without interpreting, and
+; acts. Only the intel-gma family image implements either call; elsewhere
+; both answer AX=0.
+;
+;   PAT_INFO    out: AX=1 when the CPU has CPUID, MSRs and the PAT, else 0
+;                    EBX = IA32_PAT low dword, ECX = high dword (0 on AX=0)
+;                    EDX = the V9X_PAT_CPU_* flags
+;
+;   PAT_COVER   in:  EBX = linear base, ECX = bytes, both page multiples
+;                    ESI = IA32_PAT high dword the plan was made from
+;                    EDI = the high dword to set: ESI with entry 4 (bits
+;                          7:0) = 01h, WC, and nothing else changed
+;               out: AX=1 when every page of the range selects entry 4 and
+;                    entry 4 reads WC; 0 when refused, with nothing changed
+;                    EBX = pages whose entry changed (0 when all already did)
+;                    ECX = IA32_PAT high dword as last read
+;                    EDX = why: 0 done, 1 no CPUID, MSR or PAT, 2 range not
+;                          whole pages, below 2 GiB or past 4 GiB, 3 entry 4
+;                          neither as planned nor WC, 4 page directory not
+;                          mapped, 5 no self-reference in it or the window
+;                          disagrees with _CopyPageTable, 6 a page not
+;                          present, 7 a 4 MiB page, 8 PAT read back differs,
+;                          9 the request changes more than entry 4 to WC
+;
+; Each page's PTE gets PAT (bit 7) set and PCD and PWT clear, and the TLB is
+; flushed once with interrupts off. The MSR write is the SDM's sequence for a
+; PAT change (vol. 3, 11.12.4 and 11.11.8), uniprocessor.
+V9XMINI_FN_PAT_INFO         EQU 0027h
+V9XMINI_FN_PAT_COVER        EQU 0028h
+
+; What the CPU admits to for the PAT. Shared with include\velocity9x\pat.h;
+; check-tree.ps1 asserts the two agree.
+V9X_PAT_CPU_CPUID     EQU 0001h
+V9X_PAT_CPU_MSR       EQU 0002h
+V9X_PAT_CPU_PAT       EQU 0004h
+
 ; What the CPU admits to, established in this order because each flag is the
 ; licence to look for the next: CPUID is an invalid opcode on the 386 and
 ; early 486 this project still targets on VLB, RDMSR is one without MSR

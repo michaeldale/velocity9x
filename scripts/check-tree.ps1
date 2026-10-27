@@ -22,6 +22,9 @@ $required = @(
     "include\velocity9x\mtrr.h",
     "src\common\mtrr.c",
     "tests\host\test_mtrr.c",
+    "include\velocity9x\pat.h",
+    "src\common\pat.c",
+    "tests\host\test_pat.c",
     "include\velocity9x\pe_export.h",
     "src\common\pe_export.c",
     "tests\host\test_pe_export.c",
@@ -551,6 +554,32 @@ foreach ($name in $mtrrShared) {
     }
     $contractChecked++
 }
+# The PAT route's CPU flags, the same intersection rule.
+$patHeader = Join-Path $repoRoot "include\velocity9x\pat.h"
+$patValues = @{}
+foreach ($line in (Get-Content -LiteralPath $patHeader)) {
+    if ($line -match '^\s*#define\s+(V9X_PAT_CPU_[A-Z0-9_]+)\s+\(\(v9x_u16\)(0[xX][0-9A-Fa-f]+|[0-9]+)u\)') {
+        $constantName = $Matches[1]
+        $text = $Matches[2]
+        $patValues[$constantName] = if ($text -match '^0[xX]') {
+            [Convert]::ToInt32($text.Substring(2), 16)
+        } else { [int]$text }
+    }
+}
+foreach ($name in @('V9X_PAT_CPU_CPUID', 'V9X_PAT_CPU_MSR', 'V9X_PAT_CPU_PAT')) {
+    if (-not $patValues.ContainsKey($name)) {
+        throw "include\velocity9x\pat.h no longer defines $name."
+    }
+    if (-not $asmValues.ContainsKey($name)) {
+        throw ("$name is defined in pat.h but not in V9XMAPI.INC; the two " +
+               "halves of the PAT contract must agree.")
+    }
+    if ($asmValues[$name] -ne $patValues[$name]) {
+        throw ("PAT contract mismatch: V9XMAPI.INC $name = " +
+               "$($asmValues[$name]) but pat.h $name = $($patValues[$name]).")
+    }
+    $contractChecked++
+}
 # The Direct3D core is chip-neutral, which is the whole claim of the
 # core/engine split and exactly the kind of property that decays by one
 # convenient exception. Two things must stay out of it: any MMIO access, and
@@ -654,30 +683,38 @@ if ($alphaForceValues['V9X_D3D_ALPHAFORCE_MAGIC'] -ne
 # An MSR write is global CPU state, so where one may happen is held here
 # rather than trusted to review: every WRMSR in the mini-VDD sits inside
 # V9xMini_Mtrr_Write, Stage B's one write sequence
-# (docs\plans\write-combining-stage-b.md), and there is at least one.
+# (docs\plans\write-combining-stage-b.md), or V9xMini_Pat_Write, the PAT
+# route's (docs\decisions\2026-10-28-haswell-pat-write-combining.md), and
+# each holds at least one.
 $mtrrLines = Get-Content -LiteralPath `
     (Join-Path $repoRoot "src\minivdd32\loader.asm")
-$mtrrInWrite = $false
-$mtrrWrites = 0
+$msrWriteProcs = @('V9xMini_Mtrr_Write', 'V9xMini_Pat_Write')
+$msrInProc = $null
+$msrWrites = @{}
+foreach ($procName in $msrWriteProcs) { $msrWrites[$procName] = 0 }
 foreach ($line in $mtrrLines) {
-    if ($line -match '^\s*BeginProc\s+V9xMini_Mtrr_Write\s*$') {
-        $mtrrInWrite = $true
-    } elseif ($line -match '^\s*EndProc\s+V9xMini_Mtrr_Write\s*$') {
-        $mtrrInWrite = $false
+    if ($line -match '^\s*BeginProc\s+(\S+)\s*$' -and
+        $msrWriteProcs -contains $Matches[1]) {
+        $msrInProc = $Matches[1]
+    } elseif ($line -match '^\s*EndProc\s+(\S+)\s*$' -and
+              $Matches[1] -eq $msrInProc) {
+        $msrInProc = $null
     }
     if ($line -match '(?i)^\s*wrmsr\b') {
-        if (-not $mtrrInWrite) {
+        if ($null -eq $msrInProc) {
             throw ("src\minivdd32\loader.asm has a WRMSR outside " +
-                   "V9xMini_Mtrr_Write. MSR writes are Stage B's one " +
-                   "sequence (docs\plans\write-combining-stage-b.md); a new " +
-                   "one is a design change that updates this check with it.")
+                   "V9xMini_Mtrr_Write and V9xMini_Pat_Write. MSR writes " +
+                   "are those two sequences; a new one is a design change " +
+                   "that updates this check with it.")
         }
-        ++$mtrrWrites
+        ++$msrWrites[$msrInProc]
     }
 }
-if ($mtrrWrites -eq 0) {
-    throw ("src\minivdd32\loader.asm has no WRMSR in V9xMini_Mtrr_Write: " +
-           "the Stage B write is missing or this check no longer finds it.")
+foreach ($procName in $msrWriteProcs) {
+    if ($msrWrites[$procName] -eq 0) {
+        throw ("src\minivdd32\loader.asm has no WRMSR in ${procName}: the " +
+               "write is missing or this check no longer finds it.")
+    }
 }
 
 # A renamed or deleted constant would otherwise shrink the checked set to

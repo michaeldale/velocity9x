@@ -361,6 +361,15 @@ static void v9x_write_ini_key(const char FAR *key, const char FAR *value)
     WritePrivateProfileString(0, 0, 0, V9X_DIAG_BOOT_INI);
 }
 
+/* v9x_write_ini_key in the shape a chip hook takes. */
+static void v9x_write_boot_key(const char *key, const char *value)
+{
+    v9x_write_ini_key(key, value);
+}
+
+/* runtime.asm: the mapped aperture's linear address. */
+extern DWORD FAR PASCAL V9xLinearBase(void);
+
 static void v9x_vbe_trace(const char FAR *detail)
 {
     v9x_write_ini_key("VbeDetail", detail);
@@ -670,6 +679,17 @@ static void v9x_mtrr_install(const struct v9x_mtrr_state *state,
     }
     if (plan->reason != V9X_MTRR_OK) {
         v9x_write_ini_key("MtrrWrite", "refused");
+        /* The chip's other route, when the BIOS's ranges are what stopped
+         * this one; it writes its own record (PatWrite= on the HD 4600). */
+        if (device->write_combine_fallback != 0) {
+            if (OpenFile(V9X_DIAG_NOWC_TXT, &marker, OF_EXIST) !=
+                HFILE_ERROR) {
+                v9x_write_ini_key("PatWrite", "off-marker");
+                return;
+            }
+            device->write_combine_fallback(V9xLinearBase(), v9x_map_bytes(),
+                                           plan->reason, v9x_write_boot_key);
+        }
         return;
     }
     if (OpenFile(V9X_DIAG_NOWC_TXT, &marker, OF_EXIST) != HFILE_ERROR) {

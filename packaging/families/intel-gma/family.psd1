@@ -355,6 +355,7 @@
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            @{ Name = 'pat'; Path = 'src\common\pat.c' }
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'i9xx_mmio'; Path = 'src\chipsets\intel\i9xx_mmio.c'; CodeSegment = 'I9XXCODE' }

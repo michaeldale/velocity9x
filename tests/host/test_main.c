@@ -50,6 +50,9 @@ unsigned int v9x_run_edid_tests(void);
  * ring 0 reports, same convention. */
 unsigned int v9x_run_mtrr_tests(void);
 
+/* tests\host\test_pat.c: the PAT write-combining decision, same convention. */
+unsigned int v9x_run_pat_tests(void);
+
 /* tests\host\test_update_proto.c: V9XUPD.EXE's URL, reply and version
  * handling, same convention. */
 unsigned int v9x_run_update_proto_tests(void);
@@ -1332,6 +1335,7 @@ int main(int argc, char **argv)
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
     failures += v9x_run_mtrr_tests();
+    failures += v9x_run_pat_tests();
     failures += v9x_run_update_proto_tests();
     failures += v9x_run_crypto_tests();
     failures += v9x_run_update_release_tests();

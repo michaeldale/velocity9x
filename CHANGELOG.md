@@ -12,6 +12,13 @@ build identifier so exact guest-tested binaries remain traceable.
   frame that is wrong for a moment can be caught, and what was presented
   can be told from what was drawn. Ten 3DMark 2000 frames on the Ironlake
   ([record](docs/decisions/2026-10-27-frame-grab-and-probe-fixes.md)).
+- **The Intel HD 4600's aperture is write-combined**, through the page
+  attribute table, since its BIOS leaves no MTRR pair to give. CPU writes
+  to video memory go 140 times faster (66 to 9,238 MB/s); GDI fills, text
+  and texture uploads follow, and 3DMark 2000 went from 2344 to 3719 on
+  the one machine measured. The HD 4400 and Ivy Bridge HD 4000 take the
+  same path, untested. `C:\V9XDIAG\NOWC.TXT` turns it off
+  ([record](docs/decisions/2026-10-28-haswell-pat-write-combining.md)).
 - Probes: V9XD32 takes `-name` as well as `/name` and lists switches it
   does not know; the release probes refuse to run beside each other
   (`Result=BUSY`); V9XTRACE names its snapshot file in `V9XSNAL.TXT`.

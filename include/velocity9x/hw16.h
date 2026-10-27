@@ -180,6 +180,20 @@ typedef struct v9x_hw16_device {
      * initialiser that stops before it reads zero.
      */
     unsigned short write_combine;
+
+    /*
+     * For a chip that opts in: called when the MTRR plan over the mapped
+     * aperture refused, with the plan's V9X_MTRR_* reason and the mapping's
+     * linear base and bytes. The chip may write-combine the mapping another
+     * way (the HD 4600's PAT route, include\velocity9x\pat.h) and records
+     * what it did through write, into the boot record. NULL keeps the MTRR
+     * refusal as the answer. Not called when the recovery marker exists.
+     * Appended 2026-10-27.
+     */
+    void (*write_combine_fallback)(unsigned long linear, unsigned long bytes,
+                                   unsigned short mtrr_reason,
+                                   void (*write)(const char *key,
+                                                 const char *value));
 } V9X_HW16_DEVICE;
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the

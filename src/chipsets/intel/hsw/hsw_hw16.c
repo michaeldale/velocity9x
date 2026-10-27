@@ -1,6 +1,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/intel_hsw.h"
 #include "velocity9x/engine_abi.h"
+#include "velocity9x/pat.h"
 
 /*
  * Intel HD Graphics 4600 (Haswell GT2, 8086:0412): DirectDraw fills and
@@ -30,6 +31,13 @@ extern unsigned short __far __pascal V9xMiniHswEngineOpen(
 #define V9X_HSW_OPEN_CHIP_HASWELL 0ul
 #define V9X_HSW_OPEN_CHIP_IVYBRIDGE 1ul
 extern unsigned short __far __pascal V9xMiniHswEngineClose(void);
+extern unsigned short __far __pascal V9xMiniPatInfo(
+    unsigned long __far *low, unsigned long __far *high,
+    unsigned short __far *flags);
+extern unsigned short __far __pascal V9xMiniPatCover(
+    unsigned long linear, unsigned long bytes, unsigned long old_high,
+    unsigned long new_high, unsigned long __far *pages,
+    unsigned long __far *back, unsigned short __far *why);
 
 /*
  * 64 MiB of GMADR: above the 32 and 64 MiB of stolen memory the two boards
@@ -196,6 +204,111 @@ const char *v9x_hsw_engine_status_text(void)
     return v9x_hsw_engine_status;
 }
 
+/*
+ * Write-combining through the page attribute table
+ * (docs\decisions\2026-10-28-haswell-pat-write-combining.md).
+ *
+ * The 4570's BIOS uses every MTRR pair and covers GMADR with an explicit UC
+ * range, so the MTRR plan refuses (ALREADY_COVERED). Two mappings carry the
+ * CPU's stores to the aperture: the driver's DPMI mapping (framebuffer,
+ * heap, textures) and the mini-VDD's mapping of the engine reserve (ring
+ * words and every vertex the HAL copies, 60 us of a 3DMark 2000 batch
+ * uncached). Both are typed: the first when enable16.c's MTRR step refuses,
+ * the second when HSW_ENGINE_OPEN next hands out the reserve, since on a
+ * boot the engine opens before the aperture's plan is made.
+ *
+ * pat_high is IA32_PAT's high dword once the aperture is covered, and the
+ * licence for the reserve; zero before or after a refusal.
+ */
+static unsigned long v9x_hsw_pat_high;
+static unsigned long v9x_hsw_pat_reserve;
+static void (*v9x_hsw_pat_write)(const char *key, const char *value);
+
+/* key = head, eight hex digits, mid, eight hex digits. */
+static void v9x_hsw_pat_record(const char *key, const char *head,
+                               unsigned long first, const char *mid,
+                               unsigned long second)
+{
+    char text[48];
+    unsigned short at = 0u;
+
+    if (v9x_hsw_pat_write == 0) {
+        return;
+    }
+    while (*head != '\0') {
+        text[at++] = *head++;
+    }
+    v9x_hsw_format_hex(text + at, first);
+    at += 8u;
+    while (*mid != '\0') {
+        text[at++] = *mid++;
+    }
+    v9x_hsw_format_hex(text + at, second);
+    v9x_hsw_pat_write(key, text);
+}
+
+/* Cover one mapping under a plan already made; 1 when it is covered. */
+static unsigned short v9x_hsw_pat_cover(const char *key, unsigned long linear,
+                                        unsigned long bytes,
+                                        const struct v9x_pat_plan *plan)
+{
+    unsigned long pages = 0ul;
+    unsigned long back = 0ul;
+    unsigned short why = 0u;
+
+    if (V9xMiniPatCover(linear, bytes, plan->old_high, plan->new_high,
+                        &pages, &back, &why) == 0u) {
+        v9x_hsw_pat_record(key, "why=", (unsigned long)why, " hi=", back);
+        return 0u;
+    }
+    v9x_hsw_pat_record(key, "ok pages=", pages, " hi=", back);
+    return 1u;
+}
+
+/* V9X_HW16_DEVICE.write_combine_fallback: the aperture mapping. */
+static void v9x_hsw_write_combine(unsigned long linear, unsigned long bytes,
+                                  unsigned short mtrr_reason,
+                                  void (*write)(const char *key,
+                                                const char *value))
+{
+    struct v9x_pat_plan plan;
+    unsigned long low = 0ul;
+    unsigned long high = 0ul;
+    unsigned short flags = 0u;
+
+    v9x_hsw_pat_write = write;
+    (void)V9xMiniPatInfo(&low, &high, &flags);
+    if (v9x_pat_plan_wc(mtrr_reason, flags, high, linear, bytes,
+                        &plan) == V9X_FALSE) {
+        v9x_hsw_pat_record("PatWrite", "plan=", (unsigned long)plan.reason,
+                           " hi=", high);
+        return;
+    }
+    if (v9x_hsw_pat_cover("PatWrite", linear, bytes, &plan) != 0u) {
+        v9x_hsw_pat_high = plan.new_high;
+    }
+}
+
+/*
+ * The engine reserve's mapping, once the aperture is covered; once per
+ * mapping, since HSW_ENGINE_OPEN hands the same one back each session.
+ * Under the aperture's plan, with entry 4 already WC: the CPU and the entry
+ * are what that plan checked, and ring 0 re-checks the range.
+ */
+static void v9x_hsw_pat_cover_reserve(unsigned long reserve)
+{
+    struct v9x_pat_plan plan;
+
+    if (v9x_hsw_pat_high == 0ul || reserve == v9x_hsw_pat_reserve) {
+        return;
+    }
+    v9x_hsw_pat_reserve = reserve;
+    plan.old_high = v9x_hsw_pat_high;
+    plan.new_high = v9x_hsw_pat_high;
+    (void)v9x_hsw_pat_cover("PatReserve", reserve,
+                            V9X_INTEL_HSW_RESERVE_BYTES, &plan);
+}
+
 /* Disable: give the ring and forcewake back. The next Enable reopens. The
  * close waits, bounded, for the draw the HAL may have left running; 2 says
  * it closed without seeing that draw finish. */
@@ -259,6 +372,7 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
     }
 
     v9x_hsw_engine_status = code == 0x10u ? "open-reused" : "open";
+    v9x_hsw_pat_cover_reserve(reserve);
     *control_linear_base = mmio;
     *mapped_aperture_bytes = 0x00200000ul;
     *ring_linear_base = reserve;
@@ -328,7 +442,10 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
     /* The packed pitch the tier-0 desktop was measured at. */
     1u,
     V9X_HSW_MAP_BYTES,
-    v9x_hsw_reserve_offset
+    v9x_hsw_reserve_offset,
+    /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
 };
 
 /*
@@ -351,7 +468,10 @@ const V9X_HW16_DEVICE v9x_hsw_hd4400_device = {
     2u,
     1u,
     V9X_HSW_MAP_BYTES,
-    v9x_hsw_reserve_offset
+    v9x_hsw_reserve_offset,
+    /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
 };
 
 /*
@@ -375,5 +495,8 @@ const V9X_HW16_DEVICE v9x_ivb_hd4000_device = {
     /* Packed pitch: 640 at 640x480x8, measured at tier 0 there. */
     1u,
     V9X_HSW_MAP_BYTES,
-    v9x_hsw_reserve_offset
+    v9x_hsw_reserve_offset,
+    /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
 };
