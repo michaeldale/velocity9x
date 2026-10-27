@@ -113,24 +113,23 @@ typedef struct v9x_gl_pending {
 /*
  * A held T&L batch, indexed: each vertex once, a list of indices into
  * them. Batches merge, as screen batches do, only under the same key,
- * constants, viewport and cull, which are kept here because the state
- * they came from may change before the flush. screen holds the CPU's
- * triangles of the same batch, drawn instead, 64 at a time, when the
- * engine refuses it. scaled is where a hardware texture's coordinate scale
- * and REPLACE-as-MODULATE write their copies. One per context, on the
- * heap, made at the first make-current that wants T&L: about 150 KB a
- * context in the DLL's file otherwise, where Open Watcom keeps the static
- * contexts, and the S3 floppy's first disk has no room for that. capture
- * is the pipeline's own capture storage, kept here for the same reason.
- */
-#define V9X_GL_TNL_SCREEN_MAX 512u
-
-/*
+ * viewport and cull, which are kept here because the state they came from
+ * may change before the flush. When the engine refuses it, the CPU draws
+ * it from these object vertices, 64 triangles at a time
+ * (v9x_gl_prim_tnl_screen). scaled is where a hardware texture's
+ * coordinate scale and REPLACE-as-MODULATE write their copies. One per
+ * context, on the heap, made at the first make-current that wants T&L:
+ * about 150 KB a context in the DLL's file otherwise, where Open Watcom
+ * keeps the static contexts, and the S3 floppy's first disk has no room
+ * for that. capture and elements are the pipeline's own capture storage
+ * and element cache, and draws and requests the flush's segment records,
+ * kept here for the same reason.
+ *
  * Step 3b: a held batch is up to V9X_R3D_ABI_TNL_SEGMENTS_MAX segments,
  * each a run of batches drawn the same way - texture, fragment state and
- * constants - over its own ranges of the indices, vertices and CPU twin.
- * The engine draws them in one submission: Quake 3's T&L batches broke on
- * texture or state 54,943 times in one timedemo, each a batch of its own.
+ * constants - over its own ranges of the indices and vertices. The engine
+ * draws them in one submission: Quake 3's T&L batches broke on texture or
+ * state 54,943 times in one timedemo, each a batch of its own.
  */
 typedef struct v9x_gl_tnl_segment {
     V9X_R3D_ABI_TEXTURE texture;
@@ -143,8 +142,6 @@ typedef struct v9x_gl_tnl_segment {
     v9x_u32 index_count;
     v9x_u32 first_vertex;
     v9x_u32 vertex_count;
-    v9x_u32 first_screen;
-    v9x_u32 screen_count;
 } V9X_GL_TNL_SEGMENT;
 
 typedef struct v9x_gl_tnl_hold {
@@ -154,14 +151,21 @@ typedef struct v9x_gl_tnl_hold {
     v9x_u32 segment_count;
     v9x_u32 vertex_count;
     v9x_u32 index_count;
-    v9x_u32 screen_triangles;
     V9X_R3D_ABI_VERTEX vertices[V9X_R3D_ABI_TNL_VERTICES_MAX];
     V9X_R3D_ABI_VERTEX scaled[V9X_R3D_ABI_TNL_VERTICES_MAX];
     v9x_u16 indices[V9X_R3D_ABI_TNL_INDICES_MAX];
-    V9X_R3D_ABI_VERTEX screen[3u * V9X_GL_TNL_SCREEN_MAX];
+    /* A held batch's draws, one per segment, and the request's segment
+     * records: built at flush, under the lock. */
+    V9X_R3D_ABI_DRAW draws[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
+    V9X_R3D_ABI_TNL_SEGMENT requests[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
     /* The pipeline's capture storage (gl_prim.h, tnl_vertices). */
     V9X_R3D_ABI_VERTEX capture[V9X_GL_TNL_VERTICES];
     v9x_u16 capture_indices[V9X_GL_TNL_INDICES];
+    V9X_GL_TNL_ELEMENT elements[V9X_GL_TNL_ELEMENTS];
+    /* Step 4: the normals beside capture and beside vertices, three floats
+     * a vertex; the held ones are sent when the key is lit. */
+    GLfloat capture_normals[V9X_GL_TNL_VERTICES * 3u];
+    GLfloat normals[V9X_R3D_ABI_TNL_VERTICES_MAX * 3u];
 } V9X_GL_TNL_HOLD;
 
 typedef struct v9x_gl_context {
@@ -178,6 +182,10 @@ typedef struct v9x_gl_context {
     /* The held T&L batch's storage (V9X_GL_TNL_HOLD), or null before the
      * context's first captured batch. */
     V9X_GL_TNL_HOLD *tnl_hold;
+    /* Lighting state (gl_light.h), from the heap at the first glLight,
+     * glLightModel, glMaterial or glColorMaterial; null is the initial
+     * state. About 1 KB, kept out of the static contexts as the hold is. */
+    V9X_GL_LIGHTING *lighting;
     /* glPushAttrib's and glPushClientAttrib's stacks, about 10 KB, from the
      * heap at the first push: in the context table they would be zeros in
      * the DLL's image, sixteen times over (the linker writes _BSS out;
@@ -864,10 +872,6 @@ static int v9x_gl_redescribe_all(void);
 /* Draw the context's held batch, if any. */
 static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context);
 static int v9x_gl_flush_tnl(V9X_GL_CONTEXT *context, V9X_GL_PENDING *pending);
-/* A held T&L batch's draws, one per segment, and the request's segment
- * records: built at flush, under the lock, one flush at a time. */
-static V9X_R3D_ABI_DRAW v9x_gl_tnl_draws[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
-static V9X_R3D_ABI_TNL_SEGMENT v9x_gl_tnl_segments[V9X_R3D_ABI_TNL_SEGMENTS_MAX];
 /* The surface a colour buffer (V9X_GL_DRAW_*) is drawn in. */
 static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
                                     unsigned int which);
@@ -1978,18 +1982,29 @@ static void v9x_gl_counters_log(void)
 {
     /* Fifteen counters of up to ten digits past a 190-character format. */
     char text[400];
+    V9X_GL_CONTEXT *context;
 
     v9x_gl_path_log();
     wsprintfA(text, "counters hwtex lost=%lu", v9x_gl_hw_lost);
     v9x_gl_log(text);
     /* Hardware T&L (step 3): batches and triangles the engine drew, ones
-     * it refused (the CPU path drew them), and failures after submission;
-     * the pipeline's own declines (a q other than 1) are in the current
-     * context's tnl_declined, which is not process-wide. */
+     * it refused (the CPU drew them), and failures after submission. */
     wsprintfA(text, "counters tnl batches=%lu triangles=%lu refused=%lu "
               "failed=%lu", v9x_gl_tnl_batches, v9x_gl_tnl_triangles,
               v9x_gl_tnl_refused, v9x_gl_tnl_failed);
     v9x_gl_log(text);
+    /* The current context's capture (step 3b, gl_prim.h): triangles the
+     * CPU's cull kept from the engine, captures a q other than 1 ended,
+     * vertex array elements from the cache, batches the sink declined. */
+    context = v9x_gl_current();
+    if (context != 0) {
+        wsprintfA(text, "counters tnl-capture culled=%lu abandoned=%lu "
+                  "cached=%lu declined=%lu", context->pipeline.tnl_culled,
+                  context->pipeline.tnl_abandoned,
+                  context->pipeline.tnl_cached,
+                  context->pipeline.tnl_declined);
+        v9x_gl_log(text);
+    }
     wsprintfA(text, "counters tnl-hold flush-for-screen=%lu new-segment=%lu "
               "flush-for-frame=%lu joined=%lu flush-segments-full=%lu",
               v9x_gl_tnl_break[0], v9x_gl_tnl_break[1], v9x_gl_tnl_break[2],
@@ -2417,9 +2432,11 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
     pending = &context->pending;
     EnterCriticalSection(&v9x_gl_lock);
     /*
-     * A held T&L batch the engine refuses is replaced by its CPU twin,
-     * which goes the ordinary way a batch at a time (v9x_gl_draw_tnl_batch
-     * holds up to V9X_GL_TNL_SCREEN_MAX of its triangles).
+     * A held T&L batch the engine refuses is drawn by the CPU instead: each
+     * segment's triangles transformed, clipped and windowed from the held
+     * object vertices under the constants and frame they were captured
+     * with (v9x_gl_prim_tnl_screen), and sent the ordinary way a batch at a
+     * time under the segment's texture and state.
      */
     if (pending->tnl) {
         const V9X_GL_TNL_HOLD *hold = context->tnl_hold;
@@ -2428,12 +2445,9 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
         pending->tnl = 0;
         pending->triangles = 0ul;
         if (!v9x_gl_flush_tnl(context, pending)) {
-            /* Each segment's CPU triangles under its own texture and
-             * state, a batch at a time. */
             for (n = 0ul; n < hold->segment_count; ++n) {
                 const V9X_GL_TNL_SEGMENT *seg = &hold->segment[n];
-                v9x_u32 start = seg->first_screen;
-                v9x_u32 end = seg->first_screen + seg->screen_count;
+                v9x_u32 next = seg->first_index;
 
                 pending->texture = seg->texture;
                 pending->texture1.storage = V9X_R3D_ABI_TEXTURE_NONE;
@@ -2441,19 +2455,15 @@ static void v9x_gl_pending_flush(V9X_GL_CONTEXT *context)
                 pending->texture1_name = 0u;
                 pending->state = seg->state;
                 pending->alpha_used = seg->alpha_used;
-                while (start < end) {
-                    v9x_u32 count = end - start;
-                    v9x_u32 i;
-
-                    if (count > V9X_R3D_ABI_BATCH_MAX) {
-                        count = V9X_R3D_ABI_BATCH_MAX;
+                while (next + 3ul <= seg->first_index + seg->index_count) {
+                    pending->triangles = v9x_gl_prim_tnl_screen(
+                        &seg->constants, &hold->frame, &seg->state,
+                        hold->vertices, hold->indices,
+                        seg->first_index + seg->index_count, &next,
+                        pending->vertices, V9X_R3D_ABI_BATCH_MAX);
+                    if (pending->triangles != 0ul) {
+                        v9x_gl_pending_passes(context, pending);
                     }
-                    for (i = 0ul; i < count * 3ul; ++i) {
-                        pending->vertices[i] = hold->screen[start * 3ul + i];
-                    }
-                    pending->triangles = count;
-                    v9x_gl_pending_passes(context, pending);
-                    start += count;
                 }
             }
             pending->triangles = 0ul;
@@ -2673,7 +2683,7 @@ static v9x_u32 v9x_gl_draw_tnl_into(V9X_GL_CONTEXT *context,
     }
     for (n = 0ul; n < hold->segment_count; ++n) {
         V9X_GL_TNL_SEGMENT *seg = &hold->segment[n];
-        V9X_R3D_ABI_DRAW *draw = &v9x_gl_tnl_draws[n];
+        V9X_R3D_ABI_DRAW *draw = &hold->draws[n];
         V9X_R3D_ABI_VERTEX *vertices = hold->scaled + seg->first_vertex;
         int hardware;
         float scale_s = 1.0f;
@@ -2720,23 +2730,25 @@ static v9x_u32 v9x_gl_draw_tnl_into(V9X_GL_CONTEXT *context,
                                                  vertices,
                                                  seg->vertex_count);
         }
-        v9x_gl_tnl_segments[n].draw = draw;
-        v9x_gl_tnl_segments[n].constants = &seg->constants;
-        v9x_gl_tnl_segments[n].first_index = seg->first_index;
-        v9x_gl_tnl_segments[n].index_count = seg->index_count;
+        hold->requests[n].draw = draw;
+        hold->requests[n].constants = &seg->constants;
+        hold->requests[n].first_index = seg->first_index;
+        hold->requests[n].index_count = seg->index_count;
     }
 
     /* The frame as the batch was captured under, not the state now. One
      * segment goes as a plain draw under its constants. */
     tnl = hold->frame;
-    tnl.draw = &v9x_gl_tnl_draws[0];
+    tnl.draw = &hold->draws[0];
     tnl.key = &hold->key;
     tnl.constants = &hold->segment[0].constants;
     tnl.indices = hold->indices;
     tnl.index_count = hold->index_count;
     tnl.vertex_count = hold->vertex_count;
-    tnl.segments = hold->segment_count > 1ul ? v9x_gl_tnl_segments : 0;
+    tnl.segments = hold->segment_count > 1ul ? hold->requests : 0;
     tnl.segment_count = hold->segment_count > 1ul ? hold->segment_count : 0ul;
+    tnl.normals = (hold->key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul
+        ? hold->normals : 0;
     result = iface->draw_tnl(&tnl, outcome);
     ++v9x_gl_count_draws;
     if (result == V9X_R3D_RESULT_STALE) {
@@ -2805,16 +2817,15 @@ static int v9x_gl_same_bytes(const void *a, const void *b, unsigned int bytes)
  * batches, and merged with the batch already held when that one is a T&L
  * batch drawn the same way into the same buffers - the same texture and
  * fragment state, and the same key, constants, viewport and cull - with
- * room for both its triangles and its CPU twin. Half-Life begins a
- * primitive per polygon: drawn one batch each, its timedemo ran at 24 fps
- * against the CPU path's 85 (the 4570, boot 84).
+ * room for its vertices and indices. Half-Life begins a primitive per
+ * polygon: drawn one batch each, its timedemo ran at 24 fps against the
+ * CPU path's 85 (the 4570, boot 84).
  */
 static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
+                                 const GLfloat *normals,
                                  v9x_u32 vertex_count,
                                  const v9x_u16 *indices,
-                                 v9x_u32 index_count,
-                                 const V9X_R3D_ABI_VERTEX *screen,
-                                 v9x_u32 screen_count)
+                                 v9x_u32 index_count)
 {
     V9X_GL_CONTEXT *context = (V9X_GL_CONTEXT *)user;
     V9X_GL_PENDING *pending = &context->pending;
@@ -2831,8 +2842,7 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
 
     if (v9x_gl_device_interface() == 0 || index_count == 0ul ||
         vertex_count > V9X_R3D_ABI_TNL_VERTICES_MAX ||
-        index_count > V9X_R3D_ABI_TNL_INDICES_MAX ||
-        screen_count > V9X_GL_TNL_SCREEN_MAX) {
+        index_count > V9X_R3D_ABI_TNL_INDICES_MAX) {
         return 0;
     }
     /* Made at make-current (DrvSetContext), which captures nothing
@@ -2847,8 +2857,17 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
     }
     v9x_gl_describe_texture(context, 0ul, &texture, context->levels);
     v9x_gl_prim_abi_state(&context->state, &context->pipeline, &state);
+    /* The engine cuts only to the viewport: the draw rectangle the CPU
+     * path cuts its geometry to goes as the scissor. */
+    v9x_gl_prim_tnl_scissor(&context->state, &state);
     v9x_gl_prim_tnl_constants(&context->state, &context->pipeline, &key,
                               &v9x_gl_tnl_constants_scratch);
+    /* A lit key reads normals; a capture made without them is not drawn
+     * by the engine (gl_prim.c keeps lit primitives from being captured
+     * then). */
+    if ((key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul && normals == 0) {
+        return 0;
+    }
     for (i = 0ul; i < sizeof(frame); ++i) {
         ((BYTE *)&frame)[i] = 0u;
     }
@@ -2869,7 +2888,6 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
             hold->vertex_count + vertex_count <=
                 V9X_R3D_ABI_TNL_VERTICES_MAX &&
             hold->index_count + index_count <= V9X_R3D_ABI_TNL_INDICES_MAX &&
-            hold->screen_triangles + screen_count <= V9X_GL_TNL_SCREEN_MAX &&
             v9x_gl_same_bytes(&hold->key, &key, sizeof(key)) &&
             v9x_gl_same_bytes(&hold->frame, &frame, sizeof(frame)) &&
             state.depth_enable == hold->segment[0].state.depth_enable &&
@@ -2908,7 +2926,6 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
         hold->segment_count = 0ul;
         hold->vertex_count = 0ul;
         hold->index_count = 0ul;
-        hold->screen_triangles = 0ul;
     }
     if (!extend) {
         V9X_GL_TNL_SEGMENT *seg;
@@ -2921,8 +2938,9 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
         /* The texture as described here is the CPU copy; whether it is
          * drawn from a surface is decided at the flush
          * (v9x_gl_draw_tnl_into). Its level table is kept with the
-         * segment, as a held screen batch keeps its own, so the CPU twin
-         * can still be drawn from it after context->levels is reused. */
+         * segment, as a held screen batch keeps its own, so the CPU can
+         * still draw the segment from it after context->levels is
+         * reused. */
         seg->texture = texture;
         if (texture.storage == V9X_R3D_ABI_TEXTURE_CPU) {
             v9x_u32 level;
@@ -2942,29 +2960,27 @@ static int v9x_gl_draw_tnl_batch(void *user, const V9X_R3D_ABI_VERTEX *object,
         seg->index_count = 0ul;
         seg->first_vertex = hold->vertex_count;
         seg->vertex_count = 0ul;
-        seg->first_screen = hold->screen_triangles;
-        seg->screen_count = 0ul;
         last = seg;
     } else {
         ++v9x_gl_tnl_break[3];
     }
     last->index_count += index_count;
     last->vertex_count += vertex_count;
-    last->screen_count += screen_count;
     /* This batch's indices rebased past the vertices already held. */
     for (i = 0ul; i < vertex_count; ++i) {
         hold->vertices[hold->vertex_count + i] = object[i];
+    }
+    if ((key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul) {
+        for (i = 0ul; i < vertex_count * 3ul; ++i) {
+            hold->normals[hold->vertex_count * 3ul + i] = normals[i];
+        }
     }
     for (i = 0ul; i < index_count; ++i) {
         hold->indices[hold->index_count + i] =
             (v9x_u16)(indices[i] + hold->vertex_count);
     }
-    for (i = 0ul; i < screen_count * 3ul; ++i) {
-        hold->screen[hold->screen_triangles * 3ul + i] = screen[i];
-    }
     hold->vertex_count += vertex_count;
     hold->index_count += index_count;
-    hold->screen_triangles += screen_count;
     pending->triangles = hold->index_count / 3ul;
     return 1;
 }
@@ -4090,6 +4106,287 @@ static void V9X_GL_API v9x_gl_get_tex_enviv(GLenum target, GLenum pname,
     v9x_gl_query_ints(values, count, colour, params);
 }
 
+/* ---- Lighting (2.13), gl_light.c ------------------------------------- */
+
+/* The context's lighting state, made at its first use. Null when the heap
+ * refuses, and the call is then dropped. */
+static V9X_GL_LIGHTING *v9x_gl_lighting(V9X_GL_CONTEXT *context)
+{
+    if (context->lighting == 0) {
+        context->lighting = (V9X_GL_LIGHTING *)v9x_gl_heap_alloc(
+            sizeof(V9X_GL_LIGHTING));
+        if (context->lighting == 0) {
+            return 0;
+        }
+        v9x_gl_lighting_init(context->lighting);
+        context->pipeline.lighting = context->lighting;
+    }
+    return context->lighting;
+}
+
+/* glLight, glLightModel and glColorMaterial are not allowed between Begin
+ * and End (2.6.3); glMaterial is, and what is captured so far goes under
+ * the material it was given with first. */
+static void v9x_gl_light_call(GLenum light, GLenum pname,
+                              const GLfloat *params, int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting != 0) {
+        v9x_gl_light(&context->state, lighting, light, pname, params, vector,
+                     v9x_gl_matrix_top(&context->state.matrices,
+                                       V9X_GL_MODELVIEW)->m);
+    }
+}
+
+static void V9X_GL_API v9x_gl_lightf(GLenum light, GLenum pname,
+                                     GLfloat param)
+{
+    v9x_gl_light_call(light, pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_lightfv(GLenum light, GLenum pname,
+                                      const GLfloat *params)
+{
+    v9x_gl_light_call(light, pname, params, 1);
+}
+
+static void V9X_GL_API v9x_gl_lighti(GLenum light, GLenum pname, GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_light_call(light, pname, &value, 0);
+}
+
+/* Colours by table 2.6, as glColor4iv converts; the rest directly. */
+static void V9X_GL_API v9x_gl_lightiv(GLenum light, GLenum pname,
+                                      const GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = 1u;
+    unsigned int i;
+
+    values[1] = 0.0f;
+    values[2] = 0.0f;
+    values[3] = 0.0f;
+    if (pname == V9X_GL_AMBIENT || pname == V9X_GL_DIFFUSE ||
+        pname == V9X_GL_SPECULAR) {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+        count = 0u;
+    } else if (pname == V9X_GL_POSITION) {
+        count = 4u;
+    } else if (pname == V9X_GL_SPOT_DIRECTION) {
+        count = 3u;
+    }
+    for (i = 0u; i < count; ++i) {
+        values[i] = (GLfloat)params[i];
+    }
+    v9x_gl_light_call(light, pname, values, 1);
+}
+
+static void v9x_gl_light_model_call(GLenum pname, const GLfloat *params,
+                                    int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting != 0) {
+        v9x_gl_light_model(&context->state, lighting, pname, params, vector);
+    }
+}
+
+static void V9X_GL_API v9x_gl_light_modelf(GLenum pname, GLfloat param)
+{
+    v9x_gl_light_model_call(pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_light_modelfv(GLenum pname,
+                                            const GLfloat *params)
+{
+    v9x_gl_light_model_call(pname, params, 1);
+}
+
+static void V9X_GL_API v9x_gl_light_modeli(GLenum pname, GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_light_model_call(pname, &value, 0);
+}
+
+static void V9X_GL_API v9x_gl_light_modeliv(GLenum pname,
+                                            const GLint *params)
+{
+    GLfloat values[4];
+
+    if (pname == V9X_GL_LIGHT_MODEL_AMBIENT) {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+    } else {
+        values[0] = (GLfloat)params[0];
+    }
+    v9x_gl_light_model_call(pname, values, 1);
+}
+
+static void v9x_gl_material_call(GLenum face, GLenum pname,
+                                 const GLfloat *params, int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_prim_flush(&context->pipeline);
+    }
+    v9x_gl_material(&context->state, lighting, face, pname, params, vector);
+}
+
+static void V9X_GL_API v9x_gl_materialf(GLenum face, GLenum pname,
+                                        GLfloat param)
+{
+    v9x_gl_material_call(face, pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_materialfv(GLenum face, GLenum pname,
+                                         const GLfloat *params)
+{
+    v9x_gl_material_call(face, pname, params, 1);
+}
+
+static void V9X_GL_API v9x_gl_materiali(GLenum face, GLenum pname,
+                                        GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_material_call(face, pname, &value, 0);
+}
+
+static void V9X_GL_API v9x_gl_materialiv(GLenum face, GLenum pname,
+                                         const GLint *params)
+{
+    GLfloat values[4];
+
+    if (pname == V9X_GL_SHININESS || pname == V9X_GL_COLOR_INDEXES) {
+        values[0] = (GLfloat)params[0];
+        values[1] = pname == V9X_GL_COLOR_INDEXES ? (GLfloat)params[1] : 0.0f;
+        values[2] = pname == V9X_GL_COLOR_INDEXES ? (GLfloat)params[2] : 0.0f;
+        values[3] = 0.0f;
+    } else {
+        v9x_gl_gather(params, V9X_GL_INT, 4u, 1, values);
+    }
+    v9x_gl_material_call(face, pname, values, 1);
+}
+
+static void V9X_GL_API v9x_gl_color_material_entry(GLenum face, GLenum mode)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    lighting = v9x_gl_lighting(context);
+    if (lighting != 0) {
+        v9x_gl_color_material(&context->state, lighting, face, mode);
+    }
+}
+
+/* The queries read the initial state until the first lighting call. */
+static unsigned int v9x_gl_get_lighting(GLenum light_or_face, GLenum pname,
+                                        GLfloat *values, int material)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_LIGHTING initial;
+    const V9X_GL_LIGHTING *lighting;
+
+    if (context == 0) {
+        return 0u;
+    }
+    lighting = context->lighting;
+    if (lighting == 0) {
+        v9x_gl_lighting_init(&initial);
+        lighting = &initial;
+    }
+    return material
+        ? v9x_gl_get_material(&context->state, lighting, light_or_face,
+                              pname, values)
+        : v9x_gl_get_light(&context->state, lighting, light_or_face, pname,
+                           values);
+}
+
+static int v9x_gl_lighting_colour(GLenum pname)
+{
+    return pname == V9X_GL_AMBIENT || pname == V9X_GL_DIFFUSE ||
+           pname == V9X_GL_SPECULAR || pname == V9X_GL_EMISSION;
+}
+
+static void V9X_GL_API v9x_gl_get_lightfv(GLenum light, GLenum pname,
+                                          GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(light, pname, values, 0);
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_lightiv(GLenum light, GLenum pname,
+                                          GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(light, pname, values, 0);
+
+    v9x_gl_query_ints(values, count, v9x_gl_lighting_colour(pname), params);
+}
+
+static void V9X_GL_API v9x_gl_get_materialfv(GLenum face, GLenum pname,
+                                             GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(face, pname, values, 1);
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_materialiv(GLenum face, GLenum pname,
+                                             GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_lighting(face, pname, values, 1);
+
+    v9x_gl_query_ints(values, count, v9x_gl_lighting_colour(pname), params);
+}
+
 static void V9X_GL_API v9x_gl_clear_stencil(GLint s)
 {
     V9X_GL_WITH_CONTEXT(v9x_gl_state_clear_stencil(&context_->state, s));
@@ -4346,6 +4643,23 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glFogfv, v9x_gl_fogfv);
     V9X_GL_OVERRIDE(glFogi, v9x_gl_fogi);
     V9X_GL_OVERRIDE(glFogiv, v9x_gl_fogiv);
+    V9X_GL_OVERRIDE(glLightf, v9x_gl_lightf);
+    V9X_GL_OVERRIDE(glLightfv, v9x_gl_lightfv);
+    V9X_GL_OVERRIDE(glLighti, v9x_gl_lighti);
+    V9X_GL_OVERRIDE(glLightiv, v9x_gl_lightiv);
+    V9X_GL_OVERRIDE(glLightModelf, v9x_gl_light_modelf);
+    V9X_GL_OVERRIDE(glLightModelfv, v9x_gl_light_modelfv);
+    V9X_GL_OVERRIDE(glLightModeli, v9x_gl_light_modeli);
+    V9X_GL_OVERRIDE(glLightModeliv, v9x_gl_light_modeliv);
+    V9X_GL_OVERRIDE(glMaterialf, v9x_gl_materialf);
+    V9X_GL_OVERRIDE(glMaterialfv, v9x_gl_materialfv);
+    V9X_GL_OVERRIDE(glMateriali, v9x_gl_materiali);
+    V9X_GL_OVERRIDE(glMaterialiv, v9x_gl_materialiv);
+    V9X_GL_OVERRIDE(glColorMaterial, v9x_gl_color_material_entry);
+    V9X_GL_OVERRIDE(glGetLightfv, v9x_gl_get_lightfv);
+    V9X_GL_OVERRIDE(glGetLightiv, v9x_gl_get_lightiv);
+    V9X_GL_OVERRIDE(glGetMaterialfv, v9x_gl_get_materialfv);
+    V9X_GL_OVERRIDE(glGetMaterialiv, v9x_gl_get_materialiv);
     V9X_GL_OVERRIDE(glPushAttrib, v9x_gl_push_attrib);
     V9X_GL_OVERRIDE(glPopAttrib, v9x_gl_pop_attrib);
     V9X_GL_OVERRIDE(glPushClientAttrib, v9x_gl_push_client_attrib);
@@ -4502,6 +4816,7 @@ static V9X_DHGLRC v9x_gl_context_create(HDC hdc)
                 v9x_gl_arrays_init(&context->arrays);
                 context->attribs = 0;
                 context->tnl_hold = 0;
+                context->lighting = 0;
                 context->pending.tnl = 0;
                 v9x_gl_textures_init(&context->textures, v9x_gl_heap_alloc,
                                      v9x_gl_heap_free);
@@ -4632,6 +4947,11 @@ BOOL __stdcall DrvDeleteContext(V9X_DHGLRC handle)
             v9x_gl_heap_free(context->tnl_hold);
             context->tnl_hold = 0;
         }
+        if (context->lighting != 0) {
+            v9x_gl_heap_free(context->lighting);
+            context->lighting = 0;
+            context->pipeline.lighting = 0;
+        }
         context->in_use = 0;
         context->owner = 0ul;
         context->drawable = 0;
@@ -4680,9 +5000,11 @@ V9X_GLCLTPROCTABLE * __stdcall DrvSetContext(HDC hdc, V9X_DHGLRC handle,
                                     v9x_gl_draw_tnl_batch,
                                     v9x_gl_tnl_wanted(),
                                     context->tnl_hold->capture,
-                                    context->tnl_hold->capture_indices);
+                                    context->tnl_hold->capture_indices,
+                                    context->tnl_hold->elements,
+                                    context->tnl_hold->capture_normals);
             } else {
-                v9x_gl_pipeline_tnl(&context->pipeline, 0, 0, 0, 0);
+                v9x_gl_pipeline_tnl(&context->pipeline, 0, 0, 0, 0, 0, 0);
             }
             table = &v9x_gl_table;
         }

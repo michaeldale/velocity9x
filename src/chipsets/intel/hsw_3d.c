@@ -1467,6 +1467,14 @@ static void v9x_hsw_vs_elements(const struct v9x_hsw_draw *draw,
     if (draw->tl_uv1) {
         elements[4].offset = V9X_HSW_TL_VERTEX_BYTES;
     }
+    /* Step 4: the normal from its own buffer, w zero. */
+    elements[5].buffer = 1u;
+    elements[5].offset = 0u;
+    elements[5].format = V9X_HSW_FMT_R32G32B32_FLOAT;
+    elements[5].component[0] = V9X_HSW_VFCOMP_STORE_SRC;
+    elements[5].component[1] = V9X_HSW_VFCOMP_STORE_SRC;
+    elements[5].component[2] = V9X_HSW_VFCOMP_STORE_SRC;
+    elements[5].component[3] = V9X_HSW_VFCOMP_STORE_0;
 }
 
 /* The setup GRF and binding count the shaded draw's PS takes, defined with
@@ -1574,7 +1582,8 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
         }
         if (vs != 0) {
             v9x_hsw_vs_elements(draw, elements);
-            count = (v9x_u32)V9X_HSW_VS_INPUTS;
+            count = (v9x_u32)V9X_HSW_VS_INPUTS +
+                    (vs->normals != 0ul ? 1ul : 0ul);
         }
     } else if (count == 6ul) {
         elements[3].offset = 24u;
@@ -1606,6 +1615,13 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
     vertices = draw->vertex_count != 0ul ? draw->vertex_count : 3ul;
     v9x_intel_hsw_vertex_buffer(batch, 0u, stride, draw->vertices,
                                 draw->vertices + vertices * stride - 1ul);
+    if (vs != 0 && vs->normals != 0ul) {
+        v9x_intel_hsw_vertex_buffer(batch, 1u, V9X_HSW_VS_NORMAL_BYTES,
+                                    vs->normals,
+                                    vs->normals +
+                                        vertices * V9X_HSW_VS_NORMAL_BYTES -
+                                        1ul);
+    }
     v9x_intel_hsw_vertex_elements(batch, elements, (v9x_u8)count);
     if (draw->indices != 0ul) {
         v9x_u32 last = draw->index_count;
@@ -2152,7 +2168,7 @@ v9x_status v9x_intel_hsw_draw_workload_vs(struct v9x_hsw_batch *batch,
         vs->constant_grfs > V9X_HSW_CONSTANT_GRFS_MAX ||
         (vs->sf_clip_viewport & 0x3ful) != 0ul ||
         (vs->cc_viewport & 0x1ful) != 0ul || vs->provoking > 2u ||
-        !draw->tl_vertices ||
+        (vs->normals & 3ul) != 0ul || !draw->tl_vertices ||
         (draw->depth_buffer != 0ul && draw->depth_clear != 0ul)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }

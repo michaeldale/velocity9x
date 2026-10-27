@@ -223,8 +223,8 @@ static void test_heap_plan(void)
                    0x00300000ul, &plan) == V9X_STATUS_OK);
     CHECK(plan.usable_top == 0x01f00000ul);
     CHECK(plan.probe_offset == 0x01ef0000ul);
-    CHECK(plan.reserve_offset == 0x01ed0000ul);
-    CHECK(plan.heap_end == 0x01ed0000ul);
+    CHECK(plan.reserve_offset == 0x01eb0000ul);
+    CHECK(plan.heap_end == 0x01eb0000ul);
     CHECK(plan.reserve_offset + V9X_INTEL_HSW_RESERVE_BYTES ==
           plan.probe_offset);
     CHECK(plan.probe_offset + V9X_INTEL_HSW_PROBE_REGION_BYTES ==
@@ -234,13 +234,13 @@ static void test_heap_plan(void)
     CHECK(v9x_heap(0x04000000ul, 0x00100000ul, 0x04000000ul, 0x03ff0000ul,
                    0x00300000ul, &plan) == V9X_STATUS_OK);
     CHECK(plan.usable_top == 0x03f00000ul);
-    CHECK(plan.heap_end == 0x03ed0000ul);
+    CHECK(plan.heap_end == 0x03eb0000ul);
 
     /* A larger protected range moves everything down with it. */
     CHECK(v9x_heap(0x02000000ul, 0x00400000ul, 0x04000000ul, 0ul,
                    0x00300000ul, &plan) == V9X_STATUS_OK);
     CHECK(plan.usable_top == 0x01c00000ul);
-    CHECK(plan.heap_end == 0x01bd0000ul);
+    CHECK(plan.heap_end == 0x01bb0000ul);
 
     /* None protected (the register reports nothing). */
     CHECK(v9x_heap(0x02000000ul, 0ul, 0x04000000ul, 0ul, 0x00300000ul,
@@ -251,7 +251,7 @@ static void test_heap_plan(void)
     CHECK(v9x_heap(0x08000000ul, 0x00100000ul, 0x04000000ul, 0ul,
                    0x00300000ul, &plan) == V9X_STATUS_OK);
     CHECK(plan.usable_top == 0x04000000ul);
-    CHECK(plan.heap_end == 0x03fd0000ul);
+    CHECK(plan.heap_end == 0x03fb0000ul);
 
     /* VBE claims less than either: it sets the top. */
     CHECK(v9x_heap(0x02000000ul, 0x00100000ul, 0x04000000ul, 0x01000000ul,
@@ -262,14 +262,14 @@ static void test_heap_plan(void)
     CHECK(v9x_heap(0x02000000ul, 0x00041000ul, 0x04000000ul, 0ul,
                    0x00300000ul, &plan) == V9X_STATUS_OK);
     CHECK(plan.usable_top == 0x01fb0000ul);
-    CHECK(plan.reserve_offset == 0x01f80000ul);
+    CHECK(plan.reserve_offset == 0x01f60000ul);
 
     /* The desktop: one 64 KB block of heap is accepted, none refused. */
     CHECK(v9x_heap(0x00400000ul, 0x00100000ul, 0x04000000ul, 0ul,
-                   0x002c0000ul, &plan) == V9X_STATUS_OK);
-    CHECK(plan.heap_end == 0x002d0000ul);
+                   0x002a0000ul, &plan) == V9X_STATUS_OK);
+    CHECK(plan.heap_end == 0x002b0000ul);
     CHECK(v9x_heap(0x00400000ul, 0x00100000ul, 0x04000000ul, 0ul,
-                   0x002d0000ul, &plan) == V9X_STATUS_UNSUPPORTED);
+                   0x002b0000ul, &plan) == V9X_STATUS_UNSUPPORTED);
     CHECK(v9x_heap_refused(&plan));
 
     /* A top below the reserve and probe region does not wrap. */

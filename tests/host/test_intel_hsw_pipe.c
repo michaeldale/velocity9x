@@ -16,6 +16,18 @@ static unsigned int failures = 0u;
     (KERNELS_AT + V9X_INTEL_HSW_KERNEL_SLOTS * V9X_INTEL_HSW_KERNEL_SLOT)
 #define STATE_END (V9X_INTEL_HSW_STATE_OFF + V9X_INTEL_HSW_STATE_BYTES)
 
+/* Step 4's additions follow the first 128 KB, and the pages the mini-VDD
+ * checks cover the whole reserve. */
+typedef char test_pipe_assert_vs_after_vertices[
+    V9X_INTEL_HSW_VERTEX_OFF + V9X_INTEL_HSW_VERTEX_BYTES <=
+        V9X_INTEL_HSW_VS_KERNEL_OFF ? 1 : -1];
+typedef char test_pipe_assert_tnl_area[
+    V9X_INTEL_HSW_TNL_OFF + V9X_INTEL_HSW_TNL_BYTES <=
+        V9X_INTEL_HSW_RESERVE_BYTES &&
+    V9X_INTEL_HSW_TNL_BYTES == 2ul * V9X_HSW_PIPE_TNL_BYTES ? 1 : -1];
+typedef char test_pipe_assert_pages[
+    V9X_INTEL_HSW_RESERVE_BYTES == V9X_INTEL_HSW_RESERVE_PAGES * 4096ul ? 1 : -1];
+
 static int disjoint(v9x_u32 a, v9x_u32 a_bytes, v9x_u32 b, v9x_u32 b_bytes)
 {
     return a + a_bytes <= b || b + b_bytes <= a;
@@ -82,6 +94,14 @@ static void test_slot_layout(void)
                    s[1].batch_off, s[1].batch_bytes));
     CHECK(disjoint(s[0].vertex_off, s[0].vertex_bytes,
                    s[1].vertex_off, s[1].vertex_bytes));
+    /* The T&L areas: disjoint, after the vertex-kernel cache, inside the
+     * reserve. */
+    CHECK(disjoint(s[0].tnl_off, s[0].tnl_bytes, s[1].tnl_off,
+                   s[1].tnl_bytes));
+    CHECK(V9X_INTEL_HSW_VS_KERNEL_OFF +
+              V9X_INTEL_HSW_VS_KERNEL_SLOTS * V9X_INTEL_HSW_VS_KERNEL_SLOT <=
+          s[0].tnl_off);
+    CHECK(s[1].tnl_off + s[1].tnl_bytes <= V9X_INTEL_HSW_RESERVE_BYTES);
 
     /* The low bit, through the wrap. */
     CHECK(v9x_intel_hsw_pipe_slot(2ul, &probe) == V9X_STATUS_OK &&

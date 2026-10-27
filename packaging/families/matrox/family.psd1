@@ -242,10 +242,13 @@
         # Installed files that ride a third disk, as ATI's do: disk 1 went
         # 553 bytes over when the shared Direct3D core was optimised
         # (Michael, 2026-10-24: "Matrox extra floppy ok"). The update
-        # checker, which nothing needs to boot or draw. The trace tool
-        # joined it on 2026-10-27, when the Evergreen engine's specular
-        # and fog put disk 1 775 bytes over.
-        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE')
+        # checker, which nothing needs to boot or draw. GLIDE3X.DLL joined
+        # it when hardware T&L step 6's HAL put disk 1 5,556 bytes over
+        # (2026-10-27): no Glide 3 title needs it to start. The trace tool
+        # joined it the same day, when the Evergreen engine's specular and
+        # fog put disk 1 775 bytes over (Michael, 2026-10-27: "v9xtrace on
+        # third disk is okay").
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE')
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test

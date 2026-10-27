@@ -246,7 +246,9 @@
         # S3's do: disk 1 went 11,655 bytes over when the shared Direct3D
         # core gained two texture stages (Michael, 2026-10-24: third VBE
         # disk). The update checker, which nothing needs to boot or draw.
-        ThirdDisk = @('V9XUPD.EXE')
+        # GLIDE3X.DLL joined it with hardware T&L step 4, which left disk 1
+        # 9,080 bytes free with step 6's HAL still to come (2026-10-27).
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL')
     }
 
     Vm = @{

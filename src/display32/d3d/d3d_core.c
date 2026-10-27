@@ -35,6 +35,8 @@
 #include "d3d_select.h"
 #include "d3d_dp2.h"
 #include "d3d_dp2_ring.h"
+#include "d3d_handles.h"
+#include "d3d_tnl.h"
 #include "velocity9x/diag_identity.h"
 
 
@@ -98,6 +100,13 @@ static const BYTE v9x_guid_d3d_parse_unknown[16] = {
     0x8cu, 0xe1u, 0x00u, 0xa0u, 0xc9u, 0x06u, 0x29u, 0xa8u
 };
 
+/* GUID_Miscellaneous2Callbacks, ddrawi.h (di:127), DDI 7's:
+ *   0x406b2f00, 0x3e5a, 0x11d1, {0xb6,0x40,0x00,0xaa,0x00,0xa1,0xf9,0x6a} */
+static const BYTE v9x_guid_misc2_callbacks[16] = {
+    0x00u, 0x2fu, 0x6bu, 0x40u, 0x5au, 0x3eu, 0xd1u, 0x11u,
+    0xb6u, 0x40u, 0x00u, 0xaau, 0x00u, 0xa1u, 0xf9u, 0x6au
+};
+
 /* The runtime's parser, from the GUID above. One per process space is
  * enough: it is the same DDRAW.DLL entry for every driver object. */
 static V9X_D3D_PARSE_UNKNOWN_FN v9x_d3d_parse_unknown;
@@ -106,6 +115,113 @@ static V9X_D3D_CONTEXT v9x_d3d_contexts[V9X_D3D_CONTEXT_COUNT];
 static V9X_D3D_TEXTURE v9x_d3d_textures[V9X_D3D_TEXTURE_COUNT];
 /* Where TextureCreate looks for a free slot first. */
 static DWORD v9x_d3d_texture_next;
+/*
+ * The CreateSurfaceEx handles every DDI 7 local object has announced
+ * (d3d_handles.h; the DDI 7 block below), one table per process: a local
+ * object is a process's own, and so are the handles in it. Each table is
+ * the process's own memory, found by process ID here. A static table is
+ * paid for in the DLL's file, and the 512 entries that fit the ATI floppy
+ * were full in Half-Life's Direct3D mode, whose handles passed 1,600 (the
+ * 4570, boot 95). A slot whose process has gone is taken in turn when
+ * none is free; its memory went with the process.
+ *
+ * A process ID is not proof: Windows 9x gave 3DMark 2001 SE the ID of a
+ * V9XD32 that had just exited, and the HAL faulted reading V9XD32's table
+ * at an address 3DMark did not have (boot 96). So each table carries a
+ * mark and the stamp of the slot that made it, both checked in this
+ * process before the slot's table is used; a slot that fails is the old
+ * process's, and is replaced.
+ */
+#define V9X_D3D_HANDLE_PROCESSES 8u
+#define V9X_D3D_HANDLE_MARK      0x48443756ul   /* "V7DH" */
+
+typedef struct v9x_d3d_handle_block {
+    DWORD mark;
+    DWORD stamp;
+    V9X_D3D_HANDLES handles;
+} V9X_D3D_HANDLE_BLOCK;
+
+static struct {
+    DWORD pid;
+    DWORD stamp;
+    V9X_D3D_HANDLE_BLOCK *block;
+} v9x_d3d_handle_tables[V9X_D3D_HANDLE_PROCESSES];
+static DWORD v9x_d3d_handle_table_next;
+static DWORD v9x_d3d_handle_stamp;
+
+/* Whether a slot's table is this process's own. */
+static int v9x_d3d_handle_slot_ours(DWORD slot, DWORD pid)
+{
+    const V9X_D3D_HANDLE_BLOCK *block = v9x_d3d_handle_tables[slot].block;
+
+    return v9x_d3d_handle_tables[slot].pid == pid && block != 0 &&
+           !IsBadWritePtr((void *)block, sizeof(*block)) &&
+           block->mark == V9X_D3D_HANDLE_MARK &&
+           block->stamp == v9x_d3d_handle_tables[slot].stamp;
+}
+
+/* This process's table; made when `make` and it has none. Null when there
+ * is none, or no memory for one. */
+static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
+{
+    DWORD pid = GetCurrentProcessId();
+    V9X_D3D_HANDLE_BLOCK *block;
+    DWORD slot;
+
+    for (slot = 0ul; slot < V9X_D3D_HANDLE_PROCESSES; ++slot) {
+        if (v9x_d3d_handle_slot_ours(slot, pid)) {
+            return &v9x_d3d_handle_tables[slot].block->handles;
+        }
+    }
+    if (!make) {
+        return 0;
+    }
+    block = (V9X_D3D_HANDLE_BLOCK *)VirtualAlloc(
+        0, sizeof(V9X_D3D_HANDLE_BLOCK), MEM_COMMIT | MEM_RESERVE,
+        PAGE_READWRITE);
+    if (block == 0) {
+        return 0;
+    }
+    v9x_d3d_handles_init(&block->handles);
+    block->mark = V9X_D3D_HANDLE_MARK;
+    block->stamp = ++v9x_d3d_handle_stamp;
+    /* A free slot, else one this process ID held before, else the next in
+     * turn. */
+    for (slot = 0ul; slot < V9X_D3D_HANDLE_PROCESSES; ++slot) {
+        if (v9x_d3d_handle_tables[slot].block == 0 ||
+            v9x_d3d_handle_tables[slot].pid == pid) {
+            break;
+        }
+    }
+    if (slot == V9X_D3D_HANDLE_PROCESSES) {
+        slot = v9x_d3d_handle_table_next++ % V9X_D3D_HANDLE_PROCESSES;
+    }
+    v9x_d3d_handle_tables[slot].pid = pid;
+    v9x_d3d_handle_tables[slot].stamp = block->stamp;
+    v9x_d3d_handle_tables[slot].block = block;
+    return &block->handles;
+}
+
+/* The DDI levels v9x_d3d_dp2_for_process answers: zero is DDI 5, and any
+ * non-zero level has DrawPrimitives2. */
+#define V9X_D3D_DDI5 0
+#define V9X_D3D_DDI6 1
+#define V9X_D3D_DDI7 2
+
+/*
+ * Whether a DDI 7 process is told about the T&L device (hardware T&L
+ * step 6). Not yet: the device draws correctly (V9XD32 T18 on the 4570,
+ * boot 99) but is slower than the runtime transforming on the CPU -
+ * 3DMark 2000 1558 against 2322, 3DMark 2001 SE 722 against 1120 - so
+ * programs keep the HAL device. The code behind it stays built and
+ * host-tested; setting this to 1 offers the device again.
+ * docs/decisions/2026-10-27-haswell-tnl-step6-d3d-device.md.
+ */
+#define V9X_D3D_TNL_DEVICE_OFFERED 0
+
+static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
+                             DWORD d);
+static int v9x_d3d_ddi_for_object(void);
 
 /*
  * The list builder's staging for v9x_d3d_draw_list, which is 6 KB and is
@@ -1150,6 +1266,10 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
     if (surface == 0) {
         return;
     }
+    /* A DDI 7 handle naming it names nothing now. */
+    if (v9x_d3d_handles_here(0) != 0) {
+        (void)v9x_d3d_handles_drop_surface(v9x_d3d_handles_here(0), surface);
+    }
     /* Compared as the value resolved at creation. Reading the wrapper here
      * is what intel55 measured (site 1, twice in one boot): a wrapper freed
      * earlier answers "no surface", compares unequal, and the entry is never
@@ -1543,13 +1663,17 @@ static int v9x_d3d_depth_reject(DWORD reason)
     return 0;
 }
 
-static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
-                              void *zbuffer)
+/*
+ * The context's target and depth buffer from their local objects. DDI 5 and
+ * 6 name them by interface wrapper (v9x_d3d_set_target); DDI 7 names them
+ * by LCL in ContextCreate and by CreateSurfaceEx handle in SETRENDERTARGET.
+ * depth_offered: a depth surface was named, whether or not it resolved.
+ */
+static int v9x_d3d_set_target_lcl(V9X_D3D_CONTEXT *context,
+                                  V9X_DD_SURFACE_LCL *target,
+                                  V9X_DD_SURFACE_LCL *depth,
+                                  int depth_offered)
 {
-    V9X_DD_SURFACE_LCL *target =
-        v9x_d3d_surface_lcl(surface, V9X_D3D_LCL_SITE_TARGET);
-    V9X_DD_SURFACE_LCL *depth = zbuffer != 0
-        ? v9x_d3d_surface_lcl(zbuffer, V9X_D3D_LCL_SITE_ZBUFFER) : 0;
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
     const V9X_D3D_ENGINE_LIMITS *limits;
     V9X_DD_SURFACE_GBL *global;
@@ -1573,7 +1697,7 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
      * surface" - it is the one path on which the driver renders without depth
      * while every HRESULT reports success.
      */
-    if (v9x_hal != 0 && zbuffer != 0) {
+    if (v9x_hal != 0 && depth_offered) {
         ++v9x_hal->d3d_diagnostics.depth_offered;
         v9x_hal->d3d_diagnostics.depth_caps = depth != 0 ? depth->ddsCaps
                                                          : 0ul;
@@ -1813,6 +1937,16 @@ static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
     return 1;
 }
 
+static int v9x_d3d_set_target(V9X_D3D_CONTEXT *context, void *surface,
+                              void *zbuffer)
+{
+    return v9x_d3d_set_target_lcl(
+        context, v9x_d3d_surface_lcl(surface, V9X_D3D_LCL_SITE_TARGET),
+        zbuffer != 0 ? v9x_d3d_surface_lcl(zbuffer, V9X_D3D_LCL_SITE_ZBUFFER)
+                     : 0,
+        zbuffer != 0);
+}
+
 /*
  * The depth "surface" of a raw depth buffer (render interface ABI 5).
  * The engines only test the depth object for null (the survey of
@@ -1907,6 +2041,62 @@ static int v9x_d3d_set_target_raw(V9X_D3D_CONTEXT *context,
     return 1;
 }
 
+/*
+ * The T&L device's per-context block (hardware T&L step 6): the state the
+ * DX7 records and render states set (d3d_tnl.h), and the batch of
+ * untransformed vertices being gathered for the engine's draw_tnl - each
+ * vertex once, with its normal and stage 1's pair, then the triangles'
+ * indices. In the creating process's own memory, as the handle tables are
+ * (VirtualAlloc): this DLL's data is shared by every process, and about
+ * 34 KB a context would be in its file otherwise.
+ *
+ * 400 vertices and 1,200 indices: with stage 1's pairs that is 16,000
+ * and 2,400 bytes, inside the 18,432 the Haswell slot's vertex area keeps
+ * for an indexed T&L draw (d3d_hsw.c), and 4,800 bytes of normals inside
+ * its 6,144.
+ */
+#define V9X_D3D_TNL_BATCH_VERTICES 400ul
+#define V9X_D3D_TNL_BATCH_INDICES  1200ul
+#define V9X_D3D_TNL_CACHE          64ul
+
+typedef struct v9x_d3d_tnl_block {
+    V9X_D3D_TNL_STATE state;
+    /* The batch's vertex format, and whether it carries stage 1. */
+    V9X_D3D_TNL_LAYOUT layout;
+    int two;
+    const V9X_D3D_ENGINE_OPS *ops;
+    V9X_R3D_TNL_KEY key;
+    V9X_R3D_TNL_CONSTANTS constants;
+    DWORD vertex_count;
+    DWORD index_count;
+    V9X_R3D_VERTEX vertices[V9X_D3D_TNL_BATCH_VERTICES];
+    float normals[V9X_D3D_TNL_BATCH_VERTICES * 3ul];
+    float uv1[V9X_D3D_TNL_BATCH_VERTICES * 2ul];
+    v9x_u16 indices[V9X_D3D_TNL_BATCH_INDICES];
+    /* The pool vertices already in the batch, by address: a strip or an
+     * indexed list names each several times, and is converted once. */
+    const v9x_u8 *cache_source[V9X_D3D_TNL_CACHE];
+    v9x_u16 cache_index[V9X_D3D_TNL_CACHE];
+    /* For the context's summary line (V9XD7.LOG): batches and triangles
+     * drawn, batches the engine declined, primitives the T&L path does not
+     * draw (points and lines). */
+    DWORD batches;
+    DWORD triangles;
+    DWORD declined;
+    DWORD undrawn;
+} V9X_D3D_TNL_BLOCK;
+
+static V9X_D3D_TNL_BLOCK *v9x_d3d_tnl_block_new(void)
+{
+    V9X_D3D_TNL_BLOCK *block = (V9X_D3D_TNL_BLOCK *)VirtualAlloc(
+        0, sizeof(V9X_D3D_TNL_BLOCK), MEM_COMMIT, PAGE_READWRITE);
+
+    if (block != 0) {
+        v9x_d3d_tnl_init(&block->state);
+    }
+    return block;
+}
+
 DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
@@ -1934,7 +2124,36 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
     for (index = 0ul; index < V9X_D3D_CONTEXT_COUNT; ++index) {
         context = &v9x_d3d_contexts[index];
         if (context->active == 0ul) {
-            if (!v9x_d3d_set_target(context, data->lpDDS, data->lpDDSZ)) {
+            /*
+             * A DDI 7 driver object is handed the DirectDraw local object
+             * and the surfaces' local halves here, not the global object
+             * and the interface wrappers: the local object is the one
+             * CreateSurfaceEx names, and V9XD32's T1-T11 draw right with
+             * the surfaces read as LCLs (the 4570, boots 89-92).
+             */
+            int ddi7 = v9x_d3d_ddi_for_object() == V9X_D3D_DDI7;
+            int targeted;
+
+            if (ddi7) {
+                targeted = v9x_d3d_set_target_lcl(
+                    context, (V9X_DD_SURFACE_LCL *)data->lpDDS,
+                    (V9X_DD_SURFACE_LCL *)data->lpDDSZ, data->lpDDSZ != 0);
+            } else {
+                targeted = v9x_d3d_set_target(context, data->lpDDS,
+                                              data->lpDDSZ);
+            }
+            context->ddi7 = ddi7 ? 1ul : 0ul;
+            context->dd_local = ddi7 ? data->lpDDGbl : 0;
+            /* The T&L device: DDI 7 on an engine that draws T&L. Made
+             * fresh, so a slot another process left holds nothing of its
+             * memory. Without it the context draws pre-transformed
+             * vertices only, as at DDI 6. */
+            context->tnl = 0;
+            if (ddi7 && targeted && ops->draw_tnl != 0 &&
+                ops->tnl_available != 0 && ops->tnl_available()) {
+                context->tnl = v9x_d3d_tnl_block_new();
+            }
+            if (!targeted) {
                 data->ddrval = 0x80070057ul;
                 ++v9x_hal->d3d_diagnostics.context_rejects;
                 v9x_trace_exit(V9X_TRACE_D3D_CTXCREATE, data->ddrval);
@@ -2070,8 +2289,23 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
      * (docs\issues\2026-09-10-a-target-switch-loses-every-texture.md).
      */
     v9x_d3d_textures_destroy_context(data->dwhContext);
+    /* The T&L block's summary, then the block, but only in the process
+     * that made it: from another (DDHELP cleaning up after a dead
+     * process) the address names nothing, and the block went with the
+     * process. */
+    if (context->tnl != 0 && context->pid == GetCurrentProcessId()) {
+        V9X_D3D_TNL_BLOCK *block = (V9X_D3D_TNL_BLOCK *)context->tnl;
+
+        v9x_d3d_ddi7_log("tnl-summary", block->batches, block->triangles,
+                         block->declined,
+                         block->undrawn | (block->state.ignored << 16));
+        (void)VirtualFree(block, 0ul, MEM_RELEASE);
+    }
+    context->tnl = 0;
     context->active = 0ul;
     context->pid = 0ul;
+    context->ddi7 = 0ul;
+    context->dd_local = 0;
     context->target = 0;
     context->zbuffer = 0;
     context->target_offset = 0ul;
@@ -2149,6 +2383,9 @@ DWORD __stdcall V9xD3dContextDestroyAll(
                 (DWORD)&v9x_d3d_contexts[index]);
             v9x_d3d_contexts[index].active = 0ul;
             v9x_d3d_contexts[index].pid = 0ul;
+            /* Its T&L block was in the dead process's memory, gone with
+             * it; not freed from here, which may be another process. */
+            v9x_d3d_contexts[index].tnl = 0;
             v9x_d3d_contexts[index].target = 0;
             v9x_d3d_contexts[index].zbuffer = 0;
             v9x_d3d_contexts[index].target_offset = 0ul;
@@ -2163,6 +2400,8 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].src_blend = 0ul;
             v9x_d3d_contexts[index].dest_blend = 0ul;
             v9x_d3d_contexts[index].texture_handle = 0ul;
+            v9x_d3d_contexts[index].ddi7 = 0ul;
+            v9x_d3d_contexts[index].dd_local = 0;
             v9x_d3d_contexts[index].texture_min = 0ul;
             v9x_d3d_contexts[index].texture_mag = 0ul;
             v9x_d3d_contexts[index].texture_blend = 0ul;
@@ -3874,12 +4113,19 @@ static int v9x_d3d_dp2_available(void)
  * static: this DLL's data is shared by every DirectDraw process
  * (docs\issues\2026-10-06-hal-statics-shared-across-processes.md).
  *
- * In order: [Velocity9x.Direct3DDdi] <program>.EXE=5 or =6 decides for that
- * program; Direct3DDdi=6 means every program; otherwise a program that has
- * loaded D3D8.DLL gets DDI 6, because the Direct3D 8 runtime has no
- * hardware device without it, and every other program keeps DDI 5. The
+ * In order: [Velocity9x.Direct3DDdi] <program>.EXE=5, =6 or =7 decides for
+ * that program; Direct3DDdi=6 means every program; otherwise a program
+ * that has loaded D3D8.DLL gets DDI 6, because the Direct3D 8 runtime has
+ * no hardware device without it, and every other program keeps DDI 5. The
  * program is named by its file name alone, as SYSTEM.INI keys are, with no
  * path.
+ *
+ * On an engine that runs T&L (tnl_available, Haswell) every DrawPrimitives2
+ * answer below is DDI 7 (docs\plans\hardware-tnl.md step 5), and =7 is
+ * DDI 6 elsewhere. Default since its gate passed, as the plan's decision 1
+ * says: V9XD32 T1-T17, 3DMark 2000 and 3DMark 2001 SE at DDI 7 on the 4570
+ * (docs\decisions\2026-10-26-haswell-ddi7-step5-first-light.md). A program
+ * listed =6 keeps DDI 6.
  */
 #define V9X_D3D_DDI_PROGRAMS "Velocity9x.Direct3DDdi"
 
@@ -3888,11 +4134,17 @@ static int v9x_d3d_dp2_for_process(void)
     char path[MAX_PATH];
     const char *name = path;
     const char *at;
+    const V9X_D3D_ENGINE_OPS *engine;
     UINT listed;
+    int dp2;
 
     if (!v9x_d3d_dp2_available()) {
         return 0;
     }
+    engine = v9x_d3d_publish_engine();
+    dp2 = engine != 0 && engine->tnl_available != 0 &&
+                  engine->tnl_available()
+              ? V9X_D3D_DDI7 : V9X_D3D_DDI6;
     path[0] = '\0';
     if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
         path[0] = '\0';
@@ -3907,15 +4159,18 @@ static int v9x_d3d_dp2_for_process(void)
         listed = GetPrivateProfileIntA(V9X_D3D_DDI_PROGRAMS, name, 0,
                                        "SYSTEM.INI");
         if (listed == 5u) {
-            return 0;
+            return V9X_D3D_DDI5;
         }
         if (listed == 6u) {
-            return 1;
+            return V9X_D3D_DDI6;
+        }
+        if (listed == 7u) {
+            return dp2;
         }
     }
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D_DP2_ALL) !=
         0ul) {
-        return 1;
+        return dp2;
     }
     /* An engine that draws two texture stages gives every program DDI 6,
      * the only interface that has stages: 3DMark 2000's multi-texture fill
@@ -3928,15 +4183,15 @@ static int v9x_d3d_dp2_for_process(void)
 
         if (ops != 0 && ops->limits != 0 &&
             ops->limits->texture_stages >= 2ul) {
-            return 1;
+            return dp2;
         }
     }
-    return GetModuleHandleA("D3D8.DLL") != 0;
+    return GetModuleHandleA("D3D8.DLL") != 0 ? dp2 : V9X_D3D_DDI5;
 }
 
 /*
- * The DDI level of the driver object DirectDraw is describing: 1 for DDI 6,
- * 0 for DDI 5, -1 until the first object is made. A static on purpose:
+ * The DDI level of the driver object DirectDraw is describing (V9X_D3D_DDI*),
+ * -1 until the first object is made. A static on purpose:
  * every section of this DLL is shared, and the object is shared too.
  *
  * Windows 98 SE's DDRAW.DLL (4.07.00.0700) asks for GUID_D3DCallbacks3 only
@@ -3961,7 +4216,7 @@ static int v9x_d3d_ddi_for_object(void)
     if (v9x_d3d_object_ddi6 < 0) {
         return v9x_d3d_dp2_for_process();
     }
-    return v9x_d3d_object_ddi6 != 0 && v9x_d3d_dp2_available();
+    return v9x_d3d_dp2_available() ? v9x_d3d_object_ddi6 : V9X_D3D_DDI5;
 }
 
 /* Whether the capture diagnostic is asked for (engine_abi.h). */
@@ -3992,6 +4247,23 @@ static void v9x_d3d_apply_ddi_level(int ddi6)
 
     if (v9x_hal == 0) {
         return;
+    }
+    /* DDI 7 adds DRAWPRIMITIVES2EX to DDI 6, and goes with the
+     * Miscellaneous2 callbacks (V9xHalGetDriverInfo). It is offered only
+     * on an engine that runs T&L (v9x_d3d_dp2_for_process), so it can
+     * carry the T&L device too (hardware T&L step 6) - once that device
+     * beats the runtime's own transform (V9X_D3D_TNL_DEVICE_OFFERED). */
+    if (ddi6 == V9X_D3D_DDI7) {
+        v9x_hal->d3d_global.hwCaps.dwDevCaps |=
+            V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX;
+#if V9X_D3D_TNL_DEVICE_OFFERED
+        v9x_hal->d3d_global.hwCaps.dwDevCaps |=
+            V9X_D3DDEVCAPS_HWTRANSFORMANDLIGHT;
+#endif
+    } else {
+        v9x_hal->d3d_global.hwCaps.dwDevCaps &=
+            ~(V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX |
+              V9X_D3DDEVCAPS_HWTRANSFORMANDLIGHT);
     }
     lines = &v9x_hal->d3d_global.hwCaps.dpcLineCaps;
     if (ddi6) {
@@ -4034,7 +4306,19 @@ typedef struct v9x_d3d_dp2_user {
     int two_stages;
     /* The engine the call draws on. */
     const V9X_D3D_ENGINE_OPS *ops;
+    /* Hardware T&L step 6: the call's untransformed vertex format, when
+     * its vertices are object-space and the context has a T&L block; null
+     * for pre-transformed vertices. */
+    const V9X_D3D_TNL_LAYOUT *tnl_layout;
 } V9X_D3D_DP2_USER;
+
+/* The T&L batch (V9X_D3D_TNL_BLOCK, below): whether a context's holds
+ * triangles, and its draw, which v9x_d3d_dp2_draw_run calls. */
+static int v9x_d3d_tnl_pending(const V9X_D3D_CONTEXT *context);
+static void v9x_d3d_tnl_flush(V9X_D3D_CONTEXT *context);
+
+/* A DDI 7 texture handle as a texture record (the DDI 7 block below). */
+static DWORD v9x_d3d_ddi7_texture(V9X_D3D_CONTEXT *context, DWORD handle);
 
 /*
  * After a state change: if the context moved and triangles are pending,
@@ -4050,7 +4334,9 @@ typedef struct v9x_d3d_dp2_user {
 static void v9x_d3d_dp2_note_state(V9X_D3D_DP2_USER *user, DWORD stage,
                                    DWORD state)
 {
-    if (user->run->pending == 0ul || v9x_d3d_dp2_snapshot_valid) {
+    if ((user->run->pending == 0ul &&
+         !v9x_d3d_tnl_pending(user->context)) ||
+        v9x_d3d_dp2_snapshot_valid) {
         return;
     }
     v9x_d3d_dp2_snapshot = *user->context;
@@ -4076,7 +4362,7 @@ static void v9x_d3d_dp2_settle(V9X_D3D_DP2_USER *user)
     if (!v9x_d3d_dp2_snapshot_valid) {
         return;
     }
-    if (user->run->pending != 0ul &&
+    if ((user->run->pending != 0ul || v9x_d3d_tnl_pending(user->context)) &&
         !v9x_d3d_context_same(&v9x_d3d_dp2_snapshot, user->context)) {
         v9x_d3d_dp2_draw_run();
         if (v9x_hal != 0) {
@@ -4090,9 +4376,30 @@ static void v9x_d3d_dp2_render_state(void *opaque, v9x_u32 state,
                                      v9x_u32 value)
 {
     V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    DWORD applied = (DWORD)value;
 
     v9x_d3d_dp2_note_state(user, 0xfffffffful, (DWORD)state);
-    v9x_d3d_apply_state(user->context, (DWORD)state, (DWORD)value);
+    /* The T&L device's own states (lighting, material sources, vertex
+     * fog): a change draws the batch gathered under the old value first,
+     * since they are not in the context the snapshot compares. */
+    if (user->context->tnl != 0) {
+        V9X_D3D_TNL_STATE *tnl =
+            &((V9X_D3D_TNL_BLOCK *)user->context->tnl)->state;
+
+        if (v9x_d3d_tnl_render_state(tnl, state, value, 0) &&
+            v9x_d3d_tnl_pending(user->context)) {
+            v9x_d3d_dp2_draw_run();
+        }
+        (void)v9x_d3d_tnl_render_state(tnl, state, value, 1);
+    }
+    /* At DDI 7 a DX5 program's TEXTUREHANDLE arrives as a CreateSurfaceEx
+     * handle too (V9XD32's T6 drew white from handle 8, the 4570 boot
+     * 91), and is turned into a texture record as TEXTUREMAP is. */
+    if (user->context->ddi7 != 0ul &&
+        state == V9X_D3DRENDERSTATE_TEXTUREHANDLE) {
+        applied = v9x_d3d_ddi7_texture(user->context, (DWORD)value);
+    }
+    v9x_d3d_apply_state(user->context, (DWORD)state, applied);
     /* The runtime keeps its copy of the render states in this array and
      * reads GetRenderState answers from it; a DDI 6 driver writes what it
      * was sent. */
@@ -4159,7 +4466,8 @@ static void v9x_d3d_dp2_stage1_state(V9X_D3D_CONTEXT *context,
 {
     switch (state) {
     case V9X_D3DTSS_TEXTUREMAP:
-        context->stage1_texture = (DWORD)value;
+        context->stage1_texture = context->ddi7 != 0ul
+            ? v9x_d3d_ddi7_texture(context, (DWORD)value) : (DWORD)value;
         break;
     case V9X_D3DTSS_COLOROP:
         context->stage1_color_op = (DWORD)value;
@@ -4233,7 +4541,9 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
     }
     switch (state) {
     case V9X_D3DTSS_TEXTUREMAP:
-        context->stage_texture = (DWORD)value;
+        /* DDI 7 names the texture by CreateSurfaceEx handle. */
+        context->stage_texture = context->ddi7 != 0ul
+            ? v9x_d3d_ddi7_texture(context, (DWORD)value) : (DWORD)value;
         v9x_d3d_dp2_express_stage(context);
         break;
     case V9X_D3DTSS_COLOROP:
@@ -4344,6 +4654,150 @@ static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
     }
 }
 
+/* ---- The T&L device's batch (hardware T&L step 6) -------------------- */
+
+/*
+ * Whether a context's T&L batch holds triangles. The block is in the
+ * process that made the context, so another process cannot even look:
+ * DDHELP reaches v9x_d3d_dp2_draw_run through a DirectDraw call's flush
+ * and faulted reading V9XD32's block (the 4570, boots 101 and 102). A
+ * batch is drawn before each DrawPrimitives2 call returns, so none is
+ * left for another process to find.
+ */
+static int v9x_d3d_tnl_pending(const V9X_D3D_CONTEXT *context)
+{
+    return context != 0 && context->tnl != 0 &&
+           context->pid == GetCurrentProcessId() &&
+           ((const V9X_D3D_TNL_BLOCK *)context->tnl)->index_count != 0ul;
+}
+
+/*
+ * The batch to the engine's draw_tnl, under the context's state now: the
+ * caller draws it before any state it was gathered under changes. The key
+ * and constants are built here, once a batch. The viewport is
+ * VIEWPORTINFO's, or the whole target before one arrives; the cull is the
+ * context's, whose numbers are the core's (r3d_cull.h); Direct3D's flat
+ * shading takes the first vertex. A batch the engine declines has emitted
+ * nothing and is dropped, logged the first times (V9XD7.LOG): no CPU path
+ * transforms object-space vertices yet.
+ */
+static void v9x_d3d_tnl_flush(V9X_D3D_CONTEXT *context)
+{
+    V9X_D3D_TNL_BLOCK *block;
+    const V9X_D3D_ENGINE_OPS *ops;
+    V9X_R3D_DRAW draw;
+    V9X_R3D_TNL tnl;
+    DWORD index;
+    int result;
+
+    if (!v9x_d3d_tnl_pending(context)) {
+        return;
+    }
+    block = (V9X_D3D_TNL_BLOCK *)context->tnl;
+    ops = block->ops;
+    v9x_d3d_tnl_key(&block->state, &block->layout, &block->key,
+                    &block->constants);
+    v9x_d3d_describe_draw(ops, context, &draw);
+    if (block->two && v9x_d3d_describe_unit1(ops, context, &draw)) {
+        draw.texcoords1 = block->uv1;
+    } else {
+        draw.texcoords1 = 0;
+        draw.texture1.object = 0;
+    }
+    tnl.key = &block->key;
+    tnl.constants = &block->constants;
+    if (block->state.viewport_set != 0ul) {
+        tnl.viewport_x = (float)(long)block->state.viewport[0];
+        tnl.viewport_y = (float)(long)block->state.viewport[1];
+        tnl.viewport_width = (float)(long)block->state.viewport[2];
+        tnl.viewport_height = (float)(long)block->state.viewport[3];
+    } else {
+        tnl.viewport_x = 0.0f;
+        tnl.viewport_y = 0.0f;
+        tnl.viewport_width = (float)(long)context->width;
+        tnl.viewport_height = (float)(long)context->height;
+    }
+    tnl.depth_near = block->state.min_z;
+    tnl.depth_far = block->state.max_z;
+    tnl.cull = context->cull_mode;
+    tnl.provoking = 0ul;
+    tnl.indices = block->indices;
+    tnl.index_count = block->index_count;
+    tnl.vertex_count = block->vertex_count;
+    tnl.segments = 0;
+    tnl.segment_count = 0ul;
+    tnl.normals = (block->key.inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul
+                      ? block->normals : 0;
+    result = ops->draw_tnl(&draw, block->vertices, 1ul, &tnl);
+    if (result < 0) {
+        ++block->declined;
+        if (block->declined <= 8ul) {
+            v9x_d3d_ddi7_log("tnl-declined", block->key.flags,
+                             block->key.light_count, block->vertex_count,
+                             block->index_count);
+        }
+    } else {
+        ++block->batches;
+        block->triangles += block->index_count / 3ul;
+    }
+    block->vertex_count = 0ul;
+    block->index_count = 0ul;
+    for (index = 0ul; index < V9X_D3D_TNL_CACHE; ++index) {
+        block->cache_source[index] = 0;
+    }
+}
+
+/*
+ * One triangle of object-space vertices into the batch. A pending run of
+ * pre-transformed triangles is drawn first, so the stream's order is kept;
+ * a full batch is drawn and a new one begun. Each pool vertex the cache
+ * still holds is named again rather than converted again.
+ */
+static void v9x_d3d_tnl_triangle(V9X_D3D_DP2_USER *user, const v9x_u8 *a,
+                                 const v9x_u8 *b, const v9x_u8 *c)
+{
+    V9X_D3D_CONTEXT *context = user->context;
+    V9X_D3D_TNL_BLOCK *block = (V9X_D3D_TNL_BLOCK *)context->tnl;
+    const v9x_u8 *corner[3];
+    DWORD i;
+
+    v9x_d3d_dp2_settle(user);
+    if (user->run->pending != 0ul) {
+        v9x_d3d_dp2_draw_run();
+    }
+    if (block->index_count != 0ul &&
+        (block->vertex_count + 3ul > V9X_D3D_TNL_BATCH_VERTICES ||
+         block->index_count + 3ul > V9X_D3D_TNL_BATCH_INDICES)) {
+        v9x_d3d_tnl_flush(context);
+    }
+    if (block->index_count == 0ul) {
+        block->layout = *user->tnl_layout;
+        block->two = v9x_d3d_dp2_two(user);
+        block->ops = user->ops;
+    }
+    corner[0] = a;
+    corner[1] = b;
+    corner[2] = c;
+    for (i = 0ul; i < 3ul; ++i) {
+        DWORD slot = ((DWORD)corner[i] >> 2) % V9X_D3D_TNL_CACHE;
+        DWORD index;
+
+        if (block->cache_source[slot] == corner[i]) {
+            index = block->cache_index[slot];
+        } else {
+            index = block->vertex_count++;
+            v9x_d3d_tnl_vertex(&block->layout, context->stage_texcoord,
+                               context->stage1_texcoord, corner[i],
+                               (v9x_u8 *)&block->vertices[index],
+                               &block->normals[index * 3ul],
+                               block->two ? &block->uv1[index * 2ul] : 0);
+            block->cache_source[slot] = corner[i];
+            block->cache_index[slot] = (v9x_u16)index;
+        }
+        block->indices[block->index_count++] = (v9x_u16)index;
+    }
+}
+
 /* Converted triangles go to the run this many at a time. */
 #define V9X_D3D_DP2_CONVERT 16ul
 
@@ -4369,6 +4823,15 @@ static void v9x_d3d_dp2_list(void *opaque, const v9x_u8 *first,
     float pairs[V9X_D3D_DP2_CONVERT * 3ul * 2ul];
     int two;
 
+    if (user->tnl_layout != 0) {
+        v9x_u32 stride = user->tnl_layout->stride;
+
+        for (; triangles != 0ul; --triangles, first += 3ul * stride) {
+            v9x_d3d_tnl_triangle(user, first, first + stride,
+                                 first + 2ul * stride);
+        }
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     if (user->fvf == 0 && !two) {
@@ -4403,6 +4866,15 @@ static void v9x_d3d_dp2_fan(void *opaque, const v9x_u8 *first,
     v9x_u32 done;
     int two;
 
+    if (user->tnl_layout != 0) {
+        v9x_u32 stride = user->tnl_layout->stride;
+
+        for (done = 1ul; done + 1ul < vertices; ++done) {
+            v9x_d3d_tnl_triangle(user, first, first + done * stride,
+                                 first + (done + 1ul) * stride);
+        }
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     if (user->fvf == 0 && !two) {
@@ -4454,6 +4926,10 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
     float pairs[6];
     int two;
 
+    if (user->tnl_layout != 0) {
+        v9x_d3d_tnl_triangle(user, a, b, c);
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, a, &triangle[0]);
@@ -4498,7 +4974,10 @@ static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
     DWORD index;
 
     (void)base;
-    if (first == 0 || ops == 0 || ops->draw_indexed == 0 || ops->draw == 0) {
+    /* Object-space vertices: the walker's triangle calls, which the T&L
+     * batch takes with its vertex cache. */
+    if (first == 0 || ops == 0 || ops->draw_indexed == 0 || ops->draw == 0 ||
+        user->tnl_layout != 0) {
         return 0;
     }
     v9x_d3d_dp2_settle(user);
@@ -4585,6 +5064,12 @@ static void v9x_d3d_dp2_line(void *opaque, const v9x_u8 *a, const v9x_u8 *b)
     DWORD corner;
     int two;
 
+    /* Object-space lines are not drawn: their one-pixel quads are built
+     * in pixels, after a transform the T&L path leaves to the engine. */
+    if (user->tnl_layout != 0) {
+        ++((V9X_D3D_TNL_BLOCK *)user->context->tnl)->undrawn;
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, a, &ends[0]);
@@ -4614,6 +5099,11 @@ static void v9x_d3d_dp2_point(void *opaque, const v9x_u8 *v)
     DWORD corner;
     int two;
 
+    /* Object-space points, as lines are: not drawn, counted. */
+    if (user->tnl_layout != 0) {
+        ++((V9X_D3D_TNL_BLOCK *)user->context->tnl)->undrawn;
+        return;
+    }
     v9x_d3d_dp2_settle(user);
     two = v9x_d3d_dp2_two(user);
     v9x_d3d_dp2_vertex(user, v, &centre);
@@ -4775,16 +5265,20 @@ static void v9x_d3d_dp2_draw_run(void)
 {
     V9X_D3D_CONTEXT *context = v9x_d3d_dp2_batch_sink.context;
 
-    if (v9x_d3d_dp2_run.pending != 0ul && context != 0 &&
-        v9x_d3d_dp2_snapshot_valid &&
+    /* The T&L batch too (step 6), under the same snapshot: only one of
+     * the two is ever pending, since each draws the other first. */
+    if ((v9x_d3d_dp2_run.pending != 0ul || v9x_d3d_tnl_pending(context)) &&
+        context != 0 && v9x_d3d_dp2_snapshot_valid &&
         !v9x_d3d_context_same(&v9x_d3d_dp2_snapshot, context)) {
         V9X_D3D_CONTEXT live = *context;
 
         *context = v9x_d3d_dp2_snapshot;
         (void)v9x_r3d_records_flush(&v9x_d3d_dp2_run);
+        v9x_d3d_tnl_flush(context);
         *context = live;
     } else {
         (void)v9x_r3d_records_flush(&v9x_d3d_dp2_run);
+        v9x_d3d_tnl_flush(context);
     }
     v9x_d3d_dp2_snapshot_valid = 0;
 }
@@ -4804,6 +5298,498 @@ void v9x_d3d_dp2_flush_pending(void)
     v9x_fpu_restore(&fpu);
     if (v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_flushes_external;
+    }
+}
+
+/* ---- DDI 7 (docs\plans\hardware-tnl.md, step 5) ---------------------- */
+
+/*
+ * What goes wrong at DDI 7, line by line: handles that resolve to
+ * nothing, a full handle table, refused targets and TEXBLTs, records
+ * handed back, GetDriverState queries, and each DX7 record's first
+ * sighting. Every surface and query was logged while step 5 was measured
+ * (docs\decisions\2026-10-26-haswell-ddi7-step5-first-light.md); a
+ * 3DMark 2001 SE run wrote 2,764 lines of surfaces alone. The HAL may
+ * import from KERNEL32 alone, so no wsprintf: a tag and four hex words.
+ * Capped per boot, since the count is shared by every process.
+ */
+#define V9X_D3D_DDI7_LOG       "C:\\V9XDIAG\\V9XD7.LOG"
+#define V9X_D3D_DDI7_LOG_LINES 1000ul
+
+static DWORD v9x_d3d_ddi7_log_lines;
+static DWORD v9x_d3d_ddi7_ops_logged[2];
+
+static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
+                             DWORD d)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char line[96];
+    DWORD words[4];
+    DWORD length = 0ul;
+    DWORD written;
+    DWORD w;
+    HANDLE file;
+    int shift;
+
+    if (v9x_d3d_ddi7_log_lines >= V9X_D3D_DDI7_LOG_LINES) {
+        return;
+    }
+    ++v9x_d3d_ddi7_log_lines;
+    words[0] = a;
+    words[1] = b;
+    words[2] = c;
+    words[3] = d;
+    while (*tag != '\0' && length < 24ul) {
+        line[length++] = *tag++;
+    }
+    for (w = 0ul; w < 4ul; ++w) {
+        line[length++] = ' ';
+        for (shift = 28; shift >= 0; shift -= 4) {
+            line[length++] = digits[(words[w] >> shift) & 0xful];
+        }
+    }
+    line[length++] = '\r';
+    line[length++] = '\n';
+    file = CreateFileA(V9X_D3D_DDI7_LOG, GENERIC_WRITE, FILE_SHARE_READ, 0,
+                       OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    SetFilePointer(file, 0l, 0, FILE_END);
+    WriteFile(file, line, length, &written, 0);
+    CloseHandle(file);
+}
+
+/* A surface's CreateSurfaceEx handle, from its DDRAWI_DDRAWSURFACE_MORE
+ * (V9X_DD_SURFACE_MORE_HANDLE); zero when that is not readable. */
+static DWORD v9x_d3d_surface_handle_of(const V9X_DD_SURFACE_LCL *lcl)
+{
+    const BYTE *more;
+
+    if (lcl == 0 || IsBadReadPtr(lcl, sizeof(*lcl)) ||
+        lcl->lpSurfMore == 0ul) {
+        return 0ul;
+    }
+    more = (const BYTE *)lcl->lpSurfMore;
+    if (IsBadReadPtr(more, V9X_DD_SURFACE_MORE_HANDLE + 4ul)) {
+        return 0ul;
+    }
+    return *(const DWORD *)(more + V9X_DD_SURFACE_MORE_HANDLE);
+}
+
+/*
+ * CreateSurfaceEx: the runtime has given lpDDSLcl a handle (in its MORE
+ * structure) within the local object lpDDLcl. A surface whose memory is
+ * gone - fpVidMem zero - is the runtime retiring the handle (recalled from
+ * the DX7 DDK samples; the log records what arrives).
+ *
+ * The surface's attachments carry handles of their own and are announced
+ * only through it: a flip chain's back buffer was handle 2 to the
+ * runtime's SETRENDERTARGET while CreateSurfaceEx named only the primary
+ * (the 4570, boot 89). So everything attached is entered, breadth first,
+ * each surface once, except the levels below a mip chain's top, which
+ * TEXTUREMAP, TEXBLT and SETRENDERTARGET never name.
+ */
+#define V9X_D3D_CSEX_SURFACES 16u
+
+static DWORD __stdcall V9xDdCreateSurfaceEx(
+    V9X_DDHAL_CREATESURFACEEXDATA *data)
+{
+    V9X_DD_SURFACE_LCL *queue[V9X_D3D_CSEX_SURFACES];
+    V9X_D3D_HANDLES *table;
+    unsigned int queued = 0u;
+    unsigned int links;
+    unsigned int at;
+
+    if (data == 0) {
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    data->ddRVal = V9X_DD_OK;
+    table = v9x_d3d_handles_here(1);
+    if (table == 0) {
+        v9x_d3d_ddi7_log("csex-no-table", 0ul, 0ul, 0ul, 0ul);
+    }
+    if (data->lpDDSLcl != 0) {
+        queue[queued++] = data->lpDDSLcl;
+    }
+    for (at = 0u; at < queued; ++at) {
+        V9X_DD_SURFACE_LCL *lcl = queue[at];
+        DWORD handle = v9x_d3d_surface_handle_of(lcl);
+        DWORD memory;
+        const V9X_DD_ATTACH_NODE *node;
+
+        if (handle == 0ul && at != 0u) {
+            continue;
+        }
+        /* Vertex, index and command buffers have handles too, and no
+         * record names them by it: DP2 passes their LCLs. 3DMark 2001 SE
+         * filled the 512 entries with them and lost textures after
+         * (226 refused, boot 93), so they are not entered. */
+        if ((lcl->ddsCaps & V9X_DDSCAPS_EXECUTEBUFFER) != 0ul) {
+            continue;
+        }
+        memory = lcl->lpGbl != 0 && !IsBadReadPtr(lcl->lpGbl, 8ul)
+                     ? lcl->lpGbl->fpVidMem : 0ul;
+        if (handle != 0ul && table != 0) {
+            if (memory == 0ul) {
+                (void)v9x_d3d_handles_drop(table, data->lpDDLcl, handle);
+            } else if (v9x_d3d_handles_set(table, data->lpDDLcl, handle,
+                                           lcl) == 0) {
+                v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
+            }
+        }
+        node = IsBadReadPtr((const void *)lcl->lpAttachList,
+                            sizeof(V9X_DD_ATTACH_NODE))
+                   ? 0 : (const V9X_DD_ATTACH_NODE *)lcl->lpAttachList;
+        /* A flip chain's list may come round to its start: bounded. */
+        for (links = 0u; node != 0 && queued < V9X_D3D_CSEX_SURFACES &&
+                         links < V9X_D3D_CSEX_SURFACES;
+             node = node->next, ++links) {
+            V9X_DD_SURFACE_LCL *next;
+            unsigned int seen;
+
+            if (IsBadReadPtr(node, sizeof(*node))) {
+                break;
+            }
+            next = node->object;
+            if (next == 0 || IsBadReadPtr(next, sizeof(*next)) ||
+                ((next->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul &&
+                 (lcl->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul)) {
+                continue;
+            }
+            for (seen = 0u; seen < queued; ++seen) {
+                if (queue[seen] == next) {
+                    break;
+                }
+            }
+            if (seen == queued) {
+                queue[queued++] = next;
+            }
+        }
+    }
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/* GetDriverState: the runtime's GetInfo queries (texture manager and
+ * texturing statistics). None is kept, which the runtime is told. */
+static DWORD __stdcall V9xDdGetDriverState(
+    V9X_DDHAL_GETDRIVERSTATEDATA *data)
+{
+    if (data != 0) {
+        v9x_d3d_ddi7_log("gds", data->dwFlags, data->dwhContext,
+                         data->dwLength, 0ul);
+        data->ddRVal = 0x80004001ul;
+    }
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/* DestroyDDLocal: the local object is going, and every handle in it. */
+static DWORD __stdcall V9xDdDestroyDDLocal(
+    V9X_DDHAL_DESTROYDDLOCALDATA *data)
+{
+    V9X_D3D_HANDLES *table = v9x_d3d_handles_here(0);
+
+    if (data != 0) {
+        if (table != 0) {
+            (void)v9x_d3d_handles_drop_local(table, data->pDDLcl);
+        }
+        data->ddRVal = V9X_DD_OK;
+    }
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+static V9X_DDHAL_DDMISCELLANEOUS2CALLBACKS v9x_dd_misc2 = {
+    sizeof(V9X_DDHAL_DDMISCELLANEOUS2CALLBACKS),
+    V9X_DDHAL_MISC2CB32_CREATESURFACEEX | V9X_DDHAL_MISC2CB32_GETDRIVERSTATE |
+        V9X_DDHAL_MISC2CB32_DESTROYDDLOCAL,
+    0ul,
+    (V9X_DD_CODE_PTR)V9xDdCreateSurfaceEx,
+    (V9X_DD_CODE_PTR)V9xDdGetDriverState,
+    (V9X_DD_CODE_PTR)V9xDdDestroyDDLocal
+};
+
+/* The surface a DDI 7 context names by handle, or null. */
+static V9X_D3D_SURFACE_HANDLE *v9x_d3d_ddi7_surface(
+    const V9X_D3D_CONTEXT *context, DWORD handle)
+{
+    V9X_D3D_SURFACE_HANDLE *entry;
+
+    if (handle == 0ul) {
+        return 0;
+    }
+    entry = v9x_d3d_handles_here(0) != 0
+        ? v9x_d3d_handles_find(v9x_d3d_handles_here(0), context->dd_local,
+                               handle)
+        : 0;
+    if (entry == 0) {
+        v9x_d3d_ddi7_log("unknown-handle", (DWORD)context->dd_local, handle,
+                         0ul, 0ul);
+    }
+    return entry;
+}
+
+/*
+ * D3DTSS_TEXTUREMAP at DDI 7 names a surface by handle. The DDI 6 code
+ * draws from a texture record (V9X_D3D_TEXTURE), so the handle is turned
+ * into one: made the first time this context uses the surface, kept in the
+ * handle's entry after that. Released with the context, or with the
+ * surface (v9x_d3d_textures_forget_surface).
+ */
+static DWORD v9x_d3d_ddi7_texture(V9X_D3D_CONTEXT *context, DWORD handle)
+{
+    V9X_D3D_SURFACE_HANDLE *entry = v9x_d3d_ddi7_surface(context, handle);
+    V9X_D3D_TEXTURE *texture;
+    DWORD tried;
+
+    if (entry == 0) {
+        return 0ul;
+    }
+    texture = (V9X_D3D_TEXTURE *)entry->user;
+    if (texture != 0 && texture->active != 0ul &&
+        texture->context == (DWORD)context &&
+        texture->lcl == (V9X_DD_SURFACE_LCL *)entry->surface) {
+        return entry->user;
+    }
+    for (tried = 0ul; tried < V9X_D3D_TEXTURE_COUNT; ++tried) {
+        DWORD index = (v9x_d3d_texture_next + tried) % V9X_D3D_TEXTURE_COUNT;
+
+        if (v9x_d3d_textures[index].active == 0ul) {
+            v9x_d3d_textures[index].active = 1ul;
+            v9x_d3d_textures[index].context = (DWORD)context;
+            v9x_d3d_textures[index].surface = 0;
+            v9x_d3d_textures[index].lcl =
+                (V9X_DD_SURFACE_LCL *)entry->surface;
+            v9x_d3d_texture_next = (index + 1ul) % V9X_D3D_TEXTURE_COUNT;
+            entry->user = (v9x_u32)&v9x_d3d_textures[index];
+            return entry->user;
+        }
+    }
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.texture_table_full;
+    }
+    return 0ul;
+}
+
+/* Bytes per pixel of a surface: its own format, or the display's. */
+static DWORD v9x_d3d_surface_pixel_bytes(const V9X_DD_SURFACE_LCL *lcl)
+{
+    DWORD bits = v9x_hal->fb.bits_per_pixel;
+
+    if ((lcl->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        bits = lcl->lpGbl->ddpfSurface.dwRGBBitCount;
+    }
+    return (bits + 7ul) / 8ul;
+}
+
+/* The next mip level attached to `level`, or null. */
+static const V9X_DD_SURFACE_LCL *v9x_d3d_mip_next(
+    const V9X_DD_SURFACE_LCL *level)
+{
+    const V9X_DD_ATTACH_NODE *node;
+
+    if ((level->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul) {
+        return 0;
+    }
+    node = (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+    while (node != 0) {
+        if (node->object != 0 && node->object != level &&
+            (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+            return node->object;
+        }
+        node = node->next;
+    }
+    return 0;
+}
+
+/*
+ * TEXBLT (D3DHAL_DP2TEXBLT: destination and source handles, the point in
+ * the destination, the source rectangle, flags): the DX7 texture manager's
+ * upload. A whole mip chain is copied level by level, the rectangle and
+ * point halved each level, while both chains have a level of the same
+ * pixel size. A destination handle of zero asks only that the source be
+ * made resident, which a texture already in video memory is. Done by the
+ * CPU after the engine has finished with every surface.
+ */
+static int v9x_d3d_ddi7_texblt(V9X_D3D_CONTEXT *context,
+                               const v9x_u8 *entry)
+{
+    const DWORD *words = (const DWORD *)entry;
+    V9X_D3D_SURFACE_HANDLE *destination_entry;
+    V9X_D3D_SURFACE_HANDLE *source_entry;
+    const V9X_DD_SURFACE_LCL *destination;
+    const V9X_DD_SURFACE_LCL *source;
+    long dest_x = (long)words[2];
+    long dest_y = (long)words[3];
+    long left = (long)words[4];
+    long top = (long)words[5];
+    long right = (long)words[6];
+    long bottom = (long)words[7];
+    DWORD level;
+
+    if (words[0] == 0ul) {
+        return 1;
+    }
+    destination_entry = v9x_d3d_ddi7_surface(context, words[0]);
+    source_entry = v9x_d3d_ddi7_surface(context, words[1]);
+    if (destination_entry == 0 || source_entry == 0) {
+        return 1;
+    }
+    destination = (const V9X_DD_SURFACE_LCL *)destination_entry->surface;
+    source = (const V9X_DD_SURFACE_LCL *)source_entry->surface;
+    (void)v9x_render_drain(1);
+    for (level = 0ul; destination != 0 && source != 0 && level < 16ul;
+         ++level) {
+        const V9X_DD_SURFACE_GBL *dg = destination->lpGbl;
+        const V9X_DD_SURFACE_GBL *sg = source->lpGbl;
+        DWORD bytes = v9x_d3d_surface_pixel_bytes(source);
+        long x0 = left >> level;
+        long y0 = top >> level;
+        long x1 = right >> level;
+        long y1 = bottom >> level;
+        long dx = dest_x >> level;
+        long dy = dest_y >> level;
+        long row;
+
+        if (dg == 0 || sg == 0 || dg->fpVidMem == 0ul ||
+            sg->fpVidMem == 0ul ||
+            bytes != v9x_d3d_surface_pixel_bytes(destination)) {
+            v9x_d3d_ddi7_log("texblt-refused", words[0], words[1], level,
+                             bytes);
+            break;
+        }
+        if (x1 <= x0) {
+            x1 = x0 + 1l;
+        }
+        if (y1 <= y0) {
+            y1 = y0 + 1l;
+        }
+        /* Clipped to both surfaces. */
+        if (x1 > (long)sg->wWidth) {
+            x1 = (long)sg->wWidth;
+        }
+        if (y1 > (long)sg->wHeight) {
+            y1 = (long)sg->wHeight;
+        }
+        if (dx + (x1 - x0) > (long)dg->wWidth) {
+            x1 = x0 + (long)dg->wWidth - dx;
+        }
+        if (dy + (y1 - y0) > (long)dg->wHeight) {
+            y1 = y0 + (long)dg->wHeight - dy;
+        }
+        for (row = y0; row < y1 && x1 > x0; ++row) {
+            const BYTE *from = (const BYTE *)sg->fpVidMem +
+                               row * sg->lPitch + x0 * (long)bytes;
+            BYTE *to = (BYTE *)dg->fpVidMem +
+                       (dy + row - y0) * dg->lPitch + dx * (long)bytes;
+            DWORD count = (DWORD)(x1 - x0) * bytes;
+            DWORD i;
+
+            for (i = 0ul; i < count; ++i) {
+                to[i] = from[i];
+            }
+        }
+        destination = v9x_d3d_mip_next(destination);
+        source = v9x_d3d_mip_next(source);
+    }
+    return 1;
+}
+
+/*
+ * The DirectX 7 records (the walker's dx7 sink), and VIEWPORTINFO and
+ * ZRANGE, which it is shown too. Material, light, transform and viewport
+ * records go to the context's T&L state (step 6) when it has one; clip
+ * planes are consumed unused, none being claimed. STATESET goes back to
+ * the runtime's parser until the log says what it sends.
+ */
+static int v9x_d3d_dp2_dx7(void *opaque, v9x_u32 op, v9x_u32 count,
+                           const v9x_u8 *payload, v9x_u32 bytes)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_D3D_CONTEXT *context = user->context;
+    const DWORD *words = (const DWORD *)payload;
+    v9x_u32 i;
+
+    if (op < 64ul &&
+        (v9x_d3d_ddi7_ops_logged[op >> 5] & (1ul << (op & 31ul))) == 0ul) {
+        v9x_d3d_ddi7_ops_logged[op >> 5] |= 1ul << (op & 31ul);
+        v9x_d3d_ddi7_log("dx7-op", op, count, bytes,
+                         bytes >= 4ul ? words[0] : 0ul);
+    }
+    switch (op) {
+    case V9X_DP2OP_STATESET:
+        v9x_d3d_ddi7_log("stateset", words[0], words[1], words[2], count);
+        return 0;
+
+    case V9X_DP2OP_SETRENDERTARGET:
+        /* The last of the entries is the one that stands. */
+        for (i = 0ul; i < count; ++i) {
+            V9X_D3D_SURFACE_HANDLE *target =
+                v9x_d3d_ddi7_surface(context, words[i * 2ul]);
+            V9X_D3D_SURFACE_HANDLE *depth =
+                v9x_d3d_ddi7_surface(context, words[i * 2ul + 1ul]);
+            int set;
+
+            v9x_d3d_dp2_draw_run();
+            set = target != 0 &&
+                  v9x_d3d_set_target_lcl(
+                      context, (V9X_DD_SURFACE_LCL *)target->surface,
+                      depth != 0 ? (V9X_DD_SURFACE_LCL *)depth->surface : 0,
+                      words[i * 2ul + 1ul] != 0ul);
+            /* Every frame of a flip chain sets one: logged only when it
+             * fails (3DMark 2000 filled the log with 2,800 that did). */
+            if (!set) {
+                v9x_d3d_ddi7_log("setrt-refused", words[i * 2ul],
+                                 words[i * 2ul + 1ul], 0ul, 0ul);
+            }
+        }
+        return 1;
+
+    case V9X_DP2OP_CLEAR:
+    {
+        /* D3DHAL_DP2CLEAR: flags, colour, depth, stencil, then `count`
+         * rectangles - Clear2's fields. */
+        V9X_D3DHAL_CLEAR2DATA clear;
+
+        v9x_d3d_dp2_draw_run();
+        clear.dwhContext = (DWORD)context;
+        clear.dwFlags = words[0];
+        clear.dwFillColor = words[1];
+        clear.dvFillDepth = *(const float *)&words[2];
+        clear.dwFillStencil = words[3];
+        clear.lpRects = (V9X_D3DRECT *)(payload + 16);
+        clear.dwNumRects = count;
+        clear.ddrval = V9X_DD_OK;
+        (void)V9xD3dClear2(&clear);
+        return 1;
+    }
+
+    case V9X_DP2OP_TEXBLT:
+        v9x_d3d_dp2_draw_run();
+        for (i = 0ul; i < count; ++i) {
+            (void)v9x_d3d_ddi7_texblt(context, payload + i * 36ul);
+        }
+        return 1;
+
+    /* The T&L device's records (step 6): what was gathered under the old
+     * transform, light, material or viewport is drawn first. */
+    case V9X_DP2OP_SETTRANSFORM:
+    case V9X_DP2OP_SETLIGHT:
+    case V9X_DP2OP_CREATELIGHT:
+    case V9X_DP2OP_SETMATERIAL:
+    case V9X_DP2OP_VIEWPORTINFO:
+    case V9X_DP2OP_ZRANGE:
+        if (context->tnl != 0) {
+            if (v9x_d3d_tnl_pending(context)) {
+                v9x_d3d_dp2_draw_run();
+            }
+            (void)v9x_d3d_tnl_record(
+                &((V9X_D3D_TNL_BLOCK *)context->tnl)->state, op, count,
+                payload, bytes);
+        }
+        return 1;
+
+    default:
+        return 1;
     }
 }
 
@@ -4873,6 +5859,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     V9X_DP2_RESULT walked;
     V9X_D3D_DP2_USER user;
     V9X_DP2_FVF fvf;
+    V9X_D3D_TNL_LAYOUT tnl_layout;
+    int tnl = 0;
     V9X_R3D_RECORDS *run = &v9x_d3d_dp2_run;
 
     if (data == 0) {
@@ -4886,11 +5874,28 @@ static DWORD v9x_d3d_draw_primitives2_body(
     context = v9x_d3d_context_from_handle(data->dwhContext);
 
     /*
+     * Object-space vertices, for a context with the T&L device (step 6):
+     * the pre-transformed layout is left empty but for its stride, and
+     * the callbacks take the T&L path before they read it.
+     */
+    if (!v9x_dp2_fvf_layout(data->dwVertexType, &fvf) && context != 0 &&
+        context->tnl != 0 &&
+        v9x_d3d_tnl_layout(data->dwVertexType, &tnl_layout)) {
+        tnl = 1;
+        fvf.stride = tnl_layout.stride;
+        fvf.diffuse = V9X_DP2_FVF_ABSENT;
+        fvf.specular = V9X_DP2_FVF_ABSENT;
+        fvf.tex0 = V9X_DP2_FVF_ABSENT;
+        fvf.tex0_floats = 0ul;
+        fvf.tex_sets = 0ul;
+    }
+
+    /*
      * Nothing to draw with, or nothing to draw from. Answered DD_OK with
      * nothing drawn, which is what the DX5 entry points do for the same
      * conditions; an error here would stop an application over a frame.
      */
-    if (!v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
+    if (!tnl && !v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_refused_fvf;
             v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -4953,7 +5958,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     user.layout = &fvf;
     user.two_stages = ops->limits->texture_stages >= 2ul;
     user.ops = ops;
-    if (!v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
+    user.tnl_layout = tnl ? &tnl_layout : 0;
+    if (!tnl && !v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_converted_calls;
         v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
     }
@@ -4976,6 +5982,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     sink.line = v9x_d3d_dp2_line;
     sink.indexed_list = v9x_d3d_dp2_indexed_list;
     sink.record = v9x_d3d_dp2_ring_entry != 0 ? v9x_d3d_dp2_ring_record : 0;
+    sink.dx7 = user.context->ddi7 != 0ul ? v9x_d3d_dp2_dx7 : 0;
 
     v9x_dp2_walk(&stream, &sink, &walked);
     /*
@@ -5030,7 +6037,12 @@ static DWORD v9x_d3d_draw_primitives2_body(
         }
     }
     /* No flush here: what is pending waits for the next call, a state
-     * change or v9x_d3d_dp2_flush_pending (see v9x_d3d_dp2_run). */
+     * change or v9x_d3d_dp2_flush_pending (see v9x_d3d_dp2_run). A T&L
+     * batch is the exception: it is drawn before the call returns, since
+     * nothing outside DrawPrimitives2 knows to draw it. */
+    if (v9x_d3d_tnl_pending(context)) {
+        v9x_d3d_dp2_draw_run();
+    }
 
     if (v9x_hal != 0) {
         V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
@@ -5046,6 +6058,10 @@ static DWORD v9x_d3d_draw_primitives2_body(
         if (walked.status == V9X_DP2_UNPARSED) {
             ++d->dp2_unparsed;
             d->dp2_unparsed_op_last = walked.stop_op;
+            if (user.context->ddi7 != 0ul) {
+                v9x_d3d_ddi7_log("unparsed", walked.stop_op,
+                                 walked.stop_offset, 0ul, 0ul);
+            }
         } else if (walked.status == V9X_DP2_MALFORMED) {
             ++d->dp2_malformed;
             d->dp2_malformed_op_last = walked.stop_op;
@@ -5218,6 +6234,19 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
         }
     }
     caps->dvMaxVertexW = 1.0e10f;
+    /* The T&L device's lights and vertex processing, for a DDI 7 process
+     * (hardware T&L step 6): no clip planes, no blend matrices, no
+     * texture generation. */
+#if V9X_D3D_TNL_DEVICE_OFFERED
+    if (v9x_d3d_dp2_for_process() == V9X_D3D_DDI7) {
+        caps->dwMaxActiveLights = V9X_D3D_TNL_MAX_ACTIVE_LIGHTS;
+        caps->dwVertexProcessingCaps = V9X_D3DVTXPCAPS_MATERIALSOURCE7 |
+                                       V9X_D3DVTXPCAPS_VERTEXFOG |
+                                       V9X_D3DVTXPCAPS_DIRECTIONALLIGHTS |
+                                       V9X_D3DVTXPCAPS_POSITIONALLIGHTS |
+                                       V9X_D3DVTXPCAPS_LOCALVIEWER;
+    }
+#endif
 }
 
 /*
@@ -5382,6 +6411,42 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
             v9x_d3d_parse_unknown = (V9X_D3D_PARSE_UNKNOWN_FN)data->lpvData;
         }
         data->ddRVal = V9X_DD_OK;
+        v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    /*
+     * DDRAW.DLL asks for the Miscellaneous2 callbacks before
+     * GUID_D3DCallbacks3 while it makes a driver object (the 4570, boot
+     * 89: refused there under the previous process's level, the object
+     * then had no CreateSurfaceEx and named every surface by a handle the
+     * driver was never told). So this answer latches the object's level
+     * too, whatever it is, as Callbacks3 does: like Callbacks3 it is asked
+     * only while an object is made, never on a reset (boots 89-92). An
+     * answer under the last object's level instead gave a DDI 6 process
+     * after a DDI 7 one the DX7 callbacks with DDI 6's caps, and its DX7
+     * device failed (V9XD32 /ddi6 T16, boot 92).
+     */
+    if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_misc2_callbacks)) {
+        v9x_d3d_object_ddi6 = v9x_d3d_dp2_for_process();
+        ddi6 = v9x_d3d_ddi_for_object();
+        v9x_d3d_apply_ddi_level(ddi6);
+    }
+    if (ddi6 == V9X_D3D_DDI7 &&
+        v9x_d3d_guid_matches(data->guidInfo, v9x_guid_misc2_callbacks)) {
+        DWORD copy = sizeof(v9x_dd_misc2);
+        DWORD at;
+
+        if (data->dwExpectedSize < copy) {
+            copy = data->dwExpectedSize;
+        }
+        data->dwActualSize = sizeof(v9x_dd_misc2);
+        if (data->lpvData != 0 && copy != 0ul) {
+            for (at = 0ul; at < copy; ++at) {
+                ((BYTE *)data->lpvData)[at] =
+                    ((const BYTE *)&v9x_dd_misc2)[at];
+            }
+            data->ddRVal = V9X_DD_OK;
+        }
         v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
@@ -6264,6 +7329,10 @@ static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
             return V9X_R3D_RESULT_INVALID;
         }
     }
+    if (request->normals != 0 &&
+        IsBadReadPtr(request->normals, vertex_count * 3ul * sizeof(float))) {
+        return V9X_R3D_RESULT_INVALID;
+    }
     result = inner->raw_target.address != 0
         ? v9x_r3d_bind_raw(&inner->raw_target, &inner->raw_depth)
         : v9x_r3d_bind(inner->target.surface, inner->depth.surface);
@@ -6304,6 +7373,7 @@ static DWORD v9x_r3d_draw_tnl_body(const V9X_R3D_ABI_TNL_DRAW *request,
     tnl.vertex_count = request->vertex_count;
     tnl.segments = 0;
     tnl.segment_count = 0ul;
+    tnl.normals = request->normals;
     if (request->segment_count != 0ul) {
         result = v9x_r3d_describe_segments(request, inner);
         if (result != V9X_R3D_RESULT_OK) {

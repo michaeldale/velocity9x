@@ -730,6 +730,10 @@ struct v9x_hsw_vs_draw {
      * Null and 0 for one draw. */
     const struct v9x_hsw_vs_segment *segments;
     v9x_u8 segment_count;
+    /* Step 4: the kernel reads a normal - a sixth input, R32G32B32_FLOAT
+     * from vertex buffer 1 at `normals` (a graphics address, 12 bytes a
+     * vertex, in the order of the draw's vertices); 0 for five inputs. */
+    v9x_u32 normals;
 };
 
 /*
@@ -756,9 +760,14 @@ struct v9x_hsw_vs_segment {
     v9x_u32 index_count;
 };
 
-/* The most further draws one batch takes: each is about 40 dwords, and a
- * slot's batch area is 2 KB beside the draw's own 190. */
-#define V9X_HSW_VS_SEGMENTS_MAX 7u
+/* A normal in vertex buffer 1: three floats. */
+#define V9X_HSW_VS_NORMAL_BYTES ((v9x_u16)12u)
+
+/* The most further draws one batch takes: each is 39 dwords, and an
+ * indexed T&L batch is built in 4 KB of its slot's vertex area
+ * (d3d_hsw.c), which holds the draw's own 212 and 15 more
+ * (test_vs_segments_fit). The slot's 2 KB batch area held 7. */
+#define V9X_HSW_VS_SEGMENTS_MAX 15u
 
 /* struct v9x_hsw_draw cull: which screen-space winding is discarded. */
 #define V9X_HSW_DRAW_CULL_NONE ((v9x_u8)0u)

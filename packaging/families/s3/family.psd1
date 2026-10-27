@@ -418,10 +418,13 @@
         # Installed files that ride a third disk, as ATI's and Matrox's do:
         # disk 1 went 506 bytes over when the 16-bit driver gained the
         # write-combining MTRR write (Michael, 2026-10-24: third S3 disk).
-        # The update checker, which nothing needs to boot or draw. The trace
-        # tool joined it on 2026-10-27, when the shared HAL's Evergreen DMA
-        # timeout record put disk 1 76 bytes over.
-        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE')
+        # The update checker, which nothing needs to boot or draw.
+        # GLIDE3X.DLL joined it with hardware T&L step 4, which left disk 1
+        # 3,335 bytes free with step 6's HAL still to come (2026-10-27). The
+        # trace tool joined it the same day, when the shared HAL's Evergreen
+        # DMA timeout record put disk 1 76 bytes over (Michael, 2026-10-27:
+        # "v9xtrace on third disk is okay").
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE')
     }
 
     Vm = @{

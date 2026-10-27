@@ -70,9 +70,9 @@
  * hardware cull was inverted (2026-10-24), and nothing said which path
  * had answered.
  *
- * /ddi5 and /ddi6 set this program's [Velocity9x.Direct3DDdi] entry in
- * SYSTEM.INI for the run and restore it after, so one probe covers both
- * interfaces; without either the driver's own choice stands.
+ * /ddi5, /ddi6 and /ddi7 set this program's [Velocity9x.Direct3DDdi] entry
+ * in SYSTEM.INI for the run and restore it after, so one probe covers each
+ * interface; without any the driver's own choice stands.
  *
  * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
  * that full scale; T5 then expects the nearer quad, and without it the
@@ -1690,6 +1690,857 @@ static DWORD d32_two_stage_volume(D32_OBJECT *device3, D32_OBJECT *back)
     return failures;
 }
 
+/*
+ * T16, a DirectX 7 device (IDirectDraw7, IDirect3D7, IDirect3DDevice7;
+ * slots from ddraw.h and d3d.h's declaration order) on an off-screen
+ * target of its own - what the DirectX 7 driver interface (DDI
+ * 7, docs\plans\hardware-tnl.md step 5) has to carry, and at DDI 6 what
+ * the runtime does for a driver without it:
+ *   a. the HAL device's caps: DRAWPRIMITIVES2EX and HWTRANSFORMANDLIGHT;
+ *   b. a clear through the device, to dark blue (DDI 7: a CLEAR record);
+ *   c. T6's quadrants in a managed texture made through IDirectDraw7
+ *      (DDI 7: the texture manager's TEXBLT), SELECTARG1 over a 64x64 TL
+ *      quad at (16, 120);
+ *   d. an untransformed yellow quad, XYZ | DIFFUSE, lighting off, every
+ *      matrix the identity, NDC x -0.5 to -0.3 and y 0.5 to 0.3: pixels
+ *      160 to 224 by 120 to 168, transformed by the runtime;
+ *   e. a state block made and applied (DDI 7: STATESET).
+ * The pixels are read back; the driver's own account of what arrived is
+ * C:\V9XDIAG\V9XD7.LOG.
+ */
+#define DD7_CREATE_SURFACE 6
+#define DD7_SET_COOPERATIVE_LEVEL 20
+#define D32_DDSCL_NORMAL 0x00000008ul
+#define D3D7_CREATE_DEVICE 4
+#define D3DDEV7_GET_CAPS 3
+#define D3DDEV7_BEGIN_SCENE 5
+#define D3DDEV7_END_SCENE 6
+#define D3DDEV7_CLEAR 10
+#define D3DDEV7_SET_TRANSFORM 11
+#define D3DDEV7_SET_VIEWPORT 13
+#define D3DDEV7_SET_RENDER_STATE 20
+#define D3DDEV7_BEGIN_STATE_BLOCK 22
+#define D3DDEV7_END_STATE_BLOCK 23
+#define D3DDEV7_DRAW_PRIMITIVE 25
+#define D3DDEV7_SET_TEXTURE 35
+#define D3DDEV7_SET_TEXTURE_STAGE_STATE 37
+#define D3DDEV7_APPLY_STATE_BLOCK 39
+#define D3DDEV7_DELETE_STATE_BLOCK 41
+/* DDSURFACEDESC2 is 124 bytes: the pixel format at DWORD 18, ddsCaps at
+ * 26 and its dwCaps2 at 27. */
+#define D32_DESC2_DWORDS 31
+#define D32_DESC2_FORMAT 18
+#define D32_DESC2_CAPS 26
+#define D32_DESC2_CAPS2 27
+#define D32_DDSCAPS2_TEXTUREMANAGE 0x00000010ul
+#define D32_D3DDEVCAPS_DRAWPRIMITIVES2EX 0x00008000ul
+#define D32_D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000ul
+#define D32_D3DCLEAR_TARGET 0x00000001ul
+#define D32_D3DRENDERSTATE_LIGHTING 137ul
+#define D32_D3DTS_WORLD 1ul
+#define D32_D3DTS_VIEW 2ul
+#define D32_D3DTS_PROJECTION 3ul
+/* D3DFVF_XYZ | DIFFUSE, D3DFVF_TLVERTEX. */
+#define D32_FVF_XYZ_DIFFUSE 0x00000042ul
+#define D32_FVF_TLVERTEX 0x000001c4ul
+#define D32_D3DSBT_ALL 1ul
+
+typedef struct d32_xyz_diffuse {
+    float x;
+    float y;
+    float z;
+    DWORD color;
+} D32_XYZ_DIFFUSE;
+
+typedef struct d32_viewport7 {
+    DWORD dwX;
+    DWORD dwY;
+    DWORD dwWidth;
+    DWORD dwHeight;
+    float dvMinZ;
+    float dvMaxZ;
+} D32_VIEWPORT7;
+
+typedef HRESULT (WINAPI *d32_create_surface7_fn)(D32_OBJECT *, DWORD *,
+                                                 D32_OBJECT **, void *);
+typedef HRESULT (WINAPI *d32_create_device7_fn)(D32_OBJECT *, const GUID *,
+                                                D32_OBJECT *, D32_OBJECT **);
+typedef HRESULT (WINAPI *d32_caps7_fn)(D32_OBJECT *, DWORD *);
+typedef HRESULT (WINAPI *d32_clear7_fn)(D32_OBJECT *, DWORD, void *, DWORD,
+                                        DWORD, float, DWORD);
+typedef HRESULT (WINAPI *d32_transform7_fn)(D32_OBJECT *, DWORD, float *);
+typedef HRESULT (WINAPI *d32_viewport7_fn)(D32_OBJECT *, D32_VIEWPORT7 *);
+typedef HRESULT (WINAPI *d32_draw7_fn)(D32_OBJECT *, DWORD, DWORD, void *,
+                                       DWORD, DWORD);
+typedef HRESULT (WINAPI *d32_end_block7_fn)(D32_OBJECT *, DWORD *);
+typedef HRESULT (WINAPI *d32_block7_fn)(D32_OBJECT *, DWORD);
+typedef HRESULT (WINAPI *d32_lock7_fn)(D32_OBJECT *, RECT *, DWORD *, DWORD,
+                                       void *);
+typedef HRESULT (WINAPI *d32_unlock7_fn)(D32_OBJECT *, RECT *);
+typedef HRESULT (WINAPI *d32_create_ex_fn)(GUID *, void **, const GUID *,
+                                           void *);
+typedef HRESULT (WINAPI *d32_cooperate_fn)(D32_OBJECT *, HWND, DWORD);
+
+static const GUID d32_iid_ddraw7 = {
+    0x15e65ec0ul, 0x3b9c, 0x11d2,
+    { 0xb9, 0x2f, 0x00, 0x60, 0x97, 0x97, 0xea, 0x5b }
+};
+
+static const GUID d32_iid_d3d7 = {
+    0xf5049e77ul, 0x4861, 0x11d2,
+    { 0xa4, 0x07, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0xa8 }
+};
+
+static void d32_render_state7(D32_OBJECT *device, DWORD state, DWORD value)
+{
+    ((d32_render_state_fn)device->vtbl[D3DDEV7_SET_RENDER_STATE])(
+        device, state, value);
+}
+
+/* T6's quadrants in an 8x8 1555 texture, made through IDirectDraw7 with
+ * the texture manager's caps when `managed`. */
+static D32_OBJECT *d32_texture7(D32_OBJECT *ddraw7, int managed)
+{
+    DWORD desc[D32_DESC2_DWORDS];
+    D32_OBJECT *surface = 0;
+    DWORD x;
+    DWORD y;
+    HRESULT hr;
+
+    d32_zero(desc, sizeof(desc));
+    desc[0] = sizeof(desc);
+    desc[1] = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+    desc[2] = 8ul;
+    desc[3] = 8ul;
+    desc[D32_DESC2_FORMAT] = 32ul;
+    desc[D32_DESC2_FORMAT + 1] = DDPF_RGB | DDPF_ALPHAPIXELS;
+    desc[D32_DESC2_FORMAT + 3] = 16ul;
+    desc[D32_DESC2_FORMAT + 4] = 0x00007c00ul;
+    desc[D32_DESC2_FORMAT + 5] = 0x000003e0ul;
+    desc[D32_DESC2_FORMAT + 6] = 0x0000001ful;
+    desc[D32_DESC2_FORMAT + 7] = 0x00008000ul;
+    desc[D32_DESC2_CAPS] = DDSCAPS_TEXTURE |
+                           (managed ? 0ul : DDSCAPS_VIDEOMEMORY);
+    desc[D32_DESC2_CAPS2] = managed ? D32_DDSCAPS2_TEXTUREMANAGE : 0ul;
+    hr = ((d32_create_surface7_fn)ddraw7->vtbl[DD7_CREATE_SURFACE])(
+        ddraw7, desc, &surface, 0);
+    d32_hx(managed ? "T16ManagedCreateHr" : "T16VideoCreateHr", (DWORD)hr);
+    if (hr != 0 || surface == 0) {
+        return 0;
+    }
+    d32_zero(desc, sizeof(desc));
+    desc[0] = sizeof(desc);
+    hr = ((d32_lock7_fn)surface->vtbl[DDS_LOCK])(surface, 0, desc,
+                                                 DDLOCK_WAIT, 0);
+    if (hr != 0 || desc[9] == 0ul) {
+        d32_hx("T16TextureLockHr", (DWORD)hr);
+        ((d32_release_fn)surface->vtbl[COM_RELEASE])(surface);
+        return 0;
+    }
+    /* lPitch is DWORD 4, lpSurface DWORD 9. */
+    for (y = 0ul; y < 8ul; ++y) {
+        WORD *row = (WORD *)((BYTE *)desc[9] + y * desc[4]);
+
+        for (x = 0ul; x < 8ul; ++x) {
+            row[x] = d32_quadrants[(y >= 4ul ? 2u : 0u) +
+                                   (x >= 4ul ? 1u : 0u)];
+        }
+    }
+    ((d32_unlock7_fn)surface->vtbl[DDS_UNLOCK])(surface, 0);
+    return surface;
+}
+
+static DWORD d32_dx7(D32_OBJECT *ddraw, D32_OBJECT *back)
+{
+    static const DWORD quadrants[4] = {
+        0x00ff0000ul, 0x0000ff00ul, 0x000000fful, 0x00fffffful
+    };
+    static const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f
+    };
+    static const float corners[6][2] = {
+        { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f },
+        { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f }
+    };
+    D32_OBJECT *ddraw7 = 0;
+    D32_OBJECT *d3d7 = 0;
+    D32_OBJECT *back7 = 0;
+    D32_OBJECT *device7 = 0;
+    D32_OBJECT *texture = 0;
+    D32_SURFACE_DESC desc;
+    DWORD desc2[D32_DESC2_DWORDS];
+    d32_create_ex_fn create_ex;
+    D32_VIEWPORT7 view;
+    D32_TLVERTEX tl[6];
+    D32_XYZ_DIFFUSE xyz[6];
+    DWORD caps[64];
+    DWORD block = 0ul;
+    DWORD failures = 0ul;
+    DWORD ok;
+    DWORD i;
+    HRESULT hr;
+    float copy[16];
+
+    /*
+     * Direct3D 7 comes only from a DirectDraw object made by
+     * DirectDrawCreateEx - a DirectDraw 1 object queried for
+     * IDirectDraw7 answers E_NOINTERFACE for IDirect3D7 (the 4570, boot
+     * 89) - so T16 has its own, at the normal cooperative level beside
+     * the session's exclusive one, and draws into an off-screen target in
+     * the display's format, 640x480, rather than the session's back
+     * buffer.
+     */
+    (void)ddraw;
+    (void)back;
+    d32_line("Stage", "10g-t16-dx7");
+    create_ex = (d32_create_ex_fn)GetProcAddress(
+        GetModuleHandleA("DDRAW.DLL"), "DirectDrawCreateEx");
+    hr = create_ex != 0 ? create_ex(0, (void **)&ddraw7, &d32_iid_ddraw7, 0)
+                        : (HRESULT)0x80004002ul;
+    d32_hx("T16DDraw7Hr", (DWORD)hr);
+    if (hr == 0) {
+        hr = ((d32_cooperate_fn)ddraw7->vtbl[DD7_SET_COOPERATIVE_LEVEL])(
+            ddraw7, 0, D32_DDSCL_NORMAL);
+        d32_hx("T16CooperateHr", (DWORD)hr);
+    }
+    if (hr == 0) {
+        hr = ((d32_query_fn)ddraw7->vtbl[COM_QUERY_INTERFACE])(
+            ddraw7, &d32_iid_d3d7, (void **)&d3d7);
+        d32_hx("T16D3D7Hr", (DWORD)hr);
+    }
+    if (hr != 0) {
+        d32_line("T16Result", "SKIPPED-NO-D3D7");
+        goto release;
+    }
+    d32_zero(desc2, sizeof(desc2));
+    desc2[0] = sizeof(desc2);
+    desc2[1] = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+    desc2[2] = D32_HEIGHT;
+    desc2[3] = D32_WIDTH;
+    desc2[D32_DESC2_CAPS] = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_3DDEVICE |
+                            DDSCAPS_VIDEOMEMORY;
+    hr = ((d32_create_surface7_fn)ddraw7->vtbl[DD7_CREATE_SURFACE])(
+        ddraw7, desc2, &back7, 0);
+    d32_hx("T16TargetHr", (DWORD)hr);
+    if (hr == 0) {
+        hr = ((d32_create_device7_fn)d3d7->vtbl[D3D7_CREATE_DEVICE])(
+            d3d7, &d32_iid_d3d_hal, back7, &device7);
+        d32_hx("T16CreateDeviceHr", (DWORD)hr);
+    }
+    if (hr != 0 || device7 == 0) {
+        d32_line("T16Result", "NO-DEVICE7");
+        ++failures;
+        goto release;
+    }
+
+    /* a. */
+    d32_zero(caps, sizeof(caps));
+    hr = ((d32_caps7_fn)device7->vtbl[D3DDEV7_GET_CAPS])(device7, caps);
+    d32_hx("T16CapsHr", (DWORD)hr);
+    d32_hx("T16DevCaps", caps[0]);
+    d32_hx("T16DrawPrimitives2Ex",
+           (caps[0] & D32_D3DDEVCAPS_DRAWPRIMITIVES2EX) != 0ul);
+    d32_hx("T16HwTransformAndLight",
+           (caps[0] & D32_D3DDEVCAPS_HWTRANSFORMANDLIGHT) != 0ul);
+
+    /* b. */
+    hr = ((d32_clear7_fn)device7->vtbl[D3DDEV7_CLEAR])(
+        device7, 0ul, 0, D32_D3DCLEAR_TARGET, 0xff000040ul, 1.0f, 0ul);
+    d32_hx("T16ClearHr", (DWORD)hr);
+
+    view.dwX = 0ul;
+    view.dwY = 0ul;
+    view.dwWidth = D32_WIDTH;
+    view.dwHeight = D32_HEIGHT;
+    view.dvMinZ = 0.0f;
+    view.dvMaxZ = 1.0f;
+    d32_hx("T16ViewportHr",
+           (DWORD)((d32_viewport7_fn)device7->vtbl[D3DDEV7_SET_VIEWPORT])(
+               device7, &view));
+    d32_render_state7(device7, D3DRENDERSTATE_ZENABLE, 0ul);
+    d32_render_state7(device7, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    d32_render_state7(device7, D3DRENDERSTATE_DITHERENABLE, 0ul);
+    d32_render_state7(device7, D32_D3DRENDERSTATE_LIGHTING, 0ul);
+
+    /* c. */
+    texture = d32_texture7(ddraw7, 1);
+    if (texture == 0) {
+        texture = d32_texture7(ddraw7, 0);
+    }
+    d32_hx("T16SetTextureHr",
+           (DWORD)((d32_set_texture_fn)device7->vtbl[D3DDEV7_SET_TEXTURE])(
+               device7, 0ul, texture));
+    ((d32_stage_state_fn)device7->vtbl[D3DDEV7_SET_TEXTURE_STAGE_STATE])(
+        device7, 0ul, D32_TSS_COLOROP, D32_TOP_SELECTARG1);
+    ((d32_stage_state_fn)device7->vtbl[D3DDEV7_SET_TEXTURE_STAGE_STATE])(
+        device7, 0ul, D32_TSS_COLORARG1, D32_TA_TEXTURE);
+    ((d32_stage_state_fn)device7->vtbl[D3DDEV7_SET_TEXTURE_STAGE_STATE])(
+        device7, 0ul, D32_TSS_MAGFILTER, D32_TFG_POINT);
+    ((d32_stage_state_fn)device7->vtbl[D3DDEV7_SET_TEXTURE_STAGE_STATE])(
+        device7, 0ul, D32_TSS_MINFILTER, D32_TFG_POINT);
+    for (i = 0ul; i < 6ul; ++i) {
+        tl[i].sx = 16.0f + corners[i][0] * 64.0f;
+        tl[i].sy = 120.0f + corners[i][1] * 64.0f;
+        tl[i].sz = 0.5f;
+        tl[i].rhw = 1.0f;
+        tl[i].color = 0xfffffffful;
+        tl[i].specular = 0xff000000ul;
+        tl[i].tu = corners[i][0];
+        tl[i].tv = corners[i][1];
+    }
+    hr = ((d32_scene_fn)device7->vtbl[D3DDEV7_BEGIN_SCENE])(device7);
+    if (hr == 0) {
+        hr = ((d32_draw7_fn)device7->vtbl[D3DDEV7_DRAW_PRIMITIVE])(
+            device7, D3DPT_TRIANGLELIST, D32_FVF_TLVERTEX, tl, 6ul, 0ul);
+        ((d32_scene_fn)device7->vtbl[D3DDEV7_END_SCENE])(device7);
+    }
+    d32_hx("T16TexturedHr", (DWORD)hr);
+
+    /* d. */
+    ((d32_set_texture_fn)device7->vtbl[D3DDEV7_SET_TEXTURE])(device7, 0ul,
+                                                             0);
+    for (i = 0ul; i < 16ul; ++i) {
+        copy[i] = identity[i];
+    }
+    ((d32_transform7_fn)device7->vtbl[D3DDEV7_SET_TRANSFORM])(
+        device7, D32_D3DTS_WORLD, copy);
+    ((d32_transform7_fn)device7->vtbl[D3DDEV7_SET_TRANSFORM])(
+        device7, D32_D3DTS_VIEW, copy);
+    hr = ((d32_transform7_fn)device7->vtbl[D3DDEV7_SET_TRANSFORM])(
+        device7, D32_D3DTS_PROJECTION, copy);
+    d32_hx("T16TransformHr", (DWORD)hr);
+    for (i = 0ul; i < 6ul; ++i) {
+        xyz[i].x = -0.5f + corners[i][0] * 0.2f;
+        xyz[i].y = 0.5f - corners[i][1] * 0.2f;
+        xyz[i].z = 0.5f;
+        xyz[i].color = 0xffffff00ul;
+    }
+    hr = ((d32_scene_fn)device7->vtbl[D3DDEV7_BEGIN_SCENE])(device7);
+    if (hr == 0) {
+        hr = ((d32_draw7_fn)device7->vtbl[D3DDEV7_DRAW_PRIMITIVE])(
+            device7, D3DPT_TRIANGLELIST, D32_FVF_XYZ_DIFFUSE, xyz, 6ul, 0ul);
+        ((d32_scene_fn)device7->vtbl[D3DDEV7_END_SCENE])(device7);
+    }
+    d32_hx("T16UntransformedHr", (DWORD)hr);
+
+    /* e. */
+    hr = ((d32_scene_fn)device7->vtbl[D3DDEV7_BEGIN_STATE_BLOCK])(device7);
+    if (hr == 0) {
+        d32_render_state7(device7, D3DRENDERSTATE_DITHERENABLE, 0ul);
+        hr = ((d32_end_block7_fn)device7->vtbl[D3DDEV7_END_STATE_BLOCK])(
+            device7, &block);
+    }
+    if (hr == 0) {
+        hr = ((d32_block7_fn)device7->vtbl[D3DDEV7_APPLY_STATE_BLOCK])(
+            device7, block);
+        ((d32_block7_fn)device7->vtbl[D3DDEV7_DELETE_STATE_BLOCK])(device7,
+                                                                  block);
+    }
+    d32_hx("T16StateBlockHr", (DWORD)hr);
+
+    /* The target through DDSURFACEDESC2: lPitch is DWORD 4, lpSurface 9. */
+    d32_zero(desc2, sizeof(desc2));
+    desc2[0] = sizeof(desc2);
+    hr = ((d32_lock7_fn)back7->vtbl[DDS_LOCK])(back7, 0, desc2, DDLOCK_WAIT,
+                                               0);
+    d32_hx("T16LockHr", (DWORD)hr);
+    if (hr != 0 || desc2[9] == 0ul) {
+        ++failures;
+        goto release;
+    }
+    d32_zero(&desc, sizeof(desc));
+    desc.lPitch = (LONG)desc2[4];
+    desc.lpSurface = (void *)desc2[9];
+    ok = d32_quadrants_near(&desc, 16ul, 120ul, quadrants, "T16Texture");
+    d32_hx("T16TextureOk", ok);
+    failures += ok != 0xful ? 1ul : 0ul;
+    i = d32_pixel(&desc, 192ul, 144ul);
+    d32_hx("T16UntransformedPixel", i);
+    failures += d32_near(i, 0x00ffff00ul, 16ul) ? 0ul : 1ul;
+    i = d32_pixel(&desc, 400ul, 400ul);
+    d32_hx("T16ClearPixel", i);
+    failures += d32_near(i, 0x00000040ul, 16ul) ? 0ul : 1ul;
+    ((d32_unlock7_fn)back7->vtbl[DDS_UNLOCK])(back7, 0);
+    d32_line("T16Result", failures == 0ul ? "PASS" : "FAIL");
+
+release:
+    if (texture != 0) {
+        ((d32_release_fn)texture->vtbl[COM_RELEASE])(texture);
+    }
+    if (device7 != 0) {
+        ((d32_release_fn)device7->vtbl[COM_RELEASE])(device7);
+    }
+    if (back7 != 0) {
+        ((d32_release_fn)back7->vtbl[COM_RELEASE])(back7);
+    }
+    if (d3d7 != 0) {
+        ((d32_release_fn)d3d7->vtbl[COM_RELEASE])(d3d7);
+    }
+    if (ddraw7 != 0) {
+        ((d32_release_fn)ddraw7->vtbl[COM_RELEASE])(ddraw7);
+    }
+    return failures;
+}
+
+/*
+ * T18, the T&L device (docs\plans\hardware-tnl.md step 6's gate): the same
+ * lit scenes drawn twice, once on the HAL device - which the runtime
+ * transforms and lights itself, sending pre-transformed vertices - and
+ * once on the T&L HAL device, which sends them untransformed for this
+ * driver's vertex kernels; each into its own 640x480 target, the centres
+ * of twelve 16x16 quads read back from both and compared.
+ *   1. a coloured directional light with specular, an infinite viewer;
+ *   2. an attenuated point light and a spot, a local viewer, specular;
+ *   3. vertex diffuse as the diffuse and ambient source, two-length
+ *      normals renormalised, linear vertex fog to blue.
+ * Every matrix is the identity, so object, eye and clip space are one and
+ * the quads sit at z 0.5. Skipped when there is no T&L device.
+ */
+#define D3DDEV7_SET_MATERIAL 16
+#define D3DDEV7_SET_LIGHT 18
+#define D3DDEV7_LIGHT_ENABLE 44
+#define D32_T18_QUADS 12ul
+#define D32_T18_TOLERANCE 12ul
+#define D32_RS_SPECULARENABLE 29ul
+#define D32_RS_FOGENABLE 28ul
+#define D32_RS_FOGCOLOR 34ul
+#define D32_RS_FOGSTART 36ul
+#define D32_RS_FOGEND 37ul
+#define D32_RS_AMBIENT 139ul
+#define D32_RS_FOGVERTEXMODE 140ul
+#define D32_RS_LOCALVIEWER 142ul
+#define D32_RS_NORMALIZENORMALS 143ul
+#define D32_RS_DIFFUSEMATERIALSOURCE 145ul
+#define D32_RS_AMBIENTMATERIALSOURCE 147ul
+/* D3DFVF_XYZ | NORMAL and | DIFFUSE. */
+#define D32_FVF_XYZ_NORMAL 0x00000012ul
+#define D32_FVF_XYZ_NORMAL_DIFFUSE 0x00000052ul
+
+typedef struct d32_light7 {
+    DWORD type;
+    float diffuse[4];
+    float specular[4];
+    float ambient[4];
+    float position[3];
+    float direction[3];
+    float range;
+    float falloff;
+    float attenuation[3];
+    float theta;
+    float phi;
+} D32_LIGHT7;
+
+typedef struct d32_material7 {
+    float diffuse[4];
+    float ambient[4];
+    float specular[4];
+    float emissive[4];
+    float power;
+} D32_MATERIAL7;
+
+typedef struct d32_lit_vertex {
+    float x;
+    float y;
+    float z;
+    float nx;
+    float ny;
+    float nz;
+    DWORD color;
+} D32_LIT_VERTEX;
+
+typedef HRESULT (WINAPI *d32_material7_fn)(D32_OBJECT *, D32_MATERIAL7 *);
+typedef HRESULT (WINAPI *d32_light7_fn)(D32_OBJECT *, DWORD, D32_LIGHT7 *);
+typedef HRESULT (WINAPI *d32_light_enable7_fn)(D32_OBJECT *, DWORD, BOOL);
+
+static const GUID d32_iid_d3d_tnl_hal = {
+    0xf5049e78ul, 0x4861, 0x11d2,
+    { 0xa4, 0x07, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0xa8 }
+};
+
+static void d32_set4(float *out, float x, float y, float z, float w)
+{
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+}
+
+static DWORD d32_float_bits(float value)
+{
+    union {
+        float value;
+        DWORD bits;
+    } u;
+
+    u.value = value;
+    return u.bits;
+}
+
+/* Quad q's screen centre: four columns of three rows. */
+static DWORD d32_t18_x(DWORD q)
+{
+    return 80ul + 160ul * (q % 4ul);
+}
+
+static DWORD d32_t18_y(DWORD q)
+{
+    return 80ul + 160ul * (q / 4ul);
+}
+
+/* One scene's state and quads on a device. */
+static HRESULT d32_t18_scene(D32_OBJECT *device, DWORD scene)
+{
+    static const float normals[D32_T18_QUADS][3] = {
+        { 0.0f, 0.0f, -1.0f }, { 0.0f, 0.6f, -0.8f }, { 0.6f, 0.0f, -0.8f },
+        { -0.6f, 0.0f, -0.8f }, { 0.0f, -0.6f, -0.8f }, { 0.48f, 0.6f, -0.64f },
+        { -0.48f, -0.6f, -0.64f }, { 0.0f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f },
+        { 0.36f, -0.48f, -0.8f }, { -0.8f, 0.0f, -0.6f }, { 0.0f, 0.8f, -0.6f }
+    };
+    static const float identity[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f
+    };
+    static const float corners[6][2] = {
+        { -1.0f, -1.0f }, { 1.0f, -1.0f }, { -1.0f, 1.0f },
+        { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f }
+    };
+    D32_LIT_VERTEX v[D32_T18_QUADS * 6ul];
+    D32_MATERIAL7 material;
+    D32_LIGHT7 light;
+    D32_VIEWPORT7 view;
+    float copy[16];
+    DWORD q;
+    DWORD i;
+    float scale = scene == 3ul ? 2.0f : 1.0f;
+    HRESULT hr;
+
+    view.dwX = 0ul;
+    view.dwY = 0ul;
+    view.dwWidth = D32_WIDTH;
+    view.dwHeight = D32_HEIGHT;
+    view.dvMinZ = 0.0f;
+    view.dvMaxZ = 1.0f;
+    ((d32_viewport7_fn)device->vtbl[D3DDEV7_SET_VIEWPORT])(device, &view);
+    for (i = 0ul; i < 16ul; ++i) {
+        copy[i] = identity[i];
+    }
+    ((d32_transform7_fn)device->vtbl[D3DDEV7_SET_TRANSFORM])(
+        device, D32_D3DTS_WORLD, copy);
+    ((d32_transform7_fn)device->vtbl[D3DDEV7_SET_TRANSFORM])(
+        device, D32_D3DTS_VIEW, copy);
+    ((d32_transform7_fn)device->vtbl[D3DDEV7_SET_TRANSFORM])(
+        device, D32_D3DTS_PROJECTION, copy);
+    d32_render_state7(device, D3DRENDERSTATE_ZENABLE, 0ul);
+    d32_render_state7(device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    d32_render_state7(device, D3DRENDERSTATE_DITHERENABLE, 0ul);
+    d32_render_state7(device, D32_D3DRENDERSTATE_LIGHTING, 1ul);
+    d32_render_state7(device, D32_RS_SPECULARENABLE, scene != 3ul);
+    d32_render_state7(device, D32_RS_LOCALVIEWER, scene == 2ul);
+    d32_render_state7(device, D32_RS_NORMALIZENORMALS, scene == 3ul);
+    d32_render_state7(device, D32_RS_AMBIENT, 0x00202020ul);
+    d32_render_state7(device, D32_RS_DIFFUSEMATERIALSOURCE,
+                      scene == 3ul ? 1ul : 0ul);
+    d32_render_state7(device, D32_RS_AMBIENTMATERIALSOURCE,
+                      scene == 3ul ? 1ul : 0ul);
+    d32_render_state7(device, D32_RS_FOGENABLE, scene == 3ul);
+    d32_render_state7(device, D32_RS_FOGCOLOR, 0x000000fful);
+    d32_render_state7(device, D32_RS_FOGVERTEXMODE, scene == 3ul ? 3ul : 0ul);
+    d32_render_state7(device, D32_RS_FOGSTART, d32_float_bits(0.0f));
+    d32_render_state7(device, D32_RS_FOGEND, d32_float_bits(1.5f));
+    ((d32_set_texture_fn)device->vtbl[D3DDEV7_SET_TEXTURE])(device, 0ul, 0);
+
+    d32_zero(&material, sizeof(material));
+    d32_set4(material.diffuse, 0.8f, 0.8f, 0.8f, 1.0f);
+    d32_set4(material.ambient, 1.0f, 1.0f, 1.0f, 1.0f);
+    d32_set4(material.specular, 0.6f, 0.6f, 0.6f, 1.0f);
+    material.power = scene == 2ul ? 16.0f : 8.0f;
+    ((d32_material7_fn)device->vtbl[D3DDEV7_SET_MATERIAL])(device, &material);
+
+    d32_zero(&light, sizeof(light));
+    light.type = 3ul;                       /* directional */
+    d32_set4(light.diffuse, 1.0f, 0.5f, 0.25f, 1.0f);
+    d32_set4(light.specular, 1.0f, 1.0f, 1.0f, 1.0f);
+    d32_set4(light.ambient, 0.1f, 0.1f, 0.1f, 1.0f);
+    light.direction[2] = 1.0f;
+    if (scene == 3ul) {
+        light.direction[0] = 0.3f;
+        light.direction[1] = -0.3f;
+    }
+    light.range = 1000.0f;
+    light.attenuation[0] = 1.0f;
+    ((d32_light7_fn)device->vtbl[D3DDEV7_SET_LIGHT])(device, 0ul, &light);
+    ((d32_light_enable7_fn)device->vtbl[D3DDEV7_LIGHT_ENABLE])(
+        device, 0ul, scene != 2ul);
+    if (scene == 2ul) {
+        light.type = 1ul;                   /* point at the eye */
+        d32_set4(light.diffuse, 0.0f, 1.0f, 0.5f, 1.0f);
+        light.attenuation[0] = 0.3f;
+        light.attenuation[1] = 0.5f;
+        light.attenuation[2] = 0.2f;
+        light.range = 100.0f;
+        ((d32_light7_fn)device->vtbl[D3DDEV7_SET_LIGHT])(device, 1ul, &light);
+        light.type = 2ul;                   /* a spot down +z */
+        d32_set4(light.diffuse, 1.0f, 1.0f, 0.0f, 1.0f);
+        light.position[0] = 0.3f;
+        light.position[1] = 0.2f;
+        light.attenuation[0] = 1.0f;
+        light.attenuation[1] = 0.0f;
+        light.attenuation[2] = 0.0f;
+        light.theta = 0.6f;
+        light.phi = 1.2f;
+        light.falloff = 1.0f;
+        ((d32_light7_fn)device->vtbl[D3DDEV7_SET_LIGHT])(device, 2ul, &light);
+    }
+    ((d32_light_enable7_fn)device->vtbl[D3DDEV7_LIGHT_ENABLE])(
+        device, 1ul, scene == 2ul);
+    ((d32_light_enable7_fn)device->vtbl[D3DDEV7_LIGHT_ENABLE])(
+        device, 2ul, scene == 2ul);
+
+    for (q = 0ul; q < D32_T18_QUADS; ++q) {
+        float cx = (float)(long)d32_t18_x(q) / 320.0f - 1.0f;
+        float cy = 1.0f - (float)(long)d32_t18_y(q) / 240.0f;
+
+        for (i = 0ul; i < 6ul; ++i) {
+            D32_LIT_VERTEX *p = &v[q * 6ul + i];
+
+            p->x = cx + corners[i][0] * (8.0f / 320.0f);
+            p->y = cy + corners[i][1] * (8.0f / 240.0f);
+            p->z = 0.5f;
+            p->nx = normals[q][0] * scale;
+            p->ny = normals[q][1] * scale;
+            p->nz = normals[q][2] * scale;
+            p->color = 0xff000000ul | ((q * 0x15ul & 0xfful) << 16) |
+                       ((0xfful - q * 0x11ul) << 8) | (0x40ul + q * 0x0cul);
+        }
+    }
+    hr = ((d32_scene_fn)device->vtbl[D3DDEV7_BEGIN_SCENE])(device);
+    if (hr == 0) {
+        /* The same 28-byte vertices for both formats: without DIFFUSE the
+         * colour is past the stride's end, so they are drawn as two
+         * formats of two strides. */
+        if (scene == 3ul) {
+            hr = ((d32_draw7_fn)device->vtbl[D3DDEV7_DRAW_PRIMITIVE])(
+                device, D3DPT_TRIANGLELIST, D32_FVF_XYZ_NORMAL_DIFFUSE, v,
+                D32_T18_QUADS * 6ul, 0ul);
+        } else {
+            static float plain[D32_T18_QUADS * 6ul * 6ul];
+
+            for (i = 0ul; i < D32_T18_QUADS * 6ul; ++i) {
+                plain[i * 6ul] = v[i].x;
+                plain[i * 6ul + 1ul] = v[i].y;
+                plain[i * 6ul + 2ul] = v[i].z;
+                plain[i * 6ul + 3ul] = v[i].nx;
+                plain[i * 6ul + 4ul] = v[i].ny;
+                plain[i * 6ul + 5ul] = v[i].nz;
+            }
+            hr = ((d32_draw7_fn)device->vtbl[D3DDEV7_DRAW_PRIMITIVE])(
+                device, D3DPT_TRIANGLELIST, D32_FVF_XYZ_NORMAL, plain,
+                D32_T18_QUADS * 6ul, 0ul);
+        }
+        ((d32_scene_fn)device->vtbl[D3DDEV7_END_SCENE])(device);
+    }
+    return hr;
+}
+
+static DWORD d32_t18_channel_difference(DWORD a, DWORD b)
+{
+    DWORD worst = 0ul;
+    DWORD k;
+
+    for (k = 0ul; k < 3ul; ++k) {
+        DWORD d = d32_difference(d32_channel(a, d32_masks[k]),
+                                 d32_channel(b, d32_masks[k]));
+
+        if (d > worst) {
+            worst = d;
+        }
+    }
+    return worst;
+}
+
+static DWORD d32_tnl(void)
+{
+    static const char *const names[4] = { "", "Dir", "Pos", "ColourFog" };
+    D32_OBJECT *ddraw7 = 0;
+    D32_OBJECT *d3d7 = 0;
+    D32_OBJECT *target[2] = { 0, 0 };
+    D32_OBJECT *device[2] = { 0, 0 };
+    DWORD desc2[D32_DESC2_DWORDS];
+    DWORD pixels[2][D32_T18_QUADS];
+    d32_create_ex_fn create_ex;
+    DWORD caps[64];
+    DWORD failures = 0ul;
+    DWORD worst = 0ul;
+    DWORD scene;
+    DWORD d;
+    DWORD q;
+    HRESULT hr;
+    char key[32];
+    char value[64];
+
+    d32_line("Stage", "10h-t18-tnl");
+    create_ex = (d32_create_ex_fn)GetProcAddress(
+        GetModuleHandleA("DDRAW.DLL"), "DirectDrawCreateEx");
+    hr = create_ex != 0 ? create_ex(0, (void **)&ddraw7, &d32_iid_ddraw7, 0)
+                        : (HRESULT)0x80004002ul;
+    if (hr == 0) {
+        hr = ((d32_cooperate_fn)ddraw7->vtbl[DD7_SET_COOPERATIVE_LEVEL])(
+            ddraw7, 0, D32_DDSCL_NORMAL);
+    }
+    if (hr == 0) {
+        hr = ((d32_query_fn)ddraw7->vtbl[COM_QUERY_INTERFACE])(
+            ddraw7, &d32_iid_d3d7, (void **)&d3d7);
+    }
+    if (hr != 0) {
+        d32_line("T18Result", "SKIPPED-NO-D3D7");
+        goto release;
+    }
+    for (d = 0ul; d < 2ul; ++d) {
+        d32_zero(desc2, sizeof(desc2));
+        desc2[0] = sizeof(desc2);
+        desc2[1] = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+        desc2[2] = D32_HEIGHT;
+        desc2[3] = D32_WIDTH;
+        desc2[D32_DESC2_CAPS] = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_3DDEVICE |
+                                DDSCAPS_VIDEOMEMORY;
+        hr = ((d32_create_surface7_fn)ddraw7->vtbl[DD7_CREATE_SURFACE])(
+            ddraw7, desc2, &target[d], 0);
+        if (hr == 0) {
+            hr = ((d32_create_device7_fn)d3d7->vtbl[D3D7_CREATE_DEVICE])(
+                d3d7, d == 0ul ? &d32_iid_d3d_hal : &d32_iid_d3d_tnl_hal,
+                target[d], &device[d]);
+        }
+        d32_hx(d == 0ul ? "T18HalDeviceHr" : "T18TnlDeviceHr", (DWORD)hr);
+        if (hr != 0 || device[d] == 0) {
+            d32_line("T18Result", d == 0ul ? "NO-HAL-DEVICE" : "NO-TNL-DEVICE");
+            if (d == 0ul) {
+                ++failures;
+            }
+            goto release;
+        }
+    }
+    d32_zero(caps, sizeof(caps));
+    ((d32_caps7_fn)device[1]->vtbl[D3DDEV7_GET_CAPS])(device[1], caps);
+    d32_hx("T18TnlDevCaps", caps[0]);
+
+    for (scene = 1ul; scene <= 3ul; ++scene) {
+        for (d = 0ul; d < 2ul; ++d) {
+            ((d32_clear7_fn)device[d]->vtbl[D3DDEV7_CLEAR])(
+                device[d], 0ul, 0, D32_D3DCLEAR_TARGET, 0xff000000ul, 1.0f,
+                0ul);
+            hr = d32_t18_scene(device[d], scene);
+            wsprintfA(key, "T18%s%sHr", names[scene],
+                      d == 0ul ? "Hal" : "Tnl");
+            d32_hx(key, (DWORD)hr);
+            d32_zero(desc2, sizeof(desc2));
+            desc2[0] = sizeof(desc2);
+            hr = ((d32_lock7_fn)target[d]->vtbl[DDS_LOCK])(
+                target[d], 0, desc2, DDLOCK_WAIT, 0);
+            if (hr != 0 || desc2[9] == 0ul) {
+                d32_hx("T18LockHr", (DWORD)hr);
+                ++failures;
+                goto release;
+            }
+            {
+                D32_SURFACE_DESC desc;
+
+                d32_zero(&desc, sizeof(desc));
+                desc.lPitch = (LONG)desc2[4];
+                desc.lpSurface = (void *)desc2[9];
+                for (q = 0ul; q < D32_T18_QUADS; ++q) {
+                    pixels[d][q] = d32_pixel(&desc, d32_t18_x(q),
+                                             d32_t18_y(q));
+                }
+            }
+            ((d32_unlock7_fn)target[d]->vtbl[DDS_UNLOCK])(target[d], 0);
+        }
+        for (q = 0ul; q < D32_T18_QUADS; ++q) {
+            DWORD diff = d32_t18_channel_difference(pixels[0][q],
+                                                    pixels[1][q]);
+
+            if (diff > worst) {
+                worst = diff;
+            }
+            wsprintfA(key, "T18%s%lu", names[scene], q);
+            wsprintfA(value, "tnl %06lX hal %06lX diff %lu %s",
+                      pixels[1][q], pixels[0][q], diff,
+                      diff <= D32_T18_TOLERANCE ? "ok" : "off");
+            d32_line(key, value);
+            if (diff > D32_T18_TOLERANCE) {
+                ++failures;
+            }
+        }
+    }
+    d32_hx("T18WorstChannel", worst);
+    d32_line("T18Result", failures == 0ul ? "PASS" : "FAIL");
+
+release:
+    for (d = 0ul; d < 2ul; ++d) {
+        if (device[d] != 0) {
+            ((d32_release_fn)device[d]->vtbl[COM_RELEASE])(device[d]);
+        }
+        if (target[d] != 0) {
+            ((d32_release_fn)target[d]->vtbl[COM_RELEASE])(target[d]);
+        }
+    }
+    if (d3d7 != 0) {
+        ((d32_release_fn)d3d7->vtbl[COM_RELEASE])(d3d7);
+    }
+    if (ddraw7 != 0) {
+        ((d32_release_fn)ddraw7->vtbl[COM_RELEASE])(ddraw7);
+    }
+    return failures;
+}
+
+/*
+ * T17, recorded and not judged: whether the Direct3D 8 and 9 runtimes see
+ * a hardware device on this driver at this DDI level (the plan's step 5
+ * asks it of DDI 7). Each runtime is loaded, made (SDK versions 220 and
+ * 32) and asked for the HAL device's caps on adapter 0; the answer and
+ * DevCaps (the eighth DWORD of D3DCAPS8 and D3DCAPS9) are written.
+ * IDirect3D8::GetDeviceCaps is slot 13; IDirect3D9 inserts
+ * CheckDeviceFormatConversion before it, slot 14.
+ */
+#define D32_D3DDEVTYPE_HAL 1ul
+
+typedef void *(WINAPI *d32_create_d3dx_fn)(UINT);
+typedef HRESULT (WINAPI *d32_device_caps_fn)(D32_OBJECT *, UINT, DWORD,
+                                             DWORD *);
+
+static void d32_d3dx_caps(const char *dll, const char *entry, UINT sdk,
+                          DWORD slot, const char *prefix)
+{
+    static DWORD caps[512];
+    HMODULE module = LoadLibraryA(dll);
+    d32_create_d3dx_fn create = module != 0
+        ? (d32_create_d3dx_fn)GetProcAddress(module, entry) : 0;
+    D32_OBJECT *d3d = create != 0 ? (D32_OBJECT *)create(sdk) : 0;
+    HRESULT hr;
+    char key[48];
+
+    wsprintfA(key, "%sCreated", prefix);
+    d32_hx(key, d3d != 0);
+    if (d3d == 0) {
+        return;
+    }
+    d32_zero(caps, sizeof(caps));
+    hr = ((d32_device_caps_fn)d3d->vtbl[slot])(d3d, 0u, D32_D3DDEVTYPE_HAL,
+                                              caps);
+    wsprintfA(key, "%sHalCapsHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    wsprintfA(key, "%sHalDevCaps", prefix);
+    d32_hx(key, caps[7]);
+    ((d32_release_fn)d3d->vtbl[COM_RELEASE])(d3d);
+}
+
+static void d32_d3d89(void)
+{
+    d32_line("Stage", "10h-t17-d3d8-d3d9");
+    d32_d3dx_caps("D3D8.DLL", "Direct3DCreate8", 220u, 13ul, "T17D3D8");
+    d32_d3dx_caps("D3D9.DLL", "Direct3DCreate9", 32u, 14ul, "T17D3D9");
+}
+
 static DWORD d32_two_stage(D32_OBJECT *ddraw, D32_OBJECT *back,
                            D32_OBJECT *base_surface)
 {
@@ -2886,6 +3737,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_ddi_apply("5");
     } else if (d32_has_switch("/ddi6")) {
         d32_ddi_apply("6");
+    } else if (d32_has_switch("/ddi7")) {
+        d32_ddi_apply("7");
     }
     d32_path_read(&run_before);
     d32_hx("TraceReadable", run_before.ok);
@@ -3584,6 +4437,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
     ((d32_release_fn)device->vtbl[COM_RELEASE])(device);
     /* T12 after the DX5 device is gone, on the same back buffer. */
     failures += d32_two_stage(ddraw, back, texture_surface);
+    failures += d32_dx7(ddraw, back);
+    failures += d32_tnl();
+    d32_d3d89();
     if (offscreen != 0) {
         ((d32_release_fn)offscreen->vtbl[COM_RELEASE])(offscreen);
     }

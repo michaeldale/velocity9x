@@ -226,6 +226,51 @@ Progress:
     Engine draws in Quake 3 fell by 41%.
   - The A/B scene is unchanged within rounding, with segments exercised.
   - The three pieces stay open. Dropping the CPU twin is the next saving.
+- **Step 3c done (2026-10-26, boot 88):**
+  [`2026-10-26-haswell-tnl-step3c-no-cpu-twin.md`](../decisions/2026-10-26-haswell-tnl-step3c-no-cpu-twin.md).
+  - **What changed:** no CPU twin; a per-triangle frustum and facing cull
+    in its place; a fallback from the held object vertices; 16 segments
+    a batch; an element cache for `glDrawElements`; captured batches
+    scissored to the draw rectangle.
+  - **Speed:** Half-Life about 95 against 85, and Quake 3 61.1 against
+    57.2. Through `glDrawElements` Quake 3 runs 69.1 against 56.1.
+  - **Follow-up:** `EXT_compiled_vertex_array` would put Quake 3 on that
+    path by default.
+- **Step 5 started (2026-10-26, boots 89-92):**
+  [`2026-10-26-haswell-ddi7-step5-first-light.md`](../decisions/2026-10-26-haswell-ddi7-step5-first-light.md).
+  - **Built:** DDI 7 for programs listed `=7`; CreateSurfaceEx handles;
+    the DX7 records walked.
+  - **Measured:** V9XD32 `/ddi7` passes T1-T16, including a DX7 device.
+  - **Owed:** the SDK samples, DirectX 9's HAL device and one DX7 title.
+    Then the default, then step 6.
+- **Step 5 done, DDI 7 the Haswell default (2026-10-27, boots 92-97):**
+  [`2026-10-27-haswell-ddi7-default.md`](../decisions/2026-10-27-haswell-ddi7-default.md).
+  - **Passed:** V9XD32, 3DMark 2000 and 2001 SE, and Half-Life Direct3D,
+    at par with DDI 6. DirectX 8 and 9 see a HAL device either way.
+  - **Not run:** the DX7 SDK samples, which are not on the machine.
+  - **Next:** step 6.
+- **Step 4 done (2026-10-27, boot 98):**
+  [`2026-10-27-haswell-tnl-step4-lighting.md`](../decisions/2026-10-27-haswell-tnl-step4-lighting.md).
+  - **Kernels:** one generated per key (`hsw_vs.c`) for both light
+    models, run on the host in an EU model against the reference
+    evaluator.
+  - **Hardware:** cached in a reserve grown to 256 KB, with packed
+    constants and a normals stream (render ABI 8).
+  - **OpenGL:** lighting state, and lit and fogged capture.
+  - **Measured:** the lit GL probe matches GL 1.1 in 40 of 40 samples;
+    the A/B scene is unchanged; Half-Life 96.7.
+  - **Not done:** two-sided lighting (SBE facing).
+- **Step 6 built, not offered (2026-10-27, boots 99-103):**
+  [`2026-10-27-haswell-tnl-step6-d3d-device.md`](../decisions/2026-10-27-haswell-tnl-step6-d3d-device.md).
+  - **Correct:** V9XD32 T18 compares the T&L device with the HAL device
+    on lit scenes, worst channel 2; 3DMark 2000 and 2001 SE complete on
+    it.
+  - **Slower:** 3DMark 2000 1558 against 2322 with the runtime's T&L,
+    2001 SE 722 against 1120. A segmented batch made it worse.
+  - **So:** `V9X_D3D_TNL_DEVICE_OFFERED` is 0 and programs keep the HAL
+    device (Michael, 2026-10-27), an exception to Decision 1 until the
+    device is faster.
+  - **Next:** measure where a batch's time goes before another design.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.

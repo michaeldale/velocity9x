@@ -717,6 +717,7 @@ static void tnl_reset(V9X_R3D_ABI_TNL_DRAW *tnl, const V9X_R3D_ABI_DRAW *draw,
     tnl->vertex_count = 0ul;
     tnl->segments = 0;
     tnl->segment_count = 0ul;
+    tnl->normals = 0;
 }
 
 /* ABI 7's T&L request, field by field, each refusal beside an acceptance. */
@@ -747,6 +748,15 @@ static void test_tnl_header(void)
     /* A key with a stray bit. */
     tnl_reset(&tnl, &draw, &key, &constants);
     key.reserved[0] = 1ul;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+
+    /* ABI 8: normals exactly when the key reads them. */
+    tnl_reset(&tnl, &draw, &key, &constants);
+    tnl.normals = &zero;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
+    key.inputs = V9X_R3D_TNL_IN_NORMAL;
+    VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_OK);
+    tnl.normals = 0;
     VCHECK(v9x_r3d_validate_tnl(&tnl) == V9X_R3D_RESULT_INVALID);
 
     /* The viewport: a negative origin and one past the target are allowed

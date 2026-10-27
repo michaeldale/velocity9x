@@ -43,8 +43,9 @@
  *    scale (2026-10-21, docs\plans\32bpp-acceleration-and-3d.md, Phase 4):
  *    the OpenGL ICD's 24-bit depth format.
  * 7: describe's tnl, and draw_tnl: untransformed vertices with a T&L key
- *    and constant block (2026-10-26, docs\plans\hardware-tnl.md, step 3). */
-#define V9X_R3D_ABI_VERSION 7ul
+ *    and constant block (2026-10-26, docs\plans\hardware-tnl.md, step 3).
+ * 8: a T&L draw's normals, for lit keys (2026-10-27, step 4). */
+#define V9X_R3D_ABI_VERSION 8ul
 
 #if defined(__WATCOMC__) || defined(_MSC_VER)
 #define V9X_R3D_CALL __stdcall
@@ -361,7 +362,10 @@ typedef struct v9x_r3d_abi_draw {
 #define V9X_R3D_ABI_CULL_NONE 0ul
 #define V9X_R3D_ABI_CULL_CW   1ul
 #define V9X_R3D_ABI_CULL_CCW  2ul
-#define V9X_R3D_ABI_TNL_VERTICES_MAX 512ul
+/* 480 vertices of 32 bytes and 1536 indices fill what Haswell's slot
+ * vertex area has left beside 16 segments' state and their batch
+ * (d3d_hsw.c). */
+#define V9X_R3D_ABI_TNL_VERTICES_MAX 480ul
 #define V9X_R3D_ABI_TNL_INDICES_MAX  1536ul
 
 /*
@@ -375,7 +379,7 @@ typedef struct v9x_r3d_abi_draw {
  * read. The request's own draw then supplies the target, depth and
  * vertices, and its texture, state and constants are not used.
  */
-#define V9X_R3D_ABI_TNL_SEGMENTS_MAX 8ul
+#define V9X_R3D_ABI_TNL_SEGMENTS_MAX 16ul
 
 typedef struct v9x_r3d_abi_tnl_segment {
     const struct v9x_r3d_abi_draw *draw;
@@ -402,6 +406,12 @@ typedef struct v9x_r3d_abi_tnl_draw {
     v9x_u32 vertex_count;
     const V9X_R3D_ABI_TNL_SEGMENT *segments;   /* null: one draw */
     v9x_u32 segment_count;
+    /*
+     * ABI 8: object-space normals, three floats a vertex in the order of
+     * draw->vertices (vertex_count of them when indexed, three a triangle
+     * otherwise). Non-null exactly when the key has V9X_R3D_TNL_IN_NORMAL.
+     */
+    const float *normals;
 } V9X_R3D_ABI_TNL_DRAW;
 
 /* Triangles that reached the engine, meaningful for OK and PARTIAL. */
@@ -477,7 +487,7 @@ typedef char v9x_r3d_abi_assert_level[sizeof(V9X_R3D_ABI_LEVEL) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_texture[sizeof(V9X_R3D_ABI_TEXTURE) == 48 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_state[sizeof(V9X_R3D_ABI_STATE) == 64 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_describe[sizeof(V9X_R3D_ABI_DESCRIBE) == 88 ? 1 : -1];
-typedef char v9x_r3d_abi_assert_tnl_draw[sizeof(V9X_R3D_ABI_TNL_DRAW) == 68 ? 1 : -1];
+typedef char v9x_r3d_abi_assert_tnl_draw[sizeof(V9X_R3D_ABI_TNL_DRAW) == 72 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_tnl_segment[sizeof(V9X_R3D_ABI_TNL_SEGMENT) == 16 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_raw[sizeof(V9X_R3D_ABI_RAW) == 20 ? 1 : -1];
 typedef char v9x_r3d_abi_assert_draw[sizeof(V9X_R3D_ABI_DRAW) == 228 ? 1 : -1];

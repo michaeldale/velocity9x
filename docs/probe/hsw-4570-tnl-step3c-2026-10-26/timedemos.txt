@@ -1,0 +1,26 @@
+hl-3c-on: 394 frames 5.019 seconds 78.496 fps
+hl-3c-off: 394 frames 4.651 seconds 84.717 fps
+hltr-3c-on-hl: 394 frames 4.110 seconds 95.861 fps
+hl-3c-off-r1: 394 frames 4.668 seconds 84.409 fps
+hl-3c-on-r1: 394 frames 4.124 seconds 95.544 fps
+hl-3c-off-r2: 394 frames 4.640 seconds 84.912 fps
+hl-3c-on-r2: 394 frames 4.194 seconds 93.942 fps
+213 pid=FFFCE1D9 counters tnl-capture culled=1041029 abandoned=0 cached=0 declined=0
+219 pid=FFFCE1D9 counters tnl batches=2774 triangles=446570 refused=0 failed=0
+220 pid=FFFCE1D9 counters tnl-hold flush-for-screen=1210 new-segment=21722 flush-for-frame=666 joined=123924 flush-segments-full=891
+q3-3c-on: 1346 frames, 22.0 seconds: 61.1 fps [rendering primitives: multiple glArrayElement]
+139 pid=FFE33BC9 counters tnl batches=30800 triangles=2314438 refused=0 failed=0
+140 pid=FFE33BC9 counters tnl-hold flush-for-screen=12706 new-segment=57626 flush-for-frame=12615 joined=935140 flush-segments-full=167
+q3-3c-off: 1346 frames, 23.5 seconds: 57.2 fps [rendering primitives: multiple glArrayElement]
+139 pid=FFE31F35 counters tnl batches=0 triangles=0 refused=0 failed=0
+140 pid=FFE31F35 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+q3-3c-p2-on: 1346 frames, 19.5 seconds: 69.1 fps [rendering primitives: single glDrawElements]
+139 pid=FFE31405 counters tnl batches=30643 triangles=2323498 refused=0 failed=0
+140 pid=FFE31405 counters tnl-hold flush-for-screen=12698 new-segment=55623 flush-for-frame=12389 joined=5200 flush-segments-full=236
+q3-3c-p2-off: 1346 frames, 24.0 seconds: 56.1 fps [rendering primitives: single glDrawElements]
+139 pid=FFFC27C5 counters tnl batches=0 triangles=0 refused=0 failed=0
+140 pid=FFFC27C5 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+q3-3c-on2: 1346 frames, 22.0 seconds: 61.1 fps [rendering primitives: multiple glArrayElement]
+139 pid=FFFC265D counters tnl batches=30800 triangles=2314372 refused=0 failed=0
+140 pid=FFFC265D counters tnl-hold flush-for-screen=12706 new-segment=57626 flush-for-frame=12615 joined=935107 flush-segments-full=167
+3DMark 2000 Pro default: 2342; 3DMark 2001 SE (saved non-default settings): 1109

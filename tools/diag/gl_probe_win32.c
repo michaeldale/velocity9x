@@ -1622,6 +1622,479 @@ static void v9x_glp_tnl(HDC hdc, HGLRC context, GLint width, GLint height)
     HeapFree(heap, 0, frame[1]);
 }
 
+/*
+ * OpenGL lighting (docs\plans\hardware-tnl.md, step 4's gate). Each scene
+ * sets lights and a material through the ordinary calls, then draws samples:
+ * 4x4-pixel quads, each with one normal (and colour), whose centre pixel is
+ * read back and compared with GL 1.1's equation (2.13.1) evaluated here, in
+ * code of the probe's own - not the ICD's gl_light.c nor the reference
+ * evaluator. Eye coordinates are window coordinates (orthographic, identity
+ * model-view), so a positional light's distance is in pixels. Only an engine
+ * that runs T&L lights at all; elsewhere every sample shows unlit white and
+ * LitResult says so.
+ */
+#ifdef __WATCOMC__
+static double v9x_glp_sqrt(double value);
+#pragma aux v9x_glp_sqrt = "fsqrt" parm [8087] value [8087];
+/* Float to long by fistp, rounding to nearest: a cast would call Watcom's
+ * __CHP, from the C runtime the probe does not link. */
+static long v9x_glp_to_long(float value);
+#pragma aux v9x_glp_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#endif
+
+#define V9X_GLP_LIT_SAMPLES 8u
+#define V9X_GLP_LIT_TOLERANCE 10l
+
+typedef struct v9x_glp_lit_light {
+    int on;
+    GLfloat ambient[4];
+    GLfloat diffuse[4];
+    GLfloat specular[4];
+    GLfloat position[4];
+    GLfloat direction[3];
+    GLfloat exponent;
+    GLfloat cutoff_cos;     /* -2 for no spot */
+    GLfloat cutoff_degrees;
+    GLfloat attenuation[3];
+} V9X_GLP_LIT_LIGHT;
+
+typedef struct v9x_glp_lit_scene {
+    const char *name;
+    V9X_GLP_LIT_LIGHT light[4];
+    GLfloat material_ambient[4];
+    GLfloat material_diffuse[4];
+    GLfloat material_specular[4];
+    GLfloat material_emission[4];
+    GLfloat shininess;
+    GLfloat model_ambient[4];
+    int local_viewer;
+    int normalize;
+    int color_material;     /* AMBIENT_AND_DIFFUSE, front and back */
+    GLfloat x[V9X_GLP_LIT_SAMPLES];
+    GLfloat y[V9X_GLP_LIT_SAMPLES];
+    GLfloat normal[V9X_GLP_LIT_SAMPLES][3];
+    GLfloat colour[V9X_GLP_LIT_SAMPLES][4];
+} V9X_GLP_LIT_SCENE;
+
+static GLfloat v9x_glp_dot3(const GLfloat *a, const GLfloat *b)
+{
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+static void v9x_glp_unit3(GLfloat *v)
+{
+    double length = v9x_glp_sqrt((double)v9x_glp_dot3(v, v));
+
+    if (length > 0.0) {
+        v[0] = (GLfloat)(v[0] / length);
+        v[1] = (GLfloat)(v[1] / length);
+        v[2] = (GLfloat)(v[2] / length);
+    }
+}
+
+/* x^e for the small whole exponents the scenes use. */
+static GLfloat v9x_glp_power(GLfloat x, GLfloat e)
+{
+    GLfloat result = 1.0f;
+    long n = v9x_glp_to_long(e);
+
+    while (n-- > 0) {
+        result *= x;
+    }
+    return result;
+}
+
+static LONG v9x_glp_byte(GLfloat value)
+{
+    if (value <= 0.0f) {
+        return 0l;
+    }
+    if (value >= 1.0f) {
+        return 255l;
+    }
+    return (LONG)v9x_glp_to_long(value * 255.0f);
+}
+
+/* GL 1.1's front-face colour for sample s (2.13.1), as 0xRRGGBB. */
+static DWORD v9x_glp_lit_expected(const V9X_GLP_LIT_SCENE *scene,
+                                  unsigned int s)
+{
+    const GLfloat *a_cm = scene->color_material ? scene->colour[s]
+                                                : scene->material_ambient;
+    const GLfloat *d_cm = scene->color_material ? scene->colour[s]
+                                                : scene->material_diffuse;
+    GLfloat vertex[3];
+    GLfloat n[3];
+    GLfloat c[3];
+    unsigned int i;
+    unsigned int k;
+
+    vertex[0] = scene->x[s] + 2.0f;
+    vertex[1] = scene->y[s] + 2.0f;
+    vertex[2] = 0.0f;
+    n[0] = scene->normal[s][0];
+    n[1] = scene->normal[s][1];
+    n[2] = scene->normal[s][2];
+    if (scene->normalize) {
+        v9x_glp_unit3(n);
+    }
+    for (k = 0u; k < 3u; ++k) {
+        c[k] = scene->material_emission[k] + a_cm[k] * scene->model_ambient[k];
+    }
+    for (i = 0u; i < 4u; ++i) {
+        const V9X_GLP_LIT_LIGHT *l = &scene->light[i];
+        GLfloat vp[3];
+        GLfloat h[3];
+        GLfloat factor = 1.0f;
+        GLfloat n_dot_l;
+
+        if (!l->on) {
+            continue;
+        }
+        if (l->position[3] == 0.0f) {
+            vp[0] = l->position[0];
+            vp[1] = l->position[1];
+            vp[2] = l->position[2];
+            v9x_glp_unit3(vp);
+        } else {
+            GLfloat d;
+
+            vp[0] = l->position[0] - vertex[0];
+            vp[1] = l->position[1] - vertex[1];
+            vp[2] = l->position[2] - vertex[2];
+            d = (GLfloat)v9x_glp_sqrt((double)v9x_glp_dot3(vp, vp));
+            v9x_glp_unit3(vp);
+            factor = 1.0f / (l->attenuation[0] + l->attenuation[1] * d +
+                             l->attenuation[2] * d * d);
+            if (l->cutoff_cos > -1.5f) {
+                GLfloat rho = -v9x_glp_dot3(vp, l->direction);
+
+                factor *= rho < l->cutoff_cos ? 0.0f
+                                              : v9x_glp_power(rho, l->exponent);
+            }
+        }
+        n_dot_l = v9x_glp_dot3(n, vp);
+        for (k = 0u; k < 3u; ++k) {
+            c[k] += factor * a_cm[k] * l->ambient[k];
+        }
+        if (n_dot_l <= 0.0f) {
+            continue;
+        }
+        if (scene->local_viewer) {
+            GLfloat eye[3];
+
+            eye[0] = -vertex[0];
+            eye[1] = -vertex[1];
+            eye[2] = -vertex[2];
+            v9x_glp_unit3(eye);
+            h[0] = vp[0] + eye[0];
+            h[1] = vp[1] + eye[1];
+            h[2] = vp[2] + eye[2];
+        } else {
+            h[0] = vp[0];
+            h[1] = vp[1];
+            h[2] = vp[2] + 1.0f;
+        }
+        v9x_glp_unit3(h);
+        for (k = 0u; k < 3u; ++k) {
+            GLfloat n_dot_h = v9x_glp_dot3(n, h);
+
+            c[k] += factor * n_dot_l * d_cm[k] * l->diffuse[k];
+            if (n_dot_h > 0.0f) {
+                c[k] += factor * v9x_glp_power(n_dot_h, scene->shininess) *
+                        scene->material_specular[k] * l->specular[k];
+            }
+        }
+    }
+    return ((DWORD)v9x_glp_byte(c[0]) << 16) |
+           ((DWORD)v9x_glp_byte(c[1]) << 8) | (DWORD)v9x_glp_byte(c[2]);
+}
+
+static int v9x_glp_lit_close(DWORD a, DWORD b)
+{
+    LONG d[3];
+    unsigned int k;
+
+    d[0] = (LONG)((a >> 16) & 0xfful) - (LONG)((b >> 16) & 0xfful);
+    d[1] = (LONG)((a >> 8) & 0xfful) - (LONG)((b >> 8) & 0xfful);
+    d[2] = (LONG)(a & 0xfful) - (LONG)(b & 0xfful);
+    for (k = 0u; k < 3u; ++k) {
+        if (d[k] > V9X_GLP_LIT_TOLERANCE || d[k] < -V9X_GLP_LIT_TOLERANCE) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* One scene's state through the GL calls, its samples drawn, read back and
+ * judged; the samples that matched. */
+static unsigned int v9x_glp_lit_scene(const V9X_GLP_LIT_SCENE *scene,
+                                      unsigned int index)
+{
+    static const GLenum lights[4] = {
+        GL_LIGHT0, GL_LIGHT1, GL_LIGHT2, GL_LIGHT3
+    };
+    unsigned int matched = 0u;
+    unsigned int i;
+    unsigned int s;
+    char key[32];
+    char value[48];
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_LIGHTING);
+    for (i = 0u; i < 4u; ++i) {
+        const V9X_GLP_LIT_LIGHT *l = &scene->light[i];
+
+        if (!l->on) {
+            glDisable(lights[i]);
+            continue;
+        }
+        glEnable(lights[i]);
+        glLightfv(lights[i], GL_AMBIENT, l->ambient);
+        glLightfv(lights[i], GL_DIFFUSE, l->diffuse);
+        glLightfv(lights[i], GL_SPECULAR, l->specular);
+        glLightfv(lights[i], GL_POSITION, l->position);
+        glLightfv(lights[i], GL_SPOT_DIRECTION, l->direction);
+        glLightf(lights[i], GL_SPOT_EXPONENT, l->exponent);
+        glLightf(lights[i], GL_SPOT_CUTOFF, l->cutoff_degrees);
+        glLightf(lights[i], GL_CONSTANT_ATTENUATION, l->attenuation[0]);
+        glLightf(lights[i], GL_LINEAR_ATTENUATION, l->attenuation[1]);
+        glLightf(lights[i], GL_QUADRATIC_ATTENUATION, l->attenuation[2]);
+    }
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, scene->material_ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, scene->material_diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, scene->material_specular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, scene->material_emission);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, scene->shininess);
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, scene->model_ambient);
+    glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, scene->local_viewer);
+    if (scene->normalize) {
+        glEnable(GL_NORMALIZE);
+    } else {
+        glDisable(GL_NORMALIZE);
+    }
+    if (scene->color_material) {
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+        glEnable(GL_COLOR_MATERIAL);
+    } else {
+        glDisable(GL_COLOR_MATERIAL);
+    }
+
+    glBegin(GL_QUADS);
+    for (s = 0u; s < V9X_GLP_LIT_SAMPLES; ++s) {
+        glNormal3fv(scene->normal[s]);
+        glColor4fv(scene->colour[s]);
+        glVertex2f(scene->x[s], scene->y[s]);
+        glVertex2f(scene->x[s] + 4.0f, scene->y[s]);
+        glVertex2f(scene->x[s] + 4.0f, scene->y[s] + 4.0f);
+        glVertex2f(scene->x[s], scene->y[s] + 4.0f);
+    }
+    glEnd();
+    glFinish();
+
+    for (s = 0u; s < V9X_GLP_LIT_SAMPLES; ++s) {
+        DWORD got = v9x_glp_read((GLint)v9x_glp_to_long(scene->x[s]) + 2,
+                                 (GLint)v9x_glp_to_long(scene->y[s]) + 2);
+        DWORD want = v9x_glp_lit_expected(scene, s);
+        int close = v9x_glp_lit_close(got, want);
+
+        wsprintfA(key, "Lit%u%s%u", index, scene->name, s);
+        wsprintfA(value, "%06lX want %06lX %s", got, want,
+                  close ? "ok" : "off");
+        v9x_glp_text(key, value);
+        if (close) {
+            ++matched;
+        }
+    }
+    glDisable(GL_LIGHTING);
+    glDisable(GL_COLOR_MATERIAL);
+    glDisable(GL_NORMALIZE);
+    for (i = 0u; i < 4u; ++i) {
+        glDisable(lights[i]);
+    }
+    return matched;
+}
+
+static void v9x_glp_lit_light(V9X_GLP_LIT_LIGHT *l, GLfloat r, GLfloat g,
+                              GLfloat b)
+{
+    unsigned int k;
+
+    v9x_glp_zero(l, sizeof(*l));
+    l->on = 1;
+    l->ambient[3] = 1.0f;
+    l->diffuse[0] = r;
+    l->diffuse[1] = g;
+    l->diffuse[2] = b;
+    l->diffuse[3] = 1.0f;
+    for (k = 0u; k < 4u; ++k) {
+        l->specular[k] = l->diffuse[k];
+    }
+    l->position[2] = 1.0f;
+    l->direction[2] = -1.0f;
+    l->cutoff_cos = -2.0f;
+    l->cutoff_degrees = 180.0f;
+    l->attenuation[0] = 1.0f;
+}
+
+static void v9x_glp_lit_base(V9X_GLP_LIT_SCENE *scene, const char *name,
+                             GLint width, GLint height)
+{
+    unsigned int s;
+
+    v9x_glp_zero(scene, sizeof(*scene));
+    scene->name = name;
+    scene->material_ambient[0] = scene->material_ambient[1] =
+        scene->material_ambient[2] = 0.2f;
+    scene->material_diffuse[0] = scene->material_diffuse[1] =
+        scene->material_diffuse[2] = 0.8f;
+    scene->material_ambient[3] = scene->material_diffuse[3] = 1.0f;
+    scene->material_specular[3] = scene->material_emission[3] = 1.0f;
+    scene->model_ambient[0] = scene->model_ambient[1] =
+        scene->model_ambient[2] = 0.2f;
+    scene->model_ambient[3] = 1.0f;
+    /* Samples on a 4 x 2 grid across the window. */
+    for (s = 0u; s < V9X_GLP_LIT_SAMPLES; ++s) {
+        scene->x[s] = (GLfloat)((GLint)(s % 4u) * width / 4 + width / 8);
+        scene->y[s] = (GLfloat)((GLint)(s / 4u) * height / 2 + height / 4);
+        scene->normal[s][2] = 1.0f;
+        scene->colour[s][0] = scene->colour[s][1] = scene->colour[s][2] =
+            scene->colour[s][3] = 1.0f;
+    }
+}
+
+static void v9x_glp_lit(GLint width, GLint height)
+{
+    static const GLfloat tilt[V9X_GLP_LIT_SAMPLES][3] = {
+        { 0.0f, 0.0f, 1.0f }, { 0.0f, 0.6f, 0.8f }, { 0.8f, 0.0f, 0.6f },
+        { 0.0f, 0.0f, -1.0f }, { 1.0f, 0.0f, 0.0f }, { -0.6f, 0.0f, 0.8f },
+        { 0.48f, 0.6f, 0.64f }, { 0.0f, -0.8f, 0.6f }
+    };
+    static V9X_GLP_LIT_SCENE scene;
+    GLfloat translate_position[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat got[4];
+    GLfloat cx = (GLfloat)(width / 2);
+    GLfloat cy = (GLfloat)(height / 2);
+    unsigned int matched = 0u;
+    unsigned int total = 0u;
+    unsigned int s;
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -400.0, 400.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_FOG);
+    glShadeModel(GL_SMOOTH);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    /* 1: the initial state, LIGHT0 white from +z. */
+    v9x_glp_lit_base(&scene, "Default", width, height);
+    v9x_glp_lit_light(&scene.light[0], 1.0f, 1.0f, 1.0f);
+    for (s = 0u; s < V9X_GLP_LIT_SAMPLES; ++s) {
+        scene.normal[s][0] = tilt[s][0];
+        scene.normal[s][1] = tilt[s][1];
+        scene.normal[s][2] = tilt[s][2];
+    }
+    matched += v9x_glp_lit_scene(&scene, 1u);
+    total += V9X_GLP_LIT_SAMPLES;
+
+    /* 2: a coloured directional light with specular, shininess 8. */
+    scene.name = "Specular";
+    v9x_glp_lit_light(&scene.light[0], 1.0f, 0.5f, 0.25f);
+    scene.light[0].position[0] = 0.0f;
+    scene.light[0].position[1] = 0.6f;
+    scene.light[0].position[2] = 0.8f;
+    scene.light[0].ambient[0] = 0.1f;
+    scene.material_specular[0] = scene.material_specular[1] =
+        scene.material_specular[2] = 0.5f;
+    scene.shininess = 8.0f;
+    matched += v9x_glp_lit_scene(&scene, 2u);
+    total += V9X_GLP_LIT_SAMPLES;
+
+    /* 3: a green point light 120 pixels in front of the window's centre,
+     * attenuated; normals face the viewer. */
+    v9x_glp_lit_base(&scene, "Point", width, height);
+    v9x_glp_lit_light(&scene.light[1], 0.0f, 1.0f, 0.0f);
+    scene.light[1].position[0] = cx;
+    scene.light[1].position[1] = cy;
+    scene.light[1].position[2] = 120.0f;
+    scene.light[1].position[3] = 1.0f;
+    scene.light[1].attenuation[0] = 0.5f;
+    scene.light[1].attenuation[1] = 0.004f;
+    scene.light[1].attenuation[2] = 0.00002f;
+    scene.model_ambient[0] = 0.0f;
+    scene.model_ambient[1] = 0.0f;
+    scene.model_ambient[2] = 0.3f;
+    matched += v9x_glp_lit_scene(&scene, 3u);
+    total += V9X_GLP_LIT_SAMPLES;
+
+    /* 4: a yellow spot 200 pixels in front, pointing at the window, a 30
+     * degree cutoff with exponent 4: the cone meets z = 0 115 pixels from
+     * the centre, so some samples are outside it. */
+    v9x_glp_lit_base(&scene, "Spot", width, height);
+    v9x_glp_lit_light(&scene.light[2], 1.0f, 1.0f, 0.0f);
+    scene.light[2].position[0] = cx;
+    scene.light[2].position[1] = cy;
+    scene.light[2].position[2] = 200.0f;
+    scene.light[2].position[3] = 1.0f;
+    scene.light[2].exponent = 4.0f;
+    scene.light[2].cutoff_degrees = 30.0f;
+    scene.light[2].cutoff_cos = 0.8660254f;
+    matched += v9x_glp_lit_scene(&scene, 4u);
+    total += V9X_GLP_LIT_SAMPLES;
+
+    /* 5: two lights, colour material from each sample's colour, a local
+     * viewer, specular, and normals of length 3 renormalised. */
+    v9x_glp_lit_base(&scene, "ColourMaterial", width, height);
+    v9x_glp_lit_light(&scene.light[0], 0.6f, 0.6f, 0.6f);
+    v9x_glp_lit_light(&scene.light[3], 0.3f, 0.2f, 0.5f);
+    scene.light[3].position[0] = 0.57735f;
+    scene.light[3].position[1] = 0.57735f;
+    scene.light[3].position[2] = 0.57735f;
+    scene.material_specular[0] = scene.material_specular[1] =
+        scene.material_specular[2] = 0.4f;
+    scene.shininess = 20.0f;
+    scene.local_viewer = 1;
+    scene.normalize = 1;
+    scene.color_material = 1;
+    for (s = 0u; s < V9X_GLP_LIT_SAMPLES; ++s) {
+        scene.normal[s][0] = tilt[s][0] * 3.0f;
+        scene.normal[s][1] = tilt[s][1] * 3.0f;
+        scene.normal[s][2] = tilt[s][2] * 3.0f;
+        scene.colour[s][0] = (GLfloat)(s & 1u) * 0.5f + 0.25f;
+        scene.colour[s][1] = (GLfloat)((s >> 1) & 1u) * 0.5f + 0.25f;
+        scene.colour[s][2] = (GLfloat)((s >> 2) & 1u) * 0.5f + 0.25f;
+    }
+    matched += v9x_glp_lit_scene(&scene, 5u);
+    total += V9X_GLP_LIT_SAMPLES;
+
+    /* glLight's POSITION goes through the model-view current at the call. */
+    glTranslatef(10.0f, 20.0f, 30.0f);
+    glLightfv(GL_LIGHT4, GL_POSITION, translate_position);
+    glLoadIdentity();
+    glGetLightfv(GL_LIGHT4, GL_POSITION, got);
+    v9x_glp_uint("LitPositionQueryOk",
+                 got[0] == 11.0f && got[1] == 21.0f && got[2] == 31.0f &&
+                         got[3] == 1.0f
+                     ? 1ul : 0ul);
+
+    v9x_glp_uint("LitSamples", total);
+    v9x_glp_uint("LitMatched", matched);
+    v9x_glp_text("LitResult", matched == total ? "match" : "differ");
+    v9x_glp_hex("ErrorAfterLit", (DWORD)glGetError());
+}
+
 static void v9x_glp_attrib(GLint width, GLint height)
 {
     static const GLubyte texels[4 * 2 * 3] = { 0 };
@@ -3193,6 +3666,8 @@ void __stdcall V9xGlProbeEntry(void)
             v9x_glp_polygon_offset(client.right - client.left,
                                    client.bottom - client.top);
             v9x_glp_fog(client.right - client.left,
+                        client.bottom - client.top);
+            v9x_glp_lit(client.right - client.left,
                         client.bottom - client.top);
             v9x_glp_replace_rgb(client.right - client.left,
                                 client.bottom - client.top);

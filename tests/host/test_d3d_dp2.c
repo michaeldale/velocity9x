@@ -165,6 +165,25 @@ static void command(v9x_u32 op, v9x_u32 count)
     put8(op); put8(0ul); put16(count);
 }
 
+/* The DirectX 7 sink: each record's opcode and length, taken. */
+static v9x_u32 dx7_calls;
+static v9x_u32 dx7_bytes;
+static v9x_u32 dx7_ops[4];
+static v9x_u32 dx7_lengths[4];
+
+static int on_dx7(void *user, v9x_u32 op, v9x_u32 count,
+                  const v9x_u8 *payload, v9x_u32 bytes)
+{
+    (void)user; (void)count; (void)payload;
+    if (dx7_calls < 4ul) {
+        dx7_ops[dx7_calls] = op;
+        dx7_lengths[dx7_calls] = bytes;
+    }
+    ++dx7_calls;
+    dx7_bytes += bytes;
+    return 1;
+}
+
 /* The indexed-list sink: -1 leaves it unset, 0 declines, 1 takes. */
 static int indexed_take = -1;
 static v9x_u32 indexed_calls;
@@ -210,6 +229,7 @@ static void walk(CAPTURE *c, V9X_DP2_RESULT *r)
     k.point = 0;
     k.line = 0;
     k.indexed_list = indexed_take >= 0 ? on_indexed : 0;
+    k.dx7 = 0;
     v9x_dp2_walk(&s, &k, r);
 }
 
@@ -515,6 +535,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = on_record;
             k.point = 0; k.line = 0; k.indexed_list = 0;
+            k.dx7 = 0;
             records_seen = 0ul; record_bytes = 0ul;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && records_seen == 2ul &&
@@ -535,6 +556,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = 0;
             k.point = 0; k.line = 0; k.indexed_list = 0;
+            k.dx7 = 0;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && r.triangles == 1ul);
             /* Vertices 1 to 3 need a pool of four. */
@@ -562,6 +584,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
         k.record = 0; k.point = on_point; k.line = on_line;
         k.indexed_list = 0;
+        k.dx7 = 0;
         line_count = 0ul; point_count = 0ul;
         v9x_dp2_walk(&s, &k, &r);
         CHECK(r.status == V9X_DP2_OK && r.lines == 3ul && r.points == 2ul &&
@@ -597,6 +620,92 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         CHECK(v9x_dp2_point_quad(va, quad) == 2ul);
         CHECK(float_at(quad) == 10.0f && float_at(quad + 4) == 20.0f &&
               float_at(quad + 64) == 11.0f && float_at(quad + 68) == 21.0f);
+    }
+
+    /*
+     * The DirectX 7 records: with a dx7 sink each reaches it whole - a
+     * SETTRANSFORM, a SETLIGHT of a data entry (8 + 104 bytes) and an
+     * enable (8), a CLEAR of two rectangles (16 + 32) - and the list after
+     * them is walked. Without one the walk stops at the first, as before;
+     * a SETLIGHT data entry cut short is malformed.
+     */
+    {
+        V9X_DP2_STREAM s;
+        V9X_DP2_SINK k;
+        v9x_u32 transform_at;
+
+        memset(&c, 0, sizeof(c)); used = 0ul;
+        transform_at = used;
+        command(V9X_DP2OP_SETTRANSFORM, 1ul);
+        put32(1ul);
+        for (i = 0ul; i < 16ul; ++i) {
+            put32(0ul);
+        }
+        command(V9X_DP2OP_SETLIGHT, 2ul);
+        put32(0ul); put32(V9X_DP2_SETLIGHT_DATA);
+        for (i = 0ul; i < V9X_DP2_LIGHT7_BYTES / 4ul; ++i) {
+            put32(0ul);
+        }
+        put32(0ul); put32(0ul);
+        command(V9X_DP2OP_CLEAR, 2ul);
+        for (i = 0ul; i < 4ul + 8ul; ++i) {
+            put32(i);
+        }
+        command(V9X_DP2OP_TRIANGLELIST, 1ul); put16(0ul);
+        s.commands = COMMANDS; s.command_bytes = used;
+        s.vertices = pool; s.vertex_count = POOL; s.vertex_stride = STRIDE;
+        k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
+        k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
+        k.record = 0; k.point = 0; k.line = 0; k.indexed_list = 0;
+        k.dx7 = on_dx7;
+        dx7_calls = 0ul; dx7_bytes = 0ul;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_OK && r.records == 4ul &&
+              c.tri_count == 1ul);
+        CHECK(dx7_calls == 3ul && dx7_ops[0] == V9X_DP2OP_SETTRANSFORM &&
+              dx7_ops[1] == V9X_DP2OP_SETLIGHT &&
+              dx7_ops[2] == V9X_DP2OP_CLEAR);
+        CHECK(dx7_lengths[0] == 68ul && dx7_lengths[1] == 120ul &&
+              dx7_lengths[2] == 48ul);
+
+        k.dx7 = 0;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_UNPARSED &&
+              r.stop_offset == transform_at &&
+              r.stop_op == V9X_DP2OP_SETTRANSFORM);
+
+        /* Hardware T&L step 6: VIEWPORTINFO and ZRANGE reach a dx7 sink
+         * too, and are consumed whatever it answers; without one they are
+         * consumed unseen, as before. */
+        used = 0ul;
+        command(V9X_DP2OP_VIEWPORTINFO, 1ul);
+        put32(1ul); put32(2ul); put32(300ul); put32(200ul);
+        command(V9X_DP2OP_ZRANGE, 1ul);
+        put32(0ul); put32(0x3f800000ul);
+        s.command_bytes = used;
+        dx7_calls = 0ul;
+        k.dx7 = on_dx7;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_OK && r.records == 2ul &&
+              dx7_calls == 2ul && dx7_ops[0] == V9X_DP2OP_VIEWPORTINFO &&
+              dx7_ops[1] == V9X_DP2OP_ZRANGE && dx7_lengths[0] == 16ul &&
+              dx7_lengths[1] == 8ul);
+        k.dx7 = 0;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_OK && r.records == 2ul);
+        k.dx7 = on_dx7;
+
+        /* The light's data cut to 50 bytes. */
+        used = 0ul;
+        command(V9X_DP2OP_SETLIGHT, 1ul);
+        put32(0ul); put32(V9X_DP2_SETLIGHT_DATA);
+        for (i = 0ul; i < 50ul; ++i) {
+            put8(0ul);
+        }
+        s.command_bytes = used;
+        k.dx7 = on_dx7;
+        v9x_dp2_walk(&s, &k, &r);
+        CHECK(r.status == V9X_DP2_MALFORMED);
     }
 
     return failures;

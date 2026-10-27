@@ -231,6 +231,16 @@ typedef struct v9x_d3d_context {
     DWORD stage1_address_v;
     DWORD stage1_texcoord;
     DWORD stage_two;
+    /* DDI 7 (docs\plans\hardware-tnl.md step 5): set when the context was
+     * made for a DDI 7 driver object, which names its surfaces by
+     * CreateSurfaceEx handle within dd_local, the DirectDraw local object
+     * ContextCreate named (d3d_handles.h). */
+    DWORD ddi7;
+    void *dd_local;
+    /* Hardware T&L step 6: the T&L device's state and batch
+     * (d3d_core.c's V9X_D3D_TNL_BLOCK), in the creating process's memory,
+     * for a DDI 7 context on an engine that runs T&L; null otherwise. */
+    void *tnl;
 } V9X_D3D_CONTEXT;
 
 /*

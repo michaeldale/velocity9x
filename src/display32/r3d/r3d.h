@@ -305,6 +305,9 @@ typedef struct v9x_r3d_tnl {
      * in order from 0. Null and 0 for one draw under `constants`. */
     const struct v9x_r3d_tnl_segment *segments;
     v9x_u32 segment_count;
+    /* Step 4: the object-space normals, three floats a vertex in the
+     * vertices' order, exactly when the key has V9X_R3D_TNL_IN_NORMAL. */
+    const float *normals;
 } V9X_R3D_TNL;
 
 typedef struct v9x_r3d_tnl_segment {

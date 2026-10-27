@@ -53,6 +53,8 @@ function Get-V9xHostSourceNames {
         # Haswell EU instruction encoder and 3D packet/state builders.
         'src\chipsets\intel\hsw_eu.c',
         'src\chipsets\intel\hsw_3d.c',
+        # Haswell vertex kernels generated from a T&L key.
+        'src\chipsets\intel\hsw_vs.c',
         # Haswell pipelined render submission: slots, sequences, signatures.
         'src\chipsets\intel\hsw_pipe.c',
         # Haswell primary-plane scanout arithmetic (Phase F3).
@@ -167,6 +169,7 @@ function Get-V9xHostSourceNames {
         'src\opengl\gl_pixels.c',
         'src\opengl\gl_varray.c',
         'src\opengl\gl_attrib.c',
+        'src\opengl\gl_light.c',
         # GLIDE2X.DLL's pure logic (docs\plans\glide-2x-wrapper.md, Phase 1).
         'src\glide\glide_vertex.c',
         'src\glide\glide_texmem.c',
@@ -187,6 +190,12 @@ function Get-V9xHostSourceNames {
         # The DrawPrimitives2 command walker: record layouts and bounds.
         'src\display32\d3d\d3d_dp2.c',
         'tests\host\test_d3d_dp2.c',
+        # DDI 7's CreateSurfaceEx handle table.
+        'src\display32\d3d\d3d_handles.c',
+        'tests\host\test_d3d_handles.c',
+        # The Direct3D 7 T&L device's front end.
+        'src\display32\d3d\d3d_tnl.c',
+        'tests\host\test_d3d_tnl.c',
         # Which D3D engine serves the chip, at publish time and every call.
         'src\display32\d3d\d3d_select.c',
         'tests\host\test_d3d_select.c',
@@ -245,6 +254,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_gl_pixels.c',
         'tests\host\test_gl_varray.c',
         'tests\host\test_gl_attrib.c',
+        'tests\host\test_gl_light.c',
         'tests\host\test_glide_vertex.c',
         'tests\host\test_glide_texture.c',
         'tests\host\test_glide_state.c',
@@ -263,6 +273,8 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_gtt.c',
         'tests\host\test_intel_hsw.c',
         'tests\host\test_intel_hsw_eu.c',
+        'tests\host\hsw_eu_sim.c',
+        'tests\host\test_intel_hsw_vs.c',
         'tests\host\test_intel_hsw_3d.c',
         'tests\host\test_intel_hsw_pipe.c',
         'tests\host\test_intel_hsw_display.c',

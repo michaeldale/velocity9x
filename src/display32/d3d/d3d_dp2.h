@@ -67,6 +67,25 @@
 #define V9X_DP2OP_SETPALETTE           30ul
 #define V9X_DP2OP_UPDATEPALETTE        31ul
 #define V9X_DP2OP_ZRANGE               32ul
+/* The DirectX 7 records (dh:909-1248; docs\specifications\
+ * haswell-vertex-stage-tnl.md section 3). Walked only for a sink with a
+ * dx7 callback - a DDI 7 driver object - and handed back otherwise. There
+ * is no opcode 37. */
+#define V9X_DP2OP_SETMATERIAL          33ul
+#define V9X_DP2OP_SETLIGHT             34ul
+#define V9X_DP2OP_CREATELIGHT          35ul
+#define V9X_DP2OP_SETTRANSFORM         36ul
+#define V9X_DP2OP_TEXBLT               38ul
+#define V9X_DP2OP_STATESET             39ul
+#define V9X_DP2OP_SETPRIORITY          40ul
+#define V9X_DP2OP_SETRENDERTARGET      41ul
+#define V9X_DP2OP_CLEAR                42ul
+#define V9X_DP2OP_SETTEXLOD            43ul
+#define V9X_DP2OP_SETCLIPPLANE         44ul
+
+/* D3DHAL_DP2SETLIGHT.dwDataType: the entry is followed by a D3DLIGHT7. */
+#define V9X_DP2_SETLIGHT_DATA          2ul
+#define V9X_DP2_LIGHT7_BYTES         104ul
 
 /* How a walk ended. */
 #define V9X_DP2_OK        0ul  /* every record consumed                      */
@@ -108,6 +127,14 @@ typedef struct v9x_dp2_sink {
      * no such sink. */
     int (*indexed_list)(void *user, const v9x_u8 *first, v9x_u32 base,
                         const v9x_u8 *indices, v9x_u32 triangles);
+    /* Optional, may be null: a DirectX 7 record (V9X_DP2OP_SETMATERIAL to
+     * V9X_DP2OP_SETCLIPPLANE) whole, its length checked inside the
+     * buffer. Non-zero when the sink consumed it; zero, or no sink, and
+     * the walk stops with V9X_DP2_UNPARSED there, as for any opcode it
+     * does not know. VIEWPORTINFO and ZRANGE are shown to it too (for the
+     * T&L device), and are consumed whatever it answers. */
+    int (*dx7)(void *user, v9x_u32 op, v9x_u32 count, const v9x_u8 *payload,
+               v9x_u32 bytes);
 } V9X_DP2_SINK;
 
 typedef struct v9x_dp2_stream {

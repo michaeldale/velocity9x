@@ -102,6 +102,17 @@ docs/decisions/2026-08-11-directdraw-hal.md,
 docs/decisions/2026-08-11-virge-engine-foundation.md, and
 docs/decisions/2026-08-11-direct3d-phase3.md.
 
+The paragraph above describes 2026-08-11 and is stale in most of its
+Direct3D detail. One correction that crosses this boundary: since
+hardware T&L step 6 (2026-10-27,
+docs/plans/hardware-tnl.md), the HD 4600 HAL holds a Direct3D 7 T&L
+device at DDI 7, not yet offered (`V9X_D3D_TNL_DEVICE_OFFERED` in
+`d3d_core.c`, off while it is slower than the runtime). When offered, the
+process sends object-space vertices, and the HAL builds the transform,
+lighting and fog program for the engine's vertex stage (`d3d_tnl.c`,
+`hsw_vs.c`). Until then, and on every other engine, the runtime
+transforms and lights, and the HAL draws pre-transformed vertices.
+
 ## Previous DirectDraw boundary
 
 No DirectDraw callbacks or capabilities are present in Phase 1. DirectDraw work

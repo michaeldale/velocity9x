@@ -481,9 +481,12 @@
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
         # fine"). The update checker, which nothing needs to boot or draw.
-        # The trace tool joined it on 2026-10-27, when the Evergreen CP
-        # engine and its microcode put disk 1 3,919 bytes over.
-        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE')
+        # GLIDE3X.DLL joined it when hardware T&L step 4 put disk 1 3,929
+        # bytes over (2026-10-27): no Glide 3 title needs it to start. The
+        # trace tool joined it the same day, when the Evergreen CP engine
+        # and its microcode put disk 1 3,919 bytes over (Michael,
+        # 2026-10-27: "v9xtrace on third disk is okay").
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE')
     }
 
     Vm = @{

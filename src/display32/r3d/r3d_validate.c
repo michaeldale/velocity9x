@@ -449,6 +449,11 @@ v9x_u32 v9x_r3d_validate_tnl(const V9X_R3D_ABI_TNL_DRAW *tnl)
         v9x_r3d_tnl_key_check(tnl->key) != V9X_STATUS_OK) {
         return V9X_R3D_RESULT_INVALID;
     }
+    /* Normals exactly when the key reads them (ABI 8). */
+    if ((tnl->normals != 0) !=
+        ((tnl->key->inputs & V9X_R3D_TNL_IN_NORMAL) != 0ul)) {
+        return V9X_R3D_RESULT_INVALID;
+    }
     /* Both corners inside the limit, and a positive extent. */
     if (!v9x_r3d_validate_within(tnl->viewport_x, -limit, limit) ||
         !v9x_r3d_validate_within(tnl->viewport_y, -limit, limit) ||

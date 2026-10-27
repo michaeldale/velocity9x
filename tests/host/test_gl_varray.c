@@ -211,6 +211,75 @@ static void test_draw_elements_and_strides(void)
     VCHECK(vsunk_triangles == 3ul && !s.in_begin);
 }
 
+/* The T&L sink's batch for test_draw_elements_captured. */
+static V9X_R3D_ABI_VERTEX vtnl_vertices[V9X_GL_TNL_VERTICES];
+static v9x_u16 vtnl_indices[V9X_GL_TNL_INDICES];
+static V9X_GL_TNL_ELEMENT vtnl_elements[V9X_GL_TNL_ELEMENTS];
+static V9X_R3D_ABI_VERTEX vtnl_sunk[8];
+static v9x_u16 vtnl_sunk_indices[12];
+static v9x_u32 vtnl_vertex_count;
+static v9x_u32 vtnl_index_count;
+
+static int vtnl_sink(void *user, const V9X_R3D_ABI_VERTEX *object,
+                     const GLfloat *normals, v9x_u32 vertex_count,
+                     const v9x_u16 *indices, v9x_u32 index_count)
+{
+    v9x_u32 i;
+
+    (void)user;
+    (void)normals;
+    for (i = 0ul; i < vertex_count && i < 8ul; ++i) {
+        vtnl_sunk[i] = object[i];
+    }
+    for (i = 0ul; i < index_count && i < 12ul; ++i) {
+        vtnl_sunk_indices[i] = indices[i];
+    }
+    vtnl_vertex_count = vertex_count;
+    vtnl_index_count = index_count;
+    return 1;
+}
+
+/*
+ * glDrawElements under capture (step 3b): a quad as two triangles naming
+ * four elements six times sends each element once, fetched once, with its
+ * own colour, and the indices name them in order.
+ */
+static void test_draw_elements_captured(void)
+{
+    static const GLfloat xy[8] = { 10.0f, 10.0f, 100.0f, 10.0f,
+                                   100.0f, 100.0f, 10.0f, 100.0f };
+    static const GLubyte rgba[16] = { 255u, 0u, 0u, 255u,  0u, 255u, 0u, 255u,
+                                      0u, 0u, 255u, 255u,  255u, 255u, 0u,
+                                      255u };
+    static const GLushort order[6] = { 0u, 1u, 2u, 0u, 2u, 3u };
+    static const v9x_u32 argb[4] = { 0xffff0000ul, 0xff00ff00ul,
+                                     0xff0000fful, 0xffffff00ul };
+    v9x_u32 i;
+
+    vscene();
+    v9x_gl_pipeline_tnl(&p, vtnl_sink, 1, vtnl_vertices, vtnl_indices,
+                        vtnl_elements, 0);
+    vtnl_vertex_count = 0ul;
+    vtnl_index_count = 0ul;
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_VERTEX, 2, V9X_GL_FLOAT, 0,
+                          xy);
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_COLOR, 4,
+                          V9X_GL_UNSIGNED_BYTE, 0, rgba);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_VERTEX_ARRAY, 1);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_COLOR_ARRAY, 1);
+    v9x_gl_arrays_draw_elements(&s, &p, &a, V9X_GL_TRIANGLES, 6,
+                                V9X_GL_UNSIGNED_SHORT, order);
+    VCHECK(vsunk_triangles == 0ul && p.tnl_cached == 2ul);
+    VCHECK(vtnl_vertex_count == 4ul && vtnl_index_count == 6ul);
+    for (i = 0ul; i < 6ul; ++i) {
+        v9x_u16 v = vtnl_sunk_indices[i];
+
+        VCHECK(v < 4u && vnear(vtnl_sunk[v].sx, xy[order[i] * 2u]) &&
+               vnear(vtnl_sunk[v].sy, xy[order[i] * 2u + 1u]) &&
+               vtnl_sunk[v].color == argb[order[i]]);
+    }
+}
+
 static void test_conversions(void)
 {
     static const GLbyte colour_b[4] = { 127, -128, 0, 127 };
@@ -440,6 +509,7 @@ unsigned int v9x_run_gl_varray_tests(void)
     test_pointer_and_enable_errors();
     test_draw_arrays();
     test_draw_elements_and_strides();
+    test_draw_elements_captured();
     test_conversions();
     test_interleaved();
     test_client_active_texture();

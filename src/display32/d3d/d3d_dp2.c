@@ -62,6 +62,28 @@ static v9x_u32 v9x_dp2_pad(const v9x_u8 *p)
     return (v9x_u32)((4u - ((size_t)p & 3u)) & 3u);
 }
 
+/* Bytes per entry of the fixed-size DirectX 7 records (d3dhal.h, the
+ * table in docs\specifications\haswell-vertex-stage-tnl.md section 3):
+ * D3DMATERIAL7, CREATELIGHT's index, SETTRANSFORM's type and D3DMATRIX,
+ * TEXBLT's handles, point, rectangle and flags, STATESET's operation,
+ * parameter and type, SETPRIORITY's handle and priority,
+ * SETRENDERTARGET's two handles, SETTEXLOD's handle and level, and
+ * SETCLIPPLANE's index and plane. */
+static v9x_u32 v9x_dp2_dx7_entry_bytes(v9x_u32 op)
+{
+    switch (op) {
+    case V9X_DP2OP_SETMATERIAL:     return 68ul;
+    case V9X_DP2OP_CREATELIGHT:     return 4ul;
+    case V9X_DP2OP_SETTRANSFORM:    return 68ul;
+    case V9X_DP2OP_TEXBLT:          return 36ul;
+    case V9X_DP2OP_STATESET:        return 12ul;
+    case V9X_DP2OP_SETPRIORITY:     return 8ul;
+    case V9X_DP2OP_SETRENDERTARGET: return 8ul;
+    case V9X_DP2OP_SETTEXLOD:       return 8ul;
+    default:                        return 20ul;   /* SETCLIPPLANE */
+    }
+}
+
 void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                   V9X_DP2_RESULT *result)
 {
@@ -490,11 +512,16 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             break;
 
         case V9X_DP2OP_VIEWPORTINFO:
-            /* The runtime clips to the viewport for a driver that reports
-             * no guard band, so the rectangle is consumed and not used. */
+            /* The runtime clips to the viewport for pre-transformed
+             * vertices, so only a T&L device reads the rectangle: a dx7
+             * sink is shown it (hardware T&L step 6), and it is consumed
+             * whatever the sink answers. */
             need = count * 16ul;
             if (need > left) {
                 goto malformed;
+            }
+            if (sink->dx7 != 0) {
+                (void)sink->dx7(sink->user, op, count, data, need);
             }
             break;
 
@@ -503,6 +530,9 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             need = count * 8ul;
             if (need > left) {
                 goto malformed;
+            }
+            if (op == V9X_DP2OP_ZRANGE && sink->dx7 != 0) {
+                (void)sink->dx7(sink->user, op, count, data, need);
             }
             break;
 
@@ -531,6 +561,58 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                 need += entries * 4ul;
             }
             ++result->undrawn;
+            break;
+
+        /*
+         * The DirectX 7 records, each length from d3dhal.h: fixed-size
+         * entries, except SETLIGHT, whose entry carries a D3DLIGHT7 only
+         * for V9X_DP2_SETLIGHT_DATA, and CLEAR, one D3DHAL_DP2CLEAR header
+         * (flags, colour, depth, stencil) then `count` rectangles.
+         */
+        case V9X_DP2OP_SETMATERIAL:
+        case V9X_DP2OP_CREATELIGHT:
+        case V9X_DP2OP_SETTRANSFORM:
+        case V9X_DP2OP_TEXBLT:
+        case V9X_DP2OP_STATESET:
+        case V9X_DP2OP_SETPRIORITY:
+        case V9X_DP2OP_SETRENDERTARGET:
+        case V9X_DP2OP_SETTEXLOD:
+        case V9X_DP2OP_SETCLIPPLANE:
+        case V9X_DP2OP_SETLIGHT:
+        case V9X_DP2OP_CLEAR:
+            if (sink->dx7 == 0) {
+                result->status = V9X_DP2_UNPARSED;
+                return;
+            }
+            if (op == V9X_DP2OP_SETLIGHT) {
+                for (i = 0ul; i < count; ++i) {
+                    if (left - need < 8ul) {
+                        goto malformed;
+                    }
+                    need += 8ul;
+                    if (v9x_dp2_dword(data + need - 4ul) ==
+                        V9X_DP2_SETLIGHT_DATA) {
+                        if (left - need < V9X_DP2_LIGHT7_BYTES) {
+                            goto malformed;
+                        }
+                        need += V9X_DP2_LIGHT7_BYTES;
+                    }
+                }
+            } else if (op == V9X_DP2OP_CLEAR) {
+                need = 16ul + count * 16ul;
+                if (need > left) {
+                    goto malformed;
+                }
+            } else {
+                need = count * v9x_dp2_dx7_entry_bytes(op);
+                if (need > left) {
+                    goto malformed;
+                }
+            }
+            if (!sink->dx7(sink->user, op, count, data, need)) {
+                result->status = V9X_DP2_UNPARSED;
+                return;
+            }
             break;
 
         default:
