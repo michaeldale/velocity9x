@@ -221,6 +221,11 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream);
  * the fetch shader slots.
  */
 #define V9X_EG_INTERPOLANTS_MAX     3ul
+/* CB_TARGET_MASK's target-0 bits: x, y and z are B, G and R in memory
+ * order. */
+#define V9X_EG_CHANNEL_BLUE         0x1ul
+#define V9X_EG_CHANNEL_GREEN        0x2ul
+#define V9X_EG_CHANNEL_RED          0x4ul
 struct v9x_eg_3d_state {
     v9x_u32 target_gpu;
     v9x_u32 target_pitch;
@@ -229,6 +234,9 @@ struct v9x_eg_3d_state {
     /* Nonzero writes the target's alpha (its fourth channel); zero leaves
      * it, which an XRGB8888 target's X byte needs. */
     v9x_u32 write_alpha;
+    /* Colour channels not written, V9X_EG_CHANNEL_*: an OpenGL write
+     * mask. Zero writes all of them. */
+    v9x_u32 masked_channels;
     v9x_u32 scissor_left;
     v9x_u32 scissor_top;
     v9x_u32 scissor_right;

@@ -115,6 +115,53 @@ static v9x_u32 map(const V9X_R3D_DRAW *draw,
                                vs, ps, &lit);
 }
 
+static void test_explicit(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_eg_3d_state state;
+    v9x_u32 vs;
+    v9x_u32 ps;
+
+    /* The render interface's draw: its scissor, and its write mask as the
+     * channels not written (red off, green and blue on). */
+    base_draw(&draw);
+    draw.explicit_state = 1ul;
+    draw.scissor_left = 10ul;
+    draw.scissor_top = 20ul;
+    draw.scissor_right = 300ul;
+    draw.scissor_bottom = 400ul;
+    draw.write_mask = V9X_D3D_EG_WRITE_GREEN | V9X_D3D_EG_WRITE_BLUE;
+    CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(state.scissor_left == 10ul && state.scissor_top == 20ul &&
+          state.scissor_right == 300ul && state.scissor_bottom == 400ul);
+    CHECK(state.masked_channels == V9X_EG_CHANNEL_RED);
+
+    /* A scissor past the target, or an empty one, goes to the fallback
+     * rather than be clamped. */
+    draw.scissor_right = 641ul;
+    CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_EXPLICIT);
+    draw.scissor_right = 10ul;
+    CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_EXPLICIT);
+
+    /* Levels in CPU memory are not sampled here. */
+    base_draw(&draw);
+    draw.explicit_state = 1ul;
+    draw.scissor_right = 640ul;
+    draw.scissor_bottom = 480ul;
+    draw.write_mask = V9X_D3D_EG_WRITE_RED | V9X_D3D_EG_WRITE_GREEN |
+                      V9X_D3D_EG_WRITE_BLUE;
+    draw.texture.levels = (void *)&draw;
+    CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_EXPLICIT);
+
+    /* A Direct3D draw writes every channel over the whole target. */
+    base_draw(&draw);
+    CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(state.masked_channels == 0ul && state.scissor_right == 640ul);
+}
+
 static void test_lit(void)
 {
     V9X_R3D_DRAW draw;
@@ -439,5 +486,6 @@ unsigned int v9x_run_d3d_eg_map_tests(void)
     test_texture();
     test_mip_chain();
     test_lit();
+    test_explicit();
     return failures;
 }

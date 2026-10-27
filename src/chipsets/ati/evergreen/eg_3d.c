@@ -786,8 +786,9 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     v9x_eg_pm4_set_context(stream, EG_CB_COLOR0_BASE, words,
                            EG_CB_COLOR0_DWORDS);
     v9x_eg_pm4_set_context1(stream, EG_CB_TARGET_MASK,
-                            state->write_alpha != 0ul ? EG_CB_WRITE_RGBA
-                                                      : EG_CB_WRITE_RGB);
+                            (state->write_alpha != 0ul ? EG_CB_WRITE_RGBA
+                                                       : EG_CB_WRITE_RGB) &
+                            ~state->masked_channels);
     v9x_eg_pm4_set_context1(stream, EG_CB_BLEND0_CONTROL,
                             state->blend_control);
 

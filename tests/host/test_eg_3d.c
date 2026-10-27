@@ -356,6 +356,15 @@ static void test_state(void)
     CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
     CHECK(reg_value(buffer, stream.count, 0x28238ul) == 0xful);
 
+    /* An OpenGL write mask: a masked channel's bit is cleared, x, y and z
+     * being B, G and R. */
+    state.write_alpha = 0ul;
+    state.masked_channels = V9X_EG_CHANNEL_RED | V9X_EG_CHANNEL_BLUE;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(reg_value(buffer, stream.count, 0x28238ul) == 2ul);
+    state.masked_channels = 0ul;
+
     /* GPU address 0 is memory like any other: on M-BXMFA8 the heap starts
      * there, and after a flip the back buffer is the surface at offset 0
      * (V9XD32 at 32 bpp, boot 14). Depth and texture are switched by their

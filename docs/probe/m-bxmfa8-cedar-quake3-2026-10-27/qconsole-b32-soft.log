@@ -1,0 +1,65 @@
+logfile opened on Tue Oct 27 03:17:56 2026
+
+...detecting CPU, found Intel Pentium III
+
+------- Input Initialization -------
+Initializing DirectInput...
+Couldn't set DI coop level
+Falling back to Win32 mouse support...
+Joystick is not active.
+------------------------------------
+----- Client Initialization -----
+----- Initializing Renderer ----
+-------------------------------
+----- Client Initialization Complete -----
+--- Common Initialization Complete ---
+Winsock Initialized
+Opening IP socket: localhost:27960
+Hostname: dhell
+IP: 192.168.2.2
+Working directory: C:\games\Q3Ademo
+RE_Shutdown( 0 )
+----- R_Init -----
+Initializing OpenGL subsystem
+...initializing QGL
+...calling LoadLibrary( 'C:\WINDOWS\SYSTEM\opengl32.dll' ): succeeded
+...setting mode 3: 640 480 FS
+...using desktop display depth of 16
+...calling CDS: ok
+...registered window class
+...created window@0,0 (640x480)
+Initializing OpenGL driver
+...getting DC: succeeded
+...GLW_ChoosePFD( 16, 16, 0 )
+...23 PFDs found
+...GLW_ChoosePFD failed
+...GLW_ChoosePFD( 16, 16, 0 )
+...23 PFDs found
+...GLW_ChoosePFD failed
+...failed to find an appropriate PIXELFORMAT
+...restoring display settings
+...WARNING: could not set the given mode (3)
+...setting mode 3: 640 480 FS
+...using colorsbits of 16
+...calling CDS: ok
+...created window@0,0 (640x480)
+Initializing OpenGL driver
+...getting DC: succeeded
+...GLW_ChoosePFD( 16, 16, 0 )
+...23 PFDs found
+...GLW_ChoosePFD failed
+...GLW_ChoosePFD( 16, 16, 0 )
+...23 PFDs found
+...GLW_ChoosePFD failed
+...failed to find an appropriate PIXELFORMAT
+...restoring display settings
+...WARNING: could not set the given mode (3)
+...shutting down QGL
+...unloading OpenGL DLL
+...assuming '3dfxvgl' is a standalone driver
+...initializing QGL
+...calling LoadLibrary( 'C:\WINDOWS\SYSTEM\3dfxvgl.dll' ): failed
+...shutting down QGL
+----- CL_Shutdown -----
+RE_Shutdown( 1 )
+-----------------------

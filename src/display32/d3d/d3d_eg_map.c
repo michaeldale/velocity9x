@@ -238,11 +238,11 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
     for (index = 0ul; index < sizeof(*state); ++index) {
         bytes[index] = 0u;
     }
-    /* The render interface's explicit draws (OpenGL, Glide) carry a
-     * scissor, a write mask and CPU levels this engine does not take yet;
-     * its CPU fallback draws them. */
-    if (draw->explicit_state != 0ul || draw->texture.levels != 0 ||
-        draw->texcoords1 != 0 || draw->texture1.object != 0) {
+    /* The render interface's explicit draws (OpenGL, Glide) are drawn with
+     * their scissor and write mask (below). Levels in CPU memory are not
+     * sampled, and there is one texture unit: the fallback draws those. */
+    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
+        draw->texture1.object != 0) {
         return V9X_D3D_EG_REFUSE_EXPLICIT;
     }
 
@@ -271,6 +271,31 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
     state->target_height = draw->target.height;
     state->scissor_right = draw->target.width;
     state->scissor_bottom = draw->target.height;
+
+    /* An explicit draw's scissor must be a non-empty rectangle inside the
+     * target; one that is not goes to the fallback rather than be clamped.
+     * Its write mask names the channels written. */
+    if (draw->explicit_state != 0ul) {
+        if (draw->scissor_left >= draw->scissor_right ||
+            draw->scissor_top >= draw->scissor_bottom ||
+            draw->scissor_right > draw->target.width ||
+            draw->scissor_bottom > draw->target.height) {
+            return V9X_D3D_EG_REFUSE_EXPLICIT;
+        }
+        state->scissor_left = draw->scissor_left;
+        state->scissor_top = draw->scissor_top;
+        state->scissor_right = draw->scissor_right;
+        state->scissor_bottom = draw->scissor_bottom;
+        if ((draw->write_mask & V9X_D3D_EG_WRITE_RED) == 0ul) {
+            state->masked_channels |= V9X_EG_CHANNEL_RED;
+        }
+        if ((draw->write_mask & V9X_D3D_EG_WRITE_GREEN) == 0ul) {
+            state->masked_channels |= V9X_EG_CHANNEL_GREEN;
+        }
+        if ((draw->write_mask & V9X_D3D_EG_WRITE_BLUE) == 0ul) {
+            state->masked_channels |= V9X_EG_CHANNEL_BLUE;
+        }
+    }
 
     /* Depth, when enabled and bound: Z16 as d3d_eg.c places it, rows padded
      * to the tile. Disabled, the DB has no buffer and neither tests nor

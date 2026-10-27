@@ -22,6 +22,11 @@
 #include "velocity9x/eg_3d.h"
 #include "../r3d/r3d.h"
 
+/* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
+#define V9X_D3D_EG_WRITE_RED   1ul
+#define V9X_D3D_EG_WRITE_GREEN 2ul
+#define V9X_D3D_EG_WRITE_BLUE  4ul
+
 /* A texture format no Evergreen path here samples. */
 #define V9X_D3D_EG_TEXTURE_UNKNOWN 0xfffffffful
 
