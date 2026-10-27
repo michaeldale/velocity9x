@@ -65,14 +65,30 @@ searched for.
 | V9XGLIDP alone after | PASS, 0 failures |
 | `V9XSNAL.TXT` | `C:\V9XDIAG\V9XSNA7.INI` (all eight names taken, the last reused) |
 
+## HD 5450, boot 39
+
+M-BXMFA8's HD 5450, the same package's ati build (V9XHAL `4132bb86-dirty`,
+ATI3DCIF not deployed), installed and checked by SHA-256. Evidence:
+[`../probe/frame-grab-hd5450-2026-10-27/`](../probe/frame-grab-hd5450-2026-10-27/).
+
+| Check | Result |
+|---|---|
+| `V9XTRACE -grab:40x10`, then 3DMark 2000 default | 10 files of 2,359,350 bytes; `GrabSeq` 40 to 400; `GrabOffset` rotating 180000h, 300000h, 0; `GrabStatus=1`; 19,809 flips handled, 0 declined |
+| The grabs | Game 1 from mission time 0.0 to about 11, whole, colours right; trees drawn in all ten (`grab-sheet.jpg`) |
+| 3DMark 2000 with the grab armed | completes, 4641 (not comparable) |
+
+So the grab works through the Evergreen flip path as through Intel's.
+The owner's report of trees vanishing and returning is about consecutive
+frames, which grabs 40 flips apart cannot show; `-grab:1x10` would.
+3DMark lists the device as "Velocity9x VBE-generic display (any VESA",
+not as the HD 5450: a name, not yet looked into.
+
 ## Not checked
 
 - The Ironlake's wrong frame. None of the ten grabs shows it. All ten
   carry the mission-time panel, which the wrong frame did not, so it may
   come before the mission clock starts; a grab armed with a shorter
   interval would reach it.
-- The grab on any other engine. The hook is in the core flip path, so
-  any engine that takes page flips should grab, the HD 5450 included;
-  only the Ironlake was run.
+- The grab on engines other than the Ironlake's and the HD 5450's.
 - An 8 bpp or 24 bpp mode: refused by the plan (`GrabStatus=4`), not run.
 - V9XR3DP and V9XGL3P's BUSY answers: same code as V9XGLIDP's, not run.
