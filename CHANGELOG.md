@@ -26,9 +26,15 @@ build identifier so exact guest-tested binaries remain traceable.
   - OpenGL games draw on the card: the Quake 3 demo timedemo runs at 68.8
     fps with every batch in hardware
     ([record](docs/decisions/2026-10-27-cedar-opengl-quake3.md)).
-  - Known limits: video memory is the VBE's 16 MiB of the card's 1 GiB;
-    one texture stage; no page flips on the engine yet. The monitor
-    picture has not been confirmed by the card's owner.
+  - Page flips go through the display controller, taken at the vertical
+    blank. Without them DirectDraw's emulated flips drew into the visible
+    buffer, and the owner saw 3DMark 2000 corrupt every second frame. In
+    3DMark 2000, 19,949 flips were handled and none declined
+    ([record](docs/decisions/2026-10-27-cedar-page-flips.md)). Whether
+    the flicker is gone on the monitor is not yet confirmed.
+  - Known limits: video memory is the VBE's 16 MiB of the card's 1 GiB,
+    so Quake 3 at maximum texture detail runs out of room and draws some
+    surfaces without their textures; one texture stage.
 - **HD 4600: OpenGL transform and lighting run on the card.** A vertex
   kernel is built per fixed-function state: lights, materials, fog and
   texture matrices. The ICD gains OpenGL lighting (`glLight`,
