@@ -105,12 +105,54 @@ static void test_mip_chain(void)
           state.mip_filter == V9X_EG_MIP_NONE);
 }
 
+static V9X_D3D_EG_LIT lit;
+
 static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_EG_TEXTURE *texture, v9x_u32 depth_bytes,
                    struct v9x_eg_3d_state *state, v9x_u32 *vs, v9x_u32 *ps)
 {
     return v9x_d3d_eg_map_draw(draw, texture, HEAP_GPU, depth_bytes, state,
-                               vs, ps);
+                               vs, ps, &lit);
+}
+
+static void test_lit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_EG_TEXTURE texture;
+    struct v9x_eg_3d_state state;
+    v9x_u32 vs;
+    v9x_u32 ps;
+
+    /* Untextured with fog: the lit VS, a lit PS of op NONE carrying the
+     * fog colour, two interpolants. */
+    base_draw(&draw);
+    draw.fog_enable = 1ul;
+    draw.fog_color = 0x00ff8000ul;
+    CHECK(map(&draw, 0, 0ul, &state, &vs, &ps) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(vs == V9X_EG_SLOT_VS_LIT && ps == V9X_D3D_EG_PS_LIT);
+    CHECK(lit.op == V9X_EG_D3D_OP_NONE && lit.fog == 1ul &&
+          lit.specular == 0ul && lit.fog_color == 0x00ff8000ul);
+    CHECK(state.vs_gprs == 4ul && state.ps_gprs == 3ul &&
+          state.interpolants == 2ul);
+
+    /* Textured MODULATE with specular: three interpolants. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.specular_enable = 1ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(vs == V9X_EG_SLOT_VS_LIT_TEXTURED && ps == V9X_D3D_EG_PS_LIT);
+    CHECK(lit.op == V9X_EG_D3D_OP_MODULATE && lit.specular == 1ul &&
+          lit.fog == 0ul);
+    CHECK(state.interpolants == 3ul && state.has_texture == 1ul);
+
+    /* Neither: the slots as before. */
+    draw.specular_enable = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE);
+    CHECK(vs == V9X_EG_SLOT_VS_TEXTURED &&
+          ps == V9X_EG_SLOT_PS_FIRST + V9X_EG_D3D_OP_MODULATE &&
+          state.interpolants == 2ul);
 }
 
 static void test_untextured(void)
@@ -396,5 +438,6 @@ unsigned int v9x_run_d3d_eg_map_tests(void)
     test_blend_and_alpha();
     test_texture();
     test_mip_chain();
+    test_lit();
     return failures;
 }

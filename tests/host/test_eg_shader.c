@@ -261,6 +261,98 @@ static void test_d3d(void)
           (shader[17] & 0x30000000ul) == 0x30000000ul);
 }
 
+static void test_d3d_lit(void)
+{
+    v9x_u32 count;
+    v9x_u32 slot;
+    v9x_u32 w0;
+    v9x_u32 w1;
+
+    /* Textured lit VS: five CF words, VC of four at dword 12; PARAM0 R0,
+     * PARAM1 R2, PARAM2 R3 done and the end; specular from 20 into R3. */
+    reset();
+    count = v9x_eg_shader_d3d_vs_lit(1ul, shader);
+    CHECK(count == 28ul);
+    CHECK(shader[0] == 6ul && shader[1] == 0x80800c00ul);
+    CHECK(shader[4] == 0x00004000ul && shader[5] == 0x14c00688ul);
+    CHECK(shader[6] == 0x00014001ul && shader[7] == 0x14c00688ul);
+    CHECK(shader[8] == 0x0001c002ul && shader[9] == 0x15200688ul);
+    CHECK(shader[10] == 0ul && shader[11] == 0ul);
+    CHECK((shader[24] >> 26) == 3ul && shader[26] == 20ul);
+    CHECK(shader[25] == (3ul | (0x688ul << 9) | (0x1aul << 22)));
+
+    /* Untextured: PARAM1 is specular, the fetches at dword 8. */
+    reset();
+    count = v9x_eg_shader_d3d_vs_lit(0ul, shader);
+    CHECK(count == 20ul);
+    CHECK(shader[0] == 4ul && shader[1] == 0x80800800ul);
+    CHECK(shader[6] == 0x0001c001ul && shader[7] == 0x15200688ul);
+    CHECK(shader[18] == 20ul && (shader[17] & 0x7ful) == 3ul);
+
+    /* MODULATE, specular and fog to 0x00FF8000: interpolation of 20 slots
+     * at 8, combine of 20 (16 ALU, two literal pairs) at 48, texture at
+     * 88. */
+    reset();
+    count = v9x_eg_shader_d3d_ps_lit(V9X_EG_D3D_OP_MODULATE, 1ul, 1ul,
+                                     0x00ff8000ul, shader);
+    CHECK(count == 92ul);
+    CHECK(shader[0] == 4ul &&
+          shader[1] == (0x80000000ul | (8ul << 26) | (19ul << 18)));
+    CHECK(shader[2] == 44ul && shader[3] == 0x80400000ul);
+    CHECK(shader[4] == 24ul &&
+          shader[5] == (0x80000000ul | (8ul << 26) | (19ul << 18)));
+    CHECK(shader[6] == 0ul && shader[7] == 0x95200688ul);
+    /* Specular from PARAM2 into R2, all four channels. */
+    CHECK(((shader[16] >> 13) & 0x1fful) == V9X_EG_ALU_SRC_PARAM + 2ul);
+    CHECK(((shader[17] >> 21) & 0x7ful) == 2ul);
+    /* R0.c += R2.c, clamped, x to z. */
+    for (slot = 0ul; slot < 3ul; ++slot) {
+        w0 = shader[56ul + slot * 2ul];
+        w1 = shader[57ul + slot * 2ul];
+        CHECK(w0 == ((slot << 10) | (2ul << 13) | (slot << 23) |
+                     (slot == 2ul ? 0x80000000ul : 0ul)));
+        CHECK(w1 == (0x80000010ul | (slot << 29)));
+    }
+    /* R1.c = R0.c - L.c, then the literals B 0, G 128/255, R 1, padded. */
+    CHECK(shader[62] == (0xfdul << 13 | 0x02000000ul));
+    CHECK(shader[63] == (0x00000010ul | (1ul << 21)));
+    CHECK((shader[66] >> 31) == 1ul);
+    CHECK(shader[68] == 0ul && shader[69] == 0x3f008081ul &&
+          shader[70] == 0x3f800000ul && shader[71] == 0ul);
+    /* R1.c *= R2.w. */
+    CHECK(shader[72] == (1ul | (2ul << 13) | (3ul << 23)));
+    CHECK(shader[73] == (0x00000010ul | (1ul << 7) | (1ul << 21)));
+    /* R0.c = R1.c + L.c. */
+    CHECK(shader[78] == (1ul | (0xfdul << 13)));
+    CHECK(shader[79] == (0x00000010ul));
+    CHECK(shader[85] == 0x3f008081ul && shader[86] == 0x3f800000ul);
+    CHECK(shader[88] == (V9X_EG_TEX_SAMPLE | (1ul << 16)));
+    CHECK((shader[89] & 0x7ful) == 1ul &&
+          (shader[89] & 0x30000000ul) == 0x30000000ul);
+
+    /* Untextured, specular only: no texture clause, specular PARAM1. */
+    reset();
+    count = v9x_eg_shader_d3d_ps_lit(V9X_EG_D3D_OP_NONE, 1ul, 0ul, 0ul,
+                                     shader);
+    CHECK(count == 48ul);
+    CHECK(shader[0] == 4ul &&
+          shader[1] == (0x80000000ul | (8ul << 26) | (15ul << 18)));
+    CHECK(shader[2] == 20ul &&
+          shader[3] == (0x80000000ul | (8ul << 26) | (2ul << 18)));
+    CHECK(shader[4] == 0ul && shader[5] == 0x95200688ul);
+    CHECK(((shader[8] >> 13) & 0x1fful) == V9X_EG_ALU_SRC_PARAM + 1ul);
+
+    /* REPLACE with fog: no colour interpolation, the texel into R0. */
+    reset();
+    count = v9x_eg_shader_d3d_ps_lit(V9X_EG_D3D_OP_REPLACE, 0ul, 1ul,
+                                     0x00000001ul, shader);
+    CHECK(count == 64ul);
+    CHECK(shader[2] == 30ul && shader[4] == 16ul);
+    CHECK((shader[61] & 0x7ful) == 0ul);
+    /* 1/255: 2^-8 * 1.00392..., rounded. */
+    CHECK(shader[38] == 0x3b808081ul);
+}
+
 unsigned int v9x_run_eg_shader_tests(void)
 {
     failures = 0u;
@@ -270,5 +362,6 @@ unsigned int v9x_run_eg_shader_tests(void)
     test_modulate_vs();
     test_modulate_ps();
     test_d3d();
+    test_d3d_lit();
     return failures;
 }

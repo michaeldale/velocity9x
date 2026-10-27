@@ -290,6 +290,23 @@ static int v9x_tex_8888;
 #define V9X_MIP_LEVELS              6ul
 #define V9X_MIP_PITCH_TEXELS        64ul
 static DWORD v9x_mip_level;
+/*
+ * /d3dfog: the lit shaders (v9x_eg_shader_d3d_vs_lit and _ps_lit), three
+ * bands of one D3DCOLOR, each with its own specular dword: x 0 to 16 a
+ * colour and fog factor AAh, 16 to 32 factor 0 (all fog), 32 to 64
+ * factor FFh and no colour (no fog). Fog colour V9X_FOG_COLOUR. Each
+ * pixel is checked against fog + f * (min(1, colour + specular) - fog),
+ * alpha the colour's. /d3dfogtex: the same over /d3dtex's texture,
+ * modulated by white.
+ */
+#define V9X_MODE_D3D_FOG            11ul
+#define V9X_MODE_D3D_FOG_TEX        12ul
+#define V9X_FOG_COLOUR              0x00ff8000ul
+#define V9X_FOG_SPECULAR_0          0xaa102030ul
+#define V9X_FOG_SPECULAR_1          0x00000000ul
+#define V9X_FOG_SPECULAR_2          0xff000000ul
+#define V9X_FLOAT_16                0x41800000ul
+static DWORD v9x_specular;
 static DWORD v9x_mode = V9X_MODE_BLIT;
 /* PA_SU_VTX_CNTL's PIX_CENTER_HALF for the Direct3D draws; /centre0
  * clears it. */
@@ -357,7 +374,8 @@ static DWORD v9x_ps_dwords;
 #define V9X_RPTR_WB                 0x4100ul
 #define V9X_VS_OFFSET               0x5000ul
 #define V9X_PS_OFFSET               0x5100ul
-#define V9X_VB_OFFSET               0x5200ul
+/* After the largest PS, a lit one of 92 dwords. */
+#define V9X_VB_OFFSET               0x5400ul
 #define V9X_SRC_OFFSET              0x6000ul
 #define V9X_DST_OFFSET              0x7000ul
 #define V9X_DST_GUARD_DWORDS        1024ul
@@ -910,14 +928,20 @@ static void v9x_mip_resource(struct v9x_eg_pm4 *stream, DWORD g)
     v9x_eg_pm4_put(stream, 0ul);
 }
 
+static DWORD v9x_d3d_textured(void)
+{
+    return v9x_mode == V9X_MODE_D3D_TEX || v9x_mode == V9X_MODE_D3D_PERSP ||
+           v9x_mode == V9X_MODE_D3D_1555 || v9x_mode == V9X_MODE_D3D_MIP ||
+           v9x_mode == V9X_MODE_D3D_FOG_TEX;
+}
+
 static void v9x_ring_draw_d3d(DWORD g)
 {
     struct v9x_eg_3d_state state;
     struct v9x_eg_pm4 *stream = v9x_stage_begin();
-    DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
-                     v9x_mode == V9X_MODE_D3D_PERSP ||
-                     v9x_mode == V9X_MODE_D3D_1555 ||
-                     v9x_mode == V9X_MODE_D3D_MIP;
+    DWORD textured = v9x_d3d_textured();
+    DWORD lit = v9x_mode == V9X_MODE_D3D_FOG ||
+                v9x_mode == V9X_MODE_D3D_FOG_TEX;
     DWORD batch;
 
     state = v9x_zero_state;
@@ -947,6 +971,11 @@ static void v9x_ring_draw_d3d(DWORD g)
     state.ps_gpu = g + V9X_PS_OFFSET;
     state.ps_gprs = textured ? 2ul : 1ul;
     state.interpolants = textured ? 2ul : 1ul;
+    if (lit) {
+        state.vs_gprs = 4ul;
+        state.ps_gprs = 3ul;
+        state.interpolants = V9X_EG_D3D_INTERPOLANTS(textured);
+    }
     if (textured) {
         state.has_texture = 1ul;
         state.texture_levels = 1ul;
@@ -1092,7 +1121,7 @@ static void v9x_d3d_vertex(DWORD x, DWORD y, DWORD z, DWORD rhw,
     at[2] = z;
     at[3] = rhw;
     at[4] = colour;
-    at[5] = 0ul;
+    at[5] = v9x_specular;
     at[6] = u;
     at[7] = v;
     v9x_vertex_dwords += V9X_D3D_VERTEX_DWORDS;
@@ -1116,15 +1145,32 @@ static void v9x_d3d_rect(DWORD x0, DWORD x1, DWORD z, DWORD colour,
  * layout. */
 static void v9x_build_d3d(void)
 {
-    DWORD textured = v9x_mode == V9X_MODE_D3D_TEX ||
-                     v9x_mode == V9X_MODE_D3D_PERSP ||
-                     v9x_mode == V9X_MODE_D3D_1555 ||
-                     v9x_mode == V9X_MODE_D3D_MIP;
+    DWORD textured = v9x_d3d_textured();
+    DWORD colour;
 
     v9x_vs_dwords = v9x_eg_shader_d3d_vs(textured, v9x_vs);
     v9x_ps_dwords = v9x_eg_shader_d3d_ps(textured ? V9X_EG_D3D_OP_MODULATE :
                                          V9X_EG_D3D_OP_NONE, v9x_ps);
     v9x_vertex_stride = V9X_EG_D3D_STRIDE;
+    v9x_specular = 0ul;
+    if (v9x_mode == V9X_MODE_D3D_FOG || v9x_mode == V9X_MODE_D3D_FOG_TEX) {
+        v9x_vs_dwords = v9x_eg_shader_d3d_vs_lit(textured, v9x_vs);
+        v9x_ps_dwords = v9x_eg_shader_d3d_ps_lit(
+            textured ? V9X_EG_D3D_OP_MODULATE : V9X_EG_D3D_OP_NONE, 1ul, 1ul,
+            V9X_FOG_COLOUR, v9x_ps);
+        colour = textured ? V9X_D3D_WHITE : V9X_D3D_COLOUR_VALUE;
+        v9x_specular = V9X_FOG_SPECULAR_0;
+        v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_16, V9X_FLOAT_0_5, colour,
+                     V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0, V9X_FLOAT_0_25);
+        v9x_specular = V9X_FOG_SPECULAR_1;
+        v9x_d3d_rect(V9X_FLOAT_16, V9X_FLOAT_32, V9X_FLOAT_0_5, colour,
+                     V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0_25, V9X_FLOAT_0_5);
+        v9x_specular = V9X_FOG_SPECULAR_2;
+        v9x_d3d_rect(V9X_FLOAT_32, V9X_FLOAT_64, V9X_FLOAT_0_5, colour,
+                     V9X_FLOAT_1, V9X_FLOAT_1, V9X_FLOAT_0_5, V9X_FLOAT_1);
+        v9x_specular = 0ul;
+        return;
+    }
     if (v9x_mode == V9X_MODE_D3D_TEX || v9x_mode == V9X_MODE_D3D_1555 ||
         v9x_mode == V9X_MODE_D3D_MIP) {
         v9x_d3d_rect(V9X_FLOAT_0, V9X_FLOAT_64, V9X_FLOAT_0_5,
@@ -1478,12 +1524,43 @@ static void v9x_verify(void)
  * stores them. Red's ramp is sampled at pixel centres, (x + 0.5) / 64,
  * rounded; modulate scales the source texel's bytes by red's ramp, 1,
  * 0.5 and 1. */
+/* /d3dfog's pixel: per channel B, G, R, fog + f * (min(255, colour +
+ * specular) - fog), rounded; alpha the colour's. */
+static DWORD v9x_fog_pixel(DWORD colour, DWORD specular)
+{
+    DWORD f = specular >> 24;
+    DWORD result = colour & 0xff000000ul;
+    DWORD shift;
+    DWORD c;
+    DWORD fog;
+    long mixed;
+
+    for (shift = 0ul; shift < 24ul; shift += 8ul) {
+        c = ((colour >> shift) & 0xfful) + ((specular >> shift) & 0xfful);
+        if (c > 255ul) {
+            c = 255ul;
+        }
+        fog = (V9X_FOG_COLOUR >> shift) & 0xfful;
+        mixed = (long)fog * 255l + (long)f * ((long)c - (long)fog);
+        result |= (DWORD)((mixed + 127l) / 255l) << shift;
+    }
+    return result;
+}
+
 static DWORD v9x_expected_pixel(DWORD index)
 {
     DWORD x = index % V9X_DRAW_WIDTH;
     DWORD texel;
     DWORD red;
+    DWORD specular;
 
+    if (v9x_mode == V9X_MODE_D3D_FOG || v9x_mode == V9X_MODE_D3D_FOG_TEX) {
+        specular = x < 16ul ? V9X_FOG_SPECULAR_0 :
+                   x < 32ul ? V9X_FOG_SPECULAR_1 : V9X_FOG_SPECULAR_2;
+        return v9x_fog_pixel(v9x_mode == V9X_MODE_D3D_FOG ?
+                             V9X_D3D_COLOUR_VALUE : v9x_pattern(index),
+                             specular);
+    }
     if (v9x_mode == V9X_MODE_D3D_COLOUR) {
         return V9X_D3D_COLOUR_VALUE;
     }
@@ -2073,6 +2150,12 @@ void __stdcall V9xEvergreen3dEntry(void)
     }
     if (v9x_switch_given("/d3d1555")) {
         v9x_mode = V9X_MODE_D3D_1555;
+    }
+    if (v9x_switch_given("/d3dfog")) {
+        v9x_mode = V9X_MODE_D3D_FOG;
+    }
+    if (v9x_switch_given("/d3dfogtex")) {
+        v9x_mode = V9X_MODE_D3D_FOG_TEX;
     }
     v9x_tex_width = v9x_switch_hex("/texw:", 64ul);
     v9x_tex_pitch = v9x_switch_hex("/texpitch:", 64ul);

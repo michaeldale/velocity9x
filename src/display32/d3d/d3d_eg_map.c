@@ -223,7 +223,8 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 depth_bytes,
                             struct v9x_eg_3d_state *state,
                             v9x_u32 *vs_slot,
-                            v9x_u32 *ps_slot)
+                            v9x_u32 *ps_slot,
+                            V9X_D3D_EG_LIT *lit)
 {
     unsigned char *bytes = (unsigned char *)state;
     v9x_u32 bytes_per_pixel;
@@ -231,6 +232,8 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
     v9x_u32 code;
     v9x_u32 src;
     v9x_u32 dst;
+    v9x_u32 reason;
+    v9x_u32 textured;
 
     for (index = 0ul; index < sizeof(*state); ++index) {
         bytes[index] = 0u;
@@ -323,14 +326,35 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
      * Direct3D's. */
     state->perspective = 1ul;
     state->pixel_centre_half = 0ul;
-    if (draw->texture.object == 0) {
+    textured = draw->texture.object != 0 ? 1ul : 0ul;
+    if (!textured) {
         state->vs_gprs = 2ul;
         state->ps_gprs = 1ul;
         state->interpolants = 1ul;
         *vs_slot = V9X_EG_SLOT_VS;
         *ps_slot = V9X_EG_SLOT_PS_FIRST + V9X_EG_D3D_OP_NONE;
-        return V9X_D3D_EG_REFUSE_NONE;
+    } else {
+        *vs_slot = V9X_EG_SLOT_VS_TEXTURED;
+        reason = v9x_d3d_eg_map_texture(draw, texture, heap_gpu, state,
+                                        ps_slot);
+        if (reason != V9X_D3D_EG_REFUSE_NONE) {
+            return reason;
+        }
     }
-    *vs_slot = V9X_EG_SLOT_VS_TEXTURED;
-    return v9x_d3d_eg_map_texture(draw, texture, heap_gpu, state, ps_slot);
+
+    /* Specular and fog, vertex or table: the core leaves the factor in
+     * the specular alpha either way (d3d_fog.h), and the lit PS blends by
+     * it. SPECULARENABLE defaults on, so most Direct3D draws take this. */
+    lit->specular = draw->specular_enable != 0ul ? 1ul : 0ul;
+    lit->fog = draw->fog_enable != 0ul ? 1ul : 0ul;
+    lit->fog_color = draw->fog_color;
+    lit->op = *ps_slot - V9X_EG_SLOT_PS_FIRST;
+    if (lit->specular != 0ul || lit->fog != 0ul) {
+        state->vs_gprs = 4ul;
+        state->ps_gprs = 3ul;
+        state->interpolants = V9X_EG_D3D_INTERPOLANTS(textured);
+        *vs_slot = textured ? V9X_EG_SLOT_VS_LIT_TEXTURED : V9X_EG_SLOT_VS_LIT;
+        *ps_slot = V9X_D3D_EG_PS_LIT;
+    }
+    return V9X_D3D_EG_REFUSE_NONE;
 }

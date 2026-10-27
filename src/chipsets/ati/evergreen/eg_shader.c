@@ -146,13 +146,29 @@ v9x_u32 v9x_eg_alu_op2(v9x_u32 alu_inst, v9x_u32 src0_gpr,
                        v9x_u32 src1_chan, v9x_u32 dst_gpr, v9x_u32 dst_chan,
                        v9x_u32 last, v9x_u32 *out)
 {
-    out[0] = src0_gpr | (src0_chan << EG_ALU_SRC0_CHAN_SHIFT) |
-             (src1_gpr << EG_ALU_SRC1_SEL_SHIFT) |
+    return v9x_eg_alu_op2_ex(alu_inst, src0_gpr, src0_chan, src1_gpr,
+                             src1_chan, 0ul, dst_gpr, dst_chan, last, out);
+}
+
+/* ALU_WORD0's SRC1_NEG (bit 25) and ALU_WORD1_OP2's CLAMP (bit 31). */
+#define EG_ALU_SRC1_NEG_BIT 0x02000000ul
+#define EG_ALU_CLAMP_BIT    0x80000000ul
+
+v9x_u32 v9x_eg_alu_op2_ex(v9x_u32 alu_inst, v9x_u32 src0_sel,
+                          v9x_u32 src0_chan, v9x_u32 src1_sel,
+                          v9x_u32 src1_chan, v9x_u32 flags, v9x_u32 dst_gpr,
+                          v9x_u32 dst_chan, v9x_u32 last, v9x_u32 *out)
+{
+    out[0] = src0_sel | (src0_chan << EG_ALU_SRC0_CHAN_SHIFT) |
+             (src1_sel << EG_ALU_SRC1_SEL_SHIFT) |
              (src1_chan << EG_ALU_SRC1_CHAN_SHIFT) |
+             ((flags & V9X_EG_ALU_NEG_SRC1) != 0ul ? EG_ALU_SRC1_NEG_BIT
+                                                   : 0ul) |
              (last != 0ul ? EG_ALU_LAST : 0ul);
     out[1] = EG_ALU_WRITE_MASK | (alu_inst << EG_ALU_INST_SHIFT) |
              (dst_gpr << EG_ALU_DST_GPR_SHIFT) |
-             (dst_chan << EG_ALU_DST_CHAN_SHIFT);
+             (dst_chan << EG_ALU_DST_CHAN_SHIFT) |
+             ((flags & V9X_EG_ALU_CLAMP) != 0ul ? EG_ALU_CLAMP_BIT : 0ul);
     return 2ul;
 }
 
@@ -258,20 +274,26 @@ v9x_u32 v9x_eg_shader_blit_ps(v9x_u32 *out)
 /* All four channels of a parameter into R0: Z and W first, so the
  * barycentrics in R0.xy are read before the XY group overwrites them
  * (Mesa does the same). Eight slots. */
-static v9x_u32 v9x_eg_interp_colour(v9x_u32 param, v9x_u32 *out)
+static v9x_u32 v9x_eg_interp_all(v9x_u32 param, v9x_u32 dst_gpr,
+                                 v9x_u32 *out)
 {
     v9x_u32 at = 0ul;
     v9x_u32 slot;
 
     for (slot = 0ul; slot < 4ul; ++slot) {
-        at += v9x_eg_alu_interp(V9X_EG_ALU_INTERP_ZW, slot, param, 0ul,
+        at += v9x_eg_alu_interp(V9X_EG_ALU_INTERP_ZW, slot, param, dst_gpr,
                                 slot >= 2ul, slot == 3ul, out + at);
     }
     for (slot = 0ul; slot < 4ul; ++slot) {
-        at += v9x_eg_alu_interp(V9X_EG_ALU_INTERP_XY, slot, param, 0ul,
+        at += v9x_eg_alu_interp(V9X_EG_ALU_INTERP_XY, slot, param, dst_gpr,
                                 slot < 2ul, slot == 3ul, out + at);
     }
     return at;
+}
+
+static v9x_u32 v9x_eg_interp_colour(v9x_u32 param, v9x_u32 *out)
+{
+    return v9x_eg_interp_all(param, 0ul, out);
 }
 
 v9x_u32 v9x_eg_shader_gouraud_ps(v9x_u32 *out)
@@ -422,5 +444,167 @@ v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out)
                                 slot < 2ul, slot == 3ul, out + at);
     }
     at += v9x_eg_tex_sample_normalised(1ul, 0ul, out + at);
+    return at;
+}
+
+v9x_u32 v9x_eg_shader_d3d_vs_lit(v9x_u32 textured, v9x_u32 *out)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 fetch_at;
+
+    /* Four CF words untextured, five textured: the fetch clause follows
+     * on the next 16-byte boundary, at dword 8 or 12. */
+    fetch_at = textured != 0ul ? 12ul : 8ul;
+    at += v9x_eg_cf_clause(V9X_EG_CF_VC, fetch_at / 2ul,
+                           textured != 0ul ? 4ul : 3ul, out + at);
+    at += v9x_eg_cf_export(V9X_EG_EXPORT_POS, V9X_EG_EXPORT_POS0, 1ul, 1ul,
+                           0ul, 1ul, out + at);
+    at += v9x_eg_cf_export(V9X_EG_EXPORT_PARAM, 0ul, 0ul, 0ul, 0ul, 0ul,
+                           out + at);
+    if (textured != 0ul) {
+        at += v9x_eg_cf_export(V9X_EG_EXPORT_PARAM, 1ul, 2ul, 0ul, 0ul, 0ul,
+                               out + at);
+    }
+    at += v9x_eg_cf_export(V9X_EG_EXPORT_PARAM, textured != 0ul ? 2ul : 1ul,
+                           3ul, 1ul, 1ul, 0ul, out + at);
+    at = v9x_eg_pad(out, at);
+    at += v9x_eg_vtx(1ul, 0ul, V9X_EG_D3D_STRIDE, 1ul,
+                     V9X_EG_FMT_32_32_32_32_FLOAT, V9X_EG_SEL_X,
+                     V9X_EG_SEL_Y, V9X_EG_SEL_Z, V9X_EG_SEL_W, out + at);
+    at += v9x_eg_vtx_form(0ul, EG_D3D_COLOUR_OFFSET, 4ul, 0ul,
+                          V9X_EG_FMT_8_8_8_8, 1ul, V9X_EG_SEL_X,
+                          V9X_EG_SEL_Y, V9X_EG_SEL_Z, V9X_EG_SEL_W, out + at);
+    if (textured != 0ul) {
+        at += v9x_eg_vtx(2ul, EG_D3D_UV_OFFSET, 8ul, 0ul,
+                         V9X_EG_FMT_32_32_FLOAT, V9X_EG_SEL_X, V9X_EG_SEL_Y,
+                         V9X_EG_SEL_0, V9X_EG_SEL_1, out + at);
+    }
+    at += v9x_eg_vtx_form(3ul, V9X_EG_D3D_SPECULAR_OFFSET, 4ul, 0ul,
+                          V9X_EG_FMT_8_8_8_8, 1ul, V9X_EG_SEL_X,
+                          V9X_EG_SEL_Y, V9X_EG_SEL_Z, V9X_EG_SEL_W, out + at);
+    return at;
+}
+
+/* An unsigned byte as the float v / 255, rounded to nearest, as IEEE
+ * single bits: the fog colour's literals, without floating point. */
+static v9x_u32 v9x_eg_unorm8_bits(v9x_u32 value)
+{
+    v9x_u32 scaled = value;
+    v9x_u32 shift = 0ul;
+    v9x_u32 mantissa;
+
+    if (value == 0ul) {
+        return 0ul;
+    }
+    /* Scale into [255, 510): the quotient into [1, 2). */
+    while (scaled < 255ul) {
+        scaled <<= 1;
+        ++shift;
+    }
+    mantissa = ((scaled << 23) + 127ul) / 255ul;
+    return ((127ul - shift) << 23) | (mantissa & 0x007ffffful);
+}
+
+/* Three slots R(dst).c = R(src).c + L.c (or - L.c) for c in x, y, z, the
+ * literal L in the group's trailing dwords: three, padded to four, as the
+ * sequencer reads literals in pairs (Mesa's r600_asm.c). */
+static v9x_u32 v9x_eg_literal_group(v9x_u32 src_gpr, v9x_u32 dst_gpr,
+                                    v9x_u32 negate, const v9x_u32 *literal,
+                                    v9x_u32 *out)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 chan;
+
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        at += v9x_eg_alu_op2_ex(V9X_EG_ALU_ADD, src_gpr, chan,
+                                V9X_EG_ALU_SRC_LITERAL, chan,
+                                negate != 0ul ? V9X_EG_ALU_NEG_SRC1 : 0ul,
+                                dst_gpr, chan, chan == 2ul, out + at);
+    }
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        out[at++] = literal[chan];
+    }
+    out[at++] = 0ul;
+    return at;
+}
+
+/*
+ * The lit PS's layout: four CF words; the interpolation clause at dword
+ * 8 (the coordinate into R1.xy when textured, specular into R2, then the
+ * colour into R0 unless the op replaces it); the combine clause after it;
+ * the texture clause last, on a 16-byte boundary.
+ */
+#define EG_LIT_ALU_DWORD 8ul
+
+v9x_u32 v9x_eg_shader_d3d_ps_lit(v9x_u32 op, v9x_u32 specular, v9x_u32 fog,
+                                 v9x_u32 fog_color, v9x_u32 *out)
+{
+    v9x_u32 at = EG_LIT_ALU_DWORD;
+    v9x_u32 cf = 0ul;
+    v9x_u32 textured = op != V9X_EG_D3D_OP_NONE;
+    v9x_u32 interp_slots;
+    v9x_u32 combine_at;
+    v9x_u32 combine_slots;
+    v9x_u32 literal[3];
+    v9x_u32 slot;
+
+    if (textured) {
+        for (slot = 0ul; slot < 4ul; ++slot) {
+            at += v9x_eg_alu_interp(V9X_EG_ALU_INTERP_XY, slot, 1ul, 1ul,
+                                    slot < 2ul, slot == 3ul, out + at);
+        }
+    }
+    at += v9x_eg_interp_all(textured ? 2ul : 1ul, 2ul, out + at);
+    if (op != V9X_EG_D3D_OP_REPLACE) {
+        at += v9x_eg_interp_colour(0ul, out + at);
+    }
+    interp_slots = (at - EG_LIT_ALU_DWORD) / 2ul;
+
+    combine_at = at;
+    if (op == V9X_EG_D3D_OP_MODULATE) {
+        for (slot = 0ul; slot < 4ul; ++slot) {
+            at += v9x_eg_alu_op2(V9X_EG_ALU_MUL, 0ul, slot, 1ul, slot, 0ul,
+                                 slot, slot == 3ul, out + at);
+        }
+    }
+    /* Specular adds to RGB and saturates; alpha is the diffuse's. */
+    if (specular != 0ul) {
+        for (slot = 0ul; slot < 3ul; ++slot) {
+            at += v9x_eg_alu_op2_ex(V9X_EG_ALU_ADD, 0ul, slot, 2ul, slot,
+                                    V9X_EG_ALU_CLAMP, 0ul, slot, slot == 2ul,
+                                    out + at);
+        }
+    }
+    /* Fog: R1 = R0 - fog, R1 *= f (R2.w), R0 = R1 + fog. The colour's
+     * channels are in memory order, so x is blue. */
+    if (fog != 0ul) {
+        literal[0] = v9x_eg_unorm8_bits(fog_color & 0xfful);
+        literal[1] = v9x_eg_unorm8_bits((fog_color >> 8) & 0xfful);
+        literal[2] = v9x_eg_unorm8_bits((fog_color >> 16) & 0xfful);
+        at += v9x_eg_literal_group(0ul, 1ul, 1ul, literal, out + at);
+        for (slot = 0ul; slot < 3ul; ++slot) {
+            at += v9x_eg_alu_op2(V9X_EG_ALU_MUL, 1ul, slot, 2ul,
+                                 V9X_EG_SEL_W, 1ul, slot, slot == 2ul,
+                                 out + at);
+        }
+        at += v9x_eg_literal_group(1ul, 0ul, 0ul, literal, out + at);
+    }
+    combine_slots = (at - combine_at) / 2ul;
+    at = v9x_eg_pad(out, at);
+
+    cf += v9x_eg_cf_alu(EG_LIT_ALU_DWORD / 2ul, interp_slots, out + cf);
+    if (textured) {
+        cf += v9x_eg_cf_clause(V9X_EG_CF_TC, at / 2ul, 1ul, out + cf);
+        at += v9x_eg_tex_sample_normalised(
+            1ul, op == V9X_EG_D3D_OP_REPLACE ? 0ul : 1ul, out + at);
+    }
+    if (combine_slots != 0ul) {
+        cf += v9x_eg_cf_alu(combine_at / 2ul, combine_slots, out + cf);
+    }
+    cf += v9x_eg_cf_export(V9X_EG_EXPORT_PIXEL, 0ul, 0ul, 1ul, 1ul, 1ul,
+                           out + cf);
+    while (cf < EG_LIT_ALU_DWORD) {
+        out[cf++] = 0ul;
+    }
     return at;
 }

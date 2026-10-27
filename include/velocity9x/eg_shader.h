@@ -77,6 +77,17 @@ v9x_u32 v9x_eg_alu_op2(v9x_u32 alu_inst, v9x_u32 src0_gpr,
                        v9x_u32 src0_chan, v9x_u32 src1_gpr,
                        v9x_u32 src1_chan, v9x_u32 dst_gpr, v9x_u32 dst_chan,
                        v9x_u32 last, v9x_u32 *out);
+/* The general two-source form: each source a GPR number or
+ * V9X_EG_ALU_SRC_LITERAL (its chan then picks literal x, y, z or w), with
+ * flags V9X_EG_ALU_*. */
+#define V9X_EG_ALU_ADD          0x00ul
+#define V9X_EG_ALU_SRC_LITERAL  0xfdul
+#define V9X_EG_ALU_NEG_SRC1     0x1ul
+#define V9X_EG_ALU_CLAMP        0x2ul
+v9x_u32 v9x_eg_alu_op2_ex(v9x_u32 alu_inst, v9x_u32 src0_sel,
+                          v9x_u32 src0_chan, v9x_u32 src1_sel,
+                          v9x_u32 src1_chan, v9x_u32 flags, v9x_u32 dst_gpr,
+                          v9x_u32 dst_chan, v9x_u32 last, v9x_u32 *out);
 /* SAMPLE from resource and sampler 0 at unnormalised R(src).xy into
  * R(dst).xyzw. */
 v9x_u32 v9x_eg_tex_sample(v9x_u32 src_gpr, v9x_u32 dst_gpr, v9x_u32 *out);
@@ -86,7 +97,7 @@ v9x_u32 v9x_eg_tex_sample_normalised(v9x_u32 src_gpr, v9x_u32 dst_gpr,
 
 /* The shaders. Each writes up to V9X_EG_SHADER_DWORDS_MAX dwords and
  * returns the count. */
-#define V9X_EG_SHADER_DWORDS_MAX 64u
+#define V9X_EG_SHADER_DWORDS_MAX 128u
 
 /* Linux 3.9's blit: VS fetches position (R1) and texture coordinate (R0)
  * as two floats each, 16-byte stride; PS interpolates and samples. */
@@ -119,12 +130,34 @@ v9x_u32 v9x_eg_shader_modulate_ps(v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
 
+/*
+ * The Direct3D shaders with specular and fog. The VS also fetches the
+ * specular dword (offset 20, normalised bytes in memory order: B, G, R,
+ * and the fog factor in A) into R3 and exports it as the last parameter:
+ * PARAM0 colour, PARAM1 the texel coordinate when textured, then
+ * specular. The PS takes the op as v9x_eg_shader_d3d_ps does, then adds
+ * the specular RGB (clamped) when `specular`, then with `fog` blends to
+ * fog_color (a D3DCOLOR's 0x00RRGGBB) by the factor: fog + f * (colour -
+ * fog), alpha untouched. The fog colour is carried as ALU literals, so a
+ * PS is built for each fog colour; at up to 92 dwords it is larger than a
+ * shader slot. The VS uses 4 GPRs, the PS 3, and the SPI
+ * V9X_EG_D3D_INTERPOLANTS of them.
+ */
+#define V9X_EG_D3D_SPECULAR_OFFSET 20ul
+#define V9X_EG_D3D_INTERPOLANTS(textured) ((textured) != 0ul ? 3ul : 2ul)
+v9x_u32 v9x_eg_shader_d3d_vs_lit(v9x_u32 textured, v9x_u32 *out);
+v9x_u32 v9x_eg_shader_d3d_ps_lit(v9x_u32 op, v9x_u32 specular, v9x_u32 fog,
+                                 v9x_u32 fog_color, v9x_u32 *out);
+
 /* The HAL's shader slots in its VRAM window (eg_3d.h,
  * V9X_EG_WINDOW_SHADERS, one V9X_EG_WINDOW_SHADER_BYTES each): the two
- * Direct3D VSs, then the PS for each op in V9X_EG_D3D_OP_* order. */
+ * Direct3D VSs, the PS for each op in V9X_EG_D3D_OP_* order, then the two
+ * lit VSs. A lit PS goes with its batch, not in a slot. */
 #define V9X_EG_SLOT_VS           0ul
 #define V9X_EG_SLOT_VS_TEXTURED  1ul
 #define V9X_EG_SLOT_PS_FIRST     2ul /* + V9X_EG_D3D_OP_* */
-#define V9X_EG_SLOT_COUNT        5ul
+#define V9X_EG_SLOT_VS_LIT       5ul
+#define V9X_EG_SLOT_VS_LIT_TEXTURED 6ul
+#define V9X_EG_SLOT_COUNT        7ul
 
 #endif

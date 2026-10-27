@@ -114,3 +114,8 @@ Against the GMA 950, boot 24, the `_Ok` keys that differ:
 
 The rest of the 106 differing keys are those tests' raw readings,
 addresses and placement deltas.
+
+Correction (boot 26): this comparison read `V9XDD.INI` alone. V9XDDP
+continues its report in `V9XDD2.INI` once the first file nears 24 KB, and
+that half was not fetched on boots 19 to 24. Its comparison is in
+[the specular and fog record](2026-10-27-cedar-specular-and-fog.md).

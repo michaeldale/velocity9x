@@ -242,8 +242,10 @@
         # Installed files that ride a third disk, as ATI's do: disk 1 went
         # 553 bytes over when the shared Direct3D core was optimised
         # (Michael, 2026-10-24: "Matrox extra floppy ok"). The update
-        # checker, which nothing needs to boot or draw.
-        ThirdDisk = @('V9XUPD.EXE')
+        # checker, which nothing needs to boot or draw. The trace tool
+        # joined it on 2026-10-27, when the Evergreen engine's specular
+        # and fog put disk 1 775 bytes over.
+        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE')
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test

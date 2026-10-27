@@ -213,7 +213,7 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_SX_ALPHA_TEST_CONTROL    0x28410ul
 #define EG_SX_ALPHA_REF             0x28438ul
 #define EG_SPI_VS_OUT_ID_0          0x2861cul
-#define EG_SPI_PS_INPUT_CNTL_1      0x28648ul
+#define EG_SPI_PS_INPUT_CNTL_0      0x28644ul
 #define EG_SPI_VS_OUT_CONFIG        0x286c4ul
 #define EG_SPI_PS_IN_CONTROL_0      0x286ccul
 #define EG_SPI_BARYC_CNTL           0x286e0ul
@@ -239,8 +239,8 @@ static const v9x_u32 v9x_eg_default_context[] = {
 #define EG_DB_Z_INFO_DWORDS         8ul
 #define EG_DB_FORMAT_Z_16           1ul
 #define EG_PS_EXPORTS_COLOR         2ul
-#define EG_SPI_SEMANTIC_1_IN_ID_0   0x00000100ul /* SEMANTIC_1(1) */
-#define EG_SPI_PS_INPUT_1_VALUE     0x00000101ul /* SEMANTIC(1), DEFAULT_VAL(1) */
+#define EG_SPI_SEMANTIC_BITS        8ul          /* SEMANTIC_n per byte */
+#define EG_SPI_PS_INPUT_DEFAULT_1   0x00000100ul /* DEFAULT_VAL(1) */
 #define EG_SPI_PERSP_GRADIENT_ENA   0x10000000ul
 #define EG_SPI_LINEAR_GRADIENT_ENA  0x20000000ul
 #define EG_SPI_PERSP_CENTER_ENA     0x00000001ul
@@ -623,7 +623,8 @@ static int v9x_eg_3d_state_valid(const struct v9x_eg_3d_state *state)
     if (!v9x_eg_3d_aligned(state->vs_gpu) ||
         !v9x_eg_3d_aligned(state->ps_gpu) ||
         state->vs_gprs == 0ul || state->ps_gprs == 0ul ||
-        state->interpolants == 0ul || state->interpolants > 2ul) {
+        state->interpolants == 0ul ||
+        state->interpolants > V9X_EG_INTERPOLANTS_MAX) {
         return 0;
     }
     if (state->has_texture != 0ul &&
@@ -690,15 +691,17 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     v9x_eg_pm4_set_context(stream, EG_SQ_PGM_START_PS, words, 4ul);
     v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_SH_ACTION, EG_SYNC_ALL, 0ul);
 
-    /* The interpolants: semantic 0, and semantic 1 for a second; linear
-     * or perspective barycentrics, which INTERP reads from R0. */
-    v9x_eg_pm4_set_context1(stream, EG_SPI_VS_OUT_ID_0,
-                            state->interpolants == 2ul ?
-                            EG_SPI_SEMANTIC_1_IN_ID_0 : 0ul);
-    if (state->interpolants == 2ul) {
-        v9x_eg_pm4_set_context1(stream, EG_SPI_PS_INPUT_CNTL_1,
-                                EG_SPI_PS_INPUT_1_VALUE);
+    /* The interpolants: export n carries semantic n and PS input n reads
+     * it (input 0 keeps its reset value, semantic 0); linear or
+     * perspective barycentrics, which INTERP reads from R0. */
+    tl = 0ul;
+    for (index = 1ul; index < state->interpolants; ++index) {
+        tl |= index << (EG_SPI_SEMANTIC_BITS * index);
+        v9x_eg_pm4_set_context1(stream,
+                                EG_SPI_PS_INPUT_CNTL_0 + 4ul * index,
+                                index | EG_SPI_PS_INPUT_DEFAULT_1);
     }
+    v9x_eg_pm4_set_context1(stream, EG_SPI_VS_OUT_ID_0, tl);
     v9x_eg_pm4_set_context1(stream, EG_SPI_VS_OUT_CONFIG,
                             (state->interpolants - 1ul) << 1);
     v9x_eg_pm4_set_context1(stream, EG_SPI_PS_IN_CONTROL_0,

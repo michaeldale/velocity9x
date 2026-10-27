@@ -143,8 +143,8 @@ static int v9x_d3d_eg_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * blend factors without destination alpha, flat and Gouraud colour and
  * alpha, textures in RGB565 and ARGB8888 with point and bilinear filters,
  * wrap, mirror and clamp, DECAL, COPY, MODULATE and MODULATEALPHA, and mip
- * chains with every Direct3D mip filter. No specular or fog: the shaders
- * do not draw them, so they are not offered.
+ * chains with every Direct3D mip filter; specular, and vertex and table
+ * fog, both by the factor the core leaves in the specular alpha.
  */
 static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -178,7 +178,9 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
     tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW | V9X_D3DPMISCCAPS_MASKZ;
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_SUBPIXEL;
+                        V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
@@ -193,8 +195,11 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
     tri->dwDestBlendCaps = tri->dwSrcBlendCaps;
     tri->dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
-        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_ALPHA;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
@@ -402,7 +407,8 @@ static void v9x_d3d_eg_count_refusal(const V9X_R3D_DRAW *draw, v9x_u32 reason)
 
 static v9x_u32 v9x_d3d_eg_map(const V9X_R3D_DRAW *draw,
                               struct v9x_eg_3d_state *state,
-                              v9x_u32 *vs_slot, v9x_u32 *ps_slot)
+                              v9x_u32 *vs_slot, v9x_u32 *ps_slot,
+                              V9X_D3D_EG_LIT *lit)
 {
     V9X_D3D_EG_TEXTURE texture;
     DWORD heap_gpu;
@@ -418,12 +424,13 @@ static v9x_u32 v9x_d3d_eg_map(const V9X_R3D_DRAW *draw,
     }
     return v9x_d3d_eg_map_draw(draw, &texture, heap_gpu,
                                v9x_d3d_eg_depth_bytes(draw), state, vs_slot,
-                               ps_slot);
+                               ps_slot, lit);
 }
 
 static int v9x_d3d_eg_accepts(const V9X_R3D_DRAW *draw)
 {
     struct v9x_eg_3d_state state;
+    V9X_D3D_EG_LIT lit;
     v9x_u32 vs_slot;
     v9x_u32 ps_slot;
     v9x_u32 reason;
@@ -431,17 +438,23 @@ static int v9x_d3d_eg_accepts(const V9X_R3D_DRAW *draw)
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
-    reason = v9x_d3d_eg_map(draw, &state, &vs_slot, &ps_slot);
+    reason = v9x_d3d_eg_map(draw, &state, &vs_slot, &ps_slot, &lit);
     if (reason != V9X_D3D_EG_REFUSE_NONE && reason < 20ul) {
         ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
     }
     return reason == V9X_D3D_EG_REFUSE_NONE;
 }
 
+/* The lit PS of the draw in hand (eg_shader.h, v9x_eg_shader_d3d_ps_lit). */
+static v9x_u32 v9x_d3d_eg_lit_ps[V9X_EG_SHADER_DWORDS_MAX];
+
 /*
  * A run of triangles, in batches of at most V9X_D3D_EG_CHUNK_TRIANGLES:
  * each batch's vertices copied into the CP's arena as they are, then the
- * default state, the batch's state, the draw and the cache flush.
+ * default state, the batch's state, the draw and the cache flush. A lit
+ * draw's PS goes into the arena ahead of each batch's vertices: it holds
+ * the fog colour, and the arena is the only space that is not reused
+ * before the GPU has read it.
  */
 static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
                            const V9X_R3D_VERTEX *vertices,
@@ -449,6 +462,7 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
 {
     struct v9x_eg_3d_state state;
     struct v9x_eg_pm4 stream;
+    V9X_D3D_EG_LIT lit;
     volatile DWORD *linear;
     const DWORD *words;
     DWORD gpu;
@@ -456,6 +470,7 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
     DWORD dwords;
     DWORD index;
     DWORD started;
+    DWORD ps_dwords = 0ul;
     v9x_u32 vs_slot;
     v9x_u32 ps_slot;
     v9x_u32 reason;
@@ -465,17 +480,33 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     started = V9X_TIME_BEGIN();
-    reason = v9x_d3d_eg_map(draw, &state, &vs_slot, &ps_slot);
+    reason = v9x_d3d_eg_map(draw, &state, &vs_slot, &ps_slot, &lit);
     if (reason != V9X_D3D_EG_REFUSE_NONE) {
         v9x_d3d_eg_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
     }
     state.vs_gpu = v9x_eg_cp_shader_gpu(vs_slot);
-    state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
+    if (ps_slot == V9X_D3D_EG_PS_LIT) {
+        ps_dwords = v9x_eg_shader_d3d_ps_lit(lit.op, lit.specular, lit.fog,
+                                             lit.fog_color,
+                                             v9x_d3d_eg_lit_ps);
+    } else {
+        state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
+    }
     state.vertex_stride = V9X_EG_D3D_STRIDE;
 
     while (triangle_count != 0ul) {
+        if (ps_dwords != 0ul) {
+            if (!v9x_eg_cp_vertex_space(ps_dwords * 4ul, &linear, &gpu)) {
+                V9X_TIME_END(V9X_TIME_DECODE, started);
+                return 0;
+            }
+            for (index = 0ul; index < ps_dwords; ++index) {
+                linear[index] = v9x_d3d_eg_lit_ps[index];
+            }
+            state.ps_gpu = gpu;
+        }
         chunk = triangle_count > V9X_D3D_EG_CHUNK_TRIANGLES ?
                 V9X_D3D_EG_CHUNK_TRIANGLES : triangle_count;
         dwords = chunk * 3ul * V9X_D3D_EG_VERTEX_DWORDS;

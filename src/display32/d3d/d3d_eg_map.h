@@ -58,15 +58,27 @@ typedef struct v9x_d3d_eg_texture {
 #define V9X_D3D_EG_REFUSE_ADDRESS         16ul /* the heap not located */
 #define V9X_D3D_EG_REFUSE_OVERFLOW        17ul /* the stream outgrew its buffer */
 
+/* A draw with specular or fog takes the lit shaders (eg_shader.h,
+ * v9x_eg_shader_d3d_ps_lit): ps_slot is then V9X_D3D_EG_PS_LIT, and the
+ * engine builds the PS from this and sends it with the batch, as the fog
+ * colour is in its code. */
+#define V9X_D3D_EG_PS_LIT 0xfffffffful
+typedef struct v9x_d3d_eg_lit {
+    v9x_u32 op;         /* V9X_EG_D3D_OP_* */
+    v9x_u32 specular;
+    v9x_u32 fog;
+    v9x_u32 fog_color;  /* D3DCOLOR, 0x00RRGGBB */
+} V9X_D3D_EG_LIT;
+
 /*
  * One draw's batch state, without the GPU addresses the engine alone
  * knows: heap_gpu is where the framebuffer mapping starts in the GPU's
  * address space, and every surface offset is moved by it. depth_bytes is
  * the bound depth surface's bytes per pixel, 0 when none is bound. The
  * shaders are named by slot (eg_shader.h, V9X_EG_SLOT_*) in vs_slot and
- * ps_slot, with their GPR counts and the interpolants in state; the
- * vertex buffer and shader addresses are the engine's to fill. Returns a
- * V9X_D3D_EG_REFUSE_* reason.
+ * ps_slot, or ps_slot V9X_D3D_EG_PS_LIT and lit, with their GPR counts
+ * and the interpolants in state; the vertex buffer and shader addresses
+ * are the engine's to fill. Returns a V9X_D3D_EG_REFUSE_* reason.
  */
 v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
                             const V9X_D3D_EG_TEXTURE *texture,
@@ -74,7 +86,8 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 depth_bytes,
                             struct v9x_eg_3d_state *state,
                             v9x_u32 *vs_slot,
-                            v9x_u32 *ps_slot);
+                            v9x_u32 *ps_slot,
+                            V9X_D3D_EG_LIT *lit);
 
 /* Z16's placement: rows padded to the 8-row tile the DB reads, and the
  * pitch a whole number of 8-pixel tiles. */
