@@ -88,8 +88,12 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = mmio;
     *mapped_aperture_bytes = V9X_CEDAR_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_EVERGREEN;
+    /* Flips through display controller D1's surface address, taken at
+     * the vertical blank (eg_scanout.c, which also checks D1 is the
+     * controller scanning). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
     if (bytes >= V9X_CEDAR_3D_WINDOW_BYTES) {
         *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
     }

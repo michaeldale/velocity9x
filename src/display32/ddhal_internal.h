@@ -537,6 +537,17 @@ int v9x_r128_set_display_start(DWORD byte_offset);
 int v9x_r128_flip_pending(void);
 void v9x_r128_note_flip_done(void);
 void v9x_r128_scanout_reset(void);
+/* The HD 5450's display controller D1, in engines/eg_scanout.c: active
+ * only for ATI_EVERGREEN stamped with V9X_DD_ENGINE_CAP_FLIP. A flip is
+ * written at any line and taken at the vertical blank; pending until
+ * GRPH_UPDATE's update-pending bit clears. */
+int v9x_eg_scanout_active(void);
+int v9x_eg_scanout_live(void);
+int v9x_eg_in_vblank(void);
+int v9x_eg_set_display_start(DWORD byte_offset);
+int v9x_eg_flip_pending(void);
+void v9x_eg_note_flip_done(void);
+void v9x_eg_scanout_reset(void);
 /* Non-zero when this Rage 128's flips go into the CCE ring behind the
  * frame instead of waiting for it. */
 int v9x_r128_flip_queues(void);

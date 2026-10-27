@@ -1362,6 +1362,10 @@ void v9x_scanout_note_flip_done(void)
         v9x_r128_note_flip_done();
         return;
     }
+    if (v9x_eg_scanout_active()) {
+        v9x_eg_note_flip_done();
+        return;
+    }
     if (!v9x_i9xx_scanout_active() || !v9x_i9xx_scanout_flip_outstanding ||
         v9x_i9xx_scanout_last_base_reg == 0ul) {
         return;
@@ -1492,6 +1496,7 @@ void v9x_scanout_reset(void)
 {
     v9x_hsw_scanout_reset();
     v9x_r128_scanout_reset();
+    v9x_eg_scanout_reset();
     v9x_i9xx_pipestat_baselined = 0;
     v9x_i9xx_scanout_entry_line = 0ul;
     v9x_i9xx_scanout_flip_outstanding = 0;
@@ -1554,6 +1559,9 @@ int v9x_in_vblank(void)
     if (v9x_r128_scanout_active()) {
         return v9x_r128_in_vblank();
     }
+    if (v9x_eg_scanout_active()) {
+        return v9x_eg_in_vblank();
+    }
     return v9x_vga_in_vblank();
 }
 
@@ -1576,6 +1584,9 @@ int v9x_set_display_start(DWORD byte_offset)
     }
     if (v9x_r128_scanout_active()) {
         return v9x_r128_set_display_start(byte_offset);
+    }
+    if (v9x_eg_scanout_active()) {
+        return v9x_eg_set_display_start(byte_offset);
     }
     return v9x_vga_set_display_start(byte_offset);
 }
@@ -1695,9 +1706,10 @@ int v9x_scanout_flip_window_open(void)
     DWORD line;
     DWORD active;
 
-    /* Haswell and the Rage 128 latch the base at the blank whenever it is
-     * written. */
-    if (v9x_hsw_scanout_active() || v9x_r128_scanout_active()) {
+    /* Haswell, the Rage 128 and the HD 5450 latch the base at the blank
+     * whenever it is written. */
+    if (v9x_hsw_scanout_active() || v9x_r128_scanout_active() ||
+        v9x_eg_scanout_active()) {
         return 1;
     }
     /* The Rage IIC applies a start written mid-frame at once (ATIRX
@@ -1754,7 +1766,7 @@ int v9x_scanout_flip_queued(void)
 int v9x_scanout_hw_flip(void)
 {
     return v9x_hsw_scanout_active() || v9x_r128_scanout_active() ||
-           v9x_i9xx_scanout_active();
+           v9x_eg_scanout_active() || v9x_i9xx_scanout_active();
 }
 
 /*
@@ -1815,6 +1827,9 @@ int v9x_scanout_hw_flip_pending(void)
     }
     if (v9x_r128_scanout_active()) {
         return v9x_r128_flip_pending();
+    }
+    if (v9x_eg_scanout_active()) {
+        return v9x_eg_flip_pending();
     }
     if (!v9x_i9xx_scanout_active()) {
         return 0;
@@ -1882,6 +1897,9 @@ int v9x_scanout_vblank_available(void)
     }
     if (v9x_r128_scanout_active()) {
         return v9x_r128_scanout_live();
+    }
+    if (v9x_eg_scanout_active()) {
+        return v9x_eg_scanout_live();
     }
     if (!v9x_i9xx_scanout_active()) {
         return 1;

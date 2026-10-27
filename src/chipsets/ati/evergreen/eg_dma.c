@@ -282,6 +282,18 @@ v9x_u32 v9x_eg_dma_pad(v9x_u32 position)
     return tail == 0ul ? 0ul : V9X_EG_DMA_ALIGN_DWORDS - tail;
 }
 
+v9x_status v9x_eg_scanout_address(v9x_u32 heap_gpu, v9x_u32 offset,
+                                  v9x_u32 vram_bytes, v9x_u32 *address)
+{
+    if (address == 0 || offset >= vram_bytes ||
+        offset > 0xfffffffful - heap_gpu ||
+        ((heap_gpu + offset) & (V9X_EG_SCANOUT_ALIGN - 1ul)) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *address = heap_gpu + offset;
+    return V9X_STATUS_OK;
+}
+
 v9x_u32 v9x_eg_dma_ring_advance(v9x_u32 wptr, v9x_u32 count)
 {
     return (wptr + count + v9x_eg_dma_pad(wptr + count)) &

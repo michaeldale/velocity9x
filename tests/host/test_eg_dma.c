@@ -374,6 +374,27 @@ static void test_ring_helpers(void)
     CHECK(v9x_eg_dma_ring_advance(V9X_EG_RING_DWORDS - 16ul, 16ul) == 0ul);
     CHECK(v9x_eg_dma_ring_advance(V9X_EG_RING_DWORDS - 16ul, 3ul) == 0ul);
 
+    /* A flip's scanout address: the heap's GPU base plus the surface's
+     * offset, inside video memory and on the 256 bytes the GRPH surface
+     * address keeps. */
+    {
+        v9x_u32 address = 0xfffffffful;
+
+        CHECK(v9x_eg_scanout_address(0ul, 0x00180000ul, 0x01000000ul,
+                                     &address) == V9X_STATUS_OK &&
+              address == 0x00180000ul);
+        CHECK(v9x_eg_scanout_address(0x0f000000ul, 0x00300000ul,
+                                     0x01000000ul, &address) ==
+                  V9X_STATUS_OK && address == 0x0f300000ul);
+        CHECK(v9x_eg_scanout_address(0ul, 0x00180080ul, 0x01000000ul,
+                                     &address) != V9X_STATUS_OK);
+        CHECK(v9x_eg_scanout_address(0ul, 0x01000000ul, 0x01000000ul,
+                                     &address) != V9X_STATUS_OK);
+        CHECK(v9x_eg_scanout_address(0xffffff00ul, 0x00000200ul,
+                                     0x01000000ul, &address) !=
+              V9X_STATUS_OK);
+    }
+
     /* The write probe's fence, byte for byte. */
     CHECK(v9x_eg_dma_fence(0x0f001000ul, 0x11111111ul, packet) == 4ul);
     CHECK(packet[0] == 0x60000000ul);

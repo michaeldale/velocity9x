@@ -162,6 +162,14 @@ v9x_u32 v9x_eg_dma_pad(v9x_u32 position);
  * leaves the position at 0. */
 v9x_u32 v9x_eg_dma_ring_advance(v9x_u32 wptr, v9x_u32 count);
 
+/* The display controller's address for a surface at offset into the
+ * heap: heap_gpu + offset, refused unless the offset lies inside
+ * vram_bytes, the sum does not wrap, and the address is on the 256 bytes
+ * GRPH_PRIMARY_SURFACE_ADDRESS keeps (evergreen_reg.h). */
+#define V9X_EG_SCANOUT_ALIGN 256ul
+v9x_status v9x_eg_scanout_address(v9x_u32 heap_gpu, v9x_u32 offset,
+                                  v9x_u32 vram_bytes, v9x_u32 *address);
+
 /* The GPU address of VRAM's first byte, from MC_VM_FB_LOCATION; 0 with
  * *ok clear when it lies at or above 4 GiB. */
 v9x_u32 v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *ok);

@@ -148,6 +148,7 @@ $required = @(
     "include\velocity9x\r128_crtc.h",
     "src\chipsets\ati\rage128\r128_crtc.c",
     "src\display32\engines\r128_scanout.c",
+    "src\display32\engines\eg_scanout.c",
     "src\display32\engines\r128_cce.c",
     "tests\host\test_r128_crtc.c",
     "include\velocity9x\r128_ring.h",

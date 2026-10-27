@@ -98,6 +98,7 @@ $sources = @(
     "src\display32\engines\eng_mach64.c",
     "src\display32\engines\m64_scanout.c",
     "src\display32\engines\r128_scanout.c",
+    "src\display32\engines\eg_scanout.c",
     "src\display32\engines\r128_cce.c",
     "src\chipsets\ati\rage128\r128_crtc.c",
     "src\chipsets\ati\rage128\r128_ring.c",
