@@ -4,7 +4,51 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.31.0 - not yet released
+## 0.32.0 - not yet released
+
+0.31.0 was opened after 0.30.1 and never released; its work is here.
+
+- **AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) is claimed by the
+  `ati` package**, measured on one card. Modes still come from the VBE.
+  - DirectDraw fills and copies run on the card's DMA engine
+    ([record](docs/decisions/2026-10-26-cedar-directdraw-on-dma.md)).
+  - Direct3D runs on its 3D engine through the command processor, which
+    runs AMD's microcode, now in the tree under its licence (NOTICES.TXT)
+    ([record](docs/decisions/2026-10-26-cedar-cp-runs-amd-microcode.md)).
+  - Supported: Z16, textures in 565, 1555, 4444 and 8888, mip chains and
+    every Direct3D filter, specular, vertex and table fog, and colour keys.
+    V9XDDP fails only checks the GMA 950 also fails
+    ([record](docs/decisions/2026-10-27-cedar-specular-and-fog.md),
+    [record](docs/decisions/2026-10-27-cedar-colour-keys.md)).
+  - 3DMark 2000's default benchmark completes at 5267, once a DMA ring
+    wrap that stalled it was fixed
+    ([record](docs/decisions/2026-10-27-cedar-3dmark2000.md)).
+  - OpenGL games draw on the card: the Quake 3 demo timedemo runs at 68.8
+    fps with every batch in hardware
+    ([record](docs/decisions/2026-10-27-cedar-opengl-quake3.md)).
+  - Known limits: video memory is the VBE's 16 MiB of the card's 1 GiB;
+    one texture stage; no page flips on the engine yet. The monitor
+    picture has not been confirmed by the card's owner.
+- **HD 4600: OpenGL transform and lighting run on the card.** A vertex
+  kernel is built per fixed-function state: lights, materials, fog and
+  texture matrices. The ICD gains OpenGL lighting (`glLight`,
+  `glMaterial`, `glColorMaterial`). Half-Life OpenGL 96.7 fps and Quake 3
+  61.0, at par with the CPU path. `V9XGL_TNL=0` turns it off
+  ([record](docs/decisions/2026-10-27-haswell-tnl-step4-lighting.md)).
+- **HD 4600: DirectX 7's driver interface (DDI 7) is the default** for
+  DrawPrimitives2 programs; one listed `=6` or `=5` under
+  `[Velocity9x.Direct3DDdi]` keeps the older level. Three faults the
+  default runs found are fixed, among them a 3DMark 2001 SE crash in
+  V9XHAL ([record](docs/decisions/2026-10-27-haswell-ddi7-default.md)).
+- **HD 4600: a Direct3D hardware T&L device is built but not offered.**
+  It is slower than the runtime's own transform (3DMark 2000 1558
+  against 2322), so programs keep the HAL device
+  ([record](docs/decisions/2026-10-27-haswell-tnl-step6-d3d-device.md)).
+- The render interface is now version 8: Glide and 3DCIF wrappers must
+  ship with this HAL. The HD 4600's reserved memory grows from 128 KB to
+  256 KB, and its DirectDraw heap shrinks to match.
+- Floppy sets: GLIDE3X.DLL moves to the third disk for ATI, Matrox, S3
+  and VBE, and V9XTRACE.EXE for ATI, Matrox, S3 and SiS.
 
 ## 0.30.1 - 2026-10-26
 
