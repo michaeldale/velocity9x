@@ -81,6 +81,13 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * count of 0 disarms. */
 #define V9X_DDGRABFRAMES         0x56394742ul /* 'V9GB' */
 
+/* Project-private DCICOMMAND, measurement only: dwParam1 becomes the HD
+ * 4600 batch builder's omit mask (V9X_HSW_OMIT_* in intel_hsw_3d.h), each
+ * bit one flush or state group a batch leaves out, for the variant runs of
+ * docs\plans\intel-haswell-batch-cost.md. Zero, the value at every boot,
+ * is the shipped batch. */
+#define V9X_DDFLUSHVARIANT       0x56394656ul /* 'V9FV' */
+
 /*
  * Project-private DCICOMMANDs for the 16-bit GDI acceleration path
  * (docs\plans\gdi-acceleration.md). They are answered by src\display16, not by
@@ -4348,6 +4355,11 @@ typedef struct v9x_dd_shared {
      * The 16-bit side stamps its half when it creates the block, the HAL
      * the rest; the trace snapshot copies it whole. */
     struct v9x_diag_identity identity;
+    /* The HD 4600 batch builder's omit mask, set by V9X_DDFLUSHVARIANT;
+     * zero at every boot. Measurement only. After identity, outside the
+     * trace snapshot, so the snapshot a reader size-checks is unchanged.
+     * Appended 2026-10-28 within ABI 2026102002. */
+    DWORD hsw_flush_omit;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)

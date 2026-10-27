@@ -306,6 +306,9 @@ static int v9x_d3d_hsw_wait_slot(struct v9x_hsw_pipe_slot *slot)
     DWORD sent = 0ul;
     DWORD started = V9X_TIME_BEGIN();
 
+    /* The batch about to be built here takes the measurement-only omit
+     * mask V9X_DDFLUSHVARIANT last set (zero: the shipped batch). */
+    v9x_intel_hsw_set_omit(v9x_hal->hsw_flush_omit);
     ++diagnostics->render_drain_waits;
     for (spins = 0ul; spins < V9X_D3D_HSW_SPINS; ++spins) {
         sent = status[V9X_INTEL_HSW_STATUS_RCS_SENT];
@@ -1968,8 +1971,8 @@ static DWORD v9x_d3d_hsw_write_normals(const struct v9x_hsw_pipe_slot *slot,
  *   BINDING_TABLE_POINTERS_PS takes a 16-bit offset from the surface state
  *   base, and the vertex area of slot 1 is past that from its base.
  * - The batch itself, the last 4 KB. Sixteen segments do not fit the
- *   slot's 2 KB batch area: the draw's own commands are 212 dwords and a
- *   segment's 39 (test_vs_segments_fit), 797 for sixteen.
+ *   slot's 2 KB batch area: the draw's own commands are at most 212 dwords
+ *   and a segment's 39 (test_vs_segments_fit), 797 for sixteen.
  */
 #define V9X_D3D_HSW_TNL_TAIL       0x2800ul
 #define V9X_D3D_HSW_TNL_BATCH      0x1000ul

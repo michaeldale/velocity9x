@@ -310,6 +310,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-26 0.30.1 release check: the package on the GMA 950 netbook, V9XD32 PASS at DDI 5 and 6](2026-10-26-0.30.1-release-check.md)
 - [2026-10-26 Bay Trail's Valleyview graphics (8086:0F31) from one DOS survey: Ivy Bridge's layout with 32-bit BARs, so the Haswell decode would refuse it](2026-10-26-baytrail-valleyview-from-a-survey.md)
 - [2026-10-28 Write-combining the HD 4600's aperture through PAT: FbWrite 66 to 9,238 MB/s, 3DMark 2000 2344 to 3719, and the render engine is now the limit](2026-10-28-haswell-pat-write-combining.md)
+- [2026-10-28 The HD 4600's fixed cost a batch is not its flushes: seven variants measured, the first closing RT flush dropped](2026-10-28-haswell-flush-variants.md)
 
 ## SiS
 

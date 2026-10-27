@@ -19,6 +19,10 @@ build identifier so exact guest-tested binaries remain traceable.
   the one machine measured. The HD 4400 and Ivy Bridge HD 4000 take the
   same path, untested. `C:\V9XDIAG\NOWC.TXT` turns it off
   ([record](docs/decisions/2026-10-28-haswell-pat-write-combining.md)).
+- HD 4600 Direct3D batches drop a redundant render-target flush: about 5%
+  off small batches; seven flush variants measured
+  (`V9XTRACE -omit:<mask>`) showed the flushes are not where a batch's
+  fixed cost goes ([record](docs/decisions/2026-10-28-haswell-flush-variants.md)).
 - Probes: V9XD32 takes `-name` as well as `/name` and lists switches it
   does not know; the release probes refuse to run beside each other
   (`Result=BUSY`); V9XTRACE names its snapshot file in `V9XSNAL.TXT`.

@@ -652,8 +652,9 @@ static void test_phase_d_draw(void)
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 0xc0de0041ul) ==
           V9X_STATUS_OK);
-    /* What Phase D ran on the 4570: 190 dwords. */
-    CHECK(batch.used == 190ul);
+    /* Phase D ran 190 dwords on the 4570; the first RT flush went on
+     * 2026-10-28 (185, padded by the closing MI_NOOP). */
+    CHECK(batch.used == 186ul);
     CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
     /* One TRILIST of three vertices, sequential, one instance. */
     at = v9x_find_command(dw, batch.used, 0x7b000005ul);
@@ -688,6 +689,62 @@ static void test_phase_d_draw(void)
     }
     CHECK(dw[at] == 0x05000000ul && dw[at - 3ul] == 0x01821028ul &&
           dw[at - 2ul] == 0xc0de0041ul);
+
+    /* The measurement-only omit mask (intel_hsw_3d.h). Each bit takes out
+     * its packets and nothing else; the batch still checks and still ends
+     * in the breadcrumb. PIPE_CONTROL is 5 dwords, CC_STATE_POINTERS 2. */
+    {
+        static const v9x_u32 masks[6] = {
+            V9X_HSW_OMIT_ICACHE, V9X_HSW_OMIT_TEXTURE, V9X_HSW_OMIT_DEPTH,
+            V9X_HSW_OMIT_RT2, V9X_HSW_OMIT_ALLOC, V9X_HSW_OMIT_LEAD
+        };
+        /* From the unpadded 185: no depth buffer in this draw, so DEPTH
+         * changes nothing; RT2 is 7, the allocations five push-constant and
+         * four URB packets of two, LEAD 5. An odd remainder takes the
+         * closing MI_NOOP. */
+        static const v9x_u32 used[6] = { 186ul, 186ul, 186ul, 178ul, 168ul,
+                                          180ul };
+        v9x_u32 lead;
+        v9x_u32 m;
+
+        for (m = 0ul; m < 6ul; ++m) {
+            v9x_intel_hsw_set_omit(masks[m]);
+            v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+            CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul,
+                                              0x2000ul, &draw, 0x01821028ul,
+                                              0xc0de0041ul) == V9X_STATUS_OK);
+            CHECK(batch.used == used[m]);
+            CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) ==
+                  V9X_STATUS_OK);
+            at = batch.used - 1ul;
+            if (dw[at] == 0ul) {
+                --at;
+            }
+            CHECK(dw[at] == 0x05000000ul && dw[at - 2ul] == 0xc0de0041ul);
+            /* The invalidating PIPE_CONTROL: the second, or the first when
+             * LEAD went; its DW1 loses exactly the omitted cache. */
+            lead = v9x_find_command(dw, batch.used, 0x7a000003ul);
+            if (masks[m] != V9X_HSW_OMIT_LEAD) {
+                lead = lead + 5ul +
+                       v9x_find_command(dw + lead + 5ul,
+                                        batch.used - lead - 5ul,
+                                        0x7a000003ul);
+            }
+            CHECK(lead < batch.used);
+            CHECK(((dw[lead + 1ul] & V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE) ==
+                   0ul) == (masks[m] == V9X_HSW_OMIT_TEXTURE));
+            CHECK(((dw[lead + 1ul] &
+                    V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE) == 0ul) ==
+                  (masks[m] == V9X_HSW_OMIT_ICACHE));
+        }
+        /* The init workload ignores the mask: still Phase C's 172. */
+        v9x_intel_hsw_set_omit(V9X_HSW_OMIT_LEAD | V9X_HSW_OMIT_ALLOC);
+        v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+        CHECK(v9x_intel_hsw_init_workload(&batch, 0x01824000ul, 0x2000ul,
+                                          0x01821010ul, 0xc0de0031ul) ==
+              V9X_STATUS_OK && batch.used == 172ul);
+        v9x_intel_hsw_set_omit(0ul);
+    }
     draw.kernel = 0x404ul;
     CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul, &draw,
                                       0x01821028ul, 1ul) ==
@@ -898,6 +955,30 @@ static void test_phase_f1b_depth(void)
           dw[at - 4ul] == V9X_HSW_PC_DEPTH_STALL);
     CHECK(dw[at + 7ul] == 0x78070001ul && dw[at + 10ul] == 0x78060001ul &&
           dw[at + 13ul] == 0x78040001ul);
+    /* V9X_HSW_OMIT_DEPTH takes out those three and nothing else: 15
+     * dwords, with the closing MI_NOOP's parity. */
+    {
+        v9x_u32 whole = batch.used;
+        /* Without the closing MI_NOOP, if the batch took one. */
+        v9x_u32 raw = dw[whole - 1ul] == 0ul ? whole - 1ul : whole;
+        v9x_u32 depth_at;
+
+        v9x_intel_hsw_set_omit(V9X_HSW_OMIT_DEPTH);
+        v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+        CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul,
+                                          &draw, 0x01821028ul,
+                                          0xc0de0041ul) == V9X_STATUS_OK);
+        v9x_intel_hsw_set_omit(0ul);
+        CHECK(batch.used == ((raw - 15ul + 1ul) & ~1ul));
+        depth_at = v9x_find_command(dw, batch.used, 0x78050005ul);
+        CHECK(depth_at < batch.used && dw[depth_at - 4ul] !=
+                                           V9X_HSW_PC_DEPTH_STALL);
+        v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+        CHECK(v9x_intel_hsw_draw_workload(&batch, 0x01824000ul, 0x2000ul,
+                                          &draw, 0x01821028ul,
+                                          0xc0de0041ul) == V9X_STATUS_OK &&
+              batch.used == whole);
+    }
     at = v9x_find_command(dw, batch.used, 0x78130005ul);
     CHECK(at < batch.used && dw[at + 1ul] == 0x00001000ul);
     at = v9x_find_command(dw, batch.used, 0x78250000ul);
@@ -1425,7 +1506,8 @@ static void test_vs_segments(void)
 /*
  * The most segments, every one with state of its own, fit the 4 KB the
  * HAL builds an indexed T&L batch in (d3d_hsw.c, V9X_D3D_HSW_TNL_BATCH):
- * the draw alone is 212 dwords and each segment adds 39, 797 for 16.
+ * the draw alone is 212 dwords and each segment adds 39, 797 for 16
+ * (206 and 792 since draw batches lost their first RT flush, 2026-10-28).
  */
 static void test_vs_segments_fit(void)
 {
@@ -1436,6 +1518,7 @@ static void test_vs_segments_fit(void)
     struct v9x_hsw_vs_draw vs;
     struct v9x_hsw_vs_segment seg[V9X_HSW_VS_SEGMENTS_MAX];
     v9x_u32 alone;
+    v9x_u32 alone_raw;
     unsigned int i;
 
     v9x_vs_test_draw(&draw, &vs);
@@ -1458,6 +1541,7 @@ static void test_vs_segments_fit(void)
                                          &draw, &vs, 0x01801020ul, 7ul) ==
           V9X_STATUS_OK);
     alone = batch.used;
+    alone_raw = alone - (dw[alone - 1ul] == 0ul ? 1ul : 0ul);
     CHECK(alone <= 212ul);
 
     vs.segments = seg;
@@ -1467,7 +1551,10 @@ static void test_vs_segments_fit(void)
                                          &draw, &vs, 0x01801020ul, 7ul) ==
           V9X_STATUS_OK);
     CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
-    CHECK(batch.used - alone <= 39ul * V9X_HSW_VS_SEGMENTS_MAX);
+    /* Compared without either batch's closing MI_NOOP, which only says
+     * whether a length came out odd. */
+    CHECK((batch.used - (dw[batch.used - 1ul] == 0ul ? 1ul : 0ul)) -
+              alone_raw <= 39ul * V9X_HSW_VS_SEGMENTS_MAX);
     CHECK(batch.used <= 0x1000ul / 4ul);
     CHECK(v9x_nth_draw(dw, batch.used, V9X_HSW_VS_SEGMENTS_MAX) <
           batch.used);

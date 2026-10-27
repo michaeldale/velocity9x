@@ -1673,6 +1673,52 @@ static void v9x_hsw_ivb_vs_flush(struct v9x_hsw_batch *batch)
                                v9x_hsw_3d_wa_address, 0ul);
 }
 
+/* V9X_HSW_OMIT_*: measurement only, zero unless the HAL was handed a mask
+ * (intel_hsw_3d.h). */
+static v9x_u32 v9x_hsw_omit;
+
+void v9x_intel_hsw_set_omit(v9x_u32 omit)
+{
+    v9x_hsw_omit = omit;
+}
+
+/* The push-constant and URB allocations every batch makes, vue_rows the VS
+ * entry's 512-bit rows less one (V9X_HSW_OMIT_ALLOC leaves them out). */
+static void v9x_hsw_allocate(struct v9x_hsw_batch *batch, v9x_u16 vue_rows)
+{
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_VS, 0u,
+                                      V9X_HSW_INIT_PUSH_KB);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_HS,
+                                      V9X_HSW_INIT_PUSH_KB, 0u);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_DS,
+                                      V9X_HSW_INIT_PUSH_KB, 0u);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_GS,
+                                      V9X_HSW_INIT_PUSH_KB, 0u);
+    v9x_intel_hsw_push_constant_alloc(batch,
+                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_PS,
+                                      V9X_HSW_INIT_PUSH_KB,
+                                      V9X_HSW_INIT_PUSH_KB);
+    if (v9x_hsw_3d_is_ivb()) {
+        /* IVB PRM 3DSTATE_PUSH_CONSTANT_ALLOC_PS (crocus): "A PIPE_CONTROL
+         * command with the CS Stall bit set must be programmed in the ring
+         * after this instruction"; then the VS workaround before URB_VS. */
+        v9x_hsw_ivb_cs_stall_flush(batch);
+        v9x_hsw_ivb_vs_flush(batch);
+    }
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_VS, V9X_HSW_INIT_URB_START,
+                      vue_rows, V9X_HSW_INIT_VS_ENTRIES);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_HS, V9X_HSW_INIT_URB_NEXT, 0u,
+                      0u);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_DS, V9X_HSW_INIT_URB_NEXT, 0u,
+                      0u);
+    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_GS, V9X_HSW_INIT_URB_NEXT, 0u,
+                      0u);
+}
+
 /*
  * The init batch (draw == 0) and the draw batch share one sequence; the
  * draw replaces the zeroed CLIP-PS block with real state, the drawing
@@ -1704,6 +1750,8 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     v9x_u16 vue_rows;
     v9x_u8 depth_format;
     int shade;
+    v9x_u32 omit;
+    v9x_u32 invalidate;
     v9x_status status;
 
     if (batch == 0 || (state_base & V9X_HSW_PAGE_MASK) != 0ul ||
@@ -1736,8 +1784,11 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         v9x_hsw_ivb_cs_stall_flush(batch);
         v9x_intel_hsw_3dprimitive(batch, V9X_HSW_PRIM_POINTLIST, 0ul, 0ul);
     }
-    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
-                               V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);
+    omit = draw != 0 ? v9x_hsw_omit : 0ul;
+    if ((omit & V9X_HSW_OMIT_LEAD) == 0ul) {
+        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                                   V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);
+    }
     v9x_intel_hsw_state_base_address(batch, state_base, state_base,
                                      state_base, 0ul, state_base,
                                      V9X_HSW_NO_BOUND, bound,
@@ -1745,46 +1796,21 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     /* The VF cache too: without it the 4570 fetched the previous run's
      * vertices from the same address (Phase F1a, docs\decisions\
      * 2026-10-17-haswell-phase-f1a-filter-wrap-blend.md). */
-    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
-                               V9X_HSW_PC_STALL_AT_SCOREBOARD |
-                               V9X_HSW_PC_STATE_CACHE_INVALIDATE |
-                               V9X_HSW_PC_CONST_CACHE_INVALIDATE |
-                               V9X_HSW_PC_VF_CACHE_INVALIDATE |
-                               V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE |
-                               V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE,
-                               0ul, 0ul);
-
-    v9x_intel_hsw_push_constant_alloc(batch,
-                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_VS, 0u,
-                                      V9X_HSW_INIT_PUSH_KB);
-    v9x_intel_hsw_push_constant_alloc(batch,
-                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_HS,
-                                      V9X_HSW_INIT_PUSH_KB, 0u);
-    v9x_intel_hsw_push_constant_alloc(batch,
-                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_DS,
-                                      V9X_HSW_INIT_PUSH_KB, 0u);
-    v9x_intel_hsw_push_constant_alloc(batch,
-                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_GS,
-                                      V9X_HSW_INIT_PUSH_KB, 0u);
-    v9x_intel_hsw_push_constant_alloc(batch,
-                                      V9X_HSW_CMD_PUSH_CONSTANT_ALLOC_PS,
-                                      V9X_HSW_INIT_PUSH_KB,
-                                      V9X_HSW_INIT_PUSH_KB);
-    if (v9x_hsw_3d_is_ivb()) {
-        /* IVB PRM 3DSTATE_PUSH_CONSTANT_ALLOC_PS (crocus): "A PIPE_CONTROL
-         * command with the CS Stall bit set must be programmed in the ring
-         * after this instruction"; then the VS workaround before URB_VS. */
-        v9x_hsw_ivb_cs_stall_flush(batch);
-        v9x_hsw_ivb_vs_flush(batch);
+    invalidate = V9X_HSW_PC_CS_STALL | V9X_HSW_PC_STALL_AT_SCOREBOARD |
+                 V9X_HSW_PC_STATE_CACHE_INVALIDATE |
+                 V9X_HSW_PC_CONST_CACHE_INVALIDATE |
+                 V9X_HSW_PC_VF_CACHE_INVALIDATE;
+    if ((omit & V9X_HSW_OMIT_TEXTURE) == 0ul) {
+        invalidate |= V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE;
     }
-    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_VS, V9X_HSW_INIT_URB_START,
-                      vue_rows, V9X_HSW_INIT_VS_ENTRIES);
-    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_HS, V9X_HSW_INIT_URB_NEXT, 0u,
-                      0u);
-    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_DS, V9X_HSW_INIT_URB_NEXT, 0u,
-                      0u);
-    v9x_intel_hsw_urb(batch, V9X_HSW_CMD_URB_GS, V9X_HSW_INIT_URB_NEXT, 0u,
-                      0u);
+    if ((omit & V9X_HSW_OMIT_ICACHE) == 0ul) {
+        invalidate |= V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE;
+    }
+    v9x_intel_hsw_pipe_control(batch, invalidate, 0ul, 0ul);
+
+    if ((omit & V9X_HSW_OMIT_ALLOC) == 0ul) {
+        v9x_hsw_allocate(batch, vue_rows);
+    }
 
     /* IVB: the VS workaround before 3DSTATE_VS too (crocus). */
     if (v9x_hsw_3d_is_ivb()) {
@@ -1859,10 +1885,14 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
          * 1 17:0),
          * its base, height - 1 31:18 and width - 1 17:4; then HiZ,
          * stencil and clear parameters, all off. */
-        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul, 0ul);
-        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_CACHE_FLUSH, 0ul,
-                                   0ul);
-        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul, 0ul);
+        if ((omit & V9X_HSW_OMIT_DEPTH) == 0ul) {
+            v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul,
+                                       0ul);
+            v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_CACHE_FLUSH,
+                                       0ul, 0ul);
+            v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_DEPTH_STALL, 0ul,
+                                       0ul);
+        }
         depth[0] = ((v9x_u32)V9X_HSW_SURFTYPE_2D << 29) |
                    V9X_HSW_DEPTH_WRITE_ENABLE |
                    ((v9x_u32)depth_format << 18) |
@@ -1926,12 +1956,22 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
         v9x_hsw_draw_vertices(batch, draw, vs);
     }
 
-    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
-                               V9X_HSW_PC_CS_STALL, 0ul, 0ul);
-    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
-                                cc | V9X_HSW_POINTER_MBO);
-    v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
-                               V9X_HSW_PC_CS_STALL, 0ul, 0ul);
+    /* Vol 2b's MI_BATCH_BUFFER_START note ends a 3D batch with the CC
+     * pointers, then an RT-flush CS-stall PIPE_CONTROL. A draw batch sends
+     * only that pair; the init batch keeps the RT flush before it that
+     * Phase C ran. Leaving that first flush out of draw batches made DB3D's
+     * small batches 4-5% cheaper on the 4570 with every check passing
+     * (docs\decisions\2026-10-28-haswell-flush-variants.md). */
+    if (draw == 0) {
+        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
+                                   V9X_HSW_PC_CS_STALL, 0ul, 0ul);
+    }
+    if ((omit & V9X_HSW_OMIT_RT2) == 0ul) {
+        v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_CC_PTRS,
+                                    cc | V9X_HSW_POINTER_MBO);
+        v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
+                                   V9X_HSW_PC_CS_STALL, 0ul, 0ul);
+    }
 
     v9x_intel_hsw_pipe_control(batch, V9X_HSW_PC_CS_STALL |
                                V9X_HSW_PC_STALL_AT_SCOREBOARD, 0ul, 0ul);

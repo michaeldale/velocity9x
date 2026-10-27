@@ -1,0 +1,197 @@
+Target=640x480x16 dx7 hal
+FillFlat=8.0432 cyc/px call=0.001 verified=yes
+FillGouraud=8.0439 cyc/px call=0.002 verified=yes
+FillTex16Point=8.0465 cyc/px call=0.002 verified=yes
+FillTex32Point=8.0464 cyc/px call=0.002 verified=yes
+FillTex16Bilinear=8.0464 cyc/px call=0.002 verified=yes
+FillTex32Bilinear=8.0469 cyc/px call=0.002 verified=yes
+FillTexMipNearest=8.0471 cyc/px call=0.002 verified=yes
+FillTexMipLinear=8.0466 cyc/px call=0.002 verified=yes
+FillTexSize.32=8.0465 cyc/px call=0.002 verified=yes
+FillTexSize.64=8.047 cyc/px call=0.002 verified=yes
+FillTexSize.128=8.0465 cyc/px call=0.002 verified=yes
+FillTexSize.256=8.0467 cyc/px call=0.002 verified=yes
+FillTexSize.512=9.9325 cyc/px call=0.001 verified=yes
+FillTexSize.1024=n/a status=refused refused=texture-create
+FillDepthTest=8.044 cyc/px call=0.001 verified=yes
+FillDepthWrite=8.0449 cyc/px call=0.001 verified=yes
+FillAlphaBlend=16.3197 cyc/px call=0.001 verified=yes
+FillAlphaTest=8.0435 cyc/px call=0.001 verified=yes
+FillFog=8.044 cyc/px call=0.001 verified=yes
+FillSpecular=8.0436 cyc/px call=0.001 verified=yes
+FillMultiTex=8.0501 cyc/px call=0.002 verified=yes
+FillStage.Add=8.0506 cyc/px call=0.002 verified=yes
+FillStage.Modulate2x=n/a status=refused refused=validate-device
+FillStage.BlendTextureAlpha=9.5385 cyc/px call=0.002 verified=yes
+FillStage.Lightmap=8.8086 cyc/px call=0.002 verified=yes
+FillStage.TexCoord1=8.0502 cyc/px call=0.002 verified=yes
+FillStage.TexCoord0=8.05 cyc/px call=0.002 verified=yes
+FillStage.Mip1=8.0505 cyc/px call=0.002 verified=yes
+FillOverdraw.Flat.2=8.0396 cyc/px call=0.001 verified=yes
+FillOverdraw.Flat.4=8.0391 cyc/px call=0.001 verified=yes
+FillOverdraw.Flat.8=8.0353 cyc/px call=0 verified=yes
+FillOverdraw.Blend.2=16.3161 cyc/px call=0 verified=yes
+FillOverdraw.Blend.4=16.3159 cyc/px call=0 verified=yes
+FillOverdraw.Blend.8=16.3144 cyc/px call=0 verified=yes
+TriSize.1=655.1331 cyc/tri call=0.999 verified=yes
+TriSize.16=852.2418 cyc/tri call=0.998 verified=yes
+TriSize.64=1412.3524 cyc/tri call=0.997 verified=yes
+TriSize.256=3131.4573 cyc/tri call=0.994 verified=yes
+TriBatch.1=886.0438 cyc/tri call=0.999 verified=yes
+TriBatch.8=846.3279 cyc/tri call=0.999 verified=yes
+TriBatch.64=846.2952 cyc/tri call=0.999 verified=yes
+TriBatch.512=846.5101 cyc/tri call=0.999 verified=yes
+TriBatch.4096=851.4164 cyc/tri call=0.999 verified=yes
+TriBatch.16.V32=847.2892 cyc/tri call=0.999 verified=yes
+TriBatch.16.V40=845.9964 cyc/tri call=0.999 verified=yes
+TriBatch.16.V48=846.4659 cyc/tri call=0.999 verified=yes
+TriBatch.32.V32=846.2319 cyc/tri call=0.998 verified=yes
+TriBatch.32.V40=853.842 cyc/tri call=0.999 verified=yes
+TriBatch.32.V48=847.3238 cyc/tri call=0.999 verified=yes
+TriBatch.43.V32=1140.2718 cyc/tri call=0.999 verified=yes
+TriBatch.43.V40=914.2685 cyc/tri call=0.999 verified=yes
+TriBatch.43.V48=921.3247 cyc/tri call=0.999 verified=yes
+TriBatch.100.V32=635.7611 cyc/tri call=0.999 verified=yes
+TriBatch.100.V40=916.4125 cyc/tri call=0.999 verified=yes
+TriBatch.100.V48=916.1833 cyc/tri call=0.999 verified=yes
+BatchCost.Tiny=800.9828 cyc/call call=0.999 verified=yes
+BatchCost.Culled=394.253 cyc/call call=1 verified=yes
+TriSubmit.DrawPrimitive=847.4266 cyc/tri call=0.998 verified=yes
+TriSubmit.DrawIndexedPrimitive=848.5 cyc/tri call=0.999 verified=yes
+TriSubmit.VertexBufferSystem=846.1186 cyc/tri call=0.999 verified=yes
+TriSubmit.VertexBufferDriver=846.0906 cyc/tri call=0.999 verified=yes
+TriStrip.List=856.9993 cyc/tri call=0.999 verified=yes
+TriStrip.Strip=856.3724 cyc/tri call=0.999 verified=yes
+StateTexture.Static.1=935.013 cyc/tri call=0.999 verified=yes
+StateTexture.Switch.1=42979.6787 cyc/tri call=0.999 verified=yes
+StateTexture.Static.8=913.9024 cyc/tri call=0.998 verified=yes
+StateTexture.Switch.8=5608.2787 cyc/tri call=0.998 verified=yes
+StateTexture.Static.64=908.7393 cyc/tri call=0.998 verified=yes
+StateTexture.Switch.64=909.4025 cyc/tri call=0.998 verified=yes
+StateTexture.Static.512=914.9085 cyc/tri call=0.998 verified=yes
+StateTexture.Switch.512=914.0151 cyc/tri call=0.998 verified=yes
+StateRender.Static.1=892.5097 cyc/tri call=0.999 verified=yes
+StateRender.Toggle.1=38866.1116 cyc/tri call=0.999 verified=yes
+StateRender.Static.8=846.1281 cyc/tri call=0.999 verified=yes
+StateRender.Toggle.8=5153.4559 cyc/tri call=0.999 verified=yes
+StateRender.Static.64=846.1159 cyc/tri call=0.999 verified=yes
+StateRender.Toggle.64=936.9394 cyc/tri call=0.998 verified=yes
+StateRender.Static.512=847.6694 cyc/tri call=0.999 verified=yes
+StateRender.Toggle.512=936.6309 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Static.1=942.7776 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Change.1=43317.7024 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Static.2=909.2348 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Change.2=21641.7231 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Static.4=909.0178 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Change.4=10881.4944 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Static.8=908.6836 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Change.8=5567.1664 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Static.16=909.3155 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Change.16=2894.5651 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Static.32=909.4452 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Change.32=1573.739 cyc/tri call=0.999 verified=yes
+StateChange.Texture.Static.64=908.3974 cyc/tri call=0.998 verified=yes
+StateChange.Texture.Change.64=914.0223 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Static.1=1029.516 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Change.1=38973.2947 cyc/tri call=0.999 verified=yes
+StateChange.Blend.Static.2=1025.0732 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Change.2=19609.3013 cyc/tri call=0.999 verified=yes
+StateChange.Blend.Static.4=1024.6582 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Change.4=9993.8243 cyc/tri call=0.999 verified=yes
+StateChange.Blend.Static.8=1026.1201 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Change.8=5230.3903 cyc/tri call=0.999 verified=yes
+StateChange.Blend.Static.16=1062.6229 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Change.16=2845.0032 cyc/tri call=0.999 verified=yes
+StateChange.Blend.Static.32=1025.1416 cyc/tri call=0.998 verified=yes
+StateChange.Blend.Change.32=1647.0941 cyc/tri call=0.999 verified=yes
+StateChange.Blend.Static.64=1029.7447 cyc/tri call=0.995 verified=yes
+StateChange.Blend.Change.64=1024.9399 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Static.1=938.7207 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Change.1=42557.8035 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Static.2=913.6844 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Change.2=21372.2017 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Static.4=923.6708 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Change.4=10953.4818 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Static.8=913.5275 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Change.8=5539.0334 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Static.16=914.2589 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Change.16=2898.0601 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Static.32=913.5111 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Change.32=1584.6435 cyc/tri call=0.999 verified=yes
+StateChange.Depth.Static.64=918.426 cyc/tri call=0.998 verified=yes
+StateChange.Depth.Change.64=914.2744 cyc/tri call=0.999 verified=yes
+Pipeline.Depth.1=80492.3879 cyc/call call=1 verified=yes
+Pipeline.Depth.2=52875.51 cyc/call call=1 verified=yes
+Pipeline.Depth.4=41119.1674 cyc/call call=1 verified=yes
+Pipeline.Depth.16=30686.7481 cyc/call call=1 verified=yes
+Pipeline.Depth.64=27980.5849 cyc/call call=1 verified=yes
+Clear.Target=1.2729 cyc/px call=0 verified=yes
+Clear.Z=3.9612 cyc/px call=0 verified=skipped
+Clear.Both=5.217 cyc/px call=0 verified=yes
+Flip.Vsync=33724989 cyc/frame call=1 verified=no
+Flip.NoVsync=51847357 cyc/frame call=1 verified=no
+Flip.Blt=757903.36 cyc/frame call=0.992 verified=yes
+FlipInterval=check verified=no
+TexUpload.Lock=1.2467 cyc/byte call=1 verified=yes
+TexUpload.Blt=0.2462 cyc/byte call=0.999 verified=yes
+Cull.List.Fvf.None=check verified=yes
+Cull.List.Fvf.Cw=check verified=yes
+Cull.List.Fvf.Ccw=check verified=yes
+Cull.List.Tl.None=check verified=yes
+Cull.List.Tl.Cw=check verified=yes
+Cull.List.Tl.Ccw=check verified=yes
+Cull.Indexed.Fvf.None=check verified=yes
+Cull.Indexed.Fvf.Cw=check verified=yes
+Cull.Indexed.Fvf.Ccw=check verified=yes
+Cull.Indexed.Tl.None=check verified=yes
+Cull.Indexed.Tl.Cw=check verified=yes
+Cull.Indexed.Tl.Ccw=check verified=yes
+Cull.Indexed192.Fvf.None=check verified=yes
+Cull.Indexed192.Fvf.Cw=check verified=yes
+Cull.Indexed192.Fvf.Ccw=check verified=yes
+Cull.Indexed192.Tl.None=check verified=yes
+Cull.Indexed192.Tl.Cw=check verified=yes
+Cull.Indexed192.Tl.Ccw=check verified=yes
+Cull.Indexed2048.Fvf.None=check verified=yes
+Cull.Indexed2048.Fvf.Cw=check verified=yes
+Cull.Indexed2048.Fvf.Ccw=check verified=yes
+Cull.Indexed2048.Tl.None=check verified=yes
+Cull.Indexed2048.Tl.Cw=check verified=yes
+Cull.Indexed2048.Tl.Ccw=check verified=yes
+Cull.Strip3.Fvf.None=check verified=yes
+Cull.Strip3.Fvf.Cw=check verified=yes
+Cull.Strip3.Fvf.Ccw=check verified=yes
+Cull.Strip3.Tl.None=check verified=yes
+Cull.Strip3.Tl.Cw=check verified=yes
+Cull.Strip3.Tl.Ccw=check verified=yes
+Cull.Fan3.Fvf.None=check verified=yes
+Cull.Fan3.Fvf.Cw=check verified=yes
+Cull.Fan3.Fvf.Ccw=check verified=yes
+Cull.Fan3.Tl.None=check verified=yes
+Cull.Fan3.Tl.Cw=check verified=yes
+Cull.Fan3.Tl.Ccw=check verified=yes
+Cull.VbSystem.Fvf.None=check verified=yes
+Cull.VbSystem.Fvf.Cw=check verified=yes
+Cull.VbSystem.Fvf.Ccw=check verified=yes
+Cull.VbSystem.Tl.None=check verified=yes
+Cull.VbSystem.Tl.Cw=check verified=yes
+Cull.VbSystem.Tl.Ccw=check verified=yes
+Cull.VbDriver.Fvf.None=check verified=yes
+Cull.VbDriver.Fvf.Cw=check verified=yes
+Cull.VbDriver.Fvf.Ccw=check verified=yes
+Cull.VbDriver.Tl.None=check verified=yes
+Cull.VbDriver.Tl.Cw=check verified=yes
+Cull.VbDriver.Tl.Ccw=check verified=yes
+Cull.VbStart.Fvf.None=check verified=yes
+Cull.VbStart.Fvf.Cw=check verified=yes
+Cull.VbStart.Fvf.Ccw=check verified=yes
+Cull.VbStart.Tl.None=check verified=yes
+Cull.VbStart.Tl.Cw=check verified=yes
+Cull.VbStart.Tl.Ccw=check verified=yes
+Cube.Outside.Ccw=check verified=yes
+Cube.Outside.None=check verified=yes
+Cube.Inside.Ccw=check verified=yes
+Cube.Inside.None=check verified=yes
+Problem=Flip.Vsync: verification failed
+Problem=Flip.NoVsync: verification failed
+Problem=FlipInterval: verification failed

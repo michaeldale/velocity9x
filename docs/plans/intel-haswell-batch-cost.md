@@ -1,7 +1,7 @@
 # HD 4600: the render engine's cost per 3D batch
 
 Date: 2026-10-23. Status: lever 2 (write-combining) done 2026-10-28;
-lever 1 measured, not started (section 2026-10-28). Michael judged Tux Racer and Quake 3
+lever 1 measured and mostly ruled out the same day (section 2026-10-28). Michael judged Tux Racer and Quake 3
 good enough on the HD 4600 after the 2026-10-23 changes; this is written
 down for later, not started. Nothing below is measured beyond what the
 linked record says.
@@ -76,6 +76,15 @@ allocations, every stage, depth, drawing rectangle and pointers.
 
 A wedged render engine makes `reset` hard-lock the 4570: every variant
 boot needs Michael within reach for a power cycle.
+
+**Done the same day** ([record](../decisions/2026-10-28-haswell-flush-variants.md)):
+`V9XTRACE -omit:<mask>`, seven variants. The flushes are about 2 of the
+10 us; ICACHE, TEXTURE and ALLOC cost nothing measurable, DEPTH is not
+safe, and only the first of the two closing RT flushes went (about 5% off
+small batches, a percent of a 3DMark batch). What is left is the closing
+stall and breadcrumb every slot waits on. For 3DMark, whose batches are
+mostly drawing, the next lever is fewer, larger batches, not cheaper
+ones.
 
 ## The two levers
 

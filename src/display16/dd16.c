@@ -1178,6 +1178,16 @@ static LONG v9x_dd_command(V9X_DCICMD FAR *command, LPVOID output)
             d->frame_grab_remaining = count;
         }
         return 1;
+
+    case V9X_DDFLUSHVARIANT:
+        /* The HD 4600 batch builder's omit mask, for the variant runs of
+         * docs\plans\intel-haswell-batch-cost.md. A plain store the HAL
+         * reads before each batch it builds. */
+        if (v9x_dd_block() == 0) {
+            return 0;
+        }
+        v9x_dd_shared->hsw_flush_omit = command->dwParam1;
+        return 1;
     case V9X_DDGETTRACE:
         /* Copy a snapshot of the trace state for the diagnostics tool.
          * Byte copy keeps the 16-bit build free of runtime helpers. */

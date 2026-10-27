@@ -905,6 +905,41 @@ static DWORD v9x_parse_inject(void)
 }
 
 /*
+ * "-omit:<decimal>": the HD 4600 batch builder's omit mask
+ * (V9X_DDFLUSHVARIANT), for the variant runs of
+ * docs\plans\intel-haswell-batch-cost.md; "-omit:0" restores the shipped
+ * batch. Non-zero when the switch is present.
+ */
+static int v9x_parse_omit(DWORD *mask)
+{
+    const char *cmd = GetCommandLineA();
+    const char *match = "-omit:";
+    int index;
+
+    *mask = 0ul;
+    if (cmd == 0) {
+        return 0;
+    }
+    for (; *cmd != '\0'; ++cmd) {
+        for (index = 0; match[index] != '\0'; ++index) {
+            if (cmd[index] != match[index]) {
+                break;
+            }
+        }
+        if (match[index] != '\0') {
+            continue;
+        }
+        cmd += index;
+        while (*cmd >= '0' && *cmd <= '9') {
+            *mask = *mask * 10ul + (DWORD)(*cmd - '0');
+            ++cmd;
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/*
  * "-grab:<interval>x<count>": arm the flip-path frame grab (frame_grab.h),
  * every interval-th flip, count times. 1 and the switch's numbers, or 0
  * when the switch is absent. "-grab" alone is every flip, ten times.
@@ -1708,6 +1743,23 @@ void __stdcall V9xTraceDumpEntry(void)
             v9x_write_uint("GrabRequestedInterval", grab_interval);
             v9x_write_uint("GrabRequestedCount", grab_count);
             v9x_write_uint("GrabArmAccepted", result > 0 ? 1ul : 0ul);
+        }
+    }
+
+    /* "-omit:<mask>": the HD 4600 batch variant for the runs that follow. */
+    {
+        DWORD omit;
+
+        if (v9x_parse_omit(&omit)) {
+            command.dwCommand = V9X_DDFLUSHVARIANT;
+            command.dwParam1 = omit;
+            command.dwParam2 = 0ul;
+            command.dwVersion = V9X_DD_VERSION;
+            command.dwReserved = 0ul;
+            result = ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                               (LPCSTR)&command, 0, 0);
+            v9x_write_uint("OmitRequested", omit);
+            v9x_write_uint("OmitAccepted", result > 0 ? 1ul : 0ul);
         }
     }
 

@@ -799,6 +799,37 @@ v9x_status v9x_intel_hsw_3dprimitive_indexed_at(struct v9x_hsw_batch *batch,
 v9x_status v9x_intel_hsw_sf_screen_cull(struct v9x_hsw_batch *batch,
                                         v9x_u8 depth_format, v9x_u8 cull);
 
+/*
+ * Measurement only (docs\plans\intel-haswell-batch-cost.md, 2026-10-28):
+ * what a draw batch leaves out, one bit per candidate for the GPU's fixed
+ * cost a batch. Zero, the shipped batch, unless the HAL is handed a mask
+ * by V9X_DDFLUSHVARIANT. The init workload ignores it. No bit removes a CS
+ * stall the breadcrumb or a slot's reuse waits on: the closing scoreboard
+ * stall and the breadcrumb's own stay.
+ *
+ *   ICACHE   the leading PIPE_CONTROL's instruction-cache invalidate
+ *   TEXTURE  its texture-cache invalidate
+ *   DEPTH    the depth stall, depth-cache flush, depth stall around the
+ *            depth buffer
+ *   RT2      the CC pointer and render-target flush that end the batch
+ *   ALLOC    the push-constant and URB allocations
+ *   LEAD     the first PIPE_CONTROL, the scoreboard stall before
+ *            STATE_BASE_ADDRESS
+ *
+ * 40h was RT1, the first render-target flush; draw batches no longer send
+ * it (docs\decisions\2026-10-28-haswell-flush-variants.md), so RT2 now
+ * removes the batch's only one and with it the end Vol 2b asks for.
+ */
+#define V9X_HSW_OMIT_ICACHE   ((v9x_u32)0x01ul)
+#define V9X_HSW_OMIT_TEXTURE  ((v9x_u32)0x02ul)
+#define V9X_HSW_OMIT_DEPTH    ((v9x_u32)0x04ul)
+#define V9X_HSW_OMIT_RT2      ((v9x_u32)0x08ul)
+#define V9X_HSW_OMIT_ALLOC    ((v9x_u32)0x10ul)
+#define V9X_HSW_OMIT_LEAD     ((v9x_u32)0x20ul)
+
+/* The omit mask the next draw workloads are built with (V9X_HSW_OMIT_*). */
+void v9x_intel_hsw_set_omit(v9x_u32 omit);
+
 /* The init batch's state with the draw's in place of the zeroed stages,
  * one TRILIST of three vertices, then the same end and breadcrumb. */
 v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
