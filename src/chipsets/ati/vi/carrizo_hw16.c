@@ -85,8 +85,12 @@ static void v9x_carrizo_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = mmio;
     *mapped_aperture_bytes = V9X_CARRIZO_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_VI;
+    /* Flips through display controller D1's surface address, taken at
+     * the vertical blank (eg_scanout.c, which serves Evergreen's DCE 4 and
+     * this DCE 11 alike and checks D1 is the controller scanning). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
     *ring_linear_base = ring;
     *ring_bytes = bytes;
 }

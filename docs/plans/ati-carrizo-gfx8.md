@@ -17,8 +17,11 @@ dwords. Phase 4 runs on the chip
 ([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)):
 DirectDraw fill and copy on SDMA0 through the HAL, pixel-correct at 16 and
 32 bpp and across mode cycles, every blit on the engine, with the SDMA
-microcode in the tree under LICENSE.amdgpu. Next: Phase 5, flips. Register
-facts below come from
+microcode in the tree under LICENSE.amdgpu. Phase 5 runs on the chip
+([record](../decisions/2026-10-28-carrizo-page-flips.md)): flips through
+D1's surface address in `eg_scanout.c`, shared with Cedar's DCE 4, every
+one taken at the blank. Next: Phase 6, the CP and 3D, in its own plan.
+Register facts below come from
 Linux `amdgpu` source; the records say which ones the chip has confirmed.
 
 Target: the GPU in AMD's Embedded GX-420GI ("Merlin Falcon", 2015), PCI

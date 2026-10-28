@@ -392,7 +392,9 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'ATI_VI'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # Flips through D1's surface address, taken at the vertical blank
+            # (eg_scanout.c, shared with Cedar's DCE 4).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # M-XP7053's VBE 4F00h reports 48 MiB; the heap is clamped to the
             # family's 16 MiB mapping, and this is that mapping.
             VideoMemoryBytes = 16777216

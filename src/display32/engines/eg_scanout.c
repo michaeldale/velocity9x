@@ -20,6 +20,15 @@
  * before. Nothing here runs unless the 16-bit side stamped the Evergreen
  * engine with V9X_DD_ENGINE_CAP_FLIP. The address arithmetic is
  * eg_dma.c's v9x_eg_scanout_address, host-tested.
+ *
+ * Carrizo's DCE 11 controller D1 has the same registers at the same byte
+ * offsets and the same fields (Linux dce_11_0_d.h and _sh_mask.h), and
+ * Linux's dce_v11_0_page_flip writes the same sequence. What differs is the
+ * address: the carve-out sits at GPU F4_00000000 on M-XP7053, so
+ * GRPH_PRIMARY_SURFACE_ADDRESS_HIGH takes bits 39:32 where Evergreen's is
+ * 0, and the heap's address and the drain before a flip are the SDMA
+ * engine's (eng_vi.c). D1 is the controller the VBE drives there too
+ * (docs\decisions\2026-10-28-carrizo-register-probe.md).
  */
 #include "ddhal_internal.h"
 #include "velocity9x/eg_dma.h"
@@ -51,7 +60,8 @@ int v9x_eg_scanout_active(void)
 {
     if (v9x_hal == 0 ||
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
-        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_EVERGREEN ||
+        (v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_EVERGREEN &&
+         v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_VI) ||
         v9x_hal->engine.control_linear_base == 0ul ||
         v9x_hal->engine.mapped_aperture_bytes < V9X_EG_CRTC_STATUS + 4ul) {
         return 0;
@@ -79,24 +89,33 @@ int v9x_eg_in_vblank(void)
             V9X_EG_CRTC_V_BLANK) != 0ul;
 }
 
+/* The heap's GPU address and the frame finished before it is shown:
+ * Evergreen's CP drawing and DMA engine's last fill or copy, below 4 GiB;
+ * on Carrizo the SDMA engine's, with the high half. */
+static int v9x_eg_scanout_heap(DWORD *high, DWORD *low)
+{
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_VI) {
+        return v9x_vi_heap_address(high, low) && v9x_vi_dma_settle();
+    }
+    *high = 0ul;
+    return v9x_eg_cp_addresses(low) && v9x_eg_cp_drain(1) &&
+           v9x_eg_dma_settle();
+}
+
 int v9x_eg_set_display_start(DWORD byte_offset)
 {
-    DWORD heap_gpu;
+    DWORD heap_high;
+    DWORD heap_low;
     v9x_u32 address;
 
-    if (!v9x_eg_scanout_live() || !v9x_eg_cp_addresses(&heap_gpu) ||
-        v9x_eg_scanout_address(heap_gpu, byte_offset,
+    if (!v9x_eg_scanout_live() || !v9x_eg_scanout_heap(&heap_high, &heap_low) ||
+        v9x_eg_scanout_address(heap_low, byte_offset,
                                v9x_hal->fb.vram_bytes, &address) !=
             V9X_STATUS_OK) {
         return 0;
     }
-    /* The frame is finished before it is shown: the CP's drawing and the
-     * DMA engine's last fill or copy. */
-    if (!v9x_eg_cp_drain(1) || !v9x_eg_dma_settle()) {
-        return 0;
-    }
     *v9x_eg_scanout_reg(V9X_EG_GRPH_FLIP_CONTROL) = V9X_EG_FLIP_AT_VBLANK;
-    *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS_HI) = 0ul;
+    *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS_HI) = heap_high;
     *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS) = address;
     /* Posts the write, as Linux does. */
     (void)*v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS);

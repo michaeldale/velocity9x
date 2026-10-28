@@ -543,8 +543,9 @@ int v9x_r128_set_display_start(DWORD byte_offset);
 int v9x_r128_flip_pending(void);
 void v9x_r128_note_flip_done(void);
 void v9x_r128_scanout_reset(void);
-/* The HD 5450's display controller D1, in engines/eg_scanout.c: active
- * only for ATI_EVERGREEN stamped with V9X_DD_ENGINE_CAP_FLIP. A flip is
+/* The HD 5450's and Carrizo's display controller D1, in
+ * engines/eg_scanout.c: active only for ATI_EVERGREEN or ATI_VI stamped
+ * with V9X_DD_ENGINE_CAP_FLIP. A flip is
  * written at any line and taken at the vertical blank; pending until
  * GRPH_UPDATE's update-pending bit clears. */
 int v9x_eg_scanout_active(void);
@@ -594,6 +595,12 @@ DWORD v9x_eg_cp_shader_gpu(DWORD which);
  * idle, so a 3D batch never reads what a fill or copy has yet to write.
  * Non-zero when idle, or when the DMA engine is not running. */
 int v9x_eg_dma_settle(void);
+/* engines/eng_vi.c, for eg_scanout.c on Carrizo: dma_settle waits for the
+ * SDMA work queued since the engine was last idle (non-zero when idle, or
+ * when it is not running); heap_address gives the heap's GPU address as
+ * bits 39:32 and 31:0, zero until the engine is validated. */
+int v9x_vi_dma_settle(void);
+int v9x_vi_heap_address(DWORD *high, DWORD *low);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */

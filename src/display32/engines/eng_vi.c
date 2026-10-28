@@ -427,6 +427,29 @@ static int v9x_vi_wait_idle(int wait)
     return 0;
 }
 
+/* Before a flip: the last fill or copy finished, so the frame shown is the
+ * frame drawn. */
+int v9x_vi_dma_settle(void)
+{
+    if (!v9x_vi_validated() || !v9x_vi_dirty) {
+        return 1;
+    }
+    return v9x_vi_wait_idle(1);
+}
+
+/* The heap's GPU address, once the engine is validated, for the scanout
+ * controller (eg_scanout.c): the carve-out's high half and the heap's low
+ * half. */
+int v9x_vi_heap_address(DWORD *high, DWORD *low)
+{
+    if (!v9x_vi_validate()) {
+        return 0;
+    }
+    *high = v9x_vi_gpu_high;
+    *low = v9x_vi_heap_low;
+    return 1;
+}
+
 /* Every row of a plan into the ring, a stage at a time. */
 static int v9x_vi_emit(const struct v9x_eg_dma_plan *plan)
 {
