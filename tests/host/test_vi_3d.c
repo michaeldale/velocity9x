@@ -885,6 +885,21 @@ static void test_tl_depth(void)
     last = at - 2ul;
     CHECK(find_context(buffer + last, stream.count - last, 0xa010ul) == 0ul);
 
+    /* Linear: ARRAY_LINEAR_ALIGNED in DB_DEPTH_INFO, tile index 7 and no
+     * tile split in DB_Z_INFO, the rest the same. */
+    draw.depth_linear = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul && buffer[at] == 0x00000011ul);
+    CHECK(buffer[at + 1ul] == 0x00700001ul);
+    CHECK(buffer[at + 7ul] == 0x00000807ul);
+    draw.depth_linear = 0ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa00ful);
+    last = at - 2ul;
+
     at = find_context(buffer + last, stream.count - last, 0xa200ul);
     CHECK(at != 0ul && buffer[last + at] == 0x00000016ul);
     at = find_context(buffer + last, stream.count - last, 0xa000ul);

@@ -108,3 +108,34 @@ neither measured:
 
 A game that locks its Z buffer would see the same misaddressing. None of
 those run so far is known to.
+
+### Boot 35: linear Z, measured. Killed.
+
+DB_Z_INFO's TILE_MODE_INDEX is three bits (22:20), so the DB can name
+only GB_TILE_MODE0-7. Linux's Carrizo table holds no linear mode there:
+0-4 are 2D, 5 is 1D and 6 is PRT, and Linux leaves 7 unwritten. Mesa's
+surface code forces any depth surface to at least 1D ("DB doesn't support
+linear layouts").
+
+The test was V9XCZ3D `/zlinear` (`boot35-zlinear/`), on a fresh boot:
+- after gpu_init it wrote GB_TILE_MODE7 = ARRAY_LINEAR_ALIGNED, P2
+  (`0x4`, mode 8's value);
+- it drew `/depth`'s three rectangles with DB_Z_INFO index 7 and
+  DB_DEPTH_INFO ARRAY_MODE linear.
+
+The results:
+- The depth test worked and the colour was exact: `ColourBad=0`.
+- The buffer was not linear: `DepthBadDwords=256` of 512. Every 128-byte
+  run alternates wholly 0.5 and wholly 0.25, where row-by-row would give
+  0.5 then 0.25 within each run. That is not `/depth`'s 1D layout either
+  (four 0.5 tiles, then four 0.25).
+- Whether GB_TILE_MODE7 took the write was not read back.
+
+The `/depth` control on the same boot passes.
+
+So the DB does not give a layout a CPU Lock can read. What remains is to
+convert on Lock: detile on Lock and retile on Unlock. A 1D tile row
+covers exactly the bytes of eight linear rows, so it can be done in
+place a band at a time. It needs one measurement first: the order of the
+samples inside an 8x8 depth tile. `v9x_verify_depth` never measured it,
+because its regions are whole tiles.

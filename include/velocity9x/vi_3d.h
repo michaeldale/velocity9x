@@ -166,6 +166,10 @@ struct v9x_vi_tl_draw {
     /* Nonzero: the texel's W is the constant 1, for a format whose fourth
      * byte is not alpha (XRGB8888). */
     v9x_u32 texture_opaque;
+    /* Nonzero: the depth buffer linear-aligned through tile index
+     * V9X_VI_TILE_DEPTH_LINEAR, rows of the depth pitch; GB_TILE_MODE7
+     * must hold V9X_VI_TILE_MODE_LINEAR_ALIGNED. */
+    v9x_u32 depth_linear;
 };
 
 /* The S#'s MIP_FILTER (SQ_TEX_MIP_FILTER_*). */
@@ -233,6 +237,12 @@ v9x_u32 v9x_vi_3d_blend(v9x_u32 source, v9x_u32 destination);
  * depth micro-tiling, tile split 5. Each 8x8 tile is contiguous, the
  * tiles in rows. */
 #define V9X_VI_TILE_DEPTH_1D    5ul
+/* DB_Z_INFO's TILE_MODE_INDEX is three bits, and Linux's Carrizo table
+ * holds no linear mode in 0-7; it leaves 7 unwritten. 7 written as
+ * ARRAY_LINEAR_ALIGNED, P2 (GB_TILE_MODE8's value) names a linear
+ * depth buffer. */
+#define V9X_VI_TILE_DEPTH_LINEAR        7ul
+#define V9X_VI_TILE_MODE_LINEAR_ALIGNED 0x00000004ul
 
 /* V9X_STATUS_OK with the packets appended; INVALID_ARGUMENT for a bad
  * target, an unaligned address, a vertex count not whole triangles or a

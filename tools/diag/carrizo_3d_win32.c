@@ -43,7 +43,11 @@
  *      the whole target from a vertex buffer in the window, a red ramp
  *      checked pixel by pixel (Phase 4 step 1). With /depth: a Z16
  *      buffer and three rectangles, LESS with writes, the colour and the
- *      Z buffer checked (step 2). With /texture or /modulate: a pattern
+ *      Z buffer checked (step 2). With /zlinear: the same draw into a
+ *      linear Z16 buffer, GB_TILE_MODE7 written ARRAY_LINEAR_ALIGNED after
+ *      gpu_init and DB_Z_INFO naming it, the buffer checked row by row:
+ *      whether the DB takes a layout the CPU can lock as it is. With
+ *      /texture or /modulate: a pattern
  *      texture mapped 1:1, point-sampled, alone or times a diffuse colour
  *      (step 3). With /mip:N: a 64x16 chain's level N alone (BASE_LEVEL
  *      = LAST_LEVEL = N) over a pattern that numbers every dword, so the
@@ -461,6 +465,7 @@ static DWORD v9x_data_dwords;
  * the rectangle. */
 static int v9x_gouraud;
 static int v9x_depth;
+static int v9x_zlinear;
 static int v9x_texture;
 static int v9x_modulate;
 static int v9x_blend;
@@ -931,6 +936,7 @@ static int v9x_build_run(DWORD lo, DWORD hi)
         draw.depth_high = hi;
         draw.depth_func = V9X_VI_ZFUNC_LESS;
         draw.depth_write = 1ul;
+        draw.depth_linear = v9x_zlinear ? 1ul : 0ul;
         draw.texture_low = v9x_texture ? lo + V9X_TEXTURE : 0ul;
         draw.texture_high = hi;
         draw.texture_width = V9X_TARGET_PITCH;
@@ -995,6 +1001,17 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     init_count = v9x_vi_gpu_init_ops(v9x_init_ops, V9X_VI_GPU_INIT_OPS_MAX);
     if (init_count == 0ul) {
         return 0;
+    }
+    /* /zlinear: tile mode 7, which Linux leaves unwritten, as mode 8. */
+    if (v9x_zlinear) {
+        if (init_count >= V9X_VI_GPU_INIT_OPS_MAX) {
+            return 0;
+        }
+        v9x_init_ops[init_count].offset = V9X_VI_GB_TILE_MODE0 +
+                                          V9X_VI_TILE_DEPTH_LINEAR * 4ul;
+        v9x_init_ops[init_count].clear = 0xfffffffful;
+        v9x_init_ops[init_count].set = V9X_VI_TILE_MODE_LINEAR_ALIGNED;
+        ++init_count;
     }
     init_first = v9x_data_dwords;
     for (index = 0ul; index < init_count; ++index) {
@@ -1323,7 +1340,26 @@ static void v9x_verify_depth(const DWORD *target, const DWORD *depth)
         v9x_text("Map", key, text);
     }
 
-    for (tile = 0ul; tile < tiles; ++tile) {
+    /* /zlinear: rows of the target's pitch, two samples a dword, the left
+     * half's dwords first. */
+    for (tile = 0ul; v9x_zlinear && tile < V9X_TARGET_HEIGHT; ++tile) {
+        for (index = 0ul; index < V9X_TARGET_PITCH / 2ul; ++index) {
+            want = index < V9X_TARGET_PITCH / 4ul ? V9X_Z16_HALF
+                                                  : V9X_Z16_QUARTER;
+            sample = depth[tile * (V9X_TARGET_PITCH / 2ul) + index];
+            if ((sample & 0xfffful) != want || (sample >> 16) != want) {
+                ++depth_bad;
+            }
+        }
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, tile);
+        v9x_key("Depth", key, depth[tile * (V9X_TARGET_PITCH / 2ul)]);
+        lstrcpyA(key, "RowRight");
+        v9x_decimal(key + 8, tile);
+        v9x_key("Depth", key, depth[tile * (V9X_TARGET_PITCH / 2ul) +
+                                    V9X_TARGET_PITCH / 4ul]);
+    }
+    for (tile = 0ul; !v9x_zlinear && tile < tiles; ++tile) {
         want = (tile % tiles_across) < tiles_across / 2ul ? V9X_Z16_HALF :
                                                             V9X_Z16_QUARTER;
         for (index = 0ul; index < V9X_Z16_TILE_DWORDS; ++index) {
@@ -1621,7 +1657,8 @@ void __stdcall V9xCarrizo3dEntry(void)
     DeleteFileA(V9X_CZCP_PATH);
     v9x_text("Report", "Tool", "V9XCZ3D");
     v9x_text("Report", "Build", V9X_BUILD_ID);
-    v9x_depth = v9x_switch_given("/depth");
+    v9x_zlinear = v9x_switch_given("/zlinear");
+    v9x_depth = v9x_zlinear || v9x_switch_given("/depth");
     v9x_blend_specular = v9x_switch_given("/blendspec");
     v9x_blend = v9x_blend_specular || v9x_switch_given("/blend");
     v9x_modulate = v9x_switch_given("/modulate");
@@ -1642,7 +1679,8 @@ void __stdcall V9xCarrizo3dEntry(void)
     } else if (v9x_texture) {
         v9x_text("Report", "Draw", "texture");
     } else {
-        v9x_text("Report", "Draw", v9x_depth ? "depth" :
+        v9x_text("Report", "Draw", v9x_zlinear ? "zlinear" :
+                                   v9x_depth ? "depth" :
                                    (v9x_gouraud ? "gouraud" : "rectangle"));
     }
     v9x_tl_vertices();

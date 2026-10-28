@@ -138,6 +138,10 @@
 #define VI_Z_INFO_Z16_TILE5         (1ul | (5ul << 13) | \
                                      (V9X_VI_TILE_DEPTH_1D << 20))
 #define VI_DEPTH_INFO_1D_P2         (1ul | (2ul << 4))
+/* The same, linear: ARRAY_LINEAR_ALIGNED (1), TILE_MODE_INDEX 7, no tile
+ * split. */
+#define VI_Z_INFO_Z16_LINEAR        (1ul | (V9X_VI_TILE_DEPTH_LINEAR << 20))
+#define VI_DEPTH_INFO_LINEAR_P2     (1ul | (1ul << 4))
 #define VI_RENDER_OVERRIDE_NO_HI    0x0000002aul
 #define VI_RENDER_CONTROL_NO_COMPRESS 0x00000060ul
 #define VI_DEPTH_CONTROL_Z_ENABLE   0x00000002ul
@@ -426,13 +430,13 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
  * radeonsi's do. */
 static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
                             v9x_u32 high, v9x_u32 pitch, v9x_u32 height,
-                            v9x_u32 func, v9x_u32 write)
+                            v9x_u32 func, v9x_u32 write, v9x_u32 linear)
 {
     v9x_u32 values[9];
     v9x_u32 base = v9x_vi_address_256(low, high);
 
-    values[0] = VI_DEPTH_INFO_1D_P2;
-    values[1] = VI_Z_INFO_Z16_TILE5;
+    values[0] = linear != 0ul ? VI_DEPTH_INFO_LINEAR_P2 : VI_DEPTH_INFO_1D_P2;
+    values[1] = linear != 0ul ? VI_Z_INFO_Z16_LINEAR : VI_Z_INFO_Z16_TILE5;
     values[2] = 0ul;
     values[3] = base;
     values[4] = base;
@@ -734,7 +738,7 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     if (draw->depth_low != 0ul) {
         v9x_vi_3d_depth(stream, draw->depth_low, draw->depth_high,
                         depth_pitch, depth_height, draw->depth_func,
-                        draw->depth_write);
+                        draw->depth_write, draw->depth_linear);
     }
 
     /* The VS's two user SGPRs are the vertex buffer's address; the PS has
