@@ -1,0 +1,872 @@
+/*
+ * V9XCZCP.EXE: AMD Carrizo (Radeon R7E, GCN 3) graphics command processor
+ * bring-up: the RLC and CP microcode loaded through their own ports, one
+ * ring, Linux's ring test, then the start preamble.
+ *
+ * Phase 1 of docs\plans\ati-carrizo-gfx8-3d.md. CZCP.VXD executes the op
+ * lists built here and refuses anything outside its allow-lists. Writes
+ * C:\V9XDIAG\V9XCZCP.INI. The microcode is PFP.BIN, CE.BIN, ME.BIN and
+ * RLC.BIN in the working directory, linux-firmware's
+ * amdgpu/carrizo_{pfp,ce,me,rlc}.bin copied there by hand; they are not in
+ * this tree yet.
+ *
+ * Call 1 is read-only: the CP's and RLC's registers this run writes, and
+ * their status. The run goes ahead only if the CP's three microengines are
+ * halted, the RLC stopped and nothing held in reset, as the register probe
+ * read them (docs\decisions\2026-10-28-carrizo-register-probe.md).
+ * /readonly stops there.
+ *
+ * Call 2 checks the CPU reaches the scratch window (BAR0 + 248 MiB, 64 KiB).
+ *
+ * Call 3 does what Linux v4.9 gfx_v8_0.c does with smc_load_fw=0, in its
+ * order: rlc_resume (stop with the GUI-idle interrupts off and the SERDES
+ * idle, coarse-grain clock gating and light sleep off, power gating off,
+ * an RLC soft reset, the RLC microcode, start; init_pg does nothing with
+ * power gating off), cp_gfx_load_microcode (halt, PFP, CE, ME),
+ * cp_gfx_resume's ring registers (VMID 0, a 16 KiB ring, the read-pointer
+ * writeback in the window, no doorbell) and cp_gfx_start's CP registers
+ * and unhalt. Then two submissions:
+ *
+ *   1. Linux's ring test: SET_UCONFIG_REG writing DEADBEEF to SCRATCH_REG0,
+ *      over the CAFEDEAD the CPU wrote;
+ *   2. cp_gfx_start's preamble without vi_cs_data (PREAMBLE_CNTL begin,
+ *      CONTEXT_CONTROL, PA_SC_RASTER_CONFIG = 2 for Carrizo, PREAMBLE_CNTL
+ *      end, CLEAR_STATE, the CE partitions) and a second scratch write,
+ *      600DCAFE, behind it.
+ *
+ * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
+ * NOP and alignment. Then the CP is halted and the RLC stopped, every
+ * register written is put back as call 1 read it, HDP is flushed and
+ * invalidated, the writeback is read back and the window restored.
+ *
+ * Packets: vid.h PACKET3 (type 31:30, count 29:16, opcode 15:8) and its
+ * opcodes; register offsets gfx_8_0_d.h and _sh_mask.h
+ * (build\external\carrizo\linux\), dword indices times four.
+ */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <stddef.h>
+
+#include "velocity9x/diagpaths.h"
+
+#ifndef V9X_BUILD_ID
+#define V9X_BUILD_ID "local"
+#endif
+
+#define V9X_CZCP_PATH        V9X_DIAG_PATH("V9XCZCP.INI")
+#define V9X_CZCP_VXD         "\\\\.\\CZCP.VXD"
+#define V9X_CZCP_MAGIC       0x50435a43ul
+#define V9X_CZCP_RUN         1u
+#define V9X_CZCP_OP_MAX      512u
+#define V9X_CZCP_DATA_MAX    16384u
+#define V9X_CZCP_BLOCK       4096u
+#define V9X_CZCP_HEADER      16u
+#define V9X_CZCP_TIMEOUT     0xfffffffful
+
+#define V9X_ST_COMPLETE  0x00000010ul
+
+#define V9X_OP_MMIO_READ    1ul
+#define V9X_OP_MMIO_WRITE   2ul
+#define V9X_OP_VRAM_WRITE   3ul
+#define V9X_OP_VRAM_FILL    5ul
+#define V9X_OP_VRAM_BLOCK   6ul
+#define V9X_OP_WAIT_MMIO    8ul
+#define V9X_OP_SAVE         9ul
+#define V9X_OP_RESTORE      10ul
+#define V9X_OP_VRAM_PATTERN 11ul
+#define V9X_OP_DELAY        12ul
+#define V9X_OP_MMIO_RMW     13ul
+#define V9X_OP_UCODE        14ul
+
+/* CZCP.VXD's CC_PATTERN_STEP. */
+#define V9X_PATTERN_STEP    0x9e3779b9ul
+
+/* SRBM_STATUS reads standing in for Linux's udelay(50) after the RLC
+ * reset, start and the CP's halt and unhalt: an uncached PCIe read takes
+ * on the order of a microsecond. */
+#define V9X_DELAY_READS     2000ul
+
+/* Registers: gfx_8_0_d.h, oss_3_0_d.h, bif_5_0_d.h, gmc_8_1_d.h. */
+#define V9X_CZ_SRBM_STATUS          0x00e50ul
+#define V9X_CZ_MC_VM_FB_LOCATION    0x02024ul
+#define V9X_CZ_HDP_DEBUG0           0x02f30ul
+#define V9X_CZ_HDP_MEM_FLUSH        0x05480ul
+#define V9X_CZ_GRBM_STATUS2         0x08008ul
+#define V9X_CZ_GRBM_STATUS          0x08010ul
+#define V9X_CZ_GRBM_SOFT_RESET      0x08020ul
+#define V9X_CZ_CP_MEC_CNTL          0x08234ul
+#define V9X_CZ_CP_STALLED_STAT1     0x08674ul
+#define V9X_CZ_CP_BUSY_STAT         0x0867cul
+#define V9X_CZ_CP_STAT              0x08680ul
+#define V9X_CZ_CP_ME_CNTL           0x086d8ul
+#define V9X_CZ_CP_RB0_RPTR          0x08700ul
+#define V9X_CZ_CP_RB_WPTR_DELAY     0x08704ul
+#define V9X_CZ_CP_RB0_BASE          0x0c100ul
+#define V9X_CZ_CP_RB0_CNTL          0x0c104ul
+#define V9X_CZ_CP_RB0_RPTR_ADDR     0x0c10cul
+#define V9X_CZ_CP_RB0_RPTR_ADDR_HI  0x0c110ul
+#define V9X_CZ_CP_RB0_WPTR          0x0c114ul
+#define V9X_CZ_CP_DEVICE_ID         0x0c12cul
+#define V9X_CZ_CP_ENDIAN_SWAP       0x0c140ul
+#define V9X_CZ_CP_RB_VMID           0x0c144ul
+#define V9X_CZ_CP_RB_DOORBELL       0x0c164ul
+#define V9X_CZ_CP_INT_CNTL_RING0    0x0c1a8ul
+#define V9X_CZ_CP_MAX_CONTEXT       0x0c2b8ul
+#define V9X_CZ_CP_RB0_BASE_HI       0x0c2c4ul
+#define V9X_CZ_SCRATCH_REG0         0x30100ul
+#define V9X_CZ_RLC_CNTL             0x3b000ul
+#define V9X_CZ_RLC_STAT             0x3b010ul
+#define V9X_CZ_RLC_GPM_STAT         0x3b100ul
+#define V9X_CZ_RLC_PG_CNTL          0x3b10cul
+#define V9X_CZ_RLC_CGCG_CGLS_CTRL   0x3b124ul
+#define V9X_CZ_RLC_SERDES_CU_BUSY   0x3b184ul
+#define V9X_CZ_RLC_SERDES_NONCU     0x3b188ul
+#define V9X_CZ_CP_PFP_UCODE_ADDR    0x3e050ul
+#define V9X_CZ_CP_PFP_UCODE_DATA    0x3e054ul
+#define V9X_CZ_CP_ME_RAM_WADDR      0x3e058ul
+#define V9X_CZ_CP_ME_RAM_DATA       0x3e05cul
+#define V9X_CZ_CP_CE_UCODE_ADDR     0x3e060ul
+#define V9X_CZ_CP_CE_UCODE_DATA     0x3e064ul
+#define V9X_CZ_RLC_GPM_UCODE_ADDR   0x3e0f0ul
+#define V9X_CZ_RLC_GPM_UCODE_DATA   0x3e0f4ul
+
+/* Fields: gfx_8_0_sh_mask.h. CP_ME_CNTL CE_HALT bit 24, PFP_HALT 26,
+ * ME_HALT 28. RLC_CNTL RLC_ENABLE_F32 bit 0. RLC_CGCG_CGLS_CTRL CGCG_EN
+ * bit 0, CGLS_EN bit 1. GRBM_SOFT_RESET SOFT_RESET_RLC bit 2.
+ * CP_INT_CNTL_RING0's four GUI-idle interrupt enables, bits 18-21.
+ * RLC_SERDES_NONCU_MASTER_BUSY's SE, GC, TC0 and TC1 busy bits.
+ * CP_RB0_CNTL RB_BUFSZ 5:0 (log2 of the ring's quadwords), RB_BLKSZ
+ * 13:8, MTYPE 16:15, MIN_IB_AVAILSZ 23:22, RB_RPTR_WR_ENA 31.
+ * CP_RB_DOORBELL_CONTROL DOORBELL_EN bit 30. */
+#define V9X_CZ_CP_HALTS             0x15000000ul
+#define V9X_CZ_RLC_ENABLE           0x00000001ul
+#define V9X_CZ_CGCG_CGLS            0x00000003ul
+#define V9X_CZ_SOFT_RESET_RLC       0x00000004ul
+#define V9X_CZ_GUI_IDLE_INTS        0x003c0000ul
+#define V9X_CZ_NONCU_BUSY           0x000dfffful
+#define V9X_CZ_RB_RPTR_WR_ENA       0x80000000ul
+#define V9X_CZ_DOORBELL_EN          0x40000000ul
+#define V9X_CZ_FB_START_MASK        0x0000fffful
+
+/* gfx_v8_0_gpu_init: max_hw_contexts 8 for Carrizo; cp_gfx_start writes
+ * one less. */
+#define V9X_CZ_MAX_CONTEXT          7ul
+
+/* PM4: vid.h. */
+#define V9X_PACKET3(op, n) \
+    ((3ul << 30) | (((DWORD)(n) & 0x3ffful) << 16) | (((DWORD)(op) & 0xfful) << 8))
+#define V9X_P3_NOP                  0x10ul
+#define V9X_P3_SET_BASE             0x11ul
+#define V9X_P3_CLEAR_STATE          0x12ul
+#define V9X_P3_CONTEXT_CONTROL      0x28ul
+#define V9X_P3_PREAMBLE_CNTL        0x4aul
+#define V9X_P3_SET_CONTEXT_REG      0x69ul
+#define V9X_P3_SET_UCONFIG_REG      0x79ul
+#define V9X_PREAMBLE_BEGIN          0x20000000ul
+#define V9X_PREAMBLE_END            0x30000000ul
+#define V9X_CE_PARTITION_BASE       3ul
+#define V9X_CONTEXT_REG_START       0xa000ul
+#define V9X_UCONFIG_REG_START       0xc000ul
+/* Dword indices: mmPA_SC_RASTER_CONFIG and mmSCRATCH_REG0. */
+#define V9X_PA_SC_RASTER_CONFIG     0xa0d4ul
+#define V9X_SCRATCH_REG0_INDEX      0xc040ul
+/* cp_gfx_start's CHIP_CARRIZO raster configuration. */
+#define V9X_CZ_RASTER_CONFIG        0x00000002ul
+#define V9X_CZ_RASTER_CONFIG_1      0x00000000ul
+#define V9X_CZ_RING_NOP             V9X_PACKET3(V9X_P3_NOP, 0x3ffful)
+
+/* The firmware images: common_firmware_header in amdgpu_ucode.h. */
+#define V9X_FW_SIZE_BYTES       0x00ul
+#define V9X_FW_VERSION          0x08ul
+#define V9X_FW_UCODE_VERSION    0x10ul
+#define V9X_FW_UCODE_BYTES      0x14ul
+#define V9X_FW_ARRAY_OFFSET     0x18ul
+#define V9X_FW_HEADER_BYTES     0x20ul
+#define V9X_FW_FILE_MAX         0x8000ul
+
+/* The scratch window and its layout: a 16 KiB ring, the read-pointer
+ * writeback behind it. */
+#define V9X_SCRATCH_GPU_OFFSET  0x0f800000ul
+#define V9X_SCRATCH_DWORDS      16384ul
+#define V9X_RING                0x0000ul
+#define V9X_RING_BYTES          0x4000ul
+#define V9X_RING_LOG2_QWORDS    11ul
+#define V9X_RING_ALIGN_DWORDS   16ul
+#define V9X_WRITEBACK           0x8000ul
+#define V9X_CANARY              0xc000ul
+#define V9X_CANARY_DWORDS       16ul
+#define V9X_SEED_CANARY         0x50000005ul
+
+#define V9X_SCRATCH_BEFORE      0xcafedeadul
+#define V9X_SCRATCH_TEST        0xdeadbeeful
+#define V9X_SCRATCH_PREAMBLE    0x600dcafeul
+
+struct v9x_czcp_op {
+    DWORD op;
+    DWORD a;
+    DWORD b;
+    DWORD c;
+};
+
+/* The ops, then the data array: CZCP.VXD reads the data at ops[count]. */
+struct v9x_czcp_request {
+    DWORD count;
+    DWORD data_count;
+    struct v9x_czcp_op ops[V9X_CZCP_OP_MAX];
+};
+
+struct v9x_czcp_result {
+    DWORD magic;
+    DWORD status;
+    DWORD id;
+    DWORD bar0;
+    DWORD bar0_high;
+    DWORD bar5;
+    DWORD reserved0;
+    DWORD memsize;
+    DWORD executed;
+    DWORD refused_index;
+    DWORD block_used;
+    DWORD config;
+    DWORD ucode_written;
+    DWORD reserved[3];
+    DWORD op_results[V9X_CZCP_OP_MAX];
+    DWORD block[V9X_CZCP_BLOCK];
+};
+
+/* The header must be the VxD's CC_HEADER_DWORDS long. */
+typedef char v9x_czcp_header_matches[
+    offsetof(struct v9x_czcp_result, op_results) ==
+    sizeof(DWORD) * V9X_CZCP_HEADER ? 1 : -1];
+
+/* The registers call 1 reads and the run puts back, in this order: the
+ * ring first, the RLC's controls next, the CP's halts last, so the CP is
+ * put back halted after everything it reads. */
+static const DWORD v9x_saved_offsets[] = {
+    V9X_CZ_CP_RB0_CNTL, V9X_CZ_CP_RB0_BASE, V9X_CZ_CP_RB0_BASE_HI,
+    V9X_CZ_CP_RB0_RPTR_ADDR, V9X_CZ_CP_RB0_RPTR_ADDR_HI, V9X_CZ_CP_RB0_WPTR,
+    V9X_CZ_CP_RB_WPTR_DELAY, V9X_CZ_CP_RB_VMID, V9X_CZ_CP_RB_DOORBELL,
+    V9X_CZ_CP_MAX_CONTEXT, V9X_CZ_CP_ENDIAN_SWAP, V9X_CZ_CP_DEVICE_ID,
+    V9X_CZ_CP_INT_CNTL_RING0, V9X_CZ_SCRATCH_REG0, V9X_CZ_RLC_PG_CNTL,
+    V9X_CZ_RLC_CGCG_CGLS_CTRL, V9X_CZ_RLC_CNTL, V9X_CZ_CP_ME_CNTL
+};
+#define V9X_SAVED_COUNT (sizeof(v9x_saved_offsets) / sizeof(v9x_saved_offsets[0]))
+#define V9X_SAVED_RLC_CNTL  (V9X_SAVED_COUNT - 2u)
+#define V9X_SAVED_ME_CNTL   (V9X_SAVED_COUNT - 1u)
+
+static const char * const v9x_saved_names[V9X_SAVED_COUNT] = {
+    "CP_RB0_CNTL", "CP_RB0_BASE", "CP_RB0_BASE_HI", "CP_RB0_RPTR_ADDR",
+    "CP_RB0_RPTR_ADDR_HI", "CP_RB0_WPTR", "CP_RB_WPTR_DELAY", "CP_RB_VMID",
+    "CP_RB_DOORBELL_CONTROL", "CP_MAX_CONTEXT", "CP_ENDIAN_SWAP",
+    "CP_DEVICE_ID", "CP_INT_CNTL_RING0", "SCRATCH_REG0", "RLC_PG_CNTL",
+    "RLC_CGCG_CGLS_CTRL", "RLC_CNTL", "CP_ME_CNTL"
+};
+
+/* Read-only extras for the report, before and after. */
+static const DWORD v9x_extra_offsets[] = {
+    V9X_CZ_GRBM_STATUS, V9X_CZ_GRBM_STATUS2, V9X_CZ_GRBM_SOFT_RESET,
+    V9X_CZ_CP_STAT, V9X_CZ_CP_BUSY_STAT, V9X_CZ_CP_STALLED_STAT1,
+    V9X_CZ_CP_RB0_RPTR, V9X_CZ_CP_MEC_CNTL, V9X_CZ_RLC_STAT,
+    V9X_CZ_RLC_GPM_STAT, V9X_CZ_RLC_SERDES_CU_BUSY, V9X_CZ_RLC_SERDES_NONCU,
+    V9X_CZ_SRBM_STATUS, V9X_CZ_MC_VM_FB_LOCATION
+};
+#define V9X_EXTRA_COUNT (sizeof(v9x_extra_offsets) / sizeof(v9x_extra_offsets[0]))
+#define V9X_EXTRA_RESET  2u
+#define V9X_EXTRA_FB     13u
+
+static const char * const v9x_extra_names[V9X_EXTRA_COUNT] = {
+    "GRBM_STATUS", "GRBM_STATUS2", "GRBM_SOFT_RESET", "CP_STAT",
+    "CP_BUSY_STAT", "CP_STALLED_STAT1", "CP_RB0_RPTR", "CP_MEC_CNTL",
+    "RLC_STAT", "RLC_GPM_STAT", "RLC_SERDES_CU_MASTER_BUSY",
+    "RLC_SERDES_NONCU_MASTER_BUSY", "SRBM_STATUS", "MC_VM_FB_LOCATION"
+};
+
+/* The four images, in the order the data array holds them. */
+struct v9x_czcp_image {
+    const char *file;
+    const char *name;
+    DWORD header_major;
+    DWORD first;
+    DWORD dwords;
+    DWORD version;
+};
+
+#define V9X_IMAGE_PFP 0u
+#define V9X_IMAGE_CE  1u
+#define V9X_IMAGE_ME  2u
+#define V9X_IMAGE_RLC 3u
+#define V9X_IMAGE_COUNT 4u
+
+static struct v9x_czcp_image v9x_images[V9X_IMAGE_COUNT] = {
+    { "PFP.BIN", "Pfp", 1ul, 0ul, 0ul, 0ul },
+    { "CE.BIN", "Ce", 1ul, 0ul, 0ul, 0ul },
+    { "ME.BIN", "Me", 1ul, 0ul, 0ul, 0ul },
+    { "RLC.BIN", "Rlc", 2ul, 0ul, 0ul, 0ul }
+};
+
+/* The request, then room for the data array right after count ops. */
+static struct {
+    struct v9x_czcp_request request;
+    DWORD spill[V9X_CZCP_DATA_MAX];
+} v9x_buffer;
+#define v9x_request (v9x_buffer.request)
+
+static struct v9x_czcp_result v9x_result;
+static DWORD v9x_saved[V9X_SAVED_COUNT];
+static DWORD v9x_ring[64];
+static DWORD v9x_ring_count;
+static BYTE v9x_file[V9X_FW_FILE_MAX];
+static DWORD v9x_data[V9X_CZCP_DATA_MAX];
+static DWORD v9x_data_dwords;
+
+/* Indices into v9x_result.op_results of the values the report needs. */
+static DWORD v9x_at_cu_busy;
+static DWORD v9x_at_noncu_busy;
+static DWORD v9x_at_rlc_stat;
+static DWORD v9x_at_rlc_gpm;
+static DWORD v9x_at_rlc_cntl;
+static DWORD v9x_at_me_cntl_halted;
+static DWORD v9x_at_me_cntl_running;
+static DWORD v9x_at_rb_cntl;
+static DWORD v9x_at_wait_1;
+static DWORD v9x_at_rptr_1;
+static DWORD v9x_at_stat_1;
+static DWORD v9x_at_grbm_1;
+static DWORD v9x_at_wait_2;
+static DWORD v9x_at_rptr_2;
+static DWORD v9x_at_stat_2;
+static DWORD v9x_at_grbm_2;
+static DWORD v9x_at_scratch_2;
+static DWORD v9x_at_after_extra;
+static DWORD v9x_at_after_me_cntl;
+static DWORD v9x_at_after_rlc_cntl;
+
+static void v9x_hex(char *text, DWORD value, int digits)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    int index;
+
+    for (index = 0; index < digits; ++index) {
+        text[index] = hex[(value >> ((digits - 1 - index) * 4)) & 15ul];
+    }
+    text[digits] = '\0';
+}
+
+static void v9x_decimal(char *text, DWORD value)
+{
+    char digits[11];
+    int count;
+    int at;
+
+    count = 0;
+    do {
+        digits[count++] = (char)('0' + (int)(value % 10ul));
+        value /= 10ul;
+    } while (value != 0ul);
+    at = 0;
+    while (count != 0) {
+        text[at++] = digits[--count];
+    }
+    text[at] = '\0';
+}
+
+static void v9x_text(const char *section, const char *key, const char *value)
+{
+    WritePrivateProfileStringA(section, key, value, V9X_CZCP_PATH);
+}
+
+static void v9x_key(const char *section, const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_hex(text, value, 8);
+    v9x_text(section, key, text);
+}
+
+static void v9x_number(const char *section, const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_decimal(text, value);
+    v9x_text(section, key, text);
+}
+
+static void v9x_pass(const char *key, int pass)
+{
+    v9x_text("Result", key, pass ? "PASS" : "FAIL");
+}
+
+static DWORD v9x_le32(const BYTE *at)
+{
+    return (DWORD)at[0] | ((DWORD)at[1] << 8) | ((DWORD)at[2] << 16) |
+           ((DWORD)at[3] << 24);
+}
+
+/* Appends an op; returns its index. */
+static DWORD v9x_op(DWORD op, DWORD a, DWORD b, DWORD c)
+{
+    DWORD index;
+
+    index = v9x_request.count++;
+    v9x_request.ops[index].op = op;
+    v9x_request.ops[index].a = a;
+    v9x_request.ops[index].b = b;
+    v9x_request.ops[index].c = c;
+    return index;
+}
+
+static void v9x_begin(void)
+{
+    v9x_request.count = 0ul;
+    v9x_request.data_count = 0ul;
+}
+
+/* Sends count ops and, after them, the microcode if with_data. */
+static int v9x_dioc(HANDLE device, int with_data)
+{
+    DWORD returned;
+    DWORD bytes;
+    DWORD *data;
+    DWORD index;
+    BOOL ok;
+
+    bytes = 8ul + v9x_request.count * sizeof(struct v9x_czcp_op);
+    if (with_data) {
+        data = (DWORD *)&v9x_request.ops[v9x_request.count];
+        for (index = 0ul; index < v9x_data_dwords; ++index) {
+            data[index] = v9x_data[index];
+        }
+        v9x_request.data_count = v9x_data_dwords;
+        bytes += v9x_data_dwords * 4ul;
+    }
+    returned = 0ul;
+    ok = DeviceIoControl(device, V9X_CZCP_RUN, &v9x_buffer, bytes,
+                         &v9x_result, sizeof(v9x_result), &returned, 0);
+    if (!ok || returned != sizeof(v9x_result) ||
+        v9x_result.magic != V9X_CZCP_MAGIC) {
+        v9x_text("Report", "Result", "DIOC-FAILED");
+        v9x_key("Report", "Returned", returned);
+        return 0;
+    }
+    v9x_key("Report", "Status", v9x_result.status);
+    if ((v9x_result.status & V9X_ST_COMPLETE) == 0ul) {
+        v9x_text("Report", "Result", "REFUSED");
+        v9x_number("Report", "RefusedIndex", v9x_result.refused_index);
+        return 0;
+    }
+    return 1;
+}
+
+/* One image from the working directory into the data array: a
+ * common_firmware_header whose sizes agree with the file and whose major
+ * version is the one Linux reads it with. */
+static int v9x_load_image(struct v9x_czcp_image *image)
+{
+    HANDLE file;
+    DWORD length;
+    DWORD read;
+    DWORD offset;
+    DWORD bytes;
+    DWORD index;
+    char key[24];
+
+    file = CreateFileA(image->file, GENERIC_READ, FILE_SHARE_READ, 0,
+                       OPEN_EXISTING, 0, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        v9x_text("Ucode", image->name, "not-found");
+        return 0;
+    }
+    length = GetFileSize(file, 0);
+    read = 0ul;
+    if (length < V9X_FW_HEADER_BYTES || length > V9X_FW_FILE_MAX ||
+        !ReadFile(file, v9x_file, length, &read, 0) || read != length) {
+        CloseHandle(file);
+        v9x_text("Ucode", image->name, "unreadable");
+        return 0;
+    }
+    CloseHandle(file);
+
+    offset = v9x_le32(v9x_file + V9X_FW_ARRAY_OFFSET);
+    bytes = v9x_le32(v9x_file + V9X_FW_UCODE_BYTES);
+    image->version = v9x_le32(v9x_file + V9X_FW_UCODE_VERSION);
+    if (v9x_le32(v9x_file + V9X_FW_SIZE_BYTES) != length ||
+        (v9x_le32(v9x_file + V9X_FW_VERSION) & 0xfffful) !=
+            image->header_major ||
+        (bytes % 4ul) != 0ul || bytes == 0ul || offset > length ||
+        bytes > length - offset ||
+        bytes / 4ul > V9X_CZCP_DATA_MAX - v9x_data_dwords) {
+        v9x_text("Ucode", image->name, "bad-header");
+        return 0;
+    }
+    image->first = v9x_data_dwords;
+    image->dwords = bytes / 4ul;
+    for (index = 0ul; index < image->dwords; ++index) {
+        v9x_data[v9x_data_dwords++] = v9x_le32(v9x_file + offset + index * 4ul);
+    }
+    lstrcpyA(key, image->name);
+    lstrcatA(key, "Dwords");
+    v9x_number("Ucode", key, image->dwords);
+    lstrcpyA(key, image->name);
+    lstrcatA(key, "Version");
+    v9x_key("Ucode", key, image->version);
+    return 1;
+}
+
+/* An image through its port: address 0, the data, then the version in
+ * the address register, as Linux does for each. */
+static void v9x_load(DWORD which, DWORD address, DWORD data)
+{
+    const struct v9x_czcp_image *image = &v9x_images[which];
+
+    v9x_op(V9X_OP_MMIO_WRITE, address, 0ul, 0ul);
+    v9x_op(V9X_OP_UCODE, data, image->first, image->dwords);
+    v9x_op(V9X_OP_MMIO_WRITE, address, image->version, 0ul);
+}
+
+static void v9x_ring_put(DWORD value)
+{
+    v9x_ring[v9x_ring_count++] = value;
+}
+
+/* Pads to the 16-dword boundary; returns the write pointer in dwords. */
+static DWORD v9x_ring_close(void)
+{
+    while ((v9x_ring_count % V9X_RING_ALIGN_DWORDS) != 0ul) {
+        v9x_ring_put(V9X_CZ_RING_NOP);
+    }
+    return v9x_ring_count;
+}
+
+static void v9x_ring_scratch(DWORD value)
+{
+    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_UCONFIG_REG, 1ul));
+    v9x_ring_put(V9X_SCRATCH_REG0_INDEX - V9X_UCONFIG_REG_START);
+    v9x_ring_put(value);
+}
+
+/* cp_gfx_start's stream without vi_cs_data's context registers. */
+static void v9x_ring_preamble(void)
+{
+    v9x_ring_put(V9X_PACKET3(V9X_P3_PREAMBLE_CNTL, 0ul));
+    v9x_ring_put(V9X_PREAMBLE_BEGIN);
+    v9x_ring_put(V9X_PACKET3(V9X_P3_CONTEXT_CONTROL, 1ul));
+    v9x_ring_put(0x80000000ul);
+    v9x_ring_put(0x80000000ul);
+    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONTEXT_REG, 2ul));
+    v9x_ring_put(V9X_PA_SC_RASTER_CONFIG - V9X_CONTEXT_REG_START);
+    v9x_ring_put(V9X_CZ_RASTER_CONFIG);
+    v9x_ring_put(V9X_CZ_RASTER_CONFIG_1);
+    v9x_ring_put(V9X_PACKET3(V9X_P3_PREAMBLE_CNTL, 0ul));
+    v9x_ring_put(V9X_PREAMBLE_END);
+    v9x_ring_put(V9X_PACKET3(V9X_P3_CLEAR_STATE, 0ul));
+    v9x_ring_put(0ul);
+    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_BASE, 2ul));
+    v9x_ring_put(V9X_CE_PARTITION_BASE);
+    v9x_ring_put(0x8000ul);
+    v9x_ring_put(0x8000ul);
+}
+
+static DWORD v9x_pattern(DWORD seed, DWORD index)
+{
+    return seed + index * V9X_PATTERN_STEP;
+}
+
+/* Call 3's op list. lo/hi are the scratch window's GPU address. */
+static void v9x_build_run(DWORD lo, DWORD hi)
+{
+    DWORD wptr_1;
+    DWORD wptr_2;
+    DWORD rb_cntl;
+    DWORD index;
+
+    v9x_ring_count = 0ul;
+    v9x_ring_scratch(V9X_SCRATCH_TEST);
+    wptr_1 = v9x_ring_close();
+    v9x_ring_preamble();
+    v9x_ring_scratch(V9X_SCRATCH_PREAMBLE);
+    wptr_2 = v9x_ring_close();
+
+    /* cp_gfx_resume's CP_RB0_CNTL for a 16 KiB ring. */
+    rb_cntl = V9X_RING_LOG2_QWORDS | ((V9X_RING_LOG2_QWORDS - 2ul) << 8) |
+              (3ul << 15) | (1ul << 22);
+
+    v9x_begin();
+    v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
+    v9x_op(V9X_OP_VRAM_FILL, 0ul, V9X_SCRATCH_DWORDS, 0ul);
+    for (index = 0ul; index < v9x_ring_count; ++index) {
+        v9x_op(V9X_OP_VRAM_WRITE, V9X_RING + index * 4ul, v9x_ring[index],
+               0ul);
+    }
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_SCRATCH_REG0, V9X_SCRATCH_BEFORE, 0ul);
+
+    /* rlc_resume: rlc_stop, CG off, PG off, rlc_reset, the microcode,
+     * rlc_start. The SERDES waits are wait_for_rlc_serdes's, read through
+     * the GRBM_GFX_INDEX the BIOS left (broadcast; one SE, one SH). */
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_RLC_CNTL, V9X_CZ_RLC_ENABLE, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_CP_INT_CNTL_RING0, V9X_CZ_GUI_IDLE_INTS,
+           0ul);
+    v9x_at_cu_busy = v9x_op(V9X_OP_WAIT_MMIO, V9X_CZ_RLC_SERDES_CU_BUSY,
+                            0xfffffffful, 0ul);
+    v9x_at_noncu_busy = v9x_op(V9X_OP_WAIT_MMIO, V9X_CZ_RLC_SERDES_NONCU,
+                               V9X_CZ_NONCU_BUSY, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_RLC_CGCG_CGLS_CTRL, V9X_CZ_CGCG_CGLS, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_RLC_PG_CNTL, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_GRBM_SOFT_RESET, V9X_CZ_SOFT_RESET_RLC,
+           0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_GRBM_SOFT_RESET, 0ul, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_load(V9X_IMAGE_RLC, V9X_CZ_RLC_GPM_UCODE_ADDR,
+             V9X_CZ_RLC_GPM_UCODE_DATA);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_RLC_CNTL, 0ul, V9X_CZ_RLC_ENABLE);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_rlc_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_RLC_CNTL, 0ul, 0ul);
+    v9x_at_rlc_stat = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_RLC_STAT, 0ul, 0ul);
+    v9x_at_rlc_gpm = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_RLC_GPM_STAT, 0ul, 0ul);
+
+    /* cp_gfx_load_microcode: halt, then PFP, CE, ME. */
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_CP_ME_CNTL, 0ul, V9X_CZ_CP_HALTS);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_me_cntl_halted = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_ME_CNTL,
+                                   0ul, 0ul);
+    v9x_load(V9X_IMAGE_PFP, V9X_CZ_CP_PFP_UCODE_ADDR,
+             V9X_CZ_CP_PFP_UCODE_DATA);
+    v9x_load(V9X_IMAGE_CE, V9X_CZ_CP_CE_UCODE_ADDR, V9X_CZ_CP_CE_UCODE_DATA);
+    v9x_load(V9X_IMAGE_ME, V9X_CZ_CP_ME_RAM_WADDR, V9X_CZ_CP_ME_RAM_DATA);
+
+    /* cp_gfx_resume's ring registers. The ring's 40-bit address >> 8: bits
+     * 39:32 land in RB0_BASE 31:24, and RB0_BASE_HI takes what is above,
+     * nothing. */
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB_WPTR_DELAY, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB_VMID, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_CNTL, rb_cntl, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_CNTL,
+           rb_cntl | V9X_CZ_RB_RPTR_WR_ENA, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_WPTR, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_RPTR_ADDR, lo + V9X_WRITEBACK,
+           0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_RPTR_ADDR_HI, hi & 0xfful, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_CNTL, rb_cntl, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_BASE,
+           ((lo + V9X_RING) >> 8) | (hi << 24), 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_BASE_HI, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_CP_RB_DOORBELL, V9X_CZ_DOORBELL_EN, 0ul);
+    v9x_at_rb_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_RB0_CNTL, 0ul, 0ul);
+
+    /* cp_gfx_start's registers and the unhalt; the ring was written
+     * through BAR0, so HDP is flushed before the CP reads it. */
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_MAX_CONTEXT, V9X_CZ_MAX_CONTEXT, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_ENDIAN_SWAP, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_DEVICE_ID, 1ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_HDP_MEM_FLUSH, 1ul, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_CP_ME_CNTL, V9X_CZ_CP_HALTS, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_me_cntl_running = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_ME_CNTL,
+                                    0ul, 0ul);
+
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_WPTR, wptr_1, 0ul);
+    v9x_at_wait_1 = v9x_op(V9X_OP_WAIT_MMIO, V9X_CZ_SCRATCH_REG0,
+                           0xfffffffful, V9X_SCRATCH_TEST);
+    v9x_at_rptr_1 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_RB0_RPTR, 0ul, 0ul);
+    v9x_at_stat_1 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_STAT, 0ul, 0ul);
+    v9x_at_grbm_1 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GRBM_STATUS, 0ul, 0ul);
+
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_CP_RB0_WPTR, wptr_2, 0ul);
+    v9x_at_wait_2 = v9x_op(V9X_OP_WAIT_MMIO, V9X_CZ_SCRATCH_REG0,
+                           0xfffffffful, V9X_SCRATCH_PREAMBLE);
+    v9x_at_rptr_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_RB0_RPTR, 0ul, 0ul);
+    v9x_at_stat_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_STAT, 0ul, 0ul);
+    v9x_at_grbm_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GRBM_STATUS, 0ul, 0ul);
+    v9x_at_scratch_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_SCRATCH_REG0, 0ul, 0ul);
+
+    /* Halt the CP and stop the RLC, then put back what call 1 read,
+     * CP_ME_CNTL (halted) last. */
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_CP_ME_CNTL, 0ul, V9X_CZ_CP_HALTS);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CZ_RLC_CNTL, V9X_CZ_RLC_ENABLE, 0ul);
+    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_WRITE, v9x_saved_offsets[index], v9x_saved[index],
+               0ul);
+    }
+    v9x_at_after_me_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_CP_ME_CNTL,
+                                  0ul, 0ul);
+    v9x_at_after_rlc_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_RLC_CNTL,
+                                   0ul, 0ul);
+
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_HDP_MEM_FLUSH, 1ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_HDP_DEBUG0, 1ul, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_WRITEBACK, 1ul, 0ul);
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+
+    v9x_at_after_extra = v9x_request.count;
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_READ, v9x_extra_offsets[index], 0ul, 0ul);
+    }
+
+    v9x_number("Run", "Ops", v9x_request.count);
+    v9x_number("Run", "RingDwords", v9x_ring_count);
+    v9x_key("Run", "Wptr1", wptr_1);
+    v9x_key("Run", "Wptr2", wptr_2);
+    v9x_key("Run", "RbCntl", rb_cntl);
+}
+
+static int v9x_switch_given(const char *switch_text)
+{
+    const char *line;
+    int length;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            return 1;
+        }
+        ++line;
+    }
+    return 0;
+}
+
+static void v9x_finish(const char *result, UINT code)
+{
+    v9x_text("Report", "Result", result);
+    WritePrivateProfileStringA(0, 0, 0, V9X_CZCP_PATH);
+    ExitProcess(code);
+}
+
+void __stdcall V9xCarrizoCpEntry(void)
+{
+    HANDLE device;
+    DWORD index;
+    DWORD first_extra;
+    DWORD fb;
+    DWORD lo;
+    DWORD hi;
+    const DWORD *r;
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    DeleteFileA(V9X_CZCP_PATH);
+    v9x_text("Report", "Tool", "V9XCZCP");
+    v9x_text("Report", "Build", V9X_BUILD_ID);
+
+    v9x_data_dwords = 0ul;
+    for (index = 0ul; index < V9X_IMAGE_COUNT; ++index) {
+        if (!v9x_load_image(&v9x_images[index])) {
+            v9x_finish("NO-UCODE", 6u);
+        }
+    }
+
+    device = CreateFileA(V9X_CZCP_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        v9x_key("Report", "LoadError", GetLastError());
+        v9x_finish("VXD-LOAD-FAILED", 1u);
+    }
+
+    /* Call 1: read-only. */
+    v9x_begin();
+    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_READ, v9x_saved_offsets[index], 0ul, 0ul);
+    }
+    first_extra = v9x_request.count;
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_READ, v9x_extra_offsets[index], 0ul, 0ul);
+    }
+    if (!v9x_dioc(device, 0)) {
+        CloseHandle(device);
+        v9x_finish("REFUSED", 2u);
+    }
+    v9x_key("Report", "Id", v9x_result.id);
+    v9x_key("Report", "Bar0", v9x_result.bar0);
+    v9x_key("Report", "Bar5", v9x_result.bar5);
+    v9x_number("Report", "MemoryMiB", v9x_result.memsize);
+    r = v9x_result.op_results;
+    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        v9x_saved[index] = r[index];
+        v9x_key("Before", v9x_saved_names[index], r[index]);
+    }
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_key("Before", v9x_extra_names[index], r[first_extra + index]);
+    }
+
+    if ((v9x_saved[V9X_SAVED_ME_CNTL] & V9X_CZ_CP_HALTS) != V9X_CZ_CP_HALTS ||
+        (v9x_saved[V9X_SAVED_RLC_CNTL] & V9X_CZ_RLC_ENABLE) != 0ul ||
+        r[first_extra + V9X_EXTRA_RESET] != 0ul) {
+        CloseHandle(device);
+        v9x_finish("ENGINE-NOT-AS-READ", 3u);
+    }
+    /* FB_LOCATION's start: bits 39:32 its high byte, 31:24 its low byte;
+     * a low byte the window offset would carry out of is refused. */
+    fb = r[first_extra + V9X_EXTRA_FB] & V9X_CZ_FB_START_MASK;
+    if ((fb & 0xfful) > 0xf0ul) {
+        CloseHandle(device);
+        v9x_finish("FB-START-UNSUPPORTED", 4u);
+    }
+    lo = ((fb & 0xfful) << 24) + V9X_SCRATCH_GPU_OFFSET;
+    hi = fb >> 8;
+    v9x_key("Run", "ScratchGpuHigh", hi);
+    v9x_key("Run", "ScratchGpuLow", lo);
+
+    if (v9x_switch_given("/readonly")) {
+        CloseHandle(device);
+        v9x_finish("READONLY", 0u);
+    }
+
+    /* Call 2: the CPU reaches the window through BAR0. */
+    v9x_begin();
+    v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
+    v9x_op(V9X_OP_VRAM_PATTERN, V9X_CANARY, V9X_CANARY_DWORDS,
+           V9X_SEED_CANARY);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_CANARY, V9X_CANARY_DWORDS, 0ul);
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+    if (!v9x_dioc(device, 0)) {
+        CloseHandle(device);
+        v9x_finish("CANARY-REFUSED", 5u);
+    }
+    for (index = 0ul; index < V9X_CANARY_DWORDS; ++index) {
+        if (v9x_result.block[index] != v9x_pattern(V9X_SEED_CANARY, index)) {
+            v9x_key("Report", "CanaryGot", v9x_result.block[index]);
+            CloseHandle(device);
+            v9x_finish("SCRATCH-NOT-REACHED", 7u);
+        }
+    }
+
+    /* Call 3: the run. */
+    v9x_build_run(lo, hi);
+    if (!v9x_dioc(device, 1)) {
+        CloseHandle(device);
+        v9x_number("Report", "Executed", v9x_result.executed);
+        v9x_finish("RUN-REFUSED", 5u);
+    }
+    CloseHandle(device);
+    r = v9x_result.op_results;
+    v9x_number("During", "UcodeDwordsWritten", v9x_result.ucode_written);
+    v9x_key("During", "SerdesCuWait", r[v9x_at_cu_busy]);
+    v9x_key("During", "SerdesNonCuWait", r[v9x_at_noncu_busy]);
+    v9x_key("During", "RlcCntlStarted", r[v9x_at_rlc_cntl]);
+    v9x_key("During", "RlcStat", r[v9x_at_rlc_stat]);
+    v9x_key("During", "RlcGpmStat", r[v9x_at_rlc_gpm]);
+    v9x_key("During", "MeCntlHalted", r[v9x_at_me_cntl_halted]);
+    v9x_key("During", "RbCntl", r[v9x_at_rb_cntl]);
+    v9x_key("During", "MeCntlRunning", r[v9x_at_me_cntl_running]);
+    v9x_key("During", "Wait1", r[v9x_at_wait_1]);
+    v9x_key("During", "Rptr1", r[v9x_at_rptr_1]);
+    v9x_key("During", "CpStat1", r[v9x_at_stat_1]);
+    v9x_key("During", "GrbmStatus1", r[v9x_at_grbm_1]);
+    v9x_key("During", "Wait2", r[v9x_at_wait_2]);
+    v9x_key("During", "Rptr2", r[v9x_at_rptr_2]);
+    v9x_key("During", "CpStat2", r[v9x_at_stat_2]);
+    v9x_key("During", "GrbmStatus2", r[v9x_at_grbm_2]);
+    v9x_key("During", "Scratch2", r[v9x_at_scratch_2]);
+    v9x_key("After", "CP_ME_CNTL", r[v9x_at_after_me_cntl]);
+    v9x_key("After", "RLC_CNTL", r[v9x_at_after_rlc_cntl]);
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_key("After", v9x_extra_names[index],
+                r[v9x_at_after_extra + index]);
+    }
+    v9x_key("Result", "WritebackRptr", v9x_result.block[0]);
+    v9x_pass("RingTest", r[v9x_at_wait_1] != V9X_CZCP_TIMEOUT);
+    v9x_pass("Preamble", r[v9x_at_wait_2] != V9X_CZCP_TIMEOUT);
+    v9x_finish("COMPLETE", 0u);
+}

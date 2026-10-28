@@ -360,6 +360,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Carrizo's SDMA0 runs AMD microcode loaded through its own port: copies and fills byte-exact](2026-10-28-carrizo-sdma-write-probe.md)
 - [2026-10-28 DirectDraw fill and copy run on Carrizo's SDMA0, pixel-correct through the HAL](2026-10-28-carrizo-directdraw-on-sdma.md)
 - [2026-10-28 Carrizo page flips through DCE 11's D1 surface address, taken at the blank](2026-10-28-carrizo-page-flips.md)
+- [2026-10-28 Carrizo's graphics CP runs AMD's microcode, loaded through its own ports: Linux's ring test passes](2026-10-28-carrizo-cp-ring-test.md)
 
 ## DOS box and mini-VDD
 
