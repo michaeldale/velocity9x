@@ -21,7 +21,8 @@
  * Call 2 checks the CPU reaches the scratch window (BAR0 + 248 MiB, 64 KiB).
  *
  * Call 3 does what Linux v4.9 gfx_v8_0.c does with smc_load_fw=0, in its
- * order: rlc_resume (stop with the GUI-idle interrupts off and the SERDES
+ * order: the golden registers and gpu_init (vi_gpu_init.c, through
+ * CZCP.VXD's table op; left as written after the run), rlc_resume (stop with the GUI-idle interrupts off and the SERDES
  * idle, coarse-grain clock gating and light sleep off, power gating off,
  * an RLC soft reset, the RLC microcode, start; init_pg does nothing with
  * power gating off), cp_gfx_load_microcode (halt, PFP, CE, ME),
@@ -39,7 +40,7 @@
  *
  * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
  * NOP and alignment. Then the CP is halted and the RLC stopped, every
- * register written is put back as call 1 read it, HDP is flushed and
+ * CP and RLC register written is put back as call 1 read it, HDP is flushed and
  * invalidated, the writeback, the fence and the target are read back and
  * the window restored.
  *
@@ -53,6 +54,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/vi_3d.h"
+#include "velocity9x/vi_gpu_init.h"
 #include "velocity9x/vi_shader.h"
 
 #ifndef V9X_BUILD_ID
@@ -85,14 +87,10 @@
 #define V9X_OP_UCODE        14ul
 #define V9X_OP_WAIT_VRAM    7ul
 #define V9X_OP_VRAM_DATA    15ul
+#define V9X_OP_MMIO_TABLE   16ul
 
 #define V9X_CZ_GB_ADDR_CONFIG       0x098f8ul
 #define V9X_CZ_GB_TILE_MODE8        0x09930ul
-/* Linux v4.9 tiling_mode_table_init's Carrizo modearray[8]:
- * ARRAY_MODE(ARRAY_LINEAR_ALIGNED) | PIPE_CONFIG(ADDR_SURF_P2). The BIOS
- * leaves the table unprogrammed (run 1 read 00C0077Ch, array mode Fh), and
- * the colour buffer drew nothing through it. */
-#define V9X_CZ_TILE_LINEAR_ALIGNED  0x00000004ul
 
 /* CZCP.VXD's CC_PATTERN_STEP. */
 #define V9X_PATTERN_STEP    0x9e3779b9ul
@@ -359,6 +357,7 @@ static DWORD v9x_shader[32];
 static BYTE v9x_file[V9X_FW_FILE_MAX];
 static DWORD v9x_data[V9X_CZCP_DATA_MAX];
 static DWORD v9x_data_dwords;
+static struct v9x_vi_reg_seq v9x_init_ops[V9X_VI_GPU_INIT_OPS_MAX];
 
 /* Indices into v9x_result.op_results of the values the report needs. */
 static DWORD v9x_at_cu_busy;
@@ -381,8 +380,13 @@ static DWORD v9x_at_scratch_2;
 static DWORD v9x_at_after_extra;
 static DWORD v9x_at_after_me_cntl;
 static DWORD v9x_at_after_rlc_cntl;
-static DWORD v9x_tile_mode8_before;
 static DWORD v9x_at_tile_mode8_written;
+static DWORD v9x_at_init;
+static DWORD v9x_at_fifo_before;
+static DWORD v9x_at_fifo_after;
+static DWORD v9x_at_sh_mem_before;
+static DWORD v9x_at_sh_mem_after;
+static DWORD v9x_at_addr_config_after;
 static DWORD v9x_at_wait_3;
 static DWORD v9x_at_rptr_3;
 static DWORD v9x_at_stat_3;
@@ -610,6 +614,8 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     DWORD vs_count;
     DWORD ps_first;
     DWORD ps_count;
+    DWORD init_first;
+    DWORD init_count;
 
     /* The ring: the ring test; the full start stream and a scratch write
      * behind it; the draw and its end-of-pipe fence. */
@@ -660,6 +666,22 @@ static int v9x_build_run(DWORD lo, DWORD hi)
         return 0;
     }
 
+    /* gpu_init's list, three dwords an entry, as CZCP.VXD's table op reads
+     * it. */
+    init_count = v9x_vi_gpu_init_ops(v9x_init_ops, V9X_VI_GPU_INIT_OPS_MAX);
+    if (init_count == 0ul) {
+        return 0;
+    }
+    init_first = v9x_data_dwords;
+    for (index = 0ul; index < init_count; ++index) {
+        v9x_data_append(&v9x_init_ops[index].offset, 1ul);
+        v9x_data_append(&v9x_init_ops[index].clear, 1ul);
+        v9x_data_append(&v9x_init_ops[index].set, 1ul);
+    }
+    if (v9x_data_dwords != init_first + init_count * 3ul) {
+        return 0;
+    }
+
     /* cp_gfx_resume's CP_RB0_CNTL for a 16 KiB ring. */
     rb_cntl = V9X_RING_LOG2_QWORDS | ((V9X_RING_LOG2_QWORDS - 2ul) << 8) |
               (3ul << 15) | (1ul << 22);
@@ -675,10 +697,24 @@ static int v9x_build_run(DWORD lo, DWORD hi)
                                0ul);
     v9x_at_addr_config = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_ADDR_CONFIG, 0ul,
                                 0ul);
-    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_GB_TILE_MODE8,
-           V9X_CZ_TILE_LINEAR_ALIGNED, 0ul);
+    v9x_at_fifo_before = v9x_op(V9X_OP_MMIO_READ, V9X_VI_PA_SC_FIFO_SIZE,
+                                0ul, 0ul);
+    v9x_at_sh_mem_before = v9x_op(V9X_OP_MMIO_READ, V9X_VI_SH_MEM_CONFIG,
+                                  0ul, 0ul);
+
+    /* gfx_v8_0_hw_init's order: the golden registers and gpu_init before
+     * rlc_resume and cp_resume. None of it is put back after the run: it
+     * is the configuration Linux leaves the engine in, and the BIOS left
+     * none (the tile table read unprogrammed). */
+    v9x_at_init = v9x_op(V9X_OP_MMIO_TABLE, init_first, init_count, 0ul);
     v9x_at_tile_mode8_written = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_TILE_MODE8,
                                        0ul, 0ul);
+    v9x_at_addr_config_after = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_ADDR_CONFIG,
+                                      0ul, 0ul);
+    v9x_at_fifo_after = v9x_op(V9X_OP_MMIO_READ, V9X_VI_PA_SC_FIFO_SIZE,
+                               0ul, 0ul);
+    v9x_at_sh_mem_after = v9x_op(V9X_OP_MMIO_READ, V9X_VI_SH_MEM_CONFIG,
+                                 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_SCRATCH_REG0, V9X_SCRATCH_BEFORE, 0ul);
 
     /* rlc_resume: rlc_stop, CG off, PG off, rlc_reset, the microcode,
@@ -783,9 +819,6 @@ static int v9x_build_run(DWORD lo, DWORD hi)
                                   0ul, 0ul);
     v9x_at_after_rlc_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_RLC_CNTL,
                                    0ul, 0ul);
-    v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_GB_TILE_MODE8, v9x_tile_mode8_before,
-           0ul);
-
     v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_HDP_MEM_FLUSH, 1ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_CZ_HDP_DEBUG0, 1ul, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_WRITEBACK, 1ul, 0ul);
@@ -944,7 +977,6 @@ void __stdcall V9xCarrizo3dEntry(void)
     }
     /* FB_LOCATION's start: bits 39:32 its high byte, 31:24 its low byte;
      * a low byte the window offset would carry out of is refused. */
-    v9x_tile_mode8_before = r[first_extra + V9X_EXTRA_TILE8];
     fb = r[first_extra + V9X_EXTRA_FB] & V9X_CZ_FB_START_MASK;
     if ((fb & 0xfful) > 0xf0ul) {
         CloseHandle(device);
@@ -1021,6 +1053,12 @@ void __stdcall V9xCarrizo3dEntry(void)
     v9x_key("During", "GbTileMode8", r[v9x_at_tile_mode8]);
     v9x_key("During", "GbTileMode8Written", r[v9x_at_tile_mode8_written]);
     v9x_key("During", "GbAddrConfig", r[v9x_at_addr_config]);
+    v9x_number("During", "InitEntries", r[v9x_at_init]);
+    v9x_key("During", "GbAddrConfigWritten", r[v9x_at_addr_config_after]);
+    v9x_key("During", "PaScFifoSize", r[v9x_at_fifo_before]);
+    v9x_key("During", "PaScFifoSizeWritten", r[v9x_at_fifo_after]);
+    v9x_key("During", "ShMemConfig", r[v9x_at_sh_mem_before]);
+    v9x_key("During", "ShMemConfigWritten", r[v9x_at_sh_mem_after]);
     v9x_key("During", "Wait3", r[v9x_at_wait_3]);
     v9x_key("During", "Rptr3", r[v9x_at_rptr_3]);
     v9x_key("During", "CpStat3", r[v9x_at_stat_3]);

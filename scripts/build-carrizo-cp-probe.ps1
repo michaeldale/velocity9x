@@ -96,7 +96,9 @@ $publishers = @(
        Description = 'Velocity9x Carrizo first 3D draw probe'
        Extra = @('src\chipsets\ati\vi\vi_shader.c',
                  'src\chipsets\ati\vi\vi_3d.c',
-                 'src\chipsets\ati\vi\vi_clear_state.c') }
+                 'src\chipsets\ati\vi\vi_clear_state.c',
+                 'src\chipsets\ati\vi\vi_gpu_init.c',
+                 'src\chipsets\ati\vi\vi_gpu_init_tables.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

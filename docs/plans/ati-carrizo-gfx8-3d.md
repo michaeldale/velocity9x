@@ -9,9 +9,12 @@ preamble from a ring in the carve-out, three runs of three
 part: the full clear state runs; a first solid rectangle (Phase 3,
 host-tested GCN 3 shaders and streams) completes and writes nothing, and
 the BIOS was found to leave the tile table unprogrammed
-([record](../decisions/2026-10-28-carrizo-first-draw-attempt.md)). Next:
-the rest of Phase 2, `gfx_v8_0_gpu_init` and the golden registers, before
-the draw again. Parent plan:
+([record](../decisions/2026-10-28-carrizo-first-draw-attempt.md)).
+`gfx_v8_0_gpu_init` and the golden registers now run before the draw and
+read back as written; the draw still writes nothing
+([record](../decisions/2026-10-28-carrizo-gpu-init.md)). Next: find where
+the draw stops (a CP write into the target, a compute dispatch, the RB
+fuses). Parent plan:
 [ati-carrizo-gfx8.md](ati-carrizo-gfx8.md). 2D runs on SDMA0
 ([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)), and
 flips on D1 ([record](../decisions/2026-10-28-carrizo-page-flips.md)).

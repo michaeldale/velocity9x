@@ -362,6 +362,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Carrizo page flips through DCE 11's D1 surface address, taken at the blank](2026-10-28-carrizo-page-flips.md)
 - [2026-10-28 Carrizo's graphics CP runs AMD's microcode, loaded through its own ports: Linux's ring test passes](2026-10-28-carrizo-cp-ring-test.md)
 - [2026-10-28 Carrizo's first 3D draw: the full clear state runs, the draw completes and writes nothing; the BIOS left the 3D engine unconfigured](2026-10-28-carrizo-first-draw-attempt.md)
+- [2026-10-28 Carrizo's 3D engine configured as Linux's gpu_init does: the writes land, the draw still writes nothing](2026-10-28-carrizo-gpu-init.md)
 
 ## DOS box and mini-VDD
 

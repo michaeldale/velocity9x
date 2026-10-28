@@ -129,6 +129,10 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\vi\vi_3d.c',
         # Carrizo clear-state registers (generated from Linux), data only.
         'src\chipsets\ati\vi\vi_clear_state.c',
+        # Carrizo engine configuration: Linux's golden and tile tables
+        # (generated) and gpu_init's writes as one list, no I/O.
+        'src\chipsets\ati\vi\vi_gpu_init.c',
+        'src\chipsets\ati\vi\vi_gpu_init_tables.c',
         'tests\host\test_pe_export.c',
         'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the

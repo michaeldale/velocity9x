@@ -4,6 +4,7 @@
 #include "velocity9x/vi_3d.h"
 #include "velocity9x/vi_shader.h"
 #include "velocity9x/vi_clear_state.h"
+#include "velocity9x/vi_gpu_init.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -242,9 +243,80 @@ static void test_solid_rect(void)
     CHECK(v9x_vi_3d_solid_rect(&stream, &rect) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* The engine configuration list: Linux's tables in order, then gpu_init's
+ * own writes, with the values Linux computes for Carrizo. */
+static struct v9x_vi_reg_seq ops[V9X_VI_GPU_INIT_OPS_MAX];
+
+static v9x_u32 find_op(v9x_u32 count, v9x_u32 offset, v9x_u32 from)
+{
+    v9x_u32 index;
+
+    for (index = from; index < count; ++index) {
+        if (ops[index].offset == offset) {
+            return index;
+        }
+    }
+    return count;
+}
+
+static void test_gpu_init(void)
+{
+    v9x_u32 count;
+    v9x_u32 at;
+    v9x_u32 vmid;
+
+    count = v9x_vi_gpu_init_ops(ops, V9X_VI_GPU_INIT_OPS_MAX);
+    /* 75 + 12 + 8 table entries, GRBM_CNTL, two address configs, 28 tile
+     * and 15 macrotile modes, 16 VMIDs of select and four SH_MEM writes,
+     * the select back, the broadcast and the FIFO sizes. */
+    CHECK(count == 224ul);
+    CHECK(v9x_vi_gpu_init_ops(ops, 100ul) == 0ul);
+
+    /* The first entry is cz_mgcg_cgcg_init's RLC_CGTT_MGCG_OVERRIDE. */
+    CHECK(ops[0].clear == 0xfffffffful && ops[0].set == 0xfffffffful);
+    /* Golden settings' RLC_CGCG_CGLS_CTRL is a read-modify-write. */
+    at = find_op(count, 0x3b124ul, 75ul);
+    CHECK(at < count && ops[at].clear == 3ul && ops[at].set == 0x3cul);
+
+    at = find_op(count, V9X_VI_GRBM_CNTL, 0ul);
+    CHECK(at < count && ops[at].clear == 0xfful && ops[at].set == 0xfful);
+    at = find_op(count, V9X_VI_HDP_ADDR_CONFIG, 0ul);
+    CHECK(at < count && ops[at].set == 0x22010001ul);
+
+    /* Tile modes: 0 and 8 as Linux's macros give them, 7 and 12 skipped;
+     * macrotile 7 skipped. */
+    at = find_op(count, V9X_VI_GB_TILE_MODE0, 0ul);
+    CHECK(at < count && ops[at].set == 0x00800010ul);
+    at = find_op(count, V9X_VI_GB_TILE_MODE0 + 8ul * 4ul, 0ul);
+    CHECK(at < count && ops[at].set == 0x00000004ul);
+    CHECK(find_op(count, V9X_VI_GB_TILE_MODE0 + 7ul * 4ul, 0ul) == count);
+    CHECK(find_op(count, V9X_VI_GB_TILE_MODE0 + 12ul * 4ul, 0ul) == count);
+    CHECK(find_op(count, V9X_VI_GB_MACROTILE_MODE0 + 7ul * 4ul, 0ul) ==
+          count);
+
+    /* SH_MEM_CONFIG: UC with unaligned access for VMID 0, NC for the
+     * others, each behind its SRBM_GFX_CNTL select. */
+    at = 0ul;
+    for (vmid = 0ul; vmid < 16ul; ++vmid) {
+        at = find_op(count, V9X_VI_SRBM_GFX_CNTL, at);
+        CHECK(at < count && ops[at].set == (vmid << 4));
+        at = find_op(count, V9X_VI_SH_MEM_CONFIG, at);
+        CHECK(at < count && ops[at].set == (vmid == 0ul ? 0x378ul : 0x138ul));
+    }
+    at = find_op(count, V9X_VI_SRBM_GFX_CNTL, at);
+    CHECK(at < count && ops[at].set == 0ul);
+
+    /* The end: broadcast, then Carrizo's FIFO sizes 20h, 100h, 30h, 130h. */
+    CHECK(ops[count - 2ul].offset == V9X_VI_GRBM_GFX_INDEX);
+    CHECK(ops[count - 2ul].set == 0xe0000000ul);
+    CHECK(ops[count - 1ul].offset == V9X_VI_PA_SC_FIFO_SIZE);
+    CHECK(ops[count - 1ul].set == 0x98184020ul);
+}
+
 unsigned int v9x_run_vi_3d_tests(void)
 {
     failures = 0u;
+    test_gpu_init();
     test_encodings();
     test_shaders();
     test_clear_state();

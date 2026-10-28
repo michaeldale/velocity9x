@@ -25,6 +25,14 @@
 ;   ucode          - dwords from the caller's data array to one of the four
 ;                    microcode data ports (PFP, ME, CE, RLC GPM), the only
 ;                    ports this op writes.
+;   mmio table     - entries of three dwords (byte offset, clear mask, set)
+;                    from the caller's data array, applied as Linux's
+;                    amdgpu_program_register_sequence does (a clear mask of
+;                    FFFFFFFFh writes set, anything else reads, clears and
+;                    sets): the golden registers and gfx_v8_0_gpu_init's
+;                    writes (vi_gpu_init.c). Every entry's offset must lie in
+;                    CCInitWindows, those registers and nothing else; one
+;                    outside refuses the op before anything is written.
 ;   delay          - a count of SRBM_STATUS reads, at most CC_DELAY_MAX.
 ;   VRAM ops       - write, read, fill, pattern, read block, and a copy of a
 ;                    run of the caller's data array (rings and shaders too
@@ -96,6 +104,7 @@ CC_OP_DELAY             equ 12  ; a SRBM_STATUS reads
 CC_OP_MMIO_RMW          equ 13  ; a offset, b mask to clear, c mask to set
 CC_OP_UCODE             equ 14  ; a port, b first data dword, c dwords
 CC_OP_VRAM_DATA         equ 15  ; a offset, b first data dword, c dwords
+CC_OP_MMIO_TABLE        equ 16  ; a first data dword, b entries
 CC_DELAY_MAX            equ 100000
 CC_SRBM_STATUS          equ 0e50h
 CC_GRBM_SOFT_RESET      equ 8020h
@@ -141,6 +150,8 @@ CCReadWindows label dword
     dd 8008h, 8014h     ; GRBM_STATUS2, GRBM_PWR_CNTL, GRBM_STATUS
     dd 8020h, 8024h     ; GRBM_SOFT_RESET
     dd 8234h, 8238h     ; CP_MEC_CNTL
+    dd 8bcch, 8bd0h     ; PA_SC_FIFO_SIZE
+    dd 8c28h, 8c38h     ; SH_MEM_BASES .. SH_MEM_CONFIG
     dd 98f8h, 98fch     ; GB_ADDR_CONFIG
     dd 9910h, 99d0h     ; GB_TILE_MODE0-31, GB_MACROTILE_MODE0-15
     dd 8674h, 8684h     ; CP_STALLED_STAT1 .. CP_STAT
@@ -160,7 +171,7 @@ CCReadWindows label dword
     dd 3b10ch, 3b110h   ; RLC_PG_CNTL
     dd 3b124h, 3b128h   ; RLC_CGCG_CGLS_CTRL
     dd 3b184h, 3b18ch   ; RLC_SERDES_CU_MASTER_BUSY, _NONCU_MASTER_BUSY
-CC_READ_WINDOW_COUNT    equ 26
+CC_READ_WINDOW_COUNT    equ 28
 
 ; Writes accepted: exact offsets.
 CCWriteOffsets label dword
@@ -169,10 +180,6 @@ CCWriteOffsets label dword
     dd 8020h            ; GRBM_SOFT_RESET, value checked in CC_Execute
     dd 86d8h            ; CP_ME_CNTL
     dd 8704h            ; CP_RB_WPTR_DELAY
-    ; GB_TILE_MODE8, the linear-aligned entry the first draw's colour
-    ; buffer names. The BIOS leaves the table unprogrammed (M-XP7053 read
-    ; 00C0077Ch); Linux's gfx_v8_0_tiling_mode_table_init writes it.
-    dd 9930h
     dd 0c100h           ; CP_RB0_BASE
     dd 0c104h           ; CP_RB0_CNTL
     dd 0c10ch           ; CP_RB0_RPTR_ADDR
@@ -193,7 +200,27 @@ CCWriteOffsets label dword
     dd 3e058h           ; CP_ME_RAM_WADDR
     dd 3e060h           ; CP_CE_UCODE_ADDR
     dd 3e0f0h           ; RLC_GPM_UCODE_ADDR
-CC_WRITE_OFFSET_COUNT   equ 26
+CC_WRITE_OFFSET_COUNT   equ 25
+
+; The table op's registers: start, limit (exclusive). The runs of Linux
+; v4.9's cz_mgcg_cgcg_init, cz_golden_settings_a11 and cz_golden_common_all
+; (vi_gpu_init_tables.c, coalesced), then gfx_v8_0_gpu_init's own.
+CCInitWindows label dword
+    dd 08708h, 0870ch, 08bf0h, 08bf4h, 08c0ch, 08c10h, 09508h, 0950ch
+    dd 09834h, 09838h, 098f8h, 098fch, 09900h, 09904h, 09a0ch, 09a10h
+    dd 0ac0ch, 0ac10h, 0ac14h, 0ac18h, 0ae00h, 0ae04h, 0ae10h, 0ae14h
+    dd 0c1e4h, 0c1e8h, 0c770h, 0c778h, 0c798h, 0c7a0h, 28350h, 28358h
+    dd 30800h, 30804h, 30a04h, 30a08h, 3b120h, 3b128h, 3c000h, 3c004h
+    dd 3c020h, 3c0c0h, 3c200h, 3c20ch, 3c210h, 3c21ch, 3c220h, 3c228h
+    dd 3c230h, 3c238h, 3c250h, 3c264h, 3c270h, 3c284h, 3c290h, 3c294h
+    dd 3c2a0h, 3c2a4h, 3c2b0h, 3c2b8h, 3c2c0h, 3c2cch, 3c2e0h, 3c2e4h
+    dd 08000h, 08004h   ; GRBM_CNTL
+    dd 02f48h, 02f4ch   ; HDP_ADDR_CONFIG
+    dd 09910h, 099d0h   ; GB_TILE_MODE0-31, GB_MACROTILE_MODE0-15
+    dd 00e44h, 00e48h   ; SRBM_GFX_CNTL
+    dd 08c28h, 08c38h   ; SH_MEM_BASES, _APE1_BASE, _APE1_LIMIT, _CONFIG
+    dd 08bcch, 08bd0h   ; PA_SC_FIFO_SIZE
+CC_INIT_WINDOW_COUNT    equ 38
 
 CCResult label dword
     dd CC_MAGIC                 ; 00 magic
@@ -417,6 +444,35 @@ CC_Write_Accepted:
     ret
 EndProc CC_Write_Allowed
 
+; EDX = offset. CF clear if the table op may write it.
+BeginProc CC_Init_Allowed
+    push    ecx
+    push    esi
+    test    edx, 3
+    jnz     short CC_Init_Refused
+    mov     esi, OFFSET32 CCInitWindows
+    mov     ecx, CC_INIT_WINDOW_COUNT
+CC_Init_Next:
+    cmp     edx, [esi]
+    jb      short CC_Init_Skip
+    cmp     edx, [esi+4]
+    jb      short CC_Init_Accepted
+CC_Init_Skip:
+    add     esi, 8
+    dec     ecx
+    jnz     short CC_Init_Next
+CC_Init_Refused:
+    pop     esi
+    pop     ecx
+    stc
+    ret
+CC_Init_Accepted:
+    pop     esi
+    pop     ecx
+    clc
+    ret
+EndProc CC_Init_Allowed
+
 ; EDX = scratch offset, ECX = dwords (at least 1). CF clear if the run lies
 ; inside the window and is aligned.
 BeginProc CC_Vram_Allowed
@@ -537,6 +593,65 @@ CC_Exec_Ucode_Next:
     add     CCResult[48], eax
     jmp     CC_Exec_Done
 CC_Exec_Not_Ucode:
+
+    cmp     eax, CC_OP_MMIO_TABLE
+    jne     CC_Exec_Not_Table
+    ; EDX = first data dword, ECX = entries; the run must lie in the data.
+    mov     ecx, [esi+8]
+    test    ecx, ecx
+    jz      CC_Exec_Refused
+    cmp     ecx, CC_DATA_MAX / 3
+    ja      CC_Exec_Refused
+    cmp     edx, CCDataCount
+    jae     CC_Exec_Refused
+    mov     ebx, CCDataCount
+    sub     ebx, edx
+    lea     eax, [ecx+ecx*2]
+    cmp     eax, ebx
+    ja      CC_Exec_Refused
+    push    esi
+    mov     esi, CCData
+    lea     esi, [esi+edx*4]
+    ; Every offset first, so a refused table writes nothing.
+    push    esi
+    push    ecx
+CC_Exec_Table_Check:
+    mov     edx, [esi]
+    call    CC_Init_Allowed
+    jc      short CC_Exec_Table_Bad
+    add     esi, 12
+    dec     ecx
+    jnz     short CC_Exec_Table_Check
+    pop     ecx
+    pop     esi
+    mov     ebx, CCMmio
+    mov     edi, ecx
+CC_Exec_Table_Next:
+    mov     edx, [esi]
+    mov     eax, [esi+8]
+    cmp     dword ptr [esi+4], 0ffffffffh
+    je      short CC_Exec_Table_Store
+    mov     eax, [esi+4]
+    not     eax
+    and     eax, [ebx+edx]
+    or      eax, [esi+8]
+CC_Exec_Table_Store:
+    mov     [ebx+edx], eax
+    ; Post each write before the next: SRBM_GFX_CNTL's VMID select must
+    ; land before the SH_MEM writes it banks.
+    mov     eax, [ebx+CC_CONFIG_MEMSIZE]
+    add     esi, 12
+    dec     ecx
+    jnz     short CC_Exec_Table_Next
+    pop     esi
+    mov     eax, edi
+    jmp     CC_Exec_Done
+CC_Exec_Table_Bad:
+    pop     ecx
+    pop     esi
+    pop     esi
+    jmp     CC_Exec_Refused
+CC_Exec_Not_Table:
 
     cmp     eax, CC_OP_VRAM_DATA
     jne     short CC_Exec_Not_Vram_Data
