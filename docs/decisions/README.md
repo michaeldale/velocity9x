@@ -370,6 +370,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Direct3D through the HAL on Carrizo: V9XD32 passes all but blending and ARGB1555 at 16 and 32 bpp](2026-10-28-carrizo-d3d-hal-first-light.md)
 - [2026-10-28 Carrizo's fixed function in the pixel shader: blending needed an FP16 export, a 565 texture needs W = 1, mips measured](2026-10-28-carrizo-d3d-blend-and-shader-fixed-function.md)
 - [2026-10-29 3DMark 2000 on Carrizo: it runs; lines along triangle edges were the sampler outside whole-quad mode](2026-10-29-carrizo-3dmark2000.md)
+- [2026-10-29 V9XDDP's zero rows on Carrizo: perspective was inverted, two features were missing, and a CPU Lock of the tiled Z buffer misaddresses it](2026-10-29-carrizo-ddp-zero-rows.md)
 
 ## DOS box and mini-VDD
 

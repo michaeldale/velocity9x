@@ -221,8 +221,11 @@ static int v9x_d3d_vi_address_mode(v9x_u32 address, v9x_u32 *mode)
  * takes the texel's alpha when the texture has one and the vertex's
  * otherwise: without alpha the sampler reads alpha as 1 and the product is
  * the vertex's; with it, the product differs from Direct3D only where the
- * vertex's alpha is below 1. DECALALPHA, ADD and the mask forms are not
- * built.
+ * vertex's alpha is below 1. DECALALPHA blends the diffuse colour to the
+ * texel's by the texel's alpha and keeps the diffuse alpha, in a PS built
+ * for the draw (it has no slot); a texture without alpha samples W as 1,
+ * so it draws the texel, as Direct3D's reference does. ADD and the mask
+ * forms are not built.
  */
 static int v9x_d3d_vi_op(v9x_u32 op, v9x_u32 *ps)
 {
@@ -234,6 +237,9 @@ static int v9x_d3d_vi_op(v9x_u32 op, v9x_u32 *ps)
     case V9X_R3D_TEXOP_MODULATE:
     case V9X_R3D_TEXOP_MODULATEALPHA:
         *ps = V9X_D3D_VI_PS_MODULATE;
+        return 1;
+    case V9X_R3D_TEXOP_DECALALPHA:
+        *ps = V9X_D3D_VI_PS_DECALALPHA;
         return 1;
     }
     return 0;
@@ -303,11 +309,14 @@ static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
     out->texture_height = texture->height;
     out->texture_pitch = texture->pitch_texels;
     out->texture_format = texture->format;
+    out->texture_opaque =
+        texture->format == V9X_VI_IMG_FORMAT_8_8_8_8 && texture->has_alpha == 0ul
+        ? 1ul : 0ul;
     out->texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
     out->texture_bilinear = mag;
     out->texture_address = mode;
-    out->ps_vgprs = *ps == V9X_D3D_VI_PS_MODULATE ? V9X_VI_MODULATE_PS_VGPRS
-                                                 : V9X_VI_TEXTURE_PS_VGPRS;
+    out->ps_vgprs = *ps == V9X_D3D_VI_PS_TEXTURE ? V9X_VI_TEXTURE_PS_VGPRS
+                                                : V9X_VI_MODULATE_PS_VGPRS;
     return V9X_D3D_VI_REFUSE_NONE;
 }
 
@@ -432,12 +441,14 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
         out->ps_vgprs = 0ul;
     }
 
-    /* Any of the three: the PS built for this draw, with the op and the
-     * specular as the slot shader would have had them. */
-    if (built->alpha_test != 0ul || built->fog != 0ul || built->key != 0ul) {
+    /* Any of the three, or DECALALPHA: the PS built for this draw, with the
+     * op and the specular as the slot shader would have had them. */
+    if (built->alpha_test != 0ul || built->fog != 0ul || built->key != 0ul ||
+        *ps == V9X_D3D_VI_PS_DECALALPHA) {
         built->op = *ps == V9X_D3D_VI_PS_TEXTURE ? V9X_VI_PS_TEXTURE :
-                    (*ps == V9X_D3D_VI_PS_MODULATE ? V9X_VI_PS_MODULATE
-                                                   : V9X_VI_PS_COLOUR);
+                    *ps == V9X_D3D_VI_PS_MODULATE ? V9X_VI_PS_MODULATE :
+                    *ps == V9X_D3D_VI_PS_DECALALPHA ? V9X_VI_PS_DECALALPHA :
+                    V9X_VI_PS_COLOUR;
         built->specular = draw->specular_enable != 0ul ? 1ul : 0ul;
         out->ps_vgprs = V9X_VI_D3D_PS_BUILT_VGPRS;
         out->ps_kill = built->alpha_test != 0ul || built->key != 0ul ? 1ul

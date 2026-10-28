@@ -522,6 +522,37 @@ static void test_built_shaders(void)
     CHECK(out[at++] == 0x7ca22312ul);   /* v_cmpx_lt_f32 vcc, v18, v17 */
     CHECK(out[at++] == 0xbf880007ul);
     CHECK(out[count - 3ul] == 0xc4001890ul);
+
+    /* DECALALPHA: modulate's head, interpolation and sample, then for B,
+     * G and R diffuse += At (texel - diffuse), and the diffuse in v8-v11
+     * exported with its own alpha. */
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_VI_PS_DECALALPHA;
+    count = v9x_vi_shader_d3d_ps_built(&ps, out);
+    (void)v9x_vi_shader_modulate_ps(plain);
+    CHECK(memcmp(out, plain, 20ul * sizeof(v9x_u32)) == 0);
+    at = 20ul;
+    CHECK(out[at++] == 0x06200908ul);   /* v_subrev_f32 v16, v8, v4 */
+    CHECK(out[at++] == 0x2c100f10ul);   /* v_mac_f32 v8, v16, v7 */
+    CHECK(out[at++] == 0x06200b09ul);   /* v_subrev_f32 v16, v9, v5 */
+    CHECK(out[at++] == 0x2c120f10ul);   /* v_mac_f32 v9, v16, v7 */
+    CHECK(out[at++] == 0x06200d0aul);   /* v_subrev_f32 v16, v10, v6 */
+    CHECK(out[at++] == 0x2c140f10ul);   /* v_mac_f32 v10, v16, v7 */
+    CHECK(out[at++] == 0xd2960002ul);   /* v_cvt_pkrtz_f16_f32 v2, v8, v9 */
+    CHECK(out[at++] == 0x00021308ul);
+    CHECK(out[at++] == 0xd2960003ul);   /* v_cvt_pkrtz_f16_f32 v3, v10, v11 */
+    CHECK(out[at++] == 0x0002170aul);
+    CHECK(out[at++] == 0xc4001c0ful);   /* exp mrt0 v2, v2, v3, v3 done compr vm */
+    CHECK(out[at++] == 0x00000302ul);
+    CHECK(out[at++] == 0xbf810000ul);
+    CHECK(at == count);
+
+    /* With specular: into v12-v14 and added to v8-v10. */
+    ps.specular = 1ul;
+    count = v9x_vi_shader_d3d_ps_built(&ps, out);
+    CHECK(count == 33ul + 9ul);
+    CHECK(out[26] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
+    CHECK(out[32] == 0x0210110cul);     /* v_add_f32 v8, v12, v8 */
 }
 
 /* Every type-3 packet's count must land the next header exactly at the
@@ -763,7 +794,7 @@ static void test_tl_draw(void)
     CHECK(at != 0ul && buffer[at] == 0xf40f8090ul);
     /* PA_CL_VTE_CNTL: screen-space XY, Z and 1/W. */
     at = find_context(buffer, stream.count, 0xa206ul);
-    CHECK(at != 0ul && buffer[at] == 0x00000700ul);
+    CHECK(at != 0ul && buffer[at] == 0x00000300ul);
     /* Three parameters, colour, (tu, tv) and specular: SPI_VS_OUT_CONFIG
      * VS_EXPORT_COUNT 2 at 5:1; SPI_PS_IN_CONTROL three interpolants;
      * SPI_PS_INPUT_CNTL_0, _1 and _2 parameters 0, 1 and 2. */
@@ -949,6 +980,16 @@ static void test_tl_texture(void)
      * asked for one the sampler reads 0, which MODULATE under SRCALPHA
      * draws as nothing (Cedar's 565 alpha, V9XDDP's untagged texture). */
     CHECK(buffer[at + 5ul] == 0x908003acul);
+    /* XRGB8888: DATA_FORMAT 8_8_8_8 with W SQ_SEL_1, so its top byte,
+     * which is not alpha, never reaches the blend. */
+    draw.texture_format = V9X_VI_IMG_FORMAT_8_8_8_8;
+    draw.texture_opaque = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 3ul] == 0x00a00000ul);
+    CHECK(buffer[at + 5ul] == 0x908003acul);
+    draw.texture_opaque = 0ul;
 
     /* Refused: an unaligned texture, a zero or oversized width, a format
      * no T# here describes. */

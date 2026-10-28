@@ -68,9 +68,13 @@
 /* PA_CL_CLIP_CNTL: CLIP_DISABLE (bit 16), DX_CLIP_SPACE_DEF (bit 19): the
  * positions are screen pixels, so nothing is clipped. */
 #define VI_CLIP_CNTL_DISABLED       0x00090000ul
-/* PA_CL_VTE_CNTL: VTX_XY_FMT, VTX_Z_FMT, VTX_W0_FMT and no viewport
- * transform: the position arrives in screen space. */
-#define VI_VTE_SCREEN_SPACE         0x00000700ul
+/* PA_CL_VTE_CNTL: VTX_XY_FMT and VTX_Z_FMT and no viewport transform: the
+ * position arrives in screen space. VTX_W0_FMT stays clear, so the
+ * position's w, Direct3D's rhw, weights the perspective barycentrics
+ * right. Set, the weighting came out inverted: V9XDDP's perspective row
+ * turned at 20% of the edge, where correct is 80% (M-XP7053, 2026-10-29),
+ * as Cedar measured on the same PA (eg_3d.c, EG_VTE_XY_Z_DIVIDED). */
+#define VI_VTE_SCREEN_SPACE         0x00000300ul
 /* PA_SU_VTX_CNTL: PIX_CENTER 1, ROUND_MODE X_ROUND_TO_EVEN (2), QUANT_MODE
  * 1/256th (5): radeonsi's. PIX_CENTER 0 puts pixel centres on whole
  * coordinates, Direct3D's (Gallium Nine's half_pixel_center false). */
@@ -650,7 +654,8 @@ static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
      * MODULATE under SRCALPHA would draw nothing. It takes the constant 1,
      * Cedar's fix (docs\decisions\2026-10-27-cedar-texture-pitch-and-565-
      * alpha.md). */
-    out[3] = (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ?
+    out[3] = (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
+              draw->texture_opaque != 0ul ?
               VI_IMG_SWIZZLE_OPAQUE : VI_IMG_SWIZZLE_IDENTITY) |
              ((draw->texture_base_level & 0xful) << 12) |
              ((draw->texture_last_level & 0xful) << 16) |

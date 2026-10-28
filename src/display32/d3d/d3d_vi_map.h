@@ -11,7 +11,7 @@
  * (docs\decisions\2026-10-28-carrizo-gouraud.md, -depth.md and
  * -texture-modulate.md): 16 and 32 bpp targets, Z16 with any function,
  * RGB565 and ARGB8888 textures, point or bilinear, clamp, wrap or mirror,
- * replace and modulate, and specular added after them, which DirectX 5
+ * replace, modulate and decal-alpha, and specular added after them, which DirectX 5
  * and 6 enable by default. Everything else is a refusal with a reason,
  * Direct3D's skip-and-count. Plan: docs\plans\ati-carrizo-gfx8-3d.md,
  * Phase 5 step 1.
@@ -80,6 +80,8 @@ typedef struct v9x_d3d_vi_texture {
  * *built (vi_shader.h, v9x_vi_shader_d3d_ps_built), its constants in its
  * code, which the engine sends with the batch. */
 #define V9X_D3D_VI_PS_BUILT             6ul
+/* DECALALPHA, which has no slot: only ever on the way to _BUILT. */
+#define V9X_D3D_VI_PS_DECALALPHA        7ul
 
 /*
  * One draw's batch state, without what the engine alone knows: the shader,

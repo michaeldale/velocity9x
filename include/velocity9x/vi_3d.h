@@ -163,6 +163,9 @@ struct v9x_vi_tl_draw {
     v9x_u32 texture_base_level;
     v9x_u32 texture_last_level;
     v9x_u32 texture_mip_filter;
+    /* Nonzero: the texel's W is the constant 1, for a format whose fourth
+     * byte is not alpha (XRGB8888). */
+    v9x_u32 texture_opaque;
 };
 
 /* The S#'s MIP_FILTER (SQ_TEX_MIP_FILTER_*). */

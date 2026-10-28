@@ -76,7 +76,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     1ul             /* guard_band_ddi6 */
 };
 
-/* RGB565 and ARGB8888: the T# data format, or UNKNOWN. */
+/* The T# data format of a texture format the sampler reads, or UNKNOWN. */
 static DWORD v9x_d3d_vi_format_of(const V9X_DD_SURFACE_LCL *surface,
                                   DWORD *bytes_out, DWORD *has_alpha)
 {
@@ -134,6 +134,17 @@ static DWORD v9x_d3d_vi_format_of(const V9X_DD_SURFACE_LCL *surface,
         *has_alpha = 1ul;
         return V9X_VI_IMG_FORMAT_8_8_8_8;
     }
+    /* XRGB8888: the same layout, its top byte not alpha, so the map has
+     * the T# read W as 1 (vi_3d.h, texture_opaque). */
+    if (format->dwRGBBitCount == 32ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x00ff0000ul &&
+        format->dwGBitMask == 0x0000ff00ul &&
+        format->dwBBitMask == 0x000000fful) {
+        *bytes_out = 4ul;
+        *has_alpha = 0ul;
+        return V9X_VI_IMG_FORMAT_8_8_8_8;
+    }
     return V9X_D3D_VI_TEXTURE_UNKNOWN;
 }
 
@@ -154,9 +165,9 @@ static int v9x_d3d_vi_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * What d3d_vi_map.c accepts: Z and alpha tests with every function, the
  * blend factors without destination alpha, flat and Gouraud colour and
  * specular, vertex and table fog by the factor the core leaves in the
- * specular alpha, textures in RGB565, ARGB1555, ARGB4444 and ARGB8888
- * with point and bilinear filters, wrap, mirror and clamp, colour keys,
- * DECAL, COPY, MODULATE and MODULATEALPHA, and mip chains with every
+ * specular alpha, textures in RGB565, ARGB1555, ARGB4444, ARGB8888 and
+ * XRGB8888 with point and bilinear filters, wrap, mirror and clamp, colour
+ * keys, DECAL, DECALALPHA, COPY, MODULATE and MODULATEALPHA, and mip chains with every
  * Direct3D mip filter.
  */
 static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
@@ -223,6 +234,7 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
                                V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
                                V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
+                              V9X_D3DPTBLENDCAPS_DECALALPHA |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
                               V9X_D3DPTBLENDCAPS_COPY;
@@ -247,8 +259,9 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB1555, ARGB4444, ARGB8888, as Cedar's list. */
-    for (index = 0ul; index < 4ul; ++index) {
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888, as Cedar's list, and XRGB8888
+     * as the Intel engines offer it. */
+    for (index = 0ul; index < 5ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -280,8 +293,14 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
     shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 4ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }

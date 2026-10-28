@@ -526,7 +526,7 @@ v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
         spare = 6ul;
     } else {
         count = v9x_vi_texture_ps_head(out);
-        if (ps->op == V9X_VI_PS_MODULATE) {
+        if (ps->op == V9X_VI_PS_MODULATE || ps->op == V9X_VI_PS_DECALALPHA) {
             count += v9x_vi_interp(8ul, 0ul, 4ul, out + count);
         }
         count += v9x_vi_texture_ps_sample(out + count);
@@ -542,10 +542,25 @@ v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
                                            4ul + chan);
             }
             spare = 12ul;
+            colour = 4ul;
+        } else if (ps->op == V9X_VI_PS_DECALALPHA) {
+            /* diffuse += At (texel - diffuse) for B, G and R: a v_subrev
+             * and a v_mac a channel, every operand a VGPR. The diffuse
+             * alpha in v11 stays. */
+            for (chan = 0ul; chan < 3ul; ++chan) {
+                out[count++] = v9x_vi_vop2(V9X_VI_VOP2_SUBREV_F32,
+                                           V9X_VI_PS_TEMP,
+                                           V9X_VI_VGPR(8ul + chan),
+                                           4ul + chan);
+                out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MAC_F32, 8ul + chan,
+                                           V9X_VI_VGPR(V9X_VI_PS_TEMP), 7ul);
+            }
+            spare = 12ul;
+            colour = 8ul;
         } else {
             spare = 8ul;
+            colour = 4ul;
         }
-        colour = 4ul;
     }
     if (ps->specular != 0ul) {
         count += v9x_vi_interp(spare, 2ul, 3ul, out + count);

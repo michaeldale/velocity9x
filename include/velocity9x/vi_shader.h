@@ -211,6 +211,10 @@ v9x_u32 v9x_vi_shader_modulate_ps(v9x_u32 *out);
 #define V9X_VI_PS_COLOUR    0ul
 #define V9X_VI_PS_TEXTURE   1ul
 #define V9X_VI_PS_MODULATE  2ul
+/* DECALALPHA, built only (v9x_vi_shader_d3d_ps_built): parameter 0 into
+ * v8-v11 as for modulate, then the colour diffuse + At (texel - diffuse)
+ * with the diffuse alpha, left in v8-v11. */
+#define V9X_VI_PS_DECALALPHA 3ul
 #define V9X_VI_GOURAUD_PS_SPECULAR_VGPRS  12ul
 #define V9X_VI_TEXTURE_PS_SPECULAR_VGPRS  12ul
 #define V9X_VI_MODULATE_PS_SPECULAR_VGPRS 16ul

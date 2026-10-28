@@ -130,7 +130,11 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
    [3DMark 2000](../decisions/2026-10-29-carrizo-3dmark2000.md) runs to
    its score, with correct frames, since textured shaders sample in
    whole-quad mode (boot 33). The engine draws in the PA's guard band.
-   Next: V9XDDP's rows that still read 0, and a game.
+   [V9XDDP's zero rows](../decisions/2026-10-29-carrizo-ddp-zero-rows.md)
+   (boot 34): perspective was inverted (VTX_W0_FMT), and XRGB8888
+   textures and DECALALPHA are now built. All three pass. `/mixed` shows
+   that a CPU Lock of the 1D-tiled Z buffer misaddresses it, which is
+   open. Next: a game.
 
 ## Decisions
 

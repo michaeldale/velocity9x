@@ -429,6 +429,43 @@ static void test_built(void)
     CHECK(out.texture_format == V9X_VI_IMG_FORMAT_4_4_4_4);
 }
 
+/* DECALALPHA takes the built PS with nothing else on it, specular kept;
+ * an 8_8_8_8 texture without alpha (XRGB8888) has the T# read W as 1,
+ * one with it does not. */
+static void test_decal_alpha_and_opaque(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw out;
+    v9x_u32 ps;
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.texture.op = V9X_R3D_TEXOP_DECALALPHA;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT);
+    CHECK(built.op == V9X_VI_PS_DECALALPHA);
+    CHECK(built.alpha_test == 0ul && built.fog == 0ul && built.key == 0ul);
+    CHECK(built.specular == 0ul);
+    CHECK(out.ps_kill == 0ul);
+    CHECK(out.ps_vgprs == V9X_VI_D3D_PS_BUILT_VGPRS);
+    CHECK(out.texture_opaque == 0ul);
+    draw.specular_enable = 1ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT && built.specular == 1ul);
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    texture.has_alpha = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_MODULATE);
+    CHECK(out.texture_format == V9X_VI_IMG_FORMAT_8_8_8_8);
+    CHECK(out.texture_opaque == 1ul);
+    texture.format = V9X_VI_IMG_FORMAT_5_6_5;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_opaque == 0ul);
+}
+
 unsigned int v9x_run_d3d_vi_map_tests(void)
 {
     failures = 0u;
@@ -439,5 +476,6 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_specular();
     test_blend();
     test_built();
+    test_decal_alpha_and_opaque();
     return failures;
 }
