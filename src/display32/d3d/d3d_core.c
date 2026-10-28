@@ -8006,6 +8006,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_vi) {
+        /* The R7E's, on Cedar's terms: video-memory textures in all three
+         * formats, placed by v9x_d3d_vi_create_surface with 64-byte rows
+         * (V9XDDP's texture checks, M-XP7053 boot 34). CPU levels are
+         * refused (d3d_vi_map.c). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
     }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {

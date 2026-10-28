@@ -123,9 +123,60 @@ static void test_target(void)
     base_draw(&draw);
     draw.target.offset = 0xfff00000ul;
     CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_TARGET);
+    /* An explicit draw with an empty scissor. */
     base_draw(&draw);
     draw.explicit_state = 1ul;
     CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_EXPLICIT);
+}
+
+/* The render interface's explicit draws: the scissor carried, the write
+ * mask to CB_TARGET_MASK's B, G, R bits, none written as no mask at all;
+ * a scissor outside the target, a second unit or CPU levels refused. */
+static void test_explicit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw out;
+    v9x_u32 ps;
+
+    base_draw(&draw);
+    draw.explicit_state = 1ul;
+    draw.scissor_left = 8ul;
+    draw.scissor_top = 16ul;
+    draw.scissor_right = 600ul;
+    draw.scissor_bottom = 400ul;
+    draw.write_mask = V9X_D3D_VI_WRITE_RED | V9X_D3D_VI_WRITE_GREEN |
+                      V9X_D3D_VI_WRITE_BLUE;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.scissor_left == 8ul && out.scissor_top == 16ul);
+    CHECK(out.scissor_right == 600ul && out.scissor_bottom == 400ul);
+    CHECK(out.target_mask == 0x7ul && out.target_mask_none == 0ul);
+    draw.write_mask = V9X_D3D_VI_WRITE_RED;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.target_mask == V9X_D3D_VI_CB_MASK_R);
+    draw.write_mask = 0ul;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.target_mask_none == 1ul);
+    /* RGB565 keeps its fourth bit; only B, G, R decide. */
+    draw.target.format = V9X_R3D_FORMAT_RGB565;
+    draw.target.pitch = 1280ul;
+    draw.write_mask = V9X_D3D_VI_WRITE_BLUE;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.target_mask == (V9X_D3D_VI_CB_MASK_B | 0x8ul));
+    CHECK(out.target_mask_none == 0ul);
+
+    base_draw(&draw);
+    draw.explicit_state = 1ul;
+    draw.scissor_right = 641ul;
+    draw.scissor_bottom = 480ul;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_EXPLICIT);
+    draw.scissor_right = 640ul;
+    base_texture(&draw, &texture);
+    draw.texture.levels = (void *)&texture;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_EXPLICIT);
+    draw.texture.levels = 0;
+    draw.texture1.object = &texture_object;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_EXPLICIT);
 }
 
 static void test_depth(void)
@@ -477,5 +528,6 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_blend();
     test_built();
     test_decal_alpha_and_opaque();
+    test_explicit();
     return failures;
 }

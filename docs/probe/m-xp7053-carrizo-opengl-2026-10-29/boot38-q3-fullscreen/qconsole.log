@@ -1,0 +1,149 @@
+logfile opened on Wed Oct 28 23:42:22 2026
+
+...detecting CPU, found AMD w/ 3DNow!
+
+------- Input Initialization -------
+Initializing DirectInput...
+Couldn't set DI coop level
+Falling back to Win32 mouse support...
+Joystick is not active.
+------------------------------------
+----- Client Initialization -----
+----- Initializing Renderer ----
+-------------------------------
+----- Client Initialization Complete -----
+--- Common Initialization Complete ---
+Winsock Initialized
+Opening IP socket: localhost:27960
+Hostname: moo2
+IP: 192.168.1.153
+Working directory: C:\games\Q3Ademo
+RE_Shutdown( 0 )
+----- R_Init -----
+Initializing OpenGL subsystem
+...initializing QGL
+...calling LoadLibrary( 'C:\WINDOWS\SYSTEM\opengl32.dll' ): succeeded
+...setting mode 3: 640 480 FS
+...using desktop display depth of 16
+...calling CDS: ok
+...registered window class
+...created window@0,0 (640x480)
+Initializing OpenGL driver
+...getting DC: succeeded
+...GLW_ChoosePFD( 16, 16, 0 )
+...24 PFDs found
+...hardware acceleration found
+...PIXELFORMAT 1 selected
+...creating GL context: succeeded
+...making context current: succeeded
+Initializing OpenGL extensions
+...GL_S3_s3tc not found
+...GL_EXT_texture_env_add not found
+...WGL_EXT_swap_control not found
+...GL_ARB_multitexture not found
+...GL_EXT_compiled_vertex_array not found
+...WGL_3DFX_gamma_control not found
+
+GL_VENDOR: Velocity9x
+GL_RENDERER: Velocity9x Radeon R7E
+GL_VERSION: 1.1.0
+GL_EXTENSIONS: 
+GL_MAX_TEXTURE_SIZE: 512
+GL_MAX_ACTIVE_TEXTURES_ARB: 0
+
+PIXELFORMAT: color(16-bits) Z(16-bit) stencil(0-bits)
+MODE: 3, 640 x 480 fullscreen hz:N/A
+GAMMA: hardware w/ 0 overbright bits
+CPU: AMD w/ 3DNow!
+rendering primitives: multiple glArrayElement
+texturemode: GL_LINEAR_MIPMAP_NEAREST
+picmip: 1
+texture bits: 0
+multitexture: disabled
+compiled vertex arrays: disabled
+texenv add: disabled
+compressed textures: disabled
+Initializing Shaders
+...loading 'scripts/base.shader'
+...loading 'scripts/base_button.shader'
+...loading 'scripts/base_floor.shader'
+...loading 'scripts/base_light.shader'
+...loading 'scripts/base_object.shader'
+...loading 'scripts/base_support.shader'
+...loading 'scripts/base_trim.shader'
+...loading 'scripts/base_wall.shader'
+...loading 'scripts/common.shader'
+...loading 'scripts/ctf.shader'
+...loading 'scripts/eerie.shader'
+...loading 'scripts/gfx.shader'
+...loading 'scripts/gothic_block.shader'
+...loading 'scripts/gothic_floor.shader'
+...loading 'scripts/gothic_light.shader'
+...loading 'scripts/gothic_trim.shader'
+...loading 'scripts/gothic_wall.shader'
+...loading 'scripts/hell.shader'
+...loading 'scripts/liquid.shader'
+...loading 'scripts/menu.shader'
+...loading 'scripts/models.shader'
+...loading 'scripts/organics.shader'
+...loading 'scripts/sfx.shader'
+...loading 'scripts/shrine.shader'
+...loading 'scripts/skin.shader'
+...loading 'scripts/sky.shader'
+...loading 'scripts/test.shader'
+----- finished R_Init -----
+
+------- sound initialization -------
+Initializing DirectSound
+failed
+------------------------------------
+Loading vm file vm/ui.qvm.
+VM file ui compiled to 902363 bytes of code
+4 arenas parsed
+6 bots parsed
+Loading vm file vm/cgame.qvm.
+VM file cgame compiled to 884513 bytes of code
+...loaded 5823 faces, 189 meshes, 49 trisurfs, 37 flares
+Couldn't open music file music\sonic5.wav
+CL_InitCGame:  4.22 seconds
+210 msec to draw all images
+Com_TouchMemory: 6 msec
+Thanatar^7 was railed by foob^7
+eric^7 ate Willits^7's rocket
+foob^7 almost dodged Mr Elusive^7's rocket
+Willits^7 ate Mr Elusive^7's rocket
+foob^7 almost dodged Mr Elusive^7's rocket
+Thanatar^7 ate Ares^7's rocket
+Ares^7 blew herself up.
+eric^7 was machinegunned by Willits^7
+Willits^7 was railed by TODDH^7
+Thanatar^7 ate ^4Stryder^7's rocket
+^4Stryder^7 was railed by Willits^7
+foob^7 almost dodged ^4Stryder^7's rocket
+Thanatar^7 was railed by TODDH^7
+Ares^7 was railed by TODDH^7
+Thanatar^7 ate Mr Elusive^7's rocket
+^4Stryder^7 was railed by Willits^7
+foob^7 was machinegunned by Mr Elusive^7
+Willits^7 was machinegunned by Mr Elusive^7
+Mr Elusive^7 ate eric^7's rocket
+eric^7 was railed by Ares^7
+eric^7 ate Willits^7's rocket
+foob^7 was machinegunned by ^4Stryder^7
+^4Stryder^7 almost dodged TODDH^7's rocket
+Thanatar^7 almost dodged Willits^7's rocket
+Willits^7 was machinegunned by foob^7
+Mr Elusive^7 ate TODDH^7's rocket
+TODDH^7 almost dodged Mr Elusive^7's rocket
+1346 frames, 63.0 seconds: 21.4 fps
+----- CL_Shutdown -----
+RE_Shutdown( 1 )
+Shutting down OpenGL subsystem
+...wglMakeCurrent( NULL, NULL ): success
+...deleting GL context: success
+...releasing DC: success
+...destroying window
+...resetting display
+...shutting down QGL
+...unloading OpenGL DLL
+-----------------------

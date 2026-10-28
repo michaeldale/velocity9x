@@ -296,6 +296,18 @@ static void v9x_vi_scissor(struct v9x_vi_pm4 *stream, v9x_u32 reg,
     v9x_vi_pm4_set_context(stream, reg, values, 2ul);
 }
 
+/* PA_SC_GENERIC_SCISSOR_TL/BR as a rectangle: TL x at 14:0 and y at 30:16
+ * with WINDOW_OFFSET_DISABLE, BR exclusive, as the full-target form. */
+static void v9x_vi_scissor_rect(struct v9x_vi_pm4 *stream, v9x_u32 left,
+                                v9x_u32 top, v9x_u32 right, v9x_u32 bottom)
+{
+    v9x_u32 values[2];
+
+    values[0] = VI_WINDOW_OFFSET_DISABLE | left | (top << 16);
+    values[1] = right | (bottom << 16);
+    v9x_vi_pm4_set_context(stream, VI_PA_SC_GENERIC_SCISSOR_TL, values, 2ul);
+}
+
 /* A pixel coordinate as IEEE single bits, by integer arithmetic: every
  * value below 2^24 is exact, and the targets are far smaller. */
 static v9x_u32 v9x_vi_float_bits(v9x_u32 value)
@@ -757,7 +769,12 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
           draw->texture_address > V9X_VI_TEX_ADDRESS_MIRROR ||
           draw->texture_last_level > 15ul ||
           draw->texture_base_level > draw->texture_last_level ||
-          draw->texture_mip_filter > V9X_VI_MIP_FILTER_LINEAR))) {
+          draw->texture_mip_filter > V9X_VI_MIP_FILTER_LINEAR)) ||
+        (draw->scissor_right != 0ul &&
+         (draw->scissor_left >= draw->scissor_right ||
+          draw->scissor_top >= draw->scissor_bottom ||
+          draw->scissor_right > draw->pitch_pixels ||
+          draw->scissor_bottom > draw->height))) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -774,6 +791,12 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                            draw->ps_kill != 0ul ? VI_DB_SHADER_KILL_ENABLE
                                                 : 0ul,
                            VI_COL_FORMAT_FP16_ABGR);
+    /* A scissor narrower than the target: the generic one again, after
+     * the common state's, which holds. */
+    if (draw->scissor_right != 0ul) {
+        v9x_vi_scissor_rect(stream, draw->scissor_left, draw->scissor_top,
+                            draw->scissor_right, draw->scissor_bottom);
+    }
     if (draw->depth_low != 0ul) {
         v9x_vi_3d_depth(stream, draw->depth_low, draw->depth_high,
                         depth_pitch, depth_height, draw->depth_func,

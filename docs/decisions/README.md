@@ -371,6 +371,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Carrizo's fixed function in the pixel shader: blending needed an FP16 export, a 565 texture needs W = 1, mips measured](2026-10-28-carrizo-d3d-blend-and-shader-fixed-function.md)
 - [2026-10-29 3DMark 2000 on Carrizo: it runs; lines along triangle edges were the sampler outside whole-quad mode](2026-10-29-carrizo-3dmark2000.md)
 - [2026-10-29 V9XDDP's zero rows on Carrizo: perspective was inverted, two features were missing, and a CPU Lock of the tiled Z buffer misaddressed it until Lock detiled it](2026-10-29-carrizo-ddp-zero-rows.md)
+- [2026-10-29 Carrizo runs Quake 3 through the OpenGL ICD in hardware, once its Z16 rows were whole 64 bytes](2026-10-29-carrizo-opengl-quake3.md)
 
 ## DOS box and mini-VDD
 

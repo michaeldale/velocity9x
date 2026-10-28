@@ -1376,6 +1376,41 @@ static void test_gpu_init(void)
     CHECK(ops[count - 1ul].set == 0x98184020ul);
 }
 
+/* A scissor: PA_SC_GENERIC_SCISSOR_TL/BR written again after the common
+ * state's whole-target one, TL with WINDOW_OFFSET_DISABLE; one outside
+ * the target or empty refused. */
+static void test_tl_scissor(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 first;
+    v9x_u32 second;
+
+    base_tl(&draw);
+    draw.scissor_left = 3ul;
+    draw.scissor_top = 2ul;
+    draw.scissor_right = 40ul;
+    draw.scissor_bottom = 12ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(walk(buffer, stream.count) != 0ul);
+    first = find_context(buffer, stream.count, 0xa090ul);
+    CHECK(first != 0ul);
+    CHECK(buffer[first] == 0x80000000ul && buffer[first + 1ul] ==
+          (64ul | (16ul << 16)));
+    /* From the packet after that one. */
+    first = first - 2ul + ((buffer[first - 2ul] >> 16) & 0x3ffful) + 2ul;
+    second = find_context(buffer + first, stream.count - first, 0xa090ul);
+    CHECK(second != 0ul);
+    CHECK(buffer[first + second] == (0x80000000ul | 3ul | (2ul << 16)));
+    CHECK(buffer[first + second + 1ul] == (40ul | (12ul << 16)));
+
+    draw.scissor_right = 3ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.scissor_right = draw.pitch_pixels + 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_vi_3d_tests(void)
 {
     failures = 0u;
@@ -1399,5 +1434,6 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_mips();
     test_mip_layout();
     test_z16_tiles();
+    test_tl_scissor();
     return failures;
 }

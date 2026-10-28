@@ -339,11 +339,12 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
         bytes[index] = 0u;
     }
     *ps = V9X_D3D_VI_PS_GOURAUD;
-    /* The render interface's explicit draws (OpenGL, Glide) carry a
-     * scissor and a write mask this builder does not take yet; levels in
-     * CPU memory and a second unit are not sampled. */
-    if (draw->explicit_state != 0ul || draw->texture.levels != 0 ||
-        draw->texcoords1 != 0 || draw->texture1.object != 0) {
+    /* The render interface's explicit draws (OpenGL, Glide) are drawn with
+     * their scissor and write mask (below), as Cedar's. Levels in CPU
+     * memory are not sampled, and there is one texture unit: the fallback
+     * draws those. */
+    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
+        draw->texture1.object != 0) {
         return V9X_D3D_VI_REFUSE_EXPLICIT;
     }
 
@@ -367,6 +368,36 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
     out->height = draw->target.height;
     out->tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
     out->d3d_pixel_centres = 1ul;
+
+    /* An explicit draw's scissor must be a non-empty rectangle inside the
+     * target; one that is not goes to the fallback rather than be clamped.
+     * Its write mask names the colour channels written, which are B, G, R
+     * as CB_TARGET_MASK's bits 0, 1, 2 in memory order; none written is
+     * target_mask_none, since a zero mask means all. */
+    if (draw->explicit_state != 0ul) {
+        if (draw->scissor_left >= draw->scissor_right ||
+            draw->scissor_top >= draw->scissor_bottom ||
+            draw->scissor_right > draw->target.width ||
+            draw->scissor_bottom > draw->target.height) {
+            return V9X_D3D_VI_REFUSE_EXPLICIT;
+        }
+        out->scissor_left = draw->scissor_left;
+        out->scissor_top = draw->scissor_top;
+        out->scissor_right = draw->scissor_right;
+        out->scissor_bottom = draw->scissor_bottom;
+        if ((draw->write_mask & V9X_D3D_VI_WRITE_BLUE) == 0ul) {
+            out->target_mask &= ~V9X_D3D_VI_CB_MASK_B;
+        }
+        if ((draw->write_mask & V9X_D3D_VI_WRITE_GREEN) == 0ul) {
+            out->target_mask &= ~V9X_D3D_VI_CB_MASK_G;
+        }
+        if ((draw->write_mask & V9X_D3D_VI_WRITE_RED) == 0ul) {
+            out->target_mask &= ~V9X_D3D_VI_CB_MASK_R;
+        }
+        if ((out->target_mask & 0x7ul) == 0ul) {
+            out->target_mask_none = 1ul;
+        }
+    }
 
     /* Depth, when enabled and bound: Z16 as d3d_vi.c places it, its rows
      * padded to the tile. Disabled, the DB has no buffer and neither tests

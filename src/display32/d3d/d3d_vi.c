@@ -714,8 +714,9 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 /*
  * Placement, as Cedar's (d3d_eg.c), on GFX8's rules (d3d_vi_map.h). An
  * offscreen render target alone gets its rows whole 64 bytes and whole
- * 8-pixel tiles, 256-aligned. A Z16 buffer gets its pitch whole 8-pixel
- * tiles and its rows padded to 8, the DB's 1D tile, 256-aligned. A
+ * 8-pixel tiles, 256-aligned. A Z16 buffer gets its rows whole 64 bytes
+ * (whole 8-pixel tiles too) and padded to 8, the DB's 1D tile,
+ * 256-aligned. A
  * video-memory texture of a format this engine samples gets its rows whole
  * 64 bytes, which a linear-aligned T# needs. A mip chain goes in one
  * block, each level where the sampler finds it from the base
@@ -773,8 +774,12 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        pitches[0] = (width * 2ul + V9X_D3D_VI_DEPTH_PITCH_UNIT - 1ul) &
-                     ~(V9X_D3D_VI_DEPTH_PITCH_UNIT - 1ul);
+        /* Rows of whole 64 bytes, not just the DB's 8-pixel tiles: the
+         * core binds a depth buffer only at the engine's target row
+         * alignment (v9x_d3d_set_target), and an 800-byte Z for a 400-wide
+         * OpenGL window was refused, every batch with it (V9XGLP, boot 37). */
+        pitches[0] = (width * 2ul + V9X_D3D_VI_ROW_ALIGN - 1ul) &
+                     ~(V9X_D3D_VI_ROW_ALIGN - 1ul);
         rows[0] = (height + V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul) &
                   ~(V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul);
     } else {

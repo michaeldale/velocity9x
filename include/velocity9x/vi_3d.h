@@ -170,6 +170,12 @@ struct v9x_vi_tl_draw {
      * V9X_VI_TILE_DEPTH_LINEAR, rows of the depth pitch; GB_TILE_MODE7
      * must hold V9X_VI_TILE_MODE_LINEAR_ALIGNED. */
     v9x_u32 depth_linear;
+    /* A scissor inside the target, right and bottom exclusive; right 0
+     * for the whole target. */
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
 };
 
 /* The S#'s MIP_FILTER (SQ_TEX_MIP_FILTER_*). */

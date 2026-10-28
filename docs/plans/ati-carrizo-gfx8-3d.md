@@ -136,7 +136,10 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
    that a CPU Lock of the 1D-tiled Z buffer misaddressed it. The DB
    writes no linear Z (boot 35), so since boot 36 Lock detiles the Z16
    buffer and Unlock retiles it, in the in-tile order /ztile measured.
-   `/mixed` passes. Next: a game.
+   `/mixed` passes. [OpenGL](../decisions/2026-10-29-carrizo-opengl-quake3.md)
+   (boot 38): explicit draws with their scissor and write mask, surface
+   textures published, Z16 rows whole 64 bytes; the Quake 3 demo runs at
+   21.2 fps, every batch on the hardware. Four V9XGLP rows are open.
 
 ## Decisions
 

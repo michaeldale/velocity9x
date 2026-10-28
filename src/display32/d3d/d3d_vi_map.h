@@ -27,6 +27,15 @@
 #include "velocity9x/vi_shader.h"
 #include "../r3d/r3d.h"
 
+/* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*),
+ * and the CB_TARGET_MASK bits that hold each channel in memory order. */
+#define V9X_D3D_VI_WRITE_RED   1ul
+#define V9X_D3D_VI_WRITE_GREEN 2ul
+#define V9X_D3D_VI_WRITE_BLUE  4ul
+#define V9X_D3D_VI_CB_MASK_B   1ul
+#define V9X_D3D_VI_CB_MASK_G   2ul
+#define V9X_D3D_VI_CB_MASK_R   4ul
+
 /* A texture format no Carrizo path here samples. */
 #define V9X_D3D_VI_TEXTURE_UNKNOWN 0xfffffffful
 
@@ -103,8 +112,9 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
 
 /* Placement d3d_vi.c gives what it binds: every surface on 256 bytes;
  * colour targets and textures in rows of whole 64 bytes (linear aligned,
- * tile index 8); a Z16's pitch whole 8-pixel tiles and its rows padded to
- * the 8-row tile the DB reads (tile index 5, 1D). */
+ * tile index 8); a Z16's rows whole 64 bytes as well, which the core's
+ * depth bind wants, and padded to the 8-row tile the DB reads (tile index
+ * 5, 1D). */
 #define V9X_D3D_VI_SURFACE_ALIGN    256ul
 #define V9X_D3D_VI_ROW_ALIGN        64ul
 #define V9X_D3D_VI_DEPTH_TILE_ROWS  8ul
