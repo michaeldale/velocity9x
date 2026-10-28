@@ -81,8 +81,12 @@
 #define VI_COL_FORMAT_32_ABGR       0x00000009ul
 /* SPI_PS_INPUT_ENA/ADDR PERSP_CENTER_ENA: one barycentric must be on. */
 #define VI_PS_INPUT_PERSP_CENTER    0x00000002ul
-/* SPI_PS_IN_CONTROL NUM_INTERP: the one parameter the VS exports. */
-#define VI_PS_IN_ONE_INTERP         0x00000001ul
+/* SPI_VS_OUT_CONFIG VS_EXPORT_COUNT at 5:1, parameters less one;
+ * SPI_PS_IN_CONTROL NUM_INTERP at 5:0; SPI_PS_INPUT_CNTL_n OFFSET at 5:0,
+ * the VS parameter PS input n reads. */
+#define VI_VS_EXPORT_COUNT(n)       ((v9x_u32)(n) << 1)
+#define VI_RECT_PARAMS              1ul
+#define VI_TL_PARAMS                2ul
 /* SPI_SHADER_PGM_RSRC1: VGPRS 1 (8), SGPRS 2 (24), FLOAT_MODE C0h, the
  * value radeonsi's float mode gives. RSRC2 USER_SGPR at 5:1. */
 /* VGPRS 5:0 in granules of four, less one; SGPRS 9:6 2 (24); FLOAT_MODE
@@ -129,6 +133,22 @@
 #define VI_DEPTH_CONTROL_Z_ENABLE   0x00000002ul
 #define VI_DEPTH_CONTROL_Z_WRITE    0x00000004ul
 #define VI_DEPTH_CONTROL_ZFUNC(f)   (((v9x_u32)(f) & 7ul) << 4)
+
+/* Textures (Mesa's sid.h). T# word 1: IMG_DATA_FORMAT_8_8_8_8 (0Ah) at
+ * 25:20, IMG_NUM_FORMAT_UNORM (0) at 29:26. Word 3: DST_SEL_X..W at 2:0,
+ * 5:3, 8:6, 11:9; A8R8G8B8 is bytes B, G, R, A, components X, Y, Z, W, so
+ * R, G, B, A select Z (6), Y (5), X (4), W (7); TYPE SQ_RSRC_IMG_2D (9) at
+ * 31:28. S# word 0: CLAMP_X/Y/Z SQ_TEX_CLAMP_LAST_TEXEL (2) at 2:0, 5:3,
+ * 8:6. Word 2: XY_MAG_FILTER and XY_MIN_FILTER at 21:20 and 23:22,
+ * point 0, bilinear 1. WIDTH and HEIGHT are 14-bit fields of the size
+ * less one. */
+#define VI_IMG_DATA_FORMAT_8_8_8_8  0x0aul
+#define VI_IMG_NUM_FORMAT_UNORM     0ul
+#define VI_IMG_SWIZZLE_ARGB         (6ul | (5ul << 3) | (4ul << 6) | (7ul << 9))
+#define VI_IMG_TYPE_2D              9ul
+#define VI_IMG_MAX_SIZE             16384ul
+#define VI_SAMP_CLAMP_LAST_TEXEL_XYZ (2ul | (2ul << 3) | (2ul << 6))
+#define VI_SAMP_XY_BILINEAR         ((1ul << 20) | (1ul << 22))
 
 #define VI_SHADER_ALIGN             0xfful
 
@@ -286,12 +306,13 @@ static int v9x_vi_3d_target_ok(v9x_u32 low, v9x_u32 pitch, v9x_u32 height)
 
 /* The colour buffer, no depth or stencil, screen-space positions with
  * nothing clipped or culled, every scissor the target, and the shader
- * interface: one VS parameter, four position components, MRT0 as four
- * 32-bit floats, one perspective-correct interpolant. */
+ * interface: params VS parameters (1 or 2), four position components,
+ * MRT0 as four 32-bit floats, params perspective-correct interpolants,
+ * PS input n from VS parameter n. */
 static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
                                    v9x_u32 high, v9x_u32 pitch,
                                    v9x_u32 height, v9x_u32 format,
-                                   v9x_u32 tile_mode_index)
+                                   v9x_u32 tile_mode_index, v9x_u32 params)
 {
     v9x_u32 values[13];
     v9x_u32 index;
@@ -339,7 +360,8 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
     values[1] = VI_FLOAT_ONE;
     v9x_vi_pm4_set_context(stream, VI_PA_SC_VPORT_ZMIN_0, values, 2ul);
 
-    v9x_vi_context1(stream, VI_SPI_VS_OUT_CONFIG, 0ul);
+    v9x_vi_context1(stream, VI_SPI_VS_OUT_CONFIG,
+                    VI_VS_EXPORT_COUNT(params - 1ul));
     v9x_vi_context1(stream, VI_SPI_SHADER_POS_FORMAT, VI_POS_FORMAT_4COMP);
     values[0] = 0ul;
     values[1] = VI_COL_FORMAT_32_ABGR;
@@ -348,8 +370,10 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
     values[0] = VI_PS_INPUT_PERSP_CENTER;
     values[1] = VI_PS_INPUT_PERSP_CENTER;
     v9x_vi_pm4_set_context(stream, VI_SPI_PS_INPUT_ENA, values, 2ul);
-    v9x_vi_context1(stream, VI_SPI_PS_IN_CONTROL, VI_PS_IN_ONE_INTERP);
-    v9x_vi_context1(stream, VI_SPI_PS_INPUT_CNTL_0, 0ul);
+    v9x_vi_context1(stream, VI_SPI_PS_IN_CONTROL, params);
+    for (index = 0ul; index < params; ++index) {
+        v9x_vi_context1(stream, VI_SPI_PS_INPUT_CNTL_0 + index, index);
+    }
     v9x_vi_context1(stream, VI_SPI_BARYC_CNTL, 0ul);
     v9x_vi_context1(stream, VI_VGT_SHADER_STAGES_EN, 0ul);
     v9x_vi_context1(stream, VI_VGT_GS_MODE, 0ul);
@@ -468,7 +492,7 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     v9x_vi_3d_cache_sync(stream);
     v9x_vi_3d_common_state(stream, rect->target_low, rect->target_high,
                            rect->pitch_pixels, rect->height, rect->format,
-                           rect->tile_mode_index);
+                           rect->tile_mode_index, VI_RECT_PARAMS);
 
     v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, rect->vs_low,
                       rect->shader_high, VI_SMALL_VGPRS, vs_sgprs);
@@ -494,10 +518,34 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
 }
 
+/* The T# for an A8R8G8B8 2D texture and an S# that clamps to the last
+ * texel at LOD 0, point or bilinear (Mesa's sid.h, SQ_IMG_RSRC_WORD0-7
+ * and SQ_IMG_SAMP_WORD0-3). Twelve dwords to out. */
+static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
+                                          v9x_u32 *out)
+{
+    v9x_u32 index;
+
+    for (index = 0ul; index < V9X_VI_TEXTURE_USER_SGPRS; ++index) {
+        out[index] = 0ul;
+    }
+    out[0] = v9x_vi_address_256(draw->texture_low, draw->texture_high);
+    out[1] = ((draw->texture_high >> 8) & 0xfful) |
+             (VI_IMG_DATA_FORMAT_8_8_8_8 << 20) | (VI_IMG_NUM_FORMAT_UNORM << 26);
+    out[2] = (draw->texture_width - 1ul) |
+             ((draw->texture_height - 1ul) << 14);
+    out[3] = VI_IMG_SWIZZLE_ARGB | ((draw->texture_tile_mode_index & 0x1ful)
+                                    << 20) | (VI_IMG_TYPE_2D << 28);
+    out[4] = (draw->texture_pitch - 1ul) << 13;
+    out[8] = VI_SAMP_CLAMP_LAST_TEXEL_XYZ;
+    out[10] = draw->texture_bilinear != 0ul ? VI_SAMP_XY_BILINEAR : 0ul;
+}
+
 v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                              const struct v9x_vi_tl_draw *draw)
 {
-    v9x_u32 values[2];
+    v9x_u32 values[V9X_VI_TEXTURE_USER_SGPRS];
+    v9x_u32 ps_sgprs;
 
     if (stream == 0 || draw == 0 ||
         !v9x_vi_3d_target_ok(draw->target_low, draw->pitch_pixels,
@@ -507,14 +555,22 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
         draw->vertex_count == 0ul || (draw->vertex_count % 3ul) != 0ul ||
         (draw->depth_low & VI_SHADER_ALIGN) != 0ul ||
         draw->depth_func > V9X_VI_ZFUNC_ALWAYS ||
-        (draw->depth_low != 0ul && (draw->height % 8ul) != 0ul)) {
+        (draw->depth_low != 0ul && (draw->height % 8ul) != 0ul) ||
+        (draw->texture_low & VI_SHADER_ALIGN) != 0ul ||
+        (draw->texture_low != 0ul &&
+         (draw->texture_width == 0ul ||
+          draw->texture_width > VI_IMG_MAX_SIZE ||
+          draw->texture_height == 0ul ||
+          draw->texture_height > VI_IMG_MAX_SIZE ||
+          draw->texture_pitch < draw->texture_width ||
+          draw->texture_pitch > VI_IMG_MAX_SIZE))) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
     v9x_vi_3d_cache_sync(stream);
     v9x_vi_3d_common_state(stream, draw->target_low, draw->target_high,
                            draw->pitch_pixels, draw->height, draw->format,
-                           draw->tile_mode_index);
+                           draw->tile_mode_index, VI_TL_PARAMS);
     if (draw->depth_low != 0ul) {
         v9x_vi_3d_depth(stream, draw->depth_low, draw->depth_high,
                         draw->pitch_pixels, draw->height, draw->depth_func,
@@ -522,14 +578,22 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     }
 
     /* The VS's two user SGPRs are the vertex buffer's address; the PS has
-     * none (vi_shader.h). */
+     * the texture's descriptors or nothing (vi_shader.h). */
     v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
                       draw->shader_high, V9X_VI_TL_VS_VGPRS, 2ul);
     values[0] = draw->vertex_low;
     values[1] = draw->vertex_high;
     v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 2ul);
+    ps_sgprs = draw->texture_low != 0ul ? V9X_VI_TEXTURE_USER_SGPRS : 0ul;
     v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_PS, 0, draw->ps_low,
-                      draw->shader_high, VI_SMALL_VGPRS, 0ul);
+                      draw->shader_high,
+                      draw->ps_vgprs != 0ul ? draw->ps_vgprs : VI_SMALL_VGPRS,
+                      ps_sgprs);
+    if (ps_sgprs != 0ul) {
+        v9x_vi_3d_texture_descriptors(draw, values);
+        v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, values,
+                          ps_sgprs);
+    }
 
     v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_TRILIST, draw->vertex_count,
                              draw->fence_low, draw->fence_high,

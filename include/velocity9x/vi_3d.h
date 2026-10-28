@@ -136,6 +136,17 @@ struct v9x_vi_tl_draw {
     v9x_u32 depth_high;
     v9x_u32 depth_func;         /* V9X_VI_ZFUNC_* */
     v9x_u32 depth_write;        /* nonzero to write */
+    /* An A8R8G8B8 texture, 256-byte aligned, for vi_shader.h's textured
+     * pixel shaders: its T# and a clamping S# become the PS's twelve user
+     * SGPRs. 0 for none, and the PS then has no user SGPRs. */
+    v9x_u32 texture_low;
+    v9x_u32 texture_high;
+    v9x_u32 texture_width;      /* 1..16384 */
+    v9x_u32 texture_height;     /* 1..16384 */
+    v9x_u32 texture_pitch;      /* texels, at least the width */
+    v9x_u32 texture_tile_mode_index;
+    v9x_u32 texture_bilinear;   /* nonzero for bilinear, else point */
+    v9x_u32 ps_vgprs;           /* the PS's VGPRs; 0 for eight */
 };
 
 /* DB_DEPTH_CONTROL ZFUNC, gfx_8_0_enum.h's FRAG_*: Direct3D's D3DCMPFUNC

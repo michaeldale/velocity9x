@@ -18,8 +18,10 @@ in one instruction ([record](../decisions/2026-10-28-carrizo-first-rectangle.md)
 Phase 4 step 1 done: Gouraud triangles from TL vertices, every pixel
 within +-2 ([record](../decisions/2026-10-28-carrizo-gouraud.md)). Step 2
 done: Z16 depth, 1D-tiled, LESS with writes, colour and Z buffer exact
-([record](../decisions/2026-10-28-carrizo-depth.md)). Next: step 3,
-textures. Parent plan:
+([record](../decisions/2026-10-28-carrizo-depth.md)). Step 3 done, and
+with it Phase 4: an A8R8G8B8 texture through a T# and S#, copy and
+modulate exact ([record](../decisions/2026-10-28-carrizo-texture-modulate.md)).
+Next: Phase 5, the HAL. Parent plan:
 [ati-carrizo-gfx8.md](ati-carrizo-gfx8.md). 2D runs on SDMA0
 ([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)), and
 flips on D1 ([record](../decisions/2026-10-28-carrizo-page-flips.md)).

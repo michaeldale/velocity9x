@@ -18,6 +18,8 @@
  *   SOP1  101111101 sdst[22:16] op[15:8] ssrc0[7:0]; s_mov_b32 is op 0
  *   VINTRP 110101 vdst[25:18] op[17:16] attr[15:10] chan[9:8] vsrc[7:0]
  *         (vintrp.s, VI)
+ *   MIMG  111100 ... op[24:18] unorm[12] dmask[11:8], then vaddr[7:0]
+ *         vdata[15:8] srsrc/4[20:16] ssamp/4[25:21] (mimg.s, GCN)
  *
  * A source of V9X_VI_LITERAL takes the next dword as its value. GCN 3 VALU
  * instructions get one constant-bus read, an SGPR, VCC or a literal; the
@@ -77,6 +79,11 @@ v9x_u32 v9x_vi_s_waitcnt(v9x_u32 simm16);
 v9x_u32 v9x_vi_s_nop(v9x_u32 simm16);
 /* s_mov_b32 m0, s<ssrc>. */
 v9x_u32 v9x_vi_s_mov_m0(v9x_u32 ssrc);
+/* image_sample v[vdata..], v[vaddr..], s[srsrc:srsrc+7], s[ssamp:ssamp+3]
+ * with dmask, unnormalised off: two dwords to out. srsrc and ssamp are
+ * multiples of 4. */
+v9x_u32 v9x_vi_image_sample(v9x_u32 vdata, v9x_u32 vaddr, v9x_u32 srsrc,
+                            v9x_u32 ssamp, v9x_u32 dmask, v9x_u32 *out);
 /* v_interp_p1/p2_f32 vdst, vsrc, attr<attr>.<chan>. */
 v9x_u32 v9x_vi_vintrp(v9x_u32 op, v9x_u32 vdst, v9x_u32 vsrc, v9x_u32 attr,
                       v9x_u32 chan);
@@ -117,10 +124,10 @@ v9x_u32 v9x_vi_shader_solid_ps(v9x_u32 *out);
  * bytes: sx, sy, sz, rhw, D3DCOLOR (A8R8G8B8), specular, tu, tv. Two FLAT
  * loads fetch it; the position export is sx, sy, sz, rhw as loaded (the
  * VTE takes screen-space XY, Z and 1/W); parameter 0 is the D3DCOLOR as
- * R, G, B, A floats. Thirteen VGPRs.
+ * R, G, B, A floats, parameter 1 is (tu, tv, 0, 1). Thirteen VGPRs.
  */
 #define V9X_VI_TL_VERTEX_BYTES  32ul
-#define V9X_VI_TL_VS_DWORDS     28ul
+#define V9X_VI_TL_VS_DWORDS     32ul
 #define V9X_VI_TL_VS_VGPRS      13ul
 v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out);
 
@@ -129,6 +136,21 @@ v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out);
  * v_interp reads through M0, is s0. Six VGPRs. */
 #define V9X_VI_GOURAUD_PS_DWORDS 13ul
 v9x_u32 v9x_vi_shader_gouraud_ps(v9x_u32 *out);
+
+/*
+ * The textured pixel shaders. User SGPRs s0-s7 are the image descriptor
+ * (T#), s8-s11 the sampler (S#), so PRIM_MASK is s12. Parameter 1's (u, v)
+ * is interpolated into v2:v3 and sampled into v4-v7. Replace exports the
+ * texel (eight VGPRs); modulate multiplies it by parameter 0, interpolated
+ * into v8-v11 (twelve VGPRs).
+ */
+#define V9X_VI_TEXTURE_USER_SGPRS 12ul
+#define V9X_VI_TEXTURE_PS_DWORDS  12ul
+#define V9X_VI_TEXTURE_PS_VGPRS   8ul
+#define V9X_VI_MODULATE_PS_DWORDS 24ul
+#define V9X_VI_MODULATE_PS_VGPRS  12ul
+v9x_u32 v9x_vi_shader_texture_ps(v9x_u32 *out);
+v9x_u32 v9x_vi_shader_modulate_ps(v9x_u32 *out);
 #define V9X_VI_PROBE_PS_DWORDS  (6ul + V9X_VI_SOLID_PS_DWORDS)
 v9x_u32 v9x_vi_shader_probe_vs(v9x_u32 *out);
 v9x_u32 v9x_vi_shader_probe_ps(v9x_u32 *out);

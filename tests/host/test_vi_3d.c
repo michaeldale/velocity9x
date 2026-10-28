@@ -92,6 +92,14 @@ static void test_encodings(void)
      * s_nop 0x3141 [41 31 80 bf]. */
     CHECK(v9x_vi_s_mov_m0(1ul) == 0xbefc0001ul);
     CHECK(v9x_vi_s_nop(0x3141ul) == 0xbf803141ul);
+    /* mimg.s, GCN: image_sample v193, v237, s[28:35], s[4:7]
+     * [00 00 80 f0 ed c1 27 00]; dmask:0x7 unorm [00 17 80 f0 ...], unorm
+     * being bit 12, which the encoder never sets. */
+    CHECK(v9x_vi_image_sample(193ul, 237ul, 28ul, 4ul, 0ul, out) == 2ul);
+    CHECK(out[0] == 0xf0800000ul);
+    CHECK(out[1] == 0x0027c1edul);
+    (void)v9x_vi_image_sample(193ul, 237ul, 28ul, 4ul, 7ul, out);
+    CHECK((out[0] | 0x1000ul) == 0xf0801700ul);
     /* gfx8_asm_sopp.s: s_waitcnt 0x3141 [41 31 8c bf]. */
     CHECK(v9x_vi_s_waitcnt(0x3141ul) == 0xbf8c3141ul);
 }
@@ -232,6 +240,10 @@ static void test_tl_shaders(void)
         0x3b808081ul,
         0xc400020ful,   /* exp param0 v1, v2, v7, v8 */
         0x08070201ul,
+        0x7e120280ul,   /* v_mov_b32 v9, 0 */
+        0x7e1402f2ul,   /* v_mov_b32 v10, 1.0 */
+        0xc400021ful,   /* exp param1 v11, v12, v9, v10 (tu tv 0 1) */
+        0x0a090c0bul,
         0xc40008cful,   /* exp pos0 v3, v4, v5, v6 done */
         0x06050403ul,
         0xbf810000ul    /* s_endpgm */
@@ -257,6 +269,55 @@ static void test_tl_shaders(void)
     CHECK(memcmp(out, vs, sizeof(vs)) == 0);
     CHECK(v9x_vi_shader_gouraud_ps(out) == V9X_VI_GOURAUD_PS_DWORDS);
     CHECK(memcmp(out, ps, sizeof(ps)) == 0);
+}
+
+/* The textured pixel shaders: T# s[0:7] and S# s[8:11] are user SGPRs, so
+ * PRIM_MASK is s12. Replace samples parameter 1's (u, v); modulate also
+ * interpolates parameter 0 and multiplies. */
+static void test_texture_shaders(void)
+{
+    static const v9x_u32 replace[V9X_VI_TEXTURE_PS_DWORDS] = {
+        0xbefc000cul,   /* s_mov_b32 m0, s12 (PRIM_MASK) */
+        0xbf800000ul,   /* s_nop 0 */
+        0xd4080400ul,   /* v_interp_p1_f32 v2, v0, attr1.x */
+        0xd4090401ul,   /* v_interp_p2_f32 v2, v1, attr1.x */
+        0xd40c0500ul,   /* v_interp_p1_f32 v3, v0, attr1.y */
+        0xd40d0501ul,   /* v_interp_p2_f32 v3, v1, attr1.y */
+        0xf0800f00ul,   /* image_sample v[4:7], v[2:3], s[0:7], s[8:11] */
+        0x00400402ul,   /*   dmask:0xf */
+        0xbf8c0000ul,   /* s_waitcnt 0 */
+        0xc400180ful,   /* exp mrt0 v4, v5, v6, v7 done vm */
+        0x07060504ul,
+        0xbf810000ul    /* s_endpgm */
+    };
+    static const v9x_u32 modulate_tail[V9X_VI_MODULATE_PS_DWORDS - 6u] = {
+        0xd4200000ul,   /* v_interp_p1_f32 v8, v0, attr0.x */
+        0xd4210001ul,   /* v_interp_p2_f32 v8, v1, attr0.x */
+        0xd4240100ul,   /* v_interp_p1_f32 v9, v0, attr0.y */
+        0xd4250101ul,   /* v_interp_p2_f32 v9, v1, attr0.y */
+        0xd4280200ul,   /* v_interp_p1_f32 v10, v0, attr0.z */
+        0xd4290201ul,   /* v_interp_p2_f32 v10, v1, attr0.z */
+        0xd42c0300ul,   /* v_interp_p1_f32 v11, v0, attr0.w */
+        0xd42d0301ul,   /* v_interp_p2_f32 v11, v1, attr0.w */
+        0xf0800f00ul,   /* image_sample v[4:7], v[2:3], s[0:7], s[8:11] */
+        0x00400402ul,
+        0xbf8c0000ul,   /* s_waitcnt 0 */
+        0x0a080908ul,   /* v_mul_f32 v4, v8, v4 */
+        0x0a0a0b09ul,   /* v_mul_f32 v5, v9, v5 */
+        0x0a0c0d0aul,   /* v_mul_f32 v6, v10, v6 */
+        0x0a0e0f0bul,   /* v_mul_f32 v7, v11, v7 */
+        0xc400180ful,   /* exp mrt0 v4, v5, v6, v7 done vm */
+        0x07060504ul,
+        0xbf810000ul    /* s_endpgm */
+    };
+    v9x_u32 out[48];
+
+    CHECK(v9x_vi_shader_texture_ps(out) == V9X_VI_TEXTURE_PS_DWORDS);
+    CHECK(memcmp(out, replace, sizeof(replace)) == 0);
+    CHECK(v9x_vi_shader_modulate_ps(out) == V9X_VI_MODULATE_PS_DWORDS);
+    /* The same six-dword head: M0, the wait, parameter 1's u and v. */
+    CHECK(memcmp(out, replace, 6u * sizeof(v9x_u32)) == 0);
+    CHECK(memcmp(out + 6, modulate_tail, sizeof(modulate_tail)) == 0);
 }
 
 /* Every type-3 packet's count must land the next header exactly at the
@@ -499,14 +560,17 @@ static void test_tl_draw(void)
     /* PA_CL_VTE_CNTL: screen-space XY, Z and 1/W. */
     at = find_context(buffer, stream.count, 0xa206ul);
     CHECK(at != 0ul && buffer[at] == 0x00000700ul);
-    /* SPI_VS_OUT_CONFIG one export; SPI_PS_IN_CONTROL one interpolant;
-     * SPI_PS_INPUT_CNTL_0 parameter 0. */
+    /* Two parameters, colour and (tu, tv): SPI_VS_OUT_CONFIG
+     * VS_EXPORT_COUNT 1 at 5:1; SPI_PS_IN_CONTROL two interpolants;
+     * SPI_PS_INPUT_CNTL_0 and _1 parameters 0 and 1. */
     at = find_context(buffer, stream.count, 0xa1b1ul);
-    CHECK(at != 0ul && buffer[at] == 0ul);
+    CHECK(at != 0ul && buffer[at] == 2ul);
     at = find_context(buffer, stream.count, 0xa1b6ul);
-    CHECK(at != 0ul && buffer[at] == 1ul);
+    CHECK(at != 0ul && buffer[at] == 2ul);
     at = find_context(buffer, stream.count, 0xa191ul);
     CHECK(at != 0ul && buffer[at] == 0ul);
+    at = find_context(buffer, stream.count, 0xa192ul);
+    CHECK(at != 0ul && buffer[at] == 1ul);
 
     /* VS: RSRC1 with 16 VGPRs (granule 3), two user SGPRs, then the
      * vertex address. */
@@ -602,6 +666,62 @@ static void test_tl_depth(void)
     base_tl(&draw);
     draw.depth_low = 0x0f80d000ul;
     draw.depth_func = 8ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* With a texture: the PS's twelve user SGPRs are the T# (64x16 ARGB8888,
+ * linear aligned, R, G, B, A selected from bytes 2, 1, 0, 3, 2D) and the
+ * S# (clamp to the last texel, point or bilinear, LOD 0). */
+static void test_tl_texture(void)
+{
+    static const v9x_u32 expected[12] = {
+        0xf40f80e0ul,   /* T# 0: address 39:8 */
+        0x00a00000ul,   /* 1: DATA_FORMAT 8_8_8_8, UNORM */
+        0x0003c03ful,   /* 2: width 63, height 15 */
+        0x90800f2eul,   /* 3: Z, Y, X, W; tiling index 8; IMG_2D */
+        0x0007e000ul,   /* 4: pitch 63 */
+        0ul, 0ul, 0ul,
+        0x00000092ul,   /* S# 0: CLAMP_LAST_TEXEL in X, Y, Z */
+        0ul,            /* 1: LOD 0 to 0 */
+        0ul,            /* 2: point */
+        0ul
+    };
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+
+    base_tl(&draw);
+    draw.texture_low = 0x0f80e000ul;
+    draw.texture_high = 0xf4ul;
+    draw.texture_width = 64ul;
+    draw.texture_height = 16ul;
+    draw.texture_pitch = 64ul;
+    draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(walk(buffer, stream.count) != 0ul);
+
+    at = find_sh(buffer, stream.count, 0x2c07ul);
+    CHECK(at < stream.count && buffer[at + 6ul] == (12ul << 1));
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count);
+    CHECK(buffer[at] == V9X_VI_PACKET3(V9X_VI_P3_SET_SH_REG, 12ul));
+    CHECK(memcmp(buffer + at + 2, expected, sizeof(expected)) == 0);
+
+    /* Bilinear: XY_MAG_FILTER and XY_MIN_FILTER 1 at 21:20 and 23:22. */
+    draw.texture_bilinear = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 12ul] == 0x00500000ul);
+
+    /* Refused: an unaligned texture, a zero or oversized width. */
+    draw.texture_low = 0x0f80e010ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_low = 0x0f80e000ul;
+    draw.texture_width = 0ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_width = 16385ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
@@ -733,5 +853,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_shaders();
     test_tl_draw();
     test_tl_depth();
+    test_texture_shaders();
+    test_tl_texture();
     return failures;
 }
