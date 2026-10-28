@@ -55,6 +55,43 @@ static void test_encodings(void)
           0x240a0401ul);
     /* v_and_b32 v5, s1, v2 [01 04 0a 26]. */
     CHECK(v9x_vi_vop2(V9X_VI_VOP2_AND_B32, 5ul, 1ul, 2ul) == 0x260a0401ul);
+    /* gfx8_asm_vop2.s: v_addc_u32 v5, vcc, v1, v2, vcc [01 05 0a 38];
+     * v_mul_f32 v5, v1, v2 [01 05 0a 0a]. */
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_ADDC_U32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x380a0501ul);
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_MUL_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x0a0a0501ul);
+    /* gfx8_asm_vop1.s: v_cvt_f32_ubyte0 v5, v1 [01 23 0a 7e]; ubyte1
+     * [01 25 ..]; ubyte2 [01 27 ..]; ubyte3 [01 29 ..]; v_mov_b32 v5,
+     * 0xaf123456 [ff 02 0a 7e] then the literal. */
+    CHECK(v9x_vi_vop1(V9X_VI_VOP1_CVT_F32_UBYTE0, 5ul, V9X_VI_VGPR(1)) ==
+          0x7e0a2301ul);
+    CHECK(v9x_vi_vop1(V9X_VI_VOP1_CVT_F32_UBYTE1, 5ul, V9X_VI_VGPR(1)) ==
+          0x7e0a2501ul);
+    CHECK(v9x_vi_vop1(V9X_VI_VOP1_CVT_F32_UBYTE2, 5ul, V9X_VI_VGPR(1)) ==
+          0x7e0a2701ul);
+    CHECK(v9x_vi_vop1(V9X_VI_VOP1_CVT_F32_UBYTE3, 5ul, V9X_VI_VGPR(1)) ==
+          0x7e0a2901ul);
+    CHECK(v9x_vi_vop1(V9X_VI_VOP1_MOV_B32, 5ul, V9X_VI_LITERAL) ==
+          0x7e0a02fful);
+    /* gfx8_asm_flat.s: flat_load_dwordx4 v[5:8], v[1:2]
+     * [00 00 5c dc 01 00 00 05]. */
+    CHECK(v9x_vi_flat_load_dwordx4(1ul, 5ul, out) == 2ul);
+    CHECK(out[0] == 0xdc5c0000ul);
+    CHECK(out[1] == 0x05000001ul);
+    /* vintrp.s, VI: v_interp_p1_f32 v1, v0, attr0.x [00 00 04 d4];
+     * v10, v0, attr32.w [00 83 28 d4]; v_interp_p2_f32 v3, v1, attr0.y
+     * [01 01 0d d4]. */
+    CHECK(v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32, 1ul, 0ul, 0ul, 0ul) ==
+          0xd4040000ul);
+    CHECK(v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32, 10ul, 0ul, 32ul, 3ul) ==
+          0xd4288300ul);
+    CHECK(v9x_vi_vintrp(V9X_VI_VINTRP_P2_F32, 3ul, 1ul, 0ul, 1ul) ==
+          0xd40d0101ul);
+    /* gfx8_asm_sop1.s: s_mov_b32 m0, s1 [01 00 fc be]; gfx8_asm_sopp.s:
+     * s_nop 0x3141 [41 31 80 bf]. */
+    CHECK(v9x_vi_s_mov_m0(1ul) == 0xbefc0001ul);
+    CHECK(v9x_vi_s_nop(0x3141ul) == 0xbf803141ul);
     /* gfx8_asm_sopp.s: s_waitcnt 0x3141 [41 31 8c bf]. */
     CHECK(v9x_vi_s_waitcnt(0x3141ul) == 0xbf8c3141ul);
 }
@@ -163,6 +200,63 @@ static void test_probe_shaders(void)
     CHECK(memcmp(out, ps_head, 6ul * sizeof(v9x_u32)) == 0);
     (void)v9x_vi_shader_solid_ps(solid);
     CHECK(memcmp(out + 6, solid, V9X_VI_SOLID_PS_DWORDS * sizeof(v9x_u32)) == 0);
+}
+
+/* The Direct3D TL-vertex VS and the Gouraud PS, hand-assembled. Every VALU
+ * word reads at most one SGPR, VCC or literal. */
+static void test_tl_shaders(void)
+{
+    static const v9x_u32 vs[V9X_VI_TL_VS_DWORDS] = {
+        0x24020085ul,   /* v_lshlrev_b32 v1, 5, v0 (32 bytes a vertex) */
+        0x32020200ul,   /* v_add_u32 v1, vcc, s0, v1 */
+        0x7e040201ul,   /* v_mov_b32 v2, s1 */
+        0x38040480ul,   /* v_addc_u32 v2, vcc, 0, v2, vcc */
+        0xdc5c0000ul,   /* flat_load_dwordx4 v[3:6], v[1:2] (sx sy sz rhw) */
+        0x03000001ul,
+        0x320e0290ul,   /* v_add_u32 v7, vcc, 16, v1 */
+        0x38100480ul,   /* v_addc_u32 v8, vcc, 0, v2, vcc */
+        0xdc5c0000ul,   /* flat_load_dwordx4 v[9:12], v[7:8] (colour ..) */
+        0x09000007ul,
+        0xbf8c0000ul,   /* s_waitcnt 0 */
+        0x7e022709ul,   /* v_cvt_f32_ubyte2 v1, v9 (red) */
+        0x7e042509ul,   /* v_cvt_f32_ubyte1 v2, v9 (green) */
+        0x7e0e2309ul,   /* v_cvt_f32_ubyte0 v7, v9 (blue) */
+        0x7e102909ul,   /* v_cvt_f32_ubyte3 v8, v9 (alpha) */
+        0x0a0202fful,   /* v_mul_f32 v1, 1/255, v1 */
+        0x3b808081ul,
+        0x0a0404fful,   /* v_mul_f32 v2, 1/255, v2 */
+        0x3b808081ul,
+        0x0a0e0efful,   /* v_mul_f32 v7, 1/255, v7 */
+        0x3b808081ul,
+        0x0a1010fful,   /* v_mul_f32 v8, 1/255, v8 */
+        0x3b808081ul,
+        0xc400020ful,   /* exp param0 v1, v2, v7, v8 */
+        0x08070201ul,
+        0xc40008cful,   /* exp pos0 v3, v4, v5, v6 done */
+        0x06050403ul,
+        0xbf810000ul    /* s_endpgm */
+    };
+    static const v9x_u32 ps[V9X_VI_GOURAUD_PS_DWORDS] = {
+        0xbefc0000ul,   /* s_mov_b32 m0, s0 (PRIM_MASK) */
+        0xbf800000ul,   /* s_nop 0: M0 to v_interp needs a wait state */
+        0xd4080000ul,   /* v_interp_p1_f32 v2, v0, attr0.x */
+        0xd4090001ul,   /* v_interp_p2_f32 v2, v1, attr0.x */
+        0xd40c0100ul,   /* v_interp_p1_f32 v3, v0, attr0.y */
+        0xd40d0101ul,   /* v_interp_p2_f32 v3, v1, attr0.y */
+        0xd4100200ul,   /* v_interp_p1_f32 v4, v0, attr0.z */
+        0xd4110201ul,   /* v_interp_p2_f32 v4, v1, attr0.z */
+        0xd4140300ul,   /* v_interp_p1_f32 v5, v0, attr0.w */
+        0xd4150301ul,   /* v_interp_p2_f32 v5, v1, attr0.w */
+        0xc400180ful,   /* exp mrt0 v2, v3, v4, v5 done vm */
+        0x05040302ul,
+        0xbf810000ul    /* s_endpgm */
+    };
+    v9x_u32 out[48];
+
+    CHECK(v9x_vi_shader_tl_vs(out) == V9X_VI_TL_VS_DWORDS);
+    CHECK(memcmp(out, vs, sizeof(vs)) == 0);
+    CHECK(v9x_vi_shader_gouraud_ps(out) == V9X_VI_GOURAUD_PS_DWORDS);
+    CHECK(memcmp(out, ps, sizeof(ps)) == 0);
 }
 
 /* Every type-3 packet's count must land the next header exactly at the
@@ -349,6 +443,112 @@ static void test_solid_rect(void)
     CHECK(v9x_vi_3d_solid_rect(&stream, &rect) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* Finds the first SET_SH_REG whose offset is reg's; returns the index of
+ * its header, count if none. */
+static v9x_u32 find_sh(const v9x_u32 *dwords, v9x_u32 count, v9x_u32 reg)
+{
+    v9x_u32 at = 0ul;
+
+    while (at < count &&
+           !((dwords[at] & 0xff00ul) == (V9X_VI_P3_SET_SH_REG << 8) &&
+             dwords[at + 1ul] == reg - V9X_VI_SH_REG_START)) {
+        at += dwords[at] == V9X_VI_RING_NOP ? 1ul :
+              ((dwords[at] >> 16) & 0x3ffful) + 2ul;
+    }
+    return at;
+}
+
+static void base_tl(struct v9x_vi_tl_draw *draw)
+{
+    memset(draw, 0, sizeof(*draw));
+    draw->target_low = 0x0f809000ul;
+    draw->target_high = 0xf4ul;
+    draw->pitch_pixels = 64ul;
+    draw->height = 16ul;
+    draw->format = V9X_VI_CB_FORMAT_8_8_8_8;
+    draw->tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw->vs_low = 0x0f804000ul;
+    draw->ps_low = 0x0f804100ul;
+    draw->shader_high = 0xf4ul;
+    draw->vertex_low = 0x0f80b000ul;
+    draw->vertex_high = 0xf4ul;
+    draw->vertex_count = 6ul;
+    draw->fence_low = 0x0f808100ul;
+    draw->fence_high = 0xf4ul;
+    draw->fence_value = 0x12345678ul;
+}
+
+/* A TL-vertex triangle list: the cache sync first, the same target and
+ * screen-space state as the rectangle, the VS's vertex address as its
+ * two user SGPRs, one Gouraud interpolant, a TRILIST of vertex_count. */
+static void test_tl_draw(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+
+    base_tl(&draw);
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(stream.overflow == 0ul);
+    CHECK(walk(buffer, stream.count) != 0ul);
+    CHECK(buffer[0] == V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
+
+    at = find_context(buffer, stream.count, 0xa318ul);
+    CHECK(at != 0ul && buffer[at] == 0xf40f8090ul);
+    /* PA_CL_VTE_CNTL: screen-space XY, Z and 1/W. */
+    at = find_context(buffer, stream.count, 0xa206ul);
+    CHECK(at != 0ul && buffer[at] == 0x00000700ul);
+    /* SPI_VS_OUT_CONFIG one export; SPI_PS_IN_CONTROL one interpolant;
+     * SPI_PS_INPUT_CNTL_0 parameter 0. */
+    at = find_context(buffer, stream.count, 0xa1b1ul);
+    CHECK(at != 0ul && buffer[at] == 0ul);
+    at = find_context(buffer, stream.count, 0xa1b6ul);
+    CHECK(at != 0ul && buffer[at] == 1ul);
+    at = find_context(buffer, stream.count, 0xa191ul);
+    CHECK(at != 0ul && buffer[at] == 0ul);
+
+    /* VS: RSRC1 with 16 VGPRs (granule 3), two user SGPRs, then the
+     * vertex address. */
+    at = find_sh(buffer, stream.count, 0x2c46ul);
+    CHECK(at < stream.count);
+    CHECK(buffer[at + 4ul] == 0xf40f8040ul);
+    CHECK((buffer[at + 6ul] & 0x3ful) == 3ul);
+    CHECK(buffer[at + 7ul] == (2ul << 1));
+    at = find_sh(buffer, stream.count, 0x2c4cul);
+    CHECK(at < stream.count);
+    CHECK(buffer[at] == V9X_VI_PACKET3(V9X_VI_P3_SET_SH_REG, 2ul));
+    CHECK(buffer[at + 2ul] == 0x0f80b000ul);
+    CHECK(buffer[at + 3ul] == 0xf4ul);
+    /* PS: no user SGPRs, so PRIM_MASK lands in s0. */
+    at = find_sh(buffer, stream.count, 0x2c07ul);
+    CHECK(at < stream.count);
+    CHECK(buffer[at + 6ul] == 0ul);
+
+    /* VGT_PRIMITIVE_TYPE TRILIST, NUM_INSTANCES, then six auto-indexed
+     * vertices and the fence. */
+    CHECK(buffer[stream.count - 14ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_SET_UCONFIG_REG, 1ul));
+    CHECK(buffer[stream.count - 12ul] == 4ul);
+    CHECK(buffer[stream.count - 9ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
+    CHECK(buffer[stream.count - 8ul] == 6ul);
+    CHECK(buffer[stream.count - 6ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
+
+    /* Refused: no vertices, a count not a whole number of triangles, an
+     * unaligned vertex buffer. */
+    base_tl(&draw);
+    draw.vertex_count = 0ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    base_tl(&draw);
+    draw.vertex_count = 4ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    base_tl(&draw);
+    draw.vertex_low = 0x0f80b002ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* With probe addresses, each stage takes six user SGPRs: the four it had,
  * then its probe address low and high. */
 static void test_probe_rect(void)
@@ -474,5 +674,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_solid_rect();
     test_probe_shaders();
     test_probe_rect();
+    test_tl_shaders();
+    test_tl_draw();
     return failures;
 }

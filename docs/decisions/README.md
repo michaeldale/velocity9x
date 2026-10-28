@@ -364,6 +364,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Carrizo's first 3D draw: the full clear state runs, the draw completes and writes nothing; the BIOS left the 3D engine unconfigured](2026-10-28-carrizo-first-draw-attempt.md)
 - [2026-10-28 Carrizo's 3D engine configured as Linux's gpu_init does: the writes land, the draw still writes nothing](2026-10-28-carrizo-gpu-init.md)
 - [2026-10-28 Carrizo draws its first rectangle: a stale shader cache and a constant-bus violation were in the way](2026-10-28-carrizo-first-rectangle.md)
+- [2026-10-28 Carrizo draws Gouraud triangles from Direct3D TL vertices, fetched by the VS through FLAT](2026-10-28-carrizo-gouraud.md)
 
 ## DOS box and mini-VDD
 

@@ -39,6 +39,9 @@
  *      event that flushes the caches and writes a fence. The shaders are
  *      vi_shader.c's probe variants: each stores a marker beside the
  *      target first, so the report shows whether the VS and PS ran.
+ *      With /gouraud instead: two triangles of Direct3D TL vertices over
+ *      the whole target from a vertex buffer in the window, a red ramp
+ *      checked pixel by pixel (Phase 4 step 1).
  *
  * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
  * NOP and alignment. Then the CP is halted and the RLC stopped, every
@@ -230,6 +233,20 @@
 #define V9X_PROBE_AT_VERTEX     4u
 #define V9X_PROBE_AT_X          8u
 #define V9X_PROBE_AT_Y          12u
+
+/* /gouraud: two triangles of TL vertices over the whole target, red 0 at
+ * the left edge to FFh at the right, green 80h, blue 40h, alpha FFh;
+ * every pixel within +-2 per channel of the ramp at its centre. */
+#define V9X_VERTICES            0xb000ul
+#define V9X_TL_DWORDS           8ul
+#define V9X_GOURAUD_VERTICES    6ul
+#define V9X_GOURAUD_LEFT        0xff008040ul
+#define V9X_GOURAUD_RIGHT       0xffff8040ul
+#define V9X_GOURAUD_TOLERANCE   2ul
+#define V9X_FLOAT_HALF          0x3f000000ul
+#define V9X_FLOAT_ONE           0x3f800000ul
+#define V9X_FLOAT_16            0x41800000ul
+#define V9X_FLOAT_64            0x42800000ul
 #define V9X_CANARY              0xc000ul
 #define V9X_CANARY_DWORDS       16ul
 #define V9X_SEED_CANARY         0x50000005ul
@@ -380,6 +397,8 @@ static DWORD v9x_shader[64];
 static BYTE v9x_file[V9X_FW_FILE_MAX];
 static DWORD v9x_data[V9X_CZCP_DATA_MAX];
 static DWORD v9x_data_dwords;
+static int v9x_gouraud;
+static DWORD v9x_vertices[V9X_GOURAUD_VERTICES * V9X_TL_DWORDS];
 static struct v9x_vi_reg_seq v9x_init_ops[V9X_VI_GPU_INIT_OPS_MAX];
 
 /* Indices into v9x_result.op_results of the values the report needs. */
@@ -622,6 +641,33 @@ static DWORD v9x_pattern(DWORD seed, DWORD index)
     return seed + index * V9X_PATTERN_STEP;
 }
 
+/* One TL vertex: sx, sy, sz, rhw, D3DCOLOR, specular, tu, tv. */
+static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD colour)
+{
+    out[0] = x;
+    out[1] = y;
+    out[2] = V9X_FLOAT_HALF;
+    out[3] = V9X_FLOAT_ONE;
+    out[4] = colour;
+    out[5] = 0ul;
+    out[6] = 0ul;
+    out[7] = 0ul;
+}
+
+/* The target as two triangles: top-left, top-right, bottom-left, then
+ * top-right, bottom-right, bottom-left. */
+static void v9x_gouraud_vertices(void)
+{
+    DWORD *v = v9x_vertices;
+
+    v9x_tl_vertex(v + 0, 0ul, 0ul, V9X_GOURAUD_LEFT);
+    v9x_tl_vertex(v + 8, V9X_FLOAT_64, 0ul, V9X_GOURAUD_RIGHT);
+    v9x_tl_vertex(v + 16, 0ul, V9X_FLOAT_16, V9X_GOURAUD_LEFT);
+    v9x_tl_vertex(v + 24, V9X_FLOAT_64, 0ul, V9X_GOURAUD_RIGHT);
+    v9x_tl_vertex(v + 32, V9X_FLOAT_64, V9X_FLOAT_16, V9X_GOURAUD_RIGHT);
+    v9x_tl_vertex(v + 40, 0ul, V9X_FLOAT_16, V9X_GOURAUD_LEFT);
+}
+
 /* Call 3's op list. lo/hi are the scratch window's GPU address. */
 static int v9x_build_run(DWORD lo, DWORD hi)
 {
@@ -639,6 +685,7 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     DWORD ps_count;
     DWORD init_first;
     DWORD init_count;
+    DWORD vertex_first;
 
     /* The ring: the ring test; the full start stream and a scratch write
      * behind it; the draw and its end-of-pipe fence. */
@@ -673,7 +720,28 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     rect.probe_vs_low = lo + V9X_PROBE;
     rect.probe_ps_low = lo + V9X_PROBE_PS;
     rect.probe_high = hi;
-    if (v9x_vi_3d_solid_rect(&stream, &rect) != V9X_STATUS_OK) {
+    if (v9x_gouraud) {
+        struct v9x_vi_tl_draw draw;
+
+        draw.target_low = rect.target_low;
+        draw.target_high = hi;
+        draw.pitch_pixels = V9X_TARGET_PITCH;
+        draw.height = V9X_TARGET_HEIGHT;
+        draw.format = V9X_VI_CB_FORMAT_8_8_8_8;
+        draw.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+        draw.vs_low = rect.vs_low;
+        draw.ps_low = rect.ps_low;
+        draw.shader_high = hi;
+        draw.vertex_low = lo + V9X_VERTICES;
+        draw.vertex_high = hi;
+        draw.vertex_count = V9X_GOURAUD_VERTICES;
+        draw.fence_low = rect.fence_low;
+        draw.fence_high = hi;
+        draw.fence_value = V9X_FENCE_VALUE;
+        if (v9x_vi_3d_tl_draw(&stream, &draw) != V9X_STATUS_OK) {
+            return 0;
+        }
+    } else if (v9x_vi_3d_solid_rect(&stream, &rect) != V9X_STATUS_OK) {
         return 0;
     }
     v9x_vi_pm4_pad(&stream);
@@ -684,11 +752,16 @@ static int v9x_build_run(DWORD lo, DWORD hi)
 
     /* The ring and the shaders go behind the microcode in the data array. */
     ring_first = v9x_data_append(v9x_ring, stream.count);
-    vs_count = v9x_vi_shader_probe_vs(v9x_shader);
+    vs_count = v9x_gouraud ? v9x_vi_shader_tl_vs(v9x_shader) :
+                             v9x_vi_shader_probe_vs(v9x_shader);
     vs_first = v9x_data_append(v9x_shader, vs_count);
-    ps_count = v9x_vi_shader_probe_ps(v9x_shader);
+    ps_count = v9x_gouraud ? v9x_vi_shader_gouraud_ps(v9x_shader) :
+                             v9x_vi_shader_probe_ps(v9x_shader);
     ps_first = v9x_data_append(v9x_shader, ps_count);
-    if (v9x_data_dwords != ps_first + ps_count) {
+    vertex_first = v9x_data_append(v9x_vertices,
+                                   V9X_GOURAUD_VERTICES * V9X_TL_DWORDS);
+    if (v9x_data_dwords !=
+        vertex_first + V9X_GOURAUD_VERTICES * V9X_TL_DWORDS) {
         return 0;
     }
 
@@ -718,6 +791,8 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_VRAM_DATA, V9X_RING, ring_first, stream.count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_VS, vs_first, vs_count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_PS, ps_first, ps_count);
+    v9x_op(V9X_OP_VRAM_DATA, V9X_VERTICES, vertex_first,
+           V9X_GOURAUD_VERTICES * V9X_TL_DWORDS);
     v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS, V9X_GUARD_VALUE);
     v9x_op(V9X_OP_VRAM_FILL, V9X_PROBE, V9X_PROBE_DWORDS, V9X_GUARD_VALUE);
     v9x_at_tile_mode8 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_TILE_MODE8, 0ul,
@@ -918,6 +993,61 @@ static void v9x_verify(const DWORD *target)
     }
 }
 
+static int v9x_near(DWORD got, DWORD want)
+{
+    return (got > want ? got - want : want - got) <= V9X_GOURAUD_TOLERANCE;
+}
+
+/* The ramp: red round(255 (x + 0.5) / 64) at each pixel centre, green 80h,
+ * blue 40h, alpha FFh, the CB's bytes R, G, B, A from the low one (the
+ * first rectangle's order). Within +-2 per channel. */
+static void v9x_verify_gouraud(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD red;
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            red = ((2ul * x + 1ul) * 255ul + V9X_TARGET_PITCH) /
+                  (2ul * V9X_TARGET_PITCH);
+            if (v9x_near(pixel & 0xfful, red) &&
+                v9x_near((pixel >> 8) & 0xfful, 0x80ul) &&
+                v9x_near((pixel >> 16) & 0xfful, 0x40ul) &&
+                v9x_near(pixel >> 24, 0xfful)) {
+                text[x] = '#';
+            } else {
+                text[x] = pixel == V9X_GUARD_VALUE ? '.' : '?';
+                if (bad++ == 0ul) {
+                    first_bad = y * V9X_TARGET_PITCH + x;
+                }
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    for (x = 0ul; x < V9X_TARGET_PITCH; x += 8ul) {
+        lstrcpyA(key, "Row0X");
+        v9x_decimal(key + 5, x);
+        v9x_key("Gouraud", key, target[x]);
+    }
+    v9x_key("Gouraud", "Row0X63", target[V9X_TARGET_PITCH - 1ul]);
+    v9x_number("Result", "GouraudBad", bad);
+    if (bad != 0ul) {
+        v9x_number("Result", "GouraudFirstBadIndex", first_bad);
+        v9x_key("Result", "GouraudFirstBad", target[first_bad]);
+    }
+    v9x_pass("Gouraud", bad == 0ul);
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -957,6 +1087,9 @@ void __stdcall V9xCarrizo3dEntry(void)
     DeleteFileA(V9X_CZCP_PATH);
     v9x_text("Report", "Tool", "V9XCZ3D");
     v9x_text("Report", "Build", V9X_BUILD_ID);
+    v9x_gouraud = v9x_switch_given("/gouraud");
+    v9x_text("Report", "Draw", v9x_gouraud ? "gouraud" : "rectangle");
+    v9x_gouraud_vertices();
 
     v9x_data_dwords = 0ul;
     for (index = 0ul; index < V9X_IMAGE_COUNT; ++index) {
@@ -1117,6 +1250,10 @@ void __stdcall V9xCarrizo3dEntry(void)
              probe[V9X_PROBE_AT_Y + 1u] == 0x40800000ul &&
              probe[V9X_PROBE_AT_Y + 2u] == 0x41400000ul);
     v9x_pass("PsRan", probe[V9X_PROBE_AT_PS] != V9X_GUARD_VALUE);
-    v9x_verify(v9x_result.block + 2);
+    if (v9x_gouraud) {
+        v9x_verify_gouraud(v9x_result.block + 2);
+    } else {
+        v9x_verify(v9x_result.block + 2);
+    }
     v9x_finish("COMPLETE", 0u);
 }

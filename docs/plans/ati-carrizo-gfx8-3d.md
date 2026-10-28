@@ -15,7 +15,9 @@ read back as written ([record](../decisions/2026-10-28-carrizo-gpu-init.md)).
 Phase 3 done: the solid rectangle draws pixel-exact once the SQ caches are
 invalidated before the draw and the VS stops reading two scalar operands
 in one instruction ([record](../decisions/2026-10-28-carrizo-first-rectangle.md)).
-Next: Phase 4, Gouraud, texture and depth. Parent plan:
+Phase 4 step 1 done: Gouraud triangles from TL vertices, every pixel
+within +-2 ([record](../decisions/2026-10-28-carrizo-gouraud.md)). Next:
+step 2, depth. Parent plan:
 [ati-carrizo-gfx8.md](ati-carrizo-gfx8.md). 2D runs on SDMA0
 ([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)), and
 flips on D1 ([record](../decisions/2026-10-28-carrizo-page-flips.md)).
@@ -75,7 +77,19 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
 3. **A solid rectangle**: a hand-assembled GCN 3 VS and PS, linear colour
    buffer, into the probe window, byte-exact.
 4. **Gouraud, texture, depth**, the shader-variant scheme as stream
-   builders, host-tested.
+   builders, host-tested. As on Cedar, the draws take the HAL's own
+   vertex from the start: the render core's 32-byte TL vertex (sx, sy,
+   sz, rhw, D3DCOLOR, specular, tu, tv). The VS fetches it with two FLAT
+   loads at base + 32 x VertexID, base in user SGPRs, and exports sx, sy,
+   sz and rhw unchanged as the position: the VTE takes screen-space XY,
+   Z and 1/W. Steps, each a V9XCZ3D draw checked pixel by pixel:
+   1. `/gouraud`: a red ramp across the target from per-vertex
+      D3DCOLORs, interpolated by `v_interp` (+-2 per channel);
+   2. `/depth`: a Z16 buffer, LESS, three overlapping rectangles;
+   3. `/texture` and `/modulate`: an image descriptor and sampler in
+      SGPRs and `image_sample`, then texel times diffuse.
+   Every shader keeps to GCN 3's one constant-bus read per VALU
+   instruction ([first rectangle](../decisions/2026-10-28-carrizo-first-rectangle.md)).
 5. **The HAL**: `d3d_vi.c` behind `V9X_D3D_ENGINE_OPS`, then V9XD32,
    V9XDDP's 3D checks and a game.
 

@@ -108,4 +108,33 @@ struct v9x_vi_solid_rect {
 v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
                                 const struct v9x_vi_solid_rect *rect);
 
+/*
+ * A triangle list of Direct3D TL vertices (vi_shader.h's TL VS, 32 bytes
+ * each) from a buffer at vertex_low/high, Gouraud-shaded by the PS at
+ * ps_low: the same target, screen-space and depth-off state as the
+ * rectangle, the cache sync first and the fence last.
+ */
+struct v9x_vi_tl_draw {
+    v9x_u32 target_low;
+    v9x_u32 target_high;
+    v9x_u32 pitch_pixels;       /* a multiple of 8 */
+    v9x_u32 height;
+    v9x_u32 format;             /* V9X_VI_CB_FORMAT_* */
+    v9x_u32 tile_mode_index;
+    v9x_u32 vs_low;
+    v9x_u32 ps_low;
+    v9x_u32 shader_high;
+    v9x_u32 vertex_low;         /* dword-aligned */
+    v9x_u32 vertex_high;
+    v9x_u32 vertex_count;       /* a multiple of 3 */
+    v9x_u32 fence_low;
+    v9x_u32 fence_high;
+    v9x_u32 fence_value;
+};
+
+/* V9X_STATUS_OK with the packets appended; INVALID_ARGUMENT for a bad
+ * target, an unaligned address or a vertex count not whole triangles. */
+v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
+                             const struct v9x_vi_tl_draw *draw);
+
 #endif
