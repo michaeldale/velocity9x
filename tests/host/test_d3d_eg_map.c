@@ -540,6 +540,53 @@ static void test_color_key(void)
     CHECK(state.kill == 0ul && lit.color_key == 0ul);
 }
 
+static void test_depth_fill(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_R3D_VERTEX v[6];
+    struct v9x_eg_3d_state state;
+    v9x_u32 vs;
+    v9x_u32 ps;
+    unsigned int i;
+
+    /* Quake 3's HUD icon clear on M-BXMFA8: a scissored depth-only clear
+     * of a 640x480 Z16 (pitch 1280, 256-aligned) to the far plane. The
+     * draw writes no colour, tests ALWAYS with writes on, and is scissored
+     * to the rectangle. */
+    CHECK(v9x_d3d_eg_depth_fill_draw(0x00100000ul, 1280ul, 640ul, 480ul,
+                                     100ul, 400ul, 164ul, 464ul, 0xfffful,
+                                     &depth_object, &draw, v));
+    CHECK(map(&draw, 0, 2ul, &state, &vs, &ps) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(state.masked_channels == (V9X_EG_CHANNEL_RED |
+                                    V9X_EG_CHANNEL_GREEN |
+                                    V9X_EG_CHANNEL_BLUE));
+    CHECK(state.has_depth == 1ul && state.depth_control == 0x76ul &&
+          state.depth_gpu == HEAP_GPU + 0x00100000ul &&
+          state.depth_pitch == 640ul && state.depth_height == 480ul);
+    CHECK(state.scissor_left == 100ul && state.scissor_top == 400ul &&
+          state.scissor_right == 164ul && state.scissor_bottom == 464ul);
+    CHECK(state.blend_control == 0x00010001ul && state.has_texture == 0ul);
+    CHECK(v[0].sx == 100.0f && v[0].sy == 400.0f &&
+          v[4].sx == 164.0f && v[4].sy == 464.0f);
+    for (i = 0u; i < 6u; ++i) {
+        CHECK(v[i].sz == 1.0f && v[i].rhw == 1.0f);
+    }
+
+    /* Half scale is 32767/65535, not 0.5. */
+    CHECK(v9x_d3d_eg_depth_fill_draw(0x00100000ul, 1280ul, 640ul, 480ul,
+                                     0ul, 0ul, 8ul, 8ul, 0x7ffful,
+                                     &depth_object, &draw, v));
+    CHECK(v[0].sz == (float)(32767.0 / 65535.0));
+
+    /* Refused: an empty rectangle, one past the surface. */
+    CHECK(!v9x_d3d_eg_depth_fill_draw(0x00100000ul, 1280ul, 640ul, 480ul,
+                                      10ul, 10ul, 10ul, 20ul, 0ul,
+                                      &depth_object, &draw, v));
+    CHECK(!v9x_d3d_eg_depth_fill_draw(0x00100000ul, 1280ul, 640ul, 480ul,
+                                      0ul, 0ul, 641ul, 20ul, 0ul,
+                                      &depth_object, &draw, v));
+}
+
 unsigned int v9x_run_d3d_eg_map_tests(void)
 {
     failures = 0u;
@@ -552,5 +599,6 @@ unsigned int v9x_run_d3d_eg_map_tests(void)
     test_lit();
     test_explicit();
     test_color_key();
+    test_depth_fill();
     return failures;
 }

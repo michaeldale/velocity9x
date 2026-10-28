@@ -444,3 +444,68 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
     }
     return V9X_D3D_EG_REFUSE_NONE;
 }
+
+int v9x_d3d_eg_depth_fill_draw(v9x_u32 offset, v9x_u32 pitch,
+                               v9x_u32 width, v9x_u32 height,
+                               v9x_u32 left, v9x_u32 top,
+                               v9x_u32 right, v9x_u32 bottom,
+                               v9x_u32 value, void *object,
+                               V9X_R3D_DRAW *draw, V9X_R3D_VERTEX *vertices)
+{
+    unsigned char *bytes = (unsigned char *)draw;
+    v9x_u32 index;
+    float z;
+
+    if (left >= right || top >= bottom || right > width || bottom > height) {
+        return 0;
+    }
+    for (index = 0ul; index < sizeof(*draw); ++index) {
+        bytes[index] = 0u;
+    }
+    draw->target.offset = offset;
+    draw->target.pitch = pitch;
+    draw->target.width = width;
+    draw->target.height = height;
+    draw->target.format = V9X_R3D_FORMAT_RGB565;
+    draw->target.object = object;
+    draw->depth = draw->target;
+    draw->depth.format = V9X_R3D_DEPTH_Z16;
+    draw->depth_enable = 1ul;
+    draw->depth_write = 1ul;
+    draw->depth_func = V9X_R3D_CMP_ALWAYS;
+    draw->src_blend = V9X_R3D_BLEND_ONE;
+    draw->dst_blend = V9X_R3D_BLEND_ZERO;
+    draw->alpha_func = V9X_R3D_CMP_ALWAYS;
+    draw->shade_mode = V9X_R3D_SHADE_GOURAUD;
+    draw->explicit_state = 1ul;
+    draw->scissor_left = left;
+    draw->scissor_top = top;
+    draw->scissor_right = right;
+    draw->scissor_bottom = bottom;
+    draw->write_mask = 0ul;
+
+    /* Computed in double, as d3d_hsw_map.c's fill does: the VS passes sz
+     * through as Z (VTX_Z_FMT), so the far plane is exactly 1.0. */
+    z = (float)((double)(value & 0xfffful) / 65535.0);
+    for (index = 0ul; index < 6ul; ++index) {
+        vertices[index].sz = z;
+        vertices[index].rhw = 1.0f;
+        vertices[index].color = 0ul;
+        vertices[index].specular = 0ul;
+        vertices[index].tu = 0.0f;
+        vertices[index].tv = 0.0f;
+    }
+    vertices[0].sx = (float)left;
+    vertices[0].sy = (float)top;
+    vertices[1].sx = (float)right;
+    vertices[1].sy = (float)top;
+    vertices[2].sx = (float)left;
+    vertices[2].sy = (float)bottom;
+    vertices[3].sx = (float)right;
+    vertices[3].sy = (float)top;
+    vertices[4].sx = (float)right;
+    vertices[4].sy = (float)bottom;
+    vertices[5].sx = (float)left;
+    vertices[5].sy = (float)bottom;
+    return 1;
+}

@@ -145,8 +145,10 @@
         # update checker, which nothing needs to boot or draw. The trace tool
         # joined it on 2026-10-27, when the HD 4600 T&L and Evergreen
         # engines together put disk 1 34,698 bytes over (Michael,
-        # 2026-10-27: "v9xtrace on third disk is okay").
-        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE')
+        # 2026-10-27: "v9xtrace on third disk is okay"). GLIDE3X.DLL joined
+        # it, as on the other families' disks, when the Evergreen CP depth
+        # fill put disk 1 188 bytes over (Michael, 2026-10-28).
+        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE', 'GLIDE3X.DLL')
     }
 
     # No emulator models this chip, so the VM runner must refuse rather than

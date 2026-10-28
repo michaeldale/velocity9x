@@ -94,6 +94,27 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 *ps_slot,
                             V9X_D3D_EG_LIT *lit);
 
+/*
+ * A depth fill of part of a Z16, as a draw: the DMA engine can fill only
+ * the whole of a 1D-tiled buffer (eng_eg.c), so a rectangle - Quake 3's
+ * scissored depth clear behind its HUD models - is two triangles over it,
+ * ZFUNC ALWAYS with writes on, scissored to it, every colour channel
+ * masked. The colour target is the Z buffer's own memory named as RGB565,
+ * which only sizes the draw: CB_TARGET_MASK 0 writes none of it. Haswell's
+ * and Gen4's fills are the same draw (d3d_hsw.c, d3d_g4.c).
+ *
+ * offset, pitch, width and height are the surface's; [left, right) by
+ * [top, bottom) the rectangle; value on the 16-bit full scale. object is
+ * the surface's, which the map needs bound. Fills draw and its six
+ * vertices; zero for a rectangle that is empty or past the surface.
+ */
+int v9x_d3d_eg_depth_fill_draw(v9x_u32 offset, v9x_u32 pitch,
+                               v9x_u32 width, v9x_u32 height,
+                               v9x_u32 left, v9x_u32 top,
+                               v9x_u32 right, v9x_u32 bottom,
+                               v9x_u32 value, void *object,
+                               V9X_R3D_DRAW *draw, V9X_R3D_VERTEX *vertices);
+
 /* Z16's placement: rows padded to the 8-row tile the DB reads, and the
  * pitch a whole number of 8-pixel tiles. */
 #define V9X_D3D_EG_DEPTH_TILE_ROWS  8ul

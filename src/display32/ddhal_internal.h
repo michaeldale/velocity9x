@@ -479,6 +479,11 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
  * d3d\d3d_g4.c. Arguments and outcome as v9x_d3d_hsw_depth_fill. */
 int v9x_d3d_g4_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                           DWORD value, int wait);
+/* Evergreen's Z16 is 1D tiled: eng_eg.c's DMA fill takes a whole depth
+ * surface and hands any smaller rectangle to d3d\d3d_eg.c, which draws it
+ * on the CP. Arguments and outcome as v9x_d3d_hsw_depth_fill, 16-bit only. */
+int v9x_d3d_eg_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait);
 
 /* The Mach64 core eng_mach64.c owns, once the chip is validated, or null:
  * shared with d3d_mach64.c so 2D and 3D keep one FIFO account. */

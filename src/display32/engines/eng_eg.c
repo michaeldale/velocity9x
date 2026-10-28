@@ -472,9 +472,11 @@ static int v9x_eg_emit_or_give_up(const struct v9x_eg_dma_plan *plan)
  * A Z buffer the Direct3D engine draws is 1D tiled (d3d_eg.c), so a linear
  * rectangle of it is the wrong pixels. A constant over all of it is the
  * same value in every pixel whatever the tiling, so the whole surface is
- * filled - its rows padded to the tile as d3d_eg.c placed them - and only
- * a fill of the whole surface is taken; the core fails a declined one
- * rather than fill linearly (v9x_depthfill_body). Zero to decline.
+ * filled - its rows padded to the tile as d3d_eg.c placed them. Zero for
+ * a fill of less than the whole surface, which the CP draws instead
+ * (v9x_d3d_eg_depth_fill): declined, the core would fail it rather than
+ * fill linearly (v9x_depthfill_body), and Quake 3's scissored depth clears
+ * behind its HUD models were dropped that way (M-BXMFA8, 2026-10-27).
  */
 #define V9X_EG_DEPTH_TILE_ROWS 8ul
 
@@ -524,7 +526,8 @@ static int v9x_eg_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     fill.height = (DWORD)(data->rDest[3] - data->rDest[1]);
     fill.color = data->bltFX.dwFillColor;
     if (!v9x_eg_tiled_depth_fill(data, &fill)) {
-        return V9X_BLT_DECLINED;
+        return v9x_d3d_eg_depth_fill(data->lpDDDestSurface, data->rDest,
+                                     data->bltFX.dwFillColor, wait);
     }
     if (v9x_eg_dma_plan_fill(&fill, &plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;

@@ -563,6 +563,40 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
 }
 
 /*
+ * A rectangle of a Z16 at value, drawn on the CP (d3d_eg_map.h,
+ * v9x_d3d_eg_depth_fill_draw): eng_eg.c's fill hands over every depth fill
+ * short of the whole surface, which its DMA engine cannot write tiled.
+ * The CP's batch waits for queued DMA work itself (eg_cp.c).
+ */
+int v9x_d3d_eg_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait)
+{
+    V9X_R3D_DRAW draw;
+    V9X_R3D_VERTEX vertices[6];
+    DWORD offset;
+
+    (void)wait;
+    if (surface == 0 || rect == 0 || surface->lpGbl == 0 ||
+        surface->lpGbl->lPitch <= 0l || !v9x_d3d_eg_ready() ||
+        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul ||
+        rect[0] < 0l || rect[1] < 0l) {
+        return V9X_BLT_DECLINED;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful ||
+        !v9x_d3d_eg_depth_fill_draw(offset, (DWORD)surface->lpGbl->lPitch,
+                                    (DWORD)surface->lpGbl->wWidth,
+                                    (DWORD)surface->lpGbl->wHeight,
+                                    (DWORD)rect[0], (DWORD)rect[1],
+                                    (DWORD)rect[2], (DWORD)rect[3], value,
+                                    surface, &draw, vertices)) {
+        return V9X_BLT_DECLINED;
+    }
+    return v9x_d3d_eg_draw(&draw, vertices, 2ul) ? V9X_BLT_DONE
+                                                  : V9X_BLT_DECLINED;
+}
+
+/*
  * Placement. An offscreen render target gets its pitch rounded to 8
  * pixels, 256-aligned. A Z16 buffer gets its pitch rounded to 8 pixels
  * and its rows to 8, the DB's 1D tile, 256-aligned. A video-memory
