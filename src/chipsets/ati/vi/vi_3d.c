@@ -20,6 +20,10 @@
 #define VI_DB_RENDER_CONTROL        0xa000ul
 #define VI_PA_SC_SCREEN_SCISSOR_TL  0xa00cul
 #define VI_DB_Z_INFO                0xa010ul
+#define VI_DB_DEPTH_VIEW            0xa002ul
+#define VI_DB_RENDER_OVERRIDE       0xa003ul
+#define VI_DB_HTILE_DATA_BASE       0xa005ul
+#define VI_DB_DEPTH_INFO            0xa00ful
 #define VI_PA_SC_WINDOW_OFFSET      0xa080ul
 #define VI_PA_SC_CLIPRECT_RULE      0xa083ul
 #define VI_CB_TARGET_MASK           0xa08eul
@@ -108,6 +112,23 @@
 #define VI_COHER_SHADER_CACHES      0x28c40000ul
 #define VI_COHER_SIZE_ALL           0xfffffffful
 #define VI_COHER_POLL_INTERVAL      0x0000000aul
+
+/* Depth (gfx_8_0_sh_mask.h). DB_Z_INFO: FORMAT Z_16 (1) at 1:0,
+ * TILE_SPLIT 15:13 and TILE_MODE_INDEX 22:20, both from GB_TILE_MODE5.
+ * DB_DEPTH_INFO: ADDR5_SWIZZLE_MASK (bit 0, radeonsi's for a surface
+ * without TC-compatible HTILE), ARRAY_MODE 1D_TILED_THIN1 (2) at 7:4,
+ * PIPE_CONFIG P2 (0). No HTILE: HiZ and HiS forced off (FORCE_DISABLE at
+ * 1:0, 3:2, 5:4), depth and stencil compression disabled (bits 6, 5), as
+ * Cedar's Z16 ran. DB_DEPTH_CONTROL: Z_ENABLE bit 1, Z_WRITE_ENABLE bit 2,
+ * ZFUNC 6:4. */
+#define VI_Z_INFO_Z16_TILE5         (1ul | (5ul << 13) | \
+                                     (V9X_VI_TILE_DEPTH_1D << 20))
+#define VI_DEPTH_INFO_1D_P2         (1ul | (2ul << 4))
+#define VI_RENDER_OVERRIDE_NO_HI    0x0000002aul
+#define VI_RENDER_CONTROL_NO_COMPRESS 0x00000060ul
+#define VI_DEPTH_CONTROL_Z_ENABLE   0x00000002ul
+#define VI_DEPTH_CONTROL_Z_WRITE    0x00000004ul
+#define VI_DEPTH_CONTROL_ZFUNC(f)   (((v9x_u32)(f) & 7ul) << 4)
 
 #define VI_SHADER_ALIGN             0xfful
 
@@ -334,6 +355,40 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
     v9x_vi_context1(stream, VI_VGT_GS_MODE, 0ul);
 }
 
+/* A Z16 depth buffer of pitch x height in the 1D depth tile mode. It
+ * follows the shared state's no-depth writes, so these are the ones that
+ * hold. Stencil stays invalid; its bases name the depth buffer, as
+ * radeonsi's do. */
+static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
+                            v9x_u32 high, v9x_u32 pitch, v9x_u32 height,
+                            v9x_u32 func, v9x_u32 write)
+{
+    v9x_u32 values[9];
+    v9x_u32 base = v9x_vi_address_256(low, high);
+
+    values[0] = VI_DEPTH_INFO_1D_P2;
+    values[1] = VI_Z_INFO_Z16_TILE5;
+    values[2] = 0ul;
+    values[3] = base;
+    values[4] = base;
+    values[5] = base;
+    values[6] = base;
+    /* PITCH_TILE_MAX 10:0, HEIGHT_TILE_MAX 21:11, in 8-pixel tiles less
+     * one; SLICE_TILE_MAX in 64-pixel tiles less one. */
+    values[7] = (pitch / 8ul - 1ul) | ((height / 8ul - 1ul) << 11);
+    values[8] = (pitch * height) / 64ul - 1ul;
+    v9x_vi_pm4_set_context(stream, VI_DB_DEPTH_INFO, values, 9ul);
+    v9x_vi_context1(stream, VI_DB_DEPTH_VIEW, 0ul);
+    v9x_vi_context1(stream, VI_DB_HTILE_DATA_BASE, 0ul);
+    v9x_vi_context1(stream, VI_DB_RENDER_CONTROL,
+                    VI_RENDER_CONTROL_NO_COMPRESS);
+    v9x_vi_context1(stream, VI_DB_RENDER_OVERRIDE, VI_RENDER_OVERRIDE_NO_HI);
+    v9x_vi_context1(stream, VI_DB_DEPTH_CONTROL,
+                    VI_DEPTH_CONTROL_Z_ENABLE |
+                    (write != 0ul ? VI_DEPTH_CONTROL_Z_WRITE : 0ul) |
+                    VI_DEPTH_CONTROL_ZFUNC(func));
+}
+
 /* A stage's program registers from RSRC3 on: PGM_LO is the address >> 8,
  * PGM_HI what is above bit 39, nothing. The VS has LATE_ALLOC between
  * RSRC3 and PGM_LO. */
@@ -449,7 +504,10 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                              draw->height) ||
         ((draw->vs_low | draw->ps_low) & VI_SHADER_ALIGN) != 0ul ||
         ((draw->fence_low | draw->vertex_low) & 3ul) != 0ul ||
-        draw->vertex_count == 0ul || (draw->vertex_count % 3ul) != 0ul) {
+        draw->vertex_count == 0ul || (draw->vertex_count % 3ul) != 0ul ||
+        (draw->depth_low & VI_SHADER_ALIGN) != 0ul ||
+        draw->depth_func > V9X_VI_ZFUNC_ALWAYS ||
+        (draw->depth_low != 0ul && (draw->height % 8ul) != 0ul)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -457,6 +515,11 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     v9x_vi_3d_common_state(stream, draw->target_low, draw->target_high,
                            draw->pitch_pixels, draw->height, draw->format,
                            draw->tile_mode_index);
+    if (draw->depth_low != 0ul) {
+        v9x_vi_3d_depth(stream, draw->depth_low, draw->depth_high,
+                        draw->pitch_pixels, draw->height, draw->depth_func,
+                        draw->depth_write);
+    }
 
     /* The VS's two user SGPRs are the vertex buffer's address; the PS has
      * none (vi_shader.h). */

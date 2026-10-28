@@ -41,7 +41,9 @@
  *      target first, so the report shows whether the VS and PS ran.
  *      With /gouraud instead: two triangles of Direct3D TL vertices over
  *      the whole target from a vertex buffer in the window, a red ramp
- *      checked pixel by pixel (Phase 4 step 1).
+ *      checked pixel by pixel (Phase 4 step 1). With /depth: a Z16
+ *      buffer and three rectangles, LESS with writes, the colour and the
+ *      Z buffer checked (step 2).
  *
  * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
  * NOP and alignment. Then the CP is halted and the RLC stopped, every
@@ -240,6 +242,29 @@
 #define V9X_VERTICES            0xb000ul
 #define V9X_TL_DWORDS           8ul
 #define V9X_GOURAUD_VERTICES    6ul
+/* /depth: a Z16 buffer the target's size cleared to 1.0, then three
+ * rectangles in one draw, LESS with writes: red over the whole target at
+ * z 0.5, green over the left half at 0.75 (behind it), blue over the right
+ * half at 0.25 (in front). Red left, blue right; the Z buffer 8000h in the
+ * left half's tiles, 4000h in the right's. */
+#define V9X_DEPTH               0xd000ul
+#define V9X_DEPTH_DWORDS        (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT / 2ul)
+#define V9X_DEPTH_CLEAR         0xfffffffful
+#define V9X_DEPTH_VERTICES      18ul
+#define V9X_TL_MAX_VERTICES     18ul
+#define V9X_DEPTH_RED           0xffff0000ul
+#define V9X_DEPTH_GREEN         0xff00ff00ul
+#define V9X_DEPTH_BLUE          0xff0000fful
+/* The CB's RGBA bytes for red and blue at full alpha. */
+#define V9X_PIXEL_RED           0xff0000fful
+#define V9X_PIXEL_BLUE          0xffff0000ul
+#define V9X_Z16_HALF            0x8000ul
+#define V9X_Z16_QUARTER         0x4000ul
+/* A 1D-tiled Z16 tile: 8x8 samples, 128 bytes; the tiles in rows. */
+#define V9X_Z16_TILE_DWORDS     32ul
+#define V9X_FLOAT_QUARTER       0x3e800000ul
+#define V9X_FLOAT_THREE_QUARTERS 0x3f400000ul
+#define V9X_FLOAT_32            0x42000000ul
 #define V9X_GOURAUD_LEFT        0xff008040ul
 #define V9X_GOURAUD_RIGHT       0xffff8040ul
 #define V9X_GOURAUD_TOLERANCE   2ul
@@ -397,8 +422,11 @@ static DWORD v9x_shader[64];
 static BYTE v9x_file[V9X_FW_FILE_MAX];
 static DWORD v9x_data[V9X_CZCP_DATA_MAX];
 static DWORD v9x_data_dwords;
+/* /gouraud or /depth: a TL-vertex draw in place of the rectangle. */
 static int v9x_gouraud;
-static DWORD v9x_vertices[V9X_GOURAUD_VERTICES * V9X_TL_DWORDS];
+static int v9x_depth;
+static DWORD v9x_vertex_count;
+static DWORD v9x_vertices[V9X_TL_MAX_VERTICES * V9X_TL_DWORDS];
 static struct v9x_vi_reg_seq v9x_init_ops[V9X_VI_GPU_INIT_OPS_MAX];
 
 /* Indices into v9x_result.op_results of the values the report needs. */
@@ -642,11 +670,12 @@ static DWORD v9x_pattern(DWORD seed, DWORD index)
 }
 
 /* One TL vertex: sx, sy, sz, rhw, D3DCOLOR, specular, tu, tv. */
-static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD colour)
+static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD z,
+                          DWORD colour)
 {
     out[0] = x;
     out[1] = y;
-    out[2] = V9X_FLOAT_HALF;
+    out[2] = z;
     out[3] = V9X_FLOAT_ONE;
     out[4] = colour;
     out[5] = 0ul;
@@ -654,18 +683,40 @@ static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD colour)
     out[7] = 0ul;
 }
 
-/* The target as two triangles: top-left, top-right, bottom-left, then
- * top-right, bottom-right, bottom-left. */
-static void v9x_gouraud_vertices(void)
+/* A rectangle as two triangles: top-left, top-right, bottom-left, then
+ * top-right, bottom-right, bottom-left. The left vertices take left, the
+ * right ones right. Six vertices to out. */
+static void v9x_tl_rect(DWORD *out, DWORD x0, DWORD y0, DWORD x1, DWORD y1,
+                        DWORD z, DWORD left, DWORD right)
+{
+    v9x_tl_vertex(out + 0, x0, y0, z, left);
+    v9x_tl_vertex(out + 8, x1, y0, z, right);
+    v9x_tl_vertex(out + 16, x0, y1, z, left);
+    v9x_tl_vertex(out + 24, x1, y0, z, right);
+    v9x_tl_vertex(out + 32, x1, y1, z, right);
+    v9x_tl_vertex(out + 40, x0, y1, z, left);
+}
+
+static void v9x_tl_vertices(void)
 {
     DWORD *v = v9x_vertices;
+    DWORD rect = 6ul * V9X_TL_DWORDS;
 
-    v9x_tl_vertex(v + 0, 0ul, 0ul, V9X_GOURAUD_LEFT);
-    v9x_tl_vertex(v + 8, V9X_FLOAT_64, 0ul, V9X_GOURAUD_RIGHT);
-    v9x_tl_vertex(v + 16, 0ul, V9X_FLOAT_16, V9X_GOURAUD_LEFT);
-    v9x_tl_vertex(v + 24, V9X_FLOAT_64, 0ul, V9X_GOURAUD_RIGHT);
-    v9x_tl_vertex(v + 32, V9X_FLOAT_64, V9X_FLOAT_16, V9X_GOURAUD_RIGHT);
-    v9x_tl_vertex(v + 40, 0ul, V9X_FLOAT_16, V9X_GOURAUD_LEFT);
+    if (v9x_depth) {
+        v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                    V9X_DEPTH_RED, V9X_DEPTH_RED);
+        v9x_tl_rect(v + rect, 0ul, 0ul, V9X_FLOAT_32, V9X_FLOAT_16,
+                    V9X_FLOAT_THREE_QUARTERS, V9X_DEPTH_GREEN,
+                    V9X_DEPTH_GREEN);
+        v9x_tl_rect(v + 2ul * rect, V9X_FLOAT_32, 0ul, V9X_FLOAT_64,
+                    V9X_FLOAT_16, V9X_FLOAT_QUARTER, V9X_DEPTH_BLUE,
+                    V9X_DEPTH_BLUE);
+        v9x_vertex_count = V9X_DEPTH_VERTICES;
+        return;
+    }
+    v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                V9X_GOURAUD_LEFT, V9X_GOURAUD_RIGHT);
+    v9x_vertex_count = V9X_GOURAUD_VERTICES;
 }
 
 /* Call 3's op list. lo/hi are the scratch window's GPU address. */
@@ -734,10 +785,14 @@ static int v9x_build_run(DWORD lo, DWORD hi)
         draw.shader_high = hi;
         draw.vertex_low = lo + V9X_VERTICES;
         draw.vertex_high = hi;
-        draw.vertex_count = V9X_GOURAUD_VERTICES;
+        draw.vertex_count = v9x_vertex_count;
         draw.fence_low = rect.fence_low;
         draw.fence_high = hi;
         draw.fence_value = V9X_FENCE_VALUE;
+        draw.depth_low = v9x_depth ? lo + V9X_DEPTH : 0ul;
+        draw.depth_high = hi;
+        draw.depth_func = V9X_VI_ZFUNC_LESS;
+        draw.depth_write = 1ul;
         if (v9x_vi_3d_tl_draw(&stream, &draw) != V9X_STATUS_OK) {
             return 0;
         }
@@ -759,9 +814,8 @@ static int v9x_build_run(DWORD lo, DWORD hi)
                              v9x_vi_shader_probe_ps(v9x_shader);
     ps_first = v9x_data_append(v9x_shader, ps_count);
     vertex_first = v9x_data_append(v9x_vertices,
-                                   V9X_GOURAUD_VERTICES * V9X_TL_DWORDS);
-    if (v9x_data_dwords !=
-        vertex_first + V9X_GOURAUD_VERTICES * V9X_TL_DWORDS) {
+                                   v9x_vertex_count * V9X_TL_DWORDS);
+    if (v9x_data_dwords != vertex_first + v9x_vertex_count * V9X_TL_DWORDS) {
         return 0;
     }
 
@@ -792,7 +846,8 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_VRAM_DATA, V9X_VS, vs_first, vs_count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_PS, ps_first, ps_count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_VERTICES, vertex_first,
-           V9X_GOURAUD_VERTICES * V9X_TL_DWORDS);
+           v9x_vertex_count * V9X_TL_DWORDS);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH, V9X_DEPTH_DWORDS, V9X_DEPTH_CLEAR);
     v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS, V9X_GUARD_VALUE);
     v9x_op(V9X_OP_VRAM_FILL, V9X_PROBE, V9X_PROBE_DWORDS, V9X_GUARD_VALUE);
     v9x_at_tile_mode8 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_TILE_MODE8, 0ul,
@@ -927,6 +982,7 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_FENCE, 1ul, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_TARGET, V9X_TARGET_DWORDS, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_PROBE, V9X_PROBE_DWORDS, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_DEPTH, V9X_DEPTH_DWORDS, 0ul);
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
     v9x_at_after_extra = v9x_request.count;
@@ -1048,6 +1104,66 @@ static void v9x_verify_gouraud(const DWORD *target)
     v9x_pass("Gouraud", bad == 0ul);
 }
 
+/* /depth's two halves: red left of x 32, blue right of it, within +-2;
+ * then the Z16 buffer, a tile at a time, every sample 8000h in the left
+ * half's tiles and 4000h in the right's. The regions are whole tiles, so
+ * the order of samples inside a tile does not matter. */
+static void v9x_verify_depth(const DWORD *target, const DWORD *depth)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD want;
+    DWORD tile;
+    DWORD index;
+    DWORD sample;
+    DWORD colour_bad = 0ul;
+    DWORD depth_bad = 0ul;
+    DWORD tiles_across = V9X_TARGET_PITCH / 8ul;
+    DWORD tiles = V9X_DEPTH_DWORDS / V9X_Z16_TILE_DWORDS;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            want = x < V9X_TARGET_PITCH / 2ul ? V9X_PIXEL_RED : V9X_PIXEL_BLUE;
+            if (v9x_near(pixel & 0xfful, want & 0xfful) &&
+                v9x_near((pixel >> 8) & 0xfful, (want >> 8) & 0xfful) &&
+                v9x_near((pixel >> 16) & 0xfful, (want >> 16) & 0xfful) &&
+                v9x_near(pixel >> 24, want >> 24)) {
+                text[x] = x < V9X_TARGET_PITCH / 2ul ? 'R' : 'B';
+            } else {
+                text[x] = pixel == V9X_GUARD_VALUE ? '.' :
+                          (pixel == 0xff00ff00ul ? 'G' : '?');
+                ++colour_bad;
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+
+    for (tile = 0ul; tile < tiles; ++tile) {
+        want = (tile % tiles_across) < tiles_across / 2ul ? V9X_Z16_HALF :
+                                                            V9X_Z16_QUARTER;
+        for (index = 0ul; index < V9X_Z16_TILE_DWORDS; ++index) {
+            sample = depth[tile * V9X_Z16_TILE_DWORDS + index];
+            if ((sample & 0xfffful) != want || (sample >> 16) != want) {
+                ++depth_bad;
+            }
+        }
+        lstrcpyA(key, "Tile");
+        v9x_decimal(key + 4, tile);
+        v9x_key("Depth", key, depth[tile * V9X_Z16_TILE_DWORDS]);
+    }
+    v9x_number("Result", "ColourBad", colour_bad);
+    v9x_number("Result", "DepthBadDwords", depth_bad);
+    v9x_pass("DepthColour", colour_bad == 0ul);
+    v9x_pass("DepthBuffer", depth_bad == 0ul);
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -1087,9 +1203,11 @@ void __stdcall V9xCarrizo3dEntry(void)
     DeleteFileA(V9X_CZCP_PATH);
     v9x_text("Report", "Tool", "V9XCZ3D");
     v9x_text("Report", "Build", V9X_BUILD_ID);
-    v9x_gouraud = v9x_switch_given("/gouraud");
-    v9x_text("Report", "Draw", v9x_gouraud ? "gouraud" : "rectangle");
-    v9x_gouraud_vertices();
+    v9x_depth = v9x_switch_given("/depth");
+    v9x_gouraud = v9x_depth || v9x_switch_given("/gouraud");
+    v9x_text("Report", "Draw", v9x_depth ? "depth" :
+                               (v9x_gouraud ? "gouraud" : "rectangle"));
+    v9x_tl_vertices();
 
     v9x_data_dwords = 0ul;
     for (index = 0ul; index < V9X_IMAGE_COUNT; ++index) {
@@ -1250,7 +1368,11 @@ void __stdcall V9xCarrizo3dEntry(void)
              probe[V9X_PROBE_AT_Y + 1u] == 0x40800000ul &&
              probe[V9X_PROBE_AT_Y + 2u] == 0x41400000ul);
     v9x_pass("PsRan", probe[V9X_PROBE_AT_PS] != V9X_GUARD_VALUE);
-    if (v9x_gouraud) {
+    if (v9x_depth) {
+        v9x_verify_depth(v9x_result.block + 2,
+                         v9x_result.block + 2ul + V9X_TARGET_DWORDS +
+                         V9X_PROBE_DWORDS);
+    } else if (v9x_gouraud) {
         v9x_verify_gouraud(v9x_result.block + 2);
     } else {
         v9x_verify(v9x_result.block + 2);

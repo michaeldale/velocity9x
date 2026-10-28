@@ -130,10 +130,32 @@ struct v9x_vi_tl_draw {
     v9x_u32 fence_low;
     v9x_u32 fence_high;
     v9x_u32 fence_value;
+    /* A Z16 depth buffer the target's size in tile mode
+     * V9X_VI_TILE_DEPTH_1D, 256-byte aligned; 0 for none. */
+    v9x_u32 depth_low;
+    v9x_u32 depth_high;
+    v9x_u32 depth_func;         /* V9X_VI_ZFUNC_* */
+    v9x_u32 depth_write;        /* nonzero to write */
 };
 
+/* DB_DEPTH_CONTROL ZFUNC, gfx_8_0_enum.h's FRAG_*: Direct3D's D3DCMPFUNC
+ * less one. */
+#define V9X_VI_ZFUNC_NEVER      0ul
+#define V9X_VI_ZFUNC_LESS       1ul
+#define V9X_VI_ZFUNC_EQUAL      2ul
+#define V9X_VI_ZFUNC_LEQUAL     3ul
+#define V9X_VI_ZFUNC_GREATER    4ul
+#define V9X_VI_ZFUNC_NOTEQUAL   5ul
+#define V9X_VI_ZFUNC_GEQUAL     6ul
+#define V9X_VI_ZFUNC_ALWAYS     7ul
+/* Carrizo's GB_TILE_MODE5 (Linux's table): ARRAY_1D_TILED_THIN1, P2,
+ * depth micro-tiling, tile split 5. Each 8x8 tile is contiguous, the
+ * tiles in rows. */
+#define V9X_VI_TILE_DEPTH_1D    5ul
+
 /* V9X_STATUS_OK with the packets appended; INVALID_ARGUMENT for a bad
- * target, an unaligned address or a vertex count not whole triangles. */
+ * target, an unaligned address, a vertex count not whole triangles or a
+ * depth function past ALWAYS. */
 v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                              const struct v9x_vi_tl_draw *draw);
 

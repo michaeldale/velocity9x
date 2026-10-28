@@ -549,6 +549,62 @@ static void test_tl_draw(void)
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* With a depth buffer: Z16 in Carrizo's 1D depth tile mode 5, the size of
+ * the target, LESS with writes; HiZ, HiS and compression forced off. */
+static void test_tl_depth(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+    v9x_u32 last;
+
+    base_tl(&draw);
+    draw.depth_low = 0x0f80d000ul;
+    draw.depth_high = 0xf4ul;
+    draw.depth_func = V9X_VI_ZFUNC_LESS;
+    draw.depth_write = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(walk(buffer, stream.count) != 0ul);
+
+    /* The last write of each register is the one that holds: the depth
+     * state comes after the shared no-depth state. */
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul);
+    CHECK(buffer[at - 2ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_SET_CONTEXT_REG, 9ul));
+    CHECK(buffer[at] == 0x00000021ul);         /* DB_DEPTH_INFO */
+    CHECK(buffer[at + 1ul] == 0x0050a001ul);   /* DB_Z_INFO */
+    CHECK(buffer[at + 2ul] == 0ul);            /* DB_STENCIL_INFO */
+    CHECK(buffer[at + 3ul] == 0xf40f80d0ul);   /* DB_Z_READ_BASE */
+    CHECK(buffer[at + 5ul] == 0xf40f80d0ul);   /* DB_Z_WRITE_BASE */
+    CHECK(buffer[at + 7ul] == 0x00000807ul);   /* DB_DEPTH_SIZE */
+    CHECK(buffer[at + 8ul] == 15ul);           /* DB_DEPTH_SLICE */
+    /* Searches from the depth packet's header on. */
+    last = at - 2ul;
+    CHECK(find_context(buffer + last, stream.count - last, 0xa010ul) == 0ul);
+
+    at = find_context(buffer + last, stream.count - last, 0xa200ul);
+    CHECK(at != 0ul && buffer[last + at] == 0x00000016ul);
+    at = find_context(buffer + last, stream.count - last, 0xa000ul);
+    CHECK(at != 0ul && buffer[last + at] == 0x00000060ul);
+    at = find_context(buffer + last, stream.count - last, 0xa003ul);
+    CHECK(at != 0ul && buffer[last + at] == 0x0000002aul);
+    at = find_context(buffer + last, stream.count - last, 0xa002ul);
+    CHECK(at != 0ul && buffer[last + at] == 0ul);
+    at = find_context(buffer + last, stream.count - last, 0xa005ul);
+    CHECK(at != 0ul && buffer[last + at] == 0ul);
+
+    /* Refused: an unaligned depth buffer, a function past ALWAYS. */
+    base_tl(&draw);
+    draw.depth_low = 0x0f80d080ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    base_tl(&draw);
+    draw.depth_low = 0x0f80d000ul;
+    draw.depth_func = 8ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* With probe addresses, each stage takes six user SGPRs: the four it had,
  * then its probe address low and high. */
 static void test_probe_rect(void)
@@ -676,5 +732,6 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_probe_rect();
     test_tl_shaders();
     test_tl_draw();
+    test_tl_depth();
     return failures;
 }
