@@ -8,7 +8,12 @@ Phase 1 coded and gated, not installed. Phase 2 read on the chip
 ([record](../decisions/2026-10-28-carrizo-register-probe.md)): a 512 MiB
 carve-out at GPU `F4_00000000` (system `C0000000`), the VBE scanout at its
 start, no microcode loaded by anyone, every engine halted, GFX powered
-with power gating off. Next: Phase 3. Register facts below come from
+with power gating off. Phase 3's write probe passed
+([record](../decisions/2026-10-28-carrizo-sdma-write-probe.md)): SDMA0
+takes its microcode through its own port, no SMU involved, and runs the
+ring test, byte and dword copies (memmove on overlap) and fills
+byte-exact, three sessions in a row with no reset. Fill size 0 is bytes, 2
+dwords. Next: Phase 4, DirectDraw on SDMA. Register facts below come from
 Linux `amdgpu` source; the records say which ones the chip has confirmed.
 
 Target: the GPU in AMD's Embedded GX-420GI ("Merlin Falcon", 2015), PCI

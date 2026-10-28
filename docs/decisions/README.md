@@ -357,6 +357,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-27 The HD 5450 renders to linear surfaces once CB_COLOR0_ATTRIB's NON_DISP_TILING_ORDER is set](2026-10-27-cedar-linear-colour-buffer.md)
 - [2026-10-28 Tier-0 `vbe` on an AMD Radeon R7E (Carrizo, 1002:9874): enable-ok, GDI passes](2026-10-28-m-xp7053-carrizo-vbe-first-look.md)
 - [2026-10-28 Carrizo register probe: a 512 MiB carve-out, no microcode loaded, GFX powered](2026-10-28-carrizo-register-probe.md)
+- [2026-10-28 Carrizo's SDMA0 runs AMD microcode loaded through its own port: copies and fills byte-exact](2026-10-28-carrizo-sdma-write-probe.md)
 
 ## DOS box and mini-VDD
 
