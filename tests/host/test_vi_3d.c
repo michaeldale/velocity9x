@@ -323,6 +323,8 @@ static void test_tl_shaders(void)
 static void test_texture_shaders(void)
 {
     static const v9x_u32 replace[V9X_VI_TEXTURE_PS_DWORDS] = {
+        0xbe8e017eul,   /* s_mov_b64 s[14:15], exec */
+        0xbefe077eul,   /* s_wqm_b64 exec, exec */
         0xbefc000cul,   /* s_mov_b32 m0, s12 (PRIM_MASK) */
         0xbf800000ul,   /* s_nop 0 */
         0xd4080400ul,   /* v_interp_p1_f32 v2, v0, attr1.x */
@@ -332,6 +334,7 @@ static void test_texture_shaders(void)
         0xf0800f00ul,   /* image_sample v[4:7], v[2:3], s[0:7], s[8:11] */
         0x00400402ul,   /*   dmask:0xf */
         0xbf8c0000ul,   /* s_waitcnt 0 */
+        0xbefe010eul,   /* s_mov_b64 exec, s[14:15] */
         0xd2960002ul,   /* v_cvt_pkrtz_f16_f32 v2, v4, v5 */
         0x00020b04ul,
         0xd2960003ul,   /* v_cvt_pkrtz_f16_f32 v3, v6, v7 */
@@ -340,7 +343,7 @@ static void test_texture_shaders(void)
         0x00000302ul,
         0xbf810000ul    /* s_endpgm */
     };
-    static const v9x_u32 modulate_tail[V9X_VI_MODULATE_PS_DWORDS - 6u] = {
+    static const v9x_u32 modulate_tail[V9X_VI_MODULATE_PS_DWORDS - 8u] = {
         0xd4200000ul,   /* v_interp_p1_f32 v8, v0, attr0.x */
         0xd4210001ul,   /* v_interp_p2_f32 v8, v1, attr0.x */
         0xd4240100ul,   /* v_interp_p1_f32 v9, v0, attr0.y */
@@ -352,6 +355,7 @@ static void test_texture_shaders(void)
         0xf0800f00ul,   /* image_sample v[4:7], v[2:3], s[0:7], s[8:11] */
         0x00400402ul,
         0xbf8c0000ul,   /* s_waitcnt 0 */
+        0xbefe010eul,   /* s_mov_b64 exec, s[14:15] */
         0x0a080908ul,   /* v_mul_f32 v4, v8, v4 */
         0x0a0a0b09ul,   /* v_mul_f32 v5, v9, v5 */
         0x0a0c0d0aul,   /* v_mul_f32 v6, v10, v6 */
@@ -369,9 +373,15 @@ static void test_texture_shaders(void)
     CHECK(v9x_vi_shader_texture_ps(out) == V9X_VI_TEXTURE_PS_DWORDS);
     CHECK(memcmp(out, replace, sizeof(replace)) == 0);
     CHECK(v9x_vi_shader_modulate_ps(out) == V9X_VI_MODULATE_PS_DWORDS);
-    /* The same six-dword head: M0, the wait, parameter 1's u and v. */
-    CHECK(memcmp(out, replace, 6u * sizeof(v9x_u32)) == 0);
-    CHECK(memcmp(out + 6, modulate_tail, sizeof(modulate_tail)) == 0);
+    /* The same eight-dword head: EXEC kept, WQM, M0, the wait, parameter
+     * 1's u and v. */
+    CHECK(memcmp(out, replace, 8u * sizeof(v9x_u32)) == 0);
+    CHECK(memcmp(out + 8, modulate_tail, sizeof(modulate_tail)) == 0);
+
+    /* gfx8_asm_sop1.s: s_mov_b64 s[10:11], exec [7e 01 8a be];
+     * s_wqm_b64 exec, s[2:3] [02 07 fe be]. */
+    CHECK(v9x_vi_s_mov_b64(10ul, V9X_VI_EXEC) == 0xbe8a017eul);
+    CHECK(v9x_vi_s_wqm_b64(V9X_VI_EXEC, 2ul) == 0xbefe0702ul);
 }
 
 /* Direct3D's specular: parameter 2 interpolated and added to the colour's
@@ -422,15 +432,15 @@ static void test_specular_shaders(void)
     /* Texture: the texel in v4-v7, specular into v8-v10. */
     count = v9x_vi_shader_d3d_ps(V9X_VI_PS_TEXTURE, 1, out);
     CHECK(count == V9X_VI_TEXTURE_PS_DWORDS + 9ul);
-    CHECK(out[9] == 0xd4200800ul);      /* v_interp_p1_f32 v8, v0, attr2.x */
-    CHECK(out[15] == 0x02080908ul);     /* v_add_f32 v4, v8, v4 */
-    CHECK(out[17] == 0x020c0d0aul);     /* v_add_f32 v6, v10, v6 */
+    CHECK(out[12] == 0xd4200800ul);     /* v_interp_p1_f32 v8, v0, attr2.x */
+    CHECK(out[18] == 0x02080908ul);     /* v_add_f32 v4, v8, v4 */
+    CHECK(out[20] == 0x020c0d0aul);     /* v_add_f32 v6, v10, v6 */
 
     /* Modulate: diffuse in v8-v11, specular into v12-v14. */
     count = v9x_vi_shader_d3d_ps(V9X_VI_PS_MODULATE, 1, out);
     CHECK(count == V9X_VI_MODULATE_PS_DWORDS + 9ul);
-    CHECK(out[21] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
-    CHECK(out[27] == 0x0208090cul);     /* v_add_f32 v4, v12, v4 */
+    CHECK(out[24] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
+    CHECK(out[30] == 0x0208090cul);     /* v_add_f32 v4, v12, v4 */
 }
 
 /* The built shaders: nothing extra is the plain shader; fog, the alpha
@@ -501,8 +511,8 @@ static void test_built_shaders(void)
     ps.key_tolerance2 = 0x38800000ul;
     count = v9x_vi_shader_d3d_ps_built(&ps, out);
     (void)v9x_vi_shader_texture_ps(plain);
-    CHECK(memcmp(out, plain, 9ul * sizeof(v9x_u32)) == 0);
-    at = 9ul;
+    CHECK(memcmp(out, plain, 12ul * sizeof(v9x_u32)) == 0);
+    at = 12ul;
     CHECK(out[at++] == 0x062008fful);   /* v_subrev_f32 v16, 0, v4 */
     CHECK(out[at++] == 0ul);
     CHECK(out[at++] == 0x0a222110ul);   /* v_mul_f32 v17, v16, v16 */

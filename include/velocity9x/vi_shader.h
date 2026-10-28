@@ -106,6 +106,13 @@ v9x_u32 v9x_vi_s_cbranch_execz(v9x_u32 simm16);
 v9x_u32 v9x_vi_exp_null_done(v9x_u32 *out);
 /* s_mov_b32 m0, s<ssrc>. */
 v9x_u32 v9x_vi_s_mov_m0(v9x_u32 ssrc);
+/* SOP1's 64-bit moves for the whole-quad mode a sampling PS runs in:
+ * s_mov_b64 sdst, ssrc (op 1) and s_wqm_b64 sdst, ssrc (op 7), EXEC as
+ * V9X_VI_EXEC. Pinned against LLVM's GFX8 tests (gfx8_asm_sop1.s):
+ * s_mov_b64 s[10:11], exec BE8A017Eh, s_wqm_b64 exec, s[2:3] BEFE0702h. */
+#define V9X_VI_EXEC             126ul
+v9x_u32 v9x_vi_s_mov_b64(v9x_u32 sdst, v9x_u32 ssrc);
+v9x_u32 v9x_vi_s_wqm_b64(v9x_u32 sdst, v9x_u32 ssrc);
 /* image_sample v[vdata..], v[vaddr..], s[srsrc:srsrc+7], s[ssamp:ssamp+3]
  * with dmask, unnormalised off: two dwords to out. srsrc and ssamp are
  * multiples of 4. */
@@ -180,14 +187,15 @@ v9x_u32 v9x_vi_shader_gouraud_ps(v9x_u32 *out);
 /*
  * The textured pixel shaders. User SGPRs s0-s7 are the image descriptor
  * (T#), s8-s11 the sampler (S#), so PRIM_MASK is s12. Parameter 1's (u, v)
- * is interpolated into v2:v3 and sampled into v4-v7. Replace exports the
- * texel (eight VGPRs); modulate multiplies it by parameter 0, interpolated
- * into v8-v11 (twelve VGPRs).
+ * is interpolated into v2:v3 and sampled into v4-v7, in whole-quad mode
+ * with the pixels' EXEC kept in s14-s15 and put back after the sample.
+ * Replace exports the texel (eight VGPRs); modulate multiplies it by
+ * parameter 0, interpolated into v8-v11 (twelve VGPRs).
  */
 #define V9X_VI_TEXTURE_USER_SGPRS 12ul
-#define V9X_VI_TEXTURE_PS_DWORDS  16ul
+#define V9X_VI_TEXTURE_PS_DWORDS  19ul
 #define V9X_VI_TEXTURE_PS_VGPRS   8ul
-#define V9X_VI_MODULATE_PS_DWORDS 28ul
+#define V9X_VI_MODULATE_PS_DWORDS 31ul
 #define V9X_VI_MODULATE_PS_VGPRS  12ul
 v9x_u32 v9x_vi_shader_texture_ps(v9x_u32 *out);
 v9x_u32 v9x_vi_shader_modulate_ps(v9x_u32 *out);

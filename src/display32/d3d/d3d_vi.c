@@ -45,10 +45,14 @@ static const DWORD v9x_d3d_vi_ps_slot[V9X_D3D_VI_PS_COUNT] = {
     V9X_VI_CP_SLOT_PS_SPECULAR_FIRST + V9X_VI_PS_MODULATE
 };
 
-/* 16 and 32 bpp targets, Z16 1D-tiled, textures to 2048; the core clips
- * every triangle to the target (the guard band is not measured); pixel
- * centres at whole coordinates, which the PA is told (PIX_CENTER clear),
- * so the core moves nothing. */
+/* 16 and 32 bpp targets, Z16 1D-tiled, textures to 2048; pixel centres at
+ * whole coordinates, which the PA is told (PIX_CENTER clear), so the core
+ * moves nothing. Triangles go to the PA unclipped within +-8192, the
+ * scissor keeping the target's pixels, and DDI 6 programs are told of
+ * that band: V9XD32's T10 and three 3DMark 2000 runs drew with it on
+ * M-XP7053 (boots 31 and 33). It was tried for 3DMark's lines along
+ * triangle edges and did not change them; those were the sampler's level
+ * of detail outside whole-quad mode (vi_shader.c). */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     16ul,           /* target_bits_per_pixel */
     32752ul,        /* target_pitch_max */
@@ -59,7 +63,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     8192.0f,        /* coordinate_limit */
     16ul,           /* depth_bits_per_pixel */
     V9X_D3D_VI_SURFACE_ALIGN, /* texture_align */
-    1ul,            /* clip_in_core */
+    0ul,            /* clip_in_core: the PA's guard band */
     1ul,            /* depth_pitch_own: DB_DEPTH_SIZE takes the pitch */
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
@@ -68,7 +72,8 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     65504ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits: Z16 only for now */
     0ul,            /* centre_in_engine */
-    1ul             /* texture_stages */
+    1ul,            /* texture_stages */
+    1ul             /* guard_band_ddi6 */
 };
 
 /* RGB565 and ARGB8888: the T# data format, or UNKNOWN. */
@@ -330,8 +335,19 @@ static void v9x_d3d_vi_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
         if (next == 0 || next->lpGbl == 0 ||
             v9x_surface_offset(next) != texture->offset + offsets[found] ||
             (DWORD)next->lpGbl->lPitch != pitches[found] * bytes) {
+            /* Where the level was and where the layout wanted it, and its
+             * pitch beside the layout's (MipGapExpected, MipGapActual,
+             * D3dMipChainDelta in V9XTRACE). */
             if (next != 0) {
                 ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+                v9x_hal->d3d_diagnostics.mip_gap_expected =
+                    texture->offset + offsets[found];
+                v9x_hal->d3d_diagnostics.mip_gap_actual =
+                    next->lpGbl != 0 ? v9x_surface_offset(next) : 0ul;
+                v9x_hal->d3d_diagnostics.mip_chain_delta =
+                    (next->lpGbl != 0 ?
+                     ((DWORD)next->lpGbl->lPitch << 16) : 0ul) |
+                    ((pitches[found] * bytes) & 0xfffful);
             }
             break;
         }
@@ -779,6 +795,7 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
             ++v9x_hal->d3d_diagnostics.texture_placed;
+            v9x_hal->d3d_diagnostics.texture_placed_bytes += total;
             data->ddRVal = V9X_DD_OK;
             return V9X_DDHAL_DRIVER_HANDLED;
         }

@@ -126,8 +126,11 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
    - the mip layout was measured.
 
    V9XD32 passes at 16 and 32 bpp, as do V9XDDP's fog, specular, key,
-   4444 and mip checks (boot 28). Next: a game, and V9XDDP's rows that
-   still read 0, listed at the end of that record.
+   4444 and mip checks (boot 28).
+   [3DMark 2000](../decisions/2026-10-29-carrizo-3dmark2000.md) runs to
+   its score, with correct frames, since textured shaders sample in
+   whole-quad mode (boot 33). The engine draws in the PA's guard band.
+   Next: V9XDDP's rows that still read 0, and a game.
 
 ## Decisions
 

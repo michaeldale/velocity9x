@@ -255,7 +255,15 @@
 #define V9X_DEPTH_DWORDS        (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT / 2ul)
 #define V9X_DEPTH_CLEAR         0xfffffffful
 #define V9X_DEPTH_VERTICES      18ul
-#define V9X_TL_MAX_VERTICES     18ul
+#define V9X_TL_MAX_VERTICES     48ul
+/* /seams: the target covered by a 4x2 grid of cells, two triangles each,
+ * every inner edge shared; the inner nodes and the border nodes along
+ * their border moved by fractions of a pixel, Direct3D pixel centres as
+ * the HAL draws. A pixel left at the guard is a crack between two
+ * triangles. */
+#define V9X_SEAMS_COLUMNS       4ul
+#define V9X_SEAMS_ROWS          2ul
+#define V9X_SEAMS_VERTICES      48ul
 #define V9X_DEPTH_RED           0xffff0000ul
 #define V9X_DEPTH_GREEN         0xff00ff00ul
 #define V9X_DEPTH_BLUE          0xff0000fful
@@ -456,6 +464,7 @@ static int v9x_depth;
 static int v9x_texture;
 static int v9x_modulate;
 static int v9x_blend;
+static int v9x_seams;
 static int v9x_blend_specular;
 static int v9x_mip;
 static DWORD v9x_mip_level;
@@ -732,6 +741,75 @@ static void v9x_tl_rect(DWORD *out, DWORD x0, DWORD y0, DWORD x1, DWORD y1,
     v9x_tl_vertex(out + 40, x0, y1, z, left, 0ul, V9X_FLOAT_ONE);
 }
 
+static DWORD v9x_float_bits(float value)
+{
+    union {
+        float f;
+        DWORD d;
+    } bits;
+
+    bits.f = value;
+    return bits.d;
+}
+
+/* /seams' node (column, row): on the border it stays on the border, moved
+ * along it; inside, moved both ways. The fractions are odd 256ths and
+ * plain decimals, so edges pass between and through quantised centres. */
+static void v9x_seams_node(DWORD column, DWORD row, float *x, float *y)
+{
+    static const float dx[3] = { 0.37f, -0.4609375f, 0.5f };
+    static const float dy[3] = { -0.29f, 0.25f, 0.3359375f };
+
+    *x = (float)(long)(column * (V9X_TARGET_PITCH / V9X_SEAMS_COLUMNS));
+    *y = (float)(long)(row * (V9X_TARGET_HEIGHT / V9X_SEAMS_ROWS));
+    if (column != 0ul && column != V9X_SEAMS_COLUMNS) {
+        *x += dx[(column + row) % 3ul];
+    }
+    if (row != 0ul && row != V9X_SEAMS_ROWS) {
+        *y += dy[column % 3ul];
+    }
+}
+
+static void v9x_seams_vertex(DWORD *out, DWORD column, DWORD row)
+{
+    float x;
+    float y;
+
+    v9x_seams_node(column, row, &x, &y);
+    v9x_tl_vertex(out, v9x_float_bits(x), v9x_float_bits(y), V9X_FLOAT_HALF,
+                  V9X_PIXEL_RED, 0ul, 0ul);
+}
+
+/* Each cell two triangles, the diagonal alternating, every edge between
+ * two cells or triangles drawn from the same two nodes. */
+static void v9x_seams_vertices(DWORD *v)
+{
+    DWORD column;
+    DWORD row;
+    DWORD at = 0ul;
+
+    for (row = 0ul; row < V9X_SEAMS_ROWS; ++row) {
+        for (column = 0ul; column < V9X_SEAMS_COLUMNS; ++column) {
+            if (((column + row) & 1ul) == 0ul) {
+                v9x_seams_vertex(v + at, column, row);
+                v9x_seams_vertex(v + at + 8ul, column + 1ul, row);
+                v9x_seams_vertex(v + at + 16ul, column, row + 1ul);
+                v9x_seams_vertex(v + at + 24ul, column + 1ul, row);
+                v9x_seams_vertex(v + at + 32ul, column + 1ul, row + 1ul);
+                v9x_seams_vertex(v + at + 40ul, column, row + 1ul);
+            } else {
+                v9x_seams_vertex(v + at, column, row);
+                v9x_seams_vertex(v + at + 8ul, column + 1ul, row + 1ul);
+                v9x_seams_vertex(v + at + 16ul, column, row + 1ul);
+                v9x_seams_vertex(v + at + 24ul, column, row);
+                v9x_seams_vertex(v + at + 32ul, column + 1ul, row);
+                v9x_seams_vertex(v + at + 40ul, column + 1ul, row + 1ul);
+            }
+            at += 6ul * V9X_TL_DWORDS;
+        }
+    }
+}
+
 static void v9x_tl_vertices(void)
 {
     DWORD *v = v9x_vertices;
@@ -754,6 +832,11 @@ static void v9x_tl_vertices(void)
         v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
                     V9X_BLEND_SOURCE, V9X_BLEND_SOURCE);
         v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
+    if (v9x_seams) {
+        v9x_seams_vertices(v);
+        v9x_vertex_count = V9X_SEAMS_VERTICES;
         return;
     }
     if (v9x_texture) {
@@ -855,6 +938,7 @@ static int v9x_build_run(DWORD lo, DWORD hi)
         draw.texture_pitch = V9X_TARGET_PITCH;
         draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
         draw.texture_bilinear = 0ul;
+        draw.d3d_pixel_centres = v9x_seams ? 1ul : 0ul;
         if (v9x_mip) {
             draw.texture_low = lo + V9X_MIP;
             draw.texture_base_level = v9x_mip_level;
@@ -1336,6 +1420,47 @@ static void v9x_verify_texture(const DWORD *target)
     v9x_pass(v9x_modulate ? "Modulate" : "Texture", bad == 0ul);
 }
 
+/* /seams: a pixel the grid left at the guard is a crack. The map shows
+ * '#' drawn, '.' a crack, '?' anything else. */
+static void v9x_verify_seams(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD cracks = 0ul;
+    DWORD other = 0ul;
+    DWORD first = 0xfffffffful;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            if (pixel == V9X_GUARD_VALUE) {
+                text[x] = '.';
+                if (cracks++ == 0ul) {
+                    first = y * V9X_TARGET_PITCH + x;
+                }
+            } else if (pixel != V9X_PIXEL_RED) {
+                text[x] = '?';
+                ++other;
+            } else {
+                text[x] = '#';
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    v9x_number("Result", "SeamCracks", cracks);
+    v9x_number("Result", "SeamOther", other);
+    if (cracks != 0ul) {
+        v9x_number("Result", "SeamFirstCrack", first);
+    }
+    v9x_pass("Seams", cracks == 0ul && other == 0ul);
+}
+
 /* The pattern's dword index of a value: the step is odd, so it has an
  * inverse mod 2^32; Newton's iteration doubles the correct low bits from
  * the three a * a = 1 (mod 8) gives. */
@@ -1503,9 +1628,12 @@ void __stdcall V9xCarrizo3dEntry(void)
     v9x_mip_level = v9x_switch_digit("/mip:");
     v9x_mip = v9x_mip_level < V9X_MIP_LEVELS;
     v9x_texture = v9x_mip || v9x_modulate || v9x_switch_given("/texture");
-    v9x_gouraud = v9x_depth || v9x_texture || v9x_blend ||
+    v9x_seams = v9x_switch_given("/seams");
+    v9x_gouraud = v9x_depth || v9x_texture || v9x_blend || v9x_seams ||
                   v9x_switch_given("/gouraud");
-    if (v9x_blend) {
+    if (v9x_seams) {
+        v9x_text("Report", "Draw", "seams");
+    } else if (v9x_blend) {
         v9x_text("Report", "Draw", v9x_blend_specular ? "blendspec" : "blend");
     } else if (v9x_mip) {
         v9x_text("Report", "Draw", "mip");
@@ -1678,7 +1806,9 @@ void __stdcall V9xCarrizo3dEntry(void)
              probe[V9X_PROBE_AT_Y + 1u] == 0x40800000ul &&
              probe[V9X_PROBE_AT_Y + 2u] == 0x41400000ul);
     v9x_pass("PsRan", probe[V9X_PROBE_AT_PS] != V9X_GUARD_VALUE);
-    if (v9x_blend) {
+    if (v9x_seams) {
+        v9x_verify_seams(v9x_result.block + 2);
+    } else if (v9x_blend) {
         v9x_verify_blend(v9x_result.block + 2);
     } else if (v9x_mip) {
         v9x_verify_mip(v9x_result.block + 2);

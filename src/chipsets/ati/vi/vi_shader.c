@@ -37,6 +37,11 @@
 /* The textured PS's SGPRs (vi_shader.h). */
 #define V9X_VI_TEXTURE_T_SGPR   0ul
 #define V9X_VI_TEXTURE_S_SGPR   8ul
+/* Where the textured PS keeps its exact EXEC while it samples in whole-
+ * quad mode: s14-s15, free after PRIM_MASK in s12 (24 SGPRs). */
+#define V9X_VI_TEXTURE_EXEC_SGPR 14ul
+#define V9X_VI_SOP1_OP_MOV_B64  1ul
+#define V9X_VI_SOP1_OP_WQM_B64  7ul
 /* 1/255 as an IEEE single, the D3DCOLOR byte scale. */
 #define V9X_VI_FLOAT_1_OVER_255 0x3b808081ul
 /* TL vertex: sx, sy, sz, rhw in the first 16 bytes, D3DCOLOR at 16. */
@@ -133,6 +138,18 @@ v9x_u32 v9x_vi_exp_null_done(v9x_u32 *out)
 v9x_u32 v9x_vi_s_mov_m0(v9x_u32 ssrc)
 {
     return V9X_VI_SOP1_MOV_B32 | (V9X_VI_M0 << 16) | (ssrc & 0xfful);
+}
+
+v9x_u32 v9x_vi_s_mov_b64(v9x_u32 sdst, v9x_u32 ssrc)
+{
+    return V9X_VI_SOP1_MOV_B32 | ((sdst & 0x7ful) << 16) |
+           (V9X_VI_SOP1_OP_MOV_B64 << 8) | (ssrc & 0xfful);
+}
+
+v9x_u32 v9x_vi_s_wqm_b64(v9x_u32 sdst, v9x_u32 ssrc)
+{
+    return V9X_VI_SOP1_MOV_B32 | ((sdst & 0x7ful) << 16) |
+           (V9X_VI_SOP1_OP_WQM_B64 << 8) | (ssrc & 0xfful);
 }
 
 v9x_u32 v9x_vi_image_sample(v9x_u32 vdata, v9x_u32 vaddr, v9x_u32 srsrc,
@@ -388,13 +405,22 @@ v9x_u32 v9x_vi_shader_gouraud_ps(v9x_u32 *out)
     return v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, 0, out);
 }
 
-/* M0 from PRIM_MASK in s12, after the descriptors; then parameter 1's u
- * and v into v2 and v3. */
+/* The pixels' EXEC kept, then whole-quad mode: the sampler takes the level
+ * of detail from the differences across each 2x2 quad, and on a
+ * triangle's edge the quad's pixels outside it are lanes EXEC leaves off
+ * unless WQM turns them on, so their texcoords are garbage and the level
+ * is anyone's. One level hides it; a mip chain drew 3DMark 2000's
+ * triangle edges as lines of a wrong level (M-XP7053 boot 31, gone with
+ * the mip filter off at boot 32). radeonsi does the same for any shader
+ * sampling with an implicit level. Then M0 from PRIM_MASK in s12, after
+ * the descriptors, and parameter 1's u and v into v2 and v3. */
 static v9x_u32 v9x_vi_texture_ps_head(v9x_u32 *out)
 {
     v9x_u32 count = 0ul;
     v9x_u32 chan;
 
+    out[count++] = v9x_vi_s_mov_b64(V9X_VI_TEXTURE_EXEC_SGPR, V9X_VI_EXEC);
+    out[count++] = v9x_vi_s_wqm_b64(V9X_VI_EXEC, V9X_VI_EXEC);
     out[count++] = v9x_vi_s_mov_m0(V9X_VI_TEXTURE_USER_SGPRS);
     out[count++] = v9x_vi_s_nop(0ul);
     for (chan = 0ul; chan < 2ul; ++chan) {
@@ -406,7 +432,8 @@ static v9x_u32 v9x_vi_texture_ps_head(v9x_u32 *out)
     return count;
 }
 
-/* The sample into v4-v7, waited for. */
+/* The sample into v4-v7, waited for; then the pixels' own EXEC back, so
+ * nothing after it - a kill, an export - acts for a helper lane. */
 static v9x_u32 v9x_vi_texture_ps_sample(v9x_u32 *out)
 {
     v9x_u32 count;
@@ -414,6 +441,7 @@ static v9x_u32 v9x_vi_texture_ps_sample(v9x_u32 *out)
     count = v9x_vi_image_sample(4ul, 2ul, V9X_VI_TEXTURE_T_SGPR,
                                 V9X_VI_TEXTURE_S_SGPR, V9X_VI_DMASK_RGBA, out);
     out[count++] = v9x_vi_s_waitcnt(V9X_VI_WAITCNT_ALL);
+    out[count++] = v9x_vi_s_mov_b64(V9X_VI_EXEC, V9X_VI_TEXTURE_EXEC_SGPR);
     return count;
 }
 
