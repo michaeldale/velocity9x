@@ -119,6 +119,10 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\evergreen\eg_shader.c',
         # Evergreen PM4 streams: CP bring-up, default state, a batch.
         'src\chipsets\ati\evergreen\eg_3d.c',
+        # Carrizo SDMA: Evergreen's DMA plans as SDMA packets, no I/O.
+        'src\chipsets\ati\vi\vi_sdma.c',
+        # Carrizo SDMA microcode (generated from linux-firmware), data only.
+        'src\chipsets\ati\vi\vi_sdma_microcode.c',
         'tests\host\test_pe_export.c',
         'tests\host\test_pe_import.c',
         # The generated OpenGL dispatch table (gl_dispatch_gen.h beside the
@@ -314,6 +318,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_eg_dma.c',
         'tests\host\test_eg_shader.c',
         'tests\host\test_eg_3d.c',
+        'tests\host\test_vi_sdma.c',
         'tests\host\test_main.c'
     )
 

@@ -384,12 +384,15 @@
             Adapter = 'AMD Radeon R7E (Carrizo)'
             ClockDetector = 'ati-vi-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Tier-0 of docs\plans\ati-carrizo-gfx8.md. Every engine on the
-            # chip needs AMD microcode first; the CPU draws until one runs.
-            Acceleration = 'none'
+            # Every engine on the chip needs AMD microcode first. DirectDraw
+            # fill and copy go to SDMA0, its microcode loaded through its own
+            # port and its packets measured byte-exact on this chip
+            # (docs\decisions\2026-10-28-carrizo-sdma-write-probe.md); the
+            # rest is drawn by the CPU (docs\plans\ati-carrizo-gfx8.md).
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'ATI_VI'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # M-XP7053's VBE 4F00h reports 48 MiB; the heap is clamped to the
             # family's 16 MiB mapping, and this is that mapping.
             VideoMemoryBytes = 16777216

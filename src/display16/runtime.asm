@@ -2949,6 +2949,146 @@ V9xMiniEgMapDone:
     retf    20
 V9XMINIEGMAP ENDP
 
+; WORD FAR PASCAL V9xPciReadViBars(DWORD FAR *bar0, DWORD FAR *bar5)
+; AMD Carrizo: BAR0, the window into the carve-out, a 64-bit memory BAR
+; read with its high half (14h), which must be zero and the BAR 256 MiB
+; aligned; and BAR5 (24h), the 256 KiB register window, a 32-bit memory BAR
+; 256 KiB aligned - it cannot be 64-bit, whose high half would be 28h, the
+; CardBus CIS pointer. M-XP7053 reads E000000Ch and FEB00000h
+; (docs\decisions\2026-10-28-carrizo-register-probe.md). A read-only config
+; access; a refusal changes no stage code.
+PUBLIC V9XPCIREADVIBARS
+V9XPCIREADVIBARS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      V9xPciReadViBarsFailed
+
+    ; BAR0 high half, then low half.
+    mov     di, 0014h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadViBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadViBarsFailed
+    or      ecx, ecx
+    jnz     V9xPciReadViBarsFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadViBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadViBarsFailed
+    mov     edx, ecx
+    and     edx, 00000007h
+    cmp     edx, 00000004h
+    jne     V9xPciReadViBarsFailed
+    mov     edx, ecx
+    and     edx, 0fffffff0h
+    jz      V9xPciReadViBarsFailed
+    test    edx, 0fffffffh
+    jnz     V9xPciReadViBarsFailed
+
+    ; BAR5: memory, 32-bit (type bits 2:1 zero).
+    mov     di, 0024h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadViBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadViBarsFailed
+    mov     eax, ecx
+    and     eax, 00000007h
+    jnz     V9xPciReadViBarsFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      V9xPciReadViBarsFailed
+    test    eax, 0003ffffh
+    jnz     V9xPciReadViBarsFailed
+
+    ; PASCAL pushes left to right: bar5 is the nearest argument.
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xPciReadViBarsDone
+V9xPciReadViBarsFailed:
+    xor     ax, ax
+V9xPciReadViBarsDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    8
+V9XPCIREADVIBARS ENDP
+
+; WORD FAR PASCAL V9xMiniViMap(DWORD bar5, DWORD bar0, DWORD FAR *mmio,
+;                              DWORD FAR *ring, DWORD FAR *ring_bytes)
+; V9XMINI_FN_VI_MAP: the mini-VDD maps the Carrizo register window and the
+; SDMA ring window behind BAR0. V9xMiniEgMap's contract: on a refusal *mmio
+; is 0, *ring_bytes holds the mini-VDD's reason (FFFFFFFFh when the API
+; itself was unreachable) and *ring the value it refused.
+PUBLIC V9XMINIVIMAP
+V9XMINIVIMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    esi
+    push    es
+    xor     ecx, ecx
+    mov     edx, 0ffffffffh
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniViMapFailed
+    ; PASCAL pushes left to right: bar5 [bp+22], bar0 [bp+18], mmio
+    ; [bp+14], ring [bp+10], ring_bytes [bp+6].
+    mov     ebx, dword ptr [bp+22]
+    mov     ecx, dword ptr [bp+18]
+    mov     eax, V9XMINI_FN_VI_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniViMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     esi, ebx
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], ecx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniViMapDone
+V9xMiniViMapFailed:
+    les     bx, dword ptr [bp+14]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], ecx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    xor     ax, ax
+V9xMiniViMapDone:
+    pop     es
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    20
+V9XMINIVIMAP ENDP
+
 ; WORD FAR PASCAL V9xMiniR128MmioMap(DWORD bar2, DWORD FAR *linear)
 ; V9XMINI_FN_R128_MMIO_MAP: the mini-VDD maps the Rage 128's 16 KiB register
 ; BAR, checks the vendor in its configuration copy, and returns the linear

@@ -13,7 +13,12 @@ with power gating off. Phase 3's write probe passed
 takes its microcode through its own port, no SMU involved, and runs the
 ring test, byte and dword copies (memmove on overlap) and fills
 byte-exact, three sessions in a row with no reset. Fill size 0 is bytes, 2
-dwords. Next: Phase 4, DirectDraw on SDMA. Register facts below come from
+dwords. Phase 4 runs on the chip
+([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)):
+DirectDraw fill and copy on SDMA0 through the HAL, pixel-correct at 16 and
+32 bpp and across mode cycles, every blit on the engine, with the SDMA
+microcode in the tree under LICENSE.amdgpu. Next: Phase 5, flips. Register
+facts below come from
 Linux `amdgpu` source; the records say which ones the chip has confirmed.
 
 Target: the GPU in AMD's Embedded GX-420GI ("Merlin Falcon", 2015), PCI

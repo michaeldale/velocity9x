@@ -92,6 +92,16 @@
  * probe.md). No Direct3D engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_EVERGREEN 11ul
+/*
+ * AMD Carrizo SDMA engine (engines\eng_vi.c): solid fill and screen copy
+ * as Evergreen's DMA plans written as SDMA packets
+ * (src\chipsets\ati\vi\vi_sdma.c), through a ring in the carve-out behind
+ * the 256 KiB register BAR, with AMD's microcode loaded into the engine
+ * directly. The packets ran byte-exact on a Radeon R7E
+ * (docs\decisions\2026-10-28-carrizo-sdma-write-probe.md). No Direct3D
+ * engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_VI       12ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

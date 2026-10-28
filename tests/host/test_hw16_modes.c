@@ -177,6 +177,10 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
 const V9X_HW16_DEVICE v9x_vi_carrizo_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write)
+{
+    (void)write;
+}
 void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write)
 {
     (void)write;

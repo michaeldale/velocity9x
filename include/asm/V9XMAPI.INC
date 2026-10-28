@@ -577,6 +577,22 @@ V9XMINI_FN_R128_AGP_RING    EQU 0024h
 ; already valid) and wrote no MSR (M-BXMFA8 boots 4-6, 2026-10-26).
 V9XMINI_FN_EG_MAP           EQU 0026h
 
+; AMD Carrizo (Radeon R7E, GCN 3): map the 256 KiB register BAR (BAR5) and
+; the SDMA engine's ring window, and say where. EG_MAP's contract with
+; three differences: the register BAR is BAR5, a 32-bit BAR 256 KiB
+; aligned; the window behind BAR0 is the carve-out's, 512 MiB on M-XP7053
+; (docs\decisions\2026-10-28-carrizo-register-probe.md), where the SDMA
+; write probe ran (docs\decisions\2026-10-28-carrizo-sdma-write-probe.md);
+; and it is 4 MiB, so a later 3D engine can share it.
+;
+; In: EBX = BAR5's physical base, ECX = BAR0's. Out: AX=1, EBX = linear
+; address of the register window, ECX = linear address of the ring window,
+; EDX = its bytes; AX=0 leaves EBX zero, EDX the reason (1 BAR5's range or
+; alignment, 2 BAR0's, 3 a BAR moved since the first map, 4 the register
+; map failed, 5 CONFIG_MEMSIZE out of 256..4096, 6 the window map failed)
+; and ECX the value refused. Only the ati family image implements it.
+V9XMINI_FN_VI_MAP           EQU 0029h
+
 ; Write-combining through the page attribute table, for a machine whose BIOS
 ; leaves no MTRR pair to give (include\velocity9x\pat.h,
 ; docs\decisions\2026-10-28-haswell-pat-write-combining.md). The C policy

@@ -223,6 +223,18 @@ V9xEgMmioBase   dd 0
 V9xEgMmioLinear dd 0
 V9xEgBar0       dd 0
 V9xEgRingLinear dd 0
+
+; AMD Carrizo: the 256 KiB register BAR (BAR5) and the driver's window into
+; the carve-out, BAR0 + 240 MiB, 4 MiB (V9XMINI_FN_VI_MAP in V9XMAPI.INC):
+; the SDMA ring (vi_sdma.h, V9X_VI_RING_WINDOW_*). CONFIG_MEMSIZE is in MiB
+; there too; 512 on M-XP7053.
+V9X_VI_MMIO_BYTES       equ 00040000h
+V9X_VI_RING_OFFSET      equ 0f000000h
+V9X_VI_RING_BYTES       equ 00400000h
+V9xViMmioBase   dd 0
+V9xViMmioLinear dd 0
+V9xViBar0       dd 0
+V9xViRingLinear dd 0
 ENDIF
 
 IFDEF V9X_SIS_MMIO
@@ -2821,6 +2833,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_R128AgpRing
     cmp     ax, V9XMINI_FN_EG_MAP
     je      V9xMini_Api_EgMap
+    cmp     ax, V9XMINI_FN_VI_MAP
+    je      V9xMini_Api_ViMap
     cmp     ax, V9XMINI_FN_PAT_INFO
     je      V9xMini_Api_PatInfo
     cmp     ax, V9XMINI_FN_PAT_COVER
@@ -3964,6 +3978,87 @@ V9xMini_Api_EgMap_Failed:
 V9xMini_Api_EgMap_Refused_Bar2:
     mov     ecx, eax
 V9xMini_Api_EgMap_Refused:
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR5 physical, ECX = BAR0 physical. See V9XMINI_FN_VI_MAP in
+; V9XMAPI.INC. V9xMini_Api_EgMap's checks and order, over BAR5's size.
+V9xMini_Api_ViMap:
+IFDEF V9X_R128_MMIO
+    mov     eax, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    mov     edx, 1
+    cmp     eax, 01000000h
+    jb      V9xMini_Api_ViMap_Refused_Bar5
+    cmp     eax, 0fffc0000h
+    ja      V9xMini_Api_ViMap_Refused_Bar5
+    test    eax, V9X_VI_MMIO_BYTES - 1
+    jnz     V9xMini_Api_ViMap_Refused_Bar5
+    mov     edx, 2
+    test    ecx, ecx
+    jz      V9xMini_Api_ViMap_Refused
+    test    ecx, V9X_EG_BAR0_ALIGN
+    jnz     V9xMini_Api_ViMap_Refused
+
+    cmp     V9xViMmioLinear, 0
+    je      short V9xMini_Api_ViMap_Map
+    mov     edx, 3
+    cmp     eax, V9xViMmioBase
+    jne     V9xMini_Api_ViMap_Refused_Bar5
+    cmp     ecx, V9xViBar0
+    jne     V9xMini_Api_ViMap_Refused
+    jmp     V9xMini_Api_ViMap_Done
+
+V9xMini_Api_ViMap_Map:
+    mov     V9xViMmioBase, eax
+    mov     V9xViBar0, ecx
+    VMMcall _MapPhysToLinear,<eax,V9X_VI_MMIO_BYTES,0>
+    mov     edx, 4
+    mov     ecx, eax
+    cmp     eax, 0ffffffffh
+    je      V9xMini_Api_ViMap_Failed
+
+    ; As on Evergreen: a window that decodes nothing reads all ones, and
+    ; the carve-out window behind BAR0 is not mapped on its word.
+    mov     ecx, [eax+V9X_EG_CONFIG_MEMSIZE]
+    mov     edx, 5
+    cmp     ecx, V9X_EG_MEMSIZE_MIN_MIB
+    jb      V9xMini_Api_ViMap_Failed
+    cmp     ecx, V9X_EG_MEMSIZE_MAX_MIB
+    ja      V9xMini_Api_ViMap_Failed
+    push    eax
+    mov     edx, V9xViBar0
+    add     edx, V9X_VI_RING_OFFSET
+    VMMcall _MapPhysToLinear,<edx,V9X_VI_RING_BYTES,0>
+    pop     edx
+    mov     ecx, eax
+    cmp     eax, 0ffffffffh
+    jne     short V9xMini_Api_ViMap_Ring_Ok
+    mov     edx, 6
+    jmp     V9xMini_Api_ViMap_Failed
+V9xMini_Api_ViMap_Ring_Ok:
+    mov     V9xViRingLinear, eax
+    mov     V9xViMmioLinear, edx
+
+V9xMini_Api_ViMap_Done:
+    mov     eax, V9xViMmioLinear
+    mov     [ebp.Client_EBX], eax
+    mov     eax, V9xViRingLinear
+    mov     [ebp.Client_ECX], eax
+    mov     [ebp.Client_EDX], V9X_VI_RING_BYTES
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_ViMap_Failed:
+    mov     V9xViMmioBase, 0
+    mov     V9xViBar0, 0
+    jmp     short V9xMini_Api_ViMap_Refused
+V9xMini_Api_ViMap_Refused_Bar5:
+    mov     ecx, eax
+V9xMini_Api_ViMap_Refused:
     mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_ECX], ecx
     mov     [ebp.Client_EDX], edx

@@ -140,6 +140,12 @@ $sources = @(
     "src\chipsets\ati\evergreen\eg_shader.c",
     "src\display32\d3d\d3d_eg_map.c",
     "src\display32\d3d\d3d_eg.c",
+    # The Carrizo SDMA engine: Evergreen's DMA plans as SDMA packets
+    # through the host-tested builder, and its microcode (licence in
+    # NOTICES.TXT), in a ring in the carve-out.
+    "src\display32\engines\eng_vi.c",
+    "src\chipsets\ati\vi\vi_sdma.c",
+    "src\chipsets\ati\vi\vi_sdma_microcode.c",
     # The Haswell blitter: fill and copy on the BCS ring through the
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",
