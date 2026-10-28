@@ -1,0 +1,350 @@
+/*
+ * AMD Carrizo (GFX8) PM4 streams; see include\velocity9x\vi_3d.h.
+ */
+#include "velocity9x/vi_3d.h"
+#include "velocity9x/vi_clear_state.h"
+
+/* cp_gfx_start (Linux v4.9 gfx_v8_0.c). */
+#define VI_PREAMBLE_BEGIN_CLEAR     0x20000000ul
+#define VI_PREAMBLE_END_CLEAR       0x30000000ul
+#define VI_CONTEXT_CONTROL_LOAD     0x80000000ul
+#define VI_CE_PARTITION_BASE        3ul
+#define VI_CE_PARTITION_SIZE        0x8000ul
+/* PA_SC_RASTER_CONFIG and _1 for CHIP_CARRIZO. */
+#define VI_PA_SC_RASTER_CONFIG      0xa0d4ul
+#define VI_RASTER_CONFIG            0x00000002ul
+#define VI_RASTER_CONFIG_1          0x00000000ul
+
+/* Context registers (gfx_8_0_d.h dword indices). */
+#define VI_DB_RENDER_CONTROL        0xa000ul
+#define VI_PA_SC_SCREEN_SCISSOR_TL  0xa00cul
+#define VI_DB_Z_INFO                0xa010ul
+#define VI_PA_SC_WINDOW_OFFSET      0xa080ul
+#define VI_PA_SC_CLIPRECT_RULE      0xa083ul
+#define VI_CB_TARGET_MASK           0xa08eul
+#define VI_PA_SC_GENERIC_SCISSOR_TL 0xa090ul
+#define VI_PA_SC_VPORT_SCISSOR_0_TL 0xa094ul
+#define VI_SPI_PS_INPUT_CNTL_0      0xa191ul
+#define VI_SPI_VS_OUT_CONFIG        0xa1b1ul
+#define VI_SPI_PS_INPUT_ENA         0xa1b3ul
+#define VI_SPI_PS_IN_CONTROL        0xa1b6ul
+#define VI_SPI_BARYC_CNTL           0xa1b8ul
+#define VI_SPI_SHADER_POS_FORMAT    0xa1c3ul
+#define VI_CB_BLEND0_CONTROL        0xa1e0ul
+#define VI_DB_DEPTH_CONTROL         0xa200ul
+#define VI_CB_COLOR_CONTROL         0xa202ul
+#define VI_DB_SHADER_CONTROL        0xa203ul
+#define VI_PA_CL_CLIP_CNTL          0xa204ul
+#define VI_PA_SU_SC_MODE_CNTL       0xa205ul
+#define VI_PA_CL_VTE_CNTL           0xa206ul
+#define VI_PA_CL_VS_OUT_CNTL        0xa207ul
+#define VI_VGT_GS_MODE              0xa290ul
+#define VI_VGT_SHADER_STAGES_EN     0xa2d5ul
+#define VI_PA_SU_VTX_CNTL           0xa2f9ul
+#define VI_PA_SC_AA_MASK            0xa30eul
+#define VI_CB_COLOR0_BASE           0xa318ul
+/* SH registers: each stage's RSRC3 sits just before its PGM_LO, and the
+ * VS's LATE_ALLOC between them. */
+#define VI_SPI_SHADER_PGM_RSRC3_PS  0x2c07ul
+#define VI_SPI_SHADER_USER_DATA_PS  0x2c0cul
+#define VI_SPI_SHADER_PGM_RSRC3_VS  0x2c46ul
+#define VI_SPI_SHADER_USER_DATA_VS  0x2c4cul
+#define VI_PA_SC_VPORT_ZMIN_0       0xa0b4ul
+/* UCONFIG registers. */
+#define VI_VGT_PRIMITIVE_TYPE       0xc242ul
+
+/* Field values (gfx_8_0_sh_mask.h, _enum.h). */
+#define VI_WINDOW_OFFSET_DISABLE    0x80000000ul
+#define VI_CLIPRECT_RULE_ALL        0x0000fffful
+#define VI_CB_TARGET_MASK_RGBA      0x0000000ful
+/* CB_COLOR_CONTROL: MODE CB_NORMAL (1) at 6:4, ROP3 copy (CCh) at 23:16. */
+#define VI_CB_COLOR_CONTROL_NORMAL  0x00cc0010ul
+/* PA_CL_CLIP_CNTL: CLIP_DISABLE (bit 16), DX_CLIP_SPACE_DEF (bit 19): the
+ * positions are screen pixels, so nothing is clipped. */
+#define VI_CLIP_CNTL_DISABLED       0x00090000ul
+/* PA_CL_VTE_CNTL: VTX_XY_FMT, VTX_Z_FMT, VTX_W0_FMT and no viewport
+ * transform: the position arrives in screen space. */
+#define VI_VTE_SCREEN_SPACE         0x00000700ul
+/* PA_SU_VTX_CNTL: PIX_CENTER 1, ROUND_MODE X_ROUND_TO_EVEN (2), QUANT_MODE
+ * 1/256th (5): radeonsi's. */
+#define VI_SU_VTX_CNTL              0x0000002dul
+#define VI_AA_MASK_ALL              0xfffffffful
+/* SPI_SHADER_POS_FORMAT POS0 SPI_SHADER_4COMP; SPI_SHADER_COL_FORMAT COL0
+ * SPI_SHADER_32_ABGR; SPI_SHADER_Z_FORMAT SPI_SHADER_ZERO. */
+#define VI_POS_FORMAT_4COMP         0x00000004ul
+#define VI_COL_FORMAT_32_ABGR       0x00000009ul
+/* SPI_PS_INPUT_ENA/ADDR PERSP_CENTER_ENA: one barycentric must be on. */
+#define VI_PS_INPUT_PERSP_CENTER    0x00000002ul
+/* SPI_PS_IN_CONTROL NUM_INTERP: the one parameter the VS exports. */
+#define VI_PS_IN_ONE_INTERP         0x00000001ul
+/* SPI_SHADER_PGM_RSRC1: VGPRS 1 (8), SGPRS 2 (24), FLOAT_MODE C0h, the
+ * value radeonsi's float mode gives. RSRC2 USER_SGPR at 5:1. */
+#define VI_RSRC1_SMALL              0x000c0081ul
+#define VI_RSRC2_USER_SGPRS(n)      ((v9x_u32)(n) << 1)
+/* SPI_SHADER_PGM_RSRC3: CU_EN 15:0 every CU, WAVE_LIMIT 21:16 the most,
+ * radeonsi's for both stages. Nothing else writes it, and with CU_EN 0 no
+ * wave launches (V9XCZ3D runs 1 and 2: the fence landed, no pixel did). */
+#define VI_RSRC3_ALL_CUS            0x003ffffful
+#define VI_FLOAT_ONE                0x3f800000ul
+#define VI_DI_PT_RECTLIST           0x11ul
+#define VI_DI_SRC_SEL_AUTO_INDEX    0x2ul
+/* ring_emit_fence_gfx: EOP_TCL1_ACTION_EN, EOP_TC_ACTION_EN,
+ * EOP_TC_WB_ACTION_EN, CACHE_FLUSH_AND_INV_TS_EVENT (14h), EVENT_INDEX 5;
+ * DATA_SEL 1 (32 bits), INT_SEL 0. */
+#define VI_EOP_FLUSH_EVENT          0x00038514ul
+#define VI_EOP_DATA_SEL_32          (1ul << 29)
+
+#define VI_SHADER_ALIGN             0xfful
+
+void v9x_vi_pm4_init(struct v9x_vi_pm4 *stream, v9x_u32 *dwords,
+                     v9x_u32 capacity)
+{
+    stream->dwords = dwords;
+    stream->count = 0ul;
+    stream->capacity = capacity;
+    stream->overflow = 0ul;
+}
+
+void v9x_vi_pm4_put(struct v9x_vi_pm4 *stream, v9x_u32 value)
+{
+    if (stream->count >= stream->capacity) {
+        stream->overflow = 1ul;
+        return;
+    }
+    stream->dwords[stream->count++] = value;
+}
+
+static void v9x_vi_pm4_set(struct v9x_vi_pm4 *stream, v9x_u32 opcode,
+                           v9x_u32 start, v9x_u32 reg,
+                           const v9x_u32 *values, v9x_u32 count)
+{
+    v9x_u32 index;
+
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(opcode, count));
+    v9x_vi_pm4_put(stream, reg - start);
+    for (index = 0ul; index < count; ++index) {
+        v9x_vi_pm4_put(stream, values[index]);
+    }
+}
+
+void v9x_vi_pm4_set_context(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                            const v9x_u32 *values, v9x_u32 count)
+{
+    v9x_vi_pm4_set(stream, V9X_VI_P3_SET_CONTEXT_REG,
+                   V9X_VI_CONTEXT_REG_START, reg, values, count);
+}
+
+void v9x_vi_pm4_set_sh(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                       const v9x_u32 *values, v9x_u32 count)
+{
+    v9x_vi_pm4_set(stream, V9X_VI_P3_SET_SH_REG, V9X_VI_SH_REG_START, reg,
+                   values, count);
+}
+
+void v9x_vi_pm4_set_uconfig(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                            v9x_u32 value)
+{
+    v9x_vi_pm4_set(stream, V9X_VI_P3_SET_UCONFIG_REG,
+                   V9X_VI_UCONFIG_REG_START, reg, &value, 1ul);
+}
+
+void v9x_vi_pm4_pad(struct v9x_vi_pm4 *stream)
+{
+    while ((stream->count % V9X_VI_RING_ALIGN_DWORDS) != 0ul &&
+           stream->overflow == 0ul) {
+        v9x_vi_pm4_put(stream, V9X_VI_RING_NOP);
+    }
+}
+
+static void v9x_vi_context1(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                            v9x_u32 value)
+{
+    v9x_vi_pm4_set_context(stream, reg, &value, 1ul);
+}
+
+void v9x_vi_3d_start(struct v9x_vi_pm4 *stream)
+{
+    v9x_u32 run;
+    v9x_u32 first = 0ul;
+    v9x_u32 raster[2];
+
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_PREAMBLE_CNTL, 0ul));
+    v9x_vi_pm4_put(stream, VI_PREAMBLE_BEGIN_CLEAR);
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_CONTEXT_CONTROL, 1ul));
+    v9x_vi_pm4_put(stream, VI_CONTEXT_CONTROL_LOAD);
+    v9x_vi_pm4_put(stream, VI_CONTEXT_CONTROL_LOAD);
+    for (run = 0ul; run < V9X_VI_CLEAR_STATE_RUNS; ++run) {
+        v9x_vi_pm4_set_context(stream, v9x_vi_clear_state_runs[run].first,
+                               v9x_vi_clear_state_values + first,
+                               v9x_vi_clear_state_runs[run].count);
+        first += v9x_vi_clear_state_runs[run].count;
+    }
+    raster[0] = VI_RASTER_CONFIG;
+    raster[1] = VI_RASTER_CONFIG_1;
+    v9x_vi_pm4_set_context(stream, VI_PA_SC_RASTER_CONFIG, raster, 2ul);
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_PREAMBLE_CNTL, 0ul));
+    v9x_vi_pm4_put(stream, VI_PREAMBLE_END_CLEAR);
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_CLEAR_STATE, 0ul));
+    v9x_vi_pm4_put(stream, 0ul);
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_SET_BASE, 2ul));
+    v9x_vi_pm4_put(stream, VI_CE_PARTITION_BASE);
+    v9x_vi_pm4_put(stream, VI_CE_PARTITION_SIZE);
+    v9x_vi_pm4_put(stream, VI_CE_PARTITION_SIZE);
+}
+
+/* A scissor pair: top-left with the window offset off, bottom-right. */
+static void v9x_vi_scissor(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                           v9x_u32 width, v9x_u32 height, int offset_bit)
+{
+    v9x_u32 values[2];
+
+    values[0] = offset_bit ? VI_WINDOW_OFFSET_DISABLE : 0ul;
+    values[1] = width | (height << 16);
+    v9x_vi_pm4_set_context(stream, reg, values, 2ul);
+}
+
+/* A pixel coordinate as IEEE single bits, by integer arithmetic: every
+ * value below 2^24 is exact, and the targets are far smaller. */
+static v9x_u32 v9x_vi_float_bits(v9x_u32 value)
+{
+    v9x_u32 exponent = 0ul;
+
+    if (value == 0ul) {
+        return 0ul;
+    }
+    while ((value >> exponent) > 1ul) {
+        ++exponent;
+    }
+    return ((127ul + exponent) << 23) |
+           ((value << (23ul - exponent)) & 0x007ffffful);
+}
+
+/* The 40-bit address >> 8, as a 32-bit register takes it: bits 39:32 in
+ * 31:24. */
+static v9x_u32 v9x_vi_address_256(v9x_u32 low, v9x_u32 high)
+{
+    return (low >> 8) | ((high & 0xfful) << 24);
+}
+
+v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
+                                const struct v9x_vi_solid_rect *rect)
+{
+    v9x_u32 values[13];
+    v9x_u32 index;
+
+    if (stream == 0 || rect == 0 || rect->pitch_pixels == 0ul ||
+        (rect->pitch_pixels % 8ul) != 0ul || rect->height == 0ul ||
+        rect->left >= rect->right || rect->top >= rect->bottom ||
+        rect->right > rect->pitch_pixels || rect->bottom > rect->height ||
+        ((rect->target_low | rect->vs_low | rect->ps_low) &
+         VI_SHADER_ALIGN) != 0ul || (rect->fence_low & 3ul) != 0ul ||
+        (rect->pitch_pixels * rect->height) % 64ul != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    /* The colour buffer: CB_COLOR0_BASE .. CLEAR_WORD1. PITCH and SLICE
+     * are TILE_MAX fields, 8 pixels and 64 pixels a tile, less one. */
+    for (index = 0ul; index < 13ul; ++index) {
+        values[index] = 0ul;
+    }
+    values[0] = v9x_vi_address_256(rect->target_low, rect->target_high);
+    values[1] = rect->pitch_pixels / 8ul - 1ul;
+    values[2] = (rect->pitch_pixels * rect->height) / 64ul - 1ul;
+    values[4] = (rect->format & 0x1ful) << 2;
+    values[5] = rect->tile_mode_index & 0x1ful;
+    v9x_vi_pm4_set_context(stream, VI_CB_COLOR0_BASE, values, 13ul);
+    values[0] = VI_CB_TARGET_MASK_RGBA;
+    values[1] = VI_CB_TARGET_MASK_RGBA;
+    v9x_vi_pm4_set_context(stream, VI_CB_TARGET_MASK, values, 2ul);
+    v9x_vi_context1(stream, VI_CB_COLOR_CONTROL, VI_CB_COLOR_CONTROL_NORMAL);
+    v9x_vi_context1(stream, VI_CB_BLEND0_CONTROL, 0ul);
+
+    /* No depth or stencil. */
+    v9x_vi_context1(stream, VI_DB_RENDER_CONTROL, 0ul);
+    values[0] = 0ul;
+    values[1] = 0ul;
+    v9x_vi_pm4_set_context(stream, VI_DB_Z_INFO, values, 2ul);
+    v9x_vi_context1(stream, VI_DB_DEPTH_CONTROL, 0ul);
+    v9x_vi_context1(stream, VI_DB_SHADER_CONTROL, 0ul);
+
+    /* Screen-space positions, nothing clipped or culled, every scissor
+     * the target. */
+    v9x_vi_context1(stream, VI_PA_CL_CLIP_CNTL, VI_CLIP_CNTL_DISABLED);
+    v9x_vi_context1(stream, VI_PA_SU_SC_MODE_CNTL, 0ul);
+    v9x_vi_context1(stream, VI_PA_CL_VTE_CNTL, VI_VTE_SCREEN_SPACE);
+    v9x_vi_context1(stream, VI_PA_CL_VS_OUT_CNTL, 0ul);
+    v9x_vi_context1(stream, VI_PA_SU_VTX_CNTL, VI_SU_VTX_CNTL);
+    v9x_vi_scissor(stream, VI_PA_SC_SCREEN_SCISSOR_TL, rect->pitch_pixels,
+                   rect->height, 0);
+    v9x_vi_context1(stream, VI_PA_SC_WINDOW_OFFSET, 0ul);
+    v9x_vi_scissor(stream, VI_PA_SC_WINDOW_OFFSET + 1ul, rect->pitch_pixels,
+                   rect->height, 1);
+    v9x_vi_context1(stream, VI_PA_SC_CLIPRECT_RULE, VI_CLIPRECT_RULE_ALL);
+    v9x_vi_scissor(stream, VI_PA_SC_GENERIC_SCISSOR_TL, rect->pitch_pixels,
+                   rect->height, 1);
+    v9x_vi_scissor(stream, VI_PA_SC_VPORT_SCISSOR_0_TL, rect->pitch_pixels,
+                   rect->height, 1);
+    values[0] = VI_AA_MASK_ALL;
+    values[1] = VI_AA_MASK_ALL;
+    v9x_vi_pm4_set_context(stream, VI_PA_SC_AA_MASK, values, 2ul);
+    values[0] = 0ul;
+    values[1] = VI_FLOAT_ONE;
+    v9x_vi_pm4_set_context(stream, VI_PA_SC_VPORT_ZMIN_0, values, 2ul);
+
+    /* The shader interface: one VS parameter, four position components,
+     * MRT0 as four 32-bit floats. */
+    v9x_vi_context1(stream, VI_SPI_VS_OUT_CONFIG, 0ul);
+    v9x_vi_context1(stream, VI_SPI_SHADER_POS_FORMAT, VI_POS_FORMAT_4COMP);
+    values[0] = 0ul;
+    values[1] = VI_COL_FORMAT_32_ABGR;
+    v9x_vi_pm4_set_context(stream, VI_SPI_SHADER_POS_FORMAT + 1ul, values,
+                           2ul);
+    values[0] = VI_PS_INPUT_PERSP_CENTER;
+    values[1] = VI_PS_INPUT_PERSP_CENTER;
+    v9x_vi_pm4_set_context(stream, VI_SPI_PS_INPUT_ENA, values, 2ul);
+    v9x_vi_context1(stream, VI_SPI_PS_IN_CONTROL, VI_PS_IN_ONE_INTERP);
+    v9x_vi_context1(stream, VI_SPI_PS_INPUT_CNTL_0, 0ul);
+    v9x_vi_context1(stream, VI_SPI_BARYC_CNTL, 0ul);
+    v9x_vi_context1(stream, VI_VGT_SHADER_STAGES_EN, 0ul);
+    v9x_vi_context1(stream, VI_VGT_GS_MODE, 0ul);
+
+    /* The shaders and their user SGPRs: PGM_LO is the address >> 8,
+     * PGM_HI what is above bit 39, nothing. */
+    values[0] = VI_RSRC3_ALL_CUS;
+    values[1] = 0ul;
+    values[2] = v9x_vi_address_256(rect->vs_low, rect->shader_high);
+    values[3] = 0ul;
+    values[4] = VI_RSRC1_SMALL;
+    values[5] = VI_RSRC2_USER_SGPRS(4);
+    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_PGM_RSRC3_VS, values, 6ul);
+    values[0] = v9x_vi_float_bits(rect->left);
+    values[1] = v9x_vi_float_bits(rect->top);
+    values[2] = v9x_vi_float_bits(rect->right);
+    values[3] = v9x_vi_float_bits(rect->bottom);
+    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 4ul);
+    values[0] = VI_RSRC3_ALL_CUS;
+    values[1] = v9x_vi_address_256(rect->ps_low, rect->shader_high);
+    values[2] = 0ul;
+    values[3] = VI_RSRC1_SMALL;
+    values[4] = VI_RSRC2_USER_SGPRS(4);
+    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_PGM_RSRC3_PS, values, 5ul);
+    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, rect->color, 4ul);
+
+    /* The draw: three vertices of a RECTLIST, auto-indexed. */
+    v9x_vi_pm4_set_uconfig(stream, VI_VGT_PRIMITIVE_TYPE, VI_DI_PT_RECTLIST);
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_NUM_INSTANCES, 0ul));
+    v9x_vi_pm4_put(stream, 1ul);
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
+    v9x_vi_pm4_put(stream, 3ul);
+    v9x_vi_pm4_put(stream, VI_DI_SRC_SEL_AUTO_INDEX);
+
+    /* The fence, once the draw is out of the pipe and the colour caches
+     * are flushed to memory. */
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
+    v9x_vi_pm4_put(stream, VI_EOP_FLUSH_EVENT);
+    v9x_vi_pm4_put(stream, rect->fence_low & ~3ul);
+    v9x_vi_pm4_put(stream, (rect->fence_high & 0xfffful) | VI_EOP_DATA_SEL_32);
+    v9x_vi_pm4_put(stream, rect->fence_value);
+    v9x_vi_pm4_put(stream, 0ul);
+    return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
+}

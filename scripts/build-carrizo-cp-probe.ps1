@@ -87,55 +87,66 @@ if (-not [Text.Encoding]::ASCII.GetString($vxdBytes).Contains('CZCP_DDB')) {
     throw 'CZCP.VXD is missing its exported device descriptor.'
 }
 
-# The publisher.
-$sources = @(
-    (Join-Path $repoRoot 'tools\diag\carrizo_cp_win32.c')
+# The publishers: the CP bring-up and the first draw.
+$publishers = @(
+    @{ Source = 'carrizo_cp_win32.c'; Name = 'v9xczcp'; Entry = '_V9xCarrizoCpEntry@0'
+       Description = 'Velocity9x Carrizo CP bring-up probe'; Extra = @() }
+    # V9XCZ3D's streams and shaders come from the host-tested modules.
+    @{ Source = 'carrizo_3d_win32.c'; Name = 'v9xcz3d'; Entry = '_V9xCarrizo3dEntry@0'
+       Description = 'Velocity9x Carrizo first 3D draw probe'
+       Extra = @('src\chipsets\ati\vi\vi_shader.c',
+                 'src\chipsets\ati\vi\vi_3d.c',
+                 'src\chipsets\ati\vi\vi_clear_state.c') }
 )
-$objects = @()
-foreach ($source in $sources) {
-    $object = Join-Path $outputDir ([IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
-    & $compiler '-bt=nt' '-zq' '-wx' '-we' '-zl' '-s' `
-        "-i=$(Join-Path $repoRoot 'include')" `
-        "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
-    if ($LASTEXITCODE -ne 0) {
-        throw "Open Watcom failed to compile $source."
+foreach ($publisher in $publishers) {
+    $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))
+    $sources += $publisher.Extra | ForEach-Object { Join-Path $repoRoot $_ }
+    $objects = @()
+    foreach ($source in $sources) {
+        $object = Join-Path $outputDir ([IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
+        & $compiler '-bt=nt' '-zq' '-wx' '-we' '-zl' '-s' `
+            "-i=$(Join-Path $repoRoot 'include')" `
+            "-dV9X_BUILD_ID=`"$BuildId`"" "-fo=$object" $source
+        if ($LASTEXITCODE -ne 0) {
+            throw "Open Watcom failed to compile $source."
+        }
+        $objects += $object
     }
-    $objects += $object
-}
-$executable = Join-Path $outputDir 'v9xczcp.exe'
-$mapFile = Join-Path $outputDir 'v9xczcp.map'
-$linkFile = Join-Path $outputDir 'v9xczcp.lnk'
-$linkLines = @(
-    'format windows nt',
-    'runtime windows=4.0',
-    'option quiet',
-    'option nodefaultlibs',
-    "option start='_V9xCarrizoCpEntry@0'",
-    'option stack=65536',
-    "option map='$mapFile'",
-    "name '$executable'"
-)
-$linkLines += $objects | ForEach-Object { "file '$_'" }
-$linkLines += $libraries | ForEach-Object { "library '$_'" }
-Set-Content -LiteralPath $linkFile -Encoding Ascii -Value $linkLines
-& $linker "@$linkFile"
-if ($LASTEXITCODE -ne 0) {
-    throw 'Open Watcom failed to link V9XCZCP.EXE.'
-}
-Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $executable `
-    -BuildId $BuildId -FileDescription 'Velocity9x Carrizo CP bring-up probe' -Kind app
+    $executable = Join-Path $outputDir ($publisher.Name + '.exe')
+    $mapFile = Join-Path $outputDir ($publisher.Name + '.map')
+    $linkFile = Join-Path $outputDir ($publisher.Name + '.lnk')
+    $linkLines = @(
+        'format windows nt',
+        'runtime windows=4.0',
+        'option quiet',
+        'option nodefaultlibs',
+        "option start='$($publisher.Entry)'",
+        'option stack=65536',
+        "option map='$mapFile'",
+        "name '$executable'"
+    )
+    $linkLines += $objects | ForEach-Object { "file '$_'" }
+    $linkLines += $libraries | ForEach-Object { "library '$_'" }
+    Set-Content -LiteralPath $linkFile -Encoding Ascii -Value $linkLines
+    & $linker "@$linkFile"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Open Watcom failed to link $($publisher.Name).exe."
+    }
+    Add-V9xVersionResource -RepoRoot $repoRoot -WatcomRoot $watcomRoot -Image $executable `
+        -BuildId $BuildId -FileDescription $publisher.Description -Kind app
 
-$dumpText = (@(& $dumper -e $executable 2>&1)) -join "`n"
-if ($LASTEXITCODE -ne 0) {
-    throw 'Open Watcom could not inspect V9XCZCP.EXE.'
-}
-$dllNames = [regex]::Matches($dumpText, 'DLL name = <([^>]+)>') |
-    ForEach-Object { $_.Groups[1].Value.ToUpperInvariant() } |
-    Sort-Object -Unique
-$unexpected = @($dllNames | Where-Object { $_ -notin @('KERNEL32.DLL') })
-if ($unexpected.Count -ne 0 -or $dumpText -match 'GetCommandLineW|__CHK') {
-    throw 'V9XCZCP.EXE contains an incompatible runtime import.'
+    $dumpText = (@(& $dumper -e $executable 2>&1)) -join "`n"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Open Watcom could not inspect $($publisher.Name).exe."
+    }
+    $dllNames = [regex]::Matches($dumpText, 'DLL name = <([^>]+)>') |
+        ForEach-Object { $_.Groups[1].Value.ToUpperInvariant() } |
+        Sort-Object -Unique
+    $unexpected = @($dllNames | Where-Object { $_ -notin @('KERNEL32.DLL') })
+    if ($unexpected.Count -ne 0 -or $dumpText -match 'GetCommandLineW|__CHK') {
+        throw "$($publisher.Name).exe contains an incompatible runtime import."
+    }
+    Write-Output "Built Carrizo probe publisher: $executable"
 }
 
-Write-Output "Built Carrizo CP bring-up probe VxD: $vxdPath"
-Write-Output "Built Carrizo CP bring-up probe publisher: $executable"
+Write-Output "Built Carrizo CP probe VxD: $vxdPath"

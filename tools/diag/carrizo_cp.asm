@@ -26,8 +26,10 @@
 ;                    microcode data ports (PFP, ME, CE, RLC GPM), the only
 ;                    ports this op writes.
 ;   delay          - a count of SRBM_STATUS reads, at most CC_DELAY_MAX.
-;   VRAM ops       - write, read, fill, pattern, read block, all at aligned
-;                    offsets inside the scratch window.
+;   VRAM ops       - write, read, fill, pattern, read block, and a copy of a
+;                    run of the caller's data array (rings and shaders too
+;                    long for one op a dword), all at aligned offsets inside
+;                    the scratch window.
 ;   wait           - a VRAM dword equal to a value, or an MMIO dword under a
 ;                    mask equal to a value, at most the op's limit reads.
 ;   save/restore   - the whole scratch window to and from a copy here.
@@ -93,6 +95,7 @@ CC_OP_VRAM_PATTERN      equ 11  ; a offset, b dwords, c seed
 CC_OP_DELAY             equ 12  ; a SRBM_STATUS reads
 CC_OP_MMIO_RMW          equ 13  ; a offset, b mask to clear, c mask to set
 CC_OP_UCODE             equ 14  ; a port, b first data dword, c dwords
+CC_OP_VRAM_DATA         equ 15  ; a offset, b first data dword, c dwords
 CC_DELAY_MAX            equ 100000
 CC_SRBM_STATUS          equ 0e50h
 CC_GRBM_SOFT_RESET      equ 8020h
@@ -138,6 +141,8 @@ CCReadWindows label dword
     dd 8008h, 8014h     ; GRBM_STATUS2, GRBM_PWR_CNTL, GRBM_STATUS
     dd 8020h, 8024h     ; GRBM_SOFT_RESET
     dd 8234h, 8238h     ; CP_MEC_CNTL
+    dd 98f8h, 98fch     ; GB_ADDR_CONFIG
+    dd 9910h, 99d0h     ; GB_TILE_MODE0-31, GB_MACROTILE_MODE0-15
     dd 8674h, 8684h     ; CP_STALLED_STAT1 .. CP_STAT
     dd 86d8h, 86dch     ; CP_ME_CNTL
     dd 8700h, 870ch     ; CP_RB0_RPTR, CP_RB_WPTR_DELAY, CP_RB_WPTR_POLL_CNTL
@@ -155,7 +160,7 @@ CCReadWindows label dword
     dd 3b10ch, 3b110h   ; RLC_PG_CNTL
     dd 3b124h, 3b128h   ; RLC_CGCG_CGLS_CTRL
     dd 3b184h, 3b18ch   ; RLC_SERDES_CU_MASTER_BUSY, _NONCU_MASTER_BUSY
-CC_READ_WINDOW_COUNT    equ 24
+CC_READ_WINDOW_COUNT    equ 26
 
 ; Writes accepted: exact offsets.
 CCWriteOffsets label dword
@@ -164,6 +169,10 @@ CCWriteOffsets label dword
     dd 8020h            ; GRBM_SOFT_RESET, value checked in CC_Execute
     dd 86d8h            ; CP_ME_CNTL
     dd 8704h            ; CP_RB_WPTR_DELAY
+    ; GB_TILE_MODE8, the linear-aligned entry the first draw's colour
+    ; buffer names. The BIOS leaves the table unprogrammed (M-XP7053 read
+    ; 00C0077Ch); Linux's gfx_v8_0_tiling_mode_table_init writes it.
+    dd 9930h
     dd 0c100h           ; CP_RB0_BASE
     dd 0c104h           ; CP_RB0_CNTL
     dd 0c10ch           ; CP_RB0_RPTR_ADDR
@@ -184,7 +193,7 @@ CCWriteOffsets label dword
     dd 3e058h           ; CP_ME_RAM_WADDR
     dd 3e060h           ; CP_CE_UCODE_ADDR
     dd 3e0f0h           ; RLC_GPM_UCODE_ADDR
-CC_WRITE_OFFSET_COUNT   equ 25
+CC_WRITE_OFFSET_COUNT   equ 26
 
 CCResult label dword
     dd CC_MAGIC                 ; 00 magic
@@ -528,6 +537,30 @@ CC_Exec_Ucode_Next:
     add     CCResult[48], eax
     jmp     CC_Exec_Done
 CC_Exec_Not_Ucode:
+
+    cmp     eax, CC_OP_VRAM_DATA
+    jne     short CC_Exec_Not_Vram_Data
+    mov     ecx, [esi+12]
+    call    CC_Vram_Allowed
+    jc      CC_Exec_Refused
+    mov     eax, [esi+8]
+    cmp     eax, CCDataCount
+    jae     CC_Exec_Refused
+    mov     ebx, CCDataCount
+    sub     ebx, eax
+    cmp     ecx, ebx
+    ja      CC_Exec_Refused
+    push    esi
+    mov     esi, CCData
+    lea     esi, [esi+eax*4]
+    mov     edi, CCScratch
+    add     edi, edx
+    cld
+    rep     movsd
+    pop     esi
+    xor     eax, eax
+    jmp     CC_Exec_Done
+CC_Exec_Not_Vram_Data:
 
     cmp     eax, CC_OP_VRAM_WRITE
     jne     short CC_Exec_Not_Vram_Write

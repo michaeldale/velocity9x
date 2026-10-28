@@ -5,8 +5,13 @@ Date: 2026-10-28
 Status: Phase 1 done: the RLC, PFP, CE and ME take AMD's microcode
 through their own ports, and the CP runs Linux's ring test and the start
 preamble from a ring in the carve-out, three runs of three
-([record](../decisions/2026-10-28-carrizo-cp-ring-test.md)). Next: Phase
-2, the full clear state and the GPU configuration. Parent plan:
+([record](../decisions/2026-10-28-carrizo-cp-ring-test.md)). Phase 2 in
+part: the full clear state runs; a first solid rectangle (Phase 3,
+host-tested GCN 3 shaders and streams) completes and writes nothing, and
+the BIOS was found to leave the tile table unprogrammed
+([record](../decisions/2026-10-28-carrizo-first-draw-attempt.md)). Next:
+the rest of Phase 2, `gfx_v8_0_gpu_init` and the golden registers, before
+the draw again. Parent plan:
 [ati-carrizo-gfx8.md](ati-carrizo-gfx8.md). 2D runs on SDMA0
 ([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)), and
 flips on D1 ([record](../decisions/2026-10-28-carrizo-page-flips.md)).
