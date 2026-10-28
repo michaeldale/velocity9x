@@ -45,6 +45,7 @@
 #define V9X_VI_VOP1_CVT_F32_UBYTE1 0x12ul
 #define V9X_VI_VOP1_CVT_F32_UBYTE2 0x13ul
 #define V9X_VI_VOP1_CVT_F32_UBYTE3 0x14ul
+#define V9X_VI_VOP2_ADD_F32     0x01ul
 #define V9X_VI_VOP2_MUL_F32     0x05ul
 #define V9X_VI_VOP2_ADDC_U32    0x1cul
 #define V9X_VI_VINTRP_P1_F32    0ul
@@ -123,12 +124,16 @@ v9x_u32 v9x_vi_shader_solid_ps(v9x_u32 *out);
  * 64-bit address, v0 is VertexID. Each vertex is the render core's 32
  * bytes: sx, sy, sz, rhw, D3DCOLOR (A8R8G8B8), specular, tu, tv. Two FLAT
  * loads fetch it; the position export is sx, sy, sz, rhw as loaded (the
- * VTE takes screen-space XY, Z and 1/W); parameter 0 is the D3DCOLOR as
- * R, G, B, A floats, parameter 1 is (tu, tv, 0, 1). Thirteen VGPRs.
+ * VTE takes screen-space XY, Z and 1/W); parameter 0 is the D3DCOLOR's
+ * bytes in memory order (B, G, R, A) as floats, parameter 1 is (tu, tv, 0,
+ * 1), parameter 2 the specular's three colour bytes in the same order with
+ * 0 for its fourth. Seventeen VGPRs. With textures sampled in memory order
+ * too and the CB writing x to the lowest field, the colour path never
+ * swizzles, as Cedar's does.
  */
 #define V9X_VI_TL_VERTEX_BYTES  32ul
-#define V9X_VI_TL_VS_DWORDS     32ul
-#define V9X_VI_TL_VS_VGPRS      13ul
+#define V9X_VI_TL_VS_DWORDS     44ul
+#define V9X_VI_TL_VS_VGPRS      17ul
 v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out);
 
 /* The Gouraud PS: parameter 0 interpolated (PERSP_CENTER, v0:v1) and
@@ -151,6 +156,23 @@ v9x_u32 v9x_vi_shader_gouraud_ps(v9x_u32 *out);
 #define V9X_VI_MODULATE_PS_VGPRS  12ul
 v9x_u32 v9x_vi_shader_texture_ps(v9x_u32 *out);
 v9x_u32 v9x_vi_shader_modulate_ps(v9x_u32 *out);
+
+/*
+ * Every Direct3D pixel shader from one builder: op is V9X_VI_PS_COLOUR
+ * (the Gouraud PS), _TEXTURE or _MODULATE, the three above word for word
+ * when specular is zero. With specular, parameter 2 is interpolated after
+ * any texturing and added to the colour's three channels before the
+ * export, Direct3D's colour plus specular; the CB's UNORM conversion
+ * clamps the sum. Its VGPRs are each shader's _SPECULAR_VGPRS.
+ */
+#define V9X_VI_PS_COLOUR    0ul
+#define V9X_VI_PS_TEXTURE   1ul
+#define V9X_VI_PS_MODULATE  2ul
+#define V9X_VI_GOURAUD_PS_SPECULAR_VGPRS  12ul
+#define V9X_VI_TEXTURE_PS_SPECULAR_VGPRS  12ul
+#define V9X_VI_MODULATE_PS_SPECULAR_VGPRS 16ul
+#define V9X_VI_SPECULAR_PS_DWORDS         9ul
+v9x_u32 v9x_vi_shader_d3d_ps(v9x_u32 op, int specular, v9x_u32 *out);
 #define V9X_VI_PROBE_PS_DWORDS  (6ul + V9X_VI_SOLID_PS_DWORDS)
 v9x_u32 v9x_vi_shader_probe_vs(v9x_u32 *out);
 v9x_u32 v9x_vi_shader_probe_ps(v9x_u32 *out);

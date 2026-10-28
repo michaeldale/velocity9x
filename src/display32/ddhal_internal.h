@@ -601,6 +601,29 @@ int v9x_eg_dma_settle(void);
  * bits 39:32 and 31:0, zero until the engine is validated. */
 int v9x_vi_dma_settle(void);
 int v9x_vi_heap_address(DWORD *high, DWORD *low);
+/* engines/eng_vi.c: the 4 MiB window's GPU address, as heap_address. */
+int v9x_vi_window_address(DWORD *high, DWORD *low);
+/* The Carrizo graphics CP, in engines/vi_cp.c, as Evergreen's above:
+ * ready, submit (starting it once per HAL, after queued SDMA work), drain,
+ * vertex_space (low halves; the high half is the window's). Each batch
+ * ends with an end-of-pipe fence at fence_low carrying fence_next, which
+ * submit then waits on as the batch's completion. shader_low is a shader
+ * slot's GPU low half (V9X_VI_CP_SLOT_*), once addresses has answered. */
+#define V9X_VI_CP_SLOT_VS        0ul
+/* Then the pixel shaders, slot 1 + V9X_VI_PS_* (vi_shader.h), and the
+ * same three with specular added, slot 4 + V9X_VI_PS_*. */
+#define V9X_VI_CP_SLOT_PS_FIRST  1ul
+#define V9X_VI_CP_SLOT_PS_SPECULAR_FIRST 4ul
+#define V9X_VI_CP_SLOT_COUNT     7ul
+int v9x_vi_cp_ready(void);
+int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence);
+int v9x_vi_cp_drain(int wait);
+int v9x_vi_cp_vertex_space(DWORD bytes, volatile DWORD **linear,
+                           DWORD *gpu_low);
+int v9x_vi_cp_addresses(DWORD *high, DWORD *heap_low);
+DWORD v9x_vi_cp_shader_low(DWORD which);
+DWORD v9x_vi_cp_fence_low(void);
+DWORD v9x_vi_cp_fence_next(void);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */

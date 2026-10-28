@@ -533,7 +533,12 @@
         # trace tool joined it the same day, when the Evergreen CP engine
         # and its microcode put disk 1 3,919 bytes over (Michael,
         # 2026-10-27: "v9xtrace on third disk is okay").
-        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE')
+        # GLIDE2X.DLL joined it when the Carrizo graphics microcode in the
+        # shared HAL put disk 1 about 35 KB over (Michael, 2026-10-28: "third
+        # disks for all"): no Glide title needs it to start, and ATI3DCIF.DLL,
+        # this family's own 3D API, was too small to make the room.
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE',
+                      'GLIDE2X.DLL')
     }
 
     Vm = @{

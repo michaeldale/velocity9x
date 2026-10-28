@@ -147,7 +147,27 @@ struct v9x_vi_tl_draw {
     v9x_u32 texture_tile_mode_index;
     v9x_u32 texture_bilinear;   /* nonzero for bilinear, else point */
     v9x_u32 ps_vgprs;           /* the PS's VGPRs; 0 for eight */
+    /* APPENDED for the HAL (d3d_vi_map.c); zero keeps the probes'
+     * meaning. */
+    v9x_u32 texture_format;     /* V9X_VI_IMG_FORMAT_*; 0 for 8_8_8_8 */
+    v9x_u32 target_mask;        /* CB_TARGET_MASK RGBA bits; 0 for all */
+    v9x_u32 d3d_pixel_centres;  /* nonzero: centres on whole coordinates */
+    v9x_u32 depth_pitch;        /* pixels, a multiple of 8; 0: the target's */
+    v9x_u32 depth_height;       /* rows, a multiple of 8; 0: the target's */
+    v9x_u32 texture_address;    /* V9X_VI_TEX_ADDRESS_*, both axes */
 };
+
+/* The S#'s CLAMP_X/Y/Z: clamp to the last texel (the default), wrap or
+ * mirror (SQ_TEX_CLAMP_LAST_TEXEL 2, SQ_TEX_WRAP 0, SQ_TEX_MIRROR 1). */
+#define V9X_VI_TEX_ADDRESS_CLAMP    0ul
+#define V9X_VI_TEX_ADDRESS_WRAP     1ul
+#define V9X_VI_TEX_ADDRESS_MIRROR   2ul
+
+/* The T# data formats the builder describes (Mesa's sid.h
+ * IMG_DATA_FORMAT_*), each sampled with its components in memory order:
+ * A8R8G8B8's B, G, R, A and RGB565's B, G, R as X, Y, Z (W reads 1). */
+#define V9X_VI_IMG_FORMAT_8_8_8_8   0x0aul
+#define V9X_VI_IMG_FORMAT_5_6_5     0x10ul
 
 /* DB_DEPTH_CONTROL ZFUNC, gfx_8_0_enum.h's FRAG_*: Direct3D's D3DCMPFUNC
  * less one. */

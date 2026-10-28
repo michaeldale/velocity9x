@@ -226,9 +226,9 @@ static void test_tl_shaders(void)
         0xdc5c0000ul,   /* flat_load_dwordx4 v[9:12], v[7:8] (colour ..) */
         0x09000007ul,
         0xbf8c0000ul,   /* s_waitcnt 0 */
-        0x7e022709ul,   /* v_cvt_f32_ubyte2 v1, v9 (red) */
+        0x7e022309ul,   /* v_cvt_f32_ubyte0 v1, v9 (blue, byte 0) */
         0x7e042509ul,   /* v_cvt_f32_ubyte1 v2, v9 (green) */
-        0x7e0e2309ul,   /* v_cvt_f32_ubyte0 v7, v9 (blue) */
+        0x7e0e2709ul,   /* v_cvt_f32_ubyte2 v7, v9 (red) */
         0x7e102909ul,   /* v_cvt_f32_ubyte3 v8, v9 (alpha) */
         0x0a0202fful,   /* v_mul_f32 v1, 1/255, v1 */
         0x3b808081ul,
@@ -240,6 +240,18 @@ static void test_tl_shaders(void)
         0x3b808081ul,
         0xc400020ful,   /* exp param0 v1, v2, v7, v8 */
         0x08070201ul,
+        0x7e1a230aul,   /* v_cvt_f32_ubyte0 v13, v10 (specular) */
+        0x7e1c250aul,   /* v_cvt_f32_ubyte1 v14, v10 */
+        0x7e1e270aul,   /* v_cvt_f32_ubyte2 v15, v10 */
+        0x0a1a1afful,   /* v_mul_f32 v13, 1/255, v13 */
+        0x3b808081ul,
+        0x0a1c1cfful,   /* v_mul_f32 v14, 1/255, v14 */
+        0x3b808081ul,
+        0x0a1e1efful,   /* v_mul_f32 v15, 1/255, v15 */
+        0x3b808081ul,
+        0x7e200280ul,   /* v_mov_b32 v16, 0 */
+        0xc400022ful,   /* exp param2 v13, v14, v15, v16 */
+        0x100f0e0dul,
         0x7e120280ul,   /* v_mov_b32 v9, 0 */
         0x7e1402f2ul,   /* v_mov_b32 v10, 1.0 */
         0xc400021ful,   /* exp param1 v11, v12, v9, v10 (tu tv 0 1) */
@@ -318,6 +330,65 @@ static void test_texture_shaders(void)
     /* The same six-dword head: M0, the wait, parameter 1's u and v. */
     CHECK(memcmp(out, replace, 6u * sizeof(v9x_u32)) == 0);
     CHECK(memcmp(out + 6, modulate_tail, sizeof(modulate_tail)) == 0);
+}
+
+/* Direct3D's specular: parameter 2 interpolated and added to the colour's
+ * three channels just before the export, after any texturing. The
+ * builder without specular is the three shaders above, word for word. */
+static void test_specular_shaders(void)
+{
+    /* Gouraud: colour v2-v5, specular into v6-v8. */
+    static const v9x_u32 gouraud_add[9] = {
+        0xd4180800ul,   /* v_interp_p1_f32 v6, v0, attr2.x */
+        0xd4190801ul,   /* v_interp_p2_f32 v6, v1, attr2.x */
+        0xd41c0900ul,   /* v_interp_p1_f32 v7, v0, attr2.y */
+        0xd41d0901ul,   /* v_interp_p2_f32 v7, v1, attr2.y */
+        0xd4200a00ul,   /* v_interp_p1_f32 v8, v0, attr2.z */
+        0xd4210a01ul,   /* v_interp_p2_f32 v8, v1, attr2.z */
+        0x02040506ul,   /* v_add_f32 v2, v6, v2 */
+        0x02060707ul,   /* v_add_f32 v3, v7, v3 */
+        0x02080908ul    /* v_add_f32 v4, v8, v4 */
+    };
+    v9x_u32 plain[48];
+    v9x_u32 out[48];
+    v9x_u32 count;
+
+    /* gfx8_asm_vop2.s: v_add_f32 v5, v1, v2 [01 05 0a 02]. */
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_ADD_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x020a0501ul);
+
+    count = v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, 0, out);
+    CHECK(count == V9X_VI_GOURAUD_PS_DWORDS);
+    CHECK(v9x_vi_shader_gouraud_ps(plain) == count);
+    CHECK(memcmp(out, plain, count * sizeof(v9x_u32)) == 0);
+    count = v9x_vi_shader_d3d_ps(V9X_VI_PS_TEXTURE, 0, out);
+    CHECK(v9x_vi_shader_texture_ps(plain) == count);
+    CHECK(memcmp(out, plain, count * sizeof(v9x_u32)) == 0);
+    count = v9x_vi_shader_d3d_ps(V9X_VI_PS_MODULATE, 0, out);
+    CHECK(v9x_vi_shader_modulate_ps(plain) == count);
+    CHECK(memcmp(out, plain, count * sizeof(v9x_u32)) == 0);
+
+    /* With specular: the plain shader's words up to its export, the nine
+     * above, then the export and s_endpgm. */
+    count = v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, 1, out);
+    CHECK(count == V9X_VI_GOURAUD_PS_DWORDS + 9ul);
+    (void)v9x_vi_shader_gouraud_ps(plain);
+    CHECK(memcmp(out, plain, 10ul * sizeof(v9x_u32)) == 0);
+    CHECK(memcmp(out + 10, gouraud_add, sizeof(gouraud_add)) == 0);
+    CHECK(memcmp(out + 19, plain + 10, 3ul * sizeof(v9x_u32)) == 0);
+
+    /* Texture: the texel in v4-v7, specular into v8-v10. */
+    count = v9x_vi_shader_d3d_ps(V9X_VI_PS_TEXTURE, 1, out);
+    CHECK(count == V9X_VI_TEXTURE_PS_DWORDS + 9ul);
+    CHECK(out[9] == 0xd4200800ul);      /* v_interp_p1_f32 v8, v0, attr2.x */
+    CHECK(out[15] == 0x02080908ul);     /* v_add_f32 v4, v8, v4 */
+    CHECK(out[17] == 0x020c0d0aul);     /* v_add_f32 v6, v10, v6 */
+
+    /* Modulate: diffuse in v8-v11, specular into v12-v14. */
+    count = v9x_vi_shader_d3d_ps(V9X_VI_PS_MODULATE, 1, out);
+    CHECK(count == V9X_VI_MODULATE_PS_DWORDS + 9ul);
+    CHECK(out[21] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
+    CHECK(out[27] == 0x0208090cul);     /* v_add_f32 v4, v12, v4 */
 }
 
 /* Every type-3 packet's count must land the next header exactly at the
@@ -560,24 +631,26 @@ static void test_tl_draw(void)
     /* PA_CL_VTE_CNTL: screen-space XY, Z and 1/W. */
     at = find_context(buffer, stream.count, 0xa206ul);
     CHECK(at != 0ul && buffer[at] == 0x00000700ul);
-    /* Two parameters, colour and (tu, tv): SPI_VS_OUT_CONFIG
-     * VS_EXPORT_COUNT 1 at 5:1; SPI_PS_IN_CONTROL two interpolants;
-     * SPI_PS_INPUT_CNTL_0 and _1 parameters 0 and 1. */
+    /* Three parameters, colour, (tu, tv) and specular: SPI_VS_OUT_CONFIG
+     * VS_EXPORT_COUNT 2 at 5:1; SPI_PS_IN_CONTROL three interpolants;
+     * SPI_PS_INPUT_CNTL_0, _1 and _2 parameters 0, 1 and 2. */
     at = find_context(buffer, stream.count, 0xa1b1ul);
-    CHECK(at != 0ul && buffer[at] == 2ul);
+    CHECK(at != 0ul && buffer[at] == 4ul);
     at = find_context(buffer, stream.count, 0xa1b6ul);
-    CHECK(at != 0ul && buffer[at] == 2ul);
+    CHECK(at != 0ul && buffer[at] == 3ul);
     at = find_context(buffer, stream.count, 0xa191ul);
     CHECK(at != 0ul && buffer[at] == 0ul);
     at = find_context(buffer, stream.count, 0xa192ul);
     CHECK(at != 0ul && buffer[at] == 1ul);
+    at = find_context(buffer, stream.count, 0xa193ul);
+    CHECK(at != 0ul && buffer[at] == 2ul);
 
-    /* VS: RSRC1 with 16 VGPRs (granule 3), two user SGPRs, then the
+    /* VS: RSRC1 with 20 VGPRs (granule 4), two user SGPRs, then the
      * vertex address. */
     at = find_sh(buffer, stream.count, 0x2c46ul);
     CHECK(at < stream.count);
     CHECK(buffer[at + 4ul] == 0xf40f8040ul);
-    CHECK((buffer[at + 6ul] & 0x3ful) == 3ul);
+    CHECK((buffer[at + 6ul] & 0x3ful) == 4ul);
     CHECK(buffer[at + 7ul] == (2ul << 1));
     at = find_sh(buffer, stream.count, 0x2c4cul);
     CHECK(at < stream.count);
@@ -670,15 +743,15 @@ static void test_tl_depth(void)
 }
 
 /* With a texture: the PS's twelve user SGPRs are the T# (64x16 ARGB8888,
- * linear aligned, R, G, B, A selected from bytes 2, 1, 0, 3, 2D) and the
- * S# (clamp to the last texel, point or bilinear, LOD 0). */
+ * linear aligned, components X, Y, Z, W in memory order, 2D) and the S#
+ * (clamp to the last texel, point or bilinear, LOD 0). */
 static void test_tl_texture(void)
 {
     static const v9x_u32 expected[12] = {
         0xf40f80e0ul,   /* T# 0: address 39:8 */
         0x00a00000ul,   /* 1: DATA_FORMAT 8_8_8_8, UNORM */
         0x0003c03ful,   /* 2: width 63, height 15 */
-        0x90800f2eul,   /* 3: Z, Y, X, W; tiling index 8; IMG_2D */
+        0x90800facul,   /* 3: X, Y, Z, W; tiling index 8; IMG_2D */
         0x0007e000ul,   /* 4: pitch 63 */
         0ul, 0ul, 0ul,
         0x00000092ul,   /* S# 0: CLAMP_LAST_TEXEL in X, Y, Z */
@@ -697,6 +770,7 @@ static void test_tl_texture(void)
     draw.texture_height = 16ul;
     draw.texture_pitch = 64ul;
     draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.texture_format = V9X_VI_IMG_FORMAT_8_8_8_8;
     v9x_vi_pm4_init(&stream, buffer, 2048ul);
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
     CHECK(walk(buffer, stream.count) != 0ul);
@@ -715,13 +789,84 @@ static void test_tl_texture(void)
     at = find_sh(buffer, stream.count, 0x2c0cul);
     CHECK(at < stream.count && buffer[at + 12ul] == 0x00500000ul);
 
-    /* Refused: an unaligned texture, a zero or oversized width. */
+    /* Wrap and mirror: CLAMP_X, _Y, _Z 0 and 1. */
+    draw.texture_bilinear = 0ul;
+    draw.texture_address = V9X_VI_TEX_ADDRESS_WRAP;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 10ul] == 0ul);
+    draw.texture_address = V9X_VI_TEX_ADDRESS_MIRROR;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 10ul] == 0x49ul);
+    draw.texture_address = 3ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_address = V9X_VI_TEX_ADDRESS_CLAMP;
+
+    /* RGB565: DATA_FORMAT 5_6_5 (10h). */
+    draw.texture_bilinear = 0ul;
+    draw.texture_format = V9X_VI_IMG_FORMAT_5_6_5;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 3ul] == 0x01000000ul);
+
+    /* Refused: an unaligned texture, a zero or oversized width, a format
+     * no T# here describes. */
+    draw.texture_format = V9X_VI_IMG_FORMAT_8_8_8_8;
     draw.texture_low = 0x0f80e010ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
     draw.texture_low = 0x0f80e000ul;
     draw.texture_width = 0ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
     draw.texture_width = 16385ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_width = 64ul;
+    draw.texture_format = 0x11ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* The Direct3D options: D3D pixel centres (PA_SU_VTX_CNTL PIX_CENTER 0), a
+ * target mask without alpha for an XRGB target, and a depth buffer whose
+ * pitch and height are its own, not the target's. */
+static void test_tl_d3d_options(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+
+    base_tl(&draw);
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa2f9ul);
+    CHECK(at != 0ul && buffer[at] == 0x0000002dul);
+    at = find_context(buffer, stream.count, 0xa08eul);
+    CHECK(at != 0ul && buffer[at] == 0xful && buffer[at + 1ul] == 0xful);
+
+    draw.d3d_pixel_centres = 1ul;
+    draw.target_mask = 0x7ul;
+    draw.depth_low = 0x0f80d000ul;
+    draw.depth_high = 0xf4ul;
+    draw.depth_func = V9X_VI_ZFUNC_LESS;
+    draw.depth_pitch = 640ul;
+    draw.depth_height = 480ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa2f9ul);
+    CHECK(at != 0ul && buffer[at] == 0x0000002cul);
+    at = find_context(buffer, stream.count, 0xa08eul);
+    CHECK(at != 0ul && buffer[at] == 0x7ul && buffer[at + 1ul] == 0xful);
+    /* DB_DEPTH_SIZE: pitch 640 / 8 - 1 = 79, height 480 / 8 - 1 = 59;
+     * slice 640 x 480 / 64 - 1. */
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul);
+    CHECK(buffer[at + 7ul] == (79ul | (59ul << 11)));
+    CHECK(buffer[at + 8ul] == 4799ul);
+
+    /* A depth height not whole tiles is refused. */
+    draw.depth_height = 470ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
@@ -854,6 +999,8 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_draw();
     test_tl_depth();
     test_texture_shaders();
+    test_specular_shaders();
     test_tl_texture();
+    test_tl_d3d_options();
     return failures;
 }

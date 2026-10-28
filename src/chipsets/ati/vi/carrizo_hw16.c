@@ -32,6 +32,9 @@ extern unsigned short __far __pascal V9xMiniViMap(
 
 /* V9X_VI_MMIO_BYTES in vi_sdma.h and the mini-VDD: the register BAR. */
 #define V9X_CARRIZO_MMIO_BYTES 0x00040000ul
+/* V9X_VI_RING_WINDOW_BYTES in vi_sdma.h: the window SDMA's ring and the
+ * graphics CP's ring, shaders and vertex arena share (engines\vi_cp.c). */
+#define V9X_CARRIZO_RING_WINDOW_BYTES 0x00400000ul
 
 /* How far the engine hook got, and the BARs it read, for
  * v9x_carrizo_publish_diagnostics: neither refusal leaves any other trace,
@@ -91,6 +94,12 @@ static void v9x_carrizo_fill_engine(unsigned long framebuffer_linear_base,
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
                    V9X_DD_ENGINE_CAP_FLIP;
+    /* Direct3D through the graphics CP (d3d_vi.c, engines\vi_cp.c), whose
+     * ring, shaders and vertices share the window with SDMA's ring: only
+     * when the mini-VDD mapped all of it. */
+    if (bytes >= V9X_CARRIZO_RING_WINDOW_BYTES) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+    }
     *ring_linear_base = ring;
     *ring_bytes = bytes;
 }
@@ -138,7 +147,7 @@ const V9X_HW16_DEVICE v9x_vi_carrizo_device = {
     "ati-vi-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    "not-advertised",
+    "hardware-vi-cp",
     0,
     v9x_carrizo_fill_engine
 };

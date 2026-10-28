@@ -496,6 +496,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_r128;
     case V9X_D3D_SELECT_EVERGREEN:
         return &v9x_d3d_engine_eg;
+    case V9X_D3D_SELECT_VI:
+        return &v9x_d3d_engine_vi;
     default:
         return 0;
     }
@@ -7861,6 +7863,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_eg) {
         out->engine = V9X_R3D_ABI_ENGINE_EVERGREEN;
         name = "Velocity9x Radeon HD 5450";
+    } else if (ops == &v9x_d3d_engine_vi) {
+        out->engine = V9X_R3D_ABI_ENGINE_VI;
+        name = "Velocity9x Radeon R7E";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers

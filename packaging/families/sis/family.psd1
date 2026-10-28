@@ -148,7 +148,11 @@
         # 2026-10-27: "v9xtrace on third disk is okay"). GLIDE3X.DLL joined
         # it, as on the other families' disks, when the Evergreen CP depth
         # fill put disk 1 188 bytes over (Michael, 2026-10-28).
-        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE', 'GLIDE3X.DLL')
+        # ATI3DCIF.DLL joined it when the Carrizo graphics microcode in the
+        # shared HAL put disk 1 about 16 KB over (Michael, 2026-10-28: "third
+        # disks for all"): no 3DCIF title needs it to start.
+        ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE', 'GLIDE3X.DLL',
+                      'ATI3DCIF.DLL')
     }
 
     # No emulator models this chip, so the VM runner must refuse rather than

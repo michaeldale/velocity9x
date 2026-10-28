@@ -21,7 +21,10 @@ done: Z16 depth, 1D-tiled, LESS with writes, colour and Z buffer exact
 ([record](../decisions/2026-10-28-carrizo-depth.md)). Step 3 done, and
 with it Phase 4: an A8R8G8B8 texture through a T# and S#, copy and
 modulate exact ([record](../decisions/2026-10-28-carrizo-texture-modulate.md)).
-Next: Phase 5, the HAL. Parent plan:
+Phase 5 step 1 done: V9XD32 through the HAL passes everything but
+blending and ARGB1555 at 16 and 32 bpp
+([record](../decisions/2026-10-28-carrizo-d3d-hal-first-light.md)). Next:
+step 2, blending and the alpha test. Parent plan:
 [ati-carrizo-gfx8.md](ati-carrizo-gfx8.md). 2D runs on SDMA0
 ([record](../decisions/2026-10-28-carrizo-directdraw-on-sdma.md)), and
 flips on D1 ([record](../decisions/2026-10-28-carrizo-page-flips.md)).
@@ -95,7 +98,23 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
    Every shader keeps to GCN 3's one constant-bus read per VALU
    instruction ([first rectangle](../decisions/2026-10-28-carrizo-first-rectangle.md)).
 5. **The HAL**: `d3d_vi.c` behind `V9X_D3D_ENGINE_OPS`, then V9XD32,
-   V9XDDP's 3D checks and a game.
+   V9XDDP's 3D checks and a game. Cedar's split: `engines\vi_cp.c` brings
+   the graphics CP up at the first Direct3D batch and leaves it running
+   (gpu_init, the RLC and PFP/CE/ME microcode from the tree, the ring, the
+   clear state, a ring test), `d3d_vi_map.c` turns the neutral draw into
+   `v9x_vi_3d_tl_draw`'s state (pure, host-tested) and `d3d_vi.c`
+   resolves surfaces, places them and submits. The CP's ring, shaders and
+   vertex arena share SDMA's 4 MiB window at BAR0 + 240 MiB; each engine
+   drains the other before it touches what the other wrote. Steps:
+   1. **First light**: 16 and 32 bpp targets, flat and Gouraud colour,
+      Z16 with every function, RGB565 and ARGB8888 textures, point and
+      bilinear, clamp, COPY/DECAL and MODULATE. The colour path keeps
+      memory byte order (D3DCOLOR's B, G, R, A as x, y, z, w; the T#
+      selects X, Y, Z, W), as Cedar's does, so nothing swizzles.
+      Everything else is refused and counted. V9XD32 at both depths.
+   2. Blending and the alpha test; ARGB1555 and ARGB4444 textures after a
+      probe of GCN's field order; wrap and mirror.
+   3. Specular and fog, mip chains, the colour key; then a game.
 
 ## Decisions
 

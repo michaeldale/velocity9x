@@ -34,6 +34,8 @@
 #define V9X_D3D_SELECT_R128     12ul
 /* The Evergreen 3D engine through its command processor. */
 #define V9X_D3D_SELECT_EVERGREEN 13ul
+/* The Carrizo (GFX8) 3D engine through its command processor. */
+#define V9X_D3D_SELECT_VI        14ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

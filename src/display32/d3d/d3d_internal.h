@@ -702,6 +702,7 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_mga16;
 
 /* AMD Evergreen (Cedar), in d3d_eg.c, through the CP (engines\eg_cp.c). */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_eg;
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi;
 
 /* 3dfx VSA-100, in d3d_tdfx.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_tdfx;

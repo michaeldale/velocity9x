@@ -320,6 +320,10 @@ unsigned int v9x_run_eg_3d_tests(void);
  * state, its refusals, and the builder taking what it maps. */
 unsigned int v9x_run_d3d_eg_map_tests(void);
 
+/* tests\host\test_d3d_vi_map.c: the neutral draw to Carrizo TL-draw
+ * state and its refusals. */
+unsigned int v9x_run_d3d_vi_map_tests(void);
+
 /* tests\host\test_r128_3d.c: Rage 128 CCE state and primitive streams
  * against Mesa's r128 encodings. */
 unsigned int v9x_run_r128_3d_tests(void);
@@ -1446,6 +1450,7 @@ int main(int argc, char **argv)
     failures += v9x_run_eg_shader_tests();
     failures += v9x_run_eg_3d_tests();
     failures += v9x_run_d3d_eg_map_tests();
+    failures += v9x_run_d3d_vi_map_tests();
     failures += v9x_run_d3d_r128_map_tests();
     failures += v9x_run_vram_probe_tests();
 

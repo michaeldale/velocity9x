@@ -423,8 +423,12 @@
         # 3,335 bytes free with step 6's HAL still to come (2026-10-27). The
         # trace tool joined it the same day, when the shared HAL's Evergreen
         # DMA timeout record put disk 1 76 bytes over (Michael, 2026-10-27:
-        # "v9xtrace on third disk is okay").
-        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE')
+        # "v9xtrace on third disk is okay"). ATI3DCIF.DLL joined it when the
+        # Carrizo graphics microcode in the shared HAL put disk 1 22,770
+        # bytes over (Michael, 2026-10-28: "S3 third disk"): no 3DCIF title
+        # needs it to start.
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE',
+                      'ATI3DCIF.DLL')
     }
 
     Vm = @{

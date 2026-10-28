@@ -257,9 +257,10 @@
 #define V9X_DEPTH_RED           0xffff0000ul
 #define V9X_DEPTH_GREEN         0xff00ff00ul
 #define V9X_DEPTH_BLUE          0xff0000fful
-/* The CB's RGBA bytes for red and blue at full alpha. */
-#define V9X_PIXEL_RED           0xff0000fful
-#define V9X_PIXEL_BLUE          0xffff0000ul
+/* Red and blue at full alpha as the target holds them: the D3DCOLORs, the
+ * colour path keeping memory byte order (vi_shader.h). */
+#define V9X_PIXEL_RED           V9X_DEPTH_RED
+#define V9X_PIXEL_BLUE          V9X_DEPTH_BLUE
 #define V9X_Z16_HALF            0x8000ul
 #define V9X_Z16_QUARTER         0x4000ul
 /* A 1D-tiled Z16 tile: 8x8 samples, 128 bytes; the tiles in rows. */
@@ -797,7 +798,13 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     rect.probe_high = hi;
     if (v9x_gouraud) {
         struct v9x_vi_tl_draw draw;
+        unsigned char *bytes = (unsigned char *)&draw;
 
+        /* Zero first: a field this probe does not set keeps the builder's
+         * default meaning. */
+        for (index = 0ul; index < sizeof(draw); ++index) {
+            bytes[index] = 0u;
+        }
         draw.target_low = rect.target_low;
         draw.target_high = hi;
         draw.pitch_pixels = V9X_TARGET_PITCH;
@@ -1097,8 +1104,8 @@ static int v9x_near(DWORD got, DWORD want)
 }
 
 /* The ramp: red round(255 (x + 0.5) / 64) at each pixel centre, green 80h,
- * blue 40h, alpha FFh, the CB's bytes R, G, B, A from the low one (the
- * first rectangle's order). Within +-2 per channel. */
+ * blue 40h, alpha FFh, in the D3DCOLOR's own bytes (blue the low one: the
+ * colour path keeps memory order). Within +-2 per channel. */
 static void v9x_verify_gouraud(const DWORD *target)
 {
     DWORD x;
@@ -1115,9 +1122,9 @@ static void v9x_verify_gouraud(const DWORD *target)
             pixel = target[y * V9X_TARGET_PITCH + x];
             red = ((2ul * x + 1ul) * 255ul + V9X_TARGET_PITCH) /
                   (2ul * V9X_TARGET_PITCH);
-            if (v9x_near(pixel & 0xfful, red) &&
+            if (v9x_near((pixel >> 16) & 0xfful, red) &&
                 v9x_near((pixel >> 8) & 0xfful, 0x80ul) &&
-                v9x_near((pixel >> 16) & 0xfful, 0x40ul) &&
+                v9x_near(pixel & 0xfful, 0x40ul) &&
                 v9x_near(pixel >> 24, 0xfful)) {
                 text[x] = '#';
             } else {
@@ -1212,9 +1219,9 @@ static DWORD v9x_scale(DWORD a, DWORD b)
     return (a * b + 127ul) / 255ul;
 }
 
-/* /texture: every pixel the texel under it, its A8R8G8B8 bytes stored in
- * the CB's R, G, B, A order, exact. /modulate: each channel times the
- * diffuse's, within +-2. */
+/* /texture: every pixel the texel under it, byte for byte (the colour path
+ * keeps memory order), exact. /modulate: each byte times the diffuse's
+ * byte in the same place, within +-2. */
 static void v9x_verify_texture(const DWORD *target)
 {
     DWORD x;
@@ -1237,15 +1244,13 @@ static void v9x_verify_texture(const DWORD *target)
             index = y * V9X_TARGET_PITCH + x;
             texel = v9x_pattern(V9X_SEED_TEXTURE, index);
             pixel = target[index];
-            want[0] = (texel >> 16) & 0xfful;
-            want[1] = (texel >> 8) & 0xfful;
-            want[2] = texel & 0xfful;
-            want[3] = texel >> 24;
-            if (v9x_modulate) {
-                want[0] = v9x_scale(want[0], (V9X_MODULATE_COLOUR >> 16) & 0xfful);
-                want[1] = v9x_scale(want[1], (V9X_MODULATE_COLOUR >> 8) & 0xfful);
-                want[2] = v9x_scale(want[2], V9X_MODULATE_COLOUR & 0xfful);
-                want[3] = v9x_scale(want[3], V9X_MODULATE_COLOUR >> 24);
+            for (chan = 0ul; chan < 4ul; ++chan) {
+                want[chan] = (texel >> (chan * 8ul)) & 0xfful;
+                if (v9x_modulate) {
+                    want[chan] = v9x_scale(want[chan],
+                                           (V9X_MODULATE_COLOUR >>
+                                            (chan * 8ul)) & 0xfful);
+                }
             }
             ok = 1;
             for (chan = 0ul; chan < 4ul; ++chan) {

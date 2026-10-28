@@ -367,6 +367,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Carrizo draws Gouraud triangles from Direct3D TL vertices, fetched by the VS through FLAT](2026-10-28-carrizo-gouraud.md)
 - [2026-10-28 Carrizo depth-tests into a 1D-tiled Z16 buffer: LESS rejects and accepts as it should, and the buffer holds the exact values](2026-10-28-carrizo-depth.md)
 - [2026-10-28 Carrizo samples an A8R8G8B8 texture through a T# and S# in user SGPRs: point-sampled copy and modulate exact](2026-10-28-carrizo-texture-modulate.md)
+- [2026-10-28 Direct3D through the HAL on Carrizo: V9XD32 passes all but blending and ARGB1555 at 16 and 32 bpp](2026-10-28-carrizo-d3d-hal-first-light.md)
 
 ## DOS box and mini-VDD
 

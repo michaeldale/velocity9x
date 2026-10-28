@@ -146,6 +146,18 @@ $sources = @(
     "src\display32\engines\eng_vi.c",
     "src\chipsets\ati\vi\vi_sdma.c",
     "src\chipsets\ati\vi\vi_sdma_microcode.c",
+    # The Carrizo 3D engine: the graphics CP and its microcode (licence in
+    # NOTICES.TXT), gpu_init's list, the clear state, the PM4 streams and
+    # shaders, the neutral draw to them, and the engine that submits them.
+    "src\display32\engines\vi_cp.c",
+    "src\chipsets\ati\vi\vi_gfx_microcode.c",
+    "src\chipsets\ati\vi\vi_gpu_init.c",
+    "src\chipsets\ati\vi\vi_gpu_init_tables.c",
+    "src\chipsets\ati\vi\vi_clear_state.c",
+    "src\chipsets\ati\vi\vi_3d.c",
+    "src\chipsets\ati\vi\vi_shader.c",
+    "src\display32\d3d\d3d_vi_map.c",
+    "src\display32\d3d\d3d_vi.c",
     # The Haswell blitter: fill and copy on the BCS ring through the
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",

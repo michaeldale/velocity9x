@@ -162,6 +162,11 @@
         Folder = '3DFX'
         Order = 7
         HardwareIdHint = 'PCI 121A:0009'
+        # Installed files that ride a third disk, as every other family's
+        # do: the Carrizo graphics microcode in the shared HAL put disk 1
+        # about 62 KB over (Michael, 2026-10-28: "third disks for all").
+        # The update checker, which nothing needs to boot or draw.
+        ThirdDisk = @('V9XUPD.EXE')
     }
 
     # No emulator models this chip, so the VM runner must refuse rather than

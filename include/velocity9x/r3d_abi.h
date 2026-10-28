@@ -257,6 +257,8 @@ typedef struct v9x_r3d_abi_state {
 #define V9X_R3D_ABI_ENGINE_R128     11ul
 /* The Evergreen CP engine (d3d_eg.c), 2026-10-27, on the same terms. */
 #define V9X_R3D_ABI_ENGINE_EVERGREEN 12ul
+/* The Carrizo CP engine (d3d_vi.c), 2026-10-28, on the same terms. */
+#define V9X_R3D_ABI_ENGINE_VI       13ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;

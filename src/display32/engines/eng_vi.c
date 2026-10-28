@@ -64,6 +64,9 @@
  * closing fence. */
 #define V9X_VI_STAGE_DWORDS 256ul
 
+/* A Z16's rows are padded to the DB's 8-row tile (d3d_vi_map.h). */
+#define V9X_VI_DEPTH_TILE_ROWS 8ul
+
 /* Fault-trace tag: "VI2D". */
 #define V9X_VI_FAULT_TAG 0x56493244ul
 
@@ -399,7 +402,7 @@ static void v9x_vi_give_up(void)
  * v9x_engine32() answers none, blits and fills fall to the CPU, and Lock's
  * drain completes rather than answering WASSTILLDRAWING for ever.
  */
-static int v9x_vi_wait_idle(int wait)
+static int v9x_vi_dma_idle(int wait)
 {
     DWORD reads;
 
@@ -427,14 +430,23 @@ static int v9x_vi_wait_idle(int wait)
     return 0;
 }
 
-/* Before a flip: the last fill or copy finished, so the frame shown is the
- * frame drawn. */
+/* Idle for whatever needs the drawing: SDMA's work, and the graphics CP's
+ * (vi_cp.c), which shares the same VRAM. */
+static int v9x_vi_wait_idle(int wait)
+{
+    return v9x_vi_dma_idle(wait) && v9x_vi_cp_drain(wait);
+}
+
+/* Before a flip or a 3D batch: the last fill or copy finished, so the
+ * frame shown is the frame drawn and a batch never reads what a fill has
+ * yet to write. SDMA alone: the CP's batches follow one another in its
+ * ring. */
 int v9x_vi_dma_settle(void)
 {
     if (!v9x_vi_validated() || !v9x_vi_dirty) {
         return 1;
     }
-    return v9x_vi_wait_idle(1);
+    return v9x_vi_dma_idle(1);
 }
 
 /* The heap's GPU address, once the engine is validated, for the scanout
@@ -448,6 +460,27 @@ int v9x_vi_heap_address(DWORD *high, DWORD *low)
     *high = v9x_vi_gpu_high;
     *low = v9x_vi_heap_low;
     return 1;
+}
+
+/* The 4 MiB window's GPU address, for the graphics CP (vi_cp.c), whose
+ * ring, shaders and vertices share it. */
+int v9x_vi_window_address(DWORD *high, DWORD *low)
+{
+    if (!v9x_vi_validate()) {
+        return 0;
+    }
+    *high = v9x_vi_gpu_high;
+    *low = v9x_vi_ring_low;
+    return 1;
+}
+
+/* Before a fill or copy, the CP's drawing finished: SDMA must not read a
+ * surface the CP is still writing, or write one it still reads. A CP that
+ * times out here is given up by vi_cp.c and its work dropped, so the SDMA
+ * operation goes ahead either way. */
+static void v9x_vi_after_cp(void)
+{
+    (void)v9x_vi_cp_drain(1);
 }
 
 /* Every row of a plan into the ring, a stage at a time. */
@@ -512,10 +545,25 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     fill.width = (DWORD)(data->rDest[2] - data->rDest[0]);
     fill.height = (DWORD)(data->rDest[3] - data->rDest[1]);
     fill.color = data->bltFX.dwFillColor;
+    /* A Z16 is 1D tiled (d3d_vi.c places it, rows padded to the 8-row
+     * tile): a fill of all of it is a fill of its bytes, padding rows
+     * included, but one of part of it would land in the wrong samples, and
+     * so would the CPU's. Cedar draws those on the CP; here they are
+     * declined until that is built. */
+    if ((data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        if (fill.left != 0ul || fill.top != 0ul ||
+            fill.width != (DWORD)data->lpDDDestSurface->lpGbl->wWidth ||
+            fill.height != (DWORD)data->lpDDDestSurface->lpGbl->wHeight) {
+            return V9X_BLT_DECLINED;
+        }
+        fill.height = (fill.height + V9X_VI_DEPTH_TILE_ROWS - 1ul) &
+                      ~(V9X_VI_DEPTH_TILE_ROWS - 1ul);
+    }
     if (v9x_eg_dma_plan_fill(&fill, &plan) != V9X_STATUS_OK ||
         v9x_vi_sdma_plan_check(&plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
+    v9x_vi_after_cp();
     return v9x_vi_emit_or_give_up(&plan);
 }
 
@@ -555,6 +603,7 @@ static int v9x_vi_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
         v9x_vi_sdma_plan_check(&plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
+    v9x_vi_after_cp();
     return v9x_vi_emit_or_give_up(&plan);
 }
 

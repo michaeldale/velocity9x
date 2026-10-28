@@ -238,11 +238,12 @@ v9x_u32 v9x_vi_shader_probe_ps(v9x_u32 *out)
 v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out)
 {
     static const v9x_u32 channel_op[4] = {
-        V9X_VI_VOP1_CVT_F32_UBYTE2, V9X_VI_VOP1_CVT_F32_UBYTE1,
-        V9X_VI_VOP1_CVT_F32_UBYTE0, V9X_VI_VOP1_CVT_F32_UBYTE3
+        V9X_VI_VOP1_CVT_F32_UBYTE0, V9X_VI_VOP1_CVT_F32_UBYTE1,
+        V9X_VI_VOP1_CVT_F32_UBYTE2, V9X_VI_VOP1_CVT_F32_UBYTE3
     };
-    /* R, G, B, A land in v1, v2, v7, v8: the address VGPRs, free once the
-     * loads are done. */
+    /* Bytes 0-3 land in v1, v2, v7, v8, the address VGPRs, free once the
+     * loads are done: memory order, so the CB writes a D3DCOLOR's bytes
+     * back where they were and nothing swizzles (vi_shader.h). */
     static const v9x_u32 channel_vgpr[4] = { 1ul, 2ul, 7ul, 8ul };
     v9x_u32 count = 0ul;
     v9x_u32 index;
@@ -262,7 +263,9 @@ v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out)
     out[count++] = v9x_vi_s_waitcnt(V9X_VI_WAITCNT_ALL);
 
     /* D3DCOLOR is A8R8G8B8: blue the low byte. Each byte to a float, then
-     * scaled by 1/255, the literal the one constant-bus read. */
+     * scaled by 1/255, the literal the one constant-bus read. Only alpha's
+     * place matters to the hardware (w, for the blend and the alpha test);
+     * the other three are the target's bytes in order. */
     for (index = 0ul; index < 4ul; ++index) {
         out[count++] = v9x_vi_vop1(channel_op[index], channel_vgpr[index],
                                    V9X_VI_VGPR(9));
@@ -273,6 +276,23 @@ v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out)
         out[count++] = V9X_VI_FLOAT_1_OVER_255;
     }
     count += v9x_vi_exp(V9X_VI_EXP_PARAM0, 0, 0, 1ul, 2ul, 7ul, 8ul,
+                        out + count);
+
+    /* Parameter 2: the specular's colour bytes (v10) into v13-v15, as the
+     * diffuse's, and 0 in v16. Its alpha byte is the fog factor, which no
+     * PS here reads. New VGPRs rather than the exported ones: those are
+     * not the shader's again until the export has read them. */
+    for (index = 0ul; index < 3ul; ++index) {
+        out[count++] = v9x_vi_vop1(channel_op[index], 13ul + index,
+                                   V9X_VI_VGPR(10));
+    }
+    for (index = 0ul; index < 3ul; ++index) {
+        out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MUL_F32, 13ul + index,
+                                   V9X_VI_LITERAL, 13ul + index);
+        out[count++] = V9X_VI_FLOAT_1_OVER_255;
+    }
+    out[count++] = v9x_vi_vop1(V9X_VI_VOP1_MOV_B32, 16ul, V9X_VI_INLINE_INT(0));
+    count += v9x_vi_exp(V9X_VI_EXP_PARAM0 + 2ul, 0, 0, 13ul, 14ul, 15ul, 16ul,
                         out + count);
 
     /* Parameter 1: tu and tv as loaded (v11, v12), then 0 and 1.0 in the
@@ -287,25 +307,37 @@ v9x_u32 v9x_vi_shader_tl_vs(v9x_u32 *out)
     return count;
 }
 
-/* GCN 3 wants one wait state between a SALU write of M0 and a v_interp
- * that reads it; s_nop 0 is that one. */
-v9x_u32 v9x_vi_shader_gouraud_ps(v9x_u32 *out)
+/* Parameter attr's channels first..first+count-1 into consecutive VGPRs
+ * from vdst, perspective-correct from v0:v1. */
+static v9x_u32 v9x_vi_interp(v9x_u32 vdst, v9x_u32 attr, v9x_u32 channels,
+                             v9x_u32 *out)
 {
     v9x_u32 count = 0ul;
     v9x_u32 chan;
 
+    for (chan = 0ul; chan < channels; ++chan) {
+        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32, vdst + chan, 0ul,
+                                     attr, chan);
+        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P2_F32, vdst + chan, 1ul,
+                                     attr, chan);
+    }
+    return count;
+}
+
+/* GCN 3 wants one wait state between a SALU write of M0 and a v_interp
+ * that reads it; s_nop 0 is that one. Leaves the colour in v2-v5. */
+static v9x_u32 v9x_vi_gouraud_ps_body(v9x_u32 *out)
+{
+    v9x_u32 count = 0ul;
+
     out[count++] = v9x_vi_s_mov_m0(0ul);
     out[count++] = v9x_vi_s_nop(0ul);
-    for (chan = 0ul; chan < 4ul; ++chan) {
-        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32, 2ul + chan, 0ul,
-                                     0ul, chan);
-        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P2_F32, 2ul + chan, 1ul,
-                                     0ul, chan);
-    }
-    count += v9x_vi_exp(V9X_VI_EXP_MRT0, 1, 1, 2ul, 3ul, 4ul, 5ul,
-                        out + count);
-    out[count++] = V9X_VI_S_ENDPGM;
-    return count;
+    return count + v9x_vi_interp(2ul, 0ul, 4ul, out + count);
+}
+
+v9x_u32 v9x_vi_shader_gouraud_ps(v9x_u32 *out)
+{
+    return v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, 0, out);
 }
 
 /* M0 from PRIM_MASK in s12, after the descriptors; then parameter 1's u
@@ -339,35 +371,63 @@ static v9x_u32 v9x_vi_texture_ps_sample(v9x_u32 *out)
 
 v9x_u32 v9x_vi_shader_texture_ps(v9x_u32 *out)
 {
-    v9x_u32 count = v9x_vi_texture_ps_head(out);
-
-    count += v9x_vi_texture_ps_sample(out + count);
-    count += v9x_vi_exp(V9X_VI_EXP_MRT0, 1, 1, 4ul, 5ul, 6ul, 7ul,
-                        out + count);
-    out[count++] = V9X_VI_S_ENDPGM;
-    return count;
+    return v9x_vi_shader_d3d_ps(V9X_VI_PS_TEXTURE, 0, out);
 }
 
-/* Direct3D's default stage: texel times diffuse. Both multiply operands
- * are VGPRs. */
-v9x_u32 v9x_vi_shader_modulate_ps(v9x_u32 *out)
+/* Direct3D's default stage: texel times diffuse, the diffuse in v8-v11.
+ * Both multiply operands are VGPRs. Leaves the colour in v4-v7. */
+static v9x_u32 v9x_vi_modulate_ps_body(v9x_u32 *out)
 {
     v9x_u32 count = v9x_vi_texture_ps_head(out);
     v9x_u32 chan;
 
-    for (chan = 0ul; chan < 4ul; ++chan) {
-        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32, 8ul + chan, 0ul,
-                                     0ul, chan);
-        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P2_F32, 8ul + chan, 1ul,
-                                     0ul, chan);
-    }
+    count += v9x_vi_interp(8ul, 0ul, 4ul, out + count);
     count += v9x_vi_texture_ps_sample(out + count);
     for (chan = 0ul; chan < 4ul; ++chan) {
         out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MUL_F32, 4ul + chan,
                                    V9X_VI_VGPR(8ul + chan), 4ul + chan);
     }
-    count += v9x_vi_exp(V9X_VI_EXP_MRT0, 1, 1, 4ul, 5ul, 6ul, 7ul,
-                        out + count);
+    return count;
+}
+
+v9x_u32 v9x_vi_shader_modulate_ps(v9x_u32 *out)
+{
+    return v9x_vi_shader_d3d_ps(V9X_VI_PS_MODULATE, 0, out);
+}
+
+/* Each op's body leaves its colour in four VGPRs from colour, and the
+ * first VGPR past what it uses is where the specular goes. */
+v9x_u32 v9x_vi_shader_d3d_ps(v9x_u32 op, int specular, v9x_u32 *out)
+{
+    v9x_u32 count;
+    v9x_u32 colour;
+    v9x_u32 spare;
+    v9x_u32 chan;
+
+    if (op == V9X_VI_PS_TEXTURE) {
+        count = v9x_vi_texture_ps_head(out);
+        count += v9x_vi_texture_ps_sample(out + count);
+        colour = 4ul;
+        spare = 8ul;
+    } else if (op == V9X_VI_PS_MODULATE) {
+        count = v9x_vi_modulate_ps_body(out);
+        colour = 4ul;
+        spare = 12ul;
+    } else {
+        count = v9x_vi_gouraud_ps_body(out);
+        colour = 2ul;
+        spare = 6ul;
+    }
+    if (specular) {
+        count += v9x_vi_interp(spare, 2ul, 3ul, out + count);
+        for (chan = 0ul; chan < 3ul; ++chan) {
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_ADD_F32, colour + chan,
+                                       V9X_VI_VGPR(spare + chan),
+                                       colour + chan);
+        }
+    }
+    count += v9x_vi_exp(V9X_VI_EXP_MRT0, 1, 1, colour, colour + 1ul,
+                        colour + 2ul, colour + 3ul, out + count);
     out[count++] = V9X_VI_S_ENDPGM;
     return count;
 }

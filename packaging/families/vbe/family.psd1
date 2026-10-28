@@ -248,7 +248,12 @@
         # disk). The update checker, which nothing needs to boot or draw.
         # GLIDE3X.DLL joined it with hardware T&L step 4, which left disk 1
         # 9,080 bytes free with step 6's HAL still to come (2026-10-27).
-        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL')
+        # V9XTRACE.EXE and ATI3DCIF.DLL joined it when the Carrizo graphics
+        # microcode in the shared HAL put disk 1 57,011 bytes over (Michael,
+        # 2026-10-28: "third disks for all"): the trace tool rides disk 3 in
+        # every other family, and no 3DCIF title needs its DLL to start.
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE',
+                      'ATI3DCIF.DLL')
     }
 
     Vm = @{

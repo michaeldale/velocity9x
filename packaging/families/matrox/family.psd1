@@ -248,7 +248,11 @@
         # joined it the same day, when the Evergreen engine's specular and
         # fog put disk 1 775 bytes over (Michael, 2026-10-27: "v9xtrace on
         # third disk is okay").
-        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE')
+        # ATI3DCIF.DLL joined it when the Carrizo graphics microcode in the
+        # shared HAL put disk 1 about 24 KB over (Michael, 2026-10-28: "third
+        # disks for all"): no 3DCIF title needs it to start.
+        ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE',
+                      'ATI3DCIF.DLL')
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test
