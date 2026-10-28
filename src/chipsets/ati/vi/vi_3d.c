@@ -50,6 +50,7 @@
 #define VI_SPI_SHADER_PGM_RSRC3_VS  0x2c46ul
 #define VI_SPI_SHADER_USER_DATA_VS  0x2c4cul
 #define VI_PA_SC_VPORT_ZMIN_0       0xa0b4ul
+#define VI_VGT_MAX_VTX_INDX         0xa100ul
 /* UCONFIG registers. */
 #define VI_VGT_PRIMITIVE_TYPE       0xc242ul
 
@@ -93,6 +94,14 @@
  * DATA_SEL 1 (32 bits), INT_SEL 0. */
 #define VI_EOP_FLUSH_EVENT          0x00038514ul
 #define VI_EOP_DATA_SEL_32          (1ul << 29)
+
+/* gfx_v8_0_emit_mem_sync's CP_COHER_CNTL: TC_WB_ACTION_ENA (18),
+ * TCL1_ACTION_ENA (22), TC_ACTION_ENA (23), SH_KCACHE_ACTION_ENA (27),
+ * SH_ICACHE_ACTION_ENA (29); the whole address range, vid.h's poll
+ * interval. */
+#define VI_COHER_SHADER_CACHES      0x28c40000ul
+#define VI_COHER_SIZE_ALL           0xfffffffful
+#define VI_COHER_POLL_INTERVAL      0x0000000aul
 
 #define VI_SHADER_ALIGN             0xfful
 
@@ -231,16 +240,33 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
 {
     v9x_u32 values[13];
     v9x_u32 index;
+    v9x_u32 vs_sgprs;
+    v9x_u32 ps_sgprs;
 
     if (stream == 0 || rect == 0 || rect->pitch_pixels == 0ul ||
         (rect->pitch_pixels % 8ul) != 0ul || rect->height == 0ul ||
         rect->left >= rect->right || rect->top >= rect->bottom ||
         rect->right > rect->pitch_pixels || rect->bottom > rect->height ||
         ((rect->target_low | rect->vs_low | rect->ps_low) &
-         VI_SHADER_ALIGN) != 0ul || (rect->fence_low & 3ul) != 0ul ||
+         VI_SHADER_ALIGN) != 0ul ||
+        ((rect->fence_low | rect->probe_vs_low | rect->probe_ps_low) &
+         3ul) != 0ul ||
         (rect->pitch_pixels * rect->height) % 64ul != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* A probe shader's address follows the four user SGPRs as s4:s5. */
+    vs_sgprs = rect->probe_vs_low != 0ul ? 6ul : 4ul;
+    ps_sgprs = rect->probe_ps_low != 0ul ? 6ul : 4ul;
+
+    /* Linux's gfx ring puts this before every IB: the shaders and their
+     * data were written by the CPU, and the SQ's instruction and constant
+     * caches and TC L2 may hold what was at those addresses before. The
+     * end-of-pipe event flushes TC but leaves the SQ caches. */
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
+    v9x_vi_pm4_put(stream, VI_COHER_SHADER_CACHES);
+    v9x_vi_pm4_put(stream, VI_COHER_SIZE_ALL);
+    v9x_vi_pm4_put(stream, 0ul);
+    v9x_vi_pm4_put(stream, VI_COHER_POLL_INTERVAL);
 
     /* The colour buffer: CB_COLOR0_BASE .. CLEAR_WORD1. PITCH and SLICE
      * are TILE_MAX fields, 8 pixels and 64 pixels a tile, less one. */
@@ -315,20 +341,37 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     values[2] = v9x_vi_address_256(rect->vs_low, rect->shader_high);
     values[3] = 0ul;
     values[4] = VI_RSRC1_SMALL;
-    values[5] = VI_RSRC2_USER_SGPRS(4);
+    values[5] = VI_RSRC2_USER_SGPRS(vs_sgprs);
     v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_PGM_RSRC3_VS, values, 6ul);
     values[0] = v9x_vi_float_bits(rect->left);
     values[1] = v9x_vi_float_bits(rect->top);
     values[2] = v9x_vi_float_bits(rect->right);
     values[3] = v9x_vi_float_bits(rect->bottom);
-    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 4ul);
+    values[4] = rect->probe_vs_low;
+    values[5] = rect->probe_high;
+    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, vs_sgprs);
     values[0] = VI_RSRC3_ALL_CUS;
     values[1] = v9x_vi_address_256(rect->ps_low, rect->shader_high);
     values[2] = 0ul;
     values[3] = VI_RSRC1_SMALL;
-    values[4] = VI_RSRC2_USER_SGPRS(4);
+    values[4] = VI_RSRC2_USER_SGPRS(ps_sgprs);
     v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_PGM_RSRC3_PS, values, 5ul);
-    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, rect->color, 4ul);
+    for (index = 0ul; index < 4ul; ++index) {
+        values[index] = rect->color[index];
+    }
+    values[4] = rect->probe_ps_low;
+    values[5] = rect->probe_high;
+    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, values, ps_sgprs);
+
+    /* VGT_MAX_VTX_INDX, _MIN_VTX_INDX, _INDX_OFFSET, as radeonsi's init
+     * state sets them; clearstate_vi.h leaves the maximum 0. Not needed
+     * for this auto-indexed draw: without it M-XP7053 still drew, VertexIDs
+     * 0-2 (docs\decisions\2026-10-28-carrizo-first-rectangle.md). It is
+     * kept for indexed draws, where the clamp applies. */
+    values[0] = 0xfffffffful;
+    values[1] = 0ul;
+    values[2] = 0ul;
+    v9x_vi_pm4_set_context(stream, VI_VGT_MAX_VTX_INDX, values, 3ul);
 
     /* The draw: three vertices of a RECTLIST, auto-indexed. */
     v9x_vi_pm4_set_uconfig(stream, VI_VGT_PRIMITIVE_TYPE, VI_DI_PT_RECTLIST);

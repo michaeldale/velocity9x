@@ -22,6 +22,7 @@
 #define V9X_VI_P3_CONTEXT_CONTROL   0x28ul
 #define V9X_VI_P3_DRAW_INDEX_AUTO   0x2dul
 #define V9X_VI_P3_NUM_INSTANCES     0x2ful
+#define V9X_VI_P3_SURFACE_SYNC      0x43ul
 #define V9X_VI_P3_EVENT_WRITE_EOP   0x47ul
 #define V9X_VI_P3_PREAMBLE_CNTL     0x4aul
 #define V9X_VI_P3_SET_CONTEXT_REG   0x69ul
@@ -89,6 +90,11 @@ struct v9x_vi_solid_rect {
     v9x_u32 fence_low;
     v9x_u32 fence_high;
     v9x_u32 fence_value;
+    /* For the probe shaders (vi_shader.h): each stage's marker address,
+     * dword-aligned, as its user SGPRs s4 and s5. 0 for the solid ones. */
+    v9x_u32 probe_vs_low;
+    v9x_u32 probe_ps_low;
+    v9x_u32 probe_high;
 };
 
 /* gfx_8_0_enum.h ColorFormat. */

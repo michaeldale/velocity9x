@@ -36,7 +36,9 @@
  *      scratch write, 600DCAFE, behind it;
  *   3. a solid rectangle (8,4)-(40,12) into a 64x16 32 bpp target
  *      (COLOR_8_8_8_8, tile index 8, linear-aligned) and an end-of-pipe
- *      event that flushes the caches and writes a fence.
+ *      event that flushes the caches and writes a fence. The shaders are
+ *      vi_shader.c's probe variants: each stores a marker beside the
+ *      target first, so the report shows whether the VS and PS ran.
  *
  * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
  * NOP and alignment. Then the CP is halted and the RLC stopped, every
@@ -107,6 +109,11 @@
 #define V9X_CZ_HDP_MEM_FLUSH        0x05480ul
 #define V9X_CZ_GRBM_STATUS2         0x08008ul
 #define V9X_CZ_GRBM_STATUS          0x08010ul
+#define V9X_CZ_GRBM_STATUS_SE0      0x08014ul
+#define V9X_CZ_CC_SHADER_ARRAY      0x089bcul
+#define V9X_CZ_USER_SHADER_ARRAY    0x089c0ul
+#define V9X_CZ_CC_RB_DISABLE        0x098f4ul
+#define V9X_CZ_USER_RB_DISABLE      0x09b7cul
 #define V9X_CZ_GRBM_SOFT_RESET      0x08020ul
 #define V9X_CZ_CP_MEC_CNTL          0x08234ul
 #define V9X_CZ_CP_STALLED_STAT1     0x08674ul
@@ -211,6 +218,18 @@
 #define V9X_WRITEBACK           0x8000ul
 #define V9X_FENCE               0x8100ul
 #define V9X_TARGET              0x9000ul
+/* The probe shaders' markers (vi_shader.h): the VS's VertexID at +0, the
+ * PS's red at +4, then for each vertex its VertexID at +16, x at +32, y
+ * at +48, v2 at +64 and the first compare's VCC at +80, plus 4 x
+ * (VertexID & 3). */
+#define V9X_PROBE               0xa000ul
+#define V9X_PROBE_PS            (V9X_PROBE + 4ul)
+#define V9X_PROBE_DWORDS        24ul
+#define V9X_PROBE_AT_VS         0u
+#define V9X_PROBE_AT_PS         1u
+#define V9X_PROBE_AT_VERTEX     4u
+#define V9X_PROBE_AT_X          8u
+#define V9X_PROBE_AT_Y          12u
 #define V9X_CANARY              0xc000ul
 #define V9X_CANARY_DWORDS       16ul
 #define V9X_SEED_CANARY         0x50000005ul
@@ -305,7 +324,9 @@ static const DWORD v9x_extra_offsets[] = {
     V9X_CZ_CP_STAT, V9X_CZ_CP_BUSY_STAT, V9X_CZ_CP_STALLED_STAT1,
     V9X_CZ_CP_RB0_RPTR, V9X_CZ_CP_MEC_CNTL, V9X_CZ_RLC_STAT,
     V9X_CZ_RLC_GPM_STAT, V9X_CZ_RLC_SERDES_CU_BUSY, V9X_CZ_RLC_SERDES_NONCU,
-    V9X_CZ_SRBM_STATUS, V9X_CZ_MC_VM_FB_LOCATION, V9X_CZ_GB_TILE_MODE8
+    V9X_CZ_SRBM_STATUS, V9X_CZ_MC_VM_FB_LOCATION, V9X_CZ_GB_TILE_MODE8,
+    V9X_CZ_GRBM_STATUS_SE0, V9X_CZ_CC_SHADER_ARRAY, V9X_CZ_USER_SHADER_ARRAY,
+    V9X_CZ_CC_RB_DISABLE, V9X_CZ_USER_RB_DISABLE
 };
 #define V9X_EXTRA_COUNT (sizeof(v9x_extra_offsets) / sizeof(v9x_extra_offsets[0]))
 #define V9X_EXTRA_RESET  2u
@@ -317,7 +338,9 @@ static const char * const v9x_extra_names[V9X_EXTRA_COUNT] = {
     "CP_BUSY_STAT", "CP_STALLED_STAT1", "CP_RB0_RPTR", "CP_MEC_CNTL",
     "RLC_STAT", "RLC_GPM_STAT", "RLC_SERDES_CU_MASTER_BUSY",
     "RLC_SERDES_NONCU_MASTER_BUSY", "SRBM_STATUS", "MC_VM_FB_LOCATION",
-    "GB_TILE_MODE8"
+    "GB_TILE_MODE8", "GRBM_STATUS_SE0", "CC_GC_SHADER_ARRAY_CONFIG",
+    "GC_USER_SHADER_ARRAY_CONFIG", "CC_RB_BACKEND_DISABLE",
+    "GC_USER_RB_BACKEND_DISABLE"
 };
 
 /* The four images, in the order the data array holds them. */
@@ -353,7 +376,7 @@ static struct {
 static struct v9x_czcp_result v9x_result;
 static DWORD v9x_saved[V9X_SAVED_COUNT];
 static DWORD v9x_ring[V9X_RING_BYTES / 4ul];
-static DWORD v9x_shader[32];
+static DWORD v9x_shader[64];
 static BYTE v9x_file[V9X_FW_FILE_MAX];
 static DWORD v9x_data[V9X_CZCP_DATA_MAX];
 static DWORD v9x_data_dwords;
@@ -647,6 +670,9 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     rect.fence_low = lo + V9X_FENCE;
     rect.fence_high = hi;
     rect.fence_value = V9X_FENCE_VALUE;
+    rect.probe_vs_low = lo + V9X_PROBE;
+    rect.probe_ps_low = lo + V9X_PROBE_PS;
+    rect.probe_high = hi;
     if (v9x_vi_3d_solid_rect(&stream, &rect) != V9X_STATUS_OK) {
         return 0;
     }
@@ -658,9 +684,9 @@ static int v9x_build_run(DWORD lo, DWORD hi)
 
     /* The ring and the shaders go behind the microcode in the data array. */
     ring_first = v9x_data_append(v9x_ring, stream.count);
-    vs_count = v9x_vi_shader_solid_vs(v9x_shader);
+    vs_count = v9x_vi_shader_probe_vs(v9x_shader);
     vs_first = v9x_data_append(v9x_shader, vs_count);
-    ps_count = v9x_vi_shader_solid_ps(v9x_shader);
+    ps_count = v9x_vi_shader_probe_ps(v9x_shader);
     ps_first = v9x_data_append(v9x_shader, ps_count);
     if (v9x_data_dwords != ps_first + ps_count) {
         return 0;
@@ -693,6 +719,7 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_VRAM_DATA, V9X_VS, vs_first, vs_count);
     v9x_op(V9X_OP_VRAM_DATA, V9X_PS, ps_first, ps_count);
     v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS, V9X_GUARD_VALUE);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_PROBE, V9X_PROBE_DWORDS, V9X_GUARD_VALUE);
     v9x_at_tile_mode8 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_TILE_MODE8, 0ul,
                                0ul);
     v9x_at_addr_config = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_ADDR_CONFIG, 0ul,
@@ -824,6 +851,7 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_WRITEBACK, 1ul, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_FENCE, 1ul, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_TARGET, V9X_TARGET_DWORDS, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_PROBE, V9X_PROBE_DWORDS, 0ul);
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
     v9x_at_after_extra = v9x_request.count;
@@ -923,6 +951,7 @@ void __stdcall V9xCarrizo3dEntry(void)
     DWORD lo;
     DWORD hi;
     const DWORD *r;
+    const DWORD *probe;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     DeleteFileA(V9X_CZCP_PATH);
@@ -1065,6 +1094,29 @@ void __stdcall V9xCarrizo3dEntry(void)
     v9x_key("During", "GrbmStatus3", r[v9x_at_grbm_3]);
     v9x_key("Result", "Fence", v9x_result.block[1]);
     v9x_pass("DrawFence", r[v9x_at_wait_3] != V9X_CZCP_TIMEOUT);
+    /* The markers: the guard where a stage never stored. Vertex n's dword
+     * reads n if a VS invocation had VertexID n. */
+    probe = v9x_result.block + 2ul + V9X_TARGET_DWORDS;
+    for (index = 0ul; index < V9X_PROBE_DWORDS; ++index) {
+        char key[16];
+
+        lstrcpyA(key, "Probe");
+        v9x_decimal(key + 5, index);
+        v9x_key("Result", key, probe[index]);
+    }
+    v9x_pass("VsRan", probe[V9X_PROBE_AT_VS] != V9X_GUARD_VALUE);
+    v9x_pass("VertexIds", probe[V9X_PROBE_AT_VERTEX] == 0ul &&
+                          probe[V9X_PROBE_AT_VERTEX + 1u] == 1ul &&
+                          probe[V9X_PROBE_AT_VERTEX + 2u] == 2ul);
+    /* The RECTLIST's corners: (x1, y1), (x2, y1), (x1, y2). */
+    v9x_pass("Positions",
+             probe[V9X_PROBE_AT_X] == 0x41000000ul &&
+             probe[V9X_PROBE_AT_X + 1u] == 0x42200000ul &&
+             probe[V9X_PROBE_AT_X + 2u] == 0x41000000ul &&
+             probe[V9X_PROBE_AT_Y] == 0x40800000ul &&
+             probe[V9X_PROBE_AT_Y + 1u] == 0x40800000ul &&
+             probe[V9X_PROBE_AT_Y + 2u] == 0x41400000ul);
+    v9x_pass("PsRan", probe[V9X_PROBE_AT_PS] != V9X_GUARD_VALUE);
     v9x_verify(v9x_result.block + 2);
     v9x_finish("COMPLETE", 0u);
 }

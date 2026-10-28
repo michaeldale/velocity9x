@@ -147,7 +147,10 @@ CCReadWindows label dword
     dd 2024h, 2028h     ; MC_VM_FB_LOCATION
     dd 2f30h, 2f34h     ; HDP_DEBUG0
     dd 5428h, 542ch     ; CONFIG_MEMSIZE
-    dd 8008h, 8014h     ; GRBM_STATUS2, GRBM_PWR_CNTL, GRBM_STATUS
+    dd 8008h, 8018h     ; GRBM_STATUS2, GRBM_PWR_CNTL, GRBM_STATUS, _SE0
+    dd 89bch, 89c4h     ; CC_ and GC_USER_SHADER_ARRAY_CONFIG
+    dd 98f4h, 98f8h     ; CC_RB_BACKEND_DISABLE
+    dd 9b7ch, 9b80h     ; GC_USER_RB_BACKEND_DISABLE
     dd 8020h, 8024h     ; GRBM_SOFT_RESET
     dd 8234h, 8238h     ; CP_MEC_CNTL
     dd 8bcch, 8bd0h     ; PA_SC_FIFO_SIZE
@@ -171,7 +174,7 @@ CCReadWindows label dword
     dd 3b10ch, 3b110h   ; RLC_PG_CNTL
     dd 3b124h, 3b128h   ; RLC_CGCG_CGLS_CTRL
     dd 3b184h, 3b18ch   ; RLC_SERDES_CU_MASTER_BUSY, _NONCU_MASTER_BUSY
-CC_READ_WINDOW_COUNT    equ 28
+CC_READ_WINDOW_COUNT    equ 31
 
 ; Writes accepted: exact offsets.
 CCWriteOffsets label dword

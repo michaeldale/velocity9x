@@ -41,6 +41,22 @@ static void test_encodings(void)
     CHECK(out[0] == 0xc400020ful);
     (void)v9x_vi_exp(V9X_VI_EXP_MRT0, 0, 1, 0ul, 0ul, 0ul, 0ul, out);
     CHECK(out[0] == 0xc400100ful);
+    /* gfx8_asm_flat.s: flat_store_dword v[1:2], v2 [00 00 70 dc 01 02 00 00];
+     * v[1:2], v255 [.. 01 ff 00 00]. */
+    CHECK(v9x_vi_flat_store_dword(1ul, 2ul, out) == 2ul);
+    CHECK(out[0] == 0xdc700000ul);
+    CHECK(out[1] == 0x00000201ul);
+    (void)v9x_vi_flat_store_dword(1ul, 255ul, out);
+    CHECK(out[1] == 0x0000ff01ul);
+    /* gfx8_asm_vop2.s: v_add_u32 v5, vcc, s1, v2 [01 04 0a 32];
+     * v_lshlrev_b32 v5, s1, v2 [01 04 0a 24]. */
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_ADD_U32, 5ul, 1ul, 2ul) == 0x320a0401ul);
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_LSHLREV_B32, 5ul, 1ul, 2ul) ==
+          0x240a0401ul);
+    /* v_and_b32 v5, s1, v2 [01 04 0a 26]. */
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_AND_B32, 5ul, 1ul, 2ul) == 0x260a0401ul);
+    /* gfx8_asm_sopp.s: s_waitcnt 0x3141 [41 31 8c bf]. */
+    CHECK(v9x_vi_s_waitcnt(0x3141ul) == 0xbf8c3141ul);
 }
 
 /* The two shaders word for word, as assembled by hand from those rules. */
@@ -48,11 +64,13 @@ static void test_shaders(void)
 {
     static const v9x_u32 vs[V9X_VI_SOLID_VS_DWORDS] = {
         0x7d940081ul,   /* v_cmp_eq_u32 vcc, 1, v0 */
+        0x7e020200ul,   /* v_mov_b32 v1, s0 (x1) */
         0x7e040202ul,   /* v_mov_b32 v2, s2 (x2) */
-        0x00020400ul,   /* v_cndmask_b32 v1, s0 (x1), v2, vcc */
+        0x00020501ul,   /* v_cndmask_b32 v1, v1, v2, vcc */
         0x7d940082ul,   /* v_cmp_eq_u32 vcc, 2, v0 */
-        0x7e060203ul,   /* v_mov_b32 v3, s3 (y2) */
-        0x00060601ul,   /* v_cndmask_b32 v3, s1 (y1), v3, vcc */
+        0x7e060201ul,   /* v_mov_b32 v3, s1 (y1) */
+        0x7e080203ul,   /* v_mov_b32 v4, s3 (y2) */
+        0x00060903ul,   /* v_cndmask_b32 v3, v3, v4, vcc */
         0x7e080280ul,   /* v_mov_b32 v4, 0 */
         0x7e0a02f2ul,   /* v_mov_b32 v5, 1.0 */
         0xc400020ful,   /* exp param0 v4, v4, v4, v4 */
@@ -76,6 +94,75 @@ static void test_shaders(void)
     CHECK(memcmp(out, vs, sizeof(vs)) == 0);
     CHECK(v9x_vi_shader_solid_ps(out) == V9X_VI_SOLID_PS_DWORDS);
     CHECK(memcmp(out, ps, sizeof(ps)) == 0);
+}
+
+/* The probe VS: its head, the solid VS's eight ALU dwords, the position
+ * stores, then the solid VS's five export dwords. */
+typedef char probe_vs_length[
+    V9X_VI_PROBE_VS_DWORDS == 11ul + V9X_VI_SOLID_VS_DWORDS + 16ul ? 1 : -1];
+
+/* The probe shaders: a FLAT store of a marker to the address in s4:s5,
+ * waited for, then the solid shader unchanged. */
+static void test_probe_shaders(void)
+{
+    static const v9x_u32 vs_head[11] = {
+        0x7e0c0204ul,   /* v_mov_b32 v6, s4 */
+        0x7e0e0205ul,   /* v_mov_b32 v7, s5 */
+        0xdc700000ul,   /* flat_store_dword v[6:7], v0 (VertexID) */
+        0x00000006ul,
+        0x260c0083ul,   /* v_and_b32 v6, 3, v0 */
+        0x240c0c82ul,   /* v_lshlrev_b32 v6, 2, v6 */
+        0x320c0c04ul,   /* v_add_u32 v6, vcc, s4, v6 */
+        0x320c0c90ul,   /* v_add_u32 v6, vcc, 16, v6 */
+        0xdc700000ul,   /* flat_store_dword v[6:7], v0 */
+        0x00000006ul,
+        0xbf8c0000ul    /* s_waitcnt 0 */
+    };
+    static const v9x_u32 ps_head[6] = {
+        0x7e080204ul,   /* v_mov_b32 v4, s4 */
+        0x7e0a0205ul,   /* v_mov_b32 v5, s5 */
+        0x7e0c0200ul,   /* v_mov_b32 v6, s0 (red) */
+        0xdc700000ul,   /* flat_store_dword v[4:5], v6 */
+        0x00000604ul,
+        0xbf8c0000ul    /* s_waitcnt 0 */
+    };
+    /* After the position is computed and before it is exported: x at
+     * +32 + 4 x id, y at +48 + 4 x id. */
+    /* Then v2 at +64 + 4 x id, and VCC as v_cmp_eq_u32 1, v0 sets it
+     * (1.0 where set, 0 elsewhere) at +80 + 4 x id, v4 put back to 0. */
+    static const v9x_u32 vs_positions[15] = {
+        0x320c0c90ul,   /* v_add_u32 v6, vcc, 16, v6 */
+        0xdc700000ul,   /* flat_store_dword v[6:7], v1 (x) */
+        0x00000106ul,
+        0x320c0c90ul,   /* v_add_u32 v6, vcc, 16, v6 */
+        0xdc700000ul,   /* flat_store_dword v[6:7], v3 (y) */
+        0x00000306ul,
+        0x320c0c90ul,   /* v_add_u32 v6, vcc, 16, v6 */
+        0xdc700000ul,   /* flat_store_dword v[6:7], v2 (x2) */
+        0x00000206ul,
+        0x7d940081ul,   /* v_cmp_eq_u32 vcc, 1, v0 */
+        0x00080a80ul,   /* v_cndmask_b32 v4, 0, v5 (1.0), vcc */
+        0x320c0c90ul,   /* v_add_u32 v6, vcc, 16, v6 */
+        0xdc700000ul,   /* flat_store_dword v[6:7], v4 */
+        0x00000406ul,
+        0xbf8c0000ul    /* s_waitcnt 0 */
+    };
+    static const v9x_u32 vs_restore = 0x7e080280ul;  /* v_mov_b32 v4, 0 */
+    v9x_u32 solid[16];
+    v9x_u32 out[48];
+
+    /* The solid VS is ten ALU dwords, then its exports and s_endpgm. */
+    CHECK(v9x_vi_shader_probe_vs(out) == V9X_VI_PROBE_VS_DWORDS);
+    CHECK(memcmp(out, vs_head, 11ul * sizeof(v9x_u32)) == 0);
+    (void)v9x_vi_shader_solid_vs(solid);
+    CHECK(memcmp(out + 11, solid, 10ul * sizeof(v9x_u32)) == 0);
+    CHECK(memcmp(out + 21, vs_positions, sizeof(vs_positions)) == 0);
+    CHECK(out[36] == vs_restore);
+    CHECK(memcmp(out + 37, solid + 10, 5ul * sizeof(v9x_u32)) == 0);
+    CHECK(v9x_vi_shader_probe_ps(out) == 6ul + V9X_VI_SOLID_PS_DWORDS);
+    CHECK(memcmp(out, ps_head, 6ul * sizeof(v9x_u32)) == 0);
+    (void)v9x_vi_shader_solid_ps(solid);
+    CHECK(memcmp(out + 6, solid, V9X_VI_SOLID_PS_DWORDS * sizeof(v9x_u32)) == 0);
 }
 
 /* Every type-3 packet's count must land the next header exactly at the
@@ -190,6 +277,14 @@ static void test_solid_rect(void)
     CHECK(stream.overflow == 0ul);
     CHECK(walk(buffer, stream.count) != 0ul);
 
+    /* First, gfx_v8_0_emit_mem_sync: SURFACE_SYNC invalidating the SQ
+     * instruction and constant caches and TC L1/L2, writing L2 back. */
+    CHECK(buffer[0] == V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
+    CHECK(buffer[1] == 0x28c40000ul);
+    CHECK(buffer[2] == 0xfffffffful);
+    CHECK(buffer[3] == 0ul);
+    CHECK(buffer[4] == 0x0000000aul);
+
     /* CB_COLOR0_BASE..ATTRIB: the 40-bit address >> 8, pitch and slice in
      * 8-pixel and 64-pixel tiles less one, INFO's format, the tile index. */
     at = find_context(buffer, stream.count, 0xa318ul);
@@ -199,6 +294,14 @@ static void test_solid_rect(void)
     CHECK(buffer[at + 2ul] == 15ul);
     CHECK(buffer[at + 4ul] == (V9X_VI_CB_FORMAT_8_8_8_8 << 2));
     CHECK(buffer[at + 5ul] == V9X_VI_TILE_LINEAR_ALIGNED);
+
+    /* VGT_MAX_VTX_INDX, _MIN_, _INDX_OFFSET: radeonsi's values over the
+     * clear state's maximum of 0. */
+    at = find_context(buffer, stream.count, 0xa100ul);
+    CHECK(at != 0ul);
+    CHECK(buffer[at] == 0xfffffffful);
+    CHECK(buffer[at + 1ul] == 0ul);
+    CHECK(buffer[at + 2ul] == 0ul);
 
     /* The VS user SGPRs: 8, 4, 40 and 12 as float bits. */
     at = 0ul;
@@ -241,6 +344,53 @@ static void test_solid_rect(void)
     base_rect(&rect);
     rect.ps_low = 0x0f804104ul;
     CHECK(v9x_vi_3d_solid_rect(&stream, &rect) == V9X_STATUS_INVALID_ARGUMENT);
+    base_rect(&rect);
+    rect.probe_vs_low = 0x0f80a002ul;
+    CHECK(v9x_vi_3d_solid_rect(&stream, &rect) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* With probe addresses, each stage takes six user SGPRs: the four it had,
+ * then its probe address low and high. */
+static void test_probe_rect(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_solid_rect rect;
+    v9x_u32 at;
+
+    base_rect(&rect);
+    rect.probe_vs_low = 0x0f80a000ul;
+    rect.probe_ps_low = 0x0f80a004ul;
+    rect.probe_high = 0xf4ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_solid_rect(&stream, &rect) == V9X_STATUS_OK);
+    CHECK(walk(buffer, stream.count) != 0ul);
+
+    /* SET_SH_REG from RSRC3_VS (2C46h): RSRC2 is the sixth value. */
+    at = 0ul;
+    while (at < stream.count &&
+           !((buffer[at] & 0xff00ul) == (V9X_VI_P3_SET_SH_REG << 8) &&
+             buffer[at + 1ul] == 0x46ul)) {
+        at += buffer[at] == V9X_VI_RING_NOP ? 1ul :
+              ((buffer[at] >> 16) & 0x3ffful) + 2ul;
+    }
+    CHECK(at < stream.count);
+    CHECK(buffer[at + 7ul] == (6ul << 1));
+    /* USER_DATA_VS: six values, the probe address last. */
+    at += ((buffer[at] >> 16) & 0x3ffful) + 2ul;
+    CHECK(buffer[at] == V9X_VI_PACKET3(V9X_VI_P3_SET_SH_REG, 6ul));
+    CHECK(buffer[at + 1ul] == 0x4cul);
+    CHECK(buffer[at + 6ul] == 0x0f80a000ul);
+    CHECK(buffer[at + 7ul] == 0xf4ul);
+    /* RSRC3_PS (2C07h): RSRC2 the fifth value; then USER_DATA_PS. */
+    at += ((buffer[at] >> 16) & 0x3ffful) + 2ul;
+    CHECK(buffer[at + 1ul] == 0x07ul);
+    CHECK(buffer[at + 6ul] == (6ul << 1));
+    at += ((buffer[at] >> 16) & 0x3ffful) + 2ul;
+    CHECK(buffer[at] == V9X_VI_PACKET3(V9X_VI_P3_SET_SH_REG, 6ul));
+    CHECK(buffer[at + 1ul] == 0x0cul);
+    CHECK(buffer[at + 2ul] == 0x3f800000ul);
+    CHECK(buffer[at + 6ul] == 0x0f80a004ul);
+    CHECK(buffer[at + 7ul] == 0xf4ul);
 }
 
 /* The engine configuration list: Linux's tables in order, then gpu_init's
@@ -322,5 +472,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_clear_state();
     test_start();
     test_solid_rect();
+    test_probe_shaders();
+    test_probe_rect();
     return failures;
 }
