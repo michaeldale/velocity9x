@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro and Radeon HD 5450 (tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450 and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -373,6 +373,47 @@
             }
             MapSymbols = @('v9x_evergreen_cedar_device')
         }
+        @{
+            Id = 'carrizo'
+            Name = 'AMD Radeon R7E (Carrizo)'
+            VendorId = '1002'
+            DeviceId = '9874'
+            # No SubsystemId: M-XP7053's reads 8158:103C, and the bare id
+            # binds every board built on the APU.
+            DeviceDesc = 'Velocity9x AMD Radeon R7E (Carrizo)'
+            Adapter = 'AMD Radeon R7E (Carrizo)'
+            ClockDetector = 'ati-vi-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # Tier-0 of docs\plans\ati-carrizo-gfx8.md. Every engine on the
+            # chip needs AMD microcode first; the CPU draws until one runs.
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # M-XP7053's VBE 4F00h reports 48 MiB; the heap is clamped to the
+            # family's 16 MiB mapping, and this is that mapping.
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c). M-XP7053's BIOS lists no 8 bpp mode, so
+            # the runtime scan hides those rows there (V9XMODES.INI, boot 17).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('carrizo_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_vi_carrizo_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -426,6 +467,7 @@
             @{ Name = 'rage_iic_hw16'; Path = 'src\chipsets\ati\rageiic\rage_iic_hw16.c' }
             @{ Name = 'rage128_hw16'; Path = 'src\chipsets\ati\rage128\rage128_hw16.c' }
             @{ Name = 'cedar_hw16'; Path = 'src\chipsets\ati\evergreen\cedar_hw16.c' }
+            @{ Name = 'carrizo_hw16'; Path = 'src\chipsets\ati\vi\carrizo_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -454,7 +496,7 @@
         DispatchSymbol = 'v9x_hw16'
         BackendSymbols = @('v9x_mach64_vt2_device', 'v9x_rage_mobility_device',
                            'v9x_rage_iic_device', 'v9x_rage128_device',
-                           'v9x_evergreen_cedar_device')
+                           'v9x_evergreen_cedar_device', 'v9x_vi_carrizo_device')
     }
 
     Inf = @{
@@ -476,7 +518,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -527,6 +569,10 @@
             }
             @{
                 ChipId = 'cedar'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'carrizo'
                 Emulator = 'none'
             }
         )

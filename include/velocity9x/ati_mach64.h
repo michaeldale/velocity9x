@@ -41,6 +41,9 @@
 /* A Radeon HD 5450 (Evergreen "Cedar"): no 2D engine, tier-0 with no hook;
  * see cedar_hw16.c. */
 #define V9X_PCI_DEVICE_CEDAR_68F9       ((v9x_u16)0x68F9u)
+/* AMD Carrizo (Radeon R7E, GCN 3), the GX-420GI's GPU: tier-0 with no
+ * hook; see carrizo_hw16.c. */
+#define V9X_PCI_DEVICE_CARRIZO_9874     ((v9x_u16)0x9874u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,
