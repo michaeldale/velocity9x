@@ -1545,6 +1545,9 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
         v9x_trace_exit(V9X_TRACE_LOCK, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+    /* Drained: an engine that keeps the surface in its own layout makes
+     * it linear for the CPU now (d3d_internal.h, lock_surface). */
+    v9x_d3d_lock_surface((const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_LOCK, data->ddRVal);
     return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1553,8 +1556,10 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
 DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
 {
     v9x_trace_enter(V9X_TRACE_UNLOCK, 0ul);
-    /* The CPU's writes to the surface out of the write-combining buffers
-     * before the engine can be told to read it. */
+    /* The engine's own layout back, then the CPU's writes to the surface
+     * out of the write-combining buffers before the engine can be told to
+     * read it. */
+    v9x_d3d_unlock_surface((const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
     v9x_wc_drain();
     V9X_DP2_RING_EVENT(V9X_DP2R_UNLOCK, data != 0 ? data->lpDDSurface : 0ul, 0ul);
     if (v9x_lock_held_started != 0ul) {

@@ -618,6 +618,45 @@ int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
     return 1;
 }
 
+/* Where (x, y) of a band, y below 8, sits in the band's tiled samples: its
+ * tile's 64, then the bits of x and y interleaved, x first (vi_3d.h). */
+v9x_u32 v9x_vi_z16_tile_sample(v9x_u32 x, v9x_u32 y)
+{
+    v9x_u32 within;
+
+    within = (x & 1ul) | ((y & 1ul) << 1) | ((x & 2ul) << 1) |
+             ((y & 2ul) << 2) | ((x & 4ul) << 2) | ((y & 4ul) << 3);
+    return (x >> 3) * 64ul + within;
+}
+
+void v9x_vi_z16_detile_band(const v9x_u16 *tiled, v9x_u16 *linear,
+                            v9x_u32 pitch_pixels)
+{
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (y = 0ul; y < V9X_VI_Z16_TILE_ROWS; ++y) {
+        for (x = 0ul; x < pitch_pixels; ++x) {
+            linear[y * pitch_pixels + x] =
+                tiled[v9x_vi_z16_tile_sample(x, y)];
+        }
+    }
+}
+
+void v9x_vi_z16_retile_band(const v9x_u16 *linear, v9x_u16 *tiled,
+                            v9x_u32 pitch_pixels)
+{
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (y = 0ul; y < V9X_VI_Z16_TILE_ROWS; ++y) {
+        for (x = 0ul; x < pitch_pixels; ++x) {
+            tiled[v9x_vi_z16_tile_sample(x, y)] =
+                linear[y * pitch_pixels + x];
+        }
+    }
+}
+
 /* CLAMP_X, _Y and _Z alike. */
 static v9x_u32 v9x_vi_3d_sampler_clamp(v9x_u32 address)
 {

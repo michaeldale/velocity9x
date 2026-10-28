@@ -835,6 +835,10 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface);
  */
 DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data);
 void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data);
+/* The engine's own layout converted for a CPU Lock and back at Unlock
+ * (d3d_internal.h, lock_surface). */
+void v9x_d3d_lock_surface(const V9X_DD_SURFACE_LCL *surface);
+void v9x_d3d_unlock_surface(const V9X_DD_SURFACE_LCL *surface);
 V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
 /* This depth surface's cell: 2, 4 for a 32-bit one the engine takes, 0
  * when the engine has none or does not take this one. */

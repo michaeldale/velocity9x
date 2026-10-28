@@ -47,6 +47,10 @@
  *      linear Z16 buffer, GB_TILE_MODE7 written ARRAY_LINEAR_ALIGNED after
  *      gpu_init and DB_Z_INFO naming it, the buffer checked row by row:
  *      whether the DB takes a layout the CPU can lock as it is. With
+ *      /ztile: the 1D Z16 buffer under one rectangle whose Z is the plane
+ *      (X + 64 Y) / 2048, every pixel's sample distinct, each stored
+ *      sample decoded back to its pixel: the order of samples inside an
+ *      8x8 tile, which a detiling Lock needs. With
  *      /texture or /modulate: a pattern
  *      texture mapped 1:1, point-sampled, alone or times a diffuse colour
  *      (step 3). With /mip:N: a 64x16 chain's level N alone (BASE_LEVEL
@@ -466,6 +470,7 @@ static DWORD v9x_data_dwords;
 static int v9x_gouraud;
 static int v9x_depth;
 static int v9x_zlinear;
+static int v9x_ztile;
 static int v9x_texture;
 static int v9x_modulate;
 static int v9x_blend;
@@ -821,6 +826,25 @@ static void v9x_tl_vertices(void)
     DWORD rect = 6ul * V9X_TL_DWORDS;
     DWORD colour;
 
+    if (v9x_ztile) {
+        /* The plane z = (X + 64 Y) / 2048 at the four corners. */
+        DWORD z_tr = v9x_float_bits(64.0f / 2048.0f);
+        DWORD z_bl = v9x_float_bits(1024.0f / 2048.0f);
+        DWORD z_br = v9x_float_bits(1088.0f / 2048.0f);
+
+        v9x_tl_vertex(v + 0, 0ul, 0ul, 0ul, V9X_DEPTH_RED, 0ul, 0ul);
+        v9x_tl_vertex(v + 8, V9X_FLOAT_64, 0ul, z_tr, V9X_DEPTH_RED, 0ul, 0ul);
+        v9x_tl_vertex(v + 16, 0ul, V9X_FLOAT_16, z_bl, V9X_DEPTH_RED, 0ul,
+                      0ul);
+        v9x_tl_vertex(v + 24, V9X_FLOAT_64, 0ul, z_tr, V9X_DEPTH_RED, 0ul,
+                      0ul);
+        v9x_tl_vertex(v + 32, V9X_FLOAT_64, V9X_FLOAT_16, z_br, V9X_DEPTH_RED,
+                      0ul, 0ul);
+        v9x_tl_vertex(v + 40, 0ul, V9X_FLOAT_16, z_bl, V9X_DEPTH_RED, 0ul,
+                      0ul);
+        v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
     if (v9x_depth) {
         v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
                     V9X_DEPTH_RED, V9X_DEPTH_RED);
@@ -1299,6 +1323,59 @@ static void v9x_verify_gouraud(const DWORD *target)
     v9x_pass("Gouraud", bad == 0ul);
 }
 
+/*
+ * /ztile: each stored sample back to its pixel. A sample at pixel centre
+ * (x + 0.5, y + 0.5) holds (x + 0.5 + 64 y + 32) / 2048 of 65535, so
+ * Z16 x 2048 / 65535 - 32.5 rounds to x + 64 y. Tile 0's 64 samples in
+ * buffer order are reported as "xy" pairs; every buffer sample s is
+ * checked against tile s / 64 at (s / 64 % 8, s / 64 / 8) in 8x8 tiles,
+ * with tile 0's order inside it.
+ */
+static void v9x_verify_ztile(const DWORD *depth)
+{
+    DWORD sample;
+    DWORD value;
+    DWORD pixel;
+    DWORD tile;
+    DWORD within;
+    DWORD bad = 0ul;
+    DWORD order_x[64];
+    DWORD order_y[64];
+    char text[64u * 3u + 1u];
+
+    for (sample = 0ul; sample < V9X_DEPTH_DWORDS * 2ul; ++sample) {
+        value = (depth[sample / 2ul] >> ((sample & 1ul) * 16ul)) & 0xfffful;
+        /* Integers only: the probe has no float-to-int helper. The
+         * rounding is floor((Z x 4096 - 64 x 65535) / 131070). */
+        pixel = value * 4096ul < 64ul * 65535ul ? 0xfffffffful :
+                (value * 4096ul - 64ul * 65535ul) / 131070ul;
+        tile = sample / 64ul;
+        within = sample % 64ul;
+        if (tile == 0ul) {
+            order_x[within] = pixel % V9X_TARGET_PITCH;
+            order_y[within] = pixel / V9X_TARGET_PITCH;
+            text[within * 3ul] = (char)('0' + (order_x[within] & 7ul));
+            text[within * 3ul + 1ul] = (char)('0' + (order_y[within] & 7ul));
+            text[within * 3ul + 2ul] = ' ';
+            if (order_x[within] > 7ul || order_y[within] > 7ul) {
+                ++bad;
+            }
+            continue;
+        }
+        if (pixel == 0xfffffffful ||
+            pixel % V9X_TARGET_PITCH != (tile % 8ul) * 8ul + order_x[within] ||
+            pixel / V9X_TARGET_PITCH != (tile / 8ul) * 8ul + order_y[within]) {
+            ++bad;
+        }
+    }
+    text[64u * 3u - 1u] = '\0';
+    v9x_text("Depth", "Tile0Order", text);
+    v9x_key("Depth", "Sample0", depth[0]);
+    v9x_key("Depth", "Sample1", depth[1]);
+    v9x_number("Result", "ZTileBadSamples", bad);
+    v9x_pass("ZTileOrder", bad == 0ul);
+}
+
 /* /depth's two halves: red left of x 32, blue right of it, within +-2;
  * then the Z16 buffer, a tile at a time, every sample 8000h in the left
  * half's tiles and 4000h in the right's. The regions are whole tiles, so
@@ -1658,7 +1735,8 @@ void __stdcall V9xCarrizo3dEntry(void)
     v9x_text("Report", "Tool", "V9XCZ3D");
     v9x_text("Report", "Build", V9X_BUILD_ID);
     v9x_zlinear = v9x_switch_given("/zlinear");
-    v9x_depth = v9x_zlinear || v9x_switch_given("/depth");
+    v9x_ztile = v9x_switch_given("/ztile");
+    v9x_depth = v9x_zlinear || v9x_ztile || v9x_switch_given("/depth");
     v9x_blend_specular = v9x_switch_given("/blendspec");
     v9x_blend = v9x_blend_specular || v9x_switch_given("/blend");
     v9x_modulate = v9x_switch_given("/modulate");
@@ -1679,7 +1757,8 @@ void __stdcall V9xCarrizo3dEntry(void)
     } else if (v9x_texture) {
         v9x_text("Report", "Draw", "texture");
     } else {
-        v9x_text("Report", "Draw", v9x_zlinear ? "zlinear" :
+        v9x_text("Report", "Draw", v9x_ztile ? "ztile" :
+                                   v9x_zlinear ? "zlinear" :
                                    v9x_depth ? "depth" :
                                    (v9x_gouraud ? "gouraud" : "rectangle"));
     }
@@ -1852,6 +1931,9 @@ void __stdcall V9xCarrizo3dEntry(void)
         v9x_verify_mip(v9x_result.block + 2);
     } else if (v9x_texture) {
         v9x_verify_texture(v9x_result.block + 2);
+    } else if (v9x_ztile) {
+        v9x_verify_ztile(v9x_result.block + 2ul + V9X_TARGET_DWORDS +
+                         V9X_PROBE_DWORDS);
     } else if (v9x_depth) {
         v9x_verify_depth(v9x_result.block + 2,
                          v9x_result.block + 2ul + V9X_TARGET_DWORDS +

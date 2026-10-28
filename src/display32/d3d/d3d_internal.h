@@ -627,6 +627,20 @@ typedef struct v9x_d3d_engine_ops {
                     DWORD triangle_count,
                     const V9X_R3D_TNL *tnl);
     int (*tnl_available)(void);
+
+    /*
+     * A CPU Lock of a surface the engine keeps in a layout of its own,
+     * APPENDED 2026-10-29 under the same rule. Null for an engine whose
+     * surfaces are linear, which the positional initialisers get by
+     * omission. lock_surface runs once the engine's work is drained and
+     * before DirectDraw hands out the pointer, so the CPU sees the linear
+     * layout it assumes; unlock_surface runs before the write-combining
+     * drain, putting the engine's layout back. An engine ignores surfaces
+     * it does not convert. Carrizo's Z16 is the first: the DB writes no
+     * linear depth (docs\decisions\2026-10-29-carrizo-ddp-zero-rows.md).
+     */
+    void (*lock_surface)(const V9X_DD_SURFACE_LCL *surface);
+    void (*unlock_surface)(const V9X_DD_SURFACE_LCL *surface);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

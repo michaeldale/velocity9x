@@ -193,6 +193,23 @@ int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
                          v9x_u32 height, v9x_u32 levels, v9x_u32 *offsets,
                          v9x_u32 *pitches, v9x_u32 *total_bytes);
 
+/*
+ * The Z16 buffer in tile mode V9X_VI_TILE_DEPTH_1D, as the DB writes it,
+ * measured on M-XP7053 (V9XCZ3D /ztile, boot 35, every one of 1,024
+ * samples, docs/decisions/2026-10-29-carrizo-ddp-zero-rows.md): 8x8 tiles
+ * of 64 samples, left to right across the pitch and then down, and inside
+ * a tile the sample index's bits x0 y0 x1 y1 x2 y2 from the low end.
+ * A band of eight rows takes the same bytes either way, so a band at a
+ * time converts between the two. pitch_pixels is a multiple of 8; each
+ * function writes the whole band of pitch_pixels x 8 samples to out.
+ */
+#define V9X_VI_Z16_TILE_ROWS 8ul
+v9x_u32 v9x_vi_z16_tile_sample(v9x_u32 x, v9x_u32 y);
+void v9x_vi_z16_detile_band(const v9x_u16 *tiled, v9x_u16 *linear,
+                            v9x_u32 pitch_pixels);
+void v9x_vi_z16_retile_band(const v9x_u16 *linear, v9x_u16 *tiled,
+                            v9x_u32 pitch_pixels);
+
 /* CB_BLEND0_CONTROL's factors (Mesa's sid.h V_028780_BLEND_*), and
  * v9x_vi_3d_blend's word: the colour and alpha alike, DST_PLUS_SRC,
  * ENABLE. */

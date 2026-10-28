@@ -133,8 +133,10 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
    [V9XDDP's zero rows](../decisions/2026-10-29-carrizo-ddp-zero-rows.md)
    (boot 34): perspective was inverted (VTX_W0_FMT), and XRGB8888
    textures and DECALALPHA are now built. All three pass. `/mixed` shows
-   that a CPU Lock of the 1D-tiled Z buffer misaddresses it, which is
-   open. Next: a game.
+   that a CPU Lock of the 1D-tiled Z buffer misaddressed it. The DB
+   writes no linear Z (boot 35), so since boot 36 Lock detiles the Z16
+   buffer and Unlock retiles it, in the in-tile order /ztile measured.
+   `/mixed` passes. Next: a game.
 
 ## Decisions
 

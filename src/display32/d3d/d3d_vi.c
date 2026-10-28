@@ -831,8 +831,146 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * A CPU Lock of a Z16 buffer. The DB writes it 1D-tiled and writes no
+ * linear depth (V9XCZ3D /zlinear, boot 35), while DirectDraw hands the CPU
+ * a linear pointer: V9XDDP /mixed read 0xFFFF where the DB had written 0.5,
+ * and the DB ignored the CPU's 0x4000. So a Z16 this engine placed is
+ * tiled at rest and linear only while locked: detiled at Lock and retiled
+ * at Unlock, eight rows - one row of tiles, the same bytes either way - at
+ * a time through a band buffer (vi_3d.h). The band is the locking
+ * process's own memory for the call (LocalAlloc): a static one would be
+ * 32 KB in this DLL's file, which put the S3 floppy over. Placed means
+ * rows padded to whole tiles, so the last band is the surface's own;
+ * recognised by v9x_d3d_place_release's signature. A nested Lock converts
+ * nothing, and a surface past the table, the band's pitch or the
+ * allocation is left as it is.
+ */
+#define V9X_D3D_VI_LOCKED_MAX     4ul
+#define V9X_D3D_VI_BAND_PITCH_MAX 2048ul
+
+static DWORD v9x_d3d_vi_locked[V9X_D3D_VI_LOCKED_MAX];
+
+static int v9x_d3d_vi_tiled_depth(const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_DD_SURFACE_GBL *global;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
+        return 0;
+    }
+    global = surface->lpGbl;
+    return global->fpVidMem != 0ul && global->dwReserved1 != 0ul &&
+           global->dwBlockSizeX == 0ul &&
+           global->fpVidMem >= global->dwReserved1 &&
+           global->fpVidMem - global->dwReserved1 < V9X_D3D_VI_SURFACE_ALIGN &&
+           global->lPitch > 0l &&
+           ((DWORD)global->lPitch % V9X_D3D_VI_DEPTH_PITCH_UNIT) == 0ul &&
+           (DWORD)global->lPitch / 2ul <= V9X_D3D_VI_BAND_PITCH_MAX;
+}
+
+/* The table slot holding the surface's memory, or LOCKED_MAX. */
+static DWORD v9x_d3d_vi_locked_slot(DWORD memory)
+{
+    DWORD slot;
+
+    for (slot = 0ul; slot < V9X_D3D_VI_LOCKED_MAX; ++slot) {
+        if (v9x_d3d_vi_locked[slot] == memory) {
+            return slot;
+        }
+    }
+    return V9X_D3D_VI_LOCKED_MAX;
+}
+
+/* Nonzero when converted; zero, touching nothing, when the band could not
+ * be allocated. */
+static int v9x_d3d_vi_convert_depth(const V9X_DD_SURFACE_LCL *surface,
+                                    int to_linear)
+{
+    const V9X_DD_SURFACE_GBL *global = surface->lpGbl;
+    DWORD pitch_pixels = (DWORD)global->lPitch / 2ul;
+    DWORD band_bytes = (DWORD)global->lPitch * V9X_VI_Z16_TILE_ROWS;
+    DWORD bands = ((DWORD)global->wHeight + V9X_VI_Z16_TILE_ROWS - 1ul) /
+                  V9X_VI_Z16_TILE_ROWS;
+    DWORD *band_words;
+    DWORD band;
+    DWORD index;
+
+    band_words = (DWORD *)LocalAlloc(LMEM_FIXED, band_bytes);
+    if (band_words == 0) {
+        return 0;
+    }
+    for (band = 0ul; band < bands; ++band) {
+        volatile DWORD *memory =
+            (volatile DWORD *)(global->fpVidMem + band * band_bytes);
+
+        for (index = 0ul; index < band_bytes / 4ul; ++index) {
+            band_words[index] = memory[index];
+        }
+        if (to_linear) {
+            v9x_vi_z16_detile_band((const v9x_u16 *)band_words,
+                                   (v9x_u16 *)memory, pitch_pixels);
+        } else {
+            v9x_vi_z16_retile_band((const v9x_u16 *)band_words,
+                                   (v9x_u16 *)memory, pitch_pixels);
+        }
+    }
+    LocalFree(band_words);
+    return 1;
+}
+
+static void v9x_d3d_vi_lock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD slot;
+
+    if (!v9x_d3d_vi_tiled_depth(surface) ||
+        v9x_d3d_vi_locked_slot(surface->lpGbl->fpVidMem) !=
+            V9X_D3D_VI_LOCKED_MAX) {
+        return;
+    }
+    slot = v9x_d3d_vi_locked_slot(0ul);
+    if (slot == V9X_D3D_VI_LOCKED_MAX) {
+        return;
+    }
+    if (v9x_d3d_vi_convert_depth(surface, 1)) {
+        v9x_d3d_vi_locked[slot] = surface->lpGbl->fpVidMem;
+    }
+}
+
+static void v9x_d3d_vi_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD slot;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        surface->lpGbl->fpVidMem == 0ul) {
+        return;
+    }
+    slot = v9x_d3d_vi_locked_slot(surface->lpGbl->fpVidMem);
+    if (slot == V9X_D3D_VI_LOCKED_MAX) {
+        return;
+    }
+    /* A failed allocation here leaves the buffer linear: the DB then reads
+     * it misaddressed, as every Lock did before this. */
+    (void)v9x_d3d_vi_convert_depth(surface, 0);
+    v9x_d3d_vi_locked[slot] = 0ul;
+}
+
 static void v9x_d3d_vi_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
+    const V9X_DD_SURFACE_LCL *surface =
+        data != 0 ? (const V9X_DD_SURFACE_LCL *)data->lpDDSurface : 0;
+    DWORD slot;
+
+    /* Destroyed while locked: its memory is no longer a lock to undo. */
+    if (surface != 0 && surface->lpGbl != 0 &&
+        surface->lpGbl->fpVidMem != 0ul) {
+        slot = v9x_d3d_vi_locked_slot(surface->lpGbl->fpVidMem);
+        if (slot != V9X_D3D_VI_LOCKED_MAX) {
+            v9x_d3d_vi_locked[slot] = 0ul;
+        }
+    }
     (void)v9x_d3d_place_release(data, V9X_D3D_VI_SURFACE_ALIGN);
 }
 
@@ -846,5 +984,10 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi = {
     v9x_d3d_vi_create_surface,
     v9x_d3d_vi_destroy_surface,
     v9x_d3d_vi_draw,
-    v9x_d3d_vi_accepts
+    v9x_d3d_vi_accepts,
+    0,                                  /* draw_indexed */
+    0,                                  /* draw_tnl */
+    0,                                  /* tnl_available */
+    v9x_d3d_vi_lock_surface,
+    v9x_d3d_vi_unlock_surface
 };

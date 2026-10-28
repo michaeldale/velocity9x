@@ -555,6 +555,44 @@ static void test_built_shaders(void)
     CHECK(out[32] == 0x0210110cul);     /* v_add_f32 v8, v12, v8 */
 }
 
+/* The Z16 1D tile order as V9XCZ3D /ztile read it on M-XP7053 (boot 35):
+ * tile 0's samples in buffer order as x then y, Tile0Order verbatim. */
+static void test_z16_tiles(void)
+{
+    static const char measured[] =
+        "00 10 01 11 20 30 21 31 02 12 03 13 22 32 23 33 "
+        "40 50 41 51 60 70 61 71 42 52 43 53 62 72 63 73 "
+        "04 14 05 15 24 34 25 35 06 16 07 17 26 36 27 37 "
+        "44 54 45 55 64 74 65 75 46 56 47 57 66 76 67 77";
+    static v9x_u16 tiled[24u * 8u];
+    static v9x_u16 linear[24u * 8u];
+    static v9x_u16 back[24u * 8u];
+    v9x_u32 sample;
+    v9x_u32 x;
+    v9x_u32 y;
+    v9x_u32 index;
+
+    for (sample = 0ul; sample < 64ul; ++sample) {
+        x = (v9x_u32)(measured[sample * 3ul] - '0');
+        y = (v9x_u32)(measured[sample * 3ul + 1ul] - '0');
+        CHECK(v9x_vi_z16_tile_sample(x, y) == sample);
+    }
+    /* The next tile to the right starts 64 samples on. */
+    CHECK(v9x_vi_z16_tile_sample(8ul, 0ul) == 64ul);
+    CHECK(v9x_vi_z16_tile_sample(23ul, 7ul) == 191ul);
+
+    /* A 24-pixel band: tiled sample s holds s; detiled, (x, y) holds its
+     * tiled index; retiled, the band is as it was. */
+    for (index = 0ul; index < 24ul * 8ul; ++index) {
+        tiled[index] = (v9x_u16)index;
+    }
+    v9x_vi_z16_detile_band(tiled, linear, 24ul);
+    CHECK(linear[0] == 0u && linear[1] == 1u && linear[24] == 2u);
+    CHECK(linear[8] == 64u && linear[7 * 24 + 23] == 191u);
+    v9x_vi_z16_retile_band(linear, back, 24ul);
+    CHECK(memcmp(back, tiled, sizeof(tiled)) == 0);
+}
+
 /* Every type-3 packet's count must land the next header exactly at the
  * stream's end. Returns the number of packets, 0 on a mismatch. */
 static v9x_u32 walk(const v9x_u32 *dwords, v9x_u32 count)
@@ -1360,5 +1398,6 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_blend_kill();
     test_tl_mips();
     test_mip_layout();
+    test_z16_tiles();
     return failures;
 }

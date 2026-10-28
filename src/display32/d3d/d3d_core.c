@@ -1307,6 +1307,26 @@ void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     ops->destroy_surface(data);
 }
 
+void v9x_d3d_lock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (surface == 0 || ops == 0 || ops->lock_surface == 0) {
+        return;
+    }
+    ops->lock_surface(surface);
+}
+
+void v9x_d3d_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (surface == 0 || ops == 0 || ops->unlock_surface == 0) {
+        return;
+    }
+    ops->unlock_surface(surface);
+}
+
 /*
  * The surface the context has a texture bound to, or null.
  *

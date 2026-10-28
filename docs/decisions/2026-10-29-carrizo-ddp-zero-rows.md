@@ -1,4 +1,4 @@
-# V9XDDP's zero rows on Carrizo: perspective was inverted, two features were missing, and a CPU Lock of the tiled Z buffer misaddresses it
+# V9XDDP's zero rows on Carrizo: perspective was inverted, two features were missing, and a CPU Lock of the tiled Z buffer misaddressed it until Lock detiled it
 
 Date: 2026-10-29
 
@@ -139,3 +139,48 @@ covers exactly the bytes of eight linear rows, so it can be done in
 place a band at a time. It needs one measurement first: the order of the
 samples inside an 8x8 depth tile. `v9x_verify_depth` never measured it,
 because its regions are whole tiles.
+
+### Boot 35: the in-tile order, measured
+
+V9XCZ3D `/ztile` (`boot35-ztile/`) draws one rectangle over the 64x16
+target whose Z is the plane (X + 64 Y) / 2048, so every pixel's sample
+is distinct. It then decodes each stored sample back to its pixel.
+- All 1,024 samples agree with one rule (`ZTileBadSamples=0`).
+- The 8x8 tiles run left to right across the pitch, then down.
+- Inside a tile, the sample index's bits from the low end are x0 y0 x1
+  y1 x2 y2: Morton order, x first.
+- `Tile0Order` is kept verbatim as the host test's reference
+  (`test_z16_tiles`).
+
+### Boot 36: detile on Lock, retile on Unlock. `/mixed` passes.
+
+The change:
+- `vi_3d.c` gains `v9x_vi_z16_detile_band` and `_retile_band`, pure and
+  host-tested.
+- `V9X_D3D_ENGINE_OPS` gains `lock_surface` and `unlock_surface`,
+  appended. `ddhal_core.c` calls them after Lock's drain, and before
+  Unlock's write-combining drain.
+- Carrizo's engine converts only Z16 buffers it placed, whose rows are
+  padded to whole tiles. It works eight rows at a time through a band
+  the locking process allocates.
+
+A static band would have been 32 KB in the DLL's file. The first build
+had one, and it put the S3 floppy 30.9 KB over.
+
+Results:
+- `/mixed`: `MixedOk=1` (`boot36-zlock/`). The CPU reads `0x8000` where
+  the DB wrote 0.5. The second draw is rejected at the CPU's `0x4000`,
+  and the CPU reads `0x6000` at the neighbouring pixel.
+- V9XDDP: no `*Ok` key changed from boot 34, and the D3DZ ladder's
+  pixels are identical.
+- V9XD32 PASS at 32 and 16 bpp.
+- 3DMark 2000 ran to 3,001 and its frames draw correctly
+  (`boot36-3dmark/`).
+  - It locks the Z buffer 23 times a run (`LockKindDepth`), as it did at
+    boot 34, so the conversion ran there.
+  - Its frames looked the same before the fix. What it does with those
+    locks was not traced.
+
+Not covered: a CPU path that writes the Z buffer without the HAL's
+Lock, such as a HEL blit to it. Nor was the cost of a conversion
+timed: it reads the whole buffer through the BAR.
