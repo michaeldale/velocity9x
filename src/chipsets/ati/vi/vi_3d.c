@@ -81,6 +81,9 @@
  * SPI_SHADER_32_ABGR; SPI_SHADER_Z_FORMAT SPI_SHADER_ZERO. */
 #define VI_POS_FORMAT_4COMP         0x00000004ul
 #define VI_COL_FORMAT_32_ABGR       0x00000009ul
+/* SPI_SHADER_FP16_ABGR: the Direct3D shaders' compressed export
+ * (vi_shader.h), which an 8-bit target blends from right. */
+#define VI_COL_FORMAT_FP16_ABGR     0x00000004ul
 /* SPI_PS_INPUT_ENA/ADDR PERSP_CENTER_ENA: one barycentric must be on. */
 #define VI_PS_INPUT_PERSP_CENTER    0x00000002ul
 /* SPI_VS_OUT_CONFIG VS_EXPORT_COUNT at 5:1, parameters less one;
@@ -147,12 +150,34 @@
 /* X, Y, Z, W: memory order. The VS's colour and the CB keep it too, so a
  * texel's bytes come out where they went in (vi_shader.h). */
 #define VI_IMG_SWIZZLE_IDENTITY     (4ul | (5ul << 3) | (6ul << 6) | (7ul << 9))
+/* T# word 3 POW2_PAD, bit 25: radeonsi sets it for a texture with more
+ * than one level, the levels' layout then padded to powers of two. */
+#define VI_IMG_POW2_PAD             0x02000000ul
+/* v9x_vi_3d_mip_layout's measured steps (vi_3d.h). */
+#define VI_MIP_ROW_ALIGN            64ul
+#define VI_MIP_LEVEL_ALIGN          256ul
+/* X, Y, Z and SQ_SEL_1 for W. */
+#define VI_IMG_SWIZZLE_OPAQUE       (4ul | (5ul << 3) | (6ul << 6) | (1ul << 9))
 #define VI_IMG_TYPE_2D              9ul
 #define VI_IMG_MAX_SIZE             16384ul
 #define VI_SQ_TEX_WRAP              0ul
 #define VI_SQ_TEX_MIRROR            1ul
 #define VI_SQ_TEX_CLAMP_LAST_TEXEL  2ul
 #define VI_SAMP_XY_BILINEAR         ((1ul << 20) | (1ul << 22))
+
+/* Blending (Mesa's sid.h): CB_BLEND0_CONTROL COLOR_SRCBLEND 4:0,
+ * COLOR_COMB_FCN 7:5 (DST_PLUS_SRC 0), COLOR_DESTBLEND 12:8, the alpha's
+ * at 20:16, 23:21 and 28:24, ENABLE bit 30; CB_COLOR0_INFO BLEND_CLAMP
+ * bit 15, which radeonsi sets on a UNORM target. DB_SHADER_CONTROL
+ * KILL_ENABLE bit 6, for a PS that kills pixels. */
+#define VI_BLEND_ENABLE             0x40000000ul
+/* CB_COLOR_CONTROL DISABLE_DUAL_QUAD, bit 0, with blending: the CB's
+ * 4x2 dual quads blended wrong on M-XP7053 - V9XD32's T7 block came out
+ * in a pattern four pixels wide and two high, one column in four right
+ * (docs\decisions\2026-10-28-carrizo-d3d-blend-and-shader-fixed-function.md). */
+#define VI_CB_DISABLE_DUAL_QUAD     0x00000001ul
+#define VI_CB_INFO_BLEND_CLAMP      0x00008000ul
+#define VI_DB_SHADER_KILL_ENABLE    0x00000040ul
 
 #define VI_SHADER_ALIGN             0xfful
 
@@ -318,7 +343,10 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
                                    v9x_u32 high, v9x_u32 pitch,
                                    v9x_u32 height, v9x_u32 format,
                                    v9x_u32 tile_mode_index, v9x_u32 params,
-                                   v9x_u32 target_mask, v9x_u32 vtx_cntl)
+                                   v9x_u32 target_mask, v9x_u32 vtx_cntl,
+                                   v9x_u32 blend_control,
+                                   v9x_u32 db_shader_control,
+                                   v9x_u32 col_format)
 {
     v9x_u32 values[13];
     v9x_u32 index;
@@ -331,14 +359,17 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
     values[0] = v9x_vi_address_256(low, high);
     values[1] = pitch / 8ul - 1ul;
     values[2] = (pitch * height) / 64ul - 1ul;
-    values[4] = (format & 0x1ful) << 2;
+    values[4] = ((format & 0x1ful) << 2) |
+                (blend_control != 0ul ? VI_CB_INFO_BLEND_CLAMP : 0ul);
     values[5] = tile_mode_index & 0x1ful;
     v9x_vi_pm4_set_context(stream, VI_CB_COLOR0_BASE, values, 13ul);
     values[0] = target_mask & VI_CB_TARGET_MASK_RGBA;
     values[1] = VI_CB_TARGET_MASK_RGBA;
     v9x_vi_pm4_set_context(stream, VI_CB_TARGET_MASK, values, 2ul);
-    v9x_vi_context1(stream, VI_CB_COLOR_CONTROL, VI_CB_COLOR_CONTROL_NORMAL);
-    v9x_vi_context1(stream, VI_CB_BLEND0_CONTROL, 0ul);
+    v9x_vi_context1(stream, VI_CB_COLOR_CONTROL,
+                    VI_CB_COLOR_CONTROL_NORMAL |
+                    (blend_control != 0ul ? VI_CB_DISABLE_DUAL_QUAD : 0ul));
+    v9x_vi_context1(stream, VI_CB_BLEND0_CONTROL, blend_control);
 
     /* No depth or stencil. */
     v9x_vi_context1(stream, VI_DB_RENDER_CONTROL, 0ul);
@@ -346,7 +377,7 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
     values[1] = 0ul;
     v9x_vi_pm4_set_context(stream, VI_DB_Z_INFO, values, 2ul);
     v9x_vi_context1(stream, VI_DB_DEPTH_CONTROL, 0ul);
-    v9x_vi_context1(stream, VI_DB_SHADER_CONTROL, 0ul);
+    v9x_vi_context1(stream, VI_DB_SHADER_CONTROL, db_shader_control);
 
     v9x_vi_context1(stream, VI_PA_CL_CLIP_CNTL, VI_CLIP_CNTL_DISABLED);
     v9x_vi_context1(stream, VI_PA_SU_SC_MODE_CNTL, 0ul);
@@ -370,7 +401,7 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
                     VI_VS_EXPORT_COUNT(params - 1ul));
     v9x_vi_context1(stream, VI_SPI_SHADER_POS_FORMAT, VI_POS_FORMAT_4COMP);
     values[0] = 0ul;
-    values[1] = VI_COL_FORMAT_32_ABGR;
+    values[1] = col_format;
     v9x_vi_pm4_set_context(stream, VI_SPI_SHADER_POS_FORMAT + 1ul, values,
                            2ul);
     values[0] = VI_PS_INPUT_PERSP_CENTER;
@@ -499,7 +530,8 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     v9x_vi_3d_common_state(stream, rect->target_low, rect->target_high,
                            rect->pitch_pixels, rect->height, rect->format,
                            rect->tile_mode_index, VI_RECT_PARAMS,
-                           VI_CB_TARGET_MASK_RGBA, VI_SU_VTX_CNTL);
+                           VI_CB_TARGET_MASK_RGBA, VI_SU_VTX_CNTL, 0ul, 0ul,
+                           VI_COL_FORMAT_32_ABGR);
 
     v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, rect->vs_low,
                       rect->shader_high, VI_SMALL_VGPRS, vs_sgprs);
@@ -523,6 +555,59 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_RECTLIST, 3ul, rect->fence_low,
                              rect->fence_high, rect->fence_value);
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
+}
+
+/* The colour's and the alpha's factors alike, added. */
+v9x_u32 v9x_vi_3d_blend(v9x_u32 source, v9x_u32 destination)
+{
+    v9x_u32 pair = (source & 0x1ful) | ((destination & 0x1ful) << 8);
+
+    return pair | (pair << 16) | VI_BLEND_ENABLE;
+}
+
+static int v9x_vi_3d_power_of_two(v9x_u32 value)
+{
+    return value != 0ul && (value & (value - 1ul)) == 0ul;
+}
+
+int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
+                         v9x_u32 height, v9x_u32 levels, v9x_u32 *offsets,
+                         v9x_u32 *pitches, v9x_u32 *total_bytes)
+{
+    v9x_u32 offset = 0ul;
+    v9x_u32 level;
+    v9x_u32 row;
+    v9x_u32 w = width;
+    v9x_u32 h = height;
+    v9x_u32 longest = width > height ? width : height;
+    v9x_u32 possible = 1ul;
+
+    if ((bytes_per_texel != 2ul && bytes_per_texel != 4ul) ||
+        !v9x_vi_3d_power_of_two(width) || !v9x_vi_3d_power_of_two(height) ||
+        levels == 0ul || levels > V9X_VI_MIP_LEVELS_MAX) {
+        return 0;
+    }
+    while (longest > 1ul) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (levels > possible) {
+        return 0;
+    }
+    for (level = 0ul; level < levels; ++level) {
+        row = (w * bytes_per_texel + VI_MIP_ROW_ALIGN - 1ul) &
+              ~(VI_MIP_ROW_ALIGN - 1ul);
+        while (((row * h) & (VI_MIP_LEVEL_ALIGN - 1ul)) != 0ul) {
+            row += VI_MIP_ROW_ALIGN;
+        }
+        offsets[level] = offset;
+        pitches[level] = row / bytes_per_texel;
+        offset += row * h;
+        w = w > 1ul ? w >> 1 : 1ul;
+        h = h > 1ul ? h >> 1 : 1ul;
+    }
+    *total_bytes = offset;
+    return 1;
 }
 
 /* CLAMP_X, _Y and _Z alike. */
@@ -561,12 +646,23 @@ static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
              (VI_IMG_NUM_FORMAT_UNORM << 26);
     out[2] = (draw->texture_width - 1ul) |
              ((draw->texture_height - 1ul) << 14);
-    out[3] = VI_IMG_SWIZZLE_IDENTITY |
+    /* RGB565 has no fourth component, and a W asking for one reads 0:
+     * MODULATE under SRCALPHA would draw nothing. It takes the constant 1,
+     * Cedar's fix (docs\decisions\2026-10-27-cedar-texture-pitch-and-565-
+     * alpha.md). */
+    out[3] = (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ?
+              VI_IMG_SWIZZLE_OPAQUE : VI_IMG_SWIZZLE_IDENTITY) |
+             ((draw->texture_base_level & 0xful) << 12) |
+             ((draw->texture_last_level & 0xful) << 16) |
              ((draw->texture_tile_mode_index & 0x1ful) << 20) |
+             (draw->texture_last_level != 0ul ? VI_IMG_POW2_PAD : 0ul) |
              (VI_IMG_TYPE_2D << 28);
     out[4] = (draw->texture_pitch - 1ul) << 13;
     out[8] = v9x_vi_3d_sampler_clamp(draw->texture_address);
-    out[10] = draw->texture_bilinear != 0ul ? VI_SAMP_XY_BILINEAR : 0ul;
+    /* MAX_LOD in u4.8 at 23:12: the last level; MIN_LOD 0. */
+    out[9] = (draw->texture_last_level & 0xful) << 20;
+    out[10] = (draw->texture_bilinear != 0ul ? VI_SAMP_XY_BILINEAR : 0ul) |
+              ((draw->texture_mip_filter & 3ul) << 26);
 }
 
 v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
@@ -600,7 +696,9 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
         (draw->texture_low & VI_SHADER_ALIGN) != 0ul ||
         (draw->texture_low != 0ul &&
          (format != V9X_VI_IMG_FORMAT_8_8_8_8 &&
-          format != V9X_VI_IMG_FORMAT_5_6_5)) ||
+          format != V9X_VI_IMG_FORMAT_5_6_5 &&
+          format != V9X_VI_IMG_FORMAT_1_5_5_5 &&
+          format != V9X_VI_IMG_FORMAT_4_4_4_4)) ||
         (draw->texture_low != 0ul &&
          (draw->texture_width == 0ul ||
           draw->texture_width > VI_IMG_MAX_SIZE ||
@@ -608,7 +706,10 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
           draw->texture_height > VI_IMG_MAX_SIZE ||
           draw->texture_pitch < draw->texture_width ||
           draw->texture_pitch > VI_IMG_MAX_SIZE ||
-          draw->texture_address > V9X_VI_TEX_ADDRESS_MIRROR))) {
+          draw->texture_address > V9X_VI_TEX_ADDRESS_MIRROR ||
+          draw->texture_last_level > 15ul ||
+          draw->texture_base_level > draw->texture_last_level ||
+          draw->texture_mip_filter > V9X_VI_MIP_FILTER_LINEAR))) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -616,10 +717,15 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     v9x_vi_3d_common_state(stream, draw->target_low, draw->target_high,
                            draw->pitch_pixels, draw->height, draw->format,
                            draw->tile_mode_index, VI_TL_PARAMS,
-                           draw->target_mask != 0ul ? draw->target_mask
-                                                    : VI_CB_TARGET_MASK_RGBA,
+                           draw->target_mask_none != 0ul ? 0ul :
+                           (draw->target_mask != 0ul ? draw->target_mask
+                                                     : VI_CB_TARGET_MASK_RGBA),
                            draw->d3d_pixel_centres != 0ul ? VI_SU_VTX_CNTL_D3D
-                                                          : VI_SU_VTX_CNTL);
+                                                          : VI_SU_VTX_CNTL,
+                           draw->blend_control,
+                           draw->ps_kill != 0ul ? VI_DB_SHADER_KILL_ENABLE
+                                                : 0ul,
+                           VI_COL_FORMAT_FP16_ABGR);
     if (draw->depth_low != 0ul) {
         v9x_vi_3d_depth(stream, draw->depth_low, draw->depth_high,
                         depth_pitch, depth_height, draw->depth_func,

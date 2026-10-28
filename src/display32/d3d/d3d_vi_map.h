@@ -24,6 +24,7 @@
 
 #include "velocity9x/types.h"
 #include "velocity9x/vi_3d.h"
+#include "velocity9x/vi_shader.h"
 #include "../r3d/r3d.h"
 
 /* A texture format no Carrizo path here samples. */
@@ -32,8 +33,11 @@
 /* The bound texture as the engine resolved it: format V9X_VI_IMG_FORMAT_*
  * or UNKNOWN, has_alpha for a format whose texels carry it, level 0's
  * pitch in texels, its offset from the framebuffer mapping as every
- * surface offset in a draw is, and whether it has a source colour key. */
+ * surface offset in a draw is, and whether it has a source colour key.
+ * levels: 1, or a chain's count laid out by v9x_vi_3d_mip_layout from
+ * offset, sampled across under a mip filter. */
 typedef struct v9x_d3d_vi_texture {
+    v9x_u32 levels;
     v9x_u32 format;
     v9x_u32 has_alpha;
     v9x_u32 width;
@@ -41,6 +45,7 @@ typedef struct v9x_d3d_vi_texture {
     v9x_u32 pitch_texels;
     v9x_u32 offset;
     v9x_u32 has_key;
+    v9x_u32 key;                /* the source key, in the texture's format */
 } V9X_D3D_VI_TEXTURE;
 
 #define V9X_D3D_VI_REFUSE_NONE            0ul
@@ -71,6 +76,10 @@ typedef struct v9x_d3d_vi_texture {
 #define V9X_D3D_VI_PS_MODULATE_SPECULAR 5ul
 #define V9X_D3D_VI_PS_COUNT             6ul
 #define V9X_D3D_VI_PS_SPECULAR          3ul /* added to an op's number */
+/* The alpha test, fog or a colour key: a PS built for the draw from
+ * *built (vi_shader.h, v9x_vi_shader_d3d_ps_built), its constants in its
+ * code, which the engine sends with the batch. */
+#define V9X_D3D_VI_PS_BUILT             6ul
 
 /*
  * One draw's batch state, without what the engine alone knows: the shader,
@@ -78,7 +87,8 @@ typedef struct v9x_d3d_vi_texture {
  * surface offset is moved by the heap's GPU address, heap_high:heap_low;
  * a surface the low half would carry out of is refused. depth_bytes is the
  * bound depth surface's bytes per pixel, 0 when none is bound. Fills out
- * and *ps (V9X_D3D_VI_PS_*); returns a V9X_D3D_VI_REFUSE_* reason.
+ * and *ps (V9X_D3D_VI_PS_*), and *built when *ps is V9X_D3D_VI_PS_BUILT;
+ * returns a V9X_D3D_VI_REFUSE_* reason.
  */
 v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             const V9X_D3D_VI_TEXTURE *texture,
@@ -86,7 +96,8 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 heap_low,
                             v9x_u32 depth_bytes,
                             struct v9x_vi_tl_draw *out,
-                            v9x_u32 *ps);
+                            v9x_u32 *ps,
+                            struct v9x_vi_d3d_ps *built);
 
 /* Placement d3d_vi.c gives what it binds: every surface on 256 bytes;
  * colour targets and textures in rows of whole 64 bytes (linear aligned,

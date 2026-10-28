@@ -548,13 +548,14 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     /* A Z16 is 1D tiled (d3d_vi.c places it, rows padded to the 8-row
      * tile): a fill of all of it is a fill of its bytes, padding rows
      * included, but one of part of it would land in the wrong samples, and
-     * so would the CPU's. Cedar draws those on the CP; here they are
-     * declined until that is built. */
+     * so would the CPU's. d3d_vi.c draws those on the CP, as Cedar's
+     * d3d_eg.c does. */
     if ((data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (fill.left != 0ul || fill.top != 0ul ||
             fill.width != (DWORD)data->lpDDDestSurface->lpGbl->wWidth ||
             fill.height != (DWORD)data->lpDDDestSurface->lpGbl->wHeight) {
-            return V9X_BLT_DECLINED;
+            return v9x_d3d_vi_depth_fill(data->lpDDDestSurface, data->rDest,
+                                         data->bltFX.dwFillColor, wait);
         }
         fill.height = (fill.height + V9X_VI_DEPTH_TILE_ROWS - 1ul) &
                       ~(V9X_VI_DEPTH_TILE_ROWS - 1ul);

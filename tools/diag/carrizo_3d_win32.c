@@ -45,7 +45,9 @@
  *      buffer and three rectangles, LESS with writes, the colour and the
  *      Z buffer checked (step 2). With /texture or /modulate: a pattern
  *      texture mapped 1:1, point-sampled, alone or times a diffuse colour
- *      (step 3).
+ *      (step 3). With /mip:N: a 64x16 chain's level N alone (BASE_LEVEL
+ *      = LAST_LEVEL = N) over a pattern that numbers every dword, so the
+ *      texels read say where the sampler finds the level and its rows.
  *
  * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
  * NOP and alignment. Then the CP is halted and the RLC stopped, every
@@ -273,8 +275,20 @@
 #define V9X_TEXTURE             0xe000ul
 #define V9X_TEXTURE_DWORDS      (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT)
 #define V9X_SEED_TEXTURE        0x7e57ab1eul
+/* /mip:N: the chain in the free space behind the shaders, 12 KiB of the
+ * pattern (a 64x16 32 bpp chain is about 5.4 KiB packed, more padded);
+ * levels 0 to 6, 64x16 down to 1x1. */
+#define V9X_MIP                 0x5000ul
+#define V9X_MIP_DWORDS          3072ul
+#define V9X_MIP_LEVELS          7ul
 #define V9X_WHITE               0xfffffffful
 #define V9X_MODULATE_COLOUR     0xffff8040ul
+/* /blend and /blendspec: V9XD32's T7 as one draw - the target filled
+ * opaque green, then red at alpha 80h over all of it, SRCALPHA and
+ * INVSRCALPHA; /blendspec with the specular PS Direct3D draws take.
+ * Every pixel the same blend, about FF7F8000 in memory order. */
+#define V9X_BLEND_TARGET        0xff00ff00ul
+#define V9X_BLEND_SOURCE        0x80ff0000ul
 #define V9X_FLOAT_QUARTER       0x3e800000ul
 #define V9X_FLOAT_THREE_QUARTERS 0x3f400000ul
 #define V9X_FLOAT_32            0x42000000ul
@@ -441,6 +455,10 @@ static int v9x_gouraud;
 static int v9x_depth;
 static int v9x_texture;
 static int v9x_modulate;
+static int v9x_blend;
+static int v9x_blend_specular;
+static int v9x_mip;
+static DWORD v9x_mip_level;
 static DWORD v9x_vertex_count;
 static DWORD v9x_vertices[V9X_TL_MAX_VERTICES * V9X_TL_DWORDS];
 static struct v9x_vi_reg_seq v9x_init_ops[V9X_VI_GPU_INIT_OPS_MAX];
@@ -732,6 +750,12 @@ static void v9x_tl_vertices(void)
         v9x_vertex_count = V9X_DEPTH_VERTICES;
         return;
     }
+    if (v9x_blend) {
+        v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                    V9X_BLEND_SOURCE, V9X_BLEND_SOURCE);
+        v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
     if (v9x_texture) {
         colour = v9x_modulate ? V9X_MODULATE_COLOUR : V9X_WHITE;
         v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
@@ -831,8 +855,21 @@ static int v9x_build_run(DWORD lo, DWORD hi)
         draw.texture_pitch = V9X_TARGET_PITCH;
         draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
         draw.texture_bilinear = 0ul;
+        if (v9x_mip) {
+            draw.texture_low = lo + V9X_MIP;
+            draw.texture_base_level = v9x_mip_level;
+            draw.texture_last_level = v9x_mip_level;
+            draw.texture_mip_filter = V9X_VI_MIP_FILTER_POINT;
+        }
         draw.ps_vgprs = v9x_modulate ? V9X_VI_MODULATE_PS_VGPRS :
                                        V9X_VI_TEXTURE_PS_VGPRS;
+        if (v9x_blend) {
+            draw.blend_control =
+                v9x_vi_3d_blend(V9X_VI_BLEND_SRC_ALPHA,
+                                V9X_VI_BLEND_ONE_MINUS_SRC_ALPHA);
+            draw.ps_vgprs = v9x_blend_specular ?
+                            V9X_VI_GOURAUD_PS_SPECULAR_VGPRS : 0ul;
+        }
         if (v9x_vi_3d_tl_draw(&stream, &draw) != V9X_STATUS_OK) {
             return 0;
         }
@@ -852,6 +889,9 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     vs_first = v9x_data_append(v9x_shader, vs_count);
     if (v9x_modulate) {
         ps_count = v9x_vi_shader_modulate_ps(v9x_shader);
+    } else if (v9x_blend) {
+        ps_count = v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, v9x_blend_specular,
+                                        v9x_shader);
     } else if (v9x_texture) {
         ps_count = v9x_vi_shader_texture_ps(v9x_shader);
     } else if (v9x_gouraud) {
@@ -897,7 +937,12 @@ static int v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH, V9X_DEPTH_DWORDS, V9X_DEPTH_CLEAR);
     v9x_op(V9X_OP_VRAM_PATTERN, V9X_TEXTURE, V9X_TEXTURE_DWORDS,
            V9X_SEED_TEXTURE);
-    v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS, V9X_GUARD_VALUE);
+    if (v9x_mip) {
+        v9x_op(V9X_OP_VRAM_PATTERN, V9X_MIP, V9X_MIP_DWORDS,
+               V9X_SEED_TEXTURE);
+    }
+    v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS,
+           v9x_blend ? V9X_BLEND_TARGET : V9X_GUARD_VALUE);
     v9x_op(V9X_OP_VRAM_FILL, V9X_PROBE, V9X_PROBE_DWORDS, V9X_GUARD_VALUE);
     v9x_at_tile_mode8 = v9x_op(V9X_OP_MMIO_READ, V9X_CZ_GB_TILE_MODE8, 0ul,
                                0ul);
@@ -1291,6 +1336,106 @@ static void v9x_verify_texture(const DWORD *target)
     v9x_pass(v9x_modulate ? "Modulate" : "Texture", bad == 0ul);
 }
 
+/* The pattern's dword index of a value: the step is odd, so it has an
+ * inverse mod 2^32; Newton's iteration doubles the correct low bits from
+ * the three a * a = 1 (mod 8) gives. */
+static DWORD v9x_pattern_index(DWORD value)
+{
+    DWORD inverse = V9X_PATTERN_STEP;
+    DWORD round;
+
+    for (round = 0ul; round < 4ul; ++round) {
+        inverse *= 2ul - V9X_PATTERN_STEP * inverse;
+    }
+    return (value - V9X_SEED_TEXTURE) * inverse;
+}
+
+/* /mip:N: level N's origin from pixel (0, 0), its row pitch from the first
+ * pixel on texel row 1, then every pixel checked against origin + row x
+ * pitch + column at that level's size. */
+static void v9x_verify_mip(const DWORD *target)
+{
+    DWORD width = V9X_TARGET_PITCH >> v9x_mip_level;
+    DWORD height = V9X_TARGET_HEIGHT >> v9x_mip_level;
+    DWORD origin;
+    DWORD pitch = 0ul;
+    DWORD x;
+    DWORD y;
+    DWORD want;
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+
+    if (width == 0ul) {
+        width = 1ul;
+    }
+    if (height == 0ul) {
+        height = 1ul;
+    }
+    origin = v9x_pattern_index(target[0]);
+    v9x_number("Mip", "Level", v9x_mip_level);
+    v9x_number("Mip", "Width", width);
+    v9x_number("Mip", "Height", height);
+    v9x_key("Mip", "Pixel0", target[0]);
+    v9x_number("Mip", "OriginBytes", origin * 4ul);
+    if (height > 1ul) {
+        pitch = v9x_pattern_index(target[(V9X_TARGET_HEIGHT / height) *
+                                         V9X_TARGET_PITCH]) - origin;
+        v9x_number("Mip", "RowPitchBytes", pitch * 4ul);
+    }
+    if (width > 1ul) {
+        v9x_number("Mip", "Column1",
+                   v9x_pattern_index(target[V9X_TARGET_PITCH / width]) -
+                   origin);
+    }
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            want = origin + (y * height / V9X_TARGET_HEIGHT) * pitch +
+                   x * width / V9X_TARGET_PITCH;
+            if (origin >= V9X_MIP_DWORDS ||
+                v9x_pattern_index(target[y * V9X_TARGET_PITCH + x]) != want) {
+                if (bad++ == 0ul) {
+                    first_bad = y * V9X_TARGET_PITCH + x;
+                }
+            }
+        }
+    }
+    v9x_number("Result", "MipBad", bad);
+    if (bad != 0ul) {
+        v9x_number("Result", "MipFirstBadIndex", first_bad);
+        v9x_key("Result", "MipFirstBad", target[first_bad]);
+    }
+    v9x_pass("Mip", bad == 0ul);
+}
+
+/* /blend: every pixel alike, the first eight of the first two rows shown,
+ * and how many differ from pixel 0. */
+static void v9x_verify_blend(const DWORD *target)
+{
+    DWORD index;
+    DWORD differ = 0ul;
+    char key[16];
+
+    for (index = 0ul; index < V9X_TARGET_DWORDS; ++index) {
+        if (target[index] != target[0]) {
+            ++differ;
+        }
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        lstrcpyA(key, "Row0X");
+        v9x_decimal(key + 5, index);
+        v9x_key("Blend", key, target[index]);
+        lstrcpyA(key, "Row1X");
+        v9x_decimal(key + 5, index);
+        v9x_key("Blend", key, target[V9X_TARGET_PITCH + index]);
+    }
+    v9x_number("Result", "BlendDiffer", differ);
+    v9x_key("Result", "BlendPixel", target[0]);
+    v9x_pass("Blend", differ == 0ul &&
+                      v9x_near((target[0] >> 16) & 0xfful, 0x80ul) &&
+                      v9x_near((target[0] >> 8) & 0xfful, 0x7ful) &&
+                      v9x_near(target[0] & 0xfful, 0ul));
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -1306,6 +1451,27 @@ static int v9x_switch_given(const char *switch_text)
         ++line;
     }
     return 0;
+}
+
+/* The digit after a switch such as /mip:, or 0xFFFFFFFF without one. */
+static DWORD v9x_switch_digit(const char *switch_text)
+{
+    const char *line;
+    int length;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            if (line[length] >= '0' && line[length] <= '9') {
+                return (DWORD)(line[length] - '0');
+            }
+            return 0xfffffffful;
+        }
+        ++line;
+    }
+    return 0xfffffffful;
 }
 
 static void v9x_finish(const char *result, UINT code)
@@ -1331,10 +1497,19 @@ void __stdcall V9xCarrizo3dEntry(void)
     v9x_text("Report", "Tool", "V9XCZ3D");
     v9x_text("Report", "Build", V9X_BUILD_ID);
     v9x_depth = v9x_switch_given("/depth");
+    v9x_blend_specular = v9x_switch_given("/blendspec");
+    v9x_blend = v9x_blend_specular || v9x_switch_given("/blend");
     v9x_modulate = v9x_switch_given("/modulate");
-    v9x_texture = v9x_modulate || v9x_switch_given("/texture");
-    v9x_gouraud = v9x_depth || v9x_texture || v9x_switch_given("/gouraud");
-    if (v9x_modulate) {
+    v9x_mip_level = v9x_switch_digit("/mip:");
+    v9x_mip = v9x_mip_level < V9X_MIP_LEVELS;
+    v9x_texture = v9x_mip || v9x_modulate || v9x_switch_given("/texture");
+    v9x_gouraud = v9x_depth || v9x_texture || v9x_blend ||
+                  v9x_switch_given("/gouraud");
+    if (v9x_blend) {
+        v9x_text("Report", "Draw", v9x_blend_specular ? "blendspec" : "blend");
+    } else if (v9x_mip) {
+        v9x_text("Report", "Draw", "mip");
+    } else if (v9x_modulate) {
         v9x_text("Report", "Draw", "modulate");
     } else if (v9x_texture) {
         v9x_text("Report", "Draw", "texture");
@@ -1503,7 +1678,11 @@ void __stdcall V9xCarrizo3dEntry(void)
              probe[V9X_PROBE_AT_Y + 1u] == 0x40800000ul &&
              probe[V9X_PROBE_AT_Y + 2u] == 0x41400000ul);
     v9x_pass("PsRan", probe[V9X_PROBE_AT_PS] != V9X_GUARD_VALUE);
-    if (v9x_texture) {
+    if (v9x_blend) {
+        v9x_verify_blend(v9x_result.block + 2);
+    } else if (v9x_mip) {
+        v9x_verify_mip(v9x_result.block + 2);
+    } else if (v9x_texture) {
         v9x_verify_texture(v9x_result.block + 2);
     } else if (v9x_depth) {
         v9x_verify_depth(v9x_result.block + 2,

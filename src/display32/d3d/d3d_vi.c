@@ -97,6 +97,28 @@ static DWORD v9x_d3d_vi_format_of(const V9X_DD_SURFACE_LCL *surface,
         *has_alpha = 0ul;
         return V9X_VI_IMG_FORMAT_5_6_5;
     }
+    /* ARGB1555 and ARGB4444, blue in the low bits like every format here:
+     * the sampler's x is the low field (vi_3d.h). */
+    if (format->dwRGBBitCount == 16ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+        format->dwRBitMask == 0x00007c00ul &&
+        format->dwGBitMask == 0x000003e0ul &&
+        format->dwBBitMask == 0x0000001ful &&
+        format->dwRGBAlphaBitMask == 0x00008000ul) {
+        *bytes_out = 2ul;
+        *has_alpha = 1ul;
+        return V9X_VI_IMG_FORMAT_1_5_5_5;
+    }
+    if (format->dwRGBBitCount == 16ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+        format->dwRBitMask == 0x00000f00ul &&
+        format->dwGBitMask == 0x000000f0ul &&
+        format->dwBBitMask == 0x0000000ful &&
+        format->dwRGBAlphaBitMask == 0x0000f000ul) {
+        *bytes_out = 2ul;
+        *has_alpha = 1ul;
+        return V9X_VI_IMG_FORMAT_4_4_4_4;
+    }
     if (format->dwRGBBitCount == 32ul &&
         (format->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
         format->dwRBitMask == 0x00ff0000ul &&
@@ -124,12 +146,13 @@ static int v9x_d3d_vi_texture_format(const V9X_DD_SURFACE_LCL *surface,
 }
 
 /*
- * What d3d_vi_map.c accepts: the Z test with every function, flat and
- * Gouraud colour and specular, textures in RGB565 and ARGB8888 with point
- * and bilinear filters, wrap, mirror and clamp, DECAL, COPY, MODULATE and
- * MODULATEALPHA. No blending, alpha test, fog, colour key or mip filter
- * yet (the plan's steps 2 and 3): those draws are refused and counted, and
- * the caps do not offer them.
+ * What d3d_vi_map.c accepts: Z and alpha tests with every function, the
+ * blend factors without destination alpha, flat and Gouraud colour and
+ * specular, vertex and table fog by the factor the core leaves in the
+ * specular alpha, textures in RGB565, ARGB1555, ARGB4444 and ARGB8888
+ * with point and bilinear filters, wrap, mirror and clamp, colour keys,
+ * DECAL, COPY, MODULATE and MODULATEALPHA, and mip chains with every
+ * Direct3D mip filter.
  */
 static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -163,23 +186,37 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
     tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW | V9X_D3DPMISCCAPS_MASKZ;
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_SUBPIXEL;
+                        V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
-    tri->dwAlphaCmpCaps = V9X_D3DPCMPCAPS_ALWAYS;
-    tri->dwSrcBlendCaps = V9X_D3DPBLENDCAPS_ONE;
-    tri->dwDestBlendCaps = V9X_D3DPBLENDCAPS_ZERO;
+    tri->dwAlphaCmpCaps = tri->dwZCmpCaps;
+    tri->dwSrcBlendCaps =
+        V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
+        V9X_D3DPBLENDCAPS_SRCCOLOR | V9X_D3DPBLENDCAPS_INVSRCCOLOR |
+        V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_INVSRCALPHA |
+        V9X_D3DPBLENDCAPS_DESTCOLOR | V9X_D3DPBLENDCAPS_INVDESTCOLOR;
+    tri->dwDestBlendCaps = tri->dwSrcBlendCaps;
     tri->dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
         V9X_D3DPSHADECAPS_SPECULARFLATRGB |
-        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB;
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
+        V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
-                         V9X_D3DPTEXTURECAPS_ALPHA;
+                         V9X_D3DPTEXTURECAPS_ALPHA |
+                         V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEAR;
+                               V9X_D3DPTFILTERCAPS_LINEAR |
+                               V9X_D3DPTFILTERCAPS_MIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
@@ -205,8 +242,8 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB8888. */
-    for (index = 0ul; index < 2ul; ++index) {
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888, as Cedar's list. */
+    for (index = 0ul; index < 4ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -214,23 +251,32 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
             V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
         shared->texture_formats[index].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
         pf->dwSize = sizeof(V9X_DDPIXELFORMAT);
+        pf->dwFlags = V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+        pf->dwRGBBitCount = 16ul;
     }
     shared->texture_formats[0].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
-    shared->texture_formats[0].ddpfPixelFormat.dwRGBBitCount = 16ul;
     shared->texture_formats[0].ddpfPixelFormat.dwRBitMask = 0x0000f800ul;
     shared->texture_formats[0].ddpfPixelFormat.dwGBitMask = 0x000007e0ul;
     shared->texture_formats[0].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
     shared->texture_formats[0].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwFlags =
-        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
-    shared->texture_formats[1].ddpfPixelFormat.dwRGBBitCount = 32ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
-    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[1].ddpfPixelFormat.dwRBitMask = 0x00007c00ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwGBitMask = 0x000003e0ul;
+    shared->texture_formats[1].ddpfPixelFormat.dwBBitMask = 0x0000001ful;
     shared->texture_formats[1].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x00008000ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwRBitMask = 0x00000f00ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwGBitMask = 0x000000f0ul;
+    shared->texture_formats[2].ddpfPixelFormat.dwBBitMask = 0x0000000ful;
+    shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0x0000f000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 2ul;
+    shared->d3d_global.dwNumTextureFormats = 4ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }
@@ -238,6 +284,62 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
 static int v9x_d3d_vi_ready(void)
 {
     return v9x_vi_cp_ready();
+}
+
+/*
+ * A mip chain's levels, counted as far as each sits where
+ * v9x_vi_3d_mip_layout puts it - create_surface placed it there in one
+ * block - with level 0's pitch the layout's, as Cedar's are. The first
+ * attached level that is not ends the chain; a chain of one is no chain.
+ */
+static void v9x_d3d_vi_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
+                                     DWORD bytes, V9X_D3D_VI_TEXTURE *texture)
+{
+    v9x_u32 offsets[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 total;
+    const V9X_DD_SURFACE_LCL *level = surface;
+    DWORD longest = texture->width > texture->height ? texture->width
+                                                     : texture->height;
+    DWORD possible = 1ul;
+    DWORD found = 1ul;
+
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    while (longest > 1ul && possible < V9X_VI_MIP_LEVELS_MAX) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (!v9x_vi_3d_mip_layout(bytes, texture->width, texture->height,
+                              possible, offsets, pitches, &total) ||
+        texture->pitch_texels != pitches[0]) {
+        return;
+    }
+    while (found < possible) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next->lpGbl == 0 ||
+            v9x_surface_offset(next) != texture->offset + offsets[found] ||
+            (DWORD)next->lpGbl->lPitch != pitches[found] * bytes) {
+            if (next != 0) {
+                ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            }
+            break;
+        }
+        ++found;
+        level = next;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = found;
+    texture->levels = found;
 }
 
 /* The bound texture's level 0 as the map takes it. */
@@ -252,6 +354,7 @@ static void v9x_d3d_vi_resolve_texture(const V9X_R3D_TEXTURE *sampler,
 
     texture->format = V9X_D3D_VI_TEXTURE_UNKNOWN;
     texture->has_key = 0ul;
+    texture->key = 0ul;
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
@@ -271,8 +374,13 @@ static void v9x_d3d_vi_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->pitch_texels = (DWORD)surface->lpGbl->lPitch / bytes;
     texture->offset = offset;
+    texture->levels = 1ul;
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         texture->has_key = 1ul;
+        texture->key = surface->ddckCKSrcBltLow;
+    }
+    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+        v9x_d3d_vi_resolve_chain(surface, bytes, texture);
     }
 }
 
@@ -307,7 +415,8 @@ static void v9x_d3d_vi_count_refusal(const V9X_R3D_DRAW *draw, v9x_u32 reason)
 }
 
 static v9x_u32 v9x_d3d_vi_map(const V9X_R3D_DRAW *draw,
-                              struct v9x_vi_tl_draw *out, v9x_u32 *ps)
+                              struct v9x_vi_tl_draw *out, v9x_u32 *ps,
+                              struct v9x_vi_d3d_ps *built)
 {
     V9X_D3D_VI_TEXTURE texture;
     DWORD high;
@@ -319,39 +428,48 @@ static v9x_u32 v9x_d3d_vi_map(const V9X_R3D_DRAW *draw,
         return V9X_D3D_VI_REFUSE_ADDRESS;
     }
     texture.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
+    texture.levels = 1ul;
     if (draw->texture.object != 0) {
         v9x_d3d_vi_resolve_texture(&draw->texture, &texture);
     }
     return v9x_d3d_vi_map_draw(draw, &texture, high, heap_low,
-                               v9x_d3d_vi_depth_bytes(draw), out, ps);
+                               v9x_d3d_vi_depth_bytes(draw), out, ps, built);
 }
 
 static int v9x_d3d_vi_accepts(const V9X_R3D_DRAW *draw)
 {
     struct v9x_vi_tl_draw out;
+    struct v9x_vi_d3d_ps built;
     v9x_u32 ps;
     v9x_u32 reason;
 
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
-    reason = v9x_d3d_vi_map(draw, &out, &ps);
+    reason = v9x_d3d_vi_map(draw, &out, &ps, &built);
     if (reason != V9X_D3D_VI_REFUSE_NONE && reason < 20ul) {
         ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
     }
     return reason == V9X_D3D_VI_REFUSE_NONE;
 }
 
+/* The built PS of the draw in hand (vi_shader.h). */
+static v9x_u32 v9x_d3d_vi_built_ps[V9X_VI_D3D_PS_DWORDS_MAX];
+
 /*
  * A run of triangles, in batches of at most V9X_D3D_VI_CHUNK_TRIANGLES:
  * each batch's vertices copied into the CP's arena as they are, then the
- * TL draw's state, the draw and its fence.
+ * TL draw's state, the draw and its fence. A built PS goes into the arena
+ * ahead of each batch's vertices, as Cedar's lit PS does: its constants
+ * are in its code, and the arena is the only space not reused before the
+ * GPU has read it.
  */
 static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
                            const V9X_R3D_VERTEX *vertices,
                            DWORD triangle_count)
 {
     struct v9x_vi_tl_draw state;
+    struct v9x_vi_d3d_ps built;
     struct v9x_vi_pm4 stream;
     volatile DWORD *linear;
     const DWORD *words;
@@ -360,6 +478,7 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     DWORD dwords;
     DWORD index;
     DWORD started;
+    DWORD ps_dwords = 0ul;
     v9x_u32 ps;
     v9x_u32 reason;
 
@@ -368,19 +487,33 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     started = V9X_TIME_BEGIN();
-    reason = v9x_d3d_vi_map(draw, &state, &ps);
+    reason = v9x_d3d_vi_map(draw, &state, &ps, &built);
     if (reason != V9X_D3D_VI_REFUSE_NONE) {
         v9x_d3d_vi_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
     }
     state.vs_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_VS);
-    state.ps_low = v9x_vi_cp_shader_low(v9x_d3d_vi_ps_slot[ps]);
+    if (ps == V9X_D3D_VI_PS_BUILT) {
+        ps_dwords = v9x_vi_shader_d3d_ps_built(&built, v9x_d3d_vi_built_ps);
+    } else {
+        state.ps_low = v9x_vi_cp_shader_low(v9x_d3d_vi_ps_slot[ps]);
+    }
     state.shader_high = state.target_high;
     state.vertex_high = state.target_high;
     state.fence_high = state.target_high;
 
     while (triangle_count != 0ul) {
+        if (ps_dwords != 0ul) {
+            if (!v9x_vi_cp_vertex_space(ps_dwords * 4ul, &linear, &gpu_low)) {
+                V9X_TIME_END(V9X_TIME_DECODE, started);
+                return 0;
+            }
+            for (index = 0ul; index < ps_dwords; ++index) {
+                linear[index] = v9x_d3d_vi_built_ps[index];
+            }
+            state.ps_low = gpu_low;
+        }
         chunk = triangle_count > V9X_D3D_VI_CHUNK_TRIANGLES ?
                 V9X_D3D_VI_CHUNK_TRIANGLES : triangle_count;
         dwords = chunk * 3ul * V9X_D3D_VI_VERTEX_DWORDS;
@@ -429,27 +562,147 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/* One corner of a depth fill's rectangle: no colour, no texture. */
+static void v9x_d3d_vi_fill_vertex(V9X_R3D_VERTEX *vertex, LONG x, LONG y,
+                                   float z)
+{
+    vertex->sx = (float)x;
+    vertex->sy = (float)y;
+    vertex->sz = z;
+    vertex->rhw = 1.0f;
+    vertex->color = 0ul;
+    vertex->specular = 0ul;
+    vertex->tu = 0.0f;
+    vertex->tv = 0.0f;
+}
+
+/*
+ * A rectangle of a Z16 at value, drawn on the CP: eng_vi.c's SDMA fill
+ * hands over every depth fill short of the whole surface, which it cannot
+ * write tiled (Cedar's d3d_eg.c the same way). Two triangles over it,
+ * ZFUNC ALWAYS with writes on; the colour target is the Z buffer's own
+ * memory named as RGB565, which only sizes the draw: no channel is
+ * written. The core's centres are whole coordinates, so the rectangle's
+ * edges cover pixels left to right - 1. The batch waits for queued SDMA
+ * work itself (vi_cp.c).
+ */
+int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait)
+{
+    struct v9x_vi_tl_draw state;
+    struct v9x_vi_pm4 stream;
+    V9X_R3D_VERTEX vertices[6];
+    volatile DWORD *linear;
+    const DWORD *words;
+    DWORD high;
+    DWORD heap_low;
+    DWORD offset;
+    DWORD gpu_low;
+    DWORD rows;
+    DWORD index;
+    float z;
+
+    (void)wait;
+    if (surface == 0 || rect == 0 || surface->lpGbl == 0 ||
+        surface->lpGbl->lPitch <= 0l || !v9x_d3d_vi_ready() ||
+        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul ||
+        rect[0] < 0l || rect[1] < 0l || rect[2] <= rect[0] ||
+        rect[3] <= rect[1] ||
+        rect[2] > (LONG)surface->lpGbl->wWidth ||
+        rect[3] > (LONG)surface->lpGbl->wHeight ||
+        !v9x_vi_cp_addresses(&high, &heap_low)) {
+        return V9X_BLT_DECLINED;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful || heap_low + offset < heap_low) {
+        return V9X_BLT_DECLINED;
+    }
+    rows = ((DWORD)surface->lpGbl->wHeight + V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul) &
+           ~(V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul);
+
+    for (index = 0ul; index < sizeof(state); ++index) {
+        ((unsigned char *)&state)[index] = 0u;
+    }
+    state.target_low = heap_low + offset;
+    state.target_high = high;
+    state.pitch_pixels = (DWORD)surface->lpGbl->lPitch / 2ul;
+    state.height = rows;
+    state.format = V9X_VI_CB_FORMAT_5_6_5;
+    state.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    state.target_mask_none = 1ul;
+    state.d3d_pixel_centres = 1ul;
+    state.depth_low = state.target_low;
+    state.depth_high = high;
+    state.depth_func = V9X_VI_ZFUNC_ALWAYS;
+    state.depth_write = 1ul;
+    state.depth_pitch = state.pitch_pixels;
+    state.depth_height = rows;
+    state.vs_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_VS);
+    state.ps_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_PS_FIRST +
+                                        V9X_VI_PS_COLOUR);
+    state.shader_high = high;
+    state.vertex_high = high;
+    state.fence_high = high;
+
+    /* On the 16-bit full scale. */
+    z = (float)(long)(value & 0xfffful) / 65535.0f;
+    v9x_d3d_vi_fill_vertex(&vertices[0], rect[0], rect[1], z);
+    v9x_d3d_vi_fill_vertex(&vertices[1], rect[2], rect[1], z);
+    v9x_d3d_vi_fill_vertex(&vertices[2], rect[0], rect[3], z);
+    v9x_d3d_vi_fill_vertex(&vertices[3], rect[2], rect[1], z);
+    v9x_d3d_vi_fill_vertex(&vertices[4], rect[2], rect[3], z);
+    v9x_d3d_vi_fill_vertex(&vertices[5], rect[0], rect[3], z);
+    if (!v9x_vi_cp_vertex_space(sizeof(vertices), &linear, &gpu_low)) {
+        return V9X_BLT_DECLINED;
+    }
+    words = (const DWORD *)vertices;
+    for (index = 0ul; index < sizeof(vertices) / 4ul; ++index) {
+        linear[index] = words[index];
+    }
+    state.vertex_low = gpu_low;
+    state.vertex_count = 6ul;
+    state.fence_low = v9x_vi_cp_fence_low();
+    state.fence_value = v9x_vi_cp_fence_next();
+
+    v9x_vi_pm4_init(&stream, v9x_d3d_vi_stream, V9X_D3D_VI_STREAM_DWORDS);
+    if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
+        return V9X_BLT_DECLINED;
+    }
+    v9x_vi_pm4_pad(&stream);
+    if (stream.overflow != 0ul ||
+        !v9x_vi_cp_submit(stream.dwords, stream.count, state.fence_value)) {
+        return V9X_BLT_DECLINED;
+    }
+    return V9X_BLT_DONE;
+}
+
 /*
  * Placement, as Cedar's (d3d_eg.c), on GFX8's rules (d3d_vi_map.h). An
  * offscreen render target alone gets its rows whole 64 bytes and whole
  * 8-pixel tiles, 256-aligned. A Z16 buffer gets its pitch whole 8-pixel
  * tiles and its rows padded to 8, the DB's 1D tile, 256-aligned. A
  * video-memory texture of a format this engine samples gets its rows whole
- * 64 bytes, which a linear-aligned T# needs. Mip chains are not placed
- * here yet: only level 0 is sampled.
+ * 64 bytes, which a linear-aligned T# needs. A mip chain goes in one
+ * block, each level where the sampler finds it from the base
+ * (v9x_vi_3d_mip_layout); a chain that layout does not take is left to
+ * DirectDraw, and only its level 0 is sampled.
  */
 static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list;
     V9X_DD_SURFACE_LCL *surface;
-    v9x_u32 pitches[1];
+    v9x_u32 pitches[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 offsets[V9X_VI_MIP_LEVELS_MAX];
     v9x_u32 rows[1];
+    v9x_u32 total;
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
     DWORD width;
     DWORD height;
+    DWORD level;
+    DWORD base;
 
-    if (v9x_hal == 0 || data == 0 || data->dwSCnt != 1ul ||
+    if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
         data->lplpSList == 0) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
@@ -468,6 +721,9 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     if ((surface->ddsCaps & V9X_DDSCAPS_3DDEVICE) != 0ul &&
         (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
                              V9X_DDSCAPS_FLIP)) == 0ul) {
+        if (data->dwSCnt != 1ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
         bytes = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul ?
                 surface->lpGbl->ddpfSurface.dwRGBBitCount / 8ul :
                 v9x_hal->info.vmiData.ddpfDisplay.dwRGBBitCount / 8ul;
@@ -478,7 +734,8 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                       V9X_D3D_VI_ROW_ALIGN - 1ul) & ~(V9X_D3D_VI_ROW_ALIGN - 1ul);
         rows[0] = height;
     } else if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
-        if (v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
+        if (data->dwSCnt != 1ul ||
+            v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         pitches[0] = (width * 2ul + V9X_D3D_VI_DEPTH_PITCH_UNIT - 1ul) &
@@ -487,12 +744,43 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                   ~(V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul);
     } else {
         if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
-            (surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul ||
             width > v9x_d3d_vi_limits.texture_size_max ||
             height > v9x_d3d_vi_limits.texture_size_max ||
             v9x_d3d_vi_format_of(surface, &bytes, &has_alpha) ==
                 V9X_D3D_VI_TEXTURE_UNKNOWN) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        if (data->dwSCnt > 1ul) {
+            /* Each level half the last, as v9x_vi_3d_mip_layout lays
+             * them out, and in video memory with the top. */
+            for (level = 0ul; level < data->dwSCnt; ++level) {
+                const V9X_DD_SURFACE_LCL *member = list[level];
+
+                if (member == 0 || member->lpGbl == 0 ||
+                    (member->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+                    (DWORD)member->lpGbl->wWidth != width ||
+                    (DWORD)member->lpGbl->wHeight != height) {
+                    return V9X_DDHAL_DRIVER_NOTHANDLED;
+                }
+                width = width > 1ul ? width >> 1 : 1ul;
+                height = height > 1ul ? height >> 1 : 1ul;
+            }
+            if (!v9x_vi_3d_mip_layout(bytes, (DWORD)surface->lpGbl->wWidth,
+                                      (DWORD)surface->lpGbl->wHeight,
+                                      data->dwSCnt, offsets, pitches,
+                                      &total)) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            for (level = 0ul; level < data->dwSCnt; ++level) {
+                pitches[level] *= bytes;
+            }
+            if (v9x_d3d_place_chain(data, V9X_D3D_VI_SURFACE_ALIGN, total,
+                                    offsets, pitches, &base) != 0ul) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            ++v9x_hal->d3d_diagnostics.texture_placed;
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
         }
         pitches[0] = (width * bytes + V9X_D3D_VI_ROW_ALIGN - 1ul) &
                      ~(V9X_D3D_VI_ROW_ALIGN - 1ul);

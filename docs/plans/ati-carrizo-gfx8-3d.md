@@ -116,6 +116,19 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
       probe of GCN's field order; wrap and mirror.
    3. Specular and fog, mip chains, the colour key; then a game.
 
+   Steps 1 to 3 done except the game. Step 1 is
+   [first light](../decisions/2026-10-28-carrizo-d3d-hal-first-light.md).
+   Steps 2 and 3 are in
+   [the fixed-function record](../decisions/2026-10-28-carrizo-d3d-blend-and-shader-fixed-function.md):
+   - blending needed the compressed FP16 export;
+   - a 565 texture reads W = 1;
+   - the key, fog and alpha test are in a PS built per draw;
+   - the mip layout was measured.
+
+   V9XD32 passes at 16 and 32 bpp, as do V9XDDP's fog, specular, key,
+   4444 and mip checks (boot 28). Next: a game, and V9XDDP's rows that
+   still read 0, listed at the end of that record.
+
 ## Decisions
 
 - **Microcode in the tree**, as for SDMA (cefbf989) and Cedar: the four

@@ -100,6 +100,26 @@ static void test_encodings(void)
     CHECK(out[1] == 0x0027c1edul);
     (void)v9x_vi_image_sample(193ul, 237ul, 28ul, 4ul, 7ul, out);
     CHECK((out[0] | 0x1000ul) == 0xf0801700ul);
+    /* gfx8_asm_vopc.s: v_cmpx_lt_f32 vcc, v1, v2 [01 05 a2 7c]; _gt
+     * [.. a8 7c]; _neq [.. ba 7c]; _tru [.. be 7c]. gfx8_asm_vop2.s:
+     * v_subrev_f32 v5, v1, v2 [01 05 0a 06]; v_mac_f32 [01 05 0a 2c]. */
+    CHECK(v9x_vi_vopc(V9X_VI_VOPC_CMPX_LT_F32, V9X_VI_VGPR(1), 2ul) ==
+          0x7ca20501ul);
+    CHECK(v9x_vi_vopc(V9X_VI_VOPC_CMPX_GT_F32, V9X_VI_VGPR(1), 2ul) ==
+          0x7ca80501ul);
+    CHECK(v9x_vi_vopc(V9X_VI_VOPC_CMPX_NEQ_F32, V9X_VI_VGPR(1), 2ul) ==
+          0x7cba0501ul);
+    CHECK(v9x_vi_vopc(V9X_VI_VOPC_CMPX_TRU_F32, V9X_VI_VGPR(1), 2ul) ==
+          0x7cbe0501ul);
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_SUBREV_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x060a0501ul);
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_MAC_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x2c0a0501ul);
+    /* gfx8_asm_sopp.s: s_cbranch_execz 12609 [41 31 88 bf]. gfx8_asm_exp.s:
+     * exp null [9f 00 00 c4] with every channel; off and done vm here. */
+    CHECK(v9x_vi_s_cbranch_execz(12609ul) == 0xbf883141ul);
+    CHECK(v9x_vi_exp_null_done(out) == 2ul);
+    CHECK(out[0] == 0xc4001890ul && out[1] == 0ul);
     /* gfx8_asm_sopp.s: s_waitcnt 0x3141 [41 31 8c bf]. */
     CHECK(v9x_vi_s_waitcnt(0x3141ul) == 0xbf8c3141ul);
 }
@@ -249,7 +269,9 @@ static void test_tl_shaders(void)
         0x3b808081ul,
         0x0a1e1efful,   /* v_mul_f32 v15, 1/255, v15 */
         0x3b808081ul,
-        0x7e200280ul,   /* v_mov_b32 v16, 0 */
+        0x7e20290aul,   /* v_cvt_f32_ubyte3 v16, v10 (fog factor) */
+        0x0a2020fful,   /* v_mul_f32 v16, 1/255, v16 */
+        0x3b808081ul,
         0xc400022ful,   /* exp param2 v13, v14, v15, v16 */
         0x100f0e0dul,
         0x7e120280ul,   /* v_mov_b32 v9, 0 */
@@ -271,11 +293,23 @@ static void test_tl_shaders(void)
         0xd4110201ul,   /* v_interp_p2_f32 v4, v1, attr0.z */
         0xd4140300ul,   /* v_interp_p1_f32 v5, v0, attr0.w */
         0xd4150301ul,   /* v_interp_p2_f32 v5, v1, attr0.w */
-        0xc400180ful,   /* exp mrt0 v2, v3, v4, v5 done vm */
-        0x05040302ul,
+        0xd2960000ul,   /* v_cvt_pkrtz_f16_f32 v0, v2, v3 */
+        0x00020702ul,
+        0xd2960001ul,   /* v_cvt_pkrtz_f16_f32 v1, v4, v5 */
+        0x00020b04ul,
+        0xc4001c0ful,   /* exp mrt0 v0, v0, v1, v1 done compr vm */
+        0x00000100ul,
         0xbf810000ul    /* s_endpgm */
     };
     v9x_u32 out[48];
+
+    /* gfx8_vop3.txt (LLVM's disassembler test): v_cvt_pkrtz_f16_f32 v5,
+     * v1, v2 [05 00 96 d2 01 05 02 00]; gfx8_asm_exp.s: exp mrt0 ... compr
+     * [0f 04 00 c4]. */
+    CHECK(v9x_vi_cvt_pkrtz(5ul, V9X_VI_VGPR(1), V9X_VI_VGPR(2), out) == 2ul);
+    CHECK(out[0] == 0xd2960005ul && out[1] == 0x00020501ul);
+    CHECK(v9x_vi_exp_compr(V9X_VI_EXP_MRT0, 0, 0, 0ul, 0ul, out) == 2ul);
+    CHECK(out[0] == 0xc400040ful && out[1] == 0ul);
 
     CHECK(v9x_vi_shader_tl_vs(out) == V9X_VI_TL_VS_DWORDS);
     CHECK(memcmp(out, vs, sizeof(vs)) == 0);
@@ -298,8 +332,12 @@ static void test_texture_shaders(void)
         0xf0800f00ul,   /* image_sample v[4:7], v[2:3], s[0:7], s[8:11] */
         0x00400402ul,   /*   dmask:0xf */
         0xbf8c0000ul,   /* s_waitcnt 0 */
-        0xc400180ful,   /* exp mrt0 v4, v5, v6, v7 done vm */
-        0x07060504ul,
+        0xd2960002ul,   /* v_cvt_pkrtz_f16_f32 v2, v4, v5 */
+        0x00020b04ul,
+        0xd2960003ul,   /* v_cvt_pkrtz_f16_f32 v3, v6, v7 */
+        0x00020f06ul,
+        0xc4001c0ful,   /* exp mrt0 v2, v2, v3, v3 done compr vm */
+        0x00000302ul,
         0xbf810000ul    /* s_endpgm */
     };
     static const v9x_u32 modulate_tail[V9X_VI_MODULATE_PS_DWORDS - 6u] = {
@@ -318,8 +356,12 @@ static void test_texture_shaders(void)
         0x0a0a0b09ul,   /* v_mul_f32 v5, v9, v5 */
         0x0a0c0d0aul,   /* v_mul_f32 v6, v10, v6 */
         0x0a0e0f0bul,   /* v_mul_f32 v7, v11, v7 */
-        0xc400180ful,   /* exp mrt0 v4, v5, v6, v7 done vm */
-        0x07060504ul,
+        0xd2960002ul,   /* v_cvt_pkrtz_f16_f32 v2, v4, v5 */
+        0x00020b04ul,
+        0xd2960003ul,   /* v_cvt_pkrtz_f16_f32 v3, v6, v7 */
+        0x00020f06ul,
+        0xc4001c0ful,   /* exp mrt0 v2, v2, v3, v3 done compr vm */
+        0x00000302ul,
         0xbf810000ul    /* s_endpgm */
     };
     v9x_u32 out[48];
@@ -375,7 +417,7 @@ static void test_specular_shaders(void)
     (void)v9x_vi_shader_gouraud_ps(plain);
     CHECK(memcmp(out, plain, 10ul * sizeof(v9x_u32)) == 0);
     CHECK(memcmp(out + 10, gouraud_add, sizeof(gouraud_add)) == 0);
-    CHECK(memcmp(out + 19, plain + 10, 3ul * sizeof(v9x_u32)) == 0);
+    CHECK(memcmp(out + 19, plain + 10, 7ul * sizeof(v9x_u32)) == 0);
 
     /* Texture: the texel in v4-v7, specular into v8-v10. */
     count = v9x_vi_shader_d3d_ps(V9X_VI_PS_TEXTURE, 1, out);
@@ -389,6 +431,87 @@ static void test_specular_shaders(void)
     CHECK(count == V9X_VI_MODULATE_PS_DWORDS + 9ul);
     CHECK(out[21] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
     CHECK(out[27] == 0x0208090cul);     /* v_add_f32 v4, v12, v4 */
+}
+
+/* The built shaders: nothing extra is the plain shader; fog, the alpha
+ * test and the colour key each where Direct3D applies them, the kills
+ * branching to the null export. */
+static void test_built_shaders(void)
+{
+    struct v9x_vi_d3d_ps ps;
+    v9x_u32 plain[96];
+    v9x_u32 out[96];
+    v9x_u32 count;
+    v9x_u32 at;
+
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_VI_PS_MODULATE;
+    ps.specular = 1ul;
+    count = v9x_vi_shader_d3d_ps_built(&ps, out);
+    CHECK(count == v9x_vi_shader_d3d_ps(V9X_VI_PS_MODULATE, 1, plain));
+    CHECK(memcmp(out, plain, count * sizeof(v9x_u32)) == 0);
+
+    /* Gouraud with fog (colour 0.25, 0.5, 0.75) and alpha GREATER 0.5. */
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_VI_PS_COLOUR;
+    ps.fog = 1ul;
+    ps.fog_colour[0] = 0x3e800000ul;
+    ps.fog_colour[1] = 0x3f000000ul;
+    ps.fog_colour[2] = 0x3f400000ul;
+    ps.alpha_test = 1ul;
+    ps.alpha_func = V9X_VI_VOPC_CMPX_GT_F32;
+    ps.alpha_ref = 0x3f000000ul;
+    count = v9x_vi_shader_d3d_ps_built(&ps, out);
+    (void)v9x_vi_shader_gouraud_ps(plain);
+    CHECK(memcmp(out, plain, 10ul * sizeof(v9x_u32)) == 0);
+    at = 10ul;
+    CHECK(out[at++] == 0xd44c0b00ul);   /* v_interp_p1_f32 v19, v0, attr2.w */
+    CHECK(out[at++] == 0xd44d0b01ul);   /* v_interp_p2_f32 v19, v1, attr2.w */
+    CHECK(out[at++] == 0x062004fful);   /* v_subrev_f32 v16, 0.25, v2 */
+    CHECK(out[at++] == 0x3e800000ul);
+    CHECK(out[at++] == 0x7e0402fful);   /* v_mov_b32 v2, 0.25 */
+    CHECK(out[at++] == 0x3e800000ul);
+    CHECK(out[at++] == 0x2c042710ul);   /* v_mac_f32 v2, v16, v19 */
+    at += 10ul;                         /* green and red alike */
+    CHECK(out[at++] == 0x7e2402fful);   /* v_mov_b32 v18, 0.5 */
+    CHECK(out[at++] == 0x3f000000ul);
+    CHECK(out[at++] == 0x7ca82505ul);   /* v_cmpx_gt_f32 vcc, v5, v18 */
+    CHECK(out[at++] == 0xbf880007ul);   /* s_cbranch_execz to the tail */
+    CHECK(out[at++] == 0xd2960000ul);   /* v_cvt_pkrtz_f16_f32 v0, v2, v3 */
+    CHECK(out[at++] == 0x00020702ul);
+    CHECK(out[at++] == 0xd2960001ul);   /* v_cvt_pkrtz_f16_f32 v1, v4, v5 */
+    CHECK(out[at++] == 0x00020b04ul);
+    CHECK(out[at++] == 0xc4001c0ful);   /* exp mrt0 compr v0, v1 done vm */
+    CHECK(out[at++] == 0x00000100ul);
+    CHECK(out[at++] == 0xbf810000ul);   /* s_endpgm */
+    CHECK(out[at++] == 0xc4001890ul);   /* exp null done vm */
+    CHECK(out[at++] == 0ul);
+    CHECK(out[at++] == 0xbf810000ul);
+    CHECK(at == count);
+    CHECK(count <= V9X_VI_D3D_PS_DWORDS_MAX);
+
+    /* Texture with a key: the sum of squared differences of v4-v6 from
+     * the key, kept where the tolerance is below it. */
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_VI_PS_TEXTURE;
+    ps.key = 1ul;
+    ps.key_colour[0] = 0ul;
+    ps.key_colour[1] = 0x3f800000ul;
+    ps.key_colour[2] = 0ul;
+    ps.key_tolerance2 = 0x38800000ul;
+    count = v9x_vi_shader_d3d_ps_built(&ps, out);
+    (void)v9x_vi_shader_texture_ps(plain);
+    CHECK(memcmp(out, plain, 9ul * sizeof(v9x_u32)) == 0);
+    at = 9ul;
+    CHECK(out[at++] == 0x062008fful);   /* v_subrev_f32 v16, 0, v4 */
+    CHECK(out[at++] == 0ul);
+    CHECK(out[at++] == 0x0a222110ul);   /* v_mul_f32 v17, v16, v16 */
+    at += 6ul;                          /* green and red, v_mac */
+    CHECK(out[at++] == 0x7e2402fful);   /* v_mov_b32 v18, tolerance^2 */
+    CHECK(out[at++] == 0x38800000ul);
+    CHECK(out[at++] == 0x7ca22312ul);   /* v_cmpx_lt_f32 vcc, v18, v17 */
+    CHECK(out[at++] == 0xbf880007ul);
+    CHECK(out[count - 3ul] == 0xc4001890ul);
 }
 
 /* Every type-3 packet's count must land the next header exactly at the
@@ -812,6 +935,10 @@ static void test_tl_texture(void)
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
     at = find_sh(buffer, stream.count, 0x2c0cul);
     CHECK(at < stream.count && buffer[at + 3ul] == 0x01000000ul);
+    /* Its W the constant 1 (SQ_SEL_1): 5_6_5 has no fourth component, and
+     * asked for one the sampler reads 0, which MODULATE under SRCALPHA
+     * draws as nothing (Cedar's 565 alpha, V9XDDP's untagged texture). */
+    CHECK(buffer[at + 5ul] == 0x908003acul);
 
     /* Refused: an unaligned texture, a zero or oversized width, a format
      * no T# here describes. */
@@ -824,8 +951,88 @@ static void test_tl_texture(void)
     draw.texture_width = 16385ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
     draw.texture_width = 64ul;
-    draw.texture_format = 0x11ul;
+    draw.texture_format = 0x12ul;       /* 5_5_5_1, not described here */
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* A mip chain: T# BASE_LEVEL 15:12 and LAST_LEVEL 19:16 with POW2_PAD
+ * (bit 25) as radeonsi sets it for a chain; S# MAX_LOD the last level in
+ * u4.8 at 23:12 and MIP_FILTER at 27:26 (point 1, linear 2). */
+static void test_tl_mips(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+
+    base_tl(&draw);
+    draw.texture_low = 0x0f80d000ul;
+    draw.texture_high = 0xf4ul;
+    draw.texture_width = 32ul;
+    draw.texture_height = 32ul;
+    draw.texture_pitch = 32ul;
+    draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.texture_last_level = 5ul;
+    draw.texture_mip_filter = V9X_VI_MIP_FILTER_LINEAR;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count);
+    CHECK(buffer[at + 5ul] == (0x92800facul | (5ul << 16)));
+    CHECK(buffer[at + 11ul] == (5ul << 20));      /* S# 1: MAX_LOD 5.0 */
+    CHECK(buffer[at + 12ul] == (2ul << 26));      /* S# 2: MIP_FILTER */
+
+    /* One level forced (the layout probe): BASE_LEVEL = LAST_LEVEL. */
+    draw.texture_base_level = 3ul;
+    draw.texture_last_level = 3ul;
+    draw.texture_mip_filter = V9X_VI_MIP_FILTER_POINT;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(buffer[at + 5ul] ==
+          (0x92800facul | (3ul << 12) | (3ul << 16)));
+
+    /* Refused: a base level past the last, a last level past 15. */
+    draw.texture_base_level = 4ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_base_level = 0ul;
+    draw.texture_last_level = 16ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* The chain layout against M-XP7053's /mip:0-6 (boot 27): a 64x16
+ * A8R8G8B8 chain's offsets and row pitches as the sampler read them. */
+static void test_mip_layout(void)
+{
+    static const v9x_u32 want_offsets[7] = {
+        0ul, 4096ul, 5120ul, 5376ul, 5632ul, 5888ul, 6144ul
+    };
+    static const v9x_u32 want_pitches[7] = {
+        64ul, 32ul, 16ul, 32ul, 64ul, 64ul, 64ul
+    };
+    v9x_u32 offsets[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 total;
+    v9x_u32 level;
+
+    CHECK(v9x_vi_3d_mip_layout(4ul, 64ul, 16ul, 7ul, offsets, pitches,
+                               &total));
+    for (level = 0ul; level < 7ul; ++level) {
+        CHECK(offsets[level] == want_offsets[level]);
+        CHECK(pitches[level] == want_pitches[level]);
+    }
+    CHECK(total == 6400ul);
+
+    /* 16 bpp: 256x256's level 0 rows of 512 bytes; a 1x1 level 256. */
+    CHECK(v9x_vi_3d_mip_layout(2ul, 256ul, 256ul, 9ul, offsets, pitches,
+                               &total));
+    CHECK(pitches[0] == 256ul && offsets[1] == 131072ul);
+    CHECK(offsets[8] + 256ul == total);
+
+    /* Refused: not a power of two, more levels than the sides allow. */
+    CHECK(!v9x_vi_3d_mip_layout(4ul, 48ul, 16ul, 2ul, offsets, pitches,
+                                &total));
+    CHECK(!v9x_vi_3d_mip_layout(4ul, 64ul, 16ul, 8ul, offsets, pitches,
+                                &total));
 }
 
 /* The Direct3D options: D3D pixel centres (PA_SU_VTX_CNTL PIX_CENTER 0), a
@@ -868,6 +1075,87 @@ static void test_tl_d3d_options(void)
     /* A depth height not whole tiles is refused. */
     draw.depth_height = 470ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* Blending, a killing PS, no channel written, and the 16-bit alpha
+ * texture formats. */
+static void test_tl_blend_kill(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+
+    /* None of it by default: blending off, no kill, INFO as before. */
+    base_tl(&draw);
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa1e0ul);
+    CHECK(at != 0ul && buffer[at] == 0ul);
+    at = find_context(buffer, stream.count, 0xa203ul);
+    CHECK(at != 0ul && buffer[at] == 0ul);
+    at = find_context(buffer, stream.count, 0xa318ul);
+    CHECK(at != 0ul && buffer[at + 4ul] == (V9X_VI_CB_FORMAT_8_8_8_8 << 2));
+
+    /* SRCALPHA, INVSRCALPHA with ENABLE (bit 30); BLEND_CLAMP (bit 15)
+     * in CB_COLOR0_INFO, which radeonsi sets for a UNORM target. */
+    draw.blend_control = v9x_vi_3d_blend(V9X_VI_BLEND_SRC_ALPHA,
+                                         V9X_VI_BLEND_ONE_MINUS_SRC_ALPHA);
+    CHECK(draw.blend_control == 0x45040504ul);
+    draw.ps_kill = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa1e0ul);
+    CHECK(at != 0ul && buffer[at] == 0x45040504ul);
+    at = find_context(buffer, stream.count, 0xa203ul);
+    CHECK(at != 0ul && buffer[at] == 0x40ul);
+    at = find_context(buffer, stream.count, 0xa318ul);
+    CHECK(at != 0ul &&
+          buffer[at + 4ul] == ((V9X_VI_CB_FORMAT_8_8_8_8 << 2) | 0x8000ul));
+    /* CB_COLOR_CONTROL: DISABLE_DUAL_QUAD (bit 0) with blending. */
+    at = find_context(buffer, stream.count, 0xa202ul);
+    CHECK(at != 0ul && buffer[at] == 0x00cc0011ul);
+
+    /* SPI_SHADER_Z_FORMAT 0 and SPI_SHADER_COL_FORMAT (A1C4h, A1C5h):
+     * MRT0 FP16_ABGR (4) for the TL draws' compressed exports, which an
+     * 8-bit target blends from; the rectangle keeps 32_ABGR (9). */
+    at = find_context(buffer, stream.count, 0xa1c4ul);
+    CHECK(at != 0ul && buffer[at] == 0ul && buffer[at + 1ul] == 4ul);
+    {
+        struct v9x_vi_solid_rect rect;
+
+        base_rect(&rect);
+        v9x_vi_pm4_init(&stream, buffer, 2048ul);
+        CHECK(v9x_vi_3d_solid_rect(&stream, &rect) == V9X_STATUS_OK);
+        at = find_context(buffer, stream.count, 0xa1c4ul);
+        CHECK(at != 0ul && buffer[at + 1ul] == 9ul);
+    }
+
+    /* No channel written: CB_TARGET_MASK 0. */
+    base_tl(&draw);
+    draw.target_mask_none = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa08eul);
+    CHECK(at != 0ul && buffer[at] == 0ul);
+
+    /* ARGB1555 and ARGB4444: IMG_DATA_FORMAT_1_5_5_5 (11h), 4_4_4_4 (13h). */
+    base_tl(&draw);
+    draw.texture_low = 0x0f80e000ul;
+    draw.texture_high = 0xf4ul;
+    draw.texture_width = 32ul;
+    draw.texture_height = 16ul;
+    draw.texture_pitch = 32ul;
+    draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.texture_format = V9X_VI_IMG_FORMAT_1_5_5_5;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 3ul] == 0x01100000ul);
+    draw.texture_format = V9X_VI_IMG_FORMAT_4_4_4_4;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c0cul);
+    CHECK(at < stream.count && buffer[at + 3ul] == 0x01300000ul);
 }
 
 /* With probe addresses, each stage takes six user SGPRs: the four it had,
@@ -1000,7 +1288,11 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_depth();
     test_texture_shaders();
     test_specular_shaders();
+    test_built_shaders();
     test_tl_texture();
     test_tl_d3d_options();
+    test_tl_blend_kill();
+    test_tl_mips();
+    test_mip_layout();
     return failures;
 }

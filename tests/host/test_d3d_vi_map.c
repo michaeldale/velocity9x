@@ -52,14 +52,29 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_VI_TEXTURE *texture)
     texture->pitch_texels = 64ul;
     texture->offset = 0x00200000ul;
     texture->has_key = 0ul;
+    texture->key = 0ul;
+    texture->levels = 1ul;
 }
+
+static struct v9x_vi_d3d_ps built;
 
 static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_VI_TEXTURE *texture, v9x_u32 depth_bytes,
                    struct v9x_vi_tl_draw *out, v9x_u32 *ps)
 {
     return v9x_d3d_vi_map_draw(draw, texture, HEAP_HIGH, HEAP_LOW,
-                               depth_bytes, out, ps);
+                               depth_bytes, out, ps, &built);
+}
+
+static v9x_u32 float_bits(float value)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } converted;
+
+    converted.value = value;
+    return converted.bits;
 }
 
 static void test_target(void)
@@ -242,13 +257,39 @@ static void test_texture(void)
     draw.texture.mag_filter = 0ul;
     CHECK(map(&draw, &texture, 0ul, &out, &ps) ==
           V9X_D3D_VI_REFUSE_TEXTURE_FILTER);
+}
 
-    /* A colour-keyed texture with the key on: not built yet. */
+/* A chain: the minification filter's mip filter over its levels; one
+ * level, or a filter without one, samples level 0 alone. */
+static void test_mips(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw out;
+    v9x_u32 ps;
+
+    base_draw(&draw);
     base_texture(&draw, &texture);
-    texture.has_key = 1ul;
-    draw.color_key_enable = 1ul;
-    CHECK(map(&draw, &texture, 0ul, &out, &ps) ==
-          V9X_D3D_VI_REFUSE_COLOR_KEY);
+    texture.levels = 7ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_last_level == 6ul && out.texture_base_level == 0ul);
+    CHECK(out.texture_mip_filter == V9X_VI_MIP_FILTER_LINEAR);
+    CHECK(out.texture_bilinear == 1ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_mip_filter == V9X_VI_MIP_FILTER_POINT);
+    CHECK(out.texture_bilinear == 0ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_last_level == 0ul);
+    CHECK(out.texture_mip_filter == V9X_VI_MIP_FILTER_NONE);
+    texture.levels = 1ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_last_level == 0ul);
+    CHECK(out.texture_mip_filter == V9X_VI_MIP_FILTER_NONE);
 }
 
 /* Specular, on by default under DirectX 5 and 6: each PS's specular
@@ -276,22 +317,116 @@ static void test_specular(void)
     CHECK(out.ps_vgprs == 16ul);
 }
 
-/* What step 1 does not build yet is refused, each by its own reason. */
-static void test_not_yet(void)
+/* Blending: Direct3D's factors to CB_BLEND0_CONTROL's, the colour's and
+ * the alpha's alike; the destination-alpha factors are refused, as on
+ * Cedar (an XRGB target has no alpha to read). */
+static void test_blend(void)
 {
     V9X_R3D_DRAW draw;
     struct v9x_vi_tl_draw out;
     v9x_u32 ps;
 
     base_draw(&draw);
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.blend_control == 0ul);
     draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.blend_control == 0x45040504ul);
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.blend_control == v9x_vi_3d_blend(V9X_VI_BLEND_DST_COLOR,
+                                               V9X_VI_BLEND_ZERO));
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHASAT;
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    draw.dst_blend = V9X_R3D_BLEND_SRCALPHASAT;
     CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_BLEND);
+    draw.src_blend = V9X_R3D_BLEND_DESTALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_BLEND);
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_INVDESTALPHA;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_BLEND);
+}
+
+/* The alpha test, fog and the colour key take the built PS, its constants
+ * as float bits in memory order. */
+static void test_built(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw out;
+    v9x_u32 ps;
+
     base_draw(&draw);
     draw.alpha_test_enable = 1ul;
+    draw.alpha_func = V9X_R3D_CMP_GREATER;
+    draw.alpha_ref = 128ul;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT);
+    CHECK(built.op == V9X_VI_PS_COLOUR);
+    CHECK(built.alpha_test == 1ul);
+    CHECK(built.alpha_func == V9X_VI_VOPC_CMPX_GT_F32);
+    CHECK(built.alpha_ref == float_bits(128.0f / 255.0f));
+    CHECK(built.fog == 0ul && built.key == 0ul && built.specular == 0ul);
+    CHECK(out.ps_kill == 1ul);
+    CHECK(out.ps_vgprs == V9X_VI_D3D_PS_BUILT_VGPRS);
+    draw.alpha_func = V9X_R3D_CMP_ALWAYS;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(built.alpha_func == V9X_VI_VOPC_CMPX_TRU_F32);
+    draw.alpha_func = 0ul;
     CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_ALPHA_TEST);
+
+    /* Fog: red, in memory order B, G, R; no kill. With specular. */
     base_draw(&draw);
     draw.fog_enable = 1ul;
-    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_FOG);
+    draw.fog_color = 0x00ff0000ul;
+    draw.specular_enable = 1ul;
+    CHECK(map(&draw, 0, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT);
+    CHECK(built.fog == 1ul && built.specular == 1ul);
+    CHECK(built.fog_colour[0] == 0ul && built.fog_colour[1] == 0ul);
+    CHECK(built.fog_colour[2] == 0x3f800000ul);
+    CHECK(out.ps_kill == 0ul);
+
+    /* A key in RGB565, pure green: B 0, G 1, R 0, the tolerance half a
+     * step of green's 63, squared. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    texture.format = V9X_VI_IMG_FORMAT_5_6_5;
+    texture.has_alpha = 0ul;
+    texture.has_key = 1ul;
+    texture.key = 0x07e0ul;
+    draw.color_key_enable = 1ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT);
+    CHECK(built.op == V9X_VI_PS_MODULATE);
+    CHECK(built.key == 1ul);
+    CHECK(built.key_colour[0] == 0ul);
+    CHECK(built.key_colour[1] == 0x3f800000ul);
+    CHECK(built.key_colour[2] == 0ul);
+    CHECK(built.key_tolerance2 ==
+          float_bits((1.0f / 126.0f) * (1.0f / 126.0f)));
+    CHECK(out.ps_kill == 1ul);
+    /* A key on a texture without one is no key. */
+    texture.has_key = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_MODULATE);
+
+    /* ARGB1555 and ARGB4444, 32 texels a row being 64 bytes. */
+    base_texture(&draw, &texture);
+    draw.color_key_enable = 0ul;
+    texture.format = V9X_VI_IMG_FORMAT_1_5_5_5;
+    texture.width = 32ul;
+    texture.pitch_texels = 32ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_format == V9X_VI_IMG_FORMAT_1_5_5_5);
+    texture.format = V9X_VI_IMG_FORMAT_4_4_4_4;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.texture_format == V9X_VI_IMG_FORMAT_4_4_4_4);
 }
 
 unsigned int v9x_run_d3d_vi_map_tests(void)
@@ -300,7 +435,9 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_target();
     test_depth();
     test_texture();
+    test_mips();
     test_specular();
-    test_not_yet();
+    test_blend();
+    test_built();
     return failures;
 }

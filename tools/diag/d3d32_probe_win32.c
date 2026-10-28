@@ -4443,6 +4443,33 @@ void WINAPI V9xD3d32ProbeEntry(void)
             pixel = ((sum[0] / 64ul) << 16) | ((sum[1] / 64ul) << 8) |
                     (sum[2] / 64ul);
             d32_hx("T7Average", pixel);
+            /* The block itself, a row a line: which pixels differ from
+             * the centre says what the average alone cannot. */
+            for (y = 36ul; y < 44ul; ++y) {
+                char key[8];
+                char text[8ul * 9ul + 1ul];
+                static const char digits[] = "0123456789ABCDEF";
+                DWORD at = 0ul;
+                DWORD nibble;
+
+                key[0] = 'T';
+                key[1] = '7';
+                key[2] = 'R';
+                key[3] = 'o';
+                key[4] = 'w';
+                key[5] = (char)('0' + (int)(y - 36ul));
+                key[6] = '\0';
+                for (x = 508ul; x < 516ul; ++x) {
+                    pixel = d32_pixel(&desc, x, y);
+                    for (nibble = 0ul; nibble < 8ul; ++nibble) {
+                        text[at++] = digits[(pixel >> ((7ul - nibble) * 4ul)) &
+                                            15ul];
+                    }
+                    text[at++] = ' ';
+                }
+                text[at - 1ul] = '\0';
+                d32_line(key, text);
+            }
             caps = d32_difference(sum[0] / 64ul, 0x80ul) <= 8ul &&
                            d32_difference(sum[1] / 64ul, 0x7ful) <= 8ul &&
                            sum[2] / 64ul <= 8ul

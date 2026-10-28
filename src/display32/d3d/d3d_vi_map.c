@@ -32,6 +32,127 @@ static int v9x_d3d_vi_address(v9x_u32 heap_low, v9x_u32 offset,
     return *low >= heap_low && (*low & (V9X_D3D_VI_SURFACE_ALIGN - 1ul)) == 0ul;
 }
 
+/* A float's bits, for the built PS's literals. */
+static v9x_u32 v9x_d3d_vi_float_bits(float value)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } converted;
+
+    converted.value = value;
+    return converted.bits;
+}
+
+/* field / max as a float's bits: a channel as the sampler or the CB has
+ * it. */
+static v9x_u32 v9x_d3d_vi_unorm(v9x_u32 field, v9x_u32 max)
+{
+    return v9x_d3d_vi_float_bits((float)(long)field / (float)(long)max);
+}
+
+/* Direct3D's blend factors to CB_BLEND0_CONTROL's, as Cedar's are mapped:
+ * the destination-alpha factors are not offered (an XRGB target has no
+ * alpha to read), SRCALPHASAT is a source factor only. */
+static int v9x_d3d_vi_factor(v9x_u32 factor, int source, v9x_u32 *code)
+{
+    switch (factor) {
+    case V9X_R3D_BLEND_ZERO:
+        *code = V9X_VI_BLEND_ZERO;
+        return 1;
+    case V9X_R3D_BLEND_ONE:
+        *code = V9X_VI_BLEND_ONE;
+        return 1;
+    case V9X_R3D_BLEND_SRCCOLOR:
+        *code = V9X_VI_BLEND_SRC_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_INVSRCCOLOR:
+        *code = V9X_VI_BLEND_ONE_MINUS_SRC_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_SRCALPHA:
+        *code = V9X_VI_BLEND_SRC_ALPHA;
+        return 1;
+    case V9X_R3D_BLEND_INVSRCALPHA:
+        *code = V9X_VI_BLEND_ONE_MINUS_SRC_ALPHA;
+        return 1;
+    case V9X_R3D_BLEND_DESTCOLOR:
+        *code = V9X_VI_BLEND_DST_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_INVDESTCOLOR:
+        *code = V9X_VI_BLEND_ONE_MINUS_DST_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_SRCALPHASAT:
+        if (source) {
+            *code = V9X_VI_BLEND_SRC_ALPHA_SATURATE;
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+/* Direct3D's D3DCMPFUNC (1..8) to the PS's v_cmpx, "alpha FUNC ref". */
+static int v9x_d3d_vi_alpha_compare(v9x_u32 func, v9x_u32 *op)
+{
+    static const v9x_u32 ops[8] = {
+        V9X_VI_VOPC_CMPX_F_F32, V9X_VI_VOPC_CMPX_LT_F32,
+        V9X_VI_VOPC_CMPX_EQ_F32, V9X_VI_VOPC_CMPX_LE_F32,
+        V9X_VI_VOPC_CMPX_GT_F32, V9X_VI_VOPC_CMPX_NEQ_F32,
+        V9X_VI_VOPC_CMPX_GE_F32, V9X_VI_VOPC_CMPX_TRU_F32
+    };
+
+    if (func < V9X_R3D_CMP_NEVER || func > V9X_R3D_CMP_ALWAYS) {
+        return 0;
+    }
+    *op = ops[func - V9X_R3D_CMP_NEVER];
+    return 1;
+}
+
+/*
+ * A colour key in its texture's format as the floats the sampler returns
+ * for B, G and R, memory order: each field's value over its maximum. The
+ * tolerance is half a step of the finest of the three, so a texel the
+ * sampler read point-for-point matches exactly one key; the PS compares
+ * the squared distance, so it is squared here. A 1555 or 4444 key's alpha
+ * is not compared: Direct3D keys on colour. Cedar's rule (d3d_eg_map.c).
+ */
+static void v9x_d3d_vi_key(v9x_u32 format, v9x_u32 key,
+                           struct v9x_vi_d3d_ps *built)
+{
+    v9x_u32 shift_g = 8ul;
+    v9x_u32 shift_r = 16ul;
+    v9x_u32 max_b = 255ul;
+    v9x_u32 max_g = 255ul;
+    v9x_u32 max_r = 255ul;
+    float tolerance;
+
+    if (format == V9X_VI_IMG_FORMAT_5_6_5) {
+        shift_g = 5ul;
+        shift_r = 11ul;
+        max_b = 31ul;
+        max_g = 63ul;
+        max_r = 31ul;
+    } else if (format == V9X_VI_IMG_FORMAT_1_5_5_5) {
+        shift_g = 5ul;
+        shift_r = 10ul;
+        max_b = 31ul;
+        max_g = 31ul;
+        max_r = 31ul;
+    } else if (format == V9X_VI_IMG_FORMAT_4_4_4_4) {
+        shift_g = 4ul;
+        shift_r = 8ul;
+        max_b = 15ul;
+        max_g = 15ul;
+        max_r = 15ul;
+    }
+    built->key = 1ul;
+    built->key_colour[0] = v9x_d3d_vi_unorm(key & max_b, max_b);
+    built->key_colour[1] = v9x_d3d_vi_unorm((key >> shift_g) & max_g, max_g);
+    built->key_colour[2] = v9x_d3d_vi_unorm((key >> shift_r) & max_r, max_r);
+    tolerance = 1.0f / (float)(long)(2ul * max_g);
+    built->key_tolerance2 = v9x_d3d_vi_float_bits(tolerance * tolerance);
+}
+
 /* Direct3D's D3DCMPFUNC (1..8) to ZFUNC (FRAG_NEVER..FRAG_ALWAYS). */
 static int v9x_d3d_vi_compare(v9x_u32 func, v9x_u32 *code)
 {
@@ -42,20 +163,36 @@ static int v9x_d3d_vi_compare(v9x_u32 func, v9x_u32 *code)
     return 1;
 }
 
-/* A within-level filter: the mip filters sample level 0 alone, so each
- * takes its within-level half. Non-zero for bilinear. */
-static int v9x_d3d_vi_filter(v9x_u32 filter, v9x_u32 *bilinear)
+/* A filter's within-level half (non-zero for bilinear) and its mip filter,
+ * as Cedar's map reads Direct3D's names: MIPNEAREST point and the nearest
+ * level, MIPLINEAR bilinear and the nearest level, LINEARMIPNEAREST point
+ * between two levels, LINEARMIPLINEAR trilinear. */
+static int v9x_d3d_vi_filter(v9x_u32 filter, v9x_u32 *bilinear,
+                             v9x_u32 *mip)
 {
+    *mip = V9X_VI_MIP_FILTER_NONE;
     switch (filter) {
     case V9X_R3D_FILTER_NEAREST:
-    case V9X_R3D_FILTER_MIPNEAREST:
-    case V9X_R3D_FILTER_MIPLINEAR:
         *bilinear = 0ul;
         return 1;
     case V9X_R3D_FILTER_LINEAR:
+        *bilinear = 1ul;
+        return 1;
+    case V9X_R3D_FILTER_MIPNEAREST:
+        *bilinear = 0ul;
+        *mip = V9X_VI_MIP_FILTER_POINT;
+        return 1;
+    case V9X_R3D_FILTER_MIPLINEAR:
+        *bilinear = 1ul;
+        *mip = V9X_VI_MIP_FILTER_POINT;
+        return 1;
     case V9X_R3D_FILTER_LINEARMIPNEAREST:
+        *bilinear = 0ul;
+        *mip = V9X_VI_MIP_FILTER_LINEAR;
+        return 1;
     case V9X_R3D_FILTER_LINEARMIPLINEAR:
         *bilinear = 1ul;
+        *mip = V9X_VI_MIP_FILTER_LINEAR;
         return 1;
     }
     return 0;
@@ -114,13 +251,17 @@ static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
     v9x_u32 mag;
     v9x_u32 min;
     v9x_u32 mode;
+    v9x_u32 mag_mip;
+    v9x_u32 mip;
 
     if (texture == 0) {
         return V9X_D3D_VI_REFUSE_TEXTURE_FORMAT;
     }
     if (texture->format == V9X_VI_IMG_FORMAT_8_8_8_8) {
         bytes = 4ul;
-    } else if (texture->format == V9X_VI_IMG_FORMAT_5_6_5) {
+    } else if (texture->format == V9X_VI_IMG_FORMAT_5_6_5 ||
+               texture->format == V9X_VI_IMG_FORMAT_1_5_5_5 ||
+               texture->format == V9X_VI_IMG_FORMAT_4_4_4_4) {
         bytes = 2ul;
     } else {
         return V9X_D3D_VI_REFUSE_TEXTURE_FORMAT;
@@ -141,14 +282,20 @@ static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
         !v9x_d3d_vi_address_mode(sampler->address, &mode)) {
         return V9X_D3D_VI_REFUSE_TEXTURE_ADDRESS;
     }
-    /* The S# takes one filter for both here: the magnification filter's,
-     * which a texture mapped near 1:1 shows. */
-    if (!v9x_d3d_vi_filter(sampler->mag_filter, &mag) ||
-        !v9x_d3d_vi_filter(sampler->min_filter, &min)) {
+    /* The S# takes one within-level filter for both here: the
+     * magnification filter's, which a texture mapped near 1:1 shows. The
+     * mip filter is the minification filter's, over a chain the engine
+     * resolved; a magnification filter has none. */
+    if (!v9x_d3d_vi_filter(sampler->mag_filter, &mag, &mag_mip) ||
+        !v9x_d3d_vi_filter(sampler->min_filter, &min, &mip)) {
         return V9X_D3D_VI_REFUSE_TEXTURE_FILTER;
     }
-    if (draw->color_key_enable != 0ul && texture->has_key != 0ul) {
-        return V9X_D3D_VI_REFUSE_COLOR_KEY;
+    if (texture->levels > 1ul && mip != V9X_VI_MIP_FILTER_NONE) {
+        if (texture->levels > V9X_VI_MIP_LEVELS_MAX) {
+            return V9X_D3D_VI_REFUSE_TEXTURE_SHAPE;
+        }
+        out->texture_last_level = texture->levels - 1ul;
+        out->texture_mip_filter = mip;
     }
     out->texture_low = low;
     out->texture_high = heap_high;
@@ -170,7 +317,8 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 heap_low,
                             v9x_u32 depth_bytes,
                             struct v9x_vi_tl_draw *out,
-                            v9x_u32 *ps)
+                            v9x_u32 *ps,
+                            struct v9x_vi_d3d_ps *built)
 {
     unsigned char *bytes = (unsigned char *)out;
     v9x_u32 bytes_per_pixel;
@@ -236,15 +384,39 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
             ~(V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul);
     }
 
-    /* Step 2 and 3's: refused and counted. */
+    /* Blending: the colour's and the alpha's factors alike, added. */
     if (draw->blend_enable != 0ul) {
-        return V9X_D3D_VI_REFUSE_BLEND;
+        v9x_u32 src;
+        v9x_u32 dst;
+
+        if (!v9x_d3d_vi_factor(draw->src_blend, 1, &src) ||
+            !v9x_d3d_vi_factor(draw->dst_blend, 0, &dst)) {
+            return V9X_D3D_VI_REFUSE_BLEND;
+        }
+        out->blend_control = v9x_vi_3d_blend(src, dst);
+    }
+
+    /* The built PS's options: nothing yet, then whatever below needs. */
+    for (index = 0ul; index < sizeof(*built); ++index) {
+        ((unsigned char *)built)[index] = 0u;
     }
     if (draw->alpha_test_enable != 0ul) {
-        return V9X_D3D_VI_REFUSE_ALPHA_TEST;
+        if (!v9x_d3d_vi_alpha_compare(draw->alpha_func, &code)) {
+            return V9X_D3D_VI_REFUSE_ALPHA_TEST;
+        }
+        built->alpha_test = 1ul;
+        built->alpha_func = code;
+        built->alpha_ref = v9x_d3d_vi_unorm(draw->alpha_ref & 0xfful, 255ul);
     }
+    /* Fog towards the D3DCOLOR, its B, G, R in memory order. */
     if (draw->fog_enable != 0ul) {
-        return V9X_D3D_VI_REFUSE_FOG;
+        built->fog = 1ul;
+        built->fog_colour[0] = v9x_d3d_vi_unorm(draw->fog_color & 0xfful,
+                                                255ul);
+        built->fog_colour[1] =
+            v9x_d3d_vi_unorm((draw->fog_color >> 8) & 0xfful, 255ul);
+        built->fog_colour[2] =
+            v9x_d3d_vi_unorm((draw->fog_color >> 16) & 0xfful, 255ul);
     }
 
     if (draw->texture.object != 0) {
@@ -253,9 +425,27 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
         if (code != V9X_D3D_VI_REFUSE_NONE) {
             return code;
         }
+        if (draw->color_key_enable != 0ul && texture->has_key != 0ul) {
+            v9x_d3d_vi_key(texture->format, texture->key, built);
+        }
     } else {
         out->ps_vgprs = 0ul;
     }
+
+    /* Any of the three: the PS built for this draw, with the op and the
+     * specular as the slot shader would have had them. */
+    if (built->alpha_test != 0ul || built->fog != 0ul || built->key != 0ul) {
+        built->op = *ps == V9X_D3D_VI_PS_TEXTURE ? V9X_VI_PS_TEXTURE :
+                    (*ps == V9X_D3D_VI_PS_MODULATE ? V9X_VI_PS_MODULATE
+                                                   : V9X_VI_PS_COLOUR);
+        built->specular = draw->specular_enable != 0ul ? 1ul : 0ul;
+        out->ps_vgprs = V9X_VI_D3D_PS_BUILT_VGPRS;
+        out->ps_kill = built->alpha_test != 0ul || built->key != 0ul ? 1ul
+                                                                     : 0ul;
+        *ps = V9X_D3D_VI_PS_BUILT;
+        return V9X_D3D_VI_REFUSE_NONE;
+    }
+
     /* Specular, which DirectX 5 and 6 enable by default: each PS's
      * variant that adds it, with its VGPRs. */
     if (draw->specular_enable != 0ul) {

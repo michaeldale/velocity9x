@@ -155,7 +155,50 @@ struct v9x_vi_tl_draw {
     v9x_u32 depth_pitch;        /* pixels, a multiple of 8; 0: the target's */
     v9x_u32 depth_height;       /* rows, a multiple of 8; 0: the target's */
     v9x_u32 texture_address;    /* V9X_VI_TEX_ADDRESS_*, both axes */
+    v9x_u32 blend_control;      /* CB_BLEND0_CONTROL; 0 is no blending */
+    v9x_u32 ps_kill;            /* nonzero: the PS kills (KILL_ENABLE) */
+    v9x_u32 target_mask_none;   /* nonzero: no colour channel written */
+    /* A mip chain: levels base..last of the texture (0..15, 0 and 0 for
+     * one level), and the filter between them, V9X_VI_MIP_FILTER_*. */
+    v9x_u32 texture_base_level;
+    v9x_u32 texture_last_level;
+    v9x_u32 texture_mip_filter;
 };
+
+/* The S#'s MIP_FILTER (SQ_TEX_MIP_FILTER_*). */
+#define V9X_VI_MIP_FILTER_NONE      0ul
+#define V9X_VI_MIP_FILTER_POINT     1ul
+#define V9X_VI_MIP_FILTER_LINEAR    2ul
+
+/*
+ * Where a linear-aligned chain's levels sit, as the sampler reads them:
+ * each level's rows a multiple of 64 bytes and widened 64 bytes at a time
+ * until the level is a whole number of 256-byte blocks, the levels end to
+ * end from offset 0. Measured on M-XP7053 (V9XCZ3D /mip:0-6, boot 27): a
+ * 64x16 A8R8G8B8 chain at 0, 4096, 5120, 5376, 5632, 5888, 6144, rows of
+ * 256, 128, 64 and 128 bytes (docs/decisions/
+ * 2026-10-28-carrizo-d3d-blend-and-shader-fixed-function.md). Power-of-two
+ * sides only: POW2_PAD's padding of other sizes was not measured. Per
+ * level, offsets[] in bytes and pitches[] in texels; nonzero on success.
+ */
+#define V9X_VI_MIP_LEVELS_MAX       12ul
+int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
+                         v9x_u32 height, v9x_u32 levels, v9x_u32 *offsets,
+                         v9x_u32 *pitches, v9x_u32 *total_bytes);
+
+/* CB_BLEND0_CONTROL's factors (Mesa's sid.h V_028780_BLEND_*), and
+ * v9x_vi_3d_blend's word: the colour and alpha alike, DST_PLUS_SRC,
+ * ENABLE. */
+#define V9X_VI_BLEND_ZERO                 0x00ul
+#define V9X_VI_BLEND_ONE                  0x01ul
+#define V9X_VI_BLEND_SRC_COLOR            0x02ul
+#define V9X_VI_BLEND_ONE_MINUS_SRC_COLOR  0x03ul
+#define V9X_VI_BLEND_SRC_ALPHA            0x04ul
+#define V9X_VI_BLEND_ONE_MINUS_SRC_ALPHA  0x05ul
+#define V9X_VI_BLEND_DST_COLOR            0x08ul
+#define V9X_VI_BLEND_ONE_MINUS_DST_COLOR  0x09ul
+#define V9X_VI_BLEND_SRC_ALPHA_SATURATE   0x0aul
+v9x_u32 v9x_vi_3d_blend(v9x_u32 source, v9x_u32 destination);
 
 /* The S#'s CLAMP_X/Y/Z: clamp to the last texel (the default), wrap or
  * mirror (SQ_TEX_CLAMP_LAST_TEXEL 2, SQ_TEX_WRAP 0, SQ_TEX_MIRROR 1). */
@@ -168,6 +211,10 @@ struct v9x_vi_tl_draw {
  * A8R8G8B8's B, G, R, A and RGB565's B, G, R as X, Y, Z (W reads 1). */
 #define V9X_VI_IMG_FORMAT_8_8_8_8   0x0aul
 #define V9X_VI_IMG_FORMAT_5_6_5     0x10ul
+/* ARGB1555 and ARGB4444 the same way: Mesa takes B5G5R5A1 and B4G4R4A4
+ * with x the low field, so X, Y, Z, W are B, G, R, A in memory order. */
+#define V9X_VI_IMG_FORMAT_1_5_5_5   0x11ul
+#define V9X_VI_IMG_FORMAT_4_4_4_4   0x13ul
 
 /* DB_DEPTH_CONTROL ZFUNC, gfx_8_0_enum.h's FRAG_*: Direct3D's D3DCMPFUNC
  * less one. */
