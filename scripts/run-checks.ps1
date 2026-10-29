@@ -1,7 +1,8 @@
 # The local CI gate for Velocity9x.
 #
-# check-tree -> host tests -> per-family builds, audits and INF assertions ->
-# floppy. Every phase of docs\plans\multi-chip-restructure.md ends with this
+# check-tree -> host tests -> per-family builds, audits and INF assertions.
+# The floppy disks are not built (build-all-packages.ps1 -Floppy builds
+# them). Every phase of docs\plans\multi-chip-restructure.md ends with this
 # green. -GoldenCompare additionally re-runs the byte comparison that phases
 # 1-7 require.
 [CmdletBinding()]
@@ -119,8 +120,7 @@ Invoke-CheckStep "3DCIF DLL" {
 }
 
 # build-all-packages runs each family's builder, which links, audits through
-# audit-family-binary.ps1, generates and asserts the INF, and assembles the
-# floppy from the manifests.
+# audit-family-binary.ps1, and generates and asserts the INF.
 Invoke-CheckStep "family packages" {
     $arguments = @{ BuildId = $BuildId; DdkRoot = $DdkRoot }
     if ($Family) { $arguments['Family'] = $Family }

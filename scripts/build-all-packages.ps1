@@ -9,7 +9,10 @@ param(
     [string]$DdkRoot = "C:\98DDK",
     # Restrict the run to named families. Default is every declared family.
     [string[]]$Family,
-    [switch]$SkipFloppy
+    # The floppy disks are built only when asked for (Michael, 2026-10-29:
+    # "disable floppy feature for now, this is not required"): the shared
+    # HAL had outgrown the S3 family's first disk again.
+    [switch]$Floppy
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,7 +67,7 @@ foreach ($manifest in $families) {
     Write-Output "Built family $($manifest.Id): $outputDir ($($files.Count) files)"
 }
 
-if (-not $SkipFloppy -and @($families | Where-Object { $_.Floppy.Include }).Count -ne 0) {
+if ($Floppy -and @($families | Where-Object { $_.Floppy.Include }).Count -ne 0) {
     & (Join-Path $PSScriptRoot "build-floppy-package.ps1") `
         -BuildId $BuildId -DdkRoot $DdkRoot -SkipBuild | Write-Verbose
     Write-Output "Assembled floppy disks, two per family (three where Floppy.ThirdDisk is set): build\floppy\<family>, <family>-2, <family>-3"
