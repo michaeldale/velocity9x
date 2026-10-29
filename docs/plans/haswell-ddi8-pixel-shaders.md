@@ -289,6 +289,109 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
      eye or the capture, looks right.
 
    Expect hangs; a wedged RCS costs a `reset` and five minutes.
+
+   **Step 5 design, approved by Michael 2026-10-30 (both decisions
+   below: the reserve grows to 320 KB; PS 1.1 by default after 5b).**
+   Steps 3 and 4 changed
+   what step 5 has to do:
+   - Nature needs cube textures sampled, not only pixel shaders.
+   - A 1.1 shader reads four textures and four coordinate sets of up to
+     four components. Today's Direct3D draw (`V9X_R3D_DRAW`) carries two
+     textures and the 32-byte pre-transformed vertex.
+   - Kernels are 512 to 2,544 bytes against 768-byte slots.
+
+   It is split into four parts, each ending on the 4570.
+
+   *5a. A probe first: `V9XHSWMM /ps11`, no HAL change.* The pattern of
+   Phases D and E: one boot answers the hardware questions before the
+   driver relies on them.
+   - **Each run:** the probe builds step 4's kernels and draws each over
+     a small rectangle in its own reserve region. Its four textures have
+     known texel patterns and are point sampled. It reads the target back
+     and compares it with the reference interpreter, which the probe
+     links (it is a Win32 tool, not the HAL), at 8-bit precision plus
+     one step.
+   - **What it settles:**
+     - where setup data lands after seven push-constant registers
+       (`CONSTANT_PS` after a zero-vertex `3DPRIMITIVE`, Push Constant
+       Enable in `3DSTATE_PS`);
+     - the SBE with six attributes;
+     - four binding entries and samplers;
+     - the SIMD8 sample message with three coordinates;
+     - what a predicated EOT write does to killed pixels, and to a
+       group of eight all killed;
+     - whether `3DSTATE_WM`'s Pixel Shader Kill Pixel bit is needed for
+       either (spec section 8).
+   - **Writes:** as Phase E's, inside the probe region. A wedged RCS
+     needs a power cycle, as Phase D's notes say.
+
+   *5b. Shader draws in the HAL, 2D textures.*
+   - **Core** (pure parts host-tested):
+     - CREATEPIXELSHADER parses with `v9x_ps11_parse` into a
+       per-process shader table, kept beside the handle table, and a
+       refused shader fails the record;
+     - SETPIXELSHADERCONST is kept per context;
+     - stages 0-3's texture handles, BUMPENVMAT00-11, LSCALE, LOFFSET and
+       TEXCOORDINDEX are kept from the stage states;
+     - a draw under a shader converts its FVF vertices to a wide vertex:
+       position, diffuse, specular and four coordinate sets, each as
+       four floats, the set for stage N chosen by its TEXCOORDINDEX;
+     - it goes to a new append-only engine op, `draw_shader`, with the
+       program, constants, four texture records and the stage terms.
+   - **Haswell:**
+     - a pixel-shader kernel cache of 16 slots of 4 KB at 40000h. The
+       reserve grows from 256 to 320 KB, and the mini-VDD's
+       `V9X_HSW_RESERVE_BYTES` and `_PAGES` grow with it. A kernel
+       that does not fit is refused, and counted;
+     - a state layout with five binding entries and four samplers;
+     - vertex elements for the wide vertex, and the SBE with six
+       attributes;
+     - push constants: c0-c7 clamped to [-1, 1] as written, the bump
+       matrices and luminance terms;
+     - Kill Pixel set for texkill and, fixing spec section 8, for
+       alpha test, if 5a shows it matters.
+   - **Fog** after the shader: the translator gains vertex fog by the
+     specular alpha towards the fog colour, as the fixed-function
+     kernels do it, host-tested before it is used.
+   - **Caps:** PS 1.1 and four textures. They become the Haswell
+     default once the gate passes (`no-gated-defaults-dev-driver`).
+     `V9X_D3D_PS_CLAIMED` stays only as the measurement switch for what
+     is not yet real: cube maps until 5c.
+   - **Gate:**
+     - V9XD32 T19: a DirectX 8 device draws the ten step 4 shaders with
+       DrawPrimitiveUP over a small target, reads it back with LockRect,
+       and compares with the interpreter linked into V9XD32;
+     - 3DMark 2001 SE completes with PS claimed;
+     - Half-Life Direct3D, which is DirectX 7, is unchanged.
+
+   *5c. Cube textures.* Gen7 samples a cube as one surface: six faces,
+   each with its mip chain, at a fixed stride (`SURFTYPE_CUBE`,
+   spec section 7). DirectDraw would allocate each face separately.
+   - The engine's `create_surface` takes a cube's complex surface and
+     places all of it in one block in that layout. Each face and level
+     gets its address inside the block.
+   - The held copies follow a cube's six face attachments.
+   - `SURFACE_STATE` gets the cube type and face enables. The format
+     list adds CUBETEXTURE, and the caps add CUBEMAP and MIPCUBEMAP.
+   - The cube control mode (PRM 2d p272 against p278) is a 5a-style
+     probe question.
+   - **Gate:** T19's cube cases; 3DMark's Pixel Shader test runs.
+
+   *5d. Nature's materials.*
+   - Log each ValidateTextureStageState refusal under the normal
+     answers (boot 119 answered all of them, so which ones fail is not
+     known).
+   - Then draw what Nature validates, or tell it the truth about the
+     rest.
+   - **Gate:** Nature starts. Step 6 is then Nature itself.
+
+   **Decisions this asks for:**
+   1. Growing the reserve to 320 KB, which changes the mini-VDD. The
+      alternative is sharing the 64 KB vertex-kernel cache, which the GL
+      T&L path fills.
+   2. PS 1.1 on by default after 5b, while cube maps wait for 5c.
+      3DMark would still gate Nature on cubes, but other DirectX 8
+      programs would get shaders without them.
 6. **Nature.** Run Game 4 and record:
    - that it completes, with its fps recorded;
    - the engine counters: shader draws refused, timeouts, resets;
