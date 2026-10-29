@@ -230,8 +230,20 @@ static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
  */
 #define V9X_D3D_TNL_DEVICE_OFFERED 0
 
+/*
+ * Whether a DDI 8 process is told of pixel shader 1.1. Not on main: no
+ * engine runs pixel shaders yet, and a draw made under one is counted and
+ * dropped. Built with 1 for step 3 of
+ * docs\plans\haswell-ddi8-pixel-shaders.md, a measurement build that
+ * records the shaders a program makes and what each draws with (V9XPS.LOG).
+ * With it, four textures are claimed too, as a 1.1 shader may read t0-t3.
+ */
+#define V9X_D3D_PS_CLAIMED 0
+
 static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
                              DWORD d);
+static void v9x_d3d_ps_log(const char *tag, DWORD a, DWORD b, DWORD c,
+                           DWORD d);
 static int v9x_d3d_ddi_for_object(void);
 
 /*
@@ -2187,6 +2199,12 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->ddi8_stream_user = 0ul;
             context->ddi8_indices = 0ul;
             context->ddi8_index_stride = 0ul;
+            context->ddi8_ps = 0ul;
+            context->ddi8_stage_texture[0] = 0ul;
+            context->ddi8_stage_texture[1] = 0ul;
+            context->ddi8_stage_texture[2] = 0ul;
+            context->ddi8_stage_texture[3] = 0ul;
+            context->ddi8_ps_dropped = 0ul;
             /* The T&L device: DDI 7 on an engine that draws T&L. Made
              * fresh, so a slot another process left holds nothing of its
              * memory. Without it the context draws pre-transformed
@@ -2343,6 +2361,10 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
                          block->declined,
                          block->undrawn | (block->state.ignored << 16));
         (void)VirtualFree(block, 0ul, MEM_RELEASE);
+    }
+    if (context->ddi8 != 0ul) {
+        v9x_d3d_ps_log("ps-summary", (DWORD)context, context->ddi8_ps_dropped,
+                       0ul, 0ul);
     }
     context->tnl = 0;
     context->active = 0ul;
@@ -4603,6 +4625,11 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
     if (stage != 0ul && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_stage1_states;
     }
+    /* DDI 8: the four stages a pixel shader may read, by handle. */
+    if (context->ddi8 != 0ul && state == V9X_D3DTSS_TEXTUREMAP &&
+        stage < 4ul) {
+        context->ddi8_stage_texture[stage] = (DWORD)value;
+    }
     if (stage > 1ul || (stage == 1ul && !user->two_stages)) {
         return;
     }
@@ -5397,8 +5424,21 @@ void v9x_d3d_dp2_flush_pending(void)
 static DWORD v9x_d3d_ddi7_log_lines;
 static DWORD v9x_d3d_ddi7_ops_logged[3];   /* opcodes below 96 */
 
-static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
-                             DWORD d)
+/*
+ * DDI 8's pixel shaders, as the runtime sends them, in a log of their own
+ * (docs\plans\haswell-ddi8-pixel-shaders.md, step 3): each shader's tokens,
+ * and at the first draw under each, the vertex format and the four
+ * stages' textures. Same line format, its own cap: one 3DMark 2001 SE run
+ * would fill V9XD7.LOG's alone.
+ */
+#define V9X_D3D_PS_LOG       "C:\\V9XDIAG\\V9XPS.LOG"
+#define V9X_D3D_PS_LOG_LINES 6000ul
+
+static DWORD v9x_d3d_ps_log_lines;
+
+/* One line, a tag and four hex words, appended to path. */
+static void v9x_d3d_log_line(const char *path, const char *tag, DWORD a,
+                             DWORD b, DWORD c, DWORD d)
 {
     static const char digits[] = "0123456789ABCDEF";
     char line[96];
@@ -5409,10 +5449,6 @@ static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
     HANDLE file;
     int shift;
 
-    if (v9x_d3d_ddi7_log_lines >= V9X_D3D_DDI7_LOG_LINES) {
-        return;
-    }
-    ++v9x_d3d_ddi7_log_lines;
     words[0] = a;
     words[1] = b;
     words[2] = c;
@@ -5428,7 +5464,7 @@ static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
     }
     line[length++] = '\r';
     line[length++] = '\n';
-    file = CreateFileA(V9X_D3D_DDI7_LOG, GENERIC_WRITE, FILE_SHARE_READ, 0,
+    file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0,
                        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
@@ -5436,6 +5472,41 @@ static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
     SetFilePointer(file, 0l, 0, FILE_END);
     WriteFile(file, line, length, &written, 0);
     CloseHandle(file);
+}
+
+static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
+                             DWORD d)
+{
+    if (v9x_d3d_ddi7_log_lines >= V9X_D3D_DDI7_LOG_LINES) {
+        return;
+    }
+    ++v9x_d3d_ddi7_log_lines;
+    v9x_d3d_log_line(V9X_D3D_DDI7_LOG, tag, a, b, c, d);
+}
+
+static void v9x_d3d_ps_log(const char *tag, DWORD a, DWORD b, DWORD c,
+                           DWORD d)
+{
+    if (v9x_d3d_ps_log_lines >= V9X_D3D_PS_LOG_LINES) {
+        return;
+    }
+    ++v9x_d3d_ps_log_lines;
+    v9x_d3d_log_line(V9X_D3D_PS_LOG, tag, a, b, c, d);
+}
+
+/* count DWORDs at words, four to a line under tag; a short last line is
+ * padded with zeros. */
+static void v9x_d3d_ps_log_words(const char *tag, const DWORD *words,
+                                 DWORD count)
+{
+    DWORD at;
+
+    for (at = 0ul; at < count; at += 4ul) {
+        v9x_d3d_ps_log(tag, words[at],
+                       at + 1ul < count ? words[at + 1ul] : 0ul,
+                       at + 2ul < count ? words[at + 2ul] : 0ul,
+                       at + 3ul < count ? words[at + 3ul] : 0ul);
+    }
 }
 
 /* A surface's CreateSurfaceEx handle, from its DDRAWI_DDRAWSURFACE_MORE
@@ -6083,6 +6154,119 @@ static const BYTE *v9x_d3d_ddi8_buffer(const V9X_D3D_CONTEXT *context,
 }
 
 /*
+ * Step 3's record of what a program makes of pixel shader 1.1 (V9XPS.LOG):
+ * every shader's tokens, the first constants, and at the first draw under
+ * each pixel shader what it draws with. The walker has checked each
+ * entry's length.
+ */
+#define V9X_D3D_PS_CONST_LOGS 64ul
+#define V9X_D3D_PS_SEEN       64ul
+
+static DWORD v9x_d3d_ps_const_logged;
+static DWORD v9x_d3d_ps_seen[V9X_D3D_PS_SEEN];
+static DWORD v9x_d3d_ps_seen_count;
+
+/* CREATEPIXELSHADER (handle, code bytes, code) or CREATEVERTEXSHADER
+ * (handle, declaration bytes, code bytes, declaration, code) entries. */
+static void v9x_d3d_ddi8_log_shaders(v9x_u32 op, v9x_u32 count,
+                                     const v9x_u8 *payload)
+{
+    DWORD at = 0ul;
+    v9x_u32 i;
+
+    for (i = 0ul; i < count; ++i) {
+        const DWORD *entry = (const DWORD *)(payload + at);
+
+        if (op == V9X_DP2OP_CREATEPIXELSHADER) {
+            v9x_d3d_ps_log("ps-create", entry[0], entry[1], 0ul, 0ul);
+            v9x_d3d_ps_log_words("ps-code", entry + 2, entry[1] / 4ul);
+            at += 8ul + entry[1];
+        } else {
+            v9x_d3d_ps_log("vs-create", entry[0], entry[1], entry[2], 0ul);
+            v9x_d3d_ps_log_words("vs-decl", entry + 3, entry[1] / 4ul);
+            v9x_d3d_ps_log_words("vs-code", entry + 3 + entry[1] / 4ul,
+                                 entry[2] / 4ul);
+            at += 12ul + entry[1] + entry[2];
+        }
+    }
+}
+
+/* SETPIXELSHADERCONST (register, count, count four-float registers). */
+static void v9x_d3d_ddi8_log_constants(v9x_u32 count, const v9x_u8 *payload)
+{
+    DWORD at = 0ul;
+    v9x_u32 i;
+
+    for (i = 0ul; i < count; ++i) {
+        const DWORD *entry = (const DWORD *)(payload + at);
+
+        if (v9x_d3d_ps_const_logged < V9X_D3D_PS_CONST_LOGS) {
+            ++v9x_d3d_ps_const_logged;
+            v9x_d3d_ps_log("ps-const", entry[0], entry[1], 0ul, 0ul);
+            v9x_d3d_ps_log_words("ps-const-v", entry + 2, entry[1] * 4ul);
+        }
+        at += 8ul + entry[1] * 16ul;
+    }
+}
+
+/*
+ * A draw under a pixel shader, which no engine here runs: counted and
+ * not drawn. The first under each shader is described: the shader, the
+ * vertex format, stride and primitive; the fog, blend and specular states
+ * it was drawn under; and each stage's texture handle with its surface's
+ * caps, pixel format flags, bit count or FourCC, and size.
+ */
+static void v9x_d3d_ddi8_shader_draw(V9X_D3D_CONTEXT *context, v9x_u32 op,
+                                     const DWORD *words)
+{
+    DWORD seen;
+    DWORD stage;
+
+    ++context->ddi8_ps_dropped;
+    for (seen = 0ul; seen < v9x_d3d_ps_seen_count; ++seen) {
+        if (v9x_d3d_ps_seen[seen] == context->ddi8_ps) {
+            return;
+        }
+    }
+    if (v9x_d3d_ps_seen_count >= V9X_D3D_PS_SEEN) {
+        return;
+    }
+    v9x_d3d_ps_seen[v9x_d3d_ps_seen_count++] = context->ddi8_ps;
+    v9x_d3d_ps_log("ps-draw", context->ddi8_ps, op, words[0],
+                   context->ddi8_fvf);
+    v9x_d3d_ps_log("ps-draw-stream", context->ddi8_stream,
+                   context->ddi8_stream_stride, context->ddi8_stream_user,
+                   context->ddi8_index_stride);
+    v9x_d3d_ps_log("ps-draw-state", context->fog_enable,
+                   context->alpha_blend_enable,
+                   (context->src_blend << 16) | context->dest_blend,
+                   context->specular_enable);
+    for (stage = 0ul; stage < 4ul; ++stage) {
+        DWORD handle = context->ddi8_stage_texture[stage];
+        V9X_D3D_SURFACE_HANDLE *entry =
+            handle != 0ul ? v9x_d3d_ddi7_surface(context, handle) : 0;
+        const V9X_DD_SURFACE_LCL *lcl =
+            entry != 0 ? (const V9X_DD_SURFACE_LCL *)entry->surface : 0;
+        const V9X_DD_SURFACE_GBL *gbl =
+            lcl != 0 && !IsBadReadPtr(lcl, sizeof(*lcl)) ? lcl->lpGbl : 0;
+
+        if (gbl == 0 || IsBadReadPtr(gbl, sizeof(*gbl))) {
+            v9x_d3d_ps_log("ps-draw-tex", (stage << 24) | handle, 0ul, 0ul,
+                           0ul);
+            continue;
+        }
+        v9x_d3d_ps_log("ps-draw-tex", (stage << 24) | handle, lcl->ddsCaps,
+                       gbl->ddpfSurface.dwFlags,
+                       (gbl->ddpfSurface.dwFourCC != 0ul
+                            ? gbl->ddpfSurface.dwFourCC
+                            : gbl->ddpfSurface.dwRGBBitCount));
+        v9x_d3d_ps_log("ps-draw-size", (stage << 24) | handle,
+                       ((DWORD)gbl->wWidth << 16) | gbl->wHeight,
+                       lcl->dwFlags, entry->held);
+    }
+}
+
+/*
  * One DDI 8 draw: stream 0 and the indices resolved to memory, the draw
  * record turned into a V9X_DP2_DRAW, and drawn by v9x_dp2_draw through
  * the walk's own sink, under SETVERTEXSHADER's vertex format. Offsets in
@@ -6108,6 +6292,10 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
     DWORD offset = 0ul;
     v9x_u32 status;
 
+    if (context->ddi8_ps != 0ul) {
+        v9x_d3d_ddi8_shader_draw(context, op, words);
+        return;
+    }
     if (context->ddi8_fvf == 0ul ||
         !v9x_dp2_fvf_layout(context->ddi8_fvf, &layout)) {
         ++d->dp2_refused_fvf;
@@ -6360,10 +6548,23 @@ static int v9x_d3d_dp2_dx8(void *opaque, v9x_u32 op, v9x_u32 count,
 
     case V9X_DP2OP_SETPIXELSHADER:
         for (i = 0ul; i < count; ++i) {
-            if (words[i] != 0ul) {
-                v9x_d3d_ddi7_log("dx8-ps-set", words[i], 0ul, 0ul, 0ul);
-            }
+            context->ddi8_ps = words[i];
         }
+        return 1;
+
+    case V9X_DP2OP_CREATEPIXELSHADER:
+    case V9X_DP2OP_CREATEVERTEXSHADER:
+        v9x_d3d_ddi8_log_shaders(op, count, payload);
+        return 1;
+
+    case V9X_DP2OP_DELETEPIXELSHADER:
+        for (i = 0ul; i < count; ++i) {
+            v9x_d3d_ps_log("ps-delete", words[i], 0ul, 0ul, 0ul);
+        }
+        return 1;
+
+    case V9X_DP2OP_SETPIXELSHADERCONST:
+        v9x_d3d_ddi8_log_constants(count, payload);
         return 1;
 
     case V9X_DP2OP_BUFFERBLT:
@@ -6725,6 +6926,21 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         data->ddrval = 0x80070057ul;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
+#if V9X_D3D_PS_CLAIMED
+    /* Step 3's measurement: 3DMark 2001 SE stopped with "failed to
+     * validate material" before making a shader (boot 118). Every question
+     * is recorded and answered one pass, so the program goes on to make
+     * its shaders; draws under them are not drawn anyway. */
+    if (context->ddi8 != 0ul) {
+        v9x_d3d_ps_log("vtss", context->ddi8_ps,
+                       (context->stage_two << 16) | context->stage_color_op,
+                       context->ddi8_stage_texture[2],
+                       context->ddi8_stage_texture[3]);
+        data->dwNumPasses = 1ul;
+        data->ddrval = V9X_DD_OK;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+#endif
     /* With two stages the pair is answered whole: one pass when the
      * engine's two units draw it exactly, refused otherwise; and when
      * stage 1 changes nothing, stage 0 is answered as before. stage_two
@@ -7019,6 +7235,19 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
     caps->VertexShaderVersion = V9X_D3DVS_VERSION(0, 0);
     caps->PixelShaderVersion = V9X_D3DPS_VERSION(0, 0);
     caps->MaxPixelShaderValue = 1.0f;
+#if V9X_D3D_PS_CLAIMED
+    caps->PixelShaderVersion = V9X_D3DPS_VERSION(1, 1);
+    caps->MaxTextureBlendStages = 4ul;
+    caps->MaxSimultaneousTextures = 4ul;
+    /* Cube maps too: 3DMark 2001 SE still called Nature unsupported with
+     * PS 1.1 and four textures (boot 117), and its engine records cube-map
+     * support per display mode (e2mfc.dll, P_DisplayMode::
+     * setCubeMapSupport). Claimed to see whether that is the missing
+     * test; no engine here samples a cube. */
+    caps->TextureCaps |= V9X_D3DPTEXTURECAPS_CUBEMAP |
+                         V9X_D3DPTEXTURECAPS_MIPCUBEMAP;
+    caps->CubeTextureFilterCaps = caps->TextureFilterCaps;
+#endif
 }
 
 /* DDI 8's format list (d3d_caps8.h): the published texture formats, the
@@ -7162,6 +7391,12 @@ static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
         format->dwFourCC = formats[answer->dwFormatIndex].format;
         format->dwRGBBitCount = 0ul;
         format->dwRBitMask = formats[answer->dwFormatIndex].operations;
+#if V9X_D3D_PS_CLAIMED
+        /* Step 3's measurement: every texture format a cube as well. */
+        if ((format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
+            format->dwRBitMask |= V9X_D3DFORMAT_OP_CUBETEXTURE;
+        }
+#endif
         format->dwGBitMask = 0ul;
         format->dwBBitMask = 0ul;
         format->dwRGBAlphaBitMask = 0ul;

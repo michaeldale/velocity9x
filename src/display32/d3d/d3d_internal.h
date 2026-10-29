@@ -255,6 +255,13 @@ typedef struct v9x_d3d_context {
     DWORD ddi8_stream_user;
     DWORD ddi8_indices;
     DWORD ddi8_index_stride;
+    /* DDI 8's pixel shader (SETPIXELSHADER; 0 for none), the texture
+     * handles of stages 0 to 3 (D3DTSS_TEXTUREMAP), and the draws made
+     * under a shader that were not drawn: until an engine runs pixel
+     * shaders, none are (docs\plans\haswell-ddi8-pixel-shaders.md). */
+    DWORD ddi8_ps;
+    DWORD ddi8_stage_texture[4];
+    DWORD ddi8_ps_dropped;
 } V9X_D3D_CONTEXT;
 
 /*

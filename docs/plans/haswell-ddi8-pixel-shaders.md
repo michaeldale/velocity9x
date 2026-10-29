@@ -36,7 +36,20 @@ Step 2 done 2026-10-29 (boots 111-116,
   through those copies.
 - Not checked: the pictures, which no capture here can see.
 
-Steps 3-7 are not started.
+Step 3 done in part 2026-10-29 (boots 117-119,
+[`2026-10-29-haswell-ddi8-step3-what-nature-asks.md`](../decisions/2026-10-29-haswell-ddi8-step3-what-nature-asks.md)):
+
+- 3DMark gates Nature on cube textures as well as PS 1.1. Claiming both
+  starts it.
+- It then validates fixed-function materials, which the two-stage path
+  refuses ("failed to validate material").
+- Answering every validation one pass ended in a USER.EXE fault before
+  any shader was made, so no shader tokens were captured.
+- The shaders' text in 3DMark's data archive names what step 4 needs:
+  versions 1.0 and 1.1; tex, texkill, texbem, texm3x3pad and texm3x3vspec;
+  mov and mul; and co-issue. Cube textures join step 5.
+
+Steps 4-7 are not started.
 Claims about the tree cite files at `7a2a0504`. Claims about DirectX 8 and
 3DMark that are recalled rather than read or measured are marked so; step 1
 and step 3 exist to replace them with evidence.
