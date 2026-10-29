@@ -76,15 +76,49 @@ The core refused every draw as a 96-byte format on an 88-byte stream
 all four programs failed. So T19 does catch an undrawn shader. FVF 4C4h
 passed.
 
+## Fog after the shader, and 32 bpp (boot 129)
+
+Built from e15ecca1 plus this change; DRV, HAL and mini-VDD by WININIT.
+
+- **The kernel fogs.** With fog, r0 is saturated into the colour written,
+  then `(colour - fog) f + fog`, f the interpolated specular alpha and the
+  fog colour immediates in the kernel: hsw_eu.c's fixed-function rule.
+  The kernel cache keys on fog and its colour. Host test first:
+  `cnd fog` (channels outside [0, 1] clamped first) and `texkill fog`
+  failed against the unchanged kernel (33 failures), then passed.
+- **Table fog** puts its factor in each wide vertex's specular alpha in
+  the core's shader sink, as `v9x_d3d_dispatch_draw` does for a
+  fixed-function draw. Not host-tested: the sink is in d3d_core.c.
+- **An absent specular is now black with alpha 1**, `FF000000h`, which
+  d3d_dp2.c already gives the fixed-function vertex. Before, it was 0, so
+  a fogged shader draw without specular would have been all fog. A
+  shader reading v1.a from such a vertex now reads 1; nothing measured
+  says which Direct3D gives.
+- `Ps11Unfogged` became `Ps11Fogged`: shader draws made with fog on.
+
+T19 gained PushFog (Push under vertex fog, the vertices' specular alphas
+33h, E6h, 80h) and KillFog (Kill under LINEAR table fog, start 0.1, end
+0.9, vertex Z 0.15, 0.85, 0.5: inside the range, where a per-vertex
+factor equals a per-pixel one). Each is judged against Direct3D's rule
+applied to the interpreter's result. Fog colour 0040A0E0h.
+
+| Program | 565 max error | 32 bpp max error |
+|---|---|---|
+| Push | 9 | 1 |
+| FourTex | 9 | 0 |
+| Kill | 0 | 0 |
+| Bem | 0 | 0 |
+| PushFog | 9 | 1 |
+| KillFog | 8 | 1 |
+
+No mismatches in either run; tolerance 9 at 565 and 2 at X8R8G8B8 (the
+desktop switched live with V9XMSW and back). T12-T16 passed in both.
+Push and FourTex's 9 at 565 was rounding: at 32 bpp they are within 1.
+Had fog not been drawn, PushFog would miss by far more than 9: its
+factors run 0.2 to 0.9 against a fog colour unlike the program's.
+
 ## Not done, not checked
 
-- **Push and FourTex sit at the tolerance**: error 9, at 565. Whether that
-  is the hardware's rounding to 5 bits against this rounding, or a small
-  real error that 32 bpp would show at 2, is not known. A 32 bpp T19 run
-  is owed.
-- **Fog after the shader** is not in the kernel. A fogged shader draw is
-  drawn unfogged and counted (`Ps11Unfogged`). The plan puts fog in 5b; it
-  is still owed.
 - **Alpha test with a shader, and Kill Pixel's need with depth**, are
   unmeasured. T19 has no depth buffer.
 - **3DMark 2001 SE makes no shader without cube maps.** On boot 126,

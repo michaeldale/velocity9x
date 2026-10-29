@@ -2300,6 +2300,7 @@ static int v9x_ps11_build(DWORD run)
         desc.setup_grf = V9X_PS11_SETUP_GRF;
         desc.cube = v->cube;
         desc.projected = 0ul;
+        desc.fog = 0u;
         lstrcpyA(key, v->name);
         lstrcatA(key, "KernelBytes");
         if (v9x_intel_hsw_ps11_build(

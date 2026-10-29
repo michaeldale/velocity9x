@@ -3165,7 +3165,9 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
  *
  * The kernel cache at V9X_INTEL_HSW_PS11_KERNEL_OFF holds one program's
  * kernel a slot, keyed by the core's serial and the stages that are cube
- * maps or projected, the description the translator is given. Its
+ * maps or projected, and fog with its colour, which the kernel holds as
+ * immediates as the fixed-function ones do: the description the
+ * translator is given. Its
  * directory is trusted as the vertex kernels' is: each entry's tag must
  * match the status page's from V9X_D3D_HSW_PS11_TAG_DWORD, so a reset
  * reserve, whose page a ring open zeroes, matches nothing.
@@ -3193,6 +3195,8 @@ typedef struct v9x_d3d_hsw_ps11_entry {
     v9x_u32 serial;
     v9x_u32 cube;
     v9x_u32 projected;
+    v9x_u8 fog;
+    v9x_u32 fog_rgb[3];
     DWORD tag;
 } V9X_D3D_HSW_PS11_ENTRY;
 
@@ -3200,10 +3204,27 @@ static V9X_D3D_HSW_PS11_ENTRY
     v9x_d3d_hsw_ps11_cache[V9X_INTEL_HSW_PS11_KERNEL_SLOTS];
 static DWORD v9x_d3d_hsw_ps11_victim;
 
-/* The kernel for the shader, built on a miss; its offset from the draw
- * slot's state base in *kernel. 0 when it cannot be built or is larger
- * than a slot. */
+/* Whether a cached kernel was built for this shader, stages and fog; the
+ * colour is zero without fog (v9x_d3d_hsw_map), so it compares either
+ * way. */
+static int v9x_d3d_hsw_ps11_matches(const V9X_D3D_HSW_PS11_ENTRY *entry,
+                                    const V9X_R3D_SHADER *shader,
+                                    const struct v9x_hsw_ps_desc *fixed)
+{
+    return entry->serial == shader->serial &&
+           entry->cube == shader->env.cube &&
+           entry->projected == shader->env.projected &&
+           entry->fog == fixed->fog &&
+           entry->fog_rgb[0] == fixed->fog_rgb[0] &&
+           entry->fog_rgb[1] == fixed->fog_rgb[1] &&
+           entry->fog_rgb[2] == fixed->fog_rgb[2];
+}
+
+/* The kernel for the shader under the draw's fog, built on a miss; its
+ * offset from the draw slot's state base in *kernel. 0 when it cannot be
+ * built or is larger than a slot. */
 static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
+                                   const struct v9x_hsw_ps_desc *fixed,
                                    const struct v9x_hsw_pipe_slot *slot,
                                    DWORD *kernel)
 {
@@ -3212,14 +3233,14 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     struct v9x_hsw_ps11_desc desc;
     DWORD started = V9X_TIME_BEGIN();
     DWORD index;
+    DWORD index2;
     DWORD tag;
     v9x_u32 used = 0ul;
 
     for (index = 0ul; index < V9X_INTEL_HSW_PS11_KERNEL_SLOTS; ++index) {
         entry = &v9x_d3d_hsw_ps11_cache[index];
-        if (entry->tag != 0ul && entry->serial == shader->serial &&
-            entry->cube == shader->env.cube &&
-            entry->projected == shader->env.projected &&
+        if (entry->tag != 0ul && v9x_d3d_hsw_ps11_matches(entry, shader,
+                                                          fixed) &&
             status[V9X_D3D_HSW_PS11_TAG_DWORD + index] == entry->tag) {
             *kernel = V9X_INTEL_HSW_PS11_KERNEL_OFF +
                       index * V9X_INTEL_HSW_PS11_KERNEL_SLOT -
@@ -3248,6 +3269,10 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
                               V9X_HSW_PS11_CONST_GRFS);
     desc.cube = shader->env.cube;
     desc.projected = shader->env.projected;
+    desc.fog = fixed->fog;
+    for (index2 = 0ul; index2 < 3ul; ++index2) {
+        desc.fog_rgb[index2] = fixed->fog_rgb[index2];
+    }
     if (v9x_intel_hsw_ps11_build(
             v9x_d3d_hsw_reserve(V9X_INTEL_HSW_PS11_KERNEL_OFF +
                                 index * V9X_INTEL_HSW_PS11_KERNEL_SLOT),
@@ -3266,6 +3291,10 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     entry->serial = shader->serial;
     entry->cube = shader->env.cube;
     entry->projected = shader->env.projected;
+    entry->fog = desc.fog;
+    for (index2 = 0ul; index2 < 3ul; ++index2) {
+        entry->fog_rgb[index2] = desc.fog_rgb[index2];
+    }
     entry->tag = tag;
     status[V9X_D3D_HSW_PS11_TAG_DWORD + index] = tag;
     *kernel = V9X_INTEL_HSW_PS11_KERNEL_OFF +
@@ -3348,8 +3377,9 @@ static DWORD v9x_d3d_hsw_ps11_state(const V9X_R3D_DRAW *draw,
  * of its own; each stage the program samples as a texture unit; then
  * pieces of whole triangles a slot at a time. A triangle past the guard
  * band, or spanning 8K, is dropped and counted rather than clipped: the
- * core's clipper knows the 32-byte vertex only. Fog after the shader is
- * not in the kernel yet, so a fogged draw goes unfogged, counted.
+ * core's clipper knows the 32-byte vertex only. Fog is the kernel's,
+ * after the shader, in the colour v9x_d3d_hsw_map gave the fixed-function
+ * description.
  */
 static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
                                    const V9X_R3D_SHADER *shader,
@@ -3416,7 +3446,7 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
         }
     }
     if (draw->fog_enable != 0ul) {
-        ++v9x_hal->d3d_diagnostics.ps11_unfogged;
+        ++v9x_hal->d3d_diagnostics.ps11_fogged;
     }
 
     if (!v9x_d3d_hsw_blitter_idle() && !v9x_engine32_hsw.wait_idle(1)) {
@@ -3461,7 +3491,8 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
             v9x_d3d_hsw_count_refusal(reason);
             return 0;
         }
-        if (!v9x_d3d_hsw_ps11_kernel(shader, &slot, &kernel)) {
+        if (!v9x_d3d_hsw_ps11_kernel(shader, &state.desc, &slot,
+                                     &kernel)) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
             return 0;
         }

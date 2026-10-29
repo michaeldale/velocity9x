@@ -68,6 +68,10 @@ static unsigned int failures;
 #define TOLERANCE  2.0e-4f
 
 static v9x_u32 words[128];
+/* Fog after the shader for the next check_case: off, or on with this
+ * colour. */
+static v9x_u8 fog_on;
+static float fog_rgb[3];
 static v9x_u32 used;
 static v9x_u32 kernel[KERNEL_DWORDS];
 
@@ -145,6 +149,10 @@ static void check_case(const char *name, const V9X_PS11_ENV *env,
     desc.setup_grf = SETUP_GRF;
     desc.cube = env->cube;
     desc.projected = env->projected;
+    desc.fog = fog_on;
+    for (c = 0ul; c < 3ul; ++c) {
+        desc.fog_rgb[c] = v9x_hsw_sim_bits(fog_rgb[c]);
+    }
     if (v9x_intel_hsw_ps11_build(kernel, KERNEL_DWORDS, &program, &desc,
                                  &dwords) != V9X_STATUS_OK) {
         printf("FAIL %s: does not build\n", name);
@@ -231,6 +239,18 @@ static void check_case(const char *name, const V9X_PS11_ENV *env,
         }
         if (!kept) {
             continue;
+        }
+        /* Fog: the colour clamped, then (colour - fog) f + fog with f the
+         * specular alpha, as Direct3D fogs a shader's result. */
+        if (fog_on) {
+            float f = pixel.v[1][3];
+
+            for (c = 0ul; c < 4ul; ++c) {
+                out[c] = out[c] < 0.0f ? 0.0f : out[c] > 1.0f ? 1.0f : out[c];
+            }
+            for (c = 0ul; c < 3ul; ++c) {
+                out[c] = (out[c] - fog_rgb[c]) * f + fog_rgb[c];
+            }
         }
         for (c = 0ul; c < 4ul; ++c) {
             float got = v9x_hsw_sim_float(sim.message[c][channel]);
@@ -409,6 +429,22 @@ static void cases(void)
     put(SRC(C, 0, XYZW, 0)); put(SRC(V, 1, XYZW, 0));
     put(END);
     check_case("cnd", &env, 0ul);
+
+    /* The same fogged: some channels leave [0, 1] and are clamped first. */
+    fog_on = 1u;
+    fog_rgb[0] = 0.25f; fog_rgb[1] = 0.5f; fog_rgb[2] = 1.0f;
+    check_case("cnd fog", &env, 0ul);
+
+    /* Fog with texkill: the kept pixels fogged, the rest still killed. */
+    zero_env(&env);
+    used = 0ul;
+    put(VER(1ul, 0ul));
+    put(OP_TEX); put(DST(T, 0, ALL, 0, 0));
+    put(OP_TEXKILL); put(DST(T, 1, ALL, 0, 0));
+    put(OP_MOV); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 0, XYZW, 0));
+    put(END);
+    check_case("texkill fog", &env, 1ul);
+    fog_on = 0u;
 }
 
 static void refusals(void)
@@ -428,6 +464,7 @@ static void refusals(void)
     desc.setup_grf = SETUP_GRF;
     desc.cube = 0ul;
     desc.projected = 0ul;
+    desc.fog = 0u;
     /* Too little room, and registers that would overlap the kernel's. */
     CHECK(v9x_intel_hsw_ps11_build(kernel, 8ul, &program, &desc, &dwords) ==
           V9X_STATUS_INVALID_ARGUMENT);

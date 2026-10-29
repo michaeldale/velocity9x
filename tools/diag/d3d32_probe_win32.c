@@ -2676,11 +2676,13 @@ static void d32_d3d89(void)
  * in. The programs, textures, constants and judging rules are step 5a's
  * (V9XHSWMM /ps11, docs\decisions\2026-10-30-haswell-ps11-step5a-probe.md)
  * without the cube cases, which wait for 5c. That probe drew on the
- * engine directly; this one goes through the runtime and the HAL.
+ * engine directly; this one goes through the runtime and the HAL. Two
+ * more draw Push under vertex fog and Kill under table fog: fog after the
+ * shader.
  *
  * Skipped, and not counted, where the HAL device does not claim PS 1.1 or
- * the desktop is not 32 bpp; where it does, a failure counts towards
- * Result as T18's does.
+ * the desktop is neither 32 bpp nor R5G6B5; where it does, a failure
+ * counts towards Result as T18's does.
  *
  * The vtable slots are counted from d3d8.h's declaration order, IUnknown's
  * three first. IDirect3D8: GetAdapterDisplayMode 8, GetDeviceCaps 13
@@ -2743,7 +2745,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 4ul
+#define D32_T19_PROGRAMS 6ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -2854,21 +2856,36 @@ typedef HRESULT (WINAPI *d32_d3d8_surf_unlock_fn)(D32_OBJECT *);
 #define D32_PT_TEX               66ul
 #define D32_PT_TEXBEM            67ul
 
+/* Fog after the shader: none; vertex fog, the factor each vertex's
+ * specular alpha; or LINEAR table fog over D32_T19_FOG_START to _END of
+ * device Z, which varies by vertex (d32_t19_fog_z). FOGTABLEMODE is
+ * D3DRS 35. */
+#define D32_T19_FOG_NONE 0ul
+#define D32_T19_FOG_VERTEX 1ul
+#define D32_T19_FOG_TABLE 2ul
+#define D32_RS_FOGTABLEMODE 35ul
+#define D32_D3DFOG_NONE 0ul
+#define D32_D3DFOG_LINEAR 3ul
+#define D32_T19_FOG_COLOR 0x0040a0e0ul
+#define D32_T19_FOG_START 0.1f
+#define D32_T19_FOG_END 0.9f
+
 typedef struct d32_t19_program {
     const char *name;
     DWORD kill_set;     /* 1 + the coordinate set texkill reads, or 0 */
+    DWORD fog;          /* D32_T19_FOG_*                               */
     DWORD tokens[24];
 } D32_T19_PROGRAM;
 
 static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
     /* Push: both colours and constants c0, c5 and c7. */
-    { "Push", 0ul, {
+    { "Push", 0ul, D32_T19_FOG_NONE, {
         D32_PT_VER11,
         D32_PT_MAD, D32_PT_TO_R(1), D32_PT_V(0), D32_PT_C(0), D32_PT_C(7),
         D32_PT_MAD, D32_PT_TO_R(0), D32_PT_V(1), D32_PT_C(5), D32_PT_R(1),
         D32_PT_END } },
     /* FourTex: all four stages sampled and combined. */
-    { "FourTex", 0ul, {
+    { "FourTex", 0ul, D32_T19_FOG_NONE, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEX, D32_PT_TO_T(1),
         D32_PT_TEX, D32_PT_TO_T(2), D32_PT_TEX, D32_PT_TO_T(3),
@@ -2877,20 +2894,38 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_LRP, D32_PT_TO_R(0), D32_PT_C(0), D32_PT_R(1), D32_PT_R(0),
         D32_PT_END } },
     /* Kill: set 1's u crosses zero, so part of the triangle is killed. */
-    { "Kill", 2ul, {
+    { "Kill", 2ul, D32_T19_FOG_NONE, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEXKILL, D32_PT_TO_T(1),
         D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(0),
         D32_PT_END } },
     /* Bem: stage 1 looked up at its coordinates moved by stage 0's red
      * and green through stage 1's bump matrix. */
-    { "Bem", 0ul, {
+    { "Bem", 0ul, D32_T19_FOG_NONE, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0),
         D32_PT_TEXBEM, D32_PT_TO_T(1), D32_PT_T(0),
         D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
+        D32_PT_END } },
+    /* Push under vertex fog, and Kill under table fog: fog after the
+     * shader, and after texkill. */
+    { "PushFog", 0ul, D32_T19_FOG_VERTEX, {
+        D32_PT_VER11,
+        D32_PT_MAD, D32_PT_TO_R(1), D32_PT_V(0), D32_PT_C(0), D32_PT_C(7),
+        D32_PT_MAD, D32_PT_TO_R(0), D32_PT_V(1), D32_PT_C(5), D32_PT_R(1),
+        D32_PT_END } },
+    { "KillFog", 2ul, D32_T19_FOG_TABLE, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEXKILL, D32_PT_TO_T(1),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(0),
         D32_PT_END } }
 };
+
+/* A fogged program's vertex depths: inside the fog range, where the
+ * driver's per-vertex LINEAR factor equals a per-pixel one (past an end it
+ * clamps at the vertex, which d3d_fog.h records as its approximation, not
+ * this test's subject). Unfogged programs keep 0.5. */
+static const float d32_t19_fog_z[3] = { 0.15f, 0.85f, 0.5f };
 
 /* The triangle in quarter pixels, step 5a's: (8.25, 8.25), (55.75, 10.25),
  * (10.25, 55.75), clockwise on the screen. */
@@ -3167,8 +3202,10 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
     DWORD tolerance = narrow ? D32_T19_TOLERANCE_565 : D32_T19_TOLERANCE;
     const char *name = d32_t19_programs[program].name;
     DWORD kill_set = d32_t19_programs[program].kill_set;
+    DWORD fog = d32_t19_programs[program].fog;
     V9X_PS11_PIXEL pixel;
     float attribute[3][6][4];
+    float fog_rgba[4];
     float out[4];
     float sum;
     long area;
@@ -3277,6 +3314,34 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
                     continue;
                 }
                 ++inside;
+                /* Direct3D's fog after the shader: the result clamped,
+                 * then (colour - fog) f + fog. f is the specular alpha
+                 * for vertex fog; for LINEAR table fog it is (end - z) /
+                 * (end - start) of the pixel's own Z, clamped, as a fog
+                 * table is defined: the driver's per-vertex factor is
+                 * exact for LINEAR over a Z linear in screen space. */
+                if (kept && fog != D32_T19_FOG_NONE) {
+                    float f = pixel.v[1][3];
+
+                    if (fog == D32_T19_FOG_TABLE) {
+                        sum = 0.0f;
+                        for (i = 0ul; i < 3ul; ++i) {
+                            sum += (float)w[i] * vertex[i].sz;
+                        }
+                        sum /= (float)area;
+                        f = (D32_T19_FOG_END - sum) /
+                            (D32_T19_FOG_END - D32_T19_FOG_START);
+                        f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+                    }
+                    d32_t19_colour(D32_T19_FOG_COLOR, fog_rgba);
+                    for (c = 0ul; c < 4ul; ++c) {
+                        out[c] = out[c] < 0.0f ? 0.0f
+                               : out[c] > 1.0f ? 1.0f : out[c];
+                    }
+                    for (c = 0ul; c < 3ul; ++c) {
+                        out[c] = (out[c] - fog_rgba[c]) * f + fog_rgba[c];
+                    }
+                }
                 if (kept) {
                     want = (d32_t19_unorm(out[3]) << 24) |
                            (d32_t19_unorm(out[0]) << 16) |
@@ -3395,6 +3460,7 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     D32_T19_VERTEX vertex[3];
     D32_D3DLOCKED_RECT locked;
     D32_OBJECT *back = 0;
+    d32_render_state_fn rs;
     const char *verdict = "draw-failed";
     char key[48];
     DWORD handle = 0ul;
@@ -3432,7 +3498,7 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     for (k = 0ul; k < 3ul; ++k) {
         vertex[k].sx = (float)d32_t19_tri_x[k] * 0.25f;
         vertex[k].sy = (float)d32_t19_tri_y[k] * 0.25f;
-        vertex[k].sz = 0.5f;
+        vertex[k].sz = p->fog != D32_T19_FOG_NONE ? d32_t19_fog_z[k] : 0.5f;
         vertex[k].rhw = 1.0f;
         vertex[k].diffuse = d32_t19_diffuse[k];
         vertex[k].specular = d32_t19_specular[k];
@@ -3444,6 +3510,14 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     clear_hr = ((d32_clear7_fn)device->vtbl[D3DDEV8_CLEAR])(
         device, 0ul, 0, D32_D3DCLEAR_TARGET, D32_T19_GUARD, 1.0f, 0ul);
     begin_hr = ((d32_scene_fn)device->vtbl[D3DDEV8_BEGIN_SCENE])(device);
+    /* Fog set, or cleared, for every program. */
+    rs = (d32_render_state_fn)device->vtbl[D3DDEV8_SET_RENDER_STATE];
+    rs(device, D32_RS_FOGENABLE, p->fog != D32_T19_FOG_NONE ? 1ul : 0ul);
+    rs(device, D32_RS_FOGCOLOR, D32_T19_FOG_COLOR);
+    rs(device, D32_RS_FOGTABLEMODE, p->fog == D32_T19_FOG_TABLE
+                                        ? D32_D3DFOG_LINEAR : D32_D3DFOG_NONE);
+    rs(device, D32_RS_FOGSTART, d32_float_bits(D32_T19_FOG_START));
+    rs(device, D32_RS_FOGEND, d32_float_bits(D32_T19_FOG_END));
     create_hr = ((d32_d3d8_create_ps_fn)
                  device->vtbl[D3DDEV8_CREATE_PIXEL_SHADER])(
         device, p->tokens, &handle);

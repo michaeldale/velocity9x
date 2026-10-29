@@ -172,9 +172,10 @@ void v9x_d3d_ps_wide_vertex(const V9X_DP2_FVF *layout,
         v9x_d3d_ps_color(v9x_d3d_ps_word(source + layout->specular),
                          out + 8);
     } else {
-        for (i = 8ul; i < 12ul; ++i) {
+        for (i = 8ul; i < 11ul; ++i) {
             out[i] = 0.0f;
         }
+        out[11] = 1.0f;
     }
     for (s = 0ul; s < V9X_D3D_PS_STAGES; ++s) {
         float *t = out + 12ul + 4ul * s;

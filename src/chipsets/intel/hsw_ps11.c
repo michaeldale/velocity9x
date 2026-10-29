@@ -14,6 +14,7 @@
  *   g91-g95   work                 g96-g98   sampler payload u v r
  *   g99       the smallest texkill coordinate so far
  *   g100-g102 the texm3x3 dot products
+ *   g103      the fog factor
  *   g112-g115 the colour written
  */
 #include "velocity9x/intel_hsw_eu.h"
@@ -32,6 +33,7 @@
 #define V9X_HSW_PS11_G_PAYLOAD ((v9x_u8)96u)
 #define V9X_HSW_PS11_G_KILL    ((v9x_u8)99u)
 #define V9X_HSW_PS11_G_DOT     ((v9x_u8)100u)
+#define V9X_HSW_PS11_G_FOG     ((v9x_u8)103u)
 #define V9X_HSW_PS11_G_OUT     ((v9x_u8)112u)
 #define V9X_HSW_PS11_G_BARY    ((v9x_u8)2u)
 
@@ -922,9 +924,30 @@ v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
         v9x_hsw_ps11_commit(&g, inst, 0ul);
     }
 
+    /* Fog blends the clamped result, so it is saturated first; without fog
+     * the render target's own clamp does the same. */
     for (c = 0ul; c < 4ul; ++c) {
         v9x_hsw_ps11_mov(&g, (v9x_u8)(V9X_HSW_PS11_G_OUT + c),
-                         v9x_hsw_ps11_reg((v9x_u8)(V9X_HSW_PS11_G_R + c)), 0u);
+                         v9x_hsw_ps11_reg((v9x_u8)(V9X_HSW_PS11_G_R + c)),
+                         desc->fog ? 1u : 0u);
+    }
+    /* Fog: colour = (colour - fog) f + fog, f the specular alpha. */
+    if (desc->fog) {
+        v9x_hsw_ps11_pln(&g, V9X_HSW_PS11_G_FOG, 1ul, 3ul);
+        for (c = 0ul; c < 3ul; ++c) {
+            float fog = v9x_hsw_ps11_value(desc->fog_rgb[c]);
+
+            v9x_hsw_ps11_add(&g, V9X_HSW_PS11_G_WORK,
+                             v9x_hsw_ps11_reg(
+                                 (v9x_u8)(V9X_HSW_PS11_G_OUT + c)),
+                             v9x_hsw_ps11_imm(-fog));
+            v9x_hsw_ps11_mul(&g, V9X_HSW_PS11_G_WORK,
+                             v9x_hsw_ps11_reg(V9X_HSW_PS11_G_WORK),
+                             v9x_hsw_ps11_reg(V9X_HSW_PS11_G_FOG));
+            v9x_hsw_ps11_add(&g, (v9x_u8)(V9X_HSW_PS11_G_OUT + c),
+                             v9x_hsw_ps11_reg(V9X_HSW_PS11_G_WORK),
+                             v9x_hsw_ps11_imm(fog));
+        }
     }
     if (kills) {
         v9x_hsw_ps11_cmp(&g, V9X_HSW_EU_COND_GE, V9X_HSW_PS11_FLAG_KILL,

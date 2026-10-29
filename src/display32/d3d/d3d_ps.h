@@ -82,8 +82,9 @@ void v9x_d3d_ps_env(const float c[8][4],
 
 /*
  * One XYZRHW vertex of layout as the wide vertex. Diffuse absent is
- * opaque white and specular absent zero, as the fixed-function pipeline
- * reads them; stage N's coordinates are its TEXCOORDINDEX set, and a set
+ * opaque white and specular absent black with alpha 1, as d3d_dp2.c gives
+ * the fixed-function pipeline them; the alpha is the fog factor, so no
+ * fog. Stage N's coordinates are its TEXCOORDINDEX set, and a set
  * the vertex lacks, or a missing component, is 0 with w 1.
  */
 void v9x_d3d_ps_wide_vertex(const V9X_DP2_FVF *layout,

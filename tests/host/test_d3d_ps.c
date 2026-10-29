@@ -162,11 +162,13 @@ static void wide_tests(void)
     CHECK(bits(out[24]) == vertex[15] && out[25] == 0.0f &&
           out[26] == 0.0f && out[27] == 1.0f);
 
-    /* No colours: diffuse opaque white, specular zero. */
+    /* No colours: diffuse opaque white, specular black with alpha 1, the
+     * FF000000h d3d_dp2.c gives the fixed-function vertex: no fog. */
     CHECK(v9x_dp2_fvf_layout(FVF_XYZRHW | FVF_TEX(1), &layout));
     v9x_d3d_ps_wide_vertex(&layout, stage, (const v9x_u8 *)vertex, out);
     CHECK(out[4] == 1.0f && out[5] == 1.0f && out[6] == 1.0f &&
-          out[7] == 1.0f && out[8] == 0.0f && out[11] == 0.0f);
+          out[7] == 1.0f && out[8] == 0.0f && out[10] == 0.0f &&
+          out[11] == 1.0f);
 }
 
 /* ps.1.1: tex t0; mov r0, t0. */

@@ -6309,8 +6309,17 @@ static void v9x_d3d_ddi8_shader_draw(V9X_D3D_CONTEXT *context, v9x_u32 op,
  * serialises every DrawPrimitives2 call, as it does for the gather and the
  * fog scratch, so one batch is enough. (The table itself is declared with
  * the context teardown that empties it.)
+ *
+ * Fog after the shader is the engine's, from the specular alpha. Table fog
+ * puts its factor there per vertex, as v9x_d3d_dispatch_draw does for a
+ * fixed-function draw (d3d_fog.h).
  */
 #define V9X_D3D_PS_TRIANGLES   96u
+
+/* The wide vertex's depth, rhw and specular alpha (d3d_ps.h). */
+#define V9X_D3D_PS_WIDE_SZ     2u
+#define V9X_D3D_PS_WIDE_RHW    3u
+#define V9X_D3D_PS_WIDE_FOG    11u
 
 typedef struct v9x_d3d_ps_batch {
     const V9X_D3D_ENGINE_OPS *ops;
@@ -6319,6 +6328,7 @@ typedef struct v9x_d3d_ps_batch {
     V9X_R3D_DRAW draw;
     V9X_R3D_SHADER shader;
     DWORD triangles;
+    int table_fog;
 } V9X_D3D_PS_BATCH;
 
 static V9X_D3D_PS_BATCH v9x_d3d_ps_batch;
@@ -6406,6 +6416,9 @@ static void v9x_d3d_ps_triangle(void *opaque, const v9x_u8 *a,
     V9X_D3D_PS_BATCH *batch = (V9X_D3D_PS_BATCH *)opaque;
     float *out = v9x_d3d_ps_vertices +
                  batch->triangles * 3ul * V9X_R3D_SHADER_FLOATS;
+    const V9X_D3D_FOG_TABLE *table = &batch->context->fog_table;
+    float *vertex;
+    DWORD index;
 
     v9x_d3d_ps_wide_vertex(batch->layout, batch->context->ddi8_ps_stage, a,
                            out);
@@ -6413,6 +6426,16 @@ static void v9x_d3d_ps_triangle(void *opaque, const v9x_u8 *a,
                            out + V9X_R3D_SHADER_FLOATS);
     v9x_d3d_ps_wide_vertex(batch->layout, batch->context->ddi8_ps_stage, c,
                            out + 2ul * V9X_R3D_SHADER_FLOATS);
+    if (batch->table_fog) {
+        for (index = 0ul; index < 3ul; ++index) {
+            vertex = out + index * V9X_R3D_SHADER_FLOATS;
+            vertex[V9X_D3D_PS_WIDE_FOG] =
+                (float)v9x_d3d_fog_table_factor(
+                    table, v9x_d3d_fog_table_depth(
+                               table, vertex[V9X_D3D_PS_WIDE_SZ],
+                               vertex[V9X_D3D_PS_WIDE_RHW])) / 255.0f;
+        }
+    }
     if (++batch->triangles == V9X_D3D_PS_TRIANGLES) {
         v9x_d3d_ps_flush();
     }
@@ -6464,6 +6487,8 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
     batch->context = context;
     batch->layout = layout;
     batch->triangles = 0ul;
+    batch->table_fog = v9x_d3d_fog_table_active(context->fog_enable,
+                                                &context->fog_table);
     v9x_d3d_describe_draw(ops, context, &batch->draw);
     batch->shader.program = &shader->program;
     batch->shader.serial = shader->serial;

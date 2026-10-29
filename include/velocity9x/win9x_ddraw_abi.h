@@ -3962,13 +3962,13 @@ typedef struct v9x_d3d_diagnostics {
      * Pixel shaders (docs\plans\haswell-ddi8-pixel-shaders.md, step 5b):
      * PS 1.1 kernels built into the engine's cache and refused by the
      * translator or for size; triangles under a shader dropped for the
-     * guard band; and shader draws made with fog on, which the kernel does
-     * not apply yet. Appended 2026-10-30 within ABI 2026102002.
+     * guard band; and shader draws made with fog on, which the kernel fogs
+     * after the shader. Appended 2026-10-30 within ABI 2026102002.
      */
     DWORD ps11_kernels_built;
     DWORD ps11_kernels_refused;
     DWORD ps11_triangles_dropped;
-    DWORD ps11_unfogged;
+    DWORD ps11_fogged;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

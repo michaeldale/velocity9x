@@ -28,7 +28,10 @@
  *
  * It writes r0 to the render target (SIMD8 single source) and ends. A
  * shader with texkill writes only the pixels it keeps, by predicate.
- * Fixed-function fog after the shader is not here yet.
+ * With fog, r0 is clamped to [0, 1] and its colour blended towards the
+ * fog colour by the specular alpha, (r0 - fog) f + fog: the factor the
+ * runtime's vertex fog, or the core's table fog, put there. That is
+ * Direct3D's fog after a pixel shader, and hsw_eu.c's fixed-function rule.
  */
 #ifndef VELOCITY9X_INTEL_HSW_PS11_H
 #define VELOCITY9X_INTEL_HSW_PS11_H
@@ -48,6 +51,8 @@ struct v9x_hsw_ps11_desc {
     v9x_u8 setup_grf;       /* first setup register                 */
     v9x_u32 cube;           /* bit N: stage N is a cube map         */
     v9x_u32 projected;      /* bit N: stage N's u and v over w      */
+    v9x_u8 fog;             /* fog after the shader                 */
+    v9x_u32 fog_rgb[3];     /* its colour, float bits; read with fog */
 };
 
 /* The push block's dwords: V9X_HSW_PS11_CONST_GRFS registers of eight. */
