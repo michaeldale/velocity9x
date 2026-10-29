@@ -855,10 +855,10 @@ static int v9x_ps11_build(DWORD run);
 #define V9X_DEPTH_MODE      8
 #define V9X_DEPTH16_MODE    9
 #define V9X_PS11_MODE       10
-#define V9X_PS11_RUNS       3
+#define V9X_PS11_RUNS       4
 
-/* mode: 0 /rcs, 1 /draw, 2-7 /shade:0-5, 8 /depth, 9 /depth16, 10-12
- * /ps11:0-2. */
+/* mode: 0 /rcs, 1 /draw, 2-7 /shade:0-5, 8 /depth, 9 /depth16, 10-13
+ * /ps11:0-3. */
 static int v9x_rcs_build(int draw)
 {
     struct v9x_hsw_batch batch;
@@ -1743,7 +1743,8 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
 
 /*
  * Pixel shaders, step 5a of docs\plans\haswell-ddi8-pixel-shaders.md
- * (/ps11:N): two PS 1.1 programs a run, three runs, each built by the
+ * (/ps11:N): two PS 1.1 programs a run, four runs (run 3 is step 5c's,
+ * below), each built by the
  * step 4 translator and drawn over D's triangle into its own target by
  * v9x_intel_hsw_draw_workload_ps11. Every covered pixel is judged against
  * the reference interpreter (d3d_ps11_ref.c, linked here) given the same
@@ -1787,6 +1788,28 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
  * nor is a texkill coordinate this close to zero. */
 #define V9X_PS11_MARGIN          (1.0f / 64.0f)
 #define V9X_PS11_KILL_MARGIN     0.001f
+
+/*
+ * Run 3, step 5c: Gen7's QPitch for a cube with mips, which it computes
+ * and has no field for (intel_hsw_3d.h). The Cube program from a 2x2 cube
+ * of two levels laid out at v9x_intel_hsw_cube_qpitch's rows, FULL
+ * spacing, MIP Count 1: target 0 with stage 1's sampler held to LOD 0,
+ * target 1 to LOD 1 (min = max LOD, mip filter nearest). The surface
+ * state is the HAL's; the pitch is 16 bytes rather than its 64, which
+ * QPitch, counted in rows, does not depend on, so the cube fits where the
+ * 2D textures and run 1's cube were. Every texel names its face, level
+ * and place, and every padding row its row, so a misplaced read says
+ * where the sampler went.
+ */
+#define V9X_PS11_MIP_RUN         3ul
+#define V9X_PS11_MIP_SIDE        2u
+#define V9X_PS11_MIP_LEVELS      2u
+#define V9X_PS11_MIP_PITCH       16ul
+#define V9X_PS11_MIP_CUBE        V9X_PS11_TEXTURE(0)
+#define V9X_PS11_MIP_ROOM        0xc00ul       /* to the image's state */
+#define V9X_PS11_MIP_SAMPLERS1   0x12c0ul      /* target 1's group */
+#define V9X_PS11_MIPFILTER_NEAREST 1u
+#define V9X_PS11_LOD_ONE         0x100u        /* U4.8 */
 
 /* Shader tokens (ddi8-on-win9x.md section 6), as the host tests build
  * them: every source unswizzled. */
@@ -1870,6 +1893,17 @@ static const struct v9x_ps11_variant v9x_ps11_variants[V9X_PS11_VARIANTS] = {
         V9X_PT_VER11,
         V9X_PT_TEX, V9X_PT_TO_T(0),
         V9X_PT_TEXBEM, V9X_PT_TO_T(1), V9X_PT_T(0),
+        V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(1),
+        V9X_PT_END } },
+    /* Run 3. CubeL0, CubeL1: Cube from the two-level cube, each level. */
+    { "CubeL0", 0x2ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(1),
+        V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(1),
+        V9X_PT_END } },
+    { "CubeL1", 0x2ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(1),
         V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(1),
         V9X_PT_END } }
 };
@@ -1981,7 +2015,8 @@ static void v9x_ps11_attribute(DWORD variant, DWORD k, DWORD a, float out[4])
     out[1] = corner[(k + set) % 3ul][1];
     out[2] = 0.25f + 0.25f * (float)k;
     out[3] = 1.0f;
-    if (variant == 2ul && set == 1ul) {
+    if ((variant == 2ul || variant / 2ul == V9X_PS11_MIP_RUN) &&
+        set == 1ul) {
         for (c = 0ul; c < 3ul; ++c) {
             out[c] = v9x_ps11_direction[k][c];
         }
@@ -2040,17 +2075,33 @@ static DWORD v9x_ps11_face_texel(DWORD face, long x, long y)
            (((DWORD)x * 32ul + 16ul) << 8) | ((DWORD)y * 32ul + 16ul);
 }
 
+/* Run 3's cube: alpha FF, red the face, green the level, blue the texel
+ * within it. A padding texel has alpha 0 and its row of the block in
+ * blue and green, so a read between faces names the row it came from. */
+static DWORD v9x_ps11_mip_texel(DWORD face, DWORD level, long x, long y)
+{
+    return 0xff000000ul | ((0x20ul + face * 0x20ul) << 16) |
+           ((0x40ul + level * 0x40ul) << 8) |
+           (0x10ul + (DWORD)(y * 2l + x) * 0x30ul);
+}
+
+static DWORD v9x_ps11_mip_padding(DWORD row)
+{
+    return row & 0xfffful;
+}
+
 struct v9x_ps11_lookup {
     DWORD cube;
+    DWORD mip;          /* 1 + the level run 3 samples, or 0 */
     int unjudged;
 };
 
-/* A nearest texel index under CLAMP; near a texel edge it is marked not
- * judged. floor() as round(x - 0.5), exact away from integers, which are
- * the ones not judged. */
-static long v9x_ps11_index(float coord, int *unjudged)
+/* A nearest texel index under CLAMP over side texels; near a texel edge it
+ * is marked not judged. floor() as round(x - 0.5), exact away from
+ * integers, which are the ones not judged. */
+static long v9x_ps11_index(float coord, long side, int *unjudged)
 {
-    float scaled = coord * (float)V9X_PS11_SIDE;
+    float scaled = coord * (float)side;
     long index;
     float frac;
 
@@ -2060,11 +2111,11 @@ static long v9x_ps11_index(float coord, int *unjudged)
         }
         return 0l;
     }
-    if (scaled >= (float)V9X_PS11_SIDE) {
-        if (scaled < (float)V9X_PS11_SIDE + V9X_PS11_MARGIN) {
+    if (scaled >= (float)side) {
+        if (scaled < (float)side + V9X_PS11_MARGIN) {
             *unjudged = 1;
         }
-        return V9X_PS11_SIDE - 1l;
+        return side - 1l;
     }
     index = v9x_ps11_to_long(scaled - 0.5f);
     frac = scaled - (float)index;
@@ -2125,15 +2176,25 @@ static void v9x_ps11_sample(void *user, v9x_u32 stage, v9x_u32 count,
     float s;
     float t;
 
-    if ((lookup->cube & (1ul << stage)) != 0ul && count >= 3ul) {
+    if ((lookup->cube & (1ul << stage)) != 0ul && count >= 3ul &&
+        lookup->mip != 0ul) {
+        long side = (long)(V9X_PS11_MIP_SIDE >> (lookup->mip - 1ul));
+
         face = v9x_ps11_face(coords, &s, &t);
-        texel = v9x_ps11_face_texel(face,
-                                    v9x_ps11_index(s, &lookup->unjudged),
-                                    v9x_ps11_index(t, &lookup->unjudged));
+        texel = v9x_ps11_mip_texel(
+            face, lookup->mip - 1ul,
+            v9x_ps11_index(s, side, &lookup->unjudged),
+            v9x_ps11_index(t, side, &lookup->unjudged));
+    } else if ((lookup->cube & (1ul << stage)) != 0ul && count >= 3ul) {
+        face = v9x_ps11_face(coords, &s, &t);
+        texel = v9x_ps11_face_texel(
+            face, v9x_ps11_index(s, V9X_PS11_SIDE, &lookup->unjudged),
+            v9x_ps11_index(t, V9X_PS11_SIDE, &lookup->unjudged));
     } else {
-        texel = v9x_ps11_texel(stage,
-                               v9x_ps11_index(coords[0], &lookup->unjudged),
-                               v9x_ps11_index(coords[1], &lookup->unjudged));
+        texel = v9x_ps11_texel(
+            stage,
+            v9x_ps11_index(coords[0], V9X_PS11_SIDE, &lookup->unjudged),
+            v9x_ps11_index(coords[1], V9X_PS11_SIDE, &lookup->unjudged));
     }
     rgba[0] = (float)((texel >> 16) & 0xfful) / 255.0f;
     rgba[1] = (float)((texel >> 8) & 0xfful) / 255.0f;
@@ -2150,6 +2211,84 @@ static DWORD v9x_ps11_unorm(float value)
         return 255ul;
     }
     return (DWORD)v9x_ps11_to_long(value * 255.0f);
+}
+
+/* Run 3's cube in place of the 2D textures and run 1's cube: padding
+ * everywhere, then each face's levels where v9x_intel_hsw_cubetree puts
+ * them, at this pitch; its surface state in run 1's cube's place; and
+ * target 1's samplers, the same but stage 1 held to LOD 1. */
+static int v9x_ps11_mip_cube(void)
+{
+    struct v9x_hsw_cubetree tree;
+    struct v9x_hsw_sampler sampler;
+    v9x_u32 *at = v9x_rcs_image_at(V9X_PS11_MIP_CUBE);
+    DWORD row;
+    DWORD face;
+    DWORD level;
+    DWORD offset;
+    DWORD s;
+    DWORD side;
+    long x;
+    long y;
+
+    if (v9x_intel_hsw_cubetree((v9x_u16)V9X_PS11_MIP_SIDE,
+                               (v9x_u8)V9X_PS11_MIP_LEVELS, 4u, &tree) !=
+            V9X_STATUS_OK ||
+        tree.rows * V9X_PS11_MIP_PITCH > V9X_PS11_MIP_ROOM) {
+        return 0;
+    }
+    v9x_rcs_key("MipQPitch", tree.qpitch);
+    v9x_rcs_key("MipRows", tree.rows);
+    for (row = 0ul; row < tree.rows; ++row) {
+        for (s = 0ul; s < V9X_PS11_MIP_PITCH / 4ul; ++s) {
+            at[row * (V9X_PS11_MIP_PITCH / 4ul) + s] =
+                v9x_ps11_mip_padding(row);
+        }
+    }
+    for (face = 0ul; face < V9X_HSW_CUBE_FACES; ++face) {
+        for (level = 0ul; level < V9X_PS11_MIP_LEVELS; ++level) {
+            /* The tree's place at its pitch, moved to this one. */
+            offset = face * tree.qpitch * V9X_PS11_MIP_PITCH +
+                     (tree.level_offset[level] / tree.pitch) *
+                         V9X_PS11_MIP_PITCH +
+                     tree.level_offset[level] % tree.pitch;
+            side = V9X_PS11_MIP_SIDE >> level;
+            for (y = 0l; y < (long)side; ++y) {
+                for (x = 0l; x < (long)side; ++x) {
+                    at[(offset + (DWORD)y * V9X_PS11_MIP_PITCH) / 4ul +
+                       (DWORD)x] = v9x_ps11_mip_texel(face, level, x, y);
+                }
+            }
+        }
+    }
+    if (v9x_intel_hsw_surface_cube_mips(
+            v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_CUBE_SURFACE),
+            V9X_HSW_FMT_B8G8R8A8_UNORM, V9X_PS11_MIP_CUBE,
+            (v9x_u16)V9X_PS11_MIP_SIDE, V9X_PS11_MIP_PITCH,
+            (v9x_u8)V9X_PS11_MIP_LEVELS) != V9X_STATUS_OK) {
+        return 0;
+    }
+    for (s = 0ul; s < V9X_PS11_STAGES; ++s) {
+        sampler.mip_filter = 0u;
+        sampler.mag_filter = 0u;
+        sampler.min_filter = 0u;
+        sampler.min_lod = 0u;
+        sampler.max_lod = 0u;
+        sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
+        sampler.dw3 = V9X_PS11_CLAMP_ALL;
+        if (s == 1ul) {
+            sampler.mip_filter = V9X_PS11_MIPFILTER_NEAREST;
+            sampler.min_lod = V9X_PS11_LOD_ONE;
+            sampler.max_lod = V9X_PS11_LOD_ONE;
+        }
+        if (v9x_intel_hsw_sampler(
+                v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_MIP_SAMPLERS1 +
+                                 V9X_HSW_SAMPLER_BYTES * s),
+                &sampler) != V9X_STATUS_OK) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static int v9x_ps11_build(DWORD run)
@@ -2228,6 +2367,9 @@ static int v9x_ps11_build(DWORD run)
             V9X_HSW_FMT_B8G8R8A8_UNORM, V9X_PS11_CUBE,
             (v9x_u16)V9X_PS11_SIDE, (v9x_u32)V9X_PS11_SIDE * 4ul) !=
         V9X_STATUS_OK) {
+        return 0;
+    }
+    if (run == V9X_PS11_MIP_RUN && !v9x_ps11_mip_cube()) {
         return 0;
     }
 
@@ -2320,7 +2462,8 @@ static int v9x_ps11_build(DWORD run)
         d.attributes = V9X_HSW_WIDE_ATTRIBUTES;
         d.blend = 0ul;
         d.cc = 0ul;
-        d.sampler = V9X_PS11_SAMPLERS;
+        d.sampler = run == V9X_PS11_MIP_RUN && n == 1ul
+                        ? V9X_PS11_MIP_SAMPLERS1 : V9X_PS11_SAMPLERS;
         d.depth_buffer = 0ul;
         d.depth_clear = 0ul;
         d.depth_test = 0ul;
@@ -2405,6 +2548,8 @@ static void v9x_ps11_judge(DWORD target, DWORD variant)
 
     v9x_ps11_env(variant, &env);
     lookup.cube = v->cube;
+    lookup.mip = variant / 2ul == V9X_PS11_MIP_RUN ? 1ul + variant % 2ul
+                                                   : 0ul;
     area = v9x_edge(0ul, 1ul, v9x_tri_x[2], v9x_tri_y[2]);
     for (i = 0ul; i < 3ul; ++i) {
         DWORD j = (i + 1ul) % 3ul;

@@ -780,6 +780,77 @@ v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
     return V9X_STATUS_OK;
 }
 
+v9x_u32 v9x_intel_hsw_cube_qpitch(v9x_u16 side, v9x_u8 levels)
+{
+    v9x_u32 h0 = (v9x_u32)side;
+    v9x_u32 h1 = h0 > 1ul ? h0 >> 1 : 1ul;
+    v9x_u32 reachable = 1ul;
+
+    if (side == 0u || levels == 0u || levels > V9X_HSW_MIP_LEVELS_MAX) {
+        return 0ul;
+    }
+    while ((h0 >> reachable) != 0ul) {
+        ++reachable;
+    }
+    if ((v9x_u32)levels > reachable) {
+        return 0ul;
+    }
+    /* One level: LOD0 spacing, which surface_cube allows only for an even
+     * side. */
+    if (levels == 1u) {
+        return (h0 & 1ul) == 0ul ? h0 : 0ul;
+    }
+    return v9x_hsw_mip_align(h0, V9X_HSW_MIP_ALIGN_H) +
+           v9x_hsw_mip_align(h1, V9X_HSW_MIP_ALIGN_H) +
+           V9X_HSW_CUBE_QPITCH_J * V9X_HSW_MIP_ALIGN_H;
+}
+
+v9x_status v9x_intel_hsw_cubetree(v9x_u16 side, v9x_u8 levels,
+                                  v9x_u8 bytes_per_texel,
+                                  struct v9x_hsw_cubetree *tree)
+{
+    struct v9x_hsw_miptree face;
+    v9x_u32 level;
+
+    if (tree == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    tree->qpitch = v9x_intel_hsw_cube_qpitch(side, levels);
+    if (tree->qpitch == 0ul ||
+        v9x_intel_hsw_miptree(side, side, levels, bytes_per_texel, &face) !=
+            V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    tree->pitch = face.pitch;
+    tree->rows = (V9X_HSW_CUBE_FACES - 1ul) * tree->qpitch + face.rows;
+    for (level = 0ul; level < (v9x_u32)levels; ++level) {
+        tree->level_offset[level] = face.level_offset[level];
+    }
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_surface_cube_mips(v9x_u32 out[8], v9x_u16 format,
+                                           v9x_u32 base, v9x_u16 side,
+                                           v9x_u32 pitch, v9x_u8 levels)
+{
+    v9x_status status;
+
+    if (v9x_intel_hsw_cube_qpitch(side, levels) == 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (levels == 1u) {
+        return v9x_intel_hsw_surface_cube(out, format, base, side, pitch);
+    }
+    status = v9x_intel_hsw_surface_2d(out, format, base, side, side, pitch);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    /* FULL spacing is bit 10 clear, as surface_2d leaves it. */
+    out[0] = (out[0] & ~((v9x_u32)7ul << 29)) | (V9X_HSW_SURFTYPE_CUBE << 29) |
+             V9X_HSW_SURFACE_CUBE_FACES;
+    return v9x_intel_hsw_surface_mips(out, levels);
+}
+
 /* SAMPLER_STATE (Vol 2d): DW0 mip 21:20, mag 19:17, min 16:14; DW1 min
  * LOD 31:20, max LOD 19:8; DW2 border colour pointer 31:5; DW3 raw. */
 v9x_status v9x_intel_hsw_sampler(v9x_u32 out[4],

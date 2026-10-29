@@ -760,6 +760,18 @@ typedef struct v9x_ddhalinfo {
  * machine (step 5's probe records what it finds there).
  */
 #define V9X_DD_SURFACE_MORE_HANDLE        0x64ul
+/*
+ * ddsCapsEx.dwCaps2 in the same structure (di:1450), counted the same
+ * way: dwSize, lpIUnknowns, lpDD_lcl, dwPageLockCount, dwBytesAllocated,
+ * lpDD_int, dwMipMapCount, lpDDIClipper, lpHeapAliasInfo, dwOverlayFlags,
+ * rgjunc, lpVideoPort and lpddOverlayFX before it. DDSCAPS2_* (ddraw.h):
+ * a cube, its six face bits, a level below a chain's top. Logged for
+ * cubes at step 5c of docs\plans\haswell-ddi8-pixel-shaders.md.
+ */
+#define V9X_DD_SURFACE_MORE_CAPS2         0x34ul
+#define V9X_DDSCAPS2_CUBEMAP              0x00000200ul
+#define V9X_DDSCAPS2_CUBEMAP_ALLFACES     0x0000fc00ul
+#define V9X_DDSCAPS2_MIPMAPSUBLEVEL       0x00010000ul
 
 typedef struct v9x_ddhal_createsurfaceexdata {
     DWORD dwFlags;
@@ -1127,6 +1139,7 @@ typedef char v9x_assert_d3dcaps8_size[
 /* D3DPTEXTURECAPS_CUBEMAP and MIPCUBEMAP, d3d8caps.h. */
 #define V9X_D3DPTEXTURECAPS_CUBEMAP     0x00000800ul
 #define V9X_D3DPTEXTURECAPS_MIPCUBEMAP  0x00010000ul
+#define V9X_D3DPTEXTURECAPS_CUBEMAP_POW2 0x00020000ul
 #define V9X_D3DCAPS2_CANRENDERWINDOWED  0x00080000ul
 #define V9X_D3DPRESENT_INTERVAL_ONE       0x00000001ul
 #define V9X_D3DPRESENT_INTERVAL_IMMEDIATE 0x80000000ul

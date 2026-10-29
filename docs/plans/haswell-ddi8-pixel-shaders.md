@@ -397,8 +397,22 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
    - The cube control mode (PRM 2d p272 against p278) is a 5a-style
      probe question.
    - **Gate:** T19's cube cases; 3DMark's Pixel Shader test runs.
+   - **Status, 2026-10-30: cubes placed and sampled; 3DMark stops on bump
+     maps.** QPitch with mips is h0 + h1 + 12 j (V9XHSWMM /ps11:3, boot
+     129). The runtime makes a video-memory cube only once
+     GUID_DDMoreSurfaceCaps answers DDSCAPS2_CUBEMAP, and hands it to
+     CreateSurface whole (boot 131); the engine places it and samples it
+     as SURFTYPE_CUBE, and T19 Cube passes with error 0 at 565 and 32
+     bpp (boot 132). The held copies' mip walk no longer takes a face for
+     a level. Cubes are claimed. 3DMark 2001 SE then stops: "device does
+     not support bump normal maps" - no bump format is published, which
+     5d takes first. Record:
+     [`../decisions/2026-10-30-haswell-ps11-step5c-cubes.md`](../decisions/2026-10-30-haswell-ps11-step5c-cubes.md).
 
    *5d. Nature's materials.*
+   - Bump texture formats first: with cubes claimed 3DMark stops in
+     `P_D3D::DRV_allocateMap`, "device does not support bump normal maps"
+     (boot 132).
    - Log each ValidateTextureStageState refusal under the normal
      answers (boot 119 answered all of them, so which ones fail is not
      known).

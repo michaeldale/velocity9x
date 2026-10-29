@@ -191,8 +191,11 @@ typedef struct v9x_d3d_hsw_texture {
     v9x_u16 height;
     v9x_u32 pitch;
     /* Mip levels the sampler may read: 1, or a chain create_surface laid
-     * out (v9x_d3d_hsw_mip_levels). */
+     * out (v9x_d3d_hsw_mip_levels), or a cube's. */
     v9x_u8 levels;
+    /* A cube create_surface placed (v9x_d3d_hsw_cube_at), which only a
+     * pixel shader samples; width is its side. */
+    v9x_u8 cube;
 } V9X_D3D_HSW_TEXTURE;
 
 /* What the mapping makes of a draw. */
@@ -820,13 +823,42 @@ static v9x_u32 v9x_d3d_hsw_float(v9x_u32 byte)
     return convert.bits;
 }
 
+/* The cubes create_surface placed (v9x_d3d_hsw_create_cube), each by the
+ * frame-buffer offset of its +X top; base 0 is a free entry. */
+#define V9X_D3D_HSW_CUBES 64u
+
+typedef struct v9x_d3d_hsw_cube {
+    DWORD base;
+    v9x_u16 side;
+    v9x_u8 levels;
+} V9X_D3D_HSW_CUBE;
+
+static V9X_D3D_HSW_CUBE v9x_d3d_hsw_cubes[V9X_D3D_HSW_CUBES];
+
+/* The placed cube whose +X top is at offset, or null. */
+static const V9X_D3D_HSW_CUBE *v9x_d3d_hsw_cube_at(DWORD offset)
+{
+    DWORD n;
+
+    for (n = 0ul; offset != 0ul && n < V9X_D3D_HSW_CUBES; ++n) {
+        if (v9x_d3d_hsw_cubes[n].base == offset) {
+            return &v9x_d3d_hsw_cubes[n];
+        }
+    }
+    return 0;
+}
+
 /* A texture surface as this engine samples it, or the reason it cannot be.
- * has_alpha: whether its format carries alpha. */
+ * has_alpha: whether its format carries alpha. A cube create_surface
+ * placed is its side square with its levels, every coordinate clamped
+ * (TEXCOORDMODE_CLAMP, as V9XHSWMM /ps11:1 and :3 sampled it): Direct3D's
+ * address modes do not apply to cubes. */
 static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
                                       V9X_D3D_HSW_TEXTURE *unit,
                                       int *has_alpha)
 {
     V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)texture->object;
+    const V9X_D3D_HSW_CUBE *cube;
     DWORD offset;
 
     if (surface == 0 || surface->lpGbl == 0 ||
@@ -875,6 +907,20 @@ static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
     unit->width = surface->lpGbl->wWidth;
     unit->height = surface->lpGbl->wHeight;
     unit->pitch = (v9x_u32)surface->lpGbl->lPitch;
+    unit->cube = 0u;
+    cube = v9x_d3d_hsw_cube_at(offset);
+    if (cube != 0) {
+        unit->cube = 1u;
+        unit->levels = cube->levels;
+        unit->sampler.mip_filter = V9X_D3D_HSW_MIPFILTER_NONE;
+        unit->sampler.max_lod = 0u;
+        if (unit->levels > 1u) {
+            unit->sampler.mip_filter =
+                v9x_d3d_hsw_mip_filter(texture->min_filter);
+            unit->sampler.max_lod = (v9x_u16)((unit->levels - 1u) << 8);
+        }
+        unit->sampler.dw3 = V9X_D3D_HSW_TC_CLAMP;
+    }
     if (unit->width == 0u || unit->height == 0u ||
         unit->width > v9x_d3d_hsw_limits.texture_size_max ||
         unit->height > v9x_d3d_hsw_limits.texture_size_max) {
@@ -968,6 +1014,10 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
         if (reason != V9X_D3D_HSW_REFUSE_NONE) {
             return reason;
         }
+        /* The fixed-function kernels sample in two dimensions. */
+        if (state->texture[0].cube || state->texture[1].cube) {
+            return V9X_D3D_HSW_REFUSE_TEXTURE;
+        }
         reason = v9x_d3d_hsw_two_unit_stages(
             draw->texture.color_op, draw->texture.alpha_op, has_alpha,
             draw->texture1.color_op, draw->texture1.alpha_op, has_alpha1,
@@ -981,6 +1031,9 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
                                           &has_alpha);
         if (reason != V9X_D3D_HSW_REFUSE_NONE) {
             return reason;
+        }
+        if (state->texture[0].cube) {
+            return V9X_D3D_HSW_REFUSE_TEXTURE;
         }
         if (draw->color_key_enable != 0ul) {
             return V9X_D3D_HSW_REFUSE_KEY;
@@ -2971,8 +3024,131 @@ static DWORD v9x_d3d_hsw_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
-/* A lone video-memory Z buffer, or a video-memory mip chain; every other
- * surface is DirectDraw's. */
+/*
+ * Cubes, step 5c of docs\plans\haswell-ddi8-pixel-shaders.md. The Direct3D
+ * 8 runtime hands a video-memory cube to CreateSurface whole: six faces in
+ * D3DCUBEMAP_FACES order, each face's top and then its levels, every
+ * surface naming its face in DDSCAPS2 (the 4570, boot 131, V9XPS.LOG).
+ * The sampler reads a cube as one surface (V9XHSWMM /ps11:1 and :3), so
+ * it is placed here as one block in v9x_intel_hsw_cubetree's layout, each
+ * surface found by its face bit and its size rather than its place in the
+ * list. The block starts with +X's top, the surface CreateSurfaceEx names
+ * and a texture record carries, and the cube is remembered by that offset
+ * in v9x_d3d_hsw_cubes: a texture there samples as a cube. HAL statics
+ * are shared by every process, as video memory is.
+ */
+
+/* A surface's DDSCAPS2, from its DDRAWI_DDRAWSURFACE_MORE; the runtime's
+ * own halves are live while CreateSurface runs. */
+static DWORD v9x_d3d_hsw_caps2(const V9X_DD_SURFACE_LCL *surface)
+{
+    const BYTE *more;
+
+    if (surface->lpSurfMore == 0ul) {
+        return 0ul;
+    }
+    more = (const BYTE *)surface->lpSurfMore;
+    if (IsBadReadPtr(more, V9X_DD_SURFACE_MORE_CAPS2 + 4ul)) {
+        return 0ul;
+    }
+    return *(const DWORD *)(more + V9X_DD_SURFACE_MORE_CAPS2);
+}
+
+/* The face a surface's DDSCAPS2 names, 0-5 from +X, or 6 for none or
+ * more than one. */
+static DWORD v9x_d3d_hsw_cube_face(DWORD caps2)
+{
+    DWORD bits = caps2 & V9X_DDSCAPS2_CUBEMAP_ALLFACES;
+    DWORD face;
+
+    for (face = 0ul; face < V9X_HSW_CUBE_FACES; ++face) {
+        if (bits == (0x400ul << face)) {
+            return face;
+        }
+    }
+    return V9X_HSW_CUBE_FACES;
+}
+
+static DWORD v9x_d3d_hsw_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    v9x_u32 offsets[V9X_HSW_CUBE_FACES * V9X_HSW_MIP_LEVELS_MAX];
+    DWORD seen[V9X_HSW_CUBE_FACES];
+    struct v9x_hsw_cubetree tree;
+    V9X_D3D_HSW_CUBE *slot = 0;
+    v9x_u16 format;
+    int has_alpha;
+    v9x_u32 bytes;
+    DWORD side = (DWORD)list[0]->lpGbl->wWidth;
+    DWORD levels = data->dwSCnt / V9X_HSW_CUBE_FACES;
+    DWORD index;
+    DWORD face;
+    DWORD level;
+    DWORD base;
+
+    /* Six square faces of equal levels, and room to remember them. */
+    if (data->dwSCnt % V9X_HSW_CUBE_FACES != 0ul || levels == 0ul ||
+        levels > V9X_HSW_MIP_LEVELS_MAX ||
+        side != (DWORD)list[0]->lpGbl->wHeight ||
+        side > v9x_d3d_hsw_limits.texture_size_max ||
+        !v9x_d3d_hsw_texture_format_of(list[0], &format, &has_alpha,
+                                       &bytes) ||
+        v9x_intel_hsw_cubetree((v9x_u16)side, (v9x_u8)levels, (v9x_u8)bytes,
+                               &tree) != V9X_STATUS_OK) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    for (index = 0ul; index < V9X_D3D_HSW_CUBES; ++index) {
+        if (v9x_d3d_hsw_cubes[index].base == 0ul) {
+            slot = &v9x_d3d_hsw_cubes[index];
+            break;
+        }
+    }
+    if (slot == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+
+    /* Each surface's face from its DDSCAPS2 and level from its edge, each
+     * pair once; +X's top must lead the list, the block's first byte. */
+    for (face = 0ul; face < V9X_HSW_CUBE_FACES; ++face) {
+        seen[face] = 0ul;
+    }
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        const V9X_DD_SURFACE_LCL *surface = list[index];
+        DWORD edge;
+
+        if (surface == 0 || surface->lpGbl == 0) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        face = v9x_d3d_hsw_cube_face(v9x_d3d_hsw_caps2(surface));
+        edge = (DWORD)surface->lpGbl->wWidth;
+        for (level = 0ul; level < levels; ++level) {
+            if (edge == ((side >> level) != 0ul ? side >> level : 1ul)) {
+                break;
+            }
+        }
+        if (face >= V9X_HSW_CUBE_FACES || level == levels ||
+            (DWORD)surface->lpGbl->wHeight != edge ||
+            (seen[face] & (1ul << level)) != 0ul ||
+            (index == 0ul && (face != 0ul || level != 0ul))) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        seen[face] |= 1ul << level;
+        offsets[index] = face * tree.qpitch * tree.pitch +
+                         tree.level_offset[level];
+    }
+    if (v9x_d3d_place_block(data, V9X_D3D_HSW_TILE_BYTES, tree.pitch,
+                            tree.rows, offsets, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    slot->base = base;
+    slot->side = (v9x_u16)side;
+    slot->levels = (v9x_u8)levels;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/* A lone video-memory Z buffer, a video-memory cube, or a video-memory mip
+ * chain; every other surface is DirectDraw's. */
 static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list;
@@ -2992,6 +3168,10 @@ static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         return v9x_d3d_hsw_create_depth(data, surface);
     }
+    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        (v9x_d3d_hsw_caps2(surface) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
+        return v9x_d3d_hsw_create_cube(data);
+    }
     if (data->dwSCnt >= 2ul &&
         (surface->ddsCaps & (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) ==
             (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) {
@@ -3000,12 +3180,24 @@ static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
-/* The top of a tree or a Z buffer placed above is going: free the block
- * (d3d_place.c ignores every other surface). */
+/* The top of a tree, a cube's +X top or a Z buffer placed above is
+ * going: free the block (d3d_place.c ignores every other surface), and
+ * forget a cube that started there. */
 static void v9x_d3d_hsw_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
+    const V9X_DD_SURFACE_LCL *surface =
+        (const V9X_DD_SURFACE_LCL *)data->lpDDSurface;
+    DWORD offset = surface != 0 && surface->lpGbl != 0
+                       ? v9x_surface_offset(surface) : 0xfffffffful;
+    DWORD n;
+
     if (v9x_d3d_place_release(data, V9X_D3D_HSW_TILE_BYTES)) {
         ++v9x_hal->d3d_diagnostics.mip_tree_frees;
+        for (n = 0ul; n < V9X_D3D_HSW_CUBES; ++n) {
+            if (v9x_d3d_hsw_cubes[n].base == offset) {
+                v9x_d3d_hsw_cubes[n].base = 0ul;
+            }
+        }
     }
 }
 
@@ -3206,13 +3398,14 @@ static DWORD v9x_d3d_hsw_ps11_victim;
 
 /* Whether a cached kernel was built for this shader, stages and fog; the
  * colour is zero without fog (v9x_d3d_hsw_map), so it compares either
- * way. */
+ * way. cube is the stages whose texture is a placed cube. */
 static int v9x_d3d_hsw_ps11_matches(const V9X_D3D_HSW_PS11_ENTRY *entry,
                                     const V9X_R3D_SHADER *shader,
+                                    v9x_u32 cube,
                                     const struct v9x_hsw_ps_desc *fixed)
 {
     return entry->serial == shader->serial &&
-           entry->cube == shader->env.cube &&
+           entry->cube == cube &&
            entry->projected == shader->env.projected &&
            entry->fog == fixed->fog &&
            entry->fog_rgb[0] == fixed->fog_rgb[0] &&
@@ -3220,10 +3413,11 @@ static int v9x_d3d_hsw_ps11_matches(const V9X_D3D_HSW_PS11_ENTRY *entry,
            entry->fog_rgb[2] == fixed->fog_rgb[2];
 }
 
-/* The kernel for the shader under the draw's fog, built on a miss; its
- * offset from the draw slot's state base in *kernel. 0 when it cannot be
- * built or is larger than a slot. */
+/* The kernel for the shader under the draw's fog and cube stages, built
+ * on a miss; its offset from the draw slot's state base in *kernel. 0 when
+ * it cannot be built or is larger than a slot. */
 static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
+                                   v9x_u32 cube,
                                    const struct v9x_hsw_ps_desc *fixed,
                                    const struct v9x_hsw_pipe_slot *slot,
                                    DWORD *kernel)
@@ -3240,7 +3434,7 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     for (index = 0ul; index < V9X_INTEL_HSW_PS11_KERNEL_SLOTS; ++index) {
         entry = &v9x_d3d_hsw_ps11_cache[index];
         if (entry->tag != 0ul && v9x_d3d_hsw_ps11_matches(entry, shader,
-                                                          fixed) &&
+                                                          cube, fixed) &&
             status[V9X_D3D_HSW_PS11_TAG_DWORD + index] == entry->tag) {
             *kernel = V9X_INTEL_HSW_PS11_KERNEL_OFF +
                       index * V9X_INTEL_HSW_PS11_KERNEL_SLOT -
@@ -3267,7 +3461,7 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     desc.const_grf = V9X_D3D_HSW_PS11_CONST_GRF;
     desc.setup_grf = (v9x_u8)(V9X_D3D_HSW_PS11_CONST_GRF +
                               V9X_HSW_PS11_CONST_GRFS);
-    desc.cube = shader->env.cube;
+    desc.cube = cube;
     desc.projected = shader->env.projected;
     desc.fog = fixed->fog;
     for (index2 = 0ul; index2 < 3ul; ++index2) {
@@ -3289,7 +3483,7 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     }
     status[V9X_D3D_HSW_PS11_COUNTER_DWORD] = tag;
     entry->serial = shader->serial;
-    entry->cube = shader->env.cube;
+    entry->cube = cube;
     entry->projected = shader->env.projected;
     entry->fog = desc.fog;
     for (index2 = 0ul; index2 < 3ul; ++index2) {
@@ -3337,11 +3531,16 @@ static DWORD v9x_d3d_hsw_ps11_state(const V9X_R3D_DRAW *draw,
         if ((sampled & (1ul << index)) == 0ul) {
             continue;
         }
-        if (v9x_intel_hsw_surface_2d(
-                image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
-                texture->format, texture->address, texture->width,
-                texture->height, texture->pitch) != V9X_STATUS_OK ||
-            (texture->levels > 1u &&
+        if ((texture->cube
+                 ? v9x_intel_hsw_surface_cube_mips(
+                       image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
+                       texture->format, texture->address, texture->width,
+                       texture->pitch, texture->levels)
+                 : v9x_intel_hsw_surface_2d(
+                       image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
+                       texture->format, texture->address, texture->width,
+                       texture->height, texture->pitch)) != V9X_STATUS_OK ||
+            (!texture->cube && texture->levels > 1u &&
              v9x_intel_hsw_surface_mips(
                  image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
                  texture->levels) != V9X_STATUS_OK) ||
@@ -3395,6 +3594,7 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
     struct v9x_hsw_ps11_draw ps;
     V9X_R3D_VERTEX corners[3];
     v9x_u32 sampled;
+    v9x_u32 cube = 0ul;
     DWORD started = V9X_TIME_BEGIN();
     DWORD reason;
     DWORD kernel = 0ul;
@@ -3428,12 +3628,10 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
     if (state.scissor_empty) {
         return 1;
     }
-    /* Cube maps wait for step 5c, which places a cube's faces whole. */
+    /* A stage whose texture is a placed cube samples it as one: the
+     * kernel looks up three coordinates there (Direct3D chooses by the
+     * texture, not the instruction). */
     sampled = shader->program->samples;
-    if (shader->env.cube != 0ul) {
-        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_TEXTURE);
-        return 0;
-    }
     for (index = 0ul; index < V9X_R3D_SHADER_STAGES; ++index) {
         if ((sampled & (1ul << index)) == 0ul) {
             continue;
@@ -3443,6 +3641,9 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
         if (reason != V9X_D3D_HSW_REFUSE_NONE) {
             v9x_d3d_hsw_count_refusal(reason);
             return 0;
+        }
+        if (units[index].cube) {
+            cube |= 1ul << index;
         }
     }
     if (draw->fog_enable != 0ul) {
@@ -3491,7 +3692,7 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
             v9x_d3d_hsw_count_refusal(reason);
             return 0;
         }
-        if (!v9x_d3d_hsw_ps11_kernel(shader, &state.desc, &slot,
+        if (!v9x_d3d_hsw_ps11_kernel(shader, cube, &state.desc, &slot,
                                      &kernel)) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
             return 0;

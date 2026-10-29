@@ -2745,7 +2745,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 6ul
+#define D32_T19_PROGRAMS 7ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -2874,18 +2874,49 @@ typedef struct d32_t19_program {
     const char *name;
     DWORD kill_set;     /* 1 + the coordinate set texkill reads, or 0 */
     DWORD fog;          /* D32_T19_FOG_*                               */
+    DWORD cube;         /* bit N: stage N samples the cube texture     */
     DWORD tokens[24];
 } D32_T19_PROGRAM;
 
+/*
+ * Step 5c's cube: 8x8, two levels, A8R8G8B8, managed, made with
+ * CreateCubeTexture where the device claims cube maps (D3DCAPS8
+ * TextureCaps, DWORD 15) and filled face by face through LockRect. Cube
+ * draws it from stage 1 at directions over all six faces; level 0 is
+ * what a magnified lookup with no mip filter reads. Without the cap the
+ * program is skipped, not counted. IDirect3DDevice8 CreateCubeTexture is
+ * slot 22; IDirect3DCubeTexture8 LockRect 16 and UnlockRect 17, after
+ * IDirect3DBaseTexture8's 11-13 and its own GetLevelDesc and
+ * GetCubeMapSurface.
+ */
+#define D3DDEV8_CREATE_CUBE_TEXTURE 22
+#define D3DCUBE8_LOCK_RECT 16
+#define D3DCUBE8_UNLOCK_RECT 17
+#define D32_D3DCAPS8_TEXTURE_CAPS 15
+#define D32_D3DPTEXTURECAPS_CUBEMAP 0x00000800ul
+#define D32_T19_CUBE_LEVELS 2u
+
+typedef HRESULT (WINAPI *d32_d3d8_create_cube_fn)(D32_OBJECT *, UINT, UINT,
+    DWORD, DWORD, DWORD, D32_OBJECT **);
+typedef HRESULT (WINAPI *d32_d3d8_cube_lock_fn)(D32_OBJECT *, DWORD, UINT,
+    D32_D3DLOCKED_RECT *, const RECT *, DWORD);
+typedef HRESULT (WINAPI *d32_d3d8_cube_unlock_fn)(D32_OBJECT *, DWORD, UINT);
+
+/* The cube and stage 1's 2D texture it stands in for, while T19 runs. */
+static D32_OBJECT *d32_t19_cube;
+static D32_OBJECT *d32_t19_stage1;
+/* The stages the program being judged samples as cubes. */
+static DWORD d32_t19_cube_stages;
+
 static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
     /* Push: both colours and constants c0, c5 and c7. */
-    { "Push", 0ul, D32_T19_FOG_NONE, {
+    { "Push", 0ul, D32_T19_FOG_NONE, 0ul, {
         D32_PT_VER11,
         D32_PT_MAD, D32_PT_TO_R(1), D32_PT_V(0), D32_PT_C(0), D32_PT_C(7),
         D32_PT_MAD, D32_PT_TO_R(0), D32_PT_V(1), D32_PT_C(5), D32_PT_R(1),
         D32_PT_END } },
     /* FourTex: all four stages sampled and combined. */
-    { "FourTex", 0ul, D32_T19_FOG_NONE, {
+    { "FourTex", 0ul, D32_T19_FOG_NONE, 0ul, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEX, D32_PT_TO_T(1),
         D32_PT_TEX, D32_PT_TO_T(2), D32_PT_TEX, D32_PT_TO_T(3),
@@ -2894,14 +2925,14 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_LRP, D32_PT_TO_R(0), D32_PT_C(0), D32_PT_R(1), D32_PT_R(0),
         D32_PT_END } },
     /* Kill: set 1's u crosses zero, so part of the triangle is killed. */
-    { "Kill", 2ul, D32_T19_FOG_NONE, {
+    { "Kill", 2ul, D32_T19_FOG_NONE, 0ul, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEXKILL, D32_PT_TO_T(1),
         D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(0),
         D32_PT_END } },
     /* Bem: stage 1 looked up at its coordinates moved by stage 0's red
      * and green through stage 1's bump matrix. */
-    { "Bem", 0ul, D32_T19_FOG_NONE, {
+    { "Bem", 0ul, D32_T19_FOG_NONE, 0ul, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0),
         D32_PT_TEXBEM, D32_PT_TO_T(1), D32_PT_T(0),
@@ -2909,16 +2940,28 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_END } },
     /* Push under vertex fog, and Kill under table fog: fog after the
      * shader, and after texkill. */
-    { "PushFog", 0ul, D32_T19_FOG_VERTEX, {
+    { "PushFog", 0ul, D32_T19_FOG_VERTEX, 0ul, {
         D32_PT_VER11,
         D32_PT_MAD, D32_PT_TO_R(1), D32_PT_V(0), D32_PT_C(0), D32_PT_C(7),
         D32_PT_MAD, D32_PT_TO_R(0), D32_PT_V(1), D32_PT_C(5), D32_PT_R(1),
         D32_PT_END } },
-    { "KillFog", 2ul, D32_T19_FOG_TABLE, {
+    { "KillFog", 2ul, D32_T19_FOG_TABLE, 0ul, {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEXKILL, D32_PT_TO_T(1),
         D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(0),
+        D32_PT_END } },
+    /* Cube: tex t1 from the cube over all six faces; mov r0, t1. */
+    { "Cube", 0ul, D32_T19_FOG_NONE, 0x2ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(1),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
         D32_PT_END } }
+};
+
+/* The Cube program's set 1 per vertex: directions whose plane passes near
+ * the origin, so all six faces are reached (V9XHSWMM /ps11:1's). */
+static const float d32_t19_direction[3][3] = {
+    { 1.0f, -0.6f, -0.6f }, { -0.6f, 1.0f, -0.6f }, { -0.6f, -0.6f, 1.0f }
 };
 
 /* A fogged program's vertex depths: inside the fog range, where the
@@ -3014,6 +3057,63 @@ static void d32_t19_coords(DWORD program, DWORD k, DWORD set, float out[4])
         out[1] = 0.4f;
         out[2] = 0.5f;
     }
+    if ((d32_t19_programs[program].cube & (1ul << set)) != 0ul) {
+        out[0] = d32_t19_direction[k][0];
+        out[1] = d32_t19_direction[k][1];
+        out[2] = d32_t19_direction[k][2];
+    }
+}
+
+/* A cube face's texels at a level: red names the face, alpha the level,
+ * green and blue the column and row (V9XHSWMM /ps11:1's, with the
+ * level). */
+static DWORD d32_t19_face_texel(DWORD face, DWORD level, long x, long y)
+{
+    return ((0xfful - face * 16ul - level * 8ul) << 24) |
+           ((face * 40ul + 20ul) << 16) |
+           (((DWORD)x * 32ul + 16ul) << 8) | ((DWORD)y * 32ul + 16ul);
+}
+
+/*
+ * The face and face coordinates of a direction, by the table Direct3D and
+ * OpenGL share: +X -X +Y -Y +Z -Z are faces 0-5, which are also
+ * D3DCUBEMAP_FACES' order; s = (sc / |ma| + 1) / 2 across, t = (tc / |ma|
+ * + 1) / 2 down (V9XHSWMM's v9x_ps11_face).
+ */
+static DWORD d32_t19_face(const float *d, float *s, float *t)
+{
+    float ax = d[0] < 0.0f ? -d[0] : d[0];
+    float ay = d[1] < 0.0f ? -d[1] : d[1];
+    float az = d[2] < 0.0f ? -d[2] : d[2];
+    float sc;
+    float tc;
+    float ma;
+    DWORD face;
+
+    if (ax >= ay && ax >= az) {
+        ma = ax;
+        face = d[0] >= 0.0f ? 0ul : 1ul;
+        sc = d[0] >= 0.0f ? -d[2] : d[2];
+        tc = -d[1];
+    } else if (ay >= az) {
+        ma = ay;
+        face = d[1] >= 0.0f ? 2ul : 3ul;
+        sc = d[0];
+        tc = d[1] >= 0.0f ? d[2] : -d[2];
+    } else {
+        ma = az;
+        face = d[2] >= 0.0f ? 4ul : 5ul;
+        sc = d[2] >= 0.0f ? d[0] : -d[0];
+        tc = -d[1];
+    }
+    if (ma <= 0.0f) {
+        *s = 0.0f;
+        *t = 0.0f;
+        return face;
+    }
+    *s = (sc / ma + 1.0f) * 0.5f;
+    *t = (tc / ma + 1.0f) * 0.5f;
+    return face;
 }
 
 /* Stage s's 8x8 texels, A8R8G8B8 (step 5a's): every channel moves with x
@@ -3078,17 +3178,26 @@ static long d32_t19_index(float coord, int *unjudged)
     return index;
 }
 
-/* The interpreter's sampler: point sampling of the 2D stages, the user
- * pointer the pixel's not-judged flag. */
+/* The interpreter's sampler: point sampling of the 2D stages, and level 0
+ * of the cube for a cube stage; the user pointer the pixel's not-judged
+ * flag. */
 static void d32_t19_sample(void *user, v9x_u32 stage, v9x_u32 count,
                            const float *coords, float rgba[4])
 {
     int *unjudged = (int *)user;
     DWORD texel;
+    DWORD face;
+    float s;
+    float t;
 
-    (void)count;
-    texel = d32_t19_texel(stage, d32_t19_index(coords[0], unjudged),
-                          d32_t19_index(coords[1], unjudged));
+    if ((d32_t19_cube_stages & (1ul << stage)) != 0ul && count >= 3ul) {
+        face = d32_t19_face(coords, &s, &t);
+        texel = d32_t19_face_texel(face, 0ul, d32_t19_index(s, unjudged),
+                                   d32_t19_index(t, unjudged));
+    } else {
+        texel = d32_t19_texel(stage, d32_t19_index(coords[0], unjudged),
+                              d32_t19_index(coords[1], unjudged));
+    }
     rgba[0] = (float)((texel >> 16) & 0xfful) / 255.0f;
     rgba[1] = (float)((texel >> 8) & 0xfful) / 255.0f;
     rgba[2] = (float)(texel & 0xfful) / 255.0f;
@@ -3451,6 +3560,54 @@ static HRESULT d32_t19_texture(D32_OBJECT *device, DWORD stage,
         *texture, 0u);
 }
 
+/* The cube: each face and level filled through LockRect. */
+static HRESULT d32_t19_cube_texture(D32_OBJECT *device, D32_OBJECT **cube)
+{
+    D32_D3DLOCKED_RECT locked;
+    HRESULT hr;
+    DWORD face;
+    DWORD level;
+    long side;
+    long x;
+    long y;
+
+    *cube = 0;
+    hr = ((d32_d3d8_create_cube_fn)
+          device->vtbl[D3DDEV8_CREATE_CUBE_TEXTURE])(
+        device, (UINT)D32_T19_TEXELS, D32_T19_CUBE_LEVELS, 0ul,
+        D32_D3DFMT_A8R8G8B8, D32_D3DPOOL_MANAGED, cube);
+    if (hr != 0 || *cube == 0) {
+        *cube = 0;
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    for (face = 0ul; face < 6ul; ++face) {
+        for (level = 0ul; level < D32_T19_CUBE_LEVELS; ++level) {
+            side = D32_T19_TEXELS >> level;
+            d32_zero(&locked, sizeof(locked));
+            hr = ((d32_d3d8_cube_lock_fn)(*cube)->vtbl[D3DCUBE8_LOCK_RECT])(
+                *cube, face, (UINT)level, &locked, 0, 0ul);
+            if (hr != 0 || locked.pBits == 0) {
+                return hr != 0 ? hr : (HRESULT)0x80004005ul;
+            }
+            for (y = 0l; y < side; ++y) {
+                DWORD *row = (DWORD *)((BYTE *)locked.pBits +
+                                       y * locked.Pitch);
+
+                for (x = 0l; x < side; ++x) {
+                    row[x] = d32_t19_face_texel(face, level, x, y);
+                }
+            }
+            hr = ((d32_d3d8_cube_unlock_fn)
+                  (*cube)->vtbl[D3DCUBE8_UNLOCK_RECT])(*cube, face,
+                                                        (UINT)level);
+            if (hr != 0) {
+                return hr;
+            }
+        }
+    }
+    return 0;
+}
+
 /* One program drawn and judged; 1 when it passes. */
 static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                              const V9X_PS11_ENV *env, DWORD format)
@@ -3481,6 +3638,11 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     /* Each program's name first, flushed, so a hang names it. */
     d32_line("T19Program", p->name);
     wsprintfA(key, "T19%sVerdict", p->name);
+    if (p->cube != 0ul && d32_t19_cube == 0) {
+        d32_line(key, "skip-no-cube");
+        return 1ul;
+    }
+    d32_t19_cube_stages = p->cube;
     dwords = 0ul;
     while (p->tokens[dwords] != D32_PT_END) {
         ++dwords;
@@ -3518,6 +3680,13 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                                         ? D32_D3DFOG_LINEAR : D32_D3DFOG_NONE);
     rs(device, D32_RS_FOGSTART, d32_float_bits(D32_T19_FOG_START));
     rs(device, D32_RS_FOGEND, d32_float_bits(D32_T19_FOG_END));
+    /* The cube in stage 1 for a program that samples it. */
+    if ((p->cube & 0x2ul) != 0ul) {
+        d32_t19_key(p->name, "SetCubeHr",
+                    (DWORD)((d32_set_texture_fn)
+                            device->vtbl[D3DDEV8_SET_TEXTURE])(
+                        device, 1ul, d32_t19_cube));
+    }
     create_hr = ((d32_d3d8_create_ps_fn)
                  device->vtbl[D3DDEV8_CREATE_PIXEL_SHADER])(
         device, p->tokens, &handle);
@@ -3548,9 +3717,15 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     d32_t19_key(p->name, "BackBufferHr", (DWORD)back_hr);
     d32_t19_key(p->name, "LockHr", (DWORD)lock_hr);
 
+    /* The interpreter looks a cube stage up with three coordinates only
+     * where its environment says the stage is one (the first Cube run,
+     * boot 132, judged the cube's texels against stage 1's 2D ones). */
     if (clear_hr == 0 && begin_hr == 0 && create_hr == 0 && set_hr == 0 &&
         draw_hr == 0 && end_hr == 0 && lock_hr == 0 && locked.pBits != 0) {
-        verdict = d32_t19_judge(program, &parsed, env, vertex,
+        V9X_PS11_ENV judged = *env;
+
+        judged.cube = p->cube;
+        verdict = d32_t19_judge(program, &parsed, &judged, vertex,
                                 (const BYTE *)locked.pBits,
                                 (DWORD)locked.Pitch, format);
     }
@@ -3566,6 +3741,11 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_DELETE_PIXEL_SHADER])(
             device, handle);
     }
+    if ((p->cube & 0x2ul) != 0ul) {
+        ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
+            device, 1ul, d32_t19_stage1);
+    }
+    d32_t19_cube_stages = 0ul;
     wsprintfA(key, "T19%sVerdict", p->name);
     d32_line(key, verdict);
     return lstrcmpA(verdict, "pass") == 0 ? 1ul : 0ul;
@@ -3691,6 +3871,18 @@ static DWORD d32_ps11(void)
         tss(device, stage, D32_D3DTSS_ADDRESSV, D32_D3DTADDRESS_CLAMP);
     }
 
+    d32_t19_stage1 = texture[1];
+    d32_hx("T19TextureCaps", caps[D32_D3DCAPS8_TEXTURE_CAPS]);
+    if ((caps[D32_D3DCAPS8_TEXTURE_CAPS] & D32_D3DPTEXTURECAPS_CUBEMAP) !=
+        0ul) {
+        hr = d32_t19_cube_texture(device, &d32_t19_cube);
+        d32_hx("T19CubeHr", (DWORD)hr);
+        if (hr != 0) {
+            reason = "no-cube";
+            goto release;
+        }
+    }
+
     d32_t19_env(&env);
     for (stage = 0ul; stage < 4ul; ++stage) {
         ((d32_stage_state_fn)device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE])(
@@ -3730,6 +3922,11 @@ release:
                 texture[stage]);
         }
     }
+    if (d32_t19_cube != 0) {
+        ((d32_release_fn)d32_t19_cube->vtbl[COM_RELEASE])(d32_t19_cube);
+        d32_t19_cube = 0;
+    }
+    d32_t19_stage1 = 0;
     if (device != 0) {
         ((d32_release_fn)device->vtbl[COM_RELEASE])(device);
     }

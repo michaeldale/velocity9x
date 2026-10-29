@@ -821,6 +821,41 @@ v9x_status v9x_intel_hsw_surface_cube(v9x_u32 out[8], v9x_u16 format,
                                       v9x_u32 base, v9x_u16 side,
                                       v9x_u32 pitch);
 
+/*
+ * A cube with mips (Vol 5, surface arrays): each face a 2D tree as
+ * v9x_intel_hsw_miptree lays it out, the faces +X -X +Y -Y +Z -Z in
+ * order, QPitch rows apart. One level of an even side is
+ * surface_cube's LOD0 spacing, QPitch the side (measured, step 5a).
+ * More levels are Surface Array Spacing FULL, which Gen7 has no QPitch
+ * field for: the sampler computes h0 + h1 + 12 j, h0 and h1 the first two
+ * levels' heights aligned to VALIGN j = 2. That is Mesa's rule for Gen7
+ * and later (brw_tex_layout.c, 11 j before Gen7), unmeasured until
+ * V9XHSWMM /ps11:3. A one-level cube of side 1 has neither and is
+ * refused.
+ */
+#define V9X_HSW_CUBE_FACES   6u
+#define V9X_HSW_CUBE_QPITCH_J 12ul
+
+/* QPitch in rows for a cube of side and levels; 0 when it is refused. */
+v9x_u32 v9x_intel_hsw_cube_qpitch(v9x_u16 side, v9x_u8 levels);
+
+struct v9x_hsw_cubetree {
+    v9x_u32 pitch;      /* each face's tree's, bytes                   */
+    v9x_u32 qpitch;     /* rows from one face to the next              */
+    v9x_u32 rows;       /* the whole block: five QPitches and a tree   */
+    v9x_u32 level_offset[V9X_HSW_MIP_LEVELS_MAX]; /* within a face     */
+};
+
+v9x_status v9x_intel_hsw_cubetree(v9x_u16 side, v9x_u8 levels,
+                                  v9x_u8 bytes_per_texel,
+                                  struct v9x_hsw_cubetree *tree);
+
+/* RENDER_SURFACE_STATE for the cube cubetree lays out: surface_cube for
+ * one level, else SURFTYPE_CUBE, FULL spacing, six faces, MIP Count. */
+v9x_status v9x_intel_hsw_surface_cube_mips(v9x_u32 out[8], v9x_u16 format,
+                                           v9x_u32 base, v9x_u16 side,
+                                           v9x_u32 pitch, v9x_u8 levels);
+
 /* The most further draws one batch takes: each is 39 dwords, and an
  * indexed T&L batch is built in 4 KB of its slot's vertex area
  * (d3d_hsw.c), which holds the draw's own 212 and 15 more

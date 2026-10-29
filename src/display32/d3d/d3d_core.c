@@ -101,6 +101,26 @@ static const BYTE v9x_guid_d3d_parse_unknown[16] = {
     0x8cu, 0xe1u, 0x00u, 0xa0u, 0xc9u, 0x06u, 0x29u, 0xa8u
 };
 
+/*
+ * GUID_DDMoreSurfaceCaps, ddrawi.h:
+ *   0x3b8a0466, 0xf269, 0x11d1, {0x88,0x0b,0x00,0xc0,0x4f,0xd9,0x30,0xc5}
+ *
+ * DDMORESURFACECAPS: dwSize, ddsCapsMore (DDSCAPSEX, dwCaps2-4) - the
+ * DDSCAPS2 bits video memory may have - then for each heap the extended
+ * caps it may not hold and may hold only as an alternative (two DDSCAPSEX).
+ * Without DDSCAPS2_CUBEMAP there, the Direct3D 8 runtime made a managed
+ * cube in system memory and no copy in video memory: no CreateSurface and
+ * no TEXBLT reached the driver (the 4570, boot 130, V9XPS.LOG).
+ */
+static const BYTE v9x_guid_more_surface_caps[16] = {
+    0x66u, 0x04u, 0x8au, 0x3bu, 0x69u, 0xf2u, 0xd1u, 0x11u,
+    0x88u, 0x0bu, 0x00u, 0xc0u, 0x4fu, 0xd9u, 0x30u, 0xc5u
+};
+
+#define V9X_DD_MORE_SURFACE_CAPS_HEAPS 1ul      /* vmiData.dwNumHeaps */
+#define V9X_DD_MORE_SURFACE_CAPS_BYTES \
+    (16ul + 24ul * V9X_DD_MORE_SURFACE_CAPS_HEAPS)
+
 /* GUID_Miscellaneous2Callbacks, ddrawi.h (di:127), DDI 7's:
  *   0x406b2f00, 0x3e5a, 0x11d1, {0xb6,0x40,0x00,0xaa,0x00,0xa1,0xf9,0x6a} */
 static const BYTE v9x_guid_misc2_callbacks[16] = {
@@ -231,18 +251,20 @@ static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
 #define V9X_D3D_TNL_DEVICE_OFFERED 0
 
 /*
- * Pixel shader 1.1 and four textures are claimed to a DDI 8 process on an
- * engine with draw_shader (step 5b of docs\plans\haswell-ddi8-pixel-
- * shaders.md). This switch is what is not real yet, for measurement only:
- * cube maps, which no engine here places whole until step 5c, and a
+ * Pixel shader 1.1, four textures and cube maps are claimed to a DDI 8
+ * process on an engine with draw_shader (steps 5b and 5c of docs\plans\
+ * haswell-ddi8-pixel-shaders.md); the one engine with it places cubes
+ * whole in create_surface. This switch is for measurement only: a
  * ValidateTextureStageState that answers every DDI 8 question one pass.
  * Built with 1 for step 3, which recorded what 3DMark 2001 SE's shaders
  * draw with (V9XPS.LOG).
  */
-#define V9X_D3D_CUBE_CLAIMED 0
+#define V9X_D3D_VTSS_ONE_PASS 0
 
 static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
                              DWORD d);
+static void v9x_d3d_ps_log(const char *tag, DWORD a, DWORD b, DWORD c,
+                           DWORD d);
 static void v9x_d3d_ps_log(const char *tag, DWORD a, DWORD b, DWORD c,
                            DWORD d);
 static int v9x_d3d_ddi_for_object(void);
@@ -1311,14 +1333,70 @@ void v9x_d3d_textures_forget_surface(const V9X_DD_SURFACE_LCL *surface)
     }
 }
 
+/* A surface's DDSCAPS2 bits, from its DDRAWI_DDRAWSURFACE_MORE
+ * (V9X_DD_SURFACE_MORE_CAPS2); zero when that is not readable. */
+static DWORD v9x_d3d_surface_caps2_of(const V9X_DD_SURFACE_LCL *lcl)
+{
+    const BYTE *more;
+
+    if (lcl == 0 || IsBadReadPtr(lcl, sizeof(*lcl)) ||
+        lcl->lpSurfMore == 0ul) {
+        return 0ul;
+    }
+    more = (const BYTE *)lcl->lpSurfMore;
+    if (IsBadReadPtr(more, V9X_DD_SURFACE_MORE_CAPS2 + 4ul)) {
+        return 0ul;
+    }
+    return *(const DWORD *)(more + V9X_DD_SURFACE_MORE_CAPS2);
+}
+
+/* A surface's size as one word for the logs: width high, height low. */
+static DWORD v9x_d3d_surface_size_of(const V9X_DD_SURFACE_LCL *lcl)
+{
+    if (lcl == 0 || lcl->lpGbl == 0 ||
+        IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl))) {
+        return 0ul;
+    }
+    return ((DWORD)lcl->lpGbl->wWidth << 16) | (DWORD)lcl->lpGbl->wHeight;
+}
+
+/*
+ * Step 5c records what a cube's CreateSurface carries before placing one:
+ * the list's order, each surface's caps, DDSCAPS2 and size, and what the
+ * engine did (V9XPS.LOG, cube-* lines).
+ */
 DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+    V9X_DD_SURFACE_LCL **list;
+    DWORD caps2 = 0ul;
+    DWORD result;
+    DWORD n;
 
     if (data == 0 || ops == 0 || ops->create_surface == 0) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    return ops->create_surface(data);
+    list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    if (data->dwSCnt != 0ul && list != 0) {
+        caps2 = v9x_d3d_surface_caps2_of(list[0]);
+    }
+    if ((caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
+        v9x_d3d_ps_log("cube-create", data->dwSCnt, list[0]->ddsCaps, caps2,
+                       v9x_d3d_surface_size_of(list[0]));
+        for (n = 0ul; n < data->dwSCnt; ++n) {
+            v9x_d3d_ps_log("cube-surf", n, list[n]->ddsCaps,
+                           v9x_d3d_surface_caps2_of(list[n]),
+                           v9x_d3d_surface_size_of(list[n]));
+        }
+    }
+    result = ops->create_surface(data);
+    if ((caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
+        v9x_d3d_ps_log("cube-created", result, data->ddRVal,
+                       list[0]->lpGbl != 0 ? list[0]->lpGbl->fpVidMem : 0ul,
+                       list[0]->lpGbl != 0 ? (DWORD)list[0]->lpGbl->lPitch
+                                           : 0ul);
+    }
+    return result;
 }
 
 void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
@@ -4187,6 +4265,15 @@ static DWORD v9x_d3d_draw_one_indexed_primitive_body(
  */
 static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void);
 
+/* Whether cube maps are claimed: on an engine that runs pixel shaders,
+ * which is the one that places cubes whole and samples them (step 5c). */
+static int v9x_d3d_cubes_claimed(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+
+    return ops != 0 && ops->draw_shader != 0;
+}
+
 /* Whether DDI 6 may be offered at all: the 16-bit side's policy bit, a
  * Direct3D engine, and one to publish. Cheap; read on hot paths. */
 static int v9x_d3d_dp2_available(void)
@@ -5602,16 +5689,27 @@ static int v9x_d3d_held_wanted(const V9X_DD_SURFACE_LCL *lcl)
              V9X_DDSCAPS_BACKBUFFER | V9X_DDSCAPS_ZBUFFER)) == 0ul;
 }
 
-/* The next mip level below level: the attached surface that is itself a
- * mip level, as the engines' mip walks choose it. */
+/*
+ * The next mip level below level: the attached surface that is itself a
+ * mip level with half its edge. A cube's other faces are attached to its
+ * +X top too, each a mip level of the same size, and ahead of +X's own
+ * level 1: without the size rule the walk took -Z as level 1 (the 4570,
+ * boots 130-131, V9XPS.LOG cube-next).
+ */
 static const V9X_DD_SURFACE_LCL *v9x_d3d_held_next_level(
     const V9X_DD_SURFACE_LCL *level)
 {
     const V9X_DD_ATTACH_NODE *node;
     DWORD links;
+    DWORD width;
 
-    if ((level->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul) {
+    if ((level->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul ||
+        level->lpGbl == 0 || IsBadReadPtr(level->lpGbl, sizeof(*level->lpGbl))) {
         return 0;
+    }
+    width = (DWORD)level->lpGbl->wWidth >> 1;
+    if (width == 0ul) {
+        width = 1ul;
     }
     node = (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
     for (links = 0ul; node != 0 && links < V9X_D3D_HELD_LEVELS;
@@ -5621,7 +5719,11 @@ static const V9X_DD_SURFACE_LCL *v9x_d3d_held_next_level(
         }
         if (node->object != 0 && node->object != level &&
             !IsBadReadPtr(node->object, sizeof(*node->object)) &&
-            (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+            (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul &&
+            node->object->lpGbl != 0 &&
+            !IsBadReadPtr(node->object->lpGbl,
+                          sizeof(*node->object->lpGbl)) &&
+            (DWORD)node->object->lpGbl->wWidth == width) {
             return node->object;
         }
     }
@@ -5725,6 +5827,38 @@ static void v9x_d3d_held_drop(V9X_D3D_HANDLES *table, const void *local,
  */
 #define V9X_D3D_CSEX_SURFACES 16u
 
+/* Step 5c's record of cube handles, so a TEXBLT naming one is logged. */
+#define V9X_D3D_CUBE_HANDLES 8u
+
+static DWORD v9x_d3d_cube_handles[V9X_D3D_CUBE_HANDLES];
+static DWORD v9x_d3d_cube_handle_next;
+
+static void v9x_d3d_cube_handle_note(DWORD handle)
+{
+    DWORD n;
+
+    for (n = 0ul; n < V9X_D3D_CUBE_HANDLES; ++n) {
+        if (v9x_d3d_cube_handles[n] == handle) {
+            return;
+        }
+    }
+    v9x_d3d_cube_handles[v9x_d3d_cube_handle_next % V9X_D3D_CUBE_HANDLES] =
+        handle;
+    ++v9x_d3d_cube_handle_next;
+}
+
+static int v9x_d3d_cube_handle_seen(DWORD handle)
+{
+    DWORD n;
+
+    for (n = 0ul; handle != 0ul && n < V9X_D3D_CUBE_HANDLES; ++n) {
+        if (v9x_d3d_cube_handles[n] == handle) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static DWORD __stdcall V9xDdCreateSurfaceEx(
     V9X_DDHAL_CREATESURFACEEXDATA *data)
 {
@@ -5748,9 +5882,27 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
     for (at = 0u; at < queued; ++at) {
         V9X_DD_SURFACE_LCL *lcl = queue[at];
         DWORD handle = v9x_d3d_surface_handle_of(lcl);
+        DWORD caps2 = v9x_d3d_surface_caps2_of(lcl);
         DWORD memory;
         const V9X_DD_ATTACH_NODE *node;
 
+        /* Step 5c: a cube as CreateSurfaceEx sees it, and the surface the
+         * mip walks would take as its next level. */
+        if ((caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
+            const V9X_DD_SURFACE_LCL *next = v9x_d3d_held_next_level(lcl);
+
+            v9x_d3d_ps_log("cube-csex", handle, lcl->ddsCaps, caps2,
+                           lcl->lpGbl != 0 &&
+                                   !IsBadReadPtr(lcl->lpGbl, 8ul)
+                               ? lcl->lpGbl->fpVidMem : 0ul);
+            v9x_d3d_ps_log("cube-next", handle,
+                           next != 0 ? next->ddsCaps : 0ul,
+                           v9x_d3d_surface_caps2_of(next),
+                           v9x_d3d_surface_size_of(next));
+            if (handle != 0ul) {
+                v9x_d3d_cube_handle_note(handle);
+            }
+        }
         if (handle == 0ul && at != 0u) {
             continue;
         }
@@ -5806,6 +5958,12 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
                 break;
             }
             next = node->object;
+            if ((caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul && next != 0 &&
+                !IsBadReadPtr(next, sizeof(*next))) {
+                v9x_d3d_ps_log("cube-attach", (handle << 8) | links,
+                               next->ddsCaps, v9x_d3d_surface_caps2_of(next),
+                               v9x_d3d_surface_size_of(next));
+            }
             if (next == 0 || IsBadReadPtr(next, sizeof(*next)) ||
                 ((next->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul &&
                  (lcl->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul)) {
@@ -5980,6 +6138,12 @@ static int v9x_d3d_ddi7_texblt(V9X_D3D_CONTEXT *context,
     long bottom = (long)words[7];
     DWORD level;
 
+    /* Step 5c: a TEXBLT that names a cube, as it arrives. */
+    if (v9x_d3d_cube_handle_seen(words[0]) ||
+        v9x_d3d_cube_handle_seen(words[1])) {
+        v9x_d3d_ps_log("cube-texblt", words[0], words[1],
+                       (words[6] << 16) | (words[7] & 0xfffful), words[8]);
+    }
     if (words[0] == 0ul) {
         return 1;
     }
@@ -6492,12 +6656,23 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
     v9x_d3d_describe_draw(ops, context, &batch->draw);
     batch->shader.program = &shader->program;
     batch->shader.serial = shader->serial;
-    /* No stage is a cube until cube textures are placed whole (step 5c). */
+    /* No stage is marked a cube here: the engine knows a cube by where it
+     * placed it, and samples that stage as one (step 5c). */
     v9x_d3d_ps_env(context->ddi8_ps_const, context->ddi8_ps_stage, 0ul,
                    &batch->shader.env);
     for (s = 0ul; s < V9X_R3D_SHADER_STAGES; ++s) {
         v9x_d3d_ps_texture(context, &context->ddi8_ps_stage[s],
                            &batch->shader.texture[s]);
+        /* Step 5c: a stage that samples a cube, as the draw sees it. */
+        if (v9x_d3d_cube_handle_seen(context->ddi8_ps_stage[s].texture)) {
+            const V9X_DD_SURFACE_LCL *lcl =
+                (const V9X_DD_SURFACE_LCL *)batch->shader.texture[s].object;
+
+            v9x_d3d_ps_log("cube-draw", s, context->ddi8_ps_stage[s].texture,
+                           v9x_d3d_surface_size_of(lcl),
+                           lcl != 0 && lcl->lpGbl != 0 ? lcl->lpGbl->fpVidMem
+                                                       : 0ul);
+        }
     }
     *sink = *walk;
     sink->user = batch;
@@ -7210,7 +7385,7 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         data->ddrval = 0x80070057ul;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
-#if V9X_D3D_CUBE_CLAIMED
+#if V9X_D3D_VTSS_ONE_PASS
     /* Step 3's measurement: 3DMark 2001 SE stopped with "failed to
      * validate material" before making a shader (boot 118). Every question
      * is recorded and answered one pass, so the program goes on to make
@@ -7530,16 +7705,17 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
             caps->MaxSimultaneousTextures = 4ul;
         }
     }
-#if V9X_D3D_CUBE_CLAIMED
-    /* Cube maps too: 3DMark 2001 SE still called Nature unsupported with
-     * PS 1.1 and four textures (boot 117), and its engine records cube-map
-     * support per display mode (e2mfc.dll, P_DisplayMode::
-     * setCubeMapSupport). Claimed to see whether that is the missing
-     * test; no engine here samples a cube. */
-    caps->TextureCaps |= V9X_D3DPTEXTURECAPS_CUBEMAP |
-                         V9X_D3DPTEXTURECAPS_MIPCUBEMAP;
-    caps->CubeTextureFilterCaps = caps->TextureFilterCaps;
-#endif
+    /* Cube maps, with mips, of power-of-two sides: 3DMark 2001 SE calls
+     * Nature unsupported without them (boot 117; its engine records
+     * cube-map support per display mode, e2mfc.dll P_DisplayMode::
+     * setCubeMapSupport). A pixel shader samples them; the fixed-function
+     * draw refuses a cube (step 5c). */
+    if (v9x_d3d_cubes_claimed()) {
+        caps->TextureCaps |= V9X_D3DPTEXTURECAPS_CUBEMAP |
+                             V9X_D3DPTEXTURECAPS_MIPCUBEMAP |
+                             V9X_D3DPTEXTURECAPS_CUBEMAP_POW2;
+        caps->CubeTextureFilterCaps = caps->TextureFilterCaps;
+    }
 }
 
 /* DDI 8's format list (d3d_caps8.h): the published texture formats, the
@@ -7683,12 +7859,12 @@ static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
         format->dwFourCC = formats[answer->dwFormatIndex].format;
         format->dwRGBBitCount = 0ul;
         format->dwRBitMask = formats[answer->dwFormatIndex].operations;
-#if V9X_D3D_CUBE_CLAIMED
-        /* Step 3's measurement: every texture format a cube as well. */
-        if ((format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
+        /* Every texture format a cube as well where cubes are claimed:
+         * the engine places any format it samples as a cube. */
+        if (v9x_d3d_cubes_claimed() &&
+            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
             format->dwRBitMask |= V9X_D3DFORMAT_OP_CUBETEXTURE;
         }
-#endif
         format->dwGBitMask = 0ul;
         format->dwBBitMask = 0ul;
         format->dwRGBAlphaBitMask = 0ul;
@@ -7828,6 +8004,34 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
     }
     if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_get_driver_info2)) {
         return v9x_d3d_get_driver_info2(data);
+    }
+    /* Cube maps in video memory, where they are claimed; no heap is
+     * restricted. Declined elsewhere, as every GUID not answered is. */
+    if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_more_surface_caps) &&
+        v9x_d3d_cubes_claimed()) {
+        {
+            DWORD answer[V9X_DD_MORE_SURFACE_CAPS_BYTES / 4ul];
+            DWORD copy = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            DWORD at;
+
+            for (at = 0ul; at < V9X_DD_MORE_SURFACE_CAPS_BYTES / 4ul; ++at) {
+                answer[at] = 0ul;
+            }
+            answer[0] = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            answer[1] = V9X_DDSCAPS2_CUBEMAP;
+            if (data->dwExpectedSize < copy) {
+                copy = data->dwExpectedSize;
+            }
+            data->dwActualSize = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            if (data->lpvData != 0 && copy != 0ul) {
+                for (at = 0ul; at < copy; ++at) {
+                    ((BYTE *)data->lpvData)[at] = ((const BYTE *)answer)[at];
+                }
+                data->ddRVal = V9X_DD_OK;
+            }
+        }
+        v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
     }
     if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_z_pixel_formats)) {

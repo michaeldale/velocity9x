@@ -2114,6 +2114,61 @@ static void test_ps11_workload(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* Cubes with mips (intel_hsw_3d.h): QPitch h0 + h1 + 12 j with j 2, the
+ * single-level even cube at LOD0 spacing, each face a 2D tree. */
+static void test_cubetree(void)
+{
+    struct v9x_hsw_cubetree tree;
+    v9x_u32 surface[8];
+
+    /* One level: the side. Two levels of 2: 2 + 2 + 24. 8 with four:
+     * 8 + 4 + 24. 256 with nine: 256 + 128 + 24. A 4 cube's level 1 is
+     * 2 rows; a level of 1 row aligns to 2. */
+    CHECK(v9x_intel_hsw_cube_qpitch(8u, 1u) == 8ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(2u, 2u) == 28ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(8u, 4u) == 36ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(256u, 9u) == 408ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(4u, 3u) == 30ul);
+    /* Refused: side 1 alone, an odd side, no levels, too many. */
+    CHECK(v9x_intel_hsw_cube_qpitch(1u, 1u) == 0ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(3u, 1u) == 0ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(8u, 0u) == 0ul);
+    CHECK(v9x_intel_hsw_cube_qpitch(8u, 5u) == 0ul);
+
+    /* 8, four levels, 4 bytes: the face is test_miptree's 8x8 tree at 4
+     * bytes (pitch 64, 12 rows; levels at 0, 512, 528, 656); five QPitches
+     * of 36 and one tree, 192 rows. */
+    CHECK(v9x_intel_hsw_cubetree(8u, 4u, 4u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.qpitch == 36ul && tree.rows == 192ul);
+    CHECK(tree.level_offset[0] == 0ul && tree.level_offset[1] == 512ul &&
+          tree.level_offset[2] == 528ul && tree.level_offset[3] == 656ul);
+
+    /* 8, one level: LOD0 spacing, 48 rows. */
+    CHECK(v9x_intel_hsw_cubetree(8u, 1u, 4u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.qpitch == 8ul && tree.rows == 48ul);
+    CHECK(v9x_intel_hsw_cubetree(1u, 1u, 4u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* FULL spacing is DW0 bit 10 clear: SURFTYPE_CUBE, B8G8R8A8, six
+     * faces; MIP Count 3 in DW5. One level is surface_cube's. */
+    CHECK(v9x_intel_hsw_surface_cube_mips(surface,
+                                          V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                          0x01825400ul, 8u, 64ul, 4u) ==
+          V9X_STATUS_OK);
+    CHECK(surface[0] == 0x6300003ful && surface[1] == 0x01825400ul &&
+          surface[2] == 0x00070007ul && surface[3] == 63ul &&
+          surface[5] == 3ul);
+    CHECK(v9x_intel_hsw_surface_cube_mips(surface,
+                                          V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                          0x01825400ul, 8u, 32ul, 1u) ==
+          V9X_STATUS_OK);
+    CHECK(surface[0] == 0x6300043ful && surface[5] == 0ul);
+    CHECK(v9x_intel_hsw_surface_cube_mips(surface,
+                                          V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                          0x01825400ul, 8u, 64ul, 5u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
@@ -2134,6 +2189,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_headers();
     test_state();
     test_miptree();
+    test_cubetree();
     test_batch_and_check();
     test_qword_rule();
     test_phase_b1_stream();
