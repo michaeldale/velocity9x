@@ -50,6 +50,14 @@ struct v9x_hsw_ps11_desc {
     v9x_u32 projected;      /* bit N: stage N's u and v over w      */
 };
 
+/* The push block's dwords: V9X_HSW_PS11_CONST_GRFS registers of eight. */
+#define V9X_HSW_PS11_CONST_DWORDS (8u * 7u)
+
+/* The push block for env, laid out as above: c0-c7 clamped to [-1, 1],
+ * the bump matrices and luminance terms as given, every other dword 0. */
+void v9x_intel_hsw_ps11_constants(const V9X_PS11_ENV *env,
+                                  v9x_u32 out[V9X_HSW_PS11_CONST_DWORDS]);
+
 /* The kernel for program into out (capacity in dwords); *used dwords. */
 v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
                                     const V9X_PS11_PROGRAM *program,

@@ -1639,9 +1639,13 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
                     (vs->normals != 0ul ? 1ul : 0ul);
         }
     } else if (wide) {
-        /* Six four-float attributes after x y. */
+        /* sx sy sz rhw, w carrying rhw as the TL form's does, then six
+         * four-float attributes. */
+        elements[1].format = V9X_HSW_FMT_R32G32B32A32_FLOAT;
+        elements[1].component[2] = V9X_HSW_VFCOMP_STORE_SRC;
+        elements[1].component[3] = V9X_HSW_VFCOMP_STORE_SRC;
         for (index = 2ul; index < 8ul; ++index) {
-            elements[index].offset = (v9x_u16)(8u + 16u * (index - 2ul));
+            elements[index].offset = (v9x_u16)(16u + 16u * (index - 2ul));
         }
     } else if (count == 6ul) {
         elements[3].offset = 24u;
@@ -1908,7 +1912,7 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                 batch, draw->depth_buffer != 0ul ? depth_format : (v9x_u8)0u,
                 draw->cull, vs->provoking);
         } else {
-            if (draw->tl_vertices) {
+            if (draw->tl_vertices || ps != 0) {
                 v9x_intel_hsw_clip_screen(batch);
             } else {
                 v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CLIP);
@@ -2145,16 +2149,24 @@ v9x_status v9x_intel_hsw_draw_workload_ps11(struct v9x_hsw_batch *batch,
         ps->stages > 4u) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    /* Sequential, non-indexed wide vertices only, as the probe draws them;
-     * the HAL's forms come with step 5b. */
+    /* Sequential wide vertices, a list of whole triangles; depth under
+     * depth_test alone, and a scissor inside the target, not inverted. */
     if ((draw->kernel & 0x3ful) != 0ul ||
         (draw->binding_table & 0x1ful) != 0ul || draw->width == 0u ||
         draw->height == 0u || (draw->vertices & 3ul) != 0ul ||
         state_bytes < V9X_HSW_DRAW_STATE_BYTES ||
         draw->attributes != V9X_HSW_WIDE_ATTRIBUTES || draw->tl_vertices ||
         draw->tl_uv1 || draw->indices != 0ul ||
-        draw->vertex_count % 3ul != 0ul || draw->depth_buffer != 0ul ||
-        draw->scissor || draw->cull > V9X_HSW_DRAW_CULL_CCW) {
+        draw->vertex_count % 3ul != 0ul ||
+        (draw->depth_buffer != 0ul && draw->depth_clear != 0ul) ||
+        draw->cull > V9X_HSW_DRAW_CULL_CCW) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (draw->scissor &&
+        (draw->scissor_x1 < draw->scissor_x0 ||
+         draw->scissor_y1 < draw->scissor_y0 ||
+         draw->scissor_x1 >= draw->width ||
+         draw->scissor_y1 >= draw->height)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     return v9x_hsw_workload(batch, state_base, state_bytes, draw, 0, ps,

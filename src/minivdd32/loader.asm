@@ -294,9 +294,10 @@ V9X_HSW_BAR0_ALIGN      equ 003fffffh
 ; 256 KB since hardware T&L step 4, for the vertex kernels and T&L data.
 ; Where the reserve sits is the display driver's, passed to HSW_ENGINE_OPEN
 ; in ESI since 2026-10-20 (docs\plans\intel-haswell-heap-beyond-16-mib.md);
-; it was a fixed 1800000h.
-V9X_HSW_RESERVE_BYTES   equ 00040000h
-V9X_HSW_RESERVE_PAGES   equ 64
+; it was a fixed 1800000h. 320 KB since pixel shaders step 5b, for the PS
+; kernel cache at 40000h.
+V9X_HSW_RESERVE_BYTES   equ 00050000h
+V9X_HSW_RESERVE_PAGES   equ 80
 V9X_HSW_RCS_RING_OFF    equ 2000h
 V9X_HSW_RESERVE_ALIGN   equ 0000ffffh
 V9X_HSW_STOLEN_RSVD     equ 001082c0h

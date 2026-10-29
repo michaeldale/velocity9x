@@ -199,6 +199,11 @@ $sources = @(
     "src\display32\d3d\d3d_dp2.c",
     # DDI 8's cap words and format list, tests\host\test_d3d_caps8.c.
     "src\display32\d3d\d3d_caps8.c",
+    # Pixel shaders, step 5b: the parser, the core's shader state
+    # (tests\host\test_d3d_ps.c) and the Haswell translator.
+    "src\display32\d3d\d3d_ps11.c",
+    "src\display32\d3d\d3d_ps.c",
+    "src\chipsets\intel\hsw_ps11.c",
     # DDI 7's CreateSurfaceEx handle table; pure and host-tested in
     # tests\host\test_d3d_handles.c.
     "src\display32\d3d\d3d_handles.c",

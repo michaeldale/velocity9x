@@ -220,6 +220,9 @@ function Get-V9xHostSourceNames {
         'src\display32\d3d\d3d_ps11.c',
         'src\display32\d3d\d3d_ps11_ref.c',
         'tests\host\test_d3d_ps11.c',
+        # The core's pixel shader state: table, constants, stages, vertex.
+        'src\display32\d3d\d3d_ps.c',
+        'tests\host\test_d3d_ps.c',
         # DDI 7's CreateSurfaceEx handle table.
         'src\display32\d3d\d3d_handles.c',
         'tests\host\test_d3d_handles.c',

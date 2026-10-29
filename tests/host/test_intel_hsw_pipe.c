@@ -25,6 +25,14 @@ typedef char test_pipe_assert_tnl_area[
     V9X_INTEL_HSW_TNL_OFF + V9X_INTEL_HSW_TNL_BYTES <=
         V9X_INTEL_HSW_RESERVE_BYTES &&
     V9X_INTEL_HSW_TNL_BYTES == 2ul * V9X_HSW_PIPE_TNL_BYTES ? 1 : -1];
+/* Pixel shaders step 5b: the PS 1.1 kernel cache after the T&L data, to
+ * the reserve's end. */
+typedef char test_pipe_assert_ps11_cache[
+    V9X_INTEL_HSW_TNL_OFF + V9X_INTEL_HSW_TNL_BYTES <=
+        V9X_INTEL_HSW_PS11_KERNEL_OFF &&
+    V9X_INTEL_HSW_PS11_KERNEL_OFF +
+            V9X_INTEL_HSW_PS11_KERNEL_SLOTS * V9X_INTEL_HSW_PS11_KERNEL_SLOT ==
+        V9X_INTEL_HSW_RESERVE_BYTES ? 1 : -1];
 typedef char test_pipe_assert_pages[
     V9X_INTEL_HSW_RESERVE_BYTES == V9X_INTEL_HSW_RESERVE_PAGES * 4096ul ? 1 : -1];
 

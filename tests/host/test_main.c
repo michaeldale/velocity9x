@@ -166,6 +166,8 @@ unsigned int v9x_run_d3d_dp2_dx8_tests(void);
 
 /* tests\host\test_d3d_caps8.c: DDI 8's D3DCAPS8 and format list. */
 unsigned int v9x_run_d3d_caps8_tests(void);
+/* tests\host\test_d3d_ps.c: the core's pixel shader state. */
+unsigned int v9x_run_d3d_ps_tests(void);
 
 /* tests\host\test_d3d_ps11.c: the pixel shader 1.0/1.1 parser. */
 unsigned int v9x_run_d3d_ps11_tests(void);
@@ -1411,6 +1413,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_dp2_dx8_tests();
     failures += v9x_run_d3d_caps8_tests();
     failures += v9x_run_d3d_ps11_tests();
+    failures += v9x_run_d3d_ps_tests();
     failures += v9x_run_d3d_handles_tests();
     failures += v9x_run_d3d_tnl_tests();
     failures += v9x_run_d3d_select_tests();

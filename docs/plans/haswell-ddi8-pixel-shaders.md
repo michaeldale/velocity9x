@@ -366,7 +366,16 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
    - **Caps:** PS 1.1 and four textures. They become the Haswell
      default once the gate passes (`no-gated-defaults-dev-driver`).
      `V9X_D3D_PS_CLAIMED` stays only as the measurement switch for what
-     is not yet real: cube maps until 5c.
+     is not yet real: cube maps until 5c (renamed
+     `V9X_D3D_CUBE_CLAIMED`).
+   - **Status, 2026-10-30: core, engine and T19 done; fog and the
+     3DMark/Half-Life checks owed.** Reserve 320 KB (boot 124), the wide
+     vertex carries sz and rhw (V9XHSWMM /ps11 still passes, boot 125),
+     PS 1.1 claimed by default on an engine with `draw_shader`, and
+     V9XD32 T19 passes Push, FourTex, Kill and Bem through Direct3D 8 at
+     565 (boot 128; Push and FourTex at the tolerance, a 32 bpp run
+     owed). 3DMark makes no shader before cube maps. Record:
+     [`../decisions/2026-10-30-haswell-ps11-step5b-hal.md`](../decisions/2026-10-30-haswell-ps11-step5b-hal.md).
    - **Gate:**
      - V9XD32 T19: a DirectX 8 device draws the ten step 4 shaders with
        DrawPrimitiveUP over a small target, reads it back with LockRect,

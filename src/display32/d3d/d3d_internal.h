@@ -27,6 +27,7 @@
  * table's `draw` entry takes. */
 #include "r3d/r3d.h"
 #include "d3d_fog.h"
+#include "d3d_ps.h"
 
 #define V9X_D3D_CONTEXT_COUNT 16u
 /* Live texture handles across every context. 256 was too few: 3DMark 99's
@@ -257,11 +258,17 @@ typedef struct v9x_d3d_context {
     DWORD ddi8_index_stride;
     /* DDI 8's pixel shader (SETPIXELSHADER; 0 for none), the texture
      * handles of stages 0 to 3 (D3DTSS_TEXTUREMAP), and the draws made
-     * under a shader that were not drawn: until an engine runs pixel
-     * shaders, none are (docs\plans\haswell-ddi8-pixel-shaders.md). */
+     * under a shader that were not drawn: on an engine without
+     * draw_shader, a shader the table does not hold, or a draw the engine
+     * refused (docs\plans\haswell-ddi8-pixel-shaders.md). */
     DWORD ddi8_ps;
     DWORD ddi8_stage_texture[4];
     DWORD ddi8_ps_dropped;
+    /* Step 5b: SETPIXELSHADERCONST's c0-c7 and what each of stages 0-3
+     * holds for a shader (d3d_ps.h), and the triangles drawn under one. */
+    float ddi8_ps_const[8][4];
+    V9X_D3D_PS_STAGE ddi8_ps_stage[4];
+    DWORD ddi8_ps_triangles;
 } V9X_D3D_CONTEXT;
 
 /*
@@ -662,6 +669,19 @@ typedef struct v9x_d3d_engine_ops {
      */
     void (*lock_surface)(const V9X_DD_SURFACE_LCL *surface);
     void (*unlock_surface)(const V9X_DD_SURFACE_LCL *surface);
+
+    /*
+     * A list of triangles under a DirectX 8 pixel shader, APPENDED
+     * 2026-10-30 under the same rule (docs\plans\haswell-ddi8-pixel-
+     * shaders.md, step 5b): the draw's state, the shader record and
+     * triangle_count * 3 wide vertices (r3d.h's V9X_R3D_SHADER). Null for
+     * an engine that runs no pixel shaders, which the core then does not
+     * claim them for. Non-zero when every triangle was submitted; zero
+     * when the shader's kernel could not be built or a submission failed.
+     */
+    int (*draw_shader)(const V9X_R3D_DRAW *draw,
+                       const V9X_R3D_SHADER *shader, const float *vertices,
+                       DWORD triangle_count);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */

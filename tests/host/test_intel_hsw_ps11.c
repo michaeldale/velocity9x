@@ -436,10 +436,49 @@ static void refusals(void)
                                    &dwords) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* The push block as the kernels read it (intel_hsw_ps11.h), packed from an
+ * environment: c_k clamped in register k / 2, half k % 2; stage s's bump
+ * matrix in register 4 + s / 2, half s % 2; its luminance terms in
+ * register 6, dwords 2s and 2s + 1; the rest zero. */
+static void constants(void)
+{
+    V9X_PS11_ENV env;
+    v9x_u32 out[V9X_HSW_PS11_CONST_DWORDS];
+    v9x_u32 k;
+
+    zero_env(&env);
+    for (k = 0ul; k < 8ul; ++k) {
+        env.c[k][0] = 0.1f * (float)k;
+        env.c[k][3] = -0.2f * (float)k;
+    }
+    env.c[7][1] = 2.0f;
+    env.c[6][2] = -3.0f;
+    env.bump[3][1] = 0.5f;
+    env.bump[0][3] = -0.25f;
+    env.luminance[2][0] = 0.75f;
+    env.luminance[2][1] = 0.125f;
+    for (k = 0ul; k < V9X_HSW_PS11_CONST_DWORDS; ++k) {
+        out[k] = 0xdeadbeeful;
+    }
+    v9x_intel_hsw_ps11_constants(&env, out);
+    CHECK(out[0] == v9x_hsw_sim_bits(0.0f));
+    CHECK(out[4] == v9x_hsw_sim_bits(0.1f));
+    CHECK(out[3 * 8 + 4 + 0] == v9x_hsw_sim_bits(0.7f));
+    CHECK(out[3 * 8 + 4 + 3] == v9x_hsw_sim_bits(-1.0f));    /* -1.4 */
+    CHECK(out[3 * 8 + 4 + 1] == v9x_hsw_sim_bits(1.0f));     /* 2.0 */
+    CHECK(out[3 * 8 + 0 + 2] == v9x_hsw_sim_bits(-1.0f));    /* -3.0 */
+    CHECK(out[(4 + 1) * 8 + 4 + 1] == v9x_hsw_sim_bits(0.5f));
+    CHECK(out[4 * 8 + 0 + 3] == v9x_hsw_sim_bits(-0.25f));
+    CHECK(out[6 * 8 + 4] == v9x_hsw_sim_bits(0.75f) &&
+          out[6 * 8 + 5] == v9x_hsw_sim_bits(0.125f));
+    CHECK(out[6 * 8 + 0] == 0ul && out[6 * 8 + 7] == 0ul);
+}
+
 unsigned int v9x_run_intel_hsw_ps11_tests(void)
 {
     failures = 0u;
     cases();
     refusals();
+    constants();
     return failures;
 }

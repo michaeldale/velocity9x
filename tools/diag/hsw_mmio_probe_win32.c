@@ -1760,7 +1760,7 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
  * samplers at C00h; the four 2D textures' surfaces at C40h and the cube's
  * at CC0h; each target's five-entry binding table at CE0h and D00h; each
  * draw's seven push-constant GRFs at D20h and E00h, and its three
- * vertices at 1000h and 1140h. The texels follow D2's batch in the image:
+ * vertices at 1000h and 1160h. The texels follow D2's batch in the image:
  * four 8x8 2D textures, then the cube's six 8x8 faces.
  */
 #define V9X_PS11_VARIANTS        (2ul * (DWORD)V9X_PS11_RUNS)
@@ -1771,7 +1771,7 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
 #define V9X_PS11_CUBE_SURFACE    0xcc0ul
 #define V9X_PS11_BINDING(n)      (0xce0ul + 0x20ul * (n))
 #define V9X_PS11_CONSTANTS(n)    (0xd20ul + 0xe0ul * (n))
-#define V9X_PS11_VERTICES(n)     (0x1000ul + 0x140ul * (n))
+#define V9X_PS11_VERTICES(n)     (0x1000ul + 0x160ul * (n))
 #define V9X_PS11_TEXTURE(s)      (V9X_RCS_IMAGE + 0x1400ul + 0x100ul * (s))
 #define V9X_PS11_CUBE            (V9X_RCS_IMAGE + 0x1800ul)
 #define V9X_PS11_FACE_BYTES      0x100ul
@@ -1779,7 +1779,7 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
 #define V9X_PS11_STAGES          4ul
 #define V9X_PS11_CONST_GRF       ((v9x_u8)4u)
 #define V9X_PS11_SETUP_GRF       ((v9x_u8)(4u + V9X_HSW_PS11_CONST_GRFS))
-#define V9X_PS11_VERTEX_FLOATS   26ul
+#define V9X_PS11_VERTEX_FLOATS   28ul
 /* SAMPLER_STATE DW3: TEXCOORDMODE_CLAMP (2) at TCX 8:6, TCY 5:3, TCZ 2:0
  * (Vol 2d, Vol 2a). */
 #define V9X_PS11_CLAMP_ALL       0x92ul
@@ -2282,12 +2282,15 @@ static int v9x_ps11_build(DWORD run)
 
         at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_VERTICES(n));
         for (k = 0ul; k < 3ul; ++k) {
+            /* sx sy, sz 0, rhw 1: screen space with nothing to correct. */
             at[0] = v9x_tri_vertices[k * 6ul];
             at[1] = v9x_tri_vertices[k * 6ul + 1ul];
+            at[2] = 0ul;
+            at[3] = V9X_SHADE_FLOAT_ONE;
             for (a = 0ul; a < (DWORD)V9X_HSW_PS11_ATTRIBUTES; ++a) {
                 v9x_ps11_attribute(variant, k, a, value);
                 for (c = 0ul; c < 4ul; ++c) {
-                    at[2ul + 4ul * a + c] = v9x_ps11_bits(value[c]);
+                    at[4ul + 4ul * a + c] = v9x_ps11_bits(value[c]);
                 }
             }
             at += V9X_PS11_VERTEX_FLOATS;

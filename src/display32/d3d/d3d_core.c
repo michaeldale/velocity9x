@@ -231,14 +231,15 @@ static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
 #define V9X_D3D_TNL_DEVICE_OFFERED 0
 
 /*
- * Whether a DDI 8 process is told of pixel shader 1.1. Not on main: no
- * engine runs pixel shaders yet, and a draw made under one is counted and
- * dropped. Built with 1 for step 3 of
- * docs\plans\haswell-ddi8-pixel-shaders.md, a measurement build that
- * records the shaders a program makes and what each draws with (V9XPS.LOG).
- * With it, four textures are claimed too, as a 1.1 shader may read t0-t3.
+ * Pixel shader 1.1 and four textures are claimed to a DDI 8 process on an
+ * engine with draw_shader (step 5b of docs\plans\haswell-ddi8-pixel-
+ * shaders.md). This switch is what is not real yet, for measurement only:
+ * cube maps, which no engine here places whole until step 5c, and a
+ * ValidateTextureStageState that answers every DDI 8 question one pass.
+ * Built with 1 for step 3, which recorded what 3DMark 2001 SE's shaders
+ * draw with (V9XPS.LOG).
  */
-#define V9X_D3D_PS_CLAIMED 0
+#define V9X_D3D_CUBE_CLAIMED 0
 
 static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
                              DWORD d);
@@ -2205,6 +2206,20 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->ddi8_stage_texture[2] = 0ul;
             context->ddi8_stage_texture[3] = 0ul;
             context->ddi8_ps_dropped = 0ul;
+            context->ddi8_ps_triangles = 0ul;
+            {
+                DWORD s;
+                DWORD i;
+
+                for (s = 0ul; s < 8ul; ++s) {
+                    for (i = 0ul; i < 4ul; ++i) {
+                        context->ddi8_ps_const[s][i] = 0.0f;
+                    }
+                }
+                for (s = 0ul; s < 4ul; ++s) {
+                    v9x_d3d_ps_stage_reset(&context->ddi8_ps_stage[s], s);
+                }
+            }
             /* The T&L device: DDI 7 on an engine that draws T&L. Made
              * fresh, so a slot another process left holds nothing of its
              * memory. Without it the context draws pre-transformed
@@ -2299,6 +2314,13 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/* DDI 8's pixel shader programs (step 5b; the draws that use them follow
+ * v9x_d3d_ddi8_shader_draw). A context's are forgotten as it goes. */
+#define V9X_D3D_PS_TABLE_SLOTS 32u
+
+static V9X_D3D_PS_SHADER v9x_d3d_ps_table[V9X_D3D_PS_TABLE_SLOTS];
+static v9x_u32 v9x_d3d_ps_serial;
+
 /*
  * Everything submitted finished, and the engine left as a 2D caller would
  * find it, before a context goes. The Rage 128's CCE otherwise stays
@@ -2364,7 +2386,8 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     }
     if (context->ddi8 != 0ul) {
         v9x_d3d_ps_log("ps-summary", (DWORD)context, context->ddi8_ps_dropped,
-                       0ul, 0ul);
+                       context->ddi8_ps_triangles, 0ul);
+        v9x_d3d_ps_forget(v9x_d3d_ps_table, V9X_D3D_PS_TABLE_SLOTS, context);
     }
     context->tnl = 0;
     context->active = 0ul;
@@ -2447,6 +2470,8 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].pid == data->dwPID) {
             v9x_d3d_textures_destroy_context(
                 (DWORD)&v9x_d3d_contexts[index]);
+            v9x_d3d_ps_forget(v9x_d3d_ps_table, V9X_D3D_PS_TABLE_SLOTS,
+                              &v9x_d3d_contexts[index]);
             v9x_d3d_contexts[index].active = 0ul;
             v9x_d3d_contexts[index].pid = 0ul;
             /* Its T&L block was in the dead process's memory, gone with
@@ -4630,6 +4655,11 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
         stage < 4ul) {
         context->ddi8_stage_texture[stage] = (DWORD)value;
     }
+    /* And what a shader reads of the same four stages (step 5b). */
+    if (context->ddi8 != 0ul && stage < 4ul) {
+        (void)v9x_d3d_ps_stage_state(&context->ddi8_ps_stage[stage], state,
+                                     value);
+    }
     if (stage > 1ul || (stage == 1ul && !user->two_stages)) {
         return;
     }
@@ -6267,6 +6297,195 @@ static void v9x_d3d_ddi8_shader_draw(V9X_D3D_CONTEXT *context, v9x_u32 op,
 }
 
 /*
+ * Step 5b: draws under a pixel shader, on an engine with draw_shader.
+ *
+ * CREATEPIXELSHADER's programs live in one table for the HAL, keyed by
+ * context and handle (d3d_ps.h); HAL statics are shared by every process,
+ * so the context's address is what keeps two applications' handles apart.
+ * 32 programs: 3DMark 2001 SE makes nine.
+ *
+ * A draw's triangles are gathered as wide vertices, V9X_D3D_PS_TRIANGLES
+ * at a time, and handed to the engine with the shader record. The Win16 lock
+ * serialises every DrawPrimitives2 call, as it does for the gather and the
+ * fog scratch, so one batch is enough. (The table itself is declared with
+ * the context teardown that empties it.)
+ */
+#define V9X_D3D_PS_TRIANGLES   96u
+
+typedef struct v9x_d3d_ps_batch {
+    const V9X_D3D_ENGINE_OPS *ops;
+    V9X_D3D_CONTEXT *context;
+    const V9X_DP2_FVF *layout;
+    V9X_R3D_DRAW draw;
+    V9X_R3D_SHADER shader;
+    DWORD triangles;
+} V9X_D3D_PS_BATCH;
+
+static V9X_D3D_PS_BATCH v9x_d3d_ps_batch;
+static float v9x_d3d_ps_vertices[V9X_D3D_PS_TRIANGLES * 3u *
+                                 V9X_R3D_SHADER_FLOATS];
+
+/* CREATEPIXELSHADER entries (handle, code bytes, code): each parsed into
+ * the table. A program this cannot run is logged and left out, and draws
+ * under it are counted as dropped. */
+static void v9x_d3d_ddi8_create_shaders(V9X_D3D_CONTEXT *context,
+                                        v9x_u32 count,
+                                        const v9x_u8 *payload)
+{
+    DWORD at = 0ul;
+    v9x_u32 i;
+    v9x_u32 status;
+
+    for (i = 0ul; i < count; ++i) {
+        const DWORD *entry = (const DWORD *)(payload + at);
+
+        status = v9x_d3d_ps_create(v9x_d3d_ps_table, V9X_D3D_PS_TABLE_SLOTS,
+                                   &v9x_d3d_ps_serial, context, entry[0],
+                                   (const v9x_u32 *)(entry + 2),
+                                   entry[1] / 4ul);
+        if (status != V9X_PS11_OK) {
+            v9x_d3d_ps_log("ps-refused", entry[0], status, entry[1], 0ul);
+        }
+        at += 8ul + entry[1];
+    }
+}
+
+/* One stage's texture for the shader record, as describe_unit1 describes
+ * stage 1's; object null when the handle names no texture. */
+static void v9x_d3d_ps_texture(V9X_D3D_CONTEXT *context,
+                               const V9X_D3D_PS_STAGE *stage,
+                               V9X_R3D_TEXTURE *out)
+{
+    V9X_D3D_TEXTURE *texture = 0;
+    DWORD address = stage->address_u;
+
+    if (stage->texture != 0ul) {
+        texture = v9x_d3d_texture_from_handle(
+            v9x_d3d_ddi7_texture(context, stage->texture), (DWORD)context);
+    }
+    out->object = texture != 0 ? texture->lcl : 0;
+    out->min_filter = v9x_d3d_min_filter_fold(stage->min_filter,
+                                              stage->mip_filter);
+    out->mag_filter = stage->mag_filter;
+    out->op = 0ul;
+    out->address = address >= V9X_R3D_ADDRESS_WRAP &&
+                   address <= V9X_R3D_ADDRESS_BORDER
+                       ? address : V9X_R3D_ADDRESS_CLAMP;
+    out->border = context->texture_border;
+    out->wrap_u = 0ul;
+    out->wrap_v = 0ul;
+    out->wrap_either = 0ul;
+    out->levels = 0;
+    out->level_count = 0ul;
+    out->format = 0ul;
+    out->mip = 0ul;
+    out->color_op = 0ul;
+    out->alpha_op = 0ul;
+    out->env_color = 0ul;
+}
+
+static void v9x_d3d_ps_flush(void)
+{
+    V9X_D3D_PS_BATCH *batch = &v9x_d3d_ps_batch;
+
+    if (batch->triangles == 0ul) {
+        return;
+    }
+    if (batch->ops->draw_shader(&batch->draw, &batch->shader,
+                                v9x_d3d_ps_vertices, batch->triangles)) {
+        batch->context->ddi8_ps_triangles += batch->triangles;
+    } else {
+        ++batch->context->ddi8_ps_dropped;
+    }
+    batch->triangles = 0ul;
+}
+
+static void v9x_d3d_ps_triangle(void *opaque, const v9x_u8 *a,
+                                const v9x_u8 *b, const v9x_u8 *c)
+{
+    V9X_D3D_PS_BATCH *batch = (V9X_D3D_PS_BATCH *)opaque;
+    float *out = v9x_d3d_ps_vertices +
+                 batch->triangles * 3ul * V9X_R3D_SHADER_FLOATS;
+
+    v9x_d3d_ps_wide_vertex(batch->layout, batch->context->ddi8_ps_stage, a,
+                           out);
+    v9x_d3d_ps_wide_vertex(batch->layout, batch->context->ddi8_ps_stage, b,
+                           out + V9X_R3D_SHADER_FLOATS);
+    v9x_d3d_ps_wide_vertex(batch->layout, batch->context->ddi8_ps_stage, c,
+                           out + 2ul * V9X_R3D_SHADER_FLOATS);
+    if (++batch->triangles == V9X_D3D_PS_TRIANGLES) {
+        v9x_d3d_ps_flush();
+    }
+}
+
+static void v9x_d3d_ps_list(void *opaque, const v9x_u8 *first,
+                            v9x_u32 triangles)
+{
+    V9X_D3D_PS_BATCH *batch = (V9X_D3D_PS_BATCH *)opaque;
+    DWORD stride = batch->layout->stride;
+    v9x_u32 i;
+
+    for (i = 0ul; i < triangles; ++i) {
+        v9x_d3d_ps_triangle(opaque, first, first + stride,
+                            first + 2ul * stride);
+        first += 3ul * stride;
+    }
+}
+
+static void v9x_d3d_ps_fan(void *opaque, const v9x_u8 *first,
+                           v9x_u32 vertices)
+{
+    V9X_D3D_PS_BATCH *batch = (V9X_D3D_PS_BATCH *)opaque;
+    DWORD stride = batch->layout->stride;
+    v9x_u32 i;
+
+    for (i = 1ul; i + 1ul < vertices; ++i) {
+        v9x_d3d_ps_triangle(opaque, first, first + i * stride,
+                            first + (i + 1ul) * stride);
+    }
+}
+
+/*
+ * The shader record and draw state for a draw under `shader`, and the
+ * sink that gathers its triangles: the walk's own, with every drawing
+ * callback replaced. Points and lines under a shader are not drawn (the
+ * walker counts them undrawn); nothing 3DMark 2001 SE draws needs them.
+ */
+static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
+                             V9X_D3D_CONTEXT *context,
+                             const V9X_D3D_PS_SHADER *shader,
+                             const V9X_DP2_FVF *layout,
+                             const V9X_DP2_SINK *walk, V9X_DP2_SINK *sink)
+{
+    V9X_D3D_PS_BATCH *batch = &v9x_d3d_ps_batch;
+    DWORD s;
+
+    batch->ops = ops;
+    batch->context = context;
+    batch->layout = layout;
+    batch->triangles = 0ul;
+    v9x_d3d_describe_draw(ops, context, &batch->draw);
+    batch->shader.program = &shader->program;
+    batch->shader.serial = shader->serial;
+    /* No stage is a cube until cube textures are placed whole (step 5c). */
+    v9x_d3d_ps_env(context->ddi8_ps_const, context->ddi8_ps_stage, 0ul,
+                   &batch->shader.env);
+    for (s = 0ul; s < V9X_R3D_SHADER_STAGES; ++s) {
+        v9x_d3d_ps_texture(context, &context->ddi8_ps_stage[s],
+                           &batch->shader.texture[s]);
+    }
+    *sink = *walk;
+    sink->user = batch;
+    sink->list = v9x_d3d_ps_list;
+    sink->fan = v9x_d3d_ps_fan;
+    sink->triangle = v9x_d3d_ps_triangle;
+    sink->point = 0;
+    sink->line = 0;
+    sink->record = 0;
+    sink->indexed_list = 0;
+}
+
+/*
  * One DDI 8 draw: stream 0 and the indices resolved to memory, the draw
  * record turned into a V9X_DP2_DRAW, and drawn by v9x_dp2_draw through
  * the walk's own sink, under SETVERTEXSHADER's vertex format. Offsets in
@@ -6291,10 +6510,23 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
     DWORD stride;
     DWORD offset = 0ul;
     v9x_u32 status;
+    const V9X_D3D_ENGINE_OPS *ops = 0;
+    const V9X_D3D_PS_SHADER *shader = 0;
+    V9X_DP2_SINK shader_sink;
 
+    /* Under a shader: drawn when the engine runs shaders and the table
+     * holds this one, else counted and described. */
     if (context->ddi8_ps != 0ul) {
-        v9x_d3d_ddi8_shader_draw(context, op, words);
-        return;
+        ops = v9x_d3d_engine();
+        if (ops != 0 && ops->draw_shader != 0) {
+            shader = v9x_d3d_ps_find(v9x_d3d_ps_table,
+                                     V9X_D3D_PS_TABLE_SLOTS, context,
+                                     context->ddi8_ps);
+        }
+        if (shader == 0) {
+            v9x_d3d_ddi8_shader_draw(context, op, words);
+            return;
+        }
     }
     if (context->ddi8_fvf == 0ul ||
         !v9x_dp2_fvf_layout(context->ddi8_fvf, &layout)) {
@@ -6410,15 +6642,24 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
         draw.vertex_count = (stream_bytes - offset) / stride;
     }
 
-    user->fvf = v9x_dp2_fvf_is_tlvertex(&layout) ? 0 : &layout;
-    user->layout = &layout;
     result.triangles = 0ul;
     result.points = 0ul;
     result.lines = 0ul;
     result.undrawn = 0ul;
-    status = v9x_dp2_draw(&draw, user->sink, &result);
-    user->fvf = saved_fvf;
-    user->layout = saved_layout;
+    if (shader != 0) {
+        /* The fixed-function runs before it first, so order holds. */
+        v9x_d3d_dp2_draw_run();
+        v9x_d3d_ps_begin(ops, context, shader, &layout, user->sink,
+                         &shader_sink);
+        status = v9x_dp2_draw(&draw, &shader_sink, &result);
+        v9x_d3d_ps_flush();
+    } else {
+        user->fvf = v9x_dp2_fvf_is_tlvertex(&layout) ? 0 : &layout;
+        user->layout = &layout;
+        status = v9x_dp2_draw(&draw, user->sink, &result);
+        user->fvf = saved_fvf;
+        user->layout = saved_layout;
+    }
 
     d->dp2_triangles += result.triangles;
     d->dp2_undrawn += result.undrawn;
@@ -6553,6 +6794,10 @@ static int v9x_d3d_dp2_dx8(void *opaque, v9x_u32 op, v9x_u32 count,
         return 1;
 
     case V9X_DP2OP_CREATEPIXELSHADER:
+        v9x_d3d_ddi8_log_shaders(op, count, payload);
+        v9x_d3d_ddi8_create_shaders(context, count, payload);
+        return 1;
+
     case V9X_DP2OP_CREATEVERTEXSHADER:
         v9x_d3d_ddi8_log_shaders(op, count, payload);
         return 1;
@@ -6560,12 +6805,26 @@ static int v9x_d3d_dp2_dx8(void *opaque, v9x_u32 op, v9x_u32 count,
     case V9X_DP2OP_DELETEPIXELSHADER:
         for (i = 0ul; i < count; ++i) {
             v9x_d3d_ps_log("ps-delete", words[i], 0ul, 0ul, 0ul);
+            v9x_d3d_ps_delete(v9x_d3d_ps_table, V9X_D3D_PS_TABLE_SLOTS,
+                              context, words[i]);
         }
         return 1;
 
     case V9X_DP2OP_SETPIXELSHADERCONST:
+    {
+        DWORD at = 0ul;
+
         v9x_d3d_ddi8_log_constants(count, payload);
+        for (i = 0ul; i < count; ++i) {
+            const DWORD *entry = (const DWORD *)(payload + at);
+
+            v9x_d3d_ps_set_constants(context->ddi8_ps_const, entry[0],
+                                     entry[1],
+                                     (const v9x_u32 *)(entry + 2));
+            at += 8ul + entry[1] * 16ul;
+        }
         return 1;
+    }
 
     case V9X_DP2OP_BUFFERBLT:
         v9x_d3d_dp2_draw_run();
@@ -6926,7 +7185,7 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         data->ddrval = 0x80070057ul;
         return V9X_DDHAL_DRIVER_HANDLED;
     }
-#if V9X_D3D_PS_CLAIMED
+#if V9X_D3D_CUBE_CLAIMED
     /* Step 3's measurement: 3DMark 2001 SE stopped with "failed to
      * validate material" before making a shader (boot 118). Every question
      * is recorded and answered one pass, so the program goes on to make
@@ -7235,10 +7494,18 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
     caps->VertexShaderVersion = V9X_D3DVS_VERSION(0, 0);
     caps->PixelShaderVersion = V9X_D3DPS_VERSION(0, 0);
     caps->MaxPixelShaderValue = 1.0f;
-#if V9X_D3D_PS_CLAIMED
-    caps->PixelShaderVersion = V9X_D3DPS_VERSION(1, 1);
-    caps->MaxTextureBlendStages = 4ul;
-    caps->MaxSimultaneousTextures = 4ul;
+    /* An engine that runs PS 1.1 kernels (step 5b); a 1.1 shader may read
+     * t0-t3, so four textures with it. */
+    {
+        const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+
+        if (ops != 0 && ops->draw_shader != 0) {
+            caps->PixelShaderVersion = V9X_D3DPS_VERSION(1, 1);
+            caps->MaxTextureBlendStages = 4ul;
+            caps->MaxSimultaneousTextures = 4ul;
+        }
+    }
+#if V9X_D3D_CUBE_CLAIMED
     /* Cube maps too: 3DMark 2001 SE still called Nature unsupported with
      * PS 1.1 and four textures (boot 117), and its engine records cube-map
      * support per display mode (e2mfc.dll, P_DisplayMode::
@@ -7391,7 +7658,7 @@ static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
         format->dwFourCC = formats[answer->dwFormatIndex].format;
         format->dwRGBBitCount = 0ul;
         format->dwRBitMask = formats[answer->dwFormatIndex].operations;
-#if V9X_D3D_PS_CLAIMED
+#if V9X_D3D_CUBE_CLAIMED
         /* Step 3's measurement: every texture format a cube as well. */
         if ((format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
             format->dwRBitMask |= V9X_D3DFORMAT_OP_CUBETEXTURE;

@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include "velocity9x/win9x_ddraw_abi.h"
+#include "velocity9x/ps11.h"
 #include "probe_lock.h"
 
 #ifndef V9X_BUILD_ID
@@ -2667,6 +2668,1004 @@ static void d32_d3d89(void)
     d32_d3dx_caps("D3D9.DLL", "Direct3DCreate9", 32u, 14ul, "T17D3D9");
 }
 
+/*
+ * T19, the gate of step 5b of docs\plans\haswell-ddi8-pixel-shaders.md:
+ * pixel shader 1.1 programs drawn by the Direct3D 8 runtime on a windowed
+ * HAL device, read back with LockRect and judged pixel by pixel against
+ * the reference interpreter (src\display32\d3d\d3d_ps11_ref.c), linked
+ * in. The programs, textures, constants and judging rules are step 5a's
+ * (V9XHSWMM /ps11, docs\decisions\2026-10-30-haswell-ps11-step5a-probe.md)
+ * without the cube cases, which wait for 5c. That probe drew on the
+ * engine directly; this one goes through the runtime and the HAL.
+ *
+ * Skipped, and not counted, where the HAL device does not claim PS 1.1 or
+ * the desktop is not 32 bpp; where it does, a failure counts towards
+ * Result as T18's does.
+ *
+ * The vtable slots are counted from d3d8.h's declaration order, IUnknown's
+ * three first. IDirect3D8: GetAdapterDisplayMode 8, GetDeviceCaps 13
+ * (T17's), CreateDevice 15. IDirect3DDevice8: GetBackBuffer 16,
+ * CreateTexture 20, BeginScene 34, EndScene 35, Clear 36, SetRenderState
+ * 50, SetTexture 61, SetTextureStageState 63, DrawPrimitiveUP 72,
+ * SetVertexShader 76, CreatePixelShader 87, SetPixelShader 88,
+ * DeletePixelShader 90, SetPixelShaderConstant 91. IDirect3DTexture8,
+ * after IDirect3DResource8's 3-10 and IDirect3DBaseTexture8's 11-13:
+ * LockRect 16, UnlockRect 17. IDirect3DSurface8, after GetDevice, the
+ * three private-data methods, GetContainer and GetDesc: LockRect 9,
+ * UnlockRect 10.
+ */
+#define D3D8_GET_ADAPTER_DISPLAY_MODE 8
+#define D3D8_GET_DEVICE_CAPS 13
+#define D3D8_CREATE_DEVICE 15
+#define D3DDEV8_GET_BACK_BUFFER 16
+#define D3DDEV8_CREATE_TEXTURE 20
+#define D3DDEV8_BEGIN_SCENE 34
+#define D3DDEV8_END_SCENE 35
+#define D3DDEV8_CLEAR 36
+#define D3DDEV8_SET_RENDER_STATE 50
+#define D3DDEV8_SET_TEXTURE 61
+#define D3DDEV8_SET_TEXTURE_STAGE_STATE 63
+#define D3DDEV8_DRAW_PRIMITIVE_UP 72
+#define D3DDEV8_SET_VERTEX_SHADER 76
+#define D3DDEV8_CREATE_PIXEL_SHADER 87
+#define D3DDEV8_SET_PIXEL_SHADER 88
+#define D3DDEV8_DELETE_PIXEL_SHADER 90
+#define D3DDEV8_SET_PIXEL_SHADER_CONSTANT 91
+#define D3DTEX8_LOCK_RECT 16
+#define D3DTEX8_UNLOCK_RECT 17
+#define D3DSURF8_LOCK_RECT 9
+#define D3DSURF8_UNLOCK_RECT 10
+
+/* d3d8types.h and d3d8caps.h values. */
+#define D32_D3DFMT_A8R8G8B8 21ul
+#define D32_D3DFMT_X8R8G8B8 22ul
+#define D32_D3DPOOL_MANAGED 1ul
+#define D32_D3DSWAPEFFECT_COPY 3ul
+#define D32_D3DPRESENTFLAG_LOCKABLE_BACKBUFFER 0x00000001ul
+#define D32_D3DCREATE_SOFTWARE_VERTEXPROCESSING 0x00000020ul
+#define D32_D3DBACKBUFFER_TYPE_MONO 0ul
+#define D32_D3DLOCK_READONLY 0x00000010ul
+#define D32_D3DTSS_BUMPENVMAT00 7ul
+#define D32_D3DTSS_ADDRESSU 13ul
+#define D32_D3DTSS_ADDRESSV 14ul
+#define D32_D3DTADDRESS_CLAMP 3ul
+#define D32_D3DTEXF_NONE 0ul
+#define D32_D3DTEXF_POINT 1ul
+#define D32_D3DCAPS8_PIXEL_SHADER_VERSION 51
+#define D32_D3DPS_VERSION_11 0x0101ul
+
+/* XYZRHW 004h | DIFFUSE 040h | SPECULAR 080h | TEX4 400h, and
+ * D3DFVF_TEXCOORDSIZE4 (format 2 at bits 16 + 2N) for sets 0-3: 88 bytes.
+ * The first build had 5C4h, five sets, and the driver refused every draw
+ * as a 96-byte format on an 88-byte stream (boot 128). */
+#define D32_FVF_T19 0x00aa04c4ul
+
+#define D32_T19_SIDE 64ul
+#define D32_T19_TEXELS 8l
+#define D32_T19_STAGES 4ul
+#define D32_T19_PROGRAMS 4ul
+#define D32_T19_GUARD 0xa5a5a5a5ul
+/* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
+ * edge, a lookup within 1/64 texel of a texel boundary and a texkill
+ * coordinate within 0.001 of zero are not judged. Edge distances are in
+ * quarter pixels, so 1/16 pixel is |e| / len < 1/4. */
+#define D32_T19_EDGE_SCALE 4l
+#define D32_T19_TEXEL_MARGIN (1.0f / 64.0f)
+#define D32_T19_KILL_MARGIN 0.001f
+#define D32_T19_TOLERANCE 2ul
+/* A R5G6B5 back buffer (the 4570's desktop at boot 128): both sides
+ * rounded through 565 and widened back to 8 bits, so one 5-bit step (8.2)
+ * apart where the hardware's rounding and this one's differ, plus the
+ * 32-bit tolerance. Coarser than 8888's, and named so in the record. */
+#define D32_T19_TOLERANCE_565 9ul
+#define D32_D3DFMT_R5G6B5 23ul
+/* A channel error that stands for "the guard where a colour belongs", or
+ * the reverse: larger than any 8-bit difference. */
+#define D32_T19_GUARD_ERROR 256ul
+
+typedef struct d32_d3ddisplaymode {
+    UINT Width;
+    UINT Height;
+    UINT RefreshRate;
+    DWORD Format;
+} D32_D3DDISPLAYMODE;
+
+/* D3DPRESENT_PARAMETERS as d3d8types.h has it: no MultiSampleQuality,
+ * which Direct3D 9 added after MultiSampleType. */
+typedef struct d32_d3dpresent_parameters {
+    UINT BackBufferWidth;
+    UINT BackBufferHeight;
+    DWORD BackBufferFormat;
+    UINT BackBufferCount;
+    DWORD MultiSampleType;
+    DWORD SwapEffect;
+    HWND hDeviceWindow;
+    BOOL Windowed;
+    BOOL EnableAutoDepthStencil;
+    DWORD AutoDepthStencilFormat;
+    DWORD Flags;
+    UINT FullScreen_RefreshRateInHz;
+    UINT FullScreen_PresentationInterval;
+} D32_D3DPRESENT_PARAMETERS;
+
+typedef char d32_d3dpresent_parameters_is_52[
+    sizeof(D32_D3DPRESENT_PARAMETERS) == 52 ? 1 : -1];
+
+typedef struct d32_d3dlocked_rect {
+    INT Pitch;
+    void *pBits;
+} D32_D3DLOCKED_RECT;
+
+/* D32_FVF_T19's vertex. */
+typedef struct d32_t19_vertex {
+    float sx;
+    float sy;
+    float sz;
+    float rhw;
+    DWORD diffuse;
+    DWORD specular;
+    float tc[4][4];
+} D32_T19_VERTEX;
+
+typedef char d32_t19_vertex_is_88[sizeof(D32_T19_VERTEX) == 88 ? 1 : -1];
+
+typedef HRESULT (WINAPI *d32_d3d8_mode_fn)(D32_OBJECT *, UINT,
+                                           D32_D3DDISPLAYMODE *);
+typedef HRESULT (WINAPI *d32_d3d8_create_device_fn)(D32_OBJECT *, UINT,
+    DWORD, HWND, DWORD, D32_D3DPRESENT_PARAMETERS *, D32_OBJECT **);
+typedef HRESULT (WINAPI *d32_d3d8_back_buffer_fn)(D32_OBJECT *, UINT, DWORD,
+                                                  D32_OBJECT **);
+typedef HRESULT (WINAPI *d32_d3d8_create_texture_fn)(D32_OBJECT *, UINT,
+    UINT, UINT, DWORD, DWORD, DWORD, D32_OBJECT **);
+typedef HRESULT (WINAPI *d32_d3d8_dword_fn)(D32_OBJECT *, DWORD);
+typedef HRESULT (WINAPI *d32_d3d8_draw_up_fn)(D32_OBJECT *, DWORD, UINT,
+                                              const void *, UINT);
+typedef HRESULT (WINAPI *d32_d3d8_create_ps_fn)(D32_OBJECT *, const DWORD *,
+                                                DWORD *);
+typedef HRESULT (WINAPI *d32_d3d8_ps_const_fn)(D32_OBJECT *, DWORD,
+                                               const void *, DWORD);
+typedef HRESULT (WINAPI *d32_d3d8_tex_lock_fn)(D32_OBJECT *, UINT,
+    D32_D3DLOCKED_RECT *, const RECT *, DWORD);
+typedef HRESULT (WINAPI *d32_d3d8_tex_unlock_fn)(D32_OBJECT *, UINT);
+typedef HRESULT (WINAPI *d32_d3d8_surf_lock_fn)(D32_OBJECT *,
+    D32_D3DLOCKED_RECT *, const RECT *, DWORD);
+typedef HRESULT (WINAPI *d32_d3d8_surf_unlock_fn)(D32_OBJECT *);
+
+/* Shader tokens (ddi8-on-win9x.md section 6), as the host tests and step
+ * 5a build them: every source unswizzled, every destination all four
+ * channels. */
+#define D32_PT_VER11             0xffff0101ul
+#define D32_PT_END               0x0000fffful
+#define D32_PT_DST(file, reg) \
+    (0x80000000ul | ((DWORD)(file) << 28) | (0xful << 16) | (DWORD)(reg))
+#define D32_PT_SRC(file, reg) \
+    (0x80000000ul | ((DWORD)(file) << 28) | (0xe4ul << 16) | (DWORD)(reg))
+#define D32_PT_R(n)              D32_PT_SRC(V9X_PS11_FILE_TEMP, n)
+#define D32_PT_V(n)              D32_PT_SRC(V9X_PS11_FILE_INPUT, n)
+#define D32_PT_C(n)              D32_PT_SRC(V9X_PS11_FILE_CONST, n)
+#define D32_PT_T(n)              D32_PT_SRC(V9X_PS11_FILE_TEXTURE, n)
+#define D32_PT_TO_R(n)           D32_PT_DST(V9X_PS11_FILE_TEMP, n)
+#define D32_PT_TO_T(n)           D32_PT_DST(V9X_PS11_FILE_TEXTURE, n)
+#define D32_PT_MOV               1ul
+#define D32_PT_MAD               4ul
+#define D32_PT_MUL               5ul
+#define D32_PT_LRP               18ul
+#define D32_PT_TEXKILL           65ul
+#define D32_PT_TEX               66ul
+#define D32_PT_TEXBEM            67ul
+
+typedef struct d32_t19_program {
+    const char *name;
+    DWORD kill_set;     /* 1 + the coordinate set texkill reads, or 0 */
+    DWORD tokens[24];
+} D32_T19_PROGRAM;
+
+static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
+    /* Push: both colours and constants c0, c5 and c7. */
+    { "Push", 0ul, {
+        D32_PT_VER11,
+        D32_PT_MAD, D32_PT_TO_R(1), D32_PT_V(0), D32_PT_C(0), D32_PT_C(7),
+        D32_PT_MAD, D32_PT_TO_R(0), D32_PT_V(1), D32_PT_C(5), D32_PT_R(1),
+        D32_PT_END } },
+    /* FourTex: all four stages sampled and combined. */
+    { "FourTex", 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEX, D32_PT_TO_T(1),
+        D32_PT_TEX, D32_PT_TO_T(2), D32_PT_TEX, D32_PT_TO_T(3),
+        D32_PT_MUL, D32_PT_TO_R(1), D32_PT_T(0), D32_PT_T(1),
+        D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(2), D32_PT_T(3),
+        D32_PT_LRP, D32_PT_TO_R(0), D32_PT_C(0), D32_PT_R(1), D32_PT_R(0),
+        D32_PT_END } },
+    /* Kill: set 1's u crosses zero, so part of the triangle is killed. */
+    { "Kill", 2ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEXKILL, D32_PT_TO_T(1),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(0),
+        D32_PT_END } },
+    /* Bem: stage 1 looked up at its coordinates moved by stage 0's red
+     * and green through stage 1's bump matrix. */
+    { "Bem", 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_TEXBEM, D32_PT_TO_T(1), D32_PT_T(0),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
+        D32_PT_END } }
+};
+
+/* The triangle in quarter pixels, step 5a's: (8.25, 8.25), (55.75, 10.25),
+ * (10.25, 55.75), clockwise on the screen. */
+static const long d32_t19_tri_x[3] = { 33l, 223l, 41l };
+static const long d32_t19_tri_y[3] = { 33l, 41l, 223l };
+
+/* Step 5a's vertex colours, as D3DCOLORs. */
+static const DWORD d32_t19_diffuse[3] = {
+    0xffe6331aul, 0x991acc4dul, 0x4d334de6ul
+};
+static const DWORD d32_t19_specular[3] = {
+    0x331a80e6ul, 0xe6b31a66ul, 0x8066e633ul
+};
+static const float d32_t19_kill_x[3] = { 0.6f, -0.6f, 0.3f };
+
+#ifdef __WATCOMC__
+/* Float to long by fistp, rounding to nearest: a cast would call
+ * Watcom's __CHP, from the C runtime the probe does not link. */
+static long d32_t19_to_long(float value);
+#pragma aux d32_t19_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long d32_t19_to_long(float value)
+{
+    return (long)(value < 0.0f ? value - 0.5f : value + 0.5f);
+}
+#endif
+
+/* Constants c0-c7, every one distinct, the three Push reads set apart;
+ * stage 1's bump matrix for Bem. One environment serves all four. */
+static void d32_t19_env(V9X_PS11_ENV *env)
+{
+    DWORD k;
+    DWORD c;
+
+    for (k = 0ul; k < 8ul; ++k) {
+        for (c = 0ul; c < 4ul; ++c) {
+            env->c[k][c] = 0.1f * (float)k - 0.05f * (float)c - 0.3f;
+        }
+    }
+    for (k = 0ul; k < 4ul; ++k) {
+        for (c = 0ul; c < 4ul; ++c) {
+            env->bump[k][c] = 0.0f;
+        }
+        env->luminance[k][0] = 0.0f;
+        env->luminance[k][1] = 0.0f;
+    }
+    env->cube = 0ul;
+    env->projected = 0ul;
+    env->c[0][0] = 0.8f;
+    env->c[0][1] = 0.6f;
+    env->c[0][2] = 0.4f;
+    env->c[0][3] = 0.9f;
+    env->c[5][0] = 0.3f;
+    env->c[5][1] = 0.7f;
+    env->c[5][2] = -0.5f;
+    env->c[5][3] = 0.2f;
+    env->c[7][0] = 0.05f;
+    env->c[7][1] = -0.1f;
+    env->c[7][2] = 0.2f;
+    env->c[7][3] = 0.1f;
+    env->bump[1][0] = 0.25f;
+    env->bump[1][1] = -0.1f;
+    env->bump[1][2] = 0.05f;
+    env->bump[1][3] = 0.3f;
+}
+
+/* Coordinate set `set` of vertex k: u v over the corners (0,0), (1,0),
+ * (0,1), turned one vertex per set so each stage's mapping differs; Kill's
+ * set 1 has a u that crosses zero. */
+static void d32_t19_coords(DWORD program, DWORD k, DWORD set, float out[4])
+{
+    static const float corner[3][2] = {
+        { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f }
+    };
+
+    out[0] = corner[(k + set) % 3ul][0];
+    out[1] = corner[(k + set) % 3ul][1];
+    out[2] = 0.25f + 0.25f * (float)k;
+    out[3] = 1.0f;
+    if (d32_t19_programs[program].kill_set == set + 1ul) {
+        out[0] = d32_t19_kill_x[k];
+        out[1] = 0.4f;
+        out[2] = 0.5f;
+    }
+}
+
+/* Stage s's 8x8 texels, A8R8G8B8 (step 5a's): every channel moves with x
+ * or y, and no two stages alike. Stage 0 is also Bem's du dv. */
+static DWORD d32_t19_texel(DWORD stage, long x, long y)
+{
+    DWORD a;
+    DWORD r;
+    DWORD g;
+    DWORD b;
+
+    if (stage == 0ul) {
+        a = 0xfful - (DWORD)x * 8ul;
+        r = 0x58ul + (DWORD)x * 12ul;
+        g = 0x58ul + (DWORD)y * 12ul;
+        b = 0xe0ul - (DWORD)(x + y) * 4ul;
+    } else if (stage == 1ul) {
+        a = 0x90ul + (DWORD)y * 8ul;
+        r = (DWORD)x * 32ul + 16ul;
+        g = 0xfful - (DWORD)y * 32ul;
+        b = 0x40ul + (DWORD)((x + y) & 1l) * 0x80ul;
+    } else if (stage == 2ul) {
+        a = 0x70ul + (DWORD)x * 16ul;
+        r = 0x20ul + (DWORD)y * 28ul;
+        g = 0x30ul + (DWORD)x * 20ul;
+        b = 0xc0ul - (DWORD)y * 16ul;
+    } else {
+        a = 0xd0ul - (DWORD)(x + y) * 4ul;
+        r = 0xf0ul - (DWORD)x * 16ul;
+        g = 0x10ul + (DWORD)(x * y) * 3ul;
+        b = (DWORD)y * 32ul + 8ul;
+    }
+    return (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+/* A nearest texel index under CLAMP; near a texel edge it is marked not
+ * judged. floor() as round(x - 0.5), exact away from integers, which are
+ * the ones not judged. */
+static long d32_t19_index(float coord, int *unjudged)
+{
+    float scaled = coord * (float)D32_T19_TEXELS;
+    long index;
+    float frac;
+
+    if (scaled <= 0.0f) {
+        if (scaled > -D32_T19_TEXEL_MARGIN) {
+            *unjudged = 1;
+        }
+        return 0l;
+    }
+    if (scaled >= (float)D32_T19_TEXELS) {
+        if (scaled < (float)D32_T19_TEXELS + D32_T19_TEXEL_MARGIN) {
+            *unjudged = 1;
+        }
+        return D32_T19_TEXELS - 1l;
+    }
+    index = d32_t19_to_long(scaled - 0.5f);
+    frac = scaled - (float)index;
+    if (frac < D32_T19_TEXEL_MARGIN || frac > 1.0f - D32_T19_TEXEL_MARGIN) {
+        *unjudged = 1;
+    }
+    return index;
+}
+
+/* The interpreter's sampler: point sampling of the 2D stages, the user
+ * pointer the pixel's not-judged flag. */
+static void d32_t19_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                           const float *coords, float rgba[4])
+{
+    int *unjudged = (int *)user;
+    DWORD texel;
+
+    (void)count;
+    texel = d32_t19_texel(stage, d32_t19_index(coords[0], unjudged),
+                          d32_t19_index(coords[1], unjudged));
+    rgba[0] = (float)((texel >> 16) & 0xfful) / 255.0f;
+    rgba[1] = (float)((texel >> 8) & 0xfful) / 255.0f;
+    rgba[2] = (float)(texel & 0xfful) / 255.0f;
+    rgba[3] = (float)(texel >> 24) / 255.0f;
+}
+
+static DWORD d32_t19_unorm(float value)
+{
+    if (value <= 0.0f) {
+        return 0ul;
+    }
+    if (value >= 1.0f) {
+        return 255ul;
+    }
+    return (DWORD)d32_t19_to_long(value * 255.0f);
+}
+
+/* A D3DCOLOR as the shader's v0 or v1 sees it: r g b a, bytes over 255. */
+static void d32_t19_colour(DWORD colour, float out[4])
+{
+    out[0] = (float)((colour >> 16) & 0xfful) / 255.0f;
+    out[1] = (float)((colour >> 8) & 0xfful) / 255.0f;
+    out[2] = (float)(colour & 0xfful) / 255.0f;
+    out[3] = (float)(colour >> 24) / 255.0f;
+}
+
+/* Edge a->b's function at (px, py), quarter pixels; positive inside. */
+static long d32_t19_edge(DWORD a, DWORD b, long px, long py)
+{
+    return (d32_t19_tri_x[b] - d32_t19_tri_x[a]) * (py - d32_t19_tri_y[a]) -
+           (d32_t19_tri_y[b] - d32_t19_tri_y[a]) * (px - d32_t19_tri_x[a]);
+}
+
+static long d32_t19_isqrt(long value)
+{
+    long root = 0l;
+
+    while ((root + 1l) * (root + 1l) <= value) {
+        ++root;
+    }
+    return root;
+}
+
+static void d32_t19_key(const char *name, const char *field, DWORD value)
+{
+    char key[48];
+
+    wsprintfA(key, "T19%s%s", name, field);
+    d32_hx(key, value);
+}
+
+/*
+ * The locked back buffer against the interpreter. Direct3D puts a pixel's
+ * centre on its whole coordinate (the HAL moves vertices onto the engine's
+ * x + 0.5 centres itself, d3d_core.c v9x_d3d_centre), so pixel (x, y) is
+ * judged at (x, y): judging at x + 0.5 here would hold the driver to the
+ * engine's rule and miss a missing half-pixel move. Inputs are the
+ * vertices' attributes weighted by the edges opposite (rhw is 1, so
+ * linear). Channels outside `mask` are not compared. Returns the verdict.
+ */
+/* A 565 pixel widened to X8R8G8B8 by repeating its top bits. */
+static DWORD d32_t19_widen(DWORD pixel)
+{
+    DWORD r = (pixel >> 11) & 0x1ful;
+    DWORD g = (pixel >> 5) & 0x3ful;
+    DWORD b = pixel & 0x1ful;
+
+    return (((r << 3) | (r >> 2)) << 16) | (((g << 2) | (g >> 4)) << 8) |
+           ((b << 3) | (b >> 2));
+}
+
+/* The largest 8-bit channel difference inside mask. */
+static DWORD d32_t19_diff(DWORD a, DWORD b, DWORD mask)
+{
+    DWORD error = 0ul;
+    DWORD i;
+
+    for (i = 0ul; i < 32ul; i += 8ul) {
+        DWORD p = (a >> i) & 0xfful;
+        DWORD q = (b >> i) & 0xfful;
+        DWORD diff = p > q ? p - q : q - p;
+
+        if (((mask >> i) & 0xfful) != 0ul && diff > error) {
+            error = diff;
+        }
+    }
+    return error;
+}
+
+/* An 8888 colour rounded to 565 and widened back, as the target holds
+ * it. */
+static DWORD d32_t19_through_565(DWORD colour)
+{
+    DWORD r = (((colour >> 16) & 0xfful) * 31ul + 127ul) / 255ul;
+    DWORD g = (((colour >> 8) & 0xfful) * 63ul + 127ul) / 255ul;
+    DWORD b = ((colour & 0xfful) * 31ul + 127ul) / 255ul;
+
+    return d32_t19_widen((r << 11) | (g << 5) | b);
+}
+
+static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
+                                 const V9X_PS11_ENV *env,
+                                 const D32_T19_VERTEX *vertex,
+                                 const BYTE *bits, DWORD pitch, DWORD format)
+{
+    /* X8R8G8B8 and R5G6B5 keep no alpha: only an A8R8G8B8 target's is
+     * compared. */
+    DWORD mask = format == D32_D3DFMT_A8R8G8B8 ? 0xfffffffful : 0x00fffffful;
+    int narrow = format == D32_D3DFMT_R5G6B5;
+    DWORD guard = narrow ? d32_t19_through_565(D32_T19_GUARD) : D32_T19_GUARD;
+    DWORD tolerance = narrow ? D32_T19_TOLERANCE_565 : D32_T19_TOLERANCE;
+    const char *name = d32_t19_programs[program].name;
+    DWORD kill_set = d32_t19_programs[program].kill_set;
+    V9X_PS11_PIXEL pixel;
+    float attribute[3][6][4];
+    float out[4];
+    float sum;
+    long area;
+    long len[3];
+    long e[3];
+    long w[3];
+    long px;
+    long py;
+    DWORD x;
+    DWORD y;
+    DWORD i;
+    DWORD a;
+    DWORD c;
+    DWORD got;
+    DWORD want;
+    DWORD error;
+    DWORD inside = 0ul;
+    DWORD outside = 0ul;
+    DWORD outside_drawn = 0ul;
+    DWORD unjudged = 0ul;
+    DWORD killed = 0ul;
+    DWORD bad = 0ul;
+    DWORD max_error = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_got = 0ul;
+    DWORD first_want = 0ul;
+    int on_edge;
+    int in;
+    int kept;
+    int lookup_unjudged;
+    int got_guard;
+
+    for (i = 0ul; i < 3ul; ++i) {
+        d32_t19_colour(vertex[i].diffuse, attribute[i][0]);
+        d32_t19_colour(vertex[i].specular, attribute[i][1]);
+        for (a = 0ul; a < 4ul; ++a) {
+            for (c = 0ul; c < 4ul; ++c) {
+                attribute[i][2ul + a][c] = vertex[i].tc[a][c];
+            }
+        }
+    }
+    area = d32_t19_edge(0ul, 1ul, d32_t19_tri_x[2], d32_t19_tri_y[2]);
+    for (i = 0ul; i < 3ul; ++i) {
+        DWORD j = (i + 1ul) % 3ul;
+        long dx = d32_t19_tri_x[j] - d32_t19_tri_x[i];
+        long dy = d32_t19_tri_y[j] - d32_t19_tri_y[i];
+
+        len[i] = d32_t19_isqrt(dx * dx + dy * dy);
+    }
+
+    for (y = 0ul; y < D32_T19_SIDE; ++y) {
+        for (x = 0ul; x < D32_T19_SIDE; ++x) {
+            px = (long)x * 4l;
+            py = (long)y * 4l;
+            on_edge = 0;
+            in = 1;
+            for (i = 0ul; i < 3ul; ++i) {
+                e[i] = d32_t19_edge(i, (i + 1ul) % 3ul, px, py);
+                if ((e[i] < 0l ? -e[i] : e[i]) * D32_T19_EDGE_SCALE < len[i]) {
+                    on_edge = 1;
+                }
+                if (e[i] < 0l) {
+                    in = 0;
+                }
+            }
+            got = narrow ? d32_t19_widen(((const WORD *)(bits + y * pitch))[x])
+                         : ((const DWORD *)(bits + y * pitch))[x];
+            if (on_edge) {
+                ++unjudged;
+                continue;
+            }
+
+            want = guard;
+            if (in) {
+                /* The weight of vertex k is the edge opposite it. */
+                w[0] = e[1];
+                w[1] = e[2];
+                w[2] = e[0];
+                for (a = 0ul; a < 6ul; ++a) {
+                    for (c = 0ul; c < 4ul; ++c) {
+                        sum = 0.0f;
+                        for (i = 0ul; i < 3ul; ++i) {
+                            sum += (float)w[i] * attribute[i][a][c];
+                        }
+                        sum /= (float)area;
+                        if (a < 2ul) {
+                            pixel.v[a][c] = sum;
+                        } else {
+                            pixel.tc[a - 2ul][c] = sum;
+                        }
+                    }
+                }
+                lookup_unjudged = 0;
+                if (kill_set != 0ul) {
+                    for (c = 0ul; c < 3ul; ++c) {
+                        sum = pixel.tc[kill_set - 1ul][c];
+                        if ((sum < 0.0f ? -sum : sum) < D32_T19_KILL_MARGIN) {
+                            lookup_unjudged = 1;
+                        }
+                    }
+                }
+                kept = v9x_ps11_run(parsed, env, &pixel, d32_t19_sample,
+                                    &lookup_unjudged, out);
+                if (lookup_unjudged) {
+                    ++unjudged;
+                    continue;
+                }
+                ++inside;
+                if (kept) {
+                    want = (d32_t19_unorm(out[3]) << 24) |
+                           (d32_t19_unorm(out[0]) << 16) |
+                           (d32_t19_unorm(out[1]) << 8) |
+                           d32_t19_unorm(out[2]);
+                    if (narrow) {
+                        want = d32_t19_through_565(want);
+                    }
+                } else {
+                    ++killed;
+                }
+            } else {
+                ++outside;
+            }
+
+            /* The guard is compared whole (within the mask); a colour
+             * channel by channel, within the tolerance. */
+            /* In 565 the clear's own rounding of the guard is the
+             * hardware's, so the guard is matched within the tolerance. */
+            got_guard = narrow
+                ? d32_t19_diff(got, guard, mask) <= tolerance
+                : (got & mask) == (guard & mask);
+            error = 0ul;
+            if (want == guard || got_guard) {
+                error = (want == guard) == got_guard ? 0ul
+                                                     : D32_T19_GUARD_ERROR;
+            } else {
+                for (i = 0ul; i < 32ul; i += 8ul) {
+                    DWORD p = (got >> i) & 0xfful;
+                    DWORD q = (want >> i) & 0xfful;
+                    DWORD diff = p > q ? p - q : q - p;
+
+                    if (((mask >> i) & 0xfful) == 0ul) {
+                        continue;
+                    }
+                    if (diff > error) {
+                        error = diff;
+                    }
+                }
+            }
+            if (error > max_error && error != D32_T19_GUARD_ERROR) {
+                max_error = error;
+            }
+            if (!in && error != 0ul) {
+                ++outside_drawn;
+            }
+            if (error > tolerance) {
+                ++bad;
+                if (first_bad == 0xfffffffful) {
+                    first_bad = (y << 16) | x;
+                    first_got = got;
+                    first_want = want;
+                }
+            }
+        }
+    }
+
+    d32_t19_key(name, "Inside", inside);
+    d32_t19_key(name, "Outside", outside);
+    d32_t19_key(name, "OutsideDrawn", outside_drawn);
+    d32_t19_key(name, "NotJudged", unjudged);
+    d32_t19_key(name, "Killed", killed);
+    d32_t19_key(name, "Mismatches", bad);
+    d32_t19_key(name, "MaxChannelError", max_error);
+    d32_t19_key(name, "FirstBadYX", first_bad);
+    d32_t19_key(name, "FirstBadGot", first_got);
+    d32_t19_key(name, "FirstBadWant", first_want);
+    if (bad != 0ul) {
+        return "mismatch";
+    }
+    if (inside == 0ul) {
+        return "no-pixels-judged";
+    }
+    return "pass";
+}
+
+/* Stage s's texture: 8x8 A8R8G8B8, managed, filled through LockRect. */
+static HRESULT d32_t19_texture(D32_OBJECT *device, DWORD stage,
+                               D32_OBJECT **texture)
+{
+    D32_D3DLOCKED_RECT locked;
+    HRESULT hr;
+    long x;
+    long y;
+
+    *texture = 0;
+    hr = ((d32_d3d8_create_texture_fn)device->vtbl[D3DDEV8_CREATE_TEXTURE])(
+        device, (UINT)D32_T19_TEXELS, (UINT)D32_T19_TEXELS, 1u, 0ul,
+        D32_D3DFMT_A8R8G8B8, D32_D3DPOOL_MANAGED, texture);
+    if (hr != 0 || *texture == 0) {
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    d32_zero(&locked, sizeof(locked));
+    hr = ((d32_d3d8_tex_lock_fn)(*texture)->vtbl[D3DTEX8_LOCK_RECT])(
+        *texture, 0u, &locked, 0, 0ul);
+    if (hr != 0 || locked.pBits == 0) {
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    for (y = 0l; y < D32_T19_TEXELS; ++y) {
+        DWORD *row = (DWORD *)((BYTE *)locked.pBits + y * locked.Pitch);
+
+        for (x = 0l; x < D32_T19_TEXELS; ++x) {
+            row[x] = d32_t19_texel(stage, x, y);
+        }
+    }
+    return ((d32_d3d8_tex_unlock_fn)(*texture)->vtbl[D3DTEX8_UNLOCK_RECT])(
+        *texture, 0u);
+}
+
+/* One program drawn and judged; 1 when it passes. */
+static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
+                             const V9X_PS11_ENV *env, DWORD format)
+{
+    const D32_T19_PROGRAM *p = &d32_t19_programs[program];
+    V9X_PS11_PROGRAM parsed;
+    D32_T19_VERTEX vertex[3];
+    D32_D3DLOCKED_RECT locked;
+    D32_OBJECT *back = 0;
+    const char *verdict = "draw-failed";
+    char key[48];
+    DWORD handle = 0ul;
+    DWORD dwords;
+    v9x_u32 where = 0ul;
+    v9x_u32 status;
+    DWORD k;
+    DWORD set;
+    HRESULT clear_hr;
+    HRESULT begin_hr;
+    HRESULT create_hr;
+    HRESULT set_hr = (HRESULT)0x80004005ul;
+    HRESULT draw_hr = (HRESULT)0x80004005ul;
+    HRESULT end_hr;
+    HRESULT back_hr;
+    HRESULT lock_hr = (HRESULT)0x80004005ul;
+
+    /* Each program's name first, flushed, so a hang names it. */
+    d32_line("T19Program", p->name);
+    wsprintfA(key, "T19%sVerdict", p->name);
+    dwords = 0ul;
+    while (p->tokens[dwords] != D32_PT_END) {
+        ++dwords;
+    }
+    ++dwords;
+    status = v9x_ps11_parse((const v9x_u32 *)p->tokens, dwords, &parsed,
+                            &where);
+    if (status != V9X_PS11_OK) {
+        d32_t19_key(p->name, "ParseStatus", (DWORD)status);
+        d32_t19_key(p->name, "ParseWhere", (DWORD)where);
+        d32_line(key, "parse-failed");
+        return 0ul;
+    }
+
+    for (k = 0ul; k < 3ul; ++k) {
+        vertex[k].sx = (float)d32_t19_tri_x[k] * 0.25f;
+        vertex[k].sy = (float)d32_t19_tri_y[k] * 0.25f;
+        vertex[k].sz = 0.5f;
+        vertex[k].rhw = 1.0f;
+        vertex[k].diffuse = d32_t19_diffuse[k];
+        vertex[k].specular = d32_t19_specular[k];
+        for (set = 0ul; set < D32_T19_STAGES; ++set) {
+            d32_t19_coords(program, k, set, vertex[k].tc[set]);
+        }
+    }
+
+    clear_hr = ((d32_clear7_fn)device->vtbl[D3DDEV8_CLEAR])(
+        device, 0ul, 0, D32_D3DCLEAR_TARGET, D32_T19_GUARD, 1.0f, 0ul);
+    begin_hr = ((d32_scene_fn)device->vtbl[D3DDEV8_BEGIN_SCENE])(device);
+    create_hr = ((d32_d3d8_create_ps_fn)
+                 device->vtbl[D3DDEV8_CREATE_PIXEL_SHADER])(
+        device, p->tokens, &handle);
+    if (create_hr == 0) {
+        set_hr = ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_SET_PIXEL_SHADER])(
+            device, handle);
+    }
+    if (create_hr == 0 && set_hr == 0) {
+        draw_hr = ((d32_d3d8_draw_up_fn)
+                   device->vtbl[D3DDEV8_DRAW_PRIMITIVE_UP])(
+            device, D3DPT_TRIANGLELIST, 1u, vertex,
+            (UINT)sizeof(D32_T19_VERTEX));
+    }
+    end_hr = ((d32_scene_fn)device->vtbl[D3DDEV8_END_SCENE])(device);
+    back_hr = ((d32_d3d8_back_buffer_fn)device->vtbl[D3DDEV8_GET_BACK_BUFFER])(
+        device, 0u, D32_D3DBACKBUFFER_TYPE_MONO, &back);
+    d32_zero(&locked, sizeof(locked));
+    if (back_hr == 0 && back != 0) {
+        lock_hr = ((d32_d3d8_surf_lock_fn)back->vtbl[D3DSURF8_LOCK_RECT])(
+            back, &locked, 0, D32_D3DLOCK_READONLY);
+    }
+    d32_t19_key(p->name, "ClearHr", (DWORD)clear_hr);
+    d32_t19_key(p->name, "BeginHr", (DWORD)begin_hr);
+    d32_t19_key(p->name, "CreateHr", (DWORD)create_hr);
+    d32_t19_key(p->name, "SetHr", (DWORD)set_hr);
+    d32_t19_key(p->name, "DrawHr", (DWORD)draw_hr);
+    d32_t19_key(p->name, "EndHr", (DWORD)end_hr);
+    d32_t19_key(p->name, "BackBufferHr", (DWORD)back_hr);
+    d32_t19_key(p->name, "LockHr", (DWORD)lock_hr);
+
+    if (clear_hr == 0 && begin_hr == 0 && create_hr == 0 && set_hr == 0 &&
+        draw_hr == 0 && end_hr == 0 && lock_hr == 0 && locked.pBits != 0) {
+        verdict = d32_t19_judge(program, &parsed, env, vertex,
+                                (const BYTE *)locked.pBits,
+                                (DWORD)locked.Pitch, format);
+    }
+    if (lock_hr == 0) {
+        ((d32_d3d8_surf_unlock_fn)back->vtbl[D3DSURF8_UNLOCK_RECT])(back);
+    }
+    if (back != 0) {
+        ((d32_release_fn)back->vtbl[COM_RELEASE])(back);
+    }
+    if (create_hr == 0) {
+        ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_SET_PIXEL_SHADER])(device,
+                                                                   0ul);
+        ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_DELETE_PIXEL_SHADER])(
+            device, handle);
+    }
+    wsprintfA(key, "T19%sVerdict", p->name);
+    d32_line(key, verdict);
+    return lstrcmpA(verdict, "pass") == 0 ? 1ul : 0ul;
+}
+
+/* T19 itself; the count it adds to the run's failures, 0 or 1. */
+static DWORD d32_ps11(void)
+{
+    static DWORD caps[512];
+    D32_OBJECT *d3d;
+    D32_OBJECT *device = 0;
+    D32_OBJECT *texture[D32_T19_STAGES];
+    D32_D3DDISPLAYMODE mode;
+    D32_D3DPRESENT_PARAMETERS present;
+    V9X_PS11_ENV env;
+    HMODULE module;
+    d32_create_d3dx_fn create;
+    HWND window = 0;
+    const char *reason = 0;
+    char text[48];
+    DWORD failures = 0ul;
+    DWORD stage;
+    DWORD program;
+    HRESULT hr;
+
+    d32_line("Stage", "12-t19-ps11");
+    for (stage = 0ul; stage < D32_T19_STAGES; ++stage) {
+        texture[stage] = 0;
+    }
+    module = LoadLibraryA("D3D8.DLL");
+    create = module != 0
+        ? (d32_create_d3dx_fn)GetProcAddress(module, "Direct3DCreate8") : 0;
+    d3d = create != 0 ? (D32_OBJECT *)create(220u) : 0;
+    if (d3d == 0) {
+        d32_line("T19Result", "SKIP-NO-D3D8");
+        return 0ul;
+    }
+
+    /* Whether the HAL device claims PS 1.1, before making one: a driver
+     * that does not is skipped, not failed. */
+    d32_zero(caps, sizeof(caps));
+    hr = ((d32_device_caps_fn)d3d->vtbl[D3D8_GET_DEVICE_CAPS])(
+        d3d, 0u, D32_D3DDEVTYPE_HAL, caps);
+    d32_hx("T19CapsHr", (DWORD)hr);
+    d32_hx("T19PixelShaderVersion", caps[D32_D3DCAPS8_PIXEL_SHADER_VERSION]);
+    if (hr != 0 || (caps[D32_D3DCAPS8_PIXEL_SHADER_VERSION] & 0xfffful) <
+                       D32_D3DPS_VERSION_11) {
+        d32_line("T19Result", "SKIP-NO-PS");
+        goto release;
+    }
+
+    /* A windowed device's back buffer is in the desktop's format. */
+    d32_zero(&mode, sizeof(mode));
+    hr = ((d32_d3d8_mode_fn)d3d->vtbl[D3D8_GET_ADAPTER_DISPLAY_MODE])(
+        d3d, 0u, &mode);
+    d32_hx("T19DisplayModeHr", (DWORD)hr);
+    d32_hx("T19DisplayFormat", mode.Format);
+    if (hr != 0) {
+        reason = "no-display-mode";
+        goto release;
+    }
+    if (mode.Format != D32_D3DFMT_X8R8G8B8 &&
+        mode.Format != D32_D3DFMT_A8R8G8B8 &&
+        mode.Format != D32_D3DFMT_R5G6B5) {
+        d32_line("T19Result", "SKIP-FORMAT");
+        goto release;
+    }
+    d32_hx("T19Tolerance", mode.Format == D32_D3DFMT_R5G6B5
+                               ? D32_T19_TOLERANCE_565 : D32_T19_TOLERANCE);
+
+    window = CreateWindowExA(0ul, "Velocity9xD3d32ProbeWindow",
+                             "Velocity9x T19", WS_POPUP, 0, 0,
+                             (int)D32_T19_SIDE, (int)D32_T19_SIDE, 0, 0,
+                             GetModuleHandleA(0), 0);
+    if (window == 0) {
+        reason = "no-window";
+        goto release;
+    }
+    ShowWindow(window, SW_SHOWNORMAL);
+
+    d32_zero(&present, sizeof(present));
+    present.BackBufferWidth = (UINT)D32_T19_SIDE;
+    present.BackBufferHeight = (UINT)D32_T19_SIDE;
+    present.BackBufferFormat = mode.Format;
+    present.BackBufferCount = 1u;
+    present.SwapEffect = D32_D3DSWAPEFFECT_COPY;
+    present.hDeviceWindow = window;
+    present.Windowed = TRUE;
+    present.Flags = D32_D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+    hr = ((d32_d3d8_create_device_fn)d3d->vtbl[D3D8_CREATE_DEVICE])(
+        d3d, 0u, D32_D3DDEVTYPE_HAL, window,
+        D32_D3DCREATE_SOFTWARE_VERTEXPROCESSING, &present, &device);
+    d32_hx("T19DeviceHr", (DWORD)hr);
+    if (hr != 0 || device == 0) {
+        device = 0;
+        reason = "no-device";
+        goto release;
+    }
+
+    ((d32_render_state_fn)device->vtbl[D3DDEV8_SET_RENDER_STATE])(
+        device, D3DRENDERSTATE_ZENABLE, 0ul);
+    ((d32_render_state_fn)device->vtbl[D3DDEV8_SET_RENDER_STATE])(
+        device, D3DRENDERSTATE_CULLMODE, D3DCULL_NONE);
+    for (stage = 0ul; stage < D32_T19_STAGES; ++stage) {
+        d32_stage_state_fn tss =
+            (d32_stage_state_fn)device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE];
+
+        hr = d32_t19_texture(device, stage, &texture[stage]);
+        wsprintfA(text, "T19Texture%luHr", stage);
+        d32_hx(text, (DWORD)hr);
+        if (hr != 0) {
+            reason = "no-texture";
+            goto release;
+        }
+        hr = ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
+            device, stage, texture[stage]);
+        wsprintfA(text, "T19SetTexture%luHr", stage);
+        d32_hx(text, (DWORD)hr);
+        tss(device, stage, D32_TSS_MAGFILTER, D32_D3DTEXF_POINT);
+        tss(device, stage, D32_TSS_MINFILTER, D32_D3DTEXF_POINT);
+        tss(device, stage, D32_TSS_MIPFILTER, D32_D3DTEXF_NONE);
+        tss(device, stage, D32_D3DTSS_ADDRESSU, D32_D3DTADDRESS_CLAMP);
+        tss(device, stage, D32_D3DTSS_ADDRESSV, D32_D3DTADDRESS_CLAMP);
+    }
+
+    d32_t19_env(&env);
+    for (stage = 0ul; stage < 4ul; ++stage) {
+        ((d32_stage_state_fn)device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE])(
+            device, 1ul, D32_D3DTSS_BUMPENVMAT00 + stage,
+            d32_float_bits(env.bump[1][stage]));
+    }
+    hr = ((d32_d3d8_ps_const_fn)
+          device->vtbl[D3DDEV8_SET_PIXEL_SHADER_CONSTANT])(
+        device, 0ul, env.c, 8ul);
+    d32_hx("T19ConstantsHr", (DWORD)hr);
+    hr = ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_SET_VERTEX_SHADER])(
+        device, D32_FVF_T19);
+    d32_hx("T19FvfHr", (DWORD)hr);
+
+    for (program = 0ul; program < D32_T19_PROGRAMS; ++program) {
+        if (d32_t19_program(device, program, &env, mode.Format) == 0ul &&
+            reason == 0) {
+            reason = d32_t19_programs[program].name;
+        }
+    }
+
+release:
+    if (reason != 0) {
+        d32_line("T19Result", "FAIL");
+        d32_line("T19Reason", reason);
+        failures = 1ul;
+    } else if (device != 0) {
+        d32_line("T19Result", "PASS");
+    }
+    for (stage = 0ul; stage < D32_T19_STAGES; ++stage) {
+        if (device != 0) {
+            ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
+                device, stage, 0);
+        }
+        if (texture[stage] != 0) {
+            ((d32_release_fn)texture[stage]->vtbl[COM_RELEASE])(
+                texture[stage]);
+        }
+    }
+    if (device != 0) {
+        ((d32_release_fn)device->vtbl[COM_RELEASE])(device);
+    }
+    ((d32_release_fn)d3d->vtbl[COM_RELEASE])(d3d);
+    if (window != 0) {
+        DestroyWindow(window);
+    }
+    return failures;
+}
+
 static DWORD d32_two_stage(D32_OBJECT *ddraw, D32_OBJECT *back,
                            D32_OBJECT *base_surface)
 {
@@ -4644,6 +5643,10 @@ void WINAPI V9xD3d32ProbeEntry(void)
                     run_after.fifo_timeouts != run_before.fifo_timeouts
                         ? 1ul : 0ul;
     }
+    /* T19 last: its windowed device needs the desktop's own mode, which
+     * is back only now, and its draws stay out of the counters above, so
+     * RunDdi and the timeouts describe the other tests as before. */
+    failures += d32_ps11();
     d32_hx("Failures", failures);
     d32_finish(failures == 0ul ? "PASS" : "FAIL", failures == 0ul ? 0u : 1u);
 }

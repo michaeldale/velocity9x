@@ -302,10 +302,11 @@ HSW_RCS_ST_RING_BORROWED equ 00020000h
 ; fallback reserve kept it. Since the heap plan the reserve is wherever the
 ; driver put it and the publisher's region follows it, so the ring is also
 ; accepted at the region less HSW_RCS_RING_BELOW: V9X_INTEL_HSW_RESERVE_BYTES
-; (40000h) less V9X_INTEL_HSW_RCS_RING_OFF (2000h). Either way the START
+; (50000h since pixel shaders step 5b) less V9X_INTEL_HSW_RCS_RING_OFF
+; (2000h); check-tree.ps1 ties it to intel_hsw.h. Either way the START
 ; found is the one given back.
 HSW_RCS_DRIVER_RING     equ 01802000h
-HSW_RCS_RING_BELOW      equ 0003e000h
+HSW_RCS_RING_BELOW      equ 0004e000h
 
 ; Output: a 96-dword header, offsets in bytes, matching struct
 ; v9x_rcs_result in hsw_mmio_probe_win32.c, then both targets.

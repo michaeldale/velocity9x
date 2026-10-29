@@ -608,6 +608,17 @@ v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
 #define V9X_HSW_SHADE_VS_KERNEL           ((v9x_u32)0x1b40ul)
 #define V9X_HSW_SHADE_VS_KERNEL_BYTES     ((v9x_u32)0x0400ul)
 #define V9X_HSW_SHADE_VS_END              ((v9x_u32)0x1f40ul)
+/*
+ * Pixel shaders, step 5b: what a draw under a PS 1.1 kernel puts in the
+ * same place, the vertex stage being off for it: a five-entry binding
+ * table (32-byte aligned), stages 0-3's surface states, their four
+ * samplers, and the seven push-constant GRFs (32-byte aligned).
+ */
+#define V9X_HSW_SHADE_PS11_BINDING_TABLE  ((v9x_u32)0x1540ul)
+#define V9X_HSW_SHADE_PS11_TEX_SURFACE(s) ((v9x_u32)(0x1560ul + 0x20ul * (s)))
+#define V9X_HSW_SHADE_PS11_SAMPLER        ((v9x_u32)0x15e0ul)
+#define V9X_HSW_SHADE_PS11_CONSTANTS      ((v9x_u32)0x1620ul)
+#define V9X_HSW_SHADE_PS11_END            ((v9x_u32)0x1700ul)
 /* The depth draw: x, y, z, then RGBA, 28 bytes; 3 vertices of the clear
  * then 9 of the scene. */
 #define V9X_HSW_DEPTH_VERTEX_BYTES     ((v9x_u16)28u)
@@ -770,10 +781,13 @@ struct v9x_hsw_vs_segment {
  * struct v9x_hsw_vs_draw is one.
  *
  * The draw's vertices are the wide form, V9X_HSW_WIDE_VERTEX_BYTES each:
- * x y as floats, then V9X_HSW_WIDE_ATTRIBUTES attributes of four floats -
+ * sx sy sz rhw as Direct3D's TL vertex has them (step 5b; 5a's probe had x
+ * y alone), then V9X_HSW_WIDE_ATTRIBUTES attributes of four floats -
  * diffuse, specular, texture coordinate sets 0 to 3, the translator's
- * order - and draw->attributes must be V9X_HSW_WIDE_ATTRIBUTES. TL vertices
- * are refused until the HAL needs them (step 5b).
+ * order - and draw->attributes must be V9X_HSW_WIDE_ATTRIBUTES, tl_vertices
+ * and tl_uv1 0. CLIP takes the TL form's screen-space state. A depth
+ * buffer draws under depth_test (depth_clear 0) and a scissor as the TL
+ * form's; indices are refused, the caller expanding them.
  *
  * constants: the graphics address of constant_grfs GRFs of push
  * constants (32-byte aligned), which arrive at GRF 4 with the setup data
@@ -783,7 +797,7 @@ struct v9x_hsw_vs_segment {
  * the kernel discards pixels (texkill), which 3DSTATE_WM must be told.
  */
 #define V9X_HSW_WIDE_ATTRIBUTES   ((v9x_u8)6u)
-#define V9X_HSW_WIDE_VERTEX_BYTES ((v9x_u16)104u)
+#define V9X_HSW_WIDE_VERTEX_BYTES ((v9x_u16)112u)
 
 struct v9x_hsw_ps11_draw {
     v9x_u32 constants;

@@ -48,6 +48,7 @@
 #include "velocity9x/intel_hsw_3d.h"
 #include "velocity9x/intel_hsw_eu.h"
 #include "velocity9x/intel_hsw_pipe.h"
+#include "velocity9x/intel_hsw_ps11.h"
 #include "velocity9x/intel_hsw_vs.h"
 #include "velocity9x/intel_gma.h"
 #include "r3d/r3d_cull.h"
@@ -3157,6 +3158,371 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_global.dwNumClipVertices = 0ul;
 }
 
+/*
+ * Pixel shaders, step 5b of docs\plans\haswell-ddi8-pixel-shaders.md: draws
+ * under a PS 1.1 program, as V9XHSWMM /ps11 measured them (docs\decisions\
+ * 2026-10-30-haswell-ps11-step5a-probe.md).
+ *
+ * The kernel cache at V9X_INTEL_HSW_PS11_KERNEL_OFF holds one program's
+ * kernel a slot, keyed by the core's serial and the stages that are cube
+ * maps or projected, the description the translator is given. Its
+ * directory is trusted as the vertex kernels' is: each entry's tag must
+ * match the status page's from V9X_D3D_HSW_PS11_TAG_DWORD, so a reset
+ * reserve, whose page a ring open zeroes, matches nothing.
+ */
+#define V9X_D3D_HSW_PS11_TAG_DWORD     ((DWORD)0x1d0ul)
+#define V9X_D3D_HSW_PS11_COUNTER_DWORD ((DWORD)0x1e0ul)
+#define V9X_D3D_HSW_PS11_KERNEL_DWORDS \
+    ((V9X_INTEL_HSW_PS11_KERNEL_SLOT - 128ul) / 4ul)
+/* Setup data after the push block (intel_hsw_ps11.h), from GRF 4. */
+#define V9X_D3D_HSW_PS11_CONST_GRF     ((v9x_u8)4u)
+/* A slot's vertex area holds this many triangles of wide vertices (85). */
+#define V9X_D3D_HSW_PS11_TRIANGLES \
+    (V9X_HSW_PIPE_VERTEX_BYTES / (3ul * V9X_HSW_WIDE_VERTEX_BYTES))
+
+typedef char v9x_d3d_hsw_assert_ps11_tags[
+    V9X_D3D_HSW_PS11_TAG_DWORD >= V9X_D3D_HSW_VS_COUNTER_DWORD + 1ul &&
+    V9X_D3D_HSW_PS11_COUNTER_DWORD >= V9X_D3D_HSW_PS11_TAG_DWORD +
+        V9X_INTEL_HSW_PS11_KERNEL_SLOTS &&
+    (V9X_D3D_HSW_PS11_COUNTER_DWORD + 1ul) * 4ul <= V9X_INTEL_HSW_RING_BYTES &&
+    V9X_HSW_SHADE_PS11_END <= V9X_HSW_SHADE_VS_END &&
+    V9X_HSW_PS11_CONST_DWORDS * 4ul <=
+        V9X_HSW_SHADE_PS11_END - V9X_HSW_SHADE_PS11_CONSTANTS ? 1 : -1];
+
+typedef struct v9x_d3d_hsw_ps11_entry {
+    v9x_u32 serial;
+    v9x_u32 cube;
+    v9x_u32 projected;
+    DWORD tag;
+} V9X_D3D_HSW_PS11_ENTRY;
+
+static V9X_D3D_HSW_PS11_ENTRY
+    v9x_d3d_hsw_ps11_cache[V9X_INTEL_HSW_PS11_KERNEL_SLOTS];
+static DWORD v9x_d3d_hsw_ps11_victim;
+
+/* The kernel for the shader, built on a miss; its offset from the draw
+ * slot's state base in *kernel. 0 when it cannot be built or is larger
+ * than a slot. */
+static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
+                                   const struct v9x_hsw_pipe_slot *slot,
+                                   DWORD *kernel)
+{
+    volatile DWORD *status = v9x_d3d_hsw_status();
+    V9X_D3D_HSW_PS11_ENTRY *entry;
+    struct v9x_hsw_ps11_desc desc;
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD index;
+    DWORD tag;
+    v9x_u32 used = 0ul;
+
+    for (index = 0ul; index < V9X_INTEL_HSW_PS11_KERNEL_SLOTS; ++index) {
+        entry = &v9x_d3d_hsw_ps11_cache[index];
+        if (entry->tag != 0ul && entry->serial == shader->serial &&
+            entry->cube == shader->env.cube &&
+            entry->projected == shader->env.projected &&
+            status[V9X_D3D_HSW_PS11_TAG_DWORD + index] == entry->tag) {
+            *kernel = V9X_INTEL_HSW_PS11_KERNEL_OFF +
+                      index * V9X_INTEL_HSW_PS11_KERNEL_SLOT -
+                      slot->state_off;
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 1;
+        }
+    }
+
+    /* A miss: the next slot round the cache, once nothing still running
+     * can be executing it. */
+    index = v9x_d3d_hsw_ps11_victim % V9X_INTEL_HSW_PS11_KERNEL_SLOTS;
+    v9x_d3d_hsw_ps11_victim = index + 1ul;
+    entry = &v9x_d3d_hsw_ps11_cache[index];
+    if (v9x_intel_hsw_pipe_idle(status[V9X_INTEL_HSW_STATUS_RCS_SENT],
+                                status[V9X_INTEL_HSW_STATUS_RCS_DONE]) !=
+            V9X_TRUE &&
+        !v9x_d3d_hsw_wait_rcs()) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+    entry->tag = 0ul;
+    status[V9X_D3D_HSW_PS11_TAG_DWORD + index] = 0ul;
+    desc.const_grf = V9X_D3D_HSW_PS11_CONST_GRF;
+    desc.setup_grf = (v9x_u8)(V9X_D3D_HSW_PS11_CONST_GRF +
+                              V9X_HSW_PS11_CONST_GRFS);
+    desc.cube = shader->env.cube;
+    desc.projected = shader->env.projected;
+    if (v9x_intel_hsw_ps11_build(
+            v9x_d3d_hsw_reserve(V9X_INTEL_HSW_PS11_KERNEL_OFF +
+                                index * V9X_INTEL_HSW_PS11_KERNEL_SLOT),
+            V9X_D3D_HSW_PS11_KERNEL_DWORDS, shader->program, &desc,
+            &used) != V9X_STATUS_OK) {
+        ++v9x_hal->d3d_diagnostics.ps11_kernels_refused;
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+    ++v9x_hal->d3d_diagnostics.ps11_kernels_built;
+    tag = status[V9X_D3D_HSW_PS11_COUNTER_DWORD] + 1ul;
+    if (tag == 0ul) {
+        tag = 1ul;
+    }
+    status[V9X_D3D_HSW_PS11_COUNTER_DWORD] = tag;
+    entry->serial = shader->serial;
+    entry->cube = shader->env.cube;
+    entry->projected = shader->env.projected;
+    entry->tag = tag;
+    status[V9X_D3D_HSW_PS11_TAG_DWORD + index] = tag;
+    *kernel = V9X_INTEL_HSW_PS11_KERNEL_OFF +
+              index * V9X_INTEL_HSW_PS11_KERNEL_SLOT - slot->state_off;
+    V9X_TIME_END(V9X_TIME_DECODE, started);
+    return 1;
+}
+
+/*
+ * A shader draw's state in its slot: the target's surface, the five-entry
+ * binding table (entry 1 + N stage N's texture, the target's for a stage
+ * the program does not sample), stages' surfaces and samplers, the zeroed
+ * border colour, blend, CC and depth state at the fixed-function draw's
+ * offsets, and the push block.
+ */
+static DWORD v9x_d3d_hsw_ps11_state(const V9X_R3D_DRAW *draw,
+                                    const V9X_D3D_HSW_STATE *state,
+                                    const V9X_D3D_HSW_TEXTURE *units,
+                                    v9x_u32 sampled,
+                                    const V9X_PS11_ENV *env,
+                                    const struct v9x_hsw_pipe_slot *slot)
+{
+    v9x_u32 *image = v9x_d3d_hsw_reserve(slot->state_off);
+    v9x_u32 *table = image + V9X_HSW_SHADE_PS11_BINDING_TABLE / 4ul;
+    DWORD index;
+
+    if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
+                                 state->target_format,
+                                 v9x_d3d_hsw_vram(draw->target.offset),
+                                 (v9x_u16)draw->target.width,
+                                 (v9x_u16)draw->target.height,
+                                 draw->target.pitch) != V9X_STATUS_OK) {
+        return V9X_D3D_HSW_REFUSE_TARGET_STATE;
+    }
+    table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
+    for (index = 0ul; index < V9X_R3D_SHADER_STAGES; ++index) {
+        const V9X_D3D_HSW_TEXTURE *texture = &units[index];
+
+        table[1ul + index] = V9X_HSW_DRAW_RT_SURFACE(0);
+        if ((sampled & (1ul << index)) == 0ul) {
+            continue;
+        }
+        if (v9x_intel_hsw_surface_2d(
+                image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
+                texture->format, texture->address, texture->width,
+                texture->height, texture->pitch) != V9X_STATUS_OK ||
+            (texture->levels > 1u &&
+             v9x_intel_hsw_surface_mips(
+                 image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
+                 texture->levels) != V9X_STATUS_OK) ||
+            v9x_intel_hsw_sampler(
+                image + (V9X_HSW_SHADE_PS11_SAMPLER +
+                         index * V9X_HSW_SAMPLER_BYTES) / 4ul,
+                &texture->sampler) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_note_texture(texture, index, 1ul);
+            return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
+        }
+        table[1ul + index] = V9X_HSW_SHADE_PS11_TEX_SURFACE(index);
+    }
+    for (index = 0ul; index < V9X_D3D_HSW_BORDER_BYTES / 4ul; ++index) {
+        image[V9X_HSW_SHADE_BORDER_COLOR / 4ul + index] = 0ul;
+    }
+    if (v9x_intel_hsw_blend(image + V9X_HSW_SHADE_BLEND_ALPHA_TEST / 4ul,
+                            &state->blend) != V9X_STATUS_OK ||
+        v9x_intel_hsw_cc_state(image + V9X_HSW_SHADE_CC / 4ul,
+                               state->alpha_ref) != V9X_STATUS_OK ||
+        (state->depth &&
+         v9x_intel_hsw_depth_stencil(image + V9X_D3D_HSW_DS_OFF / 4ul, 1u,
+                                     state->depth_function,
+                                     state->depth_write) != V9X_STATUS_OK)) {
+        return V9X_D3D_HSW_REFUSE_COLOUR_STATE;
+    }
+    v9x_intel_hsw_ps11_constants(env,
+                                 image + V9X_HSW_SHADE_PS11_CONSTANTS / 4ul);
+    return V9X_D3D_HSW_REFUSE_NONE;
+}
+
+/*
+ * The draw: its fixed-function state mapped as any draw's, with no texture
+ * of its own; each stage the program samples as a texture unit; then
+ * pieces of whole triangles a slot at a time. A triangle past the guard
+ * band, or spanning 8K, is dropped and counted rather than clipped: the
+ * core's clipper knows the 32-byte vertex only. Fog after the shader is
+ * not in the kernel yet, so a fogged draw goes unfogged, counted.
+ */
+static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
+                                   const V9X_R3D_SHADER *shader,
+                                   const float *vertices,
+                                   DWORD triangle_count)
+{
+    V9X_R3D_DRAW plain;
+    V9X_D3D_HSW_STATE state;
+    V9X_D3D_HSW_TEXTURE units[V9X_R3D_SHADER_STAGES];
+    struct v9x_hsw_pipe_slot slot;
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_draw d;
+    struct v9x_hsw_ps11_draw ps;
+    V9X_R3D_VERTEX corners[3];
+    v9x_u32 sampled;
+    DWORD started = V9X_TIME_BEGIN();
+    DWORD reason;
+    DWORD kernel = 0ul;
+    DWORD done = 0ul;
+    DWORD count;
+    DWORD index;
+    DWORD vertex;
+    float centre;
+    int has_alpha;
+    int wait_after;
+    const v9x_u32 *source;
+    v9x_u32 *target;
+
+    if (draw == 0 || shader == 0 || shader->program == 0 || vertices == 0 ||
+        triangle_count == 0ul) {
+        return 0;
+    }
+    if (!v9x_d3d_hsw_ready()) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_NOT_READY);
+        return 0;
+    }
+    plain = *draw;
+    plain.texture.object = 0;
+    plain.texture1.object = 0;
+    plain.texcoords1 = 0;
+    reason = v9x_d3d_hsw_map(&plain, &state);
+    if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+        v9x_d3d_hsw_count_refusal(reason);
+        return 0;
+    }
+    if (state.scissor_empty) {
+        return 1;
+    }
+    /* Cube maps wait for step 5c, which places a cube's faces whole. */
+    sampled = shader->program->samples;
+    if (shader->env.cube != 0ul) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_TEXTURE);
+        return 0;
+    }
+    for (index = 0ul; index < V9X_R3D_SHADER_STAGES; ++index) {
+        if ((sampled & (1ul << index)) == 0ul) {
+            continue;
+        }
+        reason = v9x_d3d_hsw_texture_unit(&shader->texture[index],
+                                          &units[index], &has_alpha);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
+            return 0;
+        }
+    }
+    if (draw->fog_enable != 0ul) {
+        ++v9x_hal->d3d_diagnostics.ps11_unfogged;
+    }
+
+    if (!v9x_d3d_hsw_blitter_idle() && !v9x_engine32_hsw.wait_idle(1)) {
+        v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
+        return 0;
+    }
+    /* As v9x_d3d_hsw_draw_batch: the buffer Flip just released is still
+     * being scanned out until the plane takes the new one. */
+    {
+        int waited = v9x_flip_wait_done();
+
+        if (waited != V9X_FLIP_WAIT_NONE) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+            }
+        }
+    }
+    wait_after = v9x_d3d_hsw_draw_waits(draw);
+
+    v9x_d3d_hsw_draw_desc(draw, &state, &d);
+    d.binding_table = V9X_HSW_SHADE_PS11_BINDING_TABLE;
+    d.sampler = V9X_HSW_SHADE_PS11_SAMPLER;
+    d.attributes = V9X_HSW_WIDE_ATTRIBUTES;
+    d.tl_vertices = 0u;
+    d.tl_uv1 = 0u;
+    ps.constant_grfs = V9X_HSW_PS11_CONST_GRFS;
+    ps.stages = (v9x_u8)V9X_R3D_SHADER_STAGES;
+    ps.kill = shader->program->has_kill != 0ul ? 1u : 0u;
+    centre = draw->centre_offset;
+
+    while (done < triangle_count) {
+        if (!v9x_d3d_hsw_wait_slot(&slot)) {
+            v9x_d3d_hsw_count_refusal(done == 0ul ?
+                                      V9X_D3D_HSW_REFUSE_IDLE :
+                                      V9X_D3D_HSW_REFUSE_PIECE);
+            return 0;
+        }
+        reason = v9x_d3d_hsw_ps11_state(draw, &state, units, sampled,
+                                        &shader->env, &slot);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
+            return 0;
+        }
+        if (!v9x_d3d_hsw_ps11_kernel(shader, &slot, &kernel)) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
+            return 0;
+        }
+        d.kernel = kernel;
+        d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
+        ps.constants = V9X_D3D_HSW_GFX(slot.state_off +
+                                       V9X_HSW_SHADE_PS11_CONSTANTS);
+
+        target = v9x_d3d_hsw_reserve(slot.vertex_off);
+        count = 0ul;
+        while (done < triangle_count &&
+               count < V9X_D3D_HSW_PS11_TRIANGLES) {
+            const float *triangle =
+                vertices + done * 3ul * V9X_R3D_SHADER_FLOATS;
+
+            for (vertex = 0ul; vertex < 3ul; ++vertex) {
+                corners[vertex].sx =
+                    triangle[vertex * V9X_R3D_SHADER_FLOATS] + centre;
+                corners[vertex].sy =
+                    triangle[vertex * V9X_R3D_SHADER_FLOATS + 1ul] + centre;
+            }
+            ++done;
+            if (v9x_d3d_hsw_guard(corners) != V9X_D3D_HSW_GUARD_DRAW) {
+                ++v9x_hal->d3d_diagnostics.ps11_triangles_dropped;
+                continue;
+            }
+            source = (const v9x_u32 *)triangle;
+            /* sx sy moved to the pixel centre as the core left to this
+             * engine (centre_in_engine), the rest as they are. */
+            for (vertex = 0ul; vertex < 3ul; ++vertex) {
+                *target++ = *(const v9x_u32 *)&corners[vertex].sx;
+                *target++ = *(const v9x_u32 *)&corners[vertex].sy;
+                for (index = 2ul; index < V9X_R3D_SHADER_FLOATS; ++index) {
+                    *target++ = source[vertex * V9X_R3D_SHADER_FLOATS + index];
+                }
+            }
+            ++count;
+        }
+        if (count == 0ul) {
+            continue;
+        }
+        d.vertex_count = count * 3ul;
+        v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                                 slot.batch_bytes / 4ul);
+        if (v9x_intel_hsw_draw_workload_ps11(
+                &batch, V9X_D3D_HSW_GFX(slot.state_off),
+                V9X_D3D_HSW_TNL_STATE_BYTES(slot), &d, &ps,
+                V9X_D3D_HSW_CRUMB_GFX, done) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+            return 0;
+        }
+        if (!v9x_d3d_hsw_submit(&slot, wait_after)) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
+            return 0;
+        }
+    }
+    v9x_present_note_submission();
+    V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+    return 1;
+}
+
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     &v9x_d3d_hsw_limits,
@@ -3170,5 +3536,8 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_accepts,
     v9x_d3d_hsw_draw_indexed,
     v9x_d3d_hsw_draw_tnl,
-    v9x_d3d_hsw_tnl_available
+    v9x_d3d_hsw_tnl_available,
+    0,                                  /* lock_surface: linear surfaces */
+    0,
+    v9x_d3d_hsw_draw_shader
 };

@@ -19,6 +19,7 @@
 #define VELOCITY9X_R3D_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/ps11.h"
 #include "velocity9x/r3d_tnl.h"
 
 /*
@@ -277,6 +278,31 @@ typedef struct v9x_r3d_draw {
     V9X_R3D_TEXTURE texture1;
     const float *texcoords1;
 } V9X_R3D_DRAW;
+
+/*
+ * What a draw under a DirectX 8 pixel shader adds to V9X_R3D_DRAW (step 5b
+ * of docs\plans\haswell-ddi8-pixel-shaders.md). The draw's own `texture`
+ * and `texture1` are unused; its target, depth, blend, alpha test, fog and
+ * scissor state apply as to any draw.
+ *
+ * program: the parsed shader (velocity9x/ps11.h); serial names it while it
+ * lives, for an engine's kernel cache. env: the constants, each stage's
+ * bump terms, and which stages are cube maps or projected. texture[N]:
+ * stage N's texture as `texture` is described, object null for none.
+ *
+ * The vertices are V9X_R3D_SHADER_FLOATS floats each, three a triangle in
+ * a list: sx sy sz rhw, diffuse r g b a, specular r g b a, then stage 0-3's
+ * coordinates x y z w (d3d_ps.h's wide vertex).
+ */
+#define V9X_R3D_SHADER_STAGES 4u
+#define V9X_R3D_SHADER_FLOATS 28u
+
+typedef struct v9x_r3d_shader {
+    const V9X_PS11_PROGRAM *program;
+    v9x_u32 serial;
+    V9X_PS11_ENV env;
+    V9X_R3D_TEXTURE texture[V9X_R3D_SHADER_STAGES];
+} V9X_R3D_SHADER;
 
 /*
  * What a draw the engine transforms adds to V9X_R3D_DRAW (render interface

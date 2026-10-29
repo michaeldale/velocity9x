@@ -1943,6 +1943,11 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("TwoUnitDeclined", snapshot.d3d.two_unit_declined);
     v9x_write_uint("TwoUnitValidateRefused",
                    snapshot.d3d.two_unit_validate_refused);
+    v9x_write_uint("Ps11KernelsBuilt", snapshot.d3d.ps11_kernels_built);
+    v9x_write_uint("Ps11KernelsRefused", snapshot.d3d.ps11_kernels_refused);
+    v9x_write_uint("Ps11TrianglesDropped",
+                   snapshot.d3d.ps11_triangles_dropped);
+    v9x_write_uint("Ps11Unfogged", snapshot.d3d.ps11_unfogged);
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

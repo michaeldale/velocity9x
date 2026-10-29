@@ -1356,6 +1356,47 @@ if ($loaderText -match '(?m)and\s+eax,\s*0[0-9a-fA-F]*ffffch') {
            'V9X_I9XX_RING_HEAD_MASK from the generated include.')
 }
 
+# The Haswell engine reserve's size is written in three places: intel_hsw.h
+# (the HAL and the 16-bit driver), loader.asm (the mini-VDD maps that many
+# pages), and hsw_mmio_probe.asm (V9XHSWMM finds the driver's render ring at
+# its region less the reserve plus the ring's offset). The probe's copy went
+# stale once already, and a probe that does not recognise the driver's ring
+# refuses it, or would restore the wrong START.
+$hswHeader = Get-Content -LiteralPath (Join-Path $repoRoot 'include\velocity9x\intel_hsw.h') -Raw
+$hswProbeAsm = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\diag\hsw_mmio_probe.asm') -Raw
+$hswC = @{}
+foreach ($name in 'RESERVE_BYTES', 'RESERVE_PAGES', 'RCS_RING_OFF') {
+    if ($hswHeader -match ('#define\s+V9X_INTEL_HSW_' + $name +
+                           '\s+\(\(v9x_u32\)(0x[0-9a-fA-F]+|[0-9]+)ul\)')) {
+        $hswC[$name] = [Convert]::ToUInt32($Matches[1], $(if ($Matches[1] -like '0x*') { 16 } else { 10 }))
+    } else {
+        throw "include\velocity9x\intel_hsw.h defines no V9X_INTEL_HSW_$name."
+    }
+}
+$hswAsm = @{}
+foreach ($pair in @(@($loaderText, 'V9X_HSW_RESERVE_BYTES'),
+                    @($loaderText, 'V9X_HSW_RESERVE_PAGES'),
+                    @($hswProbeAsm, 'HSW_RCS_RING_BELOW'))) {
+    if ($pair[0] -match ('(?m)^' + $pair[1] + '\s+equ\s+([0-9][0-9a-fA-F]*h|[0-9]+)\s*$')) {
+        $text = $Matches[1]
+        $hswAsm[$pair[1]] = if ($text -like '*h') {
+            [Convert]::ToUInt32($text.Substring(0, $text.Length - 1), 16)
+        } else { [uint32]$text }
+    } else {
+        throw "No $($pair[1]) equ found for the Haswell reserve tie."
+    }
+}
+if ($hswAsm['V9X_HSW_RESERVE_BYTES'] -ne $hswC['RESERVE_BYTES'] -or
+    $hswAsm['V9X_HSW_RESERVE_PAGES'] -ne $hswC['RESERVE_PAGES'] -or
+    $hswAsm['HSW_RCS_RING_BELOW'] -ne ($hswC['RESERVE_BYTES'] - $hswC['RCS_RING_OFF'])) {
+    throw ('The Haswell reserve disagrees: intel_hsw.h has ' +
+           ('0x{0:X} bytes, {1} pages, ring at 0x{2:X}; ' -f $hswC['RESERVE_BYTES'],
+            $hswC['RESERVE_PAGES'], $hswC['RCS_RING_OFF']) +
+           ('loader.asm 0x{0:X} bytes, {1} pages; hsw_mmio_probe.asm ' +
+            'HSW_RCS_RING_BELOW 0x{2:X}.') -f $hswAsm['V9X_HSW_RESERVE_BYTES'],
+           $hswAsm['V9X_HSW_RESERVE_PAGES'], $hswAsm['HSW_RCS_RING_BELOW'])
+}
+
 function Get-V9xIncCrc32 {
     param([string[]]$Hex)
     [uint64]$crc = 0xffffffffL

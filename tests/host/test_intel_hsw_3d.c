@@ -1943,8 +1943,9 @@ static void test_ivb_variant(void)
  * dummy primitive, seven GRFs; 3DSTATE_PS with five binding entries, one
  * group of samplers, Push Constant Enable (DW4 11) and attributes from
  * GRF 4; 3DSTATE_WM with Pixel Shader Kill Pixel (DW1 25); SBE reading six
- * attributes (offset 1, length 3); the 104-byte vertex as eight elements:
- * header, position x y, six four-float attributes from offset 8.
+ * attributes (offset 1, length 3); the 112-byte vertex as eight elements:
+ * header, position sx sy sz rhw, six four-float attributes from offset 16;
+ * and, as the TL form, CLIP's screen-space state (step 5b).
  */
 static void test_ps11_workload(void)
 {
@@ -2008,15 +2009,17 @@ static void test_ps11_workload(void)
     at = v9x_find_command(dw, batch.used, 0x78300000ul);
     CHECK(at < batch.used && ((dw[at + 1ul] >> 16) & 0x1fful) == 1ul);
     at = v9x_find_command(dw, batch.used, 0x78080003ul);
-    CHECK(at < batch.used && dw[at + 1ul] == 0x00004068ul &&
-          dw[at + 3ul] == draw.vertices + 311ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00004070ul &&
+          dw[at + 3ul] == draw.vertices + 335ul);
     at = v9x_find_command(dw, batch.used, 0x7809000ful);
-    CHECK(at < batch.used && dw[at + 3ul] == 0x02850000ul &&
-          dw[at + 4ul] == 0x11230000ul);
+    CHECK(at < batch.used && dw[at + 3ul] == 0x02000000ul &&
+          dw[at + 4ul] == 0x11110000ul);
     for (n = 0ul; n < 6ul; ++n) {
-        CHECK(dw[at + 5ul + 2ul * n] == 0x02000008ul + 16ul * n &&
+        CHECK(dw[at + 5ul + 2ul * n] == 0x02000010ul + 16ul * n &&
               dw[at + 6ul + 2ul * n] == 0x11110000ul);
     }
+    at = v9x_find_command(dw, batch.used, 0x78120002ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x80008200ul);
     at = v9x_find_command(dw, batch.used, 0x7b000005ul);
     at = at + 7ul + v9x_find_command(dw + at + 7ul, batch.used - at - 7ul,
                                      0x7b000005ul);
@@ -2033,6 +2036,34 @@ static void test_ps11_workload(void)
     CHECK(at < batch.used && (dw[at + 1ul] & 0x02000000ul) == 0ul);
     at = v9x_find_command(dw, batch.used, 0x78200006ul);
     CHECK(at < batch.used && dw[at + 2ul] == 0x00040000ul);
+
+    /* A depth buffer under depth_test alone, and a scissor, are taken. */
+    draw.depth_buffer = 0x01900000ul;
+    draw.depth_test = 0x1480ul;
+    draw.scissor = 1u;
+    draw.scissor_x0 = 4u;
+    draw.scissor_y0 = 4u;
+    draw.scissor_x1 = 40u;
+    draw.scissor_y1 = 40u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul,
+                                           0xc0de0041ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x78050005ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x01900000ul);
+    at = v9x_find_command(dw, batch.used, 0x79000002ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00040004ul &&
+          dw[at + 2ul] == 0x00280028ul);
+    /* The depth-clear form stays the TL path's. */
+    draw.depth_clear = 0x1440ul;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.depth_clear = 0ul;
+    draw.depth_buffer = 0ul;
+    draw.depth_test = 0ul;
+    draw.scissor = 0u;
 
     /* Refused: no ps, misaligned constants, no or too many constant GRFs,
      * more than four stages, TL vertices, the wrong attribute count. */

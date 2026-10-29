@@ -818,6 +818,37 @@ static void v9x_hsw_ps11_write(V9X_HSW_PS11_GEN *g, int kill)
     v9x_hsw_ps11_emit(g, &inst);
 }
 
+void v9x_intel_hsw_ps11_constants(const V9X_PS11_ENV *env,
+                                  v9x_u32 out[V9X_HSW_PS11_CONST_DWORDS])
+{
+    v9x_u32 k;
+    v9x_u32 c;
+    float value;
+
+    for (k = 0ul; k < V9X_HSW_PS11_CONST_DWORDS; ++k) {
+        out[k] = 0ul;
+    }
+    /* Clamped where the kernels read them (ddi8-on-win9x.md section 6). */
+    for (k = 0ul; k < 8ul; ++k) {
+        for (c = 0ul; c < 4ul; ++c) {
+            value = env->c[k][c];
+            value = value > 1.0f ? 1.0f : value < -1.0f ? -1.0f : value;
+            out[(k / 2ul) * 8ul + 4ul * (k % 2ul) + c] =
+                v9x_hsw_ps11_bits(value);
+        }
+    }
+    for (k = 0ul; k < 4ul; ++k) {
+        for (c = 0ul; c < 4ul; ++c) {
+            out[((v9x_u32)V9X_HSW_PS11_CONST_BUMP + k / 2ul) * 8ul +
+                4ul * (k % 2ul) + c] = v9x_hsw_ps11_bits(env->bump[k][c]);
+        }
+        out[(v9x_u32)V9X_HSW_PS11_CONST_LUMINANCE * 8ul + 2ul * k] =
+            v9x_hsw_ps11_bits(env->luminance[k][0]);
+        out[(v9x_u32)V9X_HSW_PS11_CONST_LUMINANCE * 8ul + 2ul * k + 1ul] =
+            v9x_hsw_ps11_bits(env->luminance[k][1]);
+    }
+}
+
 v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
                                     const V9X_PS11_PROGRAM *program,
                                     const struct v9x_hsw_ps11_desc *desc,

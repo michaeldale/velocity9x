@@ -151,15 +151,25 @@
  *     margin.
  *   - 30000h: per draw slot, 32 KB of T&L data (intel_hsw_pipe.h): the
  *     normals stream, then every segment's packed push constants.
- * The mini-VDD's V9X_HSW_RESERVE_BYTES and _PAGES (loader.asm) must match.
+ * Pixel shaders, step 5b (docs\plans\haswell-ddi8-pixel-shaders.md), grew
+ * it to 320 KB, leaving the first 256 KB as it was and adding:
+ *   - 40000h: the pixel-shader kernel cache, 16 slots of 4 KB, one PS 1.1
+ *     program's kernel each. Step 4's kernels run 512 to 2,544 bytes; a
+ *     kernel larger than a slot less the prefetch margin is refused.
+ * The mini-VDD's V9X_HSW_RESERVE_BYTES and _PAGES (loader.asm) must match,
+ * and so must V9XHSWMM's HSW_RCS_RING_BELOW (hsw_mmio_probe.asm), the
+ * reserve less V9X_INTEL_HSW_RCS_RING_OFF; check-tree.ps1 holds all three.
  */
-#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00040000ul)
-#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)64ul)
+#define V9X_INTEL_HSW_RESERVE_BYTES  ((v9x_u32)0x00050000ul)
+#define V9X_INTEL_HSW_RESERVE_PAGES  ((v9x_u32)80ul)
 #define V9X_INTEL_HSW_VS_KERNEL_OFF   ((v9x_u32)0x00020000ul)
 #define V9X_INTEL_HSW_VS_KERNEL_SLOT  ((v9x_u32)0x00002000ul)
 #define V9X_INTEL_HSW_VS_KERNEL_SLOTS ((v9x_u32)8ul)
 #define V9X_INTEL_HSW_TNL_OFF         ((v9x_u32)0x00030000ul)
 #define V9X_INTEL_HSW_TNL_BYTES       ((v9x_u32)0x00010000ul)
+#define V9X_INTEL_HSW_PS11_KERNEL_OFF   ((v9x_u32)0x00040000ul)
+#define V9X_INTEL_HSW_PS11_KERNEL_SLOT  ((v9x_u32)0x00001000ul)
+#define V9X_INTEL_HSW_PS11_KERNEL_SLOTS ((v9x_u32)16ul)
 #define V9X_INTEL_HSW_RCS_RING_OFF   ((v9x_u32)0x00002000ul)
 #define V9X_INTEL_HSW_STATE_OFF      ((v9x_u32)0x00004000ul)
 /*
