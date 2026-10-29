@@ -77,6 +77,11 @@ The owner's desktop is now 1024x768x32. It was 16 bpp at boot 42.
   20 commits since boot 42. They are mostly Carrizo work, plus that chip's
   entries in the shared ati files.
 
+**Answered** in
+[the mode subset record](2026-10-29-cedar-dd-mode-subset.md). The desktop
+was the trigger: the rule that guarantees the desktop's mode a slot in
+DirectDraw's list evicted 640x480x32.
+
 ## Not checked
 
 - Quake 3 and 3DMark 2000 were not run on boot 43.

@@ -779,14 +779,13 @@ static void test_qemu_stdvga_list(void)
     /* Twenty-eight 8- and 16-bpp rows take priority, leaving four slots. */
     MODECHECK(low_depth == 28u);
     /*
-     * And this is the finding: an ordinary 1024x768x32 desktop does not make
-     * the cut, because four smaller high-colour modes come first. Nothing is
-     * wrong with the subset policy - the list is simply longer than the block.
-     * It is why dd16.c must substitute the active row rather than trust the
-     * ordinary selection, and why that rule needs its own test rather than a
-     * comment.
+     * Smallest-first alone cut an ordinary 1024x768x32 desktop here, because
+     * four smaller high-colour modes came first. The standard resolutions
+     * now come first at every depth (test_dd_subset_standard_modes_first),
+     * so it is kept. dd16.c still substitutes the active row for a desktop
+     * outside them, such as 1280x1024x32.
      */
-    MODECHECK(desktop_1024x768x32 == 0u);
+    MODECHECK(desktop_1024x768x32 == 1u);
 }
 
 /* More accepted modes than the table can hold: keep what fits, count the rest,
@@ -855,28 +854,74 @@ static void test_dd_subset(void)
 
     chosen = v9x_vbe_dd_subset(table, 7u, 0, indices, 10u);
     MODECHECK(chosen == 7u);
-    /* 8/16 bpp first, in table order. */
+    /* 640x480, 800x600 and 1024x768 at every depth first, in table order. */
     MODECHECK(indices[0] == 0u);
     MODECHECK(indices[1] == 1u);
     MODECHECK(indices[2] == 2u);
-    /* Then high colour by ascending area: 640x480, 800x600, 1024x768,
-     * 1280x1024. */
     MODECHECK(indices[3] == 4u);
-    MODECHECK(indices[4] == 6u);
-    MODECHECK(indices[5] == 5u);
+    MODECHECK(indices[4] == 5u);
+    MODECHECK(indices[5] == 6u);
+    /* Then the rest of high colour by ascending area: 1280x1024. */
     MODECHECK(indices[6] == 3u);
 
-    /* Truncation keeps the low depths and the smallest high-colour modes. */
+    /* Truncation keeps the standard resolutions. */
     chosen = v9x_vbe_dd_subset(table, 7u, 0, indices, 5u);
     MODECHECK(chosen == 5u);
     MODECHECK(indices[3] == 4u);
-    MODECHECK(indices[4] == 6u);
+    MODECHECK(indices[4] == 5u);
     for (index = 0u; index < chosen; ++index) {
         MODECHECK(indices[index] != 3u); /* the largest was cut */
     }
 
     MODECHECK(v9x_vbe_dd_subset(table, 7u, 0, indices, 0u) == 0u);
     MODECHECK(v9x_vbe_dd_subset(0, 7u, 0, indices, 10u) == 0u);
+}
+
+/*
+ * M-BXMFA8's HD 5450 BIOS publishes 40 rows against 32 slots. Smallest-first
+ * high colour kept 320x200 to 720x400 at 32 bpp and cut 640x480x32, and on a
+ * 1024x768x32 desktop dd16.c's active-row rule then took the last slot -
+ * 640x480x32 - so V9XD32's SetDisplayMode(640, 480, 32) failed (boot 43,
+ * docs\decisions\2026-10-29-cedar-dd-mode-subset.md). The resolutions
+ * programs ask for come first, at every depth.
+ */
+static void test_dd_subset_standard_modes_first(void)
+{
+    V9X_HW16_MODE table[11];
+    v9x_u16 indices[11];
+    v9x_u16 chosen;
+    v9x_u16 index;
+    v9x_u16 found;
+
+    memset(table, 0, sizeof(table));
+    table[0].width =  640u; table[0].height = 480u; table[0].bits_per_pixel =  8u;
+    table[1].width =  800u; table[1].height = 600u; table[1].bits_per_pixel =  8u;
+    table[2].width = 1024u; table[2].height = 768u; table[2].bits_per_pixel =  8u;
+    table[3].width =  640u; table[3].height = 480u; table[3].bits_per_pixel = 16u;
+    table[4].width = 1600u; table[4].height = 1200u; table[4].bits_per_pixel = 16u;
+    table[5].width =  320u; table[5].height = 200u; table[5].bits_per_pixel = 32u;
+    table[6].width =  320u; table[6].height = 240u; table[6].bits_per_pixel = 32u;
+    table[7].width =  512u; table[7].height = 384u; table[7].bits_per_pixel = 32u;
+    table[8].width =  640u; table[8].height = 480u; table[8].bits_per_pixel = 32u;
+    table[9].width =  800u; table[9].height = 600u; table[9].bits_per_pixel = 32u;
+    table[10].width = 1024u; table[10].height = 768u; table[10].bits_per_pixel = 32u;
+
+    chosen = v9x_vbe_dd_subset(table, 11u, 0, indices, 8u);
+    MODECHECK(chosen == 8u);
+    /* The three standard resolutions at 32 bpp, and the 1600x1200x16 row
+     * after them; the small high-colour rows are what the cut takes. */
+    for (found = 0u, index = 0u; index < chosen; ++index) {
+        if (indices[index] == 8u || indices[index] == 9u ||
+            indices[index] == 10u || indices[index] == 4u) {
+            ++found;
+        }
+        MODECHECK(indices[index] != 5u && indices[index] != 6u &&
+                  indices[index] != 7u);
+    }
+    MODECHECK(found == 4u);
+    /* The last pick, which dd16.c's active row replaces, is never a
+     * standard resolution while anything else was chosen. */
+    MODECHECK(indices[chosen - 1u] == 4u);
 }
 
 static void test_masks_to_bits(void)
@@ -1485,6 +1530,7 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_publish_hides_contradicted_baseline();
     test_publish_fallback_rules();
     test_dd_subset_publication();
+    test_dd_subset_standard_modes_first();
     test_555_mode_pairs();
     test_555_sibling_from_scan();
     test_555_masks();

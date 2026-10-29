@@ -373,6 +373,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 V9XDDP's zero rows on Carrizo: perspective was inverted, two features were missing, and a CPU Lock of the tiled Z buffer misaddressed it until Lock detiled it](2026-10-29-carrizo-ddp-zero-rows.md)
 - [2026-10-29 Carrizo runs Quake 3 through the OpenGL ICD in hardware, once its Z16 rows were whole 64 bytes](2026-10-29-carrizo-opengl-quake3.md)
 - [2026-10-29 Cedar's Z16 rows on 32 bytes: a 360-pixel GL window lost every clear and draw](2026-10-29-cedar-z16-row-align.md)
+- [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
 
 ## DOS box and mini-VDD
 

@@ -361,7 +361,8 @@ extern WORD v9x_modes16_is_published(WORD index);
  *
  * Capacity is bounded: when more rows are published than the shared block
  * holds (QEMU publishes 46 against 32 slots), v9x_vbe_dd_subset chooses -
- * every 8/16-bpp row in table order, then 32 bpp by ascending area. The
+ * 640x480, 800x600 and 1024x768 at every depth, then the other 8/16-bpp
+ * rows in table order, then the other 32 bpp rows by ascending area. The
  * active desktop row is then guaranteed a slot: if the subset cut it, it
  * replaces the last (lowest-priority) selection, because a DirectDraw list
  * without the mode the primary surface is in is useless to every caller.

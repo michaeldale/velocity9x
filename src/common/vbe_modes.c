@@ -606,6 +606,41 @@ v9x_u16 v9x_vbe_publish_rows(
     return published;
 }
 
+/*
+ * A row's sort key for DirectDraw's list, lowest first. The top byte is the
+ * rank:
+ * - 0: 640x480, 800x600 and 1024x768, the resolutions programs ask for, at
+ *   any depth. Ranked by area alone, the HD 5450's 40 rows kept 320x200x32
+ *   and cut 640x480x32 (M-BXMFA8, boot 43).
+ * - 1: the other 8 and 16 bpp rows.
+ * - 2: the other 24 and 32 bpp rows.
+ * Ranks 0 and 1 then keep table order, rank 2 ascending pixel area (under
+ * 2^24 for any VBE mode). Another depth, or a row not published, is never
+ * chosen.
+ */
+#define V9X_VBE_DD_KEY_NEVER 0xfffffffful
+
+static v9x_u32 v9x_vbe_dd_key(const V9X_HW16_MODE *row,
+                              const v9x_u8 *publication, v9x_u16 index)
+{
+    v9x_u16 bpp = row->bits_per_pixel;
+
+    if ((publication != 0 &&
+         (publication[index] & V9X_MODE_PUB_PUBLISHED) == 0u) ||
+        (bpp != 8u && bpp != 16u && bpp != 24u && bpp != 32u)) {
+        return V9X_VBE_DD_KEY_NEVER;
+    }
+    if ((row->width == 640u && row->height == 480u) ||
+        (row->width == 800u && row->height == 600u) ||
+        (row->width == 1024u && row->height == 768u)) {
+        return (v9x_u32)index;
+    }
+    if (bpp <= 16u) {
+        return 0x01000000ul | index;
+    }
+    return 0x02000000ul | ((v9x_u32)row->width * row->height);
+}
+
 v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
                           const v9x_u8 *publication,
                           v9x_u16 *indices, v9x_u16 capacity)
@@ -617,54 +652,31 @@ v9x_u16 v9x_vbe_dd_subset(const V9X_HW16_MODE *table, v9x_u16 count,
         return 0u;
     }
 
-    /* 8 and 16 bpp, in table order. */
-    for (index = 0u; index < count && chosen < capacity; ++index) {
-        if (publication != 0 &&
-            (publication[index] & V9X_MODE_PUB_PUBLISHED) == 0u) {
-            continue;
-        }
-        if (table[index].bits_per_pixel == 8u ||
-            table[index].bits_per_pixel == 16u) {
-            indices[chosen++] = index;
-        }
-    }
-
-    /* Then the high-colour rows by ascending area. Selection rather than a
-     * sort: the list is short, and this leaves the chosen order explicit. */
-    for (;;) {
+    /*
+     * Each pass takes the lowest key not yet chosen. One selection loop
+     * rather than a loop per rank: the intel-gma driver's _TEXT had 27 bytes
+     * spare. Rank 0 comes first so that dd16.c's active-row rule, which
+     * replaces the last pick, can never evict a standard resolution while
+     * anything else was chosen.
+     */
+    while (chosen < capacity) {
         v9x_u16 best = count;
-        v9x_u32 best_area = 0ul;
+        v9x_u32 best_key = V9X_VBE_DD_KEY_NEVER;
 
-        if (chosen >= capacity) {
-            break;
-        }
         for (index = 0u; index < count; ++index) {
-            v9x_u32 area;
+            v9x_u32 key = v9x_vbe_dd_key(&table[index], publication, index);
             v9x_u16 seen;
-            v9x_u16 already = V9X_FALSE;
 
-            if (publication != 0 &&
-                (publication[index] & V9X_MODE_PUB_PUBLISHED) == 0u) {
+            if (key >= best_key) {
                 continue;
             }
-            if (table[index].bits_per_pixel != 24u &&
-                table[index].bits_per_pixel != 32u) {
+            for (seen = 0u; seen < chosen && indices[seen] != index; ++seen) {
+            }
+            if (seen < chosen) {
                 continue;
             }
-            for (seen = 0u; seen < chosen; ++seen) {
-                if (indices[seen] == index) {
-                    already = V9X_TRUE;
-                    break;
-                }
-            }
-            if (already == V9X_TRUE) {
-                continue;
-            }
-            area = (v9x_u32)table[index].width * (v9x_u32)table[index].height;
-            if (best == count || area < best_area) {
-                best = index;
-                best_area = area;
-            }
+            best = index;
+            best_key = key;
         }
         if (best == count) {
             break;

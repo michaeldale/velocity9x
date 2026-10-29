@@ -1,0 +1,10 @@
+[V9xD3d32]Build=d3d32-probe-local
+RequestBpp=0x00000020
+RequestZBits=0x00000010
+TraceReadable=0x00000000
+Stage=1-directdrawcreate
+DirectDrawCreateHr=0x00000000
+Stage=2-exclusive-setmode
+CooperativeHr=0x00000000
+SetModeHr=0x88760078
+Result=NO-MODE

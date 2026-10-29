@@ -346,11 +346,11 @@ v9x_u16 v9x_vbe_publish_rows(
  * Choose which rows to publish to DirectDraw, whose shared block holds fewer
  * than the table can.
  *
- * Fills indices[] with row indices and returns how many. Everything at 8 and
- * 16 bpp first, in table order, because that is what applications of the era
- * ask for and what the driver accelerates; then 24 and 32 bpp by ascending
- * pixel area, so if the list has to be cut it keeps the modes most likely to be
- * usable. Stops at capacity.
+ * Fills indices[] with row indices and returns how many. 640x480, 800x600 and
+ * 1024x768 at every depth first, in table order, because those are what
+ * applications ask for; then the other rows at 8 and 16 bpp, in table order,
+ * because that is what the driver accelerates; then the other 24 and 32 bpp
+ * rows by ascending pixel area. Stops at capacity.
  *
  * publication, when non-null, is the per-row byte array v9x_vbe_publish_rows
  * filled: a row without the PUBLISHED bit is never selected, so DirectDraw's
