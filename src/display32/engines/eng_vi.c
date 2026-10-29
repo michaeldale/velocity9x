@@ -549,7 +549,11 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
      * tile): a fill of all of it is a fill of its bytes, padding rows
      * included, but one of part of it would land in the wrong samples, and
      * so would the CPU's. d3d_vi.c draws those on the CP, as Cedar's
-     * d3d_eg.c does. */
+     * d3d_eg.c does. All of it means every byte of every row too: a row
+     * past the surface's pixels (rows of whole 64 bytes) is tile memory,
+     * and a fill of only width x 2 bytes a row left the last 48 bytes of
+     * each 768 at their old values, dashes of failed depth tests down a
+     * 360-wide OpenGL window (V9XGLP's T&L frame, boot 38). */
     if ((data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (fill.left != 0ul || fill.top != 0ul ||
             fill.width != (DWORD)data->lpDDDestSurface->lpGbl->wWidth ||
@@ -557,6 +561,7 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
             return v9x_d3d_vi_depth_fill(data->lpDDDestSurface, data->rDest,
                                          data->bltFX.dwFillColor, wait);
         }
+        fill.width = fill.pitch_bytes / bytes_per_pixel;
         fill.height = (fill.height + V9X_VI_DEPTH_TILE_ROWS - 1ul) &
                       ~(V9X_VI_DEPTH_TILE_ROWS - 1ul);
     }

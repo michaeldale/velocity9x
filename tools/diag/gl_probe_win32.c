@@ -86,6 +86,47 @@ static DWORD v9x_glp_read(GLint x, GLint y)
     return ((DWORD)rgb[0] << 16) | ((DWORD)rgb[1] << 8) | (DWORD)rgb[2];
 }
 
+/* A read pixel as one letter: R, G, B for a primary, K for black, ? else. */
+static char v9x_glp_letter(DWORD rgb)
+{
+    DWORD r = (rgb >> 16) & 0xfful;
+    DWORD g = (rgb >> 8) & 0xfful;
+    DWORD b = rgb & 0xfful;
+
+    if (r < 0x40ul && g < 0x40ul && b < 0x40ul) {
+        return 'K';
+    }
+    if (r >= 0xc0ul && g < 0x40ul && b < 0x40ul) {
+        return 'R';
+    }
+    if (g >= 0xc0ul && r < 0x40ul && b < 0x40ul) {
+        return 'G';
+    }
+    if (b >= 0xc0ul && r < 0x40ul && g < 0x40ul) {
+        return 'B';
+    }
+    return '?';
+}
+
+/* count samples step pixels apart from (x, y), along x when across is
+ * nonzero and up y otherwise, as letters under key. */
+static void v9x_glp_scan(const char *key, LONG x, LONG y, LONG step,
+                         LONG count, int across)
+{
+    char text[64];
+    LONG i;
+
+    if (count > 63) {
+        count = 63;
+    }
+    for (i = 0; i < count; ++i) {
+        text[i] = v9x_glp_letter(v9x_glp_read(across ? x + i * step : x,
+                                              across ? y : y + i * step));
+    }
+    text[count] = '\0';
+    v9x_glp_text(key, text);
+}
+
 /*
  * Free video memory, from a DirectDraw object of the probe's own - loaded
  * at run time, so the probe still links OPENGL32 and nothing else new.
@@ -2341,6 +2382,18 @@ void __stdcall V9xGlProbeEntry(void)
             glEnd();
             v9x_glp_hex("ErrorAfterGeometry", (DWORD)glGetError());
             glFinish();
+            /* The scene in the back buffer before the swap, a letter every
+             * eighth of a sixth: rows at a quarter, a half and three
+             * quarters up, and columns at a quarter and three quarters
+             * across. Left G, right R is the expected picture; the shape
+             * of anything else says which triangles or rows are missing. */
+            v9x_glp_scan("GeomScanRow25", 2, height / 4, width / 48, 48, 1);
+            v9x_glp_scan("GeomScanRow50", 2, height / 2, width / 48, 48, 1);
+            v9x_glp_scan("GeomScanRow75", 2, 3 * height / 4, width / 48, 48,
+                         1);
+            v9x_glp_scan("GeomScanCol25", width / 4, 2, height / 36, 36, 0);
+            v9x_glp_scan("GeomScanCol75", 3 * width / 4, 2, height / 36, 36,
+                         0);
             SwapBuffers(hdc);
             v9x_glp_pump();
             v9x_glp_hex("GeometryLeftPixel",
@@ -3452,6 +3505,12 @@ void __stdcall V9xGlProbeEntry(void)
                 for (k = 0; k < 5; ++k) {
                     v9x_glp_hex(small_key[k], v9x_glp_read(28 + k * 30, 48));
                 }
+                /* The 2x2's four texel centres, row 0 first: which texel,
+                 * if any, reads other than green. */
+                v9x_glp_hex("Small2x2T00", v9x_glp_read(54, 44));
+                v9x_glp_hex("Small2x2T10", v9x_glp_read(62, 44));
+                v9x_glp_hex("Small2x2T01", v9x_glp_read(54, 52));
+                v9x_glp_hex("Small2x2T11", v9x_glp_read(62, 52));
                 v9x_glp_hex("ErrorAfterSmall", (DWORD)glGetError());
                 glDisable(GL_TEXTURE_2D);
                 glDeleteTextures(5, small_tex);

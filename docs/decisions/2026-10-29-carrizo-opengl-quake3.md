@@ -90,10 +90,65 @@ Direct3D's Z pitch too:
 
 Each run was made once. The numbers are recorded, not compared.
 
+## Boots 39 and 40: the four V9XGLP rows
+
+V9XGLP gained readbacks:
+- a row and column scan of the geometry scene's back buffer, read before
+  the swap, one letter a sample (`GeomScan*`);
+- the 2x2 texture's four texel centres (`Small2x2T*`).
+
+The probe also writes the T&L frame as `V9XTNLA.BMP`.
+
+- **`AlphaSolid`: not a fault.** The texture's right half is opaque red,
+  and the read is 0xRRGGBB. Carrizo's red matches the Haswell
+  (`hsw-4570-tnl-step4-2026-10-27/V9XGLP-backend-boot98.INI`). It was the
+  Ironlake run that read the green clear there.
+- **The T&L frame and the geometry scene: the depth clear missed each
+  row's padding.**
+  - Carrizo's boot 38 frame (`boot38-V9XTNLA.png`) has columns of black
+    dashes, which the Haswell's does not. They sit in every sixth 8x8
+    tile, in its last 24 samples. At 128 bytes a tile, that is bytes 720
+    to 767 of every 768: the padding of the new 64-byte Z rows for a
+    360-pixel window.
+  - The whole-surface SDMA depth fill (`eng_vi.c`) filled
+    `width x 2` bytes a row. In a tiled buffer, the padding belongs to
+    tiles in the picture, so those samples kept stale values and failed
+    the depth test.
+  - Boot 37's 16-byte rows had no padding at these widths, which is why
+    this appeared with the pitch fix. A whole-surface fill now covers
+    the whole pitch.
+  - Boot 39: the T&L frame matches (28,193 drawn pixels against the
+    Haswell's 28,196, none differing past tolerance). The geometry scans
+    read green left and red right on every row and column.
+- **`Small2x2`: the sampler's row stride.** Row 0's texels read green and
+  row 1's read `0x08E300` (boot 39).
+  - A one-level texture follows the chain layout measured at boot 27: the
+    sampler widens a level's rows 64 bytes at a time until the level is a
+    whole number of 256-byte blocks. A 2x2 at 64-byte rows is 128 bytes,
+    so the sampler reads row 1 at 128.
+  - A 4x4, a 1x4 or a 4x1 is already whole blocks, or has one row, which
+    is why they read right.
+  - `create_surface` now places a single level by `v9x_vi_3d_mip_layout`.
+    Sides that are not powers of two keep plain 64-byte rows, unmeasured.
+  - Boot 40: all four texels green.
+
+Boot 40, the final build:
+- V9XGLP matches the Haswell's backend run except for multitexture (one
+  unit here) and lighting. That needs a T&L engine; the Ironlake reads the
+  same unlit white.
+- V9XD32 PASS at 32 and 16 bpp. V9XDDP's `*Ok` keys are unchanged.
+- The Quake 3 demo ran fullscreen at 21.3 fps, every batch on the
+  hardware, with no failed draw or clear.
+
+Cedar has the same shape of code, untested. `d3d_eg.c` rounds Z16 rows
+to 16 bytes against a 32-byte bind alignment, so a window whose width is
+an odd multiple of 8 pixels would have its depth refused. `eng_eg.c`'s
+whole-surface fill also keeps the pixel width.
+
 ## Not checked
 
 - Only one Quake 3 frame was inspected.
-- The four V9XGLP rows above.
+- Non-power-of-two textures' row stride.
 - Glide uses the same explicit path, but no Glide game was run.
 - There is no multitexture, since the engine has one unit, so Quake 3
   draws its lightmaps in a second pass.

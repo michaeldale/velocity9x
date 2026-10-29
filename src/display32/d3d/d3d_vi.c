@@ -823,8 +823,19 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             data->ddRVal = V9X_DD_OK;
             return V9X_DDHAL_DRIVER_HANDLED;
         }
-        pitches[0] = (width * bytes + V9X_D3D_VI_ROW_ALIGN - 1ul) &
-                     ~(V9X_D3D_VI_ROW_ALIGN - 1ul);
+        /* One level as a chain's level 0: the sampler widens its rows 64
+         * bytes at a time until the level is whole 256-byte blocks, as the
+         * chain layout measured. Rows of 64 bytes alone put a 2x2's second
+         * row where the sampler did not read it (V9XGLP Small2x2T01, boot
+         * 39). The layout takes powers of two only; other sides keep
+         * 64-byte rows, unmeasured. */
+        if (v9x_vi_3d_mip_layout(bytes, width, height, 1ul, offsets, pitches,
+                                 &total)) {
+            pitches[0] *= bytes;
+        } else {
+            pitches[0] = (width * bytes + V9X_D3D_VI_ROW_ALIGN - 1ul) &
+                         ~(V9X_D3D_VI_ROW_ALIGN - 1ul);
+        }
         rows[0] = height;
     }
     if (v9x_d3d_place_each(data, V9X_D3D_VI_SURFACE_ALIGN, pitches,

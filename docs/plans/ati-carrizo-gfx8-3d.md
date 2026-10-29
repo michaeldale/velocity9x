@@ -139,7 +139,9 @@ pipeline state goes in as PM4 packets. What is different on Carrizo:
    `/mixed` passes. [OpenGL](../decisions/2026-10-29-carrizo-opengl-quake3.md)
    (boot 38): explicit draws with their scissor and write mask, surface
    textures published, Z16 rows whole 64 bytes; the Quake 3 demo runs at
-   21.2 fps, every batch on the hardware. Four V9XGLP rows are open.
+   21.3 fps, every batch on the hardware, and V9XGLP matches Intel but for
+   multitexture and lighting (boot 40: whole-pitch Z fills, sampler row
+   stride for one level).
 
 ## Decisions
 
