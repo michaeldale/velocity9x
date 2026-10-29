@@ -21,6 +21,12 @@ Never report a change as working on the strength of the code reading
 correctly. Either a gate passed, or a guest/machine produced evidence, or say
 plainly that it is untested.
 
+A run that is mostly clean is a result, not a reason to run it again. Record
+the failure once, with what it showed, and move on. Rerun only when the
+failure blocks the conclusion the run was for. A dirty working tree is fine
+for a measurement run if the record names the build as dirty. Releases stay
+strict (`build-release.ps1` refuses a dirty tree).
+
 ## Hardware claims need measurements
 
 This project's expensive mistakes have all been confident statements about

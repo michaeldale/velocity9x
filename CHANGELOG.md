@@ -6,6 +6,12 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.34.0 - not yet released
 
+- **The SiS 6326's frame buffer is write-combined,** as the Rage 128's is.
+  On A8U4I5 at 800x600x16, CPU writes to the card went from 49.9 to
+  89.3 MB/s. Texture upload through Lock is 3.6x faster, and GDI's fills
+  and DIB copies 1.8x. 3D is unchanged. `C:\V9XDIAG\NOWC.TXT` turns it off
+  ([record](docs/decisions/2026-10-29-sis6326-write-combining.md)).
+
 ## 0.33.0 - 2026-10-29
 
 - **AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) is claimed by the `ati`
