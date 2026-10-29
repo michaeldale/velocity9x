@@ -676,6 +676,33 @@ v9x_status v9x_intel_hsw_surface_mips(v9x_u32 out[8], v9x_u8 levels)
     return V9X_STATUS_OK;
 }
 
+/* RENDER_SURFACE_STATE DW0 (Vol 2d): SURFTYPE_CUBE 3 at 31:29; Surface
+ * Array Spacing 10, ARYSPC_LOD0, allowed with one LOD, makes QPitch the
+ * first level's height aligned to VALIGN (2), so faces sit side rows
+ * apart; Cube Face Enables 5:0, all six. An odd side would leave a gap
+ * row, so it is refused rather than described wrongly. */
+#define V9X_HSW_SURFTYPE_CUBE       ((v9x_u32)3ul)
+#define V9X_HSW_SURFACE_ARYSPC_LOD0 ((v9x_u32)0x00000400ul)
+#define V9X_HSW_SURFACE_CUBE_FACES  ((v9x_u32)0x0000003ful)
+
+v9x_status v9x_intel_hsw_surface_cube(v9x_u32 out[8], v9x_u16 format,
+                                      v9x_u32 base, v9x_u16 side,
+                                      v9x_u32 pitch)
+{
+    v9x_status status;
+
+    if (side == 0u || (side & 1u) != 0u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_intel_hsw_surface_2d(out, format, base, side, side, pitch);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    out[0] = (out[0] & ~((v9x_u32)7ul << 29)) | (V9X_HSW_SURFTYPE_CUBE << 29) |
+             V9X_HSW_SURFACE_ARYSPC_LOD0 | V9X_HSW_SURFACE_CUBE_FACES;
+    return V9X_STATUS_OK;
+}
+
 /* The i and j of Vol 5's 2D layout for the alignments surface_2d encodes
  * (DW0 15 HALIGN_4, 17:16 VALIGN_2), and the linear pitch granule Mesa's
  * i965 uses. */
@@ -1130,12 +1157,15 @@ static v9x_status v9x_hsw_emit_zero(struct v9x_hsw_batch *batch,
  */
 /* 3DSTATE_SF DW2 Cull Mode 30:29, CULLMODE_NONE = 1 (Vol 2b). */
 #define V9X_HSW_SF_CULL_NONE         ((v9x_u32)0x20000000ul)
-/* 3DSTATE_WM DW1: Thread Dispatch Enable 29, Barycentric Mode 16:11. */
+/* 3DSTATE_WM DW1: Thread Dispatch Enable 29, Pixel Shader Kill Pixel 25,
+ * Barycentric Mode 16:11. */
 #define V9X_HSW_WM_DISPATCH          ((v9x_u32)0x20000000ul)
+#define V9X_HSW_WM_KILL_PIXEL        ((v9x_u32)0x02000000ul)
 /* 3DSTATE_PS DW4: Maximum Number of Threads 31:23 is the count minus 1
  * and must be odd; GT2 allows 7-203. 63 = 64 threads. */
 #define V9X_HSW_PS_MAX_THREADS_FIELD ((v9x_u32)63ul)
 #define V9X_HSW_PS_SAMPLE_MASK_ONE   ((v9x_u32)0x00001000ul) /* 19:12 = 1 */
+#define V9X_HSW_PS_PUSH_CONSTANTS    ((v9x_u32)0x00000800ul) /* 11 */
 #define V9X_HSW_PS_ATTRIBUTE_ENABLE  ((v9x_u32)0x00000400ul)
 #define V9X_HSW_PS_SIMD8             ((v9x_u32)0x00000001ul)
 #define V9X_HSW_DRAW_SETUP_GRF       ((v9x_u8)4u)
@@ -1234,27 +1264,36 @@ v9x_status v9x_intel_hsw_sbe_constant(struct v9x_hsw_batch *batch,
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_SBE, payload, 13ul);
 }
 
-v9x_status v9x_intel_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric)
+/* kill: V9X_HSW_WM_KILL_PIXEL when the kernel can discard pixels, which
+ * Vol 2b requires the WM to know of; 0 otherwise. */
+static v9x_status v9x_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric,
+                             v9x_u32 kill)
 {
     v9x_u32 payload[2];
 
     if (barycentric > 0x3fu) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    payload[0] = V9X_HSW_WM_DISPATCH | ((v9x_u32)barycentric << 11);
+    payload[0] = V9X_HSW_WM_DISPATCH | kill | ((v9x_u32)barycentric << 11);
     payload[1] = 0ul;
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_WM, payload, 2ul);
+}
+
+v9x_status v9x_intel_hsw_wm(struct v9x_hsw_batch *batch, v9x_u8 barycentric)
+{
+    return v9x_hsw_wm(batch, barycentric, 0ul);
 }
 
 /* DW1 Kernel Start Pointer[0] 31:6; DW2 Sampler Count 29:27 (in fours),
  * Binding Table Entry Count 25:18; DW3 no scratch; DW4 threads, sample
  * mask (HSW, matching 3DSTATE_SAMPLE_MASK), attribute enable, 8 Pixel
  * Dispatch Enable; DW5 Dispatch GRF Start Register for Constant/Setup
- * Data [0] 22:16. */
-v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
-                                  v9x_u32 kernel, v9x_u8 binding_entries,
-                                  v9x_u8 samplers, v9x_u8 attributes,
-                                  v9x_u8 grf_start)
+ * Data [0] 22:16. push: V9X_HSW_PS_PUSH_CONSTANTS (DW4 11) when CONSTANT_PS
+ * supplies registers ahead of the setup data, else 0. */
+static v9x_status v9x_hsw_ps_simd8(struct v9x_hsw_batch *batch,
+                                   v9x_u32 kernel, v9x_u8 binding_entries,
+                                   v9x_u8 samplers, v9x_u8 attributes,
+                                   v9x_u8 grf_start, v9x_u32 push)
 {
     v9x_u32 payload[7];
 
@@ -1275,10 +1314,20 @@ v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
     if (attributes != 0u) {
         payload[3] |= V9X_HSW_PS_ATTRIBUTE_ENABLE;
     }
+    payload[3] |= push;
     payload[4] = (v9x_u32)grf_start << 16;
     payload[5] = 0ul;
     payload[6] = 0ul;
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_PS, payload, 7ul);
+}
+
+v9x_status v9x_intel_hsw_ps_simd8(struct v9x_hsw_batch *batch,
+                                  v9x_u32 kernel, v9x_u8 binding_entries,
+                                  v9x_u8 samplers, v9x_u8 attributes,
+                                  v9x_u8 grf_start)
+{
+    return v9x_hsw_ps_simd8(batch, kernel, binding_entries, samplers,
+                            attributes, grf_start, 0ul);
 }
 
 v9x_status v9x_intel_hsw_draw_state(v9x_u32 *image, v9x_u32 dwords,
@@ -1524,15 +1573,19 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
                                         const struct v9x_hsw_draw *draw,
                                         const struct v9x_hsw_vs_draw *vs)
 {
-    struct v9x_hsw_vertex_element elements[6];
+    struct v9x_hsw_vertex_element elements[8];
     v9x_u32 index;
     v9x_u32 count;
     v9x_u32 vertices;
     v9x_u16 stride;
+    int wide;
 
-    count = draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ? 6ul : 3ul;
+    wide = draw->attributes == V9X_HSW_WIDE_ATTRIBUTES;
+    count = wide ? 8ul :
+            draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ? 6ul : 3ul;
     stride = draw->tl_vertices ? (draw->tl_uv1 ? V9X_HSW_TL2_VERTEX_BYTES :
                                                  V9X_HSW_TL_VERTEX_BYTES) :
+             wide ? V9X_HSW_WIDE_VERTEX_BYTES :
              draw->attributes == V9X_HSW_SHADE_ATTRIBUTES ?
                  V9X_HSW_SHADE_VERTEX_BYTES :
              draw->depth_buffer != 0ul ? V9X_HSW_DEPTH_VERTEX_BYTES :
@@ -1584,6 +1637,11 @@ static v9x_status v9x_hsw_draw_vertices(struct v9x_hsw_batch *batch,
             v9x_hsw_vs_elements(draw, elements);
             count = (v9x_u32)V9X_HSW_VS_INPUTS +
                     (vs->normals != 0ul ? 1ul : 0ul);
+        }
+    } else if (wide) {
+        /* Six four-float attributes after x y. */
+        for (index = 2ul; index < 8ul; ++index) {
+            elements[index].offset = (v9x_u16)(8u + 16u * (index - 2ul));
         }
     } else if (count == 6ul) {
         elements[3].offset = 24u;
@@ -1725,10 +1783,15 @@ static void v9x_hsw_allocate(struct v9x_hsw_batch *batch, v9x_u16 vue_rows)
  * rectangle and binding table with the target's, and adds the vertices
  * and the primitive before the end.
  */
+static v9x_status v9x_hsw_constant(struct v9x_hsw_batch *batch,
+                                   v9x_u16 command, v9x_u8 grfs,
+                                   v9x_u32 address);
+
 static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                                    v9x_u32 state_base, v9x_u32 state_bytes,
                                    const struct v9x_hsw_draw *draw,
                                    const struct v9x_hsw_vs_draw *vs,
+                                   const struct v9x_hsw_ps11_draw *ps,
                                    v9x_u32 done_address, v9x_u32 done_value)
 {
     static const v9x_u16 disabled[6] = {
@@ -1772,7 +1835,8 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
     cc = draw != 0 && draw->cc != 0ul ? draw->cc : V9X_HSW_INIT_CC;
     sampler = draw != 0 && draw->sampler != 0ul ? draw->sampler :
                                                   V9X_HSW_INIT_SAMPLER;
-    vue_rows = shade ? 1u : 0u;
+    /* The wide vertex's eight slots are 32 dwords: two rows as well. */
+    vue_rows = shade || ps != 0 ? 1u : 0u;
     depth_format = draw != 0 && draw->depth_format != 0u ?
                        draw->depth_format : V9X_HSW_DEPTH_D32_FLOAT;
 
@@ -1853,7 +1917,11 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
                 batch, draw->depth_buffer != 0ul ? depth_format : (v9x_u8)0u,
                 draw->cull);
         }
-        if (shade) {
+        if (ps != 0) {
+            /* Six attributes, three 256-bit units after the header and
+             * position. */
+            v9x_intel_hsw_sbe(batch, V9X_HSW_WIDE_ATTRIBUTES, 1u, 3u);
+        } else if (shade) {
             /* Flat: diffuse and specular (attributes 0 and 1) constant. */
             v9x_intel_hsw_sbe_constant(batch, V9X_HSW_SHADE_ATTRIBUTES, 1u,
                                        2u, draw->flat ? 3ul : 0ul);
@@ -1864,12 +1932,30 @@ static v9x_status v9x_hsw_workload(struct v9x_hsw_batch *batch,
          * writes are masked by the blend state below. A zero WM and PS,
          * with or without SBE's attribute, never retired on the 4570
          * (Phase F2b, runs 1 and 2). */
-        v9x_intel_hsw_wm(batch, V9X_HSW_BARY_PERSPECTIVE_PIXEL);
-        v9x_intel_hsw_ps_simd8(batch, draw->kernel,
-                               shade ? V9X_HSW_SHADE_BINDING_ENTRIES : 1u,
-                               shade ? 1u : 0u, 1u, V9X_HSW_DRAW_SETUP_GRF);
+        if (ps != 0) {
+            v9x_hsw_wm(batch, V9X_HSW_BARY_PERSPECTIVE_PIXEL,
+                       ps->kill ? V9X_HSW_WM_KILL_PIXEL : 0ul);
+            /* The sampler count field is in groups of four. */
+            v9x_hsw_ps_simd8(batch, draw->kernel, (v9x_u8)(1u + ps->stages),
+                             ps->stages != 0u ? 1u : 0u, 1u,
+                             V9X_HSW_DRAW_SETUP_GRF,
+                             V9X_HSW_PS_PUSH_CONSTANTS);
+        } else {
+            v9x_intel_hsw_wm(batch, V9X_HSW_BARY_PERSPECTIVE_PIXEL);
+            v9x_intel_hsw_ps_simd8(batch, draw->kernel,
+                                   shade ? V9X_HSW_SHADE_BINDING_ENTRIES : 1u,
+                                   shade ? 1u : 0u, 1u,
+                                   V9X_HSW_DRAW_SETUP_GRF);
+        }
         v9x_hsw_emit_zero(batch, V9X_HSW_CMD_MULTISAMPLE);
-        v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CONSTANT_PS);
+        if (ps != 0) {
+            /* After the PS allocation, behind the dummy primitive, as the
+             * VS's are (v9x_intel_hsw_constant_vs). */
+            v9x_hsw_constant(batch, V9X_HSW_CMD_CONSTANT_PS,
+                             ps->constant_grfs, ps->constants);
+        } else {
+            v9x_hsw_emit_zero(batch, V9X_HSW_CMD_CONSTANT_PS);
+        }
     }
 
     /* A NULL depth buffer: SURFTYPE_NULL 31:29, D32_FLOAT 20:18. */
@@ -1997,7 +2083,7 @@ v9x_status v9x_intel_hsw_init_workload(struct v9x_hsw_batch *batch,
                                        v9x_u32 done_address,
                                        v9x_u32 done_value)
 {
-    return v9x_hsw_workload(batch, state_base, state_bytes, 0, 0,
+    return v9x_hsw_workload(batch, state_base, state_bytes, 0, 0, 0,
                             done_address, done_value);
 }
 
@@ -2016,7 +2102,8 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
         (draw->tl_vertices &&
          draw->attributes != V9X_HSW_SHADE_ATTRIBUTES) ||
         (draw->tl_uv1 && !draw->tl_vertices) ||
-        draw->cull > V9X_HSW_DRAW_CULL_CCW) {
+        draw->cull > V9X_HSW_DRAW_CULL_CCW ||
+        draw->attributes == V9X_HSW_WIDE_ATTRIBUTES) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     /* Indexed: TL vertices only, outside the depth-clear form, word
@@ -2037,7 +2124,40 @@ v9x_status v9x_intel_hsw_draw_workload(struct v9x_hsw_batch *batch,
          draw->scissor_y1 >= draw->height)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    return v9x_hsw_workload(batch, state_base, state_bytes, draw, 0,
+    return v9x_hsw_workload(batch, state_base, state_bytes, draw, 0, 0,
+                            done_address, done_value);
+}
+
+/* CONSTANT_PS's buffers together read at most 64 GRFs (Vol 2d), as the
+ * VS's do (V9X_HSW_CONSTANT_GRFS_MAX, below). */
+#define V9X_HSW_PS11_GRFS_MAX 64u
+
+v9x_status v9x_intel_hsw_draw_workload_ps11(struct v9x_hsw_batch *batch,
+                                            v9x_u32 state_base,
+                                            v9x_u32 state_bytes,
+                                            const struct v9x_hsw_draw *draw,
+                                            const struct v9x_hsw_ps11_draw *ps,
+                                            v9x_u32 done_address,
+                                            v9x_u32 done_value)
+{
+    if (draw == 0 || ps == 0 || (ps->constants & 0x1ful) != 0ul ||
+        ps->constant_grfs == 0u || ps->constant_grfs > V9X_HSW_PS11_GRFS_MAX ||
+        ps->stages > 4u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Sequential, non-indexed wide vertices only, as the probe draws them;
+     * the HAL's forms come with step 5b. */
+    if ((draw->kernel & 0x3ful) != 0ul ||
+        (draw->binding_table & 0x1ful) != 0ul || draw->width == 0u ||
+        draw->height == 0u || (draw->vertices & 3ul) != 0ul ||
+        state_bytes < V9X_HSW_DRAW_STATE_BYTES ||
+        draw->attributes != V9X_HSW_WIDE_ATTRIBUTES || draw->tl_vertices ||
+        draw->tl_uv1 || draw->indices != 0ul ||
+        draw->vertex_count % 3ul != 0ul || draw->depth_buffer != 0ul ||
+        draw->scissor || draw->cull > V9X_HSW_DRAW_CULL_CCW) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_hsw_workload(batch, state_base, state_bytes, draw, 0, ps,
                             done_address, done_value);
 }
 
@@ -2076,6 +2196,14 @@ v9x_status v9x_intel_hsw_vs(struct v9x_hsw_batch *batch, v9x_u32 kernel,
 v9x_status v9x_intel_hsw_constant_vs(struct v9x_hsw_batch *batch,
                                      v9x_u8 grfs, v9x_u32 address)
 {
+    return v9x_hsw_constant(batch, V9X_HSW_CMD_CONSTANT_VS, grfs, address);
+}
+
+/* command: CONSTANT_VS or CONSTANT_PS, which share the layout (Vol 2b). */
+static v9x_status v9x_hsw_constant(struct v9x_hsw_batch *batch,
+                                   v9x_u16 command, v9x_u8 grfs,
+                                   v9x_u32 address)
+{
     v9x_u32 primitive[6];
     v9x_u32 body[6];
     v9x_u32 index;
@@ -2098,7 +2226,7 @@ v9x_status v9x_intel_hsw_constant_vs(struct v9x_hsw_batch *batch,
     }
     body[1] = (v9x_u32)grfs << 16;
     body[5] = address;
-    return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_CONSTANT_VS, body, 6ul);
+    return v9x_intel_hsw_3d_emit(batch, command, body, 6ul);
 }
 
 /* 3DSTATE_CLIP (Vol 2b p741-747; genxml gen7.xml for API Mode's values). */
@@ -2256,6 +2384,6 @@ v9x_status v9x_intel_hsw_draw_workload_vs(struct v9x_hsw_batch *batch,
          draw->scissor_y1 >= draw->height)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    return v9x_hsw_workload(batch, state_base, state_bytes, draw, vs,
+    return v9x_hsw_workload(batch, state_base, state_bytes, draw, vs, 0,
                             done_address, done_value);
 }

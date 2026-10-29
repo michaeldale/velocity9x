@@ -763,6 +763,50 @@ struct v9x_hsw_vs_segment {
 /* A normal in vertex buffer 1: three floats. */
 #define V9X_HSW_VS_NORMAL_BYTES ((v9x_u16)12u)
 
+/*
+ * Pixel shaders 1.0/1.1, step 5 of docs\plans\haswell-ddi8-pixel-shaders.md:
+ * what a draw whose kernel came from v9x_intel_hsw_ps11_build adds
+ * (velocity9x/intel_hsw_ps11.h). Its own structure for the reason
+ * struct v9x_hsw_vs_draw is one.
+ *
+ * The draw's vertices are the wide form, V9X_HSW_WIDE_VERTEX_BYTES each:
+ * x y as floats, then V9X_HSW_WIDE_ATTRIBUTES attributes of four floats -
+ * diffuse, specular, texture coordinate sets 0 to 3, the translator's
+ * order - and draw->attributes must be V9X_HSW_WIDE_ATTRIBUTES. TL vertices
+ * are refused until the HAL needs them (step 5b).
+ *
+ * constants: the graphics address of constant_grfs GRFs of push
+ * constants (32-byte aligned), which arrive at GRF 4 with the setup data
+ * after them: the translator's const_grf 4, setup_grf 4 + constant_grfs.
+ * stages: how many texture stages the binding table and samplers serve
+ * (0-4): entry 0 the target, 1 + N stage N, sampler N for stage N. kill:
+ * the kernel discards pixels (texkill), which 3DSTATE_WM must be told.
+ */
+#define V9X_HSW_WIDE_ATTRIBUTES   ((v9x_u8)6u)
+#define V9X_HSW_WIDE_VERTEX_BYTES ((v9x_u16)104u)
+
+struct v9x_hsw_ps11_draw {
+    v9x_u32 constants;
+    v9x_u8 constant_grfs;
+    v9x_u8 stages;
+    v9x_u8 kill;
+};
+
+v9x_status v9x_intel_hsw_draw_workload_ps11(struct v9x_hsw_batch *batch,
+                                            v9x_u32 state_base,
+                                            v9x_u32 state_bytes,
+                                            const struct v9x_hsw_draw *draw,
+                                            const struct v9x_hsw_ps11_draw *ps,
+                                            v9x_u32 done_address,
+                                            v9x_u32 done_value);
+
+/* RENDER_SURFACE_STATE for a linear cube map of side x side texels, one
+ * mip, the six faces (+X -X +Y -Y +Z -Z) one after another side rows
+ * apart (Surface Array Spacing LOD0), pitch in bytes. */
+v9x_status v9x_intel_hsw_surface_cube(v9x_u32 out[8], v9x_u16 format,
+                                      v9x_u32 base, v9x_u16 side,
+                                      v9x_u32 pitch);
+
 /* The most further draws one batch takes: each is 39 dwords, and an
  * indexed T&L batch is built in 4 KB of its slot's vertex area
  * (d3d_hsw.c), which holds the draw's own 212 and 15 more

@@ -298,8 +298,14 @@ HSW_RCS_ST_FW_TIMEOUT   equ 00004000h
 HSW_RCS_ST_FW_REQUESTED equ 00008000h
 HSW_RCS_ST_RING_BORROWED equ 00020000h
 ; Phase F2b: the driver's render ring (velocity9x\intel_hsw.h), borrowed
-; idle and given back empty and enabled.
+; idle and given back empty and enabled. HSW_RCS_DRIVER_RING is where the
+; fallback reserve kept it. Since the heap plan the reserve is wherever the
+; driver put it and the publisher's region follows it, so the ring is also
+; accepted at the region less HSW_RCS_RING_BELOW: V9X_INTEL_HSW_RESERVE_BYTES
+; (40000h) less V9X_INTEL_HSW_RCS_RING_OFF (2000h). Either way the START
+; found is the one given back.
 HSW_RCS_DRIVER_RING     equ 01802000h
+HSW_RCS_RING_BELOW      equ 0003e000h
 
 ; Output: a 96-dword header, offsets in bytes, matching struct
 ; v9x_rcs_result in hsw_mmio_probe_win32.c, then both targets.
@@ -344,6 +350,7 @@ HswRcsIn      dd (HSW_RCS_IN_BYTES / 4) dup (0)
 HswRcsRegion  dd 0
 HswRcsSeg     dd 0
 HswRcsTailBytes dd 0
+HswRcsDriverStart dd 0
 
 HswBcsOut     dd HSW_BCS_MAGIC
               dd (HSW_BCS_HEADER_DWORDS - 1) dup (0)
@@ -1319,12 +1326,19 @@ Hsw_Rcs_Ring:
     mov     eax, [ebp+HSW_RCS_CTL]
     mov     HswRcsOut[HSW_RO_CTL_BEFORE], eax
     test    eax, 1
-    jz      short Hsw_Rcs_Program
+    jz      Hsw_Rcs_Program
     ; On: only the driver's ring, and only idle, is borrowed. The driver
     ; submits synchronously and reads TAIL from the hardware, so an empty
     ; ring handed back at 0 is one it carries on from.
-    cmp     dword ptr [ebp+HSW_RCS_START], HSW_RCS_DRIVER_RING
+    mov     edx, [ebp+HSW_RCS_START]
+    cmp     edx, HSW_RCS_DRIVER_RING
+    je      short Hsw_Rcs_Ours
+    mov     eax, HswRcsIn[HSW_RCS_IN_OFFSET]
+    sub     eax, HSW_RCS_RING_BELOW
+    cmp     edx, eax
     jne     short Hsw_Rcs_Not_Ours
+Hsw_Rcs_Ours:
+    mov     HswRcsDriverStart, edx
     mov     eax, [ebp+HSW_RCS_HEAD]
     and     eax, HSW_RING_HEAD_MASK
     mov     ecx, [ebp+HSW_RCS_TAIL]
@@ -1333,8 +1347,15 @@ Hsw_Rcs_Ring:
     jne     short Hsw_Rcs_Not_Ours
     or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_RING_BORROWED
     mov     dword ptr [ebp+HSW_RCS_CTL], 0
-    jmp     short Hsw_Rcs_Program
+    jmp     Hsw_Rcs_Program
 Hsw_Rcs_Not_Ours:
+    ; What was found, for the record: START, HEAD and TAIL as read.
+    mov     eax, [ebp+HSW_RCS_START]
+    mov     HswRcsOut[HSW_RO_START_RB], eax
+    mov     eax, [ebp+HSW_RCS_HEAD]
+    mov     HswRcsOut[HSW_RO_HEAD_RB], eax
+    mov     eax, [ebp+HSW_RCS_TAIL]
+    mov     HswRcsOut[HSW_RO_TAIL_RB], eax
     or      HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_RING_WAS_ON
     jmp     Hsw_Rcs_Release
 Hsw_Rcs_Program:
@@ -1440,7 +1461,8 @@ Hsw_Rcs_Teardown:
     mov     dword ptr [ebp+HSW_RCS_START], 0
     test    HswRcsOut[HSW_RO_STATUS], HSW_RCS_ST_RING_BORROWED
     jz      short Hsw_Rcs_Torn
-    mov     dword ptr [ebp+HSW_RCS_START], HSW_RCS_DRIVER_RING
+    mov     eax, HswRcsDriverStart
+    mov     dword ptr [ebp+HSW_RCS_START], eax
     mov     dword ptr [ebp+HSW_RCS_CTL], HSW_RING_CTL_ONE_PAGE
 Hsw_Rcs_Torn:
     mov     eax, [ebp+HSW_RCS_CTL]

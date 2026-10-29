@@ -93,7 +93,11 @@ $sources = @(
     (Join-Path $repoRoot 'src\chipsets\intel\hsw_config.c'),
     (Join-Path $repoRoot 'src\chipsets\intel\hsw_3d.c'),
     (Join-Path $repoRoot 'src\chipsets\intel\hsw_display.c'),
-    (Join-Path $repoRoot 'src\chipsets\intel\hsw_eu.c')
+    (Join-Path $repoRoot 'src\chipsets\intel\hsw_eu.c'),
+    # /ps11: the step 4 translator, the parser and the reference interpreter.
+    (Join-Path $repoRoot 'src\chipsets\intel\hsw_ps11.c'),
+    (Join-Path $repoRoot 'src\display32\d3d\d3d_ps11.c'),
+    (Join-Path $repoRoot 'src\display32\d3d\d3d_ps11_ref.c')
 )
 $objects = @()
 foreach ($source in $sources) {

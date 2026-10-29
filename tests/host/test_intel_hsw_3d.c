@@ -1937,9 +1937,156 @@ static void test_ivb_variant(void)
           surface[7] == 0x09770000ul);
 }
 
+/*
+ * Pixel shaders, step 5a: a draw whose kernel came from the PS 1.1
+ * translator. Worked by hand from Vol 2b: CONSTANT_PS buffer 3 after the
+ * dummy primitive, seven GRFs; 3DSTATE_PS with five binding entries, one
+ * group of samplers, Push Constant Enable (DW4 11) and attributes from
+ * GRF 4; 3DSTATE_WM with Pixel Shader Kill Pixel (DW1 25); SBE reading six
+ * attributes (offset 1, length 3); the 104-byte vertex as eight elements:
+ * header, position x y, six four-float attributes from offset 8.
+ */
+static void test_ps11_workload(void)
+{
+    v9x_u32 dw[512];
+    v9x_u32 surface[8];
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw draw;
+    struct v9x_hsw_ps11_draw ps;
+    v9x_u32 at;
+    v9x_u32 n;
+
+    draw.binding_table = 0xce0ul;
+    draw.kernel = 0x400ul;
+    draw.vertices = 0x01825000ul;
+    draw.width = 64u;
+    draw.height = 64u;
+    draw.attributes = V9X_HSW_WIDE_ATTRIBUTES;
+    draw.blend = 0ul;
+    draw.cc = 0ul;
+    draw.sampler = 0xc00ul;
+    draw.depth_buffer = 0ul;
+    draw.depth_clear = 0ul;
+    draw.depth_test = 0ul;
+    draw.tl_vertices = 0u;
+    draw.vertex_count = 0ul;
+    draw.flat = 0u;
+    draw.depth_format = 0u;
+    draw.depth_pitch = 0ul;
+    draw.depth_only = 0u;
+    draw.scissor = 0u;
+    draw.tl_uv1 = 0u;
+    draw.indices = 0ul;
+    draw.index_count = 0ul;
+    draw.strip = 0u;
+    draw.cull = V9X_HSW_DRAW_CULL_NONE;
+    ps.constants = 0x01824d20ul;
+    ps.constant_grfs = 7u;
+    ps.stages = 4u;
+    ps.kill = 1u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul,
+                                           0xc0de0041ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_3d_check(dw, batch.used, &check) == V9X_STATUS_OK);
+
+    at = v9x_find_command(dw, batch.used, 0x78170005ul);
+    CHECK(at < batch.used && at >= 7ul);
+    CHECK(dw[at - 7ul] == 0x7b000005ul && dw[at - 5ul] == 0ul);
+    CHECK(dw[at + 1ul] == 0ul && dw[at + 2ul] == 0x00070000ul &&
+          dw[at + 6ul] == 0x01824d20ul);
+    at = v9x_find_command(dw, batch.used, 0x78200006ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x400ul &&
+          dw[at + 2ul] == 0x08140000ul && dw[at + 4ul] == 0x1f801c01ul &&
+          dw[at + 5ul] == 0x00040000ul);
+    at = v9x_find_command(dw, batch.used, 0x78140001ul);
+    CHECK(at < batch.used && (dw[at + 1ul] & 0x22000000ul) == 0x22000000ul);
+    at = v9x_find_command(dw, batch.used, 0x781f000cul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x01801810ul);
+    /* Header, position, attributes: two 64-byte rows (field 1). */
+    at = v9x_find_command(dw, batch.used, 0x78300000ul);
+    CHECK(at < batch.used && ((dw[at + 1ul] >> 16) & 0x1fful) == 1ul);
+    at = v9x_find_command(dw, batch.used, 0x78080003ul);
+    CHECK(at < batch.used && dw[at + 1ul] == 0x00004068ul &&
+          dw[at + 3ul] == draw.vertices + 311ul);
+    at = v9x_find_command(dw, batch.used, 0x7809000ful);
+    CHECK(at < batch.used && dw[at + 3ul] == 0x02850000ul &&
+          dw[at + 4ul] == 0x11230000ul);
+    for (n = 0ul; n < 6ul; ++n) {
+        CHECK(dw[at + 5ul + 2ul * n] == 0x02000008ul + 16ul * n &&
+              dw[at + 6ul + 2ul * n] == 0x11110000ul);
+    }
+    at = v9x_find_command(dw, batch.used, 0x7b000005ul);
+    at = at + 7ul + v9x_find_command(dw + at + 7ul, batch.used - at - 7ul,
+                                     0x7b000005ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 3ul);
+
+    /* No kill: the WM bit stays clear. No stages: no samplers, one entry. */
+    ps.kill = 0u;
+    ps.stages = 0u;
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul,
+                                           0xc0de0041ul) == V9X_STATUS_OK);
+    at = v9x_find_command(dw, batch.used, 0x78140001ul);
+    CHECK(at < batch.used && (dw[at + 1ul] & 0x02000000ul) == 0ul);
+    at = v9x_find_command(dw, batch.used, 0x78200006ul);
+    CHECK(at < batch.used && dw[at + 2ul] == 0x00040000ul);
+
+    /* Refused: no ps, misaligned constants, no or too many constant GRFs,
+     * more than four stages, TL vertices, the wrong attribute count. */
+    ps.stages = 4u;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, 0, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    ps.constants = 0x01824d30ul;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    ps.constants = 0x01824d20ul;
+    ps.constant_grfs = 0u;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    ps.constant_grfs = 65u;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    ps.constant_grfs = 7u;
+    ps.stages = 5u;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    ps.stages = 4u;
+    draw.tl_vertices = 1u;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    draw.tl_vertices = 0u;
+    draw.attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    CHECK(v9x_intel_hsw_draw_workload_ps11(&batch, 0x01824000ul, 0x2000ul,
+                                           &draw, &ps, 0x01821028ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* A linear cube: SURFTYPE_CUBE (3) at 31:29, B8G8R8A8 (0C0h) at 26:18,
+     * Surface Array Spacing LOD0 (10) so the faces follow each other
+     * side rows apart, all six Cube Face Enables (5:0); 8 x 8, pitch 32. */
+    CHECK(v9x_intel_hsw_surface_cube(surface, V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                     0x01825400ul, 8u, 32ul) ==
+          V9X_STATUS_OK);
+    CHECK(surface[0] == 0x6300043ful && surface[1] == 0x01825400ul &&
+          surface[2] == 0x00070007ul && surface[3] == 31ul &&
+          surface[7] == 0x09770000ul);
+    CHECK(v9x_intel_hsw_surface_cube(surface, V9X_HSW_FMT_B8G8R8A8_UNORM,
+                                     0x01825400ul, 0u, 32ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
+    test_ps11_workload();
     test_vs_builders();
     test_vs_workload();
     test_vs_segments();

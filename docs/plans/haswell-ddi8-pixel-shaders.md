@@ -324,6 +324,16 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
        either (spec section 8).
    - **Writes:** as Phase E's, inside the probe region. A wedged RCS
      needs a power cycle, as Phase D's notes say.
+   - **Status, 2026-10-30: done, boot 123.** Six programs over three runs
+     (push constants, four textures, cube, texkill, texm3x3vspec on a
+     cube, texbem) match the interpreter on every judged pixel, max
+     channel error 1. Setup data lands at GRF 4 + 7 with no rounding; the
+     single-level linear cube layout and the shared face table hold; a
+     predicated EOT with killed pixels retires. Kill Pixel's need is
+     unmeasured (no depth in the probe). The VxD now borrows the ring
+     where the live reserve puts it; its `HSW_RCS_RING_BELOW` must follow
+     the reserve to 320 KB in 5b. Record:
+     [`../decisions/2026-10-30-haswell-ps11-step5a-probe.md`](../decisions/2026-10-30-haswell-ps11-step5a-probe.md).
 
    *5b. Shader draws in the HAL, 2D textures.*
    - **Core** (pure parts host-tested):

@@ -6,8 +6,9 @@
  * are: Align1, one register per colour channel, eight pixels.
  *
  * Pure. Each kernel is run in the host EU model against the reference
- * interpreter (tests\host\test_intel_hsw_ps11.c). None has run on
- * hardware.
+ * interpreter (tests\host\test_intel_hsw_ps11.c). Six ran on the 4570
+ * through V9XHSWMM /ps11 and matched it there (docs\decisions\
+ * 2026-10-30-haswell-ps11-step5a-probe.md).
  *
  * What the kernel expects (ddi8-on-win9x.md section 7):
  *

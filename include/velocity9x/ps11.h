@@ -14,9 +14,10 @@
  *
  * Pure: the parser is src\display32\d3d\d3d_ps11.c, host-tested in
  * tests\host\test_d3d_ps11.c. The reference interpreter (v9x_ps11_run,
- * src\display32\d3d\d3d_ps11_ref.c) is host-only, as r3d_tnl_ref.c is:
- * the Gen7.5 translator's kernels are run in the host EU model against it
- * (tests\host\test_intel_hsw_ps11.c).
+ * src\display32\d3d\d3d_ps11_ref.c) is never linked into the HAL: the
+ * Gen7.5 translator's kernels are run in the host EU model against it
+ * (tests\host\test_intel_hsw_ps11.c), and on the GPU by V9XHSWMM /ps11,
+ * which links it to judge what was drawn.
  */
 #ifndef VELOCITY9X_PS11_H
 #define VELOCITY9X_PS11_H

@@ -37,6 +37,8 @@
 #include "velocity9x/intel_hsw_3d.h"
 #include "velocity9x/intel_hsw_display.h"
 #include "velocity9x/intel_hsw_eu.h"
+#include "velocity9x/intel_hsw_ps11.h"
+#include "velocity9x/ps11.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -849,10 +851,14 @@ static const DWORD v9x_d1_rgba[4] = {
 static int v9x_shade_build(DWORD pair);
 static int v9x_depth_build(void);
 static int v9x_depth16_build(void);
+static int v9x_ps11_build(DWORD run);
 #define V9X_DEPTH_MODE      8
 #define V9X_DEPTH16_MODE    9
+#define V9X_PS11_MODE       10
+#define V9X_PS11_RUNS       3
 
-/* mode: 0 /rcs, 1 /draw, 2-7 /shade:0-5, 8 /depth, 9 /depth16. */
+/* mode: 0 /rcs, 1 /draw, 2-7 /shade:0-5, 8 /depth, 9 /depth16, 10-12
+ * /ps11:0-2. */
 static int v9x_rcs_build(int draw)
 {
     struct v9x_hsw_batch batch;
@@ -901,6 +907,10 @@ static int v9x_rcs_build(int draw)
     }
     if (draw >= 2 && draw < V9X_DEPTH_MODE &&
         !v9x_shade_build((DWORD)(draw - 2))) {
+        return 0;
+    }
+    if (draw >= V9X_PS11_MODE &&
+        !v9x_ps11_build((DWORD)(draw - V9X_PS11_MODE))) {
         return 0;
     }
     if (draw == 1) {
@@ -1732,6 +1742,793 @@ static void v9x_shade_judge(DWORD target, DWORD variant)
 }
 
 /*
+ * Pixel shaders, step 5a of docs\plans\haswell-ddi8-pixel-shaders.md
+ * (/ps11:N): two PS 1.1 programs a run, three runs, each built by the
+ * step 4 translator and drawn over D's triangle into its own target by
+ * v9x_intel_hsw_draw_workload_ps11. Every covered pixel is judged against
+ * the reference interpreter (d3d_ps11_ref.c, linked here) given the same
+ * interpolated inputs and nearest samples of the same texels. Between them
+ * the six settle the plan's open questions: push constants ahead of the
+ * setup data (c0-c7, a bump matrix), six attributes through the SBE, four
+ * samplers and binding entries, a cube's three-coordinate sample, and a
+ * texkill kernel's predicated write under Kill Pixel, dispatches with
+ * every pixel killed among them.
+ *
+ * Layout, beside shade_state's targets, blend and border colour (offsets
+ * from the state base): kernel 0 at 400h and kernel 1 at 1580h, each
+ * leaving the EU's 128-byte prefetch clearance inside the state; four
+ * samplers at C00h; the four 2D textures' surfaces at C40h and the cube's
+ * at CC0h; each target's five-entry binding table at CE0h and D00h; each
+ * draw's seven push-constant GRFs at D20h and E00h, and its three
+ * vertices at 1000h and 1140h. The texels follow D2's batch in the image:
+ * four 8x8 2D textures, then the cube's six 8x8 faces.
+ */
+#define V9X_PS11_VARIANTS        (2ul * (DWORD)V9X_PS11_RUNS)
+#define V9X_PS11_KERNEL(n)       ((n) == 0ul ? 0x400ul : 0x1580ul)
+#define V9X_PS11_KERNEL_BYTES(n) ((n) == 0ul ? 0x780ul : 0xa00ul)
+#define V9X_PS11_SAMPLERS        0xc00ul
+#define V9X_PS11_TEX_SURFACE(s)  (0xc40ul + 0x20ul * (s))
+#define V9X_PS11_CUBE_SURFACE    0xcc0ul
+#define V9X_PS11_BINDING(n)      (0xce0ul + 0x20ul * (n))
+#define V9X_PS11_CONSTANTS(n)    (0xd20ul + 0xe0ul * (n))
+#define V9X_PS11_VERTICES(n)     (0x1000ul + 0x140ul * (n))
+#define V9X_PS11_TEXTURE(s)      (V9X_RCS_IMAGE + 0x1400ul + 0x100ul * (s))
+#define V9X_PS11_CUBE            (V9X_RCS_IMAGE + 0x1800ul)
+#define V9X_PS11_FACE_BYTES      0x100ul
+#define V9X_PS11_SIDE            8l
+#define V9X_PS11_STAGES          4ul
+#define V9X_PS11_CONST_GRF       ((v9x_u8)4u)
+#define V9X_PS11_SETUP_GRF       ((v9x_u8)(4u + V9X_HSW_PS11_CONST_GRFS))
+#define V9X_PS11_VERTEX_FLOATS   26ul
+/* SAMPLER_STATE DW3: TEXCOORDMODE_CLAMP (2) at TCX 8:6, TCY 5:3, TCZ 2:0
+ * (Vol 2d, Vol 2a). */
+#define V9X_PS11_CLAMP_ALL       0x92ul
+/* A coordinate this close to a texel's edge, in texels, is not judged;
+ * nor is a texkill coordinate this close to zero. */
+#define V9X_PS11_MARGIN          (1.0f / 64.0f)
+#define V9X_PS11_KILL_MARGIN     0.001f
+
+/* Shader tokens (ddi8-on-win9x.md section 6), as the host tests build
+ * them: every source unswizzled. */
+#define V9X_PT_VER11             0xffff0101ul
+#define V9X_PT_END               0x0000fffful
+#define V9X_PT_DST(file, reg) \
+    (0x80000000ul | ((DWORD)(file) << 28) | (0xful << 16) | (DWORD)(reg))
+#define V9X_PT_SRC(file, reg, mod) \
+    (0x80000000ul | ((DWORD)(file) << 28) | ((DWORD)(mod) << 24) | \
+     (0xe4ul << 16) | (DWORD)(reg))
+#define V9X_PT_R(n)              V9X_PT_SRC(V9X_PS11_FILE_TEMP, n, 0u)
+#define V9X_PT_V(n)              V9X_PT_SRC(V9X_PS11_FILE_INPUT, n, 0u)
+#define V9X_PT_C(n)              V9X_PT_SRC(V9X_PS11_FILE_CONST, n, 0u)
+#define V9X_PT_T(n)              V9X_PT_SRC(V9X_PS11_FILE_TEXTURE, n, 0u)
+#define V9X_PT_T_BX2(n)          V9X_PT_SRC(V9X_PS11_FILE_TEXTURE, n, \
+                                            V9X_PS11_SRC_SIGN)
+#define V9X_PT_TO_R(n)           V9X_PT_DST(V9X_PS11_FILE_TEMP, n)
+#define V9X_PT_TO_T(n)           V9X_PT_DST(V9X_PS11_FILE_TEXTURE, n)
+#define V9X_PT_MOV               1ul
+#define V9X_PT_MAD               4ul
+#define V9X_PT_MUL               5ul
+#define V9X_PT_LRP               18ul
+#define V9X_PT_TEXKILL           65ul
+#define V9X_PT_TEX               66ul
+#define V9X_PT_TEXBEM            67ul
+#define V9X_PT_TEXM3X3PAD        73ul
+#define V9X_PT_TEXM3X3VSPEC      77ul
+
+struct v9x_ps11_variant {
+    const char *name;
+    DWORD cube;          /* bit N: stage N samples the cube */
+    DWORD kill_set;      /* 1 + the coordinate set texkill reads, or 0 */
+    DWORD tokens[24];
+};
+
+static const struct v9x_ps11_variant v9x_ps11_variants[V9X_PS11_VARIANTS] = {
+    /* Run 0. Push: mad r1, v0, c0, c7; mad r0, v1, c5, r1 - constants from
+     * both halves of three push registers, and both colours. */
+    { "Push", 0ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_MAD, V9X_PT_TO_R(1), V9X_PT_V(0), V9X_PT_C(0), V9X_PT_C(7),
+        V9X_PT_MAD, V9X_PT_TO_R(0), V9X_PT_V(1), V9X_PT_C(5), V9X_PT_R(1),
+        V9X_PT_END } },
+    /* FourTex: tex t0-t3; mul r1, t0, t1; mul r0, t2, t3;
+     * lrp r0, c0, r1, r0 - four samplers, four binding entries. */
+    { "FourTex", 0ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(0), V9X_PT_TEX, V9X_PT_TO_T(1),
+        V9X_PT_TEX, V9X_PT_TO_T(2), V9X_PT_TEX, V9X_PT_TO_T(3),
+        V9X_PT_MUL, V9X_PT_TO_R(1), V9X_PT_T(0), V9X_PT_T(1),
+        V9X_PT_MUL, V9X_PT_TO_R(0), V9X_PT_T(2), V9X_PT_T(3),
+        V9X_PT_LRP, V9X_PT_TO_R(0), V9X_PT_C(0), V9X_PT_R(1), V9X_PT_R(0),
+        V9X_PT_END } },
+    /* Run 1. Cube: tex t1 from a cube over all six faces; mov r0, t1. */
+    { "Cube", 0x2ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(1),
+        V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(1),
+        V9X_PT_END } },
+    /* Kill: tex t0; texkill t1; mov r0, t0 - about a third of the
+     * triangle killed, in whole dispatches as well as part ones. */
+    { "Kill", 0ul, 2ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(0), V9X_PT_TEXKILL, V9X_PT_TO_T(1),
+        V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(0),
+        V9X_PT_END } },
+    /* Run 2. Vspec: tex t0; texm3x3pad t1, t0_bx2; texm3x3pad t2,
+     * t0_bx2; texm3x3vspec t3, t0_bx2 from a cube; mov r0, t3 - Nature's
+     * water, every attribute's w. */
+    { "Vspec", 0x8ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(0),
+        V9X_PT_TEXM3X3PAD, V9X_PT_TO_T(1), V9X_PT_T_BX2(0),
+        V9X_PT_TEXM3X3PAD, V9X_PT_TO_T(2), V9X_PT_T_BX2(0),
+        V9X_PT_TEXM3X3VSPEC, V9X_PT_TO_T(3), V9X_PT_T_BX2(0),
+        V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(3),
+        V9X_PT_END } },
+    /* Bem: tex t0; texbem t1, t0; mov r0, t1 - stage 1's bump matrix in
+     * the push block's fifth register. */
+    { "Bem", 0ul, 0ul, {
+        V9X_PT_VER11,
+        V9X_PT_TEX, V9X_PT_TO_T(0),
+        V9X_PT_TEXBEM, V9X_PT_TO_T(1), V9X_PT_T(0),
+        V9X_PT_MOV, V9X_PT_TO_R(0), V9X_PT_T(1),
+        V9X_PT_END } }
+};
+
+/* The programs of the run being drawn, one a target, for the judge. */
+static V9X_PS11_PROGRAM v9x_ps11_programs[2];
+
+#ifdef __WATCOMC__
+/* Float to long by fistp, rounding to nearest: a cast would call
+ * Watcom's __CHP, from the C runtime the probe does not link. */
+static long v9x_ps11_to_long(float value);
+#pragma aux v9x_ps11_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long v9x_ps11_to_long(float value)
+{
+    return (long)(value < 0.0f ? value - 0.5f : value + 0.5f);
+}
+#endif
+
+static DWORD v9x_ps11_bits(float value)
+{
+    union {
+        float value;
+        DWORD bits;
+    } convert;
+
+    convert.value = value;
+    return convert.bits;
+}
+
+static void v9x_ps11_env(DWORD variant, V9X_PS11_ENV *env)
+{
+    DWORD k;
+    DWORD c;
+
+    for (k = 0ul; k < 8ul; ++k) {
+        for (c = 0ul; c < 4ul; ++c) {
+            /* Every constant distinct, so a misplaced register shows. */
+            env->c[k][c] = 0.1f * (float)k - 0.05f * (float)c - 0.3f;
+        }
+    }
+    for (k = 0ul; k < 4ul; ++k) {
+        for (c = 0ul; c < 4ul; ++c) {
+            env->bump[k][c] = 0.0f;
+        }
+        env->luminance[k][0] = 0.0f;
+        env->luminance[k][1] = 0.0f;
+    }
+    env->cube = v9x_ps11_variants[variant].cube;
+    env->projected = 0ul;
+    if (variant == 0ul) {
+        env->c[0][0] = 0.8f; env->c[0][1] = 0.6f;
+        env->c[0][2] = 0.4f; env->c[0][3] = 0.9f;
+        env->c[5][0] = 0.3f; env->c[5][1] = 0.7f;
+        env->c[5][2] = -0.5f; env->c[5][3] = 0.2f;
+        env->c[7][0] = 0.05f; env->c[7][1] = -0.1f;
+        env->c[7][2] = 0.2f; env->c[7][3] = 0.1f;
+    } else if (variant == 1ul) {
+        env->c[0][0] = 0.5f; env->c[0][1] = 0.25f;
+        env->c[0][2] = 0.75f; env->c[0][3] = 0.5f;
+    } else if (variant == 5ul) {
+        env->bump[1][0] = 0.25f; env->bump[1][1] = -0.1f;
+        env->bump[1][2] = 0.05f; env->bump[1][3] = 0.3f;
+    }
+}
+
+/* Per vertex: diffuse, specular; the cube directions (their plane passes
+ * near the origin, so all six faces are reached); the eye vector. */
+static const float v9x_ps11_diffuse[3][4] = {
+    { 0.9f, 0.2f, 0.1f, 1.0f }, { 0.1f, 0.8f, 0.3f, 0.6f },
+    { 0.2f, 0.3f, 0.9f, 0.3f }
+};
+static const float v9x_ps11_specular[3][4] = {
+    { 0.1f, 0.5f, 0.9f, 0.2f }, { 0.7f, 0.1f, 0.4f, 0.9f },
+    { 0.4f, 0.9f, 0.2f, 0.5f }
+};
+static const float v9x_ps11_direction[3][3] = {
+    { 1.0f, -0.6f, -0.6f }, { -0.6f, 1.0f, -0.6f }, { -0.6f, -0.6f, 1.0f }
+};
+static const float v9x_ps11_eye[3][3] = {
+    { 0.2f, 0.3f, 1.0f }, { -0.5f, 0.4f, 0.8f }, { 0.3f, -0.6f, 0.7f }
+};
+static const float v9x_ps11_kill_x[3] = { 0.6f, -0.6f, 0.3f };
+
+/* Attribute a (0 diffuse, 1 specular, 2 + s coordinate set s) of vertex
+ * k for a variant. A set's u v run over the corners (0,0), (1,0), (0,1),
+ * turned one vertex per set so each stage's mapping differs. */
+static void v9x_ps11_attribute(DWORD variant, DWORD k, DWORD a, float out[4])
+{
+    static const float corner[3][2] = {
+        { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f }
+    };
+    DWORD c;
+    DWORD set;
+
+    if (a < 2ul) {
+        for (c = 0ul; c < 4ul; ++c) {
+            out[c] = a == 0ul ? v9x_ps11_diffuse[k][c] :
+                                v9x_ps11_specular[k][c];
+        }
+        return;
+    }
+    set = a - 2ul;
+    out[0] = corner[(k + set) % 3ul][0];
+    out[1] = corner[(k + set) % 3ul][1];
+    out[2] = 0.25f + 0.25f * (float)k;
+    out[3] = 1.0f;
+    if (variant == 2ul && set == 1ul) {
+        for (c = 0ul; c < 3ul; ++c) {
+            out[c] = v9x_ps11_direction[k][c];
+        }
+    } else if (variant == 3ul && set == 1ul) {
+        out[0] = v9x_ps11_kill_x[k];
+        out[1] = 0.4f;
+        out[2] = 0.5f;
+    } else if (variant == 4ul && set >= 1ul) {
+        /* Rows of the identity, the eye vector in their w. */
+        for (c = 0ul; c < 3ul; ++c) {
+            out[c] = c == set - 1ul ? 1.0f : 0.0f;
+        }
+        out[3] = v9x_ps11_eye[k][set - 1ul];
+    }
+}
+
+/* Stage s's 8x8 texels, B8G8R8A8: every channel moves with x or y, and no
+ * two stages alike. Stage 0 doubles as Vspec's normal map (mostly +z
+ * after _bx2) and Bem's du dv. */
+static DWORD v9x_ps11_texel(DWORD stage, long x, long y)
+{
+    DWORD a;
+    DWORD r;
+    DWORD g;
+    DWORD b;
+
+    if (stage == 0ul) {
+        a = 0xfful - (DWORD)x * 8ul;
+        r = 0x58ul + (DWORD)x * 12ul;
+        g = 0x58ul + (DWORD)y * 12ul;
+        b = 0xe0ul - (DWORD)(x + y) * 4ul;
+    } else if (stage == 1ul) {
+        a = 0x90ul + (DWORD)y * 8ul;
+        r = (DWORD)x * 32ul + 16ul;
+        g = 0xfful - (DWORD)y * 32ul;
+        b = 0x40ul + (DWORD)((x + y) & 1l) * 0x80ul;
+    } else if (stage == 2ul) {
+        a = 0x70ul + (DWORD)x * 16ul;
+        r = 0x20ul + (DWORD)y * 28ul;
+        g = 0x30ul + (DWORD)x * 20ul;
+        b = 0xc0ul - (DWORD)y * 16ul;
+    } else {
+        a = 0xd0ul - (DWORD)(x + y) * 4ul;
+        r = 0xf0ul - (DWORD)x * 16ul;
+        g = 0x10ul + (DWORD)(x * y) * 3ul;
+        b = (DWORD)y * 32ul + 8ul;
+    }
+    return (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+/* A cube face's texels: red names the face, green and blue the column
+ * and row. */
+static DWORD v9x_ps11_face_texel(DWORD face, long x, long y)
+{
+    return ((0xfful - face * 16ul) << 24) | ((face * 40ul + 20ul) << 16) |
+           (((DWORD)x * 32ul + 16ul) << 8) | ((DWORD)y * 32ul + 16ul);
+}
+
+struct v9x_ps11_lookup {
+    DWORD cube;
+    int unjudged;
+};
+
+/* A nearest texel index under CLAMP; near a texel edge it is marked not
+ * judged. floor() as round(x - 0.5), exact away from integers, which are
+ * the ones not judged. */
+static long v9x_ps11_index(float coord, int *unjudged)
+{
+    float scaled = coord * (float)V9X_PS11_SIDE;
+    long index;
+    float frac;
+
+    if (scaled <= 0.0f) {
+        if (scaled > -V9X_PS11_MARGIN) {
+            *unjudged = 1;
+        }
+        return 0l;
+    }
+    if (scaled >= (float)V9X_PS11_SIDE) {
+        if (scaled < (float)V9X_PS11_SIDE + V9X_PS11_MARGIN) {
+            *unjudged = 1;
+        }
+        return V9X_PS11_SIDE - 1l;
+    }
+    index = v9x_ps11_to_long(scaled - 0.5f);
+    frac = scaled - (float)index;
+    if (frac < V9X_PS11_MARGIN || frac > 1.0f - V9X_PS11_MARGIN) {
+        *unjudged = 1;
+    }
+    return index;
+}
+
+/*
+ * The face and face coordinates of a direction, by the table Direct3D
+ * and OpenGL share: +X -X +Y -Y +Z -Z are faces 0-5; s = (sc / |ma| + 1)
+ * / 2 across, t = (tc / |ma| + 1) / 2 down. A direction near an edge
+ * between faces lands near s or t of 0 or 1, which the index marks.
+ */
+static DWORD v9x_ps11_face(const float *d, float *s, float *t)
+{
+    float ax = d[0] < 0.0f ? -d[0] : d[0];
+    float ay = d[1] < 0.0f ? -d[1] : d[1];
+    float az = d[2] < 0.0f ? -d[2] : d[2];
+    float sc;
+    float tc;
+    float ma;
+    DWORD face;
+
+    if (ax >= ay && ax >= az) {
+        ma = ax;
+        face = d[0] >= 0.0f ? 0ul : 1ul;
+        sc = d[0] >= 0.0f ? -d[2] : d[2];
+        tc = -d[1];
+    } else if (ay >= az) {
+        ma = ay;
+        face = d[1] >= 0.0f ? 2ul : 3ul;
+        sc = d[0];
+        tc = d[1] >= 0.0f ? d[2] : -d[2];
+    } else {
+        ma = az;
+        face = d[2] >= 0.0f ? 4ul : 5ul;
+        sc = d[2] >= 0.0f ? d[0] : -d[0];
+        tc = -d[1];
+    }
+    if (ma <= 0.0f) {
+        *s = 0.0f;
+        *t = 0.0f;
+        return face;
+    }
+    *s = (sc / ma + 1.0f) * 0.5f;
+    *t = (tc / ma + 1.0f) * 0.5f;
+    return face;
+}
+
+static void v9x_ps11_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                            const float *coords, float rgba[4])
+{
+    struct v9x_ps11_lookup *lookup = (struct v9x_ps11_lookup *)user;
+    DWORD texel;
+    DWORD face;
+    float s;
+    float t;
+
+    if ((lookup->cube & (1ul << stage)) != 0ul && count >= 3ul) {
+        face = v9x_ps11_face(coords, &s, &t);
+        texel = v9x_ps11_face_texel(face,
+                                    v9x_ps11_index(s, &lookup->unjudged),
+                                    v9x_ps11_index(t, &lookup->unjudged));
+    } else {
+        texel = v9x_ps11_texel(stage,
+                               v9x_ps11_index(coords[0], &lookup->unjudged),
+                               v9x_ps11_index(coords[1], &lookup->unjudged));
+    }
+    rgba[0] = (float)((texel >> 16) & 0xfful) / 255.0f;
+    rgba[1] = (float)((texel >> 8) & 0xfful) / 255.0f;
+    rgba[2] = (float)(texel & 0xfful) / 255.0f;
+    rgba[3] = (float)(texel >> 24) / 255.0f;
+}
+
+static DWORD v9x_ps11_unorm(float value)
+{
+    if (value <= 0.0f) {
+        return 0ul;
+    }
+    if (value >= 1.0f) {
+        return 255ul;
+    }
+    return (DWORD)v9x_ps11_to_long(value * 255.0f);
+}
+
+static int v9x_ps11_build(DWORD run)
+{
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_check check;
+    struct v9x_hsw_draw d;
+    struct v9x_hsw_ps11_draw ps;
+    struct v9x_hsw_ps11_desc desc;
+    struct v9x_hsw_sampler sampler;
+    const struct v9x_ps11_variant *v;
+    V9X_PS11_ENV env;
+    v9x_u32 rt[2];
+    v9x_u32 used;
+    v9x_u32 where;
+    v9x_u32 *at;
+    char key[40];
+    DWORD variant;
+    DWORD n;
+    DWORD s;
+    DWORD k;
+    DWORD a;
+    DWORD c;
+    float value[4];
+    long x;
+    long y;
+
+    rt[0] = V9X_RCS_RT0;
+    rt[1] = V9X_RCS_RT1;
+    if (v9x_intel_hsw_shade_state(v9x_rcs_image_at(V9X_RCS_STATE),
+                                  V9X_RCS_STATE_BYTES / 4ul, V9X_RCS_STATE,
+                                  rt, V9X_RCS_RT_SIDE, V9X_RCS_RT_SIDE,
+                                  V9X_RCS_RT_PITCH, 0u) != V9X_STATUS_OK) {
+        return 0;
+    }
+
+    /* Texels, then their surfaces and the samplers, all nearest CLAMP. */
+    for (s = 0ul; s < V9X_PS11_STAGES; ++s) {
+        at = v9x_rcs_image_at(V9X_PS11_TEXTURE(s));
+        for (y = 0l; y < V9X_PS11_SIDE; ++y) {
+            for (x = 0l; x < V9X_PS11_SIDE; ++x) {
+                at[y * V9X_PS11_SIDE + x] = v9x_ps11_texel(s, x, y);
+            }
+        }
+        if (v9x_intel_hsw_surface_2d(
+                v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_TEX_SURFACE(s)),
+                V9X_HSW_FMT_B8G8R8A8_UNORM, V9X_PS11_TEXTURE(s),
+                (v9x_u16)V9X_PS11_SIDE, (v9x_u16)V9X_PS11_SIDE,
+                (v9x_u32)V9X_PS11_SIDE * 4ul) != V9X_STATUS_OK) {
+            return 0;
+        }
+        sampler.mip_filter = 0u;
+        sampler.mag_filter = 0u;
+        sampler.min_filter = 0u;
+        sampler.min_lod = 0u;
+        sampler.max_lod = 0u;
+        sampler.border_color_pointer = V9X_HSW_SHADE_BORDER_COLOR;
+        sampler.dw3 = V9X_PS11_CLAMP_ALL;
+        if (v9x_intel_hsw_sampler(
+                v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_SAMPLERS +
+                                 V9X_HSW_SAMPLER_BYTES * s),
+                &sampler) != V9X_STATUS_OK) {
+            return 0;
+        }
+    }
+    for (s = 0ul; s < 6ul; ++s) {
+        at = v9x_rcs_image_at(V9X_PS11_CUBE + V9X_PS11_FACE_BYTES * s);
+        for (y = 0l; y < V9X_PS11_SIDE; ++y) {
+            for (x = 0l; x < V9X_PS11_SIDE; ++x) {
+                at[y * V9X_PS11_SIDE + x] = v9x_ps11_face_texel(s, x, y);
+            }
+        }
+    }
+    if (v9x_intel_hsw_surface_cube(
+            v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_CUBE_SURFACE),
+            V9X_HSW_FMT_B8G8R8A8_UNORM, V9X_PS11_CUBE,
+            (v9x_u16)V9X_PS11_SIDE, (v9x_u32)V9X_PS11_SIDE * 4ul) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+
+    for (n = 0ul; n < 2ul; ++n) {
+        variant = run * 2ul + n;
+        v = &v9x_ps11_variants[variant];
+        for (k = 0ul; v->tokens[k] != V9X_PT_END; ++k) {
+        }
+        lstrcpyA(key, v->name);
+        lstrcatA(key, "Parse");
+        if (v9x_ps11_parse((const v9x_u32 *)v->tokens, k + 1ul,
+                           &v9x_ps11_programs[n], &where) != V9X_PS11_OK) {
+            v9x_rcs_key(key, where);
+            return 0;
+        }
+        v9x_rcs_text(key, "ok");
+
+        /* Entry 0 the target, 1 + s stage s: the cube where the variant
+         * has one. */
+        at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_BINDING(n));
+        at[0] = V9X_HSW_DRAW_RT_SURFACE(n);
+        for (s = 0ul; s < V9X_PS11_STAGES; ++s) {
+            at[1ul + s] = (v->cube & (1ul << s)) != 0ul ?
+                              V9X_PS11_CUBE_SURFACE : V9X_PS11_TEX_SURFACE(s);
+        }
+
+        /* The push block as intel_hsw_ps11.h lays it out: c0-c7 clamped,
+         * the bump matrices, the luminance terms. */
+        v9x_ps11_env(variant, &env);
+        at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_CONSTANTS(n));
+        for (k = 0ul; k < (DWORD)V9X_HSW_PS11_CONST_GRFS * 8ul; ++k) {
+            at[k] = 0ul;
+        }
+        for (k = 0ul; k < 8ul; ++k) {
+            for (c = 0ul; c < 4ul; ++c) {
+                value[0] = env.c[k][c] > 1.0f ? 1.0f :
+                           env.c[k][c] < -1.0f ? -1.0f : env.c[k][c];
+                at[(k / 2ul) * 8ul + 4ul * (k % 2ul) + c] =
+                    v9x_ps11_bits(value[0]);
+            }
+        }
+        for (s = 0ul; s < V9X_PS11_STAGES; ++s) {
+            for (c = 0ul; c < 4ul; ++c) {
+                at[((DWORD)V9X_HSW_PS11_CONST_BUMP + s / 2ul) * 8ul +
+                   4ul * (s % 2ul) + c] = v9x_ps11_bits(env.bump[s][c]);
+            }
+            at[(DWORD)V9X_HSW_PS11_CONST_LUMINANCE * 8ul + 2ul * s] =
+                v9x_ps11_bits(env.luminance[s][0]);
+            at[(DWORD)V9X_HSW_PS11_CONST_LUMINANCE * 8ul + 2ul * s + 1ul] =
+                v9x_ps11_bits(env.luminance[s][1]);
+        }
+
+        at = v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_VERTICES(n));
+        for (k = 0ul; k < 3ul; ++k) {
+            at[0] = v9x_tri_vertices[k * 6ul];
+            at[1] = v9x_tri_vertices[k * 6ul + 1ul];
+            for (a = 0ul; a < (DWORD)V9X_HSW_PS11_ATTRIBUTES; ++a) {
+                v9x_ps11_attribute(variant, k, a, value);
+                for (c = 0ul; c < 4ul; ++c) {
+                    at[2ul + 4ul * a + c] = v9x_ps11_bits(value[c]);
+                }
+            }
+            at += V9X_PS11_VERTEX_FLOATS;
+        }
+
+        desc.const_grf = V9X_PS11_CONST_GRF;
+        desc.setup_grf = V9X_PS11_SETUP_GRF;
+        desc.cube = v->cube;
+        desc.projected = 0ul;
+        lstrcpyA(key, v->name);
+        lstrcatA(key, "KernelBytes");
+        if (v9x_intel_hsw_ps11_build(
+                v9x_rcs_image_at(V9X_RCS_STATE + V9X_PS11_KERNEL(n)),
+                V9X_PS11_KERNEL_BYTES(n) / 4ul, &v9x_ps11_programs[n], &desc,
+                &used) != V9X_STATUS_OK) {
+            v9x_rcs_text(key, "build-refused");
+            return 0;
+        }
+        v9x_rcs_key(key, used * 4ul);
+
+        d.binding_table = V9X_PS11_BINDING(n);
+        d.kernel = V9X_PS11_KERNEL(n);
+        d.vertices = V9X_RCS_STATE + V9X_PS11_VERTICES(n);
+        d.width = V9X_RCS_RT_SIDE;
+        d.height = V9X_RCS_RT_SIDE;
+        d.attributes = V9X_HSW_WIDE_ATTRIBUTES;
+        d.blend = 0ul;
+        d.cc = 0ul;
+        d.sampler = V9X_PS11_SAMPLERS;
+        d.depth_buffer = 0ul;
+        d.depth_clear = 0ul;
+        d.depth_test = 0ul;
+        d.tl_vertices = 0u;
+        d.vertex_count = 0ul;
+        d.flat = 0u;
+        d.depth_format = 0u;
+        d.depth_pitch = 0ul;
+        d.depth_only = 0u;
+        d.scissor = 0u;
+        d.tl_uv1 = 0u;
+        d.indices = 0ul;
+        d.index_count = 0ul;
+        d.strip = 0u;
+        d.cull = V9X_HSW_DRAW_CULL_NONE;
+        ps.constants = V9X_RCS_STATE + V9X_PS11_CONSTANTS(n);
+        ps.constant_grfs = V9X_HSW_PS11_CONST_GRFS;
+        ps.stages = (v9x_u8)V9X_PS11_STAGES;
+        ps.kill = v9x_ps11_programs[n].has_kill != 0ul ? 1u : 0u;
+        v9x_intel_hsw_batch_init(
+            &batch,
+            v9x_rcs_image_at(n == 0ul ? V9X_RCS_BATCH_D1 : V9X_RCS_BATCH_D2),
+            V9X_RCS_BATCH_BYTES / 4ul);
+        if (v9x_intel_hsw_draw_workload_ps11(
+                &batch, V9X_RCS_STATE, V9X_RCS_STATE_BYTES, &d, &ps,
+                V9X_RCS_STATUS + (n == 0ul ? 32ul : 48ul),
+                n == 0ul ? V9X_RCS_D1_CRUMB : V9X_RCS_D2_CRUMB) !=
+                V9X_STATUS_OK ||
+            v9x_intel_hsw_3d_check(batch.dw, batch.used, &check) !=
+                V9X_STATUS_OK) {
+            return 0;
+        }
+        v9x_rcs_key(n == 0ul ? "Draw1BatchDwords" : "Draw2BatchDwords",
+                    batch.used);
+    }
+    return 1;
+}
+
+/*
+ * Target `target` against the interpreter, pixel centres and edges as
+ * shade_judge takes them. Inputs are the vertices' attributes weighted
+ * by the edges opposite; a pixel the lookups or a texkill coordinate
+ * leave on an edge is not judged. A killed pixel must keep the guard.
+ */
+static void v9x_ps11_judge(DWORD target, DWORD variant)
+{
+    const struct v9x_ps11_variant *v = &v9x_ps11_variants[variant];
+    const DWORD *pixels = v9x_rcs_out.rt[target];
+    struct v9x_ps11_lookup lookup;
+    V9X_PS11_ENV env;
+    V9X_PS11_PIXEL pixel;
+    char key[40];
+    float vertex[3][4];
+    float out[4];
+    float sum;
+    long area;
+    long len[3];
+    long e[3];
+    long w[3];
+    long px;
+    long py;
+    DWORD x;
+    DWORD y;
+    DWORD i;
+    DWORD a;
+    DWORD c;
+    DWORD got;
+    DWORD want;
+    DWORD inside = 0ul;
+    DWORD outside = 0ul;
+    DWORD unjudged = 0ul;
+    DWORD killed = 0ul;
+    DWORD bad = 0ul;
+    DWORD max_error = 0ul;
+    DWORD error;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_got = 0ul;
+    DWORD first_want = 0ul;
+    int on_edge;
+    int in;
+    int kept;
+
+    v9x_ps11_env(variant, &env);
+    lookup.cube = v->cube;
+    area = v9x_edge(0ul, 1ul, v9x_tri_x[2], v9x_tri_y[2]);
+    for (i = 0ul; i < 3ul; ++i) {
+        DWORD j = (i + 1ul) % 3ul;
+        long dx = v9x_tri_x[j] - v9x_tri_x[i];
+        long dy = v9x_tri_y[j] - v9x_tri_y[i];
+
+        len[i] = v9x_isqrt(dx * dx + dy * dy);
+    }
+    for (y = 0ul; y < V9X_RCS_RT_SIDE; ++y) {
+        for (x = 0ul; x < V9X_RCS_RT_SIDE; ++x) {
+            px = (long)x * 4l + 2l;
+            py = (long)y * 4l + 2l;
+            on_edge = 0;
+            in = 1;
+            for (i = 0ul; i < 3ul; ++i) {
+                e[i] = v9x_edge(i, (i + 1ul) % 3ul, px, py);
+                if ((e[i] < 0l ? -e[i] : e[i]) * 16l < len[i]) {
+                    on_edge = 1;
+                }
+                if (e[i] < 0l) {
+                    in = 0;
+                }
+            }
+            got = pixels[y * V9X_RCS_RT_SIDE + x];
+            if (on_edge) {
+                ++unjudged;
+                continue;
+            }
+            want = V9X_RCS_GUARD;
+            if (in) {
+                /* The weight of vertex k is the edge opposite it. */
+                w[0] = e[1];
+                w[1] = e[2];
+                w[2] = e[0];
+                for (a = 0ul; a < (DWORD)V9X_HSW_PS11_ATTRIBUTES; ++a) {
+                    for (i = 0ul; i < 3ul; ++i) {
+                        v9x_ps11_attribute(variant, i, a, vertex[i]);
+                    }
+                    for (c = 0ul; c < 4ul; ++c) {
+                        sum = 0.0f;
+                        for (i = 0ul; i < 3ul; ++i) {
+                            sum += (float)w[i] * vertex[i][c];
+                        }
+                        sum /= (float)area;
+                        if (a < (DWORD)V9X_HSW_PS11_ATTR_TEXCOORD) {
+                            pixel.v[a][c] = sum;
+                        } else {
+                            pixel.tc[a - V9X_HSW_PS11_ATTR_TEXCOORD][c] = sum;
+                        }
+                    }
+                }
+                lookup.unjudged = 0;
+                if (v->kill_set != 0ul) {
+                    for (c = 0ul; c < 3ul; ++c) {
+                        sum = pixel.tc[v->kill_set - 1ul][c];
+                        if ((sum < 0.0f ? -sum : sum) < V9X_PS11_KILL_MARGIN) {
+                            lookup.unjudged = 1;
+                        }
+                    }
+                }
+                kept = v9x_ps11_run(&v9x_ps11_programs[target], &env, &pixel,
+                                    v9x_ps11_sample, &lookup, out);
+                if (lookup.unjudged) {
+                    ++unjudged;
+                    continue;
+                }
+                ++inside;
+                if (kept) {
+                    want = (v9x_ps11_unorm(out[3]) << 24) |
+                           (v9x_ps11_unorm(out[0]) << 16) |
+                           (v9x_ps11_unorm(out[1]) << 8) |
+                           v9x_ps11_unorm(out[2]);
+                } else {
+                    ++killed;
+                }
+            } else {
+                ++outside;
+            }
+            error = 0ul;
+            if (want == V9X_RCS_GUARD || got == V9X_RCS_GUARD) {
+                error = want == got ? 0ul : 256ul;
+            } else {
+                for (i = 0ul; i < 32ul; i += 8ul) {
+                    DWORD p = (got >> i) & 0xfful;
+                    DWORD q = (want >> i) & 0xfful;
+                    DWORD diff = p > q ? p - q : q - p;
+
+                    if (diff > error) {
+                        error = diff;
+                    }
+                }
+            }
+            if (error > max_error && error != 256ul) {
+                max_error = error;
+            }
+            if (error > 2ul) {
+                ++bad;
+                if (first_bad == 0xfffffffful) {
+                    first_bad = (y << 16) | x;
+                    first_got = got;
+                    first_want = want;
+                }
+            }
+        }
+    }
+
+#define V9X_PS11_KEY(suffix, value) \
+    do { lstrcpyA(key, v->name); lstrcatA(key, suffix); \
+         v9x_rcs_key(key, value); } while (0)
+    V9X_PS11_KEY("Inside", inside);
+    V9X_PS11_KEY("Outside", outside);
+    V9X_PS11_KEY("NotJudged", unjudged);
+    V9X_PS11_KEY("Killed", killed);
+    V9X_PS11_KEY("Mismatches", bad);
+    V9X_PS11_KEY("MaxChannelError", max_error);
+    V9X_PS11_KEY("FirstBadYX", first_bad);
+    V9X_PS11_KEY("FirstBadGot", first_got);
+    V9X_PS11_KEY("FirstBadWant", first_want);
+    V9X_PS11_KEY("Pixel_12_12", pixels[12ul * V9X_RCS_RT_SIDE + 12ul]);
+    V9X_PS11_KEY("Pixel_24_24", pixels[24ul * V9X_RCS_RT_SIDE + 24ul]);
+#undef V9X_PS11_KEY
+    lstrcpyA(key, v->name);
+    lstrcatA(key, "Verdict");
+    v9x_rcs_text(key, inside == 0ul ? "no-pixels-judged" :
+                      bad == 0ul ? "pass" : "mismatch");
+}
+
+/*
  * Phase F1b (/depth): one draw into target 0 with a D32_FLOAT depth
  * buffer in target 1's memory. The clear triangle covers the target at
  * z = 1.0 in black under ALWAYS; then A (z 0.5, red), B (0.25, green)
@@ -2340,6 +3137,9 @@ static void v9x_rcs_publish(int draw)
         v9x_depth_judge();
     } else if (draw == V9X_DEPTH16_MODE) {
         v9x_depth16_judge();
+    } else if (draw >= V9X_PS11_MODE) {
+        v9x_ps11_judge(0ul, (DWORD)(draw - V9X_PS11_MODE) * 2ul);
+        v9x_ps11_judge(1ul, (DWORD)(draw - V9X_PS11_MODE) * 2ul + 1ul);
     } else if (draw >= 2) {
         v9x_shade_judge(0ul, (DWORD)(draw - 2) * 2ul);
         v9x_shade_judge(1ul, (DWORD)(draw - 2) * 2ul + 1ul);
@@ -2353,7 +3153,8 @@ static void v9x_rcs_run(int draw)
     DWORD live;
     BOOL ok;
 
-    v9x_rcs_section = draw == V9X_DEPTH16_MODE ? "Depth16" :
+    v9x_rcs_section = draw >= V9X_PS11_MODE ? "Ps11" :
+                      draw == V9X_DEPTH16_MODE ? "Depth16" :
                       draw == V9X_DEPTH_MODE ? "Depth" :
                       draw >= 2 ? "Shade" : draw ? "Draw" : "Rcs";
     WritePrivateProfileStringA(v9x_rcs_section, 0, 0, V9X_HSWMM_PATH);
@@ -2825,7 +3626,8 @@ void __stdcall V9xHswMmioEntry(void)
 
     /* /rcs is Phase C alone, /draw Phase D, /shade:N Phase E, likewise. */
     if (v9x_has_switch("/rcs") || v9x_has_switch("/draw") ||
-        v9x_has_switch("/shade:") || v9x_has_switch("/depth")) {
+        v9x_has_switch("/shade:") || v9x_has_switch("/depth") ||
+        v9x_has_switch("/ps11:")) {
         int mode = v9x_has_switch("/draw") ? 1 :
                    v9x_has_switch("/depth16") ? V9X_DEPTH16_MODE :
                    v9x_has_switch("/depth") ? V9X_DEPTH_MODE : 0;
@@ -2839,7 +3641,18 @@ void __stdcall V9xHswMmioEntry(void)
                 mode = 2 + (int)index;
             }
         }
+        for (index = 0ul; index < (DWORD)V9X_PS11_RUNS; ++index) {
+            char option[8];
+
+            lstrcpyA(option, "/ps11:0");
+            option[6] = (char)('0' + index);
+            if (v9x_has_switch(option)) {
+                mode = V9X_PS11_MODE + (int)index;
+            }
+        }
         WritePrivateProfileStringA("Report", "Access",
+                                   mode >= V9X_PS11_MODE ?
+                                       "rcs-ps11-step-5a" :
                                    mode == V9X_DEPTH16_MODE ?
                                        "rcs-depth16-phase-f2b" :
                                    mode == V9X_DEPTH_MODE ?
