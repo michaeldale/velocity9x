@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.33.0 - not yet released
+## 0.33.0 - 2026-10-29
 
 - **AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) is claimed by the `ati`
   package**, measured on one tester's HP machine (AMD GX-420GI) through

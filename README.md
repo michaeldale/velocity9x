@@ -26,15 +26,19 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.32.0.** It adds the AMD Radeon HD 5450
-(Evergreen "Cedar", `1002:68F9`) to the `ati` package: DirectDraw on its
-DMA engine, page flips, and Direct3D and OpenGL on its 3D engine through
-AMD's command-processor microcode. 3DMark 2000 completes and the Quake 3
-demo runs at 63.6 fps, measured on one card. The HD 4600 runs OpenGL
-transform and lighting on the card and gives DrawPrimitives2 programs
-DirectX 7's driver interface. **Known issues: on the Rage 128, 3DMark
-2000 hung the machine once in two runs; on the Ironlake, one early frame
-of its first game test draws a piece of hillside over the helicopter.**
+**Current version: 0.33.0.** It adds the AMD Radeon R7E (Carrizo,
+`1002:9874`) to the `ati` package: DirectDraw on its SDMA engine, page
+flips, and Direct3D and OpenGL on its 3D engine through AMD's microcode.
+3DMark 2000 completes and the Quake 3 demo runs at 21.4 fps, measured on
+one machine. The HD 4600 writes video memory write-combined, and the
+HD 5450 draws Quake 3's HUD icons. On every card, DirectDraw now always
+lists 640x480, 800x600 and 1024x768 at 32 bpp where the BIOS has them.
+**Known issues: on the HD 5450, sets of trees vanish and reappear in
+3DMark 2000's Helicopter test.** From 0.32.0: the AMD Radeon HD 5450
+(Evergreen "Cedar", `1002:68F9`) on the `ati` package. **Known issues
+from 0.32.0, not rerun on this release: on the Rage 128, 3DMark 2000 hung
+the machine once in two runs; on the Ironlake, one early frame of its
+first game test draws a piece of hillside over the helicopter.**
 From 0.30.1: the GMA 3100 (G33/G31, `8086:29C2`), claimed from one
 survey and not yet run on one. **Known issue, GMA 950: starting a Half-Life
 multiplayer game in OpenGL can leave the screen stuck or corrupt; press
@@ -49,7 +53,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.32.0](releases/0.32.0/README.md).
+[releases/0.33.0](releases/0.33.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
