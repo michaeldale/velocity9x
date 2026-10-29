@@ -124,6 +124,9 @@ static void v9x_sis_emit(const struct v9x_sis_blt *blt)
 {
     DWORD index;
 
+    /* The source or destination may hold CPU writes still in the
+     * write-combining buffers: GDI's, or a surface just unlocked. */
+    v9x_wc_drain();
     for (index = 0ul; index < blt->count; ++index) {
         v9x_sis_write32(blt->offsets[index], blt->values[index]);
     }

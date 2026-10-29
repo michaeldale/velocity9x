@@ -179,5 +179,15 @@ const V9X_HW16_DEVICE v9x_sis6326_device = {
     "directdraw-fill-copy",
     "hardware-sis6326",
     v9x_sis6326_enable_engine,
-    v9x_sis6326_fill_engine
+    v9x_sis6326_fill_engine,
+    0u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the Rage 128 on the same 440BX
+     * (docs\decisions\2026-10-24-rage128-write-combining.md). The family's
+     * 4 MiB map is BAR0 whole, the frame buffer and nothing else; the
+     * engine registers are BAR1, mapped apart and left uncached. The
+     * Turbo Queue is off, so no command words sit in VRAM. */
+    1u
 };

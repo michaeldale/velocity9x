@@ -793,6 +793,9 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
     if (!v9x_d3d_sis_wait_idle()) {
         return 0;
     }
+    /* The target, depth buffer and textures may hold CPU writes still in
+     * the write-combining buffers: GDI's, or a software-drawn batch. */
+    v9x_wc_drain();
     v9x_d3d_sis_emit(&v9x_d3d_sis_state_writes);
     v9x_d3d_sis_emit(&v9x_d3d_sis_clear_writes);
     v9x_d3d_sis_emit(&v9x_d3d_sis_texture_writes);
