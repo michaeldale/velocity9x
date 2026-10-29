@@ -78,11 +78,13 @@ v9x_u32 v9x_d3d_sis_map_draw(const V9X_R3D_DRAW *draw,
 /*
  * One triangle's vertex registers and primitive word. Zero when it draws
  * nothing - zero area, a coordinate that is not finite, or (textured) an
- * RHW at or below zero - and the caller skips it.
+ * RHW at or below zero - and the caller skips it. log2_width is the bound
+ * texture's width, which the U prestep needs.
  */
 int v9x_d3d_sis_triangle(const V9X_R3D_VERTEX *triangle,
                          v9x_u32 shade_mode,
                          int textured,
+                         v9x_u32 log2_width,
                          struct v9x_sis3d_vertex *out,
                          v9x_u32 *primitive);
 

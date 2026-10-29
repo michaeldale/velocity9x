@@ -375,6 +375,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 Cedar's Z16 rows on 32 bytes: a 360-pixel GL window lost every clear and draw](2026-10-29-cedar-z16-row-align.md)
 - [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)
+- [2026-10-29 Write-combining the SiS 6326's frame buffer: FbWrite 49.9 to 89.3 MB/s](2026-10-29-sis6326-write-combining.md)
+- [2026-10-29 SiS 6326: the driver presteps U, so 1:1 text keeps every column](2026-10-29-sis6326-u-prestep.md)
 
 ## DOS box and mini-VDD
 

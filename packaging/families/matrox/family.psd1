@@ -251,8 +251,10 @@
         # ATI3DCIF.DLL joined it when the Carrizo graphics microcode in the
         # shared HAL put disk 1 about 24 KB over (Michael, 2026-10-28: "third
         # disks for all"): no 3DCIF title needs it to start.
+        # GLIDE2X.DLL joined it when the SiS U prestep put disk 1 348 bytes
+        # over (2026-10-29), on GLIDE3X.DLL's grounds.
         ThirdDisk = @('V9XUPD.EXE', 'GLIDE3X.DLL', 'V9XTRACE.EXE',
-                      'ATI3DCIF.DLL')
+                      'ATI3DCIF.DLL', 'GLIDE2X.DLL')
     }
 
     # Physical-only for now, so the VM runner must refuse rather than test

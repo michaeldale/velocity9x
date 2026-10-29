@@ -11,6 +11,13 @@ build identifier so exact guest-tested binaries remain traceable.
   89.3 MB/s. Texture upload through Lock is 3.6x faster, and GDI's fills
   and DIB copies 1.8x. 3D is unchanged. `C:\V9XDIAG\NOWC.TXT` turns it off
   ([record](docs/decisions/2026-10-29-sis6326-write-combining.md)).
+- **SiS 6326 text keeps every column.** Half-Life's and Quake 2's console
+  glyphs took a column from their neighbours, under Direct3D and OpenGL
+  alike. The engine does not prestep U across a span, so the driver now
+  corrects U for each triangle
+  ([record](docs/decisions/2026-10-29-sis6326-u-prestep.md)).
+- The Matrox floppy set carries `GLIDE2X.DLL` on its third disk; the shared
+  HAL outgrew disk 1 again.
 
 ## 0.33.0 - 2026-10-29
 

@@ -750,7 +750,7 @@ static int v9x_d3d_sis_draw(const V9X_R3D_DRAW *draw,
     /* Every triangle's words before any write. */
     for (index = 0ul; index < triangle_count; ++index) {
         if (!v9x_d3d_sis_triangle(vertices + index * 3ul, draw->shade_mode,
-                                  textured, corners,
+                                  textured, texture.log2_width, corners,
                                   &v9x_d3d_sis_primitives[packets])) {
             continue;
         }

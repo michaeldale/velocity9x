@@ -511,7 +511,7 @@ static void test_triangles(void)
     vertex(&tri[0], 10.0f, 10.0f, 0.5f, 0xffff0000ul);
     vertex(&tri[1], 30.0f, 12.0f, 1.0f, 0xff00ff00ul);
     vertex(&tri[2], 12.0f, 30.0f, 2.0f, 0xff0000fful);
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
                                &primitive) == 1);
     CHECK(primitive == 0x00106602ul);
     /* Up and left by 1/256: the tie shift (2026-10-05). */
@@ -527,14 +527,58 @@ static void test_triangles(void)
     CHECK(out[0].w == 0x3f800000ul);
     CHECK(out[0].u == 0ul);
 
-    /* Textured: RHW and U/V unchanged. */
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, out,
+    /* Textured, U constant: RHW, U and V unchanged. */
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, 5ul, out,
                                &primitive) == 1);
     CHECK(out[2].w == bits(0.5f));
     CHECK(out[2].u == bits(0.25f) && out[2].v == bits(0.75f));
 
+    /* U across 32 pixels on a 64-texel texture, two texels a pixel: every
+     * U gains half a pixel of dU/dx, 1/64, centring the prestep the
+     * engine leaves out. V is prestepped by the engine and stays. */
+    vertex(&tri[0], 0.0f, 0.0f, 0.5f, 0xffffffff);
+    vertex(&tri[1], 32.0f, 0.0f, 0.5f, 0xffffffff);
+    vertex(&tri[2], 0.0f, 32.0f, 0.5f, 0xffffffff);
+    tri[0].tu = 0.0f;
+    tri[1].tu = 1.0f;
+    tri[2].tu = 0.0f;
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, 6ul, out,
+                               &primitive) == 1);
+    CHECK(out[0].u == bits(0.015625f));
+    CHECK(out[1].u == bits(1.015625f));
+    CHECK(out[2].u == bits(0.015625f));
+    CHECK(out[2].v == bits(0.75f));
+
+    /* The same on a 32-texel texture: one texel a pixel, as text is drawn.
+     * Every sample sits 1/256 into its texel (the tie shift), so U gains
+     * what puts the error-free sample 1/16 short of the texel's far edge:
+     * (1 - 1/16 - 1/256) / 32 = 239/8192. Any error under 15/16 of a
+     * pixel then stays in the right texel. */
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, 5ul, out,
+                               &primitive) == 1);
+    CHECK(out[0].u == bits(239.0f / 8192.0f));
+    CHECK(out[1].u == bits(1.0f + 239.0f / 8192.0f));
+
+    /* Mirrored, one texel a pixel: the engine's error now raises U, so the
+     * sample goes 1/16 past the texel's near edge: (1/16 + 1/256) / 32. */
+    tri[0].tu = 1.0f;
+    tri[1].tu = 0.0f;
+    tri[2].tu = 1.0f;
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, 5ul, out,
+                               &primitive) == 1);
+    CHECK(out[0].u == bits(1.0f + 17.0f / 8192.0f));
+    CHECK(out[1].u == bits(17.0f / 8192.0f));
+
+    /* Untextured draws carry no U at all. */
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
+                               &primitive) == 1);
+    CHECK(out[1].u == 0ul);
+    vertex(&tri[0], 10.0f, 10.0f, 0.5f, 0xffff0000ul);
+    vertex(&tri[1], 30.0f, 12.0f, 1.0f, 0xff00ff00ul);
+    vertex(&tri[2], 12.0f, 30.0f, 2.0f, 0xff0000fful);
+
     /* Flat: vertex 0's colours on all three, flat via top. */
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_FLAT, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_FLAT, 0, 5ul, out,
                                &primitive) == 1);
     CHECK(primitive == 0x00046602ul);
     CHECK(out[2].argb == 0xffff0000ul);
@@ -544,7 +588,7 @@ static void test_triangles(void)
     vertex(&tri[0], 30.0f, 10.0f, 0.0f, 0xffffffff);
     vertex(&tri[1], 10.0f, 12.0f, 0.0f, 0xffffffff);
     vertex(&tri[2], 28.0f, 30.0f, -0.25f, 0xffffffff);
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
                                &primitive) == 1);
     CHECK((primitive & V9X_SIS3D_DIRECTION_BIT) != 0ul);
     CHECK(out[2].z == 0ul);
@@ -553,7 +597,7 @@ static void test_triangles(void)
     vertex(&tri[0], 10.0f, 20.0f, 0.0f, 0xffffffff);
     vertex(&tri[1], 20.0f, 30.0f, 0.0f, 0xffffffff);
     vertex(&tri[2], 15.0f, 5.0f, 0.0f, 0xffffffff);
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
                                &primitive) == 1);
     CHECK(((primitive >> V9X_SIS3D_TOP_SHIFT) & 3ul) == 2ul);
     CHECK(((primitive >> V9X_SIS3D_MIDDLE_SHIFT) & 3ul) == 0ul);
@@ -563,17 +607,17 @@ static void test_triangles(void)
     vertex(&tri[0], 10.0f, 10.0f, 0.0f, 0xffffffff);
     vertex(&tri[1], 20.0f, 20.0f, 0.0f, 0xffffffff);
     vertex(&tri[2], 30.0f, 30.0f, 0.0f, 0xffffffff);
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
                                &primitive) == 0);
     vertex(&tri[2], 30.0f, 10.0f, 0.0f, 0xffffffff);
     tri[1].sx = from_bits(0x7f800000ul);     /* infinity */
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
                                &primitive) == 0);
     vertex(&tri[1], 20.0f, 20.0f, 0.0f, 0xffffffff);
     tri[1].rhw = 0.0f;
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 0, 5ul, out,
                                &primitive) == 1);
-    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, out,
+    CHECK(v9x_d3d_sis_triangle(tri, V9X_R3D_SHADE_GOURAUD, 1, 5ul, out,
                                &primitive) == 0);
 }
 

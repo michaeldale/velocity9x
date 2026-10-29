@@ -90,6 +90,17 @@ tools. The runs are in dispbench `docs/results/a8u4i5-sis6326-v9x/`, stamps
 - **Two DB3D failures appear in both runs:** FillTexMipNearest's
   verification and FlipInterval. They do not come from write-combining. Not
   investigated here.
-- **No game was run under WC.** Final Reality, 3DMark 99 and Half-Life were
-  planned and skipped. DB3D's 3D tests verified their pixels through the
-  new 3D drain. Nothing beyond DB3D drew through it.
+- **Applications, run later on the same boot 650**
+  ([evidence](../probe/a8u4i5-sis6326-wc-apps-2026-10-29/README.md)):
+  - V9XDDP completes; nothing that passed on 2026-10-05 fails.
+  - V9XGLP passes.
+  - Final Reality runs to its score (3D 1.90).
+  - Half-Life runs under Direct3D (7.84 fps) and OpenGL (6.64 fps).
+  - The boot shows no engine timeout and no declined flip.
+- **3DMark 99 Max scored 200** against 274 on 2026-10-05. Not explained.
+  The colour blend factors (draws once dropped are now made), 24 days of
+  shared core changes and write-combining all lie between the two runs, and
+  no run with write-combining off was made.
+- **The console text in Half-Life and Quake 2 was wrong.** Its cause is not
+  write-combining but the engine's missing U prestep, fixed separately
+  ([record](2026-10-29-sis6326-u-prestep.md)).

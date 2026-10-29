@@ -11,6 +11,23 @@
 /* The driver's tie shift: vertices up and left by 1/256 pixel turn the
  * engine's bottom-right tie rule into Direct3D's top-left one. */
 #define V9X_D3D_SIS_TIE_SHIFT      0.00390625f
+/* The engine takes U where a span crosses the left edge and does not
+ * prestep it in x to the first sample (textures record), so each pixel
+ * reads U off by between 0 and 1 pixel of dU/dx, depending on the row.
+ * Without a correction, 1:1 text lost a column to its neighbour in
+ * Half-Life's and Quake 2's consoles (A8U4I5 boot 650). A constant
+ * 1/16-texel bias fixed the vertical-edge half of each glyph quad and not
+ * the diagonal half (boot 651); half a pixel of dU/dx fixed samples at
+ * texel centres and not Half-Life's Direct3D text, which samples on texel
+ * edges (boot 652). See v9x_d3d_sis_u_prestep. */
+#define V9X_D3D_SIS_U_PRESTEP      0.5f
+/* At one texel a pixel, the error-free sample is put this far short of the
+ * texel's far edge: any error below 15/16 of a pixel stays in the texel. */
+#define V9X_D3D_SIS_U_MARGIN       0.0625f
+/* A sample this close below a texel edge counts as on it, as Direct3D's
+ * floor rule puts it in the texel above; and the most a gradient may miss
+ * one texel a pixel, or a whole number of texels a row, by. */
+#define V9X_D3D_SIS_U_SNAP         0.015625f
 /* Z16 stores z x 2^15 and wraps to 0 at 1.0: the largest single below it. */
 #define V9X_D3D_SIS_Z_MAX_BITS     0x3f7ffffful
 #define V9X_D3D_SIS_FLOAT_ONE_BITS 0x3f800000ul
@@ -470,9 +487,98 @@ static v9x_u32 v9x_d3d_sis_z(float z)
     return v9x_d3d_sis_bits(z);
 }
 
+/*
+ * Float to a whole number, nearest or truncated: the floor below corrects
+ * either. The HAL links with no runtime, so a plain cast would pull in
+ * Watcom's __CHP helper and fail the link (r3d_clip.c says the same).
+ */
+#ifdef __WATCOMC__
+static long v9x_d3d_sis_to_long(float value);
+#pragma aux v9x_d3d_sis_to_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long v9x_d3d_sis_to_long(float value)
+{
+    return (long)value;
+}
+#endif
+
+/* floor() for the magnitudes texture coordinates take; no libm here. */
+static float v9x_d3d_sis_floor(float value)
+{
+    float whole = (float)v9x_d3d_sis_to_long(value);
+
+    if (whole > value) {
+        whole -= 1.0f;
+    }
+    return whole;
+}
+
+static int v9x_d3d_sis_near_whole(float value)
+{
+    float rest = value - v9x_d3d_sis_floor(value + V9X_D3D_SIS_U_SNAP);
+
+    return rest >= -V9X_D3D_SIS_U_SNAP && rest <= V9X_D3D_SIS_U_SNAP;
+}
+
+/*
+ * What to add to every vertex's U for the prestep the engine leaves out.
+ * x and y are the shifted vertex positions; area is their cross product.
+ *
+ * At one texel a pixel (+1 or -1 in x) and a whole number of texels a row,
+ * every sample lands at the same place f inside its texel, and the engine's
+ * error moves it by between 0 and 1 texel, down for +1 and up for -1. U is
+ * moved so that the error-free sample sits the margin short of the far
+ * side: every error but the last margin's worth then reads the texel
+ * Direct3D does. That is text, the HUD and sprites, where a column shows.
+ *
+ * Anything else - scaled, rotated, perspective - samples at a different f
+ * in every pixel, so the error is centred instead: half a pixel of dU/dx.
+ */
+static float v9x_d3d_sis_u_prestep(const V9X_R3D_VERTEX *triangle,
+                                   const float *x, const float *y,
+                                   float area, v9x_u32 log2_width)
+{
+    float width = (float)(1ul << log2_width);
+    float du_dx;
+    float du_dy;
+    float texels;
+    float position;
+
+    du_dx = ((triangle[1].tu - triangle[0].tu) * (y[2] - y[0]) -
+             (triangle[2].tu - triangle[0].tu) * (y[1] - y[0])) / area;
+    du_dy = ((x[1] - x[0]) * (triangle[2].tu - triangle[0].tu) -
+             (x[2] - x[0]) * (triangle[1].tu - triangle[0].tu)) / area;
+    texels = du_dx * width;
+
+    if (!v9x_d3d_sis_near_whole(du_dy * width) ||
+        (!(texels > 1.0f - V9X_D3D_SIS_U_SNAP &&
+           texels < 1.0f + V9X_D3D_SIS_U_SNAP) &&
+         !(texels > -1.0f - V9X_D3D_SIS_U_SNAP &&
+           texels < -1.0f + V9X_D3D_SIS_U_SNAP))) {
+        return V9X_D3D_SIS_U_PRESTEP * du_dx;
+    }
+
+    /* f at a whole-pixel sample, as an offset from the nearest texel edge
+     * at or below it (just below counts as on it). */
+    position = width * (triangle[0].tu +
+                        du_dx * (v9x_d3d_sis_floor(x[0]) - x[0]) +
+                        du_dy * (v9x_d3d_sis_floor(y[0]) - y[0]));
+    position -= v9x_d3d_sis_floor(position + V9X_D3D_SIS_U_SNAP);
+
+    if (texels > 0.0f) {
+        return (1.0f - V9X_D3D_SIS_U_MARGIN - position) / width;
+    }
+    return (V9X_D3D_SIS_U_MARGIN - position) / width;
+}
+
 int v9x_d3d_sis_triangle(const V9X_R3D_VERTEX *triangle,
                          v9x_u32 shade_mode,
                          int textured,
+                         v9x_u32 log2_width,
                          struct v9x_sis3d_vertex *out,
                          v9x_u32 *primitive)
 {
@@ -480,6 +586,7 @@ int v9x_d3d_sis_triangle(const V9X_R3D_VERTEX *triangle,
     float x[3];
     float y[3];
     float area;
+    float u_prestep = 0.0f;
     v9x_u32 top;
     v9x_u32 middle;
     v9x_u32 bottom;
@@ -508,6 +615,13 @@ int v9x_d3d_sis_triangle(const V9X_R3D_VERTEX *triangle,
         return 0;
     }
 
+    /* U's screen gradient is the plane through the three vertices as
+     * given: affine, so under perspective it is the average slope, which
+     * is all a per-vertex term can carry. */
+    if (textured) {
+        u_prestep = v9x_d3d_sis_u_prestep(triangle, x, y, area, log2_width);
+    }
+
     for (index = 0ul; index < 3ul; ++index) {
         /* Flat shading is Direct3D's: vertex 0's colours throughout. */
         colour = flat ? &triangle[0] : &triangle[index];
@@ -516,7 +630,9 @@ int v9x_d3d_sis_triangle(const V9X_R3D_VERTEX *triangle,
         out[index].z = v9x_d3d_sis_z(triangle[index].sz);
         out[index].argb = colour->color;
         out[index].fog_specular = colour->specular;
-        out[index].u = textured ? v9x_d3d_sis_bits(triangle[index].tu) : 0ul;
+        out[index].u = textured
+                           ? v9x_d3d_sis_bits(triangle[index].tu + u_prestep)
+                           : 0ul;
         out[index].v = textured ? v9x_d3d_sis_bits(triangle[index].tv) : 0ul;
         out[index].w = textured ? v9x_d3d_sis_bits(triangle[index].rhw)
                                 : V9X_D3D_SIS_FLOAT_ONE_BITS;
