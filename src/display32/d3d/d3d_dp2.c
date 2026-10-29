@@ -84,6 +84,97 @@ static v9x_u32 v9x_dp2_dx7_entry_bytes(v9x_u32 op)
     }
 }
 
+/* Bytes of each DirectX 8 record's fixed entry (DDK d3dhal.h; the table in
+ * docs\specifications\ddi8-on-win9x.md section 5): handles, strides and
+ * counts, the draws' primitive type and counts, VOLUMEBLT's two handles,
+ * point, D3DBOX and flags, BUFFERBLT's two handles, offset, D3DRANGE and
+ * flags, MULTIPLYTRANSFORM's type and D3DMATRIX, ADDDIRTYRECT's handle and
+ * RECTL, and ADDDIRTYBOX's handle and D3DBOX. */
+static v9x_u32 v9x_dp2_dx8_entry_bytes(v9x_u32 op)
+{
+    switch (op) {
+    case V9X_DP2OP_CREATEVERTEXSHADER:    return 12ul;
+    case V9X_DP2OP_SETVERTEXSHADERCONST:  return 8ul;
+    case V9X_DP2OP_SETSTREAMSOURCE:       return 12ul;
+    case V9X_DP2OP_SETSTREAMSOURCEUM:     return 8ul;
+    case V9X_DP2OP_SETINDICES:            return 8ul;
+    case V9X_DP2OP_DRAWPRIMITIVE:         return 12ul;
+    case V9X_DP2OP_DRAWINDEXEDPRIMITIVE:  return 24ul;
+    case V9X_DP2OP_CREATEPIXELSHADER:     return 8ul;
+    case V9X_DP2OP_SETPIXELSHADERCONST:   return 8ul;
+    case V9X_DP2OP_CLIPPEDTRIANGLEFAN:    return 12ul;
+    case V9X_DP2OP_DRAWPRIMITIVE2:        return 12ul;
+    case V9X_DP2OP_DRAWINDEXEDPRIMITIVE2: return 24ul;
+    case V9X_DP2OP_VOLUMEBLT:             return 48ul;
+    case V9X_DP2OP_BUFFERBLT:             return 24ul;
+    case V9X_DP2OP_MULTIPLYTRANSFORM:     return 68ul;
+    case V9X_DP2OP_ADDDIRTYRECT:          return 20ul;
+    case V9X_DP2OP_ADDDIRTYBOX:           return 28ul;
+    default:                              return 4ul;  /* one handle */
+    }
+}
+
+/*
+ * The length of count entries of a DirectX 8 record at data, within left
+ * bytes, into *bytes; 0 when it runs past them. The shader records carry
+ * their declaration and code after each entry, and the constant records
+ * dwCount four-float registers; every size is checked against what is
+ * left before it is added, so a huge one cannot wrap.
+ */
+static int v9x_dp2_dx8_length(v9x_u32 op, v9x_u32 count,
+                              const v9x_u8 *data, v9x_u32 left,
+                              v9x_u32 *bytes)
+{
+    v9x_u32 fixed = v9x_dp2_dx8_entry_bytes(op);
+    v9x_u32 need = 0ul;
+    v9x_u32 i;
+
+    if (op != V9X_DP2OP_CREATEVERTEXSHADER &&
+        op != V9X_DP2OP_CREATEPIXELSHADER &&
+        op != V9X_DP2OP_SETVERTEXSHADERCONST &&
+        op != V9X_DP2OP_SETPIXELSHADERCONST) {
+        need = count * fixed;
+        if (need > left) {
+            return 0;
+        }
+        *bytes = need;
+        return 1;
+    }
+    for (i = 0ul; i < count; ++i) {
+        const v9x_u8 *entry = data + need;
+        v9x_u32 room;
+        v9x_u32 extra;
+
+        if (left - need < fixed) {
+            return 0;
+        }
+        room = left - need - fixed;
+        if (op == V9X_DP2OP_CREATEVERTEXSHADER) {
+            v9x_u32 declaration = v9x_dp2_dword(entry + 4);
+            v9x_u32 code = v9x_dp2_dword(entry + 8);
+
+            if (declaration > room || code > room - declaration) {
+                return 0;
+            }
+            extra = declaration + code;
+        } else if (op == V9X_DP2OP_CREATEPIXELSHADER) {
+            extra = v9x_dp2_dword(entry + 4);
+            if (extra > room) {
+                return 0;
+            }
+        } else {
+            extra = v9x_dp2_dword(entry + 4);
+            if (extra > room / 16ul) {
+                return 0;
+            }
+            extra *= 16ul;
+        }
+        need += fixed + extra;
+    }
+    *bytes = need;
+    return 1;
+}
+
 void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                   V9X_DP2_RESULT *result)
 {
@@ -615,6 +706,48 @@ void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
             }
             break;
 
+        /* The DirectX 8 records: lengths here, meaning in the sink. The
+         * patches' length depends on flags and their caps are zero, so
+         * they go back to the runtime. */
+        case V9X_DP2OP_DRAWRECTPATCH:
+        case V9X_DP2OP_DRAWTRIPATCH:
+            result->status = V9X_DP2_UNPARSED;
+            return;
+
+        case V9X_DP2OP_CREATEVERTEXSHADER:
+        case V9X_DP2OP_DELETEVERTEXSHADER:
+        case V9X_DP2OP_SETVERTEXSHADER:
+        case V9X_DP2OP_SETVERTEXSHADERCONST:
+        case V9X_DP2OP_SETSTREAMSOURCE:
+        case V9X_DP2OP_SETSTREAMSOURCEUM:
+        case V9X_DP2OP_SETINDICES:
+        case V9X_DP2OP_DRAWPRIMITIVE:
+        case V9X_DP2OP_DRAWINDEXEDPRIMITIVE:
+        case V9X_DP2OP_CREATEPIXELSHADER:
+        case V9X_DP2OP_DELETEPIXELSHADER:
+        case V9X_DP2OP_SETPIXELSHADER:
+        case V9X_DP2OP_SETPIXELSHADERCONST:
+        case V9X_DP2OP_CLIPPEDTRIANGLEFAN:
+        case V9X_DP2OP_DRAWPRIMITIVE2:
+        case V9X_DP2OP_DRAWINDEXEDPRIMITIVE2:
+        case V9X_DP2OP_VOLUMEBLT:
+        case V9X_DP2OP_BUFFERBLT:
+        case V9X_DP2OP_MULTIPLYTRANSFORM:
+        case V9X_DP2OP_ADDDIRTYRECT:
+        case V9X_DP2OP_ADDDIRTYBOX:
+            if (sink->dx8 == 0) {
+                result->status = V9X_DP2_UNPARSED;
+                return;
+            }
+            if (!v9x_dp2_dx8_length(op, count, data, left, &need)) {
+                goto malformed;
+            }
+            if (!sink->dx8(sink->user, op, count, data, need)) {
+                result->status = V9X_DP2_UNPARSED;
+                return;
+            }
+            break;
+
         default:
             result->status = V9X_DP2_UNPARSED;
             return;
@@ -857,4 +990,188 @@ v9x_u32 v9x_dp2_point_quad(const v9x_u8 *v, v9x_u8 *out)
     v9x_dp2_moved(v, 1.0f, 1.0f, out + 128);
     v9x_dp2_moved(v, 0.0f, 1.0f, out + 160);
     return 2ul;
+}
+
+/* The most primitives one DirectX 8 draw may name. Far above any real
+ * draw, and low enough that the vertex arithmetic below cannot wrap. */
+#define V9X_DP2_DRAW_MAX_PRIMITIVES 0x00ffffffful
+
+/* Vertices a draw of count primitives takes, or 0 for a type this does
+ * not know. */
+static v9x_u32 v9x_dp2_draw_span(v9x_u32 primitive, v9x_u32 count)
+{
+    switch (primitive) {
+    case V9X_D3DPT_POINTLIST:     return count;
+    case V9X_D3DPT_LINELIST:      return count * 2ul;
+    case V9X_D3DPT_LINESTRIP:     return count + 1ul;
+    case V9X_D3DPT_TRIANGLELIST:  return count * 3ul;
+    case V9X_D3DPT_TRIANGLESTRIP: return count + 2ul;
+    case V9X_D3DPT_TRIANGLEFAN:   return count + 2ul;
+    default:                      return 0ul;
+    }
+}
+
+/* The draw's i-th vertex as a vertex number, in *number; 0 when it lies
+ * outside the vertices. i is below the draw's span, which the caller has
+ * already held inside the indices. */
+static int v9x_dp2_draw_number(const V9X_DP2_DRAW *draw, v9x_u32 i,
+                               v9x_u32 *number)
+{
+    v9x_u32 raw;
+
+    if (draw->indices == 0) {
+        raw = draw->first + i;
+        if (raw >= draw->vertex_count) {
+            return 0;
+        }
+        *number = raw;
+        return 1;
+    }
+    raw = draw->index_bytes == 4ul
+              ? v9x_dp2_dword(draw->indices + (draw->first + i) * 4ul)
+              : v9x_dp2_word(draw->indices + (draw->first + i) * 2ul);
+    if (draw->base < 0l) {
+        v9x_u32 below = (v9x_u32)(-(draw->base + 1l)) + 1ul;
+
+        if (raw < below) {
+            return 0;
+        }
+        raw -= below;
+    } else {
+        if (raw >= draw->vertex_count ||
+            (v9x_u32)draw->base >= draw->vertex_count - raw) {
+            return 0;
+        }
+        raw += (v9x_u32)draw->base;
+    }
+    if (raw >= draw->vertex_count) {
+        return 0;
+    }
+    *number = raw;
+    return 1;
+}
+
+static const v9x_u8 *v9x_dp2_draw_vertex(const V9X_DP2_DRAW *draw,
+                                         v9x_u32 i)
+{
+    v9x_u32 number = 0ul;
+
+    (void)v9x_dp2_draw_number(draw, i, &number);
+    return draw->vertices + number * draw->vertex_stride;
+}
+
+v9x_u32 v9x_dp2_draw(const V9X_DP2_DRAW *draw, const V9X_DP2_SINK *sink,
+                     V9X_DP2_RESULT *result)
+{
+    v9x_u32 span;
+    v9x_u32 number;
+    v9x_u32 i;
+
+    if (draw->count == 0ul) {
+        return V9X_DP2_OK;
+    }
+    if (draw->count > V9X_DP2_DRAW_MAX_PRIMITIVES) {
+        return V9X_DP2_MALFORMED;
+    }
+    span = v9x_dp2_draw_span(draw->primitive, draw->count);
+    if (span == 0ul) {
+        return V9X_DP2_MALFORMED;
+    }
+    if (draw->indices != 0 &&
+        ((draw->index_bytes != 2ul && draw->index_bytes != 4ul) ||
+         draw->first > draw->index_count ||
+         span > draw->index_count - draw->first)) {
+        return V9X_DP2_MALFORMED;
+    }
+    if (draw->indices == 0 && draw->first > 0xfffffffful - span) {
+        return V9X_DP2_MALFORMED;
+    }
+
+    /* Every vertex first, so a bad draw draws nothing. */
+    for (i = 0ul; i < span; ++i) {
+        if (!v9x_dp2_draw_number(draw, i, &number)) {
+            return V9X_DP2_MALFORMED;
+        }
+    }
+
+    switch (draw->primitive) {
+    case V9X_D3DPT_POINTLIST:
+        if (sink->point == 0) {
+            ++result->undrawn;
+            break;
+        }
+        for (i = 0ul; i < draw->count; ++i) {
+            sink->point(sink->user, v9x_dp2_draw_vertex(draw, i));
+        }
+        result->points += draw->count;
+        break;
+
+    case V9X_D3DPT_LINELIST:
+    case V9X_D3DPT_LINESTRIP:
+        if (sink->line == 0) {
+            ++result->undrawn;
+            break;
+        }
+        for (i = 0ul; i < draw->count; ++i) {
+            v9x_u32 a = draw->primitive == V9X_D3DPT_LINELIST ? i * 2ul : i;
+
+            sink->line(sink->user, v9x_dp2_draw_vertex(draw, a),
+                       v9x_dp2_draw_vertex(draw, a + 1ul));
+        }
+        result->lines += draw->count;
+        break;
+
+    case V9X_D3DPT_TRIANGLELIST:
+        if (draw->indices == 0) {
+            sink->list(sink->user, v9x_dp2_draw_vertex(draw, 0ul),
+                       draw->count);
+            break;
+        }
+        /* The indexed-list sink takes WORD indices relative to a vertex
+         * that exists, so only a 16-bit list whose base is not negative. */
+        if (draw->index_bytes == 2ul && draw->base >= 0l &&
+            sink->indexed_list != 0 &&
+            sink->indexed_list(sink->user,
+                               draw->vertices + (v9x_u32)draw->base *
+                                                    draw->vertex_stride,
+                               (v9x_u32)draw->base,
+                               draw->indices + draw->first * 2ul,
+                               draw->count)) {
+            break;
+        }
+        for (i = 0ul; i < draw->count; ++i) {
+            sink->triangle(sink->user, v9x_dp2_draw_vertex(draw, i * 3ul),
+                           v9x_dp2_draw_vertex(draw, i * 3ul + 1ul),
+                           v9x_dp2_draw_vertex(draw, i * 3ul + 2ul));
+        }
+        break;
+
+    case V9X_D3DPT_TRIANGLESTRIP:
+        for (i = 0ul; i < draw->count; ++i) {
+            v9x_u32 swap = i & 1ul;
+
+            sink->triangle(sink->user,
+                           v9x_dp2_draw_vertex(draw, i + swap),
+                           v9x_dp2_draw_vertex(draw, i + 1ul - swap),
+                           v9x_dp2_draw_vertex(draw, i + 2ul));
+        }
+        break;
+
+    default:
+        if (draw->indices == 0) {
+            sink->fan(sink->user, v9x_dp2_draw_vertex(draw, 0ul),
+                      draw->count + 2ul);
+            break;
+        }
+        for (i = 0ul; i < draw->count; ++i) {
+            sink->triangle(sink->user, v9x_dp2_draw_vertex(draw, 0ul),
+                           v9x_dp2_draw_vertex(draw, i + 1ul),
+                           v9x_dp2_draw_vertex(draw, i + 2ul));
+        }
+        break;
+    }
+    if (draw->primitive >= V9X_D3DPT_TRIANGLELIST) {
+        result->triangles += draw->count;
+    }
+    return V9X_DP2_OK;
 }

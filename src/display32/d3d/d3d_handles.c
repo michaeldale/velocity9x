@@ -59,6 +59,8 @@ V9X_D3D_SURFACE_HANDLE *v9x_d3d_handles_set(V9X_D3D_HANDLES *table,
         if (entry->surface != surface) {
             entry->surface = surface;
             entry->user = 0ul;
+            entry->memory = 0;
+            entry->bytes = 0ul;
         }
         return entry;
     }
@@ -71,6 +73,8 @@ V9X_D3D_SURFACE_HANDLE *v9x_d3d_handles_set(V9X_D3D_HANDLES *table,
             entry->local = local;
             entry->surface = surface;
             entry->user = 0ul;
+            entry->memory = 0;
+            entry->bytes = 0ul;
             return entry;
         }
     }

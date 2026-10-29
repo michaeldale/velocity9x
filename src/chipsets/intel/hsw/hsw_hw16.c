@@ -393,8 +393,10 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
      * both together, so an open engine has both (Phase F2). FLIP: plane A's
      * base, which the HAL writes only while pipe A and plane A are live
-     * (Phase F3, engines\hsw_scanout.c). */
-    *engine_caps |= V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP;
+     * (Phase F3, engines\hsw_scanout.c). DDI 8: Haswell's alone, as its
+     * T&L is (docs\plans\haswell-ddi8-pixel-shaders.md). */
+    *engine_caps |= V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_FLIP |
+                    V9X_DD_ENGINE_CAP_D3D_DDI8;
 }
 
 static void v9x_hsw_fill_engine(unsigned long framebuffer_linear_base,

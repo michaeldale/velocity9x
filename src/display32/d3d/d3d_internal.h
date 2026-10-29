@@ -241,6 +241,20 @@ typedef struct v9x_d3d_context {
      * (d3d_core.c's V9X_D3D_TNL_BLOCK), in the creating process's memory,
      * for a DDI 7 context on an engine that runs T&L; null otherwise. */
     void *tnl;
+    /* DDI 8 (docs\plans\haswell-ddi8-pixel-shaders.md): set, beside ddi7,
+     * when the context was made for a DDI 8 driver object. Then the
+     * vertex format is SETVERTEXSHADER's FVF code (0 before one), stream
+     * 0 is a CreateSurfaceEx handle and stride, or the call's own
+     * vertices when stream_user is set (SETSTREAMSOURCEUM), and the
+     * indices are SETINDICES's handle and stride. Software vertex
+     * processing only: one stream. */
+    DWORD ddi8;
+    DWORD ddi8_fvf;
+    DWORD ddi8_stream;
+    DWORD ddi8_stream_stride;
+    DWORD ddi8_stream_user;
+    DWORD ddi8_indices;
+    DWORD ddi8_index_stride;
 } V9X_D3D_CONTEXT;
 
 /*

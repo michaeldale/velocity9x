@@ -83,6 +83,42 @@
 #define V9X_DP2OP_SETTEXLOD            43ul
 #define V9X_DP2OP_SETCLIPPLANE         44ul
 
+/* The DirectX 8 records (docs\specifications\ddi8-on-win9x.md section 5,
+ * from the DDK's d3dhal.h). Walked only for a sink with a dx8 callback -
+ * a DDI 8 driver object - and handed back otherwise. The two patch
+ * records are always handed back: their caps are zero. */
+#define V9X_DP2OP_CREATEVERTEXSHADER   45ul
+#define V9X_DP2OP_DELETEVERTEXSHADER   46ul
+#define V9X_DP2OP_SETVERTEXSHADER      47ul
+#define V9X_DP2OP_SETVERTEXSHADERCONST 48ul
+#define V9X_DP2OP_SETSTREAMSOURCE      49ul
+#define V9X_DP2OP_SETSTREAMSOURCEUM    50ul
+#define V9X_DP2OP_SETINDICES           51ul
+#define V9X_DP2OP_DRAWPRIMITIVE        52ul
+#define V9X_DP2OP_DRAWINDEXEDPRIMITIVE 53ul
+#define V9X_DP2OP_CREATEPIXELSHADER    54ul
+#define V9X_DP2OP_DELETEPIXELSHADER    55ul
+#define V9X_DP2OP_SETPIXELSHADER       56ul
+#define V9X_DP2OP_SETPIXELSHADERCONST  57ul
+#define V9X_DP2OP_CLIPPEDTRIANGLEFAN   58ul
+#define V9X_DP2OP_DRAWPRIMITIVE2       59ul
+#define V9X_DP2OP_DRAWINDEXEDPRIMITIVE2 60ul
+#define V9X_DP2OP_DRAWRECTPATCH        61ul
+#define V9X_DP2OP_DRAWTRIPATCH         62ul
+#define V9X_DP2OP_VOLUMEBLT            63ul
+#define V9X_DP2OP_BUFFERBLT            64ul
+#define V9X_DP2OP_MULTIPLYTRANSFORM    65ul
+#define V9X_DP2OP_ADDDIRTYRECT         66ul
+#define V9X_DP2OP_ADDDIRTYBOX          67ul
+
+/* D3DPRIMITIVETYPE, the DirectX 8 draw records' primType. */
+#define V9X_D3DPT_POINTLIST     1ul
+#define V9X_D3DPT_LINELIST      2ul
+#define V9X_D3DPT_LINESTRIP     3ul
+#define V9X_D3DPT_TRIANGLELIST  4ul
+#define V9X_D3DPT_TRIANGLESTRIP 5ul
+#define V9X_D3DPT_TRIANGLEFAN   6ul
+
 /* D3DHAL_DP2SETLIGHT.dwDataType: the entry is followed by a D3DLIGHT7. */
 #define V9X_DP2_SETLIGHT_DATA          2ul
 #define V9X_DP2_LIGHT7_BYTES         104ul
@@ -135,6 +171,15 @@ typedef struct v9x_dp2_sink {
      * T&L device), and are consumed whatever it answers. */
     int (*dx7)(void *user, v9x_u32 op, v9x_u32 count, const v9x_u8 *payload,
                v9x_u32 bytes);
+    /* Optional, may be null: a DirectX 8 record (V9X_DP2OP_CREATEVERTEX-
+     * SHADER to V9X_DP2OP_ADDDIRTYBOX, but the patches) whole, its length
+     * checked inside the buffer: each entry's fixed part, and for the
+     * shader and constant records the code or constants that follow it.
+     * The draws name streams the walker cannot see; the sink resolves them
+     * and draws through v9x_dp2_draw. Non-zero when consumed; zero, or no
+     * sink, stops the walk with V9X_DP2_UNPARSED there. */
+    int (*dx8)(void *user, v9x_u32 op, v9x_u32 count, const v9x_u8 *payload,
+               v9x_u32 bytes);
 } V9X_DP2_SINK;
 
 typedef struct v9x_dp2_stream {
@@ -166,6 +211,39 @@ typedef struct v9x_dp2_result {
 
 void v9x_dp2_walk(const V9X_DP2_STREAM *stream, const V9X_DP2_SINK *sink,
                   V9X_DP2_RESULT *result);
+
+/*
+ * One DirectX 8 draw from a stream, into the same sink calls the walker
+ * makes: what DRAWPRIMITIVE, DRAWINDEXEDPRIMITIVE, their "2" forms and
+ * CLIPPEDTRIANGLEFAN become once the sink has turned their stream and
+ * index handles into memory.
+ *
+ * Vertex number n is vertices + n * vertex_stride, and must be below
+ * vertex_count. Without indices the draw takes vertex numbers first,
+ * first + 1, ... With indices, it takes indices first, first + 1, ...
+ * (index_bytes 2 or 4, index_count of them from `indices`), each plus
+ * `base`, which may be negative (BaseVertexIndex). Every vertex number is
+ * checked before anything is drawn, so a bad draw draws nothing and
+ * answers V9X_DP2_MALFORMED; otherwise V9X_DP2_OK. Triangles keep the
+ * walker's winding rule for strips; points and lines go to the sink's
+ * point and line, or are counted undrawn without them. result's counts
+ * are added to, not reset.
+ */
+typedef struct v9x_dp2_draw {
+    v9x_u32 primitive;           /* V9X_D3DPT_*                         */
+    v9x_u32 count;               /* primitives                          */
+    const v9x_u8 *vertices;      /* vertex number 0                     */
+    v9x_u32 vertex_count;
+    v9x_u32 vertex_stride;
+    v9x_u32 first;               /* first vertex, or first index        */
+    v9x_s32 base;                /* added to every index                */
+    const v9x_u8 *indices;       /* null for a draw without indices     */
+    v9x_u32 index_count;
+    v9x_u32 index_bytes;         /* 2 or 4                              */
+} V9X_DP2_DRAW;
+
+v9x_u32 v9x_dp2_draw(const V9X_DP2_DRAW *draw, const V9X_DP2_SINK *sink,
+                     V9X_DP2_RESULT *result);
 
 /*
  * Flexible vertex formats (dwVertexType), turned into the D3DTLVERTEX the

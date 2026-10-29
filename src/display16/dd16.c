@@ -1019,6 +1019,15 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
     v9x_dd_info16.hInstance =
         (DWORD)SELECTOROF((LPVOID)&v9x_dd_info16);
 
+    /* DDI 8: the runtime asks GetDriverInfo2 only of a description with
+     * this flag (docs\specifications\ddi8-on-win9x.md section 1). DriverInit
+     * never sets it, and only an engine with D3D is stamped DDI8, so it is
+     * added here for that engine alone. */
+    if ((v9x_dd_shared->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D_DDI8) !=
+        0ul) {
+        v9x_dd_info16.dwFlags |= V9X_DDHALINFO_GETDRIVERINFO2;
+    }
+
     /* The shared HAL binary describes the ViRGE feature set. A family whose
      * engine does not claim D3D keeps the scanout and vertical-blank services
      * but has neither the new-MMIO window nor the S3D engine, so the

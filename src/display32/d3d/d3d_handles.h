@@ -31,6 +31,13 @@ typedef struct v9x_d3d_surface_handle {
     const void *local;      /* the DirectDraw local object            */
     void *surface;          /* its DDRAWI_DDRAWSURFACE_LCL            */
     v9x_u32 user;           /* the caller's value; 0 when none        */
+    /* DDI 8: a vertex or index buffer's memory and size, copied when it
+     * is announced. Its local half is the runtime's only for the length of
+     * CreateSurfaceEx: by a draw the pointer names some other surface
+     * (3DMark 2001 SE, the 4570, boot 113), as vmhal9x's copy-at-
+     * registration implies (surfindex.c). Kept, and dropped, as user is. */
+    const void *memory;
+    v9x_u32 bytes;
 } V9X_D3D_SURFACE_HANDLE;
 
 typedef struct v9x_d3d_handles {

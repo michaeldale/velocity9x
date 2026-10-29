@@ -34,6 +34,7 @@
 #include "d3d_state.h"
 #include "d3d_select.h"
 #include "d3d_dp2.h"
+#include "d3d_caps8.h"
 #include "d3d_dp2_ring.h"
 #include "d3d_handles.h"
 #include "d3d_tnl.h"
@@ -105,6 +106,14 @@ static const BYTE v9x_guid_d3d_parse_unknown[16] = {
 static const BYTE v9x_guid_misc2_callbacks[16] = {
     0x00u, 0x2fu, 0x6bu, 0x40u, 0x5au, 0x3eu, 0xd1u, 0x11u,
     0xb6u, 0x40u, 0x00u, 0xaau, 0x00u, 0xa1u, 0xf9u, 0x6au
+};
+
+/* GUID_GetDriverInfo2, which is GUID_DDStereoMode (DDK d3dhal.h 1398;
+ * ddrawi.h): 0xf828169c, 0xa8e8, 0x11d2,
+ * {0xa1,0xf2,0x00,0xa0,0xc9,0x83,0xea,0xf6}. DDI 8's. */
+static const BYTE v9x_guid_get_driver_info2[16] = {
+    0x9cu, 0x16u, 0x28u, 0xf8u, 0xe8u, 0xa8u, 0xd2u, 0x11u,
+    0xa1u, 0xf2u, 0x00u, 0xa0u, 0xc9u, 0x83u, 0xeau, 0xf6u
 };
 
 /* The runtime's parser, from the GUID above. One per process space is
@@ -203,10 +212,12 @@ static V9X_D3D_HANDLES *v9x_d3d_handles_here(int make)
 }
 
 /* The DDI levels v9x_d3d_dp2_for_process answers: zero is DDI 5, and any
- * non-zero level has DrawPrimitives2. */
+ * non-zero level has DrawPrimitives2. DDI 8 is DDI 7 and GetDriverInfo2
+ * (docs\plans\haswell-ddi8-pixel-shaders.md). */
 #define V9X_D3D_DDI5 0
 #define V9X_D3D_DDI6 1
 #define V9X_D3D_DDI7 2
+#define V9X_D3D_DDI8 3
 
 /*
  * Whether a DDI 7 process is told about the T&L device (hardware T&L
@@ -2153,7 +2164,8 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
              * CreateSurfaceEx names, and V9XD32's T1-T11 draw right with
              * the surfaces read as LCLs (the 4570, boots 89-92).
              */
-            int ddi7 = v9x_d3d_ddi_for_object() == V9X_D3D_DDI7;
+            int level = v9x_d3d_ddi_for_object();
+            int ddi7 = level >= V9X_D3D_DDI7;
             int targeted;
 
             if (ddi7) {
@@ -2166,6 +2178,15 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             }
             context->ddi7 = ddi7 ? 1ul : 0ul;
             context->dd_local = ddi7 ? data->lpDDGbl : 0;
+            /* DDI 8: no format, stream or indices until the runtime sets
+             * them; a slot another context left must not lend its own. */
+            context->ddi8 = level == V9X_D3D_DDI8 ? 1ul : 0ul;
+            context->ddi8_fvf = 0ul;
+            context->ddi8_stream = 0ul;
+            context->ddi8_stream_stride = 0ul;
+            context->ddi8_stream_user = 0ul;
+            context->ddi8_indices = 0ul;
+            context->ddi8_index_stride = 0ul;
             /* The T&L device: DDI 7 on an engine that draws T&L. Made
              * fresh, so a slot another process left holds nothing of its
              * memory. Without it the context draws pre-transformed
@@ -2327,6 +2348,7 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->active = 0ul;
     context->pid = 0ul;
     context->ddi7 = 0ul;
+    context->ddi8 = 0ul;
     context->dd_local = 0;
     context->target = 0;
     context->zbuffer = 0;
@@ -2423,6 +2445,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].dest_blend = 0ul;
             v9x_d3d_contexts[index].texture_handle = 0ul;
             v9x_d3d_contexts[index].ddi7 = 0ul;
+            v9x_d3d_contexts[index].ddi8 = 0ul;
             v9x_d3d_contexts[index].dd_local = 0;
             v9x_d3d_contexts[index].texture_min = 0ul;
             v9x_d3d_contexts[index].texture_mag = 0ul;
@@ -4148,6 +4171,11 @@ static int v9x_d3d_dp2_available(void)
  * says: V9XD32 T1-T17, 3DMark 2000 and 3DMark 2001 SE at DDI 7 on the 4570
  * (docs\decisions\2026-10-26-haswell-ddi7-step5-first-light.md). A program
  * listed =6 keeps DDI 6.
+ *
+ * On an engine with DDI 8 (V9X_DD_ENGINE_CAP_D3D_DDI8, Haswell), a program
+ * that has loaded D3D8.DLL or D3D9.DLL gets DDI 8; =7 keeps it at DDI 7,
+ * and =8 gives DDI 8 to a program that loads neither
+ * (docs\plans\haswell-ddi8-pixel-shaders.md step 2).
  */
 #define V9X_D3D_DDI_PROGRAMS "Velocity9x.Direct3DDdi"
 
@@ -4159,6 +4187,7 @@ static int v9x_d3d_dp2_for_process(void)
     const V9X_D3D_ENGINE_OPS *engine;
     UINT listed;
     int dp2;
+    int ddi8;
 
     if (!v9x_d3d_dp2_available()) {
         return 0;
@@ -4167,6 +4196,12 @@ static int v9x_d3d_dp2_for_process(void)
     dp2 = engine != 0 && engine->tnl_available != 0 &&
                   engine->tnl_available()
               ? V9X_D3D_DDI7 : V9X_D3D_DDI6;
+    /* DDI 8 where the 16-bit side stamped it, which is also where it set
+     * DDHALINFO_GETDRIVERINFO2 (dd16.c); DDI 7 under it. */
+    ddi8 = dp2 == V9X_D3D_DDI7 &&
+                   (v9x_hal->engine.engine_caps &
+                    V9X_DD_ENGINE_CAP_D3D_DDI8) != 0ul
+               ? V9X_D3D_DDI8 : dp2;
     path[0] = '\0';
     if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
         path[0] = '\0';
@@ -4189,6 +4224,16 @@ static int v9x_d3d_dp2_for_process(void)
         if (listed == 7u) {
             return dp2;
         }
+        if (listed == 8u) {
+            return ddi8;
+        }
+    }
+    /* A DirectX 8 or 9 program gets DDI 8 where there is one; elsewhere
+     * the rules below, unchanged. */
+    if (ddi8 == V9X_D3D_DDI8 &&
+        (GetModuleHandleA("D3D8.DLL") != 0 ||
+         GetModuleHandleA("D3D9.DLL") != 0)) {
+        return V9X_D3D_DDI8;
     }
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D_DP2_ALL) !=
         0ul) {
@@ -4275,7 +4320,7 @@ static void v9x_d3d_apply_ddi_level(int ddi6)
      * on an engine that runs T&L (v9x_d3d_dp2_for_process), so it can
      * carry the T&L device too (hardware T&L step 6) - once that device
      * beats the runtime's own transform (V9X_D3D_TNL_DEVICE_OFFERED). */
-    if (ddi6 == V9X_D3D_DDI7) {
+    if (ddi6 >= V9X_D3D_DDI7) {
         v9x_hal->d3d_global.hwCaps.dwDevCaps |=
             V9X_D3DDEVCAPS_DRAWPRIMITIVES2EX;
 #if V9X_D3D_TNL_DEVICE_OFFERED
@@ -4332,6 +4377,12 @@ typedef struct v9x_d3d_dp2_user {
      * its vertices are object-space and the context has a T&L block; null
      * for pre-transformed vertices. */
     const V9X_D3D_TNL_LAYOUT *tnl_layout;
+    /* DDI 8: the sink the walk is using, which a stream draw draws
+     * through too, and the call's own vertices (SETSTREAMSOURCEUM's
+     * stream) with the call's vertex count; null when it has none. */
+    const V9X_DP2_SINK *sink;
+    const BYTE *call_vertices;
+    DWORD call_vertex_count;
 } V9X_D3D_DP2_USER;
 
 /* The T&L batch (V9X_D3D_TNL_BLOCK, below): whether a context's holds
@@ -5172,7 +5223,12 @@ typedef struct v9x_d3d_dp2_probed {
     DWORD range_bytes;      /* and its length                        */
 } V9X_D3D_DP2_PROBED;
 
-static V9X_D3D_DP2_PROBED v9x_d3d_dp2_probed[2];   /* commands, vertices */
+/* Commands, vertices, and DDI 8's stream 0 and index buffers. */
+#define V9X_D3D_PROBE_COMMANDS 0ul
+#define V9X_D3D_PROBE_VERTICES 1ul
+#define V9X_D3D_PROBE_STREAM   2ul
+#define V9X_D3D_PROBE_INDICES  3ul
+static V9X_D3D_DP2_PROBED v9x_d3d_dp2_probed[4];
 static DWORD *v9x_d3d_dp2_probed_rstates;
 
 void v9x_d3d_dp2_forget_probes(void)
@@ -5339,7 +5395,7 @@ void v9x_d3d_dp2_flush_pending(void)
 #define V9X_D3D_DDI7_LOG_LINES 1000ul
 
 static DWORD v9x_d3d_ddi7_log_lines;
-static DWORD v9x_d3d_ddi7_ops_logged[2];
+static DWORD v9x_d3d_ddi7_ops_logged[3];   /* opcodes below 96 */
 
 static void v9x_d3d_ddi7_log(const char *tag, DWORD a, DWORD b, DWORD c,
                              DWORD d)
@@ -5443,21 +5499,38 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
         if (handle == 0ul && at != 0u) {
             continue;
         }
-        /* Vertex, index and command buffers have handles too, and no
-         * record names them by it: DP2 passes their LCLs. 3DMark 2001 SE
-         * filled the 512 entries with them and lost textures after
-         * (226 refused, boot 93), so they are not entered. */
-        if ((lcl->ddsCaps & V9X_DDSCAPS_EXECUTEBUFFER) != 0ul) {
+        /* Vertex, index and command buffers have handles too, and below
+         * DDI 8 no record names them by it: DP2 passes their LCLs.
+         * 3DMark 2001 SE filled the 512 entries with them and lost
+         * textures after (226 refused, boot 93), so there they are not
+         * entered. DDI 8's stream and index records do name them, and the
+         * table is 4,096 a process now. */
+        if ((lcl->ddsCaps & V9X_DDSCAPS_EXECUTEBUFFER) != 0ul &&
+            v9x_d3d_ddi_for_object() < V9X_D3D_DDI8) {
             continue;
         }
         memory = lcl->lpGbl != 0 && !IsBadReadPtr(lcl->lpGbl, 8ul)
                      ? lcl->lpGbl->fpVidMem : 0ul;
         if (handle != 0ul && table != 0) {
+            V9X_D3D_SURFACE_HANDLE *entry = 0;
+
             if (memory == 0ul) {
                 (void)v9x_d3d_handles_drop(table, data->lpDDLcl, handle);
-            } else if (v9x_d3d_handles_set(table, data->lpDDLcl, handle,
-                                           lcl) == 0) {
-                v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
+            } else {
+                entry = v9x_d3d_handles_set(table, data->lpDDLcl, handle,
+                                            lcl);
+                if (entry == 0) {
+                    v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
+                }
+            }
+            /* A DDI 8 vertex or index buffer: its memory and size now,
+             * while the local half is the runtime's (d3d_handles.h). The
+             * size is where the pitch is (dwLinearSize). */
+            if (entry != 0 &&
+                (lcl->ddsCaps & V9X_DDSCAPS_EXECUTEBUFFER) != 0ul &&
+                !IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl))) {
+                entry->memory = (const void *)lcl->lpGbl->fpVidMem;
+                entry->bytes = (DWORD)lcl->lpGbl->lPitch;
             }
         }
         node = IsBadReadPtr((const void *)lcl->lpAttachList,
@@ -5815,6 +5888,344 @@ static int v9x_d3d_dp2_dx7(void *opaque, v9x_u32 op, v9x_u32 count,
     }
 }
 
+/*
+ * A DDI 8 surface handle's memory and size, for a stream or index buffer:
+ * what its CreateSurfaceEx entry recorded when the buffer was announced,
+ * never the local half, which by a draw names another surface (boot 113:
+ * 3DMark 2001 SE's stream handle 5 read caps 00010000, memory 0). Null
+ * when the entry has none or it is unreadable; the first refusals are
+ * logged with what the entry holds.
+ */
+#define V9X_D3D_DDI8_BUFFER_LOGS 16ul
+
+static DWORD v9x_d3d_ddi8_buffer_logged;
+
+static const BYTE *v9x_d3d_ddi8_buffer(const V9X_D3D_CONTEXT *context,
+                                       DWORD handle, DWORD slot,
+                                       DWORD *bytes)
+{
+    V9X_D3D_SURFACE_HANDLE *entry = v9x_d3d_ddi7_surface(context, handle);
+    const BYTE *memory;
+
+    if (entry == 0) {
+        return 0;
+    }
+    memory = (const BYTE *)entry->memory;
+    if (memory == 0 || entry->bytes == 0ul ||
+        !v9x_d3d_dp2_readable(slot, memory, entry->bytes)) {
+        if (v9x_d3d_ddi8_buffer_logged < V9X_D3D_DDI8_BUFFER_LOGS) {
+            ++v9x_d3d_ddi8_buffer_logged;
+            v9x_d3d_ddi7_log("dx8-buffer", handle, (DWORD)memory,
+                             entry->bytes, slot);
+        }
+        return 0;
+    }
+    *bytes = entry->bytes;
+    return memory;
+}
+
+/*
+ * One DDI 8 draw: stream 0 and the indices resolved to memory, the draw
+ * record turned into a V9X_DP2_DRAW, and drawn by v9x_dp2_draw through
+ * the walk's own sink, under SETVERTEXSHADER's vertex format. Offsets in
+ * the "2" records and CLIPPEDTRIANGLEFAN are bytes into the stream and
+ * the index buffer (vmhal9x, mesa3d_draw6.c 1695-1755; the DDK says the
+ * "2" records carry runtime-transformed vertices in stream 0). A draw that
+ * cannot be resolved or that names memory outside its buffers draws
+ * nothing and is counted; the rest of the call goes on.
+ */
+static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
+                              const DWORD *words)
+{
+    V9X_D3D_CONTEXT *context = user->context;
+    V9X_D3D_DIAGNOSTICS *d = &v9x_hal->d3d_diagnostics;
+    const V9X_DP2_FVF *saved_fvf = user->fvf;
+    const V9X_DP2_FVF *saved_layout = user->layout;
+    V9X_DP2_FVF layout;
+    V9X_DP2_DRAW draw;
+    V9X_DP2_RESULT result;
+    const BYTE *stream;
+    DWORD stream_bytes = 0ul;
+    DWORD stride;
+    DWORD offset = 0ul;
+    v9x_u32 status;
+
+    if (context->ddi8_fvf == 0ul ||
+        !v9x_dp2_fvf_layout(context->ddi8_fvf, &layout)) {
+        ++d->dp2_refused_fvf;
+        d->dp2_fvf_last = context->ddi8_fvf;
+        v9x_d3d_ddi7_log("dx8-fvf", context->ddi8_fvf, op, 0ul, 0ul);
+        return;
+    }
+    stride = context->ddi8_stream_stride;
+    if (stride < layout.stride) {
+        v9x_d3d_ddi7_log("dx8-stride", stride, layout.stride, op, 0ul);
+        return;
+    }
+    /* The stream's stride steps the vertices; the format places the
+     * fields inside each. */
+    layout.stride = stride;
+
+    if (context->ddi8_stream_user != 0ul) {
+        stream = user->call_vertices;
+        stream_bytes = user->call_vertex_count * stride;
+        if (stream == 0 ||
+            !v9x_d3d_dp2_readable(V9X_D3D_PROBE_VERTICES, stream,
+                                  stream_bytes)) {
+            v9x_d3d_ddi7_log("dx8-user-stream", user->call_vertex_count,
+                             stride, op, 0ul);
+            return;
+        }
+    } else {
+        stream = v9x_d3d_ddi8_buffer(context, context->ddi8_stream,
+                                     V9X_D3D_PROBE_STREAM, &stream_bytes);
+        if (stream == 0) {
+            ++d->dp2_refused_buffers;
+            return;
+        }
+    }
+
+    draw.primitive = words[0];
+    draw.count = words[2];
+    draw.vertices = stream;
+    draw.vertex_count = stream_bytes / stride;
+    draw.vertex_stride = stride;
+    draw.first = 0ul;
+    draw.base = 0l;
+    draw.indices = 0;
+    draw.index_count = 0ul;
+    draw.index_bytes = 2ul;
+
+    switch (op) {
+    case V9X_DP2OP_DRAWPRIMITIVE:
+        draw.first = words[1];
+        break;
+
+    case V9X_DP2OP_CLIPPEDTRIANGLEFAN:
+        /* FirstVertexOffset, edge flags, primitives; the edge flags only
+         * say which edges a wireframe would draw. */
+        draw.primitive = V9X_D3DPT_TRIANGLEFAN;
+        offset = words[0];
+        break;
+
+    case V9X_DP2OP_DRAWPRIMITIVE2:
+        offset = words[1];
+        break;
+
+    default:
+    {
+        /* The indexed pair: type, base vertex, MinIndex, NumVertices,
+         * start, primitives. MinIndex and NumVertices are hints. */
+        DWORD index_bytes = 0ul;
+        const BYTE *indices = v9x_d3d_ddi8_buffer(
+            context, context->ddi8_indices, V9X_D3D_PROBE_INDICES,
+            &index_bytes);
+        DWORD size = context->ddi8_index_stride;
+
+        draw.count = words[5];
+        if (indices == 0 || (size != 2ul && size != 4ul)) {
+            ++d->dp2_refused_buffers;
+            return;
+        }
+        draw.indices = indices;
+        draw.index_bytes = size;
+        draw.index_count = index_bytes / size;
+        if (op == V9X_DP2OP_DRAWINDEXEDPRIMITIVE) {
+            draw.base = (v9x_s32)words[1];
+            draw.first = words[4];
+            break;
+        }
+        /* DRAWINDEXEDPRIMITIVE2: both offsets in bytes. A negative base
+         * that is not whole vertices has no vertex number. */
+        if ((words[4] % size) != 0ul) {
+            v9x_d3d_ddi7_log("dx8-index-offset", words[4], size, 0ul, 0ul);
+            return;
+        }
+        draw.first = words[4] / size;
+        if ((v9x_s32)words[1] >= 0l) {
+            offset = words[1];
+        } else if (((DWORD)(-(v9x_s32)words[1]) % stride) == 0ul) {
+            draw.base = (v9x_s32)words[1] / (v9x_s32)stride;
+        } else {
+            v9x_d3d_ddi7_log("dx8-base-offset", words[1], stride, 0ul, 0ul);
+            return;
+        }
+        break;
+    }
+    }
+
+    if (offset != 0ul) {
+        if (offset > stream_bytes) {
+            ++d->dp2_malformed;
+            d->dp2_malformed_op_last = op;
+            return;
+        }
+        draw.vertices = stream + offset;
+        draw.vertex_count = (stream_bytes - offset) / stride;
+    }
+
+    user->fvf = v9x_dp2_fvf_is_tlvertex(&layout) ? 0 : &layout;
+    user->layout = &layout;
+    result.triangles = 0ul;
+    result.points = 0ul;
+    result.lines = 0ul;
+    result.undrawn = 0ul;
+    status = v9x_dp2_draw(&draw, user->sink, &result);
+    user->fvf = saved_fvf;
+    user->layout = saved_layout;
+
+    d->dp2_triangles += result.triangles;
+    d->dp2_undrawn += result.undrawn;
+    if (status != V9X_DP2_OK) {
+        ++d->dp2_malformed;
+        d->dp2_malformed_op_last = op;
+        v9x_d3d_ddi7_log("dx8-malformed", op, words[0], draw.count,
+                         draw.vertex_count);
+    }
+}
+
+/*
+ * BUFFERBLT: a copy between two vertex or index buffers, by CPU -
+ * destination handle, source handle, destination offset, then the source
+ * range and flags. Both ends checked inside their buffers.
+ */
+static void v9x_d3d_ddi8_buffer_blt(const V9X_D3D_CONTEXT *context,
+                                    const DWORD *words)
+{
+    DWORD destination_bytes = 0ul;
+    DWORD source_bytes = 0ul;
+    BYTE *destination;
+    const BYTE *source;
+    DWORD at = words[2];
+    DWORD from = words[3];
+    DWORD size = words[4];
+    DWORD index;
+
+    destination = (BYTE *)v9x_d3d_ddi8_buffer(
+        context, words[0], V9X_D3D_PROBE_STREAM, &destination_bytes);
+    source = v9x_d3d_ddi8_buffer(context, words[1], V9X_D3D_PROBE_INDICES,
+                                 &source_bytes);
+    if (destination == 0 || source == 0 || from > source_bytes ||
+        size > source_bytes - from || at > destination_bytes ||
+        size > destination_bytes - at ||
+        IsBadWritePtr(destination + at, size)) {
+        v9x_d3d_ddi7_log("dx8-bufferblt", words[0], words[1], at, size);
+        return;
+    }
+    for (index = 0ul; index < size; ++index) {
+        destination[at + index] = source[from + index];
+    }
+}
+
+/*
+ * DDI 8's records (docs\specifications\ddi8-on-win9x.md section 5), for a
+ * context made for a DDI 8 driver object, whose lengths the walker has
+ * checked. With software vertex processing the runtime sends
+ * pre-transformed vertices in stream 0, names their format by an FVF code
+ * in SETVERTEXSHADER, and draws with the DRAWPRIMITIVE records. The shader
+ * records are consumed and logged: the caps claim no shaders yet. Each
+ * record's first sighting is logged, as the DX7 records' are.
+ */
+static int v9x_d3d_dp2_dx8(void *opaque, v9x_u32 op, v9x_u32 count,
+                           const v9x_u8 *payload, v9x_u32 bytes)
+{
+    V9X_D3D_DP2_USER *user = (V9X_D3D_DP2_USER *)opaque;
+    V9X_D3D_CONTEXT *context = user->context;
+    const DWORD *words = (const DWORD *)payload;
+    v9x_u32 i;
+
+    if ((v9x_d3d_ddi7_ops_logged[op >> 5] & (1ul << (op & 31ul))) == 0ul) {
+        v9x_d3d_ddi7_ops_logged[op >> 5] |= 1ul << (op & 31ul);
+        v9x_d3d_ddi7_log("dx8-op", op, count, bytes,
+                         bytes >= 4ul ? words[0] : 0ul);
+    }
+    switch (op) {
+    case V9X_DP2OP_SETVERTEXSHADER:
+        /* Bit 0 (D3DFVF_RESERVED0) set is a shader's handle, which only a
+         * device with vertex shaders is sent; clear, an FVF code
+         * (vmhal9x mesa3d.h 763, quoting the 2003 DDK). */
+        for (i = 0ul; i < count; ++i) {
+            if ((words[i] & 1ul) != 0ul) {
+                v9x_d3d_ddi7_log("dx8-vs-handle", words[i], 0ul, 0ul, 0ul);
+                context->ddi8_fvf = 0ul;
+            } else {
+                context->ddi8_fvf = words[i];
+            }
+        }
+        return 1;
+
+    case V9X_DP2OP_SETSTREAMSOURCE:
+        for (i = 0ul; i < count; ++i) {
+            if (words[i * 3ul] != 0ul) {
+                v9x_d3d_ddi7_log("dx8-stream-n", words[i * 3ul],
+                                 words[i * 3ul + 1ul], 0ul, 0ul);
+                continue;
+            }
+            context->ddi8_stream = words[i * 3ul + 1ul];
+            context->ddi8_stream_stride = words[i * 3ul + 2ul];
+            context->ddi8_stream_user = 0ul;
+        }
+        return 1;
+
+    case V9X_DP2OP_SETSTREAMSOURCEUM:
+        for (i = 0ul; i < count; ++i) {
+            if (words[i * 2ul] != 0ul) {
+                continue;
+            }
+            context->ddi8_stream = 0ul;
+            context->ddi8_stream_stride = words[i * 2ul + 1ul];
+            context->ddi8_stream_user = 1ul;
+        }
+        return 1;
+
+    case V9X_DP2OP_SETINDICES:
+        for (i = 0ul; i < count; ++i) {
+            context->ddi8_indices = words[i * 2ul];
+            context->ddi8_index_stride = words[i * 2ul + 1ul];
+        }
+        return 1;
+
+    case V9X_DP2OP_DRAWPRIMITIVE:
+    case V9X_DP2OP_CLIPPEDTRIANGLEFAN:
+    case V9X_DP2OP_DRAWPRIMITIVE2:
+        for (i = 0ul; i < count; ++i) {
+            v9x_d3d_ddi8_draw(user, op, words + i * 3ul);
+        }
+        return 1;
+
+    case V9X_DP2OP_DRAWINDEXEDPRIMITIVE:
+    case V9X_DP2OP_DRAWINDEXEDPRIMITIVE2:
+        for (i = 0ul; i < count; ++i) {
+            v9x_d3d_ddi8_draw(user, op, words + i * 6ul);
+        }
+        return 1;
+
+    case V9X_DP2OP_SETPIXELSHADER:
+        for (i = 0ul; i < count; ++i) {
+            if (words[i] != 0ul) {
+                v9x_d3d_ddi7_log("dx8-ps-set", words[i], 0ul, 0ul, 0ul);
+            }
+        }
+        return 1;
+
+    case V9X_DP2OP_BUFFERBLT:
+        v9x_d3d_dp2_draw_run();
+        for (i = 0ul; i < count; ++i) {
+            v9x_d3d_ddi8_buffer_blt(context, words + i * 6ul);
+        }
+        return 1;
+
+    case V9X_DP2OP_VOLUMEBLT:
+        /* No volume format is offered; the runtime's parser has it. */
+        return 0;
+
+    default:
+        /* The other shader records, MULTIPLYTRANSFORM and the dirty
+         * rectangles: nothing to do without shaders or a T&L device. */
+        return 1;
+    }
+}
+
 static DWORD v9x_d3d_draw_primitives2_body(
     V9X_D3DHAL_DRAWPRIMITIVES2DATA *data);
 
@@ -5883,6 +6294,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     V9X_DP2_FVF fvf;
     V9X_D3D_TNL_LAYOUT tnl_layout;
     int tnl = 0;
+    int pool_by_draw = 0;
     V9X_R3D_RECORDS *run = &v9x_d3d_dp2_run;
 
     if (data == 0) {
@@ -5913,11 +6325,26 @@ static DWORD v9x_d3d_draw_primitives2_body(
     }
 
     /*
+     * DDI 8 names the vertex format in the command stream
+     * (SETVERTEXSHADER) and draws from stream 0, so a call whose
+     * dwVertexType this driver cannot read still has work in it. Its own
+     * vertices are then read only by a draw that names them
+     * (SETSTREAMSOURCEUM), under the stream's format and stride, and
+     * checked there; the DDI 6 records see an empty pool.
+     */
+    if (!tnl && context != 0 && context->ddi8 != 0ul &&
+        !v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
+        (void)v9x_dp2_fvf_layout(V9X_D3DFVF_TLVERTEX, &fvf);
+        pool_by_draw = 1;
+    }
+
+    /*
      * Nothing to draw with, or nothing to draw from. Answered DD_OK with
      * nothing drawn, which is what the DX5 entry points do for the same
      * conditions; an error here would stop an application over a frame.
      */
-    if (!tnl && !v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
+    if (!tnl && !pool_by_draw &&
+        !v9x_dp2_fvf_layout(data->dwVertexType, &fvf)) {
         if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_refused_fvf;
             v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -5932,7 +6359,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
                    ? (BYTE *)data->lpVertices
                    : v9x_d3d_dp2_memory(data->lpVertices, 1ul);
     if (ops == 0 || context == 0 || !ops->ready() || commands == 0 ||
-        (data->dwVertexLength != 0ul &&
+        (data->dwVertexLength != 0ul && !pool_by_draw &&
          (vertices == 0 ||
           !v9x_d3d_dp2_readable(1ul, vertices + data->dwVertexOffset,
                                 data->dwVertexLength * fvf.stride))) ||
@@ -5950,7 +6377,8 @@ static DWORD v9x_d3d_draw_primitives2_body(
     stream.commands = commands + data->dwCommandOffset;
     stream.command_bytes = data->dwCommandLength;
     stream.vertices = vertices != 0 ? vertices + data->dwVertexOffset : 0;
-    stream.vertex_count = vertices != 0 ? data->dwVertexLength : 0ul;
+    stream.vertex_count =
+        vertices != 0 && !pool_by_draw ? data->dwVertexLength : 0ul;
     stream.vertex_stride = fvf.stride;
 
     /* Triangles another context left pending are drawn on it first: the
@@ -5981,6 +6409,9 @@ static DWORD v9x_d3d_draw_primitives2_body(
     user.two_stages = ops->limits->texture_stages >= 2ul;
     user.ops = ops;
     user.tnl_layout = tnl ? &tnl_layout : 0;
+    user.sink = &sink;
+    user.call_vertices = stream.vertices;
+    user.call_vertex_count = vertices != 0 ? data->dwVertexLength : 0ul;
     if (!tnl && !v9x_dp2_fvf_is_tlvertex(&fvf) && v9x_hal != 0) {
         ++v9x_hal->d3d_diagnostics.dp2_converted_calls;
         v9x_hal->d3d_diagnostics.dp2_fvf_last = data->dwVertexType;
@@ -6005,6 +6436,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     sink.indexed_list = v9x_d3d_dp2_indexed_list;
     sink.record = v9x_d3d_dp2_ring_entry != 0 ? v9x_d3d_dp2_ring_record : 0;
     sink.dx7 = user.context->ddi7 != 0ul ? v9x_d3d_dp2_dx7 : 0;
+    sink.dx8 = user.context->ddi8 != 0ul ? v9x_d3d_dp2_dx8 : 0;
 
     v9x_dp2_walk(&stream, &sink, &walked);
     /*
@@ -6260,7 +6692,7 @@ static void v9x_d3d_extended_caps7(V9X_D3DHAL_D3DEXTENDEDCAPS7 *caps)
      * (hardware T&L step 6): no clip planes, no blend matrices, no
      * texture generation. */
 #if V9X_D3D_TNL_DEVICE_OFFERED
-    if (v9x_d3d_dp2_for_process() == V9X_D3D_DDI7) {
+    if (v9x_d3d_dp2_for_process() >= V9X_D3D_DDI7) {
         caps->dwMaxActiveLights = V9X_D3D_TNL_MAX_ACTIVE_LIGHTS;
         caps->dwVertexProcessingCaps = V9X_D3DVTXPCAPS_MATERIALSOURCE7 |
                                        V9X_D3DVTXPCAPS_VERTEXFOG |
@@ -6353,6 +6785,243 @@ static void v9x_d3d_note_driver_info_guid(DWORD data1)
         v9x_hal->d3d_diagnostics.driver_info_guids[count] = data1;
     }
     ++v9x_hal->d3d_diagnostics.driver_info_guid_count;
+}
+
+/*
+ * DDI 8's D3DCAPS8, from what a DDI 7 runtime is told: the shared block's
+ * device caps and v9x_d3d_extended_caps7's, with the DX8 forms of the
+ * words that changed (d3d_caps8.h) - docs\specifications\ddi8-on-win9x.md
+ * section 3. No transform engine and no shaders: vertex processing stays
+ * the runtime's, and both shader versions are 0.0.
+ *
+ * Where nothing here argues otherwise, a field is what the runtime builds
+ * for itself from a DDI 7 driver's answers on this machine (V9XD32 T17,
+ * all 53 fields, boot 111): MaxPrimitiveCount and MaxVertexIndex FFFFh,
+ * MaxStreamStride 255, MaxPixelShaderValue 1.0. The exception is
+ * MaxStreams, 0 there and 1 here, since a DDI 8 driver is sent stream 0.
+ * MaxVertexIndex is 16 bits anyway: the indexed path that batches takes
+ * WORD indices (v9x_d3d_dp2_indexed_list).
+ */
+#define V9X_D3D_CAPS8_MAX_VERTEX_INDEX    0x0000fffful
+#define V9X_D3D_CAPS8_MAX_PRIMITIVE_COUNT 0x0000fffful
+#define V9X_D3D_CAPS8_MAX_STREAM_STRIDE   255ul
+
+static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
+{
+    const V9X_D3DDEVICEDESC_V1 *hw = &v9x_hal->d3d_global.hwCaps;
+    const V9X_D3DPRIMCAPS *tri = &hw->dpcTriCaps;
+    V9X_D3DHAL_D3DEXTENDEDCAPS7 ext;
+    BYTE *bytes = (BYTE *)caps;
+    DWORD index;
+
+    v9x_d3d_extended_caps7(&ext);
+    for (index = 0ul; index < sizeof(*caps); ++index) {
+        bytes[index] = 0u;
+    }
+    caps->DeviceType = V9X_D3DDEVTYPE_HAL;
+    caps->Caps2 = V9X_D3DCAPS2_CANRENDERWINDOWED;
+    caps->PresentationIntervals = V9X_D3DPRESENT_INTERVAL_ONE |
+                                  V9X_D3DPRESENT_INTERVAL_IMMEDIATE;
+    caps->DevCaps = hw->dwDevCaps;
+    caps->PrimitiveMiscCaps = v9x_d3d_caps8_misc(tri->dwMiscCaps);
+    caps->RasterCaps = v9x_d3d_caps8_raster(tri->dwRasterCaps);
+    caps->ZCmpCaps = tri->dwZCmpCaps;
+    caps->SrcBlendCaps = tri->dwSrcBlendCaps;
+    caps->DestBlendCaps = tri->dwDestBlendCaps;
+    caps->AlphaCmpCaps = tri->dwAlphaCmpCaps;
+    caps->ShadeCaps = tri->dwShadeCaps;
+    caps->TextureCaps = v9x_d3d_caps8_texture(tri->dwTextureCaps,
+                                              tri->dwTextureFilterCaps);
+    caps->TextureFilterCaps = v9x_d3d_caps8_filter(tri->dwTextureFilterCaps);
+    caps->TextureAddressCaps = tri->dwTextureAddressCaps;
+    caps->LineCaps =
+        v9x_d3d_caps8_lines((hw->dwFlags & V9X_D3DDD_LINECAPS) != 0ul);
+    caps->MaxTextureWidth = ext.dx5.dwMaxTextureWidth;
+    caps->MaxTextureHeight = ext.dx5.dwMaxTextureHeight;
+    caps->MaxTextureRepeat = ext.dwMaxTextureRepeat;
+    caps->MaxTextureAspectRatio = ext.dwMaxTextureAspectRatio;
+    caps->MaxAnisotropy = ext.dwMaxAnisotropy;
+    caps->MaxVertexW = ext.dvMaxVertexW;
+    caps->GuardBandLeft = ext.dvGuardBandLeft;
+    caps->GuardBandTop = ext.dvGuardBandTop;
+    caps->GuardBandRight = ext.dvGuardBandRight;
+    caps->GuardBandBottom = ext.dvGuardBandBottom;
+    caps->ExtentsAdjust = ext.dvExtentsAdjust;
+    caps->StencilCaps = ext.dwStencilCaps;
+    caps->FVFCaps = ext.dwFVFCaps;
+    caps->TextureOpCaps = ext.dwTextureOpCaps;
+    caps->MaxTextureBlendStages = (DWORD)ext.wMaxTextureBlendStages;
+    caps->MaxSimultaneousTextures = (DWORD)ext.wMaxSimultaneousTextures;
+    /* One-pixel points: v9x_dp2_point_quad. */
+    caps->MaxPointSize = 1.0f;
+    caps->MaxPrimitiveCount = V9X_D3D_CAPS8_MAX_PRIMITIVE_COUNT;
+    caps->MaxVertexIndex = V9X_D3D_CAPS8_MAX_VERTEX_INDEX;
+    caps->MaxStreams = 1ul;
+    caps->MaxStreamStride = V9X_D3D_CAPS8_MAX_STREAM_STRIDE;
+    caps->VertexShaderVersion = V9X_D3DVS_VERSION(0, 0);
+    caps->PixelShaderVersion = V9X_D3DPS_VERSION(0, 0);
+    caps->MaxPixelShaderValue = 1.0f;
+}
+
+/* DDI 8's format list (d3d_caps8.h): the published texture formats, the
+ * render depths and the engine's depth formats. */
+#define V9X_D3D_FORMATS8_ROOM 16ul
+
+static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+    DWORD textures[5];
+    DWORD count = v9x_hal->d3d_global.dwNumTextureFormats;
+    DWORD depths = v9x_hal->d3d_global.hwCaps.dwDeviceRenderBitDepth;
+    DWORD renders = 0ul;
+    DWORD index;
+
+    if (count > 5ul) {
+        count = 5ul;
+    }
+    for (index = 0ul; index < count; ++index) {
+        const V9X_DDPIXELFORMAT *format =
+            &v9x_hal->texture_formats[index].ddpfPixelFormat;
+
+        textures[index] = v9x_d3d_caps8_format_of(
+            format->dwFlags, format->dwRGBBitCount, format->dwRBitMask,
+            format->dwGBitMask, format->dwBBitMask,
+            format->dwRGBAlphaBitMask);
+    }
+    if ((depths & V9X_DDBD_16) != 0ul) {
+        renders |= V9X_D3D_RENDERS_16;
+    }
+    if ((depths & V9X_DDBD_32) != 0ul) {
+        renders |= V9X_D3D_RENDERS_32;
+    }
+    return v9x_d3d_caps8_formats(
+        textures, count, renders,
+        ops != 0 && ops->limits != 0 ? ops->limits->depth_bits_per_pixel
+                                     : 0ul,
+        ops != 0 && ops->limits != 0 ? ops->limits->depth32_bits : 0ul,
+        list, V9X_D3D_FORMATS8_ROOM);
+}
+
+/* E_INVALIDARG, which DDERR_INVALIDPARAMS is. */
+#define V9X_D3D_INVALIDPARAMS 0x80070057ul
+
+/*
+ * GetDriverInfo2 (docs\specifications\ddi8-on-win9x.md section 2): a
+ * GetDriverInfo for GUID_DDStereoMode whose data has D3DGDI2_MAGIC.
+ * Answered only to a DDI 8 driver object; anything else, a stereo-mode
+ * query included, gets DDERR_CURRENTLYNOTAVAIL, which is the DDK's answer
+ * for a type a driver does not serve.
+ *
+ * Which object it belongs to is the question Misc2 and Callbacks3 had
+ * (see there): a process that is DDI 8 latches the object's level here
+ * too. Any other asker - DDHELP on a reset - is answered under the level
+ * already latched. When it is asked, and in what order against the other
+ * GUIDs, is not yet measured: every call is logged.
+ */
+static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
+{
+    V9X_DD_GETDRIVERINFO2DATA *gdi2 =
+        (V9X_DD_GETDRIVERINFO2DATA *)data->lpvData;
+    V9X_D3D_FORMAT8 formats[V9X_D3D_FORMATS8_ROOM];
+    int process = v9x_d3d_dp2_for_process();
+    int level;
+    DWORD expected;
+    DWORD count;
+
+    data->dwActualSize = 0ul;
+    data->ddRVal = V9X_DDERR_CURRENTLYNOTAVAIL;
+    if (gdi2 == 0 || IsBadReadPtr(gdi2, sizeof(*gdi2)) ||
+        gdi2->dwMagic != V9X_D3DGDI2_MAGIC) {
+        v9x_d3d_ddi7_log("gdi2-stereo", 0ul, 0ul, 0ul, 0ul);
+        goto done;
+    }
+    if (process == V9X_D3D_DDI8) {
+        v9x_d3d_object_ddi6 = V9X_D3D_DDI8;
+    }
+    level = v9x_d3d_ddi_for_object();
+    v9x_d3d_apply_ddi_level(level);
+    expected = gdi2->dwExpectedSize;
+    v9x_d3d_ddi7_log("gdi2", gdi2->dwType, expected, (DWORD)level,
+                     (DWORD)process);
+    if (level != V9X_D3D_DDI8 || IsBadWritePtr(gdi2, expected)) {
+        goto done;
+    }
+
+    switch (gdi2->dwType) {
+    case V9X_D3DGDI2_TYPE_DXVERSION:
+        if (expected >= sizeof(V9X_DD_DXVERSION)) {
+            v9x_d3d_ddi7_log("gdi2-dxversion",
+                             ((V9X_DD_DXVERSION *)gdi2)->dwDXVersion, 0ul,
+                             0ul, 0ul);
+            data->dwActualSize = sizeof(V9X_DD_DXVERSION);
+            data->ddRVal = V9X_DD_OK;
+        }
+        break;
+
+    case V9X_D3DGDI2_TYPE_GETD3DCAPS8:
+    {
+        V9X_D3DCAPS8 caps;
+        DWORD copy = sizeof(caps) < expected ? sizeof(caps) : expected;
+        DWORD at;
+
+        v9x_d3d_caps8(&caps);
+        for (at = 0ul; at < copy; ++at) {
+            ((BYTE *)gdi2)[at] = ((const BYTE *)&caps)[at];
+        }
+        data->dwActualSize = copy;
+        data->ddRVal = V9X_DD_OK;
+        break;
+    }
+
+    case V9X_D3DGDI2_TYPE_GETFORMATCOUNT:
+        if (expected >= sizeof(V9X_DD_GETFORMATCOUNTDATA)) {
+            ((V9X_DD_GETFORMATCOUNTDATA *)gdi2)->dwFormatCount =
+                v9x_d3d_formats8(formats);
+            data->dwActualSize = sizeof(V9X_DD_GETFORMATCOUNTDATA);
+            data->ddRVal = V9X_DD_OK;
+        }
+        break;
+
+    case V9X_D3DGDI2_TYPE_GETFORMAT:
+    {
+        V9X_DD_GETFORMATDATA *answer = (V9X_DD_GETFORMATDATA *)gdi2;
+        V9X_DDPIXELFORMAT *format = &answer->format;
+
+        if (expected < sizeof(V9X_DD_GETFORMATDATA)) {
+            break;
+        }
+        count = v9x_d3d_formats8(formats);
+        if (answer->dwFormatIndex >= count ||
+            answer->dwFormatIndex >= V9X_D3D_FORMATS8_ROOM) {
+            data->ddRVal = V9X_D3D_INVALIDPARAMS;
+            break;
+        }
+        /* DDPF_D3DFORMAT, the D3DFORMAT where the FourCC is, the
+         * operations where the red mask is and no multisampling where the
+         * green mask is (spec section 4). */
+        format->dwSize = sizeof(V9X_DDPIXELFORMAT);
+        format->dwFlags = V9X_DDPF_D3DFORMAT;
+        format->dwFourCC = formats[answer->dwFormatIndex].format;
+        format->dwRGBBitCount = 0ul;
+        format->dwRBitMask = formats[answer->dwFormatIndex].operations;
+        format->dwGBitMask = 0ul;
+        format->dwBBitMask = 0ul;
+        format->dwRGBAlphaBitMask = 0ul;
+        data->dwActualSize = sizeof(V9X_DD_GETFORMATDATA);
+        data->ddRVal = V9X_DD_OK;
+        break;
+    }
+
+    default:
+        break;
+    }
+
+done:
+    if (v9x_hal != 0 && data->ddRVal != V9X_DD_OK) {
+        ++v9x_hal->d3d_diagnostics.driver_info_declined;
+    }
+    v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
+    return V9X_DDHAL_DRIVER_HANDLED;
 }
 
 DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
@@ -6453,7 +7122,7 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         ddi6 = v9x_d3d_ddi_for_object();
         v9x_d3d_apply_ddi_level(ddi6);
     }
-    if (ddi6 == V9X_D3D_DDI7 &&
+    if (ddi6 >= V9X_D3D_DDI7 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_misc2_callbacks)) {
         DWORD copy = sizeof(v9x_dd_misc2);
         DWORD at;
@@ -6471,6 +7140,9 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         }
         v9x_trace_exit(V9X_TRACE_GETDRIVERINFO, data->ddRVal);
         return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (v9x_d3d_guid_matches(data->guidInfo, v9x_guid_get_driver_info2)) {
+        return v9x_d3d_get_driver_info2(data);
     }
     if (ddi6 &&
         v9x_d3d_guid_matches(data->guidInfo, v9x_guid_z_pixel_formats)) {

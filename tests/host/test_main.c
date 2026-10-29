@@ -160,6 +160,13 @@ unsigned int v9x_run_d3d_fog_tests(void);
  * layouts, strip winding, _IMM alignment and bounds. */
 unsigned int v9x_run_d3d_dp2_tests(void);
 
+/* tests\host\test_d3d_dp2_dx8.c: its DirectX 8 record lengths and
+ * v9x_dp2_draw's stream draws. */
+unsigned int v9x_run_d3d_dp2_dx8_tests(void);
+
+/* tests\host\test_d3d_caps8.c: DDI 8's D3DCAPS8 and format list. */
+unsigned int v9x_run_d3d_caps8_tests(void);
+
 /* tests\host\test_d3d_handles.c: DDI 7's CreateSurfaceEx handle table. */
 unsigned int v9x_run_d3d_handles_tests(void);
 
@@ -1394,6 +1401,8 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_state_tests();
     failures += v9x_run_d3d_fog_tests();
     failures += v9x_run_d3d_dp2_tests();
+    failures += v9x_run_d3d_dp2_dx8_tests();
+    failures += v9x_run_d3d_caps8_tests();
     failures += v9x_run_d3d_handles_tests();
     failures += v9x_run_d3d_tnl_tests();
     failures += v9x_run_d3d_select_tests();

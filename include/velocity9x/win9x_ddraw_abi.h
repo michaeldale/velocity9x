@@ -155,6 +155,10 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDMODEINFO_PALETTIZED        0x0001u
 #define V9X_DDHALINFO_ISPRIMARYDISPLAY 0x00000001ul
 #define V9X_DDHALINFO_GETDRIVERINFOSET 0x00000004ul
+/* DX8's "driver supports GetDriverInfo2", in neither the 98 DDK's nor the
+ * SDK's ddrawi.h; the value is vmhal9x's (vmhal9x.c:55-58). Without it the
+ * runtime never asked (docs\specifications\ddi8-on-win9x.md section 1). */
+#define V9X_DDHALINFO_GETDRIVERINFO2   0x00000008ul
 
 #define V9X_DDHAL_CB32_CREATESURFACE        0x00000002ul
 #define V9X_DDHAL_CB32_WAITFORVERTICALBLANK 0x00000010ul
@@ -1009,6 +1013,125 @@ typedef struct v9x_d3dhal_d3dextendedcaps7 {
 
 typedef char v9x_assert_extended_caps7_size[
     sizeof(V9X_D3DHAL_D3DEXTENDEDCAPS7) == 116u ? 1 : -1];
+
+/*
+ * GetDriverInfo2 (DDI 8), docs\specifications\ddi8-on-win9x.md section 2.
+ * A GetDriverInfo call for GUID_DDStereoMode whose data starts with this
+ * header and dwMagic D3DGDI2_MAGIC; the answer is written over the header,
+ * at most dwExpectedSize bytes. DDK d3dhal.h 1366-1481.
+ */
+typedef struct v9x_dd_getdriverinfo2data {
+    DWORD dwReserved;
+    DWORD dwMagic;
+    DWORD dwType;
+    DWORD dwExpectedSize;
+} V9X_DD_GETDRIVERINFO2DATA;
+
+#define V9X_D3DGDI2_MAGIC               0xfffffffful
+#define V9X_D3DGDI2_TYPE_GETD3DCAPS8    0x00000001ul
+#define V9X_D3DGDI2_TYPE_GETFORMATCOUNT 0x00000002ul
+#define V9X_D3DGDI2_TYPE_GETFORMAT      0x00000003ul
+#define V9X_D3DGDI2_TYPE_DXVERSION      0x00000004ul
+/* The answer for a type this driver does not serve (the DDK's own). */
+#define V9X_DDERR_CURRENTLYNOTAVAIL     0x88760028ul
+
+/* DD_GETFORMATCOUNTDATA, DD_GETFORMATDATA and DD_DXVERSION. */
+typedef struct v9x_dd_getformatcountdata {
+    V9X_DD_GETDRIVERINFO2DATA gdi2;
+    DWORD dwFormatCount;
+    DWORD dwReserved;
+} V9X_DD_GETFORMATCOUNTDATA;
+
+typedef struct v9x_dd_getformatdata {
+    V9X_DD_GETDRIVERINFO2DATA gdi2;
+    DWORD dwFormatIndex;
+    V9X_DDPIXELFORMAT format;
+} V9X_DD_GETFORMATDATA;
+
+typedef struct v9x_dd_dxversion {
+    V9X_DD_GETDRIVERINFO2DATA gdi2;
+    DWORD dwDXVersion;
+    DWORD dwReserved;
+} V9X_DD_DXVERSION;
+
+/*
+ * A DX8 format-list entry is a DDPIXELFORMAT with DDPF_D3DFORMAT, the
+ * D3DFORMAT in dwFourCC, the D3DFORMAT_OP_* bits where the red mask is
+ * (offset 10h) and the multisample word where the green mask is (14h)
+ * (spec section 4). The D3DFORMAT and operation values are in
+ * src\display32\d3d\d3d_caps8.h, which builds the list.
+ */
+#define V9X_DDPF_D3DFORMAT                       0x00200000ul
+
+/* D3DCAPS8, d3d8caps.h 222-290, pack(4): 53 four-byte fields. */
+typedef struct v9x_d3dcaps8 {
+    DWORD DeviceType;
+    DWORD AdapterOrdinal;
+    DWORD Caps;
+    DWORD Caps2;
+    DWORD Caps3;
+    DWORD PresentationIntervals;
+    DWORD CursorCaps;
+    DWORD DevCaps;
+    DWORD PrimitiveMiscCaps;
+    DWORD RasterCaps;
+    DWORD ZCmpCaps;
+    DWORD SrcBlendCaps;
+    DWORD DestBlendCaps;
+    DWORD AlphaCmpCaps;
+    DWORD ShadeCaps;
+    DWORD TextureCaps;
+    DWORD TextureFilterCaps;
+    DWORD CubeTextureFilterCaps;
+    DWORD VolumeTextureFilterCaps;
+    DWORD TextureAddressCaps;
+    DWORD VolumeTextureAddressCaps;
+    DWORD LineCaps;
+    DWORD MaxTextureWidth;
+    DWORD MaxTextureHeight;
+    DWORD MaxVolumeExtent;
+    DWORD MaxTextureRepeat;
+    DWORD MaxTextureAspectRatio;
+    DWORD MaxAnisotropy;
+    float MaxVertexW;
+    float GuardBandLeft;
+    float GuardBandTop;
+    float GuardBandRight;
+    float GuardBandBottom;
+    float ExtentsAdjust;
+    DWORD StencilCaps;
+    DWORD FVFCaps;
+    DWORD TextureOpCaps;
+    DWORD MaxTextureBlendStages;
+    DWORD MaxSimultaneousTextures;
+    DWORD VertexProcessingCaps;
+    DWORD MaxActiveLights;
+    DWORD MaxUserClipPlanes;
+    DWORD MaxVertexBlendMatrices;
+    DWORD MaxVertexBlendMatrixIndex;
+    float MaxPointSize;
+    DWORD MaxPrimitiveCount;
+    DWORD MaxVertexIndex;
+    DWORD MaxStreams;
+    DWORD MaxStreamStride;
+    DWORD VertexShaderVersion;
+    DWORD MaxVertexShaderConst;
+    DWORD PixelShaderVersion;
+    float MaxPixelShaderValue;
+} V9X_D3DCAPS8;
+
+typedef char v9x_assert_d3dcaps8_size[
+    sizeof(V9X_D3DCAPS8) == 212u ? 1 : -1];
+
+#define V9X_D3DDEVTYPE_HAL              1ul
+#define V9X_D3DCAPS2_CANRENDERWINDOWED  0x00080000ul
+#define V9X_D3DPRESENT_INTERVAL_ONE       0x00000001ul
+#define V9X_D3DPRESENT_INTERVAL_IMMEDIATE 0x80000000ul
+/* D3DPS_VERSION / D3DVS_VERSION, d3d8types.h 477-478: 0.0 is "none". */
+#define V9X_D3DPS_VERSION(major, minor) \
+    (0xffff0000ul | ((DWORD)(major) << 8) | (DWORD)(minor))
+#define V9X_D3DVS_VERSION(major, minor) \
+    (0xfffe0000ul | ((DWORD)(major) << 8) | (DWORD)(minor))
 
 /* D3DHAL_CALLBACKS3, d3dhal.h: six pointer-sized fields. */
 typedef struct v9x_d3dhal_callbacks3 {

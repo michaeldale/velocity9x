@@ -71,9 +71,9 @@
  * hardware cull was inverted (2026-10-24), and nothing said which path
  * had answered.
  *
- * /ddi5, /ddi6 and /ddi7 set this program's [Velocity9x.Direct3DDdi] entry
- * in SYSTEM.INI for the run and restore it after, so one probe covers each
- * interface; without any the driver's own choice stands.
+ * /ddi5, /ddi6, /ddi7 and /ddi8 set this program's [Velocity9x.Direct3DDdi]
+ * entry in SYSTEM.INI for the run and restore it after, so one probe covers
+ * each interface; without any the driver's own choice stands.
  *
  * /z24 makes the Z buffer 32 bits (24 of depth on Gen3) and clears it at
  * that full scale; T5 then expects the nearer quad, and without it the
@@ -368,7 +368,7 @@ static int d32_has_switch(const char *option)
 
 /* Every switch the probe reads; a name ending in '=' takes a value. */
 static const char *const d32_known_switches[] = {
-    "/bpp16", "/z24", "/ddi5", "/ddi6", "/ddi7", "/child",
+    "/bpp16", "/z24", "/ddi5", "/ddi6", "/ddi7", "/ddi8", "/child",
     "/clean", "/endscene", "/nomode", "/release3d",
     "/t14clean", "/t14endscene", "/t14nomode", "/t14release3d", "/t14wait",
     "/t15bare", "/t15early", "/t15frames", "/t15fresh", "/t15ones",
@@ -2619,6 +2619,7 @@ static void d32_d3dx_caps(const char *dll, const char *entry, UINT sdk,
     D32_OBJECT *d3d = create != 0 ? (D32_OBJECT *)create(sdk) : 0;
     HRESULT hr;
     char key[48];
+    DWORD index;
 
     wsprintfA(key, "%sCreated", prefix);
     d32_hx(key, d3d != 0);
@@ -2632,6 +2633,30 @@ static void d32_d3dx_caps(const char *dll, const char *entry, UINT sdk,
     d32_hx(key, (DWORD)hr);
     wsprintfA(key, "%sHalDevCaps", prefix);
     d32_hx(key, caps[7]);
+    /* DDI 8 (docs\plans\haswell-ddi8-pixel-shaders.md): what the runtime
+     * made of the driver's D3DCAPS8, or of its DDI 7 answers when it did
+     * not ask. D3DCAPS9 has D3DCAPS8's order this far; the DWORD indices
+     * are the fields' places in d3d8caps.h. */
+    wsprintfA(key, "%sHalRasterCaps", prefix);
+    d32_hx(key, caps[9]);
+    wsprintfA(key, "%sHalTextureFilterCaps", prefix);
+    d32_hx(key, caps[16]);
+    wsprintfA(key, "%sHalMaxPrimitiveCount", prefix);
+    d32_hx(key, caps[45]);
+    wsprintfA(key, "%sHalMaxVertexIndex", prefix);
+    d32_hx(key, caps[46]);
+    wsprintfA(key, "%sHalMaxStreams", prefix);
+    d32_hx(key, caps[47]);
+    wsprintfA(key, "%sHalVertexShaderVersion", prefix);
+    d32_hx(key, caps[49]);
+    wsprintfA(key, "%sHalPixelShaderVersion", prefix);
+    d32_hx(key, caps[51]);
+    /* All 53 D3DCAPS8 fields, so the caps the runtime builds at DDI 7
+     * can be compared with the driver's D3DCAPS8 at DDI 8 field by field. */
+    for (index = 0ul; index < 53ul; ++index) {
+        wsprintfA(key, "%sCaps%02lu", prefix, index);
+        d32_hx(key, caps[index]);
+    }
     ((d32_release_fn)d3d->vtbl[COM_RELEASE])(d3d);
 }
 
@@ -3854,6 +3879,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_ddi_apply("6");
     } else if (d32_has_switch("/ddi7")) {
         d32_ddi_apply("7");
+    } else if (d32_has_switch("/ddi8")) {
+        d32_ddi_apply("8");
     }
     d32_path_read(&run_before);
     d32_hx("TraceReadable", run_before.ok);

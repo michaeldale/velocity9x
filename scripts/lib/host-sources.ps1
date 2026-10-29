@@ -208,6 +208,11 @@ function Get-V9xHostSourceNames {
         # The DrawPrimitives2 command walker: record layouts and bounds.
         'src\display32\d3d\d3d_dp2.c',
         'tests\host\test_d3d_dp2.c',
+        # Its DirectX 8 records and stream draws.
+        'tests\host\test_d3d_dp2_dx8.c',
+        # DDI 8's D3DCAPS8 and format list from the DDI 7 description.
+        'src\display32\d3d\d3d_caps8.c',
+        'tests\host\test_d3d_caps8.c',
         # DDI 7's CreateSurfaceEx handle table.
         'src\display32\d3d\d3d_handles.c',
         'tests\host\test_d3d_handles.c',

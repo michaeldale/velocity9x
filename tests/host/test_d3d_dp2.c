@@ -230,6 +230,7 @@ static void walk(CAPTURE *c, V9X_DP2_RESULT *r)
     k.line = 0;
     k.indexed_list = indexed_take >= 0 ? on_indexed : 0;
     k.dx7 = 0;
+    k.dx8 = 0;
     v9x_dp2_walk(&s, &k, r);
 }
 
@@ -535,7 +536,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = on_record;
             k.point = 0; k.line = 0; k.indexed_list = 0;
-            k.dx7 = 0;
+            k.dx7 = 0; k.dx8 = 0;
             records_seen = 0ul; record_bytes = 0ul;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && records_seen == 2ul &&
@@ -556,7 +557,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
             k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
             k.record = 0;
             k.point = 0; k.line = 0; k.indexed_list = 0;
-            k.dx7 = 0;
+            k.dx7 = 0; k.dx8 = 0;
             v9x_dp2_walk(&s, &k, &r);
             CHECK(r.status == V9X_DP2_OK && r.triangles == 1ul);
             /* Vertices 1 to 3 need a pool of four. */
@@ -584,7 +585,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
         k.record = 0; k.point = on_point; k.line = on_line;
         k.indexed_list = 0;
-        k.dx7 = 0;
+        k.dx7 = 0; k.dx8 = 0;
         line_count = 0ul; point_count = 0ul;
         v9x_dp2_walk(&s, &k, &r);
         CHECK(r.status == V9X_DP2_OK && r.lines == 3ul && r.points == 2ul &&
@@ -657,7 +658,7 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         k.user = &c; k.render_state = on_state; k.stage_state = on_stage;
         k.list = on_list; k.fan = on_fan; k.triangle = on_triangle;
         k.record = 0; k.point = 0; k.line = 0; k.indexed_list = 0;
-        k.dx7 = on_dx7;
+        k.dx7 = on_dx7; k.dx8 = 0;
         dx7_calls = 0ul; dx7_bytes = 0ul;
         v9x_dp2_walk(&s, &k, &r);
         CHECK(r.status == V9X_DP2_OK && r.records == 4ul &&
