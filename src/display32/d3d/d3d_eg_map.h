@@ -119,6 +119,10 @@ int v9x_d3d_eg_depth_fill_draw(v9x_u32 offset, v9x_u32 pitch,
  * pitch a whole number of 8-pixel tiles. */
 #define V9X_D3D_EG_DEPTH_TILE_ROWS  8ul
 #define V9X_D3D_EG_DEPTH_PITCH_UNIT 16ul /* 8 pixels of Z16 */
+/* A Z16's rows are placed on 32 bytes, not 16: the core binds a depth
+ * buffer only on d3d_eg.c's target_pitch_align, and a 360-pixel GL window's
+ * 720-byte rows had every clear and draw refused (M-BXMFA8, boot 42). */
+#define V9X_D3D_EG_DEPTH_ROW_ALIGN  32ul
 /* Every surface the engine binds starts on 256 bytes. */
 #define V9X_D3D_EG_SURFACE_ALIGN    256ul
 

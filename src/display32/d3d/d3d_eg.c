@@ -598,8 +598,9 @@ int v9x_d3d_eg_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 
 /*
  * Placement. An offscreen render target gets its pitch rounded to 8
- * pixels, 256-aligned. A Z16 buffer gets its pitch rounded to 8 pixels
- * and its rows to 8, the DB's 1D tile, 256-aligned. A video-memory
+ * pixels, 256-aligned. A Z16 buffer gets its pitch rounded to 16 pixels,
+ * the bind alignment and whole 8-pixel tiles, and its rows to 8, the DB's
+ * 1D tile, 256-aligned. A video-memory
  * texture of a format this engine samples gets each level in a block of
  * its own, 256-aligned, its rows whole multiples of 64 bytes, which the
  * sampler needs (eg_3d.h, v9x_eg_3d_texture_pitch): V9XDDP's 16x16 1555
@@ -663,8 +664,8 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        pitches[0] = (width * 2ul + V9X_D3D_EG_DEPTH_PITCH_UNIT - 1ul) &
-                     ~(V9X_D3D_EG_DEPTH_PITCH_UNIT - 1ul);
+        pitches[0] = (width * 2ul + V9X_D3D_EG_DEPTH_ROW_ALIGN - 1ul) &
+                     ~(V9X_D3D_EG_DEPTH_ROW_ALIGN - 1ul);
         rows[0] = (height + V9X_D3D_EG_DEPTH_TILE_ROWS - 1ul) &
                   ~(V9X_D3D_EG_DEPTH_TILE_ROWS - 1ul);
     } else {

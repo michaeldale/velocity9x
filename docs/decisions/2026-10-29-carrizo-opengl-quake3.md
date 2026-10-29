@@ -140,10 +140,11 @@ Boot 40, the final build:
 - The Quake 3 demo ran fullscreen at 21.3 fps, every batch on the
   hardware, with no failed draw or clear.
 
-Cedar has the same shape of code, untested. `d3d_eg.c` rounds Z16 rows
-to 16 bytes against a 32-byte bind alignment, so a window whose width is
-an odd multiple of 8 pixels would have its depth refused. `eng_eg.c`'s
-whole-surface fill also keeps the pixel width.
+Cedar had the pitch bug: `d3d_eg.c` rounded Z16 rows to 16 bytes against
+a 32-byte bind alignment. It is measured and fixed in
+[the Cedar Z16 rows record](2026-10-29-cedar-z16-row-align.md). Its
+whole-surface fill already covered the whole pitch; an earlier version of
+this paragraph said it did not.
 
 ## Not checked
 
