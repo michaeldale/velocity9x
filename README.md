@@ -9,7 +9,7 @@ cards**. One driver package per chip family gives the card:
 - ATI's 3DCIF for games written for ATI Rage cards.
 
 All of them draw through one shared render core. It runs the Intel GMA 950,
-GMA 3150, GMA X3100, HD 4600 and HD 4000, the AMD Radeon HD 5450, the ATI Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
+GMA 3150, GMA X3100, HD 4600 and HD 4000, the AMD Radeon HD 5450 and R7E (Carrizo), the ATI Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS. The
@@ -97,6 +97,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | Claimed: the GM965's path with G4x's encodings, built from two reporters' surveys. Nothing has run on one |
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help; modes from the VBE |
+| AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips. 3DMark 2000 and Quake 3. One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only. Glide not run |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
@@ -146,6 +147,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
 | Intel GMA X4500, GMA 4500 | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
+| AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
 | ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |
@@ -164,8 +166,8 @@ from the records the [changelog](CHANGELOG.md) links.
 Measured limits:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
-  Graphics 4600 and the Millennium II (the Mystique and the HD 5450: 32
-  bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  Graphics 4600 and the Millennium II (the Mystique, the HD 5450 and the
+  R7E: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
@@ -188,6 +190,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 |---|---|---|---|
 | Intel HD Graphics 4600 (i5-4570) | 77.3 fps (windowed) | not run; Half-Life `-gl` 95.9 fps (windowed); Quake 3 `demo001` 60.6 fps | 0.32.0 |
 | AMD Radeon HD 5450 | not run | not run; Quake 3 `demo001` 63.6 fps | 0.32.0 |
+| AMD Radeon R7E (Carrizo, GX-420GI) | not run | not run; Quake 3 `demo001` 21.3 fps | 0.33.0 |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |

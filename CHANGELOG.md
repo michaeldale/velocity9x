@@ -6,6 +6,56 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.33.0 - not yet released
 
+- **AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) is claimed by the `ati`
+  package**, measured on one tester's HP machine (AMD GX-420GI) through
+  remote help. Modes come from the VBE: 16 and 32 bpp up to 1600x1200,
+  with no 8 bpp mode on this BIOS
+  ([record](docs/decisions/2026-10-28-m-xp7053-carrizo-vbe-first-look.md)).
+  - DirectDraw fills and copies run on the SDMA engine, and page flips go
+    through the display controller at the vertical blank. Both engines
+    run AMD's microcode, now in the tree under its licence (NOTICES.TXT)
+    ([record](docs/decisions/2026-10-28-carrizo-directdraw-on-sdma.md),
+    [record](docs/decisions/2026-10-28-carrizo-page-flips.md),
+    [record](docs/decisions/2026-10-28-carrizo-cp-ring-test.md)).
+  - Direct3D runs on the 3D engine at 16 and 32 bpp with a 16-bit depth
+    buffer. Supported: textures in 565, 1555, 4444, 8888 and XRGB8888, mip
+    chains, blending, specular, fog, colour keys and DECALALPHA. The depth
+    buffer is tiled; a program that locks it gets it detiled, and V9XDDP's
+    mixed CPU and engine depth check passes
+    ([record](docs/decisions/2026-10-28-carrizo-d3d-hal-first-light.md),
+    [record](docs/decisions/2026-10-28-carrizo-d3d-blend-and-shader-fixed-function.md),
+    [record](docs/decisions/2026-10-29-carrizo-ddp-zero-rows.md)).
+  - 3DMark 2000's default benchmark runs to its score, 3,001, with its
+    frames drawn correctly
+    ([record](docs/decisions/2026-10-29-carrizo-3dmark2000.md)).
+  - OpenGL games draw on the engine: the Quake 3 demo timedemo runs at
+    21.3 fps fullscreen with every batch in hardware. V9XGLP matches the
+    HD 4600's results except for multitexture and lighting
+    ([record](docs/decisions/2026-10-29-carrizo-opengl-quake3.md)).
+  - Known limits: one texture stage, no transform and lighting on the
+    card. Glide has not been run. The row stride of non-power-of-two
+    textures is not measured.
+- **Fixed, HD 5450: Quake 3's HUD icons vanished** behind walls and the
+  weapon. Scissored depth clears were dropped; the command processor now
+  draws them. The owner confirms the icons are fixed
+  ([record](docs/decisions/2026-10-28-cedar-scissored-depth-clear.md)).
+- **Fixed, HD 5450: an OpenGL window an odd multiple of 8 pixels wide**
+  (360, for one) lost every clear and draw that used its depth buffer.
+  Depth rows are now placed on 32 bytes
+  ([record](docs/decisions/2026-10-29-cedar-z16-row-align.md)).
+- **Fixed, every package: DirectDraw's mode list could miss 640x480 and
+  800x600 at 32 bpp.** On a BIOS that offers more modes than DirectDraw's
+  32 slots, the small 32 bpp modes took the slots first, and a 32 bpp
+  desktop's own mode then pushed 640x480x32 out. On the HD 5450 that
+  stopped programs from setting 640x480x32. 640x480, 800x600 and
+  1024x768 now come first at every depth. It matches the HD 5450 owner's
+  report about 3DMark 2001's 32 bpp resolution list, which they have not
+  retested
+  ([record](docs/decisions/2026-10-29-cedar-dd-mode-subset.md)).
+- Known issue, HD 5450: the owner still sees sets of trees vanish and
+  reappear in 3DMark 2000's Helicopter test with the 128 MiB heap. The
+  driver counts no failed or refused draws during the benchmark; the
+  cause is not found.
 - **Frame grabs on any engine with page flips.** `V9XTRACE
   -grab:<interval>x<count>` writes every interval-th flip's presented
   frame, whole, as `C:\V9XDIAG\V9XGRAB0.BMP` to `V9XGRAB9.BMP`, so a
