@@ -38,6 +38,10 @@ typedef struct v9x_d3d_surface_handle {
      * registration implies (surfindex.c). Kept, and dropped, as user is. */
     const void *memory;
     v9x_u32 bytes;
+    /* Non-zero when surface is the caller's own copy of the surface's
+     * halves (DDI 8's held surfaces, d3d_core.c), which it must free when
+     * it drops the entry. Kept and dropped as user is. */
+    v9x_u32 held;
 } V9X_D3D_SURFACE_HANDLE;
 
 typedef struct v9x_d3d_handles {

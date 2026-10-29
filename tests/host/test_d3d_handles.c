@@ -46,13 +46,14 @@ unsigned int v9x_run_d3d_handles_tests(void)
     /* A buffer's memory and size (DDI 8) follow the same rule: a new entry
      * has none, the same surface keeps them, a new surface drops them. */
     e = v9x_d3d_handles_set(&table, &local_a, 3ul, &surface[0]);
-    HCHECK(e != 0 && e->memory == 0 && e->bytes == 0ul);
+    HCHECK(e != 0 && e->memory == 0 && e->bytes == 0ul && e->held == 0ul);
     e->memory = &surface[1];
     e->bytes = 64ul;
+    e->held = 1ul;
     e = v9x_d3d_handles_set(&table, &local_a, 3ul, &surface[0]);
-    HCHECK(e->memory == &surface[1] && e->bytes == 64ul);
+    HCHECK(e->memory == &surface[1] && e->bytes == 64ul && e->held == 1ul);
     e = v9x_d3d_handles_set(&table, &local_a, 3ul, &surface[2]);
-    HCHECK(e->memory == 0 && e->bytes == 0ul);
+    HCHECK(e->memory == 0 && e->bytes == 0ul && e->held == 0ul);
     HCHECK(v9x_d3d_handles_drop(&table, &local_a, 3ul) == 1ul);
 
     /* 1 + 1024 lands on handle 1's slot and probes on; freeing B's handle

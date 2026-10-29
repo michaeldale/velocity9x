@@ -22,7 +22,21 @@ that change the steps below:
   which the PRM requires with alpha test (spec section 8). Unobserved on
   hardware; probed in step 5.
 
-Steps 2-7 are not started.
+Step 2 done 2026-10-29 (boots 111-116,
+[`2026-10-29-haswell-ddi8-step2.md`](../decisions/2026-10-29-haswell-ddi8-step2.md)):
+
+- DDI 8 without shaders is what DirectX 8 and 9 programs get on the HD
+  4600. V9XD32 passes at the default and `/ddi8`. 3DMark 2001 SE completes
+  with 239 million triangles drawn and no fault (1655, recorded, not
+  compared).
+- The finding that changes later steps: the runtime announces the surfaces
+  it makes with local and global halves that are stale after
+  CreateSurfaceEx. The driver now keeps its own copy of every mip level's
+  halves (the flip chain excepted). Pixel shaders will reach textures
+  through those copies.
+- Not checked: the pictures, which no capture here can see.
+
+Steps 3-7 are not started.
 Claims about the tree cite files at `7a2a0504`. Claims about DirectX 8 and
 3DMark that are recalled rather than read or measured are marked so; step 1
 and step 3 exist to replace them with evidence.

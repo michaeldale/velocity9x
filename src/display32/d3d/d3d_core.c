@@ -5456,6 +5456,160 @@ static DWORD v9x_d3d_surface_handle_of(const V9X_DD_SURFACE_LCL *lcl)
 }
 
 /*
+ * DDI 8's held surfaces.
+ *
+ * At DDI 8 the surfaces the Direct3D 8 runtime makes - textures, vertex
+ * and index buffers - reach CreateSurfaceEx with local and global halves
+ * that are the runtime's only for that call. Measured on the 4570, boot
+ * 115, logging at each handle's later use: for 3DMark 2001 SE's textures
+ * and buffers the local half then held garbage where lpGbl was (00004025,
+ * 00000052) and the global half CreateSurfaceEx had seen held no memory;
+ * a texture's handle 98 named another surface's global half. The flip
+ * chain and its Z buffer (handles 1 to 3) kept both halves, with live
+ * memory. Reading the stale halves faulted 3DMark in
+ * v9x_d3d_hsw_texture_unit (boot 114).
+ *
+ * So for those surfaces the table holds a copy: each mip level's local
+ * and global halves, the levels linked by attachment nodes of the copy's
+ * own, made while CreateSurfaceEx runs and refreshed in place when the
+ * handle is announced again, so a texture record made from it stays
+ * valid. Everything downstream reads the copy as it read the runtime's.
+ * Its memory is the surface's own, so writes through a Lock land where
+ * the copy points. The flip chain and Z buffers are not copied: their
+ * halves are DirectDraw's and a flip swaps their memory, which a copy
+ * would miss.
+ *
+ * A copy lives in the creating process's heap, as its handle table does,
+ * and is freed when CreateSurfaceEx retires the handle. Entries dropped
+ * with their local object (DestroyDDLocal) leave theirs to the process's
+ * end.
+ */
+#define V9X_D3D_HELD_LEVELS 16u
+
+typedef struct v9x_d3d_held {
+    V9X_DD_SURFACE_LCL lcl[V9X_D3D_HELD_LEVELS];
+    V9X_DD_SURFACE_GBL gbl[V9X_D3D_HELD_LEVELS];
+    V9X_DD_ATTACH_NODE node[V9X_D3D_HELD_LEVELS];
+} V9X_D3D_HELD;
+
+/* Whether a DDI 8 surface's halves are copied: anything but a flip
+ * chain's surfaces and Z buffers. */
+static int v9x_d3d_held_wanted(const V9X_DD_SURFACE_LCL *lcl)
+{
+    return (lcl->ddsCaps &
+            (V9X_DDSCAPS_PRIMARYSURFACE | V9X_DDSCAPS_FLIP |
+             V9X_DDSCAPS_BACKBUFFER | V9X_DDSCAPS_ZBUFFER)) == 0ul;
+}
+
+/* The next mip level below level: the attached surface that is itself a
+ * mip level, as the engines' mip walks choose it. */
+static const V9X_DD_SURFACE_LCL *v9x_d3d_held_next_level(
+    const V9X_DD_SURFACE_LCL *level)
+{
+    const V9X_DD_ATTACH_NODE *node;
+    DWORD links;
+
+    if ((level->ddsCaps & V9X_DDSCAPS_MIPMAP) == 0ul) {
+        return 0;
+    }
+    node = (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+    for (links = 0ul; node != 0 && links < V9X_D3D_HELD_LEVELS;
+         node = node->next, ++links) {
+        if (IsBadReadPtr(node, sizeof(*node))) {
+            return 0;
+        }
+        if (node->object != 0 && node->object != level &&
+            !IsBadReadPtr(node->object, sizeof(*node->object)) &&
+            (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+            return node->object;
+        }
+    }
+    return 0;
+}
+
+/* Copy top and its mip levels into held, in place. */
+static void v9x_d3d_held_fill(V9X_D3D_HELD *held,
+                              const V9X_DD_SURFACE_LCL *top)
+{
+    BYTE *bytes = (BYTE *)held;
+    const V9X_DD_SURFACE_LCL *level = top;
+    DWORD index;
+    DWORD n;
+
+    for (index = 0ul; index < sizeof(*held); ++index) {
+        bytes[index] = 0u;
+    }
+    for (n = 0ul; n < V9X_D3D_HELD_LEVELS && level != 0; ++n) {
+        held->lcl[n] = *level;
+        if (level->lpGbl != 0 &&
+            !IsBadReadPtr(level->lpGbl, sizeof(*level->lpGbl))) {
+            held->gbl[n] = *level->lpGbl;
+        }
+        held->lcl[n].lpGbl = &held->gbl[n];
+        held->lcl[n].lpSurfMore = 0ul;
+        held->lcl[n].lpAttachList = 0ul;
+        held->lcl[n].lpAttachListFrom = 0ul;
+        if (n != 0ul) {
+            held->node[n - 1ul].object = &held->lcl[n];
+            held->lcl[n - 1ul].lpAttachList = (DWORD)&held->node[n - 1ul];
+        }
+        level = v9x_d3d_held_next_level(level);
+    }
+}
+
+/*
+ * The entry for a DDI 8 surface whose halves are copied: the copy the
+ * entry already holds, refreshed, or a new one. Null when the heap or the
+ * table is full.
+ */
+static V9X_D3D_SURFACE_HANDLE *v9x_d3d_held_set(V9X_D3D_HANDLES *table,
+                                                const void *local,
+                                                DWORD handle,
+                                                const V9X_DD_SURFACE_LCL *lcl)
+{
+    V9X_D3D_SURFACE_HANDLE *entry = v9x_d3d_handles_find(table, local,
+                                                         handle);
+    V9X_D3D_HELD *held;
+
+    if (entry != 0 && entry->held != 0ul) {
+        held = (V9X_D3D_HELD *)entry->surface;
+        v9x_d3d_held_fill(held, lcl);
+        return entry;
+    }
+    held = (V9X_D3D_HELD *)HeapAlloc(GetProcessHeap(), 0ul, sizeof(*held));
+    if (held == 0) {
+        return 0;
+    }
+    v9x_d3d_held_fill(held, lcl);
+    entry = v9x_d3d_handles_set(table, local, handle, &held->lcl[0]);
+    if (entry == 0) {
+        (void)HeapFree(GetProcessHeap(), 0ul, held);
+        return 0;
+    }
+    entry->held = 1ul;
+    return entry;
+}
+
+/* Retire a handle; a copy goes with it, and no texture record may still
+ * name the copy. */
+static void v9x_d3d_held_drop(V9X_D3D_HANDLES *table, const void *local,
+                              DWORD handle)
+{
+    V9X_D3D_SURFACE_HANDLE *entry = v9x_d3d_handles_find(table, local,
+                                                         handle);
+    void *held;
+
+    if (entry == 0 || entry->held == 0ul) {
+        (void)v9x_d3d_handles_drop(table, local, handle);
+        return;
+    }
+    held = entry->surface;
+    v9x_d3d_textures_forget_surface((const V9X_DD_SURFACE_LCL *)held);
+    (void)v9x_d3d_handles_drop(table, local, handle);
+    (void)HeapFree(GetProcessHeap(), 0ul, held);
+}
+
+/*
  * CreateSurfaceEx: the runtime has given lpDDSLcl a handle (in its MORE
  * structure) within the local object lpDDLcl. A surface whose memory is
  * gone - fpVidMem zero - is the runtime retiring the handle (recalled from
@@ -5513,12 +5667,16 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
                      ? lcl->lpGbl->fpVidMem : 0ul;
         if (handle != 0ul && table != 0) {
             V9X_D3D_SURFACE_HANDLE *entry = 0;
+            int held = v9x_d3d_ddi_for_object() == V9X_D3D_DDI8 &&
+                       v9x_d3d_held_wanted(lcl);
 
             if (memory == 0ul) {
-                (void)v9x_d3d_handles_drop(table, data->lpDDLcl, handle);
+                v9x_d3d_held_drop(table, data->lpDDLcl, handle);
             } else {
-                entry = v9x_d3d_handles_set(table, data->lpDDLcl, handle,
-                                            lcl);
+                entry = held ? v9x_d3d_held_set(table, data->lpDDLcl, handle,
+                                                lcl)
+                             : v9x_d3d_handles_set(table, data->lpDDLcl,
+                                                   handle, lcl);
                 if (entry == 0) {
                     v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
                 }
