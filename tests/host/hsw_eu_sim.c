@@ -196,14 +196,63 @@ static void v9x_hsw_sim_set_flag(struct v9x_hsw_sim *sim,
     }
 }
 
+/* A sampler send, SIMD8 without a header: each channel's coordinates from
+ * the message registers, its answer into four response registers. */
+static void v9x_hsw_sim_sampler(struct v9x_hsw_sim *sim,
+                                const struct v9x_hsw_eu_inst *inst,
+                                v9x_u32 mlen)
+{
+    v9x_u32 rlen = (inst->desc >> 20) & 0x1fu;
+    v9x_u32 bti = inst->desc & 0xffu;
+    v9x_u32 sampler = (inst->desc >> 8) & 0xfu;
+    v9x_u32 c;
+    v9x_u32 k;
+
+    if (sim->sample == 0 || rlen != 4u || mlen > 4u ||
+        (v9x_u32)inst->dst.nr + 4u > V9X_HSW_SIM_GRFS) {
+        sim->error = 1;
+        return;
+    }
+    for (c = 0u; c < 8u; ++c) {
+        float coords[4];
+        float rgba[4];
+
+        for (k = 0u; k < mlen; ++k) {
+            coords[k] = v9x_hsw_sim_float(sim->grf[inst->src0.nr + k][c]);
+        }
+        sim->sample(sim->sample_user, sampler, bti, mlen, coords, rgba);
+        for (k = 0u; k < 4u; ++k) {
+            sim->grf[inst->dst.nr + k][c] = v9x_hsw_sim_bits(rgba[k]);
+        }
+    }
+    ++sim->samples;
+}
+
 static void v9x_hsw_sim_send(struct v9x_hsw_sim *sim,
                              const struct v9x_hsw_eu_inst *inst)
 {
     v9x_u32 mlen = (inst->desc >> 25) & 0xfu;
     v9x_u32 index;
 
-    if (inst->sfid != V9X_HSW_SFID_URB || mlen == 0u || mlen > 16u ||
-        inst->src0.nr + mlen > V9X_HSW_SIM_GRFS) {
+    if (mlen == 0u || mlen > 16u || inst->src0.nr + mlen > V9X_HSW_SIM_GRFS) {
+        sim->error = 1;
+        return;
+    }
+    if (inst->sfid == V9X_HSW_SFID_SAMPLER) {
+        v9x_hsw_sim_sampler(sim, inst, mlen);
+        return;
+    }
+    if (inst->sfid == V9X_HSW_SFID_DP_RC) {
+        v9x_u32 c;
+
+        sim->rt_mask = 0u;
+        for (c = 0u; c < 8u; ++c) {
+            if (inst->pred_ctrl == 0u ||
+                (v9x_hsw_sim_flag(sim, inst, c) ^ inst->pred_inv) != 0) {
+                sim->rt_mask |= 1u << c;
+            }
+        }
+    } else if (inst->sfid != V9X_HSW_SFID_URB) {
         sim->error = 1;
         return;
     }
@@ -304,6 +353,29 @@ static void v9x_hsw_sim_step(struct v9x_hsw_sim *sim,
                                  v9x_hsw_sim_compare(inst->cond_mod, a, b));
             writes[c] = 0;
             break;
+        case V9X_HSW_EU_OP_PLN: {
+            /* src0's p, q and r (elements 0, 1 and 3 from subnr) against
+             * the barycentrics in src1 and the register after it (Vol 7
+             * pln): p b1 + q b2 + r. Align1 only. */
+            v9x_u32 at = inst->src0.subnr / 4u;
+            float p = v9x_hsw_sim_float(
+                *v9x_hsw_sim_element(sim, inst->src0.nr, at));
+            float q = v9x_hsw_sim_float(
+                *v9x_hsw_sim_element(sim, inst->src0.nr, at + 1u));
+            float k = v9x_hsw_sim_float(
+                *v9x_hsw_sim_element(sim, inst->src0.nr, at + 3u));
+
+            if (inst->align16) {
+                sim->error = 1;
+                return;
+            }
+            r = p * v9x_hsw_sim_float(
+                        *v9x_hsw_sim_element(sim, inst->src1.nr, c)) +
+                q * v9x_hsw_sim_float(
+                        *v9x_hsw_sim_element(sim, inst->src1.nr + 1u, c)) +
+                k;
+            break;
+        }
         case V9X_HSW_EU_OP_MATH:
             a = v9x_hsw_sim_fsource(sim, inst, &inst->src0, c);
             b = inst->cond_mod == V9X_HSW_EU_MATH_POW
@@ -345,6 +417,8 @@ int v9x_hsw_sim_run(struct v9x_hsw_sim *sim, const v9x_u32 *words,
     sim->error = 0;
     sim->executed = 0u;
     sim->message_length = 0u;
+    sim->rt_mask = 0u;
+    sim->samples = 0u;
     for (at = 0u; at + 4u <= dwords && !sim->ended && !sim->error;
          at += 4u) {
         if (v9x_intel_hsw_eu_decode(words + at, &inst) != V9X_STATUS_OK) {

@@ -49,7 +49,17 @@ Step 3 done in part 2026-10-29 (boots 117-119,
   versions 1.0 and 1.1; tex, texkill, texbem, texm3x3pad and texm3x3vspec;
   mov and mul; and co-issue. Cube textures join step 5.
 
-Steps 4-7 are not started.
+Step 4 done 2026-10-30, host only
+([`2026-10-30-haswell-ps11-step4-translator.md`](../decisions/2026-10-30-haswell-ps11-step4-translator.md)):
+
+- The PS 1.0/1.1 parser, a host-only reference interpreter, and the
+  Gen7.5 translator, held to each other.
+- Ten kernels run in the extended host EU model match the interpreter
+  within 2e-4, and kill the same pixels; two deliberate breaks fail.
+- Kernels are 512 to 2,544 bytes, so shader kernels need their own region
+  in step 5.
+
+Steps 5-7 are not started.
 Claims about the tree cite files at `7a2a0504`. Claims about DirectX 8 and
 3DMark that are recalled rather than read or measured are marked so; step 1
 and step 3 exist to replace them with evidence.

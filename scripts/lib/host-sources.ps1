@@ -59,6 +59,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\hsw_3d.c',
         # Haswell vertex kernels generated from a T&L key.
         'src\chipsets\intel\hsw_vs.c',
+        # Haswell pixel shader 1.0/1.1 kernels.
+        'src\chipsets\intel\hsw_ps11.c',
         # Haswell pipelined render submission: slots, sequences, signatures.
         'src\chipsets\intel\hsw_pipe.c',
         # Haswell primary-plane scanout arithmetic (Phase F3).
@@ -213,6 +215,11 @@ function Get-V9xHostSourceNames {
         # DDI 8's D3DCAPS8 and format list from the DDI 7 description.
         'src\display32\d3d\d3d_caps8.c',
         'tests\host\test_d3d_caps8.c',
+        # Pixel shader 1.0/1.1: the parser, and the host-only reference
+        # interpreter the Haswell translator is held to.
+        'src\display32\d3d\d3d_ps11.c',
+        'src\display32\d3d\d3d_ps11_ref.c',
+        'tests\host\test_d3d_ps11.c',
         # DDI 7's CreateSurfaceEx handle table.
         'src\display32\d3d\d3d_handles.c',
         'tests\host\test_d3d_handles.c',
@@ -302,6 +309,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_intel_hsw_eu.c',
         'tests\host\hsw_eu_sim.c',
         'tests\host\test_intel_hsw_vs.c',
+        'tests\host\test_intel_hsw_ps11.c',
         'tests\host\test_intel_hsw_3d.c',
         'tests\host\test_intel_hsw_pipe.c',
         'tests\host\test_intel_hsw_display.c',

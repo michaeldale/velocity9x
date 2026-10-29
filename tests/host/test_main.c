@@ -167,6 +167,9 @@ unsigned int v9x_run_d3d_dp2_dx8_tests(void);
 /* tests\host\test_d3d_caps8.c: DDI 8's D3DCAPS8 and format list. */
 unsigned int v9x_run_d3d_caps8_tests(void);
 
+/* tests\host\test_d3d_ps11.c: the pixel shader 1.0/1.1 parser. */
+unsigned int v9x_run_d3d_ps11_tests(void);
+
 /* tests\host\test_d3d_handles.c: DDI 7's CreateSurfaceEx handle table. */
 unsigned int v9x_run_d3d_handles_tests(void);
 
@@ -234,6 +237,10 @@ unsigned int v9x_run_intel_hsw_eu_tests(void);
 /* tests\host\test_intel_hsw_vs.c: vertex kernels from a T&L key, run in
  * the host EU model (hsw_eu_sim.c) against the reference evaluator. */
 unsigned int v9x_run_intel_hsw_vs_tests(void);
+
+/* tests\host\test_intel_hsw_ps11.c: pixel shader 1.x kernels in the host
+ * EU model against the reference interpreter. */
+unsigned int v9x_run_intel_hsw_ps11_tests(void);
 
 /* tests\host\test_intel_hsw_3d.c: Gen7.5 3D packets, state, checker. */
 unsigned int v9x_run_intel_hsw_3d_tests(void);
@@ -1403,6 +1410,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_dp2_tests();
     failures += v9x_run_d3d_dp2_dx8_tests();
     failures += v9x_run_d3d_caps8_tests();
+    failures += v9x_run_d3d_ps11_tests();
     failures += v9x_run_d3d_handles_tests();
     failures += v9x_run_d3d_tnl_tests();
     failures += v9x_run_d3d_select_tests();
@@ -1424,6 +1432,7 @@ int main(int argc, char **argv)
     failures += v9x_run_intel_hsw_tests();
     failures += v9x_run_intel_hsw_eu_tests();
     failures += v9x_run_intel_hsw_vs_tests();
+    failures += v9x_run_intel_hsw_ps11_tests();
     failures += v9x_run_intel_hsw_3d_tests();
     failures += v9x_run_intel_hsw_pipe_tests();
     failures += v9x_run_intel_hsw_display_tests();
