@@ -6582,6 +6582,53 @@ static void v9x_d3d_ps_texture(V9X_D3D_CONTEXT *context,
     out->env_color = 0ul;
 }
 
+/* The first refused shader batches (V9XPS.LOG): the shader, the stages it
+ * samples, its triangles and the engine's reason; then each sampled stage's
+ * texture as the engine was handed it - handle, object, caps and pixel
+ * format flags, then size, pitch, FourCC or bit count, and address. This is
+ * what showed Nature's water sampling an empty stage 3 (boot 136). */
+#define V9X_D3D_PS_REFUSED_LOGS 24ul
+
+static DWORD v9x_d3d_ps_refused_logged;
+
+static void v9x_d3d_ps_log_refused(const V9X_D3D_PS_BATCH *batch)
+{
+    DWORD s;
+
+    if (v9x_d3d_ps_refused_logged >= V9X_D3D_PS_REFUSED_LOGS) {
+        return;
+    }
+    ++v9x_d3d_ps_refused_logged;
+    v9x_d3d_ps_log("ps-refused-draw", batch->shader.serial,
+                   batch->shader.program->samples, batch->triangles,
+                   v9x_hal->d3d_diagnostics.m64_policy_last);
+    for (s = 0ul; s < V9X_R3D_SHADER_STAGES; ++s) {
+        const V9X_DD_SURFACE_LCL *lcl =
+            (const V9X_DD_SURFACE_LCL *)batch->shader.texture[s].object;
+        const V9X_DD_SURFACE_GBL *gbl;
+        DWORD stage = (s << 24) | batch->context->ddi8_ps_stage[s].texture;
+
+        if ((batch->shader.program->samples & (1ul << s)) == 0ul) {
+            continue;
+        }
+        if (lcl == 0 || IsBadReadPtr(lcl, sizeof(*lcl)) || lcl->lpGbl == 0 ||
+            IsBadReadPtr(lcl->lpGbl, sizeof(*lcl->lpGbl))) {
+            v9x_d3d_ps_log("ps-refused-tex", stage, (DWORD)lcl, 0ul, 0ul);
+            continue;
+        }
+        gbl = lcl->lpGbl;
+        v9x_d3d_ps_log("ps-refused-tex", stage, (DWORD)lcl, lcl->ddsCaps,
+                       gbl->ddpfSurface.dwFlags);
+        v9x_d3d_ps_log("ps-refused-tex2",
+                       ((DWORD)gbl->wWidth << 16) | gbl->wHeight,
+                       (DWORD)gbl->lPitch,
+                       gbl->ddpfSurface.dwFourCC != 0ul
+                           ? gbl->ddpfSurface.dwFourCC
+                           : gbl->ddpfSurface.dwRGBBitCount,
+                       gbl->fpVidMem);
+    }
+}
+
 static void v9x_d3d_ps_flush(void)
 {
     V9X_D3D_PS_BATCH *batch = &v9x_d3d_ps_batch;
@@ -6594,6 +6641,7 @@ static void v9x_d3d_ps_flush(void)
         batch->context->ddi8_ps_triangles += batch->triangles;
     } else {
         ++batch->context->ddi8_ps_dropped;
+        v9x_d3d_ps_log_refused(batch);
     }
     batch->triangles = 0ul;
 }
@@ -6662,6 +6710,10 @@ static void v9x_d3d_ps_fan(void *opaque, const v9x_u8 *first,
  * callback replaced. Points and lines under a shader are not drawn (the
  * walker counts them undrawn); nothing 3DMark 2001 SE draws needs them.
  */
+#define V9X_D3D_CUBE_DRAW_LOGS 32ul
+
+static DWORD v9x_d3d_cube_draws_logged;
+
 static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
                              V9X_D3D_CONTEXT *context,
                              const V9X_D3D_PS_SHADER *shader,
@@ -6687,11 +6739,15 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
     for (s = 0ul; s < V9X_R3D_SHADER_STAGES; ++s) {
         v9x_d3d_ps_texture(context, &context->ddi8_ps_stage[s],
                            &batch->shader.texture[s]);
-        /* Step 5c: a stage that samples a cube, as the draw sees it. */
-        if (v9x_d3d_cube_handle_seen(context->ddi8_ps_stage[s].texture)) {
+        /* Step 5c: a stage that samples a cube, as the draw sees it - the
+         * first V9X_D3D_CUBE_DRAW_LOGS only: a line every draw filled the
+         * log's 6,000 lines inside one Pixel Shader test (boot 142). */
+        if (v9x_d3d_cube_draws_logged < V9X_D3D_CUBE_DRAW_LOGS &&
+            v9x_d3d_cube_handle_seen(context->ddi8_ps_stage[s].texture)) {
             const V9X_DD_SURFACE_LCL *lcl =
                 (const V9X_DD_SURFACE_LCL *)batch->shader.texture[s].object;
 
+            ++v9x_d3d_cube_draws_logged;
             v9x_d3d_ps_log("cube-draw", s, context->ddi8_ps_stage[s].texture,
                            v9x_d3d_surface_size_of(lcl),
                            lcl != 0 && lcl->lpGbl != 0 ? lcl->lpGbl->fpVidMem
@@ -7663,6 +7719,11 @@ static void v9x_d3d_note_driver_info_guid(DWORD data1)
 #define V9X_D3D_CAPS8_MAX_PRIMITIVE_COUNT 0x0000fffful
 #define V9X_D3D_CAPS8_MAX_STREAM_STRIDE   255ul
 
+/* D3DFVFCAPS_TEXCOORDCOUNTMASK (DDK d3d8caps.h), and the coordinate sets a
+ * PS 1.1 draw's wide vertex carries. */
+#define V9X_D3DFVFCAPS_TEXCOORDCOUNTMASK  0x0000fffful
+#define V9X_D3D_PS_TEXCOORD_SETS          4ul
+
 static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
 {
     const V9X_D3DDEVICEDESC_V1 *hw = &v9x_hal->d3d_global.hwCaps;
@@ -7719,7 +7780,11 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
     caps->PixelShaderVersion = V9X_D3DPS_VERSION(0, 0);
     caps->MaxPixelShaderValue = 1.0f;
     /* An engine that runs PS 1.1 kernels (step 5b); a 1.1 shader may read
-     * t0-t3, so four textures with it. */
+     * t0-t3, so four textures with it, and four coordinate sets, which the
+     * wide vertex carries (V9X_R3D_SHADER_FLOATS). Told two, 3DMark 2001
+     * SE bound Nature's water cube to stage 1 and left stage 3, which its
+     * texm3x3vspec samples, empty, and every water draw was refused; told
+     * four, it binds stage 3 (the 4570, boots 137-138). */
     {
         const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
 
@@ -7727,6 +7792,8 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
             caps->PixelShaderVersion = V9X_D3DPS_VERSION(1, 1);
             caps->MaxTextureBlendStages = 4ul;
             caps->MaxSimultaneousTextures = 4ul;
+            caps->FVFCaps = (caps->FVFCaps & ~V9X_D3DFVFCAPS_TEXCOORDCOUNTMASK) |
+                            V9X_D3D_PS_TEXCOORD_SETS;
         }
     }
     /* Cube maps, with mips, of power-of-two sides: 3DMark 2001 SE calls

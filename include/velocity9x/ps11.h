@@ -114,8 +114,12 @@ v9x_u32 v9x_ps11_parse(const v9x_u32 *tokens, v9x_u32 dwords,
 
 /*
  * What a draw adds to a shader: the texture stages' bump matrices and
- * luminance terms (texbem, texbeml), which stages are cube maps, and
- * which have projected coordinates. Constants c0-c7 are the
+ * luminance terms (texbem, texbeml), which stages are cube maps, which
+ * have projected coordinates, and which have no texture: a lookup there
+ * reads (0, 0, 0, 1), the colour DirectX hardware commonly returns for an
+ * empty stage, which 3DMark 2001 SE's Advanced Pixel Shader test samples
+ * (the 4570, boot 144; the value is a convention here, not a measurement).
+ * Constants c0-c7 are the
  * application's, before the shader's own def values; both are clamped to
  * [-1, 1] where they are read (ddi8-on-win9x.md section 6).
  */
@@ -125,6 +129,7 @@ typedef struct v9x_ps11_env {
     float luminance[4][2];  /* stage: scale, offset   */
     v9x_u32 cube;           /* bit N: stage N is a cube map */
     v9x_u32 projected;      /* bit N: stage N's u and v over w */
+    v9x_u32 unbound;        /* bit N: stage N has no texture */
 } V9X_PS11_ENV;
 
 /* One pixel's inputs: diffuse and specular, and texture coordinate sets

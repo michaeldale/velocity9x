@@ -228,6 +228,139 @@ int v9x_r3d_clip_triangle(const V9X_R3D_VERTEX *triangle,
     return (int)count;
 }
 
+/* The wide vertex: sx sy sz rhw, then the attributes. */
+#define V9X_R3D_WIDE_RHW        3u
+#define V9X_R3D_WIDE_ATTRIBUTES 4u
+
+static void v9x_r3d_copy_wide(float *to, const float *from)
+{
+    v9x_u32 k;
+
+    for (k = 0ul; k < V9X_R3D_SHADER_FLOATS; ++k) {
+        to[k] = from[k];
+    }
+}
+
+/* As v9x_r3d_lerp_vertex, with every attribute treated as tu is there. */
+static void v9x_r3d_lerp_wide(float *result, const float *first,
+                              const float *second, float amount)
+{
+    float rhw;
+    float inverse;
+    v9x_u32 k;
+
+    for (k = 0ul; k < V9X_R3D_WIDE_ATTRIBUTES; ++k) {
+        result[k] = first[k] + (second[k] - first[k]) * amount;
+    }
+    rhw = result[V9X_R3D_WIDE_RHW];
+    if (first[V9X_R3D_WIDE_RHW] != second[V9X_R3D_WIDE_RHW] &&
+        first[V9X_R3D_WIDE_RHW] > 0.0f && second[V9X_R3D_WIDE_RHW] > 0.0f &&
+        rhw > 0.0f) {
+        inverse = 1.0f / rhw;
+        for (k = V9X_R3D_WIDE_ATTRIBUTES; k < V9X_R3D_SHADER_FLOATS; ++k) {
+            float a = first[k] * first[V9X_R3D_WIDE_RHW];
+
+            result[k] = (a + (second[k] * second[V9X_R3D_WIDE_RHW] - a) *
+                                 amount) * inverse;
+        }
+        return;
+    }
+    for (k = V9X_R3D_WIDE_ATTRIBUTES; k < V9X_R3D_SHADER_FLOATS; ++k) {
+        result[k] = first[k] + (second[k] - first[k]) * amount;
+    }
+}
+
+/* Whether a wide vertex is inside edge (left, right, top, bottom). */
+static int v9x_r3d_wide_inside(const float *vertex, v9x_u32 edge,
+                               float boundary)
+{
+    switch (edge) {
+    case 0ul:
+        return vertex[0] >= boundary;
+    case 1ul:
+        return vertex[0] <= boundary;
+    case 2ul:
+        return vertex[1] >= boundary;
+    default:
+        return vertex[1] <= boundary;
+    }
+}
+
+int v9x_r3d_clip_wide(const float *triangle, float guard_limit, float width,
+                      float height, float *scratch, float *result)
+{
+    float *input = scratch;
+    float *output = scratch + V9X_R3D_CLIP_MAX_VERTICES *
+                              V9X_R3D_SHADER_FLOATS;
+    v9x_u32 count = 3ul;
+    v9x_u32 edge;
+    v9x_u32 index;
+
+    /* The guard band and the finite test, as v9x_r3d_clip_triangle. */
+    for (index = 0ul; index < 3ul; ++index) {
+        const float *vertex = triangle + index * V9X_R3D_SHADER_FLOATS;
+
+        if (!v9x_r3d_coordinate_finite(vertex[0]) ||
+            !v9x_r3d_coordinate_finite(vertex[1])) {
+            return -1;
+        }
+        if (!(vertex[0] >= -guard_limit && vertex[0] < guard_limit &&
+              vertex[1] >= -guard_limit && vertex[1] < guard_limit)) {
+            return -1;
+        }
+        v9x_r3d_copy_wide(input + index * V9X_R3D_SHADER_FLOATS, vertex);
+    }
+    for (edge = 0ul; edge < 4ul && count != 0ul; ++edge) {
+        /* The right and bottom edges at width and height, as there. */
+        float boundary = (edge == 0ul || edge == 2ul) ? 0.0f :
+            (edge == 1ul ? width : height);
+        v9x_u32 axis = edge < 2ul ? 0ul : 1ul;
+        const float *previous = input + (count - 1ul) * V9X_R3D_SHADER_FLOATS;
+        int previous_inside = v9x_r3d_wide_inside(previous, edge, boundary);
+        v9x_u32 output_count = 0ul;
+
+        for (index = 0ul; index < count; ++index) {
+            const float *current = input + index * V9X_R3D_SHADER_FLOATS;
+            int current_inside = v9x_r3d_wide_inside(current, edge, boundary);
+
+            if (current_inside != previous_inside) {
+                float denominator = current[axis] - previous[axis];
+
+                if (denominator != 0.0f &&
+                    output_count < V9X_R3D_CLIP_MAX_VERTICES) {
+                    float *made = output +
+                                  output_count * V9X_R3D_SHADER_FLOATS;
+
+                    v9x_r3d_lerp_wide(made, previous, current,
+                                      (boundary - previous[axis]) /
+                                          denominator);
+                    made[axis] = boundary;
+                    ++output_count;
+                }
+            }
+            if (current_inside && output_count < V9X_R3D_CLIP_MAX_VERTICES) {
+                v9x_r3d_copy_wide(output + output_count *
+                                               V9X_R3D_SHADER_FLOATS,
+                                  current);
+                ++output_count;
+            }
+            previous = current;
+            previous_inside = current_inside;
+        }
+        count = output_count;
+        {
+            float *swap = input;
+
+            input = output;
+            output = swap;
+        }
+    }
+    for (index = 0ul; index < count * V9X_R3D_SHADER_FLOATS; ++index) {
+        result[index] = input[index];
+    }
+    return (int)count;
+}
+
 /*
  * Whether all three vertices lie on the render target, edges included.
  *

@@ -149,6 +149,7 @@ static void check_case(const char *name, const V9X_PS11_ENV *env,
     desc.setup_grf = SETUP_GRF;
     desc.cube = env->cube;
     desc.projected = env->projected;
+    desc.unbound = env->unbound;
     desc.fog = fog_on;
     for (c = 0ul; c < 3ul; ++c) {
         desc.fog_rgb[c] = v9x_hsw_sim_bits(fog_rgb[c]);
@@ -445,6 +446,35 @@ static void cases(void)
     put(END);
     check_case("texkill fog", &env, 1ul);
     fog_on = 0u;
+
+    /* A stage with no texture reads (0, 0, 0, 1) on both sides: 3DMark
+     * 2001 SE's Advanced Pixel Shader test draws its reflection pass with
+     * every stage cleared and tex t0 (the 4570, boot 144). texkill t1 still
+     * kills. */
+    zero_env(&env);
+    env.unbound = 1ul;
+    check_case("texkill unbound", &env, 1ul);
+    {
+        V9X_PS11_PROGRAM program;
+        V9X_PS11_PIXEL pixel;
+        v9x_u32 where;
+        float out[4];
+
+        used = 0ul;
+        put(VER(1ul, 0ul));
+        put(OP_TEX); put(DST(T, 0, ALL, 0, 0));
+        put(OP_MOV); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 0, XYZW, 0));
+        put(END);
+        check_case("tex unbound", &env, 0ul);
+        memset(&pixel, 0, sizeof(pixel));
+        pixel.tc[0][0] = 0.3f;
+        pixel.tc[0][1] = 0.6f;
+        CHECK(v9x_ps11_parse(words, used, &program, &where) == V9X_PS11_OK);
+        CHECK(v9x_ps11_run(&program, &env, &pixel, interpreter_texel, 0,
+                           out) == 1);
+        CHECK(out[0] == 0.0f && out[1] == 0.0f && out[2] == 0.0f &&
+              out[3] == 1.0f);
+    }
 }
 
 static void refusals(void)
@@ -464,6 +494,7 @@ static void refusals(void)
     desc.setup_grf = SETUP_GRF;
     desc.cube = 0ul;
     desc.projected = 0ul;
+    desc.unbound = 0ul;
     desc.fog = 0u;
     /* Too little room, and registers that would overlap the kernel's. */
     CHECK(v9x_intel_hsw_ps11_build(kernel, 8ul, &program, &desc, &dwords) ==

@@ -3382,7 +3382,8 @@ static void v9x_d3d_hsw_describe_caps(V9X_DD_SHARED *shared)
  *
  * The kernel cache at V9X_INTEL_HSW_PS11_KERNEL_OFF holds one program's
  * kernel a slot, keyed by the core's serial and the stages that are cube
- * maps or projected, and fog with its colour, which the kernel holds as
+ * maps, projected or without a texture, and fog with its colour, which the
+ * kernel holds as
  * immediates as the fixed-function ones do: the description the
  * translator is given. Its
  * directory is trusted as the vertex kernels' is: each entry's tag must
@@ -3411,6 +3412,7 @@ typedef char v9x_d3d_hsw_assert_ps11_tags[
 typedef struct v9x_d3d_hsw_ps11_entry {
     v9x_u32 serial;
     v9x_u32 cube;
+    v9x_u32 unbound;
     v9x_u32 projected;
     v9x_u8 fog;
     v9x_u32 fog_rgb[3];
@@ -3423,14 +3425,16 @@ static DWORD v9x_d3d_hsw_ps11_victim;
 
 /* Whether a cached kernel was built for this shader, stages and fog; the
  * colour is zero without fog (v9x_d3d_hsw_map), so it compares either
- * way. cube is the stages whose texture is a placed cube. */
+ * way. cube is the stages whose texture is a placed cube, unbound the
+ * sampled stages with no texture. */
 static int v9x_d3d_hsw_ps11_matches(const V9X_D3D_HSW_PS11_ENTRY *entry,
                                     const V9X_R3D_SHADER *shader,
-                                    v9x_u32 cube,
+                                    v9x_u32 cube, v9x_u32 unbound,
                                     const struct v9x_hsw_ps_desc *fixed)
 {
     return entry->serial == shader->serial &&
            entry->cube == cube &&
+           entry->unbound == unbound &&
            entry->projected == shader->env.projected &&
            entry->fog == fixed->fog &&
            entry->fog_rgb[0] == fixed->fog_rgb[0] &&
@@ -3438,11 +3442,11 @@ static int v9x_d3d_hsw_ps11_matches(const V9X_D3D_HSW_PS11_ENTRY *entry,
            entry->fog_rgb[2] == fixed->fog_rgb[2];
 }
 
-/* The kernel for the shader under the draw's fog and cube stages, built
- * on a miss; its offset from the draw slot's state base in *kernel. 0 when
- * it cannot be built or is larger than a slot. */
+/* The kernel for the shader under the draw's fog, cube and unbound stages,
+ * built on a miss; its offset from the draw slot's state base in *kernel.
+ * 0 when it cannot be built or is larger than a slot. */
 static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
-                                   v9x_u32 cube,
+                                   v9x_u32 cube, v9x_u32 unbound,
                                    const struct v9x_hsw_ps_desc *fixed,
                                    const struct v9x_hsw_pipe_slot *slot,
                                    DWORD *kernel)
@@ -3459,7 +3463,8 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     for (index = 0ul; index < V9X_INTEL_HSW_PS11_KERNEL_SLOTS; ++index) {
         entry = &v9x_d3d_hsw_ps11_cache[index];
         if (entry->tag != 0ul && v9x_d3d_hsw_ps11_matches(entry, shader,
-                                                          cube, fixed) &&
+                                                          cube, unbound,
+                                                          fixed) &&
             status[V9X_D3D_HSW_PS11_TAG_DWORD + index] == entry->tag) {
             *kernel = V9X_INTEL_HSW_PS11_KERNEL_OFF +
                       index * V9X_INTEL_HSW_PS11_KERNEL_SLOT -
@@ -3487,6 +3492,7 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     desc.setup_grf = (v9x_u8)(V9X_D3D_HSW_PS11_CONST_GRF +
                               V9X_HSW_PS11_CONST_GRFS);
     desc.cube = cube;
+    desc.unbound = unbound;
     desc.projected = shader->env.projected;
     desc.fog = fixed->fog;
     for (index2 = 0ul; index2 < 3ul; ++index2) {
@@ -3509,6 +3515,7 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     status[V9X_D3D_HSW_PS11_COUNTER_DWORD] = tag;
     entry->serial = shader->serial;
     entry->cube = cube;
+    entry->unbound = unbound;
     entry->projected = shader->env.projected;
     entry->fog = desc.fog;
     for (index2 = 0ul; index2 < 3ul; ++index2) {
@@ -3597,13 +3604,66 @@ static DWORD v9x_d3d_hsw_ps11_state(const V9X_R3D_DRAW *draw,
 }
 
 /*
+ * A shader triangle whose span reaches 8K (v9x_d3d_hsw_guard), cut to the
+ * target by the wide clipper and written at *target as its fan, each
+ * vertex's sx sy moved to the pixel centre first; the triangles written,
+ * 0 when nothing is left or a vertex is past the band (counted dropped).
+ * The fan is at most V9X_R3D_MAX_FAN_TRIANGLES. Scratch is static: HAL
+ * callbacks run under the Win16 lock, one at a time, on small stacks.
+ * 3DMark 2001 SE's Pixel Shader tests had 9,598 such triangles a run
+ * dropped (the 4570, boot 145).
+ */
+static float v9x_d3d_hsw_ps11_moved[3u * V9X_R3D_SHADER_FLOATS];
+static float v9x_d3d_hsw_ps11_scratch[2u * V9X_R3D_CLIP_MAX_VERTICES *
+                                      V9X_R3D_SHADER_FLOATS];
+static float v9x_d3d_hsw_ps11_clipped[V9X_R3D_CLIP_MAX_VERTICES *
+                                      V9X_R3D_SHADER_FLOATS];
+
+static DWORD v9x_d3d_hsw_ps11_clip(const float *triangle, float centre,
+                                   float width, float height,
+                                   v9x_u32 **target)
+{
+    const v9x_u32 *source;
+    DWORD index;
+    int corners;
+    int fan;
+    int pick;
+
+    for (index = 0ul; index < 3ul * V9X_R3D_SHADER_FLOATS; ++index) {
+        v9x_d3d_hsw_ps11_moved[index] = triangle[index];
+    }
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_d3d_hsw_ps11_moved[index * V9X_R3D_SHADER_FLOATS] += centre;
+        v9x_d3d_hsw_ps11_moved[index * V9X_R3D_SHADER_FLOATS + 1ul] += centre;
+    }
+    corners = v9x_r3d_clip_wide(v9x_d3d_hsw_ps11_moved,
+                                v9x_d3d_hsw_limits.coordinate_limit, width,
+                                height, v9x_d3d_hsw_ps11_scratch,
+                                v9x_d3d_hsw_ps11_clipped);
+    if (corners < 0) {
+        ++v9x_hal->d3d_diagnostics.ps11_triangles_dropped;
+        return 0ul;
+    }
+    for (fan = 1; fan + 1 < corners; ++fan) {
+        for (pick = 0; pick < 3; ++pick) {
+            source = (const v9x_u32 *)(v9x_d3d_hsw_ps11_clipped +
+                (DWORD)(pick == 0 ? 0 : fan + pick - 1) *
+                    V9X_R3D_SHADER_FLOATS);
+            for (index = 0ul; index < V9X_R3D_SHADER_FLOATS; ++index) {
+                *(*target)++ = source[index];
+            }
+        }
+    }
+    return corners > 2 ? (DWORD)(corners - 2) : 0ul;
+}
+
+/*
  * The draw: its fixed-function state mapped as any draw's, with no texture
  * of its own; each stage the program samples as a texture unit; then
  * pieces of whole triangles a slot at a time. A triangle past the guard
- * band, or spanning 8K, is dropped and counted rather than clipped: the
- * core's clipper knows the 32-byte vertex only. Fog is the kernel's,
- * after the shader, in the colour v9x_d3d_hsw_map gave the fixed-function
- * description.
+ * band is dropped and counted; one spanning 8K is cut to the target
+ * (v9x_d3d_hsw_ps11_clip). Fog is the kernel's, after the shader, in the
+ * colour v9x_d3d_hsw_map gave the fixed-function description.
  */
 static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
                                    const V9X_R3D_SHADER *shader,
@@ -3620,6 +3680,7 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
     V9X_R3D_VERTEX corners[3];
     v9x_u32 sampled;
     v9x_u32 cube = 0ul;
+    v9x_u32 unbound = 0ul;
     DWORD started = V9X_TIME_BEGIN();
     DWORD reason;
     DWORD kernel = 0ul;
@@ -3655,10 +3716,18 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
     }
     /* A stage whose texture is a placed cube samples it as one: the
      * kernel looks up three coordinates there (Direct3D chooses by the
-     * texture, not the instruction). */
+     * texture, not the instruction). A sampled stage with no texture at
+     * all is not a refusal: the kernel reads (0, 0, 0, 1) there and the
+     * stage gets no surface or sampler. 3DMark 2001 SE's Advanced Pixel
+     * Shader test draws its reflection pass so, 176,000 batches a run that
+     * were refused (the 4570, boot 144). */
     sampled = shader->program->samples;
     for (index = 0ul; index < V9X_R3D_SHADER_STAGES; ++index) {
         if ((sampled & (1ul << index)) == 0ul) {
+            continue;
+        }
+        if (shader->texture[index].object == 0) {
+            unbound |= 1ul << index;
             continue;
         }
         reason = v9x_d3d_hsw_texture_unit(&shader->texture[index],
@@ -3711,14 +3780,15 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
                                       V9X_D3D_HSW_REFUSE_PIECE);
             return 0;
         }
-        reason = v9x_d3d_hsw_ps11_state(draw, &state, units, sampled,
-                                        &shader->env, &slot);
+        reason = v9x_d3d_hsw_ps11_state(draw, &state, units,
+                                        sampled & ~unbound, &shader->env,
+                                        &slot);
         if (reason != V9X_D3D_HSW_REFUSE_NONE) {
             v9x_d3d_hsw_count_refusal(reason);
             return 0;
         }
-        if (!v9x_d3d_hsw_ps11_kernel(shader, cube, &state.desc, &slot,
-                                     &kernel)) {
+        if (!v9x_d3d_hsw_ps11_kernel(shader, cube, unbound, &state.desc,
+                                     &slot, &kernel)) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_STATE);
             return 0;
         }
@@ -3730,9 +3800,11 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
         target = v9x_d3d_hsw_reserve(slot.vertex_off);
         count = 0ul;
         while (done < triangle_count &&
-               count < V9X_D3D_HSW_PS11_TRIANGLES) {
+               count + V9X_R3D_MAX_FAN_TRIANGLES <=
+                   V9X_D3D_HSW_PS11_TRIANGLES) {
             const float *triangle =
                 vertices + done * 3ul * V9X_R3D_SHADER_FLOATS;
+            int kind;
 
             for (vertex = 0ul; vertex < 3ul; ++vertex) {
                 corners[vertex].sx =
@@ -3741,7 +3813,15 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
                     triangle[vertex * V9X_R3D_SHADER_FLOATS + 1ul] + centre;
             }
             ++done;
-            if (v9x_d3d_hsw_guard(corners) != V9X_D3D_HSW_GUARD_DRAW) {
+            kind = v9x_d3d_hsw_guard(corners);
+            if (kind == V9X_D3D_HSW_GUARD_CLIP) {
+                count += v9x_d3d_hsw_ps11_clip(triangle, centre,
+                                               (float)draw->target.width,
+                                               (float)draw->target.height,
+                                               &target);
+                continue;
+            }
+            if (kind != V9X_D3D_HSW_GUARD_DRAW) {
                 ++v9x_hal->d3d_diagnostics.ps11_triangles_dropped;
                 continue;
             }

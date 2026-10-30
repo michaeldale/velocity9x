@@ -51,6 +51,8 @@ struct v9x_hsw_ps11_desc {
     v9x_u8 setup_grf;       /* first setup register                 */
     v9x_u32 cube;           /* bit N: stage N is a cube map         */
     v9x_u32 projected;      /* bit N: stage N's u and v over w      */
+    v9x_u32 unbound;        /* bit N: stage N has no texture: its   */
+                            /* lookups read (0, 0, 0, 1), unsent    */
     v9x_u8 fog;             /* fog after the shader                 */
     v9x_u32 fog_rgb[3];     /* its colour, float bits; read with fog */
 };

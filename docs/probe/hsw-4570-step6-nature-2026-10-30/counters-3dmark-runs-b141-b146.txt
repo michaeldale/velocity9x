@@ -1,0 +1,37 @@
+# Refusal and drop counters across 3DMark 2001 SE runs (V9XSNA7, before -> after each run)
+[b141-nature]
+M64Policy03=175956 -> 175956
+Ps11TrianglesDropped=1258 -> 1281
+Ps11KernelsBuilt=7 -> 8
+[b141-ps]
+M64Policy03=175956 -> 352529
+Ps11TrianglesDropped=1281 -> 2512
+Ps11KernelsBuilt=8 -> 12
+[b143-ps]
+M64Policy03=0 -> 175988
+Ps11TrianglesDropped=0 -> 1201
+Ps11KernelsBuilt=0 -> 4
+[b145-ps]
+M64Policy03=0 -> 0
+Ps11TrianglesDropped=0 -> 9598
+Ps11KernelsBuilt=8 -> 15
+[b146-ps]
+M64Policy03=0 -> 0
+Ps11TrianglesDropped=0 -> 0
+Ps11KernelsBuilt=8 -> 15
+[default benchmark b141, whole boot]
+Ps11KernelsBuilt=7
+Ps11KernelsRefused=0
+Ps11TrianglesDropped=1258
+Ps11Fogged=0
+WatchFaultCode=0x00000000
+MipTreeDeclined=4875
+M64Policy03=175956
+[default benchmark b146, whole boot]
+Ps11KernelsBuilt=25
+Ps11KernelsRefused=0
+Ps11TrianglesDropped=0
+Ps11Fogged=2
+WatchFaultCode=0x00000000
+MipTreeDeclined=5068
+M64Policy03=0

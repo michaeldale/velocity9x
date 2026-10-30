@@ -297,6 +297,18 @@ typedef struct v9x_r3d_draw {
 #define V9X_R3D_SHADER_STAGES 4u
 #define V9X_R3D_SHADER_FLOATS 28u
 
+/*
+ * v9x_r3d_clip_triangle for three of those vertices: the same guard band,
+ * edges and answers, with every float after rhw - colours as well as
+ * coordinates - perspective-correct at a cut, since a pixel shader's
+ * inputs are interpolated so (intel_hsw_ps11.h), and a plain blend where
+ * the two ends' rhw is equal. scratch holds 2 * V9X_R3D_CLIP_MAX_VERTICES
+ * vertices and result V9X_R3D_CLIP_MAX_VERTICES, both the caller's: HAL
+ * callbacks run on small stacks.
+ */
+int v9x_r3d_clip_wide(const float *triangle, float guard_limit, float width,
+                      float height, float *scratch, float *result);
+
 typedef struct v9x_r3d_shader {
     const V9X_PS11_PROGRAM *program;
     v9x_u32 serial;

@@ -156,11 +156,18 @@ static void v9x_ps11_ref_write(V9X_PS11_REF *ref, const V9X_PS11_INST *inst,
     }
 }
 
-/* A lookup on stage: a cube's three coordinates over their largest
- * magnitude first. */
+/* A lookup on stage: (0, 0, 0, 1) when it has no texture; a cube's three
+ * coordinates over their largest magnitude first. */
 static void v9x_ps11_ref_lookup(const V9X_PS11_REF *ref, v9x_u32 stage,
                                 v9x_u32 count, float *coords, float rgba[4])
 {
+    if ((ref->env->unbound & (1ul << stage)) != 0ul) {
+        rgba[0] = 0.0f;
+        rgba[1] = 0.0f;
+        rgba[2] = 0.0f;
+        rgba[3] = 1.0f;
+        return;
+    }
     if ((ref->env->cube & (1ul << stage)) != 0ul) {
         float largest = v9x_ps11_ref_abs(coords[0]);
 

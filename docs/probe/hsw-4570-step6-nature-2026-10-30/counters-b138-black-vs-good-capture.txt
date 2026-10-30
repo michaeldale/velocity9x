@@ -1,0 +1,22 @@
+[b138-fvf4b]
+CountFlip=3 -> 65
+FlipHandled=3 -> 65
+FlipStillDrawing=0 -> 0
+DrawsIntoPresented=13 -> 1502
+LockKindPrimary=0 -> 1
+LockKindVideo=2938 -> 6473
+Dp2Calls=23 -> 361
+Dp2Triangles=356 -> 78718
+Dp2Clear2Calls=3 -> 66
+BreadcrumbTimeouts=0 -> 0
+[b138-fvf4c]
+CountFlip=65 -> 6645
+FlipHandled=65 -> 128
+FlipStillDrawing=0 -> 6517
+DrawsIntoPresented=1502 -> 1891
+LockKindPrimary=1 -> 2
+LockKindVideo=6473 -> 10017
+Dp2Calls=361 -> 700
+Dp2Triangles=78718 -> 157258
+Dp2Clear2Calls=66 -> 130
+BreadcrumbTimeouts=0 -> 0

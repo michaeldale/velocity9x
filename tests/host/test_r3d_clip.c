@@ -570,6 +570,111 @@ static void test_list_merge_unbroken_is_window(void)
             sink.batches[0].triangles == 3ul);
 }
 
+/* A wide vertex (V9X_R3D_SHADER_FLOATS): position, rhw, then every
+ * attribute set to `attribute` plus its index, so each one is told apart. */
+static void clip_wide(float *vertex, float x, float y, float rhw,
+                      float attribute)
+{
+    unsigned int k;
+
+    vertex[0] = x;
+    vertex[1] = y;
+    vertex[2] = 0.25f;
+    vertex[3] = rhw;
+    for (k = 4u; k < V9X_R3D_SHADER_FLOATS; ++k) {
+        vertex[k] = attribute + (float)k;
+    }
+}
+
+static int clip_near(float a, float b)
+{
+    float d = a - b;
+
+    return d < 1.0e-3f && d > -1.0e-3f;
+}
+
+/*
+ * The pixel shader draw's clipper: the same edges and guard band as the
+ * 32-byte one, and every attribute after rhw perspective-correct at a cut,
+ * colours included - the PS 1.1 kernels interpolate them all with
+ * perspective (intel_hsw_ps11.h) - and a plain blend when rhw is equal.
+ */
+static void test_wide_clip(void)
+{
+    static float tri[3u * V9X_R3D_SHADER_FLOATS];
+    static float out[V9X_R3D_CLIP_MAX_VERTICES * V9X_R3D_SHADER_FLOATS];
+    static float scratch[2u * V9X_R3D_CLIP_MAX_VERTICES *
+                         V9X_R3D_SHADER_FLOATS];
+    int count;
+    int i;
+    int at = -1;
+    unsigned int k;
+
+    /* Past the guard band, or not finite: refused. */
+    clip_wide(&tri[0], 10.0f, 10.0f, 1.0f, 0.0f);
+    clip_wide(&tri[V9X_R3D_SHADER_FLOATS], 3000.0f, 10.0f, 1.0f, 0.0f);
+    clip_wide(&tri[2u * V9X_R3D_SHADER_FLOATS], 10.0f, 300.0f, 1.0f, 0.0f);
+    CLCHECK(v9x_r3d_clip_wide(tri, CLIP_GUARD, CLIP_WIDTH, CLIP_HEIGHT,
+                              scratch, out) == -1);
+    tri[V9X_R3D_SHADER_FLOATS] = clip_nan();
+    CLCHECK(v9x_r3d_clip_wide(tri, CLIP_GUARD, CLIP_WIDTH, CLIP_HEIGHT,
+                              scratch, out) == -1);
+
+    /* Inside: three vertices, unchanged. */
+    clip_wide(&tri[V9X_R3D_SHADER_FLOATS], 600.0f, 10.0f, 0.5f, 100.0f);
+    count = v9x_r3d_clip_wide(tri, CLIP_GUARD, CLIP_WIDTH, CLIP_HEIGHT,
+                              scratch, out);
+    CLCHECK(count == 3);
+    for (k = 0u; k < 3u * V9X_R3D_SHADER_FLOATS; ++k) {
+        CLCHECK(out[k] == tri[k]);
+    }
+
+    /* Across the right edge at x = 640, halfway along an edge from x 0
+     * (rhw 1) to x 1280 (rhw 0.25): rhw is linear (0.625); an attribute
+     * is a / w linear, so (a0 * 1 + a1 * 0.25) / 2 / 0.625. */
+    clip_wide(&tri[0], 0.0f, 100.0f, 1.0f, 0.0f);
+    clip_wide(&tri[V9X_R3D_SHADER_FLOATS], 1280.0f, 100.0f, 0.25f, 100.0f);
+    clip_wide(&tri[2u * V9X_R3D_SHADER_FLOATS], 0.0f, 200.0f, 1.0f, 0.0f);
+    count = v9x_r3d_clip_wide(tri, CLIP_GUARD, CLIP_WIDTH, CLIP_HEIGHT,
+                              scratch, out);
+    CLCHECK(count == 4);
+    for (i = 0; i < count; ++i) {
+        const float *v = &out[(unsigned int)i * V9X_R3D_SHADER_FLOATS];
+
+        CLCHECK(v[0] >= 0.0f && v[0] <= CLIP_WIDTH);
+        if (v[0] == CLIP_WIDTH && clip_near(v[1], 100.0f)) {
+            at = i;
+        }
+    }
+    CLCHECK(at >= 0);
+    if (at >= 0) {
+        const float *v = &out[(unsigned int)at * V9X_R3D_SHADER_FLOATS];
+
+        CLCHECK(clip_near(v[3], 0.625f));
+        CLCHECK(clip_near(v[2], 0.25f));
+        for (k = 4u; k < V9X_R3D_SHADER_FLOATS; ++k) {
+            float a0 = (float)k;
+            float a1 = 100.0f + (float)k;
+
+            CLCHECK(clip_near(v[k], (a0 * 1.0f + a1 * 0.25f) * 0.5f / 0.625f));
+        }
+    }
+
+    /* Equal rhw: the plain blend, halfway. */
+    tri[V9X_R3D_SHADER_FLOATS + 3u] = 1.0f;
+    count = v9x_r3d_clip_wide(tri, CLIP_GUARD, CLIP_WIDTH, CLIP_HEIGHT,
+                              scratch, out);
+    CLCHECK(count == 4);
+    for (i = 0; i < count; ++i) {
+        const float *v = &out[(unsigned int)i * V9X_R3D_SHADER_FLOATS];
+
+        if (v[0] == CLIP_WIDTH && clip_near(v[1], 100.0f)) {
+            CLCHECK(clip_near(v[3], 1.0f));
+            CLCHECK(clip_near(v[10], 60.0f));
+        }
+    }
+}
+
 unsigned int v9x_run_r3d_clip_tests(void)
 {
     clip_failures = 0u;
@@ -589,6 +694,7 @@ unsigned int v9x_run_r3d_clip_tests(void)
     test_list_merge_clipped_middle_order();
     test_list_merge_capacity_and_refusal();
     test_list_merge_unbroken_is_window();
+    test_wide_clip();
     if (clip_failures == 0u) {
         puts("PASS: neutral core clipper and list builder");
     }

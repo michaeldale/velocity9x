@@ -297,14 +297,23 @@ static void v9x_hsw_ps11_pln(V9X_HSW_PS11_GEN *g, v9x_u8 dst, v9x_u32 a,
 
 /* send(8) the SIMD8 "sample" message from the payload, mlen coordinates,
  * into stage's four texture registers: sampler stage, binding table entry
- * 1 + stage, no header. */
+ * 1 + stage, no header. A stage with no texture is not sent for: its
+ * registers get (0, 0, 0, 1), as the interpreter's lookup. */
 static void v9x_hsw_ps11_sample(V9X_HSW_PS11_GEN *g, v9x_u32 stage,
                                 v9x_u8 mlen)
 {
     struct v9x_hsw_eu_inst inst;
     v9x_u32 function;
     v9x_u32 desc;
+    v9x_u8 k;
 
+    if ((g->desc->unbound & (1ul << stage)) != 0ul) {
+        for (k = 0u; k < 4u; ++k) {
+            v9x_hsw_ps11_mov(g, (v9x_u8)(V9X_HSW_PS11_G_T + 4ul * stage + k),
+                             v9x_hsw_ps11_imm(k == 3u ? 1.0f : 0.0f), 0u);
+        }
+        return;
+    }
     if (v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, (v9x_u8)stage,
                                     (v9x_u8)(1ul + stage), &function) !=
             V9X_STATUS_OK ||

@@ -443,6 +443,17 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
      second card's frame is the comparison.
 
    Then the full default benchmark, recorded.
+   - **Status, 2026-10-30: the benchmark completes with nothing refused;
+     Nature's sky is white.** The Image Quality test's frame showed a
+     white lake and sky. Three fixes: four coordinate sets at DDI 8 (the
+     lake), an empty sampled stage read as (0, 0, 0, 1) rather than
+     refused (the Advanced Pixel Shader reflection pass, 176,000 batches
+     a run), and shader triangles spanning 8K clipped rather than dropped.
+     Default benchmark 1834, texture refusals and dropped shader
+     triangles 0 (boot 146); V9XD32 and Half-Life D3D pass. The sky stays
+     flat white, unexplained, and 2 of 8 captures on boot 138 were black.
+     Record:
+     [`../decisions/2026-10-30-haswell-ps11-step6-nature.md`](../decisions/2026-10-30-haswell-ps11-step6-nature.md).
 7. **Record.** A decision doc: what each step measured, which premises
    held, the tolerance, what is refused and why. The PS path is the
    Haswell default from step 5's gate, with the `=7` override as the
