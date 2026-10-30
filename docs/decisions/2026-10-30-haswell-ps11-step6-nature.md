@@ -125,6 +125,44 @@ Measurement builds, none kept:
 The black frame drew nothing, so "no white draw" proved nothing about
 binding; DXT was implemented anyway and the sky did not change.
 
+### After DXT (boots 158-161, measurement builds, none kept)
+
+The untextured batches per Image Quality frame stay at 66-67 with each
+of these: textures to 4096 published (boot 158); 640 x 480 at 16 bpp,
+about 7.6 MB more free (87 batches); every texture op, address mode and
+projection claimed (boot 160); L8, A8, A8L8 and A4L4 published (boot
+161, none created). COLORWRITEENABLE is 0Fh at every one of them (boot
+159), so they are colour draws, not a depth pass.
+
+3DMark's renderer (`e2_d3d8_driver_mfc.dll`, read in the scratchpad,
+not in the repository) binds each stage from the material's compiled
+pass: a per-stage "has a map" bit and a 3-bit map slot, then the map's
+Direct3D texture, NULL when the bit is clear or the map has none.
+`allocateMap` throws on any failure, fatally. So the material compiler
+(`e2mfc.dll`) left those stages without a map while keeping
+SELECTARG1(TEXTURE); why is not known.
+
+### The material compiler, read (boots 162-165)
+
+- **Texture-memory budget: ruled out.** e2mfc preloads maps, a map at a
+  time, while `getAvailableTextureMemory()` - a live call to the driver -
+  is 1 MB or more, and stops there. GetAvailableTextureMem is 30 MB here
+  (V9XD32 `T19AvailableTextureMem`, new). A measurement build answering
+  GUID_MiscellaneousCallbacks with GetAvailDriverMemory adding 64 MB
+  (94 MB reported, V9XD32 passing) left the 67 untextured batches as they
+  were (boot 164). A first try with the callback in the wrong slot of the
+  structure lost the Direct3D HAL altogether (boot 163): the slot order is
+  GetAvailDriverMemory first.
+- **Render-to-texture: not used.** No texture is created as a render
+  target and no target other than the flip chain is set during Nature's
+  frame (boot 165), though the Advanced Pixel Shader test does both.
+- **The map state** that `addToTextureMemory` skips on (2 and 3) starts at
+  0 and nothing in e2mfc changes it.
+- Left: the bind reads the stage's texture through the map's device
+  object, which only allocation makes; allocation creates the texture or
+  throws. Static reading does not reconcile the two; it needs the
+  program watched running, which this machine has no debugger for.
+
 ## Ruled out
 
 - **The ±8191 band itself** (boot 135): a HAL with a ±4096 limit, where

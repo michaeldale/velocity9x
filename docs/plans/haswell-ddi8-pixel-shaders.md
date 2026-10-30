@@ -454,8 +454,8 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
      flat white: 3DMark binds no texture to its distant terrain and
      mountains. DXT was suspected (boot 154) and implemented (boot 157,
      [`../decisions/2026-10-30-haswell-dxt-textures.md`](../decisions/2026-10-30-haswell-dxt-textures.md)),
-     and the sky did not change; the cause is open. 2 of 8 captures on
-     boot 138 were black.
+     and the sky did not change; the cause is open, and parked (below).
+     2 of 8 captures on boot 138 were black.
      Record:
      [`../decisions/2026-10-30-haswell-ps11-step6-nature.md`](../decisions/2026-10-30-haswell-ps11-step6-nature.md).
 7. **Record.** A decision doc: what each step measured, which premises
@@ -484,6 +484,22 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
 
 ## Parked
 
+- **Nature's white sky** (parked 2026-10-30, boot 166). Its distant
+  terrain and mountains reach the driver as 66-67 batches a frame that
+  select stage 0's texture with nothing bound; 3DMark's renderer binds
+  NULL because the material's map has no device texture, with no error.
+  Ruled out, each by a measurement build: DXT (now implemented anyway),
+  texture size, texture formats (luminance, alpha), texture ops and
+  address modes, projection, a depth-only pass, the texture-memory budget
+  (94 MB reported), render-to-texture. Static reading of `e2mfc.dll` and
+  `e2_d3d8_driver_mfc.dll` reached a contradiction (the bind reads
+  through an object only allocation makes; allocation never leaves the
+  texture empty). Next, when resumed: a Nature Image Quality frame from a
+  real DirectX 8 card, or 3DMark run under a debugger. Record:
+  [`../decisions/2026-10-30-haswell-ps11-step6-nature.md`](../decisions/2026-10-30-haswell-ps11-step6-nature.md).
+- **Black Image Quality captures** after 3DMark's display dialog was used
+  in the same session (boots 138, 158); the frames were drawn, by the
+  driver's counters. Not chased.
 - **Hardware vertex shaders** (VS 1.1 on `hsw_vs.c`), unless step 3 says
   Nature needs them.
 - **DOT3 and environment bump mapping** as texture-stage ops. 3DMark

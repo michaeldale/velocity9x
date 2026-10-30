@@ -2820,6 +2820,11 @@ typedef HRESULT (WINAPI *d32_d3d8_back_buffer_fn)(D32_OBJECT *, UINT, DWORD,
 typedef HRESULT (WINAPI *d32_d3d8_create_texture_fn)(D32_OBJECT *, UINT,
     UINT, UINT, DWORD, DWORD, DWORD, D32_OBJECT **);
 typedef HRESULT (WINAPI *d32_d3d8_dword_fn)(D32_OBJECT *, DWORD);
+/* IDirect3DDevice8::GetAvailableTextureMem, slot 4: what 3DMark 2001 SE
+ * preloads maps against, a map at a time while it is 1 MB or more
+ * (e2mfc.dll P_Map's preload loop). */
+#define D3DDEV8_GET_AVAILABLE_TEXTURE_MEM 4
+typedef UINT (WINAPI *d32_d3d8_avail_fn)(D32_OBJECT *);
 typedef HRESULT (WINAPI *d32_d3d8_draw_up_fn)(D32_OBJECT *, DWORD, UINT,
                                               const void *, UINT);
 typedef HRESULT (WINAPI *d32_d3d8_create_ps_fn)(D32_OBJECT *, const DWORD *,
@@ -4175,6 +4180,9 @@ static DWORD d32_ps11(void)
 
     d32_t19_stage1 = texture[1];
     d32_t19_stage0 = texture[0];
+    d32_hx("T19AvailableTextureMem",
+           (DWORD)((d32_d3d8_avail_fn)
+                   device->vtbl[D3DDEV8_GET_AVAILABLE_TEXTURE_MEM])(device));
     hr = ((d32_d3d8_check_format_fn)d3d->vtbl[D3D8_CHECK_DEVICE_FORMAT])(
         d3d, 0u, D32_D3DDEVTYPE_HAL, mode.Format, 0ul, D32_D3DRTYPE_TEXTURE,
         D32_D3DFMT_Q8W8V8U8);
@@ -4242,6 +4250,10 @@ static DWORD d32_ps11(void)
             reason = d32_t19_programs[program].name;
         }
     }
+    /* Again once every texture has been drawn, so is resident. */
+    d32_hx("T19AvailableTextureMemAfter",
+           (DWORD)((d32_d3d8_avail_fn)
+                   device->vtbl[D3DDEV8_GET_AVAILABLE_TEXTURE_MEM])(device));
 
 release:
     if (reason != 0) {
