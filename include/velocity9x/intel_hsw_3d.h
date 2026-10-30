@@ -140,6 +140,8 @@ v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
 #define V9X_HSW_FMT_R32G32_FLOAT       ((v9x_u16)0x085u)
 #define V9X_HSW_FMT_B8G8R8A8_UNORM     ((v9x_u16)0x0c0u)
 #define V9X_HSW_FMT_R8G8B8A8_UNORM     ((v9x_u16)0x0c7u)
+#define V9X_HSW_FMT_R8G8B8A8_SNORM     ((v9x_u16)0x0c9u)
+#define V9X_HSW_FMT_R8G8_SNORM         ((v9x_u16)0x107u)
 #define V9X_HSW_FMT_R32_FLOAT          ((v9x_u16)0x0d8u)
 #define V9X_HSW_FMT_R24_UNORM_X8       ((v9x_u16)0x0d9u)
 #define V9X_HSW_FMT_B8G8R8X8_UNORM     ((v9x_u16)0x0e9u)

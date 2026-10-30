@@ -276,6 +276,49 @@ static void test_depth(void)
           8388609.5);
 }
 
+/* Signed textures (d3d_hsw_map.h): Q8W8V8U8 and V8U8 named by their
+ * D3DFORMAT, V8U8 by DirectX 7's BUMPDUDV; nothing else. */
+static void test_signed_format(void)
+{
+    v9x_u16 format = 0u;
+    int alpha = -1;
+    v9x_u32 bytes = 0ul;
+
+    CHECK(v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_D3DFORMAT,
+                                    V9X_D3D_HSW_D3DFMT_Q8W8V8U8, 0ul, 0ul,
+                                    0ul, 0ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_R8G8B8A8_SNORM && alpha == 1 &&
+          bytes == 4ul);
+    CHECK(v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_FOURCC,
+                                    V9X_D3D_HSW_D3DFMT_V8U8, 0ul, 0ul, 0ul,
+                                    0ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_R8G8_SNORM && alpha == 0 && bytes == 2ul);
+    format = 0u;
+    CHECK(v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_BUMPDUDV, 0ul, 16ul,
+                                    0x00fful, 0xff00ul, 0ul, &format,
+                                    &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_R8G8_SNORM && bytes == 2ul);
+
+    /* Refused, nothing written: an RGB format, another D3DFORMAT,
+     * BUMPDUDV with luminance (L6V5U5, X8L8V8U8). */
+    format = 0x1234u;
+    alpha = -1;
+    bytes = 7ul;
+    CHECK(!v9x_d3d_hsw_signed_format(0x40ul, 0ul, 32ul, 0x00ff0000ul,
+                                     0x0000ff00ul, 0x000000fful, &format,
+                                     &alpha, &bytes));
+    CHECK(!v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_D3DFORMAT, 64ul, 0ul,
+                                     0ul, 0ul, 0ul, &format, &alpha,
+                                     &bytes));
+    CHECK(!v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_BUMPDUDV, 0ul, 16ul,
+                                     0x001ful, 0x03e0ul, 0xfc00ul, &format,
+                                     &alpha, &bytes));
+    CHECK(!v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_BUMPDUDV, 0ul, 32ul,
+                                     0x00fful, 0xff00ul, 0x00ff0000ul,
+                                     &format, &alpha, &bytes));
+    CHECK(format == 0x1234u && alpha == -1 && bytes == 7ul);
+}
+
 /* A texture's layout as the sampler's format, its alpha and its texel
  * size: the three 16-bit layouts as before, and the two 32-bit ones. */
 static void test_texel_format(void)
@@ -335,6 +378,7 @@ unsigned int v9x_run_d3d_hsw_map_tests(void)
 {
     failures = 0u;
     test_texel_format();
+    test_signed_format();
     test_target();
     test_depth();
     test_accepted();

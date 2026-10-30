@@ -1389,7 +1389,31 @@ DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                            v9x_d3d_surface_size_of(list[n]));
         }
     }
+    /* Step 5d: a texture whose pixel format is not RGB - a bump format -
+     * as the runtime describes it. */
+    if (data->dwSCnt != 0ul && list != 0 &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        (list[0]->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
+        list[0]->lpGbl != 0 &&
+        (list[0]->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) == 0ul) {
+        const V9X_DDPIXELFORMAT *pf = &list[0]->lpGbl->ddpfSurface;
+
+        v9x_d3d_ps_log("surf-pf", pf->dwFlags, pf->dwFourCC,
+                       pf->dwRGBBitCount,
+                       v9x_d3d_surface_size_of(list[0]));
+        v9x_d3d_ps_log("surf-pf-masks", pf->dwRBitMask, pf->dwGBitMask,
+                       pf->dwBBitMask, pf->dwRGBAlphaBitMask);
+    }
     result = ops->create_surface(data);
+    if (data->dwSCnt != 0ul && list != 0 &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        (list[0]->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
+        list[0]->lpGbl != 0 &&
+        (list[0]->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) == 0ul) {
+        v9x_d3d_ps_log("surf-pf-placed", result, data->dwSCnt,
+                       list[0]->lpGbl->fpVidMem,
+                       (DWORD)list[0]->lpGbl->lPitch);
+    }
     if ((caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
         v9x_d3d_ps_log("cube-created", result, data->ddRVal,
                        list[0]->lpGbl != 0 ? list[0]->lpGbl->fpVidMem : 0ul,
@@ -7725,7 +7749,7 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
 static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
-    DWORD textures[5];
+    DWORD textures[7];
     DWORD count = v9x_hal->d3d_global.dwNumTextureFormats;
     DWORD depths = v9x_hal->d3d_global.hwCaps.dwDeviceRenderBitDepth;
     DWORD renders = 0ul;
@@ -7742,6 +7766,13 @@ static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
             format->dwFlags, format->dwRGBBitCount, format->dwRBitMask,
             format->dwGBitMask, format->dwBBitMask,
             format->dwRGBAlphaBitMask);
+    }
+    /* Signed formats a pixel shader reads, where pixel shaders run (step
+     * 5d): Q8W8V8U8 is 3DMark 2001 SE's "bump normal map" (its renderer
+     * also takes W11V11U10), V8U8 its environment bump map (or V16U16). */
+    if (ops != 0 && ops->draw_shader != 0) {
+        textures[count++] = V9X_D3DFMT_Q8W8V8U8;
+        textures[count++] = V9X_D3DFMT_V8U8;
     }
     if ((depths & V9X_DDBD_16) != 0ul) {
         renders |= V9X_D3D_RENDERS_16;

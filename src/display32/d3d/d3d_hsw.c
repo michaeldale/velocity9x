@@ -572,12 +572,18 @@ static int v9x_d3d_hsw_texture_format_of(const V9X_DD_SURFACE_LCL *surface,
     } else {
         pf = &v9x_hal->info.vmiData.ddpfDisplay;
     }
-    if ((pf->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        !v9x_d3d_hsw_texel_format(pf->dwRGBBitCount,
-                                  (pf->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul,
-                                  pf->dwRBitMask, pf->dwGBitMask,
-                                  pf->dwBBitMask, pf->dwRGBAlphaBitMask,
-                                  format, has_alpha, &texel_bytes)) {
+    /* RGB, or a signed (bump) format a pixel shader reads (step 5d). */
+    if ((pf->dwFlags & V9X_DDPF_RGB) != 0ul) {
+        if (!v9x_d3d_hsw_texel_format(
+                pf->dwRGBBitCount, (pf->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul,
+                pf->dwRBitMask, pf->dwGBitMask, pf->dwBBitMask,
+                pf->dwRGBAlphaBitMask, format, has_alpha, &texel_bytes)) {
+            return 0;
+        }
+    } else if (!v9x_d3d_hsw_signed_format(pf->dwFlags, pf->dwFourCC,
+                                          pf->dwRGBBitCount, pf->dwRBitMask,
+                                          pf->dwGBitMask, pf->dwBBitMask,
+                                          format, has_alpha, &texel_bytes)) {
         return 0;
     }
     if (bytes != 0) {
@@ -929,6 +935,14 @@ static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
     return V9X_D3D_HSW_REFUSE_NONE;
 }
 
+/* Whether the fixed-function kernels can sample a unit: not a cube, and
+ * not a signed format, which only a pixel shader reads. */
+static int v9x_d3d_hsw_fixed_texture(const V9X_D3D_HSW_TEXTURE *unit)
+{
+    return !unit->cube && unit->format != V9X_HSW_FMT_R8G8B8A8_SNORM &&
+           unit->format != V9X_HSW_FMT_R8G8_SNORM;
+}
+
 /* The draw as this engine's state, or the reason it cannot be. */
 static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
                              V9X_D3D_HSW_STATE *state)
@@ -1014,8 +1028,10 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
         if (reason != V9X_D3D_HSW_REFUSE_NONE) {
             return reason;
         }
-        /* The fixed-function kernels sample in two dimensions. */
-        if (state->texture[0].cube || state->texture[1].cube) {
+        /* The fixed-function kernels sample colours in two dimensions:
+         * neither a cube nor a signed format. */
+        if (!v9x_d3d_hsw_fixed_texture(&state->texture[0]) ||
+            !v9x_d3d_hsw_fixed_texture(&state->texture[1])) {
             return V9X_D3D_HSW_REFUSE_TEXTURE;
         }
         reason = v9x_d3d_hsw_two_unit_stages(
@@ -1032,7 +1048,7 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
         if (reason != V9X_D3D_HSW_REFUSE_NONE) {
             return reason;
         }
-        if (state->texture[0].cube) {
+        if (!v9x_d3d_hsw_fixed_texture(&state->texture[0])) {
             return V9X_D3D_HSW_REFUSE_TEXTURE;
         }
         if (draw->color_key_enable != 0ul) {
@@ -3171,6 +3187,15 @@ static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
         (v9x_d3d_hsw_caps2(surface) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
         return v9x_d3d_hsw_create_cube(data);
+    }
+    /* A signed format comes as a FourCC with no bit count, so DirectDraw
+     * cannot size it: T19 Normal read every channel as U from a texture
+     * it placed (the 4570, boot 133). The engine places it, one level or
+     * a chain, as a tree at its texel size. */
+    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
+        (surface->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) == 0ul) {
+        return v9x_d3d_hsw_create_miptree(data);
     }
     if (data->dwSCnt >= 2ul &&
         (surface->ddsCaps & (V9X_DDSCAPS_TEXTURE | V9X_DDSCAPS_MIPMAP)) ==

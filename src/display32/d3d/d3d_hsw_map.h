@@ -65,6 +65,29 @@ int v9x_d3d_hsw_texel_format(v9x_u32 bits, int alpha_pixels, v9x_u32 red,
                              v9x_u32 *bytes);
 
 /*
+ * A signed (bump) texture, step 5d of docs\plans\haswell-ddi8-pixel-
+ * shaders.md: 3DMark 2001 SE's Nature needs Q8W8V8U8 or W11V11U10 for
+ * its "bump normal maps", and V8U8 or V16U16 for environment bump maps
+ * (its D3D8 renderer's CheckDeviceFormat pairs, read from the binary).
+ * Given the DDPIXELFORMAT's flags, FourCC, bit count and first three
+ * masks: DDPF_D3DFORMAT (or DDPF_FOURCC) with D3DFMT_Q8W8V8U8 (63) is
+ * R8G8B8A8_SNORM, 4 bytes, with alpha (Q); with D3DFMT_V8U8 (60), or
+ * DirectX 7's DDPF_BUMPDUDV of 16 bits, du FFh, dv FF00h and no
+ * luminance, is R8G8_SNORM, 2 bytes. Bytes run U V W Q from the lowest,
+ * which is R G B A. 0 for anything else, nothing written.
+ */
+#define V9X_D3D_HSW_DDPF_FOURCC    0x00000004ul
+#define V9X_D3D_HSW_DDPF_BUMPDUDV  0x00080000ul
+#define V9X_D3D_HSW_DDPF_D3DFORMAT 0x00200000ul
+#define V9X_D3D_HSW_D3DFMT_V8U8     60ul
+#define V9X_D3D_HSW_D3DFMT_Q8W8V8U8 63ul
+
+int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
+                              v9x_u32 first, v9x_u32 second, v9x_u32 third,
+                              v9x_u16 *format, int *has_alpha,
+                              v9x_u32 *bytes);
+
+/*
  * The Z buffer's 3DSTATE_DEPTH_BUFFER (and 3DSTATE_SF) format for its cell:
  * 2 bytes D16_UNORM, as F2b built it, or 4 bytes D24_UNORM_X8_UINT, 24 bits
  * of depth beside 16 (docs\plans\32bpp-acceleration-and-3d.md, decision 1).

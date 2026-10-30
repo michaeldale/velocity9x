@@ -252,3 +252,38 @@ int v9x_d3d_hsw_scissor(const V9X_R3D_DRAW *draw, v9x_u32 rect[4])
     rect[3] = bottom - 1ul;
     return 1;
 }
+
+/* DDPF_BUMPDUDV's du and dv masks for V8U8 (ddraw.h's dwBumpDuBitMask and
+ * dwBumpDvBitMask, where the red and green masks are). */
+#define V9X_D3D_HSW_V8U8_DU 0x000000fful
+#define V9X_D3D_HSW_V8U8_DV 0x0000ff00ul
+
+int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
+                              v9x_u32 first, v9x_u32 second, v9x_u32 third,
+                              v9x_u16 *format, int *has_alpha,
+                              v9x_u32 *bytes)
+{
+    v9x_u32 d3d = 0ul;
+
+    if ((flags & (V9X_D3D_HSW_DDPF_D3DFORMAT | V9X_D3D_HSW_DDPF_FOURCC)) !=
+        0ul) {
+        d3d = fourcc;
+    } else if ((flags & V9X_D3D_HSW_DDPF_BUMPDUDV) != 0ul && bits == 16ul &&
+               first == V9X_D3D_HSW_V8U8_DU &&
+               second == V9X_D3D_HSW_V8U8_DV && third == 0ul) {
+        d3d = V9X_D3D_HSW_D3DFMT_V8U8;
+    }
+    if (d3d == V9X_D3D_HSW_D3DFMT_Q8W8V8U8) {
+        *format = V9X_HSW_FMT_R8G8B8A8_SNORM;
+        *has_alpha = 1;
+        *bytes = 4ul;
+        return 1;
+    }
+    if (d3d == V9X_D3D_HSW_D3DFMT_V8U8) {
+        *format = V9X_HSW_FMT_R8G8_SNORM;
+        *has_alpha = 0;
+        *bytes = 2ul;
+        return 1;
+    }
+    return 0;
+}

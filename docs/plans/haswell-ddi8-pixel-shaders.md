@@ -413,6 +413,14 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
    - Bump texture formats first: with cubes claimed 3DMark stops in
      `P_D3D::DRV_allocateMap`, "device does not support bump normal maps"
      (boot 132).
+   - **Status, 2026-10-30: Nature starts and runs.** 3DMark's renderer
+     wants Q8W8V8U8 (or W11V11U10) for normal maps; Q8W8V8U8 and V8U8
+     are published and sampled SNORM, and the engine places them, since
+     the runtime names them by FourCC with no bit count. T19 Normal
+     passes; Nature and the Pixel Shader tests run to the score window
+     (11.1, 59.8 and 35.3 fps, boot 134). Not looked at, and 1,231
+     shader triangles dropped at the guard band. Record:
+     [`../decisions/2026-10-30-haswell-ps11-step5d-bump-formats.md`](../decisions/2026-10-30-haswell-ps11-step5d-bump-formats.md).
    - Log each ValidateTextureStageState refusal under the normal
      answers (boot 119 answered all of them, so which ones fail is not
      known).
